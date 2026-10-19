@@ -42,7 +42,7 @@ Two placements inside the same document matter for T-106:
   in 40 ticks, measured in slice E"; "It is P11's code, outside slice E's authority").
 - Same gate, §12 item 72, **lines 1420–1429** ("O7, deferred to P11… the choice between charging,
   a backoff or breaker, and routing away from the harness is not made in P20").
-- Same gate, open-questions table **line 2770** ("O7 (deferred) | P11's `SpawnFailed` re-dispatch
+- Same gate, open-questions table **line 2233** ("O7 (deferred) | P11's `SpawnFailed` re-dispatch
   loop: charge, backoff/breaker or routing (§12 item 72) | P11's follow-up; a live loop when a
   harness cannot spawn").
 - `docs/architecture/p11-design-gate.md` **lines 1018–1022**: "**O7 stays P11's** … Charged,
@@ -91,7 +91,7 @@ Named by the canonical texts:
    Q3: over what interval is the count taken?*
 4. **Backoff shape.** "Bounded backoff" is named, the shape is not — no ladder, no floor, no cap,
    no holder of the timer. Precedent for the idiom: P14's "a retry runs at the worker's next pass
-   after its backoff … the backoff is a floor, not a schedule" (`p14-design-gate.md:469–470`). →
+   after its backoff … the backoff is a floor, not a schedule" (`p14-design-gate.md:461–462`). →
    *Owner question Q4: the backoff sequence, and who holds the timer (Core writer thread vs a
    per-execution `not-before` timestamp).*
 5. **Reset / recovery.** The decision says the state must be "reconcilable by Core across restart"
@@ -120,6 +120,37 @@ Named by the canonical texts:
    §7.5 item 10), and `PRODUCTION_DISPATCH_ENABLED` is False (`node/isolation.py:86–90`). →
    *Owner question Q9: is T-106 allowed to touch the dispatch path with the switch off (code
    built, E unenabled), and does that satisfy §7.3's re-gate trigger?*
+10. **Restart-reconcilable retry state.** Gate §7 line 141 records that the failure state must be
+    "deterministically reconcilable by Core across restart", but nothing says how the *retry policy*
+    state survives a restart: which counters, which backoff deadlines, and whether an OPEN breaker
+    persist or are reconstructed from the isolation records, and whether a restart is allowed to
+    replenish the retry budget (a crash-loop that resets the count defeats the breaker). The pairing
+    breaker loses its `_fails`/`_locked_until` on restart (`auth.py:214–215`) — a counter-example,
+    not an answer. → *Owner question Q10: which retry/breaker counters, deadlines and OPEN state
+    survive or are reconstructed across restart, and may a restart replenish the retry budget?*
+
+## 2b. Correction 2026-10-19 (Qwen) — reviews/T-110-analysis.md
+
+Every Codex finding addressed in place; new/changed `file:line` per finding:
+
+1. Open-questions table row re-cited to `p20-design-gate.md:2233` (was 2770; verified — that row is
+   the only O7 "(deferred)" table entry at b73f875).
+2. P14 backoff idiom re-cited to `p14-design-gate.md:461–462` (was 469–470; verified text "A retry
+   runs at the worker's next pass after its backoff … the backoff is a floor, not a schedule").
+3. §3.3 pairing unlock: now "monotonic clock" — `clock=time.monotonic` at `auth.py:212`, unlock
+   check `now = self.clock()` / `now < self._locked_until` at `:223–225` (not wall clock).
+4. §3.4: manual recovery demoted to a *candidate* model; the decision requires
+   "recovery/reconciliation" but does not decide manual-vs-automatic — cross-referenced to open Q5.
+5. §4 Case B step 4: removed "every pass"/"never" scheduling claims; conclusion kept as
+   *indefinite, uncounted redispatch* (`manager.py:116–141`, `runtime.py:293–295`) rather than a
+   guaranteed busy loop.
+6. §4 Case C: `Isolation.requested()` claim qualified to a *fresh* production request; record check
+   returns True first at `isolation.py:690–691`, production switch gates only new requests at
+   `:694–695`.
+7. Added owner question **Q10** (restart-reconcilable retry state: which counters/deadlines/OPEN
+   survive or are reconstructed, and whether restart may replenish the retry budget); §5 updated.
+8. §5 minimum decision set now includes Q4 (bounded backoff) and Q8 (enforcement location).
+
 
 ---
 
@@ -156,7 +187,8 @@ Named by the canonical texts:
 ### 3.3 Pairing breaker (`PairingLocked`)
 - `archeus/api/auth.py:198–236` — `FAIL_LIMIT = 10`, `FAIL_WINDOW_S = 60.0` (`:209–210`); the
   count list `self._fails` (`:214`), trip → `_codes.clear()` + `_locked_until = now + 60`
-  (`:231–235`), self-reset by wall clock (`:224–225`). `routes.py:274–276` maps it to `429
+  (`:231–235`), self-reset by the **monotonic** clock (`clock=time.monotonic` at `:212`; unlock
+  checked against `self.clock()` at `:223–225`, not wall clock). `routes.py:274–276` maps it to `429
   pairing_locked`.
 - **Fit:** the simplest in-process shape (sliding window + timed unlock, in memory), and the
   cheapest to imitate. It is not reconcilable across restart (`_fails` and `_locked_until` are
@@ -170,7 +202,9 @@ Named by the canonical texts:
   (`cli/tui/_tables.py:364`).
 - **Fit:** the only existing mechanism whose *exhaustion* semantics match gate §7's "surfaced as an
   infrastructure/isolation failure requiring recovery": it **suspends until a user re-enables it**
-  (`automations.py:276–278`). That is the visible-manual-recovery model O7's lines 137–138 imply.
+  (`automations.py:276–278`). This is one *candidate* model for the recovery O7's lines 137–138
+  leave open — the decision says the condition requires "recovery/reconciliation" but does **not**
+  decide whether that recovery is manual or automatic (that is the open Q5 above).
   Its subject is an Automation, and its count is of escalated/rate-limited runs, so again it is a
   pattern to copy, not a counter to reuse.
 
@@ -214,10 +248,12 @@ Why it loops, step by step:
 3. `binding` ∉ `BLOCKING` (`executions.py:40–42`), so nothing blocks the mission; `EngineLoop`
    re-dispatches the READY task (`core/runtime.py:158–167`; `core/engine.py:272–280` →
    `work.dispatch_task`, `core/application/work.py:315–330`) and a new INTENT execution is committed.
-4. `tick()` returns a nonzero `did` (`manager.py:116–141`) because every pass did work, so
-   `ExecLoop` never takes its `EXEC_S` idle wait (`runtime.py:293–295`) and `EngineLoop` likewise
-   keeps stepping; each pass writes an Execution row, its events, an exec dir, a marker and a
-   tombstone. Nothing in this path counts, delays, dedupes or stops it.
+4. A tick that finds work returns nonzero `did` (`manager.py:116–141`), so *that* tick skips
+   `ExecLoop`'s `EXEC_S` idle wait (`runtime.py:293–295`); the dispatch→refuse→re-dispatch cycle
+   keeps handing work back, so the redispatch is **indefinite and uncounted** — nothing in this path
+   counts, delays, dedupes or bounds it. (The defect is the absence of a bound, not a guaranteed
+   busy loop: any individual pass that finds nothing may still take the `EXEC_S` wait.) Each such
+   pass writes an Execution row, its events, an exec dir, a marker and a tombstone.
 5. The breaker cannot see it: `accounts_tick` counts only `ENDED_ERROR` + `failure in ('resource',
    'auth')` (`executions.py:838–843`); an ABANDONED refusal is neither.
    Measured independently (review `reviews/T-102-c91d4f1.claude.md`, "Ran"): **63 uncharged
@@ -232,8 +268,11 @@ isolated path: `_private_dirs`/`_isolated_env` failures → `_refuse` → `Spawn
 (`node/local.py:164–172`; `isolation.py:783–799` writes `state: 'isolation_failed'`), then
 `manager.py:332–341` refuses it as uncharged `binding`. This is exactly the case the O7 decision
 calls uncharged — and it is **not reachable in production today**: `Isolation.requested()` returns
-False while `PRODUCTION_DISPATCH_ENABLED` is False (`isolation.py:86–90, 685–696`), and
-`default_plan` is deliberately unsatisfiable for production (`isolation.py:1524–1534`).
+False **for a fresh production isolation request** while `PRODUCTION_DISPATCH_ENABLED` is False
+(`isolation.py:685–696`: the production switch gates only new requests at `:694–695`; an execution
+that already has a record returns True first at `:690–691`, so the disabled switch is *not* a
+universal False for `requested()`), and `default_plan` is deliberately unsatisfiable for production
+(`isolation.py:1524–1534`).
 So: the case O7 was written for is latent; the case actually looping is Case B. That is owner
 question Q7 above.
 
@@ -247,10 +286,12 @@ exist yet, which matches `reviews/T-102-c91d4f1.claude.md`: "No such mechanism e
 
 ## 5. What this feeds into T-106
 
-- T-106 can be built once the owner answers Q1–Q9 (§2). Nothing in the canonical texts blocks
+- T-106 can be built once the owner answers Q1–Q10 (§2). Nothing in the canonical texts blocks
   building it; §7.3/§7.5-10 place it on the dispatch side and keep production dispatch E's.
-- Minimum owner-decision set for a first cut: Q1 (key), Q2+Q3 (threshold+window), Q5 (recovery),
-  Q6 (surface), Q7 (does Case B belong to O7 or is it charged like `workspace`).
+- Minimum owner-decision set for a first cut: Q1 (key), Q2+Q3 (threshold+window), Q4 (bounded
+  backoff shape/timer holder), Q5 (recovery), Q6 (surface), Q7 (does Case B belong to O7 or is it
+  charged like `workspace`), Q8 (enforcement location — router or manager), Q10 (restart-reconcilable
+  retry state). Q9 (authority boundary) gates *where* it may be built, not whether it can exist.
 - Non-negotiables the implementation must keep, with their sources: no charging the task
   (gate §7 line 134), no unisolated fallback and no A4 bypass (lines 139–140; PV-20 §3.4/§6.3 via
   ADR-0053:66), restart-reconcilable state (line 141), no new S1 component / no enabling of

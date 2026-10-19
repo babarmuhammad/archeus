@@ -1301,14 +1301,14 @@ review: reviews/T-096-e7141c1.claude.md APPROVE (independent Claude re-review, 2
 notes: RECORDED, NOT FIXED (owner: finish running agents then stop): (Low, recommended) no test holds "Core refusing -> token kept" (a mutant keeping only on status 0 survives; 503 busy from a just-started Core is the plausible case) - one parametrized node case; (Low, optional) in memory mode clearToken (transport.ts:46-49) still deletes the IndexedDB key, reachable from Control -> Devices -> Revoke on this client, which could delete a live old token kept after a refused retire; OWNER NOTE: accept "no device token remains in the Qt profile" is met as "no LIVE device token" - the revoked token's bytes remain in the profile LevelDB log (000003.log), Core answers 401 to them; T-096.3 records it; the board's earlier "erase it" went beyond the review's requirement. CORRECTION 2d2f3b0 + e7141c1 (2026-10-15, Claude fork): (1) in memory mode a token an earlier shell stored is revoked THROUGH ITSELF before it is deleted (GET /v1/sync for its device id, POST /v1/devices/{id}/revoke with an idempotency key, then the key is deleted); 401 = already dead, deleted with no revoke; Core down or refusing = kept, retried next launch (never delete the only copy of a live admin token). Byte erasure NOT achieved and not claimed: LevelDB keeps a deleted value until it compacts and no page can force it, so what may remain is a DEAD token (the reviewer's own bar). deleteDatabase of both archeus and archeus-snapshot was built and probed: it erased the bytes in a standalone QtWebEngine probe, but in the real shell flow both deletes reported success and the bytes survived the next launch, and it costs B7's snapshot - so it was dropped. (2) docs appended: p20 section 12 T-096.1-T-096.4 (unnumbered in the main sequence until the next candidate rebuild places them beside slices H and J), target-architecture section 5.1 read amendment, p19 item 81 amendment with the owner's answer verbatim. Optional reviewer items A4 (READ_CONTROL alone) and C2 (clearToken resetting held) not taken. OWNER 2026-10-15 (AskUserQuestion answer, verbatim): "Memory-only (Recommended)" - keep T-096's reversal of p19 item 81 ("the device token survives a restart"): no admin page token on disk; old saved tokens are revoked on first launch and erased; p19 item 81 amended; a second shell window signing out the first is accepted. AUTH CORRECTION: this card's "D9 (a)" is the board's PV-20 decision D9 (T-089), not p20-design-gate D9 (the Codex adapter); D1 does not cover the page token (D1 is the shell's own credential, item 86) - the owner's answer above is the authority for I-F2. REVIEW CHANGES: (1) in memory mode, before deleting a stored token, the page revokes its own device (GET /v1/sync for its id, then POST /v1/devices/{id}/revoke), node test; the deleted value stays in the IndexedDB log after delete (real QtWebEngine probe) - erase it (compact/clear the store, or delete the IndexedDB database) after revocation; (2) docs: the section 5.1 amendment and p20 items 109/111 describe the old behaviour; no section 12 item records the desktop shell page slot, the reload behaviour, or that a second concurrent archeus gui signs out the first window. FIXING 2026-10-15 (Claude fork). DONE a2be0f4 + 9abca6c. I-F1: a broad principal that may READ the home or run/local-token now warns too ("ARCHEUS_HOME <path> can be read by <name> (<SID>), so any signed-in user of this machine can read Core's full-scope local token; move ARCHEUS_HOME ..."); write is still reported first; warn only, no ACL write. I-F2 design choice: off-the-record was REJECTED because the same profile holds the appearance choice and P19 B7's offline snapshot across restarts. Instead the shell's page takes slot "desktop shell page" (each page credential revokes the previous one) and keeps its token in memory only (memory=1 -> sessionStorage flag, module variable, IndexedDB never written, a token an earlier shell left is deleted); a reload in the shell is answered with a fresh launch address (?r=N forces a real load); Core down -> plain reload -> unauthenticated probe -> B7 snapshot. `core --open` and the legacy GUI's "Open Archeus V1" are unchanged (no slot, token persisted in that browser as before). FINDINGS (recorded, not changed here): (a) the page token is still minted with observe+control+approve+admin and no expiry (cli/main.py _launch_code; routes.py launch_redeem) - now at most one live and none on disk, but its scope and lifetime are unchanged; (b) page tokens persisted by shells BEFORE this change stay live server-side after the SPA deletes them from IndexedDB (revocable from Control -> Devices; no automatic revoke here); (c) docs/api.md shows modified with no content diff (line endings only) in that checkout and was not staged. Lows I-F3 (dead hook tokens left in req/) and I-F4 (raw execution output stored unredacted, every read path redacts) are recorded on T-093 for slice K.
 
 ### T-097 · What the login probe reads in an account home (code-only analysis)
-owner: qwen · status: changes
+owner: qwen · status: done (2026-10-19: Codex aimed r3 APPROVE, reviews/T-097-analysis.r3.md, no findings; D7 stands)
 auth: Owner rule 2026-10-15: preventive routing to Qwen. Basis: T-093's fork stopped at this question because it concerns the user's own credential store in the account home, outside its limits; Claude expects the classifier family that stopped T-008. No refusal is claimed on this card.
 scope: .collab/T-097-login-probe-reads.md (new note) only.
 refs: archeus/harnesses/calls.py lines 79-82 (on the candidate, D:/archeus-p20-i), the usage._creds function it calls (find it with grep in claude_sessions/ and archeus/), T-093 (D7: Core stores no API key).
 accept: from the CODE only, state which file(s) under the account home the probe opens, which fields it reads, whether any value is copied, logged, cached, written or sent anywhere, and on which code paths it runs (own calls only, or more). Cite file:line for each claim. Say whether this changes D7's conclusion (Core stores no API key) - reading is not storing; flag any write or cache.
 verify: read-only grep and reading of repository source in D:/archeus-p20-i. Do NOT open, list or print any real file under any account home, ~/.claude, or any credential store; no command that reads the user's files; no network; no code or test change.
 commits: —
-review: reviews/T-097-analysis.r2.md CHANGES (Codex aimed re-review of the three earlier findings, 2026-10-19; Claude read the verdict line only) | reviews/T-097-analysis.md CHANGES (Codex aimed, 2026-10-16; 3 findings; Claude read the verdict line only) | —
+review: reviews/T-097-analysis.r3.md APPROVE (Codex aimed, 2026-10-19, no findings) | reviews/T-097-analysis.r2.md CHANGES (Codex aimed re-review of the three earlier findings, 2026-10-19; Claude read the verdict line only) | reviews/T-097-analysis.md CHANGES (Codex aimed, 2026-10-16; 3 findings; Claude read the verdict line only) | —
 notes: CORRECTION r2 REQUESTED 2026-10-19 (Claude, metadata only): address every finding in .collab/reviews/T-097-analysis.r2.md; same limits as before; when done status review, notes prefix "CORRECTION r2 DONE <date> (Qwen): <one line>". Queued for Qwen after T-110 (one Spark run at a time). CORRECTION DONE 2026-10-19 (Qwen): all 3 findings of `reviews/T-097-analysis.md` are answered in place in `.collab/T-097-login-probe-reads.md` (its "Correction 2026-10-16" section, written by the earlier Qwen delivery before the failed relaunch; this session found it in place and verified rather than redid it) — every new citation re-checked read-only against the candidate `853f63f` (D:/archeus-p20-i): `routing/usage.py:63-64` `windows_snapshot(poll=True)` + `runtime.py:116` + `usage.py:241-259`, `249-250→213-221` + `manager.py:718` `_ceilings` (finding 1); `gui_api.py:1128,1149,1154,1166` + route table 4638 + gui.py 127.0.0.1 (finding 2); `usage.py:162-164` unredacted `log.exception`, claim narrowed to "no explicit credential logging", exception text not verified (finding 3); `resources.py:174-176` `UsageSnapshot` holds no credential field, D7 unchanged; no further note edit needed; verify as card: read-only greps/reads of candidate source only, no account-home/`~/.claude`/credential-store file touched, no network, no code/test change. QWEN NOT REACHED 2026-10-16 ~13:30 (Claude): `pi --model spark/qwen3.8-flash-next -p` answered "Connection error." twice (the T-097 launch, then a one-word probe); Spark is unreachable from this machine, so the correction below has not started. Relaunch when Spark is up. CORRECTION REQUESTED 2026-10-16 (Claude, metadata only): address every finding in .collab/reviews/T-097-analysis.md (Codex). Edit only .collab/T-097-login-probe-reads.md and this card; same verify limits as above. When done: status review, notes prefix "CORRECTION DONE <date> (Qwen): <one line>". DONE 2026-10-15 (Qwen): Probe reads only <home_ref>/.credentials.json's claudeAiOauth truthiness (usage.py:45-54, calls.py:81); no field value persists, no write or token cache exists, the only network send is the poller's Bearer header to the usage endpoint (usage.py:130-136). Runs only on account register/enable (routes.py:510,520), never per own call; D7 (Core stores no API key) stands. Note: .collab/T-097-login-probe-reads.md, all claims cited file:line; verify: read-only grep/reads as card permits, no account-home file touched. When done: status review, notes prefix "DONE <date> (Qwen): <three lines>". Claude launches this with pi -p and checks only metadata.
 
 QUESTION:
@@ -1488,7 +1488,7 @@ review: reviews/T-109-cddec29.claude.md APPROVE (independent Claude reviewer, 20
 notes: DOC FOLLOW-UP: gate item 128 says the runtime gate's HTTP mission step is refused; after (c) it runs (200) - record in the next gate-doc append. DOC FOLLOW-UP: gate item 128 says the runtime gate's HTTP mission step is refused; after (c) it runs (200) - record in the next gate-doc append. All findings are Low and pre-existing or test-only; none blocks T-108. Not included (owner decision or out of reach): T-105 Linux starttime residual, POSIX single SIGTERM, taskkill /T descendants; T-094 canonicaliser path-field order; T-107 audit note on concurrent same-key launches.
 
 ### T-110 · O7 backoff/breaker: what the canonical design says (code-and-doc analysis for T-106)
-owner: qwen · status: changes
+owner: qwen · status: done (2026-10-19: Qwen corrected all 8 findings in a contained run, card QWEN-CARD-T-110c.md; Codex aimed r2 APPROVE, reviews/T-110-analysis.r2.md. CAVEAT: the O7 quote cites PV20-S1-GATE-2026-10-08.md, never committed and lost with D:\Claude, so Codex could not check it; owner questions Q1-Q10 open, they gate T-106)
 auth: Owner 2026-10-19 (AskUserQuestion answer, verbatim): "T-108 round 5 (Recommended), T-109 Lows (Recommended), T-110 O7 read (Qwen), T-111 E1 evidence (Qwen)"
 scope: .collab/T-110-o7-breaker.md (new note) and this card only.
 refs: T-106; owner decision O7 2026-10-08 (isolation-establishment failures uncharged, with a backoff and breaker); reviews/T-102-c91d4f1.claude.md (63 executions in 4 s on a permanent Popen failure); docs/architecture/ (find O7 and every "backoff"/"breaker" for dispatch or spawn).
@@ -1565,7 +1565,7 @@ Not checked: <what you could not verify, or "nothing">
 ESCALATE means only the owner can decide (canonical-doc conflict, missing authorization).
 
 ### T-115 · Slice K pre-run: the P20 exit evidence on the pushed candidate, to find what is left early
-owner: claude · status: review (2026-10-19, Claude fork, new detached checkout D:/archeus-pv20-k from 4d37280)
+owner: claude · status: review (2026-10-19 PARTIAL, stopped by owner at 18:22: report .collab/T-115-k-prerun.md. tests/v1 on c8f5bd5: 98 first-run failures all pass alone (load/port/long basetemp); 5 of 16 mutation suites run, p9 M25 survives; section 10: G5/G6 NOT MET, no P20 xfail MET, mutants NOT RUN, threat model NOT MET, manual checks and D15 NOT RUN)
 auth: Owner 2026-10-19 (verbatim, above): "do everything we can do in parallel ... finish archeus v1 as fast as we can"
 scope: read-only on product code; a report .collab/T-115-k-prerun.md. No fixes in this card (each failure becomes its own card).
 refs: p20-design-gate.md section 10 (evidence before P20 is complete) and section 5 item K.
@@ -1609,48 +1609,64 @@ Not checked: <what you could not verify, or "nothing">
 ESCALATE means only the owner can decide (canonical-doc conflict, missing authorization).
 
 ### T-118 · P21 slice A: provenance (D4, D11) and the artifact producer record (D5)
-owner: claude · status: doing (fork, D:/archeus-p21-a from b01dc32)
+owner: claude · status: doing (paused 2026-10-19 18:22 by owner stop: D:/archeus-t118 branch p21-a 0f4d007, not pushed; report .collab/T-118-report.md; left: all 29 mutants after the Z13 fix, e2e + client tests, independent review)
 auth: Owner 2026-10-19 (verbatim): "Approve all recommendations (Recommended)"; D0 "Allow named safe slices (Recommended)"
 scope: provenance records (REQUESTED/ROUTED/SERVED; BILLED only when usage attributes the model), requirements._source, artifact producer record + artifact.recorded; migration 0017; tests; Z23-Z29; gate section 12 slice A.
 refs: p21-design-gate.md D4, D5, D11, slice A.
 accept: as the gate's slice A and its decisions; no isolation/boundary/credential/auth file touched (listed in the report).
 verify: targeted tests, generators --check, doc gates, its mutants.
-commits: -
+commits: 4d1ec8a (recovered), 419d478 (harness version in the routing snapshot, task_family, capability_snapshot, no <synthetic> served model; gate 12.A), 0f4d007 (mutant Z13 repaired)
 review: independent Claude reviewer.
 notes: -
 
 ### T-119 · P21 slice C-read: trace view (D3, D14, R13-05) and R13-03 digest rows; C-write file-scope check
-owner: claude · status: doing (fork, D:/archeus-p21-c from b01dc32)
+owner: claude · status: doing (paused 2026-10-19 by owner stop: D:/archeus-t119 branch p21-c e5e11b0 WIP, not pushed; report .collab/T-119-report.md, C-write analysis .collab/T-119-cwrite-scope.md; left: Z30-Z39, full e2e, rerun 7 unrelated failures on d0b98d3, independent review, Codex on C-write)
 auth: as T-118
 scope: trace view builder over existing events/cause_chain/decisions/checkpoints, sidechain lanes and call->result pairing per execution, replay on event time; R13-05 `why`; R13-03 digest rows; SPA view; Z30-Z39; gate section 12 slice C. NOT the command-writer causation change (C-write): only a written file-scope analysis of it.
 refs: p21-design-gate.md D3, D13, D14, slice C; p16-design-gate.md:960, 1156-1157; ADR-0030 §4.
 accept: as the gate; C-write analysis lists every file its diff would touch and whether any is isolation/boundary/credential/auth code.
 verify: targeted tests, SPA build + e2e for the view, node + tsc, generators --check, doc gates, mutants.
-commits: -
+commits: 23e973a (recovered: trace view, lanes, replay, why, digest rows, Trace tab, Z30-Z39), e5e11b0 (WIP: P21 route table entry, gate section 12 C-read)
 review: independent Claude reviewer; Codex aimed on the C-write analysis only.
 notes: -
 
 ### T-120 · P21 slice D (eligible part): metrics_daily (D2), archeus doctor and core.log rotation (D8)
-owner: claude · status: doing (fork, D:/archeus-p21-d from b01dc32)
+owner: claude · status: done (2026-10-19: D:/archeus-t120 branch p21-d 5ceddf7, not pushed, waits for P21 integration; line is slice A then D (loader refuses a migration gap))
 auth: as T-118
 scope: metrics_daily table (migration 0018) written nightly by a Core consumer; read-only `archeus doctor` (no --fix); RotatingFileHandler for core.log; Z40-Z49; gate section 12 slice D. NOT Health/Attention (D12, waits for P20).
 refs: p21-design-gate.md D2, D8, slice D; plan section 28.
 accept: as the gate; doctor never writes.
 verify: targeted tests, CLI tests, doc gates, mutants.
-commits: -
-review: independent Claude reviewer.
+commits: bef69ec (recovered), 3caf59e (merge recover/p21-a 4d1ec8a), eca904e (migration renamed 0018_metrics_daily), a9f6d7a (worker reads nothing until the date changes; Z48, Z49), 5ceddf7 (doctor reports a malformed/torn db as DOCTOR_DB instead of crashing)
+review: reviews/T-120-5ceddf7.claude.md APPROVE (independent Claude reviewer, 2026-10-19, 0 findings) | reviews/T-120-a9f6d7a.claude.md CHANGES (1: doctor crashed on a malformed db)
 notes: -
 
 ### T-121 · P21 slices F and G: Core search (D7) and OS notifications (D1)
-owner: claude · status: doing (fork, D:/archeus-p21-fg from b01dc32)
+owner: claude · status: done (2026-10-19: D:/archeus-t121 branch p21-fg 3a95544, not pushed, waits for P21 integration; independent Claude reviewer APPROVE, reviews/T-121-3a95544.claude.md, 0 findings)
 auth: as T-118
 scope: Core /v1/search over titles (client filter kept offline; migration 0019 only if an index is needed); OS notifications through the Qt tray's showMessage (push deferred); Z50-Z59; gate section 12 slices F and G.
 refs: p21-design-gate.md D1, D7, slices F and G; R15/Q-B5.
 accept: as the gate; search scoped by the caller's existing read scope (no new data exposure); notifications carry no secret or raw tool input.
 verify: targeted tests, SPA build + e2e for search, node + tsc, generators --check, doc gates, mutants.
-commits: -
-review: independent Claude reviewer.
+commits: e6d9a25 (recovered slice, complete), f5980f4 (P21 route table in test_api_structure), 3a95544 (gate note); no migration (0019 free)
+review: reviews/T-121-3a95544.claude.md APPROVE (independent Claude reviewer, 2026-10-19; no findings; Z50-Z53, Z57-Z59 re-killed by the reviewer)
 notes: -
+
+### T-115a..f · Proposed by T-115 (owner to authorize)
+owner: - · status: proposed
+notes: a) a test that kills mutant p9 M25 ("at most one live approval per identity", index dropped; survives alone too). b) finish the mutation pass on an idle machine, mutate_p20 and p19/p19_5 first (~837 mutants not run). c) rowpulse.test.ts:184 regex assumes LF; CRLF checkout fails it. d) repo store fails on a long home path (git ref locks past MAX_PATH). e) port clashes (WinError 10048) when suites run in parallel. f) a real npm audit with network.
+
+### T-122 · CI red on c8f5bd5: repo-store hook isolation on Linux/macOS, three Windows unit failures, one judge timeout
+owner: claude · status: review (2026-10-19: 9473e5e + correction ca2ca4b on fix/ci-c8f5bd5, not pushed; Codex aimed CHANGES (2) then r2 APPROVE; waits for owner push OK, then CI)
+auth: Owner 2026-10-19 (verbatim): "re pick up the cards and agents from before"; CI must stay green (project rule).
+scope: root cause and the smallest fix for every failure in CI run 39246792936; tests for each; no unrelated change.
+refs: run 39246792936 (ubuntu/macos: tests/v1/integration/test_repo_store.py hooks e-post-commit/e-post-checkout fired, junction message, test_settings_sources T105, test_pv20_runtime_stage changed-while-staged, unit test_repo_store replaced; windows: test_execution_units unresolvable path x3, judge test_s10b_loop_guard[http] 30 s timeout); last green run 38657897816 (2026-10-15).
+accept: each failure explained (product bug, environment change on the runners such as a newer git, or a test assumption) with evidence; a hook the world configures never runs from the pinned store or a seed on any git version CI uses; CI green on the pushed branch.
+verify: the failing tests locally where the platform allows, the affected suites, ruff; CI on the branch.
+commits: 9473e5e (hook chmod 0755 in tests, staging symlink reported as alias, lstat counted at _entry, inode-reuse fix, T105 waits for death, canonical.workspace_path rejects NUL/over-long paths that Python 3.12+ realpath no longer refuses)
+review: reviews/T-122-9473e5e.r2.md APPROVE (Codex aimed, correction ca2ca4b: one shared openable() guard before every realpath in canonical.py and manager._inside) | reviews/T-122-9473e5e.md CHANGES (2 findings)
+notes: -
+
 ## Codex queue for its next reset - 2026-10-15 (Claude, owner rule of 2026-10-15)
 
 Done tonight: items 1-4 and 6 of the 2026-10-14 queue (T-066, T-067, T-061, T-062, T-086/T-069, T-072 union merges, T-064/T-068), plus T-071 (analysis). In priority order, one call each, correction commits only:
