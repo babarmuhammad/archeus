@@ -43,9 +43,11 @@ export const memoryOnly = () => typeof sessionStorage !== 'undefined' && session
 
 const loadToken = () => (memoryOnly() ? Promise.resolve(held) : store<string | undefined>('readonly', (s) => s.get(KEY)));
 const saveToken = (t: string) => (memoryOnly() ? Promise.resolve((held = t)) : store('readwrite', (s) => s.put(t, KEY)));
+// In memory mode the disk copy is retire()'s alone: a live one it kept must be
+// revoked before it goes, never deleted on the side (T-096 review finding 2).
 export const clearToken = () => {
   held = undefined;
-  return store('readwrite', (s) => s.delete(KEY));
+  return memoryOnly() ? Promise.resolve() : store('readwrite', (s) => s.delete(KEY));
 };
 
 /** A token an earlier shell kept on disk (T-096): revoked through itself before

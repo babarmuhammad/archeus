@@ -3,7 +3,7 @@
 // B7's offline snapshot is what it shows.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { authenticate, takeFragment, CoreError } from '../src/api/transport.ts';
+import { authenticate, clearToken, takeFragment, CoreError } from '../src/api/transport.ts';
 
 let disk: Map<string, unknown>;
 let answer: (path: string, init: RequestInit) => Promise<Response>;
@@ -78,6 +78,33 @@ test('a token Core already revoked is deleted with no revoke of its own', async 
   assert.equal(await authenticate(shellPage('code')), 'tok');
   assert.equal(log.some((l) => l.includes('/revoke')), false);
   assert.equal(disk.has('device-token'), false);
+});
+
+// T-096 review finding 1: only a revoke that worked, or a 401, may delete it
+for (const [why, refuse] of [
+  ['sync 503 busy', (p: string) => (p === '/v1/sync' ? json(503, { error: 'busy' }) : core(p))],
+  ['revoke 500', (p: string) => (p.endsWith('/revoke') ? json(500, { error: 'internal' }) : core(p))],
+  ['revoke 403', (p: string) => (p.endsWith('/revoke') ? json(403, { error: 'forbidden' }) : core(p))],
+  ['a sync with no client', (p: string) => (p === '/v1/sync' ? json(200, {}) : core(p))],
+] as const) {
+  test(`Core refusing (${why}) keeps the token an earlier shell kept`, async () => {
+    disk.set('device-token', 'old');
+    answer = refuse;
+    await authenticate(shellPage('code'));
+    assert.equal(disk.get('device-token'), 'old');
+    assert.equal(log.some((l) => l.startsWith('delete')), false);
+  });
+}
+
+test('signing this shell page out forgets its token and leaves the disk to retire()', async () => {
+  answer = core;
+  assert.equal(await authenticate(shellPage('code')), 'tok');
+  disk.set('device-token', 'kept');               // a live one retire() could not revoke
+  await clearToken();
+  assert.equal(disk.get('device-token'), 'kept');
+  assert.equal(log.some((l) => l.startsWith('delete')), false);
+  disk.delete('device-token');
+  assert.equal(await authenticate(undefined), null); // held is gone
 });
 
 test('a shell page with no code is signed out when Core answers', async () => {
