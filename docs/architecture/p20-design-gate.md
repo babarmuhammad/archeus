@@ -2019,6 +2019,638 @@ and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
       16 skipped, 2 deselected, 3 xfailed, 1 warning (a local log outside the repository). This is
       reported evidence; the review of `f6abc4d` read the log and did not rerun it.
 
+### Slice I — secrets review (D7), remote-access threat model, dependency audit (2026-10-15)
+
+Built on the T-072 integration candidate `91cbb0c`. Nothing of G, H, J, K, D10, P21 or V2 was
+touched. No ACL was written, no Windows isolation or profile API was called, and no OS or user
+credential store was read: this review covers Archeus's own files and code only.
+
+108. **The order after slice F, D12, D13 and D14 decided (the owner, 2026-10-15).** Recorded as
+     given (AskUserQuestion answers in the Claude session):
+     - Order: "I then H, beside G (Recommended)". Slice I runs first, then H, both while G
+       (PV-20) waits on T-004, each slice with its own commits and gate items. This lifts §4.1's
+       "F, G, H, I and J not in parallel" for I and H beside G only; J and K are unchanged.
+     - D12: "Stdlib harness (Recommended)". That is `random.Random(seed)` plus a recorded corpus
+       and structured mutation in `tools/fuzz_p20.py`, with a fixed seed and a small budget in CI
+       and a large budget on demand. No new dependency.
+     - D13 and D14: "Approve both as written (Recommended)". The drills and the mutant ids are
+       exactly as §4 states them.
+109. **Secrets at rest, by writer and protection (D7).** Every credential Archeus issues starts
+     as a CSPRNG draw (`secrets.*` or `os.urandom`). The table below follows each draw to where
+     its value goes; draws that are not secrets are listed under it.
+
+     | Secret | At rest in | Form | Writer | Protection |
+     |---|---|---|---|---|
+     | Local token: the CLI's device credential, every scope | `run/local-token` | plaintext | `infra/discovery.py:205` `write_local_token`, called from `core/runtime.py:546` | Created `O_CREAT\|O_EXCL`, mode `0600`. POSIX: Core refuses to start when `run/` or the file is readable by group or others (`discovery.py:177` `token_protection`). Windows: inherits the ARCHEUS_HOME DACL, with T-089's warning when a broad principal may write the home (`discovery.py:159`) |
+     | Device-token hashes: the local token, launch-code and paired clients | DB `tokens.token_hash` | sha256 | `infra/db/writer.py:124` `Tx.insert_token`, from `runtime.py:545`, `api/routes.py:235`, `:283` and `core/application/commands.py:147` | Hash only, and the writer has no plaintext parameter. Compared with `hmac.compare_digest` (`api/auth.py:79`) |
+     | Hook-token hash | DB execution row `hook_token_hash` | sha256 | `core/application/executions.py:141` | Cleared to `None` on every end path (`executions.py:196`, `:345`, `:351`, `:357`, `:380`, `:456`, `:675`, `:710`). Stripped from reads (`:929`, `:977`) |
+     | Hook token, plaintext | `run/exec/<id>/req/<seq>.req.json` | plaintext JSON field `token` | the hook process, `harnesses/hook.py:160` via `_reserve` (`:109`) | Inherits the execution directory's ACL. Dead once the execution ends, because its hash is cleared and a hashless execution refuses every token (`executions.py:741`). Not deleted (item 111) |
+     | Step-up PIN | DB device row `pin_hash` | `pbkdf2_sha256`, 200,000 iterations, 16-byte salt | `core/application/commands.py:96` `hash_pin`, from `api/routes.py:286` | `entities.PIN_HASH` refuses any other shape (`entities.py:194`, `:229`). Compared with `hmac.compare_digest` |
+     | The Qt shell page's device token | the Qt shell's persistent QtWebEngine profile, `QtWebEngine/archeus` in the home (the legacy Qt shell's entry, target-architecture §5.1), its IndexedDB | plaintext | the SPA, `clients/app/src/api/transport.ts:38` `saveToken`, under `claude_sessions/gui_qt.py:171-173` and `archeus/cli/gui.py:38` | Inherits the ARCHEUS_HOME DACL (item 111) |
+     | Database backups | the backup directory | copies of the DB, so the hashes above | `infra/db/backup.py:56` | As the rows they copy |
+
+     - **Memory only:** launch codes (60 s) and pairing codes (120 s), held as sha256 keys
+       (`api/auth.py:165`); the desktop shell's own credential (`cli/gui.py` module docstring,
+       p20 D1).
+     - **Not stored by Archeus:** a device token returned once by `launch/redeem` or
+       `pair/redeem`. It lives in that client's own storage, on the client's device.
+     - **Not secrets:** a 500 answer's reference (`api/server.py:169`); the Core instance id
+       (`:206`); ULID entropy (`core/domain/ids.py`); a staging temp name (`node/staging.py:226`);
+       CLI and shell idempotency keys and request ids (`cli/main.py`, `cli/gui.py:150`).
+     - **Gate:** `tests/v1/unit/test_p20_secrets.py`.
+       - It fails when a draw or a caller of `auth.new_token()` appears that this table does not
+         name, or when a row's draw is gone.
+       - It checks the local token's `O_EXCL` and `0600` from the source, so the check holds on
+         Windows as well as POSIX. POSIX also has the behavioural test in `test_core_lifecycle`.
+       - It checks that `insert_token` takes only a hash, that the hook-token hash is the
+         execution's only token field, and that a PIN is accepted only as a pbkdf2 record.
+       - Mutation-verified on a `git archive` copy, 5 of 5 caught, restored passes: an unlisted
+         draw; a new `new_token()` caller; the token file's mode loosened to `0644`; `O_EXCL`
+         dropped; a plaintext `token` parameter on `insert_token`.
+110. **D7 concluded: Core stores no API key.**
+     - `Account` has no secret field (`core/domain/entities.py:1363`): `home_ref` is a path,
+       and the `accounts` table holds that entity's body.
+     - No draw or writer above produces an API key.
+     - The Claude Code adapter removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from an
+       execution's environment rather than supplying them (`harnesses/claude_code/adapter.py:168`).
+     - An account's login, API key or OAuth, lives in the harness's own home, which Archeus does
+       not write.
+     - So, as D7 directs, plan §27's DPAPI requirement is amended rather than built. The
+       amendment is appended to plan §27. The local token stays under the profile ACL, as p3.5b
+       D5 accepted; DPAPI remains an option, not built.
+     - Not examined here: what the adapters' login probe reads in the account's home
+       (`harnesses/calls.py:79-82`, via `claude_sessions.usage._creds`). That is the user's own
+       credential store, outside this review's limits. It concerns reach, not storage, and is
+       recorded on T-093 for routing.
+111. **Findings.** None is High; each is the owner's to dispose of.
+     - **I-F1, Medium: on Windows the home check reads write, while the local token's threat is
+       read.**
+       - `token_protection` warns on Windows only when `broad_writer` finds a broad principal
+         with a write-like allow ACE (`isolation.py:1763`).
+       - `run/local-token` holds every scope. A home whose DACL lets a broad principal read but
+         not write gives no warning, while that principal can read the token.
+       - The default home, `%LOCALAPPDATA%\Archeus`, is under the user profile. The case needs a
+         non-default ARCHEUS_HOME.
+       - Options: also warn on a broad read-like ACE; or accept it, with a documentation note.
+     - **I-F2, Medium: a second plaintext credential at rest that the documentation does not
+       name.**
+       - The Qt shell's page keeps its device token, with the scopes its launch code granted (D2), in the persistent
+         QtWebEngine profile under ARCHEUS_HOME.
+       - `discovery.py`'s docstring and plan §27 both describe `run/local-token` as the only
+         plaintext secret at rest.
+       - Its protection is the same as the local token's, so I-F1 applies to it too.
+       - Options: document it as accepted; or make the shell's page credential memory-only
+         (an off-the-record page credential, which would change D2's restart behaviour).
+     - **I-F3, Low: plaintext hook tokens stay in each execution's `req/` directory after it
+       ends.** Nothing removes `run/exec/<id>`. Each token is dead, because its hash is cleared.
+       The residue grows with the number of executions.
+     - **I-F4, Low: raw execution output at rest is not redacted.** Whatever an agent printed is
+       kept as written, and every read path redacts it (`core/execution/output.py:30`). It is
+       third-party content, not an Archeus credential.
+
+112. **Remote-access threat-model review (P15).**
+     - **Where it lives.** ADR-0051 §3 assigns the threat model document to slice G, which is
+       paused (item 96). The review therefore lives here. That document can take it over by
+       reference when G resumes.
+     - **Method.** Each row of p15-design-gate §8.4, plus §8.1's environments, read against the
+       code at `91cbb0c`. Nothing was exercised through a real tunnel.
+
+     | Surface / threat | Control as built | Evidence |
+     |---|---|---|
+     | Exposure | Core binds `127.0.0.1` only; a tunnel is opt-in via `--remote-host` | `api/server.py:448`; `auth.Origin` (`api/auth.py:99`) |
+     | DNS rebinding, origin abuse | Exact Host allowlist, then fetch metadata (`Sec-Fetch-Site` ∈ same-origin/none) and an Origin matching the Host's own origin | `server.py:330`, `:333`; `auth.py:112`, `:125` |
+     | Token in URL or logs | `token`/`access_token` in a query → `401 token_in_url`. The stdlib request log is silenced. Core's own line has method, route template, status, duration and device id: no header, query or body | `server.py:337`, `:266`, `:412` |
+     | CSRF, WebSocket hijack | Bearer header only, no cookie. The stream is a `fetch` with the header, not a WebSocket | `server.py:361`; `clients/app/src/api/transport.ts` `sender` |
+     | Local credential through the tunnel | A non-paired credential is honoured on the loopback Host only | `server.py:369-375` |
+     | Paired credential's privileged effects | Only through a configured remote host, on scoped routes, after authentication and scope checks. `launch/redeem` and `pair/redeem` are unscoped (T-083 correction) | `server.py:376-381` |
+     | Pairing code replay, brute force | Single use, 120 s; more than 10 failed redemptions in 60 s burn every live code and lock for 60 s | `auth.py:34`, `:202-234` |
+     | Launch code | Single use, 60 s, memory only; a local-only route needs a loopback peer and the loopback Host (§8.3) | `auth.py:30`, `:154-196` |
+     | Stale or revoked credential | `auth.live` on every request; a stream re-checks its token on every wake; revoke closes the device's streams before answering | `auth.py:75-84`; `api/sse.py:148`, `:223`; `api/routes.py:951-953` |
+     | Stolen device | 180-day paired expiry; revoke; step-up PIN as a pbkdf2 record (item 109) | `auth.py:36`; `routes.py:742-748` |
+     | Replayed or queued mutation | Idempotency keys on keyed commands; a command replayed from an offline queue is refused unless declared replayable | `server.py:17` (step 8), `:388-394` |
+     | Stream exhaustion | 8 stream slots; at a device's cap, the newest stream wins (D2) | `sse.py:31`, `:99` |
+     | Script injection | CSP `script-src 'self'`, `nosniff`, `no-referrer` on every response | `auth.py:40-46`; `server.py:254`, `:285` |
+     | Process origin (R1-A) | The attestor takes every peer as the user until R1-A is activated (T-057); `origin_refused` cannot yet fire | `auth.py:93-96`; `server.py:353-358` |
+
+     - **GAPs.** No High was found on the remote path.
+       - The R1-A attestor is inert by design until PV-20 activates it. It is a local-process
+         control, owned by PV-20, not by P15.
+       - I-F1 and I-F2 (item 111) bear on a local reader of the home, not on a remote client.
+     - **Not run:** a real tunnel (Tailscale Serve or another), a paired phone, or an
+       adversarial client. The manual checks of §10 stay as they are.
+
+113. **Dependency audit.**
+     - **Python runtime: stdlib only.** `pyproject.toml`'s `[project]` has no `dependencies` key.
+       The extras are `dev = ["pytest"]` and `gui = ["PyQt6", "PyQt6-WebEngine"]`
+       (`pyproject.toml:79-81`), the latter for the optional desktop shell. No Python audit tool
+       was run on the extras; that is not run.
+     - **The SPA's lockfile.** `clients/app/package-lock.json`, lockfileVersion 3: 51 packages,
+       by npm's own count 5 prod, 47 dev, 27 optional.
+     - **The offline audit is not evidence.**
+       - `npm audit --offline --package-lock-only` (npm 11.12.1) answered "found 0
+         vulnerabilities" on `91cbb0c`.
+       - That same lockfile pins `source-map-js` 1.2.1, the version GHSA-68fv-2mgg-jv7q names.
+         The advisory failed CI's `npm audit --audit-level=high` on `f6abc4d` (T-073), and
+         `3d98f84` raised it to 1.2.2 on the branch.
+       - An offline audit has no advisory data, so its zero is vacuous.
+     - **The networked audit, from CI.** Run 38646019877 on `b26225a`, the branch head carrying
+       `3d98f84`. Job `v1-client`, step "Build and audit the SPA" (`npm ci`, `npm run build`,
+       `npm audit --audit-level=high`, `.github/workflows/ci.yml:225`): **success**. It gates
+       high and critical only.
+     - **Finding I-F5, Medium until the next candidate rebuild: the integration candidate lacks
+       `3d98f84`.** `91cbb0c` was built on `f6abc4d` + `3257dd0` and still pins `source-map-js`
+       1.2.1. The next T-072 rebuild must take `3d98f84` from the branch. It closes with that
+       merge and needs no separate change.
+
+114. **Slice I verified, and its status (2026-10-15).**
+     - **Ran, on this slice's head:**
+       - `tests/v1/unit`, `tests/v1/judge/test_traceability.py`, `tests/test_p05_seams.py`, the
+         integration files `test_core_lifecycle`, `test_estop_drills`, `test_presence` and
+         `test_stream_takeover`, and the contract files `test_core_client` and
+         `test_adapter_contract`, with `-m "not real_process"`: 2,644 passed, 5 skipped,
+         1 xfailed.
+       - `ruff check . --extend-exclude prototypes`: clean. `git diff --check`: clean.
+       - The mutants of item 109: 5 of 5 caught.
+     - **A correction inside this slice.** The first run failed one test:
+       `test_paths::test_the_ownership_table_is_the_declaration`. Item 109's table had written
+       the Qt profile as a `<ARCHEUS_HOME>/` path, a form that test reserves for V1-owned
+       entries. The cell now names the entry without that form; nothing else in the table
+       changed.
+     - **Not run:** POSIX; the SPA, browser and e2e suites; native tests; a real tunnel or
+       paired phone; a Python audit of the optional extras; the networked `npm audit` (the CI
+       result of item 113 stands in for it).
+     - **§10 against this slice.** The secrets review, the remote-access review and the
+       dependency audit are committed, and none of their findings is High. The threat model
+       document itself remains slice G's (item 112). I-F1, I-F2 and I-F5 are Medium and are
+       the owner's to dispose of: I-F5 closes with the next candidate rebuild.
+     - Slice H is next (item 108).
+
+### Slice H — drills, fuzzing, mutants (2026-10-15)
+
+Built on slice I's head `853f63f`, under item 108's order and D12, D13 and D14 as decided there.
+Fakes only: no real provider call, no Windows isolation, profile or ACL API, no network.
+
+115. **D13, the breaker drills: each breaker of §1.6 tripped on purpose and its recovery
+     observed** (`407438b`). What existed was mapped first; a drill was added only where the
+     trip or the recovery had no test.
+     - **The execution breaker** (per account, resource and auth failures). E32 covered the trip
+       only. `test_execution.py::test_D13_the_execution_breaker_trips_opens_cools_and_recovers`
+       walks the whole Account cycle on the real machine: a storm of non-resource failures moves
+       nothing; a resource/auth storm gives DEGRADED; errors that persist past a beat give OPEN;
+       nothing moves before the cooldown and DEGRADED after it; a successful probe gives
+       AVAILABLE; and the recovered account is routed again. Synthetic ended executions reach
+       `accounts_tick` through the transaction's own read, so every boundary is exact.
+     - **The pairing breaker** (`PairingLocked`). Its trip and its reopening after the window
+       were already covered (`test_presence.py::test_R4_…` and
+       `test_presence_units.py::test_the_failure_breaker_burns_every_code_and_reopens_after_its_window`);
+       nothing was added.
+     - **Five wrong PINs revoke a client.** R1 covered the trip.
+       `test_presence.py::test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers`
+       adds the recovery: four wrong PINs and a right one approve and reset the count; after the
+       fifth wrong PIN in a row revokes the client, a new pairing decides the approval that was
+       still pending.
+     - **The loop guard** (S10b). E16 covered the suspension and the re-arm without replay.
+       `test_automation.py::test_D13_a_reenabled_automation_fires_again` adds that a re-enabled
+       automation acts on the next event.
+     - **The e-stop drills** were slice A's (A01–A06, E24, E25, E49). The one case D13 names that
+       none covered was the e-stop with Core running against the other enforcement kind:
+       `test_execution.py::test_D13_the_estop_with_core_running_kills_a_registry_only_execution`
+       stops an execution of a harness with no hook (enforcement `none`, routed only for ALLOW
+       work) through the registry kill, uncharged, like E24's hooked one.
+     - **Finding H-F1, for the owner (not changed).** The loop guard counts the escalated and
+       rate-limited runs of the last hour including those before a re-enable. Observed: an
+       automation suspended by three escalations and re-enabled fires again, then is suspended
+       again by its first new escalation; one suspended by three rate-limited runs and re-enabled
+       inside the hour is suspended again by its very next event and fires nothing. p14-design-gate
+       §10 says "re-enabling re-arms it"; whether re-arming also clears the window it counts is
+       not stated. The drill asserts only what is: the re-enabled automation acts on its next
+       event. If re-arming should clear the count, the change is to count runs after the
+       automation's `armed_seq` in `automations._guard`.
+
+116. **D12, the fuzz harness** (`fa381b0`). `tools/fuzz_p20.py` is stdlib only.
+     - **Routes.** Every command route, meaning the 51 with a request schema, gets bodies built
+       from its own schema and then mutated: a type swapped, a required field dropped, an
+       unknown field added, a huge or control-character string, an out-of-range number, deep
+       nesting. The endpoint floor's recorded junk bodies are the corpus' other half. Each request
+       runs through the real route table and `server.Handler._serve` in process, with no socket
+       per request, so a large budget does not run into the ephemeral-port limit
+       (p11-design-gate D31). The peer is attested as the user because attestation is not the
+       fuzz target; it is tested where it was built (T-057).
+     - **The canonicaliser.** Mutated inputs for every tool ADR-0052's mapping names, plus Skill,
+       the aliases and unknown names. For an input it cannot parse it must answer the
+       conservative class: one unclassified `exec`.
+     - **The property** for both targets is the one D12 states: no 500 and no unhandled
+       exception.
+     - **CI**: `tests/v1/integration/test_p20_fuzz.py`, seed 20, with 3000 route requests and
+       10000 canonicaliser calls, in about 3 s. On demand: `py tools/fuzz_p20.py --seed S --budget N`.
+     - **What it found, both fixed in their own commits inside the accepted design:**
+       - `d3812ca`: `POST /v1/policies/simulate` built the Action and each extra rule straight
+         from the request's dicts. An empty action, an unknown field or an empty rule raised
+         TypeError, which §5.5's table does not map, so the route answered 500. A TypeError
+         there is the request's fault now: 400 `invalid_request`.
+         `test_policy_http.py::test_H04b_…` covers three bodies.
+       - `e34fd9c`: `canonicalise` let `realpath` raise for a NUL anywhere in a path, and on
+         Windows for a path too long to resolve. The manager fails closed on any exception, so
+         the hook answered halt and the execution ended instead of P9 judging the call. The
+         module's own rule, a parse failure is one unclassified `exec`, now applies to these
+         errors at its single entry, which covers the file tools and a command's path arguments
+         alike. `test_execution_units.py::test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error`
+         covers it; the long-path case runs on Windows only, because POSIX `realpath` does not
+         refuse a long name.
+     - With either fix reverted, the CI fuzz test fails. Seeds 1–5 at a budget of 3000 per
+       target are clean after both fixes.
+
+117. **D14, the mutants** (`52d2137`). There are 11 new mutants in `tools/mutate_p20.py`.
+     - Q100–Q103 break slice I's secrets gate: the local token created without O_EXCL, the
+       local token readable by others, a cheap PIN record, a secret drawn where the table does
+       not name it.
+     - Q104–Q108 break the recoveries item 115 observes.
+     - Q109 and Q110 put back item 116's two defects.
+     - Results, each kill named by the test written for it:
+       - The new set: 11/11 killed.
+       - The whole suite: Q01–Q110, 110/110 killed, including the eleven e2e-guarded mutants,
+         which rebuild the SPA.
+       - P19's tray e-stop mutants P126–P131: 6/6 killed.
+     - The SPA build needed `clients/app/node_modules`. It was installed with
+       `npm ci --ignore-scripts --offline` from the local cache; no network was used.
+
+118. **Slice H verified, and its status (2026-10-15).**
+     - **Ran, on this slice's head**, all with `-m "not real_process"`:
+       - Unit: `test_execution_units`, `test_p20_secrets`, `test_mutation_suites_parse`,
+         `test_presence_units` and `test_automation_units`.
+       - Integration: `test_execution`, `test_presence`, `test_automation`,
+         `test_policy_http`, `test_p20_fuzz` and `test_estop_drills`.
+       - Judge: `test_traceability`.
+       - Result: 548 passed. Separately, `test_api_errors` (the endpoint floor) and
+         `test_api_structure` gave 129 passed. `ruff`: clean.
+       - With the SPA's dependencies installed, `test_mutation_suites_parse` type-checks the
+         TypeScript mutants. That is most of the 769 s run; it is not slice H's cost.
+     - **Not run:** the full `tests/v1`; POSIX; native tests; the SPA and browser e2e suites
+       outside the mutants that rebuild the SPA.
+     - **§10 against this slice:** every Q-mutant is killed and the affected P19 mutants were
+       re-run. H-F1 is the owner's. Slice J (only if D8, D9 or D10 put it in P20) and slice K
+       remain; G stays paused on T-004.
+119. **H-F1 decided and built (2026-10-15).** The owner's answer, verbatim: "Re-enable clears
+     count (Recommended)". `automations._armed_window` returns an automation's runs in the
+     hour for events after its `armed_seq`, and both the rate limit and the loop guard count
+     only those. Re-enabling sets `armed_seq` to the head, so a re-enabled automation starts
+     both counts afresh; a real loop still trips the guard on its third new escalation.
+     - Tests: `test_D13_a_reenabled_automation_fires_again` now also asserts it stays
+       ENABLED after one and two new escalations and is suspended by the third;
+       `test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires` re-enables a
+       rate-limit-suspended automation inside the hour and asserts its next event asks for a
+       mission.
+     - Mutants, each caught: the window ignoring `armed_seq` (both tests fail), only the
+       guard ignoring it (the D13 test fails), only the rate count ignoring it (the H-F1
+       test fails).
+120. **Correction 2026-10-15 (T-093 review) to slice I, items 109-112.** The independent review
+     of slice I (`.collab/reviews/T-093-853f63f.claude.md`, CHANGES) found the records below
+     wrong or incomplete. Nothing above is reworded; this item supersedes the parts it names.
+     - **D7 is overturned for third-party keys (supersedes item 110's heading and its second
+       and fourth bullets, and item 109's opening sentence).** Core writes third-party API keys
+       at rest. For an execution with an opted-in MCP server, `harnesses/sources.py:384-388`
+       `flag_argv` copies the server's full definition from the account's `.claude.json` or the
+       project's `.mcp.json`, `env` and `headers` included, into `run/exec/<id>/res/mcp.json` in
+       plaintext, and nothing deleted it. Those fields are where users put their keys. §14.B
+       had already said the secrets review must list this file (item 65); item 109 did not.
+       D7 stands for harness-account keys only: `Account` holds no secret, and the adapter
+       still removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`.
+       - **The owner's decision, 2026-10-15** (verbatim): "The last decision i was writing when
+         you gave me options to choose , choose you reccomended option". That is "Delete at
+         end + sweep": the file exists only while the execution's process runs, it is deleted
+         on every end path, and a boot sweep removes what a crash left. DPAPI cannot help,
+         because the CLI reads the file in plaintext.
+       - **Built in T-099**, outside this slice's commits: `56e4c8b`, `b2dbf4c` and `c1cc825`
+         in the detached checkout `D:/archeus-p20-mcp`, reviewed by an independent Claude
+         reviewer (APPROVE on `b2dbf4c`). While a process runs the keys are still on disk, and
+         after a Core-less e-stop the file stays until the next boot's sweep.
+       - **Item 109's table gains a row:** opted-in MCP servers' definitions, at
+         `run/exec/<id>/res/mcp.json`, plaintext JSON, written by `sources.flag_argv`,
+         protected by the execution directory's inherited ACL and deleted when the execution's
+         process ends (T-099).
+     - **The secrets gate is rebuilt (supersedes item 109's "Gate" bullet).** As committed, it
+       counted draw sites as a set, so all seven of the reviewer's writer mutants survived: a
+       second draw in a listed function, `from secrets import`, an aliased `secrets`, `uuid4`
+       used as a secret, the local token copied to a second file, `chmod` after the exclusive
+       open, and an aliased `new_token`. `47404c1` replaces it with two exact censuses:
+       - sources, counted per (file, scope, source) with every import form resolved, `uuid.uuid4`
+         and `random.SystemRandom` added, and module bodies, class bodies and lambdas included;
+       - secret writes, followed from a secret source, an external secret (an MCP definition, the
+         hook token read back from the environment) or a writer helper's secret parameter,
+         through assignments, to a content sink or a writer helper.
+       It also fails on any mode change in `archeus/`. Its docstring names what it still cannot
+       see: a secret kept on an attribute or a container and written by another scope, a second
+       hop through an unlisted function, a subprocess or shell write, and a new external source.
+       All seven reviewer mutants and the five earlier ones are caught on a `git archive` copy.
+       `tools/mutate_p20.py` gains Q113 and Q114 for the write and mode gates.
+     - **The Windows `0600` claim is narrowed (supersedes item 109's "holds on Windows as well as
+       POSIX").** On Windows `os.open`'s mode sets only the read-only attribute, so `0o600`
+       does nothing there. The test checks the POSIX mode literal on every platform and is
+       renamed `test_the_local_token_file_is_created_exclusively_with_a_posix_owner_only_mode`.
+       On Windows the file's protection is the home DACL (I-F1, T-096).
+     - **I-F2 is corrected (supersedes its heading and first two sub-bullets).**
+       - The documentation does name the token: `archeus/cli/gui.py:38-42` `profile_dir` says the
+         profile holds "the device token". The conflict is with `discovery.py`'s docstring and
+         plan §27 only.
+       - The credential is stronger than "the scopes its launch code granted" says. The shell's
+         launch code is minted with `observe`, `control`, `approve` and `admin`
+         (`cli/main.py:258-260`). The device token it redeems for has no expiry and no supersede
+         slot (`api/routes.py:224-231`, `core/application/commands.py:131-148`), so each
+         `archeus gui` start leaves one more live admin-scope device credential. Whether older
+         values linger in the profile's LevelDB files was not examined. T-096 owns the fix.
+     - **I-F3 widens (supersedes its heading).** Each `run/exec/<id>/req/<seq>.req.json` also
+       holds the raw tool `input` (`harnesses/hook.py:160-161`): Bash commands and file
+       contents, unredacted and kept after the execution ends, with whatever secret an agent
+       typed. Low, as before.
+     - **Item 110's last-but-one bullet is narrowed.** Core (`archeus/`) does not write an
+       account's home. The legacy engine does: `claude_sessions/hooks.py:639-640` `_save`
+       read-modify-writes `settings.json` in each account's config directory, with no
+       credential in it.
+     - **Item 112 is incomplete; these rows complete it.** Its "Method" said each row of p15
+       §8.4 was read; four were not, and neither was §8.2's tunnel assumption.
+
+       | Surface / threat | Control as built | Evidence |
+       |---|---|---|
+       | Emergency stop | No PIN, by D10: the stop stays the fastest safety action | `api/routes.py:1075` (`POST /v1/estop`, `control`) |
+       | Re-arm | **GAP.** `POST /v1/rearm` is a plain `control` route with no step-up, and a paired client's default scopes include `control`. D10 approved a PIN step-up on re-arm from a paired device; it is not built, and §14.B records it as blocked by the user until it is reconciled with V2-3. A stolen paired phone, through the configured remote host, can re-arm after the user pressed Emergency stop | `api/routes.py:634-637`, `:1076`; `core/application/executions.py:568-573`; `api/auth.py:35`; card T-098 |
+       | Stolen device (corrects item 112's row) | Step-up applies today to the three human approval decisions only (`api/routes.py:742-748`), not to re-arm | as the row above |
+       | Cloned client (token copied) | By design indistinguishable: a bearer token is the identity. Visible as unexpected presence or actions; revoke | p15 §8.4 |
+       | Malicious client with a valid token | Can do what its scopes allow, through P9 like any client: every command is the route's application command, guarded as for the local CLI | p15 §8.4, §9 |
+       | Cross-user | V1 has one owner; every `user_device` principal acts for that owner. Non-user principals hold no `observe` scope and cannot read or subscribe | p15 §8.4 (P19) |
+       | Cross-project | A client sees the owner's whole workspace; a stream may be narrowed to projects, which is a subscription, not a permission | p15 §8.4, §11 |
+       | Tunnel Host passthrough (§8.2) | **Stated assumption, GAP in the user documentation.** The local/remote split (`api/server.py:369-375`) and the local-only check (`api/routes.py:100-105`) rest on the request's `Host`, because a tunnel forwards from loopback. A proxy that rewrites `Host` to `127.0.0.1` makes every remote request local. p15 §8.2 says "the runbook says so"; no such runbook text was found in `docs/` (searched for the requirement in every `docs/*.md` and `docs/architecture/*.md`). Under PV-20 (ADR-0053 §7 A3) a tunnel-forwarded request is never direct local origin, but that attestor is inert until PV-20 activates it | p15 §8.2; this review |
+
+       "No High was found on the remote path" (item 112) stands only with the re-arm GAP above
+       stated beside it; whether that gap is High is the owner's to say through D10 and V2-3.
+
+### Slice J — D10, the re-arm step-up from a paired client (2026-10-15)
+
+121. **V2-3 resolved and slice J authorised (the owner, 2026-10-15).** Asked who needs a PIN to
+     re-arm, the owner answered, verbatim: "Paired devices only (Recommended)". That is D10 as
+     approved on 2026-10-05: `POST /v1/rearm` from a paired (non-local) client needs a valid
+     step-up proof; a local client re-arms by being local; Emergency stop asks no PIN anywhere.
+     The V2 copy (SS-4, SS-6) becomes device-specific (§14.F). This lifts §14.B's block on D10.
+122. **Built (card T-098).** One mechanism, the one the three human approval decisions already
+     use: `executions.rearm` calls P9's `authorization._step_up_valid`, which decides "paired"
+     from Core's own record of how the client registered (`Device.origin == 'paired'`, or the
+     pre-P15 platform rule), never from the request's address. A paired client without a PIN
+     cannot satisfy it. A refused re-arm is `422 guard_failed` with the guard `step_up` (machine
+     `core`, `disarmed` -> `armed`, trigger `rearm`), so the sentinel stays and Core stays
+     disarmed. The route counts a wrong proof toward the same revocation as an approval's
+     (`_step_up_failed`: the fifth in a row revokes the client) and resets the count on a right
+     one. A proof is per request: a re-arm carries no step-up into the next one. Schema
+     `REARM` adds an optional `step_up`; the generated client and the API reference are
+     regenerated. The SPA's Control → About shows a PIN field above Re-arm when this client's
+     `capabilities.step_up` is `pin`, and says a client with no PIN cannot re-arm and should
+     re-arm on the desktop; the tray, the TUI and the local SPA are unchanged (all local).
+123. **Verified (2026-10-15).** `test_presence.py` J01-J03: a paired client's e-stop asks no PIN;
+     its re-arm without a proof, or with a wrong one, is refused and leaves Core disarmed; with
+     its PIN it re-arms; the next re-arm asks again; the local desktop re-arms with none; a
+     paired client without a PIN cannot re-arm; five wrong re-arm PINs revoke the client.
+     Mutants Q115-Q117 (`tools/mutate_p20.py`): 3 of 3 killed. Focused set 379 passed
+     (presence, e-stop drills, judge G5, execution, execution over HTTP, P19.5 core, start
+     confirmation, API structure and generated client, API errors and auth, design gates, the
+     fuzz harness); `test_spa_estop_about.py` 3 passed against a fresh SPA build; the client's
+     node tests 233 of 234 (the one failure is the known CRLF working-copy case in
+     `rowpulse.test.ts`). **Not run:** an end-to-end test of the PIN field with a paired browser
+     (no e2e pairs a browser), POSIX, the full `tests/v1`. Item 112's re-arm GAP and item 120's
+     re-arm row are closed by this slice.
+
+### Slice H corrected after its review (2026-10-15)
+
+124. **Correction 2026-10-15 (T-094 review) to slice H, items 115-117.** The independent review
+     (`reviews/T-094-36160ba.claude.md`) returned CHANGES with two Medium findings. All six
+     findings are answered here; items 115-117 are not reworded.
+     - **Finding 1 (Medium), `faa53d1`.** `POST /v1/policies/simulate` still answered 500 for an
+       extra rule whose decision is outside the vocabulary or whose `expires_at` is a number.
+       Item 116's harness could not see it, because the schema types `action` and
+       `extra_rules[]` as bare objects. The simulator now builds each extra rule through the
+       `PolicyRule` entity `create_rule` uses. A USER rule with no `scope_ref` is given the
+       owner's, and a GLOBAL user rule is refused as it is there. `PolicyRule` checks
+       `expires_at`; `Action` checks its string fields. The harness gains `RECORDED` (valid
+       bodies for the seven routes with a bare-object field) and `poke()` (one leaf replaced,
+       chosen uniformly). With the fix reverted, the CI seed finds the 500, and so do 8 of 10
+       seeds at budget 3000. The stronger corpus found two more 500s, both fixed in the same
+       commit and pinned in `test_api_errors`: a `knowledge/forget` selector id that is not a
+       string reached SQLite's binding, and an automation trigger type that is not a string
+       reached the event registry's set lookup. Eleven seeds at budget 3000 are clean.
+     - **Finding 2 (Medium), `87790fe`.** Item 116's property ("for an input it cannot parse it
+       must answer the conservative class") held only for Bash and unknown tools. Write or Edit
+       with a missing or non-string path came out `write_repo` on `.`, and WebFetch with a
+       non-string URL as `web` with no host. Now a path tool whose required path is missing,
+       empty or not a string (Glob and Grep may omit theirs), a fetch whose URL is not a string
+       with a host, and a command that is not a string are each one unclassified `exec`. The
+       harness's oracle asks that of every parsed tool, judged from the input. With the old
+       canonicaliser it fails on about 700 inputs per seed. `mutate_p11`'s X12 follows the
+       rewritten line and is still killed.
+     - **Finding 3 (Low), `9dd1a57`.** Q118-Q124 name the gates no mutant named and the defects
+       above: the CLI-draws test, the hashes-only test, the simulated rule, the path tool, the
+       forget id and the trigger type. The registry-only e-stop drill could not be named as it
+       stood: the e-stop reaches the kill twice (the command's stop and the manager's disarmed
+       check), and the rig's 0.3 s stop grace made "now" and "after the grace" look the same.
+       A mutant on either path, or on the kill itself, survived. The drill now runs with a 120 s
+       grace and a 20 s wait, so only the immediate kill ends a hookless execution in time.
+       Q120 (the kill under the e-stop waits out the grace) is killed by it and also names E24.
+       Q118-Q124: 7 of 7 killed, run in a copy of the working tree. The slice A-F tests the
+       review listed as named by no Q mutant stay recorded there; they are not mapped here.
+     - **Finding 4 (Low, optional): not taken.** The fallback's unclassified `exec` carries the
+       tool's name, not its input, so the approval shows no command and its single-use hash is
+       not bound to one. What reaches that fallback (a NUL, a path the OS refuses, a missing
+       field) cannot run as written anyway.
+     - **Finding 5 (Low): answered by T-103.** The rate-limit trip's recovery is drilled by
+       `test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires` (`88a857b`,
+       item 119), killed by Q112.
+     - **Finding 6 (nit), two wordings.** In item 115, "through the registry kill" is, with Core
+       running, the manager's handle kill (`manager._control` to `LocalNode.kill` to
+       `adapter.stop(handle)`). It is not the `run/processes.jsonl` sweep that Core-down uses.
+       In item 117, Q103 does not draw a secret at an unlisted site. It changes the draw call at
+       a site the table already names (`token_urlsafe` to `token_hex` in the hook-token draw),
+       and is killed on the call's text.
+     - **Verified (2026-10-15).** Unit tests, policy, knowledge, automation, execution,
+       execution security, API errors and the fuzz harness, `-m "not real_process"`: 1,090
+       passed before the mutation-suite parse check. That check failed on X12's stale anchor,
+       which was fixed, and all 32 suites then parse. Focused reruns after each commit passed:
+       332, then 240. Revert experiments on archive copies: each fix reverted fails its own new
+       test. **Not run:** the full `tests/v1`, POSIX, the full Q01-Q124 suite.
+125. **Correction 2026-10-15 (T-103 review) to items 119 and 120.** The independent review
+     (`reviews/T-103-7c92b10.claude.md`) found H-F1 sound and item 120 accurate, but the
+     rebuilt static census claimed sinks it could never match: all 9 of its new mutants
+     survived. Items 119 and 120 are not reworded.
+     - **Finding 1 (Medium) and finding 2 (Low), `0199238`.** `write_atomic` and
+       `write_json_atomic` are only ever called dotted (`config.write_json_atomic`), and the
+       matcher compared bare names. Now `_name` resolves a dotted chain of any length, so a
+       fully dotted `archeus.api.auth.new_token()` is a source. The atomic writers match on their
+       last segment. `.writelines`, `print(..., file=...)` and a logging call on a logger are
+       sinks. In a scope that writes a secret, a file copy is one more write. The CLI's draws,
+       which the table exempts, no longer taint its own output. The docstring now names what
+       stays unseen. Of 21 mutants (the T-093 reviewer's 7, the original 5, and this review's
+       N1-N9), 20 are caught. The 21st, N8, stores a token as a device's name: a database row,
+       out of the census's reach by construction.
+     - **The runtime gate, `883e11d`.** `tests/v1/integration/test_p20_secrets_runtime.py`
+       records every `secrets.token_urlsafe` draw with its kind, decided by the function that
+       asked for it, and plants an opted-in MCP server's keys (an env var and a header) and an
+       account settings secret. After two lifecycles (pairing, a launch redemption, a mission, a
+       stream and a revocation over HTTP; an execution with two opted-in servers and a hooked
+       tool call), every file under ARCHEUS_HOME is read as bytes, the database, its WAL and
+       core.log included. Each secret may appear only where its kind is kept: the local token in
+       `run/local-token`, the hook token in `run/exec/*/req/*.req.json`, the MCP keys in
+       `run/exec/*/res/mcp.json`; device tokens, codes and the settings secret nowhere. Each
+       lifecycle also asserts that what it expects to find is found. Q125-Q128: 4 of 4 killed.
+       Q125 and Q127 (a token through the dotted atomic writer, an aliased chmod) are killed by
+       the static census; Q126 and Q128 (a token logged to core.log, a token stored as a
+       launch-redeemed device's name) by the runtime gate. That corrects `883e11d`'s message,
+       which credited the runtime gate with "the last two".
+     - **Finding 3 (Low), `0199238`.** The no-mode-change test runs through the import aliases
+       and covers `copymode`, `copystat` and the shutil copies that carry mode bits.
+     - **Finding 4 (Low).** Item 119's rate limit is per arm, and every enable moves
+       `armed_seq`: a plain DISABLED -> ENABLED also restarts both counts, not only
+       SUSPENDED -> ENABLED. Only a user device holding `admin` can enable. p14-design-gate §10
+       gains a dated amendment saying so.
+     - **Findings 5 and 6 (Low).** Plan §27 gains a correction: "since T-099 it exists only
+       while the execution's process runs" holds once T-099 is integrated, and the hook token in
+       `req.json` is the third plaintext credential Archeus issues and keeps. In item 120,
+       "Item 110's last-but-one bullet" means item 110's fourth bullet of six, the one about the
+       harness home "which Archeus does not write"; the last-but-one is "So, as D7 directs".
+     - **Verified (2026-10-15).** `-m "not real_process"`, 850 passed. The set: both secrets
+       gates, the fuzz harness, policy over HTTP and in process, the canonicaliser units,
+       automation, e-stop drills, execution, execution security, API errors and auth, presence,
+       knowledge over HTTP, judge G5, the doc gates. Mutants ran on copies of the working tree.
+       **Not run:** the full `tests/v1`, POSIX, e2e.
+126. **Correction 2026-10-16 (T-098 review) to slice J, items 122 and 123.** The independent
+     review (`reviews/T-098-d6877a2.claude.md`) found the server side of D10 sound and asked for
+     three fixes. Items 122 and 123 are not reworded.
+     - **Finding 1 (Medium).** Re-arm had no disabled rule, so with nothing typed it sent
+       `step_up: ""`, which Core counts as a wrong proof: five impatient taps revoked the client.
+       The approval card's rule is now one helper, `stepUpBlocked` in `state/present.ts`, and
+       both the approval card and Re-arm use it. A client with no PIN, or fewer than six digits
+       typed, is not offered the button and is told why.
+     - **Finding 2 (Low-Medium).** The PIN stayed in the e-stop section's state after a re-arm,
+       so the next e-stop showed it already filled in. The field is emptied as soon as the
+       re-arm returns, whatever Core answered.
+     - **Finding 5 (Low).** Item 122's "resets the count on a right one" had no test for re-arm.
+       `test_J03b`: four wrong PINs, a right one, an e-stop, four more wrong ones, and the client
+       is still ACTIVE.
+     - **Finding 6 (doc).** D10's amendment of the rulebook's §19 to "e-stop (confirm)" is
+       appended there (`ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md` §19).
+     - Findings 3 and 4 (a replayed key re-arms again; the PIN is recoverable from the stored
+       request hash) predate slice J and are card T-107's, in another checkout.
+     - **Verified (2026-10-16).** No e2e pairs a browser, so
+       `test_spa_estop_about.py::test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays`
+       answers `/v1/sync` with Core's own answer and `step_up: pin`, and passes the re-arm on to
+       the real (local) Core without its PIN after recording it. It checks that Re-arm is not
+       offered with no PIN or five digits and is with six, that the PIN went with the request,
+       and that the field is empty after a re-arm Core accepted and after one it refused. The
+       real paired path stays covered at the server by J01-J03b. A node case covers the
+       helper's four answers. Mutants Q129-Q131: 3 of 3 killed (Re-arm ignoring the client's
+       capability and the PIN left in the field, both by the e2e; the reset deleted, by J03b),
+       and Q115-Q117 are still 3 of 3 killed. `-m "not real_process"`: presence, e-stop drills,
+       judge G5, the e-stop e2e, API structure and auth, 118 passed; the approval card's e2e
+       files (copy, mission thread, P16, unification), 21 passed; the client's node tests 234 of
+       235 (the known CRLF case in `rowpulse.test.ts`); `tsc --noEmit` clean; the doc gates
+       (paths, traceability, design) 73 passed and the P20 mutation suite parses. **Not run:** a
+       real paired browser, POSIX, the full `tests/v1`.
+127. **Correction 2026-10-16 (T-094 re-review) to slice H, item 124.** The independent re-review
+     (`reviews/T-094-2f93182.claude.md`) found finding 1's class still open one level down:
+     `POST /v1/policies/simulate` answered 500 for a rule whose boundary VALUE is malformed
+     (`{"paths": 5}`, `{"hosts": 5}`, `{"branches": 5}`, `{"environments": 5}`,
+     `{"paths": null}`). `PolicyRule` checked a boundary's keys, not its values, and
+     `rules.check_boundary` iterates each value. Pre-existing at slice H's head. Worse,
+     `POST /v1/policies/rules` STORED such a rule (200), after which every evaluation of its
+     class raised: simulate answered 500 and the hook path would halt every matching tool call.
+     - **Fix.** `PolicyRule` refuses a boundary value `check_boundary` cannot read: `paths`,
+       `hosts`, `branches` and `environments` are lists of non-empty strings, `max_cost_band` is
+       one of the cost bands. Both `create_rule` and the simulator build through it, so both
+       answer 400 `invalid_request`. A row is decoded through the same entity, so a rule stored
+       before this change with such a value would now fail every read of the policy rules rather
+       than one class's evaluation; no in-tree client writes a boundary and V1 Core has not
+       shipped (it is on no released branch), so no migration is added.
+     - **Pinned.** `test_H04b` holds the five bodies plus a `max_cost_band` outside the bands, and
+       asserts the refusal names the check it is about; its decision and `expires_at` cases are
+       now WORKSPACE-scoped, so they reach the check they name rather than failing on a missing
+       owner (re-review non-blocking 1). `test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500`
+       gains the stored-rule body. Q132 removes the check.
+     - **The harness reaches it.** `poke()` now replaces a container as well as a leaf, and the
+       simulate corpus holds an `ALLOW_WITHIN_BOUNDARY` rule. A second reach problem surfaced on
+       the way: the route fuzz fires `POST /v1/estop`, and while the sentinel stands every
+       evaluation is DENY before the engine reads a rule, so most of a run never reached policy
+       (with the corpus change alone, the CI seed found nothing even at budget 10000). The fuzz
+       now clears the sentinel after each request. With the fix reverted the CI test fails on a
+       simulate 500, and so do 10 of 11 seeds (0-9 and 20) at budget 3000, a fresh Core per seed
+       as `fuzz_p20.main` builds it; with the fix, seeds 0-11 and 20 at budget 3000 are clean (run
+       in turn on one Core).
+     - **Item 124's seed count.** "8 of 10 seeds at budget 3000" is 7 of 10 when measured the
+       same way (seeds 0-9, `authorization.py` at `d6877a2`, the harness at `2f93182`, a fresh
+       Core per seed): seeds 5, 6 and 7 find none. The CI seed finds it either way.
+     - **Left for the card:** the simulated USER rule's misleading message on a Core with no owner
+       yet, and the canonicaliser taking the first path field present whatever the tool
+       (re-review non-blocking 2 and 3).
+
+128. **Correction 2026-10-16 (Codex review of D7 and the threat model) to items 110, 112, 120,
+     125 and 126.** Codex reviewed only D7 as amended and the credential threat model
+     (`reviews/T-103-ec90967.md`, CHANGES, four findings). Nothing below changes code; it narrows
+     what the earlier items claim and names what is still open.
+     - **MCP keys are a non-isolated behaviour only.** Item 120's plaintext
+       `run/exec/<id>/res/mcp.json` describes executions without isolation, which is all this
+       tree runs. ADR-0053 admits no MCP opt-in inside an isolated execution, and nothing here
+       changes that: an isolated execution receives no MCP definition and no key. Admitting MCP
+       servers under isolation would need a new owner decision; the owner's "Delete at end +
+       sweep" answer of 2026-10-15 (item 120) covers the non-isolated file only.
+     - **Readers, current and target.** An inherited ACL is not a reader boundary. Today any
+       process running as the same user can read every plaintext credential below; another user
+       can read one only if ARCHEUS_HOME's ACL lets them. Core writes no ACL. In this tree it warns
+       on a broad principal that can WRITE the home (T-089, `3bdc485`); the warning for a broad
+       READER of the home and of `run/local-token` is T-096 (`a2be0f4`, `D:/archeus-p20-f`) and
+       is not in this tree. The PV-20 target, not in force while isolation is not enforced: an
+       isolated execution reads only its own hook request, never `run/local-token`, another
+       execution's files or any MCP key. No item claims isolation protects these files today.
+     - **Inventory, file retention and credential validity** (two different lifetimes):
+       - *Local token*, `run/local-token`: the local scopes, no expiry. Core reuses it across
+         restarts while it is live and mints a new one only when it is not
+         (`core/runtime.py`); the file is not removed when Core stops. Valid until revoked.
+       - *Hook token*, `run/exec/<id>/req/*.req.json`: one per execution, valid while the
+         execution is live. The files outlive the token; nothing in this tree deletes an
+         execution directory (I-F3).
+       - *MCP keys*, `run/exec/<id>/res/mcp.json`: in this tree the file persists indefinitely.
+         With T-099 (not in this tree) it is deleted on every end path and swept at boot, but a
+         crash or a Core-less e-stop leaves it until the next boot, and no deletion can expire a
+         third-party key once copied; rotating it is the key owner's, outside archeus.
+       - *Desktop shell page token* (missing from item 125's list): in this tree the Qt shell's
+         page credential is a device token with observe, control, approve and admin scopes and no
+         expiry, persisted in the Qt profile's IndexedDB under ARCHEUS_HOME, and older copies may
+         remain (I-F2). T-096 (not in this tree) keeps it in memory only and revokes an old
+         stored one on first launch; the revoked value's bytes can remain, dead, in the profile's
+         LevelDB log.
+       - *PIN-derived request hashes*: in this tree a command carrying a step-up proof stores a
+         plain sha256 of its arguments, PIN included, in the idempotency table for 24 h, and a
+         6-digit PIN is recoverable from it (T-098 review finding 5). T-107
+         (`D:/archeus-p20-idem`, not in this tree) keeps proofs out of the hash and migration
+         0016 drops the old rows.
+     - **Backups.** A backup is an SQLite online-backup copy of the database only
+       (`infra/db/backup.py`), so no file under `run/` is in one. The database holds token
+       hashes, not tokens; in this tree it also holds the PIN-derived hashes above while they
+       are kept, and a backup taken in that window keeps them for the backup's life.
+     - **Item 125's runtime gate is bounded by what it exercises.** "Device tokens, codes and the
+       settings secret nowhere" holds for the paths its two lifecycles reach. It launches no Qt
+       shell, so it says nothing of the page token; its HTTP mission step is refused
+       (`403 remote_host_required`, unchecked; T-103 re-review finding 6), so no mission is
+       created; the rig execution writes no `core.log`, and the user's PIN is not among the
+       scanned values (re-review findings 1 and 3).
+     - **Still open, unchanged:** no Core-held rotation of the local token; no deletion of
+       finished execution directories; no expiry or rotation for the page token in this tree.
+     - **Item 126, corrected (T-098 re-review, Low).** "No e2e pairs a browser" is wrong:
+       `tests/v1/e2e/test_unification.py` (lines 141-197) pairs a phone page through `Tunnel`
+       with origin `paired` and approves with its PIN. The stubbed e2e item 126 describes is
+       still a valid gate for the Re-arm rule; a real paired re-arm case on that fixture was
+       not added.
+     - **Correction to the PIN-derived bullet above** (Codex re-check, `reviews/T-103-cbc0ee6.md`).
+       "For 24 h" is how long a stored answer replays, not how long its row is kept. A row is
+       deleted only when its own key is used again after it expired (`writer._recall`);
+       `infra/eventlog/retention.prune` deletes expired rows, but nothing in `archeus/` calls it.
+       So in this tree a PIN-derived hash can stay in the database indefinitely and be in any
+       later backup, not only in one taken within 24 h. With T-107 no new row holds a proof and
+       0016 drops the old ones; the idempotency table's unbounded retention for every other
+       command stays open.
+
 ## 13. As built
 (Filled at the end of P20.)
 
@@ -2170,6 +2802,11 @@ change words and placement; none may change, without a new gate:
 | V2-3 | **Who needs a PIN to resume.** | D10 as approved: step-up on re-arm **from a paired (non-local) device**; the local desktop asks none | SS-4's hint says "resuming needs a PIN" and SS-6 applies on every surface, the local desktop included | the user: either V2's copy is device-specific, or D10's scope widens. P20 does not change D10 |
 | V2-4 | **Push ownership.** | D8: notifications and push moved out of P20, to P21 | `ARCHEUS_V2_UI_ARCHITECTURE.md` ("P20: push, credentials") and the LV2-2 plan ("P20's push and credential review (LV2-3)") still name P20 | records only: D8 stands; the V2 documents are stale on this point and are not edited here |
 | V2-5 | **DR-8's at-rest question.** | D7's approved scope: enumerate every secret written at rest | DR-8 asks whether its at-rest question (check output may hold secrets) is handed to D7 | the user: an open hand-off, not a conflict |
+
+**V2-3 resolved (the owner, 2026-10-15).** "Paired devices only (Recommended)": D10 stands as
+approved, re-arm asks a PIN only from a paired client, and the V2 copy (SS-4's hint, SS-6) is to
+say so per device rather than "resuming needs a PIN" everywhere. The copy change is the V2
+work's; slice J (§12 items 121-123) built the P20 side.
 
 ### 14.G Is there a defensible next slice? (written after slice C; slice D has since been done)
 

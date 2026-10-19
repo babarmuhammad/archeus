@@ -632,8 +632,18 @@ def estop(req):
 
 
 def rearm(req):
+    """From a paired client, its PIN (D10): a wrong one counts toward the same
+    revocation as an approval's (`_step_up_failed`)."""
     from ..node.local import LocalNode
-    out = req.run(req.api.executions.rearm, {})
+    proof = req.body.get('step_up')
+    try:
+        out = req.run(req.api.executions.rearm, {'step_up': proof})
+    except errors.GuardFailed as e:
+        if proof is not None and 'step-up' in e.result.reason:
+            _step_up_failed(req)
+        raise
+    if proof is not None:
+        req.api.step_up.reset(req.principal['device_id'])
     LocalNode.clear_estop()
     return 200, out
 
@@ -1073,7 +1083,7 @@ ROUTES = (
     Route('POST', '/v1/missions/{id}/stop', stop_mission, 'control', 'required',
           schemas.KEYED, 'MissionStopped'),
     Route('POST', '/v1/estop', estop, 'control', 'required', schemas.KEYED, 'Estopped'),
-    Route('POST', '/v1/rearm', rearm, 'control', 'required', schemas.KEYED, 'Rearmed'),
+    Route('POST', '/v1/rearm', rearm, 'control', 'required', schemas.REARM, 'Rearmed'),
     # P12: sessions and checkpoints (p12-design-gate §19)
     Route('GET', '/v1/sessions', list_sessions, 'observe', None, None, 'SessionList'),
     Route('GET', '/v1/sessions/{id}', get_session, 'observe', None, None, 'Session'),

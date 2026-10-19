@@ -12,7 +12,8 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import ci_diag
 import pytest
@@ -457,6 +458,28 @@ def test_E25_an_estop_racing_a_spawn_kills_what_started(x, monkeypatch):
     assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'disarmed')
 
 
+def test_D13_the_estop_with_core_running_kills_a_registry_only_execution(db):
+    """p20-design-gate D13's other enforcement kind: a harness with no hook
+    (enforcement 'none', routed only for ALLOW work) has nothing to halt it but
+    the registry kill, and it is stopped like E24's hooked one. Stopped NOW:
+    with a stop grace far longer than the wait, only the e-stop's immediate
+    kill can end it in time."""
+    x = Rig(db, adapters=[FakeHarness(enforcement='none')], grace_s=120)
+    try:
+        x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 60}]
+        mid = x.ready(task('t1', 'read'))
+        e = _running(x, mid)
+        LocalNode.engage_estop()
+        assert x.do(X.Executions(missions=x.missions).estop, who=x.user)['stopped'] == [e.id]
+        x.drive(mid, ended(x, e.id), timeout=20)
+        assert (x.state(e.id).state, x.state(e.id).stop_reason,
+                x.state(e.id).charged) == ('ENDED_KILLED', 'estop', False)
+        assert proc.process_create_time(e.pid) != e.create_time
+    finally:
+        x.cleanup()
+        LocalNode.clear_estop()
+
+
 def test_E26_a_failing_task_retries_with_new_executions_until_its_budget(x):
     x.scenarios['t1'] = [{'exit': 3}]
     mid = x.ready(task('t1', 'write_repo', max_attempts=2))
@@ -557,6 +580,48 @@ def test_E32_the_breaker_is_per_account_and_counts_only_resource_failures(x):
     x.drive(mid, lambda: x.one(entities.Account, id=acc).health == 'DEGRADED', timeout=60)
     runs = x.all(entities.Execution, mission_id=mid)
     assert len(runs) >= X.STORM and all(r.charged is False for r in runs if r.failure)
+
+
+def _tick(x, acc, now, ended):
+    """One `accounts_tick` at *now* over synthetic ended executions of *acc*
+    ((state, failure, epoch) each), on the real Account machine."""
+    rows = [SimpleNamespace(entity=SimpleNamespace(
+        account_id=acc, state=s, failure=f,
+        ended_at=datetime.fromtimestamp(t, timezone.utc).isoformat())) for s, f, t in ended]
+
+    def tick(tx, *, actor):
+        real = tx.where
+        tx.where = lambda cls, **eq: rows if cls is entities.Execution else real(cls, **eq)
+        return X.accounts_tick(tx, actor=actor, now=now)
+    x.do(tick)
+    return x.one(entities.Account, id=acc).health
+
+
+def test_D13_the_execution_breaker_trips_opens_cools_and_recovers(x):
+    """p20-design-gate D13: the per-account breaker tripped on purpose and its
+    whole recovery observed - AVAILABLE, DEGRADED on a storm, OPEN when errors
+    persist, DEGRADED after the cooldown, AVAILABLE on a successful probe -
+    and the recovered account is routed again."""
+    acc = x.account('Work')
+    t0 = time.time()
+    storm = [('ENDED_ERROR', 'tool', t0)] * X.STORM
+    assert _tick(x, acc, t0 + 1, storm) == 'AVAILABLE'          # not a resource failure
+    storm = [('ENDED_ERROR', 'resource', t0)] * (X.STORM - 1) + [('ENDED_ERROR', 'auth', t0)]
+    assert _tick(x, acc, t0 + 1, storm) == 'DEGRADED'
+    since = time.time()
+    persist = storm + [('ENDED_ERROR', 'resource', since + 1)] * X.PERSIST
+    assert _tick(x, acc, since + 1, persist) == 'DEGRADED'       # no beat yet
+    assert _tick(x, acc, since + X.BEAT_S + 2, persist) == 'OPEN'
+    since = time.time()
+    assert _tick(x, acc, since + X.COOLDOWN_S - 5, persist) == 'OPEN'
+    assert _tick(x, acc, since + X.COOLDOWN_S + 1, persist) == 'DEGRADED'
+    since = time.time()
+    probe = storm + [('ENDED_OK', None, since + 1)]
+    assert _tick(x, acc, since + X.BEAT_S + 2, probe) == 'AVAILABLE'
+    x.scenarios['t1'] = [DONE]
+    mid = x.ready(task('t1', 'write_repo'))
+    e = x.drive(mid, lambda: x.exe(mission_id=mid))
+    assert x.state(e.id).account_id == acc
 
 
 def test_E33_usage_is_the_providers_cumulative_figure_ledgered_once_at_the_end(x):

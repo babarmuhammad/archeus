@@ -25,6 +25,8 @@ READ_TOOLS = ('Read', 'Glob', 'Grep', 'LS')
 WRITE_TOOLS = ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
 #: the input field that names the path, per tool (Claude Code's names)
 PATH_FIELDS = ('file_path', 'notebook_path', 'path')
+#: the tools whose path is optional (the workspace when absent)
+OPTIONAL_PATH = ('Glob', 'Grep')
 
 #: a shell operator outside quotes makes a command unclassified
 _OPERATOR = re.compile(r'[|;&<>`]|\$\(')
@@ -55,21 +57,39 @@ PROD = ('--prod', '--production', 'prod', 'production')
 
 def canonicalise(tool, tool_input, ctx):
     """(actions, unclassified) for one tool call."""
+    try:
+        return _canonicalise(tool, tool_input, ctx)
+    except (OSError, ValueError):      # a path the OS refuses to resolve (NUL, too long)
+        return [_unclassified(str(tool))], True
+
+
+def _canonicalise(tool, tool_input, ctx):
     tool_input = tool_input if isinstance(tool_input, dict) else {'command': tool_input}
+    # an input whose required field is missing, empty or not a string is one it
+    # cannot parse: never a write on '.', a fetch with no host or str() of a list
     if tool in READ_TOOLS or tool in WRITE_TOOLS:
-        path = next((tool_input[k] for k in PATH_FIELDS if isinstance(tool_input.get(k), str)),
-                    '.')
-        rel = workspace_path(path, ctx.get('workdir'))
+        given = [tool_input[k] for k in PATH_FIELDS if k in tool_input]
+        if given and not _text(given[0]) or not given and tool not in OPTIONAL_PATH:
+            return [_unclassified(str(tool))], True
+        rel = workspace_path(given[0] if given else '.', ctx.get('workdir'))
         cls = 'read' if tool in READ_TOOLS else 'write_repo'
         return [Action(action_class=cls, target=rel, paths=(rel,))], False
     if tool == 'WebFetch':
-        url = str(tool_input.get('url') or '')
-        return [Action(action_class='web', target=url or 'web', host=host_of(url))], False
+        url = tool_input.get('url')
+        host = host_of(url) if _text(url) else None
+        if host is None:
+            return [_unclassified(str(tool))], True
+        return [Action(action_class='web', target=url, host=host)], False
     if tool == 'WebSearch':
         return [Action(action_class='web', target='search')], False
     if tool == 'Bash':
-        return command(str(tool_input.get('command') or ''), ctx)
+        cmd = tool_input.get('command')
+        return command(cmd, ctx) if _text(cmd) else ([_unclassified(str(tool))], True)
     return [_unclassified(str(tool))], True
+
+
+def _text(v):
+    return isinstance(v, str) and bool(v)
 
 
 def workspace_path(path, workdir):

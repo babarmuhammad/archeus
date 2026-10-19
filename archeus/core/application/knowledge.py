@@ -145,7 +145,13 @@ def supersede(tx, *, actor, knowledge_item_id, title, text=''):
 def _selected(tx, selector):
     if not isinstance(selector, dict) or not selector:
         raise ValueError('a selector names ids, or a project (and optionally a type/source)')
+    if any(not isinstance(selector.get(k), (str, type(None))) for k in
+           ('project_id', 'type', 'source_id')):
+        raise ValueError("a selector's project_id, type and source_id are strings")
     if 'ids' in selector:
+        if not (isinstance(selector['ids'], list)
+                and all(isinstance(i, str) for i in selector['ids'])):
+            raise ValueError("a selector's ids are a list of strings")
         return [_load(tx, i) for i in selector['ids']]
     eq = {k: selector[k] for k in ('project_id', 'type') if selector.get(k) is not None}
     if not eq:

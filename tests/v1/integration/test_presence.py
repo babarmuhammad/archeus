@@ -592,6 +592,31 @@ def test_R1_five_wrong_pins_revoke_the_client_and_no_pin_means_no_step_up(deploy
     assert _get(deploy, '/v1/approvals/%s' % a['id']).json()['state'] == 'PENDING'
 
 
+def test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers(deploy):
+    """p20-design-gate D13: the step-up breaker's recovery. Four wrong PINs and
+    a right one approve and clear the count; after a revocation the user pairs
+    again and the still-pending approval is decided."""
+    pin = '482913'
+    _d, phone = pair(deploy, pin=pin)
+    first, second = (_pending(deploy, _mission(deploy)) for _ in range(2))
+
+    def decide(a, token, step_up):
+        return _phone(deploy, '/v1/approvals/%s/decide' % a['id'],
+                      {'decision': 'approve', 'action_hash': a['action_hash'],
+                       'step_up': step_up}, token=token)
+    for _ in range(4):
+        assert decide(first, phone, '000000').json()['error'] == 'guard_failed'
+    assert decide(first, phone, pin).status == 200
+    for _ in range(4):
+        assert decide(second, phone, '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 200               # count was reset
+    assert decide(second, phone, '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 401               # fifth in a row
+    _d2, again = pair(deploy, pin=pin, name='phone again')
+    assert decide(second, again, pin).status == 200
+    assert _get(deploy, '/v1/approvals/%s' % second['id']).json()['state'] == 'APPROVED'
+
+
 def test_P24_reconnecting_during_an_approval_decides_it_once(deploy):
     _d, phone = pair(deploy, pin='482913')
     mid = _mission(deploy)
@@ -691,3 +716,70 @@ def test_the_cli_pairs_lists_and_revokes(tc, capsys):
     assert _device(tc, did)['state'] == 'REVOKED'
     assert cli.main(['pair', '--scopes', 'control']) == 2          # observe is required
     assert cli.main(['core', '--remote-host', '*.ts.net']) == 2      # refused, nothing started
+
+
+# ── P20 D10 (slice J): re-arming from a paired client takes its PIN ──
+
+def _armed(tc):
+    return _get(tc, '/v1/health').json()['armed']
+
+
+def test_J01_a_paired_client_re_arms_only_with_its_pin(remote):
+    """D10, V2-3 resolved 2026-10-15 ("paired devices only"): the e-stop
+    asks nothing, the re-arm asks the paired client's PIN, every time."""
+    did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200     # never a PIN
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed'), r.body
+    assert 'step-up' in r.json()['detail']['reason']
+    r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed')     # a wrong PIN
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone)
+    assert r.status == 200 and r.json() == {'armed': True}, r.body
+    assert _armed(remote) is True
+    # a proof is per request: the next re-arm asks again
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    assert _phone(remote, '/v1/rearm', token=phone).status == 422
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200                   # the local desktop: none
+    assert _armed(remote) is True and _device(remote, did)['state'] != 'REVOKED'
+
+
+def test_J02_a_paired_client_without_a_pin_cannot_re_arm_and_the_desktop_can(remote):
+    _d, nopin = pair(remote, platform='web')
+    assert _device(remote, _d)['capabilities'] == {'step_up': 'none'}
+    assert _phone(remote, '/v1/estop', token=nopin).status == 200
+    assert _phone(remote, '/v1/rearm', token=nopin).status == 422
+    assert _phone(remote, '/v1/rearm', {'step_up': '123456'}, token=nopin).status == 422
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200
+    assert _armed(remote) is True
+
+
+def test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would(remote):
+    """The re-arm counts toward the same step-up breaker (p15 D19)."""
+    did, phone = pair(remote, pin='482913')
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(5):
+        r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    assert _device(remote, did)['state'] == 'REVOKED'
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200
+
+
+def test_J03b_a_right_re_arm_pin_resets_the_count(remote):
+    """Item 122: five wrong IN A ROW revoke; a right PIN between them starts
+    the count again (T-098 review finding 5)."""
+    did, phone = pair(remote, pin='482913')
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(4):
+        assert _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone).status == 422, i
+    assert _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone).status == 200
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(4):
+        assert _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone).status == 422, i
+    assert _device(remote, did)['state'] == 'ACTIVE'
+    assert _armed(remote) is False

@@ -565,10 +565,15 @@ def estop(tx, *, actor, missions):
     return {'stopped': killed}
 
 
-def rearm(tx, *, actor):
+def rearm(tx, *, actor, step_up=None):
     """Record the e-stop being cleared (the caller removes the sentinel after
-    this commits). Only a user device."""
+    this commits). Only a user device; from a paired one, only with its PIN
+    (D10, V2-3 resolved 2026-10-15: a local client re-arms by being local)."""
     _user(actor)
+    if not authorization._step_up_valid(tx, actor, step_up):
+        from ..domain.guards import GuardResult
+        raise lifecycle.GuardFailed('core', 'disarmed', 'armed', 'rearm', GuardResult(
+            'step_up', False, 're-arming from a paired device needs a valid step-up proof'))
     tx.append(new_event('core.rearmed', Ref('principal', actor.id), actor, payload={}))
     return {'armed': True}
 

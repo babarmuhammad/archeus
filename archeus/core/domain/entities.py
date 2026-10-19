@@ -1677,6 +1677,9 @@ class PolicyRule(Entity):
             raise ValueError('a GLOBAL rule has no scope_ref; every other level names one')
         if self.scope_level == 'GLOBAL' and self.source == 'user':
             raise ValueError('GLOBAL rules are Core\'s own; a user rule starts at USER')
+        if not (self.expires_at is None or isinstance(self.expires_at, str)):
+            raise ValueError('PolicyRule.expires_at is a timestamp or null: %r'
+                             % (self.expires_at,))
         if self.match is not None and not (isinstance(self.match, dict)
                                            and set(self.match) <= set(MATCH_KEYS)):
             raise ValueError('PolicyRule.match keys are %s: %r' % (MATCH_KEYS, self.match))
@@ -1687,6 +1690,12 @@ class PolicyRule(Entity):
                     and set(self.boundary) <= set(BOUNDARY_KEYS)):
                 raise ValueError('PolicyRule.boundary keys are %s: %r'
                                  % (BOUNDARY_KEYS, self.boundary))
+            for k, v in self.boundary.items():      # the shapes rules.check_boundary reads
+                if not (v in COST_BANDS if k == 'max_cost_band' else isinstance(v, (list, tuple))
+                        and all(isinstance(s, str) and s for s in v)):
+                    raise ValueError('PolicyRule.boundary.%s is %s: %r' % (
+                        k, 'one of %s' % (COST_BANDS,) if k == 'max_cost_band'
+                        else 'a list of non-empty strings', v))
         elif self.decision == 'ALLOW_WITHIN_BOUNDARY':
             raise ValueError('ALLOW_WITHIN_BOUNDARY needs a boundary')
 

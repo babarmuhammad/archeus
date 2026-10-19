@@ -315,6 +315,47 @@ def test_E16_a_self_triggering_automation_escalates_at_depth_three_then_suspends
     assert len(rig.runs(aid)) == count and rig.state(aid) == 'ENABLED'
 
 
+def test_D13_a_reenabled_automation_fires_again(rig):
+    """p20-design-gate D13: the loop guard's recovery. Suspended by three
+    escalations, re-enabled by the user, the automation acts on the next event
+    it is given."""
+    aid = rig.automation(trigger={'type': 'mission.created'}, rate_limit=50)
+    for _ in range(3):
+        rig.seed()
+    rig.pump()
+    assert rig.state(aid) == 'SUSPENDED'
+    rig.do(A.set_state, actor=rig.admin, automation_id=aid, action='enable')
+    before = len(rig.made())
+    rig.seed()
+    rig.pump()
+    assert len(rig.made()) > before
+    # H-F1 (owner 2026-10-15): re-enabling clears the count; only three NEW
+    # escalations suspend it again
+    assert rig.state(aid) == 'ENABLED'
+    rig.seed()
+    rig.pump()
+    assert rig.state(aid) == 'ENABLED'
+    rig.seed()
+    rig.pump()
+    assert rig.state(aid) == 'SUSPENDED'
+
+
+def test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires(rig):
+    """H-F1 (owner 2026-10-15): the rate limit counts from the re-arm, so an
+    automation re-enabled inside the hour that suspended it acts on its next
+    event instead of being suspended again by it."""
+    aid = rig.automation(rate_limit=2)
+    for _ in range(5):
+        rig.seed()
+    rig.pump()
+    assert rig.state(aid) == 'SUSPENDED'
+    rig.do(A.set_state, actor=rig.admin, automation_id=aid, action='enable')
+    before = len(rig.made())
+    rig.seed()
+    rig.pump()
+    assert len(rig.made()) == before + 1 and rig.state(aid) == 'ENABLED'
+
+
 def test_the_rate_limit_skips_and_three_rate_limited_runs_suspend(rig):
     aid = rig.automation(rate_limit=2)
     for _ in range(3):

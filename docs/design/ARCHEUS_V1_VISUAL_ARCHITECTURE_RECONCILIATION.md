@@ -562,6 +562,11 @@ Core (P9–P14). Owner P19.5; the TUI's `:` command already shares the vocabular
 - **Mobile operator controls:** pause/resume mission, Pause all (Core), e-stop (confirm + PIN).
   Mobile policy/routing edits: read + limited, admin scope (UIA, as built) — the references
   disagree among themselves (§28 X-11).
+- **Amendment 2026-10-16 (p20-design-gate D10, approved 2026-10-05; card T-098):** the e-stop
+  is **confirm only**, with no PIN on any device, because it stays the fastest safety action.
+  The PIN step-up moves to **re-arm**: a paired device re-arms with its PIN, and the local
+  desktop re-arms without one (V2-3, resolved by the owner 2026-10-15: "Paired devices only").
+  This supersedes "e-stop (confirm + PIN)" in the bullet above.
 - **Notifications:** P21 (push) (moved from P20 by the user, 2026-10-05; p20-design-gate D8) — §17.
 - **Live preview, share links, file browser, git diff, terminal on mobile (R2): REJECTED for V1**
   (out of Archeus's role: mobile "controls and observes", SP 826-828; share links are a new

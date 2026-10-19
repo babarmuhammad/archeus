@@ -151,3 +151,59 @@ def test_with_core_unreachable_the_state_is_not_guessed(browser, core):
     check(_buttons(page) == [], 'no action offered while Core cannot be reached')
     context.close()
     assert check.n >= 3
+
+
+def _as_pin_client(route):
+    """Core's own answer, as a paired client holding a PIN would get it: no
+    e2e pairs a browser, so the capability is what is stubbed (T-098)."""
+    r = route.fetch()
+    body = r.json()
+    body['client']['capabilities']['step_up'] = 'pin'
+    route.fulfill(response=r, body=json.dumps(body))
+
+
+def test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays(browser, core):
+    """D10 from a PIN-holding client (T-098 review findings 1 and 2): an empty
+    or short PIN is never sent, since an empty proof counts toward the
+    revocation; whatever Core answers, the field is empty again."""
+    check = Checks()
+    context, page, errors = _about(browser, core)
+    context.route('**/v1/sync', _as_pin_client)          # re-read after the stop's '/v1'
+    _press_stop(page).get_by_role('button', name='Emergency stop').click()
+    wait(page, lambda: _armed(page) == 'false', what='disarmed')
+    pin = _section(page).locator('label.pin input')
+    rearm = _section(page).get_by_role('button', name='Re-arm')
+    pin.wait_for()
+    check(rearm.is_disabled() and 'Enter this client’s PIN first.' in _section(page).inner_text(),
+          'no PIN typed: Re-arm is not offered')
+    pin.fill('48291')
+    check(rearm.is_disabled(), 'five digits: Re-arm is not offered')
+
+    sent = []
+
+    def _local(route):          # the stub is the client; this Core knows it as local
+        body = route.request.post_data_json
+        sent.append(body.pop('step_up', None))
+        route.continue_(post_data=json.dumps(body))
+    context.route('**/v1/rearm', _local)
+    pin.fill('482913')
+    check(not rearm.is_disabled(), 'six digits: Re-arm is offered')
+    rearm.click()
+    wait(page, lambda: _armed(page) == 'true', what='re-armed')
+    check(sent == ['482913'], 'the PIN went with the re-arm: %r' % sent)
+    _press_stop(page).get_by_role('button', name='Emergency stop').click()
+    wait(page, lambda: _armed(page) == 'false', what='disarmed again')
+    pin.wait_for()
+    check(pin.input_value() == '' and rearm.is_disabled(), 'after a re-arm the next one asks again')
+
+    context.unroute('**/v1/rearm')
+    context.route('**/v1/rearm', lambda r: r.fulfill(status=422, content_type='application/json', body=json.dumps(
+        {'error': 'guard_failed', 'detail': {'reason': 're-arming from a paired device needs a valid step-up proof'}})))
+    pin.fill('000000')
+    rearm.click()
+    wait(page, lambda: 'refused the re-arm' in _said(page), what='the refusal said')
+    check(pin.input_value() == '' and rearm.is_disabled(), 'after a refused re-arm the PIN is gone too')
+    check(_health(core) is False, 'still disarmed')
+    check(not [e for e in errors if '422' not in e], errors)
+    context.close()
+    assert check.n >= 8
