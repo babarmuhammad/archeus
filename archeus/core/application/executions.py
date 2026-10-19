@@ -190,6 +190,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     workspace that cannot be made, §28 note 11): that one spends an attempt. A
     BLOCKING reason also blocks the mission on *reason* (needs *missions*), so
     the READY task is not dispatched again until the user resumes it."""
+    from . import queries
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
               'ended_at': _now_iso(),
@@ -199,7 +200,12 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
                   dict(fields, exit_reason='abandoned'))
     else:
         e = _fire(tx, e.id, 'discarded', actor, reason, dict(fields, exit_reason='killed'))
-        e = _finish(tx, actor, e, facts)
+        # the session is Core's record of what ran, whoever ends the execution: a user's
+        # stop or e-stop of a halted one ends it from their own command (T-101). Only
+        # here: every other end is Core recording what it observed, and keeps its guard
+        e = _finish(tx, actor, e, facts, session_actor=(
+            actor if actor.kind == 'system'
+            else Ref('system', queries.system_principal(tx.conn))))
         _event(tx, 'execution.ended', e, actor, _end_payload(e))
     out = _respond(tx, actor, e, reason, failure_class)
     if stop_reason in BLOCKING:
@@ -381,14 +387,14 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
     return _ended(tx, actor, e, usage, facts, usage_total, missing)
 
 
-def _finish(tx, actor, e, facts):
+def _finish(tx, actor, e, facts, session_actor=None):
     """What every end of an execution that ran leaves behind (p12-design-gate
     §6, D5): the headless session it ran in, and its checkpoint."""
     from ..execution import checkpoint
     from . import sessions
     if e.process_seq >= 1 and e.session_id is None:
         ref = (e.adapter_state or {}).get('session')
-        sessions.headless_session(tx, actor=actor, execution=e,
+        sessions.headless_session(tx, actor=session_actor or actor, execution=e,
                                   provider_session_ref=ref if isinstance(ref, str) else None)
         e = lifecycle.load(tx, entities.Execution, e.id).entity
     if checkpoint.ran(e):

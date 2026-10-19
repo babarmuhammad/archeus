@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 
 import pytest
@@ -23,12 +24,14 @@ from archeus.cli import main as cli
 from archeus.core.application import authorization as A
 from archeus.core.application import commands, executions as X, lifecycle, optins, world
 from archeus.core.domain import entities, ids
-from archeus.harnesses import sources
+from archeus.harnesses import base, sources
 from archeus.harnesses.fake import FakeHarness
 from archeus.infra.artifacts import store
-from archeus.infra.paths import ExecPaths
+from archeus.infra.paths import ExecPaths, processes_registry
+from archeus.node.local import LocalNode
+from claude_sessions import proc
 
-from v1.integration.test_execution import Rig, _running, ended
+from v1.integration.test_execution import DONE, TOOL, Rig, _running, ended
 from v1.integration.test_policy import AUTO, task
 
 TOKEN = 'Bearer ' + 'z' * 30
@@ -209,8 +212,7 @@ def test_I07_the_owners_opt_ins_reach_the_spawn_and_no_one_elses(x):
                               {'owner': 'project', 'kind': 'source', 'name': 'project'}]
     argv = started(e)['argv']
     assert argv[:2] == ['--setting-sources', 'project'] and '--strict-mcp-config' in argv
-    cfg = json.load(open(argv[argv.index('--mcp-config') + 1], encoding='utf-8'))
-    assert list(cfg['mcpServers']) == ['gh']                 # never the project's `db`
+    assert started(e)['mcp_servers'] == ['gh']               # never the project's `db`
     assert [i['status'] for i in inv['items'] if i['name'] == 'db'] == ['excluded']
     # a mission with no project gets the account's opt-ins and nothing of the project's
     e2 = run_one(x, x.ready())
@@ -264,6 +266,550 @@ def test_I10_a_deny_reaches_the_agent_as_the_exit_code_2_block(x):
     assert denied and denied[0]['reason'], evs
     assert 'hook_error' not in [v.get('type') for v in evs]
     assert [ev['payload']['decision'] for ev in x.events('execution.hook')] == ['deny']
+
+
+# ── T-099: the MCP config holds keys, so it lives only while a process runs ──
+
+def _mcp_running(x, sleep=30):
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': sleep}, DONE]
+    mid = ready_in(x, x.prj)
+    e = _running(x, mid)
+    assert os.path.exists(ExecPaths(e.id).mcp)
+    argv = started(e)['argv']
+    assert argv[argv.index('--mcp-config') + 1] == ExecPaths(e.id).mcp
+    return mid, e
+
+
+def test_T099_a_clean_exit_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x, sleep=0.5)
+    x.drive(mid, ended(x, e.id))
+    assert x.state(e.id).state == 'ENDED_OK'
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_a_stopped_execution_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x)
+    x.do(X.Executions(missions=x.missions).stop_execution, who=x.user, execution_id=e.id)
+    x.drive(mid, ended(x, e.id))
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_a_spawn_that_fails_leaves_no_mcp_config(x, monkeypatch):
+    opt(x, x.acc, 'mcp', 'gh')
+    monkeypatch.setattr(base.proc, 'spawn_detached', lambda *a, **k: (None, 'no process'))
+    mid = ready_in(x, x.prj)
+    refused = lambda: [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']  # noqa: E731
+    x.drive(mid, refused)
+    for r in refused():
+        assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
+        assert not os.path.exists(ExecPaths(r.id).mcp)
+
+
+def test_T099_a_process_that_died_while_core_was_down_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x)
+    proc.kill_pid_tree(e.pid, e.create_time)
+    x.manager._procs.clear()                                 # the old Core is gone
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.manager.boot()
+    assert x.state(e.id).state in ('LOST', 'ENDED_ERROR', 'ENDED_KILLED'), x.state(e.id).state
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_the_boot_sweep_removes_leftovers_and_only_them(x):
+    mid, e = _mcp_running(x, sleep=1.5)
+    # a crash leftover: an ended execution's config the end never removed
+    left = ids.new_id('execution')
+    paths = ExecPaths(left)
+    os.makedirs(paths.res)
+    for f in (paths.mcp, os.path.join(paths.res, 'settings.json'),
+              os.path.join(paths.res, '1.res.json'), os.path.join(paths.req, 'mcp.json')):
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        _write(f, {'x': 1})
+    stray = os.path.join(os.path.dirname(paths.dir), 'not-an-id', 'res', 'mcp.json')
+    _write(stray, {'x': 1})
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    assert e.id in fresh.manager.boot() and e.id in fresh.manager._procs
+    assert not os.path.exists(paths.mcp)                     # the leftover is gone
+    assert os.path.exists(os.path.join(paths.res, 'settings.json'))
+    assert os.path.exists(os.path.join(paths.res, '1.res.json'))
+    assert os.path.exists(os.path.join(paths.req, 'mcp.json'))  # not the path flag_argv writes
+    assert os.path.exists(stray)                              # not an execution's directory
+    assert os.path.exists(ExecPaths(e.id).mcp)                # the adopted process's survives
+    x.manager._procs.clear()
+    fresh.drive(mid, ended(fresh, e.id))
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def _tmp_of(path):
+    """config.write_atomic's temp copy of *path*, as a Core that died before
+    os.replace leaves it."""
+    return '%s.%d.tmp' % (path, 4242)
+
+
+def test_T102_an_end_removes_the_configs_temp_copy_too(x):
+    mid, e = _mcp_running(x, sleep=0.5)
+    tmp = _tmp_of(ExecPaths(e.id).mcp)
+    _write(tmp, {'mcpServers': {'gh': {'env': {'TOKEN': 'secret'}}}})
+    x.drive(mid, ended(x, e.id))
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+    assert not os.path.exists(tmp)
+
+
+def test_T102_the_boot_sweep_removes_a_temp_copy_and_only_that(x):
+    mid, e = _mcp_running(x, sleep=1.5)
+    live_tmp = _tmp_of(ExecPaths(e.id).mcp)
+    _write(live_tmp, {'x': 1})
+    # a Core that died between write_atomic's temp and os.replace: no mcp.json at all
+    left = ExecPaths(ids.new_id('execution'))
+    os.makedirs(left.res)
+    tmp = _tmp_of(left.mcp)
+    _write(tmp, {'x': 1})
+    keep = [os.path.join(left.res, n) for n in (
+        'mcp.json.bak', 'mcp-other.json', 'mcp.json.tmp', 'mcp.json.12.tmp.keep',
+        'mcp.json.x1.tmp', 'settings.json.42.tmp')]
+    for f in keep:
+        _write(f, {'x': 1})
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    assert e.id in fresh.manager.boot()
+    assert not os.path.exists(tmp)                            # the dead Core's keys are gone
+    assert [f for f in keep if not os.path.exists(f)] == []   # nothing else starting "mcp"
+    assert os.path.exists(live_tmp)                           # a watched execution's is kept
+    x.manager._procs.clear()
+    fresh.drive(mid, ended(fresh, e.id))
+    assert not os.path.exists(live_tmp)
+
+
+def test_T099_an_estopped_execution_leaves_no_mcp_config(x):
+    mid, e = _mcp_running(x)
+    LocalNode.engage_estop()
+    try:
+        assert x.do(X.Executions(missions=x.missions).estop, who=x.user)['stopped'] == [e.id]
+        x.drive(mid, ended(x, e.id))
+    finally:
+        LocalNode.clear_estop()
+    assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'estop')
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T099_an_execution_that_ends_while_its_halt_is_exiting_is_still_collected(
+        x, monkeypatch):
+    """A halt for approval, then a stop before the next pass collects the exiting
+    process (here an account ceiling): the execution is no longer live, so the
+    pass over live executions never reaches its process."""
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [TOOL('mcp__gh__issue', {}), DONE]
+    mid = ready_in(x, x.prj, task('t1', 'read'))
+    e = x.drive(mid, lambda: (lambda e: e if e is not None
+                              and e.state == 'AWAITING_APPROVAL' else None)(
+        x.exe(mission_id=mid)))
+    assert e.id in x.manager._procs                          # the halt is still exiting
+    x.manager._stop_account(x.acc, 'ceiling', 'usage reached the allocation')
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    p = x.manager._procs[e.id]
+    # while it still runs it is left alone: its end is not written under a live
+    # process, which a Core-less e-stop would then skip, and its config stays
+    status = p['adapter'].status
+    monkeypatch.setattr(p['adapter'], 'status', lambda h: type('S', (), {'state': 'running'}))
+    x.manager.tick()
+    assert e.id in x.manager._procs
+    assert not os.path.exists(ExecPaths(e.id).ended) and os.path.exists(ExecPaths(e.id).mcp)
+    monkeypatch.setattr(p['adapter'], 'status', status)
+    deadline = time.monotonic() + 15
+    while p['adapter'].status(p['handle']).state == 'running':
+        assert time.monotonic() < deadline, 'the halted process never exited'
+        time.sleep(0.05)
+    for _ in range(3):
+        x.manager.tick()
+    assert e.id not in x.manager._procs
+    assert os.path.exists(ExecPaths(e.id).ended)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def _halted_then_ended(x, monkeypatch):
+    """An execution ended (an account ceiling) while its halted process still runs,
+    and that process made to look as if it ignores the stop until it is killed.
+    Returns (execution, kills)."""
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [TOOL('mcp__gh__issue', {}), DONE]
+    mid = ready_in(x, x.prj, task('t1', 'read'))
+    e = x.drive(mid, lambda: (lambda e: e if e is not None
+                              and e.state == 'AWAITING_APPROVAL' else None)(
+        x.exe(mission_id=mid)))
+    assert e.id in x.manager._procs
+    x.manager._stop_account(x.acc, 'ceiling', 'usage reached the allocation')
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    p, kills = x.manager._procs[e.id], []
+    status, kill = p['adapter'].status, x.manager.node.kill
+    monkeypatch.setattr(p['adapter'], 'status', lambda h: (
+        status(h) if kills else type('S', (), {'state': 'running'})))
+    monkeypatch.setattr(x.manager.node, 'kill', lambda a, h: (kills.append(h), kill(a, h))[1])
+    return e, kills
+
+
+def _collected(x, e):
+    deadline = time.monotonic() + 15
+    while e.id in x.manager._procs:
+        assert time.monotonic() < deadline, 'never collected'
+        x.manager.tick()
+        time.sleep(0.05)
+    assert os.path.exists(ExecPaths(e.id).ended)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T102_an_ended_executions_process_that_ignores_the_stop_is_killed_after_the_grace(
+        x, monkeypatch):
+    e, kills = _halted_then_ended(x, monkeypatch)
+    x.manager.tick()
+    assert kills == [] and e.id in x.manager._procs          # inside the grace: waited for
+    time.sleep(x.manager.grace_s + 0.05)
+    x.manager.tick()
+    assert len(kills) == 1                                   # past it: killed
+    _collected(x, e)
+
+
+def test_T102_under_the_estop_it_is_killed_at_once(x, monkeypatch):
+    e, kills = _halted_then_ended(x, monkeypatch)
+    x.manager.grace_s = 60.0
+    LocalNode.engage_estop()
+    try:
+        x.manager.tick()
+    finally:
+        LocalNode.clear_estop()
+    assert len(kills) == 1
+    _collected(x, e)
+
+
+def test_T102_one_that_exits_inside_the_grace_is_never_killed(x, monkeypatch):
+    e, kills = _halted_then_ended(x, monkeypatch)
+    x.manager.grace_s = 60.0
+    kills.append('let it run')                               # status reads the real process
+    _collected(x, e)
+    assert kills == ['let it run']
+
+
+def _restart_with_an_ended_process(x):
+    """The last Core recorded its execution's end while the process still ran, then
+    died before collecting it. Returns (the execution, the new Core's rig)."""
+    mid, e = _mcp_running(x)
+    x.manager._procs.clear()                                 # the old Core is gone
+    x.do(X.lost, execution_id=e.id, reason='the end the old Core recorded')
+    assert x.state(e.id).state in lifecycle.states.terminal('execution')
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    return x.state(e.id), fresh
+
+
+def _handle(e):
+    return base.ProcessHandle(e.id, e.pid, e.create_time, ExecPaths(e.id).dir)
+
+
+def test_T105_after_a_restart_an_ended_executions_process_is_killed_after_the_grace(x):
+    e, fresh = _restart_with_an_ended_process(x)
+    fresh.manager.boot()
+    assert e.id in fresh.manager._procs                      # taken in, not left running
+    assert os.path.exists(ExecPaths(e.id).mcp)               # the sweep keeps what it reads
+    fresh.manager.tick()
+    assert fresh.manager.node.alive(_handle(e))                      # inside the grace: waited for
+    time.sleep(fresh.manager.grace_s + 0.05)
+    deadline = time.monotonic() + 15
+    while e.id in fresh.manager._procs:
+        assert time.monotonic() < deadline, 'never killed and collected'
+        fresh.manager.tick()
+        time.sleep(0.05)
+    assert not fresh.manager.node.alive(_handle(e))
+    assert os.path.exists(ExecPaths(e.id).ended)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+    assert e.id not in {x_['execution_id'] for x_ in LocalNode.unended()}
+
+
+def test_T105_under_the_estop_it_is_killed_at_once(x):
+    e, fresh = _restart_with_an_ended_process(x)
+    fresh.manager.grace_s = 60.0
+    LocalNode.engage_estop()
+    try:
+        fresh.manager.boot()
+        fresh.manager.tick()
+        deadline = time.monotonic() + 15
+        while fresh.manager.node.alive(_handle(e)):
+            assert time.monotonic() < deadline, 'not killed under the e-stop'
+            time.sleep(0.05)
+    finally:
+        LocalNode.clear_estop()
+
+
+def test_T105_a_process_already_gone_is_not_taken_in_and_its_config_is_swept(x):
+    e, fresh = _restart_with_an_ended_process(x)
+    proc.kill_pid_tree(e.pid, e.create_time)
+    fresh.manager.boot()
+    assert e.id not in fresh.manager._procs
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+
+
+def test_T105_a_live_execution_is_never_taken_in_as_an_orphan(x):
+    mid, e = _mcp_running(x, sleep=1.5)
+    x.manager._procs.clear()
+    fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+    fresh.scenarios.update(x.scenarios)
+    fresh.manager.boot()
+    p = fresh.manager._procs[e.id]                           # adopted as live
+    fresh.manager._adopt_orphans(fresh.manager._read()[0])
+    assert fresh.manager._procs[e.id] is p
+    fresh.drive(mid, ended(fresh, e.id))
+
+
+def _wait_dead(alive, what):
+    deadline = time.monotonic() + 15
+    while alive():
+        assert time.monotonic() < deadline, what
+        time.sleep(0.05)
+
+
+def test_T105_a_line_with_no_execution_row_is_killed_and_boot_comes_up(x, caplog):
+    """A registry line whose execution this database does not hold (a restored
+    backup, while a process started after it still runs): the process is ours by
+    its recorded identity, nothing would ever end it, so boot kills it and says
+    so - and comes up, compacting and sweeping as always."""
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    try:
+        stray = ids.new_id('execution')
+        x.manager.node._registry({'op': 'spawn', 'execution_id': stray, 'process_seq': 1,
+                                  'pid': child.pid,
+                                  'create_time': proc.process_create_time(child.pid)})
+        os.makedirs(ExecPaths(stray).res, exist_ok=True)
+        _write(ExecPaths(stray).mcp, {'mcpServers': {}})
+        fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+        with caplog.at_level('WARNING', logger='archeus.execution'):
+            fresh.manager.boot()
+        assert fresh.manager.booted and stray not in fresh.manager._procs
+        _wait_dead(lambda: child.poll() is None, 'the stray process was left running')
+        assert not os.path.exists(ExecPaths(stray).mcp)          # the sweep still ran
+        assert 'no row for it' in caplog.text
+    finally:
+        if child.poll() is None:
+            child.kill()
+
+
+def test_T105_a_harness_this_core_does_not_register_is_killed_and_boot_comes_up(
+        x, monkeypatch, caplog):
+    e, fresh = _restart_with_an_ended_process(x)
+
+    def unknown(harness_id):
+        raise KeyError(harness_id)
+    monkeypatch.setattr(fresh.manager.registry, 'get', unknown)
+    try:
+        with caplog.at_level('WARNING', logger='archeus.execution'):
+            fresh.manager.boot()
+        assert fresh.manager.booted and e.id not in fresh.manager._procs
+        _wait_dead(lambda: fresh.manager.node.alive(_handle(e)), 'left running')
+        assert not os.path.exists(ExecPaths(e.id).mcp)
+        assert "no harness 'fake'" in caplog.text
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
+
+
+def test_T105_a_line_that_fails_does_not_keep_core_down(x, monkeypatch):
+    """Anything else a line raises is raised by boot only after it has compacted
+    and swept, as a failed reconcile is: Core is booted, the keys are gone."""
+    e, fresh = _restart_with_an_ended_process(x)
+
+    def odd(handle):
+        raise RuntimeError('an odd line')
+    monkeypatch.setattr(fresh.manager.node, 'alive', odd)
+    try:
+        with pytest.raises(RuntimeError, match='an odd line'):
+            fresh.manager.boot()
+        assert fresh.manager.booted
+        assert not os.path.exists(ExecPaths(e.id).mcp)
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
+
+
+def test_T105_a_pid_now_held_by_another_process_is_neither_taken_in_nor_killed(x):
+    """Identity is the pid AND the create time the line recorded: a line whose
+    create time no longer matches names some other process, never ours."""
+    e, fresh = _restart_with_an_ended_process(x)
+    path = processes_registry()
+    lines = [json.loads(v) for v in open(path, encoding='utf-8') if v.strip()]
+    for v in lines:
+        if v.get('op') == 'spawn' and v['execution_id'] == e.id:
+            v['create_time'] = v['create_time'] + 1
+    with open(path, 'w', encoding='utf-8') as f:
+        f.writelines(json.dumps(v, sort_keys=True) + '\n' for v in lines)
+    try:
+        fresh.manager.grace_s = 0.0
+        fresh.manager.boot()
+        assert e.id not in fresh.manager._procs
+        fresh.manager.tick()
+        assert fresh.manager.node.alive(_handle(e))          # the stranger still runs
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
+
+
+def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
+    """A launch that raises SpawnFailed itself, as an isolated launch failing after
+    establishment does, never passes the spawn's own refusal."""
+    opt(x, x.acc, 'mcp', 'gh')
+
+    def raising(*a, **k):
+        raise base.SpawnFailed('isolation: launch_failed (test)')
+    monkeypatch.setattr(base.proc, 'spawn_detached', raising)
+    mid = ready_in(x, x.prj)
+    refused = lambda: [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']  # noqa: E731
+    x.drive(mid, refused)
+    for r in refused():
+        assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
+        assert not os.path.exists(ExecPaths(r.id).mcp)
+        # a launch's own failure stays uncharged (O7); only Core's writes are charged
+        assert (r.stop_reason, r.charged) == ('binding', False)
+
+
+def test_T099_a_prompt_that_cannot_be_written_leaves_no_mcp_config(x, monkeypatch):
+    """An OSError before a child exists (here the prompt) drops the config too,
+    not only a SpawnFailed. Since T-102 it is a refusal: the execution is
+    abandoned with its tombstone and charged like a workspace that cannot be
+    made, and the pass goes on - the next attempt runs."""
+    opt(x, x.acc, 'mcp', 'gh')
+    x.scenarios['t1'] = [DONE]
+    real, failed = base.config.write_atomic, []
+    prompt = os.path.basename(ExecPaths(ids.new_id('execution')).prompt)
+
+    def once(path, data, *a, **k):
+        if os.path.basename(path) == prompt and not failed:
+            failed.append(path)
+            return False
+        return real(path, data, *a, **k)
+    monkeypatch.setattr(base.config, 'write_atomic', once)
+    mid = ready_in(x, x.prj)
+    x.drive(mid, lambda: any(r.state == 'ENDED_OK' for r in x.all(entities.Execution)))
+    [r] = [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']
+    assert (r.stop_reason, r.charged) == ('workspace', True)
+    assert os.path.exists(ExecPaths(r.id).spawning)          # the argv was built
+    assert not os.path.exists(ExecPaths(r.id).mcp)
+    assert 'could not write' in base.read_json(ExecPaths(r.id).ended)['error']
+
+
+def _prompt_write(monkeypatch, fail):
+    real = base.config.write_atomic
+    prompt = os.path.basename(ExecPaths(ids.new_id('execution')).prompt)
+
+    def write(path, data, *a, **k):
+        if os.path.basename(path) == prompt:
+            return fail()
+        return real(path, data, *a, **k)
+    monkeypatch.setattr(base.config, 'write_atomic', write)
+
+
+def test_T102_a_prompt_that_can_never_be_written_spends_the_tasks_attempts(x, monkeypatch):
+    """A write that fails every time ends the task FAILED after its attempts, as a
+    workspace that cannot be made does (P11 note 11) - never a new execution on
+    every tick."""
+    _prompt_write(monkeypatch, lambda: False)
+    mid = ready_in(x, x.prj, task('t1', 'write_repo', max_attempts=2))
+    x.drive(mid, lambda: x.task_of(mid).state == 'FAILED')
+    runs = x.all(entities.Execution, task_id=x.task_of(mid).id)
+    assert [(r.state, r.stop_reason, r.charged) for r in runs] == [
+        ('ABANDONED', 'workspace', True)] * 2
+
+
+def test_T102_only_an_oserror_before_a_child_is_refused(x, monkeypatch):
+    """Anything else raised there is a bug, not the disk: it is not turned into a
+    charged refusal of the user's task."""
+    def bug():
+        raise RuntimeError('a bug, not the disk')
+    _prompt_write(monkeypatch, bug)
+    mid = ready_in(x, x.prj)
+    with pytest.raises(RuntimeError, match='a bug, not the disk'):
+        x.drive(mid, lambda: False, timeout=10)
+    assert not [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']
+
+
+def _spends_its_attempts(x, mid):
+    x.drive(mid, lambda: x.task_of(mid).state == 'FAILED')
+    runs = x.all(entities.Execution, task_id=x.task_of(mid).id)
+    assert [(r.state, r.stop_reason, r.charged) for r in runs] == [
+        ('ABANDONED', 'workspace', True)] * 2
+    return runs
+
+
+def test_T102_an_mcp_config_that_can_never_be_written_spends_the_tasks_attempts(
+        x, monkeypatch):
+    """The MCP config is the execution's own file too, written while the argv is
+    built, before base.spawn: a write that fails every time is charged like the
+    spawn's other writes and ends the task FAILED, never an OSError out of the
+    tick that stops Core and comes back uncharged."""
+    opt(x, x.acc, 'mcp', 'gh')
+    real = base.config.write_atomic
+
+    def write(path, data, *a, **k):
+        if os.path.basename(path) == os.path.basename(ExecPaths(ids.new_id('execution')).mcp):
+            return False
+        return real(path, data, *a, **k)
+    monkeypatch.setattr(base.config, 'write_atomic', write)
+    runs = _spends_its_attempts(x, ready_in(x, x.prj, task('t1', 'write_repo',
+                                                           max_attempts=2)))
+    assert not any(os.path.exists(ExecPaths(r.id).mcp) for r in runs)
+
+
+@pytest.mark.parametrize('what', ['ended', 'halted', 'class_dir'])
+def test_T102_every_write_before_a_child_is_charged(x, monkeypatch, what):
+    """Each of _start's own writes, not only the prompt: a stale tombstone or halt
+    report that cannot be removed (an execution can plant a directory under its
+    halt report's name, so its own resume fails and its own task pays), and a class
+    directory that cannot be made."""
+    any_ = ExecPaths(ids.new_id('execution'))
+    target = {'ended': os.path.basename(any_.ended),
+              'halted': os.path.basename(base.halted_path(any_.dir)),
+              'class_dir': os.path.basename(any_.ctl)}[what]
+    real_remove, real_makedirs = os.remove, os.makedirs
+
+    def remove(path, *a, **k):
+        if what != 'class_dir' and os.path.basename(path) == target:
+            raise PermissionError(path)
+        return real_remove(path, *a, **k)
+
+    def makedirs(path, *a, **k):
+        if what == 'class_dir' and os.path.basename(os.path.normpath(path)) == target \
+                and os.path.basename(os.path.dirname(os.path.normpath(path))).startswith('exe_'):
+            raise PermissionError(path)
+        return real_makedirs(path, *a, **k)
+    monkeypatch.setattr(base.os, 'remove', remove)
+    monkeypatch.setattr(base.os, 'makedirs', makedirs)
+    _spends_its_attempts(x, ready_in(x, x.prj, task('t1', 'write_repo', max_attempts=2)))
+
+
+def test_T099_a_spawn_refused_as_already_spawned_keeps_the_config_a_process_may_hold(
+        x, monkeypatch):
+    """A marker that is already there means a process of this execution may still
+    run and read its config: the refusal leaves the file to that process's end, or
+    to the boot sweep."""
+    opt(x, x.acc, 'mcp', 'gh')
+    real = base.spawn
+
+    def marked(spec, argv):
+        base._write_json(ExecPaths(spec.execution_id).spawning, {'process_seq': 1})
+        return real(spec, argv)
+    monkeypatch.setattr(base, 'spawn', marked)
+    mid = ready_in(x, x.prj)
+    refused = lambda: [r for r in x.all(entities.Execution) if r.state == 'ABANDONED']  # noqa: E731
+    x.drive(mid, refused)
+    assert all(os.path.exists(ExecPaths(r.id).mcp) for r in refused())
+
+
+def test_T099_a_tombstone_that_cannot_be_written_still_drops_the_config(x, monkeypatch):
+    mid, e = _mcp_running(x, sleep=0.5)
+
+    def broken(path, obj):
+        raise OSError('disk full')
+    monkeypatch.setattr(base, '_write_json', broken)
+    with pytest.raises(OSError):
+        base.mark_ended(ExecPaths(e.id), 0)
+    assert not os.path.exists(ExecPaths(e.id).mcp)
+    monkeypatch.undo()
+    x.drive(mid, ended(x, e.id))
 
 
 # ── the routes and the CLI ───────────────────────────────────────────────────

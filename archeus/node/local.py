@@ -235,6 +235,13 @@ class LocalNode:
             return 'gone'           # the pid was recycled: ours has exited
         return 'killed'
 
+    @staticmethod
+    def kill_identity(handle):
+        """Kill a process of ours known only by its recorded identity, no adapter to
+        ask: True when a kill was issued; a pid now held by another process is never
+        touched."""
+        return proc.kill_pid_tree(handle.pid, handle.create_time)
+
     def ended(self, handle, exit_code, process_seq):
         """The exit was observed: the `ended` tombstone and the registry's end."""
         paths = ExecPaths(handle.execution_id)

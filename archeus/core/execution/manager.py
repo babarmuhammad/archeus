@@ -27,6 +27,7 @@ import time
 from dataclasses import replace
 
 from ...harnesses import base
+from ...harnesses.registry import PolicyStubError
 from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths, task_worktree
@@ -124,6 +125,7 @@ class ExecutionManager:
                 log.info('execution %s: lost a race: %s', e.id, err)
             except errors.WriterClosed:
                 raise
+        did += self._orphans({e.id for e in live}, disarmed)
         now = time.monotonic()
         if now - self._clock['accounts'] >= ACCOUNTS_S:
             self._clock['accounts'] = now
@@ -136,6 +138,33 @@ class ExecutionManager:
             # an idle pass stays an idle pass
             self._clock['isolation'] = now
             self._sweep_isolation(live)
+        return did
+
+    def _orphans(self, live, disarmed):
+        """A process whose execution ended while it was still exiting (a halt,
+        then a stop before the next pass) is no longer live, so the pass above
+        never reaches it: it is collected here once it has exited, which is where
+        its end is recorded and its keys removed (T-099). One still running after
+        the stop grace (at once under the e-stop) is killed, as a STOPPING one is:
+        its execution has already ended, so nothing else ever will (T-102)."""
+        did = 0
+        for xid in [i for i in self._procs if i not in live]:
+            p = self._procs[xid]
+            st = p['adapter'].status(p['handle'])
+            if st.state == 'running':
+                if p['since'] is None:
+                    p['since'] = time.monotonic()
+                if disarmed or time.monotonic() - p['since'] >= self.grace_s:
+                    self.node.kill(p['adapter'], p['handle'])
+                    did += 1
+                continue
+            with self.db.read() as r:
+                e = rows.get(r, entities.Execution, xid).entity
+            try:
+                self._collect(e, p, st)
+                did += 1
+            except errors.LOST_RACE as err:
+                log.info('execution %s: lost a race: %s', xid, err)
         return did
 
     def _step(self, e, m, disarmed):
@@ -292,6 +321,14 @@ class ExecutionManager:
         try:
             handle = self.node.spawn(adapter, spec, resume_state=resume_state,
                                      isolated=isolated)
+        except base.SpawnWriteFailed as err:
+            # Core could not write the execution's own files: charged like a workspace
+            # that cannot be made (P11 note 11), so a failure that persists spends
+            # max_attempts instead of being re-dispatched on every tick (T-102)
+            self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
+                     stop_reason='workspace')
+            self._release_isolation(e)
+            return True
         except (base.SpawnFailed, base.AlreadySpawned) as err:
             # nothing started, and nothing started unisolated instead (§3.4, §6.3).
             # `binding` is the uncharged stop reason: an isolation-establishment
@@ -745,7 +782,9 @@ class ExecutionManager:
                 done.append(e.id)
             except Exception as err:
                 failed = failed or err
+        failed = self._adopt_orphans(live) or failed
         self.node.compact_registry()
+        base.sweep_mcp_configs(set(self._procs))
         # compaction keeps only unended spawns, so the notes the reconciles above left
         # are written again after it
         for execution_id, op in sorted(self._noted):
@@ -757,6 +796,62 @@ class ExecutionManager:
         if failed is not None:
             raise failed
         return done
+
+    def _adopt_orphans(self, live):
+        """A process the last Core started whose execution has already ended, still
+        running (a halt that had not exited when its execution was stopped): the
+        pass over live executions never reaches it, so it is taken in here, its MCP
+        config kept from the sweep below, and _orphans kills it after the stop grace
+        (at once under the e-stop) and collects it (T-105). One that is gone is
+        left to the registry compaction and the sweep, as before. Each line is taken
+        on its own, as boot's reconciles are: a failure is returned for boot to
+        raise after its sweeps, never raised here, so one odd line cannot keep a
+        Core from coming up."""
+        unended = getattr(self.node, 'unended', None)
+        if unended is None:
+            return None
+        failed = None
+        keep = {e.id for e in live} | set(self._procs)
+        for line in unended():
+            if line['execution_id'] in keep:
+                continue
+            try:
+                if self._adopt_orphan(line):
+                    keep.add(line['execution_id'])
+            except Exception as err:
+                failed = failed or err
+        return failed
+
+    def _adopt_orphan(self, line):
+        """True when the line's process is taken in. It is ours only while it is
+        still the process recorded (pid AND create time): a pid now held by anything
+        else is left alone. One this Core cannot track - no execution row in this
+        database (a restored backup), or a harness it does not register - is still
+        ours by that identity and run/core.lock, and nothing would ever end it, so it
+        is killed by that identity at once and logged, never left running."""
+        xid = line['execution_id']
+        handle = base.ProcessHandle(xid, line['pid'], line['create_time'],
+                                    ExecPaths(xid).dir)
+        if not self.node.alive(handle):
+            return False
+        with self.db.read() as r:
+            row = rows.get(r, entities.Execution, xid)
+        adapter = None
+        if row is not None:
+            try:
+                adapter = self.registry.get(row.entity.harness_id)
+            except (KeyError, PolicyStubError):
+                pass
+        if adapter is None:
+            log.warning('execution %s: its process %s is still running, but this Core '
+                        'has %s; killed by its recorded identity', xid, handle.pid,
+                        'no row for it' if row is None else
+                        'no harness %r' % row.entity.harness_id)
+            self.node.kill_identity(handle)
+            return False
+        self._procs[xid] = self._fresh(adapter, handle, line.get('process_seq', 1),
+                                       row.entity.stream_offset, row.entity.usage)
+        return True
 
     def _reconcile_one(self, e, disarmed):
         marker, pid, ended = self.node.files(e.id)

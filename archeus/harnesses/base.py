@@ -17,6 +17,7 @@ spawning marker exists is NEVER spawned again — a retry is a new execution id
 """
 
 import json
+import logging
 import os
 import re
 import time
@@ -25,7 +26,9 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..infra.paths import REQUEST_DIR, ExecPaths, archeus_home
+from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, archeus_home, run_dir
+
+log = logging.getLogger('archeus.harnesses')
 
 #: the environment every execution runs in (execution-architecture §2): it can
 #: commit locally, it cannot push with the user's credentials
@@ -261,6 +264,13 @@ class SpawnFailed(RuntimeError):
     """No process was created (the `ended` tombstone records why)."""
 
 
+class SpawnWriteFailed(SpawnFailed):
+    """No process was created because Core could not write the execution's own
+    files before it (a class directory, the marker, a stale tombstone, the
+    prompt). The task is charged as for a workspace that cannot be made (P11
+    note 11): an uncharged end would re-dispatch it on every tick, forever."""
+
+
 class StopRefused(RuntimeError):
     """The recorded pid is alive but is not the process we started (PID reuse)."""
 
@@ -311,23 +321,46 @@ def spawn(spec, argv):
         if last.get('process_seq', 1) != seq - 1 or not os.path.exists(paths.ended):
             raise AlreadySpawned('%s: process %d may still be running'
                                  % (spec.execution_id, seq - 1))
-    # Core creates every class directory (PV-20 §7.5): the execution is never the
-    # one to make a directory inside its own Core-owned one
-    for d in (paths.dir, paths.req, paths.res, paths.ctl):
-        os.makedirs(d, exist_ok=True)
-    _write_json(paths.spawning, {'execution_id': spec.execution_id, 'attempt': spec.attempt,
-                                 'process_seq': seq, 'at': time.time()})
-    for stale in (paths.ended, halted_path(paths.dir)):
-        try:
-            os.remove(stale)
-        except FileNotFoundError:
-            pass
-        except OSError as err:
-            # a halt report left over from the last process would be read as this
-            # one's: nothing starts
-            _refuse(paths, 'could not remove %s: %s' % (os.path.basename(stale), err), err)
-    if not config.write_atomic(paths.prompt, spec.prompt):
-        raise OSError('could not write %s' % paths.prompt)
+    try:
+        child = _start(spec, argv, paths, seq)
+    except BaseException as err:
+        # nothing started: the MCP config this attempt's argv wrote goes with it
+        # (T-099). Not mark_ended: an isolation failure has written its own tombstone
+        drop_mcp_config(paths)
+        if isinstance(err, OSError):
+            # what _start's own writes did not catch (the isolated launch's): a
+            # refusal with its tombstone and the SpawnFailed every caller handles,
+            # never an exception that stops the manager's thread (T-102)
+            _refuse(paths, str(err), err)
+        raise
+    create_time = proc.process_create_time(child.pid)
+    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
+    return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+
+
+def _start(spec, argv, paths, seq):
+    try:
+        # Core creates every class directory (PV-20 §7.5): the execution is never the
+        # one to make a directory inside its own Core-owned one
+        for d in (paths.dir, paths.req, paths.res, paths.ctl):
+            os.makedirs(d, exist_ok=True)
+        _write_json(paths.spawning, {'execution_id': spec.execution_id,
+                                     'attempt': spec.attempt, 'process_seq': seq,
+                                     'at': time.time()})
+        for stale in (paths.ended, halted_path(paths.dir)):
+            try:
+                os.remove(stale)
+            except FileNotFoundError:
+                pass
+            except OSError as err:
+                # a halt report left over from the last process would be read as
+                # this one's: nothing starts
+                raise OSError('could not remove %s: %s'
+                              % (os.path.basename(stale), err)) from err
+        if not config.write_atomic(paths.prompt, spec.prompt):
+            raise OSError('could not write %s' % paths.prompt)
+    except OSError as err:
+        _refuse(paths, str(err), err, SpawnWriteFailed)
     if spec.isolation is not None:
         # PV-20 §3.4/§6.3: the isolated path, or nothing. It never falls through to
         # `spawn_detached` below — an unisolated child would run in the interactive
@@ -361,12 +394,10 @@ def spawn(spec, argv):
         # we KNOW nothing started, so say so: a marker without `ended` would
         # otherwise read as "a process may exist" to reconciliation
         _refuse(paths, err, None)
-    create_time = proc.process_create_time(child.pid)
-    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
-    return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+    return child
 
 
-def _refuse(paths, error, cause):
+def _refuse(paths, error, cause, failed=SpawnFailed):
     # the tombstone says why nothing started if it can be written; one that cannot
     # is added to the reason, never a reason to start anyway or to leave the
     # SpawnFailed route callers handle
@@ -374,7 +405,7 @@ def _refuse(paths, error, cause):
         mark_ended(paths, None, error=error)
     except OSError as tomb:
         error = '%s; the ended tombstone was not written: %s' % (error, tomb)
-    raise SpawnFailed(error) from cause
+    raise failed(error) from cause
 
 
 def _private_dirs(paths, seq):
@@ -508,8 +539,54 @@ def _isolated_env(spec, paths):
 
 
 def mark_ended(paths, exit_code, **extra):
-    """Write the `ended` tombstone (Core, when it observes the exit)."""
-    _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
+    """Write the `ended` tombstone (Core, when it observes the exit). Every end of a
+    process passes here, so this is where its MCP config goes (T-099)."""
+    try:
+        _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
+    finally:
+        drop_mcp_config(paths)
+
+
+# config.write_atomic's temp copy of the MCP config, `<path>.<pid>.tmp`: a Core that
+# dies between writing it and os.replace leaves the keys there, not at `paths.mcp`
+_MCP_TMP = re.compile(re.escape(MCP_CONFIG) + r'\.\d+\.tmp')
+
+
+def drop_mcp_config(paths):
+    """Remove *paths*' MCP config and any temp copy of it: both hold the opted-in
+    servers' keys. A failure is logged, never raised: the end it belongs to must
+    still be recorded, and the boot sweep tries again."""
+    res = os.path.dirname(paths.mcp)
+    try:
+        tmps = [os.path.join(res, n) for n in os.listdir(res) if _MCP_TMP.fullmatch(n)]
+    except OSError:
+        tmps = []                       # no res directory: nothing was written
+    for path in [paths.mcp] + tmps:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as err:
+            log.warning('execution %s: its MCP config was not removed: %s',
+                        paths.execution_id, err)
+
+
+def sweep_mcp_configs(keep):
+    """At boot, the MCP config of every execution whose process this Core is not
+    watching (*keep*): a Core that died while one ran never saw that end."""
+    root = os.path.join(run_dir(), 'exec')
+    try:
+        names = os.listdir(root)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if name in keep:
+            continue
+        try:
+            paths = ExecPaths(name)
+        except ValueError:
+            continue                    # not an execution's directory
+        drop_mcp_config(paths)
 
 
 def read_stream(path, offset=0):
