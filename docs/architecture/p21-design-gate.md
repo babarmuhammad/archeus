@@ -267,3 +267,44 @@ change to credentials, the boundary or PV-20.
 
 - D-26 was built before P21 opened (X1).
 - If D0 (b) is approved, P21 slices land while P20 is open; P20's exit record is unaffected.
+
+## 12. As built
+
+### Slice C-read as built (2026-10-19, card T-119)
+
+C-read only: the trace view reads the causes that exist. C-write (D13, the command writer recording
+a cause) is not built; its file-scope check (`.collab/T-119-cwrite-scope.md`) finds that
+approval-issued causes need `authorization.py`, so it waits for P20 or the owner's explicit word.
+
+- **The trace (D3 (a), D14 (a)).** `GET /v1/missions/{id}/trace` (`mission_trace` in
+  `archeus/api/routes.py`, `observe` scope like the timeline; `404` for an unknown mission),
+  built by `archeus/core/application/trace.py`: the mission's events oldest first with their
+  `cause_chain` (the timeline's read, at most 1000, `truncated` when more exist), its policy and
+  route decisions, and per execution its checkpoints and its output folded into lanes. Nothing is
+  written. The output is the execution tab's own redacted read (`execution/output.py`); a tool
+  call's input is never carried, only its name.
+- **Lanes and pairing.** A lane is a transcript sidechain: the Claude Code adapter's `normalise`
+  now keeps `parent_tool_use_id` as `lane`, the call's `id` and the result's `tool_use_id`
+  (`archeus/harnesses/claude_code/adapter.py`; a read of the stream, no change to how anything is
+  launched or judged). `trace.lanes` puts each step in its lane (`main` for the conversation),
+  pairs a call with its result by id inside the lane, and names the step that spawned a sidechain.
+- **Two clocks (D14).** The SPA's Trace tab (`clients/app/src/surfaces/Mission.tsx`, between
+  Timeline and Relations; key `c` in the TUI) shows each event at its own time and replays them
+  one by one, waiting the gap between two events at 1x, 10x or 100x, clamped to 50 ms-1.5 s; at
+  the end it returns to the live list. The TUI tab lists the same trace without a replay.
+- **R13-05.** A bare `why` in a mission's thread is the grammar's (`grammar.py`): "This mission
+  exists because <origin>: "<objective>"", with the mission as its card (`conversation.py`
+  `_why(bare=True)`); outside a thread it stays the brain's. A declined reading no longer cites an
+  ADR to the user.
+- **R13-03.** The digest names no message rows (`archeus/core/world/digest.py`): a mission
+  thread's messages fold into the mission's row, the primary conversation's into one
+  `new_messages` row that counts messages, ordered last; the SPA's Now and the TUI say
+  "N new messages".
+- **Generated:** `generated.ts`, `archeus/cli/_api.py`, the API reference and the navigation
+  tokens (`Trace` tab).
+- **Tests:** `tests/v1/integration/test_trace.py` (seven: pairing inside a sidechain lane, the
+  Claude stream's ids and lane, the trace read with a redaction check, the route and its 404, the
+  bare `why`, no ADR in a declined reading, the digest folding); `tests/v1/e2e/test_spa_trace.py`
+  (the tab replays every event from the first, in a real browser); `clients/app/test/shell.test.ts`
+  (tab order).
+- **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.

@@ -298,6 +298,11 @@ P20 = {
     ('POST', '/v1/opt-ins', 'admin', 'required'),
 }
 
+#: P21 slice C (p21-design-gate D3, D14): a mission's trace, a read like its timeline
+P21 = {
+    ('GET', '/v1/missions/{id}/trace', 'observe', None),
+}
+
 
 def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's / P15's boundary:
@@ -307,7 +312,7 @@ def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     reads are the only paths that may name a graph."""
     got = {(r.method, r.path, r.scope, r.idempotent) for r in routes.ROUTES}
     tables = (EXPECTED | P4 | P5 | P6 | P7 | P8 | P9 | P10 | P11 | P12 | P13 | P14 | P15 | P16
-              | P18 | P195 | P20)
+              | P18 | P195 | P20 | P21)
     assert got == tables
     assert len(routes.ROUTES) == len(tables)
     # P15: the only pairing paths are start and redeem; no route pairs a node
