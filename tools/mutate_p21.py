@@ -214,6 +214,14 @@ MUTATIONS = [
      "        self._log_handler = logging.FileHandler(os.path.join(logs, 'core.log'),\n"
      "                                                encoding='utf-8')")],
      [D + '::test_core_log_rotates']),
+    ('Z48', 'the worker scans the log after every commit once each day is filled', [(MT,
+     "        if self._filled_through == today:\n            return {'changed': False}",
+     "        if False:\n            return {'changed': False}")],
+     [D + '::test_a_filled_worker_reads_nothing_until_the_date_changes']),
+    ('Z49', 'a broken execution hook never reported', [(DR,
+     "        finding(DOCTOR_HOOK, 'the execution hook %s: %s' % (manager.HOOK, e))",
+     "        print('the execution hook %s: %s' % (manager.HOOK, e))")],
+     [D + '::test_doctor_reports_a_broken_hook_and_a_newer_schema']),
 ]
 
 

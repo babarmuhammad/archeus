@@ -290,7 +290,8 @@ The D0-eligible part of slice D: `metrics_daily` (D2), `archeus doctor` and `cor
 - **The worker**: `Metrics` runs as the `archeus-metrics` WorldLoop beside the other workers; each
   pass fills the oldest finished day without a row, from the first event's day to yesterday. A day
   is written once (`INSERT ... ON CONFLICT (day) DO NOTHING`) and never rewritten; today is never
-  computed. Its write is `metrics.record`, a writer command, and `core/metrics.py` joins the
+  computed. WorldLoop runs a pass after every commit, so once every finished day has its row the
+  worker remembers the date and reads nothing until it changes. Its write is `metrics.record`, a writer command, and `core/metrics.py` joins the
   structural writer-module list in `test_db_schema.py` (written as a plain `INSERT INTO` so that
   gate sees it: its regex does not match `INSERT OR IGNORE INTO`, recorded below).
 - **`archeus doctor`** (`archeus/core/doctor.py`; `archeus/cli/main.py` and
@@ -307,11 +308,12 @@ The D0-eligible part of slice D: `metrics_daily` (D2), `archeus doctor` and `cor
   unchanged (tested on a copied crash-left WAL).
 - **Rotation**: `core.log` is a `RotatingFileHandler`, 5 MB, three old files (`LOG_BYTES`,
   `LOG_BACKUPS` in `runtime.py`).
-- **Tests**: `tests/v1/integration/test_p21_metrics_doctor.py` (seven); `test_db_schema.py`
+- **Tests**: `tests/v1/integration/test_p21_metrics_doctor.py` (nine); `test_db_schema.py`
   follows the new table and derives the latest schema instead of naming 16.
 - **Mutants**: Z40-Z47 in `tools/mutate_p21.py` (a day computed before it ends; unknown written as
   0; a day rewritten; doctor through a checkpointing connection; doctor creating the database;
-  every unfinished execution stuck; lag never reported; rotation removed).
+  every unfinished execution stuck; lag never reported; rotation removed), Z48-Z49 (the worker
+  scanning the log after every commit once filled; a broken hook never reported).
 - **Not built here, recorded**: the worker is not in `/v1/health` (no reader needs it before
   Health, D12); nothing reads `metrics_daily` yet (Health, D12). `events.at` has no index, so each
   computed day scans the log (a `ponytail:` note in `metrics.py`).

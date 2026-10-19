@@ -129,18 +129,28 @@ class Metrics:
         self.db, self.today = db, today
         self.on_wake = None
         self.stopping = lambda: False
+        # WorldLoop runs a pass after every commit; once every finished day has
+        # its row, nothing is due until the date changes, so skip the log scan
+        self._filled_through = None
 
     def sweep(self):
         return []
 
     def pending(self):
+        today = self.today()
+        if self._filled_through == today:
+            return 0
         with self.db.read() as conn:
-            return len(missing_days(conn, self.today()))
+            return len(missing_days(conn, today))
 
     def pass_once(self):
+        today = self.today()
+        if self._filled_through == today:
+            return {'changed': False}
         with self.db.read() as conn:
-            days = missing_days(conn, self.today())
+            days = missing_days(conn, today)
             if not days:
+                self._filled_through = today
                 return {'changed': False}
             figures = compute(conn, days[0])
         self.db.writer.execute(record, {'day': days[0], 'metrics': figures})

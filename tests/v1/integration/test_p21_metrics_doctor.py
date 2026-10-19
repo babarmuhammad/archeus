@@ -195,3 +195,39 @@ def test_doctor_leaves_a_wal_core_crashed_out_of_to_core(archeus_home, tmp_path,
     doc.doctor()
     assert {k: v for k, v in _tree(str(crashed)).items() if k in data} == before
     assert 'integrity ok' in capsys.readouterr().out
+
+
+def test_a_filled_worker_reads_nothing_until_the_date_changes(db, monkeypatch):
+    seed_day(db)
+    today = [dt.date(2026, 10, 18)]
+    w = metrics.Metrics(db, today=lambda: today[0])
+    assert w.pass_once() == {'changed': True}
+    assert w.pass_once() == {'changed': False}
+    reads = []
+    real = db.read
+    monkeypatch.setattr(db, 'read', lambda: reads.append(1) or real())
+    assert w.pass_once() == {'changed': False} and w.pending() == 0
+    assert reads == []
+    today[0] = dt.date(2026, 10, 19)
+    assert w.pending() == 1
+    assert w.pass_once() == {'changed': True}
+    with db.read() as r:
+        assert [d for (d,) in r.execute('SELECT day FROM metrics_daily ORDER BY day')] == [
+            DAY, '2026-10-18']
+
+
+def test_doctor_reports_a_broken_hook_and_a_newer_schema(archeus_home, tmp_path, monkeypatch,
+                                                          capsys):
+    import sqlite3
+    from archeus.core.execution import manager
+    from archeus.infra.db import migrate
+    Database.open().close()
+    c = sqlite3.connect(connection.db_path())
+    c.execute('PRAGMA user_version = %d' % (migrate.migrations()[-1][0] + 1))
+    c.close()
+    bad = tmp_path / 'hook.py'
+    bad.write_text('def (:\n', encoding='utf-8')
+    monkeypatch.setattr(manager, 'HOOK', str(bad))
+    assert doc.doctor() == doc.DOCTOR_SCHEMA | doc.DOCTOR_HOOK
+    out = capsys.readouterr().out
+    assert 'this Archeus expects' in out and 'the execution hook' in out
