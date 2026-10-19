@@ -10,21 +10,25 @@ MCP server carries, and an account's own settings secrets, are planted. Then
 every file under ARCHEUS_HOME is read as bytes (the SQLite database and its
 WAL, core.log and every execution file included), and each secret may appear
 only where ALLOWED says its kind is kept. Any other hit fails, whatever wrote
-it and in whatever syntax.
+it and in whatever syntax. The PIN a client pairs with is scanned too, and is
+allowed nowhere. A file that exists and cannot be read fails the scan rather
+than being skipped, and each scan proves it read core.log and the database.
 
 It covers what these lifecycles run: pairing, a launch-code redemption, a
 revocation, a stream, a mission, and an execution with an opted-in MCP server
-and a hooked tool call. Code that no lifecycle here reaches is the static
-census's to see.
+and a hooked tool call, logging to core.log through Core's logger as Core
+does. Code that no lifecycle here reaches is the static census's to see.
 """
 
 import fnmatch
+import logging
 import os
 import secrets
 import sys
 
 import pytest
 
+from archeus.api import auth
 from archeus.harnesses import base, sources
 from archeus.harnesses.fake import FakeHarness
 from archeus.core.application import world
@@ -49,6 +53,10 @@ MINTERS = {'_ensure_local_token': 'local', '_spawn': 'hook', '_mint': 'code',
 MCP_ENV_KEY = 'mcpenv-' + 'k' * 28
 MCP_HEADER_KEY = 'mcphdr-' + 'h' * 28
 SETTINGS_KEY = 'sk-' + 'q' * 30
+# 12 digits (auth.PIN allows 6-12): a 6-digit one could match a stray digit run
+PIN = '482913570264'
+#: what every scan must have read, or it proves nothing about them
+MUST_READ = {'logs/core.log', 'archeus.db'}
 
 
 @pytest.fixture
@@ -67,22 +75,31 @@ def minted(monkeypatch):
     return got
 
 
-def leaks(found):
-    """[(kind, file)] of every secret found outside the files its kind may be in."""
-    home, bad = str(paths.archeus_home()), set()
+def _files():
+    """(rel, bytes) of every file under ARCHEUS_HOME. Only a file that went while
+    walking is skipped: one that is there and cannot be read raises."""
+    home = str(paths.archeus_home())
     for d, _dirs, files in os.walk(home):
         for name in files:
             path = os.path.join(d, name)
-            rel = os.path.relpath(path, home).replace(os.sep, '/')
             try:
                 with open(path, 'rb') as f:
                     data = f.read()
-            except OSError:                 # a file that went while walking
+            except FileNotFoundError:
                 continue
-            for kind, value in found:
-                if value.encode('utf-8') in data and not any(
-                        fnmatch.fnmatch(rel, g) for g in ALLOWED.get(kind, ())):
-                    bad.add((kind, rel))
+            yield os.path.relpath(path, home).replace(os.sep, '/'), data
+
+
+def leaks(found):
+    """[(kind, file)] of every secret found outside the files its kind may be in."""
+    bad, read = set(), set()
+    for rel, data in _files():
+        read.add(rel)
+        for kind, value in found:
+            if value.encode('utf-8') in data and not any(
+                    fnmatch.fnmatch(rel, g) for g in ALLOWED.get(kind, ())):
+                bad.add((kind, rel))
+    assert MUST_READ <= read, MUST_READ - read
     return sorted(bad)
 
 
@@ -90,18 +107,18 @@ def test_no_minted_credential_is_at_rest_outside_its_one_home(minted, tc):
     local = tc.token                       # minted at start, before `minted` could see it
     code = tc.http('POST', '/v1/devices/pair/start', body={'name': 'phone'}).json()['code']
     paired = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
-                     body={'code': code, 'platform': 'android', 'pin': '482913'}).json()
+                     body={'code': code, 'platform': 'android', 'pin': PIN}).json()
     launch = tc.http('POST', '/v1/devices/launch/code', body={}).json()['code']
     page = tc.http('POST', '/v1/devices/launch/redeem',
                    body={'code': launch, 'platform': 'web', 'name': 'laptop'}).json()
-    tc.http('POST', '/v1/missions', token=paired['token'],
-            body={'title': 't', 'objective': 'o', 'idempotency_key': 'a'})
+    m = tc.http('POST', '/v1/missions', body={'title': 't', 'objective': 'o', 'idempotency_key': 'a'})
+    assert m.status == 200, m.body
     s = SSEClient(tc.base_url, page['token'])
     s.close()
     tc.http('POST', '/v1/devices/%s/revoke' % paired['device_id'],
             body={'idempotency_key': 'r'})
     tc.stop()
-    found = list(minted) + [('local', local)]
+    found = list(minted) + [('local', local), ('pin', PIN)]
     kinds = {k for k, _v in found}
     assert {'local', 'code', 'device'} <= kinds, kinds        # the lifecycle minted each
     # a token is a prefix plus the draw: the scan looks for the draw itself
@@ -111,6 +128,8 @@ def test_no_minted_credential_is_at_rest_outside_its_one_home(minted, tc):
     with open(os.path.join(str(paths.archeus_home()), 'run', 'local-token'),
               encoding='utf-8') as f:
         assert f.read() == local                               # its one plaintext home
+    db = dict(_files())['archeus.db']
+    assert auth.token_hash(local).encode() in db               # the scan reads the real DB
 
 
 @pytest.fixture
@@ -130,7 +149,18 @@ def rig(db, tmp_path, monkeypatch):
     x = Rig(db, adapters=[FakeHarness(sources=True)])
     x.acc = x.account('Work', home_ref=home)
     x.prj = x.do(world.create_project, who=x.user, name='p', root_paths=[root])['project']['id']
+    # Core's own log, as Core._open_log attaches it: what reaches it is at rest
+    logs = os.path.join(str(paths.archeus_home()), 'logs')
+    os.makedirs(logs, exist_ok=True)
+    core_log, h = logging.getLogger('archeus.core'), logging.FileHandler(
+        os.path.join(logs, 'core.log'), encoding='utf-8')
+    core_log.addHandler(h)
+    level = core_log.level
+    core_log.setLevel(logging.INFO)
     yield x
+    core_log.removeHandler(h)
+    h.close()
+    core_log.setLevel(level)
     x.cleanup()
 
 
@@ -163,11 +193,4 @@ def test_an_execution_leaves_its_hook_token_and_mcp_keys_only_where_they_are_kep
 def _hits(found):
     """[(kind, file)] of every secret found anywhere: the check that the scan
     sees the files it is meant to, not only that it finds nothing."""
-    home, out = str(paths.archeus_home()), []
-    for d, _dirs, files in os.walk(home):
-        for name in files:
-            path = os.path.join(d, name)
-            with open(path, 'rb') as f:
-                data = f.read()
-            out += [(k, path) for k, v in found if v.encode('utf-8') in data]
-    return out
+    return [(k, rel) for rel, data in _files() for k, v in found if v.encode('utf-8') in data]
