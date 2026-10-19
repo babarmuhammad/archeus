@@ -92,19 +92,33 @@ def _text(v):
     return isinstance(v, str) and bool(v)
 
 
+def _units(s):
+    """Length as the OS limits it: UTF-16 units on Windows, bytes elsewhere."""
+    return len(s.encode('utf-16-le')) // 2 if os.name == 'nt' else len(os.fsencode(s))
+
+
+def openable(path):
+    """*path* as a str, or ValueError when no OS could open it: a NUL, more than
+    32767 units in all (Windows' ceiling, even \\\\?\\-prefixed) or a component of
+    more than 255 (NTFS and the common POSIX filesystems). Checked before any
+    resolution, because realpath stopped raising on these (CPython gh-106242)
+    and returns them as if they were ordinary paths."""
+    s = str(path)
+    if '\x00' in s or _units(s) > 32767 or any(
+            _units(c) > 255 for c in re.split(r'[\\/]' if os.name == 'nt' else '/', s)):
+        raise ValueError('a path no OS can open')
+    return s
+
+
 def workspace_path(path, workdir):
     """*path* relative to the workspace, '/'-separated, or absolute when it is
-    not provably inside (P9 treats absolute and `..` as never inside)."""
+    not provably inside (P9 treats absolute and `..` as never inside). A path
+    no OS can open raises ValueError: canonicalise makes it one unclassified exec."""
     given = os.path.expanduser(str(path))
-    # no OS opens a path holding NUL, nor one past Windows' 32767-character
-    # ceiling; realpath stopped raising on both (CPython gh-106242), so the
-    # parse failure canonicalise turns into one unclassified exec is raised here
-    if '\x00' in given or len(given) > 32767:
-        raise ValueError('a path no OS can open')
     if not workdir or str(path).startswith('~'):
-        return posixpath.normpath(given.replace('\\', '/'))
-    full = os.path.realpath(os.path.join(workdir, given))
-    root = os.path.realpath(workdir)
+        return posixpath.normpath(openable(given).replace('\\', '/'))
+    full = os.path.realpath(openable(os.path.join(workdir, given)))
+    root = os.path.realpath(openable(workdir))
     try:
         rel = os.path.relpath(full, root)
     except ValueError:                  # another drive (Windows)

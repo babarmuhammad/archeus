@@ -95,20 +95,61 @@ def test_an_unknown_tool_is_unclassified():
     assert u is True and got[0]['class'] == 'exec'
 
 
+def _long(n):
+    """*n* characters of 200-character components."""
+    s = ('a' * 200 + '/') * (n // 201)
+    return s + 'b' * (n - len(s))
+
+
+#: 60 astral characters a component: 120 UTF-16 units and 240 UTF-8 bytes, so no
+#: component is too long anywhere, yet the whole is past 32767 units while its
+#: code points are about half that (T-122 r1, finding 1)
+ASTRAL = '/'.join(['\U0001F600' * 60] * 271)
+TOLERANT = lambda p, *a, **k: p  # noqa: E731 - CPython >= 3.12 on Windows, gh-106242
+
+
 @pytest.mark.parametrize('tolerant', [False, True], ids=['realpath', 'tolerant-realpath'])
 @pytest.mark.parametrize('tool,inp', [
     ('Read', {'file_path': 'a\x00b'}), ('Bash', {'command': 'cat a\x00b'}),
-    ('Write', {'file_path': 'x' * 70000}), ('Read', {'file_path': '~/a\x00b'})])
+    ('Write', {'file_path': 'x' * 70000}), ('Read', {'file_path': '~/a\x00b'}),
+    ('Read', {'file_path': _long(32767 - len(WD))}),     # fits alone, not once joined
+    ('Write', {'file_path': 'a' * 256}), ('Bash', {'command': 'cat ' + 'a' * 256}),
+    ('Read', {'file_path': ASTRAL})])
 def test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error(monkeypatch, tool, inp,
                                                                    tolerant):
-    """Found by tools/fuzz_p20.py (P20 D12): a NUL or an over-long path is a
-    parse failure, so one unclassified exec. Older realpath raised on both; the
-    CPython on CI (3.12.10, Windows) returns them as they are (gh-106242), which
-    the tolerant case stands in for on any interpreter (T-122)."""
+    """Found by tools/fuzz_p20.py (P20 D12): a NUL, an over-long path or an
+    over-long component is a parse failure, so one unclassified exec. Older
+    realpath raised on these; the CPython on CI (3.12.10, Windows) returns them
+    as they are (gh-106242), which the tolerant case stands in for on any
+    interpreter (T-122)."""
     if tolerant:
-        monkeypatch.setattr(os.path, 'realpath', lambda p, *a, **k: p)
+        monkeypatch.setattr(os.path, 'realpath', TOLERANT)
     got, u = one(tool, inp)
     assert u is True and [a['class'] for a in got] == ['exec']
+
+
+def test_the_open_limits_are_inclusive_and_the_joined_path_is_what_counts(monkeypatch):
+    monkeypatch.setattr(os.path, 'realpath', TOLERANT)
+    assert C.openable('a' * 255) == 'a' * 255
+    assert C.openable(_long(32767)) == _long(32767)
+    for bad in ('a' * 256, _long(32768), 'a\x00', ASTRAL):
+        with pytest.raises(ValueError):
+            C.openable(bad)
+    (a,), u = one('Read', {'file_path': _long(32766 - len(WD))})   # joined: exactly 32767
+    assert (a['class'], u) == ('read', False)
+
+
+@pytest.mark.parametrize('tolerant', [False, True], ids=['realpath', 'tolerant-realpath'])
+def test_a_cwd_no_os_can_open_is_never_inside_the_workspace(monkeypatch, tolerant):
+    """T-122 r1, finding 2: under a tolerant realpath a workspace-prefixed cwd
+    holding a NUL or an over-long component passed commonpath."""
+    from archeus.core.execution import manager as M
+    if tolerant:
+        monkeypatch.setattr(os.path, 'realpath', TOLERANT)
+    assert M._inside(os.path.join(WD, 'sub'), WD)
+    for bad in ('x\x00y', 'a' * 256, _long(32767)):
+        assert not M._inside(os.path.join(WD, bad), WD), bad[:20]
+    assert not M._inside(os.path.join(WD, 'sub'), WD + '\x00')
 
 
 @pytest.mark.parametrize('tool,inp', [

@@ -1093,8 +1093,9 @@ def _unmeasured(p):
 
 
 def _inside(path, root):
+    """Is *path* under *root*? A path no OS can open is never inside."""
     try:
-        a, b = os.path.realpath(path), os.path.realpath(root)
+        a, b = (os.path.realpath(canonical.openable(p)) for p in (path, root))
         return os.path.commonpath([os.path.normcase(a), os.path.normcase(b)]) == \
             os.path.normcase(b)
     except ValueError:
