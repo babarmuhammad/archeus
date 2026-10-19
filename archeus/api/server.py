@@ -246,7 +246,9 @@ class Handler(BaseHTTPRequestHandler):
         actor = Ref('user_device', actor_id or self.principal['principal_id'])
         key = self.body.get('idempotency_key') if keyed else None
         fut = self.api.db.writer.submit(fn, dict(kwargs, actor=actor), idempotency_key=key)
-        return fut.result(self.api.command_timeout)
+        out = fut.result(self.api.command_timeout)
+        self.replayed = fut.replayed
+        return out
 
     def start_stream(self):
         self.send_response(200)

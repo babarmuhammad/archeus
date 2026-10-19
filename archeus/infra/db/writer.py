@@ -88,8 +88,16 @@ def command_name(command):
     return '%s.%s' % (command.__module__, command.__qualname__)
 
 
+#: arguments that prove who asks (a step-up PIN) and so never enter the stored
+#: hash: it is a plain sha256 kept for a day, which a 6-digit PIN falls to in
+#: seconds. A repeat that differs only here is a replay - it is answered from the
+#: row and runs nothing, so no proof is weighed and no attempt is spent on it.
+PROOF_ARGS = frozenset({'step_up'})
+
+
 def request_hash(name, kwargs):
-    blob = json.dumps({'command': name, 'args': kwargs}, sort_keys=True, default=_jsonable)
+    args = {k: v for k, v in kwargs.items() if k not in PROOF_ARGS}
+    blob = json.dumps({'command': name, 'args': args}, sort_keys=True, default=_jsonable)
     return hashlib.sha256(blob.encode('utf-8')).hexdigest()
 
 
@@ -388,7 +396,9 @@ class Writer:
                 if not fut.set_running_or_notify_cancel():
                     continue
                 try:
-                    result = self._one(conn, command, kwargs, key, name, rhash)
+                    # `replayed` tells a caller with effects outside the writer
+                    # (a sentinel, a counter) that nothing ran this time
+                    result, fut.replayed = self._one(conn, command, kwargs, key, name, rhash)
                 except BaseException as e:
                     self.failed += 1
                     fut.set_exception(e)
@@ -407,7 +417,7 @@ class Writer:
                 replay = self._recall(conn, key, name, rhash)
                 if replay is not None:
                     conn.execute('ROLLBACK')
-                    return json.loads(replay)
+                    return json.loads(replay), True
             tx = Tx(conn)
             result = command(tx, **kwargs)
             if tx.mutated and not tx.events:
@@ -431,7 +441,7 @@ class Writer:
             with self._commits:
                 self.commit_count += 1
                 self._commits.notify_all()
-        return json.loads(response)
+        return json.loads(response), False
 
     @staticmethod
     def _recall(conn, key, name, rhash):
