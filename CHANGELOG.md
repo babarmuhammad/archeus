@@ -5,6 +5,20 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.1] - 2026-10-16
+
+### Fixed
+
+- **Remote Control is available in new and resumed Claude sessions.** Sessions started
+  or resumed from archeus launched with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set,
+  which makes Claude Code's Remote Control unavailable. Hand-off never set it, so the
+  option only appeared there. archeus no longer sets it.
+
+- **archeus's own Codex calls no longer appear as sessions.** Memory builds and lesson
+  runs on Codex were listed in the project's session list next to your own sessions, and
+  counted in session topics and the worklog. They are now hidden, as they already were
+  for Claude Code.
+
 ## [2.8.0] - 2026-09-25
 
 ### Added

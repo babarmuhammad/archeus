@@ -136,6 +136,25 @@ def test_an_archived_thread_is_not_in_the_open_list(monkeypatch, tmp_path):
     assert [r[1] for r in codex.scan(folder, archived=True)] == ['s2']
 
 
+def test_archeus_own_memory_calls_are_not_listed_as_sessions(monkeypatch, tmp_path):
+    """The index truncates the prompt to 120 characters, so the HEADLESS_MARK
+    appended at its end is gone and only the opener is left to recognise."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    home = codex_home(sb.root, [('s1', 'C:\\work\\alpha', 1, 0),
+                                ('s2', 'C:\\work\\alpha', 1, 0)])
+    con = sqlite3.connect(codex.db_path(home))
+    con.execute("UPDATE threads SET first_user_message = ?, preview = ? WHERE id = 's2'",
+                (sessions.HEADLESS_OPENERS[0][:120],) * 2)
+    con.commit()
+    con.close()
+    folder = store.project_folder(home, codex._enc('C:\\work\\alpha'))
+    assert [r[1] for r in codex.scan(folder)] == ['s1']
+    s = dict(sessions._EMPTY_STATS, models=[], usage_by_model={})
+    codex.fold({'type': 'event_msg', 'payload': {
+        'type': 'user_message', 'message': 'x\n\n' + sessions.HEADLESS_MARK}}, s)
+    assert s['headless'] and not s['preview']
+
+
 def test_a_locked_or_missing_database_is_no_sessions_not_an_error(
         monkeypatch, tmp_path):
     """Codex owns these files and holds them open while it runs. A session list

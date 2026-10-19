@@ -90,7 +90,8 @@ def build_launch_command(path, encoded_name, choice, opts):
         argv = _harnesses.impl('launch_argv', d['id'])(exe, choice, opts, path)
         return argv, env, proj_folder
 
-    env['CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'] = '1'
+    # No CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC here: it also stops feature-flag
+    # fetching, which makes Remote Control unavailable in the session.
     # launch-economy env: cap thinking tokens / route subagents to a cheap model
     if opts.get('max_thinking'):
         env['MAX_THINKING_TOKENS'] = str(opts['max_thinking'])

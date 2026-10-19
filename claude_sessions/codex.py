@@ -78,6 +78,11 @@ def real_cwd(cwd):
     return c
 
 
+def _is_headless(text):
+    from .sessions import is_headless_text
+    return is_headless_text(text)
+
+
 def _enc(cwd):
     return _paths.encode_component(real_cwd(cwd))
 
@@ -128,6 +133,10 @@ def scan(folder, archived=False):
         if _enc(r['cwd']) != enc:
             continue
         if bool(r['archived']) != bool(archived):
+            continue
+        # the index keeps only the first 120 characters of a prompt, so the
+        # HEADLESS_MARK appended at its end never reaches it; the openers do
+        if _is_headless(r['first_user_message'] or r['preview']):
             continue
         mtime = (r['updated_at_ms'] or r['created_at_ms'] or 0) / 1000.0
         preview = (r['preview'] or r['first_user_message'] or '').strip()
@@ -205,7 +214,9 @@ def fold(obj, s):
             s['count'] += 1
         if t == 'user_message':
             txt = (p.get('message') or '').strip()
-            if txt:
+            if _is_headless(txt):
+                s['headless'] = True
+            elif txt:
                 s['preview'] = txt[:200].replace('\n', ' ')
         elif t == 'error':
             s['api_errors'] += 1

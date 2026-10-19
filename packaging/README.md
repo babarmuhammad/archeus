@@ -35,7 +35,7 @@ minutes, so a check run straight afterwards reports the release missing.
 
 | | |
 |---|---|
-| PyPI `archeus` | **ours** — 2.7.0, published by CI on the tag (trusted publishing, `release.yml`) |
+| PyPI `archeus` | **ours** — 2.8.1, published by CI on the tag (trusted publishing, `release.yml`) |
 | PyPI, under the old name | **ours** — the shim at 1.9.2: no code, `archeus>=2.4.0`, published 2026-09-15. **Done, not pending** — see below |
 | npm `archeus` | **ours** — 2.7.0. It serves the previous version for a minute or so after a publish, as it always does; `npx archeus@2.7.0 --version` ran end to end once it caught up |
 | RubyGems `archeus` | **ours** — 2.7.0 |
@@ -116,8 +116,8 @@ node bin/archeus.js --version
 ### Docker Hub
 
 ```bash
-docker build -t babarmuhammad/archeus:2.8.0 -t babarmuhammad/archeus:latest packaging/docker
-docker push babarmuhammad/archeus:2.8.0
+docker build -t babarmuhammad/archeus:2.8.1 -t babarmuhammad/archeus:latest packaging/docker
+docker push babarmuhammad/archeus:2.8.1
 docker push babarmuhammad/archeus:latest
 ```
 
@@ -135,7 +135,7 @@ cargo publish
 ```bash
 cd packaging/rubygems
 gem build archeus.gemspec
-gem push archeus-2.8.0.gem
+gem push archeus-2.8.1.gem
 ```
 
 `gem signin` first, and **answer `y` to "Do you want to customise scopes?"**, then
@@ -148,7 +148,7 @@ action on this gem`, which reads like an ownership problem and is not one.
 ```bash
 cd packaging/nuget
 nuget pack archeus.nuspec
-dotnet nuget push archeus.2.8.0.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
+dotnet nuget push archeus.2.8.1.nupkg --source https://api.nuget.org/v3/index.json --api-key <key>
 ```
 
 ### Packagist
