@@ -934,11 +934,9 @@ function Estop({ health }: { health: Snapshot<Health> }) {
               This client’s PIN (re-arming from a paired client needs it)
               <input inputMode="numeric" autoComplete="off" pattern="[0-9]*" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} maxLength={12} />
             </label>
-          ) : stepUp === 'none' ? (
-            <p className="hint">This client has no PIN, so it cannot re-arm: re-arm on the desktop.</p>
           ) : null}
           <div className="row">
-            <ActionButton label="Re-arm" scope="control" disabled={stepUpBlocked(stepUp, pin)} run={(key) => api.rearm(send(), { idempotency_key: key, step_up: stepUp === 'pin' ? pin : undefined })} reread={['/v1']} report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }} />
+            <ActionButton label="Re-arm" scope="control" disabled={stepUp === 'none' ? 'This client has no PIN, so it cannot re-arm: re-arm on the desktop.' : stepUpBlocked(stepUp, pin)} run={(key) => api.rearm(send(), { idempotency_key: key, step_up: stepUp === 'pin' ? pin : undefined })} reread={['/v1']} report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }} />
           </div>
         </>
       ) : null}

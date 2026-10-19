@@ -681,7 +681,7 @@ MUTATIONS = [
      [RUN_LOCAL]),
     # T-098's review: the Re-arm button's PIN rule, the PIN left behind, the reset
     ('Q129', 'Re-arm is offered to a PIN client with no PIN typed', [(CTRL,
-     'disabled={stepUpBlocked(stepUp, pin)}', 'disabled={stepUpBlocked(undefined, pin)}')],
+     "re-arm on the desktop.' : stepUpBlocked(stepUp, pin)}", "re-arm on the desktop.' : stepUpBlocked(undefined, pin)}")],
      [AB + 'test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays']),
     ('Q130', "the PIN stays in the field after the re-arm returns", [(CTRL,
      "report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }}",
