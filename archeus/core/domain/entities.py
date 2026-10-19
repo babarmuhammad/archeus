@@ -194,8 +194,9 @@ class Principal(Entity):
 PIN_HASH = re.compile(r'pbkdf2_sha256\$[1-9][0-9]{4,6}\$[0-9a-f]{32}\$[0-9a-f]{64}')
 
 #: Slots one client holds at a time (p20-design-gate D1): redeeming a launch code
-#: minted for a slot revokes the client that held it before. Only the desktop shell.
-SUPERSEDE_SLOTS = ('desktop shell',)
+#: minted for a slot revokes the client that held it before: the desktop shell, and
+#: its page (T-096), whose token lives in the page's memory only.
+SUPERSEDE_SLOTS = ('desktop shell', 'desktop shell page')
 
 
 @entity

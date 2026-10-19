@@ -2651,6 +2651,77 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        0016 drops the old ones; the idempotency table's unbounded retention for every other
        command stays open.
 
+### T-096 — I-F1 and I-F2 as built (2026-10-15)
+
+These items are numbered T-096.1 to T-096.4 here. Slices H and J were appended to this section in another
+checkout, and the next candidate rebuild (T-072) gives these items their place in the sequence.
+
+T-096.1. **I-F1: the home check reads read access as well as write** (`a2be0f4`).
+     - `DaclReaders.broad_reader` sits beside `broad_writer` and shares its ACE walk. There is
+       no second parser.
+     - Read means an allow ACE carrying `GENERIC_READ`, `GENERIC_ALL` or `FILE_READ_DATA`.
+     - The check reads the home, then `run/local-token` once it exists. Write is reported
+       before read.
+     - It warns only. No ACL is written, and the static gate holds.
+     - The default home under `%LOCALAPPDATA%` gets no new warning (read-only measurement). A
+       home under `D:\` reports Authenticated Users.
+     - This disposes of item 111's I-F1 by its first option.
+
+T-096.2. **I-F2: the shell's page keeps its device token in memory only** (`9abca6c`).
+     - **Decision.** The owner, 2026-10-15 (AskUserQuestion answer, verbatim): "Memory-only
+       (Recommended)". The other options offered were "Memory-only, many windows" and "Keep
+       on disk".
+     - **The slot.** The launch codes the shell asks for take the slot `desktop shell page`
+       (`SUPERSEDE_SLOTS`), so each page credential revokes the one before it.
+     - **Memory mode.** The page is told `memory=1` and holds its token in a module variable.
+       `sessionStorage` holds only the flag, and IndexedDB is never written.
+     - **Reload.** A reload in the shell is answered with a fresh launch address (`?r=N`), so
+       the page stays signed in. With Core down, the page shows B7's snapshot.
+     - **Unchanged.** `core --open` and the legacy GUI's "Open Archeus V1" take no slot and
+       still store their token in that browser.
+     - **Owner-accepted consequence.** A second concurrent `archeus gui` signs out the first
+       window's page.
+     - **Not off-the-record.** The same profile keeps the appearance choice and B7's snapshot
+       across restarts.
+     - **What it reverses.** p19 item 81's "the device token … survive[s] a restart", amended
+       in that document.
+     - **Authority.** D1 does not cover this credential: D1 is the shell's own credential,
+       item 86. The owner's answer above is the authority.
+
+T-096.3. **A page token an earlier shell stored is revoked before it is deleted** (`2d2f3b0`).
+     - **Why.** Such a device was redeemed before the slot existed, so no later page
+       credential supersedes it. It keeps observe, control, approve and admin with no expiry.
+       Deleting the IndexedDB key alone revoked nothing, and a QtWebEngine probe found the
+       deleted value still in the profile's LevelDB log and tables.
+     - **The order.** On its first memory-mode load the page reads its own device id from
+       `GET /v1/sync` with that token, revokes the device with
+       `POST /v1/devices/{id}/revoke`, and then deletes the key.
+     - **Already dead (401).** The key is deleted with no revoke.
+     - **Core down or refusing.** The token stays where it is and the next launch tries
+       again. Deleting the only copy of a live admin token is the one outcome that cannot be
+       undone.
+     - **What may remain on disk is a dead token.** LevelDB keeps a deleted value's bytes
+       until it compacts, and no page can force that.
+     - **Deleting both databases was tried and not used.** Deleting `archeus` together with
+       `archeus-snapshot` empties the origin's store. That erased the bytes in a standalone
+       probe. In the real shell flow, with both deletes reported successful, the bytes
+       survived the next launch. It would also cost B7's snapshot for an erasure it does not
+       deliver.
+     - **Tests.** The real-Qt e2e seeds a legacy page token the way an earlier shell stored
+       it. After the first launch that device is REVOKED, and after the second its token
+       answers 401. Node cases cover revoke before delete, Core down and an already-dead
+       token. Mutants: 4 of 4 caught.
+
+T-096.4. **Items 109 and 111, corrected by this append.**
+     - **Item 109's local-token Protection cell** names write only. With T-096.1 the check
+       also warns when the home or `run/local-token` can be read.
+     - **Item 109's row "The Qt shell page's device token"** (IndexedDB, plaintext)
+       describes the shell before T-096. The page now holds that token in memory only
+       (T-096.2). A token an earlier shell left is revoked and then deleted (T-096.3).
+     - **Item 111's I-F1 and I-F2** are disposed of by T-096.1 and T-096.2.
+     - **Unchanged.** The page token keeps the D2 grant (observe, control, approve, admin)
+       with no expiry (p19 B8, p16 D2). Changing that is a new owner decision.
+
 ## 13. As built
 (Filled at the end of P20.)
 

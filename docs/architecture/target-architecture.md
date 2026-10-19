@@ -267,6 +267,11 @@ folder's DACL as the one the home will inherit from. When the DACL cannot be rea
 `the ACL of ARCHEUS_HOME <path> could not be read: <error>`, not a crash or a refusal. Off
 Windows this check does not run; the POSIX mode check on `run/` and the token file is unchanged.
 
+**Amendment 2026-10-15 (T-096, who may read the home).** The start-up check now also warns when
+a broad principal may read the home or, once it exists, `run/local-token`, which holds every
+scope. Write is reported first, then read. Read means an allow ACE carrying `GENERIC_READ`,
+`GENERIC_ALL` or `FILE_READ_DATA`. It still warns and never refuses, and still writes no ACL.
+
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|
 | `<ARCHEUS_HOME>/archeus.db` | SQLite WAL, `PRAGMA user_version` migrations | all entities of domain-model.md, `events`, `consumer_cursors`, `consumer_effects`, `idempotency_keys` | current state, history, knowledge |

@@ -2385,18 +2385,65 @@ def test_the_broad_writer_of_a_path(ace, want):
     assert _readers(acl).broad_writer('h') == want
 
 
-def _home_warning(monkeypatch, tmp_path, sid=None, err=None):
+@pytest.mark.parametrize('ace,want', [
+    ((0x0, 'S-1-1-0', 0x1200A9, 0), 'S-1-1-0'),            # Everyone read+execute
+    ((0x0, 'S-1-5-32-545', 0x1, 0x08), 'S-1-5-32-545'),     # list/read, inherit-only
+    ((0x0, 'S-1-5-11', iso.GENERIC_READ, 0), 'S-1-5-11'),   # GENERIC_READ
+    ((0x0, 'S-1-1-0', 0x20, 0), None),                      # execute only
+    ((0x1, 'S-1-1-0', 0x1200A9, 0), None),                  # a deny ACE grants nothing
+    ((0x0, 'S-1-5-32-544', 0x1F01FF, 0), None),             # Administrators are not broad
+])
+def test_the_broad_reader_of_a_path(ace, want):
+    acl = {'h': [(0x0, ME, 0x1F01FF, 0), (0x0, 'S-1-5-18', 0x1F01FF, 0), ace]}
+    assert _readers(acl).broad_reader('h') == want
+
+
+def _home_warning(monkeypatch, tmp_path, sid=None, err=None, read=None, token=None):
+    """`sid`/`read`: what the fake reader answers for writing/reading, either one SID
+    for every path or a {path: SID} map."""
     from archeus.infra import discovery
     seen = []
 
+    def answer(got, path):
+        seen.append(path)
+        if err:
+            raise err
+        return got.get(path) if isinstance(got, dict) else got
+
     class Reader:
         def broad_writer(self, path):
-            seen.append(path)
-            if err:
-                raise err
-            return sid
+            return answer(sid, path)
+
+        def broad_reader(self, path):
+            return answer(read, path)
     monkeypatch.setattr(discovery, '_home_dacl', Reader)
-    return discovery._home_warning(str(tmp_path / 'not' / 'yet')), seen
+    return discovery._home_warning(str(tmp_path / 'not' / 'yet'), token), seen
+
+
+def test_a_broad_reader_on_the_home_is_a_read_warning(monkeypatch, tmp_path):
+    msg, _ = _home_warning(monkeypatch, tmp_path, read='S-1-1-0')
+    assert 'ARCHEUS_HOME %s can be read by Everyone (S-1-1-0)' % tmp_path in msg
+    assert 'local token' in msg and 'user profile' in msg
+
+
+def test_writing_is_reported_before_reading(monkeypatch, tmp_path):
+    msg, _ = _home_warning(monkeypatch, tmp_path, sid='S-1-5-11', read='S-1-1-0')
+    assert 'can be written by Authenticated Users (S-1-5-11)' in msg and 'read by' not in msg
+
+
+def test_a_broad_reader_on_the_local_token_warns_even_when_the_home_is_clean(monkeypatch,
+                                                                             tmp_path):
+    token = tmp_path / 'local-token'
+    token.write_text('x')
+    msg, seen = _home_warning(monkeypatch, tmp_path, read={str(token): 'S-1-5-32-545'},
+                              token=str(token))
+    assert seen[-1] == str(token)
+    assert 'the local token %s can be read by Users (S-1-5-32-545)' % token in msg
+
+
+def test_a_local_token_not_yet_written_is_not_read(monkeypatch, tmp_path):
+    msg, seen = _home_warning(monkeypatch, tmp_path, token=str(tmp_path / 'missing'))
+    assert msg is None and str(tmp_path / 'missing') not in seen
 
 
 def test_a_broad_writer_on_the_home_is_a_warning_naming_it(monkeypatch, tmp_path):

@@ -143,8 +143,10 @@ def run_v1(shell, on_ready=None):
     code. `on_ready(view, app)` as in `run_desktop`.
 
     - The page lives in a NAMED, persistent QWebEngineProfile under
-      `<ARCHEUS_HOME>/QtWebEngine/` (ADR-0044 T5): its storage, so the device
-      token and the appearance choice, survives a restart. The default profile
+      `<ARCHEUS_HOME>/QtWebEngine/` (ADR-0044 T5): its storage, so the
+      appearance choice and B7's snapshot, survives a restart. The page's
+      device token does not: the page holds it in memory only (T-096), so a
+      reload is answered with a fresh launch address. The default profile
       `run_desktop` uses is kept apart: the legacy GUI is unchanged.
     - Before the page paints, the window shows the OS scheme's token
       background (ADR-0044 §4), never a fixed dark.
@@ -157,7 +159,7 @@ def run_v1(shell, on_ready=None):
       tray. There is no timer.
     - GPU compositing stays on, as in `run_desktop`.
     """
-    from PyQt6.QtCore import Qt, QUrl
+    from PyQt6.QtCore import Qt, QTimer, QUrl
     from PyQt6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPixmap
     from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
     from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -215,8 +217,24 @@ def run_v1(shell, on_ready=None):
     win = Window()
     win.setWindowTitle('Archeus')
     win.setWindowIcon(plain)
+    class Page(QWebEnginePage):
+        reloads = 0
+
+        def acceptNavigationRequest(self, url, kind, main):
+            if not (main and kind == QWebEnginePage.NavigationType.NavigationTypeReload):
+                return super().acceptNavigationRequest(url, kind, main)
+            fresh = shell.page_url()
+            if fresh is None:        # Core is down: a plain reload shows B7's snapshot
+                return True
+            # a query that changes each time: a fragment-only change is not a load
+            Page.reloads += 1
+            u = QUrl(fresh)
+            u.setQuery('r=%d' % Page.reloads)
+            QTimer.singleShot(0, lambda: self.load(u))
+            return False
+
     view = QWebEngineView()
-    page = QWebEnginePage(profile, view)
+    page = Page(profile, view)
     page.setBackgroundColor(QColor(shell.preload_bg(dark)))
     page.newWindowRequested.connect(lambda req: QDesktopServices.openUrl(req.requestedUrl()))
     view.setPage(page)
