@@ -164,6 +164,10 @@ class LocalNode:
         try:
             handle = (adapter.start(spec) if resume_state is None
                       else adapter.resume(spec, resume_state))
+        except base.SpawnWriteFailed:
+            # Core's own write failed, not the isolation: the manager charges it
+            # `workspace` (T-102), so it is not recorded as isolation_failed
+            raise
         except base.SpawnFailed as err:
             # the deterministic state of an isolation-establishment failure: the
             # record, the registry line and the tombstone agree on the reason, so a

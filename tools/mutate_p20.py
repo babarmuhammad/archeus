@@ -643,7 +643,7 @@ MUTATIONS = [
      [XI + 'test_E24_the_estop_kills_everything_now_and_core_stays_disarmed_until_rearmed',
       XI + 'test_D13_the_estop_with_core_running_kills_a_registry_only_execution']),
     ('Q121', 'a simulated extra rule reaches the engine unchecked', [(AUTHZ,
-     "        extra = [_simulated_rule(conn, i, r) for i, r in enumerate(extra_rules)]",
+     "        extra = [_simulated_rule(conn, i, r, standin) for i, r in enumerate(extra_rules)]",
      "        extra = [R.rule(**dict(r, id=r.get('id') or 'simulated:%d' % i, source='user'))"
      " for i, r in enumerate(extra_rules)]")],
      [H04B, FZ + 'test_no_fuzzed_command_body_is_a_500']),

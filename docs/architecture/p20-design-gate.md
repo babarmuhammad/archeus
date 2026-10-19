@@ -2722,6 +2722,56 @@ T-096.4. **Items 109 and 111, corrected by this append.**
      - **Unchanged.** The page token keeps the D2 grant (observe, control, approve, admin)
        with no expiry (p19 B8, p16 D2). Changing that is a new owner decision.
 
+129. **Integration round 5 and T-109 as built (2026-10-19, cards T-108, T-109).** Recorded after
+     the candidate was rebuilt; nothing earlier in this section is reworded.
+     - **Order of this section.** The round-5 merge kept both sides of section 12 and renumbered
+       nothing: items 115-128 (slices H and J and their corrections, merged first) are followed
+       by T-096.1-T-096.4 (merged after), which keep their own numbers. This item follows both.
+     - **The candidate (T-108).** Detached checkout `D:/archeus-pv20-int5`, built from round 4's
+       `91cbb0c` by `--no-ff` merges naming each producer: `8829255` (T-092 + T-080, `44cbb47`),
+       `1dc0bf6` (T-083, `4eb7ca5`), `046d3b9` (T-089, `02007f1`), `b63fed4` (slices H, I, J;
+       T-093, T-094, T-098, T-103; `2b6e852`), `99028da` (T-099, T-101, T-102, T-105; `b73f875`),
+       `688443f` (T-096, `e7141c1`), `832e704` (T-107, `1b87969`); then `cherry-pick -x` of the
+       CI cards' own commits (T-091 `b1ff4a0`, `cbb2c78`, `b8754a0`, `7bca0b5`; T-095 `4cb0513`;
+       T-104 `f5ccea9`, `e4e3ce4`). `3d98f84` (a clients/app dependency bump on the pushed
+       branch, in no CI card) was not taken; that is the owner's call.
+     - **Union resolutions.** `688443f`: this section (above) and `target-architecture.md` (the
+       T-089 qualification, then T-096's read amendment). `832e704`: `test_presence.py` (J03b,
+       then J04, J07, J05, J06). `routes.py` merged cleanly to T-107's side, so a replayed re-arm
+       returns before T-098's step-up reset and before the sentinel is cleared.
+     - **Two fixes the merge needed** (new commits, not union). `9a34e65`: with T-099 merged,
+       `mark_ended` deletes `res/mcp.json`, so item 125's runtime gate now also scans just before
+       `drop_mcp_config` and asserts the keys are gone after the execution ends. `ca123e5`: T-102
+       re-raised a failed removal of a stale halt report as a new `OSError`, so the refusal's
+       cause was the wrapper and two S2-L unit tests failed on T-102's own head; the removal now
+       refuses with `SpawnWriteFailed` carrying the original error, and T-102's `workspace`
+       charging is unchanged.
+     - **Verified on `ca123e5`.** Filtered `tests/v1` 4430 passed, 114 skipped, 3 xfailed,
+       0 failed (round 4: 4323, 112, 3; the two new skips are SPA e2e tests needing a built SPA).
+       Reviewed: `reviews/T-108-ca123e5.claude.md` APPROVE and `reviews/T-108-ca123e5.md`
+       (Codex, the section-12 union and `ca123e5`) APPROVE.
+     - **T-109 as built** (`1adbd8e`..`cddec29`, fast-forwarded onto the candidate,
+       `reviews/T-109-cddec29.claude.md` APPROVE). (a) `test_presence.py` J04b builds the
+       busy-retry shape (a keyed re-arm answered 503 that commits later; the same-key retry
+       answers armed false and Core stays disarmed) and J04 replays while armed. (b) In memory
+       mode the shell page's `clearToken` no longer deletes the IndexedDB copy, which stays
+       `retire()`'s alone; node cases keep the stored token when Core refuses. (c) Item 125's
+       runtime gate logs the rig through Core's logger so `core.log` is scanned, scans a
+       12-digit PIN, fails on a file it cannot read instead of skipping it, and its HTTP mission
+       step now runs under the local token and asserts 200. (d) An unparsable registry line is
+       logged and skipped instead of failing every boot, and the no-adapter kill logs whether a
+       kill was actually issued. (e) A paired client with no PIN reads one reason it cannot
+       re-arm, not two.
+     - **Item 128, corrected for this tree.** Its "in this tree" statements described the slice H
+       checkout. In the candidate: the broad-READER warning (T-096.1) is present; the shell page
+       keeps its token in memory only (T-096.2, T-096.3); MCP keys are deleted when the
+       execution's process ends and swept at boot (T-099), still on disk while it runs and after a
+       crash or a Core-less e-stop until the next boot; no new idempotency row holds a step-up
+       proof and migration 0016 dropped the old ones (T-107), while the table's unbounded
+       retention for every other command stays open. Its runtime-gate bullet is corrected by
+       T-109 (c): the HTTP mission step is no longer refused, `core.log` is scanned and the PIN is
+       among the scanned values; the Qt shell is still not exercised.
+
 ## 13. As built
 (Filled at the end of P20.)
 

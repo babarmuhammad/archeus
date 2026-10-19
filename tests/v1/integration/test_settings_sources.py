@@ -588,6 +588,8 @@ def test_T105_a_line_with_no_execution_row_is_killed_and_boot_comes_up(x, caplog
         _wait_dead(lambda: child.poll() is None, 'the stray process was left running')
         assert not os.path.exists(ExecPaths(stray).mcp)          # the sweep still ran
         assert 'no row for it' in caplog.text
+        # its end line is written, so the next boot does not probe it again
+        assert stray not in {u['execution_id'] for u in fresh.manager.node.unended()}
     finally:
         if child.poll() is None:
             child.kill()
@@ -655,6 +657,7 @@ def test_T105_a_kill_that_was_refused_is_not_reported_as_done(x, monkeypatch, ca
         with caplog.at_level('WARNING', logger='archeus.execution'):
             fresh.manager.boot()
         assert 'could not be killed' in caplog.text and 'killed by its recorded' not in caplog.text
+        assert e.id in {u['execution_id'] for u in fresh.manager.node.unended()}
     finally:
         proc.kill_pid_tree(e.pid, e.create_time)
 

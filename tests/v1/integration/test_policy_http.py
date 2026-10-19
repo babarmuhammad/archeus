@@ -167,6 +167,19 @@ def test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500(tc, body, 
     assert why in r.json()['detail']['why'], r.json()
 
 
+def test_H04c_with_no_owner_yet_a_simulated_user_rule_answers_as_the_created_one_will(tc):
+    """create_rule makes the owner a USER rule names when there is none yet;
+    simulate writes nothing, so it judges against a stand-in owner instead of
+    refusing the rule as scope-less (T-094 re-review, non-blocking 2)."""
+    rule = {'scope_level': 'USER', 'action_class': 'read', 'decision': 'DENY'}
+    sim = tc.http('POST', '/v1/policies/simulate', body={'action': _READ, 'extra_rules': [rule]})
+    assert sim.status == 200, sim.json()
+    assert tc.http('GET', '/v1/policies').json()['rules'] == []
+    assert _post(tc, '/v1/policies/rules', rule).status == 200
+    after = tc.http('POST', '/v1/policies/simulate', body={'action': _READ}).json()
+    assert sim.json()['decision'] == after['decision'] == 'DENY'
+
+
 def test_H05_profiles_are_admin_only_and_the_health_names_the_policy_worker(deploy_core):
     tc = deploy_core
     got = _post(tc, '/v1/policies/profile', {'scope': 'user', 'profile': 'careful'})
