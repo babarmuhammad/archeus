@@ -326,8 +326,19 @@ def test_a_hook_reached_through_an_alias_refuses(rt, monkeypatch, tmp_path):
     (1, 'changed after it was planned'),       # the plan's view, then another before the copy
     (2, 'changed while it was staged')])       # ... the same before the copy, another after
 def test_a_source_that_changes_while_it_is_copied_refuses(rt, monkeypatch, after, match):
-    p = os.path.join(rt.src, 'Lib', 'os.py')
-    _fake_lstat(monkeypatch, p, after=after, st_mtime_ns=1)
+    # counted at staging._entry, not os.lstat: posixpath.realpath lstats every
+    # component as well, which moved the count by one on POSIX
+    want = os.path.normcase(os.path.realpath(os.path.join(rt.src, 'Lib', 'os.py')))
+    real, calls = staging._entry, []
+
+    def entry(path, is_dir=None):
+        st = real(path, is_dir)
+        if os.path.normcase(path) != want:
+            return st
+        calls.append(path)
+        return st if len(calls) <= after else SimpleNamespace(
+            st_ino=st.st_ino, st_dev=st.st_dev, st_size=st.st_size, st_mtime_ns=1)
+    monkeypatch.setattr(staging, '_entry', entry)
     with pytest.raises(StageError, match=match):
         _stage(rt)
     assert _published() == [] and len(_runtime()) == 1        # the temporary tree stays

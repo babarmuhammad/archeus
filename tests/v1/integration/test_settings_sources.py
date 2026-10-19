@@ -543,7 +543,9 @@ def test_T105_under_the_estop_it_is_killed_at_once(x):
 
 def test_T105_a_process_already_gone_is_not_taken_in_and_its_config_is_swept(x):
     e, fresh = _restart_with_an_ended_process(x)
-    proc.kill_pid_tree(e.pid, e.create_time)
+    assert proc.kill_pid_tree(e.pid, e.create_time)
+    # POSIX delivers SIGTERM asynchronously: "already gone" only once it is
+    _wait_dead(lambda: fresh.manager.node.alive(_handle(e)), 'the killed process still runs')
     fresh.manager.boot()
     assert e.id not in fresh.manager._procs
     assert not os.path.exists(ExecPaths(e.id).mcp)

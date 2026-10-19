@@ -95,9 +95,15 @@ def _text(v):
 def workspace_path(path, workdir):
     """*path* relative to the workspace, '/'-separated, or absolute when it is
     not provably inside (P9 treats absolute and `..` as never inside)."""
+    given = os.path.expanduser(str(path))
+    # no OS opens a path holding NUL, nor one past Windows' 32767-character
+    # ceiling; realpath stopped raising on both (CPython gh-106242), so the
+    # parse failure canonicalise turns into one unclassified exec is raised here
+    if '\x00' in given or len(given) > 32767:
+        raise ValueError('a path no OS can open')
     if not workdir or str(path).startswith('~'):
-        return posixpath.normpath(os.path.expanduser(str(path)).replace('\\', '/'))
-    full = os.path.realpath(os.path.join(workdir, os.path.expanduser(str(path))))
+        return posixpath.normpath(given.replace('\\', '/'))
+    full = os.path.realpath(os.path.join(workdir, given))
     root = os.path.realpath(workdir)
     try:
         rel = os.path.relpath(full, root)

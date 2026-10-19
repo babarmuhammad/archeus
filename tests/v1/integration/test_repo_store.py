@@ -47,6 +47,13 @@ def _fwd(p):
     return str(p).replace('\\', '/')
 
 
+def _sentinel_hook(path, cmd):
+    # POSIX Git skips a hook that is not executable: without the mode no hook
+    # sentinel could fire there, so every "nothing fired" was vacuous
+    path.write_text('#!/bin/sh\n%s\n' % cmd)
+    path.chmod(0o755)
+
+
 class World:
     """The fixture repository and the hostile configuration around it."""
 
@@ -69,7 +76,7 @@ class World:
             d = tmp / ('hooks-' + who)
             d.mkdir()
             for h in HOOKS:
-                (d / h).write_text('#!/bin/sh\n%s\n' % self.cmd('%s-%s' % (who, h)))
+                _sentinel_hook(d / h, self.cmd('%s-%s' % (who, h)))
         home = tmp / 'hostile'
         home.mkdir()
         (home / 'inc.cfg').write_text('[core]\n\thooksPath = %s\n' % _fwd(tmp / 'hooks-g'))
@@ -726,7 +733,7 @@ def _project(world, extra=()):
     world.git(proj, 'config', 'core.fsmonitor', world.cmd('l-fsmonitor'))
     hooks = proj / '.git' / 'hooks'
     hooks.mkdir(exist_ok=True)
-    (hooks / 'post-checkout').write_text('#!/bin/sh\n%s\n' % world.cmd('own-post-checkout'))
+    _sentinel_hook(hooks / 'post-checkout', world.cmd('own-post-checkout'))
     return proj, head, {p: (m, d) for m, p, d in files}
 
 

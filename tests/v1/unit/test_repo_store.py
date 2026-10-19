@@ -1767,9 +1767,11 @@ def test_a_file_that_is_not_the_one_walked_stops_the_stream_before_done(tmp_path
     _got, _c, plan = _plan(work)
     p = os.path.join(work, 'a.txt')
     if how == 'replaced':
-        os.remove(p)
-        with open(p, 'wb') as f:
+        # made before the old one goes, so it cannot get its freed inode back
+        # (ext4 hands a removed file's inode to the next file made)
+        with open(p + '.new', 'wb') as f:
             f.write(b'A\n')                     # same size, another file
+        os.replace(p + '.new', p)
     else:
         with open(p, 'wb' if how == 'shrank' else 'ab') as f:
             f.write(b'' if how == 'shrank' else b'more')

@@ -36,10 +36,9 @@ class StageError(OSError):
 
 
 def _entry(path, is_dir=None):
-    # a symlink's own mode is neither a directory nor a regular file, so the
-    # plain-entry test below refuses it; a junction needs the attribute
     st = os.lstat(path)
-    if getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+    if stat.S_ISLNK(st.st_mode) or \
+            getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
         raise StageError('an alias, never followed: %s' % path)
     found = stat.S_ISDIR(st.st_mode)
     if not (found or stat.S_ISREG(st.st_mode)) or is_dir is not None and is_dir != found:

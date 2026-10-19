@@ -95,13 +95,18 @@ def test_an_unknown_tool_is_unclassified():
     assert u is True and got[0]['class'] == 'exec'
 
 
+@pytest.mark.parametrize('tolerant', [False, True], ids=['realpath', 'tolerant-realpath'])
 @pytest.mark.parametrize('tool,inp', [
     ('Read', {'file_path': 'a\x00b'}), ('Bash', {'command': 'cat a\x00b'}),
-    pytest.param('Write', {'file_path': 'x' * 70000}, marks=pytest.mark.skipif(
-        sys.platform != 'win32', reason='only Windows refuses an over-long path'))])
-def test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error(tool, inp):
-    """Found by tools/fuzz_p20.py (P20 D12): realpath raises on a NUL or an
-    over-long path; that is a parse failure, so one unclassified exec."""
+    ('Write', {'file_path': 'x' * 70000}), ('Read', {'file_path': '~/a\x00b'})])
+def test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error(monkeypatch, tool, inp,
+                                                                   tolerant):
+    """Found by tools/fuzz_p20.py (P20 D12): a NUL or an over-long path is a
+    parse failure, so one unclassified exec. Older realpath raised on both; the
+    CPython on CI (3.12.10, Windows) returns them as they are (gh-106242), which
+    the tolerant case stands in for on any interpreter (T-122)."""
+    if tolerant:
+        monkeypatch.setattr(os.path, 'realpath', lambda p, *a, **k: p)
     got, u = one(tool, inp)
     assert u is True and [a['class'] for a in got] == ['exec']
 
