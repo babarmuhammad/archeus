@@ -355,8 +355,8 @@ def _start(spec, argv, paths, seq):
             except OSError as err:
                 # a halt report left over from the last process would be read as
                 # this one's: nothing starts
-                raise OSError('could not remove %s: %s'
-                              % (os.path.basename(stale), err)) from err
+                _refuse(paths, 'could not remove %s: %s' % (os.path.basename(stale), err),
+                        err, SpawnWriteFailed)
         if not config.write_atomic(paths.prompt, spec.prompt):
             raise OSError('could not write %s' % paths.prompt)
     except OSError as err:
