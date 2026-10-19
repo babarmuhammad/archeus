@@ -2772,6 +2772,28 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        T-109 (c): the HTTP mission step is no longer refused, `core.log` is scanned and the PIN is
        among the scanned values; the Qt shell is still not exercised.
 
+130. **Built (card T-116, 2026-10-19): a launch opens one terminal.** T-113's probe found that
+     two concurrent resume requests, or two hand-off requests, carrying one idempotency key
+     opened two terminals (3 of 3 runs): the second request received the writer's stored answer
+     (`duplicate: False`) and went on to `_launch`, whose `launched_seq < launch_seq` guard was
+     read before the first launch was recorded. The owner chose "Claim in the writer
+     (Recommended)" (2026-10-19, verbatim) over a per-session lock.
+     - **As built.** `SessionService._launch` first runs a writer command, `claim_launch`; only
+       the request whose claim wins opens a terminal, every other one answers "nothing to
+       launch". The writer runs one command at a time, so the claim is atomic and holds across
+       threads and HTTP requests alike. The claim is a new `Session` field, `launch_claimed_seq`
+       (non-negative, never above `launch_seq`; kept out of the API view, so the schema and
+       `generated.ts` are unchanged), and records a `session.observed` event as the launch
+       outcome does. No migration: entity rows are JSON bodies and a missing field reads 0.
+     - **A crash between claim and terminal.** The claim is settled at boot exactly as an
+       unclaimed unsettled launch was: `expire_launches` sees `launch_seq > launched_seq` and
+       records `launch_expired`; a restarted Core opens no terminal nobody asks for now (D21),
+       and the next resume launches normally.
+     - **Verified.** `test_sessions.py` T35 (concurrent same-key resume and hand-off: one
+       terminal; 5 of 5 repeated runs), T36 (a replay after the launch opens nothing, a new
+       request does), T37 (claimed, crashed, expired at boot, next resume launches). Mutant
+       Q133 (a second claimant wins) is killed by T35.
+
 ## 13. As built
 (Filled at the end of P20.)
 

@@ -330,3 +330,70 @@ def test_T17_the_brief_shows_only_what_changed_after_the_session_s_own_cursor(x)
     s = x.session(mission=mid)
     b = x.sessions.resume(x.user, session_id=s['id'], request_id='r1')['brief']
     assert b['changes']['count'] == 0 and b['changes']['groups'] == []
+
+
+# ── a launch opens one terminal (T-116) ──────────────────────────────────────
+
+class SlowTerminal(Terminal):
+    """A terminal that takes time to open, as a real one does: long enough for a
+    second request carrying the same launch to arrive while the first opens."""
+
+    def open_terminal(self, argv, *, cwd, env, title=''):
+        import time
+        time.sleep(0.2)
+        return super().open_terminal(argv, cwd=cwd, env=env, title=title)
+
+
+def _both(fn):
+    import threading
+    out, errs = [], []
+
+    def go():
+        try:
+            out.append(fn())
+        except Exception as e:                  # noqa: BLE001 - asserted below
+            errs.append(e)
+    ts = [threading.Thread(target=go) for _ in range(2)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert errs == []
+    return out
+
+
+@pytest.mark.parametrize('what', ['resume', 'handoff'])
+def test_T35_two_concurrent_requests_with_one_key_open_one_terminal(x, what):
+    s = x.session()
+    x.sessions.node = term = SlowTerminal()
+    if what == 'resume':
+        out = _both(lambda: x.sessions.resume(x.user, session_id=s['id'], request_id='r1',
+                                              key='k1'))
+    else:
+        out = _both(lambda: x.sessions.handoff(x.user, source_session_id=s['id'],
+                                               request_id='h1', harness_id='fake_b', key='k1'))
+    assert len(term.opened) == 1
+    assert sorted(o['launch']['launched'] for o in out) == [False, True]
+
+
+def test_T36_a_replay_after_the_launch_opens_nothing_and_a_new_request_does(x):
+    s = x.session()
+    x.sessions.resume(x.user, session_id=s['id'], request_id='r1', key='k1')
+    again = x.sessions.resume(x.user, session_id=s['id'], request_id='r1', key='k1')
+    assert len(x.term.opened) == 1 and again['launch'] == {'launched': False,
+                                                           'reason': 'nothing to launch'}
+    x.sessions.resume(x.user, session_id=s['id'], request_id='r2', key='k2')
+    assert len(x.term.opened) == 2
+
+
+def test_T37_a_claimed_launch_a_crash_left_unopened_is_expired_at_boot_not_replayed(x):
+    s = x.session()
+    x.do(S.resume, who=x.user, session_id=s['id'], request_id='r1')
+    seq = x.s(s['id']).launch_seq
+    assert x.do(S.claim_launch, who=x.system, session_id=s['id'], launch_seq=seq)['won']
+    # Core dies here: claimed, no terminal, no outcome recorded
+    fresh = SV.SessionService(x.db, system=x.system, adapters=[x.fa, x.fb], node=Terminal())
+    assert fresh.sweep()['expired'] == [s['id']] and fresh.node.opened == []
+    assert x.s(s['id']).launch_error == 'launch_expired'
+    fresh.resume(x.user, session_id=s['id'], request_id='r2')
+    assert len(fresh.node.opened) == 1

@@ -174,7 +174,8 @@ class SessionService:
 
     def _launch(self, session_id, artifact_sha=None, what=''):
         s, home = self._session(session_id)
-        if s.launched_seq >= s.launch_seq:
+        if not self._do(S.claim_launch, self.system, session_id=s.id,
+                        launch_seq=s.launch_seq)['won']:
             return {'launched': False, 'reason': 'nothing to launch'}
         a = self.adapters[s.harness_id]
         first = None

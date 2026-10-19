@@ -15,7 +15,8 @@ D10's re-arm step-up from a paired client (Q115-Q117); T-094's review: the
 gate tests and drills no mutant named, and the defects its stronger fuzz
 corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
-Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131).
+Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
+is claimed once, so one terminal opens (Q133).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -72,6 +73,8 @@ PARITY_TS = 'node:test/parity.test.ts'
 PARITY_PY = 'tests/v1/tui/test_parity.py'
 TOOLS = 'archeus/harnesses/claude_code/tools.py'
 FAKE = 'archeus/harnesses/fake.py'
+SESS = 'archeus/core/application/sessions.py'
+SES = 'tests/v1/integration/test_sessions.py::'
 FU = 'tests/v1/unit/test_tool_removal_units.py::'
 FR = 'tests/v1/integration/test_tool_removal.py::'
 G6F = G6 + 'test_a_tool_the_task_does_not_hold_never_runs_and_never_reaches_the_hook'
@@ -696,6 +699,10 @@ MUTATIONS = [
      "            for k, v in self.boundary.items():      # the shapes rules.check_boundary reads",
      "            for k, v in ():")],
      [H04B, FREE, FZ + 'test_no_fuzzed_command_body_is_a_500']),
+    ('Q133', 'a second request carrying the same launch claims it too (T-116)', [(SESS,
+     "    if launch_seq != s.launch_seq or max(s.launched_seq, s.launch_claimed_seq) >= launch_seq:",
+     "    if launch_seq != s.launch_seq or s.launched_seq >= launch_seq:")],
+     [SES + 'test_T35_two_concurrent_requests_with_one_key_open_one_terminal']),
 ]
 
 if __name__ == '__main__':
