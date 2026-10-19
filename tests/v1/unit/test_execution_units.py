@@ -1822,3 +1822,24 @@ def test_a_blocking_reason_is_not_a_stop_reason(state):
         assert _row(db, entities.Execution, eid).version == before.version
     finally:
         db.close()
+
+
+def test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_source():
+    """P21 D4 (ADR-0031 §6): REQUESTED < ROUTED < SERVED < BILLED; a lower report
+    changes nothing, a higher one replaces it, and only SERVED/BILLED name a revision."""
+    from archeus.core.execution.manager import _billed
+    e = SimpleNamespace(served_level='REQUESTED', served_model='sonnet')
+    assert X._served(e, {'level': 'SERVED', 'model': 'm-1'}) == {
+        'served_level': 'SERVED', 'served_model': 'm-1', 'model_revision': 'm-1'}
+    assert X._served(e, {'level': 'ROUTED', 'model': 'm-1'}) == {
+        'served_level': 'ROUTED', 'served_model': 'm-1'}
+    e = SimpleNamespace(served_level='BILLED', served_model='m-1')
+    assert X._served(e, {'level': 'SERVED', 'model': 'm-2'}) == {}      # never lowered
+    assert X._served(e, {'level': 'BILLED', 'model': 'm-1'}) == {}      # nothing new
+    assert X._served(e, {'level': 'BILLED', 'model': 'm-2'})['served_model'] == 'm-2'
+    assert X._served(e, None) == {} and X._served(e, {'level': 'SERVED', 'model': ''}) == {}
+    # BILLED only when the usage attributes the served model, or attributes one model
+    assert _billed({'level': 'SERVED', 'model': 'a'}, ['a', 'b']) == {'level': 'BILLED',
+                                                                      'model': 'a'}
+    assert _billed({'level': 'SERVED', 'model': 'c'}, ['a', 'b']) is None
+    assert _billed(None, ['a']) == {'level': 'BILLED', 'model': 'a'}

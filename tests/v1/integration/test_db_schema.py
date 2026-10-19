@@ -125,7 +125,7 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 16
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 17
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
             'consumer_effects', 'idempotency_keys',
@@ -136,7 +136,7 @@ def test_a_fresh_database_reaches_the_current_schema(db):
             'conversations', 'messages', 'intents', 'ideas',
             'policy_rules', 'policy_decisions', 'approvals',
             'accounts', 'resource_policies', 'usage_snapshots',
-            'sessions', 'checkpoints', 'pause_batches', 'opt_ins'} <= tables
+            'sessions', 'checkpoints', 'pause_batches', 'opt_ins', 'artifact_records'} <= tables
 
 
 def test_0016_drops_the_idempotency_rows_whose_hash_covered_a_pin(tmp_path):
@@ -161,7 +161,7 @@ def test_0016_drops_the_idempotency_rows_whose_hash_covered_a_pin(tmp_path):
         c.execute('INSERT INTO idempotency_keys (key, command, actor, request_hash, response, '
                   "created_at) VALUES (?, ?, 'p', 'h', '{}', '2026-10-15T00:00:00.000Z')",
                   ('k%d' % i, name))
-    assert migrate.migrate(c) == 16
+    assert migrate.migrate(c) == migrate.migrations()[-1][0]
     left = [r[0] for r in c.execute('SELECT command FROM idempotency_keys')]
     c.close()
     assert left == ['archeus.core.application.commands.create_mission']

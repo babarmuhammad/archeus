@@ -27,6 +27,10 @@ ND = 'archeus/node/local.py'
 U = 'tests/v1/unit/test_pressure_units.py'
 I = 'tests/v1/integration/test_context_capacity.py'
 E = 'tests/v1/integration/test_execution.py'
+RS = 'archeus/core/application/resources.py'
+CP = 'archeus/core/execution/checkpoint.py'
+XU = 'tests/v1/unit/test_execution_units.py'
+RI = 'tests/v1/integration/test_routing.py'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -138,6 +142,38 @@ MUTATIONS = [
      "        hashes = git('hash-object', '--stdin-paths',",
      "        hashes = git('hash-object', '-w', '--stdin-paths',")],
      [U + '::test_the_end_state_digest_measures_head_diff_and_untracked_and_writes_nothing']),
+    # ── slice A: requirement provenance (D11) ──
+    ('Z23', "a task's P9 requirement recorded as Core's own rule", [(RS,
+     "                          policy='policy')",
+     "                          )")],
+     [RI + '::test_I_H3_every_recorded_requirement_names_its_source']),
+    # ── slice A: the served model's provenance (D4, ADR-0031 §6) ──
+    ('Z24', 'a lower provenance report replaces a higher one', [(EX,
+     "    if levels.index(level) < old or (levels.index(level) == old and model == e.served_model):",
+     "    if levels.index(level) == old and model == e.served_model:")],
+     [XU + '::test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_source']),
+    ('Z25', 'a requested or routed model claims an exact revision', [(EX,
+     "    if level in ('SERVED', 'BILLED'):",
+     "    if True:")],
+     [XU + '::test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_source']),
+    ('Z26', 'BILLED claimed when the usage bills other models', [(MGR,
+     "    if len(billed) == 1:",
+     "    if billed:")],
+     [XU + '::test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_source']),
+    ('Z27', "the transcript's model is ignored", [(MGR,
+     "                p['served'] = {'level': 'SERVED', 'model': ev['model']}",
+     "                pass")],
+     [E + '::test_E33b_the_served_model_is_recorded_at_the_level_its_source_supports']),
+    # ── slice A: the producer record (D5) and ADR-0047 clause 5 (ii) ──
+    ('Z28', 'the guard ignores the artifacts a continuation recorded', [(EX,
+     "    if pressure.progressed(end_state, artifacts_of(tx.conn, e), earlier):",
+     "    if pressure.progressed(end_state, (), earlier):")],
+     [I + '::test_an_artifact_the_continuation_produced_is_progress_and_a_checkpoint_never_is']),
+    ('Z29', 'a checkpoint is derived without its producer record', [(CP,
+     "    record_artifact(tx, actor=actor, execution=e, sha=sha, media_type='text/markdown',\n"
+     "                    size=len(data), kind='checkpoint', label=cp.id)",
+     "    pass")],
+     [I + '::test_an_artifact_the_continuation_produced_is_progress_and_a_checkpoint_never_is']),
 ]
 
 

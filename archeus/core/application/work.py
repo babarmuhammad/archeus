@@ -85,6 +85,9 @@ def new_execution(tx, actor, m, plan, t, route, auth, rd, handoff_from=None):
                            harness_id=route.harness_id or route.selected,
                            route_decision_id=rd, account_id=route.account_id,
                            model=route.model, effort=route.effort,
+                           # what is known of the model so far: only that it was asked for
+                           served_model=route.model,
+                           served_level='REQUESTED' if route.model else None,
                            # the binding it may run under (P11, p11-design-gate §7)
                            plan_id=plan.id, plan_digest=plan.digest,
                            policy_decision_id=auth.get('policy_decision_id'),

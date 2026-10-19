@@ -64,6 +64,9 @@ def normalise(raw):
                             'input': block.get('input')})
         if isinstance(msg.get('usage'), dict):
             out.append({'type': 'usage', 'usage': msg['usage']})
+        if isinstance(msg.get('model'), str) and msg['model']:
+            # the model that answered, as the transcript reports it (SERVED, ADR-0031 §6)
+            out.append({'type': 'model', 'model': msg['model']})
     elif t == 'user':
         for block in (raw.get('message') or {}).get('content') or ():
             if isinstance(block, dict) and block.get('type') == 'tool_result':
@@ -75,9 +78,12 @@ def normalise(raw):
             usage['total_cost_usd'] = raw['total_cost_usd']
         if raw.get('is_error') and quota.is_limit_error(text):
             out.append({'type': 'limit', 'window': quota.is_window_limit(text), 'text': text})
+        billed = raw.get('modelUsage')
         out.append({'type': 'result', 'summary': text[:2000], 'is_error': bool(raw.get('is_error')),
                     'subtype': raw.get('subtype'), 'session_id': raw.get('session_id'),
-                    'usage': usage})
+                    'usage': usage,
+                    # the models the usage is attributed to (BILLED, ADR-0031 §6)
+                    'billed': sorted(billed) if isinstance(billed, dict) else []})
     elif t == 'system':
         out.append({'type': 'system', 'subtype': raw.get('subtype'),
                     'session_id': raw.get('session_id')})
