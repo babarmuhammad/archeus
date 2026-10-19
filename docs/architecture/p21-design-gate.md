@@ -325,3 +325,5 @@ change to credentials, the boundary or PV-20.
   to the same decision (`refused is not None`) and killed; the suite now runs on
   `tools/mutate_p18.py`'s runner (SPA rebuild for a browser-guarded mutant); Z01-Z22 20/20 and
   Z13, Z14 killed under it.
+- `tests/v1/unit/test_api_structure.py` pins the route table to the per-phase tables; slice F's
+  `GET /v1/search` (`observe`) is its `P21` table (added after the recovery, 2026-10-19).
