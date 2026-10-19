@@ -1,0 +1,3 @@
+VERDICT: CHANGES
+1. archeus/node/staging.py:191 - Destination rechecks cover Lib/DLLs descendants but omit ARCHEUS_HOME, runtime and tmp after initial checks; tmp becoming a reparse point after first copy allows subsequent writes through it before final verification refuses - Check complete destination directory chain before each mkdir/write, including _pth and manifest; add synthetic alias-after-first-copy tests asserting no subsequent writes. Retain explicit TOCTOU limitation.
+Not checked: Reported test, lint and mutation results independently; real runtime closure, Windows loader/publication behaviour, native isolation or TOCTOU resistance. No tests or native APIs run.

@@ -1,7 +1,4 @@
-"""Headless Codex review of a board card: py .collab/review.py T-012 [sha ...] | --pending
-
-Naming shas reviews only those commits (a correction after CHANGES), not the whole card.
-Rebuilt 2026-10-19 after the D:\\Claude wipe."""
+"""Headless Codex review of a board card: py .collab/review.py T-012 | --pending"""
 import glob
 import os
 import re
@@ -73,8 +70,8 @@ def codex():
     return hits[-1]
 
 
-def review(cid, card, fields, only=None):
-    commits = only or shas(fields)
+def review(cid, card, fields):
+    commits = shas(fields)
     if not commits:
         print(f'{cid}: no commits listed, skipped')
         return False
@@ -99,15 +96,19 @@ def review(cid, card, fields, only=None):
 
 def main(argv):
     if argv == ['--pending']:
-        ok = all(review(c, b, f) for c, b, f in cards() if f.get('status') == 'review')
-        return 0 if ok else 1
-    if argv and argv[0] != '--pending':
+        todo = [c for c in cards() if c[2].get('status') == 'review'
+                and shas(c[2]) and not os.path.exists(out_path(c[0], shas(c[2])[-1]))]
+        if not todo:
+            print('nothing pending')
+        return 0 if all([review(*c) for c in todo]) else 1
+    if len(argv) == 1:
         match = [c for c in cards() if c[0] == argv[0]]
         if not match:
             sys.exit(f'{argv[0]} not on the board')
-        return 0 if review(*match[0], only=argv[1:]) else 1
-    sys.exit('usage: review.py T-NNN [sha ...] | --pending')
+        return 0 if review(*match[0]) else 1
+    sys.exit(__doc__)
 
 
 if __name__ == '__main__':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.exit(main(sys.argv[1:]))

@@ -43,7 +43,7 @@ def newest():
 
 def run(cid, bash):
     os.makedirs(os.path.join(SANDBOX, ".collab"), exist_ok=True)
-    src = os.path.join(r"C:\Users\mab\archeus-recovery\repo\.collab", f"QWEN-CARD-{cid}.md")
+    src = os.path.join(r"D:\Archeus\.collab", f"QWEN-CARD-{cid}.md")
     dst = os.path.join(SANDBOX, ".collab", f"QWEN-CARD-{cid}.md")
     if os.path.exists(src):
         open(dst, "w", encoding="utf-8").write(open(src, encoding="utf-8").read())

@@ -1,0 +1,3 @@
+VERDICT: CHANGES
+1. archeus/harnesses/calls.py:65 - Claude declares `no_tools`, but its invocation only adds `--tools ""`, which leaves MCP tools available (documented in T-086); routing can therefore select a caller that violates the recorded requirement - require reviewed T-086 adapter hardening and regression coverage before accepting this capability declaration.
+Not checked: Tests or mutation results independently rerun; real CLI/provider behavior; final integration with T-060/T-086.
