@@ -820,6 +820,10 @@ CREATE_MISSION = {'type': 'object', 'properties': {
     'idempotency_key': KEY}, 'required': ['title', 'objective', 'idempotency_key']}
 KEYED = {'type': 'object', 'properties': {'idempotency_key': KEY},
          'required': ['idempotency_key']}
+#: P20 D10: a paired client's re-arm carries its PIN as the step-up proof
+REARM = {'type': 'object', 'properties': {'step_up': {'type': 'string', 'nullable': True},
+                                          'idempotency_key': KEY},
+         'required': ['idempotency_key']}
 EMPTY = {'type': 'object', 'properties': {}, 'required': []}
 #: P16 (p16-design-gate D2): a launch code's grant, bounded by the minter's scopes
 LAUNCH_CODE = {'type': 'object', 'properties': {

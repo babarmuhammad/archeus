@@ -134,7 +134,8 @@ class Intents:
                            workspace_id=ids.GLOBAL_WORKSPACE, project_id=None,
                            prompt=brain.prompt(msg.text, lines, answering),
                            schema=brain.SCHEMA, check=lambda p: brain.check(p, facts),
-                           workdir=paths.archeus_home(), context_package_id=pkg['id'])
+                           workdir=paths.fresh_call_dir, context_package_id=pkg['id'],
+                           no_tools=True)
         if c.state != 'ok':
             return self._do(self.conv.decline, message_id=msg.id,
                             route_decision_id=c.route_decision_id, state=c.state,

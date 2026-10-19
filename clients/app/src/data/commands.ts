@@ -54,6 +54,8 @@ export function explain(r: Refusal): string {
       return 'Archeus refused a command that was sent late. Nothing was changed.';
     case 'host_not_allowed':
       return 'Only from the computer running Archeus.';
+    case 'remote_host_required':
+      return 'Only through the configured remote connection to Archeus.';
     case 'core_starting':
       return 'Archeus is starting. Try again in a moment.';
     case 'busy':

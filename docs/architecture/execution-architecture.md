@@ -121,6 +121,30 @@ workspace); Core-authored spawn configuration has the response class's authority
 execution reads); and `stream.jsonl`'s content is execution-authored — a `result` in it is never a
 process exit, while the `ended` tombstone Core writes is.
 
+*As built 2026-10-12 (PV-20 S2-L, `13c1172`, not yet accepted; p20-design-gate §12 item 103).*
+The directory holds the class directories below, for **every** execution, isolated or not. Core
+creates `req/`, `res/` and `ctl/` at spawn. The files above stay in the directory itself, which is
+Core's (class 4).
+
+| Directory | Class | Written by | Holds |
+|---|---|---|---|
+| `req/` | 1 | the execution (the hook) | `<seq>.lock`, `<seq>.req.json`, `halted.json`, `precompact.json` |
+| `res/` | 2 | Core | `<seq>.res.json`, the spawn configuration (`settings.json`, `mcp.json`) |
+| `ctl/` | 3 | Core | the `STOP`, `PAUSE` and `HANDOFF` flags |
+| `own/work` | 7 | the execution | the workspace of an execution with no project |
+| `own/state` | 7 | the execution | its runtime state |
+
+*Qualified 2026-10-12 (p20-design-gate §12 item 107).* The `own/state` row is a path and a row of
+the isolation plan (`ExecPaths.state`, the `state` row of `default_plan`), not a relocation of the
+CLI's state: the Claude Code adapter still sets `CLAUDE_CONFIG_DIR` to the account's home
+(`ClaudeCodeAdapter._env`), so the CLI's own configuration and state resolve under that home. Moving the
+runtime's state into `own/state`, and the broker its provider access needs, is ADR-0053 §7 A2's
+open work. "Core creates" above describes the order of creation at spawn; the hook also creates
+its mailbox if it is absent (`hook.py`), and no check yet establishes which principal may create
+entries in the execution's directory.
+
+The global `<ARCHEUS_HOME>/run/STOP` sentinel is unchanged.
+
 ## 4. Process lifecycle
 
 ```mermaid

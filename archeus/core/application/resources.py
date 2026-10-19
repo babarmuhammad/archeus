@@ -330,12 +330,13 @@ def refresh_ledgers(conn, snap, now):
 
 
 def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_id, min_tier,
-                  now=None, forbidden=None, max_run_s=None):
+                  now=None, forbidden=None, max_run_s=None, no_tools=False):
     """(requirements, snapshot, readings) for one of Archeus's own calls
     (ADR-0022): every own-call adapter; a harness with no registered account
     offers its one fixed default account (ADR-0048 D-25.1), with the adapter's
     reason when it cannot be spent. `max_run_s` bounds how long the call
-    counts as live work."""
+    counts as live work. `no_tools` is recorded as the `no_tools` capability,
+    so the router's capability step drops a harness that cannot honour it."""
     from ...harnesses.fake import is_fake_caller
     now = time.time() if now is None else now
     terms = _terms(conn)
@@ -358,7 +359,8 @@ def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_i
     models = {h['id']: preference.model_for(h['id']) for h in hs
               if preference.model_for(h['id'])}
     req = {'subject': 'archeus_call', 'purpose': purpose, 'project_id': project_id,
-           'capabilities': ['headless'], 'structured_output': schema is not None,
+           'capabilities': ['headless', 'no_tools'] if no_tools else ['headless'],
+           'structured_output': schema is not None,
            'min_model_tier': min_tier, 'min_context_window': None, 'models': models,
            'model_required': False, 'effort': None, 'effort_required': False,
            'preferred': {'harnesses': [preference.harness] if preference.harness else [],

@@ -11,6 +11,7 @@ import shutil
 from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths, run_dir
+from ..application.verification import CONFINED_VERIFIER
 from ..domain import entities
 
 #: how long one command may run (p13-design-gate §18); a test sets it lower
@@ -62,9 +63,49 @@ def argv_of(command):
     return [found or argv[0]] + argv[1:]
 
 
-def run_commands(node, workspace, cmds, *, verification_id, timeout_s):
-    """One check per command (§8.3): exit 0 → pass, non-zero → fail, not found
-    or timed out → error. Output is stored as an artifact (its last bytes)."""
+def confined_argv(command, toolchain):
+    """*command* as argv with its program found in the Core-staged *toolchain* and
+    nowhere else (owner T-054 Q1 A), or None: it cannot run confined."""
+    try:
+        argv = shlex.split(command, posix=True)
+    except ValueError:
+        return None
+    if not argv:
+        return None
+    found = shutil.which(argv[0], path=os.pathsep.join(toolchain))
+    # which takes a program named with a directory as it is, and on Windows looks in
+    # the current directory first: only a program inside the toolchain is one
+    dirs = {os.path.normcase(os.path.abspath(d)) for d in toolchain}
+    if found is None or os.path.normcase(os.path.dirname(os.path.abspath(found))) not in dirs:
+        return None
+    return [os.path.abspath(found)] + argv[1:]
+
+
+def check_of(kind, command, argv, r):
+    """The check for one run of *command* (§8.3): exit 0 → pass, non-zero →
+    fail, not found or not finished → error. Its output is stored as an
+    artifact (its last bytes); a confined run adds what confined it."""
+    sha = store.put(r['output']) if r['output'] else None
+    check = {'name': '%s: %s' % (kind, command), 'kind': 'command', 'argv': list(argv),
+             'exit_code': r['exit_code'], 'duration_ms': r['duration_ms'],
+             'output_sha256': sha, 'output_bytes': r['output_bytes'],
+             'truncated': r['truncated']}
+    if 'confinement' in r:
+        check['confinement'] = r['confinement']
+    if r['error']:
+        check.update(result='error', detail=r['error'])
+    elif r['exit_code'] == 0:
+        check.update(result='pass', detail='exit 0')
+    else:
+        check.update(result='fail', detail='exit %s' % r['exit_code'])
+    return check
+
+
+def run_commands(node, workspace, cmds, *, verification_id, timeout_s, verifier_version):
+    """One unconfined check per command (§8.3). A row the sink stamped confined
+    never gets here: it runs only through `run_confined_check` (A6-4)."""
+    if verifier_version == CONFINED_VERIFIER:
+        raise ValueError('verification %s runs only confined' % verification_id)
     checks = []
     base = os.path.join(run_dir(), 'verify', verification_id)
     for i, (kind, command) in enumerate(cmds):
@@ -76,18 +117,7 @@ def run_commands(node, workspace, cmds, *, verification_id, timeout_s):
             continue
         r = node.run_check(workspace, argv, timeout=timeout_s,
                            out_path=os.path.join(base, '%d.log' % i))
-        sha = store.put(r['output']) if r['output'] else None
-        check = {'name': name, 'kind': 'command', 'argv': list(argv),
-                 'exit_code': r['exit_code'], 'duration_ms': r['duration_ms'],
-                 'output_sha256': sha, 'output_bytes': r['output_bytes'],
-                 'truncated': r['truncated']}
-        if r['error']:
-            check.update(result='error', detail=r['error'])
-        elif r['exit_code'] == 0:
-            check.update(result='pass', detail='exit 0')
-        else:
-            check.update(result='fail', detail='exit %s' % r['exit_code'])
-        checks.append(check)
+        checks.append(check_of(kind, command, argv, r))
     return checks
 
 

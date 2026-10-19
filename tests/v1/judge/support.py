@@ -81,7 +81,9 @@ idle = None
 
 def wait_for(fn, timeout=30.0, interval=0.05):
     """Poll *fn* until it returns something truthy; fail the test on timeout."""
-    deadline = time.monotonic() + timeout
+    start = time.monotonic()
+    deadline = start + timeout
+    what = getattr(fn, '__name__', fn)
     while True:
         got = fn()
         if got:
@@ -91,10 +93,12 @@ def wait_for(fn, timeout=30.0, interval=0.05):
             if got:
                 return got
             raise NotImplementedError('waiting for %s, but nothing in this Core advances '
-                                      'state on its own yet' % getattr(fn, '__name__', fn))
+                                      'state on its own yet (Core idle after %.1fs; last read %r)'
+                                      % (what, time.monotonic() - start, got))
         if time.monotonic() > deadline:
-            raise AssertionError('timed out after %.0fs waiting for %s'
-                                 % (timeout, getattr(fn, '__name__', fn)))
+            raise AssertionError('timed out after %.0fs waiting for %s (wait_for deadline, '
+                                 '%.1fs elapsed; last read %r)'
+                                 % (timeout, what, time.monotonic() - start, got))
         time.sleep(interval)
 
 
@@ -301,8 +305,8 @@ class Rig:
         from archeus.node.local import LocalNode
         real = LocalNode.spawn
 
-        def late(node, adapter, spec, resume_state=None):
-            handle = real(node, adapter, spec, resume_state=resume_state)
+        def late(node, adapter, spec, *, isolated, resume_state=None):
+            handle = real(node, adapter, spec, isolated=isolated, resume_state=resume_state)
             contract = spec.task_contract
             if contract.get('key') == task_key and not contract.get('continuation'):
                 stream = paths.ExecPaths(spec.execution_id).stream

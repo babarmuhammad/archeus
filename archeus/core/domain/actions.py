@@ -61,6 +61,9 @@ class Action:
             raise ValueError('unknown action class: %r' % (self.action_class,))
         if not (isinstance(self.target, str) and self.target):
             raise ValueError('an action needs a target')
+        for k in ('diff_hash', 'environment', 'branch', 'host'):
+            if not (getattr(self, k) is None or isinstance(getattr(self, k), str)):
+                raise ValueError('Action.%s is a string or null' % k)
         for k in ('argv', 'paths'):
             if getattr(self, k) is not None:
                 object.__setattr__(self, k, tuple(str(a) for a in getattr(self, k)))

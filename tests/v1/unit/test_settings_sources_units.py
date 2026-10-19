@@ -18,7 +18,7 @@ import pytest
 
 from archeus.core.domain import entities as E, ids
 from archeus.core.redact import redact
-from archeus.harnesses import hook, sources
+from archeus.harnesses import base, hook, sources
 from archeus.harnesses.claude_code import adapter as cc
 
 HOOK = hook.__file__
@@ -272,13 +272,13 @@ def _env(tmp_path, wait='5'):
 
 
 def _answer_with(tmp_path, eid, res):
-    box = os.path.join(str(tmp_path), 'run', 'exec', eid, 'hook')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
 
     def core():
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
-            if os.path.exists(os.path.join(box, '1.req.json')):
-                _write(os.path.join(box, '1.res.json'), res)
+            if os.path.exists(os.path.join(d, 'req', '1.req.json')):
+                _write(os.path.join(d, 'res', '1.res.json'), res)
                 return
             time.sleep(0.02)
     t = threading.Thread(target=core)
@@ -336,10 +336,24 @@ def test_E19_a_core_that_never_answers_is_a_halt_before_claude_codes_own_timeout
     out = json.loads(r.stdout)
     assert r.returncode == 0 and out['continue'] is False
     assert out['hookSpecificOutput']['permissionDecision'] == 'deny'
-    assert os.path.exists(os.path.join(str(tmp_path), 'run', 'exec', eid, 'halted.json'))
+    assert os.path.exists(os.path.join(str(tmp_path), 'run', 'exec', eid, 'req', 'halted.json'))
     # the hook's own deadline is well inside the one Claude Code enforces on it
     assert float(os.environ.get('ARCHEUS_HOOK_WAIT', '60')) < cc.HOOK_TIMEOUT_S
     assert hook.WAIT_S < cc.HOOK_TIMEOUT_S
+
+
+def test_the_spawn_configuration_is_core_authored_class_2(archeus_home):
+    """PV-20 §7.5: the settings file that installs the hook sits where the execution
+    may read and never write — not beside its own reports, not in Core's directory.
+    Where it sits is all this shows: that the real CLI loads its hook from there is
+    runtime evidence this test cannot give."""
+    eid = ids.new_id('execution')
+    spec = base.ExecutionSpec(execution_id=eid, prompt='go', workdir=str(archeus_home),
+                              hook_settings=(sys.executable, HOOK))
+    argv = cc.ClaudeCodeAdapter('claude').argv(spec, 'session')
+    settings = argv[argv.index('--settings') + 1]
+    assert os.path.dirname(settings) == base.ExecPaths(eid).res
+    assert os.path.isfile(settings)
 
 
 # ── the fake agent reads a hook as Claude Code documents it ─────────────────
@@ -501,3 +515,101 @@ def test_E22_a_hook_that_cannot_write_its_answer_still_exits_with_the_deny(tmp_p
     os.close(w)
     _out, err = p.communicate(b'not json', timeout=60)
     assert p.returncode == hook.DENY_EXIT, (p.returncode, err)
+
+
+# ── T-028 (T-017 C2): an isolated execution's inventory (ADR-0053 A2) ─────────
+
+#: every opt-in that would let something of the account home, or an MCP server, in
+EVERYTHING = (('account', 'source', 'user'), ('account', 'plugin', 'pl@m'),
+              ('account', 'mcp', 'gh'), ('account', 'mcp', 'nope'), ('project', 'mcp', 'db'),
+              ('project', 'source', 'project'), ('project', 'source', 'local'))
+
+
+def _from_home(i):
+    return (i['source'] in ('user', 'plugin') or i['source'].startswith('plugin:')
+            or (i['type'] == 'plugin' and i['source'] in ('project', 'local')))
+
+
+def _inside(path, root):
+    p, r = (os.path.normcase(os.path.realpath(x)) for x in (path, root))
+    return p == r or p.startswith(r.rstrip(os.sep) + os.sep)
+
+
+def test_an_isolated_inventory_admits_no_mcp_server(world, tmp_path):
+    ordinary, inv = take(world, *EVERYTHING), take(world, *EVERYTHING, isolated=True)
+    assert ordinary['flags']['mcp_servers']                 # the opt-ins do reach a server
+    assert inv['flags']['mcp_servers'] == []
+    mcp = items(inv, type='mcp_server')
+    assert {i['name'] for i in mcp} >= {'gh', 'web', 'db', 'nope'}
+    assert {i['reason'] for i in mcp} == {sources.ISOLATED_NO_MCP}
+    assert {(i['name'], i['status']) for i in mcp if i['name'] in ('gh', 'db', 'nope')} == {
+        ('gh', 'excluded'), ('db', 'excluded'), ('nope', 'not_found')}
+    res = str(tmp_path / 'res')
+    argv = sources.flag_argv(inv['flags'], home=world[0], workdir=world[1], exec_dir=res)
+    assert '--mcp-config' not in argv and not os.path.exists(os.path.join(res, 'mcp.json'))
+
+
+@pytest.mark.parametrize('recorded_only', [(), ('user',)])
+def test_an_isolated_inventory_never_predicts_an_account_home_item_loaded(world,
+                                                                        recorded_only):
+    inv = take(world, *EVERYTHING, isolated=True, recorded_only=recorded_only)
+    home = [i for i in inv['items'] if _from_home(i)]
+    assert {i['type'] for i in home} >= {'hook', 'permission', 'plugin', 'skill', 'claude_md'}
+    assert not [i for i in home if i['status'] in sources.LOADED]
+    assert {i['reason'] for i in home if i['type'] != 'mcp_server'} == {
+        sources.ISOLATED_NOT_MATERIALISED}
+    assert (inv['flags']['setting_sources'], inv['flags']['plugin_dirs']) == (
+        ['project', 'local'], [])
+    assert inv['recorded_only'] == []
+    # what is not the home's still follows its own source, and managed still applies
+    assert status_of(inv, 'hook', 'project-hook.sh') == 'opted_in'
+    assert 'reason' not in items(inv, source='project', type='hook')[0]
+    assert status_of(inv, 'hook', 'managed.sh') == 'not_excludable'
+    # every item predicted loaded is one the flags actually pass
+    loaded = {i['source'] for i in inv['items'] if i['status'] in sources.LOADED}
+    assert loaded <= set(inv['flags']['setting_sources'])
+
+
+def test_the_home_and_its_plugins_bring_no_skill_to_an_isolated_execution(world):
+    opts = (('account', 'source', 'user'), ('account', 'plugin', 'pl@m'))
+    assert take(world, *opts)['flags']['disable_slash_commands'] is False
+    assert take(world, *opts, isolated=True)['flags']['disable_slash_commands'] is True
+    both = take(world, *opts, ('project', 'source', 'project'), isolated=True)
+    assert both['flags']['disable_slash_commands'] is False      # the project's own skill
+
+
+def test_an_isolated_argv_names_no_path_inside_the_account_home(world, tmp_path):
+    a = cc.ClaudeCodeAdapter(exe='claude')
+    acct = base.AccountRef('acc', world[0])
+    spec = _spec(workdir=world[1], account=acct, opt_ins=EVERYTHING)
+    inv = a.inventory(spec, isolated=True)
+    argv = a.argv(_spec(workdir=world[1], account=acct, inventory=inv), 'sess')
+    assert '--plugin-dir' not in argv and '--mcp-config' not in argv
+    assert not [x for x in argv if os.path.isabs(x) and _inside(x, world[0])]
+    assert a.inventory(spec) == a.inventory(spec, isolated=False)   # ordinary: unchanged
+    ordinary = a.argv(_spec(workdir=world[1], account=acct, inventory=a.inventory(spec)), 's')
+    assert '--plugin-dir' in ordinary and '--mcp-config' in ordinary
+
+
+def test_the_fake_harness_forwards_the_decision_to_the_same_inventory(world):
+    from archeus.harnesses.fake import FakeHarness
+    spec = _spec(workdir=world[1], account=base.AccountRef('acc', world[0]),
+                 opt_ins=EVERYTHING)
+    got = FakeHarness(sources=True).inventory(spec, isolated=True)
+    want = sources.take(world[0], world[1], EVERYTHING, isolated=True)
+    assert (got['flags'], [(i['source'], i['type'], i['name'], i['status'])
+                           for i in got['items'] if _from_home(i)]) == \
+        (want['flags'], [(i['source'], i['type'], i['name'], i['status'])
+                         for i in want['items'] if _from_home(i)])
+    assert FakeHarness(sources=True).inventory(spec)['flags']['mcp_servers']
+
+
+def test_a_plugin_the_project_enables_still_lives_in_the_home(world):
+    path = os.path.join(world[1], '.claude', 'settings.json')
+    with open(path, encoding='utf-8') as f:
+        d = json.load(f)
+    _write(path, dict(d, enabledPlugins={'pl@m': True}))
+    opt = ('project', 'source', 'project')
+    assert items(take(world, opt), source='project', type='plugin')[0]['status'] == 'opted_in'
+    (p,) = items(take(world, opt, isolated=True), source='project', type='plugin')
+    assert (p['status'], p['reason']) == ('excluded', sources.ISOLATED_NOT_MATERIALISED)

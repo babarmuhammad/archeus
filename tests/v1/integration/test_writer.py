@@ -1,5 +1,7 @@
 """The single writer: atomicity, sequence, idempotency, transitions, concurrency."""
 
+import hashlib
+import json
 import os
 import threading
 import time
@@ -227,6 +229,41 @@ def test_reusing_a_key_for_a_different_request_fails_clearly(db, new_mission, ac
         db.writer.execute(commands.register_principal, {'kind': 'system'},
                           idempotency_key='k')              # other command
     assert _counts(db) == before
+
+
+def _proved(tx, *, actor, title, step_up=None):
+    return commands.create_mission(tx, actor=actor, title=title, objective='o')
+
+
+def test_a_step_up_proof_never_enters_the_stored_hash(db, actor):
+    """T-107: a repeat differing only in its proof is a replay (nothing runs),
+    one differing elsewhere still conflicts, and no PIN can be recovered from the
+    stored hash by trying every 6-digit value."""
+    first = db.writer.submit(_proved, {'actor': actor, 'title': 't', 'step_up': '482913'},
+                             idempotency_key='p')
+    out = first.result(10)
+    assert first.replayed is False
+    again = db.writer.submit(_proved, {'actor': actor, 'title': 't', 'step_up': '000000'},
+                             idempotency_key='p')
+    assert again.result(10) == out and again.replayed is True
+    with pytest.raises(IdempotencyConflict):
+        db.writer.execute(_proved, {'actor': actor, 'title': 'other', 'step_up': '482913'},
+                          idempotency_key='p')
+    c = connection.connect(db.path)
+    stored = c.execute("SELECT request_hash FROM idempotency_keys WHERE key = 'p'").fetchone()[0]
+    c.close()
+    # every PIN, hashed the way a request hash covering the proof would be
+    name = writer.command_name(_proved)
+    blob = json.dumps({'command': name, 'args': {'actor': actor, 'title': 't',
+                                                 'step_up': 'PINPIN'}},
+                      sort_keys=True, default=writer._jsonable)
+    assert blob.replace('PINPIN', '482913') == json.dumps(
+        {'command': name, 'args': {'actor': actor, 'title': 't', 'step_up': '482913'}},
+        sort_keys=True, default=writer._jsonable)
+    head, tail = blob.split('PINPIN')
+    found = [p for p in ('%06d' % n for n in range(10 ** 6))
+             if hashlib.sha256((head + p + tail).encode('utf-8')).hexdigest() == stored]
+    assert found == []
 
 
 def test_an_expired_key_is_a_new_request(db, new_mission):

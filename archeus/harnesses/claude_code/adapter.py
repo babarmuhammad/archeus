@@ -1,8 +1,8 @@
 """The Claude Code execution adapter (execution-architecture §3; p11-design-gate §9.2).
 
     claude -p --output-format stream-json --verbose --session-id <uuid>
-           [--model m] [--effort e] --max-turns N --settings <exec dir>/settings.json
-           --setting-sources <opted in> --strict-mcp-config [--mcp-config <exec dir>/mcp.json]
+           [--model m] [--effort e] --max-turns N --settings <exec dir>/res/settings.json
+           --setting-sources <opted in> --strict-mcp-config [--mcp-config <exec dir>/res/mcp.json]
            [--disable-slash-commands] [--plugin-dir <dir>]...
            --tools <mapped tools> [--disallowedTools <mcp patterns>]
            [--resume <session uuid>]                    (prompt on stdin)
@@ -16,7 +16,11 @@ harnesses/sources.py); the flags are read from the recorded inventory. The
 tools the process may call at all are the task's action classes mapped to
 Claude Code's names (ADR-0052, P20 slice F: tools.py), beneath the hook. The
 account is its home: `CLAUDE_CONFIG_DIR` from the account's `home_ref`, with any API key popped so it cannot shadow the login (the current
-product's `config.account_env` rule). The process I/O contract is the shared one
+product's `config.account_env` rule). An isolated execution never gets the home:
+its `CLAUDE_CONFIG_DIR` is its own `ExecPaths.config` (ADR-0053 A2), which
+base.spawn creates for the first process and keeps for a resume. Nothing else of
+the inherited environment is relocated here, and no login is put there (that is
+R3-B's broker). The process I/O contract is the shared one
 (base.spawn): the stream is stream-json on stdout, tailed from a file.
 
 Normalisation (`normalise`) maps stream-json lines to the vocabulary Core
@@ -114,7 +118,9 @@ class ClaudeCodeAdapter:
         return base.AuthStatus(ok, '' if ok else 'no Claude login in %s' % account.home_ref)
 
     def _settings(self, spec):
-        path = os.path.join(base.ExecPaths(spec.execution_id).dir, 'settings.json')
+        # Core-authored spawn configuration: class 2, readable by the execution and
+        # never writable by it (PV-20 §7.5, A2)
+        path = os.path.join(base.ExecPaths(spec.execution_id).res, 'settings.json')
         hooks = {}
         if spec.hook_settings:
             cmd = ' '.join('"%s"' % a for a in spec.hook_settings)
@@ -133,7 +139,7 @@ class ClaudeCodeAdapter:
         a += sources.flag_argv((spec.inventory or {}).get('flags') or sources.DEFAULT_FLAGS,
                                home=self._home(spec),
                                workdir=spec.workdir,
-                               exec_dir=base.ExecPaths(spec.execution_id).dir)
+                               exec_dir=base.ExecPaths(spec.execution_id).res)
         a += tools.tool_argv(spec.task_contract.get('action_classes') or (), spec.inventory)
         a += ['--resume', session] if spec.resume_ref else ['--session-id', session]
         if spec.model:
@@ -142,10 +148,10 @@ class ClaudeCodeAdapter:
             a += ['--effort', spec.effort]
         return a
 
-    def inventory(self, spec):
+    def inventory(self, spec, *, isolated=False):
         """What this execution's settings sources load and what becomes of it
         (ADR-0049): taken before the spawn, recorded by Core, read by argv."""
-        return sources.take(self._home(spec), spec.workdir, spec.opt_ins)
+        return sources.take(self._home(spec), spec.workdir, spec.opt_ins, isolated=isolated)
 
     @staticmethod
     def _home(spec):
@@ -155,7 +161,9 @@ class ClaudeCodeAdapter:
     def _env(self, spec):
         env = dict(spec.env)
         home = spec.account.home_ref if spec.account else None
-        if home:
+        if spec.isolation is not None:
+            env['CLAUDE_CONFIG_DIR'] = base.ExecPaths(spec.execution_id).config
+        elif home:
             env['CLAUDE_CONFIG_DIR'] = os.path.expanduser(home)
         for k in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
             env.setdefault(k, None)

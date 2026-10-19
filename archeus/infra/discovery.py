@@ -151,27 +151,48 @@ def discover():
 
 # ── the local token file (D5) ──
 
-def _outside_profile(path):
-    profile = os.environ.get('USERPROFILE') or os.path.expanduser('~')
-    try:
-        return os.path.commonpath([os.path.normcase(os.path.abspath(path)),
-                                   os.path.normcase(os.path.abspath(profile))]) != \
-            os.path.normcase(os.path.abspath(profile))
-    except ValueError:                  # different drives
-        return True
+def _home_dacl():
+    from ..node import isolation
+    return isolation.WindowsBoundary()
+
+
+def _home_warning(home, token=None):
+    """A warning when a broad principal may write or read *home* (or, before it exists,
+    the folder it will be created in and inherit from), or the local *token* once it
+    exists, else None. Writing is checked before reading. Read only."""
+    from ..node.isolation import BROAD_PRINCIPALS, IsolationUnavailable
+    at = os.path.abspath(home)
+    while not os.path.isdir(at) and os.path.dirname(at) != at:
+        at = os.path.dirname(at)
+    reader = _home_dacl()
+    for what, path in (('ARCHEUS_HOME', at), ('the local token', token)):
+        if what != 'ARCHEUS_HOME' and not (path and os.path.exists(path)):
+            continue
+        try:
+            sid, how = reader.broad_writer(path), 'written'
+            if sid is None:
+                sid, how = reader.broad_reader(path), 'read'
+        except IsolationUnavailable as e:
+            return 'the ACL of %s %s could not be read: %s' % (what, path, e)
+        if sid is None:
+            continue
+        harm = ('change Core\'s database, run/ and worktrees' if how == 'written'
+                else 'read Core\'s full-scope local token')
+        return ('%s %s can be %s by %s (%s), so any signed-in user of this machine can %s; '
+                'move ARCHEUS_HOME to a folder under your user profile'
+                % (what, path, how, BROAD_PRINCIPALS[sid], sid, harm))
+    return None
 
 
 def token_protection():
     """(ok, warning). POSIX: the token file and run/ must not be readable by
-    group or others — `ok` is False and Core refuses to start. Windows: the
-    default home inherits the user-profile ACL; a home outside the profile is
-    protected only by that directory's ACL, which is a warning, not a refusal."""
+    group or others — `ok` is False and Core refuses to start. Windows: a home (or
+    local token) a broad principal may write or read (a folder under a drive root
+    such as D:\\ inherits MODIFY for Authenticated Users) is a warning, never a
+    refusal - every pytest temp home and many existing installs have it (T-089, T-096)."""
     path = local_token_path()
     if WINDOWS:
-        if _outside_profile(paths.archeus_home()):
-            return True, ('ARCHEUS_HOME is outside your user profile: the local token is '
-                          'protected only by that directory\'s ACL')
-        return True, None
+        return True, _home_warning(paths.archeus_home(), path)
     for p in (paths.run_dir(), path):
         try:
             mode = os.stat(p).st_mode

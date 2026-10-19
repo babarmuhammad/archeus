@@ -57,3 +57,21 @@ def test_a_review_is_independent_only_of_another_resource_or_model():
     assert reviewer.independent(('fake', 'acc_2', 'm-large'), ran)   # another account
     assert reviewer.independent(('claude', 'acc_1', 'm-large'), ran)
     assert reviewer.forbidden(ran + [('fake', None, 'x')]) == {'accounts': ['acc_1']}
+
+
+def test_production_wires_no_verifier_port_so_every_pass_goes_through_the_guarded_sink():
+    """`Ports.verifier` writes PASSED with no `start` (T-041 S1): only a test
+    port may set it; production verifies through the worker and its sink."""
+    import ast
+    import os
+    from archeus.core import runtime
+    assert runtime.Ports().verifier is None
+    root = os.path.dirname(os.path.dirname(os.path.abspath(runtime.__file__)))
+    for dirpath, _dirs, files in os.walk(root):
+        for name in files:
+            if name.endswith('.py'):
+                with open(os.path.join(dirpath, name), encoding='utf-8') as f:
+                    tree = ast.parse(f.read())
+                assert not [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                            and getattr(n.func, 'id', getattr(n.func, 'attr', None)) == 'Ports'
+                            and any(k.arg == 'verifier' for k in n.keywords)], name

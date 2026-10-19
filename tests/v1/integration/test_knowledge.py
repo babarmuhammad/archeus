@@ -144,9 +144,13 @@ def test_n04_only_the_user_answers_the_terms_question(make):
         r.run(C.decide_provider_terms, harness_id='pi', headless='maybe')
 
 
-def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make, monkeypatch):
+def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make, monkeypatch,
+                                                                            tmp_path):
     """The whole path with the real pi adapter and a stand-in runner: terms
-    permitted, pi's flags, pi's vocabulary, prompted schema, Core validation."""
+    permitted, pi's flags, pi's vocabulary, prompted schema, Core validation.
+    Every own call asks for no tools (K-O2, T-081) and pi declares that it can
+    make one (T-085), so both the knowledge pass and the decisions pass reach pi,
+    each with pi's no-tools form."""
     from claude_sessions import harnesses, llmcall
     seen = []
     monkeypatch.setattr(harnesses, 'exe', lambda hid=None: 'C:/x/pi.exe')
@@ -155,17 +159,27 @@ def test_n05_a_real_adapter_passes_the_gate_and_its_argv_is_the_harness_own(make
     monkeypatch.setattr(real, 'pi_offers',
                         lambda account=None: ((base.ModelInfo('spark/qwen3.8'),), None))
     import json
+    said = {'decisions': [{'statement': 'Ship dark-first'}]}
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **kw: (
-        seen.append((cmd, stdin)), llmcall.Result(0, 'ok ' + json.dumps(GOOD), '', '', False))[1])
+        seen.append((cmd, stdin)), llmcall.Result(0, 'ok ' + json.dumps(said), '', '', False))[1])
     r = make([real.PiCaller()], ports.FixedOwnCallPreference(model='spark/qwen3.8'))
     r.run(C.decide_provider_terms, harness_id='pi', headless='permitted')
     repo = project(r)
     kp = r.kp(repo.project_id)
-    assert (kp['state'], kp['items']) == ('ok', 2)
-    (cmd, stdin), = seen
-    assert cmd[1:] == ['-p', '--no-session', '--tools', 'read,grep,find,ls', '--model',
-                       'spark/qwen3.8']
-    assert 'matching this JSON Schema' in stdin
+    asked = len(seen)               # the stand-in's answer is not a knowledge one, so it may retry
+    assert kp['state'] != 'unavailable' and asked >= 1
+    rd = r.read(queries.get_route_decision, kp['route_decision_id'])
+    assert (rd['requirements']['capabilities'], rd['selected']) == (['headless', 'no_tools'], 'pi')
+    notes = tmp_path / 'planning-2026-09-20.md'
+    notes.write_text('# Planning\nDECISION: ship dark-first.\n', encoding='utf-8')
+    ingest.import_file(r.db, r.user, str(notes))
+    r.settle()
+    assert [d.state for d in r.items(type='DECISION')] == ['CANDIDATE']
+    assert len(seen) == asked + 1
+    for cmd, _ in seen:
+        assert cmd[1:] == ['-p', '--no-session', '--no-tools', '--no-extensions', '--model',
+                           'spark/qwen3.8']
+    assert 'matching this JSON Schema' in seen[-1][1]
 
 
 # ── N06–N08 provenance, no execution, usage ──

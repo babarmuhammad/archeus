@@ -22,7 +22,7 @@ from archeus.core.routing.usage import FakeUsageFeed
 from archeus.harnesses.fake import FakeCaller, FakeHarness
 
 from .client import InProcessClient
-from .http import TempCore
+from .http import TUNNEL, TempCore
 from . import support
 from .support import Rig
 
@@ -56,7 +56,7 @@ def client(request, archeus_home, monkeypatch):
                             real_review=True, tool_removal=tools)
     elif request.param == 'http':
         c = TempCore(archeus_home, real_verification=real, real_review=True,
-                     ports=runtime.Ports(
+                     remote_hosts=(TUNNEL,), ports=runtime.Ports(
                          callers=[recorded_brain()], usage=FakeUsageFeed(),
                          sessions=support.session_adapters(),
                          terminal=support.JudgeTerminal(archeus_home),

@@ -632,8 +632,20 @@ def estop(req):
 
 
 def rearm(req):
+    """From a paired client, its PIN (D10): a wrong one counts toward the same
+    revocation as an approval's (`_step_up_failed`)."""
     from ..node.local import LocalNode
-    out = req.run(req.api.executions.rearm, {})
+    proof = req.body.get('step_up')
+    try:
+        out = req.run(req.api.executions.rearm, {'step_up': proof})
+    except errors.GuardFailed as e:
+        if proof is not None and 'step-up' in e.result.reason:
+            _step_up_failed(req)
+        raise
+    if req.replayed:            # nothing re-armed, and the answer says what Core is (T-107)
+        return 200, dict(out, armed=not LocalNode.disarmed())
+    if proof is not None:
+        req.api.step_up.reset(req.principal['device_id'])
     LocalNode.clear_estop()
     return 200, out
 
@@ -744,7 +756,7 @@ def post_message(req):
         if b.get('step_up') is not None and 'step-up' in e.result.reason:
             _step_up_failed(req)
         raise
-    if b.get('step_up') is not None:
+    if b.get('step_up') is not None and not req.replayed:
         req.api.step_up.reset(req.principal['device_id'])
     decided = out.pop('decided')
     if decided.get('denied'):
@@ -851,7 +863,7 @@ def decide_approval(req):
         if b.get('step_up') is not None and 'step-up' in e.result.reason:
             _step_up_failed(req)
         raise
-    if b.get('step_up') is not None:
+    if b.get('step_up') is not None and not req.replayed:
         req.api.step_up.reset(req.principal['device_id'])
     if out.get('denied'):
         raise Refused(423, 'policy_denied', dict(out['denied'], approval_id=out['approval_id']))
@@ -1073,7 +1085,7 @@ ROUTES = (
     Route('POST', '/v1/missions/{id}/stop', stop_mission, 'control', 'required',
           schemas.KEYED, 'MissionStopped'),
     Route('POST', '/v1/estop', estop, 'control', 'required', schemas.KEYED, 'Estopped'),
-    Route('POST', '/v1/rearm', rearm, 'control', 'required', schemas.KEYED, 'Rearmed'),
+    Route('POST', '/v1/rearm', rearm, 'control', 'required', schemas.REARM, 'Rearmed'),
     # P12: sessions and checkpoints (p12-design-gate §19)
     Route('GET', '/v1/sessions', list_sessions, 'observe', None, None, 'SessionList'),
     Route('GET', '/v1/sessions/{id}', get_session, 'observe', None, None, 'Session'),
@@ -1149,6 +1161,45 @@ ROUTES = (
     Route('POST', '/v1/automations/{id}/state', set_automation_state, 'admin', 'required',
           schemas.AUTOMATION_STATE, 'AutomationWritten'),
 )
+
+#: R1-A (ADR-0053; T-053 §4 P1, P2, P7): every route's class. PV-20 §3.6 is the
+#: canonical privileged list and this is its route projection; a route whose
+#: class is unclear counts as privileged. Every observe-scoped route is
+#: 'observe' (a read, or a query that writes nothing); every other route is
+#: named below, and a test fails on one that is not.
+_NAMED = {
+    'public': ('GET /', 'GET /assets/*', 'GET /sw.js', 'GET /manifest.webmanifest'),
+    # creates or extends a credential: only the user's origin reaches the code
+    'authority': ('POST /v1/devices/launch/code', 'POST /v1/devices/launch/redeem',
+                  'POST /v1/devices/pair/start', 'POST /v1/devices/pair/redeem'),
+    # presentation state, monotone and replayable (p15-design-gate D18)
+    'ordinary': ('POST /v1/digest/ack',),
+    'privileged': (
+        'POST /v1/missions', 'POST /v1/missions/{id}/pause', 'POST /v1/missions/{id}/resume',
+        'POST /v1/missions/pause-all', 'POST /v1/missions/resume-all',
+        'POST /v1/missions/{id}/reprioritize', 'POST /v1/missions/{id}/stop',
+        'POST /v1/executions/{id}/stop', 'POST /v1/estop', 'POST /v1/rearm',
+        'POST /v1/sessions/{id}/handoff', 'POST /v1/executions/{id}/handoff',
+        'POST /v1/sessions', 'POST /v1/sessions/{id}/resume', 'POST /v1/sessions/{id}/link',
+        'POST /v1/sessions/{id}/close',
+        'POST /v1/plans/{id}/edit', 'POST /v1/approvals/{id}/decide',
+        'POST /v1/verifications/{id}/decide', 'POST /v1/missions/{id}/review',
+        'POST /v1/tasks/{id}/integration/abandon',
+        'POST /v1/policies/rules', 'POST /v1/policies/rules/{id}/retire',
+        'POST /v1/policies/profile',
+        'POST /v1/devices/{id}/revoke', 'POST /v1/projects', 'POST /v1/provider-terms/{id}',
+        'POST /v1/accounts', 'POST /v1/accounts/{id}/state', 'POST /v1/resource-policies/{id}',
+        'POST /v1/missions/{id}/resources', 'POST /v1/opt-ins', 'POST /v1/automations',
+        'POST /v1/automations/{id}/state', 'POST /v1/meetings/import',
+        # unclear against §3.6, so privileged
+        'POST /v1/projects/{id}/constraints', 'POST /v1/conversations/{id}/messages',
+        'POST /v1/intents/{id}/clarify', 'POST /v1/knowledge/{id}/confirm',
+        'POST /v1/knowledge/{id}/reject', 'POST /v1/knowledge/{id}/retract',
+        'POST /v1/knowledge/{id}/supersede', 'POST /v1/knowledge/forget', 'POST /v1/feedback'),
+}
+CLASS = {**{(r.method, r.path): 'observe' for r in ROUTES if r.scope == 'observe'},
+         **{tuple(k.split(' ', 1)): c for c, keys in _NAMED.items() for k in keys}}
+PRIVILEGED = frozenset(k for k, c in CLASS.items() if c in ('privileged', 'authority'))
 
 #: The query parameters each GET route reads (for the docs and the client).
 QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),

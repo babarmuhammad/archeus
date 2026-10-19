@@ -28,7 +28,7 @@ import { canCommand } from '../data/connection';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
-import { ago, armedText, estopSaid, presenceLabel, templateText, triggerText, usageText } from '../state/present';
+import { ago, armedText, estopSaid, presenceLabel, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
@@ -913,6 +913,9 @@ function About() {
 function Estop({ health }: { health: Snapshot<Health> }) {
   const conn = useConn();
   const [said, setSaid] = useState<ReturnType<typeof estopSaid> | null>(null);
+  const [pin, setPin] = useState('');
+  // D10 (V2-3, 2026-10-15): a paired client re-arms with its PIN; a local one by being local
+  const stepUp = useRead<Sync>(paths.sync()).data?.client.capabilities.step_up;
   const armed = canCommand(conn.conn) ? health.data?.armed : undefined;
   const shown = said && (said.when === undefined || said.when === armed) ? said : null;
   return (
@@ -925,9 +928,17 @@ function Estop({ health }: { health: Snapshot<Health> }) {
           <ActionButton label="Emergency stop" scope="control" kind="danger" confirm="Every running execution is killed now and Archeus refuses new work until you re-arm it. Missions are not lost; they wait." run={(key) => api.estop(send(), { idempotency_key: key })} reread={['/v1']} report={(o) => setSaid(estopSaid('estop', o))} />
         </div>
       ) : armed === false ? (
-        <div className="row">
-          <ActionButton label="Re-arm" scope="control" run={(key) => api.rearm(send(), { idempotency_key: key })} reread={['/v1']} report={(o) => setSaid(estopSaid('rearm', o))} />
-        </div>
+        <>
+          {stepUp === 'pin' ? (
+            <label className="pin">
+              This client’s PIN (re-arming from a paired client needs it)
+              <input inputMode="numeric" autoComplete="off" pattern="[0-9]*" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} maxLength={12} />
+            </label>
+          ) : null}
+          <div className="row">
+            <ActionButton label="Re-arm" scope="control" disabled={stepUp === 'none' ? 'This client has no PIN, so it cannot re-arm: re-arm on the desktop.' : stepUpBlocked(stepUp, pin)} run={(key) => api.rearm(send(), { idempotency_key: key, step_up: stepUp === 'pin' ? pin : undefined })} reread={['/v1']} report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }} />
+          </div>
+        </>
       ) : null}
       <p className="hint" role="status" data-estop-said>
         {shown && !shown.alert ? shown.text : null}

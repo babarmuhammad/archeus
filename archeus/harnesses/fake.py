@@ -75,11 +75,11 @@ class FakeHarness:
     def authenticate(self, account):
         return base.AuthStatus(True, 'fake accounts need no login')
 
-    def inventory(self, spec):
+    def inventory(self, spec, *, isolated=False):
         if not self._sources:
             return None
         home = spec.account.home_ref if spec.account else None
-        return sources.take(home, spec.workdir, spec.opt_ins)
+        return sources.take(home, spec.workdir, spec.opt_ins, isolated=isolated)
 
     def start(self, spec):
         steps = list(spec.task_contract.get('fake_scenario', ()))
@@ -96,7 +96,7 @@ class FakeHarness:
                                       sources.DEFAULT_FLAGS,
                                       home=spec.account.home_ref if spec.account else None,
                                       workdir=spec.workdir,
-                                      exec_dir=base.ExecPaths(spec.execution_id).dir)
+                                      exec_dir=base.ExecPaths(spec.execution_id).res)
         if self._tools:
             argv += cc_tools.tool_argv(spec.task_contract.get('action_classes') or (),
                                        spec.inventory)
@@ -205,8 +205,9 @@ class FakeCaller:
 
     def __init__(self, id='fake', *, headless=True, structured='native', installed=True,
                  replies=None, models=(FAKE_MODEL,), efforts=(), auth_ok=True,
-                 usage_measures=('tokens',)):
+                 usage_measures=('tokens',), no_tools=True):
         self.id, self.headless, self.structured = id, headless, structured
+        self.no_tools = no_tools
         self.installed, self.models = installed, tuple(models)
         self.efforts, self.auth_ok = tuple(efforts), auth_ok
         self.usage_measures = frozenset(usage_measures)
@@ -218,6 +219,8 @@ class FakeCaller:
 
     def capabilities(self, account=None):
         caps = {'headless', 'structured_output'} if self.headless else {'interactive'}
+        if self.headless and self.no_tools:
+            caps.add('no_tools')            # a scripted reply runs no tool at all
         return base.Capabilities(frozenset(caps), 'none', self.models,
                                  structured_output=self.structured if self.headless else None,
                                  efforts=self.efforts, usage_measures=self.usage_measures)

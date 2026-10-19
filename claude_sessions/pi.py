@@ -299,12 +299,17 @@ def launch_argv(exe, choice, opts, cwd):
     return args
 
 
-def headless_argv(exe, model=''):
+def headless_argv(exe, model='', no_tools=False):
     """One of archeus's own calls: print mode, prompt on stdin (pi reads piped
     stdin), read-only tools — the same fence Claude Code's `--disallowedTools
     Write,Edit,NotebookEdit,Bash` puts up — and `--no-session`, so memory
-    extraction is not listed back to the user as a session they had."""
-    args = [exe, '-p', '--no-session', '--tools', 'read,grep,find,ls']
+    extraction is not listed back to the user as a session they had.
+
+    *no_tools*: no tool at all. `--no-tools` alone only changes pi's default,
+    so `--no-extensions` keeps an extension from bringing one back; verified on
+    pi 0.85.1 with a real call that answered without a tool event (T-085)."""
+    tools = ['--no-tools', '--no-extensions'] if no_tools else ['--tools', 'read,grep,find,ls']
+    args = [exe, '-p', '--no-session'] + tools
     return args + (['--model', model] if model else [])
 
 

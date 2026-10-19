@@ -1011,12 +1011,33 @@ class Authorization:
     expire_due = staticmethod(expire_due)
 
 
+def _simulated_rule(conn, i, r):
+    """A request's extra rule, built as `create_rule` would build it: the same
+    PolicyRule entity checks it, so a value create_rule refuses (a decision
+    outside the vocabulary, an expiry that is not a timestamp) is the
+    request's fault here too, never a 500 in the engine."""
+    r = dict(r)
+    if r.get('scope_level') == 'USER' and r.get('scope_ref') is None:
+        u = owner(conn)
+        r['scope_ref'] = u.id if u else None
+    entities.PolicyRule(id=ids.new_id('policy_rule'), source='user',
+                        outside=r.get('outside') or 'ASK',
+                        **{k: r.get(k) for k in ('scope_level', 'scope_ref', 'action_class',
+                                                 'decision', 'locked', 'match', 'boundary',
+                                                 'expires_at')})
+    return R.rule(**dict(r, id=r.get('id') or 'simulated:%d' % i, source='user'))
+
+
 def simulate(conn, policy, *, now, action, mission_id=None, task_id=None, stage='plan',
              extra_rules=()):
     """What would the policy answer for *action* (a canonical dict), in this
     mission's or task's context, with *extra_rules* added? Writes nothing."""
-    a = action if isinstance(action, Action) else Action(**_action_kwargs(action)
-                                                         if 'class' in action else action)
+    try:
+        a = action if isinstance(action, Action) else Action(**_action_kwargs(action)
+                                                             if 'class' in action else action)
+        extra = [_simulated_rule(conn, i, r) for i, r in enumerate(extra_rules)]
+    except TypeError as e:              # a request's dict missing or naming a field
+        raise ValueError('the action or a rule is not well formed: %s' % e) from None
     task = None
     if task_id is not None:
         got = rows.get(conn, entities.Task, task_id)
@@ -1032,8 +1053,6 @@ def simulate(conn, policy, *, now, action, mission_id=None, task_id=None, stage=
     else:
         mission = entities.Mission(id=ids.new_id('mission'), workspace_id=ids.GLOBAL_WORKSPACE,
                                    title='simulation', objective='simulation')
-    extra = [R.rule(**dict(r, id=r.get('id') or 'simulated:%d' % i, source='user'))
-             for i, r in enumerate(extra_rules)]
     classes = None if task is None else [c for c, _b, _x in items_of(task)]
     ctx = context(conn, mission, stage=stage, now=now, task=task, extra_rules=extra,
                   task_classes=None if stage == 'plan' else classes)

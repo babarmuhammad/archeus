@@ -181,19 +181,43 @@ def test_the_token_file_is_0600_and_a_loose_mode_refuses_to_start(archeus_home):
     assert not discovery.lock_is_held()
 
 
-@pytest.mark.skipif(not WINDOWS, reason='the Windows profile-ACL rule')
-def test_a_home_outside_the_profile_warns_in_status_and_the_log(archeus_home, capsys,
-                                                                 monkeypatch, tmp_path):
-    monkeypatch.setenv('USERPROFILE', str(tmp_path / 'someone-else'))
+@pytest.mark.skipif(not WINDOWS, reason='the Windows home-ACL rule')
+def test_a_home_a_broad_principal_may_write_warns_in_status_and_the_log(archeus_home, capsys,
+                                                                        monkeypatch):
+    from archeus.node import isolation
+    home = paths.archeus_home()
     core = TempCore(archeus_home).start()
     try:
-        assert 'outside your user profile' in (core.core.warning or '')
+        boundary = isolation.WindowsBoundary()              # the real DACL, read only
+        sid, how = boundary.broad_writer(home), 'written'
+        if sid is None:
+            sid, how = boundary.broad_reader(home), 'read'
         code, out = _status(capsys, monkeypatch)
-        assert code == 0 and 'warning: ARCHEUS_HOME is outside your user profile' in out
+        assert code == 0
+        if sid is None:     # the token inherits the home's ACL, so it is clean too
+            assert core.core.warning is None and 'warning:' not in out
+        else:
+            want = 'ARCHEUS_HOME %s can be %s by %s (%s)' % (
+                os.path.abspath(home), how, isolation.BROAD_PRINCIPALS[sid], sid)
+            assert want in core.core.warning and 'warning: ' + want in out
     finally:
         core.stop()
-    log = open(os.path.join(paths.archeus_home(), 'logs', 'core.log'), encoding='utf-8').read()
-    assert 'outside your user profile' in log
+    log = open(os.path.join(home, 'logs', 'core.log'), encoding='utf-8').read()
+    assert (sid is None) == ('can be %s by' % how not in log)
+
+
+@pytest.mark.skipif(not WINDOWS, reason='the Windows home-ACL rule')
+def test_a_broad_writable_home_still_starts(archeus_home, monkeypatch):
+    class Broad:
+        def broad_writer(self, path):
+            return 'S-1-5-11'
+    monkeypatch.setattr(discovery, '_home_dacl', Broad)
+    core = TempCore(archeus_home).start()
+    try:
+        assert 'Authenticated Users (S-1-5-11)' in core.core.warning
+        assert discovery.lock_is_held()
+    finally:
+        core.stop()
 
 
 # ── M13 engine failure ──

@@ -19,6 +19,14 @@ from claude_sessions import config, llmcall
 
 from . import base
 
+
+def _env(home):
+    # T-053 P6: nothing of Core's own process reaches an own call - no ARCHEUS_*
+    # (HOME locates run/, the hook names carry credentials) and nothing of a pytest
+    # running Core; the prefixes run_check drops (archeus/node/local.py)
+    return {k: v for k, v in config.account_env(home).items()
+            if not k.startswith(('PYTEST_', 'ARCHEUS_'))}
+
 _MODEL_REFUSED = re.compile(r'model', re.I)
 _MODEL_WHY = re.compile(r'not found|does not exist|invalid|ambiguous|unknown|not available', re.I)
 
@@ -64,7 +72,7 @@ class ClaudeCodeCaller:
         # no cost is declared and a cost budget is refused (ADR-0048 §3)
         return base.Capabilities(
             frozenset({'headless', 'structured_output', 'interactive', 'resume', 'code_edit',
-                       'shell'}), 'hook', claude_models(), structured_output='native',
+                       'shell', 'no_tools'}), 'hook', claude_models(), structured_output='native',
             usage_measures=frozenset({'tokens'}))
 
     def authenticate(self, account):
@@ -89,10 +97,20 @@ class ClaudeCodeCaller:
             return base.CallResult(error='unavailable', detail='Claude Code is not installed')
         extra = () if spec.schema is None else (
             '--output-format', 'json', '--json-schema', json.dumps(spec.schema, sort_keys=True))
+        env = _env(spec.account.home_ref)
+        if spec.no_tools:
+            # empty, never left out: no `--tools` at all means every tool
+            # (claude_code/tools.py relies on the same form). `--tools` covers
+            # built-ins only, so MCP servers, skills, project/local settings
+            # (their hooks) and every ancestor's CLAUDE.md go too (T-086).
+            # --safe-mode also drops the user's plugins, hooks, agents and auto
+            # memory while auth still works; --bare would too, but never reads OAuth
+            extra = ('--tools', '', '--strict-mcp-config', '--disable-slash-commands',
+                     '--setting-sources', 'user', '--safe-mode') + extra
+            env.update(CLAUDE_CODE_DISABLE_CLAUDE_MDS='1', CLAUDE_CODE_DISABLE_AUTO_MEMORY='1')
         args, stdin = llmcall.build_headless_args(exe, spec.prompt, spec.model or '',
                                                   llmcall.budget_args(), extra)
-        r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
-                                 env=config.account_env(spec.account.home_ref),
+        r = llmcall.run_headless(args, stdin, cwd=spec.workdir, env=env,
                                  timeout=spec.limits.get('timeout_s', 600))
         if r.returncode != 0:
             return _failed(r)
@@ -109,7 +127,8 @@ class ClaudeCodeCaller:
 
 
 class PiCaller:
-    """`pi -p --no-session --tools read,grep,find,ls [--model provider/id]`,
+    """`pi -p --no-session --tools read,grep,find,ls [--model provider/id]`
+    (`--no-tools --no-extensions` for a call with no tools),
     the schema in the prompt (pi has no schema flag), on pi's own home. A model
     is pi's vocabulary or nothing: Core never hands it Claude Code's."""
     id = 'pi'
@@ -121,7 +140,8 @@ class PiCaller:
 
     def capabilities(self, account=None):
         models, note = pi_offers(account)
-        return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive'}),
+        return base.Capabilities(frozenset({'headless', 'structured_output', 'interactive',
+                                            'no_tools'}),
                                  'none', models, structured_output='prompted',
                                  models_note=note)
 
@@ -142,9 +162,10 @@ class PiCaller:
         if not exe:
             return base.CallResult(error='unavailable', detail='pi is not installed')
         prompt = spec.prompt if spec.schema is None else base.prompted(spec.prompt, spec.schema)
-        args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi')
+        args, stdin = llmcall.build_headless_args(exe, prompt, spec.model or '', harness='pi',
+                                                  no_tools=spec.no_tools)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
-                                 env=config.account_env(spec.account.home_ref),
+                                 env=_env(spec.account.home_ref),
                                  timeout=spec.limits.get('timeout_s', 600))
         if r.returncode != 0:
             return _failed(r)

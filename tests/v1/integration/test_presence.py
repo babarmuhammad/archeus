@@ -47,6 +47,12 @@ def _post(tc, path, body=None, token=None, headers=None):
                    **({'token': token} if token else {}))
 
 
+def _phone(tc, path, body=None, token=None, headers=None):
+    """A paired client's command comes through the tunnel: on the loopback Host
+    a paired credential reaches no privileged route (T-053 Q4-A)."""
+    return _post(tc, path, body, token, dict(headers or {}, Host=REMOTE))
+
+
 def _get(tc, path, token=None):
     return tc.http('GET', path, **({'token': token} if token else {}))
 
@@ -111,10 +117,11 @@ def _settle(tc):
 def slow(archeus_home, clock):
     """A Core whose one task runs for 30 s on the fake harness, with the
     judge's session harnesses."""
-    tc = TempCore(archeus_home, launch_clock=clock, heartbeat_s=0.1, ports=runtime.Ports(
-        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), scenarios=dict(SLOW),
-        executors=[FakeHarness()], sessions=session_adapters(),
-        terminal=JudgeTerminal(archeus_home))).start()
+    tc = TempCore(archeus_home, launch_clock=clock, heartbeat_s=0.1, remote_hosts=(REMOTE,),
+                  ports=runtime.Ports(
+                      brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), scenarios=dict(SLOW),
+                      executors=[FakeHarness()], sessions=session_adapters(),
+                      terminal=JudgeTerminal(archeus_home))).start()
     yield tc
     for p in list(tc.core.manager._procs.values()):
         proc.kill_pid_tree(p['handle'].pid, p['handle'].create_time)
@@ -124,7 +131,7 @@ def slow(archeus_home, clock):
 @pytest.fixture
 def deploy(archeus_home, clock):
     """A Core whose plan deploys: its approval needs step-up (P9 D16)."""
-    tc = TempCore(archeus_home, launch_clock=clock,
+    tc = TempCore(archeus_home, launch_clock=clock, remote_hosts=(REMOTE,),
                   ports=runtime.Ports(brain=ports.FixedPlanBrain(DEPLOY))).start()
     yield tc
     tc.stop()
@@ -425,8 +432,8 @@ def test_P11_a_retry_after_a_lost_answer_does_nothing_twice(slow):
     _d, phone = pair(tc)
     mid, _eid = _running(tc)
     body = {'idempotency_key': 'pause-once'}
-    first = _post(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
-    again = _post(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
+    first = _phone(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
+    again = _phone(tc, '/v1/missions/%s/pause' % mid, body, token=phone)
     assert first.status == again.status == 200 and first.json() == again.json()
     moves = [e for e in _events(tc) if e['type'] == 'mission.state_changed'
              and e['subject']['id'] == mid and e['payload']['to'] == 'PAUSED']
@@ -439,14 +446,14 @@ def test_P12_a_queued_command_is_refused_unless_declared_replayable(slow):
     mid, _eid = _running(tc)
     before = _head(tc)
     queued = {'X-Archeus-Queued': '1'}
-    r = _post(tc, '/v1/missions/%s/pause' % mid, token=phone, headers=queued)
+    r = _phone(tc, '/v1/missions/%s/pause' % mid, token=phone, headers=queued)
     assert (r.status, r.json()['error']) == (409, 'queued_intent_refused')
     assert [e['type'] for e in _events(tc) if e['seq'] > before
             and e['subject']['id'] == mid] == []                     # nothing written
     ack = tc.http('POST', '/v1/digest/ack', body={'up_to_seq': before}, token=phone,
                   headers=queued)
     assert ack.status == 200
-    assert _post(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200     # live
+    assert _phone(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200     # live
 
 
 def test_P13_a_mutation_built_on_a_stale_read_is_refused(slow):
@@ -455,11 +462,11 @@ def test_P13_a_mutation_built_on_a_stale_read_is_refused(slow):
     mid, _eid = _running(tc)
     seen = _get(tc, '/v1/missions/%s' % mid, phone).json()['version']
     assert _post(tc, '/v1/missions/%s/pause' % mid).status == 200   # the desktop moves it
-    r = _post(tc, '/v1/missions/%s/resume' % mid, {'expected_version': seen}, token=phone)
+    r = _phone(tc, '/v1/missions/%s/resume' % mid, {'expected_version': seen}, token=phone)
     assert (r.status, r.json()['error']) == (409, 'version_conflict')
     assert r.json()['detail']['current'] > seen
     fresh = _get(tc, '/v1/missions/%s' % mid, phone).json()['version']
-    r = _post(tc, '/v1/missions/%s/resume' % mid, {'expected_version': fresh}, token=phone)
+    r = _phone(tc, '/v1/missions/%s/resume' % mid, {'expected_version': fresh}, token=phone)
     assert r.status == 200, r.body
 
 
@@ -491,7 +498,7 @@ def test_P07_P08_P23_a_client_going_away_ends_nothing_and_reconnecting_repeats_n
 def test_P15_remote_execution_control_is_p11s_stop(slow):
     did, phone = pair(slow)
     mid, eid = _running(slow)
-    r = _post(slow, '/v1/executions/%s/stop' % eid, token=phone)
+    r = _phone(slow, '/v1/executions/%s/stop' % eid, token=phone)
     assert r.status == 200, r.body
     _wait(lambda: _get(slow, '/v1/executions/%s' % eid).json()['state'].startswith('ENDED'),
           'the execution ends')
@@ -513,7 +520,7 @@ def test_P16_P30_resuming_is_p12s_and_a_connection_is_never_a_session(slow, tmp_
     _wait(lambda: {e['type'] for e in _events(slow) if e['seq'] > head} ==
           {'device.stream_opened', 'device.stream_closed'}, 'the traces')
     assert _get(slow, '/v1/sessions').json()['sessions'] == before       # P30
-    r = _post(slow, '/v1/sessions/%s/resume' % sid, {'request_id': 'r1'}, token=phone)
+    r = _phone(slow, '/v1/sessions/%s/resume' % sid, {'request_id': 'r1'}, token=phone)
     assert r.status == 200 and r.json()['id'] == sid and r.json()['launch'], r.body
     assert [s['id'] for s in _get(slow, '/v1/sessions').json()['sessions']] == [sid]
 
@@ -535,12 +542,12 @@ def test_P14_R1_a_paired_client_approves_through_p9_with_its_pin(deploy):
     a = _pending(deploy, mid)
     assert a['step_up']
     body = {'decision': 'approve', 'action_hash': a['action_hash']}
-    r = _post(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
     assert (r.status, r.json()['error']) == (422, 'guard_failed')           # no proof
-    r = _post(deploy, '/v1/approvals/%s/decide' % a['id'],
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'],
               dict(body, action_hash='0' * 64, step_up='482913'), token=phone)
     assert (r.status, r.json()['error']) == (422, 'guard_failed')           # other action
-    r = _post(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='482913'),
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='482913'),
               token=phone)
     assert r.status == 200 and r.json()['state'] == 'APPROVED', r.body
     outcomes = [d['outcome'] for d in _get(deploy, '/v1/policy-decisions?mission=%s'
@@ -558,10 +565,10 @@ def test_P19_B5_a_chat_approve_needs_the_same_step_up_as_the_card(deploy):
     url = '/v1/conversations/%s/messages' % mid
     body = {'text': 'approve', 'decision': {'approval_id': a['id'], 'action_hash':
                                              a['action_hash'], 'expected_version': a['version']}}
-    r = _post(deploy, url, dict(body, idempotency_key='no-pin'), token=phone)
+    r = _phone(deploy, url, dict(body, idempotency_key='no-pin'), token=phone)
     assert (r.status, r.json()['error']) == (422, 'guard_failed')           # no proof
     assert all(m['text'] != 'approve' for m in _get(deploy, url).json()['messages'])
-    r = _post(deploy, url, dict(body, step_up='482913', idempotency_key='pin'), token=phone)
+    r = _phone(deploy, url, dict(body, step_up='482913', idempotency_key='pin'), token=phone)
     assert r.status == 200, r.body
     assert _get(deploy, '/v1/approvals/%s' % a['id']).json()['state'] in ('APPROVED',
                                                                           'CONSUMED')
@@ -574,15 +581,40 @@ def test_R1_five_wrong_pins_revoke_the_client_and_no_pin_means_no_step_up(deploy
     mid = _mission(deploy)
     a = _pending(deploy, mid)
     body = {'decision': 'approve', 'action_hash': a['action_hash']}
-    assert _post(deploy, '/v1/approvals/%s/decide' % a['id'], body,
+    assert _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body,
                  token=nopin).json()['error'] == 'guard_failed'
     for i in range(5):
-        r = _post(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='000000'),
+        r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], dict(body, step_up='000000'),
                   token=phone)
         assert r.json()['error'] == 'guard_failed', i
     assert _get(deploy, '/v1/version', phone).status == 401
     assert _device(deploy, did)['state'] == 'REVOKED'
     assert _get(deploy, '/v1/approvals/%s' % a['id']).json()['state'] == 'PENDING'
+
+
+def test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers(deploy):
+    """p20-design-gate D13: the step-up breaker's recovery. Four wrong PINs and
+    a right one approve and clear the count; after a revocation the user pairs
+    again and the still-pending approval is decided."""
+    pin = '482913'
+    _d, phone = pair(deploy, pin=pin)
+    first, second = (_pending(deploy, _mission(deploy)) for _ in range(2))
+
+    def decide(a, token, step_up):
+        return _phone(deploy, '/v1/approvals/%s/decide' % a['id'],
+                      {'decision': 'approve', 'action_hash': a['action_hash'],
+                       'step_up': step_up}, token=token)
+    for _ in range(4):
+        assert decide(first, phone, '000000').json()['error'] == 'guard_failed'
+    assert decide(first, phone, pin).status == 200
+    for _ in range(4):
+        assert decide(second, phone, '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 200               # count was reset
+    assert decide(second, phone, '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 401               # fifth in a row
+    _d2, again = pair(deploy, pin=pin, name='phone again')
+    assert decide(second, again, pin).status == 200
+    assert _get(deploy, '/v1/approvals/%s' % second['id']).json()['state'] == 'APPROVED'
 
 
 def test_P24_reconnecting_during_an_approval_decides_it_once(deploy):
@@ -593,8 +625,8 @@ def test_P24_reconnecting_during_an_approval_decides_it_once(deploy):
     assert _get(deploy, '/v1/approvals/%s' % a['id'], phone).json()['state'] == 'PENDING'
     body = {'decision': 'approve', 'action_hash': a['action_hash'], 'step_up': '482913',
             'idempotency_key': 'once'}
-    first = _post(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
-    again = _post(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
+    first = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
+    again = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], body, token=phone)
     assert first.status == 200 and first.json() == again.json()
     decided = [e for e in _events(deploy) if e['type'] == 'approval.state_changed'
                and e['subject']['id'] == a['id'] and e['payload']['to'] == 'APPROVED']
@@ -615,7 +647,7 @@ def test_P29_a_client_originated_mutation_is_traceable_to_its_client(slow):
     did, phone = pair(tc, name='Pixel', host_label='phone')
     s = SSEClient(tc.base_url, phone)
     mid, _eid = _running(tc)
-    assert _post(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200
+    assert _phone(tc, '/v1/missions/%s/pause' % mid, token=phone).status == 200
     s.close()
     d = _device(tc, did)
     (pause,) = [e for e in _events(tc) if e['type'] == 'mission.state_changed'
@@ -684,3 +716,177 @@ def test_the_cli_pairs_lists_and_revokes(tc, capsys):
     assert _device(tc, did)['state'] == 'REVOKED'
     assert cli.main(['pair', '--scopes', 'control']) == 2          # observe is required
     assert cli.main(['core', '--remote-host', '*.ts.net']) == 2      # refused, nothing started
+
+
+# ── P20 D10 (slice J): re-arming from a paired client takes its PIN ──
+
+def _armed(tc):
+    return _get(tc, '/v1/health').json()['armed']
+
+
+def test_J01_a_paired_client_re_arms_only_with_its_pin(remote):
+    """D10, V2-3 resolved 2026-10-15 ("paired devices only"): the e-stop
+    asks nothing, the re-arm asks the paired client's PIN, every time."""
+    did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200     # never a PIN
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed'), r.body
+    assert 'step-up' in r.json()['detail']['reason']
+    r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+    assert (r.status, r.json()['error']) == (422, 'guard_failed')     # a wrong PIN
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone)
+    assert r.status == 200 and r.json() == {'armed': True}, r.body
+    assert _armed(remote) is True
+    # a proof is per request: the next re-arm asks again
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    assert _phone(remote, '/v1/rearm', token=phone).status == 422
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200                   # the local desktop: none
+    assert _armed(remote) is True and _device(remote, did)['state'] != 'REVOKED'
+
+
+def test_J02_a_paired_client_without_a_pin_cannot_re_arm_and_the_desktop_can(remote):
+    _d, nopin = pair(remote, platform='web')
+    assert _device(remote, _d)['capabilities'] == {'step_up': 'none'}
+    assert _phone(remote, '/v1/estop', token=nopin).status == 200
+    assert _phone(remote, '/v1/rearm', token=nopin).status == 422
+    assert _phone(remote, '/v1/rearm', {'step_up': '123456'}, token=nopin).status == 422
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200
+    assert _armed(remote) is True
+
+
+def test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would(remote):
+    """The re-arm counts toward the same step-up breaker (p15 D19)."""
+    did, phone = pair(remote, pin='482913')
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(5):
+        r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    assert _device(remote, did)['state'] == 'REVOKED'
+    assert _armed(remote) is False
+    assert _post(remote, '/v1/rearm').status == 200
+
+
+def test_J03b_a_right_re_arm_pin_resets_the_count(remote):
+    """Item 122: five wrong IN A ROW revoke; a right PIN between them starts
+    the count again (T-098 review finding 5)."""
+    did, phone = pair(remote, pin='482913')
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(4):
+        assert _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone).status == 422, i
+    assert _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone).status == 200
+    assert _post(remote, '/v1/estop').status == 200
+    for i in range(4):
+        assert _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone).status == 422, i
+    assert _device(remote, did)['state'] == 'ACTIVE'
+    assert _armed(remote) is False
+
+
+def test_J04_a_replayed_re_arm_answers_from_the_row_and_re_arms_nothing(remote):
+    """T-107: a retry of a re-arm after a later e-stop runs nothing - Core stays
+    disarmed and the answer says so, no second `core.rearmed`, and a repeat that
+    differs only in its PIN is the same replay (no oracle, no strike). Replayed
+    while Core is armed, the answer says armed. The busy-retry shape is J04b."""
+    did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    once = {'step_up': '482913', 'idempotency_key': 'rearm-once'}
+    assert _phone(remote, '/v1/rearm', once, token=phone).json() == {'armed': True}
+    r = _phone(remote, '/v1/rearm', dict(once, step_up='000000'), token=phone)
+    assert (r.status, r.json()) == (200, {'armed': True}), r.body       # armed: says armed
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    for pin in ('482913', '000000'):
+        r = _phone(remote, '/v1/rearm', dict(once, step_up=pin), token=phone)
+        assert (r.status, r.json()) == (200, {'armed': False}), r.body
+        assert _armed(remote) is False
+    assert len([e for e in _events(remote) if e['type'] == 'core.rearmed']) == 1
+    assert _device(remote, did)['state'] != 'REVOKED'
+
+
+def test_J04b_a_retry_after_a_busy_answer_whose_re_arm_committed_re_arms_nothing(remote, monkeypatch):
+    """T-107's fail-safe choice: a re-arm answered 503 busy that commits
+    afterwards leaves Core disarmed, its retry says so, and only a fresh request
+    re-arms (T-107 review finding 1, mutant R14)."""
+    _did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    gate = threading.Event()
+    held = remote.core.db.writer.submit(lambda tx: gate.wait(30) and {})
+    monkeypatch.setattr(remote.core.api, 'command_timeout', 0.5)
+    once = {'step_up': '482913', 'idempotency_key': 'rearm-busy'}
+    r = _phone(remote, '/v1/rearm', once, token=phone)
+    assert (r.status, r.json()['error']) == (503, 'busy'), r.body
+    gate.set()
+    held.result(10)
+    monkeypatch.setattr(remote.core.api, 'command_timeout', 30)
+    _wait(lambda: [e for e in _events(remote) if e['type'] == 'core.rearmed'], 'the re-arm committed')
+    r = _phone(remote, '/v1/rearm', once, token=phone)
+    assert (r.status, r.json()) == (200, {'armed': False}), r.body
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone)
+    assert (r.status, r.json()) == (200, {'armed': True}), r.body
+    assert _armed(remote) is True
+    assert len([e for e in _events(remote) if e['type'] == 'core.rearmed']) == 2
+
+
+def test_J07_a_replayed_re_arm_resets_no_step_up_count(remote):
+    """T-107: with the PIN out of the stored hash a replay checks no PIN, so it
+    must not clear the strike count either - or a used key would reset the
+    breaker between guesses. Four wrong, a replay, and the fifth revokes."""
+    did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    once = {'step_up': '482913', 'idempotency_key': 'rearm-once'}
+    assert _phone(remote, '/v1/rearm', once, token=phone).status == 200
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    for i in range(4):
+        r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    r = _phone(remote, '/v1/rearm', dict(once, step_up='000000'), token=phone)
+    assert r.status == 200, r.body                                       # the stored answer
+    r = _phone(remote, '/v1/rearm', {'step_up': '000000'}, token=phone)
+    assert r.json()['error'] == 'guard_failed'
+    assert _device(remote, did)['state'] == 'REVOKED'
+    assert _armed(remote) is False
+
+
+def test_J05_a_replayed_decision_resets_no_step_up_count(deploy):
+    """T-107: only a decision that ran clears the paired client's strike count;
+    its replay leaves the count where it was, so the fifth wrong PIN still
+    revokes."""
+    did, phone = pair(deploy, pin='482913')
+    a, b = _pending(deploy, _mission(deploy)), _pending(deploy, _mission(deploy))
+    ok = {'decision': 'approve', 'action_hash': a['action_hash'], 'step_up': '482913',
+          'idempotency_key': 'decide-once'}
+    assert _phone(deploy, '/v1/approvals/%s/decide' % a['id'], ok, token=phone).status == 200
+    wrong = {'decision': 'approve', 'action_hash': b['action_hash'], 'step_up': '000000'}
+    for i in range(4):
+        r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    r = _phone(deploy, '/v1/approvals/%s/decide' % a['id'], ok, token=phone)
+    assert r.status == 200, r.body                                       # the stored answer
+    r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+    assert r.json()['error'] == 'guard_failed'
+    assert _device(deploy, did)['state'] == 'REVOKED'
+
+
+def test_J06_a_replayed_decision_by_message_resets_no_step_up_count(deploy):
+    """T-107, the conversation path of J05: a card's decision carried by a
+    message clears the strike count only when it ran."""
+    did, phone = pair(deploy, platform='web', pin='482913')
+    mid = _mission(deploy)
+    a, b = _pending(deploy, mid), _pending(deploy, _mission(deploy))
+    url = '/v1/conversations/%s/messages' % mid
+    ok = {'text': 'approve', 'step_up': '482913', 'idempotency_key': 'say-once',
+          'decision': {'approval_id': a['id'], 'action_hash': a['action_hash'],
+                       'expected_version': a['version']}}
+    assert _phone(deploy, url, ok, token=phone).status == 200
+    wrong = {'decision': 'approve', 'action_hash': b['action_hash'], 'step_up': '000000'}
+    for i in range(4):
+        r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+        assert r.json()['error'] == 'guard_failed', i
+    r = _phone(deploy, url, ok, token=phone)
+    assert r.status == 200, r.body                                       # the stored answer
+    r = _phone(deploy, '/v1/approvals/%s/decide' % b['id'], wrong, token=phone)
+    assert r.json()['error'] == 'guard_failed'
+    assert _device(deploy, did)['state'] == 'REVOKED'

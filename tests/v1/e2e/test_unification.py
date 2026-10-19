@@ -10,6 +10,7 @@ desktop accepts the result its reviewer rejected, and the TUI reads the row.
 At each step every client open says the state Core holds. A check floor keeps
 a test that silently checks nothing from passing."""
 
+import os
 import re
 import time
 
@@ -17,10 +18,10 @@ import pytest
 
 from archeus.core import ports, runtime
 from archeus.harnesses.fake import FakeCaller
-from v1.judge.http import TempCore
+from v1.judge.http import TUNNEL, TempCore, request
 from v1.judge.support import TuiDriver
 
-from .conftest import wait
+from .conftest import Tunnel, wait
 from .test_spa_p16 import DEPLOY, FULL, Checks, _go, _settled, _state
 from .test_spa_r9_details import _RejectingReview
 
@@ -40,11 +41,57 @@ def unified(archeus_home):
     the result, so it waits for a person."""
     brain = FakeCaller('fake_brain', structured='native', replies={
         'brain': [{'when': 'The message:\n' + ASK, 'parsed': WORK}]})
-    tc = TempCore(archeus_home, ports=runtime.Ports(
+    tc = TempCore(archeus_home, remote_hosts=(TUNNEL,), ports=runtime.Ports(
         brain=ports.FixedPlanBrain(DEPLOY), callers=[brain], reviewer=_RejectingReview())).start()
     yield tc
     tc.stop(kill=True)
 
+
+
+class _Route:
+    """Playwright's Route, as far as Tunnel reads it: no browser needed."""
+
+    def __init__(self, method, path, headers, body=None):
+        self.request = type('Req', (), {
+            'method': method, 'url': 'http://127.0.0.1/' + path.lstrip('/'),
+            'headers': headers, 'post_data_buffer': body})()
+        self.done = None
+
+    def continue_(self):
+        self.done = ('continued',)
+
+    def fulfill(self, status, body, headers):
+        self.done = ('fulfilled', status, body)
+
+
+def test_the_tunnel_sends_only_credentialed_commands_through_the_remote_host(archeus_home):
+    """The fixture itself, without a browser: a command carrying a credential
+    reaches Core through the remote host (Core then decides), and a read, the
+    stream and an uncredentialed redemption stay on the loopback Host."""
+    tc = TempCore(archeus_home, remote_hosts=(TUNNEL,)).start()
+    try:
+        code = tc.http('POST', '/v1/devices/pair/start',
+                       body={'scopes': ['observe', 'control']}).json()['code']
+        token = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                        body={'code': code, 'platform': 'web'}).json()['token']
+        cred = {'authorization': 'Bearer ' + token, 'content-type': 'application/json',
+                'host': '127.0.0.1', 'origin': tc.base_url, 'sec-fetch-site': 'same-origin'}
+        tunnel = Tunnel(tc)
+        for route in (_Route('GET', '/v1/missions', cred), _Route('GET', '/v1/stream', cred),
+                      _Route('POST', '/v1/devices/pair/redeem', {}, b'{}')):
+            tunnel(route)
+            assert route.done == ('continued',), route.request.url
+        body = ('{"title": "M", "objective": "o", "idempotency_key": "%s"}'
+                % os.urandom(8).hex()).encode()
+        command = _Route('POST', '/v1/missions', cred, body)
+        tunnel(command)
+        assert command.done[:2] == ('fulfilled', 200), command.done
+        assert tunnel.sent == [('POST', '/v1/missions', 200)] and tunnel.token == token
+        direct = request(tc.base_url, 'POST', '/v1/missions', token=token, raw=body,
+                         headers={'Content-Type': 'application/json'})
+        assert (direct.status, direct.json()['error']) == (403, 'remote_host_required')
+    finally:
+        tc.stop()
 
 def _watch(context):
     page = context.new_page()
@@ -99,6 +146,10 @@ def test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect(
     link.wait_for()
     code = re.search(r'#pair=([\w-]+)', link.inner_text()).group(1)
     phone = browser.new_context(viewport=PHONE, is_mobile=True, has_touch=True)
+    # the phone's commands reach Core through the remote host, as from a
+    # phone on the tailnet; the desktop stays on this machine (T-053 Q4-A)
+    tunnel = Tunnel(tc)
+    phone.route('**/v1/**', tunnel)
     mobile, phone_errors = _watch(phone)
     mobile.goto(tc.base_url + '/#pair=' + code)
     mobile.locator('input[inputmode="numeric"]').fill(PIN)
@@ -122,6 +173,18 @@ def test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect(
     card = mobile.locator('article[data-kind="approval"]')
     card.wait_for()
     check(pending['step_up'], 'a deploy asks for a step-up')
+    # the direct-loopback negative control: the phone's own credential, on the
+    # loopback Host, is refused before anything is decided
+    check(tunnel.token is not None, 'the phone has sent its credential')
+    direct = request(tc.base_url, 'POST', '/v1/approvals/%s/decide' % pending['id'],
+                     token=tunnel.token, body={
+                         'decision': 'approve', 'action_hash': pending.get('action_hash'),
+                         'expected_version': pending.get('version'),
+                         'idempotency_key': 'direct-' + pending['id'], 'step_up': PIN})
+    check((direct.status, direct.json()['error']) == (403, 'remote_host_required'),
+          'on the loopback Host the phone cannot approve: %s' % direct.body)
+    check(tc.http('GET', '/v1/approvals/' + pending['id']).json()['state'] == 'PENDING',
+          'the refused approval left it pending')
     card.get_by_label('This client’s PIN (step-up)').fill(PIN)     # a paired client's proof
     card.get_by_role('button', name='Approve plan').click()
 
@@ -133,6 +196,8 @@ def test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect(
     check(got['state'] == 'APPROVED', 'the phone approved the plan: %s' % got['state'])
     check(got['decided_by'] == paired['principal_id'],
           'decided by the phone, not the desktop: %s' % got['decided_by'])
+    check(('POST', '/v1/approvals/%s/decide' % pending['id'], 200) in tunnel.sent,
+          'the approval went through the remote host: %s' % tunnel.sent)
 
     # ── execute on PC: the fake harness runs the task on this machine ──
     _settled(tc, mid, 'REVIEWING')
@@ -168,6 +233,6 @@ def test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect(
 
     check(not errors, 'no console errors on the desktop: %s' % errors)
     check(not phone_errors, 'no console errors on the phone: %s' % phone_errors)
-    assert check.n >= 18, 'only %d checks ran' % check.n
+    assert check.n >= 22, 'only %d checks ran' % check.n
     phone.close()
     desktop.close()

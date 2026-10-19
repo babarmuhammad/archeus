@@ -222,6 +222,14 @@ Three mechanisms, each for a different loop:
    until a user re-enables it, and re-enabling re-arms it (§7): the backlog it missed is not
    replayed. This bounds every loop the lineage cannot see (e.g. through knowledge items).
 
+*Amendment 2026-10-15 (P20 H-F1, the owner: "Re-enable clears count"; p20-design-gate §12 items
+119 and 125):* both counts in item 3 now cover only the runs for events after the automation's
+last arming (`armed_seq`). "Per rolling hour" is therefore per arm and per hour: re-enabling
+within the hour allows another `rate_limit` missions. Every enable moves `armed_seq`, so a plain
+DISABLED -> ENABLED restarts both counts too, not only SUSPENDED -> ENABLED. Only a user device
+holding `admin` can enable an automation, so neither an automation nor an execution can re-arm
+itself, and a loop that is real is still suspended by its third new escalation.
+
 ## 11. Retry, failure and dead letters [new]
 
 Expected outcomes are runs, not failures: stale, escalated, rate-limited, denied and skipped are

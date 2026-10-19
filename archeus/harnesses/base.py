@@ -17,14 +17,28 @@ spawning marker exists is NEVER spawned again — a retry is a new execution id
 """
 
 import json
+import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..infra.paths import ExecPaths, archeus_home
+from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, archeus_home, run_dir
+
+log = logging.getLogger('archeus.harnesses')
+
+#: the environment every execution runs in (execution-architecture §2): it can
+#: commit locally, it cannot push with the user's credentials
+CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK': None,
+                  'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'credential.helper',
+                  'GIT_CONFIG_VALUE_0': ''}
+#: the Windows rows of an isolated environment apply where the isolation exists;
+#: a test pins it to exercise them anywhere
+_WINDOWS = os.name == 'nt'
+_HOOK_TOKEN = re.compile(r'hook_[A-Za-z0-9_-]+')
 
 
 # ── the contract's vocabulary ───────────────────────────────────────────────
@@ -140,6 +154,10 @@ class CallSpec:
     schema: Optional[Mapping] = None
     model: Optional[str] = None
     limits: Mapping = field(default_factory=dict)       # timeout_s
+    # True: no tool at all, not even the harness's read-only set (K-O2: a call
+    # whose prompt carries execution-influenced data must not be able to read
+    # Core's own files). An adapter that cannot express it refuses the call.
+    no_tools: bool = False
 
 
 @dataclass(frozen=True)
@@ -246,6 +264,13 @@ class SpawnFailed(RuntimeError):
     """No process was created (the `ended` tombstone records why)."""
 
 
+class SpawnWriteFailed(SpawnFailed):
+    """No process was created because Core could not write the execution's own
+    files before it (a class directory, the marker, a stale tombstone, the
+    prompt). The task is charged as for a workspace that cannot be made (P11
+    note 11): an uncharged end would re-dispatch it on every tick, forever."""
+
+
 class StopRefused(RuntimeError):
     """The recorded pid is alive but is not the process we started (PID reuse)."""
 
@@ -267,8 +292,10 @@ def read_json(path):
 
 
 def halted_path(exec_dir):
-    """`halted.json`: written by the hook when it halts the process (P11)."""
-    return os.path.join(exec_dir, 'halted.json')
+    """`req/halted.json`: written by the hook when it halts the process (P11). It is
+    in the execution's own class-1 directory because the execution writes it, so it
+    is the execution's claim (PV-20 §7.5; what Core makes of it is S7's, H2)."""
+    return os.path.join(exec_dir, REQUEST_DIR, 'halted.json')
 
 
 def spawn(spec, argv):
@@ -294,32 +321,70 @@ def spawn(spec, argv):
         if last.get('process_seq', 1) != seq - 1 or not os.path.exists(paths.ended):
             raise AlreadySpawned('%s: process %d may still be running'
                                  % (spec.execution_id, seq - 1))
-    os.makedirs(paths.dir, exist_ok=True)
-    _write_json(paths.spawning, {'execution_id': spec.execution_id, 'attempt': spec.attempt,
-                                 'process_seq': seq, 'at': time.time()})
-    for stale in (paths.ended, halted_path(paths.dir)):
-        try:
-            os.remove(stale)
-        except FileNotFoundError:
-            pass
-    if not config.write_atomic(paths.prompt, spec.prompt):
-        raise OSError('could not write %s' % paths.prompt)
-    env = dict(os.environ)
-    for k, v in spec.env.items():
-        if v is None:
-            env.pop(k, None)
-        else:
-            env[k] = v
-    env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
-    env['ARCHEUS_HOME'] = archeus_home()
+    try:
+        child = _start(spec, argv, paths, seq)
+    except BaseException as err:
+        # nothing started: the MCP config this attempt's argv wrote goes with it
+        # (T-099). Not mark_ended: an isolation failure has written its own tombstone
+        drop_mcp_config(paths)
+        if isinstance(err, OSError):
+            # what _start's own writes did not catch (the isolated launch's): a
+            # refusal with its tombstone and the SpawnFailed every caller handles,
+            # never an exception that stops the manager's thread (T-102)
+            _refuse(paths, str(err), err)
+        raise
+    create_time = proc.process_create_time(child.pid)
+    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
+    return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+
+
+def _start(spec, argv, paths, seq):
+    try:
+        # Core creates every class directory (PV-20 §7.5): the execution is never the
+        # one to make a directory inside its own Core-owned one
+        for d in (paths.dir, paths.req, paths.res, paths.ctl):
+            os.makedirs(d, exist_ok=True)
+        _write_json(paths.spawning, {'execution_id': spec.execution_id,
+                                     'attempt': spec.attempt, 'process_seq': seq,
+                                     'at': time.time()})
+        for stale in (paths.ended, halted_path(paths.dir)):
+            try:
+                os.remove(stale)
+            except FileNotFoundError:
+                pass
+            except OSError as err:
+                # a halt report left over from the last process would be read as
+                # this one's: nothing starts
+                _refuse(paths, 'could not remove %s: %s' % (os.path.basename(stale), err),
+                        err, SpawnWriteFailed)
+        if not config.write_atomic(paths.prompt, spec.prompt):
+            raise OSError('could not write %s' % paths.prompt)
+    except OSError as err:
+        _refuse(paths, str(err), err, SpawnWriteFailed)
     if spec.isolation is not None:
         # PV-20 §3.4/§6.3: the isolated path, or nothing. It never falls through to
         # `spawn_detached` below — an unisolated child would run in the interactive
         # user's own security context, the failure mode this path exists to prevent —
         # and its failure is SpawnFailed with the reason recorded (§3.4, O7).
+        try:
+            _private_dirs(paths, seq)
+        except OSError as err:
+            _refuse(paths, str(err), err)
+        try:
+            env = _isolated_env(spec, paths)
+        except ValueError as err:
+            _refuse(paths, str(err), err)
         child, err = spec.isolation.launch(list(argv), cwd=spec.workdir, env=env,
                                            paths=paths)
     else:
+        env = dict(os.environ)
+        for k, v in spec.env.items():
+            if v is None:
+                env.pop(k, None)
+            else:
+                env[k] = v
+        env['ARCHEUS_EXECUTION_ID'] = spec.execution_id
+        env['ARCHEUS_HOME'] = archeus_home()
         # a hidden console, not none: the agent runs its hooks and tools as console
         # programs, and each would otherwise open a visible window of its own
         child, err = proc.spawn_detached(list(argv), cwd=spec.workdir, env=env,
@@ -328,16 +393,200 @@ def spawn(spec, argv):
     if child is None:
         # we KNOW nothing started, so say so: a marker without `ended` would
         # otherwise read as "a process may exist" to reconciliation
-        mark_ended(paths, None, error=err)
-        raise SpawnFailed(err)
-    create_time = proc.process_create_time(child.pid)
-    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
-    return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
+        _refuse(paths, err, None)
+    return child
+
+
+def _refuse(paths, error, cause, failed=SpawnFailed):
+    # the tombstone says why nothing started if it can be written; one that cannot
+    # is added to the reason, never a reason to start anyway or to leave the
+    # SpawnFailed route callers handle
+    try:
+        mark_ended(paths, None, error=error)
+    except OSError as tomb:
+        error = '%s; the ended tombstone was not written: %s' % (error, tomb)
+    raise failed(error) from cause
+
+
+def _private_dirs(paths, seq):
+    # a resume continues the session its first process left in this config dir, so
+    # it must find the dir as it was: never re-created empty, never the account home
+    if seq > 1 and not os.path.isdir(paths.config):
+        raise OSError('the private config of %s is gone: a resume cannot start without it'
+                      % paths.execution_id)
+    for d in (paths.config, paths.tmp) + _profile(paths.home)[1:]:
+        os.makedirs(d, exist_ok=True)
+
+
+def _profile(home):
+    """(home, roaming, local): an isolated execution's own profile, never the account's."""
+    return (home, os.path.join(home, 'AppData', 'Roaming'),
+            os.path.join(home, 'AppData', 'Local'))
+
+
+def _inside(path, roots):
+    a = os.path.normcase(os.path.realpath(path))
+    for root in roots:
+        b = os.path.normcase(os.path.realpath(root))
+        if a == b or a.startswith(b.rstrip(os.sep) + os.sep):
+            return True
+    return False
+
+
+def _absolute(entry):
+    # on Windows an absolute entry with a drive letter: never relative, drive-relative,
+    # rooted without a drive, or UNC
+    drive = os.path.splitdrive(entry)[0]
+    return os.path.isabs(entry) and (os.name != 'nt' or (len(drive) == 2 and drive[1] == ':'))
+
+
+def _windows_rows(banned):
+    """The Windows rows of a built-from-nothing environment: SystemRoot and what is
+    derived from it, never from a directory in *banned*."""
+    root = os.environ.get('SystemRoot')
+    if not (root and os.path.isabs(root) and os.path.isdir(root)) or _inside(root, banned):
+        raise ValueError('SystemRoot is not a usable Windows directory')
+    comspec = os.path.join(root, 'System32', 'cmd.exe')
+    if not os.path.isfile(comspec):
+        raise ValueError('ComSpec, derived from SystemRoot, does not exist')
+    return {'SystemRoot': root, 'windir': root, 'SystemDrive': os.path.splitdrive(root)[0],
+            'ComSpec': comspec}
+
+
+def _verifier_env(toolchain_dirs, scratch):
+    """A confined verifier's whole environment, built from nothing (T-054 A6-2): its
+    scratch is its profile and temp, PATH is the Core-staged toolchain and nothing
+    else, and no caller adds a name - no Archeus, hook, broker, provider, Git or proxy
+    variable can reach it. Raises ValueError naming what is wrong, never a value."""
+    if not (_absolute(scratch) and os.path.isdir(scratch)):
+        raise ValueError('scratch is not an absolute directory')
+    dirs = list(toolchain_dirs)
+    if not dirs:
+        raise ValueError('a verifier runs only a Core-staged toolchain, and none was given')
+    for d in dirs:
+        if not (_absolute(d) and os.path.isdir(d)) or _inside(d, [scratch]):
+            raise ValueError('a toolchain entry is not a staged directory outside scratch')
+    home, roaming, local = _profile(scratch)
+    tmp = os.path.join(scratch, 'tmp')
+    out = {'TEMP': tmp, 'TMP': tmp, 'USERPROFILE': home, 'HOME': home, 'APPDATA': roaming,
+           'LOCALAPPDATA': local, 'HOMEDRIVE': os.path.splitdrive(home)[0],
+           'HOMEPATH': os.path.splitdrive(home)[1], 'PATH': os.pathsep.join(dirs)}
+    if _WINDOWS:
+        banned = [os.path.expanduser('~'), archeus_home(), scratch,
+                  os.environ.get('TEMP'), os.environ.get('TMP')]
+        out.update(_windows_rows([b for b in banned if b]))
+    return out
+
+
+def _isolated_env(spec, paths):
+    """An isolated execution's whole environment, built from nothing (ADR-0053 A2; T-031
+    Correction C-1012-T031): these names, each from its one authority, and no other.
+    `spec.env` is a request: a name Core puts there is accepted only as the value Core
+    derives itself, any other refuses. Raises ValueError naming a variable, never a value.
+
+    PATH is an interim narrowing of Core's own, unverified: an entry kept is not shown
+    to be unwritable by the execution, and no variable confines where DLLs or modules
+    are searched for (that is the staged runtime's, T-017 C4)."""
+    acct = spec.account.home_ref if spec.account else None
+    banned = [os.path.expanduser(acct)] if acct else []
+    banned += [os.path.expanduser('~'), archeus_home(), spec.workdir,
+               os.environ.get('TEMP'), os.environ.get('TMP')]
+    banned = [b for b in banned if b]
+    home, roaming, local = _profile(paths.home)
+    out = {'TEMP': paths.tmp, 'TMP': paths.tmp, 'CLAUDE_CONFIG_DIR': paths.config,
+           'USERPROFILE': home, 'HOME': home, 'APPDATA': roaming, 'LOCALAPPDATA': local,
+           'HOMEDRIVE': os.path.splitdrive(home)[0], 'HOMEPATH': os.path.splitdrive(home)[1],
+           'ARCHEUS_EXECUTION_ID': spec.execution_id, 'ARCHEUS_HOME': archeus_home(),
+           'GIT_CONFIG_NOSYSTEM': '1'}
+    out.update((k, v) for k, v in CAPABILITY_ENV.items() if v is not None)
+    if _WINDOWS:
+        out.update(_windows_rows(banned))
+    kept, seen = [], set()
+    for entry in (os.environ.get('PATH') or '').split(os.pathsep):
+        if not (entry and _absolute(entry) and os.path.isdir(entry)) or _inside(entry, banned):
+            continue
+        key = os.path.normcase(os.path.realpath(entry))
+        if key not in seen:
+            seen.add(key)
+            kept.append(entry)
+    out['PATH'] = os.pathsep.join(kept)
+    derived = dict(out)
+    if spec.hook_settings:
+        derived['ARCHEUS_HOOK_CMD'] = json.dumps(list(spec.hook_settings))
+    canon = {k.upper(): k for k in list(derived) + ['ARCHEUS_HOOK_TOKEN']}
+    named = {}
+    for k, v in spec.env.items():
+        if k.upper() in named:
+            raise ValueError('spec.env names %s and %s, one variable' % (named[k.upper()], k))
+        named[k.upper()] = k
+        if v is None:
+            continue                       # a removal: absent by construction already
+        name = canon.get(k.upper())
+        if name is None:
+            raise ValueError('%s is not a variable an isolated execution may be given' % k)
+        if name == 'ARCHEUS_HOOK_TOKEN':
+            if not _HOOK_TOKEN.fullmatch(v):
+                raise ValueError('ARCHEUS_HOOK_TOKEN is not a hook token')
+        elif name == 'CLAUDE_CONFIG_DIR':
+            same = {os.path.normcase(os.path.realpath(x)) for x in (v, paths.config)}
+            if len(same) != 1:
+                raise ValueError('CLAUDE_CONFIG_DIR is not the private config')
+            continue
+        elif v != derived[name]:
+            raise ValueError('%s is not the value Core derives for it' % name)
+        out[name] = v
+    return out
 
 
 def mark_ended(paths, exit_code, **extra):
-    """Write the `ended` tombstone (Core, when it observes the exit)."""
-    _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
+    """Write the `ended` tombstone (Core, when it observes the exit). Every end of a
+    process passes here, so this is where its MCP config goes (T-099)."""
+    try:
+        _write_json(paths.ended, dict({'exit_code': exit_code, 'at': time.time()}, **extra))
+    finally:
+        drop_mcp_config(paths)
+
+
+# config.write_atomic's temp copy of the MCP config, `<path>.<pid>.tmp`: a Core that
+# dies between writing it and os.replace leaves the keys there, not at `paths.mcp`
+_MCP_TMP = re.compile(re.escape(MCP_CONFIG) + r'\.\d+\.tmp')
+
+
+def drop_mcp_config(paths):
+    """Remove *paths*' MCP config and any temp copy of it: both hold the opted-in
+    servers' keys. A failure is logged, never raised: the end it belongs to must
+    still be recorded, and the boot sweep tries again."""
+    res = os.path.dirname(paths.mcp)
+    try:
+        tmps = [os.path.join(res, n) for n in os.listdir(res) if _MCP_TMP.fullmatch(n)]
+    except OSError:
+        tmps = []                       # no res directory: nothing was written
+    for path in [paths.mcp] + tmps:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+        except OSError as err:
+            log.warning('execution %s: its MCP config was not removed: %s',
+                        paths.execution_id, err)
+
+
+def sweep_mcp_configs(keep):
+    """At boot, the MCP config of every execution whose process this Core is not
+    watching (*keep*): a Core that died while one ran never saw that end."""
+    root = os.path.join(run_dir(), 'exec')
+    try:
+        names = os.listdir(root)
+    except FileNotFoundError:
+        return
+    for name in names:
+        if name in keep:
+            continue
+        try:
+            paths = ExecPaths(name)
+        except ValueError:
+            continue                    # not an execution's directory
+        drop_mcp_config(paths)
 
 
 def read_stream(path, offset=0):

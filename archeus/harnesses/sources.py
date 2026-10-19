@@ -37,6 +37,11 @@ loads only while slash commands are on and its own source (or plugin) loads.
 What a process actually loaded is its stream's `init` event, never this record:
 a PV compares the two. Any effect PV-19 has not observed is a verification
 item, never a fact here. Stdlib only.
+
+For an ISOLATED execution (Core's decision, ADR-0053 A2) every MCP server and
+everything that lives in the account home is `excluded` with a `reason`, and
+the flags pass none of it: that is what this record predicts, not proof of an
+OS or CLI boundary, and managed settings are still recorded as applied.
 """
 
 import hashlib
@@ -44,6 +49,11 @@ import json
 import os
 import re
 import sys
+
+from claude_sessions import config
+
+from . import base
+from ..infra.paths import MCP_CONFIG
 
 SOURCES = ('user', 'project', 'local')
 #: Sources that PV-19 found cannot be narrowed without breaking the account's
@@ -59,6 +69,15 @@ MANAGED = {'win32': os.path.join(os.environ.get('ProgramFiles', r'C:\Program Fil
 #: make an unbounded record); a cut is said, never silent
 MAX_ITEMS = 500
 NAME_MAX = 200
+#: the statuses that predict an item loaded (managed's `not_excludable` aside)
+LOADED = ('opted_in', 'recorded_only')
+#: why an item does not load for an isolated execution (ADR-0053 A2): no MCP server
+#: is admitted, and its CLAUDE_CONFIG_DIR is private, so nothing that lives in the
+#: account home (its settings, skills, CLAUDE.md, plugins) is there until class-2
+#: materialisation exists
+ISOLATED_NO_MCP = 'isolated: no MCP server is admitted (ADR-0053 A2)'
+ISOLATED_NOT_MATERIALISED = ('isolated: not materialised in the private configuration '
+                             '(ADR-0053 A2)')
 #: the flags when no inventory exists: every source excluded
 DEFAULT_FLAGS = {'setting_sources': [], 'strict_mcp_config': True, 'mcp_servers': [],
                  'disable_slash_commands': True, 'plugin_dirs': []}
@@ -189,15 +208,31 @@ def _claude_mds(workdir):
     return out
 
 
-def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
+def _isolated_why(source, type_):
+    """Why an item cannot load for an isolated execution, or None (ADR-0053 A2)."""
+    if type_ == 'mcp_server':
+        return ISOLATED_NO_MCP
+    if source in ('user', 'plugin') or source.startswith('plugin:') or (
+            type_ == 'plugin' and source in ('project', 'local')):
+        return ISOLATED_NOT_MATERIALISED
+    return None
+
+
+def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=False):
     """The inventory of one execution: *home* is the account's config dir
     (None: none), *workdir* where it runs, *opt_ins* the (owner, kind, name)
-    that apply to it — exactly its account's and its project's."""
+    that apply to it — exactly its account's and its project's. *isolated* is
+    Core's isolation decision for it, never the execution's."""
     recorded_only = tuple(RECORDED_ONLY if recorded_only is None else recorded_only)
     managed = MANAGED if managed is None else managed
     opted_sources = {n for _o, k, n in opt_ins if k == 'source'}
     opted_plugins = sorted({n for _o, k, n in opt_ins if k == 'plugin'})
     opted_mcp = sorted({(o, n) for o, k, n in opt_ins if k == 'mcp'})
+    if isolated:
+        # an isolated CLI reads its private config dir, not the home: the home's
+        # own source cannot load there, opted in or not
+        opted_sources.discard('user')
+        recorded_only = tuple(s for s in recorded_only if s != 'user')
 
     def status(src):
         if src in recorded_only:
@@ -211,6 +246,9 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
     items = []
 
     def add(source, type_, name, st, **extra):
+        why = isolated and _isolated_why(source, type_)
+        if why:
+            st, extra = ('excluded' if st in LOADED else st), dict(extra, reason=why)
         items.append(dict({'source': source, 'type': type_, 'name': str(name)[:NAME_MAX],
                            'status': st}, **extra))
 
@@ -269,10 +307,12 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
     dirs = []
     dir_skills = False
     for name in opted_plugins:
-        dirs.append({'name': name, 'path': plugin_dir(home, name)})
-        dir_skills = plugin('plugin', name, 'opted_in', via='plugin_dir') or dir_skills
+        brings_skill = plugin('plugin', name, 'opted_in', via='plugin_dir')
+        if not isolated:
+            dirs.append({'name': name, 'path': plugin_dir(home, name)})
+            dir_skills = brings_skill or dir_skills
     # MCP servers: --strict-mcp-config loads only the ones passed [DOC]
-    servers = []
+    servers, seen = [], set()
     for owner, src, path in (('account', 'user', os.path.join(home, '.claude.json') if home
                               else None),
                              ('project', 'project', os.path.join(workdir, '.mcp.json')
@@ -281,12 +321,13 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None):
         if err:
             add(src, 'unreadable', os.path.basename(path), 'excluded', error=err)
         for n in names:
+            seen.add((owner, n))
             on = (owner, n) in opted_mcp
             add(src, 'mcp_server', n, 'opted_in' if on else 'excluded')
-            if on:
+            if on and not isolated:
                 servers.append({'owner': owner, 'name': n})
     for owner, n in opted_mcp:
-        if {'owner': owner, 'name': n} not in servers:
+        if (owner, n) not in seen:
             add('user' if owner == 'account' else 'project', 'mcp_server', n, 'not_found')
     # skills: --disable-slash-commands disables every one [DOC], so it stays
     # unless a skill arrives with something opted in; without it a skill still
@@ -346,10 +387,13 @@ def flag_argv(flags, *, home, workdir, exec_dir):
     out it would mean every source — and empty when nothing is opted in."""
     a = ['--setting-sources', ','.join(flags['setting_sources']), '--strict-mcp-config']
     if flags['mcp_servers']:
-        path = os.path.join(exec_dir, 'mcp.json')
-        os.makedirs(exec_dir, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(mcp_config(home, workdir, flags['mcp_servers']), f)
+        path = os.path.join(exec_dir, MCP_CONFIG)
+        # the execution's own file, written while the argv is built and before any
+        # child exists: one Core cannot write is the charged refusal the spawn's other
+        # writes are (T-102), never an OSError out of the manager's tick
+        if not config.write_atomic(path, json.dumps(
+                mcp_config(home, workdir, flags['mcp_servers']))):
+            raise base.SpawnWriteFailed('could not write %s' % path)
         a += ['--mcp-config', path]
     if flags['disable_slash_commands']:
         a.append('--disable-slash-commands')

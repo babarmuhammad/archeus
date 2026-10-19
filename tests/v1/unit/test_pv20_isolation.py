@@ -27,11 +27,30 @@ from archeus.core.application import executions as X
 from archeus.core.domain import ids
 from archeus.core.execution import manager as M
 from archeus.harnesses import base
-from archeus.infra.paths import isolation_dir, isolation_state, quarantine_log
+from archeus.infra.paths import (ExecPaths, VerifyPaths, isolation_dir, isolation_state,
+                                  quarantine_log, run_dir, verify_consumed)
 from archeus.node import isolation as iso
 from archeus.node.local import LocalNode
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+
+def _staged_hook(tmp_path):
+    """The hook command Core hands `default_plan` (C4b): a real stage, built from a
+    synthetic runtime tree, so no installed runtime is ever read or copied."""
+    from archeus.infra import paths
+    from archeus.node import staging
+    src = tmp_path / 'synthetic-py'
+    for rel in ('python.exe', 'python310.dll', 'Lib/os.py'):
+        p = src / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'synthetic')
+    hook = tmp_path / 'synthetic-hook' / 'hook.py'
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_bytes(b'# the hook')
+    os.makedirs(paths.archeus_home(), exist_ok=True)
+    stage = staging.stage(str(src), str(hook), version=(3, 10))
+    return os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, 'hook.py')
 
 #: an ACL-changing program, however it is spelled on a command line
 ACL_TOOL = re.compile(r'(?i)(?:^|[\s\\/"\'])(?:i?cacls|takeown)(?:\.exe)?(?:$|[\s"\'])|set-acl')
@@ -73,7 +92,8 @@ def os_tripwire(monkeypatch):
                  '_AssignProcessToJobObject', '_CreateJobObjectW', '_SetInformationJobObject',
                  '_InitializeProcThreadAttributeList', '_UpdateProcThreadAttribute',
                  '_DeleteProcThreadAttributeList', '_SetHandleInformation',
-                 '_GetHandleInformation', '_CreateFileW', '_CloseHandle'):
+                 '_GetHandleInformation', '_CreateFileW', '_CloseHandle',
+                 '_QueryInformationJobObject'):
         def trip(*a, _name=name):
             hits.append((_name, a))
             raise AssertionError('the real %s was reached' % _name)
@@ -138,6 +158,10 @@ class FakeBoundary:
         self.deleted = []
         self.closed = []
         self.assigned = []
+        #: the Job's active-process count, one answer per read (K3); an exception
+        #: instance is raised; the last answer repeats
+        self.active = [0]
+        self.order = []                   # the fence's reads and the closes, in order
 
     def available(self):
         return self.available_ok
@@ -210,6 +234,14 @@ class FakeBoundary:
 
     def close_job(self, job):
         self.closed.append(job)
+        self.order.append('close')
+
+    def job_active_processes(self, job):
+        self.order.append('query')
+        n = self.active.pop(0) if len(self.active) > 1 else self.active[0]
+        if isinstance(n, Exception):
+            raise n
+        return n
 
     def close_handle(self, handle):
         pass
@@ -230,6 +262,7 @@ class FakeNode:
 
     def __init__(self):
         self.registry = []
+        self.kills = []
 
     def _registry(self, line):
         self.registry.append(line)
@@ -238,6 +271,7 @@ class FakeNode:
         return True
 
     def kill(self, adapter, handle):
+        self.kills.append((adapter, handle))
         return 'killed'
 
 
@@ -247,8 +281,8 @@ def new_execution_id():
 
 def make_satisfying_request(execution_id, root):
     """An §3.1 inventory a synthetic fixture can satisfy but production cannot: every
-    required row present on a real directory, the broker present, the class-1/2 mailbox
-    separated, and Core's own state kept outside the boundary."""
+    required row present on a real directory, the broker present, the class 1, 2 and 3
+    directories separated, and Core's own state kept outside the boundary."""
     def d(name):
         p = os.path.join(root, name)
         os.makedirs(p, exist_ok=True)
@@ -257,20 +291,24 @@ def make_satisfying_request(execution_id, root):
     runtime = d('runtime')
     hook = d('hook')
     mailbox = d('mailbox')
+    response = d('response')
+    sentinel = d('sentinel')
     state = d('state')
     core_state = d('core_state')
     broker = d('broker')
-    spawn_config = os.path.join(root, 'spawn_config.json')
+    spawn_config = os.path.join(response, 'spawn_config.json')
     with open(spawn_config, 'w', encoding='utf-8') as f:
         json.dump({'argv': []}, f)
     grants = (iso.Grant(workspace, 'rw', 'workspace'),
               iso.Grant(runtime, 'rx', 'runtime'),
               iso.Grant(hook, 'rx', 'hook'),
-              iso.Grant(mailbox, 'rw', 'mailbox'),
-              iso.Grant(os.path.dirname(spawn_config), 'rx', 'spawn_config'),
+              iso.Grant(mailbox, 'rw', 'request'),
+              iso.Grant(response, 'rx', 'response'),
+              iso.Grant(sentinel, 'rx', 'sentinel'),
               iso.Grant(state, 'rw', 'state'))
     return iso.IsolationRequest(execution_id=execution_id, workspace=workspace,
-                                grants=grants, mailbox=mailbox, spawn_config=spawn_config,
+                                grants=grants, mailbox=mailbox, response=response,
+                                sentinel=sentinel, spawn_config=spawn_config,
                                 state_dir=state, core_state=core_state, broker=broker)
 
 
@@ -401,6 +439,141 @@ class TestInvariantFailClosed:
         assert 'no_broad_grants' in iso.unmet_conditions(conds)
 
 
+# ── §7.5 (S2-L): each mailbox class is its own directory, with its own access ──
+# What these show is the plan and the invariant over a fake boundary; that the OS
+# keeps an execution to its classes is Windows evidence, not this.
+
+def _conds(b, req):
+    return iso.check_invariant(b, req, {'created': True, 'sid': b.derive_sid(req.execution_id)},
+                               {'type': 'Job', 'name': '', 'inheritable': False})
+
+
+def _moved(req, **where):
+    """*req* with class directories moved and the grants naming them moved with them,
+    so the only thing that changes is where a class is."""
+    rows = {'mailbox': 'request', 'response': 'response', 'sentinel': 'sentinel'}
+    to = {rows[k]: v for k, v in where.items() if k in rows}
+    grants = tuple(iso.Grant(to[g.row], g.access, g.row) if g.row in to else g
+                   for g in req.grants)
+    return iso.IsolationRequest(**{**req.__dict__, **where, 'grants': grants})
+
+
+class TestClassSeparation:
+    def test_each_class_carries_its_own_access_and_no_other(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        for row, wrong in (('request', 'rx'), ('response', 'rw'), ('sentinel', 'rw')):
+            grants = tuple(iso.Grant(g.path, wrong, g.row) if g.row == row else g
+                           for g in req.grants)
+            conds = _conds(b, iso.IsolationRequest(**{**req.__dict__, 'grants': grants}))
+            assert iso.unmet_conditions(conds) == ('grants',), row
+
+    def test_a_class_granted_at_another_classs_directory_fails_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        grants = tuple(iso.Grant(req.mailbox, g.access, g.row) if g.row == 'response' else g
+                       for g in req.grants)
+        conds = _conds(b, iso.IsolationRequest(**{**req.__dict__, 'grants': grants}))
+        assert iso.unmet_conditions(conds) == ('grants',)
+
+    def test_requests_and_answers_in_one_directory_fail_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        config = os.path.join(req.mailbox, 'spawn_config.json')
+        open(config, 'w').close()
+        merged = _moved(req, response=req.mailbox, spawn_config=config)
+        assert iso.unmet_conditions(_conds(b, merged)) == ('mailbox',)
+
+    def test_a_class_inside_another_fails_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        inner = os.path.join(req.mailbox, 'ctl')
+        os.makedirs(inner)
+        assert iso.unmet_conditions(_conds(b, _moved(req, sentinel=inner))) == ('mailbox',)
+
+    @pytest.mark.parametrize('where', ['mailbox', 'core_state'])
+    def test_a_spawn_configuration_outside_class_2_fails_closed(self, tmp_path, where):
+        a, b, req, _ = authority(tmp_path)
+        config = os.path.join(getattr(req, where), 'spawn_config.json')
+        open(config, 'w').close()
+        moved = iso.IsolationRequest(**{**req.__dict__, 'spawn_config': config})
+        assert iso.unmet_conditions(_conds(b, moved)) == ('mailbox',)
+
+    def test_a_workspace_that_is_cores_own_directory_fails_closed(self, tmp_path):
+        # a project-less execution's workspace used to be its whole directory
+        a, b, req, _ = authority(tmp_path)
+        own = iso.IsolationRequest(**{**req.__dict__, 'core_only': (req.workspace,)})
+        assert iso.unmet_conditions(_conds(b, own)) == ('no_broad_grants',)
+
+    def test_a_class_that_is_cores_own_directory_fails_closed(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        own = iso.IsolationRequest(**{**req.__dict__, 'core_only': (req.mailbox,)})
+        assert iso.unmet_conditions(_conds(b, own)) == ('no_broad_grants', 'mailbox')
+
+    @pytest.mark.parametrize('field,row', [('workspace', 'workspace'), ('state_dir', 'state')])
+    @pytest.mark.parametrize('shape', ['is_class_1', 'inside_class_2', 'holds_class_3'])
+    def test_class_7_is_no_mailbox_class_and_neither_holds_nor_lies_in_one(
+            self, tmp_path, field, row, shape):
+        a, b, req, _ = authority(tmp_path)
+        if shape == 'holds_class_3':
+            inner = os.path.join(getattr(req, field), 'ctl')
+            os.makedirs(inner)
+            bad = _moved(req, sentinel=inner)
+        else:
+            where = req.mailbox if shape == 'is_class_1' else os.path.join(req.response, 'own')
+            os.makedirs(where, exist_ok=True)
+            grants = tuple(iso.Grant(where, g.access, g.row) if g.row == row else g
+                           for g in req.grants)
+            bad = iso.IsolationRequest(**{**req.__dict__, field: where, 'grants': grants})
+        assert iso.unmet_conditions(_conds(b, bad)) == ('mailbox',)
+
+    @pytest.mark.parametrize('nested', [False, True])
+    def test_the_workspace_may_hold_its_own_state(self, tmp_path, nested):
+        a, b, req, _ = authority(tmp_path)
+        state = os.path.join(req.workspace, 'state') if nested else req.workspace
+        os.makedirs(state, exist_ok=True)
+        grants = tuple(iso.Grant(state, g.access, g.row) if g.row == 'state' else g
+                       for g in req.grants)
+        together = iso.IsolationRequest(**{**req.__dict__, 'state_dir': state,
+                                           'grants': grants})
+        assert iso.unmet_conditions(_conds(b, together)) == ()
+
+    def test_the_production_plan_puts_each_class_in_its_own_directory(self, tmp_path,
+                                                                      monkeypatch):
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path), hook_settings=_staged_hook(tmp_path))
+        req = iso.default_plan(spec)
+        p = ExecPaths(spec.execution_id)
+        assert (req.mailbox, req.response, req.sentinel) == (p.req, p.res, p.ctl)
+        assert os.path.dirname(req.spawn_config) == p.res
+        assert req.core_only == (p.dir,) and req.broker == ''
+        assert {g.row: (g.path, g.access) for g in req.grants
+                if g.row in ('request', 'response', 'sentinel')} == {
+            'request': (p.req, 'rw'), 'response': (p.res, 'rx'), 'sentinel': (p.ctl, 'rx')}
+
+    def test_one_executions_plan_names_nothing_of_anothers(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+        hook = _staged_hook(tmp_path)
+
+        def plan():
+            return iso.default_plan(base.ExecutionSpec(
+                execution_id=new_execution_id(), prompt='go', workdir=str(tmp_path),
+                hook_settings=hook))
+
+        def own(r):
+            return {r.mailbox, r.response, r.sentinel, r.spawn_config, r.state_dir,
+                    *r.core_only}
+        a, b = plan(), plan()
+        assert not own(a) & own(b)
+        assert not any(p.startswith(b.core_only[0]) for p in own(a))
+
+
+class TestNoBoundaryForTheUnisolated:
+    def test_ending_an_execution_that_was_never_isolated_touches_no_boundary(self):
+        b = FakeBoundary()
+        a = iso.Isolation(FakeNode(), boundary=b)
+        assert a.teardown(new_execution_id(), reason='ended') is None
+        assert a.reclaim(()) == []
+        assert (b.mutations(), b.looked, b.probed, b.closed) == ([], [], [], [])
+
+
 class TestEstablish:
     def test_unmet_condition_raises_and_records(self, tmp_path):
         b = FakeBoundary()
@@ -513,6 +686,26 @@ class TestRegistryEntry:
         assert line['isolated'] is True and line['ac_sid'] == a.record(req.execution_id).sid
         assert 'core-held' in line['job']
 
+    def test_node_spawn_takes_no_isolation_decision_of_its_own(self, tmp_path):
+        # T-021 D1: the manager's one decision is required; a caller that forgets it
+        # fails loudly, and a decision passed in is never re-asked
+        node = LocalNode()
+        asked = []
+        node.isolation = SimpleNamespace(requested=lambda *a: asked.append(a) or True)
+
+        class Adapter:
+            id = 'fake'
+
+            def start(self, spec):
+                return SimpleNamespace(pid=7, create_time=1.0)
+
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path))
+        with pytest.raises(TypeError):
+            node.spawn(Adapter(), spec)
+        assert node.spawn(Adapter(), spec, isolated=False).pid == 7
+        assert asked == []
+
 
 # ── item 4 + teardown on every end path ───────────────────────────────────────
 
@@ -567,6 +760,275 @@ class TestTeardown:
         # the quarantined ACE names only this execution's own principal
         assert entry['sid'] == rec.sid
         assert entry['sid'] != _stable_sid('some-other-execution')
+
+
+# ── A6-1 (T-055): a verifier attempt is its own principal, apart from executions ──
+
+_EID, _VID = ids.new_id('execution'), ids.new_id('verification')
+
+
+def make_verifier_request(key, root):
+    """A verifier attempt's whole inventory (A6): the checkout and scratch it writes, the
+    staged toolchain it runs, and Core's own state named and kept apart."""
+    def d(name):
+        p = os.path.join(root, name)
+        os.makedirs(p, exist_ok=True)
+        return p
+    checkout = d('checkout')
+    return iso.IsolationRequest(execution_id=key, workspace=checkout,
+                                grants=(iso.Grant(checkout, 'rw', 'checkout'),
+                                        iso.Grant(d('scratch'), 'rw', 'scratch'),
+                                        iso.Grant(d('toolchain'), 'rx', 'toolchain')),
+                                core_state=d('core_state'))
+
+
+def _verify_key(attempt=0, vid=_VID):
+    return iso.Principal('verify', vid, attempt).key
+
+
+class TestVerifierPrincipal:
+    def test_an_execution_is_keyed_named_and_recorded_as_before(self):
+        p = iso.principal(_EID)
+        assert p == iso.Principal('exec', _EID, 0) and p.key == _EID
+        assert iso.validated_profile(_EID) == iso.profile_name(_EID) == 'archeus.exec.' + _EID.lower()
+        assert isolation_state(_EID) == os.path.join(isolation_dir(), _EID + '.json')
+
+    def test_a_verifier_attempt_has_its_own_key_name_record_and_files(self):
+        key = _verify_key(3)
+        assert key == 'verify/%s.3' % _VID and iso.principal(key) == iso.Principal('verify', _VID, 3)
+        assert iso.validated_profile(key) == 'archeus.verify.%s.3' % _VID.lower()
+        assert isolation_state(key) == os.path.join(isolation_dir(), 'verify', _VID + '.3.json')
+        v = VerifyPaths(_VID, 3)
+        assert v.dir == os.path.join(run_dir(), 'verify', _VID, '3')
+        assert v.out == os.path.join(v.dir, 'out.log')
+        own = os.path.join(v.dir, 'own')
+        assert (v.checkout, v.home, v.tmp, v.config) == tuple(
+            os.path.join(own, n) for n in ('checkout', 'home', 'tmp', 'config'))
+
+    @pytest.mark.parametrize('kind,owner,attempt', [
+        ('verify', _EID, 0), ('exec', _VID, 0), ('exec', _EID, 1), ('verify', _VID, -1),
+        ('verify', _VID, iso.MAX_ATTEMPT), ('verify', _VID, True), ('verify', _VID, '1'),
+        ('job', _EID, 0)])
+    def test_a_cross_kind_or_malformed_principal_is_refused_at_construction(
+            self, kind, owner, attempt):
+        with pytest.raises(iso.IsolationUnavailable):
+            iso.Principal(kind, owner, attempt)
+
+    @pytest.mark.parametrize('key', [
+        'verify/%s.01' % _VID, 'verify/%s.' % _VID, 'verify/%s' % _VID,
+        'verify/%s.\u00b2' % _VID, 'verify/%s.0' % _EID, 'verify/../%s.0' % _VID,
+        'verify/%s.%d' % (_VID, iso.MAX_ATTEMPT), 'exe_not-an-id'])
+    def test_a_malformed_key_names_no_principal_profile_or_record(self, key):
+        with pytest.raises(iso.IsolationUnavailable):
+            iso.principal(key)
+        with pytest.raises(iso.IsolationUnavailable):
+            iso.validated_profile(key)
+        with pytest.raises(ValueError):
+            isolation_state(key)
+
+    @pytest.mark.parametrize('owner,attempt', [(_EID, 0), (_VID, -1), (_VID, '../x')])
+    def test_verify_paths_take_only_a_verifier_attempt(self, owner, attempt):
+        with pytest.raises(ValueError):
+            VerifyPaths(owner, attempt)
+
+    def test_no_name_is_ever_cut_so_no_two_keys_share_one(self):
+        # every valid key's name is below the 127-character cut, so the cut never
+        # applies and the name keeps the whole key: distinct keys, distinct names
+        longest = iso.profile_name(_verify_key(iso.MAX_ATTEMPT - 1))
+        assert len(longest) < 127 and len(iso.profile_name(_EID)) < 127
+        names = {iso.profile_name(_verify_key(n)) for n in (0, 1, 10, 11, iso.MAX_ATTEMPT - 1)}
+        assert len(names) == 5
+        same_ulid = 'ver_' + _EID[len('exe_'):]
+        assert iso.profile_name(_verify_key(0, same_ulid)) != iso.profile_name(_EID)
+        assert iso.is_stale_profile(longest) and iso.is_stale_profile(iso.profile_name(_EID))
+
+    def test_a_verifier_attempt_establishes_with_exactly_its_three_rows(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        key = _verify_key()
+        rec = a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        assert rec.state == 'established' and rec.profile == iso.validated_profile(key)
+        assert all(holds for holds, _ in rec.conditions.values())
+        assert b.created == [rec.profile]
+        # never the parent's identity: another principal, another SID, another Job slot
+        exe = a.establish(req)
+        assert exe.sid != rec.sid and exe.profile != rec.profile
+        assert set(a.held_jobs()) == {key, req.execution_id}
+        assert a.held_job(key) != a.held_job(req.execution_id)
+
+    @pytest.mark.parametrize('change', ['no_checkout', 'no_scratch', 'no_toolchain',
+                                        'toolchain_rw', 'checkout_rx', 'workspace_elsewhere'])
+    def test_a_missing_or_wrongly_granted_row_fails_condition_2(self, tmp_path, change):
+        b = FakeBoundary()
+        req = make_verifier_request(_verify_key(), str(tmp_path))
+        rows = {g.row: g for g in req.grants}
+        if change.startswith('no_'):
+            rows.pop(change[3:])
+        elif change == 'toolchain_rw':
+            rows['toolchain'] = iso.Grant(rows['toolchain'].path, 'rw', 'toolchain')
+        elif change == 'checkout_rx':
+            rows['checkout'] = iso.Grant(rows['checkout'].path, 'rx', 'checkout')
+        workspace = (rows['scratch'].path if change == 'workspace_elsewhere'
+                     else req.workspace)
+        broken = iso.IsolationRequest(**{**req.__dict__, 'grants': tuple(rows.values()),
+                                         'workspace': workspace})
+        conds = _conds(b, broken)
+        assert conds['grants'][0] is False and conds['mailbox'][0] is True
+
+    @pytest.mark.parametrize('change', ['extra_toolchain_rw', 'second_checkout',
+                                        'second_scratch', 'same_toolchain_twice'])
+    def test_every_grant_is_checked_not_only_the_first_of_its_row(self, tmp_path, change):
+        a, b, _, _ = authority(tmp_path)
+        req = make_verifier_request(_verify_key(), str(tmp_path / 'v'))
+        rows = {g.row: g for g in req.grants}
+        other = str(tmp_path / 'other')
+        os.makedirs(other)
+        extra = {'extra_toolchain_rw': iso.Grant(other, 'rw', 'toolchain'),
+                 'second_checkout': iso.Grant(other, 'rw', 'checkout'),
+                 'second_scratch': iso.Grant(other, 'rw', 'scratch'),
+                 'same_toolchain_twice': rows['toolchain']}[change]
+        broken = iso.IsolationRequest(**{**req.__dict__, 'grants': req.grants + (extra,)})
+        conds = _conds(b, broken)
+        assert conds['grants'][0] is False and conds['mailbox'][0] is True
+        # and so the attempt never launches: the invariant refuses it at establishment
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(broken)
+        assert err.value.reason.startswith('condition_unmet:') and 'grants' in err.value.reason
+        assert b.launch_calls == []
+
+    def test_several_distinct_read_only_toolchains_hold(self, tmp_path):
+        b = FakeBoundary()
+        req = make_verifier_request(_verify_key(), str(tmp_path))
+        more = str(tmp_path / 'toolchain2')
+        os.makedirs(more)
+        two = iso.IsolationRequest(**{**req.__dict__, 'grants': req.grants + (
+            iso.Grant(more, 'rx', 'toolchain'),)})
+        assert all(holds for holds, _ in _conds(b, two).values())
+
+    @pytest.mark.parametrize('extra', ['mailbox', 'response', 'sentinel', 'spawn_config',
+                                       'broker', 'hook_row', 'request_row', 'no_core_state'])
+    def test_an_execution_interface_on_a_verifier_fails_condition_5(self, tmp_path, extra):
+        b = FakeBoundary()
+        req = make_verifier_request(_verify_key(), str(tmp_path))
+        elsewhere = str(tmp_path / 'elsewhere')
+        os.makedirs(elsewhere)
+        if extra.endswith('_row'):
+            change = {'grants': req.grants + (iso.Grant(elsewhere, 'rx', extra[:-4]),)}
+        elif extra == 'no_core_state':
+            change = {'core_state': ''}
+        else:
+            change = {extra: elsewhere}
+        conds = _conds(b, iso.IsolationRequest(**{**req.__dict__, **change}))
+        assert conds['mailbox'][0] is False and conds['grants'][0] is True
+        assert _conds(b, req)['mailbox'][0] is True
+
+    def test_an_attempt_starts_once_and_a_retry_is_a_new_principal(self, tmp_path):
+        a, b, _, _ = authority(tmp_path)
+        key0, key1 = _verify_key(0), _verify_key(1)
+        req0 = make_verifier_request(key0, str(tmp_path / 'a0'))
+        rec0 = a.establish(req0)
+        # re-entry for a running attempt: refused before anything is created or launched
+        created = list(b.created)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+        assert b.created == created and b.launch_calls == []
+        # attempt 0 will not go: quarantined, its record and evidence kept
+        b.delete_fail.add(rec0.profile)
+        assert a.teardown(key0, reason='ended')['profile'] == 'quarantined'
+        assert key0 in a.quarantined()
+        out0 = VerifyPaths(_VID, 0).out
+        os.makedirs(os.path.dirname(out0))
+        with open(out0, 'wb') as f:
+            f.write(b'attempt 0 evidence')
+        before = {p: open(p, 'rb').read() for p in (isolation_state(key0), quarantine_log(), out0)}
+        # the retry is attempt 1: its own key, profile and record; attempt 0 untouched
+        rec1 = a.establish(make_verifier_request(key1, str(tmp_path / 'a1')))
+        assert rec1.profile == iso.validated_profile(key1) != rec0.profile
+        assert os.path.isfile(isolation_state(key1))
+        assert {p: open(p, 'rb').read() for p in before} == before
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+
+    @pytest.mark.parametrize('route', ['teardown', 'reclaim'])
+    def test_a_released_attempt_is_never_started_again_under_any_authority(self, tmp_path, route):
+        a, b, _, _ = authority(tmp_path)
+        key0, key1 = _verify_key(0), _verify_key(1)
+        req0 = make_verifier_request(key0, str(tmp_path / 'a0'))
+        rec0 = a.establish(req0)
+        out0 = VerifyPaths(_VID, 0).out
+        os.makedirs(os.path.dirname(out0))
+        with open(out0, 'wb') as f:
+            f.write(b'attempt 0 evidence')
+        if route == 'teardown':
+            assert a.teardown(key0, reason='ended')['profile'] == 'torn_down'
+        else:
+            assert key0 in a.reclaim(live_execution_ids=[])
+        # the release really happened: profile deleted, record gone, marker kept
+        assert rec0.profile in b.deleted and not os.path.lexists(isolation_state(key0))
+        marker = verify_consumed(key0)
+        kept = {p: open(p, 'rb').read() for p in (marker, out0)}
+        created = list(b.created)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+        # a restarted Core: a new authority over a new boundary, same disk
+        a2, b2, _, _ = authority(tmp_path)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a2.establish(req0)
+        assert err.value.reason == 'attempt_consumed'
+        assert b.created == created and b2.created == [] and b2.launch_calls == []
+        assert not os.path.lexists(isolation_state(key0))
+        # the next attempt is a new principal and starts; attempt 0's evidence stays
+        rec1 = a2.establish(make_verifier_request(key1, str(tmp_path / 'a1')))
+        assert rec1.state == 'established' and os.path.isfile(verify_consumed(key1))
+        assert {p: open(p, 'rb').read() for p in kept} == kept
+
+    def test_a_record_without_a_marker_is_still_consumed(self, tmp_path):
+        a, b, _, _ = authority(tmp_path)
+        key = _verify_key()
+        path = isolation_state(key)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write('{}')
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        assert err.value.reason == 'attempt_consumed'
+        assert b.created == [] and not os.path.lexists(verify_consumed(key))
+
+    def test_an_attempt_that_cannot_be_marked_is_not_admitted(self, tmp_path, monkeypatch):
+        a, b, _, _ = authority(tmp_path)
+        key = _verify_key()
+        real = open
+
+        def refuse(path, *args, **kw):
+            if str(path).endswith('.consumed'):
+                raise PermissionError('denied')
+            return real(path, *args, **kw)
+        monkeypatch.setattr('builtins.open', refuse)
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        assert err.value.reason == 'attempt_unadmitted'
+        assert b.created == [] and not os.path.lexists(isolation_state(key))
+
+    def test_reclaim_sees_both_kinds_and_acts_only_on_derivable_records(self, tmp_path):
+        a, b, req, node = authority(tmp_path)
+        key = _verify_key(2)
+        a.establish(req)
+        rec = a.establish(make_verifier_request(key, str(tmp_path / 'v')))
+        junk = os.path.join(isolation_dir(), 'verify')
+        for name in ('junk.json', _EID + '.0.json', _VID + '.01.json'):
+            with open(os.path.join(junk, name), 'w', encoding='utf-8') as f:
+                f.write('{}')
+        assert sorted(a.stale(live_execution_ids=[key])) == [req.execution_id]
+        assert set(a.reclaim(live_execution_ids=[])) == {req.execution_id, key}
+        assert rec.profile in b.deleted and iso.profile_name(req.execution_id) in b.deleted
+        # the junk is left as found, and the reclaimed attempt keeps only its marker
+        assert sorted(os.listdir(junk)) == sorted(
+            ['junk.json', _EID + '.0.json', _VID + '.01.json',
+             os.path.basename(verify_consumed(key))])
+        assert {v for k, v in a.invalid.items() if k.startswith('verify/')} == {
+            'not_a_verifier_key'}
 
 
 # ── Finding 1: the profile-before-record crash window (record-first + recovery) ─
@@ -679,6 +1141,7 @@ class TestCrashWindow:
 def _manager_with_fake_node():
     m = M.ExecutionManager.__new__(M.ExecutionManager)
     m._procs = {}
+    m._noted = set()
     m.node = FakeNode()
     m.calls = []
 
@@ -691,31 +1154,33 @@ def _manager_with_fake_node():
     return m
 
 
-def _e(state):
+def _e(state, isolated=True):
     from types import SimpleNamespace
-    return SimpleNamespace(id=new_execution_id(), state=state, usage=0, stream_offset=0)
+    return SimpleNamespace(id=new_execution_id(), state=state, usage=0, stream_offset=0,
+                           isolated=isolated, process_seq=1, seed_revision=None, harness_id='h', pid=None)
 
 
 class TestRestartReconciliation:
-    def _reconcile(self, state, *, iso_state='established', handle=None):
+    def _reconcile(self, state, *, iso_state='established', handle=None, adapter=None):
         m = _manager_with_fake_node()
         rec = iso.IsolationRecord(execution_id='x', profile='p', state=iso_state,
                                   reason='condition_unmet:grants' if iso_state == 'failed' else '')
         e = _e(state)
-        changed = m._reconcile_isolated(e, object(), rec, handle, disarmed=False)
+        changed = m._reconcile_isolated(e, adapter or object(), rec, handle, disarmed=False)
         return m, e, changed
 
     def test_live_isolated_process_is_killed_never_adopted(self):
-        m, e, changed = self._reconcile('RUNNING', handle={'pid': 1})
-        assert m.node.alive({'pid': 1})
-        assert ('killed',) or True
+        adapter, handle = object(), {'pid': 1}
+        m, e, changed = self._reconcile('RUNNING', handle=handle, adapter=adapter)
+        assert m.node.kills == [(adapter, handle)]
         # no adoption: nothing records a live process
         assert not any(c is X.record_process for c, _ in m.calls)
 
-    def test_pausing_becomes_paused_via_record_end_halted(self):
+    def test_pausing_becomes_paused_via_cores_own_halt(self):
         m, e, changed = self._reconcile('PAUSING')
-        ended = [(c, k) for c, k in m.calls if c is X.record_end]
-        assert ended and ended[0][1]['halted'] is True
+        ended = [k for c, k in m.calls if c is X.record_end]
+        assert len(ended) == 1 and ended[0]['core_halt'] is True and ended[0]['isolated']
+        assert 'halted' not in ended[0]                  # never the execution's report
 
     def test_paused_leaves_the_decision_to_the_pass(self):
         m, e, changed = self._reconcile('PAUSED')
@@ -725,7 +1190,7 @@ class TestRestartReconciliation:
     def test_handing_off_ends_killed(self):
         m, e, changed = self._reconcile('HANDING_OFF')
         ended = [(c, k) for c, k in m.calls if c is X.record_end]
-        assert ended and ended[0][1]['killed'] is True
+        assert ended and ended[0][1]['killed'] is True and ended[0][1]['isolated'] is True
 
     def test_establishment_failure_is_uncharged_refuse(self):
         m, e, changed = self._reconcile('INTENT', iso_state='failed')
@@ -738,20 +1203,380 @@ class TestRestartReconciliation:
 
     def test_halted_json_is_never_authority(self, tmp_path, monkeypatch):
         # a forged halted.json claiming the process is paused/halted must not change
-        # the record-driven outcome: PAUSING still resolves to a halted record_end
+        # the record-driven outcome: PAUSING still resolves through Core's own halt
         from archeus.infra.paths import ExecPaths
         eid = new_execution_id()
         paths = ExecPaths(eid)
-        os.makedirs(paths.dir, exist_ok=True)
-        with open(os.path.join(paths.dir, 'halted.json'), 'w', encoding='utf-8') as f:
+        os.makedirs(paths.req, exist_ok=True)
+        with open(base.halted_path(paths.dir), 'w', encoding='utf-8') as f:
             json.dump({'state': 'HANDLING', 'adopt': True, 'note': 'forged'}, f)
         m = _manager_with_fake_node()
         rec = iso.IsolationRecord(execution_id=eid, profile='p', state='established')
         from types import SimpleNamespace
         e = SimpleNamespace(id=eid, state='PAUSING', usage=0, stream_offset=0)
         m._reconcile_isolated(e, object(), rec, None, disarmed=False)
-        ended = [(c, k) for c, k in m.calls if c is X.record_end]
-        assert ended and ended[0][1]['halted'] is True   # record drove it, not the file
+        ended = [k for c, k in m.calls if c is X.record_end]
+        assert ended and ended[0]['core_halt'] is True   # record drove it, not the file
+        assert 'halted' not in ended[0]
+
+
+class TestIsolatedLiveEndRoute:
+    """manager._collect (PV-20 §3.3 H2 / A7): which command a live end reaches. For an
+    isolated execution only Core's observed exit and kill decide a hand-off."""
+
+    def _collect(self, state, code, *, isolated=True, halted=False, killed=False, field=None,
+                 registry_fails=False):
+        m = _manager_with_fake_node()
+        if registry_fails:
+            m.node._registry = _no_registry
+        e = SimpleNamespace(id=new_execution_id(), state=state, account_id=None,
+                            isolated=field, process_seq=1, seed_revision=None)
+        rec = iso.IsolationRecord(execution_id=e.id, profile='p', state='established')
+        m.node.isolation_record = lambda eid: rec if isolated else None
+        m.node.ended = lambda handle, code, seq: None
+        m._tail = m._progress = lambda e, p: None
+        m._facts = lambda e, p: {}
+        m._release_isolation = lambda e: None
+        m.policy = m.missions = m.router = None
+        result = base.ExecutionResult(exit_reason='killed' if killed else
+                                      ('ok' if code == 0 else 'error'),
+                                      exit_code=code, halted=halted)
+        adapter = SimpleNamespace(collect_result=lambda handle: result)
+        p = {'adapter': adapter, 'handle': object(), 'seq': 1, 'offset': 0, 'usage': 0}
+        m._collect(e, p, base.ProcStatus('exited', code))
+        return m.calls
+
+    @pytest.mark.parametrize('halted', [False, True])
+    def test_an_isolated_handoff_that_exited_0_ends_through_record_handoff(self, halted):
+        calls = self._collect('HANDING_OFF', 0, halted=halted)
+        assert [c for c, _ in calls] == [X.record_handoff]
+
+    @pytest.mark.parametrize('code,killed', [(1, False), (None, False), (0, True)])
+    def test_any_other_isolated_handoff_end_reaches_record_end(self, code, killed):
+        calls = self._collect('HANDING_OFF', code, killed=killed, halted=True)
+        assert [c for c, _ in calls] == [X.record_end]
+        assert calls[0][1]['isolated'] is True and calls[0][1]['killed'] is killed
+
+    def test_an_isolated_pause_without_a_report_reaches_record_end_as_isolated(self):
+        calls = self._collect('PAUSING', 0)
+        assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
+
+    @pytest.mark.parametrize('field', [False, None])
+    @pytest.mark.parametrize('code,halted,want', [(0, False, 'record_end'),
+                                                  (0, True, 'record_handoff'),
+                                                  (1, False, 'record_handoff')])
+    def test_an_ordinary_handoff_keeps_its_route(self, code, halted, want, field):
+        calls = self._collect('HANDING_OFF', code, isolated=False, halted=halted, field=field)
+        assert [c for c, _ in calls] == [getattr(X, want)]
+        if want == 'record_end':
+            assert calls[0][1]['isolated'] is False
+
+    # T-037 rule 1: the record gone, the row's decision still routes the end
+    @pytest.mark.parametrize('code,killed', [(1, False), (None, False), (0, True)])
+    def test_a_lost_record_handoff_end_still_reaches_record_end(self, code, killed):
+        calls = self._collect('HANDING_OFF', code, isolated=False, field=True, killed=killed,
+                              halted=True)
+        assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
+
+    def test_a_lost_record_clean_handoff_still_hands_off(self):
+        calls = self._collect('HANDING_OFF', 0, isolated=False, field=True)
+        assert [c for c, _ in calls] == [X.record_handoff]
+
+    def test_a_lost_record_pause_reaches_record_end_as_isolated(self):
+        calls = self._collect('PAUSING', 0, isolated=False, field=True)
+        assert [c for c, _ in calls] == [X.record_end] and calls[0][1]['isolated'] is True
+
+    # the note is an instrument: a registry that cannot be written changes no end, and by
+    # now the handle is already out of _procs, so a raise would turn it into a restart
+    @pytest.mark.parametrize('state,code,field,want,isolated', [
+        ('HANDING_OFF', 0, True, 'record_handoff', None),
+        ('HANDING_OFF', 1, True, 'record_end', True),
+        ('RUNNING', 0, True, 'record_end', True),
+        ('HANDING_OFF', 0, None, 'record_end', False)])
+    def test_a_registry_that_cannot_be_written_never_changes_a_live_end(
+            self, caplog, state, code, field, want, isolated):
+        calls = self._collect(state, code, isolated=False, field=field, registry_fails=True)
+        assert [c for c, _ in calls] == [getattr(X, want)]
+        if want == 'record_end':
+            assert (calls[0][1]['isolated'], calls[0][1]['exit_code']) == (isolated, code)
+        assert 'registry note was not written' in caplog.text
+
+
+def _no_registry(line):
+    raise OSError('the registry cannot be written')
+
+
+#: the Core Git a known-isolated execution never reaches (T-044)
+_CORE_GIT = ('git_branch', 'git_remotes', 'diff_stat', 'end_state')
+#: (its isolation record's state or none, the row's decision): known-isolated (T-038)
+KNOWN = [('established', True), ('established', None), ('established', False),
+         ('invalid', None), (None, True)]
+
+
+def _git_node(m, allow):
+    """Every Core Git call recorded; unless *allow*, the first one fails the test where
+    it is made."""
+    seen = []
+    answers = {'git_branch': 'archeus/m.t1', 'git_remotes': {'origin': 'u'},
+               'diff_stat': [' a.py | 1 +'], 'end_state': 'digest'}
+
+    def method(name):
+        def call(path):
+            seen.append(name)
+            if not allow:
+                raise AssertionError('Core ran %s in %s' % (name, path))
+            return answers[name]
+        return call
+    for name in _CORE_GIT:
+        setattr(m.node, name, method(name))
+    return seen
+
+
+class TestIsolatedFactsWithoutCoreGit:
+    """T-044 (K4a): a known-isolated execution - its record present, valid or not, or the
+    row's decision True with the record gone - gets no Core Git in its workdir at a live
+    end, a restart or a hook, and its diff is stated as not measured, never as empty. A
+    row with no record keeps today's Git: legacy None (the owner's L1) and ordinary False."""
+
+    def _m(self, record, field, allow, branch=None):
+        m = _manager_with_fake_node()
+        git = _git_node(m, allow)
+        e = SimpleNamespace(id=new_execution_id(), state='RUNNING', account_id=None,
+                            isolated=field, process_seq=1, seed_revision=None, branch=branch, workdir='w',
+                            usage=0, stream_offset=0, harness_id='h', pid=None)
+        rec = None if record is None else iso.IsolationRecord(execution_id=e.id, profile='p',
+                                                              state=record)
+        m.node.isolation_record = lambda eid: rec
+        return m, e, git
+
+    def _end(self, state, code, record, field, *, killed=False, allow=False):
+        m, e, git = self._m(record, field, allow)
+        e.state = state
+        m.node.ended = lambda handle, code, seq: None
+        m._tail = m._progress = lambda e, p: None
+        m._release_isolation = lambda e: None
+        m.policy = m.missions = m.router = None
+        result = base.ExecutionResult(exit_reason='killed' if killed else
+                                      ('ok' if code == 0 else 'error'), exit_code=code)
+        p = {'adapter': SimpleNamespace(collect_result=lambda handle: result),
+             'handle': object(), 'seq': 1, 'offset': 0, 'usage': 0,
+             'decisions': ['kept'], 'last_error': 'boom'}
+        m._collect(e, p, base.ProcStatus('exited', code))
+        ((cmd, kw),) = m.calls
+        return cmd, kw, git
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    @pytest.mark.parametrize('state,code,killed,want', [
+        ('RUNNING', 0, False, 'record_end'), ('RUNNING', None, True, 'record_end'),
+        ('HANDING_OFF', 0, False, 'record_handoff'), ('HANDING_OFF', 1, False, 'record_end'),
+        ('PAUSING', 0, False, 'record_end')])
+    def test_a_known_isolated_end_runs_no_core_git_and_says_so(self, record, field, state,
+                                                               code, killed, want):
+        from archeus.core.execution import pressure
+        cmd, kw, git = self._end(state, code, record, field, killed=killed)
+        assert git == [] and cmd is getattr(X, want)
+        assert kw['facts'] == {'files_changed': [M.UNMEASURED], 'decisions': ['kept'],
+                               'last_error': 'boom', 'end_state': None}
+        if want == 'record_end':
+            assert kw['isolated'] is True
+        # P1: an unmeasured end is no progress, so a pressure link that hands off again
+        # keeps its charged stop
+        assert not pressure.progressed(kw['facts']['end_state'], (), [])
+
+    @pytest.mark.parametrize('field', [None, False])
+    def test_an_end_without_a_record_keeps_its_git(self, field):
+        cmd, kw, git = self._end('RUNNING', 0, None, field, allow=True)
+        assert cmd is X.record_end and kw['isolated'] is False
+        assert git == ['diff_stat', 'end_state']
+        assert (kw['facts']['files_changed'], kw['facts']['end_state']) == (
+            [' a.py | 1 +'], 'digest')
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    @pytest.mark.parametrize('state', ['PAUSING', 'STOPPING', 'HANDING_OFF'])
+    def test_a_restart_states_the_facts_as_not_measured(self, record, field, state):
+        m, e, git = self._m(record, field, allow=False)
+        e.state = state
+        m.node.files = lambda eid: ({'process_seq': 1}, {'pid': 1, 'create_time': 1.0,
+                                                         'process_seq': 1}, None)
+        m.node.alive = lambda h: False
+        m.registry = SimpleNamespace(get=lambda hid: object())
+        assert m._reconcile_one(e, disarmed=False) is True
+        ((cmd, kw),) = m.calls
+        assert cmd is X.record_end and git == []
+        assert kw['facts'] == {'files_changed': [M.UNMEASURED], 'decisions': [],
+                               'last_error': None, 'end_state': None}
+
+    def _hook(self, monkeypatch, record, field, branch, allow=False):
+        m, e, git = self._m(record, field, allow, branch=branch)
+        m.node.pending_requests = lambda eid: [(1, {'tool': 'Read', 'input': {}})]
+        answered, ctxs = [], []
+        m.node.respond = lambda eid, seq, decision, reason: answered.append(decision)
+        m._tail = lambda e, p: None
+        m.policy = None
+        monkeypatch.setattr(M.canonical, 'canonicalise',
+                            lambda tool, inp, ctx: ctxs.append(ctx) or ((), ()))
+
+        def _do(command, **kw):
+            m.calls.append((command, kw))
+            return {'decision': 'allow', 'reason': 'ok'}
+        m._do = _do
+        assert m._hooks(e, {}, disarmed=False) is True
+        ((cmd, kw),) = m.calls
+        assert cmd is X.serve_hook and answered == ['allow']
+        return kw, ctxs[0], git
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    def test_a_known_isolated_hook_reads_no_git_in_its_workdir(self, monkeypatch, record,
+                                                               field):
+        kw, ctx, git = self._hook(monkeypatch, record, field, None)
+        assert git == [] and kw['branch_ok'] is True
+        assert (ctx['branch'], ctx['remotes']) == (None, {})
+
+    @pytest.mark.parametrize('record,field', KNOWN)
+    def test_a_known_isolated_hook_with_a_branch_fails_its_gate_unread(self, monkeypatch,
+                                                                      record, field):
+        kw, ctx, git = self._hook(monkeypatch, record, field, 'archeus/m.t1')
+        assert git == [] and kw['branch_ok'] is False
+        assert (ctx['branch'], ctx['remotes']) == (None, {})
+
+    @pytest.mark.parametrize('field', [None, False])
+    def test_a_hook_without_a_record_keeps_its_branch_check(self, monkeypatch, field):
+        kw, ctx, git = self._hook(monkeypatch, None, field, 'archeus/m.t1', allow=True)
+        assert git == ['git_branch', 'git_remotes'] and kw['branch_ok'] is True
+        assert (ctx['branch'], ctx['remotes']) == ('archeus/m.t1', {'origin': 'u'})
+
+    def test_the_checkpoint_says_the_diff_was_not_measured_never_none(self):
+        from archeus.core.execution import checkpoint
+        from archeus.core.sessions import render
+        facts = M._unmeasured({})
+        cp = SimpleNamespace(id='c', task_id='t', mission_id='m', plan_version=1,
+                             execution_id='e', trigger='pause', objective='o', constraints=(),
+                             success_criteria=(), completed_steps=(),
+                             files_changed=checkpoint._clip(facts['files_changed']),
+                             decisions=(), open_problems=(), verification=(),
+                             next_action=None, as_of_seq=1)
+        assert '## Files changed\n\n- %s\n' % M.UNMEASURED in render.checkpoint(cp)
+
+
+class TestLostIsolationRecord:
+    """T-037 / T-038: the transient record is gone and the row recorded Core's decision
+    (T-036). A known-isolated execution is never adopted, never read for its own report,
+    and killed only through a verified identity; a legacy unknown row keeps today's
+    ordinary rules (the owner's N1) and is never written as ordinary."""
+
+    def _reconcile(self, state, *, field=True, record=None, alive=True, create_time=1.0,
+                   pid=True, adapter=None, registry_fails=False):
+        m = _manager_with_fake_node()
+        if registry_fails:
+            m.node._registry = _no_registry
+        e = _e(state, isolated=field)
+        m.node.isolation_record = lambda eid: record
+        m.node.files = lambda eid: ({'process_seq': 1}, {'pid': 4242, 'create_time': create_time,
+                                                         'process_seq': 1} if pid else None,
+                                    None)
+        # verified identity: alive only with a create time to match against
+        m.node.alive = lambda h: alive and h.create_time is not None
+        # any read of the execution's own files would go through the adapter: object()
+        # has no status/collect_result, so such a read raises
+        adapter = adapter or object()
+        m.registry = SimpleNamespace(get=lambda hid: adapter)
+        m._adopt = lambda e, a, h: m.calls.append(('adopt', {'handle': h}))
+        m._collect_gone = lambda e, a, h: m.calls.append(('collect_gone', {}))
+        changed = m._reconcile_one(e, disarmed=False)
+        return m, e, adapter, changed
+
+    def _commands(self, m):
+        return [c for c, _ in m.calls]
+
+    @pytest.mark.parametrize('state,want', [
+        ('RUNNING', [X.lost]), ('STARTING', [X.lost]), ('INTENT', [X.lost]),
+        ('PAUSING', [X.record_end]), ('STOPPING', [X.record_end]),
+        ('HANDING_OFF', [X.record_end]), ('PAUSED', []), ('AWAITING_APPROVAL', [])])
+    def test_a_live_process_is_killed_by_identity_never_adopted(self, state, want):
+        m, e, adapter, _ = self._reconcile(state)
+        (killed,) = m.node.kills
+        assert killed[0] is adapter and (killed[1].pid, killed[1].create_time) == (4242, 1.0)
+        assert self._commands(m) == want                  # no record_process/adopt/handoff
+        if state == 'PAUSING':
+            assert m.calls[0][1]['core_halt'] is True and m.calls[0][1]['isolated'] is True
+        if state in ('STOPPING', 'HANDING_OFF'):
+            assert m.calls[0][1]['killed'] is True and m.calls[0][1]['isolated'] is True
+
+    @pytest.mark.parametrize('state,want', [('RUNNING', [X.lost]), ('PAUSING', [X.record_end]),
+                                            ('PAUSED', [])])
+    def test_a_pid_without_a_verified_identity_is_never_killed(self, state, want):
+        m, e, adapter, _ = self._reconcile(state, create_time=None)
+        assert m.node.kills == []
+        assert self._commands(m) == want
+
+    def test_the_executions_own_report_is_never_read(self):
+        # an adapter that would report what a forged halted.json and a result line say:
+        # exit 0, halted. The outcome is Core's, and the adapter is never asked
+        asked = []
+        adapter = SimpleNamespace(
+            status=lambda h: asked.append('status') or base.ProcStatus('exited', 0),
+            collect_result=lambda h: asked.append('collect') or base.ExecutionResult(
+                exit_reason='ok', exit_code=0, halted=True))
+        m, e, _, _ = self._reconcile('RUNNING', alive=False, adapter=adapter)
+        assert asked == [] and self._commands(m) == [X.lost]
+
+    def test_without_a_process_the_intent_is_refused_uncharged(self):
+        m, e, _, _ = self._reconcile('INTENT', pid=False)
+        assert self._commands(m) == [X.refuse] and m.calls[0][1]['stop_reason'] == 'binding'
+
+    @pytest.mark.parametrize('field,lines', [(None, ['isolation_decision_unknown']),
+                                             (False, [])])
+    def test_a_row_not_known_isolated_keeps_the_ordinary_route(self, field, lines):
+        m, e, _, _ = self._reconcile('RUNNING', field=field)
+        assert m.node.kills == [] and [c for c, _ in m.calls] == ['adopt']
+        assert [x['op'] for x in m.node.registry] == lines
+        assert e.isolated is field                        # nothing relabels it
+
+    def test_a_record_still_decides_over_an_ordinary_field(self):
+        rec = iso.IsolationRecord(execution_id='x', profile='p', state='established')
+        m, e, _, _ = self._reconcile('RUNNING', field=False, record=rec)
+        assert len(m.node.kills) == 1 and self._commands(m) == [X.lost]
+        assert m.node.registry == []
+
+    def test_reconcile_isolated_takes_no_record(self):
+        m = _manager_with_fake_node()
+        e = _e('INTENT')
+        assert m._reconcile_isolated(e, object(), None, None, disarmed=False) is True
+        assert [c for c, _ in m.calls] == [X.refuse]
+        assert m.calls[0][1]['stop_reason'] == 'binding'
+
+    def test_the_registry_line_is_left_once_per_execution(self, caplog):
+        m = _manager_with_fake_node()
+        e = _e('PAUSED')
+        m.node.isolation_record = lambda eid: None
+        m.node.files = lambda eid: (None, None, None)
+        m.registry = SimpleNamespace(get=lambda hid: object())
+        m._reconcile_one(e, disarmed=False)
+        m._reconcile_one(e, disarmed=False)
+        assert [x['op'] for x in m.node.registry] == ['isolation_record_missing']
+        assert m.node.registry[0]['execution_id'] == e.id
+        assert caplog.text.count('isolation_record_missing') == 1    # and one warning
+
+    def test_a_registry_that_cannot_be_written_never_stops_the_kill(self, caplog):
+        m, e, adapter, _ = self._reconcile('RUNNING', registry_fails=True)
+        assert len(m.node.kills) == 1 and self._commands(m) == [X.lost]
+        assert 'registry note was not written' in caplog.text
+
+    @pytest.mark.parametrize('field,op', [(True, 'isolation_record_missing'),
+                                          (None, 'isolation_decision_unknown')])
+    def test_the_note_survives_the_boot_compaction(self, field, op):
+        m = _manager_with_fake_node()
+        e = _e('RUNNING', isolated=field)
+        m._read = lambda: ([e], {})
+        m._sweep_isolation = lambda live: []
+        m.node.disarmed = lambda: False
+        m.node.isolation_record = lambda eid: None
+        m.node.files = lambda eid: (None, None, None)
+        m.node.compact_registry = m.node.registry.clear      # keeps no note line
+        m.registry = SimpleNamespace(get=lambda hid: object())
+        m.boot()
+        assert self._commands(m) == [X.lost]
+        assert [(x['op'], x['execution_id']) for x in m.node.registry] == [(op, e.id)]
 
 
 # ── item 8: A4 built, not enforced ────────────────────────────────────────────
@@ -819,16 +1644,99 @@ class TestProductionDispatchDisabled:
         assert a.requested(new_execution_id(), T()) is False
 
     def test_default_plan_is_unsatisfiable_in_production(self, tmp_path, monkeypatch):
-        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+        # a project apart from the home: a workspace holding the class directories
+        # would fail condition 5 on its own (see TestClassSeparation)
+        project = tmp_path / 'project'
+        project.mkdir()
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
         spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
-                                  workdir=str(tmp_path))
+                                  workdir=str(project), hook_settings=_staged_hook(tmp_path))
         req = iso.default_plan(spec)
+        # the class 1-3 directories and the spawn configuration as `base.spawn` and the
+        # adapter leave them: the layout is there, and production still cannot start
+        for p in (req.mailbox, req.response, req.sentinel, req.state_dir):
+            os.makedirs(p)
+        open(req.spawn_config, 'w').close()
         b = FakeBoundary()
         conds = iso.check_invariant(b, req, {'created': True,
                                              'sid': b.derive_sid(spec.execution_id)},
                                     {'type': 'Job', 'name': '', 'inheritable':False})
         unmet = iso.unmet_conditions(conds)
-        assert 'grants' in unmet and 'mailbox' in unmet    # no broker, no class 1-3 mailbox
+        assert 'grants' in unmet and 'mailbox' not in unmet
+        assert conds['grants'][1] == 'no broker holds provider access (R3-B)'
+
+
+# ── T-040 (C4b): the runtime and hook rows name Core's verified stage ─────────
+
+class TestStagedHookRows:
+    def test_the_runtime_and_hook_rows_name_the_stage_and_nothing_shared(self, tmp_path,
+                                                                         monkeypatch):
+        from archeus.infra import paths
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
+        cmd = _staged_hook(tmp_path)
+        project = tmp_path / 'project'
+        project.mkdir()
+        req = iso.default_plan(base.ExecutionSpec(
+            execution_id=new_execution_id(), prompt='go', workdir=str(project),
+            hook_settings=cmd))
+        stage = os.path.dirname(cmd[0])
+        assert {g.row: (g.path, g.access) for g in req.grants if g.row in ('runtime', 'hook')} \
+            == {'runtime': (stage, 'rx'), 'hook': (stage, 'rx')}
+        assert os.path.dirname(stage) == paths.runtime_dir()
+        for g in req.grants:
+            for shared in (os.path.dirname(os.path.abspath(sys.executable)), sys.base_prefix,
+                           REPO):
+                p, s = os.path.normcase(g.path), os.path.normcase(shared)
+                assert p != s and not p.startswith(s + os.sep), (g.row, g.path)
+
+    def _refused(self, tmp_path, cmd):
+        b = FakeBoundary()
+        a = iso.Isolation(FakeNode(), boundary=b)
+        started = []
+
+        class Adapter:
+            id = 'fake'
+
+            def start(self, spec):
+                started.append(spec)
+
+        node = LocalNode(isolation=a)
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path), hook_settings=cmd)
+        with pytest.raises(base.SpawnFailed, match='isolation: the hook'):
+            node.spawn(Adapter(), spec, isolated=True)
+        # refused before any profile operation, and nothing started
+        assert (b.created, b.looked, b.launch_calls, started) == ([], [], [], [])
+        assert a.record(spec.execution_id) is None
+
+    @pytest.mark.parametrize('forge', [
+        'missing', 'ordinary', 'list', 'no -I', 'relative', 'relative to the stage',
+        'hook elsewhere', 'not under runtime', 'tampered'])
+    def test_a_missing_forged_or_unverified_hook_command_is_refused(self, tmp_path,
+                                                                    monkeypatch, forge):
+        monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path / 'home'))
+        exe, flag, hook = _staged_hook(tmp_path)
+        stage = os.path.dirname(exe)
+        fake = tmp_path / 'fake'
+        fake.mkdir()
+        if forge == 'tampered':
+            with open(os.path.join(stage, 'Lib', 'os.py'), 'ab') as f:
+                f.write(b' changed')
+        if forge == 'relative to the stage':
+            # it would verify from here, and the CLI would resolve it from the workdir
+            monkeypatch.chdir(os.path.dirname(stage))
+        digest = os.path.basename(stage)
+        cmd = {'missing': None,
+               'ordinary': (sys.executable, M.HOOK),
+               'list': [exe, flag, hook],
+               'no -I': (exe, '-E', hook),
+               'relative': ('python.exe', '-I', 'hook.py'),
+               'relative to the stage': (os.path.join(digest, 'python.exe'), '-I',
+                                         os.path.join(digest, 'hook.py')),
+               'hook elsewhere': (exe, '-I', M.HOOK),
+               'not under runtime': (str(fake / 'python.exe'), '-I', str(fake / 'hook.py')),
+               'tampered': (exe, flag, hook)}[forge]
+        self._refused(tmp_path, cmd)
 
 
 # ── Phase A containment (ACL incident, 2026-10-09) ────────────────────────────
@@ -891,6 +1799,7 @@ FORGED = [
     ('the legacy grants field naming shared paths',
      lambda b, e: _good_record(b, e, grants=[_row(p) for p in SHARED]), 'unknown_fields:grants'),
     ("a user's SID", lambda b, e: _good_record(b, e, sid='S-1-5-21-1-2-3-1001'), 'sid_mismatch'),
+    ('a non-string failure', lambda b, e: _good_record(b, e, failure=1), 'malformed:failure'),
     ('SYSTEM', lambda b, e: _good_record(b, e, sid='S-1-5-18'), 'sid_mismatch'),
     ('Everyone', lambda b, e: _good_record(b, e, sid='S-1-1-0'), 'sid_mismatch'),
     ('ALL APPLICATION PACKAGES', lambda b, e: _good_record(b, e, sid='S-1-15-2-1'),
@@ -930,7 +1839,9 @@ ACL_APIS = ('SetNamedSecurityInfo', 'SetSecurityInfo', 'SetFileSecurity',
             'SetKernelObjectSecurity', 'SetEntriesInAcl', 'TreeSetNamedSecurityInfo',
             'TreeResetNamedSecurityInfo', 'SetSecurityDescriptorDacl',
             'SetPrivateObjectSecurity', 'AddAccessAllowedAce', 'AddAccessDeniedAce',
-            'SetAclInformation', 'win32security')
+            'SetAclInformation', 'win32security',
+            # by handle: Nt/Zw/RtlSetSecurityObject, and the user and service objects
+            'SetSecurityObject', 'SetUserObjectSecurity', 'SetServiceObjectSecurity')
 PROFILE_APIS = ('CreateAppContainerProfile', 'DeleteAppContainerProfile')
 ISOLATION = 'archeus/node/isolation.py'
 
@@ -977,13 +1888,16 @@ class TestPhaseAContainment:
         # install, the repository and its harness sources on every unmet establishment
         b = FakeBoundary()
         a = iso.Isolation(FakeNode(), boundary=b)
-        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go', workdir=REPO)
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go', workdir=REPO,
+                                  hook_settings=_staged_hook(tmp_path))
         with pytest.raises(iso.IsolationUnavailable) as err:
             a.establish(iso.default_plan(spec))
         assert err.value.reason.startswith('condition_unmet:')
         rec = a.record(spec.execution_id)
         assert rec.state == 'failed' and rec.applied == ()
-        assert {REPO, PY_INSTALL} <= {g.path for g in rec.planned}     # kept as evidence
+        planned = {g.path for g in rec.planned}                        # kept as evidence
+        assert REPO in planned and os.path.dirname(spec.hook_settings[0]) in planned
+        assert PY_INSTALL not in planned                    # C4b: the stage, never the install
         name = iso.profile_name(spec.execution_id)
         assert b.deleted == [name] and b.assigned == [] and b.launch_calls == []
         # the end path and the sweep finish the job with nothing but the profile
@@ -1222,6 +2136,10 @@ class TestPhaseAContainment:
         ("_f(advapi32, 'SetNamedSecurityInfoW', W.DWORD, [])", ISOLATION),
         ("advapi32.SetEntriesInAclW(1, None, None, None)", 'archeus/x.py'),
         ('import win32security', 'archeus/x.py'),
+        ("_f(ntdll, 'NtSetSecurityObject', C.c_long, [])", ISOLATION),
+        ('ntdll.ZwSetSecurityObject(h, 4, sd)', 'archeus/x.py'),
+        ('user32.SetUserObjectSecurity(h, si, sd)', 'tools/x.py'),
+        ('advapi32.SetServiceObjectSecurity(h, si, sd)', 'claude_sessions/x.py'),
         ('_DeleteAppContainerProfile(name)', 'archeus/x.py'),
         ('def teardown(self):\n    _DeleteAppContainerProfile(n)', ISOLATION),
     ])
@@ -1453,6 +2371,109 @@ def _readers(acl):
         def _user_sid(self):
             return ME
     return Readers()
+
+
+@pytest.mark.parametrize('ace,want', [
+    ((0x0, 'S-1-5-11', 0x1301BF, 0x3), 'S-1-5-11'),        # Authenticated Users MODIFY (D:\\)
+    ((0x0, 'S-1-1-0', 0x1200A9, 0), None),                  # Everyone read+execute only
+    ((0x1, 'S-1-5-11', 0x1301BF, 0), None),                 # a deny ACE grants nothing
+    ((0x0, 'S-1-5-32-544', 0x1F01FF, 0), None),             # Administrators are not broad
+    ((0x0, 'S-1-5-32-545', 0x1301BF, 0x08), 'S-1-5-32-545'),   # inherit-only still counts
+])
+def test_the_broad_writer_of_a_path(ace, want):
+    acl = {'h': [(0x0, ME, 0x1F01FF, 0), (0x0, 'S-1-5-18', 0x1F01FF, 0), ace]}
+    assert _readers(acl).broad_writer('h') == want
+
+
+@pytest.mark.parametrize('ace,want', [
+    ((0x0, 'S-1-1-0', 0x1200A9, 0), 'S-1-1-0'),            # Everyone read+execute
+    ((0x0, 'S-1-5-32-545', 0x1, 0x08), 'S-1-5-32-545'),     # list/read, inherit-only
+    ((0x0, 'S-1-5-11', iso.GENERIC_READ, 0), 'S-1-5-11'),   # GENERIC_READ
+    ((0x0, 'S-1-1-0', 0x20, 0), None),                      # execute only
+    ((0x1, 'S-1-1-0', 0x1200A9, 0), None),                  # a deny ACE grants nothing
+    ((0x0, 'S-1-5-32-544', 0x1F01FF, 0), None),             # Administrators are not broad
+])
+def test_the_broad_reader_of_a_path(ace, want):
+    acl = {'h': [(0x0, ME, 0x1F01FF, 0), (0x0, 'S-1-5-18', 0x1F01FF, 0), ace]}
+    assert _readers(acl).broad_reader('h') == want
+
+
+def _home_warning(monkeypatch, tmp_path, sid=None, err=None, read=None, token=None):
+    """`sid`/`read`: what the fake reader answers for writing/reading, either one SID
+    for every path or a {path: SID} map."""
+    from archeus.infra import discovery
+    seen = []
+
+    def answer(got, path):
+        seen.append(path)
+        if err:
+            raise err
+        return got.get(path) if isinstance(got, dict) else got
+
+    class Reader:
+        def broad_writer(self, path):
+            return answer(sid, path)
+
+        def broad_reader(self, path):
+            return answer(read, path)
+    monkeypatch.setattr(discovery, '_home_dacl', Reader)
+    return discovery._home_warning(str(tmp_path / 'not' / 'yet'), token), seen
+
+
+def test_a_broad_reader_on_the_home_is_a_read_warning(monkeypatch, tmp_path):
+    msg, _ = _home_warning(monkeypatch, tmp_path, read='S-1-1-0')
+    assert 'ARCHEUS_HOME %s can be read by Everyone (S-1-1-0)' % tmp_path in msg
+    assert 'local token' in msg and 'user profile' in msg
+
+
+def test_writing_is_reported_before_reading(monkeypatch, tmp_path):
+    msg, _ = _home_warning(monkeypatch, tmp_path, sid='S-1-5-11', read='S-1-1-0')
+    assert 'can be written by Authenticated Users (S-1-5-11)' in msg and 'read by' not in msg
+
+
+def test_a_broad_reader_on_the_local_token_warns_even_when_the_home_is_clean(monkeypatch,
+                                                                             tmp_path):
+    token = tmp_path / 'local-token'
+    token.write_text('x')
+    msg, seen = _home_warning(monkeypatch, tmp_path, read={str(token): 'S-1-5-32-545'},
+                              token=str(token))
+    assert seen[-1] == str(token)
+    assert 'the local token %s can be read by Users (S-1-5-32-545)' % token in msg
+
+
+def test_a_local_token_not_yet_written_is_not_read(monkeypatch, tmp_path):
+    msg, seen = _home_warning(monkeypatch, tmp_path, token=str(tmp_path / 'missing'))
+    assert msg is None and str(tmp_path / 'missing') not in seen
+
+
+def test_a_broad_writer_on_the_home_is_a_warning_naming_it(monkeypatch, tmp_path):
+    msg, seen = _home_warning(monkeypatch, tmp_path, sid='S-1-5-11')
+    assert seen == [str(tmp_path)]                  # the folder a missing home inherits from
+    assert 'ARCHEUS_HOME %s can be written by Authenticated Users (S-1-5-11)' % tmp_path in msg
+    assert 'user profile' in msg
+
+
+def test_a_home_only_its_user_may_write_is_no_warning(monkeypatch, tmp_path):
+    assert _home_warning(monkeypatch, tmp_path)[0] is None
+
+
+def test_an_unreadable_home_acl_is_a_warning_not_a_crash(monkeypatch, tmp_path):
+    msg, _ = _home_warning(monkeypatch, tmp_path,
+                           err=iso.IsolationUnavailable('dacl_unreadable', 'winerror=5'))
+    assert msg.startswith('the ACL of ARCHEUS_HOME') and 'winerror=5' in msg
+
+
+def test_posix_never_reads_a_dacl(monkeypatch, tmp_path):
+    from archeus.infra import discovery, paths
+
+    class Never:
+        def broad_writer(self, path):
+            raise AssertionError('read a DACL off Windows')
+    monkeypatch.setattr(discovery, 'WINDOWS', False)
+    monkeypatch.setattr(discovery, '_home_dacl', Never)
+    monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
+    assert discovery.token_protection() == (True, None)
+    assert paths.archeus_home() == str(tmp_path)
 
 
 def _descriptor_boundary(acl):
@@ -1927,6 +2948,90 @@ class TestOwnershipRecovery:
         kept = a.record(eid)
         assert kept.reason == 'provenance_unknown' and kept.sid == b.derive_sid(eid)
         assert b.deleted == []
+
+
+# ── S2-G preparatory: an unsettled record is never a new start ────────────────
+
+UNSETTLED = [
+    ('quarantined', dict(state='quarantined', reason='profile_delete: in use', owned=True)),
+    ('failed', dict(state='failed', reason='condition_unmet:grants',
+                    failure='condition_unmet:grants', owned=True)),
+    ('failed, then quarantined by its cleanup',
+     dict(state='quarantined', reason='process_unverified', failure='condition_unmet:grants',
+          owned=True)),
+    ('provenance unknown', dict(state='failed', reason='provenance_unknown')),
+    ('a torn-down record whose removal failed', dict(state='torn_down', reason='ended', sid='')),
+    ('established, but carrying a failure', dict(failure='launch', owned=True)),
+]
+
+
+class TestUnsettledRecords:
+    """D1: `establish` used to reset any prior record to pending and create again, so
+    a Core that crashed between quarantining an identity and refusing its execution
+    would resume a process under the quarantined identity. D2: the cleanup after a
+    failed establishment overwrote the failure with its own reason."""
+
+    @pytest.mark.parametrize('label,over', UNSETTLED)
+    def test_an_unsettled_record_is_refused_before_anything_is_written(self, tmp_path,
+                                                                       label, over):
+        a, b, req, node = authority(tmp_path)
+        eid = req.execution_id
+        b.profiles.add(iso.profile_name(eid))
+        path, before = _plant(eid + '.json', _good_record(b, eid, **over))
+        _ledger({'op': 'quarantine', 'execution_id': eid, 'profile': iso.profile_name(eid),
+                 'sid': b.derive_sid(eid), 'planned': [], 'reason': 'x', 'at': 1.0})
+        ledger = _ledger_bytes()
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req)
+        assert err.value.reason == 'record_unsettled'
+        with open(path, 'rb') as f:
+            assert f.read() == before
+        assert _ledger_bytes() == ledger
+        assert b.mutations() == [] and b.closed == [] and b.looked == []
+        assert a.held_job(eid) is None and node.registry == []
+
+    def test_a_refused_resume_launches_nothing(self, tmp_path, monkeypatch):
+        a, b, req, _ = authority(tmp_path)
+        eid = req.execution_id
+        _plant(eid + '.json', _good_record(b, eid, **dict(UNSETTLED[0][1])))
+        with pytest.raises(base.SpawnFailed) as err:
+            _launch(a, req, monkeypatch)
+        assert 'record_unsettled' in str(err.value)
+        assert b.launch_calls == [] and b.created == [] and a.launched(eid) is None
+
+    def test_a_paused_resume_reuses_its_identity(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        first = a.establish(req)
+        again = iso.Isolation(FakeNode(), boundary=b).establish(req)   # after a restart
+        assert again.state == 'established' and again.sid == first.sid and again.owned
+        assert b.deleted == []
+
+    def test_cleanup_never_overwrites_the_establishment_failure(self, tmp_path):
+        a, b, req, _ = authority(tmp_path)
+        name = iso.profile_name(req.execution_id)
+        b.grant_ok, b.delete_fail = False, {name}
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            a.establish(req)
+        failure = err.value.reason
+        assert failure.startswith('condition_unmet:')
+        for attempt in (1, 2, 3):
+            rec = a.record(req.execution_id)
+            assert rec.state == 'quarantined' and rec.failure == failure
+            assert rec.attempts == attempt
+            assert _sweep(a) == []
+        b.delete_fail = set()
+        assert _sweep(a) == [req.execution_id] and a.record(req.execution_id) is None
+
+    @pytest.mark.parametrize('state', ['PAUSED', 'INTENT', 'AWAITING_APPROVAL'])
+    def test_a_failure_later_quarantined_is_still_refused_uncharged(self, state):
+        m = _manager_with_fake_node()
+        rec = iso.IsolationRecord(execution_id='x', profile='p', state='quarantined',
+                                  reason='process_unverified',
+                                  failure='condition_unmet:grants')
+        assert m._reconcile_isolated(_e(state), object(), rec, None, disarmed=False) is True
+        (command, kw), = m.calls
+        assert command is X.refuse and kw['stop_reason'] == 'binding'
+        assert kw['reason'].endswith('condition_unmet:grants')
 
 
 # ── F6-F9: a release is believed once it is seen, and only after its process ──
@@ -2637,6 +3742,37 @@ class TestExistingProfileAnswer:
         assert kept.preexisting and not kept.owned and b.deleted == []
 
 
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+class TestDeleteProfileAnswer:
+    """`delete_profile` reads its answer as ctypes delivers it, a signed int. Compared
+    signed, HRESULT_FROM_WIN32(ERROR_NOT_FOUND) never matched and an already-gone
+    profile raised."""
+
+    def _delete(self, monkeypatch, hr):
+        asked = []
+        monkeypatch.setattr(iso, '_DeleteAppContainerProfile',
+                            lambda name: asked.append(name) or ctypes.c_int(hr).value)
+        eid = new_execution_id()
+        try:
+            iso.WindowsBoundary().delete_profile(eid)
+        finally:
+            assert asked == [iso.profile_name(eid)]
+
+    @pytest.mark.parametrize('label,hr', [('S_OK', 0), ('not found: already gone', 0x80070490)])
+    def test_the_accepted_answers_are_a_release(self, monkeypatch, label, hr):
+        self._delete(monkeypatch, hr)
+
+    @pytest.mark.parametrize('label,hr', [
+        ('sharing violation: in use', 0x80070020),
+        ('E_ACCESSDENIED', 0x80070005),
+        ('ERROR_NOT_FOUND as a bare Win32 code, not an HRESULT', 0x490),
+    ])
+    def test_every_other_answer_is_a_failure_reported_unsigned(self, monkeypatch, label, hr):
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            self._delete(monkeypatch, hr)
+        assert err.value.reason == 'profile_delete' and err.value.detail == 'hr=%s' % hex(hr)
+
+
 @pytest.fixture
 def launchapi(monkeypatch):
     """`WindowsBoundary.launch`'s Win32 calls replaced by fakes: the real launch runs,
@@ -2710,7 +3846,8 @@ def launchapi(monkeypatch):
 
 def _real_launch():
     return iso.WindowsBoundary().launch(['fake.exe', '--x'], cwd='C:/synthetic',
-                                        env={'A': '1'}, profile='archeus.exec.synthetic',
+                                        env={'A': '1', 'LOCALAPPDATA': 'C:/synthetic/local'},
+                                        profile='archeus.exec.synthetic',
                                         job=0x900, stdin=STDIN, stdout=STDOUT)
 
 
@@ -2793,3 +3930,196 @@ class TestLaunchOnWindows:
         assert 'AssignProcessToJobObject' in err.value.detail
         assert launchapi.resumed == [] and launchapi.terminated == [0x700]
         assert err.value.child.pid == 4242
+
+
+
+# ── K3 (C-1012-T030-2 §1-§2): the held-Job fence and the order of an end ─────
+
+@pytest.fixture
+def fence_clock(monkeypatch):
+    """The fence's clock, moved only by its own sleeps."""
+    now = [0.0]
+    monkeypatch.setattr(iso, '_clock', lambda: now[0])
+    monkeypatch.setattr(iso, '_sleep', lambda s: now.__setitem__(0, now[0] + s))
+    return now
+
+
+SEED, IMP = 'a' * 40, 'c' * 40
+
+
+class TestFence:
+    def _held(self, tmp_path, *answers):
+        a, b, req, _ = authority(tmp_path)
+        a._ensure_job(req.execution_id)
+        b.active = list(answers)
+        return a, b, req.execution_id
+
+    def test_zero_after_some_polls_is_quiescence_and_the_job_closes_after(self, tmp_path,
+                                                                        fence_clock):
+        a, b, eid = self._held(tmp_path, 2, 1, 0)
+        assert a.fence(eid) is None
+        assert b.order == ['query', 'query', 'query', 'close']
+        assert a.held_job(eid) is None
+
+    def test_a_survivor_at_the_bound_is_no_import_and_the_job_still_closes(self, tmp_path,
+                                                                          fence_clock):
+        a, b, eid = self._held(tmp_path, 1)
+        why = a.fence(eid)
+        assert '1 process(es) still in its Job' in why
+        assert b.order[-1] == 'close' and b.order.count('close') == 1
+        assert fence_clock[0] >= iso.EXIT_WAIT_S                   # waited the bound, no more
+        assert fence_clock[0] < iso.EXIT_WAIT_S + 2 * iso.FENCE_POLL_S
+
+    @pytest.mark.parametrize('answer', [iso.IsolationUnavailable('job_query', 'synthetic'),
+                                        OSError('denied'), -1, None, True, '0', 0.0])
+    def test_a_query_that_fails_or_is_no_count_is_no_import(self, tmp_path, fence_clock,
+                                                            answer):
+        a, b, eid = self._held(tmp_path, answer)
+        assert a.fence(eid) is not None
+        assert b.order == ['query', 'close']
+
+    def test_no_held_job_is_no_import_and_nothing_is_asked(self, tmp_path, fence_clock):
+        a, b, req, _ = authority(tmp_path)
+        assert a.fence(req.execution_id) == 'no Job is held for it'
+        assert b.order == []
+
+    def test_the_unavailable_boundary_imports_nothing(self, tmp_path, fence_clock):
+        # its close fails too, so the fence raises; the manager reads any raise as
+        # no import (TestEndOrder), and the Job is no longer Core's to hold
+        a, _b, req, _ = authority(tmp_path, boundary=iso.UnavailableBoundary())
+        a._jobs[req.execution_id] = 'job'
+        with pytest.raises(iso.IsolationUnavailable):
+            a.fence(req.execution_id)
+        assert a.held_job(req.execution_id) is None
+
+
+class TestEndOrder:
+    """manager._collect for a seeded isolated execution: the exit tombstone, the fence's
+    query, the close, the import, one transaction, then the teardown."""
+
+    def _end(self, tmp_path, state='RUNNING', code=0, *, killed=False, answers=(0,),
+             record=True, seeded=True, import_fails=False):
+        m = _manager_with_fake_node()
+        a, b, req, _ = authority(tmp_path)
+        eid = req.execution_id
+        a._ensure_job(eid)
+        b.active = list(answers)
+        log = b.order
+        e = SimpleNamespace(id=eid, state=state, account_id=None, isolated=True,
+                            process_seq=1, seed_revision=SEED if seeded else None,
+                            mission_id='msn')
+        rec = iso.IsolationRecord(execution_id=eid, profile='p', state='established')
+        m.node.isolation_record = lambda x: rec if record else None
+        m.node.ended = lambda handle, code, seq: log.append('tombstone')
+        m.node.fence_isolation = a.fence
+
+        def imported(pid, x, seed, *, workdirs):
+            log.append('import')
+            if import_fails:
+                raise OSError('the seeded link link was changed')
+            assert (pid, x, seed, workdirs) == ('prj', eid, SEED, ['w'])
+            return {'revision': IMP, 'tree': 'f' * 40, 'files_changed': ['A x'],
+                    'deleted': 2, 'dropped_dirs': 1}
+        m.node.import_workspace = imported
+        m._store_inputs = lambda x: ('prj', ['w'])
+        m._tail = m._progress = lambda e, p: None
+        m._release_isolation = lambda e: log.append('teardown')
+        m.policy = m.missions = m.router = None
+        real_do = m._do
+        m._do = lambda command, **kw: (log.append(command.__name__), real_do(command, **kw))
+        reloads = []
+        # the end is written by the transaction: the row the pass reads after it has ended
+        m._reload = lambda x: reloads.append(1) or (
+            x if len(reloads) == 1 else SimpleNamespace(**dict(vars(x), state='ENDED_OK')))
+        result = base.ExecutionResult(exit_reason='killed' if killed else
+                                      ('ok' if code == 0 else 'error'), exit_code=code)
+        p = {'adapter': SimpleNamespace(collect_result=lambda handle: result),
+             'handle': object(), 'seq': 1, 'offset': 1, 'usage': 0}
+        m._collect(e, p, base.ProcStatus('exited', code))
+        ((cmd, kw),) = m.calls
+        return log, cmd, kw
+
+    @pytest.mark.parametrize('state,want', [('RUNNING', 'record_end'),
+                                            ('HANDING_OFF', 'record_handoff')])
+    def test_exit_fence_close_import_transaction_teardown(self, tmp_path, fence_clock,
+                                                          state, want):
+        log, cmd, kw = self._end(tmp_path, state, answers=(1, 0))
+        assert log == ['tombstone', 'query', 'query', 'close', 'import', want, 'teardown']
+        assert (kw['import_revision'], kw['no_import']) == (IMP, None)
+        assert kw['facts']['end_state'] == 'f' * 40 and kw['facts']['files_changed'] == ['A x']
+        assert kw['facts']['import_counts'] == {'deleted': 2, 'dropped_dirs': 1}
+
+    @pytest.mark.parametrize('answers,record,import_fails,why', [
+        ((1,), True, False, 'not quiescent: 1 process(es)'),
+        ((OSError('x'),), True, False, 'could not be queried'),
+        ((iso.IsolationUnavailable('job_close', 'x'),), True, False, 'could not be queried'),
+        ((0,), False, False, 'isolation record is gone'),
+        ((0,), True, True, 'seeded link link was changed')])
+    def test_every_no_import_case_reaches_the_transaction_with_its_cause(
+            self, tmp_path, fence_clock, answers, record, import_fails, why):
+        log, cmd, kw = self._end(tmp_path, answers=answers, record=record,
+                                 import_fails=import_fails)
+        assert cmd is X.record_end and kw['import_revision'] is None and why in kw['no_import']
+        assert 'import' not in log or import_fails
+        assert kw['facts']['end_state'] is None                       # unmeasured stands
+        assert log[-2:] == ['record_end', 'teardown']
+
+    def test_a_held_job_with_no_record_is_never_imported(self, tmp_path, fence_clock):
+        log, _cmd, kw = self._end(tmp_path, record=False)
+        assert 'query' not in log and 'import' not in log
+
+    @pytest.mark.parametrize('state,code,killed,seeded', [
+        ('RUNNING', 1, False, True), ('RUNNING', 0, True, True), ('PAUSING', 0, False, True),
+        ('HANDING_OFF', 1, False, True), ('RUNNING', 0, False, False)])
+    def test_an_end_that_imports_nothing_is_not_fenced(self, tmp_path, fence_clock, state,
+                                                       code, killed, seeded):
+        log, _cmd, kw = self._end(tmp_path, state, code, killed=killed, seeded=seeded)
+        assert 'query' not in log and 'import' not in log
+        assert 'import_revision' not in kw and 'no_import' not in kw
+
+
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+def test_an_appcontainer_block_without_localappdata_is_refused_before_any_os_call(monkeypatch):
+    # T-088: CreateProcessW answers 203 for such a block; the boundary says why first
+    def touched(*a, **k):
+        raise AssertionError('an OS call was made')
+    for name in ('_InitializeProcThreadAttributeList', '_DeriveAppContainerSidFromAppContainerName',
+                 '_CreateProcessW', '_SetHandleInformation'):
+        monkeypatch.setattr(iso, name, touched)
+    env = {'SystemRoot': r'C:\Windows', 'PATH': r'C:\Windows\System32'}
+    with pytest.raises(iso.IsolationUnavailable) as err:
+        iso.WindowsBoundary().launch(['cmd.exe'], cwd='.', env=env, profile='p', job=None,
+                                     stdin=None, stdout=None)
+    assert (err.value.reason, err.value.detail) == (
+        'environment_block', 'an AppContainer block needs LOCALAPPDATA')
+
+
+def _job_info_written(monkeypatch, execution_id):
+    """What create_job hands SetInformationJobObject, copied out of the call."""
+    import ctypes
+    seen = []
+
+    def set_info(h, cls, ref, size):
+        seen.append((cls, iso._ELI.from_buffer_copy(ctypes.string_at(ctypes.addressof(ref._obj),
+                                                                     size))))
+        return 1
+    monkeypatch.setattr(iso, '_CreateJobObjectW', lambda *a: 0x77)
+    monkeypatch.setattr(iso, '_SetHandleInformation', lambda *a: 1)
+    monkeypatch.setattr(iso, '_SetInformationJobObject', set_info)
+    monkeypatch.setattr(iso.WindowsBoundary, 'job_facts',
+                        lambda self, h: {'type': 'Job', 'name': '', 'inheritable': False})
+    assert iso.WindowsBoundary().create_job(execution_id) == 0x77
+    (cls, li), = seen
+    assert cls == iso.JOB_OBJECT_EXTENDED_LIMIT_INFORMATION
+    b = li.Basic
+    return (b.LimitFlags, b.ActiveProcessLimit, li.JobMemoryLimit, b.PerJobUserTimeLimit,
+            b.PerProcessUserTimeLimit, li.ProcessMemoryLimit)
+
+
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+def test_the_verifier_job_carries_its_budgets_and_an_execution_job_does_not(monkeypatch):
+    # T-090 (owner values): 64 processes, 4 GiB for the Job, 10 minutes of Job user CPU
+    verify = iso.Principal('verify', ids.new_id('verification'), 0).key
+    assert _job_info_written(monkeypatch, verify) == (
+        0x2000 | 0x8 | 0x200 | 0x4, 64, 4 * 1024 ** 3, 10 * 60 * 10 ** 7, 0, 0)
+    assert _job_info_written(monkeypatch, ids.new_id('execution')) == (0x2000, 0, 0, 0, 0, 0)

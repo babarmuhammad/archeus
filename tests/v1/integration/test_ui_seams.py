@@ -245,15 +245,22 @@ def test_a_launch_code_carries_the_grant_its_minter_chose(tc):
 
 
 def test_a_launch_grant_never_exceeds_the_minters_own_scopes(tc):
-    s = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe', 'admin']})
-    token = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
-                    body={'code': s.json()['code'], 'platform': 'web'}).json()['token']
+    # minting is loopback-only and a paired credential gets no privileged route on
+    # loopback (T-053 Q4-A), so the minter that can hold fewer scopes than it asks
+    # for is a local launch-code browser
+    code = tc.http('POST', '/v1/devices/launch/code', body={'scopes': ['observe', 'admin']})
+    token = _redeem(tc, code.json()['code']).json()['token']
     r = tc.http('POST', '/v1/devices/launch/code', token=token,
                 body={'scopes': ['observe', 'control']})
     assert (r.status, r.json()['error'], r.json()['detail']) == (
         403, 'scope_required', {'scope': 'control'})
     assert tc.http('POST', '/v1/devices/launch/code', token=token,
                    body={'scopes': ['observe', 'admin']}).status == 200
+    s = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe', 'admin']})
+    paired = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                     body={'code': s.json()['code'], 'platform': 'web'}).json()['token']
+    assert tc.http('POST', '/v1/devices/launch/code', token=paired,
+                   body={'scopes': ['observe']}).json()['error'] == 'remote_host_required'
     assert auth.LAUNCH_SCOPES == ('observe',)
 
 

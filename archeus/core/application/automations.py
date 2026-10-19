@@ -244,9 +244,7 @@ def _claim(tx, actor, a, e, why):
             'event %d is at causal depth %d, the cap is %d: escalated to you, not dropped'
             % (e.seq, depth, a.max_depth))
         return _guard(tx, actor, a, run.id)
-    since = _ago(tx.now, matcher.WINDOW_S)
-    made = sum(1 for r in tx.where(entities.AutomationRun, automation_id=a.id)
-               if r.entity.state in _CREATED and r.created_at >= since)
+    made = sum(1 for r in _armed_window(tx, a) if r.state in _CREATED)
     if made >= a.rate_limit:
         end('rate_limited', 'rate_limited', '%d missions in the last hour, the limit is %d'
             % (made, a.rate_limit))
@@ -266,12 +264,17 @@ def _claim(tx, actor, a, e, why):
     return end('allowed', 'allowed', 'asked for mission %s' % m['id'], mission_id=m['id'])
 
 
+def _armed_window(tx, a):
+    """*a*'s runs in the last hour for events after it was last armed: re-enabling
+    starts the rate limit and the loop guard afresh (p20 H-F1, owner 2026-10-15)."""
+    since = _ago(tx.now, matcher.WINDOW_S)
+    return [r.entity for r in tx.where(entities.AutomationRun, automation_id=a.id)
+            if r.created_at >= since and r.entity.triggering_event_seq > a.armed_seq]
+
+
 def _guard(tx, actor, a, run_id):
     """Suspend *a* when the loop guard trips (§10), in the same transaction."""
-    since = _ago(tx.now, matcher.WINDOW_S)
-    recent = [(r.entity.state, r.entity.reason_code)
-              for r in tx.where(entities.AutomationRun, automation_id=a.id)
-              if r.created_at >= since]
+    recent = [(r.state, r.reason_code) for r in _armed_window(tx, a)]
     if matcher.should_suspend(recent):
         lifecycle.fire(tx, entities.Automation, a.id, 'loop_guard_tripped', actor=actor,
                        reason='%d escalated or rate-limited runs in the last hour: suspended '

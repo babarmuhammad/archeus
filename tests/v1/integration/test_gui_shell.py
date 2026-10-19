@@ -126,11 +126,21 @@ def test_the_start_runs_archeus_core_in_the_background(archeus_home, monkeypatch
 # ── the page and the shell's own credential ──
 
 def test_the_page_opens_on_a_launch_code_with_the_full_local_grant(core):
-    url = _shell().page_url()
-    head, code = url.split('#launch=')
-    assert head == 'http://127.0.0.1:%d/' % core.port
-    r = core.http('POST', '/v1/devices/launch/redeem', body={'code': code, 'platform': 'web'})
-    assert r.json()['scopes'] == ['observe', 'control', 'approve', 'admin']
+    shell = _shell()
+
+    def redeem():
+        head, frag = shell.page_url().split('#launch=')
+        code, flag = frag.split('&')
+        assert head == 'http://127.0.0.1:%d/' % core.port
+        assert flag == 'memory=1'                  # T-096: the page keeps its token in memory
+        return core.http('POST', '/v1/devices/launch/redeem',
+                         body={'code': code, 'platform': 'web'}).json()
+    first = redeem()
+    assert first['scopes'] == ['observe', 'control', 'approve', 'admin']
+    second = redeem()       # the page's slot: each page credential revokes the one before
+    states = {d['id']: d['state'] for d in core.http('GET', '/v1/devices').json()['devices']}
+    assert (states[first['device_id']], states[second['device_id']]) == ('REVOKED', 'ACTIVE')
+
 
 
 def test_the_shells_credential_is_observe_and_control_named_desktop_shell_in_memory(

@@ -1821,7 +1821,7 @@ interface ReprioritiseMissionRequest {
 ```ts
 interface LaunchCodeRequest {
   scopes?: Array<'observe' | 'control' | 'approve' | 'admin'> | null;
-  supersede?: 'desktop shell' | null;
+  supersede?: 'desktop shell' | 'desktop shell page' | null;
 }
 ```
 
@@ -2094,6 +2094,7 @@ interface EstopRequest {
 
 ```ts
 interface RearmRequest {
+  step_up?: string | null;
   idempotency_key: string;
 }
 ```

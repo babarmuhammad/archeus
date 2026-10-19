@@ -12,13 +12,14 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import ci_diag
 import pytest
 
 from archeus.core import engine, ports
-from archeus.core.application import executions as X, lifecycle, queries
+from archeus.core.application import authorization, executions as X, lifecycle, queries
 from archeus.core.domain import entities, ids
 from archeus.core.execution import manager as M
 from archeus.core.execution.manager import ExecutionManager
@@ -457,6 +458,28 @@ def test_E25_an_estop_racing_a_spawn_kills_what_started(x, monkeypatch):
     assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'disarmed')
 
 
+def test_D13_the_estop_with_core_running_kills_a_registry_only_execution(db):
+    """p20-design-gate D13's other enforcement kind: a harness with no hook
+    (enforcement 'none', routed only for ALLOW work) has nothing to halt it but
+    the registry kill, and it is stopped like E24's hooked one. Stopped NOW:
+    with a stop grace far longer than the wait, only the e-stop's immediate
+    kill can end it in time."""
+    x = Rig(db, adapters=[FakeHarness(enforcement='none')], grace_s=120)
+    try:
+        x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 60}]
+        mid = x.ready(task('t1', 'read'))
+        e = _running(x, mid)
+        LocalNode.engage_estop()
+        assert x.do(X.Executions(missions=x.missions).estop, who=x.user)['stopped'] == [e.id]
+        x.drive(mid, ended(x, e.id), timeout=20)
+        assert (x.state(e.id).state, x.state(e.id).stop_reason,
+                x.state(e.id).charged) == ('ENDED_KILLED', 'estop', False)
+        assert proc.process_create_time(e.pid) != e.create_time
+    finally:
+        x.cleanup()
+        LocalNode.clear_estop()
+
+
 def test_E26_a_failing_task_retries_with_new_executions_until_its_budget(x):
     x.scenarios['t1'] = [{'exit': 3}]
     mid = x.ready(task('t1', 'write_repo', max_attempts=2))
@@ -505,6 +528,100 @@ def test_E29_an_approved_action_resumes_the_same_execution_and_is_used_once(x):
     e = x.state(e.id)
     assert (e.state, e.process_seq) == ('ENDED_OK', 2)
     assert x.one(entities.Approval, id=a.id).state == 'CONSUMED'
+
+
+def _halted_for_approval(x):
+    """An execution waiting for an action approval, its halted process collected:
+    it ran (process 1) and has no session yet, which is written at its end."""
+    x.scenarios['t1'] = [TOOL('Bash', 'git push origin main'), DONE]
+    mid = x.ready_approved(task('t1', 'write_repo', 'git_push'))
+    e = x.drive(mid, lambda: (x.exe(mission_id=mid) is not None
+                              and x.exe(mission_id=mid).state == 'AWAITING_APPROVAL'
+                              and x.exe(mission_id=mid)))
+    x.drive(mid, lambda: e.id not in x.manager._procs)
+    e = x.state(e.id)
+    assert (e.state, e.process_seq, e.session_id) == ('AWAITING_APPROVAL', 1, None)
+    return mid, e
+
+
+def _session_of(x, e):
+    """Core's record of what ran: every write of the session is the system's."""
+    s = x.one(entities.Session, id=x.state(e.id).session_id)
+    with x.db.read() as r:
+        evs = [ev for ev in queries.events(r) if ev['subject']['id'] == s.id]
+    assert evs and {ev['actor']['kind'] for ev in evs} == {'system'}, evs
+    assert len([ev for ev in evs if ev['type'] == 'session.created']) == 1
+    return s
+
+
+def _ended_by(x, e, who):
+    """The end itself stays the user's: the ending event and the move to ENDED_KILLED."""
+    by = lambda ev: (ev['actor']['kind'], ev['actor']['id'])  # noqa: E731
+    end = [ev for ev in x.events('execution.ended') if ev['subject']['id'] == e.id]
+    killed = [ev for ev in x.events('execution.state_changed')
+              if ev['subject']['id'] == e.id and ev['payload']['to'] == 'ENDED_KILLED']
+    assert [by(ev) for ev in end + killed] == [('user_device', who.id)] * 2, end + killed
+
+
+def test_T101_a_user_stop_ends_an_execution_waiting_for_approval(x):
+    mid, e = _halted_for_approval(x)
+    x.do(X.Executions(missions=x.missions).stop_execution, who=x.user, execution_id=e.id)
+    got = x.state(e.id)
+    assert (got.state, got.stop_reason) == ('ENDED_KILLED', 'user')
+    assert _session_of(x, e).execution_id == e.id
+    _ended_by(x, e, x.user)
+
+
+def test_T101_the_estop_records_itself_over_an_execution_waiting_for_approval(x):
+    mid, e = _halted_for_approval(x)
+    LocalNode.engage_estop()
+    try:
+        out = x.do(X.Executions(missions=x.missions).estop, who=x.user)
+    finally:
+        LocalNode.clear_estop()
+    assert out['stopped'] == [e.id]
+    assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'estop')
+    [ev] = x.events('core.estopped')
+    assert ev['payload']['killed'] == [e.id]
+    assert (ev['subject']['id'], ev['actor']['kind'], ev['actor']['id']) == (
+        x.user.id, 'user_device', x.user.id)
+    assert _session_of(x, e).execution_id == e.id
+    _ended_by(x, e, x.user)
+
+
+def test_T101_stopping_a_mission_ends_its_execution_waiting_for_approval(x):
+    mid, e = _halted_for_approval(x)
+    out = x.do(X.Executions(missions=x.missions).stop_mission, who=x.user, mission_id=mid)
+    assert out['stopped'] == [e.id]
+    assert x.state(e.id).state == 'ENDED_KILLED'
+    assert _session_of(x, e).execution_id == e.id
+    _ended_by(x, e, x.user)
+
+
+def test_T101_a_user_stop_ends_a_paused_execution_that_ran(x):
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 0.6},
+                         TOOL('Read', {'file_path': 'a.txt'}), {'sleep': 30}]
+    mid = x.ready(task('t1', 'write_repo', 'read'))
+    e = _running(x, mid)
+    x.do(x.missions.pause, who=x.user, mission_id=mid)
+    x.drive(mid, lambda: x.state(e.id).state == 'PAUSED' and e.id not in x.manager._procs)
+    assert (x.state(e.id).process_seq, x.state(e.id).session_id) == (1, None)
+    x.do(X.Executions(missions=x.missions).stop_execution, who=x.user, execution_id=e.id)
+    assert (x.state(e.id).state, x.state(e.id).stop_reason) == ('ENDED_KILLED', 'user')
+    assert _session_of(x, e).execution_id == e.id
+    _ended_by(x, e, x.user)
+
+
+def test_T101_only_a_user_stop_writes_the_session_as_core_and_record_end_still_refuses(x):
+    # what Core observed of an execution is Core's to record: a user cannot end a
+    # running one through record_end and have the session written in Core's name
+    x.scenarios['t1'] = [{'emit': {'type': 'working'}}, {'sleep': 30}]
+    mid = x.ready(task('t1', 'write_repo'))
+    e = _running(x, mid)
+    head = x.head()
+    with pytest.raises(authorization.NotPermitted):
+        x.do(X.record_end, who=x.user, execution_id=e.id, exit_code=0)
+    assert x.head() == head and x.state(e.id).state == 'RUNNING'
 
 
 # ── runtime: ceilings, limits, the breaker, usage ────────────────────────────
@@ -557,6 +674,48 @@ def test_E32_the_breaker_is_per_account_and_counts_only_resource_failures(x):
     x.drive(mid, lambda: x.one(entities.Account, id=acc).health == 'DEGRADED', timeout=60)
     runs = x.all(entities.Execution, mission_id=mid)
     assert len(runs) >= X.STORM and all(r.charged is False for r in runs if r.failure)
+
+
+def _tick(x, acc, now, ended):
+    """One `accounts_tick` at *now* over synthetic ended executions of *acc*
+    ((state, failure, epoch) each), on the real Account machine."""
+    rows = [SimpleNamespace(entity=SimpleNamespace(
+        account_id=acc, state=s, failure=f,
+        ended_at=datetime.fromtimestamp(t, timezone.utc).isoformat())) for s, f, t in ended]
+
+    def tick(tx, *, actor):
+        real = tx.where
+        tx.where = lambda cls, **eq: rows if cls is entities.Execution else real(cls, **eq)
+        return X.accounts_tick(tx, actor=actor, now=now)
+    x.do(tick)
+    return x.one(entities.Account, id=acc).health
+
+
+def test_D13_the_execution_breaker_trips_opens_cools_and_recovers(x):
+    """p20-design-gate D13: the per-account breaker tripped on purpose and its
+    whole recovery observed - AVAILABLE, DEGRADED on a storm, OPEN when errors
+    persist, DEGRADED after the cooldown, AVAILABLE on a successful probe -
+    and the recovered account is routed again."""
+    acc = x.account('Work')
+    t0 = time.time()
+    storm = [('ENDED_ERROR', 'tool', t0)] * X.STORM
+    assert _tick(x, acc, t0 + 1, storm) == 'AVAILABLE'          # not a resource failure
+    storm = [('ENDED_ERROR', 'resource', t0)] * (X.STORM - 1) + [('ENDED_ERROR', 'auth', t0)]
+    assert _tick(x, acc, t0 + 1, storm) == 'DEGRADED'
+    since = time.time()
+    persist = storm + [('ENDED_ERROR', 'resource', since + 1)] * X.PERSIST
+    assert _tick(x, acc, since + 1, persist) == 'DEGRADED'       # no beat yet
+    assert _tick(x, acc, since + X.BEAT_S + 2, persist) == 'OPEN'
+    since = time.time()
+    assert _tick(x, acc, since + X.COOLDOWN_S - 5, persist) == 'OPEN'
+    assert _tick(x, acc, since + X.COOLDOWN_S + 1, persist) == 'DEGRADED'
+    since = time.time()
+    probe = storm + [('ENDED_OK', None, since + 1)]
+    assert _tick(x, acc, since + X.BEAT_S + 2, probe) == 'AVAILABLE'
+    x.scenarios['t1'] = [DONE]
+    mid = x.ready(task('t1', 'write_repo'))
+    e = x.drive(mid, lambda: x.exe(mission_id=mid))
+    assert x.state(e.id).account_id == acc
 
 
 def test_E33_usage_is_the_providers_cumulative_figure_ledgered_once_at_the_end(x):
@@ -733,7 +892,7 @@ def test_E49_the_hook_halts_on_the_estop_sentinel_without_asking_core(archeus_ho
                            capture_output=True, text=True, env=env, timeout=30)
         assert json.loads(r.stdout) == {'continue': False, 'stopReason': 'emergency stop',
                                         'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'emergency stop'}}
-        assert not os.path.exists(os.path.join(ExecPaths(eid).dir, 'hook'))    # nothing asked
+        assert not os.path.exists(os.path.join(ExecPaths(eid).req, '1.req.json'))  # nothing asked
     finally:
         LocalNode.clear_estop()
 
@@ -798,12 +957,58 @@ def test_E60_a_new_core_adopts_a_live_process_and_records_its_end(x):
 def test_E61_a_crash_between_prepare_and_spawn_starts_nothing_and_charges_nothing(x):
     mid, e = _intent(x)
     x.do(X.prepare_process, execution_id=e.id, token_digest='0' * 64,
-         workdir=ExecPaths(e.id).dir, branch=None, process_seq=1)
+         workdir=ExecPaths(e.id).work, branch=None, process_seq=1, isolated=False)
     fresh = Rig(x.db)
     fresh.manager.boot()
     e = x.state(e.id)
     assert (e.state, e.charged) == ('ABANDONED', False)
     assert x.task_of(mid).state == 'READY'
+
+
+# ── PV-20 T-035/T-036: the isolation decision is recorded once, at preparation ─
+
+def _prep(x, e, seq, isolated):
+    return x.do(X.prepare_process, execution_id=e.id, token_digest='0' * 64,
+                workdir=ExecPaths(e.id).work, branch=None, process_seq=seq, isolated=isolated)
+
+
+@pytest.mark.parametrize('decide', [True, False])
+def test_the_first_preparation_records_the_isolation_decision(x, decide):
+    mid, e = _intent(x)
+    assert e.isolated is None                             # never prepared: unknown
+    assert _prep(x, e, 1, decide)['refused'] is None
+    assert x.state(e.id).isolated is decide
+    (ev,) = x.events('execution.prepared')
+    assert ev['payload']['isolated'] is decide
+    assert _prep(x, e, 2, decide)['refused'] is None      # the same decision again
+    assert (x.state(e.id).isolated, x.state(e.id).process_seq) == (decide, 2)
+    assert [v['payload']['isolated'] for v in x.events('execution.prepared')] == [decide] * 2
+
+
+@pytest.mark.parametrize('decide', [True, False])
+def test_a_later_preparation_under_the_other_decision_ends_it_uncharged(x, decide):
+    mid, e = _intent(x)
+    _prep(x, e, 1, decide)
+    out = _prep(x, e, 2, not decide)
+    assert 'isolation decision changed' in out['refused']
+    e = x.state(e.id)
+    assert (e.state, e.stop_reason, e.charged) == ('ABANDONED', 'binding', False)
+    assert (e.isolated, e.process_seq) == (decide, 1)     # nothing of the preparation
+    assert len(x.events('execution.prepared')) == 1
+    assert x.task_of(mid).state == 'READY'
+
+
+@pytest.mark.parametrize('decide', [True, False])
+def test_a_legacy_prepared_row_stays_unknown(x, decide):
+    mid, e = _intent(x)
+    def legacy(tx, actor):                                # prepared before the field existed
+        tx.update(entities.Execution, e.id, {'process_seq': 1}, actor=actor)
+        X._event(tx, 'execution.prepared', e, actor, {'process_seq': 1})
+    x.do(legacy)
+    assert _prep(x, e, 2, decide)['refused'] is None
+    e = x.state(e.id)
+    assert (e.isolated, e.process_seq) == (None, 2)       # never relabelled ordinary
+    assert x.events('execution.prepared')[-1]['payload']['isolated'] is None
 
 
 def test_E62_a_disarmed_core_kills_live_orphans_at_boot(x):
@@ -880,8 +1085,8 @@ def _spawn_returns_after(x, marker):
     spawn() returns. Hold the return until *marker* is in its stream."""
     real = x.manager.node.spawn
 
-    def late(adapter, spec, resume_state=None):
-        handle = real(adapter, spec, resume_state=resume_state)
+    def late(adapter, spec, *, isolated, resume_state=None):
+        handle = real(adapter, spec, isolated=isolated, resume_state=resume_state)
         stream, deadline = ExecPaths(spec.execution_id).stream, time.monotonic() + 20
         while time.monotonic() < deadline:
             if os.path.exists(stream) and marker in open(stream, 'rb').read():

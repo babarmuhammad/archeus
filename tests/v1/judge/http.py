@@ -38,6 +38,10 @@ from .client import IMPLEMENTED, OPERATIONS, CoreClient, CoreClientError, _pendi
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
+#: The remote host the judge's Core is configured with. A paired client sends
+#: its requests through it, as a phone does: on the loopback Host a paired
+#: credential reaches no privileged route (P15; T-053 Q4-A).
+TUNNEL = 'pc.tailnet.ts.net'
 
 
 def _issue_principal(tx, *, kind, token_hash):
@@ -83,19 +87,27 @@ def request(base, method, path, *, token=None, body=None, headers=None, raw=None
     if data is not None:
         h.setdefault('Content-Type', 'application/json')
     req = urllib.request.Request(base + path, data=data, method=method, headers=h)
+    start = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return Response(r.status, r.headers, r.read())
     except urllib.error.HTTPError as e:
         return Response(e.code, e.headers, e.read())
+    except (TimeoutError, urllib.error.URLError) as e:
+        # a connect timeout arrives wrapped in URLError, a read timeout bare
+        if not isinstance(getattr(e, 'reason', e), TimeoutError):
+            raise
+        raise TimeoutError('%s %s: no answer within the %ss socket timeout (%.1fs elapsed)'
+                           % (method, path, timeout, time.monotonic() - start)) from e
 
 
 class HttpClient:
     """The P3.5 binding: HTTP + SSE against a running Core."""
 
-    def __init__(self, base_url, token, *, core=None):
+    def __init__(self, base_url, token, *, core=None, host=None):
         self.base, self.token, self.core = base_url, token, core
         self.device_id = None               # set on a paired client (P15)
+        self.host = host                    # the Host it names: a paired client's TUNNEL
 
     # ── binding plumbing (not part of the contract) ──
 
@@ -110,7 +122,7 @@ class HttpClient:
         if r.status != 200:
             raise CoreClientError(r.status, r.json()['error'], r.json().get('detail'))
         out = r.json()
-        paired = HttpClient(self.base, out['token'], core=self.core)
+        paired = HttpClient(self.base, out['token'], core=self.core, host=TUNNEL)
         paired.device_id = out['device_id']
         return paired
 
@@ -123,6 +135,8 @@ class HttpClient:
         return SSEClient(self.base, self.token, query=query)
 
     def _http(self, method, path, body=None, **kw):
+        if self.host:
+            kw['headers'] = dict(kw.get('headers') or {}, Host=self.host)
         return request(self.base, method, path, token=self.token, body=body, **kw)
 
     def _call(self, method, path, body=None):

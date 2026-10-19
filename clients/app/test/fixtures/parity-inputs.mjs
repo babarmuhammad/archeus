@@ -145,6 +145,7 @@ export const INPUTS = [
   ['explain', { status: 409, code: 'approval_not_eligible', detail: { why: 'expired' } }],
   ['explain', { status: 409, code: 'queued_intent_refused', detail: {} }],
   ['explain', { status: 403, code: 'host_not_allowed', detail: {} }],
+  ['explain', { status: 403, code: 'remote_host_required', detail: { why: 'a paired client does this through its remote host' } }],
   ['explain', { status: 503, code: 'core_starting', detail: {} }],
   ['explain', { status: 503, code: 'busy', detail: {} }],
   ['explain', { status: 401, code: 'unauthenticated', detail: {} }],

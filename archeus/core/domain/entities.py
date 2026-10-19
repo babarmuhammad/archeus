@@ -24,6 +24,8 @@ from .actions import (ACTION_CLASSES, APPROVAL_KINDS, BOUNDARY_KEYS, DECISIONS, 
 from .values import ORIGINS, PRINCIPAL_SCOPES, SOURCE_KINDS, Ref
 
 _HEX64 = re.compile(r'[0-9a-f]{64}')
+#: a commit id, SHA-1 or SHA-256, lowercase (PV-20 K2, T-049 §9)
+SEED_REVISION = re.compile(r'[0-9a-f]{40}|[0-9a-f]{64}')
 #: `_FROZEN` value meaning every field except the state
 FROZEN_ALL = ('*',)
 #: Autonomy profiles, loosest last (p9-design-gate §5, D5)
@@ -192,8 +194,9 @@ class Principal(Entity):
 PIN_HASH = re.compile(r'pbkdf2_sha256\$[1-9][0-9]{4,6}\$[0-9a-f]{32}\$[0-9a-f]{64}')
 
 #: Slots one client holds at a time (p20-design-gate D1): redeeming a launch code
-#: minted for a slot revokes the client that held it before. Only the desktop shell.
-SUPERSEDE_SLOTS = ('desktop shell',)
+#: minted for a slot revokes the client that held it before: the desktop shell, and
+#: its page (T-096), whose token lives in the page's memory only.
+SUPERSEDE_SLOTS = ('desktop shell', 'desktop shell page')
 
 
 @entity
@@ -870,7 +873,10 @@ STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout',
                 'workspace',
                 # P12 (p12-design-gate §10.1): why an execution handed off; the
                 # account changes are the existing `limit` and `ceiling`
-                'pressure', 'handoff_user')
+                'pressure', 'handoff_user',
+                # T-078: Git for Windows refuses the worktree for its path's length
+                # alone; the same on every attempt, so its mission waits for the user
+                'path_too_long')
 #: How an adapter classifies an end (p11-design-gate §9.1): who owns it.
 FAILURES = ('resource', 'task', 'auth', 'limit')
 
@@ -1008,11 +1014,30 @@ class Execution(Entity):
     end_state_digest: str = None
     # P20 (ADR-0049, D6): the artifact recording what its settings sources load
     inventory_sha256: str = None
+    # PV-20 (T-035): Core's isolation decision, written once at the first
+    # preparation. A decision, never evidence that confinement happened; None
+    # is unknown (never prepared, or prepared before the field existed)
+    isolated: bool = None
+    # PV-20 K2 (T-049 §2): the commit its seed was built from, written once at the
+    # first preparation; the only base any later step may use. None: not seeded
+    seed_revision: str = None
+    # PV-20 K3 (T-051 §5): the commit Core imported its workspace as, written once by
+    # its end transaction. None: no import (never seeded, or refused: §7)
+    import_revision: str = None
     state: str = None
 
     def _check(self):
         if self.inventory_sha256 is not None and not _HEX64.fullmatch(self.inventory_sha256):
             raise ValueError('Execution.inventory_sha256 names an artifact (a sha256)')
+        if self.isolated is not None and not isinstance(self.isolated, bool):
+            raise ValueError('Execution.isolated is a bool or None')
+        if self.seed_revision is not None and not (
+                isinstance(self.seed_revision, str) and SEED_REVISION.fullmatch(self.seed_revision)):
+            raise ValueError('Execution.seed_revision is a commit id')
+        if self.import_revision is not None and not (
+                isinstance(self.import_revision, str)
+                and re.fullmatch(r'[0-9a-f]{40}', self.import_revision)):
+            raise ValueError('Execution.import_revision is a commit id in a SHA-1 store')
 
 
 #: How a Session came to exist (p12-design-gate D1): the one an execution ran in,
@@ -1653,6 +1678,9 @@ class PolicyRule(Entity):
             raise ValueError('a GLOBAL rule has no scope_ref; every other level names one')
         if self.scope_level == 'GLOBAL' and self.source == 'user':
             raise ValueError('GLOBAL rules are Core\'s own; a user rule starts at USER')
+        if not (self.expires_at is None or isinstance(self.expires_at, str)):
+            raise ValueError('PolicyRule.expires_at is a timestamp or null: %r'
+                             % (self.expires_at,))
         if self.match is not None and not (isinstance(self.match, dict)
                                            and set(self.match) <= set(MATCH_KEYS)):
             raise ValueError('PolicyRule.match keys are %s: %r' % (MATCH_KEYS, self.match))
@@ -1663,6 +1691,12 @@ class PolicyRule(Entity):
                     and set(self.boundary) <= set(BOUNDARY_KEYS)):
                 raise ValueError('PolicyRule.boundary keys are %s: %r'
                                  % (BOUNDARY_KEYS, self.boundary))
+            for k, v in self.boundary.items():      # the shapes rules.check_boundary reads
+                if not (v in COST_BANDS if k == 'max_cost_band' else isinstance(v, (list, tuple))
+                        and all(isinstance(s, str) and s for s in v)):
+                    raise ValueError('PolicyRule.boundary.%s is %s: %r' % (
+                        k, 'one of %s' % (COST_BANDS,) if k == 'max_cost_band'
+                        else 'a list of non-empty strings', v))
         elif self.decision == 'ALLOW_WITHIN_BOUNDARY':
             raise ValueError('ALLOW_WITHIN_BOUNDARY needs a boundary')
 

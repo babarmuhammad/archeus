@@ -68,17 +68,21 @@ class OwnCalls:
                  usage=usage)
 
     def run(self, *, purpose, source, workspace_id, project_id, prompt, schema, check,
-            workdir, context_package_id=None, forbidden=None):
+            workdir, context_package_id=None, forbidden=None, no_tools=False):
         """Route and make one call. `check(parsed)` is the caller's own
         validation beyond the schema: a list of problems, empty when it holds.
         `forbidden` ({harnesses, accounts}) keeps resources out of the election
-        (P13: a review is routed away from the accounts that did the work)."""
+        (P13: a review is routed away from the accounts that did the work).
+        `no_tools` is CallSpec's. A callable `workdir` is made from the route
+        decision id only once the call is about to run (K-O2: a fresh directory
+        per call, none for a call that never runs); if it raises, the call ends
+        `failed` with nothing spawned."""
         with self.db.read() as conn:
             req, snap, readings = resources.call_snapshot(
                 conn, callers=self.callers, feed=self.usage, preference=self.preference.get(),
                 purpose=purpose, schema=schema, project_id=project_id,
                 min_tier=CALL_TIERS.get(purpose), forbidden=forbidden,
-                max_run_s=ATTEMPTS * self.timeout_s)
+                max_run_s=ATTEMPTS * self.timeout_s, no_tools=no_tools)
         # decided inside the transaction that records it, over fresh ledgers:
         # two calls cannot both take an account's last slot (ADR-0048 D-25.4)
         got = self._do(resources.record_call_route, purpose=purpose, source=dict(source),
@@ -116,9 +120,16 @@ class OwnCalls:
         model = d['model']
         from ..harnesses import base
         account = base.AccountRef(d['account_id'] or d['account_ref'], acct.get('home_ref'))
+        if callable(workdir):
+            try:
+                workdir = workdir(rd)
+            except OSError as e:
+                why = 'no working directory for the call: %s' % e
+                self._end(rd, 'failed', reason=why)
+                return Called(rd, 'failed', None, None, why, 0, None)
         spec = base.CallSpec(route_decision_id=rd, purpose=purpose, prompt=prompt,
                              workdir=workdir, account=account, schema=schema, model=model,
-                             limits={'timeout_s': self.timeout_s})
+                             limits={'timeout_s': self.timeout_s}, no_tools=no_tools)
         usage, problems = {}, []
         for attempt in range(1, ATTEMPTS + 1):
             try:

@@ -213,6 +213,8 @@ step:
 | `logs/` | V1 | Core diagnostics, `core.log` (plan §28) |
 | `run/` | V1 | liveness, process registry, per-execution files, STOP (path contract from P1) |
 | `worktrees/` | V1 | node-computed task worktrees (P11) |
+| `repos/` | V1 | Core's own Git stores, one bare repository per project, and the empty pin files every store command runs under (`repos/.pin/`); kept: no V1 code deletes them and the migration-plan §7 reset list does not name them (PV-20 K1) |
+| `runtime/` | V1 | Core-staged hook runtime copies, content-addressed, kept: no V1 code deletes them and the migration-plan §7 reset list does not name them (PV-20 C4a) |
 | `cache/` | legacy Qt shell | Qt/QtWebEngine pipeline and shader cache (exists today) |
 | `QtWebEngine/` | legacy Qt shell | persistent web-profile storage, if the shell ever persists a profile |
 
@@ -221,6 +223,54 @@ creates only its own entries; V1 never writes, moves or deletes a legacy entry; 
 code, tool or instruction deletes `<ARCHEUS_HOME>` as a whole** — a reset removes V1's entries
 by name (migration-plan §7). The Qt cache stays where it is: moving it would change legacy
 behaviour for no V1 benefit, and the two sets of names do not overlap.
+
+**Amendment 2026-10-14 (T-080, worktree layout).** New task worktrees are created at
+`<ARCHEUS_HOME>/worktrees/<mission ULID>/<task-key>` and the mission worktree at
+`<ARCHEUS_HOME>/worktrees/<mission ULID>/_mission`, where `<mission ULID>` is the mission id
+without its `msn_` prefix. The project segment and the id prefixes are dropped because Git on
+Windows refuses a worktree whose `.git` path passes 220 characters (`'$GIT_DIR' too big`,
+measured, T-077). The old layout capped `ARCHEUS_HOME` at 134 characters, and the new one at 169.
+Worktrees created under the earlier layout
+`<ARCHEUS_HOME>/worktrees/<project-id>/<mission-id>/<task-key>` (and `…/_mission`) are kept where
+they are and still used: Core looks for the earlier path first and uses it when it exists. Nothing
+is moved or deleted by the change. `worktrees/` remains one V1 entry. Its ownership, keep-all and
+reset behaviour are unchanged. The layouts recorded in `execution-architecture.md` §(workspace),
+`p11-design-gate.md` (workspace table), `p13-design-gate.md` (§8, §12.1), `pv13-…` and
+`pv20-execution-isolation-design.md` describe worktrees created before this amendment.
+
+**Amendment 2026-10-14 (T-089, who may write the home).** `ARCHEUS_HOME` belongs under the user
+profile, as the default `%LOCALAPPDATA%\Archeus` is: a folder there inherits an ACL that only the
+user, SYSTEM and Administrators may write. A folder under a drive root such as `D:\` inherits
+MODIFY for Authenticated Users, so every signed-in user of the machine could change Core's
+database, `run/` and worktrees (measured, T-068). On Windows Core reads the home's DACL at start
+(read only; nothing writes an ACL) and, when Everyone, Authenticated Users, Users or an app-package
+group may write it, logs a warning naming the principal and the path, which `archeus status`
+also prints. It warns and never refuses: pytest's temporary homes and existing installs outside
+the profile inherit that ACE.
+
+**Qualification 2026-10-15 (T-089, Codex batch finding 2).** The amendment above mixes three
+things of different strength. (a) *Recommended placement*: `ARCHEUS_HOME` under the user profile
+is the default and the recommendation; that a profile folder is writable only by the user,
+SYSTEM and Administrators is the stock Windows profile ACL, not something Core sets or verifies.
+(b) *Measured*: the `D:\` inheritance (Authenticated Users `S-1-5-11` holding MODIFY on a new
+folder) was measured on one machine in T-068; other drives and machines may differ. (c) *What the
+check does*: `discovery._home_warning` reads the DACL with the boundary's reader
+(`DaclReaders.broad_writer`) and names the first principal of `isolation.BROAD_PRINCIPALS`
+(Everyone, Authenticated Users, Users, ALL APPLICATION PACKAGES, ALL RESTRICTED APPLICATION
+PACKAGES) that holds an allow ACE with a write-like right (`_write_like`: write data, append,
+extended attributes, attributes, delete, delete child, `WRITE_DAC`, `WRITE_OWNER`, generic
+write or all). It is conservative and is not an effective-access evaluation: deny ACEs are not
+weighed against it, an inherit-only ACE counts, and only the first such principal is named. When
+the home does not exist yet the check walks up to the nearest existing ancestor and reads that
+folder's DACL as the one the home will inherit from. When the DACL cannot be read
+(`IsolationUnavailable`, e.g. `dacl_unreadable`) the result is a warning,
+`the ACL of ARCHEUS_HOME <path> could not be read: <error>`, not a crash or a refusal. Off
+Windows this check does not run; the POSIX mode check on `run/` and the token file is unchanged.
+
+**Amendment 2026-10-15 (T-096, who may read the home).** The start-up check now also warns when
+a broad principal may read the home or, once it exists, `run/local-token`, which holds every
+scope. Write is reported first, then read. Read means an allow ACE carrying `GENERIC_READ`,
+`GENERIC_ALL` or `FILE_READ_DATA`. It still warns and never refuses, and still writes no ACL.
 
 | Store | Technology | Contents | Truth for |
 |---|---|---|---|

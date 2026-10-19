@@ -140,6 +140,8 @@ def explain(r):
         return 'Archeus refused a command that was sent late. Nothing was changed.'
     if code == 'host_not_allowed':
         return 'Only from the computer running Archeus.'
+    if code == 'remote_host_required':
+        return 'Only through the configured remote connection to Archeus.'
     if code == 'core_starting':
         return 'Archeus is starting. Try again in a moment.'
     if code == 'busy':

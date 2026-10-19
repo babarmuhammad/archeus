@@ -1,12 +1,21 @@
-"""The P20 mutation suite (p20-design-gate §4.1; D14's ids are provisional until
-the user decides it). Slice A, item 83: the e-stop with Core down or not
+"""The P20 mutation suite (p20-design-gate §4.1; D14, decided by the user
+2026-10-15). Slice A, item 83: the e-stop with Core down or not
 answering (Q01-Q08); slice B, F7 and F8, Control → About's emergency stop
 (Q09-Q17; an e2e-guarded mutant rebuilds the SPA); slice C, F4's stream
 takeover (Q18-Q25, Q33) and item 86's one shell credential at a time (Q26-Q32);
 slice D, F6's touch exit from the command bar (Q34-Q37); slice E, PV-10
 (ADR-0049, D6): settings-source opt-ins, the inventory and the exit-code-2
 deny (Q38-Q79; two e2e-guarded mutants rebuild the SPA); slice F, PV-22
-(ADR-0052): tool removal, the CLI snapshot, the MCP deny and Skill (Q80-Q99).
+(ADR-0052): tool removal, the CLI snapshot, the MCP deny and Skill (Q80-Q99);
+slice I, the secrets gate (Q100-Q103); slice H, the breaker drills (D13) and
+the two defects the fuzz harness found (D12) (Q104-Q110); H-F1, re-enabling
+starts the counts afresh (Q111-Q112), and T-093's corrected secrets gate: a
+secret written twice, a mode changed after the create (Q113-Q114); slice J,
+D10's re-arm step-up from a paired client (Q115-Q117); T-094's review: the
+gate tests and drills no mutant named, and the defects its stronger fuzz
+corpus and oracle found (Q118-Q124); T-103's review: the static census's
+sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
+Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -54,6 +63,7 @@ MGR = 'archeus/core/execution/manager.py'
 EXE = 'archeus/core/application/executions.py'
 MISSION = 'clients/app/src/surfaces/Mission.tsx'
 SU = 'tests/v1/unit/test_settings_sources_units.py::'
+PRS = 'tests/v1/integration/test_presence.py::'
 SI = 'tests/v1/integration/test_settings_sources.py::'
 G6 = 'tests/v1/judge/test_g06_security.py::'
 API = 'tests/v1/unit/test_api_structure.py::test_the_route_table_is_exactly_the_p35b_to_p18_tables'
@@ -65,6 +75,26 @@ FAKE = 'archeus/harnesses/fake.py'
 FU = 'tests/v1/unit/test_tool_removal_units.py::'
 FR = 'tests/v1/integration/test_tool_removal.py::'
 G6F = G6 + 'test_a_tool_the_task_does_not_hold_never_runs_and_never_reaches_the_hook'
+DISC = 'archeus/infra/discovery.py'
+AUTH = 'archeus/api/auth.py'
+AUTO = 'archeus/core/application/automations.py'
+AUTHZ = 'archeus/core/application/authorization.py'
+CANON = 'archeus/core/execution/canonical.py'
+SEC = 'tests/v1/unit/test_p20_secrets.py::'
+XI = 'tests/v1/integration/test_execution.py::'
+PR = 'tests/v1/integration/test_presence.py::'
+AU = 'tests/v1/integration/test_automation.py::'
+FZ = 'tests/v1/integration/test_p20_fuzz.py::'
+WRT = 'archeus/infra/db/writer.py'
+KNOW = 'archeus/core/application/knowledge.py'
+MATCH = 'archeus/core/automation/matcher.py'
+AE = 'tests/v1/integration/test_api_errors.py::'
+FREE = AE + 'test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500'
+H04B = ('tests/v1/integration/test_policy_http.py::'
+        'test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500')
+RTM = 'archeus/core/runtime.py'
+RUN_LOCAL = ('tests/v1/integration/test_p20_secrets_runtime.py::'
+             'test_no_minted_credential_is_at_rest_outside_its_one_home')
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -507,6 +537,165 @@ MUTATIONS = [
      "    'mapped_not_offered': ('LS', 'MultiEdit'),",
      "    'mapped_not_offered': ('MultiEdit',),")],
      [FU + 'test_F11_every_offered_tool_is_mapped_or_excluded_and_the_snapshot_says_what_is_not_offered']),
+    # Slice I: the secrets review's gate (D7)
+    ('Q100', 'the local token file is not created exclusively', [(DISC,
+     "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
+     "os.open(path, os.O_CREAT | os.O_WRONLY, 0o600)")],
+     [SEC + 'test_the_local_token_file_is_created_exclusively_with_a_posix_owner_only_mode']),
+    ('Q101', 'the local token file is readable by others', [(DISC,
+     "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)",
+     "os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)")],
+     [SEC + 'test_the_local_token_file_is_created_exclusively_with_a_posix_owner_only_mode']),
+    ('Q102', 'a step-up PIN record is cheap to brute-force', [(CMD,
+     "PIN_ITERATIONS = 200_000",
+     "PIN_ITERATIONS = 1_000")],
+     [SEC + 'test_a_step_up_pin_is_kept_only_as_a_pbkdf2_record']),
+    ('Q103', 'a secret is drawn somewhere the table does not name', [(MGR,
+     "'hook_' + secrets.token_urlsafe(32)",
+     "'hook_' + secrets.token_hex(32)")],
+     [SEC + 'test_every_source_in_archeus_is_in_the_secrets_table_with_its_count']),
+    # Slice H, D13: each breaker tripped and its recovery observed
+    ('Q104', 'the breaker counts every failure, not only resource and auth', [(EXE,
+     "and x.entity.failure in ('resource', 'auth') and x.entity.ended_at]",
+     "and x.entity.ended_at]")],
+     [XI + 'test_D13_the_execution_breaker_trips_opens_cools_and_recovers']),
+    ('Q105', 'an OPEN account never cools down', [(EXE,
+     "elif a.health == 'OPEN' and now - since >= COOLDOWN_S:",
+     "elif False:")],
+     [XI + 'test_D13_the_execution_breaker_trips_opens_cools_and_recovers']),
+    ('Q106', 'a successful probe does not recover a DEGRADED account', [(EXE,
+     "elif a.health == 'DEGRADED' and beat and any(t > since for t in oks):",
+     "elif False:")],
+     [XI + 'test_D13_the_execution_breaker_trips_opens_cools_and_recovers']),
+    ('Q107', 'a right PIN does not reset the wrong-PIN count', [(AUTH,
+     "            self._n.pop(device_id, None)\n",
+     "            pass\n")],
+     [PR + 'test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers']),
+    ('Q108', 'a suspended automation cannot be re-enabled', [(AUTO,
+     "'user_reenables' if row.entity.state == 'SUSPENDED'",
+     "'enable_within_policy' if row.entity.state == 'SUSPENDED'")],
+     [AU + 'test_D13_a_reenabled_automation_fires_again']),
+    # Slice H, D12: what the fuzz harness found
+    ('Q109', "a simulated action or rule built from a malformed dict is a 500", [(AUTHZ,
+     "    except TypeError as e:",
+     "    except KeyError as e:")],
+     ['tests/v1/integration/test_policy_http.py::'
+      'test_H04b_a_malformed_simulated_action_or_rule_is_a_400_not_a_500',
+      FZ + 'test_no_fuzzed_command_body_is_a_500']),
+    ('Q110', 'a path the OS cannot resolve raises out of the canonicaliser', [(CANON,
+     "    except (OSError, ValueError):",
+     "    except KeyError:")],
+     ['tests/v1/unit/test_execution_units.py::'
+      'test_a_path_the_os_cannot_resolve_is_unclassified_not_an_error',
+      FZ + 'test_the_canonicaliser_answers_every_fuzzed_call_conservatively']),
+    # H-F1 (the owner, 2026-10-15): re-enabling starts the counts afresh
+    ('Q111', 'the loop guard counts the runs from before the re-enable', [(AUTO,
+     "    recent = [(r.state, r.reason_code) for r in _armed_window(tx, a)]",
+     "    recent = [(r.entity.state, r.entity.reason_code) for r in tx.where("
+     "entities.AutomationRun, automation_id=a.id)]")],
+     [AU + 'test_D13_a_reenabled_automation_fires_again']),
+    ('Q112', 'the rate limit counts the missions from before the re-enable', [(AUTO,
+     "    made = sum(1 for r in _armed_window(tx, a) if r.state in _CREATED)",
+     "    made = sum(1 for r in tx.where(entities.AutomationRun, automation_id=a.id)"
+     " if r.entity.state in _CREATED)")],
+     [AU + 'test_H_F1_a_rate_limited_automation_reenabled_within_the_hour_fires']),
+    # T-093's corrected secrets gate: writers, not draw sites
+    ('Q113', 'the local token is also written to a second file', [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    open(path + '.bak', 'w').write(token)\n")],
+     [SEC + 'test_every_secret_write_in_archeus_is_in_the_writers_table']),
+    ('Q114', "the local token's mode is changed after its exclusive create", [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    os.chmod(path, 0o644)\n")],
+     [SEC + 'test_no_code_in_archeus_changes_a_files_mode']),
+    # Slice J, D10 (V2-3 resolved 2026-10-15: paired devices only)
+    ('Q115', 'a paired client re-arms without its PIN', [(EXE,
+     "    if not authorization._step_up_valid(tx, actor, step_up):",
+     "    if False:")],
+     [PRS + 'test_J01_a_paired_client_re_arms_only_with_its_pin',
+      PRS + 'test_J02_a_paired_client_without_a_pin_cannot_re_arm_and_the_desktop_can']),
+    ('Q116', "the re-arm route drops the client's proof", [(ROUTES,
+     "        out = req.run(req.api.executions.rearm, {'step_up': proof})",
+     "        out = req.run(req.api.executions.rearm, {'step_up': None})")],
+     [PRS + 'test_J01_a_paired_client_re_arms_only_with_its_pin']),
+    ('Q117', 'a wrong re-arm PIN is not counted toward the revocation', [(ROUTES,
+     "        if proof is not None and 'step-up' in e.result.reason:\n"
+     "            _step_up_failed(req)",
+     "        if proof is not None and 'step-up' in e.result.reason:\n"
+     "            pass")],
+     [PRS + 'test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would']),
+    # T-094's review: the gate tests and drills no Q mutant named, and its fixes
+    ('Q118', 'the CLI draws a secret where it drew an idempotency key', [(MAIN,
+     "    body = {'headless': headless, 'idempotency_key': os.urandom(16).hex()}",
+     "    body = {'headless': headless, 'idempotency_key': secrets.token_hex(16)}")],
+     [SEC + 'test_the_cli_draws_only_idempotency_keys_and_request_ids']),
+    ('Q119', 'a credential row can be inserted with its plaintext token', [(WRT,
+     "    def insert_token(self, *, token_hash, kind, principal_id, scopes, actor, expires_at=None):",
+     "    def insert_token(self, *, token_hash, kind, principal_id, scopes, actor, expires_at=None,"
+     " token=None):")],
+     [SEC + 'test_device_and_hook_credentials_are_stored_as_hashes_only']),
+    # the kill has no enforcement branch, and the e-stop reaches it twice (the
+    # command's stop and the manager's disarmed check): this mutant takes the
+    # one place both meet, named by E24 (hooked) and the registry-only drill
+    ('Q120', 'a stopping execution under the e-stop waits out the grace before its kill', [(MGR,
+     "        if state == 'STOPPING' and (disarmed or e.stop_reason in _NOW",
+     "        if state == 'STOPPING' and (False")],
+     [XI + 'test_E24_the_estop_kills_everything_now_and_core_stays_disarmed_until_rearmed',
+      XI + 'test_D13_the_estop_with_core_running_kills_a_registry_only_execution']),
+    ('Q121', 'a simulated extra rule reaches the engine unchecked', [(AUTHZ,
+     "        extra = [_simulated_rule(conn, i, r) for i, r in enumerate(extra_rules)]",
+     "        extra = [R.rule(**dict(r, id=r.get('id') or 'simulated:%d' % i, source='user'))"
+     " for i, r in enumerate(extra_rules)]")],
+     [H04B, FZ + 'test_no_fuzzed_command_body_is_a_500']),
+    ('Q122', 'a path tool with no usable path is classified on the workspace', [(CANON,
+     "        if given and not _text(given[0]) or not given and tool not in OPTIONAL_PATH:",
+     "        if False:")],
+     ['tests/v1/unit/test_execution_units.py::'
+      'test_an_input_missing_what_its_tool_needs_is_unclassified',
+      FZ + 'test_the_canonicaliser_answers_every_fuzzed_call_conservatively']),
+    ('Q123', "a forget selector's ids reach the database unchecked", [(KNOW,
+     "                and all(isinstance(i, str) for i in selector['ids'])):",
+     "                or True):")],
+     [FREE]),
+    ('Q124', "an automation trigger's type reaches the registry unchecked", [(MATCH,
+     "    if not isinstance(t, str) or t not in types:",
+     "    if t not in types:")],
+     [FREE]),
+    # T-103's review: the static census's sinks, and the runtime gate
+    ('Q125', 'the local token is written again through the dotted atomic writer', [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    config.write_json_atomic(path + '.json', {'t': token})\n")],
+     [SEC + 'test_every_secret_write_in_archeus_is_in_the_writers_table']),
+    ('Q126', 'the local token is logged to core.log', [(RTM,
+     "        discovery.write_local_token(token)\n",
+     "        discovery.write_local_token(token)\n        log.info('local token %s', token)\n")],
+     [SEC + 'test_every_secret_write_in_archeus_is_in_the_writers_table', RUN_LOCAL]),
+    ('Q127', "the local token's mode is changed through an aliased chmod", [(DISC,
+     "        f.write(token)\n",
+     "        f.write(token)\n    from os import chmod as ch\n    ch(path, 0o644)\n")],
+     [SEC + 'test_no_code_in_archeus_changes_a_files_mode']),
+    # a database row: a shape the static census cannot see, by construction
+    ('Q128', "a launch-redeemed device's token is stored as its name", [(ROUTES,
+     "        'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],",
+     "        'name': token,")],
+     [RUN_LOCAL]),
+    # T-098's review: the Re-arm button's PIN rule, the PIN left behind, the reset
+    ('Q129', 'Re-arm is offered to a PIN client with no PIN typed', [(CTRL,
+     "re-arm on the desktop.' : stepUpBlocked(stepUp, pin)}", "re-arm on the desktop.' : stepUpBlocked(undefined, pin)}")],
+     [AB + 'test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays']),
+    ('Q130', "the PIN stays in the field after the re-arm returns", [(CTRL,
+     "report={(o) => { setPin(''); setSaid(estopSaid('rearm', o)); }}",
+     "report={(o) => { setSaid(estopSaid('rearm', o)); }}")],
+     [AB + 'test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays']),
+    ('Q131', "a right re-arm PIN does not reset the count", [(ROUTES,
+     "        req.api.step_up.reset(req.principal['device_id'])\n    LocalNode.clear_estop()",
+     "        pass\n    LocalNode.clear_estop()")],
+     [PRS + 'test_J03b_a_right_re_arm_pin_resets_the_count']),
+    # T-094's re-review: a boundary value check_boundary cannot read
+    ('Q132', "a rule's boundary values reach the engine unchecked", [(ENT,
+     "            for k, v in self.boundary.items():      # the shapes rules.check_boundary reads",
+     "            for k, v in ():")],
+     [H04B, FREE, FZ + 'test_no_fuzzed_command_body_is_a_500']),
 ]
 
 if __name__ == '__main__':

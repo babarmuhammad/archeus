@@ -27,6 +27,8 @@ from ._api import endpoints
 #: the shell's own grant (B8): enough to read Attention and to Pause all
 SHELL_SCOPES = ['observe', 'control']
 SHELL_NAME = 'desktop shell'
+#: the page's slot (T-096): each page credential revokes the one before it
+PAGE_SLOT = 'desktop shell page'
 #: how long a Core this shell started may take to answer
 START_WAIT_S = 30
 NOT_RUNNING = 'Archeus Core is not running'
@@ -39,7 +41,8 @@ def profile_dir():
     """`<ARCHEUS_HOME>/QtWebEngine/archeus`: the persistent QtWebEngine profile
     (ADR-0044 §3, T5), inside the entry target-architecture §5.1 reserves for
     the Qt shell (`paths.QT_OWNED`). It holds the page's own storage — the
-    device token, the appearance choice, B7's snapshot — across restarts."""
+    appearance choice, B7's snapshot — across restarts. Not the page's device
+    token: the page keeps that in memory only (T-096, p20 D1)."""
     from ..infra import paths
     return os.path.join(paths.archeus_home(), 'QtWebEngine', 'archeus')
 
@@ -139,9 +142,10 @@ class Shell:
     estop_confirm = ESTOP_CONFIRM
 
     def page_url(self):
-        """A fresh launch address for the window's page (D2's scopes), or None."""
+        """A fresh launch address for the window's page (D2's scopes) in the
+        page's slot, its token kept in the page's memory only, or None."""
         from .main import launch_url
-        return launch_url(self.info)
+        return launch_url(self.info, PAGE_SLOT)
 
     def pause_all(self):
         """POST /v1/missions/pause-all with the shell's credential, in words."""

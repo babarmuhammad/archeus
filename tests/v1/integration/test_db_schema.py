@@ -125,7 +125,7 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 15
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 16
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
             'consumer_effects', 'idempotency_keys',
@@ -137,6 +137,34 @@ def test_a_fresh_database_reaches_the_current_schema(db):
             'policy_rules', 'policy_decisions', 'approvals',
             'accounts', 'resource_policies', 'usage_snapshots',
             'sessions', 'checkpoints', 'pause_batches', 'opt_ins'} <= tables
+
+
+def test_0016_drops_the_idempotency_rows_whose_hash_covered_a_pin(tmp_path):
+    """T-107: rows the three proof-taking commands wrote before the hash left the
+    proof out are dropped (their sha256 gives the PIN back); every other row
+    stays. The names in the SQL are the real commands' names."""
+    import shutil
+    from archeus.core.application import authorization, executions
+    from archeus.infra.db.writer import command_name
+    proofs = [command_name(f) for f in (executions.Executions.rearm,
+                                        authorization.Authorization.decide,
+                                        authorization.Authorization.decide_by_message)]
+    src = os.path.dirname(migrate.__file__) + '/migrations'
+    old = tmp_path / 'm'
+    old.mkdir()
+    for n in sorted(os.listdir(src)):
+        if n < '0016':
+            shutil.copy(os.path.join(src, n), old / n)
+    c = connection.connect(str(tmp_path / 'db.sqlite'))
+    assert migrate.migrate(c, directory=str(old)) == 15
+    for i, name in enumerate(proofs + ['archeus.core.application.commands.create_mission']):
+        c.execute('INSERT INTO idempotency_keys (key, command, actor, request_hash, response, '
+                  "created_at) VALUES (?, ?, 'p', 'h', '{}', '2026-10-15T00:00:00.000Z')",
+                  ('k%d' % i, name))
+    assert migrate.migrate(c) == 16
+    left = [r[0] for r in c.execute('SELECT command FROM idempotency_keys')]
+    c.close()
+    assert left == ['archeus.core.application.commands.create_mission']
 
 
 def test_every_persisted_entity_table_has_the_row_shape(db):

@@ -29,12 +29,20 @@ from .executions import charged_failure
 
 #: the verifier implementation a row names (p13-design-gate §8.2)
 VERIFIER_VERSION = 'p13.1'
+#: the one a guarded mission's code row names: its commands run only confined (A6-4,
+#: T-054 C-1013 §4); stamped by the sink, never passed in
+CONFINED_VERIFIER = 'a6.1'
+#: activation's switch, a separate owner go; until then no guarded code row starts
+CONFINED_VERIFICATION_ENABLED = False
 #: an ERROR is retried once, then the mission waits for the user (§6)
 ERROR_ATTEMPTS = 2
 #: failed `review` calls per plan version before the worker waits for the user (§7)
 REVIEW_CALL_ATTEMPTS = 2
 _REVIEW = {'accept': 'verdict_accept', 'changes_requested': 'verdict_changes',
            'reject': 'verdict_reject'}
+#: why a command check of a guarded mission waits on a person (A6, T-041)
+WITHHELD = ('verification withheld: its commands would run over content of a mission with '
+            'isolated or unknown provenance')
 
 
 class Refused(ValueError):
@@ -94,6 +102,42 @@ def _get(conn, cls, eid):
 def _where(conn, cls, **eq):
     from ...infra.db import rows
     return rows.where(conn, cls, **eq)
+
+
+def unconfined(conn, mission_id):
+    """May Core run a command check of mission *mission_id* unconfined (A6,
+    T-041 §3)? Only when every prepared execution of the mission - any task,
+    plan version or attempt - was recorded exactly not isolated: True and
+    unknown (None) are guarded. Derived on every call, never stored: executions
+    are never deleted and the field is written once, so a guarded mission stays
+    guarded. Not `manager._isolated`, whose legacy rule routes None as ordinary."""
+    return all(r.entity.isolated is False
+               for r in _where(conn, entities.Execution, mission_id=mission_id)
+               if r.entity.process_seq >= 1)
+
+
+def confined(e, revision, workspace):
+    """May a guarded code row of execution *e* run (A6-4)? Only confined, while
+    activation's switch is on, over the import Core recorded for *e* and no
+    workdir. Read in the sink's own transaction; nothing a caller passes decides it."""
+    return (CONFINED_VERIFICATION_ENABLED and workspace is None
+            and e.import_revision is not None and revision == e.import_revision)
+
+
+def mergeable_revision(conn, t):
+    """The revision a merge of task *t* may take (D10, A5): what its latest
+    PASSED verification of its plan recorded, and none at all when that row's
+    execution or the task's verified execution is known-isolated - never an
+    older row instead. Legacy None keeps today's reading (G1)."""
+    passed = [r.entity for r in _where(conn, entities.Verification, plan_id=t.plan_id)
+              if r.entity.subject == Ref('task', t.id) and r.entity.state == 'PASSED']
+    if not passed:
+        return None
+    v, e = passed[-1], verified_execution(conn, t)
+    src = _get(conn, entities.Execution, v.execution_id) if v.execution_id else None
+    if src is None or src.isolated is True or (e is not None and e.isolated is True):
+        return None
+    return v.revision
 
 
 def _in_force(tx, t):
@@ -159,24 +203,33 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
         plan_id, who, execution_id = active_plan(tx.conn, m.id).entity.id, None, None
     else:
         raise Refused('a verification is of a task or a mission')
+    guarded = not unconfined(tx.conn, m.id)
+    version = VERIFIER_VERSION
+    if guarded and verifier != 'generic_human':
+        if not (subject.kind == 'task' and verifier == 'code'
+                and confined(e, revision, workspace)):
+            raise Refused('mission %s: %s' % (m.id, WITHHELD))
+        version = CONFINED_VERIFIER
     v = entities.Verification(
         id=ids.new_id('verification'), subject=subject, verifier=verifier, plan_id=plan_id,
         criterion=criterion, execution_id=execution_id, revision=revision,
         base_revision=base_revision, workspace=workspace, performed_by=who,
-        verifier_version=VERIFIER_VERSION, provenance=provenance, criteria=tuple(criteria))
+        verifier_version=version, provenance=provenance, criteria=tuple(criteria))
     tx.insert(v, actor=actor)
     _event(tx, 'verification.created', Ref('verification', v.id), actor, m,
            {'subject': {'kind': subject.kind, 'id': subject.id}, 'criterion': criterion,
             'plan_id': plan_id, 'execution_id': execution_id, 'revision': revision,
             'verifier': verifier})
     if verifier == 'generic_human':
+        why = WITHHELD if guarded else 'nothing deterministic can decide this'
         row = _fire(tx, entities.Verification, v.id, 'generic_verifier', actor,
-                    'nothing deterministic can decide this; waiting for your acceptance')
+                    why + '; waiting for your acceptance')
         if subject.kind == 'task':
-            _hold(tx, actor, missions, m, row, 'waiting for your acceptance of task %s' % t.key)
+            _hold(tx, actor, missions, m, row, 'waiting for your acceptance of task %s%s'
+                  % (t.key, ' (%s)' % WITHHELD if guarded else ''))
         return {'verification_id': v.id, 'state': 'AWAITING_HUMAN'}
     _fire(tx, entities.Verification, v.id, 'start', actor, 'verifier %s' % verifier)
-    return {'verification_id': v.id, 'state': 'RUNNING'}
+    return {'verification_id': v.id, 'state': 'RUNNING', 'verifier_version': version}
 
 
 # ── record (§8.4, §10, §20) ─────────────────────────────────────────────────
@@ -281,10 +334,21 @@ def task_branch(t):
 # ── ERROR: retry once, then the user (§6) ───────────────────────────────────
 
 def retry(tx, *, actor, verification_id):
-    """ERROR -> PENDING -> RUNNING on the same row (its lineage unchanged)."""
+    """ERROR -> PENDING -> RUNNING on the same row (its lineage unchanged).
+    A guarded mission's row is refused before anything is written (A6): it is
+    held, or a mission criterion gets a fresh human row, never re-run - unless
+    `start` stamped it confined and it still may run confined (A6-4)."""
     v = lifecycle.load(tx, entities.Verification, verification_id).entity
+    e = None
     if v.subject.kind == 'task':
-        _task_lineage(tx, v.subject.id, v.execution_id)
+        t, e = _task_lineage(tx, v.subject.id, v.execution_id)
+        mission_id = t.mission_id
+    else:
+        mission_id = v.subject.id
+    if not unconfined(tx.conn, mission_id) and not (
+            v.verifier_version == CONFINED_VERIFIER and e is not None
+            and confined(e, v.revision, v.workspace)):
+        raise Refused('verification %s is not retried: %s' % (v.id, WITHHELD))
     _fire(tx, entities.Verification, v.id, 'retry', actor,
           'retrying after: %s' % (v.error or 'an error'), fields={'holds_mission': False})
     _fire(tx, entities.Verification, v.id, 'start', actor, 'verifier %s' % v.verifier)
@@ -298,8 +362,9 @@ def hold(tx, *, actor, missions, verification_id):
     v = row.entity
     m = _mission(tx, v.subject.id if v.subject.kind == 'mission'
                  else lifecycle.load(tx, entities.Task, v.subject.id).entity.mission_id)
-    return _hold(tx, actor, missions, m, row,
-                 'verification could not run: %s' % (v.error or 'error'))
+    why = ('verification could not run: %s' % (v.error or 'error')
+           if unconfined(tx.conn, m.id) else WITHHELD)
+    return _hold(tx, actor, missions, m, row, why)
 
 
 def _hold(tx, actor, missions, m, row, reason):
@@ -409,13 +474,10 @@ def sweep(tx, *, actor):
 # ── integration (§12) ───────────────────────────────────────────────────────
 
 def _integration_facts(tx, t, revision):
-    passed = [r.entity for r in tx.where(entities.Verification, plan_id=t.plan_id)
-              if r.entity.subject == Ref('task', t.id) and r.entity.state == 'PASSED'
-              and r.entity.revision is not None]
     # positional (task state, plan in force, verified revision, revision): only
     # Tx.transition names a state field (test_guards)
     return guards.IntegrationFacts(t.state, _in_force(tx, t),
-                                   passed[-1].revision if passed else None, revision)
+                                   mergeable_revision(tx.conn, t), revision)
 
 
 def begin_merge(tx, *, actor, task_id, revision):
@@ -435,6 +497,8 @@ def record_merge(tx, *, actor, missions, task_id, outcome, head=None, base=None,
     m = _mission(tx, t.mission_id)
     if t.integration_state != 'MERGING':
         raise Refused('task %s is not merging (%s)' % (t.id, t.integration_state))
+    if mergeable_revision(tx.conn, t) is None:
+        raise Refused('task %s has no revision a merge may take (A5)' % t.id)
     if outcome == 'merged':
         _fire(tx, entities.Task, t.id, 'fast_forward_or_clean', actor,
               'merged into %s at %s' % (_mission_branch(m.id), head), machine='integration',

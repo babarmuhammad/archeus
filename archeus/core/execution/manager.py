@@ -27,10 +27,12 @@ import time
 from dataclasses import replace
 
 from ...harnesses import base
+from ...harnesses.registry import PolicyStubError
 from ...infra.artifacts import store
 from ...infra.db import rows
-from ...infra.paths import ExecPaths
-from ...node.local import LocalNode
+from ...infra.paths import ExecPaths, task_worktree
+from ...node import staging
+from ...node.local import LocalNode, PathTooLong
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
 from ..redact import redact  # p11-design-gate §19; shared since P12, and P20's inventory
@@ -60,11 +62,10 @@ USAGE_S = 30.0
 #: how often the pass re-checks that no ended execution still holds an isolation
 #: identity or a grant (PV-20 §3.2 Cleanup, §3.7)
 ISOLATION_SWEEP_S = 5.0
-#: the environment every execution runs in (execution-architecture §2): it can
-#: commit locally, it cannot push with the user's credentials
-CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK': None,
-                  'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'credential.helper',
-                  'GIT_CONFIG_VALUE_0': ''}
+#: defined beside the spawn that checks an isolated environment against it
+CAPABILITY_ENV = base.CAPABILITY_ENV
+#: a known-isolated execution's diff: Core runs no Git in its workdir (T-044)
+UNMEASURED = '(not measured: an isolated execution; Core runs no Git in its workdir)'
 
 
 def line_of(ev):
@@ -97,6 +98,7 @@ class ExecutionManager:
         self._procs = {}
         self._clock = {'accounts': 0.0, 'usage': 0.0, 'isolation': 0.0}
         self._isolation_fault = None        # the last sweep fault logged, so it logs once
+        self._noted = set()                 # (execution id, op) registry notes already left
         self.booted = False
 
     def _do(self, command, **kw):
@@ -123,6 +125,7 @@ class ExecutionManager:
                 log.info('execution %s: lost a race: %s', e.id, err)
             except errors.WriterClosed:
                 raise
+        did += self._orphans({e.id for e in live}, disarmed)
         now = time.monotonic()
         if now - self._clock['accounts'] >= ACCOUNTS_S:
             self._clock['accounts'] = now
@@ -135,6 +138,33 @@ class ExecutionManager:
             # an idle pass stays an idle pass
             self._clock['isolation'] = now
             self._sweep_isolation(live)
+        return did
+
+    def _orphans(self, live, disarmed):
+        """A process whose execution ended while it was still exiting (a halt,
+        then a stop before the next pass) is no longer live, so the pass above
+        never reaches it: it is collected here once it has exited, which is where
+        its end is recorded and its keys removed (T-099). One still running after
+        the stop grace (at once under the e-stop) is killed, as a STOPPING one is:
+        its execution has already ended, so nothing else ever will (T-102)."""
+        did = 0
+        for xid in [i for i in self._procs if i not in live]:
+            p = self._procs[xid]
+            st = p['adapter'].status(p['handle'])
+            if st.state == 'running':
+                if p['since'] is None:
+                    p['since'] = time.monotonic()
+                if disarmed or time.monotonic() - p['since'] >= self.grace_s:
+                    self.node.kill(p['adapter'], p['handle'])
+                    did += 1
+                continue
+            with self.db.read() as r:
+                e = rows.get(r, entities.Execution, xid).entity
+            try:
+                self._collect(e, p, st)
+                did += 1
+            except errors.LOST_RACE as err:
+                log.info('execution %s: lost a race: %s', xid, err)
         return did
 
     def _step(self, e, m, disarmed):
@@ -184,8 +214,45 @@ class ExecutionManager:
             self._do(X.refuse, execution_id=e.id, reason='provider terms do not permit it',
                      stop_reason='binding')
             return True
+        if e.isolated is True and self._isolation_record(e.id) is None:
+            # T-037 rule 4: without its record a resume would be decided afresh and, if
+            # its profile is gone, run under a new identity (R7). Refused before the
+            # decision, the workspace and the inventory, never re-established.
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='its isolation record is gone: an isolated execution resumes '
+                            'only under the identity it was prepared with')
+            return True
+        # whether this process runs isolated is the node's isolation authority's
+        # decision (§3.4), never the adapter's and never a setting: production dispatch
+        # of isolated executions is E's, so today nothing is dispatched that way. Taken
+        # once, before anything is chosen or recorded, and this one value is what the
+        # node gets; a decision that cannot be taken starts nothing, never unisolated.
         try:
-            workdir, branch = self._workspace(e, m, t)
+            iso = getattr(self.node, 'isolation', None)
+            isolated = bool(iso is not None and iso.requested(e.id, adapter))
+        except Exception as err:
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='the isolation decision could not be taken: %s'
+                     % type(err).__name__)
+            return True
+        hook = (sys.executable, HOOK)
+        if isolated:
+            # C4b (T-034): the isolated hook runs from Core's verified copy of the real
+            # install (base_prefix, never a venv launcher's directory), verified again on
+            # every process, a resume's included. No copy, no start: never Core's own
+            try:
+                stage = staging.stage(sys.base_prefix, HOOK)
+            except OSError as err:
+                self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                         reason='the hook runtime could not be staged: %s' % err)
+                return True
+            hook = (os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, staging.HOOK))
+        try:
+            workdir, branch = self._workspace(e, m, t, isolated=isolated)
+        except PathTooLong as err:
+            self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
+                     stop_reason='path_too_long', missions=self.missions)
+            return True
         except OSError as err:
             self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
                      stop_reason='workspace')
@@ -210,7 +277,11 @@ class ExecutionManager:
             attempt=e.attempt, model=e.model, effort=e.effort, process_seq=seq,
             account=base.AccountRef(e.account_id or e.harness_id, home),
             env=dict(CAPABILITY_ENV, ARCHEUS_HOOK_TOKEN=token),
-            hook_settings=(sys.executable, HOOK), opt_ins=opt_ins,
+            # an isolated execution's hook runs isolated (-I: no PYTHON* variables, no
+            # user site, no script directory on sys.path), so the gate on every tool
+            # call imports nothing the execution could plant (T-031 §3)
+            hook_settings=hook,
+            opt_ins=opt_ins,
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),
                            'continuation': continuation,
@@ -223,7 +294,8 @@ class ExecutionManager:
         # would start a new execution on every tick, forever.
         sha = size = None
         try:
-            got = adapter.inventory(spec) if hasattr(adapter, 'inventory') else None
+            got = (adapter.inventory(spec, isolated=isolated) if hasattr(adapter, 'inventory')
+                   else None)
             if got is not None:
                 data = redact(json.dumps(got, sort_keys=True)).encode('utf-8')
                 sha, size = store.put(data), len(data)
@@ -234,7 +306,7 @@ class ExecutionManager:
                      % type(err).__name__)
             return True
         out = self._do(X.prepare_process, execution_id=e.id, token_digest=X.token_hash(token),
-                       workdir=workdir, branch=branch, process_seq=seq,
+                       workdir=workdir, branch=branch, process_seq=seq, isolated=isolated,
                        inventory_sha256=sha, inventory_size=size)
         if out['refused']:
             return True
@@ -247,12 +319,16 @@ class ExecutionManager:
         # between as already read, so its first output is never seen
         offset = self._offset(e)
         try:
-            # whether this process runs isolated is the node's isolation authority's
-            # decision (§3.4), never the adapter's and never a setting: production
-            # dispatch of isolated executions is E's, so today nothing is dispatched
-            # that way, and an execution that does run isolated can configure nothing
-            # about the invariant that governs it
-            handle = self.node.spawn(adapter, spec, resume_state=resume_state)
+            handle = self.node.spawn(adapter, spec, resume_state=resume_state,
+                                     isolated=isolated)
+        except base.SpawnWriteFailed as err:
+            # Core could not write the execution's own files: charged like a workspace
+            # that cannot be made (P11 note 11), so a failure that persists spends
+            # max_attempts instead of being re-dispatched on every tick (T-102)
+            self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
+                     stop_reason='workspace')
+            self._release_isolation(e)
+            return True
         except (base.SpawnFailed, base.AlreadySpawned) as err:
             # nothing started, and nothing started unisolated instead (§3.4, §6.3).
             # `binding` is the uncharged stop reason: an isolation-establishment
@@ -321,12 +397,22 @@ class ExecutionManager:
             return known[e.model], 'offer'
         return (min(known.values()), 'harness_smallest') if known else (None, 'none')
 
-    def _workspace(self, e, m, t):
+    def _workspace(self, e, m, t, *, isolated):
         """(workdir, branch) — §17. Recorded before the process starts."""
         if m.project_id is None:
-            d = ExecPaths(e.id).dir
+            # the execution's own (class 7), never the Core-owned directory around it
+            # (PV-20 §7.5)
+            d = ExecPaths(e.id).work
             os.makedirs(d, exist_ok=True)
             return d, None
+        if isolated:
+            # A1 (PV-20 §3.2): an isolated execution never works in the user's project
+            # root or in a worktree linked to its .git, and `in_place` is withdrawn for
+            # it. Until a Core-seeded repository exists (T-016 W3 with W6) there is no
+            # other place, so it is refused here, before any git probe of the root. This
+            # is the interim refusal, charged and bounded by the task's attempts, not
+            # the refusal before dispatch that A1 asks for (W5).
+            raise OSError('an isolated execution has no project workspace yet (PV-20 A1)')
         with self.db.read() as r:
             p = rows.get(r, entities.Project, m.project_id)
         roots = list(p.entity.root_paths) if p is not None else []
@@ -338,8 +424,7 @@ class ExecutionManager:
             # one segment under archeus/: P9's profiles bound commits to `archeus/*`,
             # where `*` never crosses a `/` (p11-design-gate §28)
             want = 'archeus/%s.%s' % (m.id, t.key)
-            from ...infra.paths import archeus_home
-            path = os.path.join(archeus_home(), 'worktrees', m.project_id, m.id, t.key)
+            path = task_worktree(m.project_id, m.id, t.key)
             # P13 (p13-design-gate D12): once the mission branch holds a merged
             # result, a later task starts from it, so it sees what it depends on
             mission = mission_branch(m.id)
@@ -431,22 +516,27 @@ class ExecutionManager:
             # a usage report just ahead of a tool call is the pressure that hands
             # the execution off at that very call (p12-design-gate §10.1)
             self._tail(e, p)
+            # the end's and the restart's rule, not the field alone: a resumed legacy
+            # row keeps None beside the record that makes it isolated (T-036)
+            known = self._isolated(e, self._isolation_record(e.id))
         for seq, req in pending:
             did = True
             if req is None:
                 self.node.respond(e.id, seq, 'halt', 'the request could not be read')
                 continue
-            workdir = e.workdir or ExecPaths(e.id).dir
+            workdir = e.workdir or ExecPaths(e.id).work
             cwd = req.get('cwd')
             cwd_ok = cwd is None or _inside(cwd, workdir)
-            branch_now = self.node.git_branch(workdir) if e.branch else None
+            git = e.branch and not known
+            branch_now = self.node.git_branch(workdir) if git else None
             ctx = {'workdir': workdir, 'branch': branch_now,
-                   'remotes': self.node.git_remotes(workdir) if e.branch else {}}
+                   'remotes': self.node.git_remotes(workdir) if git else {}}
             try:
                 canon = canonical.canonicalise(req.get('tool'), req.get('input'), ctx)
                 out = self._do(X.serve_hook, policy=self.policy, execution_id=e.id, seq=seq,
                                request=req, canon=canon, cwd_ok=cwd_ok,
-                               branch_ok=e.branch is None or branch_now == e.branch,
+                               branch_ok=e.branch is None or (not known
+                                                              and branch_now == e.branch),
                                disarmed=disarmed)
             except Exception as err:        # never allow on a failure: fail closed
                 log.warning('hook request %d of %s: %s', seq, e.id, err)
@@ -507,7 +597,9 @@ class ExecutionManager:
         if e.state in _ENDED:
             self._release_isolation(e)                      # §3.2 Cleanup
             return
-        facts = self._facts(e, p)
+        rec = self._isolation_record(e.id)
+        isolated = self._isolated(e, rec)
+        facts = _unmeasured(p) if isolated else self._facts(e, p)
         # the adapter's figures are the harness's own total only when it says so;
         # the last progress report is a lower bound (ADR-0048 §3)
         usage, total = ((dict(result.usage), result.usage_total) if result.usage
@@ -519,26 +611,77 @@ class ExecutionManager:
             self._do(X.request_handoff, execution_id=e.id, stop_reason='limit',
                      reason='the provider refused for a limit')
             e = self._reload(e)
-        clean = st.exit_code == 0 and not result.halted and result.exit_reason != 'killed'
-        if e.state == 'HANDING_OFF' and not clean:
+        killed = result.exit_reason == 'killed'
+        if isolated:
+            # PV-20 §3.3 H2 / A7: Core's own state and observed exit decide; the halt
+            # report never does. Any other end of an isolated hand-off is ENDED_ERROR.
+            handoff = st.exit_code == 0 and not killed
+        else:
+            handoff = st.exit_code != 0 or result.halted or killed
+        handing = e.state == 'HANDING_OFF' and handoff
+        # K3 (C-1012-T030-2 §2): the route is captured above; a seeded execution whose
+        # route is a clean end or a hand-off is fenced, its Job closed, and its
+        # workspace imported, all before the one transaction that records the end
+        clean = X.imports(e.state, st.exit_code, killed, result.halted, p['offset'] > 0)
+        imported = {}
+        if isolated and e.seed_revision is not None and (handing or clean):
+            imported = self._import(e, rec)
+            if imported.get('revision'):
+                facts = dict(facts, end_state=imported['tree'],
+                             files_changed=imported['files_changed'],
+                             import_counts={'deleted': imported['deleted'],
+                                            'dropped_dirs': imported['dropped_dirs']})
+        imp = {'import_revision': imported['revision'], 'no_import': imported['why']} \
+            if imported else {}
+        if handing:
             self._do(X.record_handoff, policy=self.policy, missions=self.missions,
                      router=self.router, execution_id=e.id, now=time.time(),
                      exit_code=st.exit_code, usage=usage, usage_total=total,
                      adapter_state=result.adapter_state, final_offset=p['offset'],
-                     facts=facts)
+                     facts=facts, **imp)
             self._release_isolation(e)                      # §3.2 Cleanup
             return
         self._do(X.record_end, execution_id=e.id, exit_code=st.exit_code,
-                 killed=result.exit_reason == 'killed', halted=result.halted,
+                 killed=killed, halted=result.halted,
                  failure=result.failure, usage=usage, usage_total=total,
                  summary=result.reported_summary, adapter_state=result.adapter_state,
-                 final_offset=p['offset'], output=p['offset'] > 0, facts=facts)
+                 final_offset=p['offset'], output=p['offset'] > 0, facts=facts,
+                 isolated=isolated, **imp)
         if self._reload(e).state in _ENDED:
             self._release_isolation(e)                      # §3.2 Cleanup
 
+    def _import(self, e, rec):
+        """{revision, tree, files_changed, why} of a seeded execution's import (K3):
+        only through Core's own isolation record and the Job this Core still holds,
+        and only once the fence answered zero. Anything else is no import, with why
+        (T-051 §7); never an exception at an end whose handle is already dropped."""
+        out = {'revision': None, 'why': None}
+        if rec is None:
+            return dict(out, why='its isolation record is gone')
+        try:
+            why = self.node.fence_isolation(e.id)
+            if why is not None:
+                return dict(out, why='not quiescent: %s' % why)
+            project_id, workdirs = self._store_inputs(e)
+            got = self.node.import_workspace(project_id, e.id, e.seed_revision,
+                                             workdirs=workdirs)
+        except Exception as err:            # fail closed: every failure is no import
+            log.warning('execution %s: no import: %s', e.id, err)
+            return dict(out, why='%s: %s' % (type(err).__name__, err))
+        return dict(got, why=None)
+
+    def _store_inputs(self, e):
+        """The project whose store an import writes, and every workdir Core recorded
+        (K1: no store call may name one)."""
+        with self.db.read() as r:
+            m = rows.get(r, entities.Mission, e.mission_id).entity
+            workdirs = [x.entity.workdir for x in rows.where(r, entities.Execution)
+                        if x.entity.workdir]
+        return m.project_id, workdirs
+
     def _facts(self, e, p):
         """What the checkpoint needs from outside the transaction (§8.2)."""
-        workdir = e.workdir or ExecPaths(e.id).dir
+        workdir = e.workdir or ExecPaths(e.id).work
         return {'files_changed': self.node.diff_stat(workdir) if e.branch or e.workdir
                 else [], 'decisions': list(p.get('decisions') or [])[-30:],
                 'last_error': p.get('last_error'),
@@ -641,7 +784,13 @@ class ExecutionManager:
                 done.append(e.id)
             except Exception as err:
                 failed = failed or err
+        failed = self._adopt_orphans(live) or failed
         self.node.compact_registry()
+        base.sweep_mcp_configs(set(self._procs))
+        # compaction keeps only unended spawns, so the notes the reconciles above left
+        # are written again after it
+        for execution_id, op in sorted(self._noted):
+            self._registry_note(execution_id, op)
         # PV-20 §3.2/§3.7: a Core that comes up reclaims what the last one left — the
         # quarantine retried, and every identity whose execution is not live torn down
         self._sweep_isolation(live)
@@ -649,6 +798,70 @@ class ExecutionManager:
         if failed is not None:
             raise failed
         return done
+
+    def _adopt_orphans(self, live):
+        """A process the last Core started whose execution has already ended, still
+        running (a halt that had not exited when its execution was stopped): the
+        pass over live executions never reaches it, so it is taken in here, its MCP
+        config kept from the sweep below, and _orphans kills it after the stop grace
+        (at once under the e-stop) and collects it (T-105). One that is gone is
+        left to the registry compaction and the sweep, as before. Each line is taken
+        on its own, as boot's reconciles are: a failure is returned for boot to
+        raise after its sweeps, never raised here, so one odd line cannot keep a
+        Core from coming up."""
+        unended = getattr(self.node, 'unended', None)
+        if unended is None:
+            return None
+        failed = None
+        keep = {e.id for e in live} | set(self._procs)
+        for line in unended():
+            if line['execution_id'] in keep:
+                continue
+            try:
+                if self._adopt_orphan(line):
+                    keep.add(line['execution_id'])
+            except Exception as err:
+                failed = failed or err
+        return failed
+
+    def _adopt_orphan(self, line):
+        """True when the line's process is taken in. It is ours only while it is
+        still the process recorded (pid AND create time): a pid now held by anything
+        else is left alone. One this Core cannot track - no execution row in this
+        database (a restored backup), or a harness it does not register - is still
+        ours by that identity and run/core.lock, and nothing would ever end it, so it
+        is killed by that identity at once and logged, never left running. A line
+        whose own fields do not parse names no process of ours: compaction keeps
+        it forever, so it is logged and skipped rather than failing every boot."""
+        xid = line['execution_id']
+        try:
+            handle = base.ProcessHandle(xid, line['pid'], line['create_time'],
+                                        ExecPaths(xid).dir)
+        except (KeyError, ValueError) as err:
+            log.warning('registry line %r cannot be read (%s); skipped', line, err)
+            return False
+        if not self.node.alive(handle):
+            return False
+        with self.db.read() as r:
+            row = rows.get(r, entities.Execution, xid)
+        adapter = None
+        if row is not None:
+            try:
+                adapter = self.registry.get(row.entity.harness_id)
+            except (KeyError, PolicyStubError):
+                pass
+        if adapter is None:
+            killed = self.node.kill_identity(handle)
+            log.warning('execution %s: its process %s is still running, but this Core '
+                        'has %s; %s', xid, handle.pid,
+                        'no row for it' if row is None else
+                        'no harness %r' % row.entity.harness_id,
+                        'killed by its recorded identity' if killed else
+                        'it could not be killed (gone meanwhile, or the kill was refused)')
+            return False
+        self._procs[xid] = self._fresh(adapter, handle, line.get('process_seq', 1),
+                                       row.entity.stream_offset, row.entity.usage)
+        return True
 
     def _reconcile_one(self, e, disarmed):
         marker, pid, ended = self.node.files(e.id)
@@ -662,7 +875,7 @@ class ExecutionManager:
             self.node.kill(adapter, handle)
             alive = False
         iso = self._isolation_record(e.id)
-        if iso is not None:
+        if self._isolated(e, iso):
             return self._reconcile_isolated(e, adapter, iso, handle, disarmed)
         if e.state == 'INTENT':
             if marker is None or (ended and pid is None):
@@ -706,6 +919,38 @@ class ExecutionManager:
         getter = getattr(self.node, 'isolation_record', None)
         return getter(execution_id) if getter is not None else None
 
+    def _isolated(self, e, iso):
+        """Whether the live end and the restart treat *e* as isolated (T-037 rule 1): its
+        record exists (valid or not), or the row recorded Core's decision as isolated
+        (T-036) and the record has gone missing. A row prepared before the field existed
+        keeps the ordinary rules (the owner's N1) and is never written as ordinary. The
+        field is a decision, not evidence of confinement; when it alone decides, or is
+        unknown, the registry gets one line per execution per Core."""
+        if iso is not None:
+            return True
+        if e.isolated is True:
+            self._note(e, 'isolation_record_missing')
+            return True
+        if e.isolated is None and e.process_seq >= 1:
+            self._note(e, 'isolation_decision_unknown')
+        return False
+
+    def _note(self, e, op):
+        if (e.id, op) in self._noted:
+            return
+        self._noted.add((e.id, op))
+        log.warning('execution %s: %s', e.id, op)
+        self._registry_note(e.id, op)
+
+    def _registry_note(self, execution_id, op):
+        # an instrument only: a failed write must never stop the classification it
+        # describes, which runs mid-end with the process handle already dropped
+        try:
+            self.node._registry({'op': op, 'execution_id': execution_id, 'at': time.time()})
+        except OSError as err:
+            log.warning('execution %s: the %s registry note was not written: %s',
+                        execution_id, op, err)
+
     def _reconcile_isolated(self, e, adapter, iso, handle, disarmed):
         """Restart reconciliation of an isolated execution (PV-20 §3.7; ADR-0053
         §7.6–7.7 and the owner's decision of 2026-10-08): **a live isolated process is
@@ -717,30 +962,35 @@ class ExecutionManager:
 
         The remaining states resolve at the record level through terminate / reap / fail
         (R6-A). An isolation-establishment failure was never a process at all, so it
-        keeps the uncharged end O7's decision gives it, and re-dispatches."""
+        keeps the uncharged end O7's decision gives it, and re-dispatches. *iso* is None
+        when the record is gone and the row's decision alone says isolated (T-037): the
+        same outcomes, and no record is synthesized for it."""
         self._procs.pop(e.id, None)
         if handle is not None and self.node.alive(handle):
             # R6-A: a live isolated process after a Core restart is a contradiction —
             # its sole Job holder died, so kill-on-close should have ended it. It is
             # killed by identity here and never adopted.
             self.node.kill(adapter, handle)
-        if iso.state == 'failed':
+        if iso is not None and (iso.state == 'failed' or iso.failure):
+            # `failure` outlives the cleanup that quarantines the profile afterwards
             self._tombstone(e)
             self._do(X.refuse, execution_id=e.id, stop_reason='binding',
                      reason='isolation could not be established: %s'
-                            % (iso.reason or 'unknown'))
+                            % (iso.failure or iso.reason or 'unknown'))
             return True
         if e.state in ('PAUSED', 'AWAITING_APPROVAL'):
             return False                       # no process of ours: the pass decides
         if e.state == 'PAUSING':
             self._tombstone(e)
-            self._do(X.record_end, execution_id=e.id, exit_code=None, halted=True,
-                     usage=e.usage, final_offset=e.stream_offset, facts={})
+            self._do(X.record_end, execution_id=e.id, exit_code=None, core_halt=True,
+                     isolated=True, usage=e.usage, final_offset=e.stream_offset,
+                     facts=_unmeasured({}))
             return True
         if e.state in ('STOPPING', 'HANDING_OFF'):
             self._tombstone(e)
             self._do(X.record_end, execution_id=e.id, exit_code=None, killed=True,
-                     usage=e.usage, final_offset=e.stream_offset, facts={})
+                     isolated=True, usage=e.usage, final_offset=e.stream_offset,
+                     facts=_unmeasured({}))
             return True
         if e.state == 'INTENT' and handle is None:
             self._do(X.refuse, execution_id=e.id, reason='no process was started',
@@ -833,6 +1083,13 @@ def _facts_from(ev, p):
     if t in ('error', 'stderr', 'limit'):
         p['last_error'] = redact(str(ev.get('text') or ev.get('error') or ev.get('kind')
                                      or t))[:300]
+
+
+def _unmeasured(p):
+    """The facts of a known-isolated end (T-044): the stream's, and no diff or end state,
+    which only Git in the execution's workdir would give."""
+    return {'files_changed': [UNMEASURED], 'decisions': list(p.get('decisions') or [])[-30:],
+            'last_error': p.get('last_error'), 'end_state': None}
 
 
 def _inside(path, root):
