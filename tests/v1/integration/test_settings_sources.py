@@ -628,6 +628,37 @@ def test_T105_a_line_that_fails_does_not_keep_core_down(x, monkeypatch):
         proc.kill_pid_tree(e.pid, e.create_time)
 
 
+def test_T105_a_registry_line_that_cannot_be_read_is_skipped_on_every_boot(x, caplog):
+    """A spawn line whose own fields do not parse (a planted or corrupt line:
+    an id that is no execution id, no pid) names no process of ours. It stays
+    in the registry - compaction keeps every unended line - so raising on it
+    would stop every later Core too; it is logged and skipped (T-105 review 1)."""
+    node = x.manager.node
+    node._registry({'op': 'spawn', 'execution_id': 'not-an-id', 'process_seq': 1,
+                    'pid': 4, 'create_time': 1.0})
+    node._registry({'op': 'spawn', 'execution_id': ids.new_id('execution'), 'process_seq': 1})
+    for _ in range(2):
+        fresh = Rig(x.db, adapters=[FakeHarness(sources=True)])
+        with caplog.at_level('WARNING', logger='archeus.execution'):
+            fresh.manager.boot()
+        assert fresh.manager.booted and not fresh.manager._procs
+    assert caplog.text.count('cannot be read') == 4
+
+
+def test_T105_a_kill_that_was_refused_is_not_reported_as_done(x, monkeypatch, caplog):
+    """kill_identity says whether a kill was issued; the log says the same
+    (T-105 review 2a)."""
+    e, fresh = _restart_with_an_ended_process(x)
+    monkeypatch.setattr(fresh.manager.registry, 'get', lambda h: (_ for _ in ()).throw(KeyError(h)))
+    monkeypatch.setattr(fresh.manager.node, 'kill_identity', lambda handle: False)
+    try:
+        with caplog.at_level('WARNING', logger='archeus.execution'):
+            fresh.manager.boot()
+        assert 'could not be killed' in caplog.text and 'killed by its recorded' not in caplog.text
+    finally:
+        proc.kill_pid_tree(e.pid, e.create_time)
+
+
 def test_T105_a_pid_now_held_by_another_process_is_neither_taken_in_nor_killed(x):
     """Identity is the pid AND the create time the line recorded: a line whose
     create time no longer matches names some other process, never ours."""

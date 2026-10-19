@@ -830,10 +830,16 @@ class ExecutionManager:
         else is left alone. One this Core cannot track - no execution row in this
         database (a restored backup), or a harness it does not register - is still
         ours by that identity and run/core.lock, and nothing would ever end it, so it
-        is killed by that identity at once and logged, never left running."""
+        is killed by that identity at once and logged, never left running. A line
+        whose own fields do not parse names no process of ours: compaction keeps
+        it forever, so it is logged and skipped rather than failing every boot."""
         xid = line['execution_id']
-        handle = base.ProcessHandle(xid, line['pid'], line['create_time'],
-                                    ExecPaths(xid).dir)
+        try:
+            handle = base.ProcessHandle(xid, line['pid'], line['create_time'],
+                                        ExecPaths(xid).dir)
+        except (KeyError, ValueError) as err:
+            log.warning('registry line %r cannot be read (%s); skipped', line, err)
+            return False
         if not self.node.alive(handle):
             return False
         with self.db.read() as r:
@@ -845,11 +851,13 @@ class ExecutionManager:
             except (KeyError, PolicyStubError):
                 pass
         if adapter is None:
+            killed = self.node.kill_identity(handle)
             log.warning('execution %s: its process %s is still running, but this Core '
-                        'has %s; killed by its recorded identity', xid, handle.pid,
+                        'has %s; %s', xid, handle.pid,
                         'no row for it' if row is None else
-                        'no harness %r' % row.entity.harness_id)
-            self.node.kill_identity(handle)
+                        'no harness %r' % row.entity.harness_id,
+                        'killed by its recorded identity' if killed else
+                        'it could not be killed (gone meanwhile, or the kill was refused)')
             return False
         self._procs[xid] = self._fresh(adapter, handle, line.get('process_seq', 1),
                                        row.entity.stream_offset, row.entity.usage)
