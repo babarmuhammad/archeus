@@ -686,6 +686,13 @@ Archeus." (`clients/app/src/data/commands.ts:57`), not the local-only text of th
 `host_not_allowed` row above. Observe routes and the digest ack keep working there. A paired
 client cannot mint a launch code (api-and-realtime.md section 1, amendment of the same date).
 
+*Correction 2026-10-15 (T-083, Codex batch finding 1):* "every privileged or authority route" above
+means every such route that has a scope, and the refusal comes only after authentication and the
+scope check (`archeus/api/server.py:360-366`): a paired credential without the route's scope gets
+`scope_required` first. The two unscoped redemption routes, `launch/redeem` and `pair/redeem`
+(`archeus/api/routes.py:990`, `:998`), read no credential and never answer `remote_host_required`;
+their code-based redemption is unchanged (api-and-realtime.md section 1, correction of the same date).
+
 ### 13.4 Reconnect protocol (P15 §13, used as designed)
 
 On a new stream after a drop: `GET /v1/sync`; if `core.instance` changed (Core restarted) or the
