@@ -93,7 +93,7 @@ MUTATIONS = [
      [U + '::test_an_unmeasurable_end_state_is_no_progress',
       I + '::test_no_git_workdir_gets_one_pressure_continuation_per_attempt']),
     ('Z13', 'the guarded end left uncharged', [(EX,
-     "              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': guarded is not None,",
+     "              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': refused is not None,",
      "              {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': False,")],
      [I + '::test_cx3_a_chain_that_returns_to_an_earlier_state_ends_charged',
       I + '::test_cx18_the_retry_is_bounded_and_the_task_fails_context_insufficient']),
