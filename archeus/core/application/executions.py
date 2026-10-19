@@ -254,7 +254,9 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
     if context is not None:
         got['context'] = dict(context)
     got.update(_served(e, served))
-    if 'served_level' not in got and offset == e.stream_offset and got.get('usage', e.usage) == e.usage             and got.get('pressure', e.pressure) == e.pressure \
+    if 'served_level' not in got and offset == e.stream_offset \
+            and got.get('usage', e.usage) == e.usage \
+            and got.get('pressure', e.pressure) == e.pressure \
             and got.get('context', e.context) == e.context:
         return {'execution_id': e.id, 'offset': offset}          # nothing new
     tx.update(entities.Execution, e.id, got, actor=actor)

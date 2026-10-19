@@ -64,7 +64,7 @@ def normalise(raw):
                             'input': block.get('input')})
         if isinstance(msg.get('usage'), dict):
             out.append({'type': 'usage', 'usage': msg['usage']})
-        if isinstance(msg.get('model'), str) and msg['model']:
+        if isinstance(msg.get('model'), str) and msg['model'] not in ('', '<synthetic>'):
             # the model that answered, as the transcript reports it (SERVED, ADR-0031 §6)
             out.append({'type': 'model', 'model': msg['model']})
     elif t == 'user':

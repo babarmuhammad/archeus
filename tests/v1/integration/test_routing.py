@@ -362,6 +362,11 @@ def test_I_H3_every_recorded_requirement_names_its_source(r):
         'capabilities': 'plan_contract', 'min_model_tier': 'plan_contract',
         'size': 'plan_contract', 'preferred': 'user_override', 'policy': 'policy'}
     assert call_rd.requirements['_source']['forbidden'] == 'caller'
+    # ADR-0031 §6 / ADR-0033 §2 snapshot fields: each harness's reported version (the fake
+    # reports '1'), no task family before ADR-0032 and an empty capability snapshot
+    for rd in (task_rd, call_rd):
+        assert {h['installed_version'] for h in rd.input_snapshot['harnesses']} == {'1'}
+        assert (rd.task_family, rd.capability_snapshot) == (None, {})
     # the router reads none of it: the decision still replays to itself
     assert resources.replay(task_rd)['selected'] == task_rd.selected
 

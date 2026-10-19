@@ -1635,7 +1635,7 @@ class RouteDecision(Entity):
                'project_id', 'source', 'requirements', 'candidates', 'account_ref', 'model',
                'input_snapshot', 'context_package_id', 'mission_id', 'task_id', 'harness_id',
                'account_id', 'effort', 'result', 'fallback_from', 'policy_decision_id',
-               'unblock_at')
+               'unblock_at', 'task_family', 'capability_snapshot')
     id: str
     subject: Ref
     # the chosen resource at its most specific level: the registered account's
@@ -1663,6 +1663,10 @@ class RouteDecision(Entity):
     fallback_from: tuple = ()
     policy_decision_id: str = None
     unblock_at: str = None
+    # ADR-0033 §2 snapshot fields (P21): no task family exists before ADR-0032 (V1.x-O1)
+    # and no evidence is read yet, so a decision records None and an empty snapshot
+    task_family: str = None
+    capability_snapshot: dict = None
 
 
 @entity

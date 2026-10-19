@@ -255,7 +255,8 @@ def _models(caps):
 def harness_view(adapter, exempt):
     info = adapter.discover()
     caps = adapter.capabilities(None) if info.installed else None
-    return {'id': adapter.id, 'installed': bool(info.installed),
+    # the version it reports, None when unprobed (ADR-0031 §6: the snapshot records it)
+    return {'id': adapter.id, 'installed': bool(info.installed), 'installed_version': info.version,
             'capabilities': sorted(caps.capabilities) if caps else [],
             'enforcement': caps.enforcement if caps else None,
             'structured_output': caps.structured_output if caps else None,
@@ -494,6 +495,7 @@ def record_route(tx, *, actor, subject, requirements, snapshot, decision, readin
         context_package_id=context_package_id, mission_id=requirements.get('mission_id'),
         task_id=requirements.get('task_id'), harness_id=d['harness_id'],
         account_id=d['account_id'], effort=d['effort'], result=d['result'],
+        capability_snapshot={},
         fallback_from=tuple(d['fallback_from']),
         policy_decision_id=(requirements.get('policy') or {}).get('decision_id'),
         unblock_at=d['unblock_at'])
