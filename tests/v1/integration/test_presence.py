@@ -788,13 +788,14 @@ def test_J03b_a_right_re_arm_pin_resets_the_count(remote):
 def test_J04_a_replayed_re_arm_answers_from_the_row_and_re_arms_nothing(remote):
     """T-107: a retry of a re-arm after a later e-stop runs nothing - Core stays
     disarmed and the answer says so, no second `core.rearmed`, and a repeat that
-    differs only in its PIN is the same replay (no oracle, no strike). The same
-    holds for a retry after a busy answer whose re-arm committed: the sentinel
-    stays and the client is told, so its next press is a fresh request."""
+    differs only in its PIN is the same replay (no oracle, no strike). Replayed
+    while Core is armed, the answer says armed. The busy-retry shape is J04b."""
     did, phone = pair(remote, platform='web', pin='482913')
     assert _phone(remote, '/v1/estop', token=phone).status == 200
     once = {'step_up': '482913', 'idempotency_key': 'rearm-once'}
     assert _phone(remote, '/v1/rearm', once, token=phone).json() == {'armed': True}
+    r = _phone(remote, '/v1/rearm', dict(once, step_up='000000'), token=phone)
+    assert (r.status, r.json()) == (200, {'armed': True}), r.body       # armed: says armed
     assert _phone(remote, '/v1/estop', token=phone).status == 200
     for pin in ('482913', '000000'):
         r = _phone(remote, '/v1/rearm', dict(once, step_up=pin), token=phone)
@@ -802,6 +803,31 @@ def test_J04_a_replayed_re_arm_answers_from_the_row_and_re_arms_nothing(remote):
         assert _armed(remote) is False
     assert len([e for e in _events(remote) if e['type'] == 'core.rearmed']) == 1
     assert _device(remote, did)['state'] != 'REVOKED'
+
+
+def test_J04b_a_retry_after_a_busy_answer_whose_re_arm_committed_re_arms_nothing(remote, monkeypatch):
+    """T-107's fail-safe choice: a re-arm answered 503 busy that commits
+    afterwards leaves Core disarmed, its retry says so, and only a fresh request
+    re-arms (T-107 review finding 1, mutant R14)."""
+    _did, phone = pair(remote, platform='web', pin='482913')
+    assert _phone(remote, '/v1/estop', token=phone).status == 200
+    gate = threading.Event()
+    held = remote.core.db.writer.submit(lambda tx: gate.wait(30) and {})
+    monkeypatch.setattr(remote.core.api, 'command_timeout', 0.5)
+    once = {'step_up': '482913', 'idempotency_key': 'rearm-busy'}
+    r = _phone(remote, '/v1/rearm', once, token=phone)
+    assert (r.status, r.json()['error']) == (503, 'busy'), r.body
+    gate.set()
+    held.result(10)
+    monkeypatch.setattr(remote.core.api, 'command_timeout', 30)
+    _wait(lambda: [e for e in _events(remote) if e['type'] == 'core.rearmed'], 'the re-arm committed')
+    r = _phone(remote, '/v1/rearm', once, token=phone)
+    assert (r.status, r.json()) == (200, {'armed': False}), r.body
+    assert _armed(remote) is False
+    r = _phone(remote, '/v1/rearm', {'step_up': '482913'}, token=phone)
+    assert (r.status, r.json()) == (200, {'armed': True}), r.body
+    assert _armed(remote) is True
+    assert len([e for e in _events(remote) if e['type'] == 'core.rearmed']) == 2
 
 
 def test_J07_a_replayed_re_arm_resets_no_step_up_count(remote):
