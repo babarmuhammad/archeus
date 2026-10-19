@@ -267,3 +267,55 @@ change to credentials, the boundary or PV-20.
 
 - D-26 was built before P21 opened (X1).
 - If D0 (b) is approved, P21 slices land while P20 is open; P20's exit record is unaffected.
+
+## 12. As built
+
+### Slice D as built (2026-10-19, card T-120)
+
+The D0-eligible part of slice D: `metrics_daily` (D2), `archeus doctor` and `core.log` rotation
+(D8). Control -> About -> Health and its Attention items (D12) are not built: they wait for P20.
+
+- **`metrics_daily`** (migration `0017_metrics_daily.sql` on this slice's line; it becomes 0018 when
+  it merges after slice A, a rename, because `migrate.migrations()` refuses a gap): one row per
+  finished UTC day, `(day, metrics JSON, computed_at)`. `archeus/core/metrics.py`: `compute(conn,
+  day)` reads only what Core already recorded and returns the plan section 28 figures - missions
+  completed and failed (`mission.state_changed` to COMPLETED/FAILED that day), median time to
+  complete (completion event minus the mission's `created_at`), approvals per ended mission,
+  fallback rate (route decisions that day, `fallback` over `selected` + `fallback`), verification
+  failure rate (`verification.state_changed` to FAILED over PASSED + FAILED), cost per mission band
+  (the latest plan's `estimated_cost`, else `unknown`; the mean of reported `cost_usd` from the
+  usage ledger by execution or route decision) and context tokens per task kind (a task route
+  decision's context package `budget.used_tokens`, by the task's `kind`). A figure with nothing to
+  measure is None, never 0 (ADR-0048 D-25.3's rule).
+- **The worker**: `Metrics` runs as the `archeus-metrics` WorldLoop beside the other workers; each
+  pass fills the oldest finished day without a row, from the first event's day to yesterday. A day
+  is written once (`INSERT ... ON CONFLICT (day) DO NOTHING`) and never rewritten; today is never
+  computed. Its write is `metrics.record`, a writer command, and `core/metrics.py` joins the
+  structural writer-module list in `test_db_schema.py` (written as a plain `INSERT INTO` so that
+  gate sees it: its regex does not match `INSERT OR IGNORE INTO`, recorded below).
+- **`archeus doctor`** (`archeus/core/doctor.py`; `archeus/cli/main.py` and
+  `claude_sessions/cli.py`'s `V1_VERBS` only dispatch to it, so the CLI still imports no database
+  path - L1, `test_api_structure.py`): integrity (`PRAGMA integrity_check`), schema version against
+  the migrations, consumer lag over 1000 events, executions unfinished and untouched for 6 hours,
+  and the execution hook (`manager.HOOK` exists and compiles). It prints one line per check,
+  `FINDING ...` for each finding, and exits with the OR of the findings' bits (database 1, schema
+  2, lag 4, stuck 8, hook 16; 0: nothing found). It has no `--fix`, never starts Core, never reads a
+  credential and prints only ids, counts and paths. It opens the database through the new
+  `connection.inspect` (URI `mode=ro`): a `query_only` reader that closes last checkpoints a WAL
+  into the file, which would rewrite a database Core crashed out of. SQLite may leave its own
+  empty `-wal` and a rebuilt `-shm` index beside the file; the database file and the WAL's data are
+  unchanged (tested on a copied crash-left WAL).
+- **Rotation**: `core.log` is a `RotatingFileHandler`, 5 MB, three old files (`LOG_BYTES`,
+  `LOG_BACKUPS` in `runtime.py`).
+- **Tests**: `tests/v1/integration/test_p21_metrics_doctor.py` (seven); `test_db_schema.py`
+  follows the new table and derives the latest schema instead of naming 16.
+- **Mutants**: Z40-Z47 in `tools/mutate_p21.py` (a day computed before it ends; unknown written as
+  0; a day rewritten; doctor through a checkpointing connection; doctor creating the database;
+  every unfinished execution stuck; lag never reported; rotation removed).
+- **Not built here, recorded**: the worker is not in `/v1/health` (no reader needs it before
+  Health, D12); nothing reads `metrics_daily` yet (Health, D12). `events.at` has no index, so each
+  computed day scans the log (a `ponytail:` note in `metrics.py`).
+- **Found outside this slice, not changed**: `test_db_schema`'s writer gate does not see
+  `INSERT OR IGNORE INTO` (`consumers.py` passes it only because the same file also has a plain
+  `INSERT INTO`); `tests/v1/unit/test_tool_removal_units.py::test_F10_...` fails at `b01dc32`
+  already, on `LS` (T-113's per-tool path field).
