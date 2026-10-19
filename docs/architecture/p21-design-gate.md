@@ -275,8 +275,8 @@ change to credentials, the boundary or PV-20.
 The D0-eligible part of slice D: `metrics_daily` (D2), `archeus doctor` and `core.log` rotation
 (D8). Control -> About -> Health and its Attention items (D12) are not built: they wait for P20.
 
-- **`metrics_daily`** (migration `0017_metrics_daily.sql` on this slice's line; it becomes 0018 when
-  it merges after slice A, a rename, because `migrate.migrations()` refuses a gap): one row per
+- **`metrics_daily`** (migration `0018_metrics_daily.sql`, after slice A's `0017_artifact_records.sql`;
+  slice D is built on slice A's line because `migrate.migrations()` refuses a gap): one row per
   finished UTC day, `(day, metrics JSON, computed_at)`. `archeus/core/metrics.py`: `compute(conn,
   day)` reads only what Core already recorded and returns the plan section 28 figures - missions
   completed and failed (`mission.state_changed` to COMPLETED/FAILED that day), median time to
