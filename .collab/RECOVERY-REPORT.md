@@ -344,3 +344,15 @@ All scripts are under `collab-rebuild-tools\`: `scan1_grep.py` (raw `.collab` hi
 BOARD.md pass 1 (linear replay-from-start): `collect_board_mutations.py` / `extract_board_py.py` / `replay_board.py`.
 
 BOARD.md pass 2 (anchor-and-replay, current): `extract_board_reads.py` (Read-snapshot card slices), `extract_card_anchors.py` (per-card newest-anchor selection from snapshots + Codex prompts), `extract_targeted_results.py` (re-fetches the tool_result for every mutation's own tool_use_id, since the original broad scan dropped results that didn't mention `.collab`), `replay_board_v2.py` (anchored assembly + skip-if-superseded replay + duplicate-card guard), `gen_board_report.py` (the BOARD.md section above). `claude_events.dedup.jsonl` is the event set with the `.pre-restart-D--Claude.jsonl.bak` duplicate session removed.
+
+## Second recovery pass - 2026-10-19 (Codex, aimed read-only call; staged in collab-rebuild-qwen\)
+
+Five files listed MISSING above were recovered from session logs:
+
+| File | Status | Source |
+|---|---|---|
+| QWEN-CARD-T-097.md | RECONSTRUCTED | Qwen pi session 2026-10-19T11-33-18 (its read of the card) |
+| QWEN-CARD-T-110.md | RECONSTRUCTED | Qwen pi session 2026-10-19T11-19-21 |
+| QWEN-NEXT.md | EXACT | Claude session 95e3252a (pre-restart transcript) |
+| STATUS-2026-10-13.md | RECONSTRUCTED | Codex session rollout-2026-10-10T17-02-23 |
+| STATUS-2026-10-14.md | EXACT | Codex session rollout-2026-10-10T17-02-23 |
