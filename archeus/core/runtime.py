@@ -36,6 +36,7 @@ due work (a health check does), so nothing waits a poll interval to be seen.
 """
 
 import logging
+import logging.handlers
 import os
 import signal
 import sys
@@ -73,6 +74,7 @@ from .policy.worker import Expiry
 DEFAULT_PORT = 7337
 IDLE_S = 1.0
 WORLD_POLL_S = 10.0         # D6
+LOG_BYTES, LOG_BACKUPS = 5 * 1024 * 1024, 3     # core.log: 5 MB, three old files (P21 D8)
 
 log = logging.getLogger('archeus.core')
 
@@ -389,7 +391,7 @@ class Core:
         self.static_dir, self.world_poll_s = static_dir, world_poll_s
         self.lock = self.db = self.loop = self.world = self.api = self.server = None
         self.knowledge = self.intent = self.plan = self.policy = self.verify = None
-        self.automation = None
+        self.automation = self.metrics = None
         self.exec = self.manager = None
         self.warning = None
         self.exit_code = 0
@@ -488,6 +490,10 @@ class Core:
                                     poll_s=self.world_poll_s, on_fail=self._engine_failed,
                                     name='archeus-automation')
         self.automation.start()
+        from .metrics import Metrics       # P21 D2: one row per finished day
+        self.metrics = WorldLoop(Metrics(self.db), self.db, poll_s=self.world_poll_s,
+                                 on_fail=self._engine_failed, name='archeus-metrics')
+        self.metrics.start()
         from .sessions.service import SessionService
         from ..harnesses.sessions import real_session_adapters
         from ..node.local import LocalNode
@@ -523,7 +529,10 @@ class Core:
     def _open_log(self):
         logs = os.path.join(paths.archeus_home(), 'logs')
         os.makedirs(logs, exist_ok=True)
-        self._log_handler = logging.FileHandler(os.path.join(logs, 'core.log'), encoding='utf-8')
+        # P21 D8: rotated, so a long-lived Core never grows one unbounded file
+        self._log_handler = logging.handlers.RotatingFileHandler(
+            os.path.join(logs, 'core.log'), maxBytes=LOG_BYTES, backupCount=LOG_BACKUPS,
+            encoding='utf-8')
         self._log_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s'))
         log.addHandler(self._log_handler)
         log.setLevel(logging.INFO)
@@ -594,6 +603,8 @@ class Core:
             self.server.shutdown()
             self.server.server_close()
             self.server = None
+        if self.metrics is not None:
+            self.metrics.stop()
         if self.automation is not None:
             self.automation.stop()
         if self.policy is not None:

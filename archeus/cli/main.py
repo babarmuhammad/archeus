@@ -26,7 +26,7 @@ from ._api import endpoints
 DEFERRED = {'approve': 'P9'}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
          'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
-         'tui', 'gui', 'executions')
+         'tui', 'gui', 'executions', 'doctor')
 
 USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 run Archeus Core in the foreground (Ctrl+C stops it);
@@ -47,6 +47,9 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 not running (P19)
        archeus status           is Core running? (exit 0 yes, 1 no, 2 discovery failed,
                                 3 its engine failed)
+       archeus doctor           read-only health checks: database integrity, consumer
+                                lag, stuck executions, the execution hook (P21); exit 0
+                                when nothing is found, else the sum of the findings' codes
        archeus status <mission-id>
                                 a mission's state, as Core reports it (P19)
        archeus terms            the provider-terms answers (ADR-0021)
@@ -119,6 +122,9 @@ def main(argv):
         return gui()
     if verb == 'status' and not args:
         return status()
+    if verb == 'doctor' and not args:
+        from ..core.doctor import doctor
+        return doctor()
     if verb == 'status' and len(args) == 1:
         return mission_status(args[0])
     if verb == 'terms' and not args:

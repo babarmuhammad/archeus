@@ -31,6 +31,10 @@ RS = 'archeus/core/application/resources.py'
 CP = 'archeus/core/execution/checkpoint.py'
 XU = 'tests/v1/unit/test_execution_units.py'
 RI = 'tests/v1/integration/test_routing.py'
+MT = 'archeus/core/metrics.py'
+DR = 'archeus/core/doctor.py'
+RTM = 'archeus/core/runtime.py'
+D = 'tests/v1/integration/test_p21_metrics_doctor.py'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -174,6 +178,50 @@ MUTATIONS = [
      "                    size=len(data), kind='checkpoint', label=cp.id)",
      "    pass")],
      [I + '::test_an_artifact_the_continuation_produced_is_progress_and_a_checkpoint_never_is']),
+    # ── slice D: metrics_daily, doctor, core.log rotation (p21-design-gate D2, D8) ──
+    ('Z40', 'a day is computed before it has ended', [(MT,
+     "    while d < today:",
+     "    while d <= today:")],
+     [D + '::test_a_finished_day_gets_its_figures_once']),
+    ('Z41', 'a figure with nothing to measure written as 0', [(MT,
+     "    return round(part / whole, 4) if whole else None",
+     "    return round(part / whole, 4) if whole else 0")],
+     [D + '::test_a_day_with_nothing_to_measure_says_none_not_zero']),
+    ('Z42', 'a finished day rewritten', [(MT,
+     "               'ON CONFLICT (day) DO NOTHING',",
+     "               'ON CONFLICT (day) DO UPDATE SET metrics = excluded.metrics',")],
+     [D + '::test_a_finished_day_gets_its_figures_once']),
+    ('Z43', 'doctor opens the database with a connection that can checkpoint it', [(DR,
+     "        conn = connection.inspect(path)",
+     "        conn = connection.connect(path, readonly=True)")],
+     [D + '::test_doctor_leaves_a_wal_core_crashed_out_of_to_core']),
+    ('Z44', 'doctor creates the database it was asked to look at', [(DR,
+     "    if not os.path.isfile(path):",
+     "    if not os.path.isfile(path) and connection.connect(path).close():")],
+     [D + '::test_doctor_without_a_database_creates_nothing']),
+    ('Z45', 'every unfinished execution reported stuck', [(DR,
+     "            cutoff = (now - dt.timedelta(seconds=STUCK_S)).isoformat(",
+     "            cutoff = (now).isoformat(")],
+     [D + '::test_doctor_reports_stuck_executions_and_lagging_consumers']),
+    ('Z46', 'consumer lag never reported', [(DR,
+     "                if head - last > LAG_WARN:",
+     "                if False:")],
+     [D + '::test_doctor_reports_stuck_executions_and_lagging_consumers']),
+    ('Z47', 'core.log grows without rotation', [(RTM,
+     "        self._log_handler = logging.handlers.RotatingFileHandler(\n"
+     "            os.path.join(logs, 'core.log'), maxBytes=LOG_BYTES, backupCount=LOG_BACKUPS,\n"
+     "            encoding='utf-8')",
+     "        self._log_handler = logging.FileHandler(os.path.join(logs, 'core.log'),\n"
+     "                                                encoding='utf-8')")],
+     [D + '::test_core_log_rotates']),
+    ('Z48', 'the worker scans the log after every commit once each day is filled', [(MT,
+     "        if self._filled_through == today:\n            return {'changed': False}",
+     "        if False:\n            return {'changed': False}")],
+     [D + '::test_a_filled_worker_reads_nothing_until_the_date_changes']),
+    ('Z49', 'a broken execution hook never reported', [(DR,
+     "        finding(DOCTOR_HOOK, 'the execution hook %s: %s' % (manager.HOOK, e))",
+     "        print('the execution hook %s: %s' % (manager.HOOK, e))")],
+     [D + '::test_doctor_reports_a_broken_hook_and_a_newer_schema']),
 ]
 
 

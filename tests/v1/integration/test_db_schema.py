@@ -117,15 +117,16 @@ def test_only_two_modules_open_sqlite_and_only_writer_commands_write_sql():
                 if re.search(r'\b(INSERT INTO|UPDATE \w+ SET|DELETE FROM)\b', src):
                     writes.add(rel)
     assert opens == {'infra/db/connection.py', 'infra/db/backup.py'}
+    # core/metrics.py: its one INSERT is `metrics.record`, a writer command (P21 D2)
     assert writes == {'infra/db/writer.py', 'infra/eventlog/consumers.py',
-                      'infra/eventlog/retention.py'}
+                      'infra/eventlog/retention.py', 'core/metrics.py'}
 
 
 # ── schema ──
 
 def test_a_fresh_database_reaches_the_current_schema(db):
     with db.read() as r:
-        assert migrate.version(r) == migrate.migrations()[-1][0] == 17
+        assert migrate.version(r) == migrate.migrations()[-1][0] == 18
         tables = {x[0] for x in r.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {'principals', 'devices', 'tokens', 'missions', 'events', 'consumer_cursors',
             'consumer_effects', 'idempotency_keys',
@@ -136,7 +137,8 @@ def test_a_fresh_database_reaches_the_current_schema(db):
             'conversations', 'messages', 'intents', 'ideas',
             'policy_rules', 'policy_decisions', 'approvals',
             'accounts', 'resource_policies', 'usage_snapshots',
-            'sessions', 'checkpoints', 'pause_batches', 'opt_ins', 'artifact_records'} <= tables
+            'sessions', 'checkpoints', 'pause_batches', 'opt_ins', 'artifact_records',
+            'metrics_daily'} <= tables
 
 
 def test_0016_drops_the_idempotency_rows_whose_hash_covered_a_pin(tmp_path):

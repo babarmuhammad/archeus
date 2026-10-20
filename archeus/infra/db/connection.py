@@ -26,6 +26,7 @@ SQLite older than 3.31 is refused, and the schema uses nothing newer
 """
 
 import os
+import pathlib
 import sqlite3
 
 from .. import paths
@@ -71,4 +72,16 @@ def connect(path, *, readonly=False):
         if mode.lower() != 'wal':
             conn.close()
             raise RuntimeError('SQLite refused WAL mode for %s (got %r)' % (path, mode))
+    return conn
+
+
+def inspect(path):
+    """A connection that cannot write the FILE at all (`mode=ro`), not only its
+    rows: `archeus doctor`'s. A query_only connection still checkpoints a WAL
+    when it is the last to close, which would rewrite a database Core crashed
+    out of; this one leaves recovery to Core."""
+    require_sqlite()
+    conn = sqlite3.connect(pathlib.Path(path).absolute().as_uri() + '?mode=ro', uri=True,
+                           isolation_level=None, timeout=BUSY_TIMEOUT_MS / 1000)
+    conn.execute('PRAGMA query_only = ON')
     return conn
