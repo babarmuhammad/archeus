@@ -30,6 +30,12 @@ POLICY_FIELDS = ('priority', 'allocation_pct', 'reserve_pct', 'brain_reserve_pct
                  'budgets', 'project_allow', 'project_deny', 'consumption')
 #: How long a fallback question waits for its answer (as a task approval does).
 ROUTE_TTL = timedelta(hours=24)
+#: Where each recorded requirement came from (K5, p21-design-gate D11): `requirements._source`
+#: maps every requirement key to one of these. The keys in REQ_IDENTITY name the subject and
+#: are not requirements, so they carry no source.
+REQ_SOURCES = ('plan_contract', 'user_override', 'conversation', 'policy', 'user_preference',
+               'caller', 'core')
+REQ_IDENTITY = ('subject', 'purpose', 'mission_id', 'task_id', 'project_id')
 _LIVE_EXEC = tuple(s for s in states.states('execution') if s not in states.terminal('execution'))
 
 
@@ -249,7 +255,8 @@ def _models(caps):
 def harness_view(adapter, exempt):
     info = adapter.discover()
     caps = adapter.capabilities(None) if info.installed else None
-    return {'id': adapter.id, 'installed': bool(info.installed),
+    # the version it reports, None when unprobed (ADR-0031 §6: the snapshot records it)
+    return {'id': adapter.id, 'installed': bool(info.installed), 'installed_version': info.version,
             'capabilities': sorted(caps.capabilities) if caps else [],
             'enforcement': caps.enforcement if caps else None,
             'structured_output': caps.structured_output if caps else None,
@@ -367,6 +374,9 @@ def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_i
                          'accounts': []},
            'forbidden': {k: sorted(v) for k, v in (forbidden or {}).items() if v},
            'required': {}, 'size': None, 'policy': None, 'max_run_s': max_run_s}
+    req['_source'] = dict.fromkeys(set(req) - set(REQ_IDENTITY), 'core')
+    req['_source'].update(models='user_preference',
+                          preferred='user_preference', forbidden='caller')
     snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': terms,
             'affinity': None, 'approved_fallbacks': []}
     return req, snap, readings
@@ -456,6 +466,11 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
            'policy': {'decision_id': decision.id, 'outcome': decision.outcome,
                       'items': [{'class': i['class'], 'decision': i['decision'],
                                  'boundary': i.get('boundary')} for i in decision.items]}}
+    req['_source'] = dict.fromkeys(set(req) - set(REQ_IDENTITY), 'core')
+    req['_source'].update(capabilities='plan_contract', min_model_tier='plan_contract',
+                          size='plan_contract', preferred='user_override',
+                          forbidden='user_override', conversational='conversation',
+                          policy='policy')
     snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': _terms(conn),
             'affinity': _affinity(conn, mission),
             'approved_fallbacks': _approved_fallbacks(conn, task, plan)}
@@ -480,6 +495,7 @@ def record_route(tx, *, actor, subject, requirements, snapshot, decision, readin
         context_package_id=context_package_id, mission_id=requirements.get('mission_id'),
         task_id=requirements.get('task_id'), harness_id=d['harness_id'],
         account_id=d['account_id'], effort=d['effort'], result=d['result'],
+        capability_snapshot={},
         fallback_from=tuple(d['fallback_from']),
         policy_decision_id=(requirements.get('policy') or {}).get('decision_id'),
         unblock_at=d['unblock_at'])

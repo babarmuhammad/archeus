@@ -458,6 +458,12 @@ class ExecutionManager:
             return False
         p['offset'] = snap.offset
         for ev in snap.events:
+            if ev.get('type') == 'model':
+                # provenance, not output: no progress line (ADR-0031 §6)
+                p['served'] = {'level': 'SERVED', 'model': ev['model']}
+                continue
+            if ev.get('billed'):
+                p['served'] = _billed(p.get('served'), ev['billed']) or p.get('served')
             p['events'] += 1
             p['lines'].append(line_of(ev))
             if isinstance(ev.get('usage'), dict):
@@ -501,11 +507,12 @@ class ExecutionManager:
     def _progress(self, e, p):
         # a context changed without new output (the PreCompact backstop) is still news
         if not p['events'] and p['offset'] == e.stream_offset \
-                and p.get('context') == e.context and p.get('pressure') == e.pressure:
+                and p.get('context') == e.context and p.get('pressure') == e.pressure \
+                and p.get('served') in (None, {'level': e.served_level, 'model': e.served_model}):
             return
         self._do(X.record_progress, execution_id=e.id, offset=p['offset'], events=p['events'],
                  lines=p['lines'], usage=p['usage'], pressure=p.get('pressure'),
-                 context=p.get('context'))
+                 context=p.get('context'), served=p.get('served'))
         p['reported'], p['events'], p['lines'] = time.monotonic(), 0, []
 
     def _hooks(self, e, p, disarmed):
@@ -1072,6 +1079,17 @@ class ExecutionManager:
             return True
         self._collect(e, p, st)
         return True
+
+
+def _billed(served, billed):
+    """BILLED (ADR-0031 §6) when the usage attributes the served model, or the
+    only model it attributes; None when it cannot say which model was served."""
+    model = (served or {}).get('model')
+    if model in billed:
+        return {'level': 'BILLED', 'model': model}
+    if len(billed) == 1:
+        return {'level': 'BILLED', 'model': billed[0]}
+    return None
 
 
 def _facts_from(ev, p):

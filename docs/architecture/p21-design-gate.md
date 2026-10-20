@@ -267,3 +267,46 @@ change to credentials, the boundary or PV-20.
 
 - D-26 was built before P21 opened (X1).
 - If D0 (b) is approved, P21 slices land while P20 is open; P20's exit record is unaffected.
+
+## 12. As built
+
+### 12.A Slice A — provenance (D4, D11) and the producer record (D5)
+
+1. **Served model (D4, ADR-0031 §6).** `Execution` gains `served_model`, `served_level`
+   (`entities.PROVENANCE_LEVELS`: REQUESTED < ROUTED < SERVED < BILLED) and `model_revision`.
+   `work.new_execution` records REQUESTED from the route's model. The Claude Code adapter emits a
+   `model` event from each assistant message's `model` (never `<synthetic>`, Claude Code's own
+   stand-in) and lists the result's `modelUsage` keys as `billed`. The manager turns a `model`
+   event into SERVED and a result into BILLED when the usage attributes the served model, or
+   attributes exactly one model (`manager._billed`); `executions._served` never lowers a level
+   and names `model_revision` only at SERVED or BILLED. ROUTED has no source yet (no proxy adapter
+   reports its choice), so it is never claimed.
+2. **Snapshot fields (ADR-0031 §6, ADR-0033 §2).** Each harness in a decision's `input_snapshot`
+   carries `installed_version` (`HarnessInfo.version`; None while the adapter does not probe it,
+   as Claude Code's does not). `RouteDecision` gains `task_family` (None: no family exists before
+   ADR-0032, V1.x-O1) and `capability_snapshot` (`{}`: no evidence is read before V1.x-O2), both
+   frozen. Catalogue row versions are not recorded: no versioned catalogue row exists before P22
+   (ADR-0031 §4), so there is nothing to read. Routing is unchanged; a decision still replays to
+   itself.
+3. **Requirement provenance (D11, K5).** `call_snapshot` and `task_snapshot` record
+   `requirements._source`, one source (`resources.REQ_SOURCES`) per requirement key; the identity
+   keys (`resources.REQ_IDENTITY`) carry none. The router does not read it.
+4. **Producer record (D5, ADR-0034 §1).** `ArtifactRecord` (prefix `arc`, migration
+   `0017_artifact_records.sql`, immutable) names the artifact's sha256, the producing execution,
+   its kind (`entities.ARTIFACT_KINDS`), task, mission and label. `executions.record_artifact`
+   inserts the Artifact row when the bytes are new, the record and `artifact.recorded`.
+   `checkpoint.derive` records every checkpoint it writes. `executions.view` returns an
+   execution's `artifacts`.
+5. **ADR-0047 clause 5 (ii).** `no_progress` passes the artifacts the execution recorded to
+   `pressure.progressed`; its own checkpoint is derived after the guard, so a checkpoint never
+   counts as progress.
+6. **Tests and mutants.** `test_I_H3_every_recorded_requirement_names_its_source`,
+   `test_E33b_the_served_model_is_recorded_at_the_level_its_source_supports`,
+   `test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_source`,
+   `test_an_artifact_the_continuation_produced_is_progress_and_a_checkpoint_never_is`,
+   `test_an_artifact_record_names_a_sha256_produced_by_an_execution`, the adapter contract's
+   provenance lines; `tools/mutate_p21.py` Z23–Z29.
+7. **Scope (D0).** No isolation, boundary, credential or auth file is touched: the slice changes
+   the domain entities, the execution and routing application layer, the checkpoint writer, the
+   execution manager's stream reading, the Claude Code adapter's stream normaliser, one migration,
+   the API schema and the generated client types.

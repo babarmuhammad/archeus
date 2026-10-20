@@ -99,9 +99,13 @@ def derive(tx, *, actor, execution, facts=None, context_package_id=None):
         decisions=_clip(decisions), open_problems=_clip(problems), verification=_clip(checks),
         next_action='', context_package_id=context_package_id or m.context_package_id,
         usage=dict(e.usage) if e.usage else None)
-    sha = artifacts.put(render.checkpoint(cp).encode('utf-8'))
+    data = render.checkpoint(cp).encode('utf-8')
+    sha = artifacts.put(data)
     cp = entities.Checkpoint(**dict(cp.to_dict(), artifact_sha=sha))
     tx.insert(cp, actor=actor)
+    from ..application.executions import record_artifact
+    record_artifact(tx, actor=actor, execution=e, sha=sha, media_type='text/markdown',
+                    size=len(data), kind='checkpoint', label=cp.id)
     tx.append(new_event('checkpoint.created', Ref('checkpoint', cp.id), actor,
                         payload={'execution': e.id, 'trigger': cp.trigger, 'task_id': t.id},
                         workspace=m.workspace_id, project=m.project_id))

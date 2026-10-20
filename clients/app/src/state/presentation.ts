@@ -842,6 +842,7 @@ export const TRIGGERS: Record<string, Record<string, string[]>> = {
 export const ID_KINDS: Record<string, string> = {
   "acc": "account",
   "apr": "approval",
+  "arc": "artifact_record",
   "arn": "automation_run",
   "aut": "automation",
   "chk": "checkpoint",

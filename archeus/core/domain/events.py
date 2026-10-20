@@ -61,6 +61,8 @@ TYPES = (
      'the mission a session continues changed (payload: from, to)'),
     ('session.observed', 'session', 'system', False,
      'a provider ref, transcript or launch outcome of a session was recorded'),
+    ('artifact.recorded', 'artifact_record', 'system', False,
+     'an execution produced an artifact (payload: artifact_id, kind, execution, task_id)'),
     ('checkpoint.created', 'checkpoint', 'system', False,
      'a checkpoint was derived at an execution\'s end (payload: execution, trigger)'),
     ('core.estopped', 'principal', 'user', True,

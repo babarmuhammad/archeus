@@ -157,6 +157,8 @@ def _sample(cls):
         E.PauseBatch: dict(id=i('pause_batch'), mission_ids=(i('mission'),)),
         E.OptIn: dict(id=i('opt_in'), kind='plugin', name='caveman@caveman',
                       account_id=i('account')),
+        E.ArtifactRecord: dict(id=i('artifact_record'), artifact_id='0' * 64,
+                               produced_by=Ref('execution', i('execution')), kind='report'),
     }
     return cls(**samples[cls])
 
@@ -170,6 +172,17 @@ def test_every_entity_builds_validates_and_round_trips_through_json(cls):
         obj.__setattr__(dataclasses.fields(obj)[0].name, 'x')
     with pytest.raises(ValueError):
         cls.from_dict(dict(wire, not_a_field=1))
+
+
+def test_an_artifact_record_names_a_sha256_produced_by_an_execution():
+    """P21 D5 (ADR-0034 §1): the producer is an execution, the artifact its sha256."""
+    good = dict(id=ids.new_id('artifact_record'), artifact_id='a' * 64,
+                produced_by=Ref('execution', ids.new_id('execution')), kind='patch')
+    E.ArtifactRecord(**good)
+    for bad in (dict(artifact_id='nope'), dict(produced_by=Ref('task', ids.new_id('task'))),
+                dict(produced_by=Ref('execution', 'exe_bad')), dict(kind='essay')):
+        with pytest.raises(ValueError):
+            E.ArtifactRecord(**dict(good, **bad))
 
 
 def test_the_entity_list_covers_domain_model_md():

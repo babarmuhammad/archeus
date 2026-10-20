@@ -266,6 +266,39 @@ def test_no_git_workdir_gets_one_pressure_continuation_per_attempt(x):
                                        if to == 'ENDED_HANDOFF'][0]
 
 
+def test_an_artifact_the_continuation_produced_is_progress_and_a_checkpoint_never_is(x):
+    """ADR-0047 clause 5 (ii), fed by the producer record (P21 D5): the same no-git
+    continuation that ends charged above makes progress once it recorded an artifact;
+    the checkpoints Core derives at every end are records too and count for nothing."""
+    from archeus.infra.artifacts import store
+    x.scenarios['t1'] = ([USAGE(190000, attempt=1), READ(attempt=1),
+                          {'sleep': 2.0, 'attempt': 2}, USAGE(190000, attempt=2),
+                          READ(attempt=2), dict(DONE, attempt=3)])
+    mid = x.ready(task('t1', 'write_repo', 'read'))
+    e2 = x.drive(mid, lambda: next((e for e in _execs(x, mid) if e.attempt == 2
+                                    and e.state == 'RUNNING'), None))
+    data = b'# report'
+    x.do(X.record_artifact, execution=e2, sha=store.put(data), media_type='text/markdown',
+         size=len(data), kind='report', label='findings')
+    e3 = x.drive(mid, lambda: next((e for e in _execs(x, mid) if e.attempt == 3), None))
+    x.drive(mid, ended(x, e3.id))
+    e1, e2 = _execs(x, mid)[:2]
+    assert (e2.state, e2.charged, e3.handoff_from) == ('ENDED_HANDOFF', False, e2.id)
+    with x.db.read() as r:
+        got = X.view(r, e2.id)['artifacts']
+    assert [(a['kind'], a['label']) for a in got] == [('report', 'findings'),
+                                                      ('checkpoint', got[1]['label'])]
+    # every execution that ran produced its checkpoint, and said so once
+    for e in (e1, e2):
+        (cp,) = x.all(entities.Checkpoint, execution_id=e.id)
+        recs = [r for r in x.all(entities.ArtifactRecord, task_id=e.task_id)
+                if r.produced_by.id == e.id and r.kind == 'checkpoint']
+        assert [(r.artifact_id, r.label, r.mission_id) for r in recs] == [
+            (cp.artifact_sha, cp.id, mid)]
+    assert len([ev for ev in x.events('artifact.recorded')
+                if ev['payload']['execution'] in (e1.id, e2.id)]) == 3
+
+
 def test_cx18_the_retry_is_bounded_and_the_task_fails_context_insufficient(x):
     x.scenarios['t1'] = [USAGE(190000), READ()]              # every link hands off again
     mid = x.ready(task('t1', 'write_repo', 'read'))

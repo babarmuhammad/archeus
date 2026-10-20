@@ -879,6 +879,10 @@ STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout',
                 'path_too_long')
 #: How an adapter classifies an end (p11-design-gate §9.1): who owns it.
 FAILURES = ('resource', 'task', 'auth', 'limit')
+#: How an execution's served model is known (ADR-0031 §6, p21-design-gate D4), lowest
+#: first: the route asked for it < a proxy says it chose it < the transcript reports it <
+#: the usage attributes it. A level is never claimed without its source.
+PROVENANCE_LEVELS = ('REQUESTED', 'ROUTED', 'SERVED', 'BILLED')
 
 
 @entity
@@ -961,7 +965,8 @@ class Execution(Entity):
     _MIN1 = ('attempt',)
     _CHOICES = {'exit_reason': ('ok', 'error', 'killed', 'lost', 'abandoned', 'rejected',
                                 'handoff'),
-                'stop_reason': STOP_REASONS, 'failure': FAILURES}
+                'stop_reason': STOP_REASONS, 'failure': FAILURES,
+                'served_level': PROVENANCE_LEVELS}
     _NONNEG = ('process_seq', 'hook_seq', 'stream_offset')
     id: str
     task_id: str
@@ -1024,6 +1029,12 @@ class Execution(Entity):
     # PV-20 K3 (T-051 §5): the commit Core imported its workspace as, written once by
     # its end transaction. None: no import (never seeded, or refused: §7)
     import_revision: str = None
+    # P21 (ADR-0031 §6, p21-design-gate D4): the model served and how that is known
+    # (`served_level`); `model_revision` is the exact id a SERVED or BILLED source
+    # reported, None while only the request is known
+    served_model: str = None
+    served_level: str = None
+    model_revision: str = None
     state: str = None
 
     def _check(self):
@@ -1284,6 +1295,37 @@ class Artifact(Entity):
     def _check(self):
         if not _HEX64.fullmatch(self.id):
             raise ValueError('an artifact id is its lowercase hex sha256')
+
+
+#: What an execution's artifact is (ADR-0034 §1).
+ARTIFACT_KINDS = ('architecture', 'plan', 'patch', 'report', 'test_result', 'review',
+                  'checkpoint', 'transcript_excerpt')
+
+
+@entity
+class ArtifactRecord(Entity):
+    """Who produced an artifact (ADR-0034 §1; domain-model §7.9 `produced_by`,
+    `label`; P21 D5). A row of its own because an Artifact is content-addressed:
+    the same bytes from two producers are one Artifact and two records.
+    Immutable: no command edits it."""
+    _ID = 'artifact_record'
+    _CHOICES = {'kind': ARTIFACT_KINDS}
+    _REFS = {'task_id': 'task', 'mission_id': 'mission'}
+    id: str
+    artifact_id: str
+    produced_by: Ref
+    kind: str
+    task_id: str = None
+    mission_id: str = None
+    label: str = ''
+
+    def _check(self):
+        if not _HEX64.fullmatch(self.artifact_id):
+            raise ValueError('ArtifactRecord.artifact_id names an artifact (a sha256)')
+        if self.produced_by.kind != 'execution' or not ids.is_id(self.produced_by.id,
+                                                                 'execution'):
+            raise ValueError('an artifact is produced by an execution (ADR-0034 §1): %r'
+                             % (self.produced_by,))
 
 
 #: What a context package can be assembled for (p5-design-gate §3).
@@ -1593,7 +1635,7 @@ class RouteDecision(Entity):
                'project_id', 'source', 'requirements', 'candidates', 'account_ref', 'model',
                'input_snapshot', 'context_package_id', 'mission_id', 'task_id', 'harness_id',
                'account_id', 'effort', 'result', 'fallback_from', 'policy_decision_id',
-               'unblock_at')
+               'unblock_at', 'task_family', 'capability_snapshot')
     id: str
     subject: Ref
     # the chosen resource at its most specific level: the registered account's
@@ -1621,6 +1663,10 @@ class RouteDecision(Entity):
     fallback_from: tuple = ()
     policy_decision_id: str = None
     unblock_at: str = None
+    # ADR-0033 §2 snapshot fields (P21): no task family exists before ADR-0032 (V1.x-O1)
+    # and no evidence is read yet, so a decision records None and an empty snapshot
+    task_family: str = None
+    capability_snapshot: dict = None
 
 
 @entity

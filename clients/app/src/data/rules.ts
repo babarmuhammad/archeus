@@ -33,6 +33,9 @@ export const RULES: Record<string, string[]> = {
   "checkpoint": [
     "/v1/executions/*/checkpoints"
   ],
+  "artifact_record": [
+    "/v1/executions/*"
+  ],
   "approval": [
     "/v1/world/graph**",
     "/v1/approvals**",
