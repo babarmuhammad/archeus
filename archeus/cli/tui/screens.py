@@ -1402,6 +1402,8 @@ def trace(app, doc, m, mp):
             bits.append(app.st.paint('caused by %d earlier event(s)' % len(e['cause_chain']),
                                      'text-2'))
         doc.add(' '.join(bits), target=open_(e['subject']['kind'], e['subject']['id']))
+    if t.get('executions_truncated'):
+        doc.hint('Only the most recent attempts are shown.')
     for x in t['executions']:
         b = P.badge('execution', x['state'])
         doc.h('Attempt %s · %s' % (x['attempt'], b['label']))

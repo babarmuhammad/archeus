@@ -829,6 +829,7 @@ function TraceTab({ id }: { id: string }) {
       {(x) => (
         <>
           <Replay events={x.events} truncated={x.truncated} />
+          {x.executions_truncated ? <p className="hint">Only the most recent attempts are shown.</p> : null}
           {x.executions.map((e) => (
             <ExecutionLanes key={e.id} e={e} />
           ))}

@@ -214,9 +214,10 @@ TYPES = {
         'truncated': {'type': 'boolean'},
         'policy_decisions': {'type': 'array', 'items': {'ref': 'PolicyDecision'}},
         'route_decisions': {'type': 'array', 'items': {'ref': 'RouteDecision'}},
-        'executions': {'type': 'array', 'items': {'ref': 'TraceExecution'}}},
+        'executions': {'type': 'array', 'items': {'ref': 'TraceExecution'}},
+        'executions_truncated': {'type': 'boolean'}},
         'required': ['mission_id', 'events', 'truncated', 'policy_decisions',
-                     'route_decisions', 'executions']},
+                     'route_decisions', 'executions', 'executions_truncated']},
     'ExecutionOutput': {'type': 'object', 'properties': {
         'execution_id': {'type': 'string'}, 'offset': {'type': 'integer'},
         'next_offset': {'type': 'integer'},

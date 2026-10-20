@@ -20,7 +20,8 @@ export const RULES: Record<string, string[]> = {
     "/v1/missions/*/plan",
     "/v1/missions/*/timeline**",
     "/v1/tasks/{id}/executions",
-    "/v1/digest"
+    "/v1/digest",
+    "/v1/missions/*/trace"
   ],
   "execution": [
     "/v1/world/graph**",
@@ -28,10 +29,12 @@ export const RULES: Record<string, string[]> = {
     "/v1/executions/{id}**",
     "/v1/tasks/*/executions",
     "/v1/missions/*/timeline**",
-    "/v1/digest"
+    "/v1/digest",
+    "/v1/missions/*/trace"
   ],
   "checkpoint": [
-    "/v1/executions/*/checkpoints"
+    "/v1/executions/*/checkpoints",
+    "/v1/missions/*/trace"
   ],
   "approval": [
     "/v1/world/graph**",
@@ -45,14 +48,16 @@ export const RULES: Record<string, string[]> = {
     "/v1/missions/*/verifications",
     "/v1/missions/*/timeline**",
     "/v1/attention",
-    "/v1/digest"
+    "/v1/digest",
+    "/v1/missions/*/trace"
   ],
   "review": [
     "/v1/world/graph**",
     "/v1/missions/*/reviews",
     "/v1/missions/*/timeline**",
     "/v1/attention",
-    "/v1/digest"
+    "/v1/digest",
+    "/v1/missions/*/trace"
   ],
   "knowledge_item": [
     "/v1/world/graph**",
@@ -122,11 +127,13 @@ export const RULES: Record<string, string[]> = {
   ],
   "route_decision": [
     "/v1/world/graph**",
-    "/v1/route-decisions**"
+    "/v1/route-decisions**",
+    "/v1/missions/*/trace"
   ],
   "policy_decision": [
     "/v1/world/graph**",
-    "/v1/policy-decisions**"
+    "/v1/policy-decisions**",
+    "/v1/missions/*/trace"
   ],
   "policy_rule": [
     "/v1/policies"

@@ -95,6 +95,28 @@ def test_the_trace_reads_the_missions_events_decisions_and_lanes(db, actor):
     assert secret not in json.dumps(t)                                  # the redacted read
 
 
+def test_the_trace_reads_only_the_newest_executions_and_says_so(db, actor, monkeypatch):
+    mine = _mission(db, actor, 'mine')
+    tid = _task(db, actor, mine, _plan(db, actor, mine))
+    made = []
+    for n in range(1, 4):
+        made.append(ids.new_id('execution'))
+        _tx(db, lambda tx, x=made[-1], n=n: tx.insert(entities.Execution(
+            id=x, task_id=tid, mission_id=mine, harness_id='fake', attempt=n), actor=actor))
+    read = []
+    monkeypatch.setattr(trace.output, 'read', lambda e, a: read.append(e.id) or {
+        'available': False, 'truncated': False, 'events': []})
+    monkeypatch.setattr(trace, 'MAX_EXECUTIONS', 2)
+    with db.read() as conn:
+        t = trace.trace(conn, mine, _Registry(fake=FakeHarness()))
+    schemas.validate(t, schemas.TYPES['Trace'])
+    assert [x['id'] for x in t['executions']] == read == sorted(made)[1:]
+    assert t['executions_truncated'] is True
+    monkeypatch.setattr(trace, 'MAX_EXECUTIONS', 3)
+    with db.read() as conn:
+        assert trace.trace(conn, mine, _Registry(fake=FakeHarness()))['executions_truncated'] is False
+
+
 def test_the_trace_route_answers_and_refuses_an_unknown_mission(tc):
     mid = tc.http('POST', '/v1/missions', body={'title': 't', 'objective': 'o',
                                                 'idempotency_key': 'k-trace'}).json()['id']

@@ -1678,6 +1678,7 @@ interface Trace {
   policy_decisions: PolicyDecision[];
   route_decisions: RouteDecision[];
   executions: TraceExecution[];
+  executions_truncated: boolean;
 }
 ```
 

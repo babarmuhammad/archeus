@@ -15,6 +15,9 @@ from . import attention, executions
 from .queries import list_policy_decisions, route_decisions
 
 MAX_EVENTS = 1000
+#: the newest executions read per trace: each costs an output read (and a live
+#: inspect while it runs), so a mission with many retries stays one bounded read
+MAX_EXECUTIONS = 50
 MAIN = 'main'
 _TEXT = 500
 
@@ -49,9 +52,9 @@ def lanes(events):
 def trace(conn, mission_id, registry):
     """The trace of *mission_id* (NotFound when there is no such mission)."""
     t = attention.timeline(conn, mission_id, limit=MAX_EVENTS)
-    execs = []
-    for r in sorted(rows.where(conn, entities.Execution, mission_id=mission_id),
-                    key=lambda r: r.entity.id):
+    execs, rs = [], sorted(rows.where(conn, entities.Execution, mission_id=mission_id),
+                           key=lambda r: r.entity.id)
+    for r in rs[-MAX_EXECUTIONS:]:
         e = r.entity
         adapter = registry.get(e.harness_id) if e.harness_id in registry.ids() else None
         o = output.read(e, adapter)
@@ -65,4 +68,4 @@ def trace(conn, mission_id, registry):
             'truncated': t['next_before'] is not None,
             'policy_decisions': list_policy_decisions(conn, mission_id),
             'route_decisions': route_decisions(conn, mission_id),
-            'executions': execs}
+            'executions': execs, 'executions_truncated': len(rs) > MAX_EXECUTIONS}
