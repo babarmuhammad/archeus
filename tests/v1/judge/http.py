@@ -12,6 +12,7 @@
   a port. There is no hidden test flag in `archeus core` itself.
 """
 
+import errno
 import http.client
 import json
 import os
@@ -61,6 +62,18 @@ def _issue_principal(tx, *, kind, token_hash):
     return {'principal_id': p.id}
 
 
+#: suites running side by side on one machine run it out of local ports (each
+#: request is a new connection, thousands sit in TIME_WAIT) or take the port a
+#: Core was about to bind: both are retried, nothing was sent yet (T-115e)
+_BUSY = {errno.EADDRINUSE, errno.EADDRNOTAVAIL, 10048, 10049}
+_RETRY_S = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2)
+
+
+def _busy(e):
+    r = getattr(e, 'reason', e)
+    return isinstance(r, OSError) and (r.errno in _BUSY or getattr(r, 'winerror', None) in _BUSY)
+
+
 def free_port():
     s = socket.socket()
     s.bind(('127.0.0.1', 0))
@@ -89,8 +102,14 @@ def request(base, method, path, *, token=None, body=None, headers=None, raw=None
     req = urllib.request.Request(base + path, data=data, method=method, headers=h)
     start = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return Response(r.status, r.headers, r.read())
+        for pause in _RETRY_S + (None,):
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as r:
+                    return Response(r.status, r.headers, r.read())
+            except urllib.error.URLError as e:
+                if pause is None or isinstance(e, urllib.error.HTTPError) or not _busy(e):
+                    raise
+                time.sleep(pause)
     except urllib.error.HTTPError as e:
         return Response(e.code, e.headers, e.read())
     except (TimeoutError, urllib.error.URLError) as e:
@@ -622,7 +641,7 @@ class TempCore:
         if not (real_verification or real_review) and kw['ports'].reviewer is None:
             kw['ports'].reviewer = ports.ScriptedReview()
         self.home, self.port, self.kw = str(home), port or free_port(), kw
-        self.core = None
+        self.fixed, self.core = port is not None, None
 
     @property
     def base_url(self):
@@ -634,8 +653,15 @@ class TempCore:
 
     def start(self):
         assert os.path.normcase(os.environ['ARCHEUS_HOME']) == os.path.normcase(self.home)
-        self.core = runtime.Core(port=self.port, **self.kw).start()
-        return self
+        for attempt in range(3):
+            try:
+                self.core = runtime.Core(port=self.port, **self.kw).start()
+                self.fixed = True               # a restart keeps the port clients hold
+                return self
+            except runtime.PortInUse:
+                if self.fixed or attempt == 2:
+                    raise
+                self.port = free_port()     # another suite took it between probe and bind
 
     def stop(self, *, kill=False):
         if self.core is not None:
@@ -716,7 +742,7 @@ class CoreProcess:
 
     def __init__(self, home, *, port=None, **cfg):
         self.home, self.port, self.cfg = str(home), port or free_port(), cfg
-        self.proc = None
+        self.fixed, self.proc = port is not None, None
 
     @property
     def base_url(self):
@@ -727,6 +753,22 @@ class CoreProcess:
         return discovery.read_local_token()
 
     def start(self, *, wait=True):
+        for attempt in range(3):
+            self._spawn()
+            if not wait:
+                return self
+            try:
+                self.wait_ready()
+                self.fixed = True               # a restart keeps the port clients hold
+                return self
+            except AssertionError:
+                # exit 2 is "the port is in use" (runtime.run); a harness-chosen
+                # port another suite took is chosen again
+                if self.fixed or self.proc.poll() != 2 or attempt == 2:
+                    raise
+                self.port = free_port()
+
+    def _spawn(self):
         os.makedirs(self.home, exist_ok=True)
         self.out = os.path.join(self.home, 'core-child-%d.txt' % time.monotonic_ns())
         flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform.startswith('win') else 0
@@ -736,9 +778,6 @@ class CoreProcess:
                  json.dumps(dict(self.cfg, port=self.port))],
                 stdout=f, stderr=subprocess.STDOUT, creationflags=flags,
                 env=dict(os.environ, ARCHEUS_HOME=self.home))
-        if wait:
-            self.wait_ready()
-        return self
 
     def output(self):
         with open(self.out, encoding='utf-8', errors='replace') as f:
