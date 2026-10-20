@@ -181,5 +181,5 @@ test('the page counts as slow exactly while a loop is degraded', () => {
 
 test('the rows read the page\'s reduced motion and its slow frames', () => {
   const ui = readFileSync(new URL('../src/components/ui.tsx', import.meta.url), 'utf8');
-  assert.match(ui, /reduced: reducedMotion,\n\s+degraded: framesSlow,/);
+  assert.match(ui, /reduced: reducedMotion,\r?\n\s+degraded: framesSlow,/);
 });

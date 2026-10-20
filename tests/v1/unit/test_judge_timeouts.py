@@ -93,3 +93,62 @@ def test_a_refused_connection_is_not_reported_as_a_timeout():
 def test_the_two_clocks_keep_their_values():
     assert inspect.signature(http.request).parameters['timeout'].default == 15
     assert inspect.signature(support.wait_for).parameters['timeout'].default == 30.0
+
+
+class _Ok:
+    status, headers = 200, {}
+
+    def read(self):
+        return b'{}'
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def test_a_connect_this_machine_has_no_port_for_is_tried_again(monkeypatch):
+    """T-115e: suites side by side run the machine out of local ports; that
+    connect sent nothing, so it is tried again. Any other failure is not."""
+    import errno
+    calls = []
+
+    def busy_twice(req, timeout):
+        calls.append(req)
+        if len(calls) < 3:
+            raise urllib.error.URLError(OSError(errno.EADDRINUSE, 'in use'))
+        return _Ok()
+    monkeypatch.setattr(http, '_RETRY_S', (0, 0, 0))
+    monkeypatch.setattr(http.urllib.request, 'urlopen', busy_twice)
+    assert http.request('http://127.0.0.1:1', 'GET', '/v1/health').status == 200
+    assert len(calls) == 3
+
+    def refused(req, timeout):
+        calls.append(req)
+        raise urllib.error.URLError(ConnectionRefusedError(errno.ECONNREFUSED, 'refused'))
+    calls.clear()
+    monkeypatch.setattr(http.urllib.request, 'urlopen', refused)
+    with pytest.raises(urllib.error.URLError):
+        http.request('http://127.0.0.1:1', 'GET', '/v1/health')
+    assert len(calls) == 1
+
+
+def test_a_core_whose_chosen_port_is_taken_binds_another(archeus_home, monkeypatch):
+    """T-115e: the port the harness chose was taken before Core bound it; the
+    harness chooses again, but never moves a port the test named."""
+    squat = socket.socket()
+    squat.bind(('127.0.0.1', 0))
+    squat.listen()
+    taken = squat.getsockname()[1]
+    picks = iter([taken, http.free_port()])
+    monkeypatch.setattr(http, 'free_port', lambda: next(picks))
+    tc = http.TempCore(archeus_home)
+    try:
+        tc.start()
+        assert tc.port != taken and tc.http('GET', '/v1/health').status == 200
+    finally:
+        tc.stop()
+        with pytest.raises(OSError):
+            http.TempCore(archeus_home, port=taken).start()
+        squat.close()

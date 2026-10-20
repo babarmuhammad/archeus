@@ -40,6 +40,16 @@ _WORKTREE = ('-c', 'core.longpaths=true', 'worktree')
 #: ("'$GIT_DIR' too big"), and core.longpaths does not lift it (measured, T-077);
 #: no such cap elsewhere
 GIT_DIR_MAX = 220 if os.name == 'nt' else None
+#: the deepest path a store holds, below the store itself: refs/archeus/incoming/
+#: exec/<execution id>/import.lock (70). Git for Windows writes no object or ref
+#: past MAX_PATH even with core.longpaths (measured, T-115d), so the store's own
+#: path is capped instead
+STORE_TAIL = 70
+STORE_MAX = 259 - STORE_TAIL if os.name == 'nt' else None
+#: the longest ref a fetch may write into a store: its incoming ref and that ref's
+#: lock (os.sep + refs/archeus/incoming/<rest>.lock) stay within STORE_TAIL. Core's
+#: longest, refs/archeus/exec/<execution id>/import, is exactly this long
+REF_MAX = STORE_TAIL - len(os.sep + 'incoming/' + '.lock')
 
 
 class PathTooLong(OSError):
@@ -721,6 +731,10 @@ class LocalNode:
         """The project's store, created and sealed the first time and checked
         against its pin record every time (T-046 C1 steps 1-6). Returns its path."""
         store = repo_store(project_id)
+        if STORE_MAX is not None and len(store) > STORE_MAX:
+            raise StoreError('the store %s is %d characters long; Git for Windows writes nothing '
+                             'past MAX_PATH below it once it passes %d. Set ARCHEUS_HOME to a '
+                             'shorter folder' % (store, len(store), STORE_MAX))
         _outside_executions([store], workdirs)
         pin = _pin_files(workdirs)
         version = _git_version(workdirs)
@@ -789,6 +803,9 @@ class LocalNode:
                 and '..' not in rev_name + ref and re.fullmatch(r'[0-9a-f]{40}', expect)
                 and os.path.isabs(root)):
             raise StoreError('not a fetch Core may make: %r' % ((root, rev_name, expect, ref),))
+        if len(ref) > REF_MAX:              # before the store is opened or anything written
+            raise StoreError('the ref %s is %d characters long; a store takes at most %d'
+                             % (ref, len(ref), REF_MAX))
         _source(root, workdirs)
         store = LocalNode.store_open(project_id, workdirs=workdirs)
         incoming = 'refs/archeus/incoming/' + ref[len('refs/archeus/'):]
