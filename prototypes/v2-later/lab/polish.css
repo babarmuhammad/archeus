@@ -1,0 +1,96 @@
+/* LV2-0 design pass (DP-1 … DP-14). NOT product code. Linked by ia.html and light.html unless
+   ?dp=0, so every capture and probe can be taken with and without it. Presentation only: no
+   word, order, route or data-q changes; no motion; no blur; no new colour outside V1's tokens.
+   Records: results/le8-design-pass.md. */
+
+/*<polish_css>*/
+:root {
+  --dp-pad: 12px; --dp-fig: 36px; --dp-gap: 10px;
+  --dp-inset: calc(var(--dp-pad) + var(--dp-fig) + var(--dp-gap));
+  /* --text over --bg at 9 % and 4 %, and --primary at 86 % / 74 %, resolved to hex as V1's
+     generated tokens are (a computed color-mix() is oklab(), which the lab's contrast check
+     cannot read, and gen_ui would emit hex anyway) */
+  --dp-sel: #21252A; --dp-hover: #171A1F; --dp-pri-hover: #C8CCD2; --dp-pri-active: #AEB2B7;
+  --dp-float: inset 0 1px 0 rgb(230 234 240 / .09), 0 8px 24px rgb(0 0 0 / .45);
+}
+:root[data-theme='light'] { --dp-sel: #E2E4E6; --dp-hover: #EEEFF1; --dp-pri-hover: #31353B; --dp-pri-active: #4D5056;
+  --dp-float: inset 0 1px 0 #fff, 0 6px 18px rgb(17 21 28 / .14); }
+html { -webkit-tap-highlight-color: transparent; font-kerning: normal; }
+a, button, summary { touch-action: manipulation; }
+
+/* DP-1 type: display optical size and tracking, balanced headings, no orphans in prose */
+.verdict, .headline { letter-spacing: -0.012em; text-wrap: balance; }
+h2, .lead { text-wrap: balance; }
+.b-main, .sub, .b-dec p, dd, .daylight li { text-wrap: pretty; }
+.sep { color: var(--text-3); }
+.verdict .sep { font-weight: 400; }
+
+/* DP-2 section headers are list headers, not titles: one step quieter, closer to their list */
+.b-shell h2, .b-phone h2 { font: 600 var(--type-body); color: var(--text-2); margin: 28px 0 6px; }
+.b-dec h2, .b-mis h2, .c-insp h2 { color: var(--text); margin-top: 22px; }
+
+/* DP-3 one leading edge: every row's title starts at the same x; the decide rail is drawn
+   inside the padding instead of adding to it; separators start where the text starts */
+.b-list { border-top: 0; }
+.b-row, .b-row.decide { padding-left: var(--dp-pad); padding-right: 8px; gap: var(--dp-gap); border-bottom: 0; border-left: 0;
+  background: linear-gradient(var(--line), var(--line)) no-repeat var(--dp-inset) 100% / 100% 1px; }
+.b-row:last-child { background-image: none; }
+.b-row.decide { box-shadow: inset 2px 0 0 var(--state-attention); }
+.b-row > .figslot { width: var(--dp-fig); flex: none; }
+.b-row:hover { background-color: var(--dp-hover); }
+
+/* DP-4 figures in columns are proportional tabular digits, not a monospace face */
+.b-row .num { font-family: var(--font); font-variant-numeric: tabular-nums; color: var(--text-2); }
+.b-today, .b-since, .spine, .checks { font-variant-numeric: tabular-nums; }
+
+/* DP-5 controls: a hover and a pressed state, both instant (no transition: nothing animates) */
+.b-top button:hover, .b-shell button:hover, .b-phone button:hover, .b-decide-bar button:hover { background: var(--surface-3); }
+.b-top button:active, .b-shell button:active, .b-phone button:active, .b-decide-bar button:active { background: var(--dp-sel); }
+button.primary:hover { background: color-mix(in oklab, var(--primary) 86%, var(--bg)); }
+button.primary:active { background: color-mix(in oklab, var(--primary) 74%, var(--bg)); }
+
+/* DP-6 the header: one bordered control on the phone (Stop all); the desktop compose reads as the
+   field it opens; the key is a keycap in the text face */
+.b-top .mark { gap: 6px; }
+kbd { font-family: var(--font); color: var(--text-2); border: var(--hairline) solid var(--line-strong); border-radius: 4px; padding: 0 5px; margin-left: 10px; }
+.b-top .compose { display: inline-flex; align-items: center; justify-content: space-between; min-width: 240px; color: var(--text-2); background: var(--surface-1); }
+.b-nav a[aria-current] { background: var(--dp-sel); font-weight: 600; }
+.b-nav a:not([aria-current]):hover { background: var(--dp-hover); color: var(--text); }
+
+@media (max-width: 599px) {
+  :root { --dp-pad: 6px; --dp-fig: 34px; }
+  html { scroll-padding: 64px 0 144px; }
+  .b-top .compose { min-width: 44px; justify-content: center; background: transparent; border-color: transparent; font-size: 1.375rem; color: var(--text); }
+  /* DP-7 tab bar: the selected place is a filled capsule, not a line that reads as progress */
+  .b-tabs { padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); gap: 4px; }
+  .b-tabs a { min-height: 48px; border-radius: 999px; }
+  .b-tabs a[aria-current] { box-shadow: none; background: var(--dp-sel); }
+  /* DP-8 the strip floats one layer up (PR-3: tone and a shadow, no blur), chevron says "opens" */
+  /* the strip and the tabs are one bottom chrome: an opaque band behind both, so content never
+     shows through the gaps around the strip (solid, not a blur; one hairline on top) */
+  .b-tabs { border-top-color: transparent; box-shadow: 0 -38px 0 38px var(--surface-1), 0 -39px 0 38px var(--line); }
+  .b-strip { z-index: 7; bottom: 68px; border-radius: 14px; box-shadow: var(--dp-float); background: var(--surface-2); border-color: var(--line); }
+  .b-strip > .figslot { width: var(--dp-fig); flex: none; }
+  /* DP-9 decision bar: Approve is the full-width thumb target; the two lesser answers share a row */
+  .b-decide-bar:has(> :nth-child(3)) { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .b-decide-bar:has(> :nth-child(3)) button { min-height: 48px; }
+  .b-decide-bar:has(> :nth-child(3)) .primary { grid-column: 1 / -1; min-height: 52px; margin: 0; }
+  .b-dec { padding-bottom: 152px; }
+}
+html[data-text='200'] .b-decide-bar { grid-template-columns: 1fr; }
+
+/* DP-10 the day's light: list rows are rows, not underlined prose; the axis sits on its ticks */
+.daylight a { text-decoration: none; }
+.daylight a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.daylight.hybrid li { min-height: 28px; }
+.daylight.hybrid h3 { margin: 20px 0 4px; }
+.daylight .axisv { display: block; overflow: visible; margin: 12px 0 0; }
+.daylight .axisv text { fill: var(--text-3); font: var(--type-caption); font-variant-numeric: tabular-nums; }
+.daylight .axisv line { stroke: var(--line); }
+
+@media (forced-colors: active) {
+  .b-row, .b-row.decide { border-bottom: 1px solid CanvasText; }
+  .b-row.decide { border-left: 3px solid CanvasText; }
+  .b-tabs a[aria-current], .b-nav a[aria-current] { text-decoration: underline; }
+}
+/*</polish_css>*/

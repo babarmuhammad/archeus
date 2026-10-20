@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LE-1 information architecture</title>
+<link rel="stylesheet" href="/v1styles/tokens.css">
+<link rel="stylesheet" href="/proto/v2-u0/lab/figures.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="ia.css">
+<script>
+  // the theme and contrast before first paint (V1's appearance script does the same)
+  (function () { const q = new URLSearchParams(location.search), r = document.documentElement;
+    r.dataset.theme = q.get('theme') || 'dark'; if (q.get('contrast') === 'high') r.dataset.contrast = 'high'; })();
+</script>
+</head>
+<body>
+<script src="/proto/v2-u0/lab/figures.js"></script>
+<script src="fixture.js"></script>
+<script src="ia.js"></script>
+<script>
+  // the route on <html>, so phone CSS can hide the strip and tabs under a decision page
+  const setR = () => { document.documentElement.dataset.route = (location.hash || '#now').slice(1); };
+  addEventListener('hashchange', setR); setR();
+</script>
+</body>
+</html>

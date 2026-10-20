@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LV2-X Directions</title>
+<style>
+:root { --bg:#0E1116; --s1:#141922; --line:#2A3344; --text:#E6EAF0; --t2:#AAB3C0; --t3:#8A94A3; --acc:#F2B544; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg:#F7F8FA; --s1:#FFFFFF; --line:#DDE1E7; --text:#141922; --t2:#3A4558; --t3:#5B6576; } }
+:root[data-theme="light"] { --bg:#F7F8FA; --s1:#FFFFFF; --line:#DDE1E7; --text:#141922; --t2:#3A4558; --t3:#5B6576; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+header { padding: 28px 24px 8px; max-width: 1600px; margin: 0 auto; }
+h1 { font: 600 28px/34px "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 0 0 6px; }
+p.lead { color: var(--t2); margin: 0 0 16px; max-width: 80ch; }
+nav { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; top: 0; background: var(--bg); padding: 10px 24px; border-bottom: 1px solid var(--line); z-index: 2; }
+nav a { color: var(--t2); text-decoration: none; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
+nav a:hover { color: var(--text); }
+section { max-width: 1600px; margin: 0 auto; padding: 24px; border-bottom: 1px solid var(--line); }
+h2 { font: 600 20px/26px "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; margin: 0 0 4px; }
+.what { color: var(--t3); margin: 0 0 16px; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.col h3 { font: 600 13px/18px inherit; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); margin: 0 0 8px; }
+.pair { display: grid; grid-template-columns: minmax(0, 3.2fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+figure { margin: 0; background: var(--s1); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+figure img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+figcaption { font-size: 12px; color: var(--t3); padding: 4px 8px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+dialog { padding: 0; border: 0; background: transparent; max-width: 96vw; max-height: 96vh; }
+dialog img { max-width: 96vw; max-height: 94vh; display: block; }
+dialog::backdrop { background: rgba(0,0,0,.8); }
+</style>
+</head>
+<body>
+<header>
+  <h1>LV2-X — three directions</h1>
+  <p class="lead">Prototype captures for the Archeus V2 product UX reassessment. Each row is one state; each column one direction. Desktop 1,440 × 900 and phone 390 × 844, first screen only. Click a capture to enlarge. Synthetic fixture data; every fact is recorded by Core, derived by a stated rule, or named as not recorded.</p>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<dialog id="zoom"><img alt=""></dialog>
+<script>
+const D = [['a', 'A · Supervision desk'], ['b', 'B · Mission lines'], ['c', 'C · Brief & record']];
+const S = [['home', 'Opening screen', 'What a new user sees first: is anything happening, does it need me, is it safe.'],
+  ['live', 'Running mission', 'Fix the flaky date test, step 4 of 7.'],
+  ['decide', 'Needs you — approval', 'Approve plan v2 for Deploy release notes to staging: what, why, what changed, what each button does.'],
+  ['mission', 'Mission detail — blocked', 'Write the migration for invoices: the rollback check failed.'],
+  ['primed', 'E-stop pressed once', 'The intermediate state: press again within 3 s to stop all work.'],
+  ['stopped', 'Emergency stop engaged', 'All work stopped at 15:14 from this computer; new work refused.'],
+  ['idle', 'Idle — nothing happening', 'Nothing running, nothing needs you.']];
+const nav = document.getElementById('nav'), main = document.getElementById('main');
+nav.innerHTML = S.map(([k, t]) => `<a href="#${k}">${t}</a>`).join('');
+main.innerHTML = S.map(([k, t, w]) => `<section id="${k}"><h2>${t}</h2><p class="what">${w}</p><div class="grid">${D.map(([d, n]) =>
+  `<div class="col"><h3>${n}</h3><div class="pair"><figure><img loading="lazy" src="shots/${d}_desk_${k}.png" alt="${n}, ${t}, desktop"><figcaption>desktop</figcaption></figure>
+  <figure><img loading="lazy" src="shots/${d}_phone_${k}.png" alt="${n}, ${t}, phone"><figcaption>phone</figcaption></figure></div></div>`).join('')}</div></section>`).join('');
+const dlg = document.getElementById('zoom');
+main.addEventListener('click', (e) => { if (e.target.tagName === 'IMG') { dlg.querySelector('img').src = e.target.src; dlg.showModal(); } });
+dlg.addEventListener('click', () => dlg.close());
+</script>
+</body>
+</html>

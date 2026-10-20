@@ -1,0 +1,53 @@
+/* Later-V2 evidence lab (LV2-0): shared ground. NOT product code; nothing in clients/app
+   imports it. Colour, type and space come from the V1 token stylesheet itself
+   (/v1styles/tokens.css, linked by every page), so a prototype is judged on the ground it
+   would extend. This file adds only what the lab needs on top. */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: var(--type-body);
+  -webkit-font-smoothing: antialiased;
+}
+:root { --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; --hairline: 1px; }
+/* PR-4 / A §F (accepted): display 32/38 (30/36 phone) and headline 28/34 (24/30 phone) at 600,
+   −0.005 em. LV2-0 set the phone verdict at 24/30 (LR §8.2's proposal) without saying so (T-1);
+   that size is now only the experimental ?type=le8 arm (polish.css). */
+.verdict { font: 600 2rem/2.375rem var(--font-display); letter-spacing: -0.005em; margin: 0; }
+.headline { font: 600 1.75rem/2.125rem var(--font-display); letter-spacing: -0.005em; margin: 0; }
+@media (max-width: 599px) { .verdict { font-size: 1.875rem; line-height: 2.25rem; } .headline { font-size: 1.5rem; line-height: 1.875rem; } }
+.mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.t2 { color: var(--text-2); }
+.t3 { color: var(--text-3); }
+.cap { font: var(--type-caption); }
+button, input, textarea, select { font: inherit; color: inherit; }
+button {
+  background: var(--surface-2); border: var(--hairline) solid var(--line-strong);
+  border-radius: var(--radius-control); padding: 4px 10px; min-height: var(--target-desktop);
+  cursor: default;
+}
+button.primary { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+button.ghost { background: transparent; border-color: transparent; }
+@media (pointer: coarse) { button { min-height: var(--target-phone); } }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+a { color: inherit; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* lab-only text scaling (the 200 % text check): ?text=200 */
+html[data-text='200'] { font-size: 200%; }
+
+/* state ink: colour is redundant with the PR-5 figure, never alone */
+[data-role='needs'] { color: var(--state-attention); }
+[data-role='active'] { color: var(--state-active); }
+[data-role='blocked'] { color: var(--state-blocked); }
+[data-role='paused'] { color: var(--state-paused); }
+[data-role='thinking'] { color: var(--state-thinking); }
+[data-role='done'] { color: var(--state-done); }
+[data-role='quiet'] { color: var(--text-3); }
+
+@media (forced-colors: active) {
+  [data-role] { color: CanvasText; }
+  button.primary { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
+}

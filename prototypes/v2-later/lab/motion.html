@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LE-5 motion middle</title>
+<link rel="stylesheet" href="/v1styles/tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="middle.css">
+<style>
+  body { padding: 24px; max-width: 980px; }
+  h2 { font: var(--type-title-2); margin: 20px 0 8px; }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .list { border-top: var(--hairline) solid var(--line); }
+  .row { padding: 8px 4px; border-bottom: var(--hairline) solid var(--line); background: var(--bg); }
+  .row header { display: flex; gap: 12px; align-items: baseline; }
+  .row [data-body] { padding: 6px 0 2px 20px; color: var(--text-2); }
+  .row .when { margin-left: auto; color: var(--text-3); }
+  .group { font: var(--type-caption); color: var(--text-3); padding: 10px 4px 4px; text-transform: none; }
+  .strip { position: fixed; left: 0; right: 0; bottom: 0; height: 560px; margin-bottom: -496px; touch-action: none;
+           background: var(--surface-2); border-top: var(--hairline) solid var(--line-strong); padding: 10px 16px; }
+  .strip .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 0 auto 8px; }
+  .p-page header { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: var(--hairline) solid var(--line); }
+  .tabs { display: flex; gap: 4px; }
+  .tabs [aria-selected='true'] { border-color: var(--focus); }
+  #peer { padding: 12px 0; min-height: 60px; }
+  .decide .row header { align-items: center; }
+</style>
+</head>
+<body>
+<h1 class="headline">Motion middle bench</h1>
+<p class="t2">Every control here exercises one LR Appendix 2 primitive. The measurement scripts drive the same functions through <code>SCENARIOS</code>.</p>
+
+<h2>press · reveal · tooltip</h2>
+<div class="bar" id="toolbar">
+  <button class="p-press p-hover" id="bPress">Pause all</button>
+  <button class="p-press p-hover" id="bMenu" popovertarget="menu" style="anchor-name: --menu">More ▾</button>
+  <div id="menu" class="p-menu" popover style="position-anchor: --menu">
+    <button>Pin mission</button><button>Copy mission id</button><button>Open evidence</button>
+  </div>
+  <span data-tip="Executing since 14:02 · step 4 of 7" tabindex="0" class="mono">● 3 running</span>
+  <span data-tip="Two plan approvals and one review" tabindex="0" class="mono">◆ 3 need you</span>
+</div>
+
+<h2>count</h2>
+<p>Verified today: <span class="p-count num" id="cnt"><span aria-hidden="true">6</span></span></p>
+
+<h2>disclose · reorder</h2>
+<div class="list" id="missions"></div>
+
+<h2>confirm · refuse</h2>
+<div class="list decide" id="decide"></div>
+
+<h2>navigation (peers)</h2>
+<div class="tabs" role="tablist" id="tabs">
+  <button role="tab" aria-selected="true" data-p="0">Plan</button>
+  <button role="tab" aria-selected="false" data-p="1">Evidence</button>
+  <button role="tab" aria-selected="false" data-p="2">Timeline</button>
+</div>
+<div id="peer" role="tabpanel"></div>
+
+<h2>push · pop (phone page)</h2>
+<button class="p-press" id="bPush">Open decision page</button>
+<section class="p-page" id="page" hidden aria-label="Decision">
+  <header><button data-first id="bBack">‹ Back</button><strong>Approve plan v2</strong></header>
+  <p style="padding:16px">Deploys release notes to staging. Expires in 8 min.</p>
+</section>
+
+<div class="strip" id="strip" aria-label="Running mission" data-keepalive>
+  <div class="grab"></div>
+  <div><strong>Deploy release notes</strong> · Execute · step 4 of 7 · 12 min</div>
+</div>
+
+<script src="/proto/v2-u0/lab/lab.js"></script>
+<script src="middle.js"></script>
+<script>
+(function () {
+  'use strict';
+  LAB.applyEnv();
+  const Q = LAB.q, root = document.documentElement;
+  if (Q.get('motion')) root.dataset.motion = Q.get('motion');
+  if (Q.get('text')) root.dataset.text = Q.get('text');
+  const $ = (s) => document.querySelector(s);
+  const M = window.MID;
+
+  const MISSIONS = [
+    ['g1', 'Running', 'Deploy release notes to staging', 'Execute · step 4 of 7', '12 min'],
+    ['g1', 'Running', 'Upgrade the auth library', 'Verify · 2 checks left', '31 min'],
+    ['g1', 'Running', 'Index the invoices table', 'Execute · step 1 of 3', '2 min'],
+    ['g2', 'Waiting', 'Fix the flaky date test', 'Blocked · verify failed', '1 h'],
+    ['g3', 'Done', 'Write the migration for invoices', 'Verified 13:40', '13:40'],
+    ['g3', 'Done', 'Rename the billing module', 'Verified 12:05', '12:05'],
+    ['g3', 'Done', 'Tidy the release checklist', 'Verified 10:51', '10:51'],
+    ['g3', 'Done', 'Bump the docs theme', 'Verified 09:30', '09:30'],
+  ];
+  const GROUPS = { g1: 'Running', g2: 'Waiting on something', g3: 'Done today' };
+  function drawMissions() {
+    const host = $('#missions');
+    host.innerHTML = '';
+    for (const g of ['g1', 'g2', 'g3']) {
+      const h = document.createElement('div');
+      h.className = 'group'; h.dataset.group = g; h.textContent = GROUPS[g];
+      host.appendChild(h);
+      for (const m of MISSIONS.filter((x) => x[0] === g)) {
+        const r = document.createElement('div');
+        r.className = 'row'; r.dataset.id = m[2]; r.setAttribute('aria-expanded', 'false');
+        r.innerHTML = `<header><button class="ghost p-press" data-toggle>▸</button><strong>${m[2]}</strong><span class="t2">${m[3]}</span><span class="when num">${m[4]}</span></header>
+          <div data-body hidden>Because the plan's step 3 (build) finished at 14:10; the next check is the staging smoke test. Evidence: 2 artifacts, 1 log.</div>`;
+        host.appendChild(r);
+      }
+    }
+  }
+  drawMissions();
+  $('#missions').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-toggle]');
+    if (!t) return;
+    const row = t.closest('.row');
+    M.disclose(row, row.getAttribute('aria-expanded') !== 'true');
+  });
+
+  const DECIDE = [
+    ['Approve plan v2 for Deploy release notes', 'deploys to staging · expires in 8 min'],
+    ['Approve plan v1 for Upgrade the auth library', 'changes 14 files · expires in 40 min'],
+    ['Review the result of Index the invoices table', 'executed, not verified'],
+  ];
+  function drawDecide() {
+    const host = $('#decide');
+    host.innerHTML = DECIDE.map((d, i) => `<div class="row" data-i="${i}"><header>
+      <span data-role="needs">◆</span><span><strong>${d[0]}</strong> <span class="t2">· ${d[1]}</span></span>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="p-press" data-reject>Reject</button><button class="p-press primary" data-verb>Approve</button></span></header></div>`).join('');
+  }
+  drawDecide();
+  $('#decide').addEventListener('click', (e) => {
+    const row = e.target.closest('.row');
+    if (!row) return;
+    const next = row.nextElementSibling && row.nextElementSibling.querySelector('[data-verb]');
+    if (e.target.closest('[data-verb]')) M.confirm(row, 'Approved 14:02', next);
+    if (e.target.closest('[data-reject]')) M.refuse(row, 'Could not reject: Core is reconnecting. Nothing was changed.', row.querySelector('[data-reject]'));
+  });
+
+  const PEERS = ['3 tasks · 1 needs approval', 'Verification: 4 checks, 3 passed, 1 pending', '14:02 approved · 14:03 started · 14:10 step 3 done'];
+  function drawPeer(i) { $('#peer').textContent = PEERS[i]; for (const b of $('#tabs').children) b.setAttribute('aria-selected', String(+b.dataset.p === i)); }
+  drawPeer(0);
+  $('#tabs').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (b) M.nav($('#peer'), () => drawPeer(+b.dataset.p), e.detail === 0); });
+
+  $('#bPush').addEventListener('click', () => M.push($('#page')));
+  $('#bBack').addEventListener('click', () => M.pop($('#page')));
+  const strip = M.draggable($('#strip'), { snaps: [-496, 0], start: 0 });
+  M.tooltips(document.body);
+
+  // ------------------------------------------------------------ measurement scenarios
+  const tail = (anims, ms) => M.done(anims).then(() => LAB.wait(ms || 40));
+  const reset = () => { M.settle(); drawMissions(); drawDecide(); drawPeer(0); $('#cnt').innerHTML = '<span aria-hidden="true">6</span>'; };
+  LAB.reset = reset;
+  let n = 6;
+  window.SCENARIOS = {
+    press: async () => { const b = $('#bPress'); b.classList.add('is-pressed'); await LAB.wait(120); b.classList.remove('is-pressed'); await LAB.wait(200); },
+    reveal: async () => { $('#menu').showPopover(); await LAB.wait(220); $('#menu').hidePopover(); await LAB.wait(180); },
+    tooltip: async () => { const t = document.querySelector('[data-tip]'); t.dispatchEvent(new PointerEvent('pointerover', { bubbles: true })); await LAB.wait(760); t.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })); await LAB.wait(40); },
+    count: () => tail(M.count($('#cnt'), ++n)),
+    disclose: () => tail(M.disclose(document.querySelector('#missions .row'), true)),
+    collapse: async () => { const r = document.querySelector('#missions .row'); M.disclose(r, true); M.settle(); await LAB.wait(30); return tail(M.disclose(r, false)); },
+    disclose_css: async () => { const r = document.querySelector('#missions .row'); const b = r.querySelector('[data-body]'); b.hidden = false; b.outerHTML = `<div class="p-dcss"><div>${b.innerHTML}</div></div>`; const w = r.querySelector('.p-dcss'); w.offsetHeight; w.classList.add('open'); await LAB.wait(300); },
+    reorder: () => { const host = $('#missions'); const row = host.querySelector('.row'); const g3 = host.querySelector('[data-group="g3"]'); M._lastReorder = -1e9; return tail(M.reorder(host, () => g3.after(row))); },
+    confirm: () => { const rows = document.querySelectorAll('#decide .row'); return tail(M.confirm(rows[0], 'Approved 14:02', rows[1].querySelector('[data-verb]')), 260); },
+    refuse: () => { const r = document.querySelector('#decide .row'); return tail(M.refuse(r, 'Could not reject: Core is reconnecting. Nothing was changed.', r.querySelector('[data-reject]'))); },
+    nav: () => tail(M.nav($('#peer'), () => drawPeer(1), false)),
+    push: async () => { await tail(M.push($('#page'))); history.back(); await LAB.wait(300); },
+    release: async () => { strip.snapTo(-496, -1.6); await LAB.wait(620); strip.snapTo(0, 1.2); await LAB.wait(620); },
+    interrupt: async () => {
+      // a click mid-disclosure must act at once, and the disclosure must land on its end state
+      const r = document.querySelector('#missions .row');
+      const anims = M.disclose(r, true);
+      await LAB.wait(80);
+      const before = anims.filter((a) => a.playState === 'running').length;
+      const t0 = performance.now();
+      document.querySelectorAll('#missions .row')[3].querySelector('[data-toggle]').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      const settled = anims.every((a) => a.playState !== 'running');
+      (window.__interrupts = window.__interrupts || []).push({ running_before: before, settled_on_input: settled, ms: +(performance.now() - t0).toFixed(2) });
+      await LAB.wait(60);
+    },
+  };
+
+  // ---------------------------------------------------------------- the property audit
+  // Everything that animates must be transform or opacity (rulebook §3). Discrete display/overlay
+  // transitions (popover exit) and the 120 ms hover colour on one control are reported separately.
+  const seen = {};
+  const note = (k) => { seen[k] = (seen[k] || 0) + 1; };
+  const origAnimate = Element.prototype.animate;
+  Element.prototype.animate = function (kf, opt) {
+    for (const f of (Array.isArray(kf) ? kf : [kf])) for (const p of Object.keys(f)) if (!['offset', 'easing', 'composite'].includes(p)) note('waapi:' + p);
+    return origAnimate.call(this, kf, opt);
+  };
+  // sampled only while a scenario runs, so the audit itself never breaks the idle check
+  for (const [k, fn] of Object.entries(window.SCENARIOS)) {
+    window.SCENARIOS[k] = async () => {
+      const iv = setInterval(() => { for (const a of document.getAnimations()) if (a.transitionProperty) note('css:' + a.transitionProperty); }, 16);
+      try { await fn(); } finally { clearInterval(iv); }
+    };
+  }
+  window.LAB_EXTRA = () => ({ properties: seen, interrupts: window.__interrupts || [], settle: M.SETTLE.length,
+    support: { popover: 'showPopover' in HTMLElement.prototype, anchor: CSS.supports('anchor-name: --a'), startingStyle: CSS.supports('selector(:popover-open)'), linear: CSS.supports('transition-timing-function: linear(0, 1)') } });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LV2-1 moderator harness</title>
+<link rel="stylesheet" href="/v1styles/tokens.css">
+<link rel="stylesheet" href="base.css">
+<style>
+  body { padding: 20px 24px 80px; max-width: 1100px; }
+  h1 { font: 600 1.25rem/1.6rem var(--font); margin: 0 0 4px; }
+  h2 { font: 600 var(--type-body); color: var(--text-2); margin: 24px 0 6px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  label { margin-right: 14px; }
+  input[type=text], input[type=number], textarea { background: var(--surface-1); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 6px; color: var(--text); }
+  table { border-collapse: collapse; width: 100%; font: var(--type-caption); }
+  td, th { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+  .trial { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+  .trial[data-done='1'] { border-color: var(--state-done); }
+  .key { color: var(--text-2); }
+  .mark button[aria-pressed='true'] { background: var(--primary); color: var(--on-primary); }
+  .clock { font-variant-numeric: tabular-nums; }
+  .warn { color: var(--state-blocked); }
+</style>
+</head>
+<body>
+<h1>LV2-1 moderator harness</h1>
+<p class="t2 cap">Local only: nothing leaves this browser. Results are kept in localStorage and exported as JSON by the moderator. The criteria are fixed in <code>docs/design/ARCHEUS_V2_LATER_UI_LV2_1_GATE.md</code> §5 and scored by <code>tools/h_score.py</code>; this page records, it does not judge a pass.</p>
+<fieldset>
+  <legend>Participant</legend>
+  <label>Code <input id="pid" type="text" size="5" placeholder="P1"></label>
+  <label>Order index <input id="pn" type="number" min="1" max="99" value="1" style="width:4em"></label>
+  <label><input id="self" type="checkbox"> the product owner</label>
+  <label><input id="newp" type="checkbox"> never used Archeus</label>
+  <label><input id="daily" type="checkbox"> uses a coding agent daily</label>
+  <label><input id="rec" type="checkbox"> agreed to recording</label>
+  <br><label>Phone base URL (the per-session server, for device trials) <input id="pbase" type="text" size="60" placeholder="http://192.168.x.x:port/proto/v2-later/lab/  (k= is added by the server page)"></label>
+  <p><button id="build">Build the session plan</button> <button id="export">Export this participant (JSON)</button> <button id="wipe">Delete this participant's local record</button></p>
+</fieldset>
+<div id="plan"></div>
+<script src="harness.js"></script>
+</body>
+</html>

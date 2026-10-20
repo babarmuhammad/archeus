@@ -1,0 +1,71 @@
+docs/design/ARCHEUS_V2_LATER_UI_EVIDENCE.md | PARTIAL | 12 | 2 | 2026-10-05T11:47:41.327Z | 2026-10-05T12:32:13.929Z | 15 | line 964 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string matched 2x, replaced first; line 977 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found; line 2043 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found
+docs/design/ARCHEUS_V2_LATER_UI_LV2_1_GATE.md | RECONSTRUCTED | 7 | 0 | 2026-10-05T13:07:42.446Z | 2026-10-05T13:58:45.686Z | 8 | 
+docs/design/ARCHEUS_V2_LATER_UI_LV2_2_PLAN.md | RECONSTRUCTED | 2 | 0 | 2026-10-05T14:07:18.508Z | 2026-10-07T09:06:55.079Z | 4 | 
+docs/design/ARCHEUS_V2_LV2_X2_REFINEMENT.md | RECONSTRUCTED | 1 | 0 | 2026-10-06T11:40:05.179Z | 2026-10-06T12:41:29.580Z | 2 | 
+docs/design/ARCHEUS_V2_LV2_X3_CORRECTION.md | RECONSTRUCTED | 7 | 0 | 2026-10-06T12:41:03.565Z | 2026-10-07T09:06:57.906Z | 8 | 
+docs/design/ARCHEUS_V2_PRODUCT_UX_REASSESSMENT.md | PARTIAL | 0 | 1 | 2026-10-05T14:24:30.180Z | 2026-10-06T11:40:49.858Z | 2 | line 824 (350dece5-5f18-495a-8ddf-a5b8055db838.jsonl): old_string not found
+docs/design/ARCHEUS_V2_UI_ARCHITECTURE.md | RECONSTRUCTED | 3 | 0 | 2026-10-04T17:33:36.423Z | 2026-10-04T17:42:33.316Z | 4 | 
+docs/design/ARCHEUS_V2_UI_RESEARCH.md | PARTIAL | 5 | 1 | 2026-10-04T16:50:42.686Z | 2026-10-04T17:42:41.347Z | 7 | line 425 (ff41b97d-8f7a-46e1-a4f8-471a2f61b660.jsonl): old_string not found
+docs/design/ARCHEUS_V2_VISUAL_DIRECTION.md | RECONSTRUCTED | 3 | 0 | 2026-10-04T17:15:43.672Z | 2026-10-04T17:42:32.092Z | 4 | 
+prototypes/v2-later/README.md | RECONSTRUCTED | 2 | 0 | 2026-10-05T12:02:30.402Z | 2026-10-05T13:08:29.664Z | 3 | 
+prototypes/v2-later/lab/base.css | RECONSTRUCTED | 1 | 0 | 2026-10-05T11:03:08.521Z | 2026-10-05T12:48:18.117Z | 2 | 
+prototypes/v2-later/lab/fixture.js | RECONSTRUCTED | 1 | 0 | 2026-10-05T11:08:45.978Z | 2026-10-05T12:51:23.257Z | 2 | 
+prototypes/v2-later/lab/harness.html | RECONSTRUCTED | 0 | 0 | 2026-10-05T12:56:57.703Z | 2026-10-05T12:56:57.703Z | 1 | 
+prototypes/v2-later/lab/harness.js | RECONSTRUCTED | 0 | 0 | 2026-10-05T12:58:08.613Z | 2026-10-05T12:58:08.613Z | 1 | 
+prototypes/v2-later/lab/ia.css | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:12:13.903Z | 2026-10-05T11:12:13.903Z | 1 | 
+prototypes/v2-later/lab/ia.html | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:12:17.961Z | 2026-10-05T11:12:17.961Z | 1 | 
+prototypes/v2-later/lab/ia.js | PARTIAL | 10 | 3 | 2026-10-05T11:11:22.830Z | 2026-10-05T12:49:42.965Z | 14 | line 2240 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found; line 2241 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found; line 2242 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found
+prototypes/v2-later/lab/light.html | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:26:33.265Z | 2026-10-05T11:26:33.265Z | 1 | 
+prototypes/v2-later/lab/light.js | PARTIAL | 0 | 1 | 2026-10-05T11:26:21.578Z | 2026-10-05T12:19:49.140Z | 2 | line 1721 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found
+prototypes/v2-later/lab/middle.css | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:04:09.700Z | 2026-10-05T11:04:09.700Z | 1 | 
+prototypes/v2-later/lab/middle.js | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:05:04.547Z | 2026-10-05T11:05:04.547Z | 1 | 
+prototypes/v2-later/lab/motion.html | RECONSTRUCTED | 1 | 0 | 2026-10-05T11:05:59.498Z | 2026-10-05T11:06:07.949Z | 2 | 
+prototypes/v2-later/lab/polish.css | RECONSTRUCTED | 3 | 0 | 2026-10-05T12:18:58.430Z | 2026-10-05T12:26:50.290Z | 4 | 
+prototypes/v2-later/lvx/base.css | RECONSTRUCTED | 0 | 0 | 2026-10-05T14:16:26.747Z | 2026-10-05T14:16:26.747Z | 1 | 
+prototypes/v2-later/lvx/d.css | RECONSTRUCTED | 0 | 0 | 2026-10-06T09:07:22.642Z | 2026-10-06T09:07:22.642Z | 1 | 
+prototypes/v2-later/lvx/d.js | RECONSTRUCTED | 0 | 0 | 2026-10-06T09:05:24.172Z | 2026-10-06T09:05:24.172Z | 1 | 
+prototypes/v2-later/lvx/data.js | RECONSTRUCTED | 6 | 0 | 2026-10-05T14:16:00.824Z | 2026-10-06T09:01:48.054Z | 7 | 
+prototypes/v2-later/lvx/e.css | RECONSTRUCTED | 0 | 0 | 2026-10-06T10:08:09.507Z | 2026-10-06T10:08:09.507Z | 1 | 
+prototypes/v2-later/lvx/e2.css | PARTIAL | 0 | 6 | 2026-10-06T11:16:45.754Z | 2026-10-06T15:50:37.872Z | 7 | line 1150 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 1151 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 1152 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 1153 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 1154 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 1155 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found
+prototypes/v2-later/lvx/e2.js | PARTIAL | 24 | 14 | 2026-10-06T11:12:23.865Z | 2026-10-06T12:54:17.482Z | 39 | line 1298 (350dece5-5f18-495a-8ddf-a5b8055db838.jsonl): old_string not found; line 290 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 294 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 312 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 326 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 329 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 344 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 365 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 366 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 367 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 368 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 381 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 391 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found; line 392 (89680c69-0eed-42eb-a2e4-17af2c185e32.jsonl): old_string not found
+prototypes/v2-later/lvx/e2fx.js | RECONSTRUCTED | 3 | 0 | 2026-10-06T11:03:45.226Z | 2026-10-06T12:54:51.458Z | 4 | 
+prototypes/v2-later/lvx/e2replay.js | RECONSTRUCTED | 0 | 0 | 2026-10-06T12:07:22.476Z | 2026-10-06T12:07:22.476Z | 1 | 
+prototypes/v2-later/lvx/gallery.html | RECONSTRUCTED | 0 | 0 | 2026-10-05T14:24:58.929Z | 2026-10-05T14:24:58.929Z | 1 | 
+prototypes/v2-later/lvx/index.html | RECONSTRUCTED | 0 | 0 | 2026-10-05T14:16:40.766Z | 2026-10-05T14:16:40.766Z | 1 | 
+prototypes/v2-later/lvx/pass.html | RECONSTRUCTED | 0 | 0 | 2026-10-06T12:57:37.572Z | 2026-10-06T12:57:37.572Z | 1 | 
+prototypes/v2-later/lvx/shell.js | RECONSTRUCTED | 0 | 0 | 2026-10-05T14:16:38.477Z | 2026-10-05T14:16:38.477Z | 1 | 
+prototypes/v2-later/results/ld9-voice.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:45:13.419Z | 2026-10-05T11:45:13.419Z | 1 | 
+prototypes/v2-later/results/le1-ia.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:50:54.031Z | 2026-10-05T11:50:54.031Z | 1 | 
+prototypes/v2-later/results/le2-context.md | RECONSTRUCTED | 1 | 0 | 2026-10-05T11:43:10.501Z | 2026-10-05T13:06:03.117Z | 2 | 
+prototypes/v2-later/results/le3-days-light.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:44:15.626Z | 2026-10-05T11:44:15.626Z | 1 | 
+prototypes/v2-later/results/le4-mobile.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:51:14.061Z | 2026-10-05T11:51:14.061Z | 1 | 
+prototypes/v2-later/results/le5-motion.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:58:44.938Z | 2026-10-05T11:58:44.938Z | 1 | 
+prototypes/v2-later/results/le6-budget.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:45:54.601Z | 2026-10-05T11:45:54.601Z | 1 | 
+prototypes/v2-later/results/le7-colour.md | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:46:44.342Z | 2026-10-05T11:46:44.342Z | 1 | 
+prototypes/v2-later/results/le8-design-pass.md | RECONSTRUCTED | 3 | 0 | 2026-10-05T12:24:08.102Z | 2026-10-05T12:31:34.841Z | 4 | 
+prototypes/v2-later/tools/budget.py | RECONSTRUCTED | 3 | 0 | 2026-10-05T11:36:56.882Z | 2026-10-05T12:21:35.933Z | 4 | 
+prototypes/v2-later/tools/colour.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:40:10.164Z | 2026-10-05T11:40:10.164Z | 1 | 
+prototypes/v2-later/tools/compare.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T12:01:46.229Z | 2026-10-05T12:22:03.481Z | 2 | 
+prototypes/v2-later/tools/density_probe.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T13:03:28.955Z | 2026-10-05T13:03:28.955Z | 1 | 
+prototypes/v2-later/tools/dp_diff.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T12:23:25.397Z | 2026-10-05T12:23:25.397Z | 1 | 
+prototypes/v2-later/tools/filmstrip.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:43:32.623Z | 2026-10-05T11:43:32.623Z | 1 | 
+prototypes/v2-later/tools/h_score.py | RECONSTRUCTED | 1 | 0 | 2026-10-05T12:59:11.745Z | 2026-10-05T13:07:52.004Z | 2 | 
+prototypes/v2-later/tools/harness_check.py | RECONSTRUCTED | 1 | 0 | 2026-10-05T13:00:12.325Z | 2026-10-05T13:01:55.292Z | 2 | 
+prototypes/v2-later/tools/ia_probe.py | RECONSTRUCTED | 3 | 0 | 2026-10-05T11:15:21.601Z | 2026-10-05T13:03:04.557Z | 4 | 
+prototypes/v2-later/tools/light_probe.py | PARTIAL | 0 | 1 | 2026-10-05T11:35:45.828Z | 2026-10-05T11:41:00.873Z | 2 | line 739 (32eeef06-d6b4-4fa2-824f-92a2beb8fd65.jsonl): old_string not found
+prototypes/v2-later/tools/lv21_compare.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T13:08:50.568Z | 2026-10-05T13:08:50.568Z | 1 | 
+prototypes/v2-later/tools/lvx_motion.py | RECONSTRUCTED | 0 | 0 | 2026-10-06T11:25:59.956Z | 2026-10-06T11:25:59.956Z | 1 | 
+prototypes/v2-later/tools/lvx_mutate_e2.py | RECONSTRUCTED | 0 | 0 | 2026-10-06T11:32:35.639Z | 2026-10-06T11:32:35.639Z | 1 | 
+prototypes/v2-later/tools/lvx_q17.py | RECONSTRUCTED | 0 | 0 | 2026-10-06T12:21:09.919Z | 2026-10-06T12:21:09.919Z | 1 | 
+prototypes/v2-later/tools/lvx_q18.py | RECONSTRUCTED | 0 | 0 | 2026-10-06T12:14:51.715Z | 2026-10-06T12:14:51.715Z | 1 | 
+prototypes/v2-later/tools/lvx_qt.py | RECONSTRUCTED | 0 | 0 | 2026-10-06T11:27:34.764Z | 2026-10-06T11:27:34.764Z | 1 | 
+prototypes/v2-later/tools/lvx_replay.py | RECONSTRUCTED | 3 | 0 | 2026-10-06T12:03:35.149Z | 2026-10-06T12:35:20.418Z | 4 | 
+prototypes/v2-later/tools/lvx_shots.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T14:17:04.093Z | 2026-10-05T14:17:04.093Z | 1 | 
+prototypes/v2-later/tools/minify.mjs | RECONSTRUCTED | 1 | 0 | 2026-10-05T11:01:07.563Z | 2026-10-05T11:01:16.053Z | 2 | 
+prototypes/v2-later/tools/motion_measure.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:39:37.339Z | 2026-10-05T11:39:37.339Z | 1 | 
+prototypes/v2-later/tools/mutate_gates.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:42:30.968Z | 2026-10-05T11:42:30.968Z | 1 | 
+prototypes/v2-later/tools/pr4_le8.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T12:54:16.385Z | 2026-10-05T12:54:16.385Z | 1 | 
+prototypes/v2-later/tools/serve.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:01:46.064Z | 2026-10-05T11:01:46.064Z | 1 | 
+prototypes/v2-later/tools/serve_lan.py | RECONSTRUCTED | 1 | 0 | 2026-10-05T13:01:41.838Z | 2026-10-06T12:57:38.910Z | 2 | 
+prototypes/v2-later/tools/shoot.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:12:27.552Z | 2026-10-05T11:12:27.552Z | 1 | 
+prototypes/v2-later/tools/smoke.py | RECONSTRUCTED | 0 | 0 | 2026-10-05T11:06:18.684Z | 2026-10-05T11:06:18.684Z | 1 | 

@@ -1,0 +1,74 @@
+/* LE-5 the motion middle: CSS half. NOT product code. Every rule animates transform or
+   opacity only (rulebook §3). Each primitive is fenced so tools/budget.py can price it alone. */
+
+/*<press>*/
+/* press: "got your press". 100 ms in, 160 out; reduced = no scale (the hover tint stays) */
+.p-press { transition: transform 160ms var(--ease); }
+.p-press:active, .p-press.is-pressed { transform: scale(.97); transition-duration: 100ms; }
+html[data-motion='reduced'] .p-press:active, html[data-motion='reduced'] .p-press.is-pressed { transform: none; }
+/*</press>*/
+
+/*<hover>*/
+/* hover: colour only, 120 ms; no wash on every row in the Qt shell (rulebook §34), so it is opt-in per control */
+.p-hover { transition: background-color 120ms linear; }
+.p-hover:hover { background-color: var(--surface-3); }
+/*</hover>*/
+
+/*<reveal>*/
+/* reveal: a menu comes from its trigger. Popover + anchor positioning + @starting-style, no JS.
+   160 in, 120 out; reduced = opacity only */
+.p-menu[popover] {
+  margin: 0; inset: auto; position-area: bottom span-right; position-try-fallbacks: flip-block;
+  margin-top: 4px; padding: 4px; min-width: 180px;
+  background: var(--surface-3); color: var(--text);
+  border: var(--hairline) solid var(--line-strong); border-radius: var(--radius-raised);
+  transform-origin: top left;
+  opacity: 1; transform: none;
+  transition: opacity 160ms var(--ease), transform 160ms var(--ease), display 160ms allow-discrete, overlay 160ms allow-discrete;
+}
+.p-menu[popover]:not(:popover-open) { opacity: 0; transform: translateY(-4px) scale(.96); transition-duration: 120ms; }
+@starting-style { .p-menu[popover]:popover-open { opacity: 0; transform: translateY(-4px) scale(.96); } }
+html[data-motion='reduced'] .p-menu[popover], html[data-motion='reduced'] .p-menu[popover]:not(:popover-open) { transform: none; }
+@starting-style { html[data-motion='reduced'] .p-menu[popover]:popover-open { transform: none; } }
+.p-menu button { display: block; width: 100%; text-align: left; background: transparent; border: 0; }
+/*</reveal>*/
+
+/*<tooltip>*/
+.p-tip {
+  position: fixed; z-index: 30; pointer-events: none; max-width: 36ch;
+  padding: 4px 8px; border-radius: var(--radius-control);
+  background: var(--surface-3); border: var(--hairline) solid var(--line-strong); font: var(--type-caption);
+}
+/*</tooltip>*/
+
+/*<disclose>*/
+.p-disc-clone { position: absolute; left: 0; right: 0; pointer-events: none; }
+/*</disclose>*/
+
+/*<count>*/
+/* count: one glyph height, clipped; tabular figures so the width never changes */
+.p-count { display: inline-grid; overflow: hidden; vertical-align: bottom; font-variant-numeric: tabular-nums; }
+.p-count > span { grid-area: 1 / 1; }
+/*</count>*/
+
+/*<disclose_css>*/
+/* the rejected alternative, kept only to be measured: grid-row interpolation animates LAYOUT
+   every frame (the interpolate-size family, LR §15) */
+.p-dcss { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 240ms var(--ease); }
+.p-dcss.open { grid-template-rows: 1fr; }
+.p-dcss > div { overflow: hidden; }
+/*</disclose_css>*/
+
+/*<confirm>*/
+.p-decided { opacity: .56; transition: opacity 240ms var(--ease); }
+html[data-motion='reduced'] .p-decided { transition: none; }
+/*</confirm>*/
+
+/*<push>*/
+.p-page { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow: auto; }
+/*</push>*/
+
+@media (forced-colors: active) {
+  .p-menu[popover], .p-tip { border-color: CanvasText; }
+  .p-decided { opacity: 1; }
+}

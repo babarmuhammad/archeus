@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LE-3 the day's light</title>
+<link rel="stylesheet" href="/v1styles/tokens.css">
+<link rel="stylesheet" href="/proto/v2-u0/lab/figures.css">
+<link rel="stylesheet" href="base.css">
+<style>
+  body { padding: 32px; max-width: 840px; }
+  @media (max-width: 599px) { body { padding: 16px; } }
+  /*<lanes_css>*/
+  .daylight.lanes { display: block; margin: 16px 0 8px; overflow: visible; }
+  .daylight .tick { stroke: var(--line); stroke-width: 1; }
+  .daylight .hr, .daylight .lane { fill: var(--text-3); font: var(--type-caption); }
+  .daylight .lane { fill: var(--text-2); }
+  .daylight .now { stroke: var(--text-3); stroke-dasharray: 2 3; }
+  .daylight .ml { stroke: var(--text-2); stroke-width: 2; stroke-linecap: round; }
+  .daylight .cp { stroke: var(--text-2); stroke-width: 1.2; }
+  .daylight .e { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .daylight .e.f { fill: currentColor; stroke: none; }
+  .daylight .r-done { stroke: var(--state-done); color: var(--state-done); }
+  .daylight .r-failed, .daylight .r-blocked { stroke: var(--state-blocked); color: var(--state-blocked); }
+  .daylight .r-active, .daylight .r-verifying { stroke: var(--state-active); color: var(--state-active); }
+  .daylight .r-needs_you { color: var(--state-attention); stroke: var(--state-attention); }
+  .daylight .r-reviewing { stroke: var(--state-active); }
+  .daylight .ml.r-done, .daylight .ml.r-failed, .daylight .ml.r-blocked, .daylight .ml.r-needs_you, .daylight .ml.r-reviewing { stroke: var(--text-3); }
+  .daylight .hit { fill: transparent; }
+  .daylight a:focus-visible { outline: none; }
+  .daylight a:focus-visible .hit { stroke: var(--focus); stroke-width: 2; }
+  .daylight a:hover .ml { stroke: var(--text); }
+  @media (forced-colors: active) { .daylight * { stroke: CanvasText !important; fill: none; } .daylight .e.f { fill: CanvasText !important; } .daylight text { fill: CanvasText !important; stroke: none !important; } .daylight a:focus-visible .hit { stroke: Highlight !important; } }
+  /*</lanes_css>*/
+  /*<ledger_css>*/
+  .daylight.ledger section { margin: 14px 0; }
+  .daylight.ledger h3 { margin: 0 0 4px; font: 600 var(--type-body); }
+  .daylight.ledger li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; flex-wrap: wrap; }
+  .daylight.ledger .r-done { color: var(--state-done); } .daylight.ledger .r-failed, .daylight.ledger .r-blocked { color: var(--state-blocked); }
+  .daylight.ledger .r-active, .daylight.ledger .r-verifying, .daylight.ledger .r-reviewing { color: var(--state-active); } .daylight.ledger .r-needs_you { color: var(--state-attention); }
+  .daylight.ledger ul { margin: 0; padding: 0; } .daylight.ledger li { list-style: none; }
+  /*</ledger_css>*/
+  .mirror { margin-top: 8px; color: var(--text-2); }
+</style>
+<script>(function () { const q = new URLSearchParams(location.search), r = document.documentElement; r.dataset.theme = q.get('theme') || 'dark'; if (q.get('contrast') === 'high') r.dataset.contrast = 'high'; if (q.get('text')) r.dataset.text = q.get('text'); })();</script>
+</head>
+<body>
+<main id="host"></main>
+<script src="/proto/v2-u0/lab/figures.js"></script>
+<script src="fixture.js"></script>
+<script src="light.js"></script>
+</body>
+</html>
