@@ -362,3 +362,60 @@ The D0-eligible part of slice D: `metrics_daily` (D2), `archeus doctor` and `cor
   `INSERT OR IGNORE INTO` (`consumers.py` passes it only because the same file also has a plain
   `INSERT INTO`); `tests/v1/unit/test_tool_removal_units.py::test_F10_...` fails at `b01dc32`
   already, on `LS` (T-113's per-tool path field).
+### Slice F as built (2026-10-19, card T-121)
+
+- **Core search (D7 (a)).** `GET /v1/search?q=` (`search_titles` in `archeus/api/routes.py`,
+  `queries.search` in `archeus/core/application/queries.py`, response `SearchResult` in
+  `archeus/api/schemas.py`): missions, projects and knowledge items whose title (a project's
+  name) holds the needle, case ignored, at most 20 of each. The same rows `/v1/missions`,
+  `/v1/projects` and `/v1/knowledge` answer, under the same `observe` scope, cut to id and
+  title (plus a mission's state and version, which the bar's Pause/Resume need): never a body.
+  A needle that is blank after trimming or longer than 200 characters is `400 invalid_request`.
+- **No migration.** The scan is three table reads filtered in Python (`ponytail:` note at the
+  site: an index when titles number in the tens of thousands); 0019 stays unused.
+- **The command bar** (`clients/app/src/surfaces/CommandBar.tsx`) reads `/v1/search` while it is
+  connected and a needle is typed, and uses Core's lists in place of its own; offline it keeps
+  the lists it has already read and sends no search. `palette.ts` is unchanged in logic.
+- **Generated:** `generated.ts`, `archeus/cli/_api.py` and the API reference regenerated;
+  `tools/gen_api_docs.py` gained the `q` query type.
+- **Tests:** `tests/v1/integration/test_p21_search.py` F01 (case, the three kinds, ids and titles
+  only, no body), F02 (blank and long needles), F03 (a device without `observe` gets
+  `403 scope_required`, no token `401`, neither sees a title); `tests/v1/e2e/test_spa_palette.py`
+  now asserts that typing asks Core, that a hit only Core answered is shown, and that offline no
+  search is sent (it used to assert that typing sent nothing, the P19.5 behaviour D7 replaces).
+- **Mutants:** Z50-Z56, each killed by the test it names.
+
+### Slice G as built (2026-10-19, card T-121)
+
+- **OS notifications (D1 (a)).** While the Qt shell's window is hidden to the tray, and only
+  then, a `QTimer` in `claude_sessions/gui_qt.py` calls `Shell.notices` every
+  `NOTICE_EVERY_S` (10) seconds; showing the window stops it. `Shell.notices`
+  (`archeus/cli/gui.py`) reads `/v1/events` after the last head with the shell's own
+  `observe` + `control` credential (item 86's, unchanged) and returns what to say.
+- **What is said.** `gui.notice`: for `approval.requested`, "A <kind> waits for your
+  decision", the kind mapped through a fixed word list (`APPROVAL_WORDS`; an unknown kind is
+  "request"); for `core.estopped`, a fixed sentence. Nothing else of an event is ever said: no
+  mission title, no command, no tool input (§8: "never ... beyond its title"; an approval has
+  no title, so the kind is all it says).
+- **Once, from now.** The head is read when the window hides, so nothing older is said; each
+  event is said once; with Core unreadable the tray is silent and keeps its head. Push stays
+  deferred (V1.x).
+- **No new credential, route or scope.** The shell's credential already held `observe`.
+- **Tests:** `tests/v1/integration/test_gui_shell.py` G01 (a real Core: an approval asked
+  before the head is not said, one asked after is said by kind with neither the mission title
+  nor a token from it, an e-stop is said, nothing twice, Core down is silence) and G02 (a payload
+  carrying a command and an unknown kind is said as "request"). The real-Qt
+  `tests/v1/e2e/test_gui_qt.py` still passes; it does not hide the window, so the timer itself is
+  exercised only through `Shell.notices`.
+- **Mutants:** Z57-Z59, each killed by the test it names.
+
+### Found while building F and G
+
+- `tests/v1/unit/test_mutation_suites_parse.py` listed suites up to `mutate_p20`, so
+  `tools/mutate_p21.py` was never parse-checked, and K3's rename of `guarded` to `refused` in
+  `executions.py` had left Z13 and Z14 anchored on text that no longer existed. Both re-anchored
+  to the same decision (`refused is not None`) and killed; the suite now runs on
+  `tools/mutate_p18.py`'s runner (SPA rebuild for a browser-guarded mutant); Z01-Z22 20/20 and
+  Z13, Z14 killed under it.
+- `tests/v1/unit/test_api_structure.py` pins the route table to the per-phase tables; slice F's
+  `GET /v1/search` (`observe`) is its `P21` table (added after the recovery, 2026-10-19).

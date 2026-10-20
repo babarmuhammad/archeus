@@ -350,6 +350,47 @@ def test_the_attention_count_is_cores(archeus_home):
         tc.stop(kill=True)
 
 
+# ── P21 slice G (p21-design-gate D1): the tray's notifications while hidden ──
+
+SAYABLE = {gui.ESTOPPED} | {'A %s waits for your decision' % w
+                            for w in list(gui.APPROVAL_WORDS.values()) + ['request']}
+
+
+def test_G01_the_tray_says_an_approval_request_and_an_estop_only_after_it_started(archeus_home):
+    deploy = dict(engine.SKELETON_PLAN, tasks=[dict(engine.SKELETON_PLAN['tasks'][0],
+                                                    action_classes=['deploy'])])
+    tc = TempCore(archeus_home, ports=runtime.Ports(brain=ports.FixedPlanBrain(deploy))).start()
+    try:
+        shell = _shell()
+        old = _mission(tc, 'Asked before the window hid')
+        _until(lambda: tc.http('GET', '/v1/missions/' + old).json()['state']
+               == 'APPROVAL_REQUIRED', 'the first mission asks')
+        head, said = shell.notices(None)
+        assert said == [] and head >= 1                   # nothing older is said
+        mid = _mission(tc, 'Needs a person: deploy prod with TOKEN=sk-live-123')
+        _until(lambda: tc.http('GET', '/v1/missions/' + mid).json()['state']
+               == 'APPROVAL_REQUIRED', 'the mission asks')
+        head, said = shell.notices(head)
+        assert said and set(said) <= SAYABLE and said[0].endswith('waits for your decision'), said
+        assert not any('Needs a person' in s or 'sk-live' in s for s in said)
+        assert tc.http('POST', '/v1/estop', body={'idempotency_key': 'g01'}).status == 200
+        head, said = shell.notices(head)
+        assert said == [gui.ESTOPPED]
+        assert shell.notices(head) == (head, [])           # said once
+        tc.stop(kill=True)
+        assert shell.notices(head) == (head, [])           # Core down: silence, same head
+    finally:
+        tc.stop(kill=True)
+
+
+def test_G02_a_notice_names_the_kind_never_the_content():
+    ev = {'type': 'approval.requested', 'payload': {
+        'kind': 'rm -rf / TOKEN=sk-live-123', 'command': 'curl -H "Authorization: x"'}}
+    assert gui.notice(ev) == 'A request waits for your decision'
+    assert gui.notice(dict(ev, payload={'kind': 'action'})) == 'A tool call waits for your decision'
+    assert gui.notice({'type': 'execution.tool_called', 'payload': {'input': 'x'}}) is None
+
+
 # ── what lives outside the page ──
 
 def test_the_profile_lives_in_the_qt_shells_own_entry(archeus_home):

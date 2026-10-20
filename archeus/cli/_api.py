@@ -159,6 +159,10 @@ class endpoints:
         return _path('/v1/knowledge') + _q((('project', project), ('state', state), ('type', type),))
 
     @staticmethod
+    def search_titles(*, q=None):
+        return _path('/v1/search') + _q((('q', q),))
+
+    @staticmethod
     def get_knowledge(id_):
         return _path('/v1/knowledge/{id}', id_)
 

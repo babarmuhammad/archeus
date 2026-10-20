@@ -420,6 +420,16 @@ def list_knowledge(req):
             conn, _one(req.query, 'project'), _one(req.query, 'state'), _one(req.query, 'type'))}
 
 
+def search_titles(req):
+    """P21 slice F (D7): the command bar's Core search, under `observe` like the
+    three lists it reads."""
+    needle = (_one(req.query, 'q') or '').strip()
+    if not 1 <= len(needle) <= 200:
+        raise Invalid('q', 'is 1..200 characters')
+    with req.api.db.read() as conn:
+        return 200, queries.search(conn, needle)
+
+
 def get_knowledge(req):
     with req.api.db.read() as conn:
         return 200, queries.get_knowledge(conn, req.params['id'])
@@ -1034,6 +1044,7 @@ ROUTES = (
           schemas.CONTEXT_PREVIEW, 'ContextPreview'),
     # ── knowledge and own calls (P6) ──
     Route('GET', '/v1/knowledge', list_knowledge, 'observe', None, None, 'KnowledgeList'),
+    Route('GET', '/v1/search', search_titles, 'observe', None, None, 'SearchResult'),
     Route('GET', '/v1/knowledge/{id}', get_knowledge, 'observe', None, None,
           'KnowledgeDetail'),
     Route('POST', '/v1/knowledge/{id}/confirm', confirm_knowledge, 'control', 'required',
@@ -1206,7 +1217,7 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/sessions': ('project', 'mission', 'state'),
          '/v1/events/stream': ('after', 'project', 'type'), '/v1/status': ('project',),
          '/v1/repositories/{id}/inspections': ('limit',),
-         '/v1/knowledge': ('project', 'state', 'type'),
+         '/v1/knowledge': ('project', 'state', 'type'), '/v1/search': ('q',),
          '/v1/route-decisions': ('source', 'purpose'),
          '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',),
          '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission'),

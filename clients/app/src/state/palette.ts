@@ -1,7 +1,7 @@
 // The command palette (rulebook §18; D-12, §46.1): go to a destination or an
 // object, or act on a mission by the same Core verbs as its buttons, each
-// action saying its effect first. Search is over what this client has already
-// read (cache-only — server search is P21's); nothing here decides whether an
+// action saying its effect first. Its lists come from Core's search while
+// connected and from this client's reads offline; nothing here decides whether an
 // action is allowed: the state table says what may be offered, Core judges it.
 import { href, objectHref } from '../nav/destinations.ts';
 import { offers } from './present.ts';

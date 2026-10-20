@@ -145,7 +145,7 @@ def _api_routes(routes):
 
 QUERY_TYPES = {'state': "Mission['state']", 'after': 'number', 'limit': 'number',
                'project': 'string', 'type': 'string', 'source': 'string',
-               'purpose': 'string',
+               'purpose': 'string', 'q': 'string',
                # a parameter named like another route's is typed by its own route
                'mission': 'string', 'stage': 'string', 'days': 'number',
                'from': 'number', 'before': 'number', 'depth': 'number', 'focus': 'string',

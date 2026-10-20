@@ -5,17 +5,18 @@ require them to fail.
     py tools/mutate_p21.py            every mutation
     py tools/mutate_p21.py Z05 Z08    only these
 
-Same runner as tools/mutate_p11.py: each mutation replaces exact snippets
-(each must occur once), runs its tests, and restores the files whatever
-happens; a mutation the tests do not catch ("survived") fails the run. It
-edits sources: run it with nothing else running against the tree.
+The runner is tools/mutate_p18.py's (tools/mutate_p11.py's snippet engine; a
+mutant guarded by a browser test rebuilds the SPA): each mutation replaces exact
+snippets (each must occur once), runs its tests, and restores the files whatever
+happens; a mutation the tests do not catch ("survived") fails the run. It edits
+sources: run it with nothing else running against the tree.
 """
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import mutate_p11  # noqa: E402
+import mutate_p18  # noqa: E402  (its runner)
 
 PR = 'archeus/core/execution/pressure.py'
 EX = 'archeus/core/application/executions.py'
@@ -35,6 +36,13 @@ MT = 'archeus/core/metrics.py'
 DR = 'archeus/core/doctor.py'
 RTM = 'archeus/core/runtime.py'
 D = 'tests/v1/integration/test_p21_metrics_doctor.py'
+QRY = 'archeus/core/application/queries.py'
+ROUTES = 'archeus/api/routes.py'
+CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
+GUI = 'archeus/cli/gui.py'
+SRCH = 'tests/v1/integration/test_p21_search.py::'
+PAL_E2E = 'tests/v1/e2e/test_spa_palette.py::test_the_palette_moves_by_arrows_and_acts_by_cores_verbs'
+SHL = 'tests/v1/integration/test_gui_shell.py::'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -222,9 +230,49 @@ MUTATIONS = [
      "        finding(DOCTOR_HOOK, 'the execution hook %s: %s' % (manager.HOOK, e))",
      "        print('the execution hook %s: %s' % (manager.HOOK, e))")],
      [D + '::test_doctor_reports_a_broken_hook_and_a_newer_schema']),
+    # ── slice F: Core search (p21-design-gate D7) ──
+    ('Z50', 'search minds the case', [(QRY,
+     "    n = needle.casefold()", "    n = needle")],
+     [SRCH + 'test_F01_titles_holding_the_needle_case_ignored']),
+    ('Z51', 'search answers whole rows, bodies included', [(QRY,
+     "        return [{k: v[k] for k in keys} for v in got][:limit]",
+     "        return list(got)[:limit]")],
+     [SRCH + 'test_F01_titles_holding_the_needle_case_ignored']),
+    ('Z52', 'search needs no scope', [(ROUTES,
+     "    Route('GET', '/v1/search', search_titles, 'observe',",
+     "    Route('GET', '/v1/search', search_titles, None,")],
+     [SRCH + 'test_F03_a_client_without_observe_reads_nothing']),
+    ('Z53', 'a blank needle answers everything', [(ROUTES,
+     "    if not 1 <= len(needle) <= 200:", "    if len(needle) > 200:")],
+     [SRCH + 'test_F02_a_blank_or_long_needle_is_400']),
+    ('Z54', 'the command bar never asks Core', [(CMDBAR,
+     "live && needle ? paths.searchTitles({ q: needle }) : null",
+     "live && needle && !live ? paths.searchTitles({ q: needle }) : null")],
+     [PAL_E2E]),
+    ('Z55', "the command bar shows its own lists, not Core's answer", [(CMDBAR,
+     "      projects: found?.projects ?? read",
+     "      projects: read")],
+     [PAL_E2E]),
+    ('Z56', 'offline, the command bar still asks Core', [(CMDBAR,
+     "live && needle ? paths.searchTitles({ q: needle }) : null",
+     "needle ? paths.searchTitles({ q: needle }) : null")],
+     [PAL_E2E]),
+    # ── slice G: the tray's notifications (p21-design-gate D1) ──
+    ('Z57', "a notice repeats the approval's own words", [(GUI,
+     "        return 'A %s waits for your decision' % APPROVAL_WORDS.get(kind, 'request')",
+     "        return 'A %s waits for your decision' % kind")],
+     [SHL + 'test_G02_a_notice_names_the_kind_never_the_content']),
+    ('Z58', 'what happened before the window hid is said', [(GUI,
+     "                return self._own.get(endpoints.events(limit=1))[1], []",
+     "                return 0, []")],
+     [SHL + 'test_G01_the_tray_says_an_approval_request_and_an_estop_only_after_it_started']),
+    ('Z59', 'each event is said again at every read', [(GUI,
+     "        return (events[-1]['seq'] if events else after), said",
+     "        return after, said")],
+     [SHL + 'test_G01_the_tray_says_an_approval_request_and_an_estop_only_after_it_started']),
 ]
 
 
 if __name__ == '__main__':
-    mutate_p11.MUTATIONS = MUTATIONS
-    sys.exit(mutate_p11.run(sys.argv[1:]))
+    mutate_p18.MUTATIONS = MUTATIONS
+    sys.exit(mutate_p18.run(sys.argv[1:]))

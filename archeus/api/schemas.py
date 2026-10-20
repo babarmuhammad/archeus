@@ -404,6 +404,17 @@ TYPES = {
     'KnowledgeList': {'type': 'object', 'properties': {
         'knowledge': {'type': 'array', 'items': {'ref': 'KnowledgeItem'}}},
         'required': ['knowledge']},
+    # P21 slice F (p21-design-gate D7): the command bar's Core search
+    'SearchResult': {'type': 'object', 'properties': {
+        'missions': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'id': {'type': 'string'}, 'title': {'type': 'string'},
+            'state': {'type': 'string'}, 'version': {'type': 'integer'}},
+            'required': ['id', 'title', 'state', 'version']}},
+        'projects': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'id': {'type': 'string'}, 'name': {'type': 'string'}}, 'required': ['id', 'name']}},
+        'knowledge': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'id': {'type': 'string'}, 'title': {'type': 'string'}}, 'required': ['id', 'title']}}},
+        'required': ['missions', 'projects', 'knowledge']},
     'KnowledgeDetail': {'type': 'object', 'open': True, 'properties': {
         'id': {'type': 'string'}, 'state': {'type': 'string'},
         'chain': {'type': 'array', 'items': {'type': 'string'}},
