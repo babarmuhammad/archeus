@@ -248,8 +248,9 @@ class Sandbox:
         import claude_sessions.main as main_mod
         import claude_sessions.claude_md as cmd
         import claude_sessions.system_prompt as spm
+        import claude_sessions.launch as launch_mod     # the launch argv's home (P12)
         fake_exe = lambda: r'C:\fake\claude.exe'
-        for m in (config, main_mod, mcp_mod, ui, cmd, spm):
+        for m in (config, main_mod, mcp_mod, ui, cmd, spm, launch_mod):
             if hasattr(m, 'get_claude_exe'):
                 self.mp.setattr(m, 'get_claude_exe', fake_exe)
 
