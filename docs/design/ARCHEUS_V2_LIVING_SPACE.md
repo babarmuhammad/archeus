@@ -274,3 +274,180 @@ Already binding: improve recovered E; central Archeus star; navigable immersive 
 | LS-Q10 | Carry Q9/DR-9, Q10/DR-10 and Q11 into new V2 scope now? | Hold new contracts; ship existing truthful subset, recorded size bands, no invented duration/agent messaging |
 
 No tests, installation, commit or push forms part of this design delivery.
+
+## Owner decisions 2026-10-20
+
+Authority: updated `O`, “Answers to ARCHEUS_V2_LIVING_SPACE.md section 9” and “Phone and terminal”. This dated addendum takes precedence over conflicting recommendations above; earlier sections remain as the Round 1 record. It changes V2 design only, not V1 commands or production authorisation.
+
+| Question | Binding answer and effect |
+|---|---|
+| LS-Q1 / LS-Q2 | **“Si, lo spazio sostituisce la panoramica (Codex)”**. Opening lands in the space; constellation is structure and thread remains consequence signature. The list remains the equivalent mirror for accessibility, phone and terminal, not the mandatory phone opening. Apply §1's labelled owner-obligation foreground, stable membership and focus lock; retain direct project timeboard access (§5). This resolves the list-first/spatial-first and focus/priority conflicts recorded in §6. |
+| LS-Q3 | **“Respira mentre lavora”**. The core **BREATHES slowly while work is running**, driven only by the real running fact; it pulses on newly recorded events and stays still at rest. Reduced motion keeps a static running cue plus text. Running is neither queued, connected nor inferred from a mission phase; missing/stale facts mean unknown and stop the breath. This explicitly supersedes §1 grammar's static live core light and motion-only-on-change restriction **for the core only**; §2's “Between output batches the picture stays still even while work runs”; §6's proposed “static live mark and event-bounded emission; reject … ambient breathing”; §9 LS-Q3's “Static live mark plus finite recorded-output pulse only”; and §4 “Hard budgets” zero-animation/zero-rAF rule **while confirmed running work exists**. It also amends the earlier V-D1/ADR-0024 no-continuous-motion restriction to this single factual running cue. It does not permit revolving missions, fake heartbeat, bloom, activity speed tied to spend, or decorative loops. |
+| LS-Q4 | **“Prima prototipo leggero (Codex)”**. Bounded native perspective prototype first, explicit zoom, no free flight. WebGL dependency only if prototype evidence shows need; none selected now (§4, LS-P2). |
+| LS-Q5 | **“All'avvio o dopo assenza (Codex)”**. Cold open or return after **≥4 h**, entrance **≤900 ms**, controls usable immediately, never on reconnect. Reduced motion receives final composition immediately (§2). |
+
+Breath proposal: one restrained core-only expansion/contraction over roughly 6 seconds, no opacity blink; exact amplitude/cadence remains a prototype judgement, not another telemetry field. Events retain finite, rate-limited pulses; an event pulse yields to the breath rather than multiplying loops. Pause motion when hidden, backgrounded, scrolling or when the owner disables it. Offer a persistent motion preference: slow running breath can exceed five seconds, so §4/earlier architecture's claim that finite durations remove any need for a pause control no longer applies. Still-at-rest means **nothing confirmed running**, not merely a quiet output stream. Reduced/quiet static running mark carries exactly the same fact; no prediction of progress. LS-P2/LS-P6 must distinguish running animation cost from genuinely idle parking.
+
+**Still open: LS-Q6, LS-Q7, LS-Q8, LS-Q9 and LS-Q10.** Respectively: people/presence contracts; measured budgets/source versus drawn nodes; phone locator and touch-floor reconciliation; old human gates/treatment identity/phase motion; carried Q9–Q11 contracts. Owner has now rejected dense list-first phone direction: LS-Q8 no longer asks whether to preserve that design. Its remaining choice is the concrete live-remote composition/accessibility fallback and measured geometry. This is a proposed resolution, not a claim that LS-Q8 or any old human gate passed.
+
+## LS-7 Phone: the live remote
+
+Owner verdict on recovered phone and concept 05: **“a long list, the space is not visible, too dense / small, not pleasant to look at.”** Replace the phone composition from scratch while retaining E's records, permissions and action semantics. A reduced constellation is the first view, not a miniature desktop dashboard or a list with a decorative star above it.
+
+### Options and recommendation
+
+| Option | What opens | Trade-off |
+|---|---|---|
+| A. **Core and near plane — recommended** | Large Archeus thread-star, current work sentence, two or three labelled work bodies in a bounded spatial composition; one owner obligation projects into a stable foreground zone | Space visible immediately; direct action without a crowded graph. Overflow uses a named count and one-tap full mirror. |
+| B. Core and one mission | Core plus a single selected mission, with explicit Previous/Next work controls | Largest type and simplest one-hand reading, but conceals simultaneous work; total counts remain necessary. |
+| C. Full pocket constellation | Whole project neighbourhood with explicit zoom | Richer navigation, more label collisions and harder one-hand use. Keep as a one-tap optional space inspection, not home. |
+
+Recommend A in either PWA or native shell. No free camera on phone. Core occupies the upper-middle visual field, work/action sentence directly beneath it, obligation foreground just above the thumb controls. Projects remain sparse neutral hull fragments, not coloured planets. Only recorded mission/execution labels appear. Main screen has no scroll dependency for core, current work, highest-priority request or Stop. At large text sizes, prioritise those essentials and allow vertical scroll for supporting detail; never shrink type to preserve artwork.
+
+Proposal at a 390 CSS-pixel reference viewport: headline 30/36, work title 24/30, body 18/26, secondary text 16/22; controls at least 48×48 CSS pixels with separated hit regions and safe-area padding. These deliberately replace §4's X.5 body 13/18, title 14/20 and 40-pixel controls. Actual platform units, contrast and text reflow still need device measurement. No 11-pixel operational text.
+
+### Four screens, one moment of work
+
+All names/counts below are fixtures, not current telemetry. Moment M: Core connected, not stopped; **Fix date test** has one live execution in **Verify**; **Search provenance** has one pending plan decision when it arrives. No queued work in M. A moment before arrival, only the running mission is present.
+
+1. **Remote / running, no owner request.** Header: Archeus and connection. Large core with slow running breath, neutral Archeus hull and blue mission glyph. “1 running” / “Fix date test — Verifying”. “Nothing waiting for you.” Tap mission body or its title opens mission; tap core opens system state. Lower dock: Tell, Places, Stop. Places opens all five E destinations in one tap, with search and the text mirror; these are navigation choices, not a sixth product place. No stacked mission feed.
+2. **Remote / needs you.** Same world coordinates and same running fact. Amber **Search provenance — Review plan** approaches the foreground with origin “Archeus”. Readable “1 needs you · 1 running”. Foreground shows what and why in short recorded words and **Review**; tap Review opens the complete decision. The core remains visible above it. More obligations appear as “2 more need you”, opening the ordered mirror in one tap. New arrivals never replace the request under a finger or move focused controls; update count until focus leaves.
+3. **Decision / deliberate one gesture.** Full-page decision, Back and persistent Stop. Show mission, branch, plan version, exact proposed tasks/targets, recorded reason and consequences, then an explicit **Approve plan** button in thumb reach. For an eligible non-step-up decision whose current V1 route permits direct approval, one tap on that labelled button is the gesture. No swipe across the constellation, hold-to-confirm theatre or invisible gesture. One gesture applies to the **decision after review**, not permission to approve unseen material from home. Supporting evidence can scroll; action never implies unseen plan content is safe.
+4. **Mission opened from remote.** Back returns to same remote selection. “Fix date test / Archeus / fix/date-test”, large “Verifying”, mission circle with linked “Codex — execution” triangle, six phases Understand / Plan / Approve / Run / Verify / Review in readable wrapped text. Below: recorded task if available, latest evidence and Activity/Plan/Why links. No terminal emulator, file/git controls, fabricated tool output, predicted completion or fake percentage. Tell and Stop remain reachable without scrolling.
+
+**Safety contract wins over gesture count.** Read `clients/app/src/surfaces/Attention.tsx` and §3/§5: pending/eligible checks, required scope, current approval identity and `action_hash`, plan binding, existing idempotency key and step-up remain mandatory. A changed/expired/decided-elsewhere request disables the action and rereads; retry cannot create another decision. Display Core's own consequences, never “Approve & run” unless that consequence is actually true. Step-up enters the supported PIN path before final action, or explains why this device cannot decide. Where binding rules require confirmation, show prose confirmation with Cancel default; no gesture bypass. Reject retains its explicit confirmation and “A decided approval cannot be changed.” No approval undo window is offered: V1 has no approval inverse. Do not invent a five-second cancellation toast. A future action gets Undo only if its real inverse and binding window exist. Sources: §5 S-9/S-10/Q18; `docs/design/ARCHEUS_V1_VISUAL_ARCHITECTURE_RECONCILIATION.md` undo rule; existing Attention implementation. Approval receipt says submitted until Core records outcome, then shows recorded result.
+
+Stop is a persistent opaque lower-corner control on home, decision, mission, navigation sheet and error states, clear of OS edge gestures and keyboard; retain existing two-press stop with **3-second** lapse (§5), no swipe-to-stop. When disconnected, label remote Stop unavailable and explain existing local tray/`archeus estop` route; a native app cannot stop an unreachable Core by implication. New Tell while stopped remains rejected. An approval notification only opens the request and revalidates it; never decides.
+
+### What E contributes, what owner replaces
+
+**Reuse:** five destinations and names; ordered waiting/error/running semantic mirror; pushed mission/project/idea/decision pages with Back and no tabs; decision answer area on decision page only; existing Q12 no PIN-on-resume, Q13 stopped behaviour, Q14 prepared Tell plus Send, Q16 approval/emergency-only anonymous push, Q18 visible consequences; same object IDs and scopes. Keep list mirror as a first-class one-tap choice and optional remembered accessibility home.
+
+**Replace:** §3 compact E phone overview; §4 hidden graph below 600 pixels, strict-list default and X.5 density; §6/§9 LS-Q8 recommendation to preserve dense type; LS-P5's “approved density retained”; concept 05 and README's dense-phone recommendation. Five permanent home tabs become a one-tap Places sheet in this proposal; E destinations are preserved. Small locator becomes an actual bounded core/work scene. Counts become a readable sentence, not a compact counters bar. Owner selected live-remote role; exact dock/locator and hit geometry remain LS-Q8 review items. No desktop navigation change follows from this phone proposal.
+
+### Accessibility and motion
+
+Reading/focus order: connection and safety, core summary, needs-you summary and Review, running work, navigation, Stop; dedicated Stop landmark/shortcut available without traversing the graph. Every glyph has a named semantic control; decorative edges hidden from assistive technology. Text mirror exposes all work and the same actions, with stable IDs and reasons. Do not announce every breathing cycle or stream record. Politely announce a new request once; never steal focus. High contrast uses opaque surfaces and glyph/text state; minimum proposed text contrast 4.5:1 and controls 3:1 must be measured. Support 200% text, screen-reader activation, switch access, visible focus and keyboard operation. No action requires dragging or precision tracing. Reduced motion removes entrance/approach/breath/travel and presents static core running cue plus the same foreground priority and text. Paused animation never hides running status. Quiet uses the static cue. Pressed targets stay still.
+
+### Web/PWA versus native — owner choice after concepts
+
+These are implementation options, not claims that either notification/backend contract is built. Both use the same four compositions, paired authority and existing command validation. A plain browser tab differs from an installed PWA.
+
+| Concern | Responsive web / installed PWA | Native app |
+|---|---|---|
+| Notifications | Web Push where supported and authorised. iOS/iPadOS Home Screen web apps support it from 16.4; installation/permission is part of onboarding. Plain iOS tab is not equivalent. | Platform notification integration; separate permission, delivery and backend work. Native does not guarantee timely delivery or authorise lock-screen decisions. |
+| Gestures and feel | Large labelled taps meet this design; browser/OS edge gestures need accommodation. No required custom gesture or haptic dependency. | Platform navigation, gesture and haptic integration can be designed deliberately; still expose labelled controls and accessible alternatives. |
+| Offline | Service worker can cache shell and expressly permitted snapshot. Stale facts show “as of”; no approval/Stop queue or background command replay. | Can persist permitted snapshot in app storage. Same unknown-state and no-offline-command rules; offline app is not offline Core authority. |
+| Pairing and security | Existing paired-device flow over authenticated secure connection; design token/session handling, revocation, expiry and cache clearing explicitly. Never place secrets in URLs or cache credentials/decision payloads as static assets. | Same scopes and step-up, plus platform secure-storage integration to design and review. Native shell is not extra authority or a bypass for pairing/revocation. |
+| Reachability | Owner must be able to reach Core through the existing authorised route; installation does not expose Core publicly. | Same network requirement. No new relay, tunnel or cloud service implied. |
+| Effort | Reuse semantic DOM, tokens and phone routes; add install/offline/push lifecycle and real-device checks. Lower expected initial effort; this is an estimate, not a delivery promise. | Additional client/platform lifecycle, packaging/distribution, secure-storage and notification integration. Higher expected maintenance; no framework chosen. |
+
+**Recommendation:** judge visual direction on platform-neutral concepts, then prototype PWA first unless owner requires native integration that the prototype cannot satisfy. Do not select platform by claiming a native-only look: this core/foreground/tap design works on both. Owner question **LS-Q11 (new, open)**: after seeing the four screens, choose installed PWA first or a dedicated native app, and name the native-only requirement if any. This does not reopen LS-Q1–5.
+
+Platform references, checked 2026-10-20: [WebKit: Web Push for Web Apps on iOS and iPadOS](https://webkit.org/blog/13878/); [MDN: Offline and background operation](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Offline_and_background_operation). Native integration and relative effort above are design assessments, not measured delivery evidence.
+
+## LS-8 Terminal: the constellation in text
+
+Owner direction: **“the same language, in text.”** Use a small text constellation first, then fast ordered lists. Do not substitute an ASCII dashboard full of boxes or a terminal rendering of a phone. All examples are exact plain-text fixtures; production colour is optional and carries no unique information.
+
+### Layout and grammar
+
+80×24: two fixed status lines, about seven lines of sparse constellation, one owner-obligation foreground sentence, then ordered keyboard list and persistent key/help line. No side panes at this size. Reserve bottom command/status rows so Stop never scrolls away. At wide widths (proposed ≥120 columns), keep the same bounded constellation on left and one focused detail/evidence pane on right, separated by whitespace; do not scale a starfield to fill width. Narrower than 80: collapse diagram to named core/project path and keep all records accessible in list. Overflow is counted, never silently omitted.
+
+| Glyph | Meaning | Colour / monochrome |
+|---|---|---|
+| `*` | Archeus core, a crossing-thread anchor | Ivory; explicit `RUNNING 1`, `IDLE` or `UNKNOWN` word carries state |
+| `o` | Mission | Blue only for confirmed running; label names phase/state |
+| `^` | Execution linked to mission | State colour where known; `execution` word distinguishes it |
+| `!` | Needs-owner foreground marker attached to a mission | Amber plus `NEEDS YOU`; attention marker, not a new domain kind |
+| `.` | Loaded knowledge record | Neutral and labelled; no decorative star dust |
+| `/` `\` `-` | Sparse composition tether or recorded relation | Label `member` for membership composition; label actual relation type for edges. Do not infer causal traffic. |
+| `>` | Focused list entry | Text focus marker remains in monochrome; inverse optional |
+
+Project names are neutral text anchors, not additional state glyphs. Terminal projections can adapt the app's kind figures to ASCII but must include kind/state words: never claim ASCII `!` is the canonical approval shape. Suggested/unclear edges are omitted unless loaded and named explicitly in focused detail. No box-drawing borders, animated spinner, true-colour dependency, emoji or ambiguous-width Unicode requirement. Honour terminal theme/contrast and no-colour setting; 16-colour fallback and plain text preserve every fact. Diagram coordinates describe membership/focus, never progress, attention score or inferred people presence.
+
+For normal motion, a slow low-amplitude colour emphasis of the single `*` may mirror the real-running breath without moving text or cursor; terminal palette limitations fall back to static `* RUNNING 1`. Event pulse may briefly bold the affected named row once, only on a recorded new event. Never repaint whole terminal per frame. Reduced motion, quiet, monochrome and noninteractive output are static. This is the faithful text equivalent allowed by owner direction, not a fabricated animation substitute.
+
+### Exact 80-column-friendly overview — moment M
+
+```text
+ARCHEUS  Core connected | Not stopped - accepts new work
+1 needs you | 1 running | 0 queued                  CONCEPT FIXTURE
+
+                         * ARCHEUS  RUNNING 1
+                        / member
+                 Archeus
+                 /     \
+   o Search provenance   o Fix date test - Verifying
+       ! NEEDS YOU           ^ Codex - execution
+
+NEEDS YOU  Search provenance - Review plan
+Why: Plan approval required.  Enter opens what you approve.
+
+> 1 ! Search provenance  Archeus  Review plan
+  2 o Fix date test     Archeus  Verifying
+
+j/k select  Enter open  / find  g places  t Tell  s Stop  ? help
+```
+
+The diagram and first list row refer to the same mission ID; there is only one actionable focus/command target. Tether “member” expresses system composition, not a stored causal edge. Counts are M's exact fixture counts. No extra project or unknown population implied.
+
+### Exact mission frame — same running mission
+
+```text
+ARCHEUS  Core connected | Not stopped - accepts new work
+Overview / Archeus / Fix date test                 CONCEPT FIXTURE
+
+* ARCHEUS - member - Archeus - member - o Fix date test
+                                             \
+                                              ^ Codex - execution
+
+Fix date test   fix/date-test
+Verifying | 1 live execution
+Understand / Plan / Approve / Run / [Verify] / Review
+
+Latest record: Tool result received
+Task: not recorded
+
+> Activity
+  Plan
+  Why / recorded relations
+
+Enter inspect  b Back  / find  g places  t Tell  s Stop  ? help
+```
+
+“Task: not recorded” avoids treating a phase label or tool result as proof of current action. No timestamp manufactured from the untimestamped stream (§7). Six phases stay mission-only.
+
+### Exact decision frame — no silent single-key approval
+
+```text
+ARCHEUS  Core connected | Not stopped - accepts new work
+Overview / Archeus / Search provenance             CONCEPT FIXTURE
+
+* ARCHEUS     o Search provenance  ! NEEDS YOU
+
+Review plan v1 | feat/search
+What: Search recorded sources; show provenance.
+Why: Plan approval required.
+Consequence: use the exact consequence recorded by Core.
+A decided approval cannot be changed. No Undo is available.
+
+Approve selected. Confirm only after reading current plan.
+Confirm this decision? Type y to confirm; any other key cancels.
+
+s Stop remains available outside the confirmation input
+```
+
+This last frame specifies confirmation layout, not an invented Core consequence. Replace placeholder consequence from the actual approval before enabling confirm; missing required consequence is explained and does not become permission to guess. Stop is a global named action outside text-input capture (see keys below); typing `s` at confirmation cancels first and invokes Stop's existing first press, never approves.
+
+### Keys, safety and parity
+
+`j/k` or arrows select; Enter opens only; `/` searches; `g` opens five destinations; `b`/Esc returns; `t` opens Tell, never sends; `?` exposes all keys. Selection does not execute. On a decision page, `A` selects Approve and opens the prose confirm; `R` selects Reject and opens its confirm; request changes appears only where supported. Typed `y` confirms the currently bound decision, any other key cancels (existing terminal contract at `docs/architecture/p17-design-gate.md`, R5). Step-up stays supported-path-only. Do not equate one terminal key with the phone's eligible reviewed button tap; terminal's existing confirmation remains.
+
+`s` invokes the global Stop control from navigation/decision states; repeat within the existing 3-second lapse to confirm, otherwise disarm. In Tell/search/PIN text inputs, literal characters remain text: Esc leaves input, then `s` invokes Stop. Always show that escape route alongside text entry; no undocumented Ctrl-C repurposing. Confirmation is not a freeform input and `s` cancels it before Stop. No command queues while offline. Receipt and errors use Core records, not optimistic success. Final keybindings remain prototype proposals except binding V1 safety/terminal confirmation behaviour.
+
+Desktop, phone and terminal share IDs, project membership, pending/eligible approval identity, phase vocabulary, counts, stale-state rules, reasons and recorded consequences. Core state, highest owner request and current work are visible immediately on each. Opening a node/row goes to the same record, never a different authority. Desktop zoom, phone tap and terminal Enter are equivalent inspection; each surface retains its binding command and confirmation path. Back restores local selection; no global shared camera. Lists remain rapid access and full semantic mirror, not the terminal's sole visual identity.
+
+## Round 2 artifact status
+
+Design additions above are reviewable; no production implementation, tests, installs, commit or push was performed. Requested seven new raster concepts are pending the generated-output-only exception: imagegen documents automatic writes outside the worktree and exposes no destination parameter. Under the current strict write boundary, calling it would violate the owner instruction. Exact per-image prompts/captions are recorded in `v2-concepts/ROUND2_PROMPTS.md`; these are **not generated images** and no missing asset is linked as present. Existing 01–08 remain unchanged; concept 05 is historical and superseded for phone design.

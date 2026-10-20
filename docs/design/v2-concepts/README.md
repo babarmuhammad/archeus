@@ -157,3 +157,25 @@ Edit this image into a rigorous SOFTWARE DATA UI CONCEPT. All content CONCEPT FI
 | 06-shared.png | 1382 × 922 | 939893 |
 | 07-calm.png | 1382 × 922 | 945245 |
 | 08-day-attention.png | 1382 × 922 | 904679 |
+
+## Round 2 — owner direction 2026-10-20
+
+Authoritative additions: [Owner decisions, LS-7 phone and LS-8 terminal](../ARCHEUS_V2_LIVING_SPACE.md). **Concept 05 is superseded:** its compact list, small type and static locator are historical, not the new phone recommendation. Earlier README statements rejecting all breathing are superseded for the core only: slow breath while confirmed work runs; recorded-event pulses; still at rest; static reduced-motion cue. Existing raster files remain unchanged.
+
+Recommended phone: large core/work scene, one foreground owner request, reviewed explicit tap approval under binding safety rules, one-tap Places/mirror and always-reachable Stop. Terminal: character constellation followed by keyboard lists. Platform remains owner choice; the document compares web/PWA and native.
+
+### New concepts — generation pending
+
+The requested imagegen tool automatically saves outside this worktree and offers no destination argument. Strict worktree-only writes prevent invocation until owner permits a generated-output-only exception. **No new raster images have been generated.** [ROUND2_PROMPTS.md](ROUND2_PROMPTS.md) contains complete shared and per-image prompts, captions and intended filenames; it is a prompt artifact, not an image substitute.
+
+| Intended file (not yet present) | Caption | Design |
+|---|---|---|
+| `09-phone-remote-running.webp` | Core and current work visible on open; no request yet | LS-7 option A, before moment M |
+| `10-phone-needs-you.webp` | Owner request comes forward; core stays visible | LS-7 option A, moment M |
+| `11-phone-one-gesture.webp` | One explicit tap after review; binding confirmation/step-up and no-Undo rule retained | LS-7 decision |
+| `12-phone-mission.webp` | Same mission opened from remote, phase and evidence readable | LS-7 mission |
+| `13-terminal-constellation.webp` | Character core and constellation, then fast list | LS-8 overview |
+| `14-terminal-mission.webp` | Mission and execution in text, direct phase/evidence access | LS-8 mission |
+| `15-same-moment.webp` | Desktop, phone and terminal share 1 needs you / 1 running / 0 queued | LS-7/LS-8 parity |
+
+No claimed export dimensions or file sizes until assets exist. Required final format PNG/WebP, each under 1,000,000 bytes. Exact terminal mock-ups already exist in architecture as fenced text; these remain canonical if generated terminal lettering diverges. No tests, installs, commits or pushes were run for Round 2.
