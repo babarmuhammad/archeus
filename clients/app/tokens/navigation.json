@@ -85,6 +85,7 @@
       "evidence",
       "why",
       "timeline",
+      "trace",
       "relations"
     ],
     "execution": [
@@ -156,6 +157,10 @@
     "timeline": {
       "label": "Timeline",
       "key": "t"
+    },
+    "trace": {
+      "label": "Trace",
+      "key": "c"
     },
     "relations": {
       "label": "Relations",

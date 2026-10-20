@@ -303,6 +303,11 @@ P21 = {
     ('GET', '/v1/search', 'observe', None),
 }
 
+#: P21 slice C (p21-design-gate D3, D14): a mission's trace, a read like its timeline
+P21 = {
+    ('GET', '/v1/missions/{id}/trace', 'observe', None),
+}
+
 
 def test_the_route_table_is_exactly_the_p35b_to_p18_tables():
     """L2, and P9's E4 / P10's / P11's / P12's / P13's / P14's / P15's boundary:

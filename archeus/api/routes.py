@@ -610,6 +610,14 @@ def mission_timeline(req):
                                        limit)
 
 
+def mission_trace(req):
+    """P21 slice C (p21-design-gate D3, D14): the mission's events, decisions
+    and per-execution lanes, read together."""
+    from ..core.application import trace
+    with req.api.db.read() as conn:
+        return 200, trace.trace(conn, req.params['id'], req.api.resources.registry)
+
+
 def service_worker(req):
     return req.api.static.root_file('sw.js')
 
@@ -1161,6 +1169,8 @@ ROUTES = (
     Route('GET', '/v1/attention', attention_items, 'observe', None, None, 'Attention'),
     Route('GET', '/v1/missions/{id}/timeline', mission_timeline, 'observe', None, None,
           'Timeline'),
+    # P21 slice C (p21-design-gate D3, D14): the mission's trace
+    Route('GET', '/v1/missions/{id}/trace', mission_trace, 'observe', None, None, 'Trace'),
     Route('GET', '/v1/automations', list_automations, 'observe', None, None, 'AutomationList'),
     Route('GET', '/v1/automations/{id}', get_automation, 'observe', None, None, 'Automation'),
     Route('GET', '/v1/automations/{id}/simulate', simulate_automation, 'observe', None, None,

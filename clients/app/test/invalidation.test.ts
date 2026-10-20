@@ -29,6 +29,12 @@ test('execution progress re-reads only that execution', () => {
   assert.ok(!stale('/v1/executions/exe_2/stream'));
 });
 
+test('every kind the trace reads makes an open trace stale (P21 C)', () => {
+  for (const k of ['mission', 'plan', 'task', 'execution', 'checkpoint', 'approval', 'verification', 'review', 'route_decision', 'policy_decision'])
+    assert.ok(staleBy(frame(k, 'x_1'))('/v1/missions/msn_1/trace'), k);
+  assert.ok(!staleBy(frame('device', 'dvc_1'))('/v1/missions/msn_1/trace'));
+});
+
 test('an approval frame re-reads approvals, attention and missions', () => {
   const stale = staleBy(frame('approval', 'apr_1'));
   assert.ok(stale('/v1/approvals/apr_1') && stale('/v1/attention') && stale('/v1/missions/msn_9'));

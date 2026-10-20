@@ -1,5 +1,5 @@
 // The mission inspector (p16-design-gate §6.1–§6.7): Outcome · Plan · Now ·
-// Evidence · Why · Timeline · Relations. Every tab reads its own rows; the
+// Evidence · Why · Timeline · Trace · Relations. Every tab reads its own rows; the
 // header's actions are offered only from states whose table has the trigger,
 // and Core judges every press.
 import { useEffect, useId, useState, type ReactNode } from 'react';
@@ -20,6 +20,8 @@ import {
 
   type Task,
   type Timeline as TimelineT,
+  type Trace as TraceT,
+  type TraceExecution,
   type VerificationList,
 } from '../api/generated';
 import { send } from '../data/core';
@@ -58,6 +60,7 @@ export function MissionInspector({ id, tab, onTab }: { id: string; tab?: string;
             {current === 'evidence' && <Evidence id={id} m={mission} />}
             {current === 'why' && <Why m={mission} plan={plan.data} />}
             {current === 'timeline' && <TimelineTab id={id} />}
+            {current === 'trace' && <TraceTab id={id} />}
             {current === 'relations' && <Relations of={{ kind: 'mission', id: mission.id }} />}
           </div>
         </div>
@@ -815,6 +818,107 @@ function MoreButton({ id, pages, onMore }: { id: string; pages: number[]; onMore
       Load older events
     </button>
   ) : null;
+}
+
+// ── trace (P21 slice C; p21-design-gate D3, D14) ──
+
+function TraceTab({ id }: { id: string }) {
+  const t = useRead<TraceT>(paths.missionTrace(id));
+  return (
+    <Loadable snap={t} what="the trace">
+      {(x) => (
+        <>
+          <Replay events={x.events} truncated={x.truncated} />
+          {x.executions_truncated ? <p className="hint">Only the most recent attempts are shown.</p> : null}
+          {x.executions.map((e) => (
+            <ExecutionLanes key={e.id} e={e} />
+          ))}
+          <p className="hint">
+            {x.policy_decisions.length} policy {x.policy_decisions.length === 1 ? 'decision' : 'decisions'},{' '}
+            {x.route_decisions.length} route {x.route_decisions.length === 1 ? 'decision' : 'decisions'}: the Why tab explains them.
+          </p>
+        </>
+      )}
+    </Loadable>
+  );
+}
+
+/** Two clocks (ADR-0030 §4): an event's own time is what is shown; playback
+ * waits the gap between two events at the chosen speed, clamped so a pause of
+ * hours neither stalls nor a burst blurs. */
+function Replay({ events, truncated }: { events: TraceT['events']; truncated: boolean }) {
+  // null: not replaying, so the list follows the live end as events arrive
+  const [pos, setPos] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(10);
+  const at = pos ?? events.length - 1;
+  useEffect(() => {
+    if (!playing) return;
+    if (at >= events.length - 1) {
+      setPlaying(false);
+      setPos(null);
+      return;
+    }
+    const gap = Date.parse(events[at + 1].at) - Date.parse(events[at].at);
+    const timer = setTimeout(() => setPos(at + 1), Math.min(1500, Math.max(50, gap / speed)));
+    return () => clearTimeout(timer);
+  }, [playing, at, speed, events]);
+  if (!events.length) return <Empty>No events yet.</Empty>;
+  const play = () => {
+    if (pos === null) setPos(0);
+    setPlaying(!playing);
+  };
+  return (
+    <Section
+      title={`Events · ${events.length}`}
+      actions={
+        <>
+          <button type="button" className="btn secondary" onClick={play}>{playing ? 'Pause replay' : 'Replay'}</button>{' '}
+          <label>
+            Speed{' '}
+            <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
+              {[1, 10, 100].map((n) => <option key={n} value={n}>{n}×</option>)}
+            </select>
+          </label>
+        </>
+      }
+    >
+      {truncated ? <p className="hint">Only the most recent events are shown.</p> : null}
+      <p className="hint" aria-live="polite">At {new Date(events[Math.max(at, 0)].at).toLocaleString()}</p>
+      <ol className="timeline">
+        {events.slice(0, at + 1).map((e, i) => (
+          <li key={e.seq} aria-current={i === at ? 'step' : undefined}>
+            <span className="type">{e.type}</span> <a href={objectHref(e.subject.kind, e.subject.id)}>{e.subject.kind}</a>
+            {e.cause_chain.length ? <span className="hint"> · caused by {e.cause_chain.length} earlier event(s)</span> : null}
+          </li>
+        ))}
+      </ol>
+    </Section>
+  );
+}
+
+function ExecutionLanes({ e }: { e: TraceExecution }) {
+  return (
+    <Section title={`Attempt ${e.attempt}`} actions={<><StateBadge machine="execution" state={e.state} /> <a href={objectHref('execution', e.id)}>Open</a></>}>
+      {!e.available ? <Empty>No output was read for this attempt.</Empty> : null}
+      {e.lanes.map((l) => (
+        <div key={l.lane} className="lane">
+          <h3>{l.lane === 'main' ? 'Main conversation' : l.from === null ? 'A subagent' : `Subagent of step ${l.from + 1}`}</h3>
+          <ol className="timeline">
+            {l.steps.map((s) => (
+              <li key={s.i}>
+                <span className="mono seq">{s.i + 1}</span>{' '}
+                {s.type === 'assistant' ? <Prose text={s.text ?? ''} /> : null}
+                {s.type === 'tool' ? <><span className="type">{s.name}</span> {s.result === undefined ? <span className="hint">no result yet</span> : <span className="hint">→ step {s.result + 1}</span>}</> : null}
+                {s.type === 'tool_result' ? <span className={s.is_error ? 'bad' : 'hint'}>{s.is_error ? 'failed' : 'returned'}{s.call === undefined ? '' : ` (step ${s.call + 1})`}</span> : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+      {e.truncated ? <p className="hint">Only the latest output is shown.</p> : null}
+    </Section>
+  );
 }
 
 // ── execution detail (§6.6) ──

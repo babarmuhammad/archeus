@@ -104,8 +104,8 @@ MUTATIONS = [
      "'label': 'Attend',")],
      [DESIGN, BND + '::test_the_generated_tables_are_the_json_the_spa_reads']),
     ('M17', 'an inspector tab missing for a kind', [(TAB,
-     "INSPECTOR_TABS = {'mission': ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline', 'relations'],",
-     "INSPECTOR_TABS = {'mission': ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline'],")],
+     "INSPECTOR_TABS = {'mission': ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline', 'trace', 'relations'],",
+     "INSPECTOR_TABS = {'mission': ['outcome', 'plan', 'now', 'evidence', 'why', 'timeline', 'trace'],")],
      [BND + '::test_the_generated_tables_are_the_json_the_spa_reads']),
     ('M18', 'an expired cursor reconnected without a resync', [(CLI,
      "                if e.status == 410:\n                    last = None\n"

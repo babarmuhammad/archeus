@@ -317,7 +317,7 @@ export interface Digest {
 
 export interface DigestGroup {
   ref: Subject;
-  headline: 'needs_you' | 'drift_found' | 'failed' | 'completed' | 'drift_cleared' | 'progressed';
+  headline: 'needs_you' | 'drift_found' | 'failed' | 'completed' | 'drift_cleared' | 'progressed' | 'new_messages';
   count: number;
   first_seq: number;
   last_seq: number;
@@ -1085,6 +1085,45 @@ export interface Timeline {
   next_before: number | null;
 }
 
+export interface Trace {
+  mission_id: string;
+  events: Event[];
+  truncated: boolean;
+  policy_decisions: PolicyDecision[];
+  route_decisions: RouteDecision[];
+  executions: TraceExecution[];
+  executions_truncated: boolean;
+}
+
+export interface TraceExecution {
+  id: string;
+  task_id: string | null;
+  state: string;
+  attempt: number;
+  route_decision_id: string | null;
+  policy_decision_id: string | null;
+  checkpoints: string[];
+  available: boolean;
+  truncated: boolean;
+  lanes: TraceLane[];
+}
+
+export interface TraceLane {
+  lane: string;
+  from: number | null;
+  steps: TraceStep[];
+}
+
+export interface TraceStep {
+  i: number;
+  type: 'assistant' | 'tool' | 'tool_result';
+  text?: string;
+  name?: string | null;
+  is_error?: boolean;
+  result?: number;
+  call?: number;
+}
+
 export interface Transition {
   from: string;
   to: string;
@@ -1560,6 +1599,7 @@ export const paths = {
   listReviews: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/reviews',
   attentionItems: () => '/v1/attention',
   missionTimeline: (id: string, query: { before?: number; limit?: number } = {}) => '/v1/missions/' + encodeURIComponent(id) + '/timeline' + qs(query),
+  missionTrace: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/trace',
   listAutomations: () => '/v1/automations',
   getAutomation: (id: string) => '/v1/automations/' + encodeURIComponent(id),
   simulateAutomation: (id: string, query: { days?: number } = {}) => '/v1/automations/' + encodeURIComponent(id) + '/simulate' + qs(query),
@@ -1758,6 +1798,8 @@ export const api = {
     send<Attention>('GET', paths.attentionItems()),
   missionTimeline: (send: Send, id: string, query: { before?: number; limit?: number } = {}) =>
     send<Timeline>('GET', paths.missionTimeline(id, query)),
+  missionTrace: (send: Send, id: string) =>
+    send<Trace>('GET', paths.missionTrace(id)),
   listAutomations: (send: Send) =>
     send<AutomationList>('GET', paths.listAutomations()),
   getAutomation: (send: Send, id: string) =>

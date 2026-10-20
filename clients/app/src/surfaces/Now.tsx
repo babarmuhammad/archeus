@@ -52,7 +52,11 @@ const HEADLINE: Record<string, string> = {
   completed: 'completed',
   drift_cleared: 'drift cleared',
   progressed: 'progressed',
+  new_messages: 'new messages',
 };
+
+/** R13-03: a conversation's messages are one row that counts them. */
+const newMessages = (n: number) => `${n} new ${n === 1 ? 'message' : 'messages'}`;
 
 export function NowView() {
   const missions = useRead<MissionList>(paths.listMissions());
@@ -230,11 +234,13 @@ export function OfflineNow({ kept }: { kept: Kept[] }) {
                 const title = titleOf(x.ref);
                 return (
                   <li key={x.ref.kind + x.ref.id} data-ref={`${x.ref.kind}:${x.ref.id}`}>
+                    {x.headline === 'new_messages' ? newMessages(x.count) : (<>
                     <span className="ref">
                       <span className="ref-kind">{x.ref.kind.replace('_', ' ')}</span>
                       {title ? ` ${x.ref.kind === 'mission' ? '' : 'for '}${title}` : null}
                     </span>{' '}
                     · {HEADLINE[x.headline] ?? x.headline} · {x.count} {x.count === 1 ? 'event' : 'events'}
+                    </>)}
                   </li>
                 );
               })}
@@ -278,10 +284,12 @@ function DigestSection() {
             <ul className="digest">
               {g.groups.map((x) => (
                 <li key={x.ref.kind + x.ref.id} data-headline={x.headline} data-ref={`${x.ref.kind}:${x.ref.id}`} className="thread-rule">
+                  {x.headline === 'new_messages' ? <a href="#/now">{newMessages(x.count)}</a> : (<>
                   <a href={objectHref(x.ref.kind, x.ref.id)}>
                     <RefLabel kind={x.ref.kind} id={x.ref.id} />
                   </a>{' '}
                   {HEADLINE[x.headline] ?? x.headline} · {x.count} {x.count === 1 ? 'event' : 'events'}
+                  </>)}
                 </li>
               ))}
             </ul>

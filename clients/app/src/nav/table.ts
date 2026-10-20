@@ -101,6 +101,7 @@ export const INSPECTOR_TABS: Record<string, string[]> = {
     "evidence",
     "why",
     "timeline",
+    "trace",
     "relations"
   ],
   "execution": [
@@ -156,6 +157,7 @@ export const TAB_LABEL: Record<string, string> = {
   "evidence": "Evidence",
   "why": "Why",
   "timeline": "Timeline",
+  "trace": "Trace",
   "relations": "Relations",
   "output": "Output",
   "checkpoints": "Checkpoints",
