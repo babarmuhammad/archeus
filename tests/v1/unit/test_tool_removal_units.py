@@ -175,7 +175,8 @@ def test_F10_every_action_class_and_every_canonicaliser_tool_has_a_mapping():
     for tool in named:
         assert tool in cls, tool                 # LS and MultiEdit too: ADR-0052 §2 as written
         inp = {'command': 'make build'} if tool == 'Bash' else {'url': 'https://example.test/'} \
-            if tool == 'WebFetch' else {'query': 'q'} if tool == 'WebSearch' else {'file_path': 'a'}
+            if tool == 'WebFetch' else {'query': 'q'} if tool == 'WebSearch' \
+            else {canonical.PATH_FIELD[tool]: 'a'}
         actions, unclassified = canonical.canonicalise(tool, inp, {'workdir': '.', 'branch': None,
                                                                    'remotes': {}})
         assert not unclassified and {a.action_class for a in actions} == {cls[tool]}, tool
