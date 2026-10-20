@@ -46,6 +46,10 @@ GIT_DIR_MAX = 220 if os.name == 'nt' else None
 #: path is capped instead
 STORE_TAIL = 70
 STORE_MAX = 259 - STORE_TAIL if os.name == 'nt' else None
+#: the longest ref a fetch may write into a store: its incoming ref and that ref's
+#: lock (os.sep + refs/archeus/incoming/<rest>.lock) stay within STORE_TAIL. Core's
+#: longest, refs/archeus/exec/<execution id>/import, is exactly this long
+REF_MAX = STORE_TAIL - len(os.sep + 'incoming/' + '.lock')
 
 
 class PathTooLong(OSError):
@@ -795,6 +799,9 @@ class LocalNode:
                 and '..' not in rev_name + ref and re.fullmatch(r'[0-9a-f]{40}', expect)
                 and os.path.isabs(root)):
             raise StoreError('not a fetch Core may make: %r' % ((root, rev_name, expect, ref),))
+        if len(ref) > REF_MAX:              # before the store is opened or anything written
+            raise StoreError('the ref %s is %d characters long; a store takes at most %d'
+                             % (ref, len(ref), REF_MAX))
         _source(root, workdirs)
         store = LocalNode.store_open(project_id, workdirs=workdirs)
         incoming = 'refs/archeus/incoming/' + ref[len('refs/archeus/'):]

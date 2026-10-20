@@ -785,10 +785,20 @@ def test_a_store_too_long_for_git_is_refused_before_anything_is_made(world, monk
     store = LocalNode.store_open(pid, workdirs=())
     assert len(store) + local.STORE_TAIL == 259
     monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
-    ref = 'refs/archeus/exec/%s/seed' % eid       # its lock is the deepest path written
+    # Core's longest ref: its incoming ref's lock is exactly the deepest path a store takes
+    ref = local._import_ref(eid)
+    deepest = os.path.join(store, 'refs', 'archeus', 'incoming',
+                           *ref[len('refs/archeus/'):].split('/')) + '.lock'
+    assert len(ref) == local.REF_MAX and len(deepest) == 259
     assert LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c2, ref,
                                  workdirs=()) == world.c2
     assert LocalNode.store_read(pid, ['rev-parse', ref], workdirs=()).strip() == world.c2
+    # a longer destination ref is refused before its store is opened or made
+    other = ids.new_id('project')
+    with pytest.raises(StoreError, match='a store takes at most %d' % local.REF_MAX):
+        LocalNode.store_fetch(other, str(world.user), 'refs/heads/main', world.c2, ref + 'x',
+                              workdirs=())
+    assert not os.path.exists(paths.repo_store(other))
 
 
 def test_a_seed_holds_exactly_the_tree_and_runs_nothing_the_world_configures(world, monkeypatch):
