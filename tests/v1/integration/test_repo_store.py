@@ -766,6 +766,31 @@ def test_a_published_seed_ref_is_never_moved_by_another_fetch(world, monkeypatch
     assert world.fired() == []
 
 
+@pytest.mark.skipif(local.STORE_MAX is None, reason='MAX_PATH is a Windows limit')
+def test_a_store_too_long_for_git_is_refused_before_anything_is_made(world, monkeypatch,
+                                                                     tmp_path):
+    """T-115d: Git for Windows writes no object or ref past MAX_PATH, even with
+    core.longpaths (measured: mktree printed the id and wrote nothing), and a
+    store's deepest path sits STORE_TAIL characters below it. A home long enough
+    to push that past MAX_PATH is refused up front with what to change, and
+    nothing is made; one character shorter still opens."""
+    pid, eid = ids.new_id('project'), ids.new_id('execution')
+    pad = local.STORE_MAX - len(os.path.join(str(tmp_path), 'repos', pid + '.git')) - 1
+    fits, long = tmp_path / ('h' * pad), tmp_path / ('h' * (pad + 1))
+    monkeypatch.setenv('ARCHEUS_HOME', str(long))
+    with pytest.raises(StoreError, match='Set ARCHEUS_HOME to a shorter folder'):
+        LocalNode.store_open(pid, workdirs=())
+    assert not long.exists()
+    monkeypatch.setenv('ARCHEUS_HOME', str(fits))
+    store = LocalNode.store_open(pid, workdirs=())
+    assert len(store) + local.STORE_TAIL == 259
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    ref = 'refs/archeus/exec/%s/seed' % eid       # its lock is the deepest path written
+    assert LocalNode.store_fetch(pid, str(world.user), 'refs/heads/main', world.c2, ref,
+                                 workdirs=()) == world.c2
+    assert LocalNode.store_read(pid, ['rev-parse', ref], workdirs=()).strip() == world.c2
+
+
 def test_a_seed_holds_exactly_the_tree_and_runs_nothing_the_world_configures(world, monkeypatch):
     proj, head, files = _project(world)
     _hostile(monkeypatch, world)

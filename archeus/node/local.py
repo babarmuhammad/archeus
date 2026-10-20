@@ -40,6 +40,12 @@ _WORKTREE = ('-c', 'core.longpaths=true', 'worktree')
 #: ("'$GIT_DIR' too big"), and core.longpaths does not lift it (measured, T-077);
 #: no such cap elsewhere
 GIT_DIR_MAX = 220 if os.name == 'nt' else None
+#: the deepest path a store holds, below the store itself: refs/archeus/incoming/
+#: exec/<execution id>/import.lock (70). Git for Windows writes no object or ref
+#: past MAX_PATH even with core.longpaths (measured, T-115d), so the store's own
+#: path is capped instead
+STORE_TAIL = 70
+STORE_MAX = 259 - STORE_TAIL if os.name == 'nt' else None
 
 
 class PathTooLong(OSError):
@@ -717,6 +723,10 @@ class LocalNode:
         """The project's store, created and sealed the first time and checked
         against its pin record every time (T-046 C1 steps 1-6). Returns its path."""
         store = repo_store(project_id)
+        if STORE_MAX is not None and len(store) > STORE_MAX:
+            raise StoreError('the store %s is %d characters long; Git for Windows writes nothing '
+                             'past MAX_PATH below it once it passes %d. Set ARCHEUS_HOME to a '
+                             'shorter folder' % (store, len(store), STORE_MAX))
         _outside_executions([store], workdirs)
         pin = _pin_files(workdirs)
         version = _git_version(workdirs)
