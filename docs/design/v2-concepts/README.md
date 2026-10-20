@@ -164,18 +164,27 @@ Authoritative additions: [Owner decisions, LS-7 phone and LS-8 terminal](../ARCH
 
 Recommended phone: large core/work scene, one foreground owner request, reviewed explicit tap approval under binding safety rules, one-tap Places/mirror and always-reachable Stop. Terminal: character constellation followed by keyboard lists. Platform remains owner choice; the document compares web/PWA and native.
 
-### New concepts — generation pending
+### Round 2b generated concepts — 2026-10-20
 
-The requested imagegen tool automatically saves outside this worktree and offers no destination argument. Strict worktree-only writes prevent invocation until owner permits a generated-output-only exception. **No new raster images have been generated.** [ROUND2_PROMPTS.md](ROUND2_PROMPTS.md) contains complete shared and per-image prompts, captions and intended filenames; it is a prompt artifact, not an image substitute.
+Seven concepts generated with built-in imagegen under the explicitly granted generated-output exception, then copied into this worktree. Originals 01–08 remain unchanged. Full generation prompts: shared prompt plus the corresponding numbered individual prompt in [ROUND2_PROMPTS.md](ROUND2_PROMPTS.md). PNG exports replace the intended WebP extension; prompt content is unchanged.
 
-| Intended file (not yet present) | Caption | Design |
-|---|---|---|
-| `09-phone-remote-running.webp` | Core and current work visible on open; no request yet | LS-7 option A, before moment M |
-| `10-phone-needs-you.webp` | Owner request comes forward; core stays visible | LS-7 option A, moment M |
-| `11-phone-one-gesture.webp` | One explicit tap after review; binding confirmation/step-up and no-Undo rule retained | LS-7 decision |
-| `12-phone-mission.webp` | Same mission opened from remote, phase and evidence readable | LS-7 mission |
-| `13-terminal-constellation.webp` | Character core and constellation, then fast list | LS-8 overview |
-| `14-terminal-mission.webp` | Mission and execution in text, direct phase/evidence access | LS-8 mission |
-| `15-same-moment.webp` | Desktop, phone and terminal share 1 needs you / 1 running / 0 queued | LS-7/LS-8 parity |
+| File | Caption | Pixels | Bytes |
+|---|---|---|---:|
+| [09-phone-remote-running.png](09-phone-remote-running.png) | **Core and current work visible on open. No request yet; home is a space, with one-hand controls.** LS-7 option A, moment before M. | 853 × 1844 | 758194 |
+| [10-phone-needs-you.png](10-phone-needs-you.png) | **A real owner obligation comes forward; core and running mission remain in view.** LS-7 option A, moment M. | 853 × 1844 | 893514 |
+| [11-phone-one-gesture.png](11-phone-one-gesture.png) | **One explicit tap after review for an eligible non-step-up decision. No fabricated Undo; required confirmation still wins.** LS-7 decision screen. Outcome and exact button copy must bind to actual approval in implementation. | 853 × 1844 | 859314 |
+| [12-phone-mission.png](12-phone-mission.png) | **One tap from remote opens the same mission, with readable phase and evidence.** LS-7 mission screen, moment M. | 853 × 1844 | 838886 |
+| [13-terminal-constellation.png](13-terminal-constellation.png) | **The same moment as a text constellation, then a fast keyboard list.** LS-8 overview, moment M. Canonical exact text is in architecture; generated art is illustrative. | 2172 × 724 | 733162 |
+| [14-terminal-mission.png](14-terminal-mission.png) | **Text core, project, mission and execution retain identity; evidence and phase remain direct.** LS-8 mission, moment M. | 1608 × 978 | 810536 |
+| [15-same-moment.png](15-same-moment.png) | **One recorded moment, three surfaces: 1 needs you, 1 running, 0 queued. Inspection differs; authority stays the same.** LS-7/LS-8 parity, moment M. | 1774 × 887 | 922717 |
 
-No claimed export dimensions or file sizes until assets exist. Required final format PNG/WebP, each under 1,000,000 bytes. Exact terminal mock-ups already exist in architecture as fenced text; these remain canonical if generated terminal lettering diverges. No tests, installs, commits or pushes were run for Round 2.
+Each final was visually inspected. All exports retain generated dimensions, reduce RGB precision from 8 to 7 bits/channel, and stay below 1,000,000 bytes. No tests, installs, commits or pushes were run. Stills do not certify animation, accessibility, touch geometry, approval behavior or device performance. Terminal architecture remains canonical.
+
+#### Corrective imagegen edits
+
+- **10:** Restored “Not stopped - accepts new work” and “CONCEPT FIXTURE”; neutralized connected indicator; replaced excess filled shards with one sparse project boundary. Preserved request copy and large type.
+- **11:** Removed invented Search sources / Show provenance / Provide access / Confirm scope graph, restored fixture label, changed approval fill to ivory. Preserved No Undo, separate Stop, explicit Approve plan and outside binding-step annotation.
+- **12:** Removed invented Owner and Analyst nodes; restored Archeus membership, large Verifying heading and fixture label; wrapped six phases into two readable rows; neutralized Tell/Stop controls. Preserved Tool result received and Task: not recorded.
+- **15:** Restored surface labels, terminal connection/safety/counts and keyboard actions, phone Places and explicit Review buttons on desktop/phone. Kept matching fixture mission states.
+
+Generated concepts remain illustrative: 09 adds punctuation/case to short copy and leaves project membership implicit in its hull; terminal 14 colors safety copy blue; board 15 duplicates the textual core label within its terminal diagram. These are visual artifacts, not additional state or relation contracts.
