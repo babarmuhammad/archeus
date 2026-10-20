@@ -477,6 +477,7 @@ RULES = {'mission': ['/v1/world/graph**', '/v1/missions**', '/v1/attention', '/v
                '/v1/missions/*/timeline**',
                '/v1/digest'],
  'checkpoint': ['/v1/executions/*/checkpoints'],
+ 'artifact_record': ['/v1/executions/*'],
  'approval': ['/v1/world/graph**', '/v1/approvals**', '/v1/attention', '/v1/missions**'],
  'verification': ['/v1/world/graph**',
                   '/v1/verifications/{id}',
