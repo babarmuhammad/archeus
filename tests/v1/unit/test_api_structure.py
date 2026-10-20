@@ -298,13 +298,10 @@ P20 = {
     ('POST', '/v1/opt-ins', 'admin', 'required'),
 }
 #: P21 slice F (p21-design-gate D7): the command bar's search, a read under the
-#: same `observe` as the three lists it cuts
+#: same `observe` as the three lists it cuts; slice C (D3, D14): a mission's trace,
+#: a read like its timeline
 P21 = {
     ('GET', '/v1/search', 'observe', None),
-}
-
-#: P21 slice C (p21-design-gate D3, D14): a mission's trace, a read like its timeline
-P21 = {
     ('GET', '/v1/missions/{id}/trace', 'observe', None),
 }
 
