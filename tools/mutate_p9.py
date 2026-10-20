@@ -160,7 +160,9 @@ MUTATIONS = [
      [I + '::test_I_A15_only_a_user_device_with_approve_decides',
       G6 + '::test_the_brain_principal_can_never_approve']),
     ('M25', 'at most one live approval per identity (index dropped)',
-     'archeus/infra/db/migrations/0008_policy.sql',
+     # 0014 rebuilds the approvals table and recreates this index, so that is the one live
+     # databases carry; mutating 0008's copy changed nothing a test could see.
+     'archeus/infra/db/migrations/0014_start_approvals.sql',
      "CREATE UNIQUE INDEX approvals_live ON approvals (action_hash)\n",
      "CREATE INDEX approvals_live ON approvals (action_hash)\n",
      [I + '::test_I_A12b_the_database_refuses_a_second_live_approval_of_one_identity']),
