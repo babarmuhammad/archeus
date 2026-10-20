@@ -1061,7 +1061,7 @@ class Session(Entity):
              'handoff_from_session_id': 'session', 'execution_id': 'execution',
              'context_package_id': 'context_package'}
     _CHOICES = {'mode': SESSION_MODES}
-    _NONNEG = ('last_seen_seq', 'launch_seq', 'launched_seq')
+    _NONNEG = ('last_seen_seq', 'launch_seq', 'launched_seq', 'launch_claimed_seq')
     id: str
     harness_id: str
     workspace_id: str
@@ -1090,6 +1090,9 @@ class Session(Entity):
     # launches: a post-commit side effect, never replayed by a restarted Core
     launch_seq: int = 0
     launched_seq: int = 0
+    # the launch one request has claimed (T-116): a launch opens one terminal however
+    # many requests carry it
+    launch_claimed_seq: int = 0
     launch_error: str = None
     started_at: str = None
     last_active_at: str = None
@@ -1101,6 +1104,8 @@ class Session(Entity):
             raise ValueError('a headless session names the execution it ran')
         if self.launched_seq > self.launch_seq:
             raise ValueError('a session cannot have launched more than it was asked to')
+        if self.launch_claimed_seq > self.launch_seq:
+            raise ValueError('a session cannot claim a launch it was not asked for')
 
 
 @entity

@@ -1011,7 +1011,7 @@ class Authorization:
     expire_due = staticmethod(expire_due)
 
 
-def _simulated_rule(conn, i, r):
+def _simulated_rule(conn, i, r, standin):
     """A request's extra rule, built as `create_rule` would build it: the same
     PolicyRule entity checks it, so a value create_rule refuses (a decision
     outside the vocabulary, an expiry that is not a timestamp) is the
@@ -1019,7 +1019,7 @@ def _simulated_rule(conn, i, r):
     r = dict(r)
     if r.get('scope_level') == 'USER' and r.get('scope_ref') is None:
         u = owner(conn)
-        r['scope_ref'] = u.id if u else None
+        r['scope_ref'] = u.id if u else standin
     entities.PolicyRule(id=ids.new_id('policy_rule'), source='user',
                         outside=r.get('outside') or 'ASK',
                         **{k: r.get(k) for k in ('scope_level', 'scope_ref', 'action_class',
@@ -1035,7 +1035,10 @@ def simulate(conn, policy, *, now, action, mission_id=None, task_id=None, stage=
     try:
         a = action if isinstance(action, Action) else Action(**_action_kwargs(action)
                                                              if 'class' in action else action)
-        extra = [_simulated_rule(conn, i, r) for i, r in enumerate(extra_rules)]
+        # create_rule makes the owner a USER rule names when there is none yet; a
+        # simulation writes nothing, so it judges against a stand-in for that owner.
+        standin = ids.new_id('user')
+        extra = [_simulated_rule(conn, i, r, standin) for i, r in enumerate(extra_rules)]
     except TypeError as e:              # a request's dict missing or naming a field
         raise ValueError('the action or a rule is not well formed: %s' % e) from None
     task = None
@@ -1056,6 +1059,7 @@ def simulate(conn, policy, *, now, action, mission_id=None, task_id=None, stage=
     classes = None if task is None else [c for c, _b, _x in items_of(task)]
     ctx = context(conn, mission, stage=stage, now=now, task=task, extra_rules=extra,
                   task_classes=None if stage == 'plan' else classes)
+    ctx['chain']['USER'] = ctx['chain']['USER'] or standin
     r = judge(policy, a, ctx)
     return dict(_slim(r), matched_rules=r.get('matched') or [], simulated=True,
                 policy_version=ctx['policy_version'], mission_id=mid)

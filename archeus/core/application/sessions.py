@@ -214,6 +214,21 @@ def launched(tx, *, actor, session_id, launch_seq, provider_session_ref=None, er
     return view_of(lifecycle.load(tx, entities.Session, s.id).entity)
 
 
+def claim_launch(tx, *, actor, session_id, launch_seq):
+    """Launch *launch_seq* is given to exactly one request (T-116). The writer
+    runs one command at a time, so of two requests that carry the same launch -
+    an idempotency-key replay, a duplicate resume - only the first claim wins;
+    the other opens nothing. A claim never launched is settled at boot like any
+    unsettled launch (expire_launches)."""
+    _core(actor)
+    s = lifecycle.load(tx, entities.Session, session_id).entity
+    if launch_seq != s.launch_seq or max(s.launched_seq, s.launch_claimed_seq) >= launch_seq:
+        return {'won': False}
+    tx.update(entities.Session, s.id, {'launch_claimed_seq': launch_seq}, actor=actor)
+    _event(tx, 'session.observed', s, actor, {'launch_seq': launch_seq, 'claimed': True})
+    return {'won': True}
+
+
 def expire_launches(tx, *, actor):
     """Boot (D21): a launch asked of a previous Core is settled as expired,
     never replayed — a restarted Core opens no terminal nobody asks for now."""
@@ -328,6 +343,7 @@ def view_of(s):
     transcript path stays inside Core."""
     d = s.to_dict()
     d.pop('transcript_path', None)
+    d.pop('launch_claimed_seq', None)
     return d
 
 

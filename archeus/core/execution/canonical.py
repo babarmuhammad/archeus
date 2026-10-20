@@ -23,8 +23,11 @@ from ..domain.actions import Action
 
 READ_TOOLS = ('Read', 'Glob', 'Grep', 'LS')
 WRITE_TOOLS = ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
-#: the input field that names the path, per tool (Claude Code's names)
-PATH_FIELDS = ('file_path', 'notebook_path', 'path')
+#: the input field that names the path, per tool (Claude Code's names); a tool reads
+#: only its own, never another tool's field that happens to be present
+PATH_FIELD = {'Read': 'file_path', 'Write': 'file_path', 'Edit': 'file_path',
+              'MultiEdit': 'file_path', 'NotebookEdit': 'notebook_path',
+              'Glob': 'path', 'Grep': 'path', 'LS': 'path'}
 #: the tools whose path is optional (the workspace when absent)
 OPTIONAL_PATH = ('Glob', 'Grep')
 
@@ -68,7 +71,7 @@ def _canonicalise(tool, tool_input, ctx):
     # an input whose required field is missing, empty or not a string is one it
     # cannot parse: never a write on '.', a fetch with no host or str() of a list
     if tool in READ_TOOLS or tool in WRITE_TOOLS:
-        given = [tool_input[k] for k in PATH_FIELDS if k in tool_input]
+        given = [tool_input[k] for k in (PATH_FIELD[tool],) if k in tool_input]
         if given and not _text(given[0]) or not given and tool not in OPTIONAL_PATH:
             return [_unclassified(str(tool))], True
         rel = workspace_path(given[0] if given else '.', ctx.get('workdir'))

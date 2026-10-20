@@ -250,6 +250,8 @@ def tool_input(rnd, tool):
                                    "cat 'unterminated", 'git push --force origin main',
                                    'python -c "print(1)"', 'a=1 ls', '']),
             'file_path': rnd.choice(['src/a.py', '../../x', '~/.ssh/id', 'C:\\x', '']),
+            'notebook_path': rnd.choice(['n.ipynb', '../n.ipynb', '']),
+            'path': rnd.choice(['src', '..', '']),
             'url': rnd.choice(['https://example.com', 'http://[::1', '', 'example.com/a'])}
     v = mutate(rnd, base) if rnd.random() < 0.6 else base
     return v if rnd.random() < 0.9 else rnd.choice([None, 'git status', 42, [], ['ls']])
@@ -281,10 +283,24 @@ def conservative(tool, inp, actions, unclassified):
         return 'unclassified but not one exec action'
     if tool not in PARSED and not unclassified:
         return 'a tool it does not parse was classified'
-    if not unclassified and not parseable(tool, inp if isinstance(inp, dict) else
-                                          {'command': inp}):
+    inp = inp if isinstance(inp, dict) else {'command': inp}
+    if not unclassified and not parseable(tool, inp):
         return 'an input it cannot parse was classified'
+    if not unclassified and tool in _PATH_FIELD:
+        try:
+            own = canonical.workspace_path(inp.get(_PATH_FIELD[tool], '.'), CTX['workdir'])
+        except (OSError, ValueError):
+            own = None
+        if actions[0].target != own:
+            return "classified on a field that is not the tool's own path"
     return None
+
+
+#: Claude Code's path field per tool, stated here rather than read from the canonicaliser,
+#: so an oracle sharing its table cannot miss a tool read on another tool's field
+_PATH_FIELD = {'Read': 'file_path', 'Write': 'file_path', 'Edit': 'file_path',
+               'MultiEdit': 'file_path', 'NotebookEdit': 'notebook_path',
+               'Glob': 'path', 'Grep': 'path', 'LS': 'path'}
 
 
 def parseable(tool, inp):
@@ -294,7 +310,7 @@ def parseable(tool, inp):
     def text(v):
         return isinstance(v, str) and bool(v)
     if tool in canonical.READ_TOOLS or tool in canonical.WRITE_TOOLS:
-        given = [inp[k] for k in canonical.PATH_FIELDS if k in inp]
+        given = [inp[k] for k in (_PATH_FIELD[tool],) if k in inp]
         return text(given[0]) if given else tool in ('Glob', 'Grep')
     if tool == 'WebFetch':
         url = inp.get('url')

@@ -858,6 +858,8 @@ class ExecutionManager:
                         'no harness %r' % row.entity.harness_id,
                         'killed by its recorded identity' if killed else
                         'it could not be killed (gone meanwhile, or the kill was refused)')
+            if killed:      # its end line, or every later boot probes it again (T-105 review 2b)
+                self.node.ended(handle, None, line.get('process_seq', 1))
             return False
         self._procs[xid] = self._fresh(adapter, handle, line.get('process_seq', 1),
                                        row.entity.stream_offset, row.entity.usage)

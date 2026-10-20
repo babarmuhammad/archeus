@@ -1222,6 +1222,10 @@ decisions ADR-0024…0029.
   transport (rulebook Q-B5, R15; p15 D20). P21's design gate decides the push transport or
   records its deferral.
 - Acceptance: every question in §28 answerable from the UI.
+- *Amended 2026-10-19 (the owner; p21-design-gate D0 DECIDED):* asked "P21 overlap (D0): the plan says P21 "Depends: P20". Amend it so named P21 slices can be BUILT while P20's G/K are still open?", the owner
+  answered "Allow named safe slices (Recommended)", choosing, verbatim, "Amendment: P21 slices that touch no isolation, boundary, credential or auth code (notifications, metrics_daily, trace view, search, doctor, provenance records) may be built now; every P20 security gate (G6, no High open, slice G) stays required; P21 cannot be declared complete before P20 is. Each slice still needs its own approved decisions." "Depends: P20" above stands for P21's
+  completion; the named slices (notifications, `metrics_daily`, the trace view, search, `archeus
+  doctor`, provenance records) may be built before it.
 
 **P22 — Legacy capabilities into Core and the migration tooling** *(the migration itself is
 P25.5; renamed 2026-10-01 from "Legacy migration", ownership unchanged)*

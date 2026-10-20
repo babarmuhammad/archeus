@@ -173,6 +173,17 @@ def test_glob_and_grep_without_a_path_search_the_workspace():
         assert (a['class'], a['paths'], u) == ('read', ['.'], False)
 
 
+def test_a_path_tool_reads_its_own_field_not_another_tools():
+    """T-094 re-review, non-blocking 3: the first path field present won,
+    whatever the tool, so LS listing /etc was judged on a stray file_path."""
+    (a,), u = one('NotebookEdit', {'file_path': 'src/a.py', 'notebook_path': 'n.ipynb'})
+    assert (a['paths'], u) == (['n.ipynb'], False)
+    (a,), u = one('LS', {'file_path': 'src', 'path': '/etc'})
+    assert a['paths'] != ['src'] and u is False
+    got, u = one('LS', {'file_path': 'src'})
+    assert u is True and [x['class'] for x in got] == ['exec']
+
+
 def test_paths_inside_are_workspace_relative_and_outside_stay_absolute():
     assert one('Write', {'file_path': 'src/a.py'})[0][0]['paths'] == ['src/a.py']
     for escape in ('../x', os.path.abspath(os.sep + 'etc'), '~/x', 'src/../../x'):

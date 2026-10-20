@@ -686,6 +686,30 @@ class TestRegistryEntry:
         assert line['isolated'] is True and line['ac_sid'] == a.record(req.execution_id).sid
         assert 'core-held' in line['job']
 
+    @pytest.mark.parametrize('err,noted', [(base.SpawnWriteFailed('core write'), False),
+                                           (base.SpawnFailed('isolation: x'), True)])
+    def test_only_an_establishment_failure_is_noted_as_isolation_failed(
+            self, tmp_path, err, noted):
+        # Core failing to write its own files is charged `workspace` by the manager
+        # (T-102); recording it as isolation_failed would make the registry and the
+        # database disagree on what stopped the execution (T-102 review, latent)
+        node = LocalNode()
+        notes = []
+        node.isolation = SimpleNamespace(request_for=lambda spec: object(),
+                                         note_failure=lambda spec, e: notes.append(e))
+
+        class Adapter:
+            id = 'fake'
+
+            def start(self, spec):
+                raise err
+
+        spec = base.ExecutionSpec(execution_id=new_execution_id(), prompt='go',
+                                  workdir=str(tmp_path))
+        with pytest.raises(type(err)):
+            node.spawn(Adapter(), spec, isolated=True)
+        assert notes == ([err] if noted else [])
+
     def test_node_spawn_takes_no_isolation_decision_of_its_own(self, tmp_path):
         # T-021 D1: the manager's one decision is required; a caller that forgets it
         # fails loudly, and a decision passed in is never re-asked
