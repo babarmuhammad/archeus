@@ -205,5 +205,8 @@ def test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays(brows
     check(pin.input_value() == '' and rearm.is_disabled(), 'after a refused re-arm the PIN is gone too')
     check(_health(core) is False, 'still disarmed')
     check(not [e for e in errors if '422' not in e], errors)
+    # the page keeps polling /v1/sync: a fetch in flight when the context closes would
+    # fail _as_pin_client's r.json() and surface at browser.close() as a teardown error
+    context.unroute_all(behavior='ignoreErrors')
     context.close()
     assert check.n >= 8
