@@ -1343,34 +1343,28 @@
     }
   }
 
-  /* ---------- Replay (round 10c): as-of inspection, static, no motion ---------- */
-  // Measured from replay-2-desktop-v2.png (1440 x 810). The constellation is drawn in those pixels and scaled
-  // uniformly into the stage (SVG); the labels are HTML and keep their own px size.
-  var RC_FRAME = { x0: 250, y0: 40, w: 460, h: 760 };
-  var RC = {
-    star: [487, 121], starLabel: [487, 176],
-    mission: [487, 328], missionLabel: [487, 373],
-    codex: [[341, 474], [282, 565], [394, 565]], codexLabel: [336, 596],
-    verif: { c: [626, 528], r: 52, label: [629, 599] },
-    results: { c: [489, 684], r: 42, label: [487, 744] },
-    verbs: { orchestrates: [535, 246], executes: [399, 439], verifies: [573, 439], produces: [487, 596] }
+  /* ---------- Replay (round 10c replay): as-of inspection, static, no motion ---------- */
+  // Desktop: the concept's own frame, 1440 x 810 master px, scaled uniformly by --k (body.frame-replay). The base
+  // art (art/replay-base.webp, tools/art_replay.py) is the concept with every live item removed, so the star, the
+  // links, the polyhedra and their glyphs are raster. Live here: labels, the mission node (state colour), rows,
+  // chips, markers, buttons and the rail. Phone: a crop of the same art above the rows (no concept exists).
+  var RP_MASTER = { w: 1440, h: 810 };
+  var RP_GRAPH = { x0: 236, y0: 40, w: 464, h: 730 };
+  // Label ink top-left in master px (concept measurement, tools/textfit_replay.py).
+  var RP_LABEL = {
+    core: [446, 170], orchestrates: [497, 241], fix: [436, 352], verifying: [447, 379],
+    executes: [372, 428], verifies: [550, 428], produces: [460, 590], codex: [312, 579],
+    execution: [303, 601], verification: [584, 591], results: [459, 736]
   };
-  // Links in concept pixels. heads: 2 = arrowheads at both ends, 1 = at the far end, 0 = plain.
-  var RC_LINKS = [
-    { a: [487, 198], b: [487, 316], heads: 2 },
-    { a: [428, 398], b: [344, 470], heads: 2 },
-    { a: [548, 398], b: [623, 471], heads: 2 },
-    { a: [394, 565], b: [478, 638], heads: 0 },
-    { a: [577, 562], b: [498, 640], heads: 0 },
-    { a: [487, 610], b: [487, 640], heads: 1 }
+  // Row geometry (master px): card top and height; ink tops of time, title, sub, chip and the marker centre.
+  var RP_ROWS_GEOM = [
+    { top: 158, h: 77, time: 188, title: 176, sub: 206, chip: 169, mark: 194, chipX: 1303, chipW: 88 },
+    { top: 244, h: 77, time: 275, title: 264, sub: 293, chip: 256, mark: 281, chipX: 1303, chipW: 88 },
+    { top: 330, h: 77, time: 361, title: 349, sub: 379, chip: 343, mark: 368, chipX: 1303, chipW: 88 },
+    { top: 417, h: 79, time: 449, title: 438, sub: 466, chip: 430, mark: 455, chipX: 1299, chipW: 92 },
+    { top: 505, h: 81, time: 537, title: 526, sub: 555, chip: 519, mark: 543, chipX: 1299, chipW: 92 },
+    { top: 601, h: 108, title: 620, chip: 614, mark: 637, chipX: 1303, chipW: 88 }
   ];
-  var RC_GLYPH = {
-    code: 'M-0.22 -0.42 L-0.62 0 L-0.22 0.42 M0.22 -0.42 L0.62 0 L0.22 0.42 M0.1 -0.42 L-0.1 0.42',
-    check: 'M-0.34 0.02 L-0.1 0.26 L0.36 -0.28',
-    bars: 'M-0.46 0.42 V-0.08 H-0.22 V0.42 M-0.16 0.42 V-0.48 H0.08 V0.42 M0.14 0.42 V-0.24 H0.38 V0.42',
-    hex: 'M0 -0.72 L0.62 -0.36 L0.62 0.36 L0 0.72 L-0.62 0.36 L-0.62 -0.36 Z'
-  };
-
   var REPLAY = {
     'm-date': [
       { time: '09:00', title: 'Task initiated', sub: 'Scope, authority and starting state captured', badge: 'Intended', tone: 'intended', mark: 'dot' },
@@ -1382,118 +1376,95 @@
   };
   var replayId = 'm-date';
 
-  function rcSeg(a, b, cls) {
-    return '<line class="' + cls + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '"/>';
+  // Stage map: desktop is master px; phone maps the graph crop (RP_GRAPH) into the stage width.
+  function rpMap() {
+    if (!isNarrow()) return { s: 1, ox: 0, oy: 0, px: 0 };
+    var W = $('#replay-stage').clientWidth || 360;
+    var s = Math.min(W / RP_GRAPH.w, 420 / RP_GRAPH.h);
+    return { s: s, ox: RP_GRAPH.x0, oy: RP_GRAPH.y0, px: (W - RP_GRAPH.w * s) / 2 };
   }
-  function rcHead(tip, from, size) {
-    var dx = tip[0] - from[0], dy = tip[1] - from[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
-    var bx = tip[0] - ux * size, by = tip[1] - uy * size, w = size * 0.45;
-    return '<path class="rc-head" d="M' + tip[0].toFixed(1) + ' ' + tip[1].toFixed(1) + ' L' + (bx - uy * w).toFixed(1) + ' ' + (by + ux * w).toFixed(1) +
-      ' L' + (bx + uy * w).toFixed(1) + ' ' + (by - ux * w).toFixed(1) + ' Z"/>';
-  }
-  function rcGlyph(d, c, s, cls) {
-    return '<path class="' + cls + '" transform="translate(' + c[0].toFixed(1) + ' ' + c[1].toFixed(1) + ') scale(' + s.toFixed(2) + ')" d="' + d + '"/>';
-  }
-  function rcStar(x, y, k) {
-    var seed = 11, rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, out = '';
-    for (var i = 0; i < 48; i++) {
-      var a = (i / 48) * TAU + (rnd() - 0.5) * 0.04, long = i % 8 === 0;
-      var len = (long ? 86 : 8 + rnd() * 24) * k;
-      out += '<line class="rc-ray" style="opacity:' + (long ? 0.9 : 0.25 + rnd() * 0.4).toFixed(2) + '" x1="' + x.toFixed(1) + '" y1="' + y.toFixed(1) +
-        '" x2="' + (x + Math.cos(a) * len).toFixed(1) + '" y2="' + (y + Math.sin(a) * len).toFixed(1) + '"/>';
-    }
-    return out;
-  }
-  // Faceted solid from the shared ICO / OCT / TET tables; same projection as the Overview nodes.
-  function rcSolid(sol, c, R, ry, rx) {
-    var P = sol.v.map(function (p) { var q = proj(spin(p, ry, rx), c[0], c[1], R); return [q.x, q.y]; });
-    var out = sol.e.map(function (e) { return rcSeg(P[e[0]], P[e[1]], 'rc-face'); }).join('');
-    if (sol.links && sol.links.length) {
-      var Q = sol.v.map(function (p) { var q = proj(spin(p, ry, rx), c[0], c[1], R * 0.5); return [q.x, q.y]; });
-      sol.links.forEach(function (ns, k) { ns.forEach(function (j) { out += rcSeg(P[k], Q[j], 'rc-inner'); }); });
-    }
-    P.forEach(function (q) { out += '<circle class="rc-vtx" cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="1.6"/>'; });
-    return out;
-  }
-  function rcL(p, cls, html) {
-    return '<p class="rc-l ' + cls + '" style="left:' + p[0].toFixed(1) + 'px;top:' + p[1].toFixed(1) + 'px">' + html + '</p>';
-  }
+  function rpPos(g, x, y) { return [g.px + (x - g.ox) * g.s, (y - g.oy) * g.s]; }
+  function rpCss(p) { return 'left:' + p[0].toFixed(1) + 'px;top:' + p[1].toFixed(1) + 'px'; }
 
-  function renderReplayScene(m) {
-    var root = $('#replay-stage');
-    var W = root.clientWidth, H = root.clientHeight;
-    if (!W || !H) return;
-    var pad = isNarrow() ? 28 : 0;
-    var k = Math.min(W / RC_FRAME.w, (H - pad) / RC_FRAME.h);
-    var ox = (W - RC_FRAME.w * k) / 2, oy = pad + (H - pad - RC_FRAME.h * k) / 2;
-    var P = function (p) { return [ox + (p[0] - RC_FRAME.x0) * k, oy + (p[1] - RC_FRAME.y0) * k]; };
-    var full = m.id === 'm-date';
-    var svg = '<defs><radialGradient id="rc-glow"><stop offset="0" stop-color="#FFF4DC" stop-opacity="0.95"/><stop offset="0.12" stop-color="#F6E0B0" stop-opacity="0.55"/><stop offset="1" stop-color="#F6E7C8" stop-opacity="0"/></radialGradient></defs>';
-    var lab = '';
-    var sp = P(RC.star);
-    svg += '<circle cx="' + sp[0].toFixed(1) + '" cy="' + sp[1].toFixed(1) + '" r="' + (48 * k).toFixed(1) + '" fill="url(#rc-glow)"/>' + rcStar(sp[0], sp[1], k);
-    lab += rcL(P(RC.starLabel), 'rc-core', 'Archeus');
-
-    var mp = P(RC.mission), st = STATE[m.state] || STATE.idle;
-    var hullPts = [];
-    for (var i = 0; i < 8; i++) { var a = -Math.PI / 2 + i * TAU / 8; hullPts.push((mp[0] + Math.cos(a) * 30 * k).toFixed(1) + ',' + (mp[1] + Math.sin(a) * 30 * k).toFixed(1)); }
-    svg += '<polygon class="rc-hull" points="' + hullPts.join(' ') + '"/>';
-    svg += '<circle class="rc-halo" cx="' + mp[0].toFixed(1) + '" cy="' + mp[1].toFixed(1) + '" r="' + (19 * k).toFixed(1) + '"/>';
-    svg += '<circle class="rc-node" cx="' + mp[0].toFixed(1) + '" cy="' + mp[1].toFixed(1) + '" r="' + (12.5 * k).toFixed(1) + '"/>';
-    lab += rcL(P(RC.missionLabel), 'rc-mission', '<span class="rc-name">' + esc(m.title) + '</span><span class="rc-state" style="color:' + st.color + '">' + esc(m.stateText) + '</span>');
-
-    var verbs = [];
-    RC_LINKS.forEach(function (l, i) {
-      if (!full && i > 0) return;
-      var a = P(l.a), b = P(l.b);
-      svg += rcSeg(a, b, 'rc-link');
-      if (l.heads === 2 || l.heads === 1) svg += rcHead(b, a, 7);
-      if (l.heads === 2) svg += rcHead(a, b, 7);
-    });
-    if (full) {
-      var c = RC.codex;
-      var A = P(c[0]), B = P(c[1]), C = P(c[2]);
-      var mid = function (x, y) { return [(x[0] + y[0]) / 2, (x[1] + y[1]) / 2]; };
-      svg += '<polygon class="rc-face" points="' + [A, B, C].map(function (q) { return q.join(','); }).join(' ') + '"/>';
-      svg += rcSeg(A, mid(B, C), 'rc-inner') + rcSeg(B, mid(A, C), 'rc-inner') + rcSeg(C, mid(A, B), 'rc-inner');
-      svg += rcGlyph(RC_GLYPH.code, P([339, 528]), 32 * k, 'rc-glyph');
-      lab += rcL(P(RC.codexLabel), 'rc-codex', '<span class="rc-name-l">Codex</span><span class="rc-sub-l">execution</span>');
-      var v = RC.verif, vc = P(v.c);
-      svg += rcSolid(ICO, vc, 54 * k, 0.5, 0.45) + rcGlyph(RC_GLYPH.hex, vc, 30 * k, 'rc-glyph') + rcGlyph(RC_GLYPH.check, vc, 30 * k, 'rc-glyph');
-      lab += rcL(P(v.label), 'rc-name-l', 'Verification');
-      var r = RC.results, rc = P(r.c);
-      svg += rcSolid(OCT, rc, 44 * k, 0.6, 0.5) + rcGlyph(RC_GLYPH.bars, rc, 26 * k, 'rc-glyph');
-      lab += rcL(P(r.label), 'rc-name-l', 'Results');
-      Object.keys(RC.verbs).forEach(function (key) { verbs.push([key, P(RC.verbs[key])]); });
+  function renderReplayStage(m) {
+    var root = $('#replay-stage'), L = $('#rc-labels');
+    var g = rpMap(), st = STATE[m.state] || STATE.idle;
+    var art = root.querySelector('.rc-art');
+    if (isNarrow()) {
+      if (!art) { art = document.createElement('div'); art.className = 'rc-art'; root.insertBefore(art, root.firstChild); }
+      art.style.width = (RP_MASTER.w * g.s) + 'px';
+      art.style.height = (RP_MASTER.h * g.s) + 'px';
+      art.style.left = (g.px - RP_GRAPH.x0 * g.s) + 'px';
+      art.style.top = (-RP_GRAPH.y0 * g.s) + 'px';
+      root.style.height = (RP_GRAPH.h * g.s) + 'px';
     } else {
-      verbs.push(['orchestrates', P(RC.verbs.orchestrates)]);
+      if (art) art.remove();
+      root.style.height = '';
     }
-    verbs.forEach(function (v) { lab += rcL(v[1], 'rc-verb', esc(v[0])); });
-    root.innerHTML = '<svg class="rc-svg" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' + svg + '</svg><div class="rc-labels">' + lab + '</div>';
-    root.setAttribute('aria-label', 'Constellation for ' + m.title + ': Archeus, the mission' + (full ? ', Codex execution, Verification and Results' : ''));
+    var vb = isNarrow() ? [RP_GRAPH.x0, RP_GRAPH.y0, RP_GRAPH.w, RP_GRAPH.h].join(' ') : '0 0 1440 810';
+    var svg = '<svg class="rc-svg" viewBox="' + vb + '" aria-hidden="true">' +
+      '<circle class="rc-node" cx="488" cy="328" r="12.5" style="fill:' + st.color + '"/></svg>';
+    var old = root.querySelector('.rc-svg');
+    if (old) old.remove();
+    root.insertAdjacentHTML('afterbegin', svg);
+    // Hit areas are at least 44 CSS px: in master px on the desktop frame (44 / --k), in stage px on the phone.
+    var kk = isNarrow() ? 1 : (parseFloat(document.documentElement.style.getPropertyValue('--k')) || 1);
+    var hs = isNarrow() ? 44 : 44 / kk;
+    var hit = function (c, w, h, href, label) {
+      return '<a class="rc-hit" href="' + href + '" aria-label="' + label + '" style="left:' + (c[0] - w / 2).toFixed(1) + 'px;top:' + (c[1] - h / 2).toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;height:' + h.toFixed(1) + 'px"></a>';
+    };
+    var mp = rpPos(g, 488, 328), fp = rpPos(g, RP_LABEL.fix[0] + 50, RP_LABEL.fix[1] + 9);
+    var lab = hit(mp, hs, hs, '#/mission/' + m.id, esc(m.title) + ': open the mission');
+    lab += hit(fp, hs * 3, hs, '#/mission/' + m.id, esc(m.title) + ': open the mission');
+    var put = function (k, html, cls) { return '<p class="rc-l rk-' + k + ' ' + (cls || '') + '" style="' + rpCss(rpPos(g, RP_LABEL[k][0], RP_LABEL[k][1])) + '">' + html + '</p>'; };
+    lab += put('core', 'Archeus', 'rc-core');
+    lab += put('fix', esc(m.title), 'rc-mission-name');
+    lab += put('verifying', '<span class="rc-state" style="color:' + st.color + '">' + esc(m.stateText) + '</span>', 'rc-mission-state');
+    lab += put('orchestrates', 'orchestrates', 'rc-verb');
+    if (m.id === 'm-date') {
+      lab += put('executes', 'executes', 'rc-verb') + put('verifies', 'verifies', 'rc-verb') + put('produces', 'produces', 'rc-verb');
+      lab += put('codex', 'Codex', 'rc-name') + put('execution', 'execution', 'rc-sub');
+      lab += put('verification', 'Verification', 'rc-name') + put('results', 'Results', 'rc-name');
+    }
+    L.innerHTML = lab;
+    root.setAttribute('aria-label', 'Constellation for ' + m.title + ': Archeus, the mission' + (m.id === 'm-date' ? ', Codex execution, Verification and Results' : ''));
   }
 
-  function rowHtml(r) {
-    return '<li class="rp-row rs-' + r.mark + ' tone-' + r.tone + '"><span class="rp-time">' + r.time + '</span><span class="rp-mark" aria-hidden="true"></span>' +
-      '<span class="rp-body"><span class="rp-title">' + esc(r.title) + '</span><span class="rp-sub">' + esc(r.sub) + '</span></span>' +
-      '<span class="rp-badge">' + esc(r.badge) + '</span></li>';
+  function rowHtml(r, g) {
+    return '<li class="rp-row rs-' + r.mark + ' tone-' + r.tone + '" style="--top:' + g.top + 'px;--h:' + g.h + 'px">' +
+      '<span class="rp-mark" aria-hidden="true" style="--y:' + g.mark + 'px"></span>' +
+      '<span class="rp-time" style="--y:' + g.time + 'px">' + r.time + '</span>' +
+      '<span class="rp-body"><span class="rp-title" style="--y:' + g.title + 'px">' + esc(r.title) + '</span><span class="rp-sub" style="--y:' + g.sub + 'px">' + esc(r.sub) + '</span></span>' +
+      '<span class="rp-badge" style="--y:' + g.chip + 'px;--x:' + g.chipX + 'px;--w:' + g.chipW + 'px">' + esc(r.badge) + '</span></li>';
   }
 
   function renderReplay(id) {
     var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [];
     replayId = m.id;
     $('#rp-title').textContent = 'Replay · ' + m.title;
-    var list = rows.map(rowHtml);
-    if (!rows.length) list.push('<li class="rp-row rp-empty"><span class="rp-sub">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
-    list.push('<li class="rp-row rp-reconcile"><span class="rp-time"></span><span class="rp-mark" aria-hidden="true"></span>' +
-      '<span class="rp-body"><span class="rp-title">Reconcile</span>' +
+    var list = rows.map(function (r, i) { return rowHtml(r, RP_ROWS_GEOM[i]); });
+    if (!rows.length) list.push('<li class="rp-row rp-empty" style="--top:158px;--h:77px"><span class="rp-sub" style="--y:176px">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
+    var rc = RP_ROWS_GEOM[RP_ROWS_GEOM.length - 1];
+    list.push('<li class="rp-row rp-reconcile" style="--top:' + rc.top + 'px;--h:' + rc.h + 'px">' +
+      '<span class="rp-mark" aria-hidden="true" style="--y:' + rc.mark + 'px"></span>' +
+      '<span class="rp-body"><span class="rp-title" style="--y:' + rc.title + 'px">Reconcile</span>' +
       '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
-      '<span class="rp-badge">Operator</span></li>');
+      '<span class="rp-badge" style="--y:' + rc.chip + 'px;--x:' + rc.chipX + 'px;--w:' + rc.chipW + 'px">Operator</span></li>');
     $('#rp-rows').innerHTML = list.join('');
-    renderReplayScene(m);
+    fitReplayFrame();
+    renderReplayStage(m);
+  }
+
+  // The frame class and scale follow the active screen: desktop Replay is one fixed 1440 x 810 frame plus a footer strip.
+  function fitReplayFrame() {
+    var on = !isNarrow() && !$('#s-replay').hidden;
+    document.body.classList.toggle('frame-replay', on);
+    if (!on) return;
+    var k = Math.min(window.innerWidth / RP_MASTER.w, window.innerHeight / (RP_MASTER.h + 26));
+    document.documentElement.style.setProperty('--k', k.toFixed(4));
   }
   window.addEventListener('resize', function () {
-    if (!$('#s-replay').hidden) renderReplayScene(find(replayId));
+    if (!$('#s-replay').hidden) { fitReplayFrame(); renderReplayStage(find(replayId)); }
   });
 
   function renderShared() {
@@ -2351,6 +2322,7 @@
       else a.removeAttribute('aria-current');
     });
     SCREENS[name](parts[1]);
+    fitReplayFrame();
     var h = $('#s-' + name + ' h1');
     if (h) h.focus({ preventScroll: true });
   }

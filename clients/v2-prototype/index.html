@@ -131,13 +131,16 @@
 
       <section class="screen screen-replay" id="s-replay" hidden>
         <div class="rp-wrap">
-          <div class="rc-stage" id="replay-stage" role="region" aria-label="Mission constellation"></div>
+          <div class="rc-stage" id="replay-stage" role="region" aria-label="Mission constellation">
+            <div class="rc-labels" id="rc-labels"></div>
+          </div>
+          <a class="rp-back" href="#/now" data-rp-back>Back</a>
           <section class="rp-panel" aria-labelledby="rp-title">
-            <a class="rp-back" href="#/now" data-rp-back>Back</a>
-            <h1 class="rp-title" id="rp-title" tabindex="-1"></h1>
+            <h1 class="rp-title rk-title" id="rp-title" tabindex="-1"></h1>
             <ol class="rp-rows" id="rp-rows" aria-label="Timeline, sample data"></ol>
-            <p class="rp-foot">Not every external effect can be reversed.</p>
+            <p class="rp-foot rk-footer">Not every external effect can be reversed.</p>
           </section>
+          <p class="rp-strip">Simulated: fake data, scripted replay, nothing is sent to Core. Reconcile is page-only.</p>
         </div>
       </section>
 

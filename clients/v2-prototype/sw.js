@@ -1,5 +1,5 @@
-const CACHE = 'archeus-v2-proto-11';
-const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
+const CACHE = 'archeus-v2-proto-rp1';
+const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './art/replay-base.webp', './fonts/LibreCaslonText-wght.ttf', './fonts/SourceSans3-wght.ttf'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
