@@ -1913,55 +1913,88 @@
 
   /* ---------- Terminal: the same fixture records as a text screen. Simulated. ---------- */
 
-  // Round 10c layout, measured on terminal-1-overview-v2.png (1600 x 900): a cell is 13 design px wide, a text
-  // line sits 33 px below the last (two grid units of 16.5 px), and the grid has 50 units. Text lines use even
-  // units; the overview also draws connectors and box edges on odd units.
-  var term = { screen: 'overview', sel: 0, mid: 'm-search', cols: 120, rows: 40, plain: false, help: false, input: null, filter: '', step: null };
+  // Round 10c terminal, measured on the concepts. The overview master is terminal-1-overview-v2.png (1600 x 900);
+  // mission and decision use term-mission.webp (862 x 626) and term-decision.webp (862 x 506). Each screen is one
+  // SVG in design px: Roboto Mono (vendored, OFL) at measured baselines and pitches (tools/term_layout.py), box and
+  // connector strokes, and the background sampled from the concept. Text and marks are live; nothing is a raster.
+  var term = { screen: 'overview', sel: 0, mid: 'm-search', cols: 120, plain: false, help: false, input: null, filter: '', step: null };
   var GLYPH_T = { waiting: '◇', running: '*', done: '+', idle: 'o' };
-  var BOX = { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│' };
   var STATE_CLS = { waiting: 'amber', running: 'blue', done: 'green', idle: 'dim' };
-  var UNITS = 53, UNIT_PX = 16.5, CELL = 13;
-  var KEY_U = 45, TELL_U = 48, STATUS_U = 50;
+  var OVER = { W: 1600, H: 900, size: 21.67, cell: 13 };
+  var PAGE = { W: 862, H: 626, size: 19.9, cell: 11.93, ox: 31, oy: 41.5, pitch: 30.1 };
+  var STACK = { W: 1118, H: 900, size: 21.67, cell: 13, ox: 38, oy: 70, pitch: 33 };
+  var DECISION_H = 506, PAGE_H = 626;
   term.color = !/[?&]nocolor/.test(location.search);
 
-  // A character grid. Each cell holds a character and an optional colour class. The classes sit on the grid, so
-  // NO_COLOR and ?nocolor drop them and the characters read the same.
-  function Grid(w, h) {
-    var rows = [], cls = [];
-    for (var y = 0; y < h; y++) {
-      rows.push(new Array(w + 1).join(' ').split(''));
-      var c = []; for (var i = 0; i < w; i++) c.push('');
-      cls.push(c);
-    }
-    var g = { strips: [] };
-    g.put = function (x, y, s, c) {
-      for (var i = 0; i < s.length; i++) {
-        if (x + i >= 0 && x + i < w && y >= 0 && y < h) { rows[y][x + i] = s.charAt(i); cls[y][x + i] = c || ''; }
+  // Overview text runs: text, colour, origin x, baseline y, pitch (design px per character).
+  var CONCEPT_TERM = {
+    head: [['ARCHEUS', 'ivory', 39, 70, 13.5], ['Not stopped · accepts new work', 'ivory', 213, 70, 13.62], ['CONCEPT FIXTURE', 'dim', 1371, 70, 12.79]],
+    title: [['Archeus', 'ivory', 524, 266, 13.17]],
+    mission: { search: [569, 329, 12.62], review: [586, 393, 12.6], fix: [893, 329, 12.58], verifying: [898, 393, 12.75], codex: [943, 459, 12.25], verification: [885, 528, 12.55], results: [918, 596, 12.17], more: [521, 627, 12.5] },
+    notes: [['Notes', 'ivory', 1273, 329, 12.25], ['2 missions', 'dim', 1281, 364, 12.56]],
+    ideas: [['Ideas', 'ivory', 1273, 497, 12]],
+    root: [['ARCHEUS', 'ivory', 753, 172, 13.67]],
+    footer: [['Why:', 'amber', 41, 699, 13], ['[Enter] Open decision', 'dim', 45, 734, 13.1]],
+    keys: [['j/k select', 43, 13.33], ['Enter open', 226, 12.67], ['b Back', 403, 12.8], ['p Replay', 529, 13], ['t Tell', 680, 12.6], ['r Review', 809, 12.71], ['s Stop', 961, 12.6]]
+  };
+  // Boxes: outer rectangle from measured stroke centres. Corners are chamfers, each one detached from the edges by
+  // the measured gap (the concept draws them that way).
+  var BOX_MAIN = { L: 486.9, T: 235.5, R: 1105.6, B: 651.0 };
+  var BOX_NOTES = { L: 1240.0, T: 296.8, R: 1521.4, B: 413.8 };
+  var BOX_IDEAS = { L: 1240.0, T: 465.5, R: 1521.4, B: 580.7 };
+
+  // A scene in design px. Text takes the baseline; the pitch is the advance per character (default: the cell).
+  function Scene(m) {
+    var items = [], rows = [], cell = m.cell;
+    var s = {
+      W: m.W, H: m.H, items: items, rows: rows,
+      text: function (x, y, str, cls, pitch) {
+        if (!str) return;
+        var ls = pitch && Math.abs(pitch - cell) > 0.01 ? ' letter-spacing="' + (pitch - cell).toFixed(2) + '"' : '';
+        items.push('<text x="' + x.toFixed(2) + '" y="' + y.toFixed(2) + '"' + ls + (term.color && cls ? ' class="' + cls + '"' : '') + '>' + esc(str) + '</text>');
+      },
+      line: function (x1, y1, x2, y2, cls, w, dash) {
+        items.push('<line class="ln ' + (term.color && cls ? cls : '') + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" stroke-width="' + (w || 1.5) + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>');
+      },
+      poly: function (pts, cls, w) { items.push('<polygon class="ln ' + (term.color && cls ? cls : '') + '" points="' + pts + '" stroke-width="' + (w || 1.5) + '"/>'); },
+      rect: function (x, y, w, h, cls) { items.push('<rect class="' + (cls || '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '"/>'); },
+      dot: function (cx, cy, r, cls) { items.push('<circle class="' + (term.color && cls ? cls : '') + '" cx="' + cx + '" cy="' + cy + '" r="' + r + '"/>'); },
+      // A cell-grid helper: put(col, row) puts text on the grid; the row is also kept as plain text for screen readers.
+      put: function (col, row, str, cls) {
+        s.text(m.ox + col * cell, m.oy + row * m.pitch, str, cls);
+        rows[row] = rows[row] || {};
+        rows[row][col] = str;
+      },
+      svg: function () {
+        return '<svg class="term-svg' + (m.kind ? ' ' + m.kind : '') + '" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + m.W + ' ' + m.H + '" width="' + m.W + '" height="' + m.H + '" aria-hidden="true" focusable="false" style="font-size:' + m.size + 'px">' +
+          '<defs><linearGradient id="term-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17111D"/><stop offset="1" stop-color="#18121E"/></linearGradient></defs>' +
+          '<rect class="ground" x="0" y="0" width="' + m.W + '" height="' + m.H + '" fill="url(#term-bg)"/>' + items.join('') + '</svg>';
       }
     };
-    g.rule = function (y, x0, x1, c) { if (x1 >= x0) g.put(x0, y, new Array(x1 - x0 + 2).join('─'), c); };
-    g.vert = function (x, y0, y1, c) { for (var y = y0; y <= y1; y++) g.put(x, y, '│', c); };
-    // Slashed-corner box: '/' above the top-left corner, '\' above the top-right, the title on the top edge,
-    // '\' and '/' on the bottom edge.
-    g.hull = function (x, top, right, bottom, title) {
-      g.put(x, top - 1, '/'); g.put(right, top - 1, '\\');
-      g.put(x, top, '│'); g.put(right, top, '│');
-      var t = ' ' + title + ' ';
-      g.put(x + 1, top, t);
-      g.rule(top, x + 1 + t.length, right - 2);
-      g.vert(x, top + 1, bottom - 1); g.vert(right, top + 1, bottom - 1);
-      g.put(x, bottom, '\\'); g.rule(bottom, x + 1, right - 1); g.put(right, bottom, '/');
-    };
-    g.box = function (x, y, bw, bh, title) {
-      var t = title ? ' ' + title + ' ' : '';
-      g.put(x, y, BOX.tl + t + new Array(Math.max(0, bw - 2 - t.length) + 1).join(BOX.h) + BOX.tr);
-      for (var i = 1; i < bh - 1; i++) { g.put(x, y + i, BOX.v); g.put(x + bw - 1, y + i, BOX.v); }
-      g.put(x, y + bh - 1, BOX.bl + new Array(bw - 1).join(BOX.h) + BOX.br);
-    };
-    g.lines = function () {
-      return rows.map(function (r, y) { return { text: r.join(''), cls: cls[y], strip: g.strips.indexOf(y) >= 0 }; });
-    };
-    return g;
+    return s;
+  }
+
+  // Chamfered box: one diagonal per corner (dx across, dy down), edges inset from the corners, verticals from the
+  // title line down to the bottom gap. Numbers are the concept's, measured on terminal-1-overview-v2.png.
+  function chamferBox(s, b, cls) {
+    var dx = 13.2, dy = 19.2, vy0 = b.T + 29, vy1 = b.B - 25.5, ex = dx + 4;
+    var w = 1.7;
+    s.line(b.L - 0.4, b.T + dy, b.L + dx, b.T + 0.2, cls, w);
+    s.line(b.R + 0.4, b.T + dy, b.R - dx, b.T + 0.2, cls, w);
+    s.line(b.L - 0.4, b.B - dy, b.L + dx, b.B, cls, w);
+    s.line(b.R + 0.4, b.B - dy, b.R - dx, b.B, cls, w);
+    s.line(b.L + ex, b.T, b.R - ex, b.T, cls, w);
+    s.line(b.L + ex, b.B, b.R - ex, b.B, cls, w);
+    s.line(b.L, vy0, b.L, vy1, cls, w);
+    s.line(b.R, vy0, b.R, vy1, cls, w);
+  }
+
+  // Asterisk glyph as three strokes through the centre (six spokes), sized to the concept's ink box.
+  function starMark(s, cx, cy, cls, half) {
+    var h = half || 8, d = h * 0.5, e = h * 0.87;
+    s.line(cx, cy - h, cx, cy + h, cls, 2.9);
+    s.line(cx - e, cy - d, cx + e, cy + d, cls, 2.9);
+    s.line(cx - e, cy + d, cx + e, cy - d, cls, 2.9);
   }
 
   function termOrder() {
@@ -1971,13 +2004,6 @@
   }
   function selected() { var o = termOrder(); return o[Math.min(term.sel, o.length - 1)] || missions[0]; }
   function tword(m) { return STATE[m.state].word; }
-  function chainFor(m) {
-    if (m.state === 'waiting') return [];
-    return m.exec ? ['Verifying', 'Codex', 'Verification', 'Results'] : [];
-  }
-  // Text line n sits on unit 2n.
-  function T(n) { return n * 2; }
-
   // Plain-line mode: labelled lines, no boxes, for screen readers and copy.
   function plainOverview() {
     var L = ['ARCHEUS  Core connected; not stopped; accepts new work.', 'Counts: ' + count('waiting') + ' needs you, ' + count('running') + ' verifying, 0 queued.'];
@@ -1993,240 +2019,218 @@
     return L;
   }
 
-  function header(g, w) {
-    g.put(0, 0, 'ARCHEUS');
-    g.put(11, 0, '●', 'green');
-    g.put(13, 0, 'Not stopped · accepts new work');
-    g.put(w - 'CONCEPT FIXTURE'.length - 1, 0, 'CONCEPT FIXTURE', 'dim');
-  }
-
-  function needsLine(g, y) {
-    g.put(0, y, count('waiting') + ' ');
-    g.put(2, y, 'needs you', 'amber');
-    g.put(11, y, ' · ');
-    g.put(14, y, count('running') + ' ');
-    g.put(16, y, 'verifying', 'blue');
-  }
-
-  function overview120(g) {
+  // The 120 x 40 overview at the concept's size: every run is placed at its measured origin, baseline and pitch.
+  function overview120() {
+    var s = Scene({ W: OVER.W, H: OVER.H, size: OVER.size, cell: OVER.cell, ox: 0, oy: 0, pitch: 0 });
     var arch = projects[0], sel = selected();
     var inArch = missions.filter(function (m) { return m.project === arch.id; });
     var fa = inArch.filter(function (m) { return m.state === 'waiting'; })[0];
     var fb = inArch.filter(function (m) { return m.state === 'running'; })[0];
     var rest = inArch.length - [fa, fb].filter(Boolean).length;
-    header(g, 120);
-    needsLine(g, T(1));
-    g.put(60, T(2), '*');
-    g.put(56, T(3), 'ARCHEUS');
-    g.put(56, 8, '/'); g.put(63, 8, '\\');
-    g.put(55, 9, '/'); g.put(64, 9, '\\');
-    g.hull(35, 12, 82, 36, arch.name);
-    g.vert(58, 14, 34);
+    var nw = count('waiting'), nr = count('running');
+    s.rect(25, 826.5, 1550, 40.5, 'strip');
+    s.line(29, 39.4, 1570, 39.4, 'rule', 1.6);
+    CONCEPT_TERM.head.forEach(function (r) { s.text(r[2], r[3], r[0], r[1], r[4]); });
+    s.dot(187, 62.7, 6.3, 'green');
+    s.text(40, 102, nw + ' needs you', 'amber', 13.6);
+    s.text(210, 102, '·', 'dim', 13);
+    s.text(238, 102, nr + ' verifying', 'blue', 13.5);
+
+    chamferBox(s, BOX_MAIN, 'ln');
+    s.text(524, 266, arch.name, 'ivory', 13.17);
+    s.line(636, 259.3, 1073, 259.3, '', 1.6);
+    s.line(812.6, 301, 812.6, 625, 'div', 1.5);
     if (fa) {
-      if (sel === fa) g.put(36, 16, '>');
-      g.put(38, 16, '◇', 'amber'); g.put(41, 16, fa.title, 'amber');
-      g.vert(45, 18, 18);
-      g.put(42, 20, fa.stateText, 'amber');
+      if (sel === fa) s.rect(516, 310, 302, 27, 'select');
+      s.poly('533.5,309.5 543.5,321.5 533.5,333.5 523.5,321.5', 'amber', 1.6);
+      s.text(569, 329, fa.title, 'amber', 12.62);
+      s.line(632.5, 339, 632.5, 369, 'amber', 1.5);
+      s.text(586, 393, fa.stateText, 'amber', 12.6);
     }
     if (fb) {
-      if (sel === fb) g.put(60, 16, '>');
-      g.put(62, 16, '*', 'blue'); g.put(65, 16, fb.title, 'blue');
-      chainFor(fb).forEach(function (step, i) {
-        var y = 20 + i * 4;
-        g.vert(70, y - 2, y - 2);
-        if (step === 'Codex') { g.put(67, y, 'Δ'); g.put(69, y, 'Codex'); return; }
-        var cl = step === 'Verifying' || step === 'Verification' || step === 'Results' ? 'blue' : '';
-        g.put(Math.round(69.5 - step.length / 2), y, step, cl);
-      });
+      if (sel === fb) s.rect(884, 310, 186, 27, 'select');
+      starMark(s, 858.5, 321, 'blue', 8.5);
+      s.text(893, 329, fb.title, 'blue', 12.58);
+      s.line(954.5, 339, 954.5, 369, 'ln', 1.5);
+      s.text(898, 393, 'Verifying', 'blue', 12.75);
+      s.line(954.5, 402, 954.5, 431, 'ln', 1.5);
+      s.poly('905.5,458.5 920.5,458.5 913,441.5', '', 1.6);
+      s.text(943, 459, 'Codex', 'ivory', 12.25);
+      s.line(954.5, 469, 954.5, 501, 'ln', 1.5);
+      s.text(885, 528, 'Verification', 'blue', 12.55);
+      s.line(954.5, 538, 954.5, 568, 'ln', 1.5);
+      s.text(918, 596, 'Results', 'blue', 12.17);
     }
-    if (rest > 0) g.put(37, 34, '+' + rest + ' more', 'dim');
-    g.hull(92, 16, 114, 22, projects[1].name);
+    if (rest > 0) s.text(521, 627, '+' + rest + ' more', 'dim', 12.5);
+
+    chamferBox(s, BOX_NOTES, 'ln');
+    s.text(1273, 329, projects[1].name, 'ivory', 12.25);
+    s.line(1355, 321.8, 1501, 321.8, '', 1.6);
     var nn = missions.filter(function (m) { return m.project === projects[1].id; }).length;
-    if (nn) g.put(95, 18, nn + ' missions', 'dim');
-    g.hull(92, 26, 114, 32, projects[2].name);
-    // Dashed links from the hull edge to the two side boxes, ending in a short tick.
-    [[84, 13], [86, 14], [88, 16], [90, 17]].forEach(function (p) { g.put(p[0], p[1], '\\', 'dim'); });
-    g.put(91, 18, '─', 'dim');
-    [[84, 22], [86, 24], [88, 26], [90, 28]].forEach(function (p) { g.put(p[0], p[1], '\\', 'dim'); });
-    g.put(91, 29, '─', 'dim');
-    g.put(0, 39, 'Why:', 'amber');
-    g.put(5, 39, ' ' + (fa && plans[fa.id] ? plans[fa.id].why : 'nothing waiting.'));
-    g.put(0, 41, '[Enter] Open decision', 'dim');
+    if (nn) s.text(1281, 364, nn + ' missions', 'dim', 12.56);
+    chamferBox(s, BOX_IDEAS, 'ln');
+    s.text(1273, 497, projects[2].name, 'ivory', 12);
+    s.line(1355, 489, 1501, 489, '', 1.6);
+
+    // Connectors: fine dashed diagonals with a short tick at the far end.
+    s.line(1115, 265.5, 1210.5, 353.8, 'link', 1.3, '5.5 3.5');
+    s.line(1211, 354.5, 1224, 354.5, 'link', 1.3);
+    s.line(1114, 427.5, 1210.5, 518, 'link', 1.3, '5.5 3.5');
+    s.line(1211, 521.5, 1223, 521.5, 'link', 1.3);
+
+    starMark(s, 799.5, 129.5, '', 8);
+    CONCEPT_TERM.root.forEach(function (r) { s.text(r[2], r[3], r[0], r[1], r[4]); });
+    s.line(747.5, 183, 731, 201.5, '', 2.2); s.line(729, 204, 715, 220, '', 2.2);
+    s.line(851.75, 183, 867.5, 201.25, '', 2.2); s.line(870, 204, 883.75, 220.5, '', 2.2);
+
+    CONCEPT_TERM.footer.forEach(function (r) { s.text(r[2], r[3], r[0], r[1], r[4]); });
+    var why = fa && plans[fa.id] ? plans[fa.id].why : 'nothing waiting.';
+    s.text(111, 699, why, 'ivory', 13.23);
+    CONCEPT_TERM.keys.forEach(function (k, i) { s.text(k[1], 804, k[0], 'ivory', k[2]); });
+    s.text(42, 855, term.input ? term.input.mode + ' ' + term.input.text + '_' : '> Tell Archeus...', term.input ? 'ivory' : 'dim', 13);
+    return s;
   }
 
-  function overview80(g) {
-    header(g, 80);
-    needsLine(g, T(1));
-    var sel = selected(), y = 2;
+  // The 80 x 24 stack keeps its single-column layout (no concept). Grid rows, boxes drawn as strokes.
+  function overview80() {
+    var s = Scene(STACK), sel = selected();
+    s.put(0, 0, 'ARCHEUS', 'ivory'); s.put(8, 0, '  Not stopped · accepts new work', 'ivory');
+    s.put(0, 1, count('waiting') + ' needs you · ' + count('running') + ' verifying', 'ivory');
+    var y = 2;
     projects.forEach(function (p, pi) {
       var ms = missions.filter(function (m) { return m.project === p.id; });
-      if (pi > 0) { g.put(0, T(y), p.name + ' · ' + ms.length + ' missions', 'dim'); y += 2; return; }
-      g.box(0, T(y), 80, 2 * (ms.length + 1), p.name);
+      if (pi > 0) { s.put(0, y, p.name + ' · ' + ms.length + ' missions', 'dim'); y += 2; return; }
+      var top = STACK.oy + y * STACK.pitch + 12, bot = top + (ms.length + 1) * STACK.pitch;
+      s.line(STACK.ox, top, STACK.W - 40, top, '', 1.2);
+      s.line(STACK.ox, bot, STACK.W - 40, bot, '', 1.2);
+      s.line(STACK.ox, top, STACK.ox, bot, '', 1.2);
+      s.line(STACK.W - 40, top, STACK.W - 40, bot, '', 1.2);
+      s.text(STACK.ox, STACK.oy + y * STACK.pitch, p.name, 'ivory');
       ms.forEach(function (m, i) {
-        g.put(2, T(y + 1 + i), (sel === m ? '> ' : '  ') + GLYPH_T[m.state] + ' ' + m.title, STATE_CLS[m.state]);
+        s.put(2, y + 1 + i, (sel === m ? '> ' : '  ') + GLYPH_T[m.state] + ' ' + m.title, STATE_CLS[m.state]);
       });
       y += ms.length + 2;
     });
     var fa = missions.filter(function (m) { return m.state === 'waiting'; })[0];
-    g.put(0, T(y), 'Why:', 'amber');
-    g.put(5, T(y), ' ' + (fa && plans[fa.id] ? plans[fa.id].why : 'nothing waiting.'));
+    s.put(0, y, 'Why:', 'amber');
+    s.put(5, y, ' ' + (fa && plans[fa.id] ? plans[fa.id].why : 'nothing waiting.'));
+    return s;
   }
 
-  function termFrame(g, keys) {
-    g.put(0, KEY_U, keys);
-    g.put(0, TELL_U, term.input ? (term.input.mode + ' ' + term.input.text + '_') : '> Tell Archeus...', term.input ? '' : 'dim');
-    g.strips.push(TELL_U);
-    g.put(0, STATUS_U, term.step ? 'Confirm this decision? Type y to confirm; any other key cancels.' : 'SIMULATED: fake data, nothing sent to Core. ' + (term.filter ? 'Filter: ' + term.filter + '.' : ''), 'dim');
-    return g;
-  }
-
-  function termHelp(w) {
-    var g = Grid(w, UNITS);
-    header(g, w);
-    g.put(0, T(1), 'HELP  keys');
-    var keys = ['j / k or arrows   select a mission', 'Enter               open the mission (or decision)', 'r                   review plan (decision)', 'p                   replay', 'm                   mission', 't                   tell (not sent)',
-      's                   stop (double press, nothing stops)', 'b or Esc            back', '/                   filter by name', ':                   jump to project, mission or replay', 'L                   plain-line mode on and off', '?                   this help'];
-    keys.forEach(function (k, i) { g.put(3, T(3 + i), k); });
-    return termFrame(g, '? close help');
-  }
-
-  function termMissionGrid(w) {
-    var m = find(term.mid) || find('m-date'), g = Grid(w, UNITS), p = projectOf(m.project);
-    header(g, w);
-    g.put(0, T(1), 'Overview / ' + p.name + ' / ' + m.title);
+  // Mission (term-mission.webp): header, the selected mission, its chain, the three view rows and the key row.
+  function termMissionScene() {
+    var m = find(term.mid) || find('m-date'), p = projectOf(m.project), s = Scene(PAGE);
+    s.put(0, 0, 'ARCHEUS', 'bold'); s.put(8, 0, '  Core connected | Not stopped - accepts new work');
+    s.put(0, 1, 'Overview / ' + p.name + ' / ' + m.title); s.put(51, 1, 'CONCEPT FIXTURE');
     var head = '* ARCHEUS - member - ' + p.name + ' - member - ';
-    g.put(0, T(3), head);
-    g.put(head.length, T(3), 'o ' + m.title, 'blue');
+    s.put(0, 3, head, 'bold');
+    s.put(head.length, 3, 'o ' + m.title, 'bold');
     if (m.exec) {
-      g.put(head.length + 2, T(4) + 1, '\\');
-      g.put(head.length + 5, T(5), '^ Codex - execution', 'blue');
+      s.text(PAGE.ox + 45.5 * PAGE.cell, PAGE.oy + 4 * PAGE.pitch, '\\', 'soft');
+      s.text(586, PAGE.oy + 5 * PAGE.pitch, '^ Codex - execution', 'soft');
     }
-    g.put(0, T(6), m.title + '   ' + m.branch);
-    g.put(0, T(7), tword(m) + (m.exec ? ' · 1 live execution' : ''), STATE_CLS[m.state]);
-    g.put(0, T(9), 'Understand / Plan / Approve / Run / [Verify] / Review');
-    g.put(0, T(11), 'Latest record: ' + m.latest);
-    g.put(0, T(12), 'Task: ' + (m.task === 'none' ? 'not recorded' : m.task));
-    g.put(0, T(14), '> Activity');
-    g.put(0, T(15), '  Plan');
-    g.put(0, T(16), '  Why / recorded relations');
-    var y = 18, plan = plans[m.id];
-    g.put(0, T(y), 'Current phase  ' + (m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase]), 'dim'); y++;
-    m.log.forEach(function (l) { if (T(y) < KEY_U - 1) { g.put(2, T(y), '- ' + l, 'dim'); y++; } });
-    if (plan) {
-      y++;
-      g.put(0, T(y), 'Plan v' + plan.version + ', ' + plan.tasks.length + ' tasks'); y++;
-      plan.tasks.forEach(function (t, i) { if (y < 22) { g.put(2, T(y), (i + 1) + '. ' + t.text); y++; } });
-    }
-    return termFrame(g, 'b back  p replay  r review  t tell  s stop  ? help  : jump  / filter');
+    s.put(0, 7, m.title + '   ' + m.branch);
+    s.put(0, 8, m.stateText + (m.exec ? ' | 1 live execution' : ''), 'soft');
+    s.put(0, 9, 'Understand / Plan / Approve / Run / [Verify] / Review');
+    s.put(0, 11, 'Latest record: ' + m.latest);
+    s.put(0, 12, 'Task: ' + (m.task === 'none' ? 'not recorded' : m.task));
+    s.put(0, 14, '> Activity'); s.put(0, 15, '  Plan'); s.put(0, 16, '  Why / recorded relations');
+    s.put(0, 18, 'Enter inspect  b Back  / find  g places  t Tell  s Stop  ? help', 'dim');
+    return s;
   }
 
-  function termDecisionGrid(w) {
-    var m = find(term.mid) || find('m-search'), p = plans[m.id], g = Grid(w, UNITS);
-    header(g, w);
-    g.put(0, T(1), 'Overview / ' + projectOf(m.project).name + ' / ' + m.title);
-    if (!p) { g.put(0, T(3), 'No plan is recorded for ' + m.title + '.'); return termFrame(g, 'b back  ? help'); }
-    g.put(0, T(2), '*  ARCHEUS');
-    g.put(12, T(2), 'o ' + m.title, 'amber');
-    g.put(33, T(2), '! NEEDS YOU', 'amber');
-    g.put(0, T(4), 'Review plan v' + p.version + ' | ' + m.branch);
-    g.put(0, T(5), 'What: ' + m.what);
-    g.put(0, T(6), 'Why:', 'amber'); g.put(5, T(6), ' ' + p.why);
-    g.put(0, T(7), 'Consequence: use the exact consequence recorded by Core.');
-    g.put(0, T(8), 'A decided approval cannot be changed. No Undo is available.');
-    g.put(0, T(10), 'Tasks', 'dim');
-    p.tasks.forEach(function (t, i) { g.put(2, T(11 + i), (i + 1) + '. ' + t.text); });
-    g.put(0, T(15), '  a approve: ' + p.approve, 'dim');
-    g.put(0, T(16), '  c request changes: ' + p.request, 'dim');
-    g.put(0, T(17), '  x reject: ' + p.reject, 'dim');
+  // Decision (term-decision.webp): amber for the obligation, ivory for the plan, red for the Stop line.
+  function termDecisionScene() {
+    var m = find(term.mid) || find('m-search'), p = plans[m.id];
+    var s = Scene({ W: PAGE.W, H: DECISION_H, size: PAGE.size, cell: PAGE.cell, ox: PAGE.ox, oy: PAGE.oy, pitch: PAGE.pitch, kind: 'decision' });
+    s.put(0, 0, 'ARCHEUS', 'bold'); s.put(8, 0, '  Core connected | Not stopped - accepts new work');
+    s.put(0, 1, 'Overview / ' + projectOf(m.project).name + ' / ' + m.title, 'amber'); s.put(51, 1, 'CONCEPT FIXTURE', 'amber');
+    if (!p) { s.put(0, 3, 'No plan is recorded for ' + m.title + '.'); s.put(0, 15, 'b back  ? help', 'dim'); return s; }
+    s.put(0, 3, '* ARCHEUS', 'amber'); s.put(14, 3, 'o ' + m.title, 'amber'); s.text(455, PAGE.oy + 3 * PAGE.pitch, '! NEEDS YOU', 'amber');
+    s.put(0, 5, 'Review plan v' + p.version + ' | ' + m.branch);
+    s.put(0, 6, 'What: ' + m.what);
+    s.put(0, 7, 'Why: ' + p.why);
+    s.put(0, 8, 'Consequence: use the exact consequence recorded by Core.');
+    s.put(0, 9, 'A decided approval cannot be changed. No Undo is available.');
     if (term.step === 'approve') {
-      g.put(0, T(19), 'Approve selected. Confirm only after reading current plan.', 'amber');
-      g.put(0, T(20), 'Confirm this decision? Type y to confirm; any other key cancels.', 'amber');
+      s.put(0, 11, 'Approve selected. Confirm only after reading current plan.', 'amber');
+      s.put(0, 12, 'Confirm this decision? Type y to confirm; any other key cancels.', 'amber');
     }
-    return termFrame(g, term.step ? 'y confirm   any other key cancels' : 'a approve  c changes  x reject  b back  ? help');
+    s.put(0, 14, 's Stop remains available outside the confirmation input', 'red');
+    s.put(0, 15, term.step ? 'y confirm   any other key cancels' : 'a approve  c changes  x reject  b back  ? help', 'dim');
+    return s;
   }
 
-  function termReplayGrid(w) {
-    var m = find(term.mid) || find('m-date'), rows = REPLAY[m.id] || [], g = Grid(w, UNITS);
-    header(g, w);
-    g.put(0, T(1), 'Overview / ' + projectOf(m.project).name + ' / Replay ' + m.title + ' (sample data)');
-    var n = 4;
+  function termReplayScene() {
+    var m = find(term.mid) || find('m-date'), rows = REPLAY[m.id] || [];
+    var s = Scene(PAGE), n = 3;
+    s.put(0, 0, 'ARCHEUS', 'bold'); s.put(8, 0, '  Core connected | Not stopped - accepts new work');
+    s.put(0, 1, 'Overview / ' + projectOf(m.project).name + ' / Replay ' + m.title + ' (sample data)');
     rows.forEach(function (r, i) {
-      var y = T(n), hot = r.tone === 'uncertain' || r.tone === 'needs-you' ? 'amber' : r.tone === 'verified' ? 'green' : '';
-      g.put(4, y, r.mark === 'check' ? '+' : r.mark === 'diamond' ? '◇' : '●', hot);
-      g.put(8, y, r.time, 'dim');
-      g.put(15, y, '[' + r.badge + ']', hot);
-      g.put(28, y, r.title);
-      g.put(28, y + 2, r.sub, 'dim');
-      if (i < rows.length - 1) g.vert(4, y + 1, y + 5, 'dim');
+      var hot = r.tone === 'uncertain' || r.tone === 'needs-you' ? 'amber' : r.tone === 'verified' ? 'green' : '';
+      s.put(0, n, (r.mark === 'check' ? '+' : r.mark === 'diamond' ? '◇' : '*') + ' ' + r.time, hot || 'dim');
+      s.put(10, n, '[' + r.badge + ']', hot);
+      s.put(20, n, r.title);
+      s.put(20, n + 1, r.sub, 'dim');
       n += 3;
     });
-    g.put(0, T(n), new Array(w - 1).join('┄'), 'dim');
-    g.put(4, T(n + 1), '●', 'dim');
-    g.put(8, T(n + 1), '--:--', 'dim');
-    g.put(15, T(n + 1), '[Operator]', 'dim');
-    g.put(28, T(n + 1), 'Reconcile');
-    g.put(39, T(n + 1), 'Record what happened on the remote. Nothing is pushed here.', 'dim');
-    g.put(0, T(n + 2), 'Not every external effect can be reversed.', 'dim');
-    return termFrame(g, 'b back  t tell  s stop  ? help');
+    s.put(0, n, '[Operator] Reconcile  --:--', 'dim');
+    s.put(0, n + 1, 'Record what happened on the remote. Nothing is pushed here.', 'dim');
+    s.put(0, n + 2, 'Not every external effect can be reversed.', 'dim');
+    s.put(0, 18, 'b back  t tell  s stop  ? help', 'dim');
+    return s;
   }
 
-  // Each run of equal colour classes becomes one span. NO_COLOR and ?nocolor drop the classes; the text stays.
-  function gridHTML(lines) {
-    return lines.map(function (ln) {
-      var text = ln.strip ? ln.text : ln.text.replace(/\s+$/, ''), cls = ln.cls, html = '', i = 0;
-      while (i < text.length) {
-        var c = term.color ? cls[i] : '', j = i;
-        while (j < text.length && (term.color ? cls[j] : '') === c) j++;
-        var seg = esc(text.slice(i, j));
-        html += c ? '<span class="' + c + '">' + seg + '</span>' : seg;
-        i = j;
-      }
-      return ln.strip ? '<span class="bar">' + html + '</span>' : html;
+  function termHelpScene() {
+    var s = Scene(PAGE);
+    s.put(0, 0, 'ARCHEUS', 'bold'); s.put(8, 0, '  Core connected | Not stopped - accepts new work');
+    s.put(0, 1, 'HELP  keys');
+    var keys = ['j / k or arrows   select a mission', 'Enter               open the mission (or decision)', 'r                   review plan (decision)', 'p                   replay', 'm                   mission', 't                   tell (not sent)',
+      's                   stop (double press, nothing stops)', 'b or Esc            back', '/                   filter by name', ':                   jump to project, mission or replay', 'L                   plain-line mode on and off', '?                   this help'];
+    keys.forEach(function (k, i) { s.put(3, 3 + i, k); });
+    s.put(0, 18, '? close help', 'dim');
+    return s;
+  }
+
+  // Plain-line mode and the screen-reader text: the same content as text lines.
+  function srText(s) {
+    return s.rows.map(function (r) {
+      var out = '';
+      Object.keys(r || {}).map(Number).sort(function (a, b) { return a - b; }).forEach(function (c) { while (out.length < c) out += ' '; out += r[c]; });
+      return out;
     }).join('\n');
   }
 
-  // Scales the design (38 px left margin, 13 px cells, 16.5 px units) to the wrapper. The font size is solved from
-  // the face's real advance, so every cell is exactly 13 design px whatever monospace face the viewer has.
-  function fitTerm(pre) {
-    var wrap = pre.parentNode, cols = Number(pre.getAttribute('data-cols')) || 120;
-    var design = 38 + cols * CELL + 2;
-    var k = Math.min(1.25, Math.max(0.75, wrap.clientWidth / design));
-    var probe = document.createElement('span');
-    probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;font-size:100px';
-    probe.textContent = 'MMMMMMMMMM';
-    pre.appendChild(probe);
-    var em = probe.getBoundingClientRect().width / 10 / 100;
-    pre.removeChild(probe);
-    pre.style.fontSize = (CELL * k / em) + 'px';
-    pre.style.lineHeight = ((term.plain ? 33 : UNIT_PX) * k) + 'px';
-    pre.style.width = (design * k) + 'px';
-    pre.style.paddingLeft = (38 * k) + 'px';
-    pre.style.paddingTop = (12 * k) + 'px';
-    wrap.style.paddingTop = (39 * k) + 'px';
-  }
-
   function renderTerm() {
-    var w = term.cols, g;
-    var pre = $('#term');
+    var pre = $('#term'), sim = $('#term-sim'), w = term.cols, s = null, text = '';
     pre.setAttribute('data-cols', String(w));
+    var simLine = term.step ? 'Confirm this decision? Type y to confirm; any other key cancels.' : 'SIMULATED: fake data, nothing sent to Core. ' + (term.filter ? 'Filter: ' + term.filter + '.' : '');
     if (term.plain && term.screen === 'overview' && !term.help) {
       pre.className = 'term plain';
-      pre.textContent = plainOverview().join('\n');
+      text = plainOverview().join('\n');
+      pre.textContent = text;
     } else {
-      if (term.help) g = termHelp(w);
-      else if (term.screen === 'mission') g = termMissionGrid(w);
-      else if (term.screen === 'decision') g = termDecisionGrid(w);
-      else if (term.screen === 'replay') g = termReplayGrid(w);
-      else {
-        g = Grid(w, UNITS);
-        if (w >= 100) overview120(g); else overview80(g);
-        termFrame(g, w >= 100 ? 'j/k select    Enter open    b Back    p Replay    t Tell    r Review    s Stop' : 'j/k  Enter open  b back  p replay  t tell  r review  s stop');
-      }
+      if (term.help) s = termHelpScene();
+      else if (term.screen === 'mission') s = termMissionScene();
+      else if (term.screen === 'decision') s = termDecisionScene();
+      else if (term.screen === 'replay') s = termReplayScene();
+      else s = w >= 100 ? overview120() : overview80();
       pre.className = 'term';
-      pre.innerHTML = gridHTML(g.lines());
+      pre.innerHTML = s.svg() + '<span class="sr-only">' + esc(srText(s)) + '</span>';
+      fitTerm(pre);
     }
-    fitTerm(pre);
+    if (sim) sim.textContent = simLine;
     $$('[data-tsize]').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-tsize')) === w)); });
+  }
+
+  // The SVG keeps its design size and scales to the wrapper (0.75 to 1.25). Text, strokes and gaps scale together.
+  function fitTerm(pre) {
+    var wrap = pre.parentNode, svg = pre.querySelector('svg');
+    if (!svg) return;
+    var W = Number(svg.getAttribute('width')), H = Number(svg.getAttribute('height'));
+    var k = Math.min(1.25, Math.max(0.75, wrap.clientWidth / W));
+    svg.style.width = (W * k) + 'px';
+    svg.style.height = (H * k) + 'px';
   }
 
   function renderTerminal() { renderTerm(); $('#term').focus({ preventScroll: true }); }
