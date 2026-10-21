@@ -5,9 +5,11 @@ the task's reply to an execution ending carries that `execution.ended`. The
 cause only labels what is written: every decision below is the one it was
 without it."""
 
+import time
+
 import pytest
 
-from archeus.core.application import commands, queries
+from archeus.core.application import commands, lifecycle, queries
 from archeus.core.application import executions as X
 from archeus.core.domain import entities, ids
 from archeus.core.domain import events as ev
@@ -76,6 +78,17 @@ def test_a_chain_keeps_its_newest_sixteen():
     e = ev.new_event('mission.created', Ref('mission', ids.new_id('mission')),
                      Ref('user_device', ids.new_id('principal')), cause_chain=chain)
     assert ev.caused_by(e) == chain[1:] + (e.id,)
+
+
+def test_a_handler_that_raises_leaves_no_cause_behind(db, actor):
+    _mission(db, actor)
+
+    def handler(e):
+        raise RuntimeError('a bug in the consumer')
+
+    with pytest.raises(RuntimeError):
+        consumers.deliver(db, 'c-write-raise', handler)
+    assert ev.CAUSE.get() == () and _chain(db, _mission(db, actor)) == []
 
 
 def test_a_consumer_writes_under_its_event_and_leaves_no_cause_behind(db, actor):
@@ -170,12 +183,26 @@ def test_a_fallback_routes_decision_causes_what_follows(db, decision, to, task_s
     assert e['cause_chain'] == [] and after and all(x['cause_chain'] == [e['id']] for x in after)
 
 
+def test_a_chat_approve_replies_as_a_root_while_what_it_moves_carries_the_decision(r):
+    _mid, a = _asking(r)
+    out = r.do(r.authz.decide_by_message, who=r.user, text='approve', conversation_id='primary',
+               approval_id=a.id, action_hash=a.action_hash)
+    assert out['decided']['state'] == 'APPROVED'
+    e = _decided(r.db, a, 'APPROVED')
+    after = _after(r.db, e)
+    (reply,) = [x for x in after if x['type'] == 'message.created'
+                and x['payload']['author'] == 'archeus']
+    assert reply['cause_chain'] == []                    # the route command's reply: a root
+    moved = [x for x in after if x['type'] != 'message.created']
+    assert moved and all(x['cause_chain'] == [e['id']] for x in moved)
+
+
 def test_a_refused_decision_writes_nothing_under_a_cause_either(r):
     _mid, a = _asking(r)
     head = r.head()
     token = ev.CAUSE.set((ids.new_ulid(),))
-    try:
-        with pytest.raises(Exception):
+    try:                                  # a rollback check: the hash refusal comes first
+        with pytest.raises(lifecycle.GuardFailed):
             r.decide(a, h='0' * 64)
     finally:
         ev.CAUSE.reset(token)
@@ -239,3 +266,119 @@ def test_one_command_ending_two_executions_keeps_each_reply_to_its_own_end(r):
         reply = next(x for x in _after(r.db, ended) if x['type'] == 'task.state_changed')
         assert reply['subject']['id'] == task_of[eid]
         assert (ended['cause_chain'], reply['cause_chain']) == ([], [ended['id']])
+
+
+# ── every end site of the task's reply: refuse, record_handoff, approval_answered, and
+# ── the restore between the ends one command makes (estop, stop_mission)
+
+def _to(r, eid, *triggers):
+    """Move execution *eid* along *triggers*, one transition each (the manager's path)."""
+    def step(tx, actor):
+        for t in triggers:
+            X._fire(tx, eid, t, actor, 'test')
+    r.do(step)
+
+
+def _task_reply(db, ended, task_id):
+    return next(x for x in _after(db, ended)
+                if x['type'] == 'task.state_changed' and x['subject']['id'] == task_id)
+
+
+def _task_of(r):
+    return {e.id: e.task_id for e in r.all(entities.Execution)}
+
+
+def test_a_mission_stop_ends_each_paused_execution_and_each_reply_carries_its_own_end(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'), task('t2', 'write_repo'))
+    _dispatchable(r, mid)
+    eids = _started(r, mid)
+    for eid in eids:
+        _to(r, eid, 'first_output', 'pause_requested', 'halted_at_boundary')
+    out = r.do(X.Executions(missions=r.missions).stop_mission, who=r.user, mission_id=mid)
+    assert sorted(out['stopped']) == sorted(eids)
+    task_of = _task_of(r)
+    ends = {eid: _of(r.db, 'execution.ended', eid)[0] for eid in eids}
+    for eid, ended in ends.items():
+        assert ended['cause_chain'] == []                # the user's stop: a root
+        assert _task_reply(r.db, ended, task_of[eid])['cause_chain'] == [ended['id']]
+    (blocked,) = [x for x in _of(r.db, 'mission.state_changed', mid)
+                  if x['payload']['to'] == 'BLOCKED']
+    last = max(ends.values(), key=lambda x: x['seq'])
+    assert blocked['seq'] > last['seq'] and blocked['cause_chain'] == []
+
+
+def test_an_estop_ends_a_paused_execution_and_the_estop_record_stays_a_root(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'), task('t2', 'write_repo'))
+    _dispatchable(r, mid)
+    live, paused = _started(r, mid)
+    _to(r, live, 'first_output')
+    _to(r, paused, 'first_output', 'pause_requested', 'halted_at_boundary')
+    out = r.do(X.Executions(missions=r.missions).estop, who=r.user)
+    assert sorted(out['stopped']) == sorted([live, paused])
+    (ended,) = _of(r.db, 'execution.ended', paused)
+    assert ended['cause_chain'] == []
+    assert _task_reply(r.db, ended, _task_of(r)[paused])['cause_chain'] == [ended['id']]
+    (estopped,) = [e for e in _events(r.db) if e['type'] == 'core.estopped']
+    assert estopped['cause_chain'] == []                 # written after that end: no end's cause
+
+
+def test_a_rejected_action_approval_ends_its_execution_and_the_reply_carries_that_end(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'))
+    _dispatchable(r, mid)
+    (eid,) = _started(r, mid)
+    _to(r, eid, 'first_output')
+    push = {'action_class': 'git_push', 'target': 'origin/main',
+            'argv': ['git', 'push', 'origin', 'main']}
+    asked = r.do(r.authz.evaluate_action, execution_id=eid, action=push)
+    assert asked['decision'] == 'ASK'
+    _to(r, eid, 'hook_asked')
+    r.decide(r.one(entities.Approval, id=asked['approval_id']), 'reject')
+    r.do(X.approval_answered, execution_id=eid)
+    (ended,) = _of(r.db, 'execution.ended', eid)
+    after = _after(r.db, ended)
+    assert ended['cause_chain'] == [] and after
+    assert all(x['cause_chain'] == [ended['id']] for x in after)
+
+
+def _handing_off(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'))
+    _dispatchable(r, mid)
+    (eid,) = _started(r, mid)
+    _to(r, eid, 'first_output')
+    r.do(X.request_handoff, execution_id=eid, stop_reason='pressure', reason='context is full')
+    return eid
+
+
+def _hand_off(r, eid):
+    return r.do(X.record_handoff, policy=r.policy, missions=r.missions, router=r.work.router,
+                execution_id=eid, now=time.time())
+
+
+def test_a_hand_off_s_continuation_is_caused_by_the_hand_off_end(r):
+    eid = _handing_off(r)
+    out = _hand_off(r, eid)
+    assert out['continuation'] is not None
+    (ended,) = _of(r.db, 'execution.ended', eid)
+    after = _after(r.db, ended)
+    assert ended['cause_chain'] == [] and after
+    assert all(x['cause_chain'] == [ended['id']] for x in after)
+
+
+def test_a_refused_hand_off_charges_the_task_under_its_end(r):
+    eid = _handing_off(r)
+
+    def seeded(tx, actor):                # a seeded execution: its clean end owes an import
+        tx.update(entities.Execution, eid, {'seed_revision': 'a' * 40}, actor=actor)
+        X._event(tx, 'execution.hook', tx.get(entities.Execution, eid).entity, actor,
+                 {'seq': 0, 'decision': 'test', 'reason': ''})
+    r.do(seeded)
+    out = _hand_off(r, eid)
+    assert out['continuation'] is None and out['refused']      # seeded, no import: refused
+    (ended,) = _of(r.db, 'execution.ended', eid)
+    after = _after(r.db, ended)
+    assert ended['cause_chain'] == [] and after
+    assert all(x['cause_chain'] == [ended['id']] for x in after)

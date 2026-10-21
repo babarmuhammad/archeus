@@ -22,6 +22,7 @@ and every use evaluates the CURRENT policy again — an approval is never
 valid merely because it exists.
 """
 
+import functools
 import hashlib
 import json
 import os
@@ -622,6 +623,20 @@ def ineligible(conn, a, *, now, approve=True):
     return None
 
 
+def _restores_cause(fn):
+    """A decision's `tx.cause` (set after its event) ends with the decision: the
+    command that called it (a chat reply, say) is not caused by the approval."""
+    @functools.wraps(fn)
+    def scoped(tx, **kw):
+        before = tx.cause
+        try:
+            return fn(tx, **kw)
+        finally:
+            tx.cause = before
+    return scoped
+
+
+@_restores_cause
 def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, note=None,
            step_up=None, expected_version=None):
     """A user device decides an approval (§8.5): `approve`, `reject`, or

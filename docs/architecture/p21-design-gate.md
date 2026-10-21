@@ -506,15 +506,41 @@ five (Recommended)". D13 (b) as approved; "P21 cannot be declared complete befor
   a few lines in `writer.py` away from its hash, proof and token code, so no issuing call can be
   missed and only `authorization.py` among the excluded files is edited (three lines), under the
   owner's word.
+- **Decision scope (review of b0bc245, Required 1).** `decide` is wrapped by `_restores_cause`
+  (`authorization.py`): the cause the three assignments set ends when the decision returns, so the
+  command that called it keeps its own cause. Before, a chat approve's reply (`decide_by_message`,
+  `conversation.py`) was written caused by the decision; that reply is the route command's, a root.
+  The decision's arguments, guards and outcomes are unchanged.
+- **Files as built.** `archeus/infra/db/writer.py` (`Tx.__init__`, `Tx.append`, `Writer.submit`,
+  `Writer._run`, `Writer._one`; not `request_hash`, `PROOF_ARGS`, the idempotency table or the
+  token methods), `archeus/core/domain/events.py` (`CAUSE`, `caused_by`), `archeus/infra/eventlog/
+  consumers.py` (`deliver`), `archeus/core/application/authorization.py` (`_restores_cause`, the
+  three assignments, the `functools` import), `archeus/core/application/automations.py` (`_claim`),
+  `archeus/core/application/executions.py` (`_after` and its four call sites). Nothing else under
+  `archeus/`. Stated on the record because the scope note flagged `writer.py`.
+- **Recorded from the review, not changed.** Own-call ends of `core/calls.py` (no harness, emergency
+  stop, provider terms, adapter error, invalid answer) run on a consumer thread and now carry its
+  cause; that is (b)'s rule, reached without editing `calls.py`. `approval_answered` is called from
+  the manager's poll loop, a root, so the task's reply is caused by its `execution.ended` and not by
+  the approval decision (no link from approval to reply; the owner's rule for the reply, unchanged).
+  A human verification decision (`verification.py` `Decisions.decide`) is not an approval and
+  causes nothing, as (b) says.
 - **Display.** Nothing new: the trace (C-read), the timeline and the TUI already show a
   `cause_chain`; more events now have one.
-- **Tests:** `tests/v1/integration/test_cwrite.py` (13: a command under a cause, an explicit cause
-  winning and a route command a root; the cause outside the request hash; the newest 16 kept; a
-  consumer's writes caused and nothing left behind, a `Hold` included; the intent consumer's
-  mission and reply caused by the user's message; plan approve, reject and request changes, each
-  deciding as before and causing everything it moved; a decision under an event passing it on; a
-  fallback route's approve and reject; a refused decision writing nothing); the addition adds 3:
-  an ok and an error end each caused into the task's reply with the hook token cleared, and one
-  command ending two executions keeping each reply to its own end.
-- **Mutants:** Z70-Z79 and, for the addition, Z110-Z111 in `tools/mutate_p21.py`, each killed by
-  the test it names.
+- **Tests:** `tests/v1/integration/test_cwrite.py` (23). The original thirteen: a command under a cause,
+  an explicit cause winning and a route command a root; the cause outside the request hash; the
+  newest 16 kept; a consumer's writes caused and nothing left behind, a `Hold` included; the intent consumer's mission and reply caused by the user's
+  message; plan approve, reject and request changes, each deciding as before and causing everything
+  it moved; a decision under an event passing it on; a fallback route's approve and reject; a
+  refused decision writing nothing (a rollback check, GuardFailed). The addition: an ok and an error
+  end each caused into the task's reply with the hook token cleared, and one command ending two
+  executions keeping each reply to its own end. The review's additions: a chat approve's reply a
+  root while its moves carry the decision; a consumer handler that raises leaves no cause behind;
+  each other end site (a mission stop over two paused
+  executions, an estop with a paused one, a rejected action approval, a refused hand-off, a
+  continuation) caused by its own end, and the mission block and `core.estopped` after an end a
+  root.
+- **Mutants:** Z70-Z79 (the writer, the consumer, the event chain and the decision's assignments) and
+  Z110-Z111 (the `_after` body), and for the review Z170-Z173 (one per `_after` site: refuse, record_handoff, approval_answered, `_ended`),
+  Z174 (the decision's restore removed), Z180 (the writer ignores the cause it was given), all in
+  `tools/mutate_p21.py`, each killed by a test it names.
