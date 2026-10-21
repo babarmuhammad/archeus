@@ -4,6 +4,38 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10f desktop Overview fonts (2026-10-22): follow-up to 10e
+
+Owner decision (font bake-off, D:ontbakeesults.md): no free face matched the concept serif (best mean IoU 0.47); serif is Libre Caslon Text, weight 500; sans is Source Sans 3 400 (chosen over Inter by shape IoU at width-solved sizes: 0.418 against 0.382 on 22 sans items). EB Garamond and Inter are removed from the client.
+
+- Headline: 37.42 px, tracking +1.08 px (the bake-off gave +1.00 px; re-solved against the 1296 master: 455 px concept width matched to within 0.1 px). Ink height is about 2 px shorter than the concept's (the concept serif is taller).
+- Per-element sizes solved by `tools/textfit_desktop.py caslon` (width against the concept ink; 11 px minimum on the frame, tracking where an item is clamped). Registration by `tools/textreg_desktop.py` (render ink box minus concept ink box).
+- Other changes: wordmark tracking 2.2 px and weight 400 (V2 kept inside the rail overflow, which is now visible); nav band flush (no radius); Tell and Stop label padding; the midpoint between the star and the apex was not refilled (a dark spot showed, worse than the halo).
+- Service worker cache archeus-v2-proto-d2 (fonts changed).
+
+Measured (`metrics.py`, full resolution, unblurred, mean abs RGB 0 to 255 and % above 24; 1296 x 755, reduced motion, fonts awaited):
+
+| region | 10e | 10f |
+|---|---|---|
+| art only, outside live boxes | 0.42 / 0.35 % | 0.34 / 0.26 % |
+| text boxes | 29.7 / 24.4 % | 28.5 / 23.8 % |
+| live marks | 19.4 / 19.4 % | 19.4 / 19.4 % |
+| header | 13.8 / 14.0 % | 12.9 / 13.4 % |
+| rail | 5.6 / 3.1 % | 5.5 / 3.0 % |
+| chat and composer | 8.5 / 6.6 % | 7.9 / 6.3 % |
+| full frame | 5.26 / 4.2 % | 5.02 / 4.0 % |
+
+Headline box (172 to 642 x 66 to 122) mean abs: 33.96 (EB Garamond at 10e: 41.95). Search provenance label box: 43.9 (EB Garamond: 33.1), so the serif change is not better on every element; the title weight was the reason to keep 500 for the headline only and 400 for titles was not tested in this round.
+
+Residuals (round 10f):
+1. Serif glyph shape: Libre Caslon is heavier and wider than the concept's serif at the same ink height; the widths are matched by the solver, the heights are about 2 px short on the headline and 1 to 2 px on the titles. No free face matched (bake-off).
+2. Search provenance title box is worse than with EB Garamond (43.9 against 33.1).
+3. Star and apex: the refilled disc around the Fix date test star shows a slightly darker ring at 4x (crop: cx_halo_y.png in scratchpad d10d); the blue halo between the star and the apex is still faintly visible.
+4. Tell and Stop: icon plus text ink 3 to 5 px narrower than the concept's (Stop 39 px against 48).
+5. Sub-lines at 11 px (Captured, New, Early concepts.) and the card text still differ in width by 1 to 3 px.
+
+Checks: `check.mjs` through the testlock (see the round 10f commit message and the final report). Overlap and clipping probes and the DPR 2 render were run on this state (see the final report).
+
 ## Round 10e desktop Overview (2026-10-22): hybrid, residuals listed
 
 Owner rules applied: the concept's own sizes win on the desktop frame; frame text is at least 11 px (Apple HIG 11 pt), other views keep 14 px; tappable controls keep 44 pt hit areas without changing the visible shapes. Hybrid method unchanged: art (`art/desktop-now-base.webp`, built by `tools/art_desktop.py`) under live DOM text, live SVG marks and live SVG links.

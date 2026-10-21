@@ -10,10 +10,20 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 CON = r"D:/hub-concepts-codex4/desktop-1-now-v2.png"
-FONTS = {
-    "serif": r"D:/archeus-t123-desktop/clients/v2-prototype/fonts/EBGaramond-wght.ttf",
-    "sans": r"D:/archeus-t123-desktop/clients/v2-prototype/fonts/Inter-wght-opsz.ttf",
+FONT_DIR = r"D:/archeus-t123-desktop/clients/v2-prototype/fonts/"
+# Round 10f: serif Libre Caslon Text 500 (bake-off choice); sans Source Sans 3 400 or Inter (set by argv).
+FONT_SETS = {
+    "caslon": {
+        "serif": FONT_DIR + "LibreCaslonText-wght.ttf",
+        "sans": FONT_DIR + "SourceSans3-wght.ttf",
+    },
+    "inter": {
+        "serif": FONT_DIR + "LibreCaslonText-wght.ttf",
+        "sans": FONT_DIR + "Inter-wght-opsz.ttf",
+    },
 }
+FONTS = FONT_SETS["caslon"]
+SERIF_WGHT = 500
 # name, font, weight, search box (x0, y0, x1, y1) in master px, text
 ITEMS = [
     ("status", "sans", 400, (896, 16, 1074, 36), "Not stopped \u00b7 accepts new work"),
@@ -111,6 +121,9 @@ def solve_size(font, wght, text, target_w, lo=6.0, hi=80.0):
 
 
 def main():
+    global FONTS
+    import sys
+    FONTS = FONT_SETS[sys.argv[1] if len(sys.argv) > 1 else "caslon"]
     im = cv2.imread(CON)
     gray = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
     ratios = {f: cap_ratio(p) for f, p in FONTS.items()}
@@ -123,6 +136,8 @@ def main():
             continue
         cw, ch = ib[2] - ib[0], ib[3] - ib[1]
         n = len(text)
+        if font == "serif":
+            wght = SERIF_WGHT
         if name in SPACED:
             size = max(MIN_FRAME, round(ch / ratios[font], 1))
             w0, _ = pil_ink(FONTS[font], size, text, wght)

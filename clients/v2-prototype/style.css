@@ -1,5 +1,6 @@
-@font-face { font-family: "EB Garamond V2"; src: url("fonts/EBGaramond-wght.ttf") format("truetype"); font-weight: 400 800; font-display: block; }
-@font-face { font-family: "Inter V2"; src: url("fonts/Inter-wght-opsz.ttf") format("truetype"); font-weight: 100 900; font-display: block; }
+@font-face { font-family: "Libre Caslon V2"; src: url("fonts/LibreCaslonText-wght.ttf") format("truetype"); font-weight: 400 700; font-display: block; }
+@font-face { font-family: "Source Sans V2"; src: url("fonts/SourceSans3-wght.ttf") format("truetype"); font-weight: 200 900; font-display: block; }
+
 /* Tokens: one block for colour, type and space. Every colour pair is checked in check.mjs. */
 :root {
   color-scheme: dark;
@@ -838,12 +839,12 @@ body.frame-now { overflow: hidden; background: #060409; }
 body.frame-now .shell { position: absolute; left: 50%; top: 50%; width: 1296px; height: 755px; margin: -377.5px 0 0 -648px;
   transform: scale(var(--k, 1)); transform-origin: 50% 50%; display: block; }
 body.frame-now .rail { position: absolute; left: 0; top: 0; bottom: auto; width: 140px; height: 729px; padding: 0; background: transparent; border: 0; }
-body.frame-now .rail .wordmark { position: absolute; left: 22px; top: 12px; width: 150px; white-space: nowrap; font: 400 17px/22px "EB Garamond V2", var(--serif); letter-spacing: 0.24em; color: var(--text); }
+body.frame-now .rail .wordmark { position: absolute; left: 22px; top: 12px; width: 150px; white-space: nowrap; font: 400 17px/22px "Libre Caslon V2", var(--serif); letter-spacing: 0.24em; color: var(--text); }
 body.frame-now .rail .wordmark span { font-size: 14px; letter-spacing: 0.1em; margin-left: 4px; }
-body.frame-now .rail .fixture { position: absolute; left: 18px; top: 36px; margin: 0; font: 400 14px/16px "Inter V2", var(--sans); letter-spacing: 0.02em; color: var(--text-3); }
+body.frame-now .rail .fixture { position: absolute; left: 18px; top: 36px; margin: 0; font: 400 14px/16px "Source Sans V2", var(--sans); letter-spacing: 0.02em; color: var(--text-3); }
 body.frame-now .rail .projects { display: none; }
 body.frame-now .places { position: absolute; left: 0; top: 71px; width: 140px; }
-body.frame-now .places a { position: absolute; left: 0; width: 140px; height: 46px; display: flex; align-items: center; gap: 0; padding: 0 0 0 26px; box-sizing: border-box; color: var(--text); font: 400 16px/20px "Inter V2", var(--sans); }
+body.frame-now .places a { position: absolute; left: 0; width: 140px; height: 46px; display: flex; align-items: center; gap: 0; padding: 0 0 0 26px; box-sizing: border-box; color: var(--text); font: 400 16px/20px "Source Sans V2", var(--sans); }
 body.frame-now .places a[data-nav="now"] { top: 0; }
 body.frame-now .places a[data-nav="shared"] { top: 47px; }
 body.frame-now .places a[data-nav="replay"] { top: 88px; }
@@ -854,26 +855,26 @@ body.frame-now .places span { display: inline-block; }
 
 body.frame-now .page { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now .top { position: absolute; left: 0; top: 0; width: 1296px; height: 60px; padding: 0; margin: 0; background: transparent; }
-body.frame-now .top .core-status { position: absolute; left: 898px; top: 18px; margin: 0; white-space: nowrap; font: 400 14px/18px "Inter V2", var(--sans); color: var(--text-2); }
+body.frame-now .top .core-status { position: absolute; left: 898px; top: 18px; margin: 0; white-space: nowrap; font: 400 14px/18px "Source Sans V2", var(--sans); color: var(--text-2); }
 body.frame-now .top .core-status .dot { position: absolute; left: -14px; top: 6px; width: 7px; height: 7px; }
-body.frame-now .top [data-tell] { position: absolute; left: 1087px; top: 13px; width: 88px; height: 29px; min-height: 0; padding: 0; border-radius: 6px; font: 400 14px/20px "Inter V2", var(--sans); }
-body.frame-now .top .stop-btn { position: absolute; left: 1190px; top: 13px; width: 90px; height: 29px; min-height: 0; padding: 0; border-radius: 6px; font: 400 14px/20px "Inter V2", var(--sans); }
+body.frame-now .top [data-tell] { position: absolute; left: 1087px; top: 13px; width: 88px; height: 29px; min-height: 0; padding: 0; border-radius: 6px; font: 400 14px/20px "Source Sans V2", var(--sans); }
+body.frame-now .top .stop-btn { position: absolute; left: 1190px; top: 13px; width: 90px; height: 29px; min-height: 0; padding: 0; border-radius: 6px; font: 400 14px/20px "Source Sans V2", var(--sans); }
 body.frame-now .say { display: none; }
 
 body.frame-now .screen { position: static; }
 body.frame-now #s-now { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now #s-now .phone-top, body.frame-now #s-now .phone-status, body.frame-now #s-now .needs-card { display: none; }
 body.frame-now #s-now .head { position: absolute; left: 175px; top: 50px; width: 700px; margin: 0; pointer-events: none; z-index: 6; }
-body.frame-now #s-now .head .kicker { position: absolute; left: 1px; top: 4px; margin: 0; font: 400 14px/18px "Inter V2", var(--sans); letter-spacing: 0.14em; color: var(--text-2); }
-body.frame-now #s-now h1 { position: absolute; left: 0; top: 16px; margin: 0; font: 400 50px/56px "EB Garamond V2", var(--serif); letter-spacing: 0; color: var(--text); white-space: nowrap; }
-body.frame-now .now-lede { position: absolute; left: 0; top: 67px; margin: 0; width: 402px; font: 400 17px/20px "EB Garamond V2", var(--serif); color: var(--text-2); }
+body.frame-now #s-now .head .kicker { position: absolute; left: 1px; top: 4px; margin: 0; font: 400 14px/18px "Source Sans V2", var(--sans); letter-spacing: 0.14em; color: var(--text-2); }
+body.frame-now #s-now h1 { position: absolute; left: 0; top: 16px; margin: 0; font: 400 50px/56px "Libre Caslon V2", var(--serif); letter-spacing: 0; color: var(--text); white-space: nowrap; }
+body.frame-now .now-lede { position: absolute; left: 0; top: 67px; margin: 0; width: 402px; font: 400 17px/20px "Libre Caslon V2", var(--serif); color: var(--text-2); }
 body.frame-now .now-body, body.frame-now .now-main { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now .now-main > .stage { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now .desk-art { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; z-index: 0; display: block; pointer-events: none; }
 body.frame-now .stage-now canvas.sky { display: none; }
 body.frame-now .stage-now canvas.fx { z-index: 1; }
 body.frame-now .stage-now .world { z-index: 2; }
-body.frame-now .now-tag { position: absolute; left: 0; top: 729px; width: 1296px; margin: 0; padding: 4px 0 0 175px; box-sizing: border-box; height: 26px; font: 400 14px/18px "Inter V2", var(--sans); color: var(--text-3); }
+body.frame-now .now-tag { position: absolute; left: 0; top: 729px; width: 1296px; margin: 0; padding: 4px 0 0 175px; box-sizing: border-box; height: 26px; font: 400 14px/18px "Source Sans V2", var(--sans); color: var(--text-3); }
 body.frame-now .prompts, body.frame-now .list-d { display: none; }
 
 body.frame-now .feed { position: absolute; left: 368px; top: 528px; width: 610px; max-height: none; bottom: auto; z-index: 3; }
@@ -881,16 +882,16 @@ body.frame-now .feed .msgs { margin: 0; padding: 0; }
 body.frame-now .feed .msg { grid-template-columns: 46px minmax(0, 1fr); column-gap: 17px; margin: 0; min-height: 34px; height: 34px; }
 body.frame-now .feed .msg + .msg { margin-top: 6px; }
 body.frame-now .feed .msg-card { height: 42px; margin-top: 8px; }
-body.frame-now .feed .msg::before { font: 400 14px/20px "Inter V2", var(--sans); }
+body.frame-now .feed .msg::before { font: 400 14px/20px "Source Sans V2", var(--sans); }
 body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p {
-  font: 400 14px/20px "Inter V2", var(--sans); padding: 7px 18px; border-radius: 6px; background: #1E1A2E; border: 0; }
+  font: 400 14px/20px "Source Sans V2", var(--sans); padding: 7px 18px; border-radius: 6px; background: #1E1A2E; border: 0; }
 body.frame-now .chatbar { position: absolute; left: 303px; top: 666px; width: 690px; height: 44px; bottom: auto; z-index: 3; }
-body.frame-now .chatbar input { font: 400 15px/20px "Inter V2", var(--sans); }
+body.frame-now .chatbar input { font: 400 15px/20px "Source Sans V2", var(--sans); }
 body.frame-now .send-btn { position: absolute; right: 12px; top: 6px; width: 32px; height: 32px; min-height: 32px; border-radius: 50%; }
 body.frame-now .chatbar .attach { position: absolute; left: 20px; top: 13px; }
 body.frame-now .chatbar input { position: absolute; left: 52px; top: 0; width: 560px; height: 44px; }
-body.frame-now .stage-now .lbl .t { font-family: "EB Garamond V2", var(--serif); }
-body.frame-now .stage-now .lbl .s { font-family: "Inter V2", var(--sans); }
+body.frame-now .stage-now .lbl .t { font-family: "Libre Caslon V2", var(--serif); }
+body.frame-now .stage-now .lbl .s { font-family: "Source Sans V2", var(--sans); }
 
 body.frame-now .rail { z-index: 4; }
 body.frame-now .top { z-index: 5; }
@@ -901,7 +902,7 @@ body.frame-now .stage-now .lbl .t { font-size: 17.5px; position: relative; top: 
 body.frame-now .stage-now .lbl .s { position: relative; top: 13px; }
 body.frame-now .stage-now .lbl.project .s { display: block; }
 body.frame-now .stage-now .lbl.core .t { font-size: 21px; letter-spacing: 0.34em; top: 0; }
-body.frame-now .stage-now .lbl a.act { position: absolute; left: 5px; top: 75px; width: 99px; height: 31px; min-height: 0; padding: 0; font: 400 14px/20px "Inter V2", var(--sans); }
+body.frame-now .stage-now .lbl a.act { position: absolute; left: 5px; top: 75px; width: 99px; height: 31px; min-height: 0; padding: 0; font: 400 14px/20px "Source Sans V2", var(--sans); }
 body.frame-now .stage-now .lbl { width: max-content; }
 body.frame-now .stage-now .lbl.project .s { width: 118px; white-space: normal; }
 body.frame-now .feed .msgs > li { margin: 0; padding: 0; }
@@ -927,30 +928,30 @@ body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font
 /* Round 10e: the concept's own sizes on the Now frame (minimum 11 px for frame text, owner rule). Sizes solved from
    the concept raster by tools/textfit_desktop.py; per-element values for the mission and project labels are keyed by
    the label id (data-lid). Colours sampled from desktop-1-now-v2.png. */
-body.frame-now .rail .wordmark { top: 13px; width: 160px; font: 400 18.2px/22px "EB Garamond V2", var(--serif); letter-spacing: 3px; text-transform: uppercase; }
-body.frame-now .rail .wordmark span { font: 400 14px/22px "EB Garamond V2", var(--serif); letter-spacing: 1.5px; margin-left: 10px; }
-body.frame-now .rail .fixture { top: 34px; font: 400 11px/14px "Inter V2", var(--sans); letter-spacing: 0.35px; text-transform: uppercase; }
+body.frame-now .rail .wordmark { top: 13px; width: 160px; font: 400 18.2px/22px "Libre Caslon V2", var(--serif); letter-spacing: 3px; text-transform: uppercase; }
+body.frame-now .rail .wordmark span { font: 400 14px/22px "Libre Caslon V2", var(--serif); letter-spacing: 1.5px; margin-left: 10px; }
+body.frame-now .rail .fixture { top: 34px; font: 400 11px/14px "Source Sans V2", var(--sans); letter-spacing: 0.35px; text-transform: uppercase; }
 body.frame-now .places { background: transparent; }
 body.frame-now .places a { background: transparent; }
 body.frame-now .places a[aria-current="page"] { background: #181521; }
-body.frame-now .places a span { font: 400 14.6px/20px "Inter V2", var(--sans); }
+body.frame-now .places a span { font: 400 14.6px/20px "Source Sans V2", var(--sans); }
 body.frame-now .places a[data-nav="projects"] span, body.frame-now .places a[data-nav="shared"] span { font-size: 13.4px; }
 body.frame-now .places a[data-nav="replay"] span { font-size: 13.9px; }
 body.frame-now .places .ico { width: 20px; height: 20px; }
 
-body.frame-now .top .core-status { top: 18px; left: 898px; font: 400 11px/16px "Inter V2", var(--sans); letter-spacing: 0; color: var(--text-2); }
+body.frame-now .top .core-status { top: 18px; left: 898px; font: 400 11px/16px "Source Sans V2", var(--sans); letter-spacing: 0; color: var(--text-2); }
 body.frame-now .top .core-status .dot { left: -14px; top: 4px; width: 7px; height: 7px; }
-body.frame-now .top [data-tell] { left: 1087px; top: 13px; width: 88px; height: 29px; font: 400 14px/20px "Inter V2", var(--sans); background: #130F1C; border: 1px solid rgba(239, 233, 218, 0.24); border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 0 0 20px; box-sizing: border-box; color: var(--text); text-decoration: none; }
+body.frame-now .top [data-tell] { left: 1087px; top: 13px; width: 88px; height: 29px; font: 400 14px/20px "Source Sans V2", var(--sans); background: #130F1C; border: 1px solid rgba(239, 233, 218, 0.24); border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 0 0 20px; box-sizing: border-box; color: var(--text); text-decoration: none; }
 body.frame-now .top [data-tell]::before { width: 14px; height: 11px; border-width: 1.4px; border-radius: 5px; }
-body.frame-now .top .stop-btn { left: 1190px; top: 13px; width: 90px; height: 29px; font: 400 14px/20px "Inter V2", var(--sans); background: #250F1B; border: 1px solid #C84C52; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 0 0 20px; box-sizing: border-box; color: #F4A4A8; }
+body.frame-now .top .stop-btn { left: 1190px; top: 13px; width: 90px; height: 29px; font: 400 14px/20px "Source Sans V2", var(--sans); background: #250F1B; border: 1px solid #C84C52; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 0 0 20px; box-sizing: border-box; color: #F4A4A8; }
 body.frame-now .top .stop-btn::before { width: 10px; height: 10px; border-width: 1.4px; border-radius: 1px; }
 
-body.frame-now #s-now .head .kicker { left: 1px; top: 4px; font: 400 11px/14px "Inter V2", var(--sans); letter-spacing: 2.44px; }
-body.frame-now #s-now h1 { top: 15px; font: 400 50.3px/56px "EB Garamond V2", var(--serif); letter-spacing: 0; }
-body.frame-now .now-lede { top: 68px; width: 400px; font: 400 17.1px/20px "EB Garamond V2", var(--serif); }
+body.frame-now #s-now .head .kicker { left: 1px; top: 4px; font: 400 11px/14px "Source Sans V2", var(--sans); letter-spacing: 2.44px; }
+body.frame-now #s-now h1 { top: 15px; font: 400 50.3px/56px "Libre Caslon V2", var(--serif); letter-spacing: 0; }
+body.frame-now .now-lede { top: 68px; width: 400px; font: 400 17.1px/20px "Libre Caslon V2", var(--serif); }
 
 body.frame-now .stage-now .lbl .t { font-size: 15px; position: relative; top: 13px; }
-body.frame-now .stage-now .lbl .s { font: 400 11.6px/14px "Inter V2", var(--sans); position: relative; top: 13px; }
+body.frame-now .stage-now .lbl .s { font: 400 11.6px/14px "Source Sans V2", var(--sans); position: relative; top: 13px; }
 body.frame-now .stage-now .lbl.core .t { font-size: 24.2px; letter-spacing: 4.23px; top: 0; }
 body.frame-now .lbl[data-lid="m-search"] .t { font-size: 18.6px; }
 body.frame-now .lbl[data-lid="m-done"] .t { font-size: 15.1px; }
@@ -968,20 +969,20 @@ body.frame-now .lbl[data-lid="ideas"] .s { font-size: 11px; letter-spacing: -0.2
 body.frame-now .lbl[data-lid="notes"] .t { font-size: 16.8px; }
 body.frame-now .lbl[data-lid="notes"] .s { font-size: 11.5px; line-height: 15px; }
 body.frame-now .stage-now .lbl.exec .s { font-size: 11.7px; }
-body.frame-now .stage-now .lbl a.act { left: 5px; top: 75px; width: 99px; height: 31px; font: 400 13px/18px "Inter V2", var(--sans); color: var(--amber); border: 1px solid rgba(242, 181, 68, 0.85); border-radius: 6px; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; box-sizing: border-box; }
+body.frame-now .stage-now .lbl a.act { left: 5px; top: 75px; width: 99px; height: 31px; font: 400 13px/18px "Source Sans V2", var(--sans); color: var(--amber); border: 1px solid rgba(242, 181, 68, 0.85); border-radius: 6px; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; box-sizing: border-box; }
 
 body.frame-now .feed { left: 360px; top: 528px; width: 620px; }
 body.frame-now .feed .msg { grid-template-columns: 56px minmax(0, 1fr); column-gap: 17px; }
-body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font: 400 11.3px/20px "Inter V2", var(--sans); color: var(--text-2); }
-body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p { font: 400 12.8px/20px "Inter V2", var(--sans); padding: 7px 19px; border-radius: 8px; background: #1E1927; border: 0; color: var(--text); }
+body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font: 400 11.3px/20px "Source Sans V2", var(--sans); color: var(--text-2); }
+body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p { font: 400 12.8px/20px "Source Sans V2", var(--sans); padding: 7px 19px; border-radius: 8px; background: #1E1927; border: 0; color: var(--text); }
 body.frame-now .feed .msg-card .card-body { background: #1A141B; border: 1px solid rgba(239, 233, 218, 0.16); border-radius: 8px; height: 42px; padding: 0 17px 0 16px; box-sizing: border-box; gap: 11px; }
-body.frame-now .feed .msg-card .card-t { font: 400 13.8px/20px "Inter V2", var(--sans); }
-body.frame-now .feed .msg-card .btn { height: 30px; min-height: 30px; font: 400 12.4px/16px "Inter V2", var(--sans); border-radius: 6px; }
+body.frame-now .feed .msg-card .card-t { font: 400 13.8px/20px "Source Sans V2", var(--sans); }
+body.frame-now .feed .msg-card .btn { height: 30px; min-height: 30px; font: 400 12.4px/16px "Source Sans V2", var(--sans); border-radius: 6px; }
 body.frame-now .feed .msg-card [data-card="start"] { width: 87px; padding: 0; }
-body.frame-now .feed .msg-card [data-card="keep"] { width: 130px; padding: 0; font: 400 11.4px/16px "Inter V2", var(--sans); }
+body.frame-now .feed .msg-card [data-card="keep"] { width: 130px; padding: 0; font: 400 11.4px/16px "Source Sans V2", var(--sans); }
 body.frame-now .chatbar { left: 303px; top: 666px; width: 690px; height: 44px; background: #0F0C17; border: 1px solid rgba(239, 233, 218, 0.14); border-radius: 12px; box-sizing: border-box; }
 body.frame-now .chatbar .attach { left: 17px; top: 13px; width: 17px; height: 17px; color: var(--text-2); }
-body.frame-now .chatbar input { left: 53px; width: 560px; height: 42px; top: 1px; font: 400 13.2px/20px "Inter V2", var(--sans); }
+body.frame-now .chatbar input { left: 53px; width: 560px; height: 42px; top: 1px; font: 400 13.2px/20px "Source Sans V2", var(--sans); }
 body.frame-now .send-btn { right: 13px; top: 9px; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; background: #312D42; border: 0; }
 
 body.frame-now .desk-marks { display: block; }
@@ -1027,3 +1028,83 @@ body.frame-now .feed .msg-card [data-card="keep"] { margin-left: 0; }
 body.frame-now .send-btn { min-width: 26px; width: 26px; }
 body.frame-now .rail .fixture { left: 22px; }
 body.frame-now .chatbar .send-btn { width: 26px; height: 26px; min-height: 26px; right: 13px; top: 9px; padding: 0; box-sizing: border-box; }
+
+/* Round 10f frame fonts: Libre Caslon Text 500 (serif) and Source Sans 3 400 (sans), owner decision from the font
+   bake-off (D:\fontbake\results.md). Sizes solved by tools/textfit_desktop.py caslon (width against the concept raster);
+   11 px minimum on the frame, so items solved below 11 px are set at 11 px with a tracking that keeps the width.
+   Offsets are re-measured by tools/textreg_desktop.py (section "Round 10f registration" below). */
+body.frame-now .rail .wordmark { top: 12px; left: 22px; font: 500 15.7px/22px "Libre Caslon V2", var(--serif); letter-spacing: 3.29px; text-transform: uppercase; }
+body.frame-now .rail .wordmark span { font: 500 15.7px/22px "Libre Caslon V2", var(--serif); letter-spacing: 3.29px; margin-left: 10px; }
+body.frame-now .rail .fixture { left: 22px; top: 36px; font: 400 11px/14px "Source Sans V2", var(--sans); letter-spacing: 1.51px; text-transform: uppercase; }
+body.frame-now .places a span { font: 400 16.7px/20px "Source Sans V2", var(--sans); }
+body.frame-now .places a[data-nav="projects"] span, body.frame-now .places a[data-nav="shared"] span { font-size: 15.2px; }
+body.frame-now .places a[data-nav="replay"] span { font-size: 15.7px; }
+
+body.frame-now .top .core-status { top: 18px; left: 899px; font: 400 12.6px/16px "Source Sans V2", var(--sans); letter-spacing: 0; }
+body.frame-now .top [data-tell], body.frame-now .top .stop-btn { font: 400 14px/20px "Source Sans V2", var(--sans); }
+
+body.frame-now #s-now .head .kicker { top: 3px; left: 3px; font: 400 12.2px/16px "Source Sans V2", var(--sans); letter-spacing: 3.38px; }
+body.frame-now #s-now h1 { top: 13px; font: 500 37.42px/44px "Libre Caslon V2", var(--serif); letter-spacing: 1.08px; }
+body.frame-now .now-lede { top: 69px; left: 4px; font: 500 13.3px/20px "Libre Caslon V2", var(--serif); width: 400px; }
+
+body.frame-now .stage-now .lbl .t { font-weight: 500; font-family: "Libre Caslon V2", var(--serif); position: relative; top: 0; left: 0; }
+body.frame-now .stage-now .lbl .s { font-family: "Source Sans V2", var(--sans); position: relative; top: 0; left: 0; }
+body.frame-now .stage-now .lbl.core .t { font-size: 21px; letter-spacing: 4.73px; top: 0; left: 0; }
+body.frame-now .stage-now .lbl[data-lid="m-search"] .t { font-size: 14.1px; }
+body.frame-now .stage-now .lbl[data-lid="m-search"] .s { font-size: 13.1px; }
+body.frame-now .stage-now .lbl[data-lid="m-done"] .t { font-size: 11.6px; }
+body.frame-now .stage-now .lbl[data-lid="m-done"] .s { font-size: 12.9px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .t { font-size: 11px; letter-spacing: -0.15px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .s { font-size: 11.7px; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .t { font-size: 11.8px; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .s { font-size: 12.6px; }
+body.frame-now .stage-now .lbl[data-lid="m-date"] .t { font-size: 13.7px; }
+body.frame-now .stage-now .lbl[data-lid="m-date"] .s { font-size: 13.2px; }
+body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .t { font-size: 12.9px; }
+body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .s, body.frame-now .stage-now .lbl.exec .s { font-size: 13.3px; }
+body.frame-now .stage-now .lbl[data-lid="verif"] .t { font-size: 11px; letter-spacing: -0.4px; }
+body.frame-now .stage-now .lbl[data-lid="results"] .t { font-size: 11px; letter-spacing: -0.1px; }
+body.frame-now .stage-now .lbl[data-lid="ideas"] .t { font-size: 12.1px; }
+body.frame-now .stage-now .lbl[data-lid="ideas"] .s { font-size: 11.1px; }
+body.frame-now .stage-now .lbl[data-lid="notes"] .t { font-size: 13.8px; }
+body.frame-now .stage-now .lbl[data-lid="notes"] .s { font-size: 11.5px; line-height: 15px; }
+body.frame-now .stage-now .lbl a.act { font: 400 13px/18px "Source Sans V2", var(--sans); }
+
+body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font: 400 13.4px/20px "Source Sans V2", var(--sans); }
+body.frame-now .feed .msg-you > p { font: 400 14.4px/20px "Source Sans V2", var(--sans); }
+body.frame-now .feed .msg-arch > p { font: 400 14.7px/20px "Source Sans V2", var(--sans); }
+body.frame-now .feed .msg-card .card-t { font: 400 15.6px/20px "Source Sans V2", var(--sans); }
+body.frame-now .feed .msg-card [data-card="start"] { font: 400 13.4px/16px "Source Sans V2", var(--sans); }
+body.frame-now .feed .msg-card [data-card="keep"] { font: 400 13.3px/16px "Source Sans V2", var(--sans); }
+body.frame-now .chatbar input { font: 400 14.8px/20px "Source Sans V2", var(--sans); }
+
+/* Round 10f registration (offsets, render ink box minus concept ink box) */
+body.frame-now #s-now h1 { left: 3px; top: 18px; letter-spacing: 1.18px; }
+body.frame-now .rail .wordmark { letter-spacing: 2.2px; }
+body.frame-now .rail .wordmark span { letter-spacing: 2.2px; }
+body.frame-now .stage-now .lbl.core .t { left: -3px; top: 2px; }
+body.frame-now .stage-now .lbl[data-lid="m-search"] .t { left: 5px; font-size: 13.6px; }
+body.frame-now .stage-now .lbl[data-lid="m-search"] .s { left: 5px; top: 2px; }
+body.frame-now .stage-now .lbl[data-lid="m-done"] .t { left: 4px; top: 4px; font-size: 11.9px; }
+body.frame-now .stage-now .lbl[data-lid="m-done"] .s { left: 4px; top: 2px; font-size: 12.5px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .t { left: 2px; top: 4px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .s { left: 3px; top: 2px; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .t { left: 4px; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .s { left: 2px; top: 1px; font-size: 11px; }
+body.frame-now .stage-now .lbl[data-lid="notes"] .t { left: 4px; top: -5px; font-size: 13.2px; }
+body.frame-now .stage-now .lbl[data-lid="m-date"] .t { left: 3px; top: 2px; }
+body.frame-now .stage-now .lbl[data-lid="m-date"] .s { left: 3px; top: 1px; }
+body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .t { left: 3px; top: 4px; font-size: 12.4px; }
+body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .s { left: 3px; top: 2px; font-size: 13.7px; }
+body.frame-now .stage-now .lbl[data-lid="verif"] .t { left: 5px; }
+body.frame-now .stage-now .lbl[data-lid="results"] .t { left: 3px; }
+body.frame-now .feed .msg::before { left: -2px; }
+body.frame-now .feed .msg-card .card-t { left: 0; top: 2px; }
+body.frame-now .top [data-tell] { padding-left: 6px; }
+body.frame-now .top .stop-btn { padding-left: 0; }
+body.frame-now .rail { overflow: visible; }
+body.frame-now .rail .wordmark { left: 16px; width: auto; font-weight: 400; }
+body.frame-now .rail .wordmark span { font-weight: 400; margin-left: 9px; }
+body.frame-now .places a { border-radius: 0; }
+body.frame-now .top [data-tell] { padding-left: 0; justify-content: center; }
+body.frame-now .top .stop-btn { padding-left: 0; justify-content: center; }
