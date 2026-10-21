@@ -29,9 +29,11 @@ WINDOW_S = 3600
 
 #: P21 slice H (p21-design-gate D9): `{kind: 'schedule', every}` takes the legacy
 #: loops' interval grammar (claude_sessions/loops.py: '15m', '2h', '1d', a bare
-#: number is minutes), so a loop becomes an automation as it was written
+#: number is minutes) with the same 7-day cap. Seconds are exact here, where the
+#: loops floor them to whole minutes. The digit bound keeps every period in range.
 MIN_EVERY_S = 60
-_EVERY = re.compile(r'\s*(\d+)\s*([smhd]?)\s*')
+MAX_EVERY_S = 7 * 86400
+_EVERY = re.compile(r'\s*(\d{1,6})\s*([smhd]?)\s*')
 _UNIT_S = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
 
 _PLACEHOLDER = re.compile(r'\{([^{}]*)\}')
@@ -86,6 +88,8 @@ def _schedule(trigger):
     every = '%d%s' % (int(m.group(1)), m.group(2) or 'm')
     if every_s({'every': every}) < MIN_EVERY_S:
         raise Invalid('a schedule fires at most once a minute')
+    if every_s({'every': every}) > MAX_EVERY_S:
+        raise Invalid('a schedule period is at most 7 days')
     return {'kind': 'schedule', 'every': every}
 
 

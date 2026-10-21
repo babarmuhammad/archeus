@@ -40,6 +40,8 @@ class Automations:
         self.stopping = lambda: False
         #: event seq -> (attempts, not before): what is held, and until when
         self.retrying = {}
+        #: schedule id -> (attempts, not before) for a claim that raised (P21 D9)
+        self.schedules_held = {}
 
     def pending(self):
         with self.db.read() as conn:
@@ -64,19 +66,35 @@ class Automations:
     def _fire_due(self):
         """P21 D9: claim the schedules whose time has come. A pass runs on every
         commit and at least every poll interval, so a time fires that late at
-        most (WORLD_POLL_S)."""
+        most (WORLD_POLL_S). Each schedule is its own command: a claim that raises
+        is held and retried like an event, then quarantined for this process, and
+        the other schedules still fire."""
         with self.db.read() as conn:
-            if not A.due(conn, ev.now_iso()):
-                return False
-        try:
-            return bool(self.db.writer.execute(A.fire_due, {'actor': self.actor})['runs'])
-        except WriterClosed:
-            raise
-        except Exception:
-            # ponytail: a claim that keeps faulting is retried and logged every pass; hold
-            # and quarantine it per automation, as events are, if one ever does
-            log.exception('automation: claiming the due schedules failed; retried next pass')
-            return False
+            ids = [a.id for a in A.due(conn, ev.now_iso())]
+        fired = False
+        for aid in ids:
+            held = self.schedules_held.get(aid)
+            if held and self.clock() < held[1]:
+                continue
+            try:
+                ran = self.db.writer.execute(A.fire_due, {'actor': self.actor,
+                                                          'automation_id': aid})['runs']
+                self.schedules_held.pop(aid, None)
+                fired = fired or bool(ran)
+            except WriterClosed:
+                raise
+            except Exception as x:
+                attempts = (held[0] if held else 0) + 1
+                if MAX_ATTEMPTS <= attempts:
+                    self.schedules_held[aid] = (attempts, float('inf'))
+                    log.exception('automation: schedule %s quarantined after %d attempts',
+                                  aid, attempts)
+                else:
+                    self.schedules_held[aid] = (attempts, self.clock()
+                                                + self.retry_s * 2 ** (attempts - 1))
+                    log.warning('automation: schedule %s failed (attempt %d), held: %s',
+                                aid, attempts, x)
+        return fired
 
     def _relevant(self, e):
         if A.settles(e):

@@ -144,7 +144,7 @@ An Automation (domain-model §9.4, extended by D7):
 |---|---|
 | `name` | display |
 | `workspace_id`, `project_id?` | its scope: it sees only events of this scope, and creates missions only in it (§13) |
-| `trigger` | `{kind: 'event', type, where}` — `type` a registered event type (never `automation.*`/`automation_run.*`, D10); `where` maps a top-level payload key to a scalar (equality), `{glob: p}` or `{not_glob: p}` (fnmatch, case-sensitive). A `state` trigger of ADR-0020 is `type: '<machine>.state_changed', where: {to: STATE}` (D14) |
+| `trigger` | `{kind: 'event', type, where}` — `type` a registered event type (never `automation.*`/`automation_run.*`, D10); `where` maps a top-level payload key to a scalar (equality), `{glob: p}` or `{not_glob: p}` (fnmatch, case-sensitive). A `state` trigger of ADR-0020 is `type: '<machine>.state_changed', where: {to: STATE}` (D14). Schedule triggers `{kind: 'schedule', every}` came later, in P21 §12 (slice H) |
 | `template` | `{title, objective, success_criteria?}` — the mission it asks for. Keys are closed: a template cannot carry a model, harness, account, autonomy profile, plan, approval or verdict (§12, E11, E14). Placeholders `{event.type}`, `{event.seq}`, `{subject.kind}`, `{subject.id}`, `{payload.<key>}`; anything else in braces is refused when the automation is written |
 | `max_depth` (3), `rate_limit` (6/hour) | the loop guards (§10) |
 | `principal_id` | its own principal, kind `automation`, scope `create_mission` — the actor of every row it writes (§15) |

@@ -70,6 +70,9 @@ def test_a_predicate_tests_type_value_and_glob_exactly():
     ({'kind': 'schedule', 'every': 15}, 'count and a unit'),
     ({'kind': 'schedule', 'every': '30s'}, 'once a minute'),
     ({'kind': 'schedule', 'every': '0m'}, 'once a minute'),
+    ({'kind': 'schedule', 'every': '8d'}, 'at most 7 days'),
+    ({'kind': 'schedule', 'every': '400000d'}, 'at most 7 days'),       # would overflow the clock
+    ({'kind': 'schedule', 'every': '9' * 10000}, 'count and a unit'),
 ])
 def test_a_trigger_that_cannot_be_written_is_refused(trigger, why):
     with pytest.raises(M.Invalid, match=why):
@@ -80,7 +83,7 @@ def test_a_trigger_that_cannot_be_written_is_refused(trigger, why):
 
 @pytest.mark.parametrize('every, stored, seconds', [
     ('15m', '15m', 900), (' 2 h ', '2h', 7200), ('1d', '1d', 86400), ('90', '90m', 5400),
-    ('60s', '60s', 60), ('007m', '7m', 420),
+    ('60s', '60s', 60), ('007m', '7m', 420), ('7d', '7d', 7 * 86400),
 ])
 def test_a_schedule_takes_the_legacy_loops_interval_grammar(every, stored, seconds):
     t = M.validate_trigger({'kind': 'schedule', 'every': every}, TYPES)
@@ -97,6 +100,9 @@ def test_the_next_time_is_the_first_on_the_grid_after_now():
 def test_an_event_never_matches_a_schedule_trigger():
     t = M.validate_trigger({'kind': 'schedule', 'every': '1m'}, TYPES)
     assert M.matches(t, 'mission.created', {}) == (False, None)
+    # with an event rule's type and where, only the kind keeps it from matching
+    assert M.matches(dict(t, type='mission.created', where={}), 'mission.created', {}) \
+        == (False, None)
 
 
 # ── templates (E11, E14, §13) ──

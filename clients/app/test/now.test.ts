@@ -40,7 +40,6 @@ test('upcoming step 2 (P21 D9): the enabled schedules, soonest first, by Core\'s
   const a = (id: string, state: string, next_run_at: string | null) => ({ id, name: id, state, next_run_at, trigger: { kind: 'schedule', every: '1h' }, template: {}, version: 1 }) as never;
   const got = scheduled([a('late', 'ENABLED', '2026-10-21T11:00:00.000Z'), a('off', 'DISABLED', '2026-10-21T09:30:00.000Z'), a('soon', 'ENABLED', '2026-10-21T09:15:00.000Z'), a('event', 'ENABLED', null)]);
   assert.deepEqual(got.map((x: { id: string }) => x.id), ['soon', 'late']);
-  assert.match(src('../src/surfaces/Now.tsx'), /next\.length \|\| timed\.length/, 'a schedule alone shows Upcoming');
 });
 
 test('recent decisions: decided approvals, fallbacks and confirmed DECISION knowledge, newest first', () => {

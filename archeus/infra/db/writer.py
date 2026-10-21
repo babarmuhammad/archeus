@@ -163,10 +163,12 @@ class Tx:
         self.mutated = True
         return rows.Row(entity, 1, self.now, self.now, actor.id, actor.id)
 
-    def update(self, cls, entity_id, fields, *, actor, expected_version=None):
+    def update(self, cls, entity_id, fields, *, actor, expected_version=None, bump=True):
         """Change fields of an entity row other than its id and its state
-        (version + 1). State moves only along an edge (`transition`); this is
-        for what is not a lifecycle — a stateless entity's cursor. The caller
+        (version + 1 unless `bump` is False). State moves only along an edge
+        (`transition`); this is for what is not a lifecycle — a stateless
+        entity's cursor, or a machine's own clock (P21 D9: `next_run_at` moves
+        every period and must not stale a person's version). The caller
         appends the event that records it, as for every mutation."""
         row = self.get(cls, entity_id)
         if row is None:
@@ -182,14 +184,15 @@ class Tx:
         promoted, body = rows.encode(entity, rows.columns(self.conn, name))
         promoted.pop('id')
         sets = dict(promoted, body=body, updated_at=self.now, updated_by=actor.id)
+        step = 1 if bump else 0
         cur = self.conn.execute(
-            'UPDATE %s SET %s, version = version + 1 WHERE id = ? AND version = ?' % (
+            'UPDATE %s SET %s, version = version + ? WHERE id = ? AND version = ?' % (
                 name, ', '.join('%s = ?' % c for c in sets)),
-            (*sets.values(), entity_id, row.version))
+            (*sets.values(), step, entity_id, row.version))
         if cur.rowcount != 1:                    # unreachable with one writer
             raise VersionConflict(entity_id, row.version, None)
         self.mutated = True
-        return rows.Row(entity, row.version + 1, row.created_at, self.now, row.created_by,
+        return rows.Row(entity, row.version + step, row.created_at, self.now, row.created_by,
                         actor.id)
 
     def append(self, event):

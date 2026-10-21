@@ -212,27 +212,44 @@ def due(conn, now):
             and a.next_run_at and a.next_run_at <= now]
 
 
-def fire_due(tx, *, actor):
-    """Claim-and-advance (ADR-0020, state-machines §8): for each schedule whose
-    time has come, in this one transaction, record that it came due, move
-    `next_run_at` past now and claim its run, which then passes the same guards
-    as an event's (rate limit, loop guard, e-stop). A time is claimed once: a
-    second pass, a second worker or a restart finds it already moved on, and the
-    times a stopped Core missed fire once together. Returns the run ids."""
-    runs = []
-    for a in due(tx.conn, tx.now):
-        nxt = _at(matcher.next_due(_epoch(a.next_run_at), matcher.every_s(a.trigger),
-                                   _epoch(tx.now)))
-        tx.update(entities.Automation, a.id, {'next_run_at': nxt}, actor=actor)
-        e = tx.append(new_event('automation.schedule_due', Ref('automation', a.id), actor,
-                                payload={'due_at': a.next_run_at, 'every': a.trigger['every'],
-                                         'next_run_at': nxt},
-                                workspace=a.workspace_id, project=a.project_id))
-        why = {'type': e.type, 'where': {},
-               'schedule': {'every': a.trigger['every'], 'due_at': a.next_run_at},
-               'scope': {'workspace': a.workspace_id, 'project': a.project_id}}
-        runs.append(_claim(tx, actor, a, e, why))
-    return {'runs': runs}
+def fire_due(tx, *, actor, automation_id):
+    """Claim-and-advance (ADR-0020, state-machines §8) for one schedule, in this
+    one transaction: record that its time came due, move `next_run_at` past now
+    and claim its run, which then passes the same guards as an event's (rate
+    limit, loop guard, e-stop). A time is claimed once: the due check is made
+    inside the transaction, so a second pass, a second worker or a restart finds
+    it already moved on. The times a stopped Core missed fire once together, and
+    `missed` says how many. One schedule per command, so a claim that raises
+    rolls back that schedule alone. Returns the run ids."""
+    a = next((x for x in due(tx.conn, tx.now) if x.id == automation_id), None)
+    if a is None or not _schedule_may_run(tx, a):
+        return {'runs': []}
+    every = matcher.every_s(a.trigger)
+    due_s, now_s = _epoch(a.next_run_at), _epoch(tx.now)
+    missed = int((now_s - due_s) // every)
+    nxt = _at(matcher.next_due(due_s, every, now_s))
+    # bump=False: the time moves every period, and must not stale a person's version
+    tx.update(entities.Automation, a.id, {'next_run_at': nxt}, actor=actor, bump=False)
+    e = tx.append(new_event('automation.schedule_due', Ref('automation', a.id), actor,
+                            payload={'due_at': a.next_run_at, 'every': a.trigger['every'],
+                                     'next_run_at': nxt, 'missed': missed},
+                            workspace=a.workspace_id, project=a.project_id))
+    why = {'type': e.type, 'where': {},
+           'schedule': {'every': a.trigger['every'], 'due_at': a.next_run_at, 'missed': missed},
+           'scope': {'workspace': a.workspace_id, 'project': a.project_id}}
+    return {'runs': [_claim(tx, actor, a, e, why)]}
+
+
+def _schedule_may_run(tx, a):
+    """A schedule whose project is gone or archived, or while Core is disarmed,
+    is not claimed: its time stays due and fires once together when it may run
+    again. Claiming it anyway would write a denied or condition_false run every
+    period, and neither reason counts toward the loop guard."""
+    if a.project_id is not None:
+        p = tx.get(entities.Project, a.project_id)
+        if p is None or p.entity.state != 'ACTIVE':
+            return False
+    return not authorization.estop_armed()
 
 
 def settles(e):
@@ -326,7 +343,9 @@ def _guard(tx, actor, a, run_id):
 
 def _view(row):
     a = row.entity
-    return dict(a.to_dict(), version=row.version, created_at=row.created_at,
+    # a time is only true while the schedule runs: disabled or suspended, none
+    nxt = a.next_run_at if a.state == 'ENABLED' else None
+    return dict(a.to_dict(), next_run_at=nxt, version=row.version, created_at=row.created_at,
                 updated_at=row.updated_at)
 
 
@@ -427,8 +446,8 @@ def explain(conn, run_id):
 def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT):
     """The events of the last *days* the automation's trigger and scope would
     have fired on, and why (ADR-0020); for a schedule, how many times it would
-    have come due. Writes nothing; depth, rate and state are not simulated —
-    they depend on what the runs would have done."""
+    have come due had it run for the whole window. Writes nothing; depth, rate
+    and state are not simulated — they depend on what the runs would have done."""
     a = get_automation(conn, automation_id, runs=0)
     if a['trigger'].get('kind') == 'schedule':
         return {'automation_id': automation_id, 'days': days, 'examined': 0, 'matched': [],
