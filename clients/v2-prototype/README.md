@@ -4,7 +4,14 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
-## What this round changed (round 3)
+## What round 4 changed
+
+- Labels leave radially: a mission label from its project centre, a project label from Archeus, pushed out past the hull edge (a hull collision cost keeps the project label outside its hull).
+- Four relaxation passes move any label that still touches another one outward along its radial.
+- Layout check: at a 1440 x 900 viewport the hub fills the stage. The earlier "left 55%" reading came from a 1440 px iframe inside a wider browser window, not from the layout.
+- Service worker cache bumped to `archeus-v2-proto-4`.
+
+## What round 3 changed
 
 - Hub model, as the owner set it: Archeus at the centre, each project a faceted hull around its missions, each mission a rotating polyhedron with a glyph inside (search, terminal, check, document, chart, code). The hull has an inner mesh; a relation line runs from the hull to the core.
 - State by shape and word, never colour alone: waiting is an amber diamond on the figure and "Needs you" on the label; running is a blue sparkle with a pulse and "Running"; done is a green disc with a tick; idle is a hollow slate ring.
@@ -42,9 +49,9 @@ A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No 
 | Start | `#/start` | Design doc section 4.1 |
 | Plan approval | `#/plan/m-search` | Design doc section 4.2 |
 
-## Remaining gaps against the approved concepts (round 3)
+## Remaining gaps against the approved concepts (after round 4)
 
-Honest state after round 3. Not run to the owner's full 8-round budget: this round rebuilt the renderer and checked Now, Mission, Shared and Phone in a 1440 emulation and a 390 px iframe.
+Honest state after round 4. Stopped early by the owner's deadline. Round 4 only changed label placement and checked the 1440 x 900 layout; figure density, the ambient mesh, the inspector tabs and the Shared device layout are still at round 3 level. Not verified at 1920 x 1080 or 1280 x 720 in round 4.
 
 - Figure detail is still lighter than 02 and 03: the interior mesh and the glyphs read at desktop size but are thinner and dimmer than the approved concept. Vertex dots and facet density need one more pass.
 - The ambient mesh is restrained but sparser than 02. Satellite nodes between the figures are not yet drawn as separate small bodies.

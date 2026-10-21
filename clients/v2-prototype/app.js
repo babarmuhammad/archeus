@@ -579,7 +579,7 @@
           return (v.x - cc.x) * dx + (v.y - cc.y) * dy > (best.x - cc.x) * dx + (best.y - cc.y) * dy ? v : best;
         }, hull[0]);
         var it = S.items[p.id];
-        if (it) { it.cx = cc.x; it.cy = cc.y; it.hr = hr + 6; it.pt = { x: anchor.x + dx * 10, y: anchor.y + dy * 10 }; it.r = 0; }
+        if (it) { it.cx = cc.x; it.cy = cc.y; it.hr = hr + 6; it.pt = { x: anchor.x + dx * 10, y: anchor.y + dy * 10 }; it.r = 0; it.hullR = hr; }
         g.save();
         g.beginPath(); hull.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
         g.fillStyle = rgba(p.hue, lit ? 0.08 : 0.035); g.fill();
@@ -663,7 +663,7 @@
           if (n.kind === 'agent') drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, !reduce.matches);
         }
         var it = S.items[n.id];
-        if (it) { it.cx = q.x; it.cy = q.y; it.hr = R + 10; it.pt = q; it.r = R; }
+        if (it) { it.cx = q.x; it.cy = q.y; it.hr = R + 10; it.pt = q; it.r = R; it.par = n.parent; }
       });
 
       placeLabels(pos, H);
@@ -724,11 +724,15 @@
       }).forEach(function (n) { order.push(n.id); });
       var dirs = candidatesFor(sc);
 
+      // Each label leaves radially from its parent's centre: a mission from its project hull, a project from Archeus.
+      var entries = [];
       order.forEach(function (id) {
         var it = S.items[id];
         if (!it || !it.lbl || !it.pt) return;
         var pt = it.pt, off = it.r + 12;
-        var ox = pt.x - c.x, oy = pt.y - c.y, len = Math.hypot(ox, oy) || 1;
+        var par = it.par && S.items[it.par] && S.items[it.par].cx !== undefined ? S.items[it.par] : null;
+        var org = par ? { x: par.cx, y: par.cy } : c;
+        var ox = pt.x - org.x, oy = pt.y - org.y, len = Math.hypot(ox, oy) || 1;
         ox /= len; oy /= len;
         var cands = dirs.slice().sort(function (a, b) {
           var la = Math.hypot(a.dx, a.dy) || 1, lb = Math.hypot(b.dx, b.dy) || 1;
@@ -740,6 +744,7 @@
           var cost = 0;
           if (bx.x0 < 8 || bx.y0 < 8 || bx.x1 > S.w - 8 || bx.y1 > S.h - 8) cost += 1000;
           if (circleHitsBox(c.x, c.y, 62 * s, bx)) cost += 1000;
+          if (it.hullR && circleHitsBox(it.cx, it.cy, it.hullR, bx)) cost += 400;
           for (var k = 0; k < placed.length; k++) if (overlaps(bx, placed[k], 8)) cost += 500;
           circles.forEach(function (ci) { if (ci.id !== id && circleHitsBox(ci.x, ci.y, ci.r, bx)) cost += 300; });
           if (!best || cost < best.cost) best = { cost: cost, cand: cands[i], box: bx };
@@ -749,9 +754,25 @@
         var sx = Math.min(Math.max(box.x0, 8), S.w - bw - 8), sy = Math.min(Math.max(box.y0, 8), S.h - bh - 8);
         box = { x0: sx, y0: sy, x1: sx + bw, y1: sy + bh };
         placed.push(box);
-        var quiet = sc.compact && it.kind === 'mission' && !(sc.nodes.some(function (n) { return n.id === id && n.live; })) && S.hover !== id;
-        it.lbl.className = it.cls + ' d-' + best.cand.d + (quiet ? ' quiet' : '');
-        it.lbl.style.transform = 'translate(' + box.x0.toFixed(1) + 'px,' + box.y0.toFixed(1) + 'px)';
+        entries.push({ id: id, it: it, box: box, bw: bw, bh: bh, cand: best.cand, dir: { x: ox, y: oy } });
+      });
+      // Relaxation: a label that still touches another moves outward along its radial, four passes at most.
+      for (var pass = 0; pass < 4; pass++) {
+        var moved = false;
+        for (var a = 0; a < entries.length; a++) for (var b = a + 1; b < entries.length; b++) {
+          if (!overlaps(entries[a].box, entries[b].box, 6)) continue;
+          var e = entries[b], nb = e.box;
+          var nx = Math.min(Math.max(nb.x0 + e.dir.x * 14, 8), S.w - e.bw - 8);
+          var ny = Math.min(Math.max(nb.y0 + e.dir.y * 14, 8), S.h - e.bh - 8);
+          e.box = { x0: nx, y0: ny, x1: nx + e.bw, y1: ny + e.bh };
+          moved = true;
+        }
+        if (!moved) break;
+      }
+      entries.forEach(function (e) {
+        var quiet = sc.compact && e.it.kind === 'mission' && !(sc.nodes.some(function (n) { return n.id === e.id && n.live; })) && S.hover !== e.id;
+        e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '');
+        e.it.lbl.style.transform = 'translate(' + e.box.x0.toFixed(1) + 'px,' + e.box.y0.toFixed(1) + 'px)';
       });
       // Hit targets follow the figures.
       Object.keys(S.items).forEach(function (id) {
