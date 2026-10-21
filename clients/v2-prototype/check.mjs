@@ -116,6 +116,16 @@ check(/Places/.test(html) && /data-act="menu"/.test(html), 'phone Places menu mi
 check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
 
 
+check(/phase-bar/.test(html) && /ph-dot/.test(js) && /split-mission/.test(css), 'mission stepper or split missing');
+check(/data-m-phase/.test(html) && /mission-card/.test(html) && /m-bottom/.test(html), 'mission card missing');
+check(/class="btn decision"/.test(js) && /Core consequence/.test(js) && /sheet-back/.test(js), 'phone decision sheet must show What, Why, Core consequence and Open decision');
+check(/What does exit code 137 mean\?/.test(js) && /usually out of memory \(128 \+ signal 9\)\./.test(js), 'phone chat exchange missing');
+check(/Promote to project memory<\/span>/.test(js), 'promote control text changed');
+check(/shared-head/.test(html) && /shared-card/.test(html) && /SHARED_FRAME/.test(js) && /drawShape/.test(js), 'shared frame or card missing');
+check(/Linked projects<\/dt><dd>0</.test(js), 'shared fixture: linked projects must read 0 (concept 06)');
+check(/Approving starts 3 tasks on feat\/search\./.test(js), 'phone decision Core consequence fixture not shortened');
+check(/\.msg-card \.btn\[data-card="start"\]\s*\{[^}]*background:\s*var\(--amber\)/.test(css), 'Start must be amber filled');
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);

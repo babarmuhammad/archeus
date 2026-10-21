@@ -768,3 +768,172 @@ p.small, .small { line-height: 20px; }
   .stage-now .lbl.project .t { font-size: 16px; line-height: 22px; }
   .stage-now .lbl.exec .t { font-size: 15px; line-height: 20px; }
 }
+
+/* Round 10c mission (Codex 03): scene on the left, a 433 px card on the right, the crumb on the scene's top-left.
+   The split takes the page padding so the scene box is the concept's 800 px. */
+.split-mission { grid-template-columns: minmax(0, 1fr) 433px; gap: 0; margin: -72px -32px 0 -40px; pointer-events: none; }
+.split-mission .stage-mission { pointer-events: none; }
+.split-mission .inspector, .split-mission .stage-mission a { pointer-events: auto; }
+.stage-mission { margin: 0; min-height: 520px; }
+.stage-mission .crumb { position: absolute; left: var(--s6); top: 72px; z-index: 2; margin: 0; }
+.stage-mission .lbl .t { font-family: var(--serif); font-weight: 400; font-size: 26px; line-height: 30px; letter-spacing: 0; }
+.stage-mission .lbl.record .t, .stage-mission .lbl.exec .t { font-size: 20px; line-height: 24px; }
+.stage-mission .lbl .s { white-space: pre-line; color: var(--text-2); font-size: 14px; line-height: 20px; }
+.stage-mission .lbl.exec .s { max-width: 230px; white-space: normal; }
+.stage-mission .lbl.record .s { max-width: 230px; white-space: normal; }
+.inspector.mission-card {
+  margin: 72px 8px 8px 0; padding: var(--s3) var(--s6) var(--s4); gap: 0;
+  border: 1px solid var(--line-2); border-radius: 14px; background: rgba(14, 19, 28, 0.86); overflow: hidden;
+}
+.mission-card h1 { font: 400 40px/46px var(--serif); margin: 0; color: var(--text); }
+.mission-card .kicker { font-size: 14px; line-height: 20px; }
+.mission-card .facts { margin-top: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
+.mission-card .facts dt { font-size: 14px; line-height: 20px; }
+.mission-card .facts dd { font-size: 16px; line-height: 22px; }
+.phase-bar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: var(--s2) 0; padding: 0; position: relative; }
+.phase-bar li { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--s1); font: 400 14px/20px var(--sans); color: var(--text-2); }
+.phase-bar li::after {
+  content: ""; position: absolute; top: 11px; left: 50%; width: 100%; height: 2px; background: var(--line-2);
+}
+.phase-bar li:last-child::after { display: none; }
+.phase-bar li.done::after { background: var(--green); }
+.phase-bar .ph-dot {
+  position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; box-sizing: border-box;
+  border: 1.5px solid var(--text-3); background: var(--surface); display: inline-flex; align-items: center; justify-content: center;
+}
+.phase-bar .ph-dot svg { width: 14px; height: 14px; fill: none; stroke: #070A10; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.phase-bar li.done { color: var(--text); }
+.phase-bar li.done .ph-dot { background: var(--green); border-color: var(--green); }
+.phase-bar li.current { color: var(--text); }
+.phase-bar li.current .ph-dot { background: var(--blue); border-color: var(--blue); box-shadow: 0 0 0 4px rgba(111, 177, 255, 0.2); }
+.phase-bar li.wait { color: var(--amber); }
+.phase-bar li.wait .ph-dot { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 0 4px rgba(242, 181, 68, 0.2); }
+.m-sec { padding: 6px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
+.m-sec .kicker { font-size: 14px; line-height: 20px; }
+.m-phase { font: 400 26px/32px var(--serif); color: var(--text); }
+.m-sec .small { font-size: 16px; line-height: 22px; color: var(--text-2); }
+.m-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--s3); align-items: start; }
+.m-row > svg { width: 24px; height: 24px; margin-top: 12px; fill: none; stroke: var(--text-2); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.m-strong { font: 400 17px/22px var(--sans); color: var(--text); }
+.m-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); padding-top: var(--s2); }
+.mission-card .log li { font-size: 14px; line-height: 18px; padding: 0; border-bottom: 0; color: var(--text-2); }
+.mission-card .log li::before { content: "›"; display: inline-block; width: 16px; color: var(--text-2); }
+.mission-card .log li.bad { color: var(--text); }
+.mission-card .log li.bad::before { content: "×"; color: #F4A4A8; }
+.steps { display: flex; flex-direction: column; gap: 0; font: 400 14px/18px var(--sans); color: var(--text-2); }
+.steps li { position: relative; padding-left: 22px; }
+.m-links { position: absolute; right: var(--s4); top: var(--s4); z-index: 2; display: flex; gap: var(--s2); margin: 0; }
+.steps li::before { content: ""; position: absolute; left: 2px; top: 5px; width: 10px; height: 10px; border-radius: 50%; border: 1.2px solid var(--text-3); box-sizing: border-box; }
+.steps li.done { color: var(--text); }
+.steps li.done::before { background: var(--green); border-color: var(--green); }
+.steps li.current { color: var(--blue); }
+.steps li.current::before { background: var(--blue); border-color: var(--blue); }
+.mission-card .row .btn { min-height: 48px; font-size: 14px; padding: 0 var(--s4); }
+
+/* Round 10c shared (Codex 06): the frame is the concept's 1382 x 922 with the rail; the card is 326 px on the right.
+   The headline sits at the top-left of the scene, as the concept's wordmark does. */
+#s-shared { position: relative; }
+#s-shared > .shared-head { position: absolute; left: -18px; top: var(--s6); z-index: 3; margin: 0; pointer-events: none; }
+.shared-head h1 { font: 400 40px/46px var(--serif); letter-spacing: 0.14em; text-transform: uppercase; margin: 0; }
+.shared-head h1 span { font: 400 16px/20px var(--sans); letter-spacing: 0.04em; color: var(--text-2); vertical-align: top; }
+.shared-head .lede { font: 400 16px/22px var(--serif); color: var(--text-2); margin-top: var(--s2); max-width: 200px; }
+.split-shared { grid-template-columns: minmax(0, 1fr) 326px; gap: 0; margin: -72px -24px 0 -40px; pointer-events: none; }
+.split-shared .stage-shared { pointer-events: none; margin: 0; min-height: 520px; }
+.split-shared .inspector { pointer-events: auto; }
+.inspector.shared-card {
+  margin: 80px 0 8px 0; padding: var(--s3) var(--s4) var(--s4); gap: var(--s1);
+  border: 1px solid var(--line-2); border-radius: 14px; background: rgba(14, 19, 28, 0.86); overflow: hidden;
+}
+.shared-card .ins-title { font-size: 40px; line-height: 46px; margin: 0; }
+.shared-card .small { font-size: 14px; line-height: 20px; }
+.stage-shared .lbl .k { display: none; }
+.stage-shared .lbl .s { white-space: pre-line; font-size: 14px; line-height: 20px; }
+.stage-shared .lbl .t { font-family: var(--sans); font-weight: 500; font-size: 18px; line-height: 24px; }
+.stage-shared .lbl.agent .t { font-family: var(--serif); font-weight: 400; font-size: 24px; line-height: 28px; }
+.stage-shared .lbl.device .t { font-size: 18px; }
+
+/* Round 10c phone sheets (phone-2 decision, phone-3 chat). */
+.now-sheet { max-height: 48%; gap: var(--s2); padding: var(--s2) var(--s4) var(--s4); }
+.now-sheet .sheet-back { min-height: 44px; padding: 0; background: none; border: 0; color: var(--text-2); font: 400 17px/24px var(--sans); text-align: left; cursor: pointer; }
+.now-sheet h2 { font: 400 26px/32px var(--serif); margin-top: var(--s1); }
+.now-sheet .sheet-line { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: var(--s2) 0; border-bottom: 1px solid var(--line); font: 400 17px/24px var(--sans); color: var(--text); }
+.now-sheet .sheet-line:last-of-type { border-bottom: 0; }
+.now-sheet .sheet-line .lbl-line { display: block; font: 400 14px/20px var(--sans); color: var(--text-2); }
+.now-sheet .sheet-actions { margin-top: var(--s2); }
+.now-sheet .sheet-actions .btn.decision { flex: 1 1 100%; width: 100%; min-height: 48px; background: transparent; color: var(--amber); border: 1px solid var(--amber); font-weight: 500; }
+.now-sheet .sheet-actions .btn.decision:hover { background: rgba(242, 181, 68, 0.12); }
+
+.msg-card [data-card="start"] { background: var(--amber); border-color: var(--amber); color: #070A10; }
+.msg-card .row .btn { flex: 1 1 0; }
+.msg-card .card-t { font: 400 22px/28px var(--serif); }
+.promote { justify-content: space-between; }
+.promote > span { order: 1; }
+.promote input[type="checkbox"] {
+  order: 2; appearance: none; -webkit-appearance: none; flex: none; width: 48px; height: 28px; min-height: 28px; margin: 0; border: 0; border-radius: 14px;
+  background: radial-gradient(circle 11px at 14px 14px, var(--ivory) 98%, transparent) no-repeat, var(--line-2);
+}
+.promote input[type="checkbox"]:checked {
+  background: radial-gradient(circle 11px at 34px 14px, var(--ivory) 98%, transparent) no-repeat, var(--green);
+}
+
+/* Round 10c phone-2: the sheet holds What, Why, Core consequence and Open decision without scrolling. */
+.now-sheet { gap: 4px; padding: var(--s2) var(--s4) var(--s3); max-height: 52%; }
+.now-sheet h2 { margin-top: 0; }
+.now-sheet .sheet-line { padding: 4px 0; }
+.now-sheet .sheet-actions { margin-top: 4px; }
+
+/* Round 10c phone-3: messages stack, the label sits above each bubble, the card and the General thread take the full width. */
+.feed .msg { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.feed .msg > * { grid-column: auto; }
+.msg-you::before, .msg-arch::before { grid-column: auto; grid-row: auto; margin: 0; }
+.feed .msg-you { align-self: flex-end; background: rgba(14, 19, 28, 0.92); border: 1px solid var(--line); border-radius: 12px; padding: var(--s2) var(--s3); max-width: 86%; }
+.feed .msg-arch { align-self: flex-start; background: rgba(14, 19, 28, 0.92); border: 1px solid var(--line); border-radius: 12px; padding: var(--s2) var(--s3); max-width: 92%; }
+.feed .msg-card, .feed .msg-gen { align-self: stretch; max-width: none; }
+.feed .msg-gen { border-left: 0; border: 1px solid var(--line); border-radius: 12px; background: rgba(14, 19, 28, 0.92); }
+.feed .msg-card .card-t { font-size: 22px; line-height: 28px; }
+
+/* Round 10c phone-3: Start is amber filled, Keep as mission amber outline (the concept). */
+.msg-card .btn[data-card="start"] { background: var(--amber); border-color: var(--amber); color: #070A10; }
+.msg-card .btn[data-card="keep"] { font-size: 15px; }
+
+/* Round 10c phone forms of mission and shared: the scene on top, the card below, one column, no desktop margins. */
+.now-sheet h2 { font: 600 26px/32px var(--sans); }
+@media (max-width: 880px) {
+  .split-mission, .split-shared { display: flex; flex-direction: column; grid-template-columns: none; margin: 0; flex: none; pointer-events: auto; }
+  .split-mission .stage-mission, .split-shared .stage-shared { flex: none; height: 400px; min-height: 0; margin: 0 calc(var(--s4) * -1); pointer-events: none; }
+  .stage-mission .crumb { position: absolute; left: var(--s4); top: var(--s2); }
+  .m-links { position: absolute; right: var(--s4); top: var(--s2); }
+  #s-shared > .shared-head { position: static; margin: var(--s2) 0 0; pointer-events: auto; }
+  .shared-head h1 { font-size: 28px; line-height: 34px; }
+  .inspector.mission-card, .inspector.shared-card { margin: var(--s4) 0 0; border-radius: 14px; padding: var(--s3) var(--s4) var(--s4); }
+  .mission-card h1 { font-size: 32px; line-height: 38px; }
+  .m-bottom { grid-template-columns: minmax(0, 1fr); gap: var(--s2); }
+  .mission-card .row { flex-wrap: wrap; }
+  .mission-card .row .btn { flex: 1 1 140px; }
+  .split-shared .inspector { pointer-events: auto; }
+}
+
+/* Round 10c phone scene labels: smaller serif titles so the labels stay inside 360 to 440 px. */
+@media (max-width: 880px) {
+  .stage-mission .lbl .t { font-size: 20px; line-height: 24px; }
+  .stage-mission .lbl.record .t, .stage-mission .lbl.exec .t { font-size: 16px; line-height: 20px; }
+  .stage-mission .lbl .s { font-size: 14px; line-height: 18px; }
+  .stage-mission .lbl.record .s, .stage-mission .lbl.exec .s { max-width: 150px; }
+  .m-links { top: auto; bottom: var(--s2); right: var(--s2); }
+  .stage-shared .lbl .t { font-size: 16px; line-height: 20px; }
+  .stage-shared .lbl.agent .t { font-size: 20px; line-height: 24px; }
+}
+
+/* Round 10c: the replay and plan links sit in the mission card; the phone shared scene gets more height and smaller device labels. */
+.m-links { position: static; display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0 0; }
+.mission-card .m-links .btn { min-height: 48px; font-size: 14px; padding: 0 var(--s4); }
+@media (max-width: 880px) {
+  .m-links { position: static; }
+  .stage-mission .crumb { top: var(--s2); }
+  .split-shared .stage-shared { height: 480px; }
+  .stage-shared .lbl.device .t { font-size: 15px; line-height: 20px; }
+  .stage-shared .lbl.device .s { font-size: 14px; line-height: 18px; }
+}
+
+/* Round 10c phone mission: record sub-lines are dropped so the record labels do not collide at 360 to 440 px. */
+@media (max-width: 880px) { .stage-mission .lbl.record .s { display: none; } }

@@ -4,6 +4,60 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10c mission, shared and phone sheets (partial, 2026-10-21)
+
+Status: PARTIAL. The loop ran fewer than the 15 iterations the brief asks for, on each surface. Mission (03) reached about 8 measured loops, Shared (06) 5, phone-2 and phone-3 4 each. Phone and desktop Overview scenes, Replay and Terminal were not touched.
+
+What was traced. The concepts were read at full size and measured by eye on labelled coordinates (no pixel-accurate tracing): `03-mission.webp` (1244 x 829 frame, scene 800 wide, card 433 wide, card top 66), `06-shared.webp` (1382 x 922, rail 240, card 326 wide), `phone-2-decision-v2.png` and `phone-3-chat-v2.png` (724 x 1573 file, which is the 804 x 1748 concept at 0.9; 402 x 874 CSS at DPR 2).
+
+Layout tables (in `app.js`, drive the scenes uniformly scaled to the container):
+- `MISSION_FRAME`: core, Codex agent, mission body, Verification, Date test suite, Results, with a label anchor for each. `missionFrame()` builds the mission scene from it. Verb anchors are `verbAt` on each link.
+- `SHARED_FRAME`: core, Claude and Codex triangles, the three device boxes, the outline polygon, label anchors. `sharedScene()` builds it.
+- Phone decision sheet and chat sheet: markup in `openDetail()` and the seeded thread (the question and the General answer are seeded after the Start card).
+
+Code shape changes in shared helpers (small, flagged here for the merge):
+- `makeStage` `placeLabels`: labels with an `at` anchor are placed at it (clamped inside the stage), skipping the candidate search. `sc.coreDy` moves the core label.
+- `makeStage` `build`: `labelSub` overrides the second label line; `labelAt` sets `it.at`.
+- `makeStage` `draw`: links with `faint` are never lit; links with `verbAt` place the verb at that point; `sc.poly` draws the shared outline; `drawShape()` draws agent triangles and device boxes (new helper, used only for nodes with `tri` or `box`).
+- `renderMission`, `phaseBar`, `renderMissionPanel` rewritten; the Activity and Plan tabs are gone (the concept shows both lists in the card).
+
+Measured similarity (compare.py: both at the concept size; lum = mean absolute luminance difference, amb and blu = mean absolute difference of the amber and blue signals, edge = IoU of thresholded gradient maps; lower lum, higher edge is closer). The brief's rule that a metric must move is answered in the table: lum and edge moved, amber and blue hardly move on the mission and are not a useful guide there.
+
+| Surface | Loop | lum | amb | blu | edge IoU |
+|---|---|---|---|---|---|
+| Mission 03 | it0 (round 10b code) | 10.09 | 0.12 | 6.74 | 0.038 |
+| Mission 03 | it1 | 8.36 | 0.11 | 6.82 | 0.122 |
+| Mission 03 | it3 | 7.90 | 0.12 | 6.59 | 0.109 |
+| Mission 03 | it4 (frame aligned to the page top) | 7.47 | 0.12 | 6.43 | 0.143 |
+| Mission 03 | it13 (verbs pinned, labels clamped) | 8.01 | 0.11 | 6.50 | 0.125 |
+| Shared 06 | it0 (round 10b code) | 10.60 | 0.26 | 2.49 | 0.039 |
+| Shared 06 | it5 (measured frame) | 6.58 | 0.11 | 3.26 | 0.145 |
+| Phone-2 | it0 | 15.43 | 1.38 | 5.41 | 0.091 |
+| Phone-2 | it13 | 15.57 | 1.16 | 5.36 | 0.078 |
+| Phone-3 | it0 | 20.49 | 4.07 | 5.33 | 0.064 |
+| Phone-3 | it13 | 22.94 | 6.71 | 5.10 | 0.058 |
+
+Phone-3 luminance and amber rose because the Start card is now amber filled and the seeded thread is longer. The phone-2 and phone-3 scenes behind the sheets come from the Overview scene (not this surface), which renders sparse at 402 px, so these two numbers mostly measure that scene.
+
+Label overlap probe (Chromium, fixed label boxes, stage labels only): Shared clean at 1280, 1440, 1600, 1920 and 360 to 440. Mission clean at 1600, 1920 and 360 to 440. Still open: at 1280 the "orchestrates" verb overlaps the "Archeus" core label, and at 1280 and 1440 the "produces" verb overlaps the "Fix date test" title. Both are verb-to-label collisions that appear when the scene scale changes.
+
+Differences left (numbered, honest):
+1. Mission: the Codex node is the triangle with the code glyph (the brief's Codex triangle), not the concept's icosahedron with a document glyph.
+2. Mission: the star is larger and denser than the concept's star. `drawCore` is shared, so it was not changed here.
+3. Mission: the page's prototype chip and the top bar sit inside the frame at the top. The concept has no equivalent.
+4. Mission: arrows start at the node centre and run through the body (the concept stops at the body edge).
+5. Mission: at 360 to 440 the Verification and Results labels are small and the phone frame cannot show the full scene; the Date test suite sub-line is hidden on the phone.
+6. Shared: the star is a dense sunburst of threads; the concept's star is a crisp knot with fewer threads. `drawCore` again.
+7. Shared: the card starts at 80 px (the top bar takes the top 72 px); the concept's card starts at 25 px.
+8. Shared: agent labels show the state as the second line in ivory, not amber and blue; the concept colours the state word.
+9. Phone-2: the sheet's title is sans semibold 26 px; the concept's is bolder and slightly larger. The Overview scene behind the sheet (not this surface) is sparse.
+10. Phone-3: the chat is stacked (label above bubble) rather than the concept's right-aligned "You" bubble. The focus ring on the chat bar shows after a tap (accessibility, kept).
+11. Replay link and Plan link moved into the mission card (the concept has no button there).
+
+Not verified: a real phone or device; screen reader; rendered-pixel contrast beyond the palette pairs in check.mjs; Dynamic Type; the Overview scene behind the phone sheets.
+
+Checks: check.mjs run through the shared test lock (see the round 10c commit). Service worker cache bumped to `archeus-v2-proto-12`.
+
 ## Round 10b (partial, 2026-10-21): measured layout, desktop and phone Overview
 
 Status: PARTIAL. Done in this round: the Overview scene is driven from a measured table (`CONCEPT_LAYOUT` in app.js), read from labelled grid overlays of desktop-1-now-v2.png (1296 x 729) and phone-1-now-v2.png (804 x 1373; the concept file is 804 x 1373, not 1748 tall). Not done: phone-2 and phone-3 comparisons and montages, four iterations for those, the 6 x 2 DPR render sweep, the Replay, terminal, Mission and Shared views (10c), motion (round 11).
