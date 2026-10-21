@@ -834,9 +834,14 @@ def _current(a):
     return {'action_class': a.action_class, 'label': _label(a)}
 
 
+#: a host as the chip may name it: letters, digits, dots and dashes only. Anything else a
+#: parser took for a host (a header or body value with a dot in it) is not one, and names nothing.
+_HOST = re.compile(r'[a-z0-9.-]{1,253}')
+
+
 def _label(a):
     if a.host:
-        return redact(a.host)[:200]
+        return redact(a.host)[:200] if _HOST.fullmatch(a.host) else ''
     if a.action_class in ('read', 'write_repo') and re.match(r'(/|[A-Za-z]:)', a.target or ''):
         return 'a file outside the workspace'
     if a.action_class in LOCAL_CLASSES:

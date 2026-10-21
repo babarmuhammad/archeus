@@ -36,7 +36,8 @@ _OPERATOR = re.compile(r'[|;&<>`]|\$\(')
 _SHELLS = ('sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 'pwsh',
            'python', 'python3', 'py', 'node', 'perl', 'ruby', 'php')
 _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 'time',
-          'watch', 'timeout', 'nice')
+          'watch', 'timeout', 'nice', 'command', 'builtin', 'export', 'set', 'typeset',
+          'declare', 'alias')
 
 READ_COMMANDS = ('ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which',
                  'file', 'stat', 'tree', 'dir', 'type', 'less', 'more', 'diff')
@@ -143,6 +144,55 @@ def _unclassified(target, argv=None):
     return Action(action_class='exec', target=target or 'command', argv=argv)
 
 
+#: a shell or interpreter takes code from its arguments: -c and any short cluster with c or e
+#: (-lc, -xc, -ec), /c and /k (cmd), -Command, -EncodedCommand, --command, --eval
+_PAYLOAD_WORDS = ('/c', '/k', '-command', '-encodedcommand', '--command', '--eval', '--cmd')
+#: a flag whose next argument is a value, per tool (wget's -c, -m, -r, -b are flags, curl's are values)
+_CURL_VALUE = frozenset((
+    '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--data-ascii', '-H',
+    '--header', '-u', '--user', '-F', '--form', '--form-string', '--oauth2-bearer', '-X',
+    '--request', '-o', '--output', '-A', '--user-agent', '-b', '--cookie', '-c', '--cookie-jar',
+    '-e', '--referer', '-m', '--max-time', '-T', '--upload-file', '-w', '--write-out', '-x',
+    '--proxy', '--proxy-user', '-K', '--config', '-E', '--cert', '--key', '--cacert', '-r',
+    '--range', '-C', '--continue-at', '--connect-timeout', '--resolve', '--json', '-Y',
+    '--speed-limit', '-y', '--speed-time', '--limit-rate', '--retry', '--retry-delay'))
+_WGET_VALUE = frozenset((
+    '--header', '--post-data', '--post-file', '--body-data', '--body-file', '--password',
+    '--http-password', '--user', '--http-user', '--proxy-user', '--proxy-password', '-U',
+    '--user-agent', '--referer', '-e', '--execute', '--load-cookies', '--save-cookies', '-o',
+    '-O', '--output-file', '--output-document', '-P', '--directory-prefix', '-t', '--tries',
+    '-T', '--timeout', '-w', '--wait', '--method', '--ca-certificate', '--certificate',
+    '--private-key', '-B', '--base', '-i', '--input-file', '-A', '--accept', '-R', '--reject'))
+#: the flags that send a body: a call with one is external_comm, not a read
+_SENDS = ('-d', '-F', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--data-ascii',
+          '--upload-file', '-T', '--form', '--form-string', '--json', '--post-data', '--post-file',
+          '--body-data', '--body-file')
+
+
+def _payload(args):
+    return any(re.fullmatch(r'-[a-zA-Z]*[ce][a-zA-Z]*', a) or a.lower() in _PAYLOAD_WORDS
+               for a in args)
+
+
+def _url_arg(prog, args):
+    """The URL of a curl or wget call: the first positional that is not the value of a flag
+    (a body, a header or a credential is one, and names no host), and that names a host."""
+    values = _WGET_VALUE if prog == 'wget' else _CURL_VALUE
+    skip = False
+    for i, a in enumerate(args):
+        if skip:
+            skip = False
+        elif a == '--url' and i + 1 < len(args):
+            return args[i + 1]
+        elif a in values:
+            skip = True
+        elif a.startswith('-') or not a:
+            continue
+        elif '://' in a or a.startswith('//') or ('.' in a and '=' not in a.split('/')[0]):
+            return a
+    return ''
+
+
 def command(cmd, ctx):
     """A shell command -> (actions, unclassified)."""
     if not cmd.strip():
@@ -164,7 +214,7 @@ def command(cmd, ctx):
     # NAME=value cmd: the name is no program, and its value may be a secret (never a target)
     if '=' in argv[0]:
         return [_unclassified('command', argv)], True
-    if prog in _NEVER or (prog in _SHELLS and ('-c' in args or '-e' in args or '/c' in args)):
+    if prog in _NEVER or (prog in _SHELLS and _payload(args)):
         return [_unclassified(prog, argv)], True
     if prog == 'base64' and ('-d' in args or '--decode' in args):
         return [_unclassified(prog, argv)], True
@@ -181,9 +231,8 @@ def command(cmd, ctx):
     if sub in INSTALL.get(prog, ()):
         return [Action(action_class='install', target=prog, argv=tv)], False
     if prog in ('curl', 'wget'):
-        url = next((a for a in args if not a.startswith('-') and ('.' in a or '//' in a)), '')
-        sends = any(a in ('-d', '-F', '--data', '--data-raw', '--data-binary', '--upload-file',
-                          '-T', '--form') or a.startswith('--data') for a in args) or any(
+        url = _url_arg(prog, args)
+        sends = any(a in _SENDS or a.startswith('--data') for a in args) or any(
             args[i] in ('-X', '--request') and args[i + 1].upper() != 'GET'
             for i in range(len(args) - 1))
         return [Action(action_class='external_comm' if sends else 'web', target=url or prog,

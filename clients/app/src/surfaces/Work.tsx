@@ -6,7 +6,7 @@ import { send } from '../data/core';
 import { objectHref } from '../nav/destinations';
 import { ago, present, statusLine } from '../state/present';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActionButton, ActivityChips, ChipAnnouncer, Changed, Empty, Fresh, Loadable, RefLabel, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
+import { ActionButton, ActivityChips, Changed, Empty, Fresh, Loadable, RefLabel, RowPulse, Section, StateBadge, thread, useChanged } from '../components/ui';
 import { pins } from '../state/pins';
 import { ideaSteps } from '../state/ideas';
 import { MissionActions } from './Mission';
@@ -111,7 +111,6 @@ export function MissionRow({ m, waiting, actions, pinned }: { m: Mission; waitin
         <span className="age">{ago(m.updated_at)}</span>
         <Changed on={changed} />
       </a>
-      <ChipAnnouncer mission={m.id} />
       {actions ? <PinButton m={m} /> : null}
       {menu ? <RowMenu m={m} close={close} /> : null}
     </li>

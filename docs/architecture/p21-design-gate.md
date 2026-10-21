@@ -458,13 +458,14 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
 
-### Slice E as built (2026-10-21, card T-128; rework 2026-10-21)
+### Slice E as built (2026-10-21, card T-128; rework 2026-10-21, rounds 1 and 2)
 
 Built under D0 by the owner's naming of 2026-10-21 ("Yes, all five (Recommended)", recorded on
 the board): slice E touches the execution boundary's Core side, so it was not D0-eligible on
 2026-10-19. D6 (a) as approved: Core records the current action from the request it already
-judges; nothing is added to the hook, and no answer it gets changes. The owner's D6 decision
-of 2026-10-21 is "Queue it" for a fourth chip on a row (not the drop the first build used).
+judges; nothing is added to the hook, and no answer it gets changes, with one exception the
+owner has not yet confirmed (see "Classifier changes" below). The owner's D6 decision of
+2026-10-21 is "Queue it" for a fourth chip on a row (not the drop the first build used).
 
 - **The record (D6 (a)).** `Execution.current_action` (`archeus/core/domain/entities.py`; the
   row is a JSON body, so no migration): `{action_class, label, decision, seq}`, written by
@@ -476,34 +477,47 @@ of 2026-10-21 is "Queue it" for a fourth chip on a row (not the drop the first b
   branch, waiting for approval). The action named is the one that decided the answer: the first
   denied action if any, else the first asking one, else the first action (early halts, before
   any action is judged, name the first action).
-- **No raw input (I-F4, §9).** `_label` names a host when the action has one (a WebFetch or curl
-  URL, a git remote that may carry a credential). Otherwise it names the target only for the
-  local classes (a workspace path, a program name, `shell` for an unclassified command, a git
-  branch); a path outside the workspace reads "a file outside the workspace"; a remote or URL
-  with no host reads nothing; WebSearch reads "search". `NAME=value cmd` is unclassified with
-  target `command`, because the name is no program and the value may be a secret. The argv is
-  never kept; the label passes the shared redactor (`archeus/core/redact.py`), cut at 200
-  characters.
+- **No raw input (I-F4, §9).** `_label` names a host when the action has one, and only when the
+  host is letters, digits, dots and dashes (`_HOST`); a host that is not one reads nothing. Else
+  it names the target only for the local classes (a workspace path, a program name, `shell` for
+  an unclassified command, a git branch); a path outside the workspace reads "a file outside the
+  workspace"; a remote or URL with no host reads nothing; WebSearch reads "search". The URL of a
+  curl or wget call is the first positional that is not the value of a flag (per tool:
+  `_CURL_VALUE`, `_WGET_VALUE`, so a body, a header, a credential or an output file is never the
+  URL) and that names a host (a scheme, `//`, or a dotted word with no `=`). `NAME=value cmd` and
+  the wrappers below are unclassified with a fixed target, because the name is no program and the
+  value may be a secret. The argv is never kept; the label passes the shared redactor
+  (`archeus/core/redact.py`), cut at 200 characters.
+- **Classifier changes (decision-affecting, for the owner to confirm).** An unclassified action
+  is judged as every class the task holds plus exec, strictest wins (P9 §6.3), so these commands
+  can now be refused or held where the first build allowed them as a plain exec: `NAME=value cmd`
+  (round 1); `command`, `builtin`, `export`, `set`, `typeset`, `declare`, `alias`, `timeout`,
+  `nice` and `stdbuf` (round 2: a wrapper runs another program); and a shell or interpreter with a
+  payload flag (`-c`, any short cluster with `c` or `e` such as `-lc`, `/c` and `/k` in any case,
+  `-Command`, `-EncodedCommand`, `--command`, `--eval`, `--cmd`). The earlier build judged
+  `bash -lc "rm -R build"` as a plain exec of `bash`. Fail-closed in the direction the canonicaliser
+  documents; the owner's D6 rule "no change to what the hook allows or refuses" is broken by it.
 - **The read.** `GET /v1/executions/{id}` carries it (schema `CurrentAction`, `observe`); the
   generated client and the API reference regenerate (`tools/gen_api_docs.py --check`). The field
-  is the last action Core judged for the execution: it stays after the run ends, and the chip
-  shows it only while the run is live.
+  is the last action Core judged for the execution: it stays after the run ends (the GET shows
+  it), and the chip shows only an action of a run that is live when the frame is handled.
 - **The chip (A-17).** `clients/app/src/state/chips.ts`: an `execution.hook` frame re-reads the
-  execution; a current action newer than the last one chipped for it becomes a chip on its
-  mission's row while a row of it is on screen, in words ("reading src/a.py", "refused: running
-  npm", "held: fetching example.com"); 2.5 s, 4 s when Core refused or held the call. A row
-  shows 3 at once (`cap`, `cap_per` target). A further chip waits in that row's queue (`over_cap`
-  `queue`): the queue is first in first out, holds 6 per row, and beyond 6 the oldest waiting
-  chip is dropped. When a chip leaves, the queue's oldest chip is promoted only if Core still
-  reports its execution live (the states that can still act, mirroring `LIVE` in
-  `executions.py`); an ended run's queued chip is dropped, and so is one whose read Core does
-  not answer within 2 s (the read is timed out so a silent Core does not stall the queue).
-  Drawn by `ActivityChips` in `clients/app/src/components/ui.tsx` on `MissionRow` (Work and
-  Now; the two are separate routes, so one row is never drawn twice), hidden from the row link's
-  name (it would change at every tool call); never a tint. A refused or held chip is also
-  announced to assistive technology by `ChipAnnouncer`, a visually hidden `role="status"` beside
-  the link (allowed chips are not announced). The registry entry `activity-chip` is `built` with
-  its approved values (`tokens/motion.json`), `over_cap` `queue`, keyframes `activity-chip`;
-  under reduced motion the chip appears and leaves without its fade.
+  execution; a current action newer than the last one chipped for it, of a live run, becomes a
+  chip on its mission's row while a row of it is on screen, in words ("reading src/a.py",
+  "refused: running npm", "held: fetching example.com"); 2.5 s, 4 s when Core refused or held the
+  call. A row shows 3 at once (`cap`, `cap_per` target). A further chip waits in that row's queue
+  (`over_cap` `queue`): first in first out, 6 per row, and beyond 6 the oldest waiting chip is
+  dropped. A frame that arrives while a queue waits queues behind it, so the queue takes the room
+  first. When a chip leaves, the whole queue is asked about at once (one round of reads, each
+  bounded by 2 s), and the chips take the room in order, each only if its run is still live; a
+  chip whose run ended, or whose read Core does not answer in 2 s, is dropped. A silent read
+  never stalls the frames behind it for more than that round. Drawn by `ActivityChips` in
+  `clients/app/src/components/ui.tsx` on `MissionRow` (Work and Now; the two are separate routes,
+  so one row is never drawn twice), hidden from the row link's name (it would change at every
+  tool call); never a tint. A refused or held chip is announced when it is presented, through the
+  app's one polite region (`announce()` in `clients/app/src/a11y/announce.ts`, rate-limited as
+  the rest of the app is). The registry entry `activity-chip` is `built` with its approved values
+  (`tokens/motion.json`), `over_cap` `queue`, keyframes `activity-chip`; under reduced motion the
+  chip appears and leaves without its fade.
 - **Not built:** the role word and model label the orchestration plan allows on the chip
   ("reviewing · claude-sonnet-5"); TUI chips (the gate's TUI scope is `status` and `doctor`).

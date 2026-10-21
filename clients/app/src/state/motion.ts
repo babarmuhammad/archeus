@@ -445,7 +445,7 @@ export const MOTIONS = {
     "idle": "never",
     "replay": false,
     "reduced": "no fade: the chip appears and leaves at once",
-    "equivalent": "the chip's text; a refused or held chip is also announced beside its row's link"
+    "equivalent": "the chip's text; a refused or held chip is also announced through the shared polite region"
   }
 } as const;
 

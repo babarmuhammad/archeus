@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MOTIONS } from '../src/state/motion.ts';
 import { Timeline } from '../src/state/timeline.ts';
-import { CHIPS_PER_ROW, CHIP_TTL_ERROR_MS, CHIP_TTL_MS, Chips, QUEUE_MAX, announcement, chipText, hookSubject, type ChipFrame, type Current } from '../src/state/chips.ts';
+import { CHIPS_PER_ROW, CHIP_TTL_ERROR_MS, CHIP_TTL_MS, Chips, QUEUE_MAX, chipText, hookSubject, type ChipFrame, type Current } from '../src/state/chips.ts';
 
 const frame = (id: number | undefined, ex = 'ex_a', event = 'execution.hook'): ChipFrame => ({
   id,
@@ -163,17 +163,97 @@ test('a read Core does not answer in time drops its chip; the frames after it st
   assert.deepEqual(c.chips('mi_a').map((x) => x.seq), [11]);
 });
 
-test('a refused or held chip is announced beside the row; an allowed one is not', async () => {
+test('a refused or held chip is announced once through the host; an allowed one is not', async () => {
+  const said: string[] = [];
+  const c = new Chips(new Timeline(), {
+    now: () => 0,
+    reduced: () => false,
+    announce: (t) => said.push(t),
+    read: async () => ({ mission_id: 'mi_a', state: 'RUNNING', current_action: act(1) }),
+  });
+  c.show('mi_a');
+  await c.frame(frame(10));
+  assert.deepEqual(said, [], 'an allowed read is not said aloud');
+  const heard: string[] = [];
+  const held = new Chips(new Timeline(), {
+    now: () => 0,
+    reduced: () => false,
+    announce: (t) => heard.push(t),
+    read: async () => ({ mission_id: 'mi_a', state: 'RUNNING', current_action: act(2, { decision: 'halt', action_class: 'exec', label: 'npm' }) }),
+  });
+  held.show('mi_a');
+  await held.frame(frame(11));
+  assert.deepEqual(heard, ['held: running npm']);
+});
+
+test('an action judged while its row was off screen does not chip when the row comes on, nor a run that has ended', async () => {
   const r = rig();
+  r.c.show('mi_b');
+  await r.c.frame(frame(10, 'ex_a'));
+  assert.deepEqual(r.c.chips('mi_a'), [], 'no row for mi_a on screen');
   r.c.show('mi_a');
-  r.current.ex_a = act(1);
-  await r.c.frame(frame(10));
-  assert.equal(announcement(r.c.chips('mi_a')), undefined, 'an allowed read is not said aloud');
-  r.current.ex_a = act(2, { decision: 'halt', action_class: 'exec', label: 'npm' });
-  await r.c.frame(frame(11));
-  const said = announcement(r.c.chips('mi_a'));
-  assert.equal(said?.text, 'held: running npm');
-  assert.equal(said?.seq, 11);
+  await r.c.frame(frame(11, 'ex_a'));
+  assert.deepEqual(r.c.chips('mi_a'), [], 'the same action, already seen, does not chip');
+  r.states.ex_a = 'ENDED';
+  r.current.ex_a = act(2);
+  await r.c.frame(frame(12, 'ex_a'));
+  assert.deepEqual(r.c.chips('mi_a'), [], 'a late hook from a run that has ended chips nothing');
+});
+
+test('a queued chip is ahead of a frame that arrives while it waits: the queue takes the room first', async () => {
+  let release = (): void => undefined;
+  const gate = new Promise<void>((res) => (release = res));
+  const current: Record<string, Current> = { ex_a: act(1), slow: act(1) };
+  const c = new Chips(new Timeline(), {
+    now: () => 0,
+    reduced: () => false,
+    read: async (id) => {
+      if (id === 'slow') await gate;
+      return { mission_id: 'mi_a', state: 'RUNNING', current_action: current[id] };
+    },
+  });
+  c.show('mi_a');
+  for (let i = 1; i <= 4; i++) {
+    current.ex_a = act(i);
+    await c.frame(frame(10 + i));
+  }
+  assert.deepEqual(c.chips('mi_a').map((x) => x.seq), [11, 12, 13]);
+  const late = c.frame(frame(15, 'slow'));
+  c.dismiss('mi_a', 11);
+  release();
+  await late;
+  await c.idle();
+  assert.deepEqual(c.chips('mi_a').map((x) => x.seq), [12, 13, 14], 'the queued 14 shows before the newer 15');
+});
+
+test('a queue of hung reads is asked once, concurrently: a frame behind it waits two read timeouts at most', { timeout: 5000 }, async () => {
+  const hang = new Set<string>();
+  const cur: Record<string, Current> = {};
+  const c = new Chips(new Timeline(), {
+    now: () => 0,
+    reduced: () => false,
+    readMs: 100,
+    read: (id) => (hang.has(id)
+      ? new Promise<null>(() => undefined)
+      : Promise.resolve({ mission_id: 'mi_a', state: 'RUNNING', current_action: cur[id] })),
+  });
+  c.show('mi_a');
+  for (let i = 1; i <= 3; i++) {
+    cur[`s${i}`] = act(i);
+    await c.frame(frame(10 + i, `s${i}`));
+  }
+  for (let j = 1; j <= 6; j++) {
+    cur[`q${j}`] = act(j);
+    await c.frame(frame(20 + j, `q${j}`));
+  }
+  for (let j = 1; j <= 6; j++) hang.add(`q${j}`);
+  cur.s4 = act(1);
+  const t0 = Date.now();
+  c.dismiss('mi_a', 11);
+  await c.frame(frame(40, 's4'));
+  const took = Date.now() - t0;
+  assert.ok(took < 400, `a frame waited ${took} ms behind six hung reads`);
+  assert.deepEqual(c.chips('mi_a').map((x) => x.seq), [12, 13, 40], 'the hung chips are dropped; the live one shows');
 });
 
 test('the chips of a row are the same array until they change', async () => {

@@ -810,16 +810,6 @@ h1:focus {
 
 /* A-17 (P21 D6): the activity chip, what an agent asked Core to do, in words;
    160 ms in, gone after its TTL; never a tint (ADR-0026 §3) */
-/* read by assistive technology only (the row link's name must not change with its chips) */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
 .activity-chips {
   display: inline-flex;
   gap: var(--space-1);
