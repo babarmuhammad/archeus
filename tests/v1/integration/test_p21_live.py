@@ -9,7 +9,7 @@ import pytest
 
 from archeus.api import schemas
 from archeus.cli.tui import present as P
-from archeus.core.application import calls as C, conversation as CV, live, resources
+from archeus.core.application import calls as C, conversation as CV, live, queries, resources
 from archeus.core.domain import entities
 from archeus.harnesses import base
 from archeus.harnesses.fake import FakeCaller
@@ -187,6 +187,16 @@ def test_s3_core_never_imports_the_tui_and_says_the_same_words():
     assert words.LABELS == _tables.LABELS
 
 
+def _keys(x):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield k
+            yield from _keys(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _keys(v)
+
+
 def _strings(x):
     if isinstance(x, dict):
         for v in x.values():
@@ -209,3 +219,28 @@ def test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home(r, tmp_p
     for form in (home, str(tmp_path), base.canonical_home(home)):
         assert not any(form in v for v in shown), form
     assert all(k not in x for x in listed + [one] for k in resources.HOME_FIELDS)
+
+
+def test_owner_2026_10_21_route_decision_reads_show_no_account_home(r, tmp_path):
+    """GET /v1/route-decisions and /{id} strip the home at the read (review F1); the row keeps it."""
+    home = str(tmp_path / 'Work-Claude')
+    r.account('A', home_ref=home)
+    rid = call(r)
+    with r.db.read() as conn:
+        listed = queries.route_decisions(conn)
+        one = queries.get_route_decision(conn, rid)
+        stored = rows.get(conn, entities.RouteDecision, rid).entity.input_snapshot
+    shown = list(_strings([listed, one]))
+    for form in (home, str(tmp_path), base.canonical_home(home)):
+        assert not any(form in v for v in shown), form
+    assert not {'home_ref', 'home_key'} & set(_keys([listed, one]))
+    assert any(a.get('home_ref') == home for a in stored['accounts'])     # the row keeps it
+    # a default account names its home in its ref (harness:canonical home): the home is said as its home
+    default = {'id': None, 'ref': 'fake:' + base.canonical_home(home), 'home_ref': home}
+    got = queries._public_decision({'input_snapshot': {'accounts': [default]}, 'account_ref': default['ref']})
+    assert got['input_snapshot']['accounts'] == [{'id': None, 'ref': 'fake:its home'}]
+    assert got['account_ref'] == 'fake:its home'
+    # a registered account's ref is its home itself: that value goes, exactly
+    reg = {'input_snapshot': {'accounts': [{'id': 'acc_1', 'ref': home, 'home_ref': home}]},
+           'account_ref': home}
+    assert queries._public_decision(reg)['account_ref'] is None

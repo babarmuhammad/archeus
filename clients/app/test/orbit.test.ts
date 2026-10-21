@@ -8,7 +8,7 @@ import { MOTIONS } from '../src/state/motion.ts';
 import { DARK, MOTION } from '../src/state/tokens.ts';
 import { Timeline } from '../src/state/timeline.ts';
 import { staleBy } from '../src/data/invalidation.ts';
-import { MARK, ORBIT_EVERY_MS, Orbit, favicon, presence, runningMissions } from '../src/state/orbit.ts';
+import { MARK, ORBIT_EVERY_MS, Orbit, attemptIds, favicon, presence, runningMissions } from '../src/state/orbit.ts';
 
 const src = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const frame = (id: number | undefined, event = 'execution.progress', kind = 'execution') => ({
@@ -177,4 +177,13 @@ test('an execution frame makes /v1/status stale: its live work moved', () => {
   const stale = staleBy({ event: 'execution.state_changed', data: { subject: { kind: 'execution', id: 'exe_1' }, scope: {} } });
   assert.ok(stale('/v1/status'));
   assert.ok(stale('/v1/status?project=prj_1'));
+});
+
+test('the live map lights attempts only: an own call is never a node (G8), and the header counts the same way', () => {
+  const live = [{ id: 'exe_1', kind: 'execution', state: 'RUNNING' }, { id: 'own_1', kind: 'own_call', state: null }];
+  assert.deepEqual(attemptIds(live), ['exe_1']);
+  assert.deepEqual(attemptIds([]), []);
+  // the Now surface feeds the map from attemptIds and names the header with liveCountText
+  assert.ok(src('../src/surfaces/Now.tsx').includes('attemptIds(status.data?.live ?? [])'));
+  assert.ok(src('../src/surfaces/Now.tsx').includes('{liveCountText(status.live)}'));
 });

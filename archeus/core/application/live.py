@@ -58,10 +58,11 @@ def live_work(conn, project_id=None, now=None):
     §2), each oldest first."""
     from .resources import own_call_live, own_calls
     out = []
-    for r in rows.where(conn, entities.Execution):
+    # the live states are read in SQL (executions_by_state), so a finished execution is never decoded
+    for rec in conn.execute('SELECT * FROM executions WHERE state IN (%s) ORDER BY rowid'
+                            % ','.join('?' * len(LIVE)), LIVE):
+        r = rows.decode(entities.Execution, rec)
         e = r.entity
-        if e.state not in LIVE:
-            continue
         m = rows.get(conn, entities.Mission, e.mission_id).entity
         if project_id is not None and m.project_id != project_id:
             continue

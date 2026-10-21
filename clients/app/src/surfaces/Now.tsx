@@ -13,6 +13,7 @@ import { reducedMotion } from '../graph/loop';
 import { MAP_MIN_WIDTH, useWide } from '../graph/wide';
 import { objectHref } from '../nav/destinations';
 import { activeMissions, automationLine, mapSeeds, recentDecisions, stateSentence, upcoming } from '../state/now';
+import { attemptIds } from '../state/orbit';
 import { ago, liveCountText } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
 import { timeline } from '../state/timeline';
@@ -163,7 +164,7 @@ function Decisions() {
 function MapSection({ missions }: { missions: MissionList['missions'] }) {
   const status = useRead<Status>(paths.status());
   const seeds = mapSeeds(missions);
-  const ids = (status.data?.live ?? []).map((x) => x.id);
+  const ids = attemptIds(status.data?.live ?? []);
   const key = ids.join();
   const live = useMemo(() => new Set(ids), [key]);
   return (

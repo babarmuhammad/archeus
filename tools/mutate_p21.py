@@ -37,6 +37,7 @@ DR = 'archeus/core/doctor.py'
 RTM = 'archeus/core/runtime.py'
 D = 'tests/v1/integration/test_p21_metrics_doctor.py'
 QRY = 'archeus/core/application/queries.py'
+NOWT = 'clients/app/src/surfaces/Now.tsx'
 ROUTES = 'archeus/api/routes.py'
 CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
 GUI = 'archeus/cli/gui.py'
@@ -386,6 +387,31 @@ MUTATIONS = [
      "HOME_FIELDS = ('home_ref', 'home_key')",
      "HOME_FIELDS = ('home_ref',)")],
      [PL + 'test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home']),
+    # ── P21 slice B review round 3 (F1-F4) ──
+    ('Z145', 'a route-decision read shows the account home_ref key', [(QRY,
+     "            return {k: scrub(v) for k, v in x.items() if k not in ('home_ref', 'home_key')}",
+     "            return {k: scrub(v) for k, v in x.items()}")],
+     [PL + 'test_owner_2026_10_21_route_decision_reads_show_no_account_home']),
+    ('Z146', 'a route-decision read shows a home-valued ref or account_ref', [(QRY,
+     "            if x in forms:\n                return None\n",
+     "            if x in forms:\n                return x\n")],
+     [PL + 'test_owner_2026_10_21_route_decision_reads_show_no_account_home']),
+    ('Z147', 'a live execution in its first state is left out of live work', [(LV,
+     "% ','.join('?' * len(LIVE)), LIVE):",
+     "% ','.join('?' * len(LIVE[1:])), LIVE[1:]):")],
+     [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
+    ('Z148', 'the live map lights an own call (G8)', [(ORB,
+     "live.filter((x) => x.kind !== 'own_call').map((x) => x.id)",
+     "live.map((x) => x.id)")],
+     ['node:test/orbit.test.ts']),
+    ('Z149', 'the map is fed own calls relabelled as attempts (G8)', [(NOWT,
+     'attemptIds(status.data?.live ?? [])',
+     "attemptIds((status.data?.live ?? []).map((x) => ({ ...x, kind: 'execution' })))")],
+     ['node:test/orbit.test.ts']),
+    ('Z150', 'the Now header counts own calls as running (R13-06)', [(NOWT,
+     '{liveCountText(status.live)}',
+     "{liveCountText(status.live.map((x) => ({ ...x, kind: 'execution' })))}")],
+     ['node:test/orbit.test.ts']),
     # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
     ('Z30', 'a result is paired with whichever call came first', [(TR,
      "            call = calls.get(e.get('tool_use_id'))",

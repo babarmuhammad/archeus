@@ -30,6 +30,9 @@ export const running = <T extends Live>(live: T[]): T[] => live.filter((x) => x.
 /** The strip's "running": missions, Archeus's unit, with an attempt running now. */
 export const runningMissions = (live: (Live & { mission_id: string | null })[]): number => new Set(running(live).map((x) => x.mission_id)).size;
 
+/** The ids the live map lights: attempts only. An own call is never a map node (G8). */
+export const attemptIds = <T extends Live & { id: string }>(live: T[]): string[] => live.filter((x) => x.kind !== 'own_call').map((x) => x.id);
+
 export class Orbit {
   private seq = 0;
   private last = -Infinity;

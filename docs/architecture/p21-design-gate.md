@@ -537,11 +537,27 @@ The review's verdict was CHANGES. What changed, finding by finding:
   says the TUI imports no Core module. Test: `test_s3_core_never_imports_the_tui_and_says_the_same_words`
   (no `archeus.cli` import in Core; the two copies equal). `gen_ui --check` keeps them current.
 - **S4: the scans.** `own_calls` filters `subject.kind` in SQL (`json_extract`), so no other
-  decision's body is decoded. `live_counts` takes the live executions by state and the day's own
-  calls once for all accounts; `accounts()` passes that to every account view, so `/v1/accounts`
-  makes two scans whatever the account count. Ceiling, recorded: the day's `route_decisions` are
-  still scanned by `created_at` (no index). An index is a migration; none was added (0019 is not
-  taken), and the owner may ask for one.
+  decision's body is decoded. `live_work` and `live_counts` each read the live executions by state
+  in SQL (`executions_by_state`, no finished execution is decoded), and each reads the day's own
+  calls. `/v1/accounts` runs both once: four scans, whatever the account count, and each account
+  adds one read of its own usage rows (`ledger_totals`). `refresh_ledgers` (the own-call writer)
+  computes `live_counts` once for all its accounts. Ceiling, recorded: the day's `route_decisions`
+  are still scanned by `created_at` (no index). An index is a migration; none was added (0019 is
+  not taken), and the owner may ask for one.
+- **Route-decision reads (review F1; owner, 2026-10-21: "Strip at read (Recommended)").**
+  `queries.route_decisions` and `get_route_decision` pass each decision through `_public_decision`:
+  the keys `home_ref` and `home_key` are dropped everywhere in it; a value that is a home in plain
+  or canonical form (a snapshot ref, the chosen `account_ref`) becomes null; a value that only
+  contains one (a default account's `<harness>:<canonical home>`) says "its home" in its place.
+  The stored row keeps them, because the execution manager reads the stored snapshot for a default
+  account's home (`execution/manager.py`). Test:
+  `test_owner_2026_10_21_route_decision_reads_show_no_account_home`; mutants Z145-Z146.
+  **Open for the owner (not changed here):** the status read (`/v1/status`, `live_work`) carries an
+  own call's `account_ref`, which for a registered account is its home path; the same leak as the
+  route-decision read, in a second observe read. Recommended: strip it at that read the same way.
+- **Now map (review F2).** The live map's set is `attemptIds(status.data.live)` (`orbit.ts`): an own
+  call is never a map node (G8). Test: `orbit.test.ts`; mutants Z148-Z149. The header count
+  `liveCountText(status.live)` is pinned by a source check and mutant Z150 (review F4).
 - **S5: mutant gaps.** Z130-Z142 cover the in-flight count, its account (Z131 books it to no
   account), the lapsed flip, the in-flight zero, the palette skip, the TS and Python in-flight
   text, the TUI usage line, the execution-only link filter, the summary-only consumers, the
@@ -563,6 +579,6 @@ The review's verdict was CHANGES. What changed, finding by finding:
   call has a bound longer than a day.
 - **N2:** the consumption row reads "Today (UTC)".
 - **N3:** `account_view` reads the current `ResourcePolicy` row through `effective_policy`: the
-  policy the next decision would use. It is not the decision's stored `input_snapshot`. The
-  wording above and in the commit says so.
+  policy the next decision would use. It is not the decision's stored `input_snapshot`. Only this
+  gate section was reworded; commit 330c3fb's message is history and still says "decided from".
 - **N4:** the "Running now" list in `status` says "(+N more)" past the ten it names.

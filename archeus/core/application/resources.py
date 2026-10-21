@@ -363,8 +363,9 @@ def refresh_ledgers(conn, snap, now):
     taken again inside the transaction that records it, where no other
     decision can interleave (a concurrency slot is never granted twice)."""
     today = _iso(now)[:10]
-    accts = [dict(a, ledger=ledger_totals(conn, a['id'], today, now)) if a.get('registered')
-             else a for a in snap['accounts']]
+    counts = live_counts(conn, today, now)
+    accts = [dict(a, ledger=ledger_totals(conn, a['id'], today, now, counts))
+             if a.get('registered') else a for a in snap['accounts']]
     return dict(snap, accounts=accts)
 
 

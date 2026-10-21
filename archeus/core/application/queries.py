@@ -215,13 +215,39 @@ def get_knowledge(conn, knowledge_item_id):
     return dict(view(row), chain=chain + [knowledge_item_id] + after, relations=rels)
 
 
+def _public_decision(decision):
+    """A decision as the API reads it: no account home reaches the read. That is
+    the path on this machine (`home_ref`) and every value that is that path, in
+    plain or canonical form: a snapshot ref, the chosen `account_ref`, a default
+    account's `<harness>:<canonical home>`. The stored row keeps them, because the
+    execution manager reads the snapshot for a default account's home
+    (execution/manager.py)."""
+    from ...harnesses.base import canonical_home
+    homes = {a['home_ref'] for a in ((decision.get('input_snapshot') or {}).get('accounts') or ())
+             if a.get('home_ref')}
+    forms = sorted({f for h in homes for f in (h, canonical_home(h))}, key=len, reverse=True)
+
+    def scrub(x):
+        if isinstance(x, dict):
+            return {k: scrub(v) for k, v in x.items() if k not in ('home_ref', 'home_key')}
+        if isinstance(x, (list, tuple)):
+            return [scrub(v) for v in x]
+        if isinstance(x, str) and forms:
+            if x in forms:
+                return None
+            for f in forms:
+                x = x.replace(f, 'its home')
+        return x
+    return scrub(decision)
+
+
 def get_route_decision(conn, route_decision_id):
     row = rows.get(conn, entities.RouteDecision, route_decision_id)
     if row is None:
         raise NotFound(route_decision_id)
     usage = [view(r) for r in rows.where(conn, entities.UsageLedger,
                                          route_decision_id=route_decision_id)]
-    return dict(view(row), usage=usage)
+    return dict(_public_decision(view(row)), usage=usage)
 
 
 def route_decisions(conn, source_id=None, purpose=None):
@@ -233,7 +259,7 @@ def route_decisions(conn, source_id=None, purpose=None):
     if source_id is not None:
         got = [r for r in got if source_id in (r.entity.subject.id, r.entity.source
                                                and r.entity.source.id)]
-    return [view(r) for r in got]
+    return [_public_decision(view(r)) for r in got]
 
 
 def get_account(conn, account_id):
