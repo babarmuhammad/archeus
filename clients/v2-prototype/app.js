@@ -1467,6 +1467,8 @@
   }
   buildDeskMarks();
   var NO_DRAW = new Proxy({}, { get: function () { return function () {}; }, set: function () { return true; } });
+  // Round 10g: ?nocolor on the Now frame turns the live text and marks neutral (the art's own links stay raster).
+  if (/[?&]nocolor/.test(location.search)) document.body.classList.add('nocolor');
   function fitFrame() {
     var k = Math.min(window.innerWidth / 1296, window.innerHeight / 729);
     document.documentElement.style.setProperty('--k', k.toFixed(4));

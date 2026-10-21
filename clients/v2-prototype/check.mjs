@@ -91,7 +91,13 @@ const otherCss = css.replace(/([^{}]+)\{([^{}]*)\}/g, (m, sel) => (/frame-now/.t
 const frameSizes = fontSizes(frameRules.map((m) => m[0]).join('\n'));
 const otherSizes = fontSizes(otherCss);
 check(otherSizes.length > 0 && Math.min(...otherSizes) >= 14, `font size below 14px outside the Now frame: ${Math.min(...otherSizes)}`);
-check(frameSizes.length > 0 && Math.min(...frameSizes) >= 11, `font size below 11px on the Now frame: ${Math.min(...frameSizes)}`);
+// Round 10g (owner answer 3): 10 px is allowed on the frame only for the concept's own small sub-lines, named here.
+const TEN_PX_SELECTORS = ['data-lid="m-read"] .s', 'data-lid="m-index"] .s', 'data-lid="ideas"] .s', 'data-lid="m-date"] .s', 'data-lid="m-search"] .s', 'data-lid="m-done"] .s'];
+const tenPxBreaches = frameRules.filter((m) => fontSizes(m[2]).some((v) => v < 11) && !TEN_PX_SELECTORS.some((sel) => m[1].includes(sel)));
+const tenPxRules = frameRules.filter((m) => fontSizes(m[2]).some((v) => v < 11));
+check(tenPxBreaches.length === 0, `frame font below 11px outside the named sub-lines: ${tenPxBreaches.map((m) => m[1].trim()).join(' | ')}`);
+check(tenPxRules.every((m) => fontSizes(m[2]).every((v) => v >= 10)), 'frame font below 10px');
+check(frameSizes.length > 0 && Math.min(...frameSizes) >= 10, `font size below 10px on the Now frame: ${Math.min(...frameSizes)}`);
 check(/\.btn\s*\{[^}]*min-height:\s*48px/.test(css), '.btn is not 48px tall');
 check(/prefers-reduced-motion:\s*reduce/.test(css), 'no reduced-motion rule');
 check(/prefers-reduced-transparency:\s*no-preference/.test(css), 'no translucency gate');
@@ -138,4 +144,4 @@ if (failures.length) {
   for (const f of failures) console.error(' - ' + f);
   process.exit(1);
 }
-console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...otherSizes)}px outside the Now frame, ${Math.min(...frameSizes)}px on it`);
+console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...otherSizes)}px outside the Now frame, ${Math.min(...frameSizes)}px on it (10px only on named sub-lines)`);

@@ -144,6 +144,10 @@ def main():
     for cx, cy, r in DISCS:
         out = disc_fill(im, out, cx, cy, r)
     out = np.clip(out, 0, 255).astype(np.uint8)
+    # Star disc (round 10g): the plane fit left a darker ring; a Telea inpaint from the surrounding mesh does not.
+    star = np.zeros(gray.shape, np.uint8)
+    cv2.circle(star, (826, 344), 19, 255, -1)
+    out = cv2.inpaint(out, star, 7, cv2.INPAINT_TELEA)
 
     cv2.imwrite(f"{OUT}/mask.png", grow)
     cv2.imwrite(f"{OUT}/desktop-now-base.png", out, [cv2.IMWRITE_PNG_COMPRESSION, 9])

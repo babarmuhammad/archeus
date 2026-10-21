@@ -1108,3 +1108,31 @@ body.frame-now .rail .wordmark span { font-weight: 400; margin-left: 9px; }
 body.frame-now .places a { border-radius: 0; }
 body.frame-now .top [data-tell] { padding-left: 0; justify-content: center; }
 body.frame-now .top .stop-btn { padding-left: 0; justify-content: center; }
+
+/* Round 10g: the concept's own small sub-lines (10 px allowed only on these selectors, owner answer 3). */
+body.frame-now .stage-now .lbl[data-lid="ideas"] { width: max-content; }
+body.frame-now .stage-now .lbl[data-lid="ideas"] .s { width: max-content; white-space: nowrap; font-size: 10px; letter-spacing: 0.5px; }
+body.frame-now .stage-now .lbl[data-lid="notes"] .s { width: 118px; font-size: 11.5px; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .s { font-size: 10px; letter-spacing: 0.8px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .s { font-size: 10px; letter-spacing: 0.45px; }
+body.frame-now .top .stop-btn { font-size: 15px; }
+body.frame-now .top [data-tell] { font-size: 13px; }
+body.frame-now .top [data-tell]::before { width: 13px; height: 11px; border-width: 1.4px; border-radius: 7px 7px 7px 2px; }
+body.frame-now .top .stop-btn::before { width: 12px; height: 12px; border-width: 1.6px; }
+body.frame-now .stage-now .lbl[data-lid="notes"] .t { top: 16px; }
+body.frame-now .stage-now .lbl[data-lid="notes"] .s { top: 13px; }
+body.frame-now .stage-now .lbl[data-lid="ideas"] .t { top: -8px; }
+body.frame-now .stage-now .lbl[data-lid="ideas"] .s { top: -10px; }
+body.frame-now .top [data-tell] { font-size: 13.5px; }
+body.frame-now .top .stop-btn { font-size: 16px; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .s { color: var(--amber); top: -9px; left: 0; }
+body.frame-now .stage-now .lbl[data-lid="m-read"] .t { top: -7px; left: 1px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .t { top: 7px; }
+body.frame-now .stage-now .lbl[data-lid="m-index"] .s { top: 6px; }
+body.frame-now .top .stop-btn { color: #E5585E; }
+body.nocolor.frame-now .stage-now .lbl .s, body.nocolor.frame-now .stage-now .lbl.exec .s, body.nocolor.frame-now .stage-now .lbl a.act { color: var(--text-2) !important; }
+body.nocolor.frame-now .stage-now .lbl a.act { border-color: var(--text-3) !important; }
+body.nocolor.frame-now .desk-marks path, body.nocolor.frame-now .desk-marks circle { fill: var(--text) !important; stroke: var(--text) !important; }
+body.nocolor.frame-now .desk-marks .mk-glow { opacity: 0 !important; }
+body.nocolor.frame-now .desk-marks .mk-link { stroke: var(--text) !important; }
+body.nocolor.frame-now .top .stop-btn { color: var(--text); border-color: var(--text-3); }

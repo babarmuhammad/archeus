@@ -4,9 +4,44 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10g desktop Overview (2026-10-22): finish, residuals listed
+
+Owner answers applied: serif Libre Caslon Text only; sans Source Sans 3; the frame floor is 11 px, with 10 px allowed ONLY on the concept's own small sub-lines, named in check.mjs (`TEN_PX_SELECTORS`): `m-read` (New), `m-index` (Captured), `ideas` (Early concepts.), `m-date` (Verifying), `m-search` (Review plan), `m-done` (Done).
+
+Fixed in this round:
+- Ideas: "Early concepts." on one line at the concept position (the sub-line box was 128 px and pushed the label against the right edge; now max-content, 10 px, tracking 0.5 px; title 8 px up, sub-line 10 px up).
+- Notes sub-line wraps as the concept: "Research and capture / evolving context." (118 px box); title and sub-line moved to the concept rows (title 21 px, sub-line 13 px lower).
+- New: amber (it was grey), 10 px, tracking 0.8 px; the Export backup block moved to the concept rows.
+- Tell and Stop: Tell text 13.5 px, Stop 16 px in the concept red (#E5585E). The Tell icon is a CSS speech-bubble approximation (residual).
+- Faint ring around the Fix date test star: the star disc is now refilled by a Telea inpaint from the surrounding mesh (before/after crops at 5x: scratchpad d10d `g10_star_before_after.png`); the ring is gone. A faint blue link stub and the concept's own link glow remain.
+- ?nocolor on the Now frame: body class `nocolor` makes the live text, the marks and the Review and Stop accents neutral. The art's own amber and blue links are raster and keep their colour.
+
+Measured (metrics.py, full resolution, unblurred, mean abs RGB 0 to 255 and % above 24; 1296 x 755, reduced motion, fonts awaited):
+
+| region | 10f | 10g |
+|---|---|---|
+| art only (registration) | 0.34 / 0.26 % | 0.17 / 0.11 % |
+| text boxes | 28.5 / 23.8 % | 27.5 / 23.1 % |
+| live marks | 19.4 / 19.4 % | 19.5 / 19.5 % |
+| header | 12.9 / 13.4 % | 12.1 / 13.0 % |
+| rail | 5.5 / 3.0 % | 5.5 / 3.0 % |
+| chat and composer | 7.9 / 6.3 % | 7.9 / 6.3 % |
+| full frame | 5.02 / 4.0 % | 4.81 / 3.9 % |
+
+Residuals (round 10g; crops in scratchpad d10d):
+1. Serif glyph shape (Libre Caslon heavier and wider; heights 1 to 2 px short on the headline and titles). Widths matched by the solver. No free face matched (bake-off).
+2. Search provenance title box is worse than with EB Garamond (owner chose Libre Caslon for every serif element).
+3. Tell icon: a CSS speech-bubble approximation; the concept's bubble has a tail and a dark interior.
+4. Lede line 2 is 4 px wider than the concept.
+5. Captured, New and Early concepts. are at the 10 px exception; their widths are within 1 to 3 px.
+6. Faint blue link stub left of the star and the concept's link glow near the apex (art, outside the refilled disc).
+
+Checks: check.mjs passes when run directly with node. The testlock run was queued behind the shared slots; its EXIT is in the final report. Names and tab order: unchanged (see the round 10e report) and re-checked in this round: buttons and links named; tab order as before. DPR 2 render: no page errors. Overlap probe: zero overlaps at 1280 x 720, 1440 x 900, 1600 x 900, 1920 x 1080. Four-width montage: montage_widths_10g.png in scratchpad d10d.
+
 ## Round 10f desktop Overview fonts (2026-10-22): follow-up to 10e
 
-Owner decision (font bake-off, D:ontbakeesults.md): no free face matched the concept serif (best mean IoU 0.47); serif is Libre Caslon Text, weight 500; sans is Source Sans 3 400 (chosen over Inter by shape IoU at width-solved sizes: 0.418 against 0.382 on 22 sans items). EB Garamond and Inter are removed from the client.
+Owner decision (font bake-off, D:ontbake
+esults.md): no free face matched the concept serif (best mean IoU 0.47); serif is Libre Caslon Text, weight 500; sans is Source Sans 3 400 (chosen over Inter by shape IoU at width-solved sizes: 0.418 against 0.382 on 22 sans items). EB Garamond and Inter are removed from the client.
 
 - Headline: 37.42 px, tracking +1.08 px (the bake-off gave +1.00 px; re-solved against the 1296 master: 455 px concept width matched to within 0.1 px). Ink height is about 2 px shorter than the concept's (the concept serif is taller).
 - Per-element sizes solved by `tools/textfit_desktop.py caslon` (width against the concept ink; 11 px minimum on the frame, tracking where an item is clamped). Registration by `tools/textreg_desktop.py` (render ink box minus concept ink box).
