@@ -54,6 +54,7 @@ CO = 'archeus/infra/eventlog/consumers.py'
 EVS = 'archeus/core/domain/events.py'
 AZ = 'archeus/core/application/authorization.py'
 CW = 'tests/v1/integration/test_cwrite.py::'
+PO = 'tests/v1/integration/test_policy.py::'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -429,6 +430,23 @@ MUTATIONS = [
      "    finally:\n        tx.cause = before",
      "    finally:\n        tx.cause = ()")],
      [CW + 'test_a_nested_after_scope_restores_the_outer_cause_on_every_exit']),
+    # T-152 (C-write review, Finding 3): a replay of a decision is bound to its hash
+    ('Z190', "a replayed decision's hash is not checked (the check after the same-again answer)",
+     [(AZ,
+     "    _refuse_hash(a, action_hash, trigger)       # a replay of a decision is bound to the hash too\n"
+     "    if a.state != 'PENDING':",
+     "    if a.state != 'PENDING':"),
+      (AZ,
+     "    bad = ineligible(tx.conn, a, now=tx.now, approve=decision == 'approve')",
+     "    _refuse_hash(a, action_hash, trigger)\n"
+     "    bad = ineligible(tx.conn, a, now=tx.now, approve=decision == 'approve')")],
+     [PO + 'test_I_A05b_a_replay_of_a_decision_is_bound_to_its_hash',
+      PO + 'test_I_A05c_a_chat_replay_with_a_wrong_hash_writes_no_reply']),
+    ('Z191', "a correct-hash replay of a decision reports a change",
+     [(AZ,
+     "            return _answer(tx, row, changed=False)\n        raise lifecycle.IllegalTrigger",
+     "            return _answer(tx, row, changed=True)\n        raise lifecycle.IllegalTrigger")],
+     [PO + 'test_I_A05b_a_replay_of_a_decision_is_bound_to_its_hash']),
 ]
 
 

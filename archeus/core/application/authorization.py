@@ -652,6 +652,7 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
         raise lifecycle.VersionConflict(approval_id, expected_version, row.version)
     a = row.entity
     trigger = 'reject' if decision == 'request_changes' else decision
+    _refuse_hash(a, action_hash, trigger)       # a replay of a decision is bound to the hash too
     if a.state != 'PENDING':
         if a.state == _DECIDED[decision] and a.decision == decision:   # the same again: one
             return _answer(tx, row, changed=False)
@@ -659,7 +660,6 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                                        'already %s' % a.state.lower())
     if decision == 'request_changes' and a.kind != 'plan':
         raise ValueError('only a plan approval can send its plan back for changes')
-    _refuse_hash(a, action_hash, trigger)
     bad = ineligible(tx.conn, a, now=tx.now, approve=decision == 'approve')
     if bad is not None:
         raise NotEligible(a.id, *bad)
