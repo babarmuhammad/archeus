@@ -129,20 +129,12 @@
         </div>
       </section>
 
-      <section class="screen" id="s-replay" hidden>
-        <header class="head">
-          <p class="crumb"><a href="#/now">Overview</a> / <span data-rp-project></span> / <span data-rp-crumb></span></p>
-          <h1 tabindex="-1" data-rp-title></h1>
-        </header>
-        <div class="split rp-split">
-          <div class="stage stage-replay" id="replay-stage" role="region" aria-label="Mission constellation: Archeus, mission, execution, verification and results">
-            <canvas class="sky" aria-hidden="true"></canvas>
-            <canvas class="fx" aria-hidden="true"></canvas>
-            <div class="world"></div>
-            <div class="card" hidden></div>
-          </div>
-          <section class="rp-panel" aria-labelledby="rp-h">
-            <p class="kicker" id="rp-h">Replay, sample data</p>
+      <section class="screen screen-replay" id="s-replay" hidden>
+        <div class="rp-wrap">
+          <div class="rc-stage" id="replay-stage" role="region" aria-label="Mission constellation"></div>
+          <section class="rp-panel" aria-labelledby="rp-title">
+            <a class="rp-back" href="#/now" data-rp-back>Back</a>
+            <h1 class="rp-title" id="rp-title" tabindex="-1"></h1>
             <ol class="rp-rows" id="rp-rows" aria-label="Timeline, sample data"></ol>
             <p class="rp-foot">Not every external effect can be reversed.</p>
           </section>

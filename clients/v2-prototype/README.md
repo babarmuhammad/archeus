@@ -4,6 +4,30 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10c replay (partial, 2026-10-21): desktop and phone form
+
+Status: PARTIAL. Replay only. Traced from replay-2-desktop-v2.png. The brief names 1600 x 900, but the file is 1440 x 810 (same 16:9 frame); the loop rendered at 1440 x 810 and the montages are in the scratch folder.
+
+Done: the constellation is drawn in the concept's pixels (`RC_FRAME` and the `RC` table in app.js), scaled uniformly into the stage (SVG), with labels as HTML at their own px size. Verb labels (orchestrates, executes, verifies, produces) sit at measured anchors. The six rows follow the concept row design (time column, mark, title, description, tag chip) with the Reconcile row (dashed, Operator tag, Reconcile and Open evidence) and the footer line. A faint hull surrounds the mission node, as the brief asks. The phone form (under 881 px) stacks the mini constellation above the rows; Back is a 48 px control in the panel head. No motion: the replay block has no animation loop (check.mjs asserts it).
+
+Label overlap probe (label boxes, Chromium): zero overlaps at 1280 x 720, 1440 x 810, 1440 x 900, 1600 x 900, 1920 x 1080 and the six phone widths 360, 390, 393, 402, 430, 440. The mission and Codex labels are single blocks now, which fixed the stacked-label touches. The 'orchestrates' and 'verifies' touches of the earlier prototype are gone at 1600 x 900.
+
+Layout table: `RC_FRAME` (x 192..779, y 40..800 of the concept; the phone uses the same frame with a 28 px top pad), `RC` (star, mission, Codex triangle, Verification, Results, verb anchors), `RC_LINKS` (link ends and heads). Row tokens are local `--rp-*` in style.css, so the shell tokens are unchanged.
+
+Similarity (sim2.py, 160 px wide, luminance MAD / edge overlap): i1 6.45 / 67.2 %, i2 7.68 / 58.5 %, i3 7.21 / 62.4 %, i4 7.09 / 62.4 %, i6 7.20 / 62.0 %, i7 7.21 / 62.0 %. These numbers do not trend down. The metric is dominated by the dark background and the panel fill, and it does not register the star, label or link changes. It is not a usable target here; the judgement was by eye on the montages.
+
+Differences left (numbered):
+1. Star: the concept has crisp bright spikes over a tight core; ours is a soft glow with a few long rays.
+2. Scale: the stage is about 515 px wide at 1440 x 810, against 587 px in the concept, because the shared rail is 240 px against 192 px in the concept.
+3. Verification and Results are the shared ICO and OCT projections with simple glyphs; the concept's polyhedra are denser.
+4. Shell, not replay (shared, left alone): rail items differ (concept: Overview, Missions, Ideas, Projects, Control; ours: Now, Projects, Replay, More), the PROTOTYPE pill sits top left, and the page background is #070A10 where the concept is a plum-black gradient.
+5. Typeface: the system serif stands in for the concept's serif. Row title and sub positions are within 2 to 4 px; the timeline gradient is approximated.
+6. Hull: the brief asks for a faint hull around the mission node; the target concept itself shows only a dot.
+7. Desktop has no Back control (the concept has none); the rail reaches Overview.
+8. Phone: only 402 x 874 was viewed by eye. The other five widths were checked by the probe only.
+
+Not verified: real touch, screen readers, Dynamic Type, the Windows system serif against the concept's face.
+
 ## Round 10b (partial, 2026-10-21): measured layout, desktop and phone Overview
 
 Status: PARTIAL. Done in this round: the Overview scene is driven from a measured table (`CONCEPT_LAYOUT` in app.js), read from labelled grid overlays of desktop-1-now-v2.png (1296 x 729) and phone-1-now-v2.png (804 x 1373; the concept file is 804 x 1373, not 1748 tall). Not done: phone-2 and phone-3 comparisons and montages, four iterations for those, the 6 x 2 DPR render sweep, the Replay, terminal, Mission and Shared views (10c), motion (round 11).

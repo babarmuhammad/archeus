@@ -1246,7 +1246,6 @@
     onPick: function (id, kind) { if (kind === 'project') location.hash = '#/now/' + id; }
   });
   var sharedStage = makeStage($('#shared-stage'));
-  var replayStage = makeStage($('#replay-stage'));
   var phoneStage = makeStage($('#phone-stage'), {
     onPick: function (id) { openSheet(id); }
   });
@@ -1344,38 +1343,158 @@
     }
   }
 
-  // Sample data (simulated): the 09:00 to 09:25 example from the strategy report.
+  /* ---------- Replay (round 10c): as-of inspection, static, no motion ---------- */
+  // Measured from replay-2-desktop-v2.png (1440 x 810). The constellation is drawn in those pixels and scaled
+  // uniformly into the stage (SVG); the labels are HTML and keep their own px size.
+  var RC_FRAME = { x0: 250, y0: 40, w: 460, h: 760 };
+  var RC = {
+    star: [487, 121], starLabel: [487, 176],
+    mission: [487, 328], missionLabel: [487, 373],
+    codex: [[341, 474], [282, 565], [394, 565]], codexLabel: [336, 596],
+    verif: { c: [626, 528], r: 52, label: [629, 599] },
+    results: { c: [489, 684], r: 42, label: [487, 744] },
+    verbs: { orchestrates: [535, 246], executes: [399, 439], verifies: [573, 439], produces: [487, 596] }
+  };
+  // Links in concept pixels. heads: 2 = arrowheads at both ends, 1 = at the far end, 0 = plain.
+  var RC_LINKS = [
+    { a: [487, 198], b: [487, 316], heads: 2 },
+    { a: [428, 398], b: [344, 470], heads: 2 },
+    { a: [548, 398], b: [623, 471], heads: 2 },
+    { a: [394, 565], b: [478, 638], heads: 0 },
+    { a: [577, 562], b: [498, 640], heads: 0 },
+    { a: [487, 610], b: [487, 640], heads: 1 }
+  ];
+  var RC_GLYPH = {
+    code: 'M-0.22 -0.42 L-0.62 0 L-0.22 0.42 M0.22 -0.42 L0.62 0 L0.22 0.42 M0.1 -0.42 L-0.1 0.42',
+    check: 'M-0.34 0.02 L-0.1 0.26 L0.36 -0.28',
+    bars: 'M-0.46 0.42 V-0.08 H-0.22 V0.42 M-0.16 0.42 V-0.48 H0.08 V0.42 M0.14 0.42 V-0.24 H0.38 V0.42',
+    hex: 'M0 -0.72 L0.62 -0.36 L0.62 0.36 L0 0.72 L-0.62 0.36 L-0.62 -0.36 Z'
+  };
+
   var REPLAY = {
     'm-date': [
       { time: '09:00', title: 'Task initiated', sub: 'Scope, authority and starting state captured', badge: 'Intended', tone: 'intended', mark: 'dot' },
       { time: '09:12', title: 'Files changed', sub: 'Changes and resulting artifacts linked to the task', badge: 'Recorded', tone: 'recorded', mark: 'dot' },
       { time: '09:18', title: 'Tests passed', sub: 'Validation evidence recorded', badge: 'Verified', tone: 'verified', mark: 'check' },
-      { time: '09:24', title: 'External response lost', sub: 'Side effect classified as uncertain. It may have taken effect.', badge: 'Uncertain', tone: 'uncertain', mark: 'diamond' },
-      { time: '09:25', title: 'Workflow suspended', sub: 'Suspended. No unsafe retry; operator reconciliation required.', badge: 'Needs you', tone: 'needs-you', mark: 'diamond' }
+      { time: '09:24', title: 'External response lost', sub: 'Side effect classified as uncertain', badge: 'Uncertain', tone: 'uncertain', mark: 'diamond' },
+      { time: '09:25', title: 'Workflow suspended', sub: 'No unsafe retry. Operator reconciliation required.', badge: 'Needs you', tone: 'needs-you', mark: 'diamond' }
     ]
   };
   var replayId = 'm-date';
 
-  function renderReplay(id) {
-    var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [], p = projectOf(m.project);
-    replayId = m.id;
-    var sec = $('#s-replay');
-    $('[data-rp-project]', sec).textContent = p.name;
-    $('[data-rp-crumb]', sec).textContent = m.title;
-    $('[data-rp-title]', sec).textContent = 'Replay · ' + m.title;
-    replayStage.setScene(function (w, h) { return missionScene(m, w, h, true); });
-    var list = rows.map(function (r) {
-      return '<li class="rp-row rs-' + r.mark + '"><span class="rp-time">' + r.time + '</span><span class="rp-mark" aria-hidden="true"></span>' +
-        '<span class="rp-body"><span class="rp-title">' + esc(r.title) + '</span><span class="rp-sub">' + esc(r.sub) + '</span></span>' +
-        '<span class="rp-badge tone-' + r.tone + '">' + esc(r.badge) + '</span></li>';
-    });
-    if (!rows.length) list.push('<li class="rp-row"><span class="rp-sub">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
-    list.push('<li class="rp-row rp-reconcile"><span class="rp-time"></span><span class="rp-mark" aria-hidden="true"></span>' +
-      '<span class="rp-body"><span class="rp-title">Reconcile</span><span class="rp-sub">Record what happened on the remote. Nothing is pushed or retried here.</span>' +
-      '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
-      '<span class="rp-badge tone-operator">Operator</span></li>');
-    $('#rp-rows').innerHTML = list.join('');
+  function rcSeg(a, b, cls) {
+    return '<line class="' + cls + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '"/>';
   }
+  function rcHead(tip, from, size) {
+    var dx = tip[0] - from[0], dy = tip[1] - from[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l;
+    var bx = tip[0] - ux * size, by = tip[1] - uy * size, w = size * 0.45;
+    return '<path class="rc-head" d="M' + tip[0].toFixed(1) + ' ' + tip[1].toFixed(1) + ' L' + (bx - uy * w).toFixed(1) + ' ' + (by + ux * w).toFixed(1) +
+      ' L' + (bx + uy * w).toFixed(1) + ' ' + (by - ux * w).toFixed(1) + ' Z"/>';
+  }
+  function rcGlyph(d, c, s, cls) {
+    return '<path class="' + cls + '" transform="translate(' + c[0].toFixed(1) + ' ' + c[1].toFixed(1) + ') scale(' + s.toFixed(2) + ')" d="' + d + '"/>';
+  }
+  function rcStar(x, y, k) {
+    var seed = 11, rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }, out = '';
+    for (var i = 0; i < 48; i++) {
+      var a = (i / 48) * TAU + (rnd() - 0.5) * 0.04, long = i % 8 === 0;
+      var len = (long ? 86 : 8 + rnd() * 24) * k;
+      out += '<line class="rc-ray" style="opacity:' + (long ? 0.9 : 0.25 + rnd() * 0.4).toFixed(2) + '" x1="' + x.toFixed(1) + '" y1="' + y.toFixed(1) +
+        '" x2="' + (x + Math.cos(a) * len).toFixed(1) + '" y2="' + (y + Math.sin(a) * len).toFixed(1) + '"/>';
+    }
+    return out;
+  }
+  // Faceted solid from the shared ICO / OCT / TET tables; same projection as the Overview nodes.
+  function rcSolid(sol, c, R, ry, rx) {
+    var P = sol.v.map(function (p) { var q = proj(spin(p, ry, rx), c[0], c[1], R); return [q.x, q.y]; });
+    var out = sol.e.map(function (e) { return rcSeg(P[e[0]], P[e[1]], 'rc-face'); }).join('');
+    if (sol.links && sol.links.length) {
+      var Q = sol.v.map(function (p) { var q = proj(spin(p, ry, rx), c[0], c[1], R * 0.5); return [q.x, q.y]; });
+      sol.links.forEach(function (ns, k) { ns.forEach(function (j) { out += rcSeg(P[k], Q[j], 'rc-inner'); }); });
+    }
+    P.forEach(function (q) { out += '<circle class="rc-vtx" cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="1.6"/>'; });
+    return out;
+  }
+  function rcL(p, cls, html) {
+    return '<p class="rc-l ' + cls + '" style="left:' + p[0].toFixed(1) + 'px;top:' + p[1].toFixed(1) + 'px">' + html + '</p>';
+  }
+
+  function renderReplayScene(m) {
+    var root = $('#replay-stage');
+    var W = root.clientWidth, H = root.clientHeight;
+    if (!W || !H) return;
+    var pad = isNarrow() ? 28 : 0;
+    var k = Math.min(W / RC_FRAME.w, (H - pad) / RC_FRAME.h);
+    var ox = (W - RC_FRAME.w * k) / 2, oy = pad + (H - pad - RC_FRAME.h * k) / 2;
+    var P = function (p) { return [ox + (p[0] - RC_FRAME.x0) * k, oy + (p[1] - RC_FRAME.y0) * k]; };
+    var full = m.id === 'm-date';
+    var svg = '<defs><radialGradient id="rc-glow"><stop offset="0" stop-color="#FFF4DC" stop-opacity="0.95"/><stop offset="0.12" stop-color="#F6E0B0" stop-opacity="0.55"/><stop offset="1" stop-color="#F6E7C8" stop-opacity="0"/></radialGradient></defs>';
+    var lab = '';
+    var sp = P(RC.star);
+    svg += '<circle cx="' + sp[0].toFixed(1) + '" cy="' + sp[1].toFixed(1) + '" r="' + (48 * k).toFixed(1) + '" fill="url(#rc-glow)"/>' + rcStar(sp[0], sp[1], k);
+    lab += rcL(P(RC.starLabel), 'rc-core', 'Archeus');
+
+    var mp = P(RC.mission), st = STATE[m.state] || STATE.idle;
+    var hullPts = [];
+    for (var i = 0; i < 8; i++) { var a = -Math.PI / 2 + i * TAU / 8; hullPts.push((mp[0] + Math.cos(a) * 30 * k).toFixed(1) + ',' + (mp[1] + Math.sin(a) * 30 * k).toFixed(1)); }
+    svg += '<polygon class="rc-hull" points="' + hullPts.join(' ') + '"/>';
+    svg += '<circle class="rc-halo" cx="' + mp[0].toFixed(1) + '" cy="' + mp[1].toFixed(1) + '" r="' + (19 * k).toFixed(1) + '"/>';
+    svg += '<circle class="rc-node" cx="' + mp[0].toFixed(1) + '" cy="' + mp[1].toFixed(1) + '" r="' + (12.5 * k).toFixed(1) + '"/>';
+    lab += rcL(P(RC.missionLabel), 'rc-mission', '<span class="rc-name">' + esc(m.title) + '</span><span class="rc-state" style="color:' + st.color + '">' + esc(m.stateText) + '</span>');
+
+    var verbs = [];
+    RC_LINKS.forEach(function (l, i) {
+      if (!full && i > 0) return;
+      var a = P(l.a), b = P(l.b);
+      svg += rcSeg(a, b, 'rc-link');
+      if (l.heads === 2 || l.heads === 1) svg += rcHead(b, a, 7);
+      if (l.heads === 2) svg += rcHead(a, b, 7);
+    });
+    if (full) {
+      var c = RC.codex;
+      var A = P(c[0]), B = P(c[1]), C = P(c[2]);
+      var mid = function (x, y) { return [(x[0] + y[0]) / 2, (x[1] + y[1]) / 2]; };
+      svg += '<polygon class="rc-face" points="' + [A, B, C].map(function (q) { return q.join(','); }).join(' ') + '"/>';
+      svg += rcSeg(A, mid(B, C), 'rc-inner') + rcSeg(B, mid(A, C), 'rc-inner') + rcSeg(C, mid(A, B), 'rc-inner');
+      svg += rcGlyph(RC_GLYPH.code, P([339, 528]), 32 * k, 'rc-glyph');
+      lab += rcL(P(RC.codexLabel), 'rc-codex', '<span class="rc-name-l">Codex</span><span class="rc-sub-l">execution</span>');
+      var v = RC.verif, vc = P(v.c);
+      svg += rcSolid(ICO, vc, 54 * k, 0.5, 0.45) + rcGlyph(RC_GLYPH.hex, vc, 30 * k, 'rc-glyph') + rcGlyph(RC_GLYPH.check, vc, 30 * k, 'rc-glyph');
+      lab += rcL(P(v.label), 'rc-name-l', 'Verification');
+      var r = RC.results, rc = P(r.c);
+      svg += rcSolid(OCT, rc, 44 * k, 0.6, 0.5) + rcGlyph(RC_GLYPH.bars, rc, 26 * k, 'rc-glyph');
+      lab += rcL(P(r.label), 'rc-name-l', 'Results');
+      Object.keys(RC.verbs).forEach(function (key) { verbs.push([key, P(RC.verbs[key])]); });
+    } else {
+      verbs.push(['orchestrates', P(RC.verbs.orchestrates)]);
+    }
+    verbs.forEach(function (v) { lab += rcL(v[1], 'rc-verb', esc(v[0])); });
+    root.innerHTML = '<svg class="rc-svg" viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' + svg + '</svg><div class="rc-labels">' + lab + '</div>';
+    root.setAttribute('aria-label', 'Constellation for ' + m.title + ': Archeus, the mission' + (full ? ', Codex execution, Verification and Results' : ''));
+  }
+
+  function rowHtml(r) {
+    return '<li class="rp-row rs-' + r.mark + ' tone-' + r.tone + '"><span class="rp-time">' + r.time + '</span><span class="rp-mark" aria-hidden="true"></span>' +
+      '<span class="rp-body"><span class="rp-title">' + esc(r.title) + '</span><span class="rp-sub">' + esc(r.sub) + '</span></span>' +
+      '<span class="rp-badge">' + esc(r.badge) + '</span></li>';
+  }
+
+  function renderReplay(id) {
+    var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [];
+    replayId = m.id;
+    $('#rp-title').textContent = 'Replay · ' + m.title;
+    var list = rows.map(rowHtml);
+    if (!rows.length) list.push('<li class="rp-row rp-empty"><span class="rp-sub">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
+    list.push('<li class="rp-row rp-reconcile"><span class="rp-time"></span><span class="rp-mark" aria-hidden="true"></span>' +
+      '<span class="rp-body"><span class="rp-title">Reconcile</span>' +
+      '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
+      '<span class="rp-badge">Operator</span></li>');
+    $('#rp-rows').innerHTML = list.join('');
+    renderReplayScene(m);
+  }
+  window.addEventListener('resize', function () {
+    if (!$('#s-replay').hidden) renderReplayScene(find(replayId));
+  });
 
   function renderShared() {
     $('#s-shared [data-sentence]').textContent = sentence();

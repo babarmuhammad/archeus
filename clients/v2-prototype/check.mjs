@@ -108,6 +108,16 @@ check(/Keep as mission/.test(js), 'Start card needs Keep as mission');
 check(/rp-rows/.test(html) && /rp-panel/.test(html), 'replay panel missing');
 check(/feed/.test(css) && /chatbar/.test(css), 'chat feed or bar styles missing');
 
+// Round 10c replay: concept rows, verbs, footer, Back on the phone, and a static view (no animation loop).
+for (const word of ['orchestrates', 'executes', 'verifies', 'produces', 'Open evidence', 'Operator']) check(js.includes(word), `replay verb or button missing: ${word}`);
+for (const t of ['09:00', '09:12', '09:18', '09:24', '09:25']) check(js.includes(t), `replay row time missing: ${t}`);
+check(/id="replay-stage"/.test(html) && /class="rc-stage"/.test(html), 'replay stage markup missing');
+check(/data-rp-back/.test(html) && /\.rp-back\s*\{/.test(css), 'replay Back control missing');
+check(/#s-replay/.test(css) && /\.rp-wrap/.test(css), 'replay layout styles missing');
+const rp = js.slice(js.indexOf('Replay (round 10c)'), js.indexOf('function renderShared'));
+check(rp.length > 0 && !/requestAnimationFrame|setInterval|setTimeout/.test(rp), 'replay must not animate or auto-play');
+check(/RC_FRAME/.test(rp) && /REPLAY_LAYOUT|RC =/.test(rp), 'replay layout table missing');
+
 check(/viewport-fit=cover/.test(html), 'phone viewport must use viewport-fit=cover');
 check(css.includes('env(safe-area-inset-bottom)') && css.includes('env(safe-area-inset-top)'), 'safe-area insets missing');
 check(/id="s-terminal"/.test(html) && /SIMULATED/.test(html), 'terminal section or simulated tag missing');

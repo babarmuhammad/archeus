@@ -333,7 +333,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 4;
   width: min(680px, calc(100% - 48px)); max-height: 176px; overflow-y: auto; pointer-events: auto;
 
-
 }
 .msgs { display: flex; flex-direction: column; gap: var(--s2); min-height: 100%; justify-content: flex-end; }
 .msgs li { font: 400 16px/24px var(--sans); }
@@ -398,39 +397,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl.is-new .k::after { content: " · New"; color: var(--amber); }
 @keyframes lbl-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* Replay: the mission constellation on the left, the six rows on the right. */
-.rp-split { grid-template-columns: minmax(0, 1fr) 500px; gap: var(--s6); }
-.stage-replay { margin: 0; height: clamp(480px, calc(100vh - 250px), 820px); min-height: 0; }
-.rp-panel {
-  align-self: start; display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2);
-  background: rgba(14, 19, 28, 0.8); border: 1px solid var(--line-2); border-radius: 18px; padding: var(--s4) var(--s4) var(--s3);
-}
-.rp-rows { position: relative; display: flex; flex-direction: column; gap: var(--s2); }
-.rp-rows::before { content: ""; position: absolute; left: 83px; top: 30px; bottom: 30px; width: 1px; background: var(--line-2); }
-.rp-row {
-  position: relative; display: grid; grid-template-columns: 56px 22px minmax(0, 1fr) auto; gap: var(--s2); align-items: center;
-  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: 12px; background: rgba(7, 10, 16, 0.5);
-}
-.rp-time { font: 400 14px/20px var(--mono); color: var(--text-2); }
-.rp-mark { width: 14px; height: 14px; border-radius: 50%; justify-self: center; background: var(--ivory); box-sizing: border-box; }
-.rs-check .rp-mark { background: var(--green); }
-.rs-diamond .rp-mark { background: var(--amber); border-radius: 2px; transform: rotate(45deg) scale(0.85); }
-.rs-dot .rp-mark { background: var(--lilac); }
-.rp-reconcile .rp-mark { background: transparent; border: 1.5px dashed var(--text-2); }
-.rp-reconcile { border-style: dashed; background: transparent; }
-.rp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.rp-title { font: 400 20px/26px var(--serif); }
-.rp-sub { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.rp-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
-.rp-actions .btn { min-height: 48px; }
-.rp-badge { font: 400 14px/20px var(--sans); padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; }
-.tone-intended, .tone-operator { color: var(--lilac); }
-.tone-recorded { color: var(--text); }
-.tone-verified { color: var(--green); border-color: rgba(111, 211, 154, 0.5); }
-.tone-uncertain, .tone-needs-you { color: var(--amber); border-color: rgba(242, 181, 68, 0.5); }
-.rs-diamond { border-color: rgba(242, 181, 68, 0.35); }
-.rp-foot { font: 400 14px/20px var(--sans); color: var(--text-2); text-align: center; padding-top: var(--s2); }
-
 /* Phone: constellation above, the conversation above the bar, the bar and Stop above the navigation bar. */
 @media (max-width: 880px) {
   .now-lede, .now-tag, .prompts, .list-d { display: none; }
@@ -439,8 +405,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   .chatbar { bottom: 10px; width: calc(100% - 24px); padding-left: var(--s3); }
   .chatbar .btn { padding: 0 var(--s3); }
   .chat-stop { display: inline-flex; }
-  .rp-split { grid-template-columns: minmax(0, 1fr); }
-  .stage-replay { height: 380px; }
 }
 @media (min-width: 881px) and (max-height: 800px) {
   .now-lede { display: none; }
@@ -562,15 +526,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl.mission .k, .lbl.record .k, .lbl.exec .k { display: none; }
 .lbl.is-new .k::after { content: none; }
 .lbl.is-new .t::after { content: " New"; font: 600 14px/20px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); vertical-align: middle; margin-left: 8px; }
-.rp-rows { gap: 6px; }
-.rp-row { padding: 10px 12px; gap: 10px; }
-.rp-title { font-size: 18px; line-height: 24px; }
-.rp-panel { padding: 12px 14px 8px; gap: 8px; }
-.rp-actions { margin-top: 4px; }
-.rp-foot { padding-top: 4px; }
-
-#s-replay .head { margin: 0; }
-#s-replay .rp-panel { margin-top: 0; }
 
 /* Apple HIG translated for the phone sheets: a grabber on resizable sheets, body text 17px (HIG default), 44pt-plus targets. */
 .feed::before, .now-sheet::before {
@@ -668,7 +623,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl .t { font-family: var(--sans); font-weight: 500; font-size: calc(19px * var(--lk, 1)); line-height: 24px; letter-spacing: 0; }
 .lbl.project .t { font-family: var(--sans); font-weight: 600; font-size: calc(16px * var(--lk, 1)); line-height: 22px; letter-spacing: 0.02em; }
 .lbl.core .t { font-family: var(--serif); font-weight: 400; }
-.rp-title { font-family: var(--sans); font-size: 18px; line-height: 24px; font-weight: 500; }
 .budget { position: absolute; right: var(--s4); top: var(--s3); z-index: 2; margin: 0; font: 400 14px/20px var(--sans); color: var(--text-2); }
 @media (max-width: 880px) { .budget { display: none; } }
 
@@ -709,7 +663,6 @@ p.small, .small { line-height: 20px; }
 .btn { font-weight: 500; }
 
 @media (max-width: 880px) { .stage-now .lbl.exec .t { font-size: 16px; line-height: 22px; } }
-@media (max-width: 1699px) { #replay-stage .lbl.verb { display: none; } }
 .msg-card .btn.primary { background: var(--amber); border-color: var(--amber); color: #070A10; }
 .msg-card .btn:not(.primary) { background: transparent; border-color: var(--amber); color: var(--amber); }
 
@@ -767,4 +720,126 @@ p.small, .small { line-height: 20px; }
   .stage-now .lbl .t { font-size: 19px; line-height: 24px; }
   .stage-now .lbl.project .t { font-size: 16px; line-height: 22px; }
   .stage-now .lbl.exec .t { font-size: 15px; line-height: 20px; }
+}
+
+/* Replay (round 10c): the mission constellation left, the timeline panel right. Static as-of view, no motion.
+   Colours are local tokens (--rp-*) so the shell tokens stay as they are. Desktop is the concept; the phone
+   form (under 881 px) stacks the constellation above the rows, with Back in the panel head. */
+#s-replay {
+  --rp-ink: #F4F2F6; --rp-sub: #ABA8C2; --rp-time: #BBBBDC; --rp-lilac: #C7B2F0; --rp-green: #6FD39A;
+  --rp-amber: #F2B544; --rp-quiet: #A5A0B9; --rp-panel: #140E1C;
+}
+.screen-replay { margin: 0 -26px; }
+.rp-wrap {
+  display: grid; grid-template-columns: minmax(0, 1fr) clamp(480px, 44.5vw, 712px); gap: 16px;
+  flex: 1; min-height: 0; padding-top: 4px;
+}
+.rc-stage { position: relative; min-height: 560px; min-width: 0; }
+.rc-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.rc-svg .rc-ray { stroke: #F3EBDA; stroke-width: 1; stroke-linecap: round; }
+.rc-svg .rc-face { stroke: rgba(239, 236, 218, 0.55); stroke-width: 1; fill: none; }
+.rc-svg .rc-inner { stroke: rgba(239, 236, 218, 0.22); stroke-width: 0.8; }
+.rc-svg .rc-vtx { fill: rgba(239, 236, 218, 0.8); }
+.rc-svg .rc-link { stroke: rgba(239, 236, 218, 0.78); stroke-width: 1.1; }
+.rc-svg .rc-head { fill: rgba(239, 236, 218, 0.85); }
+.rc-svg .rc-hull { fill: rgba(111, 177, 255, 0.035); stroke: rgba(111, 177, 255, 0.26); stroke-width: 1; }
+.rc-svg .rc-halo { fill: rgba(111, 177, 255, 0.12); }
+.rc-svg .rc-node { fill: #47AAFE; }
+.rc-svg .rc-glyph { fill: none; stroke: rgba(239, 236, 218, 0.9); stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.rc-labels { position: absolute; inset: 0; pointer-events: none; }
+.rc-l {
+  position: absolute; transform: translate(-50%, -50%); margin: 0; white-space: nowrap; text-align: center;
+  font: 400 17px/20px var(--serif); color: var(--rp-ink);
+}
+.rc-core { font-size: 18px; letter-spacing: 0.24em; text-transform: uppercase; color: #F4F0E6; }
+.rc-mission .rc-name { font-size: 21px; display: block; line-height: 24px; }
+.rc-mission .rc-state { display: flex; font: 400 17px/20px var(--sans); }
+.rc-codex .rc-name-l, .rc-codex .rc-sub-l { display: block; }
+.rc-state { display: inline-flex; align-items: center; gap: 6px; }
+.rc-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.rc-verb { font: 400 15px/18px var(--serif); color: #DBDBDF; }
+.rc-sub-l { font: 400 17px/20px var(--serif); color: var(--rp-sub); }
+.rc-name-l { font-size: 19px; }
+
+.rp-panel {
+  align-self: stretch; min-width: 0; display: flex; flex-direction: column;
+  background: var(--rp-panel); border: 1px solid rgba(239, 236, 240, 0.12); border-radius: 14px;
+  padding: 28px 15px 14px; overflow: hidden;
+}
+.rp-back { display: none; }
+.rp-title { font: 400 44px/44px var(--serif); color: #FDFDFD; margin: 0 0 19px 10px; letter-spacing: 0; }
+.rp-rows { position: relative; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.rp-rows::before {
+  content: ""; position: absolute; left: 101px; top: 36px; bottom: 36px; width: 1px;
+  background: linear-gradient(to bottom, rgba(199, 178, 240, 0.9) 0%, rgba(199, 178, 240, 0.9) 34%, rgba(143, 212, 164, 0.8) 42%, rgba(242, 181, 68, 0.7) 52%, rgba(242, 181, 68, 0.7) 86%, rgba(199, 178, 240, 0.2) 100%);
+}
+.rp-row {
+  position: relative; display: grid; grid-template-columns: 60px 28px minmax(0, 1fr) auto; column-gap: 10px;
+  align-items: start; min-height: 76px; padding: 14px 14px 14px 18px;
+  border: 1px solid rgba(239, 236, 240, 0.09); border-radius: 6px; background: rgba(255, 255, 255, 0.015);
+}
+.rp-time { font: 400 18px/28px var(--sans); color: var(--rp-time); font-variant-numeric: tabular-nums; }
+.rp-mark { justify-self: center; position: relative; width: 28px; height: 26px; display: grid; place-items: center; }
+.rs-dot .rp-mark::after { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--rp-lilac); }
+.rs-check .rp-mark { width: 26px; height: 26px; border-radius: 50%; background: var(--rp-green); }
+.rs-check .rp-mark::after {
+  content: ""; width: 8px; height: 4px; border-left: 2px solid #0E1A12; border-bottom: 2px solid #0E1A12; transform: translateY(-2px) rotate(-45deg);
+}
+.rs-diamond .rp-mark::before { content: ""; width: 14px; height: 14px; background: var(--rp-amber); transform: rotate(45deg); }
+.rs-diamond .rp-mark::after { content: ""; position: absolute; width: 4px; height: 4px; background: #2A1D0A; transform: rotate(45deg); }
+.rp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-left: 15px; }
+.rp-body .rp-title { font: 400 23px/28px var(--serif); color: var(--rp-ink); margin: 0; }
+.rp-sub { font: 400 15px/22px var(--serif); color: var(--rp-sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-badge {
+  font: 400 14px/20px var(--sans); padding: 3px 12px; border-radius: 8px; white-space: nowrap;
+  border: 1px solid rgba(239, 236, 240, 0.22); color: #DCD8DE; background: rgba(255, 255, 255, 0.03);
+}
+.rs-check .rp-badge { color: var(--rp-green); border-color: rgba(111, 211, 154, 0.5); background: rgba(111, 211, 154, 0.08); }
+.rs-diamond { background: rgba(242, 181, 68, 0.09); border-color: rgba(242, 181, 68, 0.3); }
+.rs-diamond .rp-badge { color: var(--rp-amber); border-color: rgba(242, 181, 68, 0.45); background: rgba(242, 181, 68, 0.06); }
+.rp-reconcile {
+  margin-top: 5px; min-height: 109px; border-style: dashed; border-color: rgba(199, 178, 240, 0.4); background: transparent;
+}
+.rp-reconcile .rp-mark::after { content: ""; width: 20px; height: 20px; border-radius: 50%; border: 1.5px dashed var(--rp-quiet); }
+.rp-reconcile .rp-badge { color: #C9A9EE; border-color: rgba(155, 111, 224, 0.5); background: rgba(155, 111, 224, 0.12); }
+.rp-reconcile .rp-body { gap: 12px; }
+.rp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rp-actions .btn { min-height: 44px; height: 44px; width: 100%; font: 400 16px/24px var(--serif); border-radius: 6px; padding: 0 12px; }
+.rp-actions .btn.primary { background: #64399D; border-color: #7B4FBA; color: #F3E9FF; }
+.rp-actions .btn:not(.primary) { background: transparent; border-color: rgba(239, 236, 240, 0.35); color: #F1EEF4; }
+.rp-foot {
+  margin-top: auto; padding-top: 19px; border-top: 1px solid rgba(239, 236, 240, 0.08);
+  font: 400 16px/22px var(--serif); color: var(--rp-quiet); text-align: center;
+}
+
+@media (max-width: 880px) {
+  .screen-replay { margin: 0; }
+  .rp-wrap { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .rc-stage { min-height: 0; height: 430px; }
+  .rc-l { font-size: 15px; }
+  .rc-core { font-size: 15px; letter-spacing: 0.18em; }
+  .rc-mission .rc-name { font-size: 17px; }
+  .rc-name-l, .rc-sub-l { font-size: 14px; }
+  .rc-state-l { font-size: 14px; }
+  .rc-verb { font-size: 14px; }
+  .rp-sub { white-space: normal; overflow: visible; text-overflow: clip; }
+  .rp-panel { padding: 0 0 12px; background: transparent; border: 0; border-radius: 0; overflow: visible; }
+  .rp-back {
+    display: inline-flex; align-items: center; align-self: flex-start; min-height: 48px; padding: 0 16px; margin: 0 0 8px;
+    border: 1px solid var(--line-2); border-radius: 12px; font: 400 16px/24px var(--sans); color: var(--text); text-decoration: none;
+    position: sticky; top: 0; background: var(--bg); z-index: 1;
+  }
+  .rp-title { font-size: 32px; line-height: 38px; margin: 0 0 12px 0; }
+  .rp-rows::before { left: 22px; top: 24px; bottom: 24px; }
+  .rp-row { grid-template-columns: 44px minmax(0, 1fr); column-gap: 8px; min-height: 0; padding: 12px 12px 12px 10px; row-gap: 4px; }
+  .rp-mark { grid-column: 1; grid-row: 1 / span 3; align-self: center; width: 28px; }
+  .rp-time { grid-column: 2; grid-row: 1; justify-self: start; font-size: 14px; line-height: 20px; }
+  .rp-badge { grid-column: 2; grid-row: 1; justify-self: end; font-size: 14px; }
+  .rp-body { grid-column: 2; grid-row: 2 / span 2; padding-left: 0; }
+  .rp-reconcile { min-height: 0; }
+  .rp-reconcile .rp-time { display: none; }
+  .rp-actions { grid-template-columns: 1fr; }
+  .rp-actions .btn { min-height: 48px; height: 48px; font-size: 16px; }
+  .rp-foot { margin-top: 12px; padding-top: 12px; font-size: 16px; }
+  .rp-body .rp-title { font-size: 20px; line-height: 26px; }
 }
