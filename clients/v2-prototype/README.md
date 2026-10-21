@@ -45,6 +45,9 @@ Terminal concepts (13, T1 to T3) are not built here.
 - Not verified on a real phone, with a screen reader, or on a real frame-rate budget. Contrast is checked for the palette pairs in `check.mjs`, not on rendered pixels.
 - Screenshots from the capture tool were washed out, so the visual judgement used computed styles plus side-by-side screenshots. Compare on a real display.
 - Labels can still crowd when many missions are added on Now; the layout is fixed, not auto-placed.
+- Zoomed view (click a project): when stars sit at the stage edge, labels can stack at the edges. The clamp shifts them inside the stage but does not separate them from each other.
+- Phone width (under 600 px): the core label can touch a neighbouring label. Calm missions lose their labels by design; they show on hover or focus and in the list.
+- Not matched against concepts 02, 03, 06: figures are wireframes without interior glyphs; there are no relation verbs on links; the side tab has icons but no project list; the mission inspector is a card layout, not the concept's tabbed panel; the headline size is held to the 26/32 spec, below the concept's display size.
 - The phone zoom uses a scale of 1.35 around the tapped star (400 ms). Owner answer Q3 says one bounded step; the scale is a judgement to review.
 - Breath (about 6 percent over 6 s) and the pulse are not tuned. The event pulse is not implemented.
 - Per-task comments are stored in memory and carried into request changes. The planner side (Q6, option A) is not built.
