@@ -4,6 +4,52 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10c desktop Overview (2026-10-21): PARTIAL, 5 loop iterations
+
+Status: PARTIAL. The brief asks for at least 8 saved iterations and a stop only at zero visible differences or 15 iterations. This round ran 5 iterations, then stopped to close the round with the width checks and the deliverables. Remaining differences are listed below with numbers. Only the desktop Overview (Now) was worked on. Phone, Replay, terminal, Mission and Shared are unchanged in this round.
+
+What was traced (from desktop-1-now-v2.png, 1296 x 729, read from a labelled grid): the constellation bounds (x 190 to 1212, y 80 to 516 in reference px), the hull outlines (Archeus 10 vertices, Notes 8, Ideas 5), the mission and Codex marks, the chat rows and the bar. The concept's constellation spans about 88 % of the stage width (from about 15 % to 93 % of the page), so the scene fills 88 % of the stage width.
+
+Layout (desktop only, `nowScene`, app.js):
+- `DESK_BOX` = { x0 190, x1 1212, y0 80, y1 516 }; `DESK_FILL` = 0.88 of the stage width; `DESK_SCENE_H` = 0.74 of the stage height; `DESK_TOP` = 0.07. The scene height is also capped at the stage height minus a chat reserve (230 px at stage height 620 or less, 240 px above that), so the transcript never sits on the Codex triangle.
+- Marks in reference px: Search provenance (330, 298), Docs refresh (368, 408), Fix date test (826, 344), Codex apex (871, 416), Verification (806, 488), Results (925, 488), Offline capture (1034, 175), Export backup (1040, 230). Core (640, 316).
+- Hulls in reference px: Archeus 10 vertices as in `CONCEPT_LAYOUT.desktop`, Notes 8, Ideas 5.
+- Label anchors (`sc.labelFix`): Notes at (1172, 112) with a two-line sub; Ideas at (1208, 427); Archeus label hidden (the star's ARCHEUS word is the name); Codex label below the apex; Verification and Results to the right of their dots, on the dot row.
+
+Drawing (desktop only, all gated by `sc.desk` or `sc.knot` or `p.desk`):
+- Star: `drawKnot`, 46 chords and spokes of fine ivory threads, a small bright centre. The phone keeps the old star (`drawCore` without the flag).
+- Hulls: `deskFacetsFor`, 22 interior points, about 66 thin facet lines in three opacity tiers (0.5 / 0.3 / 0.16). No wedge fills on desktop.
+- Marks: `drawDeskMark`, filled amber diamond for Search provenance, blue four-point star for Fix date test, filled lilac diamond for done and idle, amber sparkle for "New" (Export backup).
+- Codex: `drawDeskExec`, blue triangle with the code glyph; apex dot and the Verification and Results dots form the base corners.
+
+Chrome and CSS (style.css, one block at the end, `@media (min-width: 881px)`): grey fixture label in the rail, the top-bar pill hidden on desktop, Tell with a bubble icon and Stop with a square icon, the amber bar on the active rail item, More folded away, the headline block over the scene, the simulated note as a grey footer (moved out of the headline block in index.html), serif label titles, chat rows with a label column, the Start card on one line (`.card-body`), the chat bar at 850 px.
+
+Similarity (`sim2.py`, both images to 160 px wide, blurred; lower lum MAD is closer; amber and blue MAD on the same scale):
+- i1: lum 8.04, amber 0.69, blue 3.06, edge overlap 49.2 %
+- i2: lum 7.83, amber 0.69, blue 3.07, edge overlap 50.6 %
+- i3: lum 7.90 (after the Notes anchor fix), amber 0.69, blue 3.06, edge 51.0 %
+- i4: lum 7.61, amber 0.64, blue 2.95, edge 52.9 % (constellation span fixed)
+- i5: lum 7.64, amber 0.64, blue 2.94, edge 53.0 % (denser facets)
+- i6 to i7: lum 7.64 to 7.67 (chat reserve, label fixes); the luminance metric barely moves after i4. It does not separate the iterations well; the judgement is by eye on the montages.
+
+Label overlap probe (DOM boxes of visible labels, Chromium, desktop Overview): zero overlaps at 1280 x 720, 1440 x 900, 1600 x 900 and 1920 x 1080.
+
+Checks: check.mjs through the testlock (see the round 10c commit). Service worker cache bumped to `archeus-v2-proto-12`.
+
+Remaining differences (honest, numbered, 1600 x 900 unless stated):
+1. Hull shape: the Archeus hull is a smoother polygon than the concept; the concept's facet web reads as more lines and a crisper outline. Facet count is about 66 against about 40 visible in the concept, so density is higher but the outline is less articulated.
+2. Star: the knot is smaller and less crisp than the concept's (concept radius about 75 reference px, prototype about 60).
+3. Concept's faint amber dashed link from Search provenance to Docs refresh is not drawn.
+4. Export backup label sits below its node (to avoid the Offline capture label at small sizes); the concept places it to the right of the sparkle.
+5. Sub-lines of Notes and Ideas use the prototype's sans; concept line breaks at "Research and capture / evolving context." match only in the wrap, not the width.
+6. At 1280 x 720 the scene is smaller than at 1600 x 900 (the chat reserve takes height); not measured as a percentage.
+7. Chat row heights and bubble padding were not measured against the concept's rows.
+8. Type: label titles use the serif (concept look). This departs from the round 8 rule that labels are sans; recorded so the owner can choose.
+9. Review button is 36 px tall, the concept's is about 30 px.
+10. Stop and Tell icons are CSS-drawn (no SVG data URI, because check.mjs forbids the xmlns string in style.css); the concept's icons are slightly rounder.
+
+Not verified: a real high-DPI display (renders at DPR 1 only), reduced motion and tab-hidden states on the new scene (the facets and knot are static and read the same), the phone sizes (only the shared markup and the Start card wrapper change there; the Start card wrapper is display block on the phone).
+
 ## Round 10b (partial, 2026-10-21): measured layout, desktop and phone Overview
 
 Status: PARTIAL. Done in this round: the Overview scene is driven from a measured table (`CONCEPT_LAYOUT` in app.js), read from labelled grid overlays of desktop-1-now-v2.png (1296 x 729) and phone-1-now-v2.png (804 x 1373; the concept file is 804 x 1373, not 1748 tall). Not done: phone-2 and phone-3 comparisons and montages, four iterations for those, the 6 x 2 DPR render sweep, the Replay, terminal, Mission and Shared views (10c), motion (round 11).

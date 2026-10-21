@@ -768,3 +768,62 @@ p.small, .small { line-height: 20px; }
   .stage-now .lbl.project .t { font-size: 16px; line-height: 22px; }
   .stage-now .lbl.exec .t { font-size: 15px; line-height: 20px; }
 }
+
+/* Round 10c desktop Overview (881 px and up). Chrome as the concept: the grey fixture line in the rail, Tell and
+   Stop with icons, an amber bar on the active rail item, More folded away, the headline block over the scene,
+   the simulated note as a grey footer, serif titles on the labels, the chat with a label column and a one-line
+   Start card, the chat bar centred. The phone rules above are not changed by this block. */
+@media (min-width: 881px) {
+  .proto, .more-d { display: none; }
+  .places a[aria-current="page"]::before { left: -16px; top: 0; bottom: 0; width: 3px; background: var(--amber); }
+  .top .btn { gap: var(--s2); }
+  .top [data-tell]::before { content: ""; width: 16px; height: 12px; flex: none; border: 1.6px solid currentColor; border-radius: 4px; box-sizing: border-box; }
+  .top .stop-btn { color: #F4A4A8; border-color: rgba(240, 113, 120, 0.8); }
+  .top .stop-btn::before { content: ""; width: 12px; height: 12px; flex: none; border: 1.6px solid currentColor; border-radius: 1px; box-sizing: border-box; }
+
+  #s-now { position: relative; }
+  #s-now .head { position: absolute; left: 0; top: 0; right: 0; margin: 0; z-index: 6; pointer-events: none; }
+  #s-now .head .kicker { font-size: 14px; line-height: 20px; letter-spacing: 0.3em; color: var(--text-2); }
+  #s-now h1 { font-size: clamp(44px, 4.2vw, 60px); line-height: 1.02; margin-top: 2px; }
+  .now-lede { display: block; font: 400 18px/26px var(--serif); max-width: 500px; margin-top: 6px; color: var(--text-2); }
+  .now-main > .stage { height: clamp(520px, calc(100vh - 118px), 980px); }
+  .now-tag { display: block; margin: var(--s2) 0 0; font: 400 14px/20px var(--sans); color: var(--text-3); }
+
+  .stage-now .lbl .t { font-family: var(--serif); font-weight: 400; font-size: calc(19px * var(--lk, 1)); line-height: 24px; }
+  .stage-now .lbl.project .t { font-family: var(--serif); font-weight: 400; font-size: calc(19px * var(--lk, 1)); line-height: 24px; }
+  .stage-now .lbl .s { font-size: 14px; line-height: 20px; }
+  .stage-now .lbl.exec .s { color: var(--blue); }
+  .stage-now .lbl.record .s { display: none; }
+  .stage-now .lbl.project .s { white-space: normal; width: 150px; }
+  .stage-now .lbl .k { display: none; }
+  .stage-now .lbl.core .t { font-size: calc(18px * var(--lk, 1)); letter-spacing: 0.32em; }
+
+  .feed { width: min(640px, calc(100% - 48px)); bottom: 84px; max-height: 190px; }
+  .feed .msg { display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--s3); align-items: center; margin: 0; }
+  .feed .msg::before { content: attr(data-who); grid-column: 1; grid-row: 1; justify-self: end; font: 400 15px/20px var(--sans); color: var(--text-2); margin: 0; }
+  .feed .msg > p { grid-column: 2; grid-row: 1; justify-self: start; }
+  .feed .msg-you > p, .feed .msg-arch > p {
+    background: rgba(14, 19, 28, 0.82); border: 1px solid var(--line); border-radius: 12px; padding: 8px var(--s4);
+    font: 400 16px/24px var(--sans);
+  }
+  .feed .msg-card { display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--s3); align-items: center; border: 0; background: transparent; max-width: none; padding: 0; }
+  .feed .msg-card::before { content: attr(data-who); grid-column: 1; grid-row: 1; justify-self: end; font: 400 15px/20px var(--sans); color: var(--text-2); }
+  .feed .msg-card .card-body {
+    grid-column: 2; grid-row: 1; justify-self: start; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s4);
+    background: rgba(14, 19, 28, 0.82); border: 1px solid var(--line-2); border-radius: 12px; padding: var(--s2) var(--s3) var(--s2) var(--s4);
+    white-space: nowrap;
+  }
+  .feed .msg-card .card-t { font: 400 17px/24px var(--sans); color: var(--text); }
+  .feed .msg-card .row { flex-wrap: nowrap; margin: 0; gap: var(--s2); }
+  .feed .msg-card .btn { min-width: 0; padding: 0 var(--s4); font-size: 15px; }
+  .feed .msg-card [data-card="start"] { background: transparent; border-color: var(--amber); color: var(--amber); }
+  .feed .msg-card [data-card="keep"] { background: transparent; border-color: var(--line-2); color: var(--text); }
+
+  .chatbar { width: min(850px, calc(100% - 48px)); bottom: 18px; }
+  .chatbar .attach { color: var(--text-2); }
+  .chatbar input::placeholder { color: var(--text-2); }
+  .send-btn { width: 40px; height: 40px; min-height: 40px; }
+
+  .stage-now .lbl a.act { font-size: 14px; }
+}
+@media (min-width: 881px) and (max-height: 800px) { .feed { max-height: 140px; } }

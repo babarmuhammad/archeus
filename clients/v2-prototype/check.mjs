@@ -116,6 +116,16 @@ check(/Places/.test(html) && /data-act="menu"/.test(html), 'phone Places menu mi
 check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
 
 
+// Round 10c desktop Overview: scene from the concept box, knot star, dense facets, fixed label anchors, one-line Start card.
+check(/DESK_FILL = 0\.88/.test(js) && /function deskMap|dm = function/.test(js) || /var dm = function/.test(js), 'desktop scene is not mapped from the concept box');
+check(/function drawKnot/.test(js) && /sc\.knot/.test(js), 'desktop knot star missing');
+check(/function deskFacetsFor/.test(js) && /p\.desk/.test(js), 'desktop hull facets missing');
+check(/labelFix/.test(js) && /archeus: \{ hide: true \}/.test(js), 'desktop label anchors missing');
+check(/function drawDeskExec/.test(js) && /function drawDeskMark/.test(js), 'desktop Codex triangle or marks missing');
+check(/card-body/.test(js) && /\.feed \.msg-card \.card-body/.test(css), 'Start card is not a one-line body');
+check(/\.now-tag \{ display: block/.test(css) && /id="s-now"/.test(html), 'desktop footer note rule missing');
+
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);
