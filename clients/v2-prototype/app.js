@@ -22,7 +22,7 @@
 
   // offs: mission positions around the project centre, in stage pixels at full size.
   var projects = [
-    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', at: [0.25, 0.5], offs: [[-70, -84], [-156, 22], [26, 72]] },
+    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', at: [0.25, 0.5], offs: [[-70, -84], [40, 84], [-150, 22]] },
     { id: 'notes', name: 'Notes', hue: '#E7A3AE', at: [0.8, 0.27], offs: [[-70, -30], [46, 40]] },
     { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', at: [0.76, 0.8], offs: [[-54, -42], [54, 40]] }
   ];
@@ -335,15 +335,19 @@
     };
   }
 
+  // The bottom CHAT_RESERVE pixels of the stage belong to the conversation, so the scene is laid out above them.
+  var CHAT_RESERVE = 170;
   function nowScene(w, h) {
     var narrow = w < 640;
-    var k = Math.max(0.5, Math.min(w / 1150, h / 640, 1.1));
-    var sc = mk(w, h, { x: w * 0.5, y: h * 0.5 }, k, narrow);
+    var hh = h - (narrow ? Math.round(h * 0.36) : Math.min(CHAT_RESERVE, Math.round(h * 0.26)));
+    var k = Math.max(0.5, Math.min(w / 1150, hh / 560, 1.1));
+    var sc = mk(w, h, { x: w * 0.5, y: hh * 0.5 }, k, narrow);
     var shape = Math.max(0.62, Math.min(k, 1));
+    sc.sats = [[0.3, 0.86], [0.6, 0.05], [0.92, 0.5], [0.07, 0.3], [0.68, 0.9]].map(function (p) { return { x: w * p[0], y: hh * p[1] }; });
     projects.forEach(function (p) {
       var ms = missions.filter(function (x) { return x.project === p.id; });
       var live = ms.filter(isLive).length;
-      var cx = w * p.at[0], cy = h * p.at[1];
+      var cx = w * p.at[0], cy = hh * p.at[1];
       sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: cx, y: cy, members: ms.map(function (m) { return m.id; }), count: ms.length, live: live, active: live > 0 });
       sc.parent[p.id] = 'core';
       sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live > 0, kind: 'project', hue: p.hue });
@@ -364,7 +368,7 @@
     return sc;
   }
 
-  function missionScene(m, w, h) {
+  function missionScene(m, w, h, small) {
     var p = projectOf(m.project);
     var k = Math.max(0.7, Math.min(w / 720, 1.1));
     var sc = mk(w, h, { x: w * 0.5, y: h * 0.12 }, k, false);
@@ -373,7 +377,7 @@
     sc.parent[p.id] = 'core';
     sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live, kind: 'project', hue: p.hue, verb: 'orchestrates' });
     var mx = w * 0.56, my = h * 0.5;
-    sc.nodes.push(nodeFor(m, mx, my, 84 * k, p.id, false));
+    sc.nodes.push(nodeFor(m, mx, my, 84 * k * (small ? 0.6 : 1), p.id, false));
     sc.parent[m.id] = p.id;
     sc.links.push({ a: p.id, b: m.id, col: isLive(m) ? STATE[m.state].color : p.hue, live: live, kind: 'mission', hue: p.hue, verb: 'contains' });
     if (m.exec) {
@@ -621,6 +625,7 @@
         if (!a || !b) return;
         var gl = grow(l.a + '>' + l.b, anim);
         if (gl < 1) b = { x: a.x + (b.x - a.x) * gl, y: a.y + (b.y - a.y) * gl };
+        var fresh = S.born[l.a + '>' + l.b] !== undefined && performance.now() - S.born[l.a + '>' + l.b] < 6000;
         var lit = !!(H[l.a] && H[l.b]);
         g.save();
         if (lit) {
@@ -628,7 +633,7 @@
           if (l.live) { g.shadowColor = l.col; g.shadowBlur = 16; }
           line(g, a.x, a.y, b.x, b.y);
           g.shadowBlur = 0; g.globalAlpha = 0.95; g.lineWidth = 1.4;
-          g.setLineDash(l.dash ? [2, 6] : []);
+          g.setLineDash(l.dash ? [2, 6] : fresh ? [3, 4] : []);
           line(g, a.x, a.y, b.x, b.y);
           g.setLineDash([]);
           if (l.live && !reduce.matches) {
@@ -638,10 +643,15 @@
           }
         } else {
           g.strokeStyle = 'rgba(239,233,218,' + (l.dash ? 0.1 : 0.16) + ')'; g.lineWidth = 0.8;
-          if (l.dash) g.setLineDash([3, 5]);
+          if (l.dash || fresh) g.setLineDash(l.dash ? [3, 5] : [3, 4]);
           line(g, a.x, a.y, b.x, b.y);
         }
         g.restore();
+      });
+
+      (sc.sats || []).forEach(function (p, i) {
+        var q = P0(p.x, p.y);
+        drawSolid(g, TET, q.x, q.y, 12 * s, { y: 0.3 + i, x: 0.4 }, IVORY, { alpha: 0.32, dotR: 1.2, lw: 0.8 });
       });
 
       // Shape-only projects (the mission chain) are drawn as small octahedra.
@@ -662,11 +672,7 @@
       order.forEach(function (n, idx) {
         var q = pos[n.id], lit = !!H[n.id], R = n.r * s;
         var gn = grow(n.id, anim);
-        if (gn < 1) {
-          R *= 0.35 + 0.65 * gn;
-          g.save(); g.strokeStyle = IVORY; g.lineWidth = 1; g.globalAlpha = (1 - gn) * 0.6;
-          g.beginPath(); g.arc(q.x, q.y, R * (1.3 + (1 - gn) * 1.8), 0, TAU); g.stroke(); g.restore();
-        }
+        if (gn < 1) R *= 0.35 + 0.65 * gn;
         var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
         var alpha = (lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5) * gn;
         var col = STATE[n.state] ? STATE[n.state].color : IVORY;
@@ -783,13 +789,13 @@
         entries.push({ id: id, it: it, box: box, bw: bw, bh: bh, cand: best.cand, dir: { x: ox, y: oy } });
       });
       // Relaxation: a label that still touches another moves outward along its radial, four passes at most.
-      for (var pass = 0; pass < 4; pass++) {
+      for (var pass = 0; pass < 10; pass++) {
         var moved = false;
         for (var a = 0; a < entries.length; a++) for (var b = a + 1; b < entries.length; b++) {
           if (!overlaps(entries[a].box, entries[b].box, 6)) continue;
           var e = entries[b], nb = e.box;
-          var nx = Math.min(Math.max(nb.x0 + e.dir.x * 14, 8), S.w - e.bw - 8);
-          var ny = Math.min(Math.max(nb.y0 + e.dir.y * 14, 8), S.h - e.bh - 8);
+          var nx = Math.min(Math.max(nb.x0 + e.dir.x * 18, 8), S.w - e.bw - 8);
+          var ny = Math.min(Math.max(nb.y0 + e.dir.y * 18, 8), S.h - e.bh - 8);
           e.box = { x0: nx, y0: ny, x1: nx + e.bw, y1: ny + e.bh };
           moved = true;
         }
@@ -797,7 +803,8 @@
       }
       entries.forEach(function (e) {
         var quiet = sc.compact && e.it.kind === 'mission' && !(sc.nodes.some(function (n) { return n.id === e.id && n.live; })) && S.hover !== e.id;
-        e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '') + (e.it.fresh ? ' is-new' : '');
+        var fresh = S.born[e.id] !== undefined && performance.now() - S.born[e.id] < 6000;
+        e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '') + (fresh ? ' is-new' : '');
         e.it.lbl.style.transform = 'translate(' + e.box.x0.toFixed(1) + 'px,' + e.box.y0.toFixed(1) + 'px)';
       });
       // Hit targets follow the figures.
@@ -815,7 +822,7 @@
       S.verbItems.forEach(function (v) {
         var a = pos[v.a], b = pos[v.b];
         if (!a || !b) return;
-        var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        var mx = a.x + (b.x - a.x) * 0.65, my = a.y + (b.y - a.y) * 0.65;
         v.el.style.transform = 'translate(' + (mx - v.el.offsetWidth / 2).toFixed(1) + 'px,' + (my - 10).toFixed(1) + 'px)';
       });
     }
@@ -865,7 +872,6 @@
       S.world.appendChild(lbl);
       var it = S.items[id] || (S.items[id] = {});
       it.lbl = lbl; it.cls = o.cls; it.kind = o.kind;
-      it.fresh = S.born[id] !== undefined && performance.now() - S.born[id] < 1200;
       return it;
     }
 
@@ -899,7 +905,7 @@
       });
       sc.nodes.forEach(function (n) {
         var st = n.st, sub = n.detail || n.sub;
-        var subCls = n.kind === 'mission' ? 'st-' + n.state : '';
+        var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : '';
         var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: 'Review', aria: 'Review plan for ' + n.title } : null;
         addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker + (n.kind === 'mission' ? '' : ''), title: n.title, sub: st ? st + (sub ? ' · ' + sub : '') : sub, subCls: subCls, kind: n.kind, action: action });
         if (n.hit) {
@@ -1005,6 +1011,7 @@
     onPick: function (id, kind) { if (kind === 'project') location.hash = '#/now/' + id; }
   });
   var sharedStage = makeStage($('#shared-stage'));
+  var replayStage = makeStage($('#replay-stage'));
   var phoneStage = makeStage($('#phone-stage'), {
     onPick: function (id) { openSheet(id); }
   });
@@ -1100,54 +1107,37 @@
     }
   }
 
+  // Sample data (simulated): the 09:00 to 09:25 example from the strategy report.
   var REPLAY = {
     'm-date': [
-      { time: '09:00', title: 'Task initiated', text: 'Fix the date test on fix/date-test.', states: ['intended', 'authorized', 'recorded'], marker: 'recorded', notes: ['Authority: plan v1 approved by you, scope fix/date-test, 3 tasks.', 'Starting state captured: branch head and test inputs.'], artifact: 'Starting snapshot' },
-      { time: '09:12', title: 'Files changed', text: '3 files changed on fix/date-test.', states: ['recorded'], marker: 'recorded', notes: ['Changes linked to this task.'], artifact: 'Diff, 3 files' },
-      { time: '09:18', title: 'Tests passed', text: 'Date test suite passed.', states: ['recorded'], marker: 'recorded', notes: ['Validation evidence recorded.'], artifact: 'Test run log' },
-      { time: '09:24', title: 'External response lost', text: 'The push of fix/date-test to the remote was sent. The response never arrived.', states: ['maybe', 'uncertain'], marker: 'uncertain', notes: ['Uncertain: the push may have taken effect on the remote.', 'Not classed as failed. Not retried.'], artifact: 'Request record, no response' },
-      { time: '09:25', title: 'Workflow suspended', text: 'No unsafe retry. A second push could repeat the first.', states: ['suspended'], marker: 'suspended', notes: ['Operator reconciliation required before anything continues.'], artifact: null }
+      { time: '09:00', title: 'Task initiated', sub: 'Scope, authority and starting state captured', badge: 'Intended', tone: 'intended', mark: 'dot' },
+      { time: '09:12', title: 'Files changed', sub: 'Changes and resulting artifacts linked to the task', badge: 'Recorded', tone: 'recorded', mark: 'dot' },
+      { time: '09:18', title: 'Tests passed', sub: 'Validation evidence recorded', badge: 'Verified', tone: 'verified', mark: 'check' },
+      { time: '09:24', title: 'External response lost', sub: 'Side effect classified as uncertain. It may have taken effect.', badge: 'Uncertain', tone: 'uncertain', mark: 'diamond' },
+      { time: '09:25', title: 'Workflow suspended', sub: 'Suspended. No unsafe retry; operator reconciliation required.', badge: 'Needs you', tone: 'needs-you', mark: 'diamond' }
     ]
   };
-  var RS = [
-    ['intended', 'Intended', 'What the agent planned to do.'],
-    ['authorized', 'Authorized', 'Approved by you, within scope.'],
-    ['recorded', 'Recorded', 'Durably written to the record.'],
-    ['maybe', 'May have taken effect', 'Sent, with no confirmation back.'],
-    ['uncertain', 'Uncertain', 'The record cannot say. Do not retry.'],
-    ['suspended', 'Suspended', 'Paused. Needs operator reconciliation.']
-  ];
   var replayId = 'm-date';
 
   function renderReplay(id) {
-    var m = find(id) || find('m-date');
+    var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [], p = projectOf(m.project);
     replayId = m.id;
-    var sec = $('#s-replay'), ev = REPLAY[m.id] || [], p = projectOf(m.project);
+    var sec = $('#s-replay');
     $('[data-rp-project]', sec).textContent = p.name;
     $('[data-rp-crumb]', sec).textContent = m.title;
-    $('[data-rp-title]', sec).textContent = 'Replay: ' + m.title;
-    var suspended = ev.some(function (e) { return e.marker === 'suspended'; });
-    $('#rp-facts').innerHTML =
-      '<div><dt>Project</dt><dd>' + esc(p.name) + '</dd></div>' +
-      '<div><dt>Branch</dt><dd>' + esc(m.branch) + '</dd></div>' +
-      '<div><dt>Status</dt><dd class="' + (suspended ? 'st-waiting' : 'state-line') + '">' + (suspended ? 'Suspended, reconcile' : esc(stateLine(m))) + '</dd></div>';
-    $('#rp-legend').innerHTML = RS.map(function (r) {
-      return '<li class="rs-' + r[0] + '"><span class="mk" aria-hidden="true"></span><span><strong>' + r[1] + '</strong> ' + r[2] + '</span></li>';
-    }).join('');
-    $('#rp-timeline').innerHTML = ev.length ? ev.map(function (e) {
-      return '<li class="ev' + (e.marker === 'uncertain' ? ' ev-uncertain' : '') + '">' +
-        '<p class="time">' + e.time + '</p>' +
-        '<span class="mk-col"><span class="mk rs-' + e.marker + '" aria-hidden="true"></span></span>' +
-        '<div class="ev-body"><p class="ev-title">' + esc(e.title) + '</p>' +
-        '<p class="ev-text">' + esc(e.text) + '</p>' +
-        '<ul class="chips">' + e.states.map(function (s) {
-          var r = RS.filter(function (x) { return x[0] === s; })[0];
-          return '<li class="chip rs-' + s + '"><span class="mk" aria-hidden="true"></span>' + r[1] + '</li>';
-        }).join('') + '</ul>' +
-        '<ul class="ev-notes">' + e.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' +
-        (e.artifact ? '<p class="ev-art">Linked: ' + esc(e.artifact) + '</p>' : '') +
-        '</div></li>';
-    }).join('') : '<li class="ev"><div class="ev-body"><p class="ev-text">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</p></div></li>';
+    $('[data-rp-title]', sec).textContent = 'Replay · ' + m.title;
+    replayStage.setScene(function (w, h) { return missionScene(m, w, h, true); });
+    var list = rows.map(function (r) {
+      return '<li class="rp-row rs-' + r.mark + '"><span class="rp-time">' + r.time + '</span><span class="rp-mark" aria-hidden="true"></span>' +
+        '<span class="rp-body"><span class="rp-title">' + esc(r.title) + '</span><span class="rp-sub">' + esc(r.sub) + '</span></span>' +
+        '<span class="rp-badge tone-' + r.tone + '">' + esc(r.badge) + '</span></li>';
+    });
+    if (!rows.length) list.push('<li class="rp-row"><span class="rp-sub">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
+    list.push('<li class="rp-row rp-reconcile"><span class="rp-time"></span><span class="rp-mark" aria-hidden="true"></span>' +
+      '<span class="rp-body"><span class="rp-title">Reconcile</span><span class="rp-sub">Record what happened on the remote. Nothing is pushed or retried here.</span>' +
+      '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
+      '<span class="rp-badge tone-operator">Operator</span></li>');
+    $('#rp-rows').innerHTML = list.join('');
   }
 
   function renderShared() {
@@ -1307,7 +1297,7 @@
     'What is a replay?'
   ];
 
-  function scrollThread() { var t = $('.thread'); t.scrollTop = t.scrollHeight; }
+  function scrollThread() { var t = $('.feed'); t.scrollTop = t.scrollHeight; }
   function addMsg(kind, html) {
     var li = document.createElement('li');
     li.className = 'msg msg-' + kind;
@@ -1330,7 +1320,7 @@
   function refreshNow() { nowStage.relayout(); renderRail(); }
 
   function createAtlas() {
-    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.26], offs: [[70, -96], [-30, -112], [96, 70]] });
+    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.3], offs: [[30, -110], [-40, -116], [96, 70]] });
     nowStage.markBorn('atlas');
     nowStage.markBorn('core>atlas');
     refreshNow();
@@ -1380,6 +1370,19 @@
     });
   }
 
+  // A chat-created mission waits for the owner: Start (plans it for review) or Keep as mission.
+  function startCard(m) {
+    var li = addMsg('card', '<p class="card-k">Start card</p><p class="card-t">Start and plan ' + esc(m.title) + '?</p>' +
+      '<div class="row"><button type="button" class="btn primary" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div>');
+    li.querySelector('[data-card="start"]').addEventListener('click', function () {
+      makePlan(m);
+      li.innerHTML = '<p class="card-k">Started · simulated</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Plan v1 is ready for your review. Nothing ran.</p>';
+    });
+    li.querySelector('[data-card="keep"]').addEventListener('click', function () {
+      li.innerHTML = '<p class="card-k">Kept as mission</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Not started.</p>';
+    });
+  }
+
   // Not about a project: its own thread, never project memory unless the owner promotes it.
   function general(body) {
     addMsg('gen', '<p class="gen-k">General · not project memory</p><p>' + esc(body) + '</p>' +
@@ -1407,7 +1410,7 @@
     }
     if (/\bplan\b/.test(t)) {
       var target = missions.filter(function (m) { return m.project === 'atlas' && m.id.indexOf('m-new-') === 0 && !plans[m.id] && m.glyph !== 'list'; }).pop();
-      if (!target) return lead('Add a mission to Atlas first, then I can plan it. Nothing was planned.');
+      if (!target) return lead('No mission in Atlas is waiting for a plan. Add a mission first. Nothing was planned.');
       makePlan(target);
       return addMsg('arch', '<p>Plan v1 for "' + esc(target.title) + '" has 3 steps (simulated). It waits for your review. Nothing starts until you approve.</p>' + receipts([{ label: 'Review plan v1', href: '#/plan/' + target.id }]));
     }
@@ -1419,7 +1422,8 @@
     if (/\bmission\b/.test(t)) {
       if (!projectOf('atlas')) return lead('Create project Atlas first. Nothing was added.');
       var mis = newMission(quoted(text, 'Draft the brief'), false);
-      return addMsg('arch', '<p>Added mission "' + esc(mis.title) + '" to Atlas. Not started.</p>' + receipts([{ label: 'Mission: ' + mis.title, href: '#/mission/' + mis.id }]));
+      addMsg('arch', '<p>Mission created in Atlas (simulated). Start it when you like.</p>' + receipts([{ label: 'Mission: ' + mis.title, href: '#/mission/' + mis.id }]));
+      return startCard(mis);
     }
     if (/\b(atlas|project)\b/.test(t)) {
       if (projectOf('atlas')) return lead('Atlas already exists. Ask for a mission or an idea in it.');
@@ -1500,7 +1504,6 @@
     else if (act === 'decide') decide(el.getAttribute('data-kind'));
     else if (act === 'stop') stop();
     else if (act === 'reconcile') confirmBox('Reconcile ' + find(replayId).title + '?', 'You record what you saw on the remote: did the push take effect? Core would store your answer with this replay. Nothing is pushed, retried or reversed here.', 'Prototype: nothing was reconciled. The suspension stays.');
-    else if (act === 'restore') confirmBox('Restore the 09:00 starting state?', 'This resets the local branch to the captured snapshot. It does not undo a push the remote may already have received.', 'Prototype: nothing was restored.');
   });
 
   document.addEventListener('change', function (e) {

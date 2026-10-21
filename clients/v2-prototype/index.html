@@ -43,7 +43,8 @@
         <header class="head">
           <p class="kicker">Overview</p>
           <h1 tabindex="-1" data-sentence></h1>
-          <p class="lede now-lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure. Ask Archeus in the bar; what it creates appears here as it is made.</p>
+          <p class="lede now-lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure. Tell Archeus in the bar; what it creates appears here as it is made.</p>
+          <p class="tag now-tag">Simulated: scripted replies, no model call, nothing sent to Core. Creations and approvals are page-only.</p>
         </header>
         <div class="now-body">
           <div class="now-main">
@@ -53,25 +54,22 @@
               <div class="world"></div>
               <div class="card" hidden></div>
               <button type="button" class="btn now-back" id="now-overview" hidden>Whole space</button>
+              <div class="feed" aria-live="polite">
+                <ol class="msgs" id="msgs"></ol>
+              </div>
+              <form class="chatbar" id="chat-form" autocomplete="off">
+                <label class="sr-only" for="chat-input">Tell Archeus what to do</label>
+                <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus…">
+                <button type="submit" class="btn">Send</button>
+                <button type="button" class="btn stop-btn chat-stop" data-act="stop">Stop</button>
+              </form>
             </div>
-            <form class="chatbar" id="chat-form" autocomplete="off">
-              <label class="sr-only" for="chat-input">Tell Archeus what to do</label>
-              <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus what to do, or ask anything">
-              <button type="submit" class="btn">Send</button>
-            </form>
           </div>
-          <aside class="thread" aria-labelledby="thread-h">
-            <div class="thread-head">
-              <p class="kicker" id="thread-h">Conversation</p>
-              <p class="tag">Simulated: scripted replies, no model call, nothing sent to Core. Creations and approvals are page-only.</p>
-            </div>
-            <details class="prompts">
-              <summary>Example prompts</summary>
-              <div class="prompt-list" id="chat-prompts"></div>
-            </details>
-            <ol class="msgs" id="msgs" aria-live="polite"></ol>
-          </aside>
         </div>
+        <details class="prompts">
+          <summary>Example prompts</summary>
+          <div class="prompt-list" id="chat-prompts"></div>
+        </details>
         <details class="list-d">
           <summary>All missions as a list</summary>
           <ol id="now-list"></ol>
@@ -112,22 +110,20 @@
       <section class="screen" id="s-replay" hidden>
         <header class="head">
           <p class="crumb"><a href="#/now">Overview</a> / <span data-rp-project></span> / <span data-rp-crumb></span></p>
-          <p class="kicker">Replay</p>
           <h1 tabindex="-1" data-rp-title></h1>
-          <p class="lede">What the agent intended, what you authorized, what was durably recorded, what may have taken effect, and where state is uncertain. A replay never claims that every external effect can be reversed.</p>
         </header>
-        <div class="split">
-          <ol class="timeline" id="rp-timeline" aria-label="Timeline, sample data"></ol>
-          <aside class="inspector" aria-label="Replay details">
-            <dl class="facts" id="rp-facts"></dl>
-            <p class="kicker">Legend</p>
-            <ul class="legend" id="rp-legend"></ul>
-            <div class="row">
-              <button type="button" class="btn primary" data-act="reconcile">Reconcile…</button>
-              <button type="button" class="btn" data-act="restore">Restore 09:00 state…</button>
-            </div>
-            <p class="small">Sample data, simulated. Core would record each line. Nothing here is sent, retried or reversed.</p>
-          </aside>
+        <div class="split rp-split">
+          <div class="stage stage-replay" id="replay-stage" role="region" aria-label="Mission constellation: Archeus, mission, execution, verification and results">
+            <canvas class="sky" aria-hidden="true"></canvas>
+            <canvas class="fx" aria-hidden="true"></canvas>
+            <div class="world"></div>
+            <div class="card" hidden></div>
+          </div>
+          <section class="rp-panel" aria-labelledby="rp-h">
+            <p class="kicker" id="rp-h">Replay, sample data</p>
+            <ol class="rp-rows" id="rp-rows" aria-label="Timeline, sample data"></ol>
+            <p class="rp-foot">Not every external effect can be reversed.</p>
+          </section>
         </div>
       </section>
 

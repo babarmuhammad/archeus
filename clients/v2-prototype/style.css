@@ -323,14 +323,28 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   * { transition: none !important; animation: none !important; }
 }
 
-/* Overview with the chat: the constellation left, the conversation right, the bar under the scene. */
-.now-body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--s6); flex: 1; min-height: 0; }
-.now-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.now-main > .stage { margin: 0; height: clamp(460px, calc(100vh - 300px), 780px); min-height: 0; }
+/* Overview: the constellation fills the stage; the conversation floats low over it, the bar below it. */
+.now-body { flex: 1; min-height: 0; }
+.now-main { position: relative; min-width: 0; }
+.now-main > .stage { margin: 0; height: clamp(460px, calc(100vh - 250px), 880px); min-height: 0; }
+.now-tag { margin-top: var(--s2); }
+.feed {
+  position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 4;
+  width: min(680px, calc(100% - 48px)); max-height: 176px; overflow-y: auto; pointer-events: auto;
+
+
+}
+.msgs { display: flex; flex-direction: column; gap: var(--s2); min-height: 100%; justify-content: flex-end; }
+.msgs li { font: 400 16px/24px var(--sans); }
+.msgs p { margin: 0; }
+.msg-you { align-self: flex-start; background: rgba(14, 19, 28, 0.7); border-radius: 12px; padding: var(--s2) var(--s3); max-width: 86%; }
+.msg-arch { padding: var(--s1) var(--s3); background: rgba(7, 10, 16, 0.62); border-radius: 12px; align-self: flex-start; max-width: 92%; }
+.msg-typing { font: 400 14px/20px var(--sans); color: var(--text-2); padding: 0 var(--s2); }
 .chatbar {
-  flex: none; margin-top: var(--s3); display: flex; gap: var(--s2); align-items: center; padding: var(--s1) var(--s1) var(--s1) var(--s4);
-  border: 1px solid var(--line-2); border-radius: 14px;
-  background: rgba(7, 10, 16, 0.42);
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 5;
+  width: min(720px, calc(100% - 48px)); display: flex; gap: var(--s2); align-items: center;
+  padding: var(--s1) var(--s1) var(--s1) var(--s4);
+  border: 1px solid var(--line-2); border-radius: 14px; background: rgba(7, 10, 16, 0.42);
 }
 .chatbar input {
   flex: 1; min-width: 0; min-height: 48px; padding: 0; border: 0; border-radius: 0;
@@ -338,36 +352,27 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 }
 .chatbar input::placeholder { color: var(--text-2); opacity: 1; }
 .chatbar .btn { min-height: 48px; padding: 0 var(--s4); }
-.thread {
-  border-left: 1px solid var(--line); padding: var(--s2) 0 var(--s6) var(--s6);
-  display: flex; flex-direction: column; gap: var(--s3); min-height: 0; min-width: 0;
-  height: clamp(532px, calc(100vh - 228px), 852px); overflow: hidden;
-}
-.thread-head { display: flex; flex-direction: column; gap: var(--s1); }
-.tag { font: 400 14px/20px var(--sans); color: var(--amber); }
-.prompts summary { color: var(--text-2); }
-.prompt-list { display: flex; flex-direction: column; gap: var(--s1); padding-bottom: var(--s2); }
+.chat-stop { display: none; }
+.prompts { margin-top: var(--s3); }
+.prompts summary { color: var(--text-2); min-height: 48px; display: flex; align-items: center; cursor: pointer; }
+.prompt-list { display: flex; flex-wrap: wrap; gap: var(--s1); padding-bottom: var(--s2); }
 .prompt {
   min-height: 48px; text-align: left; padding: 0 var(--s3); border-radius: 10px;
   background: transparent; border: 1px solid var(--line); color: var(--text-2);
   font: 400 14px/20px var(--sans); cursor: pointer;
 }
 .prompt:hover { color: var(--text); border-color: var(--line-2); }
-.msgs { display: flex; flex-direction: column; gap: var(--s3); overflow-y: auto; flex: 1; min-height: 0; padding-right: var(--s2); }
-.msg p { margin: 0; }
-.msg-arch { font: 400 16px/24px var(--sans); color: var(--text); }
-.msg-you { align-self: flex-end; max-width: 88%; background: var(--surface-2); border-radius: 12px 12px 4px 12px; padding: var(--s2) var(--s3); }
-.msg-typing { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.msg-card {
-  border: 1px solid rgba(242, 181, 68, 0.5); border-radius: 12px; padding: var(--s3);
-  background: rgba(14, 19, 28, 0.7); display: flex; flex-direction: column; gap: var(--s2);
-}
+.tag { font: 400 14px/20px var(--sans); color: var(--amber); }
 .card-k, .gen-k { font: 600 14px/20px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); }
 .gen-k { color: var(--text-2); }
 .card-t { font: 400 20px/26px var(--serif); }
+.msg-card {
+  border: 1px solid rgba(242, 181, 68, 0.5); border-radius: 12px; padding: var(--s3);
+  background: rgba(14, 19, 28, 0.7); display: flex; flex-direction: column; gap: var(--s2); max-width: 520px;
+}
 .msg-card .small { color: var(--text-2); }
 .msg-card .row { margin-top: 0; }
-.msg-gen { border-left: 2px dashed var(--line-2); padding: var(--s1) 0 var(--s1) var(--s3); display: flex; flex-direction: column; gap: var(--s2); color: var(--text-2); }
+.msg-gen { border-left: 2px dashed var(--line-2); background: rgba(14, 19, 28, 0.72); border-radius: 0 12px 12px 0; padding: var(--s2) var(--s3) var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); color: var(--text-2); max-width: 560px; }
 .msg-gen p { font: 400 16px/24px var(--sans); }
 .promote { display: flex; align-items: center; gap: var(--s2); min-height: 48px; font: 400 14px/20px var(--sans); color: var(--text-2); }
 .promote input { width: 20px; height: 20px; min-height: 0; margin: 0; }
@@ -387,54 +392,55 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .rowlist li > span:last-child { color: var(--text-2); font: 400 14px/20px var(--sans); text-align: right; }
 .pdot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--hue); margin-right: var(--s2); vertical-align: middle; }
 
-/* Born: a new object fades its label in; the stage grows the figure. */
+/* New objects: the label fades in and carries "New" for six seconds; the link draws in dashed. */
 .lbl.is-new { animation: lbl-in 700ms 150ms both; }
+.lbl.is-new .k::after { content: " · New"; color: var(--amber); }
 @keyframes lbl-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* Replay: a forensic timeline. Each state has a shape and a word, never colour alone. */
-.timeline { display: flex; flex-direction: column; min-width: 0; padding-top: var(--s2); }
-.ev { position: relative; display: grid; grid-template-columns: 64px 32px minmax(0, 1fr); gap: var(--s3); padding-bottom: var(--s6); }
-.ev::before { content: ""; position: absolute; left: 92px; top: 24px; bottom: 0; width: 1px; background: var(--line-2); }
-.ev:last-child { padding-bottom: 0; }
-.ev:last-child::before { display: none; }
-.time { font: 400 14px/24px var(--mono); color: var(--text-2); padding-top: 2px; }
-.mk-col { display: flex; justify-content: center; padding-top: 4px; }
-.mk { display: block; width: 16px; height: 16px; box-sizing: border-box; }
-.rs-intended .mk { border: 1.5px solid var(--slate); border-radius: 50%; }
-.rs-authorized .mk { background: var(--ivory); transform: rotate(45deg) scale(0.78); }
-.rs-recorded .mk { background: var(--green); border-radius: 50%; }
-.rs-maybe .mk { border: 1.5px dashed var(--amber); border-radius: 50%; }
-.rs-uncertain .mk { background: var(--amber); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-.rs-suspended .mk { background: var(--slate); border-radius: 2px; }
-.ev-body { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
-.ev-uncertain .ev-body { border-left: 2px solid var(--amber); padding-left: var(--s3); }
-.ev-title { font: 400 22px/28px var(--serif); }
-.ev-text { font: 400 16px/24px var(--sans); }
-.chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s1); }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 10px;
-  border: 1px solid var(--line); border-radius: 999px; color: var(--text-2); font: 400 14px/20px var(--sans);
+/* Replay: the mission constellation on the left, the six rows on the right. */
+.rp-split { grid-template-columns: minmax(0, 1fr) 500px; gap: var(--s6); }
+.stage-replay { margin: 0; height: clamp(480px, calc(100vh - 250px), 820px); min-height: 0; }
+.rp-panel {
+  align-self: start; display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2);
+  background: rgba(14, 19, 28, 0.8); border: 1px solid var(--line-2); border-radius: 18px; padding: var(--s4) var(--s4) var(--s3);
 }
-.chip .mk { width: 10px; height: 10px; }
-.chip.rs-uncertain, .chip.rs-maybe { color: var(--amber); border-color: rgba(242, 181, 68, 0.5); }
-.chip.rs-suspended { color: var(--text); }
-.ev-notes { display: flex; flex-direction: column; gap: 2px; }
-.ev-notes li { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.ev-art { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.legend { display: flex; flex-direction: column; gap: var(--s2); }
-.legend li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: var(--s2); align-items: start; font: 400 14px/20px var(--sans); color: var(--text-2); }
-.legend li .mk { margin-top: 2px; width: 14px; height: 14px; }
-.legend strong { color: var(--text); font-weight: 600; }
-.inspector .row { margin-top: var(--s1); }
+.rp-rows { position: relative; display: flex; flex-direction: column; gap: var(--s2); }
+.rp-rows::before { content: ""; position: absolute; left: 83px; top: 30px; bottom: 30px; width: 1px; background: var(--line-2); }
+.rp-row {
+  position: relative; display: grid; grid-template-columns: 56px 22px minmax(0, 1fr) auto; gap: var(--s2); align-items: center;
+  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: 12px; background: rgba(7, 10, 16, 0.5);
+}
+.rp-time { font: 400 14px/20px var(--mono); color: var(--text-2); }
+.rp-mark { width: 14px; height: 14px; border-radius: 50%; justify-self: center; background: var(--ivory); box-sizing: border-box; }
+.rs-check .rp-mark { background: var(--green); }
+.rs-diamond .rp-mark { background: var(--amber); border-radius: 2px; transform: rotate(45deg) scale(0.85); }
+.rs-dot .rp-mark { background: var(--lilac); }
+.rp-reconcile .rp-mark { background: transparent; border: 1.5px dashed var(--text-2); }
+.rp-reconcile { border-style: dashed; background: transparent; }
+.rp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rp-title { font: 400 20px/26px var(--serif); }
+.rp-sub { font: 400 14px/20px var(--sans); color: var(--text-2); }
+.rp-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
+.rp-actions .btn { min-height: 48px; }
+.rp-badge { font: 400 14px/20px var(--sans); padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; }
+.tone-intended, .tone-operator { color: var(--lilac); }
+.tone-recorded { color: var(--text); }
+.tone-verified { color: var(--green); border-color: rgba(111, 211, 154, 0.5); }
+.tone-uncertain, .tone-needs-you { color: var(--amber); border-color: rgba(242, 181, 68, 0.5); }
+.rs-diamond { border-color: rgba(242, 181, 68, 0.35); }
+.rp-foot { font: 400 14px/20px var(--sans); color: var(--text-2); text-align: center; padding-top: var(--s2); }
 
-/* Phone: the thread sits under the scene as a bounded list. */
+/* Phone: constellation above, the conversation above the bar, the bar and Stop above the navigation bar. */
 @media (max-width: 880px) {
-  .now-body { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .now-main > .stage { min-height: 460px; }
-  .thread { border-left: 0; padding: var(--s4) 0 0; max-height: 52vh; }
+  .now-lede, .now-tag, .prompts, .list-d { display: none; }
+  .now-main > .stage { height: calc(100vh - 250px); min-height: 380px; }
+  .feed { bottom: 74px; max-height: 16vh; width: calc(100% - 24px); }
+  .chatbar { bottom: 10px; width: calc(100% - 24px); padding-left: var(--s3); }
   .chatbar .btn { padding: 0 var(--s3); }
+  .chat-stop { display: inline-flex; }
+  .rp-split { grid-template-columns: minmax(0, 1fr); }
+  .stage-replay { height: 380px; }
 }
-
 @media (min-width: 881px) and (max-height: 800px) {
   .now-lede { display: none; }
 }
