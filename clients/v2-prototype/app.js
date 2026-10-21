@@ -95,10 +95,16 @@
 
   function nowScene(w, h) {
     var cx = w / 2, cy = h / 2, m = Math.min(w, h);
-    var sc = { view: { x: 0, y: 0, w: w, h: h }, fit: 1, core: { x: cx, y: cy }, projects: [], nodes: [], links: [], parent: {} };
+    var narrow = w < 600;
+    var sc = {
+      view: { x: 0, y: 0, w: w, h: h }, fit: 1, core: { x: cx, y: cy }, projects: [], nodes: [], links: [], parent: {},
+      figScale: narrow ? 0.7 : 1,
+      compact: narrow,
+      labelDirs: narrow ? ['column', 'column-reverse'] : null
+    };
     projects.forEach(function (p) {
       var a = p.angle * Math.PI / 180;
-      var px = cx + w * 0.3 * Math.cos(a), py = cy + h * 0.26 * Math.sin(a);
+      var px = cx + w * (narrow ? 0.2 : 0.3) * Math.cos(a), py = cy + h * (narrow ? 0.3 : 0.26) * Math.sin(a);
       var ms = missions.filter(function (x) { return x.project === p.id; });
       var spread = ms.length >= 3 ? [-0.9, 0, 0.9] : ms.length === 2 ? [-0.5, 0.5] : [0];
       var live = ms.filter(isLive).length;
@@ -107,7 +113,8 @@
       sc.links.push({ a: 'core', b: p.id, hue: p.hue, kind: 'project', live: live > 0 });
       ms.forEach(function (x, i) {
         var t = a + spread[i];
-        var mx = px + m * 0.17 * Math.cos(t), my = py + m * 0.17 * Math.sin(t);
+        var rm = m * (narrow ? 0.22 : 0.17);
+        var mx = px + rm * Math.cos(t), my = py + rm * Math.sin(t);
         sc.nodes.push({ id: x.id, kind: 'mission', state: x.state, x: mx, y: my, live: isLive(x), title: x.title, sub: x.branch, st: STATE[x.state].word, detail: x.stateText, parent: p.id, hue: p.hue, hit: true });
         sc.parent[x.id] = p.id;
         sc.links.push({ a: p.id, b: x.id, hue: p.hue, kind: 'mission', state: x.state, live: isLive(x) });
@@ -572,6 +579,8 @@
 
     function placeLabels(pos, H) {
       var sc = S.scene, c = pos.core;
+      var live = {};
+      sc.nodes.forEach(function (n) { if (n.live) live[n.id] = true; });
       var placed = [];
       var points = [];
       Object.keys(pos).forEach(function (id) {
@@ -608,9 +617,13 @@
           if (cost === 0) break;
         }
         var chosen = best.cand, box = best.box;
+        var bw = box.x1 - box.x0, bh = box.y1 - box.y0;
+        var sx = Math.min(Math.max(box.x0, 8), S.w - bw - 8), sy = Math.min(Math.max(box.y0, 8), S.h - bh - 8);
+        box = { x0: sx, y0: sy, x1: sx + bw, y1: sy + bh };
         placed.push(box);
         var hide = best.cost > 0 && (L.kind === 'exec' || S.hover === id);
-        L.el.className = 'node ' + L.cls + ' d-' + chosen.d + (H[id] ? '' : ' dim') + (hide ? ' quiet' : '');
+        var calm = sc.compact && L.kind === 'mission' && !live[id] && S.hover !== id;
+        L.el.className = 'node ' + L.cls + ' d-' + chosen.d + (H[id] ? '' : ' dim') + (hide || calm ? ' quiet' : '');
         L.el.style.transform = 'translate(' + box.x0.toFixed(1) + 'px,' + box.y0.toFixed(1) + 'px)';
       });
       var core = S.nodes.core;
