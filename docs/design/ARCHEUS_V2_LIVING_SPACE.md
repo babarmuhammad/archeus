@@ -909,3 +909,36 @@ Checklists, partly measured. Measured on the phone sizes: tap targets (at least 
 1. Desktop label ceiling of 12 identities and "+N more": adopt now, or after the phone is approved? Recommend next round, after the owner has seen the phone.
 2. Fixture names (Codex uses Notes and Ideas; the prototype keeps Harbor, Notes, Lantern): keep, or switch to the Codex names? Recommend keep, so the approved concept data does not drift.
 3. The "Open decision" step on the phone sheet (exact action hash and version): build as a separate screen next round? Recommend yes, because the Codex proposal makes the confirmation a distinct step and the approval rule needs it.
+
+## Round 8: project names, phone composition, terminal grid, label budget (2026-10-21)
+
+Status: prototype only (`clients/v2-prototype`, fake data). No V1 change. Sources: the owner's round 8 direction (verbatim below), the Codex v2 images (`D:\hub-concepts-codex4\`), the approved colleague concepts (02-now, 03-mission, 06-shared, 13 and the term images), the research digest. PROPOSED is this document's design; owner decisions are dated and verbatim.
+
+### 1. Owner decisions that bind this round
+
+- Owner, 2026-10-21 (verbatim, round 8): "Refine it to be like the concept art and refine the mobile prototype for new models of smartphones (iphone 18 ecc…) right now the phone version is to clustered you don't understand anything" and "structure is good but improve on current design concepts".
+- Owner, 2026-10-21 (verbatim, on the new Codex concepts): "I like the new concepts of codex but the it remove the project name from the new visual design that was usefull".
+  Effect: every project hull shows its project name on every screen (desktop, Replay, phone, terminal). The v2 images drop the names; this build does not. Project names rank first in the label budget (project names, then needs-you mission, then active mission, then others). "+N more" hides missions only. If more than five projects exist, the farthest share one named list chip that opens a sheet listing them by name (the chip exists in the phone code; the list sheet lists all work, so the named list is a follow-up).
+- Earlier decisions that still hold: chat bar replaces Start; effects proposed, not silent; general thread separate and off project memory by default; project is the core object; Replay view; fixture names Harbor, Notes, Lantern, Atlas.
+
+### 2. What was built
+
+- **Phone composition.** The focus missions (waiting first, then running) sit in their real project's hull, so the Harbor hull holds Search provenance and Fix date test. The Archeus star sits between them with its ARCHEUS label. Other projects are small receded bodies with their names. Directional threads carry arrowheads. Labels: focus missions, project names, the core name. The waiting mission carries a filled 48 px Review action.
+- **Phone sheets.** The detail sheet ends with "Open decision" (the decision page shows the action hash and plan version from fixtures) and Close. The conversation sheet has a grabber; General answers carry a "General" tag and the off "Promote to project memory" control.
+- **Desktop label budget (PROPOSED).** Far: project names, Archeus, and missions that need you or are running; other missions are counted. Zoomed to a project: its missions. Hover: always. Measured: zero label overlaps on the Overview at 1280 x 720 to 1920 x 1080.
+- **Terminal.** A character grid of boxes and dashed links at 120 x 40 (the Harbor box with its mission columns, Notes and Lantern boxes), a stacked variant at 80 x 24, the same boxes on the mission, decision and Replay screens, a key-hint bar, `?` help, `:` jump, `/` filter, `L` plain-line mode. Every state is a glyph and a word; the output uses no colour.
+- **Decision (PROPOSED).** The decision page shows the action hash and plan version; approval needs an explicit confirm, and the terminal approve needs `a` then `y`. Nothing is approved in the prototype.
+- **Type.** Serif only for the wordmark, the headlines and the Archeus name; UI and mission labels are sans.
+
+### 3. Measured, and what is still weaker
+
+- Phone Overview at 360, 390, 393, 402, 430 and 440 CSS px: checked by eye and by label boxes; no horizontal scroll, no label overlap with the bar or chips, every control at least 48 px, project names present.
+- Replay: verb labels overlap at phone widths and touch at 1280 x 720 and 1440 x 900. Not fixed.
+- Still weaker than the images: phone facet shading (wireframe with a wash only); terminal colour (none); the desktop default is busier than desktop-1-now-v2; the Replay has no hull around the mission.
+- The design-audit skill was loaded and its checks applied by hand; its approval step was not run in this round.
+
+### 4. Open items for the owner
+
+1. Replay verb labels: move them off the lines, or drop the verbs on narrow screens?
+2. Terminal colour: add state colour on top of glyph and word (NO_COLOR stays honoured), or keep text only?
+3. Decision: keep the decision as a page plus confirm box, or make it a separate screen on the desktop too (recommended: yes, to match the phone)?
