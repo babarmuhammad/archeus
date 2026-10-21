@@ -52,6 +52,9 @@ MAX_BODY = 1 << 20
 LINGER_S = 2.0
 LINGER_BYTES = 16 << 20
 REQUEST_SLOTS = 32
+#: the one authority route a tunnel reaches without a credential: the phone
+#: pairs itself before it has one (the code is the credential)
+TUNNEL_BOOTSTRAP = ('POST', '/v1/devices/pair/redeem')
 COMMAND_TIMEOUT_S = 30.0
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 
@@ -182,6 +185,9 @@ class Api:
                  command_timeout=COMMAND_TIMEOUT_S, remote_hosts=(),
                  attestor=auth.attest_user, origin_backend=None, origin_registry=None,
                  origin_enforcement_enabled=origin.ORIGIN_ENFORCEMENT_ENABLED):
+        if not isinstance(origin_enforcement_enabled, bool):
+            raise TypeError('origin_enforcement_enabled is a bool, not %s'
+                            % type(origin_enforcement_enabled).__name__)
         self.db, self.missions, self.health, self.version = db, missions, health, version
         self.conversations = conversations
         self.authorization = authorization
@@ -214,7 +220,7 @@ class Api:
         self.requests = threading.BoundedSemaphore(REQUEST_SLOTS)
         self.command_timeout = command_timeout
         self.attestor = attestor
-        self.origin_enforcement_enabled = origin_enforcement_enabled is True
+        self.origin_enforcement_enabled = origin_enforcement_enabled
         if origin_backend is None:
             from ..node.origin_windows import WindowsOriginBackend
             origin_backend = WindowsOriginBackend()
@@ -284,6 +290,21 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             log.warning('origin observation failed')
         return origin.OriginEvidence()
+
+    def origin_allows(self, credential_origin=None, tunnel_route=True):
+        host = self.headers.get('Host')
+        return origin.authorize_transport(
+            self.attested, local_host=self.api.origin.local_host(host),
+            remote_host=host in self.api.origin.remote,
+            credential_origin=credential_origin, tunnel_route=tunnel_route)
+
+    def origin_holds(self):
+        """A stream's re-check (S2): the connection's evidence is still valid and
+        approved, and still passes the policy for this request's credential."""
+        if not self.api.origin_enforcement_enabled:
+            return True
+        self.attested = self.transport_evidence()
+        return self.origin_allows(self.principal['origin'])
 
     server_version = 'archeus'
     sys_version = ''
@@ -400,15 +421,14 @@ class Handler(BaseHTTPRequestHandler):
                 if not self.api.requests.acquire(blocking=False):
                     raise Refused(503, 'busy', headers={'Retry-After': '1'})
                 slot = self.api.requests
+            tunnel_route = (routes.CLASS.get((route.method, route.path)) != 'authority'
+                            or (route.method, route.path) == TUNNEL_BOOTSTRAP)
             if routes.CLASS.get((route.method, route.path), 'privileged') != 'public':
                 # R1-A (T-053 P1, P7): decided before any credential or code is
                 # read, so a refusal spends no code and writes nothing
                 if self.api.origin_enforcement_enabled:
                     self.attested = self.transport_evidence()
-                    if not origin.authorize_transport(
-                            self.attested,
-                            local_host=self.api.origin.local_host(self.headers.get('Host')),
-                            remote_host=self.headers.get('Host') in self.api.origin.remote):
+                    if not self.origin_allows(tunnel_route=tunnel_route):
                         raise Refused(403, 'origin_refused', {'origin': self.attested.origin})
                 else:
                     self.attested = self.api.attest(self.peer)
@@ -438,11 +458,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise Refused(403, 'remote_host_required',
                                   {'why': 'a paired client does this through its remote host'})
                 if (self.api.origin_enforcement_enabled
-                        and not origin.authorize_transport(
-                            self.attested,
-                            local_host=self.api.origin.local_host(host),
-                            remote_host=host in self.api.origin.remote,
-                            credential_origin=self.principal['origin'])):
+                        and not self.origin_allows(self.principal['origin'], tunnel_route)):
                     raise Refused(403, 'origin_refused')
                 self.api.seen[self.principal['device_id']] = (time.monotonic(), auth.now_iso())
                 if route.method == 'GET' and route.path != routes.STREAM:

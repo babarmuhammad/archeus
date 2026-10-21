@@ -1,12 +1,13 @@
 """PV20-10 synthetic HTTP transport evidence; no native attestation."""
+import time
 from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
-from archeus.api import origin
+from archeus.api import origin, routes
 from archeus.infra.eventlog import outbox
-from v1.judge.http import TUNNEL, request
+from v1.judge.http import TUNNEL, SSEClient, request
 from v1.judge.support import wait_for
 
 pytestmark = pytest.mark.core(remote_hosts=(TUNNEL,))
@@ -155,3 +156,102 @@ def test_registered_tunnel_preserves_rearm_step_up(tc):
     assert (response.status, response.json()['error']) == (422, 'guard_failed')
     assert 'step-up' in response.json()['detail']['reason']
     assert command('/v1/rearm', step_up='482913').status == 200
+
+
+NOT_ALLOWED = [
+    (origin.OriginClass.EXECUTION, origin.PathClass.DIRECT_LOCAL),
+    (origin.OriginClass.VERIFIER, origin.PathClass.DIRECT_LOCAL),
+    (origin.OriginClass.UNDETERMINED, origin.PathClass.DIRECT_LOCAL),
+    (origin.OriginClass.USER, origin.PathClass.DEPUTY),
+    (origin.OriginClass.USER, origin.PathClass.HOP),
+    (origin.OriginClass.USER, origin.PathClass.UNAPPROVED),
+]
+
+
+def _path(path):
+    return path.replace('{id}', 'x').replace('/*', '/x.js')
+
+
+def _refused(r):
+    return r.status == 403 and r.json()['error'] == 'origin_refused'
+
+
+def test_every_route_class_is_refused_by_the_switched_on_gate(tc):
+    """R1: observe, ordinary, privileged and authority routes, the stream included,
+    with the local credential the test client always holds."""
+    for kind, path in NOT_ALLOWED:
+        enable(tc, Backend(kind, path))
+        for r in routes.ROUTES:
+            if routes.CLASS[(r.method, r.path)] == 'public':
+                continue
+            before = snapshot(tc)
+            resp = tc.http(r.method, _path(r.path), body={} if r.method == 'POST' else None)
+            assert _refused(resp), (kind, path, r.method, r.path, resp.status)
+            assert snapshot(tc) == before, (r.method, r.path)
+
+
+def test_a_paired_device_is_refused_on_the_direct_local_path_and_kept_on_the_tunnel(tc):
+    code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe']}).json()['code']
+    paired = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                     body={'code': code, 'platform': 'web'}).json()['token']
+    enable(tc, Backend(path=origin.PathClass.DIRECT_LOCAL))
+    before = snapshot(tc)
+    assert _refused(tc.http('GET', '/v1/health', token=paired))
+    assert snapshot(tc) == before
+    enable(tc, Backend(path=origin.PathClass.REGISTERED_TUNNEL))
+    assert tc.http('GET', '/v1/health', token=paired, headers={'Host': TUNNEL}).status == 200
+
+
+def test_a_tunnel_reaches_only_pair_redeem_before_a_credential(tc):
+    launch = tc.http('POST', '/v1/devices/launch/code', body={}).json()['code']
+    pair = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe']}).json()['code']
+    enable(tc, Backend(path=origin.PathClass.REGISTERED_TUNNEL))
+    before = snapshot(tc)
+    for method, path, body in [('POST', '/v1/devices/launch/code', {}),
+                               ('POST', '/v1/devices/pair/start', {'scopes': ['observe']}),
+                               ('POST', '/v1/devices/launch/redeem',
+                                {'code': launch, 'platform': 'web'})]:
+        r = request(tc.base_url, method, path, body=body, headers={'Host': TUNNEL})
+        assert _refused(r), path
+    assert snapshot(tc) == before
+    assert request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                   body={'code': pair, 'platform': 'web'},
+                   headers={'Host': TUNNEL}).status == 200
+    enable(tc, Backend(path=origin.PathClass.DIRECT_LOCAL))
+    assert request(tc.base_url, 'POST', '/v1/devices/launch/redeem',
+                   body={'code': launch, 'platform': 'web'}).status == 200
+
+
+def test_a_stream_over_a_tunnel_closes_when_its_origin_is_lost(tc):
+    code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe']}).json()['code']
+    paired = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                     body={'code': code, 'platform': 'web'}).json()['token']
+    backend = Backend(path=origin.PathClass.REGISTERED_TUNNEL)
+    enable(tc, backend)
+    tc.core.api.sse.heartbeat_s = 0.1
+    s = SSEClient(tc.base_url, paired, headers={'Host': TUNNEL})
+    try:
+        assert s.status == 200
+        assert s.next(timeout=5) is not None
+        backend.bad = 'expired'
+        deadline = time.monotonic() + 5
+        while s.next(timeout=1) is not None:
+            assert time.monotonic() < deadline, 'the stream outlived its origin'
+    finally:
+        s.conn.close()
+
+
+@pytest.mark.xfail(strict=True, reason='PV20-11 activation blocker: backend calls have no time bound')
+def test_backend_calls_are_time_bounded(tc):
+    """PV20-11 activation blocker (origin.py): a hung attest must answer undetermined
+    within a deadline. Until a bound exists this fails, so it stays an xfail."""
+    class Slow(Backend):
+        def attest(self, context):
+            time.sleep(3)
+            return super().attest(context)
+
+    enable(tc, Slow())
+    started = time.monotonic()
+    r = tc.http('GET', '/v1/health')
+    assert r.status == 403 and time.monotonic() - started < 1
+

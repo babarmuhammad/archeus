@@ -100,19 +100,28 @@ def test_by_default_every_peer_is_the_user_so_nothing_changes(core):
     assert core.http('GET', '/v1/health').status == 200
 
 
+@pytest.mark.parametrize('switch', [1, 'yes', None, 0])
+def test_a_non_bool_switch_is_refused_not_coerced_to_off(switch):
+    with pytest.raises(TypeError):
+        server.Api(db=None, missions=None, port=0, health=None, version='x',
+                   origin_enforcement_enabled=switch)
+
+
 @pytest.mark.parametrize('kind', list(origin.OriginClass))
 @pytest.mark.parametrize('path', list(origin.PathClass))
 @pytest.mark.parametrize('local,remote', [(True, False), (False, True), (False, False)])
 def test_Q160_Q161_transport_matrix(kind, path, local, remote):
     evidence = origin.OriginEvidence(origin=kind, path=path)
     for credential in (None, 'local', 'paired'):
-        expected = (kind == origin.OriginClass.USER and (
-            path == origin.PathClass.DIRECT_LOCAL and local or
-            path == origin.PathClass.REGISTERED_TUNNEL and remote
-            and credential in (None, 'paired')))
-        assert origin.authorize_transport(
-            evidence, local_host=local, remote_host=remote,
-            credential_origin=credential) == expected
+        for tunnel_route in (True, False):
+            expected = (kind == origin.OriginClass.USER and (
+                path == origin.PathClass.DIRECT_LOCAL and local
+                and credential in (None, 'local') or
+                path == origin.PathClass.REGISTERED_TUNNEL and remote and tunnel_route
+                and credential in (None, 'paired')))
+            assert origin.authorize_transport(
+                evidence, local_host=local, remote_host=remote,
+                credential_origin=credential, tunnel_route=tunnel_route) == expected
 
 
 def test_evidence_validation_and_native_stub():

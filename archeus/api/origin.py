@@ -1,4 +1,12 @@
-"""Socket-bound origin contract; no OS probes or credential authority."""
+"""Socket-bound origin contract; no OS probes or credential authority.
+
+ACTIVATION BLOCKER (PV20-11, before ORIGIN_ENFORCEMENT_ENABLED goes on): nothing
+bounds backend attest, valid or release in time. A hung call holds a request
+slot (32 slots, then 503 busy) and a stream thread, and never reaches the
+undetermined answer. Each native call must have a deadline that maps to
+undetermined, or the server must impose one. Recorded by the xfail test
+test_backend_calls_are_time_bounded (tests/v1/integration/test_api_origin_transport.py).
+"""
 from dataclasses import dataclass
 from enum import Enum
 import re
@@ -85,18 +93,21 @@ def validate_evidence(context, evidence):
                  or evidence.identity is not None))
 
 
-def authorize_transport(evidence, *, local_host, remote_host, credential_origin=None):
+def authorize_transport(evidence, *, local_host, remote_host, credential_origin=None,
+                        tunnel_route=True):
     """Transport gate, then credential branch check. Hosts are Core-configured.
 
     None credential selects the pre-credential stage, including bootstrap.
-    Forwarding headers never establish a path or a host.
+    Only the local device credential works on the direct local path; a paired
+    one is refused there (owner, 2026-10-21). tunnel_route False keeps a route
+    off the tunnel. Forwarding headers never establish a path or a host.
     """
     if not isinstance(evidence, OriginEvidence) or evidence.origin != OriginClass.USER:
         return False
     if not isinstance(evidence.origin, OriginClass) or not isinstance(evidence.path, PathClass):
         return False
     if evidence.path == PathClass.DIRECT_LOCAL:
-        return bool(local_host)
+        return bool(local_host) and credential_origin in (None, 'local')
     if evidence.path == PathClass.REGISTERED_TUNNEL:
-        return bool(remote_host and credential_origin in (None, 'paired'))
+        return bool(remote_host and tunnel_route and credential_origin in (None, 'paired'))
     return False
