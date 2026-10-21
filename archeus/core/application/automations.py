@@ -218,7 +218,7 @@ def _settle(tx, actor, e):
 
 def _claim(tx, actor, a, e, why):
     depth = depth_of(tx.conn, e)
-    chain = (tuple(e.cause_chain) + (e.id,))[-ev.MAX_CAUSE_CHAIN:]
+    chain = ev.caused_by(e)
     me = Ref('automation', a.principal_id)
     run = entities.AutomationRun(id=ids.new_id('automation_run'), automation_id=a.id,
                                  triggering_event_seq=e.seq, triggering_event_id=e.id,

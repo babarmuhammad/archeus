@@ -17,6 +17,7 @@ A handler that cannot handle an event yet raises `Hold` (P14, p14-design-gate
 event is delivered again on a later pass and nothing after it overtakes it.
 """
 
+from ...core.domain import events as ev
 from . import outbox
 
 
@@ -52,10 +53,13 @@ def deliver(db, name, handler, *, limit=100):
             (name, start))}
     for n, event in enumerate(batch):
         if event.seq not in done:
+            cause = ev.CAUSE.set(ev.caused_by(event))      # what the handler writes, it caused
             try:
                 result = handler(event)
             except Hold:
                 return n
+            finally:
+                ev.CAUSE.reset(cause)
             db.writer.execute(_record_effect, {'name': name, 'seq': event.seq,
                                                'result': str(result or '')})
         db.writer.execute(_advance, {'name': name, 'seq': event.seq})
