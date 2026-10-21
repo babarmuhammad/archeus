@@ -4,6 +4,37 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## What round 8 changed
+
+- **Owner rule (verbatim, 2026-10-21): "I like the new concepts of codex but the it remove the project name from the new visual design that was usefull".** Every project hull shows its name on every screen: desktop, Replay, phone and terminal. The v2 images drop the names; this build keeps them. Project names rank first in the label budget.
+- **Phone Overview (under 640 px; the phone route uses the same scene).** One composition: the focus missions (waiting first, then running) sit inside their real project's hull (Harbor), the Archeus star sits between them with an ARCHEUS label, other projects are small receded octahedra with their names, directional threads carry small arrowheads, orbit rings are off. Labels: focus missions and project names only. The waiting mission carries a filled 48 px Review button. Chips: one "All work" chip opens the full list. Headline 34 px serif, status line below it.
+- **Phone sheets.** The detail sheet shows state, title, What, Why, "Core (fixture text)", "Open decision" (the decision page shows the action hash and plan version from fixtures) and Close. The conversation sheet has a grabber; General answers carry a "General" tag and the off "Promote to project memory" control.
+- **Desktop label budget.** Far (whole space): project names, Archeus, and missions that need you or are running. Zoomed to a project: all of its missions. Hovered figures always show. The rest are counted in a "+N more missions" note. The core label sits below the star rays.
+- **Typography.** UI and mission labels are sans; serif is the wordmark, the headlines and the Archeus name only.
+- **Terminal, rebuilt on a character grid.** 120 x 40: ARCHEUS star, the Harbor box with its two focus missions (amber mission with its state and "[Enter] Open decision"; blue star mission with its chain Verifying, Codex, Verification, Results), "+1 more", dashed links to Notes and Lantern boxes with counts, a Why line, a key-hint bar, a tell line (not sent) and the SIMULATED line. 80 x 24: stacked project boxes, one row per mission. Mission, decision and Replay screens use the same boxes. Keys added: `?` help, `:` jump to a project, mission or replay, `/` filter, `L` plain-line mode (labelled lines, no boxes), `a` then `y` to approve in the decision screen (the confirm step is shown; nothing is approved). Every state has a glyph and a word; the output uses no colour.
+- **Decision.** The plan page shows the action hash and plan version from the fixture; Approve opens the confirm box, which names the hash. Nothing is approved in the prototype.
+- Service worker cache bumped to `archeus-v2-proto-8`. `check.mjs` updated for the General tag.
+
+### Sizes and checks (round 8)
+
+- Phone Overview, checked by eye and by label boxes at 360 x 800, 390 x 844, 393 x 852, 402 x 874, 430 x 932 and 440 x 956: no horizontal scroll, zero label overlaps with the bar or the chips, every visible control at least 48 px, project names present (Harbor, Notes, Lantern). Montage: `scratchpad/t123/r8-phone-sizes-montage.png`.
+- Desktop Overview, label boxes: zero overlaps at 1280 x 720, 1440 x 900, 1600 x 900 and 1920 x 1080, project names included.
+- Desktop Replay: zero overlaps at 1600 x 900 and 1920 x 1080. At 1280 x 720 and 1440 x 900 the verb labels "contains" and "executes" touch a node or each other. At phone widths the Replay verb labels overlap (six pairs at 390). Not fixed in round 8.
+- iPhone 18 sizes remain unverified (see round 7). Safe-area insets are CSS-only.
+
+### Apple HIG and design-audit, round 8
+
+- Applied this round: 48 px targets on the phone, sheet grabber, solid sheet backgrounds, sans for UI text.
+- design-audit: loaded, and its reduction filter and dimensions applied by hand to the round 8 screenshots. Its protocol asks to present a plan and wait for approval before changing anything; this round could not wait, so the phased-approval step was not run.
+- typography skill: not run as a separate pass. The type scale is 34 px headline, 22 px label, 16 px body, 14 px minimum.
+
+### Still weaker than the images
+
+- Phone: no matte facet shading; the bodies are wireframes with a faint wash, not filled faces. The composition is still busier than phone-1.
+- Terminal: no colour at all, while the concept uses amber and blue for states; the glyph and word carry the state. The tell line is not dimmed (the text block has one colour). The 80 x 24 layout has no Why line.
+- Desktop: the default Overview is still busier than desktop-1-now-v2 (the hull fill is more visible, the core label sits near the rays). The Replay constellation has no hull around the mission, unlike replay-2.
+- Decision: a plan page plus a confirm box, not a separate screen on the desktop. The phone decision is the same page.
+
 ## What round 7 changed
 
 - **Phone (under 880 px) is one calm screen.** The Overview is a short headline, the constellation, and one bar at the bottom. The bottom navigation bar is gone: Places opens the list of screens from a button at the top. Only the two focus objects are labelled (the one that needs you and the live one); everything else is unlabelled and the scene is larger. Count chips above the bar ("3 projects", "5 more missions") open the full list in a sheet.
@@ -106,7 +137,7 @@ Not applied, and why:
 | Phone | `#/phone` | `10-phone-needs-you`: compact hub, Review, slim sheet. Codex `chat-3-phone-390` for the chat |
 | Plan approval | `#/plan/m-search` | Design doc section 4.2 |
 
-## Remaining gaps against the approved concepts (after round 7)
+## Remaining gaps against the approved concepts (after round 8, see round 8 section)
 
 Honest state. Checked by Playwright screenshots and label-box counts. Still weaker than the concepts:
 
