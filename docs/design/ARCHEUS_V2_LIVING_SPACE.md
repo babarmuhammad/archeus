@@ -515,10 +515,10 @@ Proposal: the same composition as 10 without a request. Archeus thread-star in t
 Proposal:
 - Archeus at the centre. Two or three task bodies around it at stable addresses, each a small labelled star with its state word. Overflow stays a named count ("2 more need you").
 - Only the obligation body is amber. Review performs one bounded step to that body's star (about 400 ms, interruptible; reduced motion: immediate). No pan, no pinch, no free camera (LS-7 stands). Owner question 3.
-- The review sheet is slim, rising about 40% of the screen, with What, Why, Core's consequence line and Open decision. Its translucency is an owner question (§5, question 2). Until answered, the sheet is opaque.
+- The review sheet is slim, rising about 40% of the screen, with What, Why, Core's consequence line and Open decision. Translucency is decided (2026-10-21, §7, Q2): a tint only where text keeps 4.5:1 over the worst background behind it; opaque under reduced transparency and high contrast.
 
 **11 Phone, one gesture (LS-7, screen 3).** Feedback: "Un po' sproporzionate le dimensioni, farei i testi più piccoli."
-Proposal: reduce the LS-7 proposal at a 390 CSS-pixel viewport: headline 30/36 to 26/32; work title 24/30 to 20/26; body 18/26 to 16/24; secondary 16/22 to 14/20. No operational text below 14 px, which keeps LS-7's no-11-pixel rule. Controls stay at least 48×48 so the reduced text does not shrink the Approve control. This conflicts with the owner's verdict on concept 05 ("too dense / small"), so it is owner question 1.
+Proposal: reduce the LS-7 proposal at a 390 CSS-pixel viewport: headline 30/36 to 26/32; work title 24/30 to 20/26; body 18/26 to 16/24; secondary 16/22 to 14/20. No operational text below 14 px, which keeps LS-7's no-11-pixel rule. Controls stay at least 48×48 so the reduced text does not shrink the Approve control. Decided 2026-10-21 (§7, Q1, "Yes, cut it"): body 16/24, headline 26/32, minimum 14 px, controls 48 px, verified on a real phone before build. The work title 20/26 and secondary 14/20 are as written here; the owner's answer did not name them.
 
 **12 Phone, mission (LS-7, screen 4).** Feedback: dislike, no comment.
 Proposal: replace the wrapped horizontal phase text with a vertical list of six rows (Understand, Plan, Approve, Run, Verify, Review), each with a tick, cross or current marker and a state word. Every block has a text heading: Latest record, Task, Evidence, Activity, Plan, Why. Tell and Stop stay docked. The facts match the LS-8 mission frame.
@@ -554,6 +554,8 @@ Principle: nothing appears before Core records it. No optimistic star, no queued
 | 5. Record | Nothing further | A neutral outlined body appears in the chosen project with state word "Planning". One finite reveal near its project, 600 ms at most; immediate under reduced motion | Mission reaches CREATED then PLANNING in Core. Body, reveal and placement are new |
 | 6. Plan | Reviews if asked | Either the recorded line "plan v1 approved within policy" and the body moves to running, or the body turns amber with "Plan ready · review" | Auto-approval within policy and plan_needs_approval are recorded in Core. Amber placement is new |
 
+Start path, owner decision 2026-10-21 (§7, Q4): Tell first, the project form second. Tell's project-scope check (above) still applies before the chip is built.
+
 Stopped: Tell is rejected, not queued (Q13). Offline: Send is disabled with its reason; no queue (LS-3). Ideas start only through the prepared Tell request decided under Q14c; nothing further this round (DR-10).
 
 #### 4.2 Plan review (design proposal)
@@ -571,7 +573,7 @@ Entry: Review on the amber body (desktop and phone), the decision row (terminal)
    - **Reject.** Cancels the mission under Core's consequence text. "A decided approval cannot be changed." No undo.
 6. Rules: no approval from a list, home screen, push notification or swipe (LS-3, LS-7). The Approve control disables and rereads if the plan changed or was decided elsewhere (LS-7 stale rule).
 
-The reviewer's request for "feed back on the plan" is answered by Request changes and Edit plan, both existing. Comments on individual tasks are not in V1 (§5, question 5).
+The reviewer's request for "feed back on the plan" is answered by Request changes and Edit plan, both existing. Per-task comments are not in V1. The owner decided on 2026-10-21 that they are wanted now (§7, Q5), so their contract is proposed in §8, not built.
 
 #### 4.3 What V1 supports and what is new
 
@@ -585,7 +587,7 @@ The reviewer's request for "feed back on the plan" is answered by Request change
 | Core consequence text | Consequence strings for each decision | Exists. Used as given |
 | Start by Tell | `POST /v1/conversations/{id}/messages` (control); clarification at `POST /v1/intents/{id}/clarify` | Exists. The prepared-send panel and any project scope are new or unverified |
 | Start a mission in a project | `POST /v1/missions` (control): title, objective, project_id, success_criteria | Route exists. The project-inspector form is new |
-| Per-task comments on a plan | None | New. Owner question 5 |
+| Per-task comments on a plan | None | New. Owner decision 2026-10-21 (§7, Q5): wanted now. Contract proposed in §8, not built |
 | Question to the planner without changing the plan | None; the request-changes note is the only channel | New. Not proposed this round |
 | Undo an approval | None | Not proposed |
 
@@ -595,15 +597,16 @@ Authority: deciding and editing plans need the approve scope; starting missions 
 
 Each question needs an owner answer. Recommended answers are proposals.
 
-1. **Phone type scale (§3, 11).** The reviewer asks for smaller text; the owner called the earlier phone "too dense / small". Recommended: body 16/24, title 20/26, headline 26/32, nothing under 14 px, controls 48×48. Verify on a real phone before accepting.
-2. **Translucent review sheet (§3, 10).** The reviewer asks for a slim, transparent panel; the concept README and §4 reject translucent glass panels. Recommended: allow a translucent tint only where text meets 4.5:1 over the worst background behind it, and go opaque under reduced transparency and high contrast.
-3. **One zoom step on the phone (§3, 10).** LS-7 says no free camera on phone. Recommended: allow one bounded step to the chosen task star, no pan or pinch, immediate under reduced motion.
-4. **Primary way to start work (§4.1).** Tell (free text, Core clarifies) or a structured mission form in the project. Recommended: Tell first, the project form second. Both use existing routes. Confirm first that Tell can carry a project scope.
-5. **Comments on a plan (§4.2).** A per-task comment thread would be a new contract and the planner would have to read it. Recommended: ship the existing note and plan edit now; decide per-task comments as a separate contract later.
+1. **Phone type scale (§3, 11).** *Answered 2026-10-21: yes, cut it (§7).* The reviewer asks for smaller text; the owner called the earlier phone "too dense / small". Recommended: body 16/24, title 20/26, headline 26/32, nothing under 14 px, controls 48×48. Verify on a real phone before accepting.
+2. **Translucent review sheet (§3, 10).** *Answered 2026-10-21: tint only if readable (§7).* The reviewer asks for a slim, transparent panel; the concept README and §4 reject translucent glass panels. Recommended: allow a translucent tint only where text meets 4.5:1 over the worst background behind it, and go opaque under reduced transparency and high contrast.
+3. **One zoom step on the phone (§3, 10).** *Open. Not asked on 2026-10-21; recommendation stands.* LS-7 says no free camera on phone. Recommended: allow one bounded step to the chosen task star, no pan or pinch, immediate under reduced motion.
+4. **Primary way to start work (§4.1).** *Answered 2026-10-21: Tell first, form second (§7).* Tell (free text, Core clarifies) or a structured mission form in the project. Recommended: Tell first, the project form second. Both use existing routes. Confirm first that Tell can carry a project scope.
+5. **Comments on a plan (§4.2).** *Answered 2026-10-21: per-task comments now. This rejects the recommendation below (§7, §8).* A per-task comment thread would be a new contract and the planner would have to read it. Recommended (rejected): ship the existing note and plan edit now; decide per-task comments as a separate contract later.
+6. **Do per-task comments reach the planner? (§8.3).** *New, 2026-10-21, open.* Recommended: yes, but only inside a request-changes decision, so one decision carries the note and the selected comments. A comment never reaches the planner on its own.
 
 ### 6. Round 3 image brief
 
-**Design proposal, for Codex image generation later.** Thirteen images: nine reworked (01, 09, 10, 11, 12, 15, T1, T2, T3) and four new (N1 to N4). Every image carries a CONCEPT FIXTURE label and fixture names and counts. Every glyph carries a text label. Same glyph set, type scale (§3) and state colours as the rest. No glow, bloom, orbit, reactor, glass or decorative particles. The review sheet in R3-10 is rendered opaque until owner question 2 is answered.
+**Design proposal, for Codex image generation later.** Thirteen images: nine reworked (01, 09, 10, 11, 12, 15, T1, T2, T3) and four new (N1 to N4). Every image carries a CONCEPT FIXTURE label and fixture names and counts. Every glyph carries a text label. Same glyph set, type scale (§3) and state colours as the rest. No glow, bloom, orbit, reactor, glass or decorative particles. The review sheet in R3-10 is rendered opaque in this brief; the translucency rule decided on 2026-10-21 (§7, Q2) applies only once the 4.5:1 check passes on the real background.
 
 **R3-01 Entrance (reworked from 01).** Three equal frames labelled 0 ms, 240 ms and 800 ms, each in the same desktop shell: "Not stopped · accepts new work", Tell, Stop, narrow left navigation. At most three bodies per frame. The first frame shows the Archeus star at centre and the state sentence. The second adds the Archeus project hull with "Fix date test · Verifying" in blue and a "Codex · execution" triangle. The third adds amber "Search provenance · Review plan" nearer, with a Review button. Three depth tiers by scale; headline "1 needs you · 1 verifying" in the 02 type.
 
@@ -631,4 +634,121 @@ Each question needs an owner answer. Recommended answers are proposals.
 
 **R3-N4 Plan review, phone (new).** Pushed page with no tabs and Back at the top. Title, Why, task rows, Core consequence lines. Fixed bottom bar: Approve plan (48 px) and Request changes. Stop in the lower corner. Plan v1 of 1.
 
-No owner decision is recorded in this section. Everything marked design proposal stays open until §5 is answered.
+No owner decision is recorded in this section; the 2026-10-21 decisions are in §7. Everything marked design proposal stays open until §5 is answered, except where §7 decides it.
+
+### 7. Owner decisions 2026-10-21, round 3
+
+Recorded from the owner's AskUserQuestion answers, 2026-10-21. The answer column is verbatim. The effect column is this document's reading of it, and §3 and §4 now follow it.
+
+| Question | Owner answer (verbatim) | Effect recorded here |
+|---|---|---|
+| Q1 phone type scale (§5.1) | "Yes, cut it (Recommended)" | Body 16/24, headline 26/32, minimum 14 px, controls 48 px. Verify on a real phone before build. Work title 20/26 and secondary 14/20 stay as §3 wrote them; the answer did not name them. |
+| Q2 review panel translucency (§5.2) | "Tint only if readable (Recommended)" | Translucency only where text keeps 4.5:1 over the worst background behind it. Opaque under reduced transparency. |
+| Q3 phone review zoom (§5.3) | not asked | Open. Recommendation unchanged: one bounded step to the task star, no pan or pinch, immediate under reduced motion. |
+| Q4 start work (§5.4) | "Tell first, form second (Recommended)" | Tell is the first start path; the project form is second. Both use existing routes (§4.1). Tell's project-scope check still needed. |
+| Q5 plan comments (§5.5) | "Per-task comments now" | Rejects the recommendation "ship existing now". Per-task comments are wanted before the prototype. Contract proposed in §8, not built. |
+
+Sections changed by these decisions, each marked in place: §3 items 10 and 11; §4.1 (start path paragraph); §4.2 (comments sentence); §4.3 (per-task comments row); §5 (status on items 1, 2, 3, 4, 5, and new item 6); §6 (R3-10 opacity note); the closing line of §6.
+
+Still open: Q3 (§5.3) and new question Q6 (§5.6, §8.3).
+
+### 8. Plan comments contract (proposal, not built)
+
+**Status.** PROPOSED. It follows owner decision Q5 (§7). No part of it exists in V1. Each statement carries one label:
+
+- **PINNED**: cited to V1 code, path and line, in this worktree.
+- **PROPOSED**: this design's choice; V1 has no such thing.
+- **UNKNOWN**: not verified, with the check named.
+
+**Snapshot caveat.** The PINNED citations are from `D:/archeus-t123/archeus/`, branch `v2/living-space` at tip 5db3ac0. That is an older snapshot. V1 at the current tip of `archeus-v1-rearchitecture` (last seen at f483f87 in the session git status) may differ. Check before build against the v1 branch. `D:/Archeus/.collab/p21-design-gate.md` does not exist in `D:/Archeus/.collab/` (glob, no match), so the P21 gate's location is UNKNOWN. Find it on the v1 branch before citing it.
+
+#### 8.1 What V1 has today
+
+- PINNED. A plan version is immutable; a replan or edit is a new row (`archeus/core/domain/entities.py:802-805`). Its identity is `plan_version` and `digest` (`entities.py:819`, `830`).
+- PINNED. Task rows are frozen per plan version. Their `key` is unique within that plan (`entities.py:885-898`). Core assigns keys `t1`…`tN` in order on every edit (`archeus/core/application/work.py:271-272`). So a task key means something only inside one version.
+- PINNED. `Plan.edited_by` records the principal whose edit made a version (`entities.py:845`). The task spec the API accepts (`PlanTaskSpec`, `archeus/api/schemas.py:722-744`) has no comment or note field.
+- PINNED. Approval decisions are `POST /v1/approvals/{id}/decide` with approve scope (`archeus/api/routes.py:1132`). Body: `decision` (approve, reject, request_changes), `action_hash`, optional `note`, `step_up`, `expected_version` (`archeus/api/schemas.py:928-933`).
+- PINNED. The plan's action hash covers the plan contents (`archeus/core/application/authorization.py:190-191`). A decision for a plan whose digest changed is refused as superseded (`authorization.py:609-610`). A hash mismatch is refused (`authorization.py:588-592`).
+- PINNED. Request changes writes the note into the approval's `decision_note` (`authorization.py:685-687`). It also sends the mission back with the note as its reason (`authorization.py:659-662`, `673-676`; `archeus/core/application/commands.py:497-500`).
+- PINNED. The mission event reason becomes the planner's round reason (`archeus/core/planning/worker.py:80-84`). The planner prompt renders it as "This is a new plan: …" (`archeus/core/planning/planner.py:168-169`). The single "What should change?" note is the only path from a person to the planner today.
+- PINNED. The UI copy reads "What should change? (the planner reads this)" (`archeus/cli/tui/screens.py:647-651`).
+- UNKNOWN. That the live planner actually receives the note on a real round. The code path is PINNED; no run was made. Check with a replan on a test mission.
+- PINNED. Plan edit is `POST /v1/plans/{id}/edit` with approve scope (`routes.py:983-984`; `schemas.py:936-939`). `Work.edit_plan` accepts only the plan in force on a mission in APPROVAL_REQUIRED (`work.py:253-257`). It sends the mission back and proposes the next version with `edited_by` set (`work.py:277-283`). Live approvals of the superseded version end with it (`authorization.py:456-458`).
+- PINNED. Plan events are `plan.created` and `plan.state_changed` (`archeus/core/domain/events.py:33-34`).
+- PINNED. Entities map to tables through one table map (`archeus/infra/db/rows.py`, e.g. `entities.Feedback: 'feedback'` at line 36).
+- PINNED. No comment entity appears in `entities.py` (grep for comment, note, reason).
+- UNKNOWN. The next migration number. The latest in this snapshot is `0016_idempotency_proofs.sql`; recheck on the v1 branch.
+
+#### 8.2 Data shape of a per-task comment (PROPOSED)
+
+A separate row, not a field on `Task` or `Plan`. Both are immutable per version (`entities.py:803-805`, `895-898`).
+
+| Field | Type | Rule |
+|---|---|---|
+| `id` | string | New id with its own prefix, like `ids.new_id('approval')` (PINNED pattern, `resources.py:569`) |
+| `mission_id` | ref mission | Required |
+| `plan_id` | ref plan | The version the comment was written on. Required |
+| `plan_version` | int | Copied from the plan, for display ("on v2") |
+| `task_key` | string | Must be a key in that plan version's task list, checked at write |
+| `task_id` | ref task, nullable | Link to the Task row of that version, for navigation |
+| `author_id` | ref principal | Same pattern as `Plan.edited_by` (PINNED `entities.py:810`) |
+| `body` | text | Fixed at insert. Length limit UNKNOWN; proposed 2000 characters |
+| `state` | open / addressed / withdrawn | Changed only by events. `addressed` when a request-changes decision carries it; `withdrawn` by its author |
+| `decision_id` | ref approval, nullable | The request-changes decision that carried it |
+
+Writes follow the decision-row pattern: content frozen at insert, state written once by the transition that moves it (`entities.py:1741-1745` describes this for Approval, PINNED).
+
+#### 8.3 Relation to approval authority and the change note
+
+- **Scope (PROPOSED).** Writing and withdrawing a comment needs approve scope, the scope that already edits plans (`routes.py:983`). Reading needs observe scope. V2 adds no authority (§4.3).
+- **Where it is allowed (PROPOSED).** Only on the plan in force, while its mission is APPROVAL_REQUIRED. This mirrors the check in `work.py:253-257`. A comment on a decided, superseded or older version is refused.
+- **Not a decision (PROPOSED invariant).** A comment changes no Approval row, no `action_hash`, no `plan_digest` and no plan content. An approval is still given only by an explicit decide call that echoes the displayed `action_hash` (`routes.py:854-861`).
+- **The change note stays (PINNED).** "What should change?" remains the single free-text note on request changes. Comments do not replace it.
+- **Edit stays the way to change tasks (PROPOSED).** A comment never edits a task. A person who wants a task changed uses Edit plan, which makes the next version (`work.py:237-283`).
+- **No carry-forward (PROPOSED).** Comments belong to the version they were written on. A new version does not inherit them, because keys are reassigned (`work.py:271-272`) and tasks can change. The page shows them as "on v{N}" and, after a new version, as "not in v{N+1}" when the key is gone.
+- **Supersession (PINNED plus PROPOSED).** When version N is superseded, its approvals end (`authorization.py:456-458`). Its open comments become read-only history.
+- **Planner delivery (open, Q6).** Option A, recommended: comments reach the planner only inside a request-changes decision. The decision body names the selected comment ids. The replan prompt renders them under the change note (`planner.py:157-180`, change PROPOSED). Option B: comments stay human-only. Then the UI copy "the planner reads this" must not cover them. Rejected: sending a comment on its own, since that starts a planning round with no decision.
+- **No silent approval (PROPOSED invariant).** Approve is never implied by a comment, a request-changes decision, a withdrawal or an edit. Approve needs its own decide call with the displayed hash. Open comments show as a count on the review page before approve. They do not block approve (UNKNOWN whether the owner wants a block; see §8.6).
+- **Auto-approval unaffected (PROPOSED).** Auto-approval runs in PLANNING (`archeus/core/domain/guards.py:133-146`). Comments exist only where approval is awaited, so the two cannot meet. A regression test checks this (§8.5).
+
+#### 8.4 Surfaces (names only, PROPOSED)
+
+- Routes, same `Route(...)` shape as `routes.py:983-984`: `POST /v1/plans/{id}/comments` (approve, idempotency key); `GET /v1/plans/{id}/comments` (observe); `POST /v1/plan-comments/{id}/withdraw` (approve).
+- Schemas: `PLAN_COMMENT`, `PLAN_COMMENT_WITHDRAW`. `DECIDE` (`schemas.py:928`) gains an optional `comment_ids` list, used only with `request_changes`.
+- Events: `plan_comment.created`, `plan_comment.withdrawn`, `plan_comment.addressed`, added to the table at `events.py:33-35`.
+- Table and entity: migration `NNNN_plan_comments.sql` (number UNKNOWN); a `PlanComment` entity; one entry in the table map (`rows.py`).
+- Planner: a comment block in `planner.prompt` (`planner.py:157-180`), used only when option A is chosen.
+- Clients: two helpers beside the plan helpers at `archeus/cli/_api.py:47-51`; one action on the approval screen next to Request changes (`screens.py:646-651`). Web and phone surfaces follow §4.2.
+
+#### 8.5 Mutations and tests (names only, PROPOSED)
+
+Mutations: `Work.add_plan_comment`, `Work.withdraw_plan_comment`, `Work.address_plan_comments` (called inside request changes); `PlanComment` entity and migration; the three routes; `PLAN_COMMENT` and `PLAN_COMMENT_WITHDRAW` schemas; `DECIDE.comment_ids`; three events; the planner comment block; the two CLI helpers; the screen action.
+
+Tests:
+
+- `test_comment_leaves_approval_state_unchanged`
+- `test_comment_leaves_action_hash_and_plan_digest_unchanged`
+- `test_comment_refused_on_superseded_or_decided_plan`
+- `test_comment_task_key_must_exist_in_its_version`
+- `test_comments_do_not_carry_to_next_version`
+- `test_request_changes_carries_only_selected_comments`
+- `test_withdrawn_comment_never_reaches_planner`
+- `test_comment_write_needs_approve_scope`
+- `test_approve_refused_when_plan_changed_after_review`
+- `test_auto_approval_unaffected_by_comments`
+
+#### 8.6 Scope: P21, P22, and a new card candidate
+
+- PINNED. P21 is "observability views": breaker drills, secrets review, trace UI, metrics, plus push transport (`docs/architecture/ARCHEUS_V1_REARCHITECTURE_PLAN.md:433`, `~1218-1224`). Its commits in the session git status are the mission trace view and the route table, which match that.
+- PINNED. P22 is legacy capabilities and the migration tooling (`ARCHEUS_V1_REARCHITECTURE_PLAN.md:1226-1232`).
+- PINNED. Plan editing belongs to P19 S2 (`routes.py:982`, `schemas.py:935`). Neither P21 nor P22 covers plan comments.
+- PROPOSED. A new V1 card candidate: "plan review page and per-task comments". It bundles the §4.2 page with §8, because comments anchor to the page's task list. It should land after P19 S2 and before the prototype the owner asked for. Its place in the phase order is UNKNOWN until the P21 gate is found and checked.
+- UNKNOWN. P22's current scope on the v1 branch. Check before placing the card.
+
+#### 8.7 Open items
+
+- UNKNOWN. Whether the live planner reads the change note on a real round (§8.1).
+- UNKNOWN. Comment body limit and comments per plan. Proposed 2000 characters; no count cap.
+- UNKNOWN. Whether open comments should block approve until addressed. Proposed: no block, a visible count only. The owner decides.
+- UNKNOWN. How a comment on a task that version N+1 removes is shown. Proposed: "task not in v{N+1}".
+- Question Q6 (§5.6) asks option A or B. Recommended: A.
