@@ -1,5 +1,7 @@
 # Archeus V2 prototype (fake data)
 
+Unzipped: open a terminal in this folder, run `py -m http.server 8000`, then open http://127.0.0.1:8000. file:// does not work for the PWA.
+
 A clickable prototype of the V2 living space and the phone live remote. Plain HTML, CSS and vanilla JS. No framework, no build step, no npm.
 
 ## How to open
@@ -39,6 +41,6 @@ Terminal concepts (13, T1 to T3) are not built here. They are text, not this scr
 - Breath amplitude (about 6 percent over 6 s) and the event pulse are not tuned. The event pulse is not implemented.
 - Per-task comments: the UI stores comments in memory and carries selected ones into the request-changes dialog. The planner contract (Q6, option A) is not built.
 - Stale-plan handling (the Approve control re-reading when the plan changed elsewhere) is not implemented.
-- Installability: the manifest uses one inline SVG icon. Some platforms want PNG 192/512 icons; add them if the install prompt does not appear.
+- Installability: the manifest references PNG icons 192 and 512 plus a maskable 512 (`icon-*.png`). The install prompt is not tested on a real device.
 - Service worker is network-first with a shell cache from install. Bump `CACHE` in `sw.js` if the shell changes and you need an offline copy refreshed.
 - `check.mjs` checks files, syntax, manifest, contrast pairs, font floor and key accessibility hooks. It does not run the UI. Run it as `node clients/v2-prototype/check.mjs` from the repo root, through the shared test lock.

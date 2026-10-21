@@ -8,11 +8,8 @@
   "background_color": "#0E1116",
   "theme_color": "#0E1116",
   "icons": [
-    {
-      "src": "data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2096%2096%27%3E%3Crect%20width=%2796%27%20height=%2796%27%20rx=%2720%27%20fill=%27%230E1116%27/%3E%3Cpath%20d=%27M48,14,52,44,82,48,52,52,48,82,44,52,14,48,44,44Z%27%20fill=%27%23F4F1EA%27/%3E%3Ccircle%20cx=%2748%27%20cy=%2748%27%20r=%276%27%20fill=%27%23F2B544%27/%3E%3C/svg%3E",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

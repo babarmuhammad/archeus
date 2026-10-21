@@ -27,6 +27,16 @@ try { manifest = JSON.parse(read('manifest.json')); } catch (e) { failures.push(
 if (manifest) {
   check(manifest.display === 'standalone', 'manifest display is not standalone');
   check(Array.isArray(manifest.icons) && manifest.icons.length > 0, 'manifest has no icons');
+  for (const icon of manifest.icons || []) {
+    const path = join(dir, icon.src);
+    check(icon.type === 'image/png' && existsSync(path), `manifest icon missing or not PNG: ${icon.src}`);
+    if (!existsSync(path)) continue;
+    const buf = readFileSync(path);
+    const size = Number(icon.sizes.split('x')[0]);
+    check(buf.subarray(1, 4).toString('ascii') === 'PNG' && buf.readUInt32BE(16) === size && buf.readUInt32BE(20) === size, `icon ${icon.src} is not a ${size}px PNG`);
+  }
+  check((manifest.icons || []).some((i) => i.purpose === 'maskable'), 'no maskable icon');
+  for (const icon of ['icon-192.png', 'icon-512.png', 'icon-maskable-512.png']) check(sw.includes(`'./${icon}'`), `service worker does not cache ${icon}`);
   check(typeof manifest.start_url === 'string', 'manifest start_url missing');
 }
 

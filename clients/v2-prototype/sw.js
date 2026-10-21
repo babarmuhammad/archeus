@@ -1,5 +1,5 @@
 const CACHE = 'archeus-v2-proto-1';
-const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json'];
+const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
