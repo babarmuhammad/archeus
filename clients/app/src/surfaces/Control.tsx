@@ -185,7 +185,8 @@ function Automations() {
                 <KV
                   rows={[
                     ['When', triggerText(a.trigger)],
-                    ...(a.state === 'ENABLED' && a.next_run_at ? [['Next run', ago(a.next_run_at)] as [string, string]] : []),
+                    ...(a.state === 'ENABLED' && a.waiting ? [['Waiting', String(a.waiting)] as [string, string]] : []),
+                    ...(a.state === 'ENABLED' && !a.waiting && a.next_run_at ? [['Next run', ago(a.next_run_at)] as [string, string]] : []),
                     ['Archeus will', templateText(a.template)],
                     ['Depth limit · rate limit', `${String(a.max_depth ?? '—')} · ${String(a.rate_limit ?? '—')} per hour`],
                   ]}

@@ -58,6 +58,11 @@ def _api_next(rig, aid):
         return A.get_automation(conn, aid, runs=0)['next_run_at']
 
 
+def _api_waiting(rig, aid):
+    with rig.db.read() as conn:
+        return A.get_automation(conn, aid, runs=0)['waiting']
+
+
 def test_H01_a_schedule_fires_at_its_time_not_before_and_moves_on(rig, frozen):
     aid = rig.automation(trigger=EVERY)
     assert rig.row(entities.Automation, aid).entity.next_run_at == iso(15)
@@ -123,6 +128,11 @@ def test_H03_two_workers_on_one_time_claim_it_once(rig, frozen):
     for t in ts:
         t.join(30)
     rig.pump()
+    assert len(rig.runs(aid)) == 1
+    # a second worker that read the time as due before the first commit reaches the
+    # writer after it, every run: its claim must find the time already moved on
+    late = rig.db.writer.execute(A.fire_due, {'actor': rig.system, 'automation_id': aid})
+    assert late == {'runs': []}
     assert len(rig.runs(aid)) == 1
     with rig.db.read() as conn:
         assert len(_due_events(conn, aid)) == 1
@@ -223,17 +233,20 @@ def test_H10_a_schedule_of_an_archived_project_or_while_disarmed_waits_and_fires
         rig.pump()
     assert rig.runs(aid) == []                       # no condition_false run per period
     assert rig.row(entities.Automation, aid).entity.next_run_at == iso(1)
+    assert _api_waiting(rig, aid) == 'project gone or archived'
     rig.do(_archive, actor=rig.admin, project_id=pid, state='ACTIVE')
     frozen(3)
     rig.pump()
     (run,) = rig.runs(aid)
     assert run.rationale['schedule'] == {'every': '1m', 'due_at': iso(1), 'missed': 2}
+    assert _api_waiting(rig, aid) is None
     os.makedirs(os.path.dirname(paths.stop_sentinel()), exist_ok=True)
     open(paths.stop_sentinel(), 'w').close()         # disarmed (e-stop)
     try:
         frozen(4)
         rig.pump()
         assert len(rig.runs(aid)) == 1
+        assert _api_waiting(rig, aid) == 'Core disarmed'
     finally:
         os.remove(paths.stop_sentinel())
     frozen(4)

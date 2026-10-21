@@ -84,6 +84,7 @@ export interface Automation {
   armed_seq?: number;
   version: number;
   next_run_at?: string | null;
+  waiting?: string | null;
   runs?: AutomationRun[];
   [field: string]: unknown;
 }

@@ -52,6 +52,7 @@ TT = 'tests/v1/integration/test_trace.py'
 AUT = 'archeus/core/application/automations.py'
 MAT = 'archeus/core/automation/matcher.py'
 WRK = 'archeus/core/automation/worker.py'
+NOW_TS = 'clients/app/src/state/now.ts'
 SH = 'tests/v1/integration/test_schedule_triggers.py::'
 AU = 'tests/v1/unit/test_automation_units.py::'
 H01 = SH + 'test_H01_a_schedule_fires_at_its_time_not_before_and_moves_on'
@@ -394,7 +395,7 @@ MUTATIONS = [
      "actor=actor, bump=True)")],
      [SH + 'test_H09_a_fire_does_not_stale_a_persons_version']),
     ('Z146', 'a schedule of an archived project or a disarmed Core is claimed', [(AUT,
-     "    if a is None or not _schedule_may_run(tx, a):",
+     "    if a is None or _waiting(tx.conn, a):",
      "    if a is None:")],
      [SH + 'test_H10_a_schedule_of_an_archived_project_or_while_disarmed_waits_and_fires_once']),
     ('Z147', 'a schedule whose claim raises stops the others', [(WRK,
@@ -413,6 +414,15 @@ MUTATIONS = [
      "    missed = int((now_s - due_s) // every)",
      "    missed = 0")],
      [SH + 'test_H02_a_restart_fires_the_times_it_missed_once_then_keeps_the_grid']),
+    # ── P21 slice H review fixes (T-129 r2): the waiting reason, and Upcoming without held schedules ──
+    ('Z155', 'the API gives no reason for a held schedule', [(AUT,
+     "    return dict(a.to_dict(), next_run_at=nxt, waiting=held, version=row.version,",
+     "    return dict(a.to_dict(), next_run_at=nxt, waiting=None, version=row.version,")],
+     [SH + 'test_H10_a_schedule_of_an_archived_project_or_while_disarmed_waits_and_fires_once']),
+    ('Z156', 'a held schedule is still listed as upcoming', [(NOW_TS,
+     "  as.filter((a) => a.state === 'ENABLED' && a.next_run_at && !a.waiting).sort(",
+     "  as.filter((a) => a.state === 'ENABLED' && a.next_run_at).sort(")],
+     ['node:test/now.test.ts']),
 ]
 
 

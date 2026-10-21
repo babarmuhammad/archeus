@@ -42,6 +42,11 @@ test('upcoming step 2 (P21 D9): the enabled schedules, soonest first, by Core\'s
   assert.deepEqual(got.map((x: { id: string }) => x.id), ['soon', 'late']);
 });
 
+test('upcoming step 2: a schedule its gate holds is not upcoming (Control says why)', () => {
+  const a = (id: string, waiting: string | null) => ({ id, name: id, state: 'ENABLED', next_run_at: '2026-10-21T09:15:00.000Z', waiting, trigger: { kind: 'schedule', every: '1h' }, template: {}, version: 1 }) as never;
+  assert.deepEqual(scheduled([a('held', 'Core disarmed'), a('free', null)]).map((x: { id: string }) => x.id), ['free']);
+});
+
 test('recent decisions: decided approvals, fallbacks and confirmed DECISION knowledge, newest first', () => {
   const ap = [
     { id: 'apr_1', state: 'CONSUMED', decision: 'approve', decided_at: '2026-10-02T10:00:03Z', mission_id: 'm1' },

@@ -222,7 +222,7 @@ def fire_due(tx, *, actor, automation_id):
     `missed` says how many. One schedule per command, so a claim that raises
     rolls back that schedule alone. Returns the run ids."""
     a = next((x for x in due(tx.conn, tx.now) if x.id == automation_id), None)
-    if a is None or not _schedule_may_run(tx, a):
+    if a is None or _waiting(tx.conn, a):
         return {'runs': []}
     every = matcher.every_s(a.trigger)
     due_s, now_s = _epoch(a.next_run_at), _epoch(tx.now)
@@ -240,16 +240,17 @@ def fire_due(tx, *, actor, automation_id):
     return {'runs': [_claim(tx, actor, a, e, why)]}
 
 
-def _schedule_may_run(tx, a):
-    """A schedule whose project is gone or archived, or while Core is disarmed,
-    is not claimed: its time stays due and fires once together when it may run
-    again. Claiming it anyway would write a denied or condition_false run every
-    period, and neither reason counts toward the loop guard."""
+def _waiting(conn, a):
+    """Why a schedule's due time is held, or None when it may run: its project
+    gone or archived, or Core disarmed (e-stop). A held time stays due and fires
+    once together when it may run again. Claiming it anyway would write a denied
+    or condition_false run every period, and neither reason counts toward the
+    loop guard."""
     if a.project_id is not None:
-        p = tx.get(entities.Project, a.project_id)
+        p = rows.get(conn, entities.Project, a.project_id)
         if p is None or p.entity.state != 'ACTIVE':
-            return False
-    return not authorization.estop_armed()
+            return 'project gone or archived'
+    return 'Core disarmed' if authorization.estop_armed() else None
 
 
 def settles(e):
@@ -341,12 +342,14 @@ def _guard(tx, actor, a, run_id):
 
 # ── reads (§15) ──────────────────────────────────────────────────────────────
 
-def _view(row):
+def _view(conn, row):
     a = row.entity
     # a time is only true while the schedule runs: disabled or suspended, none
     nxt = a.next_run_at if a.state == 'ENABLED' else None
-    return dict(a.to_dict(), next_run_at=nxt, version=row.version, created_at=row.created_at,
-                updated_at=row.updated_at)
+    # a gate that holds a due time says why: such a schedule is not in Upcoming
+    held = _waiting(conn, a) if nxt and a.trigger.get('kind') == 'schedule' else None
+    return dict(a.to_dict(), next_run_at=nxt, waiting=held, version=row.version,
+                created_at=row.created_at, updated_at=row.updated_at)
 
 
 def _run_view(row):
@@ -362,7 +365,7 @@ def quarantined(conn):
 
 
 def list_automations(conn):
-    return {'automations': [_view(r) for r in rows.where(conn, entities.Automation)],
+    return {'automations': [_view(conn, r) for r in rows.where(conn, entities.Automation)],
             'quarantined': quarantined(conn)}
 
 
@@ -371,7 +374,7 @@ def get_automation(conn, automation_id, *, runs=50):
     if row is None:
         raise lifecycle.NotFound(automation_id)
     rs = rows.where(conn, entities.AutomationRun, automation_id=automation_id)
-    return dict(_view(row), runs=[_run_view(r) for r in rs[-runs:]])
+    return dict(_view(conn, row), runs=[_run_view(r) for r in rs[-runs:]])
 
 
 def _mine(conn, cls, mission_id):

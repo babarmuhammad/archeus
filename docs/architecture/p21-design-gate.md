@@ -492,7 +492,8 @@ The owner's answer on missed times (2026-10-21): "Once together (Recommended)", 
 - **A schedule that may not run is not claimed.** Its project gone or archived, or Core disarmed
   (e-stop): the time stays due and fires once together when it may run again. Claiming it anyway
   wrote a denied or condition_false run every period, and neither reason counts toward the loop
-  guard.
+  guard. The API says why in `waiting` ("project gone or archived", "Core disarmed"), null
+  otherwise, and a waiting schedule is not in Upcoming.
 - **Faults are per schedule.** The worker (`worker.py` `_fire_due`) runs one command per due
   schedule. A claim that raises is held and retried with backoff like an event, then quarantined
   for this process after `MAX_ATTEMPTS` (a restart retries it). Other schedules still fire.
@@ -501,21 +502,24 @@ The owner's answer on missed times (2026-10-21): "Once together (Recommended)", 
 - **Simulation.** `simulate` on a schedule answers how many times it would have come due had it
   run for the whole window (`scheduled`), not events.
 - **Seen.** SPA: Control shows "Every 15 minutes" and, while enabled, "Next run in 12 min";
-  Now's Upcoming adds the enabled schedules, soonest first, after the approved and planning
-  missions (`now.ts` `scheduled`, `Now.tsx`); a run's "why" says "It fired on its schedule, every
-  day". TUI: Control shows "Next run". The offline Now snapshot does not keep the automations
+  Now's Upcoming adds the enabled schedules that are not waiting, soonest first, after the approved
+  and planning missions (`now.ts` `scheduled`, `Now.tsx`); Control shows "Waiting" with the reason
+  in place of "Next run". A run's "why" says "It fired on its schedule, every day". TUI: Control
+  shows "Waiting" or "Next run". The offline Now snapshot does not keep the automations
   read, so it shows no schedule. Times are UTC periods from the enable instant, not wall-clock.
 - **Tests:** `tests/v1/integration/test_schedule_triggers.py` (H01 fires at its time and not
   before, once; H02 a restart fires four missed times once, `missed` 3, and keeps the grid; H03 two
-  workers on one time claim it once; H04 the loop guard suspends a schedule and the API reports no
+  workers on one time claim it once, and a claim made after that commit finds the time moved on
+  (forced, not raced); H04 the loop guard suspends a schedule and the API reports no
   time; H05 a disabled schedule does not fire, reports no time, and re-enabling restarts its clock;
   H06 events and schedules never cross; H07 over HTTP: `next_run_at`, the simulation, the one-minute
   floor; H08 a mission a schedule asked for starts a rule one level deeper; H09 a fire does not
-  bump the version; H10 an archived project or a disarmed Core waits and fires once; H11 a claim
-  that raises holds only its schedule, then quarantines it); `tests/v1/unit/test_automation_units.py`
-  (the grammar and its 7-day cap, the refusals, `next_due`, no match); `clients/app/test/present.test.ts`,
-  `now.test.ts`.
+  bump the version; H10 an archived project or a disarmed Core waits, says why in `waiting`, and
+  fires once; H11 a claim that raises holds only its schedule, then quarantines it);
+  `tests/v1/unit/test_automation_units.py` (the grammar and its 7-day cap, the refusals, `next_due`,
+  no match); `clients/app/test/present.test.ts`, `now.test.ts` (a held schedule is not upcoming).
 - **Mutants:** Z100-Z109 and Z140-Z150 in `tools/mutate_p21.py`, each killed by a test it names
   (Z140 the 7-day cap, Z141 the digit bound, Z142 the in-transaction due check, Z143 the loop
   guard, Z144 the API's null time, Z145 the version bump, Z146 the archived or disarmed skip, Z147
-  the per-schedule isolation, Z148 the quarantine, Z149 the simulation count, Z150 the missed count).
+  the per-schedule isolation, Z148 the quarantine, Z149 the simulation count, Z150 the missed count);
+  Z155 the API's `waiting` reason, Z156 a held schedule listed as upcoming.

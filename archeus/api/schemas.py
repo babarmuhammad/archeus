@@ -681,6 +681,8 @@ TYPES = {
         'armed_seq': {'type': 'integer'}, 'version': {'type': 'integer'},
         # P21 slice H (D9): a schedule trigger's next due time
         'next_run_at': {'type': 'string', 'nullable': True},
+        # why a due schedule is held: its project gone or archived, or Core disarmed
+        'waiting': {'type': 'string', 'nullable': True},
         'runs': {'type': 'array', 'items': {'ref': 'AutomationRun'}}},
         'required': ['id', 'name', 'state', 'trigger', 'template', 'version']},
     'AutomationRun': {'type': 'object', 'open': True, 'properties': {
