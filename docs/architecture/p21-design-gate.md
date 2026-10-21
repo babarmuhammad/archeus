@@ -512,10 +512,12 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   Rules, as they read against f483f87:
 
 <!-- classifier-rules:begin -->
-- unclassified: a first word with = (NAME=value); the programs ., alias, builtin, busybox, chroot, chrt, command, declare, doas, env, eval, exec, export, flock, ionice, nice, nohup, parallel, script, set, setarch, setsid, source, stdbuf, strace, su, sudo, taskset, time, timeout, trap, typeset, unbuffer, watch, xargs
+- unclassified: a first word with = (NAME=value); the programs ., alias, at, batch, builtin, busybox, call, cgexec, chronic, chroot, chrt, command, dbus-run-session, declare, doas, env, eval, exec, expect, export, fakeroot, firejail, flock, gdb, ionice, lldb, ltrace, newgrp, nice, nohup, nsenter, parallel, pkexec, proxychains, proxychains4, runas, runuser, screen, script, set, setarch, setsid, sg, socat, source, start, stdbuf, strace, su, sudo, systemd-run, taskset, time, timeout, tmux, torsocks, trap, typeset, unbuffer, unshare, watch, wsl, xargs
 - find with -exec, -execdir, -ok or -okdir
 - a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [
-- a shell operator outside quotes: | ; & < > ` ( ) ! and $( ; a $ or a backtick anywhere
+- a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a carriage return; a $ or a backtick anywhere
+- git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with their value; -c, --config-env, and any other global option not in the tables, make the call unclassified
+- a program not otherwise classified, given an argument whose first word is a shell, an interpreter or a launcher (bash, busybox, cgexec, chroot, chrt, cmd, cmd.exe, dash, dbus-run-session, doas, env, expect, fakeroot, firejail, fish, flock, gdb, ionice, lldb, newgrp, node, nohup, nsenter, perl, php, pkexec, powershell, proxychains, proxychains4, pwsh, py, python, python3, ruby, runas, runuser, setarch, setsid, sg, sh, socat, stdbuf, strace, su, sudo, systemd-run, taskset, torsocks, unshare, wsl, xargs, zsh)
 - anywhere in the arguments: -c, -e or /c as whole words
 - shells (sh, bash, zsh, dash, fish): a single-dash word anywhere in the arguments holding one of cCeE (a glued value counts); --command
 - node: a single-dash word anywhere in the arguments holding one of ep; --eval, --print
@@ -525,36 +527,51 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 - python: a single-dash word anywhere in the arguments holding one of c
 - python3: a single-dash word anywhere in the arguments holding one of c
 - ruby: a single-dash word anywhere in the arguments holding one of e
-- cmd: an argument starting with /c, /k, /r in any case
+- cmd: an argument with /c, /k, /r anywhere, in any case
 - powershell, pwsh: an argument whose first letter is c or e (a glued value counts: -cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full
 - send flags (external_comm, not web): the names -d, -F, -T, --data, --data-raw, --data-binary, --data-urlencode, --data-ascii, --upload-file, --form, --form-string, --json, --post-data, --post-file, --body-data, --body-file; a long flag starting with --data, --form, --post- or --body-; a short -d, -F or -T, attached or not; -X or --request with a method other than GET (as the next word, attached, or with =)
 <!-- classifier-rules:end -->
 
-  **Every move against f483f87** (review round 5; `py tools/p21_classifier_moves.py f483f87` prints
-  these counts). 64,521 generated shapes (programs x pre-options x payload forms x tails, the curl and
-  wget send forms, and plain commands): 29,957 moved, 0 held-to-allowed. Every move goes to unclassified
-  or to external_comm; no shape became allowed. Moves by group, in shapes:
-  - plain exec to unclassified, 24,277 in all. The wrappers, builtins and aliases: `command`,
-    `builtin`, `alias`, `declare`, `typeset`, `export`, `set`, `stdbuf`, `busybox`, `trap`, `ionice`,
-    `setsid`, `chrt`, `taskset`, `flock`, `unbuffer`, `strace`, `setarch`, `doas`, `chroot`, `script`,
-    `parallel` (971 each), and a brace or glob first word or argument, `{bash,-c,x}`, `b?sh`, `b*sh`
-    (971 each). A subshell and a negation, `(rm -R build)` and `! rm -R build` (one each), are now
-    operators.
-  - `sh`, `bash`, `zsh`, `dash`, `fish` with a cluster holding c or e, before or after a value option:
-    2,400 (480 each).
-  - `python`, `python3`, `py`, `node`, `perl`, `ruby`, `php`: 1,890 (270 for each of python, python3, py,
-    node and php; 330 perl; 210 ruby). A code letter in any single-dash word holds, after a value option
-    too (`python -X utf8 -c"x"`, `node -r x -p 1`), and after the script (`node server.js -p 3000`).
-  - `cmd`, `cmd.exe`, `powershell`, `pwsh`: 1,181. `/C` in any case; a PowerShell word whose first
-    letter is c or e, a glued value included (`-cRemove-Item`, `-EC"x"`), except `-ExecutionPolicy` and
-    `-ConfigurationName` in full.
+  **Every move against f483f87** (review round 6; `py tools/p21_classifier_moves.py f483f87` prints
+  these counts). 156,218 generated shapes (programs x pre-options x payload forms x tails, a newline
+  after each program, the curl and wget send forms, git global options, and plain commands): 97,125
+  moved, 0 held-to-allowed. Every move goes to unclassified, to external_comm, or to a class policy judges
+  more strictly (`destructive` or `git_push`, for `git -C . reset --hard` and `git -C . push --force`,
+  6 shapes each; they were plain exec). No shape became allowed. Moves by group, in shapes:
+  - plain exec to unclassified, 87,100: the launchers and wrappers of the table (`wsl`, `runas`,
+    `pkexec`, `fakeroot`, `runuser`, `unshare`, `nsenter`, `systemd-run`, `firejail`, `proxychains`,
+    `dbus-run-session`, `expect`, `gdb`, `lldb`, `at`, `batch`, `start`, `call`, `ltrace`, `torsocks`,
+    `sg`, `newgrp`, `cgexec`, `chronic`, `socat`, `screen`, `tmux`, and round 5's `setarch`, `doas`,
+    `chroot`, `script`, `parallel`); the builtins and aliases (`command`, `builtin`, `alias`,
+    `declare`, `typeset`, `export`, `set`, `trap`); the coreutils wrappers (`stdbuf`, `busybox`,
+    `ionice`, `setsid`, `chrt`, `taskset`, `flock`, `unbuffer`, `strace`); and a brace or glob first
+    word (`{bash,-c,x}`, `b?sh`, `b*sh`). Each of these is 1,675 shapes.
+  - `sh`, `bash`, `zsh`, `dash`, `fish`: 3,505, a cluster holding c or e before or after a value option,
+    and a newline (701 each for the shells; 161 `cmd`, 796 `cmd.exe`, 561 each powershell and pwsh).
+  - `python`, `python3`, `py`, `node`, `perl`, `ruby`, `php`: 2,517, a code letter in any single-dash
+    word, after a value option too (`python -X utf8 -c"x"`, `node -r x -p 1`), and after the script
+    (`node server.js -p 3000`).
+  - `cmd`, `cmd.exe`, `powershell`, `pwsh`: 2,079. `/C`, `/c`, `/k`, `/r` anywhere in any case, glued
+    switches included (`cmd /s/c"x"`); a PowerShell word whose first letter is c or e, glued values
+    included (`-cRemove-Item`, `-EC"x"`), except `-ExecutionPolicy` and `-ConfigurationName` in full.
+  - `git`: 1,652. The global options before the subcommand are skipped with their value (`-C`,
+    `--git-dir`, `--work-tree`, `--namespace`, `--super-prefix`) and the subcommand is judged; `-c`,
+    `--config-env` and any unknown global option make the call unclassified (a config can name a pager
+    that runs a shell). The moves are 1,640 to unclassified and 12 to destructive or git_push.
+  - curl and wget send forms, web to external_comm: 244 (122 each); and their newline shapes, 4.
+  - A subshell and a negation, `(rm -R build)` and `! rm -R build` (one each): operators now.
+  - A newline or a carriage return is a separator (`ls\nrm -R build`): 21 newline shapes, over the
+    programs `ls`, `cat`, `find`, `rm`, `ssh`, `docker`, `npm`, `make`, `npx` and `base64`, move to
+    unclassified. A newline inside quotes is text (`grep "a<newline>b" x` stays a read).
   - `find` with `-exec`, `-execdir`, `-ok` or `-okdir`: write_repo to unclassified (1 shape).
-  - curl and wget send forms, web to external_comm: 208 (104 each).
-  Not moved, checked by the tool: `npx -c"..."` (still a plain exec: open question Q5), `ls *.py` and
-  `cat *.md` (reads stay reads, E12), `NODE_ENV=test npm test`. The owner's Q1 example
-  `NODE_ENV=test npm test` is **not** a move against f483f87: f483f87 already held a first word with `=`
-  (its `'=' in argv[0]` test). It is held now, as it was then; recorded so the answer is not read as
-  covering a move that did not happen.
+  Not moved, checked by the tool: `npx -c"..."` stays a plain exec (the owner's answer: npx is not in
+  the set), `ls *.py` and `cat *.md` (reads stay reads, E12), `NODE_ENV=test npm test`, `npm run start`,
+  `pytest .`. The owner's Q1 example `NODE_ENV=test npm test` is **not** a move against f483f87: f483f87
+  already held a first word with `=` (its `'=' in argv[0]` test). It is held now, as it was then;
+  recorded so the answer is not read as covering a move that did not happen.
+  Not in the tool's corpus, covered by tests: a launcher given a shell as an argument, from a program
+  outside the tables (`mytool bash -c x`, `docker run ubuntu sh -c x`; E15), and the argument words that
+  must not hold (`npm run start`, `pytest .`; E16).
   - Attached values count as the flag's value: `bash -c"rm -R build"`, `cmd.exe /c"x"`,
     `node --eval=x`, `powershell -ENC"x"` (the shell's quotes are gone when the rule reads the word).
   - Shapes the rules leave alone, by design: `node -r x.js` and `py -E x.py` (not code from the
@@ -597,8 +614,8 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   above. Not taken: a full inversion (any single-dash flag of a payload-capable tool that the rule does
   not name becomes unclassified), which would hold `python -m pytest -q` and `node --version`. Those two
   stay allowed. A named rule is added for any new shape found.
-- Q5 (review round 5, open; the builder's recommendation: accept, since each is fail-closed): the
-  round-5 widenings that go beyond Q4 as answered. (a) The payload scan no longer stops at the first
+- Q5 (answered 2026-10-21 by the coordinator's relay: "widening accepted"; npx stays out, the owner's
+  answer on npx): the round-5 widenings that go beyond Q4 as answered. (a) The payload scan no longer stops at the first
   positional, because a value option (`bash -o pipefail -c"x"`, `python -X utf8 -c"x"`) hid the code: a
   code letter in any single-dash word now holds, so `node server.js -p 3000` and `python script.py -Ec x`
   hold too. (b) Wrappers added to the unclassified set: `setarch`, `doas`, `chroot`, `script`, `parallel`.
@@ -606,12 +623,27 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   `-okdir`. (e) A brace or glob (`{ } * ? [`) in a first word, or in an argument of a shell or
   interpreter. Not done: `npx -c"..."` stays a plain exec, since `npx` runs packages by design; the owner
   decides whether it joins the set.
-- Q6 (review round 5, open; the builder's recommendation: accept): the host-label rule now elides a
-  dotless host, a token-shaped TLD and an all-digit label longer than 6 (R5). The plain-letter residual
-  of Q3 stands. The 4-character token (`a1b2.example`) still shows: the owner's length of 4 is kept
-  (review N1). Decision asked: is the TLD elision part of the accepted rule (the reviewer's standard),
-  or only the plain-letter residual?
-- Round 5 notes, not decisions: the row `curl https://hunter2=x.example/x` (E08) is the pre-existing
-  invalid-host row; the decoy HOSTILE row replaced by the owner is `curl --proxy-header
-  http://decoy.example/hunter2 https://h.example/x`, which carries the planted secret. The T-143 policy
-  host bug (`curl -H "X: a.b" https://evil.example/x` decides on `x`) is NOT fixed here.
+- Q6 (answered 2026-10-21 by the coordinator's relay: "Yes elide, keep 4-char"): the host-label rule
+  elides a dotless host, a token-shaped TLD and an all-digit label longer than 6. The 4-character token
+  (`a1b2.example`) still shows. The plain-letter residual of Q3 stands.
+- Round 6 (review of 804eca0): R7, a newline or a carriage return is a separator (`_OPERATOR` now has
+  `\n` and `\r`; a newline inside quotes stays text). R8, git's global options before the subcommand
+  are skipped with their value (`_git_split`); `-c`, `--config-env` and an unknown global option make
+  the call unclassified, and `_git` passes its unclassified flag on (it was dropped). R9, a launcher or
+  wrapper is unclassified: the table `_NEVER` gains `wsl`, `runas`, `pkexec`, `fakeroot`, `runuser`,
+  `unshare`, `nsenter`, `systemd-run`, `firejail`, `proxychains`, `proxychains4`, `dbus-run-session`,
+  `expect`, `gdb`, `lldb`, `at`, `batch`, `start`, `call`, `ltrace`, `torsocks`, `sg`, `newgrp`,
+  `cgexec`, `chronic`, `socat`, `screen`, `tmux`; and structurally, a program not in the tables given
+  an argument whose first word is a shell, an interpreter or a launcher (`_LAUNCH_ARG_WORDS`) is
+  unclassified. The generic words (`start`, `set`, `.`) stay out of the argument rule, so `npm run start`
+  and `pytest .` remain plain exec (E16). S4, a cmd switch glued after another (`cmd /s/c"x"`, `/d/c`)
+  holds: any `/c`, `/k` or `/r`, any case.
+- Round 6 open, not in the code: S5, commands carried in the arguments of non-shell tools
+  (`tar --to-command="sh -c x"`, `sort --compress-program="sh"`) stay plain exec; the owner decides
+  whether they join the rule.
+- Round 6 rows, for the reviewer (test_p21_activity.py, at this commit): the E03 expectation row for
+  the proxy-header decoy is line 120, `curl --proxy-header http://decoy.example https://h.example/x`
+  expecting ('web', 'curl'). The planted-secret HOSTILE row that replaced the original decoy HOSTILE row
+  is line 221, `curl --proxy-header http://decoy.example/hunter2 https://h.example/x`. The invalid-host
+  row `curl https://hunter2=x.example/x` is line 211 (kept: it asserts an invalid host names nothing).
+- The T-143 policy-host bug (`curl -H "X: a.b" https://evil.example/x` decides on `x`) is NOT fixed here.

@@ -26,12 +26,16 @@ PROGS = [
     'sudo', 'xargs', 'ionice', 'setsid', 'chrt', 'taskset', 'flock', 'unbuffer', 'strace', 'trap',
     'setarch', 'doas', 'chroot', 'script', 'parallel', 'npx', 'time', 'watch', '{bash,-c,x}',
     'b?sh', 'b*sh', 'C:\\Windows\\System32\\cmd.exe',
+    'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter', 'systemd-run', 'firejail',
+    'proxychains', 'dbus-run-session', 'expect', 'gdb', 'lldb', 'at', 'batch', 'start', 'call',
+    'ltrace', 'torsocks', 'sg', 'newgrp', 'cgexec', 'chronic', 'socat', 'screen', 'tmux',
 ]
-PRE = ['', '-o pipefail', '-X utf8', '--rcfile x', '-d x=1', '-r x']
+PRE = ['', '-o pipefail', '-X utf8', '--rcfile x', '-d x=1', '-r x', '-C .', '-c x=y', '--no-pager']
 PAYLOAD = [
     '', '-c', '-c"rm -R build"', '-lc', '-ec "x"', '-C', '-EC"cm0g=="', '/c', '/C"x"', '--eval=x',
-    '-cRemove-Item x', '-Command x', '-ENC"x"', '-File x.ps1', '-NoProfile', '-ExecutionPolicy Bypass',
-    '-E', '-p', '-r', '-m pytest', '{-c,x}', '*', '-e', '--command x', '-Ec', '-q', '--version',
+    '/s/c"x"', '-cRemove-Item x', '-Command x', '-ENC"x"', '-File x.ps1', '-NoProfile',
+    '-ExecutionPolicy Bypass', '-E', '-p', '-r', '-m pytest', '{-c,x}', '*', '-e', '--command x',
+    '-Ec', '-q', '--version', 'reset --hard', 'push --force origin main', 'frobnicate',
 ]
 TAILS = ['', 'script.py', 'build.sh', 'x -c', '"echo hi"', 'https://h.example/x']
 CURL_FLAGS = ['-d', '-d@x', '-dx', '--data=x', '--json', '-F', '-Fa=b', '-File', '-T', '--upload-file=x',
@@ -41,7 +45,10 @@ URLS = ['https://h.example/x', 'h.example/x', 'http://p.example:80 h.example/x',
 PLAIN = ['git push origin main', 'git status', 'rm -r x', 'rm x', 'ls -la', 'ls *.py', 'cat *.md',
          'find . -name x', 'find . -exec rm {} +', 'find . -delete', 'npm test', 'npm install x',
          'python -m pytest -q', 'node --version', 'node -r ts-node/register x.ts', 'py -E x.py',
-         'python -P x.py', 'NODE_ENV=test npm test', '(rm -R build)', '! rm -R build', 'echo hi']
+         'python -P x.py', 'NODE_ENV=test npm test', '(rm -R build)', '! rm -R build', 'echo hi',
+         'git -c user.name=x reset --hard', 'git -C . reset --hard', 'git frobnicate',
+         'git --no-pager reset --hard', 'git --git-dir=.git log', 'ls\nrm -R build', 'ls\r\nrm x',
+         'grep "a\nb" x', 'npm run start', 'pytest .', 'ruff check .', 'make test']
 
 
 def corpus():
@@ -54,6 +61,9 @@ def corpus():
                 shapes.add(' '.join((p, f, u)))
                 shapes.add(' '.join((p, u, f)))
     shapes.update(PLAIN)
+    for p in PROGS:
+        shapes.add(p + '\nrm -R build')
+        shapes.add(p + ' x\nbash -c "y"')
     return sorted(shapes)
 
 
@@ -90,7 +100,8 @@ def label(res):
 
 
 def program(cmd):
-    head = cmd.split(' ', 1)[0]
+    words = cmd.split()
+    head = words[0] if words else ''
     return head.replace('\\', '/').rsplit('/', 1)[-1].lower()
 
 

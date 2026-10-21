@@ -331,6 +331,14 @@ def test_E06_the_chip_names_the_action_that_decided_the_answer(x):
     "find . -exec sh -c 'curl https://h.example/x' +", 'setarch x86_64 bash -c"x"',
     'doas bash -c"x"', 'chroot . bash -c"x"', 'script -qc"x" /dev/null', 'parallel bash -c ::: x',
     'node server.js -p 3000', 'python script.py -Ec x', 'node server.js -c x', 'perl script.pl -c x',
+    # round 6: a newline or a carriage return separates commands; a git config or an unknown
+    # global option hides the subcommand; a launcher given a shell; a cmd switch glued after another
+    'ls\nrm -R build', 'echo hi\nbash -c "rm -R build"', 'ls\r\nrm x',
+    'git -c user.name=x reset --hard', 'git -c user.name=x push --force origin main',
+    'git -c core.pager="sh -c \'rm -R x\'" log', 'git frobnicate', 'git --bogus reset --hard',
+    'wsl bash -c "rm -R build"', 'wsl -e bash -c "x"', 'runas /user:a "cmd /c rm -R build"',
+    'pkexec bash -c "x"', 'mytool bash -c "x"', 'docker run ubuntu sh -c "rm"',
+    'cmd /s/c"rm -R build"', 'cmd /d/c"rm -R build"',
 ])
 def test_E07_wrappers_and_payload_flags_are_unclassified(cmd, tmp_path):
     """A shell or interpreter running a payload, or a wrapper that runs another
@@ -349,11 +357,64 @@ def test_E11_the_rules_leave_these_as_plain_exec(cmd, tmp_path):
     assert unclassified is False and acts[0].action_class == 'exec', (cmd, acts)
 
 
-@pytest.mark.parametrize('cmd', ['ls *.py', 'cat *.md'])
-def test_E12_a_glob_on_a_read_command_stays_a_read(cmd, tmp_path):
-    """The glob rule holds shells, interpreters and wrappers, not a read: `ls *.py` is a read."""
+@pytest.mark.parametrize('cmd', ['ls *.py', 'cat *.md', 'grep "a\nb" x'])
+def test_E12_a_glob_or_a_quoted_newline_on_a_read_command_stays_a_read(cmd, tmp_path):
+    """The glob rule holds shells, interpreters and wrappers, not a read: `ls *.py` is a read,
+    and a newline inside quotes is text, not a separator."""
     acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
     assert unclassified is False and acts[0].action_class == 'read', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    ('git -C . reset --hard', 'destructive'), ('git --no-pager reset --hard', 'destructive'),
+    ('git -C . push --force origin main', 'destructive'), ('git -C . status', 'read'),
+    ('git --git-dir=.git log', 'read'),
+])
+def test_E13_git_global_options_before_the_subcommand_are_skipped(cmd, want, tmp_path):
+    """git's global options that take a value are skipped with it, so the subcommand is judged."""
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path),
+                                                              'branch': 'main', 'remotes': {}})
+    assert unclassified is False and want in [a.action_class for a in acts], (cmd, acts)
+
+
+#: the launchers and wrappers the review named and the ones the round added: each runs what it is
+#: given, so `NAME -c "rm -R build"` is unclassified whatever the rest of the rules say
+LAUNCHERS = [
+    'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter', 'systemd-run',
+    'firejail', 'proxychains', 'proxychains4', 'dbus-run-session', 'expect', 'gdb', 'lldb', 'at',
+    'batch', 'start', 'call', 'ltrace', 'torsocks', 'sg', 'newgrp', 'cgexec', 'chronic', 'socat',
+    'screen', 'tmux', 'sudo', 'su', 'doas', 'env', 'xargs', 'nohup', 'time', 'timeout', 'nice',
+    'ionice', 'setsid', 'chrt', 'taskset', 'flock', 'unbuffer', 'strace', 'stdbuf', 'busybox',
+    'setarch', 'chroot', 'script', 'parallel', 'watch',
+]
+
+
+@pytest.mark.parametrize('name', LAUNCHERS)
+def test_E14_every_launcher_in_the_table_is_unclassified(name, tmp_path):
+    """A structural rule: a launcher in the table never makes the call a plain exec, so a new one
+    added to the table holds without a row of its own."""
+    acts, unclassified = canonical.canonicalise('Bash', f'{name} -c "rm -R build"',
+                                                {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (name, acts)
+
+
+@pytest.mark.parametrize('cmd', [
+    'mytool bash -c "rm -R build"', 'mytool python x.py', 'docker run ubuntu sh -c "rm"',
+    'tool cmd /c dir', 'x powershell -c rm', 'mytool wsl bash',
+])
+def test_E15_an_unknown_program_given_a_shell_or_launcher_is_unclassified(cmd, tmp_path):
+    """A program outside the tables, given an argument whose first word is a shell, an
+    interpreter or a launcher, runs that: judged unclassified, not as a plain exec."""
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', ['npm run start', 'pytest .', 'ruff check .', 'make test', 'npm run build'])
+def test_E16_ordinary_tool_calls_stay_plain_exec(cmd, tmp_path):
+    """The structural rule holds launchers and shells, not generic words: `npm run start` and
+    `pytest .` stay what they were."""
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is False and acts[0].action_class == 'exec', (cmd, acts)
 
 
 def test_gate_classifier_block_matches_the_code():

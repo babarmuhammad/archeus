@@ -32,7 +32,7 @@ PATH_FIELD = {'Read': 'file_path', 'Write': 'file_path', 'Edit': 'file_path',
 OPTIONAL_PATH = ('Glob', 'Grep')
 
 #: a shell operator outside quotes makes a command unclassified
-_OPERATOR = re.compile(r'[|;&<>`()!]|\$\(')
+_OPERATOR = re.compile(r'[|;&<>`()!\n\r]|\$\(')
 #: a glob or brace character: the shell expands it, so the program or an argument is not known
 _GLOB = re.compile(r'[{}*?\[]')
 _SHELLS = ('sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 'pwsh',
@@ -41,7 +41,29 @@ _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 
           'watch', 'timeout', 'nice', 'command', 'builtin', 'export', 'set', 'typeset',
           'declare', 'alias', 'stdbuf', 'busybox', 'trap', 'ionice', 'setsid', 'chrt',
           'taskset', 'flock', 'unbuffer', 'strace', 'setarch', 'doas', 'chroot', 'script',
-          'parallel')
+          'parallel', 'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter',
+          'systemd-run', 'firejail', 'proxychains', 'proxychains4', 'dbus-run-session', 'expect',
+          'gdb', 'lldb', 'at', 'batch', 'start', 'call', 'ltrace', 'torsocks', 'sg', 'newgrp',
+          'cgexec', 'chronic', 'socat', 'screen', 'tmux')
+#: a word that, as an argument, starts a shell, an interpreter or a launcher (`foo bash -c x`):
+#: a program not in the tables that is given one runs it. The generic words (`start`, `set`, `.`)
+#: stay out: `npm run start` is a plain exec.
+_LAUNCH_ARG_WORDS = frozenset((
+    'sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 'pwsh', 'python', 'python3', 'py', 'node', 'perl', 'ruby',
+    'php', 'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter', 'systemd-run',
+    'firejail', 'proxychains', 'proxychains4', 'dbus-run-session', 'expect', 'gdb', 'lldb', 'socat',
+    'sudo', 'su', 'doas', 'env', 'xargs', 'nohup', 'setarch', 'chroot', 'busybox', 'stdbuf',
+    'strace', 'setsid', 'ionice', 'taskset', 'flock', 'chrt', 'torsocks', 'cgexec', 'sg', 'newgrp'))
+
+
+def _launches(arg):
+    """True when the argument's first word is a shell, an interpreter or a launcher name, with a
+    path or a .exe dropped and any case: `bash -c x` as one word, `C:\\bin\\bash.exe`."""
+    words = arg.split()
+    if not words:
+        return False
+    name = os.path.basename(words[0].replace('\\', '/')).lower()
+    return (name[:-4] if name.endswith('.exe') else name) in _LAUNCH_ARG_WORDS
 
 READ_COMMANDS = ('ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which',
                  'file', 'stat', 'tree', 'dir', 'type', 'less', 'more', 'diff')
@@ -205,7 +227,13 @@ def classifier_rules():
     lines = ['unclassified: a first word with = (NAME=value); the programs ' + ', '.join(sorted(_NEVER))]
     lines.append('find with -exec, -execdir, -ok or -okdir')
     lines.append('a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [')
-    lines.append('a shell operator outside quotes: | ; & < > ` ( ) ! and $( ; a $ or a backtick anywhere')
+    lines.append('a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a '
+                 'carriage return; a $ or a backtick anywhere')
+    lines.append('git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with '
+                 'their value; -c, --config-env, and any other global option not in the tables, make '
+                 'the call unclassified')
+    lines.append('a program not otherwise classified, given an argument whose first word is a shell, '
+                 'an interpreter or a launcher (' + ', '.join(sorted(_LAUNCH_ARG_WORDS)) + ')')
     lines.append('anywhere in the arguments: -c, -e or /c as whole words')
     lines.append('shells (' + ', '.join(SHELL_TOOLS) + '): a single-dash word anywhere in the '
                  'arguments holding one of ' + SHELL_LETTERS + ' (a glued value counts); --command')
@@ -213,7 +241,7 @@ def classifier_rules():
         longs = LONG_CODE.get(name, ())
         lines.append(name + ': a single-dash word anywhere in the arguments holding one of '
                      + INTERP_LETTERS[name] + ((('; ' + ', '.join(longs)) if longs else '')))
-    lines.append('cmd: an argument starting with ' + ', '.join(CMD_WORDS) + ' in any case')
+    lines.append('cmd: an argument with ' + ', '.join(CMD_WORDS) + ' anywhere, in any case')
     lines.append('powershell, pwsh: an argument whose first letter is c or e (a glued value counts: '
                  '-cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full')
     lines.append('send flags (external_comm, not web): the names ' + ', '.join(_SENDS)
@@ -241,7 +269,8 @@ def _payload(prog, args):
     if any(a in ANYWHERE for a in args):
         return True
     if prog == 'cmd':
-        return any(a[:2].lower() in CMD_WORDS for a in args)
+        # a switch glued after another one (`/s/c"x"`) is still code: any /c, /k or /r holds
+        return any(re.search(r'/[ckr]', a, re.I) for a in args)
     if prog in ('powershell', 'pwsh'):
         return any(_pwsh_word(a) for a in args)
     letters = SHELL_LETTERS if prog in SHELL_TOOLS else INTERP_LETTERS.get(prog, '')
@@ -371,7 +400,7 @@ def command(cmd, ctx):
     env = 'prod' if any(a.lower() in PROD for a in args) else None
     tv = tuple(argv)
     if prog == 'git':
-        return _git(args, tv, ctx), False
+        return _git(args, tv, ctx)
     sub = args[0].lower() if args else ''
     if (prog, sub) in DESTROY or (prog == 'rm' and _recursive(args)):
         return [Action(action_class='destructive', target=prog, argv=tv, environment=env,
@@ -402,12 +431,54 @@ def command(cmd, ctx):
     if prog in WRITE_COMMANDS:
         return [Action(action_class='write_repo', target=prog, argv=tv,
                        paths=_paths(args, ctx))], False
+    # a program not in the tables given a shell, an interpreter or a launcher: it runs that
+    if any(_launches(a) for a in args):
+        return [_unclassified(prog, argv)], True
     return [Action(action_class='exec', target=prog, argv=tv, paths=('.',))], False
 
 
+#: git's global options before the subcommand: the ones that take a value (skipped with it), and
+#: the ones that take none. `-c` and `--config-env` are never accepted (see `_git_split`).
+_GIT_VALUE = ('-C', '--git-dir', '--work-tree', '--namespace', '--super-prefix')
+_GIT_FLAG = ('--no-pager', '-p', '--paginate', '-P', '--no-paginate', '--bare',
+             '--no-replace-objects', '--literal-pathspecs', '--glob-pathspecs', '--noglob-pathspecs',
+             '--icase-pathspecs', '--no-optional-locks', '--exec-path', '--version', '--help')
+
+
+def _git_split(args):
+    """(subcommand, the words after it), past git's global options. (None, None) when a global
+    option is not in the tables: its value, if any, would be read as the subcommand. A config
+    value (`-c`, `--config-env`) is never skipped: it can name a pager or an editor that runs a
+    shell, so the call is unclassified."""
+    i = 0
+    while i < len(args):
+        a = args[i]
+        name = a.partition('=')[0]
+        if name in ('-c', '--config-env'):
+            return None, None
+        if a in _GIT_VALUE:
+            i += 2
+        elif name in _GIT_VALUE or name == '--exec-path':
+            i += 1
+        elif a in _GIT_FLAG:
+            i += 1
+        elif a.startswith('-'):
+            return None, None
+        else:
+            return a, args[i + 1:]
+    return '', []
+
+
 def _git(args, argv, ctx):
-    sub = next((a for a in args if not a.startswith('-')), '')
-    rest = args[args.index(sub) + 1:] if sub in args else []
+    sub, rest = _git_split(args)
+    actions = _git_actions(sub, rest, argv, ctx) if sub else None
+    if actions is None:
+        return [_unclassified('git', argv)], True
+    return actions, False
+
+
+def _git_actions(sub, rest, argv, ctx):
+    """The actions of one git subcommand, or None when the subcommand is not in the tables."""
     branch = ctx.get('branch')
     if sub == 'push':
         pos = [a for a in rest if not a.startswith('-')]
@@ -444,7 +515,7 @@ def _git(args, argv, ctx):
     if sub in GIT_WRITE:
         return [Action(action_class='write_repo', target='git ' + sub, argv=argv,
                        branch=branch, paths=('.',))]
-    return [_unclassified('git', argv)]
+    return None
 
 
 def _recursive(args):
