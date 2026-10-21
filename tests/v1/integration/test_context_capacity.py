@@ -349,7 +349,7 @@ def test_why_and_status_answer_from_the_record(x):
     assert 'No continuation was created' in text and 'checkpoint' in text
     assert 'It continues execution %s in a fresh session' % _execs(x, mid)[0].id in text
     st, _links = x.do(lambda tx, actor: C._status(tx, None))
-    assert 'Running now: t1 attempt 3 (RUNNING, context unavailable)' in st
+    assert 'Running now: t1 attempt 3 (Running, context unavailable)' in st
     with x.db.read() as r:
         assert X.view(r, e2.id)['why'] == text
 

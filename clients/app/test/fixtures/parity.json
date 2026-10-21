@@ -1997,6 +1997,77 @@
    "out": true
   },
   {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 1234,
+     "cost_today": 0.5,
+     "running": 0,
+     "complete": {
+      "tokens": true,
+      "cost": true
+     }
+    }
+   ],
+   "out": "1,234 tokens · $0.50"
+  },
+  {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 1234,
+     "cost_today": 0,
+     "running": 0,
+     "complete": {
+      "tokens": false,
+      "cost": false
+     }
+    }
+   ],
+   "out": "at least 1,234 tokens · cost unknown"
+  },
+  {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 0,
+     "cost_today": 0,
+     "running": 1,
+     "complete": {
+      "tokens": true,
+      "cost": false
+     }
+    }
+   ],
+   "out": "0 tokens · cost unknown"
+  },
+  {
+   "fn": "consumersText",
+   "args": [
+    []
+   ],
+   "out": "nothing"
+  },
+  {
+   "fn": "consumersText",
+   "args": [
+    [
+     {
+      "kind": "execution",
+      "task_key": "t1",
+      "attempt": 2,
+      "state": "RUNNING"
+     },
+     {
+      "kind": "own_call",
+      "purpose": "knowledge_extraction",
+      "state": null
+     }
+    ]
+   ],
+   "out": "t1 attempt 2; an own call for the knowledge extraction"
+  },
+  {
    "fn": "staleBy",
    "args": [
     {

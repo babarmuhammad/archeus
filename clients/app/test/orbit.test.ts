@@ -49,6 +49,8 @@ test('presence: hollow when not connected, then needs you, then working, then id
   for (const s of ['STARTING', 'INTENT', 'HANDING_OFF']) assert.equal(presence(true, 0, [{ state: s }]), 'active', s);
   for (const s of ['PAUSED', 'AWAITING_APPROVAL', 'PAUSING', 'STOPPING'])
     assert.equal(presence(true, 0, [{ state: s }]), 'idle', `${s} is live work that is not running`);
+  // G8: an own call in flight is live work that never animates, even with a running-looking state
+  assert.equal(presence(true, 0, [{ kind: 'own_call', state: 'RUNNING' }]), 'idle');
 });
 
 test('the strip counts missions with an attempt running, each once', () => {
@@ -58,6 +60,7 @@ test('the strip counts missions with an attempt running, each once', () => {
       { state: 'STARTING', mission_id: 'm1' },
       { state: 'RUNNING', mission_id: 'm2' },
       { state: 'PAUSED', mission_id: 'm3' },
+      { kind: 'own_call', state: 'RUNNING', mission_id: 'm4' },
     ]),
     2,
   );

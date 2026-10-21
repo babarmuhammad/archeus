@@ -457,3 +457,56 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (the tab replays every event from the first, in a real browser); `clients/app/test/shell.test.ts`
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
+
+### Slice B as built (2026-10-21, card T-125)
+
+Built by the owner's naming of 2026-10-21 under D0 ("Yes, all five (Recommended)", recorded on
+`.collab/BOARD.md` above T-125): own calls in `live_work`, each account's consumption in
+`/v1/accounts`, and the `status` verb in words (R13-06). No migration.
+
+- **Own calls in live work (ADR-0043 §2, ADR-0048 D-25.4; orchestration G6).**
+  `archeus/core/application/live.py` `live_work(conn, project_id=None, now=None)` lists every
+  execution in a live state, then every own call in flight, each oldest first. An own call is in
+  flight while `resources.own_call_live` holds: no `outcome` yet, a `selected` or `fallback`
+  result, and within its `max_run_s`. Its item is `kind: own_call` with its `purpose`, `source`,
+  mission (only when the source is a mission that exists), project, harness, account,
+  `account_ref`, model, effort and `started_at`; `state`, `task_id`, `attempt`, `handoff` and
+  `context` are null, because an own call has none of them. `resources.own_calls(conn, now)` is
+  the one scan of the last day's `archeus_call` decisions behind both `live_work` and
+  `ledger_totals`, so an account's `running` and its listed consumers come from the same rows.
+- **Own calls visible, still (G8).** Nothing animates an own call: Core writes no `execution.*`
+  frame for one, and the SPA's `running()` (`clients/app/src/state/orbit.ts`) and the palette's
+  `effectOf` (`state/palette.ts`) skip `kind: own_call`, so the halo, the strip's running count
+  and "N running attempts pause" stay executions only. An item with no `kind` (an older reader's
+  fixture) is still an execution there.
+- **Consumption and effective policy (ADR-0043 §3, §4; G12, G13).** `resources.account_view`
+  adds `consumers` (the account's `live_work` items), `ledger` (`ledger_totals` for today: tokens,
+  cost, `running` and `complete`) and `policy` (`resources.effective_policy`, the dict the router's
+  snapshot carries for the account, now built by the same function in `_registered`). `usage`
+  stays the newest snapshot of each window or null. `/v1/accounts` computes `live_work` once for
+  all accounts. Schemas: `Account` requires `policy`, `ledger`, `consumers`; new `Ledger` and
+  `LedgerComplete`; `LiveItem.kind` is `execution | own_call` with the execution-only fields
+  nullable.
+- **Unknown stays unknown (G12).** Control -> Resources -> Accounts (SPA) and the TUI's accounts
+  section gain two rows: "Running now" (`consumersText` / `consumers_text`: "t1 attempt 2; an own
+  call for the knowledge extraction", or "nothing") and "Today" (`consumptionText` /
+  `consumption_text`): a complete measure is its figure, an incomplete one with something reported
+  is "at least <figure>", and an incomplete one with nothing reported is "tokens unknown" or "cost
+  unknown", never 0. Both functions are held to parity (five new cases in
+  `clients/app/test/fixtures/parity.json`).
+- **`status` in words (R13-06).** `conversation._status` says each mission and execution state
+  with the label the clients show (`_said`, from `archeus/cli/tui/_tables.py` `LABELS`, the one
+  Python copy of `presentation.json`): "Ship the fix (Executing)", "t1 attempt 1 (Starting,
+  context ...)". It lists own calls in flight as "an own call for the <purpose> (<account>)"; its
+  links stay executions and missions.
+- **Not built here, recorded.** ADR-0043 §3 also names ledger totals by period, mission and
+  subject kind; the gate's slice B line names `ledger_totals`, so only today's totals are served.
+  ADR-0041 §5's "which values are defaults" and the ordering rule are not in the read: G13's P21
+  half is the parity with the router's input, which is what is served. The own-call scan covers
+  the last day (the existing `ponytail:` bound, now in `own_calls`): an own call with no
+  `max_run_s` older than a day drops out of both readers at once.
+- **Tests.** `tests/v1/integration/test_p21_live.py` (six: G6 x2, G8, G12, G13, R13-06);
+  `test_context_capacity.py` now expects "Running" in the status words; `tests/v1/tui/test_security.py`'s
+  accounts fixture carries consumers and a ledger; `clients/app/test/orbit.test.ts` and
+  `palette.test.ts` gain the own-call cases.
+- **Mutants.** Z60-Z69 in `tools/mutate_p21.py`, each killed by the test it names.

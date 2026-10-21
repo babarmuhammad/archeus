@@ -191,6 +191,26 @@ def ago(iso, now_ms):
 # Core's graph route assembles every edge (p19-design-gate B1); the TUI only
 # says them in the clients' one vocabulary (relations.ts edgeWords/edgeRows).
 
+def consumption_text(led):
+    """Today's consumption of an account (ADR-0048 §3, G12): a figure not fully
+    reported is a lower bound, and nothing reported is unknown, never 0."""
+    def one(n, done, say, what):
+        return say(n) if done else 'at least ' + say(n) if n else what + ' unknown'
+    return '%s · %s' % (
+        one(led['tokens_today'], led['complete']['tokens'], '{:,} tokens'.format, 'tokens'),
+        one(led['cost_today'], led['complete']['cost'], lambda n: '$%.2f' % n, 'cost'))
+
+
+def consumers_text(c):
+    """What runs on an account now (ADR-0043 §3, G8): its live work, by name."""
+    if not c:
+        return 'nothing'
+    return '; '.join('an own call for the %s' % (x.get('purpose') or '').replace('_', ' ')
+                     if x['kind'] == 'own_call' else '%s attempt %s' % (x.get('task_key'),
+                                                                      x.get('attempt'))
+                     for x in c)
+
+
 def edge_words(field, holder, rel=None):
     """An edge's words at the row holding its field, or at the row it names; a
     `Relation` row says its own `rel`."""

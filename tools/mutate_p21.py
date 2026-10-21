@@ -49,6 +49,10 @@ GR = 'archeus/core/application/grammar.py'
 CV = 'archeus/core/application/conversation.py'
 DG = 'archeus/core/world/digest.py'
 TT = 'tests/v1/integration/test_trace.py'
+LV = 'archeus/core/application/live.py'
+TPR = 'archeus/cli/tui/present.py'
+ORB = 'clients/app/src/state/orbit.ts'
+PL = 'tests/v1/integration/test_p21_live.py::'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -276,6 +280,47 @@ MUTATIONS = [
      "        return (events[-1]['seq'] if events else after), said",
      "        return after, said")],
      [SHL + 'test_G01_the_tray_says_an_approval_request_and_an_estop_only_after_it_started']),
+    # ── P21 slice B: own calls in live work, consumption, `status` in words ──
+    ('Z60', 'an own call in flight is left out of live work', [(LV,
+     "    for r in own_calls(conn, now):\n        rd = r.entity\n        if not own_call_live",
+     "    for r in ():\n        rd = r.entity\n        if not own_call_live")],
+     [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
+    ('Z61', 'an own call that has ended is still live work', [(LV,
+     "        if not own_call_live(r, now) or (project_id is not None",
+     "        if (project_id is not None")],
+     [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
+    ('Z62', "an own call ignores the project filter", [(LV,
+     "        if not own_call_live(r, now) or (project_id is not None and rd.project_id != project_id):",
+     "        if not own_call_live(r, now):")],
+     [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
+    ('Z63', 'an own call is given a running state', [(LV,
+     "            'task_id': None, 'state': None,",
+     "            'task_id': None, 'state': 'RUNNING',")],
+     [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
+    ('Z64', 'the halo counts an own call as a running attempt (G8)', [(ORB,
+     "live.filter((x) => x.kind !== 'own_call' && present(",
+     "live.filter((x) => present(")],
+     ['node:test/orbit.test.ts']),
+    ('Z65', "an account lists every account's consumers", [(RS,
+     "                consumers=[w for w in work if w['account_id'] == a.id])",
+     "                consumers=list(work))")],
+     [PL + 'test_g8_an_own_call_in_flight_is_listed_and_counted_on_its_account']),
+    ('Z66', "the effective policy read is the stored row, not the router's input", [(RS,
+     "                policy=effective_policy(p.entity),",
+     "                policy=view(p),")],
+     [PL + 'test_g13_the_effective_policy_read_is_what_the_router_decided_from']),
+    ('Z67', 'nothing reported is said as 0', [(TPR,
+     "        return say(n) if done else 'at least ' + say(n) if n else what + ' unknown'",
+     "        return say(n) if done or not n else 'at least ' + say(n)")],
+     [PL + 'test_g12_a_reading_that_is_missing_is_said_unknown_never_a_number']),
+    ('Z68', 'a lower bound is said as the exact figure', [(TPR,
+     "'at least ' + say(n) if n else what",
+     "say(n) if n else what")],
+     ['tests/v1/tui/test_parity.py']),
+    ('Z69', '`status` says the raw state enum (R13-06)', [(CV,
+     "    return LABELS.get(machine, {}).get(state, state)",
+     "    return state")],
+     [PL + 'test_r13_06_status_says_each_state_in_the_words_the_clients_show']),
     # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
     ('Z30', 'a result is paired with whichever call came first', [(TR,
      "            call = calls.get(e.get('tool_use_id'))",

@@ -18,6 +18,9 @@ export interface Account {
   resource_policy: ResourcePolicy;
   usage: Record<string, unknown> | null;
   version: number;
+  policy: Record<string, unknown>;
+  ledger: Ledger;
+  consumers: LiveItem[];
   [field: string]: unknown;
 }
 
@@ -585,21 +588,34 @@ export interface LaunchCode {
   scopes: string[];
 }
 
+export interface Ledger {
+  tokens_today: number;
+  cost_today: number;
+  running: number;
+  complete: LedgerComplete;
+}
+
+export interface LedgerComplete {
+  tokens: boolean;
+  cost: boolean;
+}
+
 export interface LiveItem {
-  kind: 'execution';
+  kind: 'execution' | 'own_call';
   id: string;
-  mission_id: string;
-  task_id: string;
+  purpose?: string;
+  mission_id: string | null;
+  task_id: string | null;
   task_key?: string;
-  state: string;
-  attempt: number;
+  state: string | null;
+  attempt: number | null;
   harness_id?: string | null;
   account_id?: string | null;
   model?: string | null;
   waits_on?: string | null;
-  handoff: Handoff;
+  handoff: Handoff | null;
   handing_off?: string | null;
-  context: ContextState;
+  context: ContextState | null;
   [field: string]: unknown;
 }
 

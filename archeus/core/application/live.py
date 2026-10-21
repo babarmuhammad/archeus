@@ -9,9 +9,11 @@ has produced, what it waits on, its hand-off lineage and its context. The
 route decision's explanation, the reasons its transitions recorded, its
 checkpoint and its context basis — never from a model's account of itself.
 
-Not here yet: own calls in flight (ADR-0043 §2's second kind) and recorded
-artifacts (the producer record, V1-3); both are P21's, outside the D-26 slice.
+Own calls in flight are its second kind (ADR-0043 §2, ADR-0048 D-25.4): no
+state, no task, no context, and nothing animates them (G8).
 """
+
+import time
 
 from ...infra.db import rows
 from ...infra.eventlog import outbox
@@ -51,8 +53,10 @@ def handoff_of(conn, e):
             'reason': _asked(conn, e.handoff_from) if e.handoff_from else None}
 
 
-def live_work(conn, project_id=None):
-    """Every execution in a live state (ADR-0043 §2), oldest first."""
+def live_work(conn, project_id=None, now=None):
+    """Every execution in a live state, then every own call in flight (ADR-0043
+    §2), each oldest first."""
+    from .resources import own_call_live, own_calls
     out = []
     for r in rows.where(conn, entities.Execution):
         e = r.entity
@@ -78,6 +82,22 @@ def live_work(conn, project_id=None):
             'waits_on': waits, 'handoff': handoff_of(conn, e),
             'handing_off': _asked(conn, e.id) if e.state == 'HANDING_OFF' else None,
             'context': pressure.view(e)})
+    now = time.time() if now is None else now
+    for r in own_calls(conn, now):
+        rd = r.entity
+        if not own_call_live(r, now) or (project_id is not None and rd.project_id != project_id):
+            continue
+        src = rd.source
+        m = src is not None and src.kind == 'mission' and rows.get(conn, entities.Mission, src.id)
+        out.append({
+            'kind': 'own_call', 'id': rd.id, 'purpose': rd.purpose,
+            'source': None if src is None else {'kind': src.kind, 'id': src.id},
+            'mission_id': m.entity.id if m else None,
+            'mission_title': m.entity.title if m else None, 'project_id': rd.project_id,
+            'task_id': None, 'state': None, 'attempt': None, 'harness_id': rd.harness_id,
+            'account_id': rd.account_id, 'account_ref': rd.account_ref, 'model': rd.model,
+            'effort': rd.effort, 'route_decision_id': rd.id, 'started_at': r.created_at,
+            'waits_on': None, 'handoff': None, 'context': None})
     return out
 
 

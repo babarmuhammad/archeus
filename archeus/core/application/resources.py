@@ -197,6 +197,18 @@ def own_call_live(row, now):
     return bound is None or now - _epoch(row.created_at) <= bound
 
 
+def own_calls(conn, now):
+    """The own calls (`archeus_call` decisions) of the last day, oldest first:
+    the one scan behind `ledger_totals` and `live_work` (orchestration G6)."""
+    # ponytail: a day's decisions by a scan of created_at; an indexed account
+    # column when the decision history makes that scan matter
+    for rec in conn.execute('SELECT * FROM route_decisions WHERE created_at >= ? '
+                            'ORDER BY rowid', (_iso(now - 86400),)):
+        r = rows.decode(entities.RouteDecision, rec)
+        if r.entity.subject.kind == 'archeus_call':
+            yield r
+
+
 def ledger_totals(conn, account_id, today, now=None):
     """What Archeus consumed on *account_id* since *today* (an ISO date), and
     its live work (the budget path, §4).
@@ -221,14 +233,9 @@ def ledger_totals(conn, account_id, today, now=None):
         complete['cost'] &= whole and e.cost_usd is not None
     running = sum(1 for r in rows.where(conn, entities.Execution)
                   if r.entity.account_id == account_id and r.entity.state in _LIVE_EXEC)
-    # ponytail: a day's decisions by a scan of created_at; an indexed account
-    # column when the decision history makes that scan matter
-    since = _iso(now - 86400)
-    for rec in conn.execute('SELECT * FROM route_decisions WHERE created_at >= ? '
-                            'ORDER BY rowid', (since,)):
-        r = rows.decode(entities.RouteDecision, rec)
+    for r in own_calls(conn, now):
         rd = r.entity
-        if rd.account_id != account_id or rd.subject.kind != 'archeus_call':
+        if rd.account_id != account_id:
             continue
         if own_call_live(r, now):
             running += 1
@@ -313,16 +320,19 @@ def _registered(conn, harness_ids, feed, now):
             'windows': dict(rd['windows']), 'resets_at': dict(rd.get('resets_at') or {}),
             'observed_at': _iso(rd['observed_at']),
             'age_s': max(0, round(now - rd['observed_at'], 3)), 'source': rd['source']}
-        p = policies[a.id]
         out.append({'id': a.id, 'ref': a.home_ref or a.id, 'home_ref': a.home_ref,
                     'harness': a.harness_id, 'label': a.label, 'auth_kind': a.auth_kind,
                     'registered': True, 'health': a.health, 'why_not': None,
-                    'policy': {k: getattr(p, k) for k in POLICY_FIELDS} | {
-                        'budgets': dict(p.budgets or {}),
-                        'project_allow': list(p.project_allow),
-                        'project_deny': list(p.project_deny)},
+                    'policy': effective_policy(policies[a.id]),
                     'usage': usage, 'ledger': ledger_totals(conn, a.id, today, now)})
     return out, readings
+
+
+def effective_policy(p):
+    """An account's policy exactly as the router reads it (ADR-0041 §5; G13)."""
+    return {k: getattr(p, k) for k in POLICY_FIELDS} | {
+        'budgets': dict(p.budgets or {}), 'project_allow': list(p.project_allow),
+        'project_deny': list(p.project_deny)}
 
 
 def refresh_ledgers(conn, snap, now):
@@ -659,10 +669,23 @@ class Resources:
 
 # ── views ──────────────────────────────────────────────────────────────────
 
-def account_view(conn, row):
-    (p,) = rows.where(conn, entities.ResourcePolicy, account_id=row.entity.id)
-    return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, row.entity.id))
+def account_view(conn, row, work=None, now=None):
+    """The account with its consumption (ADR-0043 §3, §4): its live consumers
+    from `live_work`, today's ledger and the effective policy, each exactly what
+    the router reads; a missing reading stays None or incomplete, never 0."""
+    from .live import live_work
+    a = row.entity
+    now = time.time() if now is None else now
+    work = live_work(conn, now=now) if work is None else work
+    (p,) = rows.where(conn, entities.ResourcePolicy, account_id=a.id)
+    return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, a.id),
+                policy=effective_policy(p.entity),
+                ledger=ledger_totals(conn, a.id, _iso(now)[:10], now),
+                consumers=[w for w in work if w['account_id'] == a.id])
 
 
 def accounts(conn):
-    return [account_view(conn, r) for r in rows.where(conn, entities.Account)]
+    from .live import live_work
+    now = time.time()
+    work = live_work(conn, now=now)
+    return [account_view(conn, r, work, now) for r in rows.where(conn, entities.Account)]

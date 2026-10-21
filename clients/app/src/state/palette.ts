@@ -18,7 +18,7 @@ export interface PaletteInput {
   missions: PaletteMission[];
   projects: { id: string; name: string }[];
   knowledge: { id: string; title?: string | null }[];
-  live: { mission_id: string }[]; // Core's live work (/v1/status)
+  live: { kind?: string; mission_id: string | null }[]; // Core's live work (/v1/status)
 }
 
 export type Hit =
@@ -30,9 +30,9 @@ export const PALETTE_SHOWN = 8;
 const q = (s: string) => `“${s}”`;
 
 /** What pausing or resuming a mission does, from Core's live work. */
-export function effectOf(act: 'pause' | 'resume', m: PaletteMission, live: { mission_id: string }[]): string {
+export function effectOf(act: 'pause' | 'resume', m: PaletteMission, live: { kind?: string; mission_id: string | null }[]): string {
   if (act === 'resume') return 'its work is dispatched again';
-  const n = live.filter((x) => x.mission_id === m.id).length;
+  const n = live.filter((x) => x.kind !== 'own_call' && x.mission_id === m.id).length;
   return n ? `${n} running ${n === 1 ? 'attempt pauses' : 'attempts pause'}` : 'nothing of it is running now';
 }
 
