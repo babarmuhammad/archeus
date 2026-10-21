@@ -459,3 +459,176 @@ Design additions above are reviewable; no production implementation, tests, inst
 | LS-Q11 | **"i am fine with a pwa app for now"** (owner, 2026-10-21, after the round 2 phone concepts 09–12 were delivered in 7c67958). The phone live remote is prototyped first as an installed PWA, under LS-7's web/PWA column: Web Push where supported, no offline command queue, the existing paired-device flow. "For now" keeps native open: it is revisited only if the prototype cannot meet a named requirement. |
 
 **Still open: LS-Q6, LS-Q7, LS-Q8, LS-Q9 and LS-Q10.**
+
+## Round 3: reviewer feedback and design response (2026-10-21)
+
+Labels used below. **Reviewer feedback** is the opinion of Federico Coscia, a colleague, quoted from `D:/Archeus/.collab/V2-feedback-Federico-2026-10-21.md`. It is not an owner decision. **Design proposal** is this response; it stays open until the owner answers §5 or a later dated decision. **Owner decision** means only the dated decisions above; this round records none. Vote words are his: "Mi piace" (like), "Così così" (so-so), "Non mi piace" (dislike).
+
+### 1. Feedback by image
+
+**Reviewer feedback.** Overall: "Voglia di usarlo sì decisamente", with the space structure "molto bella". The gap he names: "Manca forse poi tutta la parte di come far partire poi i task job, e far fare le cose ad archeus. Qui si vede solo l'interazione con lavoro già fatto o in corso."
+
+| Image | File | Vote | His words (quoted) | Response |
+|---|---|---|---|---|
+| 01 | 01-entrance-storyboard | Non mi piace | "Molto crowded, compattato … troppo denso e piatto, font peggiori e disegno di figure troppo semplificato" | §3 |
+| 02 | 02-now | Mi piace | "This is peak"; "molto bello il design delle stelle costellazioni figure geometriche" | §2 |
+| 03 | 03-mission | Mi piace | "This is also nice, should then be integrated with the design of … 02" | §2 |
+| 04 | 04-projects-ideas | Così così | none | no change this round |
+| 05 | 05-phone (first version) | none | none | superseded by LS-7 (owner, 2026-10-20) |
+| 06 | 06-shared | Mi piace | "The 3d visualization should always be consistent with one style." | §2 |
+| 07 | 07-calm | Così così | none | no change this round |
+| 08 | 08-day-attention | Così così | "I would make a dedicated section for a plan that has to be approved, where we can give feed back on the plan, on to change it etc." | §4 |
+| 09 | 09-phone-remote-running | Non mi piace | none | §3 |
+| 10 | 10-phone-needs-you | Così così | the constellation "con archeus in mezzo" with small task bodies; review "più in linea con lo stile stellare", "slim, trasparenza" | §3 |
+| 11 | 11-phone-one-gesture | Così così | "Un po' sproporzionate le dimensioni, farei i testi più piccoli" | §3 |
+| 12 | 12-phone-mission | Non mi piace | none | §3 |
+| 13 | 13-terminal-constellation | Mi piace | "Io preferisco questo di tutti"; "chiaro il disegno in ascii"; the dimmed command row "scurita" | §2 |
+| 14 | 14-terminal-mission | Non mi piace | "Non è chiaro cosa sia e cosa voglia dire, dove uno dovrebbe leggere" | §3 |
+| 15 | 15-same-moment | Non mi piace | "Troppo semplificato, sembra versione giocattolo, non è chiaro cosa dovrebbe fare e cosa ogni cosa fa" | §3 |
+| T1 | term-overview | Così così | "Questo non male ma è un po' troppo compattato" | §3 |
+| T2 | term-mission | Non mi piace | none | §3 |
+| T3 | term-decision | Non mi piace | none | §3, §4 |
+
+The reviewer gives no words for 09, 12, T2 and T3. Grouping them as "unclear or toy-like" is this response's reading of the dislike votes, not something he wrote. The "terzo esempio" he refers to for the dimmed command row is not identified; §2 assumes the key line of the LS-8 frames.
+
+### 2. Kept, and the rules they set
+
+**Design proposal.** Images 02, 03, 06 and 13 are kept. Each keeps its direction and becomes a rule for every view.
+
+- **R-1, one 3D style everywhere.** Reviewer feedback (06): "The 3d visualization should always be consistent with one style." The rule: one projection and depth tier scheme, one glyph set (§1 encoding table), one hull treatment (sparse neutral boundary lines), one line-tier rule and one thread rule. Overview, Missions, Shared, Calm, the phone and the reduced-motion variants all use it. A view may crop or move the camera; it may not restyle.
+- **R-2, mission inside the space language (03).** Reviewer feedback: 03 "should then be integrated with the design of" 02. The mission view is the same scene seen from inside its project, through the explicit camera move in LS-1. Same hulls, glyphs, state colours and thread; the core stays a small orientation anchor. It is not a second visual system.
+- **R-3, devices in the space (06).** Reviewer feedback: "it also shows the paired phone and connected devices in the space." Devices stay endpoints in the presence layer of LS-1 and LS-3 ("This desktop · connected", "Paired phone · recent"). They are not agents or principals. "Other people" remains a labelled future contract.
+- **R-4, the terminal constellation as reference text form (13).** Reviewer feedback: "chiaro il disegno in ascii" and "la riga dei comandi scurita". Design proposal: the key/help line is dimmed to the secondary text token and still meets 4.5:1. The state sentence, the Stop row and every key stay at full strength. Dimming never hides a binding.
+- **R-5, narrow navigation (02).** Reviewer feedback: the small side tab "lascia molto spazio alla pagina". S-2 already requires this; no change.
+
+### 3. Reworked
+
+Each item gives the reviewer's point, then the design change. Where the reviewer gives no words, the change is this response's.
+
+**01 Entrance (LS-2).** Feedback: crowded, too dense and flat, worse fonts, figures too simple.
+Proposal: at most one core, two project hulls and three bodies per frame. Depth comes from three real scale tiers (near, middle, far), not from flat placement. Glyphs use the §1 encoding sizes and are not simplified. Labels keep at least one glyph diameter of clear space. Headline and labels use the same UI type as 02 at the accepted optical size (PR-4), not a lighter cut. Timing stays 0, 240 and 800 ms, inside LS-5's 900 ms.
+
+**09 Phone, remote running (LS-7, screen 1).** Feedback: dislike, no comment.
+Proposal: the same composition as 10 without a request. Archeus thread-star in the upper middle; one blue mission body labelled "Fix date test · Verifying"; a project hull fragment labelled Archeus; one recorded relation line. Sentence beneath: "1 running" and "Nothing waiting for you." Dock with text-labelled Tell, Places and Stop. Every body carries a name and state word, so nothing reads as decoration.
+
+**10 Phone, needs you (LS-7, screen 2).** Feedback: constellation with Archeus in the middle and small task bodies around it is liked; he imagines it "si avvicinerebbe magari in 3d alla "stella" di quel task", then a "pannello review, con un design più slim, trasparenza".
+Proposal:
+- Archeus at the centre. Two or three task bodies around it at stable addresses, each a small labelled star with its state word. Overflow stays a named count ("2 more need you").
+- Only the obligation body is amber. Review performs one bounded step to that body's star (about 400 ms, interruptible; reduced motion: immediate). No pan, no pinch, no free camera (LS-7 stands). Owner question 3.
+- The review sheet is slim, rising about 40% of the screen, with What, Why, Core's consequence line and Open decision. Its translucency is an owner question (§5, question 2). Until answered, the sheet is opaque.
+
+**11 Phone, one gesture (LS-7, screen 3).** Feedback: "Un po' sproporzionate le dimensioni, farei i testi più piccoli."
+Proposal: reduce the LS-7 proposal at a 390 CSS-pixel viewport: headline 30/36 to 26/32; work title 24/30 to 20/26; body 18/26 to 16/24; secondary 16/22 to 14/20. No operational text below 14 px, which keeps LS-7's no-11-pixel rule. Controls stay at least 48×48 so the reduced text does not shrink the Approve control. This conflicts with the owner's verdict on concept 05 ("too dense / small"), so it is owner question 1.
+
+**12 Phone, mission (LS-7, screen 4).** Feedback: dislike, no comment.
+Proposal: replace the wrapped horizontal phase text with a vertical list of six rows (Understand, Plan, Approve, Run, Verify, Review), each with a tick, cross or current marker and a state word. Every block has a text heading: Latest record, Task, Evidence, Activity, Plan, Why. Tell and Stop stay docked. The facts match the LS-8 mission frame.
+
+**14 Terminal mission (LS-8).** Feedback: "Non è chiaro cosa sia e cosa voglia dire, dove uno dovrebbe leggere."
+Proposal: 14 and T2 are one image. The exact LS-8 mission frame (T2) is the reference, with fixed headings in the frame's order and a single key line at the foot. 14 is not regenerated as a separate free rendering.
+
+**15 Same moment (LS-7 and LS-8 parity).** Feedback: "Troppo semplificato, sembra versione giocattolo, non è chiaro cosa dovrebbe fare e cosa ogni cosa fa."
+Proposal: three labelled panels, each named by its job in words: Desktop (space and inspection), Phone (live remote), Terminal (text constellation and lists). Under each: the same four facts in the same order (Core state, needs you, running, queued) and the same mission ID. Footer: "Same IDs, same authority, different inspection." Every glyph gets a text label; decorative marks go.
+
+**T1 Terminal overview (LS-8).** Feedback: "un po' troppo compattato."
+Proposal: the 80×24 text in LS-8 remains the canonical content. The artwork uses the wide layout (120 columns or more): the bounded constellation on the left, a focused detail on the right, and a blank line between the status lines, constellation, obligation sentence, list and key row. Spacing is not added inside the 80×24 fixture, which would break its 24-row limit.
+
+**T2 Terminal mission (LS-8).** Feedback: dislike, no comment. See 14 above: T2 is the reference frame.
+
+**T3 Terminal decision (LS-8).** Feedback: dislike, no comment.
+Proposal: replace the one-key confirmation frame with the plan review page of §4.2, in text: plan tasks, Core consequence lines, keys A, C, R, and the typed-y confirmation as a separate second frame with Cancel as the default. Existing terminal rules stand (p17 R5).
+
+### 4. Starting work and approving plans (new)
+
+**Reviewer feedback** names the gap quoted in §1. **Design proposal:** accept it. This section adds a start flow and a plan review page. Each row below says whether V1 already has the capability. Nothing here is a V1 change; no V1 capability is assumed beyond the routes named.
+
+Principle: nothing appears before Core records it. No optimistic star, no queued send, no ghost body.
+
+#### 4.1 Starting a task (design proposal)
+
+| Step | Owner does | Surface shows | V1 today |
+|---|---|---|---|
+| 1. Open | `t` on desktop or in the terminal, Tell dock on phone, or "New mission" in a project inspector | Prepared empty Tell field, project chip set to the focused project, Cancel visible. Nothing sent | Tell is prepared, not sent (Q14). Whether Tell accepts a project scope is unverified; check the Tell contract before building the chip |
+| 2. Compose | Writes what to do; may change the project and add success criteria lines | Field stays editable; Stop stays visible | `POST /v1/conversations/{id}/messages` (control). Mission create: `POST /v1/missions` with title, objective, project_id, success_criteria |
+| 3. Send | Presses Send | "Sending to Core…" | Explicit send (Q14) |
+| 4. Clarify | Answers Core's question if it asks | Core's question verbatim with Proceed anyway, Drop it, Answer | Intent clarification exists: `POST /v1/intents/{id}/clarify` |
+| 5. Record | Nothing further | A neutral outlined body appears in the chosen project with state word "Planning". One finite reveal near its project, 600 ms at most; immediate under reduced motion | Mission reaches CREATED then PLANNING in Core. Body, reveal and placement are new |
+| 6. Plan | Reviews if asked | Either the recorded line "plan v1 approved within policy" and the body moves to running, or the body turns amber with "Plan ready · review" | Auto-approval within policy and plan_needs_approval are recorded in Core. Amber placement is new |
+
+Stopped: Tell is rejected, not queued (Q13). Offline: Send is disabled with its reason; no queue (LS-3). Ideas start only through the prepared Tell request decided under Q14c; nothing further this round (DR-10).
+
+#### 4.2 Plan review (design proposal)
+
+Entry: Review on the amber body (desktop and phone), the decision row (terminal), or `A`, `C`, `R` on the decision frame. One page, three layouts: right inspector, pushed page without tabs, text frame. Content in this order:
+
+1. Identity: mission, project, branch, "Plan v{N}", and the version list. Older versions are read-only.
+2. Why: Core's recorded reason ("Plan approval required").
+3. The plan: ordered tasks with the targets Core records. No silent truncation; a count names anything hidden.
+4. Consequences: Core's own text for approve, request changes and reject. A missing consequence disables the action and says why.
+5. Actions (footer on desktop, fixed bar on phone, key line in terminal):
+   - **Approve plan.** Explicit label, as in the V1 terminal. Phone: one tap for an eligible non-step-up decision (LS-7). PIN first where step-up applies. Desktop and terminal: prose confirmation with Cancel as default. Bound to the action hash and the plan version on screen.
+   - **Request changes.** Opens the note field with V1's wording: "What should change? (the planner reads this)". Submitting records the decision; the mission is planned again.
+   - **Edit plan.** The owner edits the task list; saving makes the next version. Before saving the page says: "Saving makes plan v{N+1}. Approval of v{N} no longer applies." The approval of the previous version is superseded, as V1 does today.
+   - **Reject.** Cancels the mission under Core's consequence text. "A decided approval cannot be changed." No undo.
+6. Rules: no approval from a list, home screen, push notification or swipe (LS-3, LS-7). The Approve control disables and rereads if the plan changed or was decided elsewhere (LS-7 stale rule).
+
+The reviewer's request for "feed back on the plan" is answered by Request changes and Edit plan, both existing. Comments on individual tasks are not in V1 (§5, question 5).
+
+#### 4.3 What V1 supports and what is new
+
+| Capability | V1 today | Status in this design |
+|---|---|---|
+| Read plan and versions | `GET /v1/missions/{id}/plan`, `GET /v1/plans/{id}`; the terminal lists plan versions | Exists. The version list on the review page is new |
+| Approve, reject, request changes | `POST /v1/approvals/{id}/decide` (approve scope) with action_hash, optional note, step_up, expected_version | Exists. The review page layout is new |
+| Note to the planner | Request-changes note; mission planned again | Exists |
+| Edit plan as next version | `POST /v1/plans/{id}/edit` (approve scope), superseding the prior version's approvals; PlanEditor on the mission page | Exists. The save warning copy is new |
+| Auto-approval within policy | plan_auto_approved decision, recorded | Exists. Shown as a recorded fact, never as a silent approval |
+| Core consequence text | Consequence strings for each decision | Exists. Used as given |
+| Start by Tell | `POST /v1/conversations/{id}/messages` (control); clarification at `POST /v1/intents/{id}/clarify` | Exists. The prepared-send panel and any project scope are new or unverified |
+| Start a mission in a project | `POST /v1/missions` (control): title, objective, project_id, success_criteria | Route exists. The project-inspector form is new |
+| Per-task comments on a plan | None | New. Owner question 5 |
+| Question to the planner without changing the plan | None; the request-changes note is the only channel | New. Not proposed this round |
+| Undo an approval | None | Not proposed |
+
+Authority: deciding and editing plans need the approve scope; starting missions and Tell need control. V2 adds no authority. Step-up stays where V1 already requires it.
+
+### 5. Owner questions
+
+Each question needs an owner answer. Recommended answers are proposals.
+
+1. **Phone type scale (§3, 11).** The reviewer asks for smaller text; the owner called the earlier phone "too dense / small". Recommended: body 16/24, title 20/26, headline 26/32, nothing under 14 px, controls 48×48. Verify on a real phone before accepting.
+2. **Translucent review sheet (§3, 10).** The reviewer asks for a slim, transparent panel; the concept README and §4 reject translucent glass panels. Recommended: allow a translucent tint only where text meets 4.5:1 over the worst background behind it, and go opaque under reduced transparency and high contrast.
+3. **One zoom step on the phone (§3, 10).** LS-7 says no free camera on phone. Recommended: allow one bounded step to the chosen task star, no pan or pinch, immediate under reduced motion.
+4. **Primary way to start work (§4.1).** Tell (free text, Core clarifies) or a structured mission form in the project. Recommended: Tell first, the project form second. Both use existing routes. Confirm first that Tell can carry a project scope.
+5. **Comments on a plan (§4.2).** A per-task comment thread would be a new contract and the planner would have to read it. Recommended: ship the existing note and plan edit now; decide per-task comments as a separate contract later.
+
+### 6. Round 3 image brief
+
+**Design proposal, for Codex image generation later.** Thirteen images: nine reworked (01, 09, 10, 11, 12, 15, T1, T2, T3) and four new (N1 to N4). Every image carries a CONCEPT FIXTURE label and fixture names and counts. Every glyph carries a text label. Same glyph set, type scale (§3) and state colours as the rest. No glow, bloom, orbit, reactor, glass or decorative particles. The review sheet in R3-10 is rendered opaque until owner question 2 is answered.
+
+**R3-01 Entrance (reworked from 01).** Three equal frames labelled 0 ms, 240 ms and 800 ms, each in the same desktop shell: "Not stopped · accepts new work", Tell, Stop, narrow left navigation. At most three bodies per frame. The first frame shows the Archeus star at centre and the state sentence. The second adds the Archeus project hull with "Fix date test · Verifying" in blue and a "Codex · execution" triangle. The third adds amber "Search provenance · Review plan" nearer, with a Review button. Three depth tiers by scale; headline "1 needs you · 1 verifying" in the 02 type.
+
+**R3-09 Phone, remote running (reworked from 09).** Portrait app screenshot, no device frame, 390×844 proportions. Archeus thread-star in the upper middle, one blue body "Fix date test · Verifying" at a second position, a project hull fragment labelled Archeus, one recorded relation line. Beneath: "1 running" and "Nothing waiting for you." Bottom dock with text-labelled Tell, Places and Stop.
+
+**R3-10 Phone, needs you (reworked from 10).** The R3-09 composition with an obligation. Archeus stays centre; two or three labelled task stars around it; amber "Search provenance · Review plan" nearer with a Review button. Sentence "1 needs you · 1 running". A slim opaque sheet at the bottom shows What and Why in short words and the Review button. "2 more need you" appears as a named count only if a second obligation exists.
+
+**R3-11 Phone, one gesture (reworked from 11).** Full-page decision at 390×844: Back, "Search provenance", mission and branch, "Plan v1 of 1", three task rows, Core's Why and Consequence lines. One "Approve plan" button, 48 px high, in thumb reach; "Request changes" and "Reject" as secondary buttons; Stop in the lower corner. Body 16 px, headline 26 px. No Undo text.
+
+**R3-12 Phone, mission (reworked from 12).** Back, "Fix date test", "Archeus · fix/date-test", "Verifying" large. Six-row vertical phase list with tick, current and empty markers and state words. "Latest record: Tool result received" and "Task: not recorded". A linked "Codex · execution" triangle. Links Activity, Plan and Why. Tell and Stop docked.
+
+**R3-15 Same moment (reworked from 15).** Three labelled panels: Desktop (space and inspection), Phone (live remote), Terminal (text constellation and lists). Under each, the same four facts in the same order (Core state, 1 needs you, 1 running, 0 queued) and the same mission ID. Footer: "Same IDs, same authority, different inspection."
+
+**R3-T1 Terminal overview (reworked from T1).** Wide layout at 120 columns: bounded constellation left, focused detail right. The LS-8 80×24 text content, with a blank line between blocks. Key/help row dimmed; Stop row and state sentence at full strength.
+
+**R3-T2 Terminal mission (reworked from T2; replaces 14).** The LS-8 mission frame as exact text with its headings in order: scope, identity, state, six phases with Verify marked, Latest record, Task, links, key line. Monospace, no decorative colour; state words carry meaning.
+
+**R3-T3 Terminal plan review (reworked from T3).** Two frames. The first: "Review plan v1 | feat/search", What, Why, Core's consequence lines, the task list, and keys "A approve · C request changes · R reject · Esc back · s Stop". The second, after A: "Confirm this decision? Type y to confirm; any other key cancels." with Cancel as the default.
+
+**R3-N1 Start a task, desktop (new).** The overview scene at reduced opacity behind a prepared Tell panel along the lower edge. Field "Tell Archeus what to do", project chip "Project: Archeus", Send and Cancel. Line beneath: "Nothing is sent until you press Send." No preview body in the scene. Stop visible.
+
+**R3-N2 Start a task, phone (new).** Tell as a full sheet from the dock: text field, project line, Send and Cancel. Above it the core is visible and smaller. One state line "Sending to Core…". No new body yet. Stop in the lower corner.
+
+**R3-N3 Plan review, desktop (new).** Scene at reduced width on the left; opaque right inspector "Review plan v1 · Search provenance". Header, Why, ordered tasks, Core consequence lines, version list with v1 current. Footer: Approve plan, Request changes, Edit plan, Reject. With Request changes selected: the note field "What should change? (the planner reads this)".
+
+**R3-N4 Plan review, phone (new).** Pushed page with no tabs and Back at the top. Title, Why, task rows, Core consequence lines. Fixed bottom bar: Approve plan (48 px) and Request changes. Stop in the lower corner. Plan v1 of 1.
+
+No owner decision is recorded in this section. Everything marked design proposal stays open until §5 is answered.
