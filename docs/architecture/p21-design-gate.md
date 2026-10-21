@@ -527,20 +527,24 @@ five (Recommended)". D13 (b) as approved; "P21 cannot be declared complete befor
   causes nothing, as (b) says.
 - **Display.** Nothing new: the trace (C-read), the timeline and the TUI already show a
   `cause_chain`; more events now have one.
-- **Tests:** `tests/v1/integration/test_cwrite.py` (23). The original thirteen: a command under a cause,
-  an explicit cause winning and a route command a root; the cause outside the request hash; the
-  newest 16 kept; a consumer's writes caused and nothing left behind, a `Hold` included; the intent consumer's mission and reply caused by the user's
-  message; plan approve, reject and request changes, each deciding as before and causing everything
-  it moved; a decision under an event passing it on; a fallback route's approve and reject; a
-  refused decision writing nothing (a rollback check, GuardFailed). The addition: an ok and an error
-  end each caused into the task's reply with the hook token cleared, and one command ending two
-  executions keeping each reply to its own end. The review's additions: a chat approve's reply a
-  root while its moves carry the decision; a consumer handler that raises leaves no cause behind;
-  each other end site (a mission stop over two paused
+- **Tests:** `tests/v1/integration/test_cwrite.py` (25). The original thirteen: a command under a
+  cause, an explicit cause winning and a route command a root; the cause outside the request hash;
+  the newest 16 kept; a consumer's writes caused and nothing left behind, a `Hold` included; the
+  intent consumer's mission and reply caused by the user's message; plan approve, reject and
+  request changes, each deciding as before and causing everything it moved; a decision under an
+  event passing it on; a fallback route's approve and reject; a refused decision writing nothing
+  (a rollback check, GuardFailed). The addition: an ok and an error end each caused into the task's
+  reply with the hook token cleared, and one command ending two executions keeping each reply to its
+  own end. Fix round: a chat approve's reply a root while its moves carry the decision; a consumer
+  handler that raises leaves no cause behind; each other end site (a mission stop over two paused
   executions, an estop with a paused one, a rejected action approval, a refused hand-off, a
-  continuation) caused by its own end, and the mission block and `core.estopped` after an end a
-  root.
-- **Mutants:** Z70-Z79 (the writer, the consumer, the event chain and the decision's assignments) and
-  Z110-Z111 (the `_after` body), and for the review Z170-Z173 (one per `_after` site: refuse, record_handoff, approval_answered, `_ended`),
-  Z174 (the decision's restore removed), Z180 (the writer ignores the cause it was given), all in
-  `tools/mutate_p21.py`, each killed by a test it names.
+  continuation) caused by its own end, with the mission block and `core.estopped` after an end a
+  root. Round 3: a blocking refusal (`path_too_long`) blocks its mission under its end; a decision
+  made inside a consumer is caused by that event, and so is its reply.
+- **Mutants:** Z70-Z79 (the writer, the consumer, the event chain and the decision's assignments)
+  and Z110-Z111 (the `_after` body). For the review: Z170-Z173, one per `_after` site (refuse,
+  record_handoff, approval_answered, `_ended`); Z174 (the decision's restore removed); Z175 (a
+  blocking refusal's mission block uncaused); Z176 (deliver's reset removed when a handler raises);
+  Z180 (the writer ignores the cause it was given). All in `tools/mutate_p21.py`, each killed by a
+  test it names. The ids are Z170-Z176 and Z180, not the review's Z112-Z115: T-128 owns
+  Z112-Z122 on p21-e, and the two would collide at integration.

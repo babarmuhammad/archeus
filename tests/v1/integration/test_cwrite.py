@@ -183,6 +183,32 @@ def test_a_fallback_routes_decision_causes_what_follows(db, decision, to, task_s
     assert e['cause_chain'] == [] and after and all(x['cause_chain'] == [e['id']] for x in after)
 
 
+def test_a_decision_under_a_consumer_is_caused_by_that_event_and_so_is_its_reply(r):
+    """A non-empty `before`: the wrapper must restore to the consumer's chain, not to ()."""
+    _mid, a = _asking(r)
+    x = _events(r.db)[-1]
+    made = []
+
+    def handler(e):
+        if e.id == x['id']:
+            made.append(r.do(r.authz.decide_by_message, who=r.user, text='approve',
+                             conversation_id='primary', approval_id=a.id,
+                             action_hash=a.action_hash))
+        return 'ok'
+
+    consumers.deliver(r.db, 'c-write-decide', handler)
+    assert made and made[0]['decided']['state'] == 'APPROVED'
+    ch = list(x['cause_chain']) + [x['id']]
+    e = _decided(r.db, a, 'APPROVED')
+    assert e['cause_chain'] == ch
+    after = _after(r.db, e)
+    (reply,) = [y for y in after if y['type'] == 'message.created'
+                and y['payload']['author'] == 'archeus']
+    assert reply['cause_chain'] == ch
+    moved = [y for y in after if y['type'] != 'message.created']
+    assert moved and all(y['cause_chain'] == ch + [e['id']] for y in moved)
+
+
 def test_a_chat_approve_replies_as_a_root_while_what_it_moves_carries_the_decision(r):
     _mid, a = _asking(r)
     out = r.do(r.authz.decide_by_message, who=r.user, text='approve', conversation_id='primary',
@@ -197,7 +223,7 @@ def test_a_chat_approve_replies_as_a_root_while_what_it_moves_carries_the_decisi
     assert moved and all(x['cause_chain'] == [e['id']] for x in moved)
 
 
-def test_a_refused_decision_writes_nothing_under_a_cause_either(r):
+def test_a_refused_decision_writes_nothing_and_leaves_no_event(r):
     _mid, a = _asking(r)
     head = r.head()
     token = ev.CAUSE.set((ids.new_ulid(),))
@@ -381,4 +407,20 @@ def test_a_refused_hand_off_charges_the_task_under_its_end(r):
     (ended,) = _of(r.db, 'execution.ended', eid)
     after = _after(r.db, ended)
     assert ended['cause_chain'] == [] and after
+    assert all(x['cause_chain'] == [ended['id']] for x in after)
+
+
+def test_a_blocking_refusal_blocks_its_mission_under_its_end(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'))
+    _dispatchable(r, mid)
+    (eid,) = _started(r, mid)
+    _to(r, eid, 'first_output', 'pause_requested', 'halted_at_boundary')
+    r.do(X.refuse, execution_id=eid, reason='the path is too long',
+         stop_reason='path_too_long', missions=r.missions)
+    (ended,) = _of(r.db, 'execution.ended', eid)
+    after = _after(r.db, ended)
+    (blocked,) = [x for x in after if x['type'] == 'mission.state_changed'
+                  and x['payload']['to'] == 'BLOCKED']
+    assert ended['cause_chain'] == [] and blocked['cause_chain'] == [ended['id']]
     assert all(x['cause_chain'] == [ended['id']] for x in after)
