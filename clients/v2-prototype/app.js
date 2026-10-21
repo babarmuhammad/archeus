@@ -10,7 +10,7 @@
   var STATE = {
     waiting: { word: 'Needs you', color: '#F2B544' },
     running: { word: 'Running', color: '#6FB1FF' },
-    done: { word: 'Done', color: '#6FD39A' },
+    done: { word: 'Done', color: '#9AA5B8' },
     idle: { word: 'Idle', color: '#9AA5B8' },
     exec: { word: 'Execution', color: IVORY },
     connected: { word: 'Connected', color: '#6FD39A' },
@@ -22,19 +22,17 @@
 
   // offs: mission positions around the project centre, in stage pixels at full size.
   var projects = [
-    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', at: [0.25, 0.5], phoneAt: [0.42, 0.5], offs: [[-70, -84], [40, 84], [-150, 22]] },
-    { id: 'notes', name: 'Notes', hue: '#E7A3AE', at: [0.8, 0.27], phoneAt: [0.74, 0.22], offs: [[-70, -30], [46, 40]] },
-    { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', at: [0.76, 0.8], phoneAt: [0.7, 0.8], offs: [[-54, -42], [54, 40]] }
+    { id: 'archeus', name: 'Archeus', hue: IVORY, note: 'Active. Your projects, in context.' },
+    { id: 'notes', name: 'Notes', hue: IVORY, note: 'Research and capture evolving context.' },
+    { id: 'ideas', name: 'Ideas', hue: IVORY, note: 'Early concepts.' }
   ];
 
   var missions = [
-    { id: 'm-search', title: 'Search provenance', project: 'harbor', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, glyph: 'search', what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false, related: [{ key: 'plan', title: 'Plan v1', sub: '3 tasks, not started', glyph: 'list', verb: 'proposes' }], log: ['Plan v1 recorded.', 'Waiting for your decision.'] },
-    { id: 'm-date', title: 'Fix date test', project: 'harbor', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'Run date suite on fix/date-test and collect the results.', exec: true, related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received.', 'Tool result received.', 'Not passed tests.', 'Parsing results.', 'Proceeding to verification checks.'] },
-    { id: 'm-done', title: 'Write changelog', project: 'harbor', branch: 'docs/changelog', state: 'done', stateText: 'Review passed', phase: 6, glyph: 'check', what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] },
-    { id: 'm-index', title: 'Index notes', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Not started', phase: -1, glyph: 'doc', what: 'Build an index over the notes folder.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
-    { id: 'm-read', title: 'Reading list export', project: 'notes', branch: 'docs/reading', state: 'done', stateText: 'Done', phase: 6, glyph: 'doc', what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false, related: [], log: ['Export completed.'] },
-    { id: 'm-map', title: 'Map relations', project: 'lantern', branch: 'feat/map', state: 'idle', stateText: 'Not started', phase: -1, glyph: 'code', what: 'Map recorded relations between notes.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
-    { id: 'm-export', title: 'Export graph', project: 'lantern', branch: 'fix/export', state: 'done', stateText: 'Review passed', phase: 6, glyph: 'chart', what: 'Export the graph as an image.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] }
+    { id: 'm-search', title: 'Search provenance', project: 'archeus', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, glyph: 'search', what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false, related: [{ key: 'plan', title: 'Plan v1', sub: '3 tasks, not started', glyph: 'list', verb: 'proposes' }], log: ['Plan v1 recorded.', 'Waiting for your decision.'] },
+    { id: 'm-date', title: 'Fix date test', project: 'archeus', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'Run date suite on fix/date-test and collect the results.', exec: true, related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received.', 'Tool result received.', 'Not passed tests.', 'Parsing results.', 'Proceeding to verification checks.'] },
+    { id: 'm-done', title: 'Docs refresh', project: 'archeus', branch: 'docs/changelog', state: 'done', stateText: 'Done', phase: 6, glyph: 'check', what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] },
+    { id: 'm-index', title: 'Offline capture', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Captured', phase: -1, glyph: 'doc', what: 'Capture an offline copy of notes.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
+    { id: 'm-read', title: 'Export backup', project: 'notes', branch: 'docs/reading', state: 'idle', stateText: 'New', phase: -1, glyph: 'doc', what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false, related: [], log: ['Export completed.'] },
   ];
 
   var plans = {
@@ -86,7 +84,7 @@
   function sentence() {
     var w = count('waiting'), r = count('running');
     if (!w && !r) return 'Nothing running. Tell Archeus what to do.';
-    return w + ' needs you, ' + r + ' running';
+    return w + ' needs you · ' + r + ' verifying';
   }
   function selectedComments() { return comments.filter(function (c) { return c.mission === planId && c.carry; }); }
   function commentsFor(id) { return comments.filter(function (c) { return c.mission === id; }); }
@@ -285,27 +283,54 @@
     g.restore();
   }
 
+  // Star: many fine threads of two lengths, ivory, crisp. Replaces the six long rays of round 3 to 9.
   function drawCore(g, c, t, hot, s) {
-    var breath = hot && t ? 1 + 0.05 * Math.sin(t / 1000 * TAU / 6) : 1;
-    var R = 150 * s * breath;
-    var rg = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
-    rg.addColorStop(0, 'rgba(239,233,218,0.22)');
-    rg.addColorStop(0.45, 'rgba(239,233,218,0.05)');
-    rg.addColorStop(1, 'rgba(239,233,218,0)');
-    g.fillStyle = rg; g.beginPath(); g.arc(c.x, c.y, R, 0, TAU); g.fill();
+    g.save();
     g.strokeStyle = IVORY; g.fillStyle = IVORY; g.lineCap = 'round';
-    for (var i = 0; i < 16; i++) {
-      var a = i * TAU / 16 + 0.05;
-      var L = (i % 4 === 0 ? 96 : i % 2 === 0 ? 74 : 34) * s * breath;
-      g.globalAlpha = i % 4 === 0 ? 0.95 : 0.55;
-      g.lineWidth = i % 2 === 0 ? 1.2 : 0.8;
-      line(g, c.x + Math.cos(a) * 6 * s, c.y + Math.sin(a) * 6 * s, c.x + Math.cos(a) * L, c.y + Math.sin(a) * L);
+    for (var i = 0; i < 44; i++) {
+      var a = i * TAU / 44 + (i % 3) * 0.02;
+      var L = (i % 5 === 0 ? 70 : 30 + ((i * 37) % 29)) * s;
+      g.globalAlpha = i % 5 === 0 ? 0.9 : 0.5;
+      g.lineWidth = i % 5 === 0 ? 0.9 : 0.55;
+      line(g, c.x + Math.cos(a) * 3 * s, c.y + Math.sin(a) * 3 * s, c.x + Math.cos(a) * L, c.y + Math.sin(a) * L);
     }
-    g.globalAlpha = 0.3; g.setLineDash([2, 5]); g.lineWidth = 1;
-    g.beginPath(); g.arc(c.x, c.y, 26 * s, 0, TAU); g.stroke(); g.setLineDash([]);
-    g.globalAlpha = 1; g.shadowColor = IVORY; g.shadowBlur = 22;
-    g.beginPath(); g.arc(c.x, c.y, 4.5 * s, 0, TAU); g.fill();
-    g.shadowBlur = 0;
+    g.globalAlpha = 1;
+    g.beginPath(); g.arc(c.x, c.y, 2.2 * s, 0, TAU); g.fill();
+    g.restore();
+  }
+
+  // Mission marks: small glyphs. Amber diamond = owner obligation, blue star = live, grey = done or idle.
+  function drawMark(g, x, y, state, r, lit) {
+    g.save();
+    g.lineWidth = 1.3; g.lineJoin = 'round';
+    var col = STATE[state] ? STATE[state].color : IVORY;
+    if (state === 'running') {
+      g.fillStyle = col;
+      g.beginPath();
+      g.moveTo(x, y - r * 1.3); g.quadraticCurveTo(x + r * 0.16, y - r * 0.16, x + r * 1.1, y);
+      g.quadraticCurveTo(x + r * 0.16, y + r * 0.16, x, y + r * 1.3);
+      g.quadraticCurveTo(x - r * 0.16, y + r * 0.16, x - r * 1.1, y);
+      g.quadraticCurveTo(x - r * 0.16, y - r * 0.16, x, y - r * 1.3);
+      g.fill();
+    } else if (state === 'waiting') {
+      g.strokeStyle = col; g.fillStyle = 'rgba(242,181,68,0.22)';
+      g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * 0.8, y); g.lineTo(x, y + r); g.lineTo(x - r * 0.8, y); g.closePath();
+      g.fill(); g.stroke();
+    } else {
+      g.strokeStyle = STATE.idle.color;
+      g.beginPath(); g.moveTo(x, y - r * 0.8); g.lineTo(x + r * 0.64, y); g.lineTo(x, y + r * 0.8); g.lineTo(x - r * 0.64, y); g.closePath();
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // Codex execution: a plain triangle with the code glyph inside.
+  function drawTriangle(g, x, y, r, lit) {
+    g.save();
+    g.strokeStyle = IVORY; g.lineWidth = 1.1; g.globalAlpha = lit ? 0.9 : 0.6;
+    g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * 0.9, y + r * 0.62); g.lineTo(x - r * 0.9, y + r * 0.62); g.closePath(); g.stroke();
+    glyph(g, 'code', x, y + r * 0.1, r * 0.42, IVORY, 0.85);
+    g.restore();
   }
 
   /* ---------- Scenes: plain data, no drawing ---------- */
@@ -339,35 +364,70 @@
 
   // The bottom CHAT_RESERVE pixels of the stage belong to the conversation, so the scene is laid out above them.
   var CHAT_RESERVE = 170;
+  // The Overview is drawn from the Codex concept: fixed positions and outlines, in concept pixels of the
+  // 1296 x 520 scene box (the chat sits below it). Hulls are neutral; missions are small marks with labels.
+  var CONCEPT_W = 1296, CONCEPT_H = 560;
+  var CONCEPT_RINGS = {
+    archeus: [[195, 340], [265, 232], [480, 180], [640, 140], [918, 220], [1035, 390], [930, 500], [640, 470], [420, 478], [283, 445]],
+    notes: [[1000, 95], [1130, 100], [1185, 210], [1160, 300], [1060, 300], [1040, 190]],
+    ideas: [[1100, 370], [1180, 372], [1212, 412], [1170, 455], [1100, 428]]
+  };
+  var CONCEPT_AT = {
+    'm-search': [330, 300], 'm-date': [826, 345], 'm-done': [368, 410], 'm-index': [1034, 175], 'm-read': [1040, 230],
+    exec: [870, 450], verif: [806, 488], results: [925, 488]
+  };
+  function conceptRing(id, w, hh) {
+    return CONCEPT_RINGS[id].map(function (p) { return { x: p[0] / CONCEPT_W * w, y: p[1] / CONCEPT_H * hh }; });
+  }
+  function conceptAt(key, w, hh) {
+    return { x: CONCEPT_AT[key][0] / CONCEPT_W * w, y: CONCEPT_AT[key][1] / CONCEPT_H * hh };
+  }
+  function markNode(m, x, y, r, parent) {
+    var n = nodeFor(m, x, y, r, parent, true);
+    n.mark = true;
+    return n;
+  }
   function nowScene(w, h) {
     if (w < 640) return phoneScene(w, h);
-    var hh = h - Math.min(CHAT_RESERVE, Math.round(h * 0.26));
-    var k = Math.max(0.5, Math.min(w / 1150, hh / 560, 1.1));
-    var sc = mk(w, h, { x: w * 0.5, y: hh * 0.5 }, k, false);
-    var shape = Math.max(0.62, Math.min(k, 1));
-    sc.sats = [[0.3, 0.86], [0.6, 0.05], [0.92, 0.5], [0.07, 0.3], [0.68, 0.9]].map(function (p) { return { x: w * p[0], y: hh * p[1] }; });
-    projects.forEach(function (p) {
-      var ms = missions.filter(function (x) { return x.project === p.id; });
-      var live = ms.filter(isLive).length;
-      var at = p.at;
-      var cx = w * at[0], cy = hh * at[1];
-      sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: cx, y: cy, members: ms.map(function (m) { return m.id; }), count: ms.length, live: live, active: live > 0 });
-      sc.parent[p.id] = 'core';
-      sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live > 0, kind: 'project', hue: p.hue });
-      ms.forEach(function (m, i) {
-        var o = p.offs[i] || [Math.cos(i * 2.4) * 120, Math.sin(i * 2.4) * 120];
-        var mx = cx + o[0] * shape, my = cy + o[1] * shape;
-        sc.nodes.push(nodeFor(m, mx, my, 62 * shape, p.id, true));
-        sc.parent[m.id] = p.id;
-        sc.links.push({ a: p.id, b: m.id, col: isLive(m) ? STATE[m.state].color : p.hue, live: isLive(m), kind: 'mission', hue: p.hue });
-        if (m.exec) {
-          var ex = execFor(m, mx + 74 * shape, my + 92 * shape, 30 * shape, i);
-          sc.nodes.push(ex);
-          sc.parent[ex.id] = m.id;
-          sc.links.push({ a: m.id, b: ex.id, col: IVORY, live: ex.live, kind: 'exec', hue: IVORY });
-        }
-      });
-    });
+    var hh = h - Math.min(280, Math.round(h * 0.36));
+    var k = Math.max(0.6, Math.min(w / 1296, hh / 560, 1.1));
+    var sc = mk(w, h, conceptAt('m-date', w, hh), k, false);
+    sc.core = { x: w * 640 / CONCEPT_W, y: hh * 320 / CONCEPT_H };
+    sc.sats = [];
+    var archeus = projectOf('archeus'), notes = projectOf('notes'), ideas = projectOf('ideas');
+    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: conceptRing('archeus', w, hh), members: ['m-search', 'm-date', 'm-done'], count: 3, live: 2, active: true });
+    sc.projects.push({ id: 'notes', name: notes.name, hue: IVORY, note: notes.note, ring: conceptRing('notes', w, hh), members: ['m-index', 'm-read'], count: 2, live: 0, active: false });
+    sc.projects.push({ id: 'ideas', name: ideas.name, hue: IVORY, note: ideas.note, ring: conceptRing('ideas', w, hh), members: [], count: 0, live: 0, active: false });
+    sc.parent.archeus = 'core'; sc.parent.notes = 'core'; sc.parent.ideas = 'core';
+    sc.links.push({ a: 'core', b: 'archeus', col: IVORY, live: true, kind: 'project', hue: IVORY });
+    sc.links.push({ a: 'core', b: 'notes', col: IVORY, live: false, kind: 'project', hue: IVORY });
+    sc.links.push({ a: 'core', b: 'ideas', col: IVORY, live: false, kind: 'project', hue: IVORY, dash: true });
+    var mSearch = find('m-search'), mDate = find('m-date'), mDone = find('m-done');
+    var nS = markNode(mSearch, 0, 0, 8 * k, 'archeus'), nD = markNode(mDate, 0, 0, 8 * k, 'archeus'), nDone = markNode(mDone, 0, 0, 7 * k, 'archeus');
+    var pS = conceptAt('m-search', w, hh), pD = conceptAt('m-date', w, hh), pDone = conceptAt('m-done', w, hh);
+    nS.x = pS.x; nS.y = pS.y; nD.x = pD.x; nD.y = pD.y; nDone.x = pDone.x; nDone.y = pDone.y;
+    sc.nodes.push(nS, nD, nDone);
+    sc.parent[mSearch.id] = 'archeus'; sc.parent[mDate.id] = 'archeus'; sc.parent[mDone.id] = 'archeus';
+    sc.links.push({ a: 'core', b: mSearch.id, col: STATE.waiting.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
+    sc.links.push({ a: 'core', b: mDate.id, col: STATE.running.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
+    sc.links.push({ a: 'core', b: mDone.id, col: IVORY, live: false, kind: 'mission', hue: IVORY });
+    var pe = conceptAt('exec', w, hh), pv = conceptAt('verif', w, hh), pr = conceptAt('results', w, hh);
+    var ex = execFor(mDate, pe.x, pe.y, 15 * k, 0); ex.mark = true;
+    var nv = { id: 'verif', kind: 'record', state: 'idle', x: pv.x, y: pv.y, r: 9 * k, glyph: 'check', live: true, title: 'Verification', kicker: 'Record', sub: 'Confirms behaviour', st: '', parent: mDate.id, hit: false, solid: OCT, seed: 0.5, mark: true, dot: true };
+    var nr = { id: 'results', kind: 'record', state: 'idle', x: pr.x, y: pr.y, r: 9 * k, glyph: 'chart', live: true, title: 'Results', kicker: 'Record', sub: 'Test execution outputs', st: '', parent: mDate.id, hit: false, solid: OCT, seed: 0.7, mark: true, dot: true };
+    sc.nodes.push(ex, nv, nr);
+    sc.parent[ex.id] = mDate.id; sc.parent[nv.id] = mDate.id; sc.parent[nr.id] = mDate.id;
+    sc.links.push({ a: mDate.id, b: ex.id, col: IVORY, live: true, kind: 'exec', hue: IVORY, arrow: true });
+    sc.links.push({ a: ex.id, b: nv.id, col: '#6FB1FF', live: true, kind: 'exec', hue: IVORY, arrow: true });
+    sc.links.push({ a: ex.id, b: nr.id, col: '#6FB1FF', live: true, kind: 'exec', hue: IVORY, arrow: true });
+    // Notes' missions and Ideas: named records of the same marks.
+    var nO = markNode(find('m-index'), 0, 0, 7 * k, 'notes'), nE = markNode(find('m-read'), 0, 0, 7 * k, 'notes');
+    var pO = conceptAt('m-index', w, hh), pE = conceptAt('m-read', w, hh);
+    nO.x = pO.x; nO.y = pO.y; nE.x = pE.x; nE.y = pE.y;
+    sc.nodes.push(nO, nE);
+    sc.parent[find('m-index').id] = 'notes'; sc.parent[find('m-read').id] = 'notes';
+    sc.links.push({ a: 'core', b: 'm-index', col: IVORY, live: false, kind: 'mission', hue: IVORY });
+    sc.links.push({ a: 'core', b: 'm-read', col: IVORY, live: false, kind: 'mission', hue: IVORY });
     return sc;
   }
 
@@ -420,46 +480,48 @@
     return sc;
   }
 
-  // Phone composition: one large Archeus hull holds the two focus missions, the star sits between them,
-  // and every other project is a small receded body. Labels: focus missions only; the rest are counted.
-  var FOCUS_SLOTS = [[0.3, 0.4], [0.7, 0.6]];
-  var OTHER_SLOTS = [[0.84, 0.14], [0.12, 0.66], [0.86, 0.9], [0.12, 0.14]];
+  // Phone composition from the Codex phone-1 concept: a large Archeus outline with the amber Search provenance
+  // hull inside it, the blue Fix date test hull with the Codex triangle, the star between, two receded hulls.
+  var PHONE_RINGS = {
+    archeus: [[0.05, 0.389], [0.174, 0.312], [0.398, 0.257], [0.535, 0.26], [0.746, 0.34], [0.952, 0.438], [0.945, 0.503], [0.796, 0.566], [0.466, 0.589], [0.336, 0.558], [0.118, 0.498]],
+    notes: [[0.74, 0.2], [0.9, 0.2], [0.9, 0.3], [0.74, 0.3]],
+    ideas: [[0.76, 0.52], [0.92, 0.52], [0.92, 0.64], [0.76, 0.64]]
+  };
+  function phoneY(fy) { return Math.min(0.9, Math.max(0.02, (fy - 0.2) / 0.5 * 0.8)); }
+  function phoneRing(pts, w, h) { return pts.map(function (p) { return { x: p[0] * w, y: phoneY(p[1]) * h }; }); }
+  function blobRing(cx, cy, rx, ry, n) {
+    var out = [];
+    for (var i = 0; i < n; i++) { var a = i * TAU / n + 0.3; out.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); }
+    return out;
+  }
   function phoneScene(w, h) {
-    var focus = sorted(missions).filter(isLive).slice(0, 2);
     var k = Math.max(0.78, Math.min(w / 390, 1.05));
-    var sc = mk(w, h, { x: w * 0.5, y: h * 0.5 }, k, true);
-    focus.forEach(function (m, i) {
-      var n = nodeFor(m, w * FOCUS_SLOTS[i][0], h * FOCUS_SLOTS[i][1], 50 * k, m.project, true);
-      sc.nodes.push(n);
-      sc.parent[m.id] = m.project;
-      sc.links.push({ a: 'core', b: m.id, col: STATE[m.state].color, live: isLive(m), kind: 'mission', hue: IVORY, arrow: true });
-      if (m.exec) {
-        var ex = execFor(m, w * FOCUS_SLOTS[i][0] + 66 * k, h * FOCUS_SLOTS[i][1] + 34 * k, 22 * k, i);
-        sc.nodes.push(ex);
-        sc.parent[ex.id] = m.id;
-        sc.links.push({ a: m.id, b: ex.id, col: IVORY, live: ex.live, kind: 'exec', hue: IVORY });
-      }
-    });
-    // A focus hull is its real project (the name always shows); its members are the focus missions only.
-    var focusProjects = [];
-    focus.forEach(function (m) { if (focusProjects.indexOf(m.project) < 0) focusProjects.push(m.project); });
-    focusProjects.forEach(function (pid) {
-      var p = projectOf(pid), fids = focus.filter(function (m) { return m.project === pid; }).map(function (m) { return m.id; });
-      var count = missions.filter(function (m) { return m.project === pid; }).length;
-      sc.projects.push({ id: pid, name: p.name, hue: p.hue, x: w * 0.5, y: h * 0.5, members: fids, count: count, live: fids.length, active: true });
-      sc.parent[pid] = 'core';
-      sc.links.push({ a: 'core', b: pid, col: p.hue, live: true, kind: 'project', hue: p.hue });
-    });
-    var others = projects.filter(function (p) { return focusProjects.indexOf(p.id) < 0; });
-    others.forEach(function (p, i) {
-      var at = OTHER_SLOTS[i % OTHER_SLOTS.length];
-      var count = missions.filter(function (m) { return m.project === p.id; }).length;
-      sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * at[0], y: h * at[1], shape: 'octa', members: null, count: count, live: 0, active: false });
-      sc.parent[p.id] = 'core';
-      sc.links.push({ a: 'core', b: p.id, col: p.hue, live: false, kind: 'project', hue: p.hue });
-    });
-    sc.sats = [[0.06, 0.4], [0.94, 0.36], [0.5, 0.97]].map(function (p) { return { x: w * p[0], y: h * p[1] }; });
-    sc.overflow = missions.length - focus.length;
+    var sc = mk(w, h, { x: w * 0.5, y: h * 0.42 }, k, true);
+    var search = find('m-search'), date = find('m-date'), done = find('m-done');
+    var sx = 0.267 * w, sy = phoneY(0.4) * h, dx = 0.796 * w, dy = phoneY(0.435) * h;
+    sc.core = { x: w * 0.535, y: phoneY(0.4) * h };
+    var archeus = projectOf('archeus');
+    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: phoneRing(PHONE_RINGS.archeus, w, h), members: ['m-search', 'm-date'], count: 3, live: 2, active: true });
+    sc.parent.archeus = 'core';
+    sc.links.push({ a: 'core', b: 'archeus', col: IVORY, live: true, kind: 'project', hue: IVORY });
+    var nS = markNode(search, sx, sy, 9 * k, 'archeus');
+    var nD = markNode(date, dx, dy, 9 * k, 'archeus');
+    sc.nodes.push(nS, nD);
+    sc.parent[search.id] = 'archeus'; sc.parent[date.id] = 'archeus';
+    sc.links.push({ a: 'core', b: search.id, col: STATE.waiting.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
+    sc.links.push({ a: 'core', b: date.id, col: STATE.running.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
+    var ex = execFor(date, 0.74 * w, phoneY(0.6) * h, 14 * k, 0); ex.mark = true;
+    sc.nodes.push(ex);
+    sc.parent[ex.id] = date.id;
+    sc.links.push({ a: date.id, b: ex.id, col: IVORY, live: true, kind: 'exec', hue: IVORY, arrow: true });
+    // Receded projects: names only, small outlines.
+    sc.projects.push({ id: 'notes', name: projectOf('notes').name, hue: IVORY, note: '', ring: phoneRing(PHONE_RINGS.notes, w, h), members: [], count: 2, live: 0, active: false });
+    sc.projects.push({ id: 'ideas', name: projectOf('ideas').name, hue: IVORY, note: '', ring: phoneRing(PHONE_RINGS.ideas, w, h), members: [], count: 0, live: 0, active: false });
+    sc.parent.notes = 'core'; sc.parent.ideas = 'core';
+    sc.links.push({ a: 'core', b: 'notes', col: IVORY, live: false, kind: 'project', hue: IVORY });
+    sc.links.push({ a: 'core', b: 'ideas', col: IVORY, live: false, kind: 'project', hue: IVORY, dash: true });
+    sc.sats = [];
+    sc.overflow = missions.length - 2;
     return sc;
   }
 
@@ -530,7 +592,16 @@
       }
     }
 
-    function scene() { return typeof S.src === 'function' ? S.src(S.w, S.h) : S.src; }
+    function scene() {
+      var sc = typeof S.src === 'function' ? S.src(S.w, S.h) : S.src;
+      if (sc) sc.projects.forEach(function (p) {
+        if (!p.ring) return;
+        p.x = 0; p.y = 0;
+        p.ring.forEach(function (v) { p.x += v.x; p.y += v.y; });
+        p.x /= p.ring.length; p.y /= p.ring.length;
+      });
+      return sc;
+    }
 
     function goal() {
       if (!S.scene || !S.w) return null;
@@ -562,6 +633,35 @@
       return S.scene && (S.scene.nodes.some(function (n) { return n.live; }) || S.scene.projects.some(function (p) { return p.active; }));
     }
 
+    // A project hull with a fixed outline: neutral facets (value steps, no colour), a receded inner outline, spokes.
+    function ringHull(g, p, c, lit, gp) {
+      var R0 = p.ring, C = { x: 0, y: 0 };
+      R0.forEach(function (v) { C.x += v.x; C.y += v.y; });
+      C.x /= R0.length; C.y /= R0.length;
+      g.save(); g.globalAlpha = gp;
+      R0.forEach(function (v, j) {
+        var nv = R0[(j + 1) % R0.length];
+        g.beginPath(); g.moveTo(C.x, C.y); g.lineTo(v.x, v.y); g.lineTo(nv.x, nv.y); g.closePath();
+        g.fillStyle = 'rgba(239,233,218,' + ((lit ? 0.05 : 0.025) * [0.6, 1.35, 0.9, 1.45, 0.75, 1.1][j % 6]).toFixed(3) + ')';
+        g.fill();
+      });
+      var inner = function (v) { return { x: C.x + (v.x - C.x) * 0.58, y: C.y + (v.y - C.y) * 0.58 }; };
+      g.strokeStyle = 'rgba(239,233,218,' + (lit ? 0.14 : 0.07) + ')'; g.lineWidth = 0.6;
+      R0.forEach(function (v) { var q = inner(v); line(g, v.x, v.y, q.x, q.y); });
+      g.beginPath(); R0.forEach(function (v, j) { var q = inner(v); if (j) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); }); g.closePath(); g.stroke();
+      g.beginPath(); R0.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
+      g.strokeStyle = 'rgba(239,233,218,' + (lit ? 0.75 : 0.42) + ')'; g.lineWidth = 1; g.stroke();
+      g.restore();
+      var hr = 0, anc = R0[0], best = -Infinity, dx = C.x - c.x, dy = C.y - c.y, dl = Math.hypot(dx, dy) || 1;
+      R0.forEach(function (v) {
+        hr = Math.max(hr, Math.hypot(v.x - C.x, v.y - C.y));
+        var pr = ((v.x - C.x) * dx + (v.y - C.y) * dy) / dl;
+        if (pr > best) { best = pr; anc = v; }
+      });
+      var it = S.items[p.id];
+      if (it) { it.cx = C.x; it.cy = C.y; it.hr = hr + 6; it.hullR = hr; it.r = 0; it.pt = { x: anc.x + (dx / dl) * 8, y: anc.y + (dy / dl) * 8 }; }
+    }
+
     function draw(t) {
       if (!S.scene || !S.w || !S.cam) return;
       var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, s = cam.s;
@@ -587,15 +687,6 @@
       S.sky.style.transform = 'translate3d(' + (-(cam.x - sc.core.x) * s * 0.04).toFixed(2) + 'px,' + (-(cam.y - sc.core.y) * s * 0.04).toFixed(2) + 'px,0)';
 
       // Faint orbit rings around Archeus.
-      if (!sc.compact) {
-        g.save(); g.setLineDash([2, 8]); g.lineWidth = 1;
-        [[230, 0.1], [330, 0.06]].forEach(function (o) {
-          g.strokeStyle = 'rgba(239,233,218,' + o[1] + ')';
-          g.beginPath(); g.ellipse(c.x, c.y, o[0] * s, o[0] * 0.62 * s, -0.12, 0, TAU); g.stroke();
-        });
-        g.restore();
-      }
-
       if (sc.frame) {
         var f = sc.frame, fc = P0(f.x, f.y);
         g.save(); g.strokeStyle = 'rgba(239,233,218,0.1)'; g.lineWidth = 1;
@@ -610,6 +701,7 @@
 
       // Project hulls: a faceted shell around each project's missions, with an inner mesh.
       sc.projects.forEach(function (p) {
+        if (p.ring) { ringHull(g, p, c, !!H[p.id], grow(p.id, anim)); return; }
         if (!p.members) return;
         var ring = [], gp = grow(p.id, anim);
         p.members.forEach(function (id) {
@@ -668,7 +760,7 @@
         var lit = !!(H[l.a] && H[l.b]);
         g.save();
         if (lit) {
-          g.strokeStyle = l.col; g.globalAlpha = 0.45; g.lineWidth = 3.2 * Math.min(1.2, s);
+          g.strokeStyle = l.col; g.globalAlpha = 0.5; g.lineWidth = 1.1 * Math.min(1.2, s);
           if (l.live) { g.shadowColor = l.col; g.shadowBlur = 16; }
           line(g, a.x, a.y, b.x, b.y);
           g.shadowBlur = 0; g.globalAlpha = 0.95; g.lineWidth = 1.4;
@@ -688,7 +780,7 @@
             g.beginPath(); g.arc(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, 2.6, 0, TAU); g.fill();
           }
         } else {
-          g.strokeStyle = 'rgba(239,233,218,' + (l.dash ? 0.1 : 0.16) + ')'; g.lineWidth = 0.8;
+          g.strokeStyle = 'rgba(239,233,218,' + (l.dash ? 0.08 : 0.12) + ')'; g.lineWidth = 0.7;
           if (l.dash || fresh) g.setLineDash(l.dash ? [3, 5] : [3, 4]);
           line(g, a.x, a.y, b.x, b.y);
         }
@@ -713,32 +805,35 @@
       var it0 = S.items.core;
       if (it0) { it0.cx = c.x; it0.cy = c.y; it0.hr = 60 * s; it0.pt = c; it0.r = 60 * s; }
 
-      // Figures: receding first, lit last.
+      // Figures: receding first, lit last. Overview marks are small glyphs; other screens keep their bodies.
       var order = sc.nodes.slice().sort(function (a, b) { return (H[a.id] ? 1 : 0) - (H[b.id] ? 1 : 0); });
-      order.forEach(function (n, idx) {
+      order.forEach(function (n) {
         var q = pos[n.id], lit = !!H[n.id], R = n.r * s;
         var gn = grow(n.id, anim);
         if (gn < 1) R *= 0.35 + 0.65 * gn;
-        var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
-        var alpha = (lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5) * gn;
         var col = STATE[n.state] ? STATE[n.state].color : IVORY;
-        if (n.kind === 'mission' || n.kind === 'record') {
-          if (n.kind === 'mission' && n.state === 'waiting') {
-            g.save(); g.strokeStyle = col; g.lineWidth = 1.2; g.setLineDash([4, 5]);
-            g.lineDashOffset = -anim / 60; g.globalAlpha = 0.9;
-            g.beginPath(); g.arc(q.x, q.y, R * 1.2, 0, TAU); g.stroke(); g.restore();
+        if (n.mark) {
+          g.save(); g.globalAlpha = gn;
+          if (n.kind === 'exec') drawTriangle(g, q.x, q.y, Math.max(12, R * 1.4), lit);
+          else if (n.dot) { g.fillStyle = STATE.running.color; g.beginPath(); g.arc(q.x, q.y, 4.2, 0, TAU); g.fill(); }
+          else if (n.kind === 'mission') drawMark(g, q.x, q.y, n.state, Math.max(5, R), lit);
+          else drawSolid(g, n.solid, q.x, q.y, Math.max(9, R), { y: n.seed * TAU, x: 0.42 }, IVORY, { alpha: 0.75 * gn, wash: false, glyph: n.glyph, dotR: 1.6, lw: 0.9 });
+          g.restore();
+        } else {
+          var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
+          var alpha = (lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5) * gn;
+          if (n.kind === 'mission' || n.kind === 'record') {
+            drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: alpha, wash: true, glow: lit, glyph: n.glyph, inner: true, dotR: lit ? 2.6 : 2.1 });
+          } else if (n.kind === 'exec' || n.kind === 'agent') {
+            drawSolid(g, n.solid, q.x, q.y, R, rot, n.kind === 'exec' ? IVORY : col, { alpha: n.kind === 'exec' ? 0.9 : 1, wash: true, glow: lit, glyph: n.glyph, dotR: 2.4 });
+          } else if (n.kind === 'device') {
+            drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: 0.85, dash: n.dash ? [3, 3] : [], glyph: n.glyph, dotR: 1.8, lw: 1.2 });
           }
-          drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: alpha, wash: true, glow: lit, glyph: n.glyph, inner: true, dotR: lit ? 2.6 : 2.1 });
-        } else if (n.kind === 'exec' || n.kind === 'agent') {
-          drawSolid(g, n.solid, q.x, q.y, R, rot, n.kind === 'exec' ? IVORY : col, { alpha: n.kind === 'exec' ? 0.9 : 1, wash: true, glow: lit, glyph: n.glyph, dotR: 2.4 });
-        } else if (n.kind === 'device') {
-          drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: 0.85, dash: n.dash ? [3, 3] : [], glyph: n.glyph, dotR: 1.8, lw: 1.2 });
-        }
-        if (n.kind === 'mission' || n.kind === 'agent' || n.kind === 'exec') {
-          g.globalAlpha = gn;
-          if (n.kind === 'mission') drawBadge(g, n.state, q.x - R * 0.78, q.y - R * 0.82, anim, !reduce.matches);
-          if (n.kind === 'agent') drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, !reduce.matches);
-          g.globalAlpha = 1;
+          if (n.kind === 'agent') {
+            g.globalAlpha = gn;
+            drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, !reduce.matches);
+            g.globalAlpha = 1;
+          }
         }
         var it = S.items[n.id];
         if (it) { it.cx = q.x; it.cy = q.y; it.hr = R + 10; it.pt = q; it.r = R; it.par = n.parent; }
@@ -778,7 +873,7 @@
       if (S.hover === id) return false;
       if (sc.compact) return it.kind === 'mission' && !sc.nodes.some(function (n) { return n.id === id && n.live; });
       if (it.kind !== 'mission' && it.kind !== 'exec') return false;
-      if (S.focus) return false;
+      if (S.focus || sc.nodes.length <= 12) return false;
       var n = sc.nodes.filter(function (x) { return x.id === id; })[0];
       return !(n && (n.state === 'waiting' || n.state === 'running' || (n.kind === 'exec' && n.live)));
     }
@@ -869,7 +964,7 @@
       });
       if (budget) {
         budget.textContent = hidden ? '+' + hidden + ' more missions, zoom a project to see them' : '';
-        budget.hidden = !hidden;
+        budget.hidden = true;
       }
       // Hit targets follow the figures.
       Object.keys(S.items).forEach(function (id) {
@@ -964,7 +1059,7 @@
       S.items.core = addLabel('core', { cls: 'lbl core', kicker: '', title: 'Archeus', sub: 'Core connected', kind: 'core' });
       sc.projects.forEach(function (p) {
         var live = p.members ? sc.nodes.filter(function (n) { return p.members.indexOf(n.id) >= 0 && n.live; }).length : p.live;
-        var sub = sc.compact ? '' : (p.count || (p.members ? p.members.length : 0)) + ' missions, ' + live + ' live';
+        var sub = sc.compact ? '' : (p.note || ((p.count || (p.members ? p.members.length : 0)) + ' missions, ' + live + ' live'));
         addLabel(p.id, { cls: 'lbl project', kicker: 'Project', title: p.name, sub: sub, kind: 'project' });
         if (p.members) addHit(p.id, { aria: p.name + ', ' + sub, kind: 'project', meta: { kicker: 'Project', title: p.name, lines: [sub] } });
         else S.items[p.id].hit = null;
@@ -972,8 +1067,8 @@
       sc.nodes.forEach(function (n) {
         var st = n.st, sub = n.detail || n.sub;
         var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : '';
-        var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: 'Review', aria: 'Review plan for ' + n.title } : null;
-        var line2 = sc.compact && n.kind === 'mission' ? n.detail : st ? st + (sub ? ' · ' + sub : '') : sub;
+        var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: sc.compact ? 'Review' : 'Review →', aria: 'Review plan for ' + n.title } : null;
+        var line2 = n.kind === 'mission' ? n.detail : n.kind === 'exec' ? 'execution' : st ? st + (sub ? ' · ' + sub : '') : sub;
         var execPhone = sc.compact && n.kind === 'exec';
         addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker, title: execPhone ? 'Codex · execution' : n.title, sub: execPhone ? '' : line2, subCls: subCls, kind: n.kind, action: action });
         if (n.hit) {
@@ -1404,6 +1499,7 @@
   function addMsg(kind, html) {
     var li = document.createElement('li');
     li.className = 'msg msg-' + kind;
+    li.setAttribute('data-who', kind === 'you' ? 'You' : 'Archeus');
     li.innerHTML = html;
     thread.appendChild(li);
     scrollThread();
@@ -1476,8 +1572,8 @@
 
   // A chat-created mission waits for the owner: Start (plans it for review) or Keep as mission.
   function startCard(m) {
-    var li = addMsg('card', '<p class="card-k">Start card</p><p class="card-t">Start and plan ' + esc(m.title) + '?</p>' +
-      '<div class="row"><button type="button" class="btn primary" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div>');
+    var li = addMsg('card', '<p class="card-t">Start and plan ' + esc(m.title) + '?</p>' +
+      '<div class="row"><button type="button" class="btn" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div>');
     li.querySelector('[data-card="start"]').addEventListener('click', function () {
       makePlan(m);
       li.innerHTML = '<p class="card-k">Started · simulated</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Plan v1 is ready for your review. Nothing ran.</p>';
@@ -1548,7 +1644,9 @@
   $('#chat-prompts').innerHTML = PROMPTS.map(function (p) {
     return '<button type="button" class="prompt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
   }).join('');
-  addMsg('arch', '<p>Tell me what to do. Projects, missions and plans appear here as they are made. Runs and setting changes are proposed first.</p>');
+  addMsg('you', '<p>Open a mission in Notes: Export backup</p>');
+  addMsg('arch', '<p>Mission created in Notes. Start it when you like.</p>');
+  startCard(find('m-read'));
 
   document.addEventListener('submit', function (e) {
     if (e.target.id !== 'chat-form') return;

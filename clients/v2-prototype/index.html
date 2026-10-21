@@ -15,14 +15,20 @@
 <div class="shell">
   <aside class="rail" id="rail">
     <a class="wordmark" href="#/now" aria-label="Archeus V2, Overview">Archeus <span>V2</span></a>
+    <p class="fixture">CONCEPT FIXTURE</p>
     <nav class="places" aria-label="Places">
-      <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2V17H12.5v-4.6h-5V17H3z"/></svg><span>Overview</span></a>
-      <a href="#/mission/m-date" data-nav="mission"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.6"/></svg><span>Missions</span></a>
+      <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2V17H12.5v-4.6h-5V17H3z"/></svg><span>Now</span></a>
+      <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg><span>Projects</span></a>
       <a href="#/replay/m-date" data-nav="replay"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 10a5.8 5.8 0 1 0 1.7-4.1"/><path d="M4 3.4v3h3"/><path d="M10 7.4v3l2 1.2"/></svg><span>Replay</span></a>
-      <a href="#/terminal" data-nav="terminal"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6l4 4-4 4M10 14.5h6"/></svg><span>Terminal</span></a>
-      <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg><span>Shared</span></a>
-      <a href="#/phone" data-nav="phone"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg><span>Phone</span></a>
-      <a href="#/plan/m-search" data-nav="plan"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6h9M6 10h9M6 14h6"/><circle cx="3.5" cy="6" r=".8"/><circle cx="3.5" cy="10" r=".8"/><circle cx="3.5" cy="14" r=".8"/></svg><span>Plan</span></a>
+      <details class="more-d">
+        <summary>More</summary>
+        <ul>
+          <li><a href="#/mission/m-date" data-nav="mission">Mission</a></li>
+          <li><a href="#/terminal" data-nav="terminal">Terminal</a></li>
+          <li><a href="#/phone" data-nav="phone">Phone</a></li>
+          <li><a href="#/plan/m-search" data-nav="plan">Plan</a></li>
+        </ul>
+      </details>
     </nav>
     <section class="projects" aria-labelledby="proj-h">
       <h2 class="kicker" id="proj-h">Projects</h2>
@@ -52,7 +58,7 @@
           <p class="kicker">Overview</p>
           <h1 tabindex="-1" data-sentence></h1>
           <p class="phone-status"><span class="dot" aria-hidden="true"></span>Not stopped · accepts new work</p>
-          <p class="lede now-lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure. Tell Archeus in the bar; what it creates appears here as it is made.</p>
+          <p class="lede now-lede">Live constellation of your work. Missions, projects and ideas in context.</p>
           <p class="tag now-tag">Simulated: scripted replies, no model call, nothing sent to Core. Creations and approvals are page-only.</p>
           <button type="button" class="needs-card" id="needs-card" hidden></button>
         </header>
@@ -73,8 +79,9 @@
               </div>
               <form class="chatbar" id="chat-form" autocomplete="off">
                 <label class="sr-only" for="chat-input">Tell Archeus what to do</label>
+                <span class="attach" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M13.5 7.5 8 13a2.1 2.1 0 1 1-3-3l6-6a3.2 3.2 0 0 1 4.5 4.5L9.5 15"/></svg></span>
                 <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus…">
-                <button type="submit" class="btn">Send</button>
+                <button type="submit" class="btn send-btn" aria-label="Send"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5"/></svg></button>
                 <button type="button" class="btn stop-btn chat-stop" data-act="stop">Stop</button>
               </form>
               <aside class="sheet now-sheet" id="now-sheet" hidden aria-labelledby="now-sheet-h"></aside>

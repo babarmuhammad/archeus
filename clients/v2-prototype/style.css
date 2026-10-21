@@ -712,3 +712,29 @@ p.small, .small { line-height: 20px; }
 @media (max-width: 1599px) { #replay-stage .lbl.verb { display: none; } }
 .msg-card .btn.primary { background: var(--amber); border-color: var(--amber); color: #070A10; }
 .msg-card .btn:not(.primary) { background: transparent; border-color: var(--amber); color: var(--amber); }
+
+/* Round 10: hulls are neutral; colour is only on missions (amber obligation, blue live, green verified). */
+.st-done { color: var(--text-2); }
+.lbl .s.st-done { color: var(--text-2); }
+.lbl.core .s { display: none; }
+.lbl .s { font-size: 14px; line-height: 20px; }
+.lede { font-family: var(--sans); font-size: 16px; line-height: 24px; }
+.lbl.mission .k, .lbl.exec .k, .lbl.record .k, .lbl.project .k { font-size: 14px; line-height: 20px; letter-spacing: 0.12em; }
+
+/* Round 10: desktop chrome as the concept. Grey tags; amber only for the owner's obligation. */
+.proto { color: var(--text-2); border-color: var(--line-2); }
+.tag, .now-tag, .say { color: var(--text-2); }
+.fixture { font: 400 14px/20px var(--sans); letter-spacing: 0.16em; color: var(--text-2); margin: 2px 0 var(--s6); }
+.projects { display: none; }
+.more-d { margin-top: var(--s2); }
+.more-d summary { min-height: 40px; display: flex; align-items: center; padding: 0 var(--s3); color: var(--text-2); cursor: pointer; list-style: none; }
+.more-d summary::-webkit-details-marker { display: none; }
+.more-d ul { display: flex; flex-direction: column; padding-left: var(--s4); }
+.more-d li a { display: flex; align-items: center; min-height: 36px; color: var(--text-2); font: 400 14px/20px var(--sans); }
+.chatbar { background: rgba(7, 10, 16, 0.45); border: 1px solid var(--line-2); border-radius: 14px; }
+.chatbar .attach { display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; color: var(--text-2); }
+.chatbar .attach svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
+.send-btn { width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--surface-2); }
+.send-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.msg-you::before, .msg-arch::before { content: attr(data-who); display: block; font: 400 14px/20px var(--sans); color: var(--text-2); margin-bottom: 2px; }
+.msg-card [data-card="start"] { background: transparent; border-color: var(--amber); color: var(--amber); }
