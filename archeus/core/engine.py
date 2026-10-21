@@ -177,8 +177,23 @@ class Engine:
         stop = STOPS.get(m.state, 'waiting')
         if (m.planning_blocked or {}).get('kind') == 'policy':
             stop = 'policy_denied'          # waits in place on a recorded denial (P9)
-        return {'mission_id': mission_id, 'changed': did is not None, 'did': did,
-                'state': m.state, 'stop': None if did else stop}
+        out = {'mission_id': mission_id, 'changed': did is not None, 'did': did,
+               'state': m.state, 'stop': None if did else stop}
+        wake = None if did or m.state != 'EXECUTING' else self._wake_at(m)
+        return out if wake is None else dict(out, wake_at=wake)
+
+    def _wake_at(self, m):
+        """When the first READY task of *m* stops waiting after a failed start or
+        on a harness that cannot start (O7, T-106), or None: nothing writes at
+        that moment, so a parked mission is stepped again then (EngineLoop)."""
+        now = time.time()
+        with self.db.read() as r:
+            plan = active_plan(r, m.id)
+            tids = [t.entity.id for t in rows.where(r, entities.Task, plan_id=plan.entity.id)
+                    if t.entity.state == 'READY']
+            return min((w for t in tids for w in (X.spawn_wait(r, t, now),
+                                                   resources.route_wait(r, t, now)) if w),
+                       default=None)
 
     def _step(self, m):
         if m.state in ('APPROVED', 'RESUMED', 'EXECUTING', 'VERIFYING', 'REVIEWING') \

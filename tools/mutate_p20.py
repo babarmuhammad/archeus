@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141).
+breaker (Q134-Q141), and its correction r1 (Q142-Q152).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -107,6 +107,8 @@ XU = 'tests/v1/unit/test_execution_units.py::'
 SB = 'tests/v1/integration/test_spawn_breaker.py::'
 TRIP = XU + 'test_O7_three_failed_starts_within_ten_minutes_trip_it_and_not_fewer_or_slower'
 HALF = XU + 'test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens'
+RES = 'archeus/core/application/resources.py'
+PV = 'tests/v1/unit/test_pv20_isolation.py::'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -747,6 +749,61 @@ MUTATIONS = [
      "    if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):",
      "    if _tripped(times):")],
      [SB + 'test_T106_a_failed_trial_reopens_it_without_a_second_notice']),
+    # T-106 correction r1 (review of 7d54856)
+    ('Q142', "a parked mission is not woken when its task's wait ends", [(RTM,
+     "            if self.parked.get(mid) == version and not (due and now >= due):",
+     "            if self.parked.get(mid) == version:")],
+     [SB + 'test_T106r1_a_parked_mission_wakes_when_its_start_wait_ends',
+      SB + 'test_T106r1_a_parked_mission_gets_its_half_open_trial']),
+    ('Q143', 'an establishment failure found at a restart is not counted', [(MGR,
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"
+     "                     reason='isolation could not be established: %s'",
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                     reason='isolation could not be established: %s'")],
+     [PV + 'TestRestartReconciliation::test_establishment_failure_is_uncharged_refuse',
+      PV + 'TestUnsettledRecords::test_a_failure_later_quarantined_is_still_refused_uncharged']),
+    ('Q144', 'failure times are taken in row order', [(EXE,
+     "    times = sorted(times)\n", "")],
+     [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
+    ('Q145', 'the cooldown runs from the last row, not the latest failure', [(EXE,
+     "    until = max(times) + SPAWN_COOLDOWN_S", "    until = times[-1] + SPAWN_COOLDOWN_S")],
+     [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
+    ('Q146', "a paused mission's trial INTENT holds the harness closed", [(EXE,
+     "        if x.state == 'INTENT' and rows.get(conn, entities.Mission,",
+     "        if False and rows.get(conn, entities.Mission,")],
+     [SB + 'test_T106r1_a_trial_on_a_paused_mission_does_not_hold_the_harness']),
+    ('Q147', 'a hook stage that cannot be made is not counted', [(MGR,
+     "                self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"
+     "                         reason='the hook runtime could not be staged",
+     "                self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                         reason='the hook runtime could not be staged")],
+     [XU + 'test_a_stage_that_cannot_be_made_or_verified_starts_nothing_uncharged']),
+    ('Q148', 'an isolation decision that cannot be taken is not counted', [(MGR,
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"
+     "                     reason='the isolation decision could not be taken",
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                     reason='the isolation decision could not be taken")],
+     [XU + 'test_an_isolation_decision_that_raises_starts_nothing']),
+    ('Q149', 'an INTENT older than the latest failure is taken for the trial (M1)', [(EXE,
+     "        elif x.state == 'INTENT' and not fails:", "        elif x.state == 'INTENT':")],
+     [XU + 'test_O7_a_start_ends_the_streak_other_ends_do_not_count_and_a_later_intent_is_the_trial']),
+    ('Q150', 'AlreadySpawned is counted as a failed start (M2)', [(MGR,
+     "                     stop_reason='binding' if isinstance(err, base.AlreadySpawned)\n"
+     "                     else 'spawn')",
+     "                     stop_reason='spawn')")],
+     [SB + 'test_T106r1_already_spawned_goes_to_reconciliation_not_to_the_breaker']),
+    ('Q151', "the streak reads the harness's whole history", [(EXE,
+     "    for x in newest_first:", "    for x in list(newest_first):")],
+     [XU + 'test_O7_the_streak_reads_back_only_as_far_as_the_last_start']),
+    ('Q152', 'any blocked decision is parsed before it is known to be the breakers', [(RES,
+     "    if not (d and d.result == 'blocked' and d.unblock_at\n"
+     "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):\n"
+     "        return None\n    until = _epoch(d.unblock_at)",
+     "    until = d and d.unblock_at and _epoch(d.unblock_at)\n"
+     "    if not (d and d.result == 'blocked' and d.unblock_at\n"
+     "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):\n"
+     "        return None")],
+     [SB + 'test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed']),
 ]
 
 if __name__ == '__main__':

@@ -137,7 +137,7 @@ class Ports:
 class EngineLoop:
     def __init__(self, eng, db, *, idle_s=IDLE_S, on_fail=None):
         self.engine, self.db, self.idle_s, self.on_fail = eng, db, idle_s, on_fail
-        self.state, self.observed_seq, self.parked = 'starting', 0, {}
+        self.state, self.observed_seq, self.parked, self.wake = 'starting', 0, {}, {}
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name='archeus-engine', daemon=True)
 
@@ -196,11 +196,14 @@ class EngineLoop:
                     for m in sorted(queries.list_missions(conn),
                                     key=lambda m: -m['priority'])
                     if m['state'] not in engine.SETTLED]
-        progressed = False
+        progressed, now = False, time.time()
         for mid, version in live:
             if self._stop.is_set():
                 return
-            if self.parked.get(mid) == version:
+            # O7 (T-106): a task waiting out a failed start or an open breaker
+            # moves nothing when its wait ends, so its mission wakes at that time
+            due = self.wake.get(mid)
+            if self.parked.get(mid) == version and not (due and now >= due):
                 continue
             # `running` only while a mission is stepped: a pass that re-reads
             # parked missions and finds nothing to do is still idle (health
@@ -217,18 +220,24 @@ class EngineLoop:
                 # really a bug cannot spin
                 log.info('engine lost a race on %s: %s', mid, e)
                 self.parked[mid] = version
+                self.wake.pop(mid, None)
                 continue
             if out['changed']:
                 progressed = True
                 self.parked.pop(mid, None)
+                self.wake.pop(mid, None)
             else:
                 self.parked[mid] = version
+                self.wake[mid] = out.get('wake_at')
         ids = {m for m, _v in live}
         self.parked = {m: v for m, v in self.parked.items() if m in ids}
+        self.wake = {m: w for m, w in self.wake.items() if m in self.parked and w}
         if progressed:
             return
         self.observed_seq, self.state = head, 'idle'
-        writer.wait_commit(seen, self.idle_s, until=self._stop.is_set)
+        due = min(self.wake.values(), default=None)
+        writer.wait_commit(seen, self.idle_s if due is None else
+                           max(0.0, min(self.idle_s, due - time.time())), until=self._stop.is_set)
 
 
 def _stamp(conn, mission_id):

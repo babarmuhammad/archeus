@@ -82,31 +82,34 @@ def charged_attempts(tx, task_id):
 # loses the breaker nor gives a harness its attempts back.
 
 def _tripped(times):
+    # an INTENT that waited (its mission paused) can fail after a later one did:
+    # rowid order is not time order
+    times = sorted(times)
     return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))
 
 
-def spawn_streak(xs):
-    """The failed starts after the last start among *xs* (one harness's
-    executions, oldest first), oldest first; and whether one dispatched after
-    the last of them has not started yet (the half-open breaker's trial)."""
+def spawn_streak(newest_first):
+    """The failed starts after the last start among one harness's executions
+    (*newest_first*, read only as far as that start), and whether one dispatched
+    after the last of them has not started yet (the half-open breaker's trial)."""
     fails, trial = [], False
-    for x in reversed(xs):
+    for x in newest_first:
         if x.stop_reason == 'spawn':
             fails.append(x)
         elif x.started_at:
             break
         elif x.state == 'INTENT' and not fails:
             trial = True
-    return fails[::-1], trial
+    return fails, trial
 
 
 def breaker_state(times, trial, now):
     """None (closed), or {'state': 'open' | 'half_open', 'until'}: open until
-    the cooldown after the last failure, then half-open for one trial; while the
-    trial has not started, everything else still waits."""
+    the cooldown after the latest failure, then half-open for one trial; while
+    the trial has not started, everything else still waits."""
     if not _tripped(times):
         return None
-    until = times[-1] + SPAWN_COOLDOWN_S
+    until = max(times) + SPAWN_COOLDOWN_S
     if now < until:
         return {'state': 'open', 'until': until}
     if trial:
@@ -114,16 +117,27 @@ def breaker_state(times, trial, now):
     return {'state': 'half_open', 'until': None}
 
 
-def _harness_streak(conn, harness_id):
-    return spawn_streak([r.entity for r in rows.where(conn, entities.Execution)
-                         if r.entity.harness_id == harness_id])
+def _newest(conn, harness_id):
+    """The harness's executions, newest first, decoded only as far as they are
+    read. A trial INTENT counts only while its mission is EXECUTING: one parked by
+    a pause or a block would hold every other task back until that mission moves."""
+    # only the rows the streak reads are decoded: a failed start, a start, a trial
+    for rec in conn.execute(
+            "SELECT * FROM executions WHERE json_extract(body, '$.harness_id') = ? AND ("
+            "json_extract(body, '$.stop_reason') = 'spawn' OR json_extract(body, '$.started_at')"
+            " IS NOT NULL OR state = 'INTENT') ORDER BY rowid DESC", (harness_id,)):
+        x = rows.decode(entities.Execution, rec).entity
+        if x.state == 'INTENT' and rows.get(conn, entities.Mission,
+                                            x.mission_id).entity.state != 'EXECUTING':
+            continue
+        yield x
 
 
 def spawn_breaker(conn, harness_id, now):
-    """The harness's breaker with the last failure's reason, or None."""
-    fails, trial = _harness_streak(conn, harness_id)
+    """The harness's breaker with the latest failure's reason, or None."""
+    fails, trial = spawn_streak(_newest(conn, harness_id))
     b = breaker_state([_epoch(x.ended_at) for x in fails], trial, now)
-    return b and dict(b, error=fails[-1].summary)
+    return b and dict(b, error=max(fails, key=lambda x: x.ended_at).summary)
 
 
 def spawn_wait_s(n):
@@ -143,7 +157,7 @@ def spawn_wait(conn, task_id, now):
 def _spawn_failed(tx, actor, e, reason):
     """The breaker opening on this failure is said once (P21 D1: the tray says
     it); a failed half-open trial only keeps it open."""
-    fails, _ = _harness_streak(tx.conn, e.harness_id)
+    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id))
     times = [_epoch(x.ended_at) for x in fails]
     if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):
         tx.append(new_event('harness.state_changed', Ref('harness', e.harness_id), actor,

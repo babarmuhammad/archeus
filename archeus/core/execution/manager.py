@@ -231,7 +231,7 @@ class ExecutionManager:
             iso = getattr(self.node, 'isolation', None)
             isolated = bool(iso is not None and iso.requested(e.id, adapter))
         except Exception as err:
-            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+            self._do(X.refuse, execution_id=e.id, stop_reason='spawn',
                      reason='the isolation decision could not be taken: %s'
                      % type(err).__name__)
             return True
@@ -243,7 +243,7 @@ class ExecutionManager:
             try:
                 stage = staging.stage(sys.base_prefix, HOOK)
             except OSError as err:
-                self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                self._do(X.refuse, execution_id=e.id, stop_reason='spawn',
                          reason='the hook runtime could not be staged: %s' % err)
                 return True
             hook = (os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, staging.HOOK))
@@ -984,7 +984,7 @@ class ExecutionManager:
         if iso is not None and (iso.state == 'failed' or iso.failure):
             # `failure` outlives the cleanup that quarantines the profile afterwards
             self._tombstone(e)
-            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+            self._do(X.refuse, execution_id=e.id, stop_reason='spawn',
                      reason='isolation could not be established: %s'
                             % (iso.failure or iso.reason or 'unknown'))
             return True

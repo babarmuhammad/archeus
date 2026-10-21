@@ -12,6 +12,7 @@ import time
 import pytest
 
 from archeus.cli import gui
+from archeus.core import runtime
 from archeus.core.application import executions as X, resources
 from archeus.core.domain import entities, ids
 from archeus.core.domain.events import new_event
@@ -182,3 +183,91 @@ def test_T106_an_open_harness_is_skipped_and_the_task_runs_on_another(db, monkey
             'fake': 'breaker', 'other': None}
     finally:
         x.cleanup()
+
+
+# ── Correction r1 (review of 7d54856) ───────────────────────────────────────
+
+def _core_loop(x, until, timeout, loop=None):
+    """Core's own engine loop (runtime.EngineLoop, which parks a mission whose
+    step changed nothing) and the manager's pass, in real time, rows untouched."""
+    loop = loop or runtime.EngineLoop(x.engine, x.db, idle_s=0.05)
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if until():
+            return loop
+        loop._pass()
+        x.manager.tick()
+    raise AssertionError('timed out; executions: %s' % [
+        (e.state, e.stop_reason) for e in x.all(entities.Execution)])
+
+
+def test_T106r1_a_parked_mission_wakes_when_its_start_wait_ends(x, monkeypatch):
+    """Q4 under Core's loop: nothing is written when the wait ends, yet the task
+    is tried again then (the constants are shortened; no record is rewritten)."""
+    monkeypatch.setattr(X, 'SPAWN_WAIT_S', 1)
+    _no_popen(monkeypatch)
+    mid = x.ready(task('t1', 'write_repo'))
+    loop = _core_loop(x, lambda: x.all(entities.Execution), 5)
+    _core_loop(x, lambda: mid in loop.parked, 5, loop)   # its task waits; nothing moves
+    started = time.monotonic()
+    _core_loop(x, lambda: len(x.all(entities.Execution)) == 2, 8, loop)
+    assert time.monotonic() - started < 6
+    assert [r.stop_reason for r in x.all(entities.Execution)] == ['spawn', 'spawn']
+
+
+def test_T106r1_a_parked_mission_gets_its_half_open_trial(x, monkeypatch):
+    """Q5 under Core's loop: every task waits on the open breaker, the mission
+    parks, and the trial still runs when the cooldown ends; a start closes it."""
+    monkeypatch.setattr(X, 'SPAWN_WAIT_S', 1)
+    monkeypatch.setattr(X, 'SPAWN_COOLDOWN_S', 2)
+    _no_popen(monkeypatch)
+    mid = x.ready(*(task('t%d' % i, 'write_repo') for i in range(1, 5)))
+    _core_loop(x, lambda: x.all(entities.RouteDecision, task_id=x.task_of(mid, 't4').id), 8)
+    assert len(x.all(entities.Execution)) == 3 and _breaker(x)['state'] == 'open'
+    monkeypatch.setattr(base.proc, 'spawn_detached', REAL_SPAWN)
+    for i in range(1, 5):
+        x.scenarios['t%d' % i] = [DONE]
+    _core_loop(x, lambda: any(r.started_at for r in x.all(entities.Execution)), 10)
+    assert _breaker(x) is None
+    assert len(x.events('harness.state_changed')) == 1
+
+
+def test_T106r1_already_spawned_goes_to_reconciliation_not_to_the_breaker(x, monkeypatch):
+    """Decision (b): the marker exists, so a process may; the end stays `binding`
+    and neither the breaker nor the task's wait counts it."""
+    def spawn(adapter, spec, **kw):
+        raise base.AlreadySpawned('the spawning marker exists')
+    monkeypatch.setattr(x.manager.node, 'spawn', spawn)
+    mid = x.ready(task('t1', 'write_repo'))
+    x.drive(mid, lambda: x.all(entities.Execution))
+    x.manager.tick()
+    (r,) = x.all(entities.Execution)
+    assert (r.state, r.stop_reason, r.charged, r.summary) == ('ABANDONED', 'binding', False, '')
+    with x.db.read() as c:
+        assert X.spawn_wait(c, r.task_id, time.time()) is None
+
+
+def test_T106r1_a_trial_on_a_paused_mission_does_not_hold_the_harness(x, monkeypatch):
+    mid = _tripped(x, monkeypatch)
+    _age(x, mid, 301)
+    out = x.dispatch(mid, 't1')                      # the half-open trial, not spawned yet
+    assert out['execution_id'] and _breaker(x)['state'] == 'open'
+    x.do(x.missions.pause, who=x.user, mission_id=mid)
+    assert x.state(out['execution_id']).state == 'INTENT'
+    assert _breaker(x)['state'] == 'half_open'
+
+
+def test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed(x):
+    mid = x.ready(task('t1', 'write_repo'))
+    t = x.task_of(mid)
+
+    def run(tx, actor):
+        tx.insert(entities.RouteDecision(
+            id=ids.new_id('route_decision'), subject=Ref('task', t.id), result='blocked',
+            mission_id=mid, task_id=t.id, unblock_at='not a time',
+            candidates=({'resource': 'fake', 'eliminated_at_step': 'health'},)), actor=actor)
+        tx.append(new_event('mission.updated', Ref('mission', mid), actor, payload={},
+                            workspace=ids.GLOBAL_WORKSPACE))
+    x.do(run)
+    with x.db.read() as c:
+        assert resources.route_wait(c, t.id, time.time()) is None

@@ -1039,3 +1039,13 @@ contracts change:
   an exit; only exits Core observed (its handle, its own `ended` tombstone) are collected.
 - **Harness eligibility (A4).** An execution of any harness is dispatched only if it launches inside
   the PV-20 identity and Job; fake and test harnesses are not production-dispatchable.
+
+### Addendum 2026-10-21 (card T-106): the stop reasons as built
+
+§20.1's `stop_reason` list above is the P11 set. As built today (`entities.STOP_REASONS`) it also
+holds `workspace` (§28 note 11: the task's workspace could not be made; the only charged one),
+`pressure` and `handoff_user` (P12, why an execution handed off), `path_too_long` (T-078: Git
+refuses the worktree's path; it blocks the mission) and `spawn` (T-106: the harness started no
+process, isolated or not, including an isolation decision that could not be taken, a hook stage
+that could not be made and an establishment failure found at a restart). `spawn` is uncharged
+(O7) and is the only end O7's start wait and spawn breaker count (p20-design-gate item 131).

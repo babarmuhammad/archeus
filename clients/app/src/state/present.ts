@@ -25,6 +25,7 @@ const STOPPED: Record<string, string> = {
   disarmed: 'stopped: Archeus was disarmed',
   workspace: 'stopped: its workspace could not be made',
   path_too_long: 'stopped: its workspace path is too long for Git; use a shorter Archeus folder',
+  spawn: 'stopped: its agent CLI could not start a process; Archeus tries again',
 };
 const FAILED: Record<string, string> = {
   resource: 'the account or its provider failed',

@@ -348,17 +348,37 @@ def test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens(
     assert B([0, 10, 20, 400], False, 401) == {'state': 'open', 'until': 700}
 
 
+def test_O7_failure_times_count_in_time_order_not_row_order():
+    """An INTENT that waited (its mission paused) can fail after a later one."""
+    B = X.breaker_state
+    assert B([0, 700, 10], False, 701) is None                  # 0, 10, 700: no three in 10 min
+    assert B([0, 10, 400, 20], False, 401) == {'state': 'open', 'until': 700}
+
+
 def _x(state='ABANDONED', stop_reason=None, started_at=None):
     return SimpleNamespace(state=state, stop_reason=stop_reason, started_at=started_at)
 
 
 def test_O7_a_start_ends_the_streak_other_ends_do_not_count_and_a_later_intent_is_the_trial():
+    S = lambda *oldest_first: X.spawn_streak(reversed(oldest_first))  # noqa: E731
     f1, f2, f3 = (_x(stop_reason='spawn') for _ in range(3))
     ok, other = _x('ENDED_OK', started_at='2026-10-21T10:00:00Z'), _x(stop_reason='binding')
-    assert X.spawn_streak([f1, ok, f2, other, f3]) == ([f2, f3], False)
-    assert X.spawn_streak([f1, f2, f3, _x('INTENT')]) == ([f1, f2, f3], True)
-    assert X.spawn_streak([f1, f2, f3, ok, _x('INTENT')]) == ([], True)
-    assert X.spawn_streak([ok]) == ([], False)
+    assert S(f1, ok, f2, other, f3) == ([f3, f2], False)
+    assert S(f1, f2, f3, _x('INTENT')) == ([f3, f2, f1], True)
+    assert S(f1, f2, f3, ok, _x('INTENT')) == ([], True)
+    assert S(ok) == ([], False)
+    # an INTENT dispatched before the latest failure is not the trial
+    assert S(f1, f2, _x('INTENT'), f3) == ([f3, f2, f1], False)
+
+
+def test_O7_the_streak_reads_back_only_as_far_as_the_last_start():
+    read = []
+
+    def newest_first():
+        for x in (_x(stop_reason='spawn'), _x('ENDED_OK', started_at='t'), _x(stop_reason='spawn')):
+            read.append(x)
+            yield x
+    assert len(X.spawn_streak(newest_first())[0]) == 1 and len(read) == 2
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────
@@ -1247,7 +1267,7 @@ def test_an_isolation_decision_that_raises_starts_nothing(monkeypatch, tmp_path,
     m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, err)
     assert m._spawn(e, mission) is True
     assert _steps(log) == ['requested', 'refuse']
-    assert log[1][1]['stop_reason'] == 'binding'
+    assert log[1][1]['stop_reason'] == 'spawn'                  # O7 (T-106)
     assert type(err).__name__ in log[1][1]['reason']
 
 
@@ -1412,7 +1432,7 @@ def test_a_stage_that_cannot_be_made_or_verified_starts_nothing_uncharged(
         m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True, staged=failure)
         assert _run(m, e, mission, resume, log) is True
         assert _steps(log) == ['requested', 'stage', 'refuse']   # no workspace, inventory,
-        assert log[2][1]['stop_reason'] == 'binding'             # preparation or spawn
+        assert log[2][1]['stop_reason'] == 'spawn'               # preparation or spawn
         assert 'hook runtime could not be staged' in log[2][1]['reason']
 
 

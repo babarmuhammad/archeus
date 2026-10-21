@@ -439,13 +439,17 @@ def breaker(conn, harness_id, now):
 
 
 def route_wait(conn, task_id, now):
-    """True while the task's latest route found it could run only on harnesses
-    that cannot start (O7): it waits READY until that route's `unblock_at`, so
-    it is not routed again on every pass (T-106)."""
-    got = rows.where(conn, entities.RouteDecision, task_id=task_id)
-    d = got[-1].entity if got else None
-    return bool(d and d.result == 'blocked' and d.unblock_at and _epoch(d.unblock_at) > now
-                and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates))
+    """Until when (epoch) the task waits because its latest route found it could
+    run only on harnesses that cannot start (O7), or None: it is not routed again
+    on every pass (T-106)."""
+    rec = conn.execute('SELECT * FROM route_decisions WHERE task_id = ? ORDER BY rowid DESC'
+                       ' LIMIT 1', (task_id,)).fetchone()
+    d = rec and rows.decode(entities.RouteDecision, rec).entity
+    if not (d and d.result == 'blocked' and d.unblock_at
+            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):
+        return None
+    until = _epoch(d.unblock_at)
+    return until if until > now else None
 
 
 def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):

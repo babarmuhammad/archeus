@@ -457,3 +457,15 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (the tab replays every event from the first, in a real browser); `clients/app/test/shell.test.ts`
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
+
+### Slice G amended by T-106 (2026-10-21)
+
+"Slice G as built" says the tray says an approval request and an e-stop and nothing else. Since
+T-106 (the owner's T-110 answer Q6, "CLI status + mission reason + notification (Recommended)",
+2026-10-21) it also says a harness's start breaker opening: for a `harness.state_changed` event
+whose payload has `breaker: open`, `gui.notice` returns "<harness> cannot start a process;
+Archeus tries again in 5 minutes", the harness named by the event's subject id and nothing else
+of the event (its `reason` is never said). The event is appended once per trip, when a closed
+breaker opens, never for a failed half-open trial (p20-design-gate item 131). Tested by
+`tests/v1/integration/test_spawn_breaker.py` (the notice text from the recorded event); the tray
+timer itself is still exercised only through `Shell.notices`.

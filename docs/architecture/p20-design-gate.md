@@ -2844,6 +2844,39 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        `failed` (a Core that died between the failure and its refusal) still refuses it as
        `binding`, so it does not count toward the breaker.
 
+132. **Correction r1 to item 131 (card T-106, 2026-10-21, after the review of 7d54856).**
+     - **Core's loop wakes a waiting mission.** `EngineLoop` parks a mission whose step changed
+       nothing and stepped it again only when a command moved it; a task waiting out its start
+       wait or an open breaker moves nothing when the wait ends, so under Core's own loop the
+       retry (Q4) and the trial (Q5) never came. `Engine.step` now reports `wake_at`, the
+       earliest end of such a wait among the mission's READY tasks, and `EngineLoop` steps the
+       parked mission again at that time (its idle wait is shortened to it). Tested with the
+       real `EngineLoop._pass` and the manager's pass, rows untouched (Q142).
+     - **Counted as `spawn` too** (Q7, Q10): an establishment failure found at a restart
+       (`_reconcile_isolated`, item 131's "left as it was" withdrawn), an isolation decision
+       that could not be taken, and a hook stage that could not be made (Q143, Q147, Q148).
+       `AlreadySpawned` stays `binding`: the marker means a process may exist and the end goes
+       to reconciliation; a test pins it (Q150).
+     - **Bounded reads.** A harness's executions are read newest first, in SQL only the rows the
+       streak reads (a failed start, a start, an INTENT), and the read stops at its last
+       start; a task's route wait reads only its latest decision, and parses its `unblock_at`
+       only once the decision is known to be the breaker's (Q151, Q152). Measured on an
+       in-memory SQLite 3.37 table of executions (this PC): 2 ms per harness with 10k
+       executions older than the last start, 7 ms with 30k, 6 ms with 30k never-started rows
+       after it. The cost is the rows SQLite scans (json_extract per row, about 0.2 µs), not
+       the rows decoded. Upgrade path, not built: an index or a stored harness column, when
+       that scan shows up in a profile.
+     - **Time order.** Failure times are sorted before the window and the cooldown are judged:
+       an INTENT that waited can fail after a later one (Q144, Q145).
+     - **The trial.** An INTENT counts as the half-open trial only while its mission is
+       EXECUTING, so one parked by a pause or a block no longer holds every other task back
+       (Q146). **Known limit:** a resume (PAUSED to STARTING through `resume_checked`) is not
+       seen as a trial; a resume and a dispatched trial can both start while half-open.
+     - **Words.** The SPA's end reasons say `spawn` ("stopped: its agent CLI could not start a
+       process; Archeus tries again"). p11-design-gate and p21-design-gate carry dated
+       as-built appends for the stop reason list and the tray notice.
+     - **Mutants:** Q142-Q152; Q149 and Q150 are the review's ad-hoc M1 and M2.
+
 ## 13. As built
 (Filled at the end of P20.)
 
