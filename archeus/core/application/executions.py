@@ -961,20 +961,26 @@ def _epoch(iso):
 
 def limit_until(resets_at, now):
     """The text a limit is stored with: the provider's reset as the router reads it
-    (`R.reset_at`: a naive value is UTC), written with its offset, or the default
-    window when it is not a time. One parse with the router, so the machine's zone
-    never decides when an account is released (T-106 r5)."""
+    (`R.reset_at`: a naive value is UTC), written with its offset. A reset that is not
+    a time, or already past, holds the default window: released on the next tick it
+    would be refused again, uncharged, on every pass (T-106 r6)."""
     at = R.reset_at(resets_at)
-    if at is None:
+    if at is None or at.timestamp() <= now:
         return _iso(now + LIMIT_DEFAULT_S)
     return at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
 
 def limit_passed(limited_until, now):
-    """Whether a stored limit's reset has come. A value that is not a time counts as
-    come: no account is held forever on a value nobody can read (T-106 r5)."""
-    at = R.reset_at(limited_until)
-    return at is None or at.timestamp() <= now
+    """Whether a stored limit's reset has come. A row written since r5 carries its
+    offset. A row with no offset was written before r5 and is read in local time, as
+    it was released before, so r5 releases none of those early (T-106 r6). A value
+    that is not a time counts as come: no account is held forever on a value nobody
+    can read (T-106 r5)."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(limited_until.replace('Z', '+00:00')).timestamp() <= now
+    except (AttributeError, TypeError, ValueError, OverflowError, OSError):
+        return True
 
 
 def account_limited(tx, *, actor, account_id, resets_at=None, now=None):

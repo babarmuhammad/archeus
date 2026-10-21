@@ -2940,6 +2940,15 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        stored as the router reads it, written with Z, and `accounts_tick` compares it the
        same way, so a naive reset releases the account at one instant in any zone (Q166,
        Q167). A task's wait reads a success by its start, as the breaker does (Q168).
+     - **Correction r6 (review of 5e8102d).** A provider reset already past, or not a time
+       at store time, holds the default window (1 h): released on the next tick it is
+       refused again, uncharged, on every pass, an unbounded loop (Q169, Q172). A stored
+       limit that is not a time releases the account without raising (owner-accepted,
+       one-off, legacy rows only; Q170, Q171). A stored text with no offset is a row written
+       before r5 and is read in local time, as the pre-r5 tick read it, because the UTC
+       reading would release a West-of-UTC account early and the local reading releases
+       nothing early that was not already released (Q167; the r5 "one instant in any zone"
+       claim holds for rows written since r5 only).
      - **Known, recorded (N6).** An INTENT created before a trip, whose mission was paused,
        can start when the mission resumes while the breaker is open; a start closes the
        breaker. Bounded by the INTENTs dispatched before the trip.

@@ -666,6 +666,64 @@ def test_E31_a_provider_limit_marks_the_account_limited_and_stops_its_work(x):
     assert (a.health, a.limited_until) == ('LIMITED', '2099-01-01T00:00:00.000Z')
 
 
+def _limit_and_tick(x, acc, resets_at, now):
+    x.do(lambda tx, *, actor: X.account_limited(tx, actor=actor, account_id=acc,
+                                                resets_at=resets_at, now=now))
+
+
+def _tick_at(x, now):
+    x.do(lambda tx, *, actor: X.accounts_tick(tx, actor=actor, now=now))
+
+
+def _stored_limit(x, acc, until):
+    """A row as an earlier build wrote it: the provider's text kept as it came."""
+    def put(tx, *, actor):
+        lifecycle.fire(tx, entities.Account, acc, 'window_exhausted', actor=actor,
+                       reason='legacy row', fields={'limited_until': until})
+    x.do(put)
+
+
+def test_T106r6_a_past_provider_reset_holds_the_default_window_through_the_tick(x):
+    """A reset already past is refused again on the next tick, uncharged, and
+    re-stored: the account holds the default window instead (T-106 r6)."""
+    acc = x.account('Work')
+    now = time.time()
+    _limit_and_tick(x, acc, X._iso(now - 60), now)
+    assert x.one(entities.Account, id=acc).limited_until == X._iso(now + X.LIMIT_DEFAULT_S)
+    _tick_at(x, now + 6)
+    assert x.one(entities.Account, id=acc).health == 'LIMITED'
+    _tick_at(x, now + X.LIMIT_DEFAULT_S + 1)
+    assert x.one(entities.Account, id=acc).health == 'AVAILABLE'
+
+
+def test_T106r6_an_unreadable_provider_reset_holds_the_default_window(x):
+    acc = x.account('Work')
+    now = time.time()
+    _limit_and_tick(x, acc, 'soon', now)
+    assert x.one(entities.Account, id=acc).limited_until == X._iso(now + X.LIMIT_DEFAULT_S)
+
+
+def test_T106r6_a_stored_limit_that_is_not_a_time_releases_without_raising(x):
+    """Only a legacy row can hold such a value: the release is one-off, and the
+    next refusal stores a default window (T-106 r5 deviation b, owner-accepted)."""
+    acc = x.account('Work')
+    _stored_limit(x, acc, 'soon')
+    _tick_at(x, time.time())
+    assert x.one(entities.Account, id=acc).health == 'AVAILABLE'
+
+
+def test_T106r6_a_legacy_naive_limit_releases_at_its_local_time_as_before_r5(x):
+    """A row written before r5 has no offset and is read in local time, as the
+    pre-r5 tick read it, so r5 releases none of them early (T-106 r6)."""
+    acc = x.account('Work')
+    local = datetime(2026, 9, 26, 10, 2).timestamp()
+    _stored_limit(x, acc, '2026-09-26T10:02:00')
+    _tick_at(x, local - 1)
+    assert x.one(entities.Account, id=acc).health == 'LIMITED'
+    _tick_at(x, local + 1)
+    assert x.one(entities.Account, id=acc).health == 'AVAILABLE'
+
+
 def test_E32_the_breaker_is_per_account_and_counts_only_resource_failures(x):
     acc = x.account('Work')
     x.scenarios['t1'] = [{'emit': {'type': 'error', 'kind': 'resource'}}, {'exit': 1}]

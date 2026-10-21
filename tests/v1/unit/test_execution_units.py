@@ -2102,13 +2102,14 @@ def at(h, m):
     return datetime(2026, 9, 26, h, m, tzinfo=timezone.utc).timestamp()
 
 stored = X.limit_until('2026-09-26T10:02:00', at(10, 0))        # naive: UTC by the rule
-# a legacy row keeps the raw naive text: accounts_tick reads it by the same rule
+loc = datetime(2026, 9, 26, 10, 2).timestamp()                   # a legacy row: local time
 print(json.dumps({'local_offset': datetime(2026, 9, 26, 10).timestamp() - at(10, 0),
                   'stored': stored,
+                  'past_stored': X.limit_until('2026-09-26T09:00:00', at(10, 0)),
                   'passed_at_10_01': X.limit_passed(stored, at(10, 1)),
                   'passed_at_10_03': X.limit_passed(stored, at(10, 3)),
-                  'legacy_passed_at_10_01': X.limit_passed('2026-09-26T10:02:00', at(10, 1)),
-                  'legacy_passed_at_10_03': X.limit_passed('2026-09-26T10:02:00', at(10, 3))}))
+                  'legacy_before': X.limit_passed('2026-09-26T10:02:00', loc - 60),
+                  'legacy_after': X.limit_passed('2026-09-26T10:02:00', loc + 60)}))
 '''
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 
@@ -2123,4 +2124,5 @@ def test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every
     assert got['local_offset'] != 0                       # the probe really ran off UTC
     assert (got['stored'], got['passed_at_10_01'], got['passed_at_10_03']) == (
         '2026-09-26T10:02:00.000Z', False, True)
-    assert (got['legacy_passed_at_10_01'], got['legacy_passed_at_10_03']) == (False, True)
+    assert got['past_stored'] == '2026-09-26T11:00:00Z'   # a past reset holds the default window
+    assert (got['legacy_before'], got['legacy_after']) == (False, True)   # local, as before r5

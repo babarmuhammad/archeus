@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163) and r5 (Q164-Q168).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) and r6 (Q169-Q172).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -869,10 +869,11 @@ MUTATIONS = [
      "    until = limit_until(resets_at, now)",
      "    until = resets_at or _iso(now + LIMIT_DEFAULT_S)")],
      [EX + 'test_E31_a_provider_limit_marks_the_account_limited_and_stops_its_work']),
-    ('Q167', 'a stored limit is compared in local time (the legacy naive text)', [(EXE,
-     "    return at is None or at.timestamp() <= now",
-     "    return at is None or _epoch(limited_until) <= now")],
-     [XU + 'test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every_zone']),
+    ('Q167', 'a legacy naive stored limit is read in UTC (the r5 reading, released early west of UTC)', [(EXE,
+     "datetime.fromisoformat(limited_until.replace('Z', '+00:00')).timestamp() <= now",
+     "R.reset_at(limited_until).timestamp() <= now")],
+     [XU + 'test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every_zone',
+      EX + 'test_T106r6_a_legacy_naive_limit_releases_at_its_local_time_as_before_r5']),
     ('Q168', 'a task wait reads a success by its end, not its start (the breaker reads its start)',
      [(EXE,
      "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
@@ -880,6 +881,22 @@ MUTATIONS = [
      "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
      "          if not r.entity.ended_at or _epoch(r.entity.ended_at) <= now]")],
      [XU + 'test_T106r5_a_task_wait_reads_a_success_by_its_start_as_the_breaker_does']),
+    # T-106 correction r6 (review of 5e8102d)
+    ('Q169', 'a provider reset already past is stored as it came (released on the next tick, the loop)',
+     [(EXE, "    if at is None or at.timestamp() <= now:", "    if at is None:")],
+     [EX + 'test_T106r6_a_past_provider_reset_holds_the_default_window_through_the_tick']),
+    ('Q170', 'a stored limit that is not a time is held forever', [(EXE,
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return True",
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return False")],
+     [EX + 'test_T106r6_a_stored_limit_that_is_not_a_time_releases_without_raising']),
+    ('Q171', 'a stored limit that is not a time raises out of the tick (the pre-r5 behaviour)', [(EXE,
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return True",
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        raise")],
+     [EX + 'test_T106r6_a_stored_limit_that_is_not_a_time_releases_without_raising']),
+    ('Q172', 'an unreadable provider reset at store time raises instead of holding the default window', [(EXE,
+     "    if at is None or at.timestamp() <= now:",
+     "    if at.timestamp() <= now:")],
+     [EX + 'test_T106r6_an_unreadable_provider_reset_holds_the_default_window']),
 ]
 
 if __name__ == '__main__':
