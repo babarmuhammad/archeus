@@ -3,7 +3,6 @@
 
   var TAU = Math.PI * 2;
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
-  var CORE = { x: 500, y: 320 };
   var IVORY = '#EFE9DA';
   var STATE = {
     waiting: { word: 'Needs you', color: '#F2B544' },
@@ -11,29 +10,27 @@
     done: { word: 'Done', color: '#6FD39A' },
     idle: { word: 'Idle', color: '#9AA5B8' },
     exec: { word: 'Execution', color: IVORY },
-    planning: { word: 'Planning', color: '#B79CFF' },
     connected: { word: 'Connected', color: '#6FD39A' },
     recent: { word: 'Recent', color: '#6FB1FF' },
     future: { word: 'Future contract', color: '#9AA5B8' }
   };
   var RANK = { waiting: 0, running: 1, idle: 2, done: 3 };
   var PHASES = ['Understand', 'Plan', 'Approve', 'Run', 'Verify', 'Review'];
-  var NEW_OFFSETS = [[-120, 92], [112, 104], [-150, -4], [128, -2]];
 
   var projects = [
-    { id: 'archeus', name: 'Archeus', x: 300, y: 250, hue: '#7FCFC0' },
-    { id: 'notes', name: 'Notes', x: 820, y: 230, hue: '#E7A3AE' },
-    { id: 'atlas', name: 'Atlas', x: 640, y: 470, hue: '#C7B2F0' }
+    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', angle: 198 },
+    { id: 'notes', name: 'Notes', hue: '#E7A3AE', angle: -24 },
+    { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', angle: 66 }
   ];
 
   var missions = [
-    { id: 'm-search', title: 'Search provenance', project: 'archeus', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, dx: -95, dy: -70, what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false },
-    { id: 'm-date', title: 'Fix date test', project: 'archeus', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, dx: 90, dy: -40, what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'not recorded', exec: true },
-    { id: 'm-done', title: 'Write changelog', project: 'archeus', branch: 'docs/changelog', state: 'done', stateText: 'Review passed', phase: 6, dx: -40, dy: 95, what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false },
-    { id: 'm-index', title: 'Index notes', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Not started', phase: -1, dx: -150, dy: -30, what: 'Build an index over the notes folder.', latest: 'none recorded', task: 'none', exec: false },
-    { id: 'm-read', title: 'Reading list export', project: 'notes', branch: 'docs/reading', state: 'done', stateText: 'Done', phase: 6, dx: -10, dy: -110, what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false },
-    { id: 'm-map', title: 'Map relations', project: 'atlas', branch: 'feat/map', state: 'idle', stateText: 'Not started', phase: -1, dx: -110, dy: -40, what: 'Map recorded relations between notes.', latest: 'none recorded', task: 'none', exec: false },
-    { id: 'm-export', title: 'Export graph', project: 'atlas', branch: 'fix/export', state: 'done', stateText: 'Review passed', phase: 6, dx: 120, dy: 30, what: 'Export the graph as an image.', latest: 'Review passed.', task: 'none', exec: false }
+    { id: 'm-search', title: 'Search provenance', project: 'harbor', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false },
+    { id: 'm-date', title: 'Fix date test', project: 'harbor', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'not recorded', exec: true },
+    { id: 'm-done', title: 'Write changelog', project: 'harbor', branch: 'docs/changelog', state: 'done', stateText: 'Review passed', phase: 6, what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false },
+    { id: 'm-index', title: 'Index notes', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Not started', phase: -1, what: 'Build an index over the notes folder.', latest: 'none recorded', task: 'none', exec: false },
+    { id: 'm-read', title: 'Reading list export', project: 'notes', branch: 'docs/reading', state: 'done', stateText: 'Done', phase: 6, what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false },
+    { id: 'm-map', title: 'Map relations', project: 'lantern', branch: 'feat/map', state: 'idle', stateText: 'Not started', phase: -1, what: 'Map recorded relations between notes.', latest: 'none recorded', task: 'none', exec: false },
+    { id: 'm-export', title: 'Export graph', project: 'lantern', branch: 'fix/export', state: 'done', stateText: 'Review passed', phase: 6, what: 'Export the graph as an image.', latest: 'Review passed.', task: 'none', exec: false }
   ];
 
   var plans = {
@@ -59,6 +56,16 @@
   var pendingOk = '';
   var sheetOpen = null;
   var lastStar = null;
+  var WEB = (function () {
+    var s = 11, out = [], i;
+    for (i = 0; i < 28; i++) {
+      s = (s * 16807) % 2147483647;
+      var a = (s / 2147483647) * TAU;
+      s = (s * 16807) % 2147483647;
+      out.push({ a: a, L: 60 + (s / 2147483647) * 110 });
+    }
+    return out;
+  })();
 
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
@@ -85,33 +92,30 @@
     var n = parseInt(hex.slice(1), 16);
     return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
   }
-  function missionPos(m) {
-    var p = projectOf(m.project);
-    return { x: p.x + m.dx, y: p.y + m.dy };
-  }
 
-  function nowScene() {
-    var sc = {
-      view: { x: 150, y: 90, w: 830, h: 500 },
-      core: { x: CORE.x, y: CORE.y },
-      projects: [], nodes: [], links: [], parent: {}
-    };
+  function nowScene(w, h) {
+    var cx = w / 2, cy = h / 2, m = Math.min(w, h);
+    var sc = { view: { x: 0, y: 0, w: w, h: h }, fit: 1, core: { x: cx, y: cy }, projects: [], nodes: [], links: [], parent: {} };
     projects.forEach(function (p) {
-      var ms = missions.filter(function (m) { return m.project === p.id; });
-      var active = ms.some(isLive);
-      sc.projects.push({ id: p.id, name: p.name, x: p.x, y: p.y, hue: p.hue, count: ms.length, live: ms.filter(isLive).length, active: active });
+      var a = p.angle * Math.PI / 180;
+      var px = cx + w * 0.3 * Math.cos(a), py = cy + h * 0.26 * Math.sin(a);
+      var ms = missions.filter(function (x) { return x.project === p.id; });
+      var spread = ms.length >= 3 ? [-0.9, 0, 0.9] : ms.length === 2 ? [-0.5, 0.5] : [0];
+      var live = ms.filter(isLive).length;
+      sc.projects.push({ id: p.id, name: p.name, x: px, y: py, hue: p.hue, count: ms.length, live: live, active: live > 0, orbit: m * 0.1 });
       sc.parent[p.id] = 'core';
-      sc.links.push({ a: 'core', b: p.id, hue: p.hue, kind: 'project' });
-      ms.forEach(function (m) {
-        var pos = missionPos(m);
-        sc.nodes.push({ id: m.id, kind: 'mission', state: m.state, x: pos.x, y: pos.y, live: isLive(m), title: m.title, sub: m.branch, st: STATE[m.state].word, detail: m.stateText, parent: p.id, hue: p.hue, hit: true, below: false });
-        sc.parent[m.id] = p.id;
-        sc.links.push({ a: p.id, b: m.id, hue: p.hue, kind: 'mission', state: m.state, live: isLive(m) });
-        if (m.exec) {
-          var ex = m.id + '-exec';
-          sc.nodes.push({ id: ex, kind: 'exec', state: 'exec', x: pos.x, y: pos.y + 72, live: m.state === 'running', title: 'Codex', sub: 'execution', st: '', parent: m.id, hit: false });
-          sc.parent[ex] = m.id;
-          sc.links.push({ a: m.id, b: ex, hue: IVORY, kind: 'exec', live: m.state === 'running' });
+      sc.links.push({ a: 'core', b: p.id, hue: p.hue, kind: 'project', live: live > 0 });
+      ms.forEach(function (x, i) {
+        var t = a + spread[i];
+        var mx = px + m * 0.17 * Math.cos(t), my = py + m * 0.17 * Math.sin(t);
+        sc.nodes.push({ id: x.id, kind: 'mission', state: x.state, x: mx, y: my, live: isLive(x), title: x.title, sub: x.branch, st: STATE[x.state].word, detail: x.stateText, parent: p.id, hue: p.hue, hit: true });
+        sc.parent[x.id] = p.id;
+        sc.links.push({ a: p.id, b: x.id, hue: p.hue, kind: 'mission', state: x.state, live: isLive(x) });
+        if (x.exec) {
+          var ex = x.id + '-exec';
+          sc.nodes.push({ id: ex, kind: 'exec', state: 'exec', x: mx + Math.cos(t) * m * 0.12, y: my + Math.sin(t) * m * 0.12, live: x.state === 'running', title: 'Codex', sub: 'execution', st: '', parent: x.id, hit: false });
+          sc.parent[ex] = x.id;
+          sc.links.push({ a: x.id, b: ex, hue: IVORY, kind: 'exec', live: x.state === 'running' });
         }
       });
     });
@@ -124,9 +128,9 @@
     var sc = {
       view: { x: 60, y: 110, w: 880, h: 440 },
       core: { x: 150, y: 300 },
-      projects: [{ id: p.id, name: p.name, x: 430, y: 300, hue: p.hue, count: missions.filter(function (x) { return x.project === p.id; }).length, live: missions.filter(function (x) { return x.project === p.id && isLive(x); }).length, active: live }],
-      nodes: [{ id: m.id, kind: 'mission', state: m.state, x: 700, y: 300, live: live, title: m.title, sub: m.branch, st: STATE[m.state].word, detail: m.stateText, parent: p.id, hue: p.hue, hit: false, below: false }],
-      links: [{ a: 'core', b: p.id, hue: p.hue, kind: 'project' }, { a: p.id, b: m.id, hue: p.hue, kind: 'mission', state: m.state, live: live }],
+      projects: [{ id: p.id, name: p.name, x: 430, y: 300, hue: p.hue, count: missions.filter(function (x) { return x.project === p.id; }).length, live: missions.filter(function (x) { return x.project === p.id && isLive(x); }).length, active: live, orbit: 60 }],
+      nodes: [{ id: m.id, kind: 'mission', state: m.state, x: 700, y: 300, live: live, title: m.title, sub: m.branch, st: STATE[m.state].word, detail: m.stateText, parent: p.id, hue: p.hue, hit: false }],
+      links: [{ a: 'core', b: p.id, hue: p.hue, kind: 'project', live: live }, { a: p.id, b: m.id, hue: p.hue, kind: 'mission', state: m.state, live: live }],
       parent: {}
     };
     sc.parent[p.id] = 'core';
@@ -140,17 +144,20 @@
   }
 
   function phoneScene() {
-    var list = sorted(missions).slice(0, 3);
-    var slots = [[250, 430], [750, 430], [500, 500]];
+    var list = sorted(missions).slice(0, 2);
+    var slots = [[360, 370], [640, 370]];
     var sc = {
-      view: { x: 120, y: 90, w: 760, h: 470 },
-      core: { x: 500, y: 200 },
+      view: { x: 200, y: 110, w: 600, h: 440 },
+      core: { x: 500, y: 165 },
+      figScale: 0.6,
+      labelDirs: ['column', 'column-reverse'],
       projects: [], nodes: [], links: [], parent: {}
     };
     list.forEach(function (m, i) {
-      sc.nodes.push({ id: m.id, kind: 'mission', state: m.state, x: slots[i][0], y: slots[i][1], live: isLive(m), title: m.title, sub: '', st: STATE[m.state].word, detail: m.stateText, parent: 'core', hue: '#7FCFC0', hit: true, below: true });
+      var p = projectOf(m.project);
+      sc.nodes.push({ id: m.id, kind: 'mission', state: m.state, x: slots[i][0], y: slots[i][1], live: isLive(m), title: m.title, sub: '', st: STATE[m.state].word, detail: m.stateText, parent: 'core', hue: p.hue, hit: true });
       sc.parent[m.id] = 'core';
-      sc.links.push({ a: 'core', b: m.id, hue: '#7FCFC0', kind: 'mission', state: m.state, live: isLive(m) });
+      sc.links.push({ a: 'core', b: m.id, hue: p.hue, kind: 'mission', state: m.state, live: isLive(m) });
     });
     sc.overflow = missions.length - list.length;
     return sc;
@@ -164,12 +171,59 @@
       { id: 'phone', kind: 'device', state: 'recent', x: 500, y: 560, live: false, title: 'Paired phone', sub: '', st: 'Recent', hit: false, parent: 'core' },
       { id: 'other', kind: 'device', state: 'future', x: 770, y: 500, live: false, title: 'Other people', sub: 'Future contract, not available', st: '', hit: false, parent: 'core' }
     ];
-    var sc = { view: { x: 60, y: 90, w: 880, h: 500 }, core: { x: CORE.x, y: CORE.y }, projects: [], nodes: nodes, links: [], parent: {} };
+    var sc = { view: { x: 60, y: 90, w: 880, h: 500 }, core: { x: 500, y: 320 }, projects: [], nodes: nodes, links: [], parent: {}, frame: true };
     nodes.forEach(function (n) {
       sc.parent[n.id] = 'core';
       sc.links.push({ a: 'core', b: n.id, hue: n.kind === 'agent' ? STATE[n.state].color : IVORY, kind: n.kind, state: n.state, live: n.live });
     });
     return sc;
+  }
+
+  function convexHull(pts) {
+    var P = pts.slice().sort(function (a, b) { return a.x - b.x || a.y - b.y; });
+    if (P.length < 3) return P;
+    function cross(o, a, b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); }
+    var lo = [], up = [], i;
+    P.forEach(function (p) {
+      while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop();
+      lo.push(p);
+    });
+    for (i = P.length - 1; i >= 0; i--) {
+      var q = P[i];
+      while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop();
+      up.push(q);
+    }
+    return lo.slice(0, -1).concat(up.slice(0, -1));
+  }
+
+  function drawFigure(g, p, col, on, scale) {
+    var R = 40 * scale, r = 21 * scale, outer = [], inner = [], k;
+    for (k = 0; k < 6; k++) {
+      var t = k * TAU / 6 - Math.PI / 2;
+      outer.push({ x: p.x + Math.cos(t) * R, y: p.y + Math.sin(t) * R });
+      inner.push({ x: p.x + Math.cos(t + TAU / 12) * r, y: p.y + Math.sin(t + TAU / 12) * r });
+    }
+    g.save();
+    g.strokeStyle = col;
+    g.lineWidth = 1;
+    g.globalAlpha = on ? 0.7 : 0.16;
+    if (on) { g.shadowColor = col; g.shadowBlur = 12; }
+    g.beginPath();
+    outer.forEach(function (q, i) { if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); });
+    g.closePath();
+    g.stroke();
+    g.globalAlpha = on ? 0.4 : 0.1;
+    g.beginPath();
+    for (k = 0; k < 6; k++) {
+      var nx = outer[(k + 1) % 6];
+      g.moveTo(outer[k].x, outer[k].y); g.lineTo(inner[k].x, inner[k].y); g.lineTo(nx.x, nx.y);
+    }
+    g.stroke();
+    g.globalAlpha = on ? 0.95 : 0.3;
+    g.fillStyle = col;
+    g.shadowBlur = 0;
+    outer.forEach(function (q) { g.beginPath(); g.arc(q.x, q.y, 1.9, 0, TAU); g.fill(); });
+    g.restore();
   }
 
   function makeStage(root, opts) {
@@ -181,7 +235,7 @@
       card: $('.card', root),
       ctx: null,
       w: 0, h: 0, dpr: 1,
-      scene: null, cam: null, focus: null, hover: null, cardFor: null,
+      src: null, scene: null, cam: null, focus: null, hover: null, cardFor: null,
       nodes: {}, meta: {},
       last: 0, raf: 0,
       onPick: opts && opts.onPick ? opts.onPick : null
@@ -211,29 +265,26 @@
         seed = (seed * 16807) % 2147483647;
         return seed / 2147483647;
       };
-      for (var i = 0; i < 240; i++) {
+      for (var i = 0; i < 260; i++) {
         var depth = rnd();
-        var r = 0.3 + depth * 0.9;
-        g.fillStyle = 'rgba(239,233,218,' + (0.12 + depth * 0.45).toFixed(3) + ')';
+        g.fillStyle = 'rgba(239,233,218,' + (0.1 + depth * 0.5).toFixed(3) + ')';
         g.beginPath();
-        g.arc(rnd() * W, rnd() * H, r, 0, TAU);
+        g.arc(rnd() * W, rnd() * H, 0.3 + depth * 0.95, 0, TAU);
         g.fill();
       }
     }
 
-    function view() { return S.scene ? S.scene.view : null; }
+    function scene() { return typeof S.src === 'function' ? S.src(S.w, S.h) : S.src; }
 
     function baseScale() {
-      var v = view();
-      return Math.min(S.w / v.w, S.h / v.h) * 0.9;
+      var v = S.scene.view;
+      return Math.min(S.w / v.w, S.h / v.h) * (S.scene.fit || 0.9);
     }
 
     function goal() {
       if (!S.scene || !S.w) return null;
-      var v = view();
-      if (S.focus) {
-        return { x: S.focus.x, y: S.focus.y, s: baseScale() * S.focus.zoom };
-      }
+      if (S.focus) return { x: S.focus.x, y: S.focus.y, s: baseScale() * S.focus.zoom };
+      var v = S.scene.view;
       return { x: v.x + v.w / 2, y: v.y + v.h / 2, s: baseScale() };
     }
 
@@ -257,6 +308,7 @@
       if (S.hover) {
         chain(S.hover);
         sc.nodes.forEach(function (n) { if (n.parent === S.hover) chain(n.id); });
+        sc.projects.forEach(function (p) { if (p.id === S.hover) sc.nodes.forEach(function (n) { if (n.parent === p.id) chain(n.id); }); });
       }
       return H;
     }
@@ -265,68 +317,78 @@
       return S.scene && S.scene.nodes.some(function (n) { return n.state === 'running'; });
     }
 
+    function hasLive() {
+      return S.scene && (S.scene.nodes.some(function (n) { return n.live; }) || S.scene.projects.some(function (p) { return p.active; }));
+    }
+
     function drawShape(g, n, p, lit, phase) {
       var x = p.x, y = p.y, st = n.state;
       var col = STATE[st] ? STATE[st].color : IVORY;
       g.save();
-      g.globalAlpha = lit || n.live ? 1 : (st === 'done' || st === 'idle' ? 0.5 : 0.7);
-      if (lit) { g.shadowColor = col; g.shadowBlur = 16; }
+      g.globalAlpha = lit || n.live ? 1 : (st === 'done' || st === 'idle' ? 0.55 : 0.7);
+      if (lit) { g.shadowColor = col; g.shadowBlur = 18; }
       if (n.kind === 'mission' && st === 'waiting') {
-        g.strokeStyle = col; g.lineWidth = 1.2; g.setLineDash([3, 4]);
-        g.beginPath(); g.arc(x, y, 17, 0, TAU); g.stroke();
+        g.strokeStyle = col; g.lineWidth = 1.4; g.setLineDash([4, 4]);
+        g.beginPath(); g.arc(x, y, 21, 0, TAU); g.stroke();
         g.setLineDash([]);
         g.fillStyle = col;
-        g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x + 9, y); g.lineTo(x, y + 9); g.lineTo(x - 9, y); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(x, y - 12); g.lineTo(x + 12, y); g.lineTo(x, y + 12); g.lineTo(x - 12, y); g.closePath(); g.fill();
       } else if (n.kind === 'mission' && st === 'running') {
         if (phase > 0) {
-          var k = (phase * 1.0) % 1;
-          g.strokeStyle = rgba('#6FB1FF', (1 - k) * 0.5); g.lineWidth = 1;
-          g.beginPath(); g.arc(x, y, 15 + 12 * k, 0, TAU); g.stroke();
+          var k = phase % 1;
+          g.strokeStyle = rgba('#6FB1FF', (1 - k) * 0.55); g.lineWidth = 1.2;
+          g.beginPath(); g.arc(x, y, 18 + 16 * k, 0, TAU); g.stroke();
         }
-        g.strokeStyle = rgba('#6FB1FF', 0.5); g.lineWidth = 1;
-        g.beginPath(); g.arc(x, y, 15, 0, TAU); g.stroke();
+        g.strokeStyle = rgba('#6FB1FF', 0.6); g.lineWidth = 1.2;
+        g.beginPath(); g.arc(x, y, 19, 0, TAU); g.stroke();
         g.fillStyle = col;
         g.beginPath();
-        g.moveTo(x, y - 11);
-        g.quadraticCurveTo(x + 2, y - 2, x + 11, y);
-        g.quadraticCurveTo(x + 2, y + 2, x, y + 11);
-        g.quadraticCurveTo(x - 2, y + 2, x - 11, y);
-        g.quadraticCurveTo(x - 2, y - 2, x, y - 11);
+        g.moveTo(x, y - 15);
+        g.quadraticCurveTo(x + 2.5, y - 2.5, x + 15, y);
+        g.quadraticCurveTo(x + 2.5, y + 2.5, x, y + 15);
+        g.quadraticCurveTo(x - 2.5, y + 2.5, x - 15, y);
+        g.quadraticCurveTo(x - 2.5, y - 2.5, x, y - 15);
         g.fill();
       } else if (n.kind === 'mission' && st === 'done') {
         g.fillStyle = col;
-        g.beginPath(); g.arc(x, y, 8, 0, TAU); g.fill();
-        g.strokeStyle = '#0A0D13'; g.lineWidth = 1.8;
-        g.beginPath(); g.moveTo(x - 3.5, y); g.lineTo(x - 1, y + 2.6); g.lineTo(x + 3.8, y - 3); g.stroke();
+        g.beginPath(); g.arc(x, y, 10.5, 0, TAU); g.fill();
+        g.strokeStyle = '#0A0D13'; g.lineWidth = 2.2;
+        g.beginPath(); g.moveTo(x - 4.5, y); g.lineTo(x - 1.2, y + 3.4); g.lineTo(x + 4.8, y - 3.8); g.stroke();
       } else if (n.kind === 'mission') {
-        g.fillStyle = '#0A0D13'; g.strokeStyle = col; g.lineWidth = 1.6;
-        g.beginPath(); g.arc(x, y, 7.5, 0, TAU); g.fill(); g.stroke();
+        g.fillStyle = '#0A0D13'; g.strokeStyle = col; g.lineWidth = 2;
+        g.beginPath(); g.arc(x, y, 9.5, 0, TAU); g.fill(); g.stroke();
       } else if (n.kind === 'exec' || n.kind === 'agent') {
-        g.strokeStyle = col; g.lineWidth = 1.3;
+        g.strokeStyle = col; g.lineWidth = 1.5;
         g.fillStyle = n.kind === 'agent' ? col : 'rgba(10,13,19,0.9)';
-        g.beginPath(); g.moveTo(x, y - 10); g.lineTo(x + 10, y + 7); g.lineTo(x - 10, y + 7); g.closePath();
+        var s = n.kind === 'agent' ? 20 : 13;
+        g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y + s * 0.7); g.lineTo(x - s, y + s * 0.7); g.closePath();
         g.fill(); g.stroke();
       } else if (n.kind === 'device') {
-        g.strokeStyle = col; g.lineWidth = 1.5;
+        g.strokeStyle = col; g.lineWidth = 1.6;
         if (st === 'future') g.setLineDash([3, 3]);
         g.fillStyle = 'rgba(10,13,19,0.9)';
-        g.beginPath(); g.rect(x - 12, y - 9, 24, 18); g.fill(); g.stroke();
+        g.beginPath(); g.rect(x - 22, y - 16, 44, 32); g.fill(); g.stroke();
         g.setLineDash([]);
+        if (n.id === 'desktop') {
+          g.beginPath(); g.rect(x - 12, y - 9, 24, 14); g.stroke();
+          g.beginPath(); g.moveTo(x, y + 5); g.lineTo(x, y + 9); g.stroke();
+        } else if (n.id === 'phone') {
+          g.beginPath(); g.rect(x - 7, y - 12, 14, 24); g.stroke();
+        }
       }
       g.restore();
     }
 
     function drawCore(g, c, t, running) {
       var breath = running && t ? 1 + 0.035 * Math.sin(TAU * t / 6000) : 1;
-      var glow = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, 120 * breath);
-      glow.addColorStop(0, 'rgba(239,233,218,0.24)');
+      var glow = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, 150 * breath);
+      glow.addColorStop(0, 'rgba(239,233,218,0.26)');
+      glow.addColorStop(0.5, 'rgba(239,233,218,0.07)');
       glow.addColorStop(1, 'rgba(239,233,218,0)');
       g.fillStyle = glow;
-      g.beginPath(); g.arc(c.x, c.y, 120 * breath, 0, TAU); g.fill();
+      g.beginPath(); g.arc(c.x, c.y, 150 * breath, 0, TAU); g.fill();
       g.fillStyle = IVORY;
-      for (var i = 0; i < 4; i++) {
-        var ang = Math.PI / 2 * i - Math.PI / 2;
-        var L = 34 * breath, W = 3.4;
+      function kite(ang, L, W) {
         var px = -Math.sin(ang) * W, py = Math.cos(ang) * W;
         g.beginPath();
         g.moveTo(c.x + px, c.y + py);
@@ -335,26 +397,17 @@
         g.closePath();
         g.fill();
       }
-      for (var j = 0; j < 4; j++) {
-        var ang2 = Math.PI / 4 + Math.PI / 2 * j;
-        var L2 = 14 * breath, W2 = 1.8;
-        var qx = -Math.sin(ang2) * W2, qy = Math.cos(ang2) * W2;
-        g.beginPath();
-        g.moveTo(c.x + qx, c.y + qy);
-        g.lineTo(c.x + Math.cos(ang2) * L2, c.y + Math.sin(ang2) * L2);
-        g.lineTo(c.x - qx, c.y - qy);
-        g.closePath();
-        g.fill();
-      }
+      for (var i = 0; i < 4; i++) kite(Math.PI / 2 * i - Math.PI / 2, 46 * breath, 4.4);
+      for (var j = 0; j < 4; j++) kite(Math.PI / 4 + Math.PI / 2 * j, 19 * breath, 2.1);
       g.save();
-      g.shadowColor = IVORY; g.shadowBlur = 18;
-      g.beginPath(); g.arc(c.x, c.y, 4.2, 0, TAU); g.fill();
+      g.shadowColor = IVORY; g.shadowBlur = 22;
+      g.beginPath(); g.arc(c.x, c.y, 5.5, 0, TAU); g.fill();
       g.restore();
     }
 
     function draw(t) {
       if (!S.scene || !S.w || !S.cam) return;
-      var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam;
+      var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, m = Math.min(w, h);
       g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
       g.clearRect(0, 0, w, h);
       var pos = {};
@@ -363,24 +416,68 @@
       sc.projects.forEach(function (p) { pos[p.id] = P(p.x, p.y); });
       sc.nodes.forEach(function (n) { pos[n.id] = P(n.x, n.y); });
       var H = litSet();
-      var running = hasRunning();
+      var anim = reduce.matches ? 0 : t;
       var c = pos.core;
+      var running = hasRunning();
 
-      S.sky.style.transform = 'translate3d(' + (-(cam.x - CORE.x) * cam.s * 0.05).toFixed(2) + 'px,' + (-(cam.y - CORE.y) * cam.s * 0.05).toFixed(2) + 'px,0)';
+      S.sky.style.transform = 'translate3d(' + (-(cam.x - sc.core.x) * cam.s * 0.05).toFixed(2) + 'px,' + (-(cam.y - sc.core.y) * cam.s * 0.05).toFixed(2) + 'px,0)';
 
       g.save();
-      g.setLineDash([2, 7]);
+      g.setLineDash([2, 8]);
       g.lineWidth = 1;
-      [[170, 0.6, 0.13], [262, 0.34, 0.06]].forEach(function (o) {
+      [[m * 0.46, 0.4, 0.14], [m * 0.66, 0.36, 0.07]].forEach(function (o) {
         g.strokeStyle = 'rgba(239,233,218,' + o[2] + ')';
-        g.beginPath(); g.ellipse(c.x, c.y, o[0] * cam.s, o[0] * cam.s * o[1], -0.16, 0, TAU); g.stroke();
+        g.beginPath(); g.ellipse(c.x, c.y, o[0] * cam.s, o[0] * o[1] * cam.s, -0.12, 0, TAU); g.stroke();
       });
       sc.projects.forEach(function (p) {
         var q = pos[p.id];
-        g.strokeStyle = rgba(p.hue, p.active ? 0.3 : 0.1);
-        g.beginPath(); g.arc(q.x, q.y, 70 * cam.s, 0, TAU); g.stroke();
+        g.strokeStyle = rgba(p.hue, p.active ? 0.35 : 0.12);
+        g.beginPath(); g.arc(q.x, q.y, p.orbit * cam.s, 0, TAU); g.stroke();
       });
       g.restore();
+
+      sc.projects.forEach(function (p) {
+        var members = sc.nodes.filter(function (n) { return n.parent === p.id; });
+        if (!members.length) return;
+        var cloud = [];
+        members.forEach(function (n) {
+          var q = pos[n.id], k;
+          for (k = 0; k < 6; k++) cloud.push({ x: q.x + Math.cos(k * TAU / 6) * 34, y: q.y + Math.sin(k * TAU / 6) * 34 });
+        });
+        var hull = convexHull(cloud);
+        if (hull.length < 3) return;
+        var lit = !!H[p.id];
+        var cx = 0, cy = 0;
+        hull.forEach(function (v) { cx += v.x; cy += v.y; });
+        cx /= hull.length; cy /= hull.length;
+        g.save();
+        g.beginPath();
+        hull.forEach(function (v, i) { if (i) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); });
+        g.closePath();
+        g.fillStyle = rgba(p.hue, lit ? 0.07 : 0.03);
+        g.fill();
+        g.strokeStyle = rgba(p.hue, lit ? 0.42 : 0.14);
+        g.lineWidth = 1;
+        g.stroke();
+        g.strokeStyle = rgba(p.hue, lit ? 0.14 : 0.05);
+        hull.forEach(function (v) { g.beginPath(); g.moveTo(cx, cy); g.lineTo(v.x, v.y); g.stroke(); });
+        g.restore();
+      });
+
+      if (sc.frame) {
+        [[m * 0.46, 0.12], [m * 0.3, 0.07]].forEach(function (f) {
+          g.strokeStyle = 'rgba(239,233,218,' + f[1] + ')';
+          g.lineWidth = 1;
+          g.beginPath();
+          for (var k = 0; k < 8; k++) {
+            var t = k * TAU / 8 - TAU / 16;
+            var fx = w / 2 + Math.cos(t) * f[0] * cam.s, fy = h / 2 + Math.sin(t) * f[0] * cam.s;
+            if (k) g.lineTo(fx, fy); else g.moveTo(fx, fy);
+          }
+          g.closePath();
+          g.stroke();
+        });
+      }
 
       sc.links.forEach(function (l) {
         var a = pos[l.a], b = pos[l.b];
@@ -390,12 +487,17 @@
         if (lit) {
           var col = l.kind === 'mission' && l.live ? STATE[l.state].color : (l.hue || IVORY);
           g.strokeStyle = col;
+          g.globalAlpha = 0.5;
+          g.lineWidth = 3.2;
+          g.shadowColor = col; g.shadowBlur = 18;
+          g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
           g.globalAlpha = 0.95;
-          g.lineWidth = 1.5;
-          g.shadowColor = col; g.shadowBlur = 12;
-          if (running && t && l.live) { g.setLineDash([3, 9]); g.lineDashOffset = -(t / 40); }
+          g.lineWidth = 1.6;
+          g.shadowBlur = 4;
+          g.strokeStyle = '#FFF6E0';
+          if (anim) { g.setLineDash([3, 9]); g.lineDashOffset = -(anim / 25); }
         } else {
-          g.strokeStyle = 'rgba(239,233,218,0.16)';
+          g.strokeStyle = 'rgba(239,233,218,0.11)';
           g.lineWidth = 0.8;
         }
         g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
@@ -405,44 +507,117 @@
       sc.projects.forEach(function (p) {
         if (!p.active) return;
         var q = pos[p.id];
-        var rg = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, 90);
-        rg.addColorStop(0, rgba(p.hue, 0.14));
+        var rg = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, 110);
+        rg.addColorStop(0, rgba(p.hue, 0.16));
         rg.addColorStop(1, rgba(p.hue, 0));
         g.fillStyle = rg;
-        g.beginPath(); g.arc(q.x, q.y, 90, 0, TAU); g.fill();
+        g.beginPath(); g.arc(q.x, q.y, 110, 0, TAU); g.fill();
       });
       sc.projects.forEach(function (p) {
         var q = pos[p.id], lit = !!H[p.id];
         g.save();
-        g.globalAlpha = lit ? 1 : 0.6;
+        g.globalAlpha = lit ? 1 : 0.65;
         g.fillStyle = p.hue;
-        if (lit) { g.shadowColor = p.hue; g.shadowBlur = 14; }
-        g.beginPath(); g.arc(q.x, q.y, 5, 0, TAU); g.fill();
-        g.strokeStyle = rgba(p.hue, 0.55); g.lineWidth = 1;
-        g.beginPath(); g.arc(q.x, q.y, 13, 0, TAU); g.stroke();
+        if (lit) { g.shadowColor = p.hue; g.shadowBlur = 16; }
+        g.beginPath(); g.arc(q.x, q.y, 7, 0, TAU); g.fill();
+        g.strokeStyle = rgba(p.hue, 0.6); g.lineWidth = 1.2;
+        g.beginPath(); g.arc(q.x, q.y, 17, 0, TAU); g.stroke();
         g.restore();
       });
 
       var order = sc.nodes.slice().sort(function (a, b) { return (H[a.id] ? 1 : 0) - (H[b.id] ? 1 : 0); });
       order.forEach(function (n) {
         var phase = reduce.matches ? 0 : (t || 0) / 2400 + n.x * 0.001;
+        if (n.kind === 'mission') drawFigure(g, pos[n.id], STATE[n.state].color, !!H[n.id] || n.live, sc.figScale || 1);
         drawShape(g, n, pos[n.id], !!H[n.id], phase);
       });
 
-      drawCore(g, c, reduce.matches ? 0 : t, running);
-
-      Object.keys(S.nodes).forEach(function (id) {
-        var L = S.nodes[id], q = pos[id];
-        if (!q) return;
-        if (L.col) L.el.style.transform = 'translate(' + q.x.toFixed(1) + 'px,' + q.y.toFixed(1) + 'px) translate(-50%,' + L.dy + 'px)';
-        else L.el.style.transform = 'translate(' + (q.x - 24).toFixed(1) + 'px,' + (q.y - 24).toFixed(1) + 'px)';
-        L.el.classList.toggle('dim', !H[id]);
+      g.save();
+      g.lineWidth = 0.7;
+      g.strokeStyle = 'rgba(239,233,218,0.16)';
+      WEB.forEach(function (w) {
+        g.beginPath();
+        g.moveTo(c.x, c.y);
+        g.lineTo(c.x + Math.cos(w.a) * w.L * cam.s, c.y + Math.sin(w.a) * w.L * cam.s);
+        g.stroke();
       });
+      g.restore();
 
-      updateCard(pos);
+      drawCore(g, c, anim, running);
+
+      placeLabels(pos, H);
+      updateCard(pos, m);
     }
 
-    function updateCard(pos) {
+    function boxFor(p, L, d) {
+      var W, Hh;
+      if (d.indexOf('row') === 0) { W = 48 + 10 + L.tw; Hh = Math.max(48, L.th); }
+      else { W = Math.max(48, L.tw); Hh = 48 + 4 + L.th; }
+      var x0, y0;
+      if (d === 'row') { x0 = p.x - 24; y0 = p.y - Hh / 2; }
+      else if (d === 'row-reverse') { x0 = p.x + 24 - W; y0 = p.y - Hh / 2; }
+      else if (d === 'column') { x0 = p.x - W / 2; y0 = p.y - 24; }
+      else { x0 = p.x - W / 2; y0 = p.y + 24 - Hh; }
+      return { x0: x0, y0: y0, x1: x0 + W, y1: y0 + Hh };
+    }
+
+    function overlaps(a, b, pad) {
+      return a.x0 < b.x1 + pad && a.x1 + pad > b.x0 && a.y0 < b.y1 + pad && a.y1 + pad > b.y0;
+    }
+
+    function circleHitsBox(cx, cy, r, b) {
+      var nx = Math.min(Math.max(cx, b.x0), b.x1), ny = Math.min(Math.max(cy, b.y0), b.y1);
+      return (nx - cx) * (nx - cx) + (ny - cy) * (ny - cy) < r * r;
+    }
+
+    function placeLabels(pos, H) {
+      var sc = S.scene, c = pos.core;
+      var placed = [];
+      var points = [];
+      Object.keys(pos).forEach(function (id) {
+        if (id !== 'core') points.push({ x: pos[id].x, y: pos[id].y, r: 40 });
+      });
+      var order = sc.projects.map(function (p) { return p.id; });
+      sc.nodes.slice().sort(function (a, b) {
+        var ra = a.kind === 'mission' ? RANK[a.state] : 4, rb = b.kind === 'mission' ? RANK[b.state] : 4;
+        return ra - rb;
+      }).forEach(function (n) { order.push(n.id); });
+      order.forEach(function (id) {
+        var L = S.nodes[id];
+        if (!L) return;
+        var p = pos[id];
+        var ox = p.x - c.x, oy = p.y - c.y, len = Math.hypot(ox, oy) || 1;
+        ox /= len; oy /= len;
+        var cands = [
+          { d: 'row', dx: 1, dy: 0 }, { d: 'row-reverse', dx: -1, dy: 0 },
+          { d: 'column', dx: 0, dy: 1 }, { d: 'column-reverse', dx: 0, dy: -1 }
+        ].filter(function (c) { return !sc.labelDirs || sc.labelDirs.indexOf(c.d) >= 0; })
+          .sort(function (a, b) { return (b.dx * ox + b.dy * oy) - (a.dx * ox + a.dy * oy); });
+        var best = null;
+        for (var i = 0; i < cands.length; i++) {
+          var bx = boxFor(p, L, cands[i].d);
+          var cost = 0;
+          if (bx.x0 < 8 || bx.y0 < 8 || bx.x1 > S.w - 8 || bx.y1 > S.h - 8) cost += 1000;
+          if (circleHitsBox(c.x, c.y, 80, bx)) cost += 1000;
+          for (var k = 0; k < placed.length; k++) if (overlaps(bx, placed[k], 6)) cost += 500;
+          for (var q = 0; q < points.length; q++) {
+            if (points[q].x === p.x && points[q].y === p.y) continue;
+            if (circleHitsBox(points[q].x, points[q].y, points[q].r, bx)) cost += 300;
+          }
+          if (!best || cost < best.cost) best = { cost: cost, cand: cands[i], box: bx };
+          if (cost === 0) break;
+        }
+        var chosen = best.cand, box = best.box;
+        placed.push(box);
+        var hide = best.cost > 0 && (L.kind === 'exec' || S.hover === id);
+        L.el.className = 'node ' + L.cls + ' d-' + chosen.d + (H[id] ? '' : ' dim') + (hide ? ' quiet' : '');
+        L.el.style.transform = 'translate(' + box.x0.toFixed(1) + 'px,' + box.y0.toFixed(1) + 'px)';
+      });
+      var core = S.nodes.core;
+      if (core) core.el.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 58).toFixed(1) + 'px)';
+    }
+
+    function updateCard(pos, m) {
       var id = S.hover, meta = id && S.meta[id];
       if (!meta || !pos[id]) { S.card.hidden = true; S.cardFor = null; return; }
       if (S.cardFor !== id) {
@@ -458,23 +633,25 @@
       }
       S.card.hidden = false;
       var cw = S.card.offsetWidth, ch = S.card.offsetHeight;
-      var q = pos[id];
-      var left = Math.min(Math.max(q.x - cw / 2, 8), S.w - cw - 8);
-      var top = q.y - 30 - ch;
-      if (top < 8) top = q.y + 30;
+      var q = pos[id], c = pos.core;
+      var ox = q.x - c.x, oy = q.y - c.y, len = Math.hypot(ox, oy) || 1;
+      ox /= len; oy /= len;
+      var dist = 120 + Math.max(cw, ch) * 0.35;
+      var left = Math.min(Math.max(q.x + ox * dist - cw / 2, 8), S.w - cw - 8);
+      var top = Math.min(Math.max(q.y + oy * dist - ch / 2, 8), S.h - ch - 8);
       S.card.style.transform = 'translate(' + left.toFixed(1) + 'px,' + top.toFixed(1) + 'px)';
     }
 
     function item(id, o) {
       var el = document.createElement(o.hit ? 'button' : 'div');
       if (o.hit) el.type = 'button';
-      el.className = 'node ' + o.cls + (o.col ? ' col' : '');
-      if (o.hue) el.style.setProperty('--hue', o.hue);
+      el.className = 'node ' + o.cls;
       el.innerHTML = '<span class="hit" aria-hidden="true"></span><span class="txt"><span class="nm"></span><span class="st"></span><span class="sub"></span></span>';
       el.querySelector('.nm').textContent = o.title;
       var st = el.querySelector('.st'), sub = el.querySelector('.sub');
       if (o.st) st.textContent = o.st; else st.remove();
       if (o.sub) sub.textContent = o.sub; else sub.remove();
+      if (o.hue) el.style.setProperty('--hue', o.hue);
       if (o.hit) {
         el.setAttribute('aria-label', o.aria);
         el.addEventListener('pointerenter', function () { setHover(id); });
@@ -484,8 +661,35 @@
         el.addEventListener('click', function () { if (S.onPick) S.onPick(id, o.kind); });
       }
       S.world.appendChild(el);
-      S.nodes[id] = { el: el, col: !!o.col, dy: o.dy || 0 };
+      S.nodes[id] = { el: el, cls: o.cls, core: !!o.core, tw: 0, th: 0, kind: o.kind || 'core' };
       if (o.meta) S.meta[id] = o.meta;
+    }
+
+    function build() {
+      var sc = S.scene;
+      S.world.innerHTML = '';
+      S.nodes = {}; S.meta = {};
+      S.card.hidden = true; S.cardFor = null;
+      item('core', { cls: 'k-core', title: 'Archeus', st: 'Core connected', core: true });
+      sc.projects.forEach(function (p) {
+        item(p.id, {
+          cls: 'k-project', hue: p.hue, title: p.name, st: p.count + ' missions, ' + p.live + ' live', hit: S.onPick !== null,
+          aria: p.name + ', ' + p.count + ' missions, ' + p.live + ' live', kind: 'project',
+          meta: { kicker: 'Project', title: p.name, lines: [p.count + ' missions, ' + p.live + ' live.'] }
+        });
+      });
+      sc.nodes.forEach(function (n) {
+        var hit = S.onPick !== null && n.hit;
+        item(n.id, {
+          cls: 'k-' + n.kind + ' s-' + n.state + (n.live ? ' live' : ''), title: n.title, st: n.st, sub: n.sub || n.detail || '', hit: hit,
+          aria: n.title + ', ' + (n.st || '') + (n.detail ? ', ' + n.detail : ''), kind: n.kind,
+          meta: { kicker: n.kind === 'mission' ? 'Mission' : n.kind === 'exec' ? 'Execution' : n.kind === 'agent' ? 'Agent' : 'Device', title: n.title, lines: [n.st, n.sub || n.detail].filter(Boolean) }
+        });
+      });
+      Object.keys(S.nodes).forEach(function (id) {
+        var L = S.nodes[id], txt = L.el.querySelector('.txt');
+        L.tw = txt.offsetWidth; L.th = txt.offsetHeight;
+      });
     }
 
     function setHover(id) {
@@ -495,32 +699,13 @@
       kick();
     }
 
-    function setScene(sc, keepFocus) {
-      S.scene = sc;
+    function setScene(src, keepFocus) {
+      S.src = src;
       if (!keepFocus) S.focus = null;
-      S.hover = null; S.cardFor = null;
-      S.world.innerHTML = '';
-      S.nodes = {}; S.meta = {};
-      S.card.hidden = true;
-      item('core', { cls: 'k-core', title: 'Archeus', st: 'Core connected', sub: '', col: true, dy: 34 });
-      sc.projects.forEach(function (p) {
-        item(p.id, {
-          cls: 'k-project', hue: p.hue, title: p.name, st: p.count + ' missions, ' + p.live + ' live', sub: '',
-          hit: S.onPick !== null, aria: p.name + ', ' + p.count + ' missions, ' + p.live + ' live', kind: 'project', col: true, dy: -24,
-          meta: { kicker: 'Project', title: p.name, lines: [p.count + ' missions, ' + p.live + ' live.'] }
-        });
-      });
-      sc.nodes.forEach(function (n) {
-        var hit = S.onPick !== null && n.hit;
-        var cls = 'k-' + n.kind + ' s-' + n.state + (n.below ? ' below' : '') + (n.live ? ' live' : '');
-        item(n.id, {
-          cls: cls, title: n.title, st: n.st, sub: n.sub || n.detail || '', hit: hit,
-          aria: n.title + ', ' + (n.st || '') + (n.detail ? ', ' + n.detail : ''), kind: n.kind,
-          col: !!n.below, dy: -24,
-          meta: { kicker: n.kind === 'mission' ? 'Mission' : n.kind === 'exec' ? 'Execution' : n.kind === 'agent' ? 'Agent' : 'Device', title: n.title, lines: [n.st, n.sub || n.detail].filter(Boolean) }
-        });
-      });
-      resize();
+      S.hover = null;
+      if (!resize()) return;
+      S.scene = scene();
+      build();
       S.cam = goal();
       draw(0);
       kick();
@@ -547,7 +732,7 @@
       if (document.hidden || !S.scene) return;
       var moving = stepCam(t);
       draw(reduce.matches ? 0 : t);
-      if (moving || (!reduce.matches && hasRunning())) S.raf = requestAnimationFrame(frame);
+      if (moving || (!reduce.matches && (hasRunning() || hasLive()))) S.raf = requestAnimationFrame(frame);
     }
 
     function kick() {
@@ -558,9 +743,12 @@
     }
 
     function relayout() {
-      if (!S.scene || !resize()) return;
+      if (!S.src || !resize()) return;
+      S.scene = scene();
+      build();
       S.cam = goal();
       draw(0);
+      kick();
     }
 
     root.addEventListener('pointerleave', function () { setHover(null); });
@@ -569,14 +757,13 @@
     S.setFocus = setFocus;
     S.relayout = relayout;
     S.kick = kick;
-    S.resize = resize;
     return S;
   }
 
   var nowStage = makeStage($('#now-stage'), {
     onPick: function (id, kind) {
       if (kind === 'project') {
-        var p = projectOf(id);
+        var p = nowStage.scene.projects.filter(function (x) { return x.id === id; })[0];
         nowStage.setFocus({ x: p.x, y: p.y, zoom: 2.2 });
         $('#now-overview').hidden = false;
         say('Zoomed into ' + p.name + '. Whole space returns you.');
@@ -593,7 +780,7 @@
 
   function renderNow() {
     $('#s-now [data-sentence]').textContent = sentence();
-    nowStage.setScene(nowScene(), false);
+    nowStage.setScene(nowScene, false);
     $('#now-overview').hidden = true;
     $('#now-list').innerHTML = sorted(missions).map(function (m) {
       return '<li><a href="#/mission/' + m.id + '">' + esc(m.title) + '</a>' +
@@ -606,7 +793,7 @@
   function phaseRows(m) {
     return PHASES.map(function (name, i) {
       var mark, word, cls = '';
-      if (m.phase === 6 || i < m.phase) { mark = '✓'; word = 'Done'; }
+      if (m.phase === 6 || i < m.phase) { mark = '✓'; word = 'Done'; cls = 'done'; }
       else if (i === m.phase) { mark = '●'; word = m.state === 'waiting' ? 'Waiting for you' : 'Current'; cls = 'current'; }
       else { mark = '○'; word = 'Not reached'; }
       return '<li class="' + cls + '"><span class="ph-mark" aria-hidden="true">' + mark + '</span><span class="ph-name">' + name + '</span><span class="ph-state">' + word + '</span></li>';
@@ -628,6 +815,7 @@
     $('#m-phases').innerHTML = phaseRows(m);
     $('[data-m-latest]', sec).textContent = m.latest;
     $('[data-m-task]', sec).textContent = m.task;
+    $('[data-m-agent]', sec).textContent = m.exec ? 'Codex, execution. Runs checks and reports results.' : 'No agent recorded.';
     $('[data-m-links]', sec).innerHTML = plans[m.id]
       ? '<a href="#/plan/' + m.id + '">Plan v' + plans[m.id].version + '</a>'
       : 'No plan recorded.';
@@ -755,9 +943,8 @@
   }
 
   function addMission(title, project, what) {
-    var off = NEW_OFFSETS[counter % NEW_OFFSETS.length];
     counter++;
-    missions.push({ id: 'm-new-' + counter, title: title, project: project, branch: 'not created', state: 'idle', stateText: 'Not started', phase: -1, dx: off[0], dy: off[1], what: what, latest: 'none recorded', task: 'none', exec: false });
+    missions.push({ id: 'm-new-' + counter, title: title, project: project, branch: 'not created', state: 'idle', stateText: 'Not started', phase: -1, what: what, latest: 'none recorded', task: 'none', exec: false });
   }
 
   function stop() {
@@ -832,10 +1019,10 @@
         return $('#tell-text').focus();
       }
       $('#tell-error').textContent = '';
-      addMission(text.split('\n')[0].slice(0, 48), 'archeus', text);
+      addMission(text.split('\n')[0].slice(0, 48), 'harbor', text);
       $('#tell-text').value = '';
       location.hash = '#/now';
-      say('Fake: a star was added to this page only. Nothing was sent or started.');
+      say('Fake: a star was added to Harbor on this page only. Nothing was sent or started.');
     } else if (f.id === 'mission-form') {
       e.preventDefault();
       var title = $('#m-title').value.trim();
@@ -845,7 +1032,7 @@
       }
       $('#m-error').textContent = '';
       var objective = $('#m-objective').value.trim() || 'No objective given.';
-      var proj = $('#m-project').value === 'Notes' ? 'notes' : 'archeus';
+      var proj = $('#m-project').value.toLowerCase();
       addMission(title.slice(0, 120), proj, objective);
       location.hash = '#/now';
       say('Fake: "' + title + '" was added as idle in ' + $('#m-project').value + '. Nothing was created in Core.');
