@@ -412,6 +412,23 @@ MUTATIONS = [
      "            tx = Tx(conn, cause)",
      "            tx = Tx(conn)")],
      [CW + 'test_what_a_command_writes_under_a_cause_carries_it_and_a_route_command_is_a_root']),
+    # C-write review (T-126 round 4): a scope restores its cause when it raises, not only on return
+    ('Z177', "a decision restores its cause only when it returns, not when it raises",
+     [(AZ,
+     "        try:\n            return fn(tx, **kw)\n        finally:\n            tx.cause = before",
+     "        out = fn(tx, **kw)\n        tx.cause = before\n        return out")],
+     [CW + 'test_a_decision_whose_downstream_fails_restores_its_cause_for_the_command_that_catches_it']),
+    ('Z178', "an after-scope restores its cause only when it returns, not when it raises",
+     [(EX,
+     "    try:\n        yield\n    finally:\n        tx.cause = before",
+     "    yield\n    tx.cause = before")],
+     [CW + 'test_an_after_scope_that_raises_restores_the_cause_for_the_command_that_catches_it',
+      CW + 'test_a_nested_after_scope_restores_the_outer_cause_on_every_exit']),
+    ('Z179', "a nested after-scope restores the empty cause, not the outer one",
+     [(EX,
+     "    finally:\n        tx.cause = before",
+     "    finally:\n        tx.cause = ()")],
+     [CW + 'test_a_nested_after_scope_restores_the_outer_cause_on_every_exit']),
 ]
 
 

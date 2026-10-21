@@ -235,6 +235,84 @@ def test_a_refused_decision_writes_nothing_and_leaves_no_event(r):
     assert r.head() == head and r.pending(_mid).state == 'PENDING'
 
 
+# ── a scope that exits by an exception restores the cause for the command that catches it ──
+
+def _boom(*_a, **_kw):
+    raise RuntimeError('a downstream failure after the cause was set')
+
+
+def _scope_event():
+    return ev.new_event('mission.created', Ref('mission', ids.new_id('mission')),
+                        Ref('user_device', ids.new_id('principal')))
+
+
+def test_a_decision_whose_downstream_fails_restores_its_cause_for_the_command_that_catches_it(
+        r, monkeypatch):
+    _mid, a = _asking(r)
+    monkeypatch.setattr(r.missions, '_by_state', _boom)   # a plan reject moves its mission here
+    x = ids.new_ulid()
+
+    def command(tx, actor):
+        try:
+            r.authz.decide(tx, actor=actor, approval_id=a.id, decision='reject',
+                           action_hash=a.action_hash)
+        except RuntimeError:
+            pass
+        made = commands.create_mission(tx, actor=actor, title='after', objective='o')
+        return list(tx.cause), made['id']
+
+    token = ev.CAUSE.set((x,))
+    try:
+        cause, made = r.do(command, who=r.user)
+    finally:
+        ev.CAUSE.reset(token)
+    assert cause == [x] and _chain(r.db, made) == [x]
+
+
+def test_an_after_scope_that_raises_restores_the_cause_for_the_command_that_catches_it(db, actor):
+    ended, x = _scope_event(), ids.new_ulid()
+
+    def command(tx, actor):
+        seen = []
+        try:
+            with X._after(tx, ended):
+                seen.append(list(tx.cause))
+                raise RuntimeError('a downstream failure inside the scope')
+        except RuntimeError:
+            pass
+        return seen, list(tx.cause)
+
+    token = ev.CAUSE.set((x,))
+    try:
+        out = db.writer.execute(command, {'actor': actor})
+    finally:
+        ev.CAUSE.reset(token)
+    assert out == [[[ended.id]], [x]]
+
+
+def test_a_nested_after_scope_restores_the_outer_cause_on_every_exit(db, actor):
+    outer, inner = _scope_event(), _scope_event()
+
+    def command(tx, actor):
+        seen = {}
+        with X._after(tx, outer):
+            try:
+                with X._after(tx, inner):
+                    raise RuntimeError('an inner failure')
+            except RuntimeError:
+                pass
+            seen['after_inner_failure'] = list(tx.cause)
+            with X._after(tx, inner):
+                pass
+            seen['after_inner_return'] = list(tx.cause)
+        seen['after_outer'] = list(tx.cause)
+        return seen
+
+    out = db.writer.execute(command, {'actor': actor})
+    assert out == {'after_inner_failure': [outer.id], 'after_inner_return': [outer.id],
+                   'after_outer': []}
+
+
 # ── the task's reply to an execution ending carries `execution.ended` (owner 2026-10-21) ──
 
 FORGED = 'hook_' + 'x' * 43
