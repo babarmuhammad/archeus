@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3 (Q159-Q161).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -832,6 +832,20 @@ MUTATIONS = [
      "DESC, rowid DESC\", (harness_id,)):",
      "DESC, rowid DESC\", (harness_id,))):")],
      [XU + 'test_O7_the_streak_stops_reading_at_its_start']),
+    # T-106 correction r3 (review of 3f385f8)
+    ('Q159', 'a naive provider reset goes through timestamp(), which fails on Windows', [(ROUTER,
+     "    if at.tzinfo is None:\n        at = at.replace(tzinfo=timezone.utc)\n"
+     "    return (at, iso) if at > now else None",
+     "    return (at.timestamp(), iso) if at.timestamp() > now.timestamp() else None")],
+     [SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
+    ('Q160', 'a breaker opened by failures recorded ahead of the clock waits for the step', [(EXE,
+     "    until = min(max(times), now) + SPAWN_COOLDOWN_S",
+     "    until = max(times) + SPAWN_COOLDOWN_S")],
+     [XU + 'test_O7_a_backward_clock_step_waits_at_most_one_cooldown_not_the_step']),
+    ('Q161', 'a task waits for a failure recorded ahead of the clock', [(EXE,
+     "min(_epoch(xs[-1].ended_at), now) + spawn_wait_s(n)",
+     "_epoch(xs[-1].ended_at) + spawn_wait_s(n)")],
+     [XU + 'test_O7_a_task_wait_after_a_clock_step_is_at_most_its_first_wait']),
 ]
 
 if __name__ == '__main__':

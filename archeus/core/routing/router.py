@@ -44,7 +44,7 @@ age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 {headless, rotation}}, affinity {harness, account}, approved_fallbacks [key].
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 TIERS = ('small', 'mid', 'large')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
@@ -387,12 +387,16 @@ def _why(win, rest, req, snap):
 
 
 def _ahead(iso, now):
-    """(epoch, iso) of a reset time that is readable and after *now*, else None.
-    Provider resets are free text from the harness (T-106 r2)."""
+    """(at, iso) of a reset time that is readable and after *now* (an aware
+    datetime), else None. Provider resets are free text from the harness. A naive
+    value is read as UTC and compared, never converted with timestamp(): that
+    raises OSError on Windows outside 1970-2038 (T-106 r2)."""
     try:
-        at = datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
+        at = datetime.fromisoformat(iso.replace('Z', '+00:00'))
     except (AttributeError, TypeError, ValueError):
         return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
     return (at, iso) if at > now else None
 
 
@@ -445,7 +449,7 @@ def route(req, snap):
             result, win = ('ask', ask) if ask is not None else ('blocked', None)
     # a reset already past, or unreadable, is never a wait: the task would be
     # routed again on every pass (T-106 r2)
-    now = datetime.fromisoformat(snap['now'].replace('Z', '+00:00')).timestamp()
+    now = datetime.fromisoformat(snap['now'].replace('Z', '+00:00'))
     resets = [c['_a'].get('usage') or {} for c in cands
               if c['eliminated_at_step'] in ('health', 'allocation')]
     waits = [w for w in

@@ -109,7 +109,9 @@ def breaker_state(times, trial, now):
     the trial has not started, everything else still waits."""
     if not _tripped(times):
         return None
-    until = max(times) + SPAWN_COOLDOWN_S
+    # a failure recorded ahead of the clock (it stepped back) counts from now, so a
+    # step costs at most one cooldown (T-106 r2)
+    until = min(max(times), now) + SPAWN_COOLDOWN_S
     if now < until:
         return {'state': 'open', 'until': until}
     if trial:
@@ -157,7 +159,7 @@ def spawn_wait(conn, task_id, now):
     n = next((i for i, x in enumerate(reversed(xs)) if x.stop_reason != 'spawn'), len(xs))
     if not n:
         return None
-    until = _epoch(xs[-1].ended_at) + spawn_wait_s(n)
+    until = min(_epoch(xs[-1].ended_at), now) + spawn_wait_s(n)     # as breaker_state (T-106 r2)
     return until if now < until else None
 
 

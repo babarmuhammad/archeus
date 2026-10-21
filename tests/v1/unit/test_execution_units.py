@@ -465,6 +465,21 @@ def test_O7_the_streak_stops_reading_at_its_start(plain_rows):
     assert len(fails) == 300 and len(pulled) == 301
 
 
+def test_O7_a_backward_clock_step_waits_at_most_one_cooldown_not_the_step():
+    """Failures recorded an hour ahead of the clock (it stepped back): the breaker
+    still opens for one cooldown from now, not for the step plus the cooldown."""
+    now = X._epoch('2026-10-21T10:00:00Z')
+    b = X.breaker_state([now + 3600, now + 3601, now + 3602], False, now)
+    assert b == {'state': 'open', 'until': now + X.SPAWN_COOLDOWN_S}
+
+
+def test_O7_a_task_wait_after_a_clock_step_is_at_most_its_first_wait(monkeypatch):
+    now = X._epoch('2026-10-21T10:00:00Z')
+    monkeypatch.setattr(X.rows, 'where', lambda conn, cls, **eq: [SimpleNamespace(
+        entity=SimpleNamespace(stop_reason='spawn', ended_at=X._iso(now + 3600)))])
+    assert X.spawn_wait(None, 't1', now) == now + X.spawn_wait_s(1)
+
+
 # ── §10 the hook's protocol, without a process ──────────────────────────────
 
 def test_the_hook_speaks_claude_codes_vocabulary():

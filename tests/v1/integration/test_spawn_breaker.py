@@ -309,10 +309,20 @@ def test_T106r2_a_reset_already_past_is_no_wait_and_no_hot_loop(two, monkeypatch
     assert rd.unblock_at == _breaker(two)['until']
 
 
-def test_T106r2_a_malformed_provider_reset_never_stops_core(two, monkeypatch):
-    """A provider's reset is free text: a value that is not a time is no wait, and
-    the engine pass does not raise (an uncaught error would stop Core)."""
-    mid = _tripped_beside_a_limit(two, monkeypatch, 'not a time')
+@pytest.mark.parametrize('reset', [
+    '1 hour',                       # sorts before the digits of an ISO breaker time
+    'not a time',
+    '1960-01-01T00:00:00',          # naive, before the platform's epoch range: OSError on Windows
+    '9999-12-31T23:59:59',          # naive, past the range: OverflowError or OSError
+    '1960-01-01T00:00:00+00:00',
+    '9999-12-31T23:59:59+00:00',
+    '99999-01-01T00:00:00',
+])
+def test_T106r2_a_malformed_provider_reset_never_stops_core(two, monkeypatch, reset):
+    """A provider's reset is free text: a value that is not a time, or a time the
+    platform cannot convert, is no wait, and the engine pass does not raise (an
+    uncaught error would stop Core)."""
+    mid = _tripped_beside_a_limit(two, monkeypatch, reset)
     t4 = two.task_of(mid, 't4')
     loop = runtime.EngineLoop(two.engine, two.db, idle_s=0.05)
     loop._pass()

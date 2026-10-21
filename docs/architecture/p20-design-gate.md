@@ -2865,7 +2865,8 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        executions older than the last start, 7 ms with 30k, 6 ms with 30k never-started rows
        after it. The cost is the rows SQLite scans (json_extract per row, about 0.2 µs), not
        the rows decoded. Upgrade path, not built: an index or a stored harness column, when
-       that scan shows up in a profile.
+       that scan shows up in a profile. **Superseded by item 133:** these figures are for
+       the rowid order that r2 replaced; item 133 has the current cost.
      - **Time order.** Failure times are sorted before the window and the cooldown are judged:
        an INTENT that waited can fail after a later one (Q144, Q145).
      - **The trial.** An INTENT counts as the half-open trial only while its mission is
@@ -2882,11 +2883,17 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        `unblock_at` was the earliest of the provider resets and the breaker's time, with no
        check against now; a reset already past made the task routed again on every pass.
        The router now takes only the readable times after its own `now` (`_ahead`): the
-       breaker's time always, a provider reset only when it is a future time (Q153, with a
-       real `EngineLoop` test that counts the passes' route decisions).
-     - **A malformed provider reset never stops Core (N3).** Provider resets are free text.
-       One that is not a time is dropped by the same filter, so no engine pass raises
-       (Q154). The route wait parses only the router's own values, so it needs no guard.
+       breaker's time when it is after now, a provider reset only when it is a future time
+       (Q153, with a real `EngineLoop` test that counts the passes' route decisions).
+     - **A malformed provider reset never stops Core (N3, r3 finding 1).** Provider resets
+       are free text. `_ahead` catches a value that does not parse, and compares the rest as
+       aware datetimes: a naive value is read as UTC, and `timestamp()` is never called on
+       it, because on Windows that raises OSError outside 1970-2038 (Q159 puts the call
+       back). Naive values are now UTC, where they were the machine's local time before
+       r3; provider resets are UTC in practice. Q154 is the parse catch, killed by the `not a
+       time` case; the parametrized test also covers '1 hour' (sorts before the digits),
+       naive 1960 and 9999 (the OSError), an offset-suffixed pair and a five-digit year.
+       The route wait parses only the router's own values, so it needs no guard.
      - **The streak is cut by the time it was decided, not by creation order (N2).** A
        failed start's end, a start, or a trial's creation; rowid only breaks ties. Creation
        order gave a false trip: an INTENT that waited, then started after three failures
@@ -2894,7 +2901,13 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        (`created_at` has milliseconds, the others whole seconds). **Trade-off, recorded:** a
        backward wall-clock step misorders the cut by the recorded times (a failure recorded
        before a start that happened earlier counts as older). Q155, Q156; the unit tests
-       cover out-of-order rowids, a clock step and mixed precision.
+       cover out-of-order rowids, a clock step and mixed precision. **Bounds of the step
+       (r3 finding 2):** a failure recorded ahead of the clock counts from now, not from its
+       recorded time, so the breaker's cooldown and a task's wait cost at most one cooldown
+       (5 min) or one wait (at most 5 min) past the step (Q160, Q161). **Same-second ties
+       (r3 finding 3):** `started_at` and `ended_at` have whole seconds, so a failure and a
+       start in one second compare equal and fall back to rowid; the window of that is one
+       second. Storing milliseconds would close it; not done (it changes stored formats).
      - **Cost (measured, in-memory SQLite 3.37, this PC).** The time order sorts every
        started, failed or trial execution of the harness per routing decision: about 10 ms
        at 10k successful starts and 33 ms at 30k (the streak itself still stops at the last
@@ -2910,7 +2923,8 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        can start when the mission resumes while the breaker is open; a start closes the
        breaker. Bounded by the INTENTs dispatched before the trip.
      - **Owner-accepted limit 6ii** (a resume is not a trial) stays as item 132 states.
-     - **Mutants:** Q153-Q158.
+     - **Mutants:** Q153-Q161. Q159 fails only on Windows (on a platform where naive
+       timestamp() works, the naive out-of-range cases do not reach OSError).
 
 ## 13. As built
 (Filled at the end of P20.)
