@@ -59,9 +59,9 @@ const mix = (fg, alpha, bg) => {
 };
 
 const pairs = [
-  ['text', 'bg'], ['text-2', 'surface-2'], ['text-2', 'surface-1'], ['text-3', 'surface-2'],
-  ['attention', 'bg'], ['active', 'surface-1'], ['done', 'surface-1'], ['paused', 'surface-1'],
-  ['blocked', 'bg'], ['on-primary', 'primary'], ['attention', 'surface-2']
+  ['text', 'bg'], ['text', 'surface-2'], ['text-2', 'surface-2'], ['text-2', 'surface'], ['text-3', 'surface-2'],
+  ['amber', 'bg'], ['amber', 'surface-2'], ['blue', 'surface'], ['green', 'surface'], ['slate', 'surface'],
+  ['bg', 'ivory'], ['ivory', 'bg']
 ];
 for (const [a, b] of pairs) {
   check(tokens[a] && tokens[b], `token missing: ${a} or ${b}`);
@@ -69,10 +69,16 @@ for (const [a, b] of pairs) {
   const r = ratio(tokens[a], tokens[b]);
   check(r >= 4.5, `contrast ${a} on ${b} is ${r.toFixed(2)}, below 4.5`);
 }
-const sheetBg = mix(tokens['surface-1'], 0.94, tokens.bg);
+const sheetBg = mix(tokens.surface, 0.94, tokens.bg);
 check(ratio(tokens.text, sheetBg) >= 4.5, 'translucent review sheet fails 4.5:1 for text');
 check(ratio(tokens['text-2'], sheetBg) >= 4.5, 'translucent review sheet fails 4.5:1 for secondary text');
 check(ratio(tokens.focus, tokens.bg) >= 3, 'focus ring fails 3:1 against background');
+check(!/webgl/i.test(js), 'app.js uses WebGL (the prototype is Canvas 2D only)');
+check(/devicePixelRatio/.test(js), 'canvas does not size to devicePixelRatio');
+check(/document\.hidden/.test(js), 'animation does not pause when the tab is hidden');
+check(/reduce\.matches/.test(js), 'animation does not read prefers-reduced-motion');
+check(!/https?:\/\//.test(css) && !/@import/.test(css), 'style.css loads an external resource');
+check(/--serif/.test(css) && /--sans/.test(css), 'type pairing missing');
 
 const sizes = [...css.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
 check(sizes.length > 0 && Math.min(...sizes) >= 14, `font size below 14px: ${Math.min(...sizes)}`);

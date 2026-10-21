@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Archeus V2 prototype (fake data)</title>
 <meta name="description" content="Clickable prototype of the Archeus V2 living space. Fake data only.">
-<meta name="theme-color" content="#0E1116">
+<meta name="theme-color" content="#0A0D13">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2096%2096%27%3E%3Crect%20width=%2796%27%20height=%2796%27%20rx=%2720%27%20fill=%27%230E1116%27/%3E%3Cpath%20d=%27M48,14,52,44,82,48,52,52,48,82,44,52,14,48,44,44Z%27%20fill=%27%23F4F1EA%27/%3E%3Ccircle%20cx=%2748%27%20cy=%2748%27%20r=%276%27%20fill=%27%23F2B544%27/%3E%3C/svg%3E">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-512.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,9 +24,9 @@
 
   <div class="page">
     <header class="top">
-      <p class="brand">ARCHEUS <span>V2</span></p>
+      <p class="brand">Archeus <span>V2</span></p>
       <p class="proto">PROTOTYPE · fake data</p>
-      <p class="core-status">Not stopped · accepts new work</p>
+      <p class="core-status">Not stopped, accepts new work</p>
       <button type="button" class="btn stop-btn" data-act="stop">Stop</button>
     </header>
     <p id="say" class="say" role="status"></p>
@@ -33,17 +34,31 @@
     <main id="main">
       <section class="screen" id="s-now" hidden>
         <h1 tabindex="-1" data-sentence></h1>
-        <div class="stage"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+        <div class="toolbar">
+          <p class="small">Archeus at the centre. Each constellation is a project; each star is a mission. Live chains glow.</p>
+          <button type="button" class="btn" id="now-overview" hidden>Whole space</button>
+        </div>
+        <div class="stage stage-now" id="now-stage" role="region" aria-label="Constellation of projects and missions">
+          <canvas class="sky" aria-hidden="true"></canvas>
+          <canvas class="fx" aria-hidden="true"></canvas>
+          <div class="world"></div>
+          <div class="card" hidden></div>
+        </div>
         <h2>In order</h2>
         <ol class="mirror" id="now-list"></ol>
       </section>
 
       <section class="screen" id="s-mission" hidden>
-        <p class="crumb"><a href="#/now">Overview</a> / <span data-m-project></span> / <span data-m-crumb></span></p>
+        <p class="crumb"><a href="#/now">Whole space</a> / <span data-m-project></span> / <span data-m-crumb></span></p>
         <h1 tabindex="-1" data-m-title></h1>
         <p class="small" data-m-meta></p>
         <p class="state-line" data-m-state></p>
-        <div class="stage stage-mission"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+        <div class="stage stage-mission" id="mission-stage">
+          <canvas class="sky" aria-hidden="true"></canvas>
+          <canvas class="fx" aria-hidden="true"></canvas>
+          <div class="world"></div>
+          <div class="card" hidden></div>
+        </div>
         <div class="grid2">
           <section>
             <h2>Phases</h2>
@@ -63,12 +78,17 @@
       <section class="screen" id="s-shared" hidden>
         <h1 tabindex="-1" data-sentence></h1>
         <div class="grid2 shared-grid">
-          <div class="stage stage-shared"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+          <div class="stage stage-shared" id="shared-stage">
+            <canvas class="sky" aria-hidden="true"></canvas>
+            <canvas class="fx" aria-hidden="true"></canvas>
+            <div class="world"></div>
+            <div class="card" hidden></div>
+          </div>
           <aside class="panel">
-            <h2>Project · Archeus</h2>
+            <h2>Archeus, shared records</h2>
             <p class="state-line st-done">Verified (fixture)</p>
             <dl class="facts">
-              <dt>Missions</dt><dd>3 recorded</dd>
+              <dt>Missions</dt><dd>7 recorded</dd>
               <dt>Agents</dt><dd>2 recorded</dd>
               <dt>Paired phone</dt><dd>Recent</dd>
               <dt>Other people</dt><dd>Future contract, not available</dd>
@@ -80,10 +100,15 @@
 
       <section class="screen screen-phone" id="s-phone" hidden>
         <div class="phone-frame">
-          <p class="phone-brand">ARCHEUS <span class="small">Core connected</span></p>
+          <p class="phone-brand">Archeus <span class="small">Core connected</span></p>
           <h1 tabindex="-1" data-sentence></h1>
           <p class="phone-line" data-phone-line></p>
-          <div class="stage stage-phone" id="phone-stage"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+          <div class="stage stage-phone" id="phone-stage">
+            <canvas class="sky" aria-hidden="true"></canvas>
+            <canvas class="fx" aria-hidden="true"></canvas>
+            <div class="world"></div>
+            <div class="card" hidden></div>
+          </div>
           <aside class="sheet" id="sheet" hidden aria-labelledby="sheet-h"></aside>
           <div class="dock">
             <a class="btn" href="#/start">Tell</a>
