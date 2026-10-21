@@ -16,7 +16,8 @@ gate tests and drills no mutant named, and the defects its stronger fuzz
 corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
-is claimed once, so one terminal opens (Q133).
+is claimed once, so one terminal opens (Q133); PV20-09, the provider broker
+plumbing, every switch off (Q170-Q188).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -58,6 +59,8 @@ OPT = 'archeus/core/application/optins.py'
 ENT = 'archeus/core/domain/entities.py'
 SRC = 'archeus/harnesses/sources.py'
 HOOK = 'archeus/harnesses/hook.py'
+BRK = 'archeus/node/broker.py'
+BRW = 'archeus/node/broker_bridge.py'
 AGENT = 'archeus/harnesses/fake_agent.py'
 CCA = 'archeus/harnesses/claude_code/adapter.py'
 MGR = 'archeus/core/execution/manager.py'
@@ -703,6 +706,84 @@ MUTATIONS = [
      "    if launch_seq != s.launch_seq or max(s.launched_seq, s.launch_claimed_seq) >= launch_seq:",
      "    if launch_seq != s.launch_seq or s.launched_seq >= launch_seq:")],
      [SES + 'test_T35_two_concurrent_requests_with_one_key_open_one_terminal']),
+    # PV20-09: the provider broker plumbing (switches off)
+    ('Q170', 'a broker grant is issued without a request ceiling', [(BRK,
+     '        if not (isinstance(binding.limits.max_requests, int) and binding.limits.max_requests > 0):',
+     '        if False:')],
+     ['tests/v1/unit/test_provider_broker.py::test_issue_refuses_and_creates_nothing']),
+    ('Q171', "the broker serves a pipe client that is not the grant's execution", [(BRK,
+     "        if not (isinstance(principal, str) and principal == g['binding'].principal):",
+     '        if False:')],
+     ['tests/v1/unit/test_provider_broker.py::test_a_request_is_refused_unless_its_grant_is_live_and_its_client_is_the_execution']),
+    ('Q172', 'the broker does not recheck that the grant is still the live generation', [(BRK,
+     "        if not self._live(g['binding'], d):",
+     '        if False:')],
+     ['tests/v1/unit/test_provider_broker.py::test_a_request_is_refused_unless_its_grant_is_live_and_its_client_is_the_execution']),
+    ('Q173', "the client's own headers are all forwarded upstream", [(BRK,
+     "        headers = {k: v for k, v in req.headers if _forwarded(k)}",
+     "        headers = {k: v for k, v in req.headers}")],
+     ['tests/v1/unit/test_provider_broker.py::test_the_client_authority_is_stripped_and_core_supplies_the_upstreams',
+      'tests/v1/unit/test_provider_broker.py::test_only_the_standard_and_anthropic_headers_are_forwarded']),
+    ('Q187', 'the upstream credential may carry more than one API key header', [(BRK,
+     "        one = isinstance(creds, dict) and set(creds) == {'x-api-key'}",
+     "        one = isinstance(creds, dict)")],
+     ['tests/v1/unit/test_provider_broker.py::test_the_upstream_credential_is_one_api_key_or_nothing_is_sent']),
+    ('Q188', 'an upstream credential with a line break is sent', [(BRK,
+     "        if not (isinstance(key, str) and _KEY.fullmatch(key)):",
+     "        if not (isinstance(key, str)):")],
+     ['tests/v1/unit/test_provider_broker.py::test_the_upstream_credential_is_one_api_key_or_nothing_is_sent']),
+    ('Q174', 'an upstream redirect is relayed', [(BRK,
+     '        if 300 <= resp.status < 400:',
+     '        if False:')],
+     ['tests/v1/unit/test_provider_broker.py::test_a_redirect_is_never_followed']),
+    ('Q175', 'a request may name a model its route did not pin', [(BRK,
+     "    if not isinstance(doc, dict) or doc.get('model') != model or not isinstance(model, str):",
+     '    if not isinstance(doc, dict):')],
+     ['tests/v1/unit/test_provider_broker.py::test_the_body_must_name_exactly_the_pinned_model']),
+    ('Q176', 'an https upstream may resolve to a private address', [(BRK,
+     '    if not addrs or not all(ipaddress.ip_address(a).is_global for a in addrs):',
+     '    if not addrs:')],
+     ['tests/v1/unit/test_provider_broker.py::test_only_public_https_or_an_exact_loopback_proxy_is_a_destination']),
+    ('Q177', 'a refusal keeps the broker digest', [('archeus/core/application/executions.py',
+     "              'hook_token_hash': None, 'broker_token_hash': None}\n    if e.state == 'INTENT':",
+     "              'hook_token_hash': None}\n    if e.state == 'INTENT':")],
+     ['tests/v1/unit/test_broker_execution.py::test_a_refusal_clears_both_digests', 'tests/v1/unit/test_broker_execution.py::test_every_end_path_that_clears_the_hook_digest_clears_the_broker_digest']),
+    ('Q178', "an execution's view shows its broker digest", [('archeus/core/application/executions.py',
+     "    out.pop('broker_token_hash', None)\n",
+     '')],
+     ['tests/v1/unit/test_broker_execution.py::test_the_digest_is_never_in_a_view']),
+    ('Q179', 'the manager brokers with the switch off', [('archeus/core/execution/manager.py',
+     '        if isolated and broker_mod.BROKER_DISPATCH_ENABLED and self.broker is not None:',
+     '        if isolated and self.broker is not None:')],
+     ['tests/v1/unit/test_broker_execution.py::test_with_the_switch_off_the_spawn_is_untouched_even_with_a_broker_held']),
+    ('Q180', 'an account the broker cannot serve is brokered', [('archeus/core/execution/manager.py',
+     '        if not base.broker_eligible(e.harness_id, kind):',
+     '        if False:')],
+     ['tests/v1/unit/test_broker_execution.py::test_an_account_the_broker_cannot_serve_starts_nothing']),
+    ('Q181', 'a grant outlives its execution', [('archeus/core/execution/manager.py',
+     '                self.broker.sweep({e.id for e in live})',
+     '                pass')],
+     ['tests/v1/unit/test_broker_execution.py::test_every_pass_revokes_the_grants_of_executions_no_longer_live']),
+    ('Q182', 'the recheck ignores the recorded digest', [('archeus/core/execution/manager.py',
+     '                and e.process_seq == binding.process_seq and e.broker_token_hash == digest',
+     '                and e.process_seq == binding.process_seq')],
+     ['tests/v1/unit/test_broker_execution.py::test_the_recheck_follows_the_recorded_generation']),
+    ('Q183', "the router's broker step keeps every account", [('archeus/core/routing/router.py',
+     "    if c['_a'].get('auth_kind') in kinds:\n        return None",
+     '    if True:\n        return None')],
+     ['tests/v1/unit/test_broker_execution.py::test_while_isolated_dispatch_is_on_only_broker_eligible_accounts_survive']),
+    ('Q184', "an isolated process's model variables are not derived from its binding", [('archeus/harnesses/base.py',
+     '    if spec.broker is not None:\n        out.update(spec.broker.env())\n',
+     '')],
+     ['tests/v1/unit/test_broker_execution.py::test_the_isolated_environment_takes_the_model_variables_from_the_binding_alone']),
+    ('Q185', 'the bridge relays an encoded path alias', [(BRW,
+     "    if (not path.startswith('/') or path.startswith('//') or '%' in path or '\\\\' in path",
+     "    if (not path.startswith('/') or path.startswith('//') or '\\\\' in path")],
+     ['tests/v1/unit/test_broker_bridge.py::test_malformed_or_ambiguous_framing_is_refused']),
+    ('Q186', 'a Core route accepts a broker token as a bearer', [('archeus/api/auth.py',
+     "    if scheme.lower() != 'bearer' or not token or ids.token_kind(token) != 'device':",
+     "    if scheme.lower() != 'bearer' or not token or ids.token_kind(token) not in ('device', 'broker'):")],
+     ['tests/v1/unit/test_provider_broker.py::test_a_broker_token_is_its_own_kind_that_no_core_route_accepts']),
 ]
 
 if __name__ == '__main__':

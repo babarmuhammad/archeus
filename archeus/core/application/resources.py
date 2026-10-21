@@ -23,6 +23,12 @@ from . import authorization as A
 from . import lifecycle
 from .queries import view
 
+#: PV-20 (PV20-08 §1): None while isolated dispatch is off. The composition root sets it,
+#: with the broker switch, when PV20-17 switches complete admission on:
+#: {'broker': {harness_id: [auth_kind, ...]}} from harnesses.base.BROKER_ELIGIBLE. A task's
+#: snapshot then carries it, and the router's `broker` step reads nothing else.
+ISOLATED_DISPATCH = None
+
 #: A registered account's policy before the user sets one (resource-router §2).
 REGISTER_DEFAULTS = {'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
                      'fallback': 'ask'}
@@ -474,6 +480,8 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
     snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': _terms(conn),
             'affinity': _affinity(conn, mission),
             'approved_fallbacks': _approved_fallbacks(conn, task, plan)}
+    if ISOLATED_DISPATCH:
+        snap['isolated_dispatch'] = ISOLATED_DISPATCH
     return req, snap, readings
 
 

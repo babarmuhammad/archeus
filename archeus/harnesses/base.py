@@ -39,6 +39,15 @@ CAPABILITY_ENV = {'GIT_TERMINAL_PROMPT': '0', 'GIT_ASKPASS': '', 'SSH_AUTH_SOCK'
 #: a test pins it to exercise them anywhere
 _WINDOWS = os.name == 'nt'
 _HOOK_TOKEN = re.compile(r'hook_[A-Za-z0-9_-]+')
+_BROKER_TOKEN = re.compile(r'brk_[A-Za-z0-9_-]+')
+#: PV-20 (PV20-08 §1): the harness/account kinds an isolated execution may reach its model
+#: through the provider broker with. Everything else is refused before election and again
+#: before the spawn; a subscription login is never put inside the boundary.
+BROKER_ELIGIBLE = {'claude_code': ('api_key', 'provider_proxy')}
+
+
+def broker_eligible(harness_id, auth_kind):
+    return auth_kind in BROKER_ELIGIBLE.get(harness_id, ())
 
 
 # ── the contract's vocabulary ───────────────────────────────────────────────
@@ -106,6 +115,26 @@ class AuthStatus:
 
 
 @dataclass(frozen=True)
+class BrokerLaunch:
+    """PV-20: where this process's isolated bridge listens and the broker token it
+    presents. Core's values; an adapter derives the CLI's variables from them and from
+    nothing a caller passes in `env`."""
+    port: int
+    token: str = field(repr=False)
+
+    def __post_init__(self):
+        if not (isinstance(self.port, int) and 0 < self.port < 65536):
+            raise ValueError('a broker bridge port is a TCP port')
+        if not (isinstance(self.token, str) and _BROKER_TOKEN.fullmatch(self.token)):
+            raise ValueError('not a broker token')
+
+    def env(self):
+        return {'ANTHROPIC_BASE_URL': 'http://127.0.0.1:%d' % self.port,
+                'ANTHROPIC_AUTH_TOKEN': self.token,
+                'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1'}
+
+
+@dataclass(frozen=True)
 class ExecutionSpec:
     """What Core hands an adapter to start one execution (execution-architecture §3)."""
     execution_id: str
@@ -138,6 +167,8 @@ class ExecutionSpec:
     # would be a fallback, and an isolated execution has none — `spawn` below reaches
     # `proc.spawn_detached` only when this is None.
     isolation: Optional[object] = None
+    # PV-20 (PV20-08 §1): the broker binding of an isolated process, or None
+    broker: Optional[BrokerLaunch] = None
 
 
 @dataclass(frozen=True)
@@ -510,6 +541,8 @@ def _isolated_env(spec, paths):
             seen.add(key)
             kept.append(entry)
     out['PATH'] = os.pathsep.join(kept)
+    if spec.broker is not None:
+        out.update(spec.broker.env())
     derived = dict(out)
     if spec.hook_settings:
         derived['ARCHEUS_HOOK_CMD'] = json.dumps(list(spec.hook_settings))

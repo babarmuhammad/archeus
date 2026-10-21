@@ -31,7 +31,8 @@ from ...harnesses.registry import PolicyStubError
 from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths, task_worktree
-from ...node import staging
+from ...node import broker as broker_mod, staging
+from ...node.isolation import profile_name
 from ...node.local import LocalNode, PathTooLong
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
@@ -85,7 +86,8 @@ def line_of(ev):
 
 class ExecutionManager:
     def __init__(self, db, *, actor, registry, work, node=None, usage=None, scenarios=None,
-                 grace_s=10.0, pause_timeout=None, start_timeout=60.0, lost_after=90.0):
+                 grace_s=10.0, pause_timeout=None, start_timeout=60.0, lost_after=90.0,
+                 broker=None):
         self.db, self.actor, self.registry, self.work = db, actor, registry, work
         self.policy, self.missions, self.router = work.policy, work.missions, work.router
         self.node = node or LocalNode()
@@ -99,6 +101,9 @@ class ExecutionManager:
         self._clock = {'accounts': 0.0, 'usage': 0.0, 'isolation': 0.0}
         self._isolation_fault = None        # the last sweep fault logged, so it logs once
         self._noted = set()                 # (execution id, op) registry notes already left
+        # PV-20 (PV20-08 §1): the provider broker, used only while BROKER_DISPATCH_ENABLED;
+        # its grants live in this process, so a restarted Core holds none
+        self.broker = broker
         self.booted = False
 
     def _do(self, command, **kw):
@@ -126,6 +131,14 @@ class ExecutionManager:
             except errors.WriterClosed:
                 raise
         did += self._orphans({e.id for e in live}, disarmed)
+        if self.broker is not None:
+            # every end path, the e-stop included, without each one remembering: a
+            # grant whose execution is no longer live is revoked (Core rechecks the
+            # recorded digest on every request too)
+            if disarmed:
+                self.broker.revoke_all()
+            else:
+                self.broker.sweep({e.id for e in live})
         now = time.monotonic()
         if now - self._clock['accounts'] >= ACCOUNTS_S:
             self._clock['accounts'] = now
@@ -259,6 +272,11 @@ class ExecutionManager:
             return True
         token = 'hook_' + secrets.token_urlsafe(32)
         seq = e.process_seq + 1
+        brk = None
+        if isolated and broker_mod.BROKER_DISPATCH_ENABLED and self.broker is not None:
+            brk = self._broker_grant(e, account, seq)
+            if brk is None:
+                return True
         # a harness's default account runs on the home its decision recorded
         # (ADR-0048 D-25.2), never on whatever Core's environment holds
         accts = ((rd.entity.input_snapshot or {}).get('accounts') or ()) if rd else ()
@@ -282,6 +300,7 @@ class ExecutionManager:
             # call imports nothing the execution could plant (T-031 §3)
             hook_settings=hook,
             opt_ins=opt_ins,
+            broker=brk and base.BrokerLaunch(brk[1], brk[0]),
             task_contract={'key': t.key, 'kind': t.kind, 'estimate': t.estimate,
                            'action_classes': list(t.action_classes),
                            'continuation': continuation,
@@ -301,16 +320,20 @@ class ExecutionManager:
                 sha, size = store.put(data), len(data)
                 spec = replace(spec, inventory=json.loads(data))
         except Exception as err:
+            self._revoke_broker(e, brk)
             self._do(X.refuse, execution_id=e.id, stop_reason='workspace',
                      reason='the settings sources could not be inventoried: %s'
                      % type(err).__name__)
             return True
         out = self._do(X.prepare_process, execution_id=e.id, token_digest=X.token_hash(token),
                        workdir=workdir, branch=branch, process_seq=seq, isolated=isolated,
-                       inventory_sha256=sha, inventory_size=size)
+                       inventory_sha256=sha, inventory_size=size,
+                       broker_digest=brk and brk[2])
         if out['refused']:
+            self._revoke_broker(e, brk)
             return True
         if self.node.disarmed():
+            self._revoke_broker(e, brk)
             self._do(X.refuse, execution_id=e.id, reason='emergency stop: nothing starts',
                      stop_reason='disarmed')
             return True
@@ -325,6 +348,7 @@ class ExecutionManager:
             # Core could not write the execution's own files: charged like a workspace
             # that cannot be made (P11 note 11), so a failure that persists spends
             # max_attempts instead of being re-dispatched on every tick (T-102)
+            self._revoke_broker(e, brk)
             self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
                      stop_reason='workspace')
             self._release_isolation(e)
@@ -335,6 +359,7 @@ class ExecutionManager:
             # failure is infrastructure, not the user's task failing (P11's O7, as
             # decided 2026-10-08), and the task goes back to READY to be re-dispatched
             # under the bounded retry policy that policy owns.
+            self._revoke_broker(e, brk)
             self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
                      stop_reason='binding')
             self._release_isolation(e)
@@ -346,6 +371,49 @@ class ExecutionManager:
             self._do(X.stop, execution_id=e.id, reason='emergency stop during the spawn',
                      stop_reason='disarmed')
         return True
+
+    def _broker_grant(self, e, account, seq):
+        """(token, bridge port, digest) for this isolated process's broker grant, or None
+        once it is refused: a harness/account the broker cannot serve, or a grant that
+        cannot be issued (no native pipe yet, no ceiling, a bad upstream). Nothing starts
+        then, and nothing starts unbrokered instead. The account's recorded kind decides:
+        the adapter's subscription login check is never called."""
+        kind = account.entity.auth_kind if account is not None else None
+        if not base.broker_eligible(e.harness_id, kind):
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='%s cannot reach its model through the broker with a %s account'
+                     % (e.harness_id, kind or 'default'))
+            return None
+        b = self.broker
+        try:
+            binding = broker_mod.BrokerBinding(
+                core_instance=b.core_instance, execution_id=e.id, process_seq=seq,
+                principal=profile_name(e.id), route_decision_id=e.route_decision_id,
+                account_id=e.account_id, harness_id=e.harness_id, model=e.model,
+                upstream=b.upstream_of(e.account_id), limits=b.limits)
+            token, digest, _endpoint, port = b.issue(binding)
+        except (broker_mod.Refused, broker_mod.BrokerUnavailable) as err:
+            b.revoke(e.id)
+            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
+                     reason='no broker grant: %s' % err)
+            return None
+        return token, port, digest
+
+    def _revoke_broker(self, e, brk):
+        if brk is not None:
+            self.broker.revoke(e.id)
+
+    def broker_live(self, binding, digest):
+        """The broker's recheck on every request (PV20-08 §1): the grant is still its
+        execution's live process generation, under the recorded digest, route, account and
+        model. Ended, resumed, re-routed or restarted: no."""
+        with self.db.read() as r:
+            row = rows.get(r, entities.Execution, binding.execution_id)
+        e = row.entity if row is not None else None
+        return (e is not None and e.state not in _ENDED and e.isolated is True
+                and e.process_seq == binding.process_seq and e.broker_token_hash == digest
+                and e.route_decision_id == binding.route_decision_id
+                and e.account_id == binding.account_id and e.model == binding.model)
 
     @staticmethod
     def _offset(e):

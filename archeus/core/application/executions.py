@@ -96,7 +96,8 @@ def binding(conn, e):
 # ── process start and progress ──────────────────────────────────────────────
 
 def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, process_seq,
-                    isolated, inventory_sha256=None, inventory_size=None, seed_revision=None):
+                    isolated, inventory_sha256=None, inventory_size=None, seed_revision=None,
+                    broker_digest=None):
     """Before a process starts: the binding still holds (else the execution ends
     uncharged and the task is re-dispatched), and the new process's number,
     workdir, branch and hook token hash are recorded — and (P20, ADR-0049) the
@@ -105,7 +106,9 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
     (T-035) is recorded at the first preparation; a later one under a different
     decision ends the execution uncharged, and a legacy row stays unknown. So is
     the commit its seed was built from (K2, T-049 §7): a resume must name the one
-    recorded, None included, or it ends uncharged the same way."""
+    recorded, None included, or it ends uncharged the same way. A process that
+    reaches its model through the PV-20 broker records its grant's token digest,
+    a fresh one per process; every other records None."""
     if not isinstance(isolated, bool):
         raise ValueError('prepare_process needs the isolation decision as a bool')
     if seed_revision is not None and not (isinstance(seed_revision, str)
@@ -139,6 +142,7 @@ def prepare_process(tx, *, actor, execution_id, token_digest, workdir, branch, p
                                     size=inventory_size), actor=actor)
     tx.update(entities.Execution, e.id, {'process_seq': process_seq, 'workdir': workdir,
                                          'branch': branch, 'hook_token_hash': token_digest,
+                                         'broker_token_hash': broker_digest,
                                          'hook_seq': 0 if e.process_seq == 0 else e.hook_seq,
                                          'isolated': recorded, 'seed_revision': seed,
                                          'inventory_sha256': inventory_sha256},
@@ -194,7 +198,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
     fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
               'ended_at': _now_iso(),
-              'hook_token_hash': None}
+              'hook_token_hash': None, 'broker_token_hash': None}
     if e.state == 'INTENT':
         e = _fire(tx, e.id, 'spawn_failed', actor, reason,
                   dict(fields, exit_reason='abandoned'))
@@ -370,19 +374,21 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
         # the hook halted it for an approval: the execution waits, the process is gone
         tx.update(entities.Execution, e.id, {'adapter_state': fields['adapter_state'],
                                              'pid': None, 'create_time': None,
-                                             'hook_token_hash': None}, actor=actor)
+                                             'hook_token_hash': None,
+                                             'broker_token_hash': None}, actor=actor)
         _event(tx, 'execution.halted', e, actor, {'exit_code': exit_code,
                                                   'process_seq': e.process_seq})
         return {'execution_id': e.id, 'state': e.state, 'waiting': True}
     if e.state == 'PAUSING' and (core_halt or (clean if isolated else halted)):
         e = _fire(tx, e.id, 'halted_at_boundary', actor, 'halted at a tool boundary',
-                  dict(fields, pid=None, create_time=None, hook_token_hash=None))
+                  dict(fields, pid=None, create_time=None, hook_token_hash=None,
+                       broker_token_hash=None))
         return {'execution_id': e.id, 'state': e.state}
     if e.state == 'STOPPING':
         e = _fire(tx, e.id, 'process_gone', actor, 'the process is gone',
                   dict(fields, exit_reason='killed', exit_code=exit_code,
                        charged=e.stop_reason not in UNCHARGED, ended_at=_now_iso(),
-                       hook_token_hash=None, **end))
+                       hook_token_hash=None, broker_token_hash=None, **end))
         return _ended(tx, actor, e, usage, facts, usage_total)
     if e.state == 'STARTING':
         if not output:
@@ -405,7 +411,8 @@ def record_end(tx, *, actor, execution_id, exit_code, killed=False, halted=False
               dict(fields, exit_reason='ok' if ok else 'error', exit_code=exit_code,
                    charged=missing is not None or not (uncharged or stop),
                    stop_reason=stop or e.stop_reason, ended_at=_now_iso(),
-                   hook_token_hash=None, import_revision=import_revision, **end))
+                   hook_token_hash=None, broker_token_hash=None,
+                   import_revision=import_revision, **end))
     return _ended(tx, actor, e, usage, facts, usage_total, missing)
 
 
@@ -481,7 +488,7 @@ def lost(tx, *, actor, execution_id, reason, facts=None):
         raise lifecycle.IllegalTrigger('execution', e.state, 'lost', 'not a live process')
     e = _fire(tx, e.id, 'reconciled_kill', actor, reason,
               {'exit_reason': 'lost', 'charged': True, 'ended_at': _now_iso(),
-               'hook_token_hash': None})
+               'hook_token_hash': None, 'broker_token_hash': None})
     return _ended(tx, actor, e, None, facts)
 
 
@@ -705,7 +712,8 @@ def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, ex
     e = _fire(tx, e.id, 'checkpoint_written', actor,
               refused or 'handed off (%s): the checkpoint is written' % e.stop_reason,
               {'exit_reason': 'handoff', 'exit_code': exit_code, 'charged': refused is not None,
-               'ended_at': _now_iso(), 'hook_token_hash': None, 'end_state_digest': end_state,
+               'ended_at': _now_iso(), 'hook_token_hash': None, 'broker_token_hash': None,
+               'end_state_digest': end_state,
                'import_revision': import_revision,
                'adapter_state': dict(adapter_state) if adapter_state else e.adapter_state})
     _ledger(tx, actor, e, usage, usage_total)
@@ -740,7 +748,7 @@ def approval_answered(tx, *, actor, execution_id):
         return {'execution_id': e.id, 'state': e.state, 'approval': a and a.state}
     e = _fire(tx, e.id, 'rejected', actor, 'approval %s %s' % (a.id, a.state.lower()),
               {'exit_reason': 'rejected', 'charged': True, 'ended_at': _now_iso(),
-               'hook_token_hash': None})
+               'hook_token_hash': None, 'broker_token_hash': None})
     e = _finish(tx, actor, e, None)         # its session; no checkpoint (P9's decision is it)
     _event(tx, 'execution.ended', e, actor, _end_payload(e))
     return _respond(tx, actor, e, 'execution %s: approval %s' % (e.id, a.state.lower()))
@@ -960,6 +968,7 @@ def view(conn, execution_id):
     from .queries import view as v
     out = v(row)
     out.pop('hook_token_hash', None)
+    out.pop('broker_token_hash', None)
     out['context'] = pressure.view(row.entity)
     from .live import explain, handoff_of
     out['handoff'] = handoff_of(conn, row.entity)
@@ -1034,6 +1043,7 @@ def of_task(conn, task_id):
     for r in rows.where(conn, entities.Execution, task_id=task_id):
         d = v(r)
         d.pop('hook_token_hash', None)
+        d.pop('broker_token_hash', None)
         d['context'] = pressure.view(r.entity)
         out.append(d)
     return out

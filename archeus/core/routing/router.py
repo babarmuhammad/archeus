@@ -36,7 +36,8 @@ command that recorded it asks P9's approval machinery.
 
 `snap` (the decision's `input_snapshot`): harnesses [{id, installed,
 capabilities, enforcement, structured_output, efforts, models [{id, tier,
-context_window}], exempt}], accounts [{id, ref, harness, label, auth_kind,
+context_window}], exempt}], isolated_dispatch {broker {harness: [auth_kind]}} (only
+while PV-20 isolated dispatch is on), accounts [{id, ref, harness, label, auth_kind,
 registered, health, why_not, policy, usage {windows {5h: pct}, resets_at,
 age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 {tokens, cost}}}], terms {harness:
@@ -45,7 +46,7 @@ age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 
 TIERS = ('small', 'mid', 'large')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
-         'restriction', 'health', 'allocation', 'partition', 'election')
+         'broker', 'restriction', 'health', 'allocation', 'partition', 'election')
 #: health states the router may use (state-machines §9); DEGRADED only by fallback
 ROUTABLE = ('AVAILABLE', 'CONSTRAINED')
 #: the conservative bump a task adds before it starts, by size (resource-router §4)
@@ -223,6 +224,20 @@ def _terms(c, req, snap):
     return None
 
 
+def _broker(c, req, snap):
+    """PV-20 (PV20-08 §1): while isolated dispatch is on, the snapshot names which
+    account kinds of each harness reach their model through the provider broker, and a
+    task runs nowhere else. A snapshot without it (dispatch off) filters nothing."""
+    gate = snap.get('isolated_dispatch')
+    if not gate or req['subject'] != 'task':
+        return None
+    kinds = (gate.get('broker') or {}).get(c['_h']['id']) or ()
+    if c['_a'].get('auth_kind') in kinds:
+        return None
+    return ('cannot run isolated: %s reaches its model through the broker only with %s'
+            % (c['_h']['id'], ' or '.join(kinds) + ' accounts' if kinds else 'no account'))
+
+
 def _restriction(c, req, snap):
     for kind, what in (('required', 'is not the one you required'),
                        ('forbidden', 'is forbidden for this work')):
@@ -341,7 +356,7 @@ def _budgets(budgets, a):
 
 _STEP = {'installed': _installed, 'headless': _headless, 'capability': _capability,
          'model': _model, 'enforcement': _enforcement, 'provider_terms': _terms,
-         'restriction': _restriction, 'health': _health, 'allocation': _allocation}
+         'broker': _broker, 'restriction': _restriction, 'health': _health, 'allocation': _allocation}
 
 
 def order_key(c, req, snap):
