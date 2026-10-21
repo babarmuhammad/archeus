@@ -161,8 +161,10 @@ def command(cmd, ctx):
     if prog.endswith('.exe'):
         prog = prog[:-4]
     args = argv[1:]
-    if prog in _NEVER or '=' in argv[0] or (prog in _SHELLS and ('-c' in args or '-e' in args
-                                                                 or '/c' in args)):
+    # NAME=value cmd: the name is no program, and its value may be a secret (never a target)
+    if '=' in argv[0]:
+        return [_unclassified('command', argv)], True
+    if prog in _NEVER or (prog in _SHELLS and ('-c' in args or '-e' in args or '/c' in args)):
         return [_unclassified(prog, argv)], True
     if prog == 'base64' and ('-d' in args or '--decode' in args):
         return [_unclassified(prog, argv)], True

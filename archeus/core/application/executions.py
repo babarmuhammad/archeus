@@ -22,6 +22,7 @@ entry points (a boundary test holds it to that).
 
 import hashlib
 import hmac
+import re
 import time
 
 from ...infra.db import rows
@@ -767,6 +768,8 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
     and `branch_ok` are the manager's reads of the world (outside this
     transaction). Records every P9 decision; moves the execution on an ASK."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    actions, unclassified = canon
+    first = actions[0] if actions else None
     if e.state not in ('STARTING', 'RUNNING'):
         return _hook_answer(tx, actor, e, seq, 'halt', 'the execution is %s' % e.state)
     if seq <= e.hook_seq:
@@ -775,7 +778,7 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
     if not (e.hook_token_hash and isinstance(tok, str) and hmac.compare_digest(
             token_hash(tok).encode(), e.hook_token_hash.encode())):
         return _hook_answer(tx, actor, e, seq, 'halt', 'the request is not this execution\'s')
-    act = _current(canon)
+    act = _current(first)
     if disarmed:
         return _hook_answer(tx, actor, e, seq, 'halt', 'emergency stop', act)
     if e.state == 'STARTING':
@@ -789,24 +792,26 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
                             % e.workdir, act)
     if not branch_ok:
         return _hook_answer(tx, actor, e, seq, 'halt', 'HEAD is not branch %s' % e.branch, act)
-    actions, unclassified = canon
     worst, reasons, asked = 'allow', [], None
+    denier = asker = None          # the action that decided the answer; the chip names it
     for a in actions:
         got = authorization.evaluate_action(tx, actor=actor, policy=policy,
                                             execution_id=e.id, action=a,
                                             unclassified=unclassified)
         if got['decision'] == 'DENY':
             worst = 'deny'
+            denier = a if denier is None else denier
             reasons.append(_reason(tx, got))
         elif got['decision'] == 'ASK':
-            asked = asked or got
+            if asked is None:
+                asked, asker = got, a
             reasons.append(_reason(tx, got))
     if worst == 'deny':
-        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons), act)
+        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons), _current(denier))
     if asked is not None:
         _fire(tx, e.id, 'hook_asked', actor, 'waiting for approval %s' % asked['approval_id'])
         return _hook_answer(tx, actor, e, seq, 'halt', 'waiting for your approval (%s)'
-                            % asked['approval_id'], act)
+                            % asked['approval_id'], _current(asker))
     return _hook_answer(tx, actor, e, seq, 'allow', '', act)
 
 
@@ -815,15 +820,30 @@ def _reason(tx, got):
     return d.entity.reason if d is not None else got['decision']
 
 
-def _current(canon):
-    """What the activity chip shows (P21 D6): the first canonical action's class and
-    a label, never raw input (slice I). A host stands in for a target that can be a
-    URL or a remote with a credential in it; argv is never kept."""
-    actions, _ = canon
-    if not actions:
+#: the classes whose target is a program, a fixed word or a workspace path (never a URL
+#: or a remote): the only targets a label may name
+LOCAL_CLASSES = ('read', 'write_repo', 'exec', 'destructive', 'deploy', 'install', 'git_commit')
+
+
+def _current(a):
+    """What the activity chip shows (P21 D6): the class of the action that decided the
+    answer, and a label. Never raw input (slice I): a host stands in for a URL or a
+    remote, and a target that is none of those is named only when it is local."""
+    if a is None:
         return None
-    a = actions[0]
-    return {'action_class': a.action_class, 'label': redact(a.host or a.target)[:200]}
+    return {'action_class': a.action_class, 'label': _label(a)}
+
+
+def _label(a):
+    if a.host:
+        return redact(a.host)[:200]
+    if a.action_class in ('read', 'write_repo') and re.match(r'(/|[A-Za-z]:)', a.target or ''):
+        return 'a file outside the workspace'
+    if a.action_class in LOCAL_CLASSES:
+        return redact(a.target)[:200]
+    if a.action_class == 'web' and a.target == 'search':      # WebSearch's fixed word
+        return 'search'
+    return ''
 
 
 def _hook_answer(tx, actor, e, seq, decision, reason, action=None):

@@ -12,7 +12,7 @@ import { paths, api, type AccountList, type Digest, type Sync } from '../api/gen
 import { send } from '../data/core';
 import { framesSlow, reducedMotion } from '../graph/loop';
 import { RowPulses } from '../state/rowpulse';
-import { Chips, type Chip } from '../state/chips';
+import { Chips, announcement, type Chip } from '../state/chips';
 import { timeline } from '../state/timeline';
 
 /** A state as glyph + label. When the state changes while on screen (never
@@ -82,6 +82,22 @@ export function ActivityChips({ mission }: { mission: string }) {
       {list.map((c) => (
         <ActivityChip key={c.seq} mission={mission} chip={c} />
       ))}
+    </span>
+  ) : null;
+}
+
+/** The refused and held chips, in words for assistive technology. The visual chips
+ * stay out of the row link's name (it would change at every tool call), so this
+ * sits beside the link instead. */
+export function ChipAnnouncer({ mission }: { mission: string }) {
+  const list = useSyncExternalStore(
+    (l) => chips.subscribe(l),
+    () => chips.chips(mission),
+  );
+  const c = announcement(list);
+  return c ? (
+    <span key={c.seq} className="sr-only" role="status">
+      {c.text}
     </span>
   ) : null;
 }

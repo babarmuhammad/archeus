@@ -159,10 +159,10 @@
       "trigger": "an execution.hook frame whose execution, read again from Core, holds a current action newer than the last one chipped and belongs to a mission whose row is on screen: one chip on that row (ttl_error_ms when Core refused or held the call)",
       "driven_by": "event", "runs_on": "css", "css": ["activity-chip"],
       "max_ms": 160, "token": "state", "ttl_ms": 2500, "ttl_error_ms": 4000, "easing": "ease",
-      "cap": 3, "cap_per": "target", "surfaces": ["rows"],
+      "cap": 3, "cap_per": "target", "over_cap": "queue", "surfaces": ["rows"],
       "idle": "never", "replay": false,
       "reduced": "no fade: the chip appears and leaves at once",
-      "equivalent": "the chip's text"
+      "equivalent": "the chip's text; a refused or held chip is also announced beside its row's link"
     }
   }
 }

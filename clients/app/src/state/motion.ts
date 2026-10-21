@@ -436,7 +436,7 @@ export const MOTIONS = {
     "easing": "ease",
     "cap": 3,
     "cap_per": "target",
-    "over_cap": null,
+    "over_cap": "queue",
     "min_interval_ms": null,
     "interval_per": null,
     "surfaces": [
@@ -445,7 +445,7 @@ export const MOTIONS = {
     "idle": "never",
     "replay": false,
     "reduced": "no fade: the chip appears and leaves at once",
-    "equivalent": "the chip's text"
+    "equivalent": "the chip's text; a refused or held chip is also announced beside its row's link"
   }
 } as const;
 
