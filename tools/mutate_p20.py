@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), and its correction r1 (Q142-Q152).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -804,6 +804,34 @@ MUTATIONS = [
      "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):\n"
      "        return None")],
      [SB + 'test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed']),
+    # T-106 correction r2 (review of 6a6faab)
+    ('Q153', 'a provider reset already past is kept as a wait (the hot loop)', [(ROUTER,
+     "    return (at, iso) if at > now else None",
+     "    return (at, iso)")],
+     [SB + 'test_T106r2_a_reset_already_past_is_no_wait_and_no_hot_loop']),
+    ('Q154', 'a malformed provider reset is not caught (it would stop Core)', [(ROUTER,
+     "    except (AttributeError, TypeError, ValueError):\n        return None",
+     "    except AttributeError:\n        return None")],
+     [SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
+    ('Q155', 'the streak is cut by rowid (creation order), not the recorded time', [(EXE,
+     "ELSE created_at END) DESC, rowid DESC",
+     "ELSE created_at END) * 0 DESC, rowid DESC")],
+     [XU + 'test_O7_the_streak_is_cut_by_recorded_time_not_by_creation_order',
+      XU + 'test_O7_a_backward_clock_step_is_ordered_by_the_recorded_times']),
+    ('Q156', 'the time order compares the raw strings (no julianday)', [(EXE,
+     "ORDER BY julianday(CASE",
+     "ORDER BY (CASE")],
+     [XU + 'test_O7_the_streak_compares_mixed_timestamp_precision']),
+    ('Q157', 'the idle wait is not cut to a parked mission deadline', [(RTM,
+     "max(0.0, min(self.idle_s, due - time.time()))",
+     "self.idle_s")],
+     [SB + 'test_T106r2_a_parked_mission_wakes_at_its_deadline_with_a_long_idle']),
+    ('Q158', 'the streak materialises every row before it reads any', [(EXE,
+     "    for rec in conn.execute(",
+     "    for rec in list(conn.execute("), (EXE,
+     "DESC, rowid DESC\", (harness_id,)):",
+     "DESC, rowid DESC\", (harness_id,))):")],
+     [XU + 'test_O7_the_streak_stops_reading_at_its_start']),
 ]
 
 if __name__ == '__main__':

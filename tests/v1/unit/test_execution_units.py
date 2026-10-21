@@ -7,6 +7,7 @@ import errno
 import io
 import json
 import os
+import sqlite3
 import stat
 import sys
 import threading
@@ -379,6 +380,89 @@ def test_O7_the_streak_reads_back_only_as_far_as_the_last_start():
             read.append(x)
             yield x
     assert len(X.spawn_streak(newest_first())[0]) == 1 and len(read) == 2
+
+
+# Correction r2 (review of 6a6faab): the streak's order is the recorded time, not
+# the rowid, read from an in-memory table of executions in insert (rowid) order.
+
+def _streak_db(*rows_):
+    c = sqlite3.connect(':memory:')
+    c.row_factory = sqlite3.Row
+    c.execute('CREATE TABLE executions (id TEXT PRIMARY KEY, state TEXT, created_at TEXT,'
+              ' body TEXT)')
+    for i, (state, created, body) in enumerate(rows_):
+        c.execute('INSERT INTO executions VALUES (?,?,?,?)', (
+            'x%d' % i, state, created, json.dumps(dict(
+                {'harness_id': 'fake', 'mission_id': 'm', 'stop_reason': None,
+                 'started_at': None, 'ended_at': None, 'summary': ''}, **body))))
+    return c
+
+
+@pytest.fixture
+def plain_rows(monkeypatch):
+    """rows.decode / rows.get without a schema: the record's state and body only."""
+    monkeypatch.setattr(X.rows, 'decode', lambda cls, rec: SimpleNamespace(
+        entity=SimpleNamespace(**dict(json.loads(rec['body']), state=rec['state']))))
+    monkeypatch.setattr(X.rows, 'get', lambda conn, cls, id_: SimpleNamespace(
+        entity=SimpleNamespace(state='EXECUTING')))
+
+
+def _fail(at):
+    return dict(stop_reason='spawn', ended_at=at, summary='no process')
+
+
+def test_O7_the_streak_is_cut_by_recorded_time_not_by_creation_order(plain_rows):
+    """S was created first but started last of the three failures' predecessors:
+    only the failure after its start counts, so three failures (created before S
+    started, each ended within ten minutes) never trip the breaker."""
+    c = _streak_db(
+        ('ENDED_OK', '2026-10-21T10:00:00Z', dict(started_at='2026-10-21T10:03:00Z')),
+        ('ABANDONED', '2026-10-21T10:01:00Z', _fail('2026-10-21T10:01:00Z')),
+        ('ABANDONED', '2026-10-21T10:02:00Z', _fail('2026-10-21T10:02:00Z')),
+        ('ABANDONED', '2026-10-21T10:04:00Z', _fail('2026-10-21T10:04:00Z')))
+    fails, trial = X.spawn_streak(X._newest(c, 'fake'))
+    assert [x.ended_at for x in fails] == ['2026-10-21T10:04:00Z'] and not trial
+    assert X.spawn_breaker(c, 'fake', X._epoch('2026-10-21T10:05:00Z')) is None
+
+
+def test_O7_a_backward_clock_step_is_ordered_by_the_recorded_times(plain_rows):
+    """A failure recorded after a start but with an earlier time (the clock stepped
+    back between them) is older than that start: it does not count."""
+    c = _streak_db(
+        ('ENDED_OK', '2026-10-21T10:01:00Z', dict(started_at='2026-10-21T10:01:00Z')),
+        ('ABANDONED', '2026-10-21T10:00:30Z', _fail('2026-10-21T10:00:30Z')),
+        ('ABANDONED', '2026-10-21T10:00:40Z', _fail('2026-10-21T10:00:40Z')),
+        ('ABANDONED', '2026-10-21T10:00:50Z', _fail('2026-10-21T10:00:50Z')))
+    assert X.spawn_streak(X._newest(c, 'fake')) == ([], False)
+
+
+def test_O7_the_streak_compares_mixed_timestamp_precision(plain_rows):
+    """created_at has milliseconds; started_at and ended_at do not. The trial
+    INTENT created half a second after the start is the trial, not older than it."""
+    c = _streak_db(
+        ('ENDED_OK', '2026-10-21T10:00:00Z', dict(started_at='2026-10-21T10:00:00Z')),
+        ('INTENT', '2026-10-21T10:00:00.500Z', {}))
+    assert X.spawn_streak(X._newest(c, 'fake')) == ([], True)
+
+
+def test_O7_the_streak_stops_reading_at_its_start(plain_rows):
+    """A long run of older failures and never-started ends is not read past the
+    start that ends the streak (a counting cursor, so SQL rows are counted too)."""
+    c = _streak_db(*[('ABANDONED', '2026-10-21T09:00:00Z', _fail('2026-10-21T09:00:00Z'))
+                     for _ in range(300)],
+                   ('ENDED_OK', '2026-10-21T11:00:00Z', dict(started_at='2026-10-21T11:00:00Z')),
+                   *[('ABANDONED', '2026-10-21T11:30:00Z', _fail('2026-10-21T11:30:00Z'))
+                     for _ in range(300)])
+    pulled = []
+
+    class Counting:
+        def execute(self, sql, args=()):
+            for r in c.execute(sql, args):
+                pulled.append(r)
+                yield r
+
+    fails, _trial = X.spawn_streak(X._newest(Counting(), 'fake'))
+    assert len(fails) == 300 and len(pulled) == 301
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────

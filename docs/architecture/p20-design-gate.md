@@ -2877,6 +2877,41 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        as-built appends for the stop reason list and the tray notice.
      - **Mutants:** Q142-Q152; Q149 and Q150 are the review's ad-hoc M1 and M2.
 
+133. **Correction r2 to items 131-132 (card T-106, 2026-10-21, after the review of 6a6faab).**
+     - **A reset in the past is never a wait (review N1, a hot loop).** A blocked route's
+       `unblock_at` was the earliest of the provider resets and the breaker's time, with no
+       check against now; a reset already past made the task routed again on every pass.
+       The router now takes only the readable times after its own `now` (`_ahead`): the
+       breaker's time always, a provider reset only when it is a future time (Q153, with a
+       real `EngineLoop` test that counts the passes' route decisions).
+     - **A malformed provider reset never stops Core (N3).** Provider resets are free text.
+       One that is not a time is dropped by the same filter, so no engine pass raises
+       (Q154). The route wait parses only the router's own values, so it needs no guard.
+     - **The streak is cut by the time it was decided, not by creation order (N2).** A
+       failed start's end, a start, or a trial's creation; rowid only breaks ties. Creation
+       order gave a false trip: an INTENT that waited, then started after three failures
+       were created, cut the streak too late. `julianday()` compares the three formats
+       (`created_at` has milliseconds, the others whole seconds). **Trade-off, recorded:** a
+       backward wall-clock step misorders the cut by the recorded times (a failure recorded
+       before a start that happened earlier counts as older). Q155, Q156; the unit tests
+       cover out-of-order rowids, a clock step and mixed precision.
+     - **Cost (measured, in-memory SQLite 3.37, this PC).** The time order sorts every
+       started, failed or trial execution of the harness per routing decision: about 10 ms
+       at 10k successful starts and 33 ms at 30k (the streak itself still stops at the last
+       start). Upgrade path, not built: a promoted harness column with an index, or a
+       read bounded to the last window. Ceiling recorded here, not in code.
+     - **The idle wait is cut to the deadline (N4).** Tested with a 30 s idle (Q157).
+     - **The streak stops reading at its start (N5).** Counted at the cursor, not by the
+       decoder (Q158).
+     - **Not changed, by reasoning (N1 part b).** The breaker branch in `dispatch_task`
+       does not re-check `unblock_at` against now: the router is the only writer, and it
+       now returns only future times.
+     - **Known, recorded (N6).** An INTENT created before a trip, whose mission was paused,
+       can start when the mission resumes while the breaker is open; a start closes the
+       breaker. Bounded by the INTENTs dispatched before the trip.
+     - **Owner-accepted limit 6ii** (a resume is not a trial) stays as item 132 states.
+     - **Mutants:** Q153-Q158.
+
 ## 13. As built
 (Filled at the end of P20.)
 

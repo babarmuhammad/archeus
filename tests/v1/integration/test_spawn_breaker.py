@@ -271,3 +271,64 @@ def test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed(x):
     x.do(run)
     with x.db.read() as c:
         assert resources.route_wait(c, t.id, time.time()) is None
+
+
+# ── Correction r2 (review of 6a6faab) ───────────────────────────────────────
+
+@pytest.fixture
+def two(db):
+    """Two fake harnesses: `fake` trips its breaker, `other` has the limited account."""
+    rig = Rig(db, adapters=[FakeHarness(), FakeHarness('other')])
+    yield rig
+    rig.cleanup()
+    LocalNode.clear_estop()
+
+
+def _tripped_beside_a_limit(x, monkeypatch, resets_at):
+    """`fake`'s breaker is open; the account on `other` is at its limit until
+    *resets_at* (whatever the provider said). The fourth task's only route is blocked."""
+    acc = x.account('Work', harness_id='other')
+    x.feed.set(acc, '5h', 100, resets_at=resets_at)
+    return _tripped(x, monkeypatch)
+
+
+def test_T106r2_a_reset_already_past_is_no_wait_and_no_hot_loop(two, monkeypatch):
+    """Under Core's own loop, a blocked route whose reset is past must not be
+    routed again on every pass: the task waits for the breaker's time."""
+    mid = _tripped_beside_a_limit(two, monkeypatch, X._iso(time.time() - 3600))
+    t4 = two.task_of(mid, 't4')
+    before = len(two.all(entities.RouteDecision, task_id=t4.id))
+    loop = runtime.EngineLoop(two.engine, two.db, idle_s=0.05)
+    end = time.monotonic() + 2
+    while time.monotonic() < end:
+        loop._pass()
+        two.manager.tick()
+    assert len(two.all(entities.RouteDecision, task_id=t4.id)) - before <= 1
+    assert mid in loop.parked
+    rd = two.all(entities.RouteDecision, task_id=t4.id)[-1]
+    assert rd.unblock_at == _breaker(two)['until']
+
+
+def test_T106r2_a_malformed_provider_reset_never_stops_core(two, monkeypatch):
+    """A provider's reset is free text: a value that is not a time is no wait, and
+    the engine pass does not raise (an uncaught error would stop Core)."""
+    mid = _tripped_beside_a_limit(two, monkeypatch, 'not a time')
+    t4 = two.task_of(mid, 't4')
+    loop = runtime.EngineLoop(two.engine, two.db, idle_s=0.05)
+    loop._pass()
+    two.manager.tick()
+    loop._pass()
+    rd = two.all(entities.RouteDecision, task_id=t4.id)[-1]
+    assert (rd.result, rd.unblock_at) == ('blocked', _breaker(two)['until'])
+
+
+def test_T106r2_a_parked_mission_wakes_at_its_deadline_with_a_long_idle(x, monkeypatch):
+    """The idle wait is cut to the earliest deadline: with a 30 s idle the retry
+    after a 1 s start wait still comes at about 1 s."""
+    monkeypatch.setattr(X, 'SPAWN_WAIT_S', 1)
+    _no_popen(monkeypatch)
+    mid = x.ready(task('t1', 'write_repo'))
+    loop = runtime.EngineLoop(x.engine, x.db, idle_s=30)
+    started = time.monotonic()
+    _core_loop(x, lambda: len(x.all(entities.Execution)) == 2, 10, loop)
+    assert time.monotonic() - started < 8

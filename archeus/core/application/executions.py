@@ -118,14 +118,21 @@ def breaker_state(times, trial, now):
 
 
 def _newest(conn, harness_id):
-    """The harness's executions, newest first, decoded only as far as they are
+    """The harness's executions, newest first by when each was decided (a failed
+    start's end, a start, a trial's creation), decoded only as far as they are
     read. A trial INTENT counts only while its mission is EXECUTING: one parked by
-    a pause or a block would hold every other task back until that mission moves."""
+    a pause or a block would hold every other task back until that mission moves.
+    Rowid is creation order, which an INTENT that waited does not keep, so it only
+    breaks ties. julianday() because created_at has milliseconds and the others
+    do not, so a plain string order misplaces a row within its second."""
     # only the rows the streak reads are decoded: a failed start, a start, a trial
     for rec in conn.execute(
             "SELECT * FROM executions WHERE json_extract(body, '$.harness_id') = ? AND ("
             "json_extract(body, '$.stop_reason') = 'spawn' OR json_extract(body, '$.started_at')"
-            " IS NOT NULL OR state = 'INTENT') ORDER BY rowid DESC", (harness_id,)):
+            " IS NOT NULL OR state = 'INTENT') ORDER BY julianday(CASE"
+            " WHEN json_extract(body, '$.stop_reason') = 'spawn' THEN json_extract(body, '$.ended_at')"
+            " WHEN json_extract(body, '$.started_at') IS NOT NULL THEN json_extract(body, '$.started_at')"
+            " ELSE created_at END) DESC, rowid DESC", (harness_id,)):
         x = rows.decode(entities.Execution, rec).entity
         if x.state == 'INTENT' and rows.get(conn, entities.Mission,
                                             x.mission_id).entity.state != 'EXECUTING':

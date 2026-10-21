@@ -44,6 +44,8 @@ age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 {headless, rotation}}, affinity {harness, account}, approved_fallbacks [key].
 """
 
+from datetime import datetime
+
 TIERS = ('small', 'mid', 'large')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
          'restriction', 'breaker', 'health', 'allocation', 'partition', 'election')
@@ -384,6 +386,16 @@ def _why(win, rest, req, snap):
     return head
 
 
+def _ahead(iso, now):
+    """(epoch, iso) of a reset time that is readable and after *now*, else None.
+    Provider resets are free text from the harness (T-106 r2)."""
+    try:
+        at = datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return (at, iso) if at > now else None
+
+
 def route(req, snap):
     """The decision for *req* on *snap* (both JSON): a dict with `result`
     (selected | fallback | ask | blocked), the chosen resource and every
@@ -431,10 +443,16 @@ def route(req, snap):
         else:
             ask = next((c for c in fb if c['fallback'] == 'ask'), None)
             result, win = ('ask', ask) if ask is not None else ('blocked', None)
-    resets = sorted([r for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
-                     for r in ((c['_a'].get('usage') or {}).get('resets_at') or {}).values()
-                     if r] + [c['_h']['breaker']['until'] for c in cands
-                              if c['eliminated_at_step'] == 'breaker'])
+    # a reset already past, or unreadable, is never a wait: the task would be
+    # routed again on every pass (T-106 r2)
+    now = datetime.fromisoformat(snap['now'].replace('Z', '+00:00')).timestamp()
+    resets = [c['_a'].get('usage') or {} for c in cands
+              if c['eliminated_at_step'] in ('health', 'allocation')]
+    waits = [w for w in
+             [_ahead(r, now) for u in resets for r in (u.get('resets_at') or {}).values()]
+             + [_ahead(c['_h']['breaker']['until'], now) for c in cands
+                if c['eliminated_at_step'] == 'breaker']
+             if w]
     public = [{k: v for k, v in c.items() if not k.startswith('_')} for c in cands]
     return {
         'result': result,
@@ -447,7 +465,7 @@ def route(req, snap):
         'fallback_from': [c['resource'] for c in cands if c is not win
                           and c['eliminated_at_step'] in ('health', 'allocation')]
         if result in ('fallback', 'ask') else [],
-        'unblock_at': resets[0] if resets and result == 'blocked' else None}
+        'unblock_at': min(waits)[1] if waits and result == 'blocked' else None}
 
 
 def explain(d, req):
