@@ -4,6 +4,7 @@ parser, its canonical framing, and the relay over a fake pipe. No native operati
 import io
 import socket
 import threading
+import time
 
 import pytest
 
@@ -141,5 +142,86 @@ def test_a_pipe_that_cannot_be_opened_is_a_502_and_a_busy_bridge_a_503():
         # sent nothing: a busy bridge answers at once, without reading a request it will
         # not serve (unread bytes would turn its close into a reset, not a 503)
         assert _exchange(b, b'').startswith(b'HTTP/1.1 503')
+    finally:
+        b.close()
+
+
+def _nope():
+    raise OSError('no pipe')
+
+
+@pytest.mark.parametrize('data', [
+    raw('POST /v1/messages HTTP/1.1', 'X-A: b\rc', 'Host: x'),
+    raw('GET /v1/messages\rX HTTP/1.1', 'Host: x'),
+    raw('GET /v1/messages HTTP/1.1', 'X-A: \x00'),
+    raw('GET /v1/messages HTTP/1.1', 'X-A: b\x7f'),
+])
+def test_a_control_character_in_a_line_is_refused(data):
+    with pytest.raises(W.BadRequest):
+        W.read_request(io.BytesIO(data))
+
+
+def test_a_request_without_the_broker_token_is_refused_before_its_body_is_read():
+    calls = []
+    b = W.Bridge(lambda: calls.append(1) or Pipe(), idle_s=0.5)
+    try:
+        b.start(lambda port: None)
+        out = _exchange(b, raw('POST /v1/messages HTTP/1.1', 'Host: x',
+                               'Authorization: Bearer nope', 'Content-Length: 100'))
+        assert out.startswith(b'HTTP/1.1 401') and calls == []
+    finally:
+        b.close()
+
+
+def test_an_idle_client_is_cut_and_gives_its_slot_back():
+    b = W.Bridge(_nope, concurrent=1, idle_s=0.3)
+    try:
+        b.start(lambda port: None)
+        with socket.create_connection(('127.0.0.1', b.port), timeout=5) as c:
+            c.sendall(b'POST /v1/messages HTTP/1.1\r\nHost: x\r\n')
+            got = b''
+            while True:
+                chunk = c.recv(65536)
+                if not chunk:
+                    break
+                got += chunk
+        assert got.startswith(b'HTTP/1.1 400')
+        assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 502')
+    finally:
+        b.close()
+
+
+def test_a_request_that_trickles_past_its_deadline_is_cut_and_frees_its_slot():
+    b = W.Bridge(_nope, concurrent=1, idle_s=1.0, deadline_s=0.5)
+    try:
+        b.start(lambda port: None)
+        with socket.create_connection(('127.0.0.1', b.port), timeout=5) as c:
+            c.sendall(b'POST /v1/messages HTTP/1.1\r\nHost: x\r\n')
+            for _ in range(60):             # each line well inside the idle limit
+                try:
+                    c.sendall(b'X-A: 1\r\n')
+                except OSError:
+                    break
+                time.sleep(0.05)
+            assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 502')
+    finally:
+        b.close()
+
+
+def test_the_pipe_carries_only_the_broker_token_and_the_forwardable_headers():
+    pipes = []
+
+    def connect():
+        pipes.append(Pipe())
+        return pipes[-1]
+    b = W.Bridge(connect)
+    try:
+        b.start(lambda port: None)
+        _exchange(b, ok_request(extra=('Cookie: c=1', 'X-Api-Key: caller',
+                                       'Proxy-Authorization: p', 'anthropic-version: 2023-06-01',
+                                       'X-Custom: 1')))
+        (p,) = pipes
+        names = {k.lower() for k, _ in W.read_request(io.BytesIO(p.sent)).headers}
+        assert names == {'authorization', 'anthropic-version', 'content-length'}
     finally:
         b.close()

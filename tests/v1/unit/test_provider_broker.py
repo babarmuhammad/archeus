@@ -3,6 +3,7 @@ endpoint/model/limit policy, header handling, destinations, revocation. Syntheti
 transport and a fake upstream; no native operation, no network."""
 
 import io
+import logging
 
 import pytest
 
@@ -241,7 +242,8 @@ def test_only_the_standard_and_anthropic_headers_are_forwarded():
     _, token, _ = issued(b)
     serve(b, request(token=token, extra=(
         'api-key: caller', 'X-Goog-Api-Key: caller', 'X-Auth-Token: caller', 'X-Custom: 1',
-        'User-Agent: claude-cli/1', 'anthropic-beta: tools-1')))
+        'User-Agent: claude-cli/1', 'anthropic-beta: tools-1',
+        'anthropic-api-key: caller', 'x-stainless-auth: caller')))
     (_, _, _, _, headers, _), = calls
     low = {k.lower() for k in headers}
     assert low == {'x-api-key', 'content-length', 'user-agent', 'anthropic-beta'}
@@ -313,6 +315,96 @@ def test_the_response_cap_ends_the_stream():
     _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=3, max_response=7))
     out, row = serve(b, request(token=token))
     assert out.endswith(b'12345') and row['bytes_out'] == 5
+
+
+def test_a_listed_name_that_carries_a_credential_word_is_never_forwarded(monkeypatch):
+    monkeypatch.setattr(W, 'FORWARD', W.FORWARD | {'x-key-hint', 'anthropic-auth-token'})
+    b, calls = broker()
+    _, token, _ = issued(b)
+    serve(b, request(token=token, extra=('X-Key-Hint: caller', 'Anthropic-Auth-Token: caller')))
+    (_, _, _, _, headers, _), = calls
+    assert not {k.lower() for k in headers} & {'x-key-hint', 'anthropic-auth-token'}
+
+
+def test_a_control_character_in_a_header_is_refused_before_the_upstream_sees_it():
+    b, calls = broker()
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token, extra=(
+        'User-Agent: claude-cli/1\rAuthorization: Bearer CALLER',)))
+    assert row['status'] == 400 and calls == [] and b'CALLER' not in out
+
+
+def test_a_rejected_body_still_counts_against_the_ceiling():
+    b, calls = broker()
+    _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=2))
+    bad = b'{"model":"claude-other","messages":[]}'
+    assert [serve(b, request(token=token, body=bad))[1]['status'] for _ in range(2)] == [403, 403]
+    assert serve(b, request(token=token))[1]['status'] == 429 and calls == []
+
+
+def test_an_unauthenticated_head_is_refused_before_any_body_is_read():
+    b, calls = broker()
+    _, token, _ = issued(b)
+    head = (b'POST /v1/messages HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer nope\r\n'
+            b'Content-Length: 99999999\r\n\r\n')
+    assert serve(b, io.BytesIO(head))[1]['status'] == 401 and calls == []
+
+
+def test_a_deeply_nested_body_is_a_400_not_an_escape():
+    b, calls = broker()
+    _, token, _ = issued(b)
+    body = b'[' * 5000 + b']' * 5000
+    assert serve(b, request(token=token, body=body))[1]['status'] == 400 and calls == []
+
+
+def test_the_audit_is_bounded_and_keeps_short_endpoints():
+    b, _ = broker()
+    for _ in range(B.AUDIT_MAX + 50):
+        serve(b, request(token='brk_nope'))
+    assert len(b.audit) == B.AUDIT_MAX
+    serve(b, request('GET', '/' + 'a' * 5000, token='brk_nope'))
+    assert len(b.audit[-1]['endpoint']) <= 200
+
+
+def test_an_unexpected_error_is_a_local_500_that_carries_no_text_of_it():
+    def boom(*a):
+        raise ValueError('upstream said UPSTREAM-SECRET')
+    b, _ = broker(send=boom)
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 500 and out.startswith(b'HTTP/1.1 500')
+    assert b'UPSTREAM-SECRET' not in out and 'UPSTREAM-SECRET' not in repr(b.audit)
+
+
+def test_the_upstream_key_and_the_broker_token_never_reach_a_log_an_output_or_an_error(
+        caplog, capsys):
+    caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.DEBUG, logger='archeus.broker')
+
+    def boom(*a):
+        raise ValueError('upstream said UPSTREAM-SECRET')
+    b, _ = broker(send=boom)
+    _, token, _ = issued(b)
+    outs = [serve(b, request(token=token))[0],
+            serve(b, request(token='brk_nope'))[0],
+            serve(b, request(token=token, body=b'{"model":"x"}'))[0]]
+    ok, _ = broker()
+    _, ok_token, _ = issued(ok)
+    outs.append(serve(ok, request(token=ok_token))[0])
+    seen = capsys.readouterr()
+    text = '\n'.join([caplog.text, seen.out, seen.err, repr(list(b.audit)),
+                      repr(list(ok.audit)), repr(b._grants), repr(ok._grants)]
+                     + [o.decode('latin-1') for o in outs])
+    for secret in ('UPSTREAM-SECRET', token, ok_token):
+        assert secret not in text
+
+
+def test_an_upstream_header_with_a_control_character_is_not_relayed():
+    b, _ = broker(send=lambda *a: Resp(headers=[('X-Bad', 'a\rInjected: 1'),
+                                                ('request-id', 'r2')]))
+    _, token, _ = issued(b)
+    out, _ = serve(b, request(token=token))
+    assert b'Injected' not in out and b'request-id: r2' in out.split(b'\r\n\r\n')[0]
 
 
 # ── destinations ──

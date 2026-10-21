@@ -9,22 +9,45 @@ Stdlib only, and nothing that loads an account: this module runs under the execu
 isolated identity.
 """
 
+import re
 import socket
 import socketserver
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 MAX_HEADERS = 64
 MAX_HEADER_BYTES = 32 * 1024
 MAX_BODY = 16 * 1024 * 1024
 CONCURRENT = 2
+#: a connection that goes quiet for this long, or takes this long to send one request,
+#: is cut, so an idle client cannot hold a slot (PV20-08 §1; round 2 review S1)
+IDLE_S = 10.0
+DEADLINE_S = 30.0
 _TOKEN = set("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 #: names a request may carry at most once (PV20-08 §1, wire contract)
 _SINGLE = ('content-length', 'host', 'authorization', 'x-api-key')
+#: the only client headers that reach the upstream, by exact name (the broker decides
+#: again); a name carrying any credential word is never forwarded, listed or not
+FORWARD = frozenset({'anthropic-version', 'anthropic-beta', 'content-type', 'accept',
+                     'user-agent'})
+NEVER = ('key', 'token', 'auth', 'cookie', 'secret', 'credential')
+#: what the bridge admits before reading a body: the execution's own broker token
+_BRK_AUTH = re.compile(r'(?i:bearer) brk_[A-Za-z0-9_-]+')
+#: a control character anywhere in a line but its CRLF: a bare CR, NUL, C0 but tab, DEL
+CTL = re.compile(rb'[\x00-\x08\x0a-\x1f\x7f]')
 
 
 class BadRequest(ValueError):
-    """Framing the bridge and Core refuse; never forwarded."""
+    """Framing the bridge and Core refuse; never forwarded. *status* is what the client gets."""
+    status = 400
+
+
+class TooLarge(BadRequest):
+    status = 413
+
+
+class Unauthorized(BadRequest):
+    status = 401
 
 
 @dataclass(frozen=True)
@@ -48,17 +71,37 @@ class Request:
         return self.target.partition('?')[2]
 
 
+def forwarded(name):
+    n = name.lower()
+    return n in FORWARD and not any(w in n for w in NEVER)
+
+
+def clean(text):
+    """True when *text* holds no control character (a header value relayed back must not)."""
+    return not CTL.search(text.encode('latin-1', 'replace'))
+
+
 def _line(f, budget):
     line = f.readline(budget + 1)
     if len(line) > budget or not line.endswith(b'\r\n'):
         raise BadRequest('a line is too long or not CRLF-terminated')
+    if CTL.search(line[:-2]):
+        raise BadRequest('a line holds a control character')
     return line[:-2]
 
 
+def _admit_bridge(req):
+    if not _BRK_AUTH.fullmatch(req.header('authorization') or ''):
+        raise Unauthorized('only the execution broker token is admitted here')
+    return MAX_BODY
+
+
 def read_request(f, *, max_headers=MAX_HEADERS, max_header_bytes=MAX_HEADER_BYTES,
-                 max_body=MAX_BODY):
+                 max_body=MAX_BODY, admit=None):
     """One request from the binary stream *f*, bounded, or BadRequest. Origin-form only:
-    no absolute-form, CONNECT, upgrade, chunked body, pipelining or encoded path alias."""
+    no absolute-form, CONNECT, upgrade, chunked body, pipelining or encoded path alias.
+    *admit(request)*, when given, decides on the head alone, before any body is read: it
+    raises to refuse, and returns the body size it allows."""
     budget = max_header_bytes
     start = _line(f, budget)
     budget -= len(start) + 2
@@ -102,6 +145,7 @@ def read_request(f, *, max_headers=MAX_HEADERS, max_header_bytes=MAX_HEADER_BYTE
     if 'upgrade' in low:
         raise BadRequest('protocol upgrades are refused')
     req = Request(method, target, tuple(headers))
+    cap = max_body if admit is None else min(max_body, admit(req))
     length = req.header('content-length')
     if length is None:
         if method in ('POST', 'PUT', 'PATCH'):
@@ -110,8 +154,8 @@ def read_request(f, *, max_headers=MAX_HEADERS, max_header_bytes=MAX_HEADER_BYTE
     if not length.isdigit():
         raise BadRequest('Content-Length is not a number')
     n = int(length)
-    if n > max_body:
-        raise BadRequest('the body is over %d bytes' % max_body)
+    if n > cap:
+        raise TooLarge('the body is over %d bytes' % cap)
     body = f.read(n)
     if len(body) != n:
         raise BadRequest('the body ended early')
@@ -133,6 +177,20 @@ def local_reply(status, reason):
             % (status, reason)).encode('ascii')
 
 
+def _send(sock, data):
+    try:
+        sock.sendall(data)
+    except OSError:
+        pass                            # the client went away: nothing to tell it
+
+
+def _cut(sock):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass
+
+
 class Bridge:
     """The execution-local listener. *connect* opens one connection to Core's pipe and
     returns an object with `sendall`, `recv` and `close` (the native backend's; a test
@@ -140,9 +198,11 @@ class Bridge:
     port until `close`: there is no gap between readiness and the CLI's start in which
     another process could take it."""
 
-    def __init__(self, connect, *, host='127.0.0.1', concurrent=CONCURRENT):
+    def __init__(self, connect, *, host='127.0.0.1', concurrent=CONCURRENT, idle_s=IDLE_S,
+                 deadline_s=DEADLINE_S):
         self._connect = connect
         self._slots = threading.BoundedSemaphore(concurrent)
+        self._idle, self._deadline = idle_s, deadline_s
         bridge = self
 
         class _Handler(socketserver.BaseRequestHandler):
@@ -170,21 +230,33 @@ class Bridge:
 
     def serve(self, sock):
         if not self._slots.acquire(blocking=False):
-            sock.sendall(local_reply(503, 'Busy'))
+            _send(sock, local_reply(503, 'Busy'))
             return
         try:
+            sock.settimeout(self._idle)
+            cut = threading.Timer(self._deadline, _cut, (sock,))
+            cut.start()
             try:
-                req = read_request(sock.makefile('rb'))
-            except (BadRequest, OSError):
-                sock.sendall(local_reply(400, 'Bad Request'))
+                req = read_request(sock.makefile('rb'), admit=_admit_bridge)
+            except BadRequest as r:
+                _send(sock, local_reply(r.status, 'Refused'))
                 return
+            except OSError:
+                _send(sock, local_reply(400, 'Bad Request'))
+                return
+            finally:
+                cut.cancel()
+            # only what Core may use goes over the pipe: the broker token and the
+            # forwardable headers. A caller's cookie, proxy or key header never leaves
+            keep = tuple((k, v) for k, v in req.headers
+                         if k.lower() == 'authorization' or forwarded(k))
             try:
                 pipe = self._connect()
             except OSError:
-                sock.sendall(local_reply(502, 'Bad Gateway'))
+                _send(sock, local_reply(502, 'Bad Gateway'))
                 return
             try:
-                pipe.sendall(frame(req))
+                pipe.sendall(frame(replace(req, headers=keep)))
                 while True:
                     chunk = pipe.recv(65536)
                     if not chunk:

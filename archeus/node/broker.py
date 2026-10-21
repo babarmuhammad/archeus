@@ -30,6 +30,7 @@ import socket
 import ssl
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
@@ -43,16 +44,13 @@ PREFIX = ids.TOKEN_PREFIXES['broker']
 #: CLI's reachability probe, answered here. Every other target is a local 404.
 MESSAGES = '/v1/messages'
 HELLO = '/api/hello'
-#: the only request headers forwarded upstream: the content type and the Anthropic
-#: version/beta headers (and the CLI's own telemetry prefix). Everything else the client
-#: sent, its authority above all, is dropped: nothing passes through by default.
-_FORWARD = {'content-type', 'accept', 'user-agent'}
-_FORWARD_PREFIXES = ('anthropic-', 'x-stainless-')
 #: the upstream credential: one API key, as a header value
 _KEY = re.compile(r'[!-~]+')
 #: response headers never relayed back into the boundary
 _DROP_BACK = {'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticate', 'te',
               'trailer', 'transfer-encoding', 'upgrade', 'set-cookie', 'content-length'}
+#: the audit keeps the last rows only: a client can send requests without end
+AUDIT_MAX = 1024
 
 
 class Refused(Exception):
@@ -202,7 +200,7 @@ class Broker:
         self.limits = limits or BrokerLimits()
         self.transport = transport or NativeTransport()
         self._resolve, self._send, self._clock = resolve, send, clock
-        self.audit = audit if audit is not None else []
+        self.audit = audit if audit is not None else deque(maxlen=AUDIT_MAX)
         self._grants = {}           # digest -> grant
         self._lock = threading.Lock()
 
@@ -277,27 +275,27 @@ class Broker:
     def serve(self, rfile, write, principal):
         """Serve one request read from *rfile*, writing the response with *write*;
         *principal* is what the native backend observed for the pipe client. Never
-        raises: every refusal is a local response. Returns the audit row."""
+        raises: every refusal is a local response, and any other error is a local 500
+        that carries no text of it. The head is checked before the body is read, and
+        every authenticated request counts against the grant's ceiling, whatever its
+        body. Returns the audit row."""
         row = {'execution_id': None, 'model': None, 'endpoint': None, 'status': None,
                'bytes_in': 0, 'bytes_out': 0, 'duration_ms': 0}
         t0 = self._clock()
-        try:
-            req = wire.read_request(rfile)
-            row['endpoint'] = '%s %s' % (req.method, req.path)
-            row['bytes_in'] = len(req.body)
-            g, d = self.authorize(_bearer(req), principal)
+        held = {}
+
+        def admit(head):
+            row['endpoint'] = ('%s %s' % (head.method, head.path))[:200]
+            g, d = self.authorize(_bearer(head), principal)
             b = g['binding']
+            held.update(g=g, d=d, b=b)
             row['execution_id'], row['model'] = b.execution_id, b.model
-            if len(req.body) > b.limits.max_body:
-                raise Refused(413, 'the body is over the grant limit')
-            if req.method == 'HEAD' and req.path == HELLO and not req.query:
-                write(wire.local_reply(204, 'No Content'))
-                row['status'] = 204
-                return row
-            if not (req.method == 'POST' and req.path == MESSAGES
-                    and req.query in ('', 'beta=true')):
+            if head.method == 'HEAD' and head.path == HELLO and not head.query:
+                held['hello'] = True
+                return 0
+            if not (head.method == 'POST' and head.path == MESSAGES
+                    and head.query in ('', 'beta=true')):
                 raise Refused(404, 'not a brokered endpoint')
-            _model_of(req.body, b.model)
             with self._lock:
                 if g['requests'] >= b.limits.max_requests:
                     raise Refused(429, 'the grant has used its requests')
@@ -305,18 +303,32 @@ class Broker:
                     raise Refused(429, 'too many requests at once')
                 g['requests'] += 1
                 g['active'] += 1
-            try:
-                row['status'], row['bytes_out'] = self._forward(req, b, d, write, t0)
-            finally:
-                with self._lock:
-                    g['active'] -= 1
-        except wire.BadRequest:
-            row['status'] = 400
-            write(wire.local_reply(400, 'Bad Request'))
+            held['active'] = True
+            return b.limits.max_body
+
+        try:
+            req = wire.read_request(rfile, admit=admit)
+            row['bytes_in'] = len(req.body)
+            if held.get('hello'):
+                write(wire.local_reply(204, 'No Content'))
+                row['status'] = 204
+                return row
+            _model_of(req.body, held['b'].model)
+            row['status'], row['bytes_out'] = self._forward(req, held['b'], held['d'], write,
+                                                            t0)
+        except wire.BadRequest as r:
+            row['status'] = r.status
+            _reply(write, r.status, 'Refused')
         except Refused as r:
             row['status'] = r.status
-            write(wire.local_reply(r.status, 'Refused'))
+            _reply(write, r.status, 'Refused')
+        except Exception:
+            row['status'] = 500
+            _reply(write, 500, 'Internal Error')
         finally:
+            if held.get('active'):
+                with self._lock:
+                    held['g']['active'] -= 1
             row['duration_ms'] = int((self._clock() - t0) * 1000)
             self.audit.append(row)
         return row
@@ -328,7 +340,7 @@ class Broker:
         key = creds['x-api-key'] if one else None
         if not (isinstance(key, str) and _KEY.fullmatch(key)):
             raise Refused(403, 'the upstream credential is not one API key')
-        headers = {k: v for k, v in req.headers if _forwarded(k)}
+        headers = {k: v for k, v in req.headers if wire.forwarded(k)}
         headers['x-api-key'] = key
         headers['Content-Length'] = str(len(req.body))
         try:
@@ -343,7 +355,7 @@ class Broker:
             return 502, 0
         out = ['HTTP/1.1 %d %s' % (resp.status, resp.reason or '')]
         out += ['%s: %s' % (k, v) for k, v in resp.getheaders()
-                if k.lower() not in _DROP_BACK]
+                if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))]
         out.append('Connection: close')
         write(('\r\n'.join(out) + '\r\n\r\n').encode('latin-1'))
         sent = 0
@@ -360,9 +372,11 @@ class Broker:
         return resp.status, sent
 
 
-def _forwarded(name):
-    n = name.lower()
-    return n in _FORWARD or n.startswith(_FORWARD_PREFIXES)
+def _reply(write, status, reason):
+    try:
+        write(wire.local_reply(status, reason))
+    except OSError:
+        pass                            # the client went away: nothing to tell it
 
 
 def _bearer(req):
@@ -375,7 +389,7 @@ def _model_of(body, model):
     are the ones received."""
     try:
         doc = json.loads(body, object_pairs_hook=_no_dupes)
-    except (ValueError, UnicodeDecodeError):
+    except (ValueError, UnicodeDecodeError, RecursionError):
         raise Refused(400, 'the body is not JSON') from None
     if not isinstance(doc, dict) or doc.get('model') != model or not isinstance(model, str):
         raise Refused(403, 'the request names a model its route did not pin')
