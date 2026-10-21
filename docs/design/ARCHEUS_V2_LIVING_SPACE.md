@@ -599,10 +599,10 @@ Each question needs an owner answer. Recommended answers are proposals.
 
 1. **Phone type scale (§3, 11).** *Answered 2026-10-21: yes, cut it (§7).* The reviewer asks for smaller text; the owner called the earlier phone "too dense / small". Recommended: body 16/24, title 20/26, headline 26/32, nothing under 14 px, controls 48×48. Verify on a real phone before accepting.
 2. **Translucent review sheet (§3, 10).** *Answered 2026-10-21: tint only if readable (§7).* The reviewer asks for a slim, transparent panel; the concept README and §4 reject translucent glass panels. Recommended: allow a translucent tint only where text meets 4.5:1 over the worst background behind it, and go opaque under reduced transparency and high contrast.
-3. **One zoom step on the phone (§3, 10).** *Open. Not asked on 2026-10-21; recommendation stands.* LS-7 says no free camera on phone. Recommended: allow one bounded step to the chosen task star, no pan or pinch, immediate under reduced motion.
+3. **One zoom step on the phone (§3, 10).** *Answered 2026-10-21: yes, one bounded step (§7).* LS-7 says no free camera on phone. Recommended: allow one bounded step to the chosen task star, no pan or pinch, immediate under reduced motion.
 4. **Primary way to start work (§4.1).** *Answered 2026-10-21: Tell first, form second (§7).* Tell (free text, Core clarifies) or a structured mission form in the project. Recommended: Tell first, the project form second. Both use existing routes. Confirm first that Tell can carry a project scope.
 5. **Comments on a plan (§4.2).** *Answered 2026-10-21: per-task comments now. This rejects the recommendation below (§7, §8).* A per-task comment thread would be a new contract and the planner would have to read it. Recommended (rejected): ship the existing note and plan edit now; decide per-task comments as a separate contract later.
-6. **Do per-task comments reach the planner? (§8.3).** *New, 2026-10-21, open.* Recommended: yes, but only inside a request-changes decision, so one decision carries the note and the selected comments. A comment never reaches the planner on its own.
+6. **Do per-task comments reach the planner? (§8.3).** *Answered 2026-10-21: only with request-changes (§7).* Recommended: yes, but only inside a request-changes decision, so one decision carries the note and the selected comments. A comment never reaches the planner on its own.
 
 ### 6. Round 3 image brief
 
@@ -644,13 +644,14 @@ Recorded from the owner's AskUserQuestion answers, 2026-10-21. The answer column
 |---|---|---|
 | Q1 phone type scale (§5.1) | "Yes, cut it (Recommended)" | Body 16/24, headline 26/32, minimum 14 px, controls 48 px. Verify on a real phone before build. Work title 20/26 and secondary 14/20 stay as §3 wrote them; the answer did not name them. |
 | Q2 review panel translucency (§5.2) | "Tint only if readable (Recommended)" | Translucency only where text keeps 4.5:1 over the worst background behind it. Opaque under reduced transparency. |
-| Q3 phone review zoom (§5.3) | not asked | Open. Recommendation unchanged: one bounded step to the task star, no pan or pinch, immediate under reduced motion. |
+| Q3 phone review zoom (§5.3) | "Yes, one bounded step (Recommended)" | One bounded step to the task star, no pan or pinch, immediate under reduced motion (§3, 10). |
+| Q6 plan comments reach the planner (§5.6, §8.3) | "Only with request-changes (Recommended)" | Option A: comments reach the planner only inside a request-changes decision, which names the selected comment ids. A comment never reaches the planner on its own. |
 | Q4 start work (§5.4) | "Tell first, form second (Recommended)" | Tell is the first start path; the project form is second. Both use existing routes (§4.1). Tell's project-scope check still needed. |
 | Q5 plan comments (§5.5) | "Per-task comments now" | Rejects the recommendation "ship existing now". Per-task comments are wanted before the prototype. Contract proposed in §8, not built. |
 
 Sections changed by these decisions, each marked in place: §3 items 10 and 11; §4.1 (start path paragraph); §4.2 (comments sentence); §4.3 (per-task comments row); §5 (status on items 1, 2, 3, 4, 5, and new item 6); §6 (R3-10 opacity note); the closing line of §6.
 
-Still open: Q3 (§5.3) and new question Q6 (§5.6, §8.3).
+Still open: none. Q3 and Q6 are answered above.
 
 ### 8. Plan comments contract (proposal, not built)
 
