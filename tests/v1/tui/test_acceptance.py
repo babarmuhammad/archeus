@@ -521,7 +521,11 @@ def test_attention_names_a_limited_account_and_a_mission_no_resource_can_run():
          'project_id': None, 'since': '2026-10-21T10:00:00Z', 'until': '2999-01-01T00:00:00Z'},
         {'kind': 'account', 'ref': {'kind': 'account', 'id': 'acc_2'}, 'state': 'UNAUTHENTICATED',
          'reason_code': 'reauth', 'reason': 'home', 'mission_id': None, 'project_id': None,
-         'since': '2026-10-21T10:00:00Z'}], 'count': 3}
+         'since': '2026-10-21T10:00:00Z'},
+        {'kind': 'account', 'ref': {'kind': 'account', 'id': 'acc_3'}, 'state': 'LIMITED',
+         'reason_code': 'limited', 'reason': 'past account', 'mission_id': None,
+         'project_id': None, 'since': '2026-10-21T10:00:00Z', 'until': '2000-01-01T00:00:00Z'}],
+        'count': 4}
     app = _StubApp({'/v1/attention': att, '/v1/sync': {'client': {'scopes': []}}})
     app.go({'view': 'attention'})
     app.frame()
@@ -529,3 +533,5 @@ def test_attention_names_a_limited_account_and_a_mission_no_resource_can_run():
     assert 'No resource can run this mission' in shown
     assert 'Account at its usage limit' in shown and 'resets in' in shown
     assert 'Account needs signing in' in shown
+    # a reset instant already past reads "reset due", not "resets N ago" (P21 D12)
+    assert 'reset due' in shown and shown.count('resets ') == 1

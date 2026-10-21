@@ -563,15 +563,15 @@ class Core:
                 'engine': self.loop.status(), 'world': self.world.status(),
                 'exec': self.exec.status(), 'armed': not paths_disarmed(),
                 'knowledge': self.knowledge.status(), 'intent': self.intent.status(),
-                'plan': self.plan.status() if self.plan is not None
-                else {'state': 'idle', 'pending': 0},
-                'policy': self.policy.status() if self.policy is not None
-                else {'state': 'idle', 'pending': 0},
-                'verify': self.verify.status() if self.verify is not None
-                else {'state': 'idle', 'pending': 0},
-                'automation': self.automation.status() if self.automation is not None
-                else {'state': 'idle', 'pending': 0},
                 # a worker that was never started is stopped: Health must not call it idle
+                'plan': self.plan.status() if self.plan is not None
+                else {'state': 'stopped', 'pending': 0},
+                'policy': self.policy.status() if self.policy is not None
+                else {'state': 'stopped', 'pending': 0},
+                'verify': self.verify.status() if self.verify is not None
+                else {'state': 'stopped', 'pending': 0},
+                'automation': self.automation.status() if self.automation is not None
+                else {'state': 'stopped', 'pending': 0},
                 'metrics': self.metrics.status() if self.metrics is not None
                 else {'state': 'stopped', 'pending': 0}}
 

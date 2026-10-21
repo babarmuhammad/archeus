@@ -510,22 +510,29 @@ items, D12 (a). "P21 cannot be declared complete before P20 is" (D0) is unchange
   mission held from verification listed, the route's reason dropped, the days oldest first, the
   days unbounded, the TUI naming only the kind), Z120-Z122 (the first blocked route deciding when
   another blocked task has no resource route, a never-started metrics worker reading idle, the
-  no-resource item dropping `unblock_at`).
+  no-resource item dropping `unblock_at`), Z160-Z165 (a dict-spelled state write outside a read, a
+  never-started plan, policy, verify or automation worker reading idle, a past reset read as
+  "resets" in the TUI).
 - **Review fixes (independent review of 8cd47d1, `.collab/reviews/T-127-8cd47d1.claude.md`)**:
   - The Health empty state said every account can work. DISABLED and UNVERIFIED accounts raise no
     item, and with no accounts the claim is vacuous, so it now says only what Attention knows: no
     account has stopped or needs you, and no mission waits for a resource (`clients/app/test/health.test.ts`).
   - A metrics worker that was never started reads `stopped`, not `idle` (`runtime.py`; H08).
-    Verify and automation keep the same `idle` fallback; they are outside this slice.
   - `_no_resource` lists a mission only when every BLOCKED task's last route blocked on a
     resource, so a task stopped for another reason no longer gets the no-resource reason (H07).
   - Each nullable Health figure is checked in source to render through `known(`, so a raw render
     fails the node suite (`health.test.ts`). Browser coverage is still T-130's.
   - A limited account whose reset instant has passed reads "reset due", not "resets N min ago"
     (`resetText`).
-  - The reason labels are pinned equal to the TUI's `ATTENTION_REASON` (H09).
-  - Not changed, on the review's own reading: the `state=` guard change stays (the review found
-    the textual guard is not a real defence; the read filter is safe either way), and the
-    per-read cost of the Attention scan stays (bounded by the blocked missions; a join is the
-    upgrade if it grows). H05 and H06 are still weak (a schema check and an auth check); not
-    strengthened here.
+  - The reason labels and the KIND labels are pinned equal to the TUI's `ATTENTION_REASON` and
+    `ATTENTION_KIND` (H09). The TUI says "reset due" for a past reset too (`present.reset_text`).
+  - Round 2 (review of 65d2d6d, `.collab/reviews/T-127-65d2d6d.claude.md`): the empty state now
+    says "No account needs you" (it claimed no more than Attention lists). A never-started plan,
+    policy, verify or automation worker reads `stopped`, as metrics does (H10). The state guard
+    sees the dict spelling `**{'state': ...}` again: a line that sets a state through it is
+    flagged unless it is a read (`rows.where(` on the same line) or planning.py's outcome dict,
+    named by its exact text. The guard is not weakened; `test_the_state_guard_sees_the_dict_spelling_outside_a_read`
+    pins it. The node suite checks that the nullable figures never render raw (`{d.<field>}`).
+  - Not changed, on the review's reading: the per-read cost of the Attention scan (bounded by
+    the blocked missions; a join is the upgrade if it grows). H05 and H06 are still weak (a schema
+    check and an auth check); not strengthened here.

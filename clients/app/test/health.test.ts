@@ -32,14 +32,20 @@ test('a duration reads in minutes under an hour and in hours after', () => {
 
 test('the Health empty state claims only what Attention knows, never that every account works', () => {
   // DISABLED and UNVERIFIED accounts raise no item, and zero accounts is vacuous
-  assert.ok(control.includes('No account has stopped or needs you, and no mission waits for a resource.'));
+  assert.ok(control.includes('No account needs you, and no mission waits for a resource.'));
   assert.ok(!/every account/i.test(control));
   assert.ok(!control.includes('can work'));
+  assert.ok(!control.includes('has stopped'));
 });
 
-test('every nullable Health figure is rendered through known(), so null shows unknown', () => {
+test('every nullable Health figure is rendered through known(), never raw, so null shows unknown', () => {
   for (const field of ['median_time_to_complete_s', 'approvals_per_mission', 'fallback_rate', 'verification_failure_rate'])
     assert.ok(control.includes(`known(d.${field}, `), field);
+  // the counts (missions_completed, missions_failed) are never null, so they render raw
+  for (const field of ['median_time_to_complete_s', 'approvals_per_mission', 'fallback_rate', 'verification_failure_rate'])
+    assert.ok(!control.includes(`{d.${field}}`), `${field} rendered raw`);
+  assert.ok(control.includes('known(v.cost_usd_mean, '));
+  assert.ok(!control.includes('{v.cost_usd_mean}'));
 });
 
 test('a limited account whose reset instant has passed says reset due, not resets ago', () => {

@@ -615,7 +615,7 @@ def entry(app, doc, item):
     if item.get('reason'):
         doc.add('    ' + T(app, item['reason']))
     if item.get('until'):
-        doc.add('    ' + T(app, 'resets %s' % ago(app, item['until']), 'text-2'))
+        doc.add('    ' + T(app, P.reset_text(item['until'], app.now_ms()), 'text-2'))
 
 
 def approval_card(app, doc, aid, head=None):

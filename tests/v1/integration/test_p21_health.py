@@ -155,8 +155,18 @@ def test_H08_a_metrics_worker_never_started_is_stopped_not_idle(tc, monkeypatch)
     assert h['metrics'] == {'state': 'stopped', 'pending': 0}
 
 
-def test_H09_the_spa_and_the_tui_name_an_attention_reason_the_same():
+def test_H09_the_spa_and_the_tui_name_an_attention_item_the_same():
     spa_src = (Path(__file__).resolve().parents[3] / 'clients/app/src/state/present.ts').read_text(
         encoding='utf-8')
-    block = spa_src.split('const REASON_LABEL')[1].split('};')[0]
-    assert dict(re.findall(r"'([a-z_]+\.[a-z_]+)': '([^']+)'", block)) == dict(screens.ATTENTION_REASON)
+    reasons = spa_src.split('const REASON_LABEL')[1].split('};')[0]
+    assert dict(re.findall(r"'([a-z_]+\.[a-z_]+)': '([^']+)'", reasons)) == dict(screens.ATTENTION_REASON)
+    kinds = spa_src.split('const KIND_LABEL')[1].split('};')[0]
+    assert dict(re.findall(r"^\s*(\w+): '([^']+)',", kinds, re.M)) == screens.ATTENTION_KIND
+
+
+@pytest.mark.parametrize('worker', ['plan', 'policy', 'verify', 'automation'])
+def test_H10_a_never_started_worker_reads_stopped_not_idle(tc, monkeypatch, worker):
+    monkeypatch.setattr(tc.core, worker, None)
+    h = tc.http('GET', '/v1/health').json()
+    schemas.validate(h[worker], schemas.TYPES['Worker'])
+    assert h[worker] == {'state': 'stopped', 'pending': 0}
