@@ -289,7 +289,7 @@ function ResourcesSection() {
                         ['Today (UTC)', consumptionText(x.ledger)],
                       ]}
                     />
-                    <Details rows={[['Account id', x.id], ['Home (config directory)', x.home_ref as string | undefined]]} />
+                    <Details rows={[['Account id', x.id]]} />
                     <PolicyForm a={x} />
                   </li>
                 ))}

@@ -377,6 +377,15 @@ MUTATIONS = [
      "\"AND json_extract(body, '$.subject.kind') = 'archeus_call' \"",
      "\" \"")],
      [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
+    # ── P21 slice B review rework: the home is never in the accounts view (owner 2026-10-21) ──
+    ('Z143', 'the accounts view shows the home_ref path', [(RS,
+     "HOME_FIELDS = ('home_ref', 'home_key')",
+     "HOME_FIELDS = ('home_key',)")],
+     [PL + 'test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home']),
+    ('Z144', 'the accounts view shows the canonical home_key path', [(RS,
+     "HOME_FIELDS = ('home_ref', 'home_key')",
+     "HOME_FIELDS = ('home_ref',)")],
+     [PL + 'test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home']),
     # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
     ('Z30', 'a result is paired with whichever call came first', [(TR,
      "            call = calls.get(e.get('tool_use_id'))",

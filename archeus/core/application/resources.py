@@ -691,6 +691,8 @@ class Resources:
 
 # ── views ──────────────────────────────────────────────────────────────────
 
+#: the account fields that name a home on this machine: the accounts view leaves them out
+HOME_FIELDS = ('home_ref', 'home_key')
 #: the live-item fields an account's consumers carry (the clients name only these)
 CONSUMER_FIELDS = ('kind', 'id', 'purpose', 'mission_id', 'task_key', 'state', 'attempt',
                    'account_id')
@@ -710,7 +712,10 @@ def account_view(conn, row, work=None, now=None, counts=None):
     led = ledger_totals(conn, a.id, _iso(now)[:10], now, counts)
     if led['running']:
         led['complete'] = {'tokens': False, 'cost': False}
-    return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, a.id),
+    # an account's home is a path on this machine, so the accounts view never shows it
+    # (owner, 2026-10-21); the adapters and Core's own reads take it from the row
+    return dict({k: v for k, v in view(row).items() if k not in HOME_FIELDS},
+                resource_policy=view(p), usage=latest_usage(conn, a.id),
                 policy=effective_policy(p.entity), ledger=led,
                 consumers=[{k: w.get(k) for k in CONSUMER_FIELDS}
                            for w in work if w['account_id'] == a.id])

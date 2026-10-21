@@ -11,6 +11,7 @@ from archeus.api import schemas
 from archeus.cli.tui import present as P
 from archeus.core.application import calls as C, conversation as CV, live, resources
 from archeus.core.domain import entities
+from archeus.harnesses import base
 from archeus.harnesses.fake import FakeCaller
 from archeus.infra.db import rows
 
@@ -184,3 +185,27 @@ def test_s3_core_never_imports_the_tui_and_says_the_same_words():
     assert [p.name for p in core.rglob('*.py')
             if re.search(r'from \.+cli\b|archeus\.cli\b', p.read_text(encoding='utf-8'))] == []
     assert words.LABELS == _tables.LABELS
+
+
+def _strings(x):
+    if isinstance(x, dict):
+        for v in x.values():
+            yield from _strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _strings(v)
+    elif isinstance(x, str):
+        yield x
+
+
+def test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home(r, tmp_path):
+    """An account's home is a path on this machine: no form of it reaches the view."""
+    home = str(tmp_path / 'Work-Claude')
+    a = r.account('A', home_ref=home)
+    with r.db.read() as conn:
+        listed = resources.accounts(conn)
+        one = resources.account_view(conn, rows.get(conn, entities.Account, a))
+    shown = list(_strings([listed, one]))       # every string value, unescaped
+    for form in (home, str(tmp_path), base.canonical_home(home)):
+        assert not any(form in v for v in shown), form
+    assert all(k not in x for x in listed + [one] for k in resources.HOME_FIELDS)

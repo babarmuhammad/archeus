@@ -523,10 +523,10 @@ The review's verdict was CHANGES. What changed, finding by finding:
   to false while `running > 0`, and `consumption_text` / `consumptionText` say "tokens unknown
   (N running)" for a zero, "at least <figure>" for a figure. Test:
   `test_g12_work_in_flight_is_unknown_not_a_zero_and_accounts_lists_the_same`.
-- **Open for the owner (not changed here).** The router's token and cost budgets judge in-flight
-  usage as complete, the same G12 gap one layer down. Recommended: record it as an open item in
-  ADR-0048 §3 and fix it in the router under its own card, since a routing change is outside
-  P21 (ADR-0047 clause 12). Owner to choose.
+- **Open item, recorded (owner, 2026-10-21: "Record open item (Recommended)").** The router's
+  token and cost budgets judge in-flight usage as complete, the same G12 gap one layer down. It is
+  recorded in ADR-0048 §3 ("Open item"), with what the router does today and the risk. The router
+  is not changed in P21 (ADR-0047 clause 12); the fix goes under its own routing card.
 - **S1: the header counts attempts.** "N running" in the offline Now counts executions;
   own calls are "· N own calls in flight" (`liveCountText`, `present.test.ts`).
 - **S2: the TUI usage line** is the SPA's `usageText` in Python (`usage_text`): a window not
@@ -552,10 +552,13 @@ The review's verdict was CHANGES. What changed, finding by finding:
   call is only read at a time five seconds on.
 - **S7: consumers are summaries.** `consumers` carry `CONSUMER_FIELDS` (kind, id, purpose,
   mission_id, task_key, state, attempt, account_id), typed by a new `Consumer` schema.
-  **Open for the owner (not changed here):** `/v1/accounts` also carries `home_ref` (the account's
-  config directory), which the SPA shows under Details. It predates this slice. Recommended: keep
-  it only if the owner confirms the observe scope is meant to show it; otherwise drop it from the
-  view. Owner to choose.
+  `/v1/accounts` also carried `home_ref` (the account's config directory), shown under Details,
+  which predates this slice. Owner, 2026-10-21: "Drop from the view (Recommended)". The accounts
+  view now leaves out `home_ref` and `home_key`: `home_key` is the same path in canonical form
+  (ADR-0048 D-25.2), and a view that kept it would still show the home. The adapters and Core's
+  own reads take the home from the row, not from this view (`queries.get_account` is unchanged).
+  The SPA's Details row is gone; the TUI never showed it. Test:
+  `test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home`; mutants Z143-Z144.
 - **N1 (kept):** the one-day scan window stays; it follows no `max_run_s` yet, and today no own
   call has a bound longer than a day.
 - **N2:** the consumption row reads "Today (UTC)".
