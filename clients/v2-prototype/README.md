@@ -4,6 +4,28 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10 (partial, 2026-10-21): concept fixtures and neutral hulls
+
+Status: PARTIAL. The owner asked for an exact match to the six Codex v2 concepts, with at least four loop iterations per surface. This round did one loop on the desktop Overview and one on the phone Overview. Replay, terminal, Mission (03), Shared (06), phone-2 and phone-3 were not brought to the concept. Mention in the report, not as done.
+
+- Fixtures now follow the concepts: projects Archeus (Search provenance, Fix date test, Docs refresh), Notes (Offline capture, Export backup), Ideas (no missions, "Early concepts."). Harbor and Lantern are gone; their two Lantern missions are removed. Atlas is still created from chat.
+- Headline copy: "1 needs you · 1 verifying" with a middle dot.
+- Hulls are neutral ivory outlines with value-stepped facets and a receded inner outline; project colours are removed. Colour is only on missions: amber for the owner's obligation, blue for live work, grey for done and idle. Green is kept for verified records only.
+- Mission marks are small glyphs (amber diamond, blue star, grey diamond); the Codex execution is a triangle with the code glyph; Verification and Results are blue dots on the chain. The green check badges and the dashed circle around the amber mission are removed.
+- The star is many fine ivory threads (44), not six rays. The orbit rings are removed.
+- Desktop: the Overview positions follow the concept's layout (fixed outlines for Archeus, Notes and Ideas; fixed mission positions). The chat transcript is seeded with the concept's exchange and the Start card. The bar has an attach icon and a round send button. The rail has Now, Projects, Replay and a More group. The status line is grey; amber is used only for the obligation.
+- Phone: the Overview uses a compressed concept layout (Archeus outline, amber Search provenance, blue Fix date test with the Codex triangle, Notes and Ideas named). It is still far from phone-1: the amber inner hull and the blue sub-hull are not drawn yet, the receded hulls are at the wrong positions, the headline is one line, and the Places button is not yet a quiet icon.
+- Label budget: every mission is labelled on the overview (the budget only hides labels above 12 identities). The "+N more" note is no longer shown.
+
+Known differences (not fixed in this round, measured by eye on the desktop montage at 1600 x 900):
+- Constellation scale: the Archeus outline spans about 60 % of the stage width; the concept spans about 80 %.
+- Facet density: the concept has many thin facet lines; the prototype has five or six broad facets with value steps.
+- Star threads: the concept's star is denser and reads as a crisp knot; the prototype's is sparser.
+- Chat feed: the rows use the concept's text but without the left label column.
+- Replay, terminal, mission and shared views: not reworked to the concepts in round 10.
+
+Service worker cache bumped to `archeus-v2-proto-10`. `check.mjs` passes through the testlock (font floor 14 px, contrast pairs, references).
+
 ## What round 9 changed
 
 Owner answer, 2026-10-21 (verbatim): "Apply all five (Recommended)" on the five open questions of round 8. Applied: Replay verb labels hidden below 1600 px; terminal state colour; the decision as its own two-step screen on desktop and phone; the phone chat opens at the newest Start card; receded phone hulls keep their names only.
