@@ -4,6 +4,76 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10c Mission (03) and Shared (06), frames on the concept art (ms1, 2026-10-22)
+
+Owner rule for this round (V2 hybrid brief): 1:1 with the concept. Method as the desktop Overview (round 10e to 10g): the concept raster is the base art, with all live content removed; live text, marks, buttons and the phase stepper sit on it at measured positions. Desktop only. Phone-2 and phone-3 belong to another agent's surface and are not touched here.
+
+What changed
+- `art/mission-base.webp` (1244 x 829) and `art/shared-base.webp` (1382 x 922): the concepts `03-mission.webp` and `06-shared.webp` at their real size, with every text, glyph, node icon, status dot, button and stepper item removed (feathered masks, Telea inpaint for glyphs, plane fill for flat boxes). Built by `tools/art_r10c.py mission|shared`; a rebuild gives the same bytes.
+- The agent triangles (Claude, Codex), the Codex icosahedron (Mission), the star, the mesh, the links, the device tiles and the card panels are art, so their proportions are the concept's.
+- `layout-r10c.js` (window.R10C_LAYOUT): every live text item with box origin, font (serif Libre Caslon 500 or sans Source Sans 3 400), size, tracking and registration offsets dx, dy. Solved from the concept ink boxes by `tools/textfit_r10c.py`; registration by normalised cross-correlation against a render: `tools/textreg_r10c.py <render.png> --write`.
+- Mission: one frame of 1244 x 829 with the card inside it. The phase stepper is a connected line with check marks (`phases(m)` draws it into `#m-stepper`). The activity log and plan steps are fixture lists placed in the frame. The view always shows the Fix date test chain (the concept fixture); another mission id keeps that frame and says so in the footer strip.
+- Shared: one frame of 1382 x 922 with the rail, card and bottom bar. The rail labels are the concept's (Overview, Missions, Ideas, Projects, Control); the project list fills from the fixtures (Archeus, Notes, Ideas). The Overview, Content and Relations tabs switch the card body.
+- Both frames scale uniformly to the window (`fitFrame`, `--k`) and letterbox on the page background. The SIMULATED and CONCEPT FIXTURE disclosure is a footer strip under the frame (the approved exception); the concept's own CONCEPT FIXTURE text is removed from the art.
+- `index.html`: `s-mission` and `s-shared` replaced with frame markup; `data-f` ids match the layout. `style.css`: the old mission and shared split rules are removed and a frame block is appended. `sw.js`: cache `archeus-v2-proto-ms1`, with the art, the layout and the fonts in the shell.
+- Fonts: `fonts/` copied from the desktop worktree (same files and sha256 as the bake-off manifest).
+
+Fixture text (concept text replaced by the current fixtures where a label exists in both)
+- Mission: phase "Verify" (concept "Verifying"); node label "Codex ·" / "execution" (concept "CODEX" / "Execution"); "Test execution" / "outputs" (concept adds "and status"); "Test definitions" / "and inputs."; task "Run date suite on fix/date-test and collect the results."; log and latest-record lines with their full stops.
+- Shared: "Same records, device permissions apply." (concept uses a middle dot).
+
+Concept fixture text kept as live text (no fixture equivalent), each tagged CONCEPT FIXTURE in the footer strip
+1. Mission, phase line: "Check results, confirm behaviour, and close the fix."
+2. Mission, Verification sub-line second line: "and closes the fix."
+3. Shared, core sub-line: "Shared records".
+4. Shared, rail labels "Missions" and "Control" (Control has no route; it is dimmed and does not link).
+
+Added, not in the concept (fixtures): the Notes and Ideas rows under Archeus in the Shared rail.
+
+Similarity (mean absolute RGB difference, 0 to 255, full resolution, unblurred; % above 24 on the largest channel; frame at master size, reduced motion, fonts awaited)
+
+| Iteration | Mission full | Shared full |
+|---|---|---|
+| text boxes refilled flat; card and header clean | 4.90 / 5.27 % | 3.46 / 3.8 % |
+| agent triangles back in the art; tab and button offsets | 4.90 / 5.27 % | 3.36 / 3.7 % |
+| registration by cross-correlation, two passes (final) | 4.88 / 5.26 % | 3.27 / 3.67 % |
+
+The first placement was not scored in full. The Mission score barely moved in the last two iterations: its last changes were registration offsets, already within 1 px, and the card triangle fill.
+
+Regions, final (mean / % above 24)
+
+| Region | Mission | Shared |
+|---|---|---|
+| full frame | 4.88 / 5.26 % | 3.27 / 3.67 % |
+| art only (outside the mask: mesh, star, nodes, links) | 0.07 / 0.02 % | 0.17 / 0.16 % |
+| text boxes | 30.2 / 34.0 % | 25.4 / 31.5 % |
+| marks (hand-drawn glyphs, icons, stepper, dots) | 18.3 / 19.9 % | 27.1 / 23.3 % |
+| header and footer strip | 5.9 / 6.0 % | 3.0 / 2.9 % |
+| card | 8.7 / 9.5 % | 6.5 / 7.2 % |
+| rail (Shared) | n/a | 4.3 / 4.5 % |
+
+Registration: after two passes, cross-correlation offsets are within 1 px on every item whose match is above 0.45. The items below that match (Tell and Stop labels, the stepper labels, two-line sub-labels with changed fixture text) are not corrected.
+
+Overlap probe (Chromium, DOM label boxes, 2 px inset): zero overlaps and no horizontal scroll at 1280 x 720, 1440 x 900, 1920 x 1080 and 402 x 874, on both frames.
+
+Differences left (numbered; OWNER marks the decisions for the owner)
+1. Serif glyph shape: Libre Caslon 500 is heavier and wider than the concept's serif. Widths are solved; heights are 1 to 2 px short. No free face matched in the bake-off (round 10f). Text boxes carry most of the remaining error.
+2. Glyphs and icons are hand-drawn SVG approximations: the node glyphs (document, terminal, check hexagon, bars), the card triangle and tool icons, Tell and Stop icons, the nav and device icons, the key-value and evidence icons. The gear is a ring. Marks carry most of the Shared error.
+3. OWNER: the Mission view always shows the Fix date test chain. Other mission ids open the same frame with a note in the footer strip. A per-mission graph needs its own concept or a generated layout.
+4. OWNER: the Codex label reads "Codex ·" / "execution" (fixture) where the concept has spaced caps "CODEX" / "Execution".
+5. OWNER: below 881 px both frames scale down to the window (text under 6 px at 402 px wide). The phone layout for Mission and Shared is not rebuilt in this round (desktop scope).
+6. The art base is static: the link colours (blue for the running chain, amber for the owner obligation) and the selected rail band ("Projects") do not follow the data. The live text, marks and buttons do.
+7. Mission activity-log and plan-step marks (chevrons, red dot, check circles) are drawn for the Fix date test state only.
+8. The Shared rail adds Notes and Ideas rows (fixtures) that the concept does not show.
+9. The Shared card's Content and Relations tabs replace the key-value and evidence block with fixture lists. The concept shows only Overview.
+10. Shared state words (Planning, Verifying, Connected, Recent, Future contract) are sans. The concept may use serif for some; not checked closely.
+11. Tab text sits within about 2 px of the concept; Tell and Stop labels within about 3 px. Hit areas are the buttons, 44 px high; the visible outlines are the SVG shapes.
+12. Ink colours are not sampled from the concept; text uses palette tokens (ivory, text-2, amber, blue, green, slate). Contrast pairs are in check.mjs.
+
+Not verified: a real phone or device; screen reader and focus order beyond the DOM order; Dynamic Type; motion (none on these frames); the Overview scene and the phone sheets (other surfaces).
+
+Checks: `check.mjs` is updated for the frames (every frame text id has a layout entry; the frame font floor is 11 px; art and font assets exist; the service worker names). It passes directly with node. Through the testlock: see the final report.
+
 ## Round 10c mission, shared and phone sheets (partial, 2026-10-21)
 
 Status: PARTIAL. The loop ran fewer than the 15 iterations the brief asks for, on each surface. Mission (03) reached about 8 measured loops, Shared (06) 5, phone-2 and phone-3 4 each. Phone and desktop Overview scenes, Replay and Terminal were not touched.

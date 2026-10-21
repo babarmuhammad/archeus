@@ -116,15 +116,39 @@ check(/Places/.test(html) && /data-act="menu"/.test(html), 'phone Places menu mi
 check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
 
 
-check(/phase-bar/.test(html) && /ph-dot/.test(js) && /split-mission/.test(css), 'mission stepper or split missing');
-check(/data-m-phase/.test(html) && /mission-card/.test(html) && /m-bottom/.test(html), 'mission card missing');
+check(/id="m-phases"/.test(html) && /id="m-stepper"/.test(html) && /phases\(m\)/.test(js), 'mission stepper missing');
+check(/data-f="p_name"/.test(html) && /class="mission-card"/.test(html) && /id="m-log"/.test(html), 'mission card missing');
 check(/class="btn decision"/.test(js) && /Core consequence/.test(js) && /sheet-back/.test(js), 'phone decision sheet must show What, Why, Core consequence and Open decision');
 check(/What does exit code 137 mean\?/.test(js) && /usually out of memory \(128 \+ signal 9\)\./.test(js), 'phone chat exchange missing');
 check(/Promote to project memory<\/span>/.test(js), 'promote control text changed');
-check(/shared-head/.test(html) && /shared-card/.test(html) && /SHARED_FRAME/.test(js) && /drawShape/.test(js), 'shared frame or card missing');
-check(/Linked projects<\/dt><dd>0</.test(js), 'shared fixture: linked projects must read 0 (concept 06)');
+check(/id="sh-frame"/.test(html) && /class="shared-card"/.test(html) && /sh-projects/.test(js) && /drawShape/.test(js), 'shared frame or card missing');
+check(/data-f="k_linked">Linked projects<\/p>/.test(html) && /data-f="v_linked">0<\/p>/.test(html), 'shared fixture: linked projects must read 0 (concept 06)');
 check(/Approving starts 3 tasks on feat\/search\./.test(js), 'phone decision Core consequence fixture not shortened');
 check(/\.msg-card \.btn\[data-card="start"\]\s*\{[^}]*background:\s*var\(--amber\)/.test(css), 'Start must be amber filled');
+
+// Round 10c frames (Mission 03, Shared 06): base art, solved text layout, one frame each at the concept size.
+const layoutSrc = read('layout-r10c.js');
+let layout = {};
+try { layout = JSON.parse(layoutSrc.slice(layoutSrc.indexOf('{'), layoutSrc.lastIndexOf('}') + 1)); } catch (e) { failures.push(`layout-r10c.js does not parse: ${e.message}`); }
+check(html.indexOf('layout-r10c.js') > -1 && html.indexOf('layout-r10c.js') < html.indexOf('app.js'), 'layout-r10c.js must load before app.js');
+check(/<section class="screen frame-screen" id="s-mission"/.test(html) && /data-frame="mission"/.test(html), 'mission frame missing');
+check(/<section class="screen frame-screen" id="s-shared"/.test(html) && /data-frame="shared"/.test(html), 'shared frame missing');
+check(/src="art\/mission-base\.webp" width="1244" height="829"/.test(html), 'mission art must be the concept size 1244 x 829');
+check(/src="art\/shared-base\.webp" width="1382" height="922"/.test(html), 'shared art must be the concept size 1382 x 922');
+for (const f of ['art/mission-base.webp', 'art/shared-base.webp', 'fonts/LibreCaslonText-wght.ttf', 'fonts/SourceSans3-wght.ttf', 'layout-r10c.js']) check(existsSync(join(dir, f)), `missing frame asset: ${f}`);
+check(/Libre Caslon V2/.test(css) && /Source Sans V2/.test(css), 'frame fonts not declared in style.css');
+for (const [frame, sec] of [['mission', 'm-frame'], ['shared', 'sh-frame']]) {
+  const from = html.indexOf(`id="${sec}"`);
+  const to = frame === 'mission' ? html.indexOf('<section class="screen frame-screen" id="s-shared"') : html.indexOf('id="s-phone"');
+  const ids = [...new Set([...html.slice(from, to).matchAll(/data-f="(\w+)"/g)].map((m) => m[1]))];
+  const table = layout[frame] || {};
+  for (const id of ids) check(table[id], `${frame} frame text ${id} has no layout entry`);
+  const sizes2 = Object.values(table).map((v) => v.s);
+  check(sizes2.length > 0 && Math.min(...sizes2) >= 11, `${frame} frame text below the 11 px floor: ${Math.min(...sizes2)}`);
+  for (const [id, v] of Object.entries(table)) check(Number.isFinite(v.x) && Number.isFinite(v.y), `${frame} ${id} has no position`);
+}
+check(/fitFrame/.test(js) && /--k/.test(css), 'frames do not scale to the window');
+check(/archeus-v2-proto-ms1/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-ms1 and cache the frame assets');
 
 if (failures.length) {
   console.error('FAIL');

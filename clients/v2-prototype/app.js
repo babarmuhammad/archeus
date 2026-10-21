@@ -521,105 +521,6 @@
     return sc;
   }
 
-  // Mission frame, measured from the Codex 03 concept: the scene box is 800 x 829 px of that frame, with the card on
-  // its right. Positions are [x, y, r] in frame pixels; label anchors are the top-left of each label in the same frame.
-  var MISSION_FRAME = {
-    w: 800, h: 829,
-    core: [441, 92], coreLbl: [441, 136],
-    exec: [113, 313, 44], execLbl: [30, 392],
-    mission: [432, 362, 90], missionLbl: [374, 470],
-    verif: [718, 330, 80], verifLbl: [684, 418],
-    suite: [288, 640, 58], suiteLbl: [226, 706],
-    results: [573, 630, 58], resultsLbl: [528, 696]
-  };
-  var RECORD_SLOT = { suite: 'suite', results: 'results', verify: 'verif' };
-
-  function frameMap(w, h, F) {
-    var s = Math.min(w / F.w, h / F.h), ox = (w - F.w * s) / 2, oy = (h - F.h * s) / 2;
-    return { s: s, at: function (p) { return { x: ox + p[0] * s, y: oy + p[1] * s }; } };
-  }
-
-  function missionFrame(m, w, h) {
-    var F = MISSION_FRAME, map = frameMap(w, h, F), s = map.s, p = projectOf(m.project);
-    var at = function (k) { return map.at(F[k]); };
-    var sc = mk(w, h, at('core'), s, false);
-    sc.coreDy = 44;
-    var mis = nodeFor(m, at('mission').x, at('mission').y, F.mission[2] * s, 'core', false, {
-      labelAt: map.at(F.missionLbl), labelSub: 'Project: ' + p.name + '\nBranch: ' + m.branch
-    });
-    sc.nodes.push(mis);
-    sc.parent[m.id] = 'core';
-    sc.links.push({ a: 'core', b: m.id, col: IVORY, live: true, kind: 'mission', hue: IVORY, verb: 'orchestrates', verbAt: map.at([396, 184]), arrow: true });
-    if (m.exec) {
-      var ex = execFor(m, at('exec').x, at('exec').y, F.exec[2] * s, 0);
-      ex.mark = true;
-      ex.labelAt = map.at(F.execLbl);
-      ex.labelSub = 'Runs checks, collects evidence, reports results.';
-      sc.nodes.push(ex);
-      sc.parent[ex.id] = m.id;
-      sc.links.push({ a: 'core', b: ex.id, col: IVORY, live: false, kind: 'star', hue: IVORY, faint: true });
-      sc.links.push({ a: m.id, b: ex.id, col: IVORY, live: ex.live, kind: 'exec', hue: IVORY, verb: 'executes', verbAt: map.at([275, 328]), arrow: true });
-    }
-    var fromKey = {};
-    m.related.forEach(function (r, i) {
-      var slot = RECORD_SLOT[r.key] || ['suite', 'results', 'verif'][i % 3], id = m.id + '-' + r.key, from = r.from && r.key !== 'verify' ? m.id + '-' + r.from : m.id;
-      var n = { id: id, kind: 'record', state: 'idle', x: at(slot).x, y: at(slot).y, r: F[slot][2] * s, glyph: r.glyph, live: false, title: r.title, kicker: 'Record', sub: r.sub, st: '', parent: from, hit: false, solid: ICO, seed: 0.5 + i * 0.17, labelAt: map.at(F[slot + 'Lbl']) };
-      sc.nodes.push(n);
-      sc.parent[id] = from;
-      fromKey[r.key] = id;
-      var col = r.key === 'results' ? '#6FB1FF' : IVORY;
-      var va = { suite: [318, 523], results: [466, 552], verify: [580, 341] }[r.key];
-      sc.links.push({ a: from, b: id, col: col, live: false, kind: 'record', hue: IVORY, verb: r.key === 'verify' ? 'results in' : r.verb, verbAt: va && map.at(va), arrow: true });
-    });
-    if (fromKey.verify && fromKey.results) {
-      sc.links.push({ a: fromKey.results, b: fromKey.verify, col: IVORY, live: false, kind: 'record', hue: IVORY, verb: 'verifies', verbAt: map.at([661, 519]), arrow: true });
-      sc.links.push({ a: 'core', b: fromKey.verify, col: IVORY, live: false, kind: 'star', hue: IVORY, faint: true });
-    }
-    return sc;
-  }
-
-  // Shared frame, measured from the Codex 06 concept: the scene box is 800 x 922 px of that frame (x from the rail edge).
-  // Agents are [x, y, r] (triangle), devices [x, y, w, h] (boxes); label anchors are top-left in the same frame.
-  var SHARED_FRAME = {
-    w: 800, h: 922,
-    core: [395, 370], claude: [143, 212, 44], codex: [644, 212, 44],
-    desktop: [150, 597, 90, 80], phone: [396, 602, 84, 72], other: [642, 597, 90, 81],
-    claudeLbl: [102, 256], codexLbl: [610, 256], desktopLbl: [102, 652], phoneLbl: [353, 652], otherLbl: [593, 652],
-    poly: [[395, 38], [642, 122], [766, 243], [766, 467], [646, 757], [395, 777], [142, 757], [22, 610], [22, 467], [22, 243], [148, 122]]
-  };
-
-  function sharedScene(w, h) {
-    var F = SHARED_FRAME, map = frameMap(w, h, F), s = map.s;
-    var at = function (p) { return map.at(p); };
-    var sc = mk(w, h, at(F.core), s, false);
-    sc.coreDy = 78;
-    sc.poly = F.poly.map(at);
-    var agents = [
-      { id: 'claude', k: 'claude', state: 'waiting', title: 'Claude', sub: 'Search provenance', labelSub: 'Planning\nSearch provenance', glyph: 'list', lbl: 'claudeLbl' },
-      { id: 'codex', k: 'codex', state: 'running', title: 'Codex', sub: 'Fix date test', labelSub: 'Verifying\nFix date test', glyph: 'term', lbl: 'codexLbl' }
-    ];
-    agents.forEach(function (a) {
-      var q = at(F[a.k]);
-      sc.nodes.push({ id: a.id, kind: 'agent', state: a.state, x: q.x, y: q.y, r: F[a.k][2] * s, tri: true, glyph: a.glyph, title: a.title, kicker: 'Agent', sub: a.sub, st: STATE[a.state].word, labelSub: a.labelSub, labelAt: at(F[a.lbl]), live: true, hit: false, parent: 'core' });
-      sc.parent[a.id] = 'core';
-      sc.links.push({ a: 'core', b: a.id, col: IVORY, live: true, kind: 'agent', hue: IVORY });
-    });
-    var devices = [
-      { id: 'desktop', state: 'connected', title: 'This desktop', sub: 'Connected', glyph: 'monitor', lbl: 'desktopLbl' },
-      { id: 'phone', state: 'recent', title: 'Paired phone', sub: 'Recent', glyph: 'phone', lbl: 'phoneLbl' },
-      { id: 'other', state: 'future', title: 'Other people', sub: 'Future contract\nNot yet available', glyph: '', lbl: 'otherLbl', dash: true }
-    ];
-    devices.forEach(function (d) {
-      var f = F[d.id], q = at(f);
-      sc.nodes.push({ id: d.id, kind: 'device', state: d.state, x: q.x, y: q.y, r: 0, box: true, bw: f[2] * s, bh: f[3] * s, dash: !!d.dash, glyph: d.glyph, title: d.title, kicker: 'Device', sub: d.sub, st: '', labelSub: d.sub, labelAt: at(F[d.lbl]), live: false, hit: false, parent: 'core' });
-      sc.parent[d.id] = 'core';
-      sc.links.push({ a: 'core', b: d.id, col: IVORY, live: false, kind: 'device', hue: IVORY, faint: true });
-    });
-    sc.links.push({ a: 'desktop', b: 'phone', col: IVORY, live: false, kind: 'device', hue: IVORY, faint: true });
-    sc.links.push({ a: 'phone', b: 'other', col: IVORY, live: false, kind: 'device', hue: IVORY, faint: true });
-    return sc;
-  }
-
   // Phone composition from the measured table: the Archeus outline, the amber Search provenance hull inside it
   // (its Review action inside the hull), the blue Fix date test hull with the Codex triangle, the star between,
   // and two receded named hulls. Sub-hulls are unnamed outlines; the missions carry the labels.
@@ -1364,6 +1265,13 @@
 
   /* ---------- Stages and screens ---------- */
 
+  // A frame screen (Mission, Shared) is its concept size, scaled uniformly to the window and letterboxed.
+  function fitFrame() {
+    var mission = document.body.classList.contains('frame-mission'), shared = document.body.classList.contains('frame-shared');
+    if (!mission && !shared) return;
+    var w = mission ? 1244 : 1382, h = (mission ? 829 : 922) + 26;
+    document.documentElement.style.setProperty('--k', Math.min(window.innerWidth / w, window.innerHeight / h).toFixed(4));
+  }
   var nowStage = makeStage($('#now-stage'), {
     onPick: function (id, kind) {
       if (isNarrow()) { if (kind === 'mission') openDetail(id); else openList(); return; }
@@ -1371,10 +1279,6 @@
       else location.hash = '#/mission/' + id;
     }
   });
-  var missionStage = makeStage($('#mission-stage'), {
-    onPick: function (id, kind) { if (kind === 'project') location.hash = '#/now/' + id; }
-  });
-  var sharedStage = makeStage($('#shared-stage'));
   var replayStage = makeStage($('#replay-stage'));
   var phoneStage = makeStage($('#phone-stage'), {
     onPick: function (id) { openSheet(id); }
@@ -1396,6 +1300,9 @@
       var n = missions.filter(function (m) { return m.project === p.id; }).length;
       return '<li><a href="#/now/' + p.id + '" data-proj="' + p.id + '" style="--hue:' + p.hue + '">' +
         '<span class="pdot" aria-hidden="true"></span>' + esc(p.name) + '<span class="cnt">' + n + '</span></a></li>';
+    }).join('');
+    $('#sh-projects').innerHTML = projects.map(function (p) {
+      return '<li><a href="#/now/' + p.id + '"' + (p.id === 'archeus' ? ' aria-current="page"' : '') + '>' + esc(p.name) + '</a></li>';
     }).join('');
     $$('#rail-projects a').forEach(function (a) {
       var id = a.getAttribute('data-proj');
@@ -1423,51 +1330,96 @@
     else if (pid && projectOf(pid)) zoomTo(pid);
   }
 
+  // Round 10c frames (Mission 03, Shared 06): the concept raster is the base art; the text sits at the solved layout
+  // (layout-r10c.js), and marks and the phase stepper are drawn on top. One frame each, desktop only.
+  var R10C = window.R10C_LAYOUT || {};
+  function placeFrame(root, layout) {
+    $$('[data-f]', root).forEach(function (el) {
+      var L = layout[el.getAttribute('data-f')];
+      if (!L) return;
+      el.classList.add(L.f === 'sans' ? 'sans' : 'serif');
+      el.style.left = (L.x + (L.dx || 0)) + 'px';
+      el.style.top = (L.y + (L.dy || 0)) + 'px';
+      el.style.fontSize = L.s + 'px';
+      el.style.letterSpacing = L.t + 'px';
+    });
+  }
+  function fset(id, text) { var el = $('#m-frame [data-f="' + id + '"]'); if (el) el.textContent = text; }
+
+  // The mission frame is the concept's Fix date test chain, so the view always shows that mission.
   function renderMission(id) {
-    var m = find(id) || find(missionShown);
+    var m = find('m-date'), sec = $('#s-mission'), p = projectOf(m.project);
     missionShown = m.id;
-    var sec = $('#s-mission'), p = projectOf(m.project);
-    $('[data-m-project]', sec).textContent = p.name;
-    $('[data-m-project2]', sec).textContent = p.name;
-    $('[data-m-crumb]', sec).textContent = m.title;
-    $('[data-m-title]', sec).textContent = m.title;
-    $('[data-m-branch]', sec).textContent = m.branch;
+    $('#m-note').textContent = id && id !== 'm-date' ? 'The mission frame shows Fix date test, the concept fixture.' : '';
     $('#m-replay').href = '#/replay/' + m.id;
-    var st = $('[data-m-state]', sec);
+    fset('crumb_ar', p.name);
+    fset('crumb_fx', m.title);
+    $('#m-frame [data-m-title]').textContent = m.title;
+    fset('mis_title', m.title);
+    fset('mis_proj', 'Project: ' + p.name);
+    fset('mis_branch', 'Branch: ' + m.branch);
+    fset('f_proj_v', p.name);
+    fset('f_branch_v', m.branch);
+    var st = $('#m-frame [data-f="f_status_v"]');
     st.textContent = m.state === 'running' ? 'In progress' : stateLine(m);
-    st.className = 'state-line st-' + m.state;
-    missionStage.setScene(function (w, h) { return missionFrame(m, w, h); });
-    $('#m-phases').innerHTML = phaseBar(m);
+    st.style.color = STATE[m.state].color;
+    phases(m);
     renderMissionPanel();
   }
 
-  // Six phases on one connected line: green check when done, blue dot when current, amber when waiting for you.
-  function phaseBar(m) {
-    return PHASES.map(function (name, i) {
+  // Six phases: a label each (the stepper line and marks are drawn in #m-stepper).
+  function phases(m) {
+    var ol = $('#m-phases');
+    ol.innerHTML = PHASES.map(function (name, i) {
       var cls = '';
       if (m.phase === 6 || i < m.phase) cls = 'done';
       else if (i === m.phase) cls = m.state === 'waiting' ? 'wait' : 'current';
       var word = cls === 'done' ? 'done' : cls === 'wait' ? 'waiting for you' : cls === 'current' ? 'current' : 'not reached';
-      var mark = cls === 'done' ? '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.6 8.4 6.6 11.2 12.4 5"/></svg>' : '';
-      return '<li class="' + cls + '"><span class="ph-dot">' + mark + '</span><span class="ph-name">' + name + '</span><span class="sr-only">, ' + word + '</span></li>';
+      return '<li class="' + cls + '" data-f="ph_' + (i + 1) + '">' + name + '<span class="sr-only">, ' + word + '</span></li>';
     }).join('');
+    placeFrame(ol, R10C.mission);
+    var xs = [837, 911.5, 981, 1050.5, 1119.5, 1195], y = 231.5, ph = m.phase === 6 ? 6 : m.phase, out = '';
+    for (var i = 0; i < 5; i++) {
+      var seg = i + 1 <= ph ? STATE.connected.color : i === ph ? STATE.running.color : STATE.done.color;
+      out += '<line x1="' + xs[i] + '" y1="' + y + '" x2="' + xs[i + 1] + '" y2="' + y + '" stroke="' + seg + '" stroke-width="1.6" opacity="' + (i + 1 <= ph ? 0.7 : 0.35) + '"/>';
+    }
+    xs.forEach(function (x, i) {
+      if (i < ph) {
+        out += '<circle cx="' + x + '" cy="' + y + '" r="8" fill="' + STATE.connected.color + '"/>' +
+          '<path d="M' + (x - 3.6) + ' ' + y + ' L' + (x - 1) + ' ' + (y + 2.6) + ' L' + (x + 3.8) + ' ' + (y - 3) + '" fill="none" stroke="#0E131C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+      } else if (i === ph && ph < 6) {
+        var col = m.state === 'waiting' ? STATE.waiting.color : STATE.running.color;
+        out += '<circle cx="' + x + '" cy="' + y + '" r="9" fill="none" stroke="' + col + '" stroke-width="2"/>' +
+          '<circle cx="' + x + '" cy="' + y + '" r="4.5" fill="' + col + '"/>';
+      } else {
+        out += '<circle cx="' + x + '" cy="' + y + '" r="7.5" fill="none" stroke="' + STATE.done.color + '" stroke-width="1.4"/>';
+      }
+    });
+    $('#m-stepper').innerHTML = out;
   }
 
   function renderMissionPanel() {
     var m = find(missionShown), sec = $('#s-mission'), p = plans[m.id];
-    $('[data-m-phase]', sec).textContent = m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase];
-    $('[data-m-what]', sec).textContent = m.what;
-    $('[data-m-agent]', sec).textContent = m.exec ? 'Codex · execution' : 'No agent recorded';
-    $('[data-m-agent-sub]', sec).textContent = m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.';
-    $('[data-m-task]', sec).textContent = m.taskName || m.task;
-    $('[data-m-task-sub]', sec).textContent = m.taskName ? m.task : '';
-    $('[data-m-latest]', sec).textContent = m.latest;
-    $('[data-m-latest-sub]', sec).textContent = m.latestSub || '';
-    $('#m-log', sec).innerHTML = m.log.map(function (l) { return '<li' + (/Not passed/.test(l) ? ' class="bad"' : '') + '>' + esc(l) + '</li>'; }).join('');
+    fset('p_name', m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase]);
+    fset('a_name', m.exec ? 'Codex · execution' : 'No agent recorded');
+    fset('a_sub', m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.');
+    fset('t_name', m.taskName || m.task);
+    var parts = m.taskName ? m.task.split(' and ') : [];
+    fset('t_s1', parts[0] || '');
+    fset('t_s2', parts[1] ? 'and ' + parts[1] : '');
+    fset('r_name', m.latest);
+    fset('r_sub', m.latestSub || '');
+    var log = $('#m-log');
+    log.innerHTML = m.log.map(function (l, i) {
+      return '<li' + (/Not passed/.test(l) ? ' class="bad"' : '') + ' data-f="l_' + (i + 1) + '">' + esc(l) + '</li>';
+    }).join('');
+    placeFrame(log, R10C.mission);
     var steps = m.steps || (p ? p.tasks.map(function (t) { return [t.text, '']; }) : []);
-    $('#m-steps', sec).innerHTML = steps.length
-      ? steps.map(function (s) { return '<li class="' + s[1] + '">' + esc(s[0]) + '</li>'; }).join('')
-      : '<li>No plan recorded for this mission.</li>';
+    var stepsEl = $('#m-steps');
+    stepsEl.innerHTML = steps.map(function (s, i) {
+      return '<li class="' + s[1] + '" data-f="s_' + (i + 1) + '">' + esc(s[0]) + '</li>';
+    }).join('');
+    placeFrame(stepsEl, R10C.mission);
     var plan = $('#m-plan', sec);
     plan.hidden = !p;
     plan.href = '#/plan/' + m.id;
@@ -1507,23 +1459,21 @@
   }
 
   function renderShared() {
-    sharedStage.setScene(sharedScene);
     renderSharedPanel();
   }
 
   function renderSharedPanel() {
     $$('[data-stab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-stab') === sharedTab)); });
     var box = $('#s-panel');
+    $('#sh-kv').classList.toggle('off', sharedTab !== 'overview');
+    box.hidden = sharedTab === 'overview';
     if (sharedTab === 'content') {
       box.innerHTML = '<ul class="rowlist"><li><span>Project files</span><span>12 items</span></li><li><span>Notes</span><span>34 items</span></li><li><span>Agent logs</span><span>28 items</span></li><li><span>Build outputs</span><span>18 items</span></li><li><span>Related content</span><span>156 items</span></li></ul><p class="small">Fixture counts. The same records, device permissions apply.</p>';
     } else if (sharedTab === 'relations') {
       box.innerHTML = '<ul class="rowlist">' + projects.map(function (p) {
         var n = missions.filter(function (m) { return m.project === p.id; }).length;
-        return '<li><span><span class="pdot" style="--hue:' + p.hue + '"></span>' + esc(p.name) + '</span><span>orchestrated, ' + n + ' missions</span></li>';
+        return '<li><span>' + esc(p.name) + '</span><span>orchestrated, ' + n + ' missions</span></li>';
       }).join('') + '</ul><p class="small">Relations are fixture text. Core supplies the real ones.</p>';
-    } else {
-      box.innerHTML = '<dl class="kv"><dt>Type</dt><dd>Core system</dd><dt>Status</dt><dd>Verified</dd><dt>Updated</dt><dd>Today, 10:24</dd><dt>Items</dt><dd>248</dd><dt>Agents</dt><dd>2 active</dd><dt>Linked projects</dt><dd>0</dd></dl>' +
-        '<p class="kicker ev-head">Evidence</p><ul class="rowlist ev-rows"><li><span>Project files</span><span>12 items</span></li><li><span>Notes</span><span>34 items</span></li><li><span>Agent logs</span><span>28 items</span></li><li><span>Build outputs</span><span>18 items</span></li><li><span>Related content</span><span>156 items</span></li></ul><p class="small">Same records, device permissions apply.</p>';
     }
   }
 
@@ -2351,6 +2301,9 @@
     var parts = (location.hash || '#/now').replace(/^#\/?/, '').split('/');
     var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
     document.body.classList.remove('menu-open');
+    document.body.classList.toggle('frame-mission', name === 'mission');
+    document.body.classList.toggle('frame-shared', name === 'shared');
+    fitFrame();
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });
     $$('.places a').forEach(function (a) {
@@ -2363,16 +2316,19 @@
   }
 
   renderRail();
+  placeFrame($('#m-frame'), R10C.mission);
+  placeFrame($('#sh-frame'), R10C.shared);
 
   window.addEventListener('resize', function () {
-    [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); });
+    fitFrame();
+    [nowStage, phoneStage].forEach(function (s) { s.relayout(); });
   });
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.kick(); });
+    if (!document.hidden) [nowStage, phoneStage].forEach(function (s) { s.kick(); });
   });
   if (reduce.addEventListener) {
     reduce.addEventListener('change', function () {
-      [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); s.kick(); });
+      [nowStage, phoneStage].forEach(function (s) { s.relayout(); s.kick(); });
     });
   }
 

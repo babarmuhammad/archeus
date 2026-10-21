@@ -1,3 +1,5 @@
+@font-face { font-family: "Libre Caslon V2"; src: url("fonts/LibreCaslonText-wght.ttf") format("truetype"); font-weight: 400 700; font-display: block; }
+@font-face { font-family: "Source Sans V2"; src: url("fonts/SourceSans3-wght.ttf") format("truetype"); font-weight: 200 900; font-display: block; }
 /* Tokens: one block for colour, type and space. Every colour pair is checked in check.mjs. */
 :root {
   color-scheme: dark;
@@ -192,10 +194,6 @@ main { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width:
   display: flex; flex-direction: column; gap: var(--s3); min-width: 0;
 }
 .ins-title { font: 400 40px/46px var(--serif); color: var(--text); margin: var(--s1) 0 0; }
-.facts { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--s3); }
-.facts dt { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.facts dd { font: 400 16px/24px var(--sans); margin-top: 2px; }
-.facts dd.state-line { color: var(--blue); }
 
 .tabs { display: flex; gap: var(--s2); margin-top: var(--s2); border-bottom: 1px solid var(--line); }
 .tabs button {
@@ -212,22 +210,6 @@ main { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width:
 .tabpanel .item:last-child { border-bottom: 0; }
 .tabpanel .item svg { width: 24px; height: 24px; fill: none; stroke: var(--text-2); stroke-width: 1.4; }
 .tabpanel .item .sub { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.log li { font: 400 14px/20px var(--sans); padding: var(--s2) 0; border-bottom: 1px solid var(--line); color: var(--text-2); }
-.log li.bad { color: #F4A4A8; }
-
-/* Phase bar: a horizontal stepper with a word and a shape per phase. */
-.phase-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4) var(--s1); margin-top: var(--s3); }
-.phase-bar li { position: relative; text-align: center; font: 400 14px/20px var(--sans); color: var(--text-2); padding-top: var(--s6); }
-.phase-bar li::before {
-  content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
-  width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--text-3); background: var(--bg); box-sizing: border-box;
-}
-.phase-bar li.done::before { background: var(--green); border-color: var(--green); }
-.phase-bar li.current::before { background: var(--blue); border-color: var(--blue); box-shadow: 0 0 0 4px rgba(111, 177, 255, 0.2); }
-.phase-bar li.done { color: var(--text); }
-.phase-bar li.current { color: var(--text); }
-.phase-bar li.wait::before { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 0 4px rgba(242, 181, 68, 0.2); }
-.phase-bar li.wait { color: var(--amber); }
 
 .state-line { font: 400 16px/24px var(--sans); }
 .st-waiting { color: var(--amber); }
@@ -302,8 +284,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   .inspector { border-left: 0; padding: var(--s4) 0 0; }
   .stage { margin: 0 calc(var(--s2) * -1); min-height: 440px; }
   .stage-now { min-height: 460px; }
-  .facts { grid-template-columns: 1fr 1fr; }
-  .phase-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: var(--s2); }
   .proto { margin-right: auto; }
   .top { flex-wrap: nowrap; justify-content: flex-end; gap: var(--s2); }
   .core-status { display: none; }
@@ -769,89 +749,6 @@ p.small, .small { line-height: 20px; }
   .stage-now .lbl.exec .t { font-size: 15px; line-height: 20px; }
 }
 
-/* Round 10c mission (Codex 03): scene on the left, a 433 px card on the right, the crumb on the scene's top-left.
-   The split takes the page padding so the scene box is the concept's 800 px. */
-.split-mission { grid-template-columns: minmax(0, 1fr) 433px; gap: 0; margin: -72px -32px 0 -40px; pointer-events: none; }
-.split-mission .stage-mission { pointer-events: none; }
-.split-mission .inspector, .split-mission .stage-mission a { pointer-events: auto; }
-.stage-mission { margin: 0; min-height: 520px; }
-.stage-mission .crumb { position: absolute; left: var(--s6); top: 72px; z-index: 2; margin: 0; }
-.stage-mission .lbl .t { font-family: var(--serif); font-weight: 400; font-size: 26px; line-height: 30px; letter-spacing: 0; }
-.stage-mission .lbl.record .t, .stage-mission .lbl.exec .t { font-size: 20px; line-height: 24px; }
-.stage-mission .lbl .s { white-space: pre-line; color: var(--text-2); font-size: 14px; line-height: 20px; }
-.stage-mission .lbl.exec .s { max-width: 230px; white-space: normal; }
-.stage-mission .lbl.record .s { max-width: 230px; white-space: normal; }
-.inspector.mission-card {
-  margin: 72px 8px 8px 0; padding: var(--s3) var(--s6) var(--s4); gap: 0;
-  border: 1px solid var(--line-2); border-radius: 14px; background: rgba(14, 19, 28, 0.86); overflow: hidden;
-}
-.mission-card h1 { font: 400 40px/46px var(--serif); margin: 0; color: var(--text); }
-.mission-card .kicker { font-size: 14px; line-height: 20px; }
-.mission-card .facts { margin-top: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
-.mission-card .facts dt { font-size: 14px; line-height: 20px; }
-.mission-card .facts dd { font-size: 16px; line-height: 22px; }
-.phase-bar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: var(--s2) 0; padding: 0; position: relative; }
-.phase-bar li { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--s1); font: 400 14px/20px var(--sans); color: var(--text-2); }
-.phase-bar li::after {
-  content: ""; position: absolute; top: 11px; left: 50%; width: 100%; height: 2px; background: var(--line-2);
-}
-.phase-bar li:last-child::after { display: none; }
-.phase-bar li.done::after { background: var(--green); }
-.phase-bar .ph-dot {
-  position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; box-sizing: border-box;
-  border: 1.5px solid var(--text-3); background: var(--surface); display: inline-flex; align-items: center; justify-content: center;
-}
-.phase-bar .ph-dot svg { width: 14px; height: 14px; fill: none; stroke: #070A10; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.phase-bar li.done { color: var(--text); }
-.phase-bar li.done .ph-dot { background: var(--green); border-color: var(--green); }
-.phase-bar li.current { color: var(--text); }
-.phase-bar li.current .ph-dot { background: var(--blue); border-color: var(--blue); box-shadow: 0 0 0 4px rgba(111, 177, 255, 0.2); }
-.phase-bar li.wait { color: var(--amber); }
-.phase-bar li.wait .ph-dot { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 0 4px rgba(242, 181, 68, 0.2); }
-.m-sec { padding: 6px 0; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
-.m-sec .kicker { font-size: 14px; line-height: 20px; }
-.m-phase { font: 400 26px/32px var(--serif); color: var(--text); }
-.m-sec .small { font-size: 16px; line-height: 22px; color: var(--text-2); }
-.m-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--s3); align-items: start; }
-.m-row > svg { width: 24px; height: 24px; margin-top: 12px; fill: none; stroke: var(--text-2); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
-.m-strong { font: 400 17px/22px var(--sans); color: var(--text); }
-.m-bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--s4); padding-top: var(--s2); }
-.mission-card .log li { font-size: 14px; line-height: 18px; padding: 0; border-bottom: 0; color: var(--text-2); }
-.mission-card .log li::before { content: "›"; display: inline-block; width: 16px; color: var(--text-2); }
-.mission-card .log li.bad { color: var(--text); }
-.mission-card .log li.bad::before { content: "×"; color: #F4A4A8; }
-.steps { display: flex; flex-direction: column; gap: 0; font: 400 14px/18px var(--sans); color: var(--text-2); }
-.steps li { position: relative; padding-left: 22px; }
-.m-links { position: absolute; right: var(--s4); top: var(--s4); z-index: 2; display: flex; gap: var(--s2); margin: 0; }
-.steps li::before { content: ""; position: absolute; left: 2px; top: 5px; width: 10px; height: 10px; border-radius: 50%; border: 1.2px solid var(--text-3); box-sizing: border-box; }
-.steps li.done { color: var(--text); }
-.steps li.done::before { background: var(--green); border-color: var(--green); }
-.steps li.current { color: var(--blue); }
-.steps li.current::before { background: var(--blue); border-color: var(--blue); }
-.mission-card .row .btn { min-height: 48px; font-size: 14px; padding: 0 var(--s4); }
-
-/* Round 10c shared (Codex 06): the frame is the concept's 1382 x 922 with the rail; the card is 326 px on the right.
-   The headline sits at the top-left of the scene, as the concept's wordmark does. */
-#s-shared { position: relative; }
-#s-shared > .shared-head { position: absolute; left: -18px; top: var(--s6); z-index: 3; margin: 0; pointer-events: none; }
-.shared-head h1 { font: 400 40px/46px var(--serif); letter-spacing: 0.14em; text-transform: uppercase; margin: 0; }
-.shared-head h1 span { font: 400 16px/20px var(--sans); letter-spacing: 0.04em; color: var(--text-2); vertical-align: top; }
-.shared-head .lede { font: 400 16px/22px var(--serif); color: var(--text-2); margin-top: var(--s2); max-width: 200px; }
-.split-shared { grid-template-columns: minmax(0, 1fr) 326px; gap: 0; margin: -72px -24px 0 -40px; pointer-events: none; }
-.split-shared .stage-shared { pointer-events: none; margin: 0; min-height: 520px; }
-.split-shared .inspector { pointer-events: auto; }
-.inspector.shared-card {
-  margin: 80px 0 8px 0; padding: var(--s3) var(--s4) var(--s4); gap: var(--s1);
-  border: 1px solid var(--line-2); border-radius: 14px; background: rgba(14, 19, 28, 0.86); overflow: hidden;
-}
-.shared-card .ins-title { font-size: 40px; line-height: 46px; margin: 0; }
-.shared-card .small { font-size: 14px; line-height: 20px; }
-.stage-shared .lbl .k { display: none; }
-.stage-shared .lbl .s { white-space: pre-line; font-size: 14px; line-height: 20px; }
-.stage-shared .lbl .t { font-family: var(--sans); font-weight: 500; font-size: 18px; line-height: 24px; }
-.stage-shared .lbl.agent .t { font-family: var(--serif); font-weight: 400; font-size: 24px; line-height: 28px; }
-.stage-shared .lbl.device .t { font-size: 18px; }
-
 /* Round 10c phone sheets (phone-2 decision, phone-3 chat). */
 .now-sheet { max-height: 48%; gap: var(--s2); padding: var(--s2) var(--s4) var(--s4); }
 .now-sheet .sheet-back { min-height: 44px; padding: 0; background: none; border: 0; color: var(--text-2); font: 400 17px/24px var(--sans); text-align: left; cursor: pointer; }
@@ -899,41 +796,126 @@ p.small, .small { line-height: 20px; }
 /* Round 10c phone forms of mission and shared: the scene on top, the card below, one column, no desktop margins. */
 .now-sheet h2 { font: 600 26px/32px var(--sans); }
 @media (max-width: 880px) {
-  .split-mission, .split-shared { display: flex; flex-direction: column; grid-template-columns: none; margin: 0; flex: none; pointer-events: auto; }
-  .split-mission .stage-mission, .split-shared .stage-shared { flex: none; height: 400px; min-height: 0; margin: 0 calc(var(--s4) * -1); pointer-events: none; }
-  .stage-mission .crumb { position: absolute; left: var(--s4); top: var(--s2); }
-  .m-links { position: absolute; right: var(--s4); top: var(--s2); }
-  #s-shared > .shared-head { position: static; margin: var(--s2) 0 0; pointer-events: auto; }
-  .shared-head h1 { font-size: 28px; line-height: 34px; }
-  .inspector.mission-card, .inspector.shared-card { margin: var(--s4) 0 0; border-radius: 14px; padding: var(--s3) var(--s4) var(--s4); }
-  .mission-card h1 { font-size: 32px; line-height: 38px; }
-  .m-bottom { grid-template-columns: minmax(0, 1fr); gap: var(--s2); }
-  .mission-card .row { flex-wrap: wrap; }
-  .mission-card .row .btn { flex: 1 1 140px; }
-  .split-shared .inspector { pointer-events: auto; }
 }
 
 /* Round 10c phone scene labels: smaller serif titles so the labels stay inside 360 to 440 px. */
 @media (max-width: 880px) {
-  .stage-mission .lbl .t { font-size: 20px; line-height: 24px; }
-  .stage-mission .lbl.record .t, .stage-mission .lbl.exec .t { font-size: 16px; line-height: 20px; }
-  .stage-mission .lbl .s { font-size: 14px; line-height: 18px; }
-  .stage-mission .lbl.record .s, .stage-mission .lbl.exec .s { max-width: 150px; }
-  .m-links { top: auto; bottom: var(--s2); right: var(--s2); }
-  .stage-shared .lbl .t { font-size: 16px; line-height: 20px; }
-  .stage-shared .lbl.agent .t { font-size: 20px; line-height: 24px; }
 }
 
 /* Round 10c: the replay and plan links sit in the mission card; the phone shared scene gets more height and smaller device labels. */
-.m-links { position: static; display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0 0; }
-.mission-card .m-links .btn { min-height: 48px; font-size: 14px; padding: 0 var(--s4); }
 @media (max-width: 880px) {
-  .m-links { position: static; }
-  .stage-mission .crumb { top: var(--s2); }
-  .split-shared .stage-shared { height: 480px; }
-  .stage-shared .lbl.device .t { font-size: 15px; line-height: 20px; }
-  .stage-shared .lbl.device .s { font-size: 14px; line-height: 18px; }
 }
 
 /* Round 10c phone mission: record sub-lines are dropped so the record labels do not collide at 360 to 440 px. */
-@media (max-width: 880px) { .stage-mission .lbl.record .s { display: none; } }
+
+/* Round 10c Mission (03) and Shared (06), desktop: the concept raster is the base art (art/*-base.webp, built by
+   tools/art_r10c.py). Live text sits at the solved positions (layout-r10c.js, tools/textfit_r10c.py); marks, the
+   phase stepper and the buttons are live SVG or CSS on top. The whole frame scales uniformly to the window
+   (--k, set by fitFrame in app.js), and the footer strip under it carries the SIMULATED disclosure. */
+body.frame-mission, body.frame-shared { overflow: hidden; background: #060409; }
+body.frame-mission { --fr-w: 1244px; --fr-h: 829px; }
+body.frame-shared { --fr-w: 1382px; --fr-h: 922px; }
+body.frame-mission .shell, body.frame-shared .shell {
+  position: absolute; left: 50%; top: 50%; width: var(--fr-w); height: calc(var(--fr-h) + 26px);
+  margin: calc((var(--fr-h) + 26px) / -2) 0 0 calc(var(--fr-w) / -2); transform: scale(var(--k, 1)); transform-origin: 50% 50%; display: block;
+}
+body.frame-mission .rail, body.frame-shared .rail { display: none; }
+body.frame-mission .page, body.frame-shared .page { position: absolute; left: 0; top: 0; width: var(--fr-w); height: var(--fr-h); }
+body.frame-mission .top, body.frame-shared .top { display: none; }
+body.frame-mission .say, body.frame-shared .say {
+  position: absolute; left: 620px; top: calc(var(--fr-h) + 4px); width: 600px; margin: 0; padding: 0; text-align: right;
+  font: 400 14px/18px "Source Sans V2", var(--sans); color: var(--text-2);
+}
+body.frame-mission main, body.frame-shared main { position: absolute; left: 0; top: 0; width: var(--fr-w); height: var(--fr-h); }
+body.frame-mission .frame-screen, body.frame-shared .frame-screen { position: absolute; left: 0; top: 0; width: var(--fr-w); height: calc(var(--fr-h) + 26px); }
+.frame { position: absolute; left: 0; top: 0; width: var(--fr-w); height: var(--fr-h); overflow: hidden; background: #0A0C12; }
+.fr-art, .fr-marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.fr-marks { overflow: visible; }
+.frame-screen .fr-foot {
+  position: absolute; left: 0; top: var(--fr-h); width: var(--fr-w); height: 26px; margin: 0; padding: 4px 0 0; box-sizing: border-box;
+  display: flex; justify-content: space-between; align-items: flex-start; font: 400 14px/18px "Source Sans V2", var(--sans); color: var(--text-3);
+}
+.frame-screen .fr-foot .m-links { display: flex; gap: var(--s2); }
+.frame-screen .fr-foot .btn { min-height: 0; height: 22px; padding: 0 var(--s2); font: 400 14px/20px "Source Sans V2", var(--sans); }
+.frame .f { position: absolute; margin: 0; white-space: nowrap; line-height: 1; color: var(--text); font-weight: 400; text-transform: none; }
+.frame .f.serif { font-family: "Libre Caslon V2", var(--serif); font-weight: 500; }
+.frame .f.sans { font-family: "Source Sans V2", var(--sans); font-weight: 400; }
+.frame .f.dim { color: var(--text-2); }
+.frame .f.amb { color: var(--amber); }
+.frame .f.blu { color: var(--blue); }
+.frame .f.grn { color: var(--green); }
+.frame .f.sl { color: var(--slate); }
+.frame .f.red { color: #E5585E; }
+.frame .f.status { color: var(--green); }
+.frame .f.status .dot { display: none; }
+.frame .fr-crumb { position: absolute; left: 0; top: 0; margin: 0; }
+.frame .fr-crumb a { color: var(--text-2); text-decoration: none; }
+.frame .fr-crumb a::before { content: ""; position: absolute; left: -14px; top: -14px; right: -14px; bottom: -14px; }
+.frame .fr-crumb a:hover { color: var(--text); }
+.fr-marks .ln { fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.fr-marks .ln.dash { stroke-dasharray: 4 3; }
+.fr-marks .blu { fill: none; stroke: var(--blue); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.fr-marks .dark { fill: none; stroke: #0E131C; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.fr-marks .sl-ring { fill: none; stroke: var(--slate); stroke-width: 1.6; }
+.fr-marks circle.blu { fill: var(--blue); stroke: none; }
+.fr-marks circle.grn { fill: var(--green); stroke: none; }
+.fr-marks circle.amb { fill: var(--amber); stroke: none; }
+.fr-marks circle.sl { fill: var(--slate); stroke: none; }
+.fr-marks circle.red { fill: #E5585E; stroke: none; }
+.fr-marks .red-fill { fill: #F3D7D9; stroke: none; }
+.fr-marks .amb-fill { fill: var(--amber); }
+.fr-marks .blu-fill { fill: var(--blue); }
+.fr-marks .pill { fill: none; stroke: rgba(239, 233, 218, 0.2); stroke-width: 1; }
+.fr-marks .btn-edge { fill: none; stroke: rgba(239, 233, 218, 0.22); stroke-width: 1; }
+.fr-marks .tab-on { fill: rgba(239, 233, 218, 0.05); stroke: rgba(242, 181, 68, 0.5); stroke-width: 1; }
+.fr-marks rect.red-edge { fill: none; stroke: #E5585E; stroke-width: 1; }
+.frame .fr-btns { position: absolute; left: 0; top: 0; margin: 0; }
+.frame .fr-btns .btn { position: absolute; top: 0; margin: 0; min-height: 0; border: 0; background: transparent; color: var(--text); font: 400 16px/20px "Source Sans V2", var(--sans); text-align: left; padding: 0; border-radius: 7px; box-sizing: border-box; }
+.frame .fr-btns .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.frame .fr-btns .stop-btn { color: var(--text); }
+body.frame-mission .fr-btns .tell { left: 1046px; top: 10px; width: 88px; height: 44px; padding: 0 0 0 44px; line-height: 44px; }
+body.frame-mission .fr-btns .stop-btn { left: 1139px; top: 10px; width: 90px; height: 44px; padding: 0 0 0 41px; line-height: 44px; }
+body.frame-shared .fr-btns .tell { left: 1091px; top: 840px; width: 121px; height: 44px; padding: 0 0 0 65px; line-height: 44px; }
+body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; height: 44px; padding: 0 0 0 66px; line-height: 44px; }
+
+/* Mission card: the phase labels; the stepper line and its marks are drawn in #m-stepper. */
+.frame .phases { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
+.frame .phases li { position: absolute; margin: 0; white-space: nowrap; line-height: 1; font: 500 16px/1 "Libre Caslon V2", var(--serif); color: var(--text-2); }
+.frame .phases li.done { color: var(--text); }
+.frame .phases li.current { color: var(--blue); }
+.frame .phases li.wait { color: var(--amber); }
+.frame .fr-log, .frame .fr-steps { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
+.frame .fr-log li, .frame .fr-steps li { position: absolute; margin: 0; white-space: nowrap; line-height: 1; font: 500 16px/1 "Libre Caslon V2", var(--serif); color: var(--text-2); }
+.frame .fr-log li.bad { color: var(--text); }
+.frame .fr-steps li.done { color: var(--text); }
+.frame .fr-steps li.current { color: var(--blue); }
+.frame .fr-log li:empty, .frame .fr-steps li:empty { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Shared rail, project list, card and tabs. */
+.frame .sh-nav { position: absolute; left: 0; top: 0; margin: 0; }
+.frame .sh-nav a, .frame .sh-nav .nav-off { color: var(--text); font-family: "Libre Caslon V2", var(--serif); font-weight: 500; text-decoration: none; }
+.frame .sh-nav a::before { content: ""; position: absolute; left: -16px; top: -14px; right: -16px; bottom: -14px; }
+.frame .sh-nav .nav-off { color: var(--text-2); }
+.frame .sh-nav a:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.frame .sh-projects { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
+.frame .sh-projects li { position: absolute; left: 0; }
+.frame .sh-projects li:nth-child(1) { top: 458px; }
+.frame .sh-projects li:nth-child(2) { top: 502px; }
+.frame .sh-projects li:nth-child(3) { top: 546px; }
+.frame .sh-projects a { position: absolute; left: 74px; top: 0; white-space: nowrap; color: var(--text); font: 500 15px/20px "Libre Caslon V2", var(--serif); text-decoration: none; }
+.frame .sh-projects a::before { content: ""; position: absolute; left: -36px; top: -12px; right: -40px; bottom: -12px; }
+.frame .sh-projects a:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+.frame .tabs { position: absolute; left: 1056px; top: 178px; width: 290px; height: 48px; display: flex; }
+.frame .tabs button { height: 48px; padding: 0 0 12px 8px; margin: 0; border: 0; background: transparent; color: var(--text-2); font: 500 15px/20px "Libre Caslon V2", var(--serif); cursor: pointer; }
+.frame .tabs button[aria-selected="true"] { color: var(--text); }
+.frame .tabs button:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
+.frame .tabs button:nth-child(1) { width: 99px; }
+.frame .tabs button:nth-child(2) { width: 104px; }
+.frame .tabs button:nth-child(3) { width: 90px; }
+.frame .kv.off .f { display: none; }
+.frame .tabpanel { position: absolute; left: 1066px; top: 240px; width: 276px; margin: 0; }
+.frame .tabpanel[hidden] { display: none; }
+.frame .tabpanel .rowlist { list-style: none; margin: 0; padding: 0; }
+.frame .tabpanel .rowlist li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 15px/20px "Libre Caslon V2", var(--serif); color: var(--text); }
+.frame .tabpanel .small { font: 400 14px/20px "Source Sans V2", var(--sans); color: var(--text-2); margin: 12px 0 0; }
