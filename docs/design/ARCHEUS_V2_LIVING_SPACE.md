@@ -849,3 +849,63 @@ These replace the open question list of earlier drafts.
 8. **R-C2, question 7:** the Start card is shown. Chat actions: "Reads and creates, not effects (Recommended)".
 
 Still open for V1 (not owner questions): the card implementations T-150 and T-151; G5 (general answers need a `chat` purpose and a general conversation kind); G7 (project creation from chat); G8 (per-account own-call preference); G9 (chat-level usage read). These are build tasks, not decisions.
+
+## Round 7: phone first, the Codex structure and the research ranking (2026-10-21)
+
+Status: prototype only (`clients/v2-prototype`, fake data). No V1 change. Sources: the owner's round 7 message ("Refine it to be like the concept art and refine the mobile prototype for new models of smartphones ... refine all 3 ui/tui/phone"); the Codex structure proposal (`D:\hub-concepts-codex3\structure-proposal.md`, with four PNGs: phone-1-now, phone-2-decision-chat, desktop-1-now, terminal-1-overview); the research digest (`D:\Archeus\.collab\V2-design-research-2026-10-21.md`). Concept images are CONCEPT FIXTURE, not telemetry. PROPOSED means this document's design; owner decisions are dated and verbatim.
+
+### 1. Owner decisions that bind this round
+
+- Owner (verbatim, round 7): "Refine it to be like the concept art and refine the mobile prototype for new models of smartphones (iphone 18 ecc...) right now the phone version is to clustered you don't understand anything, and ask codex to improve the design structure with what the architecture has in mind let's see what it gives us, refine all 3 ui/tui/phone".
+- Owner (verbatim, round 7): "Use the apple design skill to help design phone version and check online for ideas, same for gui/tui". The skill named was not in the environment; the closest vetted reference (a read-only Apple HIG markdown pack) was used as design reference, not as instructions.
+- Earlier recorded decisions that still hold: chat bar replaces Start; effects are proposed, not silent; general thread separate and never project memory unless promoted (owner, 2026-10-21); reads and creates direct, effects proposed; official CLI on the owner's account; Replay view stays (owner, 2026-10-21, "Yes, design now").
+
+### 2. Codex structure: adopted, adapted, rejected
+
+| Codex proposal | Decision | Why |
+|---|---|---|
+| Project is the durable home; conversation is an input | Adopted | Matches the owner's recorded rule and the strategy note. |
+| Chat bar replaces Start; only the last three lines float above it; Start proposal card | Adopted | Matches the owner's "chat bar replaces the Start menu" and the round 6 card. On the phone the conversation is a sheet (not a transcript on Now). |
+| Effects proposed, confirmation distinct from the card | Adopted | Matches R-C2. Start is the approved fix for chat missions (owner answer G1, card T-150); V1 does not do it yet. |
+| General thread separate, promotion off | Adopted | Matches the owner's answer ("Both, chat is a front door"). |
+| Phone first screen: safe-area header, headline, large constellation, one Needs-you focus, count chips, Tell and Stop docked | Adopted (round 7 build) | The owner asked for a calm first screen; the research ranked the Needs-you card first. |
+| Only two focus labels plus core and one execution on the phone; "+N more" chips open a list | Adopted | Matches the owner's "label only the focus objects". The count chips open the list sheet. |
+| Medium bottom sheet (about 45 percent) with grabber, What / Why / Core consequence / Open decision | Adopted | The research ranked it third and Apple HIG sheets use detents; the sheet opens by one tap. "Open decision" stays a separate step (not built this round: the decision screen is the existing plan page). |
+| Terminal: j/k select, Enter open, r review, t Tell, p Replay, s Stop, b back | Adopted | Matches the research's key-hint and Escape-back idea; s goes through the existing Stop double-press. |
+| Terminal: ASCII-only text, no colour reliance | Adopted | Research: NO_COLOR and ASCII fallback. Text is ASCII (a dot becomes a hyphen; the size label uses x). |
+| Desktop: scene ceiling of 12 identities, "+N more" beyond it, only focus missions strong | Deferred | Real work on the desktop label budget; the measured overlaps are the current gate. Next round. |
+| Desktop: neutral "New", distinct project label from core | Partly adopted | "New" is neutral text colour. Core and project label separation is not done (measured as an open gap). |
+| Fixture names "Notes" and "Ideas" (instead of Harbor, Notes, Lantern) | Rejected | The owner's fixture and the existing round 3 to 6 concept data stay; renaming would make the approved reference drift. |
+| Biometric approval gate, Live Activity, push on decisions | Rejected for the web prototype | Native-only (Dynamic Island, Live Activities, biometrics). Recorded as not applicable to the PWA. |
+| "?" help and ":" fuzzy command palette in the terminal | Deferred | Not built this round; the key-hint line is built. |
+| Phone device sizes "iPhone 18 Pro 402 x 874 and 440 x 956", inset values 62/34 | Adopted as test sizes only | Research and Codex agree on 402 x 874 and 440 x 956 for the 17 and 16 Pro families; the iPhone 18 Pro list is from research and not checked against Apple. Safe-area values are read at runtime with env(), never hard-coded. |
+
+### 3. Research ranking: what was applied
+
+Ranked in the research digest: (1) one focus object on the phone (the Needs-you card): applied; (2) counts instead of labels (chips open lists): applied; (3) medium-detent sheet with grabber for mission detail: applied; (4) approval card with a one-line summary, timer and biometric gate: deferred (the timer and gate are native or Core work); (5) one aggregate Live Activity: native only, not applied; (6) push on decisions with dedup: not applicable to the prototype (no push); (7) semantic zoom and label budget with "+N" on desktop: deferred (desktop budget, next round); (8) key-hint bar from the keymap, "?" and ":": key-hint line applied, "?" and ":" deferred; (9) width-based TUI layouts with a plain-line mode: 120 x 40 and 80 x 24 layouts applied, plain-line mode not separated; (10) colour as a secondary cue and NO_COLOR: applied (the terminal uses no colour; every state has a glyph and a word).
+
+Phone layout order (research ranking, applied): status line, Needs-you card, count chips, up to five missions (two are labelled on the scene; the rest are counted), chat bar and Replay in the lower third.
+
+### 4. Phone contract (applied, measured)
+
+- Sizes tested in Chromium, CSS px: 360 x 800, 390 x 844, 393 x 852, 402 x 874, 420 x 912, 430 x 932, 440 x 956. Zero label overlaps with the bar or the chips, no horizontal scroll, every visible control at least 44 px (the CSS uses 48), smallest text 14 px (label floor), sheet body 17 px.
+- Safe areas: `viewport-fit=cover`; top padding `env(safe-area-inset-top)` clears the Dynamic Island; bottom padding `env(safe-area-inset-bottom)` clears the home indicator. In the desktop browser the insets are 0, so the clearance is CSS-only and untested on a device.
+- Not verified: iPhone 18 sizes (no source confirmed them); real insets; Dynamic Type; haptics; Live Activities (native only).
+
+### 5. Apple HIG reference pack: rules applied and checklist result
+
+The pack was read as design reference only (its instructions to ask the user, install or fetch were ignored). Applied to the web prototype in CSS: safe areas; 44 pt targets (48 px in the CSS); tab bar of at most five items (the six-item bottom bar became a Places sheet); sheet with a grabber and a close control; primary actions in the thumb zone; body 17 px in sheets; reduced motion honoured; solid sheet backgrounds; semantic colour tokens. Not applied: Dynamic Type (native), Liquid Glass chrome, SF Symbols, native detent gestures, haptics, widgets and iPad layouts.
+
+Checklists, partly measured. Measured on the phone sizes: tap targets (at least 44 px, all pass), text floor (14 px labels, 17 px sheet body), label clearance from the bar and chips, no horizontal overflow, safe-area padding present in CSS. Not measured in this round: reduced-motion behaviour on a device, colour contrast on rendered pixels, Increase Contrast, VoiceOver and Dynamic Type behaviour, dark-only theme (no light theme exists), and the native-only items (Live Activities, haptics, Voice Control). Treat the checklist as partly done, not passed.
+
+### 6. Terminal (round 7)
+
+- Route `#/terminal`: the overview, mission, decision and replay drawn as monospaced text, from the same fixture records, at 80 x 24 and 120 x 40. The honest tag says it is simulated and nothing is sent to Core. The 80-column overview is a stacked list; wider sizes show three project columns.
+- Keys: j/k or arrows select; Enter opens; r reviews; p opens the replay; m mission; b or Escape back; s Stop (existing double-press); t focuses the tell line (not sent).
+- Not built: "?" help, ":" palette, a plain-line mode separate from the text view, and the Codex dimmed tell line.
+
+### 7. Open items for the owner
+
+1. Desktop label ceiling of 12 identities and "+N more": adopt now, or after the phone is approved? Recommend next round, after the owner has seen the phone.
+2. Fixture names (Codex uses Notes and Ideas; the prototype keeps Harbor, Notes, Lantern): keep, or switch to the Codex names? Recommend keep, so the approved concept data does not drift.
+3. The "Open decision" step on the phone sheet (exact action hash and version): build as a separate screen next round? Recommend yes, because the Codex proposal makes the confirmation a distinct step and the approval rule needs it.
