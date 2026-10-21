@@ -40,8 +40,8 @@ MARK_BOXES = [
     (354, 392, 384, 422),    # Docs refresh diamond
     (1018, 162, 1050, 194),  # Offline capture diamond
     (1022, 210, 1060, 250),  # Export backup sparkle
-    (808, 322, 848, 366),    # Fix date test star
-    (862, 408, 880, 426),    # Codex apex dot
+    (798, 312, 862, 378),    # Fix date test star and its halo (round 10e)
+    (850, 398, 892, 438),    # Codex apex dot and halo (round 10e)
     (800, 480, 820, 500),    # Verification dot
     (918, 480, 938, 500),    # Results dot
     (850, 432, 890, 462),    # code glyph
@@ -103,6 +103,26 @@ def plane_fill(im, out, box, pad, feather):
     return out * (1 - soft[..., None]) + fit * soft[..., None]
 
 
+# (cx, cy, r) in master px: the Fix date test star, the Codex apex and the Verification and Results dots.
+DISCS = [(826, 344, 19), (871, 416, 13), (806, 488, 11), (925, 488, 11)]
+
+
+def disc_fill(im, out, cx, cy, r):
+    H, W = im.shape[:2]
+    ys, xs = np.mgrid[0:H, 0:W]
+    d = np.hypot(xs - cx, ys - cy)
+    ring = (d > r + 4) & (d < r + 22)
+    u = (xs - 648) / 648.0
+    v = (ys - 364) / 364.0
+    A = np.stack([np.ones_like(u), u, v, u * u, u * v, v * v], axis=-1)
+    fit = np.zeros((H, W, 3), np.float32)
+    for c in range(3):
+        coef, *_ = np.linalg.lstsq(A[ring], im[:, :, c][ring].astype(np.float64), rcond=None)
+        fit[:, :, c] = (A @ coef).astype(np.float32)
+    m = np.clip((r + 0.5 - d) / 1.5, 0, 1).astype(np.float32)
+    return out * (1 - m[..., None]) + fit * m[..., None]
+
+
 def main():
     im = cv2.imread(CONCEPT)
     assert im.shape[:2] == (729, 1296), im.shape
@@ -119,6 +139,10 @@ def main():
     out = clean.astype(np.float32)
     for bx0, by0, bx1, by1, pad, feather in FLAT_BOXES:
         out = plane_fill(im, out, (bx0, by0, bx1, by1), pad, feather)
+    # Discs round the live marks: the concept's glow spreads past any box, so these are refilled from a ring of
+    # neighbouring pixels (the live SVG mark covers the centre). Link segments outside the discs are kept.
+    for cx, cy, r in DISCS:
+        out = disc_fill(im, out, cx, cy, r)
     out = np.clip(out, 0, 255).astype(np.uint8)
 
     cv2.imwrite(f"{OUT}/mask.png", grow)

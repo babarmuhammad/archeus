@@ -4,6 +4,47 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10e desktop Overview (2026-10-22): hybrid, residuals listed
+
+Owner rules applied: the concept's own sizes win on the desktop frame; frame text is at least 11 px (Apple HIG 11 pt), other views keep 14 px; tappable controls keep 44 pt hit areas without changing the visible shapes. Hybrid method unchanged: art (`art/desktop-now-base.webp`, built by `tools/art_desktop.py`) under live DOM text, live SVG marks and live SVG links.
+
+What changed:
+- Marks are live SVG shapes (`buildDeskMarks`, `updateDeskMarks`): amber diamond with glow (Search provenance), grey diamonds (Docs refresh, Offline capture), blue four-point star (Fix date test), ivory sparkle (Export backup, only its New word amber), the Codex triangle with its `</>` glyph and apex dot, blue Verification and Results dots. Colours come from the node state through `STATE`. The canvas no longer draws marks on the Now frame.
+- Live links redrawn: Fix date test to the Codex apex, and the two Codex sides, because the art's copies are cleared under the marks. Their colour is the blue of the running state.
+- Text sizes solved from the concept raster by `tools/textfit_desktop.py` (ink width and cap height, PIL). Registration of each text item against the concept (render ink box minus concept ink box) by `tools/textreg_desktop.py`; offsets are in `style.css` under "Round 10e registration".
+- Chat: bubbles 276 x 34 and 335 x 34 at the concept's positions, filled #1E1927, label column 56 px, card 518 x 42 with hairline border, Start 87 x 30, Keep as mission 130 x 30, composer 690 x 44 with the paperclip and a 26 px round send button.
+- Review button 99 x 31 at 354, 329 (measured on the master). Header: status 11 px, Tell and Stop 88 x 29 and 90 x 29 with the speech bubble and red square icons.
+- Art: the masks round the star and the Codex apex are refilled from a ring (discs), so no blue halo is left under the marks except a faint tint between the star and the apex (residual 4).
+- Service worker cache `archeus-v2-proto-d1` (distinct from the phone branch).
+
+Measured (`metrics.py`, full resolution, unblurred, mean abs RGB 0 to 255 and % above 24; 1296 x 755 viewport, reduced motion, fonts awaited):
+
+| region | round 10d | round 10e |
+|---|---|---|
+| art only (outside live boxes) | 0.85 / 0.70 % | 0.42 / 0.35 % |
+| text boxes | 34.1 / 27.0 % | 29.7 / 24.4 % |
+| live marks | 21.6 / 22.1 % | 19.4 / 19.4 % |
+| header | 17.7 / 15.9 % | 13.8 / 14.0 % |
+| rail | 6.2 / 3.5 % | 5.6 / 3.1 % |
+| chat and composer | 13.4 / 8.3 % | 8.5 / 6.6 % |
+| full frame | 6.85 / 4.9 % | 5.26 / 4.2 % |
+
+Per-element register (render ink box minus concept ink box, master px): status dx -1, dy +1; NOW dx -2; headline dx 0, dy +2 before the offset; lede dx -4; ARCHEUS dx -3; Search provenance dx -5; Docs refresh dx -4; Fix date test dx -3, dy +9 before the offset; Verification and Results dy +12 before the offset; chat rows dx +3 before the padding fix; widths within 2 to 5 px where the solver could match them (see the table in tools/textfit_desktop.py output).
+
+Residuals (each with a reason; crops in scratchpad d10d, `top_residual_blocks_r.png`):
+1. Headline and serif titles (top 10 error blocks, all on the headline row y 72 and the Search provenance row): the concept's serif has a larger x-height and heavier stroke than EB Garamond 400. Weight 500 was tested and is worse (headline box 47.6 against 42.0), so the stroke is not a weight problem. Glyph match needs a different face or a glyph-level fit, which was not done.
+2. Sub-lines at the 11 px minimum: Captured, New, Early concepts. are 1 to 6 % wider than the concept (the concept's sub-lines are smaller than the rule allows; the rule wins).
+3. Marks: the Codex apex and the blue glow read a little larger than the concept's glow; the Fix date test star has a 1 px lower-left offset.
+4. Faint blue halo between the Fix date test star and the Codex apex, under the live link (the art's glow, outside the refilled discs).
+5. Export backup label ink was not found by the register probe (the sparkle and label sit on the mesh); visual check only.
+6. Tell and Stop labels: the concept's text sits 2 to 4 px left of ours; the 88 x 29 and 90 x 29 boxes match.
+7. Chat card text ("Start and plan Export backup?") is 1 to 3 px shifted and 0.5 % wider; the Keep as mission box matches to 1 px.
+8. The Notes sub-line (two lines) is 11.5 px and reads a little wider than the concept.
+
+Not verified in this round: the flicker itself (only the two lossless PNG frames and the 50 % alpha overlay were written: `alt_A_concept.png`, `alt_B_render.png`, `alpha_overlay_50.png`, in scratchpad d10d); the phone; motion (none, by brief); reduced motion beyond the render's `reduced_motion` context; `?nocolor` on the Now frame (the flag only affects the terminal colour; not changed here).
+
+Checks: `check.mjs` (frame text min 11 px, other views 14 px) passes when run directly with node. The run through `testlock.py` was queued behind the two shared slots and was still waiting when this section was written. Overlap probe (label boxes, Chromium): zero overlaps at 1280 x 720, 1440 x 900, 1600 x 900 and 1920 x 1080. Clipping probe (scroll overflow of live text): no visible clipping; the flagged items are line-height overflow on the headline and labels, and the screen-reader label. Accessible names and tab order: checked with Chromium (all buttons and links named; the tab order runs Overview links, labels, Start, Keep as mission, composer, Send).
+
 ## Round 10d desktop Overview (2026-10-22): hybrid, PARTIAL
 
 Method changed by the owner: the scene picture is the concept raster itself; everything live sits on top. The vector trace is tooling only (`tools/trace_desktop.py`, not shipped).

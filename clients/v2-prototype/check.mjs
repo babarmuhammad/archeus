@@ -83,8 +83,15 @@ check(/reduce\.matches/.test(js), 'animation does not read prefers-reduced-motio
 check(!/https?:\/\//.test(css) && !/@import/.test(css), 'style.css loads an external resource');
 check(/--serif/.test(css) && /--sans/.test(css), 'type pairing missing');
 
-const sizes = [...css.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
-check(sizes.length > 0 && Math.min(...sizes) >= 14, `font size below 14px: ${Math.min(...sizes)}`);
+// Round 10e: the Now frame (body.frame-now rules) keeps the concept's sizes, minimum 11 px (owner rule); every other
+// view keeps the 14 px minimum.
+const fontSizes = (text) => [...text.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
+const frameRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => /frame-now/.test(m[1]));
+const otherCss = css.replace(/([^{}]+)\{([^{}]*)\}/g, (m, sel) => (/frame-now/.test(sel) ? '' : m));
+const frameSizes = fontSizes(frameRules.map((m) => m[0]).join('\n'));
+const otherSizes = fontSizes(otherCss);
+check(otherSizes.length > 0 && Math.min(...otherSizes) >= 14, `font size below 14px outside the Now frame: ${Math.min(...otherSizes)}`);
+check(frameSizes.length > 0 && Math.min(...frameSizes) >= 11, `font size below 11px on the Now frame: ${Math.min(...frameSizes)}`);
 check(/\.btn\s*\{[^}]*min-height:\s*48px/.test(css), '.btn is not 48px tall');
 check(/prefers-reduced-motion:\s*reduce/.test(css), 'no reduced-motion rule');
 check(/prefers-reduced-transparency:\s*no-preference/.test(css), 'no translucency gate');
@@ -131,4 +138,4 @@ if (failures.length) {
   for (const f of failures) console.error(' - ' + f);
   process.exit(1);
 }
-console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...sizes)}px`);
+console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...otherSizes)}px outside the Now frame, ${Math.min(...frameSizes)}px on it`);

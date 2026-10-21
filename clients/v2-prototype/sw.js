@@ -1,4 +1,4 @@
-const CACHE = 'archeus-v2-proto-13';
+const CACHE = 'archeus-v2-proto-d1';
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './art/desktop-now-base.webp', './fonts/EBGaramond-wght.ttf', './fonts/Inter-wght-opsz.ttf'];
 
 self.addEventListener('install', (event) => {

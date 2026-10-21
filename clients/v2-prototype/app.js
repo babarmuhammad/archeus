@@ -849,6 +849,7 @@
       if (!S.scene || !S.w || !S.cam) return;
       var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, s = cam.s;
       var anim = reduce.matches ? 0 : t;
+      if (sc.desk) updateDeskMarks(sc);
       g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
       g.clearRect(0, 0, w, h);
 
@@ -998,6 +999,7 @@
         if (gn < 1) R *= 0.35 + 0.65 * gn;
         var col = STATE[n.state] ? STATE[n.state].color : IVORY;
         if (n.mark) {
+          if (!sc.desk) { // Now frame: the mark is an SVG shape (buildDeskMarks), not a canvas glyph
           g.save(); g.globalAlpha = gn;
           if (n.kind === 'exec' && sc.desk) drawDeskExec(g, q, pos.verif, pos.results, lit);
           else if (n.kind === 'exec') drawTriangle(g, q.x, q.y, Math.max(12, R * 1.4), lit);
@@ -1006,6 +1008,7 @@
           else if (n.kind === 'mission') drawMark(g, q.x, q.y, n.state, Math.max(5, R), lit);
           else drawSolid(g, n.solid, q.x, q.y, Math.max(9, R), { y: n.seed * TAU, x: 0.42 }, IVORY, { alpha: 0.75 * gn, wash: false, glyph: n.glyph, dotR: 1.6, lw: 0.9 });
           g.restore();
+          }
         } else {
           var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
           var alpha = (lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5) * gn;
@@ -1208,6 +1211,7 @@
     function addLabel(id, o) {
       var lbl = document.createElement('div');
       lbl.className = 'lbl ' + o.cls;
+      lbl.dataset.lid = id;
       lbl.innerHTML = '<p class="k"></p><p class="t"></p><p class="s"></p>';
       lbl.querySelector('.k').textContent = o.kicker || '';
       lbl.querySelector('.t').textContent = o.title;
@@ -1357,6 +1361,111 @@
   /* ---------- Stages and screens ---------- */
 
   // Round 10d: the desktop Overview is a 1296 x 729 frame scaled uniformly to the window (see fitFrame).
+  // Round 10e: the Now frame's marks are live SVG shapes over the art, coloured from the data model's state.
+  var DESK_MARK_SHAPES = {
+    'm-search': 'diamond', 'm-done': 'diamond', 'm-index': 'diamond', 'm-date': 'star', 'm-read': 'sparkle',
+    'exec': 'triangle', 'verif': 'dot', 'results': 'dot'
+  };
+  function deskMarkPath(kind) {
+    if (kind === 'diamond') return 'M0,-8 L8,0 L0,8 L-8,0 Z';
+    if (kind === 'star') return 'M0,-14 Q2,-2 14,0 Q2,2 0,14 Q-2,2 -14,0 Q-2,-2 0,-14 Z';
+    if (kind === 'sparkle') return 'M0,-12 Q1.5,-1.5 12,0 Q1.5,1.5 0,12 Q-1.5,1.5 -12,0 Q-1.5,-1.5 0,-12 Z';
+    return '';
+  }
+  var DESK_MARK_COLOR = { 'm-search': '#F2B544', 'm-done': '#9AA5B8', 'm-index': '#9AA5B8', 'm-read': '#EFE9DA', 'm-date': '#6FB1FF', exec: '#6FB1FF', verif: '#6FB1FF', results: '#6FB1FF' };
+  var deskMarkEls = null;
+  function buildDeskMarks() {
+    var host = $('#now-stage');
+    if (!host) return;
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'desk-marks');
+    svg.setAttribute('viewBox', '0 0 1296 729');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    deskMarkEls = {};
+    var L = CONCEPT_LAYOUT.desktop.marks;
+    Object.keys(DESK_MARK_SHAPES).forEach(function (id) {
+      var p = L[id === 'm-date' ? 'm-date' : id] || L[id];
+      if (!p) return;
+      var kind = DESK_MARK_SHAPES[id];
+      var g = document.createElementNS(NS, 'g');
+      g.setAttribute('transform', 'translate(' + p[0] + ' ' + p[1] + ')');
+      g.setAttribute('data-mark', id);
+      var glow = document.createElementNS(NS, 'circle');
+      glow.setAttribute('class', 'mk-glow');
+      glow.setAttribute('fill', DESK_MARK_COLOR[id] || STATE.running.color);
+      glow.setAttribute('r', id === 'm-date' ? 11 : kind === 'dot' ? 7 : kind === 'triangle' ? 6 : 9);
+      g.appendChild(glow);
+      var shape = document.createElementNS(NS, kind === 'dot' ? 'circle' : kind === 'triangle' ? 'g' : 'path');
+      if (kind === 'dot') shape.setAttribute('r', id === 'exec' ? 4.5 : 5.5);
+      shape.setAttribute('fill', DESK_MARK_COLOR[id] || STATE.running.color);
+      if (kind === 'diamond' || kind === 'star' || kind === 'sparkle') shape.setAttribute('d', deskMarkPath(kind));
+      if (kind === 'triangle') {
+        shape = document.createElementNS(NS, 'path');
+        shape.setAttribute('d', 'M-8,29 L-14,36 L-8,43 M-1,43 L5,29 M8,29 L14,36 L8,43');
+        shape.setAttribute('fill', 'none');
+        shape.setAttribute('stroke-width', '1.7');
+        shape.setAttribute('stroke-linecap', 'round');
+        shape.setAttribute('stroke-linejoin', 'round');
+        shape.setAttribute('stroke', STATE.running.color);
+        g.appendChild(shape);
+        var apex = document.createElementNS(NS, 'circle');
+        apex.setAttribute('r', '4.5');
+        apex.setAttribute('fill', '#6FB1FF');
+        g.appendChild(apex);
+      } else {
+        g.appendChild(shape);
+      }
+      svg.appendChild(g);
+      deskMarkEls[id] = { g: g, glow: glow, shape: shape, kind: kind };
+    });
+    // The blue link from Fix date test to the Codex apex: redrawn live, because the art's copy is cleared under the marks.
+    var m0 = L['m-date'], m1 = L.exec, dx = m1[0] - m0[0], dy = m1[1] - m0[1], dl = Math.hypot(dx, dy);
+    var ux = dx / dl, uy = dy / dl;
+    var ln = document.createElementNS(NS, 'line');
+    ln.setAttribute('class', 'mk-link');
+    ln.setAttribute('x1', (m0[0] + ux * 17).toFixed(1)); ln.setAttribute('y1', (m0[1] + uy * 17).toFixed(1));
+    ln.setAttribute('x2', (m1[0] - ux * 10).toFixed(1)); ln.setAttribute('y2', (m1[1] - uy * 10).toFixed(1));
+    ln.setAttribute('stroke', DESK_MARK_COLOR['m-date']); ln.setAttribute('stroke-width', '1.4');
+    ln.setAttribute('marker-end', 'url(#desk-arrow)');
+    var defs = document.createElementNS(NS, 'defs');
+    var mk = document.createElementNS(NS, 'marker');
+    mk.setAttribute('id', 'desk-arrow'); mk.setAttribute('viewBox', '0 0 8 8'); mk.setAttribute('refX', '6'); mk.setAttribute('refY', '4');
+    mk.setAttribute('markerWidth', '6'); mk.setAttribute('markerHeight', '6'); mk.setAttribute('orient', 'auto');
+    var tip = document.createElementNS(NS, 'path'); tip.setAttribute('d', 'M0,0 L8,4 L0,8 Z'); tip.setAttribute('fill', DESK_MARK_COLOR['m-date']);
+    mk.appendChild(tip); defs.appendChild(mk); svg.appendChild(defs); svg.appendChild(ln);
+    // The Codex triangle's two sides from the apex to the Verification and Results dots, redrawn for the same reason.
+    ['verif', 'results'].forEach(function (k) {
+      var q = L[k], ex = m1[0], ey = m1[1], ddx = q[0] - ex, ddy = q[1] - ey, dd = Math.hypot(ddx, ddy);
+      var sd = document.createElementNS(NS, 'line');
+      sd.setAttribute('class', 'mk-link');
+      sd.setAttribute('x1', (ex + ddx / dd * 9).toFixed(1)); sd.setAttribute('y1', (ey + ddy / dd * 9).toFixed(1));
+      sd.setAttribute('x2', (q[0] - ddx / dd * 8).toFixed(1)); sd.setAttribute('y2', (q[1] - ddy / dd * 8).toFixed(1));
+      sd.setAttribute('stroke', DESK_MARK_COLOR.exec); sd.setAttribute('stroke-width', '1.4');
+      svg.appendChild(sd);
+    });
+    host.insertBefore(svg, host.querySelector('.world'));
+    deskMarkEls.svg = svg;
+  }
+  // Colour from the node's state: amber needs the owner, blue is live, grey is done or idle, ivory is neutral.
+  function updateDeskMarks(sc) {
+    if (!deskMarkEls) return;
+    if (deskMarkEls.exec) deskMarkEls.exec.shape.setAttribute('stroke', STATE.running.color);
+    sc.nodes.forEach(function (n) {
+      var e = deskMarkEls[n.id];
+      if (!e) return;
+      if (n.id === 'verif' || n.id === 'results') return;
+      var st = STATE[n.state] || STATE.idle;
+      var col = n.id === 'm-read' ? IVORY : st.color;
+      if (n.id === 'm-read' && n.state === 'waiting') col = STATE.waiting.color;
+      e.shape.setAttribute('fill', col);
+      e.glow.setAttribute('fill', col);
+      e.glow.setAttribute('opacity', n.live ? '0.3' : '0.14');
+      if (e.kind === 'dot') e.shape.setAttribute('fill', col);
+    });
+  }
+  buildDeskMarks();
   var NO_DRAW = new Proxy({}, { get: function () { return function () {}; }, set: function () { return true; } });
   function fitFrame() {
     var k = Math.min(window.innerWidth / 1296, window.innerHeight / 729);

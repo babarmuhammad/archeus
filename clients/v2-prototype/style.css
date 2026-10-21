@@ -923,3 +923,107 @@ body.frame-now .top .core-status { font-size: 14px; line-height: 18px; letter-sp
 body.frame-now #s-now .head .kicker { font-size: 14px; line-height: 18px; letter-spacing: 0.14em; }
 body.frame-now .now-tag { font-size: 14px; line-height: 18px; }
 body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font-size: 14px; }
+
+/* Round 10e: the concept's own sizes on the Now frame (minimum 11 px for frame text, owner rule). Sizes solved from
+   the concept raster by tools/textfit_desktop.py; per-element values for the mission and project labels are keyed by
+   the label id (data-lid). Colours sampled from desktop-1-now-v2.png. */
+body.frame-now .rail .wordmark { top: 13px; width: 160px; font: 400 18.2px/22px "EB Garamond V2", var(--serif); letter-spacing: 3px; text-transform: uppercase; }
+body.frame-now .rail .wordmark span { font: 400 14px/22px "EB Garamond V2", var(--serif); letter-spacing: 1.5px; margin-left: 10px; }
+body.frame-now .rail .fixture { top: 34px; font: 400 11px/14px "Inter V2", var(--sans); letter-spacing: 0.35px; text-transform: uppercase; }
+body.frame-now .places { background: transparent; }
+body.frame-now .places a { background: transparent; }
+body.frame-now .places a[aria-current="page"] { background: #181521; }
+body.frame-now .places a span { font: 400 14.6px/20px "Inter V2", var(--sans); }
+body.frame-now .places a[data-nav="projects"] span, body.frame-now .places a[data-nav="shared"] span { font-size: 13.4px; }
+body.frame-now .places a[data-nav="replay"] span { font-size: 13.9px; }
+body.frame-now .places .ico { width: 20px; height: 20px; }
+
+body.frame-now .top .core-status { top: 18px; left: 898px; font: 400 11px/16px "Inter V2", var(--sans); letter-spacing: 0; color: var(--text-2); }
+body.frame-now .top .core-status .dot { left: -14px; top: 4px; width: 7px; height: 7px; }
+body.frame-now .top [data-tell] { left: 1087px; top: 13px; width: 88px; height: 29px; font: 400 14px/20px "Inter V2", var(--sans); background: #130F1C; border: 1px solid rgba(239, 233, 218, 0.24); border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 0 0 20px; box-sizing: border-box; color: var(--text); text-decoration: none; }
+body.frame-now .top [data-tell]::before { width: 14px; height: 11px; border-width: 1.4px; border-radius: 5px; }
+body.frame-now .top .stop-btn { left: 1190px; top: 13px; width: 90px; height: 29px; font: 400 14px/20px "Inter V2", var(--sans); background: #250F1B; border: 1px solid #C84C52; border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 0 0 0 20px; box-sizing: border-box; color: #F4A4A8; }
+body.frame-now .top .stop-btn::before { width: 10px; height: 10px; border-width: 1.4px; border-radius: 1px; }
+
+body.frame-now #s-now .head .kicker { left: 1px; top: 4px; font: 400 11px/14px "Inter V2", var(--sans); letter-spacing: 2.44px; }
+body.frame-now #s-now h1 { top: 15px; font: 400 50.3px/56px "EB Garamond V2", var(--serif); letter-spacing: 0; }
+body.frame-now .now-lede { top: 68px; width: 400px; font: 400 17.1px/20px "EB Garamond V2", var(--serif); }
+
+body.frame-now .stage-now .lbl .t { font-size: 15px; position: relative; top: 13px; }
+body.frame-now .stage-now .lbl .s { font: 400 11.6px/14px "Inter V2", var(--sans); position: relative; top: 13px; }
+body.frame-now .stage-now .lbl.core .t { font-size: 24.2px; letter-spacing: 4.23px; top: 0; }
+body.frame-now .lbl[data-lid="m-search"] .t { font-size: 18.6px; }
+body.frame-now .lbl[data-lid="m-done"] .t { font-size: 15.1px; }
+body.frame-now .lbl[data-lid="m-index"] .t { font-size: 13.6px; }
+body.frame-now .lbl[data-lid="m-read"] .t { font-size: 14.9px; }
+body.frame-now .lbl[data-lid="m-read"] .s { font-size: 11px; letter-spacing: -0.2px; }
+body.frame-now .lbl[data-lid="m-index"] .s { font-size: 11px; letter-spacing: -0.25px; }
+body.frame-now .lbl[data-lid="m-done"] .s { font-size: 11.3px; }
+body.frame-now .lbl[data-lid="m-date"] .t { font-size: 17.9px; }
+body.frame-now .lbl[data-lid="m-date-exec"] .t { font-size: 16.6px; }
+body.frame-now .lbl[data-lid="verif"] .t { font-size: 12.9px; }
+body.frame-now .lbl[data-lid="results"] .t { font-size: 13.3px; }
+body.frame-now .lbl[data-lid="ideas"] .t { font-size: 15.7px; }
+body.frame-now .lbl[data-lid="ideas"] .s { font-size: 11px; letter-spacing: -0.2px; }
+body.frame-now .lbl[data-lid="notes"] .t { font-size: 16.8px; }
+body.frame-now .lbl[data-lid="notes"] .s { font-size: 11.5px; line-height: 15px; }
+body.frame-now .stage-now .lbl.exec .s { font-size: 11.7px; }
+body.frame-now .stage-now .lbl a.act { left: 5px; top: 75px; width: 99px; height: 31px; font: 400 13px/18px "Inter V2", var(--sans); color: var(--amber); border: 1px solid rgba(242, 181, 68, 0.85); border-radius: 6px; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; box-sizing: border-box; }
+
+body.frame-now .feed { left: 360px; top: 528px; width: 620px; }
+body.frame-now .feed .msg { grid-template-columns: 56px minmax(0, 1fr); column-gap: 17px; }
+body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font: 400 11.3px/20px "Inter V2", var(--sans); color: var(--text-2); }
+body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p { font: 400 12.8px/20px "Inter V2", var(--sans); padding: 7px 19px; border-radius: 8px; background: #1E1927; border: 0; color: var(--text); }
+body.frame-now .feed .msg-card .card-body { background: #1A141B; border: 1px solid rgba(239, 233, 218, 0.16); border-radius: 8px; height: 42px; padding: 0 17px 0 16px; box-sizing: border-box; gap: 11px; }
+body.frame-now .feed .msg-card .card-t { font: 400 13.8px/20px "Inter V2", var(--sans); }
+body.frame-now .feed .msg-card .btn { height: 30px; min-height: 30px; font: 400 12.4px/16px "Inter V2", var(--sans); border-radius: 6px; }
+body.frame-now .feed .msg-card [data-card="start"] { width: 87px; padding: 0; }
+body.frame-now .feed .msg-card [data-card="keep"] { width: 130px; padding: 0; font: 400 11.4px/16px "Inter V2", var(--sans); }
+body.frame-now .chatbar { left: 303px; top: 666px; width: 690px; height: 44px; background: #0F0C17; border: 1px solid rgba(239, 233, 218, 0.14); border-radius: 12px; box-sizing: border-box; }
+body.frame-now .chatbar .attach { left: 17px; top: 13px; width: 17px; height: 17px; color: var(--text-2); }
+body.frame-now .chatbar input { left: 53px; width: 560px; height: 42px; top: 1px; font: 400 13.2px/20px "Inter V2", var(--sans); }
+body.frame-now .send-btn { right: 13px; top: 9px; width: 26px; height: 26px; min-height: 26px; border-radius: 50%; background: #312D42; border: 0; }
+
+body.frame-now .desk-marks { display: block; }
+body.frame-now .desk-marks .mk-glow { filter: blur(6px); }
+.desk-marks { display: none; position: absolute; left: 0; top: 0; width: 1296px; height: 729px; pointer-events: none; z-index: 1; overflow: visible; }
+body.frame-now .rail .fixture { top: 39px; }
+body.frame-now .rail .wordmark { white-space: nowrap; }
+body.frame-now .desk-marks .mk-glow { filter: blur(3px); }
+/* Round 10e registration (tools/textreg_desktop.py): render ink box minus concept ink box, master px. */
+body.frame-now #s-now h1 { top: 13px; }
+body.frame-now #s-now .head .kicker { top: 3px; left: 3px; }
+body.frame-now .now-lede { top: 69px; left: 4px; }
+body.frame-now .top .core-status { top: 17px; left: 899px; }
+body.frame-now .rail .fixture { left: 4px; top: 36px; }
+body.frame-now .rail .wordmark span { font-size: 16px; letter-spacing: 3px; margin-left: 12px; }
+body.frame-now .stage-now .lbl .t, body.frame-now .stage-now .lbl .s { left: 4px; }
+body.frame-now .stage-now .lbl.core .t { top: 1px; left: 0; }
+body.frame-now .lbl[data-lid="m-date"] .t { top: 4px; }
+body.frame-now .lbl[data-lid="m-date"] .s { top: 12px; }
+body.frame-now .lbl[data-lid="m-done"] .t { top: 11px; }
+body.frame-now .lbl[data-lid="m-done"] .s { top: 8px; }
+body.frame-now .lbl[data-lid="m-index"] .t { top: 7px; }
+body.frame-now .lbl[data-lid="m-index"] .s { top: 15px; }
+body.frame-now .lbl[data-lid="m-read"] .s { top: 10px; }
+body.frame-now .lbl[data-lid="m-date-exec"] .t { top: 8px; }
+body.frame-now .lbl[data-lid="m-date-exec"] .s { top: 15px; }
+body.frame-now .lbl[data-lid="verif"] .t, body.frame-now .lbl[data-lid="results"] .t { top: 1px; }
+body.frame-now .lbl[data-lid="notes"] .t { top: 15px; }
+body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p { padding: 7px 22px 7px 16px; }
+body.frame-now .feed .msg-card .card-t { position: relative; top: 4px; left: 3px; }
+body.frame-now .chatbar input { padding-bottom: 10px; box-sizing: border-box; }
+body.frame-now .top [data-tell] { padding-left: 20px; gap: 3px; }
+body.frame-now .top .stop-btn { padding-left: 8px; gap: 3px; }
+/* Round 10e geometry (master px, measured with geom2.py): Review 354,329 99x31; bubbles 433,528 276x34 and 436,568
+   335x34; card 436,610 518x42; Start 709,617 87x30; Keep 807,617 130x30; send 955,678 26x26. */
+body.frame-now .stage-now .lbl a.act { top: 42px; }
+body.frame-now .feed .msg-you > p { width: 276px; padding: 7px 0 7px 16px; }
+body.frame-now .feed .msg-arch > p { width: 335px; margin-left: 3px; padding: 7px 0 7px 16px; }
+body.frame-now .feed .msg-card .card-body { width: 518px; margin-left: 3px; padding: 0 17px 0 16px; justify-content: flex-end; }
+body.frame-now .feed .msg-card .card-t { flex: 1 1 auto; min-width: 0; margin: 0; }
+body.frame-now .feed .msg-card [data-card="start"] { margin-left: 0; }
+body.frame-now .feed .msg-card [data-card="keep"] { margin-left: 0; }
+body.frame-now .send-btn { min-width: 26px; width: 26px; }
+body.frame-now .rail .fixture { left: 22px; }
+body.frame-now .chatbar .send-btn { width: 26px; height: 26px; min-height: 26px; right: 13px; top: 9px; padding: 0; box-sizing: border-box; }
