@@ -1,17 +1,20 @@
 """P21 C-write (p21-design-gate D13 (b)): a command issued from an event (an
 outbox consumer's) or from an approval records that event in its own events'
-`cause_chain`; a direct user command stays its own root. The cause only labels
-what is written: every decision below is the one it was without it."""
+`cause_chain`; a direct user command stays its own root; and (owner 2026-10-21)
+the task's reply to an execution ending carries that `execution.ended`. The
+cause only labels what is written: every decision below is the one it was
+without it."""
 
 import pytest
 
 from archeus.core.application import commands, queries
+from archeus.core.application import executions as X
 from archeus.core.domain import entities, ids
 from archeus.core.domain import events as ev
 from archeus.core.domain.values import Ref
 from archeus.infra.eventlog import consumers
 from v1.integration.test_intent import WORK, brain, make  # noqa: F401 (a fixture)
-from v1.integration.test_policy import Rig, task
+from v1.integration.test_policy import Rig, _dispatchable, task
 from v1.integration.test_routing import Rig as RouteRig, _limited
 
 
@@ -177,3 +180,62 @@ def test_a_refused_decision_writes_nothing_under_a_cause_either(r):
     finally:
         ev.CAUSE.reset(token)
     assert r.head() == head and r.pending(_mid).state == 'PENDING'
+
+
+# ── the task's reply to an execution ending carries `execution.ended` (owner 2026-10-21) ──
+
+FORGED = 'hook_' + 'x' * 43
+
+
+def _started(r, mid):
+    """Each READY task of *mid* dispatched and STARTING, with a hook token set as a spawn sets one."""
+    eids = []
+    for t in [t for t in r.all(entities.Task, mission_id=mid) if t.state == 'READY']:
+        eid = r.do(r.work.dispatch_task, task_id=t.id)['execution_id']
+        r.do(r.work.record_spawn, execution_id=eid, pid=1, create_time=1.0)
+
+        def token(tx, actor, eid=eid):
+            e = tx.get(entities.Execution, eid).entity
+            tx.update(entities.Execution, eid, {'hook_token_hash': X.token_hash(FORGED)},
+                      actor=actor)
+            X._event(tx, 'execution.hook', e, actor, {'seq': 0, 'decision': 'test', 'reason': ''})
+        r.do(token)
+        eids.append(eid)
+    return eids
+
+
+@pytest.mark.parametrize('exit_reason, task_state', [('ok', 'VERIFYING'), ('error', 'READY')])
+def test_the_tasks_reply_to_an_end_carries_it_and_the_token_is_still_cleared(r, exit_reason,
+                                                                            task_state):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'))
+    _dispatchable(r, mid)
+    (eid,) = _started(r, mid)
+    assert r.one(entities.Execution).hook_token_hash == X.token_hash(FORGED)
+    r.do(r.work.record_exit, execution_id=eid, exit_reason=exit_reason, exit_code=None)
+    assert r.one(entities.Execution).hook_token_hash is None      # cleared, exactly as before
+    assert r.one(entities.Task).state == task_state
+    (ended,) = _of(r.db, 'execution.ended', eid)
+    after = _after(r.db, ended)
+    assert ended['cause_chain'] == []                  # Core recorded what it observed: a root
+    assert [x['type'] for x in after] == ['task.state_changed']
+    assert after[0]['cause_chain'] == [ended['id']]
+
+
+def test_one_command_ending_two_executions_keeps_each_reply_to_its_own_end(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'write_repo'), task('t2', 'write_repo'))
+    _dispatchable(r, mid)
+    eids = _started(r, mid)
+    assert len(eids) == 2
+
+    def both_lost(tx, actor):
+        for eid in eids:
+            X.lost(tx, actor=actor, execution_id=eid, reason='the process is gone')
+    r.do(both_lost)
+    task_of = {e.id: e.task_id for e in r.all(entities.Execution)}
+    for eid in eids:
+        (ended,) = _of(r.db, 'execution.ended', eid)
+        reply = next(x for x in _after(r.db, ended) if x['type'] == 'task.state_changed')
+        assert reply['subject']['id'] == task_of[eid]
+        assert (ended['cause_chain'], reply['cause_chain']) == ([], [ended['id']])

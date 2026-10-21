@@ -486,11 +486,20 @@ five (Recommended)". D13 (b) as approved; "P21 cannot be declared complete befor
   the step-up check and every refusal run before them and are unchanged, and a refused decision
   still writes nothing.
 - **Roots, by (b)'s wording.** A route's command (a direct user command), the engine and execution
-  loops (they poll rows), the verification worker, policy expiry, the world worker, and the task's
-  response to an execution ending (`executions.py`, in the transaction that appends
-  `execution.ended`: not issued from an event). Whether that response should be caused by
-  `execution.ended` is left to the owner; it would edit `executions.py`, which clears the hook
-  token on the same path.
+  loops (they poll rows), the verification worker, policy expiry and the world worker.
+- **The reply to an execution ending (addition, owner 2026-10-21).** Asked whether the task's
+  response to an execution ending (in the transaction that appends `execution.ended`, so not
+  issued from an event by (b)'s wording) should be caused by `execution.ended`, the owner answered
+  (AskUserQuestion, verbatim): "Yes, link it (Recommended)". Built in `executions.py`: each of the
+  four writers of `execution.ended` (`refuse`, `_ended`, `record_handoff`, `approval_answered`)
+  keeps the event it appends and runs what follows (the task's retry, verification or failure, a
+  refusal's mission block, a hand-off's continuation) inside `_after(tx, ended)`, which sets
+  `tx.cause` to that event's chain plus its id and restores the previous cause on the way out, so
+  one command that ends several executions (an e-stop, a mission stop) gives each reply its own
+  end and leaves its own later events (`core.estopped`) unaffected. An INTENT refused before it
+  spawned writes no `execution.ended`; its reply stays a root. The hook-token clearing on those
+  paths is unchanged (the same `hook_token_hash: None` fields in the same edges), and a test
+  asserts the token is gone after the end.
 - **Deviation from the file-scope note.** `.collab/T-119-cwrite-scope.md` passed `cause` as an
   argument through every issuing call (twelve modules, credential- and auth-bearing ones among
   them) and rejected a writer default for touching `writer.py`. Built instead: the writer default,
@@ -504,5 +513,8 @@ five (Recommended)". D13 (b) as approved; "P21 cannot be declared complete befor
   consumer's writes caused and nothing left behind, a `Hold` included; the intent consumer's
   mission and reply caused by the user's message; plan approve, reject and request changes, each
   deciding as before and causing everything it moved; a decision under an event passing it on; a
-  fallback route's approve and reject; a refused decision writing nothing).
-- **Mutants:** Z70-Z79 in `tools/mutate_p21.py`, each killed by the test it names.
+  fallback route's approve and reject; a refused decision writing nothing); the addition adds 3:
+  an ok and an error end each caused into the task's reply with the hook token cleared, and one
+  command ending two executions keeping each reply to its own end.
+- **Mutants:** Z70-Z79 and, for the addition, Z110-Z111 in `tools/mutate_p21.py`, each killed by
+  the test it names.
