@@ -72,6 +72,9 @@ for (const [a, b] of pairs) {
 const sheetBg = mix(tokens.surface, 0.94, tokens.bg);
 check(ratio(tokens.text, sheetBg) >= 4.5, 'translucent review sheet fails 4.5:1 for text');
 check(ratio(tokens['text-2'], sheetBg) >= 4.5, 'translucent review sheet fails 4.5:1 for secondary text');
+const barBg = mix(tokens.bg, 0.42, tokens.surface);
+check(ratio(tokens.text, barBg) >= 4.5, 'translucent chat bar fails 4.5:1 for typed text');
+check(ratio(tokens['text-2'], barBg) >= 4.5, 'translucent chat bar fails 4.5:1 for placeholder text');
 check(ratio(tokens.focus, tokens.bg) >= 3, 'focus ring fails 3:1 against background');
 check(!/webgl/i.test(js), 'app.js uses WebGL (the prototype is Canvas 2D only)');
 check(/devicePixelRatio/.test(js), 'canvas does not size to devicePixelRatio');
@@ -87,6 +90,13 @@ check(/prefers-reduced-motion:\s*reduce/.test(css), 'no reduced-motion rule');
 check(/prefers-reduced-transparency:\s*no-preference/.test(css), 'no translucency gate');
 check(/:focus-visible/.test(css), 'no visible focus rule');
 check(/PROTOTYPE · fake data/.test(html), 'prototype label missing');
+check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated tag missing');
+check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
+check(/data-promote/.test(js) && /General · not project memory/.test(js), 'general thread or promote control missing');
+check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
+for (const word of ['Intended', 'Authorized', 'Recorded', 'May have taken effect', 'Uncertain', 'Suspended', 'Reconcile']) {
+  check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);
+}
 check(/Tell Archeus what to do/.test(html), 'Tell box label missing');
 check(/confirmBox\('Approve plan/.test(js) && /data-kind="approve"/.test(html), 'approve must go through a confirm step');
 
