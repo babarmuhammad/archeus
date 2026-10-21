@@ -7,14 +7,16 @@ Never charged to the task, never a new execution on every pass.
 Time passing is written into the records (`_age`): the failed starts happened
 that much earlier, which is all the derivation reads."""
 
+import math
 import time
+from datetime import datetime, timezone
 
 import pytest
 
 from archeus.cli import gui
 from archeus.core import runtime
 from archeus.core.application import executions as X, resources
-from archeus.core.domain import entities, ids
+from archeus.core.domain import entities, events, ids
 from archeus.core.domain.events import new_event
 from archeus.core.domain.values import Ref
 from archeus.harnesses import base
@@ -257,7 +259,7 @@ def test_T106r1_a_trial_on_a_paused_mission_does_not_hold_the_harness(x, monkeyp
     assert _breaker(x)['state'] == 'half_open'
 
 
-def test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed(x):
+def test_T106r1_a_decision_that_is_not_the_breakers_is_no_wait(x):
     mid = x.ready(task('t1', 'write_repo'))
     t = x.task_of(mid)
 
@@ -342,3 +344,22 @@ def test_T106r2_a_parked_mission_wakes_at_its_deadline_with_a_long_idle(x, monke
     started = time.monotonic()
     _core_loop(x, lambda: len(x.all(entities.Execution)) == 2, 10, loop)
     assert time.monotonic() - started < 8
+
+
+# ── Correction r5 (review of c290b87) ───────────────────────────────────────
+
+def test_T106r5_the_trip_is_recorded_when_a_second_boundary_falls_inside_the_command(
+        x, monkeypatch):
+    """Tx.now is taken before the command and a failure's ended_at is stamped with
+    whole seconds inside it. A second boundary between the two must not hide the
+    trip-making failure, or the breaker opens with no notice (T-106 r5)."""
+    edge = math.floor(time.time())
+    stamp = datetime.fromtimestamp(edge - 0.5, timezone.utc).isoformat(
+        timespec='milliseconds').replace('+00:00', 'Z')
+    monkeypatch.setattr(events, 'now_iso', lambda: stamp)
+    monkeypatch.setattr(X, '_now_iso', lambda: X._iso(edge))
+    _no_popen(monkeypatch)
+    mid = x.ready(*(task('t%d' % i, 'write_repo') for i in range(1, 4)))
+    x.drive(mid, lambda: len(x.all(entities.Execution)) == 3)
+    (ev,) = x.events('harness.state_changed')
+    assert ev['payload']['breaker'] == 'open'

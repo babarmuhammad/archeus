@@ -2933,6 +2933,13 @@ T-096.4. **Items 109 and 111, corrected by this append.**
      - **Not changed, by reasoning (N1 part b).** The breaker branch in `dispatch_task`
        does not re-check `unblock_at` against now: the router is the only writer, and it
        now returns only future times.
+     - **Correction r5 (review of c290b87).** The trip is read at the failure's own end,
+       not at the command's start: `refuse` stamps whole seconds inside the command, so a
+       second boundary between the two hid the trip-making failure and its notice (Q164).
+       `_ahead` truncates to milliseconds before the comparison (Q165). A provider limit is
+       stored as the router reads it, written with Z, and `accounts_tick` compares it the
+       same way, so a naive reset releases the account at one instant in any zone (Q166,
+       Q167). A task's wait reads a success by its start, as the breaker does (Q168).
      - **Known, recorded (N6).** An INTENT created before a trip, whose mission was paused,
        can start when the mission resumes while the breaker is open; a start closes the
        breaker. Bounded by the INTENTs dispatched before the trip.

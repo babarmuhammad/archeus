@@ -404,7 +404,10 @@ def _ahead(iso, now):
     aware datetime), else None. `text` is the instant as written out, which is what
     `unblock_at` carries, so every reader parses the same instant."""
     at = reset_at(iso)
-    if at is None or at <= now:
+    if at is None:
+        return None
+    at = at.replace(microsecond=at.microsecond // 1000 * 1000)     # the instant as written
+    if at <= now:
         return None
     return (at, at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'))
 

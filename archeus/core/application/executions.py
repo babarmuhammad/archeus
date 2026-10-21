@@ -28,6 +28,7 @@ from ...infra.db import rows
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
+from ..routing import router as R
 from . import authorization, lifecycle
 from .commands import active_plan
 
@@ -117,6 +118,14 @@ def breaker_state(times, trial, now):
     return {'state': 'half_open', 'until': None}
 
 
+def _decided(x, created_at):
+    """When a row's place in the streak was decided: a failed start's end, else the
+    start, else (a trial not yet started) its creation. Both readers use it (T-106 r5)."""
+    if x.stop_reason == 'spawn':
+        return x.ended_at
+    return x.started_at or created_at
+
+
 def _newest(conn, harness_id, now):
     """The harness's executions decided at or before *now*, newest first by when
     each was decided (a failed start's end, a start, a trial's creation), decoded
@@ -137,9 +146,7 @@ def _newest(conn, harness_id, now):
             " WHEN json_extract(body, '$.started_at') IS NOT NULL THEN json_extract(body, '$.started_at')"
             " ELSE created_at END) DESC, rowid DESC", (harness_id,)):
         x = rows.decode(entities.Execution, rec).entity
-        decided = (x.ended_at if x.stop_reason == 'spawn'
-                   else x.started_at or rec['created_at'])
-        if _epoch(decided) > now:
+        if _epoch(_decided(x, rec['created_at'])) > now:
             continue
         if x.state == 'INTENT' and rows.get(conn, entities.Mission,
                                             x.mission_id).entity.state != 'EXECUTING':
@@ -160,9 +167,9 @@ def spawn_wait_s(n):
 
 def spawn_wait(conn, task_id, now):
     """Until when (epoch) the task waits after its failed starts in a row, or None."""
-    # an end decided after now is a backward clock step's, not history yet (as _newest)
-    xs = [x for x in (r.entity for r in rows.where(conn, entities.Execution, task_id=task_id))
-          if not x.ended_at or _epoch(x.ended_at) <= now]
+    # a row decided after now is a backward clock step's, not history yet (as _newest)
+    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)
+          if _epoch(_decided(r.entity, r.created_at)) <= now]
     n = next((i for i, x in enumerate(reversed(xs)) if x.stop_reason != 'spawn'), len(xs))
     if not n:
         return None
@@ -173,7 +180,9 @@ def spawn_wait(conn, task_id, now):
 def _spawn_failed(tx, actor, e, reason):
     """The breaker opening on this failure is said once (P21 D1: the tray says
     it); a failed half-open trial only keeps it open."""
-    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(tx.now)))
+    # the failure's own stamp, not tx.now: refuse stamps whole seconds inside the
+    # command, so a second boundary between the two would drop this very failure
+    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(e.ended_at)))
     times = [_epoch(x.ended_at) for x in fails]
     if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):
         tx.append(new_event('harness.state_changed', Ref('harness', e.harness_id), actor,
@@ -950,11 +959,29 @@ def _epoch(iso):
     return datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
 
 
+def limit_until(resets_at, now):
+    """The text a limit is stored with: the provider's reset as the router reads it
+    (`R.reset_at`: a naive value is UTC), written with its offset, or the default
+    window when it is not a time. One parse with the router, so the machine's zone
+    never decides when an account is released (T-106 r5)."""
+    at = R.reset_at(resets_at)
+    if at is None:
+        return _iso(now + LIMIT_DEFAULT_S)
+    return at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def limit_passed(limited_until, now):
+    """Whether a stored limit's reset has come. A value that is not a time counts as
+    come: no account is held forever on a value nobody can read (T-106 r5)."""
+    at = R.reset_at(limited_until)
+    return at is None or at.timestamp() <= now
+
+
 def account_limited(tx, *, actor, account_id, resets_at=None, now=None):
     """A provider refused for a limit: the account is LIMITED until it resets."""
     a = lifecycle.load(tx, entities.Account, account_id).entity
     now = time.time() if now is None else now
-    until = resets_at or _iso(now + LIMIT_DEFAULT_S)
+    until = limit_until(resets_at, now)
     if a.health in ('AVAILABLE', 'CONSTRAINED'):
         lifecycle.fire(tx, entities.Account, a.id, 'window_exhausted', actor=actor,
                        reason='the provider refused for a limit; resets %s' % until,
@@ -969,7 +996,7 @@ def accounts_tick(tx, *, actor, now=None):
     moved = []
     for r in tx.where(entities.Account):
         a, since = r.entity, _epoch(r.updated_at)
-        if a.health == 'LIMITED' and a.limited_until and _epoch(a.limited_until) <= now:
+        if a.health == 'LIMITED' and a.limited_until and limit_passed(a.limited_until, now):
             lifecycle.fire(tx, entities.Account, a.id, 'reset_time_passed', actor=actor,
                            reason='the limit reset at %s' % a.limited_until,
                            fields={'limited_until': None})

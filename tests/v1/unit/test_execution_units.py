@@ -9,6 +9,7 @@ import json
 import os
 import sqlite3
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -500,7 +501,8 @@ def test_O7_the_open_window_is_one_cooldown_from_the_latest_counted_failure(plai
 def test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock(monkeypatch):
     now = X._epoch('2026-10-21T10:00:00Z')
     monkeypatch.setattr(X.rows, 'where', lambda conn, cls, **eq: [SimpleNamespace(
-        entity=SimpleNamespace(stop_reason='spawn', ended_at=X._iso(now + 3600)))])
+        entity=SimpleNamespace(stop_reason='spawn', started_at=None,
+                               ended_at=X._iso(now + 3600)), created_at=X._iso(now))])
     assert X.spawn_wait(None, 't1', now) is None
 
 
@@ -2074,3 +2076,51 @@ def test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_
                                                                       'model': 'a'}
     assert _billed({'level': 'SERVED', 'model': 'c'}, ['a', 'b']) is None
     assert _billed(None, ['a']) == {'level': 'BILLED', 'model': 'a'}
+
+
+# Correction r5 (review of c290b87): a success is read by its start in the wait as
+# in the breaker; a provider's limit reset is the router's instant in any zone.
+
+def test_T106r5_a_task_wait_reads_a_success_by_its_start_as_the_breaker_does(monkeypatch):
+    now = X._epoch('2026-10-21T10:00:00Z')
+    fa = SimpleNamespace(stop_reason='spawn', started_at=None, ended_at=X._iso(now - 200))
+    ok = SimpleNamespace(stop_reason=None, started_at=X._iso(now - 100),
+                         ended_at=X._iso(now + 3600))           # decided by its start
+    fb = SimpleNamespace(stop_reason='spawn', started_at=None, ended_at=X._iso(now - 5))
+    stamp = X._iso(now - 300)
+    monkeypatch.setattr(X.rows, 'where', lambda conn, cls, **eq: [
+        SimpleNamespace(entity=e, created_at=stamp) for e in (fa, ok, fb)])
+    assert X.spawn_wait(None, 't1', now) == X._epoch(X._iso(now - 5)) + X.spawn_wait_s(1)
+
+
+_LIMIT_PROBE = r'''
+import json
+from datetime import datetime, timezone
+from archeus.core.application import executions as X
+
+def at(h, m):
+    return datetime(2026, 9, 26, h, m, tzinfo=timezone.utc).timestamp()
+
+stored = X.limit_until('2026-09-26T10:02:00', at(10, 0))        # naive: UTC by the rule
+# a legacy row keeps the raw naive text: accounts_tick reads it by the same rule
+print(json.dumps({'local_offset': datetime(2026, 9, 26, 10).timestamp() - at(10, 0),
+                  'stored': stored,
+                  'passed_at_10_01': X.limit_passed(stored, at(10, 1)),
+                  'passed_at_10_03': X.limit_passed(stored, at(10, 3)),
+                  'legacy_passed_at_10_01': X.limit_passed('2026-09-26T10:02:00', at(10, 1)),
+                  'legacy_passed_at_10_03': X.limit_passed('2026-09-26T10:02:00', at(10, 3))}))
+'''
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+
+@pytest.mark.parametrize('tz', ['XYZ-2', 'XYZ+5'])       # UTC+2 and UTC-5 (the CRT reads TZ)
+def test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every_zone(tz):
+    env = dict(os.environ, TZ=tz, PYTHONPATH=_ROOT)
+    out = subprocess.run([sys.executable, '-c', _LIMIT_PROBE], cwd=_ROOT, env=env,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-2000:]
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    assert got['local_offset'] != 0                       # the probe really ran off UTC
+    assert (got['stored'], got['passed_at_10_01'], got['passed_at_10_03']) == (
+        '2026-09-26T10:02:00.000Z', False, True)
+    assert (got['legacy_passed_at_10_01'], got['legacy_passed_at_10_03']) == (False, True)

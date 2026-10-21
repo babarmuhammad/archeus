@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3 and r4 (Q159-Q163).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163) and r5 (Q164-Q168).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -110,6 +110,7 @@ HALF = XU + 'test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure
 RES = 'archeus/core/application/resources.py'
 PV = 'tests/v1/unit/test_pv20_isolation.py::'
 RU = 'tests/v1/unit/test_routing_units.py::'
+EX = 'tests/v1/integration/test_execution.py::'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -801,10 +802,10 @@ MUTATIONS = [
      [(RES,
      "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):",
      "            ):")],
-     [SB + 'test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed']),
+     [SB + 'test_T106r1_a_decision_that_is_not_the_breakers_is_no_wait']),
     # T-106 correction r2 (review of 6a6faab)
     ('Q153', 'a provider reset already past is kept as a wait (the hot loop)', [(ROUTER,
-     "    if at is None or at <= now:",
+     "    if at <= now:",
      "    if at is None:")],
      [SB + 'test_T106r2_a_reset_already_past_is_no_wait_and_no_hot_loop']),
     ('Q154', 'a malformed provider reset is not caught (it would stop Core)', [(ROUTER,
@@ -837,11 +838,11 @@ MUTATIONS = [
      [RU + 'test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform',
       SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
     ('Q160', 'a spawn end recorded ahead of the clock is counted (the window runs from it)',
-     [(EXE, "        if _epoch(decided) > now:", "        if False:")],
+     [(EXE, "        if _epoch(_decided(x, rec['created_at'])) > now:", "        if False:")],
      [XU + 'test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted']),
     ('Q161', 'a task waits for a spawn end recorded ahead of the clock', [(EXE,
-     "    xs = [x for x in (r.entity for r in rows.where(conn, entities.Execution, task_id=task_id))\n"
-     "          if not x.ended_at or _epoch(x.ended_at) <= now]",
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
+     "          if _epoch(_decided(r.entity, r.created_at)) <= now]",
      "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]")],
      [XU + 'test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock']),
     ('Q162', 'a naive reset is read in local time by route_wait (the r3 divergence)', [
@@ -854,6 +855,31 @@ MUTATIONS = [
      "    return list(rs.values()) if isinstance(rs, dict) else []",
      "    return list(rs.values())")],
      [RU + 'test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error']),
+    # T-106 correction r5 (review of c290b87)
+    ('Q164', 'the trip is read at tx.now, not the failure\'s own stamp (a second boundary hides it)',
+     [(EXE,
+     "    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(e.ended_at)))",
+     "    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(tx.now)))")],
+     [SB + 'test_T106r5_the_trip_is_recorded_when_a_second_boundary_falls_inside_the_command']),
+    ('Q165', 'a reset within a millisecond of now is not truncated before the comparison', [(ROUTER,
+     "    at = at.replace(microsecond=at.microsecond // 1000 * 1000)     # the instant as written",
+     "    pass")],
+     [RU + 'test_T106r5_a_reset_within_a_millisecond_of_now_is_no_wait']),
+    ('Q166', 'an account limit is stored as the provider sent it (no normalising)', [(EXE,
+     "    until = limit_until(resets_at, now)",
+     "    until = resets_at or _iso(now + LIMIT_DEFAULT_S)")],
+     [EX + 'test_E31_a_provider_limit_marks_the_account_limited_and_stops_its_work']),
+    ('Q167', 'a stored limit is compared in local time (the legacy naive text)', [(EXE,
+     "    return at is None or at.timestamp() <= now",
+     "    return at is None or _epoch(limited_until) <= now")],
+     [XU + 'test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every_zone']),
+    ('Q168', 'a task wait reads a success by its end, not its start (the breaker reads its start)',
+     [(EXE,
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
+     "          if _epoch(_decided(r.entity, r.created_at)) <= now]",
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
+     "          if not r.entity.ended_at or _epoch(r.entity.ended_at) <= now]")],
+     [XU + 'test_T106r5_a_task_wait_reads_a_success_by_its_start_as_the_breaker_does']),
 ]
 
 if __name__ == '__main__':

@@ -663,7 +663,7 @@ def test_E31_a_provider_limit_marks_the_account_limited_and_stops_its_work(x):
     # P12 (p12-design-gate §10.1, D20): the limit hands the work off, uncharged
     assert (e.state, e.stop_reason, e.charged) == ('ENDED_HANDOFF', 'limit', False)
     a = x.one(entities.Account, id=acc)
-    assert (a.health, a.limited_until) == ('LIMITED', '2099-01-01T00:00:00Z')
+    assert (a.health, a.limited_until) == ('LIMITED', '2099-01-01T00:00:00.000Z')
 
 
 def test_E32_the_breaker_is_per_account_and_counts_only_resource_failures(x):

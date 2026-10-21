@@ -555,3 +555,10 @@ def test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error():
     a['usage']['resets_at'] = 'soon'
     d = R.route(task(), snap([harness('h')], [a]))
     assert (d['result'], d['unblock_at']) == ('blocked', None)
+
+
+def test_T106r5_a_reset_within_a_millisecond_of_now_is_no_wait():
+    """The check and the written text use one instant: a reset 0.5 ms after now is
+    not after it, so it is not written as now and waited on (one extra pass)."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    assert R._ahead('2026-09-26T10:00:00.000500', now) is None
