@@ -25,6 +25,7 @@ device: never a header, a query string or a body.
 """
 
 import concurrent.futures
+import itertools
 import json
 import logging
 import os
@@ -40,7 +41,7 @@ from urllib.parse import parse_qs, urlsplit
 from ..core.application import errors, queries
 from ..core.domain.values import Ref
 from ..infra.eventlog import outbox
-from . import auth, routes, sse
+from . import auth, origin, routes, sse
 from .routes import Refused
 from .schemas import Invalid, validate
 
@@ -179,7 +180,8 @@ class Api:
                  authorization=None, resources=None, executions=None, sessions=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
                  command_timeout=COMMAND_TIMEOUT_S, remote_hosts=(),
-                 attestor=auth.attest_user):
+                 attestor=auth.attest_user, origin_backend=None, origin_registry=None,
+                 origin_enforcement_enabled=origin.ORIGIN_ENFORCEMENT_ENABLED):
         self.db, self.missions, self.health, self.version = db, missions, health, version
         self.conversations = conversations
         self.authorization = authorization
@@ -212,6 +214,18 @@ class Api:
         self.requests = threading.BoundedSemaphore(REQUEST_SLOTS)
         self.command_timeout = command_timeout
         self.attestor = attestor
+        self.origin_enforcement_enabled = origin_enforcement_enabled is True
+        if origin_backend is None:
+            from ..node.origin_windows import WindowsOriginBackend
+            origin_backend = WindowsOriginBackend()
+        self.origin_backend = origin_backend
+        self.origin_registry = (origin_registry if origin_registry is not None
+                                else origin.UnapprovedRegistry())
+
+    @property
+    def isolated_dispatch_qualified(self):
+        # Neither a switch nor synthetic evidence qualifies native confinement.
+        return False
 
     def attest(self, peer):
         """The origin of *peer* (R1-A); an attestor that fails, or answers
@@ -237,6 +251,40 @@ class Api:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def setup(self):
+        self.context = origin.ConnectionContext(
+            self.request, self.request.getsockname(), self.client_address,
+            '%s:%d' % (self.server.api.instance, next(self.server.accept_generations)))
+        self.evidence = None
+        self.evidence_acquired = False
+        self.origin_backend = self.server.api.origin_backend
+        self.origin_registry = self.server.api.origin_registry
+        super().setup()
+
+    def finish(self):
+        try:
+            super().finish()
+        finally:
+            if self.evidence_acquired:
+                try:
+                    self.origin_backend.release(self.context, self.evidence)
+                except Exception:
+                    log.warning('origin release failed')
+
+    def transport_evidence(self):
+        backend = self.origin_backend
+        try:
+            if not self.evidence_acquired:
+                self.evidence_acquired = True
+                self.evidence = backend.attest(self.context)
+            if (origin.validate_evidence(self.context, self.evidence)
+                    and backend.valid(self.context, self.evidence) is True
+                    and self.origin_registry.approved(self.context, self.evidence) is True):
+                return self.evidence
+        except Exception:
+            log.warning('origin observation failed')
+        return origin.OriginEvidence()
+
     server_version = 'archeus'
     sys_version = ''
 
@@ -355,9 +403,17 @@ class Handler(BaseHTTPRequestHandler):
             if routes.CLASS.get((route.method, route.path), 'privileged') != 'public':
                 # R1-A (T-053 P1, P7): decided before any credential or code is
                 # read, so a refusal spends no code and writes nothing
-                self.attested = self.api.attest(self.peer)
-                if self.attested != auth.USER:
-                    raise Refused(403, 'origin_refused', {'origin': self.attested})
+                if self.api.origin_enforcement_enabled:
+                    self.attested = self.transport_evidence()
+                    if not origin.authorize_transport(
+                            self.attested,
+                            local_host=self.api.origin.local_host(self.headers.get('Host')),
+                            remote_host=self.headers.get('Host') in self.api.origin.remote):
+                        raise Refused(403, 'origin_refused', {'origin': self.attested.origin})
+                else:
+                    self.attested = self.api.attest(self.peer)
+                    if self.attested != auth.USER:
+                        raise Refused(403, 'origin_refused', {'origin': self.attested})
             extra = {}
             if route.scope is not None:
                 self.principal, self.token_hash = self.api.authenticate(
@@ -381,6 +437,13 @@ class Handler(BaseHTTPRequestHandler):
                     # it keeps observe and ordinary routes (T-053 Q4-A)
                     raise Refused(403, 'remote_host_required',
                                   {'why': 'a paired client does this through its remote host'})
+                if (self.api.origin_enforcement_enabled
+                        and not origin.authorize_transport(
+                            self.attested,
+                            local_host=self.api.origin.local_host(host),
+                            remote_host=host in self.api.origin.remote,
+                            credential_origin=self.principal['origin'])):
+                    raise Refused(403, 'origin_refused')
                 self.api.seen[self.principal['device_id']] = (time.monotonic(), auth.now_iso())
                 if route.method == 'GET' and route.path != routes.STREAM:
                     # read BEFORE the handler's own read: the body reflects at
@@ -447,6 +510,7 @@ class Server(ThreadingHTTPServer):
 
     def __init__(self, api, port):
         self.api = api
+        self.accept_generations = itertools.count()
         super().__init__(('127.0.0.1', port), Handler)
 
     def server_bind(self):

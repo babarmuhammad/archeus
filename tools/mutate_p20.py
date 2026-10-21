@@ -705,6 +705,33 @@ MUTATIONS = [
      [SES + 'test_T35_two_concurrent_requests_with_one_key_open_one_terminal']),
 ]
 
+ORIGIN = 'archeus/api/origin.py'
+ORIGIN_UNIT = 'tests/v1/unit/test_api_origin.py::'
+ORIGIN_HTTP = 'tests/v1/integration/test_api_origin_transport.py::'
+MUTATIONS += [
+    ('Q160', 'unknown origin receives transport authority', [(ORIGIN,
+     "    if not isinstance(evidence, OriginEvidence) or evidence.origin != OriginClass.USER:\n"
+     "        return False",
+     "    if not isinstance(evidence, OriginEvidence) or evidence.origin != OriginClass.USER:\n"
+     "        return True")],
+     [ORIGIN_UNIT + 'test_Q160_Q161_transport_matrix']),
+    ('Q161', 'a user identity alone becomes direct local', [(ORIGIN,
+     "    if evidence.path == PathClass.DIRECT_LOCAL:",
+     "    if evidence.origin == OriginClass.USER:")],
+     [ORIGIN_UNIT + 'test_Q160_Q161_transport_matrix']),
+    ('Q162', 'bootstrap redemption skips the origin gate', [('archeus/api/server.py',
+     "            if routes.CLASS.get((route.method, route.path), 'privileged') != 'public':",
+     "            if routes.CLASS.get((route.method, route.path), 'privileged')"
+     " not in ('public', 'authority'):")],
+     [ORIGIN_HTTP + 'test_Q162_bootstrap_refusal_consumes_no_code']),
+    ('Q163', 'local device credential passes through registered tunnel', [
+     (ORIGIN, "return bool(remote_host and credential_origin in (None, 'paired'))",
+      "return bool(remote_host)"),
+     ('archeus/api/server.py', "                    if not self.api.origin.local_host(host):",
+      "                    if not self.api.origin.local_host(host) and False:")],
+     [ORIGIN_HTTP + 'test_Q163_tunnel_requires_paired_credential_and_retains_scope']),
+]
+
 if __name__ == '__main__':
     mutate_p18.MUTATIONS = MUTATIONS
     sys.exit(mutate_p18.run(sys.argv[1:]))
