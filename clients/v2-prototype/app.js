@@ -64,6 +64,7 @@
   var sharedTab = 'overview';
   var missionShown = 'm-date';
   var planStep = 'review';
+  var planOpened = false;
 
   /* ---------- Small helpers ---------- */
 
@@ -571,8 +572,8 @@
   function ovPts(poly) { return poly.map(function (p) { return p[0] + ',' + p[1]; }).join(' '); }
   // One <text> per word when the concept's word positions are known (tools/fit_type.py), so each word sits on the
   // concept's ink; a sentence with a different number of words falls back to one line at the text's origin.
-  function ovText(key, cls, text, centre) {
-    var t = window.ARCHEUS_TYPE[key], attrs = ' font-size="' + t.size + '" font-weight="' + t.weight + '" letter-spacing="' + t.ls + '"';
+  function frameText(T, key, cls, text, centre) {
+    var t = T[key], attrs = ' font-size="' + t.size + '" font-weight="' + t.weight + '" letter-spacing="' + t.ls + '"';
     if (centre === undefined && t.words) {
       var parts = text.split(' ');
       if (parts.length === t.words.length) {
@@ -584,6 +585,7 @@
     var x = centre === undefined ? t.x : centre;
     return '<text class="' + cls + '" x="' + x + '" y="' + t.y + '"' + attrs + (centre === undefined ? '' : ' text-anchor="middle"') + '>' + esc(text) + '</text>';
   }
+  function ovText(key, cls, text, centre) { return frameText(window.ARCHEUS_TYPE, key, cls, text, centre); }
   function ovStar(b, fill) {
     var cx = b.cx, cy = b.cy, r = b.w / 2, k = r * 0.1;
     return '<path d="M' + cx + ',' + (cy - r) + ' Q' + (cx + k) + ',' + (cy - k) + ' ' + (cx + r) + ',' + cy + ' Q' + (cx + k) + ',' + (cy + k) + ' ' + cx + ',' + (cy + r) +
@@ -598,24 +600,35 @@
   }
 
   // The header: wordmark, concept fixture, status line and the headline, anchored to the top of the screen.
-  function headSvg() {
-    var L = window.ARCHEUS_LAYOUT, out = '';
-    out += '<g class="ov-head-group" aria-hidden="true">';
-    out += ovText('wordmark', 'ov-serif ov-wordmark', 'ARCHEUS');
-    out += ovText('fixture', 'ov-sans ov-fixture', 'CONCEPT FIXTURE');
+  function headSvgFor(L, T) {
+    var out = '<g class="ov-head-group" aria-hidden="true">';
+    out += frameText(T, 'wordmark', 'ov-serif ov-wordmark', 'ARCHEUS');
+    out += frameText(T, 'fixture', 'ov-sans ov-fixture', 'CONCEPT FIXTURE');
     var d = ovBox(L.text.status_dot.box);
     out += '<circle cx="' + d.cx + '" cy="' + d.cy + '" r="' + (d.w / 2) + '" fill="#49E973"/>';
-    out += ovText('status_text', 'ov-sans ov-status', 'Not stopped · accepts new work');
+    out += frameText(T, 'status_text', 'ov-sans ov-status', 'Not stopped · accepts new work');
     var lines = sentence().split('\n');
-    out += ovText('headline_1', 'ov-serif ov-headline', lines[0]);
-    if (lines[1]) out += ovText('headline_2', 'ov-serif ov-headline', lines[1]);
+    out += frameText(T, 'headline_1', 'ov-serif ov-headline', lines[0]);
+    if (lines[1]) out += frameText(T, 'headline_2', 'ov-serif ov-headline', lines[1]);
     out += '</g>';
     return out;
   }
+  function headSvg() { return headSvgFor(window.ARCHEUS_LAYOUT, window.ARCHEUS_TYPE); }
 
   // The frame: the live marks, labels, the Review button, the chip, and the invisible hit areas.
+  // Soft glows (round 10f): the blur and strength are the concept's, measured by tools/fit_glow.py; the art has the
+  // same glow subtracted (tools/build_phone_art.py), so each glow is drawn once, here.
+  var OV_GLOW_AMBER = '#F6BC4E', OV_GLOW_BLUE = '#6FB1FF';
+  function ovGlowDefs() {
+    return '<defs>' +
+      '<filter id="ov-glow-amber" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB">' +
+      '<feGaussianBlur stdDeviation="6"/><feComponentTransfer><feFuncA type="linear" slope="0.161"/></feComponentTransfer></filter>' +
+      '<filter id="ov-glow-blue" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB">' +
+      '<feGaussianBlur stdDeviation="4"/><feComponentTransfer><feFuncA type="linear" slope="0.196"/></feComponentTransfer></filter>' +
+      '</defs>';
+  }
   function overviewSvg() {
-    var L = window.ARCHEUS_LAYOUT, out = '';
+    var L = window.ARCHEUS_LAYOUT, out = ovGlowDefs();
     var amber = find('m-search'), blue = find('m-date');
     var ac = OV_FILL, bc = OV_BL;
     out += '<g class="ov-hit" data-act="open-list" role="button" tabindex="0" aria-label="Archeus: open the project list">' +
@@ -623,6 +636,7 @@
 
     // Mission marks and labels: amber for the owner's obligation, blue for live work.
     var dm = ovBox(L.marks.diamond), sm = ovBox(L.marks.blue_star), tr = ovBox(L.marks.codex_tri);
+    out += '<polygon class="ov-glow" points="' + ovPts([[217, 680], [238, 699.5], [217, 719], [196, 699.5]]) + '" fill="' + OV_GLOW_AMBER + '" filter="url(#ov-glow-amber)"/>';
     out += ovDiamond(dm, OV_AM, 6);
     out += ovText('label_search', 'ov-serif ov-title', amber.title);
     out += ovText('label_review_plan', 'ov-sans ov-sub', amber.stateText);
@@ -633,6 +647,7 @@
     out += '<g class="ov-mark" data-open="m-search" role="button" tabindex="0" aria-label="' + esc(amber.title) + '">' +
       '<circle cx="' + dm.cx + '" cy="' + dm.cy + '" r="' + 44 + '" fill="transparent"/></g>';
 
+    out += '<g class="ov-glow" filter="url(#ov-glow-blue)">' + ovStar(sm, OV_GLOW_BLUE) + '</g>';
     out += ovStar(sm, bc);
     out += ovText('label_fix', 'ov-serif ov-title', blue.title);
     out += ovTriangle(tr, bc);
@@ -652,23 +667,26 @@
       return '<text class="ov-sans ov-name" x="' + n.x + '" y="' + n.y + '" font-size="24"' + (n.centre ? ' text-anchor="middle"' : '') + '>' + esc(n.text) + '</text>';
     }).join('');
 
-    var c = L.shapes.chip, cw = 210, cx0 = 388;
+    var c = L.shapes.chip, cw = c[2] - c[0], cx0 = c[0];
     out += '<g class="ov-chip" data-act="open-list" role="button" tabindex="0" aria-label="' + (projects.length - 1) + ' more projects: open the list">' +
       '<rect x="' + cx0 + '" y="' + (c[1] + (c[3] - c[1]) / 2 - 44) + '" width="' + cw + '" height="88" fill="transparent"/>' +
       '<rect class="ov-pill" x="' + cx0 + '" y="' + c[1] + '" width="' + cw + '" height="' + (c[3] - c[1]) + '" rx="' + ((c[3] - c[1]) / 2) + '" fill="rgba(20,16,26,0.7)" stroke="rgba(239,233,218,0.35)" stroke-width="2"/>' +
-      ovText('chip_text', 'ov-sans ov-chip-text', (projects.length - 1) + ' more projects', cx0 + cw / 2).replace(/ y="[0-9.]+"/, ' y="' + (c[1] + (c[3] - c[1]) / 2 + window.ARCHEUS_TYPE.chip_text.size * 0.36) + '"') + '</g>';
+      ovText('chip_text', 'ov-sans ov-chip-text', (projects.length - 1) + ' more projects', cx0 + cw / 2) + '</g>';
     return out;
   }
 
   // Sizes of the live controls come from the layout, so the art and the controls stay on the same units.
-  function placeControls() {
-    var L = window.ARCHEUS_LAYOUT, T = window.ARCHEUS_TYPE, bar = $('#chat-form'), stop = $('#s-now .stop-btn.chat-stop'), input = $('#chat-input');
-    if (!bar || !stop || !input) return;
+  function placeControls(frame) {
+    var three = frame === 3, L = three ? window.PH3_LAYOUT : window.ARCHEUS_LAYOUT, T = three ? window.PH3_TYPE : window.ARCHEUS_TYPE;
+    var bar = $('#chat-form'), stop = $('#s-now .stop-btn.chat-stop'), input = $('#chat-input');
+    if (!bar || !stop || !input || !L) return;
     var b = L.shapes.bar, s = L.shapes.stop, root = $('#s-now');
-    root.style.setProperty('--pad', L.pad);
-    $('#ov-art').setAttribute('viewBox', '0 ' + -L.pad + ' 804 ' + (1373 + 2 * L.pad));
-    root.style.setProperty('--edge-top', 'rgb(' + L.edge.top.join(',') + ')');
-    root.style.setProperty('--edge-bottom', 'rgb(' + L.edge.bottom.join(',') + ')');
+    if (!three) {
+      root.style.setProperty('--pad', L.pad);
+      $('#ov-art').setAttribute('viewBox', '0 ' + -L.pad + ' 804 ' + (1373 + 2 * L.pad));
+      root.style.setProperty('--edge-top', 'rgb(' + L.edge.top.join(',') + ')');
+      root.style.setProperty('--edge-bottom', 'rgb(' + L.edge.bottom.join(',') + ')');
+    }
     bar.style.left = 'calc(var(--u) * ' + b[0] + ')';
     bar.style.width = 'calc(var(--u) * ' + (b[2] - b[0]) + ')';
     bar.style.height = 'calc(var(--u) * ' + (b[3] - b[1]) + ')';
@@ -678,25 +696,78 @@
     stop.style.fontSize = 'calc(var(--u) * ' + T.stop_text.size + ')';
   }
 
-  // The chip is as wide as its text plus a fixed inset, so the 14 px label never spills out of the pill.
-  function fitChip() {
-    var t = $('#ov-art .ov-chip-text'), pill = $('#ov-art .ov-pill'), hit = $('#ov-art .ov-chip rect');
-    if (!t || !pill || !t.getComputedTextLength) return;
-    var w = Math.ceil(t.getComputedTextLength()) + 36, cx = +t.getAttribute('x'), x0 = cx - w / 2;
-    pill.setAttribute('x', x0); pill.setAttribute('width', w);
-    if (hit) { hit.setAttribute('x', x0); hit.setAttribute('width', w); }
-  }
-
   function buildOverview() {
     var svg = $('#ov-art'), head = $('#ov-head');
     if (!svg || !head || !window.ARCHEUS_LAYOUT || !window.ARCHEUS_TYPE) return;
     svg.innerHTML = overviewSvg();
-    fitChip();
     head.innerHTML = headSvg();
-    placeControls();
+    placeControls(1);
   }
 
   function ovMode() { return window.matchMedia('(max-width: 639px)').matches; }
+
+  /* ---------- Round 10f: the two phone sheets. Each frame is its concept raster with the live layer on top, in the
+     concept's own units: phone-2 is the decision sheet (plan approval), phone-3 the chat sheet (Start card first). ---------- */
+  function glowFilter(id, g) {
+    return '<filter id="' + id + '" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB">' +
+      '<feGaussianBlur stdDeviation="' + g.sigma + '"/><feComponentTransfer><feFuncA type="linear" slope="' + g.amp + '"/></feComponentTransfer></filter>';
+  }
+  function diamondPts(b) { return ovPts([[b.cx, b.y], [b.x + b.w, b.cy], [b.cx, b.y + b.h], [b.x, b.cy]]); }
+  function glowBox(b) { return ovBox(b); }
+  function ph2Svg() {
+    var L = window.PH2_LAYOUT, T = window.PH2_TYPE, G = L.glows;
+    var dm = ovBox(L.marks.diamond), sm = ovBox(L.marks.blue_star), tr = ovBox(L.marks.codex_tri), gd = ovBox(G.amber_diamond.box);
+    var open = ovBox(L.shapes.open), out = '<defs>' + glowFilter('ph2-glow-amber', G.amber_diamond) + glowFilter('ph2-glow-blue', G.blue_star) + '</defs>';
+    out += headSvgFor(L, T);
+    out += '<polygon class="ov-glow" points="' + diamondPts(gd) + '" fill="' + OV_GLOW_AMBER + '" filter="url(#ph2-glow-amber)"/>';
+    out += ovDiamond(dm, OV_AM, 5);
+    out += '<g class="ov-glow" filter="url(#ph2-glow-blue)">' + ovStar(sm, OV_GLOW_BLUE) + '</g>' + ovStar(sm, OV_BL);
+    out += ovTriangle(tr, OV_BL);
+    out += frameText(T, 'label_search', 'ov-serif ov-title', 'Search provenance');
+    out += frameText(T, 'label_review_plan', 'ov-sans ov-sub', 'Review plan');
+    out += frameText(T, 'label_fix', 'ov-serif ov-title', 'Fix date test');
+    out += frameText(T, 'label_verifying', 'ov-sans ov-sub', 'Verifying');
+    out += frameText(T, 'label_codex', 'ov-sans ov-codex', 'Codex');
+    out += '<rect class="ph-open-rect" x="' + open.x + '" y="' + open.y + '" width="' + open.w + '" height="' + open.h + '" rx="20"/>';
+    out += frameText(T, 'title', 'ov-sans ph-title', 'Search provenance');
+    out += frameText(T, 'what_label', 'ov-sans ph-label', 'What') + frameText(T, 'what_value', 'ov-sans ph-value', 'Review plan');
+    out += frameText(T, 'why_label', 'ov-sans ph-label', 'Why') + frameText(T, 'why_value', 'ov-sans ph-value', 'Plan approval required.');
+    out += frameText(T, 'core_label', 'ov-sans ph-label', 'Core consequence') + frameText(T, 'core_value', 'ov-sans ph-value', 'Read exact Core action before deciding.');
+    out += frameText(T, 'open_text', 'ov-sans ph-open', 'Open decision', open.cx);
+    out += frameText(T, 'bar_text', 'ov-sans ph-placeholder', 'Tell Archeus…');
+    return out;
+  }
+  function ph3Svg() {
+    var L = window.PH3_LAYOUT, T = window.PH3_TYPE, G = L.glows;
+    var dm = ovBox(L.marks.diamond), sm = ovBox(L.marks.blue_star), nm = ovBox(L.marks.notes_star), gd = ovBox(G.amber_diamond.box);
+    var out = '<defs>' + glowFilter('ph3-glow-amber', G.amber_diamond) + glowFilter('ph3-glow-blue', G.blue_star) + '</defs>';
+    out += headSvgFor(L, T);
+    out += '<polygon class="ov-glow" points="' + diamondPts(gd) + '" fill="' + OV_GLOW_AMBER + '" filter="url(#ph3-glow-amber)"/>';
+    out += ovDiamond(dm, OV_AM, 5);
+    out += '<g class="ov-glow" filter="url(#ph3-glow-blue)">' + ovStar(sm, OV_GLOW_BLUE) + '</g>' + ovStar(sm, OV_BL);
+    out += ovStar(nm, OV_IV);
+    [['m-search', dm], ['m-date', sm], ['m-read', nm]].forEach(function (pair) {
+      out += '<circle class="ov-hit-mark" data-open="' + pair[0] + '" role="button" tabindex="0" aria-label="' + esc(find(pair[0]).title) +
+        '" cx="' + pair[1].cx + '" cy="' + pair[1].cy + '" r="44" fill="transparent"/>';
+    });
+    return out;
+  }
+  // The frame the Overview shows: 1 is the Overview (phone-1), 3 is the chat sheet over the phone-3 concept.
+  function setPhoneFrame(n) {
+    var root = $('#s-now');
+    if (!root || !window.PH3_LAYOUT) return;
+    root.setAttribute('data-frame', n === 3 ? '3' : '1');
+    if (n === 3) {
+      $('#ph3-live').innerHTML = ph3Svg();
+      $('#feed').classList.add('is-open');
+    }
+    placeControls(n === 3 ? 3 : 1);
+  }
+  function buildPhone2() {
+    var svg = $('#ph2-live');
+    if (!svg || !window.PH2_LAYOUT) return;
+    svg.innerHTML = ph2Svg();
+  }
 
   // Thin facet lines inside a hull: interior points joined to the nearest outline vertices, three opacity tiers
   // (far tier fainter). Deterministic per hull id, so a resize keeps the same structure.
@@ -1588,8 +1659,12 @@
 
   function renderPlan(id) {
     var m = find(id) || find('m-search');
+    if (planId !== m.id) planOpened = false;
     planId = m.id;
     var p = plans[m.id], sec = $('#s-plan');
+    var sheetOn = ovMode() && !planOpened && m.id === 'm-search' && !!plans[m.id];
+    sec.classList.toggle('sheet-on', sheetOn);
+    if (sheetOn) buildPhone2();
     if (!p) {
       $('[data-plan-title]', sec).textContent = m.title;
       $('[data-plan-meta]', sec).textContent = projectOf(m.project).name + ' · ' + m.branch;
@@ -1800,7 +1875,8 @@
   // Not about a project: its own thread, never project memory unless the owner promotes it.
   function general(body) {
     addMsg('gen', '<p class="gen-k"><span class="gen-tag">General</span> not project memory</p><p>' + esc(body) + '</p>' +
-      '<label class="promote"><input type="checkbox" data-promote> <span>Promote to project memory (off)</span></label>');
+      '<label class="promote"><span>Promote to project memory</span><input type="checkbox" data-promote aria-describedby="promote-note"></label>' +
+      '<span class="sr-only" id="promote-note">Off: this answer stays in the general thread.</span>');
   }
 
   function reply(text) {
@@ -1858,11 +1934,22 @@
   $('#chat-prompts').innerHTML = PROMPTS.map(function (p) {
     return '<button type="button" class="prompt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
   }).join('');
-  addMsg('you', '<p>Open a mission in Notes: Export backup</p>');
-  addMsg('arch', '<p>Mission created in Notes. Start it when you like.</p>');
+  addMsg('you', '<p>Open a mission in Notes:<br>Export backup</p>');
+  addMsg('arch', '<p>Mission created in Notes.<br>Start it when you like.</p>');
   startCard(find('m-read'));
+  addMsg('you', '<p>What does exit code 137 mean?</p>');
+  general('The process was killed, usually out of memory (128 + signal 9).');
 
   document.addEventListener('submit', function (e) {
+    if (e.target.id === 'ph2-chat') {
+      e.preventDefault();
+      var typed = $('#ph2-input').value.trim();
+      if (!typed) return say('Write something first.');
+      $('#ph2-input').value = '';
+      location.hash = '#/now';
+      ask(typed);
+      return setPhoneFrame(3);
+    }
     if (e.target.id !== 'chat-form') return;
     e.preventDefault();
     var input = $('#chat-input');
@@ -1879,8 +1966,7 @@
 
   document.addEventListener('change', function (e) {
     if (!e.target.hasAttribute('data-promote')) return;
-    var on = e.target.checked, label = e.target.parentNode.querySelector('span');
-    label.textContent = on ? 'Promote to project memory (on)' : 'Promote to project memory (off)';
+    var on = e.target.checked;
     say(on ? 'Promoted to Harbor memory (simulated). Nothing was saved to Core.' : 'Promotion withdrawn. Nothing was saved.');
   });
 
@@ -2030,7 +2116,8 @@
       act.setAttribute('aria-expanded', String(on));
     } else if (name === 'open-list') openList();
     else if (name === 'now-sheet-close') closeNowSheet();
-    else if (name === 'feed-close') $('#feed').classList.remove('is-open');
+    else if (name === 'feed-close') { $('#feed').classList.remove('is-open'); setPhoneFrame(1); }
+    else if (name === 'open-decision') { planOpened = true; renderPlan(planId); }
   });
 
   // Typing in the bar opens the conversation as a sheet on the phone.
@@ -2038,6 +2125,7 @@
   function openFeed() {
     var feed = $('#feed');
     feed.classList.add('is-open');
+    if (isNarrow()) setPhoneFrame(3);
     var cards = thread.querySelectorAll('.msg-card');
     if (!cards.length) return;
     var card = cards[cards.length - 1];

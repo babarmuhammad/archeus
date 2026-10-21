@@ -70,6 +70,13 @@
                 <img class="ov-base" src="art/phone-1-base.webp" alt="" width="804" height="1973" decoding="sync">
                 <svg class="ov-art" id="ov-art" viewBox="0 0 804 1373" role="group" aria-label="Archeus, its missions and projects. Tap a hull or a mission for its detail."></svg>
               </div>
+              <div class="ph-frame ph3-frame" id="ph3-frame">
+                <img class="ph-art" src="art/phone-3-base.webp" alt="" width="724" height="1573" decoding="sync">
+                <svg class="ph-live" id="ph3-live" viewBox="0 0 724 1573" aria-hidden="true"></svg>
+                <div class="ph-sheet-bg" aria-hidden="true"></div>
+                <button type="button" class="ph3-back" data-act="feed-close">Back</button>
+                <span class="ph3-grab" aria-hidden="true"></span>
+              </div>
               <canvas class="sky" aria-hidden="true"></canvas>
               <canvas class="fx" aria-hidden="true"></canvas>
               <div class="world"></div>
@@ -232,6 +239,29 @@
       </section>
 
       <section class="screen" id="s-plan" hidden>
+        <div class="ph-frame ph2-frame" id="ph2-frame">
+          <img class="ph-art" src="art/phone-2-base.webp" alt="" width="724" height="1573" decoding="sync">
+          <svg class="ph-live" id="ph2-live" viewBox="0 0 724 1573" aria-hidden="true"></svg>
+          <div class="ph-sheet-bg" aria-hidden="true"></div>
+          <span class="ph3-grab ph2-grab" aria-hidden="true"></span>
+          <div class="sr-only">
+            <h2 id="ph2-title">Search provenance</h2>
+            <dl>
+              <dt>What</dt><dd>Review plan</dd>
+              <dt>Why</dt><dd>Plan approval required.</dd>
+              <dt>Core consequence</dt><dd>Read exact Core action before deciding.</dd>
+            </dl>
+          </div>
+          <a class="ph2-back" href="#/now">Back</a>
+          <button type="button" class="ph2-open" data-act="open-decision" aria-describedby="ph2-open-note">Open decision</button>
+          <p class="sr-only" id="ph2-open-note">Opens the full decision: plan tasks, comments and the approve and reject actions. Nothing is approved until you confirm.</p>
+          <form class="ph-bar ph2-bar" id="ph2-chat" autocomplete="off">
+            <span class="ph-caret" aria-hidden="true"></span>
+            <label class="sr-only" for="ph2-input">Tell Archeus what to do</label>
+            <input id="ph2-input" type="text" maxlength="300" placeholder="Tell Archeus…">
+          </form>
+          <button type="button" class="ph-stop" data-act="stop">Stop</button>
+        </div>
         <header class="head"><p class="kicker">Plan approval</p><h1 tabindex="-1" data-plan-title></h1></header>
         <div id="plan-review">
         <p class="small" data-plan-meta></p>
@@ -272,6 +302,10 @@
 
 <script src="art/phone-1-layout.js"></script>
 <script src="art/phone-1-type.js"></script>
+<script src="art/phone-2-layout.js"></script>
+<script src="art/phone-2-type.js"></script>
+<script src="art/phone-3-layout.js"></script>
+<script src="art/phone-3-type.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

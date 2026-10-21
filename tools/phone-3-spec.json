@@ -1,0 +1,142 @@
+{
+ "wordmark": {
+  "family": "serif",
+  "text": "ARCHEUS",
+  "weight": 400,
+  "tracked": true,
+  "words": false
+ },
+ "fixture": {
+  "family": "sans",
+  "text": "CONCEPT FIXTURE",
+  "weight": 350,
+  "tracked": true,
+  "words": false
+ },
+ "status_text": {
+  "family": "sans",
+  "text": "Not stopped · accepts new work",
+  "weight": 350,
+  "words": false
+ },
+ "headline_1": {
+  "family": "serif",
+  "text": "1 needs you ·",
+  "weight": 400,
+  "word_gap": 0.09,
+  "words": true
+ },
+ "headline_2": {
+  "family": "serif",
+  "text": "1 verifying",
+  "weight": 400
+ },
+ "back": {
+  "family": "sans",
+  "text": "Back",
+  "weight": 400,
+  "words": false
+ },
+ "you1_label": {
+  "family": "sans",
+  "text": "You",
+  "weight": 350,
+  "words": false
+ },
+ "you1_body1": {
+  "family": "sans",
+  "text": "Open a mission in Notes:",
+  "weight": 400,
+  "words": false
+ },
+ "you1_body2": {
+  "family": "sans",
+  "text": "Export backup",
+  "weight": 400,
+  "words": false
+ },
+ "arch1_label": {
+  "family": "sans",
+  "text": "Archeus",
+  "weight": 350,
+  "words": false
+ },
+ "arch1_body1": {
+  "family": "sans",
+  "text": "Mission created in Notes.",
+  "weight": 400,
+  "words": false
+ },
+ "arch1_body2": {
+  "family": "sans",
+  "text": "Start it when you like.",
+  "weight": 400,
+  "words": false
+ },
+ "start_title": {
+  "family": "serif",
+  "text": "Start and plan Export backup?",
+  "weight": 400,
+  "words": false
+ },
+ "start_text": {
+  "family": "sans",
+  "text": "Start",
+  "weight": 500,
+  "words": false
+ },
+ "keep_text": {
+  "family": "sans",
+  "text": "Keep as mission",
+  "weight": 500,
+  "words": false
+ },
+ "you2_label": {
+  "family": "sans",
+  "text": "You",
+  "weight": 350,
+  "words": false
+ },
+ "you2_body": {
+  "family": "sans",
+  "text": "What does exit code 137 mean?",
+  "weight": 400,
+  "words": false
+ },
+ "arch2_label": {
+  "family": "sans",
+  "text": "Archeus",
+  "weight": 350,
+  "words": false
+ },
+ "arch2_body1": {
+  "family": "serif",
+  "text": "The process was killed, usually out of",
+  "weight": 400,
+  "words": false
+ },
+ "arch2_body2": {
+  "family": "serif",
+  "text": "memory (128 + signal 9).",
+  "weight": 400,
+  "words": false
+ },
+ "promote": {
+  "family": "sans",
+  "text": "Promote to project memory",
+  "weight": 400,
+  "words": false
+ },
+ "bar_text": {
+  "family": "sans",
+  "text": "Tell Archeus…",
+  "weight": 400,
+  "words": false
+ },
+ "stop_text": {
+  "family": "sans",
+  "text": "Stop",
+  "weight": 500,
+  "words": false
+ }
+}

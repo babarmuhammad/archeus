@@ -7,7 +7,7 @@ offsets.json maps a text key to [dx, dy, dls] in concept units (dls adds to the 
 
 For each text in the layout (ink box measured from the concept by trace_concept.py):
 - the font size comes from the ink height,
-- the tracking from the ink width (zero for body and tappable text, which keep the 14 CSS px floor),
+- the tracking from the ink width, clamped to -2..+6 units (round 10f), with the size floor above,
 - the origin from the ink left and the baseline,
 - the weight from WEIGHT (set by hand against the concept glyphs).
 The fonts are the files the page loads (fonts.json maps family to file), so the metrics are the page's metrics.
@@ -34,15 +34,19 @@ SPEC = {
     'stop_text': ('sans', 'Stop'),
 }
 # Chosen by overlay against the concept glyphs (see README round 10d), not by ink mass.
-WEIGHT = {'wordmark': 400, 'fixture': 400, 'status_text': 400, 'headline_1': 500, 'headline_2': 500,
-          'label_search': 500, 'label_review_plan': 400, 'label_fix': 500, 'label_codex': 400, 'chip_text': 400,
+WEIGHT = {'wordmark': 400, 'fixture': 350, 'status_text': 350, 'headline_1': 500, 'headline_2': 500,
+          'label_search': 400, 'label_review_plan': 350, 'label_fix': 400, 'label_codex': 350, 'chip_text': 350,
           'review_label': 600, 'bar_text': 400, 'stop_text': 500}
-MIN_TAPPABLE = {'status_text': 31.4, 'chip_text': 31.4, 'review_label': 31.4, 'bar_text': 31.4, 'stop_text': 31.4}
+# Round 10f: the frame text is at the concept's size with an 11 CSS px floor at the 402 px design width (22 units).
+# The owner-approved 10 px list (20 units) is only the two sub-lines below.
+FLOOR = 22.0
+SUBLINE = {'label_review_plan': 20.0, 'label_codex': 20.0}
 TRACKED = {'wordmark', 'fixture'}
+NOWORDS = {'status_text', 'chip_text', 'review_label', 'bar_text', 'stop_text'}
 S = 200
 
 
-def word_lefts(lum, box, size, words):
+def word_lefts(lum, box, size, words, gap_em=0.15):
     """Ink left edge of each word in the concept: column runs of ink, merged across gaps smaller than
     0.15 em. Returns None when the run count does not match the word count."""
     x0, y0, x1, y1 = box
@@ -61,7 +65,7 @@ def word_lefts(lum, box, size, words):
         else:
             i += 1
     merged = []
-    gap = 0.15 * size
+    gap = gap_em * size
     for r in runs:
         if merged and r[0] - merged[-1][1] < gap:
             merged[-1][1] = r[1]
@@ -95,10 +99,24 @@ def font_at(path, wght):
 
 
 def main():
+    global SPEC, WEIGHT, SUBLINE, TRACKED
     layout = load_layout(sys.argv[1])
     fonts = json.load(open(sys.argv[2], encoding='utf-8'))
     concept = np.asarray(Image.open(sys.argv[3]).convert('L'), dtype=np.float32)
-    offsets = json.load(open(sys.argv[5], encoding='utf-8')) if len(sys.argv) > 5 else {}
+    offsets = json.load(open(sys.argv[5], encoding='utf-8')) if len(sys.argv) > 5 and sys.argv[5] != '-' else {}
+    spec = json.load(open(sys.argv[6], encoding='utf-8')) if len(sys.argv) > 6 else None
+    global LS_MIN, NOWORDS_SPEC, WORD_GAP
+    LS_MIN, NOWORDS_SPEC, WORD_GAP = {}, set(), {}
+    if spec is not None:
+        # round 10f: per-frame copy and metrics (phone-2 and phone-3 sheets): {key: {family, text, weight, subline?, tracked?,
+        # ls_min?, words?}}; words false keeps the line as one run (the word gaps of the concept are too small to split on)
+        SPEC = {k: (v['family'], v['text']) for k, v in spec.items()}
+        WEIGHT = {k: v.get('weight', 400) for k, v in spec.items()}
+        SUBLINE = {k: 20.0 for k, v in spec.items() if v.get('subline')}
+        TRACKED = {k for k, v in spec.items() if v.get('tracked')}
+        LS_MIN = {k: v['ls_min'] for k, v in spec.items() if 'ls_min' in v}
+        NOWORDS_SPEC = {k for k, v in spec.items() if v.get('words') is False}
+        WORD_GAP = {k: v['word_gap'] for k, v in spec.items() if 'word_gap' in v}
     out = {}
     for key, (family, text) in SPEC.items():
         x0, y0, x1, y1 = layout['text'][key]['box']
@@ -109,12 +127,11 @@ def main():
         l = ink_left(base, text)
         size = S * k
         n = len(text)
+        size = max(size, SUBLINE.get(key, FLOOR))
+        k = size / S
         ls = ((x1 - x0) - (r - l) * k) / max(1, n - 1)
-        if key in MIN_TAPPABLE:
-            size = max(size, MIN_TAPPABLE[key])
-            ls = 0.0
-        elif key not in TRACKED:
-            ls = max(min(ls, 6.0), -6.0)
+        if key not in TRACKED:
+            ls = max(min(ls, 6.0), LS_MIN.get(key, -2.0))
         wght = WEIGHT[key]
         f = font_at(path, wght)
         l, t, r, b = f.getbbox(text, anchor='ls')
@@ -123,9 +140,9 @@ def main():
         dx, dy, dls = (offsets.get(key, [0, 0, 0]) + [0])[:3]
         ls += dls
         words = None
-        if key not in MIN_TAPPABLE and key not in TRACKED:
+        if key not in TRACKED and key not in NOWORDS and key not in NOWORDS_SPEC:
             parts = text.split(' ')
-            lefts = word_lefts(concept, layout['text'][key]['box'], size, parts)
+            lefts = word_lefts(concept, layout['text'][key]['box'], size, parts, WORD_GAP.get(key, 0.15))
             if lefts is not None and len(parts) > 1:
                 f = font_at(path, wght)
                 words = []

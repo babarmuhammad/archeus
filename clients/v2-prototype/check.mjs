@@ -84,8 +84,12 @@ check(!/https?:\/\//.test(css) && !/@import/.test(css), 'style.css loads an exte
 check(/--serif/.test(css) && /--sans/.test(css), 'type pairing missing');
 
 const sizes = [...css.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
-check(sizes.length > 0 && Math.min(...sizes) >= 14, `font size below 14px: ${Math.min(...sizes)}`);
+// Round 10f: the frame text floor is 11 CSS px (HIG). The only text allowed below 11 px is the owner-approved 10 px
+// sub-lines (SUBLINE_KEYS below), and those are set in frame units, not CSS px.
+check(sizes.length > 0 && Math.min(...sizes) >= 11, `font size below 11px: ${Math.min(...sizes)}`);
 check(/\.btn\s*\{[^}]*min-height:\s*48px/.test(css), '.btn is not 48px tall');
+check(/#s-now \.ov-art \.ov-btn \{/.test(css) && /#s-now \.ov-art \.ov-chip-text \{/.test(css), 'Review and chip labels must not inherit the halo (specificity)');
+check(/linear-gradient\(180deg, #2C2932 0%, #312C36 50%, #2F2B35 100%\)/.test(css), 'Stop fill gradient missing (measured from the concept)');
 check(/prefers-reduced-motion:\s*reduce/.test(css), 'no reduced-motion rule');
 check(/prefers-reduced-transparency:\s*no-preference/.test(css), 'no translucency gate');
 check(/:focus-visible/.test(css), 'no visible focus rule');
@@ -137,10 +141,6 @@ check(layout && layout.pad > 0, 'layout has no background extension');
 for (const key of ['wordmark', 'fixture', 'status_text', 'headline_1', 'headline_2', 'label_search', 'label_review_plan', 'label_fix', 'label_codex', 'chip_text', 'review_label', 'bar_text', 'stop_text']) {
   check(type && type[key] && type[key].size > 0, `live text missing from the type data: ${key}`);
 }
-// Body and tappable text keeps the 14 CSS px floor at the narrowest phone (360 wide): 14 * 804 / 360 units.
-for (const key of ['status_text', 'chip_text', 'review_label', 'bar_text', 'stop_text']) {
-  check(type && type[key] && type[key].size >= 14 * 804 / 360, `${key} is below 14 CSS px at 360 wide`);
-}
 for (const key of ['shapes', 'marks']) check(layout && layout[key], `layout ${key} missing`);
 check(/Archeus Serif/.test(css) && /Archeus Sans/.test(css), 'live text must use the vendored @font-face families');
 check(/@font-face\s*\{[^}]*fonts\/LibreCaslonText-VF\.ttf/.test(css) && /@font-face\s*\{[^}]*fonts\/Inter-VF\.ttf/.test(css), 'vendored font files are not declared');
@@ -165,6 +165,39 @@ check(/\.chat-stop/.test(css) && /height: calc\(var\(--u\) \* 99\)/.test(css), '
 check(/prefers-reduced-motion/.test(css), 'reduced motion rule missing');
 check(/ovMode\(\)\) buildOverview\(\)/.test(js), 'the phone Overview is not rebuilt with the screen state');
 check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
+
+// Round 10f: frame type floors and sub-lines. Sizes are in frame units (2 units = 1 CSS px at each master width),
+// so 22 units is 11 CSS px. The 10 px sub-lines (20 units) are exactly the three listed keys.
+const SUBLINE_KEYS = ['label_review_plan', 'label_codex', 'label_verifying'];
+for (const [name, key] of [['phone-1', 'ARCHEUS_TYPE'], ['phone-2', 'PH2_TYPE'], ['phone-3', 'PH3_TYPE']]) {
+  const t = readGlobal(`art/${name}-type.js`, key);
+  check(t && typeof t === 'object', `${name} type data missing`);
+  if (!t) continue;
+  for (const [k, v] of Object.entries(t)) {
+    const floor = SUBLINE_KEYS.includes(k) ? 20 : 22;
+    check(v.size >= floor - 0.01, `${name} ${k} is ${v.size.toFixed(2)} units, below the ${floor / 2} CSS px floor`);
+    check(!SUBLINE_KEYS.includes(k) || v.size < 22, `${name} ${k} should be a 10 px sub-line`);
+  }
+}
+const lay1 = readGlobal('art/phone-1-layout.js', 'ARCHEUS_LAYOUT');
+check(lay1 && lay1.shapes.chip[2] - lay1.shapes.chip[0] <= 170, 'phone-1 chip is wider than the concept (161 units)');
+for (const name of ['phone-2', 'phone-3']) {
+  const L = readGlobal(`art/${name}-layout.js`, name === 'phone-2' ? 'PH2_LAYOUT' : 'PH3_LAYOUT');
+  check(L && L.size[0] === 724 && L.size[1] === 1573, `${name} layout is not the 724 x 1573 concept`);
+  check(L && L.glows && L.glows.amber_diamond && L.glows.blue_star, `${name} glows missing from the layout`);
+  check(existsSync(join(artDir, `${name}-base.webp`)), `${name} art missing`);
+  const wb = readFileSync(join(artDir, `${name}-base.webp`));
+  check(wb.subarray(0, 4).toString('ascii') === 'RIFF' && wb.length < 400 * 1024, `${name} art is not a WebP under 400 KB`);
+}
+check(/id="ph2-chat"/.test(html) && /data-act="open-decision"/.test(html) && /open-decision/.test(js), 'decision sheet Open decision button missing');
+check(/approve-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision confirm missing after Open decision');
+check(/ph3-back/.test(html) && /setPhoneFrame\(3\)/.test(js) && /What does exit code 137 mean\?/.test(js), 'chat sheet frame, Back or seeded general thread missing');
+check(/data-promote/.test(js) && /Promote to project memory/.test(js), 'promote switch missing');
+check(/gen-tag">General<\/span> not project memory/.test(js), 'general tag missing');
+check(/ov-glow/.test(js) && /feGaussianBlur/.test(js), 'soft glow filters missing');
+check(/archeus-v2-proto-ph2/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-ph2');
+check(/art\/phone-2-base\.webp/.test(sw) && /art\/phone-3-base\.webp/.test(sw), 'service worker does not cache the phone-2 and phone-3 art');
+check(/art\/phone-2-layout\.js/.test(html) && /art\/phone-3-type\.js/.test(html), 'index.html does not load the phone-2 and phone-3 data');
 
 
 if (failures.length) {

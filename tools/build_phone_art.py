@@ -19,6 +19,8 @@ import tempfile
 import cv2
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import fit_glow  # noqa: E402
 REPO = os.path.dirname(HERE)
 PROTO = os.path.join(REPO, 'clients', 'v2-prototype')
 
@@ -46,6 +48,8 @@ def main():
     run([os.path.join(HERE, 'trace_concept.py'), concept, os.path.join(HERE, 'trace_phone.json'), art_png, layout])
     run([os.path.join(HERE, 'fit_type.py'), layout, fonts, concept, type_js, os.path.join(HERE, 'type_offsets.json')])
     art = cv2.imread(art_png)
+    cfg = json.load(open(os.path.join(HERE, 'trace_phone.json'), encoding='utf-8'))
+    art = fit_glow.subtract(art, cv2.imread(concept), cfg['glows'], cfg['pad'])
     cv2.imwrite(webp, art, [cv2.IMWRITE_WEBP_QUALITY, 100])
     print('wrote', webp, os.path.getsize(webp), 'bytes')
 

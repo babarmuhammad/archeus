@@ -1,0 +1,134 @@
+{
+ "wordmark": {
+  "family": "serif",
+  "text": "ARCHEUS",
+  "weight": 400,
+  "tracked": true,
+  "words": false
+ },
+ "fixture": {
+  "family": "sans",
+  "text": "CONCEPT FIXTURE",
+  "weight": 350,
+  "tracked": true,
+  "words": false
+ },
+ "status_text": {
+  "family": "sans",
+  "text": "Not stopped · accepts new work",
+  "weight": 350,
+  "words": false
+ },
+ "headline_1": {
+  "family": "serif",
+  "text": "1 needs you ·",
+  "weight": 400,
+  "word_gap": 0.09,
+  "words": true
+ },
+ "headline_2": {
+  "family": "serif",
+  "text": "1 verifying",
+  "weight": 400
+ },
+ "label_search": {
+  "family": "serif",
+  "text": "Search provenance",
+  "weight": 400,
+  "words": false
+ },
+ "label_review_plan": {
+  "family": "sans",
+  "text": "Review plan",
+  "weight": 350,
+  "subline": true,
+  "words": false
+ },
+ "label_fix": {
+  "family": "serif",
+  "text": "Fix date test",
+  "weight": 400,
+  "words": false
+ },
+ "label_verifying": {
+  "family": "sans",
+  "text": "Verifying",
+  "weight": 350,
+  "subline": true,
+  "words": false
+ },
+ "label_codex": {
+  "family": "sans",
+  "text": "Codex",
+  "weight": 350,
+  "subline": true,
+  "words": false
+ },
+ "back": {
+  "family": "sans",
+  "text": "Back",
+  "weight": 400,
+  "words": false
+ },
+ "title": {
+  "family": "sans",
+  "text": "Search provenance",
+  "weight": 600,
+  "words": false,
+  "ls_min": -4.0
+ },
+ "what_label": {
+  "family": "sans",
+  "text": "What",
+  "weight": 400,
+  "words": false
+ },
+ "what_value": {
+  "family": "sans",
+  "text": "Review plan",
+  "weight": 400,
+  "words": false
+ },
+ "why_label": {
+  "family": "sans",
+  "text": "Why",
+  "weight": 400,
+  "words": false
+ },
+ "why_value": {
+  "family": "sans",
+  "text": "Plan approval required.",
+  "weight": 400,
+  "words": false
+ },
+ "core_label": {
+  "family": "sans",
+  "text": "Core consequence",
+  "weight": 400,
+  "words": false
+ },
+ "core_value": {
+  "family": "sans",
+  "text": "Read exact Core action before deciding.",
+  "weight": 400,
+  "words": false
+ },
+ "open_text": {
+  "family": "sans",
+  "text": "Open decision",
+  "weight": 500,
+  "words": false
+ },
+ "bar_text": {
+  "family": "sans",
+  "text": "Tell Archeus…",
+  "weight": 400,
+  "words": false
+ },
+ "stop_text": {
+  "family": "sans",
+  "text": "Stop",
+  "weight": 500,
+  "words": false
+ }
+}

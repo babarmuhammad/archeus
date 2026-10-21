@@ -1,3 +1,11 @@
+## Round 10f phone (2026-10-22): Overview polish and the two sheets
+
+All three phone frames are now concept rasters with the live layer on top: the Overview (phone-1), the decision sheet (phone-2)
+and the chat sheet (phone-3). Text floor: 11 CSS px at each master width, with the owner-approved 10 px list for the three
+sub-lines Review plan, Codex and Verifying only. Glows are live SVG blur filters measured from the concept. The decision sheet is
+the first step of the two-step decision (What / Why / Core consequence, then Open decision, then the explicit confirm). The chat
+sheet opens from the Tell bar and starts with the Start card for Export backup. README round 10f lists the residuals with numbers.
+
 ## Round 10d phone (hybrid, 2026-10-22): concept raster as the art
 
 Status: complete with residual differences. README round 10d lists them with measured numbers.

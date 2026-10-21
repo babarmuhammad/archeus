@@ -4,6 +4,83 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10f phone (2026-10-22): Overview polish and the two sheets
+
+Owner rules in this round: frame text at the concept's own sizes with an 11 CSS px floor (HIG). The owner-approved 10 px list
+applies only to the sub-lines `label_review_plan`, `label_codex` and `label_verifying`. Tappable hit areas stay 44 pt without
+changing the visible shapes. The Archeus name stays outside the big hull.
+
+Masters. `phone-1-now-v2.png` is 804 x 1373 (402 x 686.5 CSS at DPR 2). `phone-2-decision-v2.png` and `phone-3-chat-v2.png` are
+724 x 1573 each (the 804 x 1748 figure in the earlier brief is wrong; the sheets are 362 CSS wide at DPR 2). The floor is 22 units
+in all three frames, which is 11 CSS px at each master width. At 360 px wide the frame scales down with the screen: Overview text
+falls to 9.8 CSS px and sheet text to about 10.9 px. That is an owner decision (residual 9).
+
+Overview (phone-1), what changed:
+- Status line 22 units (was 31.4, the old 14 px rule). Ink mass 1.53 times the concept (was 1.87).
+- Chip: the pill is the concept's 161 units (was about 230). Its text is 22 units with -2 units tracking, so "2 more projects"
+  fits. At 11 px the text alone is about 164 units at natural spacing, so the tracking pays for the concept width.
+- Review label: 22 units, weight 600, no halo. The halo came from `#s-now .ov-art text`, which beat `#s-now .ov-btn` on
+  specificity; the Review and chip rules are now `.ov-art .ov-btn` and `.ov-art .ov-chip-text`.
+- Glows: the amber diamond and the blue star are live SVG blur filters (`ov-glow`). Strength and blur are measured on the concept by
+  `tools/fit_glow.py`: amber sigma 6.0, amplitude 0.161; blue sigma 4.0, amplitude 0.196. The same model is subtracted from the art
+  (`fit_glow.subtract`), so each glow is drawn once.
+- Review has no outside glow in the concept: the alpha stays within +/-0.01 out to 40 units, measured. Nothing is added. The
+  owner's "Review rim glow" is not in the raster; this is an owner decision.
+- Stop: the concept fill is a faint vertical gradient, #2C2932 at the top, #312C36 at the middle, #2F2B35 at the bottom (measured).
+- Scene labels: Search provenance and Fix date test are 22 units (were 20.5 and 17.9). Review plan and Codex are the 20 unit
+  sub-lines. Weights 400 (serif) and 350 (sans) match the concept's thinner strokes.
+
+Decision sheet (phone-2, `#s-plan` on the phone, `art/phone-2-*`). The base art is the concept with the live text, marks and
+controls removed, and the sheet area replaced by the page background (`tools/build_sheet_art.py`: per-column median of the band
+above the sheet, smoothed). The sheet is the one tinted element and it is live: rgba(40, 34, 52, 0.25) with a 1 px top edge.
+What / Why / Core consequence are SVG text at the measured ink boxes. Open decision is a full-width amber outline (live rect) with a
+button over it. The steps are unchanged: Open decision opens the full review (`planOpened`), then Approve, then the step 2 confirm,
+then the explicit confirm box (Cancel is the default). Tell and Stop sit above the home indicator.
+
+Chat sheet (phone-3, `art/phone-3-*`). Focusing the Tell bar switches the Overview to the phone-3 frame (`data-frame="3"` on
+`#s-now`). Bubbles are HTML on the phone-3 units: owner bubbles right-aligned (391 units), Archeus bubbles left (521 units). The
+thread is seeded with the concept's fixture: you "Open a mission in Notes: Export backup", Archeus "Mission created in Notes. Start
+it when you like.", the Start card for Export backup, you "What does exit code 137 mean?", then the General answer with its tag and
+the off "Promote to project memory" switch. The tag "General" is shown in the General line; the raster has no visible tag there.
+Back returns to the Overview frame.
+
+Measured (`tools/compare_frame.py`, full resolution, no blur, DPR 2; mean absolute RGB difference, 0 to 255):
+
+| Frame | Frame mean | Art (no live element) | Worst text | Notes |
+|---|---|---|---|---|
+| Overview, phone-1 (804 x 1373) | 4.63 (was 5.11) | 1.74 (was 2.12) | Fix date test 52.8 (was 21.4); Search provenance 30.1; Review plan 35.0 | Review fill 11.1 (was 28.6); chip 24.2 (was 35.6); status 37.5 (was 59.4) |
+| Decision, phone-2 (724 x 1573) | 7.94 | 2.71 | Title 60.1; headline line 1 52.2 | open 11.2; bar 10.4; stop 15.1; header 11.4 |
+| Chat, phone-3 (724 x 1573) | 11.22 | 5.13 | Start title 56.4; bubble body 40 to 60 | Start button 40.7 (was 127.7); header 12.6 |
+
+Regional metrics: `tools/compare_phone.json`, `tools/compare_phone2.json`, `tools/compare_phone3.json`. Renders are at DPR 2:
+402 x 687 viewport for phone-1, 362 x 787 for phone-2 and phone-3, so one unit is one device pixel.
+
+Checks: `check.mjs` through the testlock. Round 10f assertions: the 11 px floor in each frame, the sub-line list, the chip width,
+glow filters, the Stop gradient, the phone-2 and phone-3 art and layout, the decision flow, the seeded thread, and the service
+worker cache `archeus-v2-proto-ph2`. Label overlap probe (Chromium, pairwise over live SVG text and HTML controls): no overlaps
+between different items, except the three headline pairs already listed in round 10d (line boxes; the ink does not touch) and the
+Open decision text under its own button. Decision flow: Open decision, then the review, then Approve, then the confirm box (return
+value empty; Cancel is the default). Chat: focusing the Tell bar switches to the phone-3 frame.
+
+Residual differences (measured where a number exists):
+1. Serif glyph shapes: the concept's serif is narrower and lighter than Libre Caslon. Headline line 1 mean is 52.2 on phone-2
+   (14.6 on phone-1, where the concept's word gaps were wide enough to place each word). At 402 px "needs" nearly touches "you".
+   Not fixable with the vendored face.
+2. Sans: Inter is wider than the concept's sans in the sheets. The title "Search provenance" (Inter 600, -4 units tracking) is 60.1.
+3. Labels at the 11 px floor are larger than the concept's: Fix date test +22 units of size (mean 52.8). Review plan and Codex at
+   the 10 px sub-line size are wider than the concept's 8 px text (means 35 and 24).
+4. Chip tracking -2 units (about -1 CSS px): the price of the concept's 161-unit width at 11 px.
+5. Review has no outside glow in the concept, so none is drawn. Owner decision.
+6. Phone-3 bubble text sits 2 to 13 units off the concept's ink on x and 4 to 13 units on y, because the bubbles are flow layout,
+   not absolute baselines. Body text means 40 to 60.
+7. Phone-3 Start title is 26 units narrower than the concept's (serif face).
+8. The art region of phone-3 (mean 5.13) includes the sheet's tinted background, which is a flat approximation of the concept's
+   sheet (the concept's sheet has a faint gradient).
+9. At 360 px wide the Overview text is 9.8 CSS px, below the floor. If the owner wants 11 px at 360, the frame text grows to
+   24.6 units and the chip grows to about 200 units.
+10. Not verified: a real device (safe areas and the home indicator are emulated), iOS and Android rasterisers, a second DPR, and
+    the sheets at widths other than 362 and 402 (the frame scales; it is not re-laid out).
+
 ## Round 10d phone (hybrid, 2026-10-22): concept raster as the art, live layer on top
 
 Method (owner decision, hybrid): the scene picture is the concept raster itself. Every live element was removed from it and the cleaned raster is the base art. Everything live sits on top at the concept's measured units: text (vendored fonts), the mission marks (live SVG shapes in the concept's own geometry, coloured from the data model), the Review button, the chip, the Tell bar and Stop. One owner per visual element: a removed element is never drawn twice.
