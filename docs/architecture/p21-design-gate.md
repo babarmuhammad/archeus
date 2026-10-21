@@ -458,7 +458,7 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
 
-### Slice E as built (2026-10-21, card T-128; rework rounds 1 to 4)
+### Slice E as built (2026-10-21, card T-128; rework rounds 1 to 5)
 
 Built under D0 by the owner's naming of 2026-10-21 ("Yes, all five (Recommended)", recorded on
 the board): slice E touches the execution boundary's Core side, so it was not D0-eligible on
@@ -482,11 +482,18 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 - **The label (I-F4, §9): a closed vocabulary, never an argument.** A label is one of: a host, from a
   URL that names its scheme (`://`, or a leading `//`), after its userinfo, port, path, query and
   fragment are stripped, and only when it is letters, digits, dots and dashes (`clear_host` in
-  `archeus/core/execution/canonical.py`). A host label that can carry a secret (longer than 20
-  characters, or with a letter and a digit and longer than 4) shows as an ellipsis: `zq9Kt4mP.example`
-  reads "….example"; the TLD and the plain words stay (`api.example.co.uk` reads as is). A URL is named
-  only when it is the one URL of the call: two, or one and a decoy in a flag the list does not know,
-  name no host. Otherwise a tool and a verb from a short list for that tool (`_TOOLS` and `_VERBS` in
+  `archeus/core/execution/canonical.py`). A host label that can carry a secret shows as an ellipsis:
+  longer than 20 characters, or with a letter and a digit and longer than 4, or an all-digit label
+  longer than 6. The rule applies to every label, the TLD and a dotless host included (review round 5,
+  R5: `Ab3dEf9hIjK2LmN4OpQ7` reads "…", `h.example.sk3Kd9fLq2mZ8xRv7wT1` reads "h.example.…",
+  `482913756.example` reads "….example"). `zq9Kt4mP.example` reads "….example"; the plain words stay
+  (`api.example.co.uk` reads as is). Residual, accepted with Q3: a host label of plain letters still
+  shows, and so does a 4-character token (`a1b2.example`, the rule's length of 4 is kept). A URL is
+  named only when it is the one URL of the call, and that URL is not the word after a flag that may
+  take a value (round 5, S3: `curl --socks5 http://u:pw9Kd2@p.example:1080 h.example/x` names no host,
+  nor does `curl --proxy-header http://decoy.example h.example/x`). A flag is taken to take a value
+  unless it is one of the curl and wget switches that take none (`_NO_VALUE_LETTERS`, `_NO_VALUE_LONG`).
+  Two such URLs, or one after a value-taking flag, name no host. Otherwise a tool and a verb from a short list for that tool (`_TOOLS` and `_VERBS` in
   `executions.py`; a program outside the list reads "a program"), or a fixed phrase: "shell" or
   "command" (the canonicaliser's own words), "search" (WebSearch), "a file in the workspace", "a file
   outside the workspace" (a path is never named), "a tool" (a harness tool). No value, path, header,
@@ -505,42 +512,53 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   Rules, as they read against f483f87:
 
 <!-- classifier-rules:begin -->
-- unclassified: a first word with = (NAME=value); the programs ., alias, builtin, busybox, chrt, command, declare, env, eval, exec, export, flock, ionice, nice, nohup, set, setsid, source, stdbuf, strace, su, sudo, taskset, time, timeout, trap, typeset, unbuffer, watch, xargs
+- unclassified: a first word with = (NAME=value); the programs ., alias, builtin, busybox, chroot, chrt, command, declare, doas, env, eval, exec, export, flock, ionice, nice, nohup, parallel, script, set, setarch, setsid, source, stdbuf, strace, su, sudo, taskset, time, timeout, trap, typeset, unbuffer, watch, xargs
+- find with -exec, -execdir, -ok or -okdir
+- a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [
+- a shell operator outside quotes: | ; & < > ` ( ) ! and $( ; a $ or a backtick anywhere
 - anywhere in the arguments: -c, -e or /c as whole words
-- shells (sh, bash, zsh, dash, fish): a single-dash flag before the first positional holding one of cCeE; --command
-- node: a single-dash flag before the first positional holding one of ep; --eval, --print
-- perl: a single-dash flag before the first positional holding one of eE
-- php: a single-dash flag before the first positional holding one of rRB
-- py: a single-dash flag before the first positional holding one of c
-- python: a single-dash flag before the first positional holding one of c
-- python3: a single-dash flag before the first positional holding one of c
-- ruby: a single-dash flag before the first positional holding one of e
+- shells (sh, bash, zsh, dash, fish): a single-dash word anywhere in the arguments holding one of cCeE (a glued value counts); --command
+- node: a single-dash word anywhere in the arguments holding one of ep; --eval, --print
+- perl: a single-dash word anywhere in the arguments holding one of eE
+- php: a single-dash word anywhere in the arguments holding one of rRB
+- py: a single-dash word anywhere in the arguments holding one of c
+- python: a single-dash word anywhere in the arguments holding one of c
+- python3: a single-dash word anywhere in the arguments holding one of c
+- ruby: a single-dash word anywhere in the arguments holding one of e
 - cmd: an argument starting with /c, /k, /r in any case
-- powershell, pwsh: an argument whose leading letters are a prefix of command or encodedcommand, or ec, or start with com or enc (a glued value counts: -ENCx)
+- powershell, pwsh: an argument whose first letter is c or e (a glued value counts: -cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full
 - send flags (external_comm, not web): the names -d, -F, -T, --data, --data-raw, --data-binary, --data-urlencode, --data-ascii, --upload-file, --form, --form-string, --json, --post-data, --post-file, --body-data, --body-file; a long flag starting with --data, --form, --post- or --body-; a short -d, -F or -T, attached or not; -X or --request with a method other than GET (as the next word, attached, or with =)
 <!-- classifier-rules:end -->
 
-  **Every move against f483f87** (review round 4, 18,772 generated shapes run through f483f87 and
-  through this build; `rv_gen.py` and `rv_cmp.py` in the round's scratch). No shape moves to a looser
-  class (0 held-to-allowed). Shapes that moved, by program (counts are shapes):
-  - plain exec to unclassified, 3,387: `sh`, `bash`, `zsh`, `dash` with a cluster holding c or e
-    (`-lc`, `-ec`): 960; `python`, `python3`, `py` with `-lc`: 360; `node -ec`: 140; `perl -ec`: 120;
-    `ruby -ec`: 80; `php -r`: 60; `cmd` and `cmd.exe` with `/C` in any case, and the bare path
-    `C:\Windows\System32\cmd.exe` with `/c`: 252; `powershell` and `pwsh` with a code parameter
-    anywhere in the arguments (`-Command`, `-ec`): 262; the wrappers `stdbuf` and `busybox` (573
-    each), and `trap`, `strace`, `unbuffer`, `flock`, `taskset`, `export`, `set` (one shape each).
-  - web to external_comm, 290: `curl` and `wget` with a body or send form in any spelling (`--json`,
-    `--data*`, `--form*`, `--upload-file`, `--post-*`, `-d`, `-F`, `-T` attached as `-File`, `-X` or
-    `--request` with a method other than GET): 145 each.
-  - Owner Q1's examples are two of these: `wget --post-data x https://h.example/x` and
-    `curl --json "{}" https://api.example/x` (web to external_comm). Its third example,
-    `NODE_ENV=test npm test`, is **not** a move against f483f87: f483f87 already held a first word
-    with `=` (its `'=' in argv[0]` test). It is held now, as it was then; recorded so the answer is not
-    read as covering a move that did not happen.
+  **Every move against f483f87** (review round 5; `py tools/p21_classifier_moves.py f483f87` prints
+  these counts). 64,521 generated shapes (programs x pre-options x payload forms x tails, the curl and
+  wget send forms, and plain commands): 29,957 moved, 0 held-to-allowed. Every move goes to unclassified
+  or to external_comm; no shape became allowed. Moves by group, in shapes:
+  - plain exec to unclassified, 24,277 in all. The wrappers, builtins and aliases: `command`,
+    `builtin`, `alias`, `declare`, `typeset`, `export`, `set`, `stdbuf`, `busybox`, `trap`, `ionice`,
+    `setsid`, `chrt`, `taskset`, `flock`, `unbuffer`, `strace`, `setarch`, `doas`, `chroot`, `script`,
+    `parallel` (971 each), and a brace or glob first word or argument, `{bash,-c,x}`, `b?sh`, `b*sh`
+    (971 each). A subshell and a negation, `(rm -R build)` and `! rm -R build` (one each), are now
+    operators.
+  - `sh`, `bash`, `zsh`, `dash`, `fish` with a cluster holding c or e, before or after a value option:
+    2,400 (480 each).
+  - `python`, `python3`, `py`, `node`, `perl`, `ruby`, `php`: 1,890 (270 for each of python, python3, py,
+    node and php; 330 perl; 210 ruby). A code letter in any single-dash word holds, after a value option
+    too (`python -X utf8 -c"x"`, `node -r x -p 1`), and after the script (`node server.js -p 3000`).
+  - `cmd`, `cmd.exe`, `powershell`, `pwsh`: 1,181. `/C` in any case; a PowerShell word whose first
+    letter is c or e, a glued value included (`-cRemove-Item`, `-EC"x"`), except `-ExecutionPolicy` and
+    `-ConfigurationName` in full.
+  - `find` with `-exec`, `-execdir`, `-ok` or `-okdir`: write_repo to unclassified (1 shape).
+  - curl and wget send forms, web to external_comm: 208 (104 each).
+  Not moved, checked by the tool: `npx -c"..."` (still a plain exec: open question Q5), `ls *.py` and
+  `cat *.md` (reads stay reads, E12), `NODE_ENV=test npm test`. The owner's Q1 example
+  `NODE_ENV=test npm test` is **not** a move against f483f87: f483f87 already held a first word with `=`
+  (its `'=' in argv[0]` test). It is held now, as it was then; recorded so the answer is not read as
+  covering a move that did not happen.
   - Attached values count as the flag's value: `bash -c"rm -R build"`, `cmd.exe /c"x"`,
     `node --eval=x`, `powershell -ENC"x"` (the shell's quotes are gone when the rule reads the word).
   - Shapes the rules leave alone, by design: `node -r x.js` and `py -E x.py` (not code from the
-    arguments), `python -m pytest -q` (the module's own arguments), `node --version`, `ls -la` (a read).
+    arguments), `python -P x.py`, `python -m pytest -q` (the module's own arguments), `node --version`.
   Against 0e63eeb (round 2), the shapes round 2 held and round 4 allows (for example `python app.py -lc`)
   and the shapes it allowed and round 4 holds are both in the review trail; the table above is against
   f483f87 only, which is the baseline the owner accepted.
@@ -579,3 +597,21 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   above. Not taken: a full inversion (any single-dash flag of a payload-capable tool that the rule does
   not name becomes unclassified), which would hold `python -m pytest -q` and `node --version`. Those two
   stay allowed. A named rule is added for any new shape found.
+- Q5 (review round 5, open; the builder's recommendation: accept, since each is fail-closed): the
+  round-5 widenings that go beyond Q4 as answered. (a) The payload scan no longer stops at the first
+  positional, because a value option (`bash -o pipefail -c"x"`, `python -X utf8 -c"x"`) hid the code: a
+  code letter in any single-dash word now holds, so `node server.js -p 3000` and `python script.py -Ec x`
+  hold too. (b) Wrappers added to the unclassified set: `setarch`, `doas`, `chroot`, `script`, `parallel`.
+  (c) The operators `(`, `)` and `!` outside quotes. (d) `find` with `-exec`, `-execdir`, `-ok` or
+  `-okdir`. (e) A brace or glob (`{ } * ? [`) in a first word, or in an argument of a shell or
+  interpreter. Not done: `npx -c"..."` stays a plain exec, since `npx` runs packages by design; the owner
+  decides whether it joins the set.
+- Q6 (review round 5, open; the builder's recommendation: accept): the host-label rule now elides a
+  dotless host, a token-shaped TLD and an all-digit label longer than 6 (R5). The plain-letter residual
+  of Q3 stands. The 4-character token (`a1b2.example`) still shows: the owner's length of 4 is kept
+  (review N1). Decision asked: is the TLD elision part of the accepted rule (the reviewer's standard),
+  or only the plain-letter residual?
+- Round 5 notes, not decisions: the row `curl https://hunter2=x.example/x` (E08) is the pre-existing
+  invalid-host row; the decoy HOSTILE row replaced by the owner is `curl --proxy-header
+  http://decoy.example/hunter2 https://h.example/x`, which carries the planted secret. The T-143 policy
+  host bug (`curl -H "X: a.b" https://evil.example/x` decides on `x`) is NOT fixed here.

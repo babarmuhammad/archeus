@@ -32,13 +32,16 @@ PATH_FIELD = {'Read': 'file_path', 'Write': 'file_path', 'Edit': 'file_path',
 OPTIONAL_PATH = ('Glob', 'Grep')
 
 #: a shell operator outside quotes makes a command unclassified
-_OPERATOR = re.compile(r'[|;&<>`]|\$\(')
+_OPERATOR = re.compile(r'[|;&<>`()!]|\$\(')
+#: a glob or brace character: the shell expands it, so the program or an argument is not known
+_GLOB = re.compile(r'[{}*?\[]')
 _SHELLS = ('sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 'pwsh',
            'python', 'python3', 'py', 'node', 'perl', 'ruby', 'php')
 _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 'time',
           'watch', 'timeout', 'nice', 'command', 'builtin', 'export', 'set', 'typeset',
           'declare', 'alias', 'stdbuf', 'busybox', 'trap', 'ionice', 'setsid', 'chrt',
-          'taskset', 'flock', 'unbuffer', 'strace')
+          'taskset', 'flock', 'unbuffer', 'strace', 'setarch', 'doas', 'chroot', 'script',
+          'parallel')
 
 READ_COMMANDS = ('ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which',
                  'file', 'stat', 'tree', 'dir', 'type', 'less', 'more', 'diff')
@@ -145,7 +148,6 @@ def _unclassified(target, argv=None):
     return Action(action_class='exec', target=target or 'command', argv=argv)
 
 
-#: the names a shell or interpreter runs code from (its payload flags, below)
 _CURL_VALUE = frozenset((
     '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--data-ascii', '-H',
     '--header', '-u', '--user', '-F', '--form', '--form-string', '--oauth2-bearer', '-X',
@@ -192,26 +194,28 @@ LONG_CODE = {'sh': ('--command',), 'bash': ('--command',), 'zsh': ('--command',)
              'dash': ('--command',), 'fish': ('--command',), 'node': ('--eval', '--print')}
 #: cmd takes code from /c, /k and /r, attached or not, in any case (its arguments are all its own)
 CMD_WORDS = ('/c', '/k', '/r')
-#: PowerShell takes code from -Command and -EncodedCommand, by any prefix of the name
-PWSH_WORDS = ('command', 'encodedcommand')
 #: the first build's rule, kept whole: -c, -e and /c count wherever they stand
 ANYWHERE = ('-c', '-e', '/c')
+#: the two PowerShell parameters that begin with c or e and carry no code
+PWSH_NOT_CODE = ('executionpolicy', 'configurationname')
 
 
 def classifier_rules():
     """The payload and send rules as the gate's §12 block states them (one line each)."""
     lines = ['unclassified: a first word with = (NAME=value); the programs ' + ', '.join(sorted(_NEVER))]
+    lines.append('find with -exec, -execdir, -ok or -okdir')
+    lines.append('a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [')
+    lines.append('a shell operator outside quotes: | ; & < > ` ( ) ! and $( ; a $ or a backtick anywhere')
     lines.append('anywhere in the arguments: -c, -e or /c as whole words')
-    lines.append('shells (' + ', '.join(SHELL_TOOLS) + '): a single-dash flag before the first '
-                 'positional holding one of ' + SHELL_LETTERS + '; --command')
+    lines.append('shells (' + ', '.join(SHELL_TOOLS) + '): a single-dash word anywhere in the '
+                 'arguments holding one of ' + SHELL_LETTERS + ' (a glued value counts); --command')
     for name in sorted(INTERP_LETTERS):
         longs = LONG_CODE.get(name, ())
-        lines.append(name + ': a single-dash flag before the first positional holding one of '
+        lines.append(name + ': a single-dash word anywhere in the arguments holding one of '
                      + INTERP_LETTERS[name] + ((('; ' + ', '.join(longs)) if longs else '')))
     lines.append('cmd: an argument starting with ' + ', '.join(CMD_WORDS) + ' in any case')
-    lines.append('powershell, pwsh: an argument whose leading letters are a prefix of '
-                 + ' or '.join(PWSH_WORDS) + ', or ec, or start with com or enc (a glued value '
-                 'counts: -ENCx)')
+    lines.append('powershell, pwsh: an argument whose first letter is c or e (a glued value counts: '
+                 '-cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full')
     lines.append('send flags (external_comm, not web): the names ' + ', '.join(_SENDS)
                  + '; a long flag starting with --data, --form, --post- or --body-; a short -d, '
                  '-F or -T, attached or not; -X or --request with a method other than GET (as the '
@@ -220,19 +224,20 @@ def classifier_rules():
 
 
 def _pwsh_word(a):
-    """-c, -co, -e, -ec, -enc, -Command, -EncodedCommand, and the same with a value glued on
-    (`-ENC"x"` arrives as `-ENCx`): the leading letters decide, -ExecutionPolicy does not."""
+    """A PowerShell code parameter, or one with a value glued on (`-cRemove-Item`, `-ENCx`): the
+    first letter decides, since every parameter that begins with c or e takes code except the
+    two in PWSH_NOT_CODE. Only the letters before a digit or a symbol are read, so a glued value
+    does not hide the parameter."""
     m = re.match(r'[-/]([a-zA-Z]+)', a)
     run = m.group(1).lower() if m else ''
-    return run in ('c', 'e', 'ec') or run[:3] in ('com', 'enc') or any(
-        w.startswith(run) for w in PWSH_WORDS if run)
+    return run[:1] in ('c', 'e') and run not in PWSH_NOT_CODE
 
 
 def _payload(prog, args):
     """A shell or interpreter, or cmd or PowerShell, runs code from its arguments (see
-    `classifier_rules`). A flag before a shell's or an interpreter's first positional is its
-    own; the first positional is the script (or the -m module), and what follows it is the
-    script's."""
+    `classifier_rules`). A value option before the script (`bash -o pipefail -c"x"`) does not
+    end the scan: a code letter in any single-dash word holds, so the rule needs no list of
+    value options, and a word after the script that holds one holds too (fail-closed)."""
     if any(a in ANYWHERE for a in args):
         return True
     if prog == 'cmd':
@@ -241,15 +246,11 @@ def _payload(prog, args):
         return any(_pwsh_word(a) for a in args)
     letters = SHELL_LETTERS if prog in SHELL_TOOLS else INTERP_LETTERS.get(prog, '')
     longs = LONG_CODE.get(prog, ())
-    if not letters and not longs:
-        return False
     for a in args:
         if a.startswith('--'):
             if longs and a.lower().startswith(longs):
                 return True
             continue
-        if not a.startswith('-'):
-            return False
         m = re.match(r'-([a-zA-Z]+)', a)
         if m and letters and any(ch in letters for ch in m.group(1)):
             return True
@@ -274,25 +275,44 @@ def _sends(args):
     return False
 
 
+#: curl and wget switches that take no value: a word after one is a positional, not its value
+_NO_VALUE_LETTERS = 'sSLvkfigINGq'
+_NO_VALUE_LONG = frozenset((
+    '--location', '--silent', '--show-error', '--insecure', '--verbose', '--compressed', '--fail',
+    '--include', '--head', '--globoff', '--no-buffer', '--quiet', '--continue', '--no-clobber',
+    '--no-check-certificate', '--recursive'))
+
+
 def _url_arg(prog, args):
-    """The first positional that names its scheme (`://`, or a leading `//`) and is not the
-    value of a flag: the one URL a chip may name the host of."""
+    """The one URL a chip may name the host of: the only positional with a scheme (`://`, or a
+    leading `//`), not the value of a listed flag, and not the word right after a flag that may
+    take a value (`--socks5 http://proxy`, `--proxy-header http://decoy`). Two such URLs, or one
+    after such a flag, name no host."""
     values = _WGET_VALUE if prog == 'wget' else _CURL_VALUE
+    urls = []                  # (word, after a flag that may take it as its value)
     skip = False
-    found = []
+    maybe_value = False
     for i, a in enumerate(args):
         if skip:
-            skip = False
-        elif a == '--url' and i + 1 < len(args):
-            found.append(args[i + 1])
-        elif a in values:
-            skip = True
-        elif a.startswith('-'):
+            skip, maybe_value = False, False
             continue
-        elif '://' in a or a.startswith('//'):
-            found.append(a)
-    # two URLs, or one URL and a decoy in a flag this list does not know: no host is named
-    return found[0] if len(found) == 1 else ''
+        if a == '--':
+            continue
+        if a == '--url' and i + 1 < len(args):
+            urls.append((args[i + 1], False))
+            skip = True
+            continue
+        if a in values or (not a.startswith('--') and a[:2] in values):
+            skip, maybe_value = a in values, False      # `-H x` takes x; `-dfoo` carries its value
+            continue
+        if a.startswith('-'):
+            maybe_value = not (a in _NO_VALUE_LONG or re.fullmatch(
+                r'-[' + _NO_VALUE_LETTERS + r']+', a))
+            continue
+        if '://' in a or a.startswith('//'):
+            urls.append((a, maybe_value))
+        maybe_value = False
+    return urls[0][0] if len(urls) == 1 and not urls[0][1] else ''
 
 
 def clear_host(url):
@@ -304,15 +324,17 @@ def clear_host(url):
     host = host_of(url)
     if not host or not _HOST.fullmatch(host):
         return None
-    labels = host.split('.')
-    return '.'.join(['…' if _token_like(x) else x for x in labels[:-1]] + labels[-1:])
+    return '.'.join('…' if _token_like(x) else x for x in host.split('.'))
 
 
 def _token_like(label):
-    """A host label that can carry a secret: longer than 20 characters, or with a letter and
-    a digit and longer than 4. Shown as an ellipsis; the TLD and the plain words stay."""
-    return len(label) > 20 or (len(label) > 4 and bool(re.search(r'\d', label))
-                               and bool(re.search(r'[a-z]', label)))
+    """A host label that can carry a secret: longer than 20 characters, a letter and a digit
+    and longer than 4, or an all-digit label longer than 6. Shown as an ellipsis, the TLD too
+    (a dotless host is one label); the plain words stay."""
+    if len(label) > 20 or (len(label) > 4 and bool(re.search(r'\d', label))
+                           and bool(re.search(r'[a-z]', label))):
+        return True
+    return label.isdigit() and len(label) > 6
 
 
 def command(cmd, ctx):
@@ -340,6 +362,10 @@ def command(cmd, ctx):
     if prog in _NEVER or shell in _NEVER or (prog in _SHELLS and _payload(prog, args)) or (
             shell in _SHELLS and _payload(shell, args)):
         return [_unclassified(prog, argv)], True
+    # the shell expands a brace or a glob before the program runs: `{bash,-c,x}` and `b?sh` are
+    # shells, and a shell or an interpreter given a glob may be given a file named `-c`
+    if _GLOB.search(argv[0]) or (prog in _SHELLS and _GLOB.search(' '.join(args))):
+        return [_unclassified(prog, argv)], True
     if prog == 'base64' and ('-d' in args or '--decode' in args):
         return [_unclassified(prog, argv)], True
     env = 'prod' if any(a.lower() in PROD for a in args) else None
@@ -365,7 +391,10 @@ def command(cmd, ctx):
         host = dest.split('@')[-1].split(':')[0] or None
         return [Action(action_class='external_comm', target=prog, argv=tv, host=host)], False
     if prog in READ_COMMANDS:
-        if prog == 'find' and any(a in ('-exec', '-execdir', '-delete', '-ok') for a in args):
+        if prog == 'find' and any(a in ('-exec', '-execdir', '-ok', '-okdir') for a in args):
+            # it runs the program after -exec: a shell there is a payload this rule cannot see
+            return [_unclassified(prog, argv)], True
+        if prog == 'find' and '-delete' in args:
             return [Action(action_class='write_repo', target=prog, argv=tv,
                            paths=_paths(args, ctx))], False
         return [Action(action_class='read', target=prog, argv=tv,
