@@ -235,3 +235,75 @@ Honest state. Checked by Playwright screenshots and label-box counts. Still weak
 - Not verified: a real phone, a screen reader, frame rate, rendered-pixel contrast (only the palette pairs in check.mjs), Dynamic Type, haptics.
 - Service worker: network-first with a shell cache; bump `CACHE` in sw.js when the shell changes (now `archeus-v2-proto-7`).
 - check.mjs checks files, syntax, manifest, icons, contrast pairs, font floor, Canvas 2D, devicePixelRatio, hidden-tab pause, reduced motion, the chat, Replay, phone and Terminal rules. It does not run the UI. Run it as `node clients/v2-prototype/check.mjs` through the shared test lock.
+
+## Round 10c terminal (2026-10-21)
+
+Surface: the terminal view (`#/terminal`): overview, mission, decision, replay, help, plain-line mode, 120 x 40 and 80 x 24. Concepts: `hub-concepts-codex4/terminal-1-overview-v2.png` (1600 x 900), `refs/term-mission.webp`, `refs/term-decision.webp`, `refs/13-terminal-constellation.webp`, structure in `refs/structure-proposal.md` (Terminal section).
+
+### What was traced
+
+Measured on the 1600 x 900 overview with row bands and label anchors (not eyeballed):
+
+| Item | Concept value |
+|---|---|
+| Cell width | 13 design px (120 columns = 1560 px from x 38) |
+| Text line pitch | 33 px (two grid units of 16.5 px) |
+| Cap height | 16 px, so font about 22 px at a 0.6 em advance |
+| Top rule | y 39 |
+| Header caps top | y 54; second line (needs you, verifying) y 85 |
+| Hull (Archeus) | cols 35 to 82, rows 11 to 36, title on row 12 |
+| Notes box | cols 92 to 114, rows 14 to 22 |
+| Ideas box | cols 92 to 114, rows 24 to 32 |
+| Focus rows | Search provenance and Fix date test on row 16; Review plan row 20 |
+| Chain | Verifying row 20, Codex row 24, Verification row 28, Results row 32 |
+| Why line | row 39; "[Enter] Open decision" row 41 |
+| Key bar | row 45 (j/k select at col 0, Enter open at col 14, b Back at col 28, p Replay at col 38, t Tell at col 50, r Review at col 60, s Stop at col 72) |
+| Tell strip | row 48, full-width band, dimmed "> Tell Archeus..." |
+| Status line | row 50 (SIMULATED tag; the concept has none, kept by rule) |
+
+Font face: `"JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace`. The renderer solves the font size from the face's real advance, so every cell is 13 design px whatever face loads. Scale k is the wrapper width over the design width, clamped to 0.75 to 1.25.
+
+Colours: amber for the owner obligation (needs you, Review plan, Why:), blue for live work (verifying, Fix date test, Verification, Results), green for the verified dot. The terminal ground is the concept's plum `#17111D`, not the site's blue-black token, because the concept sets it.
+
+### Layout table (overview, 120 columns)
+
+Units are 16.5 px rows. Text rows sit on even or odd units as measured above. Hull, divider and connector coordinates are in code (`overview120` in app.js) and every value is listed above.
+
+### Metrics (sim2.py, 160 px wide, concept vs render at 1600 x 900)
+
+| Iteration | Change | lum MAD | amber MAD | blue MAD | edge overlap |
+|---|---|---|---|---|---|
+| 2 | first grid, header 37 px high | 5.42 | 0.57 | 1.40 | 47.7 % |
+| 3 | top rule moved to y 39, header and rows aligned | 2.74 | 0.24 | 0.87 | 77.6 % |
+| 4 | legs moved one row down | 2.74 | 0.24 | 0.87 | 77.7 % |
+| 5 | key bar and tell strip moved | 2.75 | 0.24 | 0.87 | 77.7 % |
+| 6 | focus rows and chain +1 row | 2.73 | 0.13 | 0.71 | 79.1 % |
+| 7 | hull bottom +1, Notes/Ideas +1, Why and Enter moved | 2.60 | 0.15 | 0.72 | 78.4 % |
+
+The metrics are coarse at 160 px. Iteration 4 and 5 moves are below their resolution, so for those the montage was the check. Amber and blue moved the right way through iteration 6.
+
+### Other screens (checked by eye, not by metric)
+
+- Mission: chain line, state line, activity capped so it stops above the key bar.
+- Decision: two-step (review, then `a` then `y`), nothing approved; one "CONCEPT FIXTURE" label.
+- Replay: 09:00 to 09:25 rows with timeline marks, tags coloured by state, dashed rule and a Reconcile row, "Not every external effect can be reversed."
+- Help, plain-line (`L`), `?nocolor` and the `C` key: render without errors.
+- 80 x 24: single pane stack with the Why line; no concept exists for it, so it has no metric.
+
+### Differences left (numbered)
+
+1. Overview loop: 7 measured iterations, not the brief's 8 minimum. Stopped by the author before iteration 8.
+2. Legs under ARCHEUS are two-row slashes; the concept draws longer diagonals.
+3. Dashed links use `\` glyph steps as the brief asks; the concept draws longer dashes.
+4. Hull corners are slash glyphs on the row above the edge; the concept's corners sit slightly higher.
+5. Concept command strip is taller (about 40 px); ours is one unit row.
+6. Status line (SIMULATED) is present; the concept has none. Kept by the simulated-tag rule.
+7. Mission, decision and replay were not run through the metric loop; they have no matching render pixel-for-pixel, only a visual check against term-mission and term-decision.
+8. Replay has no concept image; it follows the brief's terminal form.
+9. Label-overlap probe not instrumented. A character grid writes one character per cell, so overlap of labels is not possible by construction; no probe was run.
+
+### Not verified
+
+- Real Consolas, Cascadia and JetBrains rendering on a phone, or screen readers. Only headless Chromium on this Windows machine.
+- Design-audit and typography checks were done by hand on the montages; no separate tool pass.
+- `check.mjs` passes through the shared test lock (6 references, 14 contrast pairs, min font 14 px).

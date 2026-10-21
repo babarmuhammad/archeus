@@ -588,8 +588,14 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 /* Terminal: a fixed character grid; the wrapper scrolls sideways, the page does not. */
 .term-bar { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0; }
 .term-bar .btn[aria-pressed="true"] { border-color: var(--ivory); background: var(--surface); }
-.term-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: #05070B; padding: var(--s3); }
-.term { font: 400 15px/20px var(--mono); color: var(--text); margin: 0; white-space: pre; tab-size: 2; outline: none; }
+/* Round 10c terminal (measured on terminal-1-overview-v2.png): dark plum ground, ivory text, dimmed tell line and key hints. */
+.term-wrap { --term-bg: #17111D; --term-text: #D1CBCC; --term-dim: #9D9798; --term-strip: #231F2C; max-width: 100%; overflow: auto; border-top: 1px solid var(--line-2); background: var(--term-bg); }
+.term { font-family: "JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace; color: var(--term-text); margin: 0; white-space: pre; box-sizing: border-box; tab-size: 2; outline: none; }
+.term .amber { color: var(--amber); }
+.term .blue { color: var(--blue); }
+.term .green { color: var(--green); }
+.term .dim { color: var(--term-dim); }
+.term .bar { background: var(--term-strip); }
 .term:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .term-tell { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); }
 .term-tell label { font: 400 15px/24px var(--mono); color: var(--text-2); }
@@ -672,10 +678,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .budget { position: absolute; right: var(--s4); top: var(--s3); z-index: 2; margin: 0; font: 400 14px/20px var(--sans); color: var(--text-2); }
 @media (max-width: 880px) { .budget { display: none; } }
 
-.term .c-amber { color: var(--amber); }
-.term .c-blue { color: var(--blue); }
-.term .c-green { color: var(--green); }
-.term .dim { color: var(--text-3); }
 .term-tell { display: none; }
 
 .decision-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: var(--s4) 0; }

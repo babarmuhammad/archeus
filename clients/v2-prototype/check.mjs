@@ -94,7 +94,20 @@ check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated t
 check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
 check(/data-promote/.test(js) && /gen-tag">General<\/span> not project memory/.test(js), 'general thread or promote control missing');
 check(/approve-confirm/.test(js) && /plan-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision screen missing');
-check(/nocolor/.test(js) && /colourise/.test(js), 'terminal colour or NO_COLOR handling missing');
+check(/nocolor/.test(js) && /gridHTML/.test(js), 'terminal colour or NO_COLOR handling missing');
+const termStart = js.indexOf('Terminal: the same fixture');
+const termEnd = js.indexOf('function runCommand(text)');
+const termJs = termStart >= 0 && termEnd > termStart ? js.slice(termStart, termEnd) : '';
+check(termJs.length > 2000, 'terminal block not found in app.js');
+check(!/Harbor|Lantern/.test(termJs), 'terminal shows a non-approved fixture name (Harbor or Lantern)');
+check(/projects\[1\]\.name/.test(termJs) && /projects\[2\]\.name/.test(termJs), 'terminal Notes and Ideas boxes missing');
+check(/'CONCEPT FIXTURE'/.test(termJs) && /Not stopped · accepts new work/.test(termJs), 'terminal header or CONCEPT FIXTURE missing');
+check(/needs you/.test(termJs) && /verifying/.test(termJs) && /'amber'/.test(termJs) && /'blue'/.test(termJs), 'terminal headline colours missing');
+check(/j\/k select    Enter open    b Back    p Replay    t Tell    r Review    s Stop/.test(termJs), 'terminal key bar differs from the concept');
+check(/> Tell Archeus\.\.\./.test(termJs) && /'Why:'/.test(termJs) && /\[Enter\] Open decision/.test(termJs), 'terminal Why line or command line missing');
+check(/plainOverview/.test(termJs) && /\[?&\]nocolor/.test(js), 'plain-line mode or ?nocolor missing');
+check(/\.term \.bar/.test(css) && /JetBrains Mono/.test(css), 'terminal strip or mono stack missing');
+check(/\.term \.amber/.test(css) && /\.term \.blue/.test(css), 'terminal state colour rules missing');
 check(/Codex · execution/.test(js) && /openFeed/.test(js), 'phone Codex label or chat open-at-card missing');
 check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
 for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you', 'Reconcile', 'Not every external effect can be reversed']) {
