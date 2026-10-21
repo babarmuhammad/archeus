@@ -257,6 +257,10 @@ export const attentionLabel = (i: { kind: string; reason_code: string }) =>
 /** A figure Core could not measure is unknown, never 0 (ADR-0048 D-25.3). */
 export const known = (v: number | null, show: (n: number) => string) => (v === null ? 'unknown' : show(v));
 export const pct = (n: number) => `${Math.round(n * 100)}%`;
+/** A limited account's reset: "resets in 5 min", or "reset due" once the instant has passed
+ * while Core still reports LIMITED (the reset worker has not run yet). */
+export const resetText = (until: string, now = Date.now()) =>
+  Date.parse(until) <= now ? 'reset due' : `resets ${ago(until, now)}`;
 export const spanText = (s: number) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${(s / 3600).toFixed(1)} h`);
 
 // ── plain language: a value as words, an identifier behind Details (R1, rulebook §15) ──

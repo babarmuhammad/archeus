@@ -2,14 +2,19 @@
 missions that wait on the user join the Attention read, and Control -> About ->
 Health reads metrics_daily through `/v1/metrics`."""
 
+import re
+from pathlib import Path
+
 import pytest
 
 from archeus.api import schemas
+from archeus.cli.tui import screens
 from archeus.core import metrics
 from archeus.core.application import attention
 from archeus.core.domain import entities, ids
 from archeus.core.domain.events import new_event
 from archeus.core.domain.values import Ref
+from archeus.infra.db import rows
 
 WS = ids.GLOBAL_WORKSPACE
 ACTOR = Ref('user_device', ids.new_id('principal'))
@@ -123,3 +128,35 @@ def test_H05_health_names_the_metrics_worker(tc):
 def test_H06_metrics_needs_a_token(tc, path):
     from v1.judge.http import request
     assert request(tc.base_url, 'GET', path).status == 401
+
+
+def test_H07_every_blocked_task_must_be_blocked_on_a_resource(db):
+    mid, tid = _blocked_mission(db)
+    _route(db, mid, tid, 'blocked', 'no eligible resource', '2999-01-01T15:00:00.000Z')
+    with db.read() as conn:
+        pid = rows.get(conn, entities.Task, tid).entity.plan_id
+    # a second BLOCKED task stopped for another reason: no route at all
+    other = ids.new_id('task')
+    put(db, entities.Task(id=other, plan_id=pid, mission_id=mid, key='t2', title='T2',
+                          kind='code_change', state='BLOCKED'))
+    assert items(db, 'mission') == []
+    # its last route did not block
+    _route(db, mid, other, 'fallback')
+    assert items(db, 'mission') == []
+    # once its last route blocked on a resource too, the mission waits for one
+    _route(db, mid, other, 'blocked', 'no eligible resource')
+    assert [m['reason_code'] for m in items(db, 'mission')] == ['no_resource']
+
+
+def test_H08_a_metrics_worker_never_started_is_stopped_not_idle(tc, monkeypatch):
+    monkeypatch.setattr(tc.core, 'metrics', None)
+    h = tc.http('GET', '/v1/health').json()
+    schemas.validate(h['metrics'], schemas.TYPES['Worker'])
+    assert h['metrics'] == {'state': 'stopped', 'pending': 0}
+
+
+def test_H09_the_spa_and_the_tui_name_an_attention_reason_the_same():
+    spa_src = (Path(__file__).resolve().parents[3] / 'clients/app/src/state/present.ts').read_text(
+        encoding='utf-8')
+    block = spa_src.split('const REASON_LABEL')[1].split('};')[0]
+    assert dict(re.findall(r"'([a-z_]+\.[a-z_]+)': '([^']+)'", block)) == dict(screens.ATTENTION_REASON)

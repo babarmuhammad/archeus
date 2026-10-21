@@ -23,16 +23,20 @@ ACCOUNT = (('UNAUTHENTICATED', 'reauth'), ('LIMITED', 'limited'), ('DEGRADED', '
 
 
 def _no_resource(conn, mission_id):
-    """The route that left a task of this BLOCKED mission with no eligible
-    resource (P10: routing blocks the task and its mission), or None."""
+    """The route that left this BLOCKED mission with no eligible resource (P10:
+    routing blocks the task and its mission), or None. Every BLOCKED task must
+    have a last route that blocked: one task stopped for another reason means
+    the mission is not waiting on a resource alone."""
+    found = None
     for t in rows.where(conn, entities.Task, mission_id=mission_id, **{'state': 'BLOCKED'}):
         last = conn.execute('SELECT body FROM route_decisions WHERE task_id = ? '
                             'ORDER BY created_at DESC, rowid DESC LIMIT 1',
                             (t.entity.id,)).fetchone()
         route = json.loads(last[0]) if last else None
-        if route and route.get('result') == 'blocked':
-            return route
-    return None
+        if not route or route.get('result') != 'blocked':
+            return None
+        found = found or route
+    return found
 
 
 def _mission_of_task(conn, task_id):

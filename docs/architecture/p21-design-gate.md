@@ -508,4 +508,24 @@ items, D12 (a). "P21 cannot be declared complete before P20 is" (D0) is unchange
 - **Mutants**: Z80-Z89 in `tools/mutate_p21.py` (LIMITED or OPEN accounts dropped, `until`
   dropped, the first route deciding instead of the last, an asking route taken for no resource, a
   mission held from verification listed, the route's reason dropped, the days oldest first, the
-  days unbounded, the TUI naming only the kind).
+  days unbounded, the TUI naming only the kind), Z120-Z122 (the first blocked route deciding when
+  another blocked task has no resource route, a never-started metrics worker reading idle, the
+  no-resource item dropping `unblock_at`).
+- **Review fixes (independent review of 8cd47d1, `.collab/reviews/T-127-8cd47d1.claude.md`)**:
+  - The Health empty state said every account can work. DISABLED and UNVERIFIED accounts raise no
+    item, and with no accounts the claim is vacuous, so it now says only what Attention knows: no
+    account has stopped or needs you, and no mission waits for a resource (`clients/app/test/health.test.ts`).
+  - A metrics worker that was never started reads `stopped`, not `idle` (`runtime.py`; H08).
+    Verify and automation keep the same `idle` fallback; they are outside this slice.
+  - `_no_resource` lists a mission only when every BLOCKED task's last route blocked on a
+    resource, so a task stopped for another reason no longer gets the no-resource reason (H07).
+  - Each nullable Health figure is checked in source to render through `known(`, so a raw render
+    fails the node suite (`health.test.ts`). Browser coverage is still T-130's.
+  - A limited account whose reset instant has passed reads "reset due", not "resets N min ago"
+    (`resetText`).
+  - The reason labels are pinned equal to the TUI's `ATTENTION_REASON` (H09).
+  - Not changed, on the review's own reading: the `state=` guard change stays (the review found
+    the textual guard is not a real defence; the read filter is safe either way), and the
+    per-read cost of the Attention scan stays (bounded by the blocked missions; a join is the
+    upgrade if it grows). H05 and H06 are still weak (a schema check and an auth check); not
+    strengthened here.

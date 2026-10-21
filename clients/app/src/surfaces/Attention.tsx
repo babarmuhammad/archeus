@@ -8,7 +8,7 @@ import { decideBody } from '../data/commands';
 import { send } from '../data/core';
 import { useRead, useRefresh } from '../data/cache';
 import { objectHref } from '../nav/destinations';
-import { ago, attentionLabel, stepUpBlocked } from '../state/present';
+import { ago, attentionLabel, resetText, stepUpBlocked } from '../state/present';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, thread, useChanged, useMe } from '../components/ui';
 
 export function AttentionView({ limit, heading = true }: { limit?: number; heading?: boolean }) {
@@ -65,7 +65,7 @@ function AttentionEntry({ item }: { item: AttentionItem }) {
       ) : (
         <p>
           {item.reason ? <span><Prose text={item.reason} /> · </span> : null}
-          {typeof item.until === 'string' ? <span>resets {ago(item.until)} · </span> : null}
+          {typeof item.until === 'string' ? <span>{resetText(item.until)} · </span> : null}
           <a href={LINK[item.kind]?.(item) ?? '#/attention'}>Open</a>
         </p>
       )}

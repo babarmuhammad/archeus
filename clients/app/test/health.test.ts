@@ -2,7 +2,10 @@
 // is named as such, and a figure Core could not measure reads "unknown", never 0.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { attentionLabel, known, pct, spanText } from '../src/state/present.ts';
+import { readFileSync } from 'node:fs';
+import { attentionLabel, known, pct, resetText, spanText } from '../src/state/present.ts';
+
+const control = readFileSync(new URL('../src/surfaces/Control.tsx', import.meta.url), 'utf8');
 
 test('an attention item is named by its reason when the reason changes what it is', () => {
   assert.equal(attentionLabel({ kind: 'account', reason_code: 'limited' }), 'Account at its usage limit');
@@ -25,4 +28,22 @@ test('a duration reads in minutes under an hour and in hours after', () => {
   assert.equal(spanText(30), '1 min');
   assert.equal(spanText(90), '2 min');
   assert.equal(spanText(7200), '2.0 h');
+});
+
+test('the Health empty state claims only what Attention knows, never that every account works', () => {
+  // DISABLED and UNVERIFIED accounts raise no item, and zero accounts is vacuous
+  assert.ok(control.includes('No account has stopped or needs you, and no mission waits for a resource.'));
+  assert.ok(!/every account/i.test(control));
+  assert.ok(!control.includes('can work'));
+});
+
+test('every nullable Health figure is rendered through known(), so null shows unknown', () => {
+  for (const field of ['median_time_to_complete_s', 'approvals_per_mission', 'fallback_rate', 'verification_failure_rate'])
+    assert.ok(control.includes(`known(d.${field}, `), field);
+});
+
+test('a limited account whose reset instant has passed says reset due, not resets ago', () => {
+  const now = Date.parse('2026-10-21T10:00:00Z');
+  assert.equal(resetText('2026-10-21T10:05:00Z', now), 'resets in 5 min');
+  assert.equal(resetText('2026-10-21T09:55:00Z', now), 'reset due');
 });

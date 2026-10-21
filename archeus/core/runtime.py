@@ -571,8 +571,9 @@ class Core:
                 else {'state': 'idle', 'pending': 0},
                 'automation': self.automation.status() if self.automation is not None
                 else {'state': 'idle', 'pending': 0},
+                # a worker that was never started is stopped: Health must not call it idle
                 'metrics': self.metrics.status() if self.metrics is not None
-                else {'state': 'idle', 'pending': 0}}
+                else {'state': 'stopped', 'pending': 0}}
 
     def launch_url(self, scopes=auth.LAUNCH_SCOPES):
         """A fresh launch code in the URL fragment (never sent to the server).

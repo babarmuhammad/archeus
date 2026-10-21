@@ -930,7 +930,7 @@ function HealthSection() {
               ))}
             </ul>
           ) : (
-            <Empty>Every account can work and no mission waits for a resource.</Empty>
+            <Empty>No account has stopped or needs you, and no mission waits for a resource.</Empty>
           );
         }}
       </Loadable>
