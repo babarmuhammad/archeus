@@ -67,6 +67,9 @@ def test_a_profile_that_allows_the_start_starts_without_asking(core, profile):
     mid = _mission(core)
     _wait(lambda: _state(core, mid) != 'CREATED', 'the mission starts')
     assert not [a for a in _approvals(core, mid) if a['kind'] == 'start']
+    decisions = core.http('GET', '/v1/policy-decisions?mission=' + mid).json()['policy_decisions']
+    assert [(d['decision'], d['outcome']) for d in decisions if d['stage'] == 'start'] == [
+        ('ALLOW', 'allow')]
 
 
 def test_under_careful_the_mission_waits_in_created_for_its_start_approval(core):

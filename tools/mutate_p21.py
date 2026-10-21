@@ -55,6 +55,7 @@ EVS = 'archeus/core/domain/events.py'
 AZ = 'archeus/core/application/authorization.py'
 CW = 'tests/v1/integration/test_cwrite.py::'
 PO = 'tests/v1/integration/test_policy.py::'
+PSC = 'tests/v1/integration/test_start_confirmation.py::'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -447,6 +448,25 @@ MUTATIONS = [
      "            return _answer(tx, row, changed=False)\n        raise lifecycle.IllegalTrigger",
      "            return _answer(tx, row, changed=True)\n        raise lifecycle.IllegalTrigger")],
      [PO + 'test_I_A05b_a_replay_of_a_decision_is_bound_to_its_hash']),
+    # T-150 (b): every allowed start records its decision, under the start's hash and cause
+    ('Z192', "an allowed start records no decision",
+     [(AZ,
+     "        record(tx, actor=actor, stage='start', mission=m, decision=decision, outcome='allow',\n"
+     "               items=items, h=start_hash(m), ctx=ctx, reason=items[0]['reason'])",
+     "        pass")],
+     [CW + 'test_an_allowed_start_records_its_decision_under_its_hash_and_cause',
+      PSC + 'test_a_profile_that_allows_the_start_starts_without_asking']),
+    ('Z193', "an allowed start's decision carries no start hash",
+     [(AZ,
+     "               items=items, h=start_hash(m), ctx=ctx, reason=items[0]['reason'])",
+     "               items=items, h=None, ctx=ctx, reason=items[0]['reason'])")],
+     [CW + 'test_an_allowed_start_records_its_decision_under_its_hash_and_cause']),
+    ('Z194', "an allowed start's decision is not caused by the command's cause",
+     [(AZ,
+     "        record(tx, actor=actor, stage='start', mission=m, decision=decision, outcome='allow',",
+     "        tx.cause = ()\n"
+     "        record(tx, actor=actor, stage='start', mission=m, decision=decision, outcome='allow',")],
+     [CW + 'test_an_allowed_start_records_its_decision_under_its_hash_and_cause']),
 ]
 
 

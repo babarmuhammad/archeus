@@ -789,7 +789,8 @@ def _answer(tx, row, *, changed=True, mission=None):
 
 def gate_start(tx, *, actor, policy, missions, mission_id):
     """May a CREATED mission start (P19 S4, p19-design-gate B6)? `mission.start`
-    is judged like any class: ALLOW (`standard`, `autonomous`) fires START now;
+    is judged like any class: ALLOW (`standard`, `autonomous`) records the start
+    and fires START now;
     ASK (`careful`) records the ask and requests a `start` approval once, and
     the mission waits in CREATED until it is decided (approving fires START,
     rejecting cancels); DENY (a user's rule) waits and records nothing, since
@@ -800,6 +801,8 @@ def gate_start(tx, *, actor, policy, missions, mission_id):
     items, ctx = judge_start(policy, tx.conn, m, now=tx.now, actor=actor)
     decision = items[0]['decision']
     if decision not in ('ASK', 'DENY'):
+        record(tx, actor=actor, stage='start', mission=m, decision=decision, outcome='allow',
+               items=items, h=start_hash(m), ctx=ctx, reason=items[0]['reason'])
         missions.fire(tx, actor=actor, mission_id=m.id, trigger='start',
                       reason='Archeus starts on the mission')
         return {'started': True, 'waiting': None}

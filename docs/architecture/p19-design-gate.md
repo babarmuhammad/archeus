@@ -642,7 +642,8 @@ offline cold start on a phone.
     line and one test.
 26. **A user's DENY rule on `mission.start` holds the mission without asking.** It waits in
     CREATED, nothing is recorded (it is judged again on every pass, and recording each pass would
-    flood the decisions), and it starts once the rule is retired.
+    flood the decisions), and it starts once the rule is retired. An ALLOW is recorded in the same
+    transaction as its START (T-150 (b)), so a start that happened always has its decision.
 27. **The stub policy exempts Core classes.** `FixedPolicy('ASK')` means "every task's action
     asks"; without the exemption every test built on it stalled in CREATED. `by_class` can still
     name `mission.start`.

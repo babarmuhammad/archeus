@@ -577,7 +577,9 @@ mission. Its `action_hash` binds the mission alone (no plan exists yet, so `plan
 `plan_version` and `plan_digest` are null) and it expires after 24 h. It is never CONSUMED: once the
 mission has left CREATED it is ineligible, so it authorises one START. Starting a
 mission is the Core-owned action class `mission.start`: `careful` asks, `standard` and
-`autonomous` allow, and a rule may name it; a task never declares it.
+`autonomous` allow, and a rule may name it; a task never declares it. An allowed start records
+its PolicyDecision (stage `start`, outcome `allow`, the start's hash, the evaluated item) in the
+same transaction as START, so every start leaves one (T-150 (b)); an ask records `asked`.
 
 ### 9.4 Automation and AutomationRun
 Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),
