@@ -264,7 +264,7 @@ def test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed(x):
     def run(tx, actor):
         tx.insert(entities.RouteDecision(
             id=ids.new_id('route_decision'), subject=Ref('task', t.id), result='blocked',
-            mission_id=mid, task_id=t.id, unblock_at='not a time',
+            mission_id=mid, task_id=t.id, unblock_at='2099-01-01T00:00:00.000Z',
             candidates=({'resource': 'fake', 'eliminated_at_step': 'health'},)), actor=actor)
         tx.append(new_event('mission.updated', Ref('mission', mid), actor, payload={},
                             workspace=ids.GLOBAL_WORKSPACE))

@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3 (Q159-Q161).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3 and r4 (Q159-Q163).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -109,6 +109,7 @@ TRIP = XU + 'test_O7_three_failed_starts_within_ten_minutes_trip_it_and_not_fewe
 HALF = XU + 'test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens'
 RES = 'archeus/core/application/resources.py'
 PV = 'tests/v1/unit/test_pv20_isolation.py::'
+RU = 'tests/v1/unit/test_routing_units.py::'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -766,8 +767,8 @@ MUTATIONS = [
      "    times = sorted(times)\n", "")],
      [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
     ('Q145', 'the cooldown runs from the last row, not the latest failure', [(EXE,
-     "    until = min(max(times), now) + SPAWN_COOLDOWN_S",
-     "    until = min(times[-1], now) + SPAWN_COOLDOWN_S")],
+     "    until = max(times) + SPAWN_COOLDOWN_S",
+     "    until = times[-1] + SPAWN_COOLDOWN_S")],
      [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
     ('Q146', "a paused mission's trial INTENT holds the harness closed", [(EXE,
      "        if x.state == 'INTENT' and rows.get(conn, entities.Mission,",
@@ -796,19 +797,15 @@ MUTATIONS = [
     ('Q151', "the streak reads the harness's whole history", [(EXE,
      "    for x in newest_first:", "    for x in list(newest_first):")],
      [XU + 'test_O7_the_streak_reads_back_only_as_far_as_the_last_start']),
-    ('Q152', 'any blocked decision is parsed before it is known to be the breakers', [(RES,
-     "    if not (d and d.result == 'blocked' and d.unblock_at\n"
-     "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):\n"
-     "        return None\n    until = _epoch(d.unblock_at)",
-     "    until = d and d.unblock_at and _epoch(d.unblock_at)\n"
-     "    if not (d and d.result == 'blocked' and d.unblock_at\n"
-     "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):\n"
-     "        return None")],
+    ('Q152', 'a health-blocked decision is waited on (route_wait skips the breaker check)',
+     [(RES,
+     "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):",
+     "            ):")],
      [SB + 'test_T106r1_a_decision_that_is_not_the_breakers_is_never_parsed']),
     # T-106 correction r2 (review of 6a6faab)
     ('Q153', 'a provider reset already past is kept as a wait (the hot loop)', [(ROUTER,
-     "    return (at, iso) if at > now else None",
-     "    return (at, iso)")],
+     "    if at is None or at <= now:",
+     "    if at is None:")],
      [SB + 'test_T106r2_a_reset_already_past_is_no_wait_and_no_hot_loop']),
     ('Q154', 'a malformed provider reset is not caught (it would stop Core)', [(ROUTER,
      "    except (AttributeError, TypeError, ValueError):\n        return None",
@@ -833,20 +830,30 @@ MUTATIONS = [
      "DESC, rowid DESC\", (harness_id,)):",
      "DESC, rowid DESC\", (harness_id,))):")],
      [XU + 'test_O7_the_streak_stops_reading_at_its_start']),
-    # T-106 correction r3 (review of 3f385f8)
+    # T-106 correction r3 (review of 3f385f8) and r4 (review of 58b5743)
     ('Q159', 'a naive provider reset goes through timestamp(), which fails on Windows', [(ROUTER,
-     "    if at.tzinfo is None:\n        at = at.replace(tzinfo=timezone.utc)\n"
-     "    return (at, iso) if at > now else None",
-     "    return (at.timestamp(), iso) if at.timestamp() > now.timestamp() else None")],
-     [SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
-    ('Q160', 'a breaker opened by failures recorded ahead of the clock waits for the step', [(EXE,
-     "    until = min(max(times), now) + SPAWN_COOLDOWN_S",
-     "    until = max(times) + SPAWN_COOLDOWN_S")],
-     [XU + 'test_O7_a_backward_clock_step_waits_at_most_one_cooldown_not_the_step']),
-    ('Q161', 'a task waits for a failure recorded ahead of the clock', [(EXE,
-     "min(_epoch(xs[-1].ended_at), now) + spawn_wait_s(n)",
-     "_epoch(xs[-1].ended_at) + spawn_wait_s(n)")],
-     [XU + 'test_O7_a_task_wait_after_a_clock_step_is_at_most_its_first_wait']),
+     "    return at if at.tzinfo is not None else at.replace(tzinfo=timezone.utc)",
+     "    return at.timestamp() if at.tzinfo is not None else at.timestamp()")],
+     [RU + 'test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform',
+      SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
+    ('Q160', 'a spawn end recorded ahead of the clock is counted (the window runs from it)',
+     [(EXE, "        if _epoch(decided) > now:", "        if False:")],
+     [XU + 'test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted']),
+    ('Q161', 'a task waits for a spawn end recorded ahead of the clock', [(EXE,
+     "    xs = [x for x in (r.entity for r in rows.where(conn, entities.Execution, task_id=task_id))\n"
+     "          if not x.ended_at or _epoch(x.ended_at) <= now]",
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]")],
+     [XU + 'test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock']),
+    ('Q162', 'a naive reset is read in local time by route_wait (the r3 divergence)', [
+     (ROUTER, "    return (at, at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'))", "    return (at, iso)"),
+     (RES, "    at = R.reset_at(d.unblock_at)          # the router's parse: the same instant in any zone\n"
+           "    until = at and at.timestamp()",
+           "    until = datetime.fromisoformat(d.unblock_at.replace('Z', '+00:00')).timestamp()")],
+     [RU + 'test_T106r4_a_naive_reset_names_the_same_instant_in_every_local_zone']),
+    ('Q163', 'a provider resets value that is not a mapping raises out of route()', [(ROUTER,
+     "    return list(rs.values()) if isinstance(rs, dict) else []",
+     "    return list(rs.values())")],
+     [RU + 'test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error']),
 ]
 
 if __name__ == '__main__':

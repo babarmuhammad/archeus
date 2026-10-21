@@ -7,9 +7,14 @@ database, no adapter, no process: every input is the JSON a decision records.
 Each test states the invariant that makes a selection right, not only which
 resource came out."""
 
+import calendar
 import copy
 import json
+import os
 import random
+import subprocess
+import sys
+from datetime import datetime, timezone
 
 import pytest
 
@@ -303,7 +308,8 @@ def test_fallback_is_never_skipped_while_one_is_allowed():
 def test_a_blocked_decision_names_the_earliest_reset():
     s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets='2026-09-26T16:05:00Z'),
                               acct('acc_b', 'h', usage=100, resets='2026-09-26T14:30:00Z')])
-    assert R.route(task(), s)['unblock_at'] == '2026-09-26T14:30:00Z'
+    # written as the router writes every instant (milliseconds, Z), whatever the feed wrote
+    assert R.route(task(), s)['unblock_at'] == '2026-09-26T14:30:00.000Z'
 
 
 # ── U-C continuity ─────────────────────────────────────────────────────────
@@ -493,3 +499,59 @@ def test_the_router_reads_nothing_but_its_arguments():
     before = json.dumps([req, s], sort_keys=True)
     R.route(req, s)
     assert json.dumps([req, s], sort_keys=True) == before
+
+
+# ── Correction r4 (review of 58b5743) ───────────────────────────────────────
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+# A naive provider reset is UTC by the router's rule. Run under TZ values of the
+# opposite signs, the router's string and route_wait must still name the same
+# instant (10:02Z): before the fix route_wait read the naive string in local time.
+_ZONE_PROBE = r'''
+import calendar, json
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from archeus.core.routing import router as R
+from archeus.core.application import resources
+from archeus.infra.db import rows
+now = datetime(2026, 9, 26, 10, 0, tzinfo=timezone.utc)
+ahead = R._ahead('2026-09-26T10:02:00', now)
+class _Conn:
+    def execute(self, sql, args=()):
+        return self
+    def fetchone(self):
+        return {'x': 1}
+rows.decode = lambda cls, rec: SimpleNamespace(entity=SimpleNamespace(
+    result='blocked', unblock_at=ahead[1], candidates=[{'eliminated_at_step': 'breaker'}]))
+wait = resources.route_wait(_Conn(), 'task', now.timestamp())
+local = datetime(2026, 9, 26, 10).timestamp() - calendar.timegm((2026, 9, 26, 10, 0, 0))
+print(json.dumps({'local_offset': local, 'unblock_at': ahead[1], 'wait': wait}))
+'''
+
+
+@pytest.mark.parametrize('tz', ['XYZ-2', 'XYZ+5'])   # the CRT reads TZ: UTC+2 (east), UTC-5 (west)
+def test_T106r4_a_naive_reset_names_the_same_instant_in_every_local_zone(tz):
+    env = dict(os.environ, TZ=tz, PYTHONPATH=ROOT)
+    out = subprocess.run([sys.executable, '-c', _ZONE_PROBE], cwd=ROOT, env=env,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-2000:]
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    assert got['local_offset'] != 0                     # the probe really ran off UTC
+    assert got['wait'] == calendar.timegm((2026, 9, 26, 10, 2, 0))
+
+
+def test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform():
+    """Platform-independent: no timestamp() on a naive value (OSError on Windows
+    outside 1970-2038), and the value that leaves the router is aware."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    at, text = R._ahead('9999-12-31T23:59:59', now)
+    assert at.tzinfo is not None and text == '9999-12-31T23:59:59.000Z'
+    assert R._ahead('1960-01-01T00:00:00', now) is None
+
+
+def test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error():
+    a = acct('acc_a', 'h', usage=100.0)                # at the allocation: eliminated there
+    a['usage']['resets_at'] = 'soon'
+    d = R.route(task(), snap([harness('h')], [a]))
+    assert (d['result'], d['unblock_at']) == ('blocked', None)

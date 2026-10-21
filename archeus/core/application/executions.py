@@ -109,9 +109,7 @@ def breaker_state(times, trial, now):
     the trial has not started, everything else still waits."""
     if not _tripped(times):
         return None
-    # a failure recorded ahead of the clock (it stepped back) counts from now, so a
-    # step costs at most one cooldown (T-106 r2)
-    until = min(max(times), now) + SPAWN_COOLDOWN_S
+    until = max(times) + SPAWN_COOLDOWN_S          # the times are never after now (_newest)
     if now < until:
         return {'state': 'open', 'until': until}
     if trial:
@@ -119,11 +117,14 @@ def breaker_state(times, trial, now):
     return {'state': 'half_open', 'until': None}
 
 
-def _newest(conn, harness_id):
-    """The harness's executions, newest first by when each was decided (a failed
-    start's end, a start, a trial's creation), decoded only as far as they are
-    read. A trial INTENT counts only while its mission is EXECUTING: one parked by
-    a pause or a block would hold every other task back until that mission moves.
+def _newest(conn, harness_id, now):
+    """The harness's executions decided at or before *now*, newest first by when
+    each was decided (a failed start's end, a start, a trial's creation), decoded
+    only as far as they are read. A row decided after *now* is a backward clock
+    step's: it is not history yet, so it counts for nothing (T-106 r4; were it
+    counted, the window it opens would run from the recorded time, not from now).
+    A trial INTENT counts only while its mission is EXECUTING: one parked by a
+    pause or a block would hold every other task back until that mission moves.
     Rowid is creation order, which an INTENT that waited does not keep, so it only
     breaks ties. julianday() because created_at has milliseconds and the others
     do not, so a plain string order misplaces a row within its second."""
@@ -136,6 +137,10 @@ def _newest(conn, harness_id):
             " WHEN json_extract(body, '$.started_at') IS NOT NULL THEN json_extract(body, '$.started_at')"
             " ELSE created_at END) DESC, rowid DESC", (harness_id,)):
         x = rows.decode(entities.Execution, rec).entity
+        decided = (x.ended_at if x.stop_reason == 'spawn'
+                   else x.started_at or rec['created_at'])
+        if _epoch(decided) > now:
+            continue
         if x.state == 'INTENT' and rows.get(conn, entities.Mission,
                                             x.mission_id).entity.state != 'EXECUTING':
             continue
@@ -144,7 +149,7 @@ def _newest(conn, harness_id):
 
 def spawn_breaker(conn, harness_id, now):
     """The harness's breaker with the latest failure's reason, or None."""
-    fails, trial = spawn_streak(_newest(conn, harness_id))
+    fails, trial = spawn_streak(_newest(conn, harness_id, now))
     b = breaker_state([_epoch(x.ended_at) for x in fails], trial, now)
     return b and dict(b, error=max(fails, key=lambda x: x.ended_at).summary)
 
@@ -155,18 +160,20 @@ def spawn_wait_s(n):
 
 def spawn_wait(conn, task_id, now):
     """Until when (epoch) the task waits after its failed starts in a row, or None."""
-    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]
+    # an end decided after now is a backward clock step's, not history yet (as _newest)
+    xs = [x for x in (r.entity for r in rows.where(conn, entities.Execution, task_id=task_id))
+          if not x.ended_at or _epoch(x.ended_at) <= now]
     n = next((i for i, x in enumerate(reversed(xs)) if x.stop_reason != 'spawn'), len(xs))
     if not n:
         return None
-    until = min(_epoch(xs[-1].ended_at), now) + spawn_wait_s(n)     # as breaker_state (T-106 r2)
+    until = _epoch(xs[-1].ended_at) + spawn_wait_s(n)
     return until if now < until else None
 
 
 def _spawn_failed(tx, actor, e, reason):
     """The breaker opening on this failure is said once (P21 D1: the tray says
     it); a failed half-open trial only keeps it open."""
-    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id))
+    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(tx.now)))
     times = [_epoch(x.ended_at) for x in fails]
     if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):
         tx.append(new_event('harness.state_changed', Ref('harness', e.harness_id), actor,

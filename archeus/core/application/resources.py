@@ -311,7 +311,7 @@ def _registered(conn, harness_ids, feed, now):
             readings[a.id] = fed
         rd = fed or latest_usage(conn, a.id)
         usage = None if not rd else {
-            'windows': dict(rd['windows']), 'resets_at': dict(rd.get('resets_at') or {}),
+            'windows': dict(rd['windows']), 'resets_at': rd.get('resets_at') if isinstance(rd.get('resets_at'), dict) else {},
             'observed_at': _iso(rd['observed_at']),
             'age_s': max(0, round(now - rd['observed_at'], 3)), 'source': rd['source']}
         p = policies[a.id]
@@ -448,8 +448,9 @@ def route_wait(conn, task_id, now):
     if not (d and d.result == 'blocked' and d.unblock_at
             and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):
         return None
-    until = _epoch(d.unblock_at)
-    return until if until > now else None
+    at = R.reset_at(d.unblock_at)          # the router's parse: the same instant in any zone
+    until = at and at.timestamp()
+    return until if until and until > now else None
 
 
 def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):

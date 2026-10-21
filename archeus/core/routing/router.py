@@ -386,18 +386,33 @@ def _why(win, rest, req, snap):
     return head
 
 
-def _ahead(iso, now):
-    """(at, iso) of a reset time that is readable and after *now* (an aware
-    datetime), else None. Provider resets are free text from the harness. A naive
-    value is read as UTC and compared, never converted with timestamp(): that
-    raises OSError on Windows outside 1970-2038 (T-106 r2)."""
+def reset_at(iso):
+    """The instant of a reset or breaker time as an aware datetime, or None when it
+    is not a time. Provider resets are free text. A naive value is UTC, never the
+    machine's local time (a local read differs by zone; T-106 r4), and it is never
+    converted with timestamp() (OSError on Windows outside 1970-2038, T-106 r2).
+    This is the one parse of `unblock_at`: the router writes it, route_wait reads it."""
     try:
         at = datetime.fromisoformat(iso.replace('Z', '+00:00'))
     except (AttributeError, TypeError, ValueError):
         return None
-    if at.tzinfo is None:
-        at = at.replace(tzinfo=timezone.utc)
-    return (at, iso) if at > now else None
+    return at if at.tzinfo is not None else at.replace(tzinfo=timezone.utc)
+
+
+def _ahead(iso, now):
+    """(at, text) of a reset or breaker time that is readable and after *now* (an
+    aware datetime), else None. `text` is the instant as written out, which is what
+    `unblock_at` carries, so every reader parses the same instant."""
+    at = reset_at(iso)
+    if at is None or at <= now:
+        return None
+    return (at, at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'))
+
+
+def _resets(account):
+    """The 5-hour reset values of a candidate's account (a feed's mapping, else none)."""
+    rs = (account.get('usage') or {}).get('resets_at')
+    return list(rs.values()) if isinstance(rs, dict) else []
 
 
 def route(req, snap):
@@ -450,10 +465,9 @@ def route(req, snap):
     # a reset already past, or unreadable, is never a wait: the task would be
     # routed again on every pass (T-106 r2)
     now = datetime.fromisoformat(snap['now'].replace('Z', '+00:00'))
-    resets = [c['_a'].get('usage') or {} for c in cands
-              if c['eliminated_at_step'] in ('health', 'allocation')]
     waits = [w for w in
-             [_ahead(r, now) for u in resets for r in (u.get('resets_at') or {}).values()]
+             [_ahead(r, now) for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
+              for r in _resets(c['_a'])]
              + [_ahead(c['_h']['breaker']['until'], now) for c in cands
                 if c['eliminated_at_step'] == 'breaker']
              if w]

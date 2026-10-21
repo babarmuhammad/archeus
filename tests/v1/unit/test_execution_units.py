@@ -385,6 +385,9 @@ def test_O7_the_streak_reads_back_only_as_far_as_the_last_start():
 # Correction r2 (review of 6a6faab): the streak's order is the recorded time, not
 # the rowid, read from an in-memory table of executions in insert (rowid) order.
 
+_NOW = X._epoch('2026-10-21T12:00:00Z')      # after every recorded time in these tables
+
+
 def _streak_db(*rows_):
     c = sqlite3.connect(':memory:')
     c.row_factory = sqlite3.Row
@@ -420,7 +423,7 @@ def test_O7_the_streak_is_cut_by_recorded_time_not_by_creation_order(plain_rows)
         ('ABANDONED', '2026-10-21T10:01:00Z', _fail('2026-10-21T10:01:00Z')),
         ('ABANDONED', '2026-10-21T10:02:00Z', _fail('2026-10-21T10:02:00Z')),
         ('ABANDONED', '2026-10-21T10:04:00Z', _fail('2026-10-21T10:04:00Z')))
-    fails, trial = X.spawn_streak(X._newest(c, 'fake'))
+    fails, trial = X.spawn_streak(X._newest(c, 'fake', _NOW))
     assert [x.ended_at for x in fails] == ['2026-10-21T10:04:00Z'] and not trial
     assert X.spawn_breaker(c, 'fake', X._epoch('2026-10-21T10:05:00Z')) is None
 
@@ -433,7 +436,7 @@ def test_O7_a_backward_clock_step_is_ordered_by_the_recorded_times(plain_rows):
         ('ABANDONED', '2026-10-21T10:00:30Z', _fail('2026-10-21T10:00:30Z')),
         ('ABANDONED', '2026-10-21T10:00:40Z', _fail('2026-10-21T10:00:40Z')),
         ('ABANDONED', '2026-10-21T10:00:50Z', _fail('2026-10-21T10:00:50Z')))
-    assert X.spawn_streak(X._newest(c, 'fake')) == ([], False)
+    assert X.spawn_streak(X._newest(c, 'fake', _NOW)) == ([], False)
 
 
 def test_O7_the_streak_compares_mixed_timestamp_precision(plain_rows):
@@ -442,7 +445,7 @@ def test_O7_the_streak_compares_mixed_timestamp_precision(plain_rows):
     c = _streak_db(
         ('ENDED_OK', '2026-10-21T10:00:00Z', dict(started_at='2026-10-21T10:00:00Z')),
         ('INTENT', '2026-10-21T10:00:00.500Z', {}))
-    assert X.spawn_streak(X._newest(c, 'fake')) == ([], True)
+    assert X.spawn_streak(X._newest(c, 'fake', _NOW)) == ([], True)
 
 
 def test_O7_the_streak_stops_reading_at_its_start(plain_rows):
@@ -461,23 +464,44 @@ def test_O7_the_streak_stops_reading_at_its_start(plain_rows):
                 pulled.append(r)
                 yield r
 
-    fails, _trial = X.spawn_streak(X._newest(Counting(), 'fake'))
+    fails, _trial = X.spawn_streak(X._newest(Counting(), 'fake', _NOW))
     assert len(fails) == 300 and len(pulled) == 301
 
 
-def test_O7_a_backward_clock_step_waits_at_most_one_cooldown_not_the_step():
-    """Failures recorded an hour ahead of the clock (it stepped back): the breaker
-    still opens for one cooldown from now, not for the step plus the cooldown."""
+def test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted(plain_rows):
+    """A backward clock step: three failures recorded an hour ahead of the clock
+    count for nothing, so no breaker opens from them at any call time. Once real
+    time passes them they are history like any other (the window from them is
+    one cooldown after their own time, never more than one cooldown from now)."""
     now = X._epoch('2026-10-21T10:00:00Z')
-    b = X.breaker_state([now + 3600, now + 3601, now + 3602], False, now)
-    assert b == {'state': 'open', 'until': now + X.SPAWN_COOLDOWN_S}
+    c = _streak_db(*[('ABANDONED', X._iso(now + 3600 + i), _fail(X._iso(now + 3600 + i)))
+                     for i in range(3)])
+    for t in range(0, 3600, 100):
+        assert X.spawn_breaker(c, 'fake', now + t) is None
+    for t in range(3600, 3600 + 900, 100):
+        b = X.spawn_breaker(c, 'fake', now + t)
+        assert b is None or b['until'] is None or b['until'] <= now + t + X.SPAWN_COOLDOWN_S
 
 
-def test_O7_a_task_wait_after_a_clock_step_is_at_most_its_first_wait(monkeypatch):
+def test_O7_the_open_window_is_one_cooldown_from_the_latest_counted_failure(plain_rows):
+    """Three real failures 20-100 s ago open the breaker until the latest plus one
+    cooldown, and a failure recorded ahead of the clock changes nothing."""
+    now = X._epoch('2026-10-21T10:00:00Z')
+    real = [('ABANDONED', X._iso(now - 100 + 40 * i), _fail(X._iso(now - 100 + 40 * i)))
+            for i in range(3)]
+    ahead = ('ABANDONED', X._iso(now + 3600), _fail(X._iso(now + 3600)))
+    for rows_ in (real, real + [ahead]):
+        c = _streak_db(*rows_)
+        b = X.spawn_breaker(c, 'fake', now + 279)
+        assert (b['state'], b['until']) == ('open', now + 280)
+        assert X.spawn_breaker(c, 'fake', now + 281)['state'] == 'half_open'
+
+
+def test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock(monkeypatch):
     now = X._epoch('2026-10-21T10:00:00Z')
     monkeypatch.setattr(X.rows, 'where', lambda conn, cls, **eq: [SimpleNamespace(
         entity=SimpleNamespace(stop_reason='spawn', ended_at=X._iso(now + 3600)))])
-    assert X.spawn_wait(None, 't1', now) == now + X.spawn_wait_s(1)
+    assert X.spawn_wait(None, 't1', now) is None
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────
