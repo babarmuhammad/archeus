@@ -942,3 +942,31 @@ Status: prototype only (`clients/v2-prototype`, fake data). No V1 change. Source
 1. Replay verb labels: move them off the lines, or drop the verbs on narrow screens?
 2. Terminal colour: add state colour on top of glyph and word (NO_COLOR stays honoured), or keep text only?
 3. Decision: keep the decision as a page plus confirm box, or make it a separate screen on the desktop too (recommended: yes, to match the phone)?
+
+## Round 9: decision as two steps, terminal colour, phone chat, desktop calm (2026-10-21)
+
+Status: prototype only (`clients/v2-prototype`, fake data). No V1 change. Sources: the owner's round 8 answers (below), the Codex v2 images, the approved concepts 03-mission and 06-shared, the typography skill (applied as a real pass), the design-audit dimensions (applied by hand; the skill's approval step was not run).
+
+### 1. Owner decisions that bind this round
+
+- Owner, 2026-10-21 (answer to the five round 8 questions, verbatim): "Apply all five (Recommended)". The five: Replay verb labels hidden on narrow screens and off the lines; terminal state colour over glyph and word, NO_COLOR honoured, tell line dimmed, the Why line in the 80 x 24 layout; the decision on desktop as its own confirm screen like the phone; the phone chat opens with the Start card first; receded phone hulls named only.
+- Earlier decisions that still hold, including the project-name rule (owner, 2026-10-21, verbatim in round 8).
+
+### 2. What was built
+
+- **Decision, two steps (PROPOSED, both surfaces).** Step 1: the decision (What, Why, core consequence as fixture text, action hash and plan version from the fixture). "Review and approve…" opens step 2, a confirm screen (mission, project, plan version, action hash). Its button opens the explicit confirm box, Cancel is the default. Nothing is approved in the prototype. Terminal: `a` then `y`.
+- **Phone chat (PROPOSED).** The conversation opens at the newest Start card; a card among the last three messages stays in view as replies arrive.
+- **Terminal colour (owner pick, round 8).** Amber needs-you, blue running and verifying, green done and verified, ivory neutral. Every state keeps glyph and word. The tell line and SIMULATED line are dimmed. A page cannot read the NO_COLOR shell variable; the prototype honours `?nocolor` and the `C` key.
+- **Type (typography skill, applied).** Serif for wordmark, headlines and the Archeus name only; sans for UI and labels; kicker tracking 0.12 em; kerning on; sheet text measure 65 characters; body 16 / 23. Minimum 14 px.
+
+### 3. Measured, and what is still weaker
+
+- Overview label boxes: zero overlaps at 1280 x 720, 1440 x 900, 1600 x 900, 1920 x 1080 and at the six phone widths; project names present.
+- Replay: zero overlaps at 1280 x 720, 1440 x 900 and 1920 x 1080; at 1600 x 900 two pairs touch; on phone widths the project name "Harbor" touches "Results" (and "Verification" at 430 and 440). Open.
+- Mission and Shared moved toward 03 and 06. The phase stepper is still a dot grid rather than a connected line.
+
+### 4. Open items for the owner
+
+1. Replay on phone: the project name should yield to record labels when they collide, or the record labels hide on narrow screens. Recommend: the project name yields.
+2. Terminal colour on the overview is on; should it also colour the mission chain? Recommend: yes, same palette.
+3. Shared (06): the agent bodies are smaller than the concept. Recommend: enlarge to the 06 proportions in the next round.
