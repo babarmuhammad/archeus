@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Archeus V2 prototype (fake data)</title>
 <meta name="description" content="Clickable prototype of the Archeus V2 living space. Fake data only.">
-<meta name="theme-color" content="#0A0D13">
+<meta name="theme-color" content="#070A10">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-512.png">
@@ -13,99 +13,117 @@
 </head>
 <body>
 <div class="shell">
-  <nav class="places" aria-label="Places">
-    <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="3.2"/><path d="M10 2.5v3M10 14.5v3M2.5 10h3M14.5 10h3"/></svg><span>Now</span></a>
-    <a href="#/mission/m-date" data-nav="mission"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7 8h6M7 11.5h4"/></svg><span>Mission</span></a>
-    <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="5.5" r="2.2"/><circle cx="5" cy="14.5" r="2.2"/><circle cx="15" cy="14.5" r="2.2"/><path d="M9 7.3l-3 5M11 7.3l3 5"/></svg><span>Shared</span></a>
-    <a href="#/phone" data-nav="phone"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg><span>Phone</span></a>
-    <a href="#/start" data-nav="start"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6.8v6.4M6.8 10h6.4"/></svg><span>Start</span></a>
-    <a href="#/plan/m-search" data-nav="plan"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6h9M6 10h9M6 14h6"/><circle cx="3.5" cy="6" r=".8"/><circle cx="3.5" cy="10" r=".8"/><circle cx="3.5" cy="14" r=".8"/></svg><span>Plan</span></a>
-  </nav>
+  <aside class="rail">
+    <a class="wordmark" href="#/now" aria-label="Archeus V2, Overview">Archeus <span>V2</span></a>
+    <nav class="places" aria-label="Places">
+      <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2V17H12.5v-4.6h-5V17H3z"/></svg><span>Overview</span></a>
+      <a href="#/mission/m-date" data-nav="mission"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.6"/></svg><span>Missions</span></a>
+      <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg><span>Shared</span></a>
+      <a href="#/phone" data-nav="phone"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg><span>Phone</span></a>
+      <a href="#/start" data-nav="start"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6.8v6.4M6.8 10h6.4"/></svg><span>Start</span></a>
+      <a href="#/plan/m-search" data-nav="plan"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6h9M6 10h9M6 14h6"/><circle cx="3.5" cy="6" r=".8"/><circle cx="3.5" cy="10" r=".8"/><circle cx="3.5" cy="14" r=".8"/></svg><span>Plan</span></a>
+    </nav>
+    <section class="projects" aria-labelledby="proj-h">
+      <h2 class="kicker" id="proj-h">Projects</h2>
+      <ul id="rail-projects"></ul>
+    </section>
+  </aside>
 
   <div class="page">
     <header class="top">
-      <p class="brand">Archeus <span>V2</span></p>
       <p class="proto">PROTOTYPE · fake data</p>
-      <p class="core-status">Not stopped, accepts new work</p>
+      <p class="core-status"><span class="dot" aria-hidden="true"></span>Not stopped · accepts new work</p>
+      <a class="btn" href="#/start">Tell</a>
       <button type="button" class="btn stop-btn" data-act="stop">Stop</button>
     </header>
     <p id="say" class="say" role="status"></p>
 
     <main id="main">
       <section class="screen" id="s-now" hidden>
-        <h1 tabindex="-1" data-sentence></h1>
-        <div class="toolbar">
-          <p class="small">Archeus at the centre. Each constellation is a project; each star is a mission. Live chains glow.</p>
-          <button type="button" class="btn" id="now-overview" hidden>Whole space</button>
-        </div>
+        <header class="head">
+          <p class="kicker">Overview</p>
+          <h1 tabindex="-1" data-sentence></h1>
+          <p class="lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure.</p>
+        </header>
         <div class="stage stage-now" id="now-stage" role="region" aria-label="Constellation of projects and missions">
           <canvas class="sky" aria-hidden="true"></canvas>
           <canvas class="fx" aria-hidden="true"></canvas>
           <div class="world"></div>
           <div class="card" hidden></div>
+          <button type="button" class="btn now-back" id="now-overview" hidden>Whole space</button>
         </div>
-        <h2>In order</h2>
-        <ol class="mirror" id="now-list"></ol>
+        <details class="list-d">
+          <summary>All missions as a list</summary>
+          <ol id="now-list"></ol>
+        </details>
       </section>
 
       <section class="screen" id="s-mission" hidden>
-        <p class="crumb"><a href="#/now">Whole space</a> / <span data-m-project></span> / <span data-m-crumb></span></p>
-        <h1 tabindex="-1" data-m-title></h1>
-        <p class="small" data-m-meta></p>
-        <p class="state-line" data-m-state></p>
-        <div class="stage stage-mission" id="mission-stage">
-          <canvas class="sky" aria-hidden="true"></canvas>
-          <canvas class="fx" aria-hidden="true"></canvas>
-          <div class="world"></div>
-          <div class="card" hidden></div>
-        </div>
-        <div class="mission-cards">
-          <section class="card-panel phase-panel">
-            <h2>Phases</h2>
-            <ol class="phases" id="m-phases"></ol>
-          </section>
-          <section class="card-panel">
-            <h2>Latest record</h2>
-            <p data-m-latest></p>
-            <h2>Task</h2>
-            <p data-m-task></p>
-            <h2>Agent</h2>
-            <p data-m-agent></p>
-            <h2>Links</h2>
-            <p data-m-links></p>
-          </section>
-        </div>
-      </section>
-
-      <section class="screen" id="s-shared" hidden>
-        <h1 tabindex="-1" data-sentence></h1>
-        <div class="grid2 shared-grid">
-          <div class="stage stage-shared" id="shared-stage">
+        <header class="head">
+          <p class="crumb"><a href="#/now">Overview</a> / <span data-m-project></span> / <span data-m-crumb></span></p>
+          <p class="kicker">Mission</p>
+          <h1 tabindex="-1" data-m-title></h1>
+        </header>
+        <div class="split">
+          <div class="stage stage-mission" id="mission-stage" role="region" aria-label="Mission chain: Archeus, project, mission, execution">
             <canvas class="sky" aria-hidden="true"></canvas>
             <canvas class="fx" aria-hidden="true"></canvas>
             <div class="world"></div>
             <div class="card" hidden></div>
           </div>
-          <aside class="panel">
-            <h2>Archeus, shared records</h2>
-            <p class="state-line st-done">Verified (fixture)</p>
+          <aside class="inspector" aria-label="Mission details">
             <dl class="facts">
-              <dt>Missions</dt><dd>7 recorded</dd>
-              <dt>Agents</dt><dd>2 recorded</dd>
-              <dt>Paired phone</dt><dd>Recent</dd>
-              <dt>Other people</dt><dd>Future contract, not available</dd>
+              <div><dt>Project</dt><dd data-m-project2></dd></div>
+              <div><dt>Branch</dt><dd data-m-branch></dd></div>
+              <div><dt>Status</dt><dd class="state-line" data-m-state></dd></div>
             </dl>
-            <p class="small">Same records, same permissions. A device is an endpoint, not an agent or a person.</p>
+            <ol class="phase-bar" id="m-phases" aria-label="Phases"></ol>
+            <div class="tabs" role="tablist" aria-label="Mission views">
+              <button type="button" role="tab" data-mtab="overview" aria-selected="true">Overview</button>
+              <button type="button" role="tab" data-mtab="activity" aria-selected="false">Activity</button>
+              <button type="button" role="tab" data-mtab="plan" aria-selected="false">Plan</button>
+            </div>
+            <div class="tabpanel" id="m-panel" role="tabpanel"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="screen" id="s-shared" hidden>
+        <header class="head">
+          <p class="kicker">Shared space</p>
+          <h1 tabindex="-1" data-sentence></h1>
+          <p class="lede">Shared records with different authority. A device is an endpoint, not an agent or a person.</p>
+        </header>
+        <div class="split">
+          <div class="stage stage-shared" id="shared-stage" role="region" aria-label="Archeus with agents and devices">
+            <canvas class="sky" aria-hidden="true"></canvas>
+            <canvas class="fx" aria-hidden="true"></canvas>
+            <div class="world"></div>
+            <div class="card" hidden></div>
+          </div>
+          <aside class="inspector" aria-label="Project details">
+            <p class="kicker">Project</p>
+            <h2 class="ins-title">Archeus</h2>
+            <p class="state-line st-done">Verified (fixture)</p>
+            <div class="tabs" role="tablist" aria-label="Project views">
+              <button type="button" role="tab" data-stab="overview" aria-selected="true">Overview</button>
+              <button type="button" role="tab" data-stab="content" aria-selected="false">Content</button>
+              <button type="button" role="tab" data-stab="relations" aria-selected="false">Relations</button>
+            </div>
+            <div class="tabpanel" id="s-panel" role="tabpanel"></div>
           </aside>
         </div>
       </section>
 
       <section class="screen screen-phone" id="s-phone" hidden>
         <div class="phone-frame">
-          <p class="phone-brand">Archeus <span class="small">Core connected</span></p>
+          <header class="phone-head">
+            <p class="phone-brand">Archeus</p>
+            <p class="phone-conn"><span class="dot" aria-hidden="true"></span>Core connected</p>
+          </header>
           <h1 tabindex="-1" data-sentence></h1>
           <p class="phone-line" data-phone-line></p>
-          <div class="stage stage-phone" id="phone-stage">
+          <div class="stage stage-phone" id="phone-stage" role="region" aria-label="Archeus and the missions that need you">
             <canvas class="sky" aria-hidden="true"></canvas>
             <canvas class="fx" aria-hidden="true"></canvas>
             <div class="world"></div>
@@ -117,7 +135,7 @@
             <details class="places-d">
               <summary class="btn">Places</summary>
               <ul>
-                <li><a href="#/now">Now</a></li>
+                <li><a href="#/now">Overview</a></li>
                 <li><a href="#/mission/m-date">Mission</a></li>
                 <li><a href="#/shared">Shared</a></li>
                 <li><a href="#/start">Start</a></li>
@@ -130,7 +148,7 @@
       </section>
 
       <section class="screen" id="s-start" hidden>
-        <h1 tabindex="-1">Start work</h1>
+        <header class="head"><p class="kicker">Start</p><h1 tabindex="-1">Start work</h1></header>
         <form id="tell-form" class="block" novalidate>
           <h2><label for="tell-text">Tell Archeus what to do</label></h2>
           <textarea id="tell-text" rows="4" maxlength="2000" aria-describedby="tell-help"></textarea>
@@ -144,7 +162,7 @@
         <form id="mission-form" class="block" novalidate>
           <h2>Or start a mission in a project</h2>
           <label for="m-project">Project</label>
-          <select id="m-project"><option>Archeus</option><option>Notes</option></select>
+          <select id="m-project"><option>Harbor</option><option>Notes</option><option>Lantern</option></select>
           <label for="m-title">Mission title</label>
           <input id="m-title" type="text" maxlength="120">
           <label for="m-objective">Objective</label>
@@ -159,7 +177,7 @@
       </section>
 
       <section class="screen" id="s-plan" hidden>
-        <h1 tabindex="-1" data-plan-title></h1>
+        <header class="head"><p class="kicker">Plan approval</p><h1 tabindex="-1" data-plan-title></h1></header>
         <p class="small" data-plan-meta></p>
         <p class="state-line" data-plan-why></p>
         <h2>Plan tasks</h2>

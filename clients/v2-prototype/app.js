@@ -1,9 +1,12 @@
 (function () {
   'use strict';
 
+  /* ---------- Tokens and fixture data (fake) ---------- */
+
   var TAU = Math.PI * 2;
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   var IVORY = '#EFE9DA';
+  var INK = '#070A10';
   var STATE = {
     waiting: { word: 'Needs you', color: '#F2B544' },
     running: { word: 'Running', color: '#6FB1FF' },
@@ -17,20 +20,21 @@
   var RANK = { waiting: 0, running: 1, idle: 2, done: 3 };
   var PHASES = ['Understand', 'Plan', 'Approve', 'Run', 'Verify', 'Review'];
 
+  // offs: mission positions around the project centre, in stage pixels at full size.
   var projects = [
-    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', angle: 198 },
-    { id: 'notes', name: 'Notes', hue: '#E7A3AE', angle: -24 },
-    { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', angle: 66 }
+    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', at: [0.25, 0.5], offs: [[-70, -84], [-156, 22], [26, 72]] },
+    { id: 'notes', name: 'Notes', hue: '#E7A3AE', at: [0.8, 0.27], offs: [[-70, -30], [46, 40]] },
+    { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', at: [0.76, 0.8], offs: [[-54, -42], [54, 40]] }
   ];
 
   var missions = [
-    { id: 'm-search', title: 'Search provenance', project: 'harbor', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false },
-    { id: 'm-date', title: 'Fix date test', project: 'harbor', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'not recorded', exec: true },
-    { id: 'm-done', title: 'Write changelog', project: 'harbor', branch: 'docs/changelog', state: 'done', stateText: 'Review passed', phase: 6, what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false },
-    { id: 'm-index', title: 'Index notes', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Not started', phase: -1, what: 'Build an index over the notes folder.', latest: 'none recorded', task: 'none', exec: false },
-    { id: 'm-read', title: 'Reading list export', project: 'notes', branch: 'docs/reading', state: 'done', stateText: 'Done', phase: 6, what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false },
-    { id: 'm-map', title: 'Map relations', project: 'lantern', branch: 'feat/map', state: 'idle', stateText: 'Not started', phase: -1, what: 'Map recorded relations between notes.', latest: 'none recorded', task: 'none', exec: false },
-    { id: 'm-export', title: 'Export graph', project: 'lantern', branch: 'fix/export', state: 'done', stateText: 'Review passed', phase: 6, what: 'Export the graph as an image.', latest: 'Review passed.', task: 'none', exec: false }
+    { id: 'm-search', title: 'Search provenance', project: 'harbor', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, glyph: 'search', what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false, related: [{ key: 'plan', title: 'Plan v1', sub: '3 tasks, not started', glyph: 'list', verb: 'proposes' }], log: ['Plan v1 recorded.', 'Waiting for your decision.'] },
+    { id: 'm-date', title: 'Fix date test', project: 'harbor', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'Run date suite on fix/date-test and collect the results.', exec: true, related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received.', 'Tool result received.', 'Not passed tests.', 'Parsing results.', 'Proceeding to verification checks.'] },
+    { id: 'm-done', title: 'Write changelog', project: 'harbor', branch: 'docs/changelog', state: 'done', stateText: 'Review passed', phase: 6, glyph: 'check', what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] },
+    { id: 'm-index', title: 'Index notes', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Not started', phase: -1, glyph: 'doc', what: 'Build an index over the notes folder.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
+    { id: 'm-read', title: 'Reading list export', project: 'notes', branch: 'docs/reading', state: 'done', stateText: 'Done', phase: 6, glyph: 'doc', what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false, related: [], log: ['Export completed.'] },
+    { id: 'm-map', title: 'Map relations', project: 'lantern', branch: 'feat/map', state: 'idle', stateText: 'Not started', phase: -1, glyph: 'code', what: 'Map recorded relations between notes.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
+    { id: 'm-export', title: 'Export graph', project: 'lantern', branch: 'fix/export', state: 'done', stateText: 'Review passed', phase: 6, glyph: 'chart', what: 'Export the graph as an image.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] }
   ];
 
   var plans = {
@@ -56,16 +60,11 @@
   var pendingOk = '';
   var sheetOpen = null;
   var lastStar = null;
-  var WEB = (function () {
-    var s = 11, out = [], i;
-    for (i = 0; i < 28; i++) {
-      s = (s * 16807) % 2147483647;
-      var a = (s / 2147483647) * TAU;
-      s = (s * 16807) % 2147483647;
-      out.push({ a: a, L: 60 + (s / 2147483647) * 110 });
-    }
-    return out;
-  })();
+  var missionTab = 'overview';
+  var sharedTab = 'overview';
+  var missionShown = 'm-date';
+
+  /* ---------- Small helpers ---------- */
 
   function $(sel, root) { return (root || document).querySelector(sel); }
   function $$(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
@@ -86,106 +85,46 @@
     if (!w && !r) return 'Nothing running. Tell Archeus what to do.';
     return w + ' needs you, ' + r + ' running';
   }
-  function commentsFor(id) { return comments.filter(function (c) { return c.mission === id; }); }
   function selectedComments() { return comments.filter(function (c) { return c.mission === planId && c.carry; }); }
-  function rgba(hex, a) {
-    var n = parseInt(hex.slice(1), 16);
-    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
-  }
+  function commentsFor(id) { return comments.filter(function (c) { return c.mission === id; }); }
 
-  function nowScene(w, h) {
-    var cx = w / 2, cy = h / 2, m = Math.min(w, h);
-    var narrow = w < 600;
-    var sc = {
-      view: { x: 0, y: 0, w: w, h: h }, fit: 1, core: { x: cx, y: cy }, projects: [], nodes: [], links: [], parent: {},
-      figScale: narrow ? 0.7 : 1,
-      compact: narrow,
-      labelDirs: narrow ? ['column', 'column-reverse'] : null
-    };
-    projects.forEach(function (p) {
-      var a = p.angle * Math.PI / 180;
-      var px = cx + w * (narrow ? 0.2 : 0.3) * Math.cos(a), py = cy + h * (narrow ? 0.3 : 0.26) * Math.sin(a);
-      var ms = missions.filter(function (x) { return x.project === p.id; });
-      var spread = ms.length >= 3 ? [-0.9, 0, 0.9] : ms.length === 2 ? [-0.5, 0.5] : [0];
-      var live = ms.filter(isLive).length;
-      sc.projects.push({ id: p.id, name: p.name, x: px, y: py, hue: p.hue, count: ms.length, live: live, active: live > 0, orbit: m * 0.1 });
-      sc.parent[p.id] = 'core';
-      sc.links.push({ a: 'core', b: p.id, hue: p.hue, kind: 'project', live: live > 0 });
-      ms.forEach(function (x, i) {
-        var t = a + spread[i];
-        var rm = m * (narrow ? 0.22 : 0.17);
-        var mx = px + rm * Math.cos(t), my = py + rm * Math.sin(t);
-        sc.nodes.push({ id: x.id, kind: 'mission', state: x.state, x: mx, y: my, live: isLive(x), title: x.title, sub: x.branch, st: STATE[x.state].word, detail: x.stateText, parent: p.id, hue: p.hue, hit: true });
-        sc.parent[x.id] = p.id;
-        sc.links.push({ a: p.id, b: x.id, hue: p.hue, kind: 'mission', state: x.state, live: isLive(x) });
-        if (x.exec) {
-          var ex = x.id + '-exec';
-          sc.nodes.push({ id: ex, kind: 'exec', state: 'exec', x: mx + Math.cos(t) * m * 0.12, y: my + Math.sin(t) * m * 0.12, live: x.state === 'running', title: 'Codex', sub: 'execution', st: '', parent: x.id, hit: false });
-          sc.parent[ex] = x.id;
-          sc.links.push({ a: x.id, b: ex, hue: IVORY, kind: 'exec', live: x.state === 'running' });
-        }
-      });
+  /* ---------- Geometry: polyhedra, projection, glyphs ---------- */
+
+  function dist3(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
+
+  // Vertices are normalised; edges are the pairs at the minimum distance.
+  function solid(pts) {
+    var v = pts.map(function (p) { var l = Math.hypot(p[0], p[1], p[2]); return [p[0] / l, p[1] / l, p[2] / l]; });
+    var min = Infinity, i, j, e = [];
+    for (i = 0; i < v.length; i++) for (j = i + 1; j < v.length; j++) min = Math.min(min, dist3(v[i], v[j]));
+    for (i = 0; i < v.length; i++) for (j = i + 1; j < v.length; j++) if (dist3(v[i], v[j]) < min * 1.01) e.push([i, j]);
+    return { v: v, e: e, links: [] };
+  }
+  var PHI = (1 + Math.sqrt(5)) / 2;
+  var ICO = (function () {
+    var s = solid([[0, 1, PHI], [0, 1, -PHI], [0, -1, PHI], [0, -1, -PHI], [1, PHI, 0], [1, -PHI, 0], [-1, PHI, 0], [-1, -PHI, 0], [PHI, 0, 1], [PHI, 0, -1], [-PHI, 0, 1], [-PHI, 0, -1]]);
+    // Inner mesh: each outer vertex joins its two nearest vertices of a half-size copy.
+    s.links = s.v.map(function (p) {
+      return s.v.map(function (q, j) { return { j: j, d: dist3(p, [q[0] * 0.5, q[1] * 0.5, q[2] * 0.5]) }; })
+        .sort(function (a, b) { return a.d - b.d; }).slice(0, 2).map(function (o) { return o.j; });
     });
-    return sc;
-  }
+    return s;
+  })();
+  var OCT = solid([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]);
+  var TET = solid([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]]);
+  var CUBE = solid([[1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1]]);
 
-  function missionScene(m) {
-    var p = projectOf(m.project);
-    var live = isLive(m);
-    var sc = {
-      view: { x: 60, y: 110, w: 880, h: 440 },
-      core: { x: 150, y: 300 },
-      projects: [{ id: p.id, name: p.name, x: 430, y: 300, hue: p.hue, count: missions.filter(function (x) { return x.project === p.id; }).length, live: missions.filter(function (x) { return x.project === p.id && isLive(x); }).length, active: live, orbit: 60 }],
-      nodes: [{ id: m.id, kind: 'mission', state: m.state, x: 700, y: 300, live: live, title: m.title, sub: m.branch, st: STATE[m.state].word, detail: m.stateText, parent: p.id, hue: p.hue, hit: false }],
-      links: [{ a: 'core', b: p.id, hue: p.hue, kind: 'project', live: live }, { a: p.id, b: m.id, hue: p.hue, kind: 'mission', state: m.state, live: live }],
-      parent: {}
-    };
-    sc.parent[p.id] = 'core';
-    sc.parent[m.id] = p.id;
-    if (m.exec) {
-      sc.nodes.push({ id: m.id + '-exec', kind: 'exec', state: 'exec', x: 700, y: 470, live: m.state === 'running', title: 'Codex', sub: 'execution', st: '', parent: m.id, hit: false });
-      sc.parent[m.id + '-exec'] = m.id;
-      sc.links.push({ a: m.id, b: m.id + '-exec', hue: IVORY, kind: 'exec', live: m.state === 'running' });
-    }
-    return sc;
+  function spin(p, ry, rx) {
+    var cy = Math.cos(ry), sy = Math.sin(ry), cx = Math.cos(rx), sx = Math.sin(rx);
+    var x = p[0] * cy + p[2] * sy, z = -p[0] * sy + p[2] * cy;
+    var y = p[1] * cx - z * sx;
+    z = p[1] * sx + z * cx;
+    return [x, y, z];
   }
-
-  function phoneScene() {
-    var list = sorted(missions).slice(0, 2);
-    var slots = [[360, 370], [640, 370]];
-    var sc = {
-      view: { x: 200, y: 110, w: 600, h: 440 },
-      core: { x: 500, y: 165 },
-      figScale: 0.6,
-      labelDirs: ['column', 'column-reverse'],
-      projects: [], nodes: [], links: [], parent: {}
-    };
-    list.forEach(function (m, i) {
-      var p = projectOf(m.project);
-      sc.nodes.push({ id: m.id, kind: 'mission', state: m.state, x: slots[i][0], y: slots[i][1], live: isLive(m), title: m.title, sub: '', st: STATE[m.state].word, detail: m.stateText, parent: 'core', hue: p.hue, hit: true });
-      sc.parent[m.id] = 'core';
-      sc.links.push({ a: 'core', b: m.id, hue: p.hue, kind: 'mission', state: m.state, live: isLive(m) });
-    });
-    sc.overflow = missions.length - list.length;
-    return sc;
+  function proj(p, cx, cy, R) {
+    var f = 4 / (4 - p[2]);
+    return { x: cx + p[0] * f * R, y: cy + p[1] * f * R, z: p[2] };
   }
-
-  function sharedScene() {
-    var nodes = [
-      { id: 'planner', kind: 'agent', state: 'waiting', x: 250, y: 150, live: true, title: 'Planner', sub: 'Search provenance', st: 'Needs you', hit: false, parent: 'core' },
-      { id: 'codex', kind: 'agent', state: 'running', x: 750, y: 150, live: true, title: 'Codex', sub: 'Fix date test', st: 'Running', hit: false, parent: 'core' },
-      { id: 'desktop', kind: 'device', state: 'connected', x: 230, y: 500, live: false, title: 'This desktop', sub: '', st: 'Connected', hit: false, parent: 'core' },
-      { id: 'phone', kind: 'device', state: 'recent', x: 500, y: 560, live: false, title: 'Paired phone', sub: '', st: 'Recent', hit: false, parent: 'core' },
-      { id: 'other', kind: 'device', state: 'future', x: 770, y: 500, live: false, title: 'Other people', sub: 'Future contract, not available', st: '', hit: false, parent: 'core' }
-    ];
-    var sc = { view: { x: 60, y: 90, w: 880, h: 500 }, core: { x: 500, y: 320 }, projects: [], nodes: nodes, links: [], parent: {}, frame: true };
-    nodes.forEach(function (n) {
-      sc.parent[n.id] = 'core';
-      sc.links.push({ a: 'core', b: n.id, hue: n.kind === 'agent' ? STATE[n.state].color : IVORY, kind: n.kind, state: n.state, live: n.live });
-    });
-    return sc;
-  }
-
   function convexHull(pts) {
     var P = pts.slice().sort(function (a, b) { return a.x - b.x || a.y - b.y; });
     if (P.length < 3) return P;
@@ -202,50 +141,301 @@
     }
     return lo.slice(0, -1).concat(up.slice(0, -1));
   }
+  function line(g, x1, y1, x2, y2) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
+  function rgba(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a.toFixed(3) + ')';
+  }
 
-  function drawFigure(g, p, col, on, scale) {
-    var R = 40 * scale, r = 21 * scale, outer = [], inner = [], k;
-    for (k = 0; k < 6; k++) {
-      var t = k * TAU / 6 - Math.PI / 2;
-      outer.push({ x: p.x + Math.cos(t) * R, y: p.y + Math.sin(t) * R });
-      inner.push({ x: p.x + Math.cos(t + TAU / 12) * r, y: p.y + Math.sin(t + TAU / 12) * r });
+  var GLYPH = {
+    doc: function (g) {
+      g.beginPath(); g.rect(-0.42, -0.6, 0.84, 1.2); g.stroke();
+      line(g, -0.24, -0.28, 0.24, -0.28); line(g, -0.24, 0, 0.24, 0); line(g, -0.24, 0.28, 0.06, 0.28);
+    },
+    search: function (g) {
+      g.beginPath(); g.rect(-0.56, -0.6, 0.7, 0.96); g.stroke();
+      g.beginPath(); g.arc(0.22, 0.2, 0.3, 0, TAU); g.stroke();
+      line(g, 0.44, 0.42, 0.7, 0.68);
+    },
+    code: function (g) {
+      line(g, -0.22, -0.42, -0.62, 0); line(g, -0.62, 0, -0.22, 0.42);
+      line(g, 0.22, -0.42, 0.62, 0); line(g, 0.62, 0, 0.22, 0.42);
+      line(g, 0.1, -0.42, -0.1, 0.42);
+    },
+    term: function (g) {
+      g.beginPath(); g.rect(-0.66, -0.46, 1.32, 0.92); g.stroke();
+      g.beginPath(); g.moveTo(-0.36, -0.16); g.lineTo(-0.14, 0.02); g.lineTo(-0.36, 0.2); g.stroke();
+      line(g, 0, 0.2, 0.3, 0.2);
+    },
+    chart: function (g) {
+      [[-0.46, 0.5], [-0.16, 0.9], [0.14, 0.66]].forEach(function (b) {
+        g.beginPath(); g.rect(b[0], 0.42 - b[1], 0.24, b[1]); g.stroke();
+      });
+    },
+    check: function (g) {
+      g.beginPath(); g.arc(0, 0, 0.72, 0, TAU); g.stroke();
+      g.beginPath(); g.moveTo(-0.34, 0.02); g.lineTo(-0.1, 0.26); g.lineTo(0.36, -0.28); g.stroke();
+    },
+    list: function (g) {
+      [-0.4, 0, 0.4].forEach(function (y) {
+        g.beginPath(); g.arc(-0.42, y, 0.08, 0, TAU); g.fill(); line(g, -0.24, y, 0.42, y);
+      });
+    },
+    monitor: function (g) { g.beginPath(); g.rect(-0.6, -0.42, 1.2, 0.78); g.stroke(); line(g, 0, 0.36, 0, 0.56); },
+    phone: function (g) { g.beginPath(); g.rect(-0.3, -0.6, 0.6, 1.2); g.stroke(); },
+    cluster: function (g) {
+      var pts = [[-0.5, -0.4], [0.5, -0.3], [0.45, 0.45], [-0.45, 0.45], [0, 0]];
+      pts.forEach(function (p) { line(g, 0, 0, p[0], p[1]); });
+      pts.forEach(function (p) { g.beginPath(); g.arc(p[0], p[1], 0.1, 0, TAU); g.fill(); });
     }
+  };
+
+  function glyph(g, name, x, y, s, col, a) {
+    var f = GLYPH[name];
+    if (!f) return;
     g.save();
-    g.strokeStyle = col;
-    g.lineWidth = 1;
-    g.globalAlpha = on ? 0.7 : 0.16;
-    if (on) { g.shadowColor = col; g.shadowBlur = 12; }
-    g.beginPath();
-    outer.forEach(function (q, i) { if (i) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); });
-    g.closePath();
-    g.stroke();
-    g.globalAlpha = on ? 0.4 : 0.1;
-    g.beginPath();
-    for (k = 0; k < 6; k++) {
-      var nx = outer[(k + 1) % 6];
-      g.moveTo(outer[k].x, outer[k].y); g.lineTo(inner[k].x, inner[k].y); g.lineTo(nx.x, nx.y);
-    }
-    g.stroke();
-    g.globalAlpha = on ? 0.95 : 0.3;
-    g.fillStyle = col;
-    g.shadowBlur = 0;
-    outer.forEach(function (q) { g.beginPath(); g.arc(q.x, q.y, 1.9, 0, TAU); g.fill(); });
+    g.translate(x, y); g.scale(s, s);
+    g.strokeStyle = col; g.fillStyle = col; g.globalAlpha = a;
+    g.lineWidth = 1.3 / s; g.lineCap = 'round'; g.lineJoin = 'round';
+    f(g);
     g.restore();
   }
 
+  // One 3D style for every body: rotating wireframe, depth-faded edges, optional inner mesh, glyph inside.
+  function drawSolid(g, sol, cx, cy, R, rot, col, o) {
+    var P = sol.v.map(function (p) { return proj(spin(p, rot.y, rot.x), cx, cy, R); });
+    var A = o.alpha == null ? 1 : o.alpha, i;
+    g.save();
+    g.strokeStyle = col; g.fillStyle = col; g.lineCap = 'round';
+    if (o.wash) {
+      var hull = convexHull(P);
+      if (hull.length > 2) {
+        g.globalAlpha = A * 0.07;
+        g.beginPath();
+        hull.forEach(function (q, k) { if (k) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); });
+        g.closePath(); g.fill();
+      }
+    }
+    if (o.glow) { g.shadowColor = col; g.shadowBlur = 14; }
+    g.setLineDash(o.dash || []);
+    g.lineWidth = o.lw || 1.1;
+    sol.e.forEach(function (ed) {
+      var a = P[ed[0]], b = P[ed[1]];
+      g.globalAlpha = A * (0.2 + 0.8 * (((a.z + b.z) / 2) + 1) / 2);
+      line(g, a.x, a.y, b.x, b.y);
+    });
+    if (sol.links.length) {
+      var Q = sol.v.map(function (p) { return proj(spin(p, rot.y, rot.x), cx, cy, R * 0.5); });
+      g.shadowBlur = 0; g.lineWidth = 0.8;
+      sol.e.forEach(function (ed) {
+        var a = Q[ed[0]], b = Q[ed[1]];
+        g.globalAlpha = A * 0.42 * (0.2 + 0.8 * (((a.z + b.z) / 2) + 1) / 2);
+        line(g, a.x, a.y, b.x, b.y);
+      });
+      sol.links.forEach(function (ns, k) {
+        ns.forEach(function (j) {
+          var a = P[k], b = Q[j];
+          g.globalAlpha = A * 0.3 * (0.2 + 0.8 * (((a.z + b.z) / 2) + 1) / 2);
+          line(g, a.x, a.y, b.x, b.y);
+        });
+      });
+      Q.forEach(function (q) {
+        g.globalAlpha = A * 0.5 * (0.3 + 0.7 * (q.z + 1) / 2);
+        g.beginPath(); g.arc(q.x, q.y, 1.4, 0, TAU); g.fill();
+      });
+    }
+    g.setLineDash([]); g.shadowBlur = 0;
+    for (i = 0; i < P.length; i++) {
+      g.globalAlpha = A * (0.4 + 0.6 * (P[i].z + 1) / 2);
+      g.beginPath(); g.arc(P[i].x, P[i].y, o.dotR || 2.2, 0, TAU); g.fill();
+    }
+    if (o.glyph) glyph(g, o.glyph, cx, cy, R * 0.36, col, A * 0.95);
+    g.restore();
+  }
+
+  function drawBadge(g, state, x, y, t, anim) {
+    var s = 6;
+    g.save();
+    g.lineWidth = 1.5;
+    if (state === 'waiting') {
+      g.fillStyle = STATE.waiting.color; g.shadowColor = STATE.waiting.color; g.shadowBlur = 10;
+      g.beginPath(); g.moveTo(x, y - s - 2); g.lineTo(x + s, y); g.lineTo(x, y + s + 2); g.lineTo(x - s, y); g.closePath(); g.fill();
+    } else if (state === 'running') {
+      var k = anim ? (t / 1400) % 1 : 0;
+      g.strokeStyle = rgba('#6FB1FF', 0.5 * (1 - k));
+      g.beginPath(); g.arc(x, y, 6 + 8 * k, 0, TAU); g.stroke();
+      g.fillStyle = STATE.running.color; g.shadowColor = STATE.running.color; g.shadowBlur = 10;
+      g.beginPath();
+      g.moveTo(x, y - 7); g.quadraticCurveTo(x + 1.2, y - 1.2, x + 7, y); g.quadraticCurveTo(x + 1.2, y + 1.2, x, y + 7);
+      g.quadraticCurveTo(x - 1.2, y + 1.2, x - 7, y); g.quadraticCurveTo(x - 1.2, y - 1.2, x, y - 7); g.fill();
+    } else if (state === 'done') {
+      g.fillStyle = STATE.done.color;
+      g.beginPath(); g.arc(x, y, 7, 0, TAU); g.fill();
+      g.strokeStyle = INK; g.lineWidth = 1.8;
+      g.beginPath(); g.moveTo(x - 3.2, y); g.lineTo(x - 0.8, y + 2.6); g.lineTo(x + 3.4, y - 2.8); g.stroke();
+    } else if (state === 'idle') {
+      g.strokeStyle = STATE.idle.color;
+      g.beginPath(); g.arc(x, y, 5.5, 0, TAU); g.stroke();
+    }
+    g.restore();
+  }
+
+  function drawCore(g, c, t, hot, s) {
+    var breath = hot && t ? 1 + 0.05 * Math.sin(t / 1000 * TAU / 6) : 1;
+    var R = 150 * s * breath;
+    var rg = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, R);
+    rg.addColorStop(0, 'rgba(239,233,218,0.22)');
+    rg.addColorStop(0.45, 'rgba(239,233,218,0.05)');
+    rg.addColorStop(1, 'rgba(239,233,218,0)');
+    g.fillStyle = rg; g.beginPath(); g.arc(c.x, c.y, R, 0, TAU); g.fill();
+    g.strokeStyle = IVORY; g.fillStyle = IVORY; g.lineCap = 'round';
+    for (var i = 0; i < 16; i++) {
+      var a = i * TAU / 16 + 0.05;
+      var L = (i % 4 === 0 ? 96 : i % 2 === 0 ? 74 : 34) * s * breath;
+      g.globalAlpha = i % 4 === 0 ? 0.95 : 0.55;
+      g.lineWidth = i % 2 === 0 ? 1.2 : 0.8;
+      line(g, c.x + Math.cos(a) * 6 * s, c.y + Math.sin(a) * 6 * s, c.x + Math.cos(a) * L, c.y + Math.sin(a) * L);
+    }
+    g.globalAlpha = 0.3; g.setLineDash([2, 5]); g.lineWidth = 1;
+    g.beginPath(); g.arc(c.x, c.y, 26 * s, 0, TAU); g.stroke(); g.setLineDash([]);
+    g.globalAlpha = 1; g.shadowColor = IVORY; g.shadowBlur = 22;
+    g.beginPath(); g.arc(c.x, c.y, 4.5 * s, 0, TAU); g.fill();
+    g.shadowBlur = 0;
+  }
+
+  /* ---------- Scenes: plain data, no drawing ---------- */
+
+  function mk(w, h, core, k, narrow) {
+    return {
+      view: { x: 0, y: 0, w: w, h: h },
+      core: core, k: k, compact: narrow,
+      labelDirs: narrow ? ['column', 'column-reverse'] : null,
+      projects: [], nodes: [], links: [], verbs: [], parent: {}, frame: null
+    };
+  }
+
+  function nodeFor(m, x, y, r, parent, hit, extra) {
+    var o = {
+      id: m.id, kind: 'mission', state: m.state, x: x, y: y, r: r, glyph: m.glyph || 'doc',
+      live: isLive(m), title: m.title, kicker: 'Mission', sub: m.branch, st: STATE[m.state].word,
+      detail: m.stateText, parent: parent, hit: hit, solid: ICO, seed: (x * 0.013 + y * 0.007) % 1
+    };
+    Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; });
+    return o;
+  }
+
+  function execFor(m, x, y, r, k) {
+    return {
+      id: m.id + '-exec', kind: 'exec', state: 'exec', x: x, y: y, r: r, glyph: 'code', live: m.state === 'running',
+      title: 'Codex', kicker: 'Execution', sub: m.state === 'running' ? 'Checks running' : 'Ready', st: '', parent: m.id,
+      hit: false, solid: TET, seed: 0.3 + k * 0.1
+    };
+  }
+
+  function nowScene(w, h) {
+    var narrow = w < 640;
+    var k = Math.max(0.5, Math.min(w / 1150, h / 640, 1.1));
+    var sc = mk(w, h, { x: w * 0.5, y: h * 0.5 }, k, narrow);
+    var shape = Math.max(0.62, Math.min(k, 1));
+    projects.forEach(function (p) {
+      var ms = missions.filter(function (x) { return x.project === p.id; });
+      var live = ms.filter(isLive).length;
+      var cx = w * p.at[0], cy = h * p.at[1];
+      sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: cx, y: cy, members: ms.map(function (m) { return m.id; }), count: ms.length, live: live, active: live > 0 });
+      sc.parent[p.id] = 'core';
+      sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live > 0, kind: 'project', hue: p.hue });
+      ms.forEach(function (m, i) {
+        var o = p.offs[i] || [0, 0];
+        var mx = cx + o[0] * shape, my = cy + o[1] * shape;
+        sc.nodes.push(nodeFor(m, mx, my, 62 * shape, p.id, true));
+        sc.parent[m.id] = p.id;
+        sc.links.push({ a: p.id, b: m.id, col: isLive(m) ? STATE[m.state].color : p.hue, live: isLive(m), kind: 'mission', hue: p.hue });
+        if (m.exec) {
+          var ex = execFor(m, mx + 74 * shape, my + 92 * shape, 30 * shape, i);
+          sc.nodes.push(ex);
+          sc.parent[ex.id] = m.id;
+          sc.links.push({ a: m.id, b: ex.id, col: IVORY, live: ex.live, kind: 'exec', hue: IVORY });
+        }
+      });
+    });
+    return sc;
+  }
+
+  function missionScene(m, w, h) {
+    var p = projectOf(m.project);
+    var k = Math.max(0.7, Math.min(w / 720, 1.1));
+    var sc = mk(w, h, { x: w * 0.5, y: h * 0.12 }, k, false);
+    var live = isLive(m);
+    sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * 0.2, y: h * 0.4, shape: 'octa', members: null, count: 0, live: live ? 1 : 0, active: live });
+    sc.parent[p.id] = 'core';
+    sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live, kind: 'project', hue: p.hue, verb: 'orchestrates' });
+    var mx = w * 0.56, my = h * 0.5;
+    sc.nodes.push(nodeFor(m, mx, my, 84 * k, p.id, false));
+    sc.parent[m.id] = p.id;
+    sc.links.push({ a: p.id, b: m.id, col: isLive(m) ? STATE[m.state].color : p.hue, live: live, kind: 'mission', hue: p.hue, verb: 'contains' });
+    if (m.exec) {
+      var ex = execFor(m, w * 0.24, h * 0.84, 34 * k, 0);
+      sc.nodes.push(ex);
+      sc.parent[ex.id] = m.id;
+      sc.links.push({ a: m.id, b: ex.id, col: IVORY, live: ex.live, kind: 'exec', hue: IVORY, verb: 'executes' });
+    }
+    var slots = [[0.86, 0.2], [0.84, 0.66], [0.56, 0.93]];
+    m.related.forEach(function (r, i) {
+      var id = m.id + '-' + r.key, pos = slots[i] || [0.9, 0.9];
+      var from = r.from ? m.id + '-' + r.from : m.id;
+      sc.nodes.push({ id: id, kind: 'record', state: 'idle', x: w * pos[0], y: h * pos[1], r: 34 * k, glyph: r.glyph, live: false, title: r.title, kicker: 'Record', sub: r.sub, st: '', parent: from, hit: false, solid: OCT, seed: 0.5 + i * 0.17 });
+      sc.parent[id] = from;
+      sc.links.push({ a: from, b: id, col: 'rgba(239,233,218,0.5)', live: false, kind: 'record', hue: IVORY, verb: r.verb });
+    });
+    return sc;
+  }
+
+  function sharedScene(w, h) {
+    var k = Math.max(0.7, Math.min(w / 720, h / 600, 1.1));
+    var sc = mk(w, h, { x: w * 0.5, y: h * 0.42 }, k, false);
+    sc.frame = { x: w * 0.5, y: h * 0.42, r: Math.min(w, h) * 0.46 };
+    var nodes = [
+      { id: 'planner', kind: 'agent', state: 'waiting', x: w * 0.2, y: h * 0.2, r: 40 * k, glyph: 'list', title: 'Planner', kicker: 'Agent', sub: 'Search provenance', st: 'Needs you', live: true, hit: false, solid: TET, verb: 'plans' },
+      { id: 'codex', kind: 'agent', state: 'running', x: w * 0.8, y: h * 0.2, r: 40 * k, glyph: 'term', title: 'Codex', kicker: 'Agent', sub: 'Fix date test', st: 'Running', live: true, hit: false, solid: TET, verb: 'runs' },
+      { id: 'desktop', kind: 'device', state: 'connected', x: w * 0.2, y: h * 0.74, r: 36 * k, glyph: 'monitor', title: 'This desktop', kicker: 'Device', sub: 'Connected', st: '', live: false, hit: false, solid: CUBE },
+      { id: 'phone', kind: 'device', state: 'recent', x: w * 0.5, y: h * 0.86, r: 32 * k, glyph: 'phone', title: 'Paired phone', kicker: 'Device', sub: 'Recent', st: '', live: false, hit: false, solid: CUBE },
+      { id: 'other', kind: 'device', state: 'future', x: w * 0.8, y: h * 0.74, r: 36 * k, glyph: '', title: 'Other people', kicker: 'Future contract', sub: 'Not yet available', st: '', live: false, hit: false, solid: CUBE, dash: true }
+    ];
+    nodes.forEach(function (n, i) {
+      n.seed = 0.2 + i * 0.19;
+      sc.nodes.push(n);
+      sc.parent[n.id] = 'core';
+      sc.links.push({ a: 'core', b: n.id, col: n.kind === 'agent' ? STATE[n.state].color : IVORY, live: n.live, kind: n.kind, hue: IVORY, verb: n.verb || '', dash: n.dash });
+    });
+    return sc;
+  }
+
+  function phoneScene(w, h) {
+    var list = sorted(missions).slice(0, 2);
+    var k = Math.max(0.6, Math.min(w / 380, 1));
+    var slots = [[0.27, 0.66], [0.73, 0.66]];
+    var sc = mk(w, h, { x: w * 0.5, y: h * 0.26 }, k, true);
+    list.forEach(function (m, i) {
+      var n = nodeFor(m, w * slots[i][0], h * slots[i][1], 46 * k, 'core', true);
+      sc.nodes.push(n);
+      sc.parent[m.id] = 'core';
+      sc.links.push({ a: 'core', b: m.id, col: isLive(m) ? STATE[m.state].color : IVORY, live: isLive(m), kind: 'mission', hue: IVORY });
+    });
+    sc.overflow = missions.length - list.length;
+    return sc;
+  }
+
+  /* ---------- The stage: one renderer for every screen ---------- */
+
   function makeStage(root, opts) {
+    var onPick = opts && opts.onPick ? opts.onPick : null;
     var S = {
       root: root,
-      fx: $('.fx', root),
-      sky: $('.sky', root),
-      world: $('.world', root),
-      card: $('.card', root),
-      ctx: null,
-      w: 0, h: 0, dpr: 1,
+      fx: $('.fx', root), sky: $('.sky', root), world: $('.world', root), card: $('.card', root),
+      ctx: null, w: 0, h: 0, dpr: 1,
       src: null, scene: null, cam: null, focus: null, hover: null, cardFor: null,
-      nodes: {}, meta: {},
-      last: 0, raf: 0,
-      onPick: opts && opts.onPick ? opts.onPick : null
+      items: {}, meta: {}, verbItems: [],
+      last: 0, raf: 0
     };
     S.ctx = S.fx.getContext('2d');
 
@@ -262,310 +452,245 @@
       return true;
     }
 
+    // Static backdrop: a starfield and a restrained ambient mesh, painted once per size.
     function paintSky() {
       var g = S.sky.getContext('2d');
       var W = S.sky.width / S.dpr, H = S.sky.height / S.dpr;
       g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
       g.clearRect(0, 0, W, H);
-      var seed = 7 + Math.round(W);
-      var rnd = function () {
-        seed = (seed * 16807) % 2147483647;
-        return seed / 2147483647;
-      };
-      for (var i = 0; i < 260; i++) {
+      var seed = 7 + Math.round(W) * 3;
+      var rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      var pts = [], i, j;
+      for (i = 0; i < 70; i++) pts.push({ x: rnd() * W, y: rnd() * H });
+      g.lineWidth = 0.6;
+      for (i = 0; i < pts.length; i++) {
+        for (j = i + 1; j < pts.length; j++) {
+          var d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+          if (d < 150 && rnd() < 0.55) {
+            g.strokeStyle = 'rgba(239,233,218,' + (0.09 * (1 - d / 150) + 0.02).toFixed(3) + ')';
+            line(g, pts[i].x, pts[i].y, pts[j].x, pts[j].y);
+          }
+        }
+      }
+      pts.forEach(function (p) {
+        g.fillStyle = 'rgba(239,233,218,0.3)';
+        g.beginPath(); g.arc(p.x, p.y, 1.1, 0, TAU); g.fill();
+      });
+      for (i = 0; i < 220; i++) {
         var depth = rnd();
-        g.fillStyle = 'rgba(239,233,218,' + (0.1 + depth * 0.5).toFixed(3) + ')';
-        g.beginPath();
-        g.arc(rnd() * W, rnd() * H, 0.3 + depth * 0.95, 0, TAU);
-        g.fill();
+        g.fillStyle = 'rgba(239,233,218,' + (0.08 + depth * 0.42).toFixed(3) + ')';
+        g.beginPath(); g.arc(rnd() * W, rnd() * H, 0.3 + depth * 0.9, 0, TAU); g.fill();
       }
     }
 
     function scene() { return typeof S.src === 'function' ? S.src(S.w, S.h) : S.src; }
 
-    function baseScale() {
-      var v = S.scene.view;
-      return Math.min(S.w / v.w, S.h / v.h) * (S.scene.fit || 0.9);
-    }
-
     function goal() {
       if (!S.scene || !S.w) return null;
-      if (S.focus) return { x: S.focus.x, y: S.focus.y, s: baseScale() * S.focus.zoom };
-      var v = S.scene.view;
-      return { x: v.x + v.w / 2, y: v.y + v.h / 2, s: baseScale() };
+      if (S.focus) return { x: S.focus.x, y: S.focus.y, s: S.focus.zoom };
+      return { x: S.w / 2, y: S.h / 2, s: 1 };
     }
 
-    function setFocus(f) {
-      S.focus = f;
-      kick();
-    }
+    function setFocus(f) { S.focus = f; kick(); }
 
+    // Chain lit: live work, its ancestors, and whatever the pointer is on.
     function litSet() {
       var H = { core: true };
       var sc = S.scene;
       function chain(id) {
         var cur = id, guard = 0;
-        while (cur && guard++ < 8) {
-          H[cur] = true;
-          cur = sc.parent[cur];
-        }
+        while (cur && guard++ < 8) { H[cur] = true; cur = sc.parent[cur]; }
       }
       sc.nodes.forEach(function (n) { if (n.live) chain(n.id); });
       sc.projects.forEach(function (p) { if (p.active) chain(p.id); });
       if (S.hover) {
         chain(S.hover);
         sc.nodes.forEach(function (n) { if (n.parent === S.hover) chain(n.id); });
-        sc.projects.forEach(function (p) { if (p.id === S.hover) sc.nodes.forEach(function (n) { if (n.parent === p.id) chain(n.id); }); });
+        sc.projects.forEach(function (p) { if (p.members && p.id === S.hover) p.members.forEach(chain); });
       }
       return H;
-    }
-
-    function hasRunning() {
-      return S.scene && S.scene.nodes.some(function (n) { return n.state === 'running'; });
     }
 
     function hasLive() {
       return S.scene && (S.scene.nodes.some(function (n) { return n.live; }) || S.scene.projects.some(function (p) { return p.active; }));
     }
 
-    function drawShape(g, n, p, lit, phase) {
-      var x = p.x, y = p.y, st = n.state;
-      var col = STATE[st] ? STATE[st].color : IVORY;
-      g.save();
-      g.globalAlpha = lit || n.live ? 1 : (st === 'done' || st === 'idle' ? 0.55 : 0.7);
-      if (lit) { g.shadowColor = col; g.shadowBlur = 18; }
-      if (n.kind === 'mission' && st === 'waiting') {
-        g.strokeStyle = col; g.lineWidth = 1.4; g.setLineDash([4, 4]);
-        g.beginPath(); g.arc(x, y, 21, 0, TAU); g.stroke();
-        g.setLineDash([]);
-        g.fillStyle = col;
-        g.beginPath(); g.moveTo(x, y - 12); g.lineTo(x + 12, y); g.lineTo(x, y + 12); g.lineTo(x - 12, y); g.closePath(); g.fill();
-      } else if (n.kind === 'mission' && st === 'running') {
-        if (phase > 0) {
-          var k = phase % 1;
-          g.strokeStyle = rgba('#6FB1FF', (1 - k) * 0.55); g.lineWidth = 1.2;
-          g.beginPath(); g.arc(x, y, 18 + 16 * k, 0, TAU); g.stroke();
-        }
-        g.strokeStyle = rgba('#6FB1FF', 0.6); g.lineWidth = 1.2;
-        g.beginPath(); g.arc(x, y, 19, 0, TAU); g.stroke();
-        g.fillStyle = col;
-        g.beginPath();
-        g.moveTo(x, y - 15);
-        g.quadraticCurveTo(x + 2.5, y - 2.5, x + 15, y);
-        g.quadraticCurveTo(x + 2.5, y + 2.5, x, y + 15);
-        g.quadraticCurveTo(x - 2.5, y + 2.5, x - 15, y);
-        g.quadraticCurveTo(x - 2.5, y - 2.5, x, y - 15);
-        g.fill();
-      } else if (n.kind === 'mission' && st === 'done') {
-        g.fillStyle = col;
-        g.beginPath(); g.arc(x, y, 10.5, 0, TAU); g.fill();
-        g.strokeStyle = '#0A0D13'; g.lineWidth = 2.2;
-        g.beginPath(); g.moveTo(x - 4.5, y); g.lineTo(x - 1.2, y + 3.4); g.lineTo(x + 4.8, y - 3.8); g.stroke();
-      } else if (n.kind === 'mission') {
-        g.fillStyle = '#0A0D13'; g.strokeStyle = col; g.lineWidth = 2;
-        g.beginPath(); g.arc(x, y, 9.5, 0, TAU); g.fill(); g.stroke();
-      } else if (n.kind === 'exec' || n.kind === 'agent') {
-        g.strokeStyle = col; g.lineWidth = 1.5;
-        g.fillStyle = n.kind === 'agent' ? col : 'rgba(10,13,19,0.9)';
-        var s = n.kind === 'agent' ? 20 : 13;
-        g.beginPath(); g.moveTo(x, y - s); g.lineTo(x + s, y + s * 0.7); g.lineTo(x - s, y + s * 0.7); g.closePath();
-        g.fill(); g.stroke();
-      } else if (n.kind === 'device') {
-        g.strokeStyle = col; g.lineWidth = 1.6;
-        if (st === 'future') g.setLineDash([3, 3]);
-        g.fillStyle = 'rgba(10,13,19,0.9)';
-        g.beginPath(); g.rect(x - 22, y - 16, 44, 32); g.fill(); g.stroke();
-        g.setLineDash([]);
-        if (n.id === 'desktop') {
-          g.beginPath(); g.rect(x - 12, y - 9, 24, 14); g.stroke();
-          g.beginPath(); g.moveTo(x, y + 5); g.lineTo(x, y + 9); g.stroke();
-        } else if (n.id === 'phone') {
-          g.beginPath(); g.rect(x - 7, y - 12, 14, 24); g.stroke();
-        }
-      }
-      g.restore();
-    }
-
-    function drawCore(g, c, t, running) {
-      var breath = running && t ? 1 + 0.035 * Math.sin(TAU * t / 6000) : 1;
-      var glow = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, 150 * breath);
-      glow.addColorStop(0, 'rgba(239,233,218,0.26)');
-      glow.addColorStop(0.5, 'rgba(239,233,218,0.07)');
-      glow.addColorStop(1, 'rgba(239,233,218,0)');
-      g.fillStyle = glow;
-      g.beginPath(); g.arc(c.x, c.y, 150 * breath, 0, TAU); g.fill();
-      g.fillStyle = IVORY;
-      function kite(ang, L, W) {
-        var px = -Math.sin(ang) * W, py = Math.cos(ang) * W;
-        g.beginPath();
-        g.moveTo(c.x + px, c.y + py);
-        g.lineTo(c.x + Math.cos(ang) * L, c.y + Math.sin(ang) * L);
-        g.lineTo(c.x - px, c.y - py);
-        g.closePath();
-        g.fill();
-      }
-      for (var i = 0; i < 4; i++) kite(Math.PI / 2 * i - Math.PI / 2, 46 * breath, 4.4);
-      for (var j = 0; j < 4; j++) kite(Math.PI / 4 + Math.PI / 2 * j, 19 * breath, 2.1);
-      g.save();
-      g.shadowColor = IVORY; g.shadowBlur = 22;
-      g.beginPath(); g.arc(c.x, c.y, 5.5, 0, TAU); g.fill();
-      g.restore();
-    }
-
     function draw(t) {
       if (!S.scene || !S.w || !S.cam) return;
-      var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, m = Math.min(w, h);
+      var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, s = cam.s;
+      var anim = reduce.matches ? 0 : t;
       g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
       g.clearRect(0, 0, w, h);
-      var pos = {};
-      function P(x, y) { return { x: (x - cam.x) * cam.s + w / 2, y: (y - cam.y) * cam.s + h / 2 }; }
-      pos.core = P(sc.core.x, sc.core.y);
-      sc.projects.forEach(function (p) { pos[p.id] = P(p.x, p.y); });
-      sc.nodes.forEach(function (n) { pos[n.id] = P(n.x, n.y); });
-      var H = litSet();
-      var anim = reduce.matches ? 0 : t;
-      var c = pos.core;
-      var running = hasRunning();
 
-      S.sky.style.transform = 'translate3d(' + (-(cam.x - sc.core.x) * cam.s * 0.05).toFixed(2) + 'px,' + (-(cam.y - sc.core.y) * cam.s * 0.05).toFixed(2) + 'px,0)';
-
-      g.save();
-      g.setLineDash([2, 8]);
-      g.lineWidth = 1;
-      [[m * 0.46, 0.4, 0.14], [m * 0.66, 0.36, 0.07]].forEach(function (o) {
-        g.strokeStyle = 'rgba(239,233,218,' + o[2] + ')';
-        g.beginPath(); g.ellipse(c.x, c.y, o[0] * cam.s, o[0] * o[1] * cam.s, -0.12, 0, TAU); g.stroke();
-      });
+      function P0(x, y) { return { x: (x - cam.x) * s + w / 2, y: (y - cam.y) * s + h / 2 }; }
+      var pos = { core: P0(sc.core.x, sc.core.y) };
+      sc.nodes.forEach(function (n) { pos[n.id] = P0(n.x, n.y); });
       sc.projects.forEach(function (p) {
-        var q = pos[p.id];
-        g.strokeStyle = rgba(p.hue, p.active ? 0.35 : 0.12);
-        g.beginPath(); g.arc(q.x, q.y, p.orbit * cam.s, 0, TAU); g.stroke();
+        if (p.members) {
+          var cx = 0, cy = 0;
+          p.members.forEach(function (id) { cx += pos[id].x; cy += pos[id].y; });
+          pos[p.id] = { x: cx / p.members.length, y: cy / p.members.length };
+        } else {
+          pos[p.id] = P0(p.x, p.y);
+        }
+      });
+      var H = litSet();
+      var c = pos.core;
+
+      S.sky.style.transform = 'translate3d(' + (-(cam.x - sc.core.x) * s * 0.04).toFixed(2) + 'px,' + (-(cam.y - sc.core.y) * s * 0.04).toFixed(2) + 'px,0)';
+
+      // Faint orbit rings around Archeus.
+      g.save(); g.setLineDash([2, 8]); g.lineWidth = 1;
+      [[230, 0.1], [330, 0.06]].forEach(function (o) {
+        g.strokeStyle = 'rgba(239,233,218,' + o[1] + ')';
+        g.beginPath(); g.ellipse(c.x, c.y, o[0] * s, o[0] * 0.62 * s, -0.12, 0, TAU); g.stroke();
       });
       g.restore();
 
+      if (sc.frame) {
+        var f = sc.frame, fc = P0(f.x, f.y);
+        g.save(); g.strokeStyle = 'rgba(239,233,218,0.1)'; g.lineWidth = 1;
+        g.beginPath();
+        for (var k = 0; k < 8; k++) {
+          var ang = k * TAU / 8 - TAU / 16;
+          var fx = fc.x + Math.cos(ang) * f.r * s, fy = fc.y + Math.sin(ang) * f.r * s;
+          if (k) g.lineTo(fx, fy); else g.moveTo(fx, fy);
+        }
+        g.closePath(); g.stroke(); g.restore();
+      }
+
+      // Project hulls: a faceted shell around each project's missions, with an inner mesh.
       sc.projects.forEach(function (p) {
-        var members = sc.nodes.filter(function (n) { return n.parent === p.id; });
-        if (!members.length) return;
-        var cloud = [];
-        members.forEach(function (n) {
-          var q = pos[n.id], k;
-          for (k = 0; k < 6; k++) cloud.push({ x: q.x + Math.cos(k * TAU / 6) * 34, y: q.y + Math.sin(k * TAU / 6) * 34 });
+        if (!p.members) return;
+        var ring = [];
+        p.members.forEach(function (id) {
+          var q = pos[id], halo = S.items[id] ? S.items[id].r * s + 46 * s : 60 * s;
+          for (var j = 0; j < 8; j++) ring.push({ x: q.x + Math.cos(j * TAU / 8) * halo, y: q.y + Math.sin(j * TAU / 8) * halo });
         });
-        var hull = convexHull(cloud);
+        var hull = convexHull(ring);
         if (hull.length < 3) return;
         var lit = !!H[p.id];
-        var cx = 0, cy = 0;
-        hull.forEach(function (v) { cx += v.x; cy += v.y; });
-        cx /= hull.length; cy /= hull.length;
+        var cc = pos[p.id];
+        var hr = 0;
+        hull.forEach(function (v) { hr = Math.max(hr, Math.hypot(v.x - cc.x, v.y - cc.y)); });
+        var dx = cc.x - c.x, dy = cc.y - c.y, dl = Math.hypot(dx, dy) || 1;
+        dx /= dl; dy /= dl;
+        var anchor = hull.reduce(function (best, v) {
+          return (v.x - cc.x) * dx + (v.y - cc.y) * dy > (best.x - cc.x) * dx + (best.y - cc.y) * dy ? v : best;
+        }, hull[0]);
+        var it = S.items[p.id];
+        if (it) { it.cx = cc.x; it.cy = cc.y; it.hr = hr + 6; it.pt = { x: anchor.x + dx * 10, y: anchor.y + dy * 10 }; it.r = 0; }
         g.save();
-        g.beginPath();
-        hull.forEach(function (v, i) { if (i) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); });
-        g.closePath();
-        g.fillStyle = rgba(p.hue, lit ? 0.07 : 0.03);
-        g.fill();
-        g.strokeStyle = rgba(p.hue, lit ? 0.42 : 0.14);
-        g.lineWidth = 1;
-        g.stroke();
-        g.strokeStyle = rgba(p.hue, lit ? 0.14 : 0.05);
-        hull.forEach(function (v) { g.beginPath(); g.moveTo(cx, cy); g.lineTo(v.x, v.y); g.stroke(); });
+        g.beginPath(); hull.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
+        g.fillStyle = rgba(p.hue, lit ? 0.08 : 0.035); g.fill();
+        g.strokeStyle = rgba(p.hue, lit ? 0.6 : 0.24); g.lineWidth = 1; g.stroke();
+        g.strokeStyle = rgba(p.hue, lit ? 0.22 : 0.08); g.lineWidth = 0.8;
+        hull.forEach(function (v) { line(g, cc.x, cc.y, v.x, v.y); });
+        p.members.forEach(function (id) {
+          var q = pos[id];
+          hull.slice().sort(function (a, b) { return Math.hypot(a.x - q.x, a.y - q.y) - Math.hypot(b.x - q.x, b.y - q.y); })
+            .slice(0, 3).forEach(function (v) {
+              g.strokeStyle = rgba(p.hue, lit ? 0.22 : 0.08);
+              line(g, q.x, q.y, v.x, v.y);
+            });
+        });
+        g.fillStyle = rgba(p.hue, lit ? 0.9 : 0.5);
+        hull.forEach(function (v) { g.beginPath(); g.arc(v.x, v.y, lit ? 2.2 : 1.6, 0, TAU); g.fill(); });
         g.restore();
       });
 
-      if (sc.frame) {
-        [[m * 0.46, 0.12], [m * 0.3, 0.07]].forEach(function (f) {
-          g.strokeStyle = 'rgba(239,233,218,' + f[1] + ')';
-          g.lineWidth = 1;
-          g.beginPath();
-          for (var k = 0; k < 8; k++) {
-            var t = k * TAU / 8 - TAU / 16;
-            var fx = w / 2 + Math.cos(t) * f[0] * cam.s, fy = h / 2 + Math.sin(t) * f[0] * cam.s;
-            if (k) g.lineTo(fx, fy); else g.moveTo(fx, fy);
-          }
-          g.closePath();
-          g.stroke();
-        });
-      }
-
-      sc.links.forEach(function (l) {
+      // Links: the lit chain is bright and carries a travelling pulse when live; the rest recede.
+      sc.links.forEach(function (l, idx) {
         var a = pos[l.a], b = pos[l.b];
         if (!a || !b) return;
         var lit = !!(H[l.a] && H[l.b]);
         g.save();
         if (lit) {
-          var col = l.kind === 'mission' && l.live ? STATE[l.state].color : (l.hue || IVORY);
-          g.strokeStyle = col;
-          g.globalAlpha = 0.5;
-          g.lineWidth = 3.2;
-          g.shadowColor = col; g.shadowBlur = 18;
-          g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
-          g.globalAlpha = 0.95;
-          g.lineWidth = 1.6;
-          g.shadowBlur = 4;
-          g.strokeStyle = '#FFF6E0';
-          if (anim) { g.setLineDash([3, 9]); g.lineDashOffset = -(anim / 25); }
+          g.strokeStyle = l.col; g.globalAlpha = 0.45; g.lineWidth = 3.2 * Math.min(1.2, s);
+          if (l.live) { g.shadowColor = l.col; g.shadowBlur = 16; }
+          line(g, a.x, a.y, b.x, b.y);
+          g.shadowBlur = 0; g.globalAlpha = 0.95; g.lineWidth = 1.4;
+          g.setLineDash(l.dash ? [2, 6] : []);
+          line(g, a.x, a.y, b.x, b.y);
+          g.setLineDash([]);
+          if (l.live && !reduce.matches) {
+            var u = ((t / 1800) + idx * 0.31) % 1;
+            g.fillStyle = '#FFF6E0'; g.shadowColor = l.col; g.shadowBlur = 12; g.globalAlpha = 1;
+            g.beginPath(); g.arc(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, 2.6, 0, TAU); g.fill();
+          }
         } else {
-          g.strokeStyle = 'rgba(239,233,218,0.11)';
-          g.lineWidth = 0.8;
+          g.strokeStyle = 'rgba(239,233,218,' + (l.dash ? 0.1 : 0.16) + ')'; g.lineWidth = 0.8;
+          if (l.dash) g.setLineDash([3, 5]);
+          line(g, a.x, a.y, b.x, b.y);
         }
-        g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
         g.restore();
       });
 
+      // Shape-only projects (the mission chain) are drawn as small octahedra.
       sc.projects.forEach(function (p) {
-        if (!p.active) return;
-        var q = pos[p.id];
-        var rg = g.createRadialGradient(q.x, q.y, 0, q.x, q.y, 110);
-        rg.addColorStop(0, rgba(p.hue, 0.16));
-        rg.addColorStop(1, rgba(p.hue, 0));
-        g.fillStyle = rg;
-        g.beginPath(); g.arc(q.x, q.y, 110, 0, TAU); g.fill();
-      });
-      sc.projects.forEach(function (p) {
+        if (p.members) return;
         var q = pos[p.id], lit = !!H[p.id];
-        g.save();
-        g.globalAlpha = lit ? 1 : 0.65;
-        g.fillStyle = p.hue;
-        if (lit) { g.shadowColor = p.hue; g.shadowBlur = 16; }
-        g.beginPath(); g.arc(q.x, q.y, 7, 0, TAU); g.fill();
-        g.strokeStyle = rgba(p.hue, 0.6); g.lineWidth = 1.2;
-        g.beginPath(); g.arc(q.x, q.y, 17, 0, TAU); g.stroke();
-        g.restore();
+        drawSolid(g, OCT, q.x, q.y, 34 * s, { y: 0.4, x: 0.5 }, p.hue, { alpha: lit ? 1 : 0.6, wash: true, glow: lit, glyph: 'cluster', dotR: 2 });
+        var it = S.items[p.id];
+        if (it) { it.cx = q.x; it.cy = q.y; it.hr = 40 * s; it.pt = q; it.r = 34 * s; }
       });
 
+      drawCore(g, c, anim, !!H.core, s);
+      var it0 = S.items.core;
+      if (it0) { it0.cx = c.x; it0.cy = c.y; it0.hr = 60 * s; it0.pt = c; it0.r = 60 * s; }
+
+      // Figures: receding first, lit last.
       var order = sc.nodes.slice().sort(function (a, b) { return (H[a.id] ? 1 : 0) - (H[b.id] ? 1 : 0); });
-      order.forEach(function (n) {
-        var phase = reduce.matches ? 0 : (t || 0) / 2400 + n.x * 0.001;
-        if (n.kind === 'mission') drawFigure(g, pos[n.id], STATE[n.state].color, !!H[n.id] || n.live, sc.figScale || 1);
-        drawShape(g, n, pos[n.id], !!H[n.id], phase);
+      order.forEach(function (n, idx) {
+        var q = pos[n.id], lit = !!H[n.id], R = n.r * s;
+        var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
+        var alpha = lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5;
+        var col = STATE[n.state] ? STATE[n.state].color : IVORY;
+        if (n.kind === 'mission' || n.kind === 'record') {
+          if (n.kind === 'mission' && n.state === 'waiting') {
+            g.save(); g.strokeStyle = col; g.lineWidth = 1.2; g.setLineDash([4, 5]);
+            g.lineDashOffset = -anim / 60; g.globalAlpha = 0.9;
+            g.beginPath(); g.arc(q.x, q.y, R * 1.2, 0, TAU); g.stroke(); g.restore();
+          }
+          drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: alpha, wash: true, glow: lit, glyph: n.glyph, inner: true, dotR: lit ? 2.6 : 2.1 });
+        } else if (n.kind === 'exec' || n.kind === 'agent') {
+          drawSolid(g, n.solid, q.x, q.y, R, rot, n.kind === 'exec' ? IVORY : col, { alpha: n.kind === 'exec' ? 0.9 : 1, wash: true, glow: lit, glyph: n.glyph, dotR: 2.4 });
+        } else if (n.kind === 'device') {
+          drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: 0.85, dash: n.dash ? [3, 3] : [], glyph: n.glyph, dotR: 1.8, lw: 1.2 });
+        }
+        if (n.kind === 'mission' || n.kind === 'agent' || n.kind === 'exec') {
+          if (n.kind === 'mission') drawBadge(g, n.state, q.x - R * 0.78, q.y - R * 0.82, anim, !reduce.matches);
+          if (n.kind === 'agent') drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, !reduce.matches);
+        }
+        var it = S.items[n.id];
+        if (it) { it.cx = q.x; it.cy = q.y; it.hr = R + 10; it.pt = q; it.r = R; }
       });
-
-      g.save();
-      g.lineWidth = 0.7;
-      g.strokeStyle = 'rgba(239,233,218,0.16)';
-      WEB.forEach(function (w) {
-        g.beginPath();
-        g.moveTo(c.x, c.y);
-        g.lineTo(c.x + Math.cos(w.a) * w.L * cam.s, c.y + Math.sin(w.a) * w.L * cam.s);
-        g.stroke();
-      });
-      g.restore();
-
-      drawCore(g, c, anim, running);
 
       placeLabels(pos, H);
-      updateCard(pos, m);
+      placeVerbs(pos);
+      updateCard();
     }
 
-    function boxFor(p, L, d) {
-      var W, Hh;
-      if (d.indexOf('row') === 0) { W = 48 + 10 + L.tw; Hh = Math.max(48, L.th); }
-      else { W = Math.max(48, L.tw); Hh = 48 + 4 + L.th; }
-      var x0, y0;
-      if (d === 'row') { x0 = p.x - 24; y0 = p.y - Hh / 2; }
-      else if (d === 'row-reverse') { x0 = p.x + 24 - W; y0 = p.y - Hh / 2; }
-      else if (d === 'column') { x0 = p.x - W / 2; y0 = p.y - 24; }
-      else { x0 = p.x - W / 2; y0 = p.y + 24 - Hh; }
+    // A candidate is a side (row, row-reverse, column, column-reverse) and, for the row sides, a vertical hang (c, u, d).
+    function boxFor(pt, off, L, cand) {
+      var W = L.tw, Hh = L.th, x0, y0, v = cand.v;
+      if (cand.d === 'row' || cand.d === 'row-reverse') {
+        x0 = cand.d === 'row' ? pt.x + off : pt.x - off - W;
+        y0 = v === 'c' ? pt.y - Hh / 2 : v === 'u' ? pt.y - Hh + 6 : pt.y - 6;
+      } else if (cand.d === 'column') { x0 = pt.x - W / 2; y0 = pt.y + off; }
+      else { x0 = pt.x - W / 2; y0 = pt.y - off - Hh; }
       return { x0: x0, y0: y0, x1: x0 + W, y1: y0 + Hh };
+    }
+
+    function candidatesFor(sc) {
+      var out = [];
+      ['row', 'row-reverse'].forEach(function (d) {
+        ['c', 'u', 'd'].forEach(function (v) {
+          out.push({ d: d, v: v, dx: d === 'row' ? 1 : -1, dy: v === 'u' ? -1 : v === 'd' ? 1 : 0 });
+        });
+      });
+      out.push({ d: 'column', v: 'c', dx: 0, dy: 1 }, { d: 'column-reverse', v: 'c', dx: 0, dy: -1 });
+      return out.filter(function (cd) { return !sc.labelDirs || sc.labelDirs.indexOf(cd.d) >= 0; });
     }
 
     function overlaps(a, b, pad) {
@@ -577,62 +702,80 @@
       return (nx - cx) * (nx - cx) + (ny - cy) * (ny - cy) < r * r;
     }
 
+    // Label placement: four candidate sides, scored for clearance from other labels, figures and the core.
     function placeLabels(pos, H) {
-      var sc = S.scene, c = pos.core;
-      var live = {};
-      sc.nodes.forEach(function (n) { if (n.live) live[n.id] = true; });
+      var sc = S.scene, s = S.cam.s, c = pos.core;
       var placed = [];
-      var points = [];
-      Object.keys(pos).forEach(function (id) {
-        if (id !== 'core') points.push({ x: pos[id].x, y: pos[id].y, r: 40 });
+      var circles = [];
+      Object.keys(S.items).forEach(function (id) {
+        var it = S.items[id];
+        if (id === 'core' || !it.pt || !it.lbl) return;
+        if (it.r > 0) circles.push({ id: id, x: it.cx, y: it.cy, r: it.r + 6 });
       });
+      var core = S.items.core;
+      if (core && core.lbl) {
+        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 62 * s).toFixed(1) + 'px)';
+        placed.push({ x0: c.x - core.tw / 2, y0: c.y + 62 * s, x1: c.x + core.tw / 2, y1: c.y + 62 * s + core.th });
+      }
       var order = sc.projects.map(function (p) { return p.id; });
       sc.nodes.slice().sort(function (a, b) {
         var ra = a.kind === 'mission' ? RANK[a.state] : 4, rb = b.kind === 'mission' ? RANK[b.state] : 4;
         return ra - rb;
       }).forEach(function (n) { order.push(n.id); });
+      var dirs = candidatesFor(sc);
+
       order.forEach(function (id) {
-        var L = S.nodes[id];
-        if (!L) return;
-        var p = pos[id];
-        var ox = p.x - c.x, oy = p.y - c.y, len = Math.hypot(ox, oy) || 1;
+        var it = S.items[id];
+        if (!it || !it.lbl || !it.pt) return;
+        var pt = it.pt, off = it.r + 12;
+        var ox = pt.x - c.x, oy = pt.y - c.y, len = Math.hypot(ox, oy) || 1;
         ox /= len; oy /= len;
-        var cands = [
-          { d: 'row', dx: 1, dy: 0 }, { d: 'row-reverse', dx: -1, dy: 0 },
-          { d: 'column', dx: 0, dy: 1 }, { d: 'column-reverse', dx: 0, dy: -1 }
-        ].filter(function (c) { return !sc.labelDirs || sc.labelDirs.indexOf(c.d) >= 0; })
-          .sort(function (a, b) { return (b.dx * ox + b.dy * oy) - (a.dx * ox + a.dy * oy); });
+        var cands = dirs.slice().sort(function (a, b) {
+          var la = Math.hypot(a.dx, a.dy) || 1, lb = Math.hypot(b.dx, b.dy) || 1;
+          return (b.dx * ox + b.dy * oy) / lb - (a.dx * ox + a.dy * oy) / la;
+        });
         var best = null;
         for (var i = 0; i < cands.length; i++) {
-          var bx = boxFor(p, L, cands[i].d);
+          var bx = boxFor(pt, off, it, cands[i]);
           var cost = 0;
           if (bx.x0 < 8 || bx.y0 < 8 || bx.x1 > S.w - 8 || bx.y1 > S.h - 8) cost += 1000;
-          if (circleHitsBox(c.x, c.y, 80, bx)) cost += 1000;
-          for (var k = 0; k < placed.length; k++) if (overlaps(bx, placed[k], 6)) cost += 500;
-          for (var q = 0; q < points.length; q++) {
-            if (points[q].x === p.x && points[q].y === p.y) continue;
-            if (circleHitsBox(points[q].x, points[q].y, points[q].r, bx)) cost += 300;
-          }
+          if (circleHitsBox(c.x, c.y, 62 * s, bx)) cost += 1000;
+          for (var k = 0; k < placed.length; k++) if (overlaps(bx, placed[k], 8)) cost += 500;
+          circles.forEach(function (ci) { if (ci.id !== id && circleHitsBox(ci.x, ci.y, ci.r, bx)) cost += 300; });
           if (!best || cost < best.cost) best = { cost: cost, cand: cands[i], box: bx };
           if (cost === 0) break;
         }
-        var chosen = best.cand, box = best.box;
-        var bw = box.x1 - box.x0, bh = box.y1 - box.y0;
+        var box = best.box, bw = box.x1 - box.x0, bh = box.y1 - box.y0;
         var sx = Math.min(Math.max(box.x0, 8), S.w - bw - 8), sy = Math.min(Math.max(box.y0, 8), S.h - bh - 8);
         box = { x0: sx, y0: sy, x1: sx + bw, y1: sy + bh };
         placed.push(box);
-        var hide = best.cost > 0 && (L.kind === 'exec' || S.hover === id);
-        var calm = sc.compact && L.kind === 'mission' && !live[id] && S.hover !== id;
-        L.el.className = 'node ' + L.cls + ' d-' + chosen.d + (H[id] ? '' : ' dim') + (hide || calm ? ' quiet' : '');
-        L.el.style.transform = 'translate(' + box.x0.toFixed(1) + 'px,' + box.y0.toFixed(1) + 'px)';
+        var quiet = sc.compact && it.kind === 'mission' && !(sc.nodes.some(function (n) { return n.id === id && n.live; })) && S.hover !== id;
+        it.lbl.className = it.cls + ' d-' + best.cand.d + (quiet ? ' quiet' : '');
+        it.lbl.style.transform = 'translate(' + box.x0.toFixed(1) + 'px,' + box.y0.toFixed(1) + 'px)';
       });
-      var core = S.nodes.core;
-      if (core) core.el.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 58).toFixed(1) + 'px)';
+      // Hit targets follow the figures.
+      Object.keys(S.items).forEach(function (id) {
+        var it = S.items[id];
+        if (!it.hit || !it.cx) return;
+        var D = 2 * it.hr;
+        it.hit.style.width = D.toFixed(1) + 'px';
+        it.hit.style.height = D.toFixed(1) + 'px';
+        it.hit.style.transform = 'translate(' + (it.cx - it.hr).toFixed(1) + 'px,' + (it.cy - it.hr).toFixed(1) + 'px)';
+      });
     }
 
-    function updateCard(pos, m) {
-      var id = S.hover, meta = id && S.meta[id];
-      if (!meta || !pos[id]) { S.card.hidden = true; S.cardFor = null; return; }
+    function placeVerbs(pos) {
+      S.verbItems.forEach(function (v) {
+        var a = pos[v.a], b = pos[v.b];
+        if (!a || !b) return;
+        var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        v.el.style.transform = 'translate(' + (mx - v.el.offsetWidth / 2).toFixed(1) + 'px,' + (my - 10).toFixed(1) + 'px)';
+      });
+    }
+
+    function updateCard() {
+      var id = S.hover, meta = id && S.meta[id], it = id && S.items[id];
+      if (!meta || !it || !it.cx) { S.card.hidden = true; S.cardFor = null; return; }
       if (S.cardFor !== id) {
         S.card.innerHTML = '';
         var k = document.createElement('p'); k.className = 'card-kicker'; k.textContent = meta.kicker;
@@ -646,75 +789,99 @@
       }
       S.card.hidden = false;
       var cw = S.card.offsetWidth, ch = S.card.offsetHeight;
-      var q = pos[id], c = pos.core;
-      var ox = q.x - c.x, oy = q.y - c.y, len = Math.hypot(ox, oy) || 1;
+      var c = S.items.core;
+      var cx = c ? c.cx : S.w / 2, cy = c ? c.cy : S.h / 2;
+      var ox = it.cx - cx, oy = it.cy - cy, len = Math.hypot(ox, oy) || 1;
       ox /= len; oy /= len;
-      var dist = 120 + Math.max(cw, ch) * 0.35;
-      var left = Math.min(Math.max(q.x + ox * dist - cw / 2, 8), S.w - cw - 8);
-      var top = Math.min(Math.max(q.y + oy * dist - ch / 2, 8), S.h - ch - 8);
+      var dist = it.hr + 60 + Math.max(cw, ch) * 0.3;
+      var left = Math.min(Math.max(it.cx + ox * dist - cw / 2, 8), S.w - cw - 8);
+      var top = Math.min(Math.max(it.cy + oy * dist - ch / 2, 8), S.h - ch - 8);
       S.card.style.transform = 'translate(' + left.toFixed(1) + 'px,' + top.toFixed(1) + 'px)';
     }
 
-    function item(id, o) {
-      var el = document.createElement(o.hit ? 'button' : 'div');
-      if (o.hit) el.type = 'button';
-      el.className = 'node ' + o.cls;
-      el.innerHTML = '<span class="hit" aria-hidden="true"></span><span class="txt"><span class="nm"></span><span class="st"></span><span class="sub"></span></span>';
-      el.querySelector('.nm').textContent = o.title;
-      var st = el.querySelector('.st'), sub = el.querySelector('.sub');
-      if (o.st) st.textContent = o.st; else st.remove();
-      if (o.sub) sub.textContent = o.sub; else sub.remove();
-      if (o.hue) el.style.setProperty('--hue', o.hue);
-      if (o.hit) {
-        el.setAttribute('aria-label', o.aria);
-        el.addEventListener('pointerenter', function () { setHover(id); });
-        el.addEventListener('pointerleave', function () { setHover(null); });
-        el.addEventListener('focus', function () { setHover(id); });
-        el.addEventListener('blur', function () { setHover(null); });
-        el.addEventListener('click', function () { if (S.onPick) S.onPick(id, o.kind); });
+    function addLabel(id, o) {
+      var lbl = document.createElement('div');
+      lbl.className = 'lbl ' + o.cls;
+      lbl.innerHTML = '<p class="k"></p><p class="t"></p><p class="s"></p>';
+      lbl.querySelector('.k').textContent = o.kicker || '';
+      lbl.querySelector('.t').textContent = o.title;
+      var sub = lbl.querySelector('.s');
+      if (o.sub) { sub.textContent = o.sub; if (o.subCls) sub.className = 's ' + o.subCls; } else sub.remove();
+      if (!o.kicker) lbl.querySelector('.k').remove();
+      if (o.action) {
+        var a = document.createElement('a');
+        a.className = 'btn review act'; a.href = o.action.href;
+        a.textContent = o.action.text;
+        a.setAttribute('aria-label', o.action.aria);
+        lbl.appendChild(a);
       }
-      S.world.appendChild(el);
-      S.nodes[id] = { el: el, cls: o.cls, core: !!o.core, tw: 0, th: 0, kind: o.kind || 'core' };
-      if (o.meta) S.meta[id] = o.meta;
+      S.world.appendChild(lbl);
+      var it = S.items[id] || (S.items[id] = {});
+      it.lbl = lbl; it.cls = o.cls; it.kind = o.kind;
+      return it;
+    }
+
+    function addHit(id, o) {
+      var hit = document.createElement('button');
+      hit.type = 'button'; hit.className = 'hit';
+      hit.setAttribute('aria-label', o.aria);
+      hit.addEventListener('pointerenter', function () { setHover(id); });
+      hit.addEventListener('pointerleave', function () { setHover(null); });
+      hit.addEventListener('focus', function () { setHover(id); });
+      hit.addEventListener('blur', function () { setHover(null); });
+      hit.addEventListener('click', function () { if (onPick) onPick(id, o.kind); });
+      S.world.appendChild(hit);
+      S.items[id].hit = hit;
+      S.meta[id] = o.meta;
     }
 
     function build() {
       var sc = S.scene;
       S.world.innerHTML = '';
-      S.nodes = {}; S.meta = {};
+      S.items = {}; S.meta = {}; S.verbItems = [];
       S.card.hidden = true; S.cardFor = null;
-      item('core', { cls: 'k-core', title: 'Archeus', st: 'Core connected', core: true });
+      S.items.core = addLabel('core', { cls: 'lbl core', kicker: '', title: 'Archeus', sub: 'Core connected', kind: 'core' });
       sc.projects.forEach(function (p) {
-        item(p.id, {
-          cls: 'k-project', hue: p.hue, title: p.name, st: p.count + ' missions, ' + p.live + ' live', hit: S.onPick !== null,
-          aria: p.name + ', ' + p.count + ' missions, ' + p.live + ' live', kind: 'project',
-          meta: { kicker: 'Project', title: p.name, lines: [p.count + ' missions, ' + p.live + ' live.'] }
-        });
+        var live = p.members ? sc.nodes.filter(function (n) { return p.members.indexOf(n.id) >= 0 && n.live; }).length : p.live;
+        var sub = (p.count || (p.members ? p.members.length : 0)) + ' missions, ' + live + ' live';
+        addLabel(p.id, { cls: 'lbl project', kicker: 'Project', title: p.name, sub: sub, kind: 'project' });
+        if (p.members) addHit(p.id, { aria: p.name + ', ' + sub, kind: 'project', meta: { kicker: 'Project', title: p.name, lines: [sub] } });
+        else S.items[p.id].hit = null;
       });
       sc.nodes.forEach(function (n) {
-        var hit = S.onPick !== null && n.hit;
-        item(n.id, {
-          cls: 'k-' + n.kind + ' s-' + n.state + (n.live ? ' live' : ''), title: n.title, st: n.st, sub: n.sub || n.detail || '', hit: hit,
-          aria: n.title + ', ' + (n.st || '') + (n.detail ? ', ' + n.detail : ''), kind: n.kind,
-          meta: { kicker: n.kind === 'mission' ? 'Mission' : n.kind === 'exec' ? 'Execution' : n.kind === 'agent' ? 'Agent' : 'Device', title: n.title, lines: [n.st, n.sub || n.detail].filter(Boolean) }
-        });
+        var st = n.st, sub = n.detail || n.sub;
+        var subCls = n.kind === 'mission' ? 'st-' + n.state : '';
+        var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: 'Review', aria: 'Review plan for ' + n.title } : null;
+        addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker + (n.kind === 'mission' ? '' : ''), title: n.title, sub: st ? st + (sub ? ' · ' + sub : '') : sub, subCls: subCls, kind: n.kind, action: action });
+        if (n.hit) {
+          addHit(n.id, { aria: n.title + ', ' + st + (n.detail ? ', ' + n.detail : ''), kind: n.kind, meta: { kicker: n.kicker, title: n.title, lines: [st, sub].filter(Boolean) } });
+        }
       });
-      Object.keys(S.nodes).forEach(function (id) {
-        var L = S.nodes[id], txt = L.el.querySelector('.txt');
-        L.tw = txt.offsetWidth; L.th = txt.offsetHeight;
+      sc.links.forEach(function (l) {
+        if (!l.verb) return;
+        var lbl = document.createElement('div');
+        lbl.className = 'lbl verb';
+        lbl.textContent = l.verb;
+        S.world.appendChild(lbl);
+        S.verbItems.push({ el: lbl, a: l.a, b: l.b });
       });
+      Object.keys(S.items).forEach(function (id) {
+        var it = S.items[id];
+        if (it.lbl) { it.tw = it.lbl.offsetWidth; it.th = it.lbl.offsetHeight; }
+      });
+      S.verbItems.forEach(function (v) { v.el.style.left = '0'; v.el.style.top = '0'; });
     }
 
     function setHover(id) {
       if (S.hover === id) return;
       S.hover = id;
-      draw(0);
+      draw(reduce.matches ? 0 : S.last);
       kick();
     }
 
-    function setScene(src, keepFocus) {
+    function setScene(src) {
       S.src = src;
-      if (!keepFocus) S.focus = null;
+      S.focus = null;
       S.hover = null;
       if (!resize()) return;
       S.scene = scene();
@@ -735,17 +902,19 @@
       c.x += (g.x - c.x) * k;
       c.y += (g.y - c.y) * k;
       c.s += (g.s - c.s) * k;
-      var moving = Math.abs(g.x - c.x) * c.s > 0.2 || Math.abs(g.y - c.y) * c.s > 0.2 || Math.abs(g.s - c.s) / g.s > 0.002;
+      var moving = Math.abs(g.x - c.x) > 0.2 || Math.abs(g.y - c.y) > 0.2 || Math.abs(g.s - c.s) > 0.002;
       if (!moving) S.cam = g;
       return moving;
     }
 
+    // The loop runs while anything moves; it stops when the tab is hidden.
     function frame(t) {
       S.raf = 0;
-      if (document.hidden || !S.scene) return;
+      if (document.hidden || !S.scene || !root.offsetWidth) return;
       var moving = stepCam(t);
+      S.last = t;
       draw(reduce.matches ? 0 : t);
-      if (moving || (!reduce.matches && (hasRunning() || hasLive()))) S.raf = requestAnimationFrame(frame);
+      if (moving || (!reduce.matches && (hasLive() || S.scene.nodes.length))) S.raf = requestAnimationFrame(frame);
     }
 
     function kick() {
@@ -768,75 +937,134 @@
 
     S.setScene = setScene;
     S.setFocus = setFocus;
+    S.setHover = setHover;
     S.relayout = relayout;
     S.kick = kick;
     return S;
   }
 
+  /* ---------- Stages and screens ---------- */
+
   var nowStage = makeStage($('#now-stage'), {
     onPick: function (id, kind) {
-      if (kind === 'project') {
-        var p = nowStage.scene.projects.filter(function (x) { return x.id === id; })[0];
-        nowStage.setFocus({ x: p.x, y: p.y, zoom: 2.2 });
-        $('#now-overview').hidden = false;
-        say('Zoomed into ' + p.name + '. Whole space returns you.');
-      } else {
-        location.hash = '#/mission/' + id;
-      }
+      if (kind === 'project') location.hash = '#/now/' + id;
+      else location.hash = '#/mission/' + id;
     }
   });
-  var missionStage = makeStage($('#mission-stage'));
+  var missionStage = makeStage($('#mission-stage'), {
+    onPick: function (id, kind) { if (kind === 'project') location.hash = '#/now/' + id; }
+  });
   var sharedStage = makeStage($('#shared-stage'));
   var phoneStage = makeStage($('#phone-stage'), {
     onPick: function (id) { openSheet(id); }
   });
 
-  function renderNow() {
+  function zoomTo(id) {
+    var p = nowStage.scene.projects.filter(function (x) { return x.id === id; })[0];
+    if (!p) return;
+    var cx = 0, cy = 0, n = 0;
+    nowStage.scene.nodes.forEach(function (x) { if (p.members.indexOf(x.id) >= 0) { cx += x.x; cy += x.y; n++; } });
+    nowStage.setFocus({ x: cx / n, y: cy / n, zoom: 1.9 });
+    $('#now-overview').hidden = false;
+    $$('#rail-projects a').forEach(function (a) { a.classList.toggle('on', a.getAttribute('data-proj') === id); });
+    say('Zoomed into ' + p.name + '. Whole space returns you.');
+  }
+
+  function renderRail() {
+    $('#rail-projects').innerHTML = projects.map(function (p) {
+      var n = missions.filter(function (m) { return m.project === p.id; }).length;
+      return '<li><a href="#/now/' + p.id + '" data-proj="' + p.id + '" style="--hue:' + p.hue + '">' +
+        '<span class="pdot" aria-hidden="true"></span>' + esc(p.name) + '<span class="cnt">' + n + '</span></a></li>';
+    }).join('');
+    $$('#rail-projects a').forEach(function (a) {
+      var id = a.getAttribute('data-proj');
+      a.addEventListener('pointerenter', function () { if (!$('#s-now').hidden) nowStage.setHover(id); });
+      a.addEventListener('pointerleave', function () { if (!$('#s-now').hidden) nowStage.setHover(null); });
+      a.addEventListener('focus', function () { if (!$('#s-now').hidden) nowStage.setHover(id); });
+      a.addEventListener('blur', function () { if (!$('#s-now').hidden) nowStage.setHover(null); });
+    });
+  }
+
+  function renderNow(pid) {
     $('#s-now [data-sentence]').textContent = sentence();
-    nowStage.setScene(nowScene, false);
+    nowStage.setScene(nowScene);
     $('#now-overview').hidden = true;
+    $$('#rail-projects a').forEach(function (a) { a.classList.remove('on'); });
     $('#now-list').innerHTML = sorted(missions).map(function (m) {
       return '<li><a href="#/mission/' + m.id + '">' + esc(m.title) + '</a>' +
         '<span class="row-meta">' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</span>' +
         '<span class="row-state st-' + m.state + '">' + esc(stateLine(m)) + '</span>' +
-        (m.state === 'waiting' ? '<a class="row-action" href="#/plan/' + m.id + '">Review plan</a>' : '') + '</li>';
+        (m.state === 'waiting' ? '<a class="btn review" href="#/plan/' + m.id + '">Review plan</a>' : '') + '</li>';
     }).join('');
-  }
-
-  function phaseRows(m) {
-    return PHASES.map(function (name, i) {
-      var mark, word, cls = '';
-      if (m.phase === 6 || i < m.phase) { mark = '✓'; word = 'Done'; cls = 'done'; }
-      else if (i === m.phase) { mark = '●'; word = m.state === 'waiting' ? 'Waiting for you' : 'Current'; cls = 'current'; }
-      else { mark = '○'; word = 'Not reached'; }
-      return '<li class="' + cls + '"><span class="ph-mark" aria-hidden="true">' + mark + '</span><span class="ph-name">' + name + '</span><span class="ph-state">' + word + '</span></li>';
-    }).join('');
+    if (pid && projectOf(pid)) zoomTo(pid);
   }
 
   function renderMission(id) {
-    var m = find(id) || find('m-date');
-    var sec = $('#s-mission');
-    var p = projectOf(m.project);
+    var m = find(id) || find(missionShown);
+    missionShown = m.id;
+    var sec = $('#s-mission'), p = projectOf(m.project);
     $('[data-m-project]', sec).textContent = p.name;
+    $('[data-m-project2]', sec).textContent = p.name;
     $('[data-m-crumb]', sec).textContent = m.title;
     $('[data-m-title]', sec).textContent = m.title;
-    $('[data-m-meta]', sec).textContent = p.name + ' · ' + m.branch;
+    $('[data-m-branch]', sec).textContent = m.branch;
     var st = $('[data-m-state]', sec);
     st.textContent = stateLine(m);
     st.className = 'state-line st-' + m.state;
-    missionStage.setScene(missionScene(m), false);
-    $('#m-phases').innerHTML = phaseRows(m);
-    $('[data-m-latest]', sec).textContent = m.latest;
-    $('[data-m-task]', sec).textContent = m.task;
-    $('[data-m-agent]', sec).textContent = m.exec ? 'Codex, execution. Runs checks and reports results.' : 'No agent recorded.';
-    $('[data-m-links]', sec).innerHTML = plans[m.id]
-      ? '<a href="#/plan/' + m.id + '">Plan v' + plans[m.id].version + '</a>'
-      : 'No plan recorded.';
+    missionStage.setScene(function (w, h) { return missionScene(m, w, h); });
+    $('#m-phases').innerHTML = phaseBar(m);
+    renderMissionPanel();
+  }
+
+  function phaseBar(m) {
+    return PHASES.map(function (name, i) {
+      var cls = '';
+      if (m.phase === 6 || i < m.phase) cls = 'done';
+      else if (i === m.phase) cls = m.state === 'waiting' ? 'wait' : 'current';
+      var word = cls === 'done' ? 'done' : cls === 'wait' ? 'waiting for you' : cls === 'current' ? 'current' : 'not reached';
+      return '<li class="' + cls + '">' + name + '<span class="sr-only">, ' + word + '</span></li>';
+    }).join('');
+  }
+
+  function renderMissionPanel() {
+    var m = find(missionShown), box = $('#m-panel');
+    var p = plans[m.id];
+    $$('[data-mtab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-mtab') === missionTab)); });
+    if (missionTab === 'activity') {
+      box.innerHTML = '<p class="kicker">Activity log</p><ul class="log">' +
+        m.log.map(function (l) { return '<li' + (/Not passed/.test(l) ? ' class="bad"' : '') + '>' + esc(l) + '</li>'; }).join('') + '</ul>';
+    } else if (missionTab === 'plan') {
+      box.innerHTML = p
+        ? '<p class="kicker">Plan v' + p.version + '</p><ul class="log">' + p.tasks.map(function (t) { return '<li>' + esc(t.key) + ' · ' + esc(t.text) + '</li>'; }).join('') + '</ul><div class="row"><a class="btn" href="#/plan/' + m.id + '">Open plan</a></div>'
+        : '<p class="small">No plan recorded for this mission.</p>';
+    } else {
+      var ph = m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase];
+      box.innerHTML =
+        '<p class="kicker">Current phase</p><p class="big">' + esc(ph) + '</p>' +
+        '<p class="small">' + esc(m.what) + '</p>' +
+        '<div class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 19H3z"/></svg><div><p>' + (m.exec ? 'Codex, execution' : 'No agent recorded') + '</p><p class="sub">' + (m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.') + '</p></div></div>' +
+        '<div class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg><div><p>Current task</p><p class="sub">' + esc(m.task) + '</p></div></div>' +
+        '<div class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/></svg><div><p>Latest record</p><p class="sub">' + esc(m.latest) + '</p></div></div>';
+    }
   }
 
   function renderShared() {
     $('#s-shared [data-sentence]').textContent = sentence();
-    sharedStage.setScene(sharedScene(), false);
+    sharedStage.setScene(sharedScene);
+    renderSharedPanel();
+  }
+
+  function renderSharedPanel() {
+    $$('[data-stab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-stab') === sharedTab)); });
+    var box = $('#s-panel');
+    if (sharedTab === 'content') {
+      box.innerHTML = '<dl class="kv"><dt>Project files</dt><dd>12 items</dd><dt>Notes</dt><dd>34 items</dd><dt>Agent logs</dt><dd>28 items</dd><dt>Build outputs</dt><dd>18 items</dd><dt>Related content</dt><dd>156 items</dd></dl>';
+    } else if (sharedTab === 'relations') {
+      box.innerHTML = '<dl class="kv"><dt>Harbor</dt><dd>linked, 3 missions</dd><dt>Notes</dt><dd>linked, 2 missions</dd><dt>Lantern</dt><dd>linked, 2 missions</dd></dl><p class="small">Relations are fixture text. Core supplies the real ones.</p>';
+    } else {
+      box.innerHTML = '<dl class="kv"><dt>Type</dt><dd>Core system</dd><dt>Status</dt><dd>Verified</dd><dt>Updated</dt><dd>Today, 10:24</dd><dt>Items</dt><dd>248</dd><dt>Agents</dt><dd>2 active</dd><dt>Linked projects</dt><dd>3</dd></dl>' +
+        '<p class="kicker">Evidence</p><p class="small">Same records, device permissions apply.</p>';
+    }
   }
 
   function closeSheet(silent) {
@@ -862,9 +1090,9 @@
     sheet.innerHTML =
       '<p class="sheet-state st-' + m.state + '">' + esc(stateLine(m)) + '</p>' +
       '<h2 id="sheet-h" tabindex="-1">' + esc(m.title) + '</h2>' +
-      '<p><span class="lbl">What</span>' + esc(m.what) + '</p>' +
-      '<p><span class="lbl">Why</span>' + esc(why) + '</p>' +
-      '<p><span class="lbl">Core (fixture text)</span>' + esc(consequence) + '</p>' +
+      '<p><span class="lbl-line">What</span><br>' + esc(m.what) + '</p>' +
+      '<p><span class="lbl-line">Why</span><br>' + esc(why) + '</p>' +
+      '<p><span class="lbl-line">Core (fixture text)</span><br>' + esc(consequence) + '</p>' +
       '<div class="row"><a class="btn primary" href="' + (waiting ? '#/plan/' : '#/mission/') + m.id + '">' +
       (waiting ? 'Open decision' : 'Open mission') + '</a><button type="button" class="btn" data-act="close-sheet">Close</button></div>';
     sheet.hidden = false;
@@ -876,11 +1104,11 @@
     closeSheet(true);
     $('#s-phone [data-sentence]').textContent = sentence();
     var waiting = missions.filter(function (m) { return m.state === 'waiting'; });
-    var sc = phoneScene();
     var line = waiting.length ? 'Waiting for you: ' + waiting.map(function (m) { return m.title; }).join(', ') + '.' : 'Nothing waiting for you.';
-    if (sc.overflow > 0) line += ' ' + sc.overflow + ' more on Now.';
+    var sc = null;
+    phoneStage.setScene(function (w, h) { sc = phoneScene(w, h); return sc; });
+    if (sc && sc.overflow > 0) line += ' ' + sc.overflow + ' more on Overview.';
     $('[data-phone-line]').textContent = line;
-    phoneStage.setScene(sc, false);
   }
 
   function renderPlan(id) {
@@ -910,7 +1138,7 @@
         '<button type="submit" class="btn">Save comment</button></form>' +
         (mine.length ? '<ul class="comments">' + mine.map(function (c) {
           return '<li><label><input type="checkbox" data-act="carry" data-id="' + c.id + '"' + (c.carry ? ' checked' : '') +
-            '> Carry in request changes</label>' + esc(c.body) + '</li>';
+            '> Carry in request changes</label> ' + esc(c.body) + '</li>';
         }).join('') + '</ul>' : '') +
         '</details></li>';
     }).join('');
@@ -957,7 +1185,7 @@
 
   function addMission(title, project, what) {
     counter++;
-    missions.push({ id: 'm-new-' + counter, title: title, project: project, branch: 'not created', state: 'idle', stateText: 'Not started', phase: -1, what: what, latest: 'none recorded', task: 'none', exec: false });
+    missions.push({ id: 'm-new-' + counter, title: title, project: project, branch: 'not created', state: 'idle', stateText: 'Not started', phase: -1, glyph: 'doc', what: what, latest: 'none recorded', task: 'none', exec: false, related: [], log: ['Created on this page only.'] });
   }
 
   function stop() {
@@ -986,8 +1214,14 @@
     if (e.target.id === 'now-overview') {
       nowStage.setFocus(null);
       e.target.hidden = true;
+      $$('#rail-projects a').forEach(function (a) { a.classList.remove('on'); });
+      location.hash = '#/now';
       return say('Whole space.');
     }
+    var tab = e.target.closest('[data-mtab]');
+    if (tab) { missionTab = tab.getAttribute('data-mtab'); return renderMissionPanel(); }
+    var stab = e.target.closest('[data-stab]');
+    if (stab) { sharedTab = stab.getAttribute('data-stab'); return renderSharedPanel(); }
     var el = e.target.closest('[data-act]');
     if (!el) return;
     var act = el.getAttribute('data-act');
@@ -1054,7 +1288,7 @@
 
   var SCREENS = {
     now: renderNow,
-    mission: renderMission,
+    mission: function (id) { renderMission(id); },
     shared: renderShared,
     phone: renderPhone,
     start: function () {},
@@ -1074,6 +1308,8 @@
     var h = $('#s-' + name + ' h1');
     if (h) h.focus({ preventScroll: true });
   }
+
+  renderRail();
 
   window.addEventListener('resize', function () {
     [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); });
