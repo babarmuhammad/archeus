@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) and r6 (Q169-Q172).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172) and r7 (Q173-Q174).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -897,6 +897,15 @@ MUTATIONS = [
      "    if at is None or at.timestamp() <= now:",
      "    if at.timestamp() <= now:")],
      [EX + 'test_T106r6_an_unreadable_provider_reset_holds_the_default_window']),
+    # T-106 correction r7 (review of 098d0d3)
+    ('Q173', 'a legacy value the platform cannot make raises out of the tick (no OSError/OverflowError guard)', [(EXE,
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return True",
+     "    except (AttributeError, TypeError, ValueError):\n        return True")],
+     [EX + 'test_T106r7_a_legacy_value_the_platform_cannot_make_releases_without_raising']),
+    ('Q174', 'a reset equal to now is not past (the default window is not held at the instant)', [(EXE,
+     "    if at is None or at.timestamp() <= now:",
+     "    if at is None or at.timestamp() < now:")],
+     [EX + 'test_T106r7_a_reset_at_the_instant_now_holds_the_default_window']),
 ]
 
 if __name__ == '__main__':
