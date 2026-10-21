@@ -1,3 +1,13 @@
+## Round 10d phone (hybrid, 2026-10-22): concept raster as the art
+
+Status: complete with residual differences. README round 10d lists them with measured numbers.
+
+Method changed from the traced SVG to the hybrid the owner chose. The phone Overview's picture is the concept raster with every live element removed (`clients/v2-prototype/art/phone-1-base.webp`, rebuilt by `tools/build_phone_art.py`). The live layer sits on the concept's measured units: text in vendored EB Garamond and Inter, the mission marks, the Review button, the chip, the Tell bar and Stop.
+
+Frame: 1:1 at 402 css px wide (804 x 1373 units, DPR 2). On taller phones the header is anchored to the top, the Tell bar and Stop to the bottom, and the art is centred between them with its background extended from its edge rows.
+
+Measured full-frame mean absolute difference against the master: 5.59 (scene 5.79), unblurred, full resolution.
+
 
 
 ## Round 10c phone (partial, 2026-10-21): SVG Overview in the concept units

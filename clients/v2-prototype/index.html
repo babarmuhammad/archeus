@@ -52,7 +52,7 @@
             <p class="phone-word">Archeus</p>
             <p class="phone-proto">CONCEPT FIXTURE</p>
           </div>
-          <button type="button" class="menu-btn" aria-controls="rail" aria-expanded="false" data-act="menu" aria-label="Places"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h9"/></svg></button>
+          <button type="button" class="menu-btn" aria-controls="rail" aria-expanded="false" data-act="menu" aria-label="Places"></button>
         </div>
         <header class="head">
           <p class="kicker">Now</p>
@@ -65,7 +65,11 @@
         <div class="now-body">
           <div class="now-main">
             <div class="stage stage-now" id="now-stage" role="region" aria-label="Constellation of projects and missions">
-              <svg class="ov-art" id="ov-art" viewBox="0 0 804 1373" role="group" aria-label="Archeus, its missions and projects. Tap a hull or a mission for its detail."></svg>
+              <svg class="ov-head" id="ov-head" viewBox="0 0 804 1373" aria-hidden="true"></svg>
+              <div class="ov-frame">
+                <img class="ov-base" src="art/phone-1-base.webp" alt="" width="804" height="1973" decoding="sync">
+                <svg class="ov-art" id="ov-art" viewBox="0 0 804 1373" role="group" aria-label="Archeus, its missions and projects. Tap a hull or a mission for its detail."></svg>
+              </div>
               <canvas class="sky" aria-hidden="true"></canvas>
               <canvas class="fx" aria-hidden="true"></canvas>
               <div class="world"></div>
@@ -266,6 +270,8 @@
   </form>
 </dialog>
 
+<script src="art/phone-1-layout.js"></script>
+<script src="art/phone-1-type.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

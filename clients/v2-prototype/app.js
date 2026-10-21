@@ -554,166 +554,146 @@
     return sc;
   }
 
-  /* Phone Overview (under 640 px): one SVG in the concept's own units, 804 x 1373 (phone-1-now-v2.png, 2 units per CSS px
-     at 402 wide). Every position was read from that file on labelled grids and checked by overlay. Keys are project and
-     mission ids. A project without a hull here is only counted in the "N more projects" chip. Labels carry a dark halo
-     instead of a box, so a facet line can pass behind a word without touching it. */
-  var OV = {
-    star: [431, 697],
-    projects: {
-      archeus: { hull: [[42, 683], [142, 544], [319, 450], [599, 595], [714, 666], [764, 763], [731, 834], [645, 884], [541, 998], [432, 961], [376, 1030], [269, 975], [96, 872]], name: [262, 566], nodes: [[432, 459], [573, 476]], share: 1, seed: 11 },
-      notes: { hull: [[562, 397], [635, 340], [727, 369], [749, 446], [678, 519], [573, 476]], name: [650, 322], share: 0.5, seed: 41 },
-      ideas: { hull: [[600, 971], [684, 935], [748, 988], [730, 1054], [637, 1080], [587, 1032]], name: [684, 1122], share: 0.5, seed: 53 }
-    },
-    missions: {
-      'm-search': { hull: [[180, 600], [322, 630], [378, 738], [338, 848], [225, 893], [112, 840], [72, 715]], mark: [216, 690], glyph: 'diamond', title: [225, 741], sub: [229, 792], review: [149, 800, 163, 49], links: [[322, 630, true], [378, 738, false]], seed: 23 },
-      'm-date': { hull: [[635, 636], [714, 666], [764, 763], [731, 834], [645, 884], [552, 828], [532, 728]], mark: [648, 730], glyph: 'star', title: [648, 778], exec: [621, 818], execText: 'Codex', links: [[532, 728, true]], seed: 31 },
-      'm-index': { mark: [637, 428], glyph: 'diamond' },
-      'm-read': { mark: [683, 428], glyph: 'star' }
-    },
-    chip: [354, 1052, 236, 48]
+  /* Phone Overview (under 640 px). The picture is the concept raster in clients/v2-prototype/art, made by
+     tools/trace_concept.py with every live element removed. The live layer sits on the concept's measured anchors
+     (window.ARCHEUS_LAYOUT) and fonts (window.ARCHEUS_TYPE, from tools/fit_type.py). Marks, labels, the Review button,
+     the chip and the headline take their words and colours from the data model. Units: the concept's 804 x 1373 px. */
+  var OV_HIT = {
+    archeus: [[30, 440], [330, 430], [620, 560], [780, 650], [780, 900], [660, 1010], [520, 1040], [300, 1040], [60, 900], [20, 700]]
   };
-
-  function ovRand(seed) { return function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }; }
-  function ovPts(poly) { return poly.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' '); }
-  function ovCentre(poly) {
-    var x = 0, y = 0;
-    poly.forEach(function (p) { x += p[0]; y += p[1]; });
-    return [x / poly.length, y / poly.length];
-  }
-  // Facets: a fan from the anchor to every outline edge. A share of the faces gets one interior point (three faces).
-  // Lines fall in three opacity tiers; the far tier is faint. Fills step through four values.
-  function ovFacets(poly, anchor, o) {
-    var rnd = ovRand(o.seed), faces = '', lines = '', dots = '', fills = o.fills;
-    var rgb = o.rgb;
-    var tier = function () { var r = rnd(); return r < 0.25 ? 0.6 : r < 0.55 ? 0.32 : 0.14; };
-    var seg = function (a, b, a2, w) {
-      lines += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="rgba(' + rgb + ',' + a2 + ')" stroke-width="' + w + '"/>';
-    };
-    var face = function (a, b, c) {
-      faces += '<polygon points="' + ovPts([a, b, c]) + '" fill="rgba(' + rgb + ',' + fills[Math.floor(rnd() * fills.length)].toFixed(3) + ')"/>';
-    };
-    poly.forEach(function (p, i) {
-      var q = poly[(i + 1) % poly.length], t = tier();
-      seg(anchor, p, t, t > 0.4 ? 1.4 : 0.9);
-      if (rnd() < o.share) {
-        var g = ovCentre([anchor, p, q]);
-        var Q = [g[0] + (rnd() - 0.5) * 18, g[1] + (rnd() - 0.5) * 18];
-        face(Q, p, q); face(Q, anchor, p); face(Q, anchor, q);
-        seg(Q, anchor, tier(), 0.9); seg(Q, p, tier(), 0.9); seg(Q, q, tier(), 0.9);
-        dots += '<circle cx="' + Q[0].toFixed(1) + '" cy="' + Q[1].toFixed(1) + '" r="2" fill="rgba(' + rgb + ',0.45)"/>';
-      } else {
-        face(anchor, p, q);
+  var OV_IV = '#F6EEE3', OV_AM = '#F9C259', OV_BL = '#68B9FC', OV_FILL = '#FDBD4D';
+  var OV_NAMES = [
+    { text: 'Archeus', x: 88, y: 486, centre: true },
+    { text: 'Notes', x: 650, y: 326, centre: true },
+    { text: 'Ideas', x: 684, y: 1118, centre: true }
+  ];
+  function ovBox(b) { return { x: b[0], y: b[1], w: b[2] - b[0], h: b[3] - b[1], cx: (b[0] + b[2]) / 2, cy: (b[1] + b[3]) / 2 }; }
+  function ovPts(poly) { return poly.map(function (p) { return p[0] + ',' + p[1]; }).join(' '); }
+  // One <text> per word when the concept's word positions are known (tools/fit_type.py), so each word sits on the
+  // concept's ink; a sentence with a different number of words falls back to one line at the text's origin.
+  function ovText(key, cls, text, centre) {
+    var t = window.ARCHEUS_TYPE[key], attrs = ' font-size="' + t.size + '" font-weight="' + t.weight + '" letter-spacing="' + t.ls + '"';
+    if (centre === undefined && t.words) {
+      var parts = text.split(' ');
+      if (parts.length === t.words.length) {
+        return parts.map(function (w, i) {
+          return '<text class="' + cls + '" x="' + t.words[i][1] + '" y="' + t.y + '"' + attrs + '>' + esc(w) + '</text>';
+        }).join('');
       }
-    });
-    return { faces: faces, lines: lines, dots: dots };
-  }
-  function ovHull(poly, anchor, o) {
-    var f = ovFacets(poly, anchor, o);
-    return '<g class="ov-facets">' + f.faces + f.lines + f.dots + '</g>' +
-      '<polygon class="ov-outline" points="' + ovPts(poly) + '" fill="none" stroke="rgba(' + o.rgb + ',' + (o.edge || 0.62) + ')" stroke-width="2.2"/>' +
-      poly.map(function (p) { return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + (o.dot || 3.4) + '" fill="rgba(' + o.dotRgb + ',0.95)"/>'; }).join('');
-  }
-  function ovGlyph(kind, x, y, s, fill, stroke) {
-    if (kind === 'diamond') return '<polygon points="' + ovPts([[x, y - s / 2], [x + s / 2, y], [x, y + s / 2], [x - s / 2, y]]) + '" fill="none" stroke="' + stroke + '" stroke-width="' + (s * 0.12).toFixed(1) + '"/>';
-    if (kind === 'star') {
-      var r = s / 2, k = r * 0.2;
-      return '<path d="M' + x + ',' + (y - r) + ' Q' + (x + k) + ',' + (y - k) + ' ' + (x + r) + ',' + y + ' Q' + (x + k) + ',' + (y + k) + ' ' + x + ',' + (y + r) +
-        ' Q' + (x - k) + ',' + (y + k) + ' ' + (x - r) + ',' + y + ' Q' + (x - k) + ',' + (y - k) + ' ' + x + ',' + (y - r) + 'Z" fill="' + fill + '"/>';
     }
-    return '<polygon points="' + ovPts([[x - s / 2, y + s / 2], [x + s / 2, y + s / 2], [x, y - s / 2]]) + '" fill="' + fill + '"/>';
+    var x = centre === undefined ? t.x : centre;
+    return '<text class="' + cls + '" x="' + x + '" y="' + t.y + '"' + attrs + (centre === undefined ? '' : ' text-anchor="middle"') + '>' + esc(text) + '</text>';
   }
-  function ovText(x, y, cls, size, text, anchor) {
-    return '<text class="' + cls + '" x="' + x + '" y="' + y + '" font-size="' + size + '" text-anchor="' + (anchor || 'middle') + '">' + esc(text) + '</text>';
+  function ovStar(b, fill) {
+    var cx = b.cx, cy = b.cy, r = b.w / 2, k = r * 0.1;
+    return '<path d="M' + cx + ',' + (cy - r) + ' Q' + (cx + k) + ',' + (cy - k) + ' ' + (cx + r) + ',' + cy + ' Q' + (cx + k) + ',' + (cy + k) + ' ' + cx + ',' + (cy + r) +
+      ' Q' + (cx - k) + ',' + (cy + k) + ' ' + (cx - r) + ',' + cy + ' Q' + (cx - k) + ',' + (cy - k) + ' ' + cx + ',' + (cy - r) + 'Z" fill="' + fill + '"/>';
   }
-  function ovInteractive(attrs, inner) {
-    return '<g role="button" tabindex="0" ' + attrs + '>' + inner + '</g>';
+  function ovDiamond(b, stroke, w) {
+    var i = w / 2;
+    return '<polygon points="' + ovPts([[b.cx, b.y + i], [b.x + b.w - i, b.cy], [b.cx, b.y + b.h - i], [b.x + i, b.cy]]) + '" fill="none" stroke="' + stroke + '" stroke-width="' + w + '" stroke-linejoin="miter"/>';
+  }
+  function ovTriangle(b, fill) {
+    return '<polygon points="' + ovPts([[b.x, b.y + b.h], [b.x + b.w, b.y + b.h], [b.cx, b.y]]) + '" fill="' + fill + '"/>';
   }
 
-  function overviewSvg() {
-    var S = OV.star, out = '', i;
-    var arch = OV.projects.archeus, note = OV.projects.notes, idea = OV.projects.ideas;
-    var amber = OV.missions['m-search'], blue = OV.missions['m-date'];
-    var IV = '239,233,218', AM = '242,181,68', BL = '111,177,255';
-
-    // Hulls, back to front: the big Archeus outline, the receded ones, then the two mission hulls on top of it.
-    out += '<g class="ov-hit" data-act="open-list" role="button" tabindex="0" aria-label="Archeus: open the project list">' +
-      '<polygon points="' + ovPts(arch.hull) + '" fill="transparent"/></g>';
-    out += ovHull(arch.hull, S, { rgb: IV, dotRgb: IV, share: 1, seed: arch.seed, edge: 0.6, dot: 3.4, fills: [0.02, 0.04, 0.06, 0.09] });
-    arch.nodes.forEach(function (n) { out += '<circle cx="' + n[0] + '" cy="' + n[1] + '" r="2.6" fill="rgba(' + IV + ',0.8)"/>'; });
-    out += ovText(arch.name[0], arch.name[1], 'ov-name', 32, projectOf('archeus').name);
-    out += ovHull(amber.hull, ovCentre(amber.hull), { rgb: AM, dotRgb: AM, share: 0.8, seed: amber.seed, edge: 0.9, dot: 4.4, fills: [0.05, 0.1, 0.16, 0.22] });
-    out += ovHull(blue.hull, ovCentre(blue.hull), { rgb: BL, dotRgb: BL, share: 0.8, seed: blue.seed, edge: 0.85, dot: 4.4, fills: [0.07, 0.12, 0.16, 0.2] });
-    out += ovHull(note.hull, ovCentre(note.hull), { rgb: IV, dotRgb: IV, share: note.share, seed: note.seed, edge: 0.5, dot: 3, fills: [0.03, 0.05, 0.08, 0.1] });
-    out += ovHull(idea.hull, ovCentre(idea.hull), { rgb: IV, dotRgb: IV, share: idea.share, seed: idea.seed, edge: 0.5, dot: 3, fills: [0.03, 0.05, 0.08, 0.1] });
-    out += ovText(note.name[0], note.name[1], 'ov-name', 32, projectOf('notes').name);
-    out += ovText(idea.name[0], idea.name[1], 'ov-name', 32, projectOf('ideas').name);
-
-    // The star: fine threads from the centre (a seeded spread), one thin vertical thread, a bright knot.
-    var rnd = ovRand(7);
-    for (i = 0; i < 26; i++) {
-      var th = (i + rnd() * 0.6) / 26 * TAU, len = 36 + rnd() * 80, al = (0.25 + rnd() * 0.45).toFixed(2);
-      out += '<line x1="' + S[0] + '" y1="' + S[1] + '" x2="' + (S[0] + Math.cos(th) * len).toFixed(1) + '" y2="' + (S[1] + Math.sin(th) * len).toFixed(1) + '" stroke="rgba(' + IV + ',' + al + ')" stroke-width="1"/>';
-    }
-    out += '<line x1="' + S[0] + '" y1="459" x2="' + S[0] + '" y2="961" stroke="url(#ov-vert)" stroke-width="1.6"/>';
-    out += '<line x1="' + (S[0] - 80) + '" y1="' + S[1] + '" x2="' + (S[0] + 80) + '" y2="' + S[1] + '" stroke="url(#ov-horiz)" stroke-width="1.2"/>';
-    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (d) {
-      out += '<line x1="' + S[0] + '" y1="' + S[1] + '" x2="' + (S[0] + d[0] * 62) + '" y2="' + (S[1] + d[1] * 62) + '" stroke="rgba(' + IV + ',0.5)" stroke-width="1"/>';
-    });
-    out += '<circle cx="' + S[0] + '" cy="' + S[1] + '" r="24" fill="url(#ov-knot)"/>';
-
-    // Links from the mission hulls to the star; the arrowed ones point at the star.
-    [[amber, AM], [blue, BL]].forEach(function (pair) {
-      pair[0].links.forEach(function (l) {
-        var dx = S[0] - l[0], dy = S[1] - l[1], d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
-        out += '<line x1="' + l[0] + '" y1="' + l[1] + '" x2="' + S[0] + '" y2="' + S[1] + '" stroke="rgba(' + pair[1] + ',0.85)" stroke-width="1.6"/>';
-        if (l[2]) {
-          var ax = l[0] + dx * 0.5, ay = l[1] + dy * 0.5, hw = 9;
-          out += '<polygon points="' + ovPts([[ax + ux * 14, ay + uy * 14], [ax - uy * hw, ay + ux * hw], [ax + uy * hw, ay - ux * hw]]) + '" fill="rgb(' + pair[1] + ')"/>';
-        }
-      });
-    });
-
-    // Mission marks: amber diamond (needs you), blue star (live, with the Codex triangle), grey marks in Notes.
-    var sr = amber.mark;
-    out += ovGlyph('diamond', sr[0], sr[1], 40, 'none', 'rgb(' + AM + ')');
-    out += ovText(amber.title[0], amber.title[1], 'ov-title', 32, find('m-search').title);
-    out += ovText(amber.sub[0], amber.sub[1], 'ov-sub', 32, find('m-search').stateText);
-    out += '<a class="ov-review" href="#/plan/m-search" aria-label="Review plan: Search provenance">' +
-      '<rect x="' + (amber.review[0] - 30) + '" y="' + (amber.review[1] - 30) + '" width="' + (amber.review[2] + 60) + '" height="' + (amber.review[3] + 60) + '" fill="transparent"/>' +
-      '<rect x="' + amber.review[0] + '" y="' + amber.review[1] + '" width="' + amber.review[2] + '" height="' + amber.review[3] + '" rx="8" fill="rgb(' + AM + ')"/>' +
-      ovText(amber.review[0] + amber.review[2] / 2, amber.review[1] + 34, 'ov-btn', 32, 'Review') + '</a>';
-    out += ovInteractive('class="ov-mark" data-open="m-search" aria-label="Search provenance"', '<circle cx="' + sr[0] + '" cy="' + sr[1] + '" r="52" fill="transparent"/>');
-
-    var br = blue.mark;
-    out += ovGlyph('star', br[0], br[1], 42, 'rgb(' + BL + ')', 'none');
-    out += ovText(blue.title[0], blue.title[1], 'ov-title', 32, find('m-date').title);
-    out += ovGlyph('triangle', blue.exec[0], blue.exec[1], 20, 'rgb(' + BL + ')', 'none');
-    out += ovText(blue.exec[0] + 20, blue.exec[1] + 7, 'ov-sub', 32, blue.execText, 'start');
-    out += ovInteractive('class="ov-mark" data-open="m-date" aria-label="Fix date test"', '<circle cx="' + br[0] + '" cy="' + br[1] + '" r="52" fill="transparent"/>');
-
-    ['m-index', 'm-read'].forEach(function (id) {
-      var m = OV.missions[id], mm = find(id);
-      out += ovInteractive('class="ov-mark" data-open="' + id + '" aria-label="' + esc(mm.title) + '"',
-        '<circle cx="' + m.mark[0] + '" cy="' + m.mark[1] + '" r="40" fill="transparent"/>' + ovGlyph(m.glyph, m.mark[0], m.mark[1], 26, 'rgb(' + IV + ')', 'rgba(' + IV + ',0.9)'));
-    });
-
-    var c = OV.chip;
-    out += ovInteractive('class="ov-chip" data-act="open-list" aria-label="' + (projects.length - 1) + ' more projects: open the list"',
-      '<rect x="' + c[0] + '" y="' + (c[1] - 26) + '" width="' + c[2] + '" height="' + (c[3] + 52) + '" fill="transparent"/>' +
-      '<rect class="ov-pill" x="' + c[0] + '" y="' + c[1] + '" width="' + c[2] + '" height="' + c[3] + '" rx="24" fill="rgba(20,16,26,0.7)" stroke="rgba(' + IV + ',0.35)" stroke-width="2"/>' +
-      ovText(c[0] + c[2] / 2, c[1] + 33, 'ov-sub', 32, (projects.length - 1) + ' more projects'));
+  // The header: wordmark, concept fixture, status line and the headline, anchored to the top of the screen.
+  function headSvg() {
+    var L = window.ARCHEUS_LAYOUT, out = '';
+    out += '<g class="ov-head-group" aria-hidden="true">';
+    out += ovText('wordmark', 'ov-serif ov-wordmark', 'ARCHEUS');
+    out += ovText('fixture', 'ov-sans ov-fixture', 'CONCEPT FIXTURE');
+    var d = ovBox(L.text.status_dot.box);
+    out += '<circle cx="' + d.cx + '" cy="' + d.cy + '" r="' + (d.w / 2) + '" fill="#49E973"/>';
+    out += ovText('status_text', 'ov-sans ov-status', 'Not stopped · accepts new work');
+    var lines = sentence().split('\n');
+    out += ovText('headline_1', 'ov-serif ov-headline', lines[0]);
+    if (lines[1]) out += ovText('headline_2', 'ov-serif ov-headline', lines[1]);
+    out += '</g>';
     return out;
   }
 
+  // The frame: the live marks, labels, the Review button, the chip, and the invisible hit areas.
+  function overviewSvg() {
+    var L = window.ARCHEUS_LAYOUT, out = '';
+    var amber = find('m-search'), blue = find('m-date');
+    var ac = OV_FILL, bc = OV_BL;
+    out += '<g class="ov-hit" data-act="open-list" role="button" tabindex="0" aria-label="Archeus: open the project list">' +
+      '<polygon points="' + ovPts(OV_HIT.archeus) + '" fill="transparent"/></g>';
+
+    // Mission marks and labels: amber for the owner's obligation, blue for live work.
+    var dm = ovBox(L.marks.diamond), sm = ovBox(L.marks.blue_star), tr = ovBox(L.marks.codex_tri);
+    out += ovDiamond(dm, OV_AM, 6);
+    out += ovText('label_search', 'ov-serif ov-title', amber.title);
+    out += ovText('label_review_plan', 'ov-sans ov-sub', amber.stateText);
+    out += '<a class="ov-review" href="#/plan/m-search" aria-label="Review plan: ' + esc(amber.title) + '">' +
+      '<rect class="ov-review-hit" x="' + (L.shapes.review[0] - 14) + '" y="' + (L.shapes.review[1] + (L.shapes.review[3] - L.shapes.review[1]) / 2 - 44) + '" width="' + (L.shapes.review[2] - L.shapes.review[0] + 28) + '" height="88" fill="transparent"/>' +
+      '<rect x="' + L.shapes.review[0] + '" y="' + L.shapes.review[1] + '" width="' + (L.shapes.review[2] - L.shapes.review[0]) + '" height="' + (L.shapes.review[3] - L.shapes.review[1]) + '" rx="9" fill="' + ac + '"/>' +
+      ovText('review_label', 'ov-sans ov-btn', 'Review', (L.shapes.review[0] + L.shapes.review[2]) / 2) + '</a>';
+    out += '<g class="ov-mark" data-open="m-search" role="button" tabindex="0" aria-label="' + esc(amber.title) + '">' +
+      '<circle cx="' + dm.cx + '" cy="' + dm.cy + '" r="' + 44 + '" fill="transparent"/></g>';
+
+    out += ovStar(sm, bc);
+    out += ovText('label_fix', 'ov-serif ov-title', blue.title);
+    out += ovTriangle(tr, bc);
+    out += ovText('label_codex', 'ov-sans ov-codex', blue.execText || 'Codex');
+    out += '<g class="ov-mark" data-open="m-date" role="button" tabindex="0" aria-label="' + esc(blue.title) + '">' +
+      '<circle cx="' + sm.cx + '" cy="' + sm.cy + '" r="44" fill="transparent"/></g>';
+
+    ['m-index', 'm-read'].forEach(function (id) {
+      var mm = find(id), b = ovBox(L.marks[id === 'm-index' ? 'notes_index' : 'notes_read']);
+      out += '<g class="ov-mark" data-open="' + id + '" role="button" tabindex="0" aria-label="' + esc(mm.title) + '">' +
+        '<circle cx="' + b.cx + '" cy="' + b.cy + '" r="44" fill="transparent"/>' +
+        (id === 'm-index' ? ovDiamond(b, OV_IV, 3) : ovStar(b, OV_IV)) + '</g>';
+    });
+
+    // Project names: small grey labels beside their hulls, on empty concept space (no line within 14 units).
+    out += OV_NAMES.map(function (n) {
+      return '<text class="ov-sans ov-name" x="' + n.x + '" y="' + n.y + '" font-size="24"' + (n.centre ? ' text-anchor="middle"' : '') + '>' + esc(n.text) + '</text>';
+    }).join('');
+
+    var c = L.shapes.chip, cw = 210, cx0 = 388;
+    out += '<g class="ov-chip" data-act="open-list" role="button" tabindex="0" aria-label="' + (projects.length - 1) + ' more projects: open the list">' +
+      '<rect x="' + cx0 + '" y="' + (c[1] + (c[3] - c[1]) / 2 - 44) + '" width="' + cw + '" height="88" fill="transparent"/>' +
+      '<rect class="ov-pill" x="' + cx0 + '" y="' + c[1] + '" width="' + cw + '" height="' + (c[3] - c[1]) + '" rx="' + ((c[3] - c[1]) / 2) + '" fill="rgba(20,16,26,0.7)" stroke="rgba(239,233,218,0.35)" stroke-width="2"/>' +
+      ovText('chip_text', 'ov-sans ov-chip-text', (projects.length - 1) + ' more projects', cx0 + cw / 2).replace(/ y="[0-9.]+"/, ' y="' + (c[1] + (c[3] - c[1]) / 2 + window.ARCHEUS_TYPE.chip_text.size * 0.36) + '"') + '</g>';
+    return out;
+  }
+
+  // Sizes of the live controls come from the layout, so the art and the controls stay on the same units.
+  function placeControls() {
+    var L = window.ARCHEUS_LAYOUT, T = window.ARCHEUS_TYPE, bar = $('#chat-form'), stop = $('#s-now .stop-btn.chat-stop'), input = $('#chat-input');
+    if (!bar || !stop || !input) return;
+    var b = L.shapes.bar, s = L.shapes.stop, root = $('#s-now');
+    root.style.setProperty('--pad', L.pad);
+    $('#ov-art').setAttribute('viewBox', '0 ' + -L.pad + ' 804 ' + (1373 + 2 * L.pad));
+    root.style.setProperty('--edge-top', 'rgb(' + L.edge.top.join(',') + ')');
+    root.style.setProperty('--edge-bottom', 'rgb(' + L.edge.bottom.join(',') + ')');
+    bar.style.left = 'calc(var(--u) * ' + b[0] + ')';
+    bar.style.width = 'calc(var(--u) * ' + (b[2] - b[0]) + ')';
+    bar.style.height = 'calc(var(--u) * ' + (b[3] - b[1]) + ')';
+    stop.style.left = 'calc(var(--u) * ' + (s[0] - b[0]) + ')';
+    stop.style.width = 'calc(var(--u) * ' + (s[2] - s[0]) + ')';
+    input.style.fontSize = 'calc(var(--u) * ' + T.bar_text.size + ')';
+    stop.style.fontSize = 'calc(var(--u) * ' + T.stop_text.size + ')';
+  }
+
+  // The chip is as wide as its text plus a fixed inset, so the 14 px label never spills out of the pill.
+  function fitChip() {
+    var t = $('#ov-art .ov-chip-text'), pill = $('#ov-art .ov-pill'), hit = $('#ov-art .ov-chip rect');
+    if (!t || !pill || !t.getComputedTextLength) return;
+    var w = Math.ceil(t.getComputedTextLength()) + 36, cx = +t.getAttribute('x'), x0 = cx - w / 2;
+    pill.setAttribute('x', x0); pill.setAttribute('width', w);
+    if (hit) { hit.setAttribute('x', x0); hit.setAttribute('width', w); }
+  }
+
   function buildOverview() {
-    var svg = $('#ov-art');
-    if (!svg) return;
-    svg.innerHTML = '<defs>' +
-      '<linearGradient id="ov-vert" gradientUnits="userSpaceOnUse" x1="0" y1="459" x2="0" y2="961"><stop offset="0" stop-color="#EFE9DA" stop-opacity="0"/><stop offset="0.5" stop-color="#EFE9DA" stop-opacity="0.9"/><stop offset="1" stop-color="#EFE9DA" stop-opacity="0"/></linearGradient>' +
-      '<linearGradient id="ov-horiz" gradientUnits="userSpaceOnUse" x1="351" y1="0" x2="511" y2="0"><stop offset="0" stop-color="#EFE9DA" stop-opacity="0"/><stop offset="0.5" stop-color="#EFE9DA" stop-opacity="0.85"/><stop offset="1" stop-color="#EFE9DA" stop-opacity="0"/></linearGradient>' +
-      '<radialGradient id="ov-knot"><stop offset="0" stop-color="#FFFFFF" stop-opacity="1"/><stop offset="0.4" stop-color="#EFE9DA" stop-opacity="0.55"/><stop offset="1" stop-color="#EFE9DA" stop-opacity="0"/></radialGradient>' +
-      '</defs>' + overviewSvg();
+    var svg = $('#ov-art'), head = $('#ov-head');
+    if (!svg || !head || !window.ARCHEUS_LAYOUT || !window.ARCHEUS_TYPE) return;
+    svg.innerHTML = overviewSvg();
+    fitChip();
+    head.innerHTML = headSvg();
+    placeControls();
   }
 
   function ovMode() { return window.matchMedia('(max-width: 639px)').matches; }
@@ -1442,7 +1422,7 @@
 
   function renderNow(pid) {
     $('#s-now [data-sentence]').textContent = sentence();
-    if (!ovMode()) nowStage.setScene(nowScene);
+    if (ovMode()) buildOverview(); else nowStage.setScene(nowScene);
     renderMoreChips();
     renderNeeds();
     $('#now-overview').hidden = true;

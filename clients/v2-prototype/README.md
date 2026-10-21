@@ -4,6 +4,68 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10d phone (hybrid, 2026-10-22): concept raster as the art, live layer on top
+
+Method (owner decision, hybrid): the scene picture is the concept raster itself. Every live element was removed from it and the cleaned raster is the base art. Everything live sits on top at the concept's measured units: text (vendored fonts), the mission marks (live SVG shapes in the concept's own geometry, coloured from the data model), the Review button, the chip, the Tell bar and Stop. One owner per visual element: a removed element is never drawn twice.
+
+Files:
+- `art/phone-1-base.webp`: 804 x 1973 units. The concept (804 x 1373) with the live content removed and 300 units of background above and below, extended from the edge rows (smoothed along the row). Lossy WebP at quality 100, 114 KB. A lossless WebP is 618 KB, over the 400 KB budget.
+- `art/phone-1-layout.js`: measured ink boxes of each text, mark and control in concept units, and the edge colours.
+- `art/phone-1-type.js`: size, tracking, weight, origin and per-word x of each live text (from `tools/fit_type.py`).
+- `fonts/`: LibreCaslon Text (serif, variable wght 400 to 700) and Inter (sans, variable), both SIL OFL 1.1, with licence texts, URLs and sha256 in `fonts/README.md`.
+
+Regenerate: `py -I tools/build_phone_art.py "D:\hub-concepts-codex4\phone-1-now-v2.png"` writes the three art files. Config: `tools/trace_phone.json` (what to remove, what to measure). Offsets: `tools/type_offsets.json` (tracking and origin corrections, set from the compare step). Compare: `py -I tools/compare_frame.py <concept.png> <render.png> tools/compare_phone.json <out_dir> <label>` prints the ink-box alignment table, the regional metrics and the ten worst 48 px blocks, and writes the diff x4, the 50 % blend, the alpha overlay and lossless PNGs for alternation.
+
+Font choice (from the bake-off in `D:\fontbake\results.md`, no free font matched the concept serif, best mean IoU 0.47): serif = Libre Caslon Text, weight 500 (headline 500, labels 500, wordmark 500). Sans = Inter, weight 350 to 600, kept over Source Sans 3 (weight 400): on the sans regions Inter has the lower mean error (status, fixture, labels, chip, Review, Tell and Stop: mean 23.2 against 24.9 for Source Sans 3 with the same fit), and its widths are closer on the fixture line. Source Sans 3 was removed from the folder. Both serif and sans sizes come from the concept's ink heights; the headline solves to 63.6 units, which matches the bake-off's 63.23 px.
+
+What was removed from the art (`tools/trace_concept.py`): the wordmark, CONCEPT FIXTURE, the status line and dot, both headline lines, the three scene labels, the chip, the Review button and its label, the Tell bar and its placeholder, Stop, the amber diamond, the blue four-point star, the Codex triangle and the two Notes glyphs. The removed pixels are filled by harmonic interpolation from a 2 px ring outside the removed area. A wider ring picked up the glyph shadows and left blotches. Mesh threads that cross a removed glyph are redrawn from the neighbouring strokes (three bridges, across the glyphs of "Search provenance" and "Fix date test").
+
+Verification. Frame at 402 css wide, DPR 2, viewport 402 x 687 so the 402 x 686.5 frame sits at 0. Screenshot 804 x 1373, unblurred, no resampling. Concept and render compared pixel for pixel. Measured numbers, not visual estimates:
+
+| Region | Mean abs (RGB) | p99 (max channel) | Pixels > 24 |
+|---|---|---|---|
+| Frame, all pixels | 5.11 | 168 | 4.74 % |
+| Scene (art plus marks) | 4.71 | 140 | 4.73 % |
+| Header (wordmark to headline) | 10.52 | 224 | 7.73 % |
+| Art, outside every live box (padded 12 px) | 2.12 | 43 | 1.97 % |
+| Headline line 1 / line 2 | 14.6 / 22.5 | 219 / 238 | 11.4 / 16.5 % |
+| Scene labels: Search provenance / Review plan / Fix date test / Codex | 22.4 / 19.1 / 21.4 / 11.6 | | |
+| Marks: amber diamond / blue star / Codex triangle / Notes diamond / Notes star | 16.4 / 9.0 / 6.8 / 15.7 / 11.4 | | |
+| Controls: Review fill / Tell bar / Stop / chip | 28.6 / 7.8 / 15.4 / 35.6 | | |
+
+Registration. The art region is the one place where the frame can be checked without live text. Two references. The concept PNG shown 1:1 in the same Chromium pipeline, with no art and no live layer, scores 1.20 mean against the file: that is the screenshot floor. The decoded WebP scores 0.73 against the concept. The render scores 1.59 with the live layer hidden and 2.12 with it shown; the difference is the text halo, which belongs to the live layer. A one-pixel shift makes the art worse in both directions. So the art is registered to the master within the pipeline's own noise.
+
+Text alignment. The ink box of every live text lands within 1 to 3 px of the concept's ink box at 804 units (alignment table from `compare_frame.py`), after a per-word x from the concept: the headline and the labels are placed word by word. The remaining text error is glyph shape, letter spacing inside words and anti-aliasing. The concept's serif is a Garamond-like face with its own letter shapes; no open face matches it, and Libre Caslon is the best of those tested in the bake-off and in this overlay. The wordmark is the weakest text (mean 47.5): its caps are tracked wider than the font's, so the letter positions inside the word drift.
+
+Approved deviations (owner rules that conflict with the concept's own sizes, listed so the owner can say otherwise):
+1. Body and tappable text is 14 css px at 360 wide (31.4 units), so 15.7 px at 402. The concept's status line is about 10.7 px, its chip text about 8.3 px and its Review label about 10 px. The status line and the chip are therefore wider than the concept (the chip is about 230 units wide against 161). Review and Stop are larger than the concept's type.
+2. Scene labels keep the concept's sizes: Search provenance 22.4 units (about 11.2 px at 402), Review plan 16.8 units (about 8.4 px), Fix date test 20.7 units (about 10.3 px), Codex 15.9 units (about 8 px). These are below the 12 px scene floor because the concept is smaller; the owner rule says use the concept size and report it. The mission titles are tappable through their marks (88 unit hit circles).
+3. CONCEPT FIXTURE keeps the concept size (17.2 units, about 8.6 px at 402).
+4. Project names: Notes and Ideas sit on empty concept space beside their hulls (Notes centred at x 650, baseline 326; Ideas centred at x 684, baseline 1118), 24 units (12 px at 402). Archeus is outside the big hull, centred at x 88, baseline 486. No 14 unit clear span exists inside the big hull: its interior is crossed by threads at every position tested. The name sits on the empty space above the hull's upper-left edge.
+5. The hamburger is gone. Places opens from the wordmark: a transparent 336 x 88 unit button over ARCHEUS (44 css px tall).
+
+Layout. The frame is 1:1 at 402 wide (804 x 1373 units). The header is anchored to the top of the screen; the Tell bar and Stop are anchored to the bottom (bottom edge 99 units above the screen bottom, plus the safe-area inset); the art is centred vertically between them. On a taller phone the extra height is background, extended from the art's edge rows, so no band shows. Measured at 360 x 800, 390 x 844, 393 x 852, 402 x 874, 430 x 932 and 440 x 956: the same composition at every width, no horizontal scroll (scrollWidth equals the viewport), bar and Stop above the bottom edge.
+
+Behaviour, kept apart from the visual score. Tap on each mission mark opens its detail (checked at 402 x 874). Review links to `#/plan/m-search`. The chip opens the project list. Stop and the Tell input work (a sent message appears in the feed). Enter and Space on the SVG buttons still dispatch clicks. Reduced motion and `?nocolor` are unchanged. The two-step decision screen is unchanged.
+
+Label overlap probe (every SVG text and HTML control in the overview, pairwise, Chromium, six widths). Zero overlaps between different live items. The only pairs reported are three inside the headline (`1`/`1`, `needs`/`verifying`, `you`/`verifying`). Their line boxes overlap by a few units while the ink does not; the concept's own ink boxes overlap the same way (line 1 ends at y 348, line 2 starts at y 344, at different x).
+
+Hit areas, css px: Review 96 x 44, chip 127 x 44, mission marks 44 x 44, Notes marks 44 x 44, Places 168 x 44, Stop 81 x 50, Tell input 280 x 48.
+
+Residual differences (numbered, with the measured number):
+1. Serif glyph shapes and letter spacing: wordmark mean 47.5, headline 14.6 and 22.5, labels 11.6 to 22.4. The concept has coloured fringes (ClearType-like); this render is greyscale. Not fixable with an open face that is not the concept's.
+2. Status line: mean 59.4, ink mass 1.87 times the concept's (14 px rule, deviation 1).
+3. Chip: mean 35.6, about 230 units wide against 161 (deviation 1). Its text is 14 px.
+4. Review: fill mean 28.6, label mean 40.8 (deviation 1). The concept's glow under the button is not drawn; the art keeps the concept's glow outside the button. The worst 48 px blocks of the frame sit at y 792, on this label.
+5. Mission marks: the concept's glow around the amber diamond and the blue star is not drawn (diamond 16.4, Notes diamond 15.7, Notes star 11.4, blue star 9.0).
+6. Stop: mean 15.4. Its label is 15.7 px (deviation 1). The button fill is a flat #2F2B35.
+7. Art edges: the Review button leaves a 2 px ring of concept glow in the art (it is not removed). The Tell bar and Stop outlines are drawn live, so the concept's outlines are replaced rather than matched.
+8. Threads that cross a removed shadow are not redrawn. The art has no thread through the middle of "Search provenance" (about 4 units at the caps).
+9. The art is lossy WebP (0.73 mean against the master on its own).
+10. The Archeus name sits outside the big hull (deviation 4).
+
+Not verified: a real device (safe areas and the home indicator are emulated with the bottom margin only); iOS and Android rasterisers (the comparison is Chromium on Windows); the chat sheet and the phone-2 and phone-3 views (only the Overview was compared); a second DPR (the metric is DPR 2 only).
+
 ## Round 10c phone (2026-10-21): one SVG frame in the concept's own units
 
 Status: PARTIAL against the owner's bar ("exactly the design prototype"). The phone Overview is now a hand-authored SVG that matches the concept's composition closely at 402 x 874. The differences that remain are listed below with numbers. Desktop, Replay, terminal, Mission, Shared and the phone-2 and phone-3 views are unchanged in this round.

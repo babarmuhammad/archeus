@@ -114,18 +114,56 @@ check(/id="s-terminal"/.test(html) && /SIMULATED/.test(html), 'terminal section 
 check(/terminal: renderTerminal/.test(js) && /data-tsize="120"/.test(html), 'terminal route or 120x40 size missing');
 check(/Places/.test(html) && /data-act="menu"/.test(html), 'phone Places menu missing');
 
-// Round 10c: the phone Overview is one SVG in the concept's own units (804 x 1373), built from the OV layout table.
-check(/viewBox="0 0 804 1373"/.test(html) && /id="ov-art"/.test(html), 'phone overview SVG frame missing');
-check(/CONCEPT FIXTURE/.test(html), 'phone concept fixture label missing');
-check(/aspect|804 \/ 1373|1373 \/ 804/.test(css) && /min\(100vw, calc\(100dvh \* 804 \/ 1373\)\)/.test(css), 'phone frame is not sized to the concept ratio');
-for (const key of ['archeus', 'notes', 'ideas', "'m-search'", "'m-date'", "'m-index'", "'m-read'"]) check(js.includes(key + ':') || js.includes(key + ': {'), `OV layout entry missing: ${key}`);
-check(/function buildOverview/.test(js) && /function overviewSvg/.test(js) && /function ovMode/.test(js), 'phone overview builder missing');
+// Round 10d (hybrid): the phone Overview is the concept raster (art/phone-1-base.webp, 804 x 1373 units, live
+// content removed, extended above and below by its edge rows) with a live layer on the concept's measured anchors.
+const artDir = join(dir, 'art');
+const webpPath = join(artDir, 'phone-1-base.webp');
+check(existsSync(webpPath), 'art/phone-1-base.webp missing (run tools/build_phone_art.py)');
+if (existsSync(webpPath)) {
+  const bytes = readFileSync(webpPath);
+  check(bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP', 'phone art is not a WebP file');
+  check(bytes.length < 400 * 1024, `phone art is ${bytes.length} bytes, over the 400 KB budget`);
+}
+// The data files set window.X; read them with a window stub.
+const readGlobal = (f, name) => {
+  const ctx = { window: {} };
+  try { vm.runInNewContext(read(f), ctx, { filename: f }); } catch (e) { failures.push(`${f} does not run: ${e.message}`); }
+  return ctx.window[name];
+};
+const layout = readGlobal('art/phone-1-layout.js', 'ARCHEUS_LAYOUT');
+const type = readGlobal('art/phone-1-type.js', 'ARCHEUS_TYPE');
+check(layout && layout.size && layout.size[0] === 804 && layout.size[1] === 1373, 'layout is not the 804 x 1373 concept');
+check(layout && layout.pad > 0, 'layout has no background extension');
+for (const key of ['wordmark', 'fixture', 'status_text', 'headline_1', 'headline_2', 'label_search', 'label_review_plan', 'label_fix', 'label_codex', 'chip_text', 'review_label', 'bar_text', 'stop_text']) {
+  check(type && type[key] && type[key].size > 0, `live text missing from the type data: ${key}`);
+}
+// Body and tappable text keeps the 14 CSS px floor at the narrowest phone (360 wide): 14 * 804 / 360 units.
+for (const key of ['status_text', 'chip_text', 'review_label', 'bar_text', 'stop_text']) {
+  check(type && type[key] && type[key].size >= 14 * 804 / 360, `${key} is below 14 CSS px at 360 wide`);
+}
+for (const key of ['shapes', 'marks']) check(layout && layout[key], `layout ${key} missing`);
+check(/Archeus Serif/.test(css) && /Archeus Sans/.test(css), 'live text must use the vendored @font-face families');
+check(/@font-face\s*\{[^}]*fonts\/LibreCaslonText-VF\.ttf/.test(css) && /@font-face\s*\{[^}]*fonts\/Inter-VF\.ttf/.test(css), 'vendored font files are not declared');
+check(existsSync(join(dir, 'fonts', 'LibreCaslonText-VF.ttf')) && existsSync(join(dir, 'fonts', 'Inter-VF.ttf')), 'vendored font files missing');
+check(existsSync(join(dir, 'fonts', 'OFL-LibreCaslonText.txt')) && existsSync(join(dir, 'fonts', 'OFL-Inter.txt')), 'font licence texts missing');
+check(existsSync(join(dir, 'fonts', 'README.md')), 'fonts/README.md (sources and hashes) missing');
+check(/SIL Open Font License/.test(read('fonts/OFL-LibreCaslonText.txt')) && /SIL Open Font License/.test(read('fonts/OFL-Inter.txt')), 'font licence text is not the SIL OFL');
+check(/src="art\/phone-1-layout\.js"/.test(html) && /src="art\/phone-1-type\.js"/.test(html), 'index.html does not load the layout and type data');
+check(/class="ov-base"[^>]*src="art\/phone-1-base\.webp"/.test(html), 'index.html does not show the art layer');
+check(/viewBox="0 0 804 1373"/.test(html) && /id="ov-art"/.test(html) && /id="ov-head"/.test(html), 'live layers missing from index.html');
+check(/CONCEPT FIXTURE/.test(html), 'concept fixture label missing');
+check(!/class="menu-btn"[^>]*>\s*<svg/.test(html), 'the hamburger icon is still drawn on the phone');
+check(/data-act="menu"/.test(html) && /aria-label="Places"/.test(html), 'Places navigation must stay reachable (on the wordmark)');
+check(/OV_NAMES = \[/.test(js) && /'Archeus'/.test(js) && /'Notes'/.test(js) && /'Ideas'/.test(js), 'project names missing from the Overview');
+check(/·/.test(js) && !/�/.test(html + js + css), 'middle dot missing or a replacement character (mojibake) is in the source');
+check(/function buildOverview/.test(js) && /function overviewSvg/.test(js) && /function headSvg/.test(js), 'overview builders missing');
 check(/href="#\/plan\/m-search"/.test(js), 'Review link must open the decision');
+check(/data-open="m-search"/.test(js) && /data-open="m-date"/.test(js), 'missions must open the detail sheet from the live marks');
 check(/' more projects'/.test(js) && /\(projects\.length - 1\)/.test(js), 'chip count must come from the project list');
-check(!/ovText\([^;]*?'ov-(?:sub|name|btn|title)', (?:[0-9]|[12][0-9]|3[01])/.test(js), 'a scene label is below 32 units (14 CSS px at 360 wide)');
 check(/data-act="stop"/.test(html) && /id="chat-input"/.test(html), 'Stop or the tell input missing from the phone overview');
-check(/\.chat-stop/.test(css) && /height: calc\(var\(--u\) \* 100\)/.test(css), 'phone Stop and bar must be 44 px or taller');
-
+check(/\.chat-stop/.test(css) && /height: calc\(var\(--u\) \* 99\)/.test(css), 'phone Stop and bar must be 44 px or taller');
+check(/prefers-reduced-motion/.test(css), 'reduced motion rule missing');
+check(/ovMode\(\)\) buildOverview\(\)/.test(js), 'the phone Overview is not rebuilt with the screen state');
 check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
 
 
