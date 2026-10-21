@@ -4,6 +4,45 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## What round 7 changed
+
+- **Phone (under 880 px) is one calm screen.** The Overview is a short headline, the constellation, and one bar at the bottom. The bottom navigation bar is gone: Places opens the list of screens from a button at the top. Only the two focus objects are labelled (the one that needs you and the live one); everything else is unlabelled and the scene is larger. Count chips above the bar ("3 projects", "5 more missions") open the full list in a sheet.
+- **Sheets.** One tap on a figure opens a detail sheet (about 46 percent of the screen, with a grabber): state, title, what, why, and "Review plan" or "Open mission". The conversation opens as a sheet from the bar; the Start card and the General thread live there. The sheet's background is solid, so text does not show the scene through.
+- **Safe areas.** `viewport-fit=cover`; top and bottom padding use `env(safe-area-inset-*)`, so the bar clears the home indicator and the header clears the Dynamic Island. The bar and Stop sit in the lower third.
+- **Terminal (new route, `#/terminal`).** The overview, mission, decision and replay are drawn as monospaced text from the same fixture data, at 80 x 24 and 120 x 40. Keys: j/k or arrows move, Enter opens, r reviews, p opens the replay, t focuses the tell line, Esc goes back. The tell line says the text was not sent. The 80-column overview is stacked, one project per block.
+- **Desktop.** Mission and record labels drop their kicker line (fewer, smaller labels); "New" sits on the title of a new object for six seconds. Replay rows are tighter, so the Reconcile row and the footer fit at 900 px height. Atlas's second mission moved. Default Overview has zero label overlaps at 1280 x 720, 1440 x 900, 1600 x 900 and 1920 x 1080.
+- Phone first screen follows the Codex structure and the research ranking: status headline, one Needs-you card (one tap opens the detail sheet), count chips (projects, more missions, Replay), the bar and Stop in the lower third.
+- Terminal keys follow the Codex proposal: j/k, Enter, r review, p replay, t tell, s stop (existing double-press), b back. Terminal text is ASCII only; no colour is needed to read a state.
+- Measured label overlaps, label-box count (not a visual audit): default Overview zero at 1280 x 720, 1440 x 900, 1600 x 900 and 1920 x 1080. Demo chat flow zero at 1440 x 900, 1600 x 900 and 1920 x 1080; at 1280 x 720 two pairs (Archeus with the Codex label; Atlas with Search provenance).
+- Service worker cache bumped to `archeus-v2-proto-7`.
+
+### Phone sizes tested (Chromium, CSS px)
+
+360 x 800, 390 x 844, 393 x 852, 402 x 874, 420 x 912, 430 x 932, 440 x 956. Measured on each: zero label overlaps with the bar or the count chips; no horizontal scroll; every visible button and link at least 44 px (the rule is 48 px in the CSS); the smallest text 14 px (label rule); body text in sheets 17 px.
+
+Not verified: the iPhone 18 (not in the Apple device table in the reference pack; no verified size); the iPhone 17 and 17 Pro sizes (402 x 874) and the Air (420 x 912) are from the reference table, not measured on a device. Real safe-area insets are 0 in the desktop browser used here, so the Dynamic Island and home-indicator clearances are CSS-only and untested on hardware.
+
+### Apple HIG rules (from the reference pack, read-only) and how they apply to this web prototype
+
+Applied in CSS and layout:
+- Safe areas: content clears the top and bottom system insets with `env(safe-area-inset-*)`; the bottom bar sits above the home indicator; the header sits below the Dynamic Island.
+- Touch targets: 44 pt is the iOS floor; the CSS uses 48 px for every control on the phone (the owner's rule).
+- Tab bar at most five items: the six-item bottom bar became a Places sheet.
+- Sheets with a detent and a grabber: a detail sheet and a conversation sheet at about 46 percent, with a grabber and a close button; Escape closes them.
+- Primary actions in the thumb zone: the bar and Stop are at the bottom.
+- Body text 17 px in sheets (HIG default), label text 14 px minimum (the owner's rule; HIG's minimum is 11 pt).
+- Reduce motion: the existing CSS and JS paths stop motion when the user prefers reduced motion.
+- Materials: solid sheet backgrounds, no translucent sheet over the scene (the reduced-transparency gate is kept for the desktop panel).
+- Semantic colour tokens (no raw colour in components); focus ring kept visible.
+
+Not applied, and why:
+- Dynamic Type: the page uses fixed px sizes with a 14 px floor; the browser's text zoom works, but true Dynamic Type is native-only.
+- Haptics, Live Activities, Dynamic Island content (the status shown inside it): native-only; the prototype does not create a Live Activity.
+- Liquid Glass chrome: the prototype uses flat dark surfaces, not the system glass material.
+- SF Symbols: the icons are inline SVG (no system symbol font on the web).
+- Native sheet detents and gestures: approximated with a 46 percent sheet and a close button; no drag-to-resize.
+- Widgets and the iPad layouts: out of scope for a phone prototype.
+
 ## What round 6 changed
 
 - Overview: the constellation fills the stage. The conversation floats low over it (the last lines, light tint), and the bar sits at the bottom edge with Tell and Stop. The conversation column is gone.
@@ -67,19 +106,15 @@ A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No 
 | Phone | `#/phone` | `10-phone-needs-you`: compact hub, Review, slim sheet. Codex `chat-3-phone-390` for the chat |
 | Plan approval | `#/plan/m-search` | Design doc section 4.2 |
 
-## Remaining gaps against the approved concepts (after round 6)
+## Remaining gaps against the approved concepts (after round 7)
 
-Honest state. Round 6 was checked by Playwright (Chromium) screenshots at 1440 x 900, 1600 x 900, 1920 x 1080, 1280 x 720 and 390 x 844, and compared by eye with the Codex images (`chat-1`, `replay-2`, `chat-3`) and with 02, 03, 06, 10 and 13. It is still weaker than them in these places:
+Honest state. Checked by Playwright screenshots and label-box counts. Still weaker than the concepts:
 
-- Figure density: the interior mesh and glyphs are thinner and dimmer than 02, 03 and the Codex images. Satellite bodies are five small wireframes, not a dense field.
-- Label overlaps are scored, not perfect. Measured with a label-box count: at 1600 x 900 the default Overview is clean and the demo chat flow (Atlas, its mission, its idea, its plan) is clean. At 1440 x 900 the demo flow has one pair (Reading list export with Map relations). At 1280 x 720 the demo flow has six pairs (Archeus and Codex, Atlas with its missions, Index notes with the Atlas mission). The 1280 x 720 case is the weakest.
-- Atlas sits at a fixed spot in the upper middle of the scene. At 1600 x 900 its hull still touches the top edge of the stage. At 1280 x 720 it is crowded.
-- At 1600 x 900 the conversation lines can cover the Codex label (the plan line of the demo flow sits over it).
-- Phone: the conversation sits above the bar and the constellation sits above that, but the scene is small (about 380 px tall) and the feed's lowest line overlaps a project label at the bottom edge. The phone Overview is busier than concept 10 and the Codex chat-3 image.
-- Chat: the Start card's "Start" plans the mission for review; the Codex image shows a card that starts a run. The prototype keeps the planning step (the Start card is design, and V1 has no card yet).
-- Replay: the mission constellation is smaller than the Codex image's and has the record nodes (Date test suite, Results, Verification) instead of the Codex-style Verification and Results only.
-- Shared: devices are still cubes; the state colour is on the word, not a dot.
-- Not verified: a real phone, a screen reader, a frame-rate budget, contrast on rendered pixels (only the palette pairs in `check.mjs` are checked).
-- Reduced motion stops the rotation, the pulse, the grow-in and the camera tween; it draws the same layout.
-- Service worker: network-first with a shell cache from install. Bump `CACHE` in `sw.js` when the shell changes (now `archeus-v2-proto-6`).
-- `check.mjs` checks files, syntax, manifest and icons, contrast pairs (including the translucent chat bar), font floor, Canvas 2D only, devicePixelRatio, hidden-tab pause, reduced-motion hooks, and the round 5 and round 6 chat and Replay rules. It does not run the UI. Run it as `node clients/v2-prototype/check.mjs` through the shared test lock.
+- Desktop, demo flow at 1280 x 720: two label pairs touch (Archeus with the Codex label; Atlas with Search provenance). Default Overview is clean at all four desktop sizes; the demo flow is clean at 1440, 1600 and 1920.
+- Desktop figures are still thinner and dimmer than 02 and 03; the satellites are five small wireframes.
+- Phone: the scene is smaller than the concept in height; the Codex structure proposal (pending) and the iPhone 18 size (unverified) are not reflected yet.
+- Terminal: plain text grid drawn by the page; the concept images use the same characters but a richer layout (boxes and columns); 80 x 24 uses a stacked list.
+- Shared devices: cubes, state word in colour, no state dots.
+- Not verified: a real phone, a screen reader, frame rate, rendered-pixel contrast (only the palette pairs in check.mjs), Dynamic Type, haptics.
+- Service worker: network-first with a shell cache; bump `CACHE` in sw.js when the shell changes (now `archeus-v2-proto-7`).
+- check.mjs checks files, syntax, manifest, icons, contrast pairs, font floor, Canvas 2D, devicePixelRatio, hidden-tab pause, reduced motion, the chat, Replay, phone and Terminal rules. It does not run the UI. Run it as `node clients/v2-prototype/check.mjs` through the shared test lock.
