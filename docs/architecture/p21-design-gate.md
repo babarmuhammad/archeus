@@ -458,14 +458,15 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
 
-### Slice E as built (2026-10-21, card T-128; rework rounds 1 to 3)
+### Slice E as built (2026-10-21, card T-128; rework rounds 1 to 4)
 
 Built under D0 by the owner's naming of 2026-10-21 ("Yes, all five (Recommended)", recorded on
 the board): slice E touches the execution boundary's Core side, so it was not D0-eligible on
 2026-10-19. D6 (a) as approved: Core records the current action from the request it already
 judges; nothing is added to the hook. The owner's D6 decision of 2026-10-21 is "Queue it" for a
-fourth chip on a row. The owner accepted the fail-closed unclassified change of 2026-10-21; the
-other classifier changes below are for the owner to confirm (see "Owner questions").
+fourth chip on a row. The owner accepted the fail-closed unclassified change, and "Accept all three"
+for the allowed-to-held changes of the BOARD (wget --post-data, curl --json, NODE_ENV=test npm test;
+board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9: "Separate card").
 
 - **The record (D6 (a)).** `Execution.current_action` (`archeus/core/domain/entities.py`; the row
   is a JSON body, so no migration): `{action_class, label, decision, seq}`, written by `_hook_answer`
@@ -478,39 +479,71 @@ other classifier changes below are for the owner to confirm (see "Owner question
   execution; it stays after the run ends, and the schema says so (`CurrentAction` in
   `archeus/api/schemas.py`, carried into the generated client and the API reference by
   `tools/gen_api_docs.py`).
-- **The label (I-F4, §9): a closed vocabulary, never an argument.** A label is one of: a host, only
-  from a URL that names its scheme (`://`, or a leading `//`), after its userinfo, port, path, query
-  and fragment are stripped, and only when it is letters, digits, dots and dashes (`clear_host` in
-  `archeus/core/execution/canonical.py`); a tool's name, with a verb from a short list for that tool
-  (`_TOOLS` and `_VERBS` in `executions.py`; a program outside the list reads "a program"); or a
-  fixed phrase: "shell" or "command" (the canonicaliser's own words), "search" (WebSearch), "a file in
-  the workspace", "a file outside the workspace" (a path is never named), "a tool" (a harness tool).
-  No value, path, header, flag, credential or the first build's dotted fallback reaches a label.
-  Visible change: a chip for a read reads "reading a file in the workspace", not "reading src/a.py".
+- **The label (I-F4, §9): a closed vocabulary, never an argument.** A label is one of: a host, from a
+  URL that names its scheme (`://`, or a leading `//`), after its userinfo, port, path, query and
+  fragment are stripped, and only when it is letters, digits, dots and dashes (`clear_host` in
+  `archeus/core/execution/canonical.py`). A host label that can carry a secret (longer than 20
+  characters, or with a letter and a digit and longer than 4) shows as an ellipsis: `zq9Kt4mP.example`
+  reads "….example"; the TLD and the plain words stay (`api.example.co.uk` reads as is). A URL is named
+  only when it is the one URL of the call: two, or one and a decoy in a flag the list does not know,
+  name no host. Otherwise a tool and a verb from a short list for that tool (`_TOOLS` and `_VERBS` in
+  `executions.py`; a program outside the list reads "a program"), or a fixed phrase: "shell" or
+  "command" (the canonicaliser's own words), "search" (WebSearch), "a file in the workspace", "a file
+  outside the workspace" (a path is never named), "a tool" (a harness tool). No value, path, header,
+  flag, credential or the first build's dotted fallback reaches a label. Visible change: a read chip
+  reads "reading a file in the workspace", not the path.
 - **The policy input is the first build's (decisions do not move with the chip).** `Action.host` (the
   host a policy rule matches, `archeus/core/policy/rules.py`) is computed exactly as in f483f87 for
-  curl and wget (the first positional with a dot or `//`), so `curl -H "X: a.b" https://good.example/x`
-  still has host `x` for policy. The chip's host is the separate `Action.chip_host`
-  (`archeus/core/domain/actions.py`), never input to policy. The pre-existing hole this leaves is
-  listed under "Owner questions".
-- **Classifier changes (the complete list, against f483f87).** Each one moves a command to a class
-  that policy judges more strictly (unclassified, or external_comm for web) and none moves one to a
-  looser class. The probes were run against both canonicalisers on the shapes below.
-  1. *Unclassified, now.* `NAME=value cmd` (any command whose first word has `=`); the wrappers
-     `command builtin export set typeset declare alias stdbuf busybox trap ionice setsid chrt taskset
-     flock unbuffer strace` (`timeout`, `nice`, `env`, `sudo`, `xargs` were already unclassified); a
-     shell (`sh bash zsh dash fish`) with `-c` in any short cluster containing c or e (`-lc`, `-xc`);
-     `cmd` with `/c`, `/k` or `/r` in any case, also when the path is quoted or unquoted
-     (`C:\...\cmd.exe /c`); `powershell` and `pwsh` with `-C`, `-Com`, `-Command`, `-E`, `-EC`, `-ENC`,
-     `-EncodedCommand` and any prefix of those; `node` with `-p`, `--print`; `perl` and `php` with
-     `-E` and `-r`; `--eval`, `--command`.
-  2. *External_comm for web, now.* A call with a body: `--post-data`, `--post-file`, `--body-data`,
-     `--body-file`, `--json`, `--form-string`, `--data-urlencode`, `--data-ascii`, any of these with
-     `=`; attached short forms `-dVALUE`, `-FVALUE`, `-TVALUE` (wget `-T` is a timeout and was already
-     external_comm); `-XMETHOD` with a method other than GET. The first build's list is kept whole, so
-     no call that was external_comm is web now.
-  3. *Host.* No change to the policy host (see above).
-  4. *Paths.* No classification change; the label only.
+  curl and wget (the first positional with a dot or `//`). The chip's host is the separate
+  `Action.chip_host` (`archeus/core/domain/actions.py`), never input to policy. The host bug is
+  T-143, not this slice.
+- **Classifier rules (the complete list, against f483f87).** The block below is the rule as code states
+  it (`classifier_rules()` in `canonical.py`). A test (`test_gate_classifier_block_matches_the_code` in
+  `tests/v1/integration/test_p21_activity.py`) fails when this block and the code differ. Each rule
+  moves a command to a class policy judges more strictly (unclassified, or external_comm for web); none
+  moves one to a looser class (checked over 18,772 generated shapes against f483f87, the table below).
+  Rules, as they read against f483f87:
+
+<!-- classifier-rules:begin -->
+- unclassified: a first word with = (NAME=value); the programs ., alias, builtin, busybox, chrt, command, declare, env, eval, exec, export, flock, ionice, nice, nohup, set, setsid, source, stdbuf, strace, su, sudo, taskset, time, timeout, trap, typeset, unbuffer, watch, xargs
+- anywhere in the arguments: -c, -e or /c as whole words
+- shells (sh, bash, zsh, dash, fish): a single-dash flag before the first positional holding one of cCeE; --command
+- node: a single-dash flag before the first positional holding one of ep; --eval, --print
+- perl: a single-dash flag before the first positional holding one of eE
+- php: a single-dash flag before the first positional holding one of rRB
+- py: a single-dash flag before the first positional holding one of c
+- python: a single-dash flag before the first positional holding one of c
+- python3: a single-dash flag before the first positional holding one of c
+- ruby: a single-dash flag before the first positional holding one of e
+- cmd: an argument starting with /c, /k, /r in any case
+- powershell, pwsh: an argument whose leading letters are a prefix of command or encodedcommand, or ec, or start with com or enc (a glued value counts: -ENCx)
+- send flags (external_comm, not web): the names -d, -F, -T, --data, --data-raw, --data-binary, --data-urlencode, --data-ascii, --upload-file, --form, --form-string, --json, --post-data, --post-file, --body-data, --body-file; a long flag starting with --data, --form, --post- or --body-; a short -d, -F or -T, attached or not; -X or --request with a method other than GET (as the next word, attached, or with =)
+<!-- classifier-rules:end -->
+
+  **Every move against f483f87** (review round 4, 18,772 generated shapes run through f483f87 and
+  through this build; `rv_gen.py` and `rv_cmp.py` in the round's scratch). No shape moves to a looser
+  class (0 held-to-allowed). Shapes that moved, by program (counts are shapes):
+  - plain exec to unclassified, 3,387: `sh`, `bash`, `zsh`, `dash` with a cluster holding c or e
+    (`-lc`, `-ec`): 960; `python`, `python3`, `py` with `-lc`: 360; `node -ec`: 140; `perl -ec`: 120;
+    `ruby -ec`: 80; `php -r`: 60; `cmd` and `cmd.exe` with `/C` in any case, and the bare path
+    `C:\Windows\System32\cmd.exe` with `/c`: 252; `powershell` and `pwsh` with a code parameter
+    anywhere in the arguments (`-Command`, `-ec`): 262; the wrappers `stdbuf` and `busybox` (573
+    each), and `trap`, `strace`, `unbuffer`, `flock`, `taskset`, `export`, `set` (one shape each).
+  - web to external_comm, 290: `curl` and `wget` with a body or send form in any spelling (`--json`,
+    `--data*`, `--form*`, `--upload-file`, `--post-*`, `-d`, `-F`, `-T` attached as `-File`, `-X` or
+    `--request` with a method other than GET): 145 each.
+  - Owner Q1's examples are two of these: `wget --post-data x https://h.example/x` and
+    `curl --json "{}" https://api.example/x` (web to external_comm). Its third example,
+    `NODE_ENV=test npm test`, is **not** a move against f483f87: f483f87 already held a first word
+    with `=` (its `'=' in argv[0]` test). It is held now, as it was then; recorded so the answer is not
+    read as covering a move that did not happen.
+  - Attached values count as the flag's value: `bash -c"rm -R build"`, `cmd.exe /c"x"`,
+    `node --eval=x`, `powershell -ENC"x"` (the shell's quotes are gone when the rule reads the word).
+  - Shapes the rules leave alone, by design: `node -r x.js` and `py -E x.py` (not code from the
+    arguments), `python -m pytest -q` (the module's own arguments), `node --version`, `ls -la` (a read).
+  Against 0e63eeb (round 2), the shapes round 2 held and round 4 allows (for example `python app.py -lc`)
+  and the shapes it allowed and round 4 holds are both in the review trail; the table above is against
+  f483f87 only, which is the baseline the owner accepted.
 - **The read.** `GET /v1/executions/{id}` carries it (schema `CurrentAction`, `observe`).
 - **The chip (A-17).** `clients/app/src/state/chips.ts`: an `execution.hook` frame re-reads the
   execution; a current action newer than the last one chipped for it, of a live run, becomes a chip on
@@ -531,16 +564,18 @@ other classifier changes below are for the owner to confirm (see "Owner question
 - **Not built:** the role word and model label the orchestration plan allows on the chip
   ("reviewing · claude-sonnet-5"); TUI chips (the gate's TUI scope is `status` and `doctor`).
 
-**Owner questions (decision-affecting; the builder did not decide them).**
-- Q1 (classifier, fail-closed). Under the default `careful` profile, `wget --post-data x https://h.example/x`,
-  `curl --json "{}" https://api.example/x` and `curl -dpassword=x https://h.example/x` were ALLOWED (web is
-  allowed by default) and are now HELD (external_comm asks). Under `standard`, `NODE_ENV=test npm test`,
-  `bash -xc "echo hi"` and `node -p "1"` were allowed inside the workspace and are now held (unclassified).
-  Recommended: accept. A request body leaves the machine, and a payload or a wrapper is what the owner
-  asked to be unclassified. If the owner refuses the external_comm part, the send classes must move to a
-  separate card.
-- Q2 (pre-existing hole, not changed here). A host rule reads the first build's host, so
-  `curl -H "X: a.b" https://evil.example/x` has host `x` for policy and is not caught by a rule on
-  `evil.example`. Fixing it moves decisions in both directions (a deny rule starts to catch it; an
-  rule that matches host `good.example` starts to match `curl -H "X: a.b" https://good.example/x`,
-  which does not match it today). Recommended: a separate card with the owner's approval of both directions.
+**Owner questions.**
+- Q1 (answered 2026-10-21: "Accept all three"): the three examples above. Two are moves; the third
+  (`NODE_ENV=test npm test`) was already held by f483f87 (see the table).
+- Q2 (answered 2026-10-21: "Separate card"): the host bug (`curl -H "X: a.b" https://evil.example/x` has
+  policy host `x`). It is T-143, which is not this slice; the policy host here stays the first build's.
+- Q3 (answered 2026-10-21: "Q3 accept"): the ellipsis rule for host labels is accepted. Residual,
+  recorded: a host label that is only plain letters (for example `zqkwmxtp.example`, or a 20-character
+  plain-letter label) still shows, because the rule cannot tell a random plain-letter label from a word.
+  The host is already the first build's policy host, so the decision input carries it today; the chip
+  adds only its display. E03 and E08 pin the elision (`zq9Kt4mP.example` reads "….example",
+  `hunter2.example` and `api.hunter2.example` leak nothing).
+- Q4 (answered 2026-10-21: "Q4 keep rule (Recommended)"): the payload rule stays as listed in the block
+  above. Not taken: a full inversion (any single-dash flag of a payload-capable tool that the rule does
+  not name becomes unclassified), which would hold `python -m pytest -q` and `node --version`. Those two
+  stay allowed. A named rule is added for any new shape found.

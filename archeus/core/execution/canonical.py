@@ -146,11 +146,6 @@ def _unclassified(target, argv=None):
 
 
 #: the names a shell or interpreter runs code from (its payload flags, below)
-_CMD = ('cmd',)
-_PWSH = ('powershell', 'pwsh')
-_INTERP = ('python', 'python3', 'py', 'node', 'perl', 'ruby', 'php')
-#: flags whose next argument is a value, per tool. Only the URL pick reads them, and a URL
-#: is only ever labelled when it names its scheme, so a missed flag costs no label.
 _CURL_VALUE = frozenset((
     '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--data-ascii', '-H',
     '--header', '-u', '--user', '-F', '--form', '--form-string', '--oauth2-bearer', '-X',
@@ -183,29 +178,80 @@ def _program(cmd):
     return name[:-4] if name.endswith('.exe') else name
 
 
+#: the payload rule, as data (P21 D6, the owner's fail-closed unclassified set). gate §12 carries
+#: the same rule as text: `classifier_rules()` renders it, and a test fails when the two differ.
+SHELL_TOOLS = ('sh', 'bash', 'zsh', 'dash', 'fish')
+#: a shell runs code from a single-dash cluster holding one of these letters (-c, -lc, -e, -C)
+SHELL_LETTERS = 'cCeE'
+#: an interpreter runs code from the same kind of cluster, its own letters (python -c; node -e -p;
+#: perl -e -E; ruby -e; php -r -R -B). -r for node and -E or -P for python are not code: exempt.
+INTERP_LETTERS = {'python': 'c', 'python3': 'c', 'py': 'c', 'node': 'ep', 'perl': 'eE',
+                  'ruby': 'e', 'php': 'rRB'}
+#: the long flags that carry code (a prefix match: --eval=x counts)
+LONG_CODE = {'sh': ('--command',), 'bash': ('--command',), 'zsh': ('--command',),
+             'dash': ('--command',), 'fish': ('--command',), 'node': ('--eval', '--print')}
+#: cmd takes code from /c, /k and /r, attached or not, in any case (its arguments are all its own)
+CMD_WORDS = ('/c', '/k', '/r')
+#: PowerShell takes code from -Command and -EncodedCommand, by any prefix of the name
+PWSH_WORDS = ('command', 'encodedcommand')
+#: the first build's rule, kept whole: -c, -e and /c count wherever they stand
+ANYWHERE = ('-c', '-e', '/c')
+
+
+def classifier_rules():
+    """The payload and send rules as the gate's §12 block states them (one line each)."""
+    lines = ['unclassified: a first word with = (NAME=value); the programs ' + ', '.join(sorted(_NEVER))]
+    lines.append('anywhere in the arguments: -c, -e or /c as whole words')
+    lines.append('shells (' + ', '.join(SHELL_TOOLS) + '): a single-dash flag before the first '
+                 'positional holding one of ' + SHELL_LETTERS + '; --command')
+    for name in sorted(INTERP_LETTERS):
+        longs = LONG_CODE.get(name, ())
+        lines.append(name + ': a single-dash flag before the first positional holding one of '
+                     + INTERP_LETTERS[name] + ((('; ' + ', '.join(longs)) if longs else '')))
+    lines.append('cmd: an argument starting with ' + ', '.join(CMD_WORDS) + ' in any case')
+    lines.append('powershell, pwsh: an argument whose leading letters are a prefix of '
+                 + ' or '.join(PWSH_WORDS) + ', or ec, or start with com or enc (a glued value '
+                 'counts: -ENCx)')
+    lines.append('send flags (external_comm, not web): the names ' + ', '.join(_SENDS)
+                 + '; a long flag starting with --data, --form, --post- or --body-; a short -d, '
+                 '-F or -T, attached or not; -X or --request with a method other than GET (as the '
+                 'next word, attached, or with =)')
+    return lines
+
+
+def _pwsh_word(a):
+    """-c, -co, -e, -ec, -enc, -Command, -EncodedCommand, and the same with a value glued on
+    (`-ENC"x"` arrives as `-ENCx`): the leading letters decide, -ExecutionPolicy does not."""
+    m = re.match(r'[-/]([a-zA-Z]+)', a)
+    run = m.group(1).lower() if m else ''
+    return run in ('c', 'e', 'ec') or run[:3] in ('com', 'enc') or any(
+        w.startswith(run) for w in PWSH_WORDS if run)
+
+
 def _payload(prog, args):
-    """A shell or interpreter takes code from its arguments: -c, a short cluster with c or e
-    (-lc, -xc), /c and /k (cmd, in any case), -Command and any prefix of it (-C, -Com),
-    -EncodedCommand and any prefix of it (-E, -ENC), --eval, and for the interpreters -p, -r.
-    Those flags count wherever a shell or cmd takes them, and before a script or a -m module
-    for an interpreter (its later arguments are the script's)."""
-    if '-c' in args or '-e' in args or '/c' in args:
+    """A shell or interpreter, or cmd or PowerShell, runs code from its arguments (see
+    `classifier_rules`). A flag before a shell's or an interpreter's first positional is its
+    own; the first positional is the script (or the -m module), and what follows it is the
+    script's."""
+    if any(a in ANYWHERE for a in args):
         return True
-    if prog in _CMD:
-        return any(a.lower() in ('/c', '/k', '/r') for a in args)
-    if prog in _PWSH:
-        for a in args:
-            w = a.lstrip('-/').lower()
-            if w and (w == 'ec' or 'command'.startswith(w) or 'encodedcommand'.startswith(w)):
-                return True
+    if prog == 'cmd':
+        return any(a[:2].lower() in CMD_WORDS for a in args)
+    if prog in ('powershell', 'pwsh'):
+        return any(_pwsh_word(a) for a in args)
+    letters = SHELL_LETTERS if prog in SHELL_TOOLS else INTERP_LETTERS.get(prog, '')
+    longs = LONG_CODE.get(prog, ())
+    if not letters and not longs:
         return False
     for a in args:
-        if not a.startswith(('-', '/')):
-            return False
-        if prog in _INTERP:
-            if re.fullmatch(r'-[a-zA-Z]*[cCeEpPrR][a-zA-Z]*', a) or a.lower() in ('--eval', '--print'):
+        if a.startswith('--'):
+            if longs and a.lower().startswith(longs):
                 return True
-        elif re.fullmatch(r'-[a-zA-Z]*[cCeE][a-zA-Z]*', a) or a.lower() in ('--command', '--eval'):
+            continue
+        if not a.startswith('-'):
+            return False
+        m = re.match(r'-([a-zA-Z]+)', a)
+        if m and letters and any(ch in letters for ch in m.group(1)):
             return True
     return False
 
@@ -233,18 +279,20 @@ def _url_arg(prog, args):
     value of a flag: the one URL a chip may name the host of."""
     values = _WGET_VALUE if prog == 'wget' else _CURL_VALUE
     skip = False
+    found = []
     for i, a in enumerate(args):
         if skip:
             skip = False
         elif a == '--url' and i + 1 < len(args):
-            return args[i + 1]
+            found.append(args[i + 1])
         elif a in values:
             skip = True
         elif a.startswith('-'):
             continue
         elif '://' in a or a.startswith('//'):
-            return a
-    return ''
+            found.append(a)
+    # two URLs, or one URL and a decoy in a flag this list does not know: no host is named
+    return found[0] if len(found) == 1 else ''
 
 
 def clear_host(url):
@@ -254,7 +302,17 @@ def clear_host(url):
     if not url or ('://' not in url and not url.startswith('//')):
         return None
     host = host_of(url)
-    return host if host and _HOST.fullmatch(host) else None
+    if not host or not _HOST.fullmatch(host):
+        return None
+    labels = host.split('.')
+    return '.'.join(['…' if _token_like(x) else x for x in labels[:-1]] + labels[-1:])
+
+
+def _token_like(label):
+    """A host label that can carry a secret: longer than 20 characters, or with a letter and
+    a digit and longer than 4. Shown as an ellipsis; the TLD and the plain words stay."""
+    return len(label) > 20 or (len(label) > 4 and bool(re.search(r'\d', label))
+                               and bool(re.search(r'[a-z]', label)))
 
 
 def command(cmd, ctx):
