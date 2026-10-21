@@ -10,6 +10,7 @@ writer assigns it in the same transaction as the state change the event records
 diagnostic log (`claude_sessions.events`) is not the source of truth for V1.
 """
 
+import contextvars
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -150,6 +151,16 @@ assert len(REGISTRY) == len(TYPES), 'an event type is registered twice'
 
 VISIBILITIES = ('user', 'system')
 MAX_CAUSE_CHAIN = 16
+
+# p21 D13 (b): the chain of the event whose consumer is running now. The writer gives it to every
+# event the consumer's commands append without a cause of their own (writer.py `Tx.append`); a
+# command submitted outside a consumer (a route: a direct user command) stays its own root.
+CAUSE = contextvars.ContextVar('archeus_cause', default=())
+
+
+def caused_by(event):
+    """The `cause_chain` of what *event* issues: its own chain, then its id, oldest dropped first."""
+    return (tuple(event.cause_chain) + (event.id,))[-MAX_CAUSE_CHAIN:]
 
 
 def now_iso():

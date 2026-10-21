@@ -49,6 +49,11 @@ GR = 'archeus/core/application/grammar.py'
 CV = 'archeus/core/application/conversation.py'
 DG = 'archeus/core/world/digest.py'
 TT = 'tests/v1/integration/test_trace.py'
+WR = 'archeus/infra/db/writer.py'
+CO = 'archeus/infra/eventlog/consumers.py'
+EVS = 'archeus/core/domain/events.py'
+AZ = 'archeus/core/application/authorization.py'
+CW = 'tests/v1/integration/test_cwrite.py::'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -317,6 +322,48 @@ MUTATIONS = [
      "    return 'conversation', c.entity.id",
      "    return 'mission', c.entity.id")],
      [TT + '::test_the_digest_folds_messages_into_their_mission_or_one_new_messages_row']),
+    # ── P21 C-write: commands issued from an event or an approval carry it (D13 (b)) ──
+    ('Z70', 'the writer drops the cause it was given', [(WR,
+     "        if not event.cause_chain and self.cause:",
+     "        if False:")],
+     [CW + 'test_what_a_command_writes_under_a_cause_carries_it_and_a_route_command_is_a_root']),
+    ('Z71', "the submitted cause overwrites the command's own", [(WR,
+     "        if not event.cause_chain and self.cause:",
+     "        if self.cause:")],
+     [CW + 'test_what_a_command_writes_under_a_cause_carries_it_and_a_route_command_is_a_root']),
+    ('Z72', 'a command takes no cause from its consumer', [(WR,
+     "                                    ev.CAUSE.get()))",
+     "                                    ()))")],
+     [CW + 'test_a_consumer_writes_under_its_event_and_leaves_no_cause_behind',
+      CW + 'test_what_intent_writes_from_a_message_is_caused_by_that_message']),
+    ('Z73', 'the cause outlives its consumer', [(CO,
+     "                ev.CAUSE.reset(cause)",
+     "                pass")],
+     [CW + 'test_a_consumer_writes_under_its_event_and_leaves_no_cause_behind']),
+    ('Z74', 'a consumer passes on the chain but not its event', [(EVS,
+     "    return (tuple(event.cause_chain) + (event.id,))[-MAX_CAUSE_CHAIN:]",
+     "    return tuple(event.cause_chain)[-MAX_CAUSE_CHAIN:]")],
+     [CW + 'test_a_consumer_writes_under_its_event_and_leaves_no_cause_behind']),
+    ('Z75', 'a chain keeps its oldest sixteen', [(EVS,
+     "    return (tuple(event.cause_chain) + (event.id,))[-MAX_CAUSE_CHAIN:]",
+     "    return (tuple(event.cause_chain) + (event.id,))[:MAX_CAUSE_CHAIN]")],
+     [CW + 'test_a_chain_keeps_its_newest_sixteen']),
+    ('Z76', 'what a rejection issues carries no cause', [(AZ,
+     "    tx.cause = caused_by(e)           # what the decision issues carries it",
+     "    tx.cause = tx.cause               # what the decision issues carries it")],
+     [CW + 'test_a_plan_decision_causes_what_it_moves_and_decides_as_before']),
+    ('Z77', 'what an approval issues carries no cause', [(AZ,
+     "    tx.cause = caused_by(e)\n    out = None\n    if a.kind == 'plan':",
+     "    out = None\n    if a.kind == 'plan':")],
+     [CW + 'test_a_plan_decision_causes_what_it_moves_and_decides_as_before']),
+    ('Z78', "what a fallback route's approval issues carries no cause", [(AZ,
+     "    tx.cause = caused_by(e)\n    lifecycle.fire(tx, entities.Task, task.id, 'approved'",
+     "    lifecycle.fire(tx, entities.Task, task.id, 'approved'")],
+     [CW + 'test_a_fallback_routes_decision_causes_what_follows']),
+    ('Z79', 'a decision made under an event drops that event', [(AZ,
+     "    tx.cause = caused_by(e)\n    out = None\n    if a.kind == 'plan':",
+     "    tx.cause = (e.id,)\n    out = None\n    if a.kind == 'plan':")],
+     [CW + 'test_a_decision_made_under_an_event_passes_that_event_on']),
 ]
 
 

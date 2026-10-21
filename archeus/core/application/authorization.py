@@ -33,7 +33,7 @@ from ...infra.db import rows
 from ...infra.eventlog import outbox
 from ..domain import actions, entities, guards, ids
 from ..domain.actions import Action
-from ..domain.events import new_event
+from ..domain.events import caused_by, new_event
 from ..domain.values import Ref
 from ..policy import rules as R
 from . import lifecycle
@@ -656,10 +656,11 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
         return _approve(tx, actor, policy, missions, row, mission, plan, task, step_up, note,
                         action_hash)
     kind = a.kind
-    row, _e = lifecycle.fire(tx, entities.Approval, a.id, 'reject', actor=actor,
-                             reason=note or ('changes requested' if decision == 'request_changes'
-                                             else 'rejected by a user device'),
-                             fields=_decided(tx, actor, decision, note))
+    row, e = lifecycle.fire(tx, entities.Approval, a.id, 'reject', actor=actor,
+                            reason=note or ('changes requested' if decision == 'request_changes'
+                                            else 'rejected by a user device'),
+                            fields=_decided(tx, actor, decision, note))
+    tx.cause = caused_by(e)           # what the decision issues carries it (p21 D13 (b))
     out = None
     if kind == 'start':
         out = missions.cancel(tx, actor=actor, mission_id=mission.id,
@@ -725,9 +726,10 @@ def _approve(tx, actor, policy, missions, row, mission, plan, task, proof, note,
                decision=_overall(items), outcome='approved', items=items, h=a.action_hash,
                ctx=ctx, approval_id=a.id, subject=subject,
                reason='approved by a user device (approval %s)' % a.id)
-    row, _e = lifecycle.fire(tx, entities.Approval, a.id, 'approve', actor=actor, facts=f,
-                             reason=note or 'approved by a user device',
-                             fields=_decided(tx, actor, 'approve', note, d.id))
+    row, e = lifecycle.fire(tx, entities.Approval, a.id, 'approve', actor=actor, facts=f,
+                            reason=note or 'approved by a user device',
+                            fields=_decided(tx, actor, 'approve', note, d.id))
+    tx.cause = caused_by(e)
     out = None
     if a.kind == 'plan':
         lifecycle.fire(tx, entities.Plan, plan.id, 'approved', actor=actor,
@@ -752,9 +754,10 @@ def _approve_route(tx, actor, missions, row, mission, task, proof, note, given):
     f = guards.ApprovalFacts(actor.kind, tuple(rows.get(tx.conn, entities.Principal,
                                                         actor.id).entity.scopes),
                              given, step_up_valid=_step_up_valid(tx, actor, proof))
-    row, _e = lifecycle.fire(tx, entities.Approval, a.id, 'approve', actor=actor, facts=f,
-                             reason=note or 'approved by a user device',
-                             fields=_decided(tx, actor, 'approve', note))
+    row, e = lifecycle.fire(tx, entities.Approval, a.id, 'approve', actor=actor, facts=f,
+                            reason=note or 'approved by a user device',
+                            fields=_decided(tx, actor, 'approve', note))
+    tx.cause = caused_by(e)
     lifecycle.fire(tx, entities.Task, task.id, 'approved', actor=actor,
                    reason='running on the fallback account approved (approval %s)' % a.id)
     out = missions.resume(tx, actor=actor, mission_id=mission.id,
