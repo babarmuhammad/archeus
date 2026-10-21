@@ -20,7 +20,6 @@ engine nor the router, and asks `authorization` / `resources` through their
 entry points (a boundary test holds it to that).
 """
 
-import calendar
 import hashlib
 import hmac
 import time
@@ -81,10 +80,6 @@ def charged_attempts(tx, task_id):
 # ── O7: the spawn breaker and the start wait (T-106) ────────────────────────
 # Derived from the recorded starts alone (owner, T-110 Q10), so a restart neither
 # loses the breaker nor gives a harness its attempts back.
-
-def _epoch(iso):
-    return calendar.timegm(time.strptime(iso, '%Y-%m-%dT%H:%M:%SZ'))
-
 
 def _tripped(times):
     return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))

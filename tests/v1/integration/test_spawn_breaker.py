@@ -53,9 +53,8 @@ def _age(x, mid, seconds):
     def run(tx, actor):
         for r in tx.where(entities.Execution):
             if r.entity.ended_at:
-                at = X._epoch(r.entity.ended_at) - seconds
-                tx.update(entities.Execution, r.entity.id, {'ended_at': time.strftime(
-                    '%Y-%m-%dT%H:%M:%SZ', time.gmtime(at))}, actor=actor)
+                tx.update(entities.Execution, r.entity.id, {'ended_at': X._iso(
+                    X._epoch(r.entity.ended_at) - seconds)}, actor=actor)
         tx.append(new_event('mission.updated', Ref('mission', mid), actor,
                             payload={}, workspace=ids.GLOBAL_WORKSPACE))
     x.do(run)
