@@ -84,7 +84,7 @@
   function sentence() {
     var w = count('waiting'), r = count('running');
     if (!w && !r) return 'Nothing running. Tell Archeus what to do.';
-    return w + ' needs you · ' + r + ' verifying';
+    return w + ' needs you ·' + (isNarrow() ? '\n' : ' ') + r + ' verifying';
   }
   function selectedComments() { return comments.filter(function (c) { return c.mission === planId && c.carry; }); }
   function commentsFor(id) { return comments.filter(function (c) { return c.mission === id; }); }
@@ -287,15 +287,21 @@
   function drawCore(g, c, t, hot, s) {
     g.save();
     g.strokeStyle = IVORY; g.fillStyle = IVORY; g.lineCap = 'round';
-    for (var i = 0; i < 44; i++) {
-      var a = i * TAU / 44 + (i % 3) * 0.02;
-      var L = (i % 5 === 0 ? 70 : 30 + ((i * 37) % 29)) * s;
-      g.globalAlpha = i % 5 === 0 ? 0.9 : 0.5;
-      g.lineWidth = i % 5 === 0 ? 0.9 : 0.55;
-      line(g, c.x + Math.cos(a) * 3 * s, c.y + Math.sin(a) * 3 * s, c.x + Math.cos(a) * L, c.y + Math.sin(a) * L);
+    for (var i = 0; i < 88; i++) {
+      var a = i * TAU / 88 + (i % 4) * 0.011;
+      var L = (i % 6 === 0 ? 92 : 34 + ((i * 37) % 47)) * s;
+      g.globalAlpha = i % 6 === 0 ? 0.85 : 0.42;
+      g.lineWidth = i % 6 === 0 ? 0.8 : 0.5;
+      line(g, c.x + Math.cos(a) * 2 * s, c.y + Math.sin(a) * 2 * s, c.x + Math.cos(a) * L, c.y + Math.sin(a) * L);
     }
+    g.globalAlpha = 0.55; g.lineWidth = 0.6;
+    line(g, c.x, c.y - 130 * s, c.x, c.y + 130 * s);
+    g.globalAlpha = 0.28;
+    var rg = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, 16 * s);
+    rg.addColorStop(0, 'rgba(239,233,218,0.9)'); rg.addColorStop(1, 'rgba(239,233,218,0)');
+    g.fillStyle = rg; g.beginPath(); g.arc(c.x, c.y, 16 * s, 0, TAU); g.fill();
     g.globalAlpha = 1;
-    g.beginPath(); g.arc(c.x, c.y, 2.2 * s, 0, TAU); g.fill();
+    g.beginPath(); g.arc(c.x, c.y, 2.4 * s, 0, TAU); g.fill();
     g.restore();
   }
 
@@ -364,23 +370,54 @@
 
   // The bottom CHAT_RESERVE pixels of the stage belong to the conversation, so the scene is laid out above them.
   var CHAT_RESERVE = 170;
-  // The Overview is drawn from the Codex concept: fixed positions and outlines, in concept pixels of the
-  // 1296 x 520 scene box (the chat sits below it). Hulls are neutral; missions are small marks with labels.
-  var CONCEPT_W = 1296, CONCEPT_H = 560;
-  var CONCEPT_RINGS = {
-    archeus: [[195, 340], [265, 232], [480, 180], [640, 140], [918, 220], [1035, 390], [930, 500], [640, 470], [420, 478], [283, 445]],
-    notes: [[1000, 95], [1130, 100], [1185, 210], [1160, 300], [1060, 300], [1040, 190]],
-    ideas: [[1100, 370], [1180, 372], [1212, 412], [1170, 455], [1100, 428]]
+  // Measured from the Codex concept images (desktop-1-now-v2.png 1296 x 729; phone-1-now-v2.png 804 x 1373).
+  // Coordinates are in the reference pixels of each image, read from a labelled grid overlay. The Overview maps
+  // the desktop box (x 150..1290, y 60..530) and the phone box (x 0..804, y 280..1110) onto the stage.
+  var CONCEPT_LAYOUT = {
+    desktop: {
+      box: { x0: 150, x1: 1290, y0: 60, y1: 530, w: 1296, h: 729 },
+      fill: 0.82,
+      core: [640, 316],
+      hulls: {
+        archeus: [[197, 340], [265, 232], [480, 182], [657, 140], [918, 220], [1035, 390], [930, 512], [640, 458], [425, 478], [282, 445]],
+        notes: [[935, 147], [1055, 85], [1128, 116], [1184, 185], [1165, 268], [1112, 305], [978, 298], [964, 236]],
+        ideas: [[1101, 410], [1131, 369], [1207, 380], [1182, 440], [1131, 453]]
+      },
+      marks: {
+        'm-search': [330, 298], 'm-done': [368, 408], 'm-date': [826, 344], 'm-index': [1034, 175], 'm-read': [1040, 230],
+        exec: [871, 428], verif: [806, 488], results: [925, 488]
+      }
+    },
+    phone: {
+      box: { x0: 0, x1: 804, y0: 280, y1: 1110, w: 804, h: 1373 },
+      fill: 0.94,
+      core: [431, 697],
+      hulls: {
+        archeus: [[43, 683], [142, 545], [318, 450], [432, 458], [598, 595], [713, 665], [765, 763], [732, 832], [645, 884], [540, 997], [432, 962], [376, 1030], [270, 975], [97, 873]],
+        amber: [[180, 606], [307, 634], [352, 738], [318, 845], [225, 891], [126, 836], [92, 715]],
+        blue: [[635, 635], [714, 665], [765, 763], [732, 832], [645, 884], [552, 828], [532, 728]],
+        notes: [[562, 398], [634, 340], [728, 368], [750, 447], [680, 518], [574, 476]],
+        ideas: [[600, 970], [684, 935], [748, 988], [730, 1053], [636, 1080], [588, 1032]]
+      },
+      marks: {
+        'm-search': [217, 700], 'm-date': [648, 737], exec: [648, 806]
+      }
+    }
   };
-  var CONCEPT_AT = {
-    'm-search': [330, 300], 'm-date': [826, 345], 'm-done': [368, 410], 'm-index': [1034, 175], 'm-read': [1040, 230],
-    exec: [870, 450], verif: [806, 488], results: [925, 488]
-  };
-  function conceptRing(id, w, hh) {
-    return CONCEPT_RINGS[id].map(function (p) { return { x: p[0] / CONCEPT_W * w, y: p[1] / CONCEPT_H * hh }; });
+  // Map a reference point into the stage box (w x hh), aspect-preserving and centred inside the box.
+  function layoutMap(layout, px, py, w, hh, scale) {
+    var b = layout.box, s = scale || 1;
+    var sx = (w * (layout.fill || 0.82)) / (b.x1 - b.x0), sy = hh / (b.y1 - b.y0);
+    var k = Math.min(sx, sy) * s;
+    var ox = (w - (b.x1 - b.x0) * k) / 2, oy = (hh - (b.y1 - b.y0) * k) / 2;
+    return { x: ox + (px - b.x0) * k, y: oy + (py - b.y0) * k, k: k };
   }
-  function conceptAt(key, w, hh) {
-    return { x: CONCEPT_AT[key][0] / CONCEPT_W * w, y: CONCEPT_AT[key][1] / CONCEPT_H * hh };
+  function layoutHull(layout, pts, w, hh, scale) {
+    return pts.map(function (p) { var q = layoutMap(layout, p[0], p[1], w, hh, scale); return { x: q.x, y: q.y }; });
+  }
+  function layoutMark(layout, key, w, hh, scale) {
+    var p = layout.marks[key];
+    return layoutMap(layout, p[0], p[1], w, hh, scale);
   }
   function markNode(m, x, y, r, parent) {
     var n = nodeFor(m, x, y, r, parent, true);
@@ -389,45 +426,45 @@
   }
   function nowScene(w, h) {
     if (w < 640) return phoneScene(w, h);
+    var L = CONCEPT_LAYOUT.desktop;
     var hh = h - Math.min(280, Math.round(h * 0.36));
     var k = Math.max(0.6, Math.min(w / 1296, hh / 560, 1.1));
-    var sc = mk(w, h, conceptAt('m-date', w, hh), k, false);
-    sc.core = { x: w * 640 / CONCEPT_W, y: hh * 320 / CONCEPT_H };
+    var sc = mk(w, h, { x: w * 0.5, y: hh * 0.45 }, k, false);
+    var c = layoutMap(L, L.core[0], L.core[1], w, hh);
+    sc.core = { x: c.x, y: c.y };
     sc.sats = [];
     var archeus = projectOf('archeus'), notes = projectOf('notes'), ideas = projectOf('ideas');
-    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: conceptRing('archeus', w, hh), members: ['m-search', 'm-date', 'm-done'], count: 3, live: 2, active: true });
-    sc.projects.push({ id: 'notes', name: notes.name, hue: IVORY, note: notes.note, ring: conceptRing('notes', w, hh), members: ['m-index', 'm-read'], count: 2, live: 0, active: false });
-    sc.projects.push({ id: 'ideas', name: ideas.name, hue: IVORY, note: ideas.note, ring: conceptRing('ideas', w, hh), members: [], count: 0, live: 0, active: false });
+    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: layoutHull(L, L.hulls.archeus, w, hh), members: ['m-search', 'm-date', 'm-done'], count: 3, live: 2, active: true });
+    sc.projects.push({ id: 'notes', name: notes.name, hue: IVORY, note: notes.note, ring: layoutHull(L, L.hulls.notes, w, hh), members: ['m-index', 'm-read'], count: 2, live: 0, active: false });
+    sc.projects.push({ id: 'ideas', name: ideas.name, hue: IVORY, note: ideas.note, ring: layoutHull(L, L.hulls.ideas, w, hh), members: [], count: 0, live: 0, active: false });
     sc.parent.archeus = 'core'; sc.parent.notes = 'core'; sc.parent.ideas = 'core';
     sc.links.push({ a: 'core', b: 'archeus', col: IVORY, live: true, kind: 'project', hue: IVORY });
     sc.links.push({ a: 'core', b: 'notes', col: IVORY, live: false, kind: 'project', hue: IVORY });
     sc.links.push({ a: 'core', b: 'ideas', col: IVORY, live: false, kind: 'project', hue: IVORY, dash: true });
     var mSearch = find('m-search'), mDate = find('m-date'), mDone = find('m-done');
-    var nS = markNode(mSearch, 0, 0, 8 * k, 'archeus'), nD = markNode(mDate, 0, 0, 8 * k, 'archeus'), nDone = markNode(mDone, 0, 0, 7 * k, 'archeus');
-    var pS = conceptAt('m-search', w, hh), pD = conceptAt('m-date', w, hh), pDone = conceptAt('m-done', w, hh);
-    nS.x = pS.x; nS.y = pS.y; nD.x = pD.x; nD.y = pD.y; nDone.x = pDone.x; nDone.y = pDone.y;
+    var at = function (key) { var q = layoutMark(L, key, w, hh); return q; };
+    var nS = markNode(mSearch, at('m-search').x, at('m-search').y, 7 * k, 'archeus');
+    var nD = markNode(mDate, at('m-date').x, at('m-date').y, 8 * k, 'archeus');
+    var nDone = markNode(mDone, at('m-done').x, at('m-done').y, 6 * k, 'archeus');
     sc.nodes.push(nS, nD, nDone);
     sc.parent[mSearch.id] = 'archeus'; sc.parent[mDate.id] = 'archeus'; sc.parent[mDone.id] = 'archeus';
     sc.links.push({ a: 'core', b: mSearch.id, col: STATE.waiting.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
     sc.links.push({ a: 'core', b: mDate.id, col: STATE.running.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
     sc.links.push({ a: 'core', b: mDone.id, col: IVORY, live: false, kind: 'mission', hue: IVORY });
-    var pe = conceptAt('exec', w, hh), pv = conceptAt('verif', w, hh), pr = conceptAt('results', w, hh);
-    var ex = execFor(mDate, pe.x, pe.y, 15 * k, 0); ex.mark = true;
-    var nv = { id: 'verif', kind: 'record', state: 'idle', x: pv.x, y: pv.y, r: 9 * k, glyph: 'check', live: true, title: 'Verification', kicker: 'Record', sub: 'Confirms behaviour', st: '', parent: mDate.id, hit: false, solid: OCT, seed: 0.5, mark: true, dot: true };
-    var nr = { id: 'results', kind: 'record', state: 'idle', x: pr.x, y: pr.y, r: 9 * k, glyph: 'chart', live: true, title: 'Results', kicker: 'Record', sub: 'Test execution outputs', st: '', parent: mDate.id, hit: false, solid: OCT, seed: 0.7, mark: true, dot: true };
+    var ex = execFor(mDate, at('exec').x, at('exec').y, 15 * k, 0); ex.mark = true;
+    var nv = { id: 'verif', kind: 'record', state: 'idle', x: at('verif').x, y: at('verif').y, r: 9 * k, glyph: 'check', live: true, title: 'Verification', kicker: 'Record', sub: 'Confirms behaviour', st: '', parent: mDate.id, hit: false, solid: OCT, seed: 0.5, mark: true, dot: true };
+    var nr = { id: 'results', kind: 'record', state: 'idle', x: at('results').x, y: at('results').y, r: 9 * k, glyph: 'chart', live: true, title: 'Results', kicker: 'Record', sub: 'Test execution outputs', st: '', parent: mDate.id, hit: false, solid: OCT, seed: 0.7, mark: true, dot: true };
     sc.nodes.push(ex, nv, nr);
     sc.parent[ex.id] = mDate.id; sc.parent[nv.id] = mDate.id; sc.parent[nr.id] = mDate.id;
-    sc.links.push({ a: mDate.id, b: ex.id, col: IVORY, live: true, kind: 'exec', hue: IVORY, arrow: true });
+    sc.links.push({ a: mDate.id, b: ex.id, col: '#6FB1FF', live: true, kind: 'exec', hue: IVORY, arrow: true });
     sc.links.push({ a: ex.id, b: nv.id, col: '#6FB1FF', live: true, kind: 'exec', hue: IVORY, arrow: true });
     sc.links.push({ a: ex.id, b: nr.id, col: '#6FB1FF', live: true, kind: 'exec', hue: IVORY, arrow: true });
-    // Notes' missions and Ideas: named records of the same marks.
-    var nO = markNode(find('m-index'), 0, 0, 7 * k, 'notes'), nE = markNode(find('m-read'), 0, 0, 7 * k, 'notes');
-    var pO = conceptAt('m-index', w, hh), pE = conceptAt('m-read', w, hh);
-    nO.x = pO.x; nO.y = pO.y; nE.x = pE.x; nE.y = pE.y;
+    var mIdx = find('m-index'), mRead = find('m-read');
+    var nO = markNode(mIdx, at('m-index').x, at('m-index').y, 6 * k, 'notes'), nE = markNode(mRead, at('m-read').x, at('m-read').y, 6 * k, 'notes');
     sc.nodes.push(nO, nE);
-    sc.parent[find('m-index').id] = 'notes'; sc.parent[find('m-read').id] = 'notes';
-    sc.links.push({ a: 'core', b: 'm-index', col: IVORY, live: false, kind: 'mission', hue: IVORY });
-    sc.links.push({ a: 'core', b: 'm-read', col: IVORY, live: false, kind: 'mission', hue: IVORY });
+    sc.parent[mIdx.id] = 'notes'; sc.parent[mRead.id] = 'notes';
+    sc.links.push({ a: 'core', b: mIdx.id, col: IVORY, live: false, kind: 'mission', hue: IVORY });
+    sc.links.push({ a: 'core', b: mRead.id, col: IVORY, live: false, kind: 'mission', hue: IVORY });
     return sc;
   }
 
@@ -480,49 +517,75 @@
     return sc;
   }
 
-  // Phone composition from the Codex phone-1 concept: a large Archeus outline with the amber Search provenance
-  // hull inside it, the blue Fix date test hull with the Codex triangle, the star between, two receded hulls.
-  var PHONE_RINGS = {
-    archeus: [[0.05, 0.389], [0.174, 0.312], [0.398, 0.257], [0.535, 0.26], [0.746, 0.34], [0.952, 0.438], [0.945, 0.503], [0.796, 0.566], [0.466, 0.589], [0.336, 0.558], [0.118, 0.498]],
-    notes: [[0.74, 0.2], [0.9, 0.2], [0.9, 0.3], [0.74, 0.3]],
-    ideas: [[0.76, 0.52], [0.92, 0.52], [0.92, 0.64], [0.76, 0.64]]
-  };
-  function phoneY(fy) { return Math.min(0.9, Math.max(0.02, (fy - 0.2) / 0.5 * 0.8)); }
-  function phoneRing(pts, w, h) { return pts.map(function (p) { return { x: p[0] * w, y: phoneY(p[1]) * h }; }); }
-  function blobRing(cx, cy, rx, ry, n) {
-    var out = [];
-    for (var i = 0; i < n; i++) { var a = i * TAU / n + 0.3; out.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); }
-    return out;
-  }
+  // Phone composition from the measured table: the Archeus outline, the amber Search provenance hull inside it
+  // (its Review action inside the hull), the blue Fix date test hull with the Codex triangle, the star between,
+  // and two receded named hulls. Sub-hulls are unnamed outlines; the missions carry the labels.
   function phoneScene(w, h) {
+    var L = CONCEPT_LAYOUT.phone;
     var k = Math.max(0.78, Math.min(w / 390, 1.05));
     var sc = mk(w, h, { x: w * 0.5, y: h * 0.42 }, k, true);
-    var search = find('m-search'), date = find('m-date'), done = find('m-done');
-    var sx = 0.267 * w, sy = phoneY(0.4) * h, dx = 0.796 * w, dy = phoneY(0.435) * h;
-    sc.core = { x: w * 0.535, y: phoneY(0.4) * h };
+    var search = find('m-search'), date = find('m-date');
+    var c = layoutMap(L, L.core[0], L.core[1], w, h);
+    sc.core = { x: c.x, y: c.y };
+    var at = function (key) { return layoutMark(L, key, w, h); };
     var archeus = projectOf('archeus');
-    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: phoneRing(PHONE_RINGS.archeus, w, h), members: ['m-search', 'm-date'], count: 3, live: 2, active: true });
+    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: layoutHull(L, L.hulls.archeus, w, h), members: ['m-search', 'm-date'], count: 3, live: 2, active: true });
     sc.parent.archeus = 'core';
     sc.links.push({ a: 'core', b: 'archeus', col: IVORY, live: true, kind: 'project', hue: IVORY });
-    var nS = markNode(search, sx, sy, 9 * k, 'archeus');
-    var nD = markNode(date, dx, dy, 9 * k, 'archeus');
+    sc.projects.push({ id: 'sub-search', sub: true, ring: layoutHull(L, L.hulls.amber, w, h), members: [], hue: IVORY });
+    sc.projects.push({ id: 'sub-date', sub: true, ring: layoutHull(L, L.hulls.blue, w, h), members: [], hue: IVORY });
+    var nS = markNode(search, at('m-search').x, at('m-search').y, 7 * k, 'sub-search');
+    var nD = markNode(date, at('m-date').x, at('m-date').y, 7 * k, 'sub-date');
     sc.nodes.push(nS, nD);
-    sc.parent[search.id] = 'archeus'; sc.parent[date.id] = 'archeus';
+    sc.parent[search.id] = 'sub-search'; sc.parent[date.id] = 'sub-date';
+    sc.parent['sub-search'] = 'archeus'; sc.parent['sub-date'] = 'archeus';
     sc.links.push({ a: 'core', b: search.id, col: STATE.waiting.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
     sc.links.push({ a: 'core', b: date.id, col: STATE.running.color, live: true, kind: 'mission', hue: IVORY, arrow: true });
-    var ex = execFor(date, 0.74 * w, phoneY(0.6) * h, 14 * k, 0); ex.mark = true;
+    var ex = execFor(date, at('exec').x, at('exec').y, 13 * k, 0); ex.mark = true;
     sc.nodes.push(ex);
     sc.parent[ex.id] = date.id;
-    sc.links.push({ a: date.id, b: ex.id, col: IVORY, live: true, kind: 'exec', hue: IVORY, arrow: true });
-    // Receded projects: names only, small outlines.
-    sc.projects.push({ id: 'notes', name: projectOf('notes').name, hue: IVORY, note: '', ring: phoneRing(PHONE_RINGS.notes, w, h), members: [], count: 2, live: 0, active: false });
-    sc.projects.push({ id: 'ideas', name: projectOf('ideas').name, hue: IVORY, note: '', ring: phoneRing(PHONE_RINGS.ideas, w, h), members: [], count: 0, live: 0, active: false });
+    sc.links.push({ a: date.id, b: ex.id, col: '#6FB1FF', live: true, kind: 'exec', hue: IVORY, arrow: true });
+    sc.projects.push({ id: 'notes', name: projectOf('notes').name, hue: IVORY, note: '', ring: layoutHull(L, L.hulls.notes, w, h), members: [], count: 2, live: 0, active: false });
+    sc.projects.push({ id: 'ideas', name: projectOf('ideas').name, hue: IVORY, note: '', ring: layoutHull(L, L.hulls.ideas, w, h), members: [], count: 0, live: 0, active: false });
     sc.parent.notes = 'core'; sc.parent.ideas = 'core';
     sc.links.push({ a: 'core', b: 'notes', col: IVORY, live: false, kind: 'project', hue: IVORY });
     sc.links.push({ a: 'core', b: 'ideas', col: IVORY, live: false, kind: 'project', hue: IVORY, dash: true });
     sc.sats = [];
     sc.overflow = missions.length - 2;
     return sc;
+  }
+
+  // Thin facet lines inside a hull: interior points joined to the nearest outline vertices, three opacity tiers
+  // (far tier fainter). Deterministic per hull id, so a resize keeps the same structure.
+  function facetsFor(R, id) {
+    var seed = 0; for (var i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) % 2147483647;
+    if (!seed) seed = 7;
+    var rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    R.forEach(function (v) { minx = Math.min(minx, v.x); maxx = Math.max(maxx, v.x); miny = Math.min(miny, v.y); maxy = Math.max(maxy, v.y); });
+    var inside = function (x, y) {
+      var c = false;
+      for (var a = 0, b = R.length - 1; a < R.length; b = a++) {
+        if ((R[a].y > y) !== (R[b].y > y) && x < (R[b].x - R[a].x) * (y - R[a].y) / (R[b].y - R[a].y) + R[a].x) c = !c;
+      }
+      return c;
+    };
+    var pts = [], guard = 0;
+    while (pts.length < 10 && guard++ < 400) {
+      var x = minx + rnd() * (maxx - minx), y = miny + rnd() * (maxy - miny);
+      if (inside(x, y)) pts.push({ x: x, y: y });
+    }
+    var out = [];
+    pts.forEach(function (q, i) {
+      var tier = i % 3, a = tier === 0 ? 0.2 : tier === 1 ? 0.12 : 0.07, w = tier === 0 ? 0.8 : 0.55;
+      R.map(function (v, j) { return { j: j, d: Math.hypot(v.x - q.x, v.y - q.y) }; })
+        .sort(function (p1, p2) { return p1.d - p2.d; }).slice(0, 3)
+        .forEach(function (o) { out.push({ x1: q.x, y1: q.y, x2: R[o.j].x, y2: R[o.j].y, a: a, w: w }); });
+      pts.map(function (r, j) { return { j: j, d: Math.hypot(r.x - q.x, r.y - q.y) }; })
+        .filter(function (o) { return o.j !== i; }).sort(function (p1, p2) { return p1.d - p2.d; }).slice(0, 2)
+        .forEach(function (o) { out.push({ x1: q.x, y1: q.y, x2: pts[o.j].x, y2: pts[o.j].y, a: a * 0.8, w: 0.4 }); });
+    });
+    return out;
   }
 
   /* ---------- The stage: one renderer for every screen ---------- */
@@ -651,6 +714,13 @@
       g.beginPath(); R0.forEach(function (v, j) { var q = inner(v); if (j) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); }); g.closePath(); g.stroke();
       g.beginPath(); R0.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
       g.strokeStyle = 'rgba(239,233,218,' + (lit ? 0.75 : 0.42) + ')'; g.lineWidth = 1; g.stroke();
+      if (!p._facets) p._facets = facetsFor(R0, p.id);
+      p._facets.forEach(function (f) {
+        g.strokeStyle = 'rgba(239,233,218,' + (lit ? f.a : f.a * 0.55).toFixed(3) + ')'; g.lineWidth = f.w;
+        line(g, f.x1, f.y1, f.x2, f.y2);
+      });
+      g.fillStyle = 'rgba(239,233,218,' + (lit ? 0.7 : 0.4) + ')';
+      R0.forEach(function (v) { g.beginPath(); g.arc(v.x, v.y, 1.5, 0, TAU); g.fill(); });
       g.restore();
       var hr = 0, anc = R0[0], best = -Infinity, dx = C.x - c.x, dy = C.y - c.y, dl = Math.hypot(dx, dy) || 1;
       R0.forEach(function (v) {
@@ -1058,6 +1128,7 @@
       S.card.hidden = true; S.cardFor = null;
       S.items.core = addLabel('core', { cls: 'lbl core', kicker: '', title: 'Archeus', sub: 'Core connected', kind: 'core' });
       sc.projects.forEach(function (p) {
+        if (p.sub) return;
         var live = p.members ? sc.nodes.filter(function (n) { return p.members.indexOf(n.id) >= 0 && n.live; }).length : p.live;
         var sub = sc.compact ? '' : (p.note || ((p.count || (p.members ? p.members.length : 0)) + ' missions, ' + live + ' live'));
         addLabel(p.id, { cls: 'lbl project', kicker: 'Project', title: p.name, sub: sub, kind: 'project' });
@@ -1798,6 +1869,7 @@
     var box = $('#more-chips');
     if (!isNarrow()) { box.innerHTML = ''; return; }
     // Every project keeps its name on its hull. Past five projects, the farthest share one named list chip.
+    if (isNarrow()) { box.innerHTML = '<button type="button" class="chip-btn" data-act="open-list">' + (projects.length - 1) + ' more projects</button>'; return; }
     var rest = projects.length > 5 ? projects.slice(4) : [];
     var html = rest.length ? '<button type="button" class="chip-btn" data-act="open-list">' + esc(rest.map(function (p) { return p.name; }).join(', ')) + '</button>' : '';
     html += '<button type="button" class="chip-btn" data-act="open-list">All work · ' + missions.length + '</button>';
