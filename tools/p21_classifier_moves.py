@@ -29,6 +29,11 @@ PROGS = [
     'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter', 'systemd-run', 'firejail',
     'proxychains', 'dbus-run-session', 'expect', 'gdb', 'lldb', 'at', 'batch', 'start', 'call',
     'ltrace', 'torsocks', 'sg', 'newgrp', 'cgexec', 'chronic', 'socat', 'screen', 'tmux',
+    'ksh', 'csh', 'tcsh', 'ash', 'mksh', 'rbash', 'nu', 'elvish', 'xonsh', 'python3.11', 'pythonw',
+    'pyw', 'nodejs', 'pypy3', 'perl5.36', 'ruby3.2', 'php8.2', 'gawk', 'sed', 'lua', 'deno', 'bun',
+    'Rscript', 'julia', 'tclsh', 'vim', 'vi', 'nvim', 'ex', 'emacs', 'gtimeout', 'prlimit', 'numactl',
+    'caffeinate', 'setpriv', 'runcon', 'hyperfine', 'rg', 'less', 'more', 'man', 'tar', 'sort',
+    'rsync', 'scp', 'pwsh.exe', 'python.exe', 'C:\\Program Files\\nodejs\\node.exe',
 ]
 PRE = ['', '-o pipefail', '-X utf8', '--rcfile x', '-d x=1', '-r x', '-C .', '-c x=y', '--no-pager']
 PAYLOAD = [
@@ -36,6 +41,8 @@ PAYLOAD = [
     '/s/c"x"', '-cRemove-Item x', '-Command x', '-ENC"x"', '-File x.ps1', '-NoProfile',
     '-ExecutionPolicy Bypass', '-E', '-p', '-r', '-m pytest', '{-c,x}', '*', '-e', '--command x',
     '-Ec', '-q', '--version', 'reset --hard', 'push --force origin main', 'frobnicate',
+    'rm -R build', 'sh -c x', '--pre sh', '--exec x', '+!rm', '-P ./evil', '--compress-program=sh',
+    'alias.x=y', 'core.pager=x', '1e rm', 's/x/y/e', '-I sh',
 ]
 TAILS = ['', 'script.py', 'build.sh', 'x -c', '"echo hi"', 'https://h.example/x']
 CURL_FLAGS = ['-d', '-d@x', '-dx', '--data=x', '--json', '-F', '-Fa=b', '-File', '-T', '--upload-file=x',

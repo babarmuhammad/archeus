@@ -35,8 +35,6 @@ OPTIONAL_PATH = ('Glob', 'Grep')
 _OPERATOR = re.compile(r'[|;&<>`()!\n\r]|\$\(')
 #: a glob or brace character: the shell expands it, so the program or an argument is not known
 _GLOB = re.compile(r'[{}*?\[]')
-_SHELLS = ('sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 'pwsh',
-           'python', 'python3', 'py', 'node', 'perl', 'ruby', 'php')
 _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 'time',
           'watch', 'timeout', 'nice', 'command', 'builtin', 'export', 'set', 'typeset',
           'declare', 'alias', 'stdbuf', 'busybox', 'trap', 'ionice', 'setsid', 'chrt',
@@ -45,26 +43,6 @@ _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 
           'systemd-run', 'firejail', 'proxychains', 'proxychains4', 'dbus-run-session', 'expect',
           'gdb', 'lldb', 'at', 'batch', 'start', 'call', 'ltrace', 'torsocks', 'sg', 'newgrp',
           'cgexec', 'chronic', 'socat', 'screen', 'tmux')
-#: a word that, as an argument, starts a shell, an interpreter or a launcher (`foo bash -c x`):
-#: a program not in the tables that is given one runs it. The generic words (`start`, `set`, `.`)
-#: stay out: `npm run start` is a plain exec.
-_LAUNCH_ARG_WORDS = frozenset((
-    'sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 'pwsh', 'python', 'python3', 'py', 'node', 'perl', 'ruby',
-    'php', 'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter', 'systemd-run',
-    'firejail', 'proxychains', 'proxychains4', 'dbus-run-session', 'expect', 'gdb', 'lldb', 'socat',
-    'sudo', 'su', 'doas', 'env', 'xargs', 'nohup', 'setarch', 'chroot', 'busybox', 'stdbuf',
-    'strace', 'setsid', 'ionice', 'taskset', 'flock', 'chrt', 'torsocks', 'cgexec', 'sg', 'newgrp'))
-
-
-def _launches(arg):
-    """True when the argument's first word is a shell, an interpreter or a launcher name, with a
-    path or a .exe dropped and any case: `bash -c x` as one word, `C:\\bin\\bash.exe`."""
-    words = arg.split()
-    if not words:
-        return False
-    name = os.path.basename(words[0].replace('\\', '/')).lower()
-    return (name[:-4] if name.endswith('.exe') else name) in _LAUNCH_ARG_WORDS
-
 READ_COMMANDS = ('ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which',
                  'file', 'stat', 'tree', 'dir', 'type', 'less', 'more', 'diff')
 WRITE_COMMANDS = ('rm', 'mv', 'cp', 'mkdir', 'touch', 'rmdir', 'chmod', 'ln')
@@ -83,6 +61,109 @@ INSTALL = {'pip': ('install',), 'pip3': ('install',), 'npm': ('install', 'i', 'a
            'brew': ('install',), 'choco': ('install',), 'winget': ('install',)}
 REMOTE = ('ssh', 'scp', 'rsync', 'sftp')
 PROD = ('--prod', '--production', 'prod', 'production')
+
+#: a program's name as the shell finds it: no directory, no quote, no .exe/.cmd/.bat/.com/.ps1, no
+#: version suffix (python3.11, perl5.36, pypy3), lower case. Every family and table lookup uses it.
+_EXT = re.compile(r'\.(exe|cmd|bat|com|ps1)$')
+
+
+def _norm(word):
+    name = re.split(r'[\\/]', word.strip('"\'`'))[-1].lower()
+    return re.sub(r'[\d.]+$', '', _EXT.sub('', name))
+
+
+#: the programs that run code from their arguments: a closed set of names, and a name outside it is
+#: not code by its name. Shells, PowerShell, cmd, the interpreters, sed, and the programs that are
+#: code by nature (awk and its variants, the editors, lua, deno, bun and the like).
+_SHELL_NAMES = frozenset(('sh', 'bash', 'dash', 'ash', 'ksh', 'mksh', 'zsh', 'csh', 'tcsh', 'fish',
+                          'rbash', 'sash', 'nu', 'elvish', 'xonsh'))
+_PY_NAMES = frozenset(('python', 'pythonw', 'pyw', 'py', 'pypy'))
+_NODE_NAMES = frozenset(('node', 'nodejs'))
+_CODE_NAMES = frozenset(('lua', 'luajit', 'deno', 'bun', 'rscript', 'julia', 'tclsh', 'wish', 'vim',
+                         'vi', 'nvim', 'ex', 'view', 'rvim', 'gvim', 'vimdiff', 'emacs', 'expect',
+                         'groovy', 'jshell', 'osascript'))
+
+
+def _family(name):
+    """The family of a normalised program name, or None."""
+    if name in _SHELL_NAMES:
+        return 'shell'
+    if name in ('pwsh', 'powershell'):
+        return 'pwsh'
+    if name in _PY_NAMES:
+        return 'python'
+    if name in _NODE_NAMES:
+        return 'node'
+    if name in ('cmd', 'perl', 'ruby', 'php'):
+        return name
+    if name in ('sed', 'gsed'):
+        return 'sed'
+    if name in _CODE_NAMES or name.endswith('awk'):
+        return 'code'
+    return None
+
+
+#: the letters that run code in a single-dash word, per family (-c, -e and /c count anywhere, see
+#: ANYWHERE); the long flags that carry code
+_LETTERS = {'shell': 'cCeE', 'python': 'c', 'node': 'ep', 'perl': 'eE', 'ruby': 'e', 'php': 'rRB'}
+_LONG_CODE = {'shell': ('--command',), 'node': ('--eval', '--print')}
+#: sed runs code with its `e` command (`1e rm`) or with an `s///e` flag
+_SED_CODE = re.compile(r'(^|[\d$;{}\s!/])e(\s|;|}|$)|s(.).*\2[0-9gpiImMwe]*e')
+#: the pagers run a `+` command or a `!` shell escape at startup (`less +!rm`)
+_PAGERS = ('less', 'more', 'most', 'pg', 'man')
+#: an option, or a key=value word, whose name says it gives a command to run (`rg --pre`,
+#: `ssh -o ProxyCommand=`, `sort --compress-program=`, `--exec=`, `--pager`): matched by name
+_RUN_NAME = re.compile(r'command|exec|pager|editor|shell|eval|hook|helper|program', re.I)
+#: generic English words that are also program names (`npm run start`, `pytest .`): as an
+#: argument they do not make the call a command
+_GENERIC = frozenset(('start', 'set', 'time', 'at', 'script', 'call', 'batch', 'screen', 'export',
+                      'command', 'builtin', 'alias', 'declare', 'typeset', 'trap', 'source', 'eval',
+                      'exec', 'watch', '.'))
+#: the words that, as an argument of a program not in the tables, make the call unclassified: the
+#: commands the tables classify, the launchers (the table above, minus the generic words), and the
+#: commands the launchers and the usual runners name (gtimeout, prlimit, docker run, npm exec)
+_ARG_WORDS = frozenset(WRITE_COMMANDS + READ_COMMANDS + (
+    'git', 'curl', 'wget', 'ssh', 'scp', 'rsync', 'sftp', 'docker', 'podman', 'kubectl', 'helm',
+    'terraform', 'vercel', 'gh', 'npm', 'npx', 'pnpm', 'yarn', 'pip', 'pip3', 'cargo', 'go', 'gem',
+    'uv', 'brew', 'choco', 'winget', 'make', 'tar', 'sort', 'base64', 'xargs', 'man', 'find',
+    'gtimeout', 'prlimit', 'numactl', 'caffeinate', 'setpriv', 'runcon', 'hyperfine')) | (
+    frozenset(_NEVER) - _GENERIC)
+
+
+def _names_of(word):
+    """A word's program names, as written and normalised (a name with a digit is written as is)."""
+    raw = word.strip('"\'`').lower()
+    return {raw, _norm(raw)}
+
+
+def _names_command(pieces):
+    """True when a piece, as a program name, is a family or an argument word, after a directory, a
+    quote, leading dashes or an `=`: `gtimeout 5 rm`, `hyperfine "rm -R x"`, `mytool -c"rm -R x"`,
+    `mytool C:\\Windows\\System32\\cmd.exe /c x`."""
+    for piece in pieces:
+        for part in piece.split('='):
+            for name in _names_of(part.lstrip('-')):
+                if name in _ARG_WORDS or _family(_norm(name)) is not None:
+                    return True
+    return False
+
+
+def _gives_a_command(piece):
+    """True for an option, or a key=value word, whose name says it gives a command to run (see
+    _RUN_NAME). Matched by the name, never by the value."""
+    if '=' in piece:
+        name = piece.split('=', 1)[0]
+    elif piece.startswith('-'):
+        name = piece
+    else:
+        return False
+    name = name.lstrip('-+').lower()
+    return name in ('pre', 'pre-glob') or bool(_RUN_NAME.search(name))
+
+
+def _pieces(cmd):
+    """The words of a command as its blanks and quotes split them."""
+    return [p for p in re.split(r'[\s"\'`]+', cmd) if p]
 
 
 def canonicalise(tool, tool_input, ctx):
@@ -202,18 +283,8 @@ def _program(cmd):
     return name[:-4] if name.endswith('.exe') else name
 
 
-#: the payload rule, as data (P21 D6, the owner's fail-closed unclassified set). gate §12 carries
-#: the same rule as text: `classifier_rules()` renders it, and a test fails when the two differ.
-SHELL_TOOLS = ('sh', 'bash', 'zsh', 'dash', 'fish')
-#: a shell runs code from a single-dash cluster holding one of these letters (-c, -lc, -e, -C)
-SHELL_LETTERS = 'cCeE'
-#: an interpreter runs code from the same kind of cluster, its own letters (python -c; node -e -p;
-#: perl -e -E; ruby -e; php -r -R -B). -r for node and -E or -P for python are not code: exempt.
-INTERP_LETTERS = {'python': 'c', 'python3': 'c', 'py': 'c', 'node': 'ep', 'perl': 'eE',
-                  'ruby': 'e', 'php': 'rRB'}
-#: the long flags that carry code (a prefix match: --eval=x counts)
-LONG_CODE = {'sh': ('--command',), 'bash': ('--command',), 'zsh': ('--command',),
-             'dash': ('--command',), 'fish': ('--command',), 'node': ('--eval', '--print')}
+#: the payload rule, as data (P21 D6). gate §12 carries the same rule as text: `classifier_rules()`
+#: renders it, and a test fails when the two differ.
 #: cmd takes code from /c, /k and /r, attached or not, in any case (its arguments are all its own)
 CMD_WORDS = ('/c', '/k', '/r')
 #: the first build's rule, kept whole: -c, -e and /c count wherever they stand
@@ -232,18 +303,31 @@ def classifier_rules():
     lines.append('git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with '
                  'their value; -c, --config-env, and any other global option not in the tables, make '
                  'the call unclassified')
-    lines.append('a program not otherwise classified, given an argument whose first word is a shell, '
-                 'an interpreter or a launcher (' + ', '.join(sorted(_LAUNCH_ARG_WORDS)) + ')')
+    lines.append('a program not in the tables, given an argument that after a directory, a quote, '
+                 'leading dashes or = is one of: ' + ', '.join(sorted(_ARG_WORDS))
+                 + ', or a family name (below)')
+    lines.append('an option, or a key=value word, whose name is pre, pre-glob, or contains command, '
+                 'exec, pager, editor, shell, eval, hook, helper or program: for any program but git')
+    lines.append('less, more, most, pg: an argument starting with + or containing !; man: an argument '
+                 'starting with -P')
+    lines.append('a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 '
+                 'and a version suffix (python3.11, perl5.36) are dropped')
+    lines.append('families (closed): shell: ' + ', '.join(sorted(_SHELL_NAMES)) + '; pwsh: pwsh, powershell; '
+                 'cmd; python: ' + ', '.join(sorted(_PY_NAMES)) + '; node: ' + ', '.join(sorted(_NODE_NAMES))
+                 + '; perl; ruby; php; sed: sed, gsed; code: any name ending awk, and '
+                 + ', '.join(sorted(_CODE_NAMES)) + ' (code is always unclassified)')
     lines.append('anywhere in the arguments: -c, -e or /c as whole words')
-    lines.append('shells (' + ', '.join(SHELL_TOOLS) + '): a single-dash word anywhere in the '
-                 'arguments holding one of ' + SHELL_LETTERS + ' (a glued value counts); --command')
-    for name in sorted(INTERP_LETTERS):
-        longs = LONG_CODE.get(name, ())
-        lines.append(name + ': a single-dash word anywhere in the arguments holding one of '
-                     + INTERP_LETTERS[name] + ((('; ' + ', '.join(longs)) if longs else '')))
+    lines.append('shell family: a single-dash word anywhere in the arguments holding one of '
+                 + _LETTERS['shell'] + ' (a glued value counts); --command')
+    lines.append('python family: a single-dash word holding c; node family: holding e or p; --eval, '
+                 '--print; perl: e or E; ruby: e; php: r, R or B')
+    lines.append('sed: an e command (1e rm) or an s///e flag')
     lines.append('cmd: an argument with ' + ', '.join(CMD_WORDS) + ' anywhere, in any case')
     lines.append('powershell, pwsh: an argument whose first letter is c or e (a glued value counts: '
-                 '-cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full')
+                 '-cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full; the dash may '
+                 'be a hyphen, an en dash, an em dash or a horizontal bar')
+    lines.append('git: rebase with -x or --exec; config with a key containing ' + ', '.join(_GIT_CONFIG_RUNS)
+                 + ': unclassified')
     lines.append('send flags (external_comm, not web): the names ' + ', '.join(_SENDS)
                  + '; a long flag starting with --data, --form, --post- or --body-; a short -d, '
                  '-F or -T, attached or not; -X or --request with a method other than GET (as the '
@@ -251,30 +335,40 @@ def classifier_rules():
     return lines
 
 
+#: the characters PowerShell takes as a switch prefix: a hyphen, a slash, an en dash, an em dash and
+#: a horizontal bar (U+2013, U+2014, U+2015)
+_SWITCH_DASHES = '-/' + chr(0x2013) + chr(0x2014) + chr(0x2015)
+
+
 def _pwsh_word(a):
     """A PowerShell code parameter, or one with a value glued on (`-cRemove-Item`, `-ENCx`): the
     first letter decides, since every parameter that begins with c or e takes code except the
     two in PWSH_NOT_CODE. Only the letters before a digit or a symbol are read, so a glued value
     does not hide the parameter."""
-    m = re.match(r'[-/]([a-zA-Z]+)', a)
+    # PowerShell takes an en dash, an em dash or a horizontal bar as the switch prefix as well
+    m = re.match('[' + _SWITCH_DASHES + ']([a-zA-Z]+)', a)
     run = m.group(1).lower() if m else ''
     return run[:1] in ('c', 'e') and run not in PWSH_NOT_CODE
 
 
-def _payload(prog, args):
-    """A shell or interpreter, or cmd or PowerShell, runs code from its arguments (see
-    `classifier_rules`). A value option before the script (`bash -o pipefail -c"x"`) does not
-    end the scan: a code letter in any single-dash word holds, so the rule needs no list of
-    value options, and a word after the script that holds one holds too (fail-closed)."""
+def _payload(family, args):
+    """Whether a program of this family runs code from its arguments (see `classifier_rules`). A
+    value option before the script (`bash -o pipefail -c"x"`) does not end the scan: a code letter
+    in any single-dash word holds, so the rule needs no list of value options, and a word after
+    the script that holds one holds too (fail-closed)."""
+    if family == 'code':
+        return True
+    if family == 'sed':
+        return any(_SED_CODE.search(a) for a in args)
     if any(a in ANYWHERE for a in args):
         return True
-    if prog == 'cmd':
+    if family == 'cmd':
         # a switch glued after another one (`/s/c"x"`) is still code: any /c, /k or /r holds
         return any(re.search(r'/[ckr]', a, re.I) for a in args)
-    if prog in ('powershell', 'pwsh'):
+    if family == 'pwsh':
         return any(_pwsh_word(a) for a in args)
-    letters = SHELL_LETTERS if prog in SHELL_TOOLS else INTERP_LETTERS.get(prog, '')
-    longs = LONG_CODE.get(prog, ())
+    letters = _LETTERS.get(family, '')
+    longs = _LONG_CODE.get(family, ())
     for a in args:
         if a.startswith('--'):
             if longs and a.lower().startswith(longs):
@@ -387,13 +481,15 @@ def command(cmd, ctx):
     # NAME=value cmd: the name is no program, and its value may be a secret (never a target)
     if '=' in argv[0]:
         return [_unclassified('command', argv)], True
-    shell = _program(cmd)
-    if prog in _NEVER or shell in _NEVER or (prog in _SHELLS and _payload(prog, args)) or (
-            shell in _SHELLS and _payload(shell, args)):
+    # the program's names twice: as argv gives it, and as the raw first word does (a bare Windows
+    # path reaches argv without its backslashes, so only the raw word keeps the name `cmd`)
+    names = _names_of(argv[0]) | _names_of(_program(cmd))
+    families = {_family(_norm(n)) for n in names} - {None}
+    if any(n in _NEVER for n in names) or any(_payload(f, args) for f in families):
         return [_unclassified(prog, argv)], True
     # the shell expands a brace or a glob before the program runs: `{bash,-c,x}` and `b?sh` are
     # shells, and a shell or an interpreter given a glob may be given a file named `-c`
-    if _GLOB.search(argv[0]) or (prog in _SHELLS and _GLOB.search(' '.join(args))):
+    if _GLOB.search(argv[0]) or (families and _GLOB.search(' '.join(args))):
         return [_unclassified(prog, argv)], True
     if prog == 'base64' and ('-d' in args or '--decode' in args):
         return [_unclassified(prog, argv)], True
@@ -401,6 +497,14 @@ def command(cmd, ctx):
     tv = tuple(argv)
     if prog == 'git':
         return _git(args, tv, ctx)
+    # an option or a key=value word that names a command to run: `rg --pre`, `ssh -o ProxyCommand=`
+    if any(_gives_a_command(p) for p in _pieces(cmd)[1:]):
+        return [_unclassified(prog, argv)], True
+    # a pager runs its `+` command or `!` escape, and man runs the pager it is given with -P
+    name = _norm(argv[0])
+    if (name in _PAGERS and any(a.startswith('+') or '!' in a for a in args)) or (
+            name == 'man' and any(a.startswith('-P') for a in args)):
+        return [_unclassified(prog, argv)], True
     sub = args[0].lower() if args else ''
     if (prog, sub) in DESTROY or (prog == 'rm' and _recursive(args)):
         return [Action(action_class='destructive', target=prog, argv=tv, environment=env,
@@ -416,6 +520,10 @@ def command(cmd, ctx):
         return [Action(action_class='external_comm' if _sends(args) else 'web', target=url or prog,
                        argv=tv, host=host_of(url), chip_host=clear_host(_url_arg(prog, args)))], False
     if prog in REMOTE:
+        # scp -S, rsync -e and ssh take a program or a shell as a value: a family name holds
+        if any(_family(_norm(n)) for p in _pieces(cmd)[1:] for part in p.split('=')
+               for n in _names_of(part.lstrip('-'))):
+            return [_unclassified(prog, argv)], True
         dest = next((a for a in args if not a.startswith('-') and ('@' in a or ':' in a)), '')
         host = dest.split('@')[-1].split(':')[0] or None
         return [Action(action_class='external_comm', target=prog, argv=tv, host=host)], False
@@ -431,8 +539,9 @@ def command(cmd, ctx):
     if prog in WRITE_COMMANDS:
         return [Action(action_class='write_repo', target=prog, argv=tv,
                        paths=_paths(args, ctx))], False
-    # a program not in the tables given a shell, an interpreter or a launcher: it runs that
-    if any(_launches(a) for a in args):
+    # a program not in the tables, given a shell, an interpreter, a launcher or a command word as an
+    # argument: it runs that (`gtimeout 5 rm -R build`, `docker run alpine sh -c x`)
+    if _names_command(_pieces(cmd)[1:]):
         return [_unclassified(prog, argv)], True
     return [Action(action_class='exec', target=prog, argv=tv, paths=('.',))], False
 
@@ -443,6 +552,10 @@ _GIT_VALUE = ('-C', '--git-dir', '--work-tree', '--namespace', '--super-prefix')
 _GIT_FLAG = ('--no-pager', '-p', '--paginate', '-P', '--no-paginate', '--bare',
              '--no-replace-objects', '--literal-pathspecs', '--glob-pathspecs', '--noglob-pathspecs',
              '--icase-pathspecs', '--no-optional-locks', '--exec-path', '--version', '--help')
+#: a `git config` key containing one of these names a command git runs later (an alias, a pager,
+#: an editor, a *command); a config value is never judged by its text
+_GIT_CONFIG_RUNS = ('alias', 'pager', 'editor', 'command', 'helper', 'hook', 'external', 'textconv',
+                    'fsmonitor', 'askpass', 'program')
 
 
 def _git_split(args):
@@ -480,6 +593,11 @@ def _git(args, argv, ctx):
 def _git_actions(sub, rest, argv, ctx):
     """The actions of one git subcommand, or None when the subcommand is not in the tables."""
     branch = ctx.get('branch')
+    # rebase --exec runs its command in a shell; a config key named for a command runs it later
+    if sub == 'rebase' and any(a.startswith(('-x', '--exec')) for a in rest):
+        return None
+    if sub == 'config' and any(k in a.lower() for a in rest for k in _GIT_CONFIG_RUNS):
+        return None
     if sub == 'push':
         pos = [a for a in rest if not a.startswith('-')]
         remote = pos[0] if pos else 'origin'

@@ -339,6 +339,35 @@ def test_E06_the_chip_names_the_action_that_decided_the_answer(x):
     'wsl bash -c "rm -R build"', 'wsl -e bash -c "x"', 'runas /user:a "cmd /c rm -R build"',
     'pkexec bash -c "x"', 'mytool bash -c "x"', 'docker run ubuntu sh -c "rm"',
     'cmd /s/c"rm -R build"', 'cmd /d/c"rm -R build"',
+    # round 7: shells and interpreters the families name, with their versions and extensions;
+    # PowerShell's en dash, em dash and horizontal bar; a bare Windows launcher path; a command
+    # given to a program outside the tables; a read that runs a command; the git and remote options
+    'ksh -c "rm -R build"', 'tcsh -c x', 'csh -c x', 'ash -c x', 'mksh -c x', 'rbash -c x', 'nu -c x',
+    'elvish -c x', 'xonsh -c x', 'mytool ksh -c x', 'python3.11 -c "import os"', 'python3.11.exe -c x',
+    'pythonw -c x', 'pyw -c x', 'nodejs -e x', 'pypy3 -c x', 'perl5.36 -e x', 'ruby3.2 -e x',
+    'php8.2 -r x', 'powershell \u2013EncodedCommand abc', 'pwsh \u2014c x',
+    'pwsh \u2015c x', r'mytool C:\Windows\System32\cmd.exe /c rm -R x',
+    r'mytool "C:\Windows\System32\cmd.exe" /c rm -R x', 'mytool C:/Windows/System32/cmd.exe /c rm -R x',
+    'gtimeout 5 rm -R build', 'prlimit --nofile=10 rm -R build', 'numactl --cpunodebind=0 rm -R build',
+    'caffeinate -t 5 rm -R build', 'setpriv --reuid=0 rm -R build', 'runcon x rm -R build',
+    'hyperfine "rm -R build"', 'docker run alpine rm -R /w', 'podman exec ctr rm -R /data',
+    'kubectl exec pod -- rm -R /data', 'npm exec --call "rm -R build"',
+    'rg --pre sh x', 'rg --pre "sh -c \'rm -R x\'" pat file', 'rg --pre ./evil pat file',
+    'less +"!rm -R build" x', 'more +"!rm -R build" x',
+    'git rebase --exec "rm -R build" main', 'git rebase -x "rm -R build" main',
+    'git config alias.x "!rm -R build"', 'git config core.pager "sh -c x"',
+    'git --git-dir=.git config core.pager x',
+    'awk \'BEGIN{system("rm -R build")}\'', 'gawk \'BEGIN{system("x")}\'', "sed '1e rm -R build' x",
+    "sed 's/x/rm -R b/e' x", 'lua -e "os.execute(\'rm -R x\')"', 'deno eval "x"', 'bun -e x',
+    'Rscript -e x', 'julia -e x', 'tclsh x', 'vim -c ":!rm -R build" -c ":q" x', 'vi -c x', 'nvim -c x',
+    'ex -c x', 'tar --to-command="sh -c \'rm -R x\'" -xf a.tar', 'sort --compress-program="sh" x',
+    'sort --compress-program sh x', 'ssh -o ProxyCommand="sh -c x" host',
+    'rsync -e "ssh -o ProxyCommand=x" a b', 'scp -S "sh -c x" a host:b', 'tar -I "sh -c x" -xf a.tar',
+    'xargs -I{} sh -c x',
+    r'C:\Windows\System32\cmd.exe /c x', 'sort --compress-program zstd x', 'man -P ./evil x',
+    # round 7: each of these is held by one rule alone (the argument rule would hold the others)
+    'cmd /C x', 'cmd.exe /c"x"', 'cmd /s/c"x"', 'node --print=x', '! mytool x', 'find . -ok rm {} +',
+    "sed '1e mytool' x", "sed 's/x/mytool/e' x", 'bash {x,y}', 'python.bat -c x',
 ])
 def test_E07_wrappers_and_payload_flags_are_unclassified(cmd, tmp_path):
     """A shell or interpreter running a payload, or a wrapper that runs another
@@ -357,7 +386,7 @@ def test_E11_the_rules_leave_these_as_plain_exec(cmd, tmp_path):
     assert unclassified is False and acts[0].action_class == 'exec', (cmd, acts)
 
 
-@pytest.mark.parametrize('cmd', ['ls *.py', 'cat *.md', 'grep "a\nb" x'])
+@pytest.mark.parametrize('cmd', ['ls *.py', 'cat *.md', 'grep "a\nb" x', 'grep rm file.txt'])
 def test_E12_a_glob_or_a_quoted_newline_on_a_read_command_stays_a_read(cmd, tmp_path):
     """The glob rule holds shells, interpreters and wrappers, not a read: `ls *.py` is a read,
     and a newline inside quotes is text, not a separator."""
@@ -392,8 +421,9 @@ LAUNCHERS = [
 @pytest.mark.parametrize('name', LAUNCHERS)
 def test_E14_every_launcher_in_the_table_is_unclassified(name, tmp_path):
     """A structural rule: a launcher in the table never makes the call a plain exec, so a new one
-    added to the table holds without a row of its own."""
-    acts, unclassified = canonical.canonicalise('Bash', f'{name} -c "rm -R build"',
+    added to the table holds without a row of its own. The argument is not a command word, so
+    only the table holds it."""
+    acts, unclassified = canonical.canonicalise('Bash', f'{name} -c "x"',
                                                 {'workdir': str(tmp_path)})
     assert unclassified is True and acts[0].action_class == 'exec', (name, acts)
 
@@ -409,12 +439,78 @@ def test_E15_an_unknown_program_given_a_shell_or_launcher_is_unclassified(cmd, t
     assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
 
 
-@pytest.mark.parametrize('cmd', ['npm run start', 'pytest .', 'ruff check .', 'make test', 'npm run build'])
+@pytest.mark.parametrize('cmd', [
+    'npm run start', 'pytest .', 'ruff check .', 'make test', 'npm run build', 'sed -n 1,5p x',
+    'sed -e s/a/b/ x', 'pytest -k start', 'npm test',
+])
 def test_E16_ordinary_tool_calls_stay_plain_exec(cmd, tmp_path):
     """The structural rule holds launchers and shells, not generic words: `npm run start` and
     `pytest .` stay what they were."""
     acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
     assert unclassified is False and acts[0].action_class == 'exec', (cmd, acts)
+
+
+#: the shells and interpreters of the families, with the versions and extensions a user types
+KNOWN_RUNNERS = [
+    'ash', 'bash', 'csh', 'dash', 'ksh', 'mksh', 'rbash', 'sh', 'tcsh', 'zsh', 'fish', 'nu', 'elvish',
+    'xonsh', 'python', 'python3', 'python3.11', 'python3.11.exe', 'pythonw', 'pyw', 'pypy3', 'node',
+    'nodejs', 'perl', 'perl5.36', 'ruby', 'ruby3.2', 'php', 'php8.2', 'cmd.exe', 'pwsh', 'powershell',
+]
+
+
+@pytest.mark.parametrize('name', KNOWN_RUNNERS)
+def test_E17_every_known_shell_and_interpreter_with_a_payload_is_unclassified(name, tmp_path):
+    """A shell or an interpreter of the families, with a version or an extension, given code: held."""
+    acts, unclassified = canonical.canonicalise('Bash', f'{name} -c "rm -R build"',
+                                                {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (name, acts)
+
+
+#: thirty program names that are in no table and no family: invented, fixed here so the test is
+#: the same each run
+INVENTED = ['zq' + c * 2 + 'p' for c in 'abcdefghijklmnopqrstuvwxyz'][:26] + [
+    'frobq', 'vexmk', 'lorqt', 'zumbl']
+X_CORPUS = [
+    'rm -R build', 'ls', 'git status', 'npm test', 'echo hi', 'cat x', 'curl https://h.example/x',
+    'mytool x', 'pytest -q', 'make test', 'bash -c x', 'docker ps', 'rg pat', 'less x',
+    'python script.py', 'find . -name x', 'mv a b', 'node server.js', 'git push origin main',
+    'npx cowsay hi', 'gtimeout 5 rm -R build', 'npm run build', 'ruff check .', 'sed -n 1,5p x',
+]
+
+
+@pytest.mark.parametrize('name', INVENTED)
+def test_E18_an_invented_program_given_a_command_word_is_unclassified(name, tmp_path):
+    """Thirty invented program names, each given `rm -R build` as an argument: the call runs a
+    command the tables classify, so it is unclassified. The name is in no table."""
+    acts, unclassified = canonical.canonicalise('Bash', f'{name} rm -R build',
+                                                {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (name, acts)
+
+
+@pytest.mark.parametrize('name', INVENTED)
+def test_E19_an_invented_program_with_plain_arguments_is_a_plain_exec(name, tmp_path):
+    """The default for a program in no table: its arguments name no command, so it stays a plain
+    exec (the first build's class). Unknown is not the same as unclassified: the rule holds what
+    runs something, and a plain program runs in the workspace as before."""
+    acts, unclassified = canonical.canonicalise('Bash', f'{name} --level 3 src',
+                                                {'workdir': str(tmp_path)})
+    assert unclassified is False and acts[0].action_class == 'exec', (name, acts)
+
+
+@pytest.mark.parametrize('name', LAUNCHERS + INVENTED)
+@pytest.mark.parametrize('rest', X_CORPUS)
+def test_E20_a_wrapper_never_loosens_what_it_wraps(name, rest, tmp_path):
+    """The invariant, over a generated corpus: for a launcher of the table, or an invented name,
+    in front of any command X, the result is unclassified or the same as X's own classification.
+    A wrapper that is a launcher is always unclassified; an invented one is judged as X or stricter."""
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    inner, inner_u = canonical.canonicalise('Bash', rest, ctx)
+    outer, outer_u = canonical.canonicalise('Bash', f'{name} {rest}', ctx)
+    if name in LAUNCHERS:
+        assert outer_u is True, (name, rest, outer)
+    elif not outer_u:
+        assert not inner_u and [a.action_class for a in outer] == [a.action_class for a in inner], (
+            name, rest, outer, inner)
 
 
 def test_gate_classifier_block_matches_the_code():
