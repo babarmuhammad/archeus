@@ -67,6 +67,7 @@ Honest state. Round 5 was checked by screenshots at 1440 x 900, 1920 x 1080, 128
 - Figure density: the interior mesh and glyphs are still thinner and dimmer than 02 and 03. The vertex glow is on lit bodies only. No extra facets were added.
 - Ambient mesh: more starfield points, but no satellite bodies between the figures yet.
 - Label placement is scored, not perfect. At 1440 x 900 with Overview's default content the labels are clean. With Atlas and three of its missions, one label pair still touches ("Search provenance" and "Check sources"). At 1280 x 720 the labels of Map relations and Reading list export can touch, and the Harbor project label sits over its figures. The labels are smaller there.
+- Atlas, the project the chat creates, is placed at a fixed spot near the top of the scene. Its hull is cut by the top edge of the stage. The spot was picked by a label-overlap count, not by a layout pass.
 - Mission view: the "ORCHESTRATES" verb sits on the "Core connected" label.
 - Mission inspector: the tabs (Overview, Activity, Plan) keep round 3 content; the concept's full panel is only partly matched.
 - Shared: Content and Relations are row lists. The device bodies are still cubes with no state dots, so they do not match 06's device boxes.
