@@ -60,7 +60,8 @@ def _api_next(rig, aid):
 
 def _api_waiting(rig, aid):
     with rig.db.read() as conn:
-        return A.get_automation(conn, aid, runs=0)['waiting']
+        return A.get_automation(conn, aid, runs=0,
+                                schedule_faults=rig.auto.quarantined_schedules())['waiting']
 
 
 def test_H01_a_schedule_fires_at_its_time_not_before_and_moves_on(rig, frozen):
@@ -272,3 +273,6 @@ def test_H11_a_schedule_whose_claim_raises_holds_only_itself(rig, frozen, monkey
     assert rig.runs(bad) == []
     assert len(calls) == MAX_ATTEMPTS                # then quarantined, not retried every pass
     assert rig.row(entities.Automation, bad).entity.next_run_at == iso(15)   # rolled back
+    assert _api_waiting(rig, bad) == ('quarantined after %d failures: RuntimeError: '
+                                      'a claim that always faults' % MAX_ATTEMPTS)
+    assert _api_waiting(rig, good) is None

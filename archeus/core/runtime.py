@@ -512,6 +512,7 @@ class Core:
                               conversations=self.conversations, sessions=self.sessions,
                               port=self.port,
                               health=self.health, version=VERSION,
+                              schedule_faults=self.automation.world.quarantined_schedules,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,
                               static_dir=self.static_dir, remote_hosts=self.remote_hosts)
         try:

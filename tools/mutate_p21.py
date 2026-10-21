@@ -53,6 +53,8 @@ AUT = 'archeus/core/application/automations.py'
 MAT = 'archeus/core/automation/matcher.py'
 WRK = 'archeus/core/automation/worker.py'
 NOW_TS = 'clients/app/src/state/now.ts'
+SCREENS = 'archeus/cli/tui/screens.py'
+TUI_AT = 'tests/v1/tui/test_acceptance.py::'
 SH = 'tests/v1/integration/test_schedule_triggers.py::'
 AU = 'tests/v1/unit/test_automation_units.py::'
 H01 = SH + 'test_H01_a_schedule_fires_at_its_time_not_before_and_moves_on'
@@ -423,6 +425,24 @@ MUTATIONS = [
      "  as.filter((a) => a.state === 'ENABLED' && a.next_run_at && !a.waiting).sort(",
      "  as.filter((a) => a.state === 'ENABLED' && a.next_run_at).sort(")],
      ['node:test/now.test.ts']),
+    # ── P21 slice H review fixes (T-129 r3): a quarantine says why; the Waiting row is tested ──
+    ('Z233', 'Control\'s schedule row drops the reason for a held schedule', [(NOW_TS,
+     "  a.state !== 'ENABLED' ? [] : a.waiting ? [['Waiting', String(a.waiting)]] : a.next_run_at ? [['Next run', ago(a.next_run_at)]] : [];",
+     "  a.state !== 'ENABLED' ? [] : a.next_run_at ? [['Next run', ago(a.next_run_at)]] : [];")],
+     ['node:test/now.test.ts']),
+    ('Z234', 'the TUI row drops the reason for a held schedule', [(SCREENS,
+     "               + ([('Waiting', T(app, a['waiting']))] if a.get('waiting') else [])",
+     "               + []")],
+     [TUI_AT + 'test_a_held_schedule_says_why_in_its_row_and_shows_no_next_run']),
+    ('Z235', 'a quarantined schedule keeps no cause', [(WRK,
+     "                    self.schedule_faults[aid] = 'quarantined after %d failures: %s: %s' % (\n"
+     "                        attempts, type(x).__name__, x)\n",
+     "")],
+     [SH + 'test_H11_a_schedule_whose_claim_raises_holds_only_itself']),
+    ('Z236', 'the view drops a quarantine as a reason', [(AUT,
+     "    held = (_waiting(conn, a, quarantined)",
+     "    held = (_waiting(conn, a)")],
+     [SH + 'test_H11_a_schedule_whose_claim_raises_holds_only_itself']),
 ]
 
 

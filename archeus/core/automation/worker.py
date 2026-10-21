@@ -42,6 +42,11 @@ class Automations:
         self.retrying = {}
         #: schedule id -> (attempts, not before) for a claim that raised (P21 D9)
         self.schedules_held = {}
+        #: schedule id -> why it is quarantined, for the API's `waiting` (lasts for the process)
+        self.schedule_faults = {}
+
+    def quarantined_schedules(self):
+        return dict(self.schedule_faults)
 
     def pending(self):
         with self.db.read() as conn:
@@ -87,6 +92,8 @@ class Automations:
                 attempts = (held[0] if held else 0) + 1
                 if MAX_ATTEMPTS <= attempts:
                     self.schedules_held[aid] = (attempts, float('inf'))
+                    self.schedule_faults[aid] = 'quarantined after %d failures: %s: %s' % (
+                        attempts, type(x).__name__, x)
                     log.exception('automation: schedule %s quarantined after %d attempts',
                                   aid, attempts)
                 else:

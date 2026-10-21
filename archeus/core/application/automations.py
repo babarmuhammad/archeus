@@ -240,17 +240,19 @@ def fire_due(tx, *, actor, automation_id):
     return {'runs': [_claim(tx, actor, a, e, why)]}
 
 
-def _waiting(conn, a):
+def _waiting(conn, a, quarantined=None):
     """Why a schedule's due time is held, or None when it may run: its project
-    gone or archived, or Core disarmed (e-stop). A held time stays due and fires
-    once together when it may run again. Claiming it anyway would write a denied
-    or condition_false run every period, and neither reason counts toward the
-    loop guard."""
+    gone or archived, or Core disarmed (e-stop), or the worker quarantined it
+    (*quarantined*: the worker's map, read by the view). A held time stays due and
+    fires once together when it may run again. Claiming it anyway would write a
+    denied or condition_false run every period, and neither reason counts toward
+    the loop guard."""
     if a.project_id is not None:
         p = rows.get(conn, entities.Project, a.project_id)
         if p is None or p.entity.state != 'ACTIVE':
             return 'project gone or archived'
-    return 'Core disarmed' if authorization.estop_armed() else None
+    disarmed = 'Core disarmed' if authorization.estop_armed() else None
+    return disarmed or (quarantined or {}).get(a.id)
 
 
 def settles(e):
@@ -342,12 +344,13 @@ def _guard(tx, actor, a, run_id):
 
 # ── reads (§15) ──────────────────────────────────────────────────────────────
 
-def _view(conn, row):
+def _view(conn, row, quarantined=None):
     a = row.entity
     # a time is only true while the schedule runs: disabled or suspended, none
     nxt = a.next_run_at if a.state == 'ENABLED' else None
     # a gate that holds a due time says why: such a schedule is not in Upcoming
-    held = _waiting(conn, a) if nxt and a.trigger.get('kind') == 'schedule' else None
+    held = (_waiting(conn, a, quarantined)
+            if nxt and a.trigger.get('kind') == 'schedule' else None)
     return dict(a.to_dict(), next_run_at=nxt, waiting=held, version=row.version,
                 created_at=row.created_at, updated_at=row.updated_at)
 
@@ -364,17 +367,18 @@ def quarantined(conn):
                                   "ORDER BY event_seq")]
 
 
-def list_automations(conn):
-    return {'automations': [_view(conn, r) for r in rows.where(conn, entities.Automation)],
+def list_automations(conn, schedule_faults=None):
+    return {'automations': [_view(conn, r, schedule_faults)
+                            for r in rows.where(conn, entities.Automation)],
             'quarantined': quarantined(conn)}
 
 
-def get_automation(conn, automation_id, *, runs=50):
+def get_automation(conn, automation_id, *, runs=50, schedule_faults=None):
     row = rows.get(conn, entities.Automation, automation_id)
     if row is None:
         raise lifecycle.NotFound(automation_id)
     rs = rows.where(conn, entities.AutomationRun, automation_id=automation_id)
-    return dict(_view(conn, row), runs=[_run_view(r) for r in rs[-runs:]])
+    return dict(_view(conn, row, schedule_faults), runs=[_run_view(r) for r in rs[-runs:]])
 
 
 def _mine(conn, cls, mission_id):

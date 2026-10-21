@@ -496,7 +496,12 @@ The owner's answer on missed times (2026-10-21): "Once together (Recommended)", 
   otherwise, and a waiting schedule is not in Upcoming.
 - **Faults are per schedule.** The worker (`worker.py` `_fire_due`) runs one command per due
   schedule. A claim that raises is held and retried with backoff like an event, then quarantined
-  for this process after `MAX_ATTEMPTS` (a restart retries it). Other schedules still fire.
+  for this process after `MAX_ATTEMPTS` (a restart retries it). Other schedules still fire. The
+  API's `waiting` carries the recorded cause ("quarantined after 3 failures: <error>"), so Upcoming
+  drops the schedule and Control shows it as Waiting. Re-enable does not clear the quarantine
+  (deferred, r1 N6: it lasts until restart).
+- **A due time in the future.** `waiting` is read whenever a time is set, so a schedule whose gate
+  holds it now shows the reason before its time comes; it is held when due, and fires then.
 - **When it runs.** The worker checks for due schedules at the start of every pass, which runs on
   every commit and at least every `WORLD_POLL_S` (10 s), so a time fires at most that late.
 - **Simulation.** `simulate` on a schedule answers how many times it would have come due had it
@@ -515,11 +520,15 @@ The owner's answer on missed times (2026-10-21): "Once together (Recommended)", 
   H06 events and schedules never cross; H07 over HTTP: `next_run_at`, the simulation, the one-minute
   floor; H08 a mission a schedule asked for starts a rule one level deeper; H09 a fire does not
   bump the version; H10 an archived project or a disarmed Core waits, says why in `waiting`, and
-  fires once; H11 a claim that raises holds only its schedule, then quarantines it);
-  `tests/v1/unit/test_automation_units.py` (the grammar and its 7-day cap, the refusals, `next_due`,
-  no match); `clients/app/test/present.test.ts`, `now.test.ts` (a held schedule is not upcoming).
+  fires once; H11 a claim that raises holds only its schedule, then quarantines it and says why in
+  `waiting`); `tests/v1/unit/test_automation_units.py` (the grammar and its 7-day cap, the refusals,
+  `next_due`, no match); `clients/app/test/now.test.ts` (a held schedule is not upcoming; Control's
+  row says why, else the next run); `tests/v1/tui/test_acceptance.py` (a held schedule's Control row
+  reads Waiting with the reason and no Next run).
 - **Mutants:** Z100-Z109 and Z140-Z150 in `tools/mutate_p21.py`, each killed by a test it names
   (Z140 the 7-day cap, Z141 the digit bound, Z142 the in-transaction due check, Z143 the loop
   guard, Z144 the API's null time, Z145 the version bump, Z146 the archived or disarmed skip, Z147
   the per-schedule isolation, Z148 the quarantine, Z149 the simulation count, Z150 the missed count);
-  Z155 the API's `waiting` reason, Z156 a held schedule listed as upcoming.
+  Z155 the API's `waiting` reason, Z156 a held schedule listed as upcoming, Z233 Control's row
+  drops the reason (`scheduleRows`), Z234 the TUI row drops the reason, Z235 the worker keeps no
+  cause for a quarantine, Z236 the view drops the quarantine.

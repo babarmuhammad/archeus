@@ -4,7 +4,7 @@
 // Core's `/v1/status` lists as live, each from the graph read around its mission.
 import { paths, SETTLED, type Approval, type Automation, type KnowledgeItem, type Mission, type RouteDecision } from '../api/generated.ts';
 import type { GEdge, GNode, GraphData, Hidden } from '../graph/model.ts';
-import { present } from './present.ts';
+import { ago, present } from './present.ts';
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -27,6 +27,10 @@ export const upcoming = (ms: readonly Mission[]): Mission[] => ms.filter((m) => 
  * it is not upcoming; Control says why. */
 export const scheduled = (as: readonly Automation[]): Automation[] =>
   as.filter((a) => a.state === 'ENABLED' && a.next_run_at && !a.waiting).sort((x, y) => String(x.next_run_at).localeCompare(String(y.next_run_at)));
+
+/** Control's schedule rows (P21 D9): a held schedule says why, in place of its next run. */
+export const scheduleRows = (a: Automation): [string, string][] =>
+  a.state !== 'ENABLED' ? [] : a.waiting ? [['Waiting', String(a.waiting)]] : a.next_run_at ? [['Next run', ago(a.next_run_at)]] : [];
 
 /** The background automation line (rulebook §9): the enabled ones, which are
  * what watches for its trigger. */
