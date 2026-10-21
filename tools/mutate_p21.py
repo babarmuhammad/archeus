@@ -364,6 +364,15 @@ MUTATIONS = [
      "    tx.cause = caused_by(e)\n    out = None\n    if a.kind == 'plan':",
      "    tx.cause = (e.id,)\n    out = None\n    if a.kind == 'plan':")],
      [CW + 'test_a_decision_made_under_an_event_passes_that_event_on']),
+    # ── C-write addition (owner 2026-10-21): the reply to an execution ending ──
+    ('Z110', "the task's reply to an execution ending carries no cause", [(EX,
+     "        tx.cause = caused_by(ended)",
+     "        tx.cause = before")],
+     [CW + 'test_the_tasks_reply_to_an_end_carries_it_and_the_token_is_still_cleared']),
+    ('Z111', "one end's cause outlives its reply", [(EX,
+     "    finally:\n        tx.cause = before",
+     "    finally:\n        pass")],
+     [CW + 'test_one_command_ending_two_executions_keeps_each_reply_to_its_own_end']),
 ]
 
 

@@ -20,13 +20,14 @@ engine nor the router, and asks `authorization` / `resources` through their
 entry points (a boundary test holds it to that).
 """
 
+import contextlib
 import hashlib
 import hmac
 import time
 
 from ...infra.db import rows
 from ..domain import entities, ids
-from ..domain.events import new_event
+from ..domain.events import caused_by, new_event
 from ..domain.values import Ref
 from . import authorization, lifecycle
 from .commands import active_plan
@@ -64,6 +65,20 @@ def _fire(tx, e_id, trigger, actor, reason, fields=None):
     row, _ev = lifecycle.fire(tx, entities.Execution, e_id, trigger, actor=actor,
                               reason=reason, fields=fields)
     return row.entity
+
+
+@contextlib.contextmanager
+def _after(tx, ended):
+    """What the task and its mission do in reply to *ended* (`execution.ended`, or None
+    when nothing ended) carries it (p21 D13 (b), owner 2026-10-21). Scoped, because one
+    command (an e-stop, a mission stop) can end several executions."""
+    before = tx.cause
+    if ended is not None:
+        tx.cause = caused_by(ended)
+    try:
+        yield
+    finally:
+        tx.cause = before
 
 
 def charged_attempts(tx, task_id):
@@ -195,6 +210,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
               'ended_at': _now_iso(),
               'hook_token_hash': None}
+    ended = None
     if e.state == 'INTENT':
         e = _fire(tx, e.id, 'spawn_failed', actor, reason,
                   dict(fields, exit_reason='abandoned'))
@@ -206,10 +222,11 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
         e = _finish(tx, actor, e, facts, session_actor=(
             actor if actor.kind == 'system'
             else Ref('system', queries.system_principal(tx.conn))))
-        _event(tx, 'execution.ended', e, actor, _end_payload(e))
-    out = _respond(tx, actor, e, reason, failure_class)
-    if stop_reason in BLOCKING:
-        _block(tx, actor, missions, e.mission_id, reason)
+        ended = _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    with _after(tx, ended):
+        out = _respond(tx, actor, e, reason, failure_class)
+        if stop_reason in BLOCKING:
+            _block(tx, actor, missions, e.mission_id, reason)
     return out
 
 
@@ -446,12 +463,12 @@ def _ledger(tx, actor, e, usage, total=False):
 def _ended(tx, actor, e, usage, facts=None, usage_total=False, missing=None):
     _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, facts)
-    _event(tx, 'execution.ended', e, actor, _end_payload(e, facts))
-    if missing is not None:
-        return _respond(tx, actor, e, 'execution %s ended (%s), %s' % (e.id, e.exit_reason,
-                                                                        missing),
-                        'import', no_import=True)
-    return _respond(tx, actor, e, 'execution %s ended (%s)' % (e.id, e.exit_reason))
+    ended = _event(tx, 'execution.ended', e, actor, _end_payload(e, facts))
+    with _after(tx, ended):
+        if missing is not None:
+            return _respond(tx, actor, e, 'execution %s ended (%s), %s' % (
+                e.id, e.exit_reason, missing), 'import', no_import=True)
+        return _respond(tx, actor, e, 'execution %s ended (%s)' % (e.id, e.exit_reason))
 
 
 def _import_once(e, import_revision):
@@ -711,19 +728,21 @@ def record_handoff(tx, *, actor, policy, missions, router, execution_id, now, ex
     _ledger(tx, actor, e, usage, usage_total)
     e = _finish(tx, actor, e, dict(facts or {}, context_insufficient=guarded) if guarded
                 else facts)
-    _event(tx, 'execution.ended', e, actor, _end_payload(e, facts))
-    if refused is not None:
-        # ADR-0047 §5 and T-051 §7: no continuation; the attempt is spent and the
-        # ordinary retry (a fresh execution) or FAILED -> replan takes over
-        t = lifecycle.load(tx, entities.Task, e.task_id).entity
-        if t.state == 'RUNNING':
-            t = charged_failure(tx, actor, t, 'execution_failed_retry', 'execution_failed_final',
-                                'import' if missing else 'context_insufficient',
-                                'execution %s: %s' % (e.id, refused)).entity
-        return {'execution_id': e.id, 'state': e.state, 'continuation': None,
-                'refused': refused, 'task_state': t.state}
-    nxt = continue_task(tx, actor=actor, policy=policy, missions=missions, router=router,
-                        execution=e, now=now)
+    ended = _event(tx, 'execution.ended', e, actor, _end_payload(e, facts))
+    with _after(tx, ended):
+        if refused is not None:
+            # ADR-0047 §5 and T-051 §7: no continuation; the attempt is spent and the
+            # ordinary retry (a fresh execution) or FAILED -> replan takes over
+            t = lifecycle.load(tx, entities.Task, e.task_id).entity
+            if t.state == 'RUNNING':
+                t = charged_failure(tx, actor, t, 'execution_failed_retry',
+                                    'execution_failed_final',
+                                    'import' if missing else 'context_insufficient',
+                                    'execution %s: %s' % (e.id, refused)).entity
+            return {'execution_id': e.id, 'state': e.state, 'continuation': None,
+                    'refused': refused, 'task_state': t.state}
+        nxt = continue_task(tx, actor=actor, policy=policy, missions=missions, router=router,
+                            execution=e, now=now)
     return {'execution_id': e.id, 'state': e.state, 'continuation': nxt['execution_id'],
             'refused': nxt['refused']}
 
@@ -742,8 +761,9 @@ def approval_answered(tx, *, actor, execution_id):
               {'exit_reason': 'rejected', 'charged': True, 'ended_at': _now_iso(),
                'hook_token_hash': None})
     e = _finish(tx, actor, e, None)         # its session; no checkpoint (P9's decision is it)
-    _event(tx, 'execution.ended', e, actor, _end_payload(e))
-    return _respond(tx, actor, e, 'execution %s: approval %s' % (e.id, a.state.lower()))
+    ended = _event(tx, 'execution.ended', e, actor, _end_payload(e))
+    with _after(tx, ended):
+        return _respond(tx, actor, e, 'execution %s: approval %s' % (e.id, a.state.lower()))
 
 
 def _approval(conn, e):
