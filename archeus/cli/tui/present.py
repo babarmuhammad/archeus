@@ -193,12 +193,41 @@ def ago(iso, now_ms):
 
 def consumption_text(led):
     """Today's consumption of an account (ADR-0048 §3, G12): a figure not fully
-    reported is a lower bound, and nothing reported is unknown, never 0."""
+    reported is a lower bound, and nothing reported is unknown, never 0. Work
+    still in flight has not written its usage yet, so it is unknown while it runs."""
+    busy = led['running']
+
     def one(n, done, say, what):
-        return say(n) if done else 'at least ' + say(n) if n else what + ' unknown'
+        if done and not busy:
+            return say(n)
+        if n:
+            return 'at least ' + say(n)
+        return what + ' unknown' + (' (%d running)' % busy if busy else '')
     return '%s · %s' % (
         one(led['tokens_today'], led['complete']['tokens'], '{:,} tokens'.format, 'tokens'),
         one(led['cost_today'], led['complete']['cost'], lambda n: '$%.2f' % n, 'cost'))
+
+
+def usage_text(u, now_ms):
+    """An account's newest usage reading in words (the SPA's usageText, held
+    equal by parity.json): a window not reported is unknown, never 0."""
+    if not u:
+        return 'not observed'
+    resets = u.get('resets_at') or {}
+    w = []
+    for k, pct in (u.get('windows') or {}).items():
+        at = resets.get(k)
+        w.append('%s %s%s' % (k.replace('_', ' ').lower(),
+                              'unknown' if pct is None else '%s%%' % pct,
+                              ' (resets %s)' % ago(at, now_ms) if at else ''))
+    observed = u.get('observed_at')
+    seen = ''
+    if isinstance(observed, (int, float)) and not isinstance(observed, bool):
+        iso = datetime.datetime.fromtimestamp(observed, datetime.timezone.utc).isoformat(
+            timespec='milliseconds').replace('+00:00', 'Z')
+        seen = ', observed %s' % ago(iso, now_ms)
+    return '%s%s%s' % (' · '.join(w) or 'no window reported', seen,
+                       ' from %s' % u['source'] if u.get('source') else '')
 
 
 def consumers_text(c):

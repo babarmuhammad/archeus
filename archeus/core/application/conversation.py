@@ -27,6 +27,7 @@ import re
 
 from ..domain import entities, ids, states
 from ..domain.events import new_event
+from ..domain.words import LABELS
 from ..domain.values import Ref
 from . import calls as C
 from . import knowledge as K
@@ -863,9 +864,7 @@ def _running(w):
 
 
 def _said(machine, state):
-    # the TUI's generated copy of presentation.json is the only Python copy of
-    # the words the clients show for a state (R13-06: "use the same words")
-    from ...cli.tui._tables import LABELS
+    # the generated copy of presentation.json's words (R13-06: "use the same words")
     return LABELS.get(machine, {}).get(state, state)
 
 
@@ -882,7 +881,9 @@ def _status(tx, target):
     from .live import live_work
     work = live_work(tx.conn, target['id'] if target else None)
     if work:
-        text += ' Running now: %s.' % '; '.join(_running(w) for w in work[:10])
+        more = len(work) - 10
+        text += ' Running now: %s%s.' % ('; '.join(_running(w) for w in work[:10]),
+                                         ' (+%d more)' % more if more > 0 else '')
         links += [{'ref': {'kind': 'execution', 'id': w['id']}} for w in work[:10]
                   if w['kind'] == 'execution']
     return text, links

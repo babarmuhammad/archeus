@@ -513,9 +513,19 @@ TYPES = {
         'usage': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'},
         # ADR-0043 §3, §4 (P21): its consumption and effective policy, as the router reads them
         'policy': {'type': 'object'}, 'ledger': {'ref': 'Ledger'},
-        'consumers': {'type': 'array', 'items': {'ref': 'LiveItem'}}},
+        'consumers': {'type': 'array', 'items': {'ref': 'Consumer'}}},
         'required': ['id', 'harness_id', 'label', 'auth_kind', 'health', 'resource_policy',
                      'usage', 'version', 'policy', 'ledger', 'consumers']},
+    # ADR-0043 §3: one live item of an account, the fields its clients name
+    'Consumer': {'type': 'object', 'properties': {
+        'kind': {'type': 'string', 'enum': ['execution', 'own_call']}, 'id': {'type': 'string'},
+        'purpose': {'type': 'string', 'nullable': True},
+        'mission_id': {'type': 'string', 'nullable': True},
+        'task_key': {'type': 'string', 'nullable': True},
+        'state': {'type': 'string', 'nullable': True},
+        'attempt': {'type': 'integer', 'nullable': True},
+        'account_id': {'type': 'string', 'nullable': True}},
+        'required': ['kind', 'id']},
     # ADR-0048 §3: what was reported today is a lower bound unless `complete` says so
     'Ledger': {'type': 'object', 'properties': {
         'tokens_today': {'type': 'integer'}, 'cost_today': {'type': 'number'},

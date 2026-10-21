@@ -286,7 +286,7 @@ function ResourcesSection() {
                         ['Fallback to it', x.resource_policy.fallback],
                         ['Latest usage', usageText(x.usage as Parameters<typeof usageText>[0])],
                         ['Running now', consumersText(x.consumers)],
-                        ['Today', consumptionText(x.ledger)],
+                        ['Today (UTC)', consumptionText(x.ledger)],
                       ]}
                     />
                     <Details rows={[['Account id', x.id], ['Home (config directory)', x.home_ref as string | undefined]]} />

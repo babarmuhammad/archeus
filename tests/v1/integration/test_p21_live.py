@@ -56,17 +56,20 @@ def test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outco
     flying = call(r, source={'kind': 'mission', 'id': mid})
     done = call(r, purpose='brain')
     r.do(C.end_call, who=r.system, route_decision_id=done, outcome={'state': 'ok'})
+    within = call(r, purpose='planner', max_run_s=600)
     lapsed = call(r, purpose='lesson', max_run_s=1)
-    later = time.time() + 5                             # past the lesson's maximum run
+    later = time.time() + 5                             # past the lesson's maximum run only
     work = read(r, live.live_work, now=later)
-    assert [(w['kind'], w['id']) for w in work] == [('execution', e.id), ('own_call', flying)]
+    assert [(w['kind'], w['id']) for w in work] == [
+        ('execution', e.id), ('own_call', flying), ('own_call', within)]
     for w in work:
         schemas.validate(w, schemas.TYPES['LiveItem'])
     own = work[1]
     assert (own['purpose'], own['account_id'], own['mission_id'], own['mission_title']) == (
         'planner', a, mid, 'Ship it')
     assert (own['state'], own['task_id'], own['attempt'], own['context']) == (None,) * 4
-    assert lapsed in [w['id'] for w in read(r, live.live_work)]   # still within its run
+    assert lapsed not in [w['id'] for w in work]
+    assert within in [w['id'] for w in read(r, live.live_work)]   # still within its run, read now
     assert read(r, live.live_work, project_id='prj_none', now=later) == []
     # the account's count is the same derivation (ledger_totals.running)
     assert views(r, later)[a]['ledger']['running'] == len(work)
@@ -96,6 +99,7 @@ def test_g8_an_own_call_in_flight_is_listed_and_counted_on_its_account(r):
     assert [c['id'] for c in v[a]['consumers']] == [flying] and v[a]['ledger']['running'] == 1
     assert (v[b]['consumers'], v[b]['ledger']['running']) == ([], 0)   # only its own account
     v = v[a]
+    assert [set(c) for c in v['consumers']] == [set(resources.CONSUMER_FIELDS)]   # summary only
     assert P.consumers_text(v['consumers']) == 'an own call for the planner'
     r.do(C.end_call, who=r.system, route_decision_id=flying, outcome={'state': 'ok'})
     v = views(r)[a]
@@ -117,6 +121,29 @@ def test_g12_a_reading_that_is_missing_is_said_unknown_never_a_number(r):
     v = views(r, time.time() + 5)[a]
     assert v['ledger']['complete'] == {'tokens': False, 'cost': False}
     assert P.consumption_text(v['ledger']) == 'tokens unknown · cost unknown'
+
+
+def test_g12_work_in_flight_is_unknown_not_a_zero_and_accounts_lists_the_same(r):
+    a = r.account('A')
+    r.dispatch(r.ready())                               # an execution whose usage is not written yet
+    v = views(r)[a]
+    schemas.validate(v, schemas.TYPES['Account'])
+    assert v['ledger'] == {'tokens_today': 0, 'cost_today': 0, 'running': 1,
+                           'complete': {'tokens': False, 'cost': False}}
+    assert P.consumption_text(v['ledger']) == 'tokens unknown (1 running) · cost unknown (1 running)'
+    with r.db.read() as conn:
+        listed = {x['id']: x for x in resources.accounts(conn)}
+    assert (listed[a]['ledger'], [c['id'] for c in listed[a]['consumers']]) == (
+        v['ledger'], [c['id'] for c in v['consumers']])
+
+
+def test_r13_06_the_status_says_how_many_more_run_past_the_ten_it_names(r):
+    r.account('A')
+    for _ in range(11):
+        call(r)
+    text, _links = r.do(lambda tx, actor: CV._status(tx, None))
+    assert text.endswith(' (+1 more).')
+    assert text.count('an own call for the planner') == 10
 
 
 # ── G13: effective policy parity (P21 half) ─────────────────────────────────
@@ -145,3 +172,15 @@ def test_r13_06_status_says_each_state_in_the_words_the_clients_show(r):
     text, _links = r.do(lambda tx, actor: CV._status(tx, None))
     assert 'Ship the fix (Executing)' in text and 't1 attempt 1 (Starting, context' in text
     assert 'EXECUTING' not in text and 'INTENT' not in text
+
+
+def test_s3_core_never_imports_the_tui_and_says_the_same_words():
+    """Core says the state words from its own generated copy; the TUI's copy is the same table."""
+    import pathlib
+    import re
+    from archeus.cli.tui import _tables
+    from archeus.core.domain import words
+    core = pathlib.Path(resources.__file__).resolve().parents[2] / 'core'
+    assert [p.name for p in core.rglob('*.py')
+            if re.search(r'from \.+cli\b|archeus\.cli\b', p.read_text(encoding='utf-8'))] == []
+    assert words.LABELS == _tables.LABELS

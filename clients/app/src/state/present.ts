@@ -346,16 +346,27 @@ export function usageText(u: { windows?: Record<string, number | null>; resets_a
 }
 
 /** Today's consumption of an account (ADR-0048 §3, G12): a figure not fully
- * reported is a lower bound, and nothing reported is unknown — never 0. */
-export function consumptionText(l: { tokens_today: number; cost_today: number; complete: { tokens: boolean; cost: boolean } }): string {
-  const one = (n: number, done: boolean, say: (n: number) => string, what: string) => (done ? say(n) : n ? `at least ${say(n)}` : `${what} unknown`);
+ * reported is a lower bound, and nothing reported is unknown — never 0. Work
+ * still in flight has not written its usage yet, so it is unknown while it runs. */
+export function consumptionText(l: { tokens_today: number; cost_today: number; running: number; complete: { tokens: boolean; cost: boolean } }): string {
+  const busy = l.running;
+  const one = (n: number, done: boolean, say: (n: number) => string, what: string) =>
+    done && !busy ? say(n) : n ? `at least ${say(n)}` : `${what} unknown${busy ? ` (${busy} running)` : ''}`;
   return `${one(l.tokens_today, l.complete.tokens, (n) => `${n.toLocaleString('en-US')} tokens`, 'tokens')} · ${one(l.cost_today, l.complete.cost, (n) => `$${n.toFixed(2)}`, 'cost')}`;
 }
 
 /** What runs on an account now (ADR-0043 §3, G8): its live work, by name. */
-export function consumersText(c: { kind: string; task_key?: string; attempt?: number | null; purpose?: string }[]): string {
+export function consumersText(c: { kind: string; task_key?: string | null; attempt?: number | null; purpose?: string | null }[]): string {
   if (!c.length) return 'nothing';
   return c.map((x) => (x.kind === 'own_call' ? `an own call for the ${(x.purpose ?? '').split('_').join(' ')}` : `${x.task_key} attempt ${x.attempt}`)).join('; ');
+}
+
+/** The header's count of live work: attempts are "running"; own calls are
+ * counted apart, because they never animate (G8). */
+export function liveCountText(live: { kind?: string }[]): string {
+  const attempts = live.filter((x) => x.kind !== 'own_call').length;
+  const own = live.length - attempts;
+  return `${attempts} running${own ? ` · ${own} own call${own === 1 ? '' : 's'} in flight` : ''}`;
 }
 
 // ── the emergency stop in Control → About (P20 F7, F8) ──

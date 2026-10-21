@@ -7,6 +7,7 @@ route, a session or a verdict.
 """
 
 import json
+import time
 
 from .._api import endpoints
 from . import present as P
@@ -879,10 +880,10 @@ def resources_section(app, doc):
                                              % (rp['allocation_pct'], rp['reserve_pct'],
                                                 rp['brain_reserve_pct']))),
                     ('Fallback to it', T(app, rp['fallback'])),
-                    ('Latest usage', T(app, json.dumps(x['usage'])) if x.get('usage')
-                     else app.st.paint('not observed')),
+                    ('Latest usage', T(app, P.usage_text(x['usage'], time.time() * 1000))
+                     if x.get('usage') else app.st.paint('not observed')),
                     ('Running now', T(app, P.consumers_text(x['consumers']))),
-                    ('Today', T(app, P.consumption_text(x['ledger'])))], indent=4)
+                    ('Today (UTC)', T(app, P.consumption_text(x['ledger'])))], indent=4)
     # P20 D6 (ADR-0049): read-only here; `archeus executions opt-in|opt-out` sets them
     doc.h('What executions may load from their settings sources')
     doc.hint('Every execution excludes its account\'s, project\'s and local settings '

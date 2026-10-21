@@ -144,7 +144,7 @@ interface Account {
   version: number;
   policy: Record<string, unknown>;
   ledger: Ledger;
-  consumers: LiveItem[];
+  consumers: Consumer[];
   [field: string]: unknown;
 }
 ```
@@ -395,6 +395,21 @@ interface ConstraintDeclared {
   knowledge_item: KnowledgeItem;
   changed: boolean;
   stale: string[];
+}
+```
+
+### `Consumer`
+
+```ts
+interface Consumer {
+  kind: 'execution' | 'own_call';
+  id: string;
+  purpose?: string | null;
+  mission_id?: string | null;
+  task_key?: string | null;
+  state?: string | null;
+  attempt?: number | null;
+  account_id?: string | null;
 }
 ```
 

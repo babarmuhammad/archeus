@@ -13,7 +13,7 @@ import { reducedMotion } from '../graph/loop';
 import { MAP_MIN_WIDTH, useWide } from '../graph/wide';
 import { objectHref } from '../nav/destinations';
 import { activeMissions, automationLine, mapSeeds, recentDecisions, stateSentence, upcoming } from '../state/now';
-import { ago } from '../state/present';
+import { ago, liveCountText } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
 import { timeline } from '../state/timeline';
 import { ActionButton, Changed, Empty, Fresh, Loadable, RefLabel, Section, StateBadge, refName, thread, useChanged } from '../components/ui';
@@ -195,7 +195,7 @@ export function OfflineNow({ kept }: { kept: Kept[] }) {
         </p>
         <h1>Now</h1>
         <p className="state-sentence">{stateSentence(active.length, att.count)}</p>
-        <p className="hint">{`${status.live.length} running`}{status.armed ? null : ' · Emergency stop engaged'}</p>
+        <p className="hint">{liveCountText(status.live)}{status.armed ? null : ' · Emergency stop engaged'}</p>
         <Section title="Needs you">
           {att.items.length ? (
             <ul className="rows">

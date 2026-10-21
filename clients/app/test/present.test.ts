@@ -2,7 +2,7 @@
 // M09, M10, M13).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endReason, ended, explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
+import { endReason, ended, explainState, firedText, inline, liveCountText, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
 import { PRESENTATION } from '../src/state/presentation.ts';
 
 test('harness, model and account stay three fields; nothing is merged or borrowed (M13)', () => {
@@ -137,4 +137,11 @@ test('a failed attempt says why in words; a good or live one says nothing (Appen
   assert.equal(endReason({ state: 'ENDED_REJECTED', exit_reason: 'rejected' }), 'an approval it needed was rejected');
   for (const x of [{ state: 'ENDED_ERROR', exit_reason: 'error', failure: 'task', exit_code: 3 }])
     assert.ok(!/\d/.test(endReason(x) ?? ''), 'no raw code in the words');
+});
+
+test('the header counts running attempts; own calls are counted apart, never as running (G8)', () => {
+  assert.equal(liveCountText([]), '0 running');
+  assert.equal(liveCountText([{ kind: 'execution' }, { kind: 'execution' }]), '2 running');
+  assert.equal(liveCountText([{ kind: 'own_call' }]), '0 running · 1 own call in flight');
+  assert.equal(liveCountText([{ kind: 'execution' }, { kind: 'own_call' }, { kind: 'own_call' }]), '1 running · 2 own calls in flight');
 });
