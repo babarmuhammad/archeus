@@ -2,7 +2,7 @@
 // M09, M10, M13).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endReason, ended, explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
+import { endReason, ended, everyText, explainState, firedText, inline, mentions, presenceLabel, resourceLine, statusLine, technical, templateText, triggerText, usageText } from '../src/state/present.ts';
 import { PRESENTATION } from '../src/state/presentation.ts';
 
 test('harness, model and account stay three fields; nothing is merged or borrowed (M13)', () => {
@@ -108,6 +108,14 @@ test('an automation says when it fires, what it asks for and why it fired, in wo
   assert.equal(templateText({ title: 'Fix it', objective: 'Tests pass', success_criteria: [{}] }), 'Start a mission “Fix it”: Tests pass (1 success criterion)');
   assert.equal(firedText({ type: 'mission.failed', where: { project: { test: 'Atlas', value: 'Atlas' } } }), 'It fired on a mission.failed event: project was Atlas.');
   for (const s of [t, firedText({ type: 'x', where: { a: { test: { glob: '*' }, value: { deep: 1 } } } })]) assert.ok(!JSONISH.test(s), s);
+});
+
+test('a schedule says its period in words, and so does a run it fired (P21 D9)', () => {
+  assert.equal(triggerText({ kind: 'schedule', every: '15m' }), 'Every 15 minutes');
+  assert.equal(triggerText({ kind: 'schedule', every: '1h' }), 'Every hour');
+  assert.equal(triggerText({ kind: 'schedule', every: '2d' }), 'Every 2 days');
+  assert.equal(everyText('90s'), '90 seconds');
+  assert.equal(firedText({ type: 'automation.schedule_due', where: {}, schedule: { every: '1d', due_at: '2026-10-21T09:00:00.000Z' } }), 'It fired on its schedule, every day.');
 });
 
 test('usage reads as windows and when it was seen; an unreported window is unknown, never 0 (R1)', () => {

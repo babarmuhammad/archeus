@@ -679,6 +679,8 @@ TYPES = {
         'project_id': {'type': 'string', 'nullable': True},
         'max_depth': {'type': 'integer'}, 'rate_limit': {'type': 'integer'},
         'armed_seq': {'type': 'integer'}, 'version': {'type': 'integer'},
+        # P21 slice H (D9): a schedule trigger's next due time
+        'next_run_at': {'type': 'string', 'nullable': True},
         'runs': {'type': 'array', 'items': {'ref': 'AutomationRun'}}},
         'required': ['id', 'name', 'state', 'trigger', 'template', 'version']},
     'AutomationRun': {'type': 'object', 'open': True, 'properties': {
@@ -700,7 +702,9 @@ TYPES = {
     'AutomationSimulation': {'type': 'object', 'properties': {
         'automation_id': {'type': 'string'}, 'days': {'type': 'integer'},
         'examined': {'type': 'integer'},
-        'matched': {'type': 'array', 'items': {'type': 'object'}}},
+        'matched': {'type': 'array', 'items': {'type': 'object'}},
+        # a schedule: how many times it would have come due in the window
+        'scheduled': {'type': 'integer'}},
         'required': ['automation_id', 'days', 'examined', 'matched']},
     'AutomationExplanation': {'type': 'object', 'properties': {
         'run': {'ref': 'AutomationRun'}, 'automation': {'type': 'object'},

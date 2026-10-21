@@ -42,6 +42,14 @@ def _ago(now, seconds):
     return _iso(datetime.fromisoformat(now.replace('Z', '+00:00')) - timedelta(seconds=seconds))
 
 
+def _epoch(iso):
+    return datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
+
+
+def _at(epoch):
+    return _iso(datetime.fromtimestamp(epoch, timezone.utc))
+
+
 def _event(conn, seq):
     r = conn.execute('SELECT * FROM events WHERE seq = ?', (seq,)).fetchone()
     return None if r is None else outbox.decode(r)
@@ -169,6 +177,9 @@ def set_state(tx, *, actor, automation_id, action, expected_version=None):
     trigger = {'ENABLED': 'user_reenables' if row.entity.state == 'SUSPENDED'
                else 'enable_within_policy', 'DISABLED': 'disable', 'ARCHIVED': 'archive'}[to]
     fields = {'armed_seq': outbox.head(tx.conn)} if to == 'ENABLED' else None
+    # A schedule's first time is one period after enabling (P21 D9), not at once.
+    if fields and row.entity.trigger.get('kind') == 'schedule':
+        fields['next_run_at'] = _at(_epoch(tx.now) + matcher.every_s(row.entity.trigger))
     row, e = lifecycle.fire(tx, entities.Automation, automation_id, trigger, actor=actor,
                             reason='%sd on request' % action, fields=fields,
                             expected_version=expected_version)
@@ -193,6 +204,35 @@ def react(tx, *, actor, seq):
             continue                                 # claimed by an earlier delivery
         runs.append(_claim(tx, actor, a, e, why))
     return {'runs': runs, 'settled': settled}
+
+
+def due(conn, now):
+    """The ENABLED schedule automations whose time has come (P21 D9)."""
+    return [a for a in enabled(conn) if a.trigger.get('kind') == 'schedule'
+            and a.next_run_at and a.next_run_at <= now]
+
+
+def fire_due(tx, *, actor):
+    """Claim-and-advance (ADR-0020, state-machines §8): for each schedule whose
+    time has come, in this one transaction, record that it came due, move
+    `next_run_at` past now and claim its run, which then passes the same guards
+    as an event's (rate limit, loop guard, e-stop). A time is claimed once: a
+    second pass, a second worker or a restart finds it already moved on, and the
+    times a stopped Core missed fire once together. Returns the run ids."""
+    runs = []
+    for a in due(tx.conn, tx.now):
+        nxt = _at(matcher.next_due(_epoch(a.next_run_at), matcher.every_s(a.trigger),
+                                   _epoch(tx.now)))
+        tx.update(entities.Automation, a.id, {'next_run_at': nxt}, actor=actor)
+        e = tx.append(new_event('automation.schedule_due', Ref('automation', a.id), actor,
+                                payload={'due_at': a.next_run_at, 'every': a.trigger['every'],
+                                         'next_run_at': nxt},
+                                workspace=a.workspace_id, project=a.project_id))
+        why = {'type': e.type, 'where': {},
+               'schedule': {'every': a.trigger['every'], 'due_at': a.next_run_at},
+               'scope': {'workspace': a.workspace_id, 'project': a.project_id}}
+        runs.append(_claim(tx, actor, a, e, why))
+    return {'runs': runs}
 
 
 def settles(e):
@@ -386,9 +426,13 @@ def explain(conn, run_id):
 
 def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT):
     """The events of the last *days* the automation's trigger and scope would
-    have fired on, and why (ADR-0020). Writes nothing; depth, rate and state
-    are not simulated — they depend on what the runs would have done."""
+    have fired on, and why (ADR-0020); for a schedule, how many times it would
+    have come due. Writes nothing; depth, rate and state are not simulated —
+    they depend on what the runs would have done."""
     a = get_automation(conn, automation_id, runs=0)
+    if a['trigger'].get('kind') == 'schedule':
+        return {'automation_id': automation_id, 'days': days, 'examined': 0, 'matched': [],
+                'scheduled': days * 86400 // matcher.every_s(a['trigger'])}
     since = _ago(now, days * 86400)
     hits, examined = [], 0
     for r in conn.execute('SELECT * FROM events WHERE at >= ? AND type = ? ORDER BY seq',

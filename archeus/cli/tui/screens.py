@@ -836,8 +836,10 @@ def automations(app, doc):
         doc.add()
         doc.add('  ' + T(app, a['name'], 'text', bold=True) + '  '
                 + app.st.badge('automation', a['state']), acts=acts)
-        doc.kv([('When', T(app, json.dumps(a['trigger']))),
-                ('Archeus will', T(app, json.dumps(a['template']))),
+        doc.kv([('When', T(app, json.dumps(a['trigger'])))]
+               + ([('Next run', T(app, ago(app, a['next_run_at'])))]
+                  if a['state'] == 'ENABLED' and a.get('next_run_at') else [])
+               + [('Archeus will', T(app, json.dumps(a['template']))),
                 ('Depth limit · rate limit', T(app, '%s · %s per hour' % (
                     a.get('max_depth', '—'), a.get('rate_limit', '—'))))], indent=4)
         runs = (app.read(endpoints.get_automation(a['id']))['data'] or {}).get('runs') or []

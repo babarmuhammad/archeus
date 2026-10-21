@@ -457,3 +457,53 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (the tab replays every event from the first, in a real browser); `clients/app/test/shell.test.ts`
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
+
+### Slice H as built (2026-10-21, card T-129)
+
+Built under D9 "Build in P21" and the owner's 2026-10-21 naming of slice H under D0 ("Yes, all
+five (Recommended)", recorded on the board's "Owner 2026-10-21" block and appended to D0 at
+integration). It changes no routing behaviour: a schedule only asks for a mission, through P14.
+
+- **The trigger.** `{kind: 'schedule', every}` beside P14's `{kind: 'event', type, where}`
+  (`archeus/core/automation/matcher.py` `validate_trigger`, `every_s`, `next_due`; the matcher stays
+  pure). `every` is the legacy loops' interval grammar (`claude_sessions/loops.py`
+  `_interval_minutes`: `15m`, `2h`, `1d`, a bare number is minutes), stored normalised (`' 2 h '`
+  is `2h`); under one minute, an unparsable value or any other key is refused when the automation
+  is written. Condition triggers stay unbuilt (p14 D14). An event never matches a schedule trigger,
+  and the due event below is an `automation.*` type, which no event trigger may name (p14 D10).
+- **`next_run_at`.** A field of the automation's body (`entities.Automation.next_run_at`), so no
+  migration: §6's "numbered migration" for the schedule state is not needed (deviation, declared
+  here). Enabling sets it one period after now (`automations.set_state`); re-enabling restarts the
+  clock, so a disabled period is never caught up. It is read as is by `GET /v1/automations` and
+  `/v1/automations/{id}` (`next_run_at` in the `Automation` schema).
+- **Claim-and-advance (ADR-0020, state-machines §8).** `automations.fire_due`, ONE writer command:
+  for each ENABLED schedule whose `next_run_at` is at or before the transaction's `now`, it moves
+  `next_run_at` to the first time on its grid after now, appends `automation.schedule_due`
+  (payload: `due_at`, `every`, `next_run_at`; a new registered type) and claims the run through
+  P14's own `_claim`: the same project, depth, rate-limit, loop-guard, e-stop and execution-actor
+  guards as an event's run, the due event as `triggering_event_seq`, the rationale
+  `{type, where: {}, schedule: {every, due_at}, scope}`. A time is claimed once: a second pass, a
+  second worker or a restart finds it moved on. **Missed times:** the times a stopped Core missed
+  fire ONCE together, then the grid resumes (the canonical claim-and-advance; neither ADR-0020
+  nor ADR-0030 says more, so it is an owner question on the T-129 card, not a decision made here).
+- **When it runs.** The automation worker (`worker.py` `_fire_due`) checks for due schedules at
+  the start of every pass, which runs on every commit and at least every `WORLD_POLL_S` (10 s), so
+  a time fires at most that late. A claim that raises is logged and retried at the next pass
+  (`ponytail:` note there: per-automation hold and quarantine, as events have, if one ever keeps
+  faulting).
+- **Simulation.** `simulate` on a schedule answers how many times it would have come due in the
+  window (`scheduled`), not events.
+- **Seen.** SPA: Control → Automations says "Every 15 minutes" and, while enabled, "Next run in
+  12 min" (`present.ts` `everyText`, `triggerText`; `Control.tsx`); Now's Upcoming adds the
+  enabled schedules, soonest first, after the approved and planning missions (`now.ts`
+  `scheduled`, `Now.tsx`; Upcoming step 2 of rulebook §9); a run's "why" says "It fired on its
+  schedule, every day" (`firedText`). TUI: Control → Automations shows "Next run". The offline
+  Now snapshot does not keep the automations read, so it shows no schedule.
+- **Tests:** `tests/v1/integration/test_schedule_triggers.py` (H01 fires at its time and not
+  before, once; H02 a restart fires four missed times once and keeps the grid; H03 two workers on
+  one time claim it once; H04 the loop guard suspends a schedule; H05 a disabled schedule does
+  not fire and re-enabling restarts its clock; H06 events and schedules never cross; H07 over
+  HTTP: `next_run_at`, the simulation, the one-minute floor); `tests/v1/unit/test_automation_units.py`
+  (the grammar, the refusals, `next_due`, no match); `clients/app/test/present.test.ts`,
+  `now.test.ts`.
+- **Mutants:** Z100-Z109 in `tools/mutate_p21.py`, each killed by the test it names.

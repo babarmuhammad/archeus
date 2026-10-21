@@ -1,6 +1,8 @@
 """The automation worker (P14, p14-design-gate §5, §11, §16): an outbox
 consumer (`consumers.deliver`, at-least-once, in seq order) that runs ONE
-writer command — `automations.react` — per event an automation cares about.
+writer command — `automations.react` — per event an automation cares about,
+and, before it, one `automations.fire_due` when a schedule's time has come
+(P21 slice H, claim-and-advance).
 
 An event nothing matches costs one read and no write. A matching event's
 runs, missions and suspensions commit together, so a re-delivery (a crash
@@ -22,6 +24,7 @@ import time
 from ...infra.db.writer import WriterClosed
 from ...infra.eventlog import consumers, outbox
 from ..application import automations as A
+from ..domain import events as ev
 
 log = logging.getLogger('archeus.core')
 
@@ -55,7 +58,25 @@ class Automations:
         return []
 
     def pass_once(self):
-        return {'changed': consumers.deliver(self.db, CONSUMER, self._handle) > 0}
+        fired = self._fire_due()
+        return {'changed': consumers.deliver(self.db, CONSUMER, self._handle) > 0 or fired}
+
+    def _fire_due(self):
+        """P21 D9: claim the schedules whose time has come. A pass runs on every
+        commit and at least every poll interval, so a time fires that late at
+        most (WORLD_POLL_S)."""
+        with self.db.read() as conn:
+            if not A.due(conn, ev.now_iso()):
+                return False
+        try:
+            return bool(self.db.writer.execute(A.fire_due, {'actor': self.actor})['runs'])
+        except WriterClosed:
+            raise
+        except Exception:
+            # ponytail: a claim that keeps faulting is retried and logged every pass; hold
+            # and quarantine it per automation, as events are, if one ever does
+            log.exception('automation: claiming the due schedules failed; retried next pass')
+            return False
 
     def _relevant(self, e):
         if A.settles(e):

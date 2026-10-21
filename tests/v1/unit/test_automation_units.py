@@ -59,15 +59,44 @@ def test_a_predicate_tests_type_value_and_glob_exactly():
     ({'type': 'no.such_type'}, 'not a registered'),
     ({'type': 'automation_run.state_changed'}, 'loop by construction'),     # D10
     ({'type': 'automation.created'}, 'loop by construction'),
-    ({'kind': 'schedule', 'type': 'mission.created'}, 'not built'),         # D14
+    ({'type': 'automation.schedule_due'}, 'loop by construction'),         # P21 D9
+    ({'kind': 'condition', 'type': 'mission.created'}, 'not built'),       # D14
     ({'type': 'mission.created', 'where': {'a.b': 1}}, 'top-level'),
     ({'type': 'mission.created', 'where': {'a': [1]}}, 'string, number'),
     ({'type': 'mission.created', 'where': {'a': {'regex': '.*'}}}, 'glob'),
     ({'type': 'mission.created', 'cron': '* * * * *'}, 'has no'),
+    ({'kind': 'schedule', 'type': 'mission.created', 'every': '1h'}, 'has no'),
+    ({'kind': 'schedule', 'every': '* * * * *'}, 'count and a unit'),
+    ({'kind': 'schedule', 'every': 15}, 'count and a unit'),
+    ({'kind': 'schedule', 'every': '30s'}, 'once a minute'),
+    ({'kind': 'schedule', 'every': '0m'}, 'once a minute'),
 ])
 def test_a_trigger_that_cannot_be_written_is_refused(trigger, why):
     with pytest.raises(M.Invalid, match=why):
         M.validate_trigger(trigger, TYPES)
+
+
+# ── schedule triggers (P21 slice H, p21-design-gate D9) ──
+
+@pytest.mark.parametrize('every, stored, seconds', [
+    ('15m', '15m', 900), (' 2 h ', '2h', 7200), ('1d', '1d', 86400), ('90', '90m', 5400),
+    ('60s', '60s', 60), ('007m', '7m', 420),
+])
+def test_a_schedule_takes_the_legacy_loops_interval_grammar(every, stored, seconds):
+    t = M.validate_trigger({'kind': 'schedule', 'every': every}, TYPES)
+    assert t == {'kind': 'schedule', 'every': stored} and M.every_s(t) == seconds
+
+
+def test_the_next_time_is_the_first_on_the_grid_after_now():
+    assert M.next_due(1000, 60, 999) == 1000                # not due yet: unchanged
+    assert M.next_due(1000, 60, 1000) == 1060               # due now: one period on
+    assert M.next_due(1000, 60, 1059.9) == 1060
+    assert M.next_due(1000, 60, 1000 + 4.5 * 60) == 1300    # four missed times: one claim
+
+
+def test_an_event_never_matches_a_schedule_trigger():
+    t = M.validate_trigger({'kind': 'schedule', 'every': '1m'}, TYPES)
+    assert M.matches(t, 'mission.created', {}) == (False, None)
 
 
 # ── templates (E11, E14, §13) ──

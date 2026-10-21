@@ -87,6 +87,9 @@ TYPES = (
      'an automation was written (payload: name, trigger, project) — P14'),
     ('automation.state_changed', 'automation', 'user', False,
      'an automation was enabled, disabled, suspended by its loop guard or archived'),
+    ('automation.schedule_due', 'automation', 'user', False,
+     'a schedule trigger came due and its next time moved past now (payload: due_at, every, '
+     'next_run_at) — P21 slice H'),
     ('automation_run.created', 'automation_run', 'system', False,
      'an automation claimed an event (payload: automation, event_seq, depth)'),
     ('automation_run.state_changed', 'automation_run', 'user', False,

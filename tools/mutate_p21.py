@@ -49,6 +49,12 @@ GR = 'archeus/core/application/grammar.py'
 CV = 'archeus/core/application/conversation.py'
 DG = 'archeus/core/world/digest.py'
 TT = 'tests/v1/integration/test_trace.py'
+AUT = 'archeus/core/application/automations.py'
+MAT = 'archeus/core/automation/matcher.py'
+WRK = 'archeus/core/automation/worker.py'
+SH = 'tests/v1/integration/test_schedule_triggers.py::'
+AU = 'tests/v1/unit/test_automation_units.py::'
+H01 = SH + 'test_H01_a_schedule_fires_at_its_time_not_before_and_moves_on'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -317,6 +323,50 @@ MUTATIONS = [
      "    return 'conversation', c.entity.id",
      "    return 'mission', c.entity.id")],
      [TT + '::test_the_digest_folds_messages_into_their_mission_or_one_new_messages_row']),
+    # ── P21 slice H: schedule triggers and next_run_at (D9, claim-and-advance) ──
+    ('Z100', 'a schedule fires before its time', [(AUT,
+     "            and a.next_run_at and a.next_run_at <= now]",
+     "            and a.next_run_at]")],
+     [H01]),
+    ('Z101', 'claiming a time does not move it on', [(AUT,
+     "        tx.update(entities.Automation, a.id, {'next_run_at': nxt}, actor=actor)",
+     "        pass")],
+     [H01]),
+    ('Z102', 'the times a stopped Core missed fire one by one', [(MAT,
+     "    return due + every * ((now - due) // every + 1) if now >= due else due",
+     "    return due + every if now >= due else due")],
+     [SH + 'test_H02_a_restart_fires_the_times_it_missed_once_then_keeps_the_grid',
+      AU + 'test_the_next_time_is_the_first_on_the_grid_after_now']),
+    ('Z103', 'the next time skips a period', [(MAT,
+     "    return due + every * ((now - due) // every + 1) if now >= due else due",
+     "    return due + every * ((now - due) // every + 2) if now >= due else due")],
+     [AU + 'test_the_next_time_is_the_first_on_the_grid_after_now', H01]),
+    ('Z104', 'enabling a schedule sets no first time', [(AUT,
+     "        fields['next_run_at'] = _at(_epoch(tx.now) + matcher.every_s(row.entity.trigger))",
+     "        pass")],
+     [H01, SH + 'test_H05_a_disabled_schedule_does_not_fire_and_re_enabling_restarts_its_clock']),
+    ('Z105', 'the worker never claims a due schedule', [(WRK,
+     "        fired = self._fire_due()",
+     "        fired = False")],
+     [H01]),
+    ('Z106', 'a schedule may fire every second', [(MAT,
+     "    if every_s({'every': every}) < MIN_EVERY_S:",
+     "    if every_s({'every': every}) < 1:")],
+     [AU + 'test_a_trigger_that_cannot_be_written_is_refused']),
+    ('Z107', 'a bare number is read as seconds', [(MAT,
+     "    every = '%d%s' % (int(m.group(1)), m.group(2) or 'm')",
+     "    every = '%d%s' % (int(m.group(1)), m.group(2) or 's')")],
+     [AU + 'test_a_schedule_takes_the_legacy_loops_interval_grammar']),
+    ('Z108', 'an event is tested against a schedule trigger', [(MAT,
+     "    if trigger.get('kind', 'event') != 'event' or event_type != trigger['type']:",
+     "    if event_type != trigger['type']:")],
+     [AU + 'test_an_event_never_matches_a_schedule_trigger',
+      SH + 'test_H06_an_event_never_fires_a_schedule_and_its_due_event_fires_no_event_rule']),
+    ('Z109', 'a disabled schedule still fires', [(AUT,
+     "    return [a for a in enabled(conn) if a.trigger.get('kind') == 'schedule'",
+     "    return [a for a in (r.entity for r in rows.where(conn, entities.Automation))\n"
+     "            if a.trigger.get('kind') == 'schedule'")],
+     [SH + 'test_H05_a_disabled_schedule_does_not_fire_and_re_enabling_restarts_its_clock']),
 ]
 
 

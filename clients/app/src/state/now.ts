@@ -18,10 +18,14 @@ export function stateSentence(active: number, needsYou: number): string {
 export const activeMissions = (ms: readonly Mission[]): Mission[] => ms.filter((m) => !SETTLED.includes(m.state));
 
 /** Upcoming, step 1 (rulebook §9): approved and planning missions — the
- * states the screen calls Approved and Planning — until Core has schedules
- * (P21). */
+ * states the screen calls Approved and Planning. */
 export const UPCOMING: readonly string[] = ['approved', 'planning'];
 export const upcoming = (ms: readonly Mission[]): Mission[] => ms.filter((m) => UPCOMING.includes(present('mission', m.state).cls));
+
+/** Upcoming, step 2 (P21 D9): the enabled schedules, soonest first, each at
+ * Core's own `next_run_at`. */
+export const scheduled = (as: readonly Automation[]): Automation[] =>
+  as.filter((a) => a.state === 'ENABLED' && a.next_run_at).sort((x, y) => String(x.next_run_at).localeCompare(String(y.next_run_at)));
 
 /** The background automation line (rulebook §9): the enabled ones, which are
  * what watches for its trigger. */
