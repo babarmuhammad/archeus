@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archeus V2 prototype (fake data)</title>
+<meta name="description" content="Clickable prototype of the Archeus V2 living space. Fake data only.">
+<meta name="theme-color" content="#0E1116">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2096%2096%27%3E%3Crect%20width=%2796%27%20height=%2796%27%20rx=%2720%27%20fill=%27%230E1116%27/%3E%3Cpath%20d=%27M48,14,52,44,82,48,52,52,48,82,44,52,14,48,44,44Z%27%20fill=%27%23F4F1EA%27/%3E%3Ccircle%20cx=%2748%27%20cy=%2748%27%20r=%276%27%20fill=%27%23F2B544%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="places" aria-label="Places">
+    <a href="#/now" data-nav="now">Now</a>
+    <a href="#/mission/m-date" data-nav="mission">Mission</a>
+    <a href="#/shared" data-nav="shared">Shared</a>
+    <a href="#/phone" data-nav="phone">Phone</a>
+    <a href="#/start" data-nav="start">Start</a>
+    <a href="#/plan/m-search" data-nav="plan">Plan</a>
+  </nav>
+
+  <div class="page">
+    <header class="top">
+      <p class="brand">ARCHEUS <span>V2</span></p>
+      <p class="proto">PROTOTYPE · fake data</p>
+      <p class="core-status">Not stopped · accepts new work</p>
+      <button type="button" class="btn stop-btn" data-act="stop">Stop</button>
+    </header>
+    <p id="say" class="say" role="status"></p>
+
+    <main id="main">
+      <section class="screen" id="s-now" hidden>
+        <h1 tabindex="-1" data-sentence></h1>
+        <div class="stage"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+        <h2>In order</h2>
+        <ol class="mirror" id="now-list"></ol>
+      </section>
+
+      <section class="screen" id="s-mission" hidden>
+        <p class="crumb"><a href="#/now">Overview</a> / <span data-m-project></span> / <span data-m-crumb></span></p>
+        <h1 tabindex="-1" data-m-title></h1>
+        <p class="small" data-m-meta></p>
+        <p class="state-line" data-m-state></p>
+        <div class="stage stage-mission"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+        <div class="grid2">
+          <section>
+            <h2>Phases</h2>
+            <ol class="phases" id="m-phases"></ol>
+          </section>
+          <section>
+            <h2>Latest record</h2>
+            <p data-m-latest></p>
+            <h2>Task</h2>
+            <p data-m-task></p>
+            <h2>Links</h2>
+            <p data-m-links></p>
+          </section>
+        </div>
+      </section>
+
+      <section class="screen" id="s-shared" hidden>
+        <h1 tabindex="-1" data-sentence></h1>
+        <div class="grid2 shared-grid">
+          <div class="stage stage-shared"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+          <aside class="panel">
+            <h2>Project · Archeus</h2>
+            <p class="state-line st-done">Verified (fixture)</p>
+            <dl class="facts">
+              <dt>Missions</dt><dd>3 recorded</dd>
+              <dt>Agents</dt><dd>2 recorded</dd>
+              <dt>Paired phone</dt><dd>Recent</dd>
+              <dt>Other people</dt><dd>Future contract, not available</dd>
+            </dl>
+            <p class="small">Same records, same permissions. A device is an endpoint, not an agent or a person.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="screen screen-phone" id="s-phone" hidden>
+        <div class="phone-frame">
+          <p class="phone-brand">ARCHEUS <span class="small">Core connected</span></p>
+          <h1 tabindex="-1" data-sentence></h1>
+          <p class="phone-line" data-phone-line></p>
+          <div class="stage stage-phone" id="phone-stage"><div class="stage-inner"><canvas aria-hidden="true"></canvas></div></div>
+          <aside class="sheet" id="sheet" hidden aria-labelledby="sheet-h"></aside>
+          <div class="dock">
+            <a class="btn" href="#/start">Tell</a>
+            <details class="places-d">
+              <summary class="btn">Places</summary>
+              <ul>
+                <li><a href="#/now">Now</a></li>
+                <li><a href="#/mission/m-date">Mission</a></li>
+                <li><a href="#/shared">Shared</a></li>
+                <li><a href="#/start">Start</a></li>
+                <li><a href="#/plan/m-search">Plan</a></li>
+              </ul>
+            </details>
+            <button type="button" class="btn stop-btn" data-act="stop">Stop</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="s-start" hidden>
+        <h1 tabindex="-1">Start work</h1>
+        <form id="tell-form" class="block" novalidate>
+          <h2><label for="tell-text">Tell Archeus what to do</label></h2>
+          <textarea id="tell-text" rows="4" maxlength="2000" aria-describedby="tell-help"></textarea>
+          <p class="small" id="tell-help">Nothing is sent. Cancel clears the draft. This prototype adds a star to this page only.</p>
+          <p class="error" id="tell-error" role="alert"></p>
+          <div class="row">
+            <button type="submit" class="btn primary">Send (fake)</button>
+            <button type="button" class="btn" id="tell-cancel">Cancel</button>
+          </div>
+        </form>
+        <form id="mission-form" class="block" novalidate>
+          <h2>Or start a mission in a project</h2>
+          <label for="m-project">Project</label>
+          <select id="m-project"><option>Archeus</option><option>Notes</option></select>
+          <label for="m-title">Mission title</label>
+          <input id="m-title" type="text" maxlength="120">
+          <label for="m-objective">Objective</label>
+          <textarea id="m-objective" rows="3" maxlength="2000"></textarea>
+          <label for="m-criteria">Success criteria, one per line</label>
+          <textarea id="m-criteria" rows="3" maxlength="2000"></textarea>
+          <p class="error" id="m-error" role="alert"></p>
+          <div class="row">
+            <button type="submit" class="btn primary">Create mission (fake)</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="screen" id="s-plan" hidden>
+        <h1 tabindex="-1" data-plan-title></h1>
+        <p class="small" data-plan-meta></p>
+        <p class="state-line" data-plan-why></p>
+        <h2>Plan tasks</h2>
+        <ol class="tasks" id="plan-tasks"></ol>
+        <h2>Comments</h2>
+        <p class="small" data-plan-count></p>
+        <h2>What each decision does</h2>
+        <ul class="consequences" id="plan-consequences"></ul>
+        <form id="plan-form" class="block" novalidate>
+          <label for="plan-note">What should change? (the planner reads this)</label>
+          <textarea id="plan-note" rows="4" maxlength="2000"></textarea>
+          <p class="small" id="plan-selected"></p>
+          <div class="row">
+            <button type="button" class="btn primary" data-act="decide" data-kind="approve">Approve plan…</button>
+            <button type="button" class="btn" data-act="decide" data-kind="request">Request changes…</button>
+            <button type="button" class="btn" data-act="decide" data-kind="reject">Reject…</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</div>
+
+<dialog id="confirm" aria-labelledby="confirm-title">
+  <form method="dialog">
+    <h2 id="confirm-title"></h2>
+    <p id="confirm-text"></p>
+    <div class="row">
+      <button type="submit" value="cancel" class="btn" autofocus>Cancel</button>
+      <button type="submit" value="ok" class="btn primary">Confirm (fake)</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
