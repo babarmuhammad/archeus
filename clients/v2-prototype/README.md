@@ -4,6 +4,27 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10b (partial, 2026-10-21): measured layout, desktop and phone Overview
+
+Status: PARTIAL. Done in this round: the Overview scene is driven from a measured table (`CONCEPT_LAYOUT` in app.js), read from labelled grid overlays of desktop-1-now-v2.png (1296 x 729) and phone-1-now-v2.png (804 x 1373; the concept file is 804 x 1373, not 1748 tall). Not done: phone-2 and phone-3 comparisons and montages, four iterations for those, the 6 x 2 DPR render sweep, the Replay, terminal, Mission and Shared views (10c), motion (round 11).
+
+Layout: hulls are the traced outlines (Archeus 10 vertices, Notes 8, Ideas 5 on desktop; on the phone the big Archeus outline, the amber Search provenance hull, the blue Fix date test sub-hull, Notes and Ideas as receded hulls). Each hull has about 30 to 40 thin facet lines in three opacity tiers (far tier fainter), a value step per facet, and vertex points. The star is 88 threads with a brighter knot and a thin vertical thread. The desktop scene uses 82 % of the stage width; the phone scene uses 94 %.
+
+Other changes in this round: the desktop kicker reads NOW; the lede is the two-line concept text; the chat rows have a left label column (You, Archeus); the phone headline breaks after the middle dot; the phone prototype label is grey; Places is a quiet icon; Stop sits beside the bar; the phone chip reads "2 more projects"; the phone labels are smaller.
+
+Similarity (sim.py: both images to 200 px wide, blurred luminance, mean absolute difference; lower is closer):
+- Desktop 1600 x 900 vs desktop-1-now-v2: i1 7.64 (97.0 %), i2 7.95 (96.9 %), i3 7.95 (96.9 %). Not decreasing: this metric is dominated by the dark background, so it does not separate the iterations. It is not a reliable target.
+- Phone 402 x 874 vs phone-1-now-v2 (scaled to the concept's aspect): i1 20.39 (92.0 %), i2 20.27 (92.1 %), i3 20.18 (92.1 %), i4 20.17 (92.1 %). Falling, but by under 0.3 %.
+
+Overlap probe (label boxes, Chromium): desktop 1440, 1600, 1920 and 1280 clean; at 1600 x 900 the Replay verb labels "contains" and "executes" were hidden below 1700 px. Phone 360 to 440: one pair remains, the Archeus project label with the Codex label (also with Fix date test at 402 and 430). This breaks the zero-overlap rule. Not fixed.
+
+Checks: check.mjs through the testlock (see the round 10b commit). Service worker cache bumped to `archeus-v2-proto-11`.
+
+Still differs from the concept (measured by eye at 1600 x 900 and 402 x 874):
+- Desktop: the Archeus hull is smaller in the frame than the concept (about 60 % of the stage width against 80 %), the star knot is a little smaller, the chat rows still differ in spacing, the Notes hull's missions sit near its edges.
+- Phone: the composition is still denser at its centre; the amber hull and blue sub-hull are present but thinner than the concept's; the Codex label collides with the Archeus project label (open rule violation).
+- Phone-2 and phone-3: not compared in this round.
+
 ## Round 10 (partial, 2026-10-21): concept fixtures and neutral hulls
 
 Status: PARTIAL. The owner asked for an exact match to the six Codex v2 concepts, with at least four loop iterations per surface. This round did one loop on the desktop Overview and one on the phone Overview. Replay, terminal, Mission (03), Shared (06), phone-2 and phone-3 were not brought to the concept. Mention in the report, not as done.
