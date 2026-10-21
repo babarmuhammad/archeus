@@ -105,6 +105,14 @@ check(/Keep as mission/.test(js), 'Start card needs Keep as mission');
 check(/rp-rows/.test(html) && /rp-panel/.test(html), 'replay panel missing');
 check(/feed/.test(css) && /chatbar/.test(css), 'chat feed or bar styles missing');
 
+check(/viewport-fit=cover/.test(html), 'phone viewport must use viewport-fit=cover');
+check(css.includes('env(safe-area-inset-bottom)') && css.includes('env(safe-area-inset-top)'), 'safe-area insets missing');
+check(/id="s-terminal"/.test(html) && /SIMULATED/.test(html), 'terminal section or simulated tag missing');
+check(/terminal: renderTerminal/.test(js) && /data-tsize="120"/.test(html), 'terminal route or 120x40 size missing');
+check(/Places/.test(html) && /data-act="menu"/.test(html), 'phone Places menu missing');
+check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
+
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);

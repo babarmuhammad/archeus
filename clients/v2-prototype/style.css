@@ -444,3 +444,173 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 @media (min-width: 881px) and (max-height: 800px) {
   .now-lede { display: none; }
 }
+
+/* Round 7: sheets, chips and the phone Overview. Desktop keeps the round 6 layout. */
+.phone-top { display: none; }
+.feed-head { display: none; }
+.more-chips { display: none; }
+.now-sheet { display: none; }
+.sheet-line { font: 400 16px/24px var(--sans); color: var(--text); margin-top: var(--s2); }
+.sheet-line .lbl-line { display: block; color: var(--text-2); font: 400 14px/20px var(--sans); }
+.sheet-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+.sheet-actions .btn { flex: 1 1 140px; }
+.chip-btn {
+  min-height: 48px; padding: 0 var(--s4); border-radius: 999px; cursor: pointer;
+  background: rgba(14, 19, 28, 0.9); border: 1px solid var(--line-2); color: var(--text);
+  font: 400 14px/20px var(--sans);
+}
+.list-row {
+  width: 100%; min-height: 48px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s2);
+  padding: var(--s2) 0; background: transparent; border: 0; border-bottom: 1px solid var(--line);
+  color: var(--text); font: 400 16px/24px var(--sans); text-align: left; cursor: pointer;
+}
+.list-row .row-meta { width: 100%; }
+.rowlist-sheet { display: flex; flex-direction: column; max-height: 50vh; overflow-y: auto; }
+
+@media (max-width: 880px) {
+  :root { --pad: 16px; }
+  .shell { display: block; padding-bottom: 0; }
+  .page {
+    min-height: 100dvh; padding: calc(env(safe-area-inset-top) + var(--s2)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  }
+  .top { display: none; }
+  .say { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top) + 56px); z-index: 12; background: var(--surface); border-radius: 10px; padding: var(--s2) var(--s3); }
+  .say:empty { display: none; }
+
+  /* Places: the rail is a sheet opened from the Places button, not a bar. */
+  .rail { display: none; }
+  body.menu-open .rail {
+    display: flex; position: fixed; inset: 0; z-index: 30; flex-direction: column; gap: var(--s4);
+    padding: calc(env(safe-area-inset-top) + var(--s4)) max(16px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + var(--s4)) max(16px, env(safe-area-inset-left));
+    overflow-y: auto; border: 0;
+  }
+  body.menu-open .wordmark { display: block; }
+  body.menu-open .projects { display: flex; }
+  body.menu-open .places { flex-direction: column; width: 100%; gap: 2px; }
+  body.menu-open .places a { flex-direction: row; justify-content: flex-start; gap: var(--s3); min-height: 48px; font-size: 16px; line-height: 24px; padding: 0 var(--s3); }
+  body.menu-open .places a span { font: 400 16px/24px var(--sans); }
+  body.menu-open .places a[aria-current="page"]::before { display: block; }
+
+  .phone-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); min-height: 48px; }
+  .phone-proto {
+    font: 400 14px/20px var(--sans); letter-spacing: 0.06em; color: var(--amber);
+    border: 1px solid rgba(242, 181, 68, 0.4); border-radius: 999px; padding: 4px var(--s3);
+  }
+  .menu-btn {
+    min-height: 48px; min-width: 48px; padding: 0 var(--s4); border-radius: 12px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--line-2); color: var(--text); font: 400 16px/24px var(--sans);
+  }
+
+  /* Overview: a title, the constellation, one bar. Nothing else below the fold. */
+  #s-now { min-height: calc(100dvh - env(safe-area-inset-top) - var(--s2)); }
+  #s-now .head { margin: var(--s2) 0 0; }
+  #s-now .head .kicker, #s-now .lede, #s-now .tag { display: none; }
+  #s-now h1 { font-size: 28px; line-height: 34px; }
+  .now-body { display: flex; flex: 1; min-height: 0; }
+  .now-main { display: flex; flex: 1; min-height: 0; }
+  .now-main > .stage {
+    flex: 1; height: auto; min-height: 420px; margin: 0 calc(var(--s4) * -1); border-radius: 0;
+  }
+  .prompts, .list-d { display: none; }
+
+  .more-chips {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: var(--s2); position: absolute; bottom: calc(env(safe-area-inset-bottom) + 76px); left: var(--s3); right: var(--s3); z-index: 3;
+  }
+  .stage-now .lbl .t { font-size: 22px; line-height: 28px; }
+  .stage-now .lbl.project .t { font-size: 20px; line-height: 26px; }
+  .stage-now .lbl .s { font-size: 16px; line-height: 22px; }
+  .stage-now .lbl .k { font-size: 14px; line-height: 20px; }
+
+  .chatbar {
+    left: var(--s3); right: var(--s3); width: auto; transform: none; bottom: calc(env(safe-area-inset-bottom) + var(--s3));
+    min-height: 56px; padding: var(--s1) var(--s1) var(--s1) var(--s3);
+  }
+  .chatbar .btn { min-height: 48px; padding: 0 var(--s3); }
+  .chat-stop { display: inline-flex; }
+
+  /* The conversation is a sheet over the scene, opened from the bar. */
+  .feed {
+    display: none; left: var(--s2); right: var(--s2); width: auto; transform: none; max-height: 46%; bottom: calc(env(safe-area-inset-bottom) + 76px);
+    background: #0E131C; border: 1px solid var(--line-2); border-radius: 18px; padding: var(--s3);
+    -webkit-mask-image: none; mask-image: none; z-index: 6; overflow-y: auto;
+  }
+  .feed.is-open { display: block; }
+  .feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s2); }
+  .feed-close { min-height: 48px; padding: 0 var(--s4); }
+  .msgs { min-height: 0; }
+  .msgs li { font-size: 16px; line-height: 24px; }
+  .msg-arch, .msg-you, .msg-gen { background: transparent; }
+
+  /* Detail: a bottom sheet at about 45 percent, opened by one tap on a figure. */
+  .now-sheet {
+    display: flex; flex-direction: column; gap: var(--s2); position: absolute; z-index: 7;
+    left: var(--s2); right: var(--s2); bottom: calc(env(safe-area-inset-bottom) + 76px); max-height: 46%; overflow-y: auto;
+    background: #0E131C; border: 1px solid var(--line-2); border-radius: 18px; padding: var(--s4);
+  }
+  .now-sheet[hidden] { display: none !important; }
+  .now-sheet h2 { font: 400 26px/32px var(--serif); color: var(--text); margin: 0; }
+  .now-sheet .sheet-state { font: 400 14px/20px var(--sans); }
+  .now-sheet .sheet-actions .btn { min-height: 48px; }
+}
+
+@media (max-width: 880px) and (max-height: 700px) {
+  #s-now h1 { font-size: 24px; line-height: 30px; }
+}
+
+/* Round 7 desktop: fewer kicker lines on figures; the New tag sits on the title; tighter replay rows. */
+.lbl.mission .k, .lbl.record .k, .lbl.exec .k { display: none; }
+.lbl.is-new .k::after { content: none; }
+.lbl.is-new .t::after { content: " New"; font: 600 14px/20px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); vertical-align: middle; margin-left: 8px; }
+.rp-rows { gap: 6px; }
+.rp-row { padding: 10px 12px; gap: 10px; }
+.rp-title { font-size: 18px; line-height: 24px; }
+.rp-panel { padding: 12px 14px 8px; gap: 8px; }
+.rp-actions { margin-top: 4px; }
+.rp-foot { padding-top: 4px; }
+
+#s-replay .head { margin: 0; }
+#s-replay .rp-panel { margin-top: 0; }
+
+/* Apple HIG translated for the phone sheets: a grabber on resizable sheets, body text 17px (HIG default), 44pt-plus targets. */
+.feed::before, .now-sheet::before {
+  content: ""; display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--line-2); margin: 0 auto var(--s2);
+}
+@media (max-width: 880px) {
+  .feed::before, .now-sheet::before { display: block; }
+  .msgs li, .sheet-line, .list-row, .now-sheet p { font-size: 17px; line-height: 24px; }
+  .chip-btn, .menu-btn, .btn, .prompt, .receipt, .list-row { min-height: 48px; }
+}
+@media (min-width: 881px) {
+  .feed::before, .now-sheet::before { display: none; }
+}
+
+/* Terminal: a fixed character grid; the wrapper scrolls sideways, the page does not. */
+.term-bar { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0; }
+.term-bar .btn[aria-pressed="true"] { border-color: var(--ivory); background: var(--surface); }
+.term-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: #05070B; padding: var(--s3); }
+.term { font: 400 15px/20px var(--mono); color: var(--text); margin: 0; white-space: pre; tab-size: 2; outline: none; }
+.term:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.term-tell { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); }
+.term-tell label { font: 400 15px/24px var(--mono); color: var(--text-2); }
+.term-tell input { flex: 1; min-height: 48px; font-family: var(--mono); }
+
+/* Round 7 (Codex structure, research ranking): the Needs-you card and neutral New. */
+.needs-card { display: none; }
+.lbl.is-new .t::after { color: var(--text-2); }
+@media (max-width: 880px) {
+  .needs-card {
+    display: flex; flex-direction: row; align-items: center; gap: var(--s3); width: 100%; min-height: 56px;
+    padding: var(--s2) var(--s3); margin: var(--s2) 0 0; border-radius: 14px; cursor: pointer; text-align: left;
+    background: #0E131C; border: 1px solid rgba(242, 181, 68, 0.5); color: var(--text);
+  }
+  .needs-card[hidden] { display: none !important; }
+  .needs-k { font: 600 14px/20px var(--sans); letter-spacing: 0.1em; text-transform: uppercase; color: var(--amber); }
+  .needs-t { font: 400 18px/24px var(--serif); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .needs-r { min-height: 48px; display: inline-flex; align-items: center; padding: 0 var(--s3); border-radius: 10px; border: 1px solid var(--amber); color: var(--amber); font: 400 16px/24px var(--sans); }
+  #s-now .head { margin-bottom: 0; }
+}
+.chip-btn { text-decoration: none; display: inline-flex; align-items: center; }
+@media (max-width: 880px) {
+  .stage-now .lbl .act { display: none; }
+  .needs-t { white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 17px; line-height: 22px; }
+}

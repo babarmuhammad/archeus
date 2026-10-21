@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Archeus V2 prototype (fake data)</title>
 <meta name="description" content="Clickable prototype of the Archeus V2 living space. Fake data only.">
 <meta name="theme-color" content="#070A10">
@@ -13,12 +13,13 @@
 </head>
 <body>
 <div class="shell">
-  <aside class="rail">
+  <aside class="rail" id="rail">
     <a class="wordmark" href="#/now" aria-label="Archeus V2, Overview">Archeus <span>V2</span></a>
     <nav class="places" aria-label="Places">
       <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2V17H12.5v-4.6h-5V17H3z"/></svg><span>Overview</span></a>
       <a href="#/mission/m-date" data-nav="mission"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.6"/></svg><span>Missions</span></a>
       <a href="#/replay/m-date" data-nav="replay"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 10a5.8 5.8 0 1 0 1.7-4.1"/><path d="M4 3.4v3h3"/><path d="M10 7.4v3l2 1.2"/></svg><span>Replay</span></a>
+      <a href="#/terminal" data-nav="terminal"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6l4 4-4 4M10 14.5h6"/></svg><span>Terminal</span></a>
       <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg><span>Shared</span></a>
       <a href="#/phone" data-nav="phone"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg><span>Phone</span></a>
       <a href="#/plan/m-search" data-nav="plan"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6h9M6 10h9M6 14h6"/><circle cx="3.5" cy="6" r=".8"/><circle cx="3.5" cy="10" r=".8"/><circle cx="3.5" cy="14" r=".8"/></svg><span>Plan</span></a>
@@ -40,11 +41,16 @@
 
     <main id="main">
       <section class="screen" id="s-now" hidden>
+        <div class="phone-top">
+          <p class="phone-proto">PROTOTYPE · fake data</p>
+          <button type="button" class="menu-btn" aria-controls="rail" aria-expanded="false" data-act="menu">Places</button>
+        </div>
         <header class="head">
           <p class="kicker">Overview</p>
           <h1 tabindex="-1" data-sentence></h1>
           <p class="lede now-lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure. Tell Archeus in the bar; what it creates appears here as it is made.</p>
           <p class="tag now-tag">Simulated: scripted replies, no model call, nothing sent to Core. Creations and approvals are page-only.</p>
+          <button type="button" class="needs-card" id="needs-card" hidden></button>
         </header>
         <div class="now-body">
           <div class="now-main">
@@ -54,7 +60,9 @@
               <div class="world"></div>
               <div class="card" hidden></div>
               <button type="button" class="btn now-back" id="now-overview" hidden>Whole space</button>
-              <div class="feed" aria-live="polite">
+              <div class="more-chips" id="more-chips"></div>
+              <div class="feed" id="feed" aria-live="polite">
+                <div class="feed-head"><p class="kicker">Conversation</p><button type="button" class="btn feed-close" data-act="feed-close">Close</button></div>
                 <ol class="msgs" id="msgs"></ol>
               </div>
               <form class="chatbar" id="chat-form" autocomplete="off">
@@ -63,6 +71,7 @@
                 <button type="submit" class="btn">Send</button>
                 <button type="button" class="btn stop-btn chat-stop" data-act="stop">Stop</button>
               </form>
+              <aside class="sheet now-sheet" id="now-sheet" hidden aria-labelledby="now-sheet-h"></aside>
             </div>
           </div>
         </div>
@@ -125,6 +134,24 @@
             <p class="rp-foot">Not every external effect can be reversed.</p>
           </section>
         </div>
+      </section>
+
+      <section class="screen" id="s-terminal" hidden>
+        <header class="head">
+          <p class="kicker">Terminal, text view</p>
+          <h1 tabindex="-1">Terminal</h1>
+          <p class="tag">SIMULATED: the V2 text screens over fake data. Nothing is sent to Core.</p>
+        </header>
+        <div class="term-bar" role="group" aria-label="Terminal size">
+          <button type="button" class="btn" data-tsize="80" aria-pressed="false">80 x 24</button>
+          <button type="button" class="btn" data-tsize="120" aria-pressed="false">120 x 40</button>
+        </div>
+        <div class="term-wrap"><pre class="term" id="term" tabindex="0" aria-label="Terminal screen"></pre></div>
+        <form class="term-tell" autocomplete="off">
+          <label for="term-tell">tell&gt;</label>
+          <input id="term-tell" type="text" maxlength="300" aria-describedby="term-status">
+        </form>
+        <p class="small" id="term-status" role="status"></p>
       </section>
 
       <section class="screen" id="s-shared" hidden>

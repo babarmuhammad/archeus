@@ -22,9 +22,9 @@
 
   // offs: mission positions around the project centre, in stage pixels at full size.
   var projects = [
-    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', at: [0.25, 0.5], offs: [[-70, -84], [40, 84], [-150, 22]] },
-    { id: 'notes', name: 'Notes', hue: '#E7A3AE', at: [0.8, 0.27], offs: [[-70, -30], [46, 40]] },
-    { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', at: [0.76, 0.8], offs: [[-54, -42], [54, 40]] }
+    { id: 'harbor', name: 'Harbor', hue: '#7FCFC0', at: [0.25, 0.5], phoneAt: [0.42, 0.5], offs: [[-70, -84], [40, 84], [-150, 22]] },
+    { id: 'notes', name: 'Notes', hue: '#E7A3AE', at: [0.8, 0.27], phoneAt: [0.74, 0.22], offs: [[-70, -30], [46, 40]] },
+    { id: 'lantern', name: 'Lantern', hue: '#C7B2F0', at: [0.76, 0.8], phoneAt: [0.7, 0.8], offs: [[-54, -42], [54, 40]] }
   ];
 
   var missions = [
@@ -339,15 +339,16 @@
   var CHAT_RESERVE = 170;
   function nowScene(w, h) {
     var narrow = w < 640;
-    var hh = h - (narrow ? Math.round(h * 0.36) : Math.min(CHAT_RESERVE, Math.round(h * 0.26)));
-    var k = Math.max(0.5, Math.min(w / 1150, hh / 560, 1.1));
+    var hh = h - (narrow ? 176 : Math.min(CHAT_RESERVE, Math.round(h * 0.26)));
+    var k = narrow ? Math.max(0.6, Math.min(w / 430, hh / 560, 1.1)) : Math.max(0.5, Math.min(w / 1150, hh / 560, 1.1));
     var sc = mk(w, h, { x: w * 0.5, y: hh * 0.5 }, k, narrow);
-    var shape = Math.max(0.62, Math.min(k, 1));
+    var shape = narrow ? k * 0.9 : Math.max(0.62, Math.min(k, 1));
     sc.sats = [[0.3, 0.86], [0.6, 0.05], [0.92, 0.5], [0.07, 0.3], [0.68, 0.9]].map(function (p) { return { x: w * p[0], y: hh * p[1] }; });
     projects.forEach(function (p) {
       var ms = missions.filter(function (x) { return x.project === p.id; });
       var live = ms.filter(isLive).length;
-      var cx = w * p.at[0], cy = hh * p.at[1];
+      var at = narrow && p.phoneAt ? p.phoneAt : p.at;
+      var cx = w * at[0], cy = hh * at[1];
       sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: cx, y: cy, members: ms.map(function (m) { return m.id; }), count: ms.length, live: live, active: live > 0 });
       sc.parent[p.id] = 'core';
       sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live > 0, kind: 'project', hue: p.hue });
@@ -747,6 +748,7 @@
       var core = S.items.core;
       if (core && core.lbl) {
         core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 62 * s).toFixed(1) + 'px)';
+        core.lbl.style.display = sc.compact ? 'none' : '';
         placed.push({ x0: c.x - core.tw / 2, y0: c.y + 62 * s, x1: c.x + core.tw / 2, y1: c.y + 62 * s + core.th });
       }
       var order = sc.projects.map(function (p) { return p.id; });
@@ -802,7 +804,7 @@
         if (!moved) break;
       }
       entries.forEach(function (e) {
-        var quiet = sc.compact && e.it.kind === 'mission' && !(sc.nodes.some(function (n) { return n.id === e.id && n.live; })) && S.hover !== e.id;
+        var quiet = sc.compact && !(e.it.kind === 'mission' && sc.nodes.some(function (n) { return n.id === e.id && n.live; })) && S.hover !== e.id;
         var fresh = S.born[e.id] !== undefined && performance.now() - S.born[e.id] < 6000;
         e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '') + (fresh ? ' is-new' : '');
         e.it.lbl.style.transform = 'translate(' + e.box.x0.toFixed(1) + 'px,' + e.box.y0.toFixed(1) + 'px)';
@@ -1003,6 +1005,7 @@
 
   var nowStage = makeStage($('#now-stage'), {
     onPick: function (id, kind) {
+      if (isNarrow()) { if (kind === 'mission') openDetail(id); else openList(); return; }
       if (kind === 'project') location.hash = '#/now/' + id;
       else location.hash = '#/mission/' + id;
     }
@@ -1045,6 +1048,8 @@
   function renderNow(pid) {
     $('#s-now [data-sentence]').textContent = sentence();
     nowStage.setScene(nowScene);
+    renderMoreChips();
+    renderNeeds();
     $('#now-overview').hidden = true;
     $$('#rail-projects a').forEach(function (a) { a.classList.remove('on'); });
     $('#now-list').innerHTML = sorted(missions).map(function (m) {
@@ -1317,10 +1322,10 @@
   function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24); }
 
   // Each change to the constellation goes through here: data first, then one relayout; new objects grow in.
-  function refreshNow() { nowStage.relayout(); renderRail(); }
+  function refreshNow() { nowStage.relayout(); renderRail(); renderMoreChips(); renderNeeds(); }
 
   function createAtlas() {
-    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.36], offs: [[30, -110], [-40, -116], [96, 70]] });
+    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.36], offs: [[30, -110], [-40, 110], [96, 70]] });
     nowStage.markBorn('atlas');
     nowStage.markBorn('core>atlas');
     refreshNow();
@@ -1537,10 +1542,278 @@
     }
   });
 
+  /* ---------- Phone: one calm Overview. Detail, lists and the conversation open as sheets. ---------- */
+
+  function isNarrow() { return window.matchMedia('(max-width: 880px)').matches; }
+
+  function sheetFor(html) {
+    var box = $('#now-sheet');
+    box.innerHTML = html;
+    box.hidden = false;
+    var h = box.querySelector('h2');
+    if (h) h.focus({ preventScroll: true });
+  }
+
+  function closeNowSheet() { $('#now-sheet').hidden = true; $('#now-sheet').innerHTML = ''; }
+
+  function openDetail(id) {
+    var m = find(id);
+    if (!m) return;
+    var waiting = m.state === 'waiting', p = plans[m.id];
+    sheetFor(
+      '<p class="sheet-state st-' + m.state + '">' + esc(stateLine(m)) + '</p>' +
+      '<h2 id="now-sheet-h" tabindex="-1">' + esc(m.title) + '</h2>' +
+      '<p class="sheet-line"><span class="lbl-line">Project</span> ' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</p>' +
+      '<p class="sheet-line"><span class="lbl-line">What</span> ' + esc(m.what) + '</p>' +
+      (waiting && p ? '<p class="sheet-line"><span class="lbl-line">Why</span> ' + esc(p.why) + '</p>' : '') +
+      '<div class="sheet-actions">' +
+      '<a class="btn primary" href="' + (waiting ? '#/plan/' : '#/mission/') + m.id + '">' + (waiting ? 'Review plan' : 'Open mission') + '</a>' +
+      '<button type="button" class="btn" data-act="now-sheet-close">Close</button></div>');
+  }
+
+  function openList() {
+    var rows = sorted(missions).map(function (m) {
+      return '<li><button type="button" class="list-row" data-open="' + esc(m.id) + '"><span class="st-' + m.state + '">' + esc(STATE[m.state].word) + '</span> ' +
+        esc(m.title) + '<span class="row-meta">' + esc(projectOf(m.project).name) + '</span></button></li>';
+    }).join('');
+    sheetFor('<p class="kicker">All work</p><h2 id="now-sheet-h" tabindex="-1">' + projects.length + ' projects, ' + missions.length + ' missions</h2>' +
+      '<ul class="rowlist-sheet">' + rows + '</ul>' +
+      '<div class="sheet-actions"><button type="button" class="btn" data-act="now-sheet-close">Close</button></div>');
+  }
+
+  // The phone's first obligation: one Needs-you card, opened by one tap.
+  function renderNeeds() {
+    var box = $('#needs-card'), w = missions.filter(function (m) { return m.state === 'waiting'; })[0];
+    if (!w || !isNarrow()) { box.hidden = true; return; }
+    box.hidden = false;
+    box.setAttribute('data-open', w.id);
+    box.innerHTML = '<span class="needs-k">Needs you</span><span class="needs-t">' + esc(w.title) + '</span><span class="needs-r">Review</span>';
+  }
+
+  // Count chips replace the labels the phone scene does not show.
+  function renderMoreChips() {
+    var box = $('#more-chips');
+    if (!isNarrow()) { box.innerHTML = ''; return; }
+    var focus = missions.filter(isLive).length;
+    box.innerHTML = '<button type="button" class="chip-btn" data-act="open-list">' + projects.length + ' projects</button>' +
+      '<button type="button" class="chip-btn" data-act="open-list">' + (missions.length - focus) + ' more missions</button>' +
+      '<a class="chip-btn" href="#/replay/m-date">Replay</a>';
+  }
+
+  document.addEventListener('click', function (e) {
+    var open = e.target.closest('[data-open]');
+    if (open) { closeNowSheet(); return openDetail(open.getAttribute('data-open')); }
+    var act = e.target.closest('[data-act]');
+    if (!act) return;
+    var name = act.getAttribute('data-act');
+    if (name === 'menu') {
+      var on = !document.body.classList.contains('menu-open');
+      document.body.classList.toggle('menu-open', on);
+      act.setAttribute('aria-expanded', String(on));
+    } else if (name === 'open-list') openList();
+    else if (name === 'now-sheet-close') closeNowSheet();
+    else if (name === 'feed-close') $('#feed').classList.remove('is-open');
+  });
+
+  // Typing in the bar opens the conversation as a sheet on the phone.
+  document.addEventListener('focusin', function (e) {
+    if (e.target.id === 'chat-input' && isNarrow()) $('#feed').classList.add('is-open');
+  });
+  document.addEventListener('submit', function (e) {
+    if (e.target.id === 'chat-form' && isNarrow()) $('#feed').classList.add('is-open');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !$('#now-sheet').hidden) closeNowSheet();
+  });
+
+  /* ---------- Terminal: the same records as text, 80 x 24 or 120 x 40. Simulated. ---------- */
+
+  var term = { screen: 'overview', sel: 0, mid: 'm-search', cols: 80, rows: 24 };
+
+  function tpad(s, w) { s = String(s); return s.length > w ? s.slice(0, w) : s + new Array(w - s.length + 1).join(' '); }
+  function tcenter(s, w) { var l = Math.max(0, Math.floor((w - s.length) / 2)); return tpad(new Array(l + 1).join(' ') + s, w); }
+  function tglyph(m) { return { waiting: '!', running: '~', done: '+', idle: 'o' }[m.state]; }
+  function tword(m) { return STATE[m.state].word; }
+
+  // Missions in the order the cursor moves through them: grouped by project.
+  function termOrder() {
+    var out = [];
+    projects.forEach(function (p) { missions.forEach(function (m) { if (m.project === p.id) out.push(m); }); });
+    return out;
+  }
+
+  function termFrame(lines, w, h, keys, status) {
+    var out = lines.slice(0, h - 2);
+    while (out.length < h - 2) out.push('');
+    out.push(tpad(keys, w));
+    out.push(tpad(status || 'SIMULATED: fake data, nothing sent to Core. Keys work here only.', w));
+    return out.map(function (l) { return tpad(l, w); }).join('\n');
+  }
+
+  function termOverview(w, h) {
+    var order = termOrder(), L = [];
+    var need = count('waiting'), run = count('running');
+    L.push(tpad('ARCHEUS  Core connected | Not stopped - accepts new work', w));
+    L.push(tpad(need + ' needs you | ' + run + ' running | 0 queued', w));
+    L.push('');
+    L.push(tcenter('*  ARCHEUS  ' + (run ? 'RUNNING ' + run : 'IDLE'), w));
+    L.push(tcenter('|', w));
+    if (w < 100) {
+      projects.forEach(function (p) {
+        L.push(tpad("[" + p.name + "]", w));
+        missions.filter(function (m) { return m.project === p.id; }).forEach(function (m) {
+          var cur = order.indexOf(m) === term.sel ? ">" : " ";
+          L.push(tpad("  " + cur + " " + tglyph(m) + " " + m.title + "  " + tword(m), w));
+        });
+      });
+      L.push("");
+      var sel0 = order[term.sel] || order[0];
+      L.push(tpad("selected: " + (sel0 ? sel0.title + " - " + tword(sel0) + " - " + projectOf(sel0.project).name : "none"), w));
+      return termFrame(L, w, h, "j/k select  Enter open  r review  t tell  p replay  Esc overview");
+    }
+    var colW = Math.floor(w / Math.max(1, projects.length));
+    var head = '', rule = '';
+    projects.forEach(function (p, i) {
+      var c = i * colW + Math.floor(colW / 2);
+      head += tpad('', c - head.length) + '+';
+      rule += '';
+    });
+    L.push(tpad(head + new Array(w - head.length + 1).join('-'), w));
+    var heads = projects.map(function (p) { return tpad('[' + p.name + ']', colW); }).join('');
+    L.push(tpad(heads, w));
+    var rowsN = Math.max.apply(null, projects.map(function (p) { return missions.filter(function (m) { return m.project === p.id; }).length; }));
+    for (var r = 0; r < rowsN; r++) {
+      var row = projects.map(function (p) {
+        var ms = missions.filter(function (m) { return m.project === p.id; });
+        var m = ms[r];
+        if (!m) return tpad('', colW);
+        var idx = order.indexOf(m);
+        var cur = idx === term.sel ? '>' : ' ';
+        var short = { waiting: 'needs you', running: 'running', done: 'done', idle: 'idle' }[m.state];
+        return tpad(cur + ' ' + tglyph(m) + ' ' + m.title, colW - 13) + tpad(short, 11) + ' ';
+      }).join('');
+      L.push(tpad(row, w));
+    }
+    L.push('');
+    var sel = order[term.sel] || order[0];
+    L.push(tpad('selected: ' + (sel ? sel.title + ' - ' + tword(sel) + ' - ' + projectOf(sel.project).name : 'none'), w));
+    return termFrame(L, w, h, 'j/k select  Enter open  r review  t tell  p replay  Esc overview  80/120 size');
+  }
+
+  function termMission(w, h) {
+    var m = find(term.mid) || find('m-date'), L = [];
+    L.push(tpad('MISSION  ' + m.title + '   ' + projectOf(m.project).name + ' / ' + m.branch + '   [' + tword(m) + ']', w));
+    L.push('');
+    L.push(tcenter('*  ARCHEUS', w));
+    L.push(tcenter('|', w));
+    L.push(tcenter('+-----------------------------+', w));
+    L.push(tcenter('|  ' + tpad(m.title, 27) + '|', w));
+    L.push(tcenter('|  ' + tpad(tword(m) + ' - ' + m.stateText, 27) + '|', w));
+    L.push(tcenter('+-----------------------------+', w));
+    if (m.exec) {
+      L.push(tcenter('|', w));
+      L.push(tcenter('Codex execution  (checks running)', w));
+    }
+    L.push('');
+    var phases = PHASES.map(function (n, i) {
+      var mark = m.phase === 6 || i < m.phase ? '[x]' : i === m.phase ? '[>]' : '[ ]';
+      return mark + ' ' + n;
+    });
+    L.push(tpad('Phase  ' + phases.join('  '), w));
+    L.push('');
+    L.push(tpad('Activity', w));
+    m.log.forEach(function (l) { L.push(tpad('  - ' + l, w)); });
+    var p = plans[m.id];
+    if (p) {
+      L.push('');
+      L.push(tpad('Plan v' + p.version + '  ' + p.tasks.length + ' tasks', w));
+      p.tasks.forEach(function (t, i) { L.push(tpad('  ' + (i + 1) + '. ' + t.text, w)); });
+    }
+    return termFrame(L, w, h, 'Esc overview  r review  p replay  t tell');
+  }
+
+  function termDecision(w, h) {
+    var m = find(term.mid) || find('m-search'), p = plans[m.id], L = [];
+    if (!p) { L.push(tpad('No plan is recorded for ' + m.title + '.', w)); return termFrame(L, w, h, 'Esc overview'); }
+    L.push(tpad('PLAN REVIEW  v' + p.version + '  ' + m.title + '  (' + projectOf(m.project).name + ' / ' + m.branch + ')', w));
+    L.push(tpad('Why: ' + p.why, w));
+    L.push('');
+    L.push(tpad('Tasks', w));
+    p.tasks.forEach(function (t, i) { L.push(tpad('  ' + (i + 1) + '. ' + t.text, w)); });
+    L.push('');
+    L.push(tpad('What each decision does (Core text, fixture here)', w));
+    L.push(tpad('  A approve: ' + p.approve, w));
+    L.push(tpad('  C request changes: ' + p.request, w));
+    L.push(tpad('  R reject: ' + p.reject, w));
+    L.push('');
+    L.push(tpad('Approve needs a typed y in the real terminal; this view only shows the step.', w));
+    return termFrame(L, w, h, 'A approve  C request changes  R reject  Esc back');
+  }
+
+  function termReplay(w, h) {
+    var m = find(term.mid) || find('m-date'), rows = REPLAY[m.id] || [], L = [];
+    L.push(tpad('REPLAY  ' + m.title + '  (sample data)', w));
+    L.push('');
+    rows.forEach(function (r) {
+      L.push(tpad(r.time + '  ' + tpad('[' + r.badge + ']', 13) + ' ' + r.title + ' — ' + r.sub, w));
+    });
+    L.push(tpad('--:--  [Operator]  Reconcile — record what happened on the remote. Nothing is pushed.', w));
+    L.push('');
+    L.push(tpad('Not every external effect can be reversed.', w));
+    return termFrame(L, w, h, 'Esc overview  m mission  Reconcile is a key in the real terminal');
+  }
+
+  function renderTerm() {
+    var w = term.cols, h = term.rows, out;
+    if (term.screen === 'mission') out = termMission(w, h);
+    else if (term.screen === 'decision') out = termDecision(w, h);
+    else if (term.screen === 'replay') out = termReplay(w, h);
+    else out = termOverview(w, h);
+    var pre = $('#term');
+    pre.textContent = out;
+    pre.style.width = (w * 9.2) + 'px';
+    pre.style.height = (h * 20) + 'px';
+    $$('[data-tsize]').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-tsize')) === w)); });
+  }
+
+  function renderTerminal() { renderTerm(); $('#term').focus({ preventScroll: true }); }
+
+  function termKey(e) {
+    if (!$('#s-terminal') || $('#s-terminal').hidden || e.target.id === 'term-tell') return;
+    var order = termOrder(), k = e.key;
+    if (k === 'j' || k === 'ArrowDown') term.sel = Math.min(order.length - 1, term.sel + 1);
+    else if (k === 'k' || k === 'ArrowUp') term.sel = Math.max(0, term.sel - 1);
+    else if (k === 'Enter' && order[term.sel]) { term.mid = order[term.sel].id; term.screen = 'mission'; }
+    else if (k === 'r') { term.mid = (order[term.sel] || {}).id || 'm-search'; term.screen = 'decision'; }
+    else if (k === 'p') { term.mid = (order[term.sel] || {}).id || 'm-date'; term.screen = 'replay'; }
+    else if (k === 'm') term.screen = 'mission';
+    else if (k === 'Escape' || k === 'b') term.screen = 'overview';
+    else if (k === 's') { stop(); return renderTerm(); }
+    else if (k === 't') { e.preventDefault(); $('#term-tell').focus(); return; }
+    else return;
+    e.preventDefault();
+    renderTerm();
+  }
+
+  document.addEventListener('keydown', termKey);
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tsize]');
+    if (b) { term.cols = Number(b.getAttribute('data-tsize')); term.rows = term.cols === 120 ? 40 : 24; renderTerm(); }
+  });
+  $('#term-tell').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var v = this.value.trim();
+    this.value = '';
+    $('#term-status').textContent = v ? 'Simulated: "' + v.slice(0, 60) + '" was not sent to Core.' : 'Tell line is empty.';
+    this.blur(); $('#term').focus({ preventScroll: true });
+  });
+
   var SCREENS = {
     now: renderNow,
     mission: function (id) { renderMission(id); },
     replay: renderReplay,
+    terminal: renderTerminal,
     shared: renderShared,
     phone: renderPhone,
     plan: renderPlan
@@ -1548,7 +1821,8 @@
 
   function route() {
     var parts = (location.hash || '#/now').replace(/^#\/?/, '').split('/');
-    var name = SCREENS[parts[0]] ? parts[0] : 'now';
+    var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
+    document.body.classList.remove('menu-open');
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });
     $$('.places a').forEach(function (a) {
