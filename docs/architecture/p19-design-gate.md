@@ -644,6 +644,13 @@ offline cold start on a phone.
     CREATED, nothing is recorded (it is judged again on every pass, and recording each pass would
     flood the decisions), and it starts once the rule is retired. An ALLOW is recorded in the same
     transaction as its START (T-150 (b)), so a start that happened always has its decision.
+    **Exception (T-150 (a), owner 2026-10-21):** a mission made from a chat message (origin
+    `conversation`) asks under `standard` as well. The rule lives in `judge_start`, so the approve
+    re-judges it the same way. Its reject ("Keep as mission") does not cancel: the mission stays
+    CREATED, a declined start is not asked again on a later pass, and only the explicit
+    `POST /v1/missions/{id}/start` asks again. `careful` (reject cancels) and `autonomous` are
+    unchanged; a user's DENY still holds. The chat rule turns any ALLOW into an ASK, so a user's
+    own ALLOW rule on `mission.start` does not skip the ask for a chat mission under `standard`.
 27. **The stub policy exempts Core classes.** `FixedPolicy('ASK')` means "every task's action
     asks"; without the exemption every test built on it stalled in CREATED. `by_class` can still
     name `mission.start`.

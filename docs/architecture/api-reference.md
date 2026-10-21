@@ -32,6 +32,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/missions` | control | required | — | `CreateMissionRequest` | `Created` |
 | POST | `/v1/missions/{id}/pause` | control | required | — | `PauseMissionRequest` | `CommandResult` |
 | POST | `/v1/missions/{id}/resume` | control | required | — | `ResumeMissionRequest` | `CommandResult` |
+| POST | `/v1/missions/{id}/start` | control | required | — | `StartMissionRequest` | `CommandResult` |
 | POST | `/v1/missions/pause-all` | control | required | — | `PauseAllRequest` | `PauseBatchResult` |
 | POST | `/v1/missions/resume-all` | control | required | — | `ResumeAllRequest` | `PauseBatchResult` |
 | POST | `/v1/missions/{id}/reprioritize` | control | required | — | `ReprioritiseMissionRequest` | `CommandResult` |
@@ -1869,6 +1870,14 @@ interface PauseMissionRequest {
 interface ResumeMissionRequest {
   idempotency_key: string;
   expected_version?: number | null;
+}
+```
+
+### `StartMissionRequest`
+
+```ts
+interface StartMissionRequest {
+  idempotency_key: string;
 }
 ```
 

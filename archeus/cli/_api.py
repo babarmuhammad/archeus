@@ -63,6 +63,10 @@ class endpoints:
         return _path('/v1/missions/{id}/resume', id_)
 
     @staticmethod
+    def start_mission(id_):
+        return _path('/v1/missions/{id}/start', id_)
+
+    @staticmethod
     def pause_all():
         return _path('/v1/missions/pause-all')
 

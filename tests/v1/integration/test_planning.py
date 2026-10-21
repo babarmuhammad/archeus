@@ -142,6 +142,8 @@ def _with_requirements(r):
     """A mission from a message, with an explicit (r1) and an inferred (r2) requirement."""
     r.say('Add a --version flag to the CLI')
     (m,) = r.all(entities.Mission)
+    r.sys(r.missions.fire, mission_id=m.id, trigger='start', reason='started by the test')
+    r.settle()
     return m.id
 
 
@@ -526,7 +528,7 @@ def test_i25_a_planning_round_starts_nothing(make):
     assert r.m(mid).state == 'APPROVED'       # the P3 gate decided the MISSION...
     # ...and, since P9, authorised the plan with a recorded decision (§12.1)
     assert p.state == 'APPROVED'
-    (d,) = r.all(entities.PolicyDecision)
+    (d,) = [x for x in r.all(entities.PolicyDecision) if x.stage == 'plan']
     assert (d.plan_id, d.outcome, d.plan_digest) == (p.id, 'auto_approved', p.digest)
 
 

@@ -170,6 +170,10 @@ def resume_mission(req):
         'mission_id': req.params['id'], 'expected_version': req.body.get('expected_version')})
 
 
+def start_mission(req):
+    return 200, req.run(req.api.authorization.request_start, {'mission_id': req.params['id']})
+
+
 def pause_all(req):
     return 200, req.run(req.api.missions.pause_all, {})
 
@@ -1006,6 +1010,9 @@ ROUTES = (
           schemas.KEYED_VERSIONED, 'CommandResult'),
     Route('POST', '/v1/missions/{id}/resume', resume_mission, 'control', 'required',
           schemas.KEYED_VERSIONED, 'CommandResult'),
+    # T-150 (a): a waiting (declined or unasked) mission asks to start again, once, by request
+    Route('POST', '/v1/missions/{id}/start', start_mission, 'control', 'required',
+          schemas.KEYED, 'CommandResult'),
     # P19.5 Core slice (ADR-0030, ADR-0042 §1): the same control scope as one mission's
     Route('POST', '/v1/missions/pause-all', pause_all, 'control', 'required',
           schemas.KEYED, 'PauseBatchResult'),
@@ -1197,6 +1204,7 @@ _NAMED = {
     'ordinary': ('POST /v1/digest/ack',),
     'privileged': (
         'POST /v1/missions', 'POST /v1/missions/{id}/pause', 'POST /v1/missions/{id}/resume',
+        'POST /v1/missions/{id}/start',
         'POST /v1/missions/pause-all', 'POST /v1/missions/resume-all',
         'POST /v1/missions/{id}/reprioritize', 'POST /v1/missions/{id}/stop',
         'POST /v1/executions/{id}/stop', 'POST /v1/estop', 'POST /v1/rearm',

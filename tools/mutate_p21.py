@@ -56,6 +56,8 @@ AZ = 'archeus/core/application/authorization.py'
 CW = 'tests/v1/integration/test_cwrite.py::'
 PO = 'tests/v1/integration/test_policy.py::'
 PSC = 'tests/v1/integration/test_start_confirmation.py::'
+CS = 'tests/v1/integration/test_chat_start.py::'
+CMD = 'archeus/core/application/commands.py'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -467,6 +469,43 @@ MUTATIONS = [
      "        tx.cause = ()\n"
      "        record(tx, actor=actor, stage='start', mission=m, decision=decision, outcome='allow',")],
      [CW + 'test_an_allowed_start_records_its_decision_under_its_hash_and_cause']),
+    # T-150 (a): a chat-made mission under `standard` asks to start; decline keeps it idle
+    ('Z195', "a chat mission under standard starts without asking",
+     [(AZ,
+     "    if items[0]['decision'] == 'ALLOW' and asks_before_start(conn, mission):",
+     "    if False:")],
+     [CS + 'test_a_chat_new_work_under_standard_asks_to_start_and_plan_it',
+      CS + 'test_approve_starts_the_chat_mission_and_the_engine_plans_it']),
+    ('Z196', "the chat start ask ignores the profile (autonomous asks too)",
+     [(AZ,
+     "    return (m.autonomy_profile or (u.autonomy_profile if u else 'standard')) == 'standard'",
+     "    return True")],
+     [CS + 'test_autonomous_chat_mission_starts_without_asking']),
+    ('Z197', "a chat mission's declined start cancels it",
+     [(AZ,
+     "    if kind == 'start' and not asks_before_start(tx.conn, mission):   # else: kept, idle",
+     "    if kind == 'start':")],
+     [CS + 'test_declining_keeps_the_chat_mission_idle_and_restart_does_not_ask_again']),
+    ('Z198', "a declined start is asked again on every pass (and after a restart)",
+     [(AZ,
+     "    if _declined(tx.conn, h) and not by_request and live_approval(tx.conn, h) is None:",
+     "    if False:")],
+     [CS + 'test_declining_keeps_the_chat_mission_idle_and_restart_does_not_ask_again']),
+    ('Z199', "an explicit start after a decline asks nothing (it reads as declined)",
+     [(AZ,
+     "    if _declined(tx.conn, h) and not by_request and live_approval(tx.conn, h) is None:",
+     "    if _declined(tx.conn, h) and live_approval(tx.conn, h) is None:")],
+     [CS + 'test_an_explicit_start_asks_again_once_and_keeps_a_record']),
+    ('Z200', "an API-created mission is origin conversation (asks like a chat mission)",
+     [(CMD,
+     "                   origin='api', origin_ref=None, cause=()):",
+     "                   origin='conversation', origin_ref=None, cause=()):")],
+     [CS + 'test_an_api_mission_under_standard_starts_without_asking']),
+    ('Z204', "the chat start card keeps the generic approval text",
+     [(CV,
+     "        text = 'Start and plan \"%s\"?' % mission.title",
+     "        text = '\"%s\" needs your approval: starting this mission.' % mission.title")],
+     [CS + 'test_a_chat_new_work_under_standard_asks_to_start_and_plan_it']),
 ]
 
 

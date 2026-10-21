@@ -1203,6 +1203,10 @@ export interface ResumeMissionRequest {
   expected_version?: number | null;
 }
 
+export interface StartMissionRequest {
+  idempotency_key: string;
+}
+
 export interface PauseAllRequest {
   idempotency_key: string;
 }
@@ -1628,6 +1632,8 @@ export const api = {
     send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/pause', body),
   resumeMission: (send: Send, id: string, body: ResumeMissionRequest) =>
     send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/resume', body),
+  startMission: (send: Send, id: string, body: StartMissionRequest) =>
+    send<CommandResult>('POST', '/v1/missions/' + encodeURIComponent(id) + '/start', body),
   pauseAll: (send: Send, body: PauseAllRequest) =>
     send<PauseBatchResult>('POST', '/v1/missions/pause-all', body),
   resumeAll: (send: Send, body: ResumeAllRequest) =>

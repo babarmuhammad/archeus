@@ -132,7 +132,8 @@ def test_a_bare_why_in_a_thread_says_why_its_mission_exists(make):  # noqa: F811
     from archeus.core.application import commands, queries
     from archeus.core.application.conversation import post_message
     r = make([])
-    mid = r.run(commands.create_mission, title='Fix it', objective='fix the parser')['id']
+    mid = r.run(commands.create_mission, title='Fix it', objective='fix the parser',
+                origin='conversation')['id']
     posted = r.run(post_message, text='why', conversation_id=mid)
     r.settle()
     reply = r.read(queries.reply_to, posted['message_id'])

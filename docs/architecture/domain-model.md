@@ -278,7 +278,7 @@ the primary conversation; per-mission threads are P16's.
 | `verification_strategy`, `review_strategy` | chosen at planning; editable |
 | `state` | Mission machine (state-machines §2) |
 | `active_plan_id` | current Plan version |
-| `origin` | conversation / idea / automation / legacy_import |
+| `origin` | conversation (a chat message) / idea / automation / legacy_import / api (a route; the default) |
 | `origin_ref` | message id / idea id / automation_run id |
 | `progress` | 0–1, computed from task graph (weighted by task estimates), never typed by an agent |
 | `learned_at` | set when the learning pass has run; **learning is not a mission state** |
@@ -580,6 +580,11 @@ mission is the Core-owned action class `mission.start`: `careful` asks, `standar
 `autonomous` allow, and a rule may name it; a task never declares it. An allowed start records
 its PolicyDecision (stage `start`, outcome `allow`, the start's hash, the evaluated item) in the
 same transaction as START, so every start leaves one (T-150 (b)); an ask records `asked`.
+A mission made from a chat message (origin `conversation`) asks before it starts under `standard`
+(T-150 (a)): Start approves the card `Start and plan "<title>"?`, and the reject ("Keep as
+mission") leaves it CREATED and idle, not cancelled. A declined start is not asked again on a
+later pass or after a restart; `POST /v1/missions/{id}/start` asks again once, by request. An
+API-created mission has origin `api` and starts under `standard` as before.
 
 ### 9.4 Automation and AutomationRun
 Automation: `name`, `trigger` (`{kind: event|schedule|condition|state, pattern|cron|predicate}`),

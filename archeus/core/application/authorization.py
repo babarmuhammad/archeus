@@ -212,7 +212,11 @@ def judge_start(policy, conn, mission, *, now, actor=None):
     # the e-stop holds what runs, not what starts: a CREATED mission was always
     # started while disarmed (the engine's `_step`), and B6 asks only `careful`
     ctx = dict(context(conn, mission, stage='start', now=now, actor=actor), estop=False)
-    return [dict(judge(policy, start_action(mission), ctx), task=None)], ctx
+    items = [dict(judge(policy, start_action(mission), ctx), task=None)]
+    if items[0]['decision'] == 'ALLOW' and asks_before_start(conn, mission):
+        items = [dict(items[0], decision='ASK',
+                      reason='a mission from a chat message asks before it starts')]
+    return items, ctx
 
 
 def live_approval(conn, h):
@@ -677,7 +681,7 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                             fields=_decided(tx, actor, decision, note))
     tx.cause = caused_by(e)           # what the decision issues carries it (p21 D13 (b))
     out = None
-    if kind == 'start':
+    if kind == 'start' and not asks_before_start(tx.conn, mission):   # else: kept, idle
         out = missions.cancel(tx, actor=actor, mission_id=mission.id,
                               reason=note or 'its start was rejected (approval %s)' % a.id)
     if kind == 'route':
@@ -787,14 +791,31 @@ def _answer(tx, row, *, changed=True, mission=None):
             'version': row.version, 'changed': changed, 'mission': mission}
 
 
-def gate_start(tx, *, actor, policy, missions, mission_id):
+def asks_before_start(conn, m):
+    """Does this mission ask before it starts under `standard` (T-150 (a))? Only a
+    mission made from a chat message: Start approves it, Keep as mission declines
+    it and it waits idle. Its own profile, else the user's, decides."""
+    if m.origin != 'conversation':
+        return False
+    u = owner(conn)
+    return (m.autonomy_profile or (u.autonomy_profile if u else 'standard')) == 'standard'
+
+
+def _declined(conn, h):
+    return any(r.entity.state == 'REJECTED'
+               for r in rows.where(conn, entities.Approval, action_hash=h))
+
+
+def gate_start(tx, *, actor, policy, missions, mission_id, by_request=False):
     """May a CREATED mission start (P19 S4, p19-design-gate B6)? `mission.start`
     is judged like any class: ALLOW (`standard`, `autonomous`) records the start
-    and fires START now;
-    ASK (`careful`) records the ask and requests a `start` approval once, and
-    the mission waits in CREATED until it is decided (approving fires START,
-    rejecting cancels); DENY (a user's rule) waits and records nothing, since
-    it is judged again on every pass."""
+    and fires START now, except a chat mission under `standard`, which is asked
+    (T-150 (a)); ASK (`careful`) records the ask and requests a `start` approval
+    once, and the mission waits in CREATED until it is decided (approving fires
+    START, rejecting cancels; a chat mission's reject keeps it idle instead).
+    A declined start is not asked again on a later pass; only `by_request` (an
+    explicit start) asks again. DENY (a user's rule) waits and records nothing,
+    since it is judged again on every pass."""
     m = lifecycle.load(tx, entities.Mission, mission_id).entity
     if m.state != 'CREATED':
         return {'started': False, 'waiting': None}
@@ -809,6 +830,8 @@ def gate_start(tx, *, actor, policy, missions, mission_id):
     if decision == 'DENY':
         return {'started': False, 'waiting': 'policy_denied'}
     h = start_hash(m)
+    if _declined(tx.conn, h) and not by_request and live_approval(tx.conn, h) is None:
+        return {'started': False, 'waiting': 'declined'}
     if live_approval(tx.conn, h) is None:
         d = record(tx, actor=actor, stage='start', mission=m, decision='ASK', outcome='asked',
                    items=items, h=h, ctx=ctx, reason=items[0]['reason'])
@@ -1017,6 +1040,9 @@ class Authorization:
 
     def gate_start(self, tx, **kw):
         return gate_start(tx, policy=self.policy, missions=self.missions, **kw)
+
+    def request_start(self, tx, **kw):
+        return gate_start(tx, policy=self.policy, missions=self.missions, by_request=True, **kw)
 
     def evaluate_action(self, tx, **kw):
         return evaluate_action(tx, policy=self.policy, **kw)

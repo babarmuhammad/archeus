@@ -135,6 +135,15 @@ def test_a_mission_cancelled_while_it_waits_leaves_its_approval_undecidable(core
     assert _state(core, mid) == 'CANCELLED'
 
 
+def test_an_explicit_start_while_its_approval_is_live_asks_nothing_more(core):
+    _profile(core, 'careful')
+    mid = _mission(core)
+    a = _start_approval(core, mid)
+    r = _post(core, '/v1/missions/%s/start' % mid, {})
+    assert r.status == 200 and r.json()['waiting'] == 'approval_required', r.body
+    assert [x['id'] for x in _approvals(core, mid) if x['kind'] == 'start'] == [a['id']]
+
+
 def test_a_wrong_hash_does_not_start_it(core):
     _profile(core, 'careful')
     mid = _mission(core)
