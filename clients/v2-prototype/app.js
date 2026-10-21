@@ -488,16 +488,14 @@
   }
   // Desktop Overview (round 10c): the concept's constellation box (DESK_BOX, reference px) fills DESK_FILL of the
   // stage width, scaled uniformly and centred. The scene takes DESK_SCENE_H of the stage height at most.
-  var DESK_BOX = { x0: 190, x1: 1212, y0: 80, y1: 516 };
-  var DESK_FILL = 0.88, DESK_SCENE_H = 0.74, DESK_TOP = 0.07;
+  // Round 10d: the desktop Overview is a fixed 1296 x 729 frame (the concept's own size). Reference px are frame px.
+  var DESK_W = 1296, DESK_H = 729;
   function nowScene(w, h) {
     if (w < 640) return phoneScene(w, h);
-    var L = CONCEPT_LAYOUT.desktop, b = DESK_BOX;
-    var oy = h * DESK_TOP, reserve = h <= 620 ? 230 : 240;
-    var sh = Math.min(h * DESK_SCENE_H, h - reserve - oy);
-    var k0 = Math.min((w * DESK_FILL) / (b.x1 - b.x0), sh / (b.y1 - b.y0));
-    var ox = (w - (b.x1 - b.x0) * k0) / 2;
-    var dm = function (p) { return { x: ox + (p[0] - b.x0) * k0, y: oy + (p[1] - b.y0) * k0 }; };
+    var L = CONCEPT_LAYOUT.desktop;
+    var k0 = Math.min(w / DESK_W, h / DESK_H);
+    var ox = (w - DESK_W * k0) / 2, oy = (h - DESK_H * k0) / 2;
+    var dm = function (p) { return { x: ox + p[0] * k0, y: oy + p[1] * k0 }; };
     var hullOf = function (pts) { return pts.map(dm); };
     var k = k0;
     var sc = mk(w, h, { x: 0, y: 0 }, k, false);
@@ -886,7 +884,8 @@
 
       // Project hulls: a faceted shell around each project's missions, with an inner mesh.
       sc.projects.forEach(function (p) {
-        if (p.ring) { ringHull(g, p, c, !!H[p.id], grow(p.id, anim)); return; }
+        // Desktop: the art draws the hulls; ringHull still runs for the label anchor, with a no-op context.
+        if (p.ring) { ringHull(sc.desk ? NO_DRAW : g, p, c, !!H[p.id], grow(p.id, anim)); return; }
         if (!p.members) return;
         var ring = [], gp = grow(p.id, anim);
         p.members.forEach(function (id) {
@@ -937,6 +936,7 @@
 
       // Links: the lit chain is bright and carries a travelling pulse when live; the rest recede.
       sc.links.forEach(function (l, idx) {
+        if (sc.desk) return;
         var a = pos[l.a], b = pos[l.b];
         if (!a || !b) return;
         var gl = grow(l.a + '>' + l.b, anim);
@@ -986,7 +986,7 @@
         if (it) { it.cx = q.x; it.cy = q.y; it.hr = 40 * s; it.pt = q; it.r = 34 * s; }
       });
 
-      drawCore(g, c, anim, !!H.core, s, sc.knot);
+      if (!sc.desk) drawCore(g, c, anim, !!H.core, s, sc.knot);
       var it0 = S.items.core;
       if (it0) { it0.cx = c.x; it0.cy = c.y; it0.hr = 60 * s; it0.pt = c; it0.r = 60 * s; }
 
@@ -1086,8 +1086,9 @@
       });
       var core = S.items.core;
       if (core && core.lbl) {
-        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 84 * s).toFixed(1) + 'px)';
-        placed.push({ x0: c.x - core.tw / 2, y0: c.y + 84 * s, x1: c.x + core.tw / 2, y1: c.y + 84 * s + core.th });
+        var coreDy = sc.desk ? 66 : 84;
+        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + coreDy * s).toFixed(1) + 'px)';
+        placed.push({ x0: c.x - core.tw / 2, y0: c.y + coreDy * s, x1: c.x + core.tw / 2, y1: c.y + coreDy * s + core.th });
       }
       var order = sc.projects.map(function (p) { return p.id; });
       sc.nodes.slice().sort(function (a, b) {
@@ -1355,6 +1356,12 @@
 
   /* ---------- Stages and screens ---------- */
 
+  // Round 10d: the desktop Overview is a 1296 x 729 frame scaled uniformly to the window (see fitFrame).
+  var NO_DRAW = new Proxy({}, { get: function () { return function () {}; }, set: function () { return true; } });
+  function fitFrame() {
+    var k = Math.min(window.innerWidth / 1296, window.innerHeight / 729);
+    document.documentElement.style.setProperty('--k', k.toFixed(4));
+  }
   var nowStage = makeStage($('#now-stage'), {
     onPick: function (id, kind) {
       if (isNarrow()) { if (kind === 'mission') openDetail(id); else openList(); return; }
@@ -2345,6 +2352,8 @@
     var parts = (location.hash || '#/now').replace(/^#\/?/, '').split('/');
     var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
     document.body.classList.remove('menu-open');
+    document.body.classList.toggle('frame-now', name === 'now' && !isNarrow());
+    fitFrame();
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });
     $$('.places a').forEach(function (a) {
@@ -2359,6 +2368,7 @@
   renderRail();
 
   window.addEventListener('resize', function () {
+    fitFrame();
     [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); });
   });
   document.addEventListener('visibilitychange', function () {

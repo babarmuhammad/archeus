@@ -4,6 +4,37 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10d desktop Overview (2026-10-22): hybrid, PARTIAL
+
+Method changed by the owner: the scene picture is the concept raster itself; everything live sits on top. The vector trace is tooling only (`tools/trace_desktop.py`, not shipped).
+
+- Master: `D:\hub-concepts-codex4\desktop-1-now-v2.png`, 1296 x 729 px (not 1600 x 900; the 1.235x montages were enlarged). The frame is 1296 x 729 CSS px at DPR 1 and is scaled uniformly to the window (`--k`, `fitFrame`). The footer disclosure sits in a 26 px strip below the frame, so the 1:1 capture viewport is 1296 x 755.
+- Base art: `art/desktop-now-base.webp` (lossless, 593 KB) and the 1296 x 729 PNG source (not shipped). Built by `tools/art_desktop.py` from the concept: glyph pixels of every live label, rail item, header control, chat row and composer box are removed by local-contrast masks inside measured boxes, then inpainted (Telea). Flat UI boxes (chat, header controls, rail column) are refilled from a quadratic fit of their surroundings or a constant (the rail). Mesh wires and the amber and blue links stay in the art. Regenerate with `py -I tools/art_desktop.py`.
+- Live overlay: the rail (Now, Projects, Replay with the same icons and the amber leading strip), header status and Tell and Stop, the NOW kicker and the headline, the lede, the chat rows with the label column, the Start card and the composer are DOM, positioned from the concept. Labels are the existing `.lbl` nodes; the Review button sits in the Search provenance label. Marks are still canvas-drawn (`drawDeskMark`, `drawDeskExec`), not SVG; that is a known deviation from the brief.
+- Fonts: EB Garamond (serif, headline, labels and lede, chosen over Cormorant Garamond by overlaying the concept headline) and Inter (sans), self-hosted under `fonts/` with OFL texts and sha256 (`fonts/README.md`). Scoped to `body.frame-now`, so other views keep their fonts.
+- Desktop-only gates: the canvas no longer draws hulls, facets, links or the knot on the Now frame (the art has them); the sky canvas is hidden; the project hulls still run `ringHull` for the label anchor with a no-op context (`NO_DRAW`).
+- Hidden on the frame, as an approved change: the project list in the rail (the Projects view keeps it), the example prompts and the all-missions list (both still in the DOM, not visible).
+- Service worker cache bumped to `archeus-v2-proto-13`; art and fonts added to the shell list.
+
+Measured (full resolution, unblurred, 1296 x 729, Chromium 1296 x 755 viewport, reduced motion, fonts awaited; `metrics.py`, mean abs RGB 0-255 and % of pixels above 24):
+- art only (outside all live boxes): mean 0.85, 0.70 % above 24. Registration proof: the art sits where the concept is.
+- text boxes: mean 33.7, 26.6 % above 24 (EB Garamond sizes and tracking are not yet matched glyph by glyph).
+- live marks (canvas glyphs): mean 21.6, 22.1 % above 24 (the concept glyphs are not replicated).
+- header: mean 16.3, 14.8 %.
+- rail: mean 6.0, 3.3 %.
+- chat and composer: mean 13.4, 8.3 %.
+- full frame: mean 6.8, 4.9 %.
+
+Residuals (honest, numbered):
+1. Text glyph shapes and widths: the serif labels run within a few px of the concept but are not glyph-matched; the headline is about 4 px narrower at the right.
+2. Marks are canvas glyphs, not the concept's shapes (diamonds, the four-point star and sparkle, the code glyph in the triangle).
+3. Chat bubble fill and the Start card border differ in tone and padding.
+4. Review button: 99 x 31 px at the concept's position (the owner's 122 x 36 figure is from the 1.235x montage; 99 x 31 is the master measurement).
+5. The rail band and icons are close, not matched glyph by glyph.
+6. Lightly smudged areas under the Fix date test star and the Codex apex (the art removed live glyphs there); the live star and apex cover most of them.
+
+Not verified in this round: other widths (1280, 1440, 1600, 1920) for overlap, the flicker and alternation images, high DPR, the phone.
+
 ## Round 10c desktop Overview (2026-10-21): PARTIAL, 5 loop iterations
 
 Status: PARTIAL. The brief asks for at least 8 saved iterations and a stop only at zero visible differences or 15 iterations. This round ran 5 iterations, then stopped to close the round with the width checks and the deliverables. Remaining differences are listed below with numbers. Only the desktop Overview (Now) was worked on. Phone, Replay, terminal, Mission and Shared are unchanged in this round.

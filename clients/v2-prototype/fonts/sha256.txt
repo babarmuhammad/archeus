@@ -1,0 +1,2 @@
+ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027 *fonts/EBGaramond-wght.ttf
+29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031 *fonts/Inter-wght-opsz.ttf
