@@ -214,7 +214,7 @@ main { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width:
 .log li.bad { color: #F4A4A8; }
 
 /* Phase bar: a horizontal stepper with a word and a shape per phase. */
-.phase-bar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s1); margin-top: var(--s3); }
+.phase-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4) var(--s1); margin-top: var(--s3); }
 .phase-bar li { position: relative; text-align: center; font: 400 14px/20px var(--sans); color: var(--text-2); padding-top: var(--s6); }
 .phase-bar li::before {
   content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
@@ -302,8 +302,10 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   .stage-now { min-height: 460px; }
   .facts { grid-template-columns: 1fr 1fr; }
   .phase-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: var(--s2); }
-  .proto { margin-right: 0; }
-  .top { justify-content: space-between; }
+  .proto { margin-right: auto; }
+  .top { flex-wrap: nowrap; justify-content: flex-end; gap: var(--s2); }
+  .core-status { display: none; }
+  .top .btn { min-height: 48px; padding: 0 var(--s4); }
 }
 
 @media (min-width: 881px) and (max-width: 1100px) {

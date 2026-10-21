@@ -366,7 +366,7 @@
     var k = Math.max(0.7, Math.min(w / 720, 1.1));
     var sc = mk(w, h, { x: w * 0.5, y: h * 0.12 }, k, false);
     var live = isLive(m);
-    sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * 0.2, y: h * 0.4, shape: 'octa', members: null, count: 0, live: live ? 1 : 0, active: live });
+    sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * 0.2, y: h * 0.4, shape: 'octa', members: null, count: missions.filter(function (x) { return x.project === p.id; }).length, live: live ? 1 : 0, active: live });
     sc.parent[p.id] = 'core';
     sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live, kind: 'project', hue: p.hue, verb: 'orchestrates' });
     var mx = w * 0.56, my = h * 0.5;
