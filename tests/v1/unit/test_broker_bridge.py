@@ -139,9 +139,8 @@ def test_a_pipe_that_cannot_be_opened_is_a_502_and_a_busy_bridge_a_503():
         assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 502')
         b._slots = threading.BoundedSemaphore(1)
         b._slots.acquire()
-        # sent nothing: a busy bridge answers at once, without reading a request it will
-        # not serve (unread bytes would turn its close into a reset, not a 503)
-        assert _exchange(b, b'').startswith(b'HTTP/1.1 503')
+        # a real request, sent in full: the 503 must arrive, not a reset (PV20-09 review S-2)
+        assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 503')
     finally:
         b.close()
 
@@ -191,21 +190,116 @@ def test_an_idle_client_is_cut_and_gives_its_slot_back():
         b.close()
 
 
+class Timers:
+    """Stands in for threading.Timer: the test fires a request's deadline when it says so."""
+
+    def __init__(self):
+        self.made = []
+
+    def __call__(self, delay, fn, args):
+        t = _Timer(delay, fn, args)
+        self.made.append(t)
+        return t
+
+    def fire_all(self):
+        for t in self.made:
+            t.fire()
+
+
+class _Timer:
+    def __init__(self, delay, fn, args):
+        self.delay, self.fn, self.args, self.cancelled = delay, fn, args, False
+
+    def start(self):
+        pass
+
+    def cancel(self):
+        self.cancelled = True
+
+    def fire(self):
+        if not self.cancelled:
+            self.fn(*self.args)
+
+
+def _read_to_eof(c):
+    out = b''
+    while True:
+        chunk = c.recv(65536)
+        if not chunk:
+            return out
+        out += chunk
+
+
 def test_a_request_that_trickles_past_its_deadline_is_cut_and_frees_its_slot():
-    b = W.Bridge(_nope, concurrent=1, idle_s=1.0, deadline_s=0.5)
+    timers = Timers()
+    b = W.Bridge(_nope, concurrent=1, idle_s=10.0, deadline_s=0.5, timer=timers)
     try:
         b.start(lambda port: None)
         with socket.create_connection(('127.0.0.1', b.port), timeout=5) as c:
             c.sendall(b'POST /v1/messages HTTP/1.1\r\nHost: x\r\n')
-            for _ in range(60):             # each line well inside the idle limit
-                try:
-                    c.sendall(b'X-A: 1\r\n')
-                except OSError:
-                    break
-                time.sleep(0.05)
-            assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 502')
+            assert _wait_for(lambda: timers.made)
+            assert timers.made[0].delay == 0.5
+            timers.fire_all()
+            got = _read_to_eof(c)
+        assert got == b''                   # cut: no reply, the connection just ends
+        assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 502')
     finally:
         b.close()
+
+
+def test_a_relay_longer_than_the_deadline_is_not_cut():
+    timers = Timers()
+
+    class Slow(Pipe):
+        def __init__(self):
+            super().__init__(reply=b'')
+            self.reply = [b'HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\n',
+                          b'abc', b'def']
+            self.started = False
+
+        def recv(self, n):
+            if not self.started:
+                self.started = True
+                timers.fire_all()           # the deadline passes while the reply is relayed
+            return super().recv(n)
+    b = W.Bridge(Slow, deadline_s=0.5, timer=timers)
+    try:
+        b.start(lambda port: None)
+        assert _exchange(b, ok_request()).endswith(b'abcdef')
+    finally:
+        b.close()
+
+
+@pytest.mark.parametrize('length', ['²', '9' * 5000, '+5', '-1', '5x'])
+def test_a_content_length_that_is_not_ascii_digits_is_refused(length):
+    data = raw('POST /v1/messages HTTP/1.1', 'Host: x', 'Authorization: Bearer brk_x',
+               'Content-Length: ' + length)
+    with pytest.raises(W.BadRequest):
+        W.read_request(io.BytesIO(data))
+    b = W.Bridge(_nope)
+    try:
+        b.start(lambda port: None)
+        assert _exchange(b, data).startswith(b'HTTP/1.1 400')
+    finally:
+        b.close()
+
+
+def test_an_unexpected_error_in_the_bridge_is_a_local_500():
+    def bad_connect():
+        raise ValueError('not an OSError')
+    b = W.Bridge(bad_connect)
+    try:
+        b.start(lambda port: None)
+        assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 500')
+    finally:
+        b.close()
+
+
+def _wait_for(cond, timeout=5.0):
+    end = time.monotonic() + timeout
+    while not cond() and time.monotonic() < end:
+        time.sleep(0.01)
+    return cond()
 
 
 def test_the_pipe_carries_only_the_broker_token_and_the_forwardable_headers():

@@ -4,6 +4,8 @@ transport and a fake upstream; no native operation, no network."""
 
 import io
 import logging
+import threading
+import time
 
 import pytest
 
@@ -42,6 +44,11 @@ class Resp:
 
     def read1(self, n):
         return self._c.pop(0) if self._c else b''
+
+    def read(self, n):
+        data = b''.join(self._c)
+        self._c = []
+        return data[:n]
 
 
 def binding(**kw):
@@ -214,6 +221,81 @@ def test_concurrency_is_bounded_per_grant():
     assert serve(b, request(token=token))[1]['status'] == 429 and calls == []
 
 
+def test_a_refused_or_probe_request_leaves_the_grant_counts_unchanged():
+    b, _ = broker()
+    _, token, d = issued(b, limits=B.BrokerLimits(max_requests=10, concurrent=2))
+    g = b._grants[d]
+    serve(b, request('HEAD', '/api/hello', token))
+    assert g['active'] == 0 and b._in_flight == 0
+    serve(b, request('POST', '/v1/nope', token))
+    assert g['active'] == 0 and b._in_flight == 0
+    g['active'] = 2
+    assert serve(b, request(token=token))[1]['status'] == 429
+    assert g['active'] == 2 and b._in_flight == 0 and g['requests'] == 0
+
+
+def _wait_for(cond, timeout=5.0):
+    end = time.monotonic() + timeout
+    while not cond() and time.monotonic() < end:
+        time.sleep(0.01)
+    return cond()
+
+
+def test_a_flooding_grant_cannot_starve_a_legit_grant():
+    gate, entered = threading.Event(), []
+
+    def send(up, addrs, method, path, headers, body, timeout):
+        if headers.get('anthropic-beta') == 'flood':
+            entered.append(1)
+            gate.wait(10)
+        return Resp()
+    b, _ = broker(send=send)
+    _, flood, _ = issued(b, limits=B.BrokerLimits(max_requests=100, concurrent=B.POOL))
+    _, legit, _ = issued(b)
+    statuses, lock = [], threading.Lock()
+
+    def fire():
+        _, row = serve(b, request(token=flood, extra=('anthropic-beta: flood',)))
+        with lock:
+            statuses.append(row['status'])
+    threads = [threading.Thread(target=fire) for _ in range(40)]
+    for t in threads:
+        t.start()
+    assert _wait_for(lambda: b.busy_refused == 38)     # all 40 decided, 2 still in flight
+    legit_row = serve(b, request(token=legit))[1]
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert legit_row['status'] == 200
+    assert sorted(statuses) == [200, 200] + [503] * 38
+    assert b.busy_refused == 38 and b._in_flight == 0
+
+
+def test_the_pool_refuses_a_grant_once_it_is_full_and_counts_the_refusal():
+    gate, entered = threading.Event(), []
+
+    def send(up, addrs, method, path, headers, body, timeout):
+        if headers.get('anthropic-beta') == 'hold':
+            entered.append(1)
+            gate.wait(10)
+        return Resp()
+    b, _ = broker(send=send, pool=3)
+    tokens = [issued(b)[1] for _ in range(4)]
+    threads = [threading.Thread(target=serve,
+                                args=(b, request(token=t, extra=('anthropic-beta: hold',))))
+               for t in tokens[:3]]
+    for t in threads:
+        t.start()
+    assert _wait_for(lambda: len(entered) == 3)
+    row = serve(b, request(token=tokens[3]))[1]
+    gate.set()
+    for t in threads:
+        t.join(5)
+    assert row['status'] == 503 and b.busy_refused == 1
+    assert 503 in [r['status'] for r in b.audit]
+    assert b._in_flight == 0
+
+
 # ── what is forwarded, what comes back ──
 
 def test_the_client_authority_is_stripped_and_core_supplies_the_upstreams():
@@ -255,6 +337,7 @@ def test_only_the_standard_and_anthropic_headers_are_forwarded():
     {'x-api-key': 'bad\r\nInjected: 1'},
     {'x-api-key': ''},
     {},
+    {'x-api-key': 'sk-ant-oat01-SECRET'},          # a subscription token, whatever its header
 ])
 def test_the_upstream_credential_is_one_api_key_or_nothing_is_sent(creds):
     b, calls = broker()
@@ -405,6 +488,26 @@ def test_an_upstream_header_with_a_control_character_is_not_relayed():
     _, token, _ = issued(b)
     out, _ = serve(b, request(token=token))
     assert b'Injected' not in out and b'request-id: r2' in out.split(b'\r\n\r\n')[0]
+
+
+def test_an_upstream_status_line_with_a_control_character_is_not_relayed():
+    b, _ = broker(send=lambda *a: Resp(reason='OK\rSet-Cookie: s=1'))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 200 and out.startswith(b'HTTP/1.1 200 \r\n')
+    assert b'Set-Cookie' not in out
+
+
+def test_an_upstream_error_body_is_relayed_without_the_key_or_not_at_all():
+    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'overloaded for UPSTREAM-SECRET']))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 529 and b'UPSTREAM-SECRET' not in out
+    assert out.endswith(b'overloaded for [redacted]') and b'Content-Length: 25' in out
+    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'x' * (B.ERROR_BODY_MAX + 1)]))
+    _, token, _ = issued(b)
+    out, _ = serve(b, request(token=token))
+    assert out.endswith(b'\r\n\r\n') and b'Content-Length: 0' in out
 
 
 # ── destinations ──

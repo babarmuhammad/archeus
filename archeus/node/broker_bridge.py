@@ -23,6 +23,12 @@ CONCURRENT = 2
 #: is cut, so an idle client cannot hold a slot (PV20-08 §1; round 2 review S1)
 IDLE_S = 10.0
 DEADLINE_S = 30.0
+#: after a busy refusal sent before the request was read: how much the client may still
+#: send, and for how long, before the bridge closes (PV20-09 review S-2)
+DRAIN_BYTES = 64 * 1024
+DRAIN_S = 1.0
+#: a Content-Length is ASCII digits, a length that Python's int() reads without limit
+_DIGITS = re.compile(r'[0-9]{1,12}')
 _TOKEN = set("!#$%&'*+-.^_`|~0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 #: names a request may carry at most once (PV20-08 §1, wire contract)
 _SINGLE = ('content-length', 'host', 'authorization', 'x-api-key')
@@ -151,7 +157,7 @@ def read_request(f, *, max_headers=MAX_HEADERS, max_header_bytes=MAX_HEADER_BYTE
         if method in ('POST', 'PUT', 'PATCH'):
             raise BadRequest('a request body needs a Content-Length')
         return req
-    if not length.isdigit():
+    if not _DIGITS.fullmatch(length):
         raise BadRequest('Content-Length is not a number')
     n = int(length)
     if n > cap:
@@ -191,6 +197,23 @@ def _cut(sock):
         pass
 
 
+def _drain(sock):
+    """After a refusal sent before the request was read: stop sending, then read what the
+    client still sends, bounded in time and size, so the close is a FIN and not a reset
+    that loses the refusal. A request larger than DRAIN_BYTES can still be reset."""
+    try:
+        sock.shutdown(socket.SHUT_WR)
+        sock.settimeout(DRAIN_S)
+        left = DRAIN_BYTES
+        while left > 0:
+            chunk = sock.recv(min(left, 8192))
+            if not chunk:
+                break
+            left -= len(chunk)
+    except OSError:
+        pass
+
+
 class Bridge:
     """The execution-local listener. *connect* opens one connection to Core's pipe and
     returns an object with `sendall`, `recv` and `close` (the native backend's; a test
@@ -199,10 +222,10 @@ class Bridge:
     another process could take it."""
 
     def __init__(self, connect, *, host='127.0.0.1', concurrent=CONCURRENT, idle_s=IDLE_S,
-                 deadline_s=DEADLINE_S):
+                 deadline_s=DEADLINE_S, timer=threading.Timer):
         self._connect = connect
         self._slots = threading.BoundedSemaphore(concurrent)
-        self._idle, self._deadline = idle_s, deadline_s
+        self._idle, self._deadline, self._timer = idle_s, deadline_s, timer
         bridge = self
 
         class _Handler(socketserver.BaseRequestHandler):
@@ -229,12 +252,24 @@ class Bridge:
         self._server.server_close()
 
     def serve(self, sock):
+        try:
+            self._serve(sock)
+        except Exception:
+            _send(sock, local_reply(500, 'Internal Error'))
+        finally:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    def _serve(self, sock):
         if not self._slots.acquire(blocking=False):
             _send(sock, local_reply(503, 'Busy'))
+            _drain(sock)
             return
         try:
             sock.settimeout(self._idle)
-            cut = threading.Timer(self._deadline, _cut, (sock,))
+            cut = self._timer(self._deadline, _cut, (sock,))
             cut.start()
             try:
                 req = read_request(sock.makefile('rb'), admit=_admit_bridge)
@@ -268,7 +303,3 @@ class Bridge:
                 pipe.close()
         finally:
             self._slots.release()
-            try:
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass

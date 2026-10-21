@@ -51,6 +51,12 @@ _DROP_BACK = {'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticat
               'trailer', 'transfer-encoding', 'upgrade', 'set-cookie', 'content-length'}
 #: the audit keeps the last rows only: a client can send requests without end
 AUDIT_MAX = 1024
+#: in-flight requests the broker holds across all grants; one grant gets a quarter of them
+POOL = 8
+#: an upstream error body is relayed at most this long, with the key scrubbed, or not at all
+ERROR_BODY_MAX = 64 * 1024
+#: a subscription login token (PV20-08b): never the upstream credential, whatever is configured
+_SUBSCRIPTION = 'sk-ant-oat'
 
 
 class Refused(Exception):
@@ -194,13 +200,16 @@ class Broker:
 
     def __init__(self, *, core_instance, live, credentials, upstream_of, limits=None,
                  transport=None, resolve=None, send=send_upstream, clock=time.monotonic,
-                 audit=None):
+                 audit=None, pool=POOL):
         self.core_instance = core_instance
         self._live, self._credentials, self.upstream_of = live, credentials, upstream_of
         self.limits = limits or BrokerLimits()
         self.transport = transport or NativeTransport()
         self._resolve, self._send, self._clock = resolve, send, clock
         self.audit = audit if audit is not None else deque(maxlen=AUDIT_MAX)
+        self._pool, self._share = pool, max(1, pool // 4)
+        self._in_flight = 0         # across all grants, against the pool
+        self.busy_refused = 0       # 503s for the pool or a grant's share, counted
         self._grants = {}           # digest -> grant
         self._lock = threading.Lock()
 
@@ -276,9 +285,10 @@ class Broker:
         """Serve one request read from *rfile*, writing the response with *write*;
         *principal* is what the native backend observed for the pipe client. Never
         raises: every refusal is a local response, and any other error is a local 500
-        that carries no text of it. The head is checked before the body is read, and
-        every authenticated request counts against the grant's ceiling, whatever its
-        body. Returns the audit row."""
+        that carries no text of it. The head is checked before the body is read. Each
+        message request (POST /v1/messages) counts against the grant's ceiling whatever
+        its body; the hello probe and refused endpoints do not count. Returns the audit
+        row."""
         row = {'execution_id': None, 'model': None, 'endpoint': None, 'status': None,
                'bytes_in': 0, 'bytes_out': 0, 'duration_ms': 0}
         t0 = self._clock()
@@ -301,8 +311,13 @@ class Broker:
                     raise Refused(429, 'the grant has used its requests')
                 if g['active'] >= b.limits.concurrent:
                     raise Refused(429, 'too many requests at once')
+                if g['active'] >= self._share:
+                    self._busy('this grant holds its share of the broker')
+                if self._in_flight >= self._pool:
+                    self._busy('the broker is busy')
                 g['requests'] += 1
                 g['active'] += 1
+                self._in_flight += 1
             held['active'] = True
             return b.limits.max_body
 
@@ -329,9 +344,15 @@ class Broker:
             if held.get('active'):
                 with self._lock:
                     held['g']['active'] -= 1
+                    self._in_flight -= 1
             row['duration_ms'] = int((self._clock() - t0) * 1000)
             self.audit.append(row)
         return row
+
+    def _busy(self, why):
+        """A 503 for the pool or a grant's share; the caller holds the lock."""
+        self.busy_refused += 1
+        raise Refused(503, why)
 
     def _forward(self, req, b, d, write, t0):
         addrs = check_destination(b.upstream, self._resolve)
@@ -340,6 +361,8 @@ class Broker:
         key = creds['x-api-key'] if one else None
         if not (isinstance(key, str) and _KEY.fullmatch(key)):
             raise Refused(403, 'the upstream credential is not one API key')
+        if key.startswith(_SUBSCRIPTION):
+            raise Refused(403, 'a subscription token is never the upstream credential')
         headers = {k: v for k, v in req.headers if wire.forwarded(k)}
         headers['x-api-key'] = key
         headers['Content-Length'] = str(len(req.body))
@@ -353,9 +376,20 @@ class Broker:
         if 300 <= resp.status < 400:
             write(wire.local_reply(502, 'Bad Gateway'))   # a redirect is never followed
             return 502, 0
-        out = ['HTTP/1.1 %d %s' % (resp.status, resp.reason or '')]
+        reason = resp.reason or ''
+        if not wire.clean(reason):
+            reason = ''                 # a status line with a control character is not relayed
+        out = ['HTTP/1.1 %d %s' % (resp.status, reason)]
         out += ['%s: %s' % (k, v) for k, v in resp.getheaders()
                 if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))]
+        if resp.status >= 400:
+            # an error body is short and whole, or not relayed; the key never goes back out
+            raw = resp.read(ERROR_BODY_MAX + 1)
+            body = (b'' if len(raw) > ERROR_BODY_MAX
+                    else raw.replace(key.encode('latin-1'), b'[redacted]'))
+            out += ['Content-Length: %d' % len(body), 'Connection: close']
+            write(('\r\n'.join(out) + '\r\n\r\n').encode('latin-1') + body)
+            return resp.status, len(body)
         out.append('Connection: close')
         write(('\r\n'.join(out) + '\r\n\r\n').encode('latin-1'))
         sent = 0

@@ -406,7 +406,8 @@ class ExecutionManager:
     def broker_live(self, binding, digest):
         """The broker's recheck on every request (PV20-08 §1): the grant is still its
         execution's live process generation, under the recorded digest, route, account and
-        model. Ended, resumed, re-routed or restarted: no."""
+        model. Ended, resumed, re-routed or restarted: no. Not yet: the terms and the
+        account's health (PV20-08 §1), deferred to PV20-17 (PV20-09 review S5)."""
         with self.db.read() as r:
             row = rows.get(r, entities.Execution, binding.execution_id)
         e = row.entity if row is not None else None
