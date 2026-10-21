@@ -4,6 +4,49 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## What round 9 changed
+
+Owner answer, 2026-10-21 (verbatim): "Apply all five (Recommended)" on the five open questions of round 8. Applied: Replay verb labels hidden below 1600 px; terminal state colour; the decision as its own two-step screen on desktop and phone; the phone chat opens at the newest Start card; receded phone hulls keep their names only.
+
+- **Replay.** Verb labels ("orchestrates", "contains", "executes") are hidden below 1600 px. Above 1600 they sit off the link (perpendicular offset). A faint hull now surrounds the mission node, so the mission reads as a project member as in replay-2.
+- **Terminal colour.** State words and glyphs carry the approved palette: amber for needs-you, blue for running and verifying, green for done and verified, ivory neutral. Colour is a second cue; every state keeps its glyph and word. The tell line and the SIMULATED line are dimmed. A web page cannot read the NO_COLOR shell variable, so the prototype honours `?nocolor` in the URL and the `C` key. The 80 x 24 layout has the Why line on its own row.
+- **Decision, two steps (desktop and phone, same page).** Step 1 is the decision: What, Why, the core consequence (fixture text), the action hash and plan version. "Review and approve…" opens step 2, a confirm screen with the mission, project, plan version and action hash. Its button opens the explicit confirm box (Cancel is the default). Nothing is approved; the confirm box is a fake. "Back to decision" returns to step 1. The page header hides on step 2 so only one headline shows. Terminal: `a` opens the confirm line, `y` confirms (fake), any other key cancels.
+- **Phone chat.** Opening the conversation scrolls to the newest Start card, with the General thread below it. While the card is among the last three messages, new replies do not push it out of view. Start is amber filled, Keep as mission amber outline (as phone-3).
+- **Phone hulls.** Receded projects are named only (no count line). The Codex triangle on the phone carries a small label, "Codex · execution".
+- **Project list sheet.** The "All work" sheet lists every project by name (dot, name) with its missions under it. The rest chip (names beyond the fourth project when more than five exist) opens the same sheet. Not tested with more than five projects: the prototype has three fixture projects plus Atlas from chat.
+- **Desktop calmer.** Project hulls use a lighter fill, with per-facet value steps (no gloss). The Review action is a small amber outline button (36 px), not a block; the phone keeps a filled 48 px button. The starfield sits at 55 % opacity.
+- **Phone Open decision** is an amber outline button in the detail sheet (phone-2).
+- **Mission and Shared.** Mission: the mission body is larger (112 px at full scale) so it reads as the centre of the view, closer to 03-mission. Shared: the Overview tab carries the evidence rows (Project files, Notes, Agent logs, Build outputs, Related content) as in 06-shared.
+- **Typography (typography skill, applied).** Serif only for the wordmark, the headlines and the Archeus name. UI and label text is sans. Caps (kickers) tracked at 0.12 em (was 0.16 em, above the 5 to 12 % rule). Kerning on for the page. Sheet and chat text set to a 65 character measure and 23 px line height for body (about 1.45). Scale: wordmark serif 18 to 20 px, tracked caps; headline serif 34 px phone and 56 px desktop; sheet title serif 26 / 32; label title sans 19 / 24 (phone 22 / 28); label sub sans 14 / 20 (phone 16 / 22); kicker sans 600 14 / 20 caps; body sans 16 / 23; small sans 14 / 20; chips and buttons sans 14 to 16 / 20, weight 500; terminal mono 15 / 20. Minimum text size 14 px (check.mjs).
+- **Design-audit (applied by hand, as in round 8).** Dimensions re-checked on the round 9 screenshots: hierarchy (one headline per screen, Review outranks the label), spacing (the phone bar and chips clear the home-indicator inset), type (the scale above), colour (amber means needs-you only; blue running; green done), density (duplicate Why line removed from the terminal and the second page headline on step 2 removed). The audit's approval step was not run.
+- Service worker cache bumped to `archeus-v2-proto-9`. `check.mjs` adds round 9 assertions (two-step decision, NO_COLOR and colour, Codex phone label and chat open at the card).
+
+### Sizes and checks (round 9)
+
+- Phone Overview at 360 x 800, 390 x 844, 393 x 852, 402 x 874, 430 x 932 and 440 x 956: seen by eye in one montage (`scratchpad/t123/r9-phone-sizes-montage.png`). Every size shows the focus hull, the labelled Codex triangle, the amber Review button, the named receded hulls, and the bar above the bottom inset. No horizontal scroll. Label boxes: zero overlaps on the Overview at every phone width.
+- Desktop Overview at 1280 x 720, 1440 x 900, 1600 x 900 and 1920 x 1080: seen by eye in one montage (`scratchpad/t123/r9-desktop-montage.png`). Label boxes: zero overlaps at all four sizes; project names present (Harbor, Notes, Lantern).
+- Desktop Replay: zero overlaps at 1280 x 720, 1440 x 900 and 1920 x 1080. At 1600 x 900, "Archeus x orchestrates" and "Results x verifies" still touch (the verb labels are shown from 1600 px up). On phone widths, "Harbor" (the project name on the hull) overlaps "Results" (and "Verification" at 430 and 440). Not fixed in round 9: the project name wins the budget, so the record label should yield. Recorded as a gap.
+- Terminal 120 x 40 (overview, mission, decision, Replay, plain-line, help) and 80 x 24 overview: seen by eye. The state colours and the dimmed tell line are visible in the screenshot.
+- check.mjs via testlock: passes (references, syntax, manifest, 14 contrast pairs, minimum 14 px, round 9 assertions).
+- The dim tell line and the colour contrast were checked in the screenshot and in the palette pairs only, not on a rendered pixel sample.
+
+### Still weaker than the images (after round 9)
+
+- Phone-1: facets now have value steps, but the composition is still denser than the image; the hull edges are bright and the star rays are long. Not matte in the strict sense (no per-facet lighting).
+- Phone-2: the Open decision button is an amber outline; the sheet is a bit taller than the concept (the Core line is longer).
+- Phone-3: the Start card is visible first, with the General thread below; the feed header is minimal and the grabber is small.
+- Desktop-1: calmer, with lighter hulls and a smaller Review; the Archeus star is larger than in the image and the chat intro still sits near the scene at 1280 x 720.
+- Replay: the faint hull is there; the verb labels are hidden below 1600 px; the phone overlap (project name over record label) is open.
+- Terminal: colours follow the approved palette; the 80 x 24 layout is a stacked list, not the boxed concept.
+- Mission (03) and Shared (06): both moved toward the concept (larger mission body; evidence rows). Still weaker: the phase stepper is a grid of dots rather than a connected line with checks, and the agent bodies in Shared are smaller than in 06.
+- Decision: a two-step screen on desktop and phone; the concept shows a separate decision screen with a single confirm; this is the owner's two-step requirement.
+
+### Not verified
+
+- A real phone, iPhone 18 sizes, real safe-area insets (CSS only), Dynamic Type, screen readers, frame rate, rendered contrast of the labels and terminal colours.
+- NO_COLOR as the shell variable (only `?nocolor` and `C` in the web prototype).
+- The named list sheet with more than five projects (not reachable with the fixture data).
+
 ## What round 8 changed
 
 - **Owner rule (verbatim, 2026-10-21): "I like the new concepts of codex but the it remove the project name from the new visual design that was usefull".** Every project hull shows its name on every screen: desktop, Replay, phone and terminal. The v2 images drop the names; this build keeps them. Project names rank first in the label budget.
