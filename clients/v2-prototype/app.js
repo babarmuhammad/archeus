@@ -1320,7 +1320,7 @@
   function refreshNow() { nowStage.relayout(); renderRail(); }
 
   function createAtlas() {
-    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.3], offs: [[30, -110], [-40, -116], [96, 70]] });
+    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.36], offs: [[30, -110], [-40, -116], [96, 70]] });
     nowStage.markBorn('atlas');
     nowStage.markBorn('core>atlas');
     refreshNow();
