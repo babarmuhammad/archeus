@@ -566,11 +566,18 @@ TYPES = {
         'served_level': {'type': 'string', 'nullable': True,
                          'enum': list(entities.PROVENANCE_LEVELS)},
         'model_revision': {'type': 'string', 'nullable': True},
+        'current_action': {'ref': 'CurrentAction', 'nullable': True},
         'artifacts': {'type': 'array', 'items': {'type': 'object'}},
         'context': {'ref': 'ContextState'}, 'handoff': {'ref': 'Handoff'},
         'why': {'type': 'string'}, 'inventory': {'ref': 'Inventory', 'nullable': True}},
         'required': ['id', 'task_id', 'mission_id', 'attempt', 'state', 'process_seq',
                      'stream_offset', 'version', 'context']},
+    'CurrentAction': {'type': 'object', 'properties': {
+        'action_class': {'type': 'string', 'enum': list(entities.RULE_CLASSES)},
+        'label': {'type': 'string'},
+        'decision': {'type': 'string', 'enum': ['allow', 'deny', 'halt']},
+        'seq': {'type': 'integer'}},
+        'required': ['action_class', 'label', 'decision', 'seq']},
     'ExecutionList': {'type': 'object', 'properties': {
         'executions': {'type': 'array', 'items': {'ref': 'Execution'}}},
         'required': ['executions']},

@@ -49,6 +49,9 @@ GR = 'archeus/core/application/grammar.py'
 CV = 'archeus/core/application/conversation.py'
 DG = 'archeus/core/world/digest.py'
 TT = 'tests/v1/integration/test_trace.py'
+CH = 'clients/app/src/state/chips.ts'
+ACT = 'tests/v1/integration/test_p21_activity.py::'
+CHT = 'node:test/chips.test.ts'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -317,6 +320,49 @@ MUTATIONS = [
      "    return 'conversation', c.entity.id",
      "    return 'mission', c.entity.id")],
      [TT + '::test_the_digest_folds_messages_into_their_mission_or_one_new_messages_row']),
+    # ── P21 slice E: the activity chip's record (D6) and the chip (A-17) ──
+    ('Z90', "a foreign request becomes the execution's current action", [(EX,
+     "        return _hook_answer(tx, actor, e, seq, 'halt', 'the request is not this execution\\'s')",
+     "        return _hook_answer(tx, actor, e, seq, 'halt', 'the request is not this execution\\'s',\n"
+     "                            _current(canon))")],
+     [ACT + 'test_H01_every_answer_is_unchanged_and_each_authentic_request_becomes_the_current_action']),
+    ('Z91', 'the record keeps the argv', [(EX,
+     "    return {'action_class': a.action_class, 'label': redact(a.host or a.target)[:200]}",
+     "    return {'action_class': a.action_class, 'label': redact(a.host or a.target)[:200],\n"
+     "            'argv': list(a.argv or ())}")],
+     [ACT + 'test_H03_the_record_never_holds_raw_input']),
+    ('Z92', 'a URL or a remote is kept instead of its host', [(EX,
+     "    return {'action_class': a.action_class, 'label': redact(a.host or a.target)[:200]}",
+     "    return {'action_class': a.action_class, 'label': redact(a.target)[:200]}")],
+     [ACT + 'test_H03_the_record_never_holds_raw_input']),
+    ('Z93', 'the label skips the redactor', [(EX,
+     "    return {'action_class': a.action_class, 'label': redact(a.host or a.target)[:200]}",
+     "    return {'action_class': a.action_class, 'label': (a.host or a.target)[:200]}")],
+     [ACT + 'test_H03_the_record_never_holds_raw_input']),
+    ('Z94', 'every recorded call says Core allowed it', [(EX,
+     "        fields['current_action'] = dict(action, decision=decision, seq=seq)",
+     "        fields['current_action'] = dict(action, decision='allow', seq=seq)")],
+     [ACT + 'test_H01_every_answer_is_unchanged_and_each_authentic_request_becomes_the_current_action']),
+    ('Z95', 'a denied call is never the current action', [(EX,
+     "        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons), act)",
+     "        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons))")],
+     [ACT + 'test_H01_every_answer_is_unchanged_and_each_authentic_request_becomes_the_current_action']),
+    ('Z96', 'a refused call leaves as soon as an allowed one', [(CH,
+     "    const ttl = a.decision === 'allow' ? CHIP_TTL_MS : CHIP_TTL_ERROR_MS;",
+     "    const ttl = CHIP_TTL_MS;")],
+     [CHT]),
+    ('Z97', 'the same action read again is chipped again', [(CH,
+     "    if (!a || !row || a.seq <= (this.chipped.get(x) ?? -Infinity)) return;",
+     "    if (!a || !row) return;")],
+     [CHT]),
+    ('Z98', 'a row takes any number of chips', [(CH,
+     "    if (row.length >= CHIPS_PER_ROW) return;",
+     "    if (row.length >= Infinity) return;")],
+     [CHT]),
+    ('Z99', 'any execution frame chips a row', [(CH,
+     "f.id !== undefined && f.event === 'execution.hook' && s?.kind",
+     "f.id !== undefined && f.event.startsWith('execution.') && s?.kind")],
+     [CHT]),
 ]
 
 

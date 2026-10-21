@@ -1035,6 +1035,9 @@ class Execution(Entity):
     served_model: str = None
     served_level: str = None
     model_revision: str = None
+    # P21 (p21-design-gate D6): the last hook request Core judged for it, as the
+    # activity chip shows it - {action_class, label, decision, seq}; never raw input
+    current_action: dict = None
     state: str = None
 
     def _check(self):

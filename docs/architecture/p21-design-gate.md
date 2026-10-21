@@ -457,3 +457,37 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (the tab replays every event from the first, in a real browser); `clients/app/test/shell.test.ts`
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
+
+### Slice E as built (2026-10-21, card T-128)
+
+Built under D0 by the owner's naming of 2026-10-21 ("Yes, all five (Recommended)", recorded on
+the board): slice E touches the execution boundary's Core side, so it was not D0-eligible on
+2026-10-19. D6 (a) as approved: Core records the current action from the request it already
+judges; nothing is added to the hook, and no answer it gets changes.
+
+- **The record (D6 (a)).** `Execution.current_action` (`archeus/core/domain/entities.py`; the
+  row is a JSON body, so no migration): `{action_class, label, decision, seq}`, written by
+  `_hook_answer` in `archeus/core/application/executions.py` in the same transaction as
+  `hook_seq` and the `execution.hook` event. `serve_hook` passes it only after the token check:
+  a foreign request, a replayed or older sequence number, or one for an execution no longer
+  STARTING/RUNNING never becomes its current action. It is recorded with Core's answer for every
+  authentic request: allow, deny, and each halt (emergency stop, binding, working directory,
+  branch, waiting for approval).
+- **No raw input (I-F4, §9).** `_current(canon)` keeps the first canonical action's class and a
+  label: the action's `host` when it names one (a WebFetch or curl URL, a git remote that may
+  carry a credential), else its `target` (a workspace path, a program name, `shell` for an
+  unclassified command, `search`); the argv and a URL are never kept, and the label passes the
+  shared redactor (`archeus/core/redact.py`), cut at 200 characters.
+- **The read.** `GET /v1/executions/{id}` carries it (schema `CurrentAction`, `observe`); the
+  generated client, `archeus/cli/_api.py` and the API reference regenerate.
+- **The chip (A-17).** `clients/app/src/state/chips.ts`: an `execution.hook` frame re-reads the
+  execution; a current action newer than the last one chipped for it becomes a chip on its
+  mission's row while a row of it is on screen, in words ("reading src/a.py", "refused: running
+  npm", "held: fetching example.com"); 2.5 s, 4 s when Core refused or held the call; at most
+  3 on a row; a fourth is dropped, not queued (the registry's `over_cap` stays null). Drawn by
+  `ActivityChips` in `clients/app/src/components/ui.tsx` on `MissionRow` (Work and Now), hidden
+  from the row link's name (it would change at every tool call); never a tint. The registry entry
+  `activity-chip` is now `built` with its approved values (`tokens/motion.json`), keyframes
+  `activity-chip`; under reduced motion the chip appears and leaves without its fade.
+- **Not built:** the role word and model label the orchestration plan allows on the chip
+  ("reviewing · claude-sonnet-5"); TUI chips (the gate's TUI scope is `status` and `doctor`).

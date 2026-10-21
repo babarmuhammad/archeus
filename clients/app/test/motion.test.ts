@@ -75,7 +75,7 @@ test('every animation the client starts is a registered, built motion; nothing a
       used.add(id!);
     }
     for (const id of ids)
-      if (MOTIONS[id].status === 'approved') assert.ok(!src.includes(`'${id}'`), `${p} uses ${id}, which is not built: set its status first`);
+      if ((MOTIONS[id].status as string) === 'approved') assert.ok(!src.includes(`'${id}'`), `${p} uses ${id}, which is not built: set its status first`);
   }
   assert.ok(calls >= 2, 'read the call sites');
   for (const id of ids)

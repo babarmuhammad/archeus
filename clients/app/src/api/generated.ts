@@ -294,6 +294,13 @@ export interface Criterion {
   origin?: 'explicit' | 'inferred';
 }
 
+export interface CurrentAction {
+  action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential' | 'mission.start';
+  label: string;
+  decision: 'allow' | 'deny' | 'halt';
+  seq: number;
+}
+
 export interface Decided {
   approval_id: string;
   state: string;
@@ -370,6 +377,7 @@ export interface Execution {
   served_model?: string | null;
   served_level?: 'REQUESTED' | 'ROUTED' | 'SERVED' | 'BILLED' | null;
   model_revision?: string | null;
+  current_action?: CurrentAction | null;
   artifacts?: Record<string, unknown>[];
   context: ContextState;
   handoff?: Handoff;

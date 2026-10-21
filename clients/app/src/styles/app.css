@@ -808,6 +808,41 @@ h1:focus {
   }
 }
 
+/* A-17 (P21 D6): the activity chip, what an agent asked Core to do, in words;
+   160 ms in, gone after its TTL; never a tint (ADR-0026 §3) */
+.activity-chips {
+  display: inline-flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.activity-chip {
+  display: inline-block;
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font: var(--type-caption);
+  color: var(--text-2);
+  animation: activity-chip var(--dur-state) var(--ease) 1;
+}
+
+.activity-chip[data-still] {
+  animation: none;
+}
+
+@keyframes activity-chip {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* A-12: a static skeleton in the shape of a list — never animated (no shimmer) */
 .skeleton {
   display: flex;

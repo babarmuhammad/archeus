@@ -28,6 +28,7 @@ from ...infra.db import rows
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
+from ..redact import redact
 from . import authorization, lifecycle
 from .commands import active_plan
 
@@ -774,19 +775,20 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
     if not (e.hook_token_hash and isinstance(tok, str) and hmac.compare_digest(
             token_hash(tok).encode(), e.hook_token_hash.encode())):
         return _hook_answer(tx, actor, e, seq, 'halt', 'the request is not this execution\'s')
+    act = _current(canon)
     if disarmed:
-        return _hook_answer(tx, actor, e, seq, 'halt', 'emergency stop')
+        return _hook_answer(tx, actor, e, seq, 'halt', 'emergency stop', act)
     if e.state == 'STARTING':
         e = _fire(tx, e.id, 'first_output', actor, 'the process asked its first question')
     why = binding(tx.conn, e)
     if why is not None:
         stop(tx, actor=actor, execution_id=e.id, reason=why, stop_reason='binding')
-        return _hook_answer(tx, actor, e, seq, 'halt', why)
+        return _hook_answer(tx, actor, e, seq, 'halt', why, act)
     if not cwd_ok:
         return _hook_answer(tx, actor, e, seq, 'halt', 'the working directory is outside %s'
-                            % e.workdir)
+                            % e.workdir, act)
     if not branch_ok:
-        return _hook_answer(tx, actor, e, seq, 'halt', 'HEAD is not branch %s' % e.branch)
+        return _hook_answer(tx, actor, e, seq, 'halt', 'HEAD is not branch %s' % e.branch, act)
     actions, unclassified = canon
     worst, reasons, asked = 'allow', [], None
     for a in actions:
@@ -800,12 +802,12 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
             asked = asked or got
             reasons.append(_reason(tx, got))
     if worst == 'deny':
-        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons))
+        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons), act)
     if asked is not None:
         _fire(tx, e.id, 'hook_asked', actor, 'waiting for approval %s' % asked['approval_id'])
         return _hook_answer(tx, actor, e, seq, 'halt', 'waiting for your approval (%s)'
-                            % asked['approval_id'])
-    return _hook_answer(tx, actor, e, seq, 'allow', '')
+                            % asked['approval_id'], act)
+    return _hook_answer(tx, actor, e, seq, 'allow', '', act)
 
 
 def _reason(tx, got):
@@ -813,9 +815,25 @@ def _reason(tx, got):
     return d.entity.reason if d is not None else got['decision']
 
 
-def _hook_answer(tx, actor, e, seq, decision, reason):
-    if seq is not None and seq > e.hook_seq:
-        tx.update(entities.Execution, e.id, {'hook_seq': seq}, actor=actor)
+def _current(canon):
+    """What the activity chip shows (P21 D6): the first canonical action's class and
+    a label, never raw input (slice I). A host stands in for a target that can be a
+    URL or a remote with a credential in it; argv is never kept."""
+    actions, _ = canon
+    if not actions:
+        return None
+    a = actions[0]
+    return {'action_class': a.action_class, 'label': redact(a.host or a.target)[:200]}
+
+
+def _hook_answer(tx, actor, e, seq, decision, reason, action=None):
+    """Only a request past the token check passes *action*: a foreign one is not
+    this execution's, so it never becomes its current action."""
+    fields = {'hook_seq': seq} if seq is not None and seq > e.hook_seq else {}
+    if action is not None:
+        fields['current_action'] = dict(action, decision=decision, seq=seq)
+    if fields:
+        tx.update(entities.Execution, e.id, fields, actor=actor)
     _event(tx, 'execution.hook', e, actor, {'seq': seq, 'decision': decision,
                                             'reason': reason[:500]})
     return {'decision': decision, 'reason': reason, 'execution_id': e.id}
