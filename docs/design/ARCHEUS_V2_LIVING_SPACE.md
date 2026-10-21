@@ -754,19 +754,22 @@ Tests:
 - UNKNOWN. How a comment on a task that version N+1 removes is shown. Proposed: "task not in v{N+1}".
 - Question Q6 (§5.6) asks option A or B. Recommended: A.
 
-## Round 4: chat bar, Replay view, and what is real (2026-10-21)
+## Round 4: chat bar, Replay view, and what is real (2026-10-21, updated in round 6)
 
-Status: prototype only (`clients/v2-prototype`, fake data, nothing sent to Core). No V1 change. Labels as in round 3: **Owner decision** is only a dated owner answer. Everything below marked PROPOSED is this document's design, not an owner decision.
+Status: prototype only (`clients/v2-prototype`, fake data, nothing sent to Core). No V1 change is made here. Labels as in round 3: **Owner decision** is only a dated owner answer, recorded verbatim. PROPOSED is this document's design, not an owner decision. Round 6 added the owner answers in §6 and the Start card in §2; it did not change the Replay rules.
 
 ### 1. Owner decisions, recorded verbatim
 
 | Question | Owner answer (verbatim) | Effect here |
 |---|---|---|
 | Replay view | "Yes, design now (Recommended)" | Replay is designed and prototyped (§3). Not in V1. |
-| Visuals priority | "Adopt, keep V2 visuals priority" | Recorded as given. The question wording was not in this round's brief, so it is UNKNOWN here. |
+| Visuals priority | "Adopt, keep V2 visuals priority" | Recorded as given. The question wording was not in the brief, so it is UNKNOWN here. |
 | Chat role | "Both, chat is a front door (Recommended)" | The chat bar is the way in to start and control. The Start screen is removed. |
-| Model account | "Your configured account via official CLI (Recommended)" | Model calls go through the official CLI on the owner's chosen account. |
-| Chat authority | "Reads and creates, not effects (Recommended)" | Reads and creates happen directly. Effects are proposed (§2). |
+| Model account | "Your configured account via official CLI (Recommended)" | Model calls go through the official CLI on the account the owner picks. Per-account choice for the chat's own calls is still a V1 gap (G8). |
+| Chat actions | "Reads and creates, not effects (Recommended)" | Reads and creates happen directly. Effects are proposed (§2). |
+| G1, chat-created missions | "Start card for chat missions (Recommended)" | The Start card is the design and the approved V1 fix (card T-150). The prototype shows it as the intended behaviour; V1 does not do it yet. |
+| G3, G4, G6 | "As recommended (Recommended)" | Narrowing from chat: a card only when it blocks work. `remember`: a candidate with one-tap confirm. Cancel gets the stop confirm card; resume that will dispatch asks like G1. Recorded as card T-151. |
+| General chat | "Both, chat is a front door (Recommended)" | The general thread is never written into project memory unless the owner promotes it (answers truth-check question 5). |
 
 Earlier answers that bind this round (round 3, §7): start path "Tell first, form second (Recommended)"; plan comments "Per-task comments now"; phone review zoom "Yes, one bounded step (Recommended)"; translucency "Tint only if readable (Recommended)".
 
@@ -776,15 +779,16 @@ Owner direction, verbatim (Italian), 2026-10-21:
 
 > "voglio poter controller tutto dal core e chat di archeus, quindi se gli chiedo domande anche per altre cose non riguardante ai progetti deve poter rispondere"
 
-Reading in English (the design's, not the owner's): a transparent chat bar at the bottom of Now, used to talk to Archeus; it creates projects, missions and other things, and the owner sees them appear in the constellation in real time. It replaces a Start menu. Archeus must also answer questions that have nothing to do with projects.
+Reading in English (the design's, not the owner's): a transparent chat bar low on Now, used to talk to Archeus; it creates projects, missions and other things, and the owner sees them appear in the constellation in real time. It replaces a Start menu. Archeus must also answer questions that have nothing to do with projects.
 
-### 2. Rules for the chat bar (PROPOSED)
+### 2. Rules for the chat bar (PROPOSED, with owner answers as noted)
 
-- **R-C1 Reads and creates are direct.** A project-bound message may create a project, mission, idea or plan. Each new object appears in the constellation as it is recorded, with a short grow-in. Reduced motion shows it at once.
+- **R-C1 Reads and creates are direct.** A project-bound message may create a project, mission, idea or plan. Each new object appears in the constellation as it is recorded: it grows in, its link is drawn in dashed, and its label carries "New" for six seconds. No glow, rings or particles.
 - **R-C2 Effects are proposed, never silent.** Anything that runs work, spends, changes a setting, an account, a hook or a provider becomes a PROPOSED card. Approve is an explicit control. The confirm box's Cancel is the default. A bare chat word is never an approval (V1 already declines a bare `approve`; T-149 §2).
-- **R-C3 General thread.** A question outside projects is answered in its own thread style, labelled "General, not project memory". It is never written to project memory. The "Promote to project memory" control is off by default and promotes one answer when turned on.
-- **R-C4 Model and tokens.** Replies come from the official CLI on the owner's chosen account. Archeus never reads, stores, copies, injects or relays tokens (AGENT-RULES item 6). **Open conflict:** T-149 G2 shows that `claude_sessions/usage.py` reads the OAuth access token and sends it to the usage endpoint. The rule is therefore not met today. It needs an owner decision (§6) before anyone claims compliance.
-- **R-C5 One bar, two surfaces.** On the phone, Tell opens the same bar. There is no separate start form.
+  - **Start card (owner answer, G1).** A mission created from chat shows a Start card: "Start and plan <title>? [Start] [Keep as mission]". Start is the explicit approval; Keep leaves the mission idle. In V1 today such a mission starts without a card (T-149 G1); the Start card is the approved fix (card T-150).
+- **R-C3 General thread.** A question outside projects is answered in its own thread style, labelled "General, not project memory". It is never written to project memory unless the owner promotes that one answer. The "Promote to project memory" control is off by default.
+- **R-C4 Model and tokens.** Replies come from the official CLI on the account the owner picks. Archeus never reads, stores, copies, injects or relays subscription tokens, **except the owner's informed exceptions: usage bars and subscription switching** (standing constraint). The usage read in `claude_sessions/usage.py` (T-149 G2) is one of those exceptions, not an unmet rule. Any other token read stays forbidden.
+- **R-C5 One bar, two surfaces.** On the phone, Tell opens the same bar. There is no separate start form. The bar and Stop sit at the bottom edge, with the conversation above the bar and the constellation above that.
 - **R-C6 Motion follows fact.** An object animates only once it exists. In V1 that means after its SSE frame and a re-read of the object (T-149 §5). The prototype animates from its own simulated creation, and says so in the bar's tag.
 
 ### 3. Replay view (PROPOSED)
@@ -794,10 +798,10 @@ A replay is a forensic timeline for one mission inside its project. The project 
 - **RP-1** Each state has a shape and a word. Colour is never the only signal.
 - **RP-2** A lost response is UNCERTAIN, not failed. There is no automatic retry. The workflow is SUSPENDED until an operator reconciles it.
 - **RP-3 Reconcile** records the operator's observation of what happened on the external side. It does not push, retry or reverse anything.
-- **RP-4 Restore** resets only what a checkpoint covers (for example the local branch). It never claims an undo of an external effect.
-- **RP-5 Never claim full reversal.** Copy says "a replay never claims that every external effect can be reversed".
-- **Sample data.** The 09:00–09:25 example from the strategy report (`docs/architecture/archeus_strategy_report.html`, section 6): task initiated (scope, authority and starting state captured); files changed (artifacts linked); tests passed (validation evidence); external response lost (classed UNCERTAIN, may have taken effect); workflow suspended (no unsafe retry, reconciliation required).
-- **Layout.** Timeline on the left (time, marker, title, state chips, notes, linked artifact). Inspector on the right in the 03 mission style: facts, a status line, a legend, Reconcile and Restore. Reached from the mission inspector ("Open replay") and from the rail.
+- **RP-4 Restore** resets only what a checkpoint covers (for example the local branch). It never claims an undo of an external effect. The round 6 panel does not show Restore; the rule stands for the real product.
+- **RP-5 Never claim full reversal.** The panel says "Not every external effect can be reversed."
+- **Sample data.** The 09:00–09:25 example from the strategy report (`docs/architecture/archeus_strategy_report.html`, section 6). The panel shows six rows: 09:00 Intended; 09:12 Recorded; 09:18 Verified; 09:24 Uncertain (may have taken effect); 09:25 Needs you (suspended, no unsafe retry); and a dashed Reconcile row with Reconcile and Open evidence.
+- **Layout.** The mission's own constellation stays on the left (Archeus at the top, the mission as a small node, its execution triangle, verification and results). The replay panel is on the right in the 03 mission style.
 
 ### 4. Real versus faked, reconciled with the T-149 truth check
 
@@ -807,36 +811,41 @@ Source: `D:\Archeus\.collab\T-149-chat-truth-check.md` (read 2026-10-21, code re
 |---|---|---|---|
 | Chat answers | Scripted, keyword-routed, fixed delay | A reply must cite a Core handle; with none it is declined (§2a) | FAKED (G5) |
 | Create a project from chat ("Atlas") | Star appears in the constellation | No chat path for projects (§1, Project) | FAKED (G7) |
-| Create a mission from chat | Mission appears | `new_work` creates a Mission and a message | REAL in V1. The prototype's creation and animation are simulated |
+| Create a mission from chat | Mission appears, then the Start card | `new_work` creates a Mission and a message; it starts without a card | REAL in V1 (no card, G1). The Start card is the design (T-150) |
 | Create an idea from chat | Idle figure labelled "Idea" | `idea.created` is real | REAL in V1. Shown here as an idle mission, a simplification |
 | Plan v1 with 3 steps | Plan page with per-task comment forms | Plans come only from the planner after a mission starts; no chat command for a plan | FAKED as a chat command. Plan objects are real downstream |
-| Run Index notes (card) | PROPOSED card; approve starts it | New work starts without a card under the default profile (G1, P0) | FAKED. The card is the design; V1 does not show it yet |
+| Run Index notes (card) | PROPOSED card; approve starts it | New work starts without a card under the default profile (G1) | FAKED. The card is the design; V1 does not show it yet |
 | Change the daily spend limit (card) | PROPOSED card; approve changes nothing | No chat path for settings; a resource-directive card exists for narrowing (§1) | FAKED |
 | General answer | Separate General thread, fixed text | Not possible (G5); no general conversation kind (§3) | FAKED |
-| Promote to project memory | Checkbox, page-only | Nothing separates memory; `remember` writes confirmed global memory silently (G4) | FAKED (design rule) |
-| Replay: five states, suspended | Sample 09:00–09:25 events | Events exist (`mission.state_changed`, `execution.*`); no side-effect state is recorded | FAKED |
-| Reconcile, Restore | Confirm box only | No V1 route | FAKED |
-| Owner's configured account for chat | Text only | Not chat-selectable; the router elects the account (G8) | FAKED |
-| Token rule | Stated as the design rule | `usage.py` reads and sends the token (G2) | OPEN conflict, rule not met |
+| Promote to project memory | Checkbox, page-only | Nothing separates memory; `remember` writes confirmed global memory silently (G4). Owner answer: candidate plus one-tap confirm (T-151) | FAKED (design rule) |
+| Replay: five states, suspended, six rows | Sample 09:00–09:25 events | Events exist (`mission.state_changed`, `execution.*`); no side-effect state is recorded | FAKED |
+| Reconcile, Open evidence | Confirm box; link to the mission | No V1 reconciliation route | FAKED |
+| Owner's chosen account for chat | Text only | Not chat-selectable; the router elects the account (G8) | FAKED |
+| Token rule | Stated with the owner's informed exceptions | `usage.py` reads the token for usage bars: an owner exception | ALLOWED (owner exception), other reads forbidden |
 | Constellation motion | Local, after simulated events | Only real frames drive motion (T-149 §5) | SIMULATED |
 
 ### 5. What the prototype fakes (plain list)
 
 - Every chat reply: scripted by keyword, with a fixed delay. No model is called and nothing is sent to Core.
-- Every creation (project, mission, idea, plan) and its animation. They live in the page only; a reload resets them.
+- Every creation (project, mission, idea, plan), the Start card's effect, and their animation. They live in the page only; a reload resets them.
 - Atlas: fixed id, name and position on the scene.
 - Ideas: drawn as idle missions. Plan steps are invented text.
-- Approve on a card: changes the page only. Nothing runs, spends, changes a setting or touches an account.
+- Approve on a run or setting card, and Start on the Start card: change the page only. Nothing runs, spends, changes a setting or touches an account.
 - General answers: two fixed texts. Promote: a checkbox that changes a label.
-- Replay: sample data only. Reconcile and Restore: confirm box, then nothing.
+- Replay: sample data only. Reconcile and Open evidence: confirm box or link, nothing else.
 - Stop, Tell and plan Approve keep their round 3 fake behaviour.
 
-### 6. Owner questions (recommendations from T-149 §7, plus one from this round)
+### 6. Owner answers (2026-10-21, AskUserQuestion, verbatim) and what remains open
 
-1. **Missions started from chat:** wait for a start card? Recommend yes (G1, P0). Today they start by themselves under the default profile.
-2. **Subscription tokens in `claude_sessions/usage.py`:** stop reading and sending the access token, or accept it as a stated exception? Recommend that status comes from the CLI or shows "unknown". This is security-relevant and the owner decides (G2, P0).
-3. **Narrowing from chat** (forbidding an account for one mission): silent or a card? Recommend a card when it blocks work (G3).
-4. **`remember`:** confirmed global memory, or a candidate plus one-tap confirm? Recommend a candidate (G4).
-5. **General thread:** may it write project memory? Recommend no (§3 of T-149).
-6. **Chat model account:** a per-account choice for the chat's own calls, or the router only? Recommend a per-account preference (G8).
-7. **New, from this round:** should V1 change to match R-C2 (every run proposed), or should the prototype show today's auto-start? The prototype shows the design rule and labels it. The owner decides which one goes into the V2 spec.
+These replace the open question list of earlier drafts.
+
+1. **G1, chat-created missions:** "Start card for chat missions (Recommended)". Effect: the Start card is the design and the approved V1 fix (card T-150). The prototype shows it as intended behaviour and says V1 does not do it yet.
+2. **G2, subscription tokens:** the usage read in `claude_sessions/usage.py` is the owner's known informed exception for the usage bars (standing constraint). Rule as recorded in R-C4: Archeus never reads, stores, copies, injects or relays subscription tokens, except the owner's informed exceptions (usage bars and subscription switching). Not an open conflict.
+3. **G3, narrowing from chat:** "As recommended (Recommended)". A card only when it blocks work (card T-151).
+4. **G4, `remember`:** "As recommended (Recommended)". A candidate with one-tap confirm (card T-151).
+5. **General thread and project memory:** "Both, chat is a front door (Recommended)". The general thread is never written into project memory unless the owner promotes it.
+6. **Chat model account:** "Your configured account via official CLI (Recommended)". The account the owner picks; a per-account choice for the chat's own calls is still a V1 gap (G8).
+7. **G6, cancel and resume:** "As recommended (Recommended)". Cancel gets the same confirm card as stop; resume that will dispatch asks like G1 (card T-151).
+8. **R-C2, question 7:** the Start card is shown. Chat actions: "Reads and creates, not effects (Recommended)".
+
+Still open for V1 (not owner questions): the card implementations T-150 and T-151; G5 (general answers need a `chat` purpose and a general conversation kind); G7 (project creation from chat); G8 (per-account own-call preference); G9 (chat-level usage read). These are build tasks, not decisions.
