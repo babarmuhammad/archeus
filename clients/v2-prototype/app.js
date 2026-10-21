@@ -40,6 +40,7 @@
   var plans = {
     'm-search': {
       version: 1,
+      hash: '5e0a3c9f b1d7 4e21 a86c 90f2d3e7b41a',
       why: 'Plan approval required.',
       tasks: [
         { key: 't1', text: 'Read the recorded sources for the search index.' },
@@ -338,16 +339,16 @@
   // The bottom CHAT_RESERVE pixels of the stage belong to the conversation, so the scene is laid out above them.
   var CHAT_RESERVE = 170;
   function nowScene(w, h) {
-    var narrow = w < 640;
-    var hh = h - (narrow ? 176 : Math.min(CHAT_RESERVE, Math.round(h * 0.26)));
-    var k = narrow ? Math.max(0.6, Math.min(w / 430, hh / 560, 1.1)) : Math.max(0.5, Math.min(w / 1150, hh / 560, 1.1));
-    var sc = mk(w, h, { x: w * 0.5, y: hh * 0.5 }, k, narrow);
-    var shape = narrow ? k * 0.9 : Math.max(0.62, Math.min(k, 1));
+    if (w < 640) return phoneScene(w, h);
+    var hh = h - Math.min(CHAT_RESERVE, Math.round(h * 0.26));
+    var k = Math.max(0.5, Math.min(w / 1150, hh / 560, 1.1));
+    var sc = mk(w, h, { x: w * 0.5, y: hh * 0.5 }, k, false);
+    var shape = Math.max(0.62, Math.min(k, 1));
     sc.sats = [[0.3, 0.86], [0.6, 0.05], [0.92, 0.5], [0.07, 0.3], [0.68, 0.9]].map(function (p) { return { x: w * p[0], y: hh * p[1] }; });
     projects.forEach(function (p) {
       var ms = missions.filter(function (x) { return x.project === p.id; });
       var live = ms.filter(isLive).length;
-      var at = narrow && p.phoneAt ? p.phoneAt : p.at;
+      var at = p.at;
       var cx = w * at[0], cy = hh * at[1];
       sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: cx, y: cy, members: ms.map(function (m) { return m.id; }), count: ms.length, live: live, active: live > 0 });
       sc.parent[p.id] = 'core';
@@ -418,18 +419,46 @@
     return sc;
   }
 
+  // Phone composition: one large Archeus hull holds the two focus missions, the star sits between them,
+  // and every other project is a small receded body. Labels: focus missions only; the rest are counted.
+  var FOCUS_SLOTS = [[0.3, 0.4], [0.7, 0.6]];
+  var OTHER_SLOTS = [[0.84, 0.14], [0.12, 0.66], [0.86, 0.9], [0.12, 0.14]];
   function phoneScene(w, h) {
-    var list = sorted(missions).slice(0, 2);
-    var k = Math.max(0.6, Math.min(w / 380, 1));
-    var slots = [[0.27, 0.66], [0.73, 0.66]];
-    var sc = mk(w, h, { x: w * 0.5, y: h * 0.26 }, k, true);
-    list.forEach(function (m, i) {
-      var n = nodeFor(m, w * slots[i][0], h * slots[i][1], 46 * k, 'core', true);
+    var focus = sorted(missions).filter(isLive).slice(0, 2);
+    var k = Math.max(0.78, Math.min(w / 390, 1.05));
+    var sc = mk(w, h, { x: w * 0.5, y: h * 0.5 }, k, true);
+    focus.forEach(function (m, i) {
+      var n = nodeFor(m, w * FOCUS_SLOTS[i][0], h * FOCUS_SLOTS[i][1], 50 * k, m.project, true);
       sc.nodes.push(n);
-      sc.parent[m.id] = 'core';
-      sc.links.push({ a: 'core', b: m.id, col: isLive(m) ? STATE[m.state].color : IVORY, live: isLive(m), kind: 'mission', hue: IVORY });
+      sc.parent[m.id] = m.project;
+      sc.links.push({ a: 'core', b: m.id, col: STATE[m.state].color, live: isLive(m), kind: 'mission', hue: IVORY, arrow: true });
+      if (m.exec) {
+        var ex = execFor(m, w * FOCUS_SLOTS[i][0] + 66 * k, h * FOCUS_SLOTS[i][1] + 34 * k, 22 * k, i);
+        sc.nodes.push(ex);
+        sc.parent[ex.id] = m.id;
+        sc.links.push({ a: m.id, b: ex.id, col: IVORY, live: ex.live, kind: 'exec', hue: IVORY });
+      }
     });
-    sc.overflow = missions.length - list.length;
+    // A focus hull is its real project (the name always shows); its members are the focus missions only.
+    var focusProjects = [];
+    focus.forEach(function (m) { if (focusProjects.indexOf(m.project) < 0) focusProjects.push(m.project); });
+    focusProjects.forEach(function (pid) {
+      var p = projectOf(pid), fids = focus.filter(function (m) { return m.project === pid; }).map(function (m) { return m.id; });
+      var count = missions.filter(function (m) { return m.project === pid; }).length;
+      sc.projects.push({ id: pid, name: p.name, hue: p.hue, x: w * 0.5, y: h * 0.5, members: fids, count: count, live: fids.length, active: true });
+      sc.parent[pid] = 'core';
+      sc.links.push({ a: 'core', b: pid, col: p.hue, live: true, kind: 'project', hue: p.hue });
+    });
+    var others = projects.filter(function (p) { return focusProjects.indexOf(p.id) < 0; });
+    others.forEach(function (p, i) {
+      var at = OTHER_SLOTS[i % OTHER_SLOTS.length];
+      var count = missions.filter(function (m) { return m.project === p.id; }).length;
+      sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * at[0], y: h * at[1], shape: 'octa', members: null, count: count, live: 0, active: false });
+      sc.parent[p.id] = 'core';
+      sc.links.push({ a: 'core', b: p.id, col: p.hue, live: false, kind: 'project', hue: p.hue });
+    });
+    sc.sats = [[0.06, 0.4], [0.94, 0.36], [0.5, 0.97]].map(function (p) { return { x: w * p[0], y: h * p[1] }; });
+    sc.overflow = missions.length - focus.length;
     return sc;
   }
 
@@ -557,12 +586,14 @@
       S.sky.style.transform = 'translate3d(' + (-(cam.x - sc.core.x) * s * 0.04).toFixed(2) + 'px,' + (-(cam.y - sc.core.y) * s * 0.04).toFixed(2) + 'px,0)';
 
       // Faint orbit rings around Archeus.
-      g.save(); g.setLineDash([2, 8]); g.lineWidth = 1;
-      [[230, 0.1], [330, 0.06]].forEach(function (o) {
-        g.strokeStyle = 'rgba(239,233,218,' + o[1] + ')';
-        g.beginPath(); g.ellipse(c.x, c.y, o[0] * s, o[0] * 0.62 * s, -0.12, 0, TAU); g.stroke();
-      });
-      g.restore();
+      if (!sc.compact) {
+        g.save(); g.setLineDash([2, 8]); g.lineWidth = 1;
+        [[230, 0.1], [330, 0.06]].forEach(function (o) {
+          g.strokeStyle = 'rgba(239,233,218,' + o[1] + ')';
+          g.beginPath(); g.ellipse(c.x, c.y, o[0] * s, o[0] * 0.62 * s, -0.12, 0, TAU); g.stroke();
+        });
+        g.restore();
+      }
 
       if (sc.frame) {
         var f = sc.frame, fc = P0(f.x, f.y);
@@ -637,6 +668,13 @@
           g.setLineDash(l.dash ? [2, 6] : fresh ? [3, 4] : []);
           line(g, a.x, a.y, b.x, b.y);
           g.setLineDash([]);
+          if (l.arrow) {
+            var ang = Math.atan2(b.y - a.y, b.x - a.x), ax = a.x + (b.x - a.x) * 0.62, ay = a.y + (b.y - a.y) * 0.62, ah = 6 * Math.min(1.2, s);
+            g.fillStyle = l.col; g.globalAlpha = 0.95; g.shadowBlur = 0;
+            g.beginPath(); g.moveTo(ax + Math.cos(ang) * ah, ay + Math.sin(ang) * ah);
+            g.lineTo(ax + Math.cos(ang + 2.5) * ah * 0.7, ay + Math.sin(ang + 2.5) * ah * 0.7);
+            g.lineTo(ax + Math.cos(ang - 2.5) * ah * 0.7, ay + Math.sin(ang - 2.5) * ah * 0.7); g.closePath(); g.fill();
+          }
           if (l.live && !reduce.matches) {
             var u = ((t / 1800) + idx * 0.31) % 1;
             g.fillStyle = '#FFF6E0'; g.shadowColor = l.col; g.shadowBlur = 12; g.globalAlpha = 1;
@@ -726,6 +764,18 @@
       return out.filter(function (cd) { return !sc.labelDirs || sc.labelDirs.indexOf(cd.d) >= 0; });
     }
 
+    // Label budget. Project names and Archeus always show. Far (whole space): missions show only when they need
+    // you or are running, the rest are counted. Zoomed to a project: all of its missions show. Hover always shows.
+    function labelQuiet(id, it) {
+      var sc = S.scene;
+      if (S.hover === id) return false;
+      if (sc.compact) return it.kind === 'exec' || (it.kind === 'mission' && !sc.nodes.some(function (n) { return n.id === id && n.live; }));
+      if (it.kind !== 'mission' && it.kind !== 'exec') return false;
+      if (S.focus) return false;
+      var n = sc.nodes.filter(function (x) { return x.id === id; })[0];
+      return !(n && (n.state === 'waiting' || n.state === 'running' || (n.kind === 'exec' && n.live)));
+    }
+
     function overlaps(a, b, pad) {
       return a.x0 < b.x1 + pad && a.x1 + pad > b.x0 && a.y0 < b.y1 + pad && a.y1 + pad > b.y0;
     }
@@ -747,9 +797,8 @@
       });
       var core = S.items.core;
       if (core && core.lbl) {
-        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 62 * s).toFixed(1) + 'px)';
-        core.lbl.style.display = sc.compact ? 'none' : '';
-        placed.push({ x0: c.x - core.tw / 2, y0: c.y + 62 * s, x1: c.x + core.tw / 2, y1: c.y + 62 * s + core.th });
+        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 84 * s).toFixed(1) + 'px)';
+        placed.push({ x0: c.x - core.tw / 2, y0: c.y + 84 * s, x1: c.x + core.tw / 2, y1: c.y + 84 * s + core.th });
       }
       var order = sc.projects.map(function (p) { return p.id; });
       sc.nodes.slice().sort(function (a, b) {
@@ -803,12 +852,18 @@
         }
         if (!moved) break;
       }
+      var budget = S.root.querySelector('.budget'), hidden = 0;
       entries.forEach(function (e) {
-        var quiet = sc.compact && !(e.it.kind === 'mission' && sc.nodes.some(function (n) { return n.id === e.id && n.live; })) && S.hover !== e.id;
+        if (e.it.kind === 'mission' && labelQuiet(e.id, e.it)) hidden++;
+        var quiet = labelQuiet(e.id, e.it);
         var fresh = S.born[e.id] !== undefined && performance.now() - S.born[e.id] < 6000;
         e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '') + (fresh ? ' is-new' : '');
         e.it.lbl.style.transform = 'translate(' + e.box.x0.toFixed(1) + 'px,' + e.box.y0.toFixed(1) + 'px)';
       });
+      if (budget) {
+        budget.textContent = hidden ? '+' + hidden + ' more missions, zoom a project to see them' : '';
+        budget.hidden = !hidden;
+      }
       // Hit targets follow the figures.
       Object.keys(S.items).forEach(function (id) {
         var it = S.items[id];
@@ -900,7 +955,7 @@
       S.items.core = addLabel('core', { cls: 'lbl core', kicker: '', title: 'Archeus', sub: 'Core connected', kind: 'core' });
       sc.projects.forEach(function (p) {
         var live = p.members ? sc.nodes.filter(function (n) { return p.members.indexOf(n.id) >= 0 && n.live; }).length : p.live;
-        var sub = (p.count || (p.members ? p.members.length : 0)) + ' missions, ' + live + ' live';
+        var sub = sc.compact ? '' : (p.count || (p.members ? p.members.length : 0)) + ' missions, ' + live + ' live';
         addLabel(p.id, { cls: 'lbl project', kicker: 'Project', title: p.name, sub: sub, kind: 'project' });
         if (p.members) addHit(p.id, { aria: p.name + ', ' + sub, kind: 'project', meta: { kicker: 'Project', title: p.name, lines: [sub] } });
         else S.items[p.id].hit = null;
@@ -909,7 +964,8 @@
         var st = n.st, sub = n.detail || n.sub;
         var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : '';
         var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: 'Review', aria: 'Review plan for ' + n.title } : null;
-        addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker + (n.kind === 'mission' ? '' : ''), title: n.title, sub: st ? st + (sub ? ' · ' + sub : '') : sub, subCls: subCls, kind: n.kind, action: action });
+        var line2 = sc.compact && n.kind === 'mission' ? n.detail : st ? st + (sub ? ' · ' + sub : '') : sub;
+        addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker, title: n.title, sub: line2, subCls: subCls, kind: n.kind, action: action });
         if (n.hit) {
           addHit(n.id, { aria: n.title + ', ' + st + (n.detail ? ', ' + n.detail : ''), kind: n.kind, meta: { kicker: n.kicker, title: n.title, lines: [st, sub].filter(Boolean) } });
         }
@@ -1227,7 +1283,7 @@
     }
     $('[data-plan-title]', sec).textContent = 'Review plan v' + p.version + ', ' + m.title;
     $('[data-plan-meta]', sec).textContent = projectOf(m.project).name + ' · ' + m.branch + ' · ' + stateLine(m);
-    $('[data-plan-why]', sec).textContent = 'Why: ' + p.why;
+    $('[data-plan-why]', sec).textContent = 'Why: ' + p.why + ' Action ' + p.hash.slice(0, 9) + ' · plan v' + p.version + ' (fixture).';
     $('#plan-tasks').innerHTML = p.tasks.map(function (t) {
       var mine = comments.filter(function (c) { return c.mission === m.id && c.task === t.key; });
       return '<li><p><span class="tk">' + t.key + '</span>' + esc(t.text) + '</p>' +
@@ -1276,7 +1332,7 @@
     var sel = selectedComments();
     if (kind === 'approve') {
       return confirmBox('Approve plan v' + p.version + '?',
-        'Approve "' + m.title + '" on ' + m.branch + '. ' + p.approve + ' Open comments: ' + commentsFor(m.id).length + ', which do not block approve.',
+        'Approve plan v' + p.version + ' (action ' + p.hash.slice(0, 9) + ') for "' + m.title + '" on ' + m.branch + '. ' + p.approve + ' Open comments: ' + commentsFor(m.id).length + ', which do not block approve.',
         'Prototype: nothing was approved. This page records no decision.');
     }
     if (kind === 'reject') {
@@ -1344,6 +1400,7 @@
   function makePlan(m) {
     plans[m.id] = {
       version: 1,
+      hash: 'c2f8 1a6e 4b9e 8f15 6a0c d4e7',
       why: 'Plan approval required.',
       tasks: [
         { key: 't1', text: 'Read the brief and list the open questions.' },
@@ -1390,7 +1447,7 @@
 
   // Not about a project: its own thread, never project memory unless the owner promotes it.
   function general(body) {
-    addMsg('gen', '<p class="gen-k">General · not project memory</p><p>' + esc(body) + '</p>' +
+    addMsg('gen', '<p class="gen-k"><span class="gen-tag">General</span> not project memory</p><p>' + esc(body) + '</p>' +
       '<label class="promote"><input type="checkbox" data-promote> <span>Promote to project memory (off)</span></label>');
   }
 
@@ -1563,11 +1620,12 @@
     sheetFor(
       '<p class="sheet-state st-' + m.state + '">' + esc(stateLine(m)) + '</p>' +
       '<h2 id="now-sheet-h" tabindex="-1">' + esc(m.title) + '</h2>' +
-      '<p class="sheet-line"><span class="lbl-line">Project</span> ' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</p>' +
+      '<p class="sheet-line sheet-proj"><span class="lbl-line">Project</span> ' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</p>' +
       '<p class="sheet-line"><span class="lbl-line">What</span> ' + esc(m.what) + '</p>' +
-      (waiting && p ? '<p class="sheet-line"><span class="lbl-line">Why</span> ' + esc(p.why) + '</p>' : '') +
+      (waiting && p ? '<p class="sheet-line"><span class="lbl-line">Why</span> ' + esc(p.why) + '</p>' +
+        '<p class="sheet-line"><span class="lbl-line">Core (fixture text)</span> ' + esc(p.approve) + '</p>' : '') +
       '<div class="sheet-actions">' +
-      '<a class="btn primary" href="' + (waiting ? '#/plan/' : '#/mission/') + m.id + '">' + (waiting ? 'Review plan' : 'Open mission') + '</a>' +
+      '<a class="btn primary" href="' + (waiting ? '#/plan/' : '#/mission/') + m.id + '">' + (waiting ? 'Open decision' : 'Open mission') + '</a>' +
       '<button type="button" class="btn" data-act="now-sheet-close">Close</button></div>');
   }
 
@@ -1594,10 +1652,11 @@
   function renderMoreChips() {
     var box = $('#more-chips');
     if (!isNarrow()) { box.innerHTML = ''; return; }
-    var focus = missions.filter(isLive).length;
-    box.innerHTML = '<button type="button" class="chip-btn" data-act="open-list">' + projects.length + ' projects</button>' +
-      '<button type="button" class="chip-btn" data-act="open-list">' + (missions.length - focus) + ' more missions</button>' +
-      '<a class="chip-btn" href="#/replay/m-date">Replay</a>';
+    // Every project keeps its name on its hull. Past five projects, the farthest share one named list chip.
+    var rest = projects.length > 5 ? projects.slice(4) : [];
+    var html = rest.length ? '<button type="button" class="chip-btn" data-act="open-list">' + esc(rest.map(function (p) { return p.name; }).join(', ')) + '</button>' : '';
+    html += '<button type="button" class="chip-btn" data-act="open-list">All work · ' + missions.length + '</button>';
+    box.innerHTML = html;
   }
 
   document.addEventListener('click', function (e) {
@@ -1626,149 +1685,211 @@
     if (e.key === 'Escape' && !$('#now-sheet').hidden) closeNowSheet();
   });
 
-  /* ---------- Terminal: the same records as text, 80 x 24 or 120 x 40. Simulated. ---------- */
+  /* ---------- Terminal: the same fixture records as a text screen, 120 x 40 or 80 x 24. Simulated. ---------- */
 
-  var term = { screen: 'overview', sel: 0, mid: 'm-search', cols: 80, rows: 24 };
+  var term = { screen: 'overview', sel: 0, mid: 'm-search', cols: 120, rows: 40, plain: false, help: false, input: null, filter: '', step: null };
+  var GLYPH_T = { waiting: '◇', running: '*', done: '+', idle: 'o' };
+  var BOX = { tl: '┌', tr: '┐', bl: '└', br: '┘', h: '─', v: '│', dh: '┄', dv: '┆' };
 
-  function tpad(s, w) { s = String(s); return s.length > w ? s.slice(0, w) : s + new Array(w - s.length + 1).join(' '); }
-  function tcenter(s, w) { var l = Math.max(0, Math.floor((w - s.length) / 2)); return tpad(new Array(l + 1).join(' ') + s, w); }
-  function tglyph(m) { return { waiting: '!', running: '~', done: '+', idle: 'o' }[m.state]; }
-  function tword(m) { return STATE[m.state].word; }
+  // A character grid: boxes, dashed links and text are drawn into it, then joined into rows.
+  function Grid(w, h) {
+    var rows = [];
+    for (var y = 0; y < h; y++) rows.push(new Array(w + 1).join(' ').split(''));
+    var g = {};
+    g.put = function (x, y, s) {
+      for (var i = 0; i < s.length; i++) {
+        if (x + i >= 0 && x + i < w && y >= 0 && y < h) rows[y][x + i] = s.charAt(i);
+      }
+    };
+    g.center = function (y, s) { g.put(Math.max(0, Math.floor((w - s.length) / 2)), y, s); };
+    g.box = function (x, y, bw, bh, title, dashed) {
+      var hz = dashed ? BOX.dh : BOX.h, vt = dashed ? BOX.dv : BOX.v;
+      var t = title ? ' ' + title + ' ' : '';
+      g.put(x, y, BOX.tl + t + new Array(Math.max(0, bw - 2 - t.length) + 1).join(hz) + BOX.tr);
+      for (var i = 1; i < bh - 1; i++) { g.put(x, y + i, vt); g.put(x + bw - 1, y + i, vt); }
+      g.put(x, y + bh - 1, BOX.bl + new Array(bw - 1).join(hz) + BOX.br);
+    };
+    g.hline = function (y) { g.put(0, y, new Array(w + 1).join(BOX.h)); };
+    g.text = function () { return rows.map(function (r) { return r.join(''); }).join('\n'); };
+    return g;
+  }
 
-  // Missions in the order the cursor moves through them: grouped by project.
   function termOrder() {
     var out = [];
     projects.forEach(function (p) { missions.forEach(function (m) { if (m.project === p.id) out.push(m); }); });
-    return out;
+    return out.filter(function (m) { return !term.filter || (m.title + ' ' + projectOf(m.project).name).toLowerCase().indexOf(term.filter.toLowerCase()) >= 0; });
+  }
+  function selected() { var o = termOrder(); return o[Math.min(term.sel, o.length - 1)] || missions[0]; }
+  function tword(m) { return STATE[m.state].word; }
+  function tline(m) { return GLYPH_T[m.state] + ' ' + m.title + '  ' + tword(m).toUpperCase(); }
+  function chainFor(m) {
+    if (m.state === 'waiting') return [];
+    return m.exec ? ['Verifying', 'Codex', 'Verification', 'Results'] : [];
   }
 
-  function termFrame(lines, w, h, keys, status) {
-    var out = lines.slice(0, h - 2);
-    while (out.length < h - 2) out.push('');
-    out.push(tpad(keys, w));
-    out.push(tpad(status || 'SIMULATED: fake data, nothing sent to Core. Keys work here only.', w));
-    return out.map(function (l) { return tpad(l, w); }).join('\n');
-  }
-
-  function termOverview(w, h) {
-    var order = termOrder(), L = [];
-    var need = count('waiting'), run = count('running');
-    L.push(tpad('ARCHEUS  Core connected | Not stopped - accepts new work', w));
-    L.push(tpad(need + ' needs you | ' + run + ' running | 0 queued', w));
-    L.push('');
-    L.push(tcenter('*  ARCHEUS  ' + (run ? 'RUNNING ' + run : 'IDLE'), w));
-    L.push(tcenter('|', w));
-    if (w < 100) {
-      projects.forEach(function (p) {
-        L.push(tpad("[" + p.name + "]", w));
-        missions.filter(function (m) { return m.project === p.id; }).forEach(function (m) {
-          var cur = order.indexOf(m) === term.sel ? ">" : " ";
-          L.push(tpad("  " + cur + " " + tglyph(m) + " " + m.title + "  " + tword(m), w));
-        });
+  // Plain-line mode: labelled lines, no boxes, for screen readers and copy.
+  function plainOverview(w, h) {
+    var L = ['ARCHEUS  Core connected; not stopped; accepts new work.', 'Counts: ' + count('waiting') + ' needs you, ' + count('running') + ' running, 0 queued.'];
+    var sel = selected();
+    projects.forEach(function (p) {
+      var ms = missions.filter(function (m) { return m.project === p.id; });
+      L.push('PROJECT ' + p.name + ': ' + ms.length + ' missions.');
+      ms.forEach(function (m) {
+        L.push('  MISSION ' + (m === sel ? '[selected] ' : '') + m.title + '. State: ' + tword(m) + '. Detail: ' + m.stateText + '.');
       });
-      L.push("");
-      var sel0 = order[term.sel] || order[0];
-      L.push(tpad("selected: " + (sel0 ? sel0.title + " - " + tword(sel0) + " - " + projectOf(sel0.project).name : "none"), w));
-      return termFrame(L, w, h, "j/k select  Enter open  r review  t tell  p replay  Esc overview");
-    }
-    var colW = Math.floor(w / Math.max(1, projects.length));
-    var head = '', rule = '';
-    projects.forEach(function (p, i) {
-      var c = i * colW + Math.floor(colW / 2);
-      head += tpad('', c - head.length) + '+';
-      rule += '';
     });
-    L.push(tpad(head + new Array(w - head.length + 1).join('-'), w));
-    var heads = projects.map(function (p) { return tpad('[' + p.name + ']', colW); }).join('');
-    L.push(tpad(heads, w));
-    var rowsN = Math.max.apply(null, projects.map(function (p) { return missions.filter(function (m) { return m.project === p.id; }).length; }));
-    for (var r = 0; r < rowsN; r++) {
-      var row = projects.map(function (p) {
+    L.push('Selected: ' + sel.title + '. Enter opens it. Why: ' + (plans[sel.id] ? plans[sel.id].why : 'nothing waiting.'));
+    return L;
+  }
+
+  function overviewGrid(w, h) {
+    var g = Grid(w, h), sel = selected();
+    var need = count('waiting'), run = count('running');
+    g.put(1, 0, 'ARCHEUS  Core connected | Not stopped - accepts new work');
+    g.put(w - 'CONCEPT FIXTURE'.length - 1, 0, 'CONCEPT FIXTURE');
+    g.put(1, 1, need + ' needs you | ' + run + ' running | 0 queued');
+    if (w >= 100) {
+      g.center(3, '*  ARCHEUS  RUNNING ' + run);
+      g.center(4, BOX.v);
+      var hx = 6, hw = w - 40, hy = 5, hh = 18, harbor = projects[0];
+      var hm = missions.filter(function (m) { return m.project === harbor.id; });
+      g.box(hx, hy, hw, hh, harbor.name);
+      var colA = hx + 4, colB = hx + Math.floor(hw / 2) + 3;
+      var mA = hm[0], mB = hm[1];
+      if (mA) {
+        g.put(colA, hy + 2, (sel === mA ? '> ' : '  ') + tline(mA));
+        g.put(colA + 2, hy + 4, mA.state === 'waiting' ? '[Enter] Open decision' : '[Enter] Open mission');
+      }
+      if (mB) {
+        g.put(colB, hy + 2, (sel === mB ? '> ' : '  ') + tline(mB));
+        var chain = chainFor(mB);
+        chain.forEach(function (step, i) {
+          g.put(colB + 2, hy + 4 + i * 2 - 1, BOX.v);
+          g.put(colB + 2, hy + 4 + i * 2, step === 'Codex' ? '^ Codex - execution' : step);
+        });
+      }
+      var more = hm.length - 2;
+      if (more > 0) g.put(hx + 2, hy + hh - 2, '+' + more + ' more');
+      // Sibling projects: dashed links, named boxes, counts.
+      projects.slice(1).forEach(function (p, i) {
+        var n = missions.filter(function (m) { return m.project === p.id; }).length;
+        var by = hy + 2 + i * 6;
+        g.put(hx + hw, by, BOX.dh + BOX.dh + BOX.dh + BOX.dh);
+        g.box(hx + hw + 5, by - 1, 16, 5, p.name, false);
+        g.put(hx + hw + 7, by + 1, n + ' missions');
+      });
+      g.put(1, hy + hh + 1, 'Why: ' + (mA && plans[mA.id] ? plans[mA.id].why : 'nothing waiting.'));
+    } else {
+      g.center(2, '*  ARCHEUS  ' + (run ? 'RUNNING ' + run : 'IDLE'));
+      var y = 4;
+      projects.forEach(function (p) {
         var ms = missions.filter(function (m) { return m.project === p.id; });
-        var m = ms[r];
-        if (!m) return tpad('', colW);
-        var idx = order.indexOf(m);
-        var cur = idx === term.sel ? '>' : ' ';
-        var short = { waiting: 'needs you', running: 'running', done: 'done', idle: 'idle' }[m.state];
-        return tpad(cur + ' ' + tglyph(m) + ' ' + m.title, colW - 13) + tpad(short, 11) + ' ';
-      }).join('');
-      L.push(tpad(row, w));
+        g.box(1, y, w - 2, 2 + ms.length, p.name);
+        ms.forEach(function (m, i) { g.put(3, y + 1 + i, (sel === m ? '> ' : '  ') + tline(m)); });
+        y += 3 + ms.length;
+      });
+      g.put(1, y, 'Why: ' + (plans[sel.id] ? plans[sel.id].why : 'nothing waiting.'));
     }
-    L.push('');
-    var sel = order[term.sel] || order[0];
-    L.push(tpad('selected: ' + (sel ? sel.title + ' - ' + tword(sel) + ' - ' + projectOf(sel.project).name : 'none'), w));
-    return termFrame(L, w, h, 'j/k select  Enter open  r review  t tell  p replay  Esc overview  80/120 size');
+    return g;
   }
 
-  function termMission(w, h) {
-    var m = find(term.mid) || find('m-date'), L = [];
-    L.push(tpad('MISSION  ' + m.title + '   ' + projectOf(m.project).name + ' / ' + m.branch + '   [' + tword(m) + ']', w));
-    L.push('');
-    L.push(tcenter('*  ARCHEUS', w));
-    L.push(tcenter('|', w));
-    L.push(tcenter('+-----------------------------+', w));
-    L.push(tcenter('|  ' + tpad(m.title, 27) + '|', w));
-    L.push(tcenter('|  ' + tpad(tword(m) + ' - ' + m.stateText, 27) + '|', w));
-    L.push(tcenter('+-----------------------------+', w));
+  function termFrame(g, w, h, keys) {
+    g.put(0, h - 4, new Array(w + 1).join(BOX.h));
+    g.put(1, h - 3, keys);
+    g.put(1, h - 2, term.input ? (term.input.mode + ' ' + term.input.text + '_') : '> Tell Archeus... (not sent)');
+    g.put(1, h - 1, term.step ? 'Confirm this decision? Type y to confirm; any other key cancels.' : 'SIMULATED: fake data, nothing sent to Core. ' + (term.filter ? 'Filter: ' + term.filter + '.' : ''));
+    return g;
+  }
+
+  function termHelp(w, h) {
+    var g = Grid(w, h);
+    g.put(1, 1, 'HELP  keys');
+    var keys = ['j / k or arrows   select a mission', 'Enter               open the mission (or decision)', 'r                   review plan (decision)', 'p                   replay', 'm                   mission', 't                   tell (not sent)',
+      's                   stop (double press, nothing stops)', 'b or Esc            back', '/                   filter by name', ':                   jump to project, mission or replay', 'L                   plain-line mode on and off', '?                   this help'];
+    keys.forEach(function (k, i) { g.put(3, 3 + i, k); });
+    return termFrame(g, w, h, '? close help');
+  }
+
+  function termMissionGrid(w, h) {
+    var m = find(term.mid) || find('m-date'), g = Grid(w, h), p = projectOf(m.project);
+    g.put(1, 0, 'ARCHEUS  Core connected | Not stopped - accepts new work');
+    g.put(1, 1, 'Overview / ' + p.name + ' / ' + m.title);
+    var lx = Math.floor(w * 0.1), mx = lx + 2, my = 4;
+    g.center(3, '*  ARCHEUS');
+    g.box(lx, my + 3, 30, 4, m.title);
+    g.put(lx + 2, my + 4, GLYPH_T[m.state] + ' ' + tword(m));
     if (m.exec) {
-      L.push(tcenter('|', w));
-      L.push(tcenter('Codex execution  (checks running)', w));
+      g.put(Math.floor(lx + 15), my + 7, BOX.v);
+      g.put(lx + 2, my + 9, 'Codex - execution');
+      g.put(lx + 2, my + 10, 'Runs checks, collects evidence.');
     }
-    L.push('');
-    var phases = PHASES.map(function (n, i) {
-      var mark = m.phase === 6 || i < m.phase ? '[x]' : i === m.phase ? '[>]' : '[ ]';
-      return mark + ' ' + n;
-    });
-    L.push(tpad('Phase  ' + phases.join('  '), w));
-    L.push('');
-    L.push(tpad('Activity', w));
-    m.log.forEach(function (l) { L.push(tpad('  - ' + l, w)); });
-    var p = plans[m.id];
-    if (p) {
-      L.push('');
-      L.push(tpad('Plan v' + p.version + '  ' + p.tasks.length + ' tasks', w));
-      p.tasks.forEach(function (t, i) { L.push(tpad('  ' + (i + 1) + '. ' + t.text, w)); });
-    }
-    return termFrame(L, w, h, 'Esc overview  r review  p replay  t tell');
+    var rx = Math.floor(w * 0.42), rw = w - rx - 2, ry = 3;
+    g.box(rx, ry, rw, h - 9, m.title);
+    var lines = [
+      'Project ' + p.name + '    Branch ' + m.branch + '    Status ' + tword(m),
+      '',
+      'Understand / Plan / Approve / Run / [Verify] / Review',
+      '',
+      'Current phase  ' + (m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase]),
+      m.what,
+      'Latest record  ' + m.latest,
+      'Task           ' + m.task,
+      '',
+      'Activity'
+    ].concat(m.log.map(function (l) { return '  - ' + l; }));
+    var plan = plans[m.id];
+    if (plan) { lines.push('', 'Plan v' + plan.version + ', ' + plan.tasks.length + ' tasks'); plan.tasks.forEach(function (t, i) { lines.push('  ' + (i + 1) + '. ' + t.text); }); }
+    lines.forEach(function (l, i) { if (ry + 2 + i < h - 10) g.put(rx + 2, ry + 2 + i, l); });
+    return termFrame(g, w, h, 'b back  p replay  r review  t tell  s stop  ? help  : jump  / filter');
   }
 
-  function termDecision(w, h) {
-    var m = find(term.mid) || find('m-search'), p = plans[m.id], L = [];
-    if (!p) { L.push(tpad('No plan is recorded for ' + m.title + '.', w)); return termFrame(L, w, h, 'Esc overview'); }
-    L.push(tpad('PLAN REVIEW  v' + p.version + '  ' + m.title + '  (' + projectOf(m.project).name + ' / ' + m.branch + ')', w));
-    L.push(tpad('Why: ' + p.why, w));
-    L.push('');
-    L.push(tpad('Tasks', w));
-    p.tasks.forEach(function (t, i) { L.push(tpad('  ' + (i + 1) + '. ' + t.text, w)); });
-    L.push('');
-    L.push(tpad('What each decision does (Core text, fixture here)', w));
-    L.push(tpad('  A approve: ' + p.approve, w));
-    L.push(tpad('  C request changes: ' + p.request, w));
-    L.push(tpad('  R reject: ' + p.reject, w));
-    L.push('');
-    L.push(tpad('Approve needs a typed y in the real terminal; this view only shows the step.', w));
-    return termFrame(L, w, h, 'A approve  C request changes  R reject  Esc back');
+  function termDecisionGrid(w, h) {
+    var m = find(term.mid) || find('m-search'), p = plans[m.id], g = Grid(w, h);
+    g.put(1, 0, 'ARCHEUS  Core connected | Not stopped - accepts new work');
+    g.put(1, 1, 'Overview / ' + projectOf(m.project).name + ' / ' + m.title);
+    if (!p) { g.put(3, 4, 'No plan is recorded for ' + m.title + '.'); return termFrame(g, w, h, 'b back  ? help'); }
+    g.box(2, 3, w - 4, h - 9, 'Review plan v' + p.version + '  ' + m.title);
+    var rows = [
+      'Branch ' + m.branch + '   Action ' + p.hash + '   Plan v' + p.version + ' (fixture)',
+      'Why: ' + p.why,
+      '',
+      'Tasks'
+    ].concat(p.tasks.map(function (t, i) { return '  ' + (i + 1) + '. ' + t.text; })).concat([
+      '',
+      'What each decision does (Core text, fixture here)',
+      '  a approve: ' + p.approve,
+      '  c request changes: ' + p.request,
+      '  x reject: ' + p.reject
+    ]);
+    if (term.step === 'approve') rows.push('', 'Approve selected. Confirm only after reading the current plan.');
+    rows.forEach(function (l, i) { if (5 + i < h - 9) g.put(4, 5 + i, l); });
+    return termFrame(g, w, h, term.step ? 'y confirm   any other key cancels' : 'a approve  c changes  x reject  b back  ? help');
   }
 
-  function termReplay(w, h) {
-    var m = find(term.mid) || find('m-date'), rows = REPLAY[m.id] || [], L = [];
-    L.push(tpad('REPLAY  ' + m.title + '  (sample data)', w));
-    L.push('');
+  function termReplayGrid(w, h) {
+    var m = find(term.mid) || find('m-date'), rows = REPLAY[m.id] || [], g = Grid(w, h);
+    g.put(1, 0, 'ARCHEUS  Core connected | Not stopped - accepts new work');
+    g.put(1, 1, 'Overview / ' + projectOf(m.project).name + ' / Replay ' + m.title + ' (sample data)');
+    g.box(2, 3, w - 4, h - 9, 'Replay · ' + m.title);
+    var y = 5;
     rows.forEach(function (r) {
-      L.push(tpad(r.time + '  ' + tpad('[' + r.badge + ']', 13) + ' ' + r.title + ' — ' + r.sub, w));
+      g.put(4, y, r.time + '  [' + r.badge + ']' + new Array(Math.max(1, 14 - r.badge.length)).join(' ') + r.title);
+      g.put(24, y + 1, r.sub);
+      y += 3;
     });
-    L.push(tpad('--:--  [Operator]  Reconcile — record what happened on the remote. Nothing is pushed.', w));
-    L.push('');
-    L.push(tpad('Not every external effect can be reversed.', w));
-    return termFrame(L, w, h, 'Esc overview  m mission  Reconcile is a key in the real terminal');
+    g.put(4, y, '--:--  [Operator]  Reconcile - record what happened on the remote. Nothing is pushed here.');
+    g.put(4, y + 2, 'Not every external effect can be reversed.');
+    return termFrame(g, w, h, 'b back  r reconcile is a key in the real app  ? help');
   }
 
   function renderTerm() {
-    var w = term.cols, h = term.rows, out;
-    if (term.screen === 'mission') out = termMission(w, h);
-    else if (term.screen === 'decision') out = termDecision(w, h);
-    else if (term.screen === 'replay') out = termReplay(w, h);
-    else out = termOverview(w, h);
+    var w = term.cols, h = term.rows, g, out;
+    if (term.help) g = termHelp(w, h);
+    else if (term.screen === 'mission') g = termMissionGrid(w, h);
+    else if (term.screen === 'decision') g = termDecisionGrid(w, h);
+    else if (term.screen === 'replay') g = termReplayGrid(w, h);
+    else g = termFrame(overviewGrid(w, h), w, h, w >= 100 ? 'j/k select  Enter open  / find  : command  ? help  p replay  t tell  r review  s stop  L plain' : 'j/k  Enter open  / find  : cmd  ? help  t tell  L plain');
+    out = term.plain && term.screen === 'overview' && !term.help ? plainOverview(w, h).join('\n') : g.text();
     var pre = $('#term');
     pre.textContent = out;
     pre.style.width = (w * 9.2) + 'px';
@@ -1778,17 +1899,52 @@
 
   function renderTerminal() { renderTerm(); $('#term').focus({ preventScroll: true }); }
 
+  function runCommand(text) {
+    var q = text.trim().toLowerCase();
+    if (!q) return 'Nothing to run.';
+    var p = projects.filter(function (x) { return x.name.toLowerCase() === q; })[0];
+    if (p) {
+      var first = missions.filter(function (m) { return m.project === p.id; })[0];
+      if (first) { term.sel = termOrder().indexOf(first); term.screen = 'overview'; }
+      return 'Jumped to project ' + p.name + '.';
+    }
+    var m = missions.filter(function (x) { return x.title.toLowerCase().indexOf(q) >= 0 || x.id === q; })[0];
+    if (m) { term.mid = m.id; term.screen = 'mission'; return 'Opened ' + m.title + '.'; }
+    if (q === 'replay') { term.screen = 'replay'; return 'Replay opened.'; }
+    return 'No project or mission named ' + text.trim() + '.';
+  }
+
   function termKey(e) {
     if (!$('#s-terminal') || $('#s-terminal').hidden || e.target.id === 'term-tell') return;
-    var order = termOrder(), k = e.key;
-    if (k === 'j' || k === 'ArrowDown') term.sel = Math.min(order.length - 1, term.sel + 1);
+    var k = e.key, order = termOrder();
+    if (term.input) {
+      e.preventDefault();
+      if (k === 'Escape') { term.input = null; }
+      else if (k === 'Enter') { var out = term.input.mode === ':' ? runCommand(term.input.text) : (term.filter = term.input.text.trim(), term.sel = 0, 'Filter set.'); term.input = null; $('#term-status').textContent = out; }
+      else if (k === 'Backspace') { term.input.text = term.input.text.slice(0, -1); }
+      else if (k.length === 1) { term.input.text += k; }
+      return renderTerm();
+    }
+    if (term.step) {
+      e.preventDefault();
+      if (k === 'y') { term.step = null; say('Prototype: nothing was approved. This page records no decision.'); }
+      else { term.step = null; say('Approval cancelled. Nothing was decided.'); }
+      return renderTerm();
+    }
+    if (term.help) { if (k === '?' || k === 'Escape') { term.help = false; e.preventDefault(); renderTerm(); } return; }
+    if (k === '?') { term.help = true; }
+    else if (k === ':') { term.input = { mode: ':', text: '' }; }
+    else if (k === '/') { term.input = { mode: '/', text: '' }; }
+    else if (k === 'L') { term.plain = !term.plain; }
+    else if (k === 'j' || k === 'ArrowDown') term.sel = Math.min(order.length - 1, term.sel + 1);
     else if (k === 'k' || k === 'ArrowUp') term.sel = Math.max(0, term.sel - 1);
-    else if (k === 'Enter' && order[term.sel]) { term.mid = order[term.sel].id; term.screen = 'mission'; }
-    else if (k === 'r') { term.mid = (order[term.sel] || {}).id || 'm-search'; term.screen = 'decision'; }
-    else if (k === 'p') { term.mid = (order[term.sel] || {}).id || 'm-date'; term.screen = 'replay'; }
+    else if (k === 'Enter' && term.screen === 'overview' && selected()) { term.mid = selected().id; term.screen = 'mission'; }
+    else if (k === 'r') { term.mid = selected().id; term.screen = 'decision'; }
+    else if (k === 'a' && term.screen === 'decision') { term.step = 'approve'; }
+    else if (k === 'p') { term.mid = selected().id; term.screen = 'replay'; }
     else if (k === 'm') term.screen = 'mission';
-    else if (k === 'Escape' || k === 'b') term.screen = 'overview';
-    else if (k === 's') { stop(); return renderTerm(); }
+    else if (k === 'Escape' || k === 'b') { term.screen = 'overview'; if (k === 'Escape') term.filter = ''; }
+    else if (k === 's') { stop(); }
     else if (k === 't') { e.preventDefault(); $('#term-tell').focus(); return; }
     else return;
     e.preventDefault();

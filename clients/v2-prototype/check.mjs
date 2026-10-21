@@ -92,7 +92,7 @@ check(/:focus-visible/.test(css), 'no visible focus rule');
 check(/PROTOTYPE · fake data/.test(html), 'prototype label missing');
 check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated tag missing');
 check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
-check(/data-promote/.test(js) && /General · not project memory/.test(js), 'general thread or promote control missing');
+check(/data-promote/.test(js) && /gen-tag">General<\/span> not project memory/.test(js), 'general thread or promote control missing');
 check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
 for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you', 'Reconcile', 'Not every external effect can be reversed']) {
   check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);
