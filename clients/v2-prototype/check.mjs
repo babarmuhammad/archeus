@@ -94,11 +94,16 @@ check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated t
 check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
 check(/data-promote/.test(js) && /General · not project memory/.test(js), 'general thread or promote control missing');
 check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
-for (const word of ['Intended', 'Authorized', 'Recorded', 'May have taken effect', 'Uncertain', 'Suspended', 'Reconcile']) {
+for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you', 'Reconcile', 'Not every external effect can be reversed']) {
   check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);
 }
 check(/Tell Archeus what to do/.test(html), 'Tell box label missing');
 check(/confirmBox\('Approve plan/.test(js) && /data-kind="approve"/.test(html), 'approve must go through a confirm step');
+
+check(/Start and plan /.test(js) && /data-card="start"/.test(js), 'chat-created missions must show the Start card');
+check(/Keep as mission/.test(js), 'Start card needs Keep as mission');
+check(/rp-rows/.test(html) && /rp-panel/.test(html), 'replay panel missing');
+check(/feed/.test(css) && /chatbar/.test(css), 'chat feed or bar styles missing');
 
 if (failures.length) {
   console.error('FAIL');
