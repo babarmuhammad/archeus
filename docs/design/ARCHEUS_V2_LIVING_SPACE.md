@@ -451,3 +451,11 @@ Desktop, phone and terminal share IDs, project membership, pending/eligible appr
 ## Round 2 artifact status
 
 Design additions above are reviewable; no production implementation, tests, installs, commit or push was performed. Requested seven new raster concepts are pending the generated-output-only exception: imagegen documents automatic writes outside the worktree and exposes no destination parameter. Under the current strict write boundary, calling it would violate the owner instruction. Exact per-image prompts/captions are recorded in `v2-concepts/ROUND2_PROMPTS.md`; these are **not generated images** and no missing asset is linked as present. Existing 01–08 remain unchanged; concept 05 is historical and superseded for phone design.
+
+## Owner decisions 2026-10-21
+
+| Question | Binding answer and effect |
+|---|---|
+| LS-Q11 | **"i am fine with a pwa app for now"** (owner, 2026-10-21, after the round 2 phone concepts 09–12 were delivered in 7c67958). The phone live remote is prototyped first as an installed PWA, under LS-7's web/PWA column: Web Push where supported, no offline command queue, the existing paired-device flow. "For now" keeps native open: it is revisited only if the prototype cannot meet a named requirement. |
+
+**Still open: LS-Q6, LS-Q7, LS-Q8, LS-Q9 and LS-Q10.**
