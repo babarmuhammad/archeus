@@ -139,3 +139,48 @@ def test_H07_a_missions_resources_are_admin_and_validated(core):
     assert bad.status == 400
     assert _post(core, '/v1/missions/%s/resources' % mid, {'max_cost_band': 'low'},
                  token=_browser(core)).status == 403
+
+
+def _walk(x):
+    """Every key and every string value of a decoded JSON body."""
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield k
+            yield from _walk(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _walk(v)
+    elif isinstance(x, str):
+        yield x
+
+
+#: the observe-scope reads a registered account's home could reach: each must stay free of it
+OBSERVE_READS = ('/v1/status', '/v1/accounts', '/v1/route-decisions', '/v1/events',
+                 '/v1/attention', '/v1/digest', '/v1/sync', '/v1/projects', '/v1/harnesses',
+                 '/v1/sessions', '/v1/automations', '/v1/policies', '/v1/approvals',
+                 '/v1/provider-terms')
+
+
+def test_H09_no_observe_read_names_a_registered_home(core, tmp_path):
+    """Owner, 2026-10-21: an observe-scope reader never gets a path under a registered
+    account's home (the home is this machine's path). Every body is walked, keys and values."""
+    from archeus.harnesses import base
+    home = str(tmp_path / 'Work-Claude')
+    _post(core, '/v1/accounts', {'harness_id': 'fake', 'label': 'Work', 'auth_kind': 'api_key',
+                                 'home_ref': home})
+    mid = _post(core, '/v1/missions', {'title': 'Route', 'objective': 'o'}).json()['id']
+    _wait(lambda: core.http('GET', '/v1/missions/%s' % mid).json()['state'] == 'COMPLETED',
+          'mission completed')
+    decisions = core.http('GET', '/v1/route-decisions?source=%s' % mid).json()['route_decisions']
+    reads = list(OBSERVE_READS) + ['/v1/route-decisions?source=%s' % mid,
+                                   '/v1/missions/%s' % mid, '/v1/missions/%s/trace' % mid,
+                                   '/v1/missions/%s/timeline' % mid,
+                                   '/v1/missions/%s/verifications' % mid]
+    reads += ['/v1/route-decisions/%s' % d['id'] for d in decisions]
+    forms = (home, base.canonical_home(home))     # not tmp_path: Core's own run dirs live under it
+    for path in reads:
+        got = core.http('GET', path)
+        assert got.status == 200, path
+        for text in _walk(got.json()):
+            assert not any(f in text for f in forms), (path, text)
+

@@ -396,6 +396,10 @@ class Handler(BaseHTTPRequestHandler):
                                       'current state and asked for it'})
             self.body = self._body(route, raw)
             out = route.handler(self)
+            if out is not None and route.method == 'GET' and isinstance(out[1], (dict, list)):
+                # no registered account's home leaves a read (owner, 2026-10-21)
+                with self.api.db.read() as conn:
+                    out = (out[0], queries.public_body(conn, out[1]))
             if out is not None:
                 self._respond(out[0], out[1], extra)
         except concurrent.futures.TimeoutError as e:

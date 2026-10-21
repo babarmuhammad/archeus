@@ -215,30 +215,45 @@ def get_knowledge(conn, knowledge_item_id):
     return dict(view(row), chain=chain + [knowledge_item_id] + after, relations=rels)
 
 
-def _public_decision(decision):
-    """A decision as the API reads it: no account home reaches the read. That is
-    the path on this machine (`home_ref`) and every value that is that path, in
-    plain or canonical form: a snapshot ref, the chosen `account_ref`, a default
-    account's `<harness>:<canonical home>`. The stored row keeps them, because the
-    execution manager reads the snapshot for a default account's home
-    (execution/manager.py)."""
+def _scrub(x, forms):
+    """*x* with no account home in it: the keys `home_ref` and `home_key` are
+    dropped; a string that is a home (plain or canonical form) becomes None, and
+    one that contains a home says "its home" in its place."""
+    if isinstance(x, dict):
+        return {k: _scrub(v, forms) for k, v in x.items() if k not in ('home_ref', 'home_key')}
+    if isinstance(x, (list, tuple)):
+        return [_scrub(v, forms) for v in x]
+    if isinstance(x, str) and forms:
+        if x in forms:
+            return None
+        for f in forms:
+            x = x.replace(f, 'its home')
+    return x
+
+
+def _forms(homes):
+    """The plain and canonical forms of each home, longest first."""
     from ...harnesses.base import canonical_home
+    return sorted({f for h in homes for f in (h, canonical_home(h))}, key=len, reverse=True)
+
+
+def _public_decision(decision):
+    """A decision as the API reads it. The stored row keeps the home: the
+    execution manager reads the snapshot for a default account's home
+    (execution/manager.py). A default account's home is in its snapshot entry,
+    not in the account table, so the decision carries its own forms."""
     homes = {a['home_ref'] for a in ((decision.get('input_snapshot') or {}).get('accounts') or ())
              if a.get('home_ref')}
-    forms = sorted({f for h in homes for f in (h, canonical_home(h))}, key=len, reverse=True)
+    return _scrub(decision, _forms(homes))
 
-    def scrub(x):
-        if isinstance(x, dict):
-            return {k: scrub(v) for k, v in x.items() if k not in ('home_ref', 'home_key')}
-        if isinstance(x, (list, tuple)):
-            return [scrub(v) for v in x]
-        if isinstance(x, str) and forms:
-            if x in forms:
-                return None
-            for f in forms:
-                x = x.replace(f, 'its home')
-        return x
-    return scrub(decision)
+
+def public_body(conn, body):
+    """A GET body of the observe scope with no registered account's home in it
+    (owner, 2026-10-21: strip at read). The net under the per-surface projections:
+    every read is passed through it, so a surface that names a home but has no
+    projection of its own still shows none. The stored rows are untouched."""
+    homes = {r.entity.home_ref for r in rows.where(conn, entities.Account) if r.entity.home_ref}
+    return _scrub(body, _forms(homes))
 
 
 def get_route_decision(conn, route_decision_id):

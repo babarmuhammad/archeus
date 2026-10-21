@@ -552,9 +552,25 @@ The review's verdict was CHANGES. What changed, finding by finding:
   The stored row keeps them, because the execution manager reads the stored snapshot for a default
   account's home (`execution/manager.py`). Test:
   `test_owner_2026_10_21_route_decision_reads_show_no_account_home`; mutants Z145-Z146.
-  **Open for the owner (not changed here):** the status read (`/v1/status`, `live_work`) carries an
-  own call's `account_ref`, which for a registered account is its home path; the same leak as the
-  route-decision read, in a second observe read. Recommended: strip it at that read the same way.
+- **Strip at read, every observe read (owner, 2026-10-21: "Strip it (Recommended)").** `/v1/status`'s
+  own-call items no longer carry `account_ref` (for a registered account, its home path); the
+  stored row keeps it. The net: `queries.public_body` passes every observe-scope GET body
+  (`archeus/api/server.py`, after the handler) and drops `home_ref`/`home_key` keys and any value
+  that is a registered account's home (plain or canonical form; a value that only contains one says
+  "its home"). The per-surface projections (route decisions, the accounts view, the live item) stay
+  as the owner named them; the net covers what they do not reach: the usage rows of a route decision,
+  a verification's `performed_by.account_ref` (`verification.py`), a review's reviewer resource.
+  Test: `test_H09_no_observe_read_names_a_registered_home` (status, accounts, route-decisions list and
+  one, events, attention, missions, trace, timeline, verifications and more) and
+  `test_owner_2026_10_21_live_work_and_every_read_body_name_no_registered_home` (live work, the net);
+  mutants Z151-Z152, and Z145-Z146 on the shared scrub.
+  **Not covered, recorded:** a DEFAULT account's key is `<harness>:<canonical home>` (ADR-0048 D-25.1),
+  and its home is not a registered account, so the net (which reads the account table) does not
+  scrub it; it appears in events payloads (`account_ref`), a route decision's `account_ref`, and
+  an own call's `account_ref`. The route-decision projection does cover the decision's own
+  snapshot entry. Owner decision needed if default homes are to be stripped at the net too.
+  **Not checked:** the event stream (`/v1/events/stream`, `/v1/executions/{id}/stream`) is not a JSON
+  body and is not passed through the net.
 - **Now map (review F2).** The live map's set is `attemptIds(status.data.live)` (`orbit.ts`): an own
   call is never a map node (G8). Test: `orbit.test.ts`; mutants Z148-Z149. The header count
   `liveCountText(status.live)` is pinned by a source check and mutant Z150 (review F4).

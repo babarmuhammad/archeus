@@ -96,7 +96,7 @@ def live_work(conn, project_id=None, now=None):
             'mission_id': m.entity.id if m else None,
             'mission_title': m.entity.title if m else None, 'project_id': rd.project_id,
             'task_id': None, 'state': None, 'attempt': None, 'harness_id': rd.harness_id,
-            'account_id': rd.account_id, 'account_ref': rd.account_ref, 'model': rd.model,
+            'account_id': rd.account_id, 'model': rd.model,
             'effort': rd.effort, 'route_decision_id': rd.id, 'started_at': r.created_at,
             'waits_on': None, 'handoff': None, 'context': None})
     return out

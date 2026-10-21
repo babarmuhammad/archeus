@@ -3,6 +3,7 @@ G13; R13-06): own calls in flight in `live_work`, each account's consumption
 and effective policy in `/v1/accounts`, and the `status` verb in words. Fake
 adapters and the real database only."""
 
+import json
 import time
 
 import pytest
@@ -244,3 +245,25 @@ def test_owner_2026_10_21_route_decision_reads_show_no_account_home(r, tmp_path)
     reg = {'input_snapshot': {'accounts': [{'id': 'acc_1', 'ref': home, 'home_ref': home}]},
            'account_ref': home}
     assert queries._public_decision(reg)['account_ref'] is None
+
+
+def test_owner_2026_10_21_live_work_and_every_read_body_name_no_registered_home(r, tmp_path):
+    """Strip at read (owner, 2026-10-21): an own call in flight names no home, and the
+    net every observe body passes through (`queries.public_body`) holds for any surface."""
+    home = str(tmp_path / 'Work-Claude')
+    a = r.account('A', home_ref=home)
+    flying = call(r)
+    with r.db.read() as conn:
+        work = live.live_work(conn)
+        body = {'performed_by': {'account_id': a, 'account_ref': home,
+                                 'reviewer': {'account': home}}, 'home_ref': home}
+        netted = queries.public_body(conn, body)
+        said = queries.public_body(conn, {'text': 'kept in ' + home})
+    assert said == {'text': 'kept in its home'}
+    (item,) = work
+    assert item['id'] == flying and 'account_ref' not in item
+    assert home not in json.dumps(work) and base.canonical_home(home) not in json.dumps(work)
+    assert netted == {'performed_by': {'account_id': a, 'account_ref': None,
+                                       'reviewer': {'account': None}}}
+    assert netted['performed_by']['account_id'] == a          # ids are not homes: kept
+

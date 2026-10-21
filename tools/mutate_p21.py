@@ -38,6 +38,7 @@ RTM = 'archeus/core/runtime.py'
 D = 'tests/v1/integration/test_p21_metrics_doctor.py'
 QRY = 'archeus/core/application/queries.py'
 NOWT = 'clients/app/src/surfaces/Now.tsx'
+SRV = 'archeus/api/server.py'
 ROUTES = 'archeus/api/routes.py'
 CMDBAR = 'clients/app/src/surfaces/CommandBar.tsx'
 GUI = 'archeus/cli/gui.py'
@@ -388,13 +389,13 @@ MUTATIONS = [
      "HOME_FIELDS = ('home_ref',)")],
      [PL + 'test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home']),
     # ── P21 slice B review round 3 (F1-F4) ──
-    ('Z145', 'a route-decision read shows the account home_ref key', [(QRY,
-     "            return {k: scrub(v) for k, v in x.items() if k not in ('home_ref', 'home_key')}",
-     "            return {k: scrub(v) for k, v in x.items()}")],
+    ('Z145', 'a read shows the account home_ref key', [(QRY,
+     "        return {k: _scrub(v, forms) for k, v in x.items() if k not in ('home_ref', 'home_key')}",
+     "        return {k: _scrub(v, forms) for k, v in x.items()}")],
      [PL + 'test_owner_2026_10_21_route_decision_reads_show_no_account_home']),
-    ('Z146', 'a route-decision read shows a home-valued ref or account_ref', [(QRY,
-     "            if x in forms:\n                return None\n",
-     "            if x in forms:\n                return x\n")],
+    ('Z146', 'a read shows a value that is exactly a home', [(QRY,
+     "        if x in forms:\n            return None\n",
+     "        if x in forms:\n            return x\n")],
      [PL + 'test_owner_2026_10_21_route_decision_reads_show_no_account_home']),
     ('Z147', 'a live execution in its first state is left out of live work', [(LV,
      "% ','.join('?' * len(LIVE)), LIVE):",
@@ -412,6 +413,21 @@ MUTATIONS = [
      '{liveCountText(status.live)}',
      "{liveCountText(status.live.map((x) => ({ ...x, kind: 'execution' })))}")],
      ['node:test/orbit.test.ts']),
+    # ── P21 slice B review round 4: the observe-read net and the own call's account_ref ──
+    ('Z151', 'an own call in flight names its account_ref (a home for a registered account)',
+     [(LV,
+     "            'account_id': rd.account_id, 'model': rd.model,",
+     "            'account_id': rd.account_id, 'account_ref': rd.account_ref, 'model': rd.model,")],
+     [PL + 'test_owner_2026_10_21_live_work_and_every_read_body_name_no_registered_home']),
+    ('Z152', 'a read body reaches the client without the net, and accounts shows the home',
+     [(SRV,
+     "                    out = (out[0], queries.public_body(conn, out[1]))",
+     "                    out = out"),
+      (RS,
+     "HOME_FIELDS = ('home_ref', 'home_key')",
+     "HOME_FIELDS = ()")],
+     [PL + 'test_owner_2026_10_21_live_work_and_every_read_body_name_no_registered_home',
+      'tests/v1/integration/test_routing_http.py::test_H09_no_observe_read_names_a_registered_home']),
     # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
     ('Z30', 'a result is paired with whichever call came first', [(TR,
      "            call = calls.get(e.get('tool_use_id'))",
