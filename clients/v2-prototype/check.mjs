@@ -93,6 +93,9 @@ check(/PROTOTYPE · fake data/.test(html), 'prototype label missing');
 check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated tag missing');
 check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
 check(/data-promote/.test(js) && /gen-tag">General<\/span> not project memory/.test(js), 'general thread or promote control missing');
+check(/approve-confirm/.test(js) && /plan-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision screen missing');
+check(/nocolor/.test(js) && /colourise/.test(js), 'terminal colour or NO_COLOR handling missing');
+check(/Codex · execution/.test(js) && /openFeed/.test(js), 'phone Codex label or chat open-at-card missing');
 check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
 for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you', 'Reconcile', 'Not every external effect can be reversed']) {
   check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);

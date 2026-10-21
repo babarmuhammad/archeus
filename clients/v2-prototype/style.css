@@ -35,6 +35,7 @@
 * { box-sizing: border-box; }
 
 html, body {
+  font-feature-settings: "kern" 1; text-rendering: optimizeLegibility;
   margin: 0;
   background: var(--bg);
   color: var(--text);
@@ -48,7 +49,7 @@ ol, ul { padding-left: 0; list-style: none; }
 h1 { font: 400 clamp(38px, 4.2vw, 56px)/1.05 var(--serif); letter-spacing: 0.002em; margin: 0; }
 h2 { font: 600 16px/24px var(--sans); margin: var(--s6) 0 var(--s2); color: var(--text-2); }
 .small { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.kicker { font: 600 14px/20px var(--sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-2); }
+.kicker { font: 600 14px/20px var(--sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-2); }
 .lede { font: 400 16px/24px var(--serif); color: var(--text-2); margin-top: var(--s3); max-width: 640px; }
 a { color: var(--text); text-underline-offset: 3px; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
@@ -650,8 +651,10 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 }
 .gen-tag { display: inline-block; padding: 2px var(--s2); margin-right: var(--s1); border: 1px solid var(--line-2); border-radius: 999px; color: var(--text); letter-spacing: 0.08em; }
 
-.stage-now .lbl a.act { background: var(--amber); color: #070A10; border-color: var(--amber); font: 600 16px/24px var(--sans); }
-.stage-now .lbl a.act:hover { background: #F6C566; }
+/* Review on the scene: a small outline button on desktop; a filled 48 px button on the phone. */
+.stage-now .lbl a.act { background: transparent; color: var(--amber); border: 1px solid var(--amber); font: 400 14px/20px var(--sans); min-height: 36px; padding: 0 var(--s3); }
+.stage-now .lbl a.act:hover { background: rgba(242, 181, 68, 0.12); }
+.stage-now .sky { opacity: 0.55; }
 
 @media (max-width: 880px) {
   .stage-now .card, .sheet-proj { display: none; }
@@ -668,3 +671,44 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .rp-title { font-family: var(--sans); font-size: 18px; line-height: 24px; font-weight: 500; }
 .budget { position: absolute; right: var(--s4); top: var(--s3); z-index: 2; margin: 0; font: 400 14px/20px var(--sans); color: var(--text-2); }
 @media (max-width: 880px) { .budget { display: none; } }
+
+.term .c-amber { color: var(--amber); }
+.term .c-blue { color: var(--blue); }
+.term .c-green { color: var(--green); }
+.term .dim { color: var(--text-3); }
+.term-tell { display: none; }
+
+.decision-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: var(--s4) 0; }
+.decision-facts dt { font: 400 14px/20px var(--sans); color: var(--text-2); align-self: center; }
+.decision-facts dd { font: 400 16px/24px var(--sans); margin: 0; }
+.decision-facts .hash { font-family: var(--mono); font-size: 15px; word-break: break-all; }
+#plan-confirm .row { margin-top: var(--s4); }
+
+@media (max-width: 880px) {
+  .stage-now .lbl a.act { background: var(--amber); color: #070A10; border-color: var(--amber); font: 600 16px/24px var(--sans); min-height: 48px; padding: 0 var(--s4); }
+  .stage-now .lbl a.act:hover { background: #F6C566; }
+  .lbl.verb { display: none; }
+  .now-sheet .sheet-actions .btn.primary { background: transparent; color: var(--amber); border-color: var(--amber); }
+  .now-sheet .sheet-actions .btn.primary:hover { background: rgba(242, 181, 68, 0.12); }
+}
+.list-groups { display: flex; flex-direction: column; gap: var(--s2); }
+.list-group .kicker { margin-top: var(--s2); }
+.list-group ul { display: flex; flex-direction: column; }
+
+.ev-head { margin-top: var(--s4); }
+.ev-rows li { min-height: 36px; }
+
+/* Round 9 type scale (typography skill). Serif: wordmark, headlines, Archeus name only.
+   Sans: everything else, 14 px minimum. Caps: 0.12em tracking. Body 16/23 (about 1.45).
+   Terminal: mono, 15/20, text only. Measure of sheet text: 65ch.
+   Desktop: headline 56 px; sheet title 26/32; label title 19/24 sans 500; label sub 14/20; body 16/23; chip and button 14-15/20. */
+.sheet p, .now-sheet p, .decision-facts + p, #plan-confirm > p.small { max-width: 65ch; }
+p.small, .small { line-height: 20px; }
+.msg-arch p, .msg-you p, .msg-gen p { line-height: 23px; }
+.lbl .s { line-height: 20px; }
+.btn { font-weight: 500; }
+
+@media (max-width: 880px) { .stage-now .lbl.exec .t { font-size: 16px; line-height: 22px; } }
+@media (max-width: 1599px) { #replay-stage .lbl.verb { display: none; } }
+.msg-card .btn.primary { background: var(--amber); border-color: var(--amber); color: #070A10; }
+.msg-card .btn:not(.primary) { background: transparent; border-color: var(--amber); color: var(--amber); }

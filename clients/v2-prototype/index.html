@@ -221,6 +221,7 @@
 
       <section class="screen" id="s-plan" hidden>
         <header class="head"><p class="kicker">Plan approval</p><h1 tabindex="-1" data-plan-title></h1></header>
+        <div id="plan-review">
         <p class="small" data-plan-meta></p>
         <p class="state-line" data-plan-why></p>
         <h2>Plan tasks</h2>
@@ -234,11 +235,13 @@
           <textarea id="plan-note" rows="4" maxlength="2000"></textarea>
           <p class="small" id="plan-selected"></p>
           <div class="row">
-            <button type="button" class="btn primary" data-act="decide" data-kind="approve">Approve plan…</button>
+            <button type="button" class="btn primary" data-act="decide" data-kind="approve">Review and approve…</button>
             <button type="button" class="btn" data-act="decide" data-kind="request">Request changes…</button>
             <button type="button" class="btn" data-act="decide" data-kind="reject">Reject…</button>
           </div>
         </form>
+        </div>
+        <section id="plan-confirm" hidden></section>
       </section>
     </main>
   </div>

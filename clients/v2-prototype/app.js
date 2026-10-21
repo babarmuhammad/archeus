@@ -65,6 +65,7 @@
   var missionTab = 'overview';
   var sharedTab = 'overview';
   var missionShown = 'm-date';
+  var planStep = 'review';
 
   /* ---------- Small helpers ---------- */
 
@@ -375,11 +376,11 @@
     var k = Math.max(0.7, Math.min(w / 720, 1.1));
     var sc = mk(w, h, { x: w * 0.5, y: h * 0.12 }, k, false);
     var live = isLive(m);
-    sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * 0.2, y: h * 0.4, shape: 'octa', members: null, count: missions.filter(function (x) { return x.project === p.id; }).length, live: live ? 1 : 0, active: live });
+    sc.projects.push({ id: p.id, name: p.name, hue: p.hue, x: w * 0.2, y: h * 0.4, shape: 'octa', members: small ? [m.id] : null, count: missions.filter(function (x) { return x.project === p.id; }).length, live: live ? 1 : 0, active: live });
     sc.parent[p.id] = 'core';
     sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live, kind: 'project', hue: p.hue, verb: 'orchestrates' });
     var mx = w * 0.56, my = h * 0.5;
-    sc.nodes.push(nodeFor(m, mx, my, 84 * k * (small ? 0.6 : 1), p.id, false));
+    sc.nodes.push(nodeFor(m, mx, my, (small ? 50 : 112) * k, p.id, false));
     sc.parent[m.id] = p.id;
     sc.links.push({ a: p.id, b: m.id, col: isLive(m) ? STATE[m.state].color : p.hue, live: live, kind: 'mission', hue: p.hue, verb: 'contains' });
     if (m.exec) {
@@ -634,7 +635,13 @@
         if (it) { it.cx = cc.x; it.cy = cc.y; it.hr = hr + 6; it.pt = { x: anchor.x + dx * 10, y: anchor.y + dy * 10 }; it.r = 0; it.hullR = hr; }
         g.save(); g.globalAlpha = gp;
         g.beginPath(); hull.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
-        g.fillStyle = rgba(p.hue, lit ? 0.08 : 0.035); g.fill();
+        var base = (sc.compact ? 0.075 : 0.05) * (lit ? 1 : 0.45);
+        hull.forEach(function (v, j) {
+          var nv = hull[(j + 1) % hull.length];
+          g.beginPath(); g.moveTo(cc.x, cc.y); g.lineTo(v.x, v.y); g.lineTo(nv.x, nv.y); g.closePath();
+          g.fillStyle = rgba(p.hue, base * [0.7, 1.25, 0.9, 1.35, 0.8, 1.1][j % 6]); g.fill();
+        });
+        g.beginPath(); hull.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
         g.strokeStyle = rgba(p.hue, lit ? 0.6 : 0.24); g.lineWidth = 1; g.stroke();
         g.strokeStyle = rgba(p.hue, lit ? 0.22 : 0.08); g.lineWidth = 0.8;
         hull.forEach(function (v) { line(g, cc.x, cc.y, v.x, v.y); });
@@ -769,7 +776,7 @@
     function labelQuiet(id, it) {
       var sc = S.scene;
       if (S.hover === id) return false;
-      if (sc.compact) return it.kind === 'exec' || (it.kind === 'mission' && !sc.nodes.some(function (n) { return n.id === id && n.live; }));
+      if (sc.compact) return it.kind === 'mission' && !sc.nodes.some(function (n) { return n.id === id && n.live; });
       if (it.kind !== 'mission' && it.kind !== 'exec') return false;
       if (S.focus) return false;
       var n = sc.nodes.filter(function (x) { return x.id === id; })[0];
@@ -879,7 +886,9 @@
       S.verbItems.forEach(function (v) {
         var a = pos[v.a], b = pos[v.b];
         if (!a || !b) return;
-        var mx = a.x + (b.x - a.x) * 0.65, my = a.y + (b.y - a.y) * 0.65;
+        var dx = b.x - a.x, dy = b.y - a.y, dl = Math.hypot(dx, dy) || 1;
+        var nx = -dy / dl, ny = dx / dl, side = v.side || 1;
+        var mx = a.x + dx * 0.5 + nx * 16 * side, my = a.y + dy * 0.5 + ny * 16 * side;
         v.el.style.transform = 'translate(' + (mx - v.el.offsetWidth / 2).toFixed(1) + 'px,' + (my - 10).toFixed(1) + 'px)';
       });
     }
@@ -965,7 +974,8 @@
         var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : '';
         var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: 'Review', aria: 'Review plan for ' + n.title } : null;
         var line2 = sc.compact && n.kind === 'mission' ? n.detail : st ? st + (sub ? ' · ' + sub : '') : sub;
-        addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker, title: n.title, sub: line2, subCls: subCls, kind: n.kind, action: action });
+        var execPhone = sc.compact && n.kind === 'exec';
+        addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker, title: execPhone ? 'Codex · execution' : n.title, sub: execPhone ? '' : line2, subCls: subCls, kind: n.kind, action: action });
         if (n.hit) {
           addHit(n.id, { aria: n.title + ', ' + st + (n.detail ? ', ' + n.detail : ''), kind: n.kind, meta: { kicker: n.kicker, title: n.title, lines: [st, sub].filter(Boolean) } });
         }
@@ -976,7 +986,7 @@
         lbl.className = 'lbl verb';
         lbl.textContent = l.verb;
         S.world.appendChild(lbl);
-        S.verbItems.push({ el: lbl, a: l.a, b: l.b });
+        S.verbItems.push({ el: lbl, a: l.a, b: l.b, side: S.verbItems.length % 2 ? -1 : 1 });
       });
       Object.keys(S.items).forEach(function (id) {
         var it = S.items[id];
@@ -1219,7 +1229,7 @@
       }).join('') + '</ul><p class="small">Relations are fixture text. Core supplies the real ones.</p>';
     } else {
       box.innerHTML = '<dl class="kv"><dt>Type</dt><dd>Core system</dd><dt>Status</dt><dd>Verified</dd><dt>Updated</dt><dd>Today, 10:24</dd><dt>Items</dt><dd>248</dd><dt>Agents</dt><dd>2 active</dd><dt>Linked projects</dt><dd>3</dd></dl>' +
-        '<p class="kicker">Evidence</p><p class="small">Same records, device permissions apply.</p>';
+        '<p class="kicker ev-head">Evidence</p><ul class="rowlist ev-rows"><li><span>Project files</span><span>12 items</span></li><li><span>Notes</span><span>34 items</span></li><li><span>Agent logs</span><span>28 items</span></li><li><span>Build outputs</span><span>18 items</span></li><li><span>Related content</span><span>156 items</span></li></ul><p class="small">Same records, device permissions apply.</p>';
     }
   }
 
@@ -1306,6 +1316,26 @@
     $('[data-plan-count]', sec).textContent = commentsFor(m.id).length + ' open comments. They do not block approve.';
     $('#plan-selected').textContent = 'Selected for request changes: ' + selectedComments().length + '.';
     $('#plan-note').value = planNote;
+    renderPlanStep(m, p);
+  }
+
+  // Decision, step 2 of 2: a confirm screen with the action hash and plan version; the box it opens is the explicit confirm.
+  function renderPlanStep(m, p) {
+    var review = $('#plan-review'), conf = $('#plan-confirm');
+    review.hidden = planStep === 'confirm';
+    conf.hidden = planStep !== 'confirm';
+    $('#s-plan > header.head').hidden = planStep === 'confirm';
+    if (planStep !== 'confirm') { conf.innerHTML = ''; return; }
+    conf.innerHTML = '<p class="kicker">Confirm approval · step 2 of 2</p>' +
+      '<h1 tabindex="-1" data-plan-confirm-title>Approve plan v' + p.version + '?</h1>' +
+      '<dl class="kv decision-facts"><dt>Mission</dt><dd>' + esc(m.title) + '</dd>' +
+      '<dt>Project</dt><dd>' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</dd>' +
+      '<dt>Plan version</dt><dd>v' + p.version + ' (fixture)</dd>' +
+      '<dt>Action hash</dt><dd class="hash">' + esc(p.hash) + '</dd></dl>' +
+      '<p class="small">' + esc(p.approve) + ' Nothing is approved until you confirm in the box that opens next. Cancel is the default.</p>' +
+      '<div class="row"><button type="button" class="btn primary" data-act="decide" data-kind="approve-confirm">Approve plan v' + p.version + '…</button>' +
+      '<button type="button" class="btn" data-act="plan-back">Back to decision</button></div>';
+    conf.querySelector('h1').focus({ preventScroll: true });
   }
 
   function confirmBox(title, text, ok, apply) {
@@ -1330,7 +1360,8 @@
     var m = find(planId), p = plans[m.id];
     var note = $('#plan-note').value.trim();
     var sel = selectedComments();
-    if (kind === 'approve') {
+    if (kind === 'approve') { planStep = 'confirm'; return renderPlan(planId); }
+    if (kind === 'approve-confirm') {
       return confirmBox('Approve plan v' + p.version + '?',
         'Approve plan v' + p.version + ' (action ' + p.hash.slice(0, 9) + ') for "' + m.title + '" on ' + m.branch + '. ' + p.approve + ' Open comments: ' + commentsFor(m.id).length + ', which do not block approve.',
         'Prototype: nothing was approved. This page records no decision.');
@@ -1358,7 +1389,18 @@
     'What is a replay?'
   ];
 
-  function scrollThread() { var t = $('.feed'); t.scrollTop = t.scrollHeight; }
+  // On the phone, a Start card from the last few messages stays in view; otherwise the thread follows the newest line.
+  function scrollThread() {
+    var t = $('.feed'), kids = thread.children, cards = thread.querySelectorAll('.msg-card');
+    if (isNarrow() && cards.length) {
+      var card = cards[cards.length - 1];
+      if (Array.prototype.indexOf.call(kids, card) >= kids.length - 3) {
+        t.scrollTop += card.getBoundingClientRect().top - t.getBoundingClientRect().top - 8;
+        return;
+      }
+    }
+    t.scrollTop = t.scrollHeight;
+  }
   function addMsg(kind, html) {
     var li = document.createElement('li');
     li.className = 'msg msg-' + kind;
@@ -1506,7 +1548,7 @@
   $('#chat-prompts').innerHTML = PROMPTS.map(function (p) {
     return '<button type="button" class="prompt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
   }).join('');
-  addMsg('arch', '<p>Tell me what to do. Projects, missions, ideas and plans are created here and appear in the constellation as they are made. Anything that runs, spends or changes a setting is proposed first. That is the design; V1 does not do it yet for runs.</p>');
+  addMsg('arch', '<p>Tell me what to do. Projects, missions and plans appear here as they are made. Runs and setting changes are proposed first.</p>');
 
   document.addEventListener('submit', function (e) {
     if (e.target.id !== 'chat-form') return;
@@ -1564,6 +1606,7 @@
     var act = el.getAttribute('data-act');
     if (act === 'close-sheet') closeSheet(false);
     else if (act === 'decide') decide(el.getAttribute('data-kind'));
+    else if (act === 'plan-back') { planStep = 'review'; renderPlan(planId); }
     else if (act === 'stop') stop();
     else if (act === 'reconcile') confirmBox('Reconcile ' + find(replayId).title + '?', 'You record what you saw on the remote: did the push take effect? Core would store your answer with this replay. Nothing is pushed, retried or reversed here.', 'Prototype: nothing was reconciled. The suspension stays.');
   });
@@ -1630,12 +1673,16 @@
   }
 
   function openList() {
-    var rows = sorted(missions).map(function (m) {
-      return '<li><button type="button" class="list-row" data-open="' + esc(m.id) + '"><span class="st-' + m.state + '">' + esc(STATE[m.state].word) + '</span> ' +
-        esc(m.title) + '<span class="row-meta">' + esc(projectOf(m.project).name) + '</span></button></li>';
+    // Every project is listed by name, with its missions under it (needs-you first).
+    var rows = projects.map(function (p) {
+      var items = sorted(missions.filter(function (m) { return m.project === p.id; })).map(function (m) {
+        return '<li><button type="button" class="list-row" data-open="' + esc(m.id) + '"><span class="st-' + m.state + '">' + esc(STATE[m.state].word) + '</span> ' +
+          esc(m.title) + '</button></li>';
+      }).join('');
+      return '<li class="list-group"><p class="kicker"><span class="pdot" style="--hue:' + p.hue + '"></span>' + esc(p.name) + '</p><ul>' + items + '</ul></li>';
     }).join('');
     sheetFor('<p class="kicker">All work</p><h2 id="now-sheet-h" tabindex="-1">' + projects.length + ' projects, ' + missions.length + ' missions</h2>' +
-      '<ul class="rowlist-sheet">' + rows + '</ul>' +
+      '<ul class="rowlist-sheet list-groups">' + rows + '</ul>' +
       '<div class="sheet-actions"><button type="button" class="btn" data-act="now-sheet-close">Close</button></div>');
   }
 
@@ -1675,8 +1722,17 @@
   });
 
   // Typing in the bar opens the conversation as a sheet on the phone.
+  // Opening the conversation on the phone shows the newest Start card first, with the replies below it.
+  function openFeed() {
+    var feed = $('#feed');
+    feed.classList.add('is-open');
+    var cards = thread.querySelectorAll('.msg-card');
+    if (!cards.length) return;
+    var card = cards[cards.length - 1];
+    feed.scrollTop += card.getBoundingClientRect().top - feed.getBoundingClientRect().top - 8;
+  }
   document.addEventListener('focusin', function (e) {
-    if (e.target.id === 'chat-input' && isNarrow()) $('#feed').classList.add('is-open');
+    if (e.target.id === 'chat-input' && isNarrow()) openFeed();
   });
   document.addEventListener('submit', function (e) {
     if (e.target.id === 'chat-form' && isNarrow()) $('#feed').classList.add('is-open');
@@ -1781,6 +1837,7 @@
       g.put(1, hy + hh + 1, 'Why: ' + (mA && plans[mA.id] ? plans[mA.id].why : 'nothing waiting.'));
     } else {
       g.center(2, '*  ARCHEUS  ' + (run ? 'RUNNING ' + run : 'IDLE'));
+      g.put(1, 3, (plans[sel.id] ? 'Why: ' + plans[sel.id].why : 'Nothing waiting.'));
       var y = 4;
       projects.forEach(function (p) {
         var ms = missions.filter(function (m) { return m.project === p.id; });
@@ -1788,7 +1845,6 @@
         ms.forEach(function (m, i) { g.put(3, y + 1 + i, (sel === m ? '> ' : '  ') + tline(m)); });
         y += 3 + ms.length;
       });
-      g.put(1, y, 'Why: ' + (plans[sel.id] ? plans[sel.id].why : 'nothing waiting.'));
     }
     return g;
   }
@@ -1882,6 +1938,25 @@
     return termFrame(g, w, h, 'b back  r reconcile is a key in the real app  ? help');
   }
 
+  // Colour is a second cue: every state keeps its glyph and word. NO_COLOR (a shell variable) cannot be read by a
+  // web page, so the prototype honours ?nocolor in the URL and the C key.
+  term.color = !/[?&]nocolor/.test(location.search);
+  var STATE_TONE = [
+    [/(NEEDS YOU|Needs you|needs you|Review plan|Plan approval required)/g, 'c-amber'],
+    [/(RUNNING|Running|running|Verifying|Verification|execution)/g, 'c-blue'],
+    [/(DONE|Done|Verified|Review passed|Tests passed)/g, 'c-green']
+  ];
+  function colourise(text) {
+    return text.split('\n').map(function (line) {
+      var e = esc(line);
+      if (/^(> Tell|SIMULATED)/.test(line)) return '<span class="dim">' + e + '</span>';
+      if (!term.color) return e;
+      e = e.replace(/◇/g, '<span class="c-amber">◇</span>');
+      STATE_TONE.forEach(function (t) { e = e.replace(t[0], '<span class="' + t[1] + '">$1</span>'); });
+      return e;
+    }).join('\n');
+  }
+
   function renderTerm() {
     var w = term.cols, h = term.rows, g, out;
     if (term.help) g = termHelp(w, h);
@@ -1891,7 +1966,7 @@
     else g = termFrame(overviewGrid(w, h), w, h, w >= 100 ? 'j/k select  Enter open  / find  : command  ? help  p replay  t tell  r review  s stop  L plain' : 'j/k  Enter open  / find  : cmd  ? help  t tell  L plain');
     out = term.plain && term.screen === 'overview' && !term.help ? plainOverview(w, h).join('\n') : g.text();
     var pre = $('#term');
-    pre.textContent = out;
+    pre.innerHTML = colourise(out);
     pre.style.width = (w * 9.2) + 'px';
     pre.style.height = (h * 20) + 'px';
     $$('[data-tsize]').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-tsize')) === w)); });
@@ -1936,6 +2011,7 @@
     else if (k === ':') { term.input = { mode: ':', text: '' }; }
     else if (k === '/') { term.input = { mode: '/', text: '' }; }
     else if (k === 'L') { term.plain = !term.plain; }
+    else if (k === 'C') { term.color = !term.color; }
     else if (k === 'j' || k === 'ArrowDown') term.sel = Math.min(order.length - 1, term.sel + 1);
     else if (k === 'k' || k === 'ArrowUp') term.sel = Math.max(0, term.sel - 1);
     else if (k === 'Enter' && term.screen === 'overview' && selected()) { term.mid = selected().id; term.screen = 'mission'; }
@@ -1972,7 +2048,7 @@
     terminal: renderTerminal,
     shared: renderShared,
     phone: renderPhone,
-    plan: renderPlan
+    plan: function (id) { planStep = 'review'; renderPlan(id); }
   };
 
   function route() {
