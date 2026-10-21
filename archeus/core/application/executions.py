@@ -25,10 +25,9 @@ import hmac
 import time
 
 from ...infra.db import rows
-from ..domain import entities, ids
+from ..domain import entities, ids, instants
 from ..domain.events import new_event
 from ..domain.values import Ref
-from ..routing import router as R
 from . import authorization, lifecycle
 from .commands import active_plan
 
@@ -135,19 +134,23 @@ def _newest(conn, harness_id, now):
     A trial INTENT counts only while its mission is EXECUTING: one parked by a
     pause or a block would hold every other task back until that mission moves.
     Rowid is creation order, which an INTENT that waited does not keep, so it only
-    breaks ties. julianday() because created_at has milliseconds and the others
-    do not, so a plain string order misplaces a row within its second."""
-    # only the rows the streak reads are decoded: a failed start, a start, a trial
-    for rec in conn.execute(
-            "SELECT * FROM executions WHERE json_extract(body, '$.harness_id') = ? AND ("
-            "json_extract(body, '$.stop_reason') = 'spawn' OR json_extract(body, '$.started_at')"
-            " IS NOT NULL OR state = 'INTENT') ORDER BY julianday(CASE"
-            " WHEN json_extract(body, '$.stop_reason') = 'spawn' THEN json_extract(body, '$.ended_at')"
-            " WHEN json_extract(body, '$.started_at') IS NOT NULL THEN json_extract(body, '$.started_at')"
-            " ELSE created_at END) DESC, rowid DESC", (harness_id,)):
+    breaks ties. The instants are compared as parsed, not as text: created_at has
+    milliseconds and the others do not. SQLite 3.31 has no json_extract (test_db_schema
+    pins the floor), so the body is read here; LIKE only narrows the rows to the harness."""
+    # ponytail: reads every row of the harness per call; a decided_at column (or json1
+    # once the floor allows it) bounds it to the streak again
+    found = []
+    for rec in conn.execute("SELECT * FROM executions WHERE body LIKE ? ORDER BY rowid DESC",
+                            ('%' + harness_id + '%',)):
         x = rows.decode(entities.Execution, rec).entity
-        if _epoch(_decided(x, rec['created_at'])) > now:
+        if x.harness_id != harness_id or not (
+                x.stop_reason == 'spawn' or x.started_at or x.state == 'INTENT'):
             continue
+        at = _epoch(_decided(x, rec['created_at']))
+        if at <= now:
+            found.append((at, x))
+    found.sort(key=lambda p: p[0], reverse=True)          # stable: rowid order breaks ties
+    for _, x in found:
         if x.state == 'INTENT' and rows.get(conn, entities.Mission,
                                             x.mission_id).entity.state != 'EXECUTING':
             continue
@@ -961,10 +964,10 @@ def _epoch(iso):
 
 def limit_until(resets_at, now):
     """The text a limit is stored with: the provider's reset as the router reads it
-    (`R.reset_at`: a naive value is UTC), written with its offset. A reset that is not
+    (`instants.instant`: a naive value is UTC), written with its offset. A reset that is not
     a time, or already past, holds the default window: released on the next tick it
     would be refused again, uncharged, on every pass (T-106 r6)."""
-    at = R.reset_at(resets_at)
+    at = instants.instant(resets_at)
     if at is None or at.timestamp() <= now:
         return _iso(now + LIMIT_DEFAULT_S)
     return at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')

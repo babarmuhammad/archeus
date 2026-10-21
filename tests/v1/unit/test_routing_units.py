@@ -18,9 +18,10 @@ from datetime import datetime, timezone
 
 import pytest
 
+from archeus.core.domain import instants
 from archeus.core.routing import router as R
 
-POL = {'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
+POL ={'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
        'fallback': 'ask', 'budgets': {}, 'project_allow': [], 'project_deny': []}
 
 
@@ -306,9 +307,9 @@ def test_fallback_is_never_skipped_while_one_is_allowed():
 
 
 def test_a_blocked_decision_names_the_earliest_reset():
-    s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets='2026-09-26T16:05:00Z'),
-                              acct('acc_b', 'h', usage=100, resets='2026-09-26T14:30:00Z')])
-    # written as the router writes every instant (milliseconds, Z), whatever the feed wrote
+    # the snapshot carries written instants (ms, Z: instants.ahead, T-106 r4); the router compares
+    s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets='2026-09-26T16:05:00.000Z'),
+                              acct('acc_b', 'h', usage=100, resets='2026-09-26T14:30:00.000Z')])
     assert R.route(task(), s)['unblock_at'] == '2026-09-26T14:30:00.000Z'
 
 
@@ -512,21 +513,21 @@ _ZONE_PROBE = r'''
 import calendar, json
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from archeus.core.routing import router as R
+from archeus.core.domain import instants
 from archeus.core.application import resources
 from archeus.infra.db import rows
 now = datetime(2026, 9, 26, 10, 0, tzinfo=timezone.utc)
-ahead = R._ahead('2026-09-26T10:02:00', now)
+ahead = instants.ahead('2026-09-26T10:02:00', now)
 class _Conn:
     def execute(self, sql, args=()):
         return self
     def fetchone(self):
         return {'x': 1}
 rows.decode = lambda cls, rec: SimpleNamespace(entity=SimpleNamespace(
-    result='blocked', unblock_at=ahead[1], candidates=[{'eliminated_at_step': 'breaker'}]))
+    result='blocked', unblock_at=ahead, candidates=[{'eliminated_at_step': 'breaker'}]))
 wait = resources.route_wait(_Conn(), 'task', now.timestamp())
 local = datetime(2026, 9, 26, 10).timestamp() - calendar.timegm((2026, 9, 26, 10, 0, 0))
-print(json.dumps({'local_offset': local, 'unblock_at': ahead[1], 'wait': wait}))
+print(json.dumps({'local_offset': local, 'unblock_at': ahead, 'wait': wait}))
 '''
 
 
@@ -545,9 +546,9 @@ def test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform():
     """Platform-independent: no timestamp() on a naive value (OSError on Windows
     outside 1970-2038), and the value that leaves the router is aware."""
     now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
-    at, text = R._ahead('9999-12-31T23:59:59', now)
-    assert at.tzinfo is not None and text == '9999-12-31T23:59:59.000Z'
-    assert R._ahead('1960-01-01T00:00:00', now) is None
+    assert instants.instant('9999-12-31T23:59:59').tzinfo is not None
+    assert instants.ahead('9999-12-31T23:59:59', now) == '9999-12-31T23:59:59.000Z'
+    assert instants.ahead('1960-01-01T00:00:00', now) is None
 
 
 def test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error():
@@ -561,4 +562,4 @@ def test_T106r5_a_reset_within_a_millisecond_of_now_is_no_wait():
     """The check and the written text use one instant: a reset 0.5 ms after now is
     not after it, so it is not written as now and waited on (one extra pass)."""
     now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
-    assert R._ahead('2026-09-26T10:00:00.000500', now) is None
+    assert instants.ahead('2026-09-26T10:00:00.000500', now) is None

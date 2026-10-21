@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from ...infra.db import rows
-from ..domain import actions, entities, ids, states
+from ..domain import actions, entities, ids, instants, states
 from ..domain.events import new_event
 from ..domain.values import Ref
 from ..routing import router as R
@@ -301,6 +301,7 @@ def _registered(conn, harness_ids, feed, now):
     decision's command (`observe`)."""
     policies = {r.entity.account_id: r.entity for r in rows.where(conn, entities.ResourcePolicy)}
     today = _iso(now)[:10]
+    now_dt = datetime.fromtimestamp(now, timezone.utc)
     out, readings = [], {}
     for r in rows.where(conn, entities.Account):
         a = r.entity
@@ -310,8 +311,13 @@ def _registered(conn, harness_ids, feed, now):
         if fed:
             readings[a.id] = fed
         rd = fed or latest_usage(conn, a.id)
+        resets = (rd or {}).get('resets_at')
         usage = None if not rd else {
-            'windows': dict(rd['windows']), 'resets_at': rd.get('resets_at') if isinstance(rd.get('resets_at'), dict) else {},
+            'windows': dict(rd['windows']),
+            # the written instant of each reset still ahead, else None: the router
+            # compares these, it never parses a provider's free text (T-106)
+            'resets_at': {w: instants.ahead(v, now_dt) for w, v in resets.items()}
+            if isinstance(resets, dict) else {},
             'observed_at': _iso(rd['observed_at']),
             'age_s': max(0, round(now - rd['observed_at'], 3)), 'source': rd['source']}
         p = policies[a.id]
@@ -448,7 +454,7 @@ def route_wait(conn, task_id, now):
     if not (d and d.result == 'blocked' and d.unblock_at
             and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):
         return None
-    at = R.reset_at(d.unblock_at)          # the router's parse: the same instant in any zone
+    at = instants.instant(d.unblock_at)    # the same parse the snapshot used: any zone, one instant
     until = at and at.timestamp()
     return until if until and until > now else None
 

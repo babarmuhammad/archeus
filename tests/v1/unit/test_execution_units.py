@@ -449,9 +449,11 @@ def test_O7_the_streak_compares_mixed_timestamp_precision(plain_rows):
     assert X.spawn_streak(X._newest(c, 'fake', _NOW)) == ([], True)
 
 
-def test_O7_the_streak_stops_reading_at_its_start(plain_rows):
-    """A long run of older failures and never-started ends is not read past the
-    start that ends the streak (a counting cursor, so SQL rows are counted too)."""
+def test_O7_the_streak_reads_each_of_its_harness_rows_once(plain_rows):
+    """Each row of the harness is read once (a counting cursor, so SQL rows are counted
+    too). It was read only to the start that ends the streak while SQLite 3.31 could
+    order by the recorded time in SQL (json_extract, now banned: test_db_schema); the
+    order is Python's now, so every row is read."""
     c = _streak_db(*[('ABANDONED', '2026-10-21T09:00:00Z', _fail('2026-10-21T09:00:00Z'))
                      for _ in range(300)],
                    ('ENDED_OK', '2026-10-21T11:00:00Z', dict(started_at='2026-10-21T11:00:00Z')),
@@ -466,7 +468,7 @@ def test_O7_the_streak_stops_reading_at_its_start(plain_rows):
                 yield r
 
     fails, _trial = X.spawn_streak(X._newest(Counting(), 'fake', _NOW))
-    assert len(fails) == 300 and len(pulled) == 301
+    assert len(fails) == 300 and len(pulled) == 601
 
 
 def test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted(plain_rows):

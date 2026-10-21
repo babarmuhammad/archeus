@@ -42,9 +42,11 @@ registered, health, why_not, policy, usage {windows {5h: pct}, resets_at,
 age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 {tokens, cost}}}], terms {harness:
 {headless, rotation}}, affinity {harness, account}, approved_fallbacks [key].
+Times are written instants (ms, Z; domain/instants.py): `now`, a breaker's
+`until`, and each `resets_at` value still ahead (None when past or unreadable,
+which the builder writes). The router only compares them as text; without
+`now` it compares nothing.
 """
-
-from datetime import datetime, timezone
 
 TIERS = ('small', 'mid', 'large')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
@@ -386,32 +388,6 @@ def _why(win, rest, req, snap):
     return head
 
 
-def reset_at(iso):
-    """The instant of a reset or breaker time as an aware datetime, or None when it
-    is not a time. Provider resets are free text. A naive value is UTC, never the
-    machine's local time (a local read differs by zone; T-106 r4), and it is never
-    converted with timestamp() (OSError on Windows outside 1970-2038, T-106 r2).
-    This is the one parse of `unblock_at`: the router writes it, route_wait reads it."""
-    try:
-        at = datetime.fromisoformat(iso.replace('Z', '+00:00'))
-    except (AttributeError, TypeError, ValueError):
-        return None
-    return at if at.tzinfo is not None else at.replace(tzinfo=timezone.utc)
-
-
-def _ahead(iso, now):
-    """(at, text) of a reset or breaker time that is readable and after *now* (an
-    aware datetime), else None. `text` is the instant as written out, which is what
-    `unblock_at` carries, so every reader parses the same instant."""
-    at = reset_at(iso)
-    if at is None:
-        return None
-    at = at.replace(microsecond=at.microsecond // 1000 * 1000)     # the instant as written
-    if at <= now:
-        return None
-    return (at, at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'))
-
-
 def _resets(account):
     """The 5-hour reset values of a candidate's account (a feed's mapping, else none)."""
     rs = (account.get('usage') or {}).get('resets_at')
@@ -465,15 +441,15 @@ def route(req, snap):
         else:
             ask = next((c for c in fb if c['fallback'] == 'ask'), None)
             result, win = ('ask', ask) if ask is not None else ('blocked', None)
-    # a reset already past, or unreadable, is never a wait: the task would be
-    # routed again on every pass (T-106 r2)
-    now = datetime.fromisoformat(snap['now'].replace('Z', '+00:00'))
+    # the waits are written instants (resources.py parsed them, T-106 r2): one past
+    # the snapshot's `now` is a wait, a past or unreadable one is never one. Without
+    # `now` every reading is taken as it stands (the pre-T-106 rule)
+    now = snap.get('now')
     waits = [w for w in
-             [_ahead(r, now) for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
+             [r for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
               for r in _resets(c['_a'])]
-             + [_ahead(c['_h']['breaker']['until'], now) for c in cands
-                if c['eliminated_at_step'] == 'breaker']
-             if w]
+             + [c['_h']['breaker']['until'] for c in cands if c['eliminated_at_step'] == 'breaker']
+             if w and (now is None or w > now)]
     public = [{k: v for k, v in c.items() if not k.startswith('_')} for c in cands]
     return {
         'result': result,
@@ -486,7 +462,7 @@ def route(req, snap):
         'fallback_from': [c['resource'] for c in cands if c is not win
                           and c['eliminated_at_step'] in ('health', 'allocation')]
         if result in ('fallback', 'ask') else [],
-        'unblock_at': min(waits)[1] if waits and result == 'blocked' else None}
+        'unblock_at': min(waits) if waits and result == 'blocked' else None}
 
 
 def explain(d, req):
