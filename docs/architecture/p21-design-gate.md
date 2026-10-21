@@ -553,17 +553,26 @@ The review's verdict was CHANGES. What changed, finding by finding:
     account's `ref`, `home_ref` and `home_key`; `account_ref` on the decision, on each candidate and
     on each usage row.
   - `/v1/status`: an own call's `account_ref` (`live.live_work`).
-  The stored rows keep every field (the execution manager reads the snapshot). Tests:
+  The stored rows keep every field (the execution manager reads the snapshot). The mission trace
+  (`/v1/missions/{id}/trace`) reads its `route_decisions` through the same `queries.route_decisions`,
+  so the same fields are left out there (review N-1). That is what the code does, not a wider
+  guarantee: the trace's other fields are not projected by slice B. Tests:
   `test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home`,
   `test_owner_2026_10_21_route_decision_reads_name_no_home_field`,
   `test_owner_2026_10_21_the_default_account_fields_are_left_out`,
-  `test_owner_2026_10_21_live_work_names_no_home_field`, and `test_H09_the_three_projected_reads_name_no_home_field`
-  (HTTP, with a stored-row precondition). Mutants Z151, Z153-Z157, Z156.
+  `test_owner_2026_10_21_live_work_names_no_home_field`,
+  `test_owner_2026_10_21_the_mission_trace_reads_no_home_field` (the trace; mutant Z202), and
+  `test_H09_the_three_projected_reads_name_no_home_field` (HTTP, with a stored-row precondition).
+  `test_H09_the_status_read_with_a_live_own_call_names_no_home_field` (HTTP: the status read with an
+  own call in flight, so the own-call projection runs over HTTP and not only on `live_work`; review
+  N-2; mutant Z203). Mutants Z151, Z153-Z157, Z156, Z202, Z203.
   **Not guaranteed by slice B (moved to T-144, the security card):** every other read that can carry
   a home. Known examples: verification and review records (`performed_by.account_ref`,
-  `reviewer_resource`), events payloads, the route decision of a default account (its key is
-  `<harness>:<canonical home>`, ADR-0048 D-25.1), any free text that names a home, and the event
-  streams. A value-matching net was built and removed on the owner's answer; its spelling and
+  `reviewer_resource`), events payloads, a default account's key (`<harness>:<canonical home>`,
+  ADR-0048 D-25.1) in a route decision's `outcome.account_ref` (the own-call writers in
+  conversation, knowledge and planning record it there; the decision's `account_ref`, its candidates
+  and its usage rows are projected, and a default account has no `account_id` on any of them), any
+  free text that names a home, and the event streams. A value-matching net was built and removed on the owner's answer; its spelling and
   boundary findings are on the T-144 card.
 - **Now map (review F2).** The live map's set is `attemptIds(status.data.live)` (`orbit.ts`): an own
   call is never a map node (G8). Test: `orbit.test.ts` (`attemptIds`, behaviour only); mutant Z148.

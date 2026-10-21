@@ -266,3 +266,22 @@ def test_owner_2026_10_21_live_work_names_no_home_field(r, tmp_path):
     (item,) = work
     assert item['id'] == flying and item['account_id'] == a and 'account_ref' not in item
     assert not any(home in v for v in _strings(work))
+
+
+def test_owner_2026_10_21_the_mission_trace_reads_no_home_field(r, tmp_path):
+    """The mission trace's route decisions come from the same projection as the route-decision
+    reads (trace.py imports queries.route_decisions): no home field, though the row keeps it."""
+    from archeus.core.application import trace
+    home = str(tmp_path / 'Work-Claude')
+    r.account('A', home_ref=home)
+    mid = r.mission('Trace it')
+    rid = call(r, source={'kind': 'mission', 'id': mid})
+    r.do(C.end_call, who=r.system, route_decision_id=rid, outcome={'state': 'ok'})
+    with r.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, rid).entity
+        t = trace.trace(conn, mid, r.registry)
+    assert stored.account_ref == home                    # precondition: the row names the home
+    (d,) = t['route_decisions']
+    assert d['id'] == rid
+    assert not {'home_ref', 'home_key', 'account_ref'} & set(_keys(t['route_decisions']))
+    assert not any(home in v for v in _strings(t['route_decisions']))

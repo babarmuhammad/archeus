@@ -8,8 +8,11 @@ import time
 import pytest
 
 from archeus.core import engine, ports, runtime
-from archeus.core.domain import ids
+from archeus.core.application import resources
+from archeus.core.domain import entities, ids
 from archeus.core.routing.usage import FakeUsageFeed
+from archeus.harnesses.fake import FakeCaller
+from archeus.infra.db import rows
 
 
 def _post(tc, path, body, token=None):
@@ -32,6 +35,17 @@ def core(archeus_home):
     from v1.judge.http import TempCore
     tc = TempCore(archeus_home, ports=runtime.Ports(
         brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), usage=FakeUsageFeed())).start()
+    yield tc
+    tc.stop()
+
+
+@pytest.fixture
+def own_core(archeus_home):
+    """As `core`, with a scripted own-call caller, so an own call can be in flight."""
+    from v1.judge.http import TempCore
+    tc = TempCore(archeus_home, ports=runtime.Ports(
+        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), usage=FakeUsageFeed(),
+        callers=[FakeCaller('fake')])).start()
     yield tc
     tc.stop()
 
@@ -201,3 +215,39 @@ def test_H09_the_three_projected_reads_name_no_home_field(core, tmp_path):
         if path.startswith('/v1/route-decisions/'):
             accounts = (body.get('input_snapshot') or {}).get('accounts') or ()
             assert all('ref' not in a for a in accounts), path
+
+
+def _own_call_in_flight(core, mission_id):
+    """An own call decided and not ended, recorded by Core's own writer as its planner
+    would record it (nothing runs it): in flight until its maximum run."""
+    db = core.core.db
+    with db.read() as conn:
+        req, snap, _ = resources.call_snapshot(
+            conn, callers=[FakeCaller('fake')], feed=FakeUsageFeed(),
+            preference=ports.OwnCallPreference(), purpose='brain', schema=None,
+            project_id=None, min_tier=None, max_run_s=1200)
+    got = db.writer.execute(resources.record_call_route, dict(
+        actor=core.core.system, purpose='brain', source={'kind': 'mission', 'id': mission_id},
+        workspace_id=ids.GLOBAL_WORKSPACE, project_id=None,
+        requirements=dict(req, max_run_s=1200), snapshot=snap))
+    return got['route_decision_id']
+
+
+def test_H09_the_status_read_with_a_live_own_call_names_no_home_field(own_core, tmp_path):
+    """Owner, 2026-10-21: /v1/status leaves an own call's `account_ref` out. Here the call is
+    in flight when the status is read (the status read above has no live call), so the
+    projection runs over HTTP and not only on `live_work`."""
+    home = str(tmp_path / 'Work-Claude')
+    acct = _post(own_core, '/v1/accounts', {'harness_id': 'fake', 'label': 'Work',
+                                            'auth_kind': 'api_key', 'home_ref': home}).json()['id']
+    mid = _post(own_core, '/v1/missions', {'title': 'Flying', 'objective': 'o'}).json()['id']
+    rid = _own_call_in_flight(own_core, mid)
+    with own_core.core.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, rid).entity
+    assert stored.account_ref == home                    # precondition: the row names the home
+    body = own_core.http('GET', '/v1/status').json()
+    (item,) = [x for x in body['live'] if x['kind'] == 'own_call']
+    assert item['id'] == rid and item['account_id'] == acct
+    assert 'account_ref' not in item
+    assert not {'home_ref', 'home_key', 'account_ref'} & set(_keys(body))
+    assert not any(home in v for v in _strings(body))
