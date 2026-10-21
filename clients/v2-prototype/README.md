@@ -4,6 +4,76 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Round 10c phone (2026-10-21): one SVG frame in the concept's own units
+
+Status: PARTIAL against the owner's bar ("exactly the design prototype"). The phone Overview is now a hand-authored SVG that matches the concept's composition closely at 402 x 874. The differences that remain are listed below with numbers. Desktop, Replay, terminal, Mission, Shared and the phone-2 and phone-3 views are unchanged in this round.
+
+Concept file: `D:\hub-concepts-codex4\phone-1-now-v2.png` is 804 x 1373 px (402 x 686.5 CSS px at DPR 2), not 804 x 1748 as the round brief stated. The 1373 height was already noted in round 10b. The frame keeps the concept's own aspect: it is scaled to the screen width, centred, and letterboxed vertically with the page background.
+
+What was traced: every scene position is read from labelled grid crops of the concept (x and y in the concept's pixels; one unit = one concept pixel = half a CSS px at 402 wide). The layout table is `OV` in app.js, keyed by project and mission ids:
+- Archeus hull: 13 vertices (42,683) (142,544) (319,450) (599,595) (714,666) (764,763) (731,834) (645,884) (541,998) (432,961) (376,1030) (269,975) (96,872). The brief's "about 10 vertices" is not what the image shows; the outline keeps 13. The point (432,459) is an interior node, not a corner.
+- Amber hull (Search provenance, m-search): 7 vertices, enlarged from round 10b so that 32-unit labels fit inside (see the type rule below).
+- Blue hull (Fix date test, m-date): 7 vertices, sharing four vertices with the Archeus hull.
+- Notes and Ideas hulls: 6 vertices each. Glyphs in Notes: m-index (diamond) and m-read (star).
+- Star centre (431,697): one vertical thread (432,459) to (432,961), a horizontal ray, four diagonal rays, 26 radial threads, a bright knot.
+- Headline, wordmark, status line, bar (36,1176) 560 x 100, Stop (611 to 770), chip (354,1052) 236 x 48, names Notes (650,322), Ideas (684,1122), Archeus (262,566).
+
+Type rule: the concept's smallest text is about 12 units (about 9 CSS px at 402). The 14 CSS px floor at 360 wide needs 32 units (scale 360/804 = 0.448). So every scene label is 32 units or more, and the labels were enlarged. Consequences: the amber hull is larger than the concept's; "CONCEPT FIXTURE" and the status line are larger; the amber and blue labels were re-spaced to keep them apart.
+
+Hulls are neutral ivory outlines with value-stepped facets (a fan from an anchor to each edge; in the big hull, one interior point per face), three opacity tiers for the thin lines, and a small dot on each interior point. Colour is only on the two missions: amber for Search provenance and blue for Fix date test.
+
+Labels: SVG text with a dark halo (paint-order stroke) instead of boxes, so a facet line can pass behind a word without touching it. Overlap probe (`overlap.py`, Chromium, every SVG text and phone control box, pairwise): zero overlaps at 360, 390, 402 and 440 CSS px.
+
+Touch: the Review link has a 44 px hit box around its visual; the mission marks are 52-unit hit circles (at least 44 CSS px at 360); the chip has a hit box 100 units tall; the Stop button and the bar are 100 units (44.8 CSS px at 360, 50 at 402).
+
+Scene interaction: a hull or a mission opens the detail sheet (as in round 10b); Review links to the decision (`#/plan/m-search`); the chip opens the project list. Keyboard: Enter and Space activate the SVG buttons. Reduced motion: the scene is static (no motion work this round).
+
+Similarity (sim3.py: concept and proto frame at 160 px wide, blurred; lower is closer; amber and blue are the warm and cool channels; edge overlap is the share of matched edges, higher is closer):
+
+| Iteration | Change | Lum MAD | Amber MAD | Blue MAD | Edge overlap |
+|---|---|---|---|---|---|
+| 1 | first SVG, frame not yet cropped to the concept ratio | 12.37 | 0.66 | 2.07 | 55.3 % |
+| 2 | frame cropped to concept ratio | 8.02 | 0.64 | 1.78 | 81.7 % |
+| 3 | amber hull enlarged, chip moved, Stop ivory | 7.80 | 0.83 | 1.75 | 81.3 % |
+| 4 | facet fills per hull, star rays, label baselines | 7.55 | 0.92 | 2.05 | 80.4 % |
+| 5 | diamond and label spacing, halo weight | 7.75 | 1.01 | 2.06 | 80.0 % |
+| 6 | big-hull interior dots, wordmark shift | 7.68 | 0.99 | 2.04 | 81.0 % |
+| 7 | status line, blue fill, overlay check | 7.63 | 0.99 | 1.86 | 79.5 % |
+| 8 | Archeus outline without the (432,459) corner, label offsets | 7.49 | 0.97 | 1.87 | 82.4 % |
+| 9 | star spread and a heavier big-hull fill (reverted in 10) | 8.31 | 0.99 | 1.79 | 82.9 % |
+| 10 | hull fill reverted, all widths rendered | 7.60 | 0.97 | 1.87 | 82.8 % |
+| 11 | label spacing after the overlap probe | 7.68 | 1.28 | 1.89 | 82.2 % |
+| 12 | labels 32 units (14 CSS px rule) | 7.79 | 1.28 | 1.89 | 81.8 % |
+| 13 | amber and blue labels re-spaced; probe clean | 7.89 | 1.46 | 1.89 | 80.9 % |
+| 14 | chip rect scoped (its hit box no longer tinted) | 7.90 | 1.46 | 1.89 | 81.0 % |
+
+Reading: the luminance MAD sits between 7.5 and 7.9 from iteration 2 on. The amber MAD rose once the labels were enlarged and the amber hull grew, so it tracks label size, not hull shape. The metrics do not separate the iterations; the montage and the colour-fringe overlay (concept red, render cyan) drove each change. Treat the numbers as a sanity check only.
+
+Checks:
+- `check.mjs` through the testlock: round 10c assertions added (frame ratio and viewBox, CONCEPT FIXTURE, OV keys, decision link, chip formula, no scene label below 32 units, Stop and bar at least 100 units). Passes: references, manifest, parse, 14 contrast pairs, minimum font 14 px.
+- Six widths (360, 390, 393, 402, 430, 440) rendered at DPR 2 and seen in one montage: the same composition at every width, centred, letterboxed vertically, bar above the bottom edge, no horizontal scroll.
+- Desktop 1440 x 900 rendered: canvas scene unchanged. Phone `#/now` at 402 x 874 rendered with no page errors.
+
+Differences left (numbered; the first three are the ones a reviewer sees first):
+1. Typography: the concept's serif is a Garamond-like face; the prototype uses the system serif (Palatino or Georgia on Windows). The headline is about 4 % wider and the wordmark about 6 % wider than the concept at the same cap height.
+2. Label size: every scene label is larger than the concept (32 units against 22 to 26 in the concept). The amber and blue hulls are sized for them, so their outlines are larger (amber hull spans x 72 to 378 against 92 to 352).
+3. Status and fixture lines: the status line and "CONCEPT FIXTURE" are both 32 units (the concept's are about 22 and 18).
+4. Facets: the concept's big hull is a denser web of thin lines with lighter upper-left facets; the render has fewer, larger value steps.
+5. The star: the concept's knot is brighter and its rays longer and more even; the render's rays are shorter and uneven.
+6. Names: "Archeus" is a small label inside the big hull (the concept has none); Notes and Ideas are named outside their hulls, as the owner asked.
+7. Chip: "2 more projects" is 236 units wide (the concept's is about 161), set lower and left to clear the 32-unit text.
+8. Vertical placement: the frame is centred, so on a 402 x 874 screen there are 94 CSS px of background above and below the concept's own proportions. The bar sits at 682 to 732 CSS px, above the home indicator.
+9. Review button: 163 x 49 units with a 32-unit label; the concept's button text is smaller.
+10. Bar: 560 x 100 units (the concept's is 560 x 96), so Stop and the input reach 44 CSS px at 360 wide.
+
+Not verified:
+- A real phone: safe areas, Dynamic Island and home indicator are CSS only.
+- iPhone 18 sizes; web fonts (none are loaded); Dynamic Type; screen readers beyond the aria labels.
+- Colours were sampled from small neighbourhoods; no colour-managed comparison.
+- Phone-2 and phone-3 views and the phone chat sheet (only the Overview was rendered this round).
+
+Service worker cache bumped to `archeus-v2-proto-12`.
+
 ## Round 10b (partial, 2026-10-21): measured layout, desktop and phone Overview
 
 Status: PARTIAL. Done in this round: the Overview scene is driven from a measured table (`CONCEPT_LAYOUT` in app.js), read from labelled grid overlays of desktop-1-now-v2.png (1296 x 729) and phone-1-now-v2.png (804 x 1373; the concept file is 804 x 1373, not 1748 tall). Not done: phone-2 and phone-3 comparisons and montages, four iterations for those, the 6 x 2 DPR render sweep, the Replay, terminal, Mission and Shared views (10c), motion (round 11).

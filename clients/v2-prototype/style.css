@@ -768,3 +768,88 @@ p.small, .small { line-height: 20px; }
   .stage-now .lbl.project .t { font-size: 16px; line-height: 22px; }
   .stage-now .lbl.exec .t { font-size: 15px; line-height: 20px; }
 }
+
+/* Round 10c phone Overview (under 640 px): one frame in the concept's own units, 804 x 1373. --u is one unit, so every
+   position below is a unit count. The frame is centred and letterboxed. Desktop and the 640 to 880 px layouts keep their rules. */
+#ov-art { display: none; }
+@media (max-width: 639px) {
+  html, body { background: #0A0810; }
+  #s-now {
+    --u: calc(100cqw / 804);
+    container-type: inline-size; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(100vw, calc(100dvh * 804 / 1373)); height: calc(min(100vw, calc(100dvh * 804 / 1373)) * 1373 / 804);
+    margin: 0; padding: 0; overflow: hidden; min-height: 0;
+    background: radial-gradient(ellipse 80% 62% at 50% 40%, #171222 0%, #0E0A14 62%, #0A0810 100%);
+  }
+  #s-now > .phone-top { position: absolute; inset: 0; display: block; min-height: 0; margin: 0; z-index: 3; pointer-events: none; }
+  #s-now .phone-id { position: absolute; left: calc(var(--u) * 75); top: calc(var(--u) * 128); display: block; pointer-events: none; }
+  #s-now .phone-word { font: 400 calc(var(--u) * 48) / calc(var(--u) * 44) var(--serif); letter-spacing: 0.24em; text-transform: uppercase; margin: 0; }
+  #s-now .phone-proto {
+    position: absolute; left: 0; top: calc(var(--u) * 47); margin: 0; border: 0; padding: 0; background: transparent; color: #8E889C;
+    font: 400 calc(var(--u) * 32) / calc(var(--u) * 34) var(--sans); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap;
+  }
+  #s-now .menu-btn {
+    position: absolute; right: calc(var(--u) * 36); top: calc(var(--u) * 118); width: 44px; height: 44px; min-width: 44px; min-height: 44px;
+    padding: 0; pointer-events: auto; border-radius: 12px; border: 1px solid rgba(239, 233, 218, 0.28); background: transparent; color: #9E9AAA;
+  }
+  #s-now .menu-btn svg { width: 20px; height: 20px; }
+
+  #s-now .now-body { position: absolute; inset: 0; display: block; }
+  #s-now .now-main { position: absolute; inset: 0; min-width: 0; }
+  #s-now .now-main > .stage {
+    position: absolute; inset: 0; height: auto; min-height: 0; margin: 0; flex: none; overflow: hidden;
+    background: transparent;
+  }
+  #s-now .stage > canvas, #s-now .stage > .world, #s-now .more-chips, #s-now .budget, #s-now .card, #s-now #now-overview { display: none; }
+  #s-now .stage > .ov-art { display: block; position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; overflow: visible; }
+  #s-now .ov-art text { font-family: var(--sans); fill: #EFE9DA; paint-order: stroke; stroke: #0C0912; stroke-width: 4px; stroke-linejoin: round; }
+  #s-now .ov-art .ov-title { font-family: var(--serif); font-size: 32px; }
+  #s-now .ov-art .ov-name { font-size: 32px; fill: #CFC9BA; }
+  #s-now .ov-art .ov-sub { fill: #BDB7A8; }
+  #s-now .ov-art .ov-btn { fill: #1A1206; font-weight: 600; paint-order: normal; stroke: none; }
+  #s-now .ov-art [role=button] { cursor: pointer; outline: none; }
+  #s-now .ov-art [role=button]:focus-visible, #s-now .ov-art .ov-review:focus-visible { outline: 0; }
+  #s-now .ov-art [role=button]:focus-visible .ov-facets, #s-now .ov-art .ov-review:focus-visible rect { stroke: #FFF3CF; stroke-width: 4px; }
+  #s-now .ov-art .ov-hit { pointer-events: all; }
+  #s-now .ov-art .ov-review { cursor: pointer; }
+
+  #s-now .head { position: absolute; inset: 0; margin: 0; z-index: 3; pointer-events: none; }
+  #s-now .head .kicker, #s-now .head .lede, #s-now .head .now-tag, #s-now .needs-card { display: none !important; }
+  #s-now .head h1[data-sentence] {
+    position: absolute; left: calc(var(--u) * 78); top: calc(var(--u) * 268); margin: 0;
+    font: 400 calc(var(--u) * 68) / calc(var(--u) * 69) var(--serif); letter-spacing: 0; white-space: pre-line; color: #F3EEDF;
+  }
+  #s-now .phone-status {
+    position: absolute; left: calc(var(--u) * 78); top: calc(var(--u) * 216); margin: 0;
+    display: flex; align-items: center; white-space: nowrap;
+    font: 400 calc(var(--u) * 32) / calc(var(--u) * 36) var(--sans); color: #B9B4C4;
+  }
+  #s-now .phone-status .dot { width: calc(var(--u) * 17); height: calc(var(--u) * 17); margin: 0 calc(var(--u) * 14) 0 0; background: #4ADE80; }
+
+  #s-now .chatbar {
+    position: absolute; left: calc(var(--u) * 36); top: calc(var(--u) * 1176); right: auto; bottom: auto; transform: none;
+    width: calc(var(--u) * 560); height: calc(var(--u) * 100); min-height: 0; z-index: 4; margin: 0;
+    border-radius: calc(var(--u) * 22); padding: 0; gap: 0;
+    background: #26222D; border: 1px solid rgba(239, 233, 218, 0.22);
+  }
+  #s-now .chatbar::before {
+    content: ""; position: absolute; left: calc(var(--u) * 39); top: calc(var(--u) * 31); width: calc(var(--u) * 4); height: calc(var(--u) * 41);
+    border-radius: 2px; background: #F3EEDF;
+  }
+  #s-now .chatbar:focus-within::before { display: none; }
+  #s-now .chatbar .attach, #s-now .chatbar .send-btn { display: none; }
+  #s-now .chatbar input {
+    width: 100%; height: calc(var(--u) * 100); min-height: 0; padding: 0 0 0 calc(var(--u) * 69); font: 400 calc(var(--u) * 34) / 1 var(--sans); color: #F3EEDF;
+  }
+  #s-now .chatbar input::placeholder { color: #8C8797; }
+  #s-now .stage-now .chatbar .chat-stop {
+    position: absolute; left: calc(var(--u) * 575); top: calc(var(--u) * -2); display: inline-flex; align-items: center; justify-content: center;
+    width: calc(var(--u) * 159); height: calc(var(--u) * 100); min-height: 0; padding: 0; margin: 0;
+    border-radius: calc(var(--u) * 22); font: 500 calc(var(--u) * 32) / 1 var(--sans); color: #F3EEDF; background: rgba(40, 36, 50, 0.72); border: 1px solid rgba(239, 233, 218, 0.22);
+  }
+  #s-now .feed {
+    position: absolute; left: calc(var(--u) * 36); right: calc(var(--u) * 36); top: auto; bottom: calc(var(--u) * 210); transform: none;
+    width: auto; max-height: calc(var(--u) * 560); z-index: 5;
+  }
+  #s-now .now-sheet { z-index: 6; }
+}

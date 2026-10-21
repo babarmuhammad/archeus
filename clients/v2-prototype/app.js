@@ -425,7 +425,6 @@
     return n;
   }
   function nowScene(w, h) {
-    if (w < 640) return phoneScene(w, h);
     var L = CONCEPT_LAYOUT.desktop;
     var hh = h - Math.min(280, Math.round(h * 0.36));
     var k = Math.max(0.6, Math.min(w / 1296, hh / 560, 1.1));
@@ -555,6 +554,170 @@
     return sc;
   }
 
+  /* Phone Overview (under 640 px): one SVG in the concept's own units, 804 x 1373 (phone-1-now-v2.png, 2 units per CSS px
+     at 402 wide). Every position was read from that file on labelled grids and checked by overlay. Keys are project and
+     mission ids. A project without a hull here is only counted in the "N more projects" chip. Labels carry a dark halo
+     instead of a box, so a facet line can pass behind a word without touching it. */
+  var OV = {
+    star: [431, 697],
+    projects: {
+      archeus: { hull: [[42, 683], [142, 544], [319, 450], [599, 595], [714, 666], [764, 763], [731, 834], [645, 884], [541, 998], [432, 961], [376, 1030], [269, 975], [96, 872]], name: [262, 566], nodes: [[432, 459], [573, 476]], share: 1, seed: 11 },
+      notes: { hull: [[562, 397], [635, 340], [727, 369], [749, 446], [678, 519], [573, 476]], name: [650, 322], share: 0.5, seed: 41 },
+      ideas: { hull: [[600, 971], [684, 935], [748, 988], [730, 1054], [637, 1080], [587, 1032]], name: [684, 1122], share: 0.5, seed: 53 }
+    },
+    missions: {
+      'm-search': { hull: [[180, 600], [322, 630], [378, 738], [338, 848], [225, 893], [112, 840], [72, 715]], mark: [216, 690], glyph: 'diamond', title: [225, 741], sub: [229, 792], review: [149, 800, 163, 49], links: [[322, 630, true], [378, 738, false]], seed: 23 },
+      'm-date': { hull: [[635, 636], [714, 666], [764, 763], [731, 834], [645, 884], [552, 828], [532, 728]], mark: [648, 730], glyph: 'star', title: [648, 778], exec: [621, 818], execText: 'Codex', links: [[532, 728, true]], seed: 31 },
+      'm-index': { mark: [637, 428], glyph: 'diamond' },
+      'm-read': { mark: [683, 428], glyph: 'star' }
+    },
+    chip: [354, 1052, 236, 48]
+  };
+
+  function ovRand(seed) { return function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }; }
+  function ovPts(poly) { return poly.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' '); }
+  function ovCentre(poly) {
+    var x = 0, y = 0;
+    poly.forEach(function (p) { x += p[0]; y += p[1]; });
+    return [x / poly.length, y / poly.length];
+  }
+  // Facets: a fan from the anchor to every outline edge. A share of the faces gets one interior point (three faces).
+  // Lines fall in three opacity tiers; the far tier is faint. Fills step through four values.
+  function ovFacets(poly, anchor, o) {
+    var rnd = ovRand(o.seed), faces = '', lines = '', dots = '', fills = o.fills;
+    var rgb = o.rgb;
+    var tier = function () { var r = rnd(); return r < 0.25 ? 0.6 : r < 0.55 ? 0.32 : 0.14; };
+    var seg = function (a, b, a2, w) {
+      lines += '<line x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '" stroke="rgba(' + rgb + ',' + a2 + ')" stroke-width="' + w + '"/>';
+    };
+    var face = function (a, b, c) {
+      faces += '<polygon points="' + ovPts([a, b, c]) + '" fill="rgba(' + rgb + ',' + fills[Math.floor(rnd() * fills.length)].toFixed(3) + ')"/>';
+    };
+    poly.forEach(function (p, i) {
+      var q = poly[(i + 1) % poly.length], t = tier();
+      seg(anchor, p, t, t > 0.4 ? 1.4 : 0.9);
+      if (rnd() < o.share) {
+        var g = ovCentre([anchor, p, q]);
+        var Q = [g[0] + (rnd() - 0.5) * 18, g[1] + (rnd() - 0.5) * 18];
+        face(Q, p, q); face(Q, anchor, p); face(Q, anchor, q);
+        seg(Q, anchor, tier(), 0.9); seg(Q, p, tier(), 0.9); seg(Q, q, tier(), 0.9);
+        dots += '<circle cx="' + Q[0].toFixed(1) + '" cy="' + Q[1].toFixed(1) + '" r="2" fill="rgba(' + rgb + ',0.45)"/>';
+      } else {
+        face(anchor, p, q);
+      }
+    });
+    return { faces: faces, lines: lines, dots: dots };
+  }
+  function ovHull(poly, anchor, o) {
+    var f = ovFacets(poly, anchor, o);
+    return '<g class="ov-facets">' + f.faces + f.lines + f.dots + '</g>' +
+      '<polygon class="ov-outline" points="' + ovPts(poly) + '" fill="none" stroke="rgba(' + o.rgb + ',' + (o.edge || 0.62) + ')" stroke-width="2.2"/>' +
+      poly.map(function (p) { return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + (o.dot || 3.4) + '" fill="rgba(' + o.dotRgb + ',0.95)"/>'; }).join('');
+  }
+  function ovGlyph(kind, x, y, s, fill, stroke) {
+    if (kind === 'diamond') return '<polygon points="' + ovPts([[x, y - s / 2], [x + s / 2, y], [x, y + s / 2], [x - s / 2, y]]) + '" fill="none" stroke="' + stroke + '" stroke-width="' + (s * 0.12).toFixed(1) + '"/>';
+    if (kind === 'star') {
+      var r = s / 2, k = r * 0.2;
+      return '<path d="M' + x + ',' + (y - r) + ' Q' + (x + k) + ',' + (y - k) + ' ' + (x + r) + ',' + y + ' Q' + (x + k) + ',' + (y + k) + ' ' + x + ',' + (y + r) +
+        ' Q' + (x - k) + ',' + (y + k) + ' ' + (x - r) + ',' + y + ' Q' + (x - k) + ',' + (y - k) + ' ' + x + ',' + (y - r) + 'Z" fill="' + fill + '"/>';
+    }
+    return '<polygon points="' + ovPts([[x - s / 2, y + s / 2], [x + s / 2, y + s / 2], [x, y - s / 2]]) + '" fill="' + fill + '"/>';
+  }
+  function ovText(x, y, cls, size, text, anchor) {
+    return '<text class="' + cls + '" x="' + x + '" y="' + y + '" font-size="' + size + '" text-anchor="' + (anchor || 'middle') + '">' + esc(text) + '</text>';
+  }
+  function ovInteractive(attrs, inner) {
+    return '<g role="button" tabindex="0" ' + attrs + '>' + inner + '</g>';
+  }
+
+  function overviewSvg() {
+    var S = OV.star, out = '', i;
+    var arch = OV.projects.archeus, note = OV.projects.notes, idea = OV.projects.ideas;
+    var amber = OV.missions['m-search'], blue = OV.missions['m-date'];
+    var IV = '239,233,218', AM = '242,181,68', BL = '111,177,255';
+
+    // Hulls, back to front: the big Archeus outline, the receded ones, then the two mission hulls on top of it.
+    out += '<g class="ov-hit" data-act="open-list" role="button" tabindex="0" aria-label="Archeus: open the project list">' +
+      '<polygon points="' + ovPts(arch.hull) + '" fill="transparent"/></g>';
+    out += ovHull(arch.hull, S, { rgb: IV, dotRgb: IV, share: 1, seed: arch.seed, edge: 0.6, dot: 3.4, fills: [0.02, 0.04, 0.06, 0.09] });
+    arch.nodes.forEach(function (n) { out += '<circle cx="' + n[0] + '" cy="' + n[1] + '" r="2.6" fill="rgba(' + IV + ',0.8)"/>'; });
+    out += ovText(arch.name[0], arch.name[1], 'ov-name', 32, projectOf('archeus').name);
+    out += ovHull(amber.hull, ovCentre(amber.hull), { rgb: AM, dotRgb: AM, share: 0.8, seed: amber.seed, edge: 0.9, dot: 4.4, fills: [0.05, 0.1, 0.16, 0.22] });
+    out += ovHull(blue.hull, ovCentre(blue.hull), { rgb: BL, dotRgb: BL, share: 0.8, seed: blue.seed, edge: 0.85, dot: 4.4, fills: [0.07, 0.12, 0.16, 0.2] });
+    out += ovHull(note.hull, ovCentre(note.hull), { rgb: IV, dotRgb: IV, share: note.share, seed: note.seed, edge: 0.5, dot: 3, fills: [0.03, 0.05, 0.08, 0.1] });
+    out += ovHull(idea.hull, ovCentre(idea.hull), { rgb: IV, dotRgb: IV, share: idea.share, seed: idea.seed, edge: 0.5, dot: 3, fills: [0.03, 0.05, 0.08, 0.1] });
+    out += ovText(note.name[0], note.name[1], 'ov-name', 32, projectOf('notes').name);
+    out += ovText(idea.name[0], idea.name[1], 'ov-name', 32, projectOf('ideas').name);
+
+    // The star: fine threads from the centre (a seeded spread), one thin vertical thread, a bright knot.
+    var rnd = ovRand(7);
+    for (i = 0; i < 26; i++) {
+      var th = (i + rnd() * 0.6) / 26 * TAU, len = 36 + rnd() * 80, al = (0.25 + rnd() * 0.45).toFixed(2);
+      out += '<line x1="' + S[0] + '" y1="' + S[1] + '" x2="' + (S[0] + Math.cos(th) * len).toFixed(1) + '" y2="' + (S[1] + Math.sin(th) * len).toFixed(1) + '" stroke="rgba(' + IV + ',' + al + ')" stroke-width="1"/>';
+    }
+    out += '<line x1="' + S[0] + '" y1="459" x2="' + S[0] + '" y2="961" stroke="url(#ov-vert)" stroke-width="1.6"/>';
+    out += '<line x1="' + (S[0] - 80) + '" y1="' + S[1] + '" x2="' + (S[0] + 80) + '" y2="' + S[1] + '" stroke="url(#ov-horiz)" stroke-width="1.2"/>';
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(function (d) {
+      out += '<line x1="' + S[0] + '" y1="' + S[1] + '" x2="' + (S[0] + d[0] * 62) + '" y2="' + (S[1] + d[1] * 62) + '" stroke="rgba(' + IV + ',0.5)" stroke-width="1"/>';
+    });
+    out += '<circle cx="' + S[0] + '" cy="' + S[1] + '" r="24" fill="url(#ov-knot)"/>';
+
+    // Links from the mission hulls to the star; the arrowed ones point at the star.
+    [[amber, AM], [blue, BL]].forEach(function (pair) {
+      pair[0].links.forEach(function (l) {
+        var dx = S[0] - l[0], dy = S[1] - l[1], d = Math.hypot(dx, dy), ux = dx / d, uy = dy / d;
+        out += '<line x1="' + l[0] + '" y1="' + l[1] + '" x2="' + S[0] + '" y2="' + S[1] + '" stroke="rgba(' + pair[1] + ',0.85)" stroke-width="1.6"/>';
+        if (l[2]) {
+          var ax = l[0] + dx * 0.5, ay = l[1] + dy * 0.5, hw = 9;
+          out += '<polygon points="' + ovPts([[ax + ux * 14, ay + uy * 14], [ax - uy * hw, ay + ux * hw], [ax + uy * hw, ay - ux * hw]]) + '" fill="rgb(' + pair[1] + ')"/>';
+        }
+      });
+    });
+
+    // Mission marks: amber diamond (needs you), blue star (live, with the Codex triangle), grey marks in Notes.
+    var sr = amber.mark;
+    out += ovGlyph('diamond', sr[0], sr[1], 40, 'none', 'rgb(' + AM + ')');
+    out += ovText(amber.title[0], amber.title[1], 'ov-title', 32, find('m-search').title);
+    out += ovText(amber.sub[0], amber.sub[1], 'ov-sub', 32, find('m-search').stateText);
+    out += '<a class="ov-review" href="#/plan/m-search" aria-label="Review plan: Search provenance">' +
+      '<rect x="' + (amber.review[0] - 30) + '" y="' + (amber.review[1] - 30) + '" width="' + (amber.review[2] + 60) + '" height="' + (amber.review[3] + 60) + '" fill="transparent"/>' +
+      '<rect x="' + amber.review[0] + '" y="' + amber.review[1] + '" width="' + amber.review[2] + '" height="' + amber.review[3] + '" rx="8" fill="rgb(' + AM + ')"/>' +
+      ovText(amber.review[0] + amber.review[2] / 2, amber.review[1] + 34, 'ov-btn', 32, 'Review') + '</a>';
+    out += ovInteractive('class="ov-mark" data-open="m-search" aria-label="Search provenance"', '<circle cx="' + sr[0] + '" cy="' + sr[1] + '" r="52" fill="transparent"/>');
+
+    var br = blue.mark;
+    out += ovGlyph('star', br[0], br[1], 42, 'rgb(' + BL + ')', 'none');
+    out += ovText(blue.title[0], blue.title[1], 'ov-title', 32, find('m-date').title);
+    out += ovGlyph('triangle', blue.exec[0], blue.exec[1], 20, 'rgb(' + BL + ')', 'none');
+    out += ovText(blue.exec[0] + 20, blue.exec[1] + 7, 'ov-sub', 32, blue.execText, 'start');
+    out += ovInteractive('class="ov-mark" data-open="m-date" aria-label="Fix date test"', '<circle cx="' + br[0] + '" cy="' + br[1] + '" r="52" fill="transparent"/>');
+
+    ['m-index', 'm-read'].forEach(function (id) {
+      var m = OV.missions[id], mm = find(id);
+      out += ovInteractive('class="ov-mark" data-open="' + id + '" aria-label="' + esc(mm.title) + '"',
+        '<circle cx="' + m.mark[0] + '" cy="' + m.mark[1] + '" r="40" fill="transparent"/>' + ovGlyph(m.glyph, m.mark[0], m.mark[1], 26, 'rgb(' + IV + ')', 'rgba(' + IV + ',0.9)'));
+    });
+
+    var c = OV.chip;
+    out += ovInteractive('class="ov-chip" data-act="open-list" aria-label="' + (projects.length - 1) + ' more projects: open the list"',
+      '<rect x="' + c[0] + '" y="' + (c[1] - 26) + '" width="' + c[2] + '" height="' + (c[3] + 52) + '" fill="transparent"/>' +
+      '<rect class="ov-pill" x="' + c[0] + '" y="' + c[1] + '" width="' + c[2] + '" height="' + c[3] + '" rx="24" fill="rgba(20,16,26,0.7)" stroke="rgba(' + IV + ',0.35)" stroke-width="2"/>' +
+      ovText(c[0] + c[2] / 2, c[1] + 33, 'ov-sub', 32, (projects.length - 1) + ' more projects'));
+    return out;
+  }
+
+  function buildOverview() {
+    var svg = $('#ov-art');
+    if (!svg) return;
+    svg.innerHTML = '<defs>' +
+      '<linearGradient id="ov-vert" gradientUnits="userSpaceOnUse" x1="0" y1="459" x2="0" y2="961"><stop offset="0" stop-color="#EFE9DA" stop-opacity="0"/><stop offset="0.5" stop-color="#EFE9DA" stop-opacity="0.9"/><stop offset="1" stop-color="#EFE9DA" stop-opacity="0"/></linearGradient>' +
+      '<linearGradient id="ov-horiz" gradientUnits="userSpaceOnUse" x1="351" y1="0" x2="511" y2="0"><stop offset="0" stop-color="#EFE9DA" stop-opacity="0"/><stop offset="0.5" stop-color="#EFE9DA" stop-opacity="0.85"/><stop offset="1" stop-color="#EFE9DA" stop-opacity="0"/></linearGradient>' +
+      '<radialGradient id="ov-knot"><stop offset="0" stop-color="#FFFFFF" stop-opacity="1"/><stop offset="0.4" stop-color="#EFE9DA" stop-opacity="0.55"/><stop offset="1" stop-color="#EFE9DA" stop-opacity="0"/></radialGradient>' +
+      '</defs>' + overviewSvg();
+  }
+
+  function ovMode() { return window.matchMedia('(max-width: 639px)').matches; }
+
   // Thin facet lines inside a hull: interior points joined to the nearest outline vertices, three opacity tiers
   // (far tier fainter). Deterministic per hull id, so a resize keeps the same structure.
   function facetsFor(R, id) {
@@ -613,7 +776,7 @@
 
     function resize() {
       var w = root.clientWidth, h = root.clientHeight;
-      if (!w || !h) return false;
+      if (!w || !h || !S.fx.clientWidth) return false;
       S.w = w; S.h = h;
       S.dpr = Math.min(window.devicePixelRatio || 1, 2);
       S.fx.width = Math.round(w * S.dpr);
@@ -1279,7 +1442,7 @@
 
   function renderNow(pid) {
     $('#s-now [data-sentence]').textContent = sentence();
-    nowStage.setScene(nowScene);
+    if (!ovMode()) nowStage.setScene(nowScene);
     renderMoreChips();
     renderNeeds();
     $('#now-overview').hidden = true;
@@ -1587,7 +1750,7 @@
   function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24); }
 
   // Each change to the constellation goes through here: data first, then one relayout; new objects grow in.
-  function refreshNow() { nowStage.relayout(); renderRail(); renderMoreChips(); renderNeeds(); }
+  function refreshNow() { nowStage.relayout(); buildOverview(); renderRail(); renderMoreChips(); renderNeeds(); }
 
   function createAtlas() {
     projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.36], offs: [[30, -110], [-40, 110], [96, 70]] });
@@ -1867,9 +2030,8 @@
   // Count chips replace the labels the phone scene does not show.
   function renderMoreChips() {
     var box = $('#more-chips');
-    if (!isNarrow()) { box.innerHTML = ''; return; }
-    // Every project keeps its name on its hull. Past five projects, the farthest share one named list chip.
-    if (isNarrow()) { box.innerHTML = '<button type="button" class="chip-btn" data-act="open-list">' + (projects.length - 1) + ' more projects</button>'; return; }
+    // The phone Overview draws its own chip inside the scene (overviewSvg). Past five projects, the farthest share one named list chip.
+    if (!isNarrow() || ovMode()) { box.innerHTML = ''; return; }
     var rest = projects.length > 5 ? projects.slice(4) : [];
     var html = rest.length ? '<button type="button" class="chip-btn" data-act="open-list">' + esc(rest.map(function (p) { return p.name; }).join(', ')) + '</button>' : '';
     html += '<button type="button" class="chip-btn" data-act="open-list">All work · ' + missions.length + '</button>';
@@ -1909,6 +2071,10 @@
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !$('#now-sheet').hidden) closeNowSheet();
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('#ov-art [role=button]')) {
+      e.preventDefault();
+      e.target.closest('#ov-art [role=button]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }
   });
 
   /* ---------- Terminal: the same fixture records as a text screen, 120 x 40 or 80 x 24. Simulated. ---------- */
@@ -2237,6 +2403,7 @@
   }
 
   renderRail();
+  buildOverview();
 
   window.addEventListener('resize', function () {
     [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); });

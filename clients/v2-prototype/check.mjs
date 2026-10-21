@@ -113,6 +113,19 @@ check(css.includes('env(safe-area-inset-bottom)') && css.includes('env(safe-area
 check(/id="s-terminal"/.test(html) && /SIMULATED/.test(html), 'terminal section or simulated tag missing');
 check(/terminal: renderTerminal/.test(js) && /data-tsize="120"/.test(html), 'terminal route or 120x40 size missing');
 check(/Places/.test(html) && /data-act="menu"/.test(html), 'phone Places menu missing');
+
+// Round 10c: the phone Overview is one SVG in the concept's own units (804 x 1373), built from the OV layout table.
+check(/viewBox="0 0 804 1373"/.test(html) && /id="ov-art"/.test(html), 'phone overview SVG frame missing');
+check(/CONCEPT FIXTURE/.test(html), 'phone concept fixture label missing');
+check(/aspect|804 \/ 1373|1373 \/ 804/.test(css) && /min\(100vw, calc\(100dvh \* 804 \/ 1373\)\)/.test(css), 'phone frame is not sized to the concept ratio');
+for (const key of ['archeus', 'notes', 'ideas', "'m-search'", "'m-date'", "'m-index'", "'m-read'"]) check(js.includes(key + ':') || js.includes(key + ': {'), `OV layout entry missing: ${key}`);
+check(/function buildOverview/.test(js) && /function overviewSvg/.test(js) && /function ovMode/.test(js), 'phone overview builder missing');
+check(/href="#\/plan\/m-search"/.test(js), 'Review link must open the decision');
+check(/' more projects'/.test(js) && /\(projects\.length - 1\)/.test(js), 'chip count must come from the project list');
+check(!/ovText\([^;]*?'ov-(?:sub|name|btn|title)', (?:[0-9]|[12][0-9]|3[01])/.test(js), 'a scene label is below 32 units (14 CSS px at 360 wide)');
+check(/data-act="stop"/.test(html) && /id="chat-input"/.test(html), 'Stop or the tell input missing from the phone overview');
+check(/\.chat-stop/.test(css) && /height: calc\(var\(--u\) \* 100\)/.test(css), 'phone Stop and bar must be 44 px or taller');
+
 check(/min-height: 48px/.test(css), 'touch targets below 48px rule missing');
 
 
