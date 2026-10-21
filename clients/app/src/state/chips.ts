@@ -136,6 +136,7 @@ export class Chips {
     if (!row) return; // off screen: marked seen, so it does not chip when the row comes on
     const ttl = a.decision === 'allow' ? CHIP_TTL_MS : CHIP_TTL_ERROR_MS;
     const chip: Waiting = { seq: f.id!, execution: x, text: chipText(a), ttl, announce: a.decision in NOT_RUN };
+    if (chip.announce) this.host.announce?.(chip.text); // said when accepted, so a chip the queue later drops was still said
     const w = this.waiting.get(e.mission_id) ?? [];
     if (row.length < CHIPS_PER_ROW && !w.length) {
       this.present(e.mission_id, chip);
@@ -151,7 +152,6 @@ export class Chips {
     this.presentations += 1;
     const fade = this.timeline.start('activity-chip', 'mission:' + mission, this.presentations, this.host.now(), this.host.reduced());
     this.rows.set(mission, [...(this.rows.get(mission) ?? NONE), { ...c, still: !fade }]);
-    if (c.announce) this.host.announce?.(c.text);
     this.listeners.forEach((l) => l());
   }
 

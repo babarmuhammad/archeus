@@ -820,35 +820,62 @@ def _reason(tx, got):
     return d.entity.reason if d is not None else got['decision']
 
 
-#: the classes whose target is a program, a fixed word or a workspace path (never a URL
-#: or a remote): the only targets a label may name
-LOCAL_CLASSES = ('read', 'write_repo', 'exec', 'destructive', 'deploy', 'install', 'git_commit')
-
-
+#: what a chip may name of a command, besides a host it took from a clear URL (P21 D6, I-F4):
+#: a tool's name, and a verb from a short list per tool. Nothing else of an argument is ever
+#: named: a value, a path, a header, a flag or a credential has no word here.
+_TOOLS = frozenset((
+    'git', 'npm', 'npx', 'yarn', 'pnpm', 'pip', 'pip3', 'python', 'python3', 'py', 'node',
+    'perl', 'ruby', 'php', 'bash', 'sh', 'zsh', 'dash', 'fish', 'cmd', 'powershell', 'pwsh',
+    'rm', 'mv', 'cp', 'mkdir', 'touch', 'rmdir', 'chmod', 'ln', 'ls', 'cat', 'head', 'tail',
+    'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which', 'curl', 'wget', 'ssh', 'scp', 'rsync',
+    'sftp', 'terraform', 'kubectl', 'helm', 'docker', 'vercel', 'make', 'cargo', 'go', 'mvn',
+    'gradle', 'dotnet', 'pytest', 'ruff', 'tsc', 'vite', 'base64', 'ps', 'kill', 'tar', 'unzip',
+    'zip', 'gh', 'aws', 'gcloud', 'az', 'brew', 'apt', 'apt-get', 'choco', 'winget', 'make',
+    'env', 'timeout', 'sudo', 'xargs', 'nohup', 'base64', 'busybox', 'stdbuf'))
+_VERBS = {
+    'git': frozenset(('status', 'log', 'diff', 'show', 'rev-parse', 'ls-files', 'branch',
+                      'remote', 'fetch', 'pull', 'clone', 'ls-remote', 'push', 'commit', 'add',
+                      'checkout', 'switch', 'restore', 'stash', 'merge', 'rebase',
+                      'cherry-pick', 'reset', 'clean', 'tag')),
+    'npm': frozenset(('install', 'i', 'add', 'publish', 'run', 'test', 'ci', 'exec')),
+    'yarn': frozenset(('install', 'add', 'publish')),
+    'pip': frozenset(('install',)), 'pip3': frozenset(('install',)),
+    'terraform': frozenset(('apply', 'destroy')),
+    'kubectl': frozenset(('apply', 'delete')),
+    'helm': frozenset(('install', 'uninstall', 'upgrade')),
+    'docker': frozenset(('build', 'run', 'push', 'rm')),
+    'vercel': frozenset(('deploy',)),
+    'gh': frozenset(('pr', 'release', 'issue')),
+    'cargo': frozenset(('build', 'test', 'publish', 'install')),
+}
 def _current(a):
     """What the activity chip shows (P21 D6): the class of the action that decided the
-    answer, and a label. Never raw input (slice I): a host stands in for a URL or a
-    remote, and a target that is none of those is named only when it is local."""
+    answer, and a label. Never raw input (slice I)."""
     if a is None:
         return None
     return {'action_class': a.action_class, 'label': _label(a)}
 
 
-#: a host as the chip may name it: letters, digits, dots and dashes only. Anything else a
-#: parser took for a host (a header or body value with a dot in it) is not one, and names nothing.
-_HOST = re.compile(r'[a-z0-9.-]{1,253}')
-
-
 def _label(a):
-    if a.host:
-        return redact(a.host)[:200] if _HOST.fullmatch(a.host) else ''
-    if a.action_class in ('read', 'write_repo') and re.match(r'(/|[A-Za-z]:)', a.target or ''):
-        return 'a file outside the workspace'
-    if a.action_class in LOCAL_CLASSES:
-        return redact(a.target)[:200]
-    if a.action_class == 'web' and a.target == 'search':      # WebSearch's fixed word
-        return 'search'
-    return ''
+    """The chip's word for an action: a host from a clear URL, else a tool and a verb from
+    the lists above, else a fixed phrase. An argument is never named (I-F4)."""
+    if a.chip_host:
+        return a.chip_host
+    if a.argv is None:                       # a harness tool (Read, Write, WebSearch ...)
+        if a.action_class in ('read', 'write_repo'):
+            return 'a file outside the workspace' if re.match(r'(/|[A-Za-z]:)', a.target or '') \
+                else 'a file in the workspace'
+        if a.action_class == 'web':
+            return 'search' if a.target == 'search' else ''
+        return 'a tool'
+    if a.target in ('shell', 'command'):      # the canonicaliser's fixed words
+        return a.target
+    name = re.split(r'[\\/]', a.argv[0])[-1].lower()
+    name = name[:-4] if name.endswith('.exe') else name
+    if name not in _TOOLS:
+        return 'a program'
+    verb = a.argv[1].lower() if len(a.argv) > 1 else ''
+    return name + ' ' + verb if verb in _VERBS.get(name, ()) else name
 
 
 def _hook_answer(tx, actor, e, seq, decision, reason, action=None):

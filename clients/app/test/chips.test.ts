@@ -256,6 +256,30 @@ test('a queue of hung reads is asked once, concurrently: a frame behind it waits
   assert.deepEqual(c.chips('mi_a').map((x) => x.seq), [12, 13, 40], 'the hung chips are dropped; the live one shows');
 });
 
+test('a refused chip the queue later drops was still said when it was accepted', async () => {
+  const said: string[] = [];
+  const cur: Record<string, Current> = {};
+  const c = new Chips(new Timeline(), {
+    now: () => 0,
+    reduced: () => false,
+    announce: (t) => said.push(t),
+    read: async (id) => ({ mission_id: 'mi_a', state: 'RUNNING', current_action: cur[id] }),
+  });
+  c.show('mi_a');
+  for (let i = 1; i <= 3; i++) {
+    cur[`s${i}`] = act(i);
+    await c.frame(frame(10 + i, `s${i}`));
+  }
+  cur.r = act(1, { decision: 'deny', action_class: 'exec', label: 'npm' });
+  await c.frame(frame(20, 'r'));
+  for (let j = 1; j <= QUEUE_MAX; j++) {
+    cur[`q${j}`] = act(j);
+    await c.frame(frame(20 + j, `q${j}`));
+  }
+  assert.deepEqual(said, ['refused: running npm'], 'said once, when it was accepted');
+  assert.ok(!c.chips('mi_a').some((x) => x.seq === 20), 'and it was dropped from the queue');
+});
+
 test('the chips of a row are the same array until they change', async () => {
   const r = rig();
   r.c.show('mi_a');

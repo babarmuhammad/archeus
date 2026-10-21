@@ -294,6 +294,7 @@ export interface Criterion {
   origin?: 'explicit' | 'inferred';
 }
 
+/** The last action Core judged for this execution (P21 D6): kept after the run ends, so an ended run still shows what it did last. Its label names a host, a tool and a verb, or a fixed phrase, never an argument. */
 export interface CurrentAction {
   action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential' | 'mission.start';
   label: string;

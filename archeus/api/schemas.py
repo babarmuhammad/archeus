@@ -572,7 +572,10 @@ TYPES = {
         'why': {'type': 'string'}, 'inventory': {'ref': 'Inventory', 'nullable': True}},
         'required': ['id', 'task_id', 'mission_id', 'attempt', 'state', 'process_seq',
                      'stream_offset', 'version', 'context']},
-    'CurrentAction': {'type': 'object', 'properties': {
+    'CurrentAction': {'type': 'object', 'description': (
+        'The last action Core judged for this execution (P21 D6): kept after the run ends, so an '
+        'ended run still shows what it did last. Its label names a host, a tool and a verb, or a '
+        'fixed phrase, never an argument.'), 'properties': {
         'action_class': {'type': 'string', 'enum': list(entities.RULE_CLASSES)},
         'label': {'type': 'string'},
         'decision': {'type': 'string', 'enum': ['allow', 'deny', 'halt']},

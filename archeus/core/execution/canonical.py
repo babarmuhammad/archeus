@@ -37,7 +37,8 @@ _SHELLS = ('sh', 'bash', 'zsh', 'dash', 'fish', 'cmd', 'cmd.exe', 'powershell', 
            'python', 'python3', 'py', 'node', 'perl', 'ruby', 'php')
 _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 'time',
           'watch', 'timeout', 'nice', 'command', 'builtin', 'export', 'set', 'typeset',
-          'declare', 'alias')
+          'declare', 'alias', 'stdbuf', 'busybox', 'trap', 'ionice', 'setsid', 'chrt',
+          'taskset', 'flock', 'unbuffer', 'strace')
 
 READ_COMMANDS = ('ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which',
                  'file', 'stat', 'tree', 'dir', 'type', 'less', 'more', 'diff')
@@ -83,7 +84,7 @@ def _canonicalise(tool, tool_input, ctx):
         host = host_of(url) if _text(url) else None
         if host is None:
             return [_unclassified(str(tool))], True
-        return [Action(action_class='web', target=url, host=host)], False
+        return [Action(action_class='web', target=url, host=host, chip_host=clear_host(url))], False
     if tool == 'WebSearch':
         return [Action(action_class='web', target='search')], False
     if tool == 'Bash':
@@ -144,10 +145,12 @@ def _unclassified(target, argv=None):
     return Action(action_class='exec', target=target or 'command', argv=argv)
 
 
-#: a shell or interpreter takes code from its arguments: -c and any short cluster with c or e
-#: (-lc, -xc, -ec), /c and /k (cmd), -Command, -EncodedCommand, --command, --eval
-_PAYLOAD_WORDS = ('/c', '/k', '-command', '-encodedcommand', '--command', '--eval', '--cmd')
-#: a flag whose next argument is a value, per tool (wget's -c, -m, -r, -b are flags, curl's are values)
+#: the names a shell or interpreter runs code from (its payload flags, below)
+_CMD = ('cmd',)
+_PWSH = ('powershell', 'pwsh')
+_INTERP = ('python', 'python3', 'py', 'node', 'perl', 'ruby', 'php')
+#: flags whose next argument is a value, per tool. Only the URL pick reads them, and a URL
+#: is only ever labelled when it names its scheme, so a missed flag costs no label.
 _CURL_VALUE = frozenset((
     '-d', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--data-ascii', '-H',
     '--header', '-u', '--user', '-F', '--form', '--form-string', '--oauth2-bearer', '-X',
@@ -163,20 +166,71 @@ _WGET_VALUE = frozenset((
     '-O', '--output-file', '--output-document', '-P', '--directory-prefix', '-t', '--tries',
     '-T', '--timeout', '-w', '--wait', '--method', '--ca-certificate', '--certificate',
     '--private-key', '-B', '--base', '-i', '--input-file', '-A', '--accept', '-R', '--reject'))
-#: the flags that send a body: a call with one is external_comm, not a read
-_SENDS = ('-d', '-F', '--data', '--data-raw', '--data-binary', '--data-urlencode', '--data-ascii',
-          '--upload-file', '-T', '--form', '--form-string', '--json', '--post-data', '--post-file',
-          '--body-data', '--body-file')
+#: the flags that send a body, in the spelling the first build knew; `_sends` adds the rest
+_SENDS = ('-d', '-F', '-T', '--data', '--data-raw', '--data-binary', '--data-urlencode',
+          '--data-ascii', '--upload-file', '--form', '--form-string', '--json', '--post-data',
+          '--post-file', '--body-data', '--body-file')
+_HOST = re.compile(r'[a-z0-9.-]{1,253}')
 
 
-def _payload(args):
-    return any(re.fullmatch(r'-[a-zA-Z]*[ce][a-zA-Z]*', a) or a.lower() in _PAYLOAD_WORDS
-               for a in args)
+def _program(cmd):
+    """The program's name as the shell reads its first word: a quoted or a bare Windows path
+    keeps its basename (shlex has already dropped the backslashes of a bare one), lowercased,
+    .exe dropped. Only the payload and wrapper checks read it; the rest keep the old name."""
+    m = re.match(r'\s*("[^"]*"|\'[^\']*\'|\S+)', cmd)
+    word = m.group(1).strip('"\'') if m else ''
+    name = re.split(r'[\\/]', word)[-1].lower()
+    return name[:-4] if name.endswith('.exe') else name
+
+
+def _payload(prog, args):
+    """A shell or interpreter takes code from its arguments: -c, a short cluster with c or e
+    (-lc, -xc), /c and /k (cmd, in any case), -Command and any prefix of it (-C, -Com),
+    -EncodedCommand and any prefix of it (-E, -ENC), --eval, and for the interpreters -p, -r.
+    Those flags count wherever a shell or cmd takes them, and before a script or a -m module
+    for an interpreter (its later arguments are the script's)."""
+    if '-c' in args or '-e' in args or '/c' in args:
+        return True
+    if prog in _CMD:
+        return any(a.lower() in ('/c', '/k', '/r') for a in args)
+    if prog in _PWSH:
+        for a in args:
+            w = a.lstrip('-/').lower()
+            if w and (w == 'ec' or 'command'.startswith(w) or 'encodedcommand'.startswith(w)):
+                return True
+        return False
+    for a in args:
+        if not a.startswith(('-', '/')):
+            return False
+        if prog in _INTERP:
+            if re.fullmatch(r'-[a-zA-Z]*[cCeEpPrR][a-zA-Z]*', a) or a.lower() in ('--eval', '--print'):
+                return True
+        elif re.fullmatch(r'-[a-zA-Z]*[cCeE][a-zA-Z]*', a) or a.lower() in ('--command', '--eval'):
+            return True
+    return False
+
+
+def _sends(args):
+    """A call that sends a body, in every spelling: long, with `=`, attached, or -X with a method
+    other than GET. A superset of the first build's list, so no call becomes a read of a page."""
+    for i, a in enumerate(args):
+        name, eq, val = a.partition('=')
+        if name in _SENDS or name.startswith(('--data', '--form', '--post-', '--body-')):
+            return True
+        if name in ('-X', '--request'):
+            method = val if eq else (args[i + 1] if i + 1 < len(args) else 'GET')
+            if method.upper() != 'GET':
+                return True
+        elif a.startswith('-X') and not a.startswith('--') and len(a) > 2 and a[2:].upper() != 'GET':
+            return True
+        elif a[:2] in ('-d', '-F', '-T') and not a.startswith('--'):
+            return True
+    return False
 
 
 def _url_arg(prog, args):
-    """The URL of a curl or wget call: the first positional that is not the value of a flag
-    (a body, a header or a credential is one, and names no host), and that names a host."""
+    """The first positional that names its scheme (`://`, or a leading `//`) and is not the
+    value of a flag: the one URL a chip may name the host of."""
     values = _WGET_VALUE if prog == 'wget' else _CURL_VALUE
     skip = False
     for i, a in enumerate(args):
@@ -186,11 +240,21 @@ def _url_arg(prog, args):
             return args[i + 1]
         elif a in values:
             skip = True
-        elif a.startswith('-') or not a:
+        elif a.startswith('-'):
             continue
-        elif '://' in a or a.startswith('//') or ('.' in a and '=' not in a.split('/')[0]):
+        elif '://' in a or a.startswith('//'):
             return a
     return ''
+
+
+def clear_host(url):
+    """The host of a URL that names its scheme, after its userinfo, port, path, query and
+    fragment; None for any other text, and for a host that is not letters, digits, dots and
+    dashes. The only host a chip may name (P21 D6, I-F4): it is never policy input."""
+    if not url or ('://' not in url and not url.startswith('//')):
+        return None
+    host = host_of(url)
+    return host if host and _HOST.fullmatch(host) else None
 
 
 def command(cmd, ctx):
@@ -214,7 +278,9 @@ def command(cmd, ctx):
     # NAME=value cmd: the name is no program, and its value may be a secret (never a target)
     if '=' in argv[0]:
         return [_unclassified('command', argv)], True
-    if prog in _NEVER or (prog in _SHELLS and _payload(args)):
+    shell = _program(cmd)
+    if prog in _NEVER or shell in _NEVER or (prog in _SHELLS and _payload(prog, args)) or (
+            shell in _SHELLS and _payload(shell, args)):
         return [_unclassified(prog, argv)], True
     if prog == 'base64' and ('-d' in args or '--decode' in args):
         return [_unclassified(prog, argv)], True
@@ -231,12 +297,11 @@ def command(cmd, ctx):
     if sub in INSTALL.get(prog, ()):
         return [Action(action_class='install', target=prog, argv=tv)], False
     if prog in ('curl', 'wget'):
-        url = _url_arg(prog, args)
-        sends = any(a in _SENDS or a.startswith('--data') for a in args) or any(
-            args[i] in ('-X', '--request') and args[i + 1].upper() != 'GET'
-            for i in range(len(args) - 1))
-        return [Action(action_class='external_comm' if sends else 'web', target=url or prog,
-                       argv=tv, host=host_of(url))], False
+        # the policy host is the first build's pick (a dotted word counts), so no decision moves
+        # with the chip's host; the chip names only a URL that says its scheme
+        url = next((a for a in args if not a.startswith('-') and ('.' in a or '//' in a)), '')
+        return [Action(action_class='external_comm' if _sends(args) else 'web', target=url or prog,
+                       argv=tv, host=host_of(url), chip_host=clear_host(_url_arg(prog, args)))], False
     if prog in REMOTE:
         dest = next((a for a in args if not a.startswith('-') and ('@' in a or ':' in a)), '')
         host = dest.split('@')[-1].split(':')[0] or None
@@ -265,7 +330,8 @@ def _git(args, argv, ctx):
         if ref and ':' in ref:
             ref = ref.split(':')[-1] or ref.split(':')[0]
         host = (ctx.get('remotes') or {}).get(remote) or host_of(remote)
-        push = Action(action_class='git_push', target=remote, argv=argv, branch=ref, host=host)
+        push = Action(action_class='git_push', target=remote, argv=argv, branch=ref, host=host,
+                      chip_host=clear_host(remote))
         if deletes or any(a in ('-f', '--force', '--force-with-lease', '--delete', '-d',
                                 '--mirror') or a.startswith('--force') for a in rest):
             return [push, Action(action_class='destructive', target='git push', argv=argv,
@@ -284,7 +350,8 @@ def _git(args, argv, ctx):
         remote = pos[0] if pos else 'origin'
         host = (ctx.get('remotes') or {}).get(remote) or host_of(remote)
         cls = 'web' if sub != 'pull' else 'write_repo'
-        return [Action(action_class=cls, target=remote, argv=argv, host=host, branch=branch)]
+        return [Action(action_class=cls, target=remote, argv=argv, host=host, branch=branch,
+                       chip_host=clear_host(remote))]
     if sub in GIT_READ:
         return [Action(action_class='read', target='git ' + sub, argv=argv, branch=branch)]
     if sub in GIT_WRITE:
