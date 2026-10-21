@@ -597,6 +597,17 @@ def attention_items(req):
         return 200, attention.attention(conn, now=queries._now())
 
 
+def metrics_days(req):
+    """P21 slice D Health (D2, D12): the newest finished days of metrics_daily."""
+    from ..core import metrics
+    raw = _one(req.query, 'days')
+    days = 14 if raw is None else _cursor(raw, 'days')
+    if not 1 <= days <= metrics.MAX_DAYS:
+        raise Invalid('days', 'is 1..%d' % metrics.MAX_DAYS)
+    with req.api.db.read() as conn:
+        return 200, metrics.daily(conn, days)
+
+
 def mission_timeline(req):
     """P16 (D5): the events of the mission's own rows, newest first."""
     from ..core.application import attention
@@ -991,6 +1002,7 @@ ROUTES = (
     Route('GET', '/sw.js', service_worker, None, None, None, None),
     Route('GET', '/manifest.webmanifest', manifest, None, None, None, None),
     Route('GET', '/v1/health', health, 'observe', None, None, 'Health'),
+    Route('GET', '/v1/metrics', metrics_days, 'observe', None, None, 'MetricsDaily'),
     Route('GET', '/v1/version', version, 'observe', None, None, 'Version'),
     Route('GET', '/v1/missions', list_missions, 'observe', None, None, 'MissionList'),
     Route('GET', '/v1/missions/{id}', get_mission, 'observe', None, None, 'Mission'),
@@ -1228,6 +1240,7 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/events/stream': ('after', 'project', 'type'), '/v1/status': ('project',),
          '/v1/repositories/{id}/inspections': ('limit',),
          '/v1/knowledge': ('project', 'state', 'type'), '/v1/search': ('q',),
+         '/v1/metrics': ('days',),
          '/v1/route-decisions': ('source', 'purpose'),
          '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',),
          '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission'),

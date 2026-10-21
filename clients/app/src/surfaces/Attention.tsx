@@ -8,18 +8,8 @@ import { decideBody } from '../data/commands';
 import { send } from '../data/core';
 import { useRead, useRefresh } from '../data/cache';
 import { objectHref } from '../nav/destinations';
-import { ago, stepUpBlocked } from '../state/present';
+import { ago, attentionLabel, stepUpBlocked } from '../state/present';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, StateBadge, thread, useChanged, useMe } from '../components/ui';
-
-export const KIND_LABEL: Record<string, string> = {
-  approval: 'Approval',
-  verification: 'Waiting for your acceptance',
-  mission: 'Planning asks you',
-  knowledge: 'Knowledge proposal',
-  drift: 'Architecture drift',
-  automation: 'Automation suspended',
-  account: 'Account needs signing in',
-};
 
 export function AttentionView({ limit, heading = true }: { limit?: number; heading?: boolean }) {
   const snap = useRead<AttentionT>(paths.attentionItems());
@@ -58,7 +48,7 @@ export function AttentionView({ limit, heading = true }: { limit?: number; headi
 }
 
 function AttentionEntry({ item }: { item: AttentionItem }) {
-  const title = KIND_LABEL[item.kind] ?? item.kind;
+  const title = attentionLabel(item);
   return (
     <article className="att" aria-label={title} data-kind={item.kind}>
       <header>
@@ -75,6 +65,7 @@ function AttentionEntry({ item }: { item: AttentionItem }) {
       ) : (
         <p>
           {item.reason ? <span><Prose text={item.reason} /> · </span> : null}
+          {typeof item.until === 'string' ? <span>resets {ago(item.until)} · </span> : null}
           <a href={LINK[item.kind]?.(item) ?? '#/attention'}>Open</a>
         </p>
       )}
@@ -92,7 +83,7 @@ export const MACHINE: Record<string, string> = {
   account: 'account_health',
 };
 
-const LINK: Record<string, (i: AttentionItem) => string> = {
+export const LINK: Record<string, (i: AttentionItem) => string> = {
   mission: (i) => objectHref('mission', i.ref.id),
   drift: (i) => (i.project_id ? `#/world/${i.project_id}` : '#/world'),
   automation: () => '#/control/automations',

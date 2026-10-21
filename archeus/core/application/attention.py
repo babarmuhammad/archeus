@@ -6,6 +6,8 @@ now is P9's `approval_view`, reused, not re-judged here.
 
 Also the mission timeline (D5): the events of a mission's own rows."""
 
+import json
+
 from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
@@ -14,6 +16,23 @@ from .queries import approval_view
 
 #: The kinds, in the order they are listed.
 KINDS = ('approval', 'verification', 'mission', 'knowledge', 'drift', 'automation', 'account')
+#: Account health that waits on the user, with its reason code (P21 D12, K7):
+#: signing in again, and the three a provider or the breaker put it in
+ACCOUNT = (('UNAUTHENTICATED', 'reauth'), ('LIMITED', 'limited'), ('DEGRADED', 'degraded'),
+           ('OPEN', 'open'))
+
+
+def _no_resource(conn, mission_id):
+    """The route that left a task of this BLOCKED mission with no eligible
+    resource (P10: routing blocks the task and its mission), or None."""
+    for t in rows.where(conn, entities.Task, mission_id=mission_id, **{'state': 'BLOCKED'}):
+        last = conn.execute('SELECT body FROM route_decisions WHERE task_id = ? '
+                            'ORDER BY created_at DESC, rowid DESC LIMIT 1',
+                            (t.entity.id,)).fetchone()
+        route = json.loads(last[0]) if last else None
+        if route and route.get('result') == 'blocked':
+            return route
+    return None
 
 
 def _mission_of_task(conn, task_id):
@@ -60,6 +79,12 @@ def attention(conn, now=None):
             asked = '; '.join(pb.get('questions') or ()) or None
             items.append(_item('mission', 'mission', r, m.state, pb.get('kind') or 'blocked',
                                asked, m.id, m.project_id))
+        elif m.state == 'BLOCKED' and m.held_from == 'EXECUTING':
+            route = _no_resource(conn, m.id)
+            if route:
+                items.append(_item('mission', 'mission', r, m.state, 'no_resource',
+                                   route.get('explanation') or None, m.id, m.project_id,
+                                   unblock_at=route.get('unblock_at')))
     for r in rows.where(conn, entities.KnowledgeItem, **{'state': 'CANDIDATE'}):
         items.append(_item('knowledge', 'knowledge_item', r, 'CANDIDATE', r.entity.type,
                            r.entity.title, project_id=r.entity.project_id))
@@ -70,9 +95,11 @@ def attention(conn, now=None):
     for r in rows.where(conn, entities.Automation, **{'state': 'SUSPENDED'}):
         items.append(_item('automation', 'automation', r, 'SUSPENDED', 'suspended',
                            r.entity.name, project_id=r.entity.project_id))
-    for r in rows.where(conn, entities.Account, health='UNAUTHENTICATED'):
-        items.append(_item('account', 'account', r, 'UNAUTHENTICATED', 'reauth',
-                           r.entity.label))
+    for health, code in ACCOUNT:
+        for r in rows.where(conn, entities.Account, health=health):
+            items.append(_item('account', 'account', r, health, code, r.entity.label,
+                               **({'until': r.entity.limited_until} if health == 'LIMITED'
+                                  else {})))
     order = {k: i for i, k in enumerate(KINDS)}
     items.sort(key=lambda i: (order[i['kind']], i['since'], i['ref']['id']))
     return {'items': items, 'count': len(items)}

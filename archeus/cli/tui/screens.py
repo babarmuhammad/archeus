@@ -38,6 +38,11 @@ ATTENTION_KIND = {'approval': 'Approval', 'verification': 'Waiting for your acce
                   'mission': 'Planning asks you', 'knowledge': 'Knowledge proposal',
                   'drift': 'Architecture drift', 'automation': 'Automation suspended',
                   'account': 'Account needs signing in'}
+# a reason that changes what the item is (P21 D12; Attention.tsx REASON_LABEL)
+ATTENTION_REASON = {'account.limited': 'Account at its usage limit',
+                    'account.degraded': 'Account failing',
+                    'account.open': 'Account stopped after repeated errors',
+                    'mission.no_resource': 'No resource can run this mission'}
 ATTENTION_MACHINE = {'approval': 'approval', 'verification': 'verification',
                      'mission': 'mission', 'knowledge': 'knowledge_item',
                      'drift': 'architecture', 'automation': 'automation',
@@ -590,7 +595,8 @@ def attention_items(app, doc, limit=None):
 
 
 def entry(app, doc, item):
-    title = ATTENTION_KIND.get(item['kind'], item['kind'])
+    title = (ATTENTION_REASON.get('%s.%s' % (item['kind'], item.get('reason_code')))
+             or ATTENTION_KIND.get(item['kind'], item['kind']))
     head = ('  ' + app.st.badge(ATTENTION_MACHINE.get(item['kind'], item['kind']), item['state'])
             + '  ' + T(app, title, 'text', bold=True) + '  '
             + app.st.paint(ago(app, item.get('since')), 'text-2'))
@@ -608,6 +614,8 @@ def entry(app, doc, item):
     doc.add(head, target=link)
     if item.get('reason'):
         doc.add('    ' + T(app, item['reason']))
+    if item.get('until'):
+        doc.add('    ' + T(app, 'resets %s' % ago(app, item['until']), 'text-2'))
 
 
 def approval_card(app, doc, aid, head=None):

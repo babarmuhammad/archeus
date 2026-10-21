@@ -49,6 +49,10 @@ GR = 'archeus/core/application/grammar.py'
 CV = 'archeus/core/application/conversation.py'
 DG = 'archeus/core/world/digest.py'
 TT = 'tests/v1/integration/test_trace.py'
+AT = 'archeus/core/application/attention.py'
+HL = 'tests/v1/integration/test_p21_health.py::'
+SCR = 'archeus/cli/tui/screens.py'
+TUIA = 'tests/v1/tui/test_acceptance.py::'
 
 MUTATIONS = [
     # ── unknown is never 0 (CX-8) ──
@@ -276,6 +280,48 @@ MUTATIONS = [
      "        return (events[-1]['seq'] if events else after), said",
      "        return after, said")],
      [SHL + 'test_G01_the_tray_says_an_approval_request_and_an_estop_only_after_it_started']),
+    # ── slice D Health: Attention items (D12, K7) and the metrics read (D2) ──
+    ('Z80', 'a LIMITED account waits on nobody', [(AT,
+     "('LIMITED', 'limited'), ",
+     "")],
+     [HL + 'test_H01_accounts_a_provider_or_the_breaker_stopped_wait_on_the_user']),
+    ('Z81', "an account the breaker OPENed waits on nobody", [(AT,
+     "('DEGRADED', 'degraded'),\n           ('OPEN', 'open'))",
+     "('DEGRADED', 'degraded'))")],
+     [HL + 'test_H01_accounts_a_provider_or_the_breaker_stopped_wait_on_the_user']),
+    ('Z82', 'a limited account does not say when it resets', [(AT,
+     "**({'until': r.entity.limited_until} if health == 'LIMITED'",
+     "**({} if health == 'LIMITED'")],
+     [HL + 'test_H01_accounts_a_provider_or_the_breaker_stopped_wait_on_the_user']),
+    ('Z83', "the task's first route decides, not its last", [(AT,
+     "'ORDER BY created_at DESC, rowid DESC LIMIT 1'",
+     "'ORDER BY created_at, rowid LIMIT 1'")],
+     [HL + 'test_H02_a_mission_no_resource_can_run_waits_with_the_routes_reason',
+      HL + 'test_H03_only_a_route_that_found_no_resource_makes_the_item']),
+    ('Z84', 'a route that asked is taken for no resource', [(AT,
+     "if route and route.get('result') == 'blocked':",
+     "if route and route.get('result') in ('blocked', 'ask'):")],
+     [HL + 'test_H03_only_a_route_that_found_no_resource_makes_the_item']),
+    ('Z85', 'a mission held from verification is said to want a resource', [(AT,
+     "elif m.state == 'BLOCKED' and m.held_from == 'EXECUTING':",
+     "elif m.state == 'BLOCKED':")],
+     [HL + 'test_H03_only_a_route_that_found_no_resource_makes_the_item']),
+    ('Z86', "the route's own reason is dropped", [(AT,
+     "route.get('explanation') or None, m.id, m.project_id,",
+     "None, m.id, m.project_id,")],
+     [HL + 'test_H02_a_mission_no_resource_can_run_waits_with_the_routes_reason']),
+    ('Z87', 'the Health days come oldest first', [(MT,
+     "'ORDER BY day DESC LIMIT ?'",
+     "'ORDER BY day LIMIT ?'")],
+     [HL + 'test_H04_metrics_newest_first_bounded_and_unknown_kept_unknown']),
+    ('Z88', 'the metrics read takes any number of days', [(ROUTES,
+     "    if not 1 <= days <= metrics.MAX_DAYS:",
+     "    if False:")],
+     [HL + 'test_H04_metrics_newest_first_bounded_and_unknown_kept_unknown']),
+    ('Z89', 'the TUI names only the kind', [(SCR,
+     "    title = (ATTENTION_REASON.get('%s.%s' % (item['kind'], item.get('reason_code')))",
+     "    title = (None")],
+     [TUIA + 'test_attention_names_a_limited_account_and_a_mission_no_resource_can_run']),
     # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
     ('Z30', 'a result is paired with whichever call came first', [(TR,
      "            call = calls.get(e.get('tool_use_id'))",

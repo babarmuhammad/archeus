@@ -13,11 +13,11 @@ import { reducedMotion } from '../graph/loop';
 import { MAP_MIN_WIDTH, useWide } from '../graph/wide';
 import { objectHref } from '../nav/destinations';
 import { activeMissions, automationLine, mapSeeds, recentDecisions, stateSentence, upcoming } from '../state/now';
-import { ago } from '../state/present';
+import { ago, attentionLabel } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
 import { timeline } from '../state/timeline';
 import { ActionButton, Changed, Empty, Fresh, Loadable, RefLabel, Section, StateBadge, refName, thread, useChanged } from '../components/ui';
-import { AttentionView, KIND_LABEL, MACHINE } from './Attention';
+import { AttentionView, MACHINE } from './Attention';
 import { MissionRow } from './Work';
 import type { Attention as AttentionT } from '../api/generated';
 import { NOW_READS, asOf, type Kept } from '../data/snapshot';
@@ -203,7 +203,7 @@ export function OfflineNow({ kept }: { kept: Kept[] }) {
                 const title = titleOf(i.ref, i.mission_id);
                 return (
                   <li key={i.kind + i.ref.id} className="row-item" data-ref={i.ref.kind + ':' + i.ref.id}>
-                    <StateBadge machine={MACHINE[i.kind]} state={i.state} /> {KIND_LABEL[i.kind] ?? i.kind}
+                    <StateBadge machine={MACHINE[i.kind]} state={i.state} /> {attentionLabel(i)}
                     {title ? <span className="title"> · {title}</span> : null}
                     {i.reason ? ` · ${i.reason}` : null}
                   </li>

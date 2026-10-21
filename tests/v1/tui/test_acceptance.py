@@ -508,3 +508,24 @@ def test_the_autonomy_matrix_lists_every_class_core_judges(core):
     app.go({'view': 'control', 'section': 'autonomy'})
     got = next(x.split() for x in plain(app).splitlines() if x.split()[:1] == ['mission.start'])
     assert got[1:] == ['ASK', 'ALLOW', 'ALLOW']
+
+
+def test_attention_names_a_limited_account_and_a_mission_no_resource_can_run():
+    """P21 D12: the item's reason, not only its kind, says what waits (Attention.tsx)."""
+    att = {'items': [
+        {'kind': 'mission', 'ref': {'kind': 'mission', 'id': 'msn_1'}, 'state': 'BLOCKED',
+         'reason_code': 'no_resource', 'reason': 'no eligible resource', 'mission_id': 'msn_1',
+         'project_id': None, 'since': '2026-10-21T10:00:00Z'},
+        {'kind': 'account', 'ref': {'kind': 'account', 'id': 'acc_1'}, 'state': 'LIMITED',
+         'reason_code': 'limited', 'reason': 'work account', 'mission_id': None,
+         'project_id': None, 'since': '2026-10-21T10:00:00Z', 'until': '2999-01-01T00:00:00Z'},
+        {'kind': 'account', 'ref': {'kind': 'account', 'id': 'acc_2'}, 'state': 'UNAUTHENTICATED',
+         'reason_code': 'reauth', 'reason': 'home', 'mission_id': None, 'project_id': None,
+         'since': '2026-10-21T10:00:00Z'}], 'count': 3}
+    app = _StubApp({'/v1/attention': att, '/v1/sync': {'client': {'scopes': []}}})
+    app.go({'view': 'attention'})
+    app.frame()
+    shown = plain(app)
+    assert 'No resource can run this mission' in shown
+    assert 'Account at its usage limit' in shown and 'resets in' in shown
+    assert 'Account needs signing in' in shown

@@ -457,3 +457,55 @@ approval-issued causes need `authorization.py`, so it waits for P20 or the owner
   (the tab replays every event from the first, in a real browser); `clients/app/test/shell.test.ts`
   (tab order).
 - **Mutants:** Z30-Z39 in `tools/mutate_p21.py`, each killed by the test it names.
+
+### Slice D Health as built (2026-10-21, card T-127)
+
+Built under the owner's 2026-10-21 answer naming the not-yet-eligible P21 pieces (the board, "Owner
+2026-10-21", verbatim: "Yes, all five (Recommended)"): Control -> About -> Health and its Attention
+items, D12 (a). "P21 cannot be declared complete before P20 is" (D0) is unchanged.
+
+- **Attention items (D12 (a), K7, D-11)**, derived in Core into the existing `/v1/attention` read
+  (`archeus/core/application/attention.py`), with no new kind and no stored row:
+  - an Account in LIMITED, DEGRADED or OPEN is an `account` item beside UNAUTHENTICATED's, reason
+    code `limited` / `degraded` / `open` (`reauth` unchanged), its label as the reason; a LIMITED
+    one also carries `until` (the account's `limited_until`);
+  - a **resource-blocked mission** is a `mission` item, reason code `no_resource`: a mission
+    BLOCKED from EXECUTING with a BLOCKED task whose **latest** route decision has result `blocked`
+    (P10: routing found no eligible resource and blocked the task and its mission). The reason is
+    that route's own explanation and the item carries its `unblock_at`. A task BLOCKED by a
+    rejected route approval (its last route asked), a mission held from another state, and a
+    mission whose last route did find a resource are not listed. A mission already listed for
+    `planning_blocked` is not listed twice.
+- **The metrics read (D2)**: `GET /v1/metrics?days=N` (observe, 1..90, default 14;
+  `metrics.daily`): the newest finished days of `metrics_daily`, newest first, each figure as
+  recorded, so an unknown stays null. Schema `MetricsDaily`; `generated.ts`, `_api.py` and the API
+  reference regenerated. `/v1/health` gains `metrics`, the `archeus-metrics` worker's state (slice D
+  had left it out until a reader needed it).
+- **SPA**: Control -> About gains a **Health** section between This Core and This client: the
+  account and no-resource items (state badge, label, reason, linked to Control -> Resources or the
+  mission), then the last seven finished UTC days (completed, failed, median time to complete,
+  approvals per mission, fallback rate, verification failures; null shows "unknown", never 0) and,
+  for the newest day, cost per mission band and context tokens per task kind. The Workers line
+  names `metrics`. Attention and Now name an item by its reason where the reason changes what it
+  is ("Account at its usage limit", "Account failing", "Account stopped after repeated errors",
+  "No resource can run this mission"); a LIMITED account says when it resets. The TUI's Attention
+  says the same words (`screens.ATTENTION_REASON`); it has no Health page (§7: status and doctor
+  only).
+- **Not built, recorded**: `/v1/metrics` has no invalidation rule because writing a day appends
+  no event: the section reads it when opened. No browser test drives the Health section (the
+  owner's PC rule keeps e2e to the integration run, T-130). The `Health` schema is closed and
+  already lacked `exec`, `verify` and `automation`, which `/v1/health` returns; not changed here.
+- **Client helpers**: the item labels (`attentionLabel`, with the kind words it falls back to) and
+  the Health formatters (`known`, `pct`, `spanText`) live in `clients/app/src/state/present.ts`, the
+  pure module the node tests run, so `clients/app/test/health.test.ts` pins them: a reason naming
+  its item, "unknown" against a measured 0, the minutes and hours split.
+- **Tests**: `tests/v1/integration/test_p21_health.py` (H01-H06); `test_api_structure.py`'s P21
+  table gains the route; `tests/v1/tui/test_acceptance.py` (the TUI's labels); the node suite
+  (249 pass, `tsc --noEmit` clean).
+- **Found while building, fixed**: `test_guards.py`'s textual scan of the application layer read
+  the `state=` keyword in `_no_resource`'s read filter as a state write; the filter now passes the
+  column through `**{'state': ...}`, the form `attention()` already uses (no change in what it reads).
+- **Mutants**: Z80-Z89 in `tools/mutate_p21.py` (LIMITED or OPEN accounts dropped, `until`
+  dropped, the first route deciding instead of the last, an asking route taken for no resource, a
+  mission held from verification listed, the route's reason dropped, the days oldest first, the
+  days unbounded, the TUI naming only the kind).

@@ -1,0 +1,125 @@
+"""P21 slice D Health (p21-design-gate D2, D12; plan K7, D-11): the accounts and
+missions that wait on the user join the Attention read, and Control -> About ->
+Health reads metrics_daily through `/v1/metrics`."""
+
+import pytest
+
+from archeus.api import schemas
+from archeus.core import metrics
+from archeus.core.application import attention
+from archeus.core.domain import entities, ids
+from archeus.core.domain.events import new_event
+from archeus.core.domain.values import Ref
+
+WS = ids.GLOBAL_WORKSPACE
+ACTOR = Ref('user_device', ids.new_id('principal'))
+
+
+def put(db, *rows):
+    def run(tx, **_):
+        for r in rows:
+            tx.insert(r, actor=ACTOR)
+        tx.append(new_event('mission.updated', Ref('mission', ids.new_id('mission')), ACTOR,
+                            payload={}, workspace=WS))
+    db.writer.execute(run, {})
+
+
+def items(db, kind):
+    with db.read() as conn:
+        return [i for i in attention.attention(conn)['items'] if i['kind'] == kind]
+
+
+def test_H01_accounts_a_provider_or_the_breaker_stopped_wait_on_the_user(db):
+    acc = {h: ids.new_id('account') for h in ('UNAUTHENTICATED', 'LIMITED', 'DEGRADED', 'OPEN',
+                                               'AVAILABLE', 'CONSTRAINED', 'DISABLED',
+                                               'UNVERIFIED')}
+    put(db, *[entities.Account(id=a, harness_id='fake', label='acct ' + h, auth_kind='api_key',
+                               health=h, limited_until='2999-01-01T00:00:00.000Z'
+                               if h == 'LIMITED' else None) for h, a in acc.items()])
+    got = {i['state']: i for i in items(db, 'account')}
+    assert {s: i['reason_code'] for s, i in got.items()} == {
+        'UNAUTHENTICATED': 'reauth', 'LIMITED': 'limited', 'DEGRADED': 'degraded', 'OPEN': 'open'}
+    assert got['LIMITED']['until'] == '2999-01-01T00:00:00.000Z'
+    assert 'until' not in got['OPEN']
+    assert got['DEGRADED']['ref'] == {'kind': 'account', 'id': acc['DEGRADED']}
+    assert got['DEGRADED']['reason'] == 'acct DEGRADED'
+
+
+def _blocked_mission(db, held='EXECUTING'):
+    mid, pid, tid = ids.new_id('mission'), ids.new_id('plan'), ids.new_id('task')
+    put(db, entities.Mission(id=mid, workspace_id=WS, title='M', objective='o', state='BLOCKED',
+                             held_from=held),
+        entities.Plan(id=pid, mission_id=mid, plan_version=1, state='APPROVED'),
+        entities.Task(id=tid, plan_id=pid, mission_id=mid, key='t1', title='T',
+                      kind='code_change', state='BLOCKED'))
+    return mid, tid
+
+
+def _route(db, mid, tid, result, explanation='x', unblock_at=None):
+    put(db, entities.RouteDecision(id=ids.new_id('route_decision'), subject=Ref('task', tid),
+                                   result=result, task_id=tid, mission_id=mid,
+                                   explanation=explanation, unblock_at=unblock_at,
+                                   selected='fake' if result != 'blocked' else None))
+
+
+def test_H02_a_mission_no_resource_can_run_waits_with_the_routes_reason(db):
+    mid, tid = _blocked_mission(db)
+    _route(db, mid, tid, 'selected')
+    _route(db, mid, tid, 'blocked', 'no eligible resource: acct LIMITED until 15:00',
+           '2999-01-01T15:00:00.000Z')
+    [m] = items(db, 'mission')
+    assert (m['ref']['id'], m['state'], m['reason_code']) == (mid, 'BLOCKED', 'no_resource')
+    assert m['reason'] == 'no eligible resource: acct LIMITED until 15:00'
+    assert (m['mission_id'], m['unblock_at']) == (mid, '2999-01-01T15:00:00.000Z')
+    with db.read() as conn:
+        schemas.validate(attention.attention(conn), schemas.TYPES['Attention'])
+
+
+def test_H03_only_a_route_that_found_no_resource_makes_the_item(db):
+    # BLOCKED from EXECUTING with no route recorded for its task (a stop, a merge conflict)
+    _blocked_mission(db)
+    # a rejected route approval: the task is BLOCKED, its last route asked
+    asked, atid = _blocked_mission(db)
+    _route(db, asked, atid, 'ask')
+    # a route that found nothing, later superseded by one that did
+    later, ltid = _blocked_mission(db)
+    _route(db, later, ltid, 'blocked')
+    _route(db, later, ltid, 'fallback')
+    # held from verification, whatever its task says
+    verifying, vtid = _blocked_mission(db, held='VERIFYING')
+    _route(db, verifying, vtid, 'blocked')
+    assert items(db, 'mission') == []
+
+
+def test_H04_metrics_newest_first_bounded_and_unknown_kept_unknown(tc):
+    w = tc.core.db.writer
+    for day, done in (('2026-10-15', 1), ('2026-10-16', 2), ('2026-10-17', 3)):
+        w.execute(metrics.record, {'day': day, 'metrics': {
+            'missions_completed': done, 'missions_failed': 0, 'median_time_to_complete_s': None,
+            'approvals_per_mission': None, 'fallback_rate': 0.5,
+            'verification_failure_rate': None, 'cost_per_mission_band': {},
+            'context_tokens_per_task_kind': {}}})
+    r = tc.http('GET', '/v1/metrics?days=2')
+    assert r.status == 200
+    got = r.json()
+    schemas.validate(got, schemas.TYPES['MetricsDaily'])
+    assert [d['day'] for d in got['days']] == ['2026-10-17', '2026-10-16']
+    assert got['days'][0]['metrics']['median_time_to_complete_s'] is None
+    assert got['days'][0]['metrics']['missions_completed'] == 3
+    assert len(tc.http('GET', '/v1/metrics').json()['days']) == 3
+    for bad in ('0', '91', 'x'):
+        assert tc.http('GET', '/v1/metrics?days=' + bad).status == 400
+
+
+def test_H05_health_names_the_metrics_worker(tc):
+    h = tc.http('GET', '/v1/health').json()
+    # the Health schema is closed and predates exec/verify/automation (not this slice)
+    schemas.validate(h['metrics'], schemas.TYPES['Worker'])
+    assert 'metrics' in schemas.TYPES['Health']['required']
+    assert h['metrics']['state'] in ('starting', 'reconciling', 'running', 'idle')
+
+
+@pytest.mark.parametrize('path', ['/v1/metrics'])
+def test_H06_metrics_needs_a_token(tc, path):
+    from v1.judge.http import request
+    assert request(tc.base_url, 'GET', path).status == 401
