@@ -18,9 +18,9 @@
     <nav class="places" aria-label="Places">
       <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2V17H12.5v-4.6h-5V17H3z"/></svg><span>Overview</span></a>
       <a href="#/mission/m-date" data-nav="mission"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.6"/></svg><span>Missions</span></a>
+      <a href="#/replay/m-date" data-nav="replay"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 10a5.8 5.8 0 1 0 1.7-4.1"/><path d="M4 3.4v3h3"/><path d="M10 7.4v3l2 1.2"/></svg><span>Replay</span></a>
       <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg><span>Shared</span></a>
       <a href="#/phone" data-nav="phone"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="2.5" width="8" height="15" rx="2"/><path d="M9 14.5h2"/></svg><span>Phone</span></a>
-      <a href="#/start" data-nav="start"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 6.8v6.4M6.8 10h6.4"/></svg><span>Start</span></a>
       <a href="#/plan/m-search" data-nav="plan"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 6h9M6 10h9M6 14h6"/><circle cx="3.5" cy="6" r=".8"/><circle cx="3.5" cy="10" r=".8"/><circle cx="3.5" cy="14" r=".8"/></svg><span>Plan</span></a>
     </nav>
     <section class="projects" aria-labelledby="proj-h">
@@ -31,9 +31,9 @@
 
   <div class="page">
     <header class="top">
-      <p class="proto">PROTOTYPE · fake data</p>
+      <p class="proto">PROTOTYPE · fake data · simulated chat</p>
       <p class="core-status"><span class="dot" aria-hidden="true"></span>Not stopped · accepts new work</p>
-      <a class="btn" href="#/start">Tell</a>
+      <a class="btn" href="#/now/chat" data-tell>Tell</a>
       <button type="button" class="btn stop-btn" data-act="stop">Stop</button>
     </header>
     <p id="say" class="say" role="status"></p>
@@ -43,14 +43,34 @@
         <header class="head">
           <p class="kicker">Overview</p>
           <h1 tabindex="-1" data-sentence></h1>
-          <p class="lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure.</p>
+          <p class="lede now-lede">Live constellation of your work. Archeus at the centre, each project a hull, each mission a figure. Ask Archeus in the bar; what it creates appears here as it is made.</p>
         </header>
-        <div class="stage stage-now" id="now-stage" role="region" aria-label="Constellation of projects and missions">
-          <canvas class="sky" aria-hidden="true"></canvas>
-          <canvas class="fx" aria-hidden="true"></canvas>
-          <div class="world"></div>
-          <div class="card" hidden></div>
-          <button type="button" class="btn now-back" id="now-overview" hidden>Whole space</button>
+        <div class="now-body">
+          <div class="now-main">
+            <div class="stage stage-now" id="now-stage" role="region" aria-label="Constellation of projects and missions">
+              <canvas class="sky" aria-hidden="true"></canvas>
+              <canvas class="fx" aria-hidden="true"></canvas>
+              <div class="world"></div>
+              <div class="card" hidden></div>
+              <button type="button" class="btn now-back" id="now-overview" hidden>Whole space</button>
+            </div>
+            <form class="chatbar" id="chat-form" autocomplete="off">
+              <label class="sr-only" for="chat-input">Tell Archeus what to do</label>
+              <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus what to do, or ask anything">
+              <button type="submit" class="btn">Send</button>
+            </form>
+          </div>
+          <aside class="thread" aria-labelledby="thread-h">
+            <div class="thread-head">
+              <p class="kicker" id="thread-h">Conversation</p>
+              <p class="tag">Simulated: scripted replies, no model call, nothing sent to Core. Creations and approvals are page-only.</p>
+            </div>
+            <details class="prompts">
+              <summary>Example prompts</summary>
+              <div class="prompt-list" id="chat-prompts"></div>
+            </details>
+            <ol class="msgs" id="msgs" aria-live="polite"></ol>
+          </aside>
         </div>
         <details class="list-d">
           <summary>All missions as a list</summary>
@@ -78,12 +98,35 @@
               <div><dt>Status</dt><dd class="state-line" data-m-state></dd></div>
             </dl>
             <ol class="phase-bar" id="m-phases" aria-label="Phases"></ol>
+            <p class="row"><a class="btn" id="m-replay" href="#/replay/m-date">Open replay</a></p>
             <div class="tabs" role="tablist" aria-label="Mission views">
               <button type="button" role="tab" data-mtab="overview" aria-selected="true">Overview</button>
               <button type="button" role="tab" data-mtab="activity" aria-selected="false">Activity</button>
               <button type="button" role="tab" data-mtab="plan" aria-selected="false">Plan</button>
             </div>
             <div class="tabpanel" id="m-panel" role="tabpanel"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="screen" id="s-replay" hidden>
+        <header class="head">
+          <p class="crumb"><a href="#/now">Overview</a> / <span data-rp-project></span> / <span data-rp-crumb></span></p>
+          <p class="kicker">Replay</p>
+          <h1 tabindex="-1" data-rp-title></h1>
+          <p class="lede">What the agent intended, what you authorized, what was durably recorded, what may have taken effect, and where state is uncertain. A replay never claims that every external effect can be reversed.</p>
+        </header>
+        <div class="split">
+          <ol class="timeline" id="rp-timeline" aria-label="Timeline, sample data"></ol>
+          <aside class="inspector" aria-label="Replay details">
+            <dl class="facts" id="rp-facts"></dl>
+            <p class="kicker">Legend</p>
+            <ul class="legend" id="rp-legend"></ul>
+            <div class="row">
+              <button type="button" class="btn primary" data-act="reconcile">Reconcile…</button>
+              <button type="button" class="btn" data-act="restore">Restore 09:00 state…</button>
+            </div>
+            <p class="small">Sample data, simulated. Core would record each line. Nothing here is sent, retried or reversed.</p>
           </aside>
         </div>
       </section>
@@ -131,49 +174,20 @@
           </div>
           <aside class="sheet" id="sheet" hidden aria-labelledby="sheet-h"></aside>
           <div class="dock">
-            <a class="btn" href="#/start">Tell</a>
+            <a class="btn" href="#/now/chat" data-tell>Tell</a>
             <details class="places-d">
               <summary class="btn">Places</summary>
               <ul>
                 <li><a href="#/now">Overview</a></li>
                 <li><a href="#/mission/m-date">Mission</a></li>
+                <li><a href="#/replay/m-date">Replay</a></li>
                 <li><a href="#/shared">Shared</a></li>
-                <li><a href="#/start">Start</a></li>
                 <li><a href="#/plan/m-search">Plan</a></li>
               </ul>
             </details>
             <button type="button" class="btn stop-btn" data-act="stop">Stop</button>
           </div>
         </div>
-      </section>
-
-      <section class="screen" id="s-start" hidden>
-        <header class="head"><p class="kicker">Start</p><h1 tabindex="-1">Start work</h1></header>
-        <form id="tell-form" class="block" novalidate>
-          <h2><label for="tell-text">Tell Archeus what to do</label></h2>
-          <textarea id="tell-text" rows="4" maxlength="2000" aria-describedby="tell-help"></textarea>
-          <p class="small" id="tell-help">Nothing is sent. Cancel clears the draft. This prototype adds a star to this page only.</p>
-          <p class="error" id="tell-error" role="alert"></p>
-          <div class="row">
-            <button type="submit" class="btn primary">Send (fake)</button>
-            <button type="button" class="btn" id="tell-cancel">Cancel</button>
-          </div>
-        </form>
-        <form id="mission-form" class="block" novalidate>
-          <h2>Or start a mission in a project</h2>
-          <label for="m-project">Project</label>
-          <select id="m-project"><option>Harbor</option><option>Notes</option><option>Lantern</option></select>
-          <label for="m-title">Mission title</label>
-          <input id="m-title" type="text" maxlength="120">
-          <label for="m-objective">Objective</label>
-          <textarea id="m-objective" rows="3" maxlength="2000"></textarea>
-          <label for="m-criteria">Success criteria, one per line</label>
-          <textarea id="m-criteria" rows="3" maxlength="2000"></textarea>
-          <p class="error" id="m-error" role="alert"></p>
-          <div class="row">
-            <button type="submit" class="btn primary">Create mission (fake)</button>
-          </div>
-        </form>
       </section>
 
       <section class="screen" id="s-plan" hidden>

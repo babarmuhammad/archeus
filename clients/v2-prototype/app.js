@@ -58,6 +58,7 @@
   var counter = 0;
   var stopArmed = 0;
   var pendingOk = '';
+  var pendingApply = null;
   var sheetOpen = null;
   var lastStar = null;
   var missionTab = 'overview';
@@ -247,7 +248,9 @@
     g.setLineDash([]); g.shadowBlur = 0;
     for (i = 0; i < P.length; i++) {
       g.globalAlpha = A * (0.4 + 0.6 * (P[i].z + 1) / 2);
+      if (o.glow) { g.shadowColor = col; g.shadowBlur = 8; }
       g.beginPath(); g.arc(P[i].x, P[i].y, o.dotR || 2.2, 0, TAU); g.fill();
+      g.shadowBlur = 0;
     }
     if (o.glyph) glyph(g, o.glyph, cx, cy, R * 0.36, col, A * 0.95);
     g.restore();
@@ -345,7 +348,7 @@
       sc.parent[p.id] = 'core';
       sc.links.push({ a: 'core', b: p.id, col: p.hue, live: live > 0, kind: 'project', hue: p.hue });
       ms.forEach(function (m, i) {
-        var o = p.offs[i] || [0, 0];
+        var o = p.offs[i] || [Math.cos(i * 2.4) * 120, Math.sin(i * 2.4) * 120];
         var mx = cx + o[0] * shape, my = cy + o[1] * shape;
         sc.nodes.push(nodeFor(m, mx, my, 62 * shape, p.id, true));
         sc.parent[m.id] = p.id;
@@ -434,10 +437,19 @@
       fx: $('.fx', root), sky: $('.sky', root), world: $('.world', root), card: $('.card', root),
       ctx: null, w: 0, h: 0, dpr: 1,
       src: null, scene: null, cam: null, focus: null, hover: null, cardFor: null,
-      items: {}, meta: {}, verbItems: [],
+      items: {}, meta: {}, verbItems: [], born: {},
       last: 0, raf: 0
     };
     S.ctx = S.fx.getContext('2d');
+
+    // A new object grows in over 800 ms from the moment it was created; reduced motion shows it at once.
+    function grow(key, t) {
+      var b = S.born[key];
+      if (b === undefined || reduce.matches) return 1;
+      var k = Math.min(1, Math.max(0, (t - b) / 800));
+      return 1 - Math.pow(1 - k, 3);
+    }
+    function markBorn(key) { S.born[key] = performance.now(); }
 
     function resize() {
       var w = root.clientWidth, h = root.clientHeight;
@@ -461,7 +473,7 @@
       var seed = 7 + Math.round(W) * 3;
       var rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
       var pts = [], i, j;
-      for (i = 0; i < 70; i++) pts.push({ x: rnd() * W, y: rnd() * H });
+      for (i = 0; i < 96; i++) pts.push({ x: rnd() * W, y: rnd() * H });
       g.lineWidth = 0.6;
       for (i = 0; i < pts.length; i++) {
         for (j = i + 1; j < pts.length; j++) {
@@ -526,7 +538,7 @@
       var pos = { core: P0(sc.core.x, sc.core.y) };
       sc.nodes.forEach(function (n) { pos[n.id] = P0(n.x, n.y); });
       sc.projects.forEach(function (p) {
-        if (p.members) {
+        if (p.members && p.members.length) {
           var cx = 0, cy = 0;
           p.members.forEach(function (id) { cx += pos[id].x; cy += pos[id].y; });
           pos[p.id] = { x: cx / p.members.length, y: cy / p.members.length };
@@ -562,11 +574,15 @@
       // Project hulls: a faceted shell around each project's missions, with an inner mesh.
       sc.projects.forEach(function (p) {
         if (!p.members) return;
-        var ring = [];
+        var ring = [], gp = grow(p.id, anim);
         p.members.forEach(function (id) {
           var q = pos[id], halo = S.items[id] ? S.items[id].r * s + 46 * s : 60 * s;
           for (var j = 0; j < 8; j++) ring.push({ x: q.x + Math.cos(j * TAU / 8) * halo, y: q.y + Math.sin(j * TAU / 8) * halo });
         });
+        if (!p.members.length) {
+          var c0 = pos[p.id];
+          for (var j0 = 0; j0 < 8; j0++) ring.push({ x: c0.x + Math.cos(j0 * TAU / 8) * 60 * s, y: c0.y + Math.sin(j0 * TAU / 8) * 60 * s });
+        }
         var hull = convexHull(ring);
         if (hull.length < 3) return;
         var lit = !!H[p.id];
@@ -580,7 +596,7 @@
         }, hull[0]);
         var it = S.items[p.id];
         if (it) { it.cx = cc.x; it.cy = cc.y; it.hr = hr + 6; it.pt = { x: anchor.x + dx * 10, y: anchor.y + dy * 10 }; it.r = 0; it.hullR = hr; }
-        g.save();
+        g.save(); g.globalAlpha = gp;
         g.beginPath(); hull.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
         g.fillStyle = rgba(p.hue, lit ? 0.08 : 0.035); g.fill();
         g.strokeStyle = rgba(p.hue, lit ? 0.6 : 0.24); g.lineWidth = 1; g.stroke();
@@ -603,6 +619,8 @@
       sc.links.forEach(function (l, idx) {
         var a = pos[l.a], b = pos[l.b];
         if (!a || !b) return;
+        var gl = grow(l.a + '>' + l.b, anim);
+        if (gl < 1) b = { x: a.x + (b.x - a.x) * gl, y: a.y + (b.y - a.y) * gl };
         var lit = !!(H[l.a] && H[l.b]);
         g.save();
         if (lit) {
@@ -643,8 +661,14 @@
       var order = sc.nodes.slice().sort(function (a, b) { return (H[a.id] ? 1 : 0) - (H[b.id] ? 1 : 0); });
       order.forEach(function (n, idx) {
         var q = pos[n.id], lit = !!H[n.id], R = n.r * s;
+        var gn = grow(n.id, anim);
+        if (gn < 1) {
+          R *= 0.35 + 0.65 * gn;
+          g.save(); g.strokeStyle = IVORY; g.lineWidth = 1; g.globalAlpha = (1 - gn) * 0.6;
+          g.beginPath(); g.arc(q.x, q.y, R * (1.3 + (1 - gn) * 1.8), 0, TAU); g.stroke(); g.restore();
+        }
         var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
-        var alpha = lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5;
+        var alpha = (lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5) * gn;
         var col = STATE[n.state] ? STATE[n.state].color : IVORY;
         if (n.kind === 'mission' || n.kind === 'record') {
           if (n.kind === 'mission' && n.state === 'waiting') {
@@ -659,8 +683,10 @@
           drawSolid(g, n.solid, q.x, q.y, R, rot, col, { alpha: 0.85, dash: n.dash ? [3, 3] : [], glyph: n.glyph, dotR: 1.8, lw: 1.2 });
         }
         if (n.kind === 'mission' || n.kind === 'agent' || n.kind === 'exec') {
+          g.globalAlpha = gn;
           if (n.kind === 'mission') drawBadge(g, n.state, q.x - R * 0.78, q.y - R * 0.82, anim, !reduce.matches);
           if (n.kind === 'agent') drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, !reduce.matches);
+          g.globalAlpha = 1;
         }
         var it = S.items[n.id];
         if (it) { it.cx = q.x; it.cy = q.y; it.hr = R + 10; it.pt = q; it.r = R; it.par = n.parent; }
@@ -771,7 +797,7 @@
       }
       entries.forEach(function (e) {
         var quiet = sc.compact && e.it.kind === 'mission' && !(sc.nodes.some(function (n) { return n.id === e.id && n.live; })) && S.hover !== e.id;
-        e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '');
+        e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '') + (e.it.fresh ? ' is-new' : '');
         e.it.lbl.style.transform = 'translate(' + e.box.x0.toFixed(1) + 'px,' + e.box.y0.toFixed(1) + 'px)';
       });
       // Hit targets follow the figures.
@@ -839,6 +865,7 @@
       S.world.appendChild(lbl);
       var it = S.items[id] || (S.items[id] = {});
       it.lbl = lbl; it.cls = o.cls; it.kind = o.kind;
+      it.fresh = S.born[id] !== undefined && performance.now() - S.born[id] < 1200;
       return it;
     }
 
@@ -858,6 +885,7 @@
 
     function build() {
       var sc = S.scene;
+      S.world.style.setProperty('--lk', Math.max(0.72, Math.min(1, sc.k)).toFixed(3));
       S.world.innerHTML = '';
       S.items = {}; S.meta = {}; S.verbItems = [];
       S.card.hidden = true; S.cardFor = null;
@@ -958,6 +986,7 @@
 
     S.setScene = setScene;
     S.setFocus = setFocus;
+    S.markBorn = markBorn;
     S.setHover = setHover;
     S.relayout = relayout;
     S.kick = kick;
@@ -1017,7 +1046,8 @@
         '<span class="row-state st-' + m.state + '">' + esc(stateLine(m)) + '</span>' +
         (m.state === 'waiting' ? '<a class="btn review" href="#/plan/' + m.id + '">Review plan</a>' : '') + '</li>';
     }).join('');
-    if (pid && projectOf(pid)) zoomTo(pid);
+    if (pid === 'chat') setTimeout(function () { $('#chat-input').focus({ preventScroll: true }); }, 0);
+    else if (pid && projectOf(pid)) zoomTo(pid);
   }
 
   function renderMission(id) {
@@ -1029,6 +1059,7 @@
     $('[data-m-crumb]', sec).textContent = m.title;
     $('[data-m-title]', sec).textContent = m.title;
     $('[data-m-branch]', sec).textContent = m.branch;
+    $('#m-replay').href = '#/replay/' + m.id;
     var st = $('[data-m-state]', sec);
     st.textContent = stateLine(m);
     st.className = 'state-line st-' + m.state;
@@ -1069,6 +1100,56 @@
     }
   }
 
+  var REPLAY = {
+    'm-date': [
+      { time: '09:00', title: 'Task initiated', text: 'Fix the date test on fix/date-test.', states: ['intended', 'authorized', 'recorded'], marker: 'recorded', notes: ['Authority: plan v1 approved by you, scope fix/date-test, 3 tasks.', 'Starting state captured: branch head and test inputs.'], artifact: 'Starting snapshot' },
+      { time: '09:12', title: 'Files changed', text: '3 files changed on fix/date-test.', states: ['recorded'], marker: 'recorded', notes: ['Changes linked to this task.'], artifact: 'Diff, 3 files' },
+      { time: '09:18', title: 'Tests passed', text: 'Date test suite passed.', states: ['recorded'], marker: 'recorded', notes: ['Validation evidence recorded.'], artifact: 'Test run log' },
+      { time: '09:24', title: 'External response lost', text: 'The push of fix/date-test to the remote was sent. The response never arrived.', states: ['maybe', 'uncertain'], marker: 'uncertain', notes: ['Uncertain: the push may have taken effect on the remote.', 'Not classed as failed. Not retried.'], artifact: 'Request record, no response' },
+      { time: '09:25', title: 'Workflow suspended', text: 'No unsafe retry. A second push could repeat the first.', states: ['suspended'], marker: 'suspended', notes: ['Operator reconciliation required before anything continues.'], artifact: null }
+    ]
+  };
+  var RS = [
+    ['intended', 'Intended', 'What the agent planned to do.'],
+    ['authorized', 'Authorized', 'Approved by you, within scope.'],
+    ['recorded', 'Recorded', 'Durably written to the record.'],
+    ['maybe', 'May have taken effect', 'Sent, with no confirmation back.'],
+    ['uncertain', 'Uncertain', 'The record cannot say. Do not retry.'],
+    ['suspended', 'Suspended', 'Paused. Needs operator reconciliation.']
+  ];
+  var replayId = 'm-date';
+
+  function renderReplay(id) {
+    var m = find(id) || find('m-date');
+    replayId = m.id;
+    var sec = $('#s-replay'), ev = REPLAY[m.id] || [], p = projectOf(m.project);
+    $('[data-rp-project]', sec).textContent = p.name;
+    $('[data-rp-crumb]', sec).textContent = m.title;
+    $('[data-rp-title]', sec).textContent = 'Replay: ' + m.title;
+    var suspended = ev.some(function (e) { return e.marker === 'suspended'; });
+    $('#rp-facts').innerHTML =
+      '<div><dt>Project</dt><dd>' + esc(p.name) + '</dd></div>' +
+      '<div><dt>Branch</dt><dd>' + esc(m.branch) + '</dd></div>' +
+      '<div><dt>Status</dt><dd class="' + (suspended ? 'st-waiting' : 'state-line') + '">' + (suspended ? 'Suspended, reconcile' : esc(stateLine(m))) + '</dd></div>';
+    $('#rp-legend').innerHTML = RS.map(function (r) {
+      return '<li class="rs-' + r[0] + '"><span class="mk" aria-hidden="true"></span><span><strong>' + r[1] + '</strong> ' + r[2] + '</span></li>';
+    }).join('');
+    $('#rp-timeline').innerHTML = ev.length ? ev.map(function (e) {
+      return '<li class="ev' + (e.marker === 'uncertain' ? ' ev-uncertain' : '') + '">' +
+        '<p class="time">' + e.time + '</p>' +
+        '<span class="mk-col"><span class="mk rs-' + e.marker + '" aria-hidden="true"></span></span>' +
+        '<div class="ev-body"><p class="ev-title">' + esc(e.title) + '</p>' +
+        '<p class="ev-text">' + esc(e.text) + '</p>' +
+        '<ul class="chips">' + e.states.map(function (s) {
+          var r = RS.filter(function (x) { return x[0] === s; })[0];
+          return '<li class="chip rs-' + s + '"><span class="mk" aria-hidden="true"></span>' + r[1] + '</li>';
+        }).join('') + '</ul>' +
+        '<ul class="ev-notes">' + e.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' +
+        (e.artifact ? '<p class="ev-art">Linked: ' + esc(e.artifact) + '</p>' : '') +
+        '</div></li>';
+    }).join('') : '<li class="ev"><div class="ev-body"><p class="ev-text">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</p></div></li>';
+  }
+
   function renderShared() {
     $('#s-shared [data-sentence]').textContent = sentence();
     sharedStage.setScene(sharedScene);
@@ -1079,9 +1160,12 @@
     $$('[data-stab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-stab') === sharedTab)); });
     var box = $('#s-panel');
     if (sharedTab === 'content') {
-      box.innerHTML = '<dl class="kv"><dt>Project files</dt><dd>12 items</dd><dt>Notes</dt><dd>34 items</dd><dt>Agent logs</dt><dd>28 items</dd><dt>Build outputs</dt><dd>18 items</dd><dt>Related content</dt><dd>156 items</dd></dl>';
+      box.innerHTML = '<ul class="rowlist"><li><span>Project files</span><span>12 items</span></li><li><span>Notes</span><span>34 items</span></li><li><span>Agent logs</span><span>28 items</span></li><li><span>Build outputs</span><span>18 items</span></li><li><span>Related content</span><span>156 items</span></li></ul><p class="small">Fixture counts. The same records, device permissions apply.</p>';
     } else if (sharedTab === 'relations') {
-      box.innerHTML = '<dl class="kv"><dt>Harbor</dt><dd>linked, 3 missions</dd><dt>Notes</dt><dd>linked, 2 missions</dd><dt>Lantern</dt><dd>linked, 2 missions</dd></dl><p class="small">Relations are fixture text. Core supplies the real ones.</p>';
+      box.innerHTML = '<ul class="rowlist">' + projects.map(function (p) {
+        var n = missions.filter(function (m) { return m.project === p.id; }).length;
+        return '<li><span><span class="pdot" style="--hue:' + p.hue + '"></span>' + esc(p.name) + '</span><span>orchestrated, ' + n + ' missions</span></li>';
+      }).join('') + '</ul><p class="small">Relations are fixture text. Core supplies the real ones.</p>';
     } else {
       box.innerHTML = '<dl class="kv"><dt>Type</dt><dd>Core system</dd><dt>Status</dt><dd>Verified</dd><dt>Updated</dt><dd>Today, 10:24</dd><dt>Items</dt><dd>248</dd><dt>Agents</dt><dd>2 active</dd><dt>Linked projects</dt><dd>3</dd></dl>' +
         '<p class="kicker">Evidence</p><p class="small">Same records, device permissions apply.</p>';
@@ -1173,15 +1257,21 @@
     $('#plan-note').value = planNote;
   }
 
-  function confirmBox(title, text, ok) {
+  function confirmBox(title, text, ok, apply) {
     $('#confirm-title').textContent = title;
     $('#confirm-text').textContent = text;
     pendingOk = ok;
+    pendingApply = apply || null;
     $('#confirm').showModal();
   }
 
   $('#confirm').addEventListener('close', function () {
-    if (this.returnValue === 'ok' && pendingOk) say(pendingOk);
+    var apply = pendingApply;
+    pendingApply = null;
+    if (this.returnValue === 'ok') {
+      if (apply) apply();
+      if (pendingOk) say(pendingOk);
+    }
     pendingOk = '';
   });
 
@@ -1204,10 +1294,175 @@
       'Prototype: request changes would carry your note and ' + sel.length + ' selected comment(s). Nothing was sent.');
   }
 
-  function addMission(title, project, what) {
-    counter++;
-    missions.push({ id: 'm-new-' + counter, title: title, project: project, branch: 'not created', state: 'idle', stateText: 'Not started', phase: -1, glyph: 'doc', what: what, latest: 'none recorded', task: 'none', exec: false, related: [], log: ['Created on this page only.'] });
+  /* ---------- Chat bar: scripted and simulated. No model call, nothing sent to Core. ---------- */
+
+  var thread = $('#msgs');
+  var PROMPTS = [
+    'Start a project called Atlas',
+    'Add a mission "Draft the brief" to Atlas',
+    'Add an idea "Offline capture" to Atlas',
+    'Make a plan for the brief',
+    'Run the notes index',
+    'Change the daily spend limit to 20 EUR',
+    'What is a replay?'
+  ];
+
+  function scrollThread() { var t = $('.thread'); t.scrollTop = t.scrollHeight; }
+  function addMsg(kind, html) {
+    var li = document.createElement('li');
+    li.className = 'msg msg-' + kind;
+    li.innerHTML = html;
+    thread.appendChild(li);
+    scrollThread();
+    return li;
   }
+  function lead(text) { return addMsg('arch', '<p>' + esc(text) + '</p>'); }
+  function receipts(list) {
+    return '<p class="receipts">' + list.map(function (r) { return '<a class="receipt" href="' + r.href + '">' + esc(r.label) + '</a>'; }).join('') + '</p>';
+  }
+  function quoted(text, fallback) {
+    var m = text.match(/["“”‘’']([^"“”‘’']{2,80})["“”‘’']/);
+    return m ? m[1].trim() : fallback;
+  }
+  function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24); }
+
+  // Each change to the constellation goes through here: data first, then one relayout; new objects grow in.
+  function refreshNow() { nowStage.relayout(); renderRail(); }
+
+  function createAtlas() {
+    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.26], offs: [[70, -96], [-30, -112], [96, 70]] });
+    nowStage.markBorn('atlas');
+    nowStage.markBorn('core>atlas');
+    refreshNow();
+  }
+
+  function newMission(title, idea) {
+    counter++;
+    var m = { id: 'm-new-' + counter, title: title, project: 'atlas', branch: 'feat/' + slug(title), state: 'idle', stateText: idea ? 'Idea' : 'Not started', phase: -1, glyph: idea ? 'list' : 'doc', what: title + '.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['Created from the chat (simulated).'] };
+    missions.push(m);
+    nowStage.markBorn('atlas>' + m.id);
+    nowStage.markBorn(m.id);
+    refreshNow();
+    return m;
+  }
+
+  function makePlan(m) {
+    plans[m.id] = {
+      version: 1,
+      why: 'Plan approval required.',
+      tasks: [
+        { key: 't1', text: 'Read the brief and list the open questions.' },
+        { key: 't2', text: 'Draft the outline and keep the sources linked.' },
+        { key: 't3', text: 'Check the outline against the success criteria.' }
+      ],
+      approve: 'Approving starts the run of 3 tasks on ' + m.branch + '.',
+      request: 'Sends the mission back to the planner with your note and the selected comments. Approval of v1 ends.',
+      reject: 'Cancels the mission. A decided approval cannot be changed. No undo.'
+    };
+    m.state = 'waiting'; m.stateText = 'Plan ready · review'; m.phase = 2;
+    m.latest = 'Plan v1 recorded, 3 tasks.';
+    m.log.push('Plan v1 recorded, waiting for your decision.');
+    refreshNow();
+  }
+
+  // A proposed effect: shown as a card, never run until the owner confirms the card.
+  function proposal(title, effect, done, apply) {
+    var li = addMsg('card', '<p class="card-k">Proposed · not run</p><p class="card-t">' + esc(title) + '</p><p class="small">' + esc(effect) + '</p>' +
+      '<div class="row"><button type="button" class="btn primary" data-card="approve">Approve…</button><button type="button" class="btn" data-card="dismiss">Dismiss</button></div>');
+    li.querySelector('[data-card="approve"]').addEventListener('click', function () {
+      confirmBox(title + '?', effect + ' Explicit approval only. Cancel is the default.', done, function () {
+        apply();
+        li.innerHTML = '<p class="card-k">Approved · simulated</p><p class="card-t">' + esc(title) + '</p><p class="small">' + esc(done) + '</p>';
+      });
+    });
+    li.querySelector('[data-card="dismiss"]').addEventListener('click', function () {
+      li.innerHTML = '<p class="card-k">Dismissed · nothing done</p><p class="card-t">' + esc(title) + '</p>';
+    });
+  }
+
+  // Not about a project: its own thread, never project memory unless the owner promotes it.
+  function general(body) {
+    addMsg('gen', '<p class="gen-k">General · not project memory</p><p>' + esc(body) + '</p>' +
+      '<label class="promote"><input type="checkbox" data-promote> <span>Promote to project memory (off)</span></label>');
+  }
+
+  function reply(text) {
+    var t = text.toLowerCase();
+    var question = /^(what|why|how|who|when|where|which|is|are|does|do|can)\b/.test(t) && !/\b(create|add|start|make|run|change|set|plan|send|spend)\b/.test(t);
+    if (question) return /replay|recover|reconcil|checkpoint/.test(t) ? general('A replay shows what an agent intended, what you authorized, what was durably recorded, what may have taken effect, and where state is uncertain. Recovery restores a checkpoint and never claims that every external effect can be undone.') : general('This is not about a project, so it stays in the general thread. The prototype answers with fixed text. A real build answers through the official CLI on your chosen account. Nothing here reaches project memory unless you promote it.');
+    if (/\b(spend|budget|limit|setting|settings|hook|hooks|account|accounts|token|tokens|billing)\b/.test(t)) {
+      lead('That changes a setting, so I have proposed it. Nothing changes until you approve.');
+      return proposal('Change the daily spend limit to 20 EUR', 'Core records a new limit for every project. This change spends nothing by itself. The prototype reads no tokens. Design rule: Archeus never touches tokens (V1 code conflict open, see design doc round 4).', 'Recorded as approved (simulated). No setting changed in this prototype.', function () {});
+    }
+    if (/\b(run|index|rerun|re-run)\b/.test(t)) {
+      var idx = find('m-index');
+      if (idx.state === 'running') return lead('Index notes is already running. Nothing was started.');
+      lead('Running work has an effect, so I have proposed it. Design rule: it starts only after you approve (V1 today starts mission work without a card, see round 4).');
+      return proposal('Run Index notes', 'Runs the indexer on the notes folder. Uses model time on your configured account through the official CLI.', 'Index notes is running (simulated).', function () {
+        idx.state = 'running'; idx.stateText = 'Indexing'; idx.phase = 3;
+        idx.latest = 'Started after your approval (simulated).';
+        idx.log.push('Started from the chat after your approval (simulated).');
+        refreshNow();
+      });
+    }
+    if (/\bplan\b/.test(t)) {
+      var target = missions.filter(function (m) { return m.project === 'atlas' && m.id.indexOf('m-new-') === 0 && !plans[m.id] && m.glyph !== 'list'; }).pop();
+      if (!target) return lead('Add a mission to Atlas first, then I can plan it. Nothing was planned.');
+      makePlan(target);
+      return addMsg('arch', '<p>Plan v1 for "' + esc(target.title) + '" has 3 steps (simulated). It waits for your review. Nothing starts until you approve.</p>' + receipts([{ label: 'Review plan v1', href: '#/plan/' + target.id }]));
+    }
+    if (/\bidea\b/.test(t)) {
+      if (!projectOf('atlas')) return lead('Create project Atlas first. Nothing was added.');
+      var idea = newMission(quoted(text, 'Offline capture'), true);
+      return addMsg('arch', '<p>Recorded the idea "' + esc(idea.title) + '" in Atlas. It is an idle figure until you make it a mission.</p>' + receipts([{ label: 'Idea: ' + idea.title, href: '#/mission/' + idea.id }]));
+    }
+    if (/\bmission\b/.test(t)) {
+      if (!projectOf('atlas')) return lead('Create project Atlas first. Nothing was added.');
+      var mis = newMission(quoted(text, 'Draft the brief'), false);
+      return addMsg('arch', '<p>Added mission "' + esc(mis.title) + '" to Atlas. Not started.</p>' + receipts([{ label: 'Mission: ' + mis.title, href: '#/mission/' + mis.id }]));
+    }
+    if (/\b(atlas|project)\b/.test(t)) {
+      if (projectOf('atlas')) return lead('Atlas already exists. Ask for a mission or an idea in it.');
+      createAtlas();
+      return addMsg('arch', '<p>Created project Atlas (simulated, V1 has no chat path for projects). Its star is in the constellation, with no missions yet.</p>' + receipts([{ label: 'Project Atlas', href: '#/now/atlas' }]));
+    }
+    general('This does not change a project, so it stays in the general thread. The prototype answers with fixed text for a few questions. A real build answers through the official CLI on your chosen account.');
+  }
+
+  function ask(text) {
+    var clean = text.trim().slice(0, 300);
+    if (!clean) return;
+    addMsg('you', '<p>' + esc(clean) + '</p>');
+    var typing = addMsg('typing', '<p>Archeus is composing. Simulated, no model call.</p>');
+    setTimeout(function () { typing.remove(); reply(clean); }, 650);
+  }
+
+  $('#chat-prompts').innerHTML = PROMPTS.map(function (p) {
+    return '<button type="button" class="prompt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
+  }).join('');
+  addMsg('arch', '<p>Tell me what to do. Projects, missions, ideas and plans are created here and appear in the constellation as they are made. Anything that runs, spends or changes a setting is proposed first. That is the design; V1 does not do it yet for runs.</p>');
+
+  document.addEventListener('submit', function (e) {
+    if (e.target.id !== 'chat-form') return;
+    e.preventDefault();
+    var input = $('#chat-input');
+    var text = input.value.trim();
+    if (!text) return say('Write something first.');
+    input.value = '';
+    ask(text);
+  });
+
+  document.addEventListener('click', function (e) {
+    var p = e.target.closest('[data-prompt]');
+    if (p) ask(p.getAttribute('data-prompt'));
+  });
+
+  document.addEventListener('change', function (e) {
+    if (!e.target.hasAttribute('data-promote')) return;
+    var on = e.target.checked, label = e.target.parentNode.querySelector('span');
+    label.textContent = on ? 'Promote to project memory (on)' : 'Promote to project memory (off)';
+    say(on ? 'Promoted to Harbor memory (simulated). Nothing was saved to Core.' : 'Promotion withdrawn. Nothing was saved.');
+  });
 
   function stop() {
     var now = Date.now();
@@ -1227,11 +1482,6 @@
   function setStopLabel(t) { $$('.stop-btn').forEach(function (b) { b.textContent = t; }); }
 
   document.addEventListener('click', function (e) {
-    if (e.target.id === 'tell-cancel') {
-      $('#tell-text').value = '';
-      $('#tell-error').textContent = '';
-      return say('Draft cleared. Nothing was sent.');
-    }
     if (e.target.id === 'now-overview') {
       nowStage.setFocus(null);
       e.target.hidden = true;
@@ -1249,6 +1499,8 @@
     if (act === 'close-sheet') closeSheet(false);
     else if (act === 'decide') decide(el.getAttribute('data-kind'));
     else if (act === 'stop') stop();
+    else if (act === 'reconcile') confirmBox('Reconcile ' + find(replayId).title + '?', 'You record what you saw on the remote: did the push take effect? Core would store your answer with this replay. Nothing is pushed, retried or reversed here.', 'Prototype: nothing was reconciled. The suspension stays.');
+    else if (act === 'restore') confirmBox('Restore the 09:00 starting state?', 'This resets the local branch to the captured snapshot. It does not undo a push the remote may already have received.', 'Prototype: nothing was restored.');
   });
 
   document.addEventListener('change', function (e) {
@@ -1279,40 +1531,15 @@
       renderPlan(planId);
       $('#s-plan h1').focus();
       say('Comment saved on ' + task + '. It reaches the planner only inside a request-changes decision.');
-    } else if (f.id === 'tell-form') {
-      e.preventDefault();
-      var text = $('#tell-text').value.trim();
-      if (!text) {
-        $('#tell-error').textContent = 'Write what Archeus should do first.';
-        return $('#tell-text').focus();
-      }
-      $('#tell-error').textContent = '';
-      addMission(text.split('\n')[0].slice(0, 48), 'harbor', text);
-      $('#tell-text').value = '';
-      location.hash = '#/now';
-      say('Fake: a star was added to Harbor on this page only. Nothing was sent or started.');
-    } else if (f.id === 'mission-form') {
-      e.preventDefault();
-      var title = $('#m-title').value.trim();
-      if (!title) {
-        $('#m-error').textContent = 'Give the mission a title.';
-        return $('#m-title').focus();
-      }
-      $('#m-error').textContent = '';
-      var objective = $('#m-objective').value.trim() || 'No objective given.';
-      var proj = $('#m-project').value.toLowerCase();
-      addMission(title.slice(0, 120), proj, objective);
-      location.hash = '#/now';
-      say('Fake: "' + title + '" was added as idle in ' + $('#m-project').value + '. Nothing was created in Core.');
     }
   });
 
   var SCREENS = {
     now: renderNow,
     mission: function (id) { renderMission(id); },
+    replay: renderReplay,
     shared: renderShared,
     phone: renderPhone,
-    start: function () {},
     plan: renderPlan
   };
 
