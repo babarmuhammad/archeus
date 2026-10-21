@@ -369,6 +369,11 @@ export function liveCountText(live: { kind?: string }[]): string {
   return `${attempts} running${own ? ` · ${own} own call${own === 1 ? '' : 's'} in flight` : ''}`;
 }
 
+/** The offline header's line: the live count, then whether the emergency stop is engaged. */
+export function headerLine(s: { live: { kind?: string }[]; armed: boolean }): string {
+  return `${liveCountText(s.live)}${s.armed ? '' : ' · Emergency stop engaged'}`;
+}
+
 // ── the emergency stop in Control → About (P20 F7, F8) ──
 
 /** How a press ended, for a caller that says it itself (ActionButton's

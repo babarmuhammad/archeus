@@ -14,7 +14,7 @@ import { MAP_MIN_WIDTH, useWide } from '../graph/wide';
 import { objectHref } from '../nav/destinations';
 import { activeMissions, automationLine, mapSeeds, recentDecisions, stateSentence, upcoming } from '../state/now';
 import { attemptIds } from '../state/orbit';
-import { ago, liveCountText } from '../state/present';
+import { ago, headerLine } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
 import { timeline } from '../state/timeline';
 import { ActionButton, Changed, Empty, Fresh, Loadable, RefLabel, Section, StateBadge, refName, thread, useChanged } from '../components/ui';
@@ -164,7 +164,7 @@ function Decisions() {
 function MapSection({ missions }: { missions: MissionList['missions'] }) {
   const status = useRead<Status>(paths.status());
   const seeds = mapSeeds(missions);
-  const ids = attemptIds(status.data?.live ?? []);
+  const ids = attemptIds(status.data?.live);
   const key = ids.join();
   const live = useMemo(() => new Set(ids), [key]);
   return (
@@ -196,7 +196,7 @@ export function OfflineNow({ kept }: { kept: Kept[] }) {
         </p>
         <h1>Now</h1>
         <p className="state-sentence">{stateSentence(active.length, att.count)}</p>
-        <p className="hint">{liveCountText(status.live)}{status.armed ? null : ' · Emergency stop engaged'}</p>
+        <p className="hint">{headerLine(status)}</p>
         <Section title="Needs you">
           {att.items.length ? (
             <ul className="rows">

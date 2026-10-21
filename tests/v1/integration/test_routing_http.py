@@ -141,30 +141,45 @@ def test_H07_a_missions_resources_are_admin_and_validated(core):
                  token=_browser(core)).status == 403
 
 
-def _walk(x):
-    """Every key and every string value of a decoded JSON body."""
+def _keys(x):
+    """Every key of a decoded JSON body, at any depth."""
     if isinstance(x, dict):
         for k, v in x.items():
             yield k
-            yield from _walk(v)
+            yield from _keys(v)
     elif isinstance(x, list):
         for v in x:
-            yield from _walk(v)
+            yield from _keys(v)
+
+
+def _strings(x):
+    if isinstance(x, dict):
+        for v in x.values():
+            yield from _strings(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _strings(v)
     elif isinstance(x, str):
         yield x
 
 
-#: the observe-scope reads a registered account's home could reach: each must stay free of it
-OBSERVE_READS = ('/v1/status', '/v1/accounts', '/v1/route-decisions', '/v1/events',
-                 '/v1/attention', '/v1/digest', '/v1/sync', '/v1/projects', '/v1/harnesses',
-                 '/v1/sessions', '/v1/automations', '/v1/policies', '/v1/approvals',
-                 '/v1/provider-terms')
+def _stored_snapshots(core):
+    """The input snapshot of every route decision row, read from Core's database as written."""
+    import json
+    import os
+    import sqlite3
+    con = sqlite3.connect(os.path.join(core.home, 'archeus.db'))
+    try:
+        return [json.loads(body).get('input_snapshot') or {}
+                for (body,) in con.execute('SELECT body FROM route_decisions')]
+    finally:
+        con.close()
 
 
-def test_H09_no_observe_read_names_a_registered_home(core, tmp_path):
-    """Owner, 2026-10-21: an observe-scope reader never gets a path under a registered
-    account's home (the home is this machine's path). Every body is walked, keys and values."""
-    from archeus.harnesses import base
+def test_H09_the_three_projected_reads_name_no_home_field(core, tmp_path):
+    """Owner, 2026-10-21: field projection on /v1/accounts, /v1/route-decisions (list and
+    one) and /v1/status. The stored rows name the home (the precondition), and no body of
+    those reads names it in a home field, a `ref` of a snapshot account or an `account_ref`."""
     home = str(tmp_path / 'Work-Claude')
     _post(core, '/v1/accounts', {'harness_id': 'fake', 'label': 'Work', 'auth_kind': 'api_key',
                                  'home_ref': home})
@@ -172,15 +187,17 @@ def test_H09_no_observe_read_names_a_registered_home(core, tmp_path):
     _wait(lambda: core.http('GET', '/v1/missions/%s' % mid).json()['state'] == 'COMPLETED',
           'mission completed')
     decisions = core.http('GET', '/v1/route-decisions?source=%s' % mid).json()['route_decisions']
-    reads = list(OBSERVE_READS) + ['/v1/route-decisions?source=%s' % mid,
-                                   '/v1/missions/%s' % mid, '/v1/missions/%s/trace' % mid,
-                                   '/v1/missions/%s/timeline' % mid,
-                                   '/v1/missions/%s/verifications' % mid]
+    # precondition: the stored snapshots name the home, so only the projection removes it here
+    assert decisions and any(a.get('home_ref') == home for snap in _stored_snapshots(core)
+                             for a in snap.get('accounts') or ())
+    reads = ['/v1/accounts', '/v1/status', '/v1/route-decisions?source=%s' % mid]
     reads += ['/v1/route-decisions/%s' % d['id'] for d in decisions]
-    forms = (home, base.canonical_home(home))     # not tmp_path: Core's own run dirs live under it
     for path in reads:
         got = core.http('GET', path)
         assert got.status == 200, path
-        for text in _walk(got.json()):
-            assert not any(f in text for f in forms), (path, text)
-
+        body = got.json()
+        assert not {'home_ref', 'home_key', 'account_ref'} & set(_keys(body)), path
+        assert not any(home in v for v in _strings(body)), path
+        if path.startswith('/v1/route-decisions/'):
+            accounts = (body.get('input_snapshot') or {}).get('accounts') or ()
+            assert all('ref' not in a for a in accounts), path

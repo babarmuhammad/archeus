@@ -179,11 +179,9 @@ test('an execution frame makes /v1/status stale: its live work moved', () => {
   assert.ok(stale('/v1/status?project=prj_1'));
 });
 
-test('the live map lights attempts only: an own call is never a node (G8), and the header counts the same way', () => {
+test('the live map lights attempts only: an own call is never a node (G8)', () => {
   const live = [{ id: 'exe_1', kind: 'execution', state: 'RUNNING' }, { id: 'own_1', kind: 'own_call', state: null }];
   assert.deepEqual(attemptIds(live), ['exe_1']);
   assert.deepEqual(attemptIds([]), []);
-  // the Now surface feeds the map from attemptIds and names the header with liveCountText
-  assert.ok(src('../src/surfaces/Now.tsx').includes('attemptIds(status.data?.live ?? [])'));
-  assert.ok(src('../src/surfaces/Now.tsx').includes('{liveCountText(status.live)}'));
+  assert.deepEqual(attemptIds(undefined), []);      // a status not read yet lights nothing
 });

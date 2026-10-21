@@ -3,7 +3,6 @@ G13; R13-06): own calls in flight in `live_work`, each account's consumption
 and effective policy in `/v1/accounts`, and the `status` verb in words. Fake
 adapters and the real database only."""
 
-import json
 import time
 
 import pytest
@@ -222,48 +221,48 @@ def test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home(r, tmp_p
     assert all(k not in x for x in listed + [one] for k in resources.HOME_FIELDS)
 
 
-def test_owner_2026_10_21_route_decision_reads_show_no_account_home(r, tmp_path):
-    """GET /v1/route-decisions and /{id} strip the home at the read (review F1); the row keeps it."""
+def test_owner_2026_10_21_route_decision_reads_name_no_home_field(r, tmp_path):
+    """The route-decision reads (list and one) leave out the fields that name a home: the
+    snapshot's `ref` and `home_ref`, and `account_ref` (decision, candidates, usage rows).
+    Field projection only: the stored rows keep all of them."""
     home = str(tmp_path / 'Work-Claude')
     r.account('A', home_ref=home)
     rid = call(r)
+    r.do(C.end_call, who=r.system, route_decision_id=rid, outcome={'state': 'ok'})
     with r.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, rid).entity
+        used = rows.where(conn, entities.UsageLedger, route_decision_id=rid)
         listed = queries.route_decisions(conn)
         one = queries.get_route_decision(conn, rid)
-        stored = rows.get(conn, entities.RouteDecision, rid).entity.input_snapshot
-    shown = list(_strings([listed, one]))
-    for form in (home, str(tmp_path), base.canonical_home(home)):
-        assert not any(form in v for v in shown), form
-    assert not {'home_ref', 'home_key'} & set(_keys([listed, one]))
-    assert any(a.get('home_ref') == home for a in stored['accounts'])     # the row keeps it
-    # a default account names its home in its ref (harness:canonical home): the home is said as its home
-    default = {'id': None, 'ref': 'fake:' + base.canonical_home(home), 'home_ref': home}
-    got = queries._public_decision({'input_snapshot': {'accounts': [default]}, 'account_ref': default['ref']})
-    assert got['input_snapshot']['accounts'] == [{'id': None, 'ref': 'fake:its home'}]
-    assert got['account_ref'] == 'fake:its home'
-    # a registered account's ref is its home itself: that value goes, exactly
-    reg = {'input_snapshot': {'accounts': [{'id': 'acc_1', 'ref': home, 'home_ref': home}]},
-           'account_ref': home}
-    assert queries._public_decision(reg)['account_ref'] is None
+    # precondition: the stored rows name the home, so only the projection removes it
+    assert stored.account_ref == home and used and used[0].entity.account_ref == home
+    assert any(a.get('home_ref') == home and a.get('ref') == home
+               for a in stored.input_snapshot['accounts'])
+    for body in (listed, one):
+        assert not {'home_ref', 'home_key', 'account_ref'} & set(_keys(body))
+    assert all('ref' not in a for a in one['input_snapshot']['accounts'])
+    assert not any(home in v for v in _strings([listed, one]))
 
 
-def test_owner_2026_10_21_live_work_and_every_read_body_name_no_registered_home(r, tmp_path):
-    """Strip at read (owner, 2026-10-21): an own call in flight names no home, and the
-    net every observe body passes through (`queries.public_body`) holds for any surface."""
+def test_owner_2026_10_21_the_default_account_fields_are_left_out():
+    """A default account's snapshot entry carries its home in `ref` and `home_ref`."""
+    default = {'id': None, 'harness': 'fake', 'ref': 'fake:C:/Default', 'home_ref': 'C:/Default'}
+    got = queries._public_decision({'input_snapshot': {'accounts': [default]},
+                                    'account_ref': 'fake:C:/Default',
+                                    'candidates': [{'harness': 'fake', 'account_ref': 'fake:C:/Default'}]})
+    assert got['input_snapshot']['accounts'] == [{'id': None, 'harness': 'fake'}]
+    assert 'account_ref' not in got and got['candidates'] == [{'harness': 'fake'}]
+
+
+def test_owner_2026_10_21_live_work_names_no_home_field(r, tmp_path):
+    """An own call in flight leaves out `account_ref` (the home for a registered account)."""
     home = str(tmp_path / 'Work-Claude')
     a = r.account('A', home_ref=home)
     flying = call(r)
     with r.db.read() as conn:
+        stored = rows.get(conn, entities.RouteDecision, flying).entity
         work = live.live_work(conn)
-        body = {'performed_by': {'account_id': a, 'account_ref': home,
-                                 'reviewer': {'account': home}}, 'home_ref': home}
-        netted = queries.public_body(conn, body)
-        said = queries.public_body(conn, {'text': 'kept in ' + home})
-    assert said == {'text': 'kept in its home'}
+    assert stored.account_ref == home                    # the row keeps it
     (item,) = work
-    assert item['id'] == flying and 'account_ref' not in item
-    assert home not in json.dumps(work) and base.canonical_home(home) not in json.dumps(work)
-    assert netted == {'performed_by': {'account_id': a, 'account_ref': None,
-                                       'reviewer': {'account': None}}}
-    assert netted['performed_by']['account_id'] == a          # ids are not homes: kept
-
+    assert item['id'] == flying and item['account_id'] == a and 'account_ref' not in item
+    assert not any(home in v for v in _strings(work))

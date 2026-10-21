@@ -544,36 +544,31 @@ The review's verdict was CHANGES. What changed, finding by finding:
   computes `live_counts` once for all its accounts. Ceiling, recorded: the day's `route_decisions`
   are still scanned by `created_at` (no index). An index is a migration; none was added (0019 is
   not taken), and the owner may ask for one.
-- **Route-decision reads (review F1; owner, 2026-10-21: "Strip at read (Recommended)").**
-  `queries.route_decisions` and `get_route_decision` pass each decision through `_public_decision`:
-  the keys `home_ref` and `home_key` are dropped everywhere in it; a value that is a home in plain
-  or canonical form (a snapshot ref, the chosen `account_ref`) becomes null; a value that only
-  contains one (a default account's `<harness>:<canonical home>`) says "its home" in its place.
-  The stored row keeps them, because the execution manager reads the stored snapshot for a default
-  account's home (`execution/manager.py`). Test:
-  `test_owner_2026_10_21_route_decision_reads_show_no_account_home`; mutants Z145-Z146.
-- **Strip at read, every observe read (owner, 2026-10-21: "Strip it (Recommended)").** `/v1/status`'s
-  own-call items no longer carry `account_ref` (for a registered account, its home path); the
-  stored row keeps it. The net: `queries.public_body` passes every observe-scope GET body
-  (`archeus/api/server.py`, after the handler) and drops `home_ref`/`home_key` keys and any value
-  that is a registered account's home (plain or canonical form; a value that only contains one says
-  "its home"). The per-surface projections (route decisions, the accounts view, the live item) stay
-  as the owner named them; the net covers what they do not reach: the usage rows of a route decision,
-  a verification's `performed_by.account_ref` (`verification.py`), a review's reviewer resource.
-  Test: `test_H09_no_observe_read_names_a_registered_home` (status, accounts, route-decisions list and
-  one, events, attention, missions, trace, timeline, verifications and more) and
-  `test_owner_2026_10_21_live_work_and_every_read_body_name_no_registered_home` (live work, the net);
-  mutants Z151-Z152, and Z145-Z146 on the shared scrub.
-  **Not covered, recorded:** a DEFAULT account's key is `<harness>:<canonical home>` (ADR-0048 D-25.1),
-  and its home is not a registered account, so the net (which reads the account table) does not
-  scrub it; it appears in events payloads (`account_ref`), a route decision's `account_ref`, and
-  an own call's `account_ref`. The route-decision projection does cover the decision's own
-  snapshot entry. Owner decision needed if default homes are to be stripped at the net too.
-  **Not checked:** the event stream (`/v1/events/stream`, `/v1/executions/{id}/stream`) is not a JSON
-  body and is not passed through the net.
+- **Field projection on three reads (owner, 2026-10-21: "Field projection only (Recommended)";
+  earlier answers "Strip at read" and "Strip it").** Slice B guarantees only this: `/v1/accounts`,
+  `/v1/route-decisions` (list and one) and `/v1/status` no longer carry the fields that name an
+  account's home. Those fields are left out by name, never by matching a value:
+  - `/v1/accounts`: `home_ref` and `home_key` (`resources.HOME_FIELDS`).
+  - `/v1/route-decisions` (`queries._public_decision`, `get_route_decision`'s usage rows): a snapshot
+    account's `ref`, `home_ref` and `home_key`; `account_ref` on the decision, on each candidate and
+    on each usage row.
+  - `/v1/status`: an own call's `account_ref` (`live.live_work`).
+  The stored rows keep every field (the execution manager reads the snapshot). Tests:
+  `test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home`,
+  `test_owner_2026_10_21_route_decision_reads_name_no_home_field`,
+  `test_owner_2026_10_21_the_default_account_fields_are_left_out`,
+  `test_owner_2026_10_21_live_work_names_no_home_field`, and `test_H09_the_three_projected_reads_name_no_home_field`
+  (HTTP, with a stored-row precondition). Mutants Z151, Z153-Z157, Z156.
+  **Not guaranteed by slice B (moved to T-144, the security card):** every other read that can carry
+  a home. Known examples: verification and review records (`performed_by.account_ref`,
+  `reviewer_resource`), events payloads, the route decision of a default account (its key is
+  `<harness>:<canonical home>`, ADR-0048 D-25.1), any free text that names a home, and the event
+  streams. A value-matching net was built and removed on the owner's answer; its spelling and
+  boundary findings are on the T-144 card.
 - **Now map (review F2).** The live map's set is `attemptIds(status.data.live)` (`orbit.ts`): an own
-  call is never a map node (G8). Test: `orbit.test.ts`; mutants Z148-Z149. The header count
-  `liveCountText(status.live)` is pinned by a source check and mutant Z150 (review F4).
+  call is never a map node (G8). Test: `orbit.test.ts` (`attemptIds`, behaviour only); mutant Z148.
+  The offline header is `headerLine(status)` (`present.ts`), tested in `present.test.ts`; mutant
+  Z150. The source-text pins are gone; the map and the header are pure functions now.
 - **S5: mutant gaps.** Z130-Z142 cover the in-flight count, its account (Z131 books it to no
   account), the lapsed flip, the in-flight zero, the palette skip, the TS and Python in-flight
   text, the TUI usage line, the execution-only link filter, the summary-only consumers, the
