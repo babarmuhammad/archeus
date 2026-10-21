@@ -20,6 +20,7 @@ from ..domain.events import new_event
 from ..domain.values import Ref
 from ..routing import router as R
 from . import authorization as A
+from . import executions as X
 from . import lifecycle
 from .queries import view
 
@@ -430,12 +431,33 @@ def _approved_fallbacks(conn, task, plan):
                    and a.entity.plan_id == plan.id})
 
 
+def breaker(conn, harness_id, now):
+    """O7's spawn breaker of a harness as the snapshot and the harness view
+    carry it (T-106): None when closed."""
+    b = X.spawn_breaker(conn, harness_id, now)
+    return b and dict(b, until=b['until'] and _iso(b['until']))
+
+
+def route_wait(conn, task_id, now):
+    """True while the task's latest route found it could run only on harnesses
+    that cannot start (O7): it waits READY until that route's `unblock_at`, so
+    it is not routed again on every pass (T-106)."""
+    got = rows.where(conn, entities.RouteDecision, task_id=task_id)
+    d = got[-1].entity if got else None
+    return bool(d and d.result == 'blocked' and d.unblock_at and _epoch(d.unblock_at) > now
+                and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates))
+
+
 def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
     """(requirements, snapshot, readings) for an authorised task: the execution
     adapters (the registry's), whose own account is the harness's default."""
     from ...harnesses.registry import _is_fake
     rp = mission.resource_preferences or {}
     hs = [harness_view(a, _is_fake(a)) for a in sorted(adapters, key=lambda a: a.id)]
+    for h in hs:
+        b = breaker(conn, h['id'], now)
+        if b:
+            h['breaker'] = b
     accounts, readings = _registered(conn, {h['id'] for h in hs}, feed, now)
     have = {a['harness'] for a in accounts}
     by = {a.id: a for a in adapters}

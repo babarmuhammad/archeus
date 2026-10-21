@@ -400,6 +400,26 @@ def test_a_disabled_or_unverified_account_is_never_routed_and_degraded_only_by_f
     assert R.route(task(), s)['result'] == 'fallback'
 
 
+def test_O7_an_open_start_breaker_takes_the_harness_out_and_half_open_lets_it_try():
+    """T-106: the breaker is a fact of the snapshot; open stops the harness at
+    `breaker` with its last error and says when it may try again, half-open
+    (and a snapshot recorded before the field) routes as before."""
+    until = '2026-09-26T10:05:00.000Z'
+    hs = [harness('a'), harness('b')]
+    hs[0]['breaker'] = {'state': 'open', 'until': until, 'error': 'no process'}
+    d = R.route(task(), snap(hs, [own('a'), own('b')]))
+    assert (d['result'], d['harness_id'], steps(d)['a']) == ('selected', 'b', 'breaker')
+    assert next(c['reason'] for c in d['candidates'] if c['harness'] == 'a') == (
+        'cannot start: no process')
+    d = R.route(task(), snap(hs[:1], [own('a')]))
+    assert (d['result'], d['unblock_at']) == ('blocked', until)
+    assert R.explain(d, task()).startswith('Nothing could run this until %s.' % until)
+    hs[0]['breaker'] = {'state': 'half_open', 'until': None, 'error': 'no process'}
+    assert R.route(task(), snap(hs[:1], [own('a')]))['harness_id'] == 'a'
+    del hs[0]['breaker']
+    assert R.route(task(), snap(hs[:1], [own('a')]))['harness_id'] == 'a'
+
+
 # ── U-D determinism, replay, explanation ───────────────────────────────────
 
 def _world(seed):

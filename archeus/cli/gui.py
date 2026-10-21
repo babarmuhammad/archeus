@@ -41,16 +41,21 @@ NOTICE_EVERY_S = 10
 APPROVAL_WORDS = {'plan': 'plan', 'task': 'task', 'action': 'tool call',
                   'route': 'route choice', 'start': 'start'}
 ESTOPPED = 'Emergency stop: every execution was stopped'
+CANNOT_START = '%s cannot start a process; Archeus tries again in 5 minutes'
 
 
 def notice(event):
-    """What the tray says for one event, or None (p21-design-gate D1): only an
-    approval request and an e-stop, named by their kind, never by their content."""
+    """What the tray says for one event, or None (p21-design-gate D1): an
+    approval request and an e-stop, named by their kind, and a harness's start
+    breaker opening (O7, T-106), named by the harness; never their content."""
     if event['type'] == 'core.estopped':
         return ESTOPPED
     if event['type'] == 'approval.requested':
         kind = (event.get('payload') or {}).get('kind')
         return 'A %s waits for your decision' % APPROVAL_WORDS.get(kind, 'request')
+    if event['type'] == 'harness.state_changed' and (event.get('payload') or {}).get(
+            'breaker') == 'open':
+        return CANNOT_START % event['subject']['id']
     return None
 
 

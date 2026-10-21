@@ -54,6 +54,7 @@ because a tunnel forwards from loopback (§8.3).
 """
 
 import re
+import time
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 
@@ -560,7 +561,11 @@ def set_opt_in(req):
 
 
 def list_harnesses(req):
-    return 200, {'harnesses': req.api.resources.harnesses()}
+    """Each harness with its O7 start breaker, None when closed (T-106)."""
+    hs, now = req.api.resources.harnesses(), time.time()
+    with req.api.db.read() as conn:
+        return 200, {'harnesses': [dict(h, breaker=resources.breaker(conn, h['id'], now))
+                                   for h in hs]}
 
 
 def set_mission_resources(req):

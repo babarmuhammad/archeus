@@ -864,6 +864,11 @@ def resources_section(app, doc):
                     'yes' if x['calls'] else 'no'), 'text-2')
                     + T(app, x.get('enforcement') or '—'))
             doc.add('    ' + app.st.paint('models ', 'text-2') + T(app, models))
+            b = x.get('breaker')
+            if b:                           # O7's start breaker (T-106)
+                doc.add('    ' + app.st.paint('cannot start ', 'text-2') + T(app, '%s · %s' % (
+                    'next try at %s' % b['until'] if b['state'] == 'open'
+                    else 'one task may try now', b.get('error') or 'no reason recorded')))
     doc.h('Accounts')
     al = doc.load(endpoints.list_accounts(), 'the accounts')
     if al is not None:

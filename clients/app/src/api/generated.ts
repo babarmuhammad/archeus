@@ -458,7 +458,14 @@ export interface Harness {
   models: Record<string, unknown>[];
   execution: boolean;
   calls: boolean;
+  breaker?: HarnessBreaker | null;
   [field: string]: unknown;
+}
+
+export interface HarnessBreaker {
+  state: 'open' | 'half_open';
+  until: string | null;
+  error: string | null;
 }
 
 export interface HarnessList {

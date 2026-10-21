@@ -331,12 +331,13 @@ class ExecutionManager:
             return True
         except (base.SpawnFailed, base.AlreadySpawned) as err:
             # nothing started, and nothing started unisolated instead (§3.4, §6.3).
-            # `binding` is the uncharged stop reason: an isolation-establishment
-            # failure is infrastructure, not the user's task failing (P11's O7, as
-            # decided 2026-10-08), and the task goes back to READY to be re-dispatched
-            # under the bounded retry policy that policy owns.
+            # Uncharged: a harness that cannot start a process, isolated or not, is
+            # infrastructure, not the user's task failing (P11's O7, decided
+            # 2026-10-08). The task goes back to READY under O7's start wait and the
+            # harness's breaker, both derived from these `spawn` ends (T-106).
             self._do(X.refuse, execution_id=e.id, reason='the process did not start: %s' % err,
-                     stop_reason='binding')
+                     stop_reason='binding' if isinstance(err, base.AlreadySpawned)
+                     else 'spawn')
             self._release_isolation(e)
             return True
         self._procs[e.id] = self._fresh(adapter, handle, seq, offset, None)

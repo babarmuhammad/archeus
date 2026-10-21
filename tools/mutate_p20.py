@@ -16,7 +16,8 @@ gate tests and drills no mutant named, and the defects its stronger fuzz
 corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
-is claimed once, so one terminal opens (Q133).
+is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
+breaker (Q134-Q141).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -98,6 +99,14 @@ H04B = ('tests/v1/integration/test_policy_http.py::'
 RTM = 'archeus/core/runtime.py'
 RUN_LOCAL = ('tests/v1/integration/test_p20_secrets_runtime.py::'
              'test_no_minted_credential_is_at_rest_outside_its_one_home')
+EXE = 'archeus/core/application/executions.py'
+ROUTER = 'archeus/core/routing/router.py'
+WORK = 'archeus/core/application/work.py'
+ENGINE = 'archeus/core/engine.py'
+XU = 'tests/v1/unit/test_execution_units.py::'
+SB = 'tests/v1/integration/test_spawn_breaker.py::'
+TRIP = XU + 'test_O7_three_failed_starts_within_ten_minutes_trip_it_and_not_fewer_or_slower'
+HALF = XU + 'test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -703,6 +712,41 @@ MUTATIONS = [
      "    if launch_seq != s.launch_seq or max(s.launched_seq, s.launch_claimed_seq) >= launch_seq:",
      "    if launch_seq != s.launch_seq or s.launched_seq >= launch_seq:")],
      [SES + 'test_T35_two_concurrent_requests_with_one_key_open_one_terminal']),
+    # T-106: O7's start wait and spawn breaker, as the owner answered T-110 Q1-Q10
+    ('Q134', 'the breaker needs a fourth failed start to trip', [(EXE,
+     "    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))",
+     "    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP:]))")],
+     [TRIP, SB + 'test_T106_the_third_failure_opens_the_breaker_once_and_a_task_waits_ready']),
+    ('Q135', 'failed starts trip the breaker however far apart they are', [(EXE,
+     "    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))",
+     "    return any(True for a, b in zip(times, times[SPAWN_TRIP - 1:]))")],
+     [TRIP]),
+    ('Q136', 'half-open lets every task try while the trial has not started', [(EXE,
+     "    if trial:", "    if False:")],
+     [HALF]),
+    ('Q137', 'a failed start spends an attempt', [(EXE,
+     "'handoff_user', 'path_too_long', 'spawn')",
+     "'handoff_user', 'path_too_long')")],
+     [XU + 'test_the_breaker_and_the_uncharged_ends_are_the_gates',
+      SB + 'test_T106_a_permanent_start_failure_is_retried_after_its_wait_not_on_every_pass']),
+    ('Q138', 'the router ignores an open breaker', [(ROUTER,
+     "    if b and b['state'] == 'open':",
+     "    if False:")],
+     ['tests/v1/unit/test_routing_units.py::'
+      'test_O7_an_open_start_breaker_takes_the_harness_out_and_half_open_lets_it_try',
+      SB + 'test_T106_an_open_harness_is_skipped_and_the_task_runs_on_another']),
+    ('Q139', 'a task finding only an open harness blocks its mission', [(WORK,
+     "        if result == 'blocked' and route.unblock_at and any(",
+     "        if False and any(")],
+     [SB + 'test_T106_the_third_failure_opens_the_breaker_once_and_a_task_waits_ready']),
+    ('Q140', 'a task is dispatched again without its start wait', [(ENGINE,
+     "            if X.spawn_wait(r, t.id, now) or resources.route_wait(r, t.id, now):",
+     "            if resources.route_wait(r, t.id, now):")],
+     [SB + 'test_T106_a_permanent_start_failure_is_retried_after_its_wait_not_on_every_pass']),
+    ('Q141', 'a failed half-open trial is notified again', [(EXE,
+     "    if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):",
+     "    if _tripped(times):")],
+     [SB + 'test_T106_a_failed_trial_reopens_it_without_a_second_notice']),
 ]
 
 if __name__ == '__main__':

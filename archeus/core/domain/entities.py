@@ -876,7 +876,9 @@ STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout',
                 'pressure', 'handoff_user',
                 # T-078: Git for Windows refuses the worktree for its path's length
                 # alone; the same on every attempt, so its mission waits for the user
-                'path_too_long')
+                'path_too_long',
+                # T-106 (O7): the harness started no process; its breaker counts these
+                'spawn')
 #: How an adapter classifies an end (p11-design-gate §9.1): who owns it.
 FAILURES = ('resource', 'task', 'auth', 'limit')
 #: How an execution's served model is known (ADR-0031 §6, p21-design-gate D4), lowest

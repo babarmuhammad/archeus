@@ -312,11 +312,53 @@ def test_the_breaker_and_the_uncharged_ends_are_the_gates():
                                 # P12: a hand-off spends no attempt (p12-design-gate D20)
                                 'pressure', 'handoff_user',
                                 # T-078: Git refuses the path's length on every attempt
-                                'path_too_long'}
+                                'path_too_long',
+                                # T-106 (O7): a harness that started no process
+                                'spawn'}
     # P11 §28 note 11: a workspace that cannot be made is the task's own end
     assert set(entities.STOP_REASONS) - set(X.UNCHARGED) == {'workspace'}
     # T-078: a refusal every attempt would repeat blocks its mission, uncharged
     assert X.BLOCKING == ('path_too_long',) and set(X.BLOCKING) <= set(X.UNCHARGED)
+
+
+# ── O7's spawn breaker and start wait (T-106; the owner's T-110 answers) ────
+
+def test_O7_the_numbers_are_the_owners():
+    assert (X.SPAWN_TRIP, X.SPAWN_WINDOW_S, X.SPAWN_COOLDOWN_S) == (3, 600, 300)
+    assert [X.spawn_wait_s(n) for n in range(1, 8)] == [15, 30, 60, 120, 240, 300, 300]
+
+
+def test_O7_three_failed_starts_within_ten_minutes_trip_it_and_not_fewer_or_slower():
+    B = X.breaker_state
+    assert B([], False, 0) is None and B([0, 10], False, 20) is None
+    assert B([0, 10, 20], False, 30) == {'state': 'open', 'until': 320}
+    assert B([0, 300, 600], False, 601)['state'] == 'open'      # the window is inclusive
+    assert B([0, 300, 601], False, 602) is None                  # one past it: no trip
+    assert B([0, 400, 800, 1200], False, 1201) is None           # no three within 10 min
+    assert B([0, 400, 700, 900], False, 901)['state'] == 'open'  # the last three are
+
+
+def test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens():
+    B = X.breaker_state
+    assert B([0, 10, 20], False, 319)['state'] == 'open'
+    assert B([0, 10, 20], False, 320) == {'state': 'half_open', 'until': None}
+    # the trial is dispatched and not started yet: every other task still waits
+    assert B([0, 10, 20], True, 400) == {'state': 'open', 'until': 415}
+    # the trial failed: open again for the cooldown after it
+    assert B([0, 10, 20, 400], False, 401) == {'state': 'open', 'until': 700}
+
+
+def _x(state='ABANDONED', stop_reason=None, started_at=None):
+    return SimpleNamespace(state=state, stop_reason=stop_reason, started_at=started_at)
+
+
+def test_O7_a_start_ends_the_streak_other_ends_do_not_count_and_a_later_intent_is_the_trial():
+    f1, f2, f3 = (_x(stop_reason='spawn') for _ in range(3))
+    ok, other = _x('ENDED_OK', started_at='2026-10-21T10:00:00Z'), _x(stop_reason='binding')
+    assert X.spawn_streak([f1, ok, f2, other, f3]) == ([f2, f3], False)
+    assert X.spawn_streak([f1, f2, f3, _x('INTENT')]) == ([f1, f2, f3], True)
+    assert X.spawn_streak([f1, f2, f3, ok, _x('INTENT')]) == ([], True)
+    assert X.spawn_streak([ok]) == ([], False)
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────

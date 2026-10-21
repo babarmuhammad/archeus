@@ -20,6 +20,7 @@ engine nor the router, and asks `authorization` / `resources` through their
 entry points (a boundary test holds it to that).
 """
 
+import calendar
 import hashlib
 import hmac
 import time
@@ -36,10 +37,15 @@ LIVE = ('INTENT', 'STARTING', 'RUNNING', 'AWAITING_APPROVAL', 'PAUSING', 'PAUSED
         'STOPPING', 'LOST', 'HANDING_OFF')
 #: ends the task does not own: they spend no attempt (D9)
 UNCHARGED = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
-             'binding', 'disarmed', 'pressure', 'handoff_user', 'path_too_long')
+             'binding', 'disarmed', 'pressure', 'handoff_user', 'path_too_long', 'spawn')
 #: refusals every later attempt would repeat: the mission waits for the user
 #: instead of re-dispatching the task (T-078)
 BLOCKING = ('path_too_long',)
+#: O7's spawn breaker and start wait, as the owner answered T-110 Q2-Q5 (2026-10-21):
+#: 3 failed starts of a harness within 10 min open it; 5 min after its last failure
+#: one task may try; a task waits 15 s after a failed start, doubling up to 5 min
+SPAWN_TRIP, SPAWN_WINDOW_S, SPAWN_COOLDOWN_S = 3, 600, 300
+SPAWN_WAIT_S, SPAWN_WAIT_MAX_S = 15, 300
 #: how an end is reported, by the state it is observed in (§8.1)
 _EXIT = {'ok': 'exited_success', 'error': 'exited_error'}
 _USAGE_KEYS = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
@@ -70,6 +76,84 @@ def charged_attempts(tx, task_id):
     """How many of a task's executions spent an attempt (D9)."""
     return sum(1 for r in tx.where(entities.Execution, task_id=task_id)
                if r.entity.charged is not False)
+
+
+# ── O7: the spawn breaker and the start wait (T-106) ────────────────────────
+# Derived from the recorded starts alone (owner, T-110 Q10), so a restart neither
+# loses the breaker nor gives a harness its attempts back.
+
+def _epoch(iso):
+    return calendar.timegm(time.strptime(iso, '%Y-%m-%dT%H:%M:%SZ'))
+
+
+def _tripped(times):
+    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))
+
+
+def spawn_streak(xs):
+    """The failed starts after the last start among *xs* (one harness's
+    executions, oldest first), oldest first; and whether one dispatched after
+    the last of them has not started yet (the half-open breaker's trial)."""
+    fails, trial = [], False
+    for x in reversed(xs):
+        if x.stop_reason == 'spawn':
+            fails.append(x)
+        elif x.started_at:
+            break
+        elif x.state == 'INTENT' and not fails:
+            trial = True
+    return fails[::-1], trial
+
+
+def breaker_state(times, trial, now):
+    """None (closed), or {'state': 'open' | 'half_open', 'until'}: open until
+    the cooldown after the last failure, then half-open for one trial; while the
+    trial has not started, everything else still waits."""
+    if not _tripped(times):
+        return None
+    until = times[-1] + SPAWN_COOLDOWN_S
+    if now < until:
+        return {'state': 'open', 'until': until}
+    if trial:
+        return {'state': 'open', 'until': now + SPAWN_WAIT_S}
+    return {'state': 'half_open', 'until': None}
+
+
+def _harness_streak(conn, harness_id):
+    return spawn_streak([r.entity for r in rows.where(conn, entities.Execution)
+                         if r.entity.harness_id == harness_id])
+
+
+def spawn_breaker(conn, harness_id, now):
+    """The harness's breaker with the last failure's reason, or None."""
+    fails, trial = _harness_streak(conn, harness_id)
+    b = breaker_state([_epoch(x.ended_at) for x in fails], trial, now)
+    return b and dict(b, error=fails[-1].summary)
+
+
+def spawn_wait_s(n):
+    return min(SPAWN_WAIT_S * 2 ** (n - 1), SPAWN_WAIT_MAX_S)
+
+
+def spawn_wait(conn, task_id, now):
+    """Until when (epoch) the task waits after its failed starts in a row, or None."""
+    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]
+    n = next((i for i, x in enumerate(reversed(xs)) if x.stop_reason != 'spawn'), len(xs))
+    if not n:
+        return None
+    until = _epoch(xs[-1].ended_at) + spawn_wait_s(n)
+    return until if now < until else None
+
+
+def _spawn_failed(tx, actor, e, reason):
+    """The breaker opening on this failure is said once (P21 D1: the tray says
+    it); a failed half-open trial only keeps it open."""
+    fails, _ = _harness_streak(tx.conn, e.harness_id)
+    times = [_epoch(x.ended_at) for x in fails]
+    if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):
+        tx.append(new_event('harness.state_changed', Ref('harness', e.harness_id), actor,
+                            payload={'breaker': 'open', 'reason': reason},
+                            workspace=ids.GLOBAL_WORKSPACE))
 
 
 # ── the binding (§7) ────────────────────────────────────────────────────────
@@ -195,6 +279,8 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
               'ended_at': _now_iso(),
               'hook_token_hash': None}
+    if stop_reason == 'spawn':
+        fields['summary'] = reason          # what the harness's status shows (T-106)
     if e.state == 'INTENT':
         e = _fire(tx, e.id, 'spawn_failed', actor, reason,
                   dict(fields, exit_reason='abandoned'))
@@ -210,6 +296,8 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     out = _respond(tx, actor, e, reason, failure_class)
     if stop_reason in BLOCKING:
         _block(tx, actor, missions, e.mission_id, reason)
+    if stop_reason == 'spawn':
+        _spawn_failed(tx, actor, e, reason)
     return out
 
 

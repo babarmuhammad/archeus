@@ -699,8 +699,9 @@ def test_T099_a_launch_that_raises_leaves_no_mcp_config(x, monkeypatch):
     for r in refused():
         assert os.path.exists(ExecPaths(r.id).spawning)      # the argv was built
         assert not os.path.exists(ExecPaths(r.id).mcp)
-        # a launch's own failure stays uncharged (O7); only Core's writes are charged
-        assert (r.stop_reason, r.charged) == ('binding', False)
+        # a launch's own failure stays uncharged (O7, T-106: `spawn`); only Core's
+        # writes are charged
+        assert (r.stop_reason, r.charged) == ('spawn', False)
 
 
 def test_T099_a_prompt_that_cannot_be_written_leaves_no_mcp_config(x, monkeypatch):

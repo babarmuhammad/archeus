@@ -2794,6 +2794,56 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        request does), T37 (claimed, crashed, expired at boot, next resume launches). Mutant
        Q133 (a second claimant wins) is killed by T35.
 
+131. **Built (card T-106, 2026-10-21): O7's start wait and spawn breaker.** O7 (items 64, 72)
+     was decided 2026-10-08 as uncharged with a bounded backoff and a breaker; the mechanism
+     was left open. A permanent start failure re-dispatched without bound (T-102's review: 63
+     executions in 4 s; 33 in 2 s on f483f87 in T-106's first test). T-110 listed what the
+     decision left open; the owner answered all ten on 2026-10-21 (AskUserQuestion, verbatim):
+     Q1 "Per CLI on this machine (Recommended)", Q2 "3 (Recommended)", Q3 "10 minutes
+     (Recommended)", Q4 "Doubling, 15 s up to 5 min (Recommended)", Q5 "Automatic trial after
+     5 min (Recommended)", Q6 "CLI status + mission reason + notification (Recommended)", Q7
+     "Yes, both the same way (Recommended)", Q8 "Router: don't dispatch to that CLI
+     (Recommended)", Q9 "Yes, build now, switch stays off (Recommended)", Q10 "Rebuilt from
+     recorded failures (Recommended)".
+     - **The fact recorded.** A start that creates no process (`SpawnFailed`, isolated or not;
+       not `SpawnWriteFailed`, still the charged `workspace` of T-102, and not
+       `AlreadySpawned`, still `binding`) ends its execution with the new uncharged stop
+       reason `spawn`, its reason kept in the execution's `summary`. Nothing else is stored:
+       no counter, no deadline, no breaker row.
+     - **Derived from it** (`executions.py`). A harness's streak is its `spawn` ends since its
+       last execution that started. Three within 600 s open the breaker; it stays open 300 s
+       after the latest failure, then is half-open: one task may be dispatched, and while
+       that one has not started every other waits 15 s more. A start closes it; a failed
+       trial opens it for another 300 s. A task's own wait after n failed starts in a row is
+       15 s × 2^(n-1), at most 300 s. A restart derives the same state from the same records
+       and gives nothing back.
+     - **Where it acts.** The router (P10) has a new elimination step `breaker`, after
+       `restriction` and before `health`, reading the harness's `breaker` in the decision's
+       snapshot: an open harness is not a candidate ("cannot start: <reason>") and its
+       `until` is the decision's `unblock_at`. A snapshot without the field routes as before,
+       so recorded decisions replay unchanged. When nothing else could run the task,
+       `dispatch_task` records that decision and leaves the task READY and its mission
+       EXECUTING (it no longer fires `dispatch` before routing, so nothing moves); the
+       engine's admission skips a task inside its own wait or inside such a decision's
+       `unblock_at`. A task another harness can run goes there. No unisolated fallback, no
+       A4 bypass, `PRODUCTION_DISPATCH_ENABLED` unchanged, no S1 component.
+     - **Visible.** `GET /v1/harnesses` carries each harness's `breaker` (`state`, `until`,
+       `error`; null when closed; schema `HarnessBreaker`), shown by the TUI's resources
+       section and the SPA's Harnesses table as "cannot start". The waiting task's reason is
+       its recorded route ("Nothing could run this until … Not used: fake — cannot start:
+       …"). The trip appends one `harness.state_changed` (payload `breaker: open`), the
+       registered type's first use; the Qt tray says "<harness> cannot start a process;
+       Archeus tries again in 5 minutes" for it (D1 extended by Q6), and only for the trip,
+       not for a failed trial.
+     - **Verified.** `test_spawn_breaker.py` (the loop bounded, the per-task wait doubling,
+       the trip once with its notice and a READY wait, replay, a restart rebuilding the same
+       state, a half-open trial closing it, a failed trial reopening it without a second
+       notice, another harness taking the task), the O7 unit tests in
+       `test_execution_units.py` and `test_routing_units.py`. Mutants Q134-Q141.
+     - **Left as it was.** A reconcile that finds an INTENT whose isolation record says
+       `failed` (a Core that died between the failure and its refusal) still refuses it as
+       `binding`, so it does not count toward the breaker.
+
 ## 13. As built
 (Filled at the end of P20.)
 
