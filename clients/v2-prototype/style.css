@@ -1615,3 +1615,21 @@ body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; h
 body.frame-now .msgs > .phone-fixture { display: none; }
 body.frame-now .msgs br { display: none; }
 body.frame-now .feed .msg-card .row .btn { flex: none; }
+
+/* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,
+   ivory text, neutral outline chips. No amber (owner obligations only) and no blue (live work only). Rows 48 px. */
+.slash-cleared { display: none; }
+.slash-menu { position: fixed; z-index: 60; box-sizing: border-box; display: flex; flex-direction: column; background: #17111F; color: var(--ivory); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; font: 400 14px/20px var(--sans); }
+.slash-menu[hidden], .slash-note[hidden], .slash-arg[hidden], .slash-list[hidden] { display: none; }
+.slash-note, .slash-arg { margin: 0; padding: var(--s2) var(--s3); border-bottom: 1px solid var(--line); color: var(--text); font: 400 14px/20px var(--sans); }
+.slash-list { list-style: none; margin: 0; padding: var(--s1) 0; overflow-y: auto; min-height: 0; }
+.slash-row { display: flex; flex-direction: column; justify-content: center; gap: 2px; box-sizing: border-box; min-height: 48px; padding: 4px var(--s3); cursor: pointer; }
+.slash-row[aria-selected="true"] { background: rgba(239, 233, 218, 0.1); }
+.slash-row[aria-disabled="true"] { cursor: default; color: var(--text-3); }
+.slash-top { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); }
+.slash-name { font: 500 16px/22px var(--mono); color: var(--ivory); }
+.slash-alias { font: 400 14px/20px var(--mono); color: var(--text-2); }
+.slash-chip { margin-left: auto; padding: 0 var(--s2); border: 1px solid var(--line-2); border-radius: 999px; font: 400 14px/20px var(--sans); color: var(--text-2); }
+.slash-desc { font: 400 14px/20px var(--sans); color: var(--text-2); }
+.slash-row[aria-disabled="true"] .slash-desc { color: var(--text-3); }
+.slash-more .slash-desc { color: var(--text); }

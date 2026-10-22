@@ -2328,9 +2328,368 @@
     var clean = text.trim().slice(0, 300);
     if (!clean) return;
     addMsg('you', '<p>' + esc(clean) + '</p>');
+    askRouted(clean);
+  }
+  function askRouted(clean) {
     var typing = addMsg('typing', '<p>Archeus is composing. Simulated, no model call.</p>');
     setTimeout(function () { typing.remove(); reply(clean); }, 650);
   }
+
+  /* ---------- T-153 slash menu (prototype). Commands run on the fixtures: READ and CREATE answer in the chat, effects
+     only add a proposal card or the two-step confirm, and no command changes a fixture state. Parsing is in slash.js. ---------- */
+  var SL = window.ArchSlash;
+  var RECENT_KEY = 'archeus.v2.slashRecent';
+  function storeGet(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
+  function storeSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) { /* private window: the preference lasts this page only */ } }
+  function recentCommands() { try { return JSON.parse(storeGet(RECENT_KEY)) || []; } catch (e) { return []; } }
+  function recentUse(name) {
+    storeSet(RECENT_KEY, JSON.stringify([name].concat(recentCommands().filter(function (n) { return n !== name; })).slice(0, 5)));
+  }
+
+  var slashMenu = document.createElement('div');
+  slashMenu.id = 'slash-menu';
+  slashMenu.className = 'slash-menu';
+  slashMenu.hidden = true;
+  slashMenu.innerHTML = '<p class="slash-note" id="slash-note" hidden></p><p class="slash-arg" id="slash-arg" hidden></p><ul class="slash-list" id="slash-list" role="listbox" aria-label="Commands"></ul>';
+  document.body.appendChild(slashMenu);
+  var slashNote = $('#slash-note'), slashArg = $('#slash-arg'), slashList = $('#slash-list');
+  var slashLive = document.createElement('p');
+  slashLive.className = 'sr-only';
+  slashLive.setAttribute('aria-live', 'polite');
+  document.body.appendChild(slashLive);
+  var slash = { input: null, open: false, mode: 'list', query: '', items: [], active: -1, more: false, total: 0 };
+  function announce(text) { slashLive.textContent = text; }
+  function noop() {}
+
+  function placeMenu() {
+    var r = (slash.input.form || slash.input).getBoundingClientRect();
+    slashMenu.style.left = r.left + 'px';
+    slashMenu.style.width = Math.max(r.width, 300) + 'px';
+    slashMenu.style.bottom = (window.innerHeight - r.top + 8) + 'px';
+    slashMenu.style.maxHeight = Math.max(120, r.top - 24) + 'px';
+  }
+  function selectable(i) { var it = slash.items[i]; return !!it && (it.more || !it.cmd.unavailable); }
+  function describe(i) { var it = slash.items[i]; return it.more ? '' : ' ' + it.cmd.name + ': ' + it.cmd.en + ', ' + it.cmd.cls; }
+  function select(i) {
+    slash.active = i;
+    Array.prototype.forEach.call(slashList.children, function (li, k) { li.setAttribute('aria-selected', k === i ? 'true' : 'false'); });
+    if (i < 0) return slash.input.removeAttribute('aria-activedescendant');
+    slash.input.setAttribute('aria-activedescendant', 'slash-opt-' + i);
+    if (slashList.children[i].scrollIntoView) slashList.children[i].scrollIntoView({ block: 'nearest' });
+    announce(slash.total + ' commands.' + describe(i));
+  }
+  function move(dir) {
+    var n = slash.items.length;
+    for (var k = 1; k <= n; k++) {
+      var j = (((slash.active + dir * k) % n) + n) % n;
+      if (selectable(j)) return select(j);
+    }
+  }
+  function renderList() {
+    var all = SL.filter(slash.query, recentCommands());
+    slash.total = all.length;
+    slash.items = all.slice(0, slash.more ? all.length : 5).map(function (c) { return { cmd: c }; });
+    if (!slash.more && all.length > 5) slash.items.push({ more: all.length - 5 });
+    slashList.innerHTML = slash.items.map(function (it, i) {
+      if (it.more) return '<li class="slash-row slash-more" role="option" id="slash-opt-' + i + '" aria-selected="false"><span class="slash-desc">+' + it.more + ' more</span></li>';
+      var c = it.cmd;
+      return '<li class="slash-row" role="option" id="slash-opt-' + i + '" aria-selected="false"' + (c.unavailable ? ' aria-disabled="true"' : '') + '>' +
+        '<span class="slash-top"><span class="slash-name">/' + c.name + '</span>' + (c.alias.length ? '<span class="slash-alias">/' + c.alias[0] + '</span>' : '') +
+        '<span class="slash-chip">' + c.cls + '</span></span><span class="slash-desc">' + esc(c.unavailable || c.en) + '</span></li>';
+    }).join('');
+    var first = -1;
+    slash.items.some(function (it, i) { if (selectable(i)) { first = i; return true; } return false; });
+    select(first);
+  }
+  function openMenu(query) {
+    slash.query = query; slash.more = false; slash.mode = 'list';
+    slashArg.hidden = true; slashList.hidden = false;
+    slashMenu.hidden = false; slash.open = true;
+    slash.input.setAttribute('aria-expanded', 'true');
+    placeMenu();
+    renderList();
+    announce(slash.total + ' commands.' + (slash.active >= 0 ? describe(slash.active) : ''));
+  }
+  function closeMenu() {
+    slashNote.hidden = true;
+    if (!slash.open) return;
+    slash.open = false; slash.mode = 'list';
+    slashMenu.hidden = true;
+    slash.input.setAttribute('aria-expanded', 'false');
+    slash.input.removeAttribute('aria-activedescendant');
+  }
+  function openArg(cmd) {
+    slash.mode = 'arg'; slash.open = true; slash.query = '';
+    slashNote.hidden = true; slashList.hidden = true;
+    slashArg.textContent = cmd.label + ': ____. Enter sends. Esc cancels.';
+    slashArg.hidden = false; slashMenu.hidden = false;
+    slash.input.setAttribute('aria-expanded', 'true');
+    slash.input.removeAttribute('aria-activedescendant');
+    placeMenu();
+    announce(cmd.label + '.');
+  }
+  // A line inside the menu (help, no match, refused). Nothing is sent.
+  function note(text) {
+    if (!slash.open) openMenu(queryOf(slash.input.value));
+    slashNote.textContent = text;
+    slashNote.hidden = false;
+    announce(text);
+  }
+  function queryOf(v) { return v.charAt(0) === '/' && v.indexOf(' ') < 0 ? v.slice(1) : ''; }
+
+  function onSlashInput(e) {
+    var input = e.target, v = input.value;
+    slash.input = input;
+    slashNote.hidden = true;
+    if (v.charAt(0) !== '/') return closeMenu();
+    var sp = v.indexOf(' ');
+    if (sp < 0) return openMenu(v.slice(1));
+    var cmd = SL.find(v.slice(1, sp));
+    if (cmd && cmd.args === 'req' && !v.slice(sp + 1).trim()) return openArg(cmd);
+    closeMenu();
+  }
+  function fillActive() {
+    var it = slash.items[slash.active];
+    if (!it || it.more) return;
+    slash.input.value = '/' + it.cmd.name + (it.cmd.args === 'req' ? ' ' : '');
+    onSlashInput({ target: slash.input });
+  }
+  function chooseActive() {
+    var it = slash.items[slash.active];
+    if (!it) return;
+    if (it.more) { slash.more = true; return renderList(); }
+    var c = it.cmd;
+    if (c.unavailable) return note(c.unavailable);
+    slash.input.value = '/' + c.name + (c.args === 'req' ? ' ' : '');
+    if (c.args === 'req') return onSlashInput({ target: slash.input });
+    submitComposer(slash.input, slash.input.value, slash.input.id === 'ph2-input');
+  }
+  function onSlashKey(e) {
+    slash.input = e.target;
+    if (!slash.open) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (slash.mode === 'arg') e.target.value = '';
+      return closeMenu();
+    }
+    if (slash.mode !== 'list') return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); return move(e.key === 'ArrowDown' ? 1 : -1); }
+    if (e.key === 'Tab' && !e.shiftKey && slash.active >= 0) { e.preventDefault(); return fillActive(); }
+    if (e.key === 'Enter' && !e.isComposing && slash.active >= 0 && e.target.value.indexOf(' ') < 0) { e.preventDefault(); chooseActive(); }
+  }
+
+  [$('#chat-input'), $('#ph2-input')].forEach(function (el) {
+    el.setAttribute('role', 'combobox');
+    el.setAttribute('aria-autocomplete', 'list');
+    el.setAttribute('aria-haspopup', 'listbox');
+    el.setAttribute('aria-controls', 'slash-list');
+    el.setAttribute('aria-expanded', 'false');
+    el.addEventListener('input', onSlashInput);
+    el.addEventListener('keydown', onSlashKey);
+    el.addEventListener('blur', function (e) { if (!slashMenu.contains(e.relatedTarget)) closeMenu(); });
+  });
+  slashList.addEventListener('pointerdown', function (e) { e.preventDefault(); });
+  slashList.addEventListener('click', function (e) {
+    var li = e.target.closest('.slash-row');
+    if (!li) return;
+    select(Array.prototype.indexOf.call(slashList.children, li));
+    chooseActive();
+  });
+  window.addEventListener('resize', function () { if (slash.open) placeMenu(); });
+
+  // Enter on a composer. Plain text goes to the chat as before; a command runs here.
+  function submitComposer(input, raw, phone) {
+    slash.input = input;
+    var p = SL.parse(raw);
+    if (p && p.kind === 'menu') return openMenu('');
+    if (p && p.kind === 'arg') return openArg(p.cmd);
+    if (p && (p.kind === 'unknown' || p.kind === 'usage' || p.kind === 'secret' || p.kind === 'unavailable')) return note(p.message);
+    input.value = '';
+    closeMenu();
+    if (p && p.kind === 'command') return runSlash(p.cmd, p.args, raw);
+    var text = p ? p.text : raw;
+    if (phone) { location.hash = '#/now'; ask(text); return setPhoneFrame(3); }
+    ask(text);
+  }
+  function runSlash(cmd, args, raw) {
+    if (cmd.name !== 'tell') addMsg('you', '<p>' + esc(raw) + '</p>');
+    recentUse(cmd.name);
+    RUN[cmd.name](args);
+  }
+
+  function lines(arr) { return '<p>' + arr.map(esc).join('<br>') + '</p>'; }
+  function openCount(p) { return missions.filter(function (m) { return m.project === p.id && m.state !== 'done'; }).length; }
+  function objHref(o) { return o.title !== undefined ? '#/mission/' + o.id : '#/now/' + o.id; }
+  function objLabel(o) { return o.title !== undefined ? o.title + ' · ' + o.stateText : o.name; }
+  // One object by name or id: 'mission', 'project' or 'any'. Null after a message (no match, or more than one).
+  function ref(q, kind) {
+    var s = String(q).trim().toLowerCase(), items = [];
+    if (kind !== 'project') missions.forEach(function (m) { items.push({ obj: m, names: [m.title, m.id] }); });
+    if (kind !== 'mission') projects.forEach(function (p) { items.push({ obj: p, names: [p.name, p.id] }); });
+    var tiers = [
+      function (n) { return n === s; },
+      function (n) { return n.indexOf(s) === 0 || n.split(' ').some(function (w) { return w.indexOf(s) === 0; }); },
+      function (n) { return n.indexOf(s) >= 0; },
+      function (n) { return SL.lev(s, n) <= (n.length <= 7 ? 1 : 2); }
+    ];
+    for (var t = 0; t < tiers.length; t++) {
+      var hit = items.filter(function (it) { return it.names.some(function (n) { return tiers[t](n.toLowerCase()); }); });
+      if (hit.length === 1) return hit[0].obj;
+      if (hit.length > 1) { lead('More than one match. Type the full name. Nothing was sent.'); return null; }
+    }
+    var what = kind === 'any' ? 'project or mission' : kind;
+    var closest = items.map(function (it) { return objLabel(it.obj); }).sort(function (a, b) { return SL.lev(s, a.toLowerCase()) - SL.lev(s, b.toLowerCase()); }).slice(0, 3);
+    lead('No ' + what + ' named "' + q + '". Closest: ' + closest.join(', ') + '.');
+    return null;
+  }
+  function rowsCard(intro, rows) {
+    addMsg('arch', '<p>' + esc(intro) + '</p>' + receipts(rows.slice(0, 10).map(function (o) { return { label: objLabel(o), href: objHref(o) }; })) +
+      (rows.length > 10 ? '<p class="small">' + (rows.length - 10) + ' more</p>' : ''));
+  }
+  function decisionCard(m, verb) {
+    addMsg('card', '<p class="card-k">Decision · not decided</p><p class="card-t">' + esc(verb + ': ' + m.title) + '</p>' +
+      '<p class="small">This command decides nothing. The decision screen asks for a second confirm.</p>' + receipts([{ label: 'Open decision', href: '#/plan/' + m.id }]));
+  }
+  function rememberCard(text) {
+    var li = addMsg('card', '<p class="card-k">Proposed · not saved</p><p class="card-t">Remember: "' + esc(text) + '"?</p>' +
+      '<p class="small">Scope: this project by default. All projects changes the scope. Nothing is saved until you confirm.</p>' +
+      '<div class="row"><button type="button" class="btn primary" data-card="here">Remember here</button><button type="button" class="btn" data-card="all">All projects</button><button type="button" class="btn" data-card="dismiss">Cancel</button></div>');
+    function confirmScope(scope) {
+      confirmBox('Remember for ' + scope + '?', '"' + text + '" becomes a candidate memory item. The prototype saves nothing.', 'Prototype: nothing was saved.', function () {
+        li.innerHTML = '<p class="card-k">Remembered · simulated</p><p class="card-t">' + esc(text) + '</p><p class="small">Scope: ' + esc(scope) + '. Nothing saved to Core.</p>';
+      });
+    }
+    li.querySelector('[data-card="here"]').addEventListener('click', function () { confirmScope('this project'); });
+    li.querySelector('[data-card="all"]').addEventListener('click', function () { confirmScope('all projects'); });
+    li.querySelector('[data-card="dismiss"]').addEventListener('click', function () { li.innerHTML = '<p class="card-k">Cancelled · nothing saved</p>'; });
+  }
+  function listCommands(name) {
+    if (name) {
+      var c = SL.find(name);
+      if (!c) return lead('No command /' + name + '. Type / for the list.');
+      return lead('/' + c.name + (c.label ? ' ' + c.label : '') + '. ' + c.cls + '. ' + c.en + (c.alias.length ? '. Also /' + c.alias.join(', /') : '') + '.');
+    }
+    addMsg('arch', SL.CLASSES.map(function (k) {
+      return '<p><strong>' + k + '</strong> ' + SL.COMMANDS.filter(function (c) { return c.cls === k; }).map(function (c) { return '/' + c.name; }).join(' · ') + '</p>';
+    }).join(''));
+  }
+  function waitingOne() {
+    var w = missions.filter(function (m) { return m.state === 'waiting'; });
+    if (w.length === 1) return w[0];
+    lead(w.length ? 'Name a mission: /review <mission>. Nothing was sent.' : 'Nothing is waiting for a decision.');
+    return null;
+  }
+
+  var RUN = {
+    help: function (a) { listCommands(a); },
+    status: function () {
+      var running = missions.filter(function (m) { return m.state === 'running'; }).length;
+      var waiting = missions.filter(function (m) { return m.state === 'waiting'; }).length;
+      lead('Core: fixtures, not connected. Emergency stop: off. Running: ' + running + '. Waiting for you: ' + waiting + '. Accepting new work: yes.');
+    },
+    usage: function () { lead('Usage: unknown. The usage card (T-154) is not built, so no numbers are shown. Unknown is never shown as 0.'); },
+    projects: function () { addMsg('arch', lines(projects.map(function (p) { return p.name + ': ' + openCount(p) + ' open missions'; }))); },
+    missions: function (a) {
+      var p = a ? ref(a, 'project') : null;
+      if (a && !p) return;
+      var list = missions.filter(function (m) { return !p || m.project === p.id; });
+      if (!list.length) return lead('No missions' + (p ? ' in ' + p.name : '') + '.');
+      rowsCard(list.length + ' mission(s)' + (p ? ' in ' + p.name : '') + ':', list);
+    },
+    needs: function () {
+      var w = missions.filter(function (m) { return m.state === 'waiting'; });
+      if (!w.length) return lead('Nothing is waiting for you.');
+      addMsg('arch', '<p>Waiting for you. Nothing is decided here.</p>' + receipts(w.map(function (m) { return { label: m.title + ' · ' + m.stateText, href: '#/plan/' + m.id }; })));
+    },
+    digest: function () {
+      var running = missions.filter(function (m) { return m.state === 'running'; }).length;
+      var waiting = missions.filter(function (m) { return m.state === 'waiting'; }).length;
+      lead('Since you left (fixtures): ' + waiting + ' waiting for a decision, ' + running + ' running. This summary decided and started nothing.');
+    },
+    ideas: function () {
+      var list = missions.filter(function (m) { return m.glyph === 'list'; });
+      if (!list.length) return lead('No ideas yet. /idea <text> captures one.');
+      rowsCard('Ideas:', list);
+    },
+    plan: function (a) {
+      var m = ref(a, 'mission');
+      if (!m) return;
+      if (!plans[m.id]) return lead('No plan for "' + m.title + '" yet. Nothing was planned.');
+      location.hash = '#/plan/' + m.id;
+      lead('Plan v' + plans[m.id].version + ' of "' + m.title + '" is open.');
+    },
+    why: function (a) { lead('Route decisions are not in this prototype. Nothing was read for "' + a + '".'); },
+    search: function (a) {
+      var s = a.toLowerCase();
+      var hits = missions.filter(function (m) { return (m.title + ' ' + m.what).toLowerCase().indexOf(s) >= 0; })
+        .concat(projects.filter(function (p) { return p.name.toLowerCase().indexOf(s) >= 0; }));
+      if (!hits.length) return lead('No match for "' + a + '" in projects or missions.');
+      rowsCard(hits.length + ' match(es) for "' + a + '":', hits);
+    },
+    trace: function (a) {
+      var m = ref(a, 'mission');
+      if (!m) return;
+      location.hash = '#/mission/' + m.id;
+      lead('The trace view is not in this prototype. Opened the mission log for "' + m.title + '".');
+    },
+    replay: function (a) {
+      var m = a ? ref(a, 'mission') : missions.filter(function (x) { return x.id === 'm-date'; })[0];
+      if (!m) return;
+      location.hash = '#/replay/' + m.id;
+      lead('Replay opened at "' + m.title + '".');
+    },
+    open: function (a) {
+      var o = ref(a, 'any');
+      if (o) location.hash = objHref(o);
+    },
+    focus: function (a) {
+      var p = ref(a, 'project');
+      if (!p) return;
+      location.hash = '#/now/' + p.id;
+      lead(p.name + ' is in view.');
+    },
+    clear: function () {
+      Array.prototype.forEach.call(thread.children, function (li) { li.classList.add('slash-cleared'); });
+      lead('History kept. Earlier messages are hidden on this screen only.');
+    },
+    theme: function (a) { storeSet('archeus.v2.theme', a.toLowerCase()); lead('Theme set to ' + a.toLowerCase() + ' on this device. The prototype has one theme, so nothing else changed.'); },
+    motion: function (a) { storeSet('archeus.v2.motion', a.toLowerCase()); lead('Motion set to ' + a.toLowerCase() + ' on this device. Quiet and reduced keep the same text and facts.'); },
+    mission: function (a) { askRouted('mission "' + a + '"'); },
+    idea: function (a) { askRouted('idea "' + a + '"'); },
+    feedback: function () { addMsg('arch', '<p>Feedback saved as a candidate (simulated). Not sent to Core.</p>'); },
+    remember: function (a) { rememberCard(a); },
+    tell: function (a) { ask(a); },
+    general: function () { general('Answered in the general thread (simulated). The prototype gives fixed text. Nothing reached project memory.'); },
+    start: function (a) {
+      var m = ref(a, 'mission');
+      if (m) proposal('Start and plan ' + m.title + '?', 'Starts planning on ' + m.branch + '. Plan approval comes after. This command runs nothing.', 'Start recorded (simulated). Nothing ran, no state changed.', noop);
+    },
+    stop: function (a) {
+      var m = a ? ref(a, 'mission') : null;
+      if (a && !m) return;
+      proposal(m ? 'Stop ' + m.title + '?' : 'Stop all running work?', 'Stops ' + (m ? 'this mission' : 'every running mission') + '. Two-step confirm, cancel is the default.', 'Stop recorded (simulated). Nothing was stopped.', noop);
+    },
+    estop: function () { proposal('Emergency stop?', 'Stops all running work and holds new work until cleared. Two-step confirm.', 'Emergency stop recorded (simulated). Nothing was stopped.', noop); },
+    pause: function (a) {
+      if (a.toLowerCase() === 'all') return proposal('Pause all missions?', 'Pauses every mission. Two-step confirm.', 'Pause recorded (simulated). Nothing was paused.', noop);
+      var m = ref(a, 'mission');
+      if (m) proposal('Pause ' + m.title + '?', 'Pauses this mission. Two-step confirm.', 'Pause recorded (simulated). Nothing was paused.', noop);
+    },
+    resume: function (a) {
+      var m = ref(a, 'mission');
+      if (m) proposal('Resume ' + m.title + '?', 'Resumes this mission. A dispatch shows its own card.', 'Resume recorded (simulated). Nothing was resumed.', noop);
+    },
+    cancel: function (a) {
+      var m = ref(a, 'mission');
+      if (m) proposal('Cancel ' + m.title + '?', 'Cancelling cannot be undone. Two-step confirm.', 'Cancel recorded (simulated). Nothing was cancelled.', noop);
+    },
+    review: function (a) {
+      var m = a ? ref(a, 'mission') : waitingOne();
+      if (m) decisionCard(m, 'Review');
+    },
+    approve: function (a) { var m = ref(a, 'mission'); if (m) decisionCard(m, 'Approve'); },
+    reject: function (a) { var m = ref(a, 'mission'); if (m) decisionCard(m, 'Reject'); }
+  };
 
   $('#chat-prompts').innerHTML = PROMPTS.map(function (p) {
     return '<button type="button" class="prompt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
@@ -2348,18 +2707,14 @@
       e.preventDefault();
       var typed = $('#ph2-input').value.trim();
       if (!typed) return say('Write something first.');
-      $('#ph2-input').value = '';
-      location.hash = '#/now';
-      ask(typed);
-      return setPhoneFrame(3);
+      return submitComposer($('#ph2-input'), typed, true);
     }
     if (e.target.id !== 'chat-form') return;
     e.preventDefault();
     var input = $('#chat-input');
     var text = input.value.trim();
     if (!text) return say('Write something first.');
-    input.value = '';
-    ask(text);
+    submitComposer(input, text, false);
   });
 
   document.addEventListener('click', function (e) {

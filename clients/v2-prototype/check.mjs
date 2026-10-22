@@ -302,6 +302,76 @@ for (const nav of ['now', 'mission', 'shared', 'replay', 'terminal']) check(html
 for (const sec of ['s-now', 's-mission', 's-shared', 's-replay', 's-terminal']) check(html.includes(`id="${sec}"`), `surface ${sec} is missing`);
 check(/window\.addEventListener\('hashchange', route\)/.test(js) && /function route\(\)/.test(js), 'hash routing is not wired');
 
+// T-153 slash menu. The registry and parser run here (slash.js in a vm sandbox); keyboard, focus and layout
+// behaviour is measured in a browser by tools/slash_probe.py.
+const slashJs = read('slash.js');
+const slashCtx = {};
+try { vm.runInNewContext(slashJs, slashCtx, { filename: 'slash.js' }); } catch (e) { failures.push(`slash.js does not run: ${e.message}`); }
+const SL = slashCtx.ArchSlash;
+check(!!SL, 'slash.js does not expose ArchSlash');
+const slashCss = css.slice(css.indexOf('/* T-153 slash menu'));
+check(html.indexOf('src="slash.js"') > -1 && html.indexOf('src="slash.js"') < html.indexOf('src="app.js"'), 'slash.js must load before app.js');
+check(sw.includes("'./slash.js'"), 'service worker does not cache slash.js');
+if (SL) {
+  const names = SL.COMMANDS.map((c) => c.name);
+  check(JSON.stringify(SL.CLASSES) === JSON.stringify(['READ', 'CREATE', 'PROPOSE', 'NAVIGATE']), 'command classes changed');
+  check(new Set(names).size === names.length, 'duplicate command names');
+  const allNames = SL.COMMANDS.flatMap((c) => [c.name, ...c.alias]);
+  check(new Set(allNames).size === allNames.length, 'an alias collides with another command');
+  for (const c of SL.COMMANDS) {
+    check(/^[a-z][a-z-]*$/.test(c.name), `command name is not kebab-case: ${c.name}`);
+    check(SL.CLASSES.includes(c.cls), `command ${c.name} has no class`);
+    check(c.en && c.en.length > 0, `command ${c.name} has no description`);
+  }
+  for (const [cmd, alias] of [['mission', 'missione'], ['help', 'aiuto'], ['status', 'stato'], ['replay', 'rigioca'], ['usage', 'usa'], ['projects', 'progetti']]) {
+    check(SL.find(alias) && SL.find(alias).name === cmd, `Italian alias /${alias} does not reach /${cmd}`);
+  }
+  const p = (t) => SL.parse(t);
+  check(p('/').kind === 'menu', 'a lone / must open the list');
+  check(p('plain text') === null, 'plain text must not be parsed as a command');
+  check(p('//idea x').kind === 'text' && p('//idea x').text === '/idea x', '// escape must send one slash as text');
+  check(p('\\/idea x').kind === 'text' && p('\\/idea x').text === '/idea x', 'backslash escape missing');
+  check(p('/nope').message === 'Unknown command /nope. Type / for the list, or //nope to send the text as a message.', 'unknown command line differs from the spec');
+  check(p('/start').kind === 'arg' && p('/start').cmd.name === 'start', '/start without its argument must open the argument step');
+  check(p('/start Search').kind === 'command' && p('/start Search').args === 'Search', '/start with a mission must parse');
+  check(p('/status x').kind === 'usage', 'extra argument to /status must be refused');
+  check(p('/stato').cmd.name === 'status', 'alias /stato must run /status');
+  check(p('/missione Draft').cmd.name === 'mission', 'alias /missione must run /mission');
+  check(p('/theme pink').kind === 'usage' && p('/theme Dark').kind === 'command', 'theme choices not enforced');
+  check(p('/account x').kind === 'unavailable', 'account must be shown unavailable on this device');
+  check(p('/remember sk-abcdefgh12345').kind === 'secret', 'secret-looking text must not be sent');
+  check(p('?').cmd.name === 'help' && p('/?').cmd.name === 'help', '? and /? must list the commands');
+  check(p('/estop').kind === 'command' && p('/estop').cmd.cls === 'PROPOSE', '/estop must parse as a proposal');
+  check(SL.filter('')[0].cls === 'READ', 'READ must come first in the default order');
+  const order = SL.filter('').map((c) => SL.CLASSES.indexOf(c.cls));
+  check(order.every((v, i) => i === 0 || v >= order[i - 1]), 'default order is not by class');
+  check(SL.filter('', ['stop'])[0].name === 'stop', 'recent command must come first');
+  check(SL.filter('rigioca')[0].name === 'replay', 'alias must match the filter');
+  check(SL.filter('zzzz').length === 0, 'a non-matching filter must show nothing');
+  check(SL.filter('stat').some((c) => c.name === 'status'), 'filter must match by name');
+  check(SL.filter('plan')[0].name === 'plan', 'exact name must rank first');
+}
+check(/try \{ return JSON\.parse\(storeGet/.test(js) && /function storeSet/.test(js), 'recent commands must read storage in try/catch');
+check(/slice\(0, slash\.more \? all\.length : 5\)/.test(js) && /\+' \+ it\.more \+ ' more/.test(js), 'menu must show 5 rows then +N more');
+check(/'role', 'combobox'/.test(js) && /aria-activedescendant/.test(js) && /role="listbox"/.test(html + js) && /role="option"/.test(js), 'menu must be a combobox over a listbox');
+check(/'aria-live', 'polite'/.test(js) && /aria-selected/.test(js), 'menu must announce and mark the selected row');
+check(/e\.key === 'Escape'/.test(js) && /ArrowDown/.test(js) && /e\.key === 'Tab'/.test(js), 'menu keys (Escape, arrows, Tab) missing');
+const runBlock = js.slice(js.indexOf('var RUN = {'), js.indexOf("$('#chat-prompts').innerHTML"));
+check(runBlock.length > 500, 'command table not found');
+check(!/makePlan\(|\.state = |\.stateText = |\.phase = |missions\.push|nowStage\.markBorn|plans\[[^\]]*\] = /.test(runBlock.replace(/proposal\([^]*?\);/g, '')), 'a command changes a fixture state outside its card');
+for (const name of ['start', 'stop', 'estop', 'pause', 'resume', 'cancel']) check(new RegExp(`\\b${name}: function[^]*?proposal\\(`).test(runBlock), `/${name} must end in a proposal card`);
+for (const name of ['review', 'approve', 'reject']) check(new RegExp(`\\b${name}: function[^]*?decisionCard\\(`).test(runBlock), `/${name} must only open a decision card`);
+check(/Usage: unknown/.test(runBlock), '/usage must answer unknown');
+check(/This looks like a secret, so it was not sent\./.test(slashJs), 'secret refusal text missing');
+check(/\.slash-row \{[^}]*min-height: 48px/.test(slashCss), 'menu rows must be 48 px (44 pt minimum)');
+check(/\.slash-menu\[hidden\]/.test(slashCss), 'the menu must stay out of layout while closed');
+const slashSizes = [...slashCss.matchAll(/font:\s*\d+\s+(\d+)px/g)].map((m) => Number(m[1]));
+check(slashSizes.length > 0 && Math.min(...slashSizes) >= 14, `menu font below 14px: ${Math.min(...slashSizes)}`);
+check(!/var\(--amber\)|var\(--blue\)|var\(--green\)/.test(slashCss), 'the slash menu uses amber, blue or green (owner obligations and live work only)');
+check(!/transition|animation/.test(slashCss), 'the slash menu must not animate (reduced motion and Quiet are immediate)');
+check(/\.slash-cleared \{ display: none; \}/.test(slashCss), '/clear must hide earlier messages');
+check(!/backdrop-filter/.test(slashCss) && !/\.slash-menu\s*\{[^}]*box-shadow/.test(slashCss), 'the slash menu must not glow or use glass');
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);
