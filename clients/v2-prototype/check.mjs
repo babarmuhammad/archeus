@@ -317,7 +317,20 @@ check(/ov-name-sr/.test(js) && /\.ov-art \.ov-name-sr \{ opacity: 0; \}/.test(cs
 check(/class="ph2-back"/.test(html) && /\.ph2-back::before/.test(css) && /\.ph2-back,[^{]*\{ color: #B2B4C0/.test(css), 'phone decision Back control missing its label or chevron');
 check(/class="ph3-back"/.test(html) && /#s-now\[data-frame="3"\] \.ph3-back::before/.test(css), 'phone chat Back control missing its label or chevron');
 check(/'Verifying'/.test(js) && /Execute the date test suite on branch fix\/date-test/.test(js) && /outputs and status/.test(html) && /data-f="a_role"/.test(html), 'mission phase, task or results strings differ from the master');
-check(/#s-now \.chatbar input:focus, #s-now \.chatbar input:focus-visible \{ outline: 0; \}/.test(css) && /chatbar:focus-within \{ box-shadow: inset/.test(css), 'composer focus must be an inset ring, not the browser outline');
+check(/#s-now \.chatbar input:focus, #s-now \.chatbar input:focus-visible \{ outline: 0; \}/.test(css) && /chatbar:focus-within:not\(\.mouse-focus\) \{ box-shadow: inset/.test(css), 'composer focus must be an inset ring, not the browser outline');
+
+// Polish round 2 (phone, v2/polish-phone): chat card spans the content width, bubbles on the concept tops, the composer ring
+// is for keyboard focus only, the headline word "needs" is fitted on the sheets, decision rules and title, Back offsets,
+// 44 px hit areas on the decision and chat controls, and the Overview status colour and diamond stroke.
+check(/\.feed \.msg-card \{ width: calc\(var\(--u\) \* 668\)/.test(css), 'phone chat Start card must span the content width (668 units, x31 to x699)');
+check(/\.msgs > li:nth-child\(2\) \{ margin-top: calc\(var\(--u\) \* 10\)/.test(css) && /\.msgs > li:nth-child\(4\) \{ margin-top: calc\(var\(--u\) \* 17\)/.test(css), 'phone chat bubble anchors (concept tops 832 and 1124) missing');
+check(/classList\.add\('mouse-focus'\)/.test(js) && /e\.key === 'Tab'/.test(js), 'the chat composer must mark mouse focus and clear it on Tab');
+check(/HEAD_FIT = \{ needs: 150 \}/.test(js) && /fit\[w\]/.test(js) && /headSvgFor\(L, T, HEAD_FIT\)/.test(js), 'phone sheet headline word "needs" must be fitted to the concept width');
+check(/class="ph-rule" x="48" y="1086" width="629"/.test(js) && /class="ph-rule" x="48" y="1194" width="629"/.test(js) && /\.ph-live \.ph-rule \{ fill: rgba\(210, 205, 220, 0\.25\); \}/.test(css), 'decision sheet separator rules at y1086 and y1194 missing');
+check(/\.ph-live \.ph-title \{ font-weight: 500; fill: #F3EEDF; \}/.test(css) && /\.ph2-back \{ letter-spacing: -0\.5px; \}/.test(css), 'decision title weight or Back tracking missing');
+check(/#s-now\[data-frame="3"\] \.ph3-back \{ top: calc\(var\(--u\) \* 668\)/.test(css), 'chat Back offset must be the measured 668 units');
+check(/\.ph2-open::after/.test(css) && /\.ph2-back::after/.test(css) && /\.ph2-bar::after/.test(css) && /msg-card \.btn::after/.test(css), 'decision, composer or card controls lack 44 px hit areas');
+check(/#s-now \.ov-status \{ fill: #C6C2D3; \}/.test(css) && /polygon\[stroke="#F9C259"\] \{ stroke-width: 4px; \}/.test(css), 'phone Overview status colour or diamond stroke missing');
 
 if (failures.length) {
   console.error('FAIL');

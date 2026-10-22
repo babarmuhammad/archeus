@@ -894,26 +894,34 @@ p.small, .small { line-height: 20px; }
   #s-now[data-frame="3"] .ph3-grab { display: block; top: calc(var(--u) * 662); }
   #s-now[data-frame="3"] .ph3-back { display: block; position: absolute; left: calc(var(--u) * 44); top: calc(var(--u) * 676); width: calc(var(--u) * 100); height: calc(var(--u) * 34); color: transparent; background: transparent; border: 0; cursor: pointer; pointer-events: auto; }
   #s-now[data-frame="3"] .feed {
-    display: block; position: absolute; left: calc(var(--u) * 31); right: calc(var(--u) * 31); top: calc(var(--u) * 694); bottom: calc(var(--u) * 175);
+    display: block; position: absolute; left: calc(var(--u) * 31); right: calc(var(--u) * 31); top: calc(var(--u) * 694); bottom: calc(var(--u) * 180);
     width: auto; max-height: none; transform: none; background: transparent; border: 0; border-radius: 0; padding: 0; overflow-y: auto; z-index: 5;
     -webkit-mask-image: none; mask-image: none;
   }
   #s-now[data-frame="3"] .feed-head, #s-now[data-frame="3"] .feed > .grab { display: none; }
-  #s-now[data-frame="3"] .msgs { gap: calc(var(--u) * 14); min-height: 100%; }
+  /* Polish round 2 (phone-3 bubble anchors): each bubble sits on the concept's top edge (708, 832, 960, 1124, 1213). */
+  #s-now[data-frame="3"] .msgs { gap: 0; min-height: 100%; justify-content: flex-start; }
+  #s-now[data-frame="3"] .msgs > li:nth-child(1) { margin-top: calc(var(--u) * 14); }
+  #s-now[data-frame="3"] .msgs > li:nth-child(2) { margin-top: calc(var(--u) * 10); height: calc(var(--u) * 116); box-sizing: border-box; }
+  #s-now[data-frame="3"] .msgs > li:nth-child(3) { margin-top: calc(var(--u) * 12); }
+  #s-now[data-frame="3"] .msgs > li:nth-child(4) { margin-top: calc(var(--u) * 17); height: calc(var(--u) * 79); box-sizing: border-box; }
+  #s-now[data-frame="3"] .msgs > li:nth-child(5) { margin-top: calc(var(--u) * 10); }
+  #s-now[data-frame="3"] .msgs > li:nth-child(n + 6) { margin-top: calc(var(--u) * 14); }
   #s-now[data-frame="3"] .feed .msg p { line-height: calc(var(--u) * 31); }
   #s-now[data-frame="3"] .feed .msg { display: block; width: calc(var(--u) * 521); max-width: none; margin: 0; padding: calc(var(--u) * 10) calc(var(--u) * 22) calc(var(--u) * 12); border-radius: calc(var(--u) * 22); background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.12); }
   #s-now[data-frame="3"] .feed .msg > * { grid-column: auto; }
-  #s-now[data-frame="3"] .feed .msg-you { align-self: flex-end; width: calc(var(--u) * 391); background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.14); }
+  #s-now[data-frame="3"] .feed .msg-you { align-self: flex-end; width: calc(var(--u) * 391); margin-right: calc(var(--u) * -6); background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.14); }
   #s-now[data-frame="3"] .feed .msg-gen { width: calc(var(--u) * 521); max-width: none; background: rgba(255, 255, 255, 0.025); border-radius: calc(var(--u) * 22); color: #E4E0D8; }
   #s-now[data-frame="3"] .msg::before { font: 350 calc(var(--u) * 21)/calc(var(--u) * 24) var(--sans); color: #9C98A8; margin: 0 0 calc(var(--u) * 2); grid-column: auto; grid-row: auto; }
-  #s-now[data-frame="3"] .msgs li { font: 400 calc(var(--u) * 24)/calc(var(--u) * 31) var(--sans); color: #ECE8E0; }
+  #s-now[data-frame="3"] .msgs li { font: 350 calc(var(--u) * 24)/calc(var(--u) * 31) var(--sans); color: #ECE8E0; }
   #s-now[data-frame="3"] .msg-gen p { font: 400 calc(var(--u) * 23)/calc(var(--u) * 31) var(--serif); }
   #s-now[data-frame="3"] .msg-gen .gen-k { font-size: 0; line-height: 0; margin: 0; text-transform: none; }
   #s-now[data-frame="3"] .gen-tag { font: 350 calc(var(--u) * 19)/calc(var(--u) * 24) var(--sans); letter-spacing: 0; text-transform: none; color: #C9C5D2; border-color: rgba(255, 255, 255, 0.25); padding: 0 calc(var(--u) * 10); margin: 0; }
-  #s-now[data-frame="3"] .msg-card { width: calc(var(--u) * 667); max-width: none; align-self: flex-start; background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: calc(var(--u) * 22); padding: calc(var(--u) * 16) calc(var(--u) * 22) calc(var(--u) * 18); }
+  /* The card is an li.msg too, so its width must beat the .feed .msg rule above (polish round 2: it stopped at x552). */
+  #s-now[data-frame="3"] .feed .msg-card { width: calc(var(--u) * 668); height: calc(var(--u) * 147); box-sizing: border-box; max-width: none; align-self: flex-start; background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: calc(var(--u) * 22); padding: calc(var(--u) * 22) calc(var(--u) * 22) calc(var(--u) * 18); }
   #s-now[data-frame="3"] .msg-card .card-t { font: 400 calc(var(--u) * 27)/calc(var(--u) * 34) var(--serif); color: #F3EEDF; }
-  #s-now[data-frame="3"] .msg-card .row { display: flex; gap: calc(var(--u) * 17); margin-top: calc(var(--u) * 16); }
-  #s-now[data-frame="3"] .msg-card .btn { flex: 1 1 0; min-height: 0; height: calc(var(--u) * 60); padding: 0; border-radius: calc(var(--u) * 10); font: 500 calc(var(--u) * 24)/1 var(--sans); }
+  #s-now[data-frame="3"] .msg-card .row { display: flex; gap: calc(var(--u) * 16); margin-top: calc(var(--u) * 16); }
+  #s-now[data-frame="3"] .msg-card .btn { position: relative; flex: 1 1 0; min-height: 0; height: calc(var(--u) * 60); padding: 0; border-radius: calc(var(--u) * 10); font: 500 calc(var(--u) * 24)/1 var(--sans); }
   #s-now[data-frame="3"] .msg-card .btn.primary { background: #F9C259; border-color: #F9C259; color: #1A1206; }
   #s-now[data-frame="3"] .msg-card .btn:not(.primary) { background: transparent; border-color: #E8B04F; color: #F9C259; }
   #s-now[data-frame="3"] .msg-card .btn[data-card="start"] { background: #F9C259; border-color: #F9C259; color: #1A1206; }
@@ -1639,12 +1647,12 @@ body.frame-now .feed .msg-card .row .btn { flex: none; }
 /* Polish round (v2/polish): phone sheets. Back is visible again (D4, master chevron and label); the composer focus is an inset
    rounded ring, not the browser's outline (fix 2); the Overview project names stay in the accessibility tree only (D3). */
 #s-now .chatbar input:focus, #s-now .chatbar input:focus-visible { outline: 0; }
-#s-now[data-frame="3"] .chatbar:focus-within { box-shadow: inset 0 0 0 calc(var(--u) * 3) rgba(255, 243, 207, 0.55); }
+#s-now[data-frame="3"] .chatbar:focus-within:not(.mouse-focus) { box-shadow: inset 0 0 0 calc(var(--u) * 3) rgba(255, 243, 207, 0.55); }
 #s-now .ov-art .ov-name-sr { opacity: 0; }
 .ph2-back, #s-now[data-frame="3"] .ph3-back { color: #B2B4C0; font: 400 calc(var(--u) * 23)/calc(var(--u) * 36) "Archeus Sans", var(--sans); text-indent: calc(var(--u) * 36); white-space: nowrap; overflow: visible; text-decoration: none; }
 .ph2-back::before, #s-now[data-frame="3"] .ph3-back::before { content: ""; position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 11); width: calc(var(--u) * 14); height: calc(var(--u) * 14); border-left: calc(var(--u) * 2.6) solid #B2B4C0; border-bottom: calc(var(--u) * 2.6) solid #B2B4C0; transform: rotate(45deg); }
 .ph2-back { top: calc(var(--u) * 871.5); }
-#s-now[data-frame="3"] .ph3-back { top: calc(var(--u) * 665.5); height: calc(var(--u) * 36); }
+#s-now[data-frame="3"] .ph3-back { top: calc(var(--u) * 668); height: calc(var(--u) * 36); }
 
 /* Polish round (v2/polish), D2: the Replay rail follows its master (Overview, Missions, Ideas, Projects, Control; divider;
    PROJECTS with Archeus and Notes). The Shared rail follows its master (Control is live; PROJECTS lists Archeus only). */
@@ -1664,3 +1672,18 @@ body.frame-replay #rail-projects li:nth-child(1) { top: 386px; }
 body.frame-replay #rail-projects li:nth-child(2) { top: 427px; }
 body.frame-replay #rail-projects a { position: absolute; left: 58px; top: 0; white-space: nowrap; font: 400 16px/20px "Libre Caslon V2", var(--serif); color: var(--text); text-decoration: none; }
 body.frame-replay #rail-projects .pdot, body.frame-replay #rail-projects .cnt { display: none; }
+
+/* Polish round 2, phone. Measured on the concept with tools/polish_measure.py and the phone batch (see README).
+   Composer ring: only after a keyboard focus (app.js sets .mouse-focus on a click and clears it on Tab). */
+.ph-live .ph-title { font-weight: 500; fill: #F3EEDF; }
+.ph2-back { letter-spacing: -0.5px; }
+.ph-live .ph-rule { fill: rgba(210, 205, 220, 0.25); }
+/* Tap targets: the visible shapes stay; each control gets an invisible hit area of at least 44 CSS px (88 units). */
+.ph2-back::after, #s-now[data-frame="3"] .ph3-back::after { content: ""; position: absolute; left: calc(var(--u) * -6); right: calc(var(--u) * -6); top: calc(var(--u) * -26); bottom: calc(var(--u) * -26); }
+.ph2-open::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -10); bottom: calc(var(--u) * -10); }
+.ph2-bar::after, .ph-stop::after, #s-now[data-frame="3"] .chatbar::after, #s-now[data-frame="3"] .chat-stop::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -2); bottom: calc(var(--u) * -2); }
+#s-now[data-frame="3"] .msg-card .btn::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -14); bottom: calc(var(--u) * -14); }
+@media (max-width: 639px) {
+  #s-now .ov-status { fill: #C6C2D3; }
+  #s-now #ov-art polygon[stroke="#F9C259"] { stroke-width: 4px; }
+}

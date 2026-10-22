@@ -4,6 +4,80 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Polish round 2 phone (v2/polish-phone, 2026-10-22): the three phone surfaces
+
+Harness: `tools/polish_measure.py phone1,phone2,phone3` (same method as round 1: mean abs RGB against the concept at master size,
+DPR 2, reduced motion, fonts awaited). Scratch batches measured each change on its own before the edit; the table is the
+official harness on the final source.
+
+| Surface | Before (6c8589e) | After (this round) | Note |
+|---|---|---|---|
+| Phone Overview 804 x 1373 | 4.39 | 4.36 | down: status colour, diamond stroke 4 |
+| Phone decision 724 x 1573 | 8.00 | 7.68 | down: title weight 500 and warm, Back tracking, separator rules, "needs" fit |
+| Phone chat 724 x 1573 | 12.19 | 10.13 | down: card width, bubble tops, composer ring, body weight 350, "needs" fit, Back at 668 |
+
+Chat regions (master px): action card 24.6 to 15.4; first user bubble 18.4 to 13.7; first Archeus bubble 18.7 to 13.8;
+composer 14.4 to 10.4; Back 13.6 to 12.9; headline 32.3 to 27.4.
+Decision regions: title 44.3 to 41.1; separator rules 7.9 to 7.4; Back 14.3 to 13.6; headline 28.5 to 23.8.
+
+Fixes applied (fix list numbers from V2-final-review-summary.md):
+- 3 (chat card width): the card is an `li.msg`, so `.feed .msg` (width 521) beat `#s-now[data-frame="3"] .msg-card` (667). Confirmed in
+  source and DOM (card ended at x552). Now `.feed .msg-card` at 668 units (x31 to x699), 147 high, buttons 16 apart, equal width.
+- 18 (chat bubble anchors): measured tops 720, 848, 976 against the concept 708, 832, 960. Feed bottom and the `li` margins now
+  place each bubble on the concept top (708, 832, 960, 1124, 1213). Body text inside the bubbles stays about 2 px off (residual).
+- 2 (composer focus): the cream inset ring is kept for keyboard focus only. A click marks the bar (`.mouse-focus`, app.js) and
+  Tab clears it. The ring alone cost 4 points on the composer region (14.4 to 10.4 without it).
+- 4 (headline spacing): Codex said "1 needsyou". Measured: the vendored serif sets "needs" about 15 px wider than the concept
+  (advance 167 against 147 ink), so "you" sat 6 px after it instead of 17. Fix: `textLength=150` on the word "needs" on the two
+  sheets only (`HEAD_FIT` in app.js, spacingAndGlyphs). Overview kept at natural width: fitting it raised phone1 from 4.39 to 4.84.
+- 5 (live text weight, sheets): chat body text weight 350 (chat total 11.20 to 11.06 in the scratch batch, bubble regions down).
+  Overview text weights were not changed (see not applied).
+- 7 (Back offsets): measured, not guessed. Decision Back: top 871.5 is best of 868, 871.5, 875, 878; letter-spacing -0.5 helps
+  (14.3 to 13.6). Chat Back: top 668 is best of 665, 667, 668, 669, 671.
+- 16 (decision separators): rules at y1086 and y1194 (the concept rows; the review said 1195), x48 to x676, 1 px, rgba(210,205,220,.25),
+  which matches the concept's measured rule colour.
+- 17 (decision title): weight 500, warm off-white #F3EEDF (600 was 44.3 on the region, 500 41.1, 400 40.6; 500 chosen because 400
+  looks thinner than the concept). Amber button: see not applied.
+- 22 (phone part, one sheet material): the decision sheet tint stays the one material; the chat sheet already uses the same tint.
+- 44 pt targets: visible shapes unchanged; each decision, composer, Stop and card button gets an invisible hit area of at least 44 CSS
+  px (88 units) through `::after`. Font floor unchanged (no size went below 11 px; the chip change was dropped because 20 units is 10 px).
+- 15 (Overview status colour and mission diamond): status #C6C2D3 and the amber diamond stroke 4 (measured 4.39 to 4.36 together).
+
+Not applied (measured, reverted, or not reproduced):
+- 4, chat headline: letter-spacing 0 gives 43.6, -1 gives 37.2, -2.5 gives 39.8 (region 32.3 now 27.4 with the fit). Decision
+  headline: 0 gives 40.3, per-word positions without the fit 35.7, -2.5 gives 38.8, -1.5 gives 34.5.
+- 15, fixture tracking: 2 px letter-spacing raised the Overview to 16.5; 4 px gave 4.41 (no gain). Not applied: the round-1 tracking
+  already sits within the measure. Chip text at 18 or 20 units gave 4.37 but puts the label under the 11 px floor (1 unit is 0.5 CSS px
+  on the phone), so the chip is unchanged.
+- 16, sheet material: tint alpha .10 gives 8.45, .40 gives 9.02, no tint gives 9.28, the gradient with a top rim gives 8.45 (up). The
+  flat tint at .25 stays. The rim was not added: no measured gain.
+- 17, amber: the concept outline peaks at about #EEBF47 (not #F6BE42). A 2 px stroke in either colour gives 10.39 to 10.43 on the
+  button region: no gain, so the round-1 stroke stays.
+- 18, speaker label: "General" stays (owner decision D5). Not changed here.
+- 19, sheet ground: the chat ground uses the same tint as the decision sheet (no separate change). A gradient ground raised the error.
+- 5, Overview body weights: 300 and 350 on the sub-labels and sans names gave no change (4.39 to 4.39).
+- 9 and 11 (mission agent mark, anchor shifts), 12 and 13 (replay), 20 (terminal selection), 21 (halos), 6 and 14 (rail): not phone work,
+  left to the desktop agent.
+- The Overview "1 needs you" headline with the fit: 4.84, so it stays natural (see above).
+
+Residuals and reasons (crops in the round's scratch folder, not committed):
+- Chat bubble text: the text sits about 2 px off its concept line inside the bubbles. Shifting the body or label by -4 to +4 units
+  improved one region and worsened another (best total 0.05). Glyph design of the vendored font is the likely cause. Not chased further.
+- Chat second user bubble and Archeus box: the second Archeus box is 3 units short at the bottom (1392 against 1393); "Promote" row
+  text sits about 3 px high. Measured by the bubble probe, not changed.
+- Chat headline: 27.4 on the region, the serif is a different design from the concept (measurement limit).
+- Decision title: 41.1 on the region, the sans is Inter, the concept is a different sans (measurement limit).
+- Overview 4.36: mesh edge and glyph differences listed in round 1; the agent mark and the anchor shifts were not measured here.
+
+Checks: `check.mjs` extended (chat card width, bubble margins, keyboard-only ring with the Tab handler, the fit, rules, title weight,
+Back offset, hit areas, Overview status and diamond). Run through the testlock: exit 0.
+
+Not verified:
+- Keyboard Tab clearing the composer ring and the ring showing on keyboard focus: the code path is there, no browser run with Tab.
+- The 44 pt hit areas: present in CSS and checked for presence only; no pointer test at the new areas.
+- Mobile keyboard, reduced motion on the hub mesh, and screen readers: not run.
+- The chat "General" pill and the decision text against the owner's D5 decision: unchanged.
+
 ## Polish round (v2/polish, 2026-10-22): Codex final-review fix list, partial
 
 Harness: `tools/polish_measure.py` (repo root). It renders each surface at its master size in headless Chromium (reduced motion,
