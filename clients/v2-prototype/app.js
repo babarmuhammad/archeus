@@ -1779,7 +1779,7 @@
         (m.state === 'waiting' ? '<a class="btn review" href="#/plan/' + m.id + '">Review plan</a>' : '') + '</li>';
     }).join('');
     if (pid === 'chat') setTimeout(function () { $('#chat-input').focus({ preventScroll: true }); }, 0);
-    else if (pid && projectOf(pid)) zoomTo(pid);
+    else if (pid && projectOf(pid) && !ovMode()) zoomTo(pid);
   }
 
   // Round 10c frames (Mission 03, Shared 06): the concept raster is the base art; the text sits at the solved layout

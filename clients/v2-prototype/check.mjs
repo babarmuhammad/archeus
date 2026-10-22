@@ -331,6 +331,10 @@ check(/\.ph-live \.ph-title \{ font-weight: 500; fill: #F3EEDF; \}/.test(css) &&
 check(/#s-now\[data-frame="3"\] \.ph3-back \{ top: calc\(var\(--u\) \* 668\)/.test(css), 'chat Back offset must be the measured 668 units');
 check(/\.ph2-open::after/.test(css) && /\.ph2-back::after/.test(css) && /\.ph2-bar::after/.test(css) && /msg-card \.btn::after/.test(css), 'decision, composer or card controls lack 44 px hit areas');
 check(/#s-now \.ov-status \{ fill: #C6C2D3; \}/.test(css) && /polygon\[stroke="#F9C259"\] \{ stroke-width: 4px; \}/.test(css), 'phone Overview status colour or diamond stroke missing');
+// Merge round 2: the composer hit area paints under the input (it swallowed clicks), the Replay frame takes clicks only on links and buttons, and the phone never zooms the desktop stage.
+check(/\.ph2-bar::after, #s-now\[data-frame="3"\] \.chatbar::after \{[^}]*z-index: -1; \}/.test(css), 'phone composer hit area must sit under the input (z-index -1)');
+check(/body\.frame-replay \* \{ pointer-events: none; \}/.test(css) && /body\.frame-replay a, body\.frame-replay button \{ pointer-events: auto; \}/.test(css), 'replay frame must let only links and buttons take clicks (the rail and top bar were covered)');
+check(/else if \(pid && projectOf\(pid\) && !ovMode\(\)\) zoomTo\(pid\);/.test(js), 'phone #/now/<project> must not zoom the desktop stage (page error)');
 
 // Polish round 2 (desktop): the Overview rail hides the replay-only items with a selector that beats the frame rule; the
 // Replay rail says Overview and draws cube glyphs; mission agent row and log follow the master; chips take semantic

@@ -4,6 +4,52 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Merge round 2 (v2/final, 2026-10-22): polish-desk, polish-phone and slash in one prototype
+
+Base: v2/polish 6c8589e (worktree D:\archeus-v2-final, branch v2/final). Merged with `git merge --no-ff`, in order: v2/polish-desk bcf6a32 (merge f04661e), v2/polish-phone 01bbf38 (merge 78a460f), v2/slash 988370b (merge 4981518). Then the fix commit listed below. Serve with `py -m http.server 8000` in this folder.
+
+Conflicts and resolutions (each owner keeps its own code; nothing dropped):
+1. style.css (polish-phone): both blocks kept, the desktop Replay rail rules first, then the phone polish block.
+2. style.css (slash): both kept; the desktop and phone blocks first, the `/* T-153 slash menu` block last (check.mjs slices from that marker).
+3. sw.js (polish-desk and slash): two cache names (archeus-v2-proto-polish-desk, archeus-v2-proto-m4). One new name, archeus-v2-proto-final. The one shell list keeps slash.js and every art and font file.
+4. check.mjs (slash): both assertion blocks kept (desktop and phone polish, then the slash block). The two cache-name assertions now name archeus-v2-proto-final.
+5. README.md (slash): the slash section sits at the top; the slash branch's copy of the older sections was dropped (they are already here). The verification line had a literal tab in `.collab\testlock.py`; fixed.
+6. app.js, index.html, layout-r10c.js, slash.js: no conflict (auto-merged; checked by hand and by the probes below).
+7. tools: polish_measure.py stays (slash removed it only relative to v2/polish, its base never had it); measure_overview.py and slash_probe.py are added.
+
+Fixes found while verifying (not conflicts; each one a defect that existed on its branch or appeared with the merge):
+- Phone composer (polish-phone 44 pt hit areas): `.ph2-bar::after` and `.chatbar::after` painted over the input and swallowed its clicks. slash_probe timed out on the phone composer. Fix: `z-index: -1` on those two hit areas. The phone round had no pointer test, so this was not caught there.
+- Replay frame (already on v2/polish-desk): the stacked layout boxes (page, main, the Replay section, rp-wrap, rp-panel, rc-stage, top bar) covered the rail links, the wordmark, Tell and Stop. Fix: in the Replay frame only links and buttons take clicks (`body.frame-replay * { pointer-events: none }`, then `a, button { auto }`). Timeline hits stay clickable. No paint change.
+- Phone `#/now/ideas` and `#/now/archeus` threw `TypeError` (zoomTo on the desktop scene, which phone never builds; already on v2/polish-desk). Fix: renderNow zooms only outside the phone layout. Page errors on navigation: 2, now 0.
+- check.mjs: three assertions for these fixes.
+
+Numbers (`py tools/polish_measure.py all`, headless Chromium, reduced motion, fonts awaited, mean abs RGB 0 to 255):
+
+| Surface | Before merge (v2/polish, its README) | Branch numbers (each README) | After merge and fixes (this round) |
+|---|---|---|---|
+| Desktop Overview 1296 x 729 | 4.93 | 4.86 (polish-desk) | 4.86 (2 runs; the first run after the merge read 4.87, and the polish-desk tip alone read 4.87 in the same first run; cause not found) |
+| Replay 1440 x 810 | 5.00 | 4.83 | 4.83 |
+| Mission 1244 x 829 | 5.05 | 4.98 | 4.98 |
+| Shared 1382 x 922 | 3.21 | 3.21 | 3.21 |
+| Terminal 1600 x 900 | 2.99 | 2.99 | 2.99 |
+| Phone Overview 804 x 1373 | 4.39 | 4.36 (polish-phone) | 4.36 |
+| Phone decision 724 x 1573 | 8.00 | 7.68 (polish-phone) | 7.68 |
+| Phone chat 724 x 1573 | 12.19 | 10.13 (polish-phone) | 10.13 |
+
+Checks (this round):
+- `tools/slash_probe.py` on 8766 (desktop 1296 x 755, phone 402 x 687, DPR 2): 42 ok, 0 FAIL, through the testlock (before the composer fix: failed at the phone composer click).
+- `check.mjs` through the testlock: exit 0, all surfaces.
+- `tools/measure_overview.py` (slash harness, menu closed): desktop 4.89, the same figure the slash branch reported. Its phone figure (4.44) is not comparable with the polish_measure phone numbers (different harness, and the phone frame changed with polish-phone).
+- Navigation, desktop and phone, from five start routes (Overview, Projects, Replay, Mission, Terminal), every visible in-app link clicked with a real pointer: 39 of 41 clicks land on the expected hash, zero page errors. The two misses are listed below.
+- Control coverage (every visible button, link and input is the hit target at its centre): all surfaces clear except the desktop Overview wordmark (see below).
+
+Not fixed, listed:
+- Desktop Overview wordmark: the header bar sits over the wordmark link, so a click on it on the Overview (where it links to the page you are on) does nothing. Other surfaces are clear.
+- Phone Replay: the first mission link (a timeline hit at 16, 0) is covered by another timeline hit to the same mission. Both go to `#/mission/m-date`; Playwright refuses the click for that reason.
+- The phone Replay is the desktop frame at 402 px wide (no phone master exists for it); its layout is not judged here.
+
+Not verified: keyboard Tab order and the composer focus ring on the phone (no run with Tab); reduced motion on the hub mesh; the 44 pt targets are checked for coverage, not for taps on a device; no real touch device; no screen reader.
+
 ## Slash menu (T-153, v2/slash, 2026-10-22): "/" commands in the chat bar
 
 Spec: .collab/T-153-slash-commands-spec.md (sections 3, 4, 7 and the owner answers). Prototype only, fixtures only, no Core call. Files: `slash.js` (registry, parser, filter; no DOM, runs under node in check.mjs), `app.js` (the menu and the command table, section "T-153 slash menu"), `style.css` (last block, `.slash-*`), `tools/slash_probe.py` (browser checks).

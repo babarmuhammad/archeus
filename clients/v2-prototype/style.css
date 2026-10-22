@@ -1408,6 +1408,10 @@ body.frame-replay .rp-panel { position: absolute; left: 0; top: 0; width: 1440px
 body.frame-replay .rp-title { position: absolute; left: 805px; top: 94px; white-space: nowrap; translate: var(--dx, 0px) var(--dy, 0px); }
 body.frame-replay .rp-back { display: none; }
 body.frame-replay .rp-rows { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; display: block; gap: 0; }
+/* Replay: the frame is stacked layout boxes (page, main, panel, stage). Only links and buttons take clicks, so the
+   boxes cannot cover the rail, the top bar or the timeline hits beneath them. */
+body.frame-replay * { pointer-events: none; }
+body.frame-replay a, body.frame-replay button { pointer-events: auto; }
 body.frame-replay .rp-row { position: absolute; left: 793px; top: var(--top); width: 613px; height: var(--h); display: block; padding: 0; border: 0; border-radius: 0; background: transparent; }
 body.frame-replay .rp-mark { position: absolute; left: 92px; top: calc(var(--y) - var(--top) - 12px); width: 24px; height: 24px; }
 body.frame-replay .rp-time { position: absolute; left: 19px; top: calc(var(--y) - var(--top)); font: 400 17px/22px var(--rp-serif); translate: 0 -4px; }
@@ -1688,7 +1692,9 @@ body.frame-replay #rail-projects .pcube { display: block; position: absolute; le
 /* Tap targets: the visible shapes stay; each control gets an invisible hit area of at least 44 CSS px (88 units). */
 .ph2-back::after, #s-now[data-frame="3"] .ph3-back::after { content: ""; position: absolute; left: calc(var(--u) * -6); right: calc(var(--u) * -6); top: calc(var(--u) * -26); bottom: calc(var(--u) * -26); }
 .ph2-open::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -10); bottom: calc(var(--u) * -10); }
-.ph2-bar::after, .ph-stop::after, #s-now[data-frame="3"] .chatbar::after, #s-now[data-frame="3"] .chat-stop::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -2); bottom: calc(var(--u) * -2); }
+.ph-stop::after, #s-now[data-frame="3"] .chat-stop::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -2); bottom: calc(var(--u) * -2); }
+/* z-index -1: the bar holds the input, so its hit area must paint under it (else it swallows clicks on the input). */
+.ph2-bar::after, #s-now[data-frame="3"] .chatbar::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -2); bottom: calc(var(--u) * -2); z-index: -1; }
 #s-now[data-frame="3"] .msg-card .btn::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -14); bottom: calc(var(--u) * -14); }
 @media (max-width: 639px) {
   #s-now .ov-status { fill: #C6C2D3; }
