@@ -703,3 +703,140 @@ Honest state. Checked by Playwright screenshots and label-box counts. Still weak
 - Not verified: a real phone, a screen reader, frame rate, rendered-pixel contrast (only the palette pairs in check.mjs), Dynamic Type, haptics.
 - Service worker: network-first with a shell cache; bump `CACHE` in sw.js when the shell changes (now `archeus-v2-proto-7`).
 - check.mjs checks files, syntax, manifest, icons, contrast pairs, font floor, Canvas 2D, devicePixelRatio, hidden-tab pause, reduced motion, the chat, Replay, phone and Terminal rules. It does not run the UI. Run it as `node clients/v2-prototype/check.mjs` through the shared test lock.
+
+## Round 10c terminal (2026-10-21)
+
+Surface: the terminal view (`#/terminal`): overview, mission, decision, replay, help, plain-line mode, 120 x 40 and 80 x 24. Concepts: `hub-concepts-codex4/terminal-1-overview-v2.png` (1600 x 900), `refs/term-mission.webp`, `refs/term-decision.webp`, `refs/13-terminal-constellation.webp`, structure in `refs/structure-proposal.md` (Terminal section).
+
+### What was traced
+
+Measured on the 1600 x 900 overview with row bands and label anchors (not eyeballed):
+
+| Item | Concept value |
+|---|---|
+| Cell width | 13 design px (120 columns = 1560 px from x 38) |
+| Text line pitch | 33 px (two grid units of 16.5 px) |
+| Cap height | 16 px, so font about 22 px at a 0.6 em advance |
+| Top rule | y 39 |
+| Header caps top | y 54; second line (needs you, verifying) y 85 |
+| Hull (Archeus) | cols 35 to 82, rows 11 to 36, title on row 12 |
+| Notes box | cols 92 to 114, rows 14 to 22 |
+| Ideas box | cols 92 to 114, rows 24 to 32 |
+| Focus rows | Search provenance and Fix date test on row 16; Review plan row 20 |
+| Chain | Verifying row 20, Codex row 24, Verification row 28, Results row 32 |
+| Why line | row 39; "[Enter] Open decision" row 41 |
+| Key bar | row 45 (j/k select at col 0, Enter open at col 14, b Back at col 28, p Replay at col 38, t Tell at col 50, r Review at col 60, s Stop at col 72) |
+| Tell strip | row 48, full-width band, dimmed "> Tell Archeus..." |
+| Status line | row 50 (SIMULATED tag; the concept has none, kept by rule) |
+
+Font face: `"JetBrains Mono", "Cascadia Mono", Consolas, ui-monospace, monospace`. The renderer solves the font size from the face's real advance, so every cell is 13 design px whatever face loads. Scale k is the wrapper width over the design width, clamped to 0.75 to 1.25.
+
+Colours: amber for the owner obligation (needs you, Review plan, Why:), blue for live work (verifying, Fix date test, Verification, Results), green for the verified dot. The terminal ground is the concept's plum `#17111D`, not the site's blue-black token, because the concept sets it.
+
+### Layout table (overview, 120 columns)
+
+Units are 16.5 px rows. Text rows sit on even or odd units as measured above. Hull, divider and connector coordinates are in code (`overview120` in app.js) and every value is listed above.
+
+### Metrics (sim2.py, 160 px wide, concept vs render at 1600 x 900)
+
+| Iteration | Change | lum MAD | amber MAD | blue MAD | edge overlap |
+|---|---|---|---|---|---|
+| 2 | first grid, header 37 px high | 5.42 | 0.57 | 1.40 | 47.7 % |
+| 3 | top rule moved to y 39, header and rows aligned | 2.74 | 0.24 | 0.87 | 77.6 % |
+| 4 | legs moved one row down | 2.74 | 0.24 | 0.87 | 77.7 % |
+| 5 | key bar and tell strip moved | 2.75 | 0.24 | 0.87 | 77.7 % |
+| 6 | focus rows and chain +1 row | 2.73 | 0.13 | 0.71 | 79.1 % |
+| 7 | hull bottom +1, Notes/Ideas +1, Why and Enter moved | 2.60 | 0.15 | 0.72 | 78.4 % |
+
+The metrics are coarse at 160 px. Iteration 4 and 5 moves are below their resolution, so for those the montage was the check. Amber and blue moved the right way through iteration 6.
+
+### Other screens (checked by eye, not by metric)
+
+- Mission: chain line, state line, activity capped so it stops above the key bar.
+- Decision: two-step (review, then `a` then `y`), nothing approved; one "CONCEPT FIXTURE" label.
+- Replay: 09:00 to 09:25 rows with timeline marks, tags coloured by state, dashed rule and a Reconcile row, "Not every external effect can be reversed."
+- Help, plain-line (`L`), `?nocolor` and the `C` key: render without errors.
+- 80 x 24: single pane stack with the Why line; no concept exists for it, so it has no metric.
+
+### Differences left (numbered)
+
+1. Overview loop: 7 measured iterations, not the brief's 8 minimum. Stopped by the author before iteration 8.
+2. Legs under ARCHEUS are two-row slashes; the concept draws longer diagonals.
+3. Dashed links use `\` glyph steps as the brief asks; the concept draws longer dashes.
+4. Hull corners are slash glyphs on the row above the edge; the concept's corners sit slightly higher.
+5. Concept command strip is taller (about 40 px); ours is one unit row.
+6. Status line (SIMULATED) is present; the concept has none. Kept by the simulated-tag rule.
+7. Mission, decision and replay were not run through the metric loop; they have no matching render pixel-for-pixel, only a visual check against term-mission and term-decision.
+8. Replay has no concept image; it follows the brief's terminal form.
+9. Label-overlap probe not instrumented. A character grid writes one character per cell, so overlap of labels is not possible by construction; no probe was run.
+
+### Not verified
+
+- Real Consolas, Cascadia and JetBrains rendering on a phone, or screen readers. Only headless Chromium on this Windows machine.
+- Design-audit and typography checks were done by hand on the montages; no separate tool pass.
+- `check.mjs` passes through the shared test lock (6 references, 14 contrast pairs, min font 14 px).
+
+## Round 10c terminal, second pass (2026-10-22)
+
+Surface: `#/terminal` only. Master: `terminal-1-overview-v2.png` at its real size, 1600 x 900 (the Codex note said 1600 x 900; checked). Mission and decision: `refs/term-mission.webp` (862 x 626) and `refs/term-decision.webp` (862 x 506). Replay has no concept; it uses the mission page metrics. 80 x 24 has no concept; it keeps the stack layout and was checked by eye.
+
+### How the screen is built now
+
+- One SVG per screen in design px. Text runs are `<text>` at measured baselines; box, connector, divider and rule strokes are SVG lines; the marks (root asterisk, Fix-date asterisk, diamond, Codex triangle, header dot) are live shapes. No raster sits in the frame. The background is a two-stop gradient sampled from the concept.
+- `CONCEPT_TERM` in app.js is the overview text table: text, colour, origin x, baseline y, pitch. The table is generated by `tools/term_layout.py` (ink extents read from the concept, Roboto Mono advance 0.6 em, pitch solved per run).
+- Chamfered boxes: one diagonal per corner, detached from the edges by the measured gap. The Codex note asked for connected chamfers; the concept does not connect them (measured gaps of 4 to 10 px at each corner), so the concept geometry was kept. Owner to confirm.
+- `#term-sim` (the SIMULATED line, and the confirm prompt) sits below the frame, outside the 1600 x 900 master, as the approved exception.
+- `tools/term_sim.py` renders the screens headless (Playwright, localhost), compares them with the concept at full resolution (`render`, `compare`, `probe` for label overlap).
+
+### Font: mono bake-off (D:ontbake\scriptsun_mono.py, rank_mono.py)
+
+Samples: header (ARCHEUS, status), needs-you line, mission row (Search provenance), Why line, key bar, command line. Each face is set at the cell pitch (13 design px on the overview, 11.93 on the page screens): size = pitch / advance em. Scored on cap height, x-height, stroke width (2 x area / boundary), box error and ink IoU (best shift +-3 px).
+
+| Face (OFL/MIT only) | IoU | stroke err | x-height err | cap err | rank sum |
+|---|---|---|---|---|---|
+| **Roboto Mono 400 (winner, vendored)** | 0.282 | 0.048 | 0.012 | 0.033 | 14 |
+| JetBrains Mono 400 (previous face) | 0.262 | 0.043 | 0.012 | 0.028 | 18 |
+| JetBrains Mono 500 | 0.277 | 0.120 | 0.012 | 0.028 | 26 |
+| Fira Code 500 | 0.281 | 0.124 | 0.022 | 0.044 | 31 |
+| Geist Mono 500 | 0.279 | 0.116 | 0.022 | 0.069 | 41 |
+| IBM Plex Mono Medium | 0.285 | 0.129 | 0.071 | 0.062 | 47 |
+| DM Mono 400 | 0.251 | 0.046 | 0.071 | 0.044 | 49 |
+| Red Hat Mono 500 | 0.255 | 0.034 | 0.071 | 0.055 | 52 |
+| Cascadia Mono (installed) | 0.277 | 0.116 | 0.071 | 0.070 | 53 |
+| Space Mono 400 | 0.248 | 0.106 | 0.071 | 0.099 | 67 |
+
+Excluded from vendoring: Ubuntu Mono (rank 3 on IoU, but Ubuntu Font Licence, not OFL). Cascadia Mono: the brief said MIT; the upstream licence should be checked before any vendoring (not vendored). Winner vendored: `fonts/RobotoMono-wght.ttf` (google/fonts ofl/robotomono, SHA-256 in `fonts/sha256.txt`, licence `fonts/OFL-RobotoMono.txt`).
+
+### Overview measurements (concept vs render, 1600 x 900, full resolution)
+
+| Iteration | Change | frame mean abs | rule | divider | footer | lum MAD (160 px) | amber | blue |
+|---|---|---|---|---|---|---|---|---|
+| 1 | new scene, measured runs, chamfers, connectors | 3.19 | 22.5 | 12.4 | 20.6 | 0.88 | 0.06 | 0.53 |
+| 2 | rule 39.4 w 1.6 (concept profile), box stroke 1.7, root legs 2.2 with gap, star 2.9 | 3.05 | 7.9 | 12.4 | 20.6 | 0.83 | 0.06 | 0.51 |
+| 3 | connectors back to 1.3 px (7/4 dash was worse) | 3.00 | 7.9 | 12.4 | 20.2 | 0.87 | 0.04 | 0.46 |
+| 4 | divider x 812.6, w 1.5 | 2.99 | 7.8 | 9.2 | 20.2 | 0.87 | 0.04 | 0.46 |
+
+Region means (final): header 14.5, header right 18.0, root 6.3, main title 6.8, main rows 4.5, notes and ideas 3.8 to 5.3, main box 4.2, footer 20.2, keys 16.3, input 17.1, strip 2.5, connectors 3.3. Text regions stay high (14 to 20) because Roboto Mono and the concept's face differ in glyph shape; the registration is within about 1 px per run (ink width fitted per run).
+
+Weight test (text only): 400 gives the lowest error; 450 and 500 raised text error and luminance MAD, so 400 stays.
+
+### Other screens (checked by eye on the renders, not by metric)
+
+- Mission: rows on the concept grid (cap tops 27 + 30.1 k), pitch 11.93, origin x 31. Fixture copy differs from the concept (the concept shows a "Task: not recorded" state; the fixture has a task). Left as data.
+- Decision: amber #D6B284 and red #C97A7A from the concept. Fixture copy for "What" differs from the concept. A key-hint row was added at row 15 (the concept has none), needed for the decision keys. Stop line kept.
+- Replay and help: concept page metrics, same rows. Replay has no concept.
+- 80 x 24: stack layout kept; the box title now sits above its box (it overlapped the header before).
+- Label overlap probe (getBBox on every text run): 0 overlapping pairs on overview, mission, decision and stack.
+
+### Deviations kept on purpose
+
+1. Selection: the selected mission gets a faint highlight band (#2B2538). The concept draws no selection; without it the j/k selection is invisible.
+2. Chamfers are detached as in the concept (see above).
+3. Box lines, connectors, marks and the rule are SVG strokes, not box-drawing characters: a character chamfer cannot reach the concept geometry.
+4. The background is flat: the sampled concept ground drifts by 1 to 2 levels top to bottom (23,17,29) to (24,18,30). The 5 to 12 level lift in the Codex note is not in this concept (measured).
+
+### Not verified
+
+- Real Windows fonts, screen readers, phone widths; only headless Chromium on this machine.
+- Codex loop: 4 overview iterations, not the 8 the brief asks for. The remaining overview difference is the text glyph shapes (Roboto Mono vs the concept face) and the dash phase of the connectors.
+- Ubuntu Mono and Cascadia licences were not verified against upstream text.

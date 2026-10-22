@@ -546,9 +546,35 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 /* Terminal: a fixed character grid; the wrapper scrolls sideways, the page does not. */
 .term-bar { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0; }
 .term-bar .btn[aria-pressed="true"] { border-color: var(--ivory); background: var(--surface); }
-.term-wrap { max-width: 100%; overflow: auto; border: 1px solid var(--line-2); border-radius: 12px; background: #05070B; padding: var(--s3); }
-.term { font: 400 15px/20px var(--mono); color: var(--text); margin: 0; white-space: pre; tab-size: 2; outline: none; }
+/* Round 10c terminal (measured on the concepts): one SVG scene in design px, Roboto Mono (vendored, OFL). */
+@font-face { font-family: "Archeus Mono"; src: url("fonts/RobotoMono-wght.ttf") format("truetype"); font-weight: 100 700; font-display: block; }
+.term-wrap { max-width: 100%; overflow: auto; background: #17111D; }
+.term { --c-ivory: #F4F2EE; --c-amber: #F5D522; --c-blue: #39BCF3; --c-green: #24C348; --c-dim: #BBB6B6; --c-line: #E0DCDA; --c-rule: #D6D0D0; --c-div: #A9A29F; --c-link: #CFC9C9; --c-select: #2B2538; --c-strip: #292734; --c-soft: #8AA8DC; --c-red: #C97A7A; font-family: "Archeus Mono", "Roboto Mono", Consolas, ui-monospace, monospace; color: var(--c-ivory); margin: 0; white-space: pre; box-sizing: border-box; outline: none; }
+.term-svg { display: block; max-width: none; }
+.term-svg.decision { --c-amber: #D6B284; }
+.term-svg { will-change: transform; }
+.term-svg text { fill: var(--c-ivory); font-family: "Archeus Mono", "Roboto Mono", Consolas, ui-monospace, monospace; white-space: pre; }
+.term-svg text.amber { fill: var(--c-amber); }
+.term-svg text.blue { fill: var(--c-blue); }
+.term-svg text.green { fill: var(--c-green); }
+.term-svg text.dim { fill: var(--c-dim); }
+.term-svg text.soft { fill: var(--c-soft); }
+.term-svg text.red { fill: var(--c-red); }
+.term-svg text.bold { font-weight: 700; }
+.term-svg .ground { fill: url(#term-bg); }
+.term-svg .strip { fill: var(--c-strip); }
+.term-svg .select { fill: var(--c-select); }
+.term-svg circle.green { fill: var(--c-green); }
+.term-svg .ln { stroke: var(--c-line); fill: none; stroke-linecap: butt; }
+.term-svg .ln.rule { stroke: #A0999A; }
+.term-svg .ln.div { stroke: var(--c-div); }
+.term-svg .ln.link { stroke: var(--c-link); }
+.term-svg .ln.amber { stroke: var(--c-amber); }
+.term-svg .ln.blue { stroke: var(--c-blue); }
+.term-svg .ln.dim { stroke: var(--c-dim); }
+.term-svg .ln.link { stroke: #E6E0DF; }
 .term:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.term-sim { margin: var(--s2) 0 0; font: 400 14px/1.4 var(--mono); color: var(--text-2); }
 .term-tell { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); }
 .term-tell label { font: 400 15px/24px var(--mono); color: var(--text-2); }
 .term-tell input { flex: 1; min-height: 48px; font-family: var(--mono); }
@@ -629,10 +655,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .budget { position: absolute; right: var(--s4); top: var(--s3); z-index: 2; margin: 0; font: 400 14px/20px var(--sans); color: var(--text-2); }
 @media (max-width: 880px) { .budget { display: none; } }
 
-.term .c-amber { color: var(--amber); }
-.term .c-blue { color: var(--blue); }
-.term .c-green { color: var(--green); }
-.term .dim { color: var(--text-3); }
 .term-tell { display: none; }
 
 .decision-facts { display: grid; grid-template-columns: max-content 1fr; gap: var(--s2) var(--s4); margin: var(--s4) 0; }
