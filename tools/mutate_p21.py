@@ -374,8 +374,8 @@ MUTATIONS = [
      "''")],
      [PL + 'test_r13_06_the_status_says_how_many_more_run_past_the_ten_it_names']),
     ('Z142', 'the own-call scan reads every decision, not only own calls', [(RS,
-     "\"AND json_extract(body, '$.subject.kind') = 'archeus_call' \"",
-     "\" \"")],
+     "        if (json.loads(rec['body']).get('subject') or {}).get('kind') == 'archeus_call':",
+     "        if True:")],
      [PL + 'test_g6_live_work_is_the_live_executions_then_the_own_calls_without_an_outcome']),
     # ── P21 slice B review rework: the home is never in the accounts view (owner 2026-10-21) ──
     ('Z143', 'the accounts view shows the home_ref path', [(RS,

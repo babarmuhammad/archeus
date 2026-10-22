@@ -202,8 +202,10 @@ def test_n06_every_learned_item_says_where_it_came_from_and_what_made_it(make):
         assert i.confidence is None                    # never invented
     assert (rd['selected'], rd['model'], rd['decided_by']) == ('fake_local', 'local/m',
                                                               'router')
-    # P10: the decision names the account it chose; the outcome, the one it ran on
-    assert rd['account_ref'] == rd['outcome']['account_ref'] == 'fake:fake_local'
+    # P10: the outcome names the account it ran on; the decision's own account_ref is
+    # projected away on purpose (the account-home projection, p21-design-gate §12)
+    assert 'account_ref' not in rd
+    assert rd['outcome']['account_ref'] == 'fake:fake_local'
     pkg = r.read(queries.get_context_package, rd['context_package_id'])
     assert (pkg['subject_kind'], pkg['subject_id']) == ('project', repo.project_id)
 

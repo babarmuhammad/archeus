@@ -11,6 +11,7 @@ a policy rule, or run anything. `ask` is recorded; asking the user is P9's
 `authorization.request_route`, called by the dispatch command.
 """
 
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -200,13 +201,13 @@ def own_call_live(row, now):
 def own_calls(conn, now):
     """The own calls (`archeus_call` decisions) of the last day, oldest first:
     the one scan behind `live_work` and `live_counts` (orchestration G6). The
-    kind is filtered in SQL, so no other decision's body is decoded."""
-    # ponytail: a day's decisions by a scan of created_at; an indexed kind or
-    # account column when the decision history makes that scan matter
+    kind is read from each body in Python (no json_extract: SQLite 3.31)."""
+    # ponytail: a day's decisions by a scan of created_at, bodies parsed in Python; an indexed
+    # kind or account column when the decision history makes that scan matter
     for rec in conn.execute("SELECT * FROM route_decisions WHERE created_at >= ? "
-                            "AND json_extract(body, '$.subject.kind') = 'archeus_call' "
                             "ORDER BY rowid", (_iso(now - 86400),)):
-        yield rows.decode(entities.RouteDecision, rec)
+        if (json.loads(rec['body']).get('subject') or {}).get('kind') == 'archeus_call':
+            yield rows.decode(entities.RouteDecision, rec)
 
 
 _NO_WORK = {'running': 0, 'lapsed': False}
@@ -221,11 +222,11 @@ def live_counts(conn, today, now, account_id=None):
 
     def mine(a):
         return out.setdefault(a, {'running': 0, 'lapsed': False})
-    scope = '' if account_id is None else " AND json_extract(body, '$.account_id') = ?"
-    for (a,) in conn.execute("SELECT json_extract(body, '$.account_id') FROM executions "
-                             'WHERE state IN (%s)%s' % (','.join('?' * len(_LIVE_EXEC)), scope),
-                             _LIVE_EXEC + (() if account_id is None else (account_id,))):
-        mine(a)['running'] += 1
+    for rec in conn.execute('SELECT body FROM executions WHERE state IN (%s)'
+                            % ','.join('?' * len(_LIVE_EXEC)), _LIVE_EXEC):
+        a = json.loads(rec['body']).get('account_id')
+        if account_id is None or a == account_id:
+            mine(a)['running'] += 1
     for r in own_calls(conn, now):
         rd = r.entity
         if rd.account_id is None or (account_id is not None and rd.account_id != account_id):

@@ -536,18 +536,23 @@ The review's verdict was CHANGES. What changed, finding by finding:
   `_tables.py`. Moving one shared copy was tried first and refused: `tests/v1/tui/test_boundaries.py`
   says the TUI imports no Core module. Test: `test_s3_core_never_imports_the_tui_and_says_the_same_words`
   (no `archeus.cli` import in Core; the two copies equal). `gen_ui --check` keeps them current.
-- **S4: the scans.** `own_calls` filters `subject.kind` in SQL (`json_extract`), so no other
-  decision's body is decoded. `live_work` and `live_counts` each read the live executions by state
-  in SQL (`executions_by_state`, no finished execution is decoded), and each reads the day's own
-  calls. `/v1/accounts` runs both once: four scans, whatever the account count, and each account
-  adds one read of its own usage rows (`ledger_totals`). `refresh_ledgers` (the own-call writer)
-  computes `live_counts` once for all its accounts. Ceiling, recorded: the day's `route_decisions`
-  are still scanned by `created_at` (no index). An index is a migration; none was added (0019 is
-  not taken), and the owner may ask for one.
+- **S4: the scans.** `own_calls` reads the day's `route_decisions` by `created_at` and parses each
+  body in Python to keep the `subject.kind` `archeus_call` rows. No `json_extract` is used: the
+  SQLite 3.31 invariant in `test_db_schema.py` holds (owner decision, 2026-10-22). `live_work` and
+  `live_counts` each read the live executions by state in SQL (`executions_by_state`, no finished
+  execution is decoded); `live_counts` reads each live execution's `account_id` in Python and each
+  reads the day's own calls. `/v1/accounts` runs both once: four scans, whatever the account count,
+  and each account adds one read of its own usage rows (`ledger_totals`). `refresh_ledgers` (the
+  own-call writer) computes `live_counts` once for all its accounts. Ceiling, recorded: the day's
+  `route_decisions` are still scanned by `created_at` (no index), and every one of them is parsed
+  in Python. An index is a migration; none was added (0019 is not taken), and the owner may ask for one.
 - **Field projection on three reads (owner, 2026-10-21: "Field projection only (Recommended)";
   earlier answers "Strip at read" and "Strip it").** Slice B guarantees only this: `/v1/accounts`,
   `/v1/route-decisions` (list and one) and `/v1/status` no longer carry the fields that name an
-  account's home. Those fields are left out by name, never by matching a value:
+  account's home, for registered accounts. A default account's key (`<harness>:<canonical home>`) in a
+  route decision's `outcome.account_ref` is still returned on the single-decision read
+  (`GET /v1/route-decisions/{id}`) and on the mission trace; that is not covered by slice B and is
+  deferred to T-144 (see *Not guaranteed* below). Those fields are left out by name, never by matching a value:
   - `/v1/accounts`: `home_ref` and `home_key` (`resources.HOME_FIELDS`).
   - `/v1/route-decisions` (`queries._public_decision`, `get_route_decision`'s usage rows): a snapshot
     account's `ref`, `home_ref` and `home_key`; `account_ref` on the decision, on each candidate and
@@ -565,15 +570,16 @@ The review's verdict was CHANGES. What changed, finding by finding:
   `test_H09_the_three_projected_reads_name_no_home_field` (HTTP, with a stored-row precondition).
   `test_H09_the_status_read_with_a_live_own_call_names_no_home_field` (HTTP: the status read with an
   own call in flight, so the own-call projection runs over HTTP and not only on `live_work`; review
-  N-2; mutant Z203). Mutants Z151, Z153-Z157, Z156, Z202, Z203.
+  N-2; mutant Z203). Mutants Z151, Z153-Z157, Z202, Z203.
   **Not guaranteed by slice B (moved to T-144, the security card):** every other read that can carry
   a home. Known examples: verification and review records (`performed_by.account_ref`,
   `reviewer_resource`), events payloads, a default account's key (`<harness>:<canonical home>`,
   ADR-0048 D-25.1) in a route decision's `outcome.account_ref` (the own-call writers in
-  conversation, knowledge and planning record it there; the decision's `account_ref`, its candidates
-  and its usage rows are projected, and a default account has no `account_id` on any of them), any
-  free text that names a home, and the event streams. A value-matching net was built and removed on the owner's answer; its spelling and
-  boundary findings are on the T-144 card.
+  conversation, knowledge and planning record it there; the decision's `account_ref`, its
+  candidates and its usage rows are projected, and a default account has no `account_id` on any
+  of them), any
+  free text that names a home, and the event streams. A value-matching net was built and removed
+  on the owner's answer; its spelling and boundary findings are on the T-144 card.
 - **Now map (review F2).** The live map's set is `attemptIds(status.data.live)` (`orbit.ts`): an own
   call is never a map node (G8). Test: `orbit.test.ts` (`attemptIds`, behaviour only); mutant Z148.
   The offline header is `headerLine(status)` (`present.ts`), tested in `present.test.ts`; mutant
@@ -581,7 +587,7 @@ The review's verdict was CHANGES. What changed, finding by finding:
 - **S5: mutant gaps.** Z130-Z142 cover the in-flight count, its account (Z131 books it to no
   account), the lapsed flip, the in-flight zero, the palette skip, the TS and Python in-flight
   text, the TUI usage line, the execution-only link filter, the summary-only consumers, the
-  "(+N more)" count and the own-call SQL filter. The account filter inside `live_counts` for a
+  "(+N more)" count and the own-call kind filter. The account filter inside `live_counts` for a
   single account is not observable (each read takes its own account's key), so it has no mutant:
   the reviewer's "account filter" claim is covered by Z131 instead.
 - **S6: timing.** The "still within its run" check uses a call with `max_run_s=600`; the one-second
