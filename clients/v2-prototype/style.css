@@ -75,6 +75,7 @@ h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus { outline: none; }
 .wordmark {
   font: 400 20px/24px var(--serif); letter-spacing: 0.3em; text-transform: uppercase;
   color: var(--text); text-decoration: none; padding-left: var(--s2);
+  position: relative; z-index: 20;
 }
 .wordmark span { font-size: 14px; letter-spacing: 0.2em; color: var(--text-2); }
 .places { display: flex; flex-direction: column; gap: 2px; }
@@ -1655,6 +1656,7 @@ body.frame-now .feed .msg-card .row .btn { flex: none; }
    rounded ring, not the browser's outline (fix 2); the Overview project names stay in the accessibility tree only (D3). */
 #s-now .chatbar input:focus, #s-now .chatbar input:focus-visible { outline: 0; }
 #s-now[data-frame="3"] .chatbar:focus-within:not(.mouse-focus) { box-shadow: inset 0 0 0 calc(var(--u) * 3) rgba(255, 243, 207, 0.55); }
+@media (max-width: 880px) { #s-now .chatbar:focus-within:not(.mouse-focus) { box-shadow: inset 0 0 0 3px rgba(255, 243, 207, 0.55); } }
 #s-now .ov-art .ov-name-sr { opacity: 0; }
 .ph2-back, #s-now[data-frame="3"] .ph3-back { color: #B2B4C0; font: 400 calc(var(--u) * 23)/calc(var(--u) * 36) "Archeus Sans", var(--sans); text-indent: calc(var(--u) * 36); white-space: nowrap; overflow: visible; text-decoration: none; }
 .ph2-back::before, #s-now[data-frame="3"] .ph3-back::before { content: ""; position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 11); width: calc(var(--u) * 14); height: calc(var(--u) * 14); border-left: calc(var(--u) * 2.6) solid #B2B4C0; border-bottom: calc(var(--u) * 2.6) solid #B2B4C0; transform: rotate(45deg); }
