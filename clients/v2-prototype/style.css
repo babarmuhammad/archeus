@@ -336,7 +336,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 4;
   width: min(680px, calc(100% - 48px)); max-height: 176px; overflow-y: auto; pointer-events: auto;
 
-
 }
 .msgs { display: flex; flex-direction: column; gap: var(--s2); min-height: 100%; justify-content: flex-end; }
 .msgs li { font: 400 16px/24px var(--sans); }
@@ -401,39 +400,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl.is-new .k::after { content: " · New"; color: var(--amber); }
 @keyframes lbl-in { from { opacity: 0; } to { opacity: 1; } }
 
-/* Replay: the mission constellation on the left, the six rows on the right. */
-.rp-split { grid-template-columns: minmax(0, 1fr) 500px; gap: var(--s6); }
-.stage-replay { margin: 0; height: clamp(480px, calc(100vh - 250px), 820px); min-height: 0; }
-.rp-panel {
-  align-self: start; display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2);
-  background: rgba(14, 19, 28, 0.8); border: 1px solid var(--line-2); border-radius: 18px; padding: var(--s4) var(--s4) var(--s3);
-}
-.rp-rows { position: relative; display: flex; flex-direction: column; gap: var(--s2); }
-.rp-rows::before { content: ""; position: absolute; left: 83px; top: 30px; bottom: 30px; width: 1px; background: var(--line-2); }
-.rp-row {
-  position: relative; display: grid; grid-template-columns: 56px 22px minmax(0, 1fr) auto; gap: var(--s2); align-items: center;
-  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: 12px; background: rgba(7, 10, 16, 0.5);
-}
-.rp-time { font: 400 14px/20px var(--mono); color: var(--text-2); }
-.rp-mark { width: 14px; height: 14px; border-radius: 50%; justify-self: center; background: var(--ivory); box-sizing: border-box; }
-.rs-check .rp-mark { background: var(--green); }
-.rs-diamond .rp-mark { background: var(--amber); border-radius: 2px; transform: rotate(45deg) scale(0.85); }
-.rs-dot .rp-mark { background: var(--lilac); }
-.rp-reconcile .rp-mark { background: transparent; border: 1.5px dashed var(--text-2); }
-.rp-reconcile { border-style: dashed; background: transparent; }
-.rp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.rp-title { font: 400 20px/26px var(--serif); }
-.rp-sub { font: 400 14px/20px var(--sans); color: var(--text-2); }
-.rp-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s2); }
-.rp-actions .btn { min-height: 48px; }
-.rp-badge { font: 400 14px/20px var(--sans); padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line-2); color: var(--text-2); white-space: nowrap; }
-.tone-intended, .tone-operator { color: var(--lilac); }
-.tone-recorded { color: var(--text); }
-.tone-verified { color: var(--green); border-color: rgba(111, 211, 154, 0.5); }
-.tone-uncertain, .tone-needs-you { color: var(--amber); border-color: rgba(242, 181, 68, 0.5); }
-.rs-diamond { border-color: rgba(242, 181, 68, 0.35); }
-.rp-foot { font: 400 14px/20px var(--sans); color: var(--text-2); text-align: center; padding-top: var(--s2); }
-
 /* Phone: constellation above, the conversation above the bar, the bar and Stop above the navigation bar. */
 @media (max-width: 880px) {
   .now-lede, .now-tag, .prompts, .list-d { display: none; }
@@ -442,8 +408,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   .chatbar { bottom: 10px; width: calc(100% - 24px); padding-left: var(--s3); }
   .chatbar .btn { padding: 0 var(--s3); }
   .chat-stop { display: inline-flex; }
-  .rp-split { grid-template-columns: minmax(0, 1fr); }
-  .stage-replay { height: 380px; }
 }
 @media (min-width: 881px) and (max-height: 800px) {
   .now-lede { display: none; }
@@ -565,15 +529,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl.mission .k, .lbl.record .k, .lbl.exec .k { display: none; }
 .lbl.is-new .k::after { content: none; }
 .lbl.is-new .t::after { content: " New"; font: 600 14px/20px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); vertical-align: middle; margin-left: 8px; }
-.rp-rows { gap: 6px; }
-.rp-row { padding: 10px 12px; gap: 10px; }
-.rp-title { font-size: 18px; line-height: 24px; }
-.rp-panel { padding: 12px 14px 8px; gap: 8px; }
-.rp-actions { margin-top: 4px; }
-.rp-foot { padding-top: 4px; }
-
-#s-replay .head { margin: 0; }
-#s-replay .rp-panel { margin-top: 0; }
 
 /* Apple HIG translated for the phone sheets: a grabber on resizable sheets, body text 17px (HIG default), 44pt-plus targets. */
 .feed::before, .now-sheet::before {
@@ -671,7 +626,6 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl .t { font-family: var(--sans); font-weight: 500; font-size: calc(19px * var(--lk, 1)); line-height: 24px; letter-spacing: 0; }
 .lbl.project .t { font-family: var(--sans); font-weight: 600; font-size: calc(16px * var(--lk, 1)); line-height: 22px; letter-spacing: 0.02em; }
 .lbl.core .t { font-family: var(--serif); font-weight: 400; }
-.rp-title { font-family: var(--sans); font-size: 18px; line-height: 24px; font-weight: 500; }
 .budget { position: absolute; right: var(--s4); top: var(--s3); z-index: 2; margin: 0; font: 400 14px/20px var(--sans); color: var(--text-2); }
 @media (max-width: 880px) { .budget { display: none; } }
 
@@ -712,7 +666,6 @@ p.small, .small { line-height: 20px; }
 .btn { font-weight: 500; }
 
 @media (max-width: 880px) { .stage-now .lbl.exec .t { font-size: 16px; line-height: 22px; } }
-@media (max-width: 1699px) { #replay-stage .lbl.verb { display: none; } }
 .msg-card .btn.primary { background: var(--amber); border-color: var(--amber); color: #070A10; }
 .msg-card .btn:not(.primary) { background: transparent; border-color: var(--amber); color: var(--amber); }
 
@@ -1339,3 +1292,149 @@ body.nocolor.frame-now .desk-marks path, body.nocolor.frame-now .desk-marks circ
 body.nocolor.frame-now .desk-marks .mk-glow { opacity: 0 !important; }
 body.nocolor.frame-now .desk-marks .mk-link { stroke: var(--text) !important; }
 body.nocolor.frame-now .top .stop-btn { color: var(--text); border-color: var(--text-3); }
+/* Replay (round 10c replay): the concept's own frame on desktop, a calm column on the phone.
+   Desktop (body.frame-replay, 881 px and up): one fixed 1440 x 810 master frame (the concept's size) scaled
+   uniformly by --k, with the base art (art/replay-base.webp, tools/art_replay.py) as the shell background. Live on
+   top: rail, header controls, graph labels, the mission node, rows, chips, markers, buttons and the footer line.
+   Positions are master px; "translate" on the rk-* and row classes is the registration offset (tools/textreg_replay.py).
+   Phone (under 881 px, no concept): the same art cropped above the rows, rows as a flow list, Back in reach. */
+#s-replay {
+  --rp-ink: #F4F2F6; --rp-sub: #ABA8C2; --rp-time: #BBBBDC; --rp-lilac: #C7B2F0; --rp-green: #6FD39A;
+  --rp-amber: #F2B544; --rp-mark-amber: #F6CD87; --rp-quiet: #A5A0B9; --rp-panel: #140E1C; --rp-blue: #47AAFE; --rp-red: #E5585E;
+  --rp-serif: "Libre Caslon V2", var(--serif); --rp-sans: "Source Sans V2", var(--sans);
+}
+.screen-replay { margin: 0 -26px; }
+.rp-wrap { position: relative; flex: 1; min-height: 0; }
+.rc-stage { position: relative; min-width: 0; overflow: hidden; }
+.rc-labels { position: absolute; inset: 0; pointer-events: none; }
+.rc-svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.rc-art { position: absolute; background: url("art/replay-base.webp") 0 0 / 100% 100% no-repeat; pointer-events: none; }
+.rc-hit { position: absolute; display: block; border-radius: 50%; pointer-events: auto; }
+.rc-l { position: absolute; margin: 0; white-space: nowrap; font: 400 16px/1 var(--rp-serif); color: #DBDBDF; }
+.rc-l a { color: inherit; text-decoration: none; }
+.rc-core { text-transform: uppercase; color: #F4F0E6; font-size: 16px; letter-spacing: 0.12em; }
+.rc-state { display: inline-flex; align-items: center; gap: 8px; font-family: var(--rp-sans); }
+.rc-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.rc-mission-name { font-size: 18px; color: #F4F0E6; }
+.rc-mission-state { font-size: 17px; }
+.rc-verb { color: #DBDBDF; }
+.rc-name { color: #F1EEF4; }
+.rc-sub { color: var(--rp-sub); }
+.rp-panel { position: relative; }
+.rp-title { font: 500 43.2px/1 var(--rp-serif); color: #FDFDFD; margin: 0; letter-spacing: 0; }
+.rp-rows { position: relative; list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.rp-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 12px; align-items: center; padding: 12px; border: 1px solid rgba(239, 236, 240, 0.09); border-radius: 10px; background: rgba(28, 22, 36, 0.6); }
+.rp-time { font: 400 17px/24px var(--rp-serif); color: var(--rp-time); font-variant-numeric: lining-nums; }
+.rp-mark { position: relative; width: 24px; height: 24px; display: grid; place-items: center; justify-self: center; }
+.rp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rp-body .rp-title { font: 400 18px/24px var(--rp-serif); color: var(--rp-ink); margin: 0; }
+.rp-sub { font: 400 16px/22px var(--rp-sans); color: var(--rp-sub); }
+.rp-badge { justify-self: end; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid rgba(239, 236, 240, 0.2); border-radius: 6px; font: 400 15px/20px var(--rp-sans); color: #E4E1EA; background: rgba(239, 236, 240, 0.04); white-space: nowrap; }
+.rs-dot .rp-mark::after { content: ""; width: 14px; height: 14px; border-radius: 50%; background: #D0C2FA; box-shadow: 0 0 10px rgba(208, 194, 250, 0.45); }
+.rs-check .rp-mark { width: 25px; height: 25px; border-radius: 50%; background: #69F691; box-shadow: 0 0 12px rgba(105, 246, 145, 0.4); }
+.rs-check .rp-mark::after { content: ""; width: 9px; height: 5px; border: solid #0E2A1A; border-width: 0 0 2px 2px; transform: rotate(-45deg) translate(1px, -1px); }
+.rs-diamond .rp-mark::before { content: ""; width: 19px; height: 19px; background: var(--rp-mark-amber); transform: rotate(45deg); box-shadow: 0 0 12px rgba(246, 205, 135, 0.4); }
+.rs-diamond .rp-mark::after { content: ""; position: absolute; width: 5px; height: 5px; background: #2A1D0A; transform: rotate(45deg); }
+.rp-reconcile .rp-mark::after { content: ""; width: 22px; height: 22px; border-radius: 50%; border: 1.5px dashed var(--rp-quiet); }
+.rp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+.rp-actions .btn { position: relative; min-height: 44px; height: 44px; width: 100%; font: 400 16px/24px var(--rp-serif); border-radius: 6px; padding: 0 12px; }
+.rp-actions .btn.primary { background: linear-gradient(180deg, #7A4CB8 0%, #5B3592 100%); border-color: #8A5FC9; color: #F3E9FF; }
+.rp-actions .btn:not(.primary) { background: transparent; border-color: rgba(239, 236, 240, 0.35); color: #F1EEF4; }
+.rp-foot { margin: 0; padding-top: 16px; font: 400 16px/22px var(--rp-sans); color: var(--rp-quiet); text-align: center; }
+.rp-back {
+  display: inline-flex; align-items: center; align-self: flex-start; min-height: 48px; padding: 0 16px; margin: 0 0 8px;
+  border: 1px solid var(--line-2); border-radius: 12px; font: 400 16px/24px var(--sans); color: var(--text); text-decoration: none;
+  position: sticky; top: 0; background: var(--bg); z-index: 1;
+}
+.rp-empty .rp-sub { white-space: normal; }
+
+/* Desktop frame: master px. Every position below is a concept measurement; translate is the registration offset. */
+body.frame-replay { overflow: hidden; background: #060409; }
+body.frame-replay .shell {
+  position: absolute; left: 50%; top: 50%; width: 1440px; height: 836px; margin: -418px 0 0 -720px;
+  transform: scale(var(--k, 1)); transform-origin: 50% 50%; display: block;
+  background: url("art/replay-base.webp") 0 0 / 1440px 810px no-repeat, #070409;
+}
+body.frame-replay .rail { position: absolute; left: 0; top: 0; width: 192px; height: 810px; padding: 0; margin: 0; border: 0; background: transparent; overflow: visible; display: block; }
+body.frame-replay .rail .wordmark { position: absolute; left: 25px; top: 15px; width: 200px; font: 400 18.4px/22px var(--rp-serif); letter-spacing: 8.4px; color: var(--text); text-transform: uppercase; padding: 0; }
+body.frame-replay .rail .wordmark span { font-size: 18.4px; letter-spacing: 8.4px; }
+body.frame-replay .rail .fixture { position: absolute; left: 25px; top: 40px; margin: 0; font: 400 12.2px/14px var(--rp-sans); letter-spacing: 0.31px; color: var(--text-3); text-transform: uppercase; }
+body.frame-replay .rail .projects, body.frame-replay .more-d, body.frame-replay .rail .places-d { display: none; }
+body.frame-replay .places { position: absolute; left: 0; top: 0; width: 192px; height: 810px; display: block; }
+body.frame-replay .places a { position: absolute; left: 0; width: 192px; height: 46px; display: flex; align-items: center; gap: 19px; padding: 0 0 0 25px; box-sizing: border-box; color: var(--text); font: 400 20px/24px var(--rp-sans); letter-spacing: 1px; background: transparent; }
+body.frame-replay .places a[data-nav="now"] { top: 88px; background: #1B1822; }
+body.frame-replay .places a[data-nav="now"]::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--amber); }
+body.frame-replay .places a[data-nav="shared"] { top: 135px; }
+body.frame-replay .places a[data-nav="replay"] { top: 181px; }
+body.frame-replay .places a[aria-current="page"]::before { display: none; }
+body.frame-replay .places a[data-nav="now"][aria-current="page"]::before { display: block; }
+body.frame-replay .places a .ico { width: 20px; height: 20px; flex: 0 0 20px; }
+body.frame-replay .page { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; padding: 0; margin: 0; }
+body.frame-replay .top { position: absolute; left: 0; top: 0; width: 1440px; height: 60px; padding: 0; margin: 0; display: block; }
+body.frame-replay .top .proto { display: none; }
+body.frame-replay .core-status { position: absolute; left: 904px; top: 10px; margin: 0; font: 400 15.9px/20px var(--rp-sans); color: var(--text-2); white-space: nowrap; }
+body.frame-replay .core-status .dot { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; margin: 0; }
+body.frame-replay .core-status { padding-left: 26px; }
+body.frame-replay .top [data-tell] { position: absolute; left: 1189px; top: 12px; width: 107px; height: 35px; min-height: 35px; padding: 0; font: 400 18.8px/24px var(--rp-sans); color: var(--text); }
+body.frame-replay .top .stop-btn { position: absolute; left: 1309px; top: 12px; width: 107px; height: 35px; min-height: 35px; padding: 0; font: 400 18.1px/24px var(--rp-sans); color: var(--rp-red); border-color: rgba(229, 88, 94, 0.7); background: transparent; }
+body.frame-replay #say { position: absolute; left: 0; top: 0; }
+body.frame-replay main#main { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; }
+body.frame-replay .screen-replay { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; margin: 0; }
+body.frame-replay .rp-wrap { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; }
+body.frame-replay .rc-stage { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; overflow: visible; }
+body.frame-replay .rc-l { translate: var(--dx, 0px) var(--dy, 0px); }
+body.frame-replay .rk-core { font-size: 15.7px; letter-spacing: 0.12px; }
+body.frame-replay .rk-fix { font-size: 18.1px; }
+body.frame-replay .rk-verifying { font: 400 17px/1 var(--rp-sans); }
+body.frame-replay .rk-orchestrates { font-size: 12.8px; }
+body.frame-replay .rk-executes { font-size: 14.2px; }
+body.frame-replay .rk-verifies { font-size: 14.6px; }
+body.frame-replay .rk-produces { font-size: 12.6px; }
+body.frame-replay .rk-codex { font-size: 15.2px; }
+body.frame-replay .rk-execution { font-size: 14.2px; }
+body.frame-replay .rk-verification { font-size: 15.4px; }
+body.frame-replay .rk-results { font-size: 16.9px; }
+body.frame-replay .rp-panel { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; }
+body.frame-replay .rp-title { position: absolute; left: 805px; top: 94px; white-space: nowrap; translate: var(--dx, 0px) var(--dy, 0px); }
+body.frame-replay .rp-back { display: none; }
+body.frame-replay .rp-rows { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; display: block; gap: 0; }
+body.frame-replay .rp-row { position: absolute; left: 793px; top: var(--top); width: 613px; height: var(--h); display: block; padding: 0; border: 0; border-radius: 0; background: transparent; }
+body.frame-replay .rp-mark { position: absolute; left: 92px; top: calc(var(--y) - var(--top) - 12px); width: 24px; height: 24px; }
+body.frame-replay .rp-time { position: absolute; left: 19px; top: calc(var(--y) - var(--top)); font: 400 17px/22px var(--rp-serif); translate: 0 -4px; }
+body.frame-replay .rp-body { position: absolute; left: 141px; top: 0; width: 440px; height: 100%; display: block; gap: 0; }
+body.frame-replay .rp-body .rp-title { position: absolute; left: 0; top: calc(var(--y) - var(--top)); font: 400 18.1px/22px var(--rp-serif); white-space: nowrap; translate: 0 -2px; }
+body.frame-replay .rp-sub { position: absolute; left: 2px; top: calc(var(--y) - var(--top)); font: 400 16px/20px var(--rp-sans); white-space: nowrap; overflow: visible; translate: 0 -3px; }
+body.frame-replay .rp-badge { position: absolute; left: calc(var(--x) - 793px); top: calc(var(--y) - var(--top)); width: var(--w); height: 34px; min-height: 34px; padding: 0; justify-self: auto; font: 400 14.9px/20px var(--rp-sans); }
+body.frame-replay .rp-actions { position: absolute; left: 2px; top: calc(657px - var(--top)); width: 455px; height: 40px; margin: 0; grid-template-columns: 222px 222px; gap: 11px; }
+body.frame-replay .rp-actions .btn { min-height: 40px; height: 40px; width: 222px; padding: 0; font: 400 16.2px/24px var(--rp-sans); border-radius: 6px; }
+body.frame-replay .rp-actions .btn::before { content: ""; position: absolute; left: 0; right: 0; top: calc((40px - 44px / var(--k, 1)) / 2); bottom: calc((40px - 44px / var(--k, 1)) / 2); }
+body.frame-replay .rp-foot { position: absolute; left: 920px; top: 748px; width: 300px; padding: 0; margin: 0; font: 400 16.9px/22px var(--rp-sans); text-align: left; white-space: nowrap; border: 0; translate: var(--dx, 0px) var(--dy, 0px); }
+body.frame-replay .rp-foot::before { content: ""; position: absolute; left: -126px; width: 612px; top: -16px; height: 1px; background: rgba(239, 236, 240, 0.08); }
+body.frame-replay .rp-foot { display: block; }
+body.frame-replay .rp-row:nth-child(2) .rp-body .rp-title, body.frame-replay .rp-row:nth-child(4) .rp-body .rp-title, body.frame-replay .rp-row:nth-child(5) .rp-body .rp-title { translate: 3px -2px; }
+body.frame-replay .rp-reconcile .rp-title { translate: 4px -2px; }
+body.frame-replay .rp-strip { position: absolute; left: 0; top: 812px; width: 1440px; margin: 0; padding-top: 5px; text-align: center; font: 400 14px/18px var(--rp-sans); color: var(--rp-quiet); }
+
+/* Phone form (no concept; derived from the desktop frame): the graph crop above the rows. */
+@media (max-width: 880px) {
+  .screen-replay { margin: 0; }
+  .rc-stage { margin: 0 0 14px; height: 300px; }
+  .rc-l { font-size: 14px; }
+  .rc-core { font-size: 14px; letter-spacing: 0.12em; }
+  .rc-mission-name { font-size: 16px; }
+  .rc-mission-state { font-size: 14px; }
+  .rc-verb, .rc-name, .rc-sub { font-size: 14px; }
+  .rk-execution { margin-top: 2px; }
+  .rp-title { font-size: 32px; line-height: 38px; margin: 0 0 12px 0; white-space: normal; }
+  .rp-row { grid-template-columns: 44px minmax(0, 1fr) auto; padding: 12px; row-gap: 4px; }
+  .rp-mark { grid-column: 1; grid-row: 1 / span 3; align-self: center; }
+  .rp-time { grid-column: 2; grid-row: 1; justify-self: start; font-size: 15px; line-height: 20px; }
+  .rp-badge { grid-column: 3; grid-row: 1; font-size: 14px; min-height: 34px; }
+  .rp-body { grid-column: 2; grid-row: 2 / span 2; }
+  .rp-body .rp-title { font-size: 20px; line-height: 26px; }
+  .rp-sub { white-space: normal; font-size: 15px; line-height: 21px; }
+  .rp-reconcile .rp-time { display: none; }
+  .rp-actions { grid-template-columns: 1fr; }
+  .rp-actions .btn { min-height: 48px; height: 48px; font-size: 16px; }
+  .rp-foot { margin-top: 12px; padding-top: 12px; font-size: 16px; }
+}

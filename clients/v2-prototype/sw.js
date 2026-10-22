@@ -1,7 +1,7 @@
-const CACHE = 'archeus-v2-proto-m1';
+const CACHE = 'archeus-v2-proto-m2';
 const SHELL = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png',
   './art/phone-1-base.webp', './art/phone-1-layout.js', './art/phone-1-type.js', './art/phone-2-base.webp', './art/phone-2-layout.js', './art/phone-2-type.js', './art/phone-3-base.webp', './art/phone-3-layout.js', './art/phone-3-type.js',
-  './art/desktop-now-base.webp', './fonts/LibreCaslonText-VF.ttf', './fonts/SourceSans3-wght.ttf', './fonts/Inter-VF.ttf'];
+  './art/desktop-now-base.webp', './art/replay-base.webp', './fonts/LibreCaslonText-VF.ttf', './fonts/SourceSans3-wght.ttf', './fonts/Inter-VF.ttf'];
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });

@@ -83,21 +83,22 @@ check(/reduce\.matches/.test(js), 'animation does not read prefers-reduced-motio
 check(!/https?:\/\//.test(css) && !/@import/.test(css), 'style.css loads an external resource');
 check(/--serif/.test(css) && /--sans/.test(css), 'type pairing missing');
 
-// Round 10e: the Now frame (body.frame-now rules) keeps the concept's sizes, minimum 11 px (owner rule); every other
-// view keeps the 14 px minimum.
+// Round 10e (desktop Now frame) and round 10c replay: the desktop frames keep the concept's sizes, minimum 11 px (10 px only
+// on the named sub-lines); every other view keeps the 14 px minimum.
 const fontSizes = (text) => [...text.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
-const frameRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => /frame-now/.test(m[1]));
-const otherCss = css.replace(/([^{}]+)\{([^{}]*)\}/g, (m, sel) => (/frame-now/.test(sel) ? '' : m));
+const FRAME_RE = /frame-now|frame-replay/;
+const frameRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => FRAME_RE.test(m[1]));
+const otherCss = css.replace(/([^{}]+)\{([^{}]*)\}/g, (m, sel) => (FRAME_RE.test(sel) ? '' : m));
 const frameSizes = fontSizes(frameRules.map((m) => m[0]).join('\n'));
-const otherSizes = fontSizes(otherCss);
-check(otherSizes.length > 0 && Math.min(...otherSizes) >= 14, `font size below 14px outside the Now frame: ${Math.min(...otherSizes)}`);
+const sizes = fontSizes(otherCss);
+check(sizes.length > 0 && Math.min(...sizes) >= 14, `font size below 14px outside the desktop frames: ${Math.min(...sizes)}`);
 // Round 10g (owner answer 3): 10 px is allowed on the frame only for the concept's own small sub-lines, named here.
 const TEN_PX_SELECTORS = ['data-lid="m-read"] .s', 'data-lid="m-index"] .s', 'data-lid="ideas"] .s', 'data-lid="m-date"] .s', 'data-lid="m-search"] .s', 'data-lid="m-done"] .s'];
 const tenPxBreaches = frameRules.filter((m) => fontSizes(m[2]).some((v) => v < 11) && !TEN_PX_SELECTORS.some((sel) => m[1].includes(sel)));
 const tenPxRules = frameRules.filter((m) => fontSizes(m[2]).some((v) => v < 11));
 check(tenPxBreaches.length === 0, `frame font below 11px outside the named sub-lines: ${tenPxBreaches.map((m) => m[1].trim()).join(' | ')}`);
 check(tenPxRules.every((m) => fontSizes(m[2]).every((v) => v >= 10)), 'frame font below 10px');
-check(frameSizes.length > 0 && Math.min(...frameSizes) >= 10, `font size below 10px on the Now frame: ${Math.min(...frameSizes)}`);
+check(frameSizes.length > 0 && Math.min(...frameSizes) >= 10, `font size below 10px on the desktop frames: ${Math.min(...frameSizes)}`);
 check(/\.btn\s*\{[^}]*min-height:\s*48px/.test(css), '.btn is not 48px tall');
 check(/#s-now \.ov-art \.ov-btn \{/.test(css) && /#s-now \.ov-art \.ov-chip-text \{/.test(css), 'Review and chip labels must not inherit the halo (specificity)');
 check(/linear-gradient\(180deg, #2C2932 0%, #312C36 50%, #2F2B35 100%\)/.test(css), 'Stop fill gradient missing (measured from the concept)');
@@ -122,6 +123,24 @@ check(/Start and plan /.test(js) && /data-card="start"/.test(js), 'chat-created 
 check(/Keep as mission/.test(js), 'Start card needs Keep as mission');
 check(/rp-rows/.test(html) && /rp-panel/.test(html), 'replay panel missing');
 check(/feed/.test(css) && /chatbar/.test(css), 'chat feed or bar styles missing');
+
+// Round 10c replay: the concept frame (art base, live labels, rows, chips, markers, Reconcile, footer) and the phone form.
+for (const word of ['orchestrates', 'executes', 'verifies', 'produces', 'Open evidence', 'Operator']) check(js.includes(word), `replay verb or button missing: ${word}`);
+for (const t of ['09:00', '09:12', '09:18', '09:24', '09:25']) check(js.includes(t), `replay row time missing: ${t}`);
+check(/id="replay-stage"/.test(html) && /class="rc-stage"/.test(html) && /id="rc-labels"/.test(html), 'replay stage markup missing');
+check(/data-rp-back/.test(html) && /\.rp-back\s*\{/.test(css), 'replay Back control missing');
+check(/#s-replay/.test(css) && /\.rp-wrap/.test(css), 'replay layout styles missing');
+const rp = js.slice(js.indexOf('Replay (round 10c replay)'), js.indexOf('function renderShared'));
+check(rp.length > 0 && !/requestAnimationFrame|setInterval|setTimeout/.test(rp), 'replay must not animate or auto-play');
+check(/RP_MASTER/.test(rp) && /RP_LABEL/.test(rp) && /RP_ROWS_GEOM/.test(rp), 'replay master frame or layout table missing');
+check(/body\.frame-replay \.shell[^{]*\{[^}]*art\/replay-base\.webp/.test(css), 'replay desktop frame must use the base art');
+check(/frame-replay/.test(rp) && /--k/.test(rp), 'replay frame scale class missing');
+check(existsSync(join(dir, 'art/replay-base.webp')), 'replay base art missing');
+check(/Simulated: fake data, scripted replay/.test(html), 'replay simulated strip missing');
+check(/Reconcile is page-only/.test(html), 'Reconcile must be stated as page-only');
+check(/\.rp-actions \.btn[^}]*min-height:\s*4[48]px/.test(css) && /\.rp-actions \.btn[^}]*height:\s*4[48]px/.test(css), 'Reconcile buttons below 44px');
+for (const word of ['Libre Caslon V2', 'Source Sans V2']) check(css.includes(word), `replay font missing: ${word}`);
+for (const f of ['fonts/LibreCaslonText-wght.ttf', 'fonts/SourceSans3-wght.ttf']) check(existsSync(join(dir, f)), `replay font file missing: ${f}`);
 
 check(/viewport-fit=cover/.test(html), 'phone viewport must use viewport-fit=cover');
 check(css.includes('env(safe-area-inset-bottom)') && css.includes('env(safe-area-inset-top)'), 'safe-area insets missing');
@@ -226,4 +245,4 @@ if (failures.length) {
   for (const f of failures) console.error(' - ' + f);
   process.exit(1);
 }
-console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...otherSizes)}px outside the Now frame, ${Math.min(...frameSizes)}px on it (10px only on named sub-lines)`);
+console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...sizes)}px outside the Now frame, ${Math.min(...frameSizes)}px on it (10px only on named sub-lines)`);

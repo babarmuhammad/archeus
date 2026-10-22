@@ -1698,7 +1698,6 @@
     onPick: function (id, kind) { if (kind === 'project') location.hash = '#/now/' + id; }
   });
   var sharedStage = makeStage($('#shared-stage'));
-  var replayStage = makeStage($('#replay-stage'));
   var phoneStage = makeStage($('#phone-stage'), {
     onPick: function (id) { openSheet(id); }
   });
@@ -1796,38 +1795,129 @@
     }
   }
 
-  // Sample data (simulated): the 09:00 to 09:25 example from the strategy report.
+  /* ---------- Replay (round 10c replay): as-of inspection, static, no motion ---------- */
+  // Desktop: the concept's own frame, 1440 x 810 master px, scaled uniformly by --k (body.frame-replay). The base
+  // art (art/replay-base.webp, tools/art_replay.py) is the concept with every live item removed, so the star, the
+  // links, the polyhedra and their glyphs are raster. Live here: labels, the mission node (state colour), rows,
+  // chips, markers, buttons and the rail. Phone: a crop of the same art above the rows (no concept exists).
+  var RP_MASTER = { w: 1440, h: 810 };
+  var RP_GRAPH = { x0: 236, y0: 40, w: 464, h: 730 };
+  // Label ink top-left in master px (concept measurement, tools/textfit_replay.py).
+  var RP_LABEL = {
+    core: [446, 170], orchestrates: [497, 241], fix: [436, 352], verifying: [447, 379],
+    executes: [372, 428], verifies: [550, 428], produces: [460, 590], codex: [312, 579],
+    execution: [303, 601], verification: [584, 591], results: [459, 736]
+  };
+  // Row geometry (master px): card top and height; ink tops of time, title, sub, chip and the marker centre.
+  var RP_ROWS_GEOM = [
+    { top: 158, h: 77, time: 188, title: 176, sub: 206, chip: 169, mark: 194, chipX: 1303, chipW: 88 },
+    { top: 244, h: 77, time: 275, title: 264, sub: 293, chip: 256, mark: 281, chipX: 1303, chipW: 88 },
+    { top: 330, h: 77, time: 361, title: 349, sub: 379, chip: 343, mark: 368, chipX: 1303, chipW: 88 },
+    { top: 417, h: 79, time: 449, title: 438, sub: 466, chip: 430, mark: 455, chipX: 1299, chipW: 92 },
+    { top: 505, h: 81, time: 537, title: 526, sub: 555, chip: 519, mark: 543, chipX: 1299, chipW: 92 },
+    { top: 601, h: 108, title: 620, chip: 614, mark: 637, chipX: 1303, chipW: 88 }
+  ];
   var REPLAY = {
     'm-date': [
       { time: '09:00', title: 'Task initiated', sub: 'Scope, authority and starting state captured', badge: 'Intended', tone: 'intended', mark: 'dot' },
       { time: '09:12', title: 'Files changed', sub: 'Changes and resulting artifacts linked to the task', badge: 'Recorded', tone: 'recorded', mark: 'dot' },
       { time: '09:18', title: 'Tests passed', sub: 'Validation evidence recorded', badge: 'Verified', tone: 'verified', mark: 'check' },
-      { time: '09:24', title: 'External response lost', sub: 'Side effect classified as uncertain. It may have taken effect.', badge: 'Uncertain', tone: 'uncertain', mark: 'diamond' },
-      { time: '09:25', title: 'Workflow suspended', sub: 'Suspended. No unsafe retry; operator reconciliation required.', badge: 'Needs you', tone: 'needs-you', mark: 'diamond' }
+      { time: '09:24', title: 'External response lost', sub: 'Side effect classified as uncertain', badge: 'Uncertain', tone: 'uncertain', mark: 'diamond' },
+      { time: '09:25', title: 'Workflow suspended', sub: 'No unsafe retry. Operator reconciliation required.', badge: 'Needs you', tone: 'needs-you', mark: 'diamond' }
     ]
   };
   var replayId = 'm-date';
 
-  function renderReplay(id) {
-    var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [], p = projectOf(m.project);
-    replayId = m.id;
-    var sec = $('#s-replay');
-    $('[data-rp-project]', sec).textContent = p.name;
-    $('[data-rp-crumb]', sec).textContent = m.title;
-    $('[data-rp-title]', sec).textContent = 'Replay · ' + m.title;
-    replayStage.setScene(function (w, h) { return missionScene(m, w, h, true); });
-    var list = rows.map(function (r) {
-      return '<li class="rp-row rs-' + r.mark + '"><span class="rp-time">' + r.time + '</span><span class="rp-mark" aria-hidden="true"></span>' +
-        '<span class="rp-body"><span class="rp-title">' + esc(r.title) + '</span><span class="rp-sub">' + esc(r.sub) + '</span></span>' +
-        '<span class="rp-badge tone-' + r.tone + '">' + esc(r.badge) + '</span></li>';
-    });
-    if (!rows.length) list.push('<li class="rp-row"><span class="rp-sub">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
-    list.push('<li class="rp-row rp-reconcile"><span class="rp-time"></span><span class="rp-mark" aria-hidden="true"></span>' +
-      '<span class="rp-body"><span class="rp-title">Reconcile</span><span class="rp-sub">Record what happened on the remote. Nothing is pushed or retried here.</span>' +
-      '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
-      '<span class="rp-badge tone-operator">Operator</span></li>');
-    $('#rp-rows').innerHTML = list.join('');
+  // Stage map: desktop is master px; phone maps the graph crop (RP_GRAPH) into the stage width.
+  function rpMap() {
+    if (!isNarrow()) return { s: 1, ox: 0, oy: 0, px: 0 };
+    var W = $('#replay-stage').clientWidth || 360;
+    var s = Math.min(W / RP_GRAPH.w, 420 / RP_GRAPH.h);
+    return { s: s, ox: RP_GRAPH.x0, oy: RP_GRAPH.y0, px: (W - RP_GRAPH.w * s) / 2 };
   }
+  function rpPos(g, x, y) { return [g.px + (x - g.ox) * g.s, (y - g.oy) * g.s]; }
+  function rpCss(p) { return 'left:' + p[0].toFixed(1) + 'px;top:' + p[1].toFixed(1) + 'px'; }
+
+  function renderReplayStage(m) {
+    var root = $('#replay-stage'), L = $('#rc-labels');
+    var g = rpMap(), st = STATE[m.state] || STATE.idle;
+    var art = root.querySelector('.rc-art');
+    if (isNarrow()) {
+      if (!art) { art = document.createElement('div'); art.className = 'rc-art'; root.insertBefore(art, root.firstChild); }
+      art.style.width = (RP_MASTER.w * g.s) + 'px';
+      art.style.height = (RP_MASTER.h * g.s) + 'px';
+      art.style.left = (g.px - RP_GRAPH.x0 * g.s) + 'px';
+      art.style.top = (-RP_GRAPH.y0 * g.s) + 'px';
+      root.style.height = (RP_GRAPH.h * g.s) + 'px';
+    } else {
+      if (art) art.remove();
+      root.style.height = '';
+    }
+    var vb = isNarrow() ? [RP_GRAPH.x0, RP_GRAPH.y0, RP_GRAPH.w, RP_GRAPH.h].join(' ') : '0 0 1440 810';
+    var svg = '<svg class="rc-svg" viewBox="' + vb + '" aria-hidden="true">' +
+      '<circle class="rc-node" cx="488" cy="328" r="12.5" style="fill:' + st.color + '"/></svg>';
+    var old = root.querySelector('.rc-svg');
+    if (old) old.remove();
+    root.insertAdjacentHTML('afterbegin', svg);
+    // Hit areas are at least 44 CSS px: in master px on the desktop frame (44 / --k), in stage px on the phone.
+    var kk = isNarrow() ? 1 : (parseFloat(document.documentElement.style.getPropertyValue('--k')) || 1);
+    var hs = isNarrow() ? 44 : 44 / kk;
+    var hit = function (c, w, h, href, label) {
+      return '<a class="rc-hit" href="' + href + '" aria-label="' + label + '" style="left:' + (c[0] - w / 2).toFixed(1) + 'px;top:' + (c[1] - h / 2).toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;height:' + h.toFixed(1) + 'px"></a>';
+    };
+    var mp = rpPos(g, 488, 328), fp = rpPos(g, RP_LABEL.fix[0] + 50, RP_LABEL.fix[1] + 9);
+    var lab = hit(mp, hs, hs, '#/mission/' + m.id, esc(m.title) + ': open the mission');
+    lab += hit(fp, hs * 3, hs, '#/mission/' + m.id, esc(m.title) + ': open the mission');
+    var put = function (k, html, cls) { return '<p class="rc-l rk-' + k + ' ' + (cls || '') + '" style="' + rpCss(rpPos(g, RP_LABEL[k][0], RP_LABEL[k][1])) + '">' + html + '</p>'; };
+    lab += put('core', 'Archeus', 'rc-core');
+    lab += put('fix', esc(m.title), 'rc-mission-name');
+    lab += put('verifying', '<span class="rc-state" style="color:' + st.color + '">' + esc(m.stateText) + '</span>', 'rc-mission-state');
+    lab += put('orchestrates', 'orchestrates', 'rc-verb');
+    if (m.id === 'm-date') {
+      lab += put('executes', 'executes', 'rc-verb') + put('verifies', 'verifies', 'rc-verb') + put('produces', 'produces', 'rc-verb');
+      lab += put('codex', 'Codex', 'rc-name') + put('execution', 'execution', 'rc-sub');
+      lab += put('verification', 'Verification', 'rc-name') + put('results', 'Results', 'rc-name');
+    }
+    L.innerHTML = lab;
+    root.setAttribute('aria-label', 'Constellation for ' + m.title + ': Archeus, the mission' + (m.id === 'm-date' ? ', Codex execution, Verification and Results' : ''));
+  }
+
+  function rowHtml(r, g) {
+    return '<li class="rp-row rs-' + r.mark + ' tone-' + r.tone + '" style="--top:' + g.top + 'px;--h:' + g.h + 'px">' +
+      '<span class="rp-mark" aria-hidden="true" style="--y:' + g.mark + 'px"></span>' +
+      '<span class="rp-time" style="--y:' + g.time + 'px">' + r.time + '</span>' +
+      '<span class="rp-body"><span class="rp-title" style="--y:' + g.title + 'px">' + esc(r.title) + '</span><span class="rp-sub" style="--y:' + g.sub + 'px">' + esc(r.sub) + '</span></span>' +
+      '<span class="rp-badge" style="--y:' + g.chip + 'px;--x:' + g.chipX + 'px;--w:' + g.chipW + 'px">' + esc(r.badge) + '</span></li>';
+  }
+
+  function renderReplay(id) {
+    var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [];
+    replayId = m.id;
+    $('#rp-title').textContent = 'Replay · ' + m.title;
+    var list = rows.map(function (r, i) { return rowHtml(r, RP_ROWS_GEOM[i]); });
+    if (!rows.length) list.push('<li class="rp-row rp-empty" style="--top:158px;--h:77px"><span class="rp-sub" style="--y:176px">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
+    var rc = RP_ROWS_GEOM[RP_ROWS_GEOM.length - 1];
+    list.push('<li class="rp-row rp-reconcile" style="--top:' + rc.top + 'px;--h:' + rc.h + 'px">' +
+      '<span class="rp-mark" aria-hidden="true" style="--y:' + rc.mark + 'px"></span>' +
+      '<span class="rp-body"><span class="rp-title" style="--y:' + rc.title + 'px">Reconcile</span>' +
+      '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
+      '<span class="rp-badge" style="--y:' + rc.chip + 'px;--x:' + rc.chipX + 'px;--w:' + rc.chipW + 'px">Operator</span></li>');
+    $('#rp-rows').innerHTML = list.join('');
+    fitReplayFrame();
+    renderReplayStage(m);
+  }
+
+  // The frame class and scale follow the active screen: desktop Replay is one fixed 1440 x 810 frame plus a footer strip.
+  function fitReplayFrame() {
+    var on = !isNarrow() && !$('#s-replay').hidden;
+    document.body.classList.toggle('frame-replay', on);
+    if (!on) return;
+    var k = Math.min(window.innerWidth / RP_MASTER.w, window.innerHeight / (RP_MASTER.h + 26));
+    document.documentElement.style.setProperty('--k', k.toFixed(4));
+  }
+  window.addEventListener('resize', function () {
+    if (!$('#s-replay').hidden) { fitReplayFrame(); renderReplayStage(find(replayId)); }
+  });
 
   function renderShared() {
     $('#s-shared [data-sentence]').textContent = sentence();
@@ -2706,6 +2796,7 @@
       else a.removeAttribute('aria-current');
     });
     SCREENS[name](parts[1]);
+    fitReplayFrame();
     var h = $('#s-' + name + ' h1');
     if (h) h.focus({ preventScroll: true });
   }

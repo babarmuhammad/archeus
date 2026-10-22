@@ -396,6 +396,81 @@ Remaining differences (honest, numbered, 1600 x 900 unless stated):
 10. Stop and Tell icons are CSS-drawn (no SVG data URI, because check.mjs forbids the xmlns string in style.css); the concept's icons are slightly rounder.
 
 Not verified: a real high-DPI display (renders at DPR 1 only), reduced motion and tab-hidden states on the new scene (the facets and knot are static and read the same), the phone sizes (only the shared markup and the Start card wrapper change there; the Start card wrapper is display block on the phone).
+## Round 10c replay (2026-10-22): hybrid desktop frame, phone form, residuals listed
+
+Status: hybrid, residuals listed. Surface: Replay only (desktop and phone). The concept is `replay-2-desktop-v2.png`, measured at its real size, 1440 x 810 (not 1600 x 900). Master = the concept at 1:1; the desktop frame is that size, scaled uniformly by `--k` (body.frame-replay, 881 px and up) with a 26 px disclosure strip under it. No motion; the replay has no animation loop (check.mjs asserts it).
+
+Method (V2 hybrid brief):
+- Base art: `art/replay-base.webp` (lossless, 459 KB), built by `tools/art_replay.py` from the concept. Every live item is removed: wordmark, status, Tell, Stop, rail items and icons, graph labels, the mission node, the row titles, times, chips, markers, Reconcile title and buttons, footer text, and the panel title. Glyph pixels are masked by contrast inside boxes; panel text is refilled from a plane fit of its own row card; chips and header controls from a ring of valid pixels; marker discs are small (dot 8, check and diamond 14, dashed 12 px radius) so the concept's own glow stays raster. The star, links, arrowheads, polyhedra and their glyphs are raster. Review mask: `art/replay-mask.png`.
+- Live on top: rail (Now, Projects, Replay), header controls, labels and verbs, the mission node (state colour), rows, chips, markers, Reconcile and Open evidence, footer.
+- Text sizes solved from the concept raster: `tools/textfit_replay.py` (PIL ink width; cap height for the spaced items). Registration: `tools/textreg_replay.py` (render ink box minus concept ink box, same search boxes). Offsets are applied as `translate` in style.css (round 10c replay block).
+- Layout tables (master px, concept measurements): `RP_LABEL` (graph label ink tops), `RP_ROWS_GEOM` (card tops and heights, ink tops of time, title, sub, chip and marker centre) in app.js; the fixed rail, header and Reconcile positions in style.css under `body.frame-replay`.
+- Metrics: `tools/metrics_replay.py`, full resolution, unblurred, Chromium 1440 x 810 frame, reduced motion, fonts awaited (mean abs RGB 0 to 255 and % above 24):
+
+| region | mean abs | % > 24 |
+|---|---|---|
+| art only (outside live boxes) | 0.08 | 0.03 |
+| text boxes | 16.7 | 16.0 |
+| live marks (discs) | 19.2 | 37.8 |
+| chips, buttons, header controls | 15.0 | 21.9 |
+| rail column | 5.4 | 4.3 |
+| header strip | 11.2 | 18.6 |
+| panel (rows, title, footer) | 8.3 | 8.1 |
+| full frame | 4.83 | 4.93 |
+
+Art-only at 0.08 proves registration of the base: no raster ghost of a removed item is left under the star, links or polyhedra. Text registration after the offsets (tools/textreg_replay.py, 45 items): 42 within 2 px on position. The three outside: Tell label +3 px in x (centred text in the concept box), Open evidence label -3 px in x, and the verb `executes` +6 px / +4 px (its concept ink box takes in the arrowhead; visual check only). Ink width is within 2 px for 26 of 45; the serif titles run up to 15 px narrower (h4) because of the face (residual 1).
+
+Layout facts measured on the concept (differences from the brief in brackets):
+- Timeline cards: tops 158, 244, 330, 417, 505, Reconcile 601; heights 77, 77, 77, 79, 81, 108; gap about 10 px. [The brief's 78 to 80 px rows with bigger gaps do not match the concept; the concept's rows were matched.]
+- Spine at x 896 (raster); markers on x 897; Reconcile buttons 222 x 40 at (936, 657) and (1170, 657), concept width about 220 px; footer rule y 732; footer text at x 920, y 752.
+- Panel: x 779 to 1420, y 67 to 786. Chips 88 x 34 (rows 1 to 3) and 92 x 34 (rows 4 and 5), right edge 1391.
+- Rail items sit at centres y 112, 159 and 204 (rows 1 to 3 of the concept rail).
+
+Approved deviations (owner structure, recorded as asked):
+1. Rail labels Now / Projects / Replay (the approved structure), not the concept's Overview / Missions / Ideas / Projects / Control, and the concept's Projects section (Archeus, Notes) is not shown. Rail geometry (192 px wide, the band at y 88 to 134 on Now, amber leading strip) is the concept's. Icons: house (Now), cube (Projects), history (Replay); the concept's target icon is not used.
+2. "More" (Mission, Terminal, Phone, Plan) is kept in the shell but hidden on the desktop frame, as on the Now frame.
+3. The status line keeps the concept's "Not stopped · accepts new work" wording; the prototype pill is hidden on the frame.
+4. The disclosure: "CONCEPT FIXTURE" stays under the wordmark (the concept's own), and a strip under the frame says "Simulated: fake data, scripted replay, nothing is sent to Core. Reconcile is page-only."
+5. The Now item carries the highlight band on the Replay frame, because the concept highlights its parent view. `aria-current` stays on Replay.
+
+Phone form (402 x 874 and the six widths 360, 390, 393, 402, 430, 440). There is no concept for the phone Replay, so it is derived from the desktop frame: the same art cropped to the graph (x 236 to 700, y 40 to 770) and scaled into the stage width (at most 420 px tall), labels at their own sizes (14 px and up), then Back (48 px, sticky), the title, and the rows as a flow list with chips, markers and Reconcile buttons at 48 px.
+
+Probes (Chromium, `probe.py` in scratchpad): label-box overlaps zero at 1280 x 720, 1440 x 836, 1440 x 900, 1600 x 900, 1920 x 1080 and the six phone widths (one 1 px pair at phone widths, Codex and execution, fixed with a 2 px shift). No horizontal scroll at any size. Hit areas: the mission link and node are at least 44 CSS px (44 / --k in master px on the frame); the Reconcile and Open evidence buttons are 40 px visible on the frame (the concept's size) with a 44 px hit area through a pseudo-element, so the frame keeps the concept's shape. Phone: all targets 44 px and up.
+
+Residuals (numbered, with reason):
+1. Serif face. Libre Caslon Text 500 is the owner's bake-off choice. The top 10 error blocks (40 px) are all serif glyphs of the title and the row titles: the concept's face is heavier with a larger x-height. Widths are matched by the solver; heights differ by 1 to 2 px.
+2. Sans. Source Sans 3 400 is used. The concept's nav and rail sans is wider; nav is 20 px with 1 px tracking (width within about 3 px of the concept's "Projects").
+3. Marks. The marker fills are the concept's sampled colours (dot #D0C2FA, check #69F691, diamond #F6CD87); their glow is raster outside the disc and a CSS shadow inside it, so the 37.8 % figure in the marks row is mostly glow. The mission node takes its state colour (running, #6FB1FF); the concept node is #49ACFD, which is a state-colour difference, not a fidelity miss, and is recorded here.
+4. Dashed Reconcile circle: the concept's dashes are a little thicker and brighter (approximately 1 px).
+5. Tell label: 3 px right of the concept (centred text in the concept's box).
+6. Rail icons (see deviation 1); the concept's icon shapes are not traced.
+7. Phone: no concept; the graph crop is at the phone scale, so its text and marks are not the desktop geometry.
+
+Not verified: real touch, screen readers, Dynamic Type, the Windows system fonts, the flicker of the two lossless frames (alternation not viewed; the two frames are in scratchpad `rp`), the other four phone widths beyond the label probe (the 402 render was viewed by eye).
+
+## Round 10c replay (partial, 2026-10-21): superseded by the 2026-10-22 section above
+
+Status: PARTIAL. Replay only. Traced from replay-2-desktop-v2.png. The brief names 1600 x 900, but the file is 1440 x 810 (same 16:9 frame); the loop rendered at 1440 x 810 and the montages are in the scratch folder.
+
+Done: the constellation is drawn in the concept's pixels (`RC_FRAME` and the `RC` table in app.js), scaled uniformly into the stage (SVG), with labels as HTML at their own px size. Verb labels (orchestrates, executes, verifies, produces) sit at measured anchors. The six rows follow the concept row design (time column, mark, title, description, tag chip) with the Reconcile row (dashed, Operator tag, Reconcile and Open evidence) and the footer line. A faint hull surrounds the mission node, as the brief asks. The phone form (under 881 px) stacks the mini constellation above the rows; Back is a 48 px control in the panel head. No motion: the replay block has no animation loop (check.mjs asserts it).
+
+Label overlap probe (label boxes, Chromium): zero overlaps at 1280 x 720, 1440 x 810, 1440 x 900, 1600 x 900, 1920 x 1080 and the six phone widths 360, 390, 393, 402, 430, 440. The mission and Codex labels are single blocks now, which fixed the stacked-label touches. The 'orchestrates' and 'verifies' touches of the earlier prototype are gone at 1600 x 900.
+
+Layout table: `RC_FRAME` (x 192..779, y 40..800 of the concept; the phone uses the same frame with a 28 px top pad), `RC` (star, mission, Codex triangle, Verification, Results, verb anchors), `RC_LINKS` (link ends and heads). Row tokens are local `--rp-*` in style.css, so the shell tokens are unchanged.
+
+Similarity (sim2.py, 160 px wide, luminance MAD / edge overlap): i1 6.45 / 67.2 %, i2 7.68 / 58.5 %, i3 7.21 / 62.4 %, i4 7.09 / 62.4 %, i6 7.20 / 62.0 %, i7 7.21 / 62.0 %. These numbers do not trend down. The metric is dominated by the dark background and the panel fill, and it does not register the star, label or link changes. It is not a usable target here; the judgement was by eye on the montages.
+
+Differences left (numbered):
+1. Star: the concept has crisp bright spikes over a tight core; ours is a soft glow with a few long rays.
+2. Scale: the stage is about 515 px wide at 1440 x 810, against 587 px in the concept, because the shared rail is 240 px against 192 px in the concept.
+3. Verification and Results are the shared ICO and OCT projections with simple glyphs; the concept's polyhedra are denser.
+4. Shell, not replay (shared, left alone): rail items differ (concept: Overview, Missions, Ideas, Projects, Control; ours: Now, Projects, Replay, More), the PROTOTYPE pill sits top left, and the page background is #070A10 where the concept is a plum-black gradient.
+5. Typeface: the system serif stands in for the concept's serif. Row title and sub positions are within 2 to 4 px; the timeline gradient is approximated.
+6. Hull: the brief asks for a faint hull around the mission node; the target concept itself shows only a dot.
+7. Desktop has no Back control (the concept has none); the rail reaches Overview.
+8. Phone: only 402 x 874 was viewed by eye. The other five widths were checked by the probe only.
+
+Not verified: real touch, screen readers, Dynamic Type, the Windows system serif against the concept's face.
 
 ## Round 10b (partial, 2026-10-21): measured layout, desktop and phone Overview
 
