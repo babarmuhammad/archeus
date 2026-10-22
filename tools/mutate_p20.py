@@ -338,11 +338,13 @@ MUTATIONS = [
      [SI + 'test_I07_the_owners_opt_ins_reach_the_spawn_and_no_one_elses']),
     ('Q56', 'an inventory that cannot be taken still spawns', [(MGR,
      "        except Exception as err:\n"
+     "            self._revoke_broker(e, brk)\n"
      "            self._do(X.refuse, execution_id=e.id, stop_reason='workspace',\n"
      "                     reason='the settings sources could not be inventoried: %s'\n"
      "                     % type(err).__name__)\n"
      "            return True\n",
      "        except Exception as err:\n"
+     "            self._revoke_broker(e, brk)\n"
      "            pass\n")],
      [SI + 'test_I09_an_inventory_that_cannot_be_taken_starts_nothing']),
     ('Q67', 'an inventory failure is uncharged (the task is re-dispatched every tick)', [(MGR,
@@ -855,8 +857,8 @@ MUTATIONS = [
      ['tests/v1/unit/test_provider_broker.py::test_the_upstream_key_and_the_broker_token_never_reach_a_log_an_output_or_an_error',
       'tests/v1/unit/test_provider_broker.py::test_an_unexpected_error_is_a_local_500_that_carries_no_text_of_it']),
     ('Q203', 'an upstream response header with a control character is relayed', [(BRK,
-     "if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))]",
-     "if k.lower() not in _DROP_BACK]")],
+     "if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))\n",
+     "if k.lower() not in _DROP_BACK\n")],
      ['tests/v1/unit/test_provider_broker.py::test_an_upstream_header_with_a_control_character_is_not_relayed']),
     # round 3 (PV20-09 review of 0edf422): the status line, Content-Length digits, the
     # bridge's last-resort 500, the busy drain, the pool and share, the subscription
@@ -890,7 +892,7 @@ MUTATIONS = [
      '')],
      ['tests/v1/unit/test_provider_broker.py::test_a_flooding_grant_cannot_starve_a_legit_grant']),
     ('Q211', 'a subscription token is used as the upstream credential', [(BRK,
-     '        if key.startswith(_SUBSCRIPTION):',
+     '        if key.lower().startswith(_SUBSCRIPTION):',
      '        if False:')],
      ['tests/v1/unit/test_provider_broker.py::test_the_upstream_credential_is_one_api_key_or_nothing_is_sent']),
     ('Q212', 'the request deadline is cancelled before the relay, not after the read', [(BRW,
@@ -905,12 +907,12 @@ MUTATIONS = [
      "            return b.limits.max_body")],
      ['tests/v1/unit/test_provider_broker.py::test_a_refused_or_probe_request_leaves_the_grant_counts_unchanged']),
     ('Q214', 'the upstream key is relayed in an error body', [(BRK,
-     "raw.replace(key.encode('latin-1'), b'[redacted]')",
-     'raw')],
+     "            body = bytes(buf) if whole and not _leaks(buf, key) else b''",
+     "            body = bytes(buf) if whole else b''")],
      ['tests/v1/unit/test_provider_broker.py::test_an_upstream_error_body_is_relayed_without_the_key_or_not_at_all']),
-    ('Q215', 'an oversized error body is relayed truncated instead of not at all', [(BRK,
-     "            body = (b'' if len(raw) > ERROR_BODY_MAX",
-     "            body = (raw[:ERROR_BODY_MAX] if len(raw) > ERROR_BODY_MAX")],
+    ('Q215', 'an oversized error body is relayed instead of not at all', [(BRK,
+     '                if len(buf) > ERROR_BODY_MAX:',
+     '                if False:')],
      ['tests/v1/unit/test_provider_broker.py::test_an_upstream_error_body_is_relayed_without_the_key_or_not_at_all']),
     ('Q216', 'a grant may take the whole pool as its share', [(BRK,
      '        self._pool, self._share = pool, max(1, pool // 4)',
@@ -920,6 +922,49 @@ MUTATIONS = [
      "                    self._busy('this grant holds its share of the broker')",
      "                    raise Refused(503, 'this grant holds its share of the broker')")],
      ['tests/v1/unit/test_provider_broker.py::test_a_flooding_grant_cannot_starve_a_legit_grant']),
+    # round 4 (PV20-09 review of b12a501): the error body's deadline and liveness, the
+    # key in every echoed form, the subscription family, the bridge's total drain and count
+    ('Q219', 'a subscription token is matched case-sensitively', [(BRK,
+     '        if key.lower().startswith(_SUBSCRIPTION):',
+     '        if key.startswith(_SUBSCRIPTION):')],
+     ['tests/v1/unit/test_provider_broker.py::test_the_upstream_credential_is_one_api_key_or_nothing_is_sent']),
+    ('Q220', 'the refresh-token family is not refused', [(BRK,
+     "_SUBSCRIPTION = 'sk-ant-o'\n",
+     "_SUBSCRIPTION = 'sk-ant-oat'\n")],
+     ['tests/v1/unit/test_provider_broker.py::test_the_upstream_credential_is_one_api_key_or_nothing_is_sent']),
+    ('Q221', 'a response header that echoes the key is relayed', [(BRK,
+     "\n                and not _leaks('%s: %s' % (k, v), key)]",
+     ']')],
+     ['tests/v1/unit/test_provider_broker.py::test_a_key_echoed_in_an_error_body_or_header_is_never_relayed']),
+    ('Q222', 'the key in base64 is relayed in an error body', [(BRK,
+     '    forms = (k, base64.b64encode(k), ',
+     '    forms = (k, k, ')],
+     ['tests/v1/unit/test_provider_broker.py::test_a_key_echoed_in_an_error_body_or_header_is_never_relayed']),
+    ('Q223', 'an error body is read past the grant deadline', [(BRK,
+     '                if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):\n'
+     '                    break\n'
+     '                chunk = resp.read1',
+     '                if not self._live(b, d):\n'
+     '                    break\n'
+     '                chunk = resp.read1')],
+     ['tests/v1/unit/test_provider_broker.py::test_an_error_body_that_trickles_past_the_deadline_or_the_grant_end_is_not_relayed']),
+    ('Q224', 'an error body is read after its grant ended', [(BRK,
+     '                if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):\n'
+     '                    break\n'
+     '                chunk = resp.read1',
+     '                if self._clock() - t0 > b.limits.deadline_s:\n'
+     '                    break\n'
+     '                chunk = resp.read1')],
+     ['tests/v1/unit/test_provider_broker.py::test_an_error_body_that_trickles_past_the_deadline_or_the_grant_end_is_not_relayed']),
+    ('Q225', 'the bridge does not count its busy 503', [(BRW,
+     '            with self._count:\n                self.busy_refused += 1\n',
+     '')],
+     ['tests/v1/unit/test_broker_bridge.py::test_a_pipe_that_cannot_be_opened_is_a_502_and_a_busy_bridge_a_503']),
+    ('Q226', 'a busy client drains for a time per read, not in total', [(BRW,
+     '            wait = end - time.monotonic()\n            if wait <= 0:\n                break\n'
+     '            sock.settimeout(wait)',
+     '            sock.settimeout(DRAIN_S)')],
+     ['tests/v1/unit/test_broker_bridge.py::test_a_busy_client_that_trickles_is_closed_after_the_total_drain_time']),
 ]
 
 if __name__ == '__main__':

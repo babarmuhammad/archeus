@@ -141,6 +141,34 @@ def test_a_pipe_that_cannot_be_opened_is_a_502_and_a_busy_bridge_a_503():
         b._slots.acquire()
         # a real request, sent in full: the 503 must arrive, not a reset (PV20-09 review S-2)
         assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 503')
+        assert b.busy_refused == 1
+    finally:
+        b.close()
+
+
+def test_a_busy_client_that_trickles_is_closed_after_the_total_drain_time(monkeypatch):
+    monkeypatch.setattr(W, 'DRAIN_S', 0.3)
+    b = W.Bridge(_nope)
+    try:
+        b.start(lambda port: None)
+        b._slots = threading.BoundedSemaphore(1)
+        b._slots.acquire()
+        stop, closed = threading.Event(), threading.Event()
+        with socket.create_connection(('127.0.0.1', b.port), timeout=4) as c:
+            c.sendall(ok_request())
+
+            def trickle():
+                try:
+                    while not stop.is_set():
+                        c.sendall(b'x')
+                        time.sleep(0.05)
+                except OSError:
+                    closed.set()        # the bridge closed on its own: the next send fails
+            threading.Thread(target=trickle, daemon=True).start()
+            got = _read_to_eof(c)       # the 503, then the bridge's FIN
+            closed_in_time = closed.wait(2.0)
+            stop.set()
+        assert got.startswith(b'HTTP/1.1 503') and closed_in_time
     finally:
         b.close()
 

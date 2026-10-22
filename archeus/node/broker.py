@@ -17,8 +17,19 @@ native backend exists and N3 proves it, no grant can be issued (fail closed).
 
 Off unless `BROKER_DISPATCH_ENABLED`, which only the composition root sets (PV20-17
 activates complete admission at once, never the broker alone).
+
+Known limits, recorded (PV20-09 review round 4):
+- S5, the terms and the account's health in `broker_live`, is deferred to PV20-17 by owner
+  decision.
+- A grant's share of the pool is a cap per grant, not a reservation: while other grants
+  hold the pool, a grant gets 503 (owner choice: per-token concurrency share).
+- Same-host clients can hold the bridge's connection slots. That is a denial of service to
+  the execution's own CLI only, not a leak.
+- The key scrub catches the key as itself, case-folded, in base64 and as JSON \\u escapes.
+  A part of the key, or another encoding, in an upstream error body is not caught.
 """
 
+import base64
 import hashlib
 import hmac
 import http.client
@@ -53,10 +64,11 @@ _DROP_BACK = {'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticat
 AUDIT_MAX = 1024
 #: in-flight requests the broker holds across all grants; one grant gets a quarter of them
 POOL = 8
-#: an upstream error body is relayed at most this long, with the key scrubbed, or not at all
+#: an upstream error body is relayed at most this long, and only if it holds no key, or not at all
 ERROR_BODY_MAX = 64 * 1024
-#: a subscription login token (PV20-08b): never the upstream credential, whatever is configured
-_SUBSCRIPTION = 'sk-ant-oat'
+#: a subscription login token family (PV20-08b): the OAuth access (sk-ant-oat) and refresh
+#: (sk-ant-ort) tokens. Matched case-insensitively: never the upstream credential
+_SUBSCRIPTION = 'sk-ant-o'
 
 
 class Refused(Exception):
@@ -361,7 +373,7 @@ class Broker:
         key = creds['x-api-key'] if one else None
         if not (isinstance(key, str) and _KEY.fullmatch(key)):
             raise Refused(403, 'the upstream credential is not one API key')
-        if key.startswith(_SUBSCRIPTION):
+        if key.lower().startswith(_SUBSCRIPTION):
             raise Refused(403, 'a subscription token is never the upstream credential')
         headers = {k: v for k, v in req.headers if wire.forwarded(k)}
         headers['x-api-key'] = key
@@ -381,12 +393,23 @@ class Broker:
             reason = ''                 # a status line with a control character is not relayed
         out = ['HTTP/1.1 %d %s' % (resp.status, reason)]
         out += ['%s: %s' % (k, v) for k, v in resp.getheaders()
-                if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))]
+                if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))
+                and not _leaks('%s: %s' % (k, v), key)]
         if resp.status >= 400:
-            # an error body is short and whole, or not relayed; the key never goes back out
-            raw = resp.read(ERROR_BODY_MAX + 1)
-            body = (b'' if len(raw) > ERROR_BODY_MAX
-                    else raw.replace(key.encode('latin-1'), b'[redacted]'))
+            # an error body is read under the grant's deadline and liveness, like a stream;
+            # it is relayed whole and without the key, or not at all
+            buf, whole = bytearray(), False
+            while True:
+                if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):
+                    break
+                chunk = resp.read1(65536) if hasattr(resp, 'read1') else resp.read(65536)
+                if not chunk:
+                    whole = True
+                    break
+                buf += chunk
+                if len(buf) > ERROR_BODY_MAX:
+                    break
+            body = bytes(buf) if whole and not _leaks(buf, key) else b''
             out += ['Content-Length: %d' % len(body), 'Connection: close']
             write(('\r\n'.join(out) + '\r\n\r\n').encode('latin-1') + body)
             return resp.status, len(body)
@@ -411,6 +434,16 @@ def _reply(write, status, reason):
         write(wire.local_reply(status, reason))
     except OSError:
         pass                            # the client went away: nothing to tell it
+
+
+def _leaks(data, key):
+    """True when *data* holds *key* as itself, case-folded, in base64 or as JSON \\u escapes,
+    the forms an upstream echoes. A part of the key, or another encoding, is not caught."""
+    raw = data.encode('latin-1', 'replace') if isinstance(data, str) else bytes(data)
+    k = key.encode('latin-1')
+    forms = (k, base64.b64encode(k), ''.join('\\u%04x' % ord(c) for c in key).encode('ascii'))
+    low = raw.lower()
+    return any(f.lower() in low for f in forms)
 
 
 def _bearer(req):

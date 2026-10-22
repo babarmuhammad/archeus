@@ -2,6 +2,7 @@
 endpoint/model/limit policy, header handling, destinations, revocation. Synthetic: a fake
 transport and a fake upstream; no native operation, no network."""
 
+import base64
 import io
 import logging
 import threading
@@ -338,6 +339,9 @@ def test_only_the_standard_and_anthropic_headers_are_forwarded():
     {'x-api-key': ''},
     {},
     {'x-api-key': 'sk-ant-oat01-SECRET'},          # a subscription token, whatever its header
+    {'x-api-key': 'SK-ANT-OAT01-SECRET'},          # the prefix is matched case-insensitively
+    {'x-api-key': 'sk-ant-ort01-SECRET'},          # a refresh token is the same family
+    {'x-api-key': 'Sk-Ant-Ort01-SECRET'},
 ])
 def test_the_upstream_credential_is_one_api_key_or_nothing_is_sent(creds):
     b, calls = broker()
@@ -499,15 +503,67 @@ def test_an_upstream_status_line_with_a_control_character_is_not_relayed():
 
 
 def test_an_upstream_error_body_is_relayed_without_the_key_or_not_at_all():
+    text = b'overloaded for you'
+    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[text]))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 529 and out.endswith(text)
+    assert b'Content-Length: %d' % len(text) in out
     b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'overloaded for UPSTREAM-SECRET']))
     _, token, _ = issued(b)
     out, row = serve(b, request(token=token))
     assert row['status'] == 529 and b'UPSTREAM-SECRET' not in out
-    assert out.endswith(b'overloaded for [redacted]') and b'Content-Length: 25' in out
+    assert out.endswith(b'\r\n\r\n') and b'Content-Length: 0' in out
     b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'x' * (B.ERROR_BODY_MAX + 1)]))
     _, token, _ = issued(b)
     out, _ = serve(b, request(token=token))
     assert out.endswith(b'\r\n\r\n') and b'Content-Length: 0' in out
+
+
+_ECHOES = [
+    lambda k: k,
+    lambda k: k.lower(),
+    lambda k: base64.b64encode(k),
+    lambda k: ''.join('\\u%04x' % ord(c) for c in k.decode()).encode(),
+]
+
+
+@pytest.mark.parametrize('echo', _ECHOES)
+def test_a_key_echoed_in_an_error_body_or_header_is_never_relayed(echo):
+    key = b'UPSTREAM-SECRET'
+    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'bad ' + echo(key)]))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 529 and echo(key).lower() not in out.lower()
+    assert b'Content-Length: 0' in out
+    b, _ = broker(send=lambda *a: Resp(headers=[('X-Echo', echo(key).decode('latin-1'))]))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 200 and echo(key).lower() not in out.lower()
+    assert b'X-Echo' not in out
+
+
+def test_an_error_body_that_trickles_past_the_deadline_or_the_grant_end_is_not_relayed():
+    now, reads = [0.0], [0]
+
+    class Trickle(Resp):
+        def read1(self, n):
+            now[0] += 0.3
+            reads[0] += 1
+            return b'x' if reads[0] <= 1000 else b''
+    b, _ = broker(send=lambda *a: Trickle(status=529), clock=lambda: now[0])
+    _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=3, deadline_s=1.0, idle_s=5.0))
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 529 and b'Content-Length: 0' in out and out.endswith(b'\r\n\r\n')
+    assert reads[0] <= 5 and b._in_flight == 0
+
+    calls = []
+    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'overloaded']),
+                  live=lambda bd, d: calls.append(1) or len(calls) == 1)
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 529 and b'Content-Length: 0' in out and b'overloaded' not in out
+    assert b._in_flight == 0
 
 
 # ── destinations ──

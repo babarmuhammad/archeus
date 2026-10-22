@@ -13,6 +13,7 @@ import re
 import socket
 import socketserver
 import threading
+import time
 from dataclasses import dataclass, field, replace
 
 MAX_HEADERS = 64
@@ -24,7 +25,8 @@ CONCURRENT = 2
 IDLE_S = 10.0
 DEADLINE_S = 30.0
 #: after a busy refusal sent before the request was read: how much the client may still
-#: send, and for how long, before the bridge closes (PV20-09 review S-2)
+#: send, and for how long in all (not per read), before the bridge closes (PV20-09 review
+#: S-2, E2)
 DRAIN_BYTES = 64 * 1024
 DRAIN_S = 1.0
 #: a Content-Length is ASCII digits, a length that Python's int() reads without limit
@@ -199,13 +201,17 @@ def _cut(sock):
 
 def _drain(sock):
     """After a refusal sent before the request was read: stop sending, then read what the
-    client still sends, bounded in time and size, so the close is a FIN and not a reset
-    that loses the refusal. A request larger than DRAIN_BYTES can still be reset."""
+    client still sends, bounded in total time and size, so the close is a FIN and not a
+    reset that loses the refusal. A request larger than DRAIN_BYTES can still be reset."""
     try:
         sock.shutdown(socket.SHUT_WR)
-        sock.settimeout(DRAIN_S)
+        end = time.monotonic() + DRAIN_S
         left = DRAIN_BYTES
         while left > 0:
+            wait = end - time.monotonic()
+            if wait <= 0:
+                break
+            sock.settimeout(wait)
             chunk = sock.recv(min(left, 8192))
             if not chunk:
                 break
@@ -236,6 +242,8 @@ class Bridge:
                                                        bind_and_activate=True)
         self._server.daemon_threads = True
         self._thread = None
+        self.busy_refused = 0       # 503s this bridge sent because its slots were full
+        self._count = threading.Lock()
 
     @property
     def port(self):
@@ -264,6 +272,8 @@ class Bridge:
 
     def _serve(self, sock):
         if not self._slots.acquire(blocking=False):
+            with self._count:
+                self.busy_refused += 1
             _send(sock, local_reply(503, 'Busy'))
             _drain(sock)
             return

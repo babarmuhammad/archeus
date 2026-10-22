@@ -108,9 +108,11 @@ MUTATIONS = [
               "reason='emergency stop: nothing starts',",
               "        if False:\n            self._do(X.refuse, execution_id=e.id, "
               "reason='emergency stop: nothing starts',"),
-        (MGR, "        if self.node.disarmed():\n            self._do(X.refuse, execution_id=e.id, "
+        (MGR, "        if self.node.disarmed():\n            self._revoke_broker(e, brk)\n"
+              "            self._do(X.refuse, execution_id=e.id, "
               "reason='emergency stop: nothing starts',",
-              "        if False:\n            self._do(X.refuse, execution_id=e.id, "
+              "        if False:\n            self._revoke_broker(e, brk)\n"
+              "            self._do(X.refuse, execution_id=e.id, "
               "reason='emergency stop: nothing starts',")],
      [I + '::test_E14_nothing_starts_while_disarmed']),
     ('X18', 'an e-stop racing the spawn ignored', [(MGR,
