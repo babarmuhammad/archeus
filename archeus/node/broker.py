@@ -21,8 +21,11 @@ activates complete admission at once, never the broker alone).
 Known limits, recorded (PV20-09 review round 4):
 - S5, the terms and the account's health in `broker_live`, is deferred to PV20-17 by owner
   decision.
-- A grant's share of the pool is a cap per grant, not a reservation: while other grants
-  hold the pool, a grant gets 503 (owner choice: per-token concurrency share).
+- Owner decision (PV20-09 round 5): the per-token concurrency share is a cap, not a
+  reservation. While other grants hold the pool, a grant gets 503.
+- The upstream credential is an allow-list: only an `sk-ant-api` key is sent, matched
+  case-insensitively. Subscription login tokens (sk-ant-oat, sk-ant-ort) and every other
+  shape are refused before any request leaves.
 - Same-host clients can hold the bridge's connection slots. That is a denial of service to
   the execution's own CLI only, not a leak.
 - The key scrub catches the key as itself, case-folded, in base64 and as JSON \\u escapes.
@@ -62,13 +65,14 @@ _DROP_BACK = {'connection', 'keep-alive', 'proxy-connection', 'proxy-authenticat
               'trailer', 'transfer-encoding', 'upgrade', 'set-cookie', 'content-length'}
 #: the audit keeps the last rows only: a client can send requests without end
 AUDIT_MAX = 1024
-#: in-flight requests the broker holds across all grants; one grant gets a quarter of them
+#: in-flight requests the broker holds across all grants; one grant may hold a quarter of
+#: them (a cap, not a reservation: owner decision, PV20-09 round 5)
 POOL = 8
 #: an upstream error body is relayed at most this long, and only if it holds no key, or not at all
 ERROR_BODY_MAX = 64 * 1024
-#: a subscription login token family (PV20-08b): the OAuth access (sk-ant-oat) and refresh
-#: (sk-ant-ort) tokens. Matched case-insensitively: never the upstream credential
-_SUBSCRIPTION = 'sk-ant-o'
+#: the only upstream credential the broker sends: an API key (PV20-08b, owner allow-list,
+#: PV20-09 round 5). Matched case-insensitively; every other credential is refused
+_API_KEY = 'sk-ant-api'
 
 
 class Refused(Exception):
@@ -373,8 +377,8 @@ class Broker:
         key = creds['x-api-key'] if one else None
         if not (isinstance(key, str) and _KEY.fullmatch(key)):
             raise Refused(403, 'the upstream credential is not one API key')
-        if key.lower().startswith(_SUBSCRIPTION):
-            raise Refused(403, 'a subscription token is never the upstream credential')
+        if not key.lower().startswith(_API_KEY):
+            raise Refused(403, 'the upstream credential is not an sk-ant-api key')
         headers = {k: v for k, v in req.headers if wire.forwarded(k)}
         headers['x-api-key'] = key
         headers['Content-Length'] = str(len(req.body))

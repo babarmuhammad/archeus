@@ -16,7 +16,8 @@ from archeus.node import broker as B
 from archeus.node import broker_bridge as W
 
 MODEL = 'claude-x'
-BODY = b'{"model":"claude-x","messages":[{"role":"user","content":"hi"}]}'
+UPSTREAM_KEY = 'sk-ant-api03-UPSTREAM-SECRET'
+BODY =b'{"model":"claude-x","messages":[{"role":"user","content":"hi"}]}'
 
 
 class Transport:
@@ -70,7 +71,7 @@ def broker(live=True, send=None, transport=None, **kw):
                              ('Connection', 'keep-alive'), ('request-id', 'r1')])
     b = B.Broker(core_instance='core1',
                  live=live if callable(live) else (lambda bd, d: live),
-                 credentials=lambda bd: {'x-api-key': 'UPSTREAM-SECRET'},
+                 credentials=lambda bd: {'x-api-key': UPSTREAM_KEY},
                  upstream_of=lambda a: B.Upstream('https://api.example.com'),
                  transport=transport or Transport(),
                  resolve=lambda host, port: ['93.184.216.34'],
@@ -310,7 +311,7 @@ def test_the_client_authority_is_stripped_and_core_supplies_the_upstreams():
     low = {k.lower(): v for k, v in headers.items()}
     assert body == BODY and (method, path) == ('POST', '/v1/messages')
     assert addrs == ['93.184.216.34']
-    assert low['x-api-key'] == 'UPSTREAM-SECRET' and 'authorization' not in low
+    assert low['x-api-key'] == UPSTREAM_KEY and 'authorization' not in low
     for gone in ('cookie', 'x-forwarded-for', 'forwarded', 'x-secret', 'proxy-authorization',
                  'host', 'connection'):
         assert gone not in low, gone
@@ -339,9 +340,12 @@ def test_only_the_standard_and_anthropic_headers_are_forwarded():
     {'x-api-key': ''},
     {},
     {'x-api-key': 'sk-ant-oat01-SECRET'},          # a subscription token, whatever its header
-    {'x-api-key': 'SK-ANT-OAT01-SECRET'},          # the prefix is matched case-insensitively
-    {'x-api-key': 'sk-ant-ort01-SECRET'},          # a refresh token is the same family
+    {'x-api-key': 'SK-ANT-OAT01-SECRET'},
+    {'x-api-key': 'sk-ant-ort01-SECRET'},          # a refresh token: not an API key either
     {'x-api-key': 'Sk-Ant-Ort01-SECRET'},
+    {'x-api-key': 'sk-ant-admin01-SECRET'},        # any other sk-ant- family: allow-list refuses
+    {'x-api-key': 'UPSTREAM-SECRET'},              # an unknown shape: refused, not sent
+    {'x-api-key': 'sk-other-api03-SECRET'},
 ])
 def test_the_upstream_credential_is_one_api_key_or_nothing_is_sent(creds):
     b, calls = broker()
@@ -349,6 +353,14 @@ def test_the_upstream_credential_is_one_api_key_or_nothing_is_sent(creds):
     _, token, _ = issued(b)
     out, row = serve(b, request(token=token))
     assert row['status'] == 403 and calls == [] and b'Injected' not in out
+
+
+def test_an_sk_ant_api_key_is_sent_in_any_letter_case():
+    b, calls = broker()
+    b._credentials = lambda bd: {'x-api-key': 'SK-ANT-API03-SECRET'}
+    _, token, _ = issued(b)
+    _, row = serve(b, request(token=token))
+    assert row['status'] == 200 and calls[0][4]['x-api-key'] == 'SK-ANT-API03-SECRET'
 
 
 def test_the_audit_row_holds_ids_and_sizes_never_content():
@@ -509,10 +521,11 @@ def test_an_upstream_error_body_is_relayed_without_the_key_or_not_at_all():
     out, row = serve(b, request(token=token))
     assert row['status'] == 529 and out.endswith(text)
     assert b'Content-Length: %d' % len(text) in out
-    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'overloaded for UPSTREAM-SECRET']))
+    b, _ = broker(send=lambda *a: Resp(status=529,
+                                       chunks=[b'overloaded for ' + UPSTREAM_KEY.encode()]))
     _, token, _ = issued(b)
     out, row = serve(b, request(token=token))
-    assert row['status'] == 529 and b'UPSTREAM-SECRET' not in out
+    assert row['status'] == 529 and UPSTREAM_KEY.encode() not in out
     assert out.endswith(b'\r\n\r\n') and b'Content-Length: 0' in out
     b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'x' * (B.ERROR_BODY_MAX + 1)]))
     _, token, _ = issued(b)
@@ -530,7 +543,7 @@ _ECHOES = [
 
 @pytest.mark.parametrize('echo', _ECHOES)
 def test_a_key_echoed_in_an_error_body_or_header_is_never_relayed(echo):
-    key = b'UPSTREAM-SECRET'
+    key = UPSTREAM_KEY.encode()
     b, _ = broker(send=lambda *a: Resp(status=529, chunks=[b'bad ' + echo(key)]))
     _, token, _ = issued(b)
     out, row = serve(b, request(token=token))

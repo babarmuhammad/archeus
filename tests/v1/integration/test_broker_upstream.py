@@ -92,7 +92,8 @@ class Transport:
 
 def make(port, live=lambda b, d: True):
     up = B.Upstream('http://127.0.0.1:%d' % port, 'provider_proxy')
-    b = B.Broker(core_instance='c1', live=live, credentials=lambda bd: {'x-api-key': 'K'},
+    creds = {'x-api-key': 'sk-ant-api03-K'}
+    b = B.Broker(core_instance='c1', live=live, credentials=lambda bd: creds,
                  upstream_of=lambda a: up, transport=Transport())
     bd = B.BrokerBinding(core_instance='c1', execution_id='exe_1', process_seq=1,
                          principal='p', route_decision_id='rte_1', account_id='acc_1',
@@ -125,7 +126,7 @@ def test_sse_events_arrive_in_order_and_the_upstream_sees_core_credentials(upstr
     assert row['status'] == 200 and out.split(b'\r\n\r\n', 1)[1] == b''.join(EVENTS)
     (headers, body), = upstream.seen
     low = {k.lower(): v for k, v in headers.items()}
-    assert body == BODY and low['x-api-key'] == 'K' and 'authorization' not in low
+    assert body == BODY and low['x-api-key'] == 'sk-ant-api03-K' and 'authorization' not in low
     assert low['anthropic-version'] == '2023-06-01'
 
 
