@@ -655,13 +655,14 @@
   function ovPts(poly) { return poly.map(function (p) { return p[0] + ',' + p[1]; }).join(' '); }
   // One <text> per word when the concept's word positions are known (tools/fit_type.py), so each word sits on the
   // concept's ink; a sentence with a different number of words falls back to one line at the text's origin.
-  function frameText(T, key, cls, text, centre) {
+  function frameText(T, key, cls, text, centre, fit) {
     var t = T[key], attrs = ' font-size="' + t.size + '" font-weight="' + t.weight + '" letter-spacing="' + t.ls + '"';
     if (centre === undefined && t.words) {
       var parts = text.split(' ');
       if (parts.length === t.words.length) {
         return parts.map(function (w, i) {
-          return '<text class="' + cls + '" x="' + t.words[i][1] + '" y="' + t.y + '"' + attrs + '>' + esc(w) + '</text>';
+          var len = fit && fit[w] ? ' textLength="' + fit[w] + '" lengthAdjust="spacingAndGlyphs"' : '';
+          return '<text class="' + cls + '" x="' + t.words[i][1] + '" y="' + t.y + '"' + attrs + len + '>' + esc(w) + '</text>';
         }).join('');
       }
     }
@@ -683,7 +684,10 @@
   }
 
   // The header: wordmark, concept fixture, status line and the headline, anchored to the top of the screen.
-  function headSvgFor(L, T) {
+  // The vendored serif sets "needs" about 15 px wider than the concept, so the sheets' headline runs into "you".
+  // Fitting that one word to the concept's ink width (150 units) closes the gap; the Overview keeps its natural width.
+  var HEAD_FIT = { needs: 150 };
+  function headSvgFor(L, T, fit) {
     var out = '<g class="ov-head-group" aria-hidden="true">';
     out += frameText(T, 'wordmark', 'ov-serif ov-wordmark', 'ARCHEUS');
     out += frameText(T, 'fixture', 'ov-sans ov-fixture', 'CONCEPT FIXTURE');
@@ -691,8 +695,8 @@
     out += '<circle cx="' + d.cx + '" cy="' + d.cy + '" r="' + (d.w / 2) + '" fill="#49E973"/>';
     out += frameText(T, 'status_text', 'ov-sans ov-status', 'Not stopped · accepts new work');
     var lines = sentence().split('\n');
-    out += frameText(T, 'headline_1', 'ov-serif ov-headline', lines[0]);
-    if (lines[1]) out += frameText(T, 'headline_2', 'ov-serif ov-headline', lines[1]);
+    out += frameText(T, 'headline_1', 'ov-serif ov-headline', lines[0], undefined, fit);
+    if (lines[1]) out += frameText(T, 'headline_2', 'ov-serif ov-headline', lines[1], undefined, fit);
     out += '</g>';
     return out;
   }
@@ -801,7 +805,7 @@
     var L = window.PH2_LAYOUT, T = window.PH2_TYPE, G = L.glows;
     var dm = ovBox(L.marks.diamond), sm = ovBox(L.marks.blue_star), tr = ovBox(L.marks.codex_tri), gd = ovBox(G.amber_diamond.box);
     var open = ovBox(L.shapes.open), out = '<defs>' + glowFilter('ph2-glow-amber', G.amber_diamond) + glowFilter('ph2-glow-blue', G.blue_star) + '</defs>';
-    out += headSvgFor(L, T);
+    out += headSvgFor(L, T, HEAD_FIT);
     out += '<polygon class="ov-glow" points="' + diamondPts(gd) + '" fill="' + OV_GLOW_AMBER + '" filter="url(#ph2-glow-amber)"/>';
     out += ovDiamond(dm, OV_AM, 5);
     out += '<g class="ov-glow" filter="url(#ph2-glow-blue)">' + ovStar(sm, OV_GLOW_BLUE) + '</g>' + ovStar(sm, OV_BL);
@@ -818,13 +822,14 @@
     out += frameText(T, 'core_label', 'ov-sans ph-label', 'Core consequence') + frameText(T, 'core_value', 'ov-sans ph-value', 'Read exact Core action before deciding.');
     out += frameText(T, 'open_text', 'ov-sans ph-open', 'Open decision', open.cx);
     out += frameText(T, 'bar_text', 'ov-sans ph-placeholder', 'Tell Archeus…');
+    out += '<rect class="ph-rule" x="48" y="1086" width="629" height="1"/><rect class="ph-rule" x="48" y="1194" width="629" height="1"/>';
     return out;
   }
   function ph3Svg() {
     var L = window.PH3_LAYOUT, T = window.PH3_TYPE, G = L.glows;
     var dm = ovBox(L.marks.diamond), sm = ovBox(L.marks.blue_star), nm = ovBox(L.marks.notes_star), gd = ovBox(G.amber_diamond.box);
     var out = '<defs>' + glowFilter('ph3-glow-amber', G.amber_diamond) + glowFilter('ph3-glow-blue', G.blue_star) + '</defs>';
-    out += headSvgFor(L, T);
+    out += headSvgFor(L, T, HEAD_FIT);
     out += '<polygon class="ov-glow" points="' + diamondPts(gd) + '" fill="' + OV_GLOW_AMBER + '" filter="url(#ph3-glow-amber)"/>';
     out += ovDiamond(dm, OV_AM, 5);
     out += '<g class="ov-glow" filter="url(#ph3-glow-blue)">' + ovStar(sm, OV_GLOW_BLUE) + '</g>' + ovStar(sm, OV_BL);
@@ -2345,6 +2350,14 @@
   // The phone-3 fixture (exit code 137 and its General answer) is not on the desktop concept: the desktop frame hides it.
   Array.prototype.slice.call(thread.children).slice(3).forEach(function (el) { el.classList.add('phone-fixture'); });
 
+  // The composer ring is for keyboard focus: a click marks the bar, and Tab clears the mark (style.css, polish round 2).
+  document.addEventListener('pointerdown', function (e) {
+    var bar = e.target.closest && e.target.closest('#chat-form');
+    if (bar) bar.classList.add('mouse-focus');
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Tab') $('#chat-form').classList.remove('mouse-focus');
+  });
   document.addEventListener('submit', function (e) {
     if (e.target.id === 'ph2-chat') {
       e.preventDefault();
