@@ -4,6 +4,55 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Merge round (v2/merged, 2026-10-22): five branches in one prototype
+
+Base: v2/living-space 9d72df5 (worktree D:\archeus-v2-merged). Merged in order, each with `git merge --no-ff`: v2/r10c-desktop e22f280 (merge 8687e57), v2/r10c-replay b3a5e2f (1430dea), v2/r10c-terminal c86c049 (f64930e), v2/r10c-mission f257efc (9697d85). Then the shell pass commit (see its message).
+
+Conflicts and resolutions (each surface owner keeps its own code; shared helpers keep both additive changes):
+1. README.md (four merges): every surface section kept, newest first within each merge.
+2. check.mjs (desktop, replay, mission): one font block for both desktop frames (frame-now and frame-replay selectors: 14 px floor outside, 11 px inside, 10 px only on the named sub-lines). The mission's parsed layout variable is renamed r10cLayout (it clashed with the phone layout). Cache check points at archeus-v2-proto-m4.
+3. fonts/README.md and fonts/sha256.txt (desktop, replay, terminal, mission): one font table for Libre Caslon, Inter, Source Sans 3 and Roboto Mono; sha256 rebuilt from the committed bytes.
+4. index.html (desktop, mission): the desktop art image sits above the phone frames; the phone layout scripts load before layout-r10c.js and app.js. The desktop moved the Simulated tag below the stage; kept.
+5. style.css (desktop, replay, mission): every block kept in merge order. The @font-face paths point at LibreCaslonText-VF.ttf. The mission's generic phone-3 chat rules (unscoped `.feed .msg`, `.msg-card .btn`) changed the desktop chat, so they sit inside `@media (max-width: 880px)`.
+6. sw.js (all four): one shell list with the phone, desktop, replay, mission and terminal art and fonts; cache archeus-v2-proto-m4 (later changed by the shell pass if the shell list moved).
+7. app.js (mission, 7 hunks; replay merged clean):
+   - core label offset: the mission's per-scene coreDy wins when set; the desktop default (66 on the Now frame, 84 elsewhere) stays.
+   - label placement: the mission's fixed label rows (it.at) run before the desktop label anchor (labelFix).
+   - fitFrame: one function. The Now frame is 1296 x 729; the mission frame is 1244 x 829 and the shared frame 1382 x 922, each with the 26 px footer strip.
+   - stages: missionStage and sharedStage (canvas scenes) are removed; the mission and shared frames are DOM now. The mission's replayStage had no caller after the replay rewrite; dropped.
+   - general answer promote switch: the desktop markup kept (aria-describedby and its note).
+   - frame classes: frame-now (desktop), frame-mission and frame-shared all toggled in route().
+   - startup and resize: placeFrame for the mission and shared frames after buildOverview; resize relayouts the Now and phone stages.
+8. fonts/LibreCaslonText-wght.ttf (desktop, replay, mission): dropped each time. Same sha256 as LibreCaslonText-VF.ttf (c11809db...), so it is one file.
+
+Fixes found by measurement after the merge (not conflicts):
+- The phone-3 fixture (exit code 137 and its General answer) showed on the desktop chat. The desktop hides it (`.phone-fixture`).
+- The phone seed text carries `<br>`; on the desktop the break is hidden, so the chat reads one line as the concept does.
+- placeControls (phone bar and Stop size, inline styles) ran on the desktop and collapsed the desktop composer to 22 x 10 px. It now runs only in phone mode (ovMode).
+- The desktop Tell and Stop icon rules (`.top [data-tell]::before`) were unscoped and drew icons on Replay. Scoped to body.frame-now.
+- The mission's `.msg-card .row .btn` flex rule stretched the desktop Start and Keep buttons. Reset to flex none on the desktop.
+
+Shell pass (v2/merged):
+- Plum ground: one token, `--bg: #0C0811` (the concept grounds measured: Replay #0C0811, Now #0B0713 to #13101B, phone #15121D). html, body and every frame body use it. The terminal keeps its own panel ground #17111D because the terminal concept is #17111D.
+- One font stack: `--serif` Libre Caslon V2 (LibreCaslonText-VF.ttf, weight 500 for headings), `--sans` Source Sans V2 (SourceSans3-wght.ttf), `--mono` Archeus Mono (RobotoMono-wght.ttf). The duplicate Archeus Serif face is removed (same file). Archeus Sans (Inter-VF.ttf) stays on the phone Overview frame only, where it measured closer.
+- Navigation: the rail links Now (Overview), Projects (Shared), Replay, Mission and Terminal on desktop and phone. Measured with Chromium (desktop 1296 x 755 and phone 402 x 687): each link switches the one visible section, aria-current follows, direct hashes (#/replay/m-date, #/mission/m-date) open their surface, no page errors.
+
+Numbers (Chromium, reduced motion, fonts awaited, full resolution, mean absolute RGB difference 0 to 255; terminal from tools/term_sim.py, phone from tools/compare_frame.py):
+
+| Surface (master size) | Branch README | Branch alone, same harness | Merged, after shell pass |
+|---|---|---|---|
+| Phone Overview (804 x 1373) | 4.63 | 4.65 (9d72df5) | 4.65 |
+| Desktop Overview (1296 x 729) | 4.81 | 4.81 | 4.89 |
+| Replay (1440 x 810) | 4.83 | 4.83 | 4.86 |
+| Terminal overview (1600 x 900) | 2.99 | 2.99 | 2.99 |
+| Mission (1244 x 829) | 4.88 | 4.88 | 4.88 |
+| Shared (1382 x 922) | 3.27 | 3.27 | 3.27 |
+
+Regressions, listed and not hidden:
+- Desktop +0.08 (4.81 to 4.89): +0.04 from the merge (chat and header regions, no computed-style difference found; suspected canvas state, not verified), +0.04 from the shell pass (ARCHEUS, the core label, now renders in vendored Libre Caslon instead of the machine's fallback serif, which measured closer). Owner decision: keep the one stack, or pin the fallback.
+- Replay +0.03: the same core-label change.
+- Phone +0.02 against the README is environmental: branch 9d72df5 measures 4.65 with the same harness.
+
 ## Round 10f phone (2026-10-22): Overview polish and the two sheets
 
 Owner rules in this round: frame text at the concept's own sizes with an 11 CSS px floor (HIG). The owner-approved 10 px list

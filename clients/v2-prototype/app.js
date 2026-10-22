@@ -762,7 +762,7 @@
   function placeControls(frame) {
     var three = frame === 3, L = three ? window.PH3_LAYOUT : window.ARCHEUS_LAYOUT, T = three ? window.PH3_TYPE : window.ARCHEUS_TYPE;
     var bar = $('#chat-form'), stop = $('#s-now .stop-btn.chat-stop'), input = $('#chat-input');
-    if (!bar || !stop || !input || !L) return;
+    if (!bar || !stop || !input || !L || !ovMode()) return;
     var b = L.shapes.bar, s = L.shapes.stop, root = $('#s-now');
     if (!three) {
       root.style.setProperty('--pad', L.pad);
@@ -2335,11 +2335,13 @@
   $('#chat-prompts').innerHTML = PROMPTS.map(function (p) {
     return '<button type="button" class="prompt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
   }).join('');
-  addMsg('you', '<p>Open a mission in Notes:<br>Export backup</p>');
-  addMsg('arch', '<p>Mission created in Notes.<br>Start it when you like.</p>');
+  addMsg('you', '<p>Open a mission in Notes: <br>Export backup</p>');
+  addMsg('arch', '<p>Mission created in Notes. <br>Start it when you like.</p>');
   startCard(find('m-read'));
   addMsg('you', '<p>What does exit code 137 mean?</p>');
   general('The process was killed, usually out of memory (128 + signal 9).');
+  // The phone-3 fixture (exit code 137 and its General answer) is not on the desktop concept: the desktop frame hides it.
+  Array.prototype.slice.call(thread.children).slice(3).forEach(function (el) { el.classList.add('phone-fixture'); });
 
   document.addEventListener('submit', function (e) {
     if (e.target.id === 'ph2-chat') {

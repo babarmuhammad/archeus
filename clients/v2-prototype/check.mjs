@@ -1,5 +1,6 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
@@ -154,7 +155,7 @@ check(/Simulated: fake data, scripted replay/.test(html), 'replay simulated stri
 check(/Reconcile is page-only/.test(html), 'Reconcile must be stated as page-only');
 check(/\.rp-actions \.btn[^}]*min-height:\s*4[48]px/.test(css) && /\.rp-actions \.btn[^}]*height:\s*4[48]px/.test(css), 'Reconcile buttons below 44px');
 for (const word of ['Libre Caslon V2', 'Source Sans V2']) check(css.includes(word), `replay font missing: ${word}`);
-for (const f of ['fonts/LibreCaslonText-wght.ttf', 'fonts/SourceSans3-wght.ttf']) check(existsSync(join(dir, f)), `replay font file missing: ${f}`);
+for (const f of ['fonts/LibreCaslonText-VF.ttf', 'fonts/SourceSans3-wght.ttf']) check(existsSync(join(dir, f)), `replay font file missing: ${f}`);
 
 check(/viewport-fit=cover/.test(html), 'phone viewport must use viewport-fit=cover');
 check(css.includes('env(safe-area-inset-bottom)') && css.includes('env(safe-area-inset-top)'), 'safe-area insets missing');
@@ -186,7 +187,7 @@ for (const key of ['wordmark', 'fixture', 'status_text', 'headline_1', 'headline
   check(type && type[key] && type[key].size > 0, `live text missing from the type data: ${key}`);
 }
 for (const key of ['shapes', 'marks']) check(layout && layout[key], `layout ${key} missing`);
-check(/Archeus Serif/.test(css) && /Archeus Sans/.test(css), 'live text must use the vendored @font-face families');
+check(/Libre Caslon V2/.test(css) && /Source Sans V2/.test(css) && /Archeus Sans/.test(css), 'live text must use the vendored @font-face families');
 check(/@font-face\s*\{[^}]*fonts\/LibreCaslonText-VF\.ttf/.test(css) && /@font-face\s*\{[^}]*fonts\/Inter-VF\.ttf/.test(css), 'vendored font files are not declared');
 check(existsSync(join(dir, 'fonts', 'LibreCaslonText-VF.ttf')) && existsSync(join(dir, 'fonts', 'Inter-VF.ttf')), 'vendored font files missing');
 check(existsSync(join(dir, 'fonts', 'OFL-LibreCaslonText.txt')) && existsSync(join(dir, 'fonts', 'OFL-Inter.txt')), 'font licence texts missing');
@@ -239,7 +240,7 @@ check(/ph3-back/.test(html) && /setPhoneFrame\(3\)/.test(js) && /What does exit 
 check(/data-promote/.test(js) && /Promote to project memory/.test(js), 'promote switch missing');
 check(/gen-tag">General<\/span> not project memory/.test(js), 'general tag missing');
 check(/ov-glow/.test(js) && /feGaussianBlur/.test(js), 'soft glow filters missing');
-check(/archeus-v2-proto-ph2/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-ph2');
+check(/archeus-v2-proto-m4/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-m4');
 check(/art\/phone-2-base\.webp/.test(sw) && /art\/phone-3-base\.webp/.test(sw), 'service worker does not cache the phone-2 and phone-3 art');
 check(/art\/phone-2-layout\.js/.test(html) && /art\/phone-3-type\.js/.test(html), 'index.html does not load the phone-2 and phone-3 data');
 
@@ -286,7 +287,20 @@ for (const [frame, sec] of [['mission', 'm-frame'], ['shared', 'sh-frame']]) {
   for (const [id, v] of Object.entries(table)) check(Number.isFinite(v.x) && Number.isFinite(v.y), `${frame} ${id} has no position`);
 }
 check(/fitFrame/.test(js) && /--k/.test(css), 'frames do not scale to the window');
-check(/archeus-v2-proto-m4/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-ms1 and cache the frame assets');
+check(/archeus-v2-proto-m4/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-m4 and cache the frame assets');
+
+// Shell pass (v2/merged): one font stack, one plum ground, every surface reachable from the rail, hash routing intact.
+check(!/Archeus Serif/.test(css) && !/Segoe UI Variable/.test(css.split('\n').filter((l) => /--(serif|sans):/.test(l)).join('\n')), 'a second serif or sans stack is still declared');
+const FONT_FILES = ['LibreCaslonText-VF.ttf', 'SourceSans3-wght.ttf', 'Inter-VF.ttf', 'RobotoMono-wght.ttf'];
+const fontFilesOnDisk = readdirSync(join(dir, 'fonts')).filter((f) => f.endsWith('.ttf'));
+check(fontFilesOnDisk.length === FONT_FILES.length && FONT_FILES.every((f) => fontFilesOnDisk.includes(f)), `font files are not the four vendored faces: ${fontFilesOnDisk.join(', ')}`);
+const fontDigests = fontFilesOnDisk.map((f) => createHash('sha256').update(readFileSync(join(dir, 'fonts', f))).digest('hex'));
+check(new Set(fontDigests).size === fontDigests.length, 'two vendored font files are byte-identical');
+check(/--serif:\s*"Libre Caslon V2"/.test(css) && /--sans:\s*"Source Sans V2"/.test(css) && /--mono:\s*"Archeus Mono"/.test(css), 'type tokens are not the one stack (Libre Caslon, Source Sans 3, Roboto Mono)');
+check(/--bg:\s*#0C0811/.test(css) && /html,\s*body\s*\{[^}]*background:\s*var\(--bg\)/.test(css), 'the plum ground token is not on html and body');
+for (const nav of ['now', 'mission', 'shared', 'replay', 'terminal']) check(html.includes(`data-nav="${nav}"`), `rail has no ${nav} link`);
+for (const sec of ['s-now', 's-mission', 's-shared', 's-replay', 's-terminal']) check(html.includes(`id="${sec}"`), `surface ${sec} is missing`);
+check(/window\.addEventListener\('hashchange', route\)/.test(js) && /function route\(\)/.test(js), 'hash routing is not wired');
 
 if (failures.length) {
   console.error('FAIL');
