@@ -83,10 +83,21 @@ check(/reduce\.matches/.test(js), 'animation does not read prefers-reduced-motio
 check(!/https?:\/\//.test(css) && !/@import/.test(css), 'style.css loads an external resource');
 check(/--serif/.test(css) && /--sans/.test(css), 'type pairing missing');
 
-const sizes = [...css.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
-// Round 10f: the frame text floor is 11 CSS px (HIG). The only text allowed below 11 px is the owner-approved 10 px
-// sub-lines (SUBLINE_KEYS below), and those are set in frame units, not CSS px.
-check(sizes.length > 0 && Math.min(...sizes) >= 11, `font size below 11px: ${Math.min(...sizes)}`);
+// Round 10e: the Now frame (body.frame-now rules) keeps the concept's sizes, minimum 11 px (owner rule); every other
+// view keeps the 14 px minimum.
+const fontSizes = (text) => [...text.matchAll(/font(?:-size)?:[^;}]*?(\d+(?:\.\d+)?)px/g)].map((m) => Number(m[1]));
+const frameRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => /frame-now/.test(m[1]));
+const otherCss = css.replace(/([^{}]+)\{([^{}]*)\}/g, (m, sel) => (/frame-now/.test(sel) ? '' : m));
+const frameSizes = fontSizes(frameRules.map((m) => m[0]).join('\n'));
+const otherSizes = fontSizes(otherCss);
+check(otherSizes.length > 0 && Math.min(...otherSizes) >= 14, `font size below 14px outside the Now frame: ${Math.min(...otherSizes)}`);
+// Round 10g (owner answer 3): 10 px is allowed on the frame only for the concept's own small sub-lines, named here.
+const TEN_PX_SELECTORS = ['data-lid="m-read"] .s', 'data-lid="m-index"] .s', 'data-lid="ideas"] .s', 'data-lid="m-date"] .s', 'data-lid="m-search"] .s', 'data-lid="m-done"] .s'];
+const tenPxBreaches = frameRules.filter((m) => fontSizes(m[2]).some((v) => v < 11) && !TEN_PX_SELECTORS.some((sel) => m[1].includes(sel)));
+const tenPxRules = frameRules.filter((m) => fontSizes(m[2]).some((v) => v < 11));
+check(tenPxBreaches.length === 0, `frame font below 11px outside the named sub-lines: ${tenPxBreaches.map((m) => m[1].trim()).join(' | ')}`);
+check(tenPxRules.every((m) => fontSizes(m[2]).every((v) => v >= 10)), 'frame font below 10px');
+check(frameSizes.length > 0 && Math.min(...frameSizes) >= 10, `font size below 10px on the Now frame: ${Math.min(...frameSizes)}`);
 check(/\.btn\s*\{[^}]*min-height:\s*48px/.test(css), '.btn is not 48px tall');
 check(/#s-now \.ov-art \.ov-btn \{/.test(css) && /#s-now \.ov-art \.ov-chip-text \{/.test(css), 'Review and chip labels must not inherit the halo (specificity)');
 check(/linear-gradient\(180deg, #2C2932 0%, #312C36 50%, #2F2B35 100%\)/.test(css), 'Stop fill gradient missing (measured from the concept)');
@@ -200,9 +211,19 @@ check(/art\/phone-2-base\.webp/.test(sw) && /art\/phone-3-base\.webp/.test(sw), 
 check(/art\/phone-2-layout\.js/.test(html) && /art\/phone-3-type\.js/.test(html), 'index.html does not load the phone-2 and phone-3 data');
 
 
+// Round 10c desktop Overview: scene from the concept box, knot star, dense facets, fixed label anchors, one-line Start card.
+check(/DESK_FILL = 0\.88/.test(js) && /function deskMap|dm = function/.test(js) || /var dm = function/.test(js), 'desktop scene is not mapped from the concept box');
+check(/function drawKnot/.test(js) && /sc\.knot/.test(js), 'desktop knot star missing');
+check(/function deskFacetsFor/.test(js) && /p\.desk/.test(js), 'desktop hull facets missing');
+check(/labelFix/.test(js) && /archeus: \{ hide: true \}/.test(js), 'desktop label anchors missing');
+check(/function drawDeskExec/.test(js) && /function drawDeskMark/.test(js), 'desktop Codex triangle or marks missing');
+check(/card-body/.test(js) && /\.feed \.msg-card \.card-body/.test(css), 'Start card is not a one-line body');
+check(/\.now-tag \{ display: block/.test(css) && /id="s-now"/.test(html), 'desktop footer note rule missing');
+
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);
   process.exit(1);
 }
-console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...sizes)}px`);
+console.log(`OK: ${refs.length} references, manifest parses, app.js and sw.js parse, ${pairs.length + 2} contrast pairs, min font ${Math.min(...otherSizes)}px outside the Now frame, ${Math.min(...frameSizes)}px on it (10px only on named sub-lines)`);

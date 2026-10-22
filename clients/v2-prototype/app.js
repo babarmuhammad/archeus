@@ -285,7 +285,34 @@
   }
 
   // Star: many fine threads of two lengths, ivory, crisp. Replaces the six long rays of round 3 to 9.
-  function drawCore(g, c, t, hot, s) {
+  // Desktop star (round 10c): a dense knot of fine ivory threads with a bright centre, as in the concept.
+  function drawKnot(g, c, s) {
+    var seed = 11, rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    var pts = [], i;
+    for (i = 0; i < 46; i++) {
+      var a = (i + rnd() * 0.6) * TAU / 46, r = (16 + rnd() * 70) * s;
+      pts.push({ x: c.x + Math.cos(a) * r, y: c.y + Math.sin(a) * r, a: a });
+    }
+    g.save(); g.strokeStyle = IVORY; g.fillStyle = IVORY; g.lineCap = 'round';
+    pts.forEach(function (p, j) {
+      var q = pts[(j + 5) % pts.length];
+      g.globalAlpha = j % 3 === 0 ? 0.75 : 0.42; g.lineWidth = j % 3 === 0 ? 0.8 : 0.55;
+      line(g, p.x, p.y, q.x, q.y);
+    });
+    pts.forEach(function (p) {
+      g.globalAlpha = 0.45 + 0.45 * rnd(); g.lineWidth = 0.6;
+      line(g, c.x + Math.cos(p.a) * 3 * s, c.y + Math.sin(p.a) * 3 * s, p.x, p.y);
+      g.globalAlpha = 0.9; g.beginPath(); g.arc(p.x, p.y, 1.1 * s, 0, TAU); g.fill();
+    });
+    var rg = g.createRadialGradient(c.x, c.y, 0, c.x, c.y, 16 * s);
+    rg.addColorStop(0, 'rgba(255,248,230,0.9)'); rg.addColorStop(0.4, 'rgba(239,233,218,0.25)'); rg.addColorStop(1, 'rgba(239,233,218,0)');
+    g.globalAlpha = 1; g.fillStyle = rg; g.beginPath(); g.arc(c.x, c.y, 16 * s, 0, TAU); g.fill();
+    g.fillStyle = '#FFF8E6'; g.beginPath(); g.arc(c.x, c.y, 2.6 * s, 0, TAU); g.fill();
+    g.restore();
+  }
+
+  function drawCore(g, c, t, hot, s, knot) {
+    if (knot) { drawKnot(g, c, s); return; }
     g.save();
     g.strokeStyle = IVORY; g.fillStyle = IVORY; g.lineCap = 'round';
     for (var i = 0; i < 88; i++) {
@@ -340,6 +367,41 @@
     g.restore();
   }
 
+  // Desktop marks (round 10c): filled diamonds (waiting amber, done lilac), a sparkle for a new item, a blue
+  // four-point star for live work.
+  function drawDeskMark(g, x, y, n, r, lit) {
+    g.save();
+    var amber = n.state === 'waiting', blue = n.state === 'running', spark = n.detail === 'New';
+    var col = amber || spark ? STATE.waiting.color : blue ? STATE.running.color : '#B9B3D1';
+    g.fillStyle = col; g.shadowColor = col; g.shadowBlur = amber || blue || spark ? 12 : 0; g.globalAlpha = lit || amber || blue ? 1 : 0.85;
+    g.beginPath();
+    if (blue || spark) {
+      var R = r * (blue ? 1.9 : 1.6), q = R * 0.2;
+      g.moveTo(x, y - R); g.quadraticCurveTo(x + q, y - q, x + R, y); g.quadraticCurveTo(x + q, y + q, x, y + R);
+      g.quadraticCurveTo(x - q, y + q, x - R, y); g.quadraticCurveTo(x - q, y - q, x, y - R);
+    } else {
+      var D = r * 1.3;
+      g.moveTo(x, y - D); g.lineTo(x + D * 0.72, y); g.lineTo(x, y + D); g.lineTo(x - D * 0.72, y); g.closePath();
+    }
+    g.fill();
+    g.restore();
+  }
+
+  // Desktop Codex execution: a blue triangle whose apex is the execution node and whose base corners are the
+  // Verification and Results dots, with the code glyph inside.
+  function drawDeskExec(g, a, b1, b2, lit) {
+    g.save();
+    g.strokeStyle = STATE.running.color; g.lineWidth = 1.2; g.globalAlpha = lit ? 0.85 : 0.5; g.lineJoin = 'round';
+    var yb = b1.y - 13, l = { x: b1.x + 14, y: yb }, r = { x: b2.x - 14, y: yb };
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(l.x, l.y); g.lineTo(r.x, r.y); g.closePath(); g.stroke();
+    g.beginPath(); g.moveTo(l.x, l.y); g.lineTo(b1.x, b1.y); g.moveTo(r.x, r.y); g.lineTo(b2.x, b2.y); g.stroke();
+    g.fillStyle = STATE.running.color; g.shadowColor = STATE.running.color; g.shadowBlur = 10; g.globalAlpha = 1;
+    g.beginPath(); g.arc(a.x, a.y, 4.6, 0, TAU); g.fill();
+    g.shadowBlur = 0;
+    glyph(g, 'code', a.x, a.y + (b1.y - a.y) * 0.62, 9, IVORY, 0.95);
+    g.restore();
+  }
+
   /* ---------- Scenes: plain data, no drawing ---------- */
 
   function mk(w, h, core, k, narrow) {
@@ -386,7 +448,7 @@
       },
       marks: {
         'm-search': [330, 298], 'm-done': [368, 408], 'm-date': [826, 344], 'm-index': [1034, 175], 'm-read': [1040, 230],
-        exec: [871, 428], verif: [806, 488], results: [925, 488]
+        exec: [871, 416], verif: [806, 488], results: [925, 488]
       }
     },
     phone: {
@@ -425,24 +487,41 @@
     n.mark = true;
     return n;
   }
+  // Desktop Overview (round 10c): the concept's constellation box (DESK_BOX, reference px) fills DESK_FILL of the
+  // stage width, scaled uniformly and centred. The scene takes DESK_SCENE_H of the stage height at most.
+  // Round 10d: the desktop Overview is a fixed 1296 x 729 frame (the concept's own size). Reference px are frame px.
+  var DESK_W = 1296, DESK_H = 729;
   function nowScene(w, h) {
     var L = CONCEPT_LAYOUT.desktop;
-    var hh = h - Math.min(280, Math.round(h * 0.36));
-    var k = Math.max(0.6, Math.min(w / 1296, hh / 560, 1.1));
-    var sc = mk(w, h, { x: w * 0.5, y: hh * 0.45 }, k, false);
-    var c = layoutMap(L, L.core[0], L.core[1], w, hh);
-    sc.core = { x: c.x, y: c.y };
+    var k0 = Math.min(w / DESK_W, h / DESK_H);
+    var ox = (w - DESK_W * k0) / 2, oy = (h - DESK_H * k0) / 2;
+    var dm = function (p) { return { x: ox + p[0] * k0, y: oy + p[1] * k0 }; };
+    var hullOf = function (pts) { return pts.map(dm); };
+    var k = k0;
+    var sc = mk(w, h, { x: 0, y: 0 }, k, false);
+    var c0 = dm(L.core);
+    sc.core = { x: c0.x, y: c0.y };
+    sc.knot = true; sc.desk = true;
     sc.sats = [];
     var archeus = projectOf('archeus'), notes = projectOf('notes'), ideas = projectOf('ideas');
-    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: layoutHull(L, L.hulls.archeus, w, hh), members: ['m-search', 'm-date', 'm-done'], count: 3, live: 2, active: true });
-    sc.projects.push({ id: 'notes', name: notes.name, hue: IVORY, note: notes.note, ring: layoutHull(L, L.hulls.notes, w, hh), members: ['m-index', 'm-read'], count: 2, live: 0, active: false });
-    sc.projects.push({ id: 'ideas', name: ideas.name, hue: IVORY, note: ideas.note, ring: layoutHull(L, L.hulls.ideas, w, hh), members: [], count: 0, live: 0, active: false });
+    sc.projects.push({ id: 'archeus', name: archeus.name, hue: IVORY, note: archeus.note, ring: hullOf(L.hulls.archeus), members: ['m-search', 'm-date', 'm-done'], count: 3, live: 2, active: true, desk: true });
+    sc.projects.push({ id: 'notes', name: notes.name, hue: IVORY, note: notes.note, ring: hullOf(L.hulls.notes), members: ['m-index', 'm-read'], count: 2, live: 0, active: false, desk: true });
+    sc.projects.push({ id: 'ideas', name: ideas.name, hue: IVORY, note: ideas.note, ring: hullOf(L.hulls.ideas), members: [], count: 0, live: 0, active: false, desk: true });
+    var fixAt = function (x, y, d, v) { return { d: d, v: v, at: dm([x, y]) }; };
+    sc.labelFix = {
+      archeus: { hide: true },
+      notes: fixAt(1172, 112, 'row', 'c'),
+      ideas: fixAt(1208, 427, 'row', 'c'),
+      'm-search': { d: 'row', v: 'c' }, 'm-date': { d: 'row', v: 'c' }, 'm-done': { d: 'row', v: 'c' },
+      'm-index': { d: 'row', v: 'c' }, 'm-read': { d: 'row', v: 'd' },
+      'm-date-exec': { d: 'row', v: 'd' }, verif: fixAt(820, 489, 'row', 'c'), results: fixAt(939, 489, 'row', 'c')
+    };
     sc.parent.archeus = 'core'; sc.parent.notes = 'core'; sc.parent.ideas = 'core';
     sc.links.push({ a: 'core', b: 'archeus', col: IVORY, live: true, kind: 'project', hue: IVORY });
     sc.links.push({ a: 'core', b: 'notes', col: IVORY, live: false, kind: 'project', hue: IVORY });
     sc.links.push({ a: 'core', b: 'ideas', col: IVORY, live: false, kind: 'project', hue: IVORY, dash: true });
     var mSearch = find('m-search'), mDate = find('m-date'), mDone = find('m-done');
-    var at = function (key) { var q = layoutMark(L, key, w, hh); return q; };
+    var at = function (key) { return dm(L.marks[key]); };
     var nS = markNode(mSearch, at('m-search').x, at('m-search').y, 7 * k, 'archeus');
     var nD = markNode(mDate, at('m-date').x, at('m-date').y, 8 * k, 'archeus');
     var nDone = markNode(mDone, at('m-done').x, at('m-done').y, 6 * k, 'archeus');
@@ -802,6 +881,36 @@
     return out;
   }
 
+  // Desktop hulls (round 10c): about 45 thin facet lines in three opacity tiers, no broad wedges.
+  function deskFacetsFor(R, id) {
+    var seed = 0; for (var i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) % 2147483647;
+    if (!seed) seed = 7;
+    var rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    R.forEach(function (v) { minx = Math.min(minx, v.x); maxx = Math.max(maxx, v.x); miny = Math.min(miny, v.y); maxy = Math.max(maxy, v.y); });
+    var inside = function (x, y) {
+      var c = false;
+      for (var a = 0, b = R.length - 1; a < R.length; b = a++) {
+        if ((R[a].y > y) !== (R[b].y > y) && x < (R[b].x - R[a].x) * (y - R[a].y) / (R[b].y - R[a].y) + R[a].x) c = !c;
+      }
+      return c;
+    };
+    var pts = [], guard = 0;
+    while (pts.length < 22 && guard++ < 800) {
+      var x = minx + rnd() * (maxx - minx), y = miny + rnd() * (maxy - miny);
+      if (inside(x, y)) pts.push({ x: x, y: y });
+    }
+    var all = R.concat(pts), tiers = [{ a: 0.5, w: 0.8 }, { a: 0.3, w: 0.55 }, { a: 0.16, w: 0.4 }], out = [];
+    pts.forEach(function (q, i) {
+      var t = tiers[i % 3];
+      all.map(function (v, j) { return { j: j, d: Math.hypot(v.x - q.x, v.y - q.y) }; })
+        .filter(function (o) { return all[o.j] !== q; })
+        .sort(function (p1, p2) { return p1.d - p2.d; }).slice(0, 3)
+        .forEach(function (o) { out.push({ x1: q.x, y1: q.y, x2: all[o.j].x, y2: all[o.j].y, a: t.a, w: t.w }); });
+    });
+    return out;
+  }
+
   /* ---------- The stage: one renderer for every screen ---------- */
 
   function makeStage(root, opts) {
@@ -916,7 +1025,11 @@
       R0.forEach(function (v) { C.x += v.x; C.y += v.y; });
       C.x /= R0.length; C.y /= R0.length;
       g.save(); g.globalAlpha = gp;
-      R0.forEach(function (v, j) {
+      if (p.desk) {
+        g.beginPath(); R0.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
+        g.fillStyle = 'rgba(239,233,218,' + (lit ? 0.03 : 0.015) + ')'; g.fill();
+      }
+      (p.desk ? [] : R0).forEach(function (v, j) {
         var nv = R0[(j + 1) % R0.length];
         g.beginPath(); g.moveTo(C.x, C.y); g.lineTo(v.x, v.y); g.lineTo(nv.x, nv.y); g.closePath();
         g.fillStyle = 'rgba(239,233,218,' + ((lit ? 0.05 : 0.025) * [0.6, 1.35, 0.9, 1.45, 0.75, 1.1][j % 6]).toFixed(3) + ')';
@@ -928,8 +1041,8 @@
       g.beginPath(); R0.forEach(function (v, j) { var q = inner(v); if (j) g.lineTo(q.x, q.y); else g.moveTo(q.x, q.y); }); g.closePath(); g.stroke();
       g.beginPath(); R0.forEach(function (v, j) { if (j) g.lineTo(v.x, v.y); else g.moveTo(v.x, v.y); }); g.closePath();
       g.strokeStyle = 'rgba(239,233,218,' + (lit ? 0.75 : 0.42) + ')'; g.lineWidth = 1; g.stroke();
-      if (!p._facets) p._facets = facetsFor(R0, p.id);
-      p._facets.forEach(function (f) {
+      var F = p.desk ? (p._dfac || (p._dfac = deskFacetsFor(R0, p.id))) : (p._facets || (p._facets = facetsFor(R0, p.id)));
+      F.forEach(function (f) {
         g.strokeStyle = 'rgba(239,233,218,' + (lit ? f.a : f.a * 0.55).toFixed(3) + ')'; g.lineWidth = f.w;
         line(g, f.x1, f.y1, f.x2, f.y2);
       });
@@ -950,6 +1063,7 @@
       if (!S.scene || !S.w || !S.cam) return;
       var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, s = cam.s;
       var anim = reduce.matches ? 0 : t;
+      if (sc.desk) updateDeskMarks(sc);
       g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
       g.clearRect(0, 0, w, h);
 
@@ -985,7 +1099,8 @@
 
       // Project hulls: a faceted shell around each project's missions, with an inner mesh.
       sc.projects.forEach(function (p) {
-        if (p.ring) { ringHull(g, p, c, !!H[p.id], grow(p.id, anim)); return; }
+        // Desktop: the art draws the hulls; ringHull still runs for the label anchor, with a no-op context.
+        if (p.ring) { ringHull(sc.desk ? NO_DRAW : g, p, c, !!H[p.id], grow(p.id, anim)); return; }
         if (!p.members) return;
         var ring = [], gp = grow(p.id, anim);
         p.members.forEach(function (id) {
@@ -1036,6 +1151,7 @@
 
       // Links: the lit chain is bright and carries a travelling pulse when live; the rest recede.
       sc.links.forEach(function (l, idx) {
+        if (sc.desk) return;
         var a = pos[l.a], b = pos[l.b];
         if (!a || !b) return;
         var gl = grow(l.a + '>' + l.b, anim);
@@ -1085,7 +1201,7 @@
         if (it) { it.cx = q.x; it.cy = q.y; it.hr = 40 * s; it.pt = q; it.r = 34 * s; }
       });
 
-      drawCore(g, c, anim, !!H.core, s);
+      if (!sc.desk) drawCore(g, c, anim, !!H.core, s, sc.knot);
       var it0 = S.items.core;
       if (it0) { it0.cx = c.x; it0.cy = c.y; it0.hr = 60 * s; it0.pt = c; it0.r = 60 * s; }
 
@@ -1097,12 +1213,16 @@
         if (gn < 1) R *= 0.35 + 0.65 * gn;
         var col = STATE[n.state] ? STATE[n.state].color : IVORY;
         if (n.mark) {
+          if (!sc.desk) { // Now frame: the mark is an SVG shape (buildDeskMarks), not a canvas glyph
           g.save(); g.globalAlpha = gn;
-          if (n.kind === 'exec') drawTriangle(g, q.x, q.y, Math.max(12, R * 1.4), lit);
-          else if (n.dot) { g.fillStyle = STATE.running.color; g.beginPath(); g.arc(q.x, q.y, 4.2, 0, TAU); g.fill(); }
+          if (n.kind === 'exec' && sc.desk) drawDeskExec(g, q, pos.verif, pos.results, lit);
+          else if (n.kind === 'exec') drawTriangle(g, q.x, q.y, Math.max(12, R * 1.4), lit);
+          else if (n.dot) { g.fillStyle = STATE.running.color; g.beginPath(); g.arc(q.x, q.y, sc.desk ? 5.2 : 4.2, 0, TAU); g.fill(); }
+          else if (n.kind === 'mission' && sc.desk) drawDeskMark(g, q.x, q.y, n, Math.max(6, R), lit);
           else if (n.kind === 'mission') drawMark(g, q.x, q.y, n.state, Math.max(5, R), lit);
           else drawSolid(g, n.solid, q.x, q.y, Math.max(9, R), { y: n.seed * TAU, x: 0.42 }, IVORY, { alpha: 0.75 * gn, wash: false, glyph: n.glyph, dotR: 1.6, lw: 0.9 });
           g.restore();
+          }
         } else {
           var rot = { y: n.seed * TAU + anim * (n.state === 'running' ? 0.00055 : 0.00022), x: 0.42 + 0.14 * Math.sin(anim * 0.00025 + n.seed * 7) };
           var alpha = (lit || n.live ? 1 : n.kind === 'device' || n.kind === 'record' ? 0.55 : 0.5) * gn;
@@ -1183,8 +1303,9 @@
       });
       var core = S.items.core;
       if (core && core.lbl) {
-        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + 84 * s).toFixed(1) + 'px)';
-        placed.push({ x0: c.x - core.tw / 2, y0: c.y + 84 * s, x1: c.x + core.tw / 2, y1: c.y + 84 * s + core.th });
+        var coreDy = sc.desk ? 66 : 84;
+        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + coreDy * s).toFixed(1) + 'px)';
+        placed.push({ x0: c.x - core.tw / 2, y0: c.y + coreDy * s, x1: c.x + core.tw / 2, y1: c.y + coreDy * s + core.th });
       }
       var order = sc.projects.map(function (p) { return p.id; });
       sc.nodes.slice().sort(function (a, b) {
@@ -1198,12 +1319,14 @@
       order.forEach(function (id) {
         var it = S.items[id];
         if (!it || !it.lbl || !it.pt) return;
+        var fix = sc.labelFix && sc.labelFix[id];
         var pt = it.pt, off = it.r + 12;
+        if (fix && fix.at) { pt = fix.at; off = 0; }
         var par = it.par && S.items[it.par] && S.items[it.par].cx !== undefined ? S.items[it.par] : null;
         var org = par ? { x: par.cx, y: par.cy } : c;
         var ox = pt.x - org.x, oy = pt.y - org.y, len = Math.hypot(ox, oy) || 1;
         ox /= len; oy /= len;
-        var cands = dirs.slice().sort(function (a, b) {
+        var cands = fix && fix.d ? [{ d: fix.d, v: fix.v, dx: 1, dy: 0 }] : dirs.slice().sort(function (a, b) {
           var la = Math.hypot(a.dx, a.dy) || 1, lb = Math.hypot(b.dx, b.dy) || 1;
           return (b.dx * ox + b.dy * oy) / lb - (a.dx * ox + a.dy * oy) / la;
         });
@@ -1223,7 +1346,7 @@
         var sx = Math.min(Math.max(box.x0, 8), S.w - bw - 8), sy = Math.min(Math.max(box.y0, 8), S.h - bh - 8);
         box = { x0: sx, y0: sy, x1: sx + bw, y1: sy + bh };
         placed.push(box);
-        entries.push({ id: id, it: it, box: box, bw: bw, bh: bh, cand: best.cand, dir: { x: ox, y: oy } });
+        entries.push({ id: id, it: it, box: box, bw: bw, bh: bh, cand: best.cand, dir: { x: ox, y: oy }, fixed: !!fix });
       });
       // Relaxation: a label that still touches another moves outward along its radial, four passes at most.
       for (var pass = 0; pass < 10; pass++) {
@@ -1231,6 +1354,7 @@
         for (var a = 0; a < entries.length; a++) for (var b = a + 1; b < entries.length; b++) {
           if (!overlaps(entries[a].box, entries[b].box, 6)) continue;
           var e = entries[b], nb = e.box;
+          if (e.fixed) continue;
           var nx = Math.min(Math.max(nb.x0 + e.dir.x * 18, 8), S.w - e.bw - 8);
           var ny = Math.min(Math.max(nb.y0 + e.dir.y * 18, 8), S.h - e.bh - 8);
           e.box = { x0: nx, y0: ny, x1: nx + e.bw, y1: ny + e.bh };
@@ -1241,7 +1365,7 @@
       var budget = S.root.querySelector('.budget'), hidden = 0;
       entries.forEach(function (e) {
         if (e.it.kind === 'mission' && labelQuiet(e.id, e.it)) hidden++;
-        var quiet = labelQuiet(e.id, e.it);
+        var quiet = labelQuiet(e.id, e.it) || !!(sc.labelFix && sc.labelFix[e.id] && sc.labelFix[e.id].hide);
         var fresh = S.born[e.id] !== undefined && performance.now() - S.born[e.id] < 6000;
         e.it.lbl.className = e.it.cls + ' d-' + e.cand.d + (quiet ? ' quiet' : '') + (fresh ? ' is-new' : '');
         e.it.lbl.style.transform = 'translate(' + e.box.x0.toFixed(1) + 'px,' + e.box.y0.toFixed(1) + 'px)';
@@ -1301,6 +1425,7 @@
     function addLabel(id, o) {
       var lbl = document.createElement('div');
       lbl.className = 'lbl ' + o.cls;
+      lbl.dataset.lid = id;
       lbl.innerHTML = '<p class="k"></p><p class="t"></p><p class="s"></p>';
       lbl.querySelector('.k').textContent = o.kicker || '';
       lbl.querySelector('.t').textContent = o.title;
@@ -1351,7 +1476,7 @@
       });
       sc.nodes.forEach(function (n) {
         var st = n.st, sub = n.detail || n.sub;
-        var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : '';
+        var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : n.kind === 'exec' && n.live ? 'st-running' : '';
         var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: sc.compact ? 'Review' : 'Review →', aria: 'Review plan for ' + n.title } : null;
         var line2 = n.kind === 'mission' ? n.detail : n.kind === 'exec' ? 'execution' : st ? st + (sub ? ' · ' + sub : '') : sub;
         var execPhone = sc.compact && n.kind === 'exec';
@@ -1449,6 +1574,119 @@
 
   /* ---------- Stages and screens ---------- */
 
+  // Round 10d: the desktop Overview is a 1296 x 729 frame scaled uniformly to the window (see fitFrame).
+  // Round 10e: the Now frame's marks are live SVG shapes over the art, coloured from the data model's state.
+  var DESK_MARK_SHAPES = {
+    'm-search': 'diamond', 'm-done': 'diamond', 'm-index': 'diamond', 'm-date': 'star', 'm-read': 'sparkle',
+    'exec': 'triangle', 'verif': 'dot', 'results': 'dot'
+  };
+  function deskMarkPath(kind) {
+    if (kind === 'diamond') return 'M0,-8 L8,0 L0,8 L-8,0 Z';
+    if (kind === 'star') return 'M0,-14 Q2,-2 14,0 Q2,2 0,14 Q-2,2 -14,0 Q-2,-2 0,-14 Z';
+    if (kind === 'sparkle') return 'M0,-12 Q1.5,-1.5 12,0 Q1.5,1.5 0,12 Q-1.5,1.5 -12,0 Q-1.5,-1.5 0,-12 Z';
+    return '';
+  }
+  var DESK_MARK_COLOR = { 'm-search': '#F2B544', 'm-done': '#9AA5B8', 'm-index': '#9AA5B8', 'm-read': '#EFE9DA', 'm-date': '#6FB1FF', exec: '#6FB1FF', verif: '#6FB1FF', results: '#6FB1FF' };
+  var deskMarkEls = null;
+  function buildDeskMarks() {
+    var host = $('#now-stage');
+    if (!host) return;
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'desk-marks');
+    svg.setAttribute('viewBox', '0 0 1296 729');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    deskMarkEls = {};
+    var L = CONCEPT_LAYOUT.desktop.marks;
+    Object.keys(DESK_MARK_SHAPES).forEach(function (id) {
+      var p = L[id === 'm-date' ? 'm-date' : id] || L[id];
+      if (!p) return;
+      var kind = DESK_MARK_SHAPES[id];
+      var g = document.createElementNS(NS, 'g');
+      g.setAttribute('transform', 'translate(' + p[0] + ' ' + p[1] + ')');
+      g.setAttribute('data-mark', id);
+      var glow = document.createElementNS(NS, 'circle');
+      glow.setAttribute('class', 'mk-glow');
+      glow.setAttribute('fill', DESK_MARK_COLOR[id] || STATE.running.color);
+      glow.setAttribute('r', id === 'm-date' ? 11 : kind === 'dot' ? 7 : kind === 'triangle' ? 6 : 9);
+      g.appendChild(glow);
+      var shape = document.createElementNS(NS, kind === 'dot' ? 'circle' : kind === 'triangle' ? 'g' : 'path');
+      if (kind === 'dot') shape.setAttribute('r', id === 'exec' ? 4.5 : 5.5);
+      shape.setAttribute('fill', DESK_MARK_COLOR[id] || STATE.running.color);
+      if (kind === 'diamond' || kind === 'star' || kind === 'sparkle') shape.setAttribute('d', deskMarkPath(kind));
+      if (kind === 'triangle') {
+        shape = document.createElementNS(NS, 'path');
+        shape.setAttribute('d', 'M-8,29 L-14,36 L-8,43 M-1,43 L5,29 M8,29 L14,36 L8,43');
+        shape.setAttribute('fill', 'none');
+        shape.setAttribute('stroke-width', '1.7');
+        shape.setAttribute('stroke-linecap', 'round');
+        shape.setAttribute('stroke-linejoin', 'round');
+        shape.setAttribute('stroke', STATE.running.color);
+        g.appendChild(shape);
+        var apex = document.createElementNS(NS, 'circle');
+        apex.setAttribute('r', '4.5');
+        apex.setAttribute('fill', '#6FB1FF');
+        g.appendChild(apex);
+      } else {
+        g.appendChild(shape);
+      }
+      svg.appendChild(g);
+      deskMarkEls[id] = { g: g, glow: glow, shape: shape, kind: kind };
+    });
+    // The blue link from Fix date test to the Codex apex: redrawn live, because the art's copy is cleared under the marks.
+    var m0 = L['m-date'], m1 = L.exec, dx = m1[0] - m0[0], dy = m1[1] - m0[1], dl = Math.hypot(dx, dy);
+    var ux = dx / dl, uy = dy / dl;
+    var ln = document.createElementNS(NS, 'line');
+    ln.setAttribute('class', 'mk-link');
+    ln.setAttribute('x1', (m0[0] + ux * 17).toFixed(1)); ln.setAttribute('y1', (m0[1] + uy * 17).toFixed(1));
+    ln.setAttribute('x2', (m1[0] - ux * 10).toFixed(1)); ln.setAttribute('y2', (m1[1] - uy * 10).toFixed(1));
+    ln.setAttribute('stroke', DESK_MARK_COLOR['m-date']); ln.setAttribute('stroke-width', '1.4');
+    ln.setAttribute('marker-end', 'url(#desk-arrow)');
+    var defs = document.createElementNS(NS, 'defs');
+    var mk = document.createElementNS(NS, 'marker');
+    mk.setAttribute('id', 'desk-arrow'); mk.setAttribute('viewBox', '0 0 8 8'); mk.setAttribute('refX', '6'); mk.setAttribute('refY', '4');
+    mk.setAttribute('markerWidth', '6'); mk.setAttribute('markerHeight', '6'); mk.setAttribute('orient', 'auto');
+    var tip = document.createElementNS(NS, 'path'); tip.setAttribute('d', 'M0,0 L8,4 L0,8 Z'); tip.setAttribute('fill', DESK_MARK_COLOR['m-date']);
+    mk.appendChild(tip); defs.appendChild(mk); svg.appendChild(defs); svg.appendChild(ln);
+    // The Codex triangle's two sides from the apex to the Verification and Results dots, redrawn for the same reason.
+    ['verif', 'results'].forEach(function (k) {
+      var q = L[k], ex = m1[0], ey = m1[1], ddx = q[0] - ex, ddy = q[1] - ey, dd = Math.hypot(ddx, ddy);
+      var sd = document.createElementNS(NS, 'line');
+      sd.setAttribute('class', 'mk-link');
+      sd.setAttribute('x1', (ex + ddx / dd * 9).toFixed(1)); sd.setAttribute('y1', (ey + ddy / dd * 9).toFixed(1));
+      sd.setAttribute('x2', (q[0] - ddx / dd * 8).toFixed(1)); sd.setAttribute('y2', (q[1] - ddy / dd * 8).toFixed(1));
+      sd.setAttribute('stroke', DESK_MARK_COLOR.exec); sd.setAttribute('stroke-width', '1.4');
+      svg.appendChild(sd);
+    });
+    host.insertBefore(svg, host.querySelector('.world'));
+    deskMarkEls.svg = svg;
+  }
+  // Colour from the node's state: amber needs the owner, blue is live, grey is done or idle, ivory is neutral.
+  function updateDeskMarks(sc) {
+    if (!deskMarkEls) return;
+    if (deskMarkEls.exec) deskMarkEls.exec.shape.setAttribute('stroke', STATE.running.color);
+    sc.nodes.forEach(function (n) {
+      var e = deskMarkEls[n.id];
+      if (!e) return;
+      if (n.id === 'verif' || n.id === 'results') return;
+      var st = STATE[n.state] || STATE.idle;
+      var col = n.id === 'm-read' ? IVORY : st.color;
+      if (n.id === 'm-read' && n.state === 'waiting') col = STATE.waiting.color;
+      e.shape.setAttribute('fill', col);
+      e.glow.setAttribute('fill', col);
+      e.glow.setAttribute('opacity', n.live ? '0.3' : '0.14');
+      if (e.kind === 'dot') e.shape.setAttribute('fill', col);
+    });
+  }
+  buildDeskMarks();
+  var NO_DRAW = new Proxy({}, { get: function () { return function () {}; }, set: function () { return true; } });
+  // Round 10g: ?nocolor on the Now frame turns the live text and marks neutral (the art's own links stay raster).
+  if (/[?&]nocolor/.test(location.search)) document.body.classList.add('nocolor');
+  function fitFrame() {
+    var k = Math.min(window.innerWidth / 1296, window.innerHeight / 729);
+    document.documentElement.style.setProperty('--k', k.toFixed(4));
+  }
   var nowStage = makeStage($('#now-stage'), {
     onPick: function (id, kind) {
       if (isNarrow()) { if (kind === 'mission') openDetail(id); else openList(); return; }
@@ -1861,8 +2099,8 @@
 
   // A chat-created mission waits for the owner: Start (plans it for review) or Keep as mission.
   function startCard(m) {
-    var li = addMsg('card', '<p class="card-t">Start and plan ' + esc(m.title) + '?</p>' +
-      '<div class="row"><button type="button" class="btn" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div>');
+    var li = addMsg('card', '<div class="card-body"><p class="card-t">Start and plan ' + esc(m.title) + '?</p>' +
+      '<div class="row"><button type="button" class="btn" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div></div>');
     li.querySelector('[data-card="start"]').addEventListener('click', function () {
       makePlan(m);
       li.innerHTML = '<p class="card-k">Started · simulated</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Plan v1 is ready for your review. Nothing ran.</p>';
@@ -2459,6 +2697,8 @@
     var parts = (location.hash || '#/now').replace(/^#\/?/, '').split('/');
     var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
     document.body.classList.remove('menu-open');
+    document.body.classList.toggle('frame-now', name === 'now' && !isNarrow());
+    fitFrame();
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });
     $$('.places a').forEach(function (a) {
@@ -2474,6 +2714,7 @@
   buildOverview();
 
   window.addEventListener('resize', function () {
+    fitFrame();
     [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); });
   });
   document.addEventListener('visibilitychange', function () {
