@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172) and r7 (Q173-Q174).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -830,7 +830,7 @@ MUTATIONS = [
     ('Q158', 'the streak counts a row twice (each harness row is read once: no json_extract, so no early stop)', [(EXE,
      "        if at <= now:\n            found.append((at, x))",
      "        if at <= now:\n            found.append((at, x))\n            found.append((at, x))")],
-     [XU + 'test_O7_the_streak_reads_each_of_its_harness_rows_once']),
+     [XU + 'test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once']),
     # T-106 correction r3 (review of 3f385f8) and r4 (review of 58b5743)
     ('Q159', 'a naive provider reset goes through timestamp(), which fails on Windows', [(INST,
      "    return at if at.tzinfo is not None else at.replace(tzinfo=timezone.utc)",
@@ -906,6 +906,28 @@ MUTATIONS = [
      "    if at is None or at.timestamp() <= now:",
      "    if at is None or at.timestamp() < now:")],
      [EX + 'test_T106r7_a_reset_at_the_instant_now_holds_the_default_window']),
+    # T-106 correction r8 (review of b50fcd9)
+    ('Q175', 'a replayed decision gets its raw provider resets (no written instants on replay)', [(RES,
+     "'input_snapshot': _written_resets(route_decision.input_snapshot)})",
+     "'input_snapshot': route_decision.input_snapshot})")],
+     [RU + 'test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided']),
+    ('Q176', 'a replay judges the resets against the wall clock, not the recorded now', [(RES,
+     "    now = instants.instant(snap['now'])",
+     "    now = datetime.now(timezone.utc)")],
+     [RU + 'test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided']),
+    ('Q177', 'the builder writes the provider resets as the feed sent them (no instants)', [(RES,
+     "{w: instants.ahead(v, now_dt) for w, v in resets.items()}",
+     "{w: v for w, v in resets.items()}")],
+     [RU + 'test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest']),
+    ('Q178', 'the streak reads every row of the harness (no 600-row ceiling)', [(EXE,
+     '" LIMIT 600", (',
+     '"", (')],
+     [XU + 'test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once']),
+    ('Q179', 'the streak pre-filter matches the bare id text, not the body\'s own key', [(EXE,
+     "key = '\"harness_id\": ' + json.dumps(harness_id)",
+     "key = harness_id")],
+     [XU + 'test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot',
+      XU + 'test_O7_a_harness_id_the_body_escapes_still_finds_its_rows']),
 ]
 
 if __name__ == '__main__':

@@ -15,13 +15,15 @@ import random
 import subprocess
 import sys
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
-from archeus.core.domain import instants
+from archeus.core.application import resources
+from archeus.core.domain import entities, instants
 from archeus.core.routing import router as R
 
-POL ={'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
+POL = {'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
        'fallback': 'ask', 'budgets': {}, 'project_allow': [], 'project_deny': []}
 
 
@@ -307,10 +309,54 @@ def test_fallback_is_never_skipped_while_one_is_allowed():
 
 
 def test_a_blocked_decision_names_the_earliest_reset():
-    # the snapshot carries written instants (ms, Z: instants.ahead, T-106 r4); the router compares
+    # the router's input is written instants (ms, Z: instants.ahead, T-106 r4); raw text is the builder's
     s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets='2026-09-26T16:05:00.000Z'),
                               acct('acc_b', 'h', usage=100, resets='2026-09-26T14:30:00.000Z')])
     assert R.route(task(), s)['unblock_at'] == '2026-09-26T14:30:00.000Z'
+
+
+_POLICY = {'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
+           'fallback': 'ask', 'budgets': {}, 'project_allow': [], 'project_deny': [],
+           'consumption': None}
+
+
+def test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest(monkeypatch):
+    """The original assertion on raw provider text: the snapshot builder writes each
+    reset as an instant (ms, Z), and the router names the earliest of them."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    raw = {'acc_a': '2026-09-26T16:05:00Z', 'acc_b': '2026-09-26T14:30:00Z'}
+    accounts = [SimpleNamespace(id=i, harness_id='h', home_ref=None, label=i.upper(),
+                                auth_kind='api_key', health='AVAILABLE') for i in raw]
+
+    def where(conn, cls, **kw):
+        if cls is entities.Account:
+            return [SimpleNamespace(entity=a) for a in accounts]
+        return [SimpleNamespace(entity=SimpleNamespace(account_id=a.id, **_POLICY))
+                for a in accounts]
+
+    feed = SimpleNamespace(read=lambda ref: {
+        'windows': {'5h': 100}, 'resets_at': {'5h': raw[ref['id']]},
+        'observed_at': now.timestamp(), 'source': 'feed'})
+    monkeypatch.setattr(resources.rows, 'where', where)
+    monkeypatch.setattr(resources, 'ledger_totals',
+                        lambda conn, aid, today, at: {'tokens_today': 0, 'cost_today': 0, 'running': 0})
+    out, _readings = resources._registered(None, ['h'], feed, now.timestamp())
+    assert R.route(task(), snap([harness('h')], out))['unblock_at'] == '2026-09-26T14:30:00.000Z'
+
+
+@pytest.mark.parametrize('reset, unblock_at', [
+    ('2026-09-26T12:00:00+02:00', None),           # equal to now: no wait (533e3e9)
+    ('2026-09-26T10:00:00Z', None),                # equal to now, no milliseconds
+    ('soon', None),                                # unreadable
+    ('2026-09-26T14:30:00Z', '2026-09-26T14:30:00.000Z'),
+    ('2026-09-26T16:00:00+02:00', '2026-09-26T16:00:00.000+02:00'),   # 533e3e9's text, offset kept
+])
+def test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided(reset, unblock_at):
+    """A decision recorded before the router compared written instants holds the
+    providers' text. Its replay decides as the router that recorded it did (533e3e9)."""
+    s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets=reset)])
+    d = resources.replay(SimpleNamespace(requirements=task(), input_snapshot=s))
+    assert (d['result'], d['unblock_at']) == ('blocked', unblock_at)
 
 
 # ── U-C continuity ─────────────────────────────────────────────────────────

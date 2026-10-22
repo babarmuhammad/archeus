@@ -556,10 +556,25 @@ def record_call_route(tx, *, actor, purpose, source, workspace_id, project_id, r
     return {'route_decision_id': row.entity.id, 'decision': decision, 'snapshot': snapshot}
 
 
+def _written_resets(snap):
+    """*snap* with each account's resets written as the builder writes them, judged at
+    the snapshot's own `now`: a decision recorded before the router compared written
+    instants (T-106 r8) holds the providers' text, and it must replay as it was decided."""
+    now = instants.instant(snap['now'])
+    accts = []
+    for a in snap.get('accounts') or ():
+        rs = (a.get('usage') or {}).get('resets_at')
+        if isinstance(rs, dict):
+            a = dict(a, usage=dict(a['usage'], resets_at={w: instants.ahead(v, now)
+                                                          for w, v in rs.items()}))
+        accts.append(a)
+    return dict(snap, accounts=accts)
+
+
 def replay(route_decision):
     """Route a recorded decision again from its own record (§9)."""
     return R.replay({'requirements': route_decision.requirements,
-                     'input_snapshot': route_decision.input_snapshot})
+                     'input_snapshot': _written_resets(route_decision.input_snapshot)})
 
 
 def terms_permit(conn, adapter):

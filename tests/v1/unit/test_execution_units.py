@@ -449,11 +449,11 @@ def test_O7_the_streak_compares_mixed_timestamp_precision(plain_rows):
     assert X.spawn_streak(X._newest(c, 'fake', _NOW)) == ([], True)
 
 
-def test_O7_the_streak_reads_each_of_its_harness_rows_once(plain_rows):
-    """Each row of the harness is read once (a counting cursor, so SQL rows are counted
-    too). It was read only to the start that ends the streak while SQLite 3.31 could
-    order by the recorded time in SQL (json_extract, now banned: test_db_schema); the
-    order is Python's now, so every row is read."""
+def test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once(plain_rows):
+    """Owner sign-off, T-106 r8: "Accept read-all, cap 600". The streak reads the
+    harness's 600 newest rows, each once (a counting cursor, so SQL rows count too), and
+    orders them in Python (json_extract is banned, test_db_schema). Of these 601 rows
+    the oldest is not read; the 300 newest failures still trip the streak."""
     c = _streak_db(*[('ABANDONED', '2026-10-21T09:00:00Z', _fail('2026-10-21T09:00:00Z'))
                      for _ in range(300)],
                    ('ENDED_OK', '2026-10-21T11:00:00Z', dict(started_at='2026-10-21T11:00:00Z')),
@@ -468,7 +468,32 @@ def test_O7_the_streak_reads_each_of_its_harness_rows_once(plain_rows):
                 yield r
 
     fails, _trial = X.spawn_streak(X._newest(Counting(), 'fake', _NOW))
-    assert len(fails) == 300 and len(pulled) == 601
+    assert len(fails) == 300 and len(pulled) == 600
+
+
+def test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot(plain_rows):
+    """The pre-filter matches the body's own key ("harness_id": "pi"), not the bare
+    text: 600 newer rows of harness 'api' whose summary says 'pipeline' do not push
+    the three failures of 'pi' out of the 600 read."""
+    c = _streak_db(
+        *[('ABANDONED', '2026-10-21T09:00:00Z', dict(_fail('2026-10-21T09:00:00Z'), harness_id='pi'))
+          for _ in range(3)],
+        *[('ABANDONED', '2026-10-21T10:00:00Z',
+           dict(_fail('2026-10-21T10:00:00Z'), harness_id='api', summary='pipeline'))
+          for _ in range(600)])
+    fails, _trial = X.spawn_streak(X._newest(c, 'pi', _NOW))
+    assert len(fails) == 3
+
+
+@pytest.mark.parametrize('harness', ['fake', 'h"1', 'h\\1', 'hé'])
+def test_O7_a_harness_id_the_body_escapes_still_finds_its_rows(plain_rows, harness):
+    """The body is JSON: a quote, a backslash or a non-ASCII letter is escaped in it,
+    and the pre-filter is written in the same encoding, so the rows are still read."""
+    c = _streak_db(*[('ABANDONED', at, dict(_fail(at), harness_id=harness))
+                     for at in ('2026-10-21T10:00:00Z', '2026-10-21T10:01:00Z',
+                                '2026-10-21T10:02:00Z')])
+    fails, _trial = X.spawn_streak(X._newest(c, harness, _NOW))
+    assert len(fails) == 3
 
 
 def test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted(plain_rows):

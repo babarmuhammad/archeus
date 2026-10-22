@@ -22,6 +22,7 @@ entry points (a boundary test holds it to that).
 
 import hashlib
 import hmac
+import json
 import time
 
 from ...infra.db import rows
@@ -127,21 +128,23 @@ def _decided(x, created_at):
 
 def _newest(conn, harness_id, now):
     """The harness's executions decided at or before *now*, newest first by when
-    each was decided (a failed start's end, a start, a trial's creation), decoded
-    only as far as they are read. A row decided after *now* is a backward clock
-    step's: it is not history yet, so it counts for nothing (T-106 r4; were it
-    counted, the window it opens would run from the recorded time, not from now).
-    A trial INTENT counts only while its mission is EXECUTING: one parked by a
-    pause or a block would hold every other task back until that mission moves.
-    Rowid is creation order, which an INTENT that waited does not keep, so it only
-    breaks ties. The instants are compared as parsed, not as text: created_at has
+    each was decided (a failed start's end, a start, a trial's creation). A row decided
+    after *now* is a backward clock step's: it is not history yet, so it counts for
+    nothing (T-106 r4; were it counted, the window it opens would run from the recorded
+    time, not from now). A trial INTENT counts only while its mission is EXECUTING: one
+    parked by a pause or a block would hold every other task back until that mission
+    moves. Rowid is creation order, which an INTENT that waited does not keep, so it
+    only breaks ties. The instants are compared as parsed, not as text: created_at has
     milliseconds and the others do not. SQLite 3.31 has no json_extract (test_db_schema
-    pins the floor), so the body is read here; LIKE only narrows the rows to the harness."""
-    # ponytail: reads every row of the harness per call; a decided_at column (or json1
-    # once the floor allows it) bounds it to the streak again
+    pins the floor), so the body is read here. Owner sign-off, T-106 r8: "Accept
+    read-all, cap 600". The streak reads the harness's 600 newest rows by creation, each
+    decoded and sorted here, so a streak longer than 600 rows is cut at its 600th."""
+    # ponytail: decodes the newest 600 rows of the harness per call (the owner's ceiling,
+    # T-106 r8); a decided_at column (or json1 once the floor allows it) bounds it by time
     found = []
-    for rec in conn.execute("SELECT * FROM executions WHERE body LIKE ? ORDER BY rowid DESC",
-                            ('%' + harness_id + '%',)):
+    key = '"harness_id": ' + json.dumps(harness_id)       # the body's own encoding of the key
+    for rec in conn.execute("SELECT * FROM executions WHERE body LIKE ? ORDER BY rowid DESC"
+                            " LIMIT 600", ('%' + key + '%',)):
         x = rows.decode(entities.Execution, rec).entity
         if x.harness_id != harness_id or not (
                 x.stop_reason == 'spawn' or x.started_at or x.state == 'INTENT'):

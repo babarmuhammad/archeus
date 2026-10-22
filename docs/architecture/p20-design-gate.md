@@ -2959,6 +2959,28 @@ T-096.4. **Items 109 and 111, corrected by this append.**
      - **Mutants:** Q153-Q163. Q152 is redefined in r4: the breaker check dropped from
        `route_wait` (a health-blocked decision is waited on); the test uses a valid future
        time, so the parse cannot hide it. Q145 and Q153 follow the current lines.
+134. **Correction r8 to items 131-133 (card T-106, 2026-10-22, after the review of b50fcd9).**
+     - **Owner sign-off, 2026-10-22: "Accept read-all, cap 600".** The streak reads the
+       harness's 600 newest execution rows by creation (`LIMIT 600`), decodes each and
+       orders them in Python. This replaces the read that stopped at the start (N5 and
+       item 131's "the read stops at its start"). **Ceiling:** 600 rows per harness per
+       routing decision and per task admission check; a streak longer than 600 rows is
+       cut at its 600th row. Upgrade path, not built: a promoted `decided_at` column with
+       an index, or json1 once the SQLite floor allows it.
+     - **The pre-filter matches the body's own key** (`"harness_id": "<id>"`, the JSON the
+       row was written with). Registered ids are ASCII literals (`claude_code`, `pi`,
+       `fake`), so an escaped id is not reachable today; it is tested anyway. The bare-text
+       match let other harnesses' rows (a summary that says `pi`) take the 600 slots.
+     - **A replayed decision judges its resets as the builder does (review of b50fcd9,
+       Required 1).** `resources.replay` writes each stored reset as `instants.ahead`
+       against the recorded `now` before the router reads it, so a decision recorded before
+       item 133's written instants replays as it was decided: a reset equal to now is no
+       wait, a future reset is the same instant and the same text as 533e3e9 (a non-UTC
+       reset keeps its offset, as `instants.ahead` writes it).
+     - **The builder keeps the original assertion on raw provider text**
+       (`test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest`);
+       the router test feeds written instants.
+     - **Mutants:** Q175-Q179.
 
 ## 13. As built
 (Filled at the end of P20.)
