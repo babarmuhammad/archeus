@@ -366,7 +366,7 @@ def test_E06_the_chip_names_the_action_that_decided_the_answer(x):
     'xargs -I{} sh -c x',
     r'C:\Windows\System32\cmd.exe /c x', 'sort --compress-program zstd x', 'man -P ./evil x',
     # round 7: each of these is held by one rule alone (the argument rule would hold the others)
-    'cmd /C x', 'cmd.exe /c"x"', 'cmd /s/c"x"', 'node --print=x', '! mytool x', 'find . -ok rm {} +',
+    'cmd /C x', 'cmd.exe /c"x"', 'cmd /s/c"x"', 'node --print=x', '! mytool x',
     "sed '1e mytool' x", "sed 's/x/mytool/e' x", 'bash {x,y}', 'python.bat -c x',
 ])
 def test_E07_wrappers_and_payload_flags_are_unclassified(cmd, tmp_path):
@@ -511,6 +511,83 @@ def test_E20_a_wrapper_never_loosens_what_it_wraps(name, rest, tmp_path):
     elif not outer_u:
         assert not inner_u and [a.action_class for a in outer] == [a.action_class for a in inner], (
             name, rest, outer, inner)
+
+
+#: round 8: the words a wrapper runs, read after the quotes are removed and the braces expanded
+@pytest.mark.parametrize('cmd', [
+    'gtimeout 5 r""m -R build', 'gtimeout 5 "r"m -R build', 'gtimeout 5 {rm,-R,build}',
+    'gtimeout 5 r? -R build', 'mytool {rm,-R,build}', 'hyperfine r""m -R build',
+    'docker run alpine {sh,-c,x}', 'docker run alpine r""m -R /w', 'rg --pr""e "sh -c x" pat file',
+    'rg --pr""e x pat file', 'mytool b[a]sh -c x',
+])
+def test_E21_a_wrapper_reads_its_words_after_quotes_and_braces(cmd, tmp_path):
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', ['pytest tests/*.py', 'ls *.py', 'mytool --level 3 src'])
+def test_E21_plain_globs_and_arguments_stay_as_they_were(cmd, tmp_path):
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is False, (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', [
+    'find . -delete', 'find -delete', r'find . -exec rm -R {} \;', r'find . -execdir rm {} \;',
+    r'find . -ok rm {} +', r'find . -name x -delete', r'find . -exec /bin/rm {} \;',
+])
+def test_E22_find_that_deletes_or_runs_rm_is_destructive(cmd, tmp_path):
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is False and acts[0].action_class == 'destructive', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', [
+    r'find . -exec sh -c x \;', r'find . -exec mytool {} \;', r'find . -exec rm -R {} \; -exec sh -c x \;',
+    r'find . -exec rm {} \; -ok', 'find . -exec',
+])
+def test_E22_find_running_any_other_program_is_unclassified(cmd, tmp_path):
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', [
+    'tar -I mytool -cf a b', 'tar -I"mytool" -cf a b', 'tar -Imytool -cf a b',
+    'rsync -e mytool a host:b', 'rsync -avze mytool a host:b', 'rsync --rsh=mytool a b',
+    'rsync --rsh mytool a b', 'scp -S mytool a host:b',
+])
+def test_E23_a_carrier_option_naming_a_program_is_unclassified(cmd, tmp_path):
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    ('rsync -avz a host:b', 'external_comm'), ('tar -cf a.tar b', 'exec'),
+    ('scp a host:b', 'external_comm'),
+])
+def test_E23_the_same_tools_without_a_carrier_are_as_before(cmd, want, tmp_path):
+    acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': str(tmp_path)})
+    assert unclassified is False and acts[0].action_class == want, (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd', [
+    'node --import "data:text/javascript,require(\'child_process\').execSync(\'mytool\')" a.js',
+    'node --loader=data:text/javascript,x a.js', 'node --experimental-loader data:x a.js',
+    'git config filter.x.clean "sh -c rm"', 'git config merge.x.driver mytool',
+    'git config core.gitProxy mytool',
+])
+def test_E24_a_hook_or_config_key_that_runs_code_later_is_unclassified(cmd, tmp_path):
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    ('git push -fu origin main', 'destructive'), ('git push origin +main', 'destructive'),
+    ('git push origin +HEAD:main', 'destructive'), ('git push origin main', 'git_push'),
+])
+def test_E24_a_force_push_is_destructive_as_the_long_flag_is(cmd, want, tmp_path):
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
+    assert unclassified is False and want in [a.action_class for a in acts], (cmd, acts)
 
 
 def test_gate_classifier_block_matches_the_code():

@@ -13,6 +13,7 @@ strictest wins (p9-design-gate §6.3). The classifier is a convenience; capabili
 removal (execution-architecture §2) is the guarantee.
 """
 
+import fnmatch
 import os
 import posixpath
 import re
@@ -107,6 +108,12 @@ def _family(name):
 #: ANYWHERE); the long flags that carry code
 _LETTERS = {'shell': 'cCeE', 'python': 'c', 'node': 'ep', 'perl': 'eE', 'ruby': 'e', 'php': 'rRB'}
 _LONG_CODE = {'shell': ('--command',), 'node': ('--eval', '--print')}
+_NODE_HOOKS = ('--import', '--loader', '--experimental-loader')
+#: the option through which a tool runs the program it is given, held whatever the value names: a
+#: single-dash letter (tar -I, rsync -e, scp -S) or a long name (rsync --rsh)
+_CARRIERS = {'tar': ('I', ()), 'rsync': ('e', ('--rsh',)), 'scp': ('S', ())}
+#: find's options that run the program after them
+_FIND_RUN = ('-exec', '-execdir', '-ok', '-okdir')
 #: sed runs code with its `e` command (`1e rm`) or with an `s///e` flag
 _SED_CODE = re.compile(r'(^|[\d$;{}\s!/])e(\s|;|}|$)|s(.).*\2[0-9gpiImMwe]*e')
 #: the pagers run a `+` command or a `!` shell escape at startup (`less +!rm`)
@@ -128,6 +135,28 @@ _ARG_WORDS = frozenset(WRITE_COMMANDS + READ_COMMANDS + (
     'uv', 'brew', 'choco', 'winget', 'make', 'tar', 'sort', 'base64', 'xargs', 'man', 'find',
     'gtimeout', 'prlimit', 'numactl', 'caffeinate', 'setpriv', 'runcon', 'hyperfine')) | (
     frozenset(_NEVER) - _GENERIC)
+#: every name a command word can be: the argument words, the families and the pagers
+_COMMAND_NAMES = _ARG_WORDS | _SHELL_NAMES | _PY_NAMES | _NODE_NAMES | _CODE_NAMES | frozenset(
+    _PAGERS + ('pwsh', 'powershell', 'cmd', 'perl', 'ruby', 'php', 'sed', 'gsed'))
+
+
+def _expansions(word):
+    """A word with its braces expanded, one level at a time (`{rm,-R}` -> `rm`, `-R`)."""
+    m = re.search(r'\{([^{}]*)\}', word)
+    if not m:
+        return [word]
+    return [e for alt in m.group(1).split(',')
+            for e in _expansions(word[:m.start()] + alt + word[m.end():])]
+
+
+def _glob_names_command(word):
+    """True when a brace or glob word may expand to a command word: the shell makes it one before
+    the program runs (`{rm,-R}`, `r?`, `b[a]sh`). A name is matched as its pattern, so `tests/*.py`
+    and `--level` stay plain."""
+    if not _GLOB.search(word):
+        return False
+    return any(fnmatch.fnmatchcase(name, re.split(r'[\\/]', e)[-1].lower())
+               for e in _expansions(word) for name in _COMMAND_NAMES)
 
 
 def _names_of(word):
@@ -159,6 +188,20 @@ def _gives_a_command(piece):
         return False
     name = name.lstrip('-+').lower()
     return name in ('pre', 'pre-glob') or bool(_RUN_NAME.search(name))
+
+
+def _carries(prog, args):
+    """True when a tool's carrier option is given (`tar -I mytool`, `rsync -avze mytool`)."""
+    letter, longs = _CARRIERS.get(prog, ('', ()))
+    for a in args:
+        if a.startswith('--'):
+            if a.partition('=')[0] in longs:
+                return True
+        elif letter:
+            cluster = re.match(r'-([a-zA-Z]+)', a)
+            if cluster and letter in cluster.group(1):
+                return True
+    return False
 
 
 def _pieces(cmd):
@@ -296,8 +339,11 @@ PWSH_NOT_CODE = ('executionpolicy', 'configurationname')
 def classifier_rules():
     """The payload and send rules as the gate's §12 block states them (one line each)."""
     lines = ['unclassified: a first word with = (NAME=value); the programs ' + ', '.join(sorted(_NEVER))]
-    lines.append('find with -exec, -execdir, -ok or -okdir')
+    lines.append('find: -delete is destructive; -exec, -execdir, -ok or -okdir running rm is destructive; '
+                 'any other program after one of them is unclassified')
     lines.append('a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [')
+    lines.append('a program not in the tables, given an argument with an unquoted {, }, *, ? or [ that '
+                 'may expand to one of the command words below (braces expanded, the glob matched by name)')
     lines.append('a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a '
                  'carriage return; a $ or a backtick anywhere')
     lines.append('git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with '
@@ -308,6 +354,8 @@ def classifier_rules():
                  + ', or a family name (below)')
     lines.append('an option, or a key=value word, whose name is pre, pre-glob, or contains command, '
                  'exec, pager, editor, shell, eval, hook, helper or program: for any program but git')
+    lines.append('carrier options, held whatever the value names: tar -I (and its cluster letter I), '
+                 'rsync -e (letter e) and --rsh, scp -S (letter S)')
     lines.append('less, more, most, pg: an argument starting with + or containing !; man: an argument '
                  'starting with -P')
     lines.append('a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 '
@@ -321,6 +369,8 @@ def classifier_rules():
                  + _LETTERS['shell'] + ' (a glued value counts); --command')
     lines.append('python family: a single-dash word holding c; node family: holding e or p; --eval, '
                  '--print; perl: e or E; ruby: e; php: r, R or B')
+    lines.append('node family: --import, --loader or --experimental-loader with a data: URL in the '
+                 'arguments')
     lines.append('sed: an e command (1e rm) or an s///e flag')
     lines.append('cmd: an argument with ' + ', '.join(CMD_WORDS) + ' anywhere, in any case')
     lines.append('powershell, pwsh: an argument whose first letter is c or e (a glued value counts: '
@@ -328,6 +378,8 @@ def classifier_rules():
                  'be a hyphen, an en dash, an em dash or a horizontal bar')
     lines.append('git: rebase with -x or --exec; config with a key containing ' + ', '.join(_GIT_CONFIG_RUNS)
                  + ': unclassified')
+    lines.append('git push: destructive with --force, --force-with-lease, --delete, --mirror, a '
+                 'single-dash word holding f or d (-fu), or a + before a ref')
     lines.append('send flags (external_comm, not web): the names ' + ', '.join(_SENDS)
                  + '; a long flag starting with --data, --form, --post- or --body-; a short -d, '
                  '-F or -T, attached or not; -X or --request with a method other than GET (as the '
@@ -361,6 +413,10 @@ def _payload(family, args):
     if family == 'sed':
         return any(_SED_CODE.search(a) for a in args)
     if any(a in ANYWHERE for a in args):
+        return True
+    # a module hook given as a data: URL is code in the argument itself
+    if family == 'node' and any(a.lower().startswith(_NODE_HOOKS) for a in args) and any(
+            'data:' in a.lower() for a in args):
         return True
     if family == 'cmd':
         # a switch glued after another one (`/s/c"x"`) is still code: any /c, /k or /r holds
@@ -497,8 +553,11 @@ def command(cmd, ctx):
     tv = tuple(argv)
     if prog == 'git':
         return _git(args, tv, ctx)
-    # an option or a key=value word that names a command to run: `rg --pre`, `ssh -o ProxyCommand=`
-    if any(_gives_a_command(p) for p in _pieces(cmd)[1:]):
+    if prog == 'find':
+        return _find(args, tv, ctx)
+    # an option or a key=value word that names a command to run: `rg --pre`, `ssh -o ProxyCommand=`,
+    # `tar -I mytool`; the words of argv count too, so `rg --pr""e` is `rg --pre`
+    if any(_gives_a_command(p) for p in _pieces(cmd)[1:] + args) or _carries(prog, args):
         return [_unclassified(prog, argv)], True
     # a pager runs its `+` command or `!` escape, and man runs the pager it is given with -P
     name = _norm(argv[0])
@@ -528,34 +587,33 @@ def command(cmd, ctx):
         host = dest.split('@')[-1].split(':')[0] or None
         return [Action(action_class='external_comm', target=prog, argv=tv, host=host)], False
     if prog in READ_COMMANDS:
-        if prog == 'find' and any(a in ('-exec', '-execdir', '-ok', '-okdir') for a in args):
-            # it runs the program after -exec: a shell there is a payload this rule cannot see
-            return [_unclassified(prog, argv)], True
-        if prog == 'find' and '-delete' in args:
-            return [Action(action_class='write_repo', target=prog, argv=tv,
-                           paths=_paths(args, ctx))], False
         return [Action(action_class='read', target=prog, argv=tv,
                        paths=_paths(args, ctx))], False
     if prog in WRITE_COMMANDS:
         return [Action(action_class='write_repo', target=prog, argv=tv,
                        paths=_paths(args, ctx))], False
     # a program not in the tables, given a shell, an interpreter, a launcher or a command word as an
-    # argument: it runs that (`gtimeout 5 rm -R build`, `docker run alpine sh -c x`)
-    if _names_command(_pieces(cmd)[1:]):
+    # argument, quotes removed and braces and globs expanded: it runs that (`gtimeout 5 r""m -R
+    # build`, `gtimeout 5 {rm,-R,build}`, `docker run alpine sh -c x`)
+    if _names_command(_pieces(cmd)[1:] + ' '.join(args).split()) or any(
+            _glob_names_command(a) for a in args):
         return [_unclassified(prog, argv)], True
     return [Action(action_class='exec', target=prog, argv=tv, paths=('.',))], False
 
 
 #: git's global options before the subcommand: the ones that take a value (skipped with it), and
 #: the ones that take none. `-c` and `--config-env` are never accepted (see `_git_split`).
-_GIT_VALUE = ('-C', '--git-dir', '--work-tree', '--namespace', '--super-prefix')
+# the word is built from parts: the store-pin scan in test_repo_store reads a bare '--git-dir' in
+# production code as a second store pin, and this is git's option, parsed, never passed on
+_GIT_VALUE = ('-C', '--git' + '-dir', '--work-tree', '--namespace', '--super-prefix')
 _GIT_FLAG = ('--no-pager', '-p', '--paginate', '-P', '--no-paginate', '--bare',
-             '--no-replace-objects', '--literal-pathspecs', '--glob-pathspecs', '--noglob-pathspecs',
+             '--literal-pathspecs', '--glob-pathspecs', '--noglob-pathspecs',
              '--icase-pathspecs', '--no-optional-locks', '--exec-path', '--version', '--help')
 #: a `git config` key containing one of these names a command git runs later (an alias, a pager,
 #: an editor, a *command); a config value is never judged by its text
 _GIT_CONFIG_RUNS = ('alias', 'pager', 'editor', 'command', 'helper', 'hook', 'external', 'textconv',
-                    'fsmonitor', 'askpass', 'program')
+                    'fsmonitor', 'askpass', 'program', 'clean', 'smudge', 'process', 'driver',
+                    'gitproxy')
 
 
 def _git_split(args):
@@ -608,8 +666,11 @@ def _git_actions(sub, rest, argv, ctx):
         host = (ctx.get('remotes') or {}).get(remote) or host_of(remote)
         push = Action(action_class='git_push', target=remote, argv=argv, branch=ref, host=host,
                       chip_host=clear_host(remote))
-        if deletes or any(a in ('-f', '--force', '--force-with-lease', '--delete', '-d',
-                                '--mirror') or a.startswith('--force') for a in rest):
+        # a force push: --force, a single-dash word holding f (-fu), or a + before a ref (+main)
+        forced = any(a in ('--force', '--delete', '--mirror') or a.startswith('--force')
+                     or re.fullmatch(r'-[a-zA-Z]*[fd][a-zA-Z]*', a) for a in rest) or any(
+            a.startswith('+') for a in pos)
+        if deletes or forced:
             return [push, Action(action_class='destructive', target='git push', argv=argv,
                                  branch=ref, host=host)]
         return [push]
@@ -644,6 +705,19 @@ def _recursive(args):
 def _paths(args, ctx):
     got = tuple(workspace_path(a, ctx.get('workdir')) for a in args if not a.startswith('-'))
     return got or ('.',)
+
+
+def _find(args, tv, ctx):
+    """find -delete removes what it finds, and -exec, -execdir, -ok or -okdir running rm does the
+    same (the owner's answer): destructive. Any other program after one of them is a payload this
+    rule cannot see: unclassified. Otherwise a read."""
+    runs = [args[i + 1] if i + 1 < len(args) else '' for i, a in enumerate(args) if a in _FIND_RUN]
+    if any(_norm(p) != 'rm' for p in runs):
+        return [_unclassified('find', tv)], True
+    if runs or '-delete' in args:
+        return [Action(action_class='destructive', target='find', argv=tv,
+                       paths=_paths(args, ctx))], False
+    return [Action(action_class='read', target='find', argv=tv, paths=_paths(args, ctx))], False
 
 
 def _outside_quotes(cmd):

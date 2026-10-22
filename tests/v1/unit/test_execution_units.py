@@ -69,7 +69,7 @@ def test_the_file_and_web_tools(tool, inp, cls):
     ('curl -X POST https://api.example.com', 'external_comm'),
     ('curl -d x=1 https://api.example.com', 'external_comm'),
     ('ssh user@host.example ls', 'external_comm'), ('ls -la', 'read'), ('cat a.txt', 'read'),
-    ('find . -name x', 'read'), ('find . -delete', 'write_repo'), ('mv a b', 'write_repo'),
+    ('find . -name x', 'read'), ('find . -delete', 'destructive'), ('mv a b', 'write_repo'),
     ('pytest -q', 'exec'), ('make build', 'exec'), ('python tool.py', 'exec'),
 ])
 def test_the_bash_table(cmd, cls):

