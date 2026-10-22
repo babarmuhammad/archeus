@@ -497,8 +497,9 @@ The owner's answer on missed times (2026-10-21): "Once together (Recommended)", 
 - **Faults are per schedule.** The worker (`worker.py` `_fire_due`) runs one command per due
   schedule. A claim that raises is held and retried with backoff like an event, then quarantined
   for this process after `MAX_ATTEMPTS` (a restart retries it). Other schedules still fire. The
-  API's `waiting` carries the recorded cause ("quarantined after 3 failures: <error>"), so Upcoming
-  drops the schedule and Control shows it as Waiting. Re-enable does not clear the quarantine
+  API's `waiting` carries the recorded cause ("quarantined after 3 failures: <error>", the error
+  flattened to one line and capped at 200 characters; an event quarantine's cause is capped the
+  same way), so Upcoming drops the schedule and Control shows it as Waiting. Re-enable does not clear the quarantine
   (deferred, r1 N6: it lasts until restart).
 - **A due time in the future.** `waiting` is read whenever a time is set, so a schedule whose gate
   holds it now shows the reason before its time comes; it is held when due, and fires then.

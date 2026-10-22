@@ -222,6 +222,7 @@ def fire_due(tx, *, actor, automation_id):
     `missed` says how many. One schedule per command, so a claim that raises
     rolls back that schedule alone. Returns the run ids."""
     a = next((x for x in due(tx.conn, tx.now) if x.id == automation_id), None)
+    # quarantine is not checked here: the worker's _fire_due skips a quarantined schedule first
     if a is None or _waiting(tx.conn, a):
         return {'runs': []}
     every = matcher.every_s(a.trigger)

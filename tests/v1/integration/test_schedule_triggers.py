@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from archeus.core.application import automations as A, commands
-from archeus.core.automation.worker import MAX_ATTEMPTS, Automations
+from archeus.core.automation.worker import MAX_ATTEMPTS, REASON_MAX, Automations
 from archeus.core.domain import entities, events
 from archeus.core.domain.values import Ref
 from archeus.infra import paths
@@ -276,3 +276,19 @@ def test_H11_a_schedule_whose_claim_raises_holds_only_itself(rig, frozen, monkey
     assert _api_waiting(rig, bad) == ('quarantined after %d failures: RuntimeError: '
                                       'a claim that always faults' % MAX_ATTEMPTS)
     assert _api_waiting(rig, good) is None
+    assert rig.auto.detail()['quarantined'] == 1     # the thread's status counts it too
+
+
+def test_H12_a_schedule_quarantine_reason_is_one_short_line(rig, frozen, monkeypatch):
+    bad = rig.automation(trigger=EVERY)
+    frozen(15)
+
+    def claim(tx, actor, a, e, why):
+        raise RuntimeError('a claim\n' + 'echoing a payload ' * 100)
+    monkeypatch.setattr(A, '_claim', claim)
+    for _ in range(5):
+        rig.auto.pass_once()
+    why = _api_waiting(rig, bad)
+    head = 'quarantined after %d failures: ' % MAX_ATTEMPTS
+    assert why.startswith(head + 'RuntimeError: a claim echoing') and '\n' not in why
+    assert len(why) == len(head) + REASON_MAX

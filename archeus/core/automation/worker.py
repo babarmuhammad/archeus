@@ -31,6 +31,13 @@ log = logging.getLogger('archeus.core')
 CONSUMER = 'automation'
 MAX_ATTEMPTS = 3
 RETRY_S = 1.0
+REASON_MAX = 200
+
+
+def _reason(x):
+    """A fault's cause as one line of at most REASON_MAX characters: it reaches the
+    API, Control and the TUI, so a message that spans lines or echoes a payload is cut."""
+    return ' '.join(('%s: %s' % (type(x).__name__, x)).split())[:REASON_MAX]
 
 
 class Automations:
@@ -59,7 +66,8 @@ class Automations:
         """What the thread's status adds (§16): held events and quarantines."""
         with self.db.read() as conn:
             q = len(A.quarantined(conn))
-        return {'retrying': {s: a for s, (a, _) in self.retrying.items()}, 'quarantined': q}
+        return {'retrying': {s: a for s, (a, _) in self.retrying.items()},
+                'quarantined': q + len(self.schedule_faults)}
 
     def sweep(self):
         return []
@@ -92,8 +100,8 @@ class Automations:
                 attempts = (held[0] if held else 0) + 1
                 if MAX_ATTEMPTS <= attempts:
                     self.schedules_held[aid] = (attempts, float('inf'))
-                    self.schedule_faults[aid] = 'quarantined after %d failures: %s: %s' % (
-                        attempts, type(x).__name__, x)
+                    self.schedule_faults[aid] = 'quarantined after %d failures: %s' % (
+                        attempts, _reason(x))
                     log.exception('automation: schedule %s quarantined after %d attempts',
                                   aid, attempts)
                 else:
@@ -127,7 +135,7 @@ class Automations:
                 self.retrying.pop(e.seq, None)
                 log.exception('automation: event %d quarantined after %d attempts', e.seq,
                               attempts)
-                return 'quarantined: %s: %s' % (type(x).__name__, x)
+                return 'quarantined: %s' % _reason(x)
             self.retrying[e.seq] = (attempts, self.clock() + self.retry_s * 2 ** (attempts - 1))
             log.warning('automation: event %d failed (attempt %d), held: %s', e.seq, attempts, x)
             raise consumers.Hold

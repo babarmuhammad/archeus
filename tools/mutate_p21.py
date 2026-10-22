@@ -56,6 +56,8 @@ NOW_TS = 'clients/app/src/state/now.ts'
 SCREENS = 'archeus/cli/tui/screens.py'
 TUI_AT = 'tests/v1/tui/test_acceptance.py::'
 SH = 'tests/v1/integration/test_schedule_triggers.py::'
+TA = 'tests/v1/integration/test_automation.py::'
+TH = 'tests/v1/integration/test_automation_http.py::'
 AU = 'tests/v1/unit/test_automation_units.py::'
 H01 = SH + 'test_H01_a_schedule_fires_at_its_time_not_before_and_moves_on'
 
@@ -435,14 +437,49 @@ MUTATIONS = [
      "               + []")],
      [TUI_AT + 'test_a_held_schedule_says_why_in_its_row_and_shows_no_next_run']),
     ('Z235', 'a quarantined schedule keeps no cause', [(WRK,
-     "                    self.schedule_faults[aid] = 'quarantined after %d failures: %s: %s' % (\n"
-     "                        attempts, type(x).__name__, x)\n",
+     "                    self.schedule_faults[aid] = 'quarantined after %d failures: %s' % (\n"
+     "                        attempts, _reason(x))\n",
      "")],
      [SH + 'test_H11_a_schedule_whose_claim_raises_holds_only_itself']),
     ('Z236', 'the view drops a quarantine as a reason', [(AUT,
      "    held = (_waiting(conn, a, quarantined)",
      "    held = (_waiting(conn, a)")],
      [SH + 'test_H11_a_schedule_whose_claim_raises_holds_only_itself']),
+    # ── P21 slice H review fixes r4 (T-129): the thread status, the reason cap, the hand-off ──
+    ('Z237', 'the thread status does not count a schedule quarantine', [(WRK,
+     "                'quarantined': q + len(self.schedule_faults)}",
+     "                'quarantined': q}")],
+     [SH + 'test_H11_a_schedule_whose_claim_raises_holds_only_itself']),
+    ('Z238', 'a schedule quarantine keeps the raw exception, not the reason', [(WRK,
+     "'quarantined after %d failures: %s' % (\n                        attempts, _reason(x))",
+     "'quarantined after %d failures: %s: %s' % (\n                        attempts, type(x).__name__, x)")],
+     [SH + 'test_H12_a_schedule_quarantine_reason_is_one_short_line']),
+    ('Z239', 'an event quarantine keeps the raw exception, not the reason', [(WRK,
+     "        return 'quarantined: %s' % _reason(x)",
+     "        return 'quarantined: %s: %s' % (type(x).__name__, x)")],
+     [TA + 'test_E26_an_event_quarantine_reason_is_one_short_line']),
+    ('Z240', 'the reason keeps its line breaks', [(WRK,
+     "    return ' '.join(('%s: %s' % (type(x).__name__, x)).split())[:REASON_MAX]",
+     "    return ('%s: %s' % (type(x).__name__, x))[:REASON_MAX]")],
+     [SH + 'test_H12_a_schedule_quarantine_reason_is_one_short_line',
+      TA + 'test_E26_an_event_quarantine_reason_is_one_short_line']),
+    ('Z241', 'the reason is not capped', [(WRK,
+     "    return ' '.join(('%s: %s' % (type(x).__name__, x)).split())[:REASON_MAX]",
+     "    return ' '.join(('%s: %s' % (type(x).__name__, x)).split())")],
+     [SH + 'test_H12_a_schedule_quarantine_reason_is_one_short_line',
+      TA + 'test_E26_an_event_quarantine_reason_is_one_short_line']),
+    ('Z242', 'the runtime does not hand the worker\'s quarantine map to the API', [(RTM,
+     "                              schedule_faults=self.automation.world.quarantined_schedules,\n",
+     "")],
+     [TH + 'test_a_quarantined_schedule_says_why_over_http']),
+    ('Z243', 'the list route passes no quarantine map', [(ROUTES,
+     "automations.list_automations(conn, req.api.schedule_faults())",
+     "automations.list_automations(conn)")],
+     [TH + 'test_a_quarantined_schedule_says_why_over_http']),
+    ('Z244', 'the get route passes no quarantine map', [(ROUTES,
+     "schedule_faults=req.api.schedule_faults())",
+     "schedule_faults=None)")],
+     [TH + 'test_a_quarantined_schedule_says_why_over_http']),
 ]
 
 
