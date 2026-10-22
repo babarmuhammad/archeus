@@ -57,7 +57,7 @@ EXIT_MEANING = {0: 'stopped cleanly',
                 1: 'another Core holds this home, or Core refused to start',
                 2: 'its port is in use by another program',
                 3: 'the engine or a worker thread failed'}
-READY_STATES = ('running', 'idle')
+READY_STATES = ('running', 'idle', 'stopped')     # stopped: a component the launch did not start
 POLL_S = 2.0
 STOP_WAIT_S = 30.0
 
@@ -167,7 +167,7 @@ class Env:
 
     def wait_healthy(self, timeout=60.0, poll_s=0.1):
         """True once Core is discoverable as this child and every component is
-        running or idle; False (and why) if it exits, fails or runs out of time."""
+        running, idle or stopped; False (and why) if it exits, fails or runs out of time."""
         deadline, last = time.monotonic() + timeout, None
         while time.monotonic() < deadline:
             if self.child.poll() is not None:

@@ -207,6 +207,15 @@ Slices eligible now under D0: A (provenance, D4/D11), C-read (trace view, D3/D14
 `metrics_daily` and `archeus doctor` (D2/D8), F (search, D7), G (notifications, D1). C-write (D13)
 after its file-scope check. B, E, H and the Attention items (D12) wait for P20.
 
+### 4.2 Owner decision: "Accept stopped" (2026-10-22, T-127 review of 5586c06)
+
+The Core reports a worker the launch never started (plan, policy, verify, automation, metrics
+when absent) as `stopped`, not `idle` (runtime.py Health, H08/H10). The owner decided to accept
+`stopped` as a ready state: `tools/v1_env.py` `READY_STATES` now holds `running`, `idle` and
+`stopped`, so `wait_healthy` treats an unstarted component as ready. A `failed` component stays
+not ready. The judge's settle check (`tests/v1/judge/http.py` `_idle`) accepts `stopped` for the
+same workers, and still refuses `failed`.
+
 ## 5. Slices and order (after approval)
 
 0. **D-26** — built (X1).

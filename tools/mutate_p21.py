@@ -51,6 +51,9 @@ DG = 'archeus/core/world/digest.py'
 TT = 'tests/v1/integration/test_trace.py'
 AT = 'archeus/core/application/attention.py'
 HL = 'tests/v1/integration/test_p21_health.py::'
+JH = 'tests/v1/judge/http.py'
+ENV = 'tools/v1_env.py'
+DL = 'tests/v1/integration/test_dev_launcher.py::'
 SCR = 'archeus/cli/tui/screens.py'
 TUIA = 'tests/v1/tui/test_acceptance.py::'
 
@@ -358,6 +361,27 @@ MUTATIONS = [
      "    if then is not None and then <= now_ms:",
      "    if False:")],
      [TUIA + 'test_attention_names_a_limited_account_and_a_mission_no_resource_can_run']),
+    # ── T-127 fix round: the settle check, the launcher's ready states, the guard's exemption ──
+    ('Z166', "the judge settles on a crashed worker", [(JH,
+     "if (health[worker]['state'] not in ('idle', 'stopped') or health[worker]['pending']",
+     "if (health[worker]['state'] not in ('idle', 'stopped', 'failed') or health[worker]['pending']")],
+     [HL + 'test_H11_settle_takes_a_never_started_worker_and_never_a_crashed_one']),
+    ('Z167', "the judge never settles on a worker the Core never started", [(JH,
+     "if (health[worker]['state'] not in ('idle', 'stopped') or health[worker]['pending']",
+     "if (health[worker]['state'] not in ('idle',) or health[worker]['pending']")],
+     [HL + 'test_H11_settle_takes_a_never_started_worker_and_never_a_crashed_one']),
+    ('Z168', "a started metrics worker reads stopped", [(RTM,
+     "'metrics': self.metrics.status() if self.metrics is not None",
+     "'metrics': dict(self.metrics.status(), state='stopped') if self.metrics is not None")],
+     [HL + 'test_H05_health_names_the_metrics_worker']),
+    ('Z169', "the launcher does not accept a stopped component", [(ENV,
+     "READY_STATES = ('running', 'idle', 'stopped')     # stopped: a component the launch did not start",
+     "READY_STATES = ('running', 'idle')")],
+     [DL + 'test_ready_means_every_component_running_idle_or_stopped']),
+    ('Z170', "a rows.where read on a line exempts a state write on that line", [(AT,
+     "    found = None\n",
+     "    found = None\n    _ = rows.where(None, entities.Task), entities.Task(**{'state': 'BLOCKED'})\n")],
+     ['tests/v1/unit/test_guards.py::test_no_state_is_set_outside_the_p2_primitive']),
     # ── P21 slice C: the trace (D3, D14), `why` (R13-05), the digest (R13-03) ──
     ('Z30', 'a result is paired with whichever call came first', [(TR,
      "            call = calls.get(e.get('tool_use_id'))",

@@ -15,6 +15,7 @@ from archeus.core.domain import entities, ids
 from archeus.core.domain.events import new_event
 from archeus.core.domain.values import Ref
 from archeus.infra.db import rows
+from v1.judge.support import wait_for
 
 WS = ids.GLOBAL_WORKSPACE
 ACTOR = Ref('user_device', ids.new_id('principal'))
@@ -117,11 +118,36 @@ def test_H04_metrics_newest_first_bounded_and_unknown_kept_unknown(tc):
 
 
 def test_H05_health_names_the_metrics_worker(tc):
-    h = tc.http('GET', '/v1/health').json()
+    def started():
+        h = tc.http('GET', '/v1/health').json()
+        return h if h['metrics']['state'] in ('running', 'idle') else None
+    h = wait_for(started)           # the started worker reaches running or idle, never stopped
     # the Health schema is closed and predates exec/verify/automation (not this slice)
     schemas.validate(h['metrics'], schemas.TYPES['Worker'])
     assert 'metrics' in schemas.TYPES['Health']['required']
-    assert h['metrics']['state'] in ('starting', 'reconciling', 'running', 'idle')
+
+
+def test_H11_settle_takes_a_never_started_worker_and_never_a_crashed_one():
+    from v1.judge.http import HttpClient
+    health = {'engine': {'state': 'idle', 'observed_seq': 7},
+              'world': {'state': 'idle', 'pending': 0},
+              'exec': {'state': 'idle', 'live': 0, 'observed_seq': 7},
+              'knowledge': {'state': 'idle', 'pending': 0},
+              'intent': {'state': 'idle', 'pending': 0},
+              'plan': {'state': 'stopped', 'pending': 0},
+              'verify': {'state': 'stopped', 'pending': 0},
+              'automation': {'state': 'stopped', 'pending': 0}}
+    client = object.__new__(HttpClient)
+
+    def settled(**worker):
+        h = dict(health, **worker)
+        client._call = lambda method, path, body=None: (
+            {'events': []} if path.startswith('/v1/events') else h)
+        return client._idle()
+    assert settled()
+    assert not settled(plan={'state': 'failed', 'pending': 0})        # a crashed worker
+    assert not settled(knowledge={'state': 'failed', 'pending': 0})
+    assert not settled(verify={'state': 'idle', 'pending': 2})
 
 
 @pytest.mark.parametrize('path', ['/v1/metrics'])
