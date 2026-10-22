@@ -4,6 +4,45 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Slash menu (T-153, v2/slash, 2026-10-22): "/" commands in the chat bar
+
+Spec: .collab/T-153-slash-commands-spec.md (sections 3, 4, 7 and the owner answers). Prototype only, fixtures only, no Core call. Files: `slash.js` (registry, parser, filter; no DOM, runs under node in check.mjs), `app.js` (the menu and the command table, section "T-153 slash menu"), `style.css` (last block, `.slash-*`), `tools/slash_probe.py` (browser checks).
+
+Use: type `/` as the first character of the chat bar (desktop Overview composer, phone chat bar, and the phone decision sheet's composer). The menu opens above the bar; the bar does not move. Filter by typing (names, Italian aliases, description words). Keys: Up and Down move (aria-activedescendant, focus stays in the composer), Tab fills the name, Enter runs a command with no required argument or opens the argument step, Escape closes and keeps the text (in the argument step it cancels and clears). `?` on its own, or `/?`, lists the commands by class. `//name` sends `/name` as plain chat text. Rows are 48 px; at most five, then `+N more`. Recent commands (names only, last five) are kept per device in localStorage, inside try/catch.
+
+Commands (English name, Italian alias, class, what the prototype does):
+
+| Command | Alias | Class | Prototype behaviour |
+|---|---|---|---|
+| /help | /aiuto | NAVIGATE | List by class, or the usage of one |
+| /status | /stato | READ | Chat card from the fixtures (running, waiting, emergency off) |
+| /usage | /usa | READ | Answers `unknown`; never 0 (card T-154 not built) |
+| /projects, /missions [project], /needs, /digest, /ideas | /progetti, /missioni, /attesa, /riepilogo, /idee | READ | Lists from the fixtures; /needs links each waiting plan, decides nothing |
+| /plan, /why, /search | /piano, /perche, /cerca | READ | /plan opens the plan view; /why says route decisions are not in the prototype; /search lists matches |
+| /trace, /replay, /open, /focus | /traccia, /rigioca, /apri, /vai | NAVIGATE | Changes the hash to the existing mission, replay, object or project view |
+| /clear | /pulisci | NAVIGATE | Hides earlier messages on this screen (`slash-cleared`), says history is kept |
+| /theme, /motion | /tema, /movimento | NAVIGATE | Stores the choice on this device and says so; the prototype has one theme and no motion setting |
+| /mission | /missione | CREATE | Same scripted path as a typed `mission "..."` message (so it reaches the Start card) |
+| /idea | | CREATE | Same scripted path as a typed idea |
+| /feedback | | CREATE | "Saved as a candidate (simulated)", nothing else |
+| /remember | /ricorda | CREATE | Confirm card naming the scope (this project, or all projects); the confirm box is the only way to a "Remembered" card |
+| /tell | /scrivi | CREATE | Sends the text as a plain message (no command echo) |
+| /general | /generale | CREATE | An answer in the general thread, not project memory |
+| /start, /stop, /estop, /pause, /resume, /cancel | /avvia, /ferma, /arresto, /pausa, /riprendi, /annulla | PROPOSE | A proposal card with the existing two-step confirm; the confirm changes nothing |
+| /review, /approve, /reject | /rivedi, /approva, /rifiuta | PROPOSE | A decision card with a link to the decision screen; the command decides nothing |
+| /account | | PROPOSE | Shown disabled in the menu, with its reason ("Needs an admin device") |
+
+Refused without sending: a command with an extra argument (`/status x`), a bad choice (`/theme pink`), unknown names (the spec line, the text stays in the composer), text that looks like a secret (`sk-`, `ghp_`, `AKIA`, `Bearer `). No command changes a fixture state; check.mjs asserts that every PROPOSE handler ends in `proposal(` and that the command table never assigns mission state.
+
+Accessibility: the composer is a combobox (`role`, `aria-expanded`, `aria-controls`, `aria-activedescendant`, `aria-autocomplete`); the menu is a listbox of options with `aria-selected`; a polite live region announces the count and the active row on open and on Up/Down, not on each keystroke. Labels in a row sit on two lines (name line, description line); the probe measures zero overlap. Reduced motion and Quiet: the menu has no transition or animation. `?nocolor` changes nothing here: the menu uses ivory, grey and outline only (no amber, no blue, no green).
+
+Not built (listed, not hidden): the 2 s duplicate-send prompt and the rate limit (Core-side in the spec); `@` mentions; the static `Submitted.` receipt (the scripted typing line is shown instead); the phone menu does not shrink to three rows over a Start card (it can cover feed above the bar); IME composition not tested; `/theme` and `/motion` change nothing visible; no real device.
+
+Concept frames: the menu is `position: fixed`, `hidden` while closed (display none), created in JS and not in index.html, so the Overview pixels are unchanged. Measured with `tools/measure_overview.py` (mean abs RGB, 0 to 255, same harness as the merge round): before 3ce4be9, desktop 4.89 and phone 4.65; after this change, desktop 4.89 and phone 4.65 (no change).
+
+Verification (one locked run, `py D:\Archeus\.collab\testlock.py -- py` over check.mjs, tools/slash_probe.py and tools/measure_overview.py): check.mjs OK; the probe passes 42 checks, 0 fail, on desktop 1296 x 755 and phone 402 x 687 (DPR 2): open on `/`, filter, Up and Down, Tab, Enter, Escape, argument step, unknown command, `//` escape, `?`, aliases, effects as cards only, 48 px rows, zero label overlap, no horizontal scroll, no page errors. Screenshots: `slash_desktop_menu.png` and `slash_phone_menu.png` in the scratch folder, not committed.
+
+
 ## Polish round 2 phone (v2/polish-phone, 2026-10-22): the three phone surfaces
 
 Harness: `tools/polish_measure.py phone1,phone2,phone3` (same method as round 1: mean abs RGB against the concept at master size,
