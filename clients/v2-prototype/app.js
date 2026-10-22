@@ -29,7 +29,7 @@
 
   var missions = [
     { id: 'm-search', title: 'Search provenance', project: 'archeus', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, glyph: 'search', what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false, related: [{ key: 'plan', title: 'Plan v1', sub: '3 tasks, not started', glyph: 'list', verb: 'proposes' }], log: ['Plan v1 recorded.', 'Waiting for your decision.'] },
-    { id: 'm-date', title: 'Fix date test', project: 'archeus', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'Run date suite on fix/date-test and collect the results.', exec: true, taskName: 'Run date suite', latestSub: 'Test run completed. Results captured.', steps: [['Set up test environment', 'done'], ['Run date suite', 'done'], ['Verify results', 'current'], ['Confirm fix', ''], ['Document outcome', ''], ['Close mission', '']], related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received.', 'Tool result received.', 'Not passed tests.', 'Parsing results.', 'Recording outcome.', 'Proceeding to verification checks.'] },
+    { id: 'm-date', title: 'Fix date test', project: 'archeus', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received', task: 'Run date suite on fix/date-test and collect the results.', exec: true, taskName: 'Run date suite', latestSub: 'Test run completed. Results captured.', steps: [['Set up test environment', 'done'], ['Run date suite', 'done'], ['Verify results', 'current'], ['Confirm fix', ''], ['Document outcome', ''], ['Close mission', '']], related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received', 'Tool result received', 'Not passed tests', 'Parsing results', 'Recording outcome', 'Proceeding to verification checks...'] },
     { id: 'm-done', title: 'Docs refresh', project: 'archeus', branch: 'docs/changelog', state: 'done', stateText: 'Done', phase: 6, glyph: 'check', what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] },
     { id: 'm-index', title: 'Offline capture', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Captured', phase: -1, glyph: 'doc', what: 'Capture an offline copy of notes.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
     { id: 'm-read', title: 'Export backup', project: 'notes', branch: 'docs/reading', state: 'idle', stateText: 'New', phase: -1, glyph: 'doc', what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false, related: [], log: ['Export completed.'] },
@@ -1746,7 +1746,7 @@
     $('#rail-projects').innerHTML = projects.filter(function (p) { return p.id !== 'ideas'; }).map(function (p) {
       var n = missions.filter(function (m) { return m.project === p.id; }).length;
       return '<li><a href="#/now/' + p.id + '" data-proj="' + p.id + '" style="--hue:' + p.hue + '">' +
-        '<span class="pdot" aria-hidden="true"></span>' + esc(p.name) + '<span class="cnt">' + n + '</span></a></li>';
+        '<span class="pdot" aria-hidden="true"></span><svg class="pcube" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg>' + esc(p.name) + '<span class="cnt">' + n + '</span></a></li>';
     }).join('');
     $('#sh-projects').innerHTML = projects.filter(function (p) { return p.id === 'archeus'; }).map(function (p) {
       return '<li><a href="#/now/' + p.id + '"' + (p.id === 'archeus' ? ' aria-current="page"' : '') + '>' + esc(p.name) + '</a></li>';
@@ -1848,8 +1848,8 @@
   function renderMissionPanel() {
     var m = find(missionShown), sec = $('#s-mission'), p = plans[m.id];
     fset('p_name', m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : m.phase === 4 ? 'Verifying' : PHASES[m.phase]);
-    fset('a_name', m.exec ? 'CODEX' : 'No agent recorded');
-    fset('a_role', m.exec ? 'Execution' : '');
+    fset('a_name', m.exec ? 'Codex · execution' : 'No agent recorded');
+    fset('a_role', '');
     fset('a_sub', m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.');
     fset('t_name', m.taskName || m.task);
     var parts = m.taskName ? m.task.split(' and ') : [];

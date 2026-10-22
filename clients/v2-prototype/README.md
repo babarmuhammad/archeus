@@ -64,6 +64,54 @@ Residuals and their reasons:
   tenths).
 - Not verified: keyboard focus on the terminal switcher, mobile keyboard behaviour, reduced-motion on the hub mesh.
 
+## Polish round 2 desktop (v2/polish-desk, 2026-10-22)
+
+Scope: the four desktop surfaces (Overview, Replay, Mission, Shared) and the Terminal, which is unchanged at 2.99. Phone code
+paths are not touched. Harness: `tools/polish_measure.py` (mean abs RGB, 0 to 255). Each Codex claim was checked against the
+render (crops and absdiff) before editing. Round 1 numbers are the baseline here (measured again in this worktree).
+
+| Surface | Round 1 (v2/polish) | Merged (3ce4be9) | After this round | Result |
+|---|---|---|---|---|
+| Desktop Overview 1296 x 729 | 4.95 | 4.87 | 4.86 | below merged |
+| Replay 1440 x 810 | 5.00 | 4.86 | 4.83 | below merged |
+| Mission 1244 x 829 | 5.05 | 4.88 | 4.98 | down from round 1, not below merged |
+| Shared 1382 x 922 | 3.21 | 3.27 | 3.21 | level with round 1, below merged |
+| Terminal 1600 x 900 | 2.99 | 12.05 | 2.99 | unchanged |
+
+Verified and fixed:
+- Overview rail: Missions, Ideas and Control were drawn on top of Now. `body.frame-now .places a` (display flex) beat
+  `body:not(.frame-replay) .rp-x` (display none) on specificity. The hiding rule now names `.places a.rp-x`, which beats it.
+- Replay rail: the first row reads Overview (the master's label; the other rails keep Now through a second span). The PROJECTS
+  rows get a cube glyph (`.pcube`, shown only in the Replay frame) and sit 13 px higher, on the master's centres.
+- Replay chips: Verified (green), Uncertain and Needs you (amber), Operator (lilac) take semantic colours. Tell and Stop take
+  fills measured from the master (Tell about rgb(23,19,30), Stop about rgb(64,25,32)), not the Codex estimates.
+- Mission agent row: "CODEX" and "Execution" overlapped on the same line. The row is now "Codex · execution", the master's line.
+  Log and latest record drop the stray periods, and the last log line reads "Proceeding to verification checks...".
+- Overview headline, lede, rail wordmark and serif labels: the source sets weight 500 in `body.frame-now` rules (lines near 1191 to
+  1205 of style.css). These are unchanged in the final state because the test at 400 raised the Overview number.
+
+Tried and reverted (raised the number; not a verified visual defect):
+- Mission and Shared frame serif labels, phase list, rail links, tabs and rows at 400 instead of 500: Mission 5.05 to 5.46 and
+  Shared 3.21 to 3.78 in one run. Kept at 500. The master's glyph weight is closer to 500 in these frames.
+- Shared status strings neutral instead of green: Shared 3.21 to 3.26. Kept green.
+- Overview serif labels and headline at 400: Overview 4.95 to 4.99 with the rail fix in the same run.
+- Mission left caption "CODEX / Execution" (static text): Mission 4.98 to 5.01. Kept "Codex · execution" as in round 1.
+
+Residuals (each has a crop or absdiff in the scratchpad folder of this round, with the reason):
+- Overview 4.86: serif glyph identity of the vendored Libre Caslon against the concept original, and the hub mesh state. Anchor
+  shifts (item 11) were not measured in this round.
+- Replay 4.83: timeline marker glow (item 6), reconcile gradient (item 7), and the mission node material (item 5) are not done.
+  The Replay title weight is unchanged.
+- Mission 4.98: the hollow faceted agent mark (item 9) is not done; the solid triangle stays. Halos and glyph stroke opacity
+  (item 21) are not done. The text weight and the left caption are the largest remaining differences, and they are the reverted
+  changes above.
+- Shared 3.21: no move below round 1. The footer status colour and the weight changes both raised the number. Icon silhouettes
+  (Control gear) and the Overview tab border (item 22 and P3 icons) were not measured.
+- Not verified: keyboard focus-visible rings (item 22) and the reduced-motion hub mesh. Both need a runtime check.
+
+Checks: `check.mjs` covers the rail overlap, the Replay Overview label and cube glyph, the mission agent row, the log copy, the
+chip colours, the Tell and Stop fills and the service worker cache name (archeus-v2-proto-polish-desk).
+
 ## Merge round (v2/merged, 2026-10-22): five branches in one prototype
 
 Base: v2/living-space 9d72df5 (worktree D:\archeus-v2-merged). Merged in order, each with `git merge --no-ff`: v2/r10c-desktop e22f280 (merge 8687e57), v2/r10c-replay b3a5e2f (1430dea), v2/r10c-terminal c86c049 (f64930e), v2/r10c-mission f257efc (9697d85). Then the shell pass commit (see its message).
