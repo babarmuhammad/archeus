@@ -29,7 +29,7 @@
 
   var missions = [
     { id: 'm-search', title: 'Search provenance', project: 'archeus', branch: 'feat/search', state: 'waiting', stateText: 'Review plan', phase: 2, glyph: 'search', what: 'Search recorded sources and show where each result came from.', latest: 'Plan v1 waiting for your decision.', task: 'Plan v1, 3 tasks, not started.', exec: false, related: [{ key: 'plan', title: 'Plan v1', sub: '3 tasks, not started', glyph: 'list', verb: 'proposes' }], log: ['Plan v1 recorded.', 'Waiting for your decision.'] },
-    { id: 'm-date', title: 'Fix date test', project: 'archeus', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'Run date suite on fix/date-test and collect the results.', exec: true, related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received.', 'Tool result received.', 'Not passed tests.', 'Parsing results.', 'Proceeding to verification checks.'] },
+    { id: 'm-date', title: 'Fix date test', project: 'archeus', branch: 'fix/date-test', state: 'running', stateText: 'Verifying', phase: 4, glyph: 'term', what: 'Run the date test suite and confirm the fix.', latest: 'Tool result received.', task: 'Run date suite on fix/date-test and collect the results.', exec: true, taskName: 'Run date suite', latestSub: 'Test run completed. Results captured.', steps: [['Set up test environment', 'done'], ['Run date suite', 'done'], ['Verify results', 'current'], ['Confirm fix', ''], ['Document outcome', ''], ['Close mission', '']], related: [{ key: 'suite', title: 'Date test suite', sub: 'Test definitions and inputs', glyph: 'doc', verb: 'uses' }, { key: 'results', title: 'Results', sub: 'Test execution outputs', glyph: 'chart', verb: 'produces' }, { key: 'verify', title: 'Verification', sub: 'Confirms behaviour', glyph: 'check', verb: 'verifies', from: 'results' }], log: ['Tool call received.', 'Tool result received.', 'Not passed tests.', 'Parsing results.', 'Recording outcome.', 'Proceeding to verification checks.'] },
     { id: 'm-done', title: 'Docs refresh', project: 'archeus', branch: 'docs/changelog', state: 'done', stateText: 'Done', phase: 6, glyph: 'check', what: 'Summarise the merged changes for the release.', latest: 'Review passed.', task: 'none', exec: false, related: [], log: ['Review passed.'] },
     { id: 'm-index', title: 'Offline capture', project: 'notes', branch: 'feat/index', state: 'idle', stateText: 'Captured', phase: -1, glyph: 'doc', what: 'Capture an offline copy of notes.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['No activity recorded.'] },
     { id: 'm-read', title: 'Export backup', project: 'notes', branch: 'docs/reading', state: 'idle', stateText: 'New', phase: -1, glyph: 'doc', what: 'Export the reading list as a file.', latest: 'Export completed.', task: 'none', exec: false, related: [], log: ['Export completed.'] },
@@ -45,7 +45,7 @@
         { key: 't2', text: 'Attach a provenance link to each result.' },
         { key: 't3', text: 'Add a test that every result links to a source.' }
       ],
-      approve: 'Approving starts the run of 3 tasks on feat/search.',
+      approve: 'Approving starts 3 tasks on feat/search.',
       request: 'Sends the mission back to the planner with your note and the selected comments. Approval of v1 ends.',
       reject: 'Cancels the mission. A decided approval cannot be changed. No undo.'
     }
@@ -60,7 +60,6 @@
   var pendingApply = null;
   var sheetOpen = null;
   var lastStar = null;
-  var missionTab = 'overview';
   var sharedTab = 'overview';
   var missionShown = 'm-date';
   var planStep = 'review';
@@ -359,6 +358,31 @@
   }
 
   // Codex execution: a plain triangle with the code glyph inside.
+  // Shared view: agents are triangles (wash, outline, inner triangle); devices are boxes with a glyph.
+  function drawShape(g, n, q, gn) {
+    var col = STATE[n.state] ? STATE[n.state].color : IVORY;
+    g.save(); g.globalAlpha = gn; g.lineJoin = 'round';
+    if (n.tri) {
+      var R = n.r;
+      g.beginPath(); g.moveTo(q.x, q.y - R); g.lineTo(q.x + R * 0.95, q.y + R * 0.7); g.lineTo(q.x - R * 0.95, q.y + R * 0.7); g.closePath();
+      g.fillStyle = rgba(col, 0.14); g.fill();
+      g.strokeStyle = col; g.lineWidth = 2; g.stroke();
+      var r2 = R * 0.38;
+      g.beginPath(); g.moveTo(q.x, q.y - r2 * 0.5); g.lineTo(q.x + r2, q.y + r2 * 0.6); g.lineTo(q.x - r2, q.y + r2 * 0.6); g.closePath();
+      g.fillStyle = col; g.fill();
+    } else {
+      var w = n.bw, h = n.bh;
+      g.beginPath();
+      if (g.roundRect) g.roundRect(q.x - w / 2, q.y - h / 2, w, h, 10); else g.rect(q.x - w / 2, q.y - h / 2, w, h);
+      g.fillStyle = 'rgba(14,19,28,0.92)'; g.fill();
+      g.setLineDash(n.dash ? [4, 4] : []);
+      g.strokeStyle = 'rgba(239,233,218,' + (n.dash ? 0.45 : 0.6) + ')'; g.lineWidth = 1.2; g.stroke();
+      g.setLineDash([]);
+      glyph(g, n.glyph, q.x, q.y, Math.min(w, h) * 0.4, IVORY, 0.9);
+    }
+    g.restore();
+  }
+
   function drawTriangle(g, x, y, r, lit) {
     g.save();
     g.strokeStyle = IVORY; g.lineWidth = 1.1; g.globalAlpha = lit ? 0.9 : 0.6;
@@ -572,26 +596,6 @@
       sc.nodes.push({ id: id, kind: 'record', state: 'idle', x: w * pos[0], y: h * pos[1], r: 34 * k, glyph: r.glyph, live: false, title: r.title, kicker: 'Record', sub: r.sub, st: '', parent: from, hit: false, solid: OCT, seed: 0.5 + i * 0.17 });
       sc.parent[id] = from;
       sc.links.push({ a: from, b: id, col: 'rgba(239,233,218,0.5)', live: false, kind: 'record', hue: IVORY, verb: r.verb });
-    });
-    return sc;
-  }
-
-  function sharedScene(w, h) {
-    var k = Math.max(0.7, Math.min(w / 720, h / 600, 1.1));
-    var sc = mk(w, h, { x: w * 0.5, y: h * 0.42 }, k, false);
-    sc.frame = { x: w * 0.5, y: h * 0.42, r: Math.min(w, h) * 0.46 };
-    var nodes = [
-      { id: 'planner', kind: 'agent', state: 'waiting', x: w * 0.2, y: h * 0.2, r: 40 * k, glyph: 'list', title: 'Planner', kicker: 'Agent', sub: 'Search provenance', st: 'Needs you', live: true, hit: false, solid: TET, verb: 'plans' },
-      { id: 'codex', kind: 'agent', state: 'running', x: w * 0.8, y: h * 0.2, r: 40 * k, glyph: 'term', title: 'Codex', kicker: 'Agent', sub: 'Fix date test', st: 'Running', live: true, hit: false, solid: TET, verb: 'runs' },
-      { id: 'desktop', kind: 'device', state: 'connected', x: w * 0.2, y: h * 0.74, r: 36 * k, glyph: 'monitor', title: 'This desktop', kicker: 'Device', sub: 'Connected', st: '', live: false, hit: false, solid: CUBE },
-      { id: 'phone', kind: 'device', state: 'recent', x: w * 0.5, y: h * 0.86, r: 32 * k, glyph: 'phone', title: 'Paired phone', kicker: 'Device', sub: 'Recent', st: '', live: false, hit: false, solid: CUBE },
-      { id: 'other', kind: 'device', state: 'future', x: w * 0.8, y: h * 0.74, r: 36 * k, glyph: '', title: 'Other people', kicker: 'Future contract', sub: 'Not yet available', st: '', live: false, hit: false, solid: CUBE, dash: true }
-    ];
-    nodes.forEach(function (n, i) {
-      n.seed = 0.2 + i * 0.19;
-      sc.nodes.push(n);
-      sc.parent[n.id] = 'core';
-      sc.links.push({ a: 'core', b: n.id, col: n.kind === 'agent' ? STATE[n.state].color : IVORY, live: n.live, kind: n.kind, hue: IVORY, verb: n.verb || '', dash: n.dash });
     });
     return sc;
   }
@@ -1149,6 +1153,16 @@
         g.restore();
       });
 
+      if (sc.poly) {
+        g.save(); g.strokeStyle = 'rgba(239,233,218,0.14)'; g.lineWidth = 1;
+        g.beginPath(); sc.poly.forEach(function (p, j) { if (j) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); }); g.closePath(); g.stroke();
+        g.strokeStyle = 'rgba(239,233,218,0.06)';
+        sc.poly.forEach(function (p) { line(g, c.x, c.y, p.x, p.y); });
+        g.fillStyle = 'rgba(239,233,218,0.45)';
+        sc.poly.forEach(function (p) { g.beginPath(); g.arc(p.x, p.y, 1.8, 0, TAU); g.fill(); });
+        g.restore();
+      }
+
       // Links: the lit chain is bright and carries a travelling pulse when live; the rest recede.
       sc.links.forEach(function (l, idx) {
         if (sc.desk) return;
@@ -1157,7 +1171,7 @@
         var gl = grow(l.a + '>' + l.b, anim);
         if (gl < 1) b = { x: a.x + (b.x - a.x) * gl, y: a.y + (b.y - a.y) * gl };
         var fresh = S.born[l.a + '>' + l.b] !== undefined && performance.now() - S.born[l.a + '>' + l.b] < 6000;
-        var lit = !!(H[l.a] && H[l.b]);
+        var lit = !!(H[l.a] && H[l.b]) && !l.faint;
         g.save();
         if (lit) {
           g.strokeStyle = l.col; g.globalAlpha = 0.5; g.lineWidth = 1.1 * Math.min(1.2, s);
@@ -1211,6 +1225,12 @@
         var q = pos[n.id], lit = !!H[n.id], R = n.r * s;
         var gn = grow(n.id, anim);
         if (gn < 1) R *= 0.35 + 0.65 * gn;
+        if (n.tri || n.box) {
+          drawShape(g, n, q, gn);
+          var its = S.items[n.id];
+          if (its) { its.cx = q.x; its.cy = q.y; its.hr = R + 10; its.pt = q; its.r = R; its.par = n.parent; }
+          return;
+        }
         var col = STATE[n.state] ? STATE[n.state].color : IVORY;
         if (n.mark) {
           if (!sc.desk) { // Now frame: the mark is an SVG shape (buildDeskMarks), not a canvas glyph
@@ -1303,9 +1323,9 @@
       });
       var core = S.items.core;
       if (core && core.lbl) {
-        var coreDy = sc.desk ? 66 : 84;
-        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + coreDy * s).toFixed(1) + 'px)';
-        placed.push({ x0: c.x - core.tw / 2, y0: c.y + coreDy * s, x1: c.x + core.tw / 2, y1: c.y + coreDy * s + core.th });
+        var cdy = (sc.coreDy || (sc.desk ? 66 : 84)) * s;
+        core.lbl.style.transform = 'translate(' + (c.x - core.tw / 2).toFixed(1) + 'px,' + (c.y + cdy).toFixed(1) + 'px)';
+        placed.push({ x0: c.x - core.tw / 2, y0: c.y + cdy, x1: c.x + core.tw / 2, y1: c.y + cdy + core.th });
       }
       var order = sc.projects.map(function (p) { return p.id; });
       sc.nodes.slice().sort(function (a, b) {
@@ -1319,6 +1339,13 @@
       order.forEach(function (id) {
         var it = S.items[id];
         if (!it || !it.lbl || !it.pt) return;
+        if (it.at) {
+          var ax = Math.min(Math.max(it.at.x, 6), S.w - it.tw - 6);
+          var fb = { x0: ax, y0: it.at.y, x1: ax + it.tw, y1: it.at.y + it.th };
+          entries.push({ id: id, it: it, box: fb, bw: it.tw, bh: it.th, cand: { d: 'row' }, dir: { x: 0, y: 0 }, fixed: true });
+          placed.push(fb);
+          return;
+        }
         var fix = sc.labelFix && sc.labelFix[id];
         var pt = it.pt, off = it.r + 12;
         if (fix && fix.at) { pt = fix.at; off = 0; }
@@ -1352,7 +1379,7 @@
       for (var pass = 0; pass < 10; pass++) {
         var moved = false;
         for (var a = 0; a < entries.length; a++) for (var b = a + 1; b < entries.length; b++) {
-          if (!overlaps(entries[a].box, entries[b].box, 6)) continue;
+          if (!overlaps(entries[a].box, entries[b].box, 6) || entries[b].fixed) continue;
           var e = entries[b], nb = e.box;
           if (e.fixed) continue;
           var nx = Math.min(Math.max(nb.x0 + e.dir.x * 18, 8), S.w - e.bw - 8);
@@ -1392,6 +1419,7 @@
         var dx = b.x - a.x, dy = b.y - a.y, dl = Math.hypot(dx, dy) || 1;
         var nx = -dy / dl, ny = dx / dl, side = v.side || 1;
         var mx = a.x + dx * 0.5 + nx * 16 * side, my = a.y + dy * 0.5 + ny * 16 * side;
+        if (v.at) { mx = v.at.x; my = v.at.y; }
         v.el.style.transform = 'translate(' + (mx - v.el.offsetWidth / 2).toFixed(1) + 'px,' + (my - 10).toFixed(1) + 'px)';
       });
     }
@@ -1478,9 +1506,10 @@
         var st = n.st, sub = n.detail || n.sub;
         var subCls = n.kind === 'mission' ? 'st-' + n.state : n.kind === 'device' ? { connected: 'st-done', recent: 'st-running', future: 'st-idle' }[n.state] || '' : n.kind === 'exec' && n.live ? 'st-running' : '';
         var action = n.kind === 'mission' && n.state === 'waiting' ? { href: '#/plan/' + n.id, text: sc.compact ? 'Review' : 'Review →', aria: 'Review plan for ' + n.title } : null;
-        var line2 = n.kind === 'mission' ? n.detail : n.kind === 'exec' ? 'execution' : st ? st + (sub ? ' · ' + sub : '') : sub;
+        var line2 = n.labelSub || (n.kind === 'mission' ? n.detail : n.kind === 'exec' ? 'execution' : st ? st + (sub ? ' · ' + sub : '') : sub);
         var execPhone = sc.compact && n.kind === 'exec';
         addLabel(n.id, { cls: 'lbl ' + n.kind, kicker: n.kicker, title: execPhone ? 'Codex · execution' : n.title, sub: execPhone ? '' : line2, subCls: subCls, kind: n.kind, action: action });
+        if (n.labelAt) S.items[n.id].at = n.labelAt;
         if (n.hit) {
           addHit(n.id, { aria: n.title + ', ' + st + (n.detail ? ', ' + n.detail : ''), kind: n.kind, meta: { kicker: n.kicker, title: n.title, lines: [st, sub].filter(Boolean) } });
         }
@@ -1491,7 +1520,7 @@
         lbl.className = 'lbl verb';
         lbl.textContent = l.verb;
         S.world.appendChild(lbl);
-        S.verbItems.push({ el: lbl, a: l.a, b: l.b, side: S.verbItems.length % 2 ? -1 : 1 });
+        S.verbItems.push({ el: lbl, a: l.a, b: l.b, side: S.verbItems.length % 2 ? -1 : 1, at: l.verbAt });
       });
       Object.keys(S.items).forEach(function (id) {
         var it = S.items[id];
@@ -1684,7 +1713,10 @@
   // Round 10g: ?nocolor on the Now frame turns the live text and marks neutral (the art's own links stay raster).
   if (/[?&]nocolor/.test(location.search)) document.body.classList.add('nocolor');
   function fitFrame() {
-    var k = Math.min(window.innerWidth / 1296, window.innerHeight / 729);
+    var mission = document.body.classList.contains('frame-mission'), shared = document.body.classList.contains('frame-shared');
+    var w = 1296, h = 729;
+    if (mission || shared) { w = mission ? 1244 : 1382; h = (mission ? 829 : 922) + 26; }
+    var k = Math.min(window.innerWidth / w, window.innerHeight / h);
     document.documentElement.style.setProperty('--k', k.toFixed(4));
   }
   var nowStage = makeStage($('#now-stage'), {
@@ -1694,10 +1726,6 @@
       else location.hash = '#/mission/' + id;
     }
   });
-  var missionStage = makeStage($('#mission-stage'), {
-    onPick: function (id, kind) { if (kind === 'project') location.hash = '#/now/' + id; }
-  });
-  var sharedStage = makeStage($('#shared-stage'));
   var phoneStage = makeStage($('#phone-stage'), {
     onPick: function (id) { openSheet(id); }
   });
@@ -1718,6 +1746,9 @@
       var n = missions.filter(function (m) { return m.project === p.id; }).length;
       return '<li><a href="#/now/' + p.id + '" data-proj="' + p.id + '" style="--hue:' + p.hue + '">' +
         '<span class="pdot" aria-hidden="true"></span>' + esc(p.name) + '<span class="cnt">' + n + '</span></a></li>';
+    }).join('');
+    $('#sh-projects').innerHTML = projects.map(function (p) {
+      return '<li><a href="#/now/' + p.id + '"' + (p.id === 'archeus' ? ' aria-current="page"' : '') + '>' + esc(p.name) + '</a></li>';
     }).join('');
     $$('#rail-projects a').forEach(function (a) {
       var id = a.getAttribute('data-proj');
@@ -1745,54 +1776,99 @@
     else if (pid && projectOf(pid)) zoomTo(pid);
   }
 
+  // Round 10c frames (Mission 03, Shared 06): the concept raster is the base art; the text sits at the solved layout
+  // (layout-r10c.js), and marks and the phase stepper are drawn on top. One frame each, desktop only.
+  var R10C = window.R10C_LAYOUT || {};
+  function placeFrame(root, layout) {
+    $$('[data-f]', root).forEach(function (el) {
+      var L = layout[el.getAttribute('data-f')];
+      if (!L) return;
+      el.classList.add(L.f === 'sans' ? 'sans' : 'serif');
+      el.style.left = (L.x + (L.dx || 0)) + 'px';
+      el.style.top = (L.y + (L.dy || 0)) + 'px';
+      el.style.fontSize = L.s + 'px';
+      el.style.letterSpacing = L.t + 'px';
+    });
+  }
+  function fset(id, text) { var el = $('#m-frame [data-f="' + id + '"]'); if (el) el.textContent = text; }
+
+  // The mission frame is the concept's Fix date test chain, so the view always shows that mission.
   function renderMission(id) {
-    var m = find(id) || find(missionShown);
+    var m = find('m-date'), sec = $('#s-mission'), p = projectOf(m.project);
     missionShown = m.id;
-    var sec = $('#s-mission'), p = projectOf(m.project);
-    $('[data-m-project]', sec).textContent = p.name;
-    $('[data-m-project2]', sec).textContent = p.name;
-    $('[data-m-crumb]', sec).textContent = m.title;
-    $('[data-m-title]', sec).textContent = m.title;
-    $('[data-m-branch]', sec).textContent = m.branch;
+    $('#m-note').textContent = id && id !== 'm-date' ? 'The mission frame shows Fix date test, the concept fixture.' : '';
     $('#m-replay').href = '#/replay/' + m.id;
-    var st = $('[data-m-state]', sec);
-    st.textContent = stateLine(m);
-    st.className = 'state-line st-' + m.state;
-    missionStage.setScene(function (w, h) { return missionScene(m, w, h); });
-    $('#m-phases').innerHTML = phaseBar(m);
+    fset('crumb_ar', p.name);
+    fset('crumb_fx', m.title);
+    $('#m-frame [data-m-title]').textContent = m.title;
+    fset('mis_title', m.title);
+    fset('mis_proj', 'Project: ' + p.name);
+    fset('mis_branch', 'Branch: ' + m.branch);
+    fset('f_proj_v', p.name);
+    fset('f_branch_v', m.branch);
+    var st = $('#m-frame [data-f="f_status_v"]');
+    st.textContent = m.state === 'running' ? 'In progress' : stateLine(m);
+    st.style.color = STATE[m.state].color;
+    phases(m);
     renderMissionPanel();
   }
 
-  function phaseBar(m) {
-    return PHASES.map(function (name, i) {
+  // Six phases: a label each (the stepper line and marks are drawn in #m-stepper).
+  function phases(m) {
+    var ol = $('#m-phases');
+    ol.innerHTML = PHASES.map(function (name, i) {
       var cls = '';
       if (m.phase === 6 || i < m.phase) cls = 'done';
       else if (i === m.phase) cls = m.state === 'waiting' ? 'wait' : 'current';
       var word = cls === 'done' ? 'done' : cls === 'wait' ? 'waiting for you' : cls === 'current' ? 'current' : 'not reached';
-      return '<li class="' + cls + '">' + name + '<span class="sr-only">, ' + word + '</span></li>';
+      return '<li class="' + cls + '" data-f="ph_' + (i + 1) + '">' + name + '<span class="sr-only">, ' + word + '</span></li>';
     }).join('');
+    placeFrame(ol, R10C.mission);
+    var xs = [837, 911.5, 981, 1050.5, 1119.5, 1195], y = 231.5, ph = m.phase === 6 ? 6 : m.phase, out = '';
+    for (var i = 0; i < 5; i++) {
+      var seg = i + 1 <= ph ? STATE.connected.color : i === ph ? STATE.running.color : STATE.done.color;
+      out += '<line x1="' + xs[i] + '" y1="' + y + '" x2="' + xs[i + 1] + '" y2="' + y + '" stroke="' + seg + '" stroke-width="1.6" opacity="' + (i + 1 <= ph ? 0.7 : 0.35) + '"/>';
+    }
+    xs.forEach(function (x, i) {
+      if (i < ph) {
+        out += '<circle cx="' + x + '" cy="' + y + '" r="8" fill="' + STATE.connected.color + '"/>' +
+          '<path d="M' + (x - 3.6) + ' ' + y + ' L' + (x - 1) + ' ' + (y + 2.6) + ' L' + (x + 3.8) + ' ' + (y - 3) + '" fill="none" stroke="#0E131C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';
+      } else if (i === ph && ph < 6) {
+        var col = m.state === 'waiting' ? STATE.waiting.color : STATE.running.color;
+        out += '<circle cx="' + x + '" cy="' + y + '" r="9" fill="none" stroke="' + col + '" stroke-width="2"/>' +
+          '<circle cx="' + x + '" cy="' + y + '" r="4.5" fill="' + col + '"/>';
+      } else {
+        out += '<circle cx="' + x + '" cy="' + y + '" r="7.5" fill="none" stroke="' + STATE.done.color + '" stroke-width="1.4"/>';
+      }
+    });
+    $('#m-stepper').innerHTML = out;
   }
 
   function renderMissionPanel() {
-    var m = find(missionShown), box = $('#m-panel');
-    var p = plans[m.id];
-    $$('[data-mtab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-mtab') === missionTab)); });
-    if (missionTab === 'activity') {
-      box.innerHTML = '<p class="kicker">Activity log</p><ul class="log">' +
-        m.log.map(function (l) { return '<li' + (/Not passed/.test(l) ? ' class="bad"' : '') + '>' + esc(l) + '</li>'; }).join('') + '</ul>';
-    } else if (missionTab === 'plan') {
-      box.innerHTML = p
-        ? '<p class="kicker">Plan v' + p.version + '</p><ul class="log">' + p.tasks.map(function (t) { return '<li>' + esc(t.key) + ' · ' + esc(t.text) + '</li>'; }).join('') + '</ul><div class="row"><a class="btn" href="#/plan/' + m.id + '">Open plan</a></div>'
-        : '<p class="small">No plan recorded for this mission.</p>';
-    } else {
-      var ph = m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase];
-      box.innerHTML =
-        '<p class="kicker">Current phase</p><p class="big">' + esc(ph) + '</p>' +
-        '<p class="small">' + esc(m.what) + '</p>' +
-        '<div class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 21 19H3z"/></svg><div><p>' + (m.exec ? 'Codex, execution' : 'No agent recorded') + '</p><p class="sub">' + (m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.') + '</p></div></div>' +
-        '<div class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg><div><p>Current task</p><p class="sub">' + esc(m.task) + '</p></div></div>' +
-        '<div class="item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/></svg><div><p>Latest record</p><p class="sub">' + esc(m.latest) + '</p></div></div>';
-    }
+    var m = find(missionShown), sec = $('#s-mission'), p = plans[m.id];
+    fset('p_name', m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase]);
+    fset('a_name', m.exec ? 'Codex · execution' : 'No agent recorded');
+    fset('a_sub', m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.');
+    fset('t_name', m.taskName || m.task);
+    var parts = m.taskName ? m.task.split(' and ') : [];
+    fset('t_s1', parts[0] || '');
+    fset('t_s2', parts[1] ? 'and ' + parts[1] : '');
+    fset('r_name', m.latest);
+    fset('r_sub', m.latestSub || '');
+    var log = $('#m-log');
+    log.innerHTML = m.log.map(function (l, i) {
+      return '<li' + (/Not passed/.test(l) ? ' class="bad"' : '') + ' data-f="l_' + (i + 1) + '">' + esc(l) + '</li>';
+    }).join('');
+    placeFrame(log, R10C.mission);
+    var steps = m.steps || (p ? p.tasks.map(function (t) { return [t.text, '']; }) : []);
+    var stepsEl = $('#m-steps');
+    stepsEl.innerHTML = steps.map(function (s, i) {
+      return '<li class="' + s[1] + '" data-f="s_' + (i + 1) + '">' + esc(s[0]) + '</li>';
+    }).join('');
+    placeFrame(stepsEl, R10C.mission);
+    var plan = $('#m-plan', sec);
+    plan.hidden = !p;
+    plan.href = '#/plan/' + m.id;
   }
 
   /* ---------- Replay (round 10c replay): as-of inspection, static, no motion ---------- */
@@ -1920,24 +1996,21 @@
   });
 
   function renderShared() {
-    $('#s-shared [data-sentence]').textContent = sentence();
-    sharedStage.setScene(sharedScene);
     renderSharedPanel();
   }
 
   function renderSharedPanel() {
     $$('[data-stab]').forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-stab') === sharedTab)); });
     var box = $('#s-panel');
+    $('#sh-kv').classList.toggle('off', sharedTab !== 'overview');
+    box.hidden = sharedTab === 'overview';
     if (sharedTab === 'content') {
       box.innerHTML = '<ul class="rowlist"><li><span>Project files</span><span>12 items</span></li><li><span>Notes</span><span>34 items</span></li><li><span>Agent logs</span><span>28 items</span></li><li><span>Build outputs</span><span>18 items</span></li><li><span>Related content</span><span>156 items</span></li></ul><p class="small">Fixture counts. The same records, device permissions apply.</p>';
     } else if (sharedTab === 'relations') {
       box.innerHTML = '<ul class="rowlist">' + projects.map(function (p) {
         var n = missions.filter(function (m) { return m.project === p.id; }).length;
-        return '<li><span><span class="pdot" style="--hue:' + p.hue + '"></span>' + esc(p.name) + '</span><span>orchestrated, ' + n + ' missions</span></li>';
+        return '<li><span>' + esc(p.name) + '</span><span>orchestrated, ' + n + ' missions</span></li>';
       }).join('') + '</ul><p class="small">Relations are fixture text. Core supplies the real ones.</p>';
-    } else {
-      box.innerHTML = '<dl class="kv"><dt>Type</dt><dd>Core system</dd><dt>Status</dt><dd>Verified</dd><dt>Updated</dt><dd>Today, 10:24</dd><dt>Items</dt><dd>248</dd><dt>Agents</dt><dd>2 active</dd><dt>Linked projects</dt><dd>3</dd></dl>' +
-        '<p class="kicker ev-head">Evidence</p><ul class="rowlist ev-rows"><li><span>Project files</span><span>12 items</span></li><li><span>Notes</span><span>34 items</span></li><li><span>Agent logs</span><span>28 items</span></li><li><span>Build outputs</span><span>18 items</span></li><li><span>Related content</span><span>156 items</span></li></ul><p class="small">Same records, device permissions apply.</p>';
     }
   }
 
@@ -2323,8 +2396,6 @@
       location.hash = '#/now';
       return say('Whole space.');
     }
-    var tab = e.target.closest('[data-mtab]');
-    if (tab) { missionTab = tab.getAttribute('data-mtab'); return renderMissionPanel(); }
     var stab = e.target.closest('[data-stab]');
     if (stab) { sharedTab = stab.getAttribute('data-stab'); return renderSharedPanel(); }
     var el = e.target.closest('[data-act]');
@@ -2382,20 +2453,19 @@
 
   function closeNowSheet() { $('#now-sheet').hidden = true; $('#now-sheet').innerHTML = ''; }
 
+  // Phone decision sheet (medium): Back, What, Why, Core consequence, one full-width Open decision.
   function openDetail(id) {
     var m = find(id);
     if (!m) return;
     var waiting = m.state === 'waiting', p = plans[m.id];
     sheetFor(
-      '<p class="sheet-state st-' + m.state + '">' + esc(stateLine(m)) + '</p>' +
+      '<button type="button" class="sheet-back" data-act="now-sheet-close">‹ Back</button>' +
       '<h2 id="now-sheet-h" tabindex="-1">' + esc(m.title) + '</h2>' +
-      '<p class="sheet-line sheet-proj"><span class="lbl-line">Project</span> ' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</p>' +
-      '<p class="sheet-line"><span class="lbl-line">What</span> ' + esc(m.what) + '</p>' +
-      (waiting && p ? '<p class="sheet-line"><span class="lbl-line">Why</span> ' + esc(p.why) + '</p>' +
-        '<p class="sheet-line"><span class="lbl-line">Core (fixture text)</span> ' + esc(p.approve) + '</p>' : '') +
+      '<div class="sheet-line"><span class="lbl-line">What</span>' + esc(waiting ? 'Review plan' : m.what) + '</div>' +
+      '<div class="sheet-line"><span class="lbl-line">Why</span>' + esc(waiting && p ? p.why : 'Status: ' + stateLine(m) + '.') + '</div>' +
+      '<div class="sheet-line"><span class="lbl-line">Core consequence</span>' + esc(waiting && p ? p.approve : 'Core records this run. This prototype changes nothing.') + '</div>' +
       '<div class="sheet-actions">' +
-      '<a class="btn primary" href="' + (waiting ? '#/plan/' : '#/mission/') + m.id + '">' + (waiting ? 'Open decision' : 'Open mission') + '</a>' +
-      '<button type="button" class="btn" data-act="now-sheet-close">Close</button></div>');
+      '<a class="btn decision" href="' + (waiting ? '#/plan/' : '#/mission/') + m.id + '">' + (waiting ? 'Open decision' : 'Open mission') + '</a></div>');
   }
 
   function openList() {
@@ -2880,6 +2950,8 @@
     var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
     document.body.classList.remove('menu-open');
     document.body.classList.toggle('frame-now', name === 'now' && !isNarrow());
+    document.body.classList.toggle('frame-mission', name === 'mission');
+    document.body.classList.toggle('frame-shared', name === 'shared');
     fitFrame();
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });
@@ -2895,17 +2967,19 @@
 
   renderRail();
   buildOverview();
+  placeFrame($('#m-frame'), R10C.mission);
+  placeFrame($('#sh-frame'), R10C.shared);
 
   window.addEventListener('resize', function () {
     fitFrame();
-    [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); });
+    [nowStage, phoneStage].forEach(function (s) { s.relayout(); });
   });
   document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.kick(); });
+    if (!document.hidden) [nowStage, phoneStage].forEach(function (s) { s.kick(); });
   });
   if (reduce.addEventListener) {
     reduce.addEventListener('change', function () {
-      [nowStage, missionStage, sharedStage, phoneStage].forEach(function (s) { s.relayout(); s.kick(); });
+      [nowStage, phoneStage].forEach(function (s) { s.relayout(); s.kick(); });
     });
   }
 

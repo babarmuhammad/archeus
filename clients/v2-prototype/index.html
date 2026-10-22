@@ -86,7 +86,7 @@
               <p class="budget" hidden></p>
               <div class="feed" id="feed" aria-live="polite">
                 <span class="grab" aria-hidden="true"></span>
-                <div class="feed-head"><p class="kicker">Conversation</p><button type="button" class="btn feed-close" data-act="feed-close">Close</button></div>
+                <div class="feed-head"><p class="kicker">Conversation</p><button type="button" class="btn feed-close" data-act="feed-close">‹ Back</button></div>
                 <ol class="msgs" id="msgs"></ol>
               </div>
               <form class="chatbar" id="chat-form" autocomplete="off">
@@ -111,35 +111,100 @@
         </details>
       </section>
 
-      <section class="screen" id="s-mission" hidden>
-        <header class="head">
-          <p class="crumb"><a href="#/now">Overview</a> / <span data-m-project></span> / <span data-m-crumb></span></p>
-          <p class="kicker">Mission</p>
-          <h1 tabindex="-1" data-m-title></h1>
-        </header>
-        <div class="split">
-          <div class="stage stage-mission" id="mission-stage" role="region" aria-label="Mission chain: Archeus, project, mission, execution">
-            <canvas class="sky" aria-hidden="true"></canvas>
-            <canvas class="fx" aria-hidden="true"></canvas>
-            <div class="world"></div>
-            <div class="card" hidden></div>
-          </div>
-          <aside class="inspector" aria-label="Mission details">
-            <dl class="facts">
-              <div><dt>Project</dt><dd data-m-project2></dd></div>
-              <div><dt>Branch</dt><dd data-m-branch></dd></div>
-              <div><dt>Status</dt><dd class="state-line" data-m-state></dd></div>
-            </dl>
-            <ol class="phase-bar" id="m-phases" aria-label="Phases"></ol>
-            <p class="row"><a class="btn" id="m-replay" href="#/replay/m-date">Open replay</a></p>
-            <div class="tabs" role="tablist" aria-label="Mission views">
-              <button type="button" role="tab" data-mtab="overview" aria-selected="true">Overview</button>
-              <button type="button" role="tab" data-mtab="activity" aria-selected="false">Activity</button>
-              <button type="button" role="tab" data-mtab="plan" aria-selected="false">Plan</button>
-            </div>
-            <div class="tabpanel" id="m-panel" role="tabpanel"></div>
+      <section class="screen frame-screen" id="s-mission" hidden>
+        <div class="frame" id="m-frame" data-frame="mission">
+          <img class="fr-art" src="art/mission-base.webp" width="1244" height="829" alt="">
+          <svg class="fr-marks" viewBox="0 0 1244 829" aria-hidden="true" focusable="false">
+            <path class="ln" d="M30.5 61.5 24.5 68 30.5 74.5"/>
+            <path class="ln" d="M96 296 H118 L130 308 V340 H96 Z M118 296 V308 H130 M103 314 H123 M103 321 H123 M103 328 H123"/>
+            <rect class="blu" x="407" y="347" width="60" height="44" rx="3"/>
+            <path class="blu" d="M417 362 L425 368 L417 374 M431 378 H442"/>
+            <path class="ln" d="M724 321 L743 332 V354 L724 365 L705 354 V332 Z M714 343 L721 350 L734 337"/>
+            <path class="ln" d="M280 624 H298 L305 631 V656 H280 Z M298 624 V631 H305 M285 636 H300 M285 643 H300 M285 650 H297"/>
+            <path class="ln" d="M563 652 V644 M569 652 V634 M575 652 V626 M581 652 V634"/>
+            <path d="M849 401 L871 438 H827 Z" fill="#CFCABD" fill-opacity=".9"/>
+            <rect class="ln" x="824" y="484" width="32" height="28" rx="3"/>
+            <path class="ln" d="M831 495 L836 499 L831 503 M840 504 H847"/>
+            <path class="ln" d="M827 571 H846 L853 578 V603 H827 Z M846 571 V578 H853 M832 585 H848 M832 590 H848 M832 595 H848 M832 600 H842"/>
+            <path class="ln" d="M822 659.5 L826 663.5 L822 667.5 M822 677.5 L826 681.5 L822 685.5 M822 695 L826 699 L822 703 M822 712.5 L826 716.5 L822 720.5 M822 730 L826 734 L822 738 M822 748.5 L826 752.5 L822 756.5"/>
+            <circle class="red" cx="825" cy="699" r="3.5"/>
+            <circle class="grn" cx="1062" cy="663.5" r="7"/>
+            <path class="dark" d="M1058.5 663.5 L1061 666 L1065.5 661"/>
+            <circle class="grn" cx="1062" cy="681.5" r="7"/>
+            <path class="dark" d="M1058.5 681.5 L1061 684 L1065.5 679"/>
+            <circle class="blu" cx="1062" cy="701.5" r="6"/>
+            <circle class="sl-ring" cx="1062" cy="721" r="6"/>
+            <circle class="sl-ring" cx="1062" cy="740.5" r="6"/>
+            <circle class="sl-ring" cx="1062" cy="760" r="6"/>
+            <path class="ln" d="M930.5 156 V192 M1092.5 156 V192"/>
+            <rect class="pill" x="800.5" y="16.5" width="237" height="32" rx="16"/>
+            <circle class="grn" cx="824" cy="32.5" r="3.5"/>
+            <rect class="pill" x="1046.5" y="16.5" width="88" height="32" rx="7"/>
+            <path class="ln" d="M1069 26 H1081 V34 H1074 L1071 37 V34 H1069 Z"/>
+            <rect class="pill" x="1139.5" y="16.5" width="90" height="32" rx="7" style="stroke:#E5585E"/>
+            <rect class="red-fill" x="1160.5" y="27.5" width="10" height="10" rx="1.5"/>
+            <circle class="blu" cx="1111" cy="183" r="4.5"/>
+            <g id="m-stepper"></g>
+          </svg>
+          <p class="f" data-f="wordmark" aria-hidden="true">ARCHEUS</p>
+          <p class="f" data-f="v2" aria-hidden="true">V2</p>
+          <p class="fr-crumb"><a class="f" data-f="crumb_ov" href="#/now">Overview</a><span class="f" data-f="crumb_sl1" aria-hidden="true">/</span><span class="f" data-f="crumb_ar"></span><span class="f" data-f="crumb_sl2" aria-hidden="true">/</span><span class="f" data-f="crumb_fx"></span></p>
+          <p class="f core" data-f="core" aria-hidden="true">ARCHEUS</p>
+          <p class="f v" data-f="v_orch" aria-hidden="true">ORCHESTRATES</p>
+          <p class="f v" data-f="v_exec" aria-hidden="true">EXECUTES</p>
+          <p class="f v" data-f="v_results" aria-hidden="true">RESULTS IN</p>
+          <p class="f v" data-f="v_uses" aria-hidden="true">USES</p>
+          <p class="f v" data-f="v_produces" aria-hidden="true">PRODUCES</p>
+          <p class="f v" data-f="v_verifies" aria-hidden="true">VERIFIES</p>
+          <p class="f" data-f="codex_1" aria-hidden="true">Codex ·</p>
+          <p class="f" data-f="codex_2" aria-hidden="true">execution</p>
+          <p class="f" data-f="codex_s1" aria-hidden="true">Runs checks,</p>
+          <p class="f" data-f="codex_s2" aria-hidden="true">collects evidence,</p>
+          <p class="f" data-f="codex_s3" aria-hidden="true">reports results.</p>
+          <p class="f" data-f="mis_title" aria-hidden="true">Fix date test</p>
+          <p class="f" data-f="mis_proj" aria-hidden="true">Project: Archeus</p>
+          <p class="f" data-f="mis_branch" aria-hidden="true">Branch: fix/date-test</p>
+          <p class="f" data-f="ver_title" aria-hidden="true">Verification</p>
+          <p class="f" data-f="ver_s1" aria-hidden="true">Confirms behaviour</p>
+          <p class="f" data-f="ver_s2" aria-hidden="true">and closes the fix.</p>
+          <p class="f" data-f="suite_title" aria-hidden="true">Date test suite</p>
+          <p class="f" data-f="suite_s1" aria-hidden="true">Test definitions</p>
+          <p class="f" data-f="suite_s2" aria-hidden="true">and inputs.</p>
+          <p class="f" data-f="res_title" aria-hidden="true">Results</p>
+          <p class="f" data-f="res_s1" aria-hidden="true">Test execution</p>
+          <p class="f" data-f="res_s2" aria-hidden="true">outputs</p>
+          <p class="f status" data-f="status"><span class="dot" aria-hidden="true"></span>Not stopped · accepts new work</p>
+          <aside class="mission-card" aria-label="Mission details">
+            <p class="f" data-f="m_kicker">MISSION</p>
+            <h1 class="f" data-f="m_title" tabindex="-1" data-m-title>Fix date test</h1>
+            <p class="f" data-f="f_proj">Project</p>
+            <p class="f" data-f="f_branch">Branch</p>
+            <p class="f" data-f="f_status">Status</p>
+            <p class="f" data-f="f_proj_v">Archeus</p>
+            <p class="f" data-f="f_branch_v">fix/date-test</p>
+            <p class="f" data-f="f_status_v">In progress</p>
+            <ol class="phases" id="m-phases" aria-label="Phases"></ol>
+            <p class="f" data-f="p_kicker">CURRENT PHASE</p>
+            <p class="f" data-f="p_name">Verifying</p>
+            <p class="f" data-f="p_line">Check results, confirm behaviour, and close the fix.</p>
+            <p class="f" data-f="a_kicker">AGENT</p>
+            <p class="f" data-f="a_name">Codex · execution</p>
+            <p class="f" data-f="a_sub">Runs checks, collects evidence, reports results.</p>
+            <p class="f" data-f="t_kicker">CURRENT TASK</p>
+            <p class="f" data-f="t_name">Run date suite</p>
+            <p class="f" data-f="t_s1">Run date suite on fix/date-test</p>
+            <p class="f" data-f="t_s2">and collect the results.</p>
+            <p class="f" data-f="r_kicker">LATEST RECORD</p>
+            <p class="f" data-f="r_name">Tool result received.</p>
+            <p class="f" data-f="r_sub">Test run completed. Results captured.</p>
+            <p class="f" data-f="l_kicker">ACTIVITY LOG</p>
+            <ol class="fr-log" id="m-log" aria-label="Activity log"></ol>
+            <p class="f" data-f="s_kicker">PLAN STEPS</p>
+            <ol class="fr-steps" id="m-steps" aria-label="Plan steps"></ol>
           </aside>
+          <p class="fr-btns"><a class="btn tell" data-tell href="#/now/chat">Tell</a><button type="button" class="btn stop-btn" data-act="stop">Stop</button></p>
         </div>
+        <p class="fr-foot"><span><span id="m-note"></span>SIMULATED: fake data and a simulated chat. Nothing is sent to Core. CONCEPT FIXTURE.</span><span class="m-links"><a class="btn" id="m-replay" href="#/replay/m-date">Open replay</a><a class="btn" id="m-plan" href="#/plan/m-date" hidden>Open plan</a></span></p>
       </section>
 
       <section class="screen screen-replay" id="s-replay" hidden>
@@ -176,33 +241,116 @@
         <p class="small" id="term-status" role="status"></p>
       </section>
 
-      <section class="screen" id="s-shared" hidden>
-        <header class="head">
-          <p class="kicker">Shared space</p>
-          <h1 tabindex="-1" data-sentence></h1>
-          <p class="lede">Shared records with different authority. A device is an endpoint, not an agent or a person.</p>
-        </header>
-        <div class="split">
-          <div class="stage stage-shared" id="shared-stage" role="region" aria-label="Archeus with agents and devices">
-            <canvas class="sky" aria-hidden="true"></canvas>
-            <canvas class="fx" aria-hidden="true"></canvas>
-            <div class="world"></div>
-            <div class="card" hidden></div>
+      <section class="screen frame-screen" id="s-shared" hidden>
+        <div class="frame" id="sh-frame" data-frame="shared">
+          <img class="fr-art" src="art/shared-base.webp" width="1382" height="922" alt="">
+          <svg class="fr-marks" viewBox="0 0 1382 922" aria-hidden="true" focusable="false">
+            <circle class="amb" cx="349" cy="295" r="6"/>
+            <circle class="blu" cx="856" cy="294" r="6"/>
+            <circle class="grn" cx="349" cy="684" r="6"/>
+            <circle class="blu" cx="600" cy="684" r="6"/>
+            <circle class="sl" cx="840" cy="684" r="6"/>
+            <circle class="grn" cx="1073" cy="118" r="5"/>
+            <rect class="ln" x="370" y="581" width="40" height="25" rx="2"/>
+            <path class="ln" d="M382 606 V612 M376 613 H388"/>
+            <rect class="ln" x="624" y="587" width="24" height="35" rx="3"/>
+            <path class="ln" d="M633 593 H639"/>
+            <rect class="ln dash" x="869" y="584" width="26" height="31" rx="3"/>
+            <rect class="ln" x="31.5" y="166.5" width="8" height="8" rx="2"/><rect class="ln" x="43.5" y="166.5" width="8" height="8" rx="2"/>
+            <rect class="ln" x="31.5" y="178.5" width="8" height="8" rx="2"/><rect class="ln" x="43.5" y="178.5" width="8" height="8" rx="2"/>
+            <path class="ln" d="M35 209 H45 L48 212 V230 H35 Z M38 216 H45 M38 221 H45 M38 226 H45"/>
+            <circle class="ln" cx="41" cy="259" r="6.5"/><path class="ln" d="M38 265 V269 H44 V265"/>
+            <path class="ln" d="M41 298 L51 303 V314 L41 320 L31 314 V303 Z M31 303 L41 308 L51 303 M41 308 V320"/>
+            <circle class="ln" cx="41" cy="356" r="8"/><circle class="ln" cx="41" cy="356" r="3"/>
+            <path class="ln" d="M194 425 V437 M188 431 H200"/>
+            <path class="ln" d="M41 460 L51 465 V476 L41 482 L31 476 V465 Z M31 465 L41 470 L51 465 M41 470 V482"/>
+            <path class="ln" d="M1067 253 L1076 248 L1085 253 V263 L1076 268 L1067 263 Z M1067 253 L1076 258 L1085 253 M1076 258 V268"/>
+            <circle class="ln" cx="1076" cy="293" r="8"/><path class="ln" d="M1072 293 L1075 296 L1081 290"/>
+            <rect class="ln" x="1067" y="323" width="18" height="15" rx="2"/><path class="ln" d="M1067 329 H1085 M1072 320 V325 M1080 320 V325"/>
+            <rect class="ln" x="1068" y="355" width="16" height="17" rx="2"/><path class="ln" d="M1071 360 H1081 M1071 365 H1081 M1071 370 H1078"/>
+            <circle class="ln" cx="1073" cy="392" r="3"/><circle class="ln" cx="1081" cy="392" r="3"/><path class="ln" d="M1067 402 Q1073 396 1079 402 M1075 402 Q1081 396 1087 402"/>
+            <rect class="ln" x="1067" y="428" width="10" height="7" rx="3.5" transform="rotate(-45 1072 431)"/><rect class="ln" x="1074" y="433" width="10" height="7" rx="3.5" transform="rotate(-45 1079 436)"/>
+            <path class="ln" d="M1072 559 H1081 L1085 563 V577 H1072 Z M1078 559 V563 H1085"/>
+            <path class="ln" d="M1072 593 H1081 L1085 597 V611 H1072 Z M1078 593 V597 H1085 M1074 602 H1083 M1074 606 H1083"/>
+            <path class="ln" d="M1072 628 H1081 L1085 632 V646 H1072 Z M1078 628 V632 H1085 M1074 638 H1083"/>
+            <path class="ln" d="M1072 663 H1081 L1085 667 V681 H1072 Z M1078 663 V667 H1085 M1074 673 H1083"/>
+            <path class="ln" d="M1072 699 H1081 L1085 703 V717 H1072 Z M1078 699 V703 H1085 M1074 709 H1083"/>
+            <path class="ln" d="M1347 493 L1355 502 L1347 511"/>
+            <path class="ln" d="M1119 853 H1139 V865 H1131 L1127 869 V865 H1119 Z"/>
+            <rect class="red-fill" x="1257" y="856" width="13" height="13" rx="1.5"/>
+            <circle class="grn" cx="251" cy="863" r="6.5"/>
+            <rect class="btn-edge" x="1091.5" y="841.5" width="121" height="42" rx="8"/>
+            <rect class="btn-edge" x="1225.5" y="841.5" width="127" height="42" rx="8"/>
+            <rect class="tab-on" x="1060.5" y="181.5" width="99" height="40" rx="6"/>
+          </svg>
+          <header class="sh-head" aria-label="Archeus V2">
+            <h1 class="f" data-f="wordmark" tabindex="-1">ARCHEUS</h1>
+            <p class="f" data-f="v2">V2</p>
+            <p class="f" data-f="lede_1">A shared space</p>
+            <p class="f" data-f="lede_2">for real work</p>
+          </header>
+          <nav class="sh-nav" aria-label="Places">
+            <a class="f" data-f="nav_ov" href="#/now">Overview</a>
+            <a class="f" data-f="nav_mi" href="#/now">Missions</a>
+            <a class="f" data-f="nav_id" href="#/now/ideas">Ideas</a>
+            <a class="f" data-f="nav_pr" href="#/shared" aria-current="page">Projects</a>
+            <span class="f nav-off" data-f="nav_co" aria-disabled="true">Control</span>
+          </nav>
+          <p class="f kick" data-f="kick_pr" aria-hidden="true">PROJECTS</p>
+          <ul class="sh-projects" id="sh-projects" aria-label="Projects"></ul>
+          <div class="sh-core">
+            <p class="f core" data-f="core" aria-hidden="true">ARCHEUS</p>
+            <p class="f" data-f="core_sub" aria-hidden="true">Shared records</p>
           </div>
-          <aside class="inspector" aria-label="Project details">
-            <p class="kicker">Project</p>
-            <h2 class="ins-title">Archeus</h2>
-            <p class="state-line st-done">Verified (fixture)</p>
+          <div class="sh-agents">
+            <p class="f" data-f="claude">Claude</p>
+            <p class="f st amb" data-f="claude_st">Planning</p>
+            <p class="f" data-f="claude_sub">Search provenance</p>
+            <p class="f" data-f="codex">Codex</p>
+            <p class="f st blu" data-f="codex_st">Verifying</p>
+            <p class="f" data-f="codex_sub">Fix date test</p>
+          </div>
+          <div class="sh-devices">
+            <p class="f" data-f="d_desk">This desktop</p>
+            <p class="f st grn" data-f="d_desk_st">Connected</p>
+            <p class="f" data-f="d_phone">Paired phone</p>
+            <p class="f st blu" data-f="d_phone_st">Recent</p>
+            <p class="f" data-f="d_other">Other people</p>
+            <p class="f st sl" data-f="d_other_st">Future contract</p>
+            <p class="f" data-f="d_other_sub">Not yet available</p>
+          </div>
+          <aside class="shared-card" aria-label="Project details">
+            <p class="f" data-f="c_kicker">PROJECT</p>
+            <h2 class="f" data-f="c_title">Archeus</h2>
+            <p class="f st grn" data-f="c_state">Verified</p>
+            <p class="f" data-f="c_lede">The evolving core of our shared space.</p>
             <div class="tabs" role="tablist" aria-label="Project views">
               <button type="button" role="tab" data-stab="overview" aria-selected="true">Overview</button>
               <button type="button" role="tab" data-stab="content" aria-selected="false">Content</button>
               <button type="button" role="tab" data-stab="relations" aria-selected="false">Relations</button>
             </div>
-            <div class="tabpanel" id="s-panel" role="tabpanel"></div>
+            <div class="kv" id="sh-kv">
+              <p class="f" data-f="k_type">Type</p><p class="f" data-f="v_type">Core system</p>
+              <p class="f" data-f="k_status">Status</p><p class="f" data-f="v_status">Verified</p>
+              <p class="f" data-f="k_updated">Updated</p><p class="f" data-f="v_updated">Today, 10:24</p>
+              <p class="f" data-f="k_items">Items</p><p class="f" data-f="v_items">248</p>
+              <p class="f" data-f="k_agents">Agents</p><p class="f" data-f="v_agents">2 active</p>
+              <p class="f" data-f="k_linked">Linked projects</p><p class="f" data-f="v_linked">0</p>
+              <p class="f" data-f="ev_head">Evidence</p>
+              <p class="f" data-f="ev_sub">Same records, device permissions apply.</p>
+              <p class="f" data-f="e_1">Project files</p><p class="f" data-f="n_1">12 items</p>
+              <p class="f" data-f="e_2">Notes</p><p class="f" data-f="n_2">34 items</p>
+              <p class="f" data-f="e_3">Agent logs</p><p class="f" data-f="n_3">28 items</p>
+              <p class="f" data-f="e_4">Build outputs</p><p class="f" data-f="n_4">18 items</p>
+              <p class="f" data-f="e_5">Related content</p><p class="f" data-f="n_5">156 items</p>
+            </div>
+            <div class="tabpanel" id="s-panel" role="tabpanel" hidden></div>
           </aside>
+          <p class="f status" data-f="status"><span class="dot" aria-hidden="true"></span>Not stopped · accepts new work</p>
+          <p class="fr-btns"><a class="btn tell" data-tell href="#/now/chat">Tell</a><button type="button" class="btn stop-btn" data-act="stop">Stop</button></p>
         </div>
+        <p class="fr-foot"><span>SIMULATED: fake data and a simulated chat. Nothing is sent to Core. CONCEPT FIXTURE.</span></p>
       </section>
-
       <section class="screen screen-phone" id="s-phone" hidden>
         <div class="phone-frame">
           <header class="phone-head">
@@ -303,6 +451,7 @@
 <script src="art/phone-2-type.js"></script>
 <script src="art/phone-3-layout.js"></script>
 <script src="art/phone-3-type.js"></script>
+<script src="layout-r10c.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
