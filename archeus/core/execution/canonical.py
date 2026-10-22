@@ -43,7 +43,7 @@ _NEVER = ('eval', 'exec', 'source', '.', 'sudo', 'su', 'env', 'xargs', 'nohup', 
           'parallel', 'wsl', 'runas', 'pkexec', 'fakeroot', 'runuser', 'unshare', 'nsenter',
           'systemd-run', 'firejail', 'proxychains', 'proxychains4', 'dbus-run-session', 'expect',
           'gdb', 'lldb', 'at', 'batch', 'start', 'call', 'ltrace', 'torsocks', 'sg', 'newgrp',
-          'cgexec', 'chronic', 'socat', 'screen', 'tmux')
+          'cgexec', 'chronic', 'socat', 'screen', 'tmux', 'iex', 'invoke-expression')
 READ_COMMANDS = ('ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which',
                  'file', 'stat', 'tree', 'dir', 'type', 'less', 'more', 'diff')
 WRITE_COMMANDS = ('rm', 'mv', 'cp', 'mkdir', 'touch', 'rmdir', 'chmod', 'ln')
@@ -111,7 +111,9 @@ _LONG_CODE = {'shell': ('--command',), 'node': ('--eval', '--print')}
 _NODE_HOOKS = ('--import', '--loader', '--experimental-loader')
 #: the option through which a tool runs the program it is given, held whatever the value names: a
 #: single-dash letter (tar -I, rsync -e, scp -S) or a long name (rsync --rsh)
-_CARRIERS = {'tar': ('I', ()), 'rsync': ('e', ('--rsh',)), 'scp': ('S', ())}
+_TAR = ('IF', ('--use-compress-program', '--info-script', '--new-volume-script', '--checkpoint-action'))
+_CARRIERS = {'tar': _TAR, 'gtar': _TAR, 'rsync': ('e', ('--rsh',)), 'scp': ('S', ()),
+             'sftp': ('D', ())}
 #: find's options that run the program after them
 _FIND_RUN = ('-exec', '-execdir', '-ok', '-okdir')
 #: sed runs code with its `e` command (`1e rm`) or with an `s///e` flag
@@ -124,8 +126,8 @@ _RUN_NAME = re.compile(r'command|exec|pager|editor|shell|eval|hook|helper|progra
 #: generic English words that are also program names (`npm run start`, `pytest .`): as an
 #: argument they do not make the call a command
 _GENERIC = frozenset(('start', 'set', 'time', 'at', 'script', 'call', 'batch', 'screen', 'export',
-                      'command', 'builtin', 'alias', 'declare', 'typeset', 'trap', 'source', 'eval',
-                      'exec', 'watch', '.'))
+                      'command', 'builtin', 'alias', 'declare', 'typeset', 'trap', 'source',
+                      'watch', '.'))
 #: the words that, as an argument of a program not in the tables, make the call unclassified: the
 #: commands the tables classify, the launchers (the table above, minus the generic words), and the
 #: commands the launchers and the usual runners name (gtimeout, prlimit, docker run, npm exec)
@@ -149,14 +151,23 @@ def _expansions(word):
             for e in _expansions(word[:m.start()] + alt + word[m.end():])]
 
 
+#: the suffixes a shell or Windows finds a program under: a glob matches a name with one of them added
+_EXTS = ('', '.exe', '.cmd', '.bat', '.com', '.ps1')
+
+
 def _glob_names_command(word):
     """True when a brace or glob word may expand to a command word: the shell makes it one before
-    the program runs (`{rm,-R}`, `r?`, `b[a]sh`). A name is matched as its pattern, so `tests/*.py`
-    and `--level` stay plain."""
+    the program runs (`{rm,-R}`, `r?`, `b[a]sh`, `{python3.11,-c}`, `{sh.exe,-c}`). A brace alternative
+    is judged as a plain word is; a glob is matched as its pattern against the names with the
+    suffixes, so `tests/*.py` and `--level` stay plain."""
     if not _GLOB.search(word):
         return False
-    return any(fnmatch.fnmatchcase(name, re.split(r'[\\/]', e)[-1].lower())
-               for e in _expansions(word) for name in _COMMAND_NAMES)
+    for e in _expansions(word):
+        base = re.split(r'[\\/]', e)[-1].lower()
+        if _names_command([e]) or any(fnmatch.fnmatchcase(name + x, base)
+                                      for name in _COMMAND_NAMES for x in _EXTS):
+            return True
+    return False
 
 
 def _names_of(word):
@@ -199,7 +210,7 @@ def _carries(prog, args):
                 return True
         elif letter:
             cluster = re.match(r'-([a-zA-Z]+)', a)
-            if cluster and letter in cluster.group(1):
+            if cluster and any(ch in cluster.group(1) for ch in letter):
                 return True
     return False
 
@@ -326,6 +337,18 @@ def _program(cmd):
     return name[:-4] if name.endswith('.exe') else name
 
 
+def _prog_name(argv0, cmd):
+    """The program's name for the tables: argv's basename, unless argv lost the backslashes of a bare
+    Windows path (`C:\\Windows\\System32\\tar.exe` reaches argv as `C:WindowsSystem32tar.exe`) and
+    only the raw first word's basename is a name the tables know."""
+    base = os.path.basename(argv0).lower()
+    base = base[:-4] if base.endswith('.exe') else base
+    raw = _program(cmd)
+    if _norm(base) not in _COMMAND_NAMES and _norm(raw) in _COMMAND_NAMES:
+        return raw
+    return base
+
+
 #: the payload rule, as data (P21 D6). gate §12 carries the same rule as text: `classifier_rules()`
 #: renders it, and a test fails when the two differ.
 #: cmd takes code from /c, /k and /r, attached or not, in any case (its arguments are all its own)
@@ -343,7 +366,9 @@ def classifier_rules():
                  'any other program after one of them is unclassified')
     lines.append('a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [')
     lines.append('a program not in the tables, given an argument with an unquoted {, }, *, ? or [ that '
-                 'may expand to one of the command words below (braces expanded, the glob matched by name)')
+                 'may expand to one of the command words below: a brace alternative is judged as a plain word '
+                 'is, and a glob is matched as its pattern against each name with .exe, .cmd, .bat, .com or '
+                 '.ps1 added or not')
     lines.append('a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a '
                  'carriage return; a $ or a backtick anywhere')
     lines.append('git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with '
@@ -354,12 +379,14 @@ def classifier_rules():
                  + ', or a family name (below)')
     lines.append('an option, or a key=value word, whose name is pre, pre-glob, or contains command, '
                  'exec, pager, editor, shell, eval, hook, helper or program: for any program but git')
-    lines.append('carrier options, held whatever the value names: tar -I (and its cluster letter I), '
-                 'rsync -e (letter e) and --rsh, scp -S (letter S)')
+    lines.append('carrier options, held whatever the value names: tar, gtar -I or -F (letters I and F), '
+                 '--use-compress-program, --info-script, --new-volume-script, --checkpoint-action; rsync -e '
+                 '(letter e) and --rsh; scp -S (letter S); sftp -D (letter D)')
     lines.append('less, more, most, pg: an argument starting with + or containing !; man: an argument '
                  'starting with -P')
     lines.append('a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 '
-                 'and a version suffix (python3.11, perl5.36) are dropped')
+                 'and a version suffix (python3.11, perl5.36) are dropped; a bare Windows path '
+                 '(C:\\Windows\\System32\\tar.exe) is named by its basename')
     lines.append('families (closed): shell: ' + ', '.join(sorted(_SHELL_NAMES)) + '; pwsh: pwsh, powershell; '
                  'cmd; python: ' + ', '.join(sorted(_PY_NAMES)) + '; node: ' + ', '.join(sorted(_NODE_NAMES))
                  + '; perl; ruby; php; sed: sed, gsed; code: any name ending awk, and '
@@ -380,6 +407,9 @@ def classifier_rules():
                  + ': unclassified')
     lines.append('git push: destructive with --force, --force-with-lease, --delete, --mirror, a '
                  'single-dash word holding f or d (-fu), or a + before a ref')
+    lines.append('git clone, fetch, pull, ls-remote, push: unclassified with -c, --config or --config-env '
+                 'naming a config key that contains one of the words above, or with --upload-pack or '
+                 '--receive-pack')
     lines.append('send flags (external_comm, not web): the names ' + ', '.join(_SENDS)
                  + '; a long flag starting with --data, --form, --post- or --body-; a short -d, '
                  '-F or -T, attached or not; -X or --request with a method other than GET (as the '
@@ -530,9 +560,7 @@ def command(cmd, ctx):
         return [_unclassified('shell', (cmd,))], True
     if not argv:
         return [_unclassified('command')], True
-    prog = os.path.basename(argv[0]).lower()
-    if prog.endswith('.exe'):
-        prog = prog[:-4]
+    prog = _prog_name(argv[0], cmd)
     args = argv[1:]
     # NAME=value cmd: the name is no program, and its value may be a secret (never a target)
     if '=' in argv[0]:
@@ -613,7 +641,25 @@ _GIT_FLAG = ('--no-pager', '-p', '--paginate', '-P', '--no-paginate', '--bare',
 #: an editor, a *command); a config value is never judged by its text
 _GIT_CONFIG_RUNS = ('alias', 'pager', 'editor', 'command', 'helper', 'hook', 'external', 'textconv',
                     'fsmonitor', 'askpass', 'program', 'clean', 'smudge', 'process', 'driver',
-                    'gitproxy')
+                    'gitproxy', 'cmd', 'filter', 'browser', 'uploadpack', 'receivepack')
+
+
+def _fetch_runs(rest):
+    """A clone, fetch, pull, ls-remote or push that runs a command: a config key of the list given
+    with -c, --config or --config-env (the key is judged as `git config` judges it, the value is
+    not), or --upload-pack, --receive-pack."""
+    for i, a in enumerate(rest):
+        name, eq, val = a.partition('=')
+        if name in ('-c', '--config', '--config-env'):
+            value = val if eq else (rest[i + 1] if i + 1 < len(rest) else '')
+            if any(k in value.partition('=')[0].lower() for k in _GIT_CONFIG_RUNS):
+                return True
+        elif a.startswith('-c') and not a.startswith('--') and any(
+                k in a[2:].partition('=')[0].lower() for k in _GIT_CONFIG_RUNS):
+            return True
+        if name in ('--upload-pack', '--receive-pack'):
+            return True
+    return False
 
 
 def _git_split(args):
@@ -655,6 +701,8 @@ def _git_actions(sub, rest, argv, ctx):
     if sub == 'rebase' and any(a.startswith(('-x', '--exec')) for a in rest):
         return None
     if sub == 'config' and any(k in a.lower() for a in rest for k in _GIT_CONFIG_RUNS):
+        return None
+    if sub in ('clone', 'fetch', 'pull', 'ls-remote', 'push') and _fetch_runs(rest):
         return None
     if sub == 'push':
         pos = [a for a in rest if not a.startswith('-')]

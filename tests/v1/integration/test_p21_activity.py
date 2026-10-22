@@ -590,6 +590,48 @@ def test_E24_a_force_push_is_destructive_as_the_long_flag_is(cmd, want, tmp_path
     assert unclassified is False and want in [a.action_class for a in acts], (cmd, acts)
 
 
+#: round 9: the same rules reached by a brace alternative, a suffixed name, a bare Windows path, the
+#: tar carriers, git clone's own config, the eval and PowerShell forms
+@pytest.mark.parametrize('cmd', [
+    'gtimeout 5 {python3.11,-c,x}', 'gtimeout 5 {sh.exe,-c,x}', 'gtimeout 5 {cmd.exe,/c,x}',
+    'mytool {rm.exe,-R,build}', 'mytool {awk,x}', 'gtimeout 5 {bash.exe,-c,x}',
+    'gtimeout 5 {node.exe,-e,x}', 'gtimeout 5 {pwsh.exe,-c,x}', 'gtimeout 5 {python3,-c,"import os"}',
+    'gtimeout 5 {RM.EXE,-R,build}', 'gtimeout 5 /bin/{rm.exe,-R}', 'mytool {gawk,x}',
+    r'C:\Windows\System32\tar.exe -I mytool -cf a b', r'C:\Windows\System32\rsync.exe -e mytool a host:b',
+    r'C:\Windows\System32\scp.exe -S mytool a host:b',
+    r'"C:\Program Files\Git\usr\bin\tar.exe" -I mytool -cf a b',
+    'tar -F mytool -cf a b', 'tar --info-script=mytool -cf a b', 'tar --new-volume-script mytool -cf a b',
+    'tar --checkpoint=1 --checkpoint-action=exec=mytool -cf a b', 'tar --checkpoint-action=exec=mytool -cf a b',
+    'gtar -I mytool -cf a b', 'sftp -D mytool host',
+    'git clone -c core.sshCommand="rm -R x" git@h.example:r',
+    'git clone --config core.sshCommand="rm -R x" git@h.example:r',
+    'git fetch -c core.sshCommand=x origin', 'git pull -ccore.sshCommand=x',
+    'git clone --upload-pack="rm -R x" h.example:r', 'git clone -c remote.origin.uploadpack=x h.example:r',
+    'mytool sh.*', 'mytool rm.e?e',
+    'git config mergetool.x.cmd "rm -R x"', 'git config difftool.x.cmd "rm -R x"',
+    'git config browser.x.cmd "rm -R x"', 'git config interactive.diffFilter "rm -R x"',
+    'git config web.browser "rm -R x"',
+    'iex "Remove-Item -Recurse build"', "Invoke-Expression 'Remove-Item -Recurse build'",
+    "iex 'Get-ChildItem'", 'mywrap eval "Remove-Item -Recurse x"', 'mywrap exec "Remove-Item x"',
+])
+def test_E25_round_nine_forms_are_held(cmd, tmp_path):
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    (r'C:\Windows\System32\rm.exe -R build', 'destructive'), (r'r\m -R build', 'destructive'),
+    ('git clone https://h.example/r.git', 'web'), ('git fetch origin', 'web'),
+    ('git push -n origin main', 'git_push'), ('gtimeout 5 tests/*.py', 'exec'),
+    ('git status', 'read'), ('tar -cf a.tar b', 'exec'),
+])
+def test_E25_the_plain_forms_keep_their_class(cmd, want, tmp_path):
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
+    assert unclassified is False and want in [a.action_class for a in acts], (cmd, acts)
+
+
 def test_gate_classifier_block_matches_the_code():
     """gate §12 states the payload and send rules in a block; it must be the code's
     `classifier_rules()`, line for line, so the doc cannot drift from the classifier."""

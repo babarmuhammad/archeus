@@ -512,17 +512,17 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   Rules, as they read against f483f87:
 
 <!-- classifier-rules:begin -->
-- unclassified: a first word with = (NAME=value); the programs ., alias, at, batch, builtin, busybox, call, cgexec, chronic, chroot, chrt, command, dbus-run-session, declare, doas, env, eval, exec, expect, export, fakeroot, firejail, flock, gdb, ionice, lldb, ltrace, newgrp, nice, nohup, nsenter, parallel, pkexec, proxychains, proxychains4, runas, runuser, screen, script, set, setarch, setsid, sg, socat, source, start, stdbuf, strace, su, sudo, systemd-run, taskset, time, timeout, tmux, torsocks, trap, typeset, unbuffer, unshare, watch, wsl, xargs
+- unclassified: a first word with = (NAME=value); the programs ., alias, at, batch, builtin, busybox, call, cgexec, chronic, chroot, chrt, command, dbus-run-session, declare, doas, env, eval, exec, expect, export, fakeroot, firejail, flock, gdb, iex, invoke-expression, ionice, lldb, ltrace, newgrp, nice, nohup, nsenter, parallel, pkexec, proxychains, proxychains4, runas, runuser, screen, script, set, setarch, setsid, sg, socat, source, start, stdbuf, strace, su, sudo, systemd-run, taskset, time, timeout, tmux, torsocks, trap, typeset, unbuffer, unshare, watch, wsl, xargs
 - find: -delete is destructive; -exec, -execdir, -ok or -okdir running rm is destructive; any other program after one of them is unclassified
 - a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [
-- a program not in the tables, given an argument with an unquoted {, }, *, ? or [ that may expand to one of the command words below (braces expanded, the glob matched by name)
+- a program not in the tables, given an argument with an unquoted {, }, *, ? or [ that may expand to one of the command words below: a brace alternative is judged as a plain word is, and a glob is matched as its pattern against each name with .exe, .cmd, .bat, .com or .ps1 added or not
 - a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a carriage return; a $ or a backtick anywhere
 - git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with their value; -c, --config-env, and any other global option not in the tables, make the call unclassified
-- a program not in the tables, given an argument that after a directory, a quote, leading dashes or = is one of: base64, brew, busybox, caffeinate, cargo, cat, cgexec, chmod, choco, chronic, chroot, chrt, cp, curl, dbus-run-session, diff, dir, doas, docker, echo, env, expect, fakeroot, file, find, firejail, flock, gdb, gem, gh, git, go, grep, gtimeout, head, helm, hyperfine, ionice, kubectl, less, lldb, ln, ls, ltrace, make, man, mkdir, more, mv, newgrp, nice, nohup, npm, npx, nsenter, numactl, parallel, pip, pip3, pkexec, pnpm, podman, prlimit, proxychains, proxychains4, pwd, rg, rm, rmdir, rsync, runas, runcon, runuser, scp, setarch, setpriv, setsid, sftp, sg, socat, sort, ssh, stat, stdbuf, strace, su, sudo, systemd-run, tail, tar, taskset, terraform, timeout, tmux, torsocks, touch, tree, type, unbuffer, unshare, uv, vercel, wc, wget, which, winget, wsl, xargs, yarn, or a family name (below)
+- a program not in the tables, given an argument that after a directory, a quote, leading dashes or = is one of: base64, brew, busybox, caffeinate, cargo, cat, cgexec, chmod, choco, chronic, chroot, chrt, cp, curl, dbus-run-session, diff, dir, doas, docker, echo, env, eval, exec, expect, fakeroot, file, find, firejail, flock, gdb, gem, gh, git, go, grep, gtimeout, head, helm, hyperfine, iex, invoke-expression, ionice, kubectl, less, lldb, ln, ls, ltrace, make, man, mkdir, more, mv, newgrp, nice, nohup, npm, npx, nsenter, numactl, parallel, pip, pip3, pkexec, pnpm, podman, prlimit, proxychains, proxychains4, pwd, rg, rm, rmdir, rsync, runas, runcon, runuser, scp, setarch, setpriv, setsid, sftp, sg, socat, sort, ssh, stat, stdbuf, strace, su, sudo, systemd-run, tail, tar, taskset, terraform, timeout, tmux, torsocks, touch, tree, type, unbuffer, unshare, uv, vercel, wc, wget, which, winget, wsl, xargs, yarn, or a family name (below)
 - an option, or a key=value word, whose name is pre, pre-glob, or contains command, exec, pager, editor, shell, eval, hook, helper or program: for any program but git
-- carrier options, held whatever the value names: tar -I (and its cluster letter I), rsync -e (letter e) and --rsh, scp -S (letter S)
+- carrier options, held whatever the value names: tar, gtar -I or -F (letters I and F), --use-compress-program, --info-script, --new-volume-script, --checkpoint-action; rsync -e (letter e) and --rsh; scp -S (letter S); sftp -D (letter D)
 - less, more, most, pg: an argument starting with + or containing !; man: an argument starting with -P
-- a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 and a version suffix (python3.11, perl5.36) are dropped
+- a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 and a version suffix (python3.11, perl5.36) are dropped; a bare Windows path (C:\Windows\System32\tar.exe) is named by its basename
 - families (closed): shell: ash, bash, csh, dash, elvish, fish, ksh, mksh, nu, rbash, sash, sh, tcsh, xonsh, zsh; pwsh: pwsh, powershell; cmd; python: py, pypy, python, pythonw, pyw; node: node, nodejs; perl; ruby; php; sed: sed, gsed; code: any name ending awk, and bun, deno, emacs, ex, expect, groovy, gvim, jshell, julia, lua, luajit, nvim, osascript, rscript, rvim, tclsh, vi, view, vim, vimdiff, wish (code is always unclassified)
 - anywhere in the arguments: -c, -e or /c as whole words
 - shell family: a single-dash word anywhere in the arguments holding one of cCeE (a glued value counts); --command
@@ -531,8 +531,9 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 - sed: an e command (1e rm) or an s///e flag
 - cmd: an argument with /c, /k, /r anywhere, in any case
 - powershell, pwsh: an argument whose first letter is c or e (a glued value counts: -cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full; the dash may be a hyphen, an en dash, an em dash or a horizontal bar
-- git: rebase with -x or --exec; config with a key containing alias, pager, editor, command, helper, hook, external, textconv, fsmonitor, askpass, program, clean, smudge, process, driver, gitproxy: unclassified
+- git: rebase with -x or --exec; config with a key containing alias, pager, editor, command, helper, hook, external, textconv, fsmonitor, askpass, program, clean, smudge, process, driver, gitproxy, cmd, filter, browser, uploadpack, receivepack: unclassified
 - git push: destructive with --force, --force-with-lease, --delete, --mirror, a single-dash word holding f or d (-fu), or a + before a ref
+- git clone, fetch, pull, ls-remote, push: unclassified with -c, --config or --config-env naming a config key that contains one of the words above, or with --upload-pack or --receive-pack
 - send flags (external_comm, not web): the names -d, -F, -T, --data, --data-raw, --data-binary, --data-urlencode, --data-ascii, --upload-file, --form, --form-string, --json, --post-data, --post-file, --body-data, --body-file; a long flag starting with --data, --form, --post- or --body-; a short -d, -F or -T, attached or not; -X or --request with a method other than GET (as the next word, attached, or with =)
 <!-- classifier-rules:end -->
 
@@ -708,6 +709,15 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   `hunterpassword.example`; the token-like rule needs a digit, owner call). An option value that names a
   program outside the tables and is not a carrier (`zip -TT mytool`, `fzf --preview mytool`) is a plain exec.
   `git push -fu` and `+refspec` were not destructive before round 8 and are now (see (7)).
+- Known residuals (frozen at round 9; each is fail-closed or an owner decision). Interpreters outside the
+  closed families (`R -e`, `ipython -c`, `ocaml -e`, `racket -e`, `irb -e`): the family set is closed by
+  design. zip -TT and fzf --preview option values: not carriers (owner decision). A pure-letter host label
+  (`hunterpassword.example`): the token-like rule needs a digit (owner call). Glob over-holds (`pytest tests/*`
+  is held). A glob that writes a version (`python3.?`) is matched as written. find -fprint and git log --output
+  write a file and are read (write options on read commands, owner scope). --no-replace-objects is an unknown
+  global option, so it is unclassified (over-hold; the store-pin scan forbids the literal). A module file named
+  by node --import or --loader stays plain exec. PowerShell cmdlets other than iex and Invoke-Expression are not
+  judged. Other tools that run a program they are given are not carriers.
 - Decoy row (review of 025c812, R6; no code change). The E03 expectation row is test_p21_activity.py
   line 120, `curl --proxy-header http://decoy.example https://h.example/x`, expecting ('web', 'curl').
   The planted-secret HOSTILE row that replaced the original decoy HOSTILE row is line 221,
