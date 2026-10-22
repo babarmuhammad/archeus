@@ -4,6 +4,66 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## Polish round (v2/polish, 2026-10-22): Codex final-review fix list, partial
+
+Harness: `tools/polish_measure.py` (repo root). It renders each surface at its master size in headless Chromium (reduced motion,
+fonts awaited, full resolution, no blur) and writes mean absolute RGB difference (0 to 255) and the share above 24. The
+harness reproduces the coordinator's "before" numbers for all eight surfaces (desktop 4.87, replay 4.86, mission 4.88,
+shared 3.27, terminal 12.05, phone1 4.58, phone2 7.98, phone3 13.24), so the before and after columns use one method.
+
+| Surface | Before (merged 3ce4be9) | After (this round) | Note |
+|---|---|---|---|
+| Desktop Overview 1296 x 729 | 4.87 | 4.93 | up 0.06, open (see residuals) |
+| Replay 1440 x 810 | 4.86 | 5.00 | up 0.14, open (rail rebuilt, not yet aligned) |
+| Mission 1244 x 829 | 4.88 | 5.05 | up 0.17, open (strings fixed, weight not) |
+| Shared 1382 x 922 | 3.27 | 3.21 | down |
+| Terminal 1600 x 900, real route | 12.05 | 2.99 | down: the shell is off the 1600 x 900 frame |
+| Terminal, SVG only (branch method) | 2.99 | 2.99 | unchanged |
+| Phone Overview 804 x 1373 | 4.58 | 4.39 | down (project names no longer drawn) |
+| Phone decision 724 x 1573 | 7.98 | 8.00 | up 0.02, open (Back control offsets) |
+| Phone chat 724 x 1573 | 13.24 | 12.19 | down |
+
+Owner decisions applied (coordinator D1 to D5):
+- D1 Terminal: on `#/terminal` (desktop, 881 px and up) the body gets `frame-terminal`. The app rail and the page header are
+  hidden, the heading is visually hidden, and the art is 1600 x 900 at the top left. The SIMULATED disclosure, the size buttons
+  and a small surface switcher sit in a strip below the art. Narrower desktop widths scroll sideways rather than scale.
+- D2 Rail map, per surface, following each master: Overview (`#/now`), Missions (`#/mission/m-date`), Ideas (`#/now/ideas`),
+  Control (`#/terminal`, the terminal is the control surface), Projects (`#/shared`). Replay has no rail item in any master; it is
+  reached from the mission detail ("Open replay") and from the Replay rail item on the Overview. The Replay rail draws the
+  master's order: Overview, Missions, Ideas, Projects, Control, divider, PROJECTS with Archeus and Notes. The masters draw Projects
+  before Control, so the rail follows the masters (the owner's written list had Control first). The Shared rail lists Control as a
+  live link, and its PROJECTS list shows Archeus only (Notes and Ideas are not projects there). The Overview keeps its own
+  three-item rail (Now, Projects, Replay), which is what its master draws.
+- D3 Phone Overview: the Archeus, Notes and Ideas names are not drawn. They stay in the accessibility tree (SVG text at zero opacity).
+- D4 Phone decision and chat: the Back control is visible again (master chevron and label). No home indicator is drawn (OS chrome).
+- D5 Phone chat speaker pill reads "General". Its accessible name is "General answer, not saved to project memory".
+- Fix 8 (mission strings): phase "Verifying" (the phase list keeps "Verify"), results caption "Test execution / outputs and status",
+  agent "CODEX" over "Execution", current task "Execute the date test suite on branch fix/date-test" / "and collect the results."
+- Fix 2 (composer): the browser outline on the chat input is off; the focus is an inset rounded ring on the chat bar.
+- Fix 14 (Shared): Notes removed from the PROJECTS list; Control is a live link.
+
+Checks: `check.mjs` extended for the terminal full-bleed, the rails per surface, the Back control, the Overview names, the General
+pill, the mission strings and the composer ring. Cache name moved to `archeus-v2-proto-polish` because the shell files changed.
+
+Not done in this round (fix list items, with reasons):
+- 1, 5, 10: text weight. The mission body and agent text still render heavier than the master. The computed weight source was
+  not located (the frame `.f` rule sets 400 and no later rule was found). Needs a computed-style probe.
+- 3 (action card width), 4 (headline spacing), 16, 17, 19 (sheet material, title weight, amber button, sheet ground), 18 (bubble
+  anchors): not measured or changed. Each needs a crop and a before and after number.
+- 6 (replay rail): the rail items are in the master order, but the icons, label rows and the PROJECTS glyphs are not aligned to the
+  master, which is the main cause of the replay rise.
+- 9 (mission agent mark), 11 (anchor shifts), 12, 13 (replay chips and top controls), 15 (phone header tracking), 20 (terminal
+  selection fill), 21 (halos), 22 (polish sweep): not done.
+- The phone decision Back offsets were tuned once from a crop, not iterated. Its underline (an anchor default) is removed.
+
+Residuals and their reasons:
+- Desktop, replay, mission and phone decision rose slightly: the changed text and rail are close to the master but not aligned;
+  the rise is listed rather than hidden. Stop rule not met for these four surfaces.
+- Measurement limits (not chased): glyph design of the vendored fonts against the concept originals, sub-pixel rasterisation,
+  device pixel ratio effects on the desktop frames, and canvas animation state (the hub and desktop mesh differ run to run by a few
+  tenths).
+- Not verified: keyboard focus on the terminal switcher, mobile keyboard behaviour, reduced-motion on the hub mesh.
+
 ## Merge round (v2/merged, 2026-10-22): five branches in one prototype
 
 Base: v2/living-space 9d72df5 (worktree D:\archeus-v2-merged). Merged in order, each with `git merge --no-ff`: v2/r10c-desktop e22f280 (merge 8687e57), v2/r10c-replay b3a5e2f (1430dea), v2/r10c-terminal c86c049 (f64930e), v2/r10c-mission f257efc (9697d85). Then the shell pass commit (see its message).

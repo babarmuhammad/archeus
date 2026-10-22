@@ -109,7 +109,7 @@ check(/:focus-visible/.test(css), 'no visible focus rule');
 check(/PROTOTYPE · fake data/.test(html), 'prototype label missing');
 check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated tag missing');
 check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
-check(/data-promote/.test(js) && /gen-tag">General<\/span> not project memory/.test(js), 'general thread or promote control missing');
+check(/data-promote/.test(js) && /gen-tag" aria-hidden="true">General<\/span><span class=\"sr-only\">General answer, not saved to project memory/.test(js), 'general thread or promote control missing');
 check(/approve-confirm/.test(js) && /plan-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision screen missing');
 check(/nocolor/.test(js) && /term\.color \&\& cls/.test(js), 'terminal colour or NO_COLOR handling missing');
 const termStart = js.indexOf('Terminal: the same fixture');
@@ -126,7 +126,7 @@ check(/> Tell Archeus\.\.\./.test(termJs) && /'Why:'/.test(termJs) && /\[Enter\]
 check(/plainOverview/.test(termJs) && /\[?&\]nocolor/.test(js), 'plain-line mode or ?nocolor missing');
 check(/\.term-svg \.strip/.test(css) && /Roboto Mono/.test(css) && /fonts\/RobotoMono-wght\.ttf/.test(css), 'terminal strip or vendored mono missing');
 check(/\.term-svg text\.amber/.test(css) && /\.term-svg text\.blue/.test(css), 'terminal state colour rules missing');
-check(/Codex · execution/.test(js) && /openFeed/.test(js), 'phone Codex label or chat open-at-card missing');
+check(/'CODEX'/.test(js) && /a_role/.test(js) && /openFeed/.test(js), 'phone Codex label or chat open-at-card missing');
 check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
 for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you', 'Reconcile', 'Not every external effect can be reversed']) {
   check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);
@@ -238,9 +238,9 @@ check(/id="ph2-chat"/.test(html) && /data-act="open-decision"/.test(html) && /op
 check(/approve-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision confirm missing after Open decision');
 check(/ph3-back/.test(html) && /setPhoneFrame\(3\)/.test(js) && /What does exit code 137 mean\?/.test(js), 'chat sheet frame, Back or seeded general thread missing');
 check(/data-promote/.test(js) && /Promote to project memory/.test(js), 'promote switch missing');
-check(/gen-tag">General<\/span> not project memory/.test(js), 'general tag missing');
+check(/gen-tag" aria-hidden="true">General<\/span><span class=\"sr-only\">General answer, not saved to project memory/.test(js), 'general tag missing');
 check(/ov-glow/.test(js) && /feGaussianBlur/.test(js), 'soft glow filters missing');
-check(/archeus-v2-proto-m4/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-m4');
+check(/archeus-v2-proto-polish/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-polish');
 check(/art\/phone-2-base\.webp/.test(sw) && /art\/phone-3-base\.webp/.test(sw), 'service worker does not cache the phone-2 and phone-3 art');
 check(/art\/phone-2-layout\.js/.test(html) && /art\/phone-3-type\.js/.test(html), 'index.html does not load the phone-2 and phone-3 data');
 
@@ -287,7 +287,7 @@ for (const [frame, sec] of [['mission', 'm-frame'], ['shared', 'sh-frame']]) {
   for (const [id, v] of Object.entries(table)) check(Number.isFinite(v.x) && Number.isFinite(v.y), `${frame} ${id} has no position`);
 }
 check(/fitFrame/.test(js) && /--k/.test(css), 'frames do not scale to the window');
-check(/archeus-v2-proto-m4/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-m4 and cache the frame assets');
+check(/archeus-v2-proto-polish/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-polish and cache the frame assets');
 
 // Shell pass (v2/merged): one font stack, one plum ground, every surface reachable from the rail, hash routing intact.
 check(!/Archeus Serif/.test(css) && !/Segoe UI Variable/.test(css.split('\n').filter((l) => /--(serif|sans):/.test(l)).join('\n')), 'a second serif or sans stack is still declared');
@@ -301,6 +301,23 @@ check(/--bg:\s*#0C0811/.test(css) && /html,\s*body\s*\{[^}]*background:\s*var\(-
 for (const nav of ['now', 'mission', 'shared', 'replay', 'terminal']) check(html.includes(`data-nav="${nav}"`), `rail has no ${nav} link`);
 for (const sec of ['s-now', 's-mission', 's-shared', 's-replay', 's-terminal']) check(html.includes(`id="${sec}"`), `surface ${sec} is missing`);
 check(/window\.addEventListener\('hashchange', route\)/.test(js) && /function route\(\)/.test(js), 'hash routing is not wired');
+
+// Polish round (v2/polish): terminal full-bleed (D1), per-surface rails (D2), Back control (D4), no visible phone labels (D3),
+// General speaker pill (D5), mission strings (fix 8), composer focus ring (fix 2).
+check(/classList\.toggle\('frame-terminal', name === 'terminal'/.test(js) && /body\.frame-terminal \.rail/.test(css), 'terminal full-bleed class or rail hide rule missing');
+check(/body\.frame-terminal \.term-wrap \{[^}]*width: 1600px[^}]*height: 900px/.test(css), 'terminal art is not 1600 x 900 in the frame');
+check(/<nav class="surface-switch" aria-label="Prototype surfaces">/.test(html) && /href="#\/terminal" aria-current="page">Terminal/.test(html), 'terminal surface switcher missing');
+check(/body\.frame-terminal \.surface-switch \{/.test(css) && /body:not\(\.frame-replay\) \.rp-x \{ display: none; \}/.test(css), 'surface switcher or replay-only rail items are not hidden elsewhere');
+for (const nav of ['mission', 'ideas', 'terminal']) check(html.includes(`data-nav="${nav}" class="rp-x"`), `replay rail item ${nav} missing`);
+check(/body\.frame-replay \.places a\[data-nav="shared"\] \{ top: 227px; \}/.test(css) && /body\.frame-replay \.places a\[data-nav="replay"\] \{ display: none; \}/.test(css), 'replay rail order does not follow the master');
+check(/body\.frame-replay #rail-projects li:nth-child\(2\) \{ top: 427px; \}/.test(css), 'replay PROJECTS list (Archeus, Notes) missing');
+check(/data-f="nav_co" href="#\/terminal">Control<\/a>/.test(html) && /data-f="nav_mi" href="#\/mission\/m-date">Missions/.test(html), 'shared rail Control or Missions link missing');
+check(/projects\.filter\(function \(p\) \{ return p\.id === 'archeus'; \}\)/.test(js) && /p\.id !== 'ideas'/.test(js), 'shared PROJECTS must list Archeus only and the replay list must drop Ideas');
+check(/ov-name-sr/.test(js) && /\.ov-art \.ov-name-sr \{ opacity: 0; \}/.test(css) && /OV_NAMES = \[/.test(js), 'phone Overview project names must stay in the accessibility tree and not be drawn');
+check(/class="ph2-back"/.test(html) && /\.ph2-back::before/.test(css) && /\.ph2-back,[^{]*\{ color: #B2B4C0/.test(css), 'phone decision Back control missing its label or chevron');
+check(/class="ph3-back"/.test(html) && /#s-now\[data-frame="3"\] \.ph3-back::before/.test(css), 'phone chat Back control missing its label or chevron');
+check(/'Verifying'/.test(js) && /Execute the date test suite on branch fix\/date-test/.test(js) && /outputs and status/.test(html) && /data-f="a_role"/.test(html), 'mission phase, task or results strings differ from the master');
+check(/#s-now \.chatbar input:focus, #s-now \.chatbar input:focus-visible \{ outline: 0; \}/.test(css) && /chatbar:focus-within \{ box-shadow: inset/.test(css), 'composer focus must be an inset ring, not the browser outline');
 
 if (failures.length) {
   console.error('FAIL');

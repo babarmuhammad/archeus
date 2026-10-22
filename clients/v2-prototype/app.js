@@ -745,9 +745,9 @@
         (id === 'm-index' ? ovDiamond(b, OV_IV, 3) : ovStar(b, OV_IV)) + '</g>';
     });
 
-    // Project names: small grey labels beside their hulls, on empty concept space (no line within 14 units).
+    // Project names stay in the accessibility tree; the concept has no visible labels here (round polish, D3).
     out += OV_NAMES.map(function (n) {
-      return '<text class="ov-sans ov-name" x="' + n.x + '" y="' + n.y + '" font-size="24"' + (n.centre ? ' text-anchor="middle"' : '') + '>' + esc(n.text) + '</text>';
+      return '<text class="ov-sans ov-name ov-name-sr" x="' + n.x + '" y="' + n.y + '" font-size="24"' + (n.centre ? ' text-anchor="middle"' : '') + '>' + esc(n.text) + '</text>';
     }).join('');
 
     var c = L.shapes.chip, cw = c[2] - c[0], cx0 = c[0];
@@ -1742,12 +1742,13 @@
   }
 
   function renderRail() {
-    $('#rail-projects').innerHTML = projects.map(function (p) {
+    // Ideas is a rail destination in the masters, not a project; the Shared master lists Archeus only.
+    $('#rail-projects').innerHTML = projects.filter(function (p) { return p.id !== 'ideas'; }).map(function (p) {
       var n = missions.filter(function (m) { return m.project === p.id; }).length;
       return '<li><a href="#/now/' + p.id + '" data-proj="' + p.id + '" style="--hue:' + p.hue + '">' +
         '<span class="pdot" aria-hidden="true"></span>' + esc(p.name) + '<span class="cnt">' + n + '</span></a></li>';
     }).join('');
-    $('#sh-projects').innerHTML = projects.map(function (p) {
+    $('#sh-projects').innerHTML = projects.filter(function (p) { return p.id === 'archeus'; }).map(function (p) {
       return '<li><a href="#/now/' + p.id + '"' + (p.id === 'archeus' ? ' aria-current="page"' : '') + '>' + esc(p.name) + '</a></li>';
     }).join('');
     $$('#rail-projects a').forEach(function (a) {
@@ -1846,12 +1847,13 @@
 
   function renderMissionPanel() {
     var m = find(missionShown), sec = $('#s-mission'), p = plans[m.id];
-    fset('p_name', m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : PHASES[m.phase]);
-    fset('a_name', m.exec ? 'Codex · execution' : 'No agent recorded');
+    fset('p_name', m.phase < 0 ? 'Not started' : m.phase === 6 ? 'Complete' : m.phase === 4 ? 'Verifying' : PHASES[m.phase]);
+    fset('a_name', m.exec ? 'CODEX' : 'No agent recorded');
+    fset('a_role', m.exec ? 'Execution' : '');
     fset('a_sub', m.exec ? 'Runs checks, collects evidence, reports results.' : 'Nothing is running for this mission.');
     fset('t_name', m.taskName || m.task);
     var parts = m.taskName ? m.task.split(' and ') : [];
-    fset('t_s1', parts[0] || '');
+    fset('t_s1', m.id === 'm-date' ? 'Execute the date test suite on branch fix/date-test' : parts[0] || '');
     fset('t_s2', parts[1] ? 'and ' + parts[1] : '');
     fset('r_name', m.latest);
     fset('r_sub', m.latestSub || '');
@@ -2275,7 +2277,7 @@
 
   // Not about a project: its own thread, never project memory unless the owner promotes it.
   function general(body) {
-    addMsg('gen', '<p class="gen-k"><span class="gen-tag">General</span> not project memory</p><p>' + esc(body) + '</p>' +
+    addMsg('gen', '<p class="gen-k"><span class="gen-tag" aria-hidden="true">General</span><span class="sr-only">General answer, not saved to project memory</span></p><p>' + esc(body) + '</p>' +
       '<label class="promote"><span>Promote to project memory</span><input type="checkbox" data-promote aria-describedby="promote-note"></label>' +
       '<span class="sr-only" id="promote-note">Off: this answer stays in the general thread.</span>');
   }
@@ -2954,6 +2956,7 @@
     document.body.classList.toggle('frame-now', name === 'now' && !isNarrow());
     document.body.classList.toggle('frame-mission', name === 'mission');
     document.body.classList.toggle('frame-shared', name === 'shared');
+    document.body.classList.toggle('frame-terminal', name === 'terminal' && !isNarrow());
     fitFrame();
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });

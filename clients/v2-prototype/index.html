@@ -20,6 +20,9 @@
       <a href="#/now" data-nav="now"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 9.2 10 3l7 6.2V17H12.5v-4.6h-5V17H3z"/></svg><span>Now</span></a>
       <a href="#/shared" data-nav="shared"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2.8 16.4 6.5v7L10 17.2 3.6 13.5v-7z"/><path d="M3.6 6.5 10 10l6.4-3.5M10 10v7.2"/></svg><span>Projects</span></a>
       <a href="#/replay/m-date" data-nav="replay"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M4.2 10a5.8 5.8 0 1 0 1.7-4.1"/><path d="M4 3.4v3h3"/><path d="M10 7.4v3l2 1.2"/></svg><span>Replay</span></a>
+      <a href="#/mission/m-date" data-nav="mission" class="rp-x"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="6.6"/><circle cx="10" cy="10" r="2.4"/></svg><span>Missions</span></a>
+      <a href="#/now/ideas" data-nav="ideas" class="rp-x"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M7.4 13.6a5.2 5.2 0 1 1 5.2 0v1.2H7.4z"/><path d="M8.2 17.3h3.6"/></svg><span>Ideas</span></a>
+      <a href="#/terminal" data-nav="terminal" class="rp-x"><svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 14h14"/><circle cx="7.5" cy="6" r="1.8"/><circle cx="12.5" cy="14" r="1.8"/></svg><span>Control</span></a>
       <details class="more-d">
         <summary>More</summary>
         <ul>
@@ -172,7 +175,7 @@
           <p class="f" data-f="suite_s2" aria-hidden="true">and inputs.</p>
           <p class="f" data-f="res_title" aria-hidden="true">Results</p>
           <p class="f" data-f="res_s1" aria-hidden="true">Test execution</p>
-          <p class="f" data-f="res_s2" aria-hidden="true">outputs</p>
+          <p class="f" data-f="res_s2" aria-hidden="true">outputs and status</p>
           <p class="f status" data-f="status"><span class="dot" aria-hidden="true"></span>Not stopped · accepts new work</p>
           <aside class="mission-card" aria-label="Mission details">
             <p class="f" data-f="m_kicker">MISSION</p>
@@ -188,7 +191,8 @@
             <p class="f" data-f="p_name">Verifying</p>
             <p class="f" data-f="p_line">Check results, confirm behaviour, and close the fix.</p>
             <p class="f" data-f="a_kicker">AGENT</p>
-            <p class="f" data-f="a_name">Codex · execution</p>
+            <p class="f" data-f="a_name">CODEX</p>
+            <p class="f" data-f="a_role">Execution</p>
             <p class="f" data-f="a_sub">Runs checks, collects evidence, reports results.</p>
             <p class="f" data-f="t_kicker">CURRENT TASK</p>
             <p class="f" data-f="t_name">Run date suite</p>
@@ -239,6 +243,13 @@
           <input id="term-tell" type="text" maxlength="300" aria-describedby="term-status">
         </form>
         <p class="small" id="term-status" role="status"></p>
+        <nav class="surface-switch" aria-label="Prototype surfaces">
+          <a href="#/now">Overview</a>
+          <a href="#/mission/m-date">Missions</a>
+          <a href="#/replay/m-date">Replay</a>
+          <a href="#/shared">Projects</a>
+          <a href="#/terminal" aria-current="page">Terminal</a>
+        </nav>
       </section>
 
       <section class="screen frame-screen" id="s-shared" hidden>
@@ -291,10 +302,10 @@
           </header>
           <nav class="sh-nav" aria-label="Places">
             <a class="f" data-f="nav_ov" href="#/now">Overview</a>
-            <a class="f" data-f="nav_mi" href="#/now">Missions</a>
+            <a class="f" data-f="nav_mi" href="#/mission/m-date">Missions</a>
             <a class="f" data-f="nav_id" href="#/now/ideas">Ideas</a>
             <a class="f" data-f="nav_pr" href="#/shared" aria-current="page">Projects</a>
-            <span class="f nav-off" data-f="nav_co" aria-disabled="true">Control</span>
+            <a class="f" data-f="nav_co" href="#/terminal">Control</a>
           </nav>
           <p class="f kick" data-f="kick_pr" aria-hidden="true">PROJECTS</p>
           <ul class="sh-projects" id="sh-projects" aria-label="Projects"></ul>

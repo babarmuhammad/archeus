@@ -1615,3 +1615,52 @@ body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; h
 body.frame-now .msgs > .phone-fixture { display: none; }
 body.frame-now .msgs br { display: none; }
 body.frame-now .feed .msg-card .row .btn { flex: none; }
+
+/* Polish round (v2/polish): the terminal is full-bleed at 1600 x 900 on desktop. The art has no app rail, header or heading
+   inside its frame; the disclosure, size buttons and surface switcher sit in a strip below it. */
+.surface-switch { display: none; }
+@media (min-width: 881px) {
+  body.frame-terminal .rail, body.frame-terminal .top { display: none; }
+  body.frame-terminal .shell { display: block; min-height: 0; }
+  body.frame-terminal .page { display: block; min-height: 0; width: 1600px; padding: 0; }
+  body.frame-terminal main { display: block; }
+  body.frame-terminal #s-terminal { position: relative; flex: none; width: 1600px; height: 1000px; }
+  body.frame-terminal #s-terminal .head { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body.frame-terminal #s-terminal .tag { position: absolute; left: 0; top: 908px; margin: 0; font: 400 14px/20px var(--sans); color: var(--text-2); }
+  body.frame-terminal .term-bar { position: absolute; left: 0; top: 938px; margin: 0; }
+  body.frame-terminal .term-wrap { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; max-width: none; overflow: hidden; background: none; }
+  body.frame-terminal .term { margin: 0; padding: 0; }
+  body.frame-terminal .term-sim, body.frame-terminal #term-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  body.frame-terminal .surface-switch { display: flex; gap: 20px; position: absolute; right: 0; top: 938px; margin: 0; }
+  body.frame-terminal .surface-switch a { font: 400 14px/20px var(--sans); color: var(--text-2); text-decoration: none; padding: 4px 0; }
+  body.frame-terminal .surface-switch a[aria-current="page"] { color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+}
+
+/* Polish round (v2/polish): phone sheets. Back is visible again (D4, master chevron and label); the composer focus is an inset
+   rounded ring, not the browser's outline (fix 2); the Overview project names stay in the accessibility tree only (D3). */
+#s-now .chatbar input:focus, #s-now .chatbar input:focus-visible { outline: 0; }
+#s-now[data-frame="3"] .chatbar:focus-within { box-shadow: inset 0 0 0 calc(var(--u) * 3) rgba(255, 243, 207, 0.55); }
+#s-now .ov-art .ov-name-sr { opacity: 0; }
+.ph2-back, #s-now[data-frame="3"] .ph3-back { color: #B2B4C0; font: 400 calc(var(--u) * 23)/calc(var(--u) * 36) "Archeus Sans", var(--sans); text-indent: calc(var(--u) * 36); white-space: nowrap; overflow: visible; text-decoration: none; }
+.ph2-back::before, #s-now[data-frame="3"] .ph3-back::before { content: ""; position: absolute; left: calc(var(--u) * 3); top: calc(var(--u) * 11); width: calc(var(--u) * 14); height: calc(var(--u) * 14); border-left: calc(var(--u) * 2.6) solid #B2B4C0; border-bottom: calc(var(--u) * 2.6) solid #B2B4C0; transform: rotate(45deg); }
+.ph2-back { top: calc(var(--u) * 871.5); }
+#s-now[data-frame="3"] .ph3-back { top: calc(var(--u) * 665.5); height: calc(var(--u) * 36); }
+
+/* Polish round (v2/polish), D2: the Replay rail follows its master (Overview, Missions, Ideas, Projects, Control; divider;
+   PROJECTS with Archeus and Notes). The Shared rail follows its master (Control is live; PROJECTS lists Archeus only). */
+body:not(.frame-replay) .rp-x { display: none; }
+body.frame-replay .places a.rp-x { display: flex; }
+body.frame-replay .places a[data-nav="replay"] { display: none; }
+body.frame-replay .places a[data-nav="mission"] { top: 135px; }
+body.frame-replay .places a[data-nav="ideas"] { top: 181px; }
+body.frame-replay .places a[data-nav="shared"] { top: 227px; }
+body.frame-replay .places a[data-nav="terminal"] { top: 273px; }
+body.frame-replay .rail .projects { display: block; position: absolute; left: 0; top: 0; width: 192px; height: 810px; margin: 0; }
+body.frame-replay .rail .projects::before { content: ""; position: absolute; left: 25px; top: 318px; width: 142px; height: 1px; background: rgba(239, 233, 218, 0.14); }
+body.frame-replay #proj-h { position: absolute; left: 25px; top: 350px; margin: 0; }
+body.frame-replay #rail-projects { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
+body.frame-replay #rail-projects li { position: absolute; left: 0; }
+body.frame-replay #rail-projects li:nth-child(1) { top: 386px; }
+body.frame-replay #rail-projects li:nth-child(2) { top: 427px; }
+body.frame-replay #rail-projects a { position: absolute; left: 58px; top: 0; white-space: nowrap; font: 400 16px/20px "Libre Caslon V2", var(--serif); color: var(--text); text-decoration: none; }
+body.frame-replay #rail-projects .pdot, body.frame-replay #rail-projects .cnt { display: none; }
