@@ -28,8 +28,16 @@ Known limits, recorded (PV20-09 review round 4):
   shape are refused before any request leaves.
 - Same-host clients can hold the bridge's connection slots. That is a denial of service to
   the execution's own CLI only, not a leak.
-- The key scrub catches the key as itself, case-folded, in base64 and as JSON \\u escapes.
-  A part of the key, or another encoding, in an upstream error body is not caught.
+- Forwarded headers: only the named FORWARD set goes upstream, and every occurrence of
+  every forwarded value must be free of an `sk-ant-` token that is not an API key, or the
+  request is refused (PV20-09 round 6).
+- The key scrub (round 6) covers the key in four forms: as itself, case-folded, in base64,
+  and as JSON \\u escapes. It applies to error bodies, the response headers and the reason
+  phrase, and to the 200 stream through a sliding window. Limit, owner decision: a partial
+  key, or the key URL-encoded, hex-encoded, spaced or reversed, is not caught.
+- Stream latency: a relayed stream holds back the last (longest form - 1) bytes, about
+  167 bytes for a key of 28 characters, until more data or the end arrives. On a match the
+  stream is cut and the grant is revoked; no further bytes are relayed.
 """
 
 import base64
@@ -73,6 +81,8 @@ ERROR_BODY_MAX = 64 * 1024
 #: the only upstream credential the broker sends: an API key (PV20-08b, owner allow-list,
 #: PV20-09 round 5). Matched case-insensitively; every other credential is refused
 _API_KEY = 'sk-ant-api'
+#: any `sk-ant-` token that is not an API key, in a forwarded header (PV20-09 round 6)
+_NOT_API_KEY = re.compile(r'sk-ant-(?!api)', re.I)
 
 
 class Refused(Exception):
@@ -380,6 +390,9 @@ class Broker:
         if not key.lower().startswith(_API_KEY):
             raise Refused(403, 'the upstream credential is not an sk-ant-api key')
         headers = {k: v for k, v in req.headers if wire.forwarded(k)}
+        for v in [v for k, v in req.headers if wire.forwarded(k)]:   # every occurrence
+            if _NOT_API_KEY.search(v):
+                raise Refused(403, 'a forwarded header carries a credential that is not an API key')
         headers['x-api-key'] = key
         headers['Content-Length'] = str(len(req.body))
         try:
@@ -393,8 +406,8 @@ class Broker:
             write(wire.local_reply(502, 'Bad Gateway'))   # a redirect is never followed
             return 502, 0
         reason = resp.reason or ''
-        if not wire.clean(reason):
-            reason = ''                 # a status line with a control character is not relayed
+        if not wire.clean(reason) or _leaks(reason, key):
+            reason = ''                 # a status line with a control character or the key: not relayed
         out = ['HTTP/1.1 %d %s' % (resp.status, reason)]
         out += ['%s: %s' % (k, v) for k, v in resp.getheaders()
                 if k.lower() not in _DROP_BACK and wire.clean('%s: %s' % (k, v))
@@ -419,17 +432,30 @@ class Broker:
             return resp.status, len(body)
         out.append('Connection: close')
         write(('\r\n'.join(out) + '\r\n\r\n').encode('latin-1'))
-        sent = 0
+        # the key may be split across chunks: the tail that could still start a form is held
+        window = max(len(f) for f in _forms(key)) - 1
+        held, sent, got = b'', 0, 0
         while True:
             if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):
                 break                   # the grant ended mid-stream: the stream ends
             chunk = resp.read1(65536) if hasattr(resp, 'read1') else resp.read(65536)
             if not chunk:
                 break
-            if sent + len(chunk) > b.limits.max_response:
+            if got + len(chunk) > b.limits.max_response:
                 break
-            write(chunk)
-            sent += len(chunk)
+            got += len(chunk)
+            buf = held + chunk
+            if _leaks(buf, key):
+                self.revoke(b.execution_id)     # the key is in the stream: cut it, end the grant
+                return resp.status, sent
+            cut = max(0, len(buf) - window)
+            if cut:
+                write(buf[:cut])
+                sent += cut
+            held = buf[cut:]
+        if held:
+            write(held)
+            sent += len(held)
         return resp.status, sent
 
 
@@ -440,14 +466,17 @@ def _reply(write, status, reason):
         pass                            # the client went away: nothing to tell it
 
 
-def _leaks(data, key):
-    """True when *data* holds *key* as itself, case-folded, in base64 or as JSON \\u escapes,
-    the forms an upstream echoes. A part of the key, or another encoding, is not caught."""
-    raw = data.encode('latin-1', 'replace') if isinstance(data, str) else bytes(data)
+def _forms(key):
+    """The forms an upstream may echo the key in: as itself, in base64, as JSON \\u escapes."""
     k = key.encode('latin-1')
-    forms = (k, base64.b64encode(k), ''.join('\\u%04x' % ord(c) for c in key).encode('ascii'))
+    return (k, base64.b64encode(k), ''.join('\\u%04x' % ord(c) for c in key).encode('ascii'))
+
+
+def _leaks(data, key):
+    """True when *data* holds the key in one of `_forms`, case-folded."""
+    raw = data.encode('latin-1', 'replace') if isinstance(data, str) else bytes(data)
     low = raw.lower()
-    return any(f.lower() in low for f in forms)
+    return any(f.lower() in low for f in _forms(key))
 
 
 def _bearer(req):

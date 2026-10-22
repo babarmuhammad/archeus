@@ -395,18 +395,12 @@ def test_an_upstream_failure_is_never_retried():
 
 
 def test_a_stream_stops_when_the_grant_ends_mid_stream():
-    state = {'live': True}
-    b, _ = broker(live=lambda bd, d: state['live'],
+    checks = []
+    b, _ = broker(live=lambda bd, d: checks.append(1) or len(checks) <= 2,
                   send=lambda *a: Resp(chunks=[b'one', b'two', b'three']))
     _, token, _ = issued(b)
-    out = []
-
-    def write(data):
-        out.append(data)
-        if data == b'one':
-            state['live'] = False
-    b.serve(request(token=token), write, 'archeus.x')
-    assert out[-1] == b'one'
+    out, _ = serve(b, request(token=token))
+    assert out.endswith(b'one') and b'two' not in out
 
 
 def test_the_response_cap_ends_the_stream():
@@ -414,6 +408,78 @@ def test_the_response_cap_ends_the_stream():
     _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=3, max_response=7))
     out, row = serve(b, request(token=token))
     assert out.endswith(b'12345') and row['bytes_out'] == 5
+
+
+def _body(out):
+    return out.split(b'\r\n\r\n', 1)[1]
+
+
+STREAM_FORMS = [
+    ('exact', lambda k: k),
+    ('case-folded', lambda k: k.lower()),
+    ('base64', lambda k: base64.b64encode(k)),
+    ('json', lambda k: ''.join('\\u%04x' % ord(c) for c in k.decode()).encode()),
+]
+
+
+@pytest.mark.parametrize('form', [f for _, f in STREAM_FORMS], ids=[n for n, _ in STREAM_FORMS])
+@pytest.mark.parametrize('split', ['first', 'middle', 'last'])
+def test_a_form_of_the_key_split_across_stream_chunks_cuts_the_stream(form, split):
+    f = form(UPSTREAM_KEY.encode())
+    j = {'first': 1, 'middle': len(f) // 2, 'last': len(f) - 1}[split]
+    b, _ = broker(send=lambda *a: Resp(chunks=[b'ok ' + f[:j], f[j:] + b' tail']))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    # bytes before the held window may already be relayed; the held tail and the rest never are
+    assert row['status'] == 200 and _body(out) in (b'', b'ok ') and b'tail' not in out
+    assert serve(b, request(token=token))[1]['status'] == 401     # the grant was revoked
+
+
+def test_a_clean_stream_is_relayed_unchanged_and_in_order():
+    chunks = [b'a' * 300, b'bb', b'c' * 1000, b'end']
+    b, _ = broker(send=lambda *a: Resp(chunks=list(chunks)))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert _body(out) == b''.join(chunks) and row['bytes_out'] == len(b''.join(chunks))
+
+
+FORWARDED = ['anthropic-version', 'anthropic-beta', 'content-type', 'accept', 'user-agent']
+
+
+@pytest.mark.parametrize('name', FORWARDED)
+@pytest.mark.parametrize('value', ['sk-ant-oat01-SECRET', 'SK-ANT-ORT01-SECRET',
+                                   'see sk-ant-admin01 here'])
+def test_a_forwarded_header_with_a_credential_that_is_not_an_api_key_is_refused(name, value):
+    b, calls = broker()
+    _, token, _ = issued(b)
+    _, row = serve(b, request(token=token, extra=('%s: %s' % (name, value),)))
+    assert row['status'] == 403 and calls == []
+
+
+@pytest.mark.parametrize('name', FORWARDED)
+def test_every_occurrence_of_a_forwarded_header_is_checked(name):
+    b, calls = broker()
+    _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=10))
+    bad = '%s: sk-ant-oat01-SECRET' % name
+    ok = '%s: ok' % name
+    assert serve(b, request(token=token, extra=(ok, bad)))[1]['status'] == 403
+    assert serve(b, request(token=token, extra=(bad, ok)))[1]['status'] == 403
+    assert calls == []
+
+
+def test_an_api_key_in_a_forwarded_header_is_allowed():
+    b, calls = broker()
+    _, token, _ = issued(b)
+    _, row = serve(b, request(token=token, extra=('anthropic-beta: sk-ant-api03-ok',)))
+    assert row['status'] == 200 and calls[0][4]['anthropic-beta'] == 'sk-ant-api03-ok'
+
+
+def test_the_key_in_a_status_reason_is_not_relayed():
+    b, _ = broker(send=lambda *a: Resp(reason='OK ' + UPSTREAM_KEY))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 200 and UPSTREAM_KEY.encode() not in out
+    assert out.startswith(b'HTTP/1.1 200 \r\n')
 
 
 def test_a_listed_name_that_carries_a_credential_word_is_never_forwarded(monkeypatch):
