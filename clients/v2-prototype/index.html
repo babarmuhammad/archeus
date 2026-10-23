@@ -79,6 +79,7 @@
                 <div class="ph-sheet-bg" aria-hidden="true"></div>
                 <button type="button" class="ph3-back" data-act="feed-close">Back</button>
                 <span class="ph3-grab" aria-hidden="true"></span>
+                <button type="button" class="ph3-expand" data-act="sheet-expand" aria-expanded="false">Expand</button>
               </div>
               <canvas class="sky" aria-hidden="true"></canvas>
               <canvas class="fx" aria-hidden="true"></canvas>
@@ -87,23 +88,27 @@
               <button type="button" class="btn now-back" id="now-overview" hidden>Whole space</button>
               <div class="more-chips" id="more-chips"></div>
               <p class="budget" hidden></p>
-              <div class="feed" id="feed" aria-live="polite">
+              <div class="chat-feed" id="feed" role="region" aria-label="Conversation">
                 <span class="grab" aria-hidden="true"></span>
-                <div class="feed-head"><p class="kicker">Conversation</p><button type="button" class="btn feed-close" data-act="feed-close">‹ Back</button></div>
+                <div class="feed-head"><p class="kicker">Conversation</p><button type="button" class="btn feed-open" id="feed-open" data-act="history-open" aria-expanded="false" aria-controls="history">Open conversation</button><button type="button" class="btn feed-close" data-act="feed-close">‹ Back</button></div>
+                <p class="chat-intro" id="chat-intro" hidden>Ask a question, capture an idea, or describe work.</p>
                 <ol class="msgs" id="msgs"></ol>
+                <button type="button" class="btn new-reply" id="new-reply" data-act="new-reply" hidden>New reply</button>
               </div>
-              <form class="chatbar" id="chat-form" autocomplete="off">
-                <label class="sr-only" for="chat-input">Tell Archeus what to do</label>
+              <form class="chatbar" id="chat-form" autocomplete="off" tabindex="-1">
+                <label class="sr-only" for="chat-input">Tell Archeus what you need</label>
                 <span class="attach" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M13.5 7.5 8 13a2.1 2.1 0 1 1-3-3l6-6a3.2 3.2 0 0 1 4.5 4.5L9.5 15"/></svg></span>
-                <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus…">
+                <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus what you need…">
+                <button type="button" class="btn slash-btn" data-act="slash-open" aria-label="Commands">/</button>
                 <button type="submit" class="btn send-btn" aria-label="Send"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5"/></svg></button>
                 <button type="button" class="btn stop-btn chat-stop" data-act="stop">Stop</button>
               </form>
               <aside class="sheet now-sheet" id="now-sheet" hidden aria-labelledby="now-sheet-h"></aside>
+              <div class="rec-layer" id="rec-layer" data-motion="full"><svg class="rec-svg" id="rec-svg" viewBox="0 0 1296 729" aria-hidden="true" focusable="false"></svg><ul class="rec-list" id="rec-list" aria-label="Created in this conversation"></ul></div>
             </div>
           </div>
         </div>
-        <p class="tag now-tag">Simulated: scripted replies, no model call, nothing sent to Core. Creations and approvals are page-only.</p>
+        <p class="tag now-tag demo-note">Demo · simulated chat · no Core actions</p>
         <details class="prompts">
           <summary>Example prompts</summary>
           <div class="prompt-list" id="chat-prompts"></div>
@@ -238,8 +243,9 @@
         </div>
         <div class="term-wrap"><pre class="term" id="term" tabindex="0" aria-label="Terminal screen"></pre></div>
         <p class="term-sim" id="term-sim" role="note"></p>
+        <div class="term-reply" id="term-reply" role="log" aria-live="polite" aria-label="Replies"></div>
         <form class="term-tell" autocomplete="off">
-          <label for="term-tell">tell&gt;</label>
+          <label for="term-tell">Tell Archeus &gt;</label>
           <input id="term-tell" type="text" maxlength="300" aria-describedby="term-status">
         </form>
         <p class="small" id="term-status" role="status"></p>
@@ -444,6 +450,11 @@
     </main>
   </div>
 </div>
+
+<aside class="history" id="history" hidden aria-labelledby="history-h">
+  <header class="hist-head"><h2 id="history-h" tabindex="-1">Conversation</h2><button type="button" class="btn" data-act="history-close">Close</button></header>
+  <div class="hist-body"></div>
+</aside>
 
 <dialog id="confirm" aria-labelledby="confirm-title">
   <form method="dialog">

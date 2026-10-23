@@ -755,7 +755,7 @@
     }).join('');
 
     var c = L.shapes.chip, cw = c[2] - c[0], cx0 = c[0];
-    out += '<g class="ov-chip" data-act="open-list" role="button" tabindex="0" aria-label="' + (projects.length - 1) + ' more projects: open the list">' +
+    out += '<g class="ov-chip' + (FX.fresh ? ' is-fresh' : '') + '" data-act="open-list" role="button" tabindex="0" aria-label="' + (projects.length - 1) + ' more projects: open the list">' +
       '<rect x="' + cx0 + '" y="' + (c[1] + (c[3] - c[1]) / 2 - 44) + '" width="' + cw + '" height="88" fill="transparent"/>' +
       '<rect class="ov-pill" x="' + cx0 + '" y="' + c[1] + '" width="' + cw + '" height="' + (c[3] - c[1]) + '" rx="' + ((c[3] - c[1]) / 2) + '" fill="rgba(20,16,26,0.7)" stroke="rgba(239,233,218,0.35)" stroke-width="2"/>' +
       ovText('chip_text', 'ov-sans ov-chip-text', (projects.length - 1) + ' more projects', cx0 + cw / 2) + '</g>';
@@ -788,7 +788,7 @@
     if (!svg || !head || !window.ARCHEUS_LAYOUT || !window.ARCHEUS_TYPE) return;
     svg.innerHTML = overviewSvg();
     head.innerHTML = headSvg();
-    placeControls(1);
+    placeControls($('#s-now').getAttribute('data-frame') === '3' ? 3 : 1);
   }
 
   function ovMode() { return window.matchMedia('(max-width: 639px)').matches; }
@@ -1721,7 +1721,8 @@
     var mission = document.body.classList.contains('frame-mission'), shared = document.body.classList.contains('frame-shared');
     var w = 1296, h = 729;
     if (mission || shared) { w = mission ? 1244 : 1382; h = (mission ? 829 : 922) + 26; }
-    var k = Math.min(window.innerWidth / w, window.innerHeight / h);
+    if (histOpen()) document.documentElement.style.setProperty('--hist-w', histW() + 'px');
+    var k = Math.min((window.innerWidth - (histOpen() ? histW() : 0)) / w, window.innerHeight / h);
     document.documentElement.style.setProperty('--k', k.toFixed(4));
   }
   var nowStage = makeStage($('#now-stage'), {
@@ -1765,6 +1766,19 @@
     });
   }
 
+  // The text list is the equivalent of the constellation: every project and every mission once, with its state.
+  function renderNowList() {
+    $('#now-list').innerHTML = projects.map(function (p) {
+      var n = missions.filter(function (m) { return m.project === p.id; }).length;
+      return '<li class="list-project" data-id="' + esc(p.id) + '"><span>' + esc(p.name) + '</span><span class="row-meta">Project · ' + n + (n === 1 ? ' item' : ' items') + '</span></li>';
+    }).join('') + sorted(missions).map(function (m) {
+      return '<li data-id="' + esc(m.id) + '"><a href="#/mission/' + m.id + '">' + esc(m.title) + '</a>' +
+        '<span class="row-meta">' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</span>' +
+        '<span class="row-state st-' + m.state + '">' + esc(stateLine(m)) + '</span>' +
+        (m.state === 'waiting' ? '<a class="btn review" href="#/plan/' + m.id + '">Review plan</a>' : '') + '</li>';
+    }).join('');
+  }
+
   function renderNow(pid) {
     $('#s-now [data-sentence]').textContent = sentence();
     if (ovMode()) buildOverview(); else nowStage.setScene(nowScene);
@@ -1772,12 +1786,7 @@
     renderNeeds();
     $('#now-overview').hidden = true;
     $$('#rail-projects a').forEach(function (a) { a.classList.remove('on'); });
-    $('#now-list').innerHTML = sorted(missions).map(function (m) {
-      return '<li><a href="#/mission/' + m.id + '">' + esc(m.title) + '</a>' +
-        '<span class="row-meta">' + esc(projectOf(m.project).name) + ' · ' + esc(m.branch) + '</span>' +
-        '<span class="row-state st-' + m.state + '">' + esc(stateLine(m)) + '</span>' +
-        (m.state === 'waiting' ? '<a class="btn review" href="#/plan/' + m.id + '">Review plan</a>' : '') + '</li>';
-    }).join('');
+    renderNowList();
     if (pid === 'chat') setTimeout(function () { $('#chat-input').focus({ preventScroll: true }); }, 0);
     else if (pid && projectOf(pid) && !ovMode()) zoomTo(pid);
   }
@@ -2174,7 +2183,8 @@
   var PROMPTS = [
     'Start a project called Atlas',
     'Add a mission "Draft the brief" to Atlas',
-    'Add an idea "Offline capture" to Atlas',
+    'Add an idea "Offline mode" to Atlas',
+    'Add an idea "Voice notes"',
     'Make a plan for the brief',
     'Run the notes index',
     'Change the daily spend limit to 20 EUR',
@@ -2183,7 +2193,7 @@
 
   // On the phone, a Start card from the last few messages stays in view; otherwise the thread follows the newest line.
   function scrollThread() {
-    var t = $('.feed'), kids = thread.children, cards = thread.querySelectorAll('.msg-card');
+    var t = chatBox() || $('.chat-feed'), kids = thread.children, cards = thread.querySelectorAll('.msg-card');
     if (isNarrow() && cards.length) {
       var card = cards[cards.length - 1];
       if (Array.prototype.indexOf.call(kids, card) >= kids.length - 3) {
@@ -2193,18 +2203,61 @@
     }
     t.scrollTop = t.scrollHeight;
   }
+  // The box that scrolls: the list itself on the desktop feed, the panel body in the panel, the feed on the phone sheet.
+  function chatBox() { var o = getComputedStyle(thread).overflowY; return o === 'auto' || o === 'scroll' ? thread : thread.closest('.chat-feed, .hist-body'); }
+  function atBottom(box) { return box.scrollHeight - box.scrollTop - box.clientHeight < 12; }
+  var booting = true;
+  var chatLive = document.createElement('p');
+  chatLive.className = 'sr-only';
+  chatLive.setAttribute('aria-live', 'polite');
+  document.body.appendChild(chatLive);
+  function announceChat(text) { chatLive.textContent = ''; setTimeout(function () { chatLive.textContent = text; }, 40); }
+  // Every reply, card and answer of the demo says SIMULATED in text, whatever builds or rebuilds its markup.
+  function ensureTag(li) {
+    if (!li || !li.matches || !li.matches('.msg-arch, .msg-card, .msg-gen') || li.querySelector('.sim-tag')) return;
+    var p = $$('p', li).filter(function (q) { return !q.classList.contains('gen-k'); })[0];
+    if (!p) return;
+    var tag = document.createElement('span');
+    tag.className = 'sim-tag';
+    tag.textContent = 'SIMULATED';
+    p.insertBefore(document.createTextNode(' '), p.firstChild);
+    p.insertBefore(tag, p.firstChild);
+  }
+  new MutationObserver(function (list) {
+    list.forEach(function (m) {
+      var els = [m.target].concat(Array.prototype.slice.call(m.addedNodes));
+      els.forEach(function (n) { ensureTag(n.nodeType === 1 ? n.closest('li.msg') : null); });
+    });
+  }).observe(thread, { childList: true, subtree: true });
+  // The feed shows the last exchange; older lines stay in the conversation panel.
+  function markExchange() {
+    var kids = Array.prototype.slice.call(thread.children), last = -1;
+    kids.forEach(function (li, i) { if (li.classList.contains('msg-you') && !li.classList.contains('phone-fixture')) last = i; });
+    kids.forEach(function (li, i) { li.classList.toggle('is-old', i < last); });
+  }
+  function syncIntro() {
+    $('#chat-intro').hidden = Array.prototype.some.call(thread.children, function (li) { return !li.classList.contains('slash-cleared'); });
+  }
+  function showNewReply() { $('#new-reply').hidden = false; }
   function addMsg(kind, html) {
+    var box = chatBox(), follow = !box || atBottom(box);
     var li = document.createElement('li');
     li.className = 'msg msg-' + kind;
     li.setAttribute('data-who', kind === 'you' ? 'You' : 'Archeus');
     li.innerHTML = html;
     thread.appendChild(li);
-    scrollThread();
+    ensureTag(li);
+    markExchange();
+    syncIntro();
+    if (!booting && (kind === 'arch' || kind === 'card' || kind === 'gen')) announceChat(li.textContent.replace(/\s+/g, ' ').trim());
+    if (follow || kind === 'you') scrollThread(); else showNewReply();
     return li;
   }
   function lead(text) { return addMsg('arch', '<p>' + esc(text) + '</p>'); }
   function receipts(list) {
-    return '<p class="receipts">' + list.map(function (r) { return '<a class="receipt" href="' + r.href + '">' + esc(r.label) + '</a>'; }).join('') + '</p>';
+    return '<p class="receipts">' + list.map(function (r) {
+      return r.show ? '<button type="button" class="receipt" data-show="' + esc(r.show) + '">' + esc(r.label) + '</button>' : '<a class="receipt" href="' + r.href + '">' + esc(r.label) + '</a>';
+    }).join('') + '</p>';
   }
   function quoted(text, fallback) {
     var m = text.match(/["“”‘’']([^"“”‘’']{2,80})["“”‘’']/);
@@ -2212,24 +2265,183 @@
   }
   function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24); }
 
-  // Each change to the constellation goes through here: data first, then one relayout; new objects grow in.
-  function refreshNow() { nowStage.relayout(); buildOverview(); renderRail(); renderMoreChips(); renderNeeds(); }
+  // Each change to the constellation goes through here: data first, then one relayout.
+  function refreshNow() { nowStage.relayout(); buildOverview(); renderRail(); renderMoreChips(); renderNeeds(); renderNowList(); }
 
-  function createAtlas() {
-    projects.push({ id: 'atlas', name: 'Atlas', hue: '#D9C7A0', at: [0.46, 0.36], offs: [[30, -110], [-40, 110], [96, 70]] });
-    nowStage.markBorn('atlas');
-    nowStage.markBorn('core>atlas');
-    refreshNow();
+  /* ---------- Fixture Core and the creation beats (V2 chat bar, steps 1 to 3).
+     A chat message draws nothing. The fixture Core stores the record, then sends one event that names only the identity;
+     the view rereads the record and shows it once. A repeated event, or a reconnect that replays the log, shows nothing new. ---------- */
+  var FX = { records: {}, log: [], shown: {}, hold: false, queue: [], fresh: null };
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var recLayer = $('#rec-layer'), recSvg = $('#rec-svg'), recList = $('#rec-list');
+  // Desktop frame px (1296 x 729). One new project cluster and one loose idea fit the free corner under the Ideas hull.
+  var DESK_REC = {
+    core: [640, 316], curve: [880, 270, 1020, 300],
+    hull: [[1012, 520], [1100, 506], [1218, 516], [1282, 560], [1274, 654], [1200, 712], [1076, 720], [1018, 646]],
+    hub: [1034, 566], name: [1030, 520],
+    members: [[1048, 600], [1048, 650], [1048, 700]],
+    idea: [1100, 486], ideaTo: [1131, 453]
+  };
+  var deskState = { project: null, members: [], idea: false };
+
+  function fxEmit(rec, submit) {
+    var e = { type: rec.kind + '.created', subject: { kind: rec.kind, id: rec.id }, submit: submit || null };
+    FX.log.push(e);
+    if (FX.hold) { FX.queue.push(e); return true; }
+    fxApply(e);
+    return false;
+  }
+  function fxApply(e) {
+    if (e.submit && e.submit.parentNode) e.submit.remove();
+    var rec = FX.records[e.subject.id];
+    if (!rec || FX.shown[rec.id]) return;
+    FX.shown[rec.id] = true;
+    represent(rec);
+  }
+  // Test hook for the probes: hold events, release them, replay one identity, replay the whole log (a reconnect).
+  window.ArchFixture = {
+    hold: function (on) { FX.hold = !!on; if (!on) FX.queue.splice(0).forEach(fxApply); },
+    emit: function (id) { fxApply({ type: 'replay', subject: { id: id }, submit: null }); },
+    reconnect: function () { FX.log.forEach(fxApply); },
+    log: function () { return FX.log.map(function (e) { return e.type + ' ' + e.subject.id; }); },
+    nodes: function () { return $$('[data-rec]', recList).map(function (el) { return el.getAttribute('data-rec'); }); }
+  };
+
+  function projectNameFrom(text) {
+    var q = quoted(text, ''), m = text.match(/\b(?:called|named)\s+([A-Za-z0-9][\w -]{0,30}?)\s*[.!?]*\s*$/i) || text.match(/\bproject\s+([A-Z][\w-]{1,30})/);
+    var name = (q || (m ? m[1] : 'Atlas')).trim();
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  function mentionedProject(text) {
+    var bare = text.replace(/["“”][^"“”]*["“”]/g, '');
+    return projects.slice().sort(function (a, b) { return b.name.length - a.name.length; }).filter(function (p) {
+      return new RegExp('\\b' + p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(bare);
+    })[0] || null;
+  }
+  function createRecord(rec, sub) {
+    var name = rec.name || rec.title, exists = rec.kind === 'project' ? projectOf(rec.id) : find(rec.id);
+    if (exists || FX.records[rec.id]) {
+      lead((rec.kind === 'project' ? 'Project ‘' : rec.kind === 'idea' ? 'Idea ‘' : 'Mission ‘') + name + '’ already exists. Nothing was added.');
+      return false;
+    }
+    FX.records[rec.id] = rec;
+    return fxEmit(rec, sub);
   }
 
-  function newMission(title, idea) {
-    counter++;
-    var m = { id: 'm-new-' + counter, title: title, project: 'atlas', branch: 'feat/' + slug(title), state: 'idle', stateText: idea ? 'Idea' : 'Not started', phase: -1, glyph: idea ? 'list' : 'doc', what: title + '.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['Created from the chat (simulated).'] };
-    missions.push(m);
-    nowStage.markBorn('atlas>' + m.id);
-    nowStage.markBorn(m.id);
+  // The map draws one new project cluster (three items) and one loose idea. Everything else is listed, never silently dropped.
+  function placeRec(rec) {
+    if (rec.kind === 'project') {
+      if (deskState.project) return null;
+      deskState.project = rec.id;
+      return { kind: 'project' };
+    }
+    if (rec.project && rec.project === deskState.project && deskState.members.length < DESK_REC.members.length) {
+      deskState.members.push(rec.id);
+      return { kind: 'member', slot: deskState.members.length - 1 };
+    }
+    if (!rec.project && !deskState.idea) { deskState.idea = true; return { kind: 'loose' }; }
+    return null;
+  }
+
+  function represent(rec) {
+    if (rec.kind === 'project') {
+      projects.push({ id: rec.id, name: rec.name, hue: '#D9C7A0', note: 'Created in the chat. Simulated.', chat: true });
+    } else {
+      var idea = rec.kind === 'idea';
+      missions.push({ id: rec.id, title: rec.title, project: rec.project || 'ideas', branch: idea ? 'none' : 'feat/' + slug(rec.title), state: 'idle', stateText: idea ? 'Idea · not a commitment' : 'Not started', phase: -1, glyph: idea ? 'list' : 'doc', what: rec.title + '.', latest: 'none recorded', task: 'none', exec: false, related: [], log: ['Created from the chat (simulated).'], chat: true });
+    }
+    var geo = placeRec(rec);
+    FX.fresh = isNarrow() ? rec.id : null;
     refreshNow();
-    return m;
+    receiptFor(rec, geo);
+    if (rec.kind === 'mission') startCard(find(rec.id));
+    if (geo) drawRec(rec, geo);
+  }
+
+  function receiptFor(rec, geo) {
+    var host = rec.project ? projectOf(rec.project) : null, name = rec.name || rec.title;
+    var off = geo ? '' : ' The map draws one project cluster and one loose idea in this demo, so this one is in the list only.';
+    if (rec.kind === 'project') {
+      return addMsg('arch', '<p>Project ‘' + esc(name) + '’ created in this demo. Core chat creation is not connected.' + off + '</p>' + receipts([{ label: 'Show ' + name, show: rec.id }]));
+    }
+    var where = host ? ' in ' + host.name : '';
+    var text = rec.kind === 'idea' ? 'Idea ‘' + name + '’ captured' + where + '. It is not a commitment.' : 'Mission ‘' + name + '’ created' + where + '. Not started. Starting it needs your approval.';
+    return addMsg('arch', '<p>' + esc(text + off) + '</p>' + receipts([{ label: (rec.kind === 'idea' ? 'Idea: ' : 'Mission: ') + name, href: '#/mission/' + rec.id }, { label: 'Created' + where + ' · Show', show: rec.id }]));
+  }
+
+  function svgEl(tag, attrs, parent) {
+    var e = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  // Reduced motion and Quiet: the same facts at once. No fade, no camera, no transient accent.
+  function motionOff() { return reduce.matches || ['reduced', 'quiet'].indexOf(storeGet('archeus.v2.motion')) >= 0; }
+  function recEls(id) { return $$('[data-rec="' + id + '"]', recLayer); }
+  function setBeat(id, n) { recEls(id).forEach(function (el) { for (var i = 2; i <= n; i++) el.classList.add('b' + i); }); }
+  // Beat 1 is the reply (already shown). 2 appears (160 ms), 3 reveals the relation (240 ms), 4 makes label and state readable (180 ms),
+  // 5 lets the accent go, so the whole thing ends by 800 ms.
+  function runBeats(id) {
+    var off = motionOff();
+    recLayer.setAttribute('data-motion', off ? 'none' : 'full');
+    if (off) { setBeat(id, 5); recEls(id).forEach(function (el) { el.classList.add('no-accent'); }); return; }
+    void recLayer.offsetWidth;
+    setBeat(id, 2);
+    setTimeout(function () { setBeat(id, 3); }, 160);
+    setTimeout(function () { setBeat(id, 4); }, 400);
+    setTimeout(function () { setBeat(id, 5); }, 580);
+  }
+  function itemCount(pid) { var n = missions.filter(function (m) { return m.project === pid; }).length; return n + (n === 1 ? ' item' : ' items'); }
+
+  function drawRec(rec, geo) {
+    var D = DESK_REC, g = svgEl('g', { class: 'rec-g', 'data-rec': rec.id }, recSvg), li = document.createElement('li');
+    li.className = 'rec-item rec-' + rec.kind;
+    li.setAttribute('data-rec', rec.id);
+    if (geo.kind === 'project') {
+      var ring = D.hull.map(function (p) { return { x: p[0], y: p[1] }; }), pts = D.hull.map(function (p) { return p.join(','); }).join(' ');
+      svgEl('polygon', { class: 'rec-hull-fill', points: pts }, g);
+      deskFacetsFor(ring, rec.id).forEach(function (f) {
+        svgEl('line', { class: 'rec-facet', x1: f.x1.toFixed(1), y1: f.y1.toFixed(1), x2: f.x2.toFixed(1), y2: f.y2.toFixed(1), 'stroke-opacity': f.a, 'stroke-width': f.w }, g);
+      });
+      svgEl('polygon', { class: 'rec-hull', points: pts }, g);
+      D.hull.forEach(function (p) { svgEl('circle', { class: 'rec-vtx', cx: p[0], cy: p[1], r: 1.6 }, g); });
+      svgEl('path', { class: 'rec-link', d: 'M' + D.core.join(',') + ' C' + D.curve.join(' ') + ' 1012,520' }, g);
+      svgEl('circle', { class: 'rec-hub', cx: D.hub[0], cy: D.hub[1], r: 3 }, g);
+      svgEl('polygon', { class: 'rec-halo', points: pts }, g);
+      li.style.left = D.name[0] + 'px';
+      li.style.top = D.name[1] + 'px';
+      li.innerHTML = '<button type="button" class="rec-lbl" data-show="' + esc(rec.id) + '" aria-label="' + esc(rec.name) + ', project. Show"><span class="rec-t">' + esc(rec.name) + '</span><span class="rec-s">Project · no items yet</span></button>';
+    } else {
+      var at = geo.kind === 'loose' ? D.idea : D.members[geo.slot], from = geo.kind === 'loose' ? D.ideaTo : D.hub;
+      var dx = at[0] - from[0], dy = at[1] - from[1], dl = Math.hypot(dx, dy) || 1;
+      svgEl('line', { class: 'rec-link', x1: from[0], y1: from[1], x2: (at[0] - dx / dl * 11).toFixed(1), y2: (at[1] - dy / dl * 11).toFixed(1) }, g);
+      svgEl('path', { class: 'rec-mark ' + rec.kind, d: deskMarkPath(rec.kind === 'idea' ? 'sparkle' : 'diamond'), transform: 'translate(' + at[0] + ' ' + at[1] + ')' }, g);
+      svgEl('circle', { class: 'rec-halo', cx: at[0], cy: at[1], r: 18 }, g);
+      li.style.left = (at[0] + 20) + 'px';
+      li.style.top = (at[1] - 22) + 'px';
+      li.innerHTML = '<a class="rec-lbl" href="#/mission/' + esc(rec.id) + '"><span class="rec-t">' + esc(rec.title) + '</span><span class="rec-s">' + (rec.kind === 'idea' ? 'Idea · not a commitment' : 'Not started') + '</span></a>';
+      var host = recList.querySelector('.rec-project .rec-s');
+      if (host && geo.kind === 'member') host.textContent = 'Project · ' + itemCount(rec.project);
+    }
+    recList.appendChild(li);
+    runBeats(rec.id);
+  }
+
+  // Show: a static ring on the same identity. No camera move, no replay of the creation.
+  function showRecord(id) {
+    $$('.is-shown').forEach(function (el) { el.classList.remove('is-shown'); });
+    var rec = FX.records[id], name = rec ? (rec.name || rec.title) : id;
+    if (isNarrow()) {
+      $('#feed').classList.remove('is-open');
+      setPhoneFrame(1);
+      openList();
+      var row = $('[data-open="' + id + '"], [data-proj-row="' + id + '"]', $('#now-sheet'));
+      if (row) { row.classList.add('is-shown'); row.scrollIntoView({ block: 'center' }); }
+      return say(name + ' is marked in the list. The view did not move.');
+    }
+    var els = recEls(id);
+    els.forEach(function (el) { el.classList.add('is-shown'); });
+    say(els.length ? name + ' is marked on the map. The view did not move.' : name + ' is in the list. This demo does not draw it on the map.');
   }
 
   function makePlan(m) {
@@ -2287,7 +2499,8 @@
       '<span class="sr-only" id="promote-note">Off: this answer stays in the general thread.</span>');
   }
 
-  function reply(text) {
+  function reply(text, sub) { return replyBody(text, sub) === true; }
+  function replyBody(text, sub) {
     var t = text.toLowerCase();
     var question = /^(what|why|how|who|when|where|which|is|are|does|do|can)\b/.test(t) && !/\b(create|add|start|make|run|change|set|plan|send|spend)\b/.test(t);
     if (question) return /replay|recover|reconcil|checkpoint/.test(t) ? general('A replay shows what an agent intended, what you authorized, what was durably recorded, what may have taken effect, and where state is uncertain. Recovery restores a checkpoint and never claims that every external effect can be undone.') : general('This is not about a project, so it stays in the general thread. The prototype answers with fixed text. A real build answers through the official CLI on your chosen account. Nothing here reaches project memory unless you promote it.');
@@ -2307,26 +2520,23 @@
       });
     }
     if (/\bplan\b/.test(t)) {
-      var target = missions.filter(function (m) { return m.project === 'atlas' && m.id.indexOf('m-new-') === 0 && !plans[m.id] && m.glyph !== 'list'; }).pop();
-      if (!target) return lead('No mission in Atlas is waiting for a plan. Add a mission first. Nothing was planned.');
+      var target = missions.filter(function (m) { return m.chat && !plans[m.id] && m.glyph !== 'list'; }).pop();
+      if (!target) return lead('No mission created in this chat is waiting for a plan. Add a mission first. Nothing was planned.');
       makePlan(target);
       return addMsg('arch', '<p>Plan v1 for "' + esc(target.title) + '" has 3 steps (simulated). It waits for your review. Nothing starts until you approve.</p>' + receipts([{ label: 'Review plan v1', href: '#/plan/' + target.id }]));
     }
     if (/\bidea\b/.test(t)) {
-      if (!projectOf('atlas')) return lead('Create project Atlas first. Nothing was added.');
-      var idea = newMission(quoted(text, 'Offline capture'), true);
-      return addMsg('arch', '<p>Recorded the idea "' + esc(idea.title) + '" in Atlas. It is an idle figure until you make it a mission.</p>' + receipts([{ label: 'Idea: ' + idea.title, href: '#/mission/' + idea.id }]));
+      var ititle = quoted(text, 'Offline mode'), ip = mentionedProject(text);
+      return createRecord({ kind: 'idea', id: 'i-' + slug(ititle), title: ititle, project: ip ? ip.id : null }, sub);
     }
     if (/\bmission\b/.test(t)) {
-      if (!projectOf('atlas')) return lead('Create project Atlas first. Nothing was added.');
-      var mis = newMission(quoted(text, 'Draft the brief'), false);
-      addMsg('arch', '<p>Mission created in Atlas (simulated). Start it when you like.</p>' + receipts([{ label: 'Mission: ' + mis.title, href: '#/mission/' + mis.id }]));
-      return startCard(mis);
+      var mtitle = quoted(text, 'Draft the brief'), mp = mentionedProject(text) || projects.filter(function (p) { return p.chat; }).pop();
+      if (!mp) return lead('Which project is this mission for? Create or name a project first. Nothing was added.');
+      return createRecord({ kind: 'mission', id: 'm-' + slug(mtitle), title: mtitle, project: mp.id }, sub);
     }
-    if (/\b(atlas|project)\b/.test(t)) {
-      if (projectOf('atlas')) return lead('Atlas already exists. Ask for a mission or an idea in it.');
-      createAtlas();
-      return addMsg('arch', '<p>Created project Atlas (simulated, V1 has no chat path for projects). Its star is in the constellation, with no missions yet.</p>' + receipts([{ label: 'Project Atlas', href: '#/now/atlas' }]));
+    if (/\bproject\b/.test(t)) {
+      var pname = projectNameFrom(text);
+      return createRecord({ kind: 'project', id: slug(pname), name: pname }, sub);
     }
     general('This does not change a project, so it stays in the general thread. The prototype answers with fixed text for a few questions. A real build answers through the official CLI on your chosen account.');
   }
@@ -2338,8 +2548,8 @@
     askRouted(clean);
   }
   function askRouted(clean) {
-    var typing = addMsg('typing', '<p>Archeus is composing. Simulated, no model call.</p>');
-    setTimeout(function () { typing.remove(); reply(clean); }, 650);
+    var sub = addMsg('typing', '<p>Submitted.</p>');
+    setTimeout(function () { var held = reply(clean, sub); if (!held && sub.parentNode) sub.remove(); }, 650);
   }
 
   /* ---------- T-153 slash menu (prototype). Commands run on the fixtures: READ and CREATE answer in the chat, effects
@@ -2578,7 +2788,9 @@
     }
     addMsg('arch', SL.CLASSES.map(function (k) {
       return '<p><strong>' + k + '</strong> ' + SL.COMMANDS.filter(function (c) { return c.cls === k; }).map(function (c) { return '/' + c.name; }).join(' · ') + '</p>';
-    }).join(''));
+    }).join('') + '<p><strong>EXAMPLES</strong> Tap one to send it.</p><p class="receipts">' + PROMPTS.map(function (p) {
+      return '<button type="button" class="receipt" data-prompt="' + esc(p) + '">' + esc(p) + '</button>';
+    }).join('') + '</p>');
   }
   function waitingOne() {
     var w = missions.filter(function (m) { return m.state === 'waiting'; });
@@ -2708,6 +2920,9 @@
   general('The process was killed, usually out of memory (128 + signal 9).');
   // The phone-3 fixture (exit code 137 and its General answer) is not on the desktop concept: the desktop frame hides it.
   Array.prototype.slice.call(thread.children).slice(3).forEach(function (el) { el.classList.add('phone-fixture'); });
+  booting = false;
+  markExchange();
+  syncIntro();
 
   // The composer ring is for keyboard focus: a click marks the bar, and Tab clears the mark (style.css, polish round 2).
   document.addEventListener('pointerdown', function (e) {
@@ -2770,10 +2985,17 @@
     }
     var stab = e.target.closest('[data-stab]');
     if (stab) { sharedTab = stab.getAttribute('data-stab'); return renderSharedPanel(); }
+    var shown = e.target.closest('[data-show]');
+    if (shown) return showRecord(shown.getAttribute('data-show'));
     var el = e.target.closest('[data-act]');
     if (!el) return;
     var act = el.getAttribute('data-act');
-    if (act === 'close-sheet') closeSheet(false);
+    if (act === 'slash-open') slashOpen();
+    else if (act === 'history-open') openHistory();
+    else if (act === 'history-close') closeHistory(true);
+    else if (act === 'sheet-expand') { var full = $('#s-now').classList.toggle('sheet-full'); el.setAttribute('aria-expanded', String(full)); el.textContent = full ? 'Collapse' : 'Expand'; }
+    else if (act === 'new-reply') { chatBox().scrollTop = chatBox().scrollHeight; $('#new-reply').hidden = true; }
+    else if (act === 'close-sheet') closeSheet(false);
     else if (act === 'decide') decide(el.getAttribute('data-kind'));
     else if (act === 'plan-back') { planStep = 'review'; renderPlan(planId); }
     else if (act === 'stop') stop();
@@ -2792,7 +3014,8 @@
   });
 
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (histOpen()) return closeHistory(true);
     if (sheetOpen) closeSheet(false);
     else if (nowStage.focus) { nowStage.setFocus(null); $('#now-overview').hidden = true; }
   });
@@ -2847,7 +3070,7 @@
         return '<li><button type="button" class="list-row" data-open="' + esc(m.id) + '"><span class="st-' + m.state + '">' + esc(STATE[m.state].word) + '</span> ' +
           esc(m.title) + '</button></li>';
       }).join('');
-      return '<li class="list-group"><p class="kicker"><span class="pdot" style="--hue:' + p.hue + '"></span>' + esc(p.name) + '</p><ul>' + items + '</ul></li>';
+      return '<li class="list-group" data-proj-row="' + esc(p.id) + '"><p class="kicker"><span class="pdot" style="--hue:' + p.hue + '"></span>' + esc(p.name) + '</p><ul>' + items + '</ul></li>';
     }).join('');
     sheetFor('<p class="kicker">All work</p><h2 id="now-sheet-h" tabindex="-1">' + projects.length + ' projects, ' + missions.length + ' missions</h2>' +
       '<ul class="rowlist-sheet list-groups">' + rows + '</ul>' +
@@ -2886,7 +3109,7 @@
       act.setAttribute('aria-expanded', String(on));
     } else if (name === 'open-list') openList();
     else if (name === 'now-sheet-close') closeNowSheet();
-    else if (name === 'feed-close') { $('#feed').classList.remove('is-open'); setPhoneFrame(1); }
+    else if (name === 'feed-close') { $('#feed').classList.remove('is-open'); $('#s-now').classList.remove('sheet-full'); setPhoneFrame(1); $('#chat-form').focus({ preventScroll: true }); }
     else if (name === 'open-decision') { planOpened = true; renderPlan(planId); }
   });
 
@@ -2902,8 +3125,55 @@
     feed.scrollTop += card.getBoundingClientRect().top - feed.getBoundingClientRect().top - 8;
   }
   document.addEventListener('focusin', function (e) {
-    if (e.target.id === 'chat-input' && isNarrow()) openFeed();
+    if (e.target.id === 'chat-input' && isNarrow()) { openFeed(); document.body.classList.add('kb-open'); }
   });
+  document.addEventListener('focusout', function (e) {
+    if (e.target.id === 'chat-input') document.body.classList.remove('kb-open');
+  });
+  // The composer stays above the on-screen keyboard: the gap between the layout and the visual viewport.
+  function setKb() {
+    var vv = window.visualViewport;
+    document.documentElement.style.setProperty('--kb', (vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0) + 'px');
+  }
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', setKb); window.visualViewport.addEventListener('scroll', setKb); }
+
+  /* ---------- Desktop conversation panel and the "/" button ---------- */
+  function histW() { return Math.round(Math.max(360, Math.min(420, window.innerWidth * 0.3))); }
+  function histOpen() { return document.body.classList.contains('history-open'); }
+  function openHistory() {
+    if (isNarrow()) return;
+    var body = $('.hist-body');
+    body.appendChild(thread);
+    body.appendChild($('#new-reply'));
+    $('#history').hidden = false;
+    document.body.classList.add('history-open');
+    $('#feed-open').setAttribute('aria-expanded', 'true');
+    fitFrame();
+    body.scrollTop = body.scrollHeight;
+    $('#history-h').focus({ preventScroll: true });
+  }
+  function closeHistory(restoreFocus) {
+    if (!histOpen()) return;
+    $('#feed').appendChild(thread);
+    $('#feed').appendChild($('#new-reply'));
+    $('#history').hidden = true;
+    document.body.classList.remove('history-open');
+    $('#feed-open').setAttribute('aria-expanded', 'false');
+    fitFrame();
+    if (restoreFocus) $('#feed-open').focus({ preventScroll: true });
+  }
+  $$('.chat-feed, .hist-body, #msgs').forEach(function (box) {
+    box.addEventListener('scroll', function () { if (atBottom(box)) $('#new-reply').hidden = true; });
+  });
+  window.addEventListener('resize', function () { if (isNarrow()) closeHistory(false); });
+  function slashOpen() {
+    var input = $('#chat-input');
+    if (input.value && input.value.charAt(0) !== '/') return say('Commands start the line. Send or clear the text first.');
+    input.focus();
+    if (!input.value) input.value = '/';
+    slash.input = input;
+    onSlashInput({ target: input });
+  }
   document.addEventListener('submit', function (e) {
     if (e.target.id === 'chat-form' && isNarrow()) $('#feed').classList.add('is-open');
   });
@@ -3298,13 +3568,22 @@
     var b = e.target.closest('[data-tsize]');
     if (b) { term.cols = Number(b.getAttribute('data-tsize')); term.rows = term.cols === 120 ? 40 : 24; renderTerm(); }
   });
+  // Enter sends the line through the same simulated chat as the Now bar. Replies appear in their own text area, as text only.
   $('#term-tell').addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return;
+    if (e.key !== 'Enter' || e.isComposing) return;
     e.preventDefault();
-    var v = this.value.trim();
-    this.value = '';
-    $('#term-status').textContent = v ? 'Simulated: "' + v.slice(0, 60) + '" was not sent to Core.' : 'Tell line is empty.';
-    this.blur(); $('#term').focus({ preventScroll: true });
+    var v = this.value.trim(), before = thread.children.length;
+    if (!v) { $('#term-status').textContent = 'Tell line is empty.'; return; }
+    submitComposer(this, v, false);
+    setTimeout(function () {
+      var box = $('#term-reply');
+      Array.prototype.slice.call(thread.children, before).filter(function (li) { return /msg-(arch|card|gen)\b/.test(li.className); }).forEach(function (li) {
+        var p = document.createElement('p');
+        p.textContent = li.textContent.replace(/\s+/g, ' ').trim();
+        box.appendChild(p);
+      });
+      while (box.children.length > 6) box.removeChild(box.firstChild);
+    }, 1000);
   });
 
   var SCREENS = {
@@ -3321,6 +3600,7 @@
     var parts = (location.hash || '#/now').replace(/^#\/?/, '').split('/');
     var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
     document.body.classList.remove('menu-open');
+    if (name !== 'now') closeHistory(false);
     document.body.classList.toggle('frame-now', name === 'now' && !isNarrow());
     document.body.classList.toggle('frame-mission', name === 'mission');
     document.body.classList.toggle('frame-shared', name === 'shared');

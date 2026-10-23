@@ -1704,6 +1704,221 @@ body.frame-replay #rail-projects .pcube { display: block; position: absolute; le
   #s-now .ov-status { fill: #C6C2D3; }
   #s-now #ov-art polygon[stroke="#F9C259"] { stroke-width: 4px; }
 }
+/* V2 chat bar (build steps 1 to 3, v2/chatbar). The new chat surfaces: the bar, the reply surface (.chat-feed, which replaces the
+   old concept feed .feed above; those rules are now unused), the conversation panel, the phone chat sheet and the creation marks.
+   One translucent material with a solid fallback (reduced transparency, forced colours); reply text is 16 px at weight 400, labels
+   14 px; every chat control is at least 48 CSS px. Other screens, art and concept frames are not restyled.
+   Checks: tools/v2_chatbar_probe.py and check.mjs. */
+:root { --chat-bg: rgba(10, 13, 20, 0.84); --chat-solid: #0E131C; --chat-line: rgba(239, 233, 218, 0.36); --hist-w: 400px; }
+@media (prefers-reduced-transparency: reduce) { :root { --chat-bg: #0E131C; } }
+@media (prefers-reduced-transparency: no-preference) {
+  .chatbar, .chat-feed, .history { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+}
+@media (forced-colors: active) {
+  .chatbar, .chat-feed, .history, .rec-lbl { background: Canvas; border-color: CanvasText; }
+  .sim-tag { border-color: CanvasText; }
+}
+
+.sim-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border: 1px solid currentColor; border-radius: 6px; font: 600 14px/20px var(--sans); letter-spacing: 0.06em; color: var(--text); }
+.chat-intro { margin: 0; padding: var(--s2) var(--s1); font: 400 16px/24px var(--sans); color: var(--text-2); }
+.feed-open, .new-reply, .slash-btn { min-height: 48px; min-width: 48px; }
+.feed-open { display: none; }
+.new-reply { position: sticky; bottom: 8px; display: flex; margin: 8px auto 0; background: var(--chat-solid); border-color: var(--chat-line); }
+.new-reply[hidden] { display: none; }
+.receipt { cursor: pointer; background: transparent; font-family: var(--sans); }
+.slash-btn { font: 400 18px/24px var(--sans); padding: 0; }
+.msgs > li { flex: none; }
+.msgs > .slash-cleared, .msgs > .phone-fixture { display: none; }
+.msg-typing { font: 400 14px/20px var(--sans); }
+.chat-feed .msg > p, .hist-body .msg > p { font: 400 16px/24px var(--sans); color: var(--text); overflow-wrap: anywhere; }
+.chat-feed .msg-gen p, .hist-body .msg-gen p { font: 400 16px/24px var(--sans); }
+.chat-feed .msg-card .card-t, .hist-body .msg-card .card-t { font: 400 16px/24px var(--sans); }
+.chat-feed .msg-card .btn, .hist-body .msg-card .btn { min-height: 48px; font-size: 16px; }
+.chat-feed .msg-card .row, .hist-body .msg-card .row { flex-wrap: wrap; gap: var(--s2); }
+.chat-feed .receipts, .hist-body .receipts { margin-top: 4px; }
+/* The promote switch keeps its look but is a 48 px target: the input is the whole 48 px box, the track and the knob are drawn on it. */
+.promote input[type="checkbox"] { -webkit-appearance: none; appearance: none; position: relative; flex: none; width: 48px; height: 48px; min-height: 48px; margin: 0 -4px 0 0; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: pointer; }
+.promote input[type="checkbox"]::before { content: ""; position: absolute; left: 4px; top: 12px; width: 40px; height: 24px; box-sizing: border-box; border: 1px solid var(--chat-line); border-radius: 12px; background: #3B3744; }
+.promote input[type="checkbox"]::after { content: ""; position: absolute; left: 8px; top: 16px; width: 16px; height: 16px; border-radius: 50%; background: #F5F2EA; }
+.promote input[type="checkbox"]:checked::before { background: #6B6577; }
+.promote input[type="checkbox"]:checked::after { left: 24px; }
+.chat-feed .small, .hist-body .small, .chat-feed .promote, .hist-body .promote { font-size: 14px; line-height: 20px; }
+
+/* Desktop (the 1296 x 729 frame): the bar and the replies keep their CSS size whatever the frame scale, so text stays 16 px and
+   targets 48 px. One column, 690 px wide, bottom centre; the reply surface is right above the bar. */
+body.frame-now .chatbar {
+  left: 303px; top: 653px; width: 690px; height: 52px; display: flex; align-items: center; gap: 0; padding: 0 2px 0 14px;
+  background: var(--chat-bg); border: 1px solid var(--chat-line); border-radius: 14px;
+  transform: scale(calc(1 / var(--k, 1))); transform-origin: 50% 100%;
+}
+body.frame-now .chatbar .attach { position: static; flex: none; width: 24px; height: 24px; margin-right: 6px; }
+body.frame-now .chatbar input { position: static; flex: 1 1 auto; width: auto; min-width: 0; height: 50px; min-height: 48px; padding: 0 8px; font: 400 16px/24px var(--sans); color: var(--text); }
+body.frame-now .chatbar input::placeholder { color: var(--text-2); opacity: 1; }
+body.frame-now .chatbar .slash-btn, body.frame-now .chatbar .send-btn {
+  position: static; flex: none; width: 48px; height: 48px; min-height: 48px; padding: 0; border: 6px solid transparent; border-radius: 50%;
+  background: rgba(239, 233, 218, 0.12) padding-box; color: var(--text);
+}
+body.frame-now .chatbar .send-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+body.frame-now .chatbar:focus-within:not(.mouse-focus) { box-shadow: 0 0 0 3px var(--focus); }
+body.frame-now .chat-feed {
+  position: absolute; left: 303px; bottom: 84px; width: 690px; z-index: 3; padding: 4px 12px;
+  background: var(--chat-bg); border: 1px solid var(--chat-line); border-radius: 14px;
+  transform: scale(calc(1 / var(--k, 1))); transform-origin: 50% 100%;
+}
+body.frame-now .chat-feed > .grab { display: none; }
+body.frame-now .chat-feed .feed-head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; margin: 0; }
+body.frame-now .chat-feed .feed-head .kicker { margin: 0; }
+body.frame-now .chat-feed .feed-close { display: none; }
+body.frame-now .feed-open { display: inline-flex; padding: 0 var(--s3); background: transparent; border-color: var(--chat-line); font: 400 16px/24px var(--sans); }
+body.frame-now .chat-feed .new-reply { position: absolute; right: 12px; bottom: 8px; margin: 0; }
+body.frame-now .chat-feed .msgs { margin: 0; padding: 0; gap: 6px; justify-content: flex-start; min-height: 0; max-height: 232px; overflow-y: auto; overscroll-behavior: contain; }
+body.frame-now .chat-feed .msgs > .is-old, body.frame-now .chat-feed .msgs > .phone-fixture, body.frame-now .chat-feed .msgs > .slash-cleared { display: none; }
+body.frame-now .chat-feed .msg, .hist-body .msg {
+  display: grid; grid-template-columns: 72px minmax(0, 1fr); column-gap: 12px; align-items: start; margin: 0; padding: 4px 0; max-width: none; border: 0; border-radius: 0; background: transparent;
+}
+body.frame-now .chat-feed .msg::before, .hist-body .msg::before { content: attr(data-who); grid-column: 1; grid-row: 1; justify-self: start; font: 400 14px/24px var(--sans); color: var(--text-2); margin: 0; }
+body.frame-now .chat-feed .msg > *, .hist-body .msg > * { grid-column: 2; grid-row: auto; min-width: 0; margin: 0; }
+body.frame-now .chat-feed .msg > p, .hist-body .msg > p { padding: 0; background: transparent; border: 0; border-radius: 0; white-space: normal; }
+body.frame-now .chat-feed .msg-gen, .hist-body .msg-gen { border-left: 2px dashed var(--line-2); padding-left: 10px; color: var(--text); gap: 0; }
+body.frame-now .chat-feed .msg-card, .hist-body .msg-card { gap: 0; }
+body.frame-now .chat-feed .msg-card .card-body, .hist-body .msg-card .card-body {
+  grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); background: transparent; border: 1px solid var(--chat-line); border-radius: 12px; padding: var(--s2) var(--s3);
+}
+body.frame-now .chat-feed .msg-typing > p, .hist-body .msg-typing > p { font: 400 14px/24px var(--sans); color: var(--text-2); }
+
+/* Conversation panel: 360 to 420 px wide, beside the scene. The frame is rescaled into the room that is left. */
+.history { display: none; }
+@media (min-width: 881px) {
+  .history:not([hidden]) {
+    display: flex; flex-direction: column; position: fixed; right: 0; top: 0; bottom: 0; width: var(--hist-w); z-index: 30;
+    background: var(--chat-bg); border-left: 1px solid var(--chat-line);
+  }
+  body.frame-now.history-open .shell { left: calc((100% - var(--hist-w)) / 2); }
+  body.frame-now.history-open .chat-feed { display: none; }
+}
+.hist-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--chat-line); }
+.hist-head h2 { margin: 0; font: 400 20px/28px var(--serif); color: var(--text); }
+.hist-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s3) var(--s4) var(--s4); overscroll-behavior: contain; }
+.hist-body .msgs { gap: 6px; min-height: 0; justify-content: flex-start; }
+
+/* Creation marks: the new project cluster and the loose idea, drawn live over the desktop art. Ivory only: amber and blue keep
+   their meaning (a decision is waiting, work is live). The four beats are class steps b2 to b5 set by app.js. */
+.rec-layer { display: none; }
+body.frame-now .rec-layer { display: block; position: absolute; left: 0; top: 0; width: 1296px; height: 729px; z-index: 2; pointer-events: none; }
+.rec-svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.rec-list { margin: 0; padding: 0; list-style: none; }
+.rec-item { position: absolute; margin: 0; opacity: 0; transition: opacity 180ms linear; }
+.rec-item.b4 { opacity: 1; }
+.rec-lbl {
+  display: flex; flex-direction: column; justify-content: center; min-height: calc(48px / var(--k, 1)); margin: 0 -8px; padding: 0 8px;
+  background: transparent; border: 0; border-radius: 8px; color: var(--text); text-align: left; text-decoration: none; cursor: pointer; pointer-events: auto; white-space: nowrap;
+}
+.rec-t { font: 400 17.5px/24px var(--serif); color: var(--text); text-shadow: 0 0 6px #070A10, 0 0 3px #070A10; }
+.rec-s { font: 400 14px/20px var(--sans); color: var(--text-2); text-shadow: 0 0 6px #070A10, 0 0 3px #070A10; }
+.rec-g .rec-hull, .rec-g .rec-hull-fill, .rec-g .rec-facet, .rec-g .rec-vtx, .rec-g .rec-mark { opacity: 0; transition: opacity 160ms linear; }
+.rec-g.b2 .rec-hull, .rec-g.b2 .rec-hull-fill, .rec-g.b2 .rec-facet, .rec-g.b2 .rec-vtx, .rec-g.b2 .rec-mark { opacity: 1; }
+.rec-g .rec-link, .rec-g .rec-hub { opacity: 0; transition: opacity 240ms linear; }
+.rec-g.b3 .rec-link, .rec-g.b3 .rec-hub { opacity: 1; }
+.rec-g .rec-halo { opacity: 0; transition: opacity 220ms linear; }
+.rec-g.b2 .rec-halo { opacity: 0.9; }
+.rec-g.b5 .rec-halo { opacity: 0; }
+.rec-g.no-accent .rec-halo { display: none; }
+.rec-g.is-shown .rec-halo { display: inline; opacity: 1; }
+.rec-item.is-shown .rec-t { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.rec-layer[data-motion="none"] .rec-g *, .rec-layer[data-motion="none"] .rec-item { transition: none; }
+.rec-hull-fill { fill: rgba(239, 233, 218, 0.035); stroke: none; }
+.rec-hull { fill: none; stroke: rgba(239, 233, 218, 0.55); stroke-width: 1.2; }
+.rec-facet { stroke: #EFE9DA; fill: none; }
+.rec-vtx { fill: rgba(239, 233, 218, 0.75); }
+.rec-link { fill: none; stroke: rgba(239, 233, 218, 0.6); stroke-width: 1.2; }
+.rec-hub { fill: #EFE9DA; }
+.rec-mark { fill: #EFE9DA; }
+.rec-mark.idea { fill-opacity: 0.8; }
+.rec-halo { fill: none; stroke: #EFE9DA; stroke-width: 1.8; }
+.rec-lbl:focus-visible { outline: 3px solid var(--focus); outline-offset: -2px; }
+.receipt.is-shown, .list-row.is-shown, .list-group.is-shown > .kicker { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* Terminal: the Tell Archeus line and the replies, as text. */
+.term-tell { display: flex; }
+.term-reply { margin: var(--s2) 0 0; font: 400 15px/1.5 var(--mono); color: var(--text); }
+.term-reply:empty { display: none; }
+.term-reply p { margin: 0; }
+.term-tell label { color: var(--text); }
+body.frame-terminal .term-tell { position: absolute; left: 0; top: 986px; width: 1100px; margin: 0; }
+body.frame-terminal .term-reply { position: absolute; left: 0; top: 1044px; width: 1100px; margin: 0; }
+body.frame-terminal #s-terminal { height: 1200px; }
+
+/* Narrow screens: the conversation is a sheet over the scene, opened from the bar; the disclosure sits under the bar. */
+@media (max-width: 880px) {
+  .feed-open, .history { display: none !important; }
+  .chat-feed { display: none; position: absolute; left: var(--s2); right: var(--s2); bottom: calc(env(safe-area-inset-bottom, 0px) + 76px + var(--kb, 0px)); max-height: 46%; z-index: 6; overflow-y: auto; padding: 0 var(--s3) var(--s3); background: var(--chat-solid); border: 1px solid var(--chat-line); border-radius: 18px; }
+  .chat-feed.is-open { display: block; }
+  .chat-feed .feed-head { display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 1; min-height: 48px; background: var(--chat-solid); }
+  .chat-feed .msgs { min-height: 0; }
+  .chat-feed .msg-arch, .chat-feed .msg-you, .chat-feed .msg-gen { background: transparent; }
+  #s-now .demo-note {
+    display: block !important; position: fixed; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); margin: 0; z-index: 9;
+    text-align: center; font: 400 14px/20px var(--sans); color: var(--text-2); pointer-events: none;
+  }
+}
+@media (max-width: 639px) {
+  #s-now .chatbar { min-height: 48px; bottom: calc(var(--u) * 99 + env(safe-area-inset-bottom, 0px) + var(--kb, 0px) + 10px); }
+  #s-now .chatbar input { padding-right: 52px; font-size: max(16px, calc(var(--u) * 29)); }
+  #s-now .chatbar .slash-btn {
+    position: absolute; right: 2px; top: 50%; margin-top: -24px; width: 48px; height: 48px; border: 6px solid transparent; border-radius: 50%;
+    background: rgba(239, 233, 218, 0.12) padding-box; color: #F3EEDF; z-index: 1;
+  }
+  #s-now .stage-now .chatbar .chat-stop { min-height: 48px; }
+  #s-now .ov-art .ov-chip.is-fresh .ov-pill { stroke: #F3EEDF; stroke-width: 4; }
+  #s-now .ph3-expand { display: none; }
+  #s-now[data-frame="3"] .ph3-expand {
+    display: block; position: absolute; right: calc(var(--u) * 36); top: calc(var(--st) + 14px); z-index: 6; min-height: 48px; padding: 0 var(--s3); border: 0; background: transparent;
+    color: #D8D7E6; font: 400 16px/24px var(--sans); cursor: pointer; pointer-events: auto;
+  }
+  /* The chat sheet: about 45 percent of the screen with the keyboard closed, taller with the keyboard or Expand. The concept art stays above it. */
+  #s-now[data-frame="3"] { --st: min(calc(var(--u) * 865), 55dvh); --bar-b: calc(var(--u) * 75 + env(safe-area-inset-bottom, 0px) + var(--kb, 0px) + 10px); }
+  #s-now[data-frame="3"].sheet-full, body.kb-open #s-now[data-frame="3"] { --st: 12px; }
+  #s-now[data-frame="3"].sheet-full .ph3-frame .ph-art, #s-now[data-frame="3"].sheet-full .ph3-frame .ph-live,
+  body.kb-open #s-now[data-frame="3"] .ph3-frame .ph-art, body.kb-open #s-now[data-frame="3"] .ph3-frame .ph-live { visibility: hidden; }
+  #s-now[data-frame="3"] .ph3-frame .ph-sheet-bg { top: var(--st); background: rgba(14, 12, 22, 0.94); }
+  #s-now[data-frame="3"] .ph3-grab { top: calc(var(--st) + 8px); }
+  #s-now[data-frame="3"] .ph3-back { top: calc(var(--st) + 14px); left: calc(var(--u) * 20); width: 96px; height: 48px; text-indent: 36px; line-height: 48px; font-size: 16px; }
+  #s-now[data-frame="3"] .ph3-back::after { top: 0; bottom: 0; left: 0; right: 0; }
+  #s-now[data-frame="3"] .ph3-back::before { top: 17px; left: 14px; }
+  #s-now[data-frame="3"] .chatbar { bottom: var(--bar-b); }
+  #s-now[data-frame="3"] .chatbar:focus-within:not(.mouse-focus) { box-shadow: inset 0 0 0 3px rgba(255, 243, 207, 0.9); }
+  #s-now[data-frame="3"] .chat-feed {
+    display: flex; flex-direction: column; top: calc(var(--st) + 64px); bottom: calc(var(--bar-b) + 48px + 12px); left: 12px; right: 12px; max-height: none; padding: 0 2px; z-index: 5;
+    background: transparent; border: 0; border-radius: 0; -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  #s-now[data-frame="3"] .chat-feed > .feed-head, #s-now[data-frame="3"] .chat-feed > .grab { display: none; }
+  #s-now[data-frame="3"] .chat-feed .msgs { gap: 8px; min-height: 0; justify-content: flex-start; }
+  #s-now[data-frame="3"] .chat-intro { color: #B8B7CA; }
+  #s-now[data-frame="3"] .msgs > li:nth-child(n) { height: auto; margin-top: 0; }
+  #s-now[data-frame="3"] .chat-feed .msg {
+    display: block; width: auto; max-width: 94%; margin: 0; padding: 8px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.14);
+  }
+  #s-now[data-frame="3"] .chat-feed .msg-you { align-self: flex-end; max-width: 86%; background: rgba(255, 255, 255, 0.09); }
+  #s-now[data-frame="3"] .chat-feed .msg-card { max-width: 100%; padding: 10px 12px; }
+  #s-now[data-frame="3"] .msg::before { display: block; font: 400 14px/20px var(--sans); color: #B8B7CA; margin: 0 0 2px; }
+  #s-now[data-frame="3"] .msgs li { font: 400 16px/24px var(--sans); color: #ECE8E0; }
+  #s-now[data-frame="3"] .msg-gen .gen-k { font-size: 14px; line-height: 20px; }
+  #s-now[data-frame="3"] .msg-gen p { font: 400 16px/24px var(--sans); }
+  #s-now[data-frame="3"] .msg-card .card-t { font: 400 17px/24px var(--serif); }
+  #s-now[data-frame="3"] .msg-card .btn { min-height: 48px; height: 48px; font: 400 16px/24px var(--sans); flex: 1 1 120px; }
+  #s-now[data-frame="3"] .gen-tag { font: 400 14px/20px var(--sans); }
+  #s-now[data-frame="3"] .promote { font: 400 14px/20px var(--sans); }
+  #s-now[data-frame="3"] .promote input[type="checkbox"] { width: 48px; height: 48px; min-height: 48px; border-radius: 0; background: transparent; }
+  #s-now[data-frame="3"] .promote input[type="checkbox"]::before { left: 4px; top: 12px; width: 40px; height: 24px; border-radius: 12px; background: #3B3744; }
+  #s-now[data-frame="3"] .promote input[type="checkbox"]::after { content: ""; position: absolute; left: 8px; top: 16px; width: 16px; height: 16px; border-radius: 50%; background: #F5F2EA; }
+  #s-now[data-frame="3"] .promote input[type="checkbox"]:checked { background: transparent; }
+  #s-now[data-frame="3"] .promote input[type="checkbox"]:checked::before { left: 4px; background: #6B6577; }
+  #s-now[data-frame="3"] .promote input[type="checkbox"]:checked::after { left: 24px; }
+  #s-now[data-frame="3"].sheet-full .menu-btn, body.kb-open #s-now[data-frame="3"] .menu-btn { display: none; }
+  #s-now[data-frame="3"] .receipt { min-height: 48px; }
+  #s-now[data-frame="3"] .new-reply { bottom: 4px; }
+}
+
 /* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,
    ivory text, neutral outline chips. No amber (owner obligations only) and no blue (live work only). Rows 48 px. */
 .slash-cleared { display: none; }

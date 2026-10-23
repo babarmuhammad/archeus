@@ -107,7 +107,7 @@ check(/prefers-reduced-motion:\s*reduce/.test(css), 'no reduced-motion rule');
 check(/prefers-reduced-transparency:\s*no-preference/.test(css), 'no translucency gate');
 check(/:focus-visible/.test(css), 'no visible focus rule');
 check(/PROTOTYPE · fake data/.test(html), 'prototype label missing');
-check(/Simulated: scripted replies, no model call/.test(html), 'chat simulated tag missing');
+check(/Demo · simulated chat · no Core actions/.test(html), 'chat disclosure missing');
 check(!/id="s-start"|href="#\/start"/.test(html), 'Start screen is still linked (the chat replaces it)');
 check(/data-promote/.test(js) && /gen-tag" aria-hidden="true">General<\/span><span class=\"sr-only\">General answer, not saved to project memory/.test(js), 'general thread or promote control missing');
 check(/approve-confirm/.test(js) && /plan-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision screen missing');
@@ -418,6 +418,32 @@ check(!/var\(--amber\)|var\(--blue\)|var\(--green\)/.test(slashCss), 'the slash 
 check(!/transition|animation/.test(slashCss), 'the slash menu must not animate (reduced motion and Quiet are immediate)');
 check(/\.slash-cleared \{ display: none; \}/.test(slashCss), '/clear must hide earlier messages');
 check(!/backdrop-filter/.test(slashCss) && !/\.slash-menu\s*\{[^}]*box-shadow/.test(slashCss), 'the slash menu must not glow or use glass');
+
+// V2 chat bar (build steps 1 to 3). The browser behaviour is measured by tools/v2_chatbar_probe.py; these are the static facts.
+const chatCss = css.slice(css.indexOf('/* V2 chat bar (build steps 1 to 3'), css.indexOf('/* T-153 slash menu'));
+check(chatCss.length > 3000, 'chat bar block not found in style.css');
+check(/placeholder="Tell Archeus what you need…"/.test(html) && /Ask a question, capture an idea, or describe work\./.test(html), 'bar placeholder or intro line text changed');
+check(!/id="s-start"|href="#\/start"|start: *render|SCREENS\.start/.test(html + js), 'a Start screen or route exists (Now with the bar is the entry)');
+check(/class="chat-feed" id="feed"/.test(html) && /id="history"/.test(html) && /id="rec-layer"/.test(html) && /id="new-reply"/.test(html), 'reply surface, panel, creation layer or New reply control missing');
+check(/function ensureTag/.test(js) && /new MutationObserver/.test(js) && /'SIMULATED'/.test(js), 'SIMULATED tag for every fixture result missing');
+check(!/aria-live/.test(html.match(/<div class="chat-feed"[^>]*>/)[0]), 'the reply surface must not be a live region (one polite announcement per reply)');
+check(/Submitted\./.test(js) && !/is composing/.test(js), 'the receipt must be the static "Submitted."');
+check(/function fxEmit/.test(js) && /function fxApply/.test(js) && /FX\.shown\[rec\.id\]/.test(js), 'fixture events must be applied once per identity');
+check(/setTimeout\(function \(\) \{ setBeat\(id, 3\); \}, 160\)/.test(js) && /setBeat\(id, 4\); \}, 400\)/.test(js) && /setBeat\(id, 5\); \}, 580\)/.test(js), 'beat timings are not 160, 400 and 580 ms');
+check(/\.rec-g \.rec-hull[^{]*\{[^}]*transition: opacity 160ms/.test(chatCss) && /\.rec-g \.rec-link[^{]*\{[^}]*transition: opacity 240ms/.test(chatCss) && /\.rec-item \{[^}]*transition: opacity 180ms/.test(chatCss) && /\.rec-g \.rec-halo \{[^}]*transition: opacity 220ms/.test(chatCss), 'beat transition durations are not 160, 240, 180 and 220 ms');
+check(/function motionOff\(\) \{ return reduce\.matches/.test(js) && /off\) \{ setBeat\(id, 5\)/.test(js), 'reduced motion must show every beat at once');
+check(!/var\(--amber\)|var\(--blue\)|var\(--green\)|#F2B544|#6FB1FF/.test(chatCss.slice(chatCss.indexOf('.rec-layer'), chatCss.indexOf('/* Terminal'))), 'creation marks use amber or blue (decision and live work only)');
+check(/body\.frame-now \.chatbar \.slash-btn, body\.frame-now \.chatbar \.send-btn \{[^}]*width: 48px; height: 48px/.test(chatCss) && /\.feed-open, \.new-reply, \.slash-btn \{ min-height: 48px/.test(chatCss) && /\.chat-feed \.msg-card \.btn[^{]*\{ min-height: 48px/.test(chatCss), 'chat controls must be 48 px');
+check(/\.rec-lbl \{[^}]*min-height: calc\(48px \/ var\(--k, 1\)\)/.test(chatCss), 'creation labels need a 48 CSS px hit area at any frame scale');
+check(/transform: scale\(calc\(1 \/ var\(--k, 1\)\)\)/.test(chatCss), 'bar and replies must keep their CSS size when the frame scales');
+check(/\.chat-feed \.msg > p, \.hist-body \.msg > p \{ font: 400 16px\/24px/.test(chatCss), 'reply text must be 16 px at weight 400');
+check(/prefers-reduced-transparency: reduce\) \{ :root \{ --chat-bg: #0E131C/.test(chatCss) && /forced-colors: active/.test(chatCss), 'solid fallback for reduced transparency and forced colours missing');
+const chatBg = [10, 13, 20], chatA = 0.84, onWhite = '#' + chatBg.map((c) => Math.round(c * chatA + 255 * (1 - chatA)).toString(16).padStart(2, '0')).join('');
+check(ratio(tokens.text, onWhite) >= 4.5 && ratio(tokens['text-2'], onWhite) >= 4.5, `chat material over the brightest scene point fails 4.5:1 (${ratio(tokens['text-2'], onWhite).toFixed(2)})`);
+check(ratio('#FFF3CF', onWhite) >= 3 && ratio(tokens.focus, '#0E131C') >= 3, 'focus ring fails 3:1 on the chat material');
+check(/--chat-bg: rgba\(10, 13, 20, 0\.84\)/.test(chatCss), 'chat material alpha changed: re-check the contrast above');
+check(/class="ph3-expand"/.test(html) && /aria-expanded/.test(html.match(/<button[^>]*ph3-expand[^>]*>/)[0]), 'phone sheet needs an explicit Expand control');
+check(/--st: min\(calc\(var\(--u\) \* 865\), 55dvh\)/.test(chatCss) && /--kb/.test(chatCss) && /visualViewport/.test(js), 'phone sheet: 45 percent with the keyboard closed, composer above the keyboard');
 
 if (failures.length) {
   console.error('FAIL');
