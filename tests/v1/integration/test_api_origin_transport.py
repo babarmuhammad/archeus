@@ -190,6 +190,22 @@ def test_every_route_class_is_refused_by_the_switched_on_gate(tc):
             assert snapshot(tc) == before, (r.method, r.path)
 
 
+def test_every_route_class_is_refused_on_the_tunnel_host_with_a_paired_credential(tc):
+    code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe']}).json()['code']
+    paired = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                     body={'code': code, 'platform': 'web'}).json()['token']
+    for kind, path in NOT_ALLOWED:
+        enable(tc, Backend(kind, path))
+        for r in routes.ROUTES:
+            if routes.CLASS[(r.method, r.path)] == 'public':
+                continue
+            before = snapshot(tc)
+            resp = tc.http(r.method, _path(r.path), token=paired, headers={'Host': TUNNEL},
+                           body={} if r.method == 'POST' else None)
+            assert _refused(resp), (kind, path, r.method, r.path, resp.status)
+            assert snapshot(tc) == before, (r.method, r.path)
+
+
 def test_a_paired_device_is_refused_on_the_direct_local_path_and_kept_on_the_tunnel(tc):
     code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe']}).json()['code']
     paired = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
