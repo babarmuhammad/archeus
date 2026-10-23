@@ -367,7 +367,7 @@ def test_E06_the_chip_names_the_action_that_decided_the_answer(x):
     r'C:\Windows\System32\cmd.exe /c x', 'sort --compress-program zstd x', 'man -P ./evil x',
     # round 7: each of these is held by one rule alone (the argument rule would hold the others)
     'cmd /C x', 'cmd.exe /c"x"', 'cmd /s/c"x"', 'node --print=x', '! mytool x',
-    "sed '1e mytool' x", "sed 's/x/mytool/e' x", 'bash {x,y}', 'python.bat -c x',
+    "sed '1e mytool' x", "sed 's/x/mytool/e' x", 'bash {x,y}', 'python.bat -c x', 'bash *.sh',
 ])
 def test_E07_wrappers_and_payload_flags_are_unclassified(cmd, tmp_path):
     """A shell or interpreter running a payload, or a wrapper that runs another
@@ -630,6 +630,174 @@ def test_E25_the_plain_forms_keep_their_class(cmd, want, tmp_path):
     ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
     acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
     assert unclassified is False and want in [a.action_class for a in acts], (cmd, acts)
+
+
+def _held(cmd, tmp_path):
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
+    assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
+
+
+def _classes(cmd, tmp_path):
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
+    acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
+    return unclassified, [a.action_class for a in acts]
+
+
+#: round 10 (owner decision 2026-10-23, fail-closed): what the classifier cannot fully expand or
+#: recognise is held. One test per rule, so a mutant names the rule it breaks.
+@pytest.mark.parametrize('cmd', [
+    'rm {-R,build}', 'rm {-r,build}', 'rm {--recursive,build}', 'git push {--force,origin,main}',
+    'git push origin {+main,x}', 'git branch {-D,x}', 'terraform {apply}', 'terraform {destroy}',
+    'kubectl {delete,x}', 'npm {publish}', 'pip {install,x}', 'curl {-d,x} https://h.example/x',
+    'curl --da{ta,ta} x https://h.example/x', 'find . {-delete}', 'find {.,-delete}',
+    'find . {-exec,rm,{},\\;}', 'tar {-I,mytool} -cf a b', 'tar -{I,x} mytool -cf a b',
+    'tar --{info-script,x}=mytool -cf a b', 'rsync {-e,mytool} a h:b', 'scp {-S,mytool} a h:b',
+    'sftp {-D,mytool} h', 'rg {--pre,mytool} x', 'mytool {--pre,x}', 'mytool --pre{,}=x',
+    'ls {a,b}', 'echo {1..3}', 'git status {x}', 'cat {"a",b}',
+])
+def test_E26_a_brace_word_anywhere_is_held(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    (r'find . -exec rm {} \;', 'destructive'), ("grep '{a,b}' f", 'read'), ('grep "{x}" f', 'read'),
+    (r'ls \{a,b\}', 'read'), ('git status', 'read'),
+])
+def test_E26_a_quoted_or_empty_brace_is_not_one(cmd, want, tmp_path):
+    assert _classes(cmd, tmp_path) == (False, [want])
+
+
+def test_E27_a_long_run_of_brace_pairs_is_held_at_once(tmp_path):
+    """Round 9 expanded every pair (2**n strings: 20 pairs took minutes, inside the manager's hook
+    pass). A brace word is held as written, so the cost does not depend on the pairs."""
+    import time
+    start = time.monotonic()
+    _held('mytool ' + '{a,b}' * 20, tmp_path)
+    _held('mytool ' + '{a,b}' * 300, tmp_path)
+    assert time.monotonic() - start < 1.0
+
+
+@pytest.mark.parametrize('cmd', [
+    'tar --use-compress=mytool -cf a b', 'tar --use-compress-p=mytool -cf a b',
+    'tar --info-s=mytool -cf a b', 'tar --new-volume-s=mytool -cf a b', 'tar --to-comm=mytool -xf a',
+    'tar --rsh-c=mytool -xf a', 'tar --checkpoint-a=sleep=1 -cf a b', 'gtar --info-s=mytool -cf a b',
+    'bsdtar --use-compress-program=mytool -cf a b', 'rsync --rs=mytool a h:b',
+    'wget --use-askpass=mytool https://h.example/x', 'wget --exe=x https://h.example/x',
+])
+def test_E28_a_long_option_that_runs_a_program_is_held_abbreviated(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', [
+    'tar cIf mytool a.tar b', 'tar Icf mytool a.tar b', 'tar cfI a.tar mytool b',
+    'tar Fcf mytool a.tar b', 'tar cF mytool -f a.tar b', 'tar xFf mytool a.tar',
+    'gtar cIf mytool a.tar b', 'bsdtar Icf mytool a.tar b',
+])
+def test_E29_an_old_style_tar_bundle_with_a_carrier_letter_is_held(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', [
+    'git clone --conf core.sshCommand=x git@h.example:r', 'git clone --confi=core.sshCommand=x h.example:r',
+    'git clone --con=core.sshCommand=x h.example:r', 'git clone --config-e=core.sshCommand=VAR h.example:r',
+    'git clone --upload-p mytool git@h.example:r', 'git clone --upload-pa=mytool h.example:r',
+    'git clone -u mytool git@h.example:r', 'git clone -umytool git@h.example:r',
+    'git ls-remote --exec=mytool origin', 'git push --exec=mytool origin main',
+    'git push --recei=mytool origin main', 'git fetch --upload-pack mytool origin',
+    'git clone -c protocol.ext.allow=always "ext::sh -c x"',
+    'git clone -c url.ext::sh.insteadOf=https://h.example/ https://h.example/r',
+    'git clone ext::sh h.example', 'git config protocol.ext.allow always',
+    'git config url.x.insteadOf y',
+    'git rebase -ix "rm -R x"', 'git rebase --ex x', 'git rebase --exe=x', 'git rebase -x x',
+])
+def test_E30_a_git_option_that_runs_a_program_is_held_abbreviated_or_aliased(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', [
+    'git push --del origin main', 'git push --dele origin main', 'git push --mir origin',
+    'git push --mirr origin', 'git push --forc origin main', 'git push --fo origin main',
+])
+def test_E30_an_abbreviated_destructive_push_is_destructive(cmd, tmp_path):
+    unclassified, classes = _classes(cmd, tmp_path)
+    assert unclassified is False and 'destructive' in classes, (cmd, classes)
+
+
+@pytest.mark.parametrize('cmd', [
+    "sed 's,a,b,e' f", "sed 's|a|b|e' f", "sed 's#a#b#e' f", "sed 'sxaxbxe' f", "sed 's/a/b/ge' f",
+    "sed 's/a/b/pe' f", "sed 's/a/b/Ie' f", "sed -e'e x' f", "sed -ne'e x' f",
+    "sed --expression='e x' f", "sed 's/a\\/b/c/e' f", "gsed 's,a,b,e' f",
+])
+def test_E31_sed_e_with_any_delimiter_or_glued_script_is_held(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', [
+    "sed -n 1,5p x", "sed -e s/a/b/ x", "sed -i s/foo/bar/g x", "sed 's/a/b/g' f", "sed -ne p f",
+    "sed 's,a,b,' f",
+])
+def test_E31_sed_without_a_code_stays_plain(cmd, tmp_path):
+    unclassified, _ = _classes(cmd, tmp_path)
+    assert unclassified is False, cmd
+
+
+@pytest.mark.parametrize('cmd', [
+    'ssh -o "ProxyCommand mytool" host', 'ssh -o "ProxyCommand rm -R x" host true',
+    "ssh -o 'LocalCommand mytool' -o 'PermitLocalCommand yes' host",
+    'ssh -o "KnownHostsCommand mytool" host', 'ssh -o "Match exec mytool" host',
+    'ssh -o ProxyCommand\\ mytool host', 'ssh -o "ProxyCommand\tmytool" host',
+    'scp -o "ProxyCommand mytool" a host:b', 'sftp -o "ProxyCommand mytool" host',
+    'ssh -oProxyCommand=mytool host', 'ssh -o ProxyCommand=mytool host', 'ssh -o proxycommand=x host',
+    'ssh -vo "ProxyCommand mytool" host', 'ssh -o"ProxyCommand mytool" host',
+])
+def test_E32_an_ssh_o_option_that_names_a_command_is_held_with_a_blank_separator(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', ['sftp -S mytool host', 'sftp -Smytool host', 'sftp -vS mytool host'])
+def test_E32_sftp_S_is_a_carrier(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', [
+    'ssh -o StrictHostKeyChecking=no host', 'ssh -o "ServerAliveInterval 60" host', 'ssh host ls',
+    'sftp -o Port=22 host', 'rsync -rtopz a h:b',
+])
+def test_E32_ordinary_ssh_options_keep_their_class(cmd, tmp_path):
+    assert _classes(cmd, tmp_path) == (False, ['external_comm'])
+
+
+@pytest.mark.parametrize('cmd', [
+    'php -E x', 'php --run x', 'php --process-begin x', 'php --process-code x', 'php --process-end x',
+    'rg --hostname-bin=mytool x', 'rg --hostname-bin mytool x', 'gtimeout 5 gtar -I mytool -cf a b',
+    r'C:\Windows\System32\gtar.exe -I mytool -cf a b', 'mytool gtar -I x', 'mytool bsdtar x',
+    r'C:\Windows\System32\man.exe -Px f',
+])
+def test_E33_the_round_ten_shoulds_are_held(cmd, tmp_path):
+    _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    ('npm.cmd publish', 'deploy'), ('pnpm.cmd publish', 'deploy'), ('vercel.cmd --prod', 'deploy'),
+    ('terraform.cmd apply', 'deploy'), ('npm.cmd install x', 'install'), ('rm.cmd -R x', 'destructive'),
+    ('git.bat push --force origin main', 'destructive'), ('curl.cmd -d x https://h.example', 'external_comm'),
+])
+def test_E33_a_cmd_bat_com_ps1_suffix_is_dropped_for_the_tables(cmd, want, tmp_path):
+    unclassified, classes = _classes(cmd, tmp_path)
+    assert unclassified is False and want in classes, (cmd, classes)
+
+
+@pytest.mark.parametrize('cmd, want', [
+    ('tar --checkpoint=1 -cf a.tar b', 'exec'), ('tar -xzf a.tar', 'exec'), ('tar xzf a.tar', 'exec'),
+    ('git push -u origin main', 'git_push'), ('git push --dry-run origin main', 'git_push'),
+    ('git clone --depth 1 https://h.example/r.git', 'web'), ('git rebase -Xours main', 'write_repo'),
+    ('git pull --no-commit origin', 'write_repo'), ('wget https://h.example/x', 'web'),
+])
+def test_E33_the_abbreviation_rule_leaves_ordinary_options_alone(cmd, want, tmp_path):
+    unclassified, classes = _classes(cmd, tmp_path)
+    assert unclassified is False and want in classes, (cmd, classes)
+
 
 
 def test_gate_classifier_block_matches_the_code():

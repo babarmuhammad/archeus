@@ -515,32 +515,36 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 - unclassified: a first word with = (NAME=value); the programs ., alias, at, batch, builtin, busybox, call, cgexec, chronic, chroot, chrt, command, dbus-run-session, declare, doas, env, eval, exec, expect, export, fakeroot, firejail, flock, gdb, iex, invoke-expression, ionice, lldb, ltrace, newgrp, nice, nohup, nsenter, parallel, pkexec, proxychains, proxychains4, runas, runuser, screen, script, set, setarch, setsid, sg, socat, source, start, stdbuf, strace, su, sudo, systemd-run, taskset, time, timeout, tmux, torsocks, trap, typeset, unbuffer, unshare, watch, wsl, xargs
 - find: -delete is destructive; -exec, -execdir, -ok or -okdir running rm is destructive; any other program after one of them is unclassified
 - a first word, or a shell or interpreter argument, with an unquoted {, }, *, ? or [
-- a program not in the tables, given an argument with an unquoted {, }, *, ? or [ that may expand to one of the command words below: a brace alternative is judged as a plain word is, and a glob is matched as its pattern against each name with .exe, .cmd, .bat, .com or .ps1 added or not
+- any program: an unquoted brace word with something inside ({a,b}, {1..3}, {x}) anywhere in the command; {} alone is not one
+- a program not in the tables, given an argument with an unquoted *, ? or [ that may expand to one of the command words below: a glob is matched as its pattern against each name with .exe, .cmd, .bat, .com or .ps1 added or not
 - a shell operator outside quotes: | ; & < > ` ( ) ! and $( , or a newline or a carriage return; a $ or a backtick anywhere
 - git: -C, --git-dir, --work-tree, --namespace and --super-prefix are skipped with their value; -c, --config-env, and any other global option not in the tables, make the call unclassified
-- a program not in the tables, given an argument that after a directory, a quote, leading dashes or = is one of: base64, brew, busybox, caffeinate, cargo, cat, cgexec, chmod, choco, chronic, chroot, chrt, cp, curl, dbus-run-session, diff, dir, doas, docker, echo, env, eval, exec, expect, fakeroot, file, find, firejail, flock, gdb, gem, gh, git, go, grep, gtimeout, head, helm, hyperfine, iex, invoke-expression, ionice, kubectl, less, lldb, ln, ls, ltrace, make, man, mkdir, more, mv, newgrp, nice, nohup, npm, npx, nsenter, numactl, parallel, pip, pip3, pkexec, pnpm, podman, prlimit, proxychains, proxychains4, pwd, rg, rm, rmdir, rsync, runas, runcon, runuser, scp, setarch, setpriv, setsid, sftp, sg, socat, sort, ssh, stat, stdbuf, strace, su, sudo, systemd-run, tail, tar, taskset, terraform, timeout, tmux, torsocks, touch, tree, type, unbuffer, unshare, uv, vercel, wc, wget, which, winget, wsl, xargs, yarn, or a family name (below)
-- an option, or a key=value word, whose name is pre, pre-glob, or contains command, exec, pager, editor, shell, eval, hook, helper or program: for any program but git
-- carrier options, held whatever the value names: tar, gtar -I or -F (letters I and F), --use-compress-program, --info-script, --new-volume-script, --checkpoint-action; rsync -e (letter e) and --rsh; scp -S (letter S); sftp -D (letter D)
+- a program not in the tables, given an argument that after a directory, a quote, leading dashes or = is one of: base64, brew, bsdtar, busybox, caffeinate, cargo, cat, cgexec, chmod, choco, chronic, chroot, chrt, cp, curl, dbus-run-session, diff, dir, doas, docker, echo, env, eval, exec, expect, fakeroot, file, find, firejail, flock, gdb, gem, gh, git, go, grep, gtar, gtimeout, head, helm, hyperfine, iex, invoke-expression, ionice, kubectl, less, lldb, ln, ls, ltrace, make, man, mkdir, more, mv, newgrp, nice, nohup, npm, npx, nsenter, numactl, parallel, pip, pip3, pkexec, pnpm, podman, prlimit, proxychains, proxychains4, pwd, rg, rm, rmdir, rsync, runas, runcon, runuser, scp, setarch, setpriv, setsid, sftp, sg, socat, sort, ssh, stat, stdbuf, strace, su, sudo, systemd-run, tail, tar, taskset, terraform, timeout, tmux, torsocks, touch, tree, type, unbuffer, unshare, uv, vercel, wc, wget, which, winget, wsl, xargs, yarn, or a family name (below)
+- an option, or a key=value word, whose name is pre, pre-glob, hostname-bin, or contains command, exec, pager, editor, shell, eval, hook, helper or program: for any program but git
+- carrier options, held whatever the value names: tar, gtar, bsdtar -I or -F (letters I and F, also in the bundle that is the first word without a dash: tar cIf x), --use-compress-program, --info-script, --new-volume-script, --checkpoint-action, --to-command, --rsh-command; rsync -e (letter e) and --rsh; scp -S (letter S); sftp -D or -S (letters D and S); wget --execute, --use-askpass
+- a long option of a carrier, and of git clone, fetch, pull, ls-remote, push (--config, --config-env, --upload-pack, --receive-pack, --exec) and of git push (--force, --delete, --mirror), is held when it is any abbreviation of two letters or more of the name (--info-s, --upload-p), except --checkpoint
+- ssh, scp, sftp: an -o (alone, in a cluster, or glued to its value) whose value starts with a word that is Match or contains command, exec, pager, editor, shell, eval, hook, helper or program (ProxyCommand, LocalCommand), a blank or = ending the word
 - less, more, most, pg: an argument starting with + or containing !; man: an argument starting with -P
 - a program name is normalised first: a directory, quotes, .exe, .cmd, .bat, .com, .ps1 and a version suffix (python3.11, perl5.36) are dropped; a bare Windows path (C:\Windows\System32\tar.exe) is named by its basename
 - families (closed): shell: ash, bash, csh, dash, elvish, fish, ksh, mksh, nu, rbash, sash, sh, tcsh, xonsh, zsh; pwsh: pwsh, powershell; cmd; python: py, pypy, python, pythonw, pyw; node: node, nodejs; perl; ruby; php; sed: sed, gsed; code: any name ending awk, and bun, deno, emacs, ex, expect, groovy, gvim, jshell, julia, lua, luajit, nvim, osascript, rscript, rvim, tclsh, vi, view, vim, vimdiff, wish (code is always unclassified)
 - anywhere in the arguments: -c, -e or /c as whole words
 - shell family: a single-dash word anywhere in the arguments holding one of cCeE (a glued value counts); --command
-- python family: a single-dash word holding c; node family: holding e or p; --eval, --print; perl: e or E; ruby: e; php: r, R or B
+- python family: a single-dash word holding c; node family: holding e or p; --eval, --print; perl: e or E; ruby: e; php: r, R, B or E; --run, --process-begin, --process-code, --process-end
 - node family: --import, --loader or --experimental-loader with a data: URL in the arguments
-- sed: an e command (1e rm) or an s///e flag
+- sed: an e command (1e rm) or an s///e flag, with any delimiter, also when the script is glued to -e or --expression=
 - cmd: an argument with /c, /k, /r anywhere, in any case
 - powershell, pwsh: an argument whose first letter is c or e (a glued value counts: -cRemove-Item), except -ExecutionPolicy and -ConfigurationName in full; the dash may be a hyphen, an en dash, an em dash or a horizontal bar
-- git: rebase with -x or --exec; config with a key containing alias, pager, editor, command, helper, hook, external, textconv, fsmonitor, askpass, program, clean, smudge, process, driver, gitproxy, cmd, filter, browser, uploadpack, receivepack: unclassified
+- git: rebase with -x (also in a cluster, -ix) or --exec (or an abbreviation); config with a key containing alias, pager, editor, command, helper, hook, external, textconv, protocol, insteadof, fsmonitor, askpass, program, clean, smudge, process, driver, gitproxy, cmd, filter, browser, uploadpack, receivepack: unclassified
 - git push: destructive with --force, --force-with-lease, --delete, --mirror, a single-dash word holding f or d (-fu), or a + before a ref
-- git clone, fetch, pull, ls-remote, push: unclassified with -c, --config or --config-env naming a config key that contains one of the words above, or with --upload-pack or --receive-pack
+- git clone, fetch, pull, ls-remote, push: unclassified with -c, --config or --config-env naming a config key that contains one of the words above, or with --upload-pack, --receive-pack or --exec, clone -u, or an ext:: word
 - send flags (external_comm, not web): the names -d, -F, -T, --data, --data-raw, --data-binary, --data-urlencode, --data-ascii, --upload-file, --form, --form-string, --json, --post-data, --post-file, --body-data, --body-file; a long flag starting with --data, --form, --post- or --body-; a short -d, -F or -T, attached or not; -X or --request with a method other than GET (as the next word, attached, or with =)
 <!-- classifier-rules:end -->
 
-  **Every move against f483f87** (review round 7, regenerated in round 8; `py tools/p21_classifier_moves.py
+  **Every move against f483f87** (review round 7, regenerated in round 10; `py tools/p21_classifier_moves.py
   f483f87` prints these counts). 327,986 generated shapes (programs x pre-options x payload forms x tails, a
   newline after each program, the curl and wget send forms, git global options, plain commands, and the
-  round-7 families and wrappers): 235,902 moved, 0 held-to-allowed. Round 8 adds 2 find shapes from write_repo
+  round-7 families and wrappers): 237,271 moved, 0 held-to-allowed (235,902 moved at round 8; round 9 moved
+  none of them, and round 10 adds 1,369, below). Round 8 adds 2 find shapes from write_repo
   to destructive (`find -delete`) and 56 find shapes from read to unclassified (a -exec, -execdir, -ok or
   -okdir of a program other than rm). The round-8 wrapper, carrier, node, git config and force-push moves
   are in the total but not in the group counts below, which are the round-7 counts. Every move goes to unclassified,
@@ -686,7 +690,7 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 - Round 8 (review of 64d5bd9, T-128). (1) find: see round 7, item (7). (2) A wrapper's words are read as argv gives
   them, quotes removed (`gtimeout 5 r""m -R build`, `docker run alpine r""m -R /w`), and a brace or glob
   word that may expand to a command word is held (`gtimeout 5 {rm,-R,build}`, `gtimeout 5 r? -R build`,
-  `docker run alpine {sh,-c,x}`): braces expand one level, and a glob matches the command names by its
+  `docker run alpine {sh,-c,x}`): (round 10: every brace word is held as written, see round 10) and a glob matches the command names by its
   pattern (`tests/*.py` stays plain, `tests/*` is held: an over-hold). (3) `rg --pr""e` is read as
   `--pre`: the option rule reads argv too. (4) The carriers of (9). (5) `node --import`, `--loader` and
   `--experimental-loader` with a data: URL is held (the module text is in argv); a module file named by
@@ -709,7 +713,33 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   `hunterpassword.example`; the token-like rule needs a digit, owner call). An option value that names a
   program outside the tables and is not a carrier (`zip -TT mytool`, `fzf --preview mytool`) is a plain exec.
   `git push -fu` and `+refspec` were not destructive before round 8 and are now (see (7)).
-- Known residuals (frozen at round 9; each is fail-closed or an owner decision). Interpreters outside the
+- Round 10 (review of 8e9d77a, T-128; owner decision 2026-10-23, "Fail-closed round 10": whatever the
+  classifier cannot fully expand or recognise is held, never allowed). (1) An unquoted brace word with
+  something inside (`{a,b}`, `{1..3}`, `{apply}`, a nested `{x,{}}`) anywhere in a command is unclassified,
+  for every program: `rm {-R,build}`, `git push {--force,origin,main}`, `terraform {apply}`, `find .
+  {-delete}`, `tar {-I,mytool}`. `{}` alone (find's) is not one; a quoted or backslashed brace is text. The
+  round-9 `_expansions` (a full cross product, exponential in the pairs: 20 pairs took minutes inside the
+  manager's hook pass) is gone, so no bound is needed: the brace word is held as written, in time that does
+  not depend on the pairs (E27 holds 300 pairs in under a second). (2) A long option of a carrier (tar,
+  gtar, bsdtar, rsync, wget) and of git clone, fetch, pull, ls-remote and push (`--config`,
+  `--config-env`, `--upload-pack`, `--receive-pack`, and `--exec`, the alias of the last two) is held under
+  any abbreviation of two letters or more, as getopt_long and git's parse-options accept one; so is git
+  push `--force`, `--delete`, `--mirror` (destructive) and git rebase `--exec`. `--checkpoint` is an option
+  of its own and stays plain. Added by name: tar `--to-command`, `--rsh-command`, wget `--execute`,
+  `--use-askpass`, rg `--hostname-bin`, git clone `-u` (any single-dash letter run holding u). (3) tar's old
+  style: a first word with no dash that holds I or F (`tar cIf mytool a.tar b`). (4) ssh, scp, sftp `-o`,
+  alone, in a cluster or glued, whose value starts with Match or a word naming a command, ended by a blank or
+  `=` (`-o "ProxyCommand mytool"`); sftp `-S` is a carrier like scp's. (5) sed: the `s///e` backreference
+  names the delimiter (it was group 2, so only `/` was caught), and a script glued to `-e` or
+  `--expression=` is read. (6) The cheap Shoulds: `.cmd`, `.bat`, `.com`, `.ps1` are dropped for the tables
+  (`npm.cmd publish` is a deploy); gtar and bsdtar are command words; php `-E`, `--run`, `--process-*`; the
+  pager and man test reads the program name; git config keys `protocol` and `insteadof`, and an `ext::`
+  word, are held. Moves against 8e9d77a (the tool run with it as the baseline): 1,369 shapes, every one
+  to unclassified (from read, write_repo, external_comm, web, destructive or plain exec), 0 held-to-allowed.
+  Over-holds this round brings: any brace word (`ls {a,b}`), any two-letter prefix of a held name
+  (`tar --ne`, `git clone --co`), a clone letter run holding u (`-bmenu`), a tar first word holding I or F,
+  an ssh `-o` value whose first word holds a command word.
+- Known residuals (frozen at round 10; each is fail-closed or an owner decision). Interpreters outside the
   closed families (`R -e`, `ipython -c`, `ocaml -e`, `racket -e`, `irb -e`): the family set is closed by
   design. zip -TT and fzf --preview option values: not carriers (owner decision). A pure-letter host label
   (`hunterpassword.example`): the token-like rule needs a digit (owner call). Glob over-holds (`pytest tests/*`
@@ -717,7 +747,14 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   write a file and are read (write options on read commands, owner scope). --no-replace-objects is an unknown
   global option, so it is unclassified (over-hold; the store-pin scan forbids the literal). A module file named
   by node --import or --loader stays plain exec. PowerShell cmdlets other than iex and Invoke-Expression are not
-  judged. Other tools that run a program they are given are not carriers.
+  judged. Other tools that run a program they are given are not carriers. Round-10 review items kept as
+  residuals (each fail-closed or a plain-exec cost): a quote-split bare path (`C:\Windows\System32	""ar.exe`)
+  reaches neither argv nor the raw word as tar; `file`, `exec` and `eval` as argument words over-hold
+  `docker exec c ls`, `npm exec x`, `make exec`, `tar --file=a.tar -x`; a name with a dash version
+  (`pwsh-preview`, `zsh-5.9`, `gawk-5.1.0`) is outside the closed families; `git --exec-path=<dir>` and
+  `git clone --template=<dir>` need a planted workspace file; getopt_long abbreviations of options held by
+  name for programs outside the carrier list (`sort --compress-p=sh`) are not read; the round-9 mutants
+  Z250-Z265 name one parametrized test, while each round-10 rule has its own.
 - Decoy row (review of 025c812, R6; no code change). The E03 expectation row is test_p21_activity.py
   line 120, `curl --proxy-header http://decoy.example https://h.example/x`, expecting ('web', 'curl').
   The planted-secret HOSTILE row that replaced the original decoy HOSTILE row is line 221,
