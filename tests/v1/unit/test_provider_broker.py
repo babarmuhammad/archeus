@@ -346,6 +346,7 @@ def test_only_the_standard_and_anthropic_headers_are_forwarded():
     {'x-api-key': 'sk-ant-admin01-SECRET'},        # any other sk-ant- family: allow-list refuses
     {'x-api-key': 'UPSTREAM-SECRET'},              # an unknown shape: refused, not sent
     {'x-api-key': 'sk-other-api03-SECRET'},
+    {'x-api-key': 'sk-ant-api03-SECRET\r\nInjected: yes'},     # an API key with a header smuggled behind it
 ])
 def test_the_upstream_credential_is_one_api_key_or_nothing_is_sent(creds):
     b, calls = broker()
@@ -436,7 +437,7 @@ def test_a_form_of_the_key_split_across_stream_chunks_cuts_the_stream(form, spli
 
 
 def test_a_clean_stream_is_relayed_unchanged_and_in_order():
-    chunks = [b'a' * 300, b'bb', b'c' * 1000, b'end']
+    chunks = [b'a' * 300, b'bb', b'c' * 1000, b'end c2']   # ends in a base64 prefix of the key, so the held tail is flushed at EOF
     b, _ = broker(send=lambda *a: Resp(chunks=list(chunks)))
     _, token, _ = issued(b)
     out, row = serve(b, request(token=token))
@@ -480,6 +481,53 @@ def test_the_key_in_a_status_reason_is_not_relayed():
     out, row = serve(b, request(token=token))
     assert row['status'] == 200 and UPSTREAM_KEY.encode() not in out
     assert out.startswith(b'HTTP/1.1 200 \r\n')
+
+
+@pytest.mark.parametrize('extra', [
+    ('anthropic-beta: sk-an', 'user-agent: t-oat01-SPLITSECRET'),       # split across headers
+    ('anthropic-beta: sk-an', 'anthropic-beta: t-oat01-SPLITSECRET'),   # split across occurrences
+    ('anthropic-beta: sk-ant-apioat01-SPLITSECRET',),                   # api-looking, not a key
+])
+def test_a_credential_split_across_forwarded_headers_is_refused(extra):
+    b, calls = broker()
+    _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=10))
+    _, row = serve(b, request(token=token, extra=extra))
+    assert row['status'] == 403 and calls == []
+
+
+def test_a_whole_api_key_split_across_forwarded_headers_is_sent():
+    b, calls = broker()
+    _, token, _ = issued(b)
+    _, row = serve(b, request(token=token, extra=('anthropic-beta: sk-ant-api03-a',
+                                                  'user-agent: b')))
+    assert row['status'] == 200 and len(calls) == 1
+
+
+@pytest.mark.parametrize('prefix', [b'', b'A', b'AB'])
+def test_the_key_in_a_base64_blob_at_any_offset_is_not_relayed(prefix):
+    blob = base64.b64encode(prefix + UPSTREAM_KEY.encode())
+    b, _ = broker(send=lambda *a: Resp(status=529, chunks=[blob]))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert row['status'] == 529 and b'Content-Length: 0' in out and blob not in out
+
+
+@pytest.mark.parametrize('prefix', [b'', b'A', b'AB'])
+def test_the_key_in_a_base64_stream_blob_at_any_offset_cuts_the_stream(prefix):
+    blob = base64.b64encode(prefix + UPSTREAM_KEY.encode())
+    b, _ = broker(send=lambda *a: Resp(chunks=[blob]))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert _body(out) == b'' and blob not in out
+    assert serve(b, request(token=token))[1]['status'] == 401
+
+
+def test_a_stream_is_relayed_as_it_arrives_without_a_held_window():
+    b, _ = broker(send=lambda *a: Resp(chunks=[b'hello', b'world']))
+    _, token, _ = issued(b)
+    pieces = []
+    b.serve(request(token=token), pieces.append, 'archeus.x')
+    assert pieces[1] == b'hello'
 
 
 def test_a_listed_name_that_carries_a_credential_word_is_never_forwarded(monkeypatch):

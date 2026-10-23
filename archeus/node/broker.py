@@ -81,8 +81,9 @@ ERROR_BODY_MAX = 64 * 1024
 #: the only upstream credential the broker sends: an API key (PV20-08b, owner allow-list,
 #: PV20-09 round 5). Matched case-insensitively; every other credential is refused
 _API_KEY = 'sk-ant-api'
-#: any `sk-ant-` token that is not an API key, in a forwarded header (PV20-09 round 6)
-_NOT_API_KEY = re.compile(r'sk-ant-(?!api)', re.I)
+#: a whole API key, and the `sk-ant-` sequences that must each start one (PV20-09 rounds 6, 7)
+_API_TOKEN = re.compile(r'sk-ant-api[0-9]{2}-[a-z0-9_-]+', re.I)
+_SK_ANT = re.compile(r'sk-ant-', re.I)
 
 
 class Refused(Exception):
@@ -389,10 +390,11 @@ class Broker:
             raise Refused(403, 'the upstream credential is not one API key')
         if not key.lower().startswith(_API_KEY):
             raise Refused(403, 'the upstream credential is not an sk-ant-api key')
+        fwd = [v for k, v in req.headers if wire.forwarded(k)]
+        flat = ''.join(re.sub(r'[\s,;:"\']', '', v) for v in fwd)     # split across headers too
+        if any(_foreign_credential(v) for v in fwd + [flat]):
+            raise Refused(403, 'a forwarded header carries a credential that is not an API key')
         headers = {k: v for k, v in req.headers if wire.forwarded(k)}
-        for v in [v for k, v in req.headers if wire.forwarded(k)]:   # every occurrence
-            if _NOT_API_KEY.search(v):
-                raise Refused(403, 'a forwarded header carries a credential that is not an API key')
         headers['x-api-key'] = key
         headers['Content-Length'] = str(len(req.body))
         try:
@@ -432,8 +434,8 @@ class Broker:
             return resp.status, len(body)
         out.append('Connection: close')
         write(('\r\n'.join(out) + '\r\n\r\n').encode('latin-1'))
-        # the key may be split across chunks: the tail that could still start a form is held
-        window = max(len(f) for f in _forms(key)) - 1
+        # the key may be split across chunks: only the tail that could still start a form is held
+        forms = tuple(f.lower() for f in _forms(key))
         held, sent, got = b'', 0, 0
         while True:
             if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):
@@ -448,7 +450,7 @@ class Broker:
             if _leaks(buf, key):
                 self.revoke(b.execution_id)     # the key is in the stream: cut it, end the grant
                 return resp.status, sent
-            cut = max(0, len(buf) - window)
+            cut = len(buf) - _prefix_tail(buf.lower(), forms)
             if cut:
                 write(buf[:cut])
                 sent += cut
@@ -467,9 +469,28 @@ def _reply(write, status, reason):
 
 
 def _forms(key):
-    """The forms an upstream may echo the key in: as itself, in base64, as JSON \\u escapes."""
+    """The forms an upstream may echo the key in: as itself, in base64 at each of the three
+    alignments a larger blob can give it (whole 3-byte groups only), as JSON \\u escapes."""
     k = key.encode('latin-1')
-    return (k, base64.b64encode(k), ''.join('\\u%04x' % ord(c) for c in key).encode('ascii'))
+    bases = tuple(base64.b64encode(k[j:][:(len(k) - j) // 3 * 3]) for j in range(3))
+    return (k, *bases, ''.join('\\u%04x' % ord(c) for c in key).encode('ascii'))
+
+
+def _foreign_credential(text):
+    """True when *text* holds an `sk-ant-` sequence that does not start a whole API key."""
+    return any(not _API_TOKEN.match(text, m.start()) for m in _SK_ANT.finditer(text))
+
+
+def _prefix_tail(low, forms):
+    """The length of the longest suffix of *low* that is a proper prefix of a form: the only
+    bytes a later chunk could complete into a form (*low* and *forms* are lower-case)."""
+    best = 0
+    for f in forms:
+        for n in range(min(len(f) - 1, len(low)), best, -1):
+            if low.endswith(f[:n]):
+                best = n
+                break
+    return best
 
 
 def _leaks(data, key):
