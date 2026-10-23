@@ -783,7 +783,7 @@ p.small, .small { line-height: 20px; }
   #s-now .ov-pill { fill: rgba(20, 16, 26, 0.7); }
   #s-now .ov-art [role=button] { cursor: pointer; outline: none; }
   #s-now .ov-art [role=button]:focus-visible, #s-now .ov-art .ov-review:focus-visible { outline: 0; }
-  #s-now .ov-art [role=button]:focus-visible circle, #s-now .ov-art .ov-review:focus-visible rect { stroke: #FFF3CF; stroke-width: 4px; }
+  #s-now .ov-art [role=button]:focus-visible circle, #s-now .ov-art .ov-mark:focus-visible rect, #s-now .ov-art .ov-review:focus-visible rect { stroke: #FFF3CF; stroke-width: 4px; }
   #s-now .ov-art .ov-hit { pointer-events: all; }
   #s-now .ov-art .ov-review { cursor: pointer; }
   #s-now .ov-art .ov-review-hit { pointer-events: all; }
@@ -1340,7 +1340,7 @@ body.frame-replay .rp-sub { position: absolute; left: 2px; top: calc(var(--y) - 
 body.frame-replay .rp-badge { position: absolute; left: calc(var(--x) - 793px); top: calc(var(--y) - var(--top)); width: var(--w); height: 34px; min-height: 34px; padding: 0; justify-self: auto; font: 400 14.9px/20px var(--rp-sans); }
 body.frame-replay .rp-actions { position: absolute; left: 2px; top: calc(657px - var(--top)); width: 455px; height: 40px; margin: 0; grid-template-columns: 222px 222px; gap: 11px; }
 body.frame-replay .rp-actions .btn { min-height: 40px; height: 40px; width: 222px; padding: 0; font: 400 16.2px/24px var(--rp-sans); border-radius: 6px; }
-body.frame-replay .rp-actions .btn::before { content: ""; position: absolute; left: 0; right: 0; top: calc((40px - 44px / var(--k, 1)) / 2); bottom: calc((40px - 44px / var(--k, 1)) / 2); }
+body.frame-replay .rp-actions .btn::before { content: ""; position: absolute; left: 0; right: 0; top: calc((40px - 48px / var(--k, 1)) / 2); bottom: calc((40px - 48px / var(--k, 1)) / 2); }
 body.frame-replay .rp-foot { position: absolute; left: 920px; top: 748px; width: 300px; padding: 0; margin: 0; font: 400 16.9px/22px var(--rp-sans); text-align: left; white-space: nowrap; border: 0; translate: var(--dx, 0px) var(--dy, 0px); }
 body.frame-replay .rp-foot::before { content: ""; position: absolute; left: -126px; width: 612px; top: -16px; height: 1px; background: rgba(239, 236, 240, 0.08); }
 body.frame-replay .rp-foot { display: block; }
@@ -1825,6 +1825,42 @@ body.frame-terminal #s-terminal { height: 1200px; }
   #s-now[data-frame="3"].sheet-full .menu-btn, body.kb-open #s-now[data-frame="3"] .menu-btn { display: none; }
   #s-now[data-frame="3"] .receipt { min-height: 48px; }
   #s-now[data-frame="3"] .new-reply { bottom: 4px; }
+}
+
+/* V2 re-space (v2/chatbar): no control under 48 CSS px on desktop (44 pt on the phone, last block of this file). The look stays: hit areas grow
+   with ::before and ::after, and where rows were closer than 48 px they now sit on a 48 px pitch. Desktop frames are measured at their master
+   size (one frame px is one CSS px); at a smaller window the frame, and with it each area, scales down. */
+body.frame-now .places { top: 70px; }
+body.frame-now .places a { height: 48px; }
+body.frame-now .places a[data-nav="shared"] { top: 48px; }
+body.frame-now .places a[data-nav="replay"] { top: 96px; padding-bottom: 12px; }
+body.frame-now .rail .wordmark::after, body.frame-replay .rail .wordmark::after,
+body.frame-now .top [data-tell]::after, body.frame-now .top .stop-btn::after, body.frame-replay .top [data-tell]::after, body.frame-replay .top .stop-btn::after, body.frame-now .stage-now .lbl a.act::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 24px); height: 48px; }
+body.frame-mission .fr-btns .tell, body.frame-mission .fr-btns .stop-btn { top: 8px; height: 48px; line-height: 48px; }
+body.frame-shared .fr-btns .tell, body.frame-shared .fr-btns .stop-btn { top: 838px; height: 48px; line-height: 48px; }
+.frame .fr-crumb a::before { top: -18px; bottom: -18px; }
+.frame .sh-nav a::before { top: calc(50% - 24px); bottom: auto; height: 48px; }
+.frame .sh-projects a::before { top: calc(50% - 24px); bottom: auto; height: 48px; }
+.frame .sh-nav a[data-f="nav_ov"]::before { top: calc(50% - 31.9px); }
+.frame .sh-nav a[data-f="nav_mi"]::before { top: calc(50% - 27.9px); }
+.frame .sh-nav a[data-f="nav_id"]::before { top: calc(50% - 21.75px); }
+.frame .sh-nav a[data-f="nav_pr"]::before { top: calc(50% - 19.9px); }
+.frame .sh-nav a[data-f="nav_co"]::before { top: calc(50% - 18.6px); }
+.frame-screen .fr-foot .btn { position: relative; }
+.frame-screen .fr-foot .btn::after { content: ""; position: absolute; right: 0; bottom: 0; width: 100%; height: 48px; }
+
+/* Phone Mission and Shared: the real controls under the frame, 44 pt each (see syncCtl in app.js). */
+.ph-ctl { display: none; }
+@media (max-width: 880px) {
+  body.frame-mission .ph-ctl, body.frame-shared .ph-ctl {
+    display: flex; flex-direction: column; gap: 6px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-top: 1px solid var(--line);
+  }
+  body.frame-mission .ph-ctl .pc-s { display: none; }
+  .ph-ctl .pc-row { display: flex; gap: 6px; }
+  .ph-ctl .pc-row > * { flex: 1 1 0; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 4px; }
+  .ph-ctl .pc-s > * { border: 1px solid var(--line-2); border-radius: 10px; background: transparent; color: var(--text); font: 400 14px/20px var(--sans); text-decoration: none; }
+  .ph-ctl [aria-selected="true"], .ph-ctl [aria-current="page"] { border-color: var(--text-muted); background: rgba(239, 233, 218, 0.08); }
 }
 
 /* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,

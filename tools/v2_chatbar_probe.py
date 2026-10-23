@@ -348,11 +348,11 @@ def nav(br, w, h):
     for route in NAV_ROUTES:
         ctx, pg = page(br, w, h, route)
         hrefs = pg.evaluate("""() => [...new Set([...document.querySelectorAll('a[href^="#/"]')].filter(a => { const b = a.getBoundingClientRect(), cs = getComputedStyle(a);
-          return b.width > 0 && b.height > 0 && cs.visibility !== 'hidden' && !a.closest('[hidden]') && b.bottom > 0 && b.right > 0 && b.top < innerHeight && b.left < innerWidth; }).map(a => a.getAttribute('href')))]""")
+          return b.width > 0 && b.height > 0 && cs.visibility !== 'hidden' && !a.closest('[hidden], [inert]') && b.bottom > 0 && b.right > 0 && b.top < innerHeight && b.left < innerWidth; }).map(a => a.getAttribute('href')))]""")
         for href in hrefs:
             pg.evaluate("location.hash = '%s'" % route)
             pg.wait_for_timeout(250)
-            sel = 'a[href="%s"]' % href
+            sel = 'a[href="%s"]:not([inert] a)' % href
             loc = pg.locator(sel + ':visible').first
             total += 1
             try:

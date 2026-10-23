@@ -743,10 +743,12 @@
     out += '<g class="ov-mark" data-open="m-date" role="button" tabindex="0" aria-label="' + esc(blue.title) + '">' +
       '<circle cx="' + sm.cx + '" cy="' + sm.cy + '" r="44" fill="transparent"/></g>';
 
+    // The two Notes marks are 44 units apart, so 88 unit circles would overlap: the hit areas split at the midpoint and each grows away from the other.
+    var nb = ovBox(L.marks.notes_index), nr = ovBox(L.marks.notes_read), nmid = (nb.cx + nr.cx) / 2;
     ['m-index', 'm-read'].forEach(function (id) {
       var mm = find(id), b = ovBox(L.marks[id === 'm-index' ? 'notes_index' : 'notes_read']);
       out += '<g class="ov-mark" data-open="' + id + '" role="button" tabindex="0" aria-label="' + esc(mm.title) + '">' +
-        '<circle cx="' + b.cx + '" cy="' + b.cy + '" r="44" fill="transparent"/>' +
+        '<rect x="' + (id === 'm-index' ? nmid - 88 : nmid) + '" y="' + (b.cy - 44) + '" width="88" height="88" rx="22" fill="transparent"/>' +
         (id === 'm-index' ? ovDiamond(b, OV_IV, 3) : ovStar(b, OV_IV)) + '</g>';
     });
 
@@ -1411,10 +1413,11 @@
       Object.keys(S.items).forEach(function (id) {
         var it = S.items[id];
         if (!it.hit || !it.cx) return;
-        var D = 2 * it.hr;
+        var kf = document.body.classList.contains('frame-now') ? parseFloat(document.documentElement.style.getPropertyValue('--k')) || 1 : 1;
+        var D = Math.max(2 * it.hr, 48 / kf);
         it.hit.style.width = D.toFixed(1) + 'px';
         it.hit.style.height = D.toFixed(1) + 'px';
-        it.hit.style.transform = 'translate(' + (it.cx - it.hr).toFixed(1) + 'px,' + (it.cy - it.hr).toFixed(1) + 'px)';
+        it.hit.style.transform = 'translate(' + (it.cx - D / 2).toFixed(1) + 'px,' + (it.cy - D / 2).toFixed(1) + 'px)';
       });
     }
 
@@ -1955,11 +1958,12 @@
     root.insertAdjacentHTML('afterbegin', svg);
     // Hit areas are at least 44 CSS px: in master px on the desktop frame (44 / --k), in stage px on the phone.
     var kk = isNarrow() ? 1 : (parseFloat(document.documentElement.style.getPropertyValue('--k')) || 1);
-    var hs = isNarrow() ? 44 : 44 / kk;
+    var hs = (isNarrow() ? 44 : 48) / (isNarrow() ? 1 : kk);
     var hit = function (c, w, h, href, label) {
       return '<a class="rc-hit" href="' + href + '" aria-label="' + label + '" style="left:' + (c[0] - w / 2).toFixed(1) + 'px;top:' + (c[1] - h / 2).toFixed(1) + 'px;width:' + w.toFixed(1) + 'px;height:' + h.toFixed(1) + 'px"></a>';
     };
     var mp = rpPos(g, 488, 328), fp = rpPos(g, RP_LABEL.fix[0] + 50, RP_LABEL.fix[1] + 9);
+    mp[1] = Math.min(mp[1], fp[1] - hs);
     var lab = hit(mp, hs, hs, '#/mission/' + m.id, esc(m.title) + ': open the mission');
     lab += hit(fp, hs * 3, hs, '#/mission/' + m.id, esc(m.title) + ': open the mission');
     var put = function (k, html, cls) { return '<p class="rc-l rk-' + k + ' ' + (cls || '') + '" style="' + rpCss(rpPos(g, RP_LABEL[k][0], RP_LABEL[k][1])) + '">' + html + '</p>'; };
@@ -3598,6 +3602,14 @@
     plan: function (id) { planStep = 'review'; renderPlan(id); }
   };
 
+  // Phone Mission and Shared: the frame is the desktop frame at about 0.3 scale, so its rail rows, tabs, Tell and Stop are 13 px apart.
+  // The real controls are the 44 pt strip under it (#ph-ctl); the copies in the art are switched off so each action has one control.
+  function syncCtl() {
+    var off = isNarrow() && (document.body.classList.contains('frame-mission') || document.body.classList.contains('frame-shared'));
+    $$('.frame .fr-btns, .frame .sh-nav, .frame .tabs').forEach(function (el) { el.inert = off; });
+  }
+  window.addEventListener('resize', syncCtl);
+
   function route() {
     var parts = (location.hash || '#/now').replace(/^#\/?/, '').split('/');
     var name = SCREENS[parts[0]] && !(parts[0] === 'phone' && isNarrow()) ? parts[0] : 'now';
@@ -3608,6 +3620,7 @@
     document.body.classList.toggle('frame-shared', name === 'shared');
     document.body.classList.toggle('frame-terminal', name === 'terminal' && !isNarrow());
     fitFrame();
+    syncCtl();
     closeSheet(true);
     $$('main > section').forEach(function (s) { s.hidden = s.id !== 's-' + name; });
     $$('.places a').forEach(function (a) {

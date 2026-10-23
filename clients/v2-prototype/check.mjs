@@ -441,6 +441,8 @@ const chatBg = [14, 11, 22], chatA = 0.82, onWhite = '#' + chatBg.map((c) => Mat
 check(ratio(tokens.text, onWhite) >= 4.5 && ratio(tokens['text-2'], onWhite) >= 4.5, `chat material over the brightest scene point fails 4.5:1 (${ratio(tokens['text-2'], onWhite).toFixed(2)})`);
 check(ratio('#FFF3CF', onWhite) >= 3 && ratio(tokens.focus, '#0E131C') >= 3, 'focus ring fails 3:1 on the chat material');
 check(/--chat-bg: rgba\(14, 11, 22, 0\.82\)/.test(chatCss), 'chat material alpha changed: re-check the contrast above');
+check(/id="ph-ctl"/.test(html) && /data-stab="content"/.test(html.slice(html.indexOf('id="ph-ctl"'))) && /el\.inert = off/.test(js), 'phone Mission and Shared need the 44 pt control strip and inert copies in the art');
+check(/body\.frame-now \.places a \{ height: 48px; \}/.test(css) && /body\.frame-now \.places a\[data-nav="replay"\] \{ top: 96px/.test(css), 'desktop rail rows need a 48 px pitch');
 check(/class="ph3-expand"/.test(html) && /aria-expanded/.test(html.match(/<button[^>]*ph3-expand[^>]*>/)[0]), 'phone sheet needs an explicit Expand control');
 check(/--st: min\(calc\(var\(--u\) \* 865\), 55dvh\)/.test(chatCss) && /--kb/.test(chatCss) && /visualViewport/.test(js), 'phone sheet: 45 percent with the keyboard closed, composer above the keyboard');
 
