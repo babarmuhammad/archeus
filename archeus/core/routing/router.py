@@ -42,9 +42,10 @@ registered, health, why_not, policy, usage {windows {5h: pct}, resets_at,
 age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 {tokens, cost}}}], terms {harness:
 {headless, rotation}}, affinity {harness, account}, approved_fallbacks [key].
-Times are written instants (ms, Z; domain/instants.py): `now`, a breaker's
-`until`, and each `resets_at` value still ahead (None when past or unreadable,
-which the builder writes). The router only compares them as text; without
+Times are strings in UTC (ms, Z): `now` and a breaker's `until`. Each `resets_at`
+value is {at, key} (domain/instants.py `ahead`: `at` the instant as written, offset
+kept; `key` the same instant in UTC) or None when past or unreadable, which the
+builder writes. The router orders and compares by `key` and writes `at`; without
 `now` it compares nothing.
 """
 
@@ -389,9 +390,10 @@ def _why(win, rest, req, snap):
 
 
 def _resets(account):
-    """The 5-hour reset values of a candidate's account (a feed's mapping, else none)."""
+    """The 5-hour reset values of a candidate's account that are still ahead (a feed's
+    mapping, else none): {at, key} each."""
     rs = (account.get('usage') or {}).get('resets_at')
-    return list(rs.values()) if isinstance(rs, dict) else []
+    return [r for r in rs.values() if r] if isinstance(rs, dict) else []
 
 
 def route(req, snap):
@@ -441,15 +443,16 @@ def route(req, snap):
         else:
             ask = next((c for c in fb if c['fallback'] == 'ask'), None)
             result, win = ('ask', ask) if ask is not None else ('blocked', None)
-    # the waits are written instants (resources.py parsed them, T-106 r2): one past
-    # the snapshot's `now` is a wait, a past or unreadable one is never one. Without
-    # `now` every reading is taken as it stands (the pre-T-106 rule)
+    # the waits are the snapshot's {at, key} (domain/instants.py, T-106 r2): one with a
+    # key after the snapshot's `now` is a wait; a past or unreadable one is never one.
+    # Ordering and the check use the UTC key, so readings in any zone compare by instant
+    # (T-106 r8); `at` is what the decision writes. Without `now` nothing is compared
     now = snap.get('now')
-    waits = [w for w in
-             [r for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
-              for r in _resets(c['_a'])]
-             + [c['_h']['breaker']['until'] for c in cands if c['eliminated_at_step'] == 'breaker']
-             if w and (now is None or w > now)]
+    waits = [r for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
+             for r in _resets(c['_a'])]
+    waits += [{'at': u, 'key': u} for c in cands if c['eliminated_at_step'] == 'breaker'
+              for u in [c['_h']['breaker']['until']] if u]
+    waits = [w for w in waits if now is None or w['key'] > now]
     public = [{k: v for k, v in c.items() if not k.startswith('_')} for c in cands]
     return {
         'result': result,
@@ -462,7 +465,8 @@ def route(req, snap):
         'fallback_from': [c['resource'] for c in cands if c is not win
                           and c['eliminated_at_step'] in ('health', 'allocation')]
         if result in ('fallback', 'ask') else [],
-        'unblock_at': min(waits) if waits and result == 'blocked' else None}
+        'unblock_at': min(waits, key=lambda w: w['key'])['at']
+        if waits and result == 'blocked' else None}
 
 
 def explain(d, req):

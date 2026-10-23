@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key), and r9 (Q180-Q183: the router's UTC key and the replay of written resets).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -846,14 +846,15 @@ MUTATIONS = [
      "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]")],
      [XU + 'test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock']),
     ('Q162', 'a naive reset is read in local time by route_wait (the r3 divergence)', [
-     (INST, "    return None if at <= now else at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')", "    return None if at <= now else iso"),
+     (INST, "    return {'at': at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'), 'key': key}",
+     "    return {'at': at.replace(tzinfo=None).isoformat(timespec='milliseconds'), 'key': key}"),
      (RES, "    at = instants.instant(d.unblock_at)    # the same parse the snapshot used: any zone, one instant\n"
            "    until = at and at.timestamp()",
            "    until = datetime.fromisoformat(d.unblock_at.replace('Z', '+00:00')).timestamp()")],
      [RU + 'test_T106r4_a_naive_reset_names_the_same_instant_in_every_local_zone']),
     ('Q163', 'a provider resets value that is not a mapping raises out of route()', [(ROUTER,
-     "    return list(rs.values()) if isinstance(rs, dict) else []",
-     "    return list(rs.values())")],
+     "    return [r for r in rs.values() if r] if isinstance(rs, dict) else []",
+     "    return [r for r in rs.values() if r]")],
      [RU + 'test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error']),
     # T-106 correction r5 (review of c290b87)
     ('Q164', 'the trip is read at tx.now, not the failure\'s own stamp (a second boundary hides it)',
@@ -862,8 +863,8 @@ MUTATIONS = [
      "    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(tx.now)))")],
      [SB + 'test_T106r5_the_trip_is_recorded_when_a_second_boundary_falls_inside_the_command']),
     ('Q165', 'a reset within a millisecond of now is not truncated before the comparison', [(INST,
-     "    at = at.replace(microsecond=at.microsecond // 1000 * 1000)",
-     "    pass")],
+     "    return at.replace(microsecond=at.microsecond // 1000 * 1000)",
+     "    return at")],
      [RU + 'test_T106r5_a_reset_within_a_millisecond_of_now_is_no_wait']),
     ('Q166', 'an account limit is stored as the provider sent it (no normalising)', [(EXE,
      "    until = limit_until(resets_at, now)",
@@ -928,6 +929,23 @@ MUTATIONS = [
      "key = harness_id")],
      [XU + 'test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot',
       XU + 'test_O7_a_harness_id_the_body_escapes_still_finds_its_rows']),
+    # T-106 correction r9 (review of d684947): readings order by their UTC key
+    ('Q180', 'the router names the earliest reset by its text, not its instant (breaks the ordering)',
+     [(ROUTER, "min(waits, key=lambda w: w['key'])['at']", "min(waits, key=lambda w: w['at'])['at']")],
+     [RU + 'test_T106r8_the_router_orders_readings_by_instant_not_by_text',
+      RU + 'test_T106r8_the_builder_keeps_each_reset_an_instant_the_router_orders']),
+    ('Q181', 'the router compares the written text with now, not the UTC key (offset readings are no wait)',
+     [(ROUTER, "if now is None or w['key'] > now]", "if now is None or w['at'] > now]")],
+     [RU + 'test_T106r8_the_router_orders_readings_by_instant_not_by_text',
+      RU + 'test_T106r8_the_builder_keeps_each_reset_an_instant_the_router_orders']),
+    ('Q182', 'the UTC key is the instant as written, not converted to UTC', [(INST,
+     "key = at.astimezone(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')",
+     "key = at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')")],
+     [RU + 'test_T106r8_an_offset_reset_is_written_as_given_and_keyed_in_utc',
+      RU + 'test_T106r8_the_router_orders_readings_by_instant_not_by_text']),
+    ('Q183', 'a replayed decision re-parses the reset values it already holds (a written reset is lost)',
+     [(RES, "v if isinstance(v, dict) else instants.ahead(v, now)", "instants.ahead(v, now)")],
+     [RU + 'test_T106r8_a_decision_recorded_in_the_written_form_replays_the_same']),
 ]
 
 if __name__ == '__main__':

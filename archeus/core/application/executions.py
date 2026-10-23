@@ -137,8 +137,11 @@ def _newest(conn, harness_id, now):
     only breaks ties. The instants are compared as parsed, not as text: created_at has
     milliseconds and the others do not. SQLite 3.31 has no json_extract (test_db_schema
     pins the floor), so the body is read here. Owner sign-off, T-106 r8: "Accept
-    read-all, cap 600". The streak reads the harness's 600 newest rows by creation, each
-    decoded and sorted here, so a streak longer than 600 rows is cut at its 600th."""
+    read-all, cap 600". The cap is by creation, not by decided time: the streak reads
+    the harness's 600 newest rows by creation and orders them here by decided time. A
+    row created before 600 newer ones is outside the cap even when it was decided after
+    them (test_O7_the_cap_is_by_creation_order); a decided-time cap needs a column or
+    json1."""
     # ponytail: decodes the newest 600 rows of the harness per call (the owner's ceiling,
     # T-106 r8); a decided_at column (or json1 once the floor allows it) bounds it by time
     found = []

@@ -53,7 +53,7 @@ def acct(id_, harness_id, *, priority=1, usage=0.0, age=0, health='AVAILABLE',
             'policy': dict(POL, priority=priority, **pol),
             'usage': None if usage is None else {
                 'windows': {'5h': usage}, 'age_s': age,
-                'resets_at': {'5h': resets} if resets else {}},
+                'resets_at': {'5h': instants.written(resets)} if resets else {}},
             'ledger': {'tokens_today': 0, 'cost_today': 0, 'running': 0}}
 
 
@@ -320,11 +320,9 @@ _POLICY = {'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserv
            'consumption': None}
 
 
-def test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest(monkeypatch):
-    """The original assertion on raw provider text: the snapshot builder writes each
-    reset as an instant (ms, Z), and the router names the earliest of them."""
+def _live(monkeypatch, raw):
+    """The accounts the snapshot builder writes for raw provider resets ({account: text})."""
     now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
-    raw = {'acc_a': '2026-09-26T16:05:00Z', 'acc_b': '2026-09-26T14:30:00Z'}
     accounts = [SimpleNamespace(id=i, harness_id='h', home_ref=None, label=i.upper(),
                                 auth_kind='api_key', health='AVAILABLE') for i in raw]
 
@@ -341,20 +339,64 @@ def test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest
     monkeypatch.setattr(resources, 'ledger_totals',
                         lambda conn, aid, today, at: {'tokens_today': 0, 'cost_today': 0, 'running': 0})
     out, _readings = resources._registered(None, ['h'], feed, now.timestamp())
+    return out
+
+
+def _raw(id_, reset):
+    """An account whose snapshot carries a provider's text, as a legacy decision does."""
+    a = acct(id_, 'h', usage=100)
+    a['usage']['resets_at'] = {'5h': reset}
+    return a
+
+
+# ({account: the provider's reset text}, the unblock_at 533e3e9 wrote for it). Cases A
+# and B are the offset readings the router ordered wrong (T-106 r8, review of d684947).
+_RESET_CASES = [
+    ({'acc_a': '2026-09-26T12:00:00+02:00'}, None),                       # equal to now
+    ({'acc_a': '2026-09-26T10:00:00Z'}, None),                            # equal to now, no ms
+    ({'acc_a': 'soon'}, None),                                            # unreadable
+    ({'acc_a': '2026-09-26T14:30:00Z'}, '2026-09-26T14:30:00.000Z'),
+    ({'acc_a': '2026-09-26T16:00:00+02:00'}, '2026-09-26T16:00:00.000+02:00'),
+    ({'acc_a': '2026-09-26T13:00:00+02:00', 'acc_b': '2026-09-26T12:00:00Z'},   # A: 11:00Z first
+     '2026-09-26T13:00:00.000+02:00'),
+    ({'acc_a': '2026-09-26T09:30:00-01:00', 'acc_b': '2026-09-26T14:00:00Z'},   # B: 10:30Z, ahead
+     '2026-09-26T09:30:00.000-01:00'),
+    ({'acc_a': '2026-09-26T12:00:00+02:00', 'acc_b': '2026-09-26T14:30:00Z'},   # equal to now, beside a wait
+     '2026-09-26T14:30:00.000Z'),
+]
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_the_router_orders_readings_by_instant_not_by_text(raw, unblock_at):
+    s = snap([harness('h')], [acct(i, 'h', usage=100, resets=r) for i, r in raw.items()])
+    assert R.route(task(), s)['unblock_at'] == unblock_at
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_the_builder_keeps_each_reset_an_instant_the_router_orders(monkeypatch, raw, unblock_at):
+    assert R.route(task(), snap([harness('h')], _live(monkeypatch, raw)))['unblock_at'] == unblock_at
+
+
+def test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest(monkeypatch):
+    """The original assertion on raw provider text: the snapshot builder writes each
+    reset as an instant (ms, Z), and the router names the earliest of them."""
+    out = _live(monkeypatch, {'acc_a': '2026-09-26T16:05:00Z', 'acc_b': '2026-09-26T14:30:00Z'})
     assert R.route(task(), snap([harness('h')], out))['unblock_at'] == '2026-09-26T14:30:00.000Z'
 
 
-@pytest.mark.parametrize('reset, unblock_at', [
-    ('2026-09-26T12:00:00+02:00', None),           # equal to now: no wait (533e3e9)
-    ('2026-09-26T10:00:00Z', None),                # equal to now, no milliseconds
-    ('soon', None),                                # unreadable
-    ('2026-09-26T14:30:00Z', '2026-09-26T14:30:00.000Z'),
-    ('2026-09-26T16:00:00+02:00', '2026-09-26T16:00:00.000+02:00'),   # 533e3e9's text, offset kept
-])
-def test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided(reset, unblock_at):
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided(raw, unblock_at):
     """A decision recorded before the router compared written instants holds the
     providers' text. Its replay decides as the router that recorded it did (533e3e9)."""
-    s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets=reset)])
+    s = snap([harness('h')], [_raw(i, r) for i, r in raw.items()])
+    d = resources.replay(SimpleNamespace(requirements=task(), input_snapshot=s))
+    assert (d['result'], d['unblock_at']) == ('blocked', unblock_at)
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_a_decision_recorded_in_the_written_form_replays_the_same(monkeypatch, raw, unblock_at):
+    """A decision recorded by the builder holds {at, key} resets; its replay keeps them."""
+    s = snap([harness('h')], _live(monkeypatch, raw))
     d = resources.replay(SimpleNamespace(requirements=task(), input_snapshot=s))
     assert (d['result'], d['unblock_at']) == ('blocked', unblock_at)
 
@@ -563,7 +605,7 @@ from archeus.core.domain import instants
 from archeus.core.application import resources
 from archeus.infra.db import rows
 now = datetime(2026, 9, 26, 10, 0, tzinfo=timezone.utc)
-ahead = instants.ahead('2026-09-26T10:02:00', now)
+ahead = instants.ahead('2026-09-26T10:02:00', now)['at']
 class _Conn:
     def execute(self, sql, args=()):
         return self
@@ -593,8 +635,18 @@ def test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform():
     outside 1970-2038), and the value that leaves the router is aware."""
     now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
     assert instants.instant('9999-12-31T23:59:59').tzinfo is not None
-    assert instants.ahead('9999-12-31T23:59:59', now) == '9999-12-31T23:59:59.000Z'
+    assert instants.ahead('9999-12-31T23:59:59', now)['at'] == '9999-12-31T23:59:59.000Z'
     assert instants.ahead('1960-01-01T00:00:00', now) is None
+
+
+def test_T106r8_an_offset_reset_is_written_as_given_and_keyed_in_utc():
+    """The text keeps the reset's own offset (533e3e9's replay text); the key is the same
+    instant in UTC, the form the router sorts by. A reset whose UTC form is past the
+    platform's range is no wait, not an error (it would stop Core)."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    assert instants.ahead('2026-09-26T13:00:00+02:00', now) == {
+        'at': '2026-09-26T13:00:00.000+02:00', 'key': '2026-09-26T11:00:00.000Z'}
+    assert instants.ahead('9999-12-31T23:59:59-01:00', now) is None
 
 
 def test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error():

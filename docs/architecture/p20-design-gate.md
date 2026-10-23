@@ -2981,6 +2981,23 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        (`test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest`);
        the router test feeds written instants.
      - **Mutants:** Q175-Q179.
+135. **Correction r9 to items 133-134 (card T-106, 2026-10-22, after the review of d684947).**
+     - **Offset readings order by instant (review R1).** Item 133's router compared the
+       written texts as strings, and a non-UTC text does not sort by its instant: a reset of
+       13:00+02:00 (11:00Z) lost to 12:00Z, and a reset of 09:30-01:00 (10:30Z, ahead of
+       now) was no wait. A reset is now {at, key}: `at` is the text a decision carries
+       (offset kept, as 533e3e9 wrote it), `key` the same instant in UTC (ms, Z). The router
+       takes the waits by `key`, compares `key` with `now`, and writes `at` of the earliest.
+       The router still imports nothing (B1). Replayed decisions keep their text: each
+       reset recorded as text is written again, and one already written is kept.
+     - **Cases A and B, on the router, the live builder and the replay alike** (the
+       `_RESET_CASES` table in tests/v1/unit/test_routing_units.py, expected values
+       checked against 533e3e9). Mutants Q180-Q183.
+     - **The cap is by creation order (review S1, probed).** Creation order and decided
+       time can disagree: a failure created first and ended last falls outside the 600
+       newest rows. Ordering the SQL by decided time needs json_extract, which the SQLite
+       3.31 floor forbids, so the owner's "cap 600 by creation" stands as written and is
+       pinned by test_O7_the_cap_is_by_creation_order.
 
 ## 13. As built
 (Filled at the end of P20.)

@@ -471,6 +471,20 @@ def test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once(plain_rows
     assert len(fails) == 300 and len(pulled) == 600
 
 
+def test_O7_the_cap_is_by_creation_order(plain_rows):
+    """Owner sign-off, T-106 r8: the cap is by creation. A failure created first but
+    ended last (10:30) is the newest by decided time, yet 600 rows created after it, each
+    ended at 09:00, push it out of the 600 read. The streak counts the 600 it can see; a
+    decided-time cap would count the 10:30 one too (601)."""
+    c = _streak_db(
+        ('ABANDONED', '2026-10-21T10:30:00Z', _fail('2026-10-21T10:30:00Z')),
+        *[('ABANDONED', '2026-10-21T09:00:00Z', _fail('2026-10-21T09:00:00Z'))
+          for _ in range(600)])
+    fails, _trial = X.spawn_streak(X._newest(c, 'fake', _NOW))
+    assert len(fails) == 600
+    assert '2026-10-21T10:30:00Z' not in [x.ended_at for x in fails]
+
+
 def test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot(plain_rows):
     """The pre-filter matches the body's own key ("harness_id": "pi"), not the bare
     text: 600 newer rows of harness 'api' whose summary says 'pipeline' do not push

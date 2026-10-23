@@ -314,8 +314,8 @@ def _registered(conn, harness_ids, feed, now):
         resets = (rd or {}).get('resets_at')
         usage = None if not rd else {
             'windows': dict(rd['windows']),
-            # the written instant of each reset still ahead, else None: the router
-            # compares these, it never parses a provider's free text (T-106)
+            # each reset still ahead as {at, key} (instants.ahead), else None: the router
+            # orders by key and never parses a provider's free text (T-106 r8)
             'resets_at': {w: instants.ahead(v, now_dt) for w, v in resets.items()}
             if isinstance(resets, dict) else {},
             'observed_at': _iso(rd['observed_at']),
@@ -559,14 +559,15 @@ def record_call_route(tx, *, actor, purpose, source, workspace_id, project_id, r
 def _written_resets(snap):
     """*snap* with each account's resets written as the builder writes them, judged at
     the snapshot's own `now`: a decision recorded before the router compared written
-    instants (T-106 r8) holds the providers' text, and it must replay as it was decided."""
+    instants (T-106 r8) holds the providers' text, and it must replay as it was decided.
+    A reset already written ({at, key}) is kept as it is."""
     now = instants.instant(snap['now'])
     accts = []
     for a in snap.get('accounts') or ():
         rs = (a.get('usage') or {}).get('resets_at')
         if isinstance(rs, dict):
-            a = dict(a, usage=dict(a['usage'], resets_at={w: instants.ahead(v, now)
-                                                          for w, v in rs.items()}))
+            a = dict(a, usage=dict(a['usage'], resets_at={
+                w: v if isinstance(v, dict) else instants.ahead(v, now) for w, v in rs.items()}))
         accts.append(a)
     return dict(snap, accounts=accts)
 
