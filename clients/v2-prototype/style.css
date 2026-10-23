@@ -1938,3 +1938,9 @@ body.frame-terminal #s-terminal { height: 1500px; }
   /* Upward only: a hit area that leaves the scaled shell changes the text anti-aliasing of the whole frame. */
   .frame-screen .fr-foot .btn::after { content: ""; position: absolute; right: 0; bottom: 0; width: max(100%, var(--hit)); height: var(--hit); }
 }
+
+/* the seeded chat rows sit over the scene hit targets: plain rows pass clicks through, their links and buttons stay live */
+body.frame-now .msgs > li.msg-you, body.frame-now .msgs > li.msg-arch { pointer-events: none; }
+body.frame-now .msgs > li a, body.frame-now .msgs > li button, body.frame-now .msgs > li summary { pointer-events: auto; }
+body.frame-now .chat-feed, body.frame-now .msgs { pointer-events: none; }
+body.frame-now .chat-feed button, body.frame-now .chat-feed a, body.frame-now .chat-feed input, body.frame-now .chat-feed textarea, body.frame-now .chat-feed summary { pointer-events: auto; }

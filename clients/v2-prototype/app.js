@@ -3251,6 +3251,11 @@
   document.addEventListener('focusout', function (e) {
     if (e.target.id === 'chat-input') document.body.classList.remove('kb-open');
   });
+  // Pressing a card button must not blur the composer: that closes kb-open and moves the card
+  // between press and release, so the tap is lost on the phone.
+  document.addEventListener('mousedown', function (e) {
+    if (document.body.classList.contains('kb-open') && e.target.closest && e.target.closest('#msgs button, #msgs a')) e.preventDefault();
+  });
   // The composer stays above the on-screen keyboard: the gap between the layout and the visual viewport.
   function setKb() {
     var vv = window.visualViewport;

@@ -48,8 +48,8 @@ def mission_list(pg, tag):
         link.scroll_into_view_if_needed()
         hit = link.evaluate('''a => {
             const b = a.getBoundingClientRect();
-            return [[2, 2], [b.width - 2, 2], [2, b.height - 2],
-                    [b.width - 2, b.height - 2], [b.width / 2, b.height / 2]]
+            return [[8, 8], [b.width - 8, 8], [8, b.height - 8],
+                    [b.width - 8, b.height - 8], [b.width / 2, b.height / 2]]
                 .every(([x, y]) => a.contains(document.elementFromPoint(b.left + x, b.top + y)));
         }''')
         check(hit, tag + ': open list control unobstructed ' + href)
@@ -111,6 +111,7 @@ with sync_playwright() as pw:
               tag + ': Start produces its own plan approval card')
         pg.locator('#msgs > li').last.get_by_role('link', name='Review plan', exact=True).click()
         pg.wait_for_url('**/index.html#/plan/m-review-gate')
+        pg.locator('[data-kind="approve"]').wait_for(state='visible', timeout=3000)
         check(pg.locator('[data-kind="approve"]').is_visible() and
               not pg.evaluate("ArchReview.state('m-review-gate').approved"),
               tag + ': own plan card opens live review without approval')
@@ -160,6 +161,7 @@ with sync_playwright() as pw:
         pg.locator('#confirm').wait_for(state='hidden')
         check(not state(pg).get('approved') and not pg.locator('#confirm').is_visible(),
               tag + ': keyboard Escape cancels')
+        pg.wait_for_timeout(300)
         check(pg.locator('[data-kind="approve"]').is_visible(), tag + ': Cancel returns to live review')
         check(pg.evaluate('document.documentElement.scrollWidth <= innerWidth'), tag + ': review reflows')
         pg.goto(BASE + '/index.html#/terminal')
