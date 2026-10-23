@@ -17,6 +17,7 @@
     recent: { word: 'Recent', color: '#6FB1FF' },
     future: { word: 'Future contract', color: '#9AA5B8' }
   };
+  var CYAN = '#6FC6FF';
   var RANK = { waiting: 0, running: 1, idle: 2, done: 3 };
   var PHASES = ['Understand', 'Plan', 'Approve', 'Run', 'Verify', 'Review'];
 
@@ -396,8 +397,8 @@
   function drawDeskMark(g, x, y, n, r, lit) {
     g.save();
     var amber = n.state === 'waiting', blue = n.state === 'running', spark = n.detail === 'New';
-    var col = amber || spark ? STATE.waiting.color : blue ? STATE.running.color : '#B9B3D1';
-    g.fillStyle = col; g.shadowColor = col; g.shadowBlur = amber || blue || spark ? 12 : 0; g.globalAlpha = lit || amber || blue ? 1 : 0.85;
+    var col = amber || spark ? STATE.waiting.color : blue ? CYAN : '#B9B3D1';
+    g.fillStyle = col; g.shadowColor = col; g.shadowBlur = amber || blue || spark ? 6 : 0; g.globalAlpha = lit || amber || blue ? 1 : 0.85;
     g.beginPath();
     if (blue || spark) {
       var R = r * (blue ? 1.9 : 1.6), q = R * 0.2;
@@ -415,11 +416,11 @@
   // Verification and Results dots, with the code glyph inside.
   function drawDeskExec(g, a, b1, b2, lit) {
     g.save();
-    g.strokeStyle = STATE.running.color; g.lineWidth = 1.2; g.globalAlpha = lit ? 0.85 : 0.5; g.lineJoin = 'round';
+    g.strokeStyle = CYAN; g.lineWidth = 1.2; g.globalAlpha = lit ? 0.85 : 0.5; g.lineJoin = 'round';
     var yb = b1.y - 13, l = { x: b1.x + 14, y: yb }, r = { x: b2.x - 14, y: yb };
     g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(l.x, l.y); g.lineTo(r.x, r.y); g.closePath(); g.stroke();
     g.beginPath(); g.moveTo(l.x, l.y); g.lineTo(b1.x, b1.y); g.moveTo(r.x, r.y); g.lineTo(b2.x, b2.y); g.stroke();
-    g.fillStyle = STATE.running.color; g.shadowColor = STATE.running.color; g.shadowBlur = 10; g.globalAlpha = 1;
+    g.fillStyle = CYAN; g.shadowColor = CYAN; g.shadowBlur = 5; g.globalAlpha = 1;
     g.beginPath(); g.arc(a.x, a.y, 4.6, 0, TAU); g.fill();
     g.shadowBlur = 0;
     glyph(g, 'code', a.x, a.y + (b1.y - a.y) * 0.62, 9, IVORY, 0.95);
@@ -1620,7 +1621,7 @@
     if (kind === 'sparkle') return 'M0,-12 Q1.5,-1.5 12,0 Q1.5,1.5 0,12 Q-1.5,1.5 -12,0 Q-1.5,-1.5 0,-12 Z';
     return '';
   }
-  var DESK_MARK_COLOR = { 'm-search': '#F2B544', 'm-done': '#9AA5B8', 'm-index': '#9AA5B8', 'm-read': '#EFE9DA', 'm-date': '#6FB1FF', exec: '#6FB1FF', verif: '#6FB1FF', results: '#6FB1FF' };
+  var DESK_MARK_COLOR = { 'm-search': '#F2B544', 'm-done': '#9AA5B8', 'm-index': '#9AA5B8', 'm-read': '#EFE9DA', 'm-date': CYAN, exec: CYAN, verif: CYAN, results: CYAN };
   var deskMarkEls = null;
   function buildDeskMarks() {
     var host = $('#now-stage');
@@ -1656,11 +1657,11 @@
         shape.setAttribute('stroke-width', '1.7');
         shape.setAttribute('stroke-linecap', 'round');
         shape.setAttribute('stroke-linejoin', 'round');
-        shape.setAttribute('stroke', STATE.running.color);
+        shape.setAttribute('stroke', CYAN);
         g.appendChild(shape);
         var apex = document.createElementNS(NS, 'circle');
         apex.setAttribute('r', '4.5');
-        apex.setAttribute('fill', '#6FB1FF');
+        apex.setAttribute('fill', CYAN);
         g.appendChild(apex);
       } else {
         g.appendChild(shape);
@@ -1699,17 +1700,17 @@
   // Colour from the node's state: amber needs the owner, blue is live, grey is done or idle, ivory is neutral.
   function updateDeskMarks(sc) {
     if (!deskMarkEls) return;
-    if (deskMarkEls.exec) deskMarkEls.exec.shape.setAttribute('stroke', STATE.running.color);
+    if (deskMarkEls.exec) deskMarkEls.exec.shape.setAttribute('stroke', CYAN);
     sc.nodes.forEach(function (n) {
       var e = deskMarkEls[n.id];
       if (!e) return;
       if (n.id === 'verif' || n.id === 'results') return;
       var st = STATE[n.state] || STATE.idle;
-      var col = n.id === 'm-read' ? IVORY : st.color;
+      var col = n.id === 'm-read' ? IVORY : n.state === 'running' ? CYAN : st.color;
       if (n.id === 'm-read' && n.state === 'waiting') col = STATE.waiting.color;
       e.shape.setAttribute('fill', col);
       e.glow.setAttribute('fill', col);
-      e.glow.setAttribute('opacity', n.live ? '0.3' : '0.14');
+      e.glow.setAttribute('opacity', n.live ? '0.25' : '0.12');
       if (e.kind === 'dot') e.shape.setAttribute('fill', col);
     });
   }
@@ -1803,6 +1804,7 @@
       el.style.top = (L.y + (L.dy || 0)) + 'px';
       el.style.fontSize = L.s + 'px';
       el.style.letterSpacing = L.t + 'px';
+      if (L.f !== 'sans' && L.s < 12) el.style.fontWeight = 400;
     });
   }
   function fset(id, text) { var el = $('#m-frame [data-f="' + id + '"]'); if (el) el.textContent = text; }

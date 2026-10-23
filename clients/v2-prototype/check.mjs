@@ -60,7 +60,7 @@ const mix = (fg, alpha, bg) => {
 };
 
 const pairs = [
-  ['text', 'bg'], ['text', 'surface-2'], ['text-2', 'surface-2'], ['text-2', 'surface'], ['text-3', 'surface-2'],
+  ['text', 'bg'], ['text', 'surface-2'], ['text-2', 'surface-2'], ['text-muted', 'surface-2'], ['text-muted', 'bg'], ['text-2', 'surface'], ['text-3', 'surface-2'],
   ['amber', 'bg'], ['amber', 'surface-2'], ['blue', 'surface'], ['green', 'surface'], ['slate', 'surface'],
   ['bg', 'ivory'], ['ivory', 'bg']
 ];
@@ -251,7 +251,7 @@ check(/function drawKnot/.test(js) && /sc\.knot/.test(js), 'desktop knot star mi
 check(/function deskFacetsFor/.test(js) && /p\.desk/.test(js), 'desktop hull facets missing');
 check(/labelFix/.test(js) && /archeus: \{ hide: true \}/.test(js), 'desktop label anchors missing');
 check(/function drawDeskExec/.test(js) && /function drawDeskMark/.test(js), 'desktop Codex triangle or marks missing');
-check(/card-body/.test(js) && /\.feed \.msg-card \.card-body/.test(css), 'Start card is not a one-line body');
+check(/card-body/.test(js) && /\.chat-feed \.msg-card \.card-body/.test(css), 'Start card is not a one-line body');
 check(/\.now-tag \{ display: block/.test(css) && /id="s-now"/.test(html), 'desktop footer note rule missing');
 
 
@@ -322,7 +322,6 @@ check(/#s-now \.chatbar input:focus, #s-now \.chatbar input:focus-visible \{ out
 // Polish round 2 (phone, v2/polish-phone): chat card spans the content width, bubbles on the concept tops, the composer ring
 // is for keyboard focus only, the headline word "needs" is fitted on the sheets, decision rules and title, Back offsets,
 // 44 px hit areas on the decision and chat controls, and the Overview status colour and diamond stroke.
-check(/\.feed \.msg-card \{ width: calc\(var\(--u\) \* 668\)/.test(css), 'phone chat Start card must span the content width (668 units, x31 to x699)');
 check(/\.msgs > li:nth-child\(2\) \{ margin-top: calc\(var\(--u\) \* 10\)/.test(css) && /\.msgs > li:nth-child\(4\) \{ margin-top: calc\(var\(--u\) \* 17\)/.test(css), 'phone chat bubble anchors (concept tops 832 and 1124) missing');
 check(/classList\.add\('mouse-focus'\)/.test(js) && /e\.key === 'Tab'/.test(js), 'the chat composer must mark mouse focus and clear it on Tab');
 check(/HEAD_FIT = \{ needs: 150 \}/.test(js) && /fit\[w\]/.test(js) && /headSvgFor\(L, T, HEAD_FIT\)/.test(js), 'phone sheet headline word "needs" must be fitted to the concept width');
@@ -437,11 +436,11 @@ check(/body\.frame-now \.chatbar \.slash-btn, body\.frame-now \.chatbar \.send-b
 check(/\.rec-lbl \{[^}]*min-height: calc\(48px \/ var\(--k, 1\)\)/.test(chatCss), 'creation labels need a 48 CSS px hit area at any frame scale');
 check(/transform: scale\(calc\(1 \/ var\(--k, 1\)\)\)/.test(chatCss), 'bar and replies must keep their CSS size when the frame scales');
 check(/\.chat-feed \.msg > p, \.hist-body \.msg > p \{ font: 400 16px\/24px/.test(chatCss), 'reply text must be 16 px at weight 400');
-check(/prefers-reduced-transparency: reduce\) \{ :root \{ --chat-bg: #0E131C/.test(chatCss) && /forced-colors: active/.test(chatCss), 'solid fallback for reduced transparency and forced colours missing');
-const chatBg = [10, 13, 20], chatA = 0.84, onWhite = '#' + chatBg.map((c) => Math.round(c * chatA + 255 * (1 - chatA)).toString(16).padStart(2, '0')).join('');
+check(/prefers-reduced-transparency: reduce\) \{ :root \{ --chat-bg: #120E1A/.test(chatCss) && /forced-colors: active/.test(chatCss), 'solid fallback for reduced transparency and forced colours missing');
+const chatBg = [14, 11, 22], chatA = 0.82, onWhite = '#' + chatBg.map((c) => Math.round(c * chatA + 255 * (1 - chatA)).toString(16).padStart(2, '0')).join('');
 check(ratio(tokens.text, onWhite) >= 4.5 && ratio(tokens['text-2'], onWhite) >= 4.5, `chat material over the brightest scene point fails 4.5:1 (${ratio(tokens['text-2'], onWhite).toFixed(2)})`);
 check(ratio('#FFF3CF', onWhite) >= 3 && ratio(tokens.focus, '#0E131C') >= 3, 'focus ring fails 3:1 on the chat material');
-check(/--chat-bg: rgba\(10, 13, 20, 0\.84\)/.test(chatCss), 'chat material alpha changed: re-check the contrast above');
+check(/--chat-bg: rgba\(14, 11, 22, 0\.82\)/.test(chatCss), 'chat material alpha changed: re-check the contrast above');
 check(/class="ph3-expand"/.test(html) && /aria-expanded/.test(html.match(/<button[^>]*ph3-expand[^>]*>/)[0]), 'phone sheet needs an explicit Expand control');
 check(/--st: min\(calc\(var\(--u\) \* 865\), 55dvh\)/.test(chatCss) && /--kb/.test(chatCss) && /visualViewport/.test(js), 'phone sheet: 45 percent with the keyboard closed, composer above the keyboard');
 

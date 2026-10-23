@@ -13,6 +13,7 @@
   --text: #EFE9DA;
   --text-2: #BDB7A8;
   --text-3: #9EA3AE;
+  --text-muted: #ABA699;
   --ivory: #EFE9DA;
   --amber: #F2B544;
   --blue: #6FB1FF;
@@ -156,7 +157,7 @@ main { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width:
 .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; pointer-events: none; }
 .lbl .k { font: 600 14px/20px var(--sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-2); }
 .lbl .t { font: 400 22px/28px var(--serif); color: var(--text); }
-.lbl .s { font: 400 14px/20px var(--sans); color: var(--text-2); }
+.lbl .s { font: 400 14px/20px var(--sans); color: var(--text-muted); }
 .lbl .s.st-waiting { color: var(--amber); }
 .lbl .s.st-running { color: var(--blue); }
 .lbl .s.st-done { color: var(--green); }
@@ -311,11 +312,7 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .now-main { position: relative; min-width: 0; }
 .now-main > .stage { margin: 0; height: clamp(460px, calc(100vh - 250px), 880px); min-height: 0; }
 .now-tag { margin-top: var(--s2); }
-.feed {
-  position: absolute; left: 50%; bottom: 80px; transform: translateX(-50%); z-index: 4;
-  width: min(680px, calc(100% - 48px)); max-height: 176px; overflow-y: auto; pointer-events: auto;
 
-}
 .msgs { display: flex; flex-direction: column; gap: var(--s2); min-height: 100%; justify-content: flex-end; }
 .msgs li { font: 400 16px/24px var(--sans); }
 .msgs p { margin: 0; }
@@ -383,7 +380,7 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 @media (max-width: 880px) {
   .now-lede, .now-tag, .prompts, .list-d { display: none; }
   .now-main > .stage { height: calc(100vh - 250px); min-height: 380px; }
-  .feed { bottom: 74px; max-height: 16vh; width: calc(100% - 24px); }
+
   .chatbar { bottom: 10px; width: calc(100% - 24px); padding-left: var(--s3); }
   .chatbar .btn { padding: 0 var(--s3); }
   .chat-stop { display: inline-flex; }
@@ -476,12 +473,7 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   .chat-stop { display: inline-flex; }
 
   /* The conversation is a sheet over the scene, opened from the bar. */
-  .feed {
-    display: none; left: var(--s2); right: var(--s2); width: auto; transform: none; max-height: 46%; bottom: calc(env(safe-area-inset-bottom) + 76px);
-    background: #0E131C; border: 1px solid var(--line-2); border-radius: 18px; padding: var(--s3);
-    -webkit-mask-image: none; mask-image: none; z-index: 6; overflow-y: auto;
-  }
-  .feed.is-open { display: block; }
+
   .feed-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s2); }
   .feed-close { min-height: 48px; padding: 0 var(--s4); }
   .msgs { min-height: 0; }
@@ -510,16 +502,16 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .lbl.is-new .t::after { content: " New"; font: 600 14px/20px var(--sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber); vertical-align: middle; margin-left: 8px; }
 
 /* Apple HIG translated for the phone sheets: a grabber on resizable sheets, body text 17px (HIG default), 44pt-plus targets. */
-.feed::before, .now-sheet::before {
+.now-sheet::before {
   content: ""; display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--line-2); margin: 0 auto var(--s2);
 }
 @media (max-width: 880px) {
-  .feed::before, .now-sheet::before { display: block; }
+  .now-sheet::before { display: block; }
   .msgs li, .sheet-line, .list-row, .now-sheet p { font-size: 17px; line-height: 24px; }
   .chip-btn, .menu-btn, .btn, .prompt, .receipt, .list-row { min-height: 48px; }
 }
 @media (min-width: 881px) {
-  .feed::before, .now-sheet::before { display: none; }
+  .now-sheet::before { display: none; }
 }
 
 /* Terminal: a fixed character grid; the wrapper scrolls sideways, the page does not. */
@@ -542,7 +534,8 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
 .term-svg text.bold { font-weight: 700; }
 .term-svg .ground { fill: url(#term-bg); }
 .term-svg .strip { fill: var(--c-strip); }
-.term-svg .select { fill: var(--c-select); }
+.term-svg .select { fill: none; }
+.term:focus-visible .select { fill: var(--c-select); }
 .term-svg circle.green { fill: var(--c-green); }
 .term-svg .ln { stroke: var(--c-line); fill: none; stroke-linecap: butt; }
 .term-svg .ln.rule { stroke: #A0999A; }
@@ -609,7 +602,7 @@ dialog p { margin-bottom: var(--s4); color: var(--text-2); }
   }
   .chatbar input { font-size: 16px; min-height: 48px; }
   .grab { display: block; width: 40px; height: 4px; margin: 0 auto var(--s2); border-radius: 2px; background: var(--line-2); }
-  .feed { border-radius: 20px 20px 16px 16px; }
+
   .msg-gen .gen-k { color: var(--text-2); }
 }
 .gen-tag { display: inline-block; padding: 2px var(--s2); margin-right: var(--s1); border: 1px solid var(--line-2); border-radius: 999px; color: var(--text); letter-spacing: 0.08em; }
@@ -700,8 +693,7 @@ p.small, .small { line-height: 20px; }
 .phone-proto { color: var(--text-2); border-color: var(--line-2); background: transparent; }
 .menu-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .menu-btn { min-width: 44px; min-height: 44px; padding: 0 var(--s2); }
-.feed .msg { display: grid; grid-template-columns: 76px minmax(0, 1fr); column-gap: var(--s2); align-items: start; }
-.feed .msg > *:not(::before) { grid-column: 2; }
+
 .msg-you::before, .msg-arch::before { grid-column: 1; grid-row: 1 / span 2; margin: 0; }
 .msg-you, .msg-arch { background: transparent; }
 .lede { max-width: 620px; }
@@ -815,6 +807,7 @@ p.small, .small { line-height: 20px; }
     line-height: 1; color: #F3EEDF;
   }
   #s-now .chatbar input::placeholder { color: #797481; opacity: 1; }
+  #s-now .chatbar input, .ph2-bar input { caret-color: #F3EEDF; }
   #s-now .stage-now .chatbar .chat-stop {
     position: absolute; left: calc(var(--u) * 576); top: 0; display: inline-flex; align-items: center; justify-content: center;
     width: calc(var(--u) * 161); height: calc(var(--u) * 99); min-height: 0; padding: 0; margin: 0;
@@ -822,10 +815,7 @@ p.small, .small { line-height: 20px; }
     font-weight: 500; line-height: 1; color: #FDFDFD;
     background: linear-gradient(180deg, #2C2932 0%, #312C36 50%, #2F2B35 100%); border: 1px solid rgba(239, 233, 218, 0.22);
   }
-  #s-now .feed {
-    position: absolute; left: calc(var(--u) * 36); right: calc(var(--u) * 36); top: auto; bottom: calc(var(--u) * 210); transform: none;
-    width: auto; max-height: calc(var(--u) * 560); z-index: 5;
-  }
+
   #s-now .now-sheet { z-index: 6; }
 }
 
@@ -859,7 +849,7 @@ p.small, .small { line-height: 20px; }
   .ph-live .ph-placeholder { fill: #797481; }
   .ph-live .ph-stop { fill: #FDFDFD; }
   .ph-live .ph-open-rect { fill: rgba(249, 194, 89, 0.05); stroke: #E8B04F; stroke-width: 2.4; }
-  .ph-sheet-bg { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(40, 34, 52, 0.25); border-top: 1px solid rgba(255, 255, 255, 0.08); border-radius: calc(var(--u) * 40) calc(var(--u) * 40) 0 0; z-index: 0; }
+  .ph-sheet-bg { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(40, 34, 52, 0.25); border-top: 1px solid var(--glass-rim); border-radius: calc(var(--u) * 40) calc(var(--u) * 40) 0 0; z-index: 0; }
   .ph-caret { position: absolute; left: calc(var(--u) * 35); top: calc(var(--u) * 21); width: calc(var(--u) * 5); height: calc(var(--u) * 40); border-radius: 2px; background: #F3EEDF; }
 
   /* decision sheet (phone-2) */
@@ -894,12 +884,8 @@ p.small, .small { line-height: 20px; }
   #s-now[data-frame="3"] .ph3-frame .ph-live, #s-now[data-frame="3"] .ph3-frame .ph-art { display: block; }
   #s-now[data-frame="3"] .ph3-grab { display: block; top: calc(var(--u) * 662); }
   #s-now[data-frame="3"] .ph3-back { display: block; position: absolute; left: calc(var(--u) * 44); top: calc(var(--u) * 676); width: calc(var(--u) * 100); height: calc(var(--u) * 34); color: transparent; background: transparent; border: 0; cursor: pointer; pointer-events: auto; }
-  #s-now[data-frame="3"] .feed {
-    display: block; position: absolute; left: calc(var(--u) * 31); right: calc(var(--u) * 31); top: calc(var(--u) * 694); bottom: calc(var(--u) * 180);
-    width: auto; max-height: none; transform: none; background: transparent; border: 0; border-radius: 0; padding: 0; overflow-y: auto; z-index: 5;
-    -webkit-mask-image: none; mask-image: none;
-  }
-  #s-now[data-frame="3"] .feed-head, #s-now[data-frame="3"] .feed > .grab { display: none; }
+
+  #s-now[data-frame="3"] .feed-head { display: none; }
   /* Polish round 2 (phone-3 bubble anchors): each bubble sits on the concept's top edge (708, 832, 960, 1124, 1213). */
   #s-now[data-frame="3"] .msgs { gap: 0; min-height: 100%; justify-content: flex-start; }
   #s-now[data-frame="3"] .msgs > li:nth-child(1) { margin-top: calc(var(--u) * 14); }
@@ -908,18 +894,13 @@ p.small, .small { line-height: 20px; }
   #s-now[data-frame="3"] .msgs > li:nth-child(4) { margin-top: calc(var(--u) * 17); height: calc(var(--u) * 79); box-sizing: border-box; }
   #s-now[data-frame="3"] .msgs > li:nth-child(5) { margin-top: calc(var(--u) * 10); }
   #s-now[data-frame="3"] .msgs > li:nth-child(n + 6) { margin-top: calc(var(--u) * 14); }
-  #s-now[data-frame="3"] .feed .msg p { line-height: calc(var(--u) * 31); }
-  #s-now[data-frame="3"] .feed .msg { display: block; width: calc(var(--u) * 521); max-width: none; margin: 0; padding: calc(var(--u) * 10) calc(var(--u) * 22) calc(var(--u) * 12); border-radius: calc(var(--u) * 22); background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.12); }
-  #s-now[data-frame="3"] .feed .msg > * { grid-column: auto; }
-  #s-now[data-frame="3"] .feed .msg-you { align-self: flex-end; width: calc(var(--u) * 391); margin-right: calc(var(--u) * -6); background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.14); }
-  #s-now[data-frame="3"] .feed .msg-gen { width: calc(var(--u) * 521); max-width: none; background: rgba(255, 255, 255, 0.025); border-radius: calc(var(--u) * 22); color: #E4E0D8; }
+
   #s-now[data-frame="3"] .msg::before { font: 350 calc(var(--u) * 21)/calc(var(--u) * 24) var(--sans); color: #9C98A8; margin: 0 0 calc(var(--u) * 2); grid-column: auto; grid-row: auto; }
   #s-now[data-frame="3"] .msgs li { font: 350 calc(var(--u) * 24)/calc(var(--u) * 31) var(--sans); color: #ECE8E0; }
   #s-now[data-frame="3"] .msg-gen p { font: 400 calc(var(--u) * 23)/calc(var(--u) * 31) var(--serif); }
   #s-now[data-frame="3"] .msg-gen .gen-k { font-size: 0; line-height: 0; margin: 0; text-transform: none; }
   #s-now[data-frame="3"] .gen-tag { font: 350 calc(var(--u) * 19)/calc(var(--u) * 24) var(--sans); letter-spacing: 0; text-transform: none; color: #C9C5D2; border-color: rgba(255, 255, 255, 0.25); padding: 0 calc(var(--u) * 10); margin: 0; }
-  /* The card is an li.msg too, so its width must beat the .feed .msg rule above (polish round 2: it stopped at x552). */
-  #s-now[data-frame="3"] .feed .msg-card { width: calc(var(--u) * 668); height: calc(var(--u) * 147); box-sizing: border-box; max-width: none; align-self: flex-start; background: rgba(255, 255, 255, 0.025); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: calc(var(--u) * 22); padding: calc(var(--u) * 22) calc(var(--u) * 22) calc(var(--u) * 18); }
+
   #s-now[data-frame="3"] .msg-card .card-t { font: 400 calc(var(--u) * 27)/calc(var(--u) * 34) var(--serif); color: #F3EEDF; }
   #s-now[data-frame="3"] .msg-card .row { display: flex; gap: calc(var(--u) * 16); margin-top: calc(var(--u) * 16); }
   #s-now[data-frame="3"] .msg-card .btn { position: relative; flex: 1 1 0; min-height: 0; height: calc(var(--u) * 60); padding: 0; border-radius: calc(var(--u) * 10); font: 500 calc(var(--u) * 24)/1 var(--sans); }
@@ -965,27 +946,6 @@ p.small, .small { line-height: 20px; }
   .stage-now .lbl .k { display: none; }
   .stage-now .lbl.core .t { font-size: calc(18px * var(--lk, 1)); letter-spacing: 0.32em; }
 
-  .feed { width: min(640px, calc(100% - 48px)); bottom: 84px; max-height: 190px; }
-  .feed .msg { display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--s3); align-items: center; margin: 0; }
-  .feed .msg::before { content: attr(data-who); grid-column: 1; grid-row: 1; justify-self: end; font: 400 15px/20px var(--sans); color: var(--text-2); margin: 0; }
-  .feed .msg > p { grid-column: 2; grid-row: 1; justify-self: start; }
-  .feed .msg-you > p, .feed .msg-arch > p {
-    background: rgba(14, 19, 28, 0.82); border: 1px solid var(--line); border-radius: 12px; padding: 8px var(--s4);
-    font: 400 16px/24px var(--sans);
-  }
-  .feed .msg-card { display: grid; grid-template-columns: 84px minmax(0, 1fr); column-gap: var(--s3); align-items: center; border: 0; background: transparent; max-width: none; padding: 0; }
-  .feed .msg-card::before { content: attr(data-who); grid-column: 1; grid-row: 1; justify-self: end; font: 400 15px/20px var(--sans); color: var(--text-2); }
-  .feed .msg-card .card-body {
-    grid-column: 2; grid-row: 1; justify-self: start; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--s4);
-    background: rgba(14, 19, 28, 0.82); border: 1px solid var(--line-2); border-radius: 12px; padding: var(--s2) var(--s3) var(--s2) var(--s4);
-    white-space: nowrap;
-  }
-  .feed .msg-card .card-t { font: 400 17px/24px var(--sans); color: var(--text); }
-  .feed .msg-card .row { flex-wrap: nowrap; margin: 0; gap: var(--s2); }
-  .feed .msg-card .btn { min-width: 0; padding: 0 var(--s4); font-size: 15px; }
-  .feed .msg-card [data-card="start"] { background: transparent; border-color: var(--amber); color: var(--amber); }
-  .feed .msg-card [data-card="keep"] { background: transparent; border-color: var(--line-2); color: var(--text); }
-
   .chatbar { width: min(850px, calc(100% - 48px)); bottom: 18px; }
   .chatbar .attach { color: var(--text-2); }
   .chatbar input::placeholder { color: var(--text-2); }
@@ -993,7 +953,6 @@ p.small, .small { line-height: 20px; }
 
   .stage-now .lbl a.act { font-size: 14px; }
 }
-@media (min-width: 881px) and (max-height: 800px) { .feed { max-height: 140px; } }
 
 /* Round 10d desktop Overview: a fixed 1296 x 729 frame (the concept's own size) scaled uniformly to the window, with
    the footer disclosure in a strip below it. The base art (art/desktop-now-base.webp) is the concept raster with all
@@ -1031,7 +990,7 @@ body.frame-now #s-now .phone-top, body.frame-now #s-now .phone-status, body.fram
 body.frame-now #s-now .head { position: absolute; left: 175px; top: 50px; width: 700px; margin: 0; pointer-events: none; z-index: 6; }
 body.frame-now #s-now .head .kicker { position: absolute; left: 1px; top: 4px; margin: 0; font: 400 14px/18px "Source Sans V2", var(--sans); letter-spacing: 0.14em; color: var(--text-2); }
 body.frame-now #s-now h1 { position: absolute; left: 0; top: 16px; margin: 0; font: 400 50px/56px "Libre Caslon V2", var(--serif); letter-spacing: 0; color: var(--text); white-space: nowrap; }
-body.frame-now .now-lede { position: absolute; left: 0; top: 67px; margin: 0; width: 402px; font: 400 17px/20px "Libre Caslon V2", var(--serif); color: var(--text-2); }
+body.frame-now .now-lede { position: absolute; left: 0; top: 67px; margin: 0; width: 402px; font: 400 17px/20px "Libre Caslon V2", var(--serif); color: var(--text-muted); }
 body.frame-now .now-body, body.frame-now .now-main { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now .now-main > .stage { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now .desk-art { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; z-index: 0; display: block; pointer-events: none; }
@@ -1041,14 +1000,6 @@ body.frame-now .stage-now .world { z-index: 2; }
 body.frame-now .now-tag { position: absolute; left: 0; top: 729px; width: 1296px; margin: 0; padding: 4px 0 0 175px; box-sizing: border-box; height: 26px; font: 400 14px/18px "Source Sans V2", var(--sans); color: var(--text-3); }
 body.frame-now .prompts, body.frame-now .list-d { display: none; }
 
-body.frame-now .feed { position: absolute; left: 368px; top: 528px; width: 610px; max-height: none; bottom: auto; z-index: 3; }
-body.frame-now .feed .msgs { margin: 0; padding: 0; }
-body.frame-now .feed .msg { grid-template-columns: 46px minmax(0, 1fr); column-gap: 17px; margin: 0; min-height: 34px; height: 34px; }
-body.frame-now .feed .msg + .msg { margin-top: 6px; }
-body.frame-now .feed .msg-card { height: 42px; margin-top: 8px; }
-body.frame-now .feed .msg::before { font: 400 14px/20px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p {
-  font: 400 14px/20px "Source Sans V2", var(--sans); padding: 7px 18px; border-radius: 6px; background: #1E1A2E; border: 0; }
 body.frame-now .chatbar { position: absolute; left: 303px; top: 666px; width: 690px; height: 44px; bottom: auto; z-index: 3; }
 body.frame-now .chatbar input { font: 400 15px/20px "Source Sans V2", var(--sans); }
 body.frame-now .send-btn { position: absolute; right: 12px; top: 6px; width: 32px; height: 32px; min-height: 32px; border-radius: 50%; }
@@ -1059,7 +1010,7 @@ body.frame-now .stage-now .lbl .s { font-family: "Source Sans V2", var(--sans); 
 
 body.frame-now .rail { z-index: 6; }
 body.frame-now .top { z-index: 5; }
-body.frame-now .feed { transform: none; }
+
 body.frame-now .chatbar { transform: none; }
 body.frame-now .now-tag { z-index: 1; }
 body.frame-now .stage-now .lbl .t { font-size: 17.5px; position: relative; top: 13px; }
@@ -1069,17 +1020,7 @@ body.frame-now .stage-now .lbl.core .t { font-size: 21px; letter-spacing: 0.34em
 body.frame-now .stage-now .lbl a.act { position: absolute; left: 5px; top: 75px; width: 99px; height: 31px; min-height: 0; padding: 0; font: 400 14px/20px "Source Sans V2", var(--sans); }
 body.frame-now .stage-now .lbl { width: max-content; }
 body.frame-now .stage-now .lbl.project .s { width: 118px; white-space: normal; }
-body.frame-now .feed .msgs > li { margin: 0; padding: 0; }
-body.frame-now .feed .msgs > li + li { margin-top: 6px; }
-body.frame-now .feed .msgs > li.msg-card { margin-top: 8px; }
-body.frame-now .feed .msgs { gap: 6px; }
-body.frame-now .feed .msgs > li + li { margin-top: 0; }
-body.frame-now .feed .msgs > li.msg-card { margin-top: 2px; }
-body.frame-now .feed .msgs > li { margin: 0 !important; }
-body.frame-now .feed .msgs > li.msg-card { margin-top: 2px !important; }
-body.frame-now .feed { left: 360px; }
-body.frame-now .feed .msg { grid-template-columns: 56px minmax(0, 1fr); }
-body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font-size: 14px; line-height: 20px; }
+
 body.frame-now .stage-now .lbl.project .s { width: 128px; }
 .desk-art { display: none; }
 body.frame-now .desk-art { display: block; }
@@ -1087,7 +1028,6 @@ body.frame-now .rail .fixture { font-size: 14px; line-height: 16px; letter-spaci
 body.frame-now .top .core-status { font-size: 14px; line-height: 18px; letter-spacing: -0.02em; left: 898px; }
 body.frame-now #s-now .head .kicker { font-size: 14px; line-height: 18px; letter-spacing: 0.14em; }
 body.frame-now .now-tag { font-size: 14px; line-height: 18px; }
-body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font-size: 14px; }
 
 /* Round 10e: the concept's own sizes on the Now frame (minimum 11 px for frame text, owner rule). Sizes solved from
    the concept raster by tools/textfit_desktop.py; per-element values for the mission and project labels are keyed by
@@ -1135,15 +1075,6 @@ body.frame-now .lbl[data-lid="notes"] .s { font-size: 11.5px; line-height: 15px;
 body.frame-now .stage-now .lbl.exec .s { font-size: 11.7px; }
 body.frame-now .stage-now .lbl a.act { left: 5px; top: 75px; width: 99px; height: 31px; font: 400 13px/18px "Source Sans V2", var(--sans); color: var(--amber); border: 1px solid rgba(242, 181, 68, 0.85); border-radius: 6px; background: transparent; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; box-sizing: border-box; }
 
-body.frame-now .feed { left: 360px; top: 528px; width: 620px; }
-body.frame-now .feed .msg { grid-template-columns: 56px minmax(0, 1fr); column-gap: 17px; }
-body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font: 400 11.3px/20px "Source Sans V2", var(--sans); color: var(--text-2); }
-body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p { font: 400 12.8px/20px "Source Sans V2", var(--sans); padding: 7px 19px; border-radius: 8px; background: #1E1927; border: 0; color: var(--text); }
-body.frame-now .feed .msg-card .card-body { background: #1A141B; border: 1px solid rgba(239, 233, 218, 0.16); border-radius: 8px; height: 42px; padding: 0 17px 0 16px; box-sizing: border-box; gap: 11px; }
-body.frame-now .feed .msg-card .card-t { font: 400 13.8px/20px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg-card .btn { height: 30px; min-height: 30px; font: 400 12.4px/16px "Source Sans V2", var(--sans); border-radius: 6px; }
-body.frame-now .feed .msg-card [data-card="start"] { width: 87px; padding: 0; }
-body.frame-now .feed .msg-card [data-card="keep"] { width: 130px; padding: 0; font: 400 11.4px/16px "Source Sans V2", var(--sans); }
 body.frame-now .chatbar { left: 303px; top: 666px; width: 690px; height: 44px; background: #0F0C17; border: 1px solid rgba(239, 233, 218, 0.14); border-radius: 12px; box-sizing: border-box; }
 body.frame-now .chatbar .attach { left: 17px; top: 13px; width: 17px; height: 17px; color: var(--text-2); }
 body.frame-now .chatbar input { left: 53px; width: 560px; height: 42px; top: 1px; font: 400 13.2px/20px "Source Sans V2", var(--sans); }
@@ -1175,20 +1106,14 @@ body.frame-now .lbl[data-lid="m-date-exec"] .t { top: 8px; }
 body.frame-now .lbl[data-lid="m-date-exec"] .s { top: 15px; }
 body.frame-now .lbl[data-lid="verif"] .t, body.frame-now .lbl[data-lid="results"] .t { top: 1px; }
 body.frame-now .lbl[data-lid="notes"] .t { top: 15px; }
-body.frame-now .feed .msg > p, body.frame-now .feed .msg-you > p, body.frame-now .feed .msg-arch > p { padding: 7px 22px 7px 16px; }
-body.frame-now .feed .msg-card .card-t { position: relative; top: 4px; left: 3px; }
+
 body.frame-now .chatbar input { padding-bottom: 10px; box-sizing: border-box; }
 body.frame-now .top [data-tell] { padding-left: 20px; gap: 3px; }
 body.frame-now .top .stop-btn { padding-left: 8px; gap: 3px; }
 /* Round 10e geometry (master px, measured with geom2.py): Review 354,329 99x31; bubbles 433,528 276x34 and 436,568
    335x34; card 436,610 518x42; Start 709,617 87x30; Keep 807,617 130x30; send 955,678 26x26. */
 body.frame-now .stage-now .lbl a.act { top: 42px; }
-body.frame-now .feed .msg-you > p { width: 276px; padding: 7px 0 7px 16px; }
-body.frame-now .feed .msg-arch > p { width: 335px; margin-left: 3px; padding: 7px 0 7px 16px; }
-body.frame-now .feed .msg-card .card-body { width: 518px; margin-left: 3px; padding: 0 17px 0 16px; justify-content: flex-end; }
-body.frame-now .feed .msg-card .card-t { flex: 1 1 auto; min-width: 0; margin: 0; }
-body.frame-now .feed .msg-card [data-card="start"] { margin-left: 0; }
-body.frame-now .feed .msg-card [data-card="keep"] { margin-left: 0; }
+
 body.frame-now .send-btn { min-width: 26px; width: 26px; }
 body.frame-now .rail .fixture { left: 22px; }
 body.frame-now .chatbar .send-btn { width: 26px; height: 26px; min-height: 26px; right: 13px; top: 9px; padding: 0; box-sizing: border-box; }
@@ -1209,9 +1134,9 @@ body.frame-now .top [data-tell], body.frame-now .top .stop-btn { font: 400 14px/
 
 body.frame-now #s-now .head .kicker { top: 3px; left: 3px; font: 400 12.2px/16px "Source Sans V2", var(--sans); letter-spacing: 3.38px; }
 body.frame-now #s-now h1 { top: 13px; font: 500 37.42px/44px "Libre Caslon V2", var(--serif); letter-spacing: 1.08px; }
-body.frame-now .now-lede { top: 69px; left: 4px; font: 500 13.3px/20px "Libre Caslon V2", var(--serif); width: 400px; }
+body.frame-now .now-lede { top: 69px; left: 4px; font: 400 13.3px/20px "Libre Caslon V2", var(--serif); width: 400px; }
 
-body.frame-now .stage-now .lbl .t { font-weight: 500; font-family: "Libre Caslon V2", var(--serif); position: relative; top: 0; left: 0; }
+body.frame-now .stage-now .lbl .t { font-weight: 400; font-family: "Libre Caslon V2", var(--serif); position: relative; top: 0; left: 0; }
 body.frame-now .stage-now .lbl .s { font-family: "Source Sans V2", var(--sans); position: relative; top: 0; left: 0; }
 body.frame-now .stage-now .lbl.core .t { font-size: 21px; letter-spacing: 4.73px; top: 0; left: 0; }
 body.frame-now .stage-now .lbl[data-lid="m-search"] .t { font-size: 14.1px; }
@@ -1234,12 +1159,6 @@ body.frame-now .stage-now .lbl[data-lid="notes"] .t { font-size: 13.8px; }
 body.frame-now .stage-now .lbl[data-lid="notes"] .s { font-size: 11.5px; line-height: 15px; }
 body.frame-now .stage-now .lbl a.act { font: 400 13px/18px "Source Sans V2", var(--sans); }
 
-body.frame-now .feed .msg::before, body.frame-now .feed .msg-card::before { font: 400 13.4px/20px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg-you > p { font: 400 14.4px/20px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg-arch > p { font: 400 14.7px/20px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg-card .card-t { font: 400 15.6px/20px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg-card [data-card="start"] { font: 400 13.4px/16px "Source Sans V2", var(--sans); }
-body.frame-now .feed .msg-card [data-card="keep"] { font: 400 13.3px/16px "Source Sans V2", var(--sans); }
 body.frame-now .chatbar input { font: 400 14.8px/20px "Source Sans V2", var(--sans); }
 
 /* Round 10f registration (offsets, render ink box minus concept ink box) */
@@ -1249,8 +1168,8 @@ body.frame-now .rail .wordmark span { letter-spacing: 2.2px; }
 body.frame-now .stage-now .lbl.core .t { left: -3px; top: 2px; }
 body.frame-now .stage-now .lbl[data-lid="m-search"] .t { left: 5px; font-size: 13.6px; }
 body.frame-now .stage-now .lbl[data-lid="m-search"] .s { left: 5px; top: 2px; }
-body.frame-now .stage-now .lbl[data-lid="m-done"] .t { left: 4px; top: 4px; font-size: 11.9px; }
-body.frame-now .stage-now .lbl[data-lid="m-done"] .s { left: 4px; top: 2px; font-size: 12.5px; }
+body.frame-now .stage-now .lbl[data-lid="m-done"] .t { left: 10px; top: 11px; font-size: 11.9px; }
+body.frame-now .stage-now .lbl[data-lid="m-done"] .s { left: 10px; top: 9px; font-size: 12.5px; }
 body.frame-now .stage-now .lbl[data-lid="m-index"] .t { left: 2px; top: 4px; }
 body.frame-now .stage-now .lbl[data-lid="m-index"] .s { left: 3px; top: 2px; }
 body.frame-now .stage-now .lbl[data-lid="m-read"] .t { left: 4px; }
@@ -1258,12 +1177,11 @@ body.frame-now .stage-now .lbl[data-lid="m-read"] .s { left: 2px; top: 1px; font
 body.frame-now .stage-now .lbl[data-lid="notes"] .t { left: 4px; top: -5px; font-size: 13.2px; }
 body.frame-now .stage-now .lbl[data-lid="m-date"] .t { left: 3px; top: 2px; }
 body.frame-now .stage-now .lbl[data-lid="m-date"] .s { left: 3px; top: 1px; }
-body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .t { left: 3px; top: 4px; font-size: 12.4px; }
-body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .s { left: 3px; top: 2px; font-size: 13.7px; }
+body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .t { left: 10px; top: 9px; font-size: 12.4px; }
+body.frame-now .stage-now .lbl[data-lid="m-date-exec"] .s { left: 10px; top: 7px; font-size: 13.7px; }
 body.frame-now .stage-now .lbl[data-lid="verif"] .t { left: 5px; }
 body.frame-now .stage-now .lbl[data-lid="results"] .t { left: 3px; }
-body.frame-now .feed .msg::before { left: -2px; }
-body.frame-now .feed .msg-card .card-t { left: 0; top: 2px; }
+
 body.frame-now .top [data-tell] { padding-left: 6px; }
 body.frame-now .top .stop-btn { padding-left: 0; }
 body.frame-now .rail { overflow: visible; }
@@ -1337,10 +1255,10 @@ body.nocolor.frame-now .top .stop-btn { color: var(--text); border-color: var(--
 .rp-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .rp-body .rp-title { font: 400 18px/24px var(--rp-serif); color: var(--rp-ink); margin: 0; }
 .rp-sub { font: 400 16px/22px var(--rp-sans); color: var(--rp-sub); }
-.rp-badge { justify-self: end; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid rgba(239, 236, 240, 0.2); border-radius: 6px; font: 400 15px/20px var(--rp-sans); color: #E4E1EA; background: rgba(239, 236, 240, 0.04); white-space: nowrap; }
+.rp-badge { justify-self: end; display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 12px; border: 1px solid rgba(239, 236, 240, 0.14); border-radius: 6px; font: 400 15px/20px var(--rp-sans); color: #E4E1EA; background: rgba(239, 236, 240, 0.04); white-space: nowrap; }
 .rs-check .rp-badge { color: var(--rp-green); border-color: rgba(111, 211, 154, 0.45); background: rgba(111, 211, 154, 0.08); }
-.rs-diamond .rp-badge { color: var(--rp-amber); border-color: rgba(242, 181, 68, 0.5); background: rgba(242, 181, 68, 0.08); }
-.rp-reconcile .rp-badge { color: var(--rp-lilac); border-color: rgba(199, 178, 240, 0.45); background: rgba(199, 178, 240, 0.08); }
+.rs-diamond .rp-badge { color: var(--rp-amber); border-color: rgba(242, 181, 68, 0.34); background: rgba(242, 181, 68, 0.08); }
+.rp-reconcile .rp-badge { color: var(--rp-lilac); border-color: rgba(199, 178, 240, 0.32); background: rgba(199, 178, 240, 0.08); }
 .rs-dot .rp-mark::after { content: ""; width: 14px; height: 14px; border-radius: 50%; background: #D0C2FA; box-shadow: 0 0 10px rgba(208, 194, 250, 0.45); }
 .rs-check .rp-mark { width: 25px; height: 25px; border-radius: 50%; background: #69F691; box-shadow: 0 0 12px rgba(105, 246, 145, 0.4); }
 .rs-check .rp-mark::after { content: ""; width: 9px; height: 5px; border: solid #0E2A1A; border-width: 0 0 2px 2px; transform: rotate(-45deg) translate(1px, -1px); }
@@ -1386,8 +1304,8 @@ body.frame-replay .top .proto { display: none; }
 body.frame-replay .core-status { position: absolute; left: 904px; top: 10px; margin: 0; font: 400 15.9px/20px var(--rp-sans); color: var(--text-2); white-space: nowrap; }
 body.frame-replay .core-status .dot { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; margin: 0; }
 body.frame-replay .core-status { padding-left: 26px; }
-body.frame-replay .top [data-tell] { position: absolute; left: 1189px; top: 12px; width: 107px; height: 35px; min-height: 35px; padding: 0; font: 400 18.8px/24px var(--rp-sans); color: var(--text); background: rgba(255, 255, 255, 0.03); }
-body.frame-replay .top .stop-btn { position: absolute; left: 1309px; top: 12px; width: 107px; height: 35px; min-height: 35px; padding: 0; font: 400 18.1px/24px var(--rp-sans); color: var(--rp-red); border-color: rgba(229, 88, 94, 0.7); background: rgba(220, 52, 58, 0.24); }
+body.frame-replay .top [data-tell] { position: absolute; left: 1189px; top: 12px; width: 107px; height: 35px; min-height: 35px; padding: 0; font: 400 20px/24px var(--rp-serif); color: var(--text); background: rgba(255, 255, 255, 0.03); }
+body.frame-replay .top .stop-btn { position: absolute; left: 1309px; top: 12px; width: 107px; height: 35px; min-height: 35px; padding: 0; font: 400 20px/24px var(--rp-serif); color: var(--rp-red); border-color: rgba(229, 88, 94, 0.7); background: rgba(220, 52, 58, 0.24); }
 body.frame-replay #say { position: absolute; left: 0; top: 0; }
 body.frame-replay main#main { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; }
 body.frame-replay .screen-replay { position: absolute; left: 0; top: 0; width: 1440px; height: 810px; margin: 0; }
@@ -1486,15 +1404,9 @@ body.frame-replay .rp-strip { position: absolute; left: 0; top: 812px; width: 14
 /* Round 10c phone-3 (mission branch): these generic chat rules are phone rules; the desktop Now frame keeps its own. */
 @media (max-width: 880px) {
   /* Round 10c phone-3: messages stack, the label sits above each bubble, the card and the General thread take the full width. */
-  .feed .msg { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
-  .feed .msg > * { grid-column: auto; }
+
   .msg-you::before, .msg-arch::before { grid-column: auto; grid-row: auto; margin: 0; }
-  .feed .msg-you { align-self: flex-end; background: rgba(14, 19, 28, 0.92); border: 1px solid var(--line); border-radius: 12px; padding: var(--s2) var(--s3); max-width: 86%; }
-  .feed .msg-arch { align-self: flex-start; background: rgba(14, 19, 28, 0.92); border: 1px solid var(--line); border-radius: 12px; padding: var(--s2) var(--s3); max-width: 92%; }
-  .feed .msg-card, .feed .msg-gen { align-self: stretch; max-width: none; }
-  .feed .msg-gen { border-left: 0; border: 1px solid var(--line); border-radius: 12px; background: rgba(14, 19, 28, 0.92); }
-  .feed .msg-card .card-t { font-size: 22px; line-height: 28px; }
-  
+
   /* Round 10c phone-3: Start is amber filled, Keep as mission amber outline (the concept). */
   .msg-card .btn[data-card="start"] { background: var(--amber); border-color: var(--amber); color: #070A10; }
   .msg-card .btn[data-card="keep"] { font-size: 15px; }
@@ -1502,16 +1414,10 @@ body.frame-replay .rp-strip { position: absolute; left: 0; top: 812px; width: 14
 
 /* Round 10c phone forms of mission and shared: the scene on top, the card below, one column, no desktop margins. */
 .now-sheet h2 { font: 600 26px/32px var(--sans); }
-@media (max-width: 880px) {
-}
 
 /* Round 10c phone scene labels: smaller serif titles so the labels stay inside 360 to 440 px. */
-@media (max-width: 880px) {
-}
 
 /* Round 10c: the replay and plan links sit in the mission card; the phone shared scene gets more height and smaller device labels. */
-@media (max-width: 880px) {
-}
 
 /* Round 10c phone mission: record sub-lines are dropped so the record labels do not collide at 360 to 440 px. */
 
@@ -1547,7 +1453,7 @@ body.frame-mission .frame-screen, body.frame-shared .frame-screen { position: ab
 .frame .f { position: absolute; margin: 0; white-space: nowrap; line-height: 1; color: var(--text); font-weight: 400; text-transform: none; }
 .frame .f.serif { font-family: "Libre Caslon V2", var(--serif); font-weight: 500; }
 .frame .f.sans { font-family: "Source Sans V2", var(--sans); font-weight: 400; }
-.frame .f.dim { color: var(--text-2); }
+.frame .f.dim { color: var(--text-muted); }
 .frame .f.amb { color: var(--amber); }
 .frame .f.blu { color: var(--blue); }
 .frame .f.grn { color: var(--green); }
@@ -1555,6 +1461,7 @@ body.frame-mission .frame-screen, body.frame-shared .frame-screen { position: ab
 .frame .f.red { color: #E5585E; }
 .frame .f.status { color: var(--green); }
 .frame .f.status .dot { display: none; }
+#sh-frame .f.st, #sh-frame .f.status { color: var(--text-muted); }
 .frame .fr-crumb { position: absolute; left: 0; top: 0; margin: 0; }
 .frame .fr-crumb a { color: var(--text-2); text-decoration: none; }
 .frame .fr-crumb a::before { content: ""; position: absolute; left: -14px; top: -14px; right: -14px; bottom: -14px; }
@@ -1587,12 +1494,12 @@ body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; h
 
 /* Mission card: the phase labels; the stepper line and its marks are drawn in #m-stepper. */
 .frame .phases { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
-.frame .phases li { position: absolute; margin: 0; white-space: nowrap; line-height: 1; font: 500 16px/1 "Libre Caslon V2", var(--serif); color: var(--text-2); }
+.frame .phases li { position: absolute; margin: 0; white-space: nowrap; line-height: 1; font: 400 16px/1 "Libre Caslon V2", var(--serif); color: var(--text-muted); }
 .frame .phases li.done { color: var(--text); }
 .frame .phases li.current { color: var(--blue); }
 .frame .phases li.wait { color: var(--amber); }
 .frame .fr-log, .frame .fr-steps { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
-.frame .fr-log li, .frame .fr-steps li { position: absolute; margin: 0; white-space: nowrap; line-height: 1; font: 500 16px/1 "Libre Caslon V2", var(--serif); color: var(--text-2); }
+.frame .fr-log li, .frame .fr-steps li { position: absolute; margin: 0; white-space: nowrap; line-height: 1; font: 400 16px/1 "Libre Caslon V2", var(--serif); color: var(--text-muted); }
 .frame .fr-log li.bad { color: var(--text); }
 .frame .fr-steps li.done { color: var(--text); }
 .frame .fr-steps li.current { color: var(--blue); }
@@ -1601,7 +1508,7 @@ body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; h
 
 /* Shared rail, project list, card and tabs. */
 .frame .sh-nav { position: absolute; left: 0; top: 0; margin: 0; }
-.frame .sh-nav a, .frame .sh-nav .nav-off { color: var(--text); font-family: "Libre Caslon V2", var(--serif); font-weight: 500; text-decoration: none; }
+.frame .sh-nav a, .frame .sh-nav .nav-off { color: var(--text); font-family: "Libre Caslon V2", var(--serif); font-weight: 400; text-decoration: none; }
 .frame .sh-nav a::before { content: ""; position: absolute; left: -16px; top: -14px; right: -16px; bottom: -14px; }
 .frame .sh-nav .nav-off { color: var(--text-2); }
 .frame .sh-nav a:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
@@ -1610,11 +1517,11 @@ body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; h
 .frame .sh-projects li:nth-child(1) { top: 458px; }
 .frame .sh-projects li:nth-child(2) { top: 502px; }
 .frame .sh-projects li:nth-child(3) { top: 546px; }
-.frame .sh-projects a { position: absolute; left: 74px; top: 0; white-space: nowrap; color: var(--text); font: 500 15px/20px "Libre Caslon V2", var(--serif); text-decoration: none; }
+.frame .sh-projects a { position: absolute; left: 74px; top: 0; white-space: nowrap; color: var(--text); font: 400 15px/20px "Libre Caslon V2", var(--serif); text-decoration: none; }
 .frame .sh-projects a::before { content: ""; position: absolute; left: -36px; top: -12px; right: -40px; bottom: -12px; }
 .frame .sh-projects a:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 .frame .tabs { position: absolute; left: 1056px; top: 178px; width: 290px; height: 48px; display: flex; }
-.frame .tabs button { height: 48px; padding: 0 0 12px 8px; margin: 0; border: 0; background: transparent; color: var(--text-2); font: 500 15px/20px "Libre Caslon V2", var(--serif); cursor: pointer; }
+.frame .tabs button { height: 48px; padding: 0 0 12px 8px; margin: 0; border: 0; background: transparent; color: var(--text-muted); font: 400 15px/20px "Libre Caslon V2", var(--serif); cursor: pointer; }
 .frame .tabs button[aria-selected="true"] { color: var(--text); }
 .frame .tabs button:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; }
 .frame .tabs button:nth-child(1) { width: 99px; }
@@ -1624,13 +1531,12 @@ body.frame-shared .fr-btns .stop-btn { left: 1225px; top: 840px; width: 127px; h
 .frame .tabpanel { position: absolute; left: 1066px; top: 240px; width: 276px; margin: 0; }
 .frame .tabpanel[hidden] { display: none; }
 .frame .tabpanel .rowlist { list-style: none; margin: 0; padding: 0; }
-.frame .tabpanel .rowlist li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 500 15px/20px "Libre Caslon V2", var(--serif); color: var(--text); }
-.frame .tabpanel .small { font: 400 14px/20px "Source Sans V2", var(--sans); color: var(--text-2); margin: 12px 0 0; }
+.frame .tabpanel .rowlist li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font: 400 15px/20px "Libre Caslon V2", var(--serif); color: var(--text); }
+.frame .tabpanel .small { font: 400 14px/20px "Source Sans V2", var(--sans); color: var(--text-muted); margin: 12px 0 0; }
 
 /* Desktop Now frame: the phone-3 chat fixture (exit code 137 and its General answer) is not on the concept. */
 body.frame-now .msgs > .phone-fixture { display: none; }
 body.frame-now .msgs br { display: none; }
-body.frame-now .feed .msg-card .row .btn { flex: none; }
 
 /* Polish round (v2/polish): the terminal is full-bleed at 1600 x 900 on desktop. The art has no app rail, header or heading
    inside its frame; the disclosure, size buttons and surface switcher sit in a strip below it. */
@@ -1675,8 +1581,8 @@ body.frame-replay .places a[data-nav="ideas"] { top: 181px; }
 body.frame-replay .places a[data-nav="shared"] { top: 227px; }
 body.frame-replay .places a[data-nav="terminal"] { top: 273px; }
 body.frame-replay .rail .projects { display: block; position: absolute; left: 0; top: 0; width: 192px; height: 810px; margin: 0; }
-body.frame-replay .rail .projects::before { content: ""; position: absolute; left: 25px; top: 318px; width: 142px; height: 1px; background: rgba(239, 233, 218, 0.14); }
-body.frame-replay #proj-h { position: absolute; left: 25px; top: 350px; margin: 0; }
+body.frame-replay .rail .projects::before { content: ""; position: absolute; left: 25px; top: 335px; width: 142px; height: 1px; background: rgba(239, 233, 218, 0.14); }
+body.frame-replay #proj-h { position: absolute; left: 25px; top: 356px; margin: 0; }
 body.frame-replay #rail-projects { position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none; }
 body.frame-replay #rail-projects li { position: absolute; left: 0; }
 body.frame-replay #rail-projects li:nth-child(1) { top: 386px; }
@@ -1705,17 +1611,19 @@ body.frame-replay #rail-projects .pcube { display: block; position: absolute; le
   #s-now #ov-art polygon[stroke="#F9C259"] { stroke-width: 4px; }
 }
 /* V2 chat bar (build steps 1 to 3, v2/chatbar). The new chat surfaces: the bar, the reply surface (.chat-feed, which replaces the
-   old concept feed .feed above; those rules are now unused), the conversation panel, the phone chat sheet and the creation marks.
+   old concept feed .feed; its rules are deleted), the conversation panel, the phone chat sheet and the creation marks.
    One translucent material with a solid fallback (reduced transparency, forced colours); reply text is 16 px at weight 400, labels
    14 px; every chat control is at least 48 CSS px. Other screens, art and concept frames are not restyled.
    Checks: tools/v2_chatbar_probe.py and check.mjs. */
-:root { --chat-bg: rgba(10, 13, 20, 0.84); --chat-solid: #0E131C; --chat-line: rgba(239, 233, 218, 0.36); --hist-w: 400px; }
-@media (prefers-reduced-transparency: reduce) { :root { --chat-bg: #0E131C; } }
+:root { --chat-bg: rgba(14, 11, 22, 0.82); --chat-solid: #120E1A; --chat-line: rgba(239, 233, 218, 0.36); --hist-w: 400px; }
+:root { --glass-rim: rgba(255, 255, 255, 0.10); --glass-edge: inset 0 1px 0 var(--glass-rim), inset 0 28px 28px -28px rgba(255, 255, 255, 0.03); }
+body.frame-now .chatbar, .chat-feed, .history { box-shadow: var(--glass-edge); }
+@media (prefers-reduced-transparency: reduce) { :root { --chat-bg: #120E1A; --glass-edge: inset 0 1px 0 var(--glass-rim); } }
 @media (prefers-reduced-transparency: no-preference) {
   .chatbar, .chat-feed, .history { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 }
 @media (forced-colors: active) {
-  .chatbar, .chat-feed, .history, .rec-lbl { background: Canvas; border-color: CanvasText; }
+  .chatbar, .chat-feed, .history, .rec-lbl, .ph-sheet-bg { background: Canvas; border-color: CanvasText; box-shadow: none; }
   .sim-tag { border-color: CanvasText; }
 }
 
@@ -1759,7 +1667,7 @@ body.frame-now .chatbar .slash-btn, body.frame-now .chatbar .send-btn {
   background: rgba(239, 233, 218, 0.12) padding-box; color: var(--text);
 }
 body.frame-now .chatbar .send-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-body.frame-now .chatbar:focus-within:not(.mouse-focus) { box-shadow: 0 0 0 3px var(--focus); }
+body.frame-now .chatbar:focus-within:not(.mouse-focus) { box-shadow: 0 0 0 3px var(--focus), var(--glass-edge); }
 body.frame-now .chat-feed {
   position: absolute; left: 303px; bottom: 84px; width: 690px; z-index: 3; padding: 4px 12px;
   background: var(--chat-bg); border: 1px solid var(--chat-line); border-radius: 14px;
@@ -1880,7 +1788,7 @@ body.frame-terminal #s-terminal { height: 1200px; }
   #s-now[data-frame="3"].sheet-full, body.kb-open #s-now[data-frame="3"] { --st: 12px; }
   #s-now[data-frame="3"].sheet-full .ph3-frame .ph-art, #s-now[data-frame="3"].sheet-full .ph3-frame .ph-live,
   body.kb-open #s-now[data-frame="3"] .ph3-frame .ph-art, body.kb-open #s-now[data-frame="3"] .ph3-frame .ph-live { visibility: hidden; }
-  #s-now[data-frame="3"] .ph3-frame .ph-sheet-bg { top: var(--st); background: rgba(14, 12, 22, 0.94); }
+  #s-now[data-frame="3"] .ph3-frame .ph-sheet-bg { top: var(--st); background: var(--chat-bg); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); box-shadow: var(--glass-edge); }
   #s-now[data-frame="3"] .ph3-grab { top: calc(var(--st) + 8px); }
   #s-now[data-frame="3"] .ph3-back { top: calc(var(--st) + 14px); left: calc(var(--u) * 20); width: 96px; height: 48px; text-indent: 36px; line-height: 48px; font-size: 16px; }
   #s-now[data-frame="3"] .ph3-back::after { top: 0; bottom: 0; left: 0; right: 0; }
@@ -1907,7 +1815,7 @@ body.frame-terminal #s-terminal { height: 1200px; }
   #s-now[data-frame="3"] .msg-card .card-t { font: 400 17px/24px var(--serif); }
   #s-now[data-frame="3"] .msg-card .btn { min-height: 48px; height: 48px; font: 400 16px/24px var(--sans); flex: 1 1 120px; }
   #s-now[data-frame="3"] .gen-tag { font: 400 14px/20px var(--sans); }
-  #s-now[data-frame="3"] .promote { font: 400 14px/20px var(--sans); }
+  #s-now[data-frame="3"] .promote { font: 400 14px/20px var(--sans); margin-top: var(--s2); border-top: 1px solid var(--line); }
   #s-now[data-frame="3"] .promote input[type="checkbox"] { width: 48px; height: 48px; min-height: 48px; border-radius: 0; background: transparent; }
   #s-now[data-frame="3"] .promote input[type="checkbox"]::before { left: 4px; top: 12px; width: 40px; height: 24px; border-radius: 12px; background: #3B3744; }
   #s-now[data-frame="3"] .promote input[type="checkbox"]::after { content: ""; position: absolute; left: 8px; top: 16px; width: 16px; height: 16px; border-radius: 50%; background: #F5F2EA; }

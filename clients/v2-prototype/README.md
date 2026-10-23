@@ -4,13 +4,43 @@ Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a termi
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.
 
+## V2 style pass (v2/chatbar, 2026-10-23): Codex fix list 1 to 12 on all screens
+
+Owner decisions 2026-10-23: text weight 400, one glass material and neutral Shared statuses apply to all screens; the 12 controls under 44 pt are re-spaced (next section). Method: `tools/polish_measure.py all` (mean abs RGB against each concept, 0 to 255) before and after each item, headless Chromium, reduced motion, fonts awaited. An item that made its surface worse than the number before it was cut back or reverted. The harness frames are the chat bar branch's frames, so Desktop Overview, Phone Overview and Phone chat start higher than the 3ce4be9 numbers (the bar and the chat sheet are new and are not on the concept).
+
+| Surface | Before the pass | After | Page errors |
+|---|---|---|---|
+| Desktop Overview 1296 x 729 | 7.11 | 6.83 | 0 |
+| Replay 1440 x 810 | 4.83 | 4.80 | 0 |
+| Mission 1244 x 829 | 4.98 | 4.96 | 0 |
+| Shared 1382 x 922 | 3.21 | 3.18 | 0 |
+| Terminal 1600 x 900 | 2.99 | 2.90 | 0 |
+| Phone Overview 804 x 1373 | 5.49 | 5.49 | 0 |
+| Phone decision 724 x 1573 | 7.68 | 7.68 | 0 |
+| Phone chat 724 x 1573 | 25.16 | 25.09 | 0 |
+
+Item by item (numbers are the change on the surface that item touches):
+1. Weight 400 and a muted token (`--text-muted`, #ABA699, 16 contrast pairs in check.mjs). Applied: desktop label titles and lede (7.11 to 7.03 with the muted sub-lines), Mission and Shared phases, log, steps, tabs, rows, project list, nav, and every serif frame text under 12 px (`placeFrame`). Cut back: serif frame text of 12 px and more stays at 500, because 400 raised Mission by 0.41 and Shared by 0.51 (450 still +0.22 and +0.24). Replay and the phone sheets were already 400 or 350.
+2. One glass material: `--chat-bg` is now the violet fill rgba(14, 11, 22, 0.82) (was blue black 0.84; the violet matches the ground and measures better), `--glass-edge` is a 1 px top rim plus a soft top light, solid fill and no light under reduced transparency, `Canvas` under forced colours. Used on the bar, the replies, the panel and the phone chat sheet (blur). Phone decision sheet: the 1 px rim only (the top light raised it by 0.04, so it was dropped). Desktop 6.92 to 6.83, phone chat 25.38 to 25.09 after the fill change. The rim on the phone Overview composer was dropped (+0.10).
+3. Mission agent mark: hollow bevelled triangle (outer and inner triangle, three facet lines), Mission 4.98 to 4.96 with items 1 and 7.
+4. Terminal: the selected row rectangle is drawn only while the terminal has `:focus-visible` (2.99 to 2.90).
+5. Phone chat: the answer was already 400 in the bar branch (checked); a 1 px separator above the memory control was added.
+6. Replay rail: divider +17 px, project heading +6 px (4.83 to 4.82).
+7. Shared: status strings neutral beside the coloured dots, outlined 6 tooth gear for Control (3.21 to 3.18).
+8. One cyan node token (`CYAN`, #6FC6FF, was #6FB1FF; the concept reads 111,200,254) and the halo opacity .3 to .25. A larger cut (.2) cost 0.03, so it stopped at .25.
+9. Docs refresh and Codex execution labels: measured by shifting the render against the concept (Docs +6, +7; Codex +7, +5), applied, the shift is now 0, 0. The Codex sub-line sits under the chat panel and could not be measured.
+10. caret-color on the phone Overview and decision composers (no pixel change; blink phase not testable in a still).
+11. Phone Overview mesh: not applied. The art is the concept raster (edges and facets are pixels, there are no separate opacities); the mesh region differs from the concept by 0.5 to 2.7 and the large errors are the text and the bar.
+12. Replay Tell and Stop labels in the serif at 20 px, chip borders .14 and the amber and lilac chips .34 and .32 (4.82 to 4.80).
+The unused `.feed` rules (86 rules, 4 trimmed selector lists) are deleted; the render of all eight surfaces is identical before and after the deletion. Two check.mjs assertions that pinned the old `.feed` card now name `.chat-feed`.
+
 ## V2 chat bar, build steps 1 to 3 (v2/chatbar, 2026-10-23)
 
 Design: `.collab/V2-chatbar-design-codex.md` sections 2 to 9, with T-153 and T-149. Steps 4 to 6 (General routing, Review plan, delay/error fixtures) are not built. Owner answers applied: a project made in chat is a record only (folders, clones, access would be proposals); no camera move for a creation off screen (a receipt with Show); one translucent readable material with a solid fallback, body text 400, for the new chat and replies only.
 
 Step 1. Now has the transparent bar as its entry, no Start route or screen (`#/start` opens Now). Placeholder "Tell Archeus what you need...", intro line "Ask a question, capture an idea, or describe work." (shown when no message is showing, for example after `/clear`), disclosure "Demo · simulated chat · no Core actions" outside the art (desktop footer, phone under the bar). Every reply, card and answer carries a SIMULATED tag in text (one MutationObserver, so a card that rewrites itself keeps it). The receipt is the static "Submitted.". The terminal has its "Tell Archeus >" line again (it was hidden) and answers in a separate text area. `/help` lists examples on request.
 
-Step 2. Replies sit in `.chat-feed`, which replaces the old concept feed `.feed` (its rules are still in style.css, unused). The bar and the replies keep their CSS size at any frame scale (counter-scale by 1/--k), 690 px wide, 16 px text at weight 400, labels 14 px. The last exchange shows; "Open conversation" opens a 360 to 420 px panel and the frame is rescaled beside it. Phone: tapping the field opens the chat sheet; with the keyboard closed it is about 45 percent of the screen (the concept art stays above it), with the keyboard up (or Expand) it grows; the composer follows `visualViewport` (`--kb`); Back closes the sheet, focus goes to the Tell bar (not the field, so no keyboard), the draft stays. Auto-scroll only when already at the bottom, else a "New reply" control. Every chat control is 48 CSS px (the promote switch too). The composer ring is 3 px on desktop, the Overview and the sheet.
+Step 2. Replies sit in `.chat-feed`, which replaces the old concept feed `.feed` (its rules are deleted). The bar and the replies keep their CSS size at any frame scale (counter-scale by 1/--k), 690 px wide, 16 px text at weight 400, labels 14 px. The last exchange shows; "Open conversation" opens a 360 to 420 px panel and the frame is rescaled beside it. Phone: tapping the field opens the chat sheet; with the keyboard closed it is about 45 percent of the screen (the concept art stays above it), with the keyboard up (or Expand) it grows; the composer follows `visualViewport` (`--kb`); Back closes the sheet, focus goes to the Tell bar (not the field, so no keyboard), the draft stays. Auto-scroll only when already at the bottom, else a "New reply" control. Every chat control is 48 CSS px (the promote switch too). The composer ring is 3 px on desktop, the Overview and the sheet.
 
 Step 3. A chat message draws nothing. The fixture Core stores the record and sends one event naming only the identity (`window.ArchFixture`: `hold`, `emit`, `reconnect`, `nodes`, a test hook); the view rereads the record and shows it once, so a repeated event or a reconnect adds nothing. Beats (class steps b2 to b5): reply at 0, appear 160 ms, relation 240 ms from 160, label and state readable 180 ms from 400, accent gone by 800. Reduced motion and Quiet (`/motion`): every beat at once, no transition, no accent, same facts. Project = faceted hull with name; mission = diamond, "Not started"; idea = sparkle, "Idea · not a commitment"; an idea with no project named stays loose under Ideas. Ivory only (amber and blue keep their meaning). The desktop map draws one new project cluster (three items) and one loose idea; any more are in the text list and the receipt says so. Phone Overview does not draw new records (the art is a fixed raster): the count chip says "3 more projects" with a static outline, and the All work list holds every identity once.
 
