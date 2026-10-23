@@ -1057,7 +1057,7 @@ body.frame-now .chatbar input { position: absolute; left: 52px; top: 0; width: 5
 body.frame-now .stage-now .lbl .t { font-family: "Libre Caslon V2", var(--serif); }
 body.frame-now .stage-now .lbl .s { font-family: "Source Sans V2", var(--sans); }
 
-body.frame-now .rail { z-index: 4; }
+body.frame-now .rail { z-index: 6; }
 body.frame-now .top { z-index: 5; }
 body.frame-now .feed { transform: none; }
 body.frame-now .chatbar { transform: none; }
@@ -1693,6 +1693,8 @@ body.frame-replay #rail-projects .pcube { display: block; position: absolute; le
 .ph-live .ph-rule { fill: rgba(210, 205, 220, 0.25); }
 /* Tap targets: the visible shapes stay; each control gets an invisible hit area of at least 44 CSS px (88 units). */
 .ph2-back::after, #s-now[data-frame="3"] .ph3-back::after { content: ""; position: absolute; left: calc(var(--u) * -6); right: calc(var(--u) * -6); top: calc(var(--u) * -26); bottom: calc(var(--u) * -26); }
+/* The chat list (z-index 5) starts 26 units under the Back top, so its hit area grows upward instead. */
+#s-now[data-frame="3"] .ph3-back::after { top: calc(var(--u) * -56); bottom: 0; }
 .ph2-open::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -10); bottom: calc(var(--u) * -10); }
 .ph-stop::after, #s-now[data-frame="3"] .chat-stop::after { content: ""; position: absolute; left: 0; right: 0; top: calc(var(--u) * -2); bottom: calc(var(--u) * -2); }
 /* z-index -1: the bar holds the input, so its hit area must paint under it (else it swallows clicks on the input). */
@@ -1719,3 +1721,21 @@ body.frame-replay #rail-projects .pcube { display: block; position: absolute; le
 .slash-desc { font: 400 14px/20px var(--sans); color: var(--text-2); }
 .slash-row[aria-disabled="true"] .slash-desc { color: var(--text-3); }
 .slash-more .slash-desc { color: var(--text); }
+/* Phone Mission and Shared: the desktop frame is scaled by --k (about 0.3), so a control's box is small. Each gets an invisible
+   hit area of 44 CSS px (--hit frame px), centred on the control. Where neighbours are closer than 44 CSS px (the rail rows, the
+   tab row, Tell and Stop on Mission) the area stops at the neighbour, so no two areas overlap. */
+@media (max-width: 880px) {
+  body.frame-mission, body.frame-shared { --hit: calc(44px / var(--k, 1)); }
+  .frame .fr-btns .btn::after, .frame .tabs button::after { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - var(--hit) / 2); height: var(--hit); }
+  body.frame-shared .fr-btns .btn::after { left: calc(50% - var(--hit) / 2); right: auto; width: var(--hit); top: calc(82px - var(--hit)); }
+  body.frame-shared .fr-btns .tell::after { left: auto; right: -14px; }
+  body.frame-shared .fr-btns .stop-btn::after { left: 1px; }
+  body.frame-mission .fr-btns .btn::after { top: -10px; }
+  .frame .tabs button { position: relative; }
+  .frame .sh-nav a::before, .frame .sh-projects a::before { left: calc(50% - var(--hit) / 2); right: auto; width: var(--hit); }
+  .frame .sh-projects a::before { top: calc(50% - var(--hit) / 2); bottom: auto; height: var(--hit); }
+  .frame .fr-crumb a::before { left: calc(50% - var(--hit) / 2); right: auto; width: var(--hit); top: calc(50% - var(--hit) / 2); bottom: auto; height: var(--hit); }
+  .frame-screen .fr-foot .btn { position: relative; }
+  /* Upward only: a hit area that leaves the scaled shell changes the text anti-aliasing of the whole frame. */
+  .frame-screen .fr-foot .btn::after { content: ""; position: absolute; right: 0; bottom: 0; width: max(100%, var(--hit)); height: var(--hit); }
+}

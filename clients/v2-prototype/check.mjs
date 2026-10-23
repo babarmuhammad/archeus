@@ -330,7 +330,8 @@ check(/class="ph-rule" x="48" y="1086" width="629"/.test(js) && /class="ph-rule"
 check(/\.ph-live \.ph-title \{ font-weight: 500; fill: #F3EEDF; \}/.test(css) && /\.ph2-back \{ letter-spacing: -0\.5px; \}/.test(css), 'decision title weight or Back tracking missing');
 check(/#s-now\[data-frame="3"\] \.ph3-back \{ top: calc\(var\(--u\) \* 668\)/.test(css), 'chat Back offset must be the measured 668 units');
 check(/\.ph2-open::after/.test(css) && /\.ph2-back::after/.test(css) && /\.ph2-bar::after/.test(css) && /msg-card \.btn::after/.test(css), 'decision, composer or card controls lack 44 px hit areas');
-check(/\.wordmark \{[^}]*z-index: 20/.test(css), 'desktop wordmark must sit above the header bar');
+check(/\.wordmark \{[^}]*z-index: 20/.test(css) && /body\.frame-now \.rail \{ z-index: 6; \}/.test(css) && /body\.frame-now \.top \{ z-index: 5; \}/.test(css), 'desktop rail (and its wordmark) must stack above the header bar (the rail is its own stacking context)');
+check(/--hit: calc\(44px \/ var\(--k, 1\)\)/.test(css) && /\.fr-btns \.btn::after/.test(css) && /\.fr-foot \.btn::after/.test(css) && /\.ph3-back::after \{ top: calc\(var\(--u\) \* -56\)/.test(css), 'phone Mission and Shared controls need scaled 44 pt hit areas (tools/v2_hit_probe.py)');
 check(/@media \(max-width: 880px\) \{ #s-now \.chatbar:focus-within:not\(\.mouse-focus\)/.test(css), 'phone Overview composer needs a keyboard focus ring');
 check(/#s-now \.ov-status \{ fill: #C6C2D3; \}/.test(css) && /polygon\[stroke="#F9C259"\] \{ stroke-width: 4px; \}/.test(css), 'phone Overview status colour or diamond stroke missing');
 // Merge round 2: the composer hit area paints under the input (it swallowed clicks), the Replay frame takes clicks only on links and buttons, and the phone never zooms the desktop stage.
