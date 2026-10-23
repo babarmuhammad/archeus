@@ -1898,3 +1898,10 @@ body.frame-shared .fr-btns .tell, body.frame-shared .fr-btns .stop-btn { top: 83
   /* Upward only: a hit area that leaves the scaled shell changes the text anti-aliasing of the whole frame. */
   .frame-screen .fr-foot .btn::after { content: ""; position: absolute; right: 0; bottom: 0; width: max(100%, var(--hit)); height: var(--hit); }
 }
+
+/* Motion parking changes presentation only; controls, labels and facts stay put. */
+.motion-parked *, .motion-parked *::before, .motion-parked *::after {
+  animation: none !important;
+  transition: none !important;
+}
+.lbl.is-new { animation: none; }

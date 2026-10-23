@@ -1333,3 +1333,22 @@ Weight test (text only): 400 gives the lowest error; 450 and 500 raised text err
 - Real Windows fonts, screen readers, phone widths; only headless Chromium on this machine.
 - Codex loop: 4 overview iterations, not the 8 the brief asks for. The remaining overview difference is the text glyph shapes (Roboto Mono vs the concept face) and the dash phase of the connectors.
 - Ubuntu Mono and Cascadia licences were not verified against upstream text.
+
+## Desktop motion pass (2026-10-23, incomplete acceptance)
+
+Shared parking cancels creation beats and finite effects on input, blur, hidden tab,
+scroll, reduced motion and Quiet. Creation beat timings remain unchanged; concurrent
+arrivals settle statically. Event outline is 1/2/1 px over 240 ms, deduplicated by
+fixture record identity with a 2 s object cooldown. Start's recorded fixture plan
+updates obligation text immediately; its glyph approaches its existing reserved
+slot by 24 px over 360 ms only without hovered, pressed or focused scene targets.
+Review and labels stay fixed. No replay backlog. Legacy decorative canvas ticker,
+traffic and camera interpolation are parked; no new phone or terminal motion.
+
+Core breath is **not implemented**: desktop core is baked into the existing WebP,
+not live geometry. Cropping/scaling that region would also move background wires;
+replacing it would restyle the approved screen. A separable core asset/geometry and
+matching base art are needed before this row can meet the no-restyle constraint.
+No browser/runtime checks were run by Codex. `tools/v2_motion_probe.py` intentionally
+fails this missing acceptance gate; remaining timing, budget, target and visual
+checks must be run by Claude. Terminal colour and travelling phase head remain open.

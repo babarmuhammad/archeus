@@ -446,6 +446,14 @@ check(/body\.frame-now \.places a \{ height: 48px; \}/.test(css) && /body\.frame
 check(/class="ph3-expand"/.test(html) && /aria-expanded/.test(html.match(/<button[^>]*ph3-expand[^>]*>/)[0]), 'phone sheet needs an explicit Expand control');
 check(/--st: min\(calc\(var\(--u\) \* 865\), 55dvh\)/.test(chatCss) && /--kb/.test(chatCss) && /visualViewport/.test(js), 'phone sheet: 45 percent with the keyboard closed, composer above the keyboard');
 
+// Desktop motion: runtime acceptance lives in v2_motion_probe.py.
+check(/function parkMotion/.test(js) && /document\.getAnimations\(\)/.test(js), 'motion parking must cancel running browser effects');
+check(/duration: duration, easing: 'cubic-bezier\(0.22, 0, 0.18, 1\)'/.test(js), 'finite effects must share easing E');
+check(/now - motion\.last\[id\] < 2000/.test(js) && /motion\.seen\[eventId\]/.test(js), 'event emphasis needs identity deduplication and 2 s cooldown');
+check(/translateY\(24px\)/.test(js) && /360, true/.test(js), 'obligation approach must be bounded to 24 px / 360 ms');
+check(/motion\.pressed/.test(js) && /:focus-within/.test(js) && /:hover/.test(js), 'obligation arrival must hold interaction targets');
+check(/\.motion-parked/.test(css), 'parked CSS must stop automatic transitions');
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);
