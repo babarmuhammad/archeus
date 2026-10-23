@@ -8,6 +8,7 @@ mission made through the API (origin `api`) starts under `standard` as before.""
 
 import pytest
 
+from archeus.core import engine, ports
 from archeus.core.application import authorization, commands, queries
 from archeus.core.domain import entities, ids
 from archeus.core.domain.values import Ref
@@ -15,6 +16,9 @@ from archeus.core.policy.engine import PolicyEngine
 from archeus.infra.db import rows
 from v1.integration.test_intent import WORK, brain, make  # noqa: F401 (a fixture)
 from v1.integration.test_skeleton import Core
+
+DEPLOY = dict(engine.SKELETON_PLAN, tasks=[dict(engine.SKELETON_PLAN['tasks'][0],
+                                                action_classes=['deploy'])])
 
 
 @pytest.fixture
@@ -160,3 +164,50 @@ def _admin(core):
         commands.register_principal, {'kind': 'user_device',
                                       'scopes': ('observe', 'control', 'approve', 'admin')},
         idempotency_key=ids.new_ulid())['id'])
+
+
+# ── the card says what its buttons do, and the buttons do it ──
+
+def test_the_start_cards_reject_text_is_what_a_reject_does(core):
+    mid = _chat(core)
+    core.engine.run(mid)
+    a = core.pending(mid)
+    said = a.presented['consequences']['reject']
+    assert 'idle' in said and 'cancel' not in said
+    core.decide(mid, decision='reject')
+    assert core.row(entities.Mission, mid).entity.state == 'CREATED'
+
+    careful = _chat(core, 'Careful work')
+    core.do(authorization.set_profile, actor=_admin(core), scope='mission', mission_id=careful,
+            profile='careful')
+    core.engine.run(careful)
+    assert core.pending(careful).presented['consequences']['reject'] == 'the mission is cancelled'
+    core.decide(careful, decision='reject')
+    assert core.row(entities.Mission, careful).entity.state == 'CANCELLED'
+
+
+# ── whose profile decides: the user's, when the mission has none ──
+
+def test_a_user_level_autonomous_profile_starts_a_chat_mission_without_asking(core):
+    core.do(authorization.set_profile, actor=_admin(core), scope='user', profile='autonomous')
+    mid = _chat(core)
+    assert core.engine.run(mid)['state'] != 'CREATED'
+    assert _starts(core, mid) == []
+    assert _start_decisions(core, mid) == [('ALLOW', 'allow')]
+
+
+# ── only the Start card reads "Start and plan" ──
+
+def test_a_plan_card_for_a_chat_mission_is_not_worded_as_the_start(core):
+    core.brain = ports.FixedPlanBrain(DEPLOY)
+    _restart(core)
+    mid = _chat(core)
+    core.engine.run(mid)
+    core.decide(mid)                                            # Start
+    assert core.engine.run(mid)['state'] == 'APPROVAL_REQUIRED'
+    plan = core.pending(mid)
+    assert plan.kind == 'plan'
+    with core.db.read() as c:
+        (card,) = [m for m in queries.messages(c, _primary(c))
+                   if any(x['ref']['id'] == plan.id for x in m['cards'])]
+    assert card['text'] == '"Chat work" needs your approval: %s.' % plan.presented['scope']

@@ -295,7 +295,7 @@ def _overall(items):
     return max((i['decision'] for i in items), key=R.STRICTNESS.get, default='ALLOW')
 
 
-def _presented_start(mission, items, why):
+def _presented_start(conn, mission, items, why):
     return {
         'what': [{'task': None, 'title': None, 'class': i['class'],
                   'target': i['action']['target'], 'paths': None, 'implied_by': None,
@@ -306,7 +306,11 @@ def _presented_start(mission, items, why):
         'scope': 'starting this mission',
         'resources': sorted({i['class'] for i in items}),
         'consequences': {'approve': 'the mission starts: it is understood and planned',
-                         'reject': 'the mission is cancelled', 'request_changes': None,
+                         'reject': ('the mission stays as it is, idle, and is not asked '
+                                    'again; you can ask for the start later'
+                                    if asks_before_start(conn, mission)
+                                    else 'the mission is cancelled'),
+                         'request_changes': None,
                          'step_up': False},
         'reusable': 'single-use'}
 
@@ -314,7 +318,7 @@ def _presented_start(mission, items, why):
 def _presented(tx, kind, mission, plan, task, items, why, step_up):
     """What the user is asked (§8.6): built from rows, model text labelled."""
     if kind == 'start':
-        return _presented_start(mission, items, why)
+        return _presented_start(tx.conn, mission, items, why)
     titles = {t.key: t.title for t in _tasks(tx.conn, plan)}
     return {
         'what': [{'task': i['task'], 'title': titles.get(i['task']), 'class': i['class'],

@@ -125,8 +125,8 @@ MUTATIONS = [
      [I + '::test_cx3_a_chain_that_returns_to_an_earlier_state_ends_charged',
       I + '::test_cx18_the_retry_is_bounded_and_the_task_fails_context_insufficient']),
     ('Z14', 'a continuation created after context_insufficient', [(EX,
-     "    if refused is not None:\n        # ADR-0047 §5 and T-051 §7: no continuation",
-     "    if False:\n        # ADR-0047 §5 and T-051 §7: no continuation")],
+     "        if refused is not None:\n            # ADR-0047 §5 and T-051 §7: no continuation",
+     "        if False:\n            # ADR-0047 §5 and T-051 §7: no continuation")],
      [I + '::test_cx3_a_chain_that_returns_to_an_earlier_state_ends_charged']),
     ('Z15', 'context_insufficient made unreplannable', [(GD,
      "NOT_RETRYABLE = ('policy', 'credential', 'human')",
@@ -506,6 +506,23 @@ MUTATIONS = [
      "        text = 'Start and plan \"%s\"?' % mission.title",
      "        text = '\"%s\" needs your approval: starting this mission.' % mission.title")],
      [CS + 'test_a_chat_new_work_under_standard_asks_to_start_and_plan_it']),
+    ('Z205', "the start card says a reject cancels the mission whatever a reject does",
+     [(AZ,
+     "                                    if asks_before_start(conn, mission)\n"
+     "                                    else 'the mission is cancelled'),",
+     "                                    if False\n"
+     "                                    else 'the mission is cancelled'),")],
+     [CS + 'test_the_start_cards_reject_text_is_what_a_reject_does']),
+    ('Z206', "the chat start ask ignores the user's profile",
+     [(AZ,
+     "    return (m.autonomy_profile or (u.autonomy_profile if u else 'standard')) == 'standard'",
+     "    return (m.autonomy_profile or 'standard') == 'standard'")],
+     [CS + 'test_a_user_level_autonomous_profile_starts_a_chat_mission_without_asking']),
+    ('Z207', "a plan card for a chat mission is worded as the start",
+     [(CV,
+     "    if approval.kind == 'start' and asks_before_start(tx.conn, mission):",
+     "    if asks_before_start(tx.conn, mission):")],
+     [CS + 'test_a_plan_card_for_a_chat_mission_is_not_worded_as_the_start']),
 ]
 
 
