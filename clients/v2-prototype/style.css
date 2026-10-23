@@ -1863,6 +1863,46 @@ body.frame-shared .fr-btns .tell, body.frame-shared .fr-btns .stop-btn { top: 83
   .ph-ctl [aria-selected="true"], .ph-ctl [aria-current="page"] { border-color: var(--text-muted); background: rgba(239, 233, 218, 0.08); }
 }
 
+/* V2 chat steps 4–6: only new controls and shared review targets. Existing weights stay unchanged. */
+.chat-destination { position: absolute; left: 24px; bottom: 78px; z-index: 7; max-width: calc(100% - 48px); margin: 0; padding: 4px 8px; background: var(--chat-solid); color: var(--text); }
+body.frame-now .chat-destination { left: 303px; top: 714px; bottom: auto; transform: scale(calc(1 / var(--k, 1))); transform-origin: left bottom; }
+#s-plan .btn, #s-plan summary, #s-plan select, #s-plan textarea, #confirm .btn,
+.msg-card select, .msg-card textarea, [data-promote], #s-terminal .receipt { min-height: 48px; min-width: 48px; }
+#s-plan label:has(input[type="checkbox"]) { min-height: 48px; display: flex; align-items: center; gap: 12px; }
+#s-plan input[type="checkbox"] { width: 48px; height: 48px; flex-shrink: 0; }
+.msg-card label, .msg-card select, .msg-card textarea { display: block; width: 100%; box-sizing: border-box; }
+#s-plan, #s-plan .tasks li, .msg-card { overflow-wrap: anywhere; }
+#s-plan textarea, #s-plan select { max-width: 100%; }
+#s-plan :is(button, a, summary, input, textarea, select):focus-visible,
+.msg-card :is(button, textarea, select):focus-visible, [data-promote]:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+/* Closed details can retain descendant layout boxes in Chromium. Keep those
+   links out of hit/visibility queries; the open list paints above the scene. */
+.list-d:not([open]) > #now-list { display: none; }
+body.frame-now .list-d {
+  display: block; position: absolute; left: 175px; top: 150px; margin: 0; z-index: 8;
+  max-width: 1097px; max-height: 460px; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px; padding: 0 12px;
+}
+body.frame-now .list-d[open] { width: 1097px; }
+@media (max-width: 880px) {
+  #s-now .list-d {
+    display: block; position: absolute; top: 100px; left: 16px; right: 16px; margin: 0; z-index: 8;
+    max-height: calc(100dvh - 230px); overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--line-2); border-radius: 12px; padding: 0 12px;
+  }
+  #s-now .chat-destination { bottom: calc(var(--bar-b, 100px) + 52px); left: 16px; right: 16px; max-width: none; }
+  #s-now[data-frame="3"] .chat-feed { bottom: calc(var(--bar-b) + 88px); }
+  #s-plan .row { flex-wrap: wrap; }
+}
+@media (forced-colors: active) {
+  .chat-destination { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
+}
+body.frame-terminal #term-destination { position: absolute; top: 1038px; left: 0; margin: 0; }
+body.frame-terminal #term-review-actions { position: absolute; top: 1070px; left: 0; margin: 0; }
+body.frame-terminal .term-reply { top: 1130px; max-height: 360px; overflow: auto; }
+body.frame-terminal #s-terminal { height: 1500px; }
+#term-review-actions .btn { min-width: 48px; min-height: 48px; }
+#s-terminal .term-reply .receipt { display: block; white-space: normal; overflow-wrap: anywhere; }
 /* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,
    ivory text, neutral outline chips. No amber (owner obligations only) and no blue (live work only). Rows 48 px. */
 .slash-cleared { display: none; }

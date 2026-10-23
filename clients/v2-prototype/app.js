@@ -55,6 +55,8 @@
   var comments = [];
   var planId = 'm-search';
   var planNote = '';
+  var reviewDrafts = {}, reviewResults = {}, reviewFeedback = [], reviewPending = {}, reviewFixture = 'normal';
+  var memoryItems = [], reviewTaskDrafts = {}, conversationDrafts = [];
   var counter = 0;
   var stopArmed = 0;
   var pendingOk = '';
@@ -2083,9 +2085,10 @@
   function renderPlan(id) {
     var m = find(id) || find('m-search');
     if (planId !== m.id) planOpened = false;
-    planId = m.id;
+    planId = m.id; planNote = reviewDrafts[m.id] || '';
     var p = plans[m.id], sec = $('#s-plan');
-    var sheetOn = ovMode() && !planOpened && m.id === 'm-search' && !!plans[m.id];
+    $('#plan-form').hidden = !p;
+    var sheetOn = false; // Shared live review controls on all three surfaces.
     sec.classList.toggle('sheet-on', sheetOn);
     if (sheetOn) buildPhone2();
     if (!p) {
@@ -2102,13 +2105,14 @@
     $('[data-plan-meta]', sec).textContent = projectOf(m.project).name + ' · ' + m.branch + ' · ' + stateLine(m);
     $('[data-plan-why]', sec).textContent = 'Why: ' + p.why + ' Action ' + p.hash.slice(0, 9) + ' · plan v' + p.version + ' (fixture).';
     $('#plan-tasks').innerHTML = p.tasks.map(function (t) {
-      var mine = comments.filter(function (c) { return c.mission === m.id && c.task === t.key; });
-      return '<li><p><span class="tk">' + t.key + '</span>' + esc(t.text) + '</p>' +
+      var mine = comments.filter(function (c) { return c.mission === m.id && c.task === t.key && !c.sent; });
+      return '<li><p><span class="tk">' + t.key + '</span>' + esc(t.text) + '</p><p class="small">Dependencies: not recorded.' +
+        ' Files/effects: Unknown in this fixture; no external writes. Verify: review success criteria. Resources: account and cost Unknown.</p>' +
         '<details><summary>Comment on ' + t.key + ' (' + mine.length + ')</summary>' +
         '<form class="task-comment" data-task="' + t.key + '">' +
         '<label for="c-' + t.key + '">Comment on ' + t.key + '</label>' +
-        '<textarea id="c-' + t.key + '" name="body" rows="3" maxlength="2000"></textarea>' +
-        '<button type="submit" class="btn">Save comment</button></form>' +
+        '<textarea id="c-' + t.key + '" name="body" rows="3" maxlength="2000">' + esc(reviewTaskDrafts[m.id + ':' + t.key] || '') + '</textarea>' +
+        '<button type="submit" class="btn">Save draft</button></form>' +
         (mine.length ? '<ul class="comments">' + mine.map(function (c) {
           return '<li><label><input type="checkbox" data-act="carry" data-id="' + c.id + '"' + (c.carry ? ' checked' : '') +
             '> Carry in request changes</label> ' + esc(c.body) + '</li>';
@@ -2120,7 +2124,7 @@
       '<li><strong>Request changes:</strong> ' + esc(p.request) + '</li>' +
       '<li><strong>Reject:</strong> ' + esc(p.reject) + '</li>' +
       '<li class="small">Consequence lines are fixture text. Core supplies the real ones.</li>';
-    $('[data-plan-count]', sec).textContent = commentsFor(m.id).length + ' open comments. They do not block approve.';
+    $('[data-plan-count]', sec).textContent = commentsFor(m.id).filter(function (c) { return !c.sent; }).length + ' draft comments. Resolve or discard drafts before approval. SIMULATED · ' + (reviewResults[m.id] || 'Needs review');
     $('#plan-selected').textContent = 'Selected for request changes: ' + selectedComments().length + '.';
     $('#plan-note').value = planNote;
     renderPlanStep(m, p);
@@ -2150,12 +2154,20 @@
     $('#confirm-text').textContent = text;
     pendingOk = ok;
     pendingApply = apply || null;
+    $('#confirm').returnValue = 'cancel';
     $('#confirm').showModal();
   }
 
   $('#confirm').addEventListener('close', function () {
     var apply = pendingApply;
     pendingApply = null;
+    // Return to live review after approval's native dialog, including Cancel,
+    // errors and pending results. Retry and changed-plan controls must stay reachable.
+    if (planStep === 'confirm' && !$('#s-plan').hidden) {
+      planStep = 'review';
+      renderPlan(planId);
+      $('[data-kind="approve"]').focus({ preventScroll: true });
+    }
     if (this.returnValue === 'ok') {
       if (apply) apply();
       if (pendingOk) say(pendingOk);
@@ -2163,26 +2175,79 @@
     pendingOk = '';
   });
 
-  function decide(kind) {
-    var m = find(planId), p = plans[m.id];
-    var note = $('#plan-note').value.trim();
-    var sel = selectedComments();
-    if (kind === 'approve') { planStep = 'confirm'; return renderPlan(planId); }
-    if (kind === 'approve-confirm') {
-      return confirmBox('Approve plan v' + p.version + '?',
-        'Approve plan v' + p.version + ' (action ' + p.hash.slice(0, 9) + ') for "' + m.title + '" on ' + m.branch + '. ' + p.approve + ' Open comments: ' + commentsFor(m.id).length + ', which do not block approve.',
-        'Prototype: nothing was approved. This page records no decision.');
-    }
-    if (kind === 'reject') {
-      return confirmBox('Reject this mission?', p.reject, 'Prototype: nothing was rejected.');
-    }
-    if (!note && !sel.length) return say('Request changes needs a note or a selected comment.');
-    confirmBox('Request changes on plan v' + p.version + '?',
-      'Your note: ' + (note || 'none') + '. Selected comments: ' +
-      (sel.map(function (c) { return c.task + ' "' + c.body + '"'; }).join('; ') || 'none') + '. ' + p.request,
-      'Prototype: request changes would carry your note and ' + sel.length + ' selected comment(s). Nothing was sent.');
+  function reviewHasDrafts(id) {
+    return !!(reviewDrafts[id] || '').trim() || commentsFor(id).some(function (c) { return !c.sent; }) ||
+      $$('#plan-tasks textarea').some(function (el) { return el.value.trim(); });
   }
-
+  function revisePlan(id) {
+    var p = plans[id];
+    if (!p) return;
+    p.version += 1; p.hash += '-v' + p.version;
+    delete p.approvedHash;
+    delete p.decidedHash;
+    reviewResults[id] = 'Changed plan · approval invalidated · review required';
+    planStep = 'review';
+    if (planId === id) renderPlan(id);
+  }
+  function decide(kind) {
+    var id = planId, m = find(id), p = plans[id];
+    if (!p) return say('SIMULATED · No plan. Nothing decided.');
+    var hash = p.hash, version = p.version;
+    if (kind === 'discard') {
+      reviewDrafts[id] = ''; planNote = '';
+      Object.keys(reviewTaskDrafts).forEach(function (key) { if (key.indexOf(id + ':') === 0) delete reviewTaskDrafts[key]; });
+      comments = comments.filter(function (c) { return c.mission !== id || c.sent; });
+      return renderPlan(id);
+    }
+    if (p.decidedHash === hash) return say('SIMULATED · This version already has a decision. Review a changed plan.');
+    if (kind === 'approve' || kind === 'approve-confirm') {
+      if (/^Changes requested/.test(reviewResults[id] || '')) return say('SIMULATED · Await revised plan. Approval unavailable.');
+      if (reviewHasDrafts(id)) return say('SIMULATED · Resolve drafts with Request changes, or choose Discard drafts explicitly.');
+      if (kind === 'approve') { planStep = 'confirm'; return renderPlan(id); }
+    }
+    var noteText = (reviewDrafts[id] || '').trim();
+    var sel = selectedComments().filter(function (c) { return !c.sent; });
+    Object.keys(reviewTaskDrafts).forEach(function (key) {
+      if (key.indexOf(id + ':') === 0 && reviewTaskDrafts[key].trim()) sel.push({ task: key.slice(id.length + 1), body: reviewTaskDrafts[key].trim() });
+    });
+    if (kind === 'request' && !noteText && !sel.length) return say('Request changes needs a note or a selected comment.');
+    var consequence = kind === 'request' ? 'Sends selected task drafts and general feedback to the simulated planner for v' + version + '. Revision may use model resources; account and cost Unknown. No execution.' :
+      kind === 'reject' ? p.reject : p.approve + ' Account and cost: Unknown. Demo runs no Core or external work.';
+    confirmBox('SIMULATED · ' + (kind === 'request' ? 'Request changes' : kind === 'reject' ? 'Reject' : 'Approve plan') + ' v' + version + '?',
+      consequence, '', function () {
+        if (plans[id].hash !== hash) return say('SIMULATED · Plan changed. Approval invalidated. Review again.');
+        var key = id + ':' + hash + ':' + kind;
+        if (reviewPending[key] || reviewResults[key]) return say('SIMULATED · Duplicate decision ignored.');
+        function finish() {
+          delete reviewPending[key];
+          if (plans[id].hash !== hash) return say('SIMULATED · Plan changed. Review again.');
+          if (reviewResults[key] || p.decidedHash === hash) return;
+          reviewResults[key] = true;
+          p.decidedHash = hash;
+          if (kind === 'request') {
+            reviewFeedback.push({ mission: id, version: version, hash: hash, note: noteText,
+              tasks: sel.map(function (c) { return { task: c.task, body: c.body }; }) });
+            sel.forEach(function (c) { c.sent = true; });
+            Object.keys(reviewTaskDrafts).forEach(function (key) { if (key.indexOf(id + ':') === 0) delete reviewTaskDrafts[key]; });
+            reviewDrafts[id] = ''; delete p.approvedHash;
+            reviewResults[id] = 'Changes requested · not approved · no execution';
+          } else if (kind === 'approve-confirm') {
+            p.approvedHash = hash; reviewResults[id] = 'Plan approved · simulated run recorded · no Core actions';
+          } else { delete p.approvedHash; reviewResults[id] = 'Rejected · no execution'; }
+          planStep = 'review';
+          if (planId === id && !$('#s-plan').hidden) renderPlan(id);
+          say('SIMULATED · ' + reviewResults[id]);
+        }
+        if (reviewFixture === 'error') {
+          reviewFixture = 'normal';
+          $('#review-fixture').value = 'normal';
+          return say('SIMULATED · Decision failed. Nothing applied. Retry same decision; no duplicate.');
+        }
+        reviewPending[key] = true;
+        if (reviewFixture === 'delay') { say('SIMULATED · Decision pending.'); setTimeout(finish, 1800); }
+        else { finish(); if (reviewFixture === 'duplicate') finish(); }
+      });
+  }
   /* ---------- Chat bar: scripted and simulated. No model call, nothing sent to Core. ---------- */
 
   var thread = $('#msgs');
@@ -2305,6 +2370,11 @@
     represent(rec);
   }
   // Test hook for the probes: hold events, release them, replay one identity, replay the whole log (a reconnect).
+  window.ArchReview = {
+    fixture: function (mode) { reviewFixture = mode; },
+    revise: revisePlan,
+    state: function (id) { var p = plans[id]; return { version: p && p.version, hash: p && p.hash, approved: p && p.approvedHash, result: reviewResults[id] || '', feedback: JSON.parse(JSON.stringify(reviewFeedback)), memories: memoryItems.length }; }
+  };
   window.ArchFixture = {
     hold: function (on) { FX.hold = !!on; if (!on) FX.queue.splice(0).forEach(fxApply); },
     emit: function (id) { fxApply({ type: 'replay', subject: { id: id }, submit: null }); },
@@ -2477,38 +2547,70 @@
     li.querySelector('[data-card="approve"]').addEventListener('click', function () {
       confirmBox(title + '?', effect + ' Explicit approval only. Cancel is the default.', done, function () {
         apply();
-        li.innerHTML = '<p class="card-k">Approved · simulated</p><p class="card-t">' + esc(title) + '</p><p class="small">' + esc(done) + '</p>';
+        li.innerHTML = '<span class="sim-tag">SIMULATED</span><p class="card-k">Approved · simulated</p><p class="card-t">' + esc(title) + '</p><p class="small">' + esc(done) + '</p>';
       });
     });
     li.querySelector('[data-card="dismiss"]').addEventListener('click', function () {
-      li.innerHTML = '<p class="card-k">Dismissed · nothing done</p><p class="card-t">' + esc(title) + '</p>';
+      li.innerHTML = '<span class="sim-tag">SIMULATED</span><p class="card-k">Dismissed · nothing done</p><p class="card-t">' + esc(title) + '</p>';
     });
   }
 
   // A chat-created mission waits for the owner: Start (plans it for review) or Keep as mission.
   function startCard(m) {
     var li = addMsg('card', '<div class="card-body"><p class="card-t">Start and plan ' + esc(m.title) + '?</p>' +
-      '<div class="row"><button type="button" class="btn" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div></div>');
+      '<p class="small">Starts mission and planning only. Separate plan approval required before execution. Account and cost: Unknown.</p><div class="row"><button type="button" class="btn" data-card="start">Start</button><button type="button" class="btn" data-card="keep">Keep as mission</button></div></div>');
     li.querySelector('[data-card="start"]').addEventListener('click', function () {
-      makePlan(m);
-      li.innerHTML = '<p class="card-k">Started · simulated</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Plan v1 is ready for your review. Nothing ran.</p>';
+      if (plans[m.id]) return planCard(m);
+      makePlan(m); planCard(m);
+      li.innerHTML = '<span class="sim-tag">SIMULATED</span><p class="card-k">Started · simulated</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Plan v1 is ready for your review. Nothing ran.</p>';
     });
     li.querySelector('[data-card="keep"]').addEventListener('click', function () {
-      li.innerHTML = '<p class="card-k">Kept as mission</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Not started.</p>';
+      li.innerHTML = '<span class="sim-tag">SIMULATED</span><p class="card-k">Kept as mission</p><p class="card-t">' + esc(m.title) + '</p><p class="small">Not started.</p>';
     });
   }
 
   // Not about a project: its own thread, never project memory unless the owner promotes it.
-  function general(body) {
-    addMsg('gen', '<p class="gen-k"><span class="gen-tag" aria-hidden="true">General</span><span class="sr-only">General answer, not saved to project memory</span></p><p>' + esc(body) + '</p>' +
-      '<label class="promote"><span>Promote to project memory</span><input type="checkbox" data-promote aria-describedby="promote-note"></label>' +
-      '<span class="sr-only" id="promote-note">Off: this answer stays in the general thread.</span>');
+  function planCard(m) {
+    addMsg('card', '<p class="card-k">SIMULATED · Plan approval required</p><p class="card-t">' + esc(m.title) +
+      ' · plan v' + plans[m.id].version + '</p><p>Approve plan starts the simulated run of its tasks. Account and cost: Unknown. No Core actions.</p>' +
+      receipts([{ label: 'Review plan', href: '#/plan/' + m.id }]));
   }
-
+  function general(body) {
+    var li = addMsg('gen', '<p class="gen-k"><span class="gen-tag" aria-hidden="true">General</span><span class="sr-only">General answer, not saved to project memory</span></p><p>General · not project memory</p><p>' + esc(body) + '</p>' +
+      '<button type="button" class="btn" data-promote><span>Remember in…</span></button><p class="small">Conversation retention: Unknown. Memory requires a separate confirmation.</p>');
+    li.querySelector('[data-promote]').addEventListener('click', function () { rememberCard(body, null); });
+  }
+  function destination(text) {
+    var p = SL.parse(text);
+    if (p) return p.cmd && p.cmd.name === 'general' ? 'General · not project memory' : 'Command · fixture card only';
+    if (/^(what|why|how|who|when|where|which|is|are|does|do|can)\b/i.test(text) &&
+        !/\b(project|mission|create|add|start|make|run|change|set|plan|send|spend)\b/i.test(text)) return 'General · not project memory';
+    if (/\b(create|add|start|run|remember|plan|idea|project|mission|draft|promote|autonomous)\b/i.test(text)) return 'Work · demo records and proposals';
+    return 'Choose destination before sending';
+  }
+  document.addEventListener('input', function (e) {
+    if (!/^(chat-input|ph2-input|term-tell)$/.test(e.target.id)) return;
+    var line = e.target.id === 'term-tell' ? $('#term-destination') : $('#chat-destination');
+    line.textContent = 'Destination: ' + destination(e.target.value);
+  });
   function reply(text, sub) { return replyBody(text, sub) === true; }
   function replyBody(text, sub) {
     var t = text.toLowerCase();
-    var question = /^(what|why|how|who|when|where|which|is|are|does|do|can)\b/.test(t) && !/\b(create|add|start|make|run|change|set|plan|send|spend)\b/.test(t);
+    if (/^remember\b/.test(t)) return rememberCard(text.replace(/^remember\s*/i, ''), mentionedProject(text));
+    if (/\bautonomous\b/.test(t)) return lead('Recorded owner decision: Keep autonomous. No proposal or policy change.');
+    if (/\bpromote\b.*\bidea\b/.test(t)) {
+      var candidates = missions.filter(function (m) { return m.glyph === 'list' && t.indexOf(m.title.toLowerCase()) >= 0; });
+      if (candidates.length !== 1) return lead('Name exactly one existing idea. Nothing changed.');
+      var idea = candidates[0];
+      return proposal('Promote idea: ' + idea.title, 'Creates a mission record only, then asks with a Start card. No execution.', 'SIMULATED · Idea promotion recorded.', function () {
+        createRecord({ kind: 'mission', id: 'm-promoted-' + idea.id, title: idea.title, project: idea.project });
+      });
+    }
+    if (/\bdraft\b/.test(t) && !/\bmission\b/.test(t) && !/\bplan\b/.test(t)) {
+      conversationDrafts.push({ name: quoted(text, text), text: text });
+      return addMsg('card', '<p>SIMULATED · Conversation draft / named proposal: ' + esc(quoted(text, text)) + '</p><p>Not executed. Kept in this page conversation only.</p>');
+    }
+    var question = destination(text) === 'General · not project memory';
     if (question) return /replay|recover|reconcil|checkpoint/.test(t) ? general('A replay shows what an agent intended, what you authorized, what was durably recorded, what may have taken effect, and where state is uncertain. Recovery restores a checkpoint and never claims that every external effect can be undone.') : general('This is not about a project, so it stays in the general thread. The prototype answers with fixed text. A real build answers through the official CLI on your chosen account. Nothing here reaches project memory unless you promote it.');
     if (/\b(spend|budget|limit|setting|settings|hook|hooks|account|accounts|token|tokens|billing)\b/.test(t)) {
       lead('That changes a setting, so I have proposed it. Nothing changes until you approve.');
@@ -2528,8 +2630,8 @@
     if (/\bplan\b/.test(t)) {
       var target = missions.filter(function (m) { return m.chat && !plans[m.id] && m.glyph !== 'list'; }).pop();
       if (!target) return lead('No mission created in this chat is waiting for a plan. Add a mission first. Nothing was planned.');
-      makePlan(target);
-      return addMsg('arch', '<p>Plan v1 for "' + esc(target.title) + '" has 3 steps (simulated). It waits for your review. Nothing starts until you approve.</p>' + receipts([{ label: 'Review plan v1', href: '#/plan/' + target.id }]));
+      startCard(target); return lead('Planning requires the Start card. No plan or run created.');
+
     }
     if (/\bidea\b/.test(t)) {
       var ititle = quoted(text, 'Offline mode'), ip = mentionedProject(text);
@@ -2544,13 +2646,13 @@
       var pname = projectNameFrom(text);
       return createRecord({ kind: 'project', id: slug(pname), name: pname }, sub);
     }
-    general('This does not change a project, so it stays in the general thread. The prototype answers with fixed text for a few questions. A real build answers through the official CLI on your chosen account.');
+    lead('Work destination selected. Name the project, mission, idea or proposal you want. Nothing created or executed.');
   }
 
   function ask(text) {
     var clean = text.trim().slice(0, 300);
     if (!clean) return;
-    addMsg('you', '<p>' + esc(clean) + '</p>');
+    addMsg('you', '<p>' + (destination(clean) === 'General · not project memory' ? 'General · ' : '') + esc(clean) + '</p>');
     askRouted(clean);
   }
   function askRouted(clean) {
@@ -2701,7 +2803,7 @@
     if (e.key === 'Enter' && !e.isComposing && slash.active >= 0 && e.target.value.indexOf(' ') < 0) { e.preventDefault(); chooseActive(); }
   }
 
-  [$('#chat-input'), $('#ph2-input')].forEach(function (el) {
+  [$('#chat-input'), $('#ph2-input'), $('#term-tell')].forEach(function (el) {
     el.setAttribute('role', 'combobox');
     el.setAttribute('aria-autocomplete', 'list');
     el.setAttribute('aria-haspopup', 'listbox');
@@ -2731,6 +2833,12 @@
     closeMenu();
     if (p && p.kind === 'command') return runSlash(p.cmd, p.args, raw);
     var text = p ? p.text : raw;
+    if (!p && destination(text) === 'Choose destination before sending') {
+      var choice = addMsg('card', '<p>SIMULATED · Answer this, or create work?</p><button type="button" class="btn" data-route="general">Answer in General</button> <button type="button" class="btn" data-route="work">Work request</button>');
+      choice.querySelector('[data-route="general"]').onclick = function () { choice.remove(); addMsg('you', '<p>General · ' + esc(text) + '</p>'); general('Example general answer. General chat is not connected.'); };
+      choice.querySelector('[data-route="work"]').onclick = function () { choice.remove(); ask(text); };
+      return;
+    }
     if (phone) { location.hash = '#/now'; ask(text); return setPhoneFrame(3); }
     ask(text);
   }
@@ -2773,20 +2881,28 @@
     addMsg('card', '<p class="card-k">Decision · not decided</p><p class="card-t">' + esc(verb + ': ' + m.title) + '</p>' +
       '<p class="small">This command decides nothing. The decision screen asks for a second confirm.</p>' + receipts([{ label: 'Open decision', href: '#/plan/' + m.id }]));
   }
-  function rememberCard(text) {
-    var li = addMsg('card', '<p class="card-k">Proposed · not saved</p><p class="card-t">Remember: "' + esc(text) + '"?</p>' +
-      '<p class="small">Scope: this project by default. All projects changes the scope. Nothing is saved until you confirm.</p>' +
-      '<div class="row"><button type="button" class="btn primary" data-card="here">Remember here</button><button type="button" class="btn" data-card="all">All projects</button><button type="button" class="btn" data-card="dismiss">Cancel</button></div>');
-    function confirmScope(scope) {
-      confirmBox('Remember for ' + scope + '?', '"' + text + '" becomes a candidate memory item. The prototype saves nothing.', 'Prototype: nothing was saved.', function () {
-        li.innerHTML = '<p class="card-k">Remembered · simulated</p><p class="card-t">' + esc(text) + '</p><p class="small">Scope: ' + esc(scope) + '. Nothing saved to Core.</p>';
-      });
-    }
-    li.querySelector('[data-card="here"]').addEventListener('click', function () { confirmScope('this project'); });
-    li.querySelector('[data-card="all"]').addEventListener('click', function () { confirmScope('all projects'); });
-    li.querySelector('[data-card="dismiss"]').addEventListener('click', function () { li.innerHTML = '<p class="card-k">Cancelled · nothing saved</p>'; });
+  function slashCreateCard(kind, text) {
+    addMsg('card', '<p>SIMULATED · ' + kind + ' fixture: ' + esc(text) + '</p><p>Not started. This slash fixture changes only its own card; no constellation record.</p>');
   }
-  function listCommands(name) {
+  function rememberCard(text, project) {
+    var defaultId = project ? project.id : '';
+    var li = addMsg('card', '<p>SIMULATED · Memory proposal · not saved</p><label>Excerpt<textarea data-memory-text rows="3">' + esc(text) +
+      '</textarea></label><label>Remember in<select data-memory-scope><option value="">Choose destination</option>' +
+      projects.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === defaultId ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+      '<option value="*">All projects</option></select></label><button type="button" class="btn" data-memory-confirm>Review memory confirmation</button> <button type="button" class="btn" data-memory-cancel>Cancel</button>');
+    li.querySelector('[data-memory-confirm]').onclick = function () {
+      var scope = li.querySelector('select').value, excerpt = li.querySelector('textarea').value.trim();
+      if (!scope || !excerpt) return say('Choose a destination and write an excerpt. Nothing saved.');
+      var label = scope === '*' ? 'All projects' : projectOf(scope).name;
+      confirmBox('SIMULATED · Remember in ' + label + '?', excerpt + ' · One demo memory item; nothing saved to Core.', '', function () {
+        if (li.dataset.saved) return;
+        li.dataset.saved = 'true';
+        memoryItems.push({ text: excerpt, scope: scope });
+        li.innerHTML = '<p>SIMULATED · Remembered in ' + esc(label) + ': ' + esc(excerpt) + '</p>';
+      });
+    };
+    li.querySelector('[data-memory-cancel]').onclick = function () { li.innerHTML = '<p>SIMULATED · Cancelled · nothing saved</p>'; };
+  }  function listCommands(name) {
     if (name) {
       var c = SL.find(name);
       if (!c) return lead('No command /' + name + '. Type / for the list.');
@@ -2879,10 +2995,10 @@
     },
     theme: function (a) { storeSet('archeus.v2.theme', a.toLowerCase()); lead('Theme set to ' + a.toLowerCase() + ' on this device. The prototype has one theme, so nothing else changed.'); },
     motion: function (a) { storeSet('archeus.v2.motion', a.toLowerCase()); lead('Motion set to ' + a.toLowerCase() + ' on this device. Quiet and reduced keep the same text and facts.'); },
-    mission: function (a) { askRouted('mission "' + a + '"'); },
-    idea: function (a) { askRouted('idea "' + a + '"'); },
+    mission: function (a) { slashCreateCard('Mission', a); },
+    idea: function (a) { slashCreateCard('Idea', a); },
     feedback: function () { addMsg('arch', '<p>Feedback saved as a candidate (simulated). Not sent to Core.</p>'); },
-    remember: function (a) { rememberCard(a); },
+    remember: function (a) { var m = find((location.hash || '').split('/')[2]); rememberCard(a, mentionedProject(a) || (m ? projectOf(m.project) : null)); },
     tell: function (a) { ask(a); },
     general: function () { general('Answered in the general thread (simulated). The prototype gives fixed text. Nothing reached project memory.'); },
     start: function (a) {
@@ -2958,12 +3074,6 @@
     if (p) ask(p.getAttribute('data-prompt'));
   });
 
-  document.addEventListener('change', function (e) {
-    if (!e.target.hasAttribute('data-promote')) return;
-    var on = e.target.checked;
-    say(on ? 'Promoted to Harbor memory (simulated). Nothing was saved to Core.' : 'Promotion withdrawn. Nothing was saved.');
-  });
-
   function stop() {
     var now = Date.now();
     if (stopArmed && now - stopArmed < 3000) {
@@ -3003,12 +3113,14 @@
     else if (act === 'new-reply') { chatBox().scrollTop = chatBox().scrollHeight; $('#new-reply').hidden = true; }
     else if (act === 'close-sheet') closeSheet(false);
     else if (act === 'decide') decide(el.getAttribute('data-kind'));
+    else if (act === 'revise-plan') revisePlan(planId);
     else if (act === 'plan-back') { planStep = 'review'; renderPlan(planId); }
     else if (act === 'stop') stop();
     else if (act === 'reconcile') confirmBox('Reconcile ' + find(replayId).title + '?', 'You record what you saw on the remote: did the push take effect? Core would store your answer with this replay. Nothing is pushed, retried or reversed here.', 'Prototype: nothing was reconciled. The suspension stays.');
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target.id === 'review-fixture') { reviewFixture = e.target.value; return; }
     if (e.target.getAttribute('data-act') !== 'carry') return;
     var id = e.target.getAttribute('data-id');
     comments.forEach(function (c) { if (c.id === id) c.carry = e.target.checked; });
@@ -3016,7 +3128,9 @@
   });
 
   document.addEventListener('input', function (e) {
-    if (e.target.id === 'plan-note') planNote = e.target.value;
+    if (e.target.id === 'plan-note') { planNote = e.target.value; reviewDrafts[planId] = planNote; }
+    var form = e.target.closest('.task-comment');
+    if (form) reviewTaskDrafts[planId + ':' + form.getAttribute('data-task')] = e.target.value;
   });
 
   document.addEventListener('keydown', function (e) {
@@ -3033,7 +3147,8 @@
       var body = f.elements.body.value.trim();
       var task = f.getAttribute('data-task');
       if (!body) return say('Write a comment first.');
-      comments.push({ id: 'c' + (++counter), mission: planId, task: task, body: body, carry: false });
+      comments.push({ id: 'c' + (++counter), mission: planId, task: task, body: body, carry: true, version: plans[planId].version });
+      delete reviewTaskDrafts[planId + ':' + task];
       renderPlan(planId);
       $('#s-plan h1').focus();
       say('Comment saved on ' + task + '. It reaches the planner only inside a request-changes decision.');
@@ -3532,7 +3647,7 @@
   }
 
   function termKey(e) {
-    if (!$('#s-terminal') || $('#s-terminal').hidden || e.target.id === 'term-tell') return;
+    if (!$('#s-terminal') || $('#s-terminal').hidden || e.target.id === 'term-tell' || e.target.closest('input, textarea, select, button, a, dialog')) return;
     var k = e.key, order = termOrder();
     if (term.input) {
       e.preventDefault();
@@ -3550,14 +3665,14 @@
     }
     if (term.help) { if (k === '?' || k === 'Escape') { term.help = false; e.preventDefault(); renderTerm(); } return; }
     if (k === '?') { term.help = true; }
-    else if (k === ':') { term.input = { mode: ':', text: '' }; }
+    else if (k === ':') { e.preventDefault(); var tell = $("#term-tell"); tell.focus(); tell.value = '/'; slash.input = tell; openMenu(''); return; }
     else if (k === '/') { term.input = { mode: '/', text: '' }; }
     else if (k === 'L') { term.plain = !term.plain; }
     else if (k === 'C') { term.color = !term.color; }
     else if (k === 'j' || k === 'ArrowDown') term.sel = Math.min(order.length - 1, term.sel + 1);
     else if (k === 'k' || k === 'ArrowUp') term.sel = Math.max(0, term.sel - 1);
     else if (k === 'Enter' && term.screen === 'overview' && selected()) { term.mid = selected().id; term.screen = 'mission'; }
-    else if (k === 'r') { term.mid = selected().id; term.screen = 'decision'; }
+    else if (k === 'r') { e.preventDefault(); location.hash = '#/plan/' + (term.mid || selected().id); return; }
     else if (k === 'a' && term.screen === 'decision') { term.step = 'approve'; }
     else if (k === 'p') { term.mid = selected().id; term.screen = 'replay'; }
     else if (k === 'm') term.screen = 'mission';
@@ -3576,7 +3691,7 @@
   });
   // Enter sends the line through the same simulated chat as the Now bar. Replies appear in their own text area, as text only.
   $('#term-tell').addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter' || e.isComposing) return;
+    if (e.key !== 'Enter' || e.isComposing || e.defaultPrevented) return;
     e.preventDefault();
     var v = this.value.trim(), before = thread.children.length;
     if (!v) { $('#term-status').textContent = 'Tell line is empty.'; return; }
@@ -3584,10 +3699,10 @@
     setTimeout(function () {
       var box = $('#term-reply');
       Array.prototype.slice.call(thread.children, before).filter(function (li) { return /msg-(arch|card|gen)\b/.test(li.className); }).forEach(function (li) {
-        var p = document.createElement('p');
-        p.textContent = li.textContent.replace(/\s+/g, ' ').trim();
-        box.appendChild(p);
-      });
+        var link = document.createElement('a');
+        link.className = 'receipt'; link.href = '#/now';
+        link.textContent = li.textContent.replace(/\s+/g, ' ').trim() + ' · Open conversation controls';
+        box.appendChild(link);      });
       while (box.children.length > 6) box.removeChild(box.firstChild);
     }, 1000);
   });

@@ -132,7 +132,7 @@ for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you'
   check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);
 }
 check(/Tell Archeus what to do/.test(html), 'Tell box label missing');
-check(/confirmBox\('Approve plan/.test(js) && /data-kind="approve"/.test(html), 'approve must go through a confirm step');
+check(/confirmBox\('SIMULATED/.test(js) && /data-kind="approve"/.test(html), 'approve must go through a confirm step');
 
 check(/Start and plan /.test(js) && /data-card="start"/.test(js), 'chat-created missions must show the Start card');
 check(/Keep as mission/.test(js), 'Start card needs Keep as mission');
@@ -237,7 +237,7 @@ for (const name of ['phone-2', 'phone-3']) {
 check(/id="ph2-chat"/.test(html) && /data-act="open-decision"/.test(html) && /open-decision/.test(js), 'decision sheet Open decision button missing');
 check(/approve-confirm/.test(js) && /step 2 of 2/.test(js), 'two-step decision confirm missing after Open decision');
 check(/ph3-back/.test(html) && /setPhoneFrame\(3\)/.test(js) && /What does exit code 137 mean\?/.test(js), 'chat sheet frame, Back or seeded general thread missing');
-check(/data-promote/.test(js) && /Promote to project memory/.test(js), 'promote switch missing');
+check(/data-promote/.test(js) && /Remember in…/.test(js), 'memory confirmation control missing');
 check(/gen-tag" aria-hidden="true">General<\/span><span class=\"sr-only\">General answer, not saved to project memory/.test(js), 'general tag missing');
 check(/ov-glow/.test(js) && /feGaussianBlur/.test(js), 'soft glow filters missing');
 check(/archeus-v2-proto-final/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-final');
@@ -259,7 +259,7 @@ check(/id="m-phases"/.test(html) && /id="m-stepper"/.test(html) && /phases\(m\)/
 check(/data-f="p_name"/.test(html) && /class="mission-card"/.test(html) && /id="m-log"/.test(html), 'mission card missing');
 check(/class="btn decision"/.test(js) && /Core consequence/.test(js) && /sheet-back/.test(js), 'phone decision sheet must show What, Why, Core consequence and Open decision');
 check(/What does exit code 137 mean\?/.test(js) && /usually out of memory \(128 \+ signal 9\)\./.test(js), 'phone chat exchange missing');
-check(/Promote to project memory<\/span>/.test(js), 'promote control text changed');
+check(/Remember in…<\/span>/.test(js), 'promote control text changed');
 check(/id="sh-frame"/.test(html) && /class="shared-card"/.test(html) && /sh-projects/.test(js) && /drawShape/.test(js), 'shared frame or card missing');
 check(/data-f="k_linked">Linked projects<\/p>/.test(html) && /data-f="v_linked">0<\/p>/.test(html), 'shared fixture: linked projects must read 0 (concept 06)');
 check(/Approving starts 3 tasks on feat\/search\./.test(js), 'phone decision Core consequence fixture not shortened');
@@ -446,6 +446,14 @@ check(/body\.frame-now \.places a \{ height: 48px; \}/.test(css) && /body\.frame
 check(/class="ph3-expand"/.test(html) && /aria-expanded/.test(html.match(/<button[^>]*ph3-expand[^>]*>/)[0]), 'phone sheet needs an explicit Expand control');
 check(/--st: min\(calc\(var\(--u\) \* 865\), 55dvh\)/.test(chatCss) && /--kb/.test(chatCss) && /visualViewport/.test(js), 'phone sheet: 45 percent with the keyboard closed, composer above the keyboard');
 
+// Steps 4–6: behavioural gates are exercised by tools/v2_chat456_probe.py.
+check(/data-memory-scope/.test(js) && /Choose destination/.test(js) && /memoryItems.push/.test(js), 'memory needs explicit destination and confirmation');
+check(/planCard\(m\)/.test(js) && /Separate plan approval required/.test(js), 'Start must expose a separate plan approval card');
+check(/reviewHasDrafts/.test(js) && /Discard drafts/.test(html), 'approval must resolve or explicitly discard drafts');
+check(/plans\[id\]\.hash !== hash/.test(js) && /delete p.approvedHash/.test(js), 'stale plan approval must be invalidated');
+check(/reviewFeedback.push/.test(js) && /reviewPending\[key\]/.test(js), 'versioned feedback and duplicate guard missing');
+check(/term-destination/.test(html) && /chat-destination/.test(html), 'destination preview missing');
+check(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon/.test(js), 'demo must not call Core or external services');
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);

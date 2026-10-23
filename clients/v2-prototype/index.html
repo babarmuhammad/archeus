@@ -95,7 +95,7 @@
                 <ol class="msgs" id="msgs"></ol>
                 <button type="button" class="btn new-reply" id="new-reply" data-act="new-reply" hidden>New reply</button>
               </div>
-              <form class="chatbar" id="chat-form" autocomplete="off" tabindex="-1">
+              <p class="small chat-destination" id="chat-destination">Destination: choose per message</p><form class="chatbar" id="chat-form" autocomplete="off" tabindex="-1">
                 <label class="sr-only" for="chat-input">Tell Archeus what you need</label>
                 <span class="attach" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M13.5 7.5 8 13a2.1 2.1 0 1 1-3-3l6-6a3.2 3.2 0 0 1 4.5 4.5L9.5 15"/></svg></span>
                 <input id="chat-input" type="text" maxlength="300" placeholder="Tell Archeus what you need…">
@@ -244,7 +244,7 @@
         <div class="term-wrap"><pre class="term" id="term" tabindex="0" aria-label="Terminal screen"></pre></div>
         <p class="term-sim" id="term-sim" role="note"></p>
         <div class="term-reply" id="term-reply" role="log" aria-live="polite" aria-label="Replies"></div>
-        <form class="term-tell" autocomplete="off">
+        <p class="small" id="term-destination">Destination: choose per message</p><p id="term-review-actions"><a class="btn" href="#/plan/m-search">Review plan · SIMULATED</a> <a class="btn" href="#/now">Conversation controls</a></p><form class="term-tell" autocomplete="off">
           <label for="term-tell">Tell Archeus &gt;</label>
           <input id="term-tell" type="text" maxlength="300" aria-describedby="term-status">
         </form>
@@ -426,7 +426,7 @@
         </div>
         <header class="head"><p class="kicker">Plan approval</p><h1 tabindex="-1" data-plan-title></h1></header>
         <div id="plan-review">
-        <p class="small" data-plan-meta></p>
+        <p class="tag">SIMULATED · Review only · no Core actions</p><p><a class="btn" href="#/now">Back to conversation</a> <a class="btn" href="#/terminal">Back to terminal</a></p><label>Review fixture<select id="review-fixture"><option value="normal">Normal</option><option value="delay">Delay</option><option value="error">Error then retry</option><option value="duplicate">Duplicate result</option></select></label><button type="button" class="btn" data-act="revise-plan">Simulate changed plan</button><p class="small" data-plan-meta></p>
         <p class="state-line" data-plan-why></p>
         <h2>Plan tasks</h2>
         <ol class="tasks" id="plan-tasks"></ol>
@@ -435,13 +435,13 @@
         <h2>What each decision does</h2>
         <ul class="consequences" id="plan-consequences"></ul>
         <form id="plan-form" class="block" novalidate>
-          <label for="plan-note">What should change? (the planner reads this)</label>
+          <label for="plan-note">General feedback draft (sent only with Request changes)</label>
           <textarea id="plan-note" rows="4" maxlength="2000"></textarea>
           <p class="small" id="plan-selected"></p>
           <div class="row">
             <button type="button" class="btn primary" data-act="decide" data-kind="approve">Review and approve…</button>
             <button type="button" class="btn" data-act="decide" data-kind="request">Request changes…</button>
-            <button type="button" class="btn" data-act="decide" data-kind="reject">Reject…</button>
+            <button type="button" class="btn" data-act="decide" data-kind="discard">Discard drafts</button><button type="button" class="btn" data-act="decide" data-kind="reject">Reject…</button>
           </div>
         </form>
         </div>
