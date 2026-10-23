@@ -58,7 +58,10 @@ def test_sqlite_older_than_3_31_is_refused(archeus_home, monkeypatch):
 #: Features newer than SQLite 3.31, or absent from some 3.31 builds (json1).
 POST_331 = re.compile(r'\bRETURNING\b|\bSTRICT\b|\bjson_\w+\(|->>|\bunixepoch\b|'
                       r'\bDROP\s+COLUMN\b|\bMATERIALIZED\b', re.I)
-_SQL_START = re.compile(r'\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|WITH)\b')
+#: For any Python string, SQL fragments included. The English words are matched upper case only,
+#: because prose and flags ("returning", "--strict-mcp-config") are not SQL.
+POST_331_PY = re.compile(r'\b(?:RETURNING|STRICT|MATERIALIZED)\b|(?i:\bjson_\w+\(|->>|\bunixepoch\b|'
+                         r'\bDROP\s+COLUMN\b)')
 
 
 def _sql_texts():
@@ -67,19 +70,23 @@ def _sql_texts():
             p = os.path.join(d, f)
             if f.endswith('.sql'):
                 text = open(p, encoding='utf-8').read()
-                yield p, re.sub(r'--[^\n]*', '', text)
+                yield p, POST_331, re.sub(r'--[^\n]*', '', text)
             elif f.endswith('.py'):
-                for node in ast.walk(ast.parse(open(p, encoding='utf-8').read())):
+                tree = ast.parse(open(p, encoding='utf-8').read())
+                docs = {id(n.body[0].value) for n in ast.walk(tree)
+                        if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                        and n.body and isinstance(n.body[0], ast.Expr)}
+                for node in ast.walk(tree):
                     if isinstance(node, ast.Constant) and isinstance(node.value, str) \
-                            and _SQL_START.match(node.value):
-                        yield p, node.value
+                            and id(node) not in docs:
+                        yield p, POST_331_PY, node.value
 
 
 def test_the_schema_and_queries_stay_within_sqlite_3_31():
     texts = list(_sql_texts())
     assert len(texts) >= 20, 'the SQL scan found almost nothing to check'
     bad = ['%s: %s' % (os.path.relpath(p, ROOT), m.group(0))
-           for p, t in texts for m in [POST_331.search(t)] if m]
+           for p, rx, t in texts for m in [rx.search(t)] if m]
     assert not bad, bad
 
 

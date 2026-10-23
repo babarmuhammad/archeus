@@ -550,8 +550,8 @@ The review's verdict was CHANGES. What changed, finding by finding:
   earlier answers "Strip at read" and "Strip it").** Slice B guarantees only this: `/v1/accounts`,
   `/v1/route-decisions` (list and one) and `/v1/status` no longer carry the fields that name an
   account's home, for registered accounts. A default account's key (`<harness>:<canonical home>`) in a
-  route decision's `outcome.account_ref` is still returned on the single-decision read
-  (`GET /v1/route-decisions/{id}`) and on the mission trace; that is not covered by slice B and is
+  route decision's `outcome.account_ref` is still returned on the list (`GET /v1/route-decisions`),
+  on the single-decision read (`GET /v1/route-decisions/{id}`) and on the mission trace; that is not covered by slice B and is
   deferred to T-144 (see *Not guaranteed* below). Those fields are left out by name, never by matching a value:
   - `/v1/accounts`: `home_ref` and `home_key` (`resources.HOME_FIELDS`).
   - `/v1/route-decisions` (`queries._public_decision`, `get_route_decision`'s usage rows): a snapshot
