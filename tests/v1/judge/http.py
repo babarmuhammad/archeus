@@ -182,9 +182,12 @@ class HttpClient:
             return False
         # P6-P8: every event not yet consumed; P13: every verification, merge
         # or review due, and none in flight. A worker the Core never started reads
-        # `stopped` (nothing can be due there); a crashed one reads `failed`.
+        # plan and verify exist only when their ports are wired: a Core without them
+        # reads `stopped` (nothing can be due there); a crashed one reads `failed`.
         for worker in ('knowledge', 'intent', 'plan', 'verify', 'automation'):
-            if (health[worker]['state'] not in ('idle', 'stopped') or health[worker]['pending']
+            state = health[worker]['state']
+            unwired = state == 'stopped' and worker in ('plan', 'verify')
+            if ((state != 'idle' and not unwired) or health[worker]['pending']
                     or health[worker].get('retrying')):
                 return False
         return not self._call('GET', '/v1/events?after=%d&limit=1'

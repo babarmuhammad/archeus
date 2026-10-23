@@ -64,6 +64,10 @@ def test_ready_means_every_component_running_idle_or_stopped():
     unstarted = dict(HEALTHY, plan={'state': 'stopped', 'pending': 0},
                      verify={'state': 'stopped', 'pending': 0})
     assert v1_env.not_ready(unstarted) == [] and v1_env.failed(unstarted) == []
+    always = dict(HEALTHY, automation={'state': 'stopped', 'pending': 0})
+    assert v1_env.not_ready(always) == ['automation stopped']
+    dead_engine = dict(HEALTHY, engine={'state': 'stopped'})
+    assert v1_env.not_ready(dead_engine) == ['engine stopped']
     crashed = dict(HEALTHY, verify={'state': 'failed', 'pending': 0})
     assert v1_env.failed(crashed) == ['verify'] and v1_env.not_ready(crashed) == ['verify failed']
 

@@ -211,10 +211,12 @@ after its file-scope check. B, E, H and the Attention items (D12) wait for P20.
 
 The Core reports a worker the launch never started (plan, policy, verify, automation, metrics
 when absent) as `stopped`, not `idle` (runtime.py Health, H08/H10). The owner decided to accept
-`stopped` as a ready state: `tools/v1_env.py` `READY_STATES` now holds `running`, `idle` and
-`stopped`, so `wait_healthy` treats an unstarted component as ready. A `failed` component stays
-not ready. The judge's settle check (`tests/v1/judge/http.py` `_idle`) accepts `stopped` for the
-same workers, and still refuses `failed`.
+`stopped` as a ready state, for the two workers a launch may leave unwired: `plan` (no brain port)
+and `verify` (no verifier or reviewer port). `tools/v1_env.py` `UNWIRED` names them, and `not_ready`
+treats `stopped` as ready only for those. Any other `stopped` component (engine, knowledge, intent,
+policy, automation, world, exec, metrics) is not ready. A `failed` component stays not ready. The
+judge's settle check (`tests/v1/judge/http.py` `_idle`) accepts `stopped` for `plan` and `verify`
+only. An engine whose writer closed reads `failed`, not `stopped` (runtime.py, H12).
 
 ## 5. Slices and order (after approval)
 

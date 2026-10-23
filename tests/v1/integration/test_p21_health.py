@@ -136,7 +136,7 @@ def test_H11_settle_takes_a_never_started_worker_and_never_a_crashed_one():
               'intent': {'state': 'idle', 'pending': 0},
               'plan': {'state': 'stopped', 'pending': 0},
               'verify': {'state': 'stopped', 'pending': 0},
-              'automation': {'state': 'stopped', 'pending': 0}}
+              'automation': {'state': 'idle', 'pending': 0}}
     client = object.__new__(HttpClient)
 
     def settled(**worker):
@@ -144,10 +144,23 @@ def test_H11_settle_takes_a_never_started_worker_and_never_a_crashed_one():
         client._call = lambda method, path, body=None: (
             {'events': []} if path.startswith('/v1/events') else h)
         return client._idle()
-    assert settled()
-    assert not settled(plan={'state': 'failed', 'pending': 0})        # a crashed worker
+    assert settled()                                                   # plan, verify unwired
+    assert not settled(plan={'state': 'failed', 'pending': 0})         # a crashed worker
     assert not settled(knowledge={'state': 'failed', 'pending': 0})
     assert not settled(verify={'state': 'idle', 'pending': 2})
+    assert not settled(automation={'state': 'stopped', 'pending': 0})  # always started
+    assert not settled(knowledge={'state': 'stopped', 'pending': 0})
+
+
+def test_H12_an_engine_whose_writer_closed_reads_failed_not_stopped():
+    from types import SimpleNamespace
+    from archeus.core import runtime
+
+    def closed():
+        raise runtime.errors.WriterClosed()
+    loop = runtime.EngineLoop(SimpleNamespace(reconcile_orphans=closed), None)
+    loop._run()
+    assert loop.state == 'failed'
 
 
 @pytest.mark.parametrize('path', ['/v1/metrics'])

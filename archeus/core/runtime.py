@@ -168,9 +168,9 @@ class EngineLoop:
                 self._pass()
             self.state = 'stopped'
         except errors.WriterClosed:
+            self.state = 'stopped'
             if not self._stop.is_set():
                 self._failed()
-            self.state = 'stopped'
         except Exception:
             if self._stop.is_set():
                 self.state = 'stopped'

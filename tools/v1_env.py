@@ -57,7 +57,9 @@ EXIT_MEANING = {0: 'stopped cleanly',
                 1: 'another Core holds this home, or Core refused to start',
                 2: 'its port is in use by another program',
                 3: 'the engine or a worker thread failed'}
-READY_STATES = ('running', 'idle', 'stopped')     # stopped: a component the launch did not start
+READY_STATES = ('running', 'idle')
+#: workers a launch may leave unstarted (their port is wired elsewhere): stopped is ready for them only
+UNWIRED = ('plan', 'verify')
 POLL_S = 2.0
 STOP_WAIT_S = 30.0
 
@@ -80,7 +82,7 @@ def components(health):
 
 def not_ready(health):
     return sorted('%s %s' % (k, s) for k, s in components(health).items()
-                  if s not in READY_STATES)
+                  if s not in READY_STATES and not (s == 'stopped' and k in UNWIRED))
 
 
 def failed(health):
