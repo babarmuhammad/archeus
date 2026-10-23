@@ -485,6 +485,19 @@ def test_O7_the_cap_is_by_creation_order(plain_rows):
     assert '2026-10-21T10:30:00Z' not in [x.ended_at for x in fails]
 
 
+def test_O7_rows_that_cannot_count_take_no_slot_of_the_cap(plain_rows):
+    """T-106 r11 (review of 65dd37c, Should 1): 600 newer rows that end without a start
+    and are not a failed start (a binding refusal loop) do not push the three failures
+    out of the 600 read; the breaker stays open."""
+    c = _streak_db(
+        *[('ABANDONED', at, _fail(at))
+          for at in ('2026-10-21T10:00:00Z', '2026-10-21T10:01:00Z', '2026-10-21T10:02:00Z')],
+        *[('ABANDONED', '2026-10-21T10:03:00Z',
+           dict(stop_reason='binding', ended_at='2026-10-21T10:03:00Z')) for _ in range(600)])
+    b = X.spawn_breaker(c, 'fake', X._epoch('2026-10-21T10:05:00Z'))
+    assert b and b['state'] == 'open'
+
+
 def test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot(plain_rows):
     """The pre-filter matches the body's own key ("harness_id": "pi"), not the bare
     text: 600 newer rows of harness 'api' whose summary says 'pipeline' do not push

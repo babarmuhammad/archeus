@@ -17,7 +17,7 @@ corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
-breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key), and r9 (Q180-Q183: the router's UTC key and the replay of written resets).
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key), and r9 (Q180-Q183: the router's UTC key and the replay of written resets), and r11 (Q184: non-counting rows take no slot of the 600 cap).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -921,8 +921,8 @@ MUTATIONS = [
      "{w: v for w, v in resets.items()}")],
      [RU + 'test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest']),
     ('Q178', 'the streak reads every row of the harness (no 600-row ceiling)', [(EXE,
-     '" LIMIT 600", (',
-     '"", (')],
+     '" ORDER BY rowid DESC LIMIT 600", (',
+     '" ORDER BY rowid DESC", (')],
      [XU + 'test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once']),
     ('Q179', 'the streak pre-filter matches the bare id text, not the body\'s own key', [(EXE,
      "key = '\"harness_id\": ' + json.dumps(harness_id)",
@@ -946,6 +946,10 @@ MUTATIONS = [
     ('Q183', 'a replayed decision re-parses the reset values it already holds (a written reset is lost)',
      [(RES, "v if isinstance(v, dict) else instants.ahead(v, now)", "instants.ahead(v, now)")],
      [RU + 'test_T106r8_a_decision_recorded_in_the_written_form_replays_the_same']),
+    # T-106 correction r11 (review of 65dd37c)
+    ('Q184', 'rows that cannot count take a slot of the 600 cap (no SQL pre-filter on the counted shapes)',
+     [(EXE, "WHERE body LIKE ? AND (state = 'INTENT'", "WHERE body LIKE ? AND (1 = 1")],
+     [XU + 'test_O7_rows_that_cannot_count_take_no_slot_of_the_cap']),
 ]
 
 if __name__ == '__main__':

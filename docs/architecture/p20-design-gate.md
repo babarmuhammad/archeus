@@ -2975,7 +2975,7 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        Required 1).** `resources.replay` writes each stored reset as `instants.ahead`
        against the recorded `now` before the router reads it, so a decision recorded before
        item 133's written instants replays as it was decided: a reset equal to now is no
-       wait, a future reset is the same instant and the same text as 533e3e9 (a non-UTC
+       wait, a future reset is the same instant as 533e3e9 (a non-UTC
        reset keeps its offset, as `instants.ahead` writes it).
      - **The builder keeps the original assertion on raw provider text**
        (`test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest`);
@@ -2998,6 +2998,17 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        newest rows. Ordering the SQL by decided time needs json_extract, which the SQLite
        3.31 floor forbids, so the owner's "cap 600 by creation" stands as written and is
        pinned by test_O7_the_cap_is_by_creation_order.
+136. **Correction r11 to item 135 (card T-106, 2026-10-23, after the review of 65dd37c).**
+     The 600 cap counts counting rows only. It took the harness's 600 newest rows before
+     the Python filter dropped those that are neither a failed start, a start nor an
+     INTENT, so 600 newer `binding` refusals pushed a tripped breaker's failures out of
+     the read and it read closed. The SQL now keeps only `state = 'INTENT'` or a body
+     with `"stop_reason": "spawn"` or `"started_at": "` (the encoding `rows.encode`
+     writes; SQLite 3.31 has no json_extract), so a non-counting row takes no slot. The
+     Python filter stays for the harness check. The replay text is unchanged; the other
+     nits (the unused `instants.written`, the "same text" wording above, the `_newest`
+     docstring) are one-line fixes. Mutant Q184
+     (test_O7_rows_that_cannot_count_take_no_slot_of_the_cap).
 
 ## 13. As built
 (Filled at the end of P20.)

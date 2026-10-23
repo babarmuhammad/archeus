@@ -53,7 +53,7 @@ def acct(id_, harness_id, *, priority=1, usage=0.0, age=0, health='AVAILABLE',
             'policy': dict(POL, priority=priority, **pol),
             'usage': None if usage is None else {
                 'windows': {'5h': usage}, 'age_s': age,
-                'resets_at': {'5h': instants.written(resets)} if resets else {}},
+                'resets_at': {'5h': instants.ahead(resets, datetime(1970, 1, 1, tzinfo=timezone.utc))} if resets else {}},
             'ledger': {'tokens_today': 0, 'cost_today': 0, 'running': 0}}
 
 

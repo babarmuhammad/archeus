@@ -127,8 +127,9 @@ def _decided(x, created_at):
 
 
 def _newest(conn, harness_id, now):
-    """The harness's executions decided at or before *now*, newest first by when
-    each was decided (a failed start's end, a start, a trial's creation). A row decided
+    """The harness's counting executions (a failed start, a start, a trial INTENT)
+    decided at or before *now*, newest first by when each was decided (a failed start's
+    end, a start, a trial's creation). A row decided
     after *now* is a backward clock step's: it is not history yet, so it counts for
     nothing (T-106 r4; were it counted, the window it opens would run from the recorded
     time, not from now). A trial INTENT counts only while its mission is EXECUTING: one
@@ -137,17 +138,21 @@ def _newest(conn, harness_id, now):
     only breaks ties. The instants are compared as parsed, not as text: created_at has
     milliseconds and the others do not. SQLite 3.31 has no json_extract (test_db_schema
     pins the floor), so the body is read here. Owner sign-off, T-106 r8: "Accept
-    read-all, cap 600". The cap is by creation, not by decided time: the streak reads
-    the harness's 600 newest rows by creation and orders them here by decided time. A
-    row created before 600 newer ones is outside the cap even when it was decided after
-    them (test_O7_the_cap_is_by_creation_order); a decided-time cap needs a column or
+    read-all, cap 600". The cap is by creation, not by decided time, and it counts
+    counting rows only (the SQL drops the others, so 600 newer binding refusals cannot
+    hide a tripped breaker): the streak reads the harness's 600 newest counting rows by
+    creation and orders them here by decided time. A row created before 600 newer ones
+    is outside the cap even when it was decided after them
+    (test_O7_the_cap_is_by_creation_order); a decided-time cap needs a column or
     json1."""
-    # ponytail: decodes the newest 600 rows of the harness per call (the owner's ceiling,
+    # ponytail: decodes the newest 600 counting rows per call (the owner's ceiling,
     # T-106 r8); a decided_at column (or json1 once the floor allows it) bounds it by time
     found = []
     key = '"harness_id": ' + json.dumps(harness_id)       # the body's own encoding of the key
-    for rec in conn.execute("SELECT * FROM executions WHERE body LIKE ? ORDER BY rowid DESC"
-                            " LIMIT 600", ('%' + key + '%',)):
+    for rec in conn.execute(
+            "SELECT * FROM executions WHERE body LIKE ? AND (state = 'INTENT'"
+            " OR body LIKE '%\"stop_reason\": \"spawn\"%' OR body LIKE '%\"started_at\": \"%')"
+            " ORDER BY rowid DESC LIMIT 600", ('%' + key + '%',)):
         x = rows.decode(entities.Execution, rec).entity
         if x.harness_id != harness_id or not (
                 x.stop_reason == 'spawn' or x.started_at or x.state == 'INTENT'):

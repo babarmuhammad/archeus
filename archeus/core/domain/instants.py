@@ -36,13 +36,6 @@ def _written(at):
     return {'at': at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'), 'key': key}
 
 
-def written(iso):
-    """The written instant of a readable reset, past or not (`ahead` adds the check),
-    else None."""
-    at = instant(iso)
-    return None if at is None else _written(_ms(at))
-
-
 def ahead(iso, now):
     """The written instant of a readable reset after *now* (an aware datetime), else
     None. The check and the written text use the same instant (T-106 r5)."""
