@@ -2537,7 +2537,8 @@
     var mark = $('#rec-svg [data-rec="' + m.id + '"] .rec-mark');
     if (mark) { mark.setAttribute('fill', STATE.waiting.color); mark.setAttribute('stroke', STATE.waiting.color); }
     var state = $('#rec-list [data-rec="' + m.id + '"] .rec-s');
-    if (state) state.textContent = stateLine(m);
+    // Planning needs review; execution has not started. Keep both facts in the compact map label.
+    if (state) state.textContent = STATE[m.state].word + ' · Not started';
     obligationApproach(m.id);
     recordEmphasis(m.id, 'plan:' + m.id + ':1');
   }

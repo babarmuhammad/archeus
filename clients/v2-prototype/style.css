@@ -1863,6 +1863,13 @@ body.frame-shared .fr-btns .tell, body.frame-shared .fr-btns .stop-btn { top: 83
   .ph-ctl [aria-selected="true"], .ph-ctl [aria-current="page"] { border-color: var(--text-muted); background: rgba(239, 233, 218, 0.08); }
 }
 
+/* Motion parking changes presentation only; controls, labels and facts stay put. */
+.motion-parked *, .motion-parked *::before, .motion-parked *::after {
+  animation: none !important;
+  transition: none !important;
+}
+.lbl.is-new { animation: none; }
+
 /* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,
    ivory text, neutral outline chips. No amber (owner obligations only) and no blue (live work only). Rows 48 px. */
 .slash-cleared { display: none; }
@@ -1898,10 +1905,3 @@ body.frame-shared .fr-btns .tell, body.frame-shared .fr-btns .stop-btn { top: 83
   /* Upward only: a hit area that leaves the scaled shell changes the text anti-aliasing of the whole frame. */
   .frame-screen .fr-foot .btn::after { content: ""; position: absolute; right: 0; bottom: 0; width: max(100%, var(--hit)); height: var(--hit); }
 }
-
-/* Motion parking changes presentation only; controls, labels and facts stay put. */
-.motion-parked *, .motion-parked *::before, .motion-parked *::after {
-  animation: none !important;
-  transition: none !important;
-}
-.lbl.is-new { animation: none; }
