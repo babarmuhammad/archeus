@@ -1878,6 +1878,7 @@ body.frame-now .chat-destination { left: 303px; top: 714px; bottom: auto; transf
 /* Closed details can retain descendant layout boxes in Chromium. Keep those
    links out of hit/visibility queries; the open list paints above the scene. */
 .list-d:not([open]) > #now-list { display: none; }
+#s-plan details:not([open]) > :not(summary) { display: none; }
 body.frame-now .list-d {
   display: block; position: absolute; left: 175px; top: 150px; margin: 0; z-index: 8;
   max-width: 1097px; max-height: 460px; overflow-y: auto;
@@ -1893,6 +1894,16 @@ body.frame-now .list-d[open] { width: 1097px; }
   #s-now .chat-destination { bottom: calc(var(--bar-b, 100px) + 52px); left: 16px; right: 16px; max-width: none; }
   #s-now[data-frame="3"] .chat-feed { bottom: calc(var(--bar-b) + 88px); }
   #s-plan .row { flex-wrap: wrap; }
+  /* The review has no composer: keep its last fields scrollable above the keyboard. */
+  #s-plan { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); }
+  #s-plan textarea { scroll-margin-block: 16px; }
+}
+@media (max-width: 639px) {
+  /* Put the disclosure below the Overview bar, clear of the scene's project chip.
+     Reserve 72px for its 28px line, an 8px gap and the demo footer. */
+  #s-now:not([data-frame="3"]) { --bar-b: max(72px, calc(var(--u) * 99 + 10px)); }
+  #s-now:not([data-frame="3"]) .chatbar { bottom: calc(var(--bar-b) + env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); }
+  #s-now:not([data-frame="3"]) .chat-destination { bottom: calc(var(--bar-b) - 36px + env(safe-area-inset-bottom, 0px) + var(--kb, 0px)); }
 }
 @media (forced-colors: active) {
   .chat-destination { background: Canvas; color: CanvasText; border: 1px solid CanvasText; }
