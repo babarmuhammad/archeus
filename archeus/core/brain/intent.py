@@ -13,6 +13,7 @@ Nothing here writes, spawns or plans: no task, no plan, no route, no policy.
 
 from ...infra.db import rows
 from ..domain import entities, states
+from ..homes import scrub_text
 from ..context.assemble import CHALLENGEABLE
 
 KINDS = ('question', 'new_work', 'continue_work', 'feedback', 'preference', 'idea')
@@ -103,9 +104,12 @@ def handles(pkg):
     return out
 
 
-def describe(conn, pkg):
+def describe(conn, pkg, homes):
     """(prompt lines, {handle: facts}) for a package: what each handle is, read
-    from the rows the package cites. Facts carry what `check` judges."""
+    from the rows the package cites. Facts carry what `check` judges. What the user
+    typed (a mission or idea title, a meeting or project name, a user turn) stays raw;
+    the rest (root paths, knowledge text, an Archeus or system turn) is projected with
+    *homes* before the cap, so the cap cannot split a home."""
     items = {it['ref']['id']: it for it in pkg['items']}
     lines, facts = [], {}
     for h, ref in handles(pkg):
@@ -116,7 +120,7 @@ def describe(conn, pkg):
             f.update(state=k.state, ktype=k.type, source_kind=k.source_kind)
             label = '%s %s' % (k.type, 'CONFIRMED' if k.state == 'CONFIRMED'
                                else 'not confirmed (%s)' % k.state.lower())
-            text = '%s. %s' % (k.title, k.text) if k.text else k.title
+            text = scrub_text('%s. %s' % (k.title, k.text) if k.text else k.title, homes)
         elif kind == 'mission':
             m = rows.get(conn, entities.Mission, ref['id']).entity
             f.update(state=m.state)
@@ -127,14 +131,16 @@ def describe(conn, pkg):
             label, text = 'idea %s' % i.state, i.title or i.text
         elif kind == 'project':
             p = rows.get(conn, entities.Project, ref['id']).entity
-            label, text = 'project', '%s (%s)' % (p.name, ', '.join(p.root_paths))
+            label, text = 'project', '%s (%s)' % (p.name, ', '.join(
+                scrub_text(x, homes) for x in p.root_paths))
         elif kind == 'message':
             m = rows.get(conn, entities.Message, ref['id']).entity
             # a user turn is known by what its reply produced, too
             replies = [r.entity for r in rows.where(conn, entities.Message,
                                                      in_reply_to=m.id)]
             f.update(author=m.author, cards=[dict(c) for x in [m] + replies for c in x.cards])
-            label, text = 'earlier %s turn' % m.author, m.text
+            label = 'earlier %s turn' % m.author
+            text = m.text if m.author == 'user' else scrub_text(m.text, homes)
         else:
             mt = rows.get(conn, entities.Meeting, ref['id']).entity
             label, text = 'meeting', '%s, %s' % (mt.name, mt.held_at or 'undated')

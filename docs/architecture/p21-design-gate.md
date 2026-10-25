@@ -304,10 +304,22 @@ known home or default key the cut would land inside, so no readable prefix of a 
 later projection to miss. The stored row or event payload stays raw apart from that earlier cut.
 The manager keeps up to 2000 characters of a fact or stream line so its own cut never lands inside
 the writer's. Ceiling: this holds for homes the matcher recognises; other caps not on a T-144
-surface (for example the reviewer prompt's 500 character agent summary, and context lines the
-intent brain builds from raw rows) were not changed or audited. Evidence:
+surface were not changed or audited. Evidence:
 `integration/test_t144_cut_and_consumption.py` (R2 tests), `unit/test_homes.py` (`cut_safe`),
 mutants Z449-Z455.
+
+Model prompts built from rows (slice 5): the review prompt's agent claim (`reviewer.prompt`, the 500
+character CLAIM line of each execution summary) is projected with the live homes and capped after the
+projection, so the cap cannot split a home; the intent brain's context lines (`brain.describe`) project
+a project's root paths, a knowledge item's title and text, and the text of an Archeus or system turn,
+and cap each line (400 characters) after the projection. Both read the homes bound to the writer
+(`resources.bound_homes`). What the user typed stays raw there: a user turn, a mission or idea title, a
+meeting or project name; stored rows stay raw. Evidence:
+`integration/test_t144_prompt_projection.py`, mutants Z477-Z485. Remaining limits: the review prompt's
+other lines (mission and task text, verification check names and results, the diff paths) and the
+brain's message being read are authored or checked content and are not projected; a project root path
+is a registered, user-typed path (exempt on the read surfaces), projected here only because it enters
+a model prompt, and it changes only when it equals an account home.
 
 Owner-decided exemptions (2026-10-25) are user-typed fields only: mission titles, objectives,
 requirements and constraints; authored plan/task content; project/repository paths and names;

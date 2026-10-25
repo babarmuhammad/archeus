@@ -10,6 +10,7 @@ from ...infra.db import rows
 from ..application.commands import active_plan
 from ..domain import entities
 from ..domain.values import Ref
+from ..homes import scrub_text
 
 _S = {'type': 'string', 'maxLength': 2000}
 _LIST = {'type': 'array', 'maxItems': 20, 'items': {'type': 'string', 'maxLength': 500}}
@@ -38,8 +39,9 @@ def check(parsed):
     return []
 
 
-def prompt(conn, m, diff=None):
-    """The review prompt for mission *m* (§14.2)."""
+def prompt(conn, m, diff, homes):
+    """The review prompt for mission *m* (§14.2). The agent's claim is a system-owned
+    string: projected with *homes*, then capped, so the cap cannot split a home."""
     plan = active_plan(conn, m.id)
     lines = [PREFIX, 'Objective: %s' % m.objective]
     if m.desired_outcome:
@@ -64,8 +66,8 @@ def prompt(conn, m, diff=None):
                     '%s %s' % (c['name'], c['result']) for c in v.checks) or 'no checks'))
         for e in (r.entity for r in rows.where(conn, entities.Execution, task_id=t.id)):
             if e.summary:
-                lines.append('    CLAIM by the agent (attempt %d): %s' % (e.attempt,
-                                                                      e.summary[:500]))
+                lines.append('    CLAIM by the agent (attempt %d): %s' % (
+                    e.attempt, scrub_text(e.summary, homes)[:500]))
     mission_vs = [v for v in vs if v.subject == Ref('mission', m.id)
                   and v.revision == m.integration_head]
     if mission_vs:

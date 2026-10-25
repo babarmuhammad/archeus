@@ -30,6 +30,11 @@ I2 = 'tests/v1/integration/test_t144_leak_sweep.py::'
 I3 = 'tests/v1/integration/test_t144_event_reads.py::'
 I4 = 'tests/v1/integration/test_t144_live_bound_writes.py::'
 I5 = 'tests/v1/integration/test_t144_cut_and_consumption.py::'
+I7 = 'tests/v1/integration/test_t144_prompt_projection.py::'
+RV = 'archeus/core/verification/reviewer.py'
+VW = 'archeus/core/verification/worker.py'
+BR = 'archeus/core/brain/intent.py'
+MI = 'archeus/core/missions/intent.py'
 I6 = 'tests/v1/integration/test_t144_homes_cache.py::'
 DB = 'archeus/infra/db/__init__.py'
 U3 = 'tests/v1/unit/test_t144_event_surfaces.py::'
@@ -718,6 +723,42 @@ MUTATIONS = [
      "            after, built = hit['key'][0], hit['homes']",
      "            after, built = 0, hit['homes']")],
      [I6 + 'test_a_warm_call_decodes_no_decision_and_a_new_one_decodes_only_itself']),
+    ('Z477', 'the review prompt carries the agent claim raw', [(RV,
+     "                    e.attempt, scrub_text(e.summary, homes)[:500]))",
+     "                    e.attempt, e.summary[:500]))")],
+     [I7 + 'test_the_review_prompt_projects_the_agent_claim_and_caps_it_after']),
+    ('Z478', 'the review prompt caps the claim before it projects it', [(RV,
+     "                    e.attempt, scrub_text(e.summary, homes)[:500]))",
+     "                    e.attempt, scrub_text(e.summary[:500], homes)))")],
+     [I7 + 'test_the_review_prompt_cap_never_leaves_a_prefix_of_a_home']),
+    ('Z479', 'the review worker builds the prompt without the live homes', [(VW,
+     "                                   resources.bound_homes(conn, self.db.writer.live))",
+     "                                   resources.homes(conn, None, ()))")],
+     [I7 + 'test_the_review_prompt_projects_the_agent_claim_and_caps_it_after']),
+    ('Z480', 'the brain context lists project root paths raw', [(BR,
+     "                scrub_text(x, homes) for x in p.root_paths))",
+     "                x for x in p.root_paths))")],
+     [I7 + 'test_the_brain_context_projects_roots_knowledge_and_system_turns_not_user_text']),
+    ('Z481', 'the brain context carries knowledge text raw', [(BR,
+     "            text = scrub_text('%s. %s' % (k.title, k.text) if k.text else k.title, homes)",
+     "            text = '%s. %s' % (k.title, k.text) if k.text else k.title")],
+     [I7 + 'test_the_brain_context_projects_roots_knowledge_and_system_turns_not_user_text']),
+    ('Z482', 'the brain context carries an Archeus turn raw', [(BR,
+     "            text = m.text if m.author == 'user' else scrub_text(m.text, homes)",
+     "            text = m.text")],
+     [I7 + 'test_the_brain_context_projects_roots_knowledge_and_system_turns_not_user_text']),
+    ('Z483', 'the brain context projects a user turn too', [(BR,
+     "            text = m.text if m.author == 'user' else scrub_text(m.text, homes)",
+     "            text = scrub_text(m.text, homes)")],
+     [I7 + 'test_the_brain_context_projects_roots_knowledge_and_system_turns_not_user_text']),
+    ('Z484', 'the brain context projects the typed project name too', [(BR,
+     "            label, text = 'project', '%s (%s)' % (p.name, ', '.join(",
+     "            label, text = 'project', '%s (%s)' % (scrub_text(p.name, homes), ', '.join(")],
+     [I7 + 'test_the_brain_context_projects_roots_knowledge_and_system_turns_not_user_text']),
+    ('Z485', 'the brain call is built without the live homes', [(MI,
+     "                                          resources.bound_homes(conn, self.db.writer.live))",
+     "                                          resources.homes(conn, None, ()))")],
+     [I7 + 'test_the_brain_call_is_built_with_the_bound_homes']),
 ]
 
 
