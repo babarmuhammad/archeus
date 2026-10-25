@@ -459,11 +459,11 @@ def _guard_mutant(id, description, before, after, test):
     return (id, description, [(CA, before, after)], [CU + test])
 
 
-def _row_mutant(id, program, prefix):
+def _row_mutant(id, program, prefix, test='test_new_guard_mutation_witnesses'):
     before = "    Row('A16', 'node', (), (('--version',),), 'none', 'exec'),"
     extra = f"    Row('B01', {program!r}, {prefix!r}, ((),), 'none', 'exec'),\n"
     return _guard_mutant(id, 'missing-row denial admits ' + program + ' ' + ' '.join(prefix),
-                         before, extra + before, 'test_new_guard_mutation_witnesses')
+                         before, extra + before, test)
 
 
 REDEFINED = [
@@ -478,6 +478,190 @@ REDEFINED = [
     _row_mutant('Z225', 'python3.11', ('-c', 'x')),
     _row_mutant('Z226', 'python.bat', ('-c', 'x')),
     _row_mutant('Z288', 'rm.cmd', ('-R', 'x')),
+]
+
+
+REDEFINED += [
+    _row_mutant('Z153', 'wget', ('--post-data=x', 'https://h.example/x',),
+                'test_redefined_missing_rows[Z153]'),
+    _row_mutant('Z154', 'powershell', ('-C', 'x',),
+                'test_redefined_missing_rows[Z154]'),
+    _row_mutant('Z155', 'command', ('ls',),
+                'test_redefined_missing_rows[Z155]'),
+    _row_mutant('Z170', 'curl', ('--request=POST', 'https://h.example/x',),
+                'test_redefined_missing_rows[Z170]'),
+    _row_mutant('Z171', 'curl', ('-dx=1', 'https://h.example/x',),
+                'test_redefined_missing_rows[Z171]'),
+    _row_mutant('Z172', 'curl', ('-XPOST', 'https://h.example/x',),
+                'test_redefined_missing_rows[Z172]'),
+    _row_mutant('Z178', 'stdbuf', ('-oL', 'ls',),
+                'test_redefined_missing_rows[Z178]'),
+    _row_mutant('Z179', 'pwsh', ('-Commandx',),
+                'test_redefined_missing_rows[Z179]'),
+    _row_mutant('Z180', 'cmd', ('/C', 'x',),
+                'test_redefined_missing_rows[Z180]'),
+    _row_mutant('Z181', 'node', ('-p', 'x',),
+                'test_redefined_missing_rows[Z181]'),
+    _row_mutant('Z182', 'sh', ('-cC', 'x',),
+                'test_redefined_missing_rows[Z182]'),
+    _row_mutant('Z191', 'node', ('--eval=x',),
+                'test_redefined_missing_rows[Z191]'),
+    _row_mutant('Z192', 'python', ('file.py', '-c', 'x',),
+                'test_redefined_missing_rows[Z192]'),
+    _row_mutant('Z201', 'pwsh', ('-cRemove-Item', 'x',),
+                'test_redefined_missing_rows[Z201]'),
+    _row_mutant('Z202', 'bash', ('-o', 'pipefail', '-c', 'x',),
+                'test_redefined_missing_rows[Z202]'),
+    _row_mutant('Z203', 'powershell', ('-CommandWrite-Output', 'x',),
+                'test_redefined_missing_rows[Z203]'),
+    _row_mutant('Z210', 'setarch', ('uname', '-R', 'ls',),
+                'test_redefined_missing_rows[Z210]'),
+    _row_mutant('Z216', 'git', ('--unknown-flag', 'status',),
+                'test_redefined_missing_rows[Z216]'),
+    _row_mutant('Z218', 'git', ('-c', 'core.pager=sh', 'status',),
+                'test_redefined_missing_rows[Z218]'),
+    _row_mutant('Z220', 'wsl', ('ls',),
+                'test_redefined_missing_rows[Z220]'),
+    _row_mutant('Z221', 'mytool', ('--shell', 'sh',),
+                'test_redefined_missing_rows[Z221]'),
+    _row_mutant('Z223', 'cmd', ('/s/c', 'x',),
+                'test_redefined_missing_rows[Z223]'),
+    _row_mutant('Z224', 'gdb', ('-batch', 'ls',),
+                'test_redefined_missing_rows[Z224]'),
+    _row_mutant('Z227', 'ksh', ('-c', 'x',),
+                'test_redefined_missing_rows[Z227]'),
+    _row_mutant('Z228', 'pythonw', ('-m', 'pytest',),
+                'test_redefined_missing_rows[Z228]'),
+    _row_mutant('Z232', 'rg', ('--no-config', '--fixed-strings', '--pre', 'mytool', '--', 'word', '.',),
+                'test_redefined_missing_rows[Z232]'),
+    _row_mutant('Z233', 'git', ('rebase', '--exec', 'sh',),
+                'test_redefined_missing_rows[Z233]'),
+    _row_mutant('Z234', 'git', ('config', 'core.pager', 'sh',),
+                'test_redefined_missing_rows[Z234]'),
+    _row_mutant('Z237', 'sed', ('s/a/b/e',),
+                'test_redefined_missing_rows[Z237]'),
+    _row_mutant('Z238', 'sort', ('--compress-program', 'pigz', 'f',),
+                'test_redefined_missing_rows[Z238]'),
+    _row_mutant('Z239', 'rsync', ('--rsh', 'sh', 'a', 'h:b',),
+                'test_redefined_missing_rows[Z239]'),
+    _row_mutant('Z240', 'find', ('.', '-delete',),
+                'test_redefined_missing_rows[Z240]'),
+    _row_mutant('Z245', 'tar', ('-I', 'pigz', '-cf', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z245]'),
+    _row_mutant('Z246', 'node', ('--import=data:text/javascript,x',),
+                'test_redefined_missing_rows[Z246]'),
+    _row_mutant('Z247', 'git', ('config', 'filter.x.process', 'sh',),
+                'test_redefined_missing_rows[Z247]'),
+    _row_mutant('Z248', 'git', ('push', '-fu', 'origin', 'main',),
+                'test_redefined_missing_rows[Z248]'),
+    _row_mutant('Z249', 'git', ('push', 'origin', '+main',),
+                'test_redefined_missing_rows[Z249]'),
+    _row_mutant('Z253', 'tar', ('-IF', 'mytool', '-cf', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z253]'),
+    _row_mutant('Z254', 'tar', ('--info-script', 'mytool', '-cf', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z254]'),
+    _row_mutant('Z255', 'gtar', ('-I', 'pigz', '-cf', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z255]'),
+    _row_mutant('Z256', 'sftp', ('-D', '/usr/lib/sftp-server', 'h',),
+                'test_redefined_missing_rows[Z256]'),
+    _row_mutant('Z257', 'git', ('clone', '--config-hook', 'sh', 'https://h.example/r',),
+                'test_redefined_missing_rows[Z257]'),
+    _row_mutant('Z258', 'git', ('clone', '--upload-pack', 'sh', 'https://h.example/r',),
+                'test_redefined_missing_rows[Z258]'),
+    _row_mutant('Z259', 'iex', ('x',),
+                'test_redefined_missing_rows[Z259]'),
+    _row_mutant('Z261', 'git', ('config', 'remote.o.uploadpack', 'sh',),
+                'test_redefined_missing_rows[Z261]'),
+    _row_mutant('Z262', 'git', ('config', 'mergetool.m.cmd', 'sh',),
+                'test_redefined_missing_rows[Z262]'),
+    _row_mutant('Z263', 'git', ('config', 'interactive.diffFilter', 'sh',),
+                'test_redefined_missing_rows[Z263]'),
+    _row_mutant('Z264', 'git', ('config', 'web.browser', 'sh',),
+                'test_redefined_missing_rows[Z264]'),
+    _row_mutant('Z265', 'tar', ('cIf', 'mytool', 'a.tar',),
+                'test_redefined_missing_rows[Z265]'),
+    _row_mutant('Z269', 'tar', ('cIf', 'mytool', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z269]'),
+    _row_mutant('Z270', 'tar', ('--to-command', 'sh', '-cf', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z270]'),
+    _row_mutant('Z271', 'git', ('clone', '-u', 'sh', 'https://h.example/r',),
+                'test_redefined_missing_rows[Z271]'),
+    _row_mutant('Z272', 'git', ('fetch', 'ext::sh', '-c', 'x', 'url',),
+                'test_redefined_missing_rows[Z272]'),
+    _row_mutant('Z273', 'git', ('config', 'protocol.x.allow', 'sh',),
+                'test_redefined_missing_rows[Z273]'),
+    _row_mutant('Z274', 'git', ('config', 'url.ssh://x.insteadOf', 'y',),
+                'test_redefined_missing_rows[Z274]'),
+    _row_mutant('Z275', 'git', ('rebase', '-ix', '10', 'sh',),
+                'test_redefined_missing_rows[Z275]'),
+    _row_mutant('Z276', 'git', ('rebase', '--exe', 'sh',),
+                'test_redefined_missing_rows[Z276]'),
+    _row_mutant('Z277', 'git', ('push', '--delete', 'origin', 'x',),
+                'test_redefined_missing_rows[Z277]'),
+    _row_mutant('Z280', 'ssh', ('-o', 'ProxyCommand=sh', 'h',),
+                'test_redefined_missing_rows[Z280]'),
+    _row_mutant('Z282', 'ssh', ('-o', 'ProxyCommand', 'mytool', 'h',),
+                'test_redefined_missing_rows[Z282]'),
+    _row_mutant('Z283', 'sftp', ('-S', 'sh', 'h',),
+                'test_redefined_missing_rows[Z283]'),
+    _row_mutant('Z284', 'php', ('-E', 'x.php',),
+                'test_redefined_missing_rows[Z284]'),
+    _row_mutant('Z285', 'php', ('--run', 'x',),
+                'test_redefined_missing_rows[Z285]'),
+    _row_mutant('Z286', 'rg', ('--no-config', '--fixed-strings', '--hostname-bin', 'x', '--', 'word', '.',),
+                'test_redefined_missing_rows[Z286]'),
+    _row_mutant('Z287', 'bsdtar', ('-cf', 'a.tar', 'd',),
+                'test_redefined_missing_rows[Z287]'),
+    _row_mutant('Z290', 'wget', ('--execute', 'x=y', 'https://h.example/x',),
+                'test_redefined_missing_rows[Z290]'),
+    _row_mutant('Z291', 'ssh', ('-vo', 'ProxyCommand=sh', 'h',),
+                'test_redefined_missing_rows[Z291]'),
+    _row_mutant('Z293', 'git', ('--confi', 'core.pager=sh', 'status',),
+                'test_redefined_missing_rows[Z293]'),
+    _row_mutant('Z294', 'git', ('clone', '--exec', 'sh', 'https://h.example/r',),
+                'test_redefined_missing_rows[Z294]'),
+]
+
+REDEFINED += [
+    ('Z150', 'structured policy host replaced by redacted chip host', [(CN,
+     "host=host, chip_host=clear_host(url))], False",
+     "host=clear_host(url), chip_host=clear_host(url))], False")],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z150]']),
+    ('Z152', 'structured chip admits hostile host charset', [(CN,
+     '    if not host or not _HOST.fullmatch(host):', '    if not host:')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z152]']),
+    ('Z173', 'structured chip guesses scheme-less host', [(CN,
+     "    if not url or ('://' not in url and not url.startswith('//')):",
+     '    if not url:')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z173]']),
+    ('Z174', 'structured chip exposes URL userinfo', [(CN,
+     'host=host, chip_host=clear_host(url))], False',
+     'host=host, chip_host=urlsplit(url).netloc)], False')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z174]']),
+    ('Z188', 'structured chip falls back to policy host', [(CN,
+     'host=host, chip_host=clear_host(url))], False',
+     'host=host, chip_host=clear_host(url) or host)], False')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z188]']),
+    ('Z198', 'long alphabetic secret host label is exposed', [(CN,
+     '    if len(label) > 20 or (len(label) > 4',
+     '    if len(label) > 200 or (len(label) > 4')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z198]']),
+    ('Z199', 'short mixed secret host label is exposed', [(CN,
+     '    if len(label) > 20 or (len(label) > 4',
+     '    if len(label) > 20 or (len(label) > 7')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z199]']),
+    ('Z200', 'structured host label elision is omitted', [(CN,
+     "    return '.'.join('…' if _token_like(x) else x for x in host.split('.'))",
+     '    return host')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z200]']),
+    ('Z211', 'last structured host label bypasses elision', [(CN,
+     "    return '.'.join('…' if _token_like(x) else x for x in host.split('.'))",
+     "    return '.'.join('…' if _token_like(x) and i < len(host.split('.')) - 1 else x\n"
+     "                    for i, x in enumerate(host.split('.')))")],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z211]']),
+    ('Z212', 'all-digit structured host label bypasses elision', [(CN,
+     '    return label.isdigit() and len(label) > 6', '    return False')],
+     ['tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z212]']),
 ]
 
 NEW_MUTATIONS = [
@@ -577,14 +761,22 @@ NEW_MUTATIONS = [
      [PU + 'test_gate_allowlist_block_matches_data']),
 ]
 
-NOT_DONE_REDEFINE = ('Z150', 'Z151', 'Z152', 'Z153', 'Z154', 'Z155', 'Z170', 'Z171', 'Z172', 'Z173', 'Z174', 'Z175', 'Z176', 'Z178', 'Z179', 'Z180', 'Z181', 'Z182', 'Z188', 'Z189', 'Z190', 'Z191', 'Z192', 'Z197', 'Z198', 'Z199', 'Z200', 'Z201', 'Z202', 'Z203', 'Z204', 'Z205', 'Z207', 'Z208', 'Z209', 'Z210', 'Z211', 'Z212', 'Z213', 'Z215', 'Z216', 'Z217', 'Z218', 'Z220', 'Z221', 'Z223', 'Z224', 'Z227', 'Z228', 'Z229', 'Z230', 'Z231', 'Z232', 'Z233', 'Z234', 'Z235', 'Z236', 'Z237', 'Z238', 'Z239', 'Z240', 'Z241', 'Z242', 'Z243', 'Z244', 'Z245', 'Z246', 'Z247', 'Z248', 'Z249', 'Z250', 'Z251', 'Z252', 'Z253', 'Z254', 'Z255', 'Z256', 'Z257', 'Z258', 'Z259', 'Z260', 'Z261', 'Z262', 'Z263', 'Z264', 'Z265', 'Z266', 'Z267', 'Z269', 'Z270', 'Z271', 'Z272', 'Z273', 'Z274', 'Z275', 'Z276', 'Z277', 'Z278', 'Z279', 'Z280', 'Z281', 'Z282', 'Z283', 'Z284', 'Z285', 'Z286', 'Z287', 'Z289', 'Z290', 'Z291', 'Z293', 'Z294',)
+NOT_DONE_REDEFINE = ('Z151', 'Z176', 'Z189', 'Z190', 'Z197', 'Z204', 'Z205', 'Z207', 'Z208', 'Z209', 'Z213', 'Z215', 'Z229', 'Z230', 'Z231', 'Z235', 'Z236', 'Z241', 'Z242', 'Z243', 'Z244', 'Z250', 'Z251', 'Z252', 'Z260', 'Z266', 'Z267', 'Z278', 'Z279', 'Z281', 'Z289', )
+MERGED_REDEFINE = {'Z175': 'Z173', 'Z217': 'Z319'}
+for entry in REDEFINED:
+    if entry[0] in ('Z153', 'Z170', 'Z171', 'Z172', 'Z240', 'Z248', 'Z249', 'Z277'):
+        entry[3].append(AH + 'test_redefined_write_send_forms_never_auto_allow[' + entry[0] + ']')
+    if entry[0] == 'Z173':
+        entry[3].append('tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z175]')
+
 MUTATIONS += REDEFINED + NEW_MUTATIONS
 
 if __name__ == '__main__':
     if not sys.argv[1:] or set(sys.argv[1:]) & set(NOT_DONE_REDEFINE):
         raise SystemExit('Incomplete allow-list ledger; NOT DONE: ' + ', '.join(NOT_DONE_REDEFINE))
-    unknown = set(sys.argv[1:]) - {entry[0] for entry in MUTATIONS}
+    selected = [MERGED_REDEFINE.get(mid, mid) for mid in sys.argv[1:]]
+    unknown = set(selected) - {entry[0] for entry in MUTATIONS}
     if unknown:
         raise SystemExit('Unknown or retired mutant IDs: ' + ', '.join(sorted(unknown)))
     mutate_p18.MUTATIONS = MUTATIONS
-    sys.exit(mutate_p18.run(sys.argv[1:]))
+    sys.exit(mutate_p18.run(selected))

@@ -13,6 +13,7 @@ from v1.unit.test_command_allowlist import CONTEXT, VECTORS
 
 
 NEAR_MISSES = (
+    'git --weird status',
     'pwd --help', 'ls -la .', 'cat - file.txt', 'head -n20 file.txt',
     'tail -f file.txt', 'wc -lc file.txt',
     'rg --no-config --fixed-strings --pre mytool -- word .',
@@ -83,6 +84,24 @@ def test_each_near_miss_holds_with_allow_all_classes_policy(hook, command):
     assert not [a for a in x.all(entities.Approval) if a.execution_id == e.id]
     decisions = [d for d in x.all(entities.PolicyDecision) if d.execution_id == e.id]
     assert any(d.stage == 'action' and d.decision == 'ALLOW' for d in decisions)
+
+
+@pytest.mark.parametrize('command', (
+    pytest.param('wget --post-data=x https://h.example/x', id='Z153'),
+    pytest.param('curl --request=POST https://h.example/x', id='Z170'),
+    pytest.param('curl -dx=1 https://h.example/x', id='Z171'),
+    pytest.param('curl -XPOST https://h.example/x', id='Z172'),
+    pytest.param('find . -delete', id='Z240'),
+    pytest.param('git push -fu origin main', id='Z248'),
+    pytest.param('git push origin +main', id='Z249'),
+    pytest.param('git push --delete origin x', id='Z277'),
+))
+def test_redefined_write_send_forms_never_auto_allow(hook, command):
+    x, e, serve, evidence = hook
+    evidence[0] = replace(CONTEXT, programs=CONTEXT.programs | {command.split()[0]})
+    assert serve(command)['decision'] in ('halt', 'deny')
+    assert isinstance(classify(command, evidence[0]), Held)
+    assert _current(x, e.id)['decision'] != 'allow'
 
 
 @pytest.mark.parametrize('row_id,command', VECTORS)

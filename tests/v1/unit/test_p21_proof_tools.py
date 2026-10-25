@@ -87,10 +87,18 @@ def test_matched_policy_contexts_exercise_real_engine(command, cls):
 
 
 def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
-    from tools.mutate_p21 import MUTATIONS, NEW_MUTATIONS, NOT_DONE_REDEFINE, REDEFINED
+    from tools.mutate_p21 import (
+        MERGED_REDEFINE, MUTATIONS, NEW_MUTATIONS, NOT_DONE_REDEFINE, REDEFINED,
+    )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 88 + 6 + 29
-    assert len(NOT_DONE_REDEFINE) == 112
+    assert len(ids) == len(set(ids)) == 88 + 85 + 29
+    assert len(REDEFINED) == 85
+    assert len(NOT_DONE_REDEFINE) == 31
+    assert MERGED_REDEFINE == {'Z175': 'Z173', 'Z217': 'Z319'}
+    assert len(REDEFINED) + len(NOT_DONE_REDEFINE) + len(MERGED_REDEFINE) == 118
+    assert set(MERGED_REDEFINE).isdisjoint(ids)
+    assert set(MERGED_REDEFINE).isdisjoint(NOT_DONE_REDEFINE)
+    assert set(MERGED_REDEFINE.values()) <= set(ids)
     assert set(ids).isdisjoint(NOT_DONE_REDEFINE)
     assert set(ids).isdisjoint({'Z194', 'Z195', 'Z206', 'Z214', 'Z222', 'Z268', 'Z292'})
     root = Path(__file__).resolve().parents[3]

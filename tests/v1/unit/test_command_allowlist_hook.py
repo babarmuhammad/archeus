@@ -125,3 +125,30 @@ def test_held_risk_approval_binds_raw_command():
     first, _ = C.canonicalise_hook('Bash', "git push 'origin' main", {'workdir': '.'})
     second, _ = C.canonicalise_hook('Bash', 'git push origin main', {'workdir': '.'})
     assert first[0][0].canonical() != second[0][0].canonical()
+
+
+@pytest.mark.parametrize('url,host,chip', (
+    pytest.param('https://hunter2.example/x', 'hunter2.example', '….example', id='Z150'),
+    pytest.param('https://private_name.example/x', 'private_name.example', None, id='Z152'),
+    pytest.param('h.example/x', 'h.example', None, id='Z173'),
+    pytest.param('a.b', 'a.b', None, id='Z175'),
+    pytest.param('https://user:pw@real.example/x', 'real.example', 'real.example', id='Z174'),
+    pytest.param('a.b', 'a.b', None, id='Z188'),
+    pytest.param('https://abcdefghijklmnopqrstu.example/x',
+                 'abcdefghijklmnopqrstu.example', '….example', id='Z198'),
+    pytest.param('https://hunter2.example/x', 'hunter2.example', '….example', id='Z199'),
+    pytest.param('https://api.hunter2.example/x', 'api.hunter2.example', 'api.….example', id='Z200'),
+    pytest.param('https://api.example.hunter2/x', 'api.example.hunter2', 'api.example.…', id='Z211'),
+    pytest.param('https://12345678.example/x', '12345678.example', '….example', id='Z212'),
+))
+def test_structured_host_privacy(url, host, chip):
+    from archeus.core.execution.command_allowlist import ROWS, classify
+
+    assert {row.program for row in ROWS}.isdisjoint({'curl', 'wget'})
+    for program in ('curl', 'wget'):
+        assert isinstance(classify(program + ' ' + url, CONTEXT), Held)
+    (actions, unclassified), eligibility = C.canonicalise_hook('WebFetch', {'url': url}, {})
+    assert eligibility is None and not unclassified
+    assert len(actions) == 1
+    assert actions[0].host == host
+    assert actions[0].chip_host == chip
