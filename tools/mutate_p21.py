@@ -669,6 +669,10 @@ REDEFINED += [
 ]
 
 NEW_MUTATIONS = [
+    ('Z336', 'HELD remote risk label receives a policy host', [(CN,
+     '                    return ([Action(action_class=cls, target=target, argv=_stored_command(cmd, tool))], False), result',
+     "                    return ([Action(action_class=cls, target=target, argv=_stored_command(cmd, tool), host='evil.example')], False), result")],
+     [CH + 'test_held_remote_commands_have_no_policy_host']),
     ('Z324', 'executor cap narrowed to exact Bash', [(EX,
      "    if needs_command_cap(request.get('tool'), request.get('input'), unclassified) and not (",
      "    if request.get('tool') == 'Bash' and not (")],

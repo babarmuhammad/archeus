@@ -100,7 +100,7 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
         RETIRED_REDEFINE,
     )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 88 + 106 + 41
+    assert len(ids) == len(set(ids)) == 88 + 106 + 42
     assert len(REDEFINED) == 106
     assert NOT_DONE_REDEFINE == ()
     assert MERGED_REDEFINE == {
