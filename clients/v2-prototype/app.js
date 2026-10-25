@@ -1076,7 +1076,7 @@
     function draw(t) {
       if (!S.scene || !S.w || !S.cam) return;
       var sc = S.scene, g = S.ctx, w = S.w, h = S.h, cam = S.cam, s = cam.s;
-      var anim = reduce.matches ? 0 : t;
+      var anim = 0; // Static geometry: no decorative rotation, traffic or idle ticker.
       if (sc.desk) updateDeskMarks(sc);
       g.setTransform(S.dpr, 0, 0, S.dpr, 0, 0);
       g.clearRect(0, 0, w, h);
@@ -1198,11 +1198,6 @@
             g.lineTo(ax + Math.cos(ang + 2.5) * ah * 0.7, ay + Math.sin(ang + 2.5) * ah * 0.7);
             g.lineTo(ax + Math.cos(ang - 2.5) * ah * 0.7, ay + Math.sin(ang - 2.5) * ah * 0.7); g.closePath(); g.fill();
           }
-          if (l.live && !reduce.matches) {
-            var u = ((t / 1800) + idx * 0.31) % 1;
-            g.fillStyle = '#FFF6E0'; g.shadowColor = l.col; g.shadowBlur = 12; g.globalAlpha = 1;
-            g.beginPath(); g.arc(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, 2.6, 0, TAU); g.fill();
-          }
         } else {
           g.strokeStyle = 'rgba(239,233,218,' + (l.dash ? 0.08 : 0.12) + ')'; g.lineWidth = 0.7;
           if (l.dash || fresh) g.setLineDash(l.dash ? [3, 5] : [3, 4]);
@@ -1265,7 +1260,7 @@
           }
           if (n.kind === 'agent') {
             g.globalAlpha = gn;
-            drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, !reduce.matches);
+            drawBadge(g, n.state, q.x - R * 0.9, q.y - R * 0.86, anim, false);
             g.globalAlpha = 1;
           }
         }
@@ -1563,16 +1558,8 @@
       var g = goal();
       if (!g || !S.cam) return false;
       var c = S.cam;
-      if (reduce.matches) { S.cam = g; return false; }
-      var dt = Math.min(64, t - S.last) / 1000;
-      S.last = t;
-      var k = 1 - Math.exp(-dt * 9);
-      c.x += (g.x - c.x) * k;
-      c.y += (g.y - c.y) * k;
-      c.s += (g.s - c.s) * k;
-      var moving = Math.abs(g.x - c.x) > 0.2 || Math.abs(g.y - c.y) > 0.2 || Math.abs(g.s - c.s) > 0.002;
-      if (!moving) S.cam = g;
-      return moving;
+      S.cam = g;
+      return false;
     }
 
     // The loop runs while anything moves; it stops when the tab is hidden.
@@ -1582,7 +1569,7 @@
       var moving = stepCam(t);
       S.last = t;
       draw(reduce.matches ? 0 : t);
-      if (moving || (!reduce.matches && (hasLive() || S.scene.nodes.length))) S.raf = requestAnimationFrame(frame);
+      if (moving) S.raf = requestAnimationFrame(frame);
     }
 
     function kick() {
@@ -2432,6 +2419,7 @@
     receiptFor(rec, geo);
     if (rec.kind === 'mission') startCard(find(rec.id));
     if (geo) drawRec(rec, geo);
+    recordEmphasis(rec.id, 'created:' + rec.id);
   }
 
   function receiptFor(rec, geo) {
@@ -2452,20 +2440,98 @@
     return e;
   }
   // Reduced motion and Quiet: the same facts at once. No fade, no camera, no transient accent.
-  function motionOff() { return reduce.matches || ['reduced', 'quiet'].indexOf(storeGet('archeus.v2.motion')) >= 0; }
+  function motionOff() { return reduce.matches || ['reduced', 'quiet', 'off', 'disabled'].indexOf(storeGet('archeus.v2.motion')) >= 0; }
+  // One scheduler, no visual backlog. Creation owns one conservative pulse slot
+  // per animated property (nine reserved); desktop event target is three.
+  var motion = { effects: [], beats: {}, last: {}, seen: {}, scroll: false, timer: 0, pressed: false };
+  function motionParked() { return motionOff() || document.hidden || !document.hasFocus() || motion.scroll; }
+  function finishBeats(id) {
+    var b = motion.beats[id];
+    if (!b) return;
+    b.forEach(clearTimeout); delete motion.beats[id];
+    setBeat(id, 5);
+  }
+  function parkMotion() {
+    document.documentElement.classList.add('motion-parked');
+    Object.keys(motion.beats).forEach(finishBeats);
+    motion.effects.splice(0).forEach(function (e) { e.animation.cancel(); });
+    document.getAnimations().forEach(function (a) { a.cancel(); });
+  }
+  function motionSync() {
+    if (motionParked()) parkMotion();
+    else document.documentElement.classList.remove('motion-parked');
+  }
+  function motionEffect(id, el, frames, duration, approach) {
+    if (!el || motionParked() || isNarrow()) return;
+    motionSync();
+    if (approach) {
+      motion.effects.slice().forEach(function (e) { e.animation.cancel(); });
+      motion.effects = [];
+      Object.keys(motion.beats).forEach(finishBeats);
+    }
+    var pulses = motion.effects.length + Object.keys(motion.beats).length * 9;
+    if (pulses >= 3 || motion.effects.some(function (e) { return e.id === id || e.approach; })) return;
+    var now = performance.now();
+    if (!approach && motion.last[id] !== undefined && now - motion.last[id] < 2000) return;
+    motion.last[id] = now;
+    var a = el.animate(frames, { duration: duration, easing: 'cubic-bezier(0.22, 0, 0.18, 1)' });
+    var entry = { id: id, animation: a, approach: approach };
+    motion.effects.push(entry);
+    a.onfinish = a.oncancel = function () { motion.effects = motion.effects.filter(function (e) { return e !== entry; }); };
+  }
+  function recordEmphasis(id, eventId) {
+    if (motion.seen[eventId]) return;
+    motion.seen[eventId] = true;
+    var el = $('[data-mark="' + id + '"] path') || $('#rec-svg [data-rec="' + id + '"] .rec-mark') || $('#rec-svg [data-rec="' + id + '"] .rec-hull');
+    if (el) {
+      var stroke = el.getAttribute('fill') || 'currentColor';
+      motionEffect(id, el, [{ stroke: stroke, strokeWidth: '1px' }, { stroke: stroke, strokeWidth: '2px', offset: 0.5 }, { stroke: stroke, strokeWidth: '1px' }], 240, false);
+    }
+  }
+  function obligationApproach(id) {
+    // Reserved slot is the existing glyph location. Controls and label never move.
+    // No displaced neighbour: arrivals under interaction render statically.
+    if (motion.pressed || $('#now-stage :hover') || $('#now-stage :focus-within') || $('#rec-layer :hover') || $('#rec-layer :focus-within')) return;
+    var el = $('#rec-svg [data-rec="' + id + '"]');
+    motionEffect(id, el, [{ transform: 'translateY(24px)' }, { transform: 'translateY(0)' }], 360, true);
+  }
+  ['pointerdown', 'keydown', 'input'].forEach(function (type) {
+    document.addEventListener(type, function () { parkMotion(); }, true);
+  });
+  document.addEventListener('pointerdown', function () { motion.pressed = true; }, true);
+  window.addEventListener('pointerup', function () { motion.pressed = false; motionSync(); });
+  document.addEventListener('wheel', scrollPark, { passive: true, capture: true });
+  document.addEventListener('touchmove', scrollPark, { passive: true, capture: true });
+  document.addEventListener('scroll', scrollPark, true);
+  function scrollPark() {
+    motion.scroll = true; parkMotion(); clearTimeout(motion.timer);
+    motion.timer = setTimeout(scrollDone, 160);
+  }
+  function scrollDone() { clearTimeout(motion.timer); motion.timer = 0; motion.scroll = false; motionSync(); }
+  document.addEventListener('scrollend', scrollDone, true);
+  window.addEventListener('blur', parkMotion);
+  window.addEventListener('focus', motionSync);
+  document.addEventListener('visibilitychange', motionSync);
+  window.addEventListener('hashchange', parkMotion);
+  window.addEventListener('storage', motionSync);
+  reduce.addEventListener('change', motionSync);
   function recEls(id) { return $$('[data-rec="' + id + '"]', recLayer); }
   function setBeat(id, n) { recEls(id).forEach(function (el) { for (var i = 2; i <= n; i++) el.classList.add('b' + i); }); }
   // Beat 1 is the reply (already shown). 2 appears (160 ms), 3 reveals the relation (240 ms), 4 makes label and state readable (180 ms),
   // 5 lets the accent go, so the whole thing ends by 800 ms.
   function runBeats(id) {
-    var off = motionOff();
+    motionSync();
+    var off = motionParked() || motion.effects.length > 0 || Object.keys(motion.beats).length > 0;
     recLayer.setAttribute('data-motion', off ? 'none' : 'full');
     if (off) { setBeat(id, 5); recEls(id).forEach(function (el) { el.classList.add('no-accent'); }); return; }
     void recLayer.offsetWidth;
     setBeat(id, 2);
-    setTimeout(function () { setBeat(id, 3); }, 160);
-    setTimeout(function () { setBeat(id, 4); }, 400);
-    setTimeout(function () { setBeat(id, 5); }, 580);
+    motion.beats[id] = [
+      setTimeout(function () { setBeat(id, 3); }, 160),
+      setTimeout(function () { setBeat(id, 4); }, 400),
+      setTimeout(function () { setBeat(id, 5); }, 580),
+      setTimeout(function () { finishBeats(id); }, 800)
+    ];
   }
   function itemCount(pid) { var n = missions.filter(function (m) { return m.project === pid; }).length; return n + (n === 1 ? ' item' : ' items'); }
 
@@ -2538,6 +2604,13 @@
     m.latest = 'Plan v1 recorded, 3 tasks.';
     m.log.push('Plan v1 recorded, waiting for your decision.');
     refreshNow();
+    var mark = $('#rec-svg [data-rec="' + m.id + '"] .rec-mark');
+    if (mark) { mark.setAttribute('fill', STATE.waiting.color); mark.setAttribute('stroke', STATE.waiting.color); }
+    var state = $('#rec-list [data-rec="' + m.id + '"] .rec-s');
+    // Planning needs review; execution has not started. Keep both facts in the compact map label.
+    if (state) state.textContent = STATE[m.state].word + ' · Not started';
+    obligationApproach(m.id);
+    recordEmphasis(m.id, 'plan:' + m.id + ':1');
   }
 
   // A proposed effect: shown as a card, never run until the owner confirms the card.
@@ -2665,7 +2738,7 @@
   var SL = window.ArchSlash;
   var RECENT_KEY = 'archeus.v2.slashRecent';
   function storeGet(key) { try { return window.localStorage.getItem(key); } catch (e) { return null; } }
-  function storeSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) { /* private window: the preference lasts this page only */ } }
+  function storeSet(key, value) { try { window.localStorage.setItem(key, value); } catch (e) { /* private window: the preference lasts this page only */ } if (key === 'archeus.v2.motion') motionSync(); }
   function recentCommands() { try { return JSON.parse(storeGet(RECENT_KEY)) || []; } catch (e) { return []; } }
   function recentUse(name) {
     storeSet(RECENT_KEY, JSON.stringify([name].concat(recentCommands().filter(function (n) { return n !== name; })).slice(0, 5)));

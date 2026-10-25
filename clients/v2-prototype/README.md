@@ -1345,3 +1345,22 @@ Local simulated fixtures only; no model, Core, token, account or external action
 - Desktop and phone use live responsive review controls; phone concept decision artwork is no longer the interactive gate. Terminal r and Review plan open the same text review. Terminal : uses shared keyboard palette; / still filters terminal. Receipt links open conversation controls. Native confirmation dialog traps focus, defaults Cancel, supports Escape and returns focus. New targets use 48 CSS px; phone native requirement remains 44 pt. All missions as a list exposes name/type/status/project relationships. New review has no animation; existing scene motion modes retain identical facts.
 
 Probe (not run by Codex): tools/v2_chat456_probe.py; run alongside existing check.mjs, slash_probe.py, v2_chatbar_probe.py, v2_hit_probe.py. Serve this directory on localhost:8817, set BASE=http://127.0.0.1:8817 for every browser probe, then run every command through D:\Archeus\.collab\testlock.py. New probe covers General/memory isolation, unknown and slash isolation, versioned review drafts, request changes, error/retry, stale delayed decisions, duplicate results, keyboard cancellation, terminal review and no external requests at 1440/402/320 with motion on/reduced. Existing probes cover scene beats and measured hit areas. Real keyboard/screen-reader, contrast over scene, transparency fallback, 200% zoom and complete visual QA still require Claude/manual verification.
+
+## Desktop motion pass (2026-10-23, incomplete acceptance)
+
+Shared parking cancels creation beats and finite effects on input, blur, hidden tab,
+scroll, reduced motion and Quiet. Creation beat timings remain unchanged; concurrent
+arrivals settle statically. Event outline is 1/2/1 px over 240 ms, deduplicated by
+fixture record identity with a 2 s object cooldown. Start's recorded fixture plan
+updates obligation text immediately; its glyph approaches its existing reserved
+slot by 24 px over 360 ms only without hovered, pressed or focused scene targets.
+Review and labels stay fixed. No replay backlog. Legacy decorative canvas ticker,
+traffic and camera interpolation are parked; no new phone or terminal motion.
+
+Core breath is **not implemented**: desktop core is baked into the existing WebP,
+not live geometry. Cropping/scaling that region would also move background wires;
+replacing it would restyle the approved screen. A separable core asset/geometry and
+matching base art are needed before this row can meet the no-restyle constraint.
+No browser/runtime checks were run by Codex. `tools/v2_motion_probe.py` intentionally
+fails this missing acceptance gate; remaining timing, budget, target and visual
+checks must be run by Claude. Terminal colour and travelling phase head remain open.

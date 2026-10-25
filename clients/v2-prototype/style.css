@@ -1914,6 +1914,14 @@ body.frame-terminal .term-reply { top: 1130px; max-height: 360px; overflow: auto
 body.frame-terminal #s-terminal { height: 1500px; }
 #term-review-actions .btn { min-width: 48px; min-height: 48px; }
 #s-terminal .term-reply .receipt { display: block; white-space: normal; overflow-wrap: anywhere; }
+
+/* Motion parking changes presentation only; controls, labels and facts stay put. */
+.motion-parked *, .motion-parked *::before, .motion-parked *::after {
+  animation: none !important;
+  transition: none !important;
+}
+.lbl.is-new { animation: none; }
+
 /* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,
    ivory text, neutral outline chips. No amber (owner obligations only) and no blue (live work only). Rows 48 px. */
 .slash-cleared { display: none; }

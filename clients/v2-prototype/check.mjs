@@ -454,6 +454,15 @@ check(/plans\[id\]\.hash !== hash/.test(js) && /delete p.approvedHash/.test(js),
 check(/reviewFeedback.push/.test(js) && /reviewPending\[key\]/.test(js), 'versioned feedback and duplicate guard missing');
 check(/term-destination/.test(html) && /chat-destination/.test(html), 'destination preview missing');
 check(!/\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon/.test(js), 'demo must not call Core or external services');
+
+// Desktop motion: runtime acceptance lives in v2_motion_probe.py.
+check(/function parkMotion/.test(js) && /document\.getAnimations\(\)/.test(js), 'motion parking must cancel running browser effects');
+check(/duration: duration, easing: 'cubic-bezier\(0.22, 0, 0.18, 1\)'/.test(js), 'finite effects must share easing E');
+check(/now - motion\.last\[id\] < 2000/.test(js) && /motion\.seen\[eventId\]/.test(js), 'event emphasis needs identity deduplication and 2 s cooldown');
+check(/translateY\(24px\)/.test(js) && /360, true/.test(js), 'obligation approach must be bounded to 24 px / 360 ms');
+check(/motion\.pressed/.test(js) && /:focus-within/.test(js) && /:hover/.test(js), 'obligation arrival must hold interaction targets');
+check(/\.motion-parked/.test(css), 'parked CSS must stop automatic transitions');
+
 if (failures.length) {
   console.error('FAIL');
   for (const f of failures) console.error(' - ' + f);
