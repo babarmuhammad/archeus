@@ -1451,7 +1451,7 @@ body.frame-mission .frame-screen, body.frame-shared .frame-screen { position: ab
 .frame-screen .fr-foot .m-links { display: flex; gap: var(--s2); }
 .frame-screen .fr-foot .btn { min-height: 0; height: 22px; padding: 0 var(--s2); font: 400 14px/20px "Source Sans V2", var(--sans); }
 .frame .f { position: absolute; margin: 0; white-space: nowrap; line-height: 1; color: var(--text); font-weight: 400; text-transform: none; }
-.frame .f.serif { font-family: "Libre Caslon V2", var(--serif); font-weight: 500; }
+.frame .f.serif { font-family: "Libre Caslon V2", var(--serif); font-weight: 450; }
 .frame .f.sans { font-family: "Source Sans V2", var(--sans); font-weight: 400; }
 .frame .f.dim { color: var(--text-muted); }
 .frame .f.amb { color: var(--amber); }
@@ -1955,3 +1955,6 @@ body.frame-now .msgs > li.msg-you, body.frame-now .msgs > li.msg-arch { pointer-
 body.frame-now .msgs > li a, body.frame-now .msgs > li button, body.frame-now .msgs > li summary { pointer-events: auto; }
 body.frame-now .chat-feed, body.frame-now .msgs { pointer-events: none; }
 body.frame-now .chat-feed button, body.frame-now .chat-feed a, body.frame-now .chat-feed input, body.frame-now .chat-feed textarea, body.frame-now .chat-feed summary { pointer-events: auto; }
+
+/* Style pass 2: terminal status and focus cues share one neutral palette in every motion mode. */
+.term, .term .term-svg { --c-amber: var(--c-ivory); --c-blue: var(--c-ivory); --c-green: var(--c-ivory); --c-soft: var(--c-dim); --c-red: var(--c-ivory); --c-select: #303030; --focus: var(--c-ivory); }
