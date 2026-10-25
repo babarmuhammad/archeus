@@ -21,6 +21,7 @@ import shlex
 from urllib.parse import urlsplit
 
 from ..domain.actions import Action
+from . import command_allowlist
 
 READ_TOOLS = ('Read', 'Glob', 'Grep', 'LS')
 WRITE_TOOLS = ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
@@ -64,6 +65,8 @@ INSTALL = {'pip': ('install',), 'pip3': ('install',), 'npm': ('install', 'i', 'a
            'go': ('get', 'install'), 'gem': ('install',), 'uv': ('add', 'pip'),
            'brew': ('install',), 'choco': ('install',), 'winget': ('install',)}
 REMOTE = ('ssh', 'scp', 'rsync', 'sftp')
+_RISK_PROGRAMS = (frozenset(WRITE_COMMANDS + REMOTE + ('git', 'find', 'curl', 'wget', 'vercel'))
+                  | {prog for prog, _ in DEPLOY | DESTROY} | INSTALL.keys())
 PROD = ('--prod', '--production', 'prod', 'production')
 
 #: a program's name as the shell finds it: no directory, no quote, no .exe/.cmd/.bat/.com/.ps1, no
@@ -241,6 +244,39 @@ def _carries(prog, args):
 def _pieces(cmd):
     """The words of a command as its blanks and quotes split them."""
     return [p for p in re.split(r'[\s"\'`]+', cmd) if p]
+
+
+def canonicalise_hook(tool, tool_input, ctx, command_context=None):
+    if tool != 'Bash':
+        return canonicalise(tool, tool_input, ctx), None
+    cmd = tool_input.get('command') if isinstance(tool_input, dict) else tool_input
+    result = command_allowlist.classify(cmd, command_context)
+    if not isinstance(result, command_allowlist.Allowed):
+        # Preserve risk classes for policy floors and exact, single-use approval.
+        # The strict scanner excludes shell syntax and the legacy sed slow path;
+        # interpreter families never enter the legacy classifier at all.
+        if isinstance(cmd, str) and len(cmd) <= 4096:
+            tokens = command_allowlist._scan(cmd)
+            if not isinstance(tokens, command_allowlist.Held) and tokens and (
+                    _norm(tokens[0].text) in _RISK_PROGRAMS):
+                actions, unclassified = canonicalise(tool, tool_input, ctx)
+                if not unclassified and all(a.action_class in (
+                        'write_repo', 'git_push', 'git_commit', 'destructive',
+                        'deploy', 'install', 'external_comm', 'web') for a in actions):
+                    return (actions, False), result
+        # Even unclassified approvals bind the complete command, never a shared
+        # placeholder that could approve a different HELD command.
+        argv = (cmd,) if isinstance(cmd, str) else ('command',)
+        return ([_unclassified('command', argv)], True), result
+    row = next(row for row in command_allowlist.ROWS if row.id == result.row_id)
+    cwd = ctx.get('cwd') or ctx.get('workdir')
+    paths = tuple(workspace_path(os.path.join(cwd, path), ctx.get('workdir'))
+                  for path in result.paths) or (workspace_path(cwd, ctx.get('workdir')),)
+    argv = tuple(token.text for token in command_allowlist._scan(cmd))
+    target = 'git ' + row.prefix[1] if row.program == 'git' else row.program
+    action = Action(action_class=result.action_class, target=target, argv=argv,
+                    paths=paths, branch=ctx.get('branch'))
+    return ([action], False), result
 
 
 def canonicalise(tool, tool_input, ctx):

@@ -29,6 +29,7 @@ from ...infra.db import rows
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
+from ..execution.command_allowlist import Allowed
 from ..redact import redact
 from . import authorization, lifecycle
 from .commands import active_plan
@@ -762,7 +763,7 @@ def waiting_approval(conn, e):
 # ── the hook (§10.4) ────────────────────────────────────────────────────────
 
 def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, branch_ok,
-               disarmed):
+               disarmed, command_eligibility=None):
     """Answer one hook request: (decision, reason) with decision allow | deny |
     halt. `canon` is (actions, unclassified) from the canonicaliser; `cwd_ok`
     and `branch_ok` are the manager's reads of the world (outside this
@@ -793,11 +794,13 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
     if not branch_ok:
         return _hook_answer(tx, actor, e, seq, 'halt', 'HEAD is not branch %s' % e.branch, act)
     worst, reasons, asked = 'allow', [], None
+    approved = bool(actions)
     denier = asker = None          # the action that decided the answer; the chip names it
     for a in actions:
         got = authorization.evaluate_action(tx, actor=actor, policy=policy,
                                             execution_id=e.id, action=a,
                                             unclassified=unclassified)
+        approved = approved and got['decision'] == 'ALLOW' and bool(got.get('approval_id'))
         if got['decision'] == 'DENY':
             worst = 'deny'
             denier = a if denier is None else denier
@@ -812,6 +815,11 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
         _fire(tx, e.id, 'hook_asked', actor, 'waiting for approval %s' % asked['approval_id'])
         return _hook_answer(tx, actor, e, seq, 'halt', 'waiting for your approval (%s)'
                             % asked['approval_id'], _current(asker))
+    if request.get('tool') == 'Bash' and not (
+            isinstance(command_eligibility, Allowed) and command_eligibility.row_id
+            or approved):
+        return _hook_answer(tx, actor, e, seq, 'halt', 'command form needs review',
+                            {'action_class': 'exec', 'label': 'command'})
     return _hook_answer(tx, actor, e, seq, 'allow', '', act)
 
 
