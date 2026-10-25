@@ -2533,12 +2533,16 @@
   // Core breath: only a fresh, confirmed execution-running fact (a running mission with a Codex execution) scales the core layer,
   // 1 to 1.018 to 1 over 6000 ms (3000 out, 3000 in), fixed centre, no colour or opacity change. Queued, connected and phase are not enough.
   // Stale or unknown, zero running, hidden, blurred, scrolling, reduced motion and Quiet all stop it at once; the static core stays.
-  var coreEl = $('.desk-core'), coreAnim = null, execFact = 'fresh';
+  var coreEl = $('.desk-core'), markEl = $('#core-mark'), coreAnim = null, execFact = 'fresh';
   function coreConfirmed() { return execFact === 'fresh' && missions.some(function (m) { return m.state === 'running' && m.exec; }); }
   function coreBreath() {
     if (!coreEl) return;
     var on = coreConfirmed() && !motionParked() && document.body.classList.contains('frame-now');
     coreEl.setAttribute('data-core', coreConfirmed() ? (on ? 'breath' : 'running-static') : 'idle');
+    // Reduced motion and Quiet: no breath, so a static mark carries the running fact. Same count as the headline; hidden when not confirmed.
+    var showMark = coreConfirmed() && motionOff() && document.body.classList.contains('frame-now');
+    markEl.hidden = !showMark;
+    if (showMark) markEl.textContent = count('running') + ' verifying';
     if (on && !coreAnim) {
       coreAnim = coreEl.animate([{ transform: 'scale(1)', easing: 'ease-in-out' }, { transform: 'scale(1.018)', easing: 'ease-in-out', offset: 0.5 }, { transform: 'scale(1)' }], { duration: 6000, iterations: Infinity });
       coreAnim.oncancel = function () { coreAnim = null; };

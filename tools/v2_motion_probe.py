@@ -18,6 +18,8 @@ def check(ok, label):
 CORE = "document.querySelector('.desk-core')"
 OTHERS = "document.getAnimations().filter(a => a.effect.target !== %s).length" % CORE
 CORE_ANIMS = "%s.getAnimations().length" % CORE
+MARK = "document.querySelector('#core-mark')"
+MARK_VISIBLE = "(() => { const m = %s; return !m.hidden && getComputedStyle(m).display !== 'none' && m.getBoundingClientRect().width > 0; })()" % MARK
 SCALE = "new DOMMatrix(getComputedStyle(%s).transform).a" % CORE
 
 
@@ -31,8 +33,20 @@ def core_check(pg, mode):
     if mode != 'full':
         check(pg.evaluate(CORE_ANIMS) == 0 and pg.evaluate(SCALE) == 1, mode + ': core is static at scale 1')
         check(pg.evaluate(CORE + '.dataset.core') == 'running-static', mode + ': static running mark state')
+        check(pg.evaluate(MARK_VISIBLE), mode + ': on-screen running mark is visible')
+        n = pg.evaluate("document.querySelector('[data-sentence]').textContent.match(/(\\d+) verifying/)[1]")
+        check(pg.evaluate(MARK + '.textContent') == n + ' verifying', mode + ': mark states the same running count as the headline (' + n + ' verifying)')
+        check(pg.evaluate("(() => { const m = %s, s = getComputedStyle(m); return m.getAnimations().length === 0 && s.animationName === 'none' && s.transitionDuration === '0s' && s.opacity === '1'; })()" % MARK), mode + ': mark has no animation, transition or opacity change')
+        check(pg.evaluate("(() => { const b = %s.getBoundingClientRect(), c = %s.getBoundingClientRect(); return b.width > 0 && b.left >= c.left && b.right <= c.right && b.top >= c.top && b.bottom <= c.bottom; })()" % (MARK, 'document.querySelector(".stage-now")')), mode + ': mark is inside the Now stage')
+        for fact in ['stale', 'unknown', 'none']:
+            pg.evaluate("window.ArchFixture.execFact('%s')" % fact)
+            check(not pg.evaluate(MARK_VISIBLE), mode + ': mark hidden when the fact is ' + fact)
+        pg.evaluate("window.ArchFixture.execFact('fresh')")
+        check(pg.evaluate(MARK_VISIBLE), mode + ': mark returns with a fresh running fact')
         return
+    check(not pg.evaluate(MARK_VISIBLE), 'full: no static mark, the breath is the cue')
     pg.evaluate("window.dispatchEvent(new Event('focus'))")
+    pg.wait_for_timeout(250)
     check(pg.evaluate(CORE_ANIMS) == 1, 'full: one core animation while running is confirmed')
     t = pg.evaluate("(() => { const e = %s.getAnimations()[0].effect; return [e.getTiming().duration, e.getTiming().iterations, e.getKeyframes().map(k => [k.transform, k.computedOffset, k.easing])]; })()" % CORE)
     check(t[0] == 6000 and t[1] in (None, float('inf')), 'full: 6000 ms cycle, repeating')

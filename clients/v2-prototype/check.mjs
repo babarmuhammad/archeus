@@ -470,6 +470,9 @@ check(/now - motion\.last\[id\] < 2000/.test(js) && /motion\.seen\[eventId\]/.te
 check(/translateY\(24px\)/.test(js) && /360, true/.test(js), 'obligation approach must be bounded to 24 px / 360 ms');
 check(/motion\.pressed/.test(js) && /:focus-within/.test(js) && /:hover/.test(js), 'obligation arrival must hold interaction targets');
 check(/\.motion-parked/.test(css), 'parked CSS must stop automatic transitions');
+check(/id="core-mark"/.test(html) && /markEl\.hidden = !showMark/.test(js) && /showMark = coreConfirmed\(\) && motionOff\(\)/.test(js), 'static running mark must show only in reduced motion and Quiet');
+const glyphs = js.match(/GLYPH_T = \{ waiting: '([^']+)', running: '([^']+)'/);
+check(glyphs && glyphs[1] !== glyphs[2], 'terminal needs you and verifying differ only by glyph (colour removed): the two glyphs must differ');
 
 if (failures.length) {
   console.error('FAIL');
