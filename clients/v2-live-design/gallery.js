@@ -70,7 +70,7 @@ function sheet() {
   const close = button('Close', 'quiet', 'close', dismiss);
   const scrim = h('div', { class: 'ds-sheet-scrim', 'aria-hidden': 'true' });
   const panel = h('section', { class: 'ds-sheet', 'aria-label': 'Decision sheet specimen', onkeydown: e => { if (e.key === 'Escape') dismiss(); } }, h('div', { class: 'ds-grab', 'aria-hidden': 'true' }), h('header', { class: 'ds-sheet-head' }, h('h3', null, 'Review plan'), close), h('div', { class: 'ds-sheet-body' }, badge('needs_you'), h('p', null, 'Search recorded sources. Show provenance.'), caption('Plan approval required. Fixture decision only.'), spine('inspector', 2, 'needs_you')), h('footer', { class: 'ds-sheet-foot' }, button('Approve plan', 'primary', 'approve', () => { notice('Plan approved · fixture only.'); dismiss(); }), button('Reject', 'danger outline', 'reject', () => { notice('Plan rejected · fixture only.'); dismiss(); })));
-  stage.append(h('div', { class: 'ds-main' }, caption('Same sheet becomes bottom sheet, side sheet, then desktop inspector.')), scrim, panel);
+  stage.append(scrim, panel);
   return stack(launch, stage, caption('Inline specimen, not a modal. Production dialog must trap focus and make background inert.'));
 }
 

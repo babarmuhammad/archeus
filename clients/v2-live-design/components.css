@@ -101,7 +101,7 @@
 .ds-sheet-head { border-bottom: var(--hair) solid var(--line); }
 .ds-sheet-body { padding: 1rem; overflow: auto; overscroll-behavior: contain; display: grid; gap: 1rem; }
 .ds-sheet-foot { border-top: var(--hair) solid var(--line); padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-.ds-sheet-foot .ds-btn { flex: 1; }
+.ds-sheet-foot .ds-btn { flex: 1 1 auto; white-space: nowrap; }
 .ds-meter { display: grid; gap: .5rem; }
 .ds-meter-track { position: relative; height: 12px; border: var(--hair) solid var(--text-3); border-radius: 3px; background: var(--s2); overflow: hidden; }
 .ds-meter-fill { width: var(--value, 0%); height: 100%; background: var(--active); }
@@ -216,9 +216,13 @@
 .ds-btn.danger { background: var(--blocked); color: var(--on-primary); border-color: var(--blocked); }
 .ds-btn.danger.outline { background: var(--s1); color: var(--blocked); }
 .ds-card[data-kind='decision'] .ds-btn.primary, .ds-card[data-kind='approval'] .ds-btn.primary, .ds-sheet .ds-btn.primary { background: var(--attention); border-color: var(--attention); }
-.ds-inspector .ds-spine[data-size='inspector'] .ds-station span { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; }
+.ds-spine[data-size='inspector'] { container: spine / inline-size; }
+@container ds (min-width: 600px) { @container spine (max-width: 479px) { .ds-station span { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; } } }
 .ds-empty { align-content: start; }
 .ds-wordmark { font-weight: 500; letter-spacing: .34em; }
 .ds-wordmark > span { letter-spacing: .1em; color: var(--text-2); }
-@media (forced-colors: active) { .ds-btn.danger { background: ButtonFace; color: ButtonText; } }
+@media (forced-colors: active) {
+  .ds-btn.danger { background: ButtonFace; color: ButtonText; }
+  .ds-btn.primary, .ds-card[data-kind='decision'] .ds-btn.primary, .ds-card[data-kind='approval'] .ds-btn.primary, .ds-sheet .ds-btn.primary { forced-color-adjust: none; background: ButtonText; color: ButtonFace; border-color: ButtonText; }
+}
 .ds-node-label[data-state='idle'] span { color: var(--text-2); }
