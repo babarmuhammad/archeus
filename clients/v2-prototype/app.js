@@ -2324,7 +2324,7 @@
   function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24); }
 
   // Each change to the constellation goes through here: data first, then one relayout.
-  function refreshNow() { nowStage.relayout(); buildOverview(); renderRail(); renderMoreChips(); renderNeeds(); renderNowList(); }
+  function refreshNow() { nowStage.relayout(); buildOverview(); renderRail(); renderMoreChips(); renderNeeds(); renderNowList(); coreBreath(); }
 
   /* ---------- Fixture Core and the creation beats (V2 chat bar, steps 1 to 3).
      A chat message draws nothing. The fixture Core stores the record, then sends one event that names only the identity;
@@ -2366,6 +2366,7 @@
     hold: function (on) { FX.hold = !!on; if (!on) FX.queue.splice(0).forEach(fxApply); },
     emit: function (id) { fxApply({ type: 'replay', subject: { id: id }, submit: null }); },
     reconnect: function () { FX.log.forEach(fxApply); },
+    execFact: function (f) { execFact = f; coreBreath(); },
     log: function () { return FX.log.map(function (e) { return e.type + ' ' + e.subject.id; }); },
     nodes: function () { return $$('[data-rec]', recList).map(function (el) { return el.getAttribute('data-rec'); }); }
   };
@@ -2455,11 +2456,27 @@
     document.documentElement.classList.add('motion-parked');
     Object.keys(motion.beats).forEach(finishBeats);
     motion.effects.splice(0).forEach(function (e) { e.animation.cancel(); });
-    document.getAnimations().forEach(function (a) { a.cancel(); });
+    document.getAnimations().forEach(function (a) { if (a !== coreAnim) a.cancel(); });
+    coreBreath();
+  }
+  // Core breath: only a fresh, confirmed execution-running fact (a running mission with a Codex execution) scales the core layer,
+  // 1 to 1.018 to 1 over 6000 ms (3000 out, 3000 in), fixed centre, no colour or opacity change. Queued, connected and phase are not enough.
+  // Stale or unknown, zero running, hidden, blurred, scrolling, reduced motion and Quiet all stop it at once; the static core stays.
+  var coreEl = $('.desk-core'), coreAnim = null, execFact = 'fresh';
+  function coreConfirmed() { return execFact === 'fresh' && missions.some(function (m) { return m.state === 'running' && m.exec; }); }
+  function coreBreath() {
+    if (!coreEl) return;
+    var on = coreConfirmed() && !motionParked() && document.body.classList.contains('frame-now');
+    coreEl.setAttribute('data-core', coreConfirmed() ? (on ? 'breath' : 'running-static') : 'idle');
+    if (on && !coreAnim) {
+      coreAnim = coreEl.animate([{ transform: 'scale(1)', easing: 'ease-in-out' }, { transform: 'scale(1.018)', easing: 'ease-in-out', offset: 0.5 }, { transform: 'scale(1)' }], { duration: 6000, iterations: Infinity });
+      coreAnim.oncancel = function () { coreAnim = null; };
+    } else if (!on && coreAnim) { coreAnim.cancel(); coreAnim = null; }
   }
   function motionSync() {
     if (motionParked()) parkMotion();
     else document.documentElement.classList.remove('motion-parked');
+    coreBreath();
   }
   function motionEffect(id, el, frames, duration, approach) {
     if (!el || motionParked() || isNarrow()) return;
@@ -3822,6 +3839,7 @@
     });
     SCREENS[name](parts[1]);
     fitReplayFrame();
+    coreBreath();
     var h = $('#s-' + name + ' h1');
     if (h) h.focus({ preventScroll: true });
   }
