@@ -121,6 +121,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/v1/attention` | observe | — | — | — | `Attention` |
 | GET | `/v1/missions/{id}/timeline` | observe | — | `before`, `limit` | — | `Timeline` |
 | GET | `/v1/missions/{id}/trace` | observe | — | — | — | `Trace` |
+| GET | `/v1/missions/{id}/replay` | observe | — | — | — | `Replay` |
 | GET | `/v1/automations` | observe | — | — | — | `AutomationList` |
 | GET | `/v1/automations/{id}` | observe | — | — | — | `Automation` |
 | GET | `/v1/automations/{id}/simulate` | observe | — | `days` | — | `AutomationSimulation` |
@@ -1473,6 +1474,176 @@ interface Redeemed {
   device_id: string;
   token: string;
   scopes: string[];
+}
+```
+
+### `Replay`
+
+```ts
+interface Replay {
+  mission_id: string;
+  records: ReplayRecord[];
+  starting_state: ReplayBinding;
+  tasks: ReplayTask[];
+  executions: ReplayExecution[];
+  policy_decisions: ReplayPolicyDecision[];
+  approvals: ReplayApproval[];
+  checkpoints: ReplayCheckpoint[];
+  artifacts: ReplayArtifact[];
+  verifications: ReplayVerification[];
+  external_effects: {
+    answer: 'UNKNOWN';
+    reason: string;
+  };
+  history: ReplayHistory;
+}
+```
+
+### `ReplayApproval`
+
+```ts
+interface ReplayApproval {
+  id: string;
+  action_hash: string;
+  state: string;
+  subject: ReplayRef;
+  decided_by: string | null;
+  [field: string]: unknown;
+}
+```
+
+### `ReplayArtifact`
+
+```ts
+interface ReplayArtifact {
+  id: string;
+  artifact_id: string;
+  task_id: string;
+  produced_by: ReplayRef;
+  kind: string;
+  label: string;
+  [field: string]: unknown;
+}
+```
+
+### `ReplayBinding`
+
+```ts
+interface ReplayBinding {
+  source: string;
+  revision: string | null;
+  answer: 'RECORDED' | 'UNKNOWN';
+  reason: string;
+}
+```
+
+### `ReplayCheckpoint`
+
+```ts
+interface ReplayCheckpoint {
+  id: string;
+  execution_id: string;
+  task_id: string;
+  files_changed: string[];
+  files_are: 'summary' | 'paths' | 'unknown';
+  complete: boolean;
+  item_limit: number;
+  reason: string;
+}
+```
+
+### `ReplayExecution`
+
+```ts
+interface ReplayExecution {
+  id: string;
+  task_id: string | null;
+  exit_reason: string | null;
+  charged: boolean | null;
+  starting_state: ReplayBinding;
+}
+```
+
+### `ReplayHistory`
+
+```ts
+interface ReplayHistory {
+  answer: 'RECORDED' | 'UNKNOWN';
+  reason: string;
+  floor: number;
+  head: number;
+  oldest_retained_at: string | null;
+  event_days: number;
+  open_mission_extension: boolean;
+  gap: string;
+}
+```
+
+### `ReplayPolicyDecision`
+
+```ts
+interface ReplayPolicyDecision {
+  id: string;
+  stage: string | null;
+  decision: string;
+  reason: string;
+  outcome: string | null;
+  matched_rules: Record<string, unknown>[];
+  [field: string]: unknown;
+}
+```
+
+### `ReplayRecord`
+
+```ts
+interface ReplayRecord {
+  ref: ReplayRef;
+  machine: string;
+  state: string;
+  answer: 'INTENDED' | 'AUTHORIZED' | 'RECORDED' | 'MAY-HAVE-TAKEN-EFFECT' | 'UNCERTAIN' | 'SUSPENDED' | 'RECONCILED' | 'NONE' | 'UNKNOWN';
+  reason: string;
+  settled_by: 'core' | 'device' | 'unknown';
+  settlement_reason: string;
+  settlement_seq: number | null;
+}
+```
+
+### `ReplayRef`
+
+```ts
+interface ReplayRef {
+  kind: string;
+  id: string;
+}
+```
+
+### `ReplayTask`
+
+```ts
+interface ReplayTask {
+  id: string;
+  scope: {
+    objective: string;
+    expected_output: string;
+    boundaries: string[];
+    acceptance: Record<string, unknown>[];
+  };
+}
+```
+
+### `ReplayVerification`
+
+```ts
+interface ReplayVerification {
+  id: string;
+  subject: ReplayRef;
+  state: string;
+  checks: Record<string, unknown>[];
+  criteria: Record<string, unknown>[];
+  validation_recorded: boolean;
+  passed: boolean;
+  starting_state: ReplayBinding;
+  [field: string]: unknown;
 }
 ```
 

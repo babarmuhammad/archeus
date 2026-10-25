@@ -645,6 +645,13 @@ def mission_trace(req):
                                homes=_read_homes(req, conn))
 
 
+def mission_replay(req):
+    """Replay & Recovery read: row evidence, settlement attribution and retention limits."""
+    from ..core.application import replay
+    with req.api.db.read() as conn:
+        return 200, replay.replay(conn, req.params['id'], homes=_read_homes(req, conn))
+
+
 def service_worker(req):
     return req.api.static.root_file('sw.js')
 
@@ -1204,6 +1211,7 @@ ROUTES = (
           'Timeline'),
     # P21 slice C (p21-design-gate D3, D14): the mission's trace
     Route('GET', '/v1/missions/{id}/trace', mission_trace, 'observe', None, None, 'Trace'),
+    Route('GET', '/v1/missions/{id}/replay', mission_replay, 'observe', None, None, 'Replay'),
     Route('GET', '/v1/automations', list_automations, 'observe', None, None, 'AutomationList'),
     Route('GET', '/v1/automations/{id}', get_automation, 'observe', None, None, 'Automation'),
     Route('GET', '/v1/automations/{id}/simulate', simulate_automation, 'observe', None, None,

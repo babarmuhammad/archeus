@@ -1594,7 +1594,70 @@ for old, target in MERGED_REDEFINE.items():
     entry = next(entry for entry in REDEFINED + NEW_MUTATIONS if entry[0] == target)
     entry[3].append(FU + 'test_final_redefined_guards[' + old + ']')
 
-MUTATIONS += REDEFINED + NEW_MUTATIONS
+RP = 'archeus/core/application/replay.py'
+RPI = 'tests/v1/integration/test_replay.py::'
+REPLAY_MUTATIONS = [
+    ('Z500', 'Replay unclassified state claims a recorded result', [(RP,
+     "    return _CATEGORY.get((machine, state), 'UNKNOWN')",
+     "    return _CATEGORY.get((machine, state), 'RECORDED')")],
+     [RPI + 'test_unclassified_state_is_unknown']),
+    ('Z501', 'Replay requires an event where a durable row already answers', [(RP,
+     '    answer = category(machine, state)',
+     "    answer = category(machine, state) if conn.execute('SELECT 1 FROM events WHERE subject_id = ?', (entity.id,)).fetchone() else 'UNKNOWN'")],
+     [RPI + 'test_rows_survive_without_events_and_missing_rows_are_not_rebuilt']),
+    ('Z502', 'Replay reads another mission rows', [(RP,
+     '    owned = {cls: rows.where(conn, cls, mission_id=mission_id) for cls in _OWN}',
+     '    owned = {cls: rows.where(conn, cls) for cls in _OWN}')],
+     [RPI + 'test_only_owned_mission_rows_are_read']),
+    ('Z503', 'Replay renders unknown as none', [(RP,
+     "    return _CATEGORY.get((machine, state), 'UNKNOWN')",
+     "    return next((a if a != 'UNKNOWN' else 'NONE' for a in [_CATEGORY.get((machine, state), 'UNKNOWN')]))")],
+     [RPI + 'test_unknown_is_never_none']),
+    ('Z504', 'Replay vocabulary omits harness', [(RP,
+     "    ('harness', 'AVAILABLE MISSING MISCONFIGURED', 'RECORDED'),", '')],
+     [RPI + 'test_vocabulary_covers_130_states_once_and_pins_totals']),
+    ('Z505', 'Replay presents clipped files as complete', [(RP,
+     "            'files_are': shape, 'complete': False, 'item_limit': 30,",
+     "            'files_are': shape, 'complete': True, 'item_limit': 30,")],
+     [RPI + 'test_checkpoint_shapes_and_clipping_are_honest']),
+    ('Z506', 'Replay files artifacts under mission instead of task', [(RP,
+     '                 for r in rows.where(conn, entities.ArtifactRecord, task_id=tid)',
+     '                 for r in rows.where(conn, entities.ArtifactRecord, mission_id=mission_id)')],
+     [RPI + 'test_artifacts_remain_task_bound']),
+    ('Z507', 'Replay treats verifier error as validation evidence', [(RP,
+     "    validation = [{**v, 'validation_recorded': v['state'] in ('PASSED', 'FAILED'),",
+     "    validation = [{**v, 'validation_recorded': v['state'] in ('PASSED', 'FAILED', 'ERROR'),")],
+     [RPI + 'test_validation_error_and_unknown_criteria_are_not_passes']),
+    ('Z508', 'Replay merges imported paths into ordinary summaries', [(RP,
+     "    shape = 'paths' if paths else 'summary' if execution is not None and execution.isolated is False else 'unknown'",
+     "    shape = 'summary' if paths else 'summary' if execution is not None and execution.isolated is False else 'unknown'")],
+     [RPI + 'test_checkpoint_shapes_and_clipping_are_honest']),
+    ('Z509', 'Replay reports Core settlement as a device act', [(RP,
+     "            settled_by = ({'system': 'core', 'user_device': 'device'}.get(actor, 'unknown')",
+     "            settled_by = ({'system': 'device', 'user_device': 'device'}.get(actor, 'unknown')")],
+     [RPI + 'test_boot_sweep_settlement_is_core']),
+    ('Z510', 'Replay ignores trigger and calls discarded reconciled', [(RP,
+     "        if payload.get('trigger') in _SETTLEMENT.get(machine, ()):",
+     "        if answer == 'RECONCILED' or payload.get('trigger') in _SETTLEMENT.get(machine, ()):")],
+     [RPI + 'test_discarded_is_not_reconciled']),
+    ('Z511', 'Replay reports unsettled lost as settled', [(RP,
+     "        settled_by, settlement_seq = 'unknown', None",
+     "        settled_by, settlement_seq = 'core', None")],
+     [RPI + 'test_lost_is_unsettled_and_names_sweep']),
+    ('Z512', 'Replay reports empty retained history as no activity', [(RP,
+     "        'history': {'answer': 'UNKNOWN' if floor or retained is None else 'RECORDED',",
+     "        'history': {'answer': 'NONE' if floor or retained is None else 'RECORDED',")],
+     [RPI + 'test_empty_event_range_is_unknown']),
+    ('Z513', 'Replay reconstructs missing rows from retained events', [(RP,
+     "    records = [_record(conn, mission.entity, 'mission', mission.entity.state, floor)]",
+     "    records = [_record(conn, mission.entity, 'mission', mission.entity.state, floor)] + [dict(ref={'kind': 'execution', 'id': e['subject_id']}, machine='execution', state='ENDED_OK', answer='RECORDED', reason='event_fallback', settled_by='unknown', settlement_reason='event_fallback', settlement_seq=None) for e in conn.execute(\"SELECT subject_id FROM events WHERE subject_kind = 'execution'\") if rows.get(conn, entities.Execution, e['subject_id']) is None]")],
+     [RPI + 'test_rows_survive_without_events_and_missing_rows_are_not_rebuilt']),
+    ('Z514', 'Replay skips trace public projection', [(RP,
+     '    return system_value(result, homes)', '    return result')],
+     [RPI + 'test_all_replay_strings_use_trace_public_projection']),
+]
+
+MUTATIONS += REDEFINED + NEW_MUTATIONS + REPLAY_MUTATIONS
 
 if __name__ == '__main__':
     selected = [MERGED_REDEFINE.get(mid, mid) for mid in sys.argv[1:]]

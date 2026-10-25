@@ -309,6 +309,7 @@ T150 = {
 P21 = {
     ('GET', '/v1/search', 'observe', None),
     ('GET', '/v1/missions/{id}/trace', 'observe', None),
+    ('GET', '/v1/missions/{id}/replay', 'observe', None),
     ('GET', '/v1/metrics', 'observe', None),
 }
 

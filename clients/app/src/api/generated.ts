@@ -932,6 +932,128 @@ export interface Redeemed {
   scopes: string[];
 }
 
+export interface Replay {
+  mission_id: string;
+  records: ReplayRecord[];
+  starting_state: ReplayBinding;
+  tasks: ReplayTask[];
+  executions: ReplayExecution[];
+  policy_decisions: ReplayPolicyDecision[];
+  approvals: ReplayApproval[];
+  checkpoints: ReplayCheckpoint[];
+  artifacts: ReplayArtifact[];
+  verifications: ReplayVerification[];
+  external_effects: {
+    answer: 'UNKNOWN';
+    reason: string;
+  };
+  history: ReplayHistory;
+}
+
+export interface ReplayApproval {
+  id: string;
+  action_hash: string;
+  state: string;
+  subject: ReplayRef;
+  decided_by: string | null;
+  [field: string]: unknown;
+}
+
+export interface ReplayArtifact {
+  id: string;
+  artifact_id: string;
+  task_id: string;
+  produced_by: ReplayRef;
+  kind: string;
+  label: string;
+  [field: string]: unknown;
+}
+
+export interface ReplayBinding {
+  source: string;
+  revision: string | null;
+  answer: 'RECORDED' | 'UNKNOWN';
+  reason: string;
+}
+
+export interface ReplayCheckpoint {
+  id: string;
+  execution_id: string;
+  task_id: string;
+  files_changed: string[];
+  files_are: 'summary' | 'paths' | 'unknown';
+  complete: boolean;
+  item_limit: number;
+  reason: string;
+}
+
+export interface ReplayExecution {
+  id: string;
+  task_id: string | null;
+  exit_reason: string | null;
+  charged: boolean | null;
+  starting_state: ReplayBinding;
+}
+
+export interface ReplayHistory {
+  answer: 'RECORDED' | 'UNKNOWN';
+  reason: string;
+  floor: number;
+  head: number;
+  oldest_retained_at: string | null;
+  event_days: number;
+  open_mission_extension: boolean;
+  gap: string;
+}
+
+export interface ReplayPolicyDecision {
+  id: string;
+  stage: string | null;
+  decision: string;
+  reason: string;
+  outcome: string | null;
+  matched_rules: Record<string, unknown>[];
+  [field: string]: unknown;
+}
+
+export interface ReplayRecord {
+  ref: ReplayRef;
+  machine: string;
+  state: string;
+  answer: 'INTENDED' | 'AUTHORIZED' | 'RECORDED' | 'MAY-HAVE-TAKEN-EFFECT' | 'UNCERTAIN' | 'SUSPENDED' | 'RECONCILED' | 'NONE' | 'UNKNOWN';
+  reason: string;
+  settled_by: 'core' | 'device' | 'unknown';
+  settlement_reason: string;
+  settlement_seq: number | null;
+}
+
+export interface ReplayRef {
+  kind: string;
+  id: string;
+}
+
+export interface ReplayTask {
+  id: string;
+  scope: {
+    objective: string;
+    expected_output: string;
+    boundaries: string[];
+    acceptance: Record<string, unknown>[];
+  };
+}
+
+export interface ReplayVerification {
+  id: string;
+  subject: ReplayRef;
+  state: string;
+  checks: Record<string, unknown>[];
+  criteria: Record<string, unknown>[];
+  validation_recorded: boolean;
+  passed: boolean;
+  starting_state: ReplayBinding;
+  [field: string]: unknown;
+}
+
 export interface Replied {
   reply_id?: string | null;
   intent_id?: string | null;
@@ -1670,6 +1792,7 @@ export const paths = {
   attentionItems: () => '/v1/attention',
   missionTimeline: (id: string, query: { before?: number; limit?: number } = {}) => '/v1/missions/' + encodeURIComponent(id) + '/timeline' + qs(query),
   missionTrace: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/trace',
+  missionReplay: (id: string) => '/v1/missions/' + encodeURIComponent(id) + '/replay',
   listAutomations: () => '/v1/automations',
   getAutomation: (id: string) => '/v1/automations/' + encodeURIComponent(id),
   simulateAutomation: (id: string, query: { days?: number } = {}) => '/v1/automations/' + encodeURIComponent(id) + '/simulate' + qs(query),
@@ -1874,6 +1997,8 @@ export const api = {
     send<Timeline>('GET', paths.missionTimeline(id, query)),
   missionTrace: (send: Send, id: string) =>
     send<Trace>('GET', paths.missionTrace(id)),
+  missionReplay: (send: Send, id: string) =>
+    send<Replay>('GET', paths.missionReplay(id)),
   listAutomations: (send: Send) =>
     send<AutomationList>('GET', paths.listAutomations()),
   getAutomation: (send: Send, id: string) =>
