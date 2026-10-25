@@ -1153,6 +1153,7 @@ MUTATIONS = [
 
 CA = 'archeus/core/execution/command_allowlist.py'
 CU = 'tests/v1/unit/test_command_allowlist.py::'
+FU = 'tests/v1/unit/test_p21_redefine_final.py::'
 PU = 'tests/v1/unit/test_p21_proof_tools.py::'
 AH = 'tests/v1/integration/test_p21_allowlist_hook.py::'
 CH = 'tests/v1/unit/test_command_allowlist_hook.py::'
@@ -1160,7 +1161,8 @@ PM = 'tools/p21_classifier_moves.py'
 
 
 def _guard_mutant(id, description, before, after, test):
-    return (id, description, [(CA, before, after)], [CU + test])
+    return (id, description, [(CA, before, after)],
+            [(FU if test.startswith('test_final_') else CU) + test])
 
 
 def _row_mutant(id, program, prefix, test='test_new_guard_mutation_witnesses'):
@@ -1369,6 +1371,10 @@ REDEFINED += [
 ]
 
 NEW_MUTATIONS = [
+    ('Z499', 'HELD remote risk label receives a policy host', [(CN,
+     '                    return ([Action(action_class=cls, target=target, argv=_stored_command(cmd, tool))], False), result',
+     "                    return ([Action(action_class=cls, target=target, argv=_stored_command(cmd, tool), host='evil.example')], False), result")],
+     [CH + 'test_held_remote_commands_have_no_policy_host']),
     ('Z324', 'executor cap narrowed to exact Bash', [(EX,
      "    if needs_command_cap(request.get('tool'), request.get('input'), unclassified) and not (",
      "    if request.get('tool') == 'Bash' and not (")],
@@ -1514,19 +1520,83 @@ NEW_MUTATIONS = [
      [PU + 'test_gate_allowlist_block_matches_data']),
 ]
 
-NOT_DONE_REDEFINE = ('Z417', 'Z431', 'Z189', 'Z435', 'Z441', 'Z447', 'Z448', 'Z450', 'Z451', 'Z452', 'Z456', 'Z458', 'Z229', 'Z230', 'Z231', 'Z464', 'Z465', 'Z470', 'Z471', 'Z472', 'Z473', 'Z250', 'Z251', 'Z252', 'Z260', 'Z266', 'Z267', 'Z278', 'Z279', 'Z281', 'Z289', )
-MERGED_REDEFINE = {'Z430': 'Z428', 'Z460': 'Z319'}
+REDEFINED += [
+    _row_mutant('Z417', 'curl', ('-o', 'out.txt', 'https://h.example/x'),
+                'test_final_redefined_rows[Z417]'),
+    _row_mutant('Z431', 'curl', ('--output', 'https://decoy.example/x', 'https://h.example/x'),
+                'test_final_redefined_rows[Z431]'),
+    _guard_mutant('Z189', 'attached quoted fragment accepted as a command word',
+                  '    tokens = _scan(command)',
+                  '    tokens = _scan(command.replace(\'p"wd"\', \'pwd\'))',
+                  'test_final_redefined_guards[Z189]'),
+    _row_mutant('Z441', 'curl', ('https://decoy.example/x', 'https://h.example/x'),
+                'test_final_redefined_rows[Z441]'),
+    _guard_mutant('Z450', 'subshell parentheses silently discarded',
+                  '    for char in command:',
+                  "    for char in command.replace('(', '').replace(')', ''):",
+                  'test_final_redefined_guards[Z450]'),
+    _guard_mutant('Z451', 'shell negation silently discarded',
+                  '    for char in command:', "    for char in command.replace('!', ''):",
+                  'test_final_redefined_guards[Z451]'),
+    _row_mutant('Z456', 'curl', ('--proxy', 'https://proxy.example/x', 'https://h.example/x'),
+                'test_final_redefined_rows[Z456]'),
+    _guard_mutant('Z229', 'Unicode switch dashes silently discarded',
+                  '    for char in command:',
+                  "    for char in command.translate(dict.fromkeys(map(ord, '\u2013\u2014\u2015'))):",
+                  'test_final_redefined_guards[Z229]'),
+    _guard_mutant('Z230', 'Windows executable path silently normalized',
+                  '    tokens = _scan(command)',
+                  "    tokens = _scan(command.removeprefix('C:\\\\tools\\\\'))",
+                  'test_final_redefined_guards[Z230]'),
+    _row_mutant('Z231', 'less', ('+F', 'file.txt'), 'test_final_redefined_rows[Z231]'),
+    _row_mutant('Z464', 'vi', ('file.txt',), 'test_final_redefined_rows[Z464]'),
+    _row_mutant('Z465', 'mawk', ('x',), 'test_final_redefined_rows[Z465]'),
+    _row_mutant('Z260', 'mywrap', ('eval', 'rm'), 'test_final_redefined_rows[Z260]'),
+    _row_mutant('Z267', 'tar', ('--to-c', 'sh', '-cf', 'a.tar', 'd'),
+                'test_final_redefined_rows[Z267]'),
+    _row_mutant('Z278', 'sed', ('s:a:b:e',), 'test_final_redefined_rows[Z278]'),
+    _row_mutant('Z279', 'sed', ('-es/a/b/e',), 'test_final_redefined_rows[Z279]'),
+    _row_mutant('Z289', 'less.exe', ('+F', 'file.txt'), 'test_final_redefined_rows[Z289]'),
+    _guard_mutant('Z252', 'Windows system path silently normalized',
+                  '    tokens = _scan(command)',
+                  "    tokens = _scan(command.removeprefix('C:\\\\Windows\\\\System32\\\\'))",
+                  'test_final_redefined_guards[Z252]'),
+    _row_mutant('Z281', 'ssh', ('-o', 'Match exec x', 'h'), 'test_final_redefined_quoted_ssh_carrier'),
+]
+REDEFINED[-1][2].append((CA, '    return not token.quoted and token.text == word',
+                         '    return token.text == word'))
+for _id, _tail in (('Z452', ('mytool', '{}', '+')), ('Z470', ('rm', '{}', '+'))):
+    REDEFINED.append(_row_mutant(_id, 'find', ('.', '-exec') + _tail, 'test_final_redefined_find_exec[' + _id + ']'))
+    REDEFINED[-1][2].append((CA, "_ALWAYS_FORBIDDEN = frozenset('$`\\\\{}*?[]~%!')",
+                             "_ALWAYS_FORBIDDEN = frozenset('$`\\\\*?[]~%!')"))
+
+NOT_DONE_REDEFINE = ()
+# Shared allow-list guards replace the separate deny-list recognizers.
+MERGED_REDEFINE = {
+    'Z430': 'Z428', 'Z460': 'Z319',
+    'Z435': 'Z189',  # Attached /c quotes and -c quotes share the scanner guard.
+    'Z447': 'Z298', 'Z448': 'Z298',  # Braces are forbidden in every token.
+    'Z458': 'Z296',  # Line separators share the scanner character guard.
+    'Z471': 'Z301', 'Z473': 'Z301',  # Empty quote concatenation is never normalized.
+    'Z472': 'Z298', 'Z250': 'Z298', 'Z266': 'Z298',  # No brace expansion anywhere.
+    'Z251': 'Z299',  # No glob expansion, including executable suffixes.
+}
+RETIRED_REDEFINE = {}
 for entry in REDEFINED:
-    if entry[0] in ('Z418', 'Z425', 'Z426', 'Z427', 'Z469', 'Z248', 'Z249', 'Z277'):
+    if entry[0] in ('Z418', 'Z425', 'Z426', 'Z427', 'Z469', 'Z470', 'Z248', 'Z249', 'Z277'):
         entry[3].append(AH + 'test_redefined_write_send_forms_never_auto_allow[' + entry[0] + ']')
     if entry[0] == 'Z428':
         entry[3].append('tests/v1/unit/test_command_allowlist_hook.py::test_structured_host_privacy[Z430]')
 
+for old, target in MERGED_REDEFINE.items():
+    if old in ('Z430', 'Z460'):
+        continue
+    entry = next(entry for entry in REDEFINED + NEW_MUTATIONS if entry[0] == target)
+    entry[3].append(FU + 'test_final_redefined_guards[' + old + ']')
+
 MUTATIONS += REDEFINED + NEW_MUTATIONS
 
 if __name__ == '__main__':
-    if not sys.argv[1:] or set(sys.argv[1:]) & set(NOT_DONE_REDEFINE):
-        raise SystemExit('Incomplete allow-list ledger; NOT DONE: ' + ', '.join(NOT_DONE_REDEFINE))
     selected = [MERGED_REDEFINE.get(mid, mid) for mid in sys.argv[1:]]
     unknown = set(selected) - {entry[0] for entry in MUTATIONS}
     if unknown:

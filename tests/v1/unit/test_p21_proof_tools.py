@@ -97,13 +97,24 @@ def test_matched_policy_contexts_exercise_real_engine(command, cls):
 def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
     from tools.mutate_p21 import (
         MERGED_REDEFINE, MUTATIONS, NEW_MUTATIONS, NOT_DONE_REDEFINE, REDEFINED,
+        RETIRED_REDEFINE,
     )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 233 + 85 + 41
-    assert len(REDEFINED) == 85
-    assert len(NOT_DONE_REDEFINE) == 31
-    assert MERGED_REDEFINE == {'Z430': 'Z428', 'Z460': 'Z319'}
-    assert len(REDEFINED) + len(NOT_DONE_REDEFINE) + len(MERGED_REDEFINE) == 118
+    assert len(ids) == len(set(ids)) == 233 + 106 + 42
+    assert len(REDEFINED) == 106
+    assert NOT_DONE_REDEFINE == ()
+    assert MERGED_REDEFINE == {
+        'Z430': 'Z428', 'Z460': 'Z319', 'Z435': 'Z189', 'Z447': 'Z298',
+        'Z448': 'Z298', 'Z458': 'Z296', 'Z471': 'Z301', 'Z473': 'Z301',
+        'Z472': 'Z298', 'Z250': 'Z298', 'Z266': 'Z298', 'Z251': 'Z299',
+    }
+    assert RETIRED_REDEFINE == {}
+    retired = len(RETIRED_REDEFINE)
+    assert len(REDEFINED) + len(NOT_DONE_REDEFINE) + len(MERGED_REDEFINE) + retired == 118
+    assert len({entry[0] for entry in REDEFINED} | set(MERGED_REDEFINE) | set(RETIRED_REDEFINE)) == 118
+    assert set(RETIRED_REDEFINE).isdisjoint(ids)
+    assert set(RETIRED_REDEFINE).isdisjoint(MERGED_REDEFINE)
+    assert set(RETIRED_REDEFINE).isdisjoint(NOT_DONE_REDEFINE)
     assert set(MERGED_REDEFINE).isdisjoint(ids)
     assert set(MERGED_REDEFINE).isdisjoint(NOT_DONE_REDEFINE)
     assert set(MERGED_REDEFINE.values()) <= set(ids)
@@ -113,6 +124,7 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
     for mid, _, edits, _ in REDEFINED + NEW_MUTATIONS:
         for path, before, after in edits:
             assert before != after, mid
+            assert '\n' not in before and '\r' not in before, mid
             assert (root / path).read_text(encoding='utf-8').count(before) == 1, mid
 
 
