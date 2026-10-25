@@ -133,6 +133,15 @@ def test_create_on_desktop_observe_and_approve_on_mobile_execute_review_inspect(
     check(mission['origin'] == 'conversation', 'the mission came from the desktop conversation')
     page.locator('.conversation [data-ref="mission:%s"]' % mid).first.wait_for()
     check(True, "the desktop's conversation names the mission it made")
+    # T-150: under `standard` a chat mission asks to start; the desktop approves that card
+    wait(page, lambda: [x for x in tc.http('GET', '/v1/approvals?mission=' + mid).json()['approvals']
+                        if x['state'] == 'PENDING'], what='the start card')
+    (start,) = [x for x in tc.http('GET', '/v1/approvals?mission=' + mid).json()['approvals']
+                if x['state'] == 'PENDING']
+    started = tc.http('POST', '/v1/approvals/%s/decide' % start['id'], body={
+        'decision': 'approve', 'action_hash': start.get('action_hash'),
+        'expected_version': start.get('version'), 'idempotency_key': 'start-' + start['id']})
+    check(started.status == 200, 'the desktop approved the start: %s' % started.body)
     _settled(tc, mid, 'APPROVAL_REQUIRED')
     _go(page, '#/work')
     _shows(page, mid, 'APPROVAL_REQUIRED', 'the desktop')
