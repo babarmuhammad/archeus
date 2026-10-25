@@ -1,7 +1,7 @@
 """Mission confirmation under `careful` over a real Core (P19 S4;
 p19-design-gate B6, §4.1): starting a mission is the action class
-`mission.start`. `standard` and `autonomous` allow it, so a mission starts as
-it always has; under `careful` the engine asks P9 before it fires START, an
+`mission.start`. `standard` and `autonomous` allow API missions to start;
+chat and idea missions under `standard` ask first. Under `careful` the engine asks P9 before START, an
 Approval of kind `start` is created and the mission waits in CREATED.
 Approving it (Attention, or the card in the conversation through B5) fires
 START; rejecting it cancels the mission. No new route, card or edge."""

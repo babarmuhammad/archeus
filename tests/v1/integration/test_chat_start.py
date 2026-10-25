@@ -1,10 +1,13 @@
 """T-150 (a) (owner 2026-10-21, p19-design-gate B6): a mission made from a chat
 message asks before it starts under `standard`. Start approves it (the card
-'Start and plan "<title>"?'), and then the engine plans it. Keep as mission
+'Start and plan "<title>"?'), and then the engine plans it and asks approval
+of that plan before execution. Keep as mission
 (the reject) leaves it CREATED and idle: it is not cancelled and not asked
 again on a later pass, not even after a Core restart. Only an explicit start
 asks again, once. `careful` and `autonomous` keep their behaviour, and a
 mission made through the API (origin `api`) starts under `standard` as before."""
+
+from datetime import timedelta
 
 import pytest
 
@@ -83,9 +86,20 @@ def test_approve_starts_the_chat_mission_and_the_engine_plans_it(core):
     a = core.pending(mid)
     assert core.decide(mid)['mission']['state'] == 'UNDERSTANDING'
     assert core.row(entities.Approval, a.id).entity.state == 'APPROVED'
-    assert core.engine.run(mid)['state'] != 'CREATED'
-    assert core.all(entities.Plan, mission_id=mid)                # it was planned
+    assert core.engine.run(mid)['state'] == 'APPROVAL_REQUIRED'
+    (plan,) = core.all(entities.Plan, mission_id=mid)
+    assert plan.state == 'PROPOSED'
+    assert core.pending(mid).kind == 'plan'
+    assert core.all(entities.Execution) == []
+    assert 'chat mission needs its plan approved' in str(core.pending(mid).presented)
     assert _start_decisions(core, mid) == [('ASK', 'asked'), ('ASK', 'approved')]
+    _restart(core)
+    assert core.engine.run(mid)['state'] == 'APPROVAL_REQUIRED'
+    assert core.all(entities.Execution) == []
+    core.decide(mid)
+    assert core.row(entities.Plan, plan.id).entity.state == 'APPROVED'
+    core.engine.step(mid)
+    assert core.row(entities.Mission, mid).entity.state == 'EXECUTING'
 
 
 def test_a_waiting_chat_mission_does_no_work_however_often_the_engine_passes(core):
@@ -194,6 +208,7 @@ def test_a_user_level_autonomous_profile_starts_a_chat_mission_without_asking(co
     assert core.engine.run(mid)['state'] != 'CREATED'
     assert _starts(core, mid) == []
     assert _start_decisions(core, mid) == [('ALLOW', 'allow')]
+    assert core.all(entities.Approval, mission_id=mid) == []
 
 
 # ── only the Start card reads "Start and plan" ──
@@ -211,3 +226,67 @@ def test_a_plan_card_for_a_chat_mission_is_not_worded_as_the_start(core):
         (card,) = [m for m in queries.messages(c, _primary(c))
                    if any(x['ref']['id'] == plan.id for x in m['cards'])]
     assert card['text'] == '"Chat work" needs your approval: %s.' % plan.presented['scope']
+
+
+def test_promoting_an_idea_by_chat_asks_with_a_start_card(make):  # noqa: F811
+    r = make([brain(('Idea: a digest email.', {'kind': 'idea', 'title': 'Digest',
+                                             'objective': 'a digest email'}),
+                    ('Make the digest idea a mission.', {'kind': 'new_work', 'target': 'i1'}))])
+    r.say('Idea: a digest email.')
+    r.say('Make the digest idea a mission.')
+    (m,) = r.all(entities.Mission)
+    assert (m.origin, m.state) == ('idea', 'CREATED')
+    authz = authorization.Authorization(missions=commands.Missions(policy=PolicyEngine()))
+    assert r.run(authz.gate_start, mission_id=m.id) == {
+        'started': False, 'waiting': 'approval_required'}
+    (a,) = r.all(entities.Approval, mission_id=m.id)
+    assert (a.kind, a.state) == ('start', 'PENDING')
+    texts = r.read(lambda c: queries.messages(c, _primary(c)))
+    assert 'Start and plan "Digest"?' in [x['text'] for x in texts]
+    assert r.all(entities.Plan) == [] and r.all(entities.Execution) == []
+
+
+@pytest.mark.parametrize('origin', ['conversation', 'idea'])
+def test_expired_start_stays_idle_until_an_explicit_request(core, monkeypatch, origin):
+    monkeypatch.setitem(authorization.TTL, 'start', timedelta(seconds=-1))
+    mid = core.do(commands.create_mission, title='Expired', objective='o', origin=origin)['id']
+    core.engine.run(mid)
+    (a,) = _starts(core, mid)
+    core.do(authorization.expire_due)
+    assert core.row(entities.Approval, a.id).entity.state == 'EXPIRED'
+    _restart(core)
+    for _ in range(3):
+        assert core.engine.run(mid)['state'] == 'CREATED'
+    assert [x.id for x in _starts(core, mid)] == [a.id]
+    assert _planned(core, mid) == ([], [], [])
+    monkeypatch.setitem(authorization.TTL, 'start', timedelta(hours=24))
+    authz = authorization.Authorization(missions=core.missions)
+    assert core.do(authz.request_start, mission_id=mid)['waiting'] == 'approval_required'
+    assert [x.state for x in _starts(core, mid)] == ['EXPIRED', 'PENDING']
+    core.decide(mid)
+    assert core.engine.run(mid)['state'] == 'APPROVAL_REQUIRED'
+    assert core.pending(mid).kind == 'plan'
+
+
+@pytest.mark.parametrize('origin, profile, decision', [
+    ('conversation', 'standard', 'ASK'), ('idea', 'standard', 'ASK'),
+    ('api', 'standard', 'ALLOW'), ('conversation', 'autonomous', 'ALLOW'),
+    ('conversation', 'careful', 'ASK')])
+def test_simulating_start_matches_the_gate_without_writes(core, origin, profile, decision):
+    core.do(authorization.set_profile, actor=_admin(core), scope='user', profile=profile)
+    mid = core.do(commands.create_mission, title='Simulated', objective='o', origin=origin)['id']
+    authz = authorization.Authorization(missions=core.missions)
+    before = core.events()
+    with core.db.read() as conn:
+        got = authz.simulate(conn, now='2026-10-25T00:00:00Z', mission_id=mid,
+                             action={'class': 'mission.start', 'target': 'mission:' + mid})
+        denied = authz.simulate(conn, now='2026-10-25T00:00:00Z', mission_id=mid,
+                                action={'class': 'mission.start', 'target': 'mission:' + mid},
+                                extra_rules=[{'scope_level': 'MISSION', 'scope_ref': mid,
+                                              'action_class': 'mission.start',
+                                              'decision': 'DENY'}])
+    assert got['decision'] == decision and got['simulated']
+    assert denied['decision'] == 'DENY'
+    assert core.events() == before
+    core.do(authz.gate_start, mission_id=mid)
+    assert _start_decisions(core, mid)[0][0] == decision

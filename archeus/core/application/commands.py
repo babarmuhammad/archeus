@@ -222,6 +222,7 @@ def persisted_facts(tx, row):
     reviews = tx.where(entities.Review, plan_id=plan.entity.id)
     return guards.MissionFacts(
         plan_version=plan.entity.plan_version, tasks=tasks, criteria=criteria,
+        explicit_plan_approval=authorization.asks_before_start(tx.conn, m),
         review=reviews[-1].entity.state if reviews else None,
         cost_within_ceiling=None if band is None else (
             entities.COST_BANDS.index(band)
