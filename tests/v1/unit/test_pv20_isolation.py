@@ -1219,7 +1219,7 @@ class TestRestartReconciliation:
     def test_establishment_failure_is_uncharged_refuse(self):
         m, e, changed = self._reconcile('INTENT', iso_state='failed')
         refused = [(c, k) for c, k in m.calls if c is X.refuse]
-        assert refused and refused[0][1]['stop_reason'] == 'binding'
+        assert refused and refused[0][1]['stop_reason'] == 'spawn'         # O7 (T-106)
 
     def test_running_without_handle_is_lost(self):
         m, e, changed = self._reconcile('RUNNING', handle=None)
@@ -3054,7 +3054,7 @@ class TestUnsettledRecords:
                                   failure='condition_unmet:grants')
         assert m._reconcile_isolated(_e(state), object(), rec, None, disarmed=False) is True
         (command, kw), = m.calls
-        assert command is X.refuse and kw['stop_reason'] == 'binding'
+        assert command is X.refuse and kw['stop_reason'] == 'spawn'     # O7 (T-106)
         assert kw['reason'].endswith('condition_unmet:grants')
 
 

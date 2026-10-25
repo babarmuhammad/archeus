@@ -36,16 +36,22 @@ command that recorded it asks P9's approval machinery.
 
 `snap` (the decision's `input_snapshot`): harnesses [{id, installed,
 capabilities, enforcement, structured_output, efforts, models [{id, tier,
-context_window}], exempt}], accounts [{id, ref, harness, label, auth_kind,
+context_window}], exempt, breaker {state, until, error} when not closed (T-106)}],
+accounts [{id, ref, harness, label, auth_kind,
 registered, health, why_not, policy, usage {windows {5h: pct}, resets_at,
 age_s}, usage_measures, ledger {tokens_today, cost_today, running, complete
 {tokens, cost}}}], terms {harness:
 {headless, rotation}}, affinity {harness, account}, approved_fallbacks [key].
+Times are strings in UTC (ms, Z): `now` and a breaker's `until`. Each `resets_at`
+value is {at, key} (domain/instants.py `ahead`: `at` the instant as written, offset
+kept; `key` the same instant in UTC) or None when past or unreadable, which the
+builder writes. The router orders and compares by `key` and writes `at`; without
+`now` it compares nothing.
 """
 
 TIERS = ('small', 'mid', 'large')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
-         'restriction', 'health', 'allocation', 'partition', 'election')
+         'restriction', 'breaker', 'health', 'allocation', 'partition', 'election')
 #: health states the router may use (state-machines §9); DEGRADED only by fallback
 ROUTABLE = ('AVAILABLE', 'CONSTRAINED')
 #: the conservative bump a task adds before it starts, by size (resource-router §4)
@@ -262,6 +268,15 @@ def _last_resort(c, req):
             and not _named(c, req))
 
 
+def _breaker(c, req, snap):
+    """O7 (T-106): a harness whose breaker is open is not a candidate; half-open
+    lets this one task try."""
+    b = c['_h'].get('breaker')
+    if b and b['state'] == 'open':
+        return 'cannot start: %s' % (b.get('error') or 'no reason recorded')
+    return None
+
+
 def _health(c, req, snap):
     a = c['_a']
     if not a:
@@ -341,7 +356,8 @@ def _budgets(budgets, a):
 
 _STEP = {'installed': _installed, 'headless': _headless, 'capability': _capability,
          'model': _model, 'enforcement': _enforcement, 'provider_terms': _terms,
-         'restriction': _restriction, 'health': _health, 'allocation': _allocation}
+         'restriction': _restriction, 'breaker': _breaker, 'health': _health,
+         'allocation': _allocation}
 
 
 def order_key(c, req, snap):
@@ -371,6 +387,13 @@ def _why(win, rest, req, snap):
         if _WHY[i]:
             return '%s, and %s' % (head, _WHY[i])
     return head
+
+
+def _resets(account):
+    """The 5-hour reset values of a candidate's account that are still ahead (a feed's
+    mapping, else none): {at, key} each."""
+    rs = (account.get('usage') or {}).get('resets_at')
+    return [r for r in rs.values() if r] if isinstance(rs, dict) else []
 
 
 def route(req, snap):
@@ -420,8 +443,16 @@ def route(req, snap):
         else:
             ask = next((c for c in fb if c['fallback'] == 'ask'), None)
             result, win = ('ask', ask) if ask is not None else ('blocked', None)
-    resets = sorted(r for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
-                    for r in ((c['_a'].get('usage') or {}).get('resets_at') or {}).values() if r)
+    # the waits are the snapshot's {at, key} (domain/instants.py, T-106 r2): one with a
+    # key after the snapshot's `now` is a wait; a past or unreadable one is never one.
+    # Ordering and the check use the UTC key, so readings in any zone compare by instant
+    # (T-106 r8); `at` is what the decision writes. Without `now` nothing is compared
+    now = snap.get('now')
+    waits = [r for c in cands if c['eliminated_at_step'] in ('health', 'allocation')
+             for r in _resets(c['_a'])]
+    waits += [{'at': u, 'key': u} for c in cands if c['eliminated_at_step'] == 'breaker'
+              for u in [c['_h']['breaker']['until']] if u]
+    waits = [w for w in waits if now is None or w['key'] > now]
     public = [{k: v for k, v in c.items() if not k.startswith('_')} for c in cands]
     return {
         'result': result,
@@ -434,7 +465,8 @@ def route(req, snap):
         'fallback_from': [c['resource'] for c in cands if c is not win
                           and c['eliminated_at_step'] in ('health', 'allocation')]
         if result in ('fallback', 'ask') else [],
-        'unblock_at': resets[0] if resets and result == 'blocked' else None}
+        'unblock_at': min(waits, key=lambda w: w['key'])['at']
+        if waits and result == 'blocked' else None}
 
 
 def explain(d, req):

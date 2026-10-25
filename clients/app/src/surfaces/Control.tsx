@@ -259,7 +259,7 @@ function ResourcesSection() {
                       <Changed on={changed('harness', x.id)} />
                     </th>
                     <td>{x.installed ? 'yes' : 'no'}</td>
-                    <td>{x.execution ? 'yes' : 'no'}</td>
+                    <td>{!x.execution ? 'no' : x.breaker ? `cannot start: ${x.breaker.error ?? 'no reason recorded'} (${x.breaker.state === 'open' ? `next try at ${x.breaker.until}` : 'one task may try now'})` : 'yes'}</td>
                     <td>{x.calls ? 'yes' : 'no'}</td>
                     <td>{x.enforcement ?? '—'}</td>
                     <td className="mono">{x.models.map((m) => String(m.id ?? m.model ?? '')).filter(Boolean).join(', ') || '—'}</td>

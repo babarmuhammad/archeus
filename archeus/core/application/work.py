@@ -319,7 +319,10 @@ class Work:
         """READY -> ROUTING -> RUNNING and a new Execution in INTENT, committed
         before any process exists (state-machines §4). Refused with
         PolicyDenied, writing nothing, when the policy DENIES an action class
-        of the task. No eligible resource -> the task is BLOCKED."""
+        of the task. No eligible resource -> the task is BLOCKED, unless a
+        harness it could run on only cannot start now (O7's breaker, T-106): then
+        it stays READY, and the engine routes it again at the decision's
+        `unblock_at`."""
         t = lifecycle.load(tx, entities.Task, task_id).entity
         m = lifecycle.load(tx, entities.Mission, t.mission_id).entity
         if m.state != 'EXECUTING':
@@ -334,7 +337,6 @@ class Work:
         if auth['outcome'] != 'covered':
             return {'task_id': task_id, 'execution_id': None, 'state': t.state,
                     'authorization': auth}
-        self._fire(tx, entities.Task, task_id, 'dispatch', actor, 'dispatched')
         # P10: only an authorised task reaches the router, which checks that
         # authorisation again and records its decision in this transaction
         route = self.router.route(Ref('task', task_id), time.time() if now is None else now,
@@ -342,6 +344,11 @@ class Work:
                                   plan=plan, task=t)
         result = route.result or ('selected' if route.selected else 'blocked')
         rd = route.id if route.decided_by == 'router' else None
+        if result == 'blocked' and route.unblock_at and any(
+                c.get('eliminated_at_step') == 'breaker' for c in route.candidates):
+            return {'task_id': task_id, 'execution_id': None, 'state': t.state,
+                    'route_decision_id': rd, 'unblock_at': route.unblock_at}
+        self._fire(tx, entities.Task, task_id, 'dispatch', actor, 'dispatched')
         if result == 'ask':
             self._fire(tx, entities.Task, task_id, 'route_needs_approval', actor,
                        route.explanation)

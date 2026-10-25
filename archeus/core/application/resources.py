@@ -15,11 +15,12 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from ...infra.db import rows
-from ..domain import actions, entities, ids, states
+from ..domain import actions, entities, ids, instants, states
 from ..domain.events import new_event
 from ..domain.values import Ref
 from ..routing import router as R
 from . import authorization as A
+from . import executions as X
 from . import lifecycle
 from .queries import view
 
@@ -300,6 +301,7 @@ def _registered(conn, harness_ids, feed, now):
     decision's command (`observe`)."""
     policies = {r.entity.account_id: r.entity for r in rows.where(conn, entities.ResourcePolicy)}
     today = _iso(now)[:10]
+    now_dt = datetime.fromtimestamp(now, timezone.utc)
     out, readings = [], {}
     for r in rows.where(conn, entities.Account):
         a = r.entity
@@ -309,8 +311,13 @@ def _registered(conn, harness_ids, feed, now):
         if fed:
             readings[a.id] = fed
         rd = fed or latest_usage(conn, a.id)
+        resets = (rd or {}).get('resets_at')
         usage = None if not rd else {
-            'windows': dict(rd['windows']), 'resets_at': dict(rd.get('resets_at') or {}),
+            'windows': dict(rd['windows']),
+            # each reset still ahead as {at, key} (instants.ahead), else None: the router
+            # orders by key and never parses a provider's free text (T-106 r8)
+            'resets_at': {w: instants.ahead(v, now_dt) for w, v in resets.items()}
+            if isinstance(resets, dict) else {},
             'observed_at': _iso(rd['observed_at']),
             'age_s': max(0, round(now - rd['observed_at'], 3)), 'source': rd['source']}
         p = policies[a.id]
@@ -430,12 +437,38 @@ def _approved_fallbacks(conn, task, plan):
                    and a.entity.plan_id == plan.id})
 
 
+def breaker(conn, harness_id, now):
+    """O7's spawn breaker of a harness as the snapshot and the harness view
+    carry it (T-106): None when closed."""
+    b = X.spawn_breaker(conn, harness_id, now)
+    return b and dict(b, until=b['until'] and _iso(b['until']))
+
+
+def route_wait(conn, task_id, now):
+    """Until when (epoch) the task waits because its latest route found it could
+    run only on harnesses that cannot start (O7), or None: it is not routed again
+    on every pass (T-106)."""
+    rec = conn.execute('SELECT * FROM route_decisions WHERE task_id = ? ORDER BY rowid DESC'
+                       ' LIMIT 1', (task_id,)).fetchone()
+    d = rec and rows.decode(entities.RouteDecision, rec).entity
+    if not (d and d.result == 'blocked' and d.unblock_at
+            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):
+        return None
+    at = instants.instant(d.unblock_at)    # the same parse the snapshot used: any zone, one instant
+    until = at and at.timestamp()
+    return until if until and until > now else None
+
+
 def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
     """(requirements, snapshot, readings) for an authorised task: the execution
     adapters (the registry's), whose own account is the harness's default."""
     from ...harnesses.registry import _is_fake
     rp = mission.resource_preferences or {}
     hs = [harness_view(a, _is_fake(a)) for a in sorted(adapters, key=lambda a: a.id)]
+    for h in hs:
+        b = breaker(conn, h['id'], now)
+        if b:
+            h['breaker'] = b
     accounts, readings = _registered(conn, {h['id'] for h in hs}, feed, now)
     have = {a['harness'] for a in accounts}
     by = {a.id: a for a in adapters}
@@ -523,10 +556,26 @@ def record_call_route(tx, *, actor, purpose, source, workspace_id, project_id, r
     return {'route_decision_id': row.entity.id, 'decision': decision, 'snapshot': snapshot}
 
 
+def _written_resets(snap):
+    """*snap* with each account's resets written as the builder writes them, judged at
+    the snapshot's own `now`: a decision recorded before the router compared written
+    instants (T-106 r8) holds the providers' text, and it must replay as it was decided.
+    A reset already written ({at, key}) is kept as it is."""
+    now = instants.instant(snap['now'])
+    accts = []
+    for a in snap.get('accounts') or ():
+        rs = (a.get('usage') or {}).get('resets_at')
+        if isinstance(rs, dict):
+            a = dict(a, usage=dict(a['usage'], resets_at={
+                w: v if isinstance(v, dict) else instants.ahead(v, now) for w, v in rs.items()}))
+        accts.append(a)
+    return dict(snap, accounts=accts)
+
+
 def replay(route_decision):
     """Route a recorded decision again from its own record (§9)."""
     return R.replay({'requirements': route_decision.requirements,
-                     'input_snapshot': route_decision.input_snapshot})
+                     'input_snapshot': _written_resets(route_decision.input_snapshot)})
 
 
 def terms_permit(conn, adapter):

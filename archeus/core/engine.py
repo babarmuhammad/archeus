@@ -43,7 +43,8 @@ import time
 
 from ..infra.db import rows
 from .application.commands import active_plan
-from .application import authorization
+from .application import authorization, resources
+from .application import executions as X
 from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
@@ -176,8 +177,23 @@ class Engine:
         stop = STOPS.get(m.state, 'waiting')
         if (m.planning_blocked or {}).get('kind') == 'policy':
             stop = 'policy_denied'          # waits in place on a recorded denial (P9)
-        return {'mission_id': mission_id, 'changed': did is not None, 'did': did,
-                'state': m.state, 'stop': None if did else stop}
+        out = {'mission_id': mission_id, 'changed': did is not None, 'did': did,
+               'state': m.state, 'stop': None if did else stop}
+        wake = None if did or m.state != 'EXECUTING' else self._wake_at(m)
+        return out if wake is None else dict(out, wake_at=wake)
+
+    def _wake_at(self, m):
+        """When the first READY task of *m* stops waiting after a failed start or
+        on a harness that cannot start (O7, T-106), or None: nothing writes at
+        that moment, so a parked mission is stepped again then (EngineLoop)."""
+        now = time.time()
+        with self.db.read() as r:
+            plan = active_plan(r, m.id)
+            tids = [t.entity.id for t in rows.where(r, entities.Task, plan_id=plan.entity.id)
+                    if t.entity.state == 'READY']
+            return min((w for t in tids for w in (X.spawn_wait(r, t, now),
+                                                   resources.route_wait(r, t, now)) if w),
+                       default=None)
 
     def _step(self, m):
         if m.state in ('APPROVED', 'RESUMED', 'EXECUTING', 'VERIFYING', 'REVIEWING') \
@@ -251,10 +267,14 @@ class Engine:
 
     def _admit(self, m, t):
         """Admission (p11-design-gate §16): not disarmed, under the mission's
-        parallelism, and no workspace conflict with live work of the project."""
+        parallelism, no workspace conflict with live work of the project, and
+        not waiting after a failed start or on a harness that cannot start (O7)."""
         if self.manager.node.disarmed():
             return False
+        now = time.time()
         with self.db.read() as r:
+            if X.spawn_wait(r, t.id, now) or resources.route_wait(r, t.id, now):
+                return False
             live = [x.entity for x in rows.where(r, entities.Execution)
                     if x.entity.state not in _ENDED]
             mine = [x for x in live if x.mission_id == m.id]
@@ -274,7 +294,9 @@ class Engine:
         out = self._do(self.work.dispatch_task, task_id=t.id)
         if out['execution_id'] is None:
             # P9: not covered, or P10: a fallback asks -> the mission was blocked
-            # on an approval; P10: nothing could run -> blocked
+            # on an approval; P10: nothing could run -> blocked, or (O7) waits READY
+            if out.get('unblock_at'):
+                return 'route_wait'
             return ('awaiting_approval' if out.get('authorization') or out.get('approval_id')
                     else 'no_route')
         return 'dispatch_task'

@@ -7,12 +7,20 @@ database, no adapter, no process: every input is the JSON a decision records.
 Each test states the invariant that makes a selection right, not only which
 resource came out."""
 
+import calendar
 import copy
 import json
+import os
 import random
+import subprocess
+import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
+from archeus.core.application import resources
+from archeus.core.domain import entities, instants
 from archeus.core.routing import router as R
 
 POL = {'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
@@ -45,7 +53,7 @@ def acct(id_, harness_id, *, priority=1, usage=0.0, age=0, health='AVAILABLE',
             'policy': dict(POL, priority=priority, **pol),
             'usage': None if usage is None else {
                 'windows': {'5h': usage}, 'age_s': age,
-                'resets_at': {'5h': resets} if resets else {}},
+                'resets_at': {'5h': instants.ahead(resets, datetime(1970, 1, 1, tzinfo=timezone.utc))} if resets else {}},
             'ledger': {'tokens_today': 0, 'cost_today': 0, 'running': 0}}
 
 
@@ -301,9 +309,96 @@ def test_fallback_is_never_skipped_while_one_is_allowed():
 
 
 def test_a_blocked_decision_names_the_earliest_reset():
-    s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets='2026-09-26T16:05:00Z'),
-                              acct('acc_b', 'h', usage=100, resets='2026-09-26T14:30:00Z')])
-    assert R.route(task(), s)['unblock_at'] == '2026-09-26T14:30:00Z'
+    # the router's input is written instants (ms, Z: instants.ahead, T-106 r4); raw text is the builder's
+    s = snap([harness('h')], [acct('acc_a', 'h', usage=100, resets='2026-09-26T16:05:00.000Z'),
+                              acct('acc_b', 'h', usage=100, resets='2026-09-26T14:30:00.000Z')])
+    assert R.route(task(), s)['unblock_at'] == '2026-09-26T14:30:00.000Z'
+
+
+_POLICY = {'priority': 1, 'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
+           'fallback': 'ask', 'budgets': {}, 'project_allow': [], 'project_deny': [],
+           'consumption': None}
+
+
+def _live(monkeypatch, raw):
+    """The accounts the snapshot builder writes for raw provider resets ({account: text})."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    accounts = [SimpleNamespace(id=i, harness_id='h', home_ref=None, label=i.upper(),
+                                auth_kind='api_key', health='AVAILABLE') for i in raw]
+
+    def where(conn, cls, **kw):
+        if cls is entities.Account:
+            return [SimpleNamespace(entity=a) for a in accounts]
+        return [SimpleNamespace(entity=SimpleNamespace(account_id=a.id, **_POLICY))
+                for a in accounts]
+
+    feed = SimpleNamespace(read=lambda ref: {
+        'windows': {'5h': 100}, 'resets_at': {'5h': raw[ref['id']]},
+        'observed_at': now.timestamp(), 'source': 'feed'})
+    monkeypatch.setattr(resources.rows, 'where', where)
+    monkeypatch.setattr(resources, 'ledger_totals',
+                        lambda conn, aid, today, at: {'tokens_today': 0, 'cost_today': 0, 'running': 0})
+    out, _readings = resources._registered(None, ['h'], feed, now.timestamp())
+    return out
+
+
+def _raw(id_, reset):
+    """An account whose snapshot carries a provider's text, as a legacy decision does."""
+    a = acct(id_, 'h', usage=100)
+    a['usage']['resets_at'] = {'5h': reset}
+    return a
+
+
+# ({account: the provider's reset text}, the unblock_at 533e3e9 wrote for it). Cases A
+# and B are the offset readings the router ordered wrong (T-106 r8, review of d684947).
+_RESET_CASES = [
+    ({'acc_a': '2026-09-26T12:00:00+02:00'}, None),                       # equal to now
+    ({'acc_a': '2026-09-26T10:00:00Z'}, None),                            # equal to now, no ms
+    ({'acc_a': 'soon'}, None),                                            # unreadable
+    ({'acc_a': '2026-09-26T14:30:00Z'}, '2026-09-26T14:30:00.000Z'),
+    ({'acc_a': '2026-09-26T16:00:00+02:00'}, '2026-09-26T16:00:00.000+02:00'),
+    ({'acc_a': '2026-09-26T13:00:00+02:00', 'acc_b': '2026-09-26T12:00:00Z'},   # A: 11:00Z first
+     '2026-09-26T13:00:00.000+02:00'),
+    ({'acc_a': '2026-09-26T09:30:00-01:00', 'acc_b': '2026-09-26T14:00:00Z'},   # B: 10:30Z, ahead
+     '2026-09-26T09:30:00.000-01:00'),
+    ({'acc_a': '2026-09-26T12:00:00+02:00', 'acc_b': '2026-09-26T14:30:00Z'},   # equal to now, beside a wait
+     '2026-09-26T14:30:00.000Z'),
+]
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_the_router_orders_readings_by_instant_not_by_text(raw, unblock_at):
+    s = snap([harness('h')], [acct(i, 'h', usage=100, resets=r) for i, r in raw.items()])
+    assert R.route(task(), s)['unblock_at'] == unblock_at
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_the_builder_keeps_each_reset_an_instant_the_router_orders(monkeypatch, raw, unblock_at):
+    assert R.route(task(), snap([harness('h')], _live(monkeypatch, raw)))['unblock_at'] == unblock_at
+
+
+def test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest(monkeypatch):
+    """The original assertion on raw provider text: the snapshot builder writes each
+    reset as an instant (ms, Z), and the router names the earliest of them."""
+    out = _live(monkeypatch, {'acc_a': '2026-09-26T16:05:00Z', 'acc_b': '2026-09-26T14:30:00Z'})
+    assert R.route(task(), snap([harness('h')], out))['unblock_at'] == '2026-09-26T14:30:00.000Z'
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided(raw, unblock_at):
+    """A decision recorded before the router compared written instants holds the
+    providers' text. Its replay decides as the router that recorded it did (533e3e9)."""
+    s = snap([harness('h')], [_raw(i, r) for i, r in raw.items()])
+    d = resources.replay(SimpleNamespace(requirements=task(), input_snapshot=s))
+    assert (d['result'], d['unblock_at']) == ('blocked', unblock_at)
+
+
+@pytest.mark.parametrize('raw, unblock_at', _RESET_CASES)
+def test_T106r8_a_decision_recorded_in_the_written_form_replays_the_same(monkeypatch, raw, unblock_at):
+    """A decision recorded by the builder holds {at, key} resets; its replay keeps them."""
+    s = snap([harness('h')], _live(monkeypatch, raw))
+    d = resources.replay(SimpleNamespace(requirements=task(), input_snapshot=s))
+    assert (d['result'], d['unblock_at']) == ('blocked', unblock_at)
 
 
 # ── U-C continuity ─────────────────────────────────────────────────────────
@@ -400,6 +495,26 @@ def test_a_disabled_or_unverified_account_is_never_routed_and_degraded_only_by_f
     assert R.route(task(), s)['result'] == 'fallback'
 
 
+def test_O7_an_open_start_breaker_takes_the_harness_out_and_half_open_lets_it_try():
+    """T-106: the breaker is a fact of the snapshot; open stops the harness at
+    `breaker` with its last error and says when it may try again, half-open
+    (and a snapshot recorded before the field) routes as before."""
+    until = '2026-09-26T10:05:00.000Z'
+    hs = [harness('a'), harness('b')]
+    hs[0]['breaker'] = {'state': 'open', 'until': until, 'error': 'no process'}
+    d = R.route(task(), snap(hs, [own('a'), own('b')]))
+    assert (d['result'], d['harness_id'], steps(d)['a']) == ('selected', 'b', 'breaker')
+    assert next(c['reason'] for c in d['candidates'] if c['harness'] == 'a') == (
+        'cannot start: no process')
+    d = R.route(task(), snap(hs[:1], [own('a')]))
+    assert (d['result'], d['unblock_at']) == ('blocked', until)
+    assert R.explain(d, task()).startswith('Nothing could run this until %s.' % until)
+    hs[0]['breaker'] = {'state': 'half_open', 'until': None, 'error': 'no process'}
+    assert R.route(task(), snap(hs[:1], [own('a')]))['harness_id'] == 'a'
+    del hs[0]['breaker']
+    assert R.route(task(), snap(hs[:1], [own('a')]))['harness_id'] == 'a'
+
+
 # ── U-D determinism, replay, explanation ───────────────────────────────────
 
 def _world(seed):
@@ -473,3 +588,76 @@ def test_the_router_reads_nothing_but_its_arguments():
     before = json.dumps([req, s], sort_keys=True)
     R.route(req, s)
     assert json.dumps([req, s], sort_keys=True) == before
+
+
+# ── Correction r4 (review of 58b5743) ───────────────────────────────────────
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+# A naive provider reset is UTC by the router's rule. Run under TZ values of the
+# opposite signs, the router's string and route_wait must still name the same
+# instant (10:02Z): before the fix route_wait read the naive string in local time.
+_ZONE_PROBE = r'''
+import calendar, json
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from archeus.core.domain import instants
+from archeus.core.application import resources
+from archeus.infra.db import rows
+now = datetime(2026, 9, 26, 10, 0, tzinfo=timezone.utc)
+ahead = instants.ahead('2026-09-26T10:02:00', now)['at']
+class _Conn:
+    def execute(self, sql, args=()):
+        return self
+    def fetchone(self):
+        return {'x': 1}
+rows.decode = lambda cls, rec: SimpleNamespace(entity=SimpleNamespace(
+    result='blocked', unblock_at=ahead, candidates=[{'eliminated_at_step': 'breaker'}]))
+wait = resources.route_wait(_Conn(), 'task', now.timestamp())
+local = datetime(2026, 9, 26, 10).timestamp() - calendar.timegm((2026, 9, 26, 10, 0, 0))
+print(json.dumps({'local_offset': local, 'unblock_at': ahead, 'wait': wait}))
+'''
+
+
+@pytest.mark.parametrize('tz', ['XYZ-2', 'XYZ+5'])   # the CRT reads TZ: UTC+2 (east), UTC-5 (west)
+def test_T106r4_a_naive_reset_names_the_same_instant_in_every_local_zone(tz):
+    env = dict(os.environ, TZ=tz, PYTHONPATH=ROOT)
+    out = subprocess.run([sys.executable, '-c', _ZONE_PROBE], cwd=ROOT, env=env,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-2000:]
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    assert got['local_offset'] != 0                     # the probe really ran off UTC
+    assert got['wait'] == calendar.timegm((2026, 9, 26, 10, 2, 0))
+
+
+def test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform():
+    """Platform-independent: no timestamp() on a naive value (OSError on Windows
+    outside 1970-2038), and the value that leaves the router is aware."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    assert instants.instant('9999-12-31T23:59:59').tzinfo is not None
+    assert instants.ahead('9999-12-31T23:59:59', now)['at'] == '9999-12-31T23:59:59.000Z'
+    assert instants.ahead('1960-01-01T00:00:00', now) is None
+
+
+def test_T106r8_an_offset_reset_is_written_as_given_and_keyed_in_utc():
+    """The text keeps the reset's own offset (533e3e9's replay text); the key is the same
+    instant in UTC, the form the router sorts by. A reset whose UTC form is past the
+    platform's range is no wait, not an error (it would stop Core)."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    assert instants.ahead('2026-09-26T13:00:00+02:00', now) == {
+        'at': '2026-09-26T13:00:00.000+02:00', 'key': '2026-09-26T11:00:00.000Z'}
+    assert instants.ahead('9999-12-31T23:59:59-01:00', now) is None
+
+
+def test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error():
+    a = acct('acc_a', 'h', usage=100.0)                # at the allocation: eliminated there
+    a['usage']['resets_at'] = 'soon'
+    d = R.route(task(), snap([harness('h')], [a]))
+    assert (d['result'], d['unblock_at']) == ('blocked', None)
+
+
+def test_T106r5_a_reset_within_a_millisecond_of_now_is_no_wait():
+    """The check and the written text use one instant: a reset 0.5 ms after now is
+    not after it, so it is not written as now and waited on (one extra pass)."""
+    now = datetime(2026, 9, 26, 10, tzinfo=timezone.utc)
+    assert instants.ahead('2026-09-26T10:00:00.000500', now) is None

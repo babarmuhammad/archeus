@@ -22,10 +22,11 @@ entry points (a boundary test holds it to that).
 
 import hashlib
 import hmac
+import json
 import time
 
 from ...infra.db import rows
-from ..domain import entities, ids
+from ..domain import entities, ids, instants
 from ..domain.events import new_event
 from ..domain.values import Ref
 from . import authorization, lifecycle
@@ -36,10 +37,15 @@ LIVE = ('INTENT', 'STARTING', 'RUNNING', 'AWAITING_APPROVAL', 'PAUSING', 'PAUSED
         'STOPPING', 'LOST', 'HANDING_OFF')
 #: ends the task does not own: they spend no attempt (D9)
 UNCHARGED = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
-             'binding', 'disarmed', 'pressure', 'handoff_user', 'path_too_long')
+             'binding', 'disarmed', 'pressure', 'handoff_user', 'path_too_long', 'spawn')
 #: refusals every later attempt would repeat: the mission waits for the user
 #: instead of re-dispatching the task (T-078)
 BLOCKING = ('path_too_long',)
+#: O7's spawn breaker and start wait, as the owner answered T-110 Q2-Q5 (2026-10-21):
+#: 3 failed starts of a harness within 10 min open it; 5 min after its last failure
+#: one task may try; a task waits 15 s after a failed start, doubling up to 5 min
+SPAWN_TRIP, SPAWN_WINDOW_S, SPAWN_COOLDOWN_S = 3, 600, 300
+SPAWN_WAIT_S, SPAWN_WAIT_MAX_S = 15, 300
 #: how an end is reported, by the state it is observed in (§8.1)
 _EXIT = {'ok': 'exited_success', 'error': 'exited_error'}
 _USAGE_KEYS = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
@@ -70,6 +76,132 @@ def charged_attempts(tx, task_id):
     """How many of a task's executions spent an attempt (D9)."""
     return sum(1 for r in tx.where(entities.Execution, task_id=task_id)
                if r.entity.charged is not False)
+
+
+# ── O7: the spawn breaker and the start wait (T-106) ────────────────────────
+# Derived from the recorded starts alone (owner, T-110 Q10), so a restart neither
+# loses the breaker nor gives a harness its attempts back.
+
+def _tripped(times):
+    # an INTENT that waited (its mission paused) can fail after a later one did:
+    # rowid order is not time order
+    times = sorted(times)
+    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))
+
+
+def spawn_streak(newest_first):
+    """The failed starts after the last start among one harness's executions
+    (*newest_first*, read only as far as that start), and whether one dispatched
+    after the last of them has not started yet (the half-open breaker's trial)."""
+    fails, trial = [], False
+    for x in newest_first:
+        if x.stop_reason == 'spawn':
+            fails.append(x)
+        elif x.started_at:
+            break
+        elif x.state == 'INTENT' and not fails:
+            trial = True
+    return fails, trial
+
+
+def breaker_state(times, trial, now):
+    """None (closed), or {'state': 'open' | 'half_open', 'until'}: open until
+    the cooldown after the latest failure, then half-open for one trial; while
+    the trial has not started, everything else still waits."""
+    if not _tripped(times):
+        return None
+    until = max(times) + SPAWN_COOLDOWN_S          # the times are never after now (_newest)
+    if now < until:
+        return {'state': 'open', 'until': until}
+    if trial:
+        return {'state': 'open', 'until': now + SPAWN_WAIT_S}
+    return {'state': 'half_open', 'until': None}
+
+
+def _decided(x, created_at):
+    """When a row's place in the streak was decided: a failed start's end, else the
+    start, else (a trial not yet started) its creation. Both readers use it (T-106 r5)."""
+    if x.stop_reason == 'spawn':
+        return x.ended_at
+    return x.started_at or created_at
+
+
+def _newest(conn, harness_id, now):
+    """The harness's counting executions (a failed start, a start, a trial INTENT)
+    decided at or before *now*, newest first by when each was decided (a failed start's
+    end, a start, a trial's creation). A row decided
+    after *now* is a backward clock step's: it is not history yet, so it counts for
+    nothing (T-106 r4; were it counted, the window it opens would run from the recorded
+    time, not from now). A trial INTENT counts only while its mission is EXECUTING: one
+    parked by a pause or a block would hold every other task back until that mission
+    moves. Rowid is creation order, which an INTENT that waited does not keep, so it
+    only breaks ties. The instants are compared as parsed, not as text: created_at has
+    milliseconds and the others do not. SQLite 3.31 has no json_extract (test_db_schema
+    pins the floor), so the body is read here. Owner sign-off, T-106 r8: "Accept
+    read-all, cap 600". The cap is by creation, not by decided time, and it counts
+    counting rows only (the SQL drops the others, so 600 newer binding refusals cannot
+    hide a tripped breaker): the streak reads the harness's 600 newest counting rows by
+    creation and orders them here by decided time. A row created before 600 newer ones
+    is outside the cap even when it was decided after them
+    (test_O7_the_cap_is_by_creation_order); a decided-time cap needs a column or
+    json1."""
+    # ponytail: decodes the newest 600 counting rows per call (the owner's ceiling,
+    # T-106 r8); a decided_at column (or json1 once the floor allows it) bounds it by time
+    found = []
+    key = '"harness_id": ' + json.dumps(harness_id)       # the body's own encoding of the key
+    for rec in conn.execute(
+            "SELECT * FROM executions WHERE body LIKE ? AND (state = 'INTENT'"
+            " OR body LIKE '%\"stop_reason\": \"spawn\"%' OR body LIKE '%\"started_at\": \"%')"
+            " ORDER BY rowid DESC LIMIT 600", ('%' + key + '%',)):
+        x = rows.decode(entities.Execution, rec).entity
+        if x.harness_id != harness_id or not (
+                x.stop_reason == 'spawn' or x.started_at or x.state == 'INTENT'):
+            continue
+        at = _epoch(_decided(x, rec['created_at']))
+        if at <= now:
+            found.append((at, x))
+    found.sort(key=lambda p: p[0], reverse=True)          # stable: rowid order breaks ties
+    for _, x in found:
+        if x.state == 'INTENT' and rows.get(conn, entities.Mission,
+                                            x.mission_id).entity.state != 'EXECUTING':
+            continue
+        yield x
+
+
+def spawn_breaker(conn, harness_id, now):
+    """The harness's breaker with the latest failure's reason, or None."""
+    fails, trial = spawn_streak(_newest(conn, harness_id, now))
+    b = breaker_state([_epoch(x.ended_at) for x in fails], trial, now)
+    return b and dict(b, error=max(fails, key=lambda x: x.ended_at).summary)
+
+
+def spawn_wait_s(n):
+    return min(SPAWN_WAIT_S * 2 ** (n - 1), SPAWN_WAIT_MAX_S)
+
+
+def spawn_wait(conn, task_id, now):
+    """Until when (epoch) the task waits after its failed starts in a row, or None."""
+    # a row decided after now is a backward clock step's, not history yet (as _newest)
+    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)
+          if _epoch(_decided(r.entity, r.created_at)) <= now]
+    n = next((i for i, x in enumerate(reversed(xs)) if x.stop_reason != 'spawn'), len(xs))
+    if not n:
+        return None
+    until = _epoch(xs[-1].ended_at) + spawn_wait_s(n)
+    return until if now < until else None
+
+
+def _spawn_failed(tx, actor, e, reason):
+    """The breaker opening on this failure is said once (P21 D1: the tray says
+    it); a failed half-open trial only keeps it open."""
+    # the failure's own stamp, not tx.now: refuse stamps whole seconds inside the
+    # command, so a second boundary between the two would drop this very failure
+    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(e.ended_at)))
+    times = [_epoch(x.ended_at) for x in fails]
+    if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):
+        tx.append(new_event('harness.state_changed', Ref('harness', e.harness_id), actor,
+                            payload={'breaker': 'open', 'reason': reason},
+                            workspace=ids.GLOBAL_WORKSPACE))
 
 
 # ── the binding (§7) ────────────────────────────────────────────────────────
@@ -195,6 +327,8 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     fields = {'stop_reason': stop_reason, 'charged': stop_reason not in UNCHARGED,
               'ended_at': _now_iso(),
               'hook_token_hash': None}
+    if stop_reason == 'spawn':
+        fields['summary'] = reason          # what the harness's status shows (T-106)
     if e.state == 'INTENT':
         e = _fire(tx, e.id, 'spawn_failed', actor, reason,
                   dict(fields, exit_reason='abandoned'))
@@ -210,6 +344,8 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
     out = _respond(tx, actor, e, reason, failure_class)
     if stop_reason in BLOCKING:
         _block(tx, actor, missions, e.mission_id, reason)
+    if stop_reason == 'spawn':
+        _spawn_failed(tx, actor, e, reason)
     return out
 
 
@@ -837,11 +973,35 @@ def _epoch(iso):
     return datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
 
 
+def limit_until(resets_at, now):
+    """The text a limit is stored with: the provider's reset as the router reads it
+    (`instants.instant`: a naive value is UTC), written with its offset. A reset that is not
+    a time, or already past, holds the default window: released on the next tick it
+    would be refused again, uncharged, on every pass (T-106 r6)."""
+    at = instants.instant(resets_at)
+    if at is None or at.timestamp() <= now:
+        return _iso(now + LIMIT_DEFAULT_S)
+    return at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def limit_passed(limited_until, now):
+    """Whether a stored limit's reset has come. A row written since r5 carries its
+    offset. A row with no offset was written before r5 and is read in local time, as
+    it was released before, so r5 releases none of those early (T-106 r6). A value
+    that is not a time counts as come: no account is held forever on a value nobody
+    can read (T-106 r5)."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(limited_until.replace('Z', '+00:00')).timestamp() <= now
+    except (AttributeError, TypeError, ValueError, OverflowError, OSError):
+        return True
+
+
 def account_limited(tx, *, actor, account_id, resets_at=None, now=None):
     """A provider refused for a limit: the account is LIMITED until it resets."""
     a = lifecycle.load(tx, entities.Account, account_id).entity
     now = time.time() if now is None else now
-    until = resets_at or _iso(now + LIMIT_DEFAULT_S)
+    until = limit_until(resets_at, now)
     if a.health in ('AVAILABLE', 'CONSTRAINED'):
         lifecycle.fire(tx, entities.Account, a.id, 'window_exhausted', actor=actor,
                        reason='the provider refused for a limit; resets %s' % until,
@@ -856,7 +1016,7 @@ def accounts_tick(tx, *, actor, now=None):
     moved = []
     for r in tx.where(entities.Account):
         a, since = r.entity, _epoch(r.updated_at)
-        if a.health == 'LIMITED' and a.limited_until and _epoch(a.limited_until) <= now:
+        if a.health == 'LIMITED' and a.limited_until and limit_passed(a.limited_until, now):
             lifecycle.fire(tx, entities.Account, a.id, 'reset_time_passed', actor=actor,
                            reason='the limit reset at %s' % a.limited_until,
                            fields={'limited_until': None})

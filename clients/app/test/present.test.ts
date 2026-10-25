@@ -133,6 +133,7 @@ test('a failed attempt says why in words; a good or live one says nothing (Appen
   assert.equal(endReason({ state: 'ENDED_KILLED', exit_reason: 'killed', stop_reason: 'estop' }), 'stopped by the emergency stop');
   assert.equal(endReason({ state: 'ENDED_KILLED', exit_reason: 'killed', stop_reason: 'something new' }), 'stopped');
   assert.equal(endReason({ state: 'ENDED_KILLED', exit_reason: 'killed', stop_reason: 'path_too_long' }), 'stopped: its workspace path is too long for Git; use a shorter Archeus folder');
+  assert.equal(endReason({ state: 'ENDED_KILLED', exit_reason: 'killed', stop_reason: 'spawn' }), 'stopped: its agent CLI could not start a process; Archeus tries again');
   assert.equal(endReason({ state: 'ABANDONED', exit_reason: 'abandoned' }), 'it never started');
   assert.equal(endReason({ state: 'ENDED_REJECTED', exit_reason: 'rejected' }), 'an approval it needed was rejected');
   for (const x of [{ state: 'ENDED_ERROR', exit_reason: 'error', failure: 'task', exit_code: 3 }])

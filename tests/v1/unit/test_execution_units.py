@@ -7,7 +7,9 @@ import errno
 import io
 import json
 import os
+import sqlite3
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -312,11 +314,250 @@ def test_the_breaker_and_the_uncharged_ends_are_the_gates():
                                 # P12: a hand-off spends no attempt (p12-design-gate D20)
                                 'pressure', 'handoff_user',
                                 # T-078: Git refuses the path's length on every attempt
-                                'path_too_long'}
+                                'path_too_long',
+                                # T-106 (O7): a harness that started no process
+                                'spawn'}
     # P11 §28 note 11: a workspace that cannot be made is the task's own end
     assert set(entities.STOP_REASONS) - set(X.UNCHARGED) == {'workspace'}
     # T-078: a refusal every attempt would repeat blocks its mission, uncharged
     assert X.BLOCKING == ('path_too_long',) and set(X.BLOCKING) <= set(X.UNCHARGED)
+
+
+# ── O7's spawn breaker and start wait (T-106; the owner's T-110 answers) ────
+
+def test_O7_the_numbers_are_the_owners():
+    assert (X.SPAWN_TRIP, X.SPAWN_WINDOW_S, X.SPAWN_COOLDOWN_S) == (3, 600, 300)
+    assert [X.spawn_wait_s(n) for n in range(1, 8)] == [15, 30, 60, 120, 240, 300, 300]
+
+
+def test_O7_three_failed_starts_within_ten_minutes_trip_it_and_not_fewer_or_slower():
+    B = X.breaker_state
+    assert B([], False, 0) is None and B([0, 10], False, 20) is None
+    assert B([0, 10, 20], False, 30) == {'state': 'open', 'until': 320}
+    assert B([0, 300, 600], False, 601)['state'] == 'open'      # the window is inclusive
+    assert B([0, 300, 601], False, 602) is None                  # one past it: no trip
+    assert B([0, 400, 800, 1200], False, 1201) is None           # no three within 10 min
+    assert B([0, 400, 700, 900], False, 901)['state'] == 'open'  # the last three are
+
+
+def test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens():
+    B = X.breaker_state
+    assert B([0, 10, 20], False, 319)['state'] == 'open'
+    assert B([0, 10, 20], False, 320) == {'state': 'half_open', 'until': None}
+    # the trial is dispatched and not started yet: every other task still waits
+    assert B([0, 10, 20], True, 400) == {'state': 'open', 'until': 415}
+    # the trial failed: open again for the cooldown after it
+    assert B([0, 10, 20, 400], False, 401) == {'state': 'open', 'until': 700}
+
+
+def test_O7_failure_times_count_in_time_order_not_row_order():
+    """An INTENT that waited (its mission paused) can fail after a later one."""
+    B = X.breaker_state
+    assert B([0, 700, 10], False, 701) is None                  # 0, 10, 700: no three in 10 min
+    assert B([0, 10, 400, 20], False, 401) == {'state': 'open', 'until': 700}
+
+
+def _x(state='ABANDONED', stop_reason=None, started_at=None):
+    return SimpleNamespace(state=state, stop_reason=stop_reason, started_at=started_at)
+
+
+def test_O7_a_start_ends_the_streak_other_ends_do_not_count_and_a_later_intent_is_the_trial():
+    S = lambda *oldest_first: X.spawn_streak(reversed(oldest_first))  # noqa: E731
+    f1, f2, f3 = (_x(stop_reason='spawn') for _ in range(3))
+    ok, other = _x('ENDED_OK', started_at='2026-10-21T10:00:00Z'), _x(stop_reason='binding')
+    assert S(f1, ok, f2, other, f3) == ([f3, f2], False)
+    assert S(f1, f2, f3, _x('INTENT')) == ([f3, f2, f1], True)
+    assert S(f1, f2, f3, ok, _x('INTENT')) == ([], True)
+    assert S(ok) == ([], False)
+    # an INTENT dispatched before the latest failure is not the trial
+    assert S(f1, f2, _x('INTENT'), f3) == ([f3, f2, f1], False)
+
+
+def test_O7_the_streak_reads_back_only_as_far_as_the_last_start():
+    read = []
+
+    def newest_first():
+        for x in (_x(stop_reason='spawn'), _x('ENDED_OK', started_at='t'), _x(stop_reason='spawn')):
+            read.append(x)
+            yield x
+    assert len(X.spawn_streak(newest_first())[0]) == 1 and len(read) == 2
+
+
+# Correction r2 (review of 6a6faab): the streak's order is the recorded time, not
+# the rowid, read from an in-memory table of executions in insert (rowid) order.
+
+_NOW = X._epoch('2026-10-21T12:00:00Z')      # after every recorded time in these tables
+
+
+def _streak_db(*rows_):
+    c = sqlite3.connect(':memory:')
+    c.row_factory = sqlite3.Row
+    c.execute('CREATE TABLE executions (id TEXT PRIMARY KEY, state TEXT, created_at TEXT,'
+              ' body TEXT)')
+    for i, (state, created, body) in enumerate(rows_):
+        c.execute('INSERT INTO executions VALUES (?,?,?,?)', (
+            'x%d' % i, state, created, json.dumps(dict(
+                {'harness_id': 'fake', 'mission_id': 'm', 'stop_reason': None,
+                 'started_at': None, 'ended_at': None, 'summary': ''}, **body))))
+    return c
+
+
+@pytest.fixture
+def plain_rows(monkeypatch):
+    """rows.decode / rows.get without a schema: the record's state and body only."""
+    monkeypatch.setattr(X.rows, 'decode', lambda cls, rec: SimpleNamespace(
+        entity=SimpleNamespace(**dict(json.loads(rec['body']), state=rec['state']))))
+    monkeypatch.setattr(X.rows, 'get', lambda conn, cls, id_: SimpleNamespace(
+        entity=SimpleNamespace(state='EXECUTING')))
+
+
+def _fail(at):
+    return dict(stop_reason='spawn', ended_at=at, summary='no process')
+
+
+def test_O7_the_streak_is_cut_by_recorded_time_not_by_creation_order(plain_rows):
+    """S was created first but started last of the three failures' predecessors:
+    only the failure after its start counts, so three failures (created before S
+    started, each ended within ten minutes) never trip the breaker."""
+    c = _streak_db(
+        ('ENDED_OK', '2026-10-21T10:00:00Z', dict(started_at='2026-10-21T10:03:00Z')),
+        ('ABANDONED', '2026-10-21T10:01:00Z', _fail('2026-10-21T10:01:00Z')),
+        ('ABANDONED', '2026-10-21T10:02:00Z', _fail('2026-10-21T10:02:00Z')),
+        ('ABANDONED', '2026-10-21T10:04:00Z', _fail('2026-10-21T10:04:00Z')))
+    fails, trial = X.spawn_streak(X._newest(c, 'fake', _NOW))
+    assert [x.ended_at for x in fails] == ['2026-10-21T10:04:00Z'] and not trial
+    assert X.spawn_breaker(c, 'fake', X._epoch('2026-10-21T10:05:00Z')) is None
+
+
+def test_O7_a_backward_clock_step_is_ordered_by_the_recorded_times(plain_rows):
+    """A failure recorded after a start but with an earlier time (the clock stepped
+    back between them) is older than that start: it does not count."""
+    c = _streak_db(
+        ('ENDED_OK', '2026-10-21T10:01:00Z', dict(started_at='2026-10-21T10:01:00Z')),
+        ('ABANDONED', '2026-10-21T10:00:30Z', _fail('2026-10-21T10:00:30Z')),
+        ('ABANDONED', '2026-10-21T10:00:40Z', _fail('2026-10-21T10:00:40Z')),
+        ('ABANDONED', '2026-10-21T10:00:50Z', _fail('2026-10-21T10:00:50Z')))
+    assert X.spawn_streak(X._newest(c, 'fake', _NOW)) == ([], False)
+
+
+def test_O7_the_streak_compares_mixed_timestamp_precision(plain_rows):
+    """created_at has milliseconds; started_at and ended_at do not. The trial
+    INTENT created half a second after the start is the trial, not older than it."""
+    c = _streak_db(
+        ('ENDED_OK', '2026-10-21T10:00:00Z', dict(started_at='2026-10-21T10:00:00Z')),
+        ('INTENT', '2026-10-21T10:00:00.500Z', {}))
+    assert X.spawn_streak(X._newest(c, 'fake', _NOW)) == ([], True)
+
+
+def test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once(plain_rows):
+    """Owner sign-off, T-106 r8: "Accept read-all, cap 600". The streak reads the
+    harness's 600 newest rows, each once (a counting cursor, so SQL rows count too), and
+    orders them in Python (json_extract is banned, test_db_schema). Of these 601 rows
+    the oldest is not read; the 300 newest failures still trip the streak."""
+    c = _streak_db(*[('ABANDONED', '2026-10-21T09:00:00Z', _fail('2026-10-21T09:00:00Z'))
+                     for _ in range(300)],
+                   ('ENDED_OK', '2026-10-21T11:00:00Z', dict(started_at='2026-10-21T11:00:00Z')),
+                   *[('ABANDONED', '2026-10-21T11:30:00Z', _fail('2026-10-21T11:30:00Z'))
+                     for _ in range(300)])
+    pulled = []
+
+    class Counting:
+        def execute(self, sql, args=()):
+            for r in c.execute(sql, args):
+                pulled.append(r)
+                yield r
+
+    fails, _trial = X.spawn_streak(X._newest(Counting(), 'fake', _NOW))
+    assert len(fails) == 300 and len(pulled) == 600
+
+
+def test_O7_the_cap_is_by_creation_order(plain_rows):
+    """Owner sign-off, T-106 r8: the cap is by creation. A failure created first but
+    ended last (10:30) is the newest by decided time, yet 600 rows created after it, each
+    ended at 09:00, push it out of the 600 read. The streak counts the 600 it can see; a
+    decided-time cap would count the 10:30 one too (601)."""
+    c = _streak_db(
+        ('ABANDONED', '2026-10-21T10:30:00Z', _fail('2026-10-21T10:30:00Z')),
+        *[('ABANDONED', '2026-10-21T09:00:00Z', _fail('2026-10-21T09:00:00Z'))
+          for _ in range(600)])
+    fails, _trial = X.spawn_streak(X._newest(c, 'fake', _NOW))
+    assert len(fails) == 600
+    assert '2026-10-21T10:30:00Z' not in [x.ended_at for x in fails]
+
+
+def test_O7_rows_that_cannot_count_take_no_slot_of_the_cap(plain_rows):
+    """T-106 r11 (review of 65dd37c, Should 1): 600 newer rows that end without a start
+    and are not a failed start (a binding refusal loop) do not push the three failures
+    out of the 600 read; the breaker stays open."""
+    c = _streak_db(
+        *[('ABANDONED', at, _fail(at))
+          for at in ('2026-10-21T10:00:00Z', '2026-10-21T10:01:00Z', '2026-10-21T10:02:00Z')],
+        *[('ABANDONED', '2026-10-21T10:03:00Z',
+           dict(stop_reason='binding', ended_at='2026-10-21T10:03:00Z')) for _ in range(600)])
+    b = X.spawn_breaker(c, 'fake', X._epoch('2026-10-21T10:05:00Z'))
+    assert b and b['state'] == 'open'
+
+
+def test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot(plain_rows):
+    """The pre-filter matches the body's own key ("harness_id": "pi"), not the bare
+    text: 600 newer rows of harness 'api' whose summary says 'pipeline' do not push
+    the three failures of 'pi' out of the 600 read."""
+    c = _streak_db(
+        *[('ABANDONED', '2026-10-21T09:00:00Z', dict(_fail('2026-10-21T09:00:00Z'), harness_id='pi'))
+          for _ in range(3)],
+        *[('ABANDONED', '2026-10-21T10:00:00Z',
+           dict(_fail('2026-10-21T10:00:00Z'), harness_id='api', summary='pipeline'))
+          for _ in range(600)])
+    fails, _trial = X.spawn_streak(X._newest(c, 'pi', _NOW))
+    assert len(fails) == 3
+
+
+@pytest.mark.parametrize('harness', ['fake', 'h"1', 'h\\1', 'hé'])
+def test_O7_a_harness_id_the_body_escapes_still_finds_its_rows(plain_rows, harness):
+    """The body is JSON: a quote, a backslash or a non-ASCII letter is escaped in it,
+    and the pre-filter is written in the same encoding, so the rows are still read."""
+    c = _streak_db(*[('ABANDONED', at, dict(_fail(at), harness_id=harness))
+                     for at in ('2026-10-21T10:00:00Z', '2026-10-21T10:01:00Z',
+                                '2026-10-21T10:02:00Z')])
+    fails, _trial = X.spawn_streak(X._newest(c, harness, _NOW))
+    assert len(fails) == 3
+
+
+def test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted(plain_rows):
+    """A backward clock step: three failures recorded an hour ahead of the clock
+    count for nothing, so no breaker opens from them at any call time. Once real
+    time passes them they are history like any other (the window from them is
+    one cooldown after their own time, never more than one cooldown from now)."""
+    now = X._epoch('2026-10-21T10:00:00Z')
+    c = _streak_db(*[('ABANDONED', X._iso(now + 3600 + i), _fail(X._iso(now + 3600 + i)))
+                     for i in range(3)])
+    for t in range(0, 3600, 100):
+        assert X.spawn_breaker(c, 'fake', now + t) is None
+    for t in range(3600, 3600 + 900, 100):
+        b = X.spawn_breaker(c, 'fake', now + t)
+        assert b is None or b['until'] is None or b['until'] <= now + t + X.SPAWN_COOLDOWN_S
+
+
+def test_O7_the_open_window_is_one_cooldown_from_the_latest_counted_failure(plain_rows):
+    """Three real failures 20-100 s ago open the breaker until the latest plus one
+    cooldown, and a failure recorded ahead of the clock changes nothing."""
+    now = X._epoch('2026-10-21T10:00:00Z')
+    real = [('ABANDONED', X._iso(now - 100 + 40 * i), _fail(X._iso(now - 100 + 40 * i)))
+            for i in range(3)]
+    ahead = ('ABANDONED', X._iso(now + 3600), _fail(X._iso(now + 3600)))
+    for rows_ in (real, real + [ahead]):
+        c = _streak_db(*rows_)
+        b = X.spawn_breaker(c, 'fake', now + 279)
+        assert (b['state'], b['until']) == ('open', now + 280)
+        assert X.spawn_breaker(c, 'fake', now + 281)['state'] == 'half_open'
+
+
+def test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock(monkeypatch):
+    now = X._epoch('2026-10-21T10:00:00Z')
+    monkeypatch.setattr(X.rows, 'where', lambda conn, cls, **eq: [SimpleNamespace(
+        entity=SimpleNamespace(stop_reason='spawn', started_at=None,
+                               ended_at=X._iso(now + 3600)), created_at=X._iso(now))])
+    assert X.spawn_wait(None, 't1', now) is None
 
 
 # ── §10 the hook's protocol, without a process ──────────────────────────────
@@ -1205,7 +1446,7 @@ def test_an_isolation_decision_that_raises_starts_nothing(monkeypatch, tmp_path,
     m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, err)
     assert m._spawn(e, mission) is True
     assert _steps(log) == ['requested', 'refuse']
-    assert log[1][1]['stop_reason'] == 'binding'
+    assert log[1][1]['stop_reason'] == 'spawn'                  # O7 (T-106)
     assert type(err).__name__ in log[1][1]['reason']
 
 
@@ -1370,7 +1611,7 @@ def test_a_stage_that_cannot_be_made_or_verified_starts_nothing_uncharged(
         m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True, staged=failure)
         assert _run(m, e, mission, resume, log) is True
         assert _steps(log) == ['requested', 'stage', 'refuse']   # no workspace, inventory,
-        assert log[2][1]['stop_reason'] == 'binding'             # preparation or spawn
+        assert log[2][1]['stop_reason'] == 'spawn'               # preparation or spawn
         assert 'hook runtime could not be staged' in log[2][1]['reason']
 
 
@@ -1889,3 +2130,53 @@ def test_a_provenance_level_is_never_lowered_and_names_a_revision_only_from_its_
                                                                       'model': 'a'}
     assert _billed({'level': 'SERVED', 'model': 'c'}, ['a', 'b']) is None
     assert _billed(None, ['a']) == {'level': 'BILLED', 'model': 'a'}
+
+
+# Correction r5 (review of c290b87): a success is read by its start in the wait as
+# in the breaker; a provider's limit reset is the router's instant in any zone.
+
+def test_T106r5_a_task_wait_reads_a_success_by_its_start_as_the_breaker_does(monkeypatch):
+    now = X._epoch('2026-10-21T10:00:00Z')
+    fa = SimpleNamespace(stop_reason='spawn', started_at=None, ended_at=X._iso(now - 200))
+    ok = SimpleNamespace(stop_reason=None, started_at=X._iso(now - 100),
+                         ended_at=X._iso(now + 3600))           # decided by its start
+    fb = SimpleNamespace(stop_reason='spawn', started_at=None, ended_at=X._iso(now - 5))
+    stamp = X._iso(now - 300)
+    monkeypatch.setattr(X.rows, 'where', lambda conn, cls, **eq: [
+        SimpleNamespace(entity=e, created_at=stamp) for e in (fa, ok, fb)])
+    assert X.spawn_wait(None, 't1', now) == X._epoch(X._iso(now - 5)) + X.spawn_wait_s(1)
+
+
+_LIMIT_PROBE = r'''
+import json
+from datetime import datetime, timezone
+from archeus.core.application import executions as X
+
+def at(h, m):
+    return datetime(2026, 9, 26, h, m, tzinfo=timezone.utc).timestamp()
+
+stored = X.limit_until('2026-09-26T10:02:00', at(10, 0))        # naive: UTC by the rule
+loc = datetime(2026, 9, 26, 10, 2).timestamp()                   # a legacy row: local time
+print(json.dumps({'local_offset': datetime(2026, 9, 26, 10).timestamp() - at(10, 0),
+                  'stored': stored,
+                  'past_stored': X.limit_until('2026-09-26T09:00:00', at(10, 0)),
+                  'passed_at_10_01': X.limit_passed(stored, at(10, 1)),
+                  'passed_at_10_03': X.limit_passed(stored, at(10, 3)),
+                  'legacy_before': X.limit_passed('2026-09-26T10:02:00', loc - 60),
+                  'legacy_after': X.limit_passed('2026-09-26T10:02:00', loc + 60)}))
+'''
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+
+
+@pytest.mark.parametrize('tz', ['XYZ-2', 'XYZ+5'])       # UTC+2 and UTC-5 (the CRT reads TZ)
+def test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every_zone(tz):
+    env = dict(os.environ, TZ=tz, PYTHONPATH=_ROOT)
+    out = subprocess.run([sys.executable, '-c', _LIMIT_PROBE], cwd=_ROOT, env=env,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-2000:]
+    got = json.loads(out.stdout.strip().splitlines()[-1])
+    assert got['local_offset'] != 0                       # the probe really ran off UTC
+    assert (got['stored'], got['passed_at_10_01'], got['passed_at_10_03']) == (
+        '2026-09-26T10:02:00.000Z', False, True)
+    assert got['past_stored'] == '2026-09-26T11:00:00Z'   # a past reset holds the default window
+    assert (got['legacy_before'], got['legacy_after']) == (False, True)   # local, as before r5

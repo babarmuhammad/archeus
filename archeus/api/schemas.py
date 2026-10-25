@@ -543,8 +543,16 @@ TYPES = {
         'enforcement': {'type': 'string', 'nullable': True},
         'structured_output': {'type': 'string', 'nullable': True},
         'models': {'type': 'array', 'items': {'type': 'object'}},
-        'execution': {'type': 'boolean'}, 'calls': {'type': 'boolean'}},
+        'execution': {'type': 'boolean'}, 'calls': {'type': 'boolean'},
+        'breaker': {'ref': 'HarnessBreaker', 'nullable': True}},
         'required': ['id', 'installed', 'capabilities', 'models', 'execution', 'calls']},
+    # O7's start breaker (T-106): open (not routed to until `until`) or half-open
+    # (one task may try); `error` is why its last start failed
+    'HarnessBreaker': {'type': 'object', 'properties': {
+        'state': {'type': 'string', 'enum': ['open', 'half_open']},
+        'until': {'type': 'string', 'nullable': True},
+        'error': {'type': 'string', 'nullable': True}},
+        'required': ['state', 'until', 'error']},
     'HarnessList': {'type': 'object', 'properties': {
         'harnesses': {'type': 'array', 'items': {'ref': 'Harness'}}},
         'required': ['harnesses']},

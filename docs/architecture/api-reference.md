@@ -778,7 +778,18 @@ interface Harness {
   models: Record<string, unknown>[];
   execution: boolean;
   calls: boolean;
+  breaker?: HarnessBreaker | null;
   [field: string]: unknown;
+}
+```
+
+### `HarnessBreaker`
+
+```ts
+interface HarnessBreaker {
+  state: 'open' | 'half_open';
+  until: string | null;
+  error: string | null;
 }
 ```
 

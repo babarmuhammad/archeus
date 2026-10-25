@@ -16,7 +16,8 @@ gate tests and drills no mutant named, and the defects its stronger fuzz
 corpus and oracle found (Q118-Q124); T-103's review: the static census's
 sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
-is claimed once, so one terminal opens (Q133).
+is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
+breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key), and r9 (Q180-Q183: the router's UTC key and the replay of written resets), and r11 (Q184: non-counting rows take no slot of the 600 cap).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -98,6 +99,19 @@ H04B = ('tests/v1/integration/test_policy_http.py::'
 RTM = 'archeus/core/runtime.py'
 RUN_LOCAL = ('tests/v1/integration/test_p20_secrets_runtime.py::'
              'test_no_minted_credential_is_at_rest_outside_its_one_home')
+EXE = 'archeus/core/application/executions.py'
+ROUTER = 'archeus/core/routing/router.py'
+INST = 'archeus/core/domain/instants.py'
+WORK = 'archeus/core/application/work.py'
+ENGINE = 'archeus/core/engine.py'
+XU = 'tests/v1/unit/test_execution_units.py::'
+SB = 'tests/v1/integration/test_spawn_breaker.py::'
+TRIP = XU + 'test_O7_three_failed_starts_within_ten_minutes_trip_it_and_not_fewer_or_slower'
+HALF = XU + 'test_O7_half_open_after_the_cooldown_lets_one_trial_and_its_failure_reopens'
+RES = 'archeus/core/application/resources.py'
+PV = 'tests/v1/unit/test_pv20_isolation.py::'
+RU = 'tests/v1/unit/test_routing_units.py::'
+EX = 'tests/v1/integration/test_execution.py::'
 
 MUTATIONS = [
     # Slice A, item 83: execution-architecture §10 path 2
@@ -703,6 +717,239 @@ MUTATIONS = [
      "    if launch_seq != s.launch_seq or max(s.launched_seq, s.launch_claimed_seq) >= launch_seq:",
      "    if launch_seq != s.launch_seq or s.launched_seq >= launch_seq:")],
      [SES + 'test_T35_two_concurrent_requests_with_one_key_open_one_terminal']),
+    # T-106: O7's start wait and spawn breaker, as the owner answered T-110 Q1-Q10
+    ('Q134', 'the breaker needs a fourth failed start to trip', [(EXE,
+     "    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))",
+     "    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP:]))")],
+     [TRIP, SB + 'test_T106_the_third_failure_opens_the_breaker_once_and_a_task_waits_ready']),
+    ('Q135', 'failed starts trip the breaker however far apart they are', [(EXE,
+     "    return any(b - a <= SPAWN_WINDOW_S for a, b in zip(times, times[SPAWN_TRIP - 1:]))",
+     "    return any(True for a, b in zip(times, times[SPAWN_TRIP - 1:]))")],
+     [TRIP]),
+    ('Q136', 'half-open lets every task try while the trial has not started', [(EXE,
+     "    if trial:", "    if False:")],
+     [HALF]),
+    ('Q137', 'a failed start spends an attempt', [(EXE,
+     "'handoff_user', 'path_too_long', 'spawn')",
+     "'handoff_user', 'path_too_long')")],
+     [XU + 'test_the_breaker_and_the_uncharged_ends_are_the_gates',
+      SB + 'test_T106_a_permanent_start_failure_is_retried_after_its_wait_not_on_every_pass']),
+    ('Q138', 'the router ignores an open breaker', [(ROUTER,
+     "    if b and b['state'] == 'open':",
+     "    if False:")],
+     ['tests/v1/unit/test_routing_units.py::'
+      'test_O7_an_open_start_breaker_takes_the_harness_out_and_half_open_lets_it_try',
+      SB + 'test_T106_an_open_harness_is_skipped_and_the_task_runs_on_another']),
+    ('Q139', 'a task finding only an open harness blocks its mission', [(WORK,
+     "        if result == 'blocked' and route.unblock_at and any(",
+     "        if False and any(")],
+     [SB + 'test_T106_the_third_failure_opens_the_breaker_once_and_a_task_waits_ready']),
+    ('Q140', 'a task is dispatched again without its start wait', [(ENGINE,
+     "            if X.spawn_wait(r, t.id, now) or resources.route_wait(r, t.id, now):",
+     "            if resources.route_wait(r, t.id, now):")],
+     [SB + 'test_T106_a_permanent_start_failure_is_retried_after_its_wait_not_on_every_pass']),
+    ('Q141', 'a failed half-open trial is notified again', [(EXE,
+     "    if _tripped(times) and not _tripped([t for x, t in zip(fails, times) if x.id != e.id]):",
+     "    if _tripped(times):")],
+     [SB + 'test_T106_a_failed_trial_reopens_it_without_a_second_notice']),
+    # T-106 correction r1 (review of 7d54856)
+    ('Q142', "a parked mission is not woken when its task's wait ends", [(RTM,
+     "            if self.parked.get(mid) == version and not (due and now >= due):",
+     "            if self.parked.get(mid) == version:")],
+     [SB + 'test_T106r1_a_parked_mission_wakes_when_its_start_wait_ends',
+      SB + 'test_T106r1_a_parked_mission_gets_its_half_open_trial']),
+    ('Q143', 'an establishment failure found at a restart is not counted', [(MGR,
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"
+     "                     reason='isolation could not be established: %s'",
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                     reason='isolation could not be established: %s'")],
+     [PV + 'TestRestartReconciliation::test_establishment_failure_is_uncharged_refuse',
+      PV + 'TestUnsettledRecords::test_a_failure_later_quarantined_is_still_refused_uncharged']),
+    ('Q144', 'failure times are taken in row order', [(EXE,
+     "    times = sorted(times)\n", "")],
+     [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
+    ('Q145', 'the cooldown runs from the last row, not the latest failure', [(EXE,
+     "    until = max(times) + SPAWN_COOLDOWN_S",
+     "    until = times[-1] + SPAWN_COOLDOWN_S")],
+     [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
+    ('Q146', "a paused mission's trial INTENT holds the harness closed", [(EXE,
+     "        if x.state == 'INTENT' and rows.get(conn, entities.Mission,",
+     "        if False and rows.get(conn, entities.Mission,")],
+     [SB + 'test_T106r1_a_trial_on_a_paused_mission_does_not_hold_the_harness']),
+    ('Q147', 'a hook stage that cannot be made is not counted', [(MGR,
+     "                self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"
+     "                         reason='the hook runtime could not be staged",
+     "                self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                         reason='the hook runtime could not be staged")],
+     [XU + 'test_a_stage_that_cannot_be_made_or_verified_starts_nothing_uncharged']),
+    ('Q148', 'an isolation decision that cannot be taken is not counted', [(MGR,
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"
+     "                     reason='the isolation decision could not be taken",
+     "            self._do(X.refuse, execution_id=e.id, stop_reason='binding',\n"
+     "                     reason='the isolation decision could not be taken")],
+     [XU + 'test_an_isolation_decision_that_raises_starts_nothing']),
+    ('Q149', 'an INTENT older than the latest failure is taken for the trial (M1)', [(EXE,
+     "        elif x.state == 'INTENT' and not fails:", "        elif x.state == 'INTENT':")],
+     [XU + 'test_O7_a_start_ends_the_streak_other_ends_do_not_count_and_a_later_intent_is_the_trial']),
+    ('Q150', 'AlreadySpawned is counted as a failed start (M2)', [(MGR,
+     "                     stop_reason='binding' if isinstance(err, base.AlreadySpawned)\n"
+     "                     else 'spawn')",
+     "                     stop_reason='spawn')")],
+     [SB + 'test_T106r1_already_spawned_goes_to_reconciliation_not_to_the_breaker']),
+    ('Q151', "the streak reads the harness's whole history", [(EXE,
+     "    for x in newest_first:", "    for x in list(newest_first):")],
+     [XU + 'test_O7_the_streak_reads_back_only_as_far_as_the_last_start']),
+    ('Q152', 'a health-blocked decision is waited on (route_wait skips the breaker check)',
+     [(RES,
+     "            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):",
+     "            ):")],
+     [SB + 'test_T106r1_a_decision_that_is_not_the_breakers_is_no_wait']),
+    # T-106 correction r2 (review of 6a6faab)
+    ('Q153', 'a provider reset already past is kept as a wait (the hot loop)', [(INST,
+     "    return None if at <= now else",
+     "    return None if False else")],
+     [SB + 'test_T106r2_a_reset_already_past_is_no_wait_and_no_hot_loop',
+      RU + 'test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform']),
+    ('Q154', 'a malformed provider reset is not caught (it would stop Core)', [(INST,
+     "    except (AttributeError, TypeError, ValueError):\n        return None",
+     "    except AttributeError:\n        return None")],
+     [SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
+    ('Q155', 'the streak is cut by rowid (creation order), not the recorded time', [(EXE,
+     "    found.sort(key=lambda p: p[0], reverse=True)",
+     "    found.sort(key=lambda p: 0, reverse=True)")],
+     [XU + 'test_O7_the_streak_is_cut_by_recorded_time_not_by_creation_order',
+      XU + 'test_O7_a_backward_clock_step_is_ordered_by_the_recorded_times']),
+    ('Q156', 'the time order compares the raw strings (no parse, no julianday)', [(EXE,
+     "    found.sort(key=lambda p: p[0], reverse=True)",
+     "    found.sort(key=lambda p: (p[1].ended_at if p[1].stop_reason == 'spawn' else p[1].started_at) or '', reverse=True)")],
+     [XU + 'test_O7_the_streak_compares_mixed_timestamp_precision']),
+    ('Q157', 'the idle wait is not cut to a parked mission deadline', [(RTM,
+     "max(0.0, min(self.idle_s, due - time.time()))",
+     "self.idle_s")],
+     [SB + 'test_T106r2_a_parked_mission_wakes_at_its_deadline_with_a_long_idle']),
+    ('Q158', 'the streak counts a row twice (each harness row is read once: no json_extract, so no early stop)', [(EXE,
+     "        if at <= now:\n            found.append((at, x))",
+     "        if at <= now:\n            found.append((at, x))\n            found.append((at, x))")],
+     [XU + 'test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once']),
+    # T-106 correction r3 (review of 3f385f8) and r4 (review of 58b5743)
+    ('Q159', 'a naive provider reset goes through timestamp(), which fails on Windows', [(INST,
+     "    return at if at.tzinfo is not None else at.replace(tzinfo=timezone.utc)",
+     "    return at.timestamp() if at.tzinfo is not None else at.timestamp()")],
+     [RU + 'test_T106r4_a_naive_reset_is_an_aware_instant_on_every_platform',
+      SB + 'test_T106r2_a_malformed_provider_reset_never_stops_core']),
+    ('Q160', 'a spawn end recorded ahead of the clock is counted (the window runs from it)',
+     [(EXE, "        if at <= now:\n            found.append((at, x))", "        if True:\n            found.append((at, x))")],
+     [XU + 'test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted']),
+    ('Q161', 'a task waits for a spawn end recorded ahead of the clock', [(EXE,
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
+     "          if _epoch(_decided(r.entity, r.created_at)) <= now]",
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]")],
+     [XU + 'test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock']),
+    ('Q162', 'a naive reset is read in local time by route_wait (the r3 divergence)', [
+     (INST, "    return {'at': at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'), 'key': key}",
+     "    return {'at': at.replace(tzinfo=None).isoformat(timespec='milliseconds'), 'key': key}"),
+     (RES, "    at = instants.instant(d.unblock_at)    # the same parse the snapshot used: any zone, one instant\n"
+           "    until = at and at.timestamp()",
+           "    until = datetime.fromisoformat(d.unblock_at.replace('Z', '+00:00')).timestamp()")],
+     [RU + 'test_T106r4_a_naive_reset_names_the_same_instant_in_every_local_zone']),
+    ('Q163', 'a provider resets value that is not a mapping raises out of route()', [(ROUTER,
+     "    return [r for r in rs.values() if r] if isinstance(rs, dict) else []",
+     "    return [r for r in rs.values() if r]")],
+     [RU + 'test_T106r4_resets_that_are_not_a_mapping_are_no_wait_and_no_error']),
+    # T-106 correction r5 (review of c290b87)
+    ('Q164', 'the trip is read at tx.now, not the failure\'s own stamp (a second boundary hides it)',
+     [(EXE,
+     "    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(e.ended_at)))",
+     "    fails, _ = spawn_streak(_newest(tx.conn, e.harness_id, _epoch(tx.now)))")],
+     [SB + 'test_T106r5_the_trip_is_recorded_when_a_second_boundary_falls_inside_the_command']),
+    ('Q165', 'a reset within a millisecond of now is not truncated before the comparison', [(INST,
+     "    return at.replace(microsecond=at.microsecond // 1000 * 1000)",
+     "    return at")],
+     [RU + 'test_T106r5_a_reset_within_a_millisecond_of_now_is_no_wait']),
+    ('Q166', 'an account limit is stored as the provider sent it (no normalising)', [(EXE,
+     "    until = limit_until(resets_at, now)",
+     "    until = resets_at or _iso(now + LIMIT_DEFAULT_S)")],
+     [EX + 'test_E31_a_provider_limit_marks_the_account_limited_and_stops_its_work']),
+    ('Q167', 'a legacy naive stored limit is read in UTC (the r5 reading, released early west of UTC)', [(EXE,
+     "datetime.fromisoformat(limited_until.replace('Z', '+00:00')).timestamp() <= now",
+     "instants.instant(limited_until).timestamp() <= now")],
+     [XU + 'test_T106r5_a_naive_limit_reset_releases_the_account_at_one_instant_in_every_zone',
+      EX + 'test_T106r6_a_legacy_naive_limit_releases_at_its_local_time_as_before_r5']),
+    ('Q168', 'a task wait reads a success by its end, not its start (the breaker reads its start)',
+     [(EXE,
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
+     "          if _epoch(_decided(r.entity, r.created_at)) <= now]",
+     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
+     "          if not r.entity.ended_at or _epoch(r.entity.ended_at) <= now]")],
+     [XU + 'test_T106r5_a_task_wait_reads_a_success_by_its_start_as_the_breaker_does']),
+    # T-106 correction r6 (review of 5e8102d)
+    ('Q169', 'a provider reset already past is stored as it came (released on the next tick, the loop)',
+     [(EXE, "    if at is None or at.timestamp() <= now:", "    if at is None:")],
+     [EX + 'test_T106r6_a_past_provider_reset_holds_the_default_window_through_the_tick']),
+    ('Q170', 'a stored limit that is not a time is held forever', [(EXE,
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return True",
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return False")],
+     [EX + 'test_T106r6_a_stored_limit_that_is_not_a_time_releases_without_raising']),
+    ('Q171', 'a stored limit that is not a time raises out of the tick (the pre-r5 behaviour)', [(EXE,
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return True",
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        raise")],
+     [EX + 'test_T106r6_a_stored_limit_that_is_not_a_time_releases_without_raising']),
+    ('Q172', 'an unreadable provider reset at store time raises instead of holding the default window', [(EXE,
+     "    if at is None or at.timestamp() <= now:",
+     "    if at.timestamp() <= now:")],
+     [EX + 'test_T106r6_an_unreadable_provider_reset_holds_the_default_window']),
+    # T-106 correction r7 (review of 098d0d3)
+    ('Q173', 'a legacy value the platform cannot make raises out of the tick (no OSError/OverflowError guard)', [(EXE,
+     "    except (AttributeError, TypeError, ValueError, OverflowError, OSError):\n        return True",
+     "    except (AttributeError, TypeError, ValueError):\n        return True")],
+     [EX + 'test_T106r7_a_legacy_value_the_platform_cannot_make_releases_without_raising']),
+    ('Q174', 'a reset equal to now is not past (the default window is not held at the instant)', [(EXE,
+     "    if at is None or at.timestamp() <= now:",
+     "    if at is None or at.timestamp() < now:")],
+     [EX + 'test_T106r7_a_reset_at_the_instant_now_holds_the_default_window']),
+    # T-106 correction r8 (review of b50fcd9)
+    ('Q175', 'a replayed decision gets its raw provider resets (no written instants on replay)', [(RES,
+     "'input_snapshot': _written_resets(route_decision.input_snapshot)})",
+     "'input_snapshot': route_decision.input_snapshot})")],
+     [RU + 'test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided']),
+    ('Q176', 'a replay judges the resets against the wall clock, not the recorded now', [(RES,
+     "    now = instants.instant(snap['now'])",
+     "    now = datetime.now(timezone.utc)")],
+     [RU + 'test_T106r8_a_decision_recorded_with_raw_resets_replays_as_it_was_decided']),
+    ('Q177', 'the builder writes the provider resets as the feed sent them (no instants)', [(RES,
+     "{w: instants.ahead(v, now_dt) for w, v in resets.items()}",
+     "{w: v for w, v in resets.items()}")],
+     [RU + 'test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest']),
+    ('Q178', 'the streak reads every row of the harness (no 600-row ceiling)', [(EXE,
+     '" ORDER BY rowid DESC LIMIT 600", (',
+     '" ORDER BY rowid DESC", (')],
+     [XU + 'test_O7_the_streak_reads_at_most_the_600_newest_harness_rows_once']),
+    ('Q179', 'the streak pre-filter matches the bare id text, not the body\'s own key', [(EXE,
+     "key = '\"harness_id\": ' + json.dumps(harness_id)",
+     "key = harness_id")],
+     [XU + 'test_O7_a_row_of_another_harness_that_names_this_id_takes_no_slot',
+      XU + 'test_O7_a_harness_id_the_body_escapes_still_finds_its_rows']),
+    # T-106 correction r9 (review of d684947): readings order by their UTC key
+    ('Q180', 'the router names the earliest reset by its text, not its instant (breaks the ordering)',
+     [(ROUTER, "min(waits, key=lambda w: w['key'])['at']", "min(waits, key=lambda w: w['at'])['at']")],
+     [RU + 'test_T106r8_the_router_orders_readings_by_instant_not_by_text',
+      RU + 'test_T106r8_the_builder_keeps_each_reset_an_instant_the_router_orders']),
+    ('Q181', 'the router compares the written text with now, not the UTC key (offset readings are no wait)',
+     [(ROUTER, "if now is None or w['key'] > now]", "if now is None or w['at'] > now]")],
+     [RU + 'test_T106r8_the_router_orders_readings_by_instant_not_by_text',
+      RU + 'test_T106r8_the_builder_keeps_each_reset_an_instant_the_router_orders']),
+    ('Q182', 'the UTC key is the instant as written, not converted to UTC', [(INST,
+     "key = at.astimezone(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')",
+     "key = at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')")],
+     [RU + 'test_T106r8_an_offset_reset_is_written_as_given_and_keyed_in_utc',
+      RU + 'test_T106r8_the_router_orders_readings_by_instant_not_by_text']),
+    ('Q183', 'a replayed decision re-parses the reset values it already holds (a written reset is lost)',
+     [(RES, "v if isinstance(v, dict) else instants.ahead(v, now)", "instants.ahead(v, now)")],
+     [RU + 'test_T106r8_a_decision_recorded_in_the_written_form_replays_the_same']),
+    # T-106 correction r11 (review of 65dd37c)
+    ('Q184', 'rows that cannot count take a slot of the 600 cap (no SQL pre-filter on the counted shapes)',
+     [(EXE, "WHERE body LIKE ? AND (state = 'INTENT'", "WHERE body LIKE ? AND (1 = 1")],
+     [XU + 'test_O7_rows_that_cannot_count_take_no_slot_of_the_cap']),
 ]
 
 if __name__ == '__main__':

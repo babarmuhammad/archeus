@@ -2794,6 +2794,222 @@ T-096.4. **Items 109 and 111, corrected by this append.**
        request does), T37 (claimed, crashed, expired at boot, next resume launches). Mutant
        Q133 (a second claimant wins) is killed by T35.
 
+131. **Built (card T-106, 2026-10-21): O7's start wait and spawn breaker.** O7 (items 64, 72)
+     was decided 2026-10-08 as uncharged with a bounded backoff and a breaker; the mechanism
+     was left open. A permanent start failure re-dispatched without bound (T-102's review: 63
+     executions in 4 s; 33 in 2 s on f483f87 in T-106's first test). T-110 listed what the
+     decision left open; the owner answered all ten on 2026-10-21 (AskUserQuestion, verbatim):
+     Q1 "Per CLI on this machine (Recommended)", Q2 "3 (Recommended)", Q3 "10 minutes
+     (Recommended)", Q4 "Doubling, 15 s up to 5 min (Recommended)", Q5 "Automatic trial after
+     5 min (Recommended)", Q6 "CLI status + mission reason + notification (Recommended)", Q7
+     "Yes, both the same way (Recommended)", Q8 "Router: don't dispatch to that CLI
+     (Recommended)", Q9 "Yes, build now, switch stays off (Recommended)", Q10 "Rebuilt from
+     recorded failures (Recommended)".
+     - **The fact recorded.** A start that creates no process (`SpawnFailed`, isolated or not;
+       not `SpawnWriteFailed`, still the charged `workspace` of T-102, and not
+       `AlreadySpawned`, still `binding`) ends its execution with the new uncharged stop
+       reason `spawn`, its reason kept in the execution's `summary`. Nothing else is stored:
+       no counter, no deadline, no breaker row.
+     - **Derived from it** (`executions.py`). A harness's streak is its `spawn` ends since its
+       last execution that started. Three within 600 s open the breaker; it stays open 300 s
+       after the latest failure, then is half-open: one task may be dispatched, and while
+       that one has not started every other waits 15 s more. A start closes it; a failed
+       trial opens it for another 300 s. A task's own wait after n failed starts in a row is
+       15 s × 2^(n-1), at most 300 s. A restart derives the same state from the same records
+       and gives nothing back.
+     - **Where it acts.** The router (P10) has a new elimination step `breaker`, after
+       `restriction` and before `health`, reading the harness's `breaker` in the decision's
+       snapshot: an open harness is not a candidate ("cannot start: <reason>") and its
+       `until` is the decision's `unblock_at`. A snapshot without the field routes as before,
+       so recorded decisions replay unchanged. When nothing else could run the task,
+       `dispatch_task` records that decision and leaves the task READY and its mission
+       EXECUTING (it no longer fires `dispatch` before routing, so nothing moves); the
+       engine's admission skips a task inside its own wait or inside such a decision's
+       `unblock_at`. A task another harness can run goes there. No unisolated fallback, no
+       A4 bypass, `PRODUCTION_DISPATCH_ENABLED` unchanged, no S1 component.
+     - **Visible.** `GET /v1/harnesses` carries each harness's `breaker` (`state`, `until`,
+       `error`; null when closed; schema `HarnessBreaker`), shown by the TUI's resources
+       section and the SPA's Harnesses table as "cannot start". The waiting task's reason is
+       its recorded route ("Nothing could run this until … Not used: fake — cannot start:
+       …"). The trip appends one `harness.state_changed` (payload `breaker: open`), the
+       registered type's first use; the Qt tray says "<harness> cannot start a process;
+       Archeus tries again in 5 minutes" for it (D1 extended by Q6), and only for the trip,
+       not for a failed trial.
+     - **Verified.** `test_spawn_breaker.py` (the loop bounded, the per-task wait doubling,
+       the trip once with its notice and a READY wait, replay, a restart rebuilding the same
+       state, a half-open trial closing it, a failed trial reopening it without a second
+       notice, another harness taking the task), the O7 unit tests in
+       `test_execution_units.py` and `test_routing_units.py`. Mutants Q134-Q141.
+     - **Left as it was.** A reconcile that finds an INTENT whose isolation record says
+       `failed` (a Core that died between the failure and its refusal) still refuses it as
+       `binding`, so it does not count toward the breaker.
+
+132. **Correction r1 to item 131 (card T-106, 2026-10-21, after the review of 7d54856).**
+     - **Core's loop wakes a waiting mission.** `EngineLoop` parks a mission whose step changed
+       nothing and stepped it again only when a command moved it; a task waiting out its start
+       wait or an open breaker moves nothing when the wait ends, so under Core's own loop the
+       retry (Q4) and the trial (Q5) never came. `Engine.step` now reports `wake_at`, the
+       earliest end of such a wait among the mission's READY tasks, and `EngineLoop` steps the
+       parked mission again at that time (its idle wait is shortened to it). Tested with the
+       real `EngineLoop._pass` and the manager's pass, rows untouched (Q142).
+     - **Counted as `spawn` too** (Q7, Q10): an establishment failure found at a restart
+       (`_reconcile_isolated`, item 131's "left as it was" withdrawn), an isolation decision
+       that could not be taken, and a hook stage that could not be made (Q143, Q147, Q148).
+       `AlreadySpawned` stays `binding`: the marker means a process may exist and the end goes
+       to reconciliation; a test pins it (Q150).
+     - **Bounded reads.** A harness's executions are read newest first, in SQL only the rows the
+       streak reads (a failed start, a start, an INTENT), and the read stops at its last
+       start; a task's route wait reads only its latest decision, and parses its `unblock_at`
+       only once the decision is known to be the breaker's (Q151, Q152). Measured on an
+       in-memory SQLite 3.37 table of executions (this PC): 2 ms per harness with 10k
+       executions older than the last start, 7 ms with 30k, 6 ms with 30k never-started rows
+       after it. The cost is the rows SQLite scans (json_extract per row, about 0.2 µs), not
+       the rows decoded. Upgrade path, not built: an index or a stored harness column, when
+       that scan shows up in a profile. **Superseded by item 133:** these figures are for
+       the rowid order that r2 replaced; item 133 has the current cost.
+     - **Time order.** Failure times are sorted before the window and the cooldown are judged:
+       an INTENT that waited can fail after a later one (Q144, Q145).
+     - **The trial.** An INTENT counts as the half-open trial only while its mission is
+       EXECUTING, so one parked by a pause or a block no longer holds every other task back
+       (Q146). **Known limit:** a resume (PAUSED to STARTING through `resume_checked`) is not
+       seen as a trial; a resume and a dispatched trial can both start while half-open.
+     - **Words.** The SPA's end reasons say `spawn` ("stopped: its agent CLI could not start a
+       process; Archeus tries again"). p11-design-gate and p21-design-gate carry dated
+       as-built appends for the stop reason list and the tray notice.
+     - **Mutants:** Q142-Q152; Q149 and Q150 are the review's ad-hoc M1 and M2.
+
+133. **Correction r2 to items 131-132 (card T-106, 2026-10-21, after the review of 6a6faab).**
+     - **A reset in the past is never a wait (review N1, a hot loop).** A blocked route's
+       `unblock_at` was the earliest of the provider resets and the breaker's time, with no
+       check against now; a reset already past made the task routed again on every pass.
+       The router now takes only the readable times after its own `now` (`_ahead`): the
+       breaker's time when it is after now, a provider reset only when it is a future time
+       (Q153, with a real `EngineLoop` test that counts the passes' route decisions).
+     - **A malformed provider reset never stops Core (N3, r3 finding 1).** Provider resets
+       are free text. `reset_at` catches a value that does not parse; it compares as aware
+       datetimes and never calls `timestamp()` on a naive value (on Windows that raises
+       OSError outside 1970-2038). Q154 is the parse catch (the `not a time` case); Q159 is
+       the platform call put back, killed on every platform by a unit test. The
+       parametrized test also covers '1 hour' (sorts before the digits), naive 1960 and 9999,
+       an offset-suffixed pair and a five-digit year.
+     - **One zone-independent parse of `unblock_at` (r4 finding 1).** A naive reset is UTC
+       by rule, not the machine's local time. The router writes the instant with its offset
+       (`reset_at`, `_ahead`), and `route_wait` reads that string through the same
+       `reset_at`, so the two sites agree in any zone. Before r4 the router returned the
+       naive string and `route_wait` read it in local time: east of UTC the wait came out
+       in the past (a hot loop up to the breaker's window), west of UTC hours late. Q162
+       puts both halves of that back; the subprocess test runs under two TZ values of
+       opposite signs. The zone of a provider's reset is not known to the code: if a feed
+       sends local times, that is a feed fact the owner must confirm.
+     - **A non-mapping `resets_at` is no wait, not an error (r4 finding 4).** The router
+       and the snapshot read the value as a mapping only (Q163).
+     - **The streak is cut by the time it was decided, not by creation order (N2).** A
+       failed start's end, a start, or a trial's creation; rowid only breaks ties. Creation
+       order gave a false trip: an INTENT that waited, then started after three failures
+       were created, cut the streak too late. `julianday()` compares the three formats
+       (`created_at` has milliseconds, the others whole seconds). **Trade-off, recorded:** a
+       backward wall-clock step misorders the cut by the recorded times (a failure recorded
+       before a start that happened earlier counts as older). Q155, Q156; the unit tests
+       cover out-of-order rowids, a clock step and mixed precision. **A backward clock step
+       (r4 finding 2, replacing the r3 cap, which bounded only the reported value):** a spawn
+       end, a start or a trial recorded after now is not history yet, so the streak, the
+       breaker and a task's wait ignore it (Q160, Q161). The open window is then always
+       one cooldown from the latest counted failure, which is at most now: at any call time
+       the breaker is open until at most now + 5 min, and a task waits at most its own wait
+       from now. Once real time passes the recorded times they count like any other failure.
+       Cost of this choice: a failure recorded ahead of the clock that really happened is
+       not counted until the clock catches up. **Same-second ties
+       (r3 finding 3):** `started_at` and `ended_at` have whole seconds, so a failure and a
+       start in one second compare equal and fall back to rowid; the window of that is one
+       second. Storing milliseconds would close it; not done (it changes stored formats).
+     - **Cost (measured, in-memory SQLite 3.37, this PC).** The time order sorts every
+       started, failed or trial execution of the harness per routing decision: about 10 ms
+       at 10k successful starts and 33 ms at 30k (the streak itself still stops at the last
+       start). Upgrade path, not built: a promoted harness column with an index, or a
+       read bounded to the last window. Ceiling recorded here, not in code.
+     - **The idle wait is cut to the deadline (N4).** Tested with a 30 s idle (Q157).
+     - **The streak stops reading at its start (N5).** Counted at the cursor, not by the
+       decoder (Q158).
+     - **Not changed, by reasoning (N1 part b).** The breaker branch in `dispatch_task`
+       does not re-check `unblock_at` against now: the router is the only writer, and it
+       now returns only future times.
+     - **Correction r5 (review of c290b87).** The trip is read at the failure's own end,
+       not at the command's start: `refuse` stamps whole seconds inside the command, so a
+       second boundary between the two hid the trip-making failure and its notice (Q164).
+       `_ahead` truncates to milliseconds before the comparison (Q165). A provider limit is
+       stored as the router reads it, written with Z, and `accounts_tick` compares it the
+       same way, so a naive reset releases the account at one instant in any zone (Q166,
+       Q167). A task's wait reads a success by its start, as the breaker does (Q168).
+     - **Correction r6 (review of 5e8102d).** A provider reset already past, or not a time
+       at store time, holds the default window (1 h): released on the next tick it is
+       refused again, uncharged, on every pass, an unbounded loop (Q169, Q172). A stored
+       limit that is not a time releases the account without raising (owner-accepted,
+       one-off, legacy rows only; Q170, Q171). A stored text with no offset is a row written
+       before r5 and is read in local time, as the pre-r5 tick read it, because the UTC
+       reading would release a West-of-UTC account early and the local reading releases
+       nothing early that was not already released (Q167; the r5 "one instant in any zone"
+       claim holds for rows written since r5 only). Correction r7 (review of 098d0d3): a
+       legacy value outside the platform's range (naive 1900 or 9999 on Windows, where
+       timestamp() raises OSError) releases without raising (Q173); a reset equal to now
+       holds the default window (Q174).
+     - **Known, recorded (N6).** An INTENT created before a trip, whose mission was paused,
+       can start when the mission resumes while the breaker is open; a start closes the
+       breaker. Bounded by the INTENTs dispatched before the trip.
+     - **Owner-accepted limit 6ii** (a resume is not a trial) stays as item 132 states.
+     - **Mutants:** Q153-Q163. Q152 is redefined in r4: the breaker check dropped from
+       `route_wait` (a health-blocked decision is waited on); the test uses a valid future
+       time, so the parse cannot hide it. Q145 and Q153 follow the current lines.
+134. **Correction r8 to items 131-133 (card T-106, 2026-10-22, after the review of b50fcd9).**
+     - **Owner sign-off, 2026-10-22: "Accept read-all, cap 600".** The streak reads the
+       harness's 600 newest execution rows by creation (`LIMIT 600`), decodes each and
+       orders them in Python. This replaces the read that stopped at the start (N5 and
+       item 131's "the read stops at its start"). **Ceiling:** 600 rows per harness per
+       routing decision and per task admission check; a streak longer than 600 rows is
+       cut at its 600th row. Upgrade path, not built: a promoted `decided_at` column with
+       an index, or json1 once the SQLite floor allows it.
+     - **The pre-filter matches the body's own key** (`"harness_id": "<id>"`, the JSON the
+       row was written with). Registered ids are ASCII literals (`claude_code`, `pi`,
+       `fake`), so an escaped id is not reachable today; it is tested anyway. The bare-text
+       match let other harnesses' rows (a summary that says `pi`) take the 600 slots.
+     - **A replayed decision judges its resets as the builder does (review of b50fcd9,
+       Required 1).** `resources.replay` writes each stored reset as `instants.ahead`
+       against the recorded `now` before the router reads it, so a decision recorded before
+       item 133's written instants replays as it was decided: a reset equal to now is no
+       wait, a future reset is the same instant as 533e3e9 (a non-UTC
+       reset keeps its offset, as `instants.ahead` writes it).
+     - **The builder keeps the original assertion on raw provider text**
+       (`test_T106r8_the_builder_writes_raw_resets_as_instants_and_names_the_earliest`);
+       the router test feeds written instants.
+     - **Mutants:** Q175-Q179.
+135. **Correction r9 to items 133-134 (card T-106, 2026-10-22, after the review of d684947).**
+     - **Offset readings order by instant (review R1).** Item 133's router compared the
+       written texts as strings, and a non-UTC text does not sort by its instant: a reset of
+       13:00+02:00 (11:00Z) lost to 12:00Z, and a reset of 09:30-01:00 (10:30Z, ahead of
+       now) was no wait. A reset is now {at, key}: `at` is the text a decision carries
+       (offset kept, as 533e3e9 wrote it), `key` the same instant in UTC (ms, Z). The router
+       takes the waits by `key`, compares `key` with `now`, and writes `at` of the earliest.
+       The router still imports nothing (B1). Replayed decisions keep their text: each
+       reset recorded as text is written again, and one already written is kept.
+     - **Cases A and B, on the router, the live builder and the replay alike** (the
+       `_RESET_CASES` table in tests/v1/unit/test_routing_units.py, expected values
+       checked against 533e3e9). Mutants Q180-Q183.
+     - **The cap is by creation order (review S1, probed).** Creation order and decided
+       time can disagree: a failure created first and ended last falls outside the 600
+       newest rows. Ordering the SQL by decided time needs json_extract, which the SQLite
+       3.31 floor forbids, so the owner's "cap 600 by creation" stands as written and is
+       pinned by test_O7_the_cap_is_by_creation_order.
+136. **Correction r11 to item 135 (card T-106, 2026-10-23, after the review of 65dd37c).**
+     The 600 cap counts counting rows only. It took the harness's 600 newest rows before
+     the Python filter dropped those that are neither a failed start, a start nor an
+     INTENT, so 600 newer `binding` refusals pushed a tripped breaker's failures out of
+     the read and it read closed. The SQL now keeps only `state = 'INTENT'` or a body
+     with `"stop_reason": "spawn"` or `"started_at": "` (the encoding `rows.encode`
+     writes; SQLite 3.31 has no json_extract), so a non-counting row takes no slot. The
+     Python filter stays for the harness check. The replay text is unchanged; the other
+     nits (the unused `instants.written`, the "same text" wording above, the `_newest`
+     docstring) are one-line fixes. Mutant Q184
+     (test_O7_rows_that_cannot_count_take_no_slot_of_the_cap).
+
 ## 13. As built
 (Filled at the end of P20.)
 
