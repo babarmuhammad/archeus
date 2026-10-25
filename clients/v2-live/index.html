@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-motion="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>V2 Live</title>
+<meta name="description" content="A simulated Archeus app that responds to every window size. Fixture data, nothing is connected to a Core.">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/app.css">
+<script>
+(function () {
+  try {
+    var q = new URLSearchParams(location.search), s = JSON.parse(localStorage.getItem('archeus-v2-live')) || {};
+    var t = q.get('theme') || s.theme, m = q.get('motion') || s.motion;
+    if (t) document.documentElement.dataset.theme = t;
+    if (m) document.documentElement.dataset.motion = m;
+  } catch (e) { /* storage blocked: defaults apply */ }
+})();
+</script>
+</head>
+<body>
+<div id="toolbar" role="toolbar" aria-label="Prototype controls"></div>
+<div id="framenote" hidden></div>
+<div id="stage"><div id="device"></div></div>
+<noscript><p style="padding:16px">V2 Live needs JavaScript. It is a prototype with fixture data; nothing is connected to a Core.</p></noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

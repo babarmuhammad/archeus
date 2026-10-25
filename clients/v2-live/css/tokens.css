@@ -1,0 +1,79 @@
+/* V2 Live tokens. Values from docs/architecture/ARCHEUS_V2_VISUAL_LANGUAGE.md (V2, section 3 and 4) as measured there:
+   text roles at least 4.5:1 on bg and every surface, high contrast at least 7:1.
+   Themes: dark, light, dark-hc, light-hc, system (follows the OS), forced (a simulation of Windows forced colours).
+   Set on <html data-theme="...">. Colour never carries a state alone: every state also has a glyph and a word. */
+
+:root, :root[data-theme='dark'], :root[data-theme='dark-hc'] {
+  color-scheme: dark;
+  --bg: #0C0811; --s1: #0E131C; --s2: #151C2A; --s3: #1C2536;
+  --line: #292D33; --line-strong: #484B4D;
+  --text: #EFE9DA; --text-2: #BDB7A8; --text-3: #ABA699;
+  --primary: #EFE9DA; --on-primary: #0C0811; --thread: #EFE9DA; --focus: #FFF3CF;
+  --active: #6FB1FF; --attention: #F2B544; --blocked: #F07178; --paused: #9AA5B8; --thinking: #C7B2F0; --done: #6FD39A;
+  --band: #292621; --scrim: rgba(0, 0, 0, 0.55); --hair: 1px;
+}
+
+:root[data-theme='light'], :root[data-theme='light-hc'] {
+  color-scheme: light;
+  --bg: #F4EFE4; --s1: #FBF9F4; --s2: #EDE8DA; --s3: #FFFFFF;
+  --line: #DBD8D5; --line-strong: #B6B3B3;
+  --text: #14101A; --text-2: #4A4452; --text-3: #5C5666;
+  --primary: #14101A; --on-primary: #FBF9F4; --thread: #14101A; --focus: #14101A;
+  --active: #0063D8; --attention: #8C5E0A; --blocked: #CE1620; --paused: #5B6982; --thinking: #7947DB; --done: #247647;
+  --band: #EEE6D8; --scrim: rgba(20, 16, 26, 0.45);
+}
+
+:root[data-theme='dark-hc'] {
+  --active: #74B4FF; --blocked: #F4969B; --paused: #A6B0C0; --text-3: #BDB7A8;
+  --line: #6C6F74; --line-strong: #6C6F74; --band: #0E131C; --hair: 2px;
+}
+
+:root[data-theme='light-hc'] {
+  --active: #00489D; --attention: #664407; --blocked: #991018; --paused: #424C5E; --thinking: #5925BF; --done: #1A5533;
+  --text-3: #4A4452; --line: #878280; --line-strong: #878280; --band: #FBF9F4; --hair: 2px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+    color-scheme: light;
+    --bg: #F4EFE4; --s1: #FBF9F4; --s2: #EDE8DA; --s3: #FFFFFF;
+    --line: #DBD8D5; --line-strong: #B6B3B3;
+    --text: #14101A; --text-2: #4A4452; --text-3: #5C5666;
+    --primary: #14101A; --on-primary: #FBF9F4; --thread: #14101A; --focus: #14101A;
+    --active: #0063D8; --attention: #8C5E0A; --blocked: #CE1620; --paused: #5B6982; --thinking: #7947DB; --done: #247647;
+    --band: #EEE6D8; --scrim: rgba(20, 16, 26, 0.45);
+  }
+}
+@media (prefers-contrast: more) {
+  :root[data-theme='system'] {
+    --active: #74B4FF; --blocked: #F4969B; --paused: #A6B0C0; --text-3: #BDB7A8;
+    --line: #6C6F74; --line-strong: #6C6F74; --band: #0E131C; --hair: 2px;
+  }
+}
+@media (prefers-color-scheme: light) and (prefers-contrast: more) {
+  :root[data-theme='system'] {
+    --active: #00489D; --attention: #664407; --blocked: #991018; --paused: #424C5E; --thinking: #5925BF; --done: #1A5533;
+    --text-3: #4A4452; --line: #878280; --line-strong: #878280; --band: #FBF9F4; --hair: 2px;
+  }
+}
+
+/* A simulation of Windows forced colours, so the owner can see the look without switching the OS: black ground, white ink,
+   one highlight colour, state told by glyph and word only. The real `forced-colors: active` media query is handled in app.css. */
+:root[data-theme='forced'] {
+  color-scheme: dark;
+  --bg: #000000; --s1: #000000; --s2: #000000; --s3: #000000;
+  --line: #FFFFFF; --line-strong: #FFFFFF;
+  --text: #FFFFFF; --text-2: #FFFFFF; --text-3: #FFFFFF;
+  --primary: #FFFFFF; --on-primary: #000000; --thread: #FFFFFF; --focus: #1AEBFF;
+  --active: #1AEBFF; --attention: #FFFFFF; --blocked: #FFFFFF; --paused: #FFFFFF; --thinking: #FFFFFF; --done: #FFFFFF;
+  --band: #000000; --scrim: rgba(0, 0, 0, 0.8); --hair: 2px;
+}
+
+:root {
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", monospace;
+  --serif: "Libre Caslon Text", Georgia, serif;
+  --ease: cubic-bezier(.22, .8, .18, 1);
+  --dur-state: 160ms; --dur-sheet: 280ms; --dur-breath: 6000ms;
+  --tb: 48px;
+}

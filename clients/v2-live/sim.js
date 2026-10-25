@@ -326,6 +326,20 @@ export function createSim(opts = {}) {
       }
       return { ok: true };
     }
+    if (kind === 'confirm' || kind === 'retract') {
+      const k = S.knowledge.find((x) => x.id === id);
+      if (!k || k.state !== 'CANDIDATE') return bad('Nothing to decide on this item');
+      const from = k.state; k.state = kind === 'confirm' ? 'CONFIRMED' : 'RETRACTED';
+      emit('knowledge_item.state_changed', { kind: 'knowledge_item', id }, { from, to: k.state, trigger: kind === 'confirm' ? 'confirm' : 'reject' }, { project: k.project });
+      return { ok: true };
+    }
+    if (kind === 'enable') {
+      const a = S.automations.find((x) => x.id === id);
+      if (!a || (a.state !== 'SUSPENDED' && a.state !== 'PENDING_APPROVAL')) return bad('This automation does not wait for you');
+      const from = a.state; a.state = 'ENABLED'; a.note = null;
+      emit('automation.state_changed', { kind: 'automation', id }, { from, to: 'ENABLED', trigger: from === 'SUSPENDED' ? 'user_reenables' : 'approve' }, {});
+      return { ok: true };
+    }
     const m = M(id); if (!m) return bad('No such mission');
     if (kind === 'accept' || kind === 'changes') {
       const r = Object.values(S.reviews).find((x) => x.mission === m.id && (x.state === 'PENDING' || x.state === 'IN_REVIEW'));

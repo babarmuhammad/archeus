@@ -226,3 +226,15 @@ test('the event log is bounded and says when it pruned', () => {
 });
 
 test('clock label starts at 09:00', () => { assert.equal(clockLabel(0), '09:00'); assert.equal(clockLabel(90 * 60000), '10:30'); assert.equal(clockLabel(-30 * 60000), '08:30'); });
+
+test('knowledge candidates and automations that wait for you can be decided', () => {
+  const s = createSim();
+  assert.equal(s.act('confirm', 'k-4').ok, true);
+  assert.equal(s.state.knowledge.find((k) => k.id === 'k-4').state, 'CONFIRMED');
+  assert.equal(s.act('confirm', 'k-4').ok, false);
+  assert.equal(s.act('retract', 'k-6').ok, true);
+  assert.equal(s.act('enable', 'au-3').ok, true);
+  assert.equal(s.state.automations.find((a) => a.id === 'au-3').state, 'ENABLED');
+  assert.equal(s.act('enable', 'au-1').ok, false);
+  assert.equal(s.act('enable', 'au-2').ok, true);
+});
