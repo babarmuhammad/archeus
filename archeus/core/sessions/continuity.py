@@ -119,10 +119,10 @@ def brief(conn, session, ctx, head=None, homes=None):
             'context': ctx, 'missing': missing}
 
 
-def handoff_state(conn, session, ctx, head=None):
+def handoff_state(conn, session, ctx, head=None, homes=None):
     """What a hand-off target of a mission-linked session is given: the brief
     without the source's cursor (the target has seen nothing)."""
     head = outbox.head(conn) if head is None else head
     state, missing = mission_state(conn, session.mission_id)
-    return {'mission': state, 'open_problems': open_problems(conn, session.mission_id),
+    return {'mission': state, 'open_problems': open_problems(conn, session.mission_id, homes),
             'context': ctx, 'missing': missing, 'as_of_seq': head}

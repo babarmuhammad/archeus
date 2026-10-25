@@ -259,8 +259,10 @@ def _claim(tx, actor, a, e, why):
         return end('denied', 'denied', 'caused by an execution, which may not create missions '
                    '(domain-model §3.3)')
     # matching above keeps the raw payload; only what is written into the mission is projected
+    from . import resources
+    shown = resources.bound_homes(tx.conn, tx.live)
     want = matcher.render(a.template, e.type, e.seq, (e.subject.kind, e.subject.id),
-                          public_event(e.to_envelope(), _homes(tx.conn, None))['payload'])
+                          public_event(e.to_envelope(), shown)['payload'])
     m = commands.create_mission(tx, actor=me, title=want['title'], objective=want['objective'],
                                 project_id=a.project_id, workspace_id=a.workspace_id,
                                 success_criteria=want['success_criteria'],

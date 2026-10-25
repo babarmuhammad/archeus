@@ -47,7 +47,7 @@ def record_context_package(tx, *, actor, subject_kind, subject_id, query=None):
     `context_ready` move records one for the mission; a knowledge pass records
     one for the project it reads, so every item it produces can cite it (P6)."""
     from . import resources
-    homes = resources.homes(tx.conn, None, ())
+    homes = resources.bound_homes(tx.conn, tx.live)
     body = public_context(context.assemble(tx.conn, subject_kind, subject_id, query=query,
                                            homes=homes), homes)
     pkg = entities.ContextPackage(id=ids.new_id('context_package'), **body)

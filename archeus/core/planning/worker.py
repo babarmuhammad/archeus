@@ -124,7 +124,7 @@ class Planner:
         with self.db.read() as conn:
             m = rows.get(conn, entities.Mission, mission_id).entity
             pkg = public_context(rows.get(conn, entities.ContextPackage, pkg_id).entity.to_dict(),
-                                 resources.homes(conn, None, ()))
+                                 resources.bound_homes(conn, self.db.writer.live))
             lines, facts = planner.describe(conn, pkg, m)
             replan = _replan(conn, m, why)
         c = self.calls.run(purpose='planner', source={'kind': 'mission', 'id': mission_id},

@@ -432,6 +432,9 @@ class Core:
         for adapter in (real_executors() if self.ports.executors is None
                         else self.ports.executors):
             registry.register(adapter)
+        callers = self.ports.callers
+        self.callers = real_callers() if callers is None else callers
+        self.db.writer.live = (registry, self.callers)
         eng = engine.Engine(
             self.db, actor=self.system,
             work=work.Work(missions=self.missions,
@@ -447,8 +450,6 @@ class Core:
         self.world = WorldLoop(World(self.db, actor=self.system), self.db,
                                poll_s=self.world_poll_s, on_fail=self._engine_failed)
         self.world.start()
-        callers = self.ports.callers
-        self.callers = real_callers() if callers is None else callers
         own = OwnCalls(self.db, actor=self.system, callers=self.callers,
                        preference=self.ports.preference, usage=self.ports.usage)
         self.knowledge = WorldLoop(Knowledge(self.db, actor=self.system,

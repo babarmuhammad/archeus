@@ -368,7 +368,7 @@ class ExecutionManager:
         n, cur = 0, e
         with self.db.read() as r:
             cp = checkpoint.of_execution(r, e.handoff_from)
-            homes = resources.homes(r, self.registry, ()) if cp is not None else None
+            homes = resources.homes(r, self.registry, self.db.writer.live[1]) if cp is not None else None
             while cur is not None and cur.handoff_from is not None and n < 1000:
                 n += 1
                 row = rows.get(r, entities.Execution, cur.handoff_from)

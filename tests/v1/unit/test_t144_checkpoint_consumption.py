@@ -26,12 +26,13 @@ def test_checkpoint_artifact_and_prompt_project_before_render(archeus_home, monk
     assert store.get(cp.artifact_sha).decode('utf-8') == raw
     assert cp.open_problems == ('read ' + home + '/settings.json',)
     manager = ExecutionManager.__new__(ExecutionManager)
-    manager.db = SimpleNamespace(read=lambda: nullcontext(object()))
-    manager.registry = object()
+    manager.registry, bound = object(), [object()]
+    manager.db = SimpleNamespace(read=lambda: nullcontext(object()),
+                                 writer=SimpleNamespace(live=(manager.registry, bound)))
     monkeypatch.setattr(checkpoint, 'of_execution', lambda conn, execution: cp)
     monkeypatch.setattr('archeus.core.execution.manager.rows.get', lambda *args: None)
     def live_homes(conn, registry, callers):
-        assert registry is manager.registry
+        assert registry is manager.registry and callers is bound
         return homes
     monkeypatch.setattr('archeus.core.execution.manager.resources.homes', live_homes)
     prompt, count = manager._continuation(SimpleNamespace(handoff_from=cp.execution_id), 'task\n')

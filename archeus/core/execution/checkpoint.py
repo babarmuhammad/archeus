@@ -100,7 +100,7 @@ def derive(tx, *, actor, execution, facts=None, context_package_id=None):
         next_action='', context_package_id=context_package_id or m.context_package_id,
         usage=dict(e.usage) if e.usage else None)
     from ..application import resources
-    data = render.checkpoint(cp, resources.homes(tx.conn, None, ())).encode('utf-8')
+    data = render.checkpoint(cp, resources.bound_homes(tx.conn, tx.live)).encode('utf-8')
     sha = artifacts.put(data)
     cp = entities.Checkpoint(**dict(cp.to_dict(), artifact_sha=sha))
     tx.insert(cp, actor=actor)

@@ -689,6 +689,12 @@ def homes(conn, registry, callers, *, shorts=None):
     return out
 
 
+def bound_homes(conn, live):
+    """`homes` for a write or worker path, from the (registry, callers) the owner
+    bound to the writer (`tx.live`, `db.writer.live`)."""
+    return homes(conn, *live)
+
+
 def account_view(conn, row):
     (p,) = rows.where(conn, entities.ResourcePolicy, account_id=row.entity.id)
     return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, row.entity.id))

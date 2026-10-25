@@ -316,11 +316,21 @@ Read-cost ceiling (slice 2 S-5): home discovery scans and decodes stored RouteDe
 on nonempty reads. There is no constant-time, cached, or fixed-latency guarantee; matching cost
 also grows with output strings and known homes. Empty event polls avoid home construction.
 
-Remaining registry ceiling: checkpoint artifact writes and resume/handoff write paths still
-discover homes without the live adapter registry. A default home absent from every stored
-snapshot can remain in those artifacts. The continuation prompt boundary does use the live
-registry. Registry-less context/automation/planner write/consumption fallbacks retain the same
-limit. These paths are not included in a universal live-only-default guarantee.
+Registry ceiling (N-3), closed 2026-10-25: every write and worker path that builds `Homes` reads the
+live adapter registry and callers the owner bound to the writer (`writer.live`, seen by a command as
+`tx.live`, bound by the Core runtime and the judge client). Closed paths: resume
+(`application/sessions.py` `resume`) and hand-off (`handoff`, `continuity.handoff_state`) briefs and
+artifacts, the checkpoint artifact (`checkpoint.derive`), the recorded context package
+(`commands.record_context_package`), the planner's reused package (`planning/worker.py`), the
+automation mission render (`automations.react`) and the continuation prompt (registry and callers).
+The binding is outside command kwargs, so idempotency hashes, stored keys, entity ids, matching,
+exemptions and SSE frames are unchanged. Evidence: `integration/test_t144_live_bound_writes.py`
+(a live-only default home absent from every stored snapshot is scrubbed in each artifact; control
+test shows it is raw when unbound; hash identity and runtime binding pinned), mutants Z433-Z445.
+Remaining limits, not registry related: a `Database` used without the binding (tests, embedders that
+never set `writer.live`) discovers stored homes only; a hand-off from a session with no mission renders
+the source's text turns as read from its transcript, unprojected, and mission or task titles in a
+brief are authored content (exempt, as above).
 
 ### 12.A Slice A — provenance (D4, D11) and the producer record (D5)
 

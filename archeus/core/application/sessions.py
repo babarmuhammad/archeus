@@ -245,6 +245,11 @@ def expire_launches(tx, *, actor):
     return {'expired': out}
 
 
+def _live_homes(tx):
+    from . import resources
+    return resources.bound_homes(tx.conn, tx.live)
+
+
 # ── resume (§9) ─────────────────────────────────────────────────────────────
 
 def resume(tx, *, actor, session_id, request_id, models=(), efforts=(), model=None,
@@ -271,7 +276,7 @@ def resume(tx, *, actor, session_id, request_id, models=(), efforts=(), model=No
     effort = _vocabulary(effort, efforts, 'effort', s.harness_id) or s.effort
     head = outbox.head(tx.conn)
     ctx = continuity.package(tx, actor, s)
-    b = continuity.brief(tx.conn, s, ctx, head=head)
+    b = continuity.brief(tx.conn, s, ctx, head=head, homes=_live_homes(tx))
     sha = artifacts.put(render.brief(b).encode('utf-8'))
     tx.update(entities.Session, s.id, {
         'last_seen_seq': head, 'context_package_id': ctx['package_id'],
@@ -310,8 +315,8 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
     head = outbox.head(tx.conn)
     if src.mission_id is not None:
         ctx = continuity.package(tx, actor, src)
-        text = render.handoff(view_of(src), continuity.handoff_state(tx.conn, src, ctx, head),
-                              None)
+        text = render.handoff(view_of(src), continuity.handoff_state(
+            tx.conn, src, ctx, head, _live_homes(tx)), None)
     elif turns:
         ctx = continuity.package(tx, actor, src)
         text = render.handoff(view_of(src), None, [tuple(t) for t in turns])
