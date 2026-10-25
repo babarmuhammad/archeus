@@ -278,6 +278,8 @@ change to credentials, the boundary or PV-20.
 
 - D-26 was built before P21 opened (X1).
 - If D0 (b) is approved, P21 slices land while P20 is open; P20's exit record is unaffected.
+- Slice H (T-129): `next_run_at` lives in the automation's body, with no numbered migration for
+  the schedule state (§6 expected one); its fires do not bump the row's version (§12 Slice H).
 
 ## 12. As built
 
@@ -710,3 +712,77 @@ items, D12 (a). "P21 cannot be declared complete before P20 is" (D0) is unchange
   - Not changed, on the review's reading: the per-read cost of the Attention scan (bounded by
     the blocked missions; a join is the upgrade if it grows). H05 and H06 are still weak (a schema
     check and an auth check); not strengthened here.
+
+### Slice H as built (2026-10-21, card T-129; rework after review, same card)
+
+Built under D9 "Build in P21" and the owner's 2026-10-21 naming of slice H under D0 ("Yes, all
+five (Recommended)", recorded on the board's "Owner 2026-10-21" block and appended to D0 at
+integration). It changes no routing behaviour: a schedule only asks for a mission, through P14.
+The owner's answer on missed times (2026-10-21): "Once together (Recommended)", as built.
+
+- **The trigger.** `{kind: 'schedule', every}` beside P14's `{kind: 'event', type, where}`
+  (`archeus/core/automation/matcher.py` `validate_trigger`, `every_s`, `next_due`; the matcher stays
+  pure). `every` is the legacy loops' interval grammar (`claude_sessions/loops.py`
+  `_interval_minutes`: `15m`, `2h`, `1d`, a bare number is minutes), stored normalised (`' 2 h '`
+  is `2h`). The period is at least one minute and at most 7 days (the loops' cap, loops.py:292),
+  and the digits are bounded to six, so an overflowing period is refused when written, never
+  when enabled. Seconds are exact here (the loops floor them to whole minutes; no loop uses them).
+  Condition triggers stay unbuilt (p14 D14). An event never matches a schedule trigger, and the
+  due event is an `automation.*` type, which no event trigger may name (p14 D10).
+- **`next_run_at`: a field of the automation's body, deliberately not a migration.** Deviation,
+  declared here (§11). The cost is that the field lives on the versioned row, so the fire moves
+  the row without bumping its `version` (`writer.update(..., bump=False)`): a person's
+  `expected_version`, read before a fire, still works. The API reports `next_run_at` only while
+  the automation is ENABLED (`automations._view`); a disabled or suspended schedule reports null.
+- **Claim-and-advance (ADR-0020, state-machines §8).** `automations.fire_due(automation_id)`, ONE
+  writer command per due schedule: the due check is made inside the transaction, the time moves
+  to the first point on its grid after now, `automation.schedule_due` is appended (payload:
+  `due_at`, `every`, `next_run_at`, `missed`), and the run is claimed through P14's `_claim`, so
+  the depth, rate-limit, loop-guard, e-stop and execution-actor guards apply as to an event. A time
+  is claimed once: a second pass, a second worker or a restart finds it already moved on.
+  **Missed times (owner, 2026-10-21): once together.** The times a stopped Core missed fire as one
+  run; `missed` on the rationale and the event says how many grid points were skipped.
+- **A schedule that may not run is not claimed.** Its project gone or archived, or Core disarmed
+  (e-stop): the time stays due and fires once together when it may run again. Claiming it anyway
+  wrote a denied or condition_false run every period, and neither reason counts toward the loop
+  guard. The API says why in `waiting` ("project gone or archived", "Core disarmed"), null
+  otherwise, and a waiting schedule is not in Upcoming.
+- **Faults are per schedule.** The worker (`worker.py` `_fire_due`) runs one command per due
+  schedule. A claim that raises is held and retried with backoff like an event, then quarantined
+  for this process after `MAX_ATTEMPTS` (a restart retries it). Other schedules still fire. The
+  API's `waiting` carries the recorded cause ("quarantined after 3 failures: <error>", the error
+  flattened to one line and capped at 200 characters; an event quarantine's cause is capped the
+  same way), so Upcoming drops the schedule and Control shows it as Waiting. Re-enable does not clear the quarantine
+  (deferred, r1 N6: it lasts until restart).
+- **A due time in the future.** `waiting` is read whenever a time is set, so a schedule whose gate
+  holds it now shows the reason before its time comes; it is held when due, and fires then.
+- **When it runs.** The worker checks for due schedules at the start of every pass, which runs on
+  every commit and at least every `WORLD_POLL_S` (10 s), so a time fires at most that late.
+- **Simulation.** `simulate` on a schedule answers how many times it would have come due had it
+  run for the whole window (`scheduled`), not events.
+- **Seen.** SPA: Control shows "Every 15 minutes" and, while enabled, "Next run in 12 min";
+  Now's Upcoming adds the enabled schedules that are not waiting, soonest first, after the approved
+  and planning missions (`now.ts` `scheduled`, `Now.tsx`); Control shows "Waiting" with the reason
+  in place of "Next run". A run's "why" says "It fired on its schedule, every day". TUI: Control
+  shows "Waiting" or "Next run". The offline Now snapshot does not keep the automations
+  read, so it shows no schedule. Times are UTC periods from the enable instant, not wall-clock.
+- **Tests:** `tests/v1/integration/test_schedule_triggers.py` (H01 fires at its time and not
+  before, once; H02 a restart fires four missed times once, `missed` 3, and keeps the grid; H03 two
+  workers on one time claim it once, and a claim made after that commit finds the time moved on
+  (forced, not raced); H04 the loop guard suspends a schedule and the API reports no
+  time; H05 a disabled schedule does not fire, reports no time, and re-enabling restarts its clock;
+  H06 events and schedules never cross; H07 over HTTP: `next_run_at`, the simulation, the one-minute
+  floor; H08 a mission a schedule asked for starts a rule one level deeper; H09 a fire does not
+  bump the version; H10 an archived project or a disarmed Core waits, says why in `waiting`, and
+  fires once; H11 a claim that raises holds only its schedule, then quarantines it and says why in
+  `waiting`); `tests/v1/unit/test_automation_units.py` (the grammar and its 7-day cap, the refusals,
+  `next_due`, no match); `clients/app/test/now.test.ts` (a held schedule is not upcoming; Control's
+  row says why, else the next run); `tests/v1/tui/test_acceptance.py` (a held schedule's Control row
+  reads Waiting with the reason and no Next run).
+- **Mutants:** Z100-Z109 and Z400-Z410 in `tools/mutate_p21.py`, each killed by a test it names
+  (Z400 the 7-day cap, Z401 the digit bound, Z402 the in-transaction due check, Z403 the loop
+  guard, Z404 the API's null time, Z405 the version bump, Z406 the archived or disarmed skip, Z407
+  the per-schedule isolation, Z408 the quarantine, Z409 the simulation count, Z410 the missed count);
+  Z411 the API's `waiting` reason, Z412 a held schedule listed as upcoming, Z233 Control's row
+  drops the reason (`scheduleRows`), Z234 the TUI row drops the reason, Z235 the worker keeps no
+  cause for a quarantine, Z236 the view drops the quarantine.

@@ -7,6 +7,7 @@ without writing anything.
 
     validate_trigger / validate_template   refuse a rule when it is written
     matches                                does this event fire this trigger, and why
+    every_s / next_due                     a schedule trigger's period and its next time
     render                                 the mission a template asks for
     should_suspend                         the loop guard's suspension rule
 """
@@ -26,6 +27,15 @@ MAX_VALUE = 200
 SUSPEND_AFTER = 3
 WINDOW_S = 3600
 
+#: P21 slice H (p21-design-gate D9): `{kind: 'schedule', every}` takes the legacy
+#: loops' interval grammar (claude_sessions/loops.py: '15m', '2h', '1d', a bare
+#: number is minutes) with the same 7-day cap. Seconds are exact here, where the
+#: loops floor them to whole minutes. The digit bound keeps every period in range.
+MIN_EVERY_S = 60
+MAX_EVERY_S = 7 * 86400
+_EVERY = re.compile(r'\s*(\d{1,6})\s*([smhd]?)\s*')
+_UNIT_S = {'s': 1, 'm': 60, 'h': 3600, 'd': 86400}
+
 _PLACEHOLDER = re.compile(r'\{([^{}]*)\}')
 _ALLOWED = re.compile(r'(event\.type|event\.seq|subject\.kind|subject\.id|payload\.\w+)')
 _CONTROL = re.compile(r'[\x00-\x1f\x7f]+')
@@ -39,9 +49,11 @@ class Invalid(ValueError):
 def validate_trigger(trigger, types):
     """The trigger as stored, or Invalid. *types* is the set of registered
     event types (the caller's registry: this module imports nothing)."""
+    if isinstance(trigger, dict) and trigger.get('kind') == 'schedule':
+        return _schedule(trigger)
     if not isinstance(trigger, dict) or trigger.get('kind', 'event') != 'event':
-        raise Invalid("a trigger is {kind: 'event', type, where} (schedule and condition "
-                      "triggers are not built: p14-design-gate D14)")
+        raise Invalid("a trigger is {kind: 'event', type, where} or {kind: 'schedule', every} "
+                      "(condition triggers are not built: p14-design-gate D14)")
     extra = set(trigger) - {'kind', 'type', 'where'}
     if extra:
         raise Invalid('a trigger has no %s' % sorted(extra))
@@ -64,6 +76,34 @@ def validate_trigger(trigger, types):
         elif not isinstance(v, _SCALARS):
             raise Invalid('a where value is a string, number, boolean or null: %r' % (v,))
     return {'kind': 'event', 'type': t, 'where': dict(where)}
+
+
+def _schedule(trigger):
+    extra = set(trigger) - {'kind', 'every'}
+    if extra:
+        raise Invalid('a schedule trigger has no %s' % sorted(extra))
+    m = isinstance(trigger.get('every'), str) and _EVERY.fullmatch(trigger['every'])
+    if not m:
+        raise Invalid("every is a count and a unit: '15m', '2h', '1d'")
+    every = '%d%s' % (int(m.group(1)), m.group(2) or 'm')
+    if every_s({'every': every}) < MIN_EVERY_S:
+        raise Invalid('a schedule fires at most once a minute')
+    if every_s({'every': every}) > MAX_EVERY_S:
+        raise Invalid('a schedule period is at most 7 days')
+    return {'kind': 'schedule', 'every': every}
+
+
+def every_s(trigger):
+    """A schedule trigger's period in seconds."""
+    n, unit = _EVERY.fullmatch(trigger['every']).groups()
+    return int(n) * _UNIT_S[unit or 'm']
+
+
+def next_due(due, every, now):
+    """The first time on *due*'s grid of *every* seconds after *now* (epoch
+    seconds). Claim-and-advance moves past every time a stopped Core missed, so
+    they fire once together, never one by one."""
+    return due + every * ((now - due) // every + 1) if now >= due else due
 
 
 def validate_template(template):
@@ -99,7 +139,7 @@ def _test(want, got):
 
 def matches(trigger, event_type, payload):
     """(fired, rationale): the rationale names each test and the value it saw."""
-    if event_type != trigger['type']:
+    if trigger.get('kind', 'event') != 'event' or event_type != trigger['type']:
         return False, None
     seen = {}
     for k, want in sorted(trigger['where'].items()):

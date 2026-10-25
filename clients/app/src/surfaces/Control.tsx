@@ -30,6 +30,7 @@ import { canCommand } from '../data/connection';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
+import { scheduleRows } from '../state/now';
 import { ago, armedText, attentionLabel, consumersText, consumptionText, estopSaid, known, pct, presenceLabel, spanText, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { LINK, MACHINE } from './Attention';
@@ -188,6 +189,7 @@ function Automations() {
                 <KV
                   rows={[
                     ['When', triggerText(a.trigger)],
+                    ...scheduleRows(a),
                     ['Archeus will', templateText(a.template)],
                     ['Depth limit · rate limit', `${String(a.max_depth ?? '—')} · ${String(a.rate_limit ?? '—')} per hour`],
                   ]}

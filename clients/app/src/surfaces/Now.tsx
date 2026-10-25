@@ -12,7 +12,7 @@ import { LiveMap } from '../graph/GraphView';
 import { reducedMotion } from '../graph/loop';
 import { MAP_MIN_WIDTH, useWide } from '../graph/wide';
 import { objectHref } from '../nav/destinations';
-import { activeMissions, automationLine, mapSeeds, recentDecisions, stateSentence, upcoming } from '../state/now';
+import { activeMissions, automationLine, mapSeeds, recentDecisions, scheduled, stateSentence, upcoming } from '../state/now';
 import { attemptIds } from '../state/orbit';
 import { ago, attentionLabel, headerLine } from '../state/present';
 import { lineBetween, linksOf, messageHeard, targetOf, threadWords, type Ref } from '../state/thread';
@@ -65,6 +65,7 @@ export function NowView() {
   const all = missions.data?.missions ?? [];
   const active = activeMissions(all);
   const next = upcoming(all);
+  const timed = scheduled(useRead<AutomationList>(paths.listAutomations()).data?.automations ?? []);
   const needs = att.data?.count ?? 0;
   const mapFits = useWide(MAP_MIN_WIDTH);
   return (
@@ -95,11 +96,16 @@ export function NowView() {
             </Loadable>
           </Section>
           <DigestSection />
-          {next.length ? (
+          {next.length || timed.length ? (
             <Section title="Upcoming">
               <ul className="rows" data-now="upcoming">
                 {next.map((m) => (
                   <MissionRow key={m.id} m={m} />
+                ))}
+                {timed.map((a) => (
+                  <li key={a.id} className="row-item" data-ref={`automation:${a.id}`}>
+                    <a className="title" href="#/control/automations">{a.name}</a> · next run {ago(a.next_run_at)}
+                  </li>
                 ))}
               </ul>
             </Section>

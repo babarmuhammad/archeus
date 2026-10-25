@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { activeMissions, automationLine, DECISIONS_SHOWN, liveMap, MAP_CAP, mapRead, mapSeeds, recentDecisions, stateSentence, upcoming } from '../src/state/now.ts';
+import { activeMissions, automationLine, DECISIONS_SHOWN, liveMap, MAP_CAP, mapRead, mapSeeds, recentDecisions, scheduled, scheduleRows, stateSentence, upcoming } from '../src/state/now.ts';
 import { MAP_MIN_WIDTH } from '../src/graph/wide.ts';
 import { build } from '../src/graph/model.ts';
 
@@ -34,6 +34,26 @@ test('the automation line counts the enabled automations, and is absent at none'
   assert.equal(automationLine([a('ENABLED'), a('ENABLED'), a('DISABLED'), a('DRAFT'), a('SUSPENDED')]), '2 automations watching');
   assert.equal(automationLine([a('ENABLED')]), '1 automation watching');
   assert.equal(automationLine([a('DISABLED'), a('PENDING_APPROVAL')]), null);
+});
+
+test('upcoming step 2 (P21 D9): the enabled schedules, soonest first, by Core\'s next_run_at', () => {
+  const a = (id: string, state: string, next_run_at: string | null) => ({ id, name: id, state, next_run_at, trigger: { kind: 'schedule', every: '1h' }, template: {}, version: 1 }) as never;
+  const got = scheduled([a('late', 'ENABLED', '2026-10-21T11:00:00.000Z'), a('off', 'DISABLED', '2026-10-21T09:30:00.000Z'), a('soon', 'ENABLED', '2026-10-21T09:15:00.000Z'), a('event', 'ENABLED', null)]);
+  assert.deepEqual(got.map((x: { id: string }) => x.id), ['soon', 'late']);
+});
+
+test('upcoming step 2: a schedule its gate holds is not upcoming (Control says why)', () => {
+  const a = (id: string, waiting: string | null) => ({ id, name: id, state: 'ENABLED', next_run_at: '2026-10-21T09:15:00.000Z', waiting, trigger: { kind: 'schedule', every: '1h' }, template: {}, version: 1 }) as never;
+  assert.deepEqual(scheduled([a('held', 'Core disarmed'), a('free', null)]).map((x: { id: string }) => x.id), ['free']);
+});
+
+test('control rows (P21 D9): a held schedule says why in place of its next run, a free one its next run', () => {
+  const a = (state: string, waiting: string | null, next_run_at: string | null) => ({ id: 'x', name: 'x', state, waiting, next_run_at, trigger: { kind: 'schedule', every: '1h' }, template: {}, version: 1 }) as never;
+  assert.deepEqual(scheduleRows(a('ENABLED', 'Core disarmed', '2026-10-21T09:15:00.000Z')), [['Waiting', 'Core disarmed']]);
+  assert.deepEqual(scheduleRows(a('ENABLED', 'quarantined after 3 failures: RuntimeError: x', null)), [['Waiting', 'quarantined after 3 failures: RuntimeError: x']]);
+  assert.equal(scheduleRows(a('ENABLED', null, '2026-10-21T09:15:00.000Z'))[0][0], 'Next run');
+  assert.deepEqual(scheduleRows(a('DISABLED', null, null)), []);
+  assert.deepEqual(scheduleRows(a('DISABLED', 'Core disarmed', null)), []);
 });
 
 test('recent decisions: decided approvals, fallbacks and confirmed DECISION knowledge, newest first', () => {

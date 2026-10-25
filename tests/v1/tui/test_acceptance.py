@@ -363,6 +363,23 @@ def test_T12_an_automation_run_is_shown_as_its_causal_chain(core):
     assert 'mission.created' in shown and 'earlier event(s)' in shown
 
 
+def test_a_held_schedule_says_why_in_its_row_and_shows_no_next_run(core):
+    r = core.http('POST', '/v1/automations', body={
+        'name': 'every hour', 'trigger': {'kind': 'schedule', 'every': '1h'},
+        'template': {'title': 't', 'objective': 'o'}, 'idempotency_key': 'h1'})
+    assert r.status == 200, r.body
+    aid = r.json()['id']
+    a = core.http('GET', '/v1/automations/' + aid).json()
+    core.http('POST', '/v1/automations/%s/state' % aid, body={
+        'action': 'enable', 'expected_version': a['version'], 'idempotency_key': 'h2'})
+    assert core.http('POST', '/v1/estop', body={'idempotency_key': 'h3'}).status == 200
+    app = app_on(core)
+    app.go({'view': 'control', 'section': 'automations'})
+    shown = plain(app)
+    assert 'every hour' in shown and 'Waiting' in shown and 'Core disarmed' in shown
+    assert 'Next run' not in shown
+
+
 # ── T13 session hand-off ─────────────────────────────────────────────────────
 
 def test_T13_a_hand_off_asks_for_the_harness_and_keeps_every_field_separate(core):

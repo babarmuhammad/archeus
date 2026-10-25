@@ -42,6 +42,14 @@ def _ago(now, seconds):
     return _iso(datetime.fromisoformat(now.replace('Z', '+00:00')) - timedelta(seconds=seconds))
 
 
+def _epoch(iso):
+    return datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
+
+
+def _at(epoch):
+    return _iso(datetime.fromtimestamp(epoch, timezone.utc))
+
+
 def _event(conn, seq):
     r = conn.execute('SELECT * FROM events WHERE seq = ?', (seq,)).fetchone()
     return None if r is None else outbox.decode(r)
@@ -169,6 +177,9 @@ def set_state(tx, *, actor, automation_id, action, expected_version=None):
     trigger = {'ENABLED': 'user_reenables' if row.entity.state == 'SUSPENDED'
                else 'enable_within_policy', 'DISABLED': 'disable', 'ARCHIVED': 'archive'}[to]
     fields = {'armed_seq': outbox.head(tx.conn)} if to == 'ENABLED' else None
+    # A schedule's first time is one period after enabling (P21 D9), not at once.
+    if fields and row.entity.trigger.get('kind') == 'schedule':
+        fields['next_run_at'] = _at(_epoch(tx.now) + matcher.every_s(row.entity.trigger))
     row, e = lifecycle.fire(tx, entities.Automation, automation_id, trigger, actor=actor,
                             reason='%sd on request' % action, fields=fields,
                             expected_version=expected_version)
@@ -193,6 +204,56 @@ def react(tx, *, actor, seq):
             continue                                 # claimed by an earlier delivery
         runs.append(_claim(tx, actor, a, e, why))
     return {'runs': runs, 'settled': settled}
+
+
+def due(conn, now):
+    """The ENABLED schedule automations whose time has come (P21 D9)."""
+    return [a for a in enabled(conn) if a.trigger.get('kind') == 'schedule'
+            and a.next_run_at and a.next_run_at <= now]
+
+
+def fire_due(tx, *, actor, automation_id):
+    """Claim-and-advance (ADR-0020, state-machines §8) for one schedule, in this
+    one transaction: record that its time came due, move `next_run_at` past now
+    and claim its run, which then passes the same guards as an event's (rate
+    limit, loop guard, e-stop). A time is claimed once: the due check is made
+    inside the transaction, so a second pass, a second worker or a restart finds
+    it already moved on. The times a stopped Core missed fire once together, and
+    `missed` says how many. One schedule per command, so a claim that raises
+    rolls back that schedule alone. Returns the run ids."""
+    a = next((x for x in due(tx.conn, tx.now) if x.id == automation_id), None)
+    # quarantine is not checked here: the worker's _fire_due skips a quarantined schedule first
+    if a is None or _waiting(tx.conn, a):
+        return {'runs': []}
+    every = matcher.every_s(a.trigger)
+    due_s, now_s = _epoch(a.next_run_at), _epoch(tx.now)
+    missed = int((now_s - due_s) // every)
+    nxt = _at(matcher.next_due(due_s, every, now_s))
+    # bump=False: the time moves every period, and must not stale a person's version
+    tx.update(entities.Automation, a.id, {'next_run_at': nxt}, actor=actor, bump=False)
+    e = tx.append(new_event('automation.schedule_due', Ref('automation', a.id), actor,
+                            payload={'due_at': a.next_run_at, 'every': a.trigger['every'],
+                                     'next_run_at': nxt, 'missed': missed},
+                            workspace=a.workspace_id, project=a.project_id))
+    why = {'type': e.type, 'where': {},
+           'schedule': {'every': a.trigger['every'], 'due_at': a.next_run_at, 'missed': missed},
+           'scope': {'workspace': a.workspace_id, 'project': a.project_id}}
+    return {'runs': [_claim(tx, actor, a, e, why)]}
+
+
+def _waiting(conn, a, quarantined=None):
+    """Why a schedule's due time is held, or None when it may run: its project
+    gone or archived, or Core disarmed (e-stop), or the worker quarantined it
+    (*quarantined*: the worker's map, read by the view). A held time stays due and
+    fires once together when it may run again. Claiming it anyway would write a
+    denied or condition_false run every period, and neither reason counts toward
+    the loop guard."""
+    if a.project_id is not None:
+        p = rows.get(conn, entities.Project, a.project_id)
+        if p is None or p.entity.state != 'ACTIVE':
+            return 'project gone or archived'
+    disarmed = 'Core disarmed' if authorization.estop_armed() else None
+    return disarmed or (quarantined or {}).get(a.id)
 
 
 def settles(e):
@@ -284,10 +345,15 @@ def _guard(tx, actor, a, run_id):
 
 # ── reads (§15) ──────────────────────────────────────────────────────────────
 
-def _view(row):
+def _view(conn, row, quarantined=None):
     a = row.entity
-    return dict(a.to_dict(), version=row.version, created_at=row.created_at,
-                updated_at=row.updated_at)
+    # a time is only true while the schedule runs: disabled or suspended, none
+    nxt = a.next_run_at if a.state == 'ENABLED' else None
+    # a gate that holds a due time says why: such a schedule is not in Upcoming
+    held = (_waiting(conn, a, quarantined)
+            if nxt and a.trigger.get('kind') == 'schedule' else None)
+    return dict(a.to_dict(), next_run_at=nxt, waiting=held, version=row.version,
+                created_at=row.created_at, updated_at=row.updated_at)
 
 
 def _run_view(row):
@@ -302,17 +368,18 @@ def quarantined(conn):
                                   "ORDER BY event_seq")]
 
 
-def list_automations(conn):
-    return {'automations': [_view(r) for r in rows.where(conn, entities.Automation)],
+def list_automations(conn, schedule_faults=None):
+    return {'automations': [_view(conn, r, schedule_faults)
+                            for r in rows.where(conn, entities.Automation)],
             'quarantined': quarantined(conn)}
 
 
-def get_automation(conn, automation_id, *, runs=50):
+def get_automation(conn, automation_id, *, runs=50, schedule_faults=None):
     row = rows.get(conn, entities.Automation, automation_id)
     if row is None:
         raise lifecycle.NotFound(automation_id)
     rs = rows.where(conn, entities.AutomationRun, automation_id=automation_id)
-    return dict(_view(row), runs=[_run_view(r) for r in rs[-runs:]])
+    return dict(_view(conn, row, schedule_faults), runs=[_run_view(r) for r in rs[-runs:]])
 
 
 def _mine(conn, cls, mission_id):
@@ -386,9 +453,13 @@ def explain(conn, run_id):
 
 def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT):
     """The events of the last *days* the automation's trigger and scope would
-    have fired on, and why (ADR-0020). Writes nothing; depth, rate and state
-    are not simulated — they depend on what the runs would have done."""
+    have fired on, and why (ADR-0020); for a schedule, how many times it would
+    have come due had it run for the whole window. Writes nothing; depth, rate
+    and state are not simulated — they depend on what the runs would have done."""
     a = get_automation(conn, automation_id, runs=0)
+    if a['trigger'].get('kind') == 'schedule':
+        return {'automation_id': automation_id, 'days': days, 'examined': 0, 'matched': [],
+                'scheduled': days * 86400 // matcher.every_s(a['trigger'])}
     since = _ago(now, days * 86400)
     hits, examined = [], 0
     for r in conn.execute('SELECT * FROM events WHERE at >= ? AND type = ? ORDER BY seq',

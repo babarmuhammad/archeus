@@ -72,3 +72,15 @@ def test_a_device_without_admin_reads_but_cannot_write_or_enable(tc):
     got = _post(tc, '/v1/automations/%s/state' % aid, {'action': 'enable'}, token=browser)
     assert got.status == 403
     assert tc.http('GET', '/v1/automations', token=browser).status == 200
+
+
+def test_a_quarantined_schedule_says_why_over_http(tc):
+    aid = _post(tc, '/v1/automations', dict(RULE, name='hourly',
+                                            trigger={'kind': 'schedule', 'every': '1h'})).json()['id']
+    _post(tc, '/v1/automations/%s/state' % aid, {'action': 'enable'})
+    why = 'quarantined after 3 failures: RuntimeError: a claim that always faults'
+    tc.core.automation.world.schedule_faults[aid] = why      # what _fire_due records on quarantine
+    assert tc.http('GET', '/v1/automations/%s' % aid).json()['waiting'] == why
+    listed = tc.http('GET', '/v1/automations').json()['automations']
+    assert [a['waiting'] for a in listed if a['id'] == aid] == [why]
+    assert tc.http('GET', '/v1/health').json()['automation']['quarantined'] == 1

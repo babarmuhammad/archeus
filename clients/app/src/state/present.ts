@@ -349,8 +349,20 @@ const test = (k: string, t: Test) =>
       : `${words(k).toLowerCase()} does not match ${t.not_glob}`
     : `${words(k).toLowerCase()} is ${String(t)}`;
 
-/** An automation trigger (p14 §L: `{kind: 'event', type, where}`) in words. */
-export function triggerText(t: { type?: unknown; where?: Record<string, Test> | null }): string {
+const UNIT: Record<string, string> = { s: 'second', m: 'minute', h: 'hour', d: 'day' };
+
+/** A schedule's period (`15m`, `2h`, `1d`: P21 D9) in words: "15 minutes", "hour". */
+export function everyText(every: unknown): string {
+  const m = /^(\d+)([smhd])$/.exec(String(every ?? ''));
+  if (!m) return String(every ?? '—');
+  const n = Number(m[1]);
+  return n === 1 ? UNIT[m[2]] : `${n} ${UNIT[m[2]]}s`;
+}
+
+/** An automation trigger (p14 §L: `{kind: 'event', type, where}`, or P21's
+ * `{kind: 'schedule', every}`) in words. */
+export function triggerText(t: { kind?: unknown; every?: unknown; type?: unknown; where?: Record<string, Test> | null }): string {
+  if (t.kind === 'schedule') return `Every ${everyText(t.every)}`;
   const where = Object.entries(t.where ?? {}).map(([k, v]) => test(k, v));
   return `When a ${String(t.type ?? 'recorded')} event happens${where.length ? `, where ${where.join(' and ')}` : ''}`;
 }
@@ -361,8 +373,10 @@ export function templateText(t: { title?: unknown; objective?: unknown; success_
   return `Start a mission “${String(t.title ?? '')}”: ${String(t.objective ?? '')}${n ? ` (${n} success ${n === 1 ? 'criterion' : 'criteria'})` : ''}`;
 }
 
-/** Why a run fired (`{type, where: {key: {test, value}}}`) in words. */
-export function firedText(w: { type?: unknown; where?: Record<string, { test: Test; value: unknown }> | null }): string {
+/** Why a run fired (`{type, where: {key: {test, value}}}`, or a schedule's
+ * `{schedule: {every, due_at}}`) in words. */
+export function firedText(w: { type?: unknown; where?: Record<string, { test: Test; value: unknown }> | null; schedule?: { every?: unknown; due_at?: unknown } }): string {
+  if (w.schedule) return `It fired on its schedule, every ${everyText(w.schedule.every)}.`;
   const seen = Object.entries(w.where ?? {}).map(([k, x]) => `${words(k).toLowerCase()} was ${inline(x.value)}`);
   return `It fired on a ${String(w.type ?? 'recorded')} event${seen.length ? `: ${seen.join(', ')}` : ''}.`;
 }

@@ -1863,6 +1863,9 @@ class Automation(Entity):
     principal_id: str = None
     # the outbox head when it was last enabled: it never fires for an earlier event
     armed_seq: int = 0
+    # P21 slice H (D9): a schedule trigger's next due time, set when it is enabled
+    # and moved past now by the transaction that claims its run (claim-and-advance)
+    next_run_at: str = None
     state: str = None
 
 

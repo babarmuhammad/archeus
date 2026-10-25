@@ -4,7 +4,7 @@
 // Core's `/v1/status` lists as live, each from the graph read around its mission.
 import { paths, SETTLED, type Approval, type Automation, type KnowledgeItem, type Mission, type RouteDecision } from '../api/generated.ts';
 import type { GEdge, GNode, GraphData, Hidden } from '../graph/model.ts';
-import { present } from './present.ts';
+import { ago, present } from './present.ts';
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -18,10 +18,19 @@ export function stateSentence(active: number, needsYou: number): string {
 export const activeMissions = (ms: readonly Mission[]): Mission[] => ms.filter((m) => !SETTLED.includes(m.state));
 
 /** Upcoming, step 1 (rulebook §9): approved and planning missions — the
- * states the screen calls Approved and Planning — until Core has schedules
- * (P21). */
+ * states the screen calls Approved and Planning. */
 export const UPCOMING: readonly string[] = ['approved', 'planning'];
 export const upcoming = (ms: readonly Mission[]): Mission[] => ms.filter((m) => UPCOMING.includes(present('mission', m.state).cls));
+
+/** Upcoming, step 2 (P21 D9): the enabled schedules, soonest first, each at
+ * Core's own `next_run_at`. A schedule a gate holds (`waiting`) will not run, so
+ * it is not upcoming; Control says why. */
+export const scheduled = (as: readonly Automation[]): Automation[] =>
+  as.filter((a) => a.state === 'ENABLED' && a.next_run_at && !a.waiting).sort((x, y) => String(x.next_run_at).localeCompare(String(y.next_run_at)));
+
+/** Control's schedule rows (P21 D9): a held schedule says why, in place of its next run. */
+export const scheduleRows = (a: Automation): [string, string][] =>
+  a.state !== 'ENABLED' ? [] : a.waiting ? [['Waiting', String(a.waiting)]] : a.next_run_at ? [['Next run', ago(a.next_run_at)]] : [];
 
 /** The background automation line (rulebook §9): the enabled ones, which are
  * what watches for its trigger. */

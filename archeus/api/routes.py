@@ -930,12 +930,13 @@ def get_verification(req):
 
 def list_automations(req):
     with req.api.db.read() as conn:
-        return 200, automations.list_automations(conn)
+        return 200, automations.list_automations(conn, req.api.schedule_faults())
 
 
 def get_automation(req):
     with req.api.db.read() as conn:
-        return 200, automations.get_automation(conn, req.params['id'])
+        return 200, automations.get_automation(conn, req.params['id'],
+                                               schedule_faults=req.api.schedule_faults())
 
 
 def simulate_automation(req):

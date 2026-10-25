@@ -120,7 +120,7 @@ MUTATIONS = [
      "            if False:")],
      [I + '::test_E18_a_reaction_that_keeps_failing_is_quarantined_not_retried_forever']),
     ('A12', 'a quarantine is swallowed silently', [(WRK,
-     "                return 'quarantined: %s: %s' % (type(x).__name__, x)",
+     "                return 'quarantined: %s' % _reason(x)",
      "                return ''")],
      [I + '::test_E18_a_reaction_that_keeps_failing_is_quarantined_not_retried_forever']),
     ('A21', 'a held event is overtaken by the ones after it', [(CON,

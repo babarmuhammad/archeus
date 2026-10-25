@@ -14,7 +14,7 @@ import pytest
 from archeus.core.application import authorization, automations as A, commands, queries
 from archeus.core.application import resources, work
 from archeus.core.automation import matcher
-from archeus.core.automation.worker import CONSUMER, MAX_ATTEMPTS, Automations
+from archeus.core.automation.worker import CONSUMER, MAX_ATTEMPTS, REASON_MAX, Automations
 from archeus.core.domain import entities, ids
 from archeus.core.domain.events import new_event
 from archeus.core.domain.values import Ref
@@ -409,6 +409,21 @@ def test_E18_a_reaction_that_keeps_failing_is_quarantined_not_retried_forever(ri
     rig.seed()                                               # later events still work
     rig.pump()
     assert len(rig.runs()) == 1
+
+
+def test_E26_an_event_quarantine_reason_is_one_short_line(rig, monkeypatch):
+    rig.automation()
+    rig.seed()
+
+    def react(tx, *, actor, seq):
+        raise RuntimeError('a reaction\n' + 'echoing a payload ' * 100)
+    monkeypatch.setattr(A, 'react', react)
+    rig.pump()
+    with rig.db.read() as r:
+        (q,) = A.list_automations(r)['quarantined']
+    head = 'RuntimeError: a reaction echoing'
+    assert q['error'].startswith(head) and '\n' not in q['error']
+    assert len(q['error']) == REASON_MAX
 
 
 def test_E19_replaying_the_log_repeats_nothing(rig):

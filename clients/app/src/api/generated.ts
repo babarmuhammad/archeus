@@ -86,6 +86,8 @@ export interface Automation {
   rate_limit?: number;
   armed_seq?: number;
   version: number;
+  next_run_at?: string | null;
+  waiting?: string | null;
   runs?: AutomationRun[];
   [field: string]: unknown;
 }
@@ -121,6 +123,7 @@ export interface AutomationSimulation {
   days: number;
   examined: number;
   matched: Record<string, unknown>[];
+  scheduled?: number;
 }
 
 export interface AutomationWritten {

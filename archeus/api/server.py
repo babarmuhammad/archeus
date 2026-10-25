@@ -179,8 +179,10 @@ class Api:
                  authorization=None, resources=None, executions=None, sessions=None,
                  heartbeat_s=15.0, launch_clock=time.monotonic, static_dir=STATIC_DIR,
                  command_timeout=COMMAND_TIMEOUT_S, remote_hosts=(),
-                 attestor=auth.attest_user):
+                 attestor=auth.attest_user, schedule_faults=dict):
         self.db, self.missions, self.health, self.version = db, missions, health, version
+        #: () -> {automation id: why its schedule is quarantined} (the worker's, P21 D9)
+        self.schedule_faults = schedule_faults
         self.conversations = conversations
         self.authorization = authorization
         self.resources = resources
