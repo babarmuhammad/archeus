@@ -13,13 +13,15 @@ Written 2026-10-25, slice 1. Everything the owner has decided, designed, built i
 
 A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and simulated here. Rows marked `S1` are shown by slice 1; `S2` to `S6` are what later slices must add.
 
-**Screens and devices** (the "Where" column): Screens `NOW`, `WORK`, `ATT` (Attention), `MAP`, `REP` (Replay), `CHAT`, `SET` (Settings), `TERM` (terminal view), `ALL` (every screen), `SHELL` (toolbar and frame). Devices `P` phone 320 to 480, `T` tablet 600 to 1024, `D` desktop 1280 to 2560, `X` terminal.
+**Screens and devices** (the "Where" column): Screens `NOW`, `WORK`, `ATT` (Attention), `MAP`, `REP` (Replay), `CHAT`, `SEC` (Security, `#/security`), `HLT` (Health, `#/health`), `ACC` (Accounts, `#/accounts`), `SET` (Settings), `MORE` (phone menu of the other screens), `TERM` (terminal view), `ALL` (every screen), `SHELL` (toolbar, frames, All devices view). Devices `P` phone 320 to 480, `T` tablet 600 to 1024, `D` desktop 1280 to 2560, `X` terminal.
 
 **Slices.** S1 shell, simulation, tokens, probe (this one). S2 constellation and Now. S3 mission, spine, decisions. S4 chat, slash commands, Replay. S5 terminal view. S6 themes and motion polish, probes, zip.
 
 **Source abbreviations.** `VL` docs/architecture/ARCHEUS_V2_VISUAL_LANGUAGE.md · `A54` ADR-0054 (spine) · `A55` ADR-0055 (motion) · `UIA` docs/design/ARCHEUS_V2_UI_ARCHITECTURE.md · `PLAN` .collab/V2-real-build-plan.md · `T153` .collab/T-153-slash-commands-spec.md · `CAT` .collab/CHAT-control-catalogue.md · `T149` .collab/T-149-chat-truth-check.md · `T148` .collab/CARD-DRAFT-T-148-replay.md · `RC` .collab/REPLAY-coverage.md · `PROTO` clients/v2-prototype (README, app.js, slash.js, check.mjs) · `V1` clients/app/src and tokens · `ST` archeus/core/domain/states.py · `BOARD` .collab/BOARD.md (read only).
 
 `VL`, `A54` and `A55` live on branch `v2/real` (commit ce31dc7), not in this worktree. Nothing in this folder imports from another folder: the Core state words are a copy in `core-words.js`.
+
+The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md` (abbreviation `VLD`); they override the brief where they differ and are rows A24 to A31 and section M.
 
 ## A. Owner decisions (2026-10-25 and before)
 
@@ -48,6 +50,14 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 | A21 | A project made in chat is a record only (folders, clones and access are proposals) | PROTO README (owner answers) | PROTOTYPED | CHAT | S4 |
 | A22 | No camera move for a creation off screen: a receipt with "Show" | PROTO README | PROTOTYPED | CHAT, MAP | S4 |
 | A23 | Text weight 400 for body text; one material for chat and replies, with a solid fallback | PROTO README (owner 2026-10-23) | PROTOTYPED | CHAT | S4 (solid only, see A09) |
+| A24 | Language: English UI with an Italian switch for the main surfaces (Now, Work, Attention, spine words, slash aliases); toggle in the toolbar, persisted in try/catch localStorage | VLD (Language) | SIMULATED | ALL, SHELL | S1 (chrome, state words, spine, menus, slash aliases; fixture text and the terminal stay English) |
+| A25 | Areas that must be in V2 Live: Now/Work/Attention/spine/decisions; Chat/slash/Replay; Security, health, usage, accounts; Terminal view and themes | VLD (Areas) | SIMULATED | see section M | S1 (a route for each) |
+| A26 | Look: match the concepts' mood (dark, glowing constellation) but crisp vector; layout follows content | VLD (Look) | SIMULATED | ALL, MAP | S1 (dark palette, vector map), S2 (glow, richer map) |
+| A27 | Simulation: scripted story plus the owner's actions; approve, reject, chat, slash commands and Replay change state accordingly | VLD (Simulation) | SIMULATED | ATT, CHAT, REP, WORK | S1 |
+| A28 | Devices: toolbar switch plus an All devices side-by-side view, all driven by one simulation instance | VLD (Devices) | SIMULATED | SHELL | S1 |
+| A29 | Audience: the owner only, internal review: short toggleable inline decision notes name the decision each choice implements | VLD (Audience) | SIMULATED | ALL | S1 (notes on every main screen, toggle in the Theme menu and Settings), S2 to S6 (extend) |
+| A30 | Viewing: `start.cmd` on this PC only (127.0.0.1:8000), nothing hosted | VLD (Viewing) | SIMULATED | none | S1 |
+| A31 | Stop all work at 20 % weekly usage, meter read every 15 minutes; do not start other cards | VLD standing instructions | DESIGNED (process rule) | none | none |
 
 ## B. Visual language and tokens
 
@@ -136,7 +146,7 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| F01 | Chat bar entry on Now with placeholder "Tell Archeus what you need...", SIMULATED tag on every reply | PROTO build steps 1 to 3 | PROTOTYPED | NOW, CHAT | S1 (own screen, scripted reply labelled), S4 |
+| F01 | Chat bar entry on Now with placeholder "Tell Archeus what you need...", SIMULATED tag on every reply | PROTO build steps 1 to 3 | PROTOTYPED | NOW, CHAT | S1 (own screen, every reply says "Simulated reply"), S4 (bar on Now) |
 | F02 | Message creates: message, mission, idea, remembered preference, feedback candidate, mission thread, narrowing directive | T149 §1 | BUILT | CHAT | S4 |
 | F03 | Under the `standard` profile a new-work message starts and dispatches without a card (G1, an owner-rule breach) | T149 §1, §4 | BUILT (flagged) | CHAT | S4 (must be labelled, never shown as owner-approved) |
 | F04 | General (non-project) questions cannot be answered today (G5); replies are scripted | T149 §2, §4 | DESIGNED | CHAT | S4 (label as faked) |
@@ -146,15 +156,15 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 | F08 | NEVER routes: device launch and pair, approvals decide, verifications decide, missions review | CAT | DESIGNED | CHAT | S4 |
 | F09 | Stop mission: confirm card; e-stop: card then control scope; pause all, resume all, reprioritise: direct, no card | T149 §1 | BUILT | CHAT | S4 |
 | F10 | Approve from chat only on the card on screen with its hash; a bare "approve" is declined | T149 §1 | BUILT | CHAT | S4 |
-| F11 | Slash menu: `/` opens a combobox listbox above the bar; Up, Down, Tab, Enter, Escape; `?` lists by class; `//name` sends text | T153, PROTO slash.js | PROTOTYPED | CHAT | S4 |
-| F12 | READ and NAVIGATE: /help /status /usage /projects /missions /needs /digest /ideas /plan /why /search /trace /replay /open /focus /clear /theme /motion (Italian aliases /aiuto /stato /usa /progetti /missioni /attesa /riepilogo /idee /piano /perche /cerca /traccia /rigioca /apri /vai /pulisci /tema /movimento) | T153 §3.1, PROTO | PROTOTYPED | CHAT | S4 |
-| F13 | CREATE: /mission /idea /feedback /remember /tell /general (/remember is a confirm card naming the scope) | T153 §3.2, PROTO | PROTOTYPED | CHAT | S4 |
-| F14 | PROPOSE (card or two-step confirm, decides nothing): /start /stop /estop /pause /resume /cancel /review /approve /reject /account | T153, PROTO | PROTOTYPED | CHAT | S4 |
-| F15 | Refused before sending: extra arguments, bad choices, unknown names, text that looks like a secret (`sk-`, `ghp_`, `AKIA`, `Bearer `) | PROTO README slash | PROTOTYPED | CHAT | S4 |
+| F11 | Slash menu: `/` opens a list above the bar; `?` lists by class; `//name` sends text; keyboard combobox (Up, Down, Tab, Enter, Escape, `aria-activedescendant`) | T153, PROTO slash.js | PROTOTYPED | CHAT | S1 (menu of buttons, `//`), S4 (combobox keys) |
+| F12 | READ and NAVIGATE: /help /status /usage /projects /missions /needs /digest /ideas /plan /why /search /trace /replay /open /focus /clear /theme /motion (Italian aliases /aiuto /stato /usa /progetti /missioni /attesa /riepilogo /idee /piano /perche /cerca /traccia /rigioca /apri /vai /pulisci /tema /movimento) | T153 §3.1, PROTO | PROTOTYPED | CHAT | S1 (/help /status /usage /projects /missions /needs /ideas /replay /open), S4 (rest) |
+| F13 | CREATE: /mission /idea /feedback /remember /tell /general (/remember is a confirm card naming the scope) | T153 §3.2, PROTO | PROTOTYPED | CHAT | S1 (/mission creates a real simulated mission, /idea), S4 (rest) |
+| F14 | PROPOSE (card or two-step confirm, decides nothing): /start /stop /estop /pause /resume /cancel /review /approve /reject /account | T153, PROTO | PROTOTYPED | CHAT | S1 (/pause /resume /cancel /estop confirm cards that change the simulation; /approve only opens the decision), S4 (rest, two-step) |
+| F15 | Refused before sending: extra arguments, bad choices, unknown names, text that looks like a secret (`sk-`, `ghp_`, `AKIA`, `Bearer `) | PROTO README slash | PROTOTYPED | CHAT | S1 (all but bad choices) |
 | F16 | `@` mentions; 2 s duplicate-send prompt and rate limit (Core side) | T153 | DESIGNED | CHAT | S4 (mentions), not built (Core) |
 | F17 | Phone chat sheet follows `visualViewport` (keyboard) and expands | PROTO step 2 | PROTOTYPED | CHAT · P | S4 |
 | F18 | Chat delay and error fixtures, General routing, Review plan | PROTO steps 4 to 6 | PROTOTYPED | CHAT | S4 |
-| F19 | Usage in chat: `/usage` answers `unknown` until T-154 | T153 owner answers | PROTOTYPED | CHAT | S4 |
+| F19 | Usage in chat: `/usage` answers `unknown` until T-154 | T153 owner answers | PROTOTYPED | CHAT | S1 |
 | F20 | Subscription token read by `claude_sessions/usage.py` conflicts with AGENT-RULES item 6 (G2) | T149 §4 | BUILT (flagged) | none | owner decision, never shown |
 
 ## G. Replay and Recovery
@@ -181,19 +191,19 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 |---|---|---|---|---|---|
 | H01 | Mission machine, 17 states, with edges from `states.py`; `held_from` on BLOCKED and PAUSED | ST, A54 | BUILT + SIMULATED | WORK, ATT, spine | S1 (`sim.js` edge table, tested) |
 | H02 | Execution machine (INTENT to ENDED_*, LOST, adopted, reconciled_kill), task, plan, approval, verification, review machines | ST | BUILT + SIMULATED | WORK inspector, REP | S1 |
-| H03 | Account health states (UNVERIFIED, AVAILABLE, CONSTRAINED, LIMITED, DEGRADED, OPEN, UNAUTHENTICATED) and usage windows; unknown shown as "unknown", never 0 | ST, UIA, BOARD T-125 (review branch) | states BUILT; consumption read on a review branch + SIMULATED | SET | S1 |
-| H04 | Spawn breaker O7: per harness, trips at 3 failures in 10 min, doubling wait 15 s to 5 min, half-open after 5 min, visible as "cannot start" | BOARD T-106 | BUILT on branch fix/t106 (in review, production dispatch switch off) + SIMULATED | SET, WORK | S1 (inject a spawn failure), S3 |
+| H03 | Account health states (UNVERIFIED, AVAILABLE, CONSTRAINED, LIMITED, DEGRADED, OPEN, UNAUTHENTICATED) and usage windows; unknown shown as "unknown", never 0 | ST, UIA, BOARD T-125 (review branch) | states BUILT; consumption read on a review branch + SIMULATED | ACC | S1 |
+| H04 | Spawn breaker O7: per harness, trips at 3 failures in 10 min, doubling wait 15 s to 5 min, half-open after 5 min, visible as "cannot start" | BOARD T-106 | BUILT on branch fix/t106 (in review, production dispatch switch off) + SIMULATED | SEC, HLT, WORK | S1 (inject a spawn failure, dispatch waits), S3 |
 | H05 | Execution quiet reading ("no output for N min") and LOST then adopted recovery | A55, ST, BOARD T-125/T-128 | LOST and adopted BUILT in ST; the quiet reading and activity chip BUILT on review branches + SIMULATED | WORK, NOW | S1 |
 | H06 | Verification pass and fail; failed verification replans; replan budget then BLOCKED | ST, BOARD | BUILT + SIMULATED | WORK, REP | S1 |
 | H07 | Hook asks before an action: execution AWAITING_APPROVAL, approval card, reject blocks the mission | ST, T149 | BUILT + SIMULATED | ATT (trigger an approval) | S1 |
-| H08 | Automations (ENABLED, PENDING_APPROVAL, SUSPENDED by the loop guard), schedule triggers and next_run | ST, BOARD T-129 | BUILT + SIMULATED | SET, ATT | S1 |
-| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | SET | S1 (read-only lists), S5 |
-| H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | SET | S1 |
-| H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | SET | S1 |
+| H08 | Automations (ENABLED, PENDING_APPROVAL, SUSPENDED by the loop guard), schedule triggers and next_run | ST, BOARD T-129 | BUILT + SIMULATED | ACC, ATT | S1 |
+| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (read-only lists), S5 |
+| H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | ACC | S1 |
+| H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | ACC | S1 |
 | H12 | Knowledge items (CANDIDATE, CONFIRMED, RETRACTED, SUPERSEDED), confirm or reject | ST, V1 World | BUILT + SIMULATED | ATT, SET | S1 (candidates in Attention) |
 | H13 | Ideas with their own states | ST, V1 Work | BUILT + SIMULATED | WORK | S1 |
-| H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SET (About) | S5 (state it, never simulate isolation) |
-| H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | WORK, SET | S3 |
+| H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1 (status list as the board records it; never simulated as working), S5 |
+| H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 |
 | H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 |
 | H17 | Themes in V1: dark and light with contrast aliases; the "6 themes" were confirmed in VL §1 | V1 tokens.json, VL | BUILT + SIMULATED | SET | S1 |
 
@@ -222,6 +232,10 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 | J03 | Phone under 600: bottom navigation, sheets, thumb-reachable decisions | owner brief, UIA §M | SIMULATED | ALL · P | S1 |
 | J04 | Terminal view as a device switch and as `#/terminal` | owner brief | SIMULATED | TERM · X | S1 |
 | J05 | Device preview: Auto, Phone, Tablet, Desktop, Terminal; frames scale down to fit | owner brief | SIMULATED | SHELL | S1 |
+| J10 | All devices: phone, tablet, desktop and terminal side by side, each a real document at its own width in an iframe, all sharing the parent's simulation instance | VLD (Devices) | SIMULATED | SHELL | S1 |
+| J11 | Italian switch (`js/i18n.js`): the DOM is translated by exact string after each render, with regex rules for counts and spine sentences | VLD (Language) | SIMULATED | ALL | S1 |
+| J12 | Decision notes: `.dnote` blocks naming the SPEC row each choice implements; toggle persisted | VLD (Audience) | SIMULATED | ALL | S1 |
+| J13 | More screen: the phone's way to every screen that is not on the bottom bar (bottom bar: Now, Work, Attention, Chat, More) | owner brief | SIMULATED | MORE · P | S1 |
 | J06 | Theme menu, Reduced motion toggle, simulation menu in a thin toolbar | owner brief | SIMULATED | SHELL | S1 |
 | J07 | Fonts: Libre Caslon Text VF copied from the prototype with its OFL notice (127 KB) | VL §6 | SIMULATED | NOW | S1 |
 | J08 | Layout probe: 14 viewports by every route and overlay by dark and light | owner brief | SIMULATED | none | S1 |
@@ -238,6 +252,20 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 | K05 | Bounded log with a pruned flag, so Replay can say UNKNOWN | REP | S1 |
 | K06 | Scripted story: a theme audit mission planned and auto-approved; a quiet execution lost and adopted; a verification that fails once; a plan waiting for the owner; a mission blocked on a question | all | S1 |
 
+## M. Areas the owner requires in V2 Live (VLD, "Areas in V2 Live: all four")
+
+| ID | Area | Screens that show it | Route | Slice |
+|---|---|---|---|---|
+| M01 | Now, Work, Attention, spine, decisions | NOW, WORK, ATT, inspector and decision sheet, MAP | `#/now`, `#/work/<id>`, `#/attention/<id>` | S1 shell and lists, S2 Now, S3 mission and decisions |
+| M02 | Chat and slash commands | CHAT | `#/chat` | S1 (working commands), S4 |
+| M03 | Replay | REP | `#/replay/<id>` | S1, S4 |
+| M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1 (status), S5 |
+| M05 | Health: checks and readings | HLT | `#/health` | S1, S3 |
+| M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S5 |
+| M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1 (read-only lists), S5 |
+| M08 | Terminal view | TERM | `#/terminal`, device switch | S1, S5 |
+| M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 |
+
 ## L. Not decided or not planned (do not simulate as decided)
 
 | ID | Item | Source | Status | Note |
@@ -252,6 +280,6 @@ A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and sim
 
 ## Counts
 
-169 rows: A 23 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 9 shell · K 6 simulation · L 7 open.
-By status word (a row can carry two): BUILT 50 · DESIGNED 34 · PROTOTYPED 32 · SIMULATED 77 (all of K counts as simulated).
-Slice 1 shows 98 rows (the Slice column names S1, fully or in part); the rest, and the "part" rows, are the later slices' to-do list.
+190 rows: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas.
+By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 50 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 88.
+Slice 1 shows 126 rows (the Slice column names S1, fully or in part); the rest, and the "part" rows, are the later slices' to-do list.

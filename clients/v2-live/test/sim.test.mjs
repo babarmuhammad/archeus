@@ -238,3 +238,44 @@ test('knowledge candidates and automations that wait for you can be decided', ()
   assert.equal(s.act('enable', 'au-1').ok, false);
   assert.equal(s.act('enable', 'au-2').ok, true);
 });
+
+test('slash commands: READ answers, CREATE writes, PROPOSE only proposes until the owner confirms', () => {
+  const s = createSim();
+  assert.equal(s.say('/nope').ok, false);
+  assert.equal(s.say('/status extra').ok, false);
+  assert.equal(s.say('/usage').ok, true); assert.match(s.state.messages.at(-1).text, /unknown/);
+  assert.equal(s.say('/stato').ok, true); assert.match(s.state.messages.at(-1).text, /need you/);
+  assert.equal(s.say('/sk-abcdef1234').ok, false);
+  assert.equal(s.say('here is sk-abcdefghij').ok, false);
+  const n = Object.keys(s.state.missions).length;
+  assert.equal(s.say('/missione add dark mode').ok, true);
+  assert.equal(Object.keys(s.state.missions).length, n + 1);
+  const m = s.state.missions['m-n1']; assert.equal(m.state, 'CREATED');
+  s.advance(200000); assert.equal(m.state, 'APPROVAL_REQUIRED');
+  assert.equal(s.say('/idea try a calm mode').ok, true); assert.ok(s.state.ideas.some((i) => i.title === 'try a calm mode'));
+  // PROPOSE: nothing changes until the card is confirmed
+  assert.equal(s.say('/pausa fix date').ok, true);
+  const card = s.state.messages.at(-1); assert.equal(card.card.kind, 'proposal');
+  assert.equal(s.state.missions['m-date'].state, 'EXECUTING');
+  assert.equal(s.cardAction(card.id, 'confirm').ok, true);
+  s.advance(10000); assert.equal(s.state.missions['m-date'].state, 'PAUSED');
+  assert.equal(s.cardAction(card.id, 'confirm').ok, false);
+  // /approve decides nothing
+  s.say('/approve search');
+  assert.equal(s.state.approvals['a-1'].state, 'PENDING');
+  assert.equal(s.state.messages.at(-1).card.kind, 'link');
+  assert.equal(s.say('//status').ok, true);
+});
+
+test('security and health lists: unknown stays unknown, a tripped breaker shows', () => {
+  const s = createSim();
+  assert.ok(s.security().some((x) => x.id === 'iso' && x.state === 'open'));
+  assert.equal(s.security().find((x) => x.id === 'breaker').state, 'ok');
+  s.injectFailure('spawn');
+  assert.equal(s.security().find((x) => x.id === 'breaker').state, 'attention');
+  const h = s.health();
+  assert.equal(h.find((x) => x.id === 'disk').state, 'unknown');
+  assert.equal(h.find((x) => x.id === 'h-pi').state, 'unknown');
+  assert.equal(h.find((x) => x.id === 'h-claude_code').state, 'attention');
+  assert.deepEqual(s.counts().need >= 1, true);
+});

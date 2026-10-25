@@ -4,6 +4,30 @@
 
 import { present } from './core-words.js';
 
+// Slash commands (T-153). Class decides what a command may do: READ and NAVIGATE answer, CREATE writes a record,
+// PROPOSE only makes a card that the owner confirms (nothing is decided by the command itself). Italian aliases are registered.
+export const COMMANDS = [
+  { name: 'help', it: 'aiuto', cls: 'NAVIGATE', args: '[command]', desc: 'List the commands by class' },
+  { name: 'status', it: 'stato', cls: 'READ', args: '', desc: 'What is running, waiting and stopped' },
+  { name: 'usage', it: 'usa', cls: 'READ', args: '', desc: 'Usage of the accounts (unknown until the read exists)' },
+  { name: 'projects', it: 'progetti', cls: 'READ', args: '', desc: 'The projects' },
+  { name: 'missions', it: 'missioni', cls: 'READ', args: '[project]', desc: 'The missions, optionally of one project' },
+  { name: 'needs', it: 'attesa', cls: 'READ', args: '', desc: 'What waits for you' },
+  { name: 'ideas', it: 'idee', cls: 'READ', args: '', desc: 'The ideas' },
+  { name: 'replay', it: 'rigioca', cls: 'NAVIGATE', args: '<mission>', desc: 'Open the Replay of a mission' },
+  { name: 'open', it: 'apri', cls: 'NAVIGATE', args: '<mission>', desc: 'Open a mission' },
+  { name: 'mission', it: 'missione', cls: 'CREATE', args: '<what to do>', desc: 'Create a mission (it waits for your approval here)' },
+  { name: 'idea', it: 'idea', cls: 'CREATE', args: '<idea>', desc: 'Capture an idea' },
+  { name: 'pause', it: 'pausa', cls: 'PROPOSE', args: '<mission>', desc: 'Propose pausing a mission' },
+  { name: 'resume', it: 'riprendi', cls: 'PROPOSE', args: '<mission>', desc: 'Propose resuming a mission' },
+  { name: 'cancel', it: 'annulla', cls: 'PROPOSE', args: '<mission>', desc: 'Propose cancelling a mission' },
+  { name: 'approve', it: 'approva', cls: 'PROPOSE', args: '<mission>', desc: 'Open the decision; it decides nothing' },
+  { name: 'estop', it: 'arresto', cls: 'PROPOSE', args: '', desc: 'Propose pausing every running mission' }
+];
+const SECRET = /sk-[A-Za-z0-9]|ghp_|AKIA|Bearer /;
+export function findCommand(word) { const w = word.toLowerCase(); return COMMANDS.find((c) => c.name === w || c.it === w); }
+
+
 export const TIME_SCALE = 10; // one real second at 1x is ten simulated seconds
 export const SPEEDS = [0.5, 1, 2, 4, 8];
 const HOUR0 = 9; // the simulated day starts at 09:00:00
@@ -469,7 +493,7 @@ export function createSim(opts = {}) {
     rng = mulberry32(sd); queue = []; qn = 0; seq = 0;
     S = {
       seed: sd, clock: 0, speed: 1, playing: false, actor: 'system', quiet: true, pruned: false,
-      counters: { approval: 0, verification: 0, review: 0, knowledge: 6, idea: 5, message: 4 },
+      counters: { approval: 0, verification: 0, review: 0, knowledge: 6, idea: 5, message: 4, mission: 0 },
       projects: [
         { id: 'archeus', name: 'Archeus', note: 'Active. Your projects, in context.', root: 'archeus/' },
         { id: 'notes', name: 'Notes', note: 'Research and capture evolving context.', root: 'notes/' },
@@ -638,26 +662,119 @@ export function createSim(opts = {}) {
     return { rows, pruned: S.pruned, gaps: REPLAY_GAPS };
   }
 
+  // ---------- chat ----------
+  const mid = () => 'c-' + (++S.counters.message);
+  const post = (from, text, card) => { const m = { id: mid(), from, text, at: S.clock }; if (card) m.card = card; S.messages.push(m); emit('message.created', { kind: 'message', id: m.id }, {}, {}); return m; };
+  function resolveMission(q) {
+    const ms = Object.values(S.missions), w = q.trim().toLowerCase();
+    if (!w) return { err: 'Which mission? Say a name or an id.' };
+    const exact = ms.filter((m) => m.id === w || m.id === 'm-' + w || m.title.toLowerCase() === w);
+    const hit = exact.length ? exact : ms.filter((m) => m.title.toLowerCase().includes(w));
+    if (hit.length === 1) return { m: hit[0] };
+    return { err: hit.length ? 'Which one? ' + hit.map((m) => m.title).join(', ') + '.' : 'No mission matches "' + q.trim() + '".' };
+  }
+  function newMission(title) {
+    const id = 'm-n' + (++S.counters.mission);
+    const m = { id, title, project: 'archeus', branch: 'feat/' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24), state: 'CREATED', held_from: null, tasks: [], plan_version: 0, replans: 0, origin: 'conversation', reason: null, created_at: S.clock, updated_at: S.clock, account: 'acc-work', model: 'claude-sonnet' };
+    S.missions[id] = m; emit('mission.created', { kind: 'mission', id }, {}, { mission: id, project: m.project });
+    at(sec(20), 'start ' + id, () => { move('mission', m, 'UNDERSTANDING', 'start'); planningChain(m, false); });
+    return m;
+  }
+  function runCommand(c, arg) {
+    const list = () => Object.values(S.missions);
+    const word = (m) => present('mission', m.state).label;
+    if (c.name === 'help') return { text: 'Commands: ' + ['READ', 'NAVIGATE', 'CREATE', 'PROPOSE'].map((k) => k + ' ' + COMMANDS.filter((x) => x.cls === k).map((x) => '/' + x.name).join(' ')).join(' \u00b7 ') + '. "//text" sends a slash as plain text.' };
+    if (c.name === 'status') return { text: sentence() + '.' };
+    if (c.name === 'usage') return { text: 'Usage is unknown: the read is not built yet (T-154). Archeus shows no number it cannot source.' };
+    if (c.name === 'projects') return { text: S.projects.map((p) => p.name + ' (' + list().filter((m) => m.project === p.id).length + ')').join(', ') + '.' };
+    if (c.name === 'missions') { const p = arg ? S.projects.find((x) => x.name.toLowerCase() === arg.toLowerCase() || x.id === arg.toLowerCase()) : null; if (arg && !p) return { err: 'No project "' + arg + '".' }; return { text: list().filter((m) => !p || m.project === p.id).map((m) => m.title + ': ' + word(m)).join('; ') + '.' }; }
+    if (c.name === 'needs') { const a = attention().filter((x) => x.kind !== 'knowledge'); return { text: a.length ? a.map((x) => x.reason).join('; ') + '.' : 'Nothing waits for you.', card: a.length ? { kind: 'link', text: 'Open Attention', href: '#/attention' } : null }; }
+    if (c.name === 'ideas') return { text: S.ideas.map((i) => i.title + ' (' + present('idea', i.state).label + ')').join('; ') + '.' };
+    if (c.name === 'replay' || c.name === 'open' || c.name === 'approve') {
+      const r = resolveMission(arg); if (r.err) return { err: r.err };
+      if (c.name === 'replay') return { text: 'Replay of ' + r.m.title + '.', card: { kind: 'link', text: 'Open Replay', href: '#/replay/' + r.m.id } };
+      if (c.name === 'open') return { text: r.m.title + ': ' + word(r.m) + '.', card: { kind: 'link', text: 'Open mission', href: '#/work/' + r.m.id } };
+      if (r.m.state !== 'APPROVAL_REQUIRED' || !r.m.approval) return { text: r.m.title + ' has no decision waiting. /approve only opens a decision; it never decides.' };
+      return { text: 'A decision waits for you on ' + r.m.title + '. /approve decides nothing; open it to decide.', card: { kind: 'link', text: 'Open the decision', href: '#/attention/' + r.m.approval } };
+    }
+    if (c.name === 'mission') { if (!arg) return { err: 'Say what to do: /mission <what to do>.' }; const m = newMission(arg); return { text: 'Created the mission "' + m.title + '" on Archeus. It plans first and then waits for your approval. (In V1 today a chat mission starts without a card; the owner has flagged that, so it is not shown as approved here.)', card: { kind: 'link', text: 'Open mission', href: '#/work/' + m.id } }; }
+    if (c.name === 'idea') { if (!arg) return { err: 'Say the idea: /idea <idea>.' }; const i = { id: 'i-' + (++S.counters.idea), project: 'ideas', title: arg, state: 'CAPTURED' }; S.ideas.push(i); emit('idea.created', { kind: 'idea', id: i.id }, {}, { project: 'ideas' }); return { text: 'Captured the idea "' + arg + '". It is not a commitment.' }; }
+    if (c.name === 'estop') { const run = list().filter((m) => m.state === 'EXECUTING'); return { text: run.length ? 'Pause every running mission? ' + run.map((m) => m.title).join(', ') + '.' : 'Nothing is running.', card: run.length ? { kind: 'proposal', text: 'Pause ' + run.length + ' running', acts: run.map((m) => ['pause', m.id]), state: 'open' } : null }; }
+    const r = resolveMission(arg); if (r.err) return { err: r.err };
+    const need = { pause: 'EXECUTING', resume: 'PAUSED', cancel: null }[c.name];
+    if (need && r.m.state !== need) return { text: r.m.title + ' is ' + word(r.m).toLowerCase() + ', so /' + c.name + ' does not apply.' };
+    if (c.name === 'cancel' && !edgeOk('mission', r.m.state, 'CANCELLED', 'cancel')) return { text: r.m.title + ' is ' + word(r.m).toLowerCase() + ' and cannot be cancelled here.' };
+    return { text: 'Proposal: ' + c.name + ' "' + r.m.title + '". Nothing happens until you confirm.', card: { kind: 'proposal', text: c.name[0].toUpperCase() + c.name.slice(1) + ' ' + r.m.title, acts: [[c.name, r.m.id]], state: 'open' } };
+  }
   function say(text) {
+    const t0 = String(text || '').trim();
+    if (!t0) return { ok: false, reason: 'Empty message' };
+    if (SECRET.test(t0)) return { ok: false, reason: 'That looks like a secret, so it was not sent.' };
+    let t = t0, cmd = null, arg = '';
+    if (t.startsWith('//')) t = t.slice(1);
+    else if (t.startsWith('/')) {
+      const sp = t.indexOf(' '), name = (sp < 0 ? t.slice(1) : t.slice(1, sp));
+      arg = sp < 0 ? '' : t.slice(sp + 1).trim();
+      cmd = findCommand(name);
+      if (!cmd) return { ok: false, reason: 'Unknown command /' + name + '. Try /help.' };
+      if (!cmd.args && arg) return { ok: false, reason: '/' + cmd.name + ' takes no argument.' };
+    } else if (/^mission\s+\S/i.test(t)) { cmd = findCommand('mission'); arg = t.replace(/^mission\s+/i, '').replace(/^"|"$/g, ''); }
     S.actor = 'device';
-    const t = String(text || '').trim(); if (!t) return { ok: false, reason: 'Empty message' };
-    const mid = () => 'c-' + (++S.counters.message);
-    let id = mid();
-    S.messages.push({ id, from: 'you', text: t, at: S.clock });
-    emit('message.created', { kind: 'message', id }, {}, {});
+    post('you', t0);
     S.actor = 'system';
-    const reply = /need|status|today/i.test(t) ? 'Right now: ' + sentence() + '. Simulated reply.' : 'I heard you. Nothing is connected to a Core, so this reply is scripted. Simulated reply.';
-    id = mid();
-    S.messages.push({ id, from: 'archeus', text: reply, at: S.clock });
-    emit('message.created', { kind: 'message', id }, {}, {});
+    if (!cmd) { post('archeus', /need|status|today/i.test(t) ? 'Right now: ' + sentence() + '. Simulated reply.' : 'I heard you. Nothing is connected to a Core, so this reply is scripted. Simulated reply.'); return { ok: true }; }
+    S.actor = 'device';
+    const r = runCommand(cmd, arg);
+    S.actor = 'system';
+    post('archeus', (r.err || r.text) + ' Simulated reply.', r.card ? Object.assign({ state: 'open' }, r.card) : null);
     return { ok: true };
   }
+  function cardAction(id, what) {
+    const m = S.messages.find((x) => x.id === id);
+    if (!m || !m.card || m.card.kind !== 'proposal' || m.card.state !== 'open') return { ok: false, reason: 'This card is already answered' };
+    if (what === 'dismiss') { m.card.state = 'dismissed'; emit('message.updated', { kind: 'message', id }, {}, {}); return { ok: true }; }
+    let ok = true, why = '';
+    m.card.acts.forEach(([k, target]) => { const r = act(k, target); if (!r.ok) { ok = false; why = r.reason; } });
+    m.card.state = ok ? 'done' : 'dismissed'; emit('message.updated', { kind: 'message', id }, {}, {});
+    return ok ? { ok: true } : { ok: false, reason: why };
+  }
+
+  // ---------- security and health (as the board records them; simulated here) ----------
+  function security() {
+    const h = S.harnesses.find((x) => x.id === 'claude_code').breaker;
+    return [
+      { id: 'iso', label: 'Execution isolation (PV-20: AppContainer, job object, ACLs)', state: 'open', word: 'Not closed', note: 'Designed and tested with fixtures; physical reach is not built in V1. Critical holes G1 and G2 stay open until P20 closes.' },
+      { id: 'broker', label: 'Provider broker (named pipe and bridge)', state: 'off', word: 'Built, switch off', note: 'Plumbing exists; no native broker runs.' },
+      { id: 'origin', label: 'Core API origin gate', state: 'off', word: 'HTTP side built, switch off', note: 'The native interface is a fail-closed stub.' },
+      { id: 'dispatch', label: 'Production dispatch switch', state: 'off', word: 'Off', note: 'No execution is started by a real Core in this build.' },
+      { id: 'breaker', label: 'Spawn breaker (per harness)', state: h.state === 'closed' ? 'ok' : 'attention', word: h.state === 'closed' ? 'Closed' : h.state === 'open' ? 'Open: cannot start' : 'Half open: one trial', note: h.last_error || 'Trips at 3 failed starts in 10 minutes; a doubling wait of 15 s to 5 min per task; one trial after 5 minutes.' },
+      { id: 'estop', label: 'Emergency stop and re-arm', state: 'ok', word: 'Built', note: 'Stops every execution; re-arming needs a step-up.' },
+      { id: 'cred', label: 'Credentials', state: 'ok', word: 'Rule: never handled', note: 'Archeus does not read, store, copy, inject or relay subscription tokens. Usage numbers come only from the existing usage reader (owner exception 2026-10-22).' },
+      { id: 'stepup', label: 'Approvals', state: 'ok', word: 'Scoped and step-up', note: 'Deciding needs the approve scope; the chat decides only the card on screen.' }
+    ];
+  }
+  function health() {
+    const out = [];
+    const ok = (id, label, detail) => out.push({ id, label, state: 'ok', detail });
+    ok('core', 'Core process', 'Simulated: always up. Nothing is connected to a real Core.');
+    ok('db', 'Database and event log', 'Events are kept 180 days; the open-mission extension is not built, so an older answer is UNKNOWN, never "nothing happened".');
+    S.harnesses.forEach((x) => out.push({ id: 'h-' + x.id, label: 'Harness ' + x.label, state: x.state === 'MISSING' ? 'unknown' : x.breaker.state === 'closed' ? 'ok' : 'attention', detail: x.state === 'MISSING' ? 'Not found on this machine.' : x.breaker.state === 'closed' ? 'Available.' : 'Breaker ' + x.breaker.state.replace('_', ' ') + ': ' + (x.breaker.last_error || '') }));
+    S.accounts.forEach((a) => out.push({ id: a.id, label: 'Account ' + a.label, state: a.state === 'AVAILABLE' ? 'ok' : a.state === 'UNVERIFIED' ? 'unknown' : 'attention', detail: present('account_health', a.state).label }));
+    out.push({ id: 'disk', label: 'Disk space', state: 'unknown', detail: 'No reading. A missing reading is shown as unknown, never as 0.' });
+    out.push({ id: 'notify', label: 'OS notifications', state: 'ok', detail: 'Built; one per breaker trip and per approval.' });
+    return out;
+  }
+  const counts = () => {
+    const a = attention().filter((i) => i.kind !== 'knowledge').length, r = liveWork().length;
+    const stopped = Object.values(S.missions).filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length;
+    return { need: a, running: r, stopped };
+  };
 
   build(seed0);
   const api = {
     get state() { return S; },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    advance, act, say, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
+    advance, act, say, cardAction, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
     play() { S.playing = true; emit('sim.play', null, {}, {}); }, pause() { S.playing = false; emit('sim.pause', null, {}, {}); },
     setSpeed(x) { if (!SPEEDS.includes(x)) return false; S.speed = x; emit('sim.speed', null, { speed: x }, {}); return true; },
     reset(seed) { const sp = S.speed; build(seed == null ? seed0 : seed); S.speed = sp; subs.forEach((f) => f({ seq, at: 0, type: 'sim.reset', subject: null, payload: {} })); },

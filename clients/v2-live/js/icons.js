@@ -16,6 +16,12 @@ const P = {
   sim: ['path:M7 5l12 7-12 7z'],
   pause: ['path:M8 5v14M16 5v14'],
   close: ['path:M6 6l12 12M18 6L6 18'],
+  security: ['path:M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z'],
+  health: ['path:M3 12h4l2-5 4 10 2-5h6'],
+  accounts: ['circle:12,8,3.5', 'path:M5 20c1-4 4-6 7-6s6 2 7 6'],
+  all: ['path:M3 6h6v12H3z', 'path:M11 6h10v8H11z', 'path:M13 17h6'],
+  lang: ['circle:12,12,8', 'path:M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16'],
+  note: ['path:M5 4h14v12H9l-4 4z'],
   chevron: ['path:M9 6l6 6-6 6']
 };
 

@@ -13,9 +13,11 @@
 (function () {
   try {
     var q = new URLSearchParams(location.search), s = JSON.parse(localStorage.getItem('archeus-v2-live')) || {};
-    var t = q.get('theme') || s.theme, m = q.get('motion') || s.motion;
+    var t = q.get('theme') || s.theme, m = q.get('motion') || s.motion, n = q.get('notes') || s.notes, l = q.get('lang') || s.lang;
     if (t) document.documentElement.dataset.theme = t;
     if (m) document.documentElement.dataset.motion = m;
+    document.documentElement.dataset.notes = n === 'off' ? 'off' : 'on';
+    if (l === 'it') document.documentElement.lang = 'it';
   } catch (e) { /* storage blocked: defaults apply */ }
 })();
 </script>

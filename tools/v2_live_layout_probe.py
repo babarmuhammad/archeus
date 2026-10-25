@@ -12,7 +12,7 @@ Defects counted (each with its own column in the table):
 It serves clients/v2-live from its own http.server on a free port and stops only that server.
 Run it through the shared lock, from the worktree root:
   py D:\\Archeus\\.collab\\testlock.py -- py -I tools\\v2_live_layout_probe.py
-  options: --themes dark,light  --viewports 390x844,1440x900  --routes now,work  --shots <dir>  --verbose  --no-overlays
+  options: --themes dark,light  --lang en|it  --notes on|off  --viewports 390x844,1440x900  --routes now,work  --shots <dir>  --verbose  --no-overlays
 Exit code 1 when any defect is found.
 """
 import argparse
@@ -31,8 +31,8 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1']
-OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim']
+ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'accounts', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash']
+OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
 KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'error']
 
 MEASURE = r"""
@@ -196,6 +196,8 @@ def main():
     ap.add_argument('--verbose', action='store_true')
     ap.add_argument('--no-overlays', action='store_true')
     ap.add_argument('--port', type=int, default=0)
+    ap.add_argument('--lang', default='en')
+    ap.add_argument('--notes', default='on')
     a = ap.parse_args()
     viewports = a.viewports.split(',')
     routes = a.routes.split(',') + ([] if a.no_overlays else OVERLAYS)
@@ -222,13 +224,26 @@ def main():
                     errs = []
                     pg.on('pageerror', lambda e: errs.append('pageerror: ' + str(e)))
                     pg.on('console', lambda m: errs.append('console: ' + m.text) if m.type == 'error' else None)
-                    pg.goto('%s?theme=%s&sim=paused&motion=reduced#/now' % (base, theme), wait_until='load')
+                    pg.goto('%s?theme=%s&sim=paused&motion=reduced&lang=%s&notes=%s#/now' % (base, theme, a.lang, a.notes), wait_until='load')
                     pg.evaluate('document.fonts.ready.then(() => true)')
                     pg.wait_for_timeout(300)
                     for route in routes:
                         errs.clear()
                         layer = None
-                        if route.startswith('menu:'):
+                        frames = []
+                        if route == 'device:all':
+                            pg.evaluate("location.hash = '#/now'")
+                            pg.wait_for_timeout(100)
+                            pg.click('[data-tb="device"]')
+                            pg.click('[data-device="all"]')
+                            pg.wait_for_timeout(2500)
+                            frames = [f for f in pg.frames if f != pg.main_frame]
+                        elif route == 'chat-slash':
+                            pg.evaluate("location.hash = '#/chat'")
+                            pg.wait_for_timeout(200)
+                            pg.fill('input[data-key="chat-input"]', '/')
+                            pg.wait_for_timeout(150)
+                        elif route.startswith('menu:'):
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(120)
                             layer = open_overlay(pg, route)
@@ -242,6 +257,13 @@ def main():
                             pg.evaluate("document.querySelector('.main-col') && (document.querySelector('.main-col').scrollTop = 0)")
                         desktop = w >= 1024
                         res = pg.evaluate(MEASURE, {'layer': layer, 'desktop': desktop})
+                        for f in frames:   # each pane is a real document laid out at its own width
+                            fw = f.evaluate('innerWidth')
+                            res += [r for r in f.evaluate(MEASURE, {'layer': None, 'desktop': fw >= 1024}) if r['kind'] != 'stat']
+                        if route == 'device:all':
+                            pg.click('[data-tb="device"]')
+                            pg.click('[data-device="auto"]')
+                            pg.wait_for_timeout(200)
                         for e in errs:
                             res.append({'kind': 'error', 'msg': e})
                         cell = cells.setdefault((vp, route), dict.fromkeys(KINDS, 0))
@@ -269,12 +291,12 @@ def main():
             srv.kill()
 
     # table: rows viewports, columns routes, cell = defects over both themes
-    short = lambda r: r.replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
+    short = lambda r: r.replace('chat-slash', 'slash').replace('device:all', 'm-all').replace('settings', 'settng').replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
     print('\nDefects per viewport x route (dark + light)')
-    print('%-10s' % 'viewport' + ''.join('%9s' % short(r) for r in routes) + '%8s' % 'total')
+    print('%-10s' % 'viewport' + ''.join('%8s' % short(r)[:7] for r in routes) + '%7s' % 'total')
     for vp in viewports:
         row = [sum(cells[(vp, r)].values()) for r in routes]
-        print('%-10s' % vp + ''.join('%9d' % n for n in row) + '%8d' % sum(row))
+        print('%-10s' % vp + ''.join('%8d' % n for n in row) + '%7d' % sum(row))
     print('\nDefects per kind: ' + ', '.join('%s %d' % (k, total[k]) for k in KINDS))
     for m in inv:
         print('MOTION INVARIANT FAILED: ' + m)
