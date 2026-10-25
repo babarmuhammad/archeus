@@ -24,9 +24,17 @@ def test_comparison_rejects_errors_and_missing_results():
 
 def test_comparison_counts_flag_policy_and_cap_violations():
     _, violations = compare(['pwd'], [result(True, outcome='deny')], [result(held=True)])
-    assert ('pwd', 'held-to-allowed') in violations
     assert ('pwd', 'policy-to-allow:all') in violations
     assert ('pwd', 'table-miss-auto-allow:all') in violations
+    assert ('pwd', 'held-to-allowed') not in violations
+    _, violations = compare(['pwd'], [result(True, outcome='halt')], [result(outcome='halt')])
+    assert ('pwd', 'held-to-allowed') in violations
+
+
+def test_a_capped_classified_command_is_not_a_held_to_allowed_move():
+    _, violations = compare(['curl x'], [result(True, classes=('exec',), outcome='allow')],
+                            [result(classes=('web',), row=None, held=True, outcome='halt')])
+    assert not violations
 
 
 def test_class_set_and_row_moves_are_reported_without_flag_move():
@@ -91,7 +99,7 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
         MERGED_REDEFINE, MUTATIONS, NEW_MUTATIONS, NOT_DONE_REDEFINE, REDEFINED,
     )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 88 + 85 + 29
+    assert len(ids) == len(set(ids)) == 88 + 85 + 31
     assert len(REDEFINED) == 85
     assert len(NOT_DONE_REDEFINE) == 31
     assert MERGED_REDEFINE == {'Z175': 'Z173', 'Z217': 'Z319'}
@@ -106,3 +114,39 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
         for path, before, after in edits:
             assert before != after, mid
             assert (root / path).read_text(encoding='utf-8').count(before) == 1, mid
+
+
+def test_executor_corpus_covers_each_tool_and_is_deterministic():
+    import hashlib
+    from tools.p21_classifier_moves import executor_rows
+    rows = executor_rows()
+    assert rows == executor_rows()
+    assert len(rows) == 18
+    # Pin tool names and commands independently of tests/review-derived frozen inputs.
+    payload = '\n'.join(tool + '\0' + command for tool, command in rows)
+    assert hashlib.sha256(payload.encode()).hexdigest() == (
+        '9d8f7356cb4489b5f8d44586cbd4b82d276393cf08d5b6b58fae61a052279c58')
+
+
+def test_comparison_rejects_removing_held_cap_for_each_executor():
+    for tool in ('PowerShell', 'bash', 'Monitor'):
+        shape = (tool, 'rm -rf x')
+        _, violations = compare([shape], [result(True, held=True, outcome='halt')],
+                                [result(True, outcome='halt')])
+        assert (shape, 'held-cap-removed') in violations
+
+
+def test_executor_rows_reach_classifier_and_have_held_cap(tmp_path):
+    import json
+    from tools.p21_classifier_moves import classify, executor_rows, policies
+    source, target = tmp_path / 'corpus.json', tmp_path / 'results.json'
+    rows = executor_rows()
+    source.write_text(json.dumps({'commands': rows, 'context': {'workdir': '.'},
+                                 'paths': {'file.txt': {'kind': 'file', 'contained': True}},
+                                 'policies': policies()}), encoding='utf-8')
+    assert classify(str(Path(__file__).resolve().parents[3]), str(source), str(target), True) == 0
+    results = json.loads(target.read_text(encoding='utf-8'))
+    validate_results(rows, results)
+    for row in results:
+        assert row['unclassified'] and row['held_cap'] and row['row'] is None
+        assert 'allow' not in row['policies'].values()

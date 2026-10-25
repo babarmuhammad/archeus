@@ -120,7 +120,15 @@ def freeze(roots, review):
     seeds = row_seeds()
     shapes.update(seeds)
     shapes.update(seed + ' --extra' for seed in seeds)
-    return sorted(shapes)
+    rows = [('Bash', command) for command in sorted(shapes)]
+    rows.extend(executor_rows())
+    return sorted(set(rows))
+
+
+def executor_rows():
+    return [(tool, command) for tool in ('PowerShell', 'bash', 'Monitor')
+            for command in ('Remove-Item -Recurse x', 'cat file.txt', 'ls',
+                            'node --version', 'pwd', 'rm -rf x')]
 
 
 def policies():
@@ -169,13 +177,13 @@ def classify(root, shapes_path, out_path, candidate=False):
     policy_contexts = payload['policies']
     out = []
     errors = 0
-    for cmd in payload['commands']:
+    for tool, cmd in payload['commands']:
         try:
             eligibility = None
             if candidate:
-                (acts, unc), eligibility = canonical.canonicalise_hook('Bash', cmd, ctx, trusted)
+                (acts, unc), eligibility = canonical.canonicalise_hook(tool, {'command': cmd}, ctx, trusted)
             else:
-                acts, unc = canonical.canonicalise('Bash', cmd, ctx)
+                acts, unc = canonical.canonicalise(tool, {'command': cmd}, ctx)
             if type(unc) is not bool or not acts:
                 raise ValueError('missing actions or invalid unclassified flag')
             held = candidate and eligibility.status != 'ALLOWED'
@@ -212,7 +220,9 @@ def compare(shapes, before, after):
     moves = collections.Counter()
     violations = []
     for command, old, new in zip(shapes, before, after):
-        if old['unclassified'] and not new['unclassified']:
+        if old['held_cap'] and not new['held_cap']:
+            violations.append((command, 'held-cap-removed'))
+        if old['unclassified'] and not new['unclassified'] and not new['held_cap']:
             violations.append((command, 'held-to-allowed'))
         for policy in POLICIES:
             if old['policies'][policy] != 'allow' and new['policies'][policy] == 'allow':

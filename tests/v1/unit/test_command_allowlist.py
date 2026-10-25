@@ -219,6 +219,7 @@ def test_implicit_listing_directory_needs_evidence():
 def test_optional_operands_can_be_absent(command):
     assert isinstance(classify(command, CONTEXT), Allowed)
 
+
 @pytest.mark.parametrize('command', (
     'node -r ts-node/register x.ts', 'py -E x.py', 'python -E x.py',
     'ls *.py', 'curl -v https://h.example/x', 'npm run start', 'tar -cf a b',
@@ -319,3 +320,12 @@ def test_pattern_is_never_path_with_matching_evidence():
 def test_redefined_missing_rows(command):
     context = replace(CONTEXT, programs=CONTEXT.programs | {command.split()[0]})
     assert isinstance(classify(command, context), Held)
+
+
+@pytest.mark.parametrize('path', (
+    'CON', 'nul', 'aux.txt', 'COM1', 'a.', 'a /b', 'a/ b',
+    'PRN.log', 'LPT9.txt', 'src/NuL.txt', 'a/b ', 'PROGRA~1/file.txt',
+))
+def test_windows_reserved_paths_hold_despite_file_evidence(path):
+    context = replace(CONTEXT, paths={path: PathEvidence('file', True)})
+    assert isinstance(classify('cat "' + path + '"', context), Held)

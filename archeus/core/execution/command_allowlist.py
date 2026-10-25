@@ -8,6 +8,9 @@ _ALWAYS_FORBIDDEN = frozenset('$`\\{}*?[]~%!')
 _OPERATORS = frozenset('|;&<>()#')
 _PATH_CHARS = frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./ ')
 _LITERAL_CHARS = _PATH_CHARS - frozenset('/')
+_DEVICE_NAMES = frozenset(('CON', 'PRN', 'AUX', 'NUL',
+                           *(f'COM{i}' for i in range(1, 10)),
+                           *(f'LPT{i}' for i in range(1, 10))))
 
 
 class Reason(str, Enum):
@@ -149,6 +152,9 @@ def _path(token: _Token) -> str | None:
         return '.'
     parts = value.split('/')
     if any(part in ('', '..') for part in parts):
+        return None
+    if any(part != '.' and (part.startswith(' ') or part.endswith(('.', ' '))
+            or part.split('.')[0].upper() in _DEVICE_NAMES) for part in parts):
         return None
     return '/'.join(part for part in parts if part != '.') or '.'
 

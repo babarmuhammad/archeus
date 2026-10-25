@@ -152,3 +152,33 @@ def test_structured_host_privacy(url, host, chip):
     assert len(actions) == 1
     assert actions[0].host == host
     assert actions[0].chip_host == chip
+
+
+def test_non_string_stored_repr_is_bounded_and_digest_binds_full_value():
+    values = [['x' * 10000 + suffix] for suffix in ('a', 'b')]
+    actions = [C.canonicalise_hook('Bash', {'command': value}, {'workdir': '.'})[0][0][0]
+               for value in values]
+    for action in actions:
+        assert action.argv[0] == 'list'
+        assert len(action.argv[1]) == C.MAX_COMMAND_REPR
+        assert len(action.argv[2]) == 64
+    assert actions[0].argv[1] == actions[1].argv[1]
+    assert actions[0].canonical() != actions[1].canonical()
+
+
+def test_oversized_string_storage_is_bounded_and_still_held():
+    from archeus.core.execution.command_allowlist import MAX_INPUT_LENGTH, Reason
+    stored = []
+    for suffix in ('a', 'b'):
+        command = 'x' * MAX_INPUT_LENGTH + suffix
+        (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
+        assert isinstance(result, Held) and result.reason == Reason.BUDGET and unclassified
+        assert sum(map(len, actions[0].argv)) == MAX_INPUT_LENGTH
+        stored.append(actions[0].argv)
+    assert stored[0] != stored[1]
+
+
+@pytest.mark.parametrize('tool', ('bash', 'BASH', 'PowerShell', 'powershell', 'Monitor'))
+def test_non_table_tool_spellings_remain_held(tool):
+    (actions, unclassified), result = C.canonicalise_hook(tool, 'pwd', {'workdir': '.'}, CONTEXT)
+    assert isinstance(result, Held) and unclassified

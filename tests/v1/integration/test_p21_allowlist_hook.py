@@ -265,3 +265,27 @@ def test_destructive_held_command_denies_before_hold(x, allow_all):
     assert [ev['payload']['decision'] for ev in x.events('execution.hook')] == ['deny']
     assert _current(x, e.id)['action_class'] == 'destructive'
     assert not [a for a in x.all(entities.Approval) if a.execution_id == e.id]
+
+
+@pytest.mark.parametrize('tool,command', (
+    ('Bash', 'Remove-Item -Recurse x'), ('PowerShell', 'Remove-Item -Recurse x'),
+    ('PowerShell', 'ls'), ('bash', 'rm -rf x'), ('Monitor', 'rm -rf x'),
+    ('UnknownExecutor', 'rm -rf x'), ('Monitor', 'ls'), ('UnknownExecutor', 'ls'),
+))
+def test_every_executor_miss_halts(hook, tool, command):
+    x, e, serve, evidence = hook
+    assert serve(command, tool=tool) == {
+        'decision': 'halt', 'reason': 'command form needs review'}
+
+
+@pytest.mark.parametrize('tool,tool_input', (
+    ('Read', {'file_path': 'file.txt'}), ('Glob', {'pattern': '*'}),
+    ('Grep', {'pattern': 'word'}), ('LS', {'path': '.'}),
+    ('Write', {'file_path': 'file.txt'}), ('Edit', {'file_path': 'file.txt'}),
+    ('MultiEdit', {'file_path': 'file.txt'}), ('NotebookEdit', {'notebook_path': 'file.txt'}),
+    ('WebFetch', {'url': 'https://example.com'}), ('WebSearch', {'query': 'word'}),
+))
+@pytest.mark.parametrize('hook', [('read', 'exec', 'write_repo', 'web')], indirect=True)
+def test_structured_tools_preserve_hook_behavior(hook, tool, tool_input):
+    x, e, serve, evidence = hook
+    assert serve(None, tool=tool, input=tool_input) == {'decision': 'allow', 'reason': ''}

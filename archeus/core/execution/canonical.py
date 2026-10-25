@@ -14,6 +14,7 @@ removal (execution-architecture §2) is the guarantee.
 """
 
 import fnmatch
+import hashlib
 import os
 import posixpath
 import re
@@ -277,14 +278,29 @@ def _pieces(cmd):
     return [p for p in re.split(r'[\s"\'`]+', cmd) if p]
 
 
+STRUCTURED_TOOLS = READ_TOOLS + WRITE_TOOLS + ('WebFetch', 'WebSearch')
+MAX_COMMAND_REPR = 4096
+
+
+def _stored_command(cmd):
+    if isinstance(cmd, str) and len(cmd) <= command_allowlist.MAX_INPUT_LENGTH:
+        return (cmd,)
+    value = cmd if isinstance(cmd, str) else repr(cmd)
+    bound = (command_allowlist.MAX_INPUT_LENGTH - len(type(cmd).__name__) - 64
+             if isinstance(cmd, str) else MAX_COMMAND_REPR)
+    digest = hashlib.sha256(value.encode('utf-8', errors='surrogatepass')).hexdigest()
+    return (type(cmd).__name__, value[:bound], digest)
+
+
 def canonicalise_hook(tool, tool_input, ctx, command_context=None):
-    if tool != 'Bash':
+    if tool in STRUCTURED_TOOLS:
         return canonicalise(tool, tool_input, ctx), None
     cmd = tool_input.get('command') if isinstance(tool_input, dict) else tool_input
-    result = command_allowlist.classify(cmd, command_context)
+    result = command_allowlist.classify(
+        cmd, command_context if tool == 'Bash' else None)
     if not isinstance(result, command_allowlist.Allowed):
         # Labels preserve policy floors, never eligibility or legacy parsing.
-        if isinstance(cmd, str) and len(cmd) <= command_allowlist.MAX_INPUT_LENGTH:
+        if tool == 'Bash' and isinstance(cmd, str) and len(cmd) <= command_allowlist.MAX_INPUT_LENGTH:
             tokens = command_allowlist._scan(cmd)
             if not isinstance(tokens, command_allowlist.Held) and tokens and not tokens[0].quoted:
                 program = tokens[0].text
@@ -294,9 +310,8 @@ def canonicalise_hook(tool, tool_input, ctx, command_context=None):
                 if cls:
                     target = program + ' ' + sub if (program, sub) in _HELD_SUBCOMMAND_CLASSES else program
                     return ([Action(action_class=cls, target=target, argv=(cmd,))], False), result
-        # Even unclassified approvals bind the complete command, never a shared
-        # placeholder that could approve a different HELD command.
-        argv = (cmd,) if isinstance(cmd, str) else (type(cmd).__name__, repr(cmd))
+        # Digest binds truncated input without retaining its unbounded representation.
+        argv = _stored_command(cmd)
         return ([_unclassified('command', argv)], True), result
     row = next(row for row in command_allowlist.ROWS if row.id == result.row_id)
     cwd = ctx.get('cwd') or ctx.get('workdir')

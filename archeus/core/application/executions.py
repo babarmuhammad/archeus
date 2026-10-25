@@ -815,7 +815,9 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
         _fire(tx, e.id, 'hook_asked', actor, 'waiting for approval %s' % asked['approval_id'])
         return _hook_answer(tx, actor, e, seq, 'halt', 'waiting for your approval (%s)'
                             % asked['approval_id'], _current(asker))
-    if request.get('tool') == 'Bash' and not (
+    if request.get('tool') not in (
+            'Read', 'Glob', 'Grep', 'LS', 'Write', 'Edit', 'MultiEdit',
+            'NotebookEdit', 'WebFetch', 'WebSearch') and not (
             isinstance(command_eligibility, Allowed) and command_eligibility.row_id
             or approved):
         return _hook_answer(tx, actor, e, seq, 'halt', 'command form needs review',

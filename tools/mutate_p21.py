@@ -665,6 +665,13 @@ REDEFINED += [
 ]
 
 NEW_MUTATIONS = [
+    ('Z324', 'executor cap narrowed to exact Bash', [(EX,
+     "    if request.get('tool') not in (\n            'Read', 'Glob', 'Grep', 'LS', 'Write', 'Edit', 'MultiEdit',\n            'NotebookEdit', 'WebFetch', 'WebSearch') and not (",
+     "    if request.get('tool') == 'Bash' and not (")],
+     [AH + 'test_every_executor_miss_halts']),
+    _guard_mutant('Z325', 'Windows device-name guard omitted',
+                  "            or part.split('.')[0].upper() in _DEVICE_NAMES) for part in parts):",
+                  "            or False) for part in parts):", 'test_windows_reserved_paths_hold_despite_file_evidence'),
     _guard_mutant('Z295', 'control character discarded before scan',
                   '    for char in command:', "    for char in command.replace('\\x01', ''):",
                   'test_new_guard_mutation_witnesses'),
@@ -742,7 +749,7 @@ NEW_MUTATIONS = [
                   "Row('A14', 'pytest', (), ((), ('-q',)), 'P*', 'exec')",
                   "Row('A14', 'pytest', (), ((), ('-q',)), 'P*', 'read')", 'test_each_row'),
     ('Z319', 'HELD automatic allow cap omitted', [(EX,
-     "    if request.get('tool') == 'Bash' and not (", '    if False and not (')],
+     "    if request.get('tool') not in (\n            'Read', 'Glob', 'Grep', 'LS', 'Write', 'Edit', 'MultiEdit',\n            'NotebookEdit', 'WebFetch', 'WebSearch') and not (", '    if False and not (')],
      [AH + 'test_each_near_miss_holds_with_allow_all_classes_policy']),
     ('Z320', 'raw held command serialized as label', [(EX,
      "{'action_class': 'exec', 'label': 'command'})",
@@ -753,7 +760,7 @@ NEW_MUTATIONS = [
      "                canonicalise(tool, tool_input, ctx)\n                program = tokens[0].text")],
      ['tests/v1/unit/test_command_allowlist_hook.py::test_held_risk_labels_never_call_legacy']),
     ('Z323', 'non-string HELD commands share approval identity', [(CN,
-     'else (type(cmd).__name__, repr(cmd))', "else ('command',)")],
+     '        argv = _stored_command(cmd)', "        argv = ('command',)")],
      ['tests/v1/unit/test_command_allowlist_hook.py::test_non_string_commands_never_share_approval_identity']),
     ('Z321', 'gate table action class drifts', [(CA,
      "Row('A16', 'node', (), (('--version',),), 'none', 'exec')",
