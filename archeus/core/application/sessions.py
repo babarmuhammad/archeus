@@ -20,6 +20,7 @@ from ...infra.eventlog import outbox
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
+from ..homes import scrub_text
 from ..sessions import continuity, render
 from . import authorization, lifecycle
 
@@ -299,6 +300,7 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
     are the source's text turns, read by the source's adapter — used only when
     the source continues no mission. The same request id twice makes one
     target (D10)."""
+    from . import resources
     _user(actor)
     if not request_id:
         raise ValueError('a hand-off names its request id')
@@ -319,7 +321,9 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
             tx.conn, src, ctx, head, _live_homes(tx)), None)
     elif turns:
         ctx = continuity.package(tx, actor, src)
-        text = render.handoff(view_of(src), None, [tuple(t) for t in turns])
+        homes = _live_homes(tx)
+        text = render.handoff(view_of(src), None, [
+            (role, body if role == 'user' else scrub_text(body, homes)) for role, body in turns])
     else:
         raise lifecycle.IllegalTrigger('session', src.state, 'handoff',
                                        'it continues no mission and has no readable '
@@ -337,7 +341,8 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
                                              'account_id': account_id,
                                              'mission_id': t.mission_id, 'handoff_from': src.id})
     _event(tx, 'session.handed_off', t, actor, {'from': src.id, 'to': t.id,
-                                                'reason': reason[:500], 'artifact': sha})
+                                                'reason': resources.cut_bound(tx, reason, 500),
+                                                'artifact': sha})
     return dict(view_of(t), duplicate=False)
 
 

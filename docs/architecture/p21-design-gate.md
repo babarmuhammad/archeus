@@ -279,9 +279,9 @@ coordinator before this gate is declared passed.
 | Surfaces | Guarantee | Evidence in `tests/v1/` |
 |---|---|---|
 | S01-S06 | Route-decision reads and trace decisions hide home fields, map historical default keys to stable opaque IDs, and scrub system reasons. Reads preserve stored snapshots, routing and ledger identities. | `unit/test_t144_stored_reads.py`; `integration/test_t144_leak_sweep.py` T8 tests |
-| S07-S11 | Status, accounts, verification, review and approval reads project private account data; authored fields remain unchanged. | `unit/test_t144_stored_reads.py`; S04, S09, S10, S11 tests and the HTTP sweep (status and accounts routes) in `integration/test_t144_leak_sweep.py` |
+| S07-S11 | Accounts, verification, review and approval reads project private account data; authored fields remain unchanged. `/v1/status` (knowledge-pass reason, live-work hand-off reasons), the execution view (`why`, hand-off reason) and the mission view's embedded context package project with the read homes. The sweep requests `/v1/status` and checks only that no seeded home appears; it seeds no own-call item with home content there, so the status projection is pinned by the direct tests named here. | `unit/test_t144_stored_reads.py`; S04, S09, S10, S11 tests and the HTTP sweep (accounts route) in `integration/test_t144_leak_sweep.py`; status, execution and mission views in `integration/test_t144_cut_and_consumption.py` (Z460-Z468) |
 | S12-S19, S17a | Events, timeline, trace, policy actions and policy items project system content using the same matcher. | `integration/test_t144_event_reads.py`; `unit/test_t144_event_surfaces.py` |
-| S20-S21 | Context history and historical package reads, planner consumption, automation render and rationale reads project system strings; automation matching and stored rationale remain raw. Context preview applies the same projection as GET. | S20/S21/R1 tests in `integration/test_t144_event_reads.py`; S3 preview test in `integration/test_t144_leak_sweep.py` |
+| S20-S21 | Context history and historical package reads, the planner's reused package and replan prompt (checkpoint open problems), automation render and rationale reads project system strings; automation matching and stored rationale remain raw. Context preview applies the same projection as GET. | S20/S21/R1 tests in `integration/test_t144_event_reads.py`; replan prompt in `integration/test_t144_cut_and_consumption.py`; S3 preview test in `integration/test_t144_leak_sweep.py` |
 | S22 | Live event SSE frames expose only subject and scope, without payloads. | Raw-byte SSE leg in `integration/test_t144_leak_sweep.py`; `unit/test_t144_event_surfaces.py` S22 pin |
 | S23-S23a | Execution output and trace lanes scrub agent text before truncation. | S23a test in `integration/test_t144_event_reads.py`; HTTP output leg in `integration/test_t144_leak_sweep.py` |
 | S24 | Not a guarantee: `POST /v1/accounts` and `/state` are admin scope and return the account view, including the `home_ref` the caller supplied. No test pins this response. | none, by owner design (S24 NONE) |
@@ -291,10 +291,23 @@ coordinator before this gate is declared passed.
 | S28 | Execution workdir and branch are worktree identity, not account identity; ordinary worktree strings are not removed. No claim is made that arbitrary user-selected workdirs can never equal a home. | System-value workdir pin in `unit/test_t144_event_surfaces.py`; execution GET in the HTTP sweep |
 
 Checkpoint API reads and session briefs project open problems. New checkpoint artifacts
-project system fields before rendering and capping; continuation prompts rebuild historical
-checkpoint renderings with live registry homes. Stored checkpoint rows and historical artifact
+project system fields at rendering; continuation prompts rebuild historical checkpoint
+renderings with live registry homes; the planner's replan prompt projects each failed task's
+checkpoint open problems with the live homes. Stored checkpoint rows and historical artifact
 bytes remain unchanged. Evidence: R2 and checkpoint-write tests in
-`integration/test_t144_event_reads.py`, and `unit/test_t144_checkpoint_consumption.py`.
+`integration/test_t144_event_reads.py`, `unit/test_t144_checkpoint_consumption.py`, and the replan
+test in `integration/test_t144_cut_and_consumption.py`.
+
+Size caps cut without splitting a home (`homes.cut_safe`): a checkpoint item (300 characters), a
+hand-off reason and a hook reason (500) and a progress line (200) are cut back to the start of any
+known home or default key the cut would land inside, so no readable prefix of a home survives for a
+later projection to miss. The stored row or event payload stays raw apart from that earlier cut.
+The manager keeps up to 2000 characters of a fact or stream line so its own cut never lands inside
+the writer's. Ceiling: this holds for homes the matcher recognises; other caps not on a T-144
+surface (for example the reviewer prompt's 500 character agent summary, and context lines the
+intent brain builds from raw rows) were not changed or audited. Evidence:
+`integration/test_t144_cut_and_consumption.py` (R2 tests), `unit/test_homes.py` (`cut_safe`),
+mutants Z449-Z455.
 
 Owner-decided exemptions (2026-10-25) are user-typed fields only: mission titles, objectives,
 requirements and constraints; authored plan/task content; project/repository paths and names;
@@ -313,8 +326,13 @@ legacy GUI reads, symlink/junction aliases and the contained-text spelling ceili
 in `core/homes.py` are outside the containment guarantee. Dictionary keys are not projected.
 
 Read-cost ceiling (slice 2 S-5): home discovery scans and decodes stored RouteDecision snapshots
-on nonempty reads. There is no constant-time, cached, or fixed-latency guarantee; matching cost
-also grows with output strings and known homes. Empty event polls avoid home construction.
+on nonempty reads and, since N-3, on the single writer thread inside the write transaction of
+every checkpoint derive (each ended execution), recorded context package, resume, hand-off and
+automation claim, and of a hook reason, hand-off reason or progress line longer than its cap. Slice 3
+measured about 16 ms per scan at 300 decisions and about 1.6 s at 30,000 (not re-measured); on the
+writer that stalls every writer, not one reader. There is no constant-time, cached, or fixed-latency
+guarantee, for reads or commits; matching cost also grows with output strings and known homes. Empty
+event polls avoid home construction. A cache of `Homes` per latest decision is a later card.
 
 Registry ceiling (N-3), closed 2026-10-25: every write and worker path that builds `Homes` reads the
 live adapter registry and callers the owner bound to the writer (`writer.live`, seen by a command as
@@ -323,14 +341,32 @@ live adapter registry and callers the owner bound to the writer (`writer.live`, 
 artifacts, the checkpoint artifact (`checkpoint.derive`), the recorded context package
 (`commands.record_context_package`), the planner's reused package (`planning/worker.py`), the
 automation mission render (`automations.react`) and the continuation prompt (registry and callers).
+The planner's replan prompt is built with the same homes as its package (`planning/worker.py` `plan`).
 The binding is outside command kwargs, so idempotency hashes, stored keys, entity ids, matching,
 exemptions and SSE frames are unchanged. Evidence: `integration/test_t144_live_bound_writes.py`
-(a live-only default home absent from every stored snapshot is scrubbed in each artifact; control
-test shows it is raw when unbound; hash identity and runtime binding pinned), mutants Z433-Z445.
+(a live-only default home absent from every stored snapshot is scrubbed in each artifact when it is
+known through the bound callers, and, in `integration/test_t144_cut_and_consumption.py`, when it is
+known only through the bound registry; control test shows it is raw when unbound; hash identity and
+runtime binding pinned), mutants Z433-Z448.
+Hand-off from a session with no mission: the source's text turns (read by its adapter) are scrubbed
+for assistant and system turns with the live homes; user turns stay raw, matching the owner rule that
+exemptions are user-typed only (an assistant echoed the path from tool output; the user typed theirs).
+Z456 and Z457 pin both halves. If the owner reads user turns as including pasted tool output, scrub
+them too.
+Covered by synthetic or unit vectors only, no integration test drives the real writer: S14 (an
+`account_health.state_changed` envelope through `public_event` in `unit/test_t144_event_surfaces.py`; no
+stub adapter names a home), S16 (a default key inside free text: unit vector only, the approval-wait
+reason of `work.py` has no test), and the HTTP leg of an S03 route-decision `explanation` (unit
+vector; the execution `why` that repeats it is tested). `conversation._status` reads status and live
+work inside a write transaction without homes, but renders only counts, titles and states.
+A keyed command replays its pre-binding response for the idempotency TTL (informational).
+`POST /v1/policies/simulate` echoes the caller's action and extra rules and the stored policy rules
+(user-authored, as `matched_rules` of a decision); no system-owned string reaches it, and it is not
+projected. `integration/test_t144_cut_and_consumption.py` pins that a mission title holding a home
+is not echoed.
 Remaining limits, not registry related: a `Database` used without the binding (tests, embedders that
-never set `writer.live`) discovers stored homes only; a hand-off from a session with no mission renders
-the source's text turns as read from its transcript, unprojected, and mission or task titles in a
-brief are authored content (exempt, as above).
+never set `writer.live`) discovers stored homes only; mission or task titles in a brief are authored
+content (exempt, as above).
 
 ### 12.A Slice A — provenance (D4, D11) and the producer record (D5)
 

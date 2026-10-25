@@ -132,7 +132,7 @@ def list_missions(req):
 
 def get_mission(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_mission(conn, req.params['id'])
+        return 200, queries.get_mission(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def get_mission_plan(req):
@@ -316,8 +316,9 @@ def status(req):
         # `armed`: the e-stop's state as Health reads it, for the operations strip;
         # `resumable`: the missions Resume all would resume now (workspace-wide,
         # like the command), from the rule the command itself runs
-        return 200, dict(world_status.status(conn, project),
-                         live=live.live_work(conn, project), armed=not LocalNode.disarmed(),
+        h = _read_homes(req, conn)
+        return 200, dict(world_status.status(conn, project, h),
+                         live=live.live_work(conn, project, h), armed=not LocalNode.disarmed(),
                          resumable=commands.resumable(conn)[1])
 
 
@@ -585,7 +586,7 @@ def set_mission_resources(req):
 
 def get_execution(req):
     with req.api.db.read() as conn:
-        return 200, executions.view(conn, req.params['id'])
+        return 200, executions.view(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def execution_stream(req):

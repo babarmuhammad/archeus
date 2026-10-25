@@ -45,7 +45,7 @@ BLOCKING = ('path_too_long',)
 #: how an end is reported, by the state it is observed in (§8.1)
 _EXIT = {'ok': 'exited_success', 'error': 'exited_error'}
 _USAGE_KEYS = ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
-EVENT_LINES, EVENT_BYTES = 20, 2048
+EVENT_LINES, EVENT_BYTES, LINE_CAP = 20, 2048, 200
 
 
 def token_hash(token):
@@ -262,8 +262,13 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
             and got.get('context', e.context) == e.context:
         return {'execution_id': e.id, 'offset': offset}          # nothing new
     tx.update(entities.Execution, e.id, got, actor=actor)
-    last, size = [], 0
+    from ..homes import cut_safe
+    from . import resources
+    last, size, homes = [], 0, None
     for line in list(lines)[-EVENT_LINES:]:
+        if len(line) > LINE_CAP:
+            homes = homes or resources.bound_homes(tx.conn, tx.live)
+            line = cut_safe(line, homes, LINE_CAP)
         if size + len(line) > EVENT_BYTES:
             break
         last.append(line)
@@ -816,10 +821,11 @@ def _reason(tx, got):
 
 
 def _hook_answer(tx, actor, e, seq, decision, reason):
+    from . import resources
     if seq is not None and seq > e.hook_seq:
         tx.update(entities.Execution, e.id, {'hook_seq': seq}, actor=actor)
     _event(tx, 'execution.hook', e, actor, {'seq': seq, 'decision': decision,
-                                            'reason': reason[:500]})
+                                            'reason': resources.cut_bound(tx, reason, 500)})
     return {'decision': decision, 'reason': reason, 'execution_id': e.id}
 
 
@@ -954,7 +960,7 @@ class Executions:
 
 # ── reads ───────────────────────────────────────────────────────────────────
 
-def view(conn, execution_id):
+def view(conn, execution_id, homes=None):
     row = rows.get(conn, entities.Execution, execution_id)
     if row is None:
         raise lifecycle.NotFound(execution_id)
@@ -964,8 +970,8 @@ def view(conn, execution_id):
     out.pop('hook_token_hash', None)
     out['context'] = pressure.view(row.entity)
     from .live import explain, handoff_of
-    out['handoff'] = handoff_of(conn, row.entity)
-    out['why'] = explain(conn, row.entity)
+    out['handoff'] = handoff_of(conn, row.entity, homes)
+    out['why'] = explain(conn, row.entity, homes)
     out['inventory'] = inventory(row.entity.inventory_sha256)
     out['artifacts'] = artifacts_of(conn, row.entity)
     return out

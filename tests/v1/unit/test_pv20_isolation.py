@@ -1471,12 +1471,13 @@ class TestIsolatedFactsWithoutCoreGit:
 
     def test_the_checkpoint_says_the_diff_was_not_measured_never_none(self):
         from archeus.core.execution import checkpoint
+        from archeus.core.homes import Homes
         from archeus.core.sessions import render
         facts = M._unmeasured({})
         cp = SimpleNamespace(id='c', task_id='t', mission_id='m', plan_version=1,
                              execution_id='e', trigger='pause', objective='o', constraints=(),
                              success_criteria=(), completed_steps=(),
-                             files_changed=checkpoint._clip(facts['files_changed']),
+                             files_changed=checkpoint._clip(facts['files_changed'], Homes()),
                              decisions=(), open_problems=(), verification=(),
                              next_action=None, as_of_seq=1)
         assert '## Files changed\n\n- %s\n' % M.UNMEASURED in render.checkpoint(cp)

@@ -695,6 +695,13 @@ def bound_homes(conn, live):
     return homes(conn, *live)
 
 
+def cut_bound(tx, text, n):
+    """`text[:n]` that never splits a home; the homes are built only for a text that
+    needs the cut."""
+    from ..homes import cut_safe
+    return text if len(text) <= n else cut_safe(text, bound_homes(tx.conn, tx.live), n)
+
+
 def account_view(conn, row):
     (p,) = rows.where(conn, entities.ResourcePolicy, account_id=row.entity.id)
     return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, row.entity.id))

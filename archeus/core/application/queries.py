@@ -41,7 +41,7 @@ def view(row):
                 updated_at=row.updated_at)
 
 
-def get_mission(conn, mission_id):
+def get_mission(conn, mission_id, *, homes=None):
     """One mission, with the context package its `context_ready` move
     recorded (None before it has one) and the plan in force (P8): its id and
     `plan_version`, derived from the plans and never stored twice."""
@@ -52,7 +52,7 @@ def get_mission(conn, mission_id):
     plan = active_plan(conn, mission_id)
     pending = [r.entity.id for r in rows.where(conn, entities.Approval, mission_id=mission_id)
                if r.entity.state == 'PENDING']
-    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid),
+    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid, homes=homes),
                 plan_id=None if plan is None else plan.entity.id,
                 plan_version=None if plan is None else plan.entity.plan_version,
                 pending_approval_id=pending[-1] if pending else None,

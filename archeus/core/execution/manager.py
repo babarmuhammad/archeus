@@ -68,6 +68,11 @@ CAPABILITY_ENV = base.CAPABILITY_ENV
 UNMEASURED = '(not measured: an isolated execution; Core runs no Git in its workdir)'
 
 
+#: what a stream line or fact keeps; the writer cuts it to its own cap (cut_bound,
+#: checkpoint._clip) without splitting an account home
+FACT_CAP = 2000
+
+
 def line_of(ev):
     """One short, redacted line for a normalised event."""
     t = ev.get('type', '?')
@@ -80,7 +85,7 @@ def line_of(ev):
         s = '%s: %s' % (t, ev.get('text') or ev.get('summary') or '')
     else:
         s = t
-    return redact(str(s))[:200]
+    return redact(str(s))[:FACT_CAP]
 
 
 class ExecutionManager:
@@ -1100,10 +1105,10 @@ def _facts_from(ev, p):
     if t == 'assistant' and 'DECISION:' in text:
         for line in text.splitlines():
             if line.strip().startswith('DECISION:'):
-                p['decisions'].append(redact(line.strip()[len('DECISION:'):].strip())[:300])
+                p['decisions'].append(redact(line.strip()[len('DECISION:'):].strip())[:FACT_CAP])
     if t in ('error', 'stderr', 'limit'):
         p['last_error'] = redact(str(ev.get('text') or ev.get('error') or ev.get('kind')
-                                     or t))[:300]
+                                     or t))[:FACT_CAP]
 
 
 def _unmeasured(p):
