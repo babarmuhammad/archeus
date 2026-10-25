@@ -70,6 +70,7 @@ def free_port():
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     ap = argparse.ArgumentParser()
     ap.add_argument('--themes', default=','.join(THEMES))
     ap.add_argument('--viewports', default=','.join(VIEWPORTS))
