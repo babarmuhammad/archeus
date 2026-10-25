@@ -11,7 +11,9 @@ This document gives the values and rules that slice U1-a (tokens) and U1-e, U1-f
 | Q2 palette: take the prototype palette | The prototype's colours are the V2 base. V1's colours become "legacy" where they differ (table in §3.3). The contrast floors and `state_colours_are_told_apart` still apply and decided two of the choices (§3.3). |
 | Q3 themes: Dark and Light, each standard and high contrast, plus System and forced-colors | Two token sets, `dark` and `light`, which is what ADR-0044 already says (`['dark','light']`); high contrast and System are modes over them; forced-colors always wins. The prototype has no Light, so Light is derived (§4). |
 | Q4 serif display font for the state-sentence line only | One self-hosted, hashed display font; everything else stays on system fonts (§6). This amends the design-system statement "No web fonts, no CDN" (DS §4) to "no CDN, no remote font; one self-hosted display font". It is a document statement, not a gate. |
-| Q5 keep the core breath | ADR-0055. |
+| Q5 keep the core breath | ADR-0055. The core mark sits on the centre of the live map on Now (owner, 2026-10-25), not beside the state sentence. Quiet is the existing `Reduced` motion preference. |
+| Done and blocked colours | Done stays the green `state.done` (not the prototype's slate) and dark `state.blocked` stays the V1 red `#F07178` (owner, "Yes, green Done + V1 red"). |
+| Dark focus colour | The prototype's `#FFF3CF` stays; ADR-0028 carries one amending line (owner, 2026-10-25). |
 | Q6 44 px for primary desktop controls only | A new `desktop-primary` target of 44 px; every other desktop control keeps its current 28 px floor (§7). |
 | Q10 no `backdrop-filter` | Overlays use a solid material (§8). The V1 gate `no_readback_effects` stays as it is. |
 | Q11 spine of six stations | ADR-0054. |
@@ -54,7 +56,7 @@ Token names and roles are V1's (`tokens.json`); V2 changes values and adds none,
 | `text-3` | `#ABA699` | `#8A94A3` | prototype `--text-muted`; the prototype's cool `--text-3` `#9EA3AE` is dropped so there are three text roles, not four |
 | `primary`, `thread` | `#EFE9DA` | `#E6EAF0`, `#F4F1EA` | prototype ivory |
 | `on-primary` | `#0C0811` | `#0E1116` | the ground |
-| `focus` | `#FFF3CF` | `#F4F1EA` | prototype `--focus` |
+| `focus` | `#FFF3CF` | `#F4F1EA` | prototype `--focus`; differs from the thread ink, which ADR-0028 named as focus, so ADR-0028 gets one amending line (owner, 2026-10-25) |
 | `state.active` | `#6FB1FF` | `#5AA9FF` | prototype blue |
 | `state.attention` | `#F2B544` | `#F2B544` | prototype amber (unchanged) |
 | `state.blocked` | `#F07178` | `#F07178` | unchanged; see §3.3 |
@@ -94,7 +96,7 @@ Minimum contrast: `text` 15.33, `text-2` 7.66, `text-3` 5.76, `focus` 15.33, `st
 | Role | V1 | Prototype | V2 | Reason |
 |---|---|---|---|---|
 | `state.blocked` | `#F07178` | Stop red `#E5585E`, border `#F07178` | `#F07178` | `#E5585E` measures 4.31:1 on `surface-3`, under the 4.5 floor. The prototype already borders Stop in `#F07178`. |
-| `state.done` | green `#5FD08B` | slate (the prototype), green (the concept art) | green `#6FD39A` | Slate is the paused colour; the two would fail ΔE 20 and break "only a completed mission is done". The art's passed stations are green. **Owner question 1.** |
+| `state.done` | green `#5FD08B` | slate (the prototype), green (the concept art) | green `#6FD39A` | Slate is the paused colour; the two would fail ΔE 20 and break "only a completed mission is done". The art's passed stations are green. Decided by the owner, 2026-10-25. |
 | `state.thinking` | `#B79CFF` | lilac `#C7B2F0` | `#C7B2F0` | ΔE against active 25.5, above the floor. |
 | node cyan `#6FC6FF` | none | node fill | not adopted | ΔE 15.7 from `state.active`, under 20: a cyan node would read as an active one. Node fills stay state or neutral (§9, U1-h). |
 | teal `#7FCFC0`, rose `#E7A3AE` | none | project tints | not adopted as tokens | ADR-0044 §2: tints carry no meaning and are never promoted; they stay thread tints if wanted. |
@@ -209,4 +211,4 @@ gzip -9 is Python `gzip.compress(data, 9, mtime=0)`, which is deterministic; vit
 
 ## 12. Not decided here
 
-Compact density and the meta column (§7); the exact element and place of the core mark on Now (wireframes, G0-5, Codex); headings and wordmark in the display font; node figure restyle beyond the cluster hull; text size of the display line beyond V1's 28/34. Open owner questions are in the Gate 0 report.
+Compact density and the meta column (§7); the size and drawing of the core mark (its place is decided: the centre of the live map on Now; wireframes, G0-5, Codex); headings and wordmark in the display font; node figure restyle beyond the cluster hull; text size of the display line beyond V1's 28/34. Open owner questions are in the Gate 0 report.
