@@ -1345,10 +1345,4 @@ slot by 24 px over 360 ms only without hovered, pressed or focused scene targets
 Review and labels stay fixed. No replay backlog. Legacy decorative canvas ticker,
 traffic and camera interpolation are parked; no new phone or terminal motion.
 
-Core breath is **not implemented**: desktop core is baked into the existing WebP,
-not live geometry. Cropping/scaling that region would also move background wires;
-replacing it would restyle the approved screen. A separable core asset/geometry and
-matching base art are needed before this row can meet the no-restyle constraint.
-No browser/runtime checks were run by Codex. `tools/v2_motion_probe.py` intentionally
-fails this missing acceptance gate; remaining timing, budget, target and visual
-checks must be run by Claude. Terminal colour and travelling phase head remain open.
+Core breath: the core is its own layer, cut from the approved base art. `art/desktop-now-core.webp` (RGBA, same 1296 x 729 canvas, lossless) holds the star; `art/desktop-now-base-nocore.webp` is the base with the star removed and the disc inpainted from the surrounding dark field. The two composite back to the original within 1 level (`desktop-now-base.webp` stays in the repo as the reference, no longer served). The cut is a 78 px disc around (640, 317) feathered to 92 px, so wires crossing the edge fade between layers. While a fresh, confirmed execution-running fact exists (a running mission with a Codex execution) the core layer scales 1 to 1.018 to 1 over 6000 ms (3000 out, 3000 in, ease-in-out, centre fixed, no colour or opacity change). Stale or unknown (`ArchFixture.execFact`), zero running, hidden, blurred, scrolling, reduced motion and Quiet stop it at once; the core stays at scale 1 and the layer carries `data-core="running-static"` or `"idle"`. Terminal colour and travelling phase head remain open.

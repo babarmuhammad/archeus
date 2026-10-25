@@ -993,7 +993,9 @@ body.frame-now #s-now h1 { position: absolute; left: 0; top: 16px; margin: 0; fo
 body.frame-now .now-lede { position: absolute; left: 0; top: 67px; margin: 0; width: 402px; font: 400 17px/20px "Libre Caslon V2", var(--serif); color: var(--text-muted); }
 body.frame-now .now-body, body.frame-now .now-main { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
 body.frame-now .now-main > .stage { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; }
-body.frame-now .desk-art { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; z-index: 0; display: block; pointer-events: none; }
+body.frame-now .desk-art, body.frame-now .desk-core { position: absolute; left: 0; top: 0; width: 1296px; height: 729px; z-index: 0; display: block; pointer-events: none; }
+/* The core is its own layer cut from the approved art; it scales about its centre (640, 317) and nothing else moves. */
+body.frame-now .desk-core { transform-origin: 640px 317px; }
 body.frame-now .stage-now canvas.sky { display: none; }
 body.frame-now .stage-now canvas.fx { z-index: 1; }
 body.frame-now .stage-now .world { z-index: 2; }
@@ -1022,8 +1024,8 @@ body.frame-now .stage-now .lbl { width: max-content; }
 body.frame-now .stage-now .lbl.project .s { width: 118px; white-space: normal; }
 
 body.frame-now .stage-now .lbl.project .s { width: 128px; }
-.desk-art { display: none; }
-body.frame-now .desk-art { display: block; }
+.desk-art, .desk-core { display: none; }
+body.frame-now .desk-art, body.frame-now .desk-core { display: block; }
 body.frame-now .rail .fixture { font-size: 14px; line-height: 16px; letter-spacing: 0.02em; top: 34px; white-space: nowrap; }
 body.frame-now .top .core-status { font-size: 14px; line-height: 18px; letter-spacing: -0.02em; left: 898px; }
 body.frame-now #s-now .head .kicker { font-size: 14px; line-height: 18px; letter-spacing: 0.14em; }
