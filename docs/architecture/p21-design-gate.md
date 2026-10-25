@@ -20,6 +20,8 @@ G13), and this repository at `4d37280`.
 
 ## 0. What P21 is, and what it is not
 
+Owner amendment (2026-10-25, T-148): P21 also owns the read-only Replay & Recovery read beside Trace, with one vocabulary and derivation in Core and proof mutants in `tools/mutate_p21.py`.
+
 P21 makes the system's record readable: plan §31.1 P21 names a trace view per mission,
 `metrics_daily`, a Health page and `archeus doctor`, plus the observability foundations ADR-0031,
 ADR-0043 and ADR-0047 assign to it. Its acceptance is the plan's: **every question in §28 is

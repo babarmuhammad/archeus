@@ -415,6 +415,10 @@ class endpoints:
         return _path('/v1/missions/{id}/trace', id_)
 
     @staticmethod
+    def mission_replay(id_):
+        return _path('/v1/missions/{id}/replay', id_)
+
+    @staticmethod
     def list_automations():
         return _path('/v1/automations')
 

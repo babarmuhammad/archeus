@@ -97,9 +97,11 @@ def test_matched_policy_contexts_exercise_real_engine(command, cls):
 def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
     from tools.mutate_p21 import (
         MERGED_REDEFINE, MUTATIONS, NEW_MUTATIONS, NOT_DONE_REDEFINE, REDEFINED,
+        REPLAY_MUTATIONS,
     )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 233 + 85 + 41
+    assert len(ids) == len(set(ids)) == 233 + 85 + 41 + 15
+    assert [entry[0] for entry in REPLAY_MUTATIONS] == ['Z%d' % n for n in range(474, 489)]
     assert len(REDEFINED) == 85
     assert len(NOT_DONE_REDEFINE) == 31
     assert MERGED_REDEFINE == {'Z430': 'Z428', 'Z460': 'Z319'}
@@ -110,9 +112,11 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
     assert set(ids).isdisjoint(NOT_DONE_REDEFINE)
     assert set(ids).isdisjoint({'Z438', 'Z439', 'Z449', 'Z457', 'Z222', 'Z268', 'Z292'})
     root = Path(__file__).resolve().parents[3]
-    for mid, _, edits, _ in REDEFINED + NEW_MUTATIONS:
+    for mid, _, edits, _ in REDEFINED + NEW_MUTATIONS + REPLAY_MUTATIONS:
         for path, before, after in edits:
             assert before != after, mid
+            if mid in {entry[0] for entry in REPLAY_MUTATIONS}:
+                assert '\n' not in before and '\r' not in before, mid
             assert (root / path).read_text(encoding='utf-8').count(before) == 1, mid
 
 
