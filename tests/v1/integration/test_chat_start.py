@@ -202,6 +202,25 @@ def test_the_start_cards_reject_text_is_what_a_reject_does(core):
 
 # ── whose profile decides: the user's, when the mission has none ──
 
+@pytest.mark.parametrize('presented_profile, deciding_profile, state', [
+    ('standard', 'careful', 'CREATED'), ('careful', 'standard', 'CANCELLED')])
+def test_start_reject_keeps_its_presented_consequence_after_a_profile_switch(
+        core, presented_profile, deciding_profile, state):
+    actor = _admin(core)
+    core.do(authorization.set_profile, actor=actor, scope='user', profile=presented_profile)
+    mid = _chat(core)
+    core.engine.run(mid)
+    said = core.pending(mid).presented['consequences']['reject']
+    if state == 'CREATED':
+        assert 'idle' in said and 'cancel' not in said
+    else:
+        assert said == 'the mission is cancelled'
+    core.do(authorization.set_profile, actor=actor, scope='user', profile=deciding_profile)
+    core.decide(mid, decision='reject')
+    assert core.row(entities.Mission, mid).entity.state == state
+    assert [a.state for a in _starts(core, mid)] == ['REJECTED']
+
+
 def test_a_user_level_autonomous_profile_starts_a_chat_mission_without_asking(core):
     core.do(authorization.set_profile, actor=_admin(core), scope='user', profile='autonomous')
     mid = _chat(core)
@@ -266,6 +285,37 @@ def test_expired_start_stays_idle_until_an_explicit_request(core, monkeypatch, o
     core.decide(mid)
     assert core.engine.run(mid)['state'] == 'APPROVAL_REQUIRED'
     assert core.pending(mid).kind == 'plan'
+
+
+@pytest.mark.parametrize('origin', ['conversation', 'api'])
+def test_careful_expired_start_stays_created_without_reasking(core, monkeypatch, origin):
+    core.do(authorization.set_profile, actor=_admin(core), scope='user', profile='careful')
+    monkeypatch.setitem(authorization.TTL, 'start', timedelta(seconds=-1))
+    mid = core.do(commands.create_mission, title='Expired', objective='o', origin=origin)['id']
+    core.engine.run(mid)
+    (a,) = _starts(core, mid)
+    core.do(authorization.expire_due)
+    assert core.row(entities.Approval, a.id).entity.state == 'EXPIRED'
+    assert core.row(entities.Mission, mid).entity.state == 'CREATED'
+    _restart(core)
+    for _ in range(3):
+        assert core.engine.run(mid)['state'] == 'CREATED'
+    assert [(x.id, x.state) for x in _starts(core, mid)] == [(a.id, 'EXPIRED')]
+    assert _planned(core, mid) == ([], [], [])
+
+
+def test_missionless_start_simulation_matches_an_api_mission(core):
+    mid = core.mission()
+    authz = authorization.Authorization(missions=core.missions)
+    before = core.events()
+    action = {'class': 'mission.start', 'target': 'mission:' + mid}
+    with core.db.read() as conn:
+        missionless = authz.simulate(conn, now='2026-10-25T00:00:00Z', action=action)
+        api = authz.simulate(conn, now='2026-10-25T00:00:00Z', action=action, mission_id=mid)
+    assert missionless['decision'] == api['decision'] == 'ALLOW'
+    assert missionless['reason'] == api['reason']
+    assert missionless['simulated'] and missionless['mission_id'] is None
+    assert core.events() == before
 
 
 @pytest.mark.parametrize('origin, profile, decision', [

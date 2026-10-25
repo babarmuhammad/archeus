@@ -296,9 +296,9 @@ MUTATIONS = [
      "    elif a.kind == 'never':\n        out = missions.fire(")],
      [SC_ + 'test_a_start_is_approved_from_the_conversation_card']),
     ('P45', 'rejecting a start does not cancel the mission', [(AUTHZ,
-     "    if kind == 'start' and not asks_before_start(tx.conn, mission):   # else: kept, idle\n"
+     "    if kind == 'start' and a.presented['consequences']['reject'] == 'the mission is cancelled':\n"
      "        out = missions.cancel(",
-     "    if kind == 'never' and not asks_before_start(tx.conn, mission):   # else: kept, idle\n"
+     "    if kind == 'never' and a.presented['consequences']['reject'] == 'the mission is cancelled':\n"
      "        out = missions.cancel(")],
      [SC_ + 'test_under_careful_rejecting_the_start_cancels_the_mission']),
     ('P46', 'a start approval is judged eligible like a plan approval', [(AUTHZ,

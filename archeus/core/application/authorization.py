@@ -686,7 +686,7 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                             fields=_decided(tx, actor, decision, note))
     tx.cause = caused_by(e)           # what the decision issues carries it (p21 D13 (b))
     out = None
-    if kind == 'start' and not asks_before_start(tx.conn, mission):   # else: kept, idle
+    if kind == 'start' and a.presented['consequences']['reject'] == 'the mission is cancelled':
         out = missions.cancel(tx, actor=actor, mission_id=mission.id,
                               reason=note or 'its start was rejected (approval %s)' % a.id)
     if kind == 'route':
@@ -1107,7 +1107,7 @@ def simulate(conn, policy, *, now, action, mission_id=None, task_id=None, stage=
         mission = m.entity
     else:
         mission = entities.Mission(id=ids.new_id('mission'), workspace_id=ids.GLOBAL_WORKSPACE,
-                                   title='simulation', objective='simulation')
+                                   title='simulation', objective='simulation', origin='api')
     classes = None if task is None else [c for c, _b, _x in items_of(task)]
     if a.action_class == 'mission.start':
         items, ctx = judge_start(policy, conn, mission, now=now, extra_rules=extra,
