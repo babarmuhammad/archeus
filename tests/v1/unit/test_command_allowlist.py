@@ -218,3 +218,28 @@ def test_implicit_listing_directory_needs_evidence():
 ))
 def test_optional_operands_can_be_absent(command):
     assert isinstance(classify(command, CONTEXT), Allowed)
+
+@pytest.mark.parametrize('command', (
+    'node -r ts-node/register x.ts', 'py -E x.py', 'python -E x.py',
+    'ls *.py', 'curl -v https://h.example/x', 'npm run start', 'tar -cf a b',
+    'find . -exec rm {} +',
+))
+def test_retired_permissive_mutant_inputs_stay_held(command):
+    assert isinstance(classify(command, CONTEXT), Held)
+
+
+@pytest.mark.parametrize('command', (
+    'git -C . reset --hard', 'python3.11 -c x', 'python.bat -c x', 'rm.cmd -R x',
+    'env pwd', 'mytool', 'ls la .', 'head -n file.txt',
+    'cat', 'pwd extra', 'pwd\n', 'pwd\x01', 'p""wd',
+))
+def test_new_guard_mutation_witnesses(command):
+    context = replace(CONTEXT, programs=CONTEXT.programs | {command.split()[0]})
+    assert isinstance(classify(command, context), Held)
+
+
+def test_pattern_is_never_path_with_matching_evidence():
+    paths = dict(CONTEXT.paths, needle=PathEvidence('file', True))
+    result = classify('rg --no-config --fixed-strings -- needle tests', replace(CONTEXT, paths=paths))
+    assert isinstance(result, Allowed)
+    assert result.paths == ('tests',)

@@ -801,11 +801,7 @@ def test_E33_the_abbreviation_rule_leaves_ordinary_options_alone(cmd, want, tmp_
 
 
 def test_gate_classifier_block_matches_the_code():
-    """gate §12 states the payload and send rules in a block; it must be the code's
-    `classifier_rules()`, line for line, so the doc cannot drift from the classifier."""
-    import pathlib
-    gate = pathlib.Path(__file__).resolve().parents[3] / 'docs' / 'architecture' / 'p21-design-gate.md'
-    text = gate.read_text(encoding='utf-8')
-    block = text.split('<!-- classifier-rules:begin -->')[1].split('<!-- classifier-rules:end -->')[0]
-    lines = [ln[2:] for ln in block.strip().splitlines()]
-    assert lines == canonical.classifier_rules()
+    from pathlib import Path
+    from tools.p21_allowlist_gate import check_gate
+    gate = Path(__file__).resolve().parents[3] / 'docs/architecture/p21-design-gate.md'
+    check_gate(gate.read_text(encoding='utf-8'))

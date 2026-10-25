@@ -1,20 +1,9 @@
-"""P21 slice E, gate §12: how the Bash classifier moved against a baseline revision.
-
-Generates a shape set (programs x pre-options x payload forms x tails, plus the curl and wget
-send forms and a few plain commands), classifies every shape at the baseline revision (extracted
-with git archive) and at the working tree, and prints the moves per (before, after, program).
-A held-to-allowed move is printed as a violation and makes the exit code 1.
-
-    py tools/p21_classifier_moves.py [baseline-rev]        (default f483f87)
-"""
 import collections
-import io
 import json
 import os
 import subprocess
 import sys
 import tarfile
-import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -74,75 +63,244 @@ def corpus():
     return sorted(shapes)
 
 
-def classify(root, shapes_path, out_path):
+import argparse
+import ast
+import hashlib
+from pathlib import Path
+
+BASELINES = ('f483f87', '61dc68f')
+POLICIES = ('all', 'deny_exec', 'ask_exec', 'deny_read', 'ask_read',
+            'locked_exec', 'locked_read', 'exclude_exec', 'exclude_read')
+
+
+def strings_from_tests(root):
+    values = set()
+    for path in Path(root).rglob('test_*.py'):
+        tree = ast.parse(path.read_text(encoding='utf-8-sig'), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                values.add(node.value)
+            elif isinstance(node, ast.BinOp):
+                value = static_string(node)
+                if isinstance(value, str):
+                    values.add(value)
+    return values
+
+
+def static_string(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (str, int)):
+        return node.value
+    if isinstance(node, ast.BinOp):
+        left, right = static_string(node.left), static_string(node.right)
+        if isinstance(node.op, ast.Add) and isinstance(left, str) and isinstance(right, str):
+            return left + right
+        if isinstance(node.op, ast.Mult) and isinstance(left, str) and isinstance(right, int):
+            return left * right
+    return None
+
+
+def row_seeds():
+    from archeus.core.execution.command_allowlist import ROWS
+    operands = {'none': ('',), 'P*': ('', '.', 'file.txt', 'file.txt tests'),
+                'F+': ('file.txt', 'file.txt a.txt'),
+                'search': ('-- needle .', '-- needle file.txt tests'),
+                'optional_paths': ('', '-- file.txt', '-- file.txt tests'),
+                'optional_head': ('', 'HEAD'), 'head': ('HEAD',)}
+    return [' '.join((row.program, *row.prefix, *options, tail)).strip()
+            for row in ROWS for options in row.options for tail in operands[row.operands]]
+
+
+def freeze(roots, review):
+    shapes = set(corpus())
+    for root in roots:
+        shapes.update(strings_from_tests(Path(root) / 'tests'))
+    # Review snippets are data, including malformed/partial commands: never execute them.
+    import re
+    shapes.update(re.findall(r'`([^`\n]+)`', Path(review).read_text(encoding='utf-8')))
+    seeds = row_seeds()
+    shapes.update(seeds)
+    shapes.update(seed + ' --extra' for seed in seeds)
+    return sorted(shapes)
+
+
+def policies():
+    from archeus.core.domain.actions import RULE_CLASSES
+    from archeus.core.policy import rules as R
+    out = {}
+    for name in POLICIES:
+        rules = [R.rule(id='proof:' + cls, scope_level='TASK', scope_ref='proof-task',
+                        action_class=cls, decision='ALLOW') for cls in RULE_CLASSES]
+        if name.startswith(('deny_', 'ask_')):
+            decision, cls = name.split('_')
+            rules = [dict(rule, decision=decision.upper()) if rule['action_class'] == cls
+                     else rule for rule in rules]
+        if name.startswith('locked_'):
+            cls = name.removeprefix('locked_')
+            rules.append(R.rule(id='proof:floor', scope_level='GLOBAL', action_class=cls,
+                                decision='DENY', locked=True))
+        classes = list(RULE_CLASSES)
+        if name.startswith('exclude_'):
+            classes.remove(name.removeprefix('exclude_'))
+        out[name] = {'stage': 'action', 'chain': {'TASK': 'proof-task'},
+                     'candidates': rules, 'task_classes': classes}
+    return out
+
+
+def automatic_outcome(decisions, held):
+    if 'DENY' in decisions:
+        return 'deny'
+    if 'ASK' in decisions or held:
+        return 'halt'
+    return 'allow'
+
+
+def classify(root, shapes_path, out_path, candidate=False):
     sys.path.insert(0, root)
     from archeus.core.execution import canonical
-    ctx = {'workdir': root, 'branch': 'main', 'remotes': {'origin': 'github.com'}}
-    with open(shapes_path, encoding='utf-8') as f:
-        shapes = json.load(f)
+    from archeus.core.policy.engine import evaluate_item
+    payload = json.loads(Path(shapes_path).read_text(encoding='utf-8'))
+    ctx = payload['context']
+    trusted = None
+    if candidate:
+        from archeus.core.execution.command_allowlist import ROWS, PathEvidence, TrustedContext
+        trusted = TrustedContext(True, frozenset(row.program for row in ROWS), True,
+                                 {key: PathEvidence(**value)
+                                  for key, value in payload['paths'].items()})
+    policy_contexts = payload['policies']
     out = []
-    for cmd in shapes:
+    errors = 0
+    for cmd in payload['commands']:
         try:
-            acts, unc = canonical.canonicalise('Bash', cmd, ctx)
-            out.append([bool(unc), [a.action_class for a in acts]])
-        except Exception as e:                       # a shape that raises is recorded, not hidden
-            out.append(['error', repr(e)])
-    with open(out_path, 'w', encoding='utf-8') as f:
-        json.dump(out, f)
+            eligibility = None
+            if candidate:
+                (acts, unc), eligibility = canonical.canonicalise_hook('Bash', cmd, ctx, trusted)
+            else:
+                acts, unc = canonical.canonicalise('Bash', cmd, ctx)
+            if type(unc) is not bool or not acts:
+                raise ValueError('missing actions or invalid unclassified flag')
+            held = candidate and eligibility.status != 'ALLOWED'
+            outcomes = {}
+            for name, policy_ctx in policy_contexts.items():
+                decisions = [evaluate_item(action, dict(policy_ctx, unclassified=unc))['decision']
+                             for action in acts]
+                outcomes[name] = automatic_outcome(decisions, held)
+            out.append({'unclassified': unc, 'classes': sorted({a.action_class for a in acts}),
+                        'row': getattr(eligibility, 'row_id', None), 'held_cap': bool(held),
+                        'policies': outcomes})
+        except Exception as error:
+            errors += 1
+            out.append({'error': repr(error)})
+    Path(out_path).write_text(json.dumps(out), encoding='utf-8')
+    return int(bool(errors))
 
 
-def extract(rev, into):
-    data = subprocess.run(['git', '-C', REPO, 'archive', rev, 'archeus'], check=True,
-                          capture_output=True).stdout
-    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+def validate_results(shapes, results):
+    if len(results) != len(shapes):
+        raise ValueError('missing or extra classification results')
+    for index, result in enumerate(results):
+        if ('error' in result or type(result.get('unclassified')) is not bool
+                or not result.get('classes') or type(result.get('held_cap')) is not bool
+                or 'row' not in result or set(result.get('policies', {})) != set(POLICIES)
+                or any(value not in ('allow', 'halt', 'deny')
+                       for value in result['policies'].values())):
+            raise ValueError('invalid classification result at %d: %r' % (index, result))
+
+
+def compare(shapes, before, after):
+    validate_results(shapes, before)
+    validate_results(shapes, after)
+    moves = collections.Counter()
+    violations = []
+    for command, old, new in zip(shapes, before, after):
+        if old['unclassified'] and not new['unclassified']:
+            violations.append((command, 'held-to-allowed'))
+        for policy in POLICIES:
+            if old['policies'][policy] != 'allow' and new['policies'][policy] == 'allow':
+                violations.append((command, 'policy-to-allow:' + policy))
+            if new['held_cap'] and new['policies'][policy] == 'allow':
+                violations.append((command, 'table-miss-auto-allow:' + policy))
+        key = (tuple(old['classes']), tuple(new['classes']), old['unclassified'],
+               new['unclassified'], new['row'], new['held_cap'],
+               tuple(old['policies'].items()), tuple(new['policies'].items()))
+        moves[key] += 1
+    return moves, violations
+
+
+def extract_archive(archive, into):
+    with tarfile.open(archive) as tar:
+        for member in tar.getmembers():
+            target = (Path(into) / member.name).resolve()
+            if not target.is_relative_to(Path(into).resolve()) or not (member.isfile() or member.isdir()):
+                raise ValueError('unsafe archive member: ' + member.name)
         tar.extractall(into)
-    return into
-
-
-def label(res):
-    if res[0] == 'error':
-        return 'error'
-    unclassified = 'U ' if res[0] else ''
-    return unclassified + ('/'.join(res[1]) or 'none')
-
-
-def program(cmd):
-    words = cmd.split()
-    head = words[0] if words else ''
-    return head.replace('\\', '/').rsplit('/', 1)[-1].lower()
+    if not (Path(into) / 'archeus/core/execution/canonical.py').is_file():
+        raise ValueError('baseline archive unavailable/incomplete: ' + str(archive))
+    if not (Path(into) / 'tests').is_dir():
+        raise ValueError('baseline archive must include old tests: ' + str(archive))
+    return str(into)
 
 
 def main(argv):
-    rev = argv[1] if len(argv) > 1 else 'f483f87'
-    work = tempfile.mkdtemp(prefix='p21moves')
-    shapes = corpus()
-    shapes_path = os.path.join(work, 'shapes.json')
-    with open(shapes_path, 'w', encoding='utf-8') as f:
-        json.dump(shapes, f)
-    base_root = extract(rev, os.path.join(work, 'base'))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--baseline', nargs=2, action='append', required=True, metavar=('REV', 'ARCHIVE'))
+    parser.add_argument('--review', required=True)
+    parser.add_argument('--output', required=True)
+    parser.add_argument('--timeout', type=int, default=180)
+    args = parser.parse_args(argv[1:])
+    if sorted(rev for rev, _ in args.baseline) != sorted(BASELINES):
+        parser.error('supply exactly f483f87 and 61dc68f archives')
+    output = Path(args.output).resolve()
+    output.mkdir(parents=True, exist_ok=True)
+    roots = {rev: extract_archive(archive, output / rev) for rev, archive in args.baseline}
+    sys.path.insert(0, REPO)
+    shapes = freeze([REPO, *roots.values()], args.review)
+    fixture = output / 'workspace'
+    fixture.mkdir(exist_ok=True)
+    paths = {name: {'kind': 'file', 'contained': True} for name in
+             ('file.txt', 'a.txt', 'two words.txt')}
+    paths.update({name: {'kind': 'directory', 'contained': True, 'descendants_contained': True}
+                  for name in ('.', 'tests', 'src')})
+    for name, evidence in paths.items():
+        if evidence['kind'] == 'file':
+            (fixture / name).write_text('proof fixture\n', encoding='utf-8')
+        else:
+            (fixture / name).mkdir(exist_ok=True)
+    payload = {'commands': shapes, 'paths': paths, 'policies': policies(),
+               'context': {'workdir': str(fixture), 'cwd': str(fixture), 'branch': 'main',
+                           'remotes': {'origin': 'github.com'}}}
+    frozen = output / 'corpus.json'
+    frozen.write_text(json.dumps(payload, sort_keys=True), encoding='utf-8')
+    print('frozen-corpus', len(shapes), 'sha256', hashlib.sha256(frozen.read_bytes()).hexdigest(), flush=True)
     results = {}
-    for name, root in (('base', base_root), ('new', REPO)):
-        out = os.path.join(work, name + '.json')
-        subprocess.run([sys.executable, os.path.abspath(__file__), 'classify', root, shapes_path, out],
-                       check=True)
-        with open(out, encoding='utf-8') as f:
-            results[name] = json.load(f)
-    moves = collections.Counter()
-    violations = 0
-    for cmd, b, n in zip(shapes, results['base'], results['new']):
-        if label(b) == label(n):
-            continue
-        if b[0] is True and n[0] is False:
-            violations += 1
-        moves[(label(b), label(n), program(cmd))] += 1
-    print('shapes', len(shapes), 'moved', sum(moves.values()), 'held-to-allowed', violations)
-    for (before, after, prog), count in sorted(moves.items(), key=lambda kv: (-kv[1], kv[0])):
-        print('%6d  %-22s -> %-22s %s' % (count, before, after, prog))
-    return 1 if violations else 0
+    for name, root in [*roots.items(), ('candidate', REPO)]:
+        target = output / (name + '.json')
+        subprocess.run([sys.executable, os.path.abspath(__file__), 'classify', root,
+                        str(frozen), str(target), str(int(name == 'candidate'))],
+                       check=True, timeout=args.timeout)
+        results[name] = json.loads(target.read_text(encoding='utf-8'))
+        validate_results(shapes, results[name])
+    failed = False
+    for rev in BASELINES:
+        moves, violations = compare(shapes, results[rev], results['candidate'])
+        print(rev, 'held-to-allowed', sum(reason == 'held-to-allowed' for _, reason in violations),
+              'violations', len(violations))
+        report = {'baseline': rev, 'count': len(shapes),
+                  'concrete_moves': [{'command': cmd, 'before': old, 'after': new}
+                                     for cmd, old, new in zip(shapes, results[rev], results['candidate'])
+                                     if old != new],
+                  'moves': [{'classes_before': key[0], 'classes_after': key[1],
+                             'unclassified_before': key[2], 'unclassified_after': key[3],
+                             'row': key[4], 'held_cap': key[5], 'policies_before': key[6],
+                             'policies_after': key[7], 'count': count}
+                            for key, count in moves.items()], 'violations': violations}
+        (output / (rev + '-moves.json')).write_text(json.dumps(report, indent=2), encoding='utf-8')
+        for command, reason in violations:
+            print(reason, repr(command))
+        failed |= bool(violations)
+    return int(failed)
 
 
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == 'classify':
-        classify(sys.argv[2], sys.argv[3], sys.argv[4])
-    else:
-        sys.exit(main(sys.argv))
+        sys.exit(classify(sys.argv[2], sys.argv[3], sys.argv[4], bool(int(sys.argv[5]))))
+    sys.exit(main(sys.argv))
