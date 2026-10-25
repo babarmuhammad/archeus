@@ -432,6 +432,7 @@ TARGET_RATE = 500
 CI_FLOOR = 200
 
 
+@pytest.mark.perf
 def test_writer_throughput_is_at_least_500_commands_per_second(db, actor):
     """Pipelined, as an API under load would submit them. Best of three
     batches, so one scheduler or antivirus stall does not decide the result."""

@@ -266,6 +266,19 @@ def pytest_configure(config):
         'markers', 'real_editor: allow this test to spawn a real editor process')
     config.addinivalue_line(
         'markers', 'real_process: allow this test to spawn a real child process')
+    config.addinivalue_line(
+        'markers', 'perf: machine-speed floor, skipped unless ARCHEUS_PERF=1 or -m perf')
+
+
+def pytest_collection_modifyitems(config, items):
+    # Not an addopts `-m`: the documented `-m "not real_process"` replaces it.
+    m = config.getoption('markexpr') or ''
+    if os.environ.get('ARCHEUS_PERF') == '1' or ('perf' in m and 'not perf' not in m):
+        return
+    skip = pytest.mark.skip(reason='perf: set ARCHEUS_PERF=1 or pass -m perf')
+    for item in items:
+        if 'perf' in item.keywords:
+            item.add_marker(skip)
 
 
 # ── nothing the USER owns may be written by a test ───────────
