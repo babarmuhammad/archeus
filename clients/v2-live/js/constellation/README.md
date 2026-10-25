@@ -10,14 +10,14 @@ From the worktree root:
 py -m http.server 8000
 ```
 
-Open `http://localhost:8000/clients/v2-live-map/demo.html` (add `?embed=1` for the bare map filling the window). ES modules require HTTP rather than a `file:` URL.
+Open `http://localhost:8000/clients/v2-live/js/constellation/demo.html` (add `?embed=1` for the bare map filling the window). ES modules require HTTP rather than a `file:` URL.
 
 ## API
 
 Give the container an explicit height. Import `map.css` once.
 
 ```js
-import {createMap, edgeId} from './clients/v2-live-map/map.js';
+import {createMap, edgeId} from './clients/v2-live/js/constellation/map.js';
 
 const map = createMap(container, {
   seed: 'workspace-id',
@@ -85,4 +85,4 @@ Palette defaults follow the supplied visual-language document, including green D
 
 ## Probe
 
-`tools/v2_livemap_probe.py` (repository root `tools/`) drives `demo.html?embed=1` in Chromium at 320x640, 390x844, 768x1024, 1280x720, 1440x900, 2000x930 and 2560x1440, in dark, light and both high-contrast themes, plus reduced motion, forced colours and DPR 2. Serve the repository root (`py -m http.server 8861 --bind 127.0.0.1`) and run it through the shared lock: `py D:Archeus.collab	estlock.py -- py tools2_livemap_probe.py`. It checks label/label and label/node overlap, labels clear of the core and controls, every priority label shown, targets of at least 44 px (also zoomed out), one running animation at idle (the core breath, 6000 ms, scale 1 to 1.018 to 1) and none under reduced motion, a single finite marker per pulse, vector-only output at DPR 2, Tab, Enter and arrow keys, a click on every node, wheel, drag, Fit and Reset, label text contrast, no console errors, and 200-node update time. Unit tests: `py D:Archeus.collab	estlock.py -- node --test clients/v2-live-map/map.test.mjs`.
+`tools/v2_livemap_probe.py` (repository root `tools/`) drives `demo.html?embed=1` in Chromium at 320x640, 390x844, 768x1024, 1280x720, 1440x900, 2000x930 and 2560x1440, in dark, light and both high-contrast themes, plus reduced motion, forced colours and DPR 2. Serve the repository root (`py -m http.server 8861 --bind 127.0.0.1`) and run it through the shared lock: `py D:Archeus.collab	estlock.py -- py tools2_livemap_probe.py`. It checks label/label and label/node overlap, labels clear of the core and controls, every priority label shown, targets of at least 44 px (also zoomed out), one running animation at idle (the core breath, 6000 ms, scale 1 to 1.018 to 1) and none under reduced motion, a single finite marker per pulse, vector-only output at DPR 2, Tab, Enter and arrow keys, a click on every node, wheel, drag, Fit and Reset, label text contrast, no console errors, and 200-node update time. Unit tests: `py D:Archeus.collab	estlock.py -- node --test clients/v2-live/js/constellation/map.test.mjs`.

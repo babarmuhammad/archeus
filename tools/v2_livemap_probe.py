@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get('BASE', 'http://127.0.0.1:8861').rstrip('/')
 OUT = os.environ.get('OUT', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.pv20-out', 'shots', 'probe'))
-URL = BASE + '/clients/v2-live-map/demo.html?embed=1'
+URL = BASE + '/clients/v2-live/js/constellation/demo.html?embed=1'
 SIZES = [(320, 640), (390, 844), (768, 1024), (1280, 720), (1440, 900), (2000, 930), (2560, 1440)]
 if os.environ.get('SIZES'):
     SIZES = [tuple(map(int, s.split('x'))) for s in os.environ['SIZES'].split(',')]
@@ -206,7 +206,7 @@ def view_checks(pg, tag, w, h):
 
 
 PERF = """async () => {
-  const {createMap} = await import('/clients/v2-live-map/map.js');
+  const {createMap} = await import('/clients/v2-live/js/constellation/map.js');
   const el = document.createElement('div');
   el.style.cssText = 'position:fixed;left:0;top:0;width:1280px;height:720px;z-index:-1';
   document.body.append(el);
