@@ -407,6 +407,16 @@ export function createSim(opts = {}) {
       if (m.state === 'PAUSED') Object.values(S.executions).filter((e) => e.mission === m.id && e.state === 'PAUSED').forEach((e) => move('execution', e, 'ENDED_KILLED', 'discarded'));
       move('mission', m, 'CANCELLED', 'cancel'); return { ok: true };
     }
+    if (kind === 'start') {
+      if (m.state !== 'CREATED') return bad('Only a mission that has not started can be started');
+      move('mission', m, 'UNDERSTANDING', 'start'); planningChain(m, false); return { ok: true };
+    }
+    if (kind === 'stop') {
+      const xs = Object.values(S.executions).filter((e) => e.mission === m.id && (e.state === 'RUNNING' || e.state === 'STARTING'));
+      if (m.state !== 'EXECUTING' || !xs.length) return bad('Only a running mission can be stopped');
+      xs.forEach((x) => { move('execution', x, 'STOPPING', 'stop'); move('execution', x, 'ENDED_KILLED', 'process_gone'); const k = S.tasks[x.task]; if (k.state === 'RUNNING') move('task', k, 'READY', 'execution_failed_retry'); });
+      m.reason = 'You stopped this mission'; move('mission', m, 'BLOCKED', 'block'); return { ok: true };
+    }
     if (kind === 'pause') {
       const xs = Object.values(S.executions).filter((e) => e.mission === m.id && e.state === 'RUNNING');
       if (m.state !== 'EXECUTING' || !xs.length) return bad('Only a running mission can be paused');
@@ -673,11 +683,11 @@ export function createSim(opts = {}) {
     if (hit.length === 1) return { m: hit[0] };
     return { err: hit.length ? 'Which one? ' + hit.map((m) => m.title).join(', ') + '.' : 'No mission matches "' + q.trim() + '".' };
   }
-  function newMission(title) {
+  function newMission(title, opts) {
     const id = 'm-n' + (++S.counters.mission);
-    const m = { id, title, project: 'archeus', branch: 'feat/' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24), state: 'CREATED', held_from: null, tasks: [], plan_version: 0, replans: 0, origin: 'conversation', reason: null, created_at: S.clock, updated_at: S.clock, account: 'acc-work', model: 'claude-sonnet' };
+    const m = { id, title, project: (opts && opts.project) || 'archeus', branch: 'feat/' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24), state: 'CREATED', held_from: null, tasks: [], plan_version: 0, replans: 0, origin: 'conversation', reason: null, created_at: S.clock, updated_at: S.clock, account: 'acc-work', model: 'claude-sonnet' };
     S.missions[id] = m; emit('mission.created', { kind: 'mission', id }, {}, { mission: id, project: m.project });
-    at(sec(20), 'start ' + id, () => { move('mission', m, 'UNDERSTANDING', 'start'); planningChain(m, false); });
+    if (!(opts && opts.hold)) at(sec(20), 'start ' + id, () => { move('mission', m, 'UNDERSTANDING', 'start'); planningChain(m, false); });
     return m;
   }
   function runCommand(c, arg) {
@@ -739,6 +749,23 @@ export function createSim(opts = {}) {
     return ok ? { ok: true } : { ok: false, reason: why };
   }
 
+  // ---------- S4: the chat module writes its records through these, so every record has an event and an actor ----------
+  const asOwner = (fn) => { S.actor = 'device'; try { return fn(); } finally { S.actor = 'system'; } };
+  const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
+  const chatApi = {
+    post: (from, text, extra) => (from === 'you' ? asOwner : (f) => f())(() => { const m = post(from, text); if (extra) Object.assign(m, extra); return m; }),
+    patch(id, fields) { const m = S.messages.find((x) => x.id === id); if (!m) return null; Object.assign(m, fields); emit('message.updated', { kind: 'message', id }, {}, {}); return m; },
+    createMission: (title, project) => asOwner(() => newMission(title, { hold: true, project })),
+    createIdea: (title, project) => asOwner(() => { const i = { id: 'i-' + (++S.counters.idea), project: project || 'ideas', title, state: 'CAPTURED' }; S.ideas.push(i); emit('idea.created', { kind: 'idea', id: i.id }, {}, { project: i.project }); return i; }),
+    createProject: (name) => asOwner(() => { const p = { id: slug(name) + '-' + (S.projects.length + 1), name, note: 'Created from chat: a record only. Folders, clones and access are proposals.', root: slug(name) + '/' }; S.projects.push(p); emit('project.created', { kind: 'project', id: p.id }, {}, { project: p.id }); return p; }),
+    addKnowledge: (rec) => asOwner(() => {
+      const k = { id: 'k-' + (++S.counters.knowledge), project: rec.project || null, state: 'CANDIDATE', text: rec.text, source: rec.source || 'chat' };
+      S.knowledge.push(k); emit('knowledge_item.created', { kind: 'knowledge_item', id: k.id }, {}, { project: k.project });
+      if (rec.state === 'CONFIRMED') { k.state = 'CONFIRMED'; emit('knowledge_item.state_changed', { kind: 'knowledge_item', id: k.id }, { from: 'CANDIDATE', to: 'CONFIRMED', trigger: 'confirm' }, { project: k.project }); }
+      return k;
+    })
+  };
+
   // ---------- security and health (as the board records them; simulated here) ----------
   function security() {
     const h = S.harnesses.find((x) => x.id === 'claude_code').breaker;
@@ -774,7 +801,7 @@ export function createSim(opts = {}) {
   const api = {
     get state() { return S; },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    advance, act, say, cardAction, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
+    advance, act, say, cardAction, chat: chatApi, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
     play() { S.playing = true; emit('sim.play', null, {}, {}); }, pause() { S.playing = false; emit('sim.pause', null, {}, {}); },
     setSpeed(x) { if (!SPEEDS.includes(x)) return false; S.speed = x; emit('sim.speed', null, { speed: x }, {}); return true; },
     reset(seed) { const sp = S.speed; build(seed == null ? seed0 : seed); S.speed = sp; subs.forEach((f) => f({ seq, at: 0, type: 'sim.reset', subject: null, payload: {} })); },
