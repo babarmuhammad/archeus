@@ -54,12 +54,22 @@ def test_core_is_the_archeus_console_entry_run_from_this_checkout():
     assert v1_env.ROOT == ROOT and os.path.isfile(v1_env.WRAPPER)
 
 
-def test_ready_means_every_component_running_or_idle():
+def test_ready_means_every_component_running_idle_or_stopped():
     assert v1_env.not_ready(HEALTHY) == [] and v1_env.failed(HEALTHY) == []
     booting = dict(HEALTHY, engine={'state': 'reconciling'}, exec={'state': 'starting'})
     assert v1_env.not_ready(booting) == ['engine reconciling', 'exec starting']
     broken = dict(HEALTHY, world={'state': 'failed'})
     assert v1_env.failed(broken) == ['world'] and v1_env.not_ready(broken) == ['world failed']
+    # owner decision (p21-design-gate 4.2, 2026-10-22): a worker the launch did not start is ready
+    unstarted = dict(HEALTHY, plan={'state': 'stopped', 'pending': 0},
+                     verify={'state': 'stopped', 'pending': 0})
+    assert v1_env.not_ready(unstarted) == [] and v1_env.failed(unstarted) == []
+    always = dict(HEALTHY, automation={'state': 'stopped', 'pending': 0})
+    assert v1_env.not_ready(always) == ['automation stopped']
+    dead_engine = dict(HEALTHY, engine={'state': 'stopped'})
+    assert v1_env.not_ready(dead_engine) == ['engine stopped']
+    crashed = dict(HEALTHY, verify={'state': 'failed', 'pending': 0})
+    assert v1_env.failed(crashed) == ['verify'] and v1_env.not_ready(crashed) == ['verify failed']
 
 
 def test_the_url_opened_is_the_one_archeus_core_open_opens(monkeypatch):

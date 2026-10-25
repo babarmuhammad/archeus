@@ -207,6 +207,17 @@ Slices eligible now under D0: A (provenance, D4/D11), C-read (trace view, D3/D14
 `metrics_daily` and `archeus doctor` (D2/D8), F (search, D7), G (notifications, D1). C-write (D13)
 after its file-scope check. B, E, H and the Attention items (D12) wait for P20.
 
+### 4.2 Owner decision: "Accept stopped" (2026-10-22, T-127 review of 5586c06)
+
+The Core reports a worker the launch never started (plan, policy, verify, automation, metrics
+when absent) as `stopped`, not `idle` (runtime.py Health, H08/H10). The owner decided to accept
+`stopped` as a ready state, for the two workers a launch may leave unwired: `plan` (no brain port)
+and `verify` (no verifier or reviewer port). `tools/v1_env.py` `UNWIRED` names them, and `not_ready`
+treats `stopped` as ready only for those. Any other `stopped` component (engine, knowledge, intent,
+policy, automation, world, exec, metrics) is not ready. A `failed` component stays not ready. The
+judge's settle check (`tests/v1/judge/http.py` `_idle`) accepts `stopped` for `plan` and `verify`
+only. An engine whose writer closed reads `failed`, not `stopped` (runtime.py, H12).
+
 ## 5. Slices and order (after approval)
 
 0. **D-26** — built (X1).
@@ -620,3 +631,82 @@ The review's verdict was CHANGES. What changed, finding by finding:
   policy the next decision would use. It is not the decision's stored `input_snapshot`. Only this
   gate section was reworded; commit 330c3fb's message is history and still says "decided from".
 - **N4:** the "Running now" list in `status` says "(+N more)" past the ten it names.
+
+### Slice D Health as built (2026-10-21, card T-127)
+
+Built under the owner's 2026-10-21 answer naming the not-yet-eligible P21 pieces (the board, "Owner
+2026-10-21", verbatim: "Yes, all five (Recommended)"): Control -> About -> Health and its Attention
+items, D12 (a). "P21 cannot be declared complete before P20 is" (D0) is unchanged.
+
+- **Attention items (D12 (a), K7, D-11)**, derived in Core into the existing `/v1/attention` read
+  (`archeus/core/application/attention.py`), with no new kind and no stored row:
+  - an Account in LIMITED, DEGRADED or OPEN is an `account` item beside UNAUTHENTICATED's, reason
+    code `limited` / `degraded` / `open` (`reauth` unchanged), its label as the reason; a LIMITED
+    one also carries `until` (the account's `limited_until`);
+  - a **resource-blocked mission** is a `mission` item, reason code `no_resource`: a mission
+    BLOCKED from EXECUTING with a BLOCKED task whose **latest** route decision has result `blocked`
+    (P10: routing found no eligible resource and blocked the task and its mission). The reason is
+    that route's own explanation and the item carries its `unblock_at`. A task BLOCKED by a
+    rejected route approval (its last route asked), a mission held from another state, and a
+    mission whose last route did find a resource are not listed. A mission already listed for
+    `planning_blocked` is not listed twice.
+- **The metrics read (D2)**: `GET /v1/metrics?days=N` (observe, 1..90, default 14;
+  `metrics.daily`): the newest finished days of `metrics_daily`, newest first, each figure as
+  recorded, so an unknown stays null. Schema `MetricsDaily`; `generated.ts`, `_api.py` and the API
+  reference regenerated. `/v1/health` gains `metrics`, the `archeus-metrics` worker's state (slice D
+  had left it out until a reader needed it).
+- **SPA**: Control -> About gains a **Health** section between This Core and This client: the
+  account and no-resource items (state badge, label, reason, linked to Control -> Resources or the
+  mission), then the last seven finished UTC days (completed, failed, median time to complete,
+  approvals per mission, fallback rate, verification failures; null shows "unknown", never 0) and,
+  for the newest day, cost per mission band and context tokens per task kind. The Workers line
+  names `metrics`. Attention and Now name an item by its reason where the reason changes what it
+  is ("Account at its usage limit", "Account failing", "Account stopped after repeated errors",
+  "No resource can run this mission"); a LIMITED account says when it resets. The TUI's Attention
+  says the same words (`screens.ATTENTION_REASON`); it has no Health page (§7: status and doctor
+  only).
+- **Not built, recorded**: `/v1/metrics` has no invalidation rule because writing a day appends
+  no event: the section reads it when opened. No browser test drives the Health section (the
+  owner's PC rule keeps e2e to the integration run, T-130). The `Health` schema is closed and
+  already lacked `exec`, `verify` and `automation`, which `/v1/health` returns; not changed here.
+- **Client helpers**: the item labels (`attentionLabel`, with the kind words it falls back to) and
+  the Health formatters (`known`, `pct`, `spanText`) live in `clients/app/src/state/present.ts`, the
+  pure module the node tests run, so `clients/app/test/health.test.ts` pins them: a reason naming
+  its item, "unknown" against a measured 0, the minutes and hours split.
+- **Tests**: `tests/v1/integration/test_p21_health.py` (H01-H06); `test_api_structure.py`'s P21
+  table gains the route; `tests/v1/tui/test_acceptance.py` (the TUI's labels); the node suite
+  (249 pass, `tsc --noEmit` clean).
+- **Found while building, fixed**: `test_guards.py`'s textual scan of the application layer read
+  the `state=` keyword in `_no_resource`'s read filter as a state write; the filter now passes the
+  column through `**{'state': ...}`, the form `attention()` already uses (no change in what it reads).
+- **Mutants**: Z80-Z89 in `tools/mutate_p21.py` (LIMITED or OPEN accounts dropped, `until`
+  dropped, the first route deciding instead of the last, an asking route taken for no resource, a
+  mission held from verification listed, the route's reason dropped, the days oldest first, the
+  days unbounded, the TUI naming only the kind), Z120-Z122 (the first blocked route deciding when
+  another blocked task has no resource route, a never-started metrics worker reading idle, the
+  no-resource item dropping `unblock_at`), Z160-Z165 (a dict-spelled state write outside a read, a
+  never-started plan, policy, verify or automation worker reading idle, a past reset read as
+  "resets" in the TUI).
+- **Review fixes (independent review of 8cd47d1, `.collab/reviews/T-127-8cd47d1.claude.md`)**:
+  - The Health empty state said every account can work. DISABLED and UNVERIFIED accounts raise no
+    item, and with no accounts the claim is vacuous, so it now says only what Attention knows: no
+    account has stopped or needs you, and no mission waits for a resource (`clients/app/test/health.test.ts`).
+  - A metrics worker that was never started reads `stopped`, not `idle` (`runtime.py`; H08).
+  - `_no_resource` lists a mission only when every BLOCKED task's last route blocked on a
+    resource, so a task stopped for another reason no longer gets the no-resource reason (H07).
+  - Each nullable Health figure is checked in source to render through `known(`, so a raw render
+    fails the node suite (`health.test.ts`). Browser coverage is still T-130's.
+  - A limited account whose reset instant has passed reads "reset due", not "resets N min ago"
+    (`resetText`).
+  - The reason labels and the KIND labels are pinned equal to the TUI's `ATTENTION_REASON` and
+    `ATTENTION_KIND` (H09). The TUI says "reset due" for a past reset too (`present.reset_text`).
+  - Round 2 (review of 65d2d6d, `.collab/reviews/T-127-65d2d6d.claude.md`): the empty state now
+    says "No account needs you" (it claimed no more than Attention lists). A never-started plan,
+    policy, verify or automation worker reads `stopped`, as metrics does (H10). The state guard
+    sees the dict spelling `**{'state': ...}` again: a line that sets a state through it is
+    flagged unless it is a read (`rows.where(` on the same line) or planning.py's outcome dict,
+    named by its exact text. The guard is not weakened; `test_the_state_guard_sees_the_dict_spelling_outside_a_read`
+    pins it. The node suite checks that the nullable figures never render raw (`{d.<field>}`).
+  - Not changed, on the review's reading: the per-read cost of the Attention scan (bounded by
+    the blocked missions; a join is the upgrade if it grows). H05 and H06 are still weak (a schema
+    check and an auth check); not strengthened here.

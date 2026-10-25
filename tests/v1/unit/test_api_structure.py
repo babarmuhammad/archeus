@@ -299,10 +299,12 @@ P20 = {
 }
 #: P21 slice F (p21-design-gate D7): the command bar's search, a read under the
 #: same `observe` as the three lists it cuts; slice C (D3, D14): a mission's trace,
-#: a read like its timeline
+#: a read like its timeline; slice D Health (D2, D12): metrics_daily's rows,
+#: read like /v1/health
 P21 = {
     ('GET', '/v1/search', 'observe', None),
     ('GET', '/v1/missions/{id}/trace', 'observe', None),
+    ('GET', '/v1/metrics', 'observe', None),
 }
 
 

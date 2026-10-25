@@ -7,10 +7,12 @@ import {
   api,
   type Account,
   type AccountList,
+  type Attention,
   type AutomationList,
   type DeviceList,
   type Health,
   type HarnessList,
+  type MetricsDaily,
   type OptInList,
   type PairingCode,
   type ProjectList,
@@ -28,8 +30,9 @@ import { canCommand } from '../data/connection';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
-import { ago, armedText, consumersText, consumptionText, estopSaid, presenceLabel, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
+import { ago, armedText, attentionLabel, consumersText, consumptionText, estopSaid, known, pct, presenceLabel, spanText, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
+import { LINK, MACHINE } from './Attention';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
 import { ActionButton, Changed, Details, Empty, Fresh, KV, Loadable, Prose, RefLabel, Resources, Section, StateBadge, Tabs, thread, useChanged, useMe } from '../components/ui';
@@ -881,12 +884,13 @@ function About() {
                 ['Schema', String(x.core.schema)],
                 ['Started', ago(x.core.started_at)],
                 ['Engine', `${x.engine.state} (${x.engine.parked} parked)`],
-                ['Workers', `world ${x.world.state} · knowledge ${x.knowledge.state} · intent ${x.intent.state} · plan ${x.plan.state} · policy ${x.policy.state}`],
+                ['Workers', `world ${x.world.state} · knowledge ${x.knowledge.state} · intent ${x.intent.state} · plan ${x.plan.state} · policy ${x.policy.state} · metrics ${x.metrics.state}`],
               ]}
             />
           )}
         </Loadable>
       </Section>
+      <HealthSection />
       <Section title="This client">
         <Loadable snap={s} what="this client">
           {(x) => (
@@ -905,6 +909,78 @@ function About() {
       </Section>
       <Estop health={h} />
     </>
+  );
+}
+
+// ── health (P21 D2, D12): accounts and resources that need you, and the finished days ──
+
+function HealthSection() {
+  const att = useRead<Attention>(paths.attentionItems());
+  const m = useRead<MetricsDaily>(paths.metricsDays({ days: 7 }));
+  return (
+    <Section title="Health">
+      <Loadable snap={att} what="what needs you">
+        {(a) => {
+          const mine = a.items.filter((i) => i.kind === 'account' || (i.kind === 'mission' && i.reason_code === 'no_resource'));
+          return mine.length ? (
+            <ul className="rows" data-health-attention="">
+              {mine.map((i) => (
+                <li key={i.kind + i.ref.id} className="row-item">
+                  <StateBadge machine={MACHINE[i.kind]} state={i.state} /> <a href={LINK[i.kind](i)}>{attentionLabel(i)}</a>
+                  {i.reason ? ` · ${i.reason}` : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <Empty>No account needs you, and no mission waits for a resource.</Empty>
+          );
+        }}
+      </Loadable>
+      <Loadable snap={m} what="the daily figures">
+        {(x) => {
+          if (!x.days.length) return <Empty>No finished day yet: a day's figures appear once it has ended (UTC).</Empty>;
+          const last = x.days[0].metrics;
+          const bands = Object.entries(last.cost_per_mission_band as Record<string, { missions: number; cost_usd_mean: number | null }>);
+          const tokens = Object.entries(last.context_tokens_per_task_kind as Record<string, number>);
+          return (
+            <>
+              <table className="grid" data-metrics-daily="">
+                <thead>
+                  <tr>
+                    <th scope="col">Day (UTC)</th>
+                    <th scope="col">Completed</th>
+                    <th scope="col">Failed</th>
+                    <th scope="col">Median time to complete</th>
+                    <th scope="col">Approvals per mission</th>
+                    <th scope="col">Fallback rate</th>
+                    <th scope="col">Verification failures</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {x.days.map(({ day, metrics: d }) => (
+                    <tr key={day}>
+                      <th scope="row">{day}</th>
+                      <td>{d.missions_completed}</td>
+                      <td>{d.missions_failed}</td>
+                      <td>{known(d.median_time_to_complete_s, spanText)}</td>
+                      <td>{known(d.approvals_per_mission, String)}</td>
+                      <td>{known(d.fallback_rate, pct)}</td>
+                      <td>{known(d.verification_failure_rate, pct)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <KV
+                rows={[
+                  [`Cost per mission, ${x.days[0].day}`, bands.length ? bands.map(([b, v]) => `${b}: ${v.missions} mission${v.missions === 1 ? '' : 's'}, ${known(v.cost_usd_mean, (n) => `$${n.toFixed(2)} mean`)}`).join(' · ') : 'no mission ended'],
+                  [`Context tokens by task kind, ${x.days[0].day}`, tokens.length ? tokens.map(([k, n]) => `${k} ${n.toLocaleString()}`).join(' · ') : 'none recorded'],
+                ]}
+              />
+            </>
+          );
+        }}
+      </Loadable>
+    </Section>
   );
 }
 

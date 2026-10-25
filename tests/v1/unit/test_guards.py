@@ -3,6 +3,7 @@
 import ast
 import dataclasses
 import os
+import re
 
 import pytest
 
@@ -256,6 +257,25 @@ def test_an_illegal_trigger_names_where_it_would_lead():
     assert err.value.to is None
 
 
+def _state_spellings(name, src):
+    """The lines of an application module that set a state: the keyword `state=`
+    (no read takes it), or the dict spelling `**{'state'` unless the line is a read
+    (the argument of a `rows.where(` read) or planning.py's outcome dict, which carries an
+    outcome, not a state. Only the read's own dict is exempt: a second dict on the line is not."""
+    out = []
+    for line in src.splitlines():
+        if 'state=' in line.replace('state=None', ''):
+            out.append(line)
+        elif "**{'state'" in line and not (
+                name == 'planning.py' and "**{'state': outcome}" in line) and (
+                line.count("**{'state'") > len(_STATE_READ.findall(line))):
+            out.append(line)
+    return out
+
+
+_STATE_READ = re.compile(r"rows\.where\([^()]*\*\*\{'state'")
+
+
 def test_no_state_is_set_outside_the_p2_primitive():
     """The application layer names triggers; only Tx.transition writes state."""
     app = os.path.dirname(lifecycle.__file__)
@@ -263,8 +283,19 @@ def test_no_state_is_set_outside_the_p2_primitive():
         if name.endswith('.py'):
             src = open(os.path.join(app, name), encoding='utf-8').read()
             assert 'UPDATE ' not in src and 'INSERT ' not in src, name
-            assert "replace(row.entity" not in src and 'state=' not in src.replace(
-                'state=None', ''), name
+            assert "replace(row.entity" not in src, name
+            assert _state_spellings(name, src) == [], name
+
+
+def test_the_state_guard_sees_the_dict_spelling_outside_a_read():
+    assert _state_spellings('x.py', "tx.insert(entities.Mission(**{'state': 'X'}))")
+    assert _state_spellings('x.py', "entities.Mission(state='X')")
+    assert _state_spellings('x.py', "rows.where(conn, E.Task, **{'state': 'BLOCKED'})") == []
+    assert _state_spellings('x.py', "tx.insert(entities.Mission(**{'state': 'X'}), rows.where(conn, E.Task))")
+    assert _state_spellings('x.py', "rows.where(conn, E.Task, **{'state': 'B'}); tx.insert(M(**{'state': 'X'}))")
+    assert _state_spellings('x.py', "_ = rows.where(None, E.Task), E.Task(**{'state': 'BLOCKED'})")
+    assert _state_spellings('planning.py', "outcome=dict(detail, **{'state': outcome}),") == []
+    assert _state_spellings('other.py', "outcome=dict(detail, **{'state': outcome}),")
 
 
 # ── P9: the mission's `approve` and `plan_denied` (p9-design-gate D10, D11) ──

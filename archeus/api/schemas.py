@@ -103,10 +103,32 @@ TYPES = {
             'pending': {'type': 'integer'}}, 'required': ['state', 'pending']},
         'knowledge': {'ref': 'Worker'}, 'intent': {'ref': 'Worker'},
         'plan': {'ref': 'Worker'}, 'policy': {'ref': 'Worker'},
+        # P21 slice D Health (D12): the worker that fills metrics_daily
+        'metrics': {'ref': 'Worker'},
         # the e-stop (P11): False while disarmed; read here and on /v1/status (P19.5)
         'armed': {'type': 'boolean'}},
         'required': ['core', 'engine', 'world', 'knowledge', 'intent', 'plan', 'policy',
-                     'armed']},
+                     'metrics', 'armed']},
+    # P21 slice D Health (D2, D12): metrics_daily rows, newest first; a figure
+    # with nothing to measure is null (unknown), never 0
+    'MetricsDaily': {'type': 'object', 'properties': {
+        'days': {'type': 'array', 'items': {'type': 'object', 'properties': {
+            'day': {'type': 'string'}, 'computed_at': {'type': 'string'},
+            'metrics': {'type': 'object', 'open': True, 'properties': {
+                'missions_completed': {'type': 'integer'},
+                'missions_failed': {'type': 'integer'},
+                'median_time_to_complete_s': {'type': 'number', 'nullable': True},
+                'approvals_per_mission': {'type': 'number', 'nullable': True},
+                'fallback_rate': {'type': 'number', 'nullable': True},
+                'verification_failure_rate': {'type': 'number', 'nullable': True},
+                'cost_per_mission_band': {'type': 'object', 'open': True},
+                'context_tokens_per_task_kind': {'type': 'object', 'open': True}},
+                'required': ['missions_completed', 'missions_failed',
+                             'median_time_to_complete_s', 'approvals_per_mission',
+                             'fallback_rate', 'verification_failure_rate',
+                             'cost_per_mission_band', 'context_tokens_per_task_kind']}},
+            'required': ['day', 'metrics', 'computed_at']}}},
+        'required': ['days']},
     'Worker': {'type': 'object', 'properties': {
         'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
                                              'failed', 'stopped']},

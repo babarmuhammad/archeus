@@ -507,6 +507,7 @@ export interface Health {
   intent: Worker;
   plan: Worker;
   policy: Worker;
+  metrics: Worker;
   armed: boolean;
 }
 
@@ -671,6 +672,24 @@ export interface MessagePosted {
   message_id: string;
   conversation_id: string;
   seq: number;
+}
+
+export interface MetricsDaily {
+  days: Array<{
+    day: string;
+    computed_at: string;
+    metrics: {
+      missions_completed: number;
+      missions_failed: number;
+      median_time_to_complete_s: number | null;
+      approvals_per_mission: number | null;
+      fallback_rate: number | null;
+      verification_failure_rate: number | null;
+      cost_per_mission_band: Record<string, unknown>;
+      context_tokens_per_task_kind: Record<string, unknown>;
+      [field: string]: unknown;
+    };
+  }>;
 }
 
 export interface Mission {
@@ -1588,6 +1607,7 @@ function qs(q: Record<string, string | number | undefined>): string {
  * client reads and caches by, so a route rename fails the type check. */
 export const paths = {
   health: () => '/v1/health',
+  metricsDays: (query: { days?: number } = {}) => '/v1/metrics' + qs(query),
   version: () => '/v1/version',
   listMissions: (query: { state?: Mission['state']; project?: string } = {}) => '/v1/missions' + qs(query),
   getMission: (id: string) => '/v1/missions/' + encodeURIComponent(id),
@@ -1644,6 +1664,8 @@ export const paths = {
 export const api = {
   health: (send: Send) =>
     send<Health>('GET', paths.health()),
+  metricsDays: (send: Send, query: { days?: number } = {}) =>
+    send<MetricsDaily>('GET', paths.metricsDays(query)),
   version: (send: Send) =>
     send<Version>('GET', paths.version()),
   listMissions: (send: Send, query: { state?: Mission['state']; project?: string } = {}) =>

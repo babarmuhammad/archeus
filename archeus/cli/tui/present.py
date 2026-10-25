@@ -187,6 +187,15 @@ def ago(iso, now_ms):
     return 'just now' if s < 45 else '%s ago' % _fmt(s)
 
 
+def reset_text(iso, now_ms):
+    """A limited account's reset (P21 D12): "resets in 5 min", or "reset due" once the
+    instant has passed while Core still reports LIMITED (the reset worker has not run)."""
+    then = _ms(iso)
+    if then is not None and then <= now_ms:
+        return 'reset due'
+    return 'resets %s' % ago(iso, now_ms)
+
+
 # ── relations (the list form of the graph capability, p16 §20) ──────────────
 # Core's graph route assembles every edge (p19-design-gate B1); the TUI only
 # says them in the clients' one vocabulary (relations.ts edgeWords/edgeRows).

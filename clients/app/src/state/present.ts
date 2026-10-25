@@ -231,6 +231,39 @@ function fmt(s: number): string {
   return `${Math.round(s / 86400)} d`;
 }
 
+// ── Health and Attention labels (P21 D2, D12) ──
+
+const KIND_LABEL: Record<string, string> = {
+  approval: 'Approval',
+  verification: 'Waiting for your acceptance',
+  mission: 'Planning asks you',
+  knowledge: 'Knowledge proposal',
+  drift: 'Architecture drift',
+  automation: 'Automation suspended',
+  account: 'Account needs signing in',
+};
+
+/** A reason that changes what the item is (P21 D12): an account a provider
+ * limited or the breaker stopped, a mission that no resource can run. */
+const REASON_LABEL: Record<string, string> = {
+  'account.limited': 'Account at its usage limit',
+  'account.degraded': 'Account failing',
+  'account.open': 'Account stopped after repeated errors',
+  'mission.no_resource': 'No resource can run this mission',
+};
+
+export const attentionLabel = (i: { kind: string; reason_code: string }) =>
+  REASON_LABEL[`${i.kind}.${i.reason_code}`] ?? KIND_LABEL[i.kind] ?? i.kind;
+
+/** A figure Core could not measure is unknown, never 0 (ADR-0048 D-25.3). */
+export const known = (v: number | null, show: (n: number) => string) => (v === null ? 'unknown' : show(v));
+export const pct = (n: number) => `${Math.round(n * 100)}%`;
+/** A limited account's reset: "resets in 5 min", or "reset due" once the instant has passed
+ * while Core still reports LIMITED (the reset worker has not run yet). */
+export const resetText = (until: string, now = Date.now()) =>
+  Date.parse(until) <= now ? 'reset due' : `resets ${ago(until, now)}`;
+export const spanText = (s: number) => (s < 3600 ? `${Math.max(1, Math.round(s / 60))} min` : `${(s / 3600).toFixed(1)} h`);
+
 // ── plain language: a value as words, an identifier behind Details (R1, rulebook §15) ──
 
 const MENTION = new RegExp(`\\b(${Object.keys(ID_KINDS).join('|')})_[0-9A-HJKMNP-TV-Z]{26}\\b`, 'g');

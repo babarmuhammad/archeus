@@ -108,6 +108,18 @@ def record(tx, *, day, metrics):
                (day, json.dumps(metrics, sort_keys=True), tx.now))
 
 
+MAX_DAYS = 90
+
+
+def daily(conn, days):
+    """The newest *days* rows, newest first: what Control -> About -> Health
+    shows (P21 D12). A figure stays None (unknown) as it was recorded."""
+    got = conn.execute('SELECT day, metrics, computed_at FROM metrics_daily '
+                       'ORDER BY day DESC LIMIT ?', (days,))
+    return {'days': [{'day': d, 'metrics': json.loads(m), 'computed_at': c}
+                     for d, m, c in got]}
+
+
 def missing_days(conn, today):
     """Finished days since the first event that have no row yet, oldest first."""
     first = conn.execute('SELECT MIN(at) FROM events').fetchone()[0]

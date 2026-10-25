@@ -58,6 +58,8 @@ EXIT_MEANING = {0: 'stopped cleanly',
                 2: 'its port is in use by another program',
                 3: 'the engine or a worker thread failed'}
 READY_STATES = ('running', 'idle')
+#: workers a launch may leave unstarted (their port is wired elsewhere): stopped is ready for them only
+UNWIRED = ('plan', 'verify')
 POLL_S = 2.0
 STOP_WAIT_S = 30.0
 
@@ -80,7 +82,7 @@ def components(health):
 
 def not_ready(health):
     return sorted('%s %s' % (k, s) for k, s in components(health).items()
-                  if s not in READY_STATES)
+                  if s not in READY_STATES and not (s == 'stopped' and k in UNWIRED))
 
 
 def failed(health):
@@ -167,7 +169,7 @@ class Env:
 
     def wait_healthy(self, timeout=60.0, poll_s=0.1):
         """True once Core is discoverable as this child and every component is
-        running or idle; False (and why) if it exits, fails or runs out of time."""
+        running, idle or stopped; False (and why) if it exits, fails or runs out of time."""
         deadline, last = time.monotonic() + timeout, None
         while time.monotonic() < deadline:
             if self.child.poll() is not None:

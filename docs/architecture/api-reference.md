@@ -23,6 +23,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/sw.js` | none | — | — | — | the built SPA |
 | GET | `/manifest.webmanifest` | none | — | — | — | the built SPA |
 | GET | `/v1/health` | observe | — | — | — | `Health` |
+| GET | `/v1/metrics` | observe | — | `days` | — | `MetricsDaily` |
 | GET | `/v1/version` | observe | — | — | — | `Version` |
 | GET | `/v1/missions` | observe | — | `state`, `project` | — | `MissionList` |
 | GET | `/v1/missions/{id}` | observe | — | — | — | `Mission` |
@@ -843,6 +844,7 @@ interface Health {
   intent: Worker;
   plan: Worker;
   policy: Worker;
+  metrics: Worker;
   armed: boolean;
 }
 ```
@@ -1091,6 +1093,28 @@ interface MessagePosted {
   message_id: string;
   conversation_id: string;
   seq: number;
+}
+```
+
+### `MetricsDaily`
+
+```ts
+interface MetricsDaily {
+  days: Array<{
+    day: string;
+    computed_at: string;
+    metrics: {
+      missions_completed: number;
+      missions_failed: number;
+      median_time_to_complete_s: number | null;
+      approvals_per_mission: number | null;
+      fallback_rate: number | null;
+      verification_failure_rate: number | null;
+      cost_per_mission_band: Record<string, unknown>;
+      context_tokens_per_task_kind: Record<string, unknown>;
+      [field: string]: unknown;
+    };
+  }>;
 }
 ```
 

@@ -27,6 +27,10 @@ class endpoints:
         return _path('/v1/health')
 
     @staticmethod
+    def metrics_days(*, days=None):
+        return _path('/v1/metrics') + _q((('days', days),))
+
+    @staticmethod
     def version():
         return _path('/v1/version')
 
