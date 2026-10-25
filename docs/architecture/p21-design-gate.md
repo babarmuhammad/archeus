@@ -469,3 +469,154 @@ of the event (its `reason` is never said). The event is appended once per trip, 
 breaker opens, never for a failed half-open trial (p20-design-gate item 131). Tested by
 `tests/v1/integration/test_spawn_breaker.py` (the notice text from the recorded event); the tray
 timer itself is still exercised only through `Shell.notices`.
+
+### Slice B as built (2026-10-21, card T-125)
+
+Built by the owner's naming of 2026-10-21 under D0 ("Yes, all five (Recommended)", recorded on
+`.collab/BOARD.md` above T-125): own calls in `live_work`, each account's consumption in
+`/v1/accounts`, and the `status` verb in words (R13-06). No migration.
+
+- **Own calls in live work (ADR-0043 §2, ADR-0048 D-25.4; orchestration G6).**
+  `archeus/core/application/live.py` `live_work(conn, project_id=None, now=None)` lists every
+  execution in a live state, then every own call in flight, each oldest first. An own call is in
+  flight while `resources.own_call_live` holds: no `outcome` yet, a `selected` or `fallback`
+  result, and within its `max_run_s`. Its item is `kind: own_call` with its `purpose`, `source`,
+  mission (only when the source is a mission that exists), project, harness, account,
+  `account_ref`, model, effort and `started_at`; `state`, `task_id`, `attempt`, `handoff` and
+  `context` are null, because an own call has none of them. `resources.own_calls(conn, now)` is
+  the one scan of the last day's `archeus_call` decisions behind both `live_work` and
+  `ledger_totals`, so an account's `running` and its listed consumers come from the same rows.
+- **Own calls visible, still (G8).** Nothing animates an own call: Core writes no `execution.*`
+  frame for one, and the SPA's `running()` (`clients/app/src/state/orbit.ts`) and the palette's
+  `effectOf` (`state/palette.ts`) skip `kind: own_call`, so the halo, the strip's running count
+  and "N running attempts pause" stay executions only. An item with no `kind` (an older reader's
+  fixture) is still an execution there.
+- **Consumption and effective policy (ADR-0043 §3, §4; G12, G13).** `resources.account_view`
+  adds `consumers` (the account's `live_work` items), `ledger` (`ledger_totals` for today: tokens,
+  cost, `running` and `complete`) and `policy` (`resources.effective_policy`, the dict the router's
+  snapshot carries for the account, now built by the same function in `_registered`). `usage`
+  stays the newest snapshot of each window or null. `/v1/accounts` computes `live_work` once for
+  all accounts. Schemas: `Account` requires `policy`, `ledger`, `consumers`; new `Ledger` and
+  `LedgerComplete`; `LiveItem.kind` is `execution | own_call` with the execution-only fields
+  nullable.
+- **Unknown stays unknown (G12).** Control -> Resources -> Accounts (SPA) and the TUI's accounts
+  section gain two rows: "Running now" (`consumersText` / `consumers_text`: "t1 attempt 2; an own
+  call for the knowledge extraction", or "nothing") and "Today" (`consumptionText` /
+  `consumption_text`): a complete measure is its figure, an incomplete one with something reported
+  is "at least <figure>", and an incomplete one with nothing reported is "tokens unknown" or "cost
+  unknown", never 0. Both functions are held to parity (five new cases in
+  `clients/app/test/fixtures/parity.json`).
+- **`status` in words (R13-06).** `conversation._status` says each mission and execution state
+  with the label the clients show (`_said`, from `archeus/core/domain/words.py`, generated from
+  `presentation.json` by `tools/gen_ui.py`): "Ship the fix (Executing)", "t1 attempt 1 (Starting,
+  context ...)". It lists own calls in flight as "an own call for the <purpose> (<account>)"; its
+  links stay executions and missions.
+- **Not built here, recorded.** ADR-0043 §3 also names ledger totals by period, mission and
+  subject kind; the gate's slice B line names `ledger_totals`, so only today's totals are served.
+  ADR-0041 §5's "which values are defaults" and the ordering rule are not in the read: G13's P21
+  half is the parity with the router's input, which is what is served. The own-call scan covers
+  the last day (the existing `ponytail:` bound, now in `own_calls`): an own call with no
+  `max_run_s` older than a day drops out of both readers at once.
+- **Tests.** `tests/v1/integration/test_p21_live.py` (nine: G6 x2, G8, G12 x2, G13, R13-06 x2, S3);
+  `test_context_capacity.py` now expects "Running" in the status words; `tests/v1/tui/test_security.py`'s
+  accounts fixture carries consumers and a ledger; `clients/app/test/orbit.test.ts` and
+  `palette.test.ts` gain the own-call cases.
+- **Mutants.** Z60-Z69 in `tools/mutate_p21.py`, each killed by the test it names (re-run after
+  the rework). The rework's own mutants are Z130-Z142 (the coordinator's range for this rework;
+  Z110-Z111 belong to T-126).
+
+### Slice B rework after the independent review (T-125, `.collab/reviews/T-125-330c3fb.claude.md`)
+
+The review's verdict was CHANGES. What changed, finding by finding:
+
+- **R1 (Required): work in flight read as a complete zero.** `ledger_totals` still sums only the
+  written usage, and it is what the router reads (`router.py` `_budgets`, which takes `complete` as
+  "cannot be evaluated"), so it is unchanged. `account_view` now sets the view's `ledger.complete`
+  to false while `running > 0`, and `consumption_text` / `consumptionText` say "tokens unknown
+  (N running)" for a zero, "at least <figure>" for a figure. Test:
+  `test_g12_work_in_flight_is_unknown_not_a_zero_and_accounts_lists_the_same`.
+- **Open item, recorded (owner, 2026-10-21: "Record open item (Recommended)").** The router's
+  token and cost budgets judge in-flight usage as complete, the same G12 gap one layer down. It is
+  recorded in ADR-0048 §3 ("Open item"), with what the router does today and the risk. The router
+  is not changed in P21 (ADR-0047 clause 12); the fix goes under its own routing card.
+- **S1: the header counts attempts.** "N running" in the offline Now counts executions;
+  own calls are "· N own calls in flight" (`liveCountText`, `present.test.ts`).
+- **S2: the TUI usage line** is the SPA's `usageText` in Python (`usage_text`): a window not
+  reported is "unknown", not `null`. Two parity cases with `usageText`.
+- **S3: Core no longer imports the TUI.** Core has its own copy of the state words,
+  `archeus/core/domain/words.py`, generated by `tools/gen_ui.py` from the same JSON as the TUI's
+  `_tables.py`. Moving one shared copy was tried first and refused: `tests/v1/tui/test_boundaries.py`
+  says the TUI imports no Core module. Test: `test_s3_core_never_imports_the_tui_and_says_the_same_words`
+  (no `archeus.cli` import in Core; the two copies equal). `gen_ui --check` keeps them current.
+- **S4: the scans.** `own_calls` reads the day's `route_decisions` by `created_at` and parses each
+  body in Python to keep the `subject.kind` `archeus_call` rows. No `json_extract` is used: the
+  SQLite 3.31 invariant in `test_db_schema.py` holds (owner decision, 2026-10-22). `live_work` and
+  `live_counts` each read the live executions by state in SQL (`executions_by_state`, no finished
+  execution is decoded); `live_counts` reads each live execution's `account_id` in Python and each
+  reads the day's own calls. `/v1/accounts` runs both once: four scans, whatever the account count,
+  and each account adds one read of its own usage rows (`ledger_totals`). `refresh_ledgers` (the
+  own-call writer) computes `live_counts` once for all its accounts. Ceiling, recorded: the day's
+  `route_decisions` are still scanned by `created_at` (no index), and every one of them is parsed
+  in Python. An index is a migration; none was added (0019 is not taken), and the owner may ask for one.
+- **Field projection on three reads (owner, 2026-10-21: "Field projection only (Recommended)";
+  earlier answers "Strip at read" and "Strip it").** Slice B guarantees only this: `/v1/accounts`,
+  `/v1/route-decisions` (list and one) and `/v1/status` no longer carry the fields that name an
+  account's home, for registered accounts. A default account's key (`<harness>:<canonical home>`) in a
+  route decision's `outcome.account_ref` is still returned on the list (`GET /v1/route-decisions`),
+  on the single-decision read (`GET /v1/route-decisions/{id}`) and on the mission trace; that is not covered by slice B and is
+  deferred to T-144 (see *Not guaranteed* below). Those fields are left out by name, never by matching a value:
+  - `/v1/accounts`: `home_ref` and `home_key` (`resources.HOME_FIELDS`).
+  - `/v1/route-decisions` (`queries._public_decision`, `get_route_decision`'s usage rows): a snapshot
+    account's `ref`, `home_ref` and `home_key`; `account_ref` on the decision, on each candidate and
+    on each usage row.
+  - `/v1/status`: an own call's `account_ref` (`live.live_work`).
+  The stored rows keep every field (the execution manager reads the snapshot). The mission trace
+  (`/v1/missions/{id}/trace`) reads its `route_decisions` through the same `queries.route_decisions`,
+  so the same fields are left out there (review N-1). That is what the code does, not a wider
+  guarantee: the trace's other fields are not projected by slice B. Tests:
+  `test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home`,
+  `test_owner_2026_10_21_route_decision_reads_name_no_home_field`,
+  `test_owner_2026_10_21_the_default_account_fields_are_left_out`,
+  `test_owner_2026_10_21_live_work_names_no_home_field`,
+  `test_owner_2026_10_21_the_mission_trace_reads_no_home_field` (the trace; mutant Z202), and
+  `test_H09_the_three_projected_reads_name_no_home_field` (HTTP, with a stored-row precondition).
+  `test_H09_the_status_read_with_a_live_own_call_names_no_home_field` (HTTP: the status read with an
+  own call in flight, so the own-call projection runs over HTTP and not only on `live_work`; review
+  N-2; mutant Z203). Mutants Z151, Z153-Z157, Z202, Z203.
+  **Not guaranteed by slice B (moved to T-144, the security card):** every other read that can carry
+  a home. Known examples: verification and review records (`performed_by.account_ref`,
+  `reviewer_resource`), events payloads, a default account's key (`<harness>:<canonical home>`,
+  ADR-0048 D-25.1) in a route decision's `outcome.account_ref` (the own-call writers in
+  conversation, knowledge and planning record it there; the decision's `account_ref`, its
+  candidates and its usage rows are projected, and a default account has no `account_id` on any
+  of them), any
+  free text that names a home, and the event streams. A value-matching net was built and removed
+  on the owner's answer; its spelling and boundary findings are on the T-144 card.
+- **Now map (review F2).** The live map's set is `attemptIds(status.data.live)` (`orbit.ts`): an own
+  call is never a map node (G8). Test: `orbit.test.ts` (`attemptIds`, behaviour only); mutant Z148.
+  The offline header is `headerLine(status)` (`present.ts`), tested in `present.test.ts`; mutant
+  Z150. The source-text pins are gone; the map and the header are pure functions now.
+- **S5: mutant gaps.** Z130-Z142 cover the in-flight count, its account (Z131 books it to no
+  account), the lapsed flip, the in-flight zero, the palette skip, the TS and Python in-flight
+  text, the TUI usage line, the execution-only link filter, the summary-only consumers, the
+  "(+N more)" count and the own-call kind filter. The account filter inside `live_counts` for a
+  single account is not observable (each read takes its own account's key), so it has no mutant:
+  the reviewer's "account filter" claim is covered by Z131 instead.
+- **S6: timing.** The "still within its run" check uses a call with `max_run_s=600`; the one-second
+  call is only read at a time five seconds on.
+- **S7: consumers are summaries.** `consumers` carry `CONSUMER_FIELDS` (kind, id, purpose,
+  mission_id, task_key, state, attempt, account_id), typed by a new `Consumer` schema.
+  `/v1/accounts` also carried `home_ref` (the account's config directory), shown under Details,
+  which predates this slice. Owner, 2026-10-21: "Drop from the view (Recommended)". The accounts
+  view now leaves out `home_ref` and `home_key`: `home_key` is the same path in canonical form
+  (ADR-0048 D-25.2), and a view that kept it would still show the home. The adapters and Core's
+  own reads take the home from the row, not from this view (`queries.get_account` is unchanged).
+  The SPA's Details row is gone; the TUI never showed it. Test:
+  `test_owner_2026_10_21_the_accounts_view_never_shows_an_account_home`; mutants Z143-Z144.
+- **N1 (kept):** the one-day scan window stays; it follows no `max_run_s` yet, and today no own
+  call has a bound longer than a day.
+- **N2:** the consumption row reads "Today (UTC)".
+- **N3:** `account_view` reads the current `ResourcePolicy` row through `effective_policy`: the
+  policy the next decision would use. It is not the decision's stored `input_snapshot`. Only this
+  gate section was reworded; commit 330c3fb's message is history and still says "decided from".
+- **N4:** the "Running now" list in `status` says "(+N more)" past the ten it names.

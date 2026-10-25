@@ -27,6 +27,7 @@ import re
 
 from ..domain import entities, ids, states
 from ..domain.events import new_event
+from ..domain.words import LABELS
 from ..domain.values import Ref
 from . import calls as C
 from . import knowledge as K
@@ -851,26 +852,40 @@ def _with(then, mission_id, intent, reply):
             list(links) + list(also))
 
 
+def _running(w):
+    """One item of live work, in words (R13-06)."""
+    if w['kind'] == 'own_call':
+        return 'an own call for the %s (%s)' % (w['purpose'].replace('_', ' '),
+                                                 w['account_id'] or w['harness_id'] or 'no account')
+    return '%s attempt %d (%s, context %s%s)' % (
+        w['task_key'], w['attempt'], _said('execution', w['state']), w['context']['quality'],
+        '' if w['context']['remaining'] is None
+        else ', %s tokens left' % '{:,}'.format(w['context']['remaining']))
+
+
+def _said(machine, state):
+    # the generated copy of presentation.json's words (R13-06: "use the same words")
+    return LABELS.get(machine, {}).get(state, state)
+
+
 def _status(tx, target):
     from ..world import status as world_status
     st = world_status.status(tx.conn, target['id'] if target else None)
     live = [m for m in st['missions'] if m['state'] not in states.terminal('mission')]
     text = '%d project(s), %d open mission(s)%s, %d drift finding(s).' % (
         len(st['projects']), len(live),
-        '' if not live else ': ' + '; '.join('%s (%s)' % (m['title'], m['state'])
+        '' if not live else ': ' + '; '.join('%s (%s)' % (m['title'], _said('mission', m['state']))
                                              for m in live[:10]),
         len(st['drift']))
     links = [{'ref': {'kind': 'mission', 'id': m['id']}} for m in live[:10]]
     from .live import live_work
     work = live_work(tx.conn, target['id'] if target else None)
     if work:
-        text += ' Running now: %s.' % '; '.join(
-            '%s attempt %d (%s, context %s%s)' % (
-                w['task_key'], w['attempt'], w['state'], w['context']['quality'],
-                '' if w['context']['remaining'] is None
-                else ', %s tokens left' % '{:,}'.format(w['context']['remaining']))
-            for w in work[:10])
-        links += [{'ref': {'kind': 'execution', 'id': w['id']}} for w in work[:10]]
+        more = len(work) - 10
+        text += ' Running now: %s%s.' % ('; '.join(_running(w) for w in work[:10]),
+                                         ' (+%d more)' % more if more > 0 else '')
+        links += [{'ref': {'kind': 'execution', 'id': w['id']}} for w in work[:10]
+                  if w['kind'] == 'execution']
     return text, links
 
 

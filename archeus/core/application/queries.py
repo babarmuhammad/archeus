@@ -215,13 +215,31 @@ def get_knowledge(conn, knowledge_item_id):
     return dict(view(row), chain=chain + [knowledge_item_id] + after, relations=rels)
 
 
+def _drop(d, *keys):
+    return {k: v for k, v in d.items() if k not in keys}
+
+
+def _public_decision(decision):
+    """A decision as the API reads it (owner, 2026-10-21: field projection only).
+    A decision names its account's home in three fields: the snapshot entry's
+    `ref` and `home_ref` (and `home_key`), and `account_ref` (on the decision, each
+    candidate and each usage row). Those fields are left out; no value is matched.
+    The stored row keeps them: the execution manager reads the snapshot."""
+    snap = decision.get('input_snapshot')
+    if snap is not None and 'accounts' in snap:
+        snap = dict(snap, accounts=[_drop(a, 'home_ref', 'home_key', 'ref')
+                                    for a in snap['accounts'] or ()])
+    cands = [_drop(c, 'account_ref') for c in decision.get('candidates') or ()]
+    return _drop(dict(decision, input_snapshot=snap, candidates=cands), 'account_ref')
+
+
 def get_route_decision(conn, route_decision_id):
     row = rows.get(conn, entities.RouteDecision, route_decision_id)
     if row is None:
         raise NotFound(route_decision_id)
-    usage = [view(r) for r in rows.where(conn, entities.UsageLedger,
-                                         route_decision_id=route_decision_id)]
-    return dict(view(row), usage=usage)
+    usage = [_drop(view(r), 'account_ref') for r in rows.where(
+        conn, entities.UsageLedger, route_decision_id=route_decision_id)]
+    return dict(_public_decision(view(row)), usage=usage)
 
 
 def route_decisions(conn, source_id=None, purpose=None):
@@ -233,7 +251,7 @@ def route_decisions(conn, source_id=None, purpose=None):
     if source_id is not None:
         got = [r for r in got if source_id in (r.entity.subject.id, r.entity.source
                                                and r.entity.source.id)]
-    return [view(r) for r in got]
+    return [_public_decision(view(r)) for r in got]
 
 
 def get_account(conn, account_id):

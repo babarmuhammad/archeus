@@ -1997,6 +1997,128 @@
    "out": true
   },
   {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 1234,
+     "cost_today": 0.5,
+     "running": 0,
+     "complete": {
+      "tokens": true,
+      "cost": true
+     }
+    }
+   ],
+   "out": "1,234 tokens · $0.50"
+  },
+  {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 1234,
+     "cost_today": 0,
+     "running": 0,
+     "complete": {
+      "tokens": false,
+      "cost": false
+     }
+    }
+   ],
+   "out": "at least 1,234 tokens · cost unknown"
+  },
+  {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 0,
+     "cost_today": 0,
+     "running": 1,
+     "complete": {
+      "tokens": true,
+      "cost": false
+     }
+    }
+   ],
+   "out": "tokens unknown (1 running) · cost unknown (1 running)"
+  },
+  {
+   "fn": "consumptionText",
+   "args": [
+    {
+     "tokens_today": 1234,
+     "cost_today": 0.5,
+     "running": 1,
+     "complete": {
+      "tokens": true,
+      "cost": true
+     }
+    }
+   ],
+   "out": "at least 1,234 tokens · at least $0.50"
+  },
+  {
+   "fn": "consumersText",
+   "args": [
+    []
+   ],
+   "out": "nothing"
+  },
+  {
+   "fn": "usageText",
+   "args": [
+    null,
+    1790683200000
+   ],
+   "out": "not observed"
+  },
+  {
+   "fn": "usageText",
+   "args": [
+    {
+     "windows": {
+      "five_hour": 42,
+      "seven_day": null
+     },
+     "resets_at": {
+      "five_hour": "2026-09-29T14:00:00Z"
+     },
+     "observed_at": 1790683080,
+     "source": "claude"
+    },
+    1790683200000
+   ],
+   "out": "five hour 42% (resets in 2 h) · seven day unknown, observed 2 min ago from claude"
+  },
+  {
+   "fn": "usageText",
+   "args": [
+    {
+     "windows": {}
+    },
+    1790683200000
+   ],
+   "out": "no window reported"
+  },
+  {
+   "fn": "consumersText",
+   "args": [
+    [
+     {
+      "kind": "execution",
+      "task_key": "t1",
+      "attempt": 2,
+      "state": "RUNNING"
+     },
+     {
+      "kind": "own_call",
+      "purpose": "knowledge_extraction",
+      "state": null
+     }
+    ]
+   ],
+   "out": "t1 attempt 2; an own call for the knowledge extraction"
+  },
+  {
    "fn": "staleBy",
    "args": [
     {

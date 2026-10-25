@@ -29,6 +29,7 @@ test('the effect is said from Core\'s live work', () => {
   assert.ok(pause && 'effect' in pause && pause.effect === '2 running attempts pause');
   assert.equal(effectOf('pause', input.missions[1], input.live), 'nothing of it is running now');
   assert.equal(effectOf('pause', input.missions[0], [{ mission_id: 'msn_1' }]), '1 running attempt pauses');
+  assert.equal(effectOf('pause', input.missions[0], [{ kind: 'own_call', mission_id: 'msn_1' }]), 'nothing of it is running now');
   assert.equal(effectOf('resume', input.missions[1], input.live), 'its work is dispatched again');
 });
 

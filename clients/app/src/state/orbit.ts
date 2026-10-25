@@ -15,17 +15,23 @@ export type Presence = 'idle' | 'active' | 'attention' | 'disconnected';
 
 export const ORBIT_EVERY_MS = MOTIONS['presence-orbit'].min_interval_ms;
 
-export function presence(connected: boolean, needsYou: number, live: { state: string }[]): Presence {
+export function presence(connected: boolean, needsYou: number, live: Live[]): Presence {
   if (!connected) return 'disconnected';
   if (needsYou > 0) return 'attention';
   return running(live).length ? 'active' : 'idle';
 }
 
-/** The live attempts that are running now: the halo's own class. */
-export const running = <T extends { state: string }>(live: T[]): T[] => live.filter((x) => present('execution', x.state).cls === 'active');
+type Live = { kind?: string; state: string | null };
+
+/** The live attempts that are running now: the halo's own class. An own call
+ * in flight is live work but never an attempt, so it never animates (G8). */
+export const running = <T extends Live>(live: T[]): T[] => live.filter((x) => x.kind !== 'own_call' && present('execution', x.state ?? '').cls === 'active');
 
 /** The strip's "running": missions, Archeus's unit, with an attempt running now. */
-export const runningMissions = (live: { state: string; mission_id: string }[]): number => new Set(running(live).map((x) => x.mission_id)).size;
+export const runningMissions = (live: (Live & { mission_id: string | null })[]): number => new Set(running(live).map((x) => x.mission_id)).size;
+
+/** The ids the live map lights: attempts only. An own call is never a map node (G8). */
+export const attemptIds = <T extends Live & { id: string }>(live: T[] | undefined): string[] => (live ?? []).filter((x) => x.kind !== 'own_call').map((x) => x.id);
 
 export class Orbit {
   private seq = 0;

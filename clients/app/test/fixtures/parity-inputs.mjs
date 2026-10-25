@@ -166,6 +166,17 @@ export const INPUTS = [
   ['staleBy', { event: 'mission.state_changed', data: { subject: { kind: 'mission', id: 'msn_1' } } }, '/v1/missions/msn_1?x=1'],
   ['staleBy', { event: 'mission.state_changed', data: { subject: { kind: 'mission', id: 'msn_1' } } }, '/v1/plans/pln_1'],
   ['staleBy', { event: 'plan.state_changed', data: { subject: { kind: 'plan', id: 'pln_1' } } }, '/v1/plans/pln_1'],
+  // consumptionText, consumersText (P21 slice B; G8, G12): unknown stays unknown
+  ['consumptionText', { tokens_today: 1234, cost_today: 0.5, running: 0, complete: { tokens: true, cost: true } }],
+  ['consumptionText', { tokens_today: 1234, cost_today: 0, running: 0, complete: { tokens: false, cost: false } }],
+  ['consumptionText', { tokens_today: 0, cost_today: 0, running: 1, complete: { tokens: true, cost: false } }],
+  ['consumptionText', { tokens_today: 1234, cost_today: 0.5, running: 1, complete: { tokens: true, cost: true } }],
+  ['consumersText', []],
+  // usageText (the SPA's, held equal by the TUI's usage_text): a window not reported is unknown
+  ['usageText', null, NOW],
+  ['usageText', { windows: { five_hour: 42, seven_day: null }, resets_at: { five_hour: '2026-09-29T14:00:00Z' }, observed_at: NOW / 1000 - 120, source: 'claude' }, NOW],
+  ['usageText', { windows: {} }, NOW],
+  ['consumersText', [{ kind: 'execution', task_key: 't1', attempt: 2, state: 'RUNNING' }, { kind: 'own_call', purpose: 'knowledge_extraction', state: null }]],
   ['staleBy', { event: 'plan.state_changed', data: { subject: { kind: 'plan', id: 'pln_1' } } }, '/v1/plans/pln_2'],
   ['staleBy', { event: 'plan.state_changed', data: { subject: { kind: 'plan', id: 'pln_1' } } }, '/v1/missions/msn_1/timeline?before=9'],
   ['staleBy', { event: 'execution.x', data: { subject: { kind: 'execution', id: 'exe_1' } } }, '/v1/executions/exe_1/stream?from=10'],

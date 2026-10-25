@@ -11,6 +11,7 @@ a policy rule, or run anything. `ask` is recorded; asking the user is P9's
 `authorization.request_route`, called by the dispatch command.
 """
 
+import json
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -198,7 +199,48 @@ def own_call_live(row, now):
     return bound is None or now - _epoch(row.created_at) <= bound
 
 
-def ledger_totals(conn, account_id, today, now=None):
+def own_calls(conn, now):
+    """The own calls (`archeus_call` decisions) of the last day, oldest first:
+    the one scan behind `live_work` and `live_counts` (orchestration G6). The
+    kind is read from each body in Python (no json_extract: SQLite 3.31)."""
+    # ponytail: a day's decisions by a scan of created_at, bodies parsed in Python; an indexed
+    # kind or account column when the decision history makes that scan matter
+    for rec in conn.execute("SELECT * FROM route_decisions WHERE created_at >= ? "
+                            "ORDER BY rowid", (_iso(now - 86400),)):
+        if (json.loads(rec['body']).get('subject') or {}).get('kind') == 'archeus_call':
+            yield rows.decode(entities.RouteDecision, rec)
+
+
+_NO_WORK = {'running': 0, 'lapsed': False}
+
+
+def live_counts(conn, today, now, account_id=None):
+    """Per account (only *account_id*, when given): `running`, the live
+    executions and own calls in flight, and `lapsed`, an own call of *today*
+    that ended with no outcome (it may have run and will never write its row).
+    Two scans for every account together, not two per account."""
+    out = {}
+
+    def mine(a):
+        return out.setdefault(a, {'running': 0, 'lapsed': False})
+    for rec in conn.execute('SELECT body FROM executions WHERE state IN (%s)'
+                            % ','.join('?' * len(_LIVE_EXEC)), _LIVE_EXEC):
+        a = json.loads(rec['body']).get('account_id')
+        if account_id is None or a == account_id:
+            mine(a)['running'] += 1
+    for r in own_calls(conn, now):
+        rd = r.entity
+        if rd.account_id is None or (account_id is not None and rd.account_id != account_id):
+            continue
+        if own_call_live(r, now):
+            mine(rd.account_id)['running'] += 1
+        elif rd.outcome is None and rd.result in ('selected', 'fallback') \
+                and r.created_at >= today:
+            mine(rd.account_id)['lapsed'] = True
+    return out
+
+
+def ledger_totals(conn, account_id, today, now=None, counts=None):
     """What Archeus consumed on *account_id* since *today* (an ISO date), and
     its live work (the budget path, §4).
 
@@ -206,8 +248,11 @@ def ledger_totals(conn, account_id, today, now=None):
     bound unless `complete` says so: a row that is not the harness's own
     total, a figure not reported, or an own call that ended with no outcome
     makes its measure incomplete — unknown is never 0 (ADR-0048 §3). `running`
-    is the account's live work: live executions and own calls in flight."""
+    is the account's live work: live executions and own calls in flight.
+    *counts* is `live_counts` for every account, when the caller has it."""
     now = time.time() if now is None else now
+    live = (live_counts(conn, today, now, account_id) if counts is None
+            else counts).get(account_id, _NO_WORK)
     tokens = cost = 0
     complete = {'tokens': True, 'cost': True}
     for r in rows.where(conn, entities.UsageLedger, account_id=account_id):
@@ -220,24 +265,9 @@ def ledger_totals(conn, account_id, today, now=None):
         complete['tokens'] &= whole and None not in (e.tokens_in, e.tokens_out)
         cost += e.cost_usd or 0
         complete['cost'] &= whole and e.cost_usd is not None
-    running = sum(1 for r in rows.where(conn, entities.Execution)
-                  if r.entity.account_id == account_id and r.entity.state in _LIVE_EXEC)
-    # ponytail: a day's decisions by a scan of created_at; an indexed account
-    # column when the decision history makes that scan matter
-    since = _iso(now - 86400)
-    for rec in conn.execute('SELECT * FROM route_decisions WHERE created_at >= ? '
-                            'ORDER BY rowid', (since,)):
-        r = rows.decode(entities.RouteDecision, rec)
-        rd = r.entity
-        if rd.account_id != account_id or rd.subject.kind != 'archeus_call':
-            continue
-        if own_call_live(r, now):
-            running += 1
-        elif rd.outcome is None and rd.result in ('selected', 'fallback') \
-                and r.created_at >= today:
-            # it may have run and will never write its row
-            complete = {'tokens': False, 'cost': False}
-    return {'tokens_today': tokens, 'cost_today': round(cost, 6), 'running': running,
+    if live['lapsed']:
+        complete = {'tokens': False, 'cost': False}
+    return {'tokens_today': tokens, 'cost_today': round(cost, 6), 'running': live['running'],
             'complete': complete}
 
 
@@ -320,16 +350,19 @@ def _registered(conn, harness_ids, feed, now):
             if isinstance(resets, dict) else {},
             'observed_at': _iso(rd['observed_at']),
             'age_s': max(0, round(now - rd['observed_at'], 3)), 'source': rd['source']}
-        p = policies[a.id]
         out.append({'id': a.id, 'ref': a.home_ref or a.id, 'home_ref': a.home_ref,
                     'harness': a.harness_id, 'label': a.label, 'auth_kind': a.auth_kind,
                     'registered': True, 'health': a.health, 'why_not': None,
-                    'policy': {k: getattr(p, k) for k in POLICY_FIELDS} | {
-                        'budgets': dict(p.budgets or {}),
-                        'project_allow': list(p.project_allow),
-                        'project_deny': list(p.project_deny)},
+                    'policy': effective_policy(policies[a.id]),
                     'usage': usage, 'ledger': ledger_totals(conn, a.id, today, now)})
     return out, readings
+
+
+def effective_policy(p):
+    """An account's policy exactly as the router reads it (ADR-0041 §5; G13)."""
+    return {k: getattr(p, k) for k in POLICY_FIELDS} | {
+        'budgets': dict(p.budgets or {}), 'project_allow': list(p.project_allow),
+        'project_deny': list(p.project_deny)}
 
 
 def refresh_ledgers(conn, snap, now):
@@ -338,8 +371,9 @@ def refresh_ledgers(conn, snap, now):
     taken again inside the transaction that records it, where no other
     decision can interleave (a concurrency slot is never granted twice)."""
     today = _iso(now)[:10]
-    accts = [dict(a, ledger=ledger_totals(conn, a['id'], today, now)) if a.get('registered')
-             else a for a in snap['accounts']]
+    counts = live_counts(conn, today, now)
+    accts = [dict(a, ledger=ledger_totals(conn, a['id'], today, now, counts))
+             if a.get('registered') else a for a in snap['accounts']]
     return dict(snap, accounts=accts)
 
 
@@ -708,10 +742,39 @@ class Resources:
 
 # ── views ──────────────────────────────────────────────────────────────────
 
-def account_view(conn, row):
-    (p,) = rows.where(conn, entities.ResourcePolicy, account_id=row.entity.id)
-    return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, row.entity.id))
+#: the account fields that name a home on this machine: the accounts view leaves them out
+HOME_FIELDS = ('home_ref', 'home_key')
+#: the live-item fields an account's consumers carry (the clients name only these)
+CONSUMER_FIELDS = ('kind', 'id', 'purpose', 'mission_id', 'task_key', 'state', 'attempt',
+                   'account_id')
+
+
+def account_view(conn, row, work=None, now=None, counts=None):
+    """The account with its consumption (ADR-0043 §3, §4): its live consumers
+    from `live_work`, today's ledger and the effective policy, each exactly what
+    the router reads; a missing reading stays None or incomplete, never 0. The
+    ledger is complete only when nothing is in flight: the work still running
+    has not written its usage yet (G12). The router reads `ledger_totals` itself."""
+    from .live import live_work
+    a = row.entity
+    now = time.time() if now is None else now
+    work = live_work(conn, now=now) if work is None else work
+    (p,) = rows.where(conn, entities.ResourcePolicy, account_id=a.id)
+    led = ledger_totals(conn, a.id, _iso(now)[:10], now, counts)
+    if led['running']:
+        led['complete'] = {'tokens': False, 'cost': False}
+    # an account's home is a path on this machine, so the accounts view never shows it
+    # (owner, 2026-10-21); the adapters and Core's own reads take it from the row
+    return dict({k: v for k, v in view(row).items() if k not in HOME_FIELDS},
+                resource_policy=view(p), usage=latest_usage(conn, a.id),
+                policy=effective_policy(p.entity), ledger=led,
+                consumers=[{k: w.get(k) for k in CONSUMER_FIELDS}
+                           for w in work if w['account_id'] == a.id])
 
 
 def accounts(conn):
-    return [account_view(conn, r) for r in rows.where(conn, entities.Account)]
+    from .live import live_work
+    now = time.time()
+    work = live_work(conn, now=now)
+    counts = live_counts(conn, _iso(now)[:10], now)
+    return [account_view(conn, r, work, now, counts) for r in rows.where(conn, entities.Account)]

@@ -28,7 +28,7 @@ import { canCommand } from '../data/connection';
 import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
-import { ago, armedText, estopSaid, presenceLabel, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
+import { ago, armedText, consumersText, consumptionText, estopSaid, presenceLabel, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { QR } from '../components/QR';
 import { Relations } from '../components/Relations';
@@ -285,9 +285,11 @@ function ResourcesSection() {
                         ['Allocation ceiling', `${x.resource_policy.allocation_pct}% (reserve ${x.resource_policy.reserve_pct}%, own-call reserve ${x.resource_policy.brain_reserve_pct}%)`],
                         ['Fallback to it', x.resource_policy.fallback],
                         ['Latest usage', usageText(x.usage as Parameters<typeof usageText>[0])],
+                        ['Running now', consumersText(x.consumers)],
+                        ['Today (UTC)', consumptionText(x.ledger)],
                       ]}
                     />
-                    <Details rows={[['Account id', x.id], ['Home (config directory)', x.home_ref as string | undefined]]} />
+                    <Details rows={[['Account id', x.id]]} />
                     <PolicyForm a={x} />
                   </li>
                 ))}

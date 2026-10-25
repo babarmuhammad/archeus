@@ -142,6 +142,9 @@ interface Account {
   resource_policy: ResourcePolicy;
   usage: Record<string, unknown> | null;
   version: number;
+  policy: Record<string, unknown>;
+  ledger: Ledger;
+  consumers: Consumer[];
   [field: string]: unknown;
 }
 ```
@@ -392,6 +395,21 @@ interface ConstraintDeclared {
   knowledge_item: KnowledgeItem;
   changed: boolean;
   stale: string[];
+}
+```
+
+### `Consumer`
+
+```ts
+interface Consumer {
+  kind: 'execution' | 'own_call';
+  id: string;
+  purpose?: string | null;
+  mission_id?: string | null;
+  task_key?: string | null;
+  state?: string | null;
+  attempt?: number | null;
+  account_id?: string | null;
 }
 ```
 
@@ -977,24 +995,45 @@ interface LaunchCode {
 }
 ```
 
+### `Ledger`
+
+```ts
+interface Ledger {
+  tokens_today: number;
+  cost_today: number;
+  running: number;
+  complete: LedgerComplete;
+}
+```
+
+### `LedgerComplete`
+
+```ts
+interface LedgerComplete {
+  tokens: boolean;
+  cost: boolean;
+}
+```
+
 ### `LiveItem`
 
 ```ts
 interface LiveItem {
-  kind: 'execution';
+  kind: 'execution' | 'own_call';
   id: string;
-  mission_id: string;
-  task_id: string;
+  purpose?: string;
+  mission_id: string | null;
+  task_id: string | null;
   task_key?: string;
-  state: string;
-  attempt: number;
+  state: string | null;
+  attempt: number | null;
   harness_id?: string | null;
   account_id?: string | null;
   model?: string | null;
   waits_on?: string | null;
-  handoff: Handoff;
+  handoff: Handoff | null;
   handing_off?: string | null;
-  context: ContextState;
+  context: ContextState | null;
   [field: string]: unknown;
 }
 ```

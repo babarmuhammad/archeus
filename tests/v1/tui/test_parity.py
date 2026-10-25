@@ -20,6 +20,8 @@ FN = {
     'presenceLabel': P.presence_label, 'resourceLine': P.resource_line,
     'statusLine': P.status_line, 'explainState': P.explain_state, 'ago': P.ago,
     'stateSentence': P.state_sentence, 'inventoryLines': P.inventory_lines,
+    'consumptionText': P.consumption_text, 'consumersText': P.consumers_text,
+    'usageText': P.usage_text,
     'next': S.next_state, 'freshness': S.freshness, 'canCommand': S.can_command,
     'explain': S.explain, 'decideBody': S.decide_body, 'retryable': S.retryable,
     'keyAfter': lambda prev, outcome: S.key_after(prev, outcome, lambda: 'NEW'),

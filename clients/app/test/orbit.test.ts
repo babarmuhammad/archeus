@@ -8,7 +8,7 @@ import { MOTIONS } from '../src/state/motion.ts';
 import { DARK, MOTION } from '../src/state/tokens.ts';
 import { Timeline } from '../src/state/timeline.ts';
 import { staleBy } from '../src/data/invalidation.ts';
-import { MARK, ORBIT_EVERY_MS, Orbit, favicon, presence, runningMissions } from '../src/state/orbit.ts';
+import { MARK, ORBIT_EVERY_MS, Orbit, attemptIds, favicon, presence, runningMissions } from '../src/state/orbit.ts';
 
 const src = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const frame = (id: number | undefined, event = 'execution.progress', kind = 'execution') => ({
@@ -49,6 +49,8 @@ test('presence: hollow when not connected, then needs you, then working, then id
   for (const s of ['STARTING', 'INTENT', 'HANDING_OFF']) assert.equal(presence(true, 0, [{ state: s }]), 'active', s);
   for (const s of ['PAUSED', 'AWAITING_APPROVAL', 'PAUSING', 'STOPPING'])
     assert.equal(presence(true, 0, [{ state: s }]), 'idle', `${s} is live work that is not running`);
+  // G8: an own call in flight is live work that never animates, even with a running-looking state
+  assert.equal(presence(true, 0, [{ kind: 'own_call', state: 'RUNNING' }]), 'idle');
 });
 
 test('the strip counts missions with an attempt running, each once', () => {
@@ -58,6 +60,7 @@ test('the strip counts missions with an attempt running, each once', () => {
       { state: 'STARTING', mission_id: 'm1' },
       { state: 'RUNNING', mission_id: 'm2' },
       { state: 'PAUSED', mission_id: 'm3' },
+      { kind: 'own_call', state: 'RUNNING', mission_id: 'm4' },
     ]),
     2,
   );
@@ -174,4 +177,11 @@ test('an execution frame makes /v1/status stale: its live work moved', () => {
   const stale = staleBy({ event: 'execution.state_changed', data: { subject: { kind: 'execution', id: 'exe_1' }, scope: {} } });
   assert.ok(stale('/v1/status'));
   assert.ok(stale('/v1/status?project=prj_1'));
+});
+
+test('the live map lights attempts only: an own call is never a node (G8)', () => {
+  const live = [{ id: 'exe_1', kind: 'execution', state: 'RUNNING' }, { id: 'own_1', kind: 'own_call', state: null }];
+  assert.deepEqual(attemptIds(live), ['exe_1']);
+  assert.deepEqual(attemptIds([]), []);
+  assert.deepEqual(attemptIds(undefined), []);      // a status not read yet lights nothing
 });

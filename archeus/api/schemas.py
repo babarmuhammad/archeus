@@ -326,19 +326,22 @@ TYPES = {
         'resumable': {'type': 'array', 'items': {'type': 'string'}}},
         'required': ['source', 'as_of_seq', 'projects', 'missions', 'drift', 'unchecked',
                      'unknown_project', 'live', 'armed', 'resumable']},
-    # ADR-0043 §2 (P21): one item of work in flight; ADR-0047 §9: its context
+    # ADR-0043 §2 (P21): one item of work in flight; ADR-0047 §9: its context. An
+    # own call in flight has no state, task, attempt, hand-off or context (G8)
     'LiveItem': {'type': 'object', 'open': True, 'properties': {
-        'kind': {'type': 'string', 'enum': ['execution']}, 'id': {'type': 'string'},
-        'mission_id': {'type': 'string'}, 'task_id': {'type': 'string'},
-        'task_key': {'type': 'string'}, 'state': {'type': 'string'},
-        'attempt': {'type': 'integer'},
+        'kind': {'type': 'string', 'enum': ['execution', 'own_call']}, 'id': {'type': 'string'},
+        'purpose': {'type': 'string'},
+        'mission_id': {'type': 'string', 'nullable': True},
+        'task_id': {'type': 'string', 'nullable': True},
+        'task_key': {'type': 'string'}, 'state': {'type': 'string', 'nullable': True},
+        'attempt': {'type': 'integer', 'nullable': True},
         'harness_id': {'type': 'string', 'nullable': True},
         'account_id': {'type': 'string', 'nullable': True},
         'model': {'type': 'string', 'nullable': True},
         'waits_on': {'type': 'string', 'nullable': True},
-        'handoff': {'ref': 'Handoff'},
+        'handoff': {'ref': 'Handoff', 'nullable': True},
         'handing_off': {'type': 'string', 'nullable': True},
-        'context': {'ref': 'ContextState'}},
+        'context': {'ref': 'ContextState', 'nullable': True}},
         'required': ['kind', 'id', 'mission_id', 'task_id', 'state', 'attempt', 'handoff',
                      'context']},
     'Handoff': {'type': 'object', 'properties': {
@@ -507,9 +510,30 @@ TYPES = {
         'auth_kind': {'type': 'string', 'enum': list(entities.AUTH_KINDS)},
         'health': {'type': 'string', 'enum': sorted(states.states('account_health'))},
         'resource_policy': {'ref': 'ResourcePolicy'},
-        'usage': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'}},
+        'usage': {'type': 'object', 'nullable': True}, 'version': {'type': 'integer'},
+        # ADR-0043 §3, §4 (P21): its consumption and effective policy, as the router reads them
+        'policy': {'type': 'object'}, 'ledger': {'ref': 'Ledger'},
+        'consumers': {'type': 'array', 'items': {'ref': 'Consumer'}}},
         'required': ['id', 'harness_id', 'label', 'auth_kind', 'health', 'resource_policy',
-                     'usage', 'version']},
+                     'usage', 'version', 'policy', 'ledger', 'consumers']},
+    # ADR-0043 §3: one live item of an account, the fields its clients name
+    'Consumer': {'type': 'object', 'properties': {
+        'kind': {'type': 'string', 'enum': ['execution', 'own_call']}, 'id': {'type': 'string'},
+        'purpose': {'type': 'string', 'nullable': True},
+        'mission_id': {'type': 'string', 'nullable': True},
+        'task_key': {'type': 'string', 'nullable': True},
+        'state': {'type': 'string', 'nullable': True},
+        'attempt': {'type': 'integer', 'nullable': True},
+        'account_id': {'type': 'string', 'nullable': True}},
+        'required': ['kind', 'id']},
+    # ADR-0048 §3: what was reported today is a lower bound unless `complete` says so
+    'Ledger': {'type': 'object', 'properties': {
+        'tokens_today': {'type': 'integer'}, 'cost_today': {'type': 'number'},
+        'running': {'type': 'integer'}, 'complete': {'ref': 'LedgerComplete'}},
+        'required': ['tokens_today', 'cost_today', 'running', 'complete']},
+    'LedgerComplete': {'type': 'object', 'properties': {
+        'tokens': {'type': 'boolean'}, 'cost': {'type': 'boolean'}},
+        'required': ['tokens', 'cost']},
     'AccountList': {'type': 'object', 'properties': {
         'accounts': {'type': 'array', 'items': {'ref': 'Account'}}}, 'required': ['accounts']},
     # P20 D6 (ADR-0049): one opt-in row, its owner named; and an execution's inventory
