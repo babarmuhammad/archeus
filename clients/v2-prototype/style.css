@@ -2037,6 +2037,7 @@ body.frame-now .core-mark::before { content: ""; display: inline-block; width: 6
 }
 
 @media (max-width: 639px) {
-  #s-now[data-frame="3"] .list-d { top: calc(var(--u) * 320); max-height: calc(var(--st) - var(--u) * 320 - 8px); }
+  #s-now[data-frame="3"] { --lt: max(8px, calc(var(--u) * 70 - 25px)); }
+  #s-now[data-frame="3"] .list-d { top: var(--lt); max-height: calc(var(--st) - var(--lt) - 8px); }
   #s-now[data-frame="3"].sheet-full .list-d, body.kb-open #s-now[data-frame="3"] .list-d { display: none; }
 }
