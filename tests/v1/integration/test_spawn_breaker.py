@@ -23,7 +23,7 @@ from archeus.harnesses import base
 from archeus.harnesses.fake import FakeHarness
 from archeus.node.local import LocalNode
 
-from v1.integration.test_execution import DONE, Rig
+from v1.integration.test_execution import DONE, TOOL, Rig
 from v1.integration.test_policy import task
 
 
@@ -363,3 +363,23 @@ def test_T106r5_the_trip_is_recorded_when_a_second_boundary_falls_inside_the_com
     x.drive(mid, lambda: len(x.all(entities.Execution)) == 3)
     (ev,) = x.events('harness.state_changed')
     assert ev['payload']['breaker'] == 'open'
+
+
+def test_T130_a_refused_paused_start_that_opens_the_breaker_is_caused_by_the_end_it_wrote(x):
+    """C-write D13 (b): the breaker's notice is written inside the scope of the
+    execution.ended that tripped it, so for an execution that had a state to leave
+    (not INTENT, which writes no end) the notice's cause is that end."""
+    for key in ('t1', 't2', 't3'):
+        x.scenarios[key] = [{'emit': {'type': 'working'}}, {'sleep': 0.6},
+                            TOOL('Read', {'file_path': 'a.txt'}), {'sleep': 30}]
+    mid = x.ready(*(task(key, 'read') for key in ('t1', 't2', 't3')))
+    x.drive(mid, lambda: sum(e.state == 'RUNNING' for e in x.all(entities.Execution)) == 3)
+    x.do(x.missions.pause, who=x.user, mission_id=mid)
+    x.drive(mid, lambda: all(e.state == 'PAUSED' for e in x.all(entities.Execution)))
+    for e in x.all(entities.Execution):
+        x.do(X.refuse, execution_id=e.id, stop_reason='spawn', reason='no process')
+    (notice,) = x.events('harness.state_changed')
+    assert notice['payload']['breaker'] == 'open'
+    ends = x.events('execution.ended')
+    assert len(ends) == 3 and notice['cause_chain'] == [ends[-1]['id']]
+    assert all(end['cause_chain'] == [] for end in ends)
