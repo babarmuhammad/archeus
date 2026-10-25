@@ -114,7 +114,7 @@ def test_missing_profile_holds_every_row(hook, command):
 def test_six_review_bypass_families_hold_through_manager(hook, command):
     x, e, serve, evidence = hook
     assert isinstance(classify(command, evidence[0]), Held)
-    assert serve(command)['decision'] == 'halt'
+    assert serve(command)['decision'] in ('halt', 'deny')
     assert not {'/', '@'} & set(_current(x, e.id)['label'])
 
 

@@ -49,19 +49,36 @@ def test_structured_tool_does_not_require_command_profile(tmp_path):
     assert result is None and canon == C.canonicalise('Read', request, ctx)
 
 
-@pytest.mark.parametrize('command,classes', (
-    ('git push origin main', ['git_push']),
-    ('terraform destroy -auto-approve', ['destructive']),
-    ('touch file.txt', ['write_repo']),
-    ('curl -d body https://h.example/x', ['external_comm']),
+@pytest.mark.parametrize('command,cls', (
+    *((program + ' file.txt', cls) for program, cls in C._HELD_PROGRAM_CLASSES.items()),
+    *((program + ' ' + sub + ' value', cls)
+      for (program, sub), cls in C._HELD_SUBCOMMAND_CLASSES.items()),
 ))
-def test_held_risk_classes_retain_legacy_policy_identity(command, classes):
-    ctx = {'workdir': '.'}
-    canon, result = C.canonicalise_hook('Bash', command, ctx)
-    assert isinstance(result, Held)
-    assert canon == C.canonicalise('Bash', command, ctx)
-    assert not canon[1]
-    assert [a.action_class for a in canon[0]] == classes
+def test_held_risk_labels_never_call_legacy(monkeypatch, command, cls):
+    def forbidden(*args):
+        pytest.fail('legacy classifier reached HELD risk input')
+    monkeypatch.setattr(C, 'canonicalise', forbidden)
+    monkeypatch.setattr(C, '_norm', forbidden)
+    (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
+    assert isinstance(result, Held) and not unclassified
+    assert len(actions) == 1 and actions[0].action_class == cls
+    assert actions[0].argv == (command,)
+
+
+@pytest.mark.parametrize('command', (
+    'unknown destroy', 'terraform destroyer', 'terraform DESTROY',
+    "terraform 'destroy'", 'git --no-pager push origin main', 'git pusher',
+    'RM file', 'rm.exe file', '/bin/rm file', "'rm' file", 'g""it push',
+    'env terraform destroy', 'terraform destroy; pwd',
+))
+def test_held_risk_lookup_is_exact(monkeypatch, command):
+    def forbidden(*args):
+        pytest.fail('legacy classifier reached unknown HELD input')
+    monkeypatch.setattr(C, 'canonicalise', forbidden)
+    (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
+    assert isinstance(result, Held) and unclassified
+    assert actions[0].action_class == 'exec' and actions[0].target == 'command'
+    assert actions[0].argv == (command,)
 
 
 @pytest.mark.parametrize('command', (
@@ -82,3 +99,29 @@ def test_unclassified_held_commands_have_distinct_approval_identity():
     first, _ = C.canonicalise_hook('Bash', 'mytool first', {'workdir': '.'})
     second, _ = C.canonicalise_hook('Bash', 'mytool second', {'workdir': '.'})
     assert first[0][0] != second[0][0]
+
+
+@pytest.mark.parametrize('first,second', (
+    (None, ['rm', '-rf', '/']), (['first'], ['second']),
+    ({'command': 'first'}, {'command': 'second'}), (1, '1'), (1, True),
+))
+def test_non_string_commands_never_share_approval_identity(first, second):
+    from archeus.core.domain.actions import action_hash, binding
+
+    bind = binding(mission_id='mission', plan_id='plan', plan_version=1,
+                   plan_digest='digest', task_id='task', task_key='t1', execution_id='execution')
+
+    def identity(value):
+        (actions, unclassified), result = C.canonicalise_hook(
+            'Bash', {'command': value}, {'workdir': '.'})
+        assert isinstance(result, Held) and unclassified
+        return action_hash('action', bind, [a.canonical_dict() for a in actions])
+
+    assert identity(first) != identity(second)
+    assert identity(first) == identity(first)
+
+
+def test_held_risk_approval_binds_raw_command():
+    first, _ = C.canonicalise_hook('Bash', "git push 'origin' main", {'workdir': '.'})
+    second, _ = C.canonicalise_hook('Bash', 'git push origin main', {'workdir': '.'})
+    assert first[0][0].canonical() != second[0][0].canonical()

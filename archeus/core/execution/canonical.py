@@ -65,8 +65,39 @@ INSTALL = {'pip': ('install',), 'pip3': ('install',), 'npm': ('install', 'i', 'a
            'go': ('get', 'install'), 'gem': ('install',), 'uv': ('add', 'pip'),
            'brew': ('install',), 'choco': ('install',), 'winget': ('install',)}
 REMOTE = ('ssh', 'scp', 'rsync', 'sftp')
-_RISK_PROGRAMS = (frozenset(WRITE_COMMANDS + REMOTE + ('git', 'find', 'curl', 'wget', 'vercel'))
-                  | {prog for prog, _ in DEPLOY | DESTROY} | INSTALL.keys())
+_HELD_PROGRAM_CLASSES = {
+    'rm': 'destructive', 'rmdir': 'destructive',
+    'mv': 'write_repo', 'cp': 'write_repo', 'mkdir': 'write_repo',
+    'touch': 'write_repo', 'chmod': 'write_repo', 'ln': 'write_repo',
+    'ssh': 'external_comm', 'scp': 'external_comm', 'rsync': 'external_comm',
+    'sftp': 'external_comm', 'curl': 'external_comm', 'wget': 'external_comm',
+    'vercel': 'deploy',
+}
+_HELD_SUBCOMMAND_CLASSES = {
+    ('git', 'push'): 'git_push', ('git', 'commit'): 'git_commit',
+    ('git', 'reset'): 'destructive', ('git', 'clean'): 'destructive',
+    ('git', 'add'): 'write_repo', ('git', 'checkout'): 'write_repo',
+    ('git', 'switch'): 'write_repo', ('git', 'restore'): 'write_repo',
+    ('git', 'fetch'): 'web', ('git', 'clone'): 'web', ('git', 'ls-remote'): 'web',
+    ('terraform', 'destroy'): 'destructive', ('kubectl', 'delete'): 'destructive',
+    ('helm', 'uninstall'): 'destructive', ('docker', 'rm'): 'destructive',
+    ('docker', 'rmi'): 'destructive',
+    ('terraform', 'apply'): 'deploy', ('kubectl', 'apply'): 'deploy',
+    ('npm', 'publish'): 'deploy', ('yarn', 'publish'): 'deploy',
+    ('pnpm', 'publish'): 'deploy', ('docker', 'push'): 'deploy',
+    ('gh', 'release'): 'deploy', ('helm', 'install'): 'deploy',
+    ('helm', 'upgrade'): 'deploy', ('twine', 'upload'): 'deploy',
+    ('cargo', 'publish'): 'deploy',
+    ('pip', 'install'): 'install', ('pip3', 'install'): 'install',
+    ('npm', 'install'): 'install', ('npm', 'i'): 'install', ('npm', 'add'): 'install',
+    ('yarn', 'add'): 'install', ('yarn', 'install'): 'install',
+    ('pnpm', 'add'): 'install', ('pnpm', 'install'): 'install',
+    ('pnpm', 'i'): 'install', ('cargo', 'install'): 'install',
+    ('go', 'get'): 'install', ('go', 'install'): 'install',
+    ('gem', 'install'): 'install', ('uv', 'add'): 'install',
+    ('uv', 'pip'): 'install', ('brew', 'install'): 'install',
+    ('choco', 'install'): 'install', ('winget', 'install'): 'install',
+}
 PROD = ('--prod', '--production', 'prod', 'production')
 
 #: a program's name as the shell finds it: no directory, no quote, no .exe/.cmd/.bat/.com/.ps1, no
@@ -252,21 +283,20 @@ def canonicalise_hook(tool, tool_input, ctx, command_context=None):
     cmd = tool_input.get('command') if isinstance(tool_input, dict) else tool_input
     result = command_allowlist.classify(cmd, command_context)
     if not isinstance(result, command_allowlist.Allowed):
-        # Preserve risk classes for policy floors and exact, single-use approval.
-        # The strict scanner excludes shell syntax and the legacy sed slow path;
-        # interpreter families never enter the legacy classifier at all.
-        if isinstance(cmd, str) and len(cmd) <= 4096:
+        # Labels preserve policy floors, never eligibility or legacy parsing.
+        if isinstance(cmd, str) and len(cmd) <= command_allowlist.MAX_INPUT_LENGTH:
             tokens = command_allowlist._scan(cmd)
-            if not isinstance(tokens, command_allowlist.Held) and tokens and (
-                    _norm(tokens[0].text) in _RISK_PROGRAMS):
-                actions, unclassified = canonicalise(tool, tool_input, ctx)
-                if not unclassified and all(a.action_class in (
-                        'write_repo', 'git_push', 'git_commit', 'destructive',
-                        'deploy', 'install', 'external_comm', 'web') for a in actions):
-                    return (actions, False), result
+            if not isinstance(tokens, command_allowlist.Held) and tokens and not tokens[0].quoted:
+                program = tokens[0].text
+                sub = tokens[1].text if len(tokens) > 1 and not tokens[1].quoted else None
+                cls = (_HELD_SUBCOMMAND_CLASSES.get((program, sub))
+                       or _HELD_PROGRAM_CLASSES.get(program))
+                if cls:
+                    target = program + ' ' + sub if (program, sub) in _HELD_SUBCOMMAND_CLASSES else program
+                    return ([Action(action_class=cls, target=target, argv=(cmd,))], False), result
         # Even unclassified approvals bind the complete command, never a shared
         # placeholder that could approve a different HELD command.
-        argv = (cmd,) if isinstance(cmd, str) else ('command',)
+        argv = (cmd,) if isinstance(cmd, str) else (type(cmd).__name__, repr(cmd))
         return ([_unclassified('command', argv)], True), result
     row = next(row for row in command_allowlist.ROWS if row.id == result.row_id)
     cwd = ctx.get('cwd') or ctx.get('workdir')
