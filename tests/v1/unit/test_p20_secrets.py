@@ -84,6 +84,9 @@ SITES = {
                      'written by the hook beside the raw tool input, dead once the hash is cleared'),
     ('archeus/core/application/commands.py', 'hash_pin', 'secrets.token_bytes'):
         (1, AT_REST, 'the salt of a step-up PIN record, pbkdf2_sha256 in devices.pin_hash'),
+    ('archeus/infra/discovery.py', 'public_account_secret', 'secrets.token_bytes'):
+        (1, AT_REST, 'run/public-account-secret, 32 raw bytes: the HMAC key of the public account ids; '
+                     'never in a row, ledger, snapshot, event, log or response'),
     ('archeus/api/server.py', 'translate', 'secrets.token_hex'):
         (1, NOT_SECRET, 'the reference of a 500 answer, logged and returned'),
     ('archeus/api/server.py', 'Api.__init__', 'secrets.token_hex'):
@@ -120,6 +123,9 @@ WRITER_PARAMS = {
 WRITERS = {
     ('archeus/infra/discovery.py', 'write_local_token'):
         (1, 'run/local-token, os.open O_CREAT|O_EXCL mode 0o600; on Windows the home DACL'),
+    ('archeus/infra/discovery.py', 'public_account_secret'):
+        (1, 'run/public-account-secret, os.open O_CREAT|O_RDWR|O_BINARY mode 0o600 under a lock; '
+            'on Windows the home DACL'),
     ('archeus/core/runtime.py', 'Core._ensure_local_token'):
         (1, 'hands the new local token to write_local_token'),
     ('archeus/harnesses/hook.py', '_reserve'):

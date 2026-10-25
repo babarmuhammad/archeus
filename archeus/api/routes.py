@@ -489,15 +489,21 @@ def import_meeting(req):
         'notes_size': n['size'], 'imported_from': n['path'], 'project_id': b.get('project_id')})
 
 
+def _read_homes(req, conn):
+    r = req.api.resources
+    return resources.homes(conn, r.registry, r.callers)
+
+
 def list_route_decisions(req):
     with req.api.db.read() as conn:
         return 200, {'route_decisions': queries.route_decisions(
-            conn, _one(req.query, 'source'), _one(req.query, 'purpose'))}
+            conn, _one(req.query, 'source'), _one(req.query, 'purpose'),
+            homes=_read_homes(req, conn))}
 
 
 def get_route_decision(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_route_decision(conn, req.params['id'])
+        return 200, queries.get_route_decision(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def list_provider_terms(req):
@@ -515,7 +521,7 @@ def decide_provider_terms(req):
 
 def list_accounts(req):
     with req.api.db.read() as conn:
-        return 200, {'accounts': resources.accounts(conn)}
+        return 200, {'accounts': resources.accounts(conn, _read_homes(req, conn))}
 
 
 def register_account(req):
@@ -603,7 +609,7 @@ def attention_items(req):
     """P16 (D3): what waits on the user, from rows."""
     from ..core.application import attention
     with req.api.db.read() as conn:
-        return 200, attention.attention(conn, now=queries._now())
+        return 200, attention.attention(conn, now=queries._now(), homes=_read_homes(req, conn))
 
 
 def metrics_days(req):
@@ -635,7 +641,8 @@ def mission_trace(req):
     and per-execution lanes, read together."""
     from ..core.application import trace
     with req.api.db.read() as conn:
-        return 200, trace.trace(conn, req.params['id'], req.api.resources.registry)
+        return 200, trace.trace(conn, req.params['id'], req.api.resources.registry,
+                               homes=_read_homes(req, conn))
 
 
 def service_worker(req):
@@ -880,12 +887,13 @@ def get_policy_decision(req):
 def list_approvals(req):
     with req.api.db.read() as conn:
         return 200, {'approvals': queries.list_approvals(
-            conn, _one(req.query, 'state'), _one(req.query, 'mission'))}
+            conn, _one(req.query, 'state'), _one(req.query, 'mission'),
+            homes=_read_homes(req, conn))}
 
 
 def get_approval(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_approval(conn, req.params['id'])
+        return 200, queries.get_approval(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def decide_approval(req):
@@ -922,12 +930,12 @@ def _step_up_failed(req):
 
 def list_verifications(req):
     with req.api.db.read() as conn:
-        return 200, queries.list_verifications(conn, req.params['id'])
+        return 200, queries.list_verifications(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def get_verification(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_verification(conn, req.params['id'])
+        return 200, queries.get_verification(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 # ── P14: automations (p14-design-gate §17) ──
@@ -981,7 +989,7 @@ def decide_verification(req):
 
 def list_reviews(req):
     with req.api.db.read() as conn:
-        return 200, queries.list_reviews(conn, req.params['id'])
+        return 200, queries.list_reviews(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def review_mission(req):

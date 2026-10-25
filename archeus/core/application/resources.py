@@ -12,6 +12,7 @@ a policy rule, or run anything. `ask` is recorded; asking the user is P9's
 """
 
 import json
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -749,6 +750,32 @@ CONSUMER_FIELDS = ('kind', 'id', 'purpose', 'mission_id', 'task_key', 'state', '
                    'account_id')
 
 
+def homes(conn, registry, callers, *, shorts=None):
+    from ..homes import Homes
+    registered = [r.entity.home_ref for r in rows.where(conn, entities.Account)]
+    defaults, historical_homes = {}, []
+    for r in rows.where(conn, entities.RouteDecision):
+        for a in (r.entity.input_snapshot or {}).get('accounts', ()):
+            if not a.get('registered') and a.get('ref'):
+                if a['ref'] not in defaults or not defaults[a['ref']][2] and a.get('home_ref'):
+                    defaults[a['ref']] = (a['harness'], a['ref'], a.get('home_ref'))
+            elif a.get('registered'):
+                historical_homes.append(a.get('home_ref'))
+    adapters = ([] if registry is None else [registry.get(i) for i in registry.ids()])
+    for a in [*adapters, *callers]:
+        try:
+            ref = a.default_account()
+        except Exception:  # A broken adapter must not prevent reading stored rows.
+            continue
+        if ref.account_id not in defaults or not defaults[ref.account_id][2] and ref.home_ref:
+            defaults[ref.account_id] = (a.id, ref.account_id, ref.home_ref)
+    out = Homes(registered, defaults.values(), shorts=shorts, platform=sys.platform)
+    historical = Homes(historical_homes, shorts=lambda _: None, platform=sys.platform)
+    out.patterns += historical.patterns
+    out.norms |= historical.norms
+    return out
+
+
 def account_view(conn, row, work=None, now=None, counts=None):
     """The account with its consumption (ADR-0043 §3, §4): its live consumers
     from `live_work`, today's ledger and the effective policy, each exactly what
@@ -772,9 +799,16 @@ def account_view(conn, row, work=None, now=None, counts=None):
                            for w in work if w['account_id'] == a.id])
 
 
-def accounts(conn):
+def accounts(conn, public_homes=None):
     from .live import live_work
+    from .public import system_value
+    public_homes = public_homes if public_homes is not None else homes(conn, None, ())
     now = time.time()
     work = live_work(conn, now=now)
     counts = live_counts(conn, _iso(now)[:10], now)
-    return [account_view(conn, r, work, now, counts) for r in rows.where(conn, entities.Account)]
+    return [system_value({k: v for k, v in account_view(conn, r, work, now, counts).items()
+                          if k not in HOME_FIELDS}, public_homes,
+                         authored=(('label',), ('resource_policy', 'project_allow'),
+                                   ('resource_policy', 'project_deny'),
+                                   ('policy', 'project_allow'), ('policy', 'project_deny')))
+            for r in rows.where(conn, entities.Account)]

@@ -11,6 +11,7 @@ from archeus.api import schemas
 from archeus.cli.tui import present as P
 from archeus.core.application import calls as C, conversation as CV, live, queries, resources
 from archeus.core.domain import entities
+from archeus.core.homes import Homes
 from archeus.harnesses import base
 from archeus.harnesses.fake import FakeCaller
 from archeus.infra.db import rows
@@ -249,7 +250,8 @@ def test_owner_2026_10_21_the_default_account_fields_are_left_out():
     default = {'id': None, 'harness': 'fake', 'ref': 'fake:C:/Default', 'home_ref': 'C:/Default'}
     got = queries._public_decision({'input_snapshot': {'accounts': [default]},
                                     'account_ref': 'fake:C:/Default',
-                                    'candidates': [{'harness': 'fake', 'account_ref': 'fake:C:/Default'}]})
+                                    'candidates': [{'harness': 'fake', 'account_ref': 'fake:C:/Default'}]},
+                                   Homes([], [('fake', 'fake:C:/Default', 'C:/Default')], shorts=lambda _: None))
     assert got['input_snapshot']['accounts'] == [{'id': None, 'harness': 'fake'}]
     assert 'account_ref' not in got and got['candidates'] == [{'harness': 'fake'}]
 
