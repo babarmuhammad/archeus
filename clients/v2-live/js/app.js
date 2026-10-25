@@ -4,8 +4,11 @@ import { icon } from './icons.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
-import { ROUTES, BOTTOM, viewNow, viewWork, viewAttention, viewMap, viewReplay, viewSettings, viewAccounts, inspectorMission, inspectorApproval, simControls } from './views.js';
-import { viewChat, viewSecurity, viewHealth, viewMore } from './views2.js';
+import { ROUTES, BOTTOM, viewNow, viewWork, viewAttention, viewMap, viewReplay, viewSettings, simControls } from './views.js';
+import { viewChat, viewMore } from './views2.js';
+import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate } from './areas.js';
+import { inspectorFor } from './inspectors.js';
+import { areasOf } from './areas-model.js';
 import { translate } from './i18n.js';
 import { viewTerminal } from './terminal.js';
 
@@ -38,7 +41,7 @@ const navItem = (r, cls) => h('a', { class: cls, href: '#/' + r.id, 'data-route'
 function buildShell() {
   rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
     h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, 'archeus')),
-    ...ROUTES.map((r) => navItem(r, 'nav-item')), h('div', { class: 'rail-sep' }),
+    ...ROUTES.flatMap((r) => [navItem(r, 'nav-item'), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
     h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 22), h('span', { class: 'nl' }, 'Terminal view')),
     h('p', { class: 'rail-foot' }, 'V2 Live prototype. Simulated. No Core is connected.'));
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
@@ -63,30 +66,28 @@ function render() {
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; }
-  ctx.mounts = [];
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) ui.confirm = null; }
+  ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
   document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'more' ? 'More' : ROUTES.find((x) => x.id === r.name).label);
 
   let content;
   if (term) content = viewTerminal(ctx);
-  else content = ({ now: viewNow, work: viewWork, attention: viewAttention, map: viewMap, replay: viewReplay, chat: viewChat, settings: viewSettings, security: viewSecurity, health: viewHealth, accounts: viewAccounts, more: viewMore })[r.name](ctx);
+  else content = ({ now: viewNow, work: viewWork, attention: viewAttention, map: viewMap, replay: viewReplay, chat: viewChat, settings: viewSettings, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore })[r.name](ctx);
   if (r.name === 'now') content.prepend(headNow());
+  if (!term) content = decorate(ctx, content);
   if (term) { clear(page); page.hidden = true; const old = app.querySelector('.term-wrap'); if (old) old.remove(); app.append(content); } else { page.hidden = false; const old = app.querySelector('.term-wrap'); if (old) old.remove(); clear(page).append(content); }
 
   // inspector
   let insp = null;
-  if (!term && ['now', 'work', 'map', 'attention'].includes(r.name) && r.id) {
-    const ap = sim.state.approvals[r.id], m = sim.state.missions[r.id];
-    if (ap) insp = inspectorApproval(ctx, ap); else if (m) insp = inspectorMission(ctx, m);
-  }
+  if (!term && ['now', 'work', 'map', 'attention', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
   clear(inspector); if (insp) inspector.append(insp);
   const wasOpen = app.dataset.insp === 'open';
   app.dataset.insp = insp ? 'open' : '';
 
   // navigation state and counts
-  const inMore = ['more', 'map', 'replay', 'security', 'health', 'accounts', 'settings'].includes(r.name);
+  const inMore = ['more', 'map', 'replay', 'security', 'health', 'usage', 'accounts', 'extensions', 'settings'].includes(r.name);
   app.querySelectorAll('[data-route]').forEach((a) => { const here = a.dataset.route === r.name || (a.dataset.route === 'more' && inMore); if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const n = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
   app.querySelectorAll('[data-count="attention"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
@@ -114,7 +115,7 @@ function syncCore() {
 function patchLive() {
   const t = clockLabel(sim.state.clock);
   document.querySelectorAll('[data-live="clock"]').forEach((e) => { if (e.textContent !== t) e.textContent = t; });
-  syncCore();
+  syncCore(); (ctx.ticks || []).forEach((f) => f());
 }
 
 // ---------- actions ----------
@@ -123,15 +124,16 @@ function act(kind, id) {
   let r = { ok: true }, msg = SAY[kind];
   if (kind === 'play-sim') { sim.play(); msg = 'Simulation running.'; } else if (kind === 'pause-sim') { sim.pause(); msg = 'Simulation paused.'; }
   else if (kind === 'speed') { sim.setSpeed(Number(id)); msg = 'Speed x' + id + '.'; }
-  else if (kind === 'trigger-approval') { r = sim.triggerApproval(); msg = 'A running execution asked for a decision.'; }
+  else if (kind === 'trigger-approval') { if (areasOf(sim).hookAllows('h-1')) { r = sim.triggerApproval(); msg = 'A running execution asked for a decision.'; } else { r = { ok: true }; msg = 'The hook "ask before git push" is switched off, so the execution did not ask.'; } }
   else if (kind === 'inject-failure') { r = sim.injectFailure('execution'); msg = 'An execution failed (injected).'; }
   else if (kind === 'inject-spawn') { r = sim.injectFailure('spawn'); msg = 'Spawn failures tripped the harness breaker (injected).'; }
+  else if (kind === 'offline-toggle') { const A = areasOf(sim); r = A.isOffline() ? A.reconnect() : A.goOffline(); msg = A.isOffline() ? 'Offline: showing what this client kept.' : 'Reconnected.'; }
   else if (kind === 'reset') { sim.reset(); ui.replaySel = null; msg = 'Simulation reset.'; if (ctx.route.id) { nav('#/' + ctx.route.name); } }
   else if (kind === 'say') { r = sim.say(id); msg = null; }
   else if (kind === 'card') { const [mid, what] = id.split('|'); r = sim.cardAction(mid, what); msg = what === 'confirm' ? 'Confirmed (simulated).' : 'Dismissed.'; }
   else r = sim.act(kind, id);
   if (!r.ok) toast('Not done: ' + r.reason); else if (msg) toast(msg);
-  if (kind === 'approve' || kind === 'reject') { if (ctx.route.name === 'attention' && ctx.route.id) closeInsp(); }
+  if (kind === 'approve' || kind === 'reject' || kind === 'plan_changes') { if (ctx.route.name === 'attention' && ctx.route.id) closeInsp(); }
   render(); if (!embed) refreshMenu();
   return r;
 }
@@ -236,7 +238,7 @@ if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (ctx.ro
 let last = performance.now();
 if (!embed) setInterval(() => { const n = performance.now(); if (!document.hidden) sim.tickReal(n - last); last = n; }, 250);
 if (store.get('device') === 'terminal' && !location.hash) location.hash = '#/terminal';
-window.v2live = { sim, ui, store, setPrefs };
+window.v2live = { sim, ui, store, setPrefs, areas: areasOf(sim) };
 if (embed) render(); else { fit(); if (store.get('device') === 'auto' || store.get('device') === 'terminal') render(); }
 
 // ---------- the All devices view: phone, tablet, desktop and terminal at once, one shared simulation ----------

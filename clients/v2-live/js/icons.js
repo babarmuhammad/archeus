@@ -22,6 +22,8 @@ const P = {
   all: ['path:M3 6h6v12H3z', 'path:M11 6h10v8H11z', 'path:M13 17h6'],
   lang: ['circle:12,12,8', 'path:M4 12h16M12 4c3 3 3 13 0 16M12 4c-3 3-3 13 0 16'],
   note: ['path:M5 4h14v12H9l-4 4z'],
+  usage: ['path:M4 20V11M10 20V5M16 20v-6M22 20H2'],
+  extensions: ['path:M9 4h6v4h4v6h-4v6H9v-6H5V8h4z'],
   chevron: ['path:M9 6l6 6-6 6']
 };
 

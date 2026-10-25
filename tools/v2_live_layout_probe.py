@@ -31,9 +31,28 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'accounts', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash']
+ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash',
+          # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
+          'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'attention/a-1~policy', 'attention/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
+          'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
+          'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned',
+          'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv']
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
 KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'error']
+
+STATES = {
+    'why': "window.v2live.ui.tab = 'why'",
+    'relations': "window.v2live.ui.tab = 'relations'",
+    'timeline': "window.v2live.ui.tab = 'timeline'",
+    'plan': "window.v2live.ui.tab = 'plan'",
+    'policy': "window.v2live.ui.tab = 'policy'",
+    'usage': "window.v2live.ui.tab = 'usage'",
+    'offline': "window.v2live.areas.goOffline()",
+    'pinned': "window.v2live.areas.togglePin('m-date'); window.v2live.areas.togglePin('i-1')",
+    'adv': "window.v2live.sim.advance(700000)",
+    'confirm': "(() => { const b = document.querySelector('[data-key^=\"trip-\"], .decide.danger, .ax-sw[aria-checked=true]'); if (b) b.click(); })()",
+}
+RESET = "(() => { window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
 
 MEASURE = r"""
 (opts) => {
@@ -248,9 +267,14 @@ def main():
                             pg.wait_for_timeout(120)
                             layer = open_overlay(pg, route)
                         else:
-                            pg.evaluate("location.hash = '#/%s'" % route)
+                            rt, _, st = route.partition('~')
+                            pg.evaluate("location.hash = '#/%s'" % rt)
                             pg.wait_for_timeout(180)
-                            if '/' in route and route.split('/')[0] in ('work', 'attention', 'map', 'now'):
+                            if st:
+                                pg.evaluate(STATES[st])
+                                pg.evaluate("window.dispatchEvent(new Event('hashchange'))")
+                                pg.wait_for_timeout(250)
+                            if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'map', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
                                 pos = pg.evaluate("getComputedStyle(document.querySelector('#inspector')).position")
                                 if pos == 'absolute':
                                     layer = '#inspector'
@@ -281,6 +305,8 @@ def main():
                             pg.screenshot(path=os.path.join(a.shots, '%s_%s_%s.png' % (vp, route.replace('/', '-').replace(':', '-'), theme)))
                         if layer == '.menu':
                             pg.keyboard.press('Escape')
+                        if '~' in route:
+                            pg.evaluate(RESET)
                     ctx.close()
             br.close()
     finally:
@@ -290,13 +316,11 @@ def main():
         except Exception:
             srv.kill()
 
-    # table: rows viewports, columns routes, cell = defects over both themes
-    short = lambda r: r.replace('chat-slash', 'slash').replace('device:all', 'm-all').replace('settings', 'settng').replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
-    print('\nDefects per viewport x route (dark + light)')
-    print('%-10s' % 'viewport' + ''.join('%8s' % short(r)[:7] for r in routes) + '%7s' % 'total')
-    for vp in viewports:
-        row = [sum(cells[(vp, r)].values()) for r in routes]
-        print('%-10s' % vp + ''.join('%8d' % n for n in row) + '%7d' % sum(row))
+    print('\nDefects per route x viewport (dark + light)')
+    print('%-30s' % 'route' + ''.join('%6s' % v.split('x')[0] for v in viewports) + '%7s' % 'total')
+    for r in routes:
+        row = [sum(cells[(vp, r)].values()) for vp in viewports]
+        print('%-30s' % r[:29] + ''.join('%6d' % n for n in row) + '%7d' % sum(row))
     print('\nDefects per kind: ' + ', '.join('%s %d' % (k, total[k]) for k in KINDS))
     for m in inv:
         print('MOTION INVARIANT FAILED: ' + m)
