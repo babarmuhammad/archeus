@@ -1,7 +1,7 @@
 ﻿import { h, s } from './dom.js';
 import { icon, P } from './icons.js';
 import { coreMark, wordmark, lockup, faviconSVG, pwaIconSVG } from './brand.js';
-import { illustration } from './illustrations.js';
+import { illustration, facet } from './illustrations.js';
 
 const root = document.querySelector('#gallery');
 const themes = ['dark', 'light', 'dark-hc', 'light-hc', 'system', 'forced'];
@@ -69,7 +69,7 @@ function sheet() {
   const dismiss = () => { scrim.hidden = true; panel.hidden = true; launch.focus(); };
   const close = button('Close', 'quiet', 'close', dismiss);
   const scrim = h('div', { class: 'ds-sheet-scrim', 'aria-hidden': 'true' });
-  const panel = h('section', { class: 'ds-sheet', 'aria-label': 'Decision sheet specimen', onkeydown: e => { if (e.key === 'Escape') dismiss(); } }, h('div', { class: 'ds-grab', 'aria-hidden': 'true' }), h('header', { class: 'ds-sheet-head' }, h('h3', null, 'Review plan'), close), h('div', { class: 'ds-sheet-body' }, badge('needs_you'), h('p', null, 'Search recorded sources. Show provenance.'), caption('Plan approval required. Fixture decision only.'), spine('inspector', 2, 'needs_you')), h('footer', { class: 'ds-sheet-foot' }, button('Approve plan', 'primary', 'approve', () => { notice('Plan approved · fixture only.'); dismiss(); }), button('Reject', 'danger', 'reject', () => { notice('Plan rejected · fixture only.'); dismiss(); })));
+  const panel = h('section', { class: 'ds-sheet', 'aria-label': 'Decision sheet specimen', onkeydown: e => { if (e.key === 'Escape') dismiss(); } }, h('div', { class: 'ds-grab', 'aria-hidden': 'true' }), h('header', { class: 'ds-sheet-head' }, h('h3', null, 'Review plan'), close), h('div', { class: 'ds-sheet-body' }, badge('needs_you'), h('p', null, 'Search recorded sources. Show provenance.'), caption('Plan approval required. Fixture decision only.'), spine('inspector', 2, 'needs_you')), h('footer', { class: 'ds-sheet-foot' }, button('Approve plan', 'primary', 'approve', () => { notice('Plan approved · fixture only.'); dismiss(); }), button('Reject', 'danger outline', 'reject', () => { notice('Plan rejected · fixture only.'); dismiss(); })));
   stage.append(h('div', { class: 'ds-main' }, caption('Same sheet becomes bottom sheet, side sheet, then desktop inspector.')), scrim, panel);
   return stack(launch, stage, caption('Inline specimen, not a modal. Production dialog must trap focus and make background inert.'));
 }
@@ -95,14 +95,18 @@ function chat() {
 }
 
 function constellation() {
+  const at = (x, y, kids) => s('g', { transform: 'translate(' + x + ' ' + y + ')' }, ...kids);
+  const node = (x, y, r, n, state, glyph) => s('g', { style: 'color:var(--' + state + ')' }, at(x, y, [facet(0, 0, r, n, 0), s('circle', { r: r * .6, fill: 'var(--bg)', stroke: 'none' }), icon(glyph, 16)].map((el, i) => { if (i === 2) { el.setAttribute('x', -8); el.setAttribute('y', -8); } return el; })));
   const svg = s('svg', { viewBox: '0 0 480 250', class: 'ds-constellation-art', 'aria-hidden': 'true', fill: 'none', stroke: 'var(--text-3)', 'stroke-width': .8 },
     s('path', { d: 'M38 124L112 28 304 20 446 108 390 220 164 234Z M38 124L304 20 390 220 112 28 164 234 446 108M112 28L390 220', opacity: '.35' }),
-    s('path', { d: 'M240 120L112 177', stroke: 'var(--attention)' }), s('path', { d: 'M240 120L352 80 402 160', stroke: 'var(--active)' }),
-    s('circle', { cx: 112, cy: 177, r: 11, stroke: 'var(--attention)' }), s('circle', { cx: 112, cy: 177, r: 4, fill: 'var(--attention)', stroke: 'none' }),
-    s('circle', { cx: 352, cy: 80, r: 10, stroke: 'var(--active)' }), s('circle', { cx: 352, cy: 80, r: 5, fill: 'var(--active)', stroke: 'none' }),
-    s('path', { d: 'M402 148l12 22h-24z', stroke: 'var(--active)' }));
-  for (const [cx, cy] of [[38,124],[112,28],[304,20],[446,108],[390,220],[164,234]]) svg.append(s('circle', { cx, cy, r: 2, fill: 'var(--text-2)', stroke: 'none' }));
-  return h('figure', { class: 'ds-constellation' }, svg, h('div', { class: 'ds-constellation-core' }, coreMark()), h('figcaption', { class: 'ds-sr' }, 'Search provenance needs you. Fix date test is verifying, with Codex execution. The mission cards contain the same facts.'));
+    s('path', { d: 'M240 120L112 166', stroke: 'var(--attention)', 'stroke-width': 1.2 }), s('path', { d: 'M240 120L352 84M352 84L404 150', stroke: 'var(--active)', 'stroke-width': 1.2 }),
+    node(112, 166, 34, 7, 'attention', 'evidence'), node(352, 84, 34, 7, 'active', 'task'), node(404, 166, 24, 3, 'active', 'terminal'));
+  for (const [cx, cy] of [[38, 124], [112, 28], [304, 20], [446, 108], [390, 220], [164, 234]]) svg.append(s('circle', { cx, cy, r: 2, fill: 'var(--text-2)', stroke: 'none' }));
+  const label = (x, y, state, title, sub) => h('div', { class: 'ds-node-label', 'data-state': state, style: 'left:' + (x / 4.8).toFixed(1) + '%;top:' + (y / 2.5).toFixed(1) + '%' }, h('b', null, title), sub && h('span', null, sub));
+  return h('figure', { class: 'ds-constellation' }, svg, h('div', { class: 'ds-constellation-core' }, coreMark()),
+    label(240, 156, 'idle', 'Archeus'), label(112, 206, 'needs_you', 'Search provenance', 'Review plan'),
+    label(352, 14, 'running', 'Fix date test', 'Verifying'), label(404, 196, 'running', 'Codex', 'Execution'),
+    h('figcaption', { class: 'ds-sr' }, 'Search provenance needs you. Fix date test is verifying, with Codex execution. The mission cards contain the same facts.'));
 }
 
 function appFrame() {
@@ -120,7 +124,7 @@ function renderSpecimen() {
   const cards = h('div', { class: 'ds-grid' },
     card('mission', 'running', 'Fix date test', 'Verifying · latest output 12 seconds ago.', spine('card')),
     card('decision', 'needs_you', 'Search provenance', 'What: Search recorded sources. Why: Plan approval required.', button('Review plan', 'primary', 'approval', () => notice('Review the sheet specimen below.'))),
-    card('approval', 'needs_you', 'Allow repository access?', 'Read scope · archeus · approval required.', row(button('Approve', 'primary', 'approve', () => notice('Approved · fixture only.')), button('Reject', 'danger', 'reject', () => notice('Rejected · fixture only.')))),
+    card('approval', 'needs_you', 'Allow repository access?', 'Read scope · archeus · approval required.', row(button('Approve', 'primary', 'approve', () => notice('Approved · fixture only.')), button('Reject', 'danger outline', 'reject', () => notice('Rejected · fixture only.')))),
     card('status', 'blocked', 'Execution blocked', 'Harness unavailable. No output has been received.', button('Retry', '', 'retry', () => notice('Retry requested · fixture only.'))),
     card('plan', 'thinking', 'Plan v1', 'Three proposed steps. Nothing has run.', h('ol', { class: 'ds-list' }, ...['Search recorded sources', 'Extract provenance', 'Compile report'].map((text, i) => h('li', null, h('span', { class: 'ds-mono' }, String(i + 1).padStart(2, '0')), text)))),
     card('idea', 'paused', 'Offline capture', 'Capture paused. This possibility is kept for later; no mission is scheduled.'),
