@@ -683,7 +683,7 @@ class Mission(Entity):
     _ID = 'mission'
     _STATE = ('state', 'mission')
     _TEXT = ('title', 'objective')
-    _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import'),
+    _CHOICES = {'origin': ('conversation', 'idea', 'automation', 'legacy_import', 'api'),
                 'autonomy_profile': AUTONOMY_PROFILES}
     _NONNEG = ('max_replans',)
     _REFS = {'context_package_id': 'context_package',

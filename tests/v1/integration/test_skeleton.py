@@ -321,7 +321,7 @@ def test_deny_is_refused_without_an_approval_request_or_any_write(archeus_home):
         out = core.engine.run(mid)
         assert (out['state'], out['stop']) == ('BLOCKED', 'policy_denied')
         m = core.row(entities.Mission, mid).entity
-        (d,) = core.all(entities.PolicyDecision)
+        (d,) = [x for x in core.all(entities.PolicyDecision) if x.stage == 'plan']
         assert (d.decision, d.outcome, d.stage, d.mission_id) == ('DENY', 'denied', 'plan', mid)
         assert m.planning_blocked['kind'] == 'policy'
         assert m.planning_blocked['policy_decision_id'] == d.id

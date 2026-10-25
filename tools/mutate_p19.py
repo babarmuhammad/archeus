@@ -296,16 +296,18 @@ MUTATIONS = [
      "    elif a.kind == 'never':\n        out = missions.fire(")],
      [SC_ + 'test_a_start_is_approved_from_the_conversation_card']),
     ('P45', 'rejecting a start does not cancel the mission', [(AUTHZ,
-     "    if kind == 'start':\n        out = missions.cancel(",
-     "    if kind == 'never':\n        out = missions.cancel(")],
+     "    if kind == 'start' and a.presented['consequences']['reject'] == 'the mission is cancelled':\n"
+     "        out = missions.cancel(",
+     "    if kind == 'never' and a.presented['consequences']['reject'] == 'the mission is cancelled':\n"
+     "        out = missions.cancel(")],
      [SC_ + 'test_under_careful_rejecting_the_start_cancels_the_mission']),
     ('P46', 'a start approval is judged eligible like a plan approval', [(AUTHZ,
      "    if a.kind == 'start':\n        return None if mission.state == 'CREATED' else (\n"
      "            'not_awaiting', 'mission %s is %s' % (mission.id, mission.state))\n", "")],
      [SC_ + 'test_under_careful_the_mission_waits_in_created_for_its_start_approval']),
     ('P47', 'the e-stop holds a start', [(AUTHZ,
-     "    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor), estop=False)",
-     "    ctx = context(conn, mission, stage='start', now=now, actor=actor)")],
+     "    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor,\n                       extra_rules=extra_rules), estop=False)",
+     "    ctx = context(conn, mission, stage='start', now=now, actor=actor,\n                  extra_rules=extra_rules)")],
      [SC_ + 'test_the_estop_does_not_hold_a_start_and_careful_still_asks']),
     ('P48', "a user's DENY rule asks instead of holding", [(AUTHZ,
      "    if decision == 'DENY':\n        return {'started': False, 'waiting': 'policy_denied'}\n",

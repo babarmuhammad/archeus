@@ -111,9 +111,12 @@ def approval_card(tx, actor, approval, mission):
     card naming the live approval, linked to its mission, so the mission's
     thread shows it as well. The card holds the ref only; a client reads the
     approval's hash and version from the approval itself."""
+    from .authorization import asks_before_start
     scope = (approval.presented or {}).get('scope') or approval.kind
-    _message(tx, actor, conversation_id=primary(tx, actor), author='archeus',
-             text='"%s" needs your approval: %s.' % (mission.title, scope),
+    text = '"%s" needs your approval: %s.' % (mission.title, scope)
+    if approval.kind == 'start' and asks_before_start(tx.conn, mission):
+        text = 'Start and plan "%s"?' % mission.title
+    _message(tx, actor, conversation_id=primary(tx, actor), author='archeus', text=text,
              cards=[_card('approval', 'approval', approval.id)],
              links=[{'ref': {'kind': 'mission', 'id': mission.id}},
                     {'ref': {'kind': 'approval', 'id': approval.id}}])
@@ -893,7 +896,8 @@ def _status(tx, target):
 _ORIGIN = {'conversation': 'you asked for it in a conversation',
            'idea': 'it was made from one of your ideas',
            'automation': 'one of your automations started it',
-           'legacy_import': 'it was brought over from the earlier app'}
+           'legacy_import': 'it was brought over from the earlier app',
+           'api': 'it was created through the API'}
 
 
 def _why(tx, target, bare=False):

@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from archeus.core.application import commands, lifecycle, queries
+from archeus.core.application import authorization, commands, lifecycle, queries
 from archeus.core.application import executions as X
 from archeus.core.domain import entities, ids
 from archeus.core.domain import events as ev
@@ -233,6 +233,23 @@ def test_a_refused_decision_writes_nothing_and_leaves_no_event(r):
     finally:
         ev.CAUSE.reset(token)
     assert r.head() == head and r.pending(_mid).state == 'PENDING'
+
+
+def test_an_allowed_start_records_its_decision_under_its_hash_and_cause(r):
+    mid = r.do(commands.create_mission, who=r.user, title='Automated', objective='o',
+               origin='automation')['id']
+    cause = ids.new_ulid()
+    token = ev.CAUSE.set((cause,))
+    try:
+        assert r.do(r.authz.gate_start, mission_id=mid) == {'started': True, 'waiting': None}
+    finally:
+        ev.CAUSE.reset(token)
+    assert r.m(mid).state == 'UNDERSTANDING'
+    (d,) = [x for x in r.all(entities.PolicyDecision) if x.stage == 'start']
+    assert (d.decision, d.outcome, d.approval_id) == ('ALLOW', 'allow', None)
+    assert d.mission_id == mid and d.action_hash == authorization.start_hash(r.m(mid))
+    (e,) = _of(r.db, 'policy_decision.created', d.id)
+    assert e['cause_chain'] == [cause]
 
 
 # ── a scope that exits by an exception restores the cause for the command that catches it ──

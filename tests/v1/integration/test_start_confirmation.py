@@ -1,7 +1,7 @@
 """Mission confirmation under `careful` over a real Core (P19 S4;
 p19-design-gate B6, §4.1): starting a mission is the action class
-`mission.start`. `standard` and `autonomous` allow it, so a mission starts as
-it always has; under `careful` the engine asks P9 before it fires START, an
+`mission.start`. `standard` and `autonomous` allow API missions to start;
+chat and idea missions under `standard` ask first. Under `careful` the engine asks P9 before START, an
 Approval of kind `start` is created and the mission waits in CREATED.
 Approving it (Attention, or the card in the conversation through B5) fires
 START; rejecting it cancels the mission. No new route, card or edge."""
@@ -67,6 +67,9 @@ def test_a_profile_that_allows_the_start_starts_without_asking(core, profile):
     mid = _mission(core)
     _wait(lambda: _state(core, mid) != 'CREATED', 'the mission starts')
     assert not [a for a in _approvals(core, mid) if a['kind'] == 'start']
+    decisions = core.http('GET', '/v1/policy-decisions?mission=' + mid).json()['policy_decisions']
+    assert [(d['decision'], d['outcome']) for d in decisions if d['stage'] == 'start'] == [
+        ('ALLOW', 'allow')]
 
 
 def test_under_careful_the_mission_waits_in_created_for_its_start_approval(core):
@@ -130,6 +133,15 @@ def test_a_mission_cancelled_while_it_waits_leaves_its_approval_undecidable(core
               {'decision': 'approve', 'action_hash': a['action_hash']})
     assert (r.status, r.json()['error']) == (422, 'invalid_transition'), r.body
     assert _state(core, mid) == 'CANCELLED'
+
+
+def test_an_explicit_start_while_its_approval_is_live_asks_nothing_more(core):
+    _profile(core, 'careful')
+    mid = _mission(core)
+    a = _start_approval(core, mid)
+    r = _post(core, '/v1/missions/%s/start' % mid, {})
+    assert r.status == 200 and r.json()['waiting'] == 'approval_required', r.body
+    assert [x['id'] for x in _approvals(core, mid) if x['kind'] == 'start'] == [a['id']]
 
 
 def test_a_wrong_hash_does_not_start_it(core):

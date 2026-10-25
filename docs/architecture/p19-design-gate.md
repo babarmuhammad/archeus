@@ -642,7 +642,21 @@ offline cold start on a phone.
     line and one test.
 26. **A user's DENY rule on `mission.start` holds the mission without asking.** It waits in
     CREATED, nothing is recorded (it is judged again on every pass, and recording each pass would
-    flood the decisions), and it starts once the rule is retired.
+    flood the decisions), and it starts once the rule is retired. An ALLOW is recorded in the same
+    transaction as its START (T-150 (b)), so a start that happened always has its decision.
+    **Exception (T-150 (a), owner 2026-10-21):** a mission made from a chat message (origin
+    `conversation`) or promoted from an idea (origin `idea`) asks with a Start card under
+    `standard`. After Start, the chat mission gets its own plan approval card before execution.
+    The rule lives in `judge_start`; approve re-judges it and start simulation uses it too.
+    A missionless start simulation uses origin `api`, matching an API mission under `standard`.
+    Its reject ("Keep as mission") does not cancel: the mission stays CREATED. Rejection follows
+    the consequence stored on the presented card, even if the profile changes before the decision.
+    A declined or expired Start card stops automatic asking; only the explicit
+    `POST /v1/missions/{id}/start` asks again. Expiry also leaves `careful` and API missions
+    CREATED without re-asking. A Start card presented under `careful` still promises cancellation
+    on rejection; `autonomous` starts without asking. A user's DENY still holds.
+    The chat rule turns any ALLOW into an ASK, so a user's
+    own ALLOW rule on `mission.start` does not skip the ask for a chat mission under `standard`.
 27. **The stub policy exempts Core classes.** `FixedPolicy('ASK')` means "every task's action
     asks"; without the exemption every test built on it stalled in CREATED. `by_class` can still
     name `mission.start`.

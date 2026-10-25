@@ -208,11 +208,17 @@ def start_hash(mission):
         [actions.item(None, start_action(mission))])
 
 
-def judge_start(policy, conn, mission, *, now, actor=None):
+def judge_start(policy, conn, mission, *, now, actor=None, extra_rules=(), user_id=None):
     # the e-stop holds what runs, not what starts: a CREATED mission was always
     # started while disarmed (the engine's `_step`), and B6 asks only `careful`
-    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor), estop=False)
-    return [dict(judge(policy, start_action(mission), ctx), task=None)], ctx
+    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor,
+                       extra_rules=extra_rules), estop=False)
+    ctx['chain']['USER'] = ctx['chain']['USER'] or user_id
+    items = [dict(judge(policy, start_action(mission), ctx), task=None)]
+    if items[0]['decision'] == 'ALLOW' and asks_before_start(conn, mission):
+        items = [dict(items[0], decision='ASK',
+                      reason='a mission from a chat message asks before it starts')]
+    return items, ctx
 
 
 def live_approval(conn, h):
@@ -291,7 +297,7 @@ def _overall(items):
     return max((i['decision'] for i in items), key=R.STRICTNESS.get, default='ALLOW')
 
 
-def _presented_start(mission, items, why):
+def _presented_start(conn, mission, items, why):
     return {
         'what': [{'task': None, 'title': None, 'class': i['class'],
                   'target': i['action']['target'], 'paths': None, 'implied_by': None,
@@ -302,7 +308,11 @@ def _presented_start(mission, items, why):
         'scope': 'starting this mission',
         'resources': sorted({i['class'] for i in items}),
         'consequences': {'approve': 'the mission starts: it is understood and planned',
-                         'reject': 'the mission is cancelled', 'request_changes': None,
+                         'reject': ('the mission stays as it is, idle, and is not asked '
+                                    'again; you can ask for the start later'
+                                    if asks_before_start(conn, mission)
+                                    else 'the mission is cancelled'),
+                         'request_changes': None,
                          'step_up': False},
         'reusable': 'single-use'}
 
@@ -310,7 +320,7 @@ def _presented_start(mission, items, why):
 def _presented(tx, kind, mission, plan, task, items, why, step_up):
     """What the user is asked (§8.6): built from rows, model text labelled."""
     if kind == 'start':
-        return _presented_start(mission, items, why)
+        return _presented_start(tx.conn, mission, items, why)
     titles = {t.key: t.title for t in _tasks(tx.conn, plan)}
     return {
         'what': [{'task': i['task'], 'title': titles.get(i['task']), 'class': i['class'],
@@ -391,24 +401,23 @@ def record_plan_decision(tx, *, actor, mission, trigger, facts):
     cost = {'band': plan.estimated_cost, 'ceiling': ceiling,
             'within': facts.cost_within_ceiling}
     auto = trigger == 'plan_auto_approved'
+    why = ([i['reason'] for i in items if i['decision'] == 'ASK'] or
+           (['the chat mission needs its plan approved'] if facts.explicit_plan_approval else
+            ['the cost band %s is not under the auto-approve ceiling %s'
+             % (plan.estimated_cost, ceiling)]))
     d = record(tx, actor=actor, stage='plan', mission=mission, plan=plan,
                decision=_overall(items), outcome='auto_approved' if auto else 'needs_approval',
                items=items, h=h, ctx=ctx, cost=cost,
                reason=('plan v%d is within policy' % plan.plan_version) if auto else
-               '; '.join([i['reason'] for i in items if i['decision'] == 'ASK'] or
-                         ['the cost band %s is not known to be under the ceiling %s'
-                          % (plan.estimated_cost, ceiling)]))
+               '; '.join(why))
     if auto:
         lifecycle.fire(tx, entities.Plan, plan.id, 'approved', actor=actor,
                        reason='plan v%d approved within policy (decision %s)'
                        % (plan.plan_version, d.id))
         return {'decision_id': d.id, 'approval_id': None}
-    asked = [i for i in items if i['decision'] == 'ASK']
     a, _new = request(tx, actor=actor, kind='plan', mission=mission, plan=plan, items=items,
                       h=h, decision_id=d.id, ctx=ctx,
-                      why=[i['reason'] for i in asked] or [
-                          'the cost band %s is not under the auto-approve ceiling %s'
-                          % (plan.estimated_cost, ceiling)])
+                      why=why)
     return {'decision_id': d.id, 'approval_id': a.id}
 
 
@@ -652,6 +661,7 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
         raise lifecycle.VersionConflict(approval_id, expected_version, row.version)
     a = row.entity
     trigger = 'reject' if decision == 'request_changes' else decision
+    _refuse_hash(a, action_hash, trigger)       # a replay of a decision is bound to the hash too
     if a.state != 'PENDING':
         if a.state == _DECIDED[decision] and a.decision == decision:   # the same again: one
             return _answer(tx, row, changed=False)
@@ -659,7 +669,6 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                                        'already %s' % a.state.lower())
     if decision == 'request_changes' and a.kind != 'plan':
         raise ValueError('only a plan approval can send its plan back for changes')
-    _refuse_hash(a, action_hash, trigger)
     bad = ineligible(tx.conn, a, now=tx.now, approve=decision == 'approve')
     if bad is not None:
         raise NotEligible(a.id, *bad)
@@ -677,7 +686,7 @@ def decide(tx, *, actor, policy, missions, approval_id, decision, action_hash, n
                             fields=_decided(tx, actor, decision, note))
     tx.cause = caused_by(e)           # what the decision issues carries it (p21 D13 (b))
     out = None
-    if kind == 'start':
+    if kind == 'start' and a.presented['consequences']['reject'] == 'the mission is cancelled':
         out = missions.cancel(tx, actor=actor, mission_id=mission.id,
                               reason=note or 'its start was rejected (approval %s)' % a.id)
     if kind == 'route':
@@ -787,25 +796,47 @@ def _answer(tx, row, *, changed=True, mission=None):
             'version': row.version, 'changed': changed, 'mission': mission}
 
 
-def gate_start(tx, *, actor, policy, missions, mission_id):
+def asks_before_start(conn, m):
+    """Does this mission ask before it starts under `standard` (T-150 (a))? Only a
+    mission made from a chat message or promoted idea: Start approves it,
+    Keep as mission declines it and it waits idle. Its own profile, else the user's, decides."""
+    if m.origin not in ('conversation', 'idea'):
+        return False
+    u = owner(conn)
+    return (m.autonomy_profile or (u.autonomy_profile if u else 'standard')) == 'standard'
+
+
+def _declined(conn, h):
+    return any(r.entity.state in ('REJECTED', 'EXPIRED')
+               for r in rows.where(conn, entities.Approval, action_hash=h))
+
+
+def gate_start(tx, *, actor, policy, missions, mission_id, by_request=False):
     """May a CREATED mission start (P19 S4, p19-design-gate B6)? `mission.start`
-    is judged like any class: ALLOW (`standard`, `autonomous`) fires START now;
-    ASK (`careful`) records the ask and requests a `start` approval once, and
-    the mission waits in CREATED until it is decided (approving fires START,
-    rejecting cancels); DENY (a user's rule) waits and records nothing, since
-    it is judged again on every pass."""
+    is judged like any class: ALLOW (`standard`, `autonomous`) records the start
+    and fires START now, except a chat mission under `standard`, which is asked
+    (T-150 (a)); ASK (`careful`) records the ask and requests a `start` approval
+    once, and the mission waits in CREATED until it is decided (approving fires
+    START, rejecting cancels; a chat mission's reject keeps it idle instead).
+    A declined or expired start is not asked again on a later pass; only
+    `by_request` (an explicit start) asks again. DENY waits and records nothing,
+    since it is judged again on every pass."""
     m = lifecycle.load(tx, entities.Mission, mission_id).entity
     if m.state != 'CREATED':
         return {'started': False, 'waiting': None}
     items, ctx = judge_start(policy, tx.conn, m, now=tx.now, actor=actor)
     decision = items[0]['decision']
     if decision not in ('ASK', 'DENY'):
+        record(tx, actor=actor, stage='start', mission=m, decision=decision, outcome='allow',
+               items=items, h=start_hash(m), ctx=ctx, reason=items[0]['reason'])
         missions.fire(tx, actor=actor, mission_id=m.id, trigger='start',
                       reason='Archeus starts on the mission')
         return {'started': True, 'waiting': None}
     if decision == 'DENY':
         return {'started': False, 'waiting': 'policy_denied'}
     h = start_hash(m)
+    if _declined(tx.conn, h) and not by_request and live_approval(tx.conn, h) is None:
+        return {'started': False, 'waiting': 'declined'}
     if live_approval(tx.conn, h) is None:
         d = record(tx, actor=actor, stage='start', mission=m, decision='ASK', outcome='asked',
                    items=items, h=h, ctx=ctx, reason=items[0]['reason'])
@@ -1015,6 +1046,9 @@ class Authorization:
     def gate_start(self, tx, **kw):
         return gate_start(tx, policy=self.policy, missions=self.missions, **kw)
 
+    def request_start(self, tx, **kw):
+        return gate_start(tx, policy=self.policy, missions=self.missions, by_request=True, **kw)
+
     def evaluate_action(self, tx, **kw):
         return evaluate_action(tx, policy=self.policy, **kw)
 
@@ -1073,11 +1107,16 @@ def simulate(conn, policy, *, now, action, mission_id=None, task_id=None, stage=
         mission = m.entity
     else:
         mission = entities.Mission(id=ids.new_id('mission'), workspace_id=ids.GLOBAL_WORKSPACE,
-                                   title='simulation', objective='simulation')
+                                   title='simulation', objective='simulation', origin='api')
     classes = None if task is None else [c for c, _b, _x in items_of(task)]
-    ctx = context(conn, mission, stage=stage, now=now, task=task, extra_rules=extra,
-                  task_classes=None if stage == 'plan' else classes)
-    ctx['chain']['USER'] = ctx['chain']['USER'] or standin
-    r = judge(policy, a, ctx)
+    if a.action_class == 'mission.start':
+        items, ctx = judge_start(policy, conn, mission, now=now, extra_rules=extra,
+                                user_id=standin)
+        r = items[0]
+    else:
+        ctx = context(conn, mission, stage=stage, now=now, task=task, extra_rules=extra,
+                      task_classes=None if stage == 'plan' else classes)
+        ctx['chain']['USER'] = ctx['chain']['USER'] or standin
+        r = judge(policy, a, ctx)
     return dict(_slim(r), matched_rules=r.get('matched') or [], simulated=True,
                 policy_version=ctx['policy_version'], mission_id=mid)

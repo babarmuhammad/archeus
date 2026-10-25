@@ -69,6 +69,7 @@ class MissionFacts:
     tasks: tuple = ()
     criteria: tuple = ()
     cost_within_ceiling: bool = None    # None: no cost band estimated
+    explicit_plan_approval: bool = False
     missing_capability: bool = False
     policy: tuple = ()
     declared_by: str = None
@@ -135,6 +136,8 @@ def plan_auto_approved(mission, f):
         return _r('plan_auto_approved', False, 'no active plan with tasks')
     if _already_decided(mission, f):
         return _stale('plan_auto_approved', f)
+    if f.explicit_plan_approval:
+        return _r('plan_auto_approved', False, 'the chat mission needs its plan approved')
     asked = [(k, c, d) for k, c, d in f.policy if d not in AUTO_OK]
     if asked:
         k, c, d = asked[0]
@@ -159,6 +162,8 @@ def plan_needs_approval(mission, f):
                   'policy denies %s on task %s: not a question for approval' % denied[0][::-1])
     if _already_decided(mission, f):
         return _stale('plan_needs_approval', f)
+    if f.explicit_plan_approval:
+        return _r('plan_needs_approval', True, 'the chat mission needs its plan approved')
     asked = [(k, c, d) for k, c, d in f.policy if d not in AUTO_OK]
     if asked:
         k, c, d = asked[0]

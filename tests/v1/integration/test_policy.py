@@ -305,6 +305,36 @@ def test_I_A05_a_hash_mismatch_writes_nothing(r):
     assert r.head() == head and r.pending(mid).id == a.id
 
 
+def test_I_A05b_a_replay_of_a_decision_is_bound_to_its_hash(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'deploy'))
+    a = r.pending(mid)
+    r.decide(a)
+    head = r.head()
+    with pytest.raises(lifecycle.GuardFailed, match='different action'):
+        r.decide(a, h='0' * 64)
+    assert r.head() == head
+    (appr,) = r.all(entities.Approval, mission_id=mid)
+    assert (appr.state, r.one(entities.Plan, mission_id=mid).state) == ('APPROVED', 'APPROVED')
+    again = r.decide(a)
+    assert (again['changed'], r.head()) == (False, head)
+
+
+def test_I_A05c_a_chat_replay_with_a_wrong_hash_writes_no_reply(r):
+    mid = r.mission()
+    r.propose(mid, task('t1', 'deploy'))
+    a = r.pending(mid)
+    r.decide(a)
+    head, sent = r.head(), len(r.events('message.created'))
+    with pytest.raises(lifecycle.GuardFailed, match='different action'):
+        r.do(r.authz.decide_by_message, who=r.user, text='approve', conversation_id='primary',
+             approval_id=a.id, action_hash='0' * 64)
+    assert (r.head(), len(r.events('message.created'))) == (head, sent)
+    ok = r.do(r.authz.decide_by_message, who=r.user, text='approve', conversation_id='primary',
+              approval_id=a.id, action_hash=a.action_hash)
+    assert ok['decided']['changed'] is False and ok['decided']['state'] == 'APPROVED'
+
+
 def _tamper(db, plan_id):
     """Write a plan's body around the writer, as corruption or tampering would."""
     path = db.path if hasattr(db, 'path') else None

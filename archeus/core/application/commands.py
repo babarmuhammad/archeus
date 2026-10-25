@@ -71,9 +71,10 @@ def resumable(conn):
 
 def create_mission(tx, *, actor, title, objective, project_id=None,
                    workspace_id=ids.GLOBAL_WORKSPACE, success_criteria=(), max_replans=2,
-                   origin='conversation', origin_ref=None, cause=()):
+                   origin='api', origin_ref=None, cause=()):
     """A mission in CREATED. `origin`/`origin_ref`/`cause` are for Core's own
-    callers (an automation run, P14): no route passes them."""
+    callers (an automation run, P14, a chat message's mission): the API default is
+    `api`, so only a chat-made mission is `conversation` (T-150 (a))."""
     if project_id is not None and tx.get(entities.Project, project_id) is None:
         raise lifecycle.NotFound(project_id)     # a mission names a registered project (P4)
     m = entities.Mission(id=ids.new_id('mission'), workspace_id=workspace_id,
@@ -221,6 +222,7 @@ def persisted_facts(tx, row):
     reviews = tx.where(entities.Review, plan_id=plan.entity.id)
     return guards.MissionFacts(
         plan_version=plan.entity.plan_version, tasks=tasks, criteria=criteria,
+        explicit_plan_approval=authorization.asks_before_start(tx.conn, m),
         review=reviews[-1].entity.state if reviews else None,
         cost_within_ceiling=None if band is None else (
             entities.COST_BANDS.index(band)
