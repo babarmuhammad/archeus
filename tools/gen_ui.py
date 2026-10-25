@@ -306,7 +306,7 @@ MOTION_FIELDS = ('status', 'source', 'trigger', 'driven_by', 'runs_on', 'css', '
 _ONE_OF = {'status': ('built', 'approved'), 'driven_by': ('event', 'user', 'state'),
            'runs_on': ('css', 'loop', 'static'), 'idle': ('never', 'static'),
            'easing': ('ease', 'linear', 'ease-in-out', None), 'cap_per': ('surface', 'target', None),
-           'over_cap': ('drop-oldest', 'refuse', None), 'interval_per': ('surface', 'target', None)}
+           'over_cap': ('drop-oldest', 'refuse', 'queue', None), 'interval_per': ('surface', 'target', None)}
 
 
 def motion_problems(m, t):

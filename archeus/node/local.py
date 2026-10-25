@@ -148,6 +148,10 @@ class StoreError(OSError):
 class LocalNode:
     id = None       # the local node (ADR-0008): no ExecutionNode row in V1
 
+    def command_context(self, execution_id, workdir, cwd):
+        # Current isolation does not attest POSIX program resolution and startup environment.
+        return None
+
     #: what the hook reads (P11 PAUSE/STOP; P12 HANDOFF) — see FLAGS below
     def __init__(self, isolation=None):
         #: Core's isolation authority for this process (PV-20 §3.7): the per-execution

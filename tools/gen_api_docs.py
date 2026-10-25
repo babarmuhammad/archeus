@@ -170,6 +170,8 @@ def render_v1_client():
            % ', '.join(q % k for k in schemas.entities.TASK_KINDS),
            'export const STREAM_PATH = %s;' % (q % routes.STREAM), '']
     for name in sorted(schemas.TYPES):
+        if schemas.TYPES[name].get('description'):
+            out.append('/** %s */' % schemas.TYPES[name]['description'])
         out += ['export interface %s %s' % (name, _ts_object(schemas.TYPES[name], '  ')), '']
     for r in _api_routes(routes):
         if r.request_schema is not None:
@@ -309,8 +311,10 @@ def render_v1_reference():
     out += ['', 'A launch-code device holds `%s`; the local token holds `%s`.'
             % (' '.join(auth.LAUNCH_SCOPES), ' '.join(auth.LOCAL_SCOPES)), '', '## Types', '']
     for name in sorted(schemas.TYPES):
-        out += ['### `%s`' % name, '', '```ts',
-                'interface %s %s' % (name, _ts_object(schemas.TYPES[name], '  ')), '```', '']
+        out += ['### `%s`' % name, '']
+        if schemas.TYPES[name].get('description'):
+            out += [schemas.TYPES[name]['description'], '']
+        out += ['```ts', 'interface %s %s' % (name, _ts_object(schemas.TYPES[name], '  ')), '```', '']
     for r in _api_routes(routes):
         if r.request_schema is not None:
             out += ['### `%s`' % _request_name(r), '', '```ts',

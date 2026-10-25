@@ -540,12 +540,16 @@ class ExecutionManager:
             ctx = {'workdir': workdir, 'branch': branch_now,
                    'remotes': self.node.git_remotes(workdir) if git else {}}
             try:
-                canon = canonical.canonicalise(req.get('tool'), req.get('input'), ctx)
+                ctx['cwd'] = cwd or workdir
+                command_context = (self.node.command_context(e.id, workdir, ctx['cwd'])
+                                   if req.get('tool') == 'Bash' and cwd_ok else None)
+                canon, command_eligibility = canonical.canonicalise_hook(
+                    req.get('tool'), req.get('input'), ctx, command_context)
                 out = self._do(X.serve_hook, policy=self.policy, execution_id=e.id, seq=seq,
                                request=req, canon=canon, cwd_ok=cwd_ok,
                                branch_ok=e.branch is None or (not known
                                                               and branch_now == e.branch),
-                               disarmed=disarmed)
+                               disarmed=disarmed, command_eligibility=command_eligibility)
             except Exception as err:        # never allow on a failure: fail closed
                 log.warning('hook request %d of %s: %s', seq, e.id, err)
                 out = {'decision': 'halt', 'reason': 'Archeus could not judge the request'}

@@ -420,21 +420,23 @@ export const MOTIONS = {
     "equivalent": "its text in a role=status region mounted at boot; never the only signal — the mission's row and state changed too"
   },
   "activity-chip": {
-    "status": "approved",
-    "source": "ADR-0024 §6, rulebook §21 A-17",
-    "trigger": "a stream frame re-reads an execution's current action",
+    "status": "built",
+    "source": "ADR-0024 §6, rulebook §21 A-17, p21-design-gate D6",
+    "trigger": "an execution.hook frame whose execution, read again from Core, holds a current action newer than the last one chipped and belongs to a mission whose row is on screen: one chip on that row (ttl_error_ms when Core refused or held the call)",
     "driven_by": "event",
     "runs_on": "css",
-    "css": null,
+    "css": [
+      "activity-chip"
+    ],
     "transition": null,
     "max_ms": 160,
-    "token": null,
+    "token": "state",
     "ttl_ms": 2500,
     "ttl_error_ms": 4000,
     "easing": "ease",
     "cap": 3,
     "cap_per": "target",
-    "over_cap": null,
+    "over_cap": "queue",
     "min_interval_ms": null,
     "interval_per": null,
     "surfaces": [
@@ -443,7 +445,7 @@ export const MOTIONS = {
     "idle": "never",
     "replay": false,
     "reduced": "no fade: the chip appears and leaves at once",
-    "equivalent": "the chip's text"
+    "equivalent": "the chip's text; a refused or held chip is also announced through the shared polite region"
   }
 } as const;
 

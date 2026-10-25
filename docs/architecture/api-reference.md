@@ -562,6 +562,19 @@ interface Criterion {
 }
 ```
 
+### `CurrentAction`
+
+The last action Core judged for this execution (P21 D6): kept after the run ends, so an ended run still shows what it did last. Its label names a host, a tool and a verb, or a fixed phrase, never an argument.
+
+```ts
+interface CurrentAction {
+  action_class: 'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential' | 'mission.start';
+  label: string;
+  decision: 'allow' | 'deny' | 'halt';
+  seq: number;
+}
+```
+
 ### `Decided`
 
 ```ts
@@ -669,6 +682,7 @@ interface Execution {
   served_model?: string | null;
   served_level?: 'REQUESTED' | 'ROUTED' | 'SERVED' | 'BILLED' | null;
   model_revision?: string | null;
+  current_action?: CurrentAction | null;
   artifacts?: Record<string, unknown>[];
   context: ContextState;
   handoff?: Handoff;

@@ -45,7 +45,6 @@ test('the row pulse is a registered, built CSS motion with the approved budget',
   assert.deepEqual([...(m.css ?? [])], ['row-pulse']);
   assert.equal(m.max_ms, MOTIONS['execution-pulse'].max_ms);
   assert.equal(ROW_PULSE_EVERY_MS, 2000);
-  assert.equal(MOTIONS['activity-chip'].status, 'approved', 'the chip is not built in R5');
 });
 
 test('only an execution.* frame with a seq, about an execution, can pulse a row', () => {

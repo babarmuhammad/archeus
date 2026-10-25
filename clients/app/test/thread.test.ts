@@ -15,7 +15,6 @@ test('the thread travel is a built CSS motion: 600 ms, once, one at a time', () 
   assert.ok(m.max_ms <= 600);
   assert.equal(m.cap, 1);
   assert.equal(m.over_cap, 'refuse');
-  assert.equal(MOTIONS['activity-chip'].status, 'approved', 'the chip stays deferred');
 });
 
 test('a message\'s links are the objects they name, in order, each once; nothing is guessed', () => {

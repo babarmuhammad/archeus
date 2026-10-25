@@ -24,12 +24,16 @@ import contextlib
 import hashlib
 import hmac
 import json
+import re
 import time
 
 from ...infra.db import rows
 from ..domain import entities, ids, instants
 from ..domain.events import caused_by, new_event
 from ..domain.values import Ref
+from ..execution.command_allowlist import Allowed
+from ..execution.canonical import needs_command_cap
+from ..redact import redact
 from . import authorization, lifecycle
 from .commands import active_plan
 
@@ -916,12 +920,14 @@ def waiting_approval(conn, e):
 # ── the hook (§10.4) ────────────────────────────────────────────────────────
 
 def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, branch_ok,
-               disarmed):
+               disarmed, command_eligibility=None):
     """Answer one hook request: (decision, reason) with decision allow | deny |
     halt. `canon` is (actions, unclassified) from the canonicaliser; `cwd_ok`
     and `branch_ok` are the manager's reads of the world (outside this
     transaction). Records every P9 decision; moves the execution on an ASK."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    actions, unclassified = canon
+    first = actions[0] if actions else None
     if e.state not in ('STARTING', 'RUNNING'):
         return _hook_answer(tx, actor, e, seq, 'halt', 'the execution is %s' % e.state)
     if seq <= e.hook_seq:
@@ -930,38 +936,48 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
     if not (e.hook_token_hash and isinstance(tok, str) and hmac.compare_digest(
             token_hash(tok).encode(), e.hook_token_hash.encode())):
         return _hook_answer(tx, actor, e, seq, 'halt', 'the request is not this execution\'s')
+    act = _current(first)
     if disarmed:
-        return _hook_answer(tx, actor, e, seq, 'halt', 'emergency stop')
+        return _hook_answer(tx, actor, e, seq, 'halt', 'emergency stop', act)
     if e.state == 'STARTING':
         e = _fire(tx, e.id, 'first_output', actor, 'the process asked its first question')
     why = binding(tx.conn, e)
     if why is not None:
         stop(tx, actor=actor, execution_id=e.id, reason=why, stop_reason='binding')
-        return _hook_answer(tx, actor, e, seq, 'halt', why)
+        return _hook_answer(tx, actor, e, seq, 'halt', why, act)
     if not cwd_ok:
         return _hook_answer(tx, actor, e, seq, 'halt', 'the working directory is outside %s'
-                            % e.workdir)
+                            % e.workdir, act)
     if not branch_ok:
-        return _hook_answer(tx, actor, e, seq, 'halt', 'HEAD is not branch %s' % e.branch)
-    actions, unclassified = canon
+        return _hook_answer(tx, actor, e, seq, 'halt', 'HEAD is not branch %s' % e.branch, act)
     worst, reasons, asked = 'allow', [], None
+    approved = bool(actions)
+    denier = asker = None          # the action that decided the answer; the chip names it
     for a in actions:
         got = authorization.evaluate_action(tx, actor=actor, policy=policy,
                                             execution_id=e.id, action=a,
                                             unclassified=unclassified)
+        approved = approved and got['decision'] == 'ALLOW' and bool(got.get('approval_id'))
         if got['decision'] == 'DENY':
             worst = 'deny'
+            denier = a if denier is None else denier
             reasons.append(_reason(tx, got))
         elif got['decision'] == 'ASK':
-            asked = asked or got
+            if asked is None:
+                asked, asker = got, a
             reasons.append(_reason(tx, got))
     if worst == 'deny':
-        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons))
+        return _hook_answer(tx, actor, e, seq, 'deny', '; '.join(reasons), _current(denier))
     if asked is not None:
         _fire(tx, e.id, 'hook_asked', actor, 'waiting for approval %s' % asked['approval_id'])
         return _hook_answer(tx, actor, e, seq, 'halt', 'waiting for your approval (%s)'
-                            % asked['approval_id'])
-    return _hook_answer(tx, actor, e, seq, 'allow', '')
+                            % asked['approval_id'], _current(asker))
+    if needs_command_cap(request.get('tool'), request.get('input'), unclassified) and not (
+            isinstance(command_eligibility, Allowed) and command_eligibility.row_id
+            or approved):
+        return _hook_answer(tx, actor, e, seq, 'halt', 'command form needs review',
+                            {'action_class': 'exec', 'label': 'command'})
+    return _hook_answer(tx, actor, e, seq, 'allow', '', act)
 
 
 def _reason(tx, got):
@@ -969,9 +985,72 @@ def _reason(tx, got):
     return d.entity.reason if d is not None else got['decision']
 
 
-def _hook_answer(tx, actor, e, seq, decision, reason):
-    if seq is not None and seq > e.hook_seq:
-        tx.update(entities.Execution, e.id, {'hook_seq': seq}, actor=actor)
+#: what a chip may name of a command, besides a host it took from a clear URL (P21 D6, I-F4):
+#: a tool's name, and a verb from a short list per tool. Nothing else of an argument is ever
+#: named: a value, a path, a header, a flag or a credential has no word here.
+_TOOLS = frozenset((
+    'git', 'npm', 'npx', 'yarn', 'pnpm', 'pip', 'pip3', 'python', 'python3', 'py', 'node',
+    'perl', 'ruby', 'php', 'bash', 'sh', 'zsh', 'dash', 'fish', 'cmd', 'powershell', 'pwsh',
+    'rm', 'mv', 'cp', 'mkdir', 'touch', 'rmdir', 'chmod', 'ln', 'ls', 'cat', 'head', 'tail',
+    'wc', 'grep', 'rg', 'find', 'pwd', 'echo', 'which', 'curl', 'wget', 'ssh', 'scp', 'rsync',
+    'sftp', 'terraform', 'kubectl', 'helm', 'docker', 'vercel', 'make', 'cargo', 'go', 'mvn',
+    'gradle', 'dotnet', 'pytest', 'ruff', 'tsc', 'vite', 'base64', 'ps', 'kill', 'tar', 'unzip',
+    'zip', 'gh', 'aws', 'gcloud', 'az', 'brew', 'apt', 'apt-get', 'choco', 'winget', 'make',
+    'env', 'timeout', 'sudo', 'xargs', 'nohup', 'base64', 'busybox', 'stdbuf'))
+_VERBS = {
+    'git': frozenset(('status', 'log', 'diff', 'show', 'rev-parse', 'ls-files', 'branch',
+                      'remote', 'fetch', 'pull', 'clone', 'ls-remote', 'push', 'commit', 'add',
+                      'checkout', 'switch', 'restore', 'stash', 'merge', 'rebase',
+                      'cherry-pick', 'reset', 'clean', 'tag')),
+    'npm': frozenset(('install', 'i', 'add', 'publish', 'run', 'test', 'ci', 'exec')),
+    'yarn': frozenset(('install', 'add', 'publish')),
+    'pip': frozenset(('install',)), 'pip3': frozenset(('install',)),
+    'terraform': frozenset(('apply', 'destroy')),
+    'kubectl': frozenset(('apply', 'delete')),
+    'helm': frozenset(('install', 'uninstall', 'upgrade')),
+    'docker': frozenset(('build', 'run', 'push', 'rm')),
+    'vercel': frozenset(('deploy',)),
+    'gh': frozenset(('pr', 'release', 'issue')),
+    'cargo': frozenset(('build', 'test', 'publish', 'install')),
+}
+def _current(a):
+    """What the activity chip shows (P21 D6): the class of the action that decided the
+    answer, and a label. Never raw input (slice I)."""
+    if a is None:
+        return None
+    return {'action_class': a.action_class, 'label': _label(a)}
+
+
+def _label(a):
+    """The chip's word for an action: a host from a clear URL, else a tool and a verb from
+    the lists above, else a fixed phrase. An argument is never named (I-F4)."""
+    if a.chip_host:
+        return a.chip_host
+    if a.argv is None:                       # a harness tool (Read, Write, WebSearch ...)
+        if a.action_class in ('read', 'write_repo'):
+            return 'a file outside the workspace' if re.match(r'(/|[A-Za-z]:)', a.target or '') \
+                else 'a file in the workspace'
+        if a.action_class == 'web':
+            return 'search' if a.target == 'search' else ''
+        return 'a tool'
+    if a.target in ('shell', 'command'):      # the canonicaliser's fixed words
+        return a.target
+    name = re.split(r'[\\/]', a.argv[0])[-1].lower()
+    name = name[:-4] if name.endswith('.exe') else name
+    if name not in _TOOLS:
+        return 'a program'
+    verb = a.argv[1].lower() if len(a.argv) > 1 else ''
+    return name + ' ' + verb if verb in _VERBS.get(name, ()) else name
+
+
+def _hook_answer(tx, actor, e, seq, decision, reason, action=None):
+    """Only a request past the token check passes *action*: a foreign one is not
+    this execution's, so it never becomes its current action."""
+    fields = {'hook_seq': seq} if seq is not None and seq > e.hook_seq else {}
+    if action is not None:
+        fields['current_action'] = dict(action, decision=decision, seq=seq)
+    if fields:
+        tx.update(entities.Execution, e.id, fields, actor=actor)
     _event(tx, 'execution.hook', e, actor, {'seq': seq, 'decision': decision,
                                             'reason': reason[:500]})
     return {'decision': decision, 'reason': reason, 'execution_id': e.id}

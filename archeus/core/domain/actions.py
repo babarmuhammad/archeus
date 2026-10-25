@@ -55,13 +55,16 @@ class Action:
     # (P11, p11-design-gate D16); None when it names none
     branch: str = None
     host: str = None
+    # the host a chip may name (P21 D6): only a host of a URL that says its scheme; never
+    # policy input (the host field is), and never an argument (slice I, I-F4)
+    chip_host: str = None
 
     def __post_init__(self):
         if self.action_class not in RULE_CLASSES:
             raise ValueError('unknown action class: %r' % (self.action_class,))
         if not (isinstance(self.target, str) and self.target):
             raise ValueError('an action needs a target')
-        for k in ('diff_hash', 'environment', 'branch', 'host'):
+        for k in ('diff_hash', 'environment', 'branch', 'host', 'chip_host'):
             if not (getattr(self, k) is None or isinstance(getattr(self, k), str)):
                 raise ValueError('Action.%s is a string or null' % k)
         for k in ('argv', 'paths'):

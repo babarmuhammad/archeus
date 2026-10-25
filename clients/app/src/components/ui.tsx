@@ -12,6 +12,8 @@ import { paths, api, type AccountList, type Digest, type Sync } from '../api/gen
 import { send } from '../data/core';
 import { framesSlow, reducedMotion } from '../graph/loop';
 import { RowPulses } from '../state/rowpulse';
+import { Chips, type Chip } from '../state/chips';
+import { announce } from '../a11y/announce';
 import { timeline } from '../state/timeline';
 
 /** A state as glyph + label. When the state changes while on screen (never
@@ -58,6 +60,44 @@ export function RowPulse({ mission }: { mission: string }) {
     () => rowPulses.seq(mission),
   );
   return seq > since ? <span key={seq} className="row-pulse" data-pulse={seq} aria-hidden="true" /> : null;
+}
+
+const chips = new Chips(timeline, {
+  now: () => performance.now(),
+  reduced: reducedMotion,
+  read: (id) => api.getExecution(send(), id),
+  announce,
+});
+store.onFrame((f) => void chips.frame(f));
+
+/** A mission row's activity chips (rulebook §21 A-17): what its agent asked
+ * Core to do, from Core's record. Hidden from the link's name, which would
+ * otherwise change at every tool call; the row's state word stays its meaning. */
+export function ActivityChips({ mission }: { mission: string }) {
+  useEffect(() => chips.show(mission), [mission]);
+  const list = useSyncExternalStore(
+    (l) => chips.subscribe(l),
+    () => chips.chips(mission),
+  );
+  return list.length ? (
+    <span className="activity-chips" aria-hidden="true">
+      {list.map((c) => (
+        <ActivityChip key={c.seq} mission={mission} chip={c} />
+      ))}
+    </span>
+  ) : null;
+}
+
+function ActivityChip({ mission, chip }: { mission: string; chip: Chip }) {
+  useEffect(() => {
+    const t = setTimeout(() => chips.dismiss(mission, chip.seq), chip.ttl);
+    return () => clearTimeout(t);
+  }, [mission, chip.seq, chip.ttl]);
+  return (
+    <span className="activity-chip" data-chip={chip.seq} data-still={chip.still || undefined}>
+      {chip.text}
+    </span>
+  );
 }
 
 /** T2 (ADR-0026 §1): whether a row's object is in the digest — changed since
