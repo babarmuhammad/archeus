@@ -121,17 +121,18 @@ def test_approval_items_presentation_consequences_and_against_are_projected(home
         'what': [{'account': OLD_KEY, 'title': KEY, 'paths': [HOME]}],
         'consequences': {'approve': 'run on ' + KEY},
         'against': {'account': KEY, 'mission': {'title': HOME, 'objective': KEY},
-                    'plan': {'summary': HOME}}}, 'decision_note': HOME}
+                    'plan': {'summary': HOME}, 'project': {'root': HOME}}}, 'decision_note': HOME}
     before = deepcopy(body)
     out = queries._public_approval(body, homes)
     assert out['items'][0]['resource']['account'] == public_account_id(KEY)
-    assert out['items'][0]['action']['paths'] == [HOME]
+    assert out['items'][0]['action']['paths'] == ['its home']
     assert out['presented']['what'] == [
-        {'account': public_account_id(OLD_KEY), 'title': KEY, 'paths': [HOME]}]
+        {'account': public_account_id(OLD_KEY), 'title': KEY, 'paths': ['its home']}]
     assert out['presented']['consequences']['approve'] == 'run on ' + public_account_id(KEY)
     assert out['presented']['against']['account'] == public_account_id(KEY)
     assert out['presented']['against']['mission'] == body['presented']['against']['mission']
     assert out['presented']['against']['plan'] == {'summary': HOME}
+    assert out['presented']['against']['project']['root'] == HOME
     assert out['decision_note'] == HOME and body == before
 
 
@@ -219,6 +220,21 @@ def test_builder_current_adapter_failure_is_soft_and_shorts_are_injected(monkeyp
     assert probes and public.system_value(HOME, got) == 'its home'
 
 
+@pytest.mark.parametrize('order', [(HOME, None), (None, HOME), (HOME, OLD)])
+def test_builder_keeps_first_nonempty_home_in_snapshot_order(monkeypatch, order):
+    snapshots = [SimpleNamespace(entity=SimpleNamespace(input_snapshot={'accounts': [
+        {'harness': 'h', 'registered': False, 'ref': KEY, 'home_ref': home}]}))
+        for home in order]
+    monkeypatch.setattr(resources.rows, 'where',
+                        lambda conn, cls: snapshots if cls is entities.RouteDecision else [])
+    got = resources.homes(None, None, (), shorts=lambda _: None)
+    assert got.keys[KEY] == public_account_id(KEY)
+    assert queries._public_decision({'outcome': {'reason': 'stderr ' + HOME}}, got)[
+        'outcome']['reason'] == 'stderr its home'
+    if OLD in order:
+        assert public.system_value(OLD, got) == OLD
+
+
 def test_builder_includes_current_registry_and_callers_without_probing_defaults(monkeypatch):
     monkeypatch.setattr(resources.rows, 'where', lambda conn, cls: [])
 
@@ -267,3 +283,32 @@ def test_accounts_scrub_system_fields_and_preserve_authored_policy(homes, monkey
     assert out['why_not'] == 'login at its home'
     assert out['unlisted']['nested'] == 'retry ' + public_account_id(OLD_KEY)
     assert body == before
+
+
+def test_attention_scrubs_error_and_preserves_authored_reasons(homes, monkeypatch):
+    from archeus.core.application import attention
+
+    def row(**fields):
+        return SimpleNamespace(entity=SimpleNamespace(**fields), updated_at='now')
+
+    authored = {
+        entities.Mission: row(id='m', project_id=None, state='PLANNING',
+                              planning_blocked={'questions': [HOME]}),
+        entities.KnowledgeItem: row(id='k', type='fact', title=HOME, project_id=None),
+        entities.Repository: row(id='r', path=HOME, project_id=None),
+        entities.Automation: row(id='a', name=HOME, project_id=None),
+        entities.Account: row(id='u', label=HOME)}
+    error = row(id='v', subject=SimpleNamespace(kind='mission', id='m'),
+                holds_mission=True, error='failed at ' + HOME)
+
+    def where(conn, cls, **eq):
+        if cls is entities.Verification:
+            return [error] if eq.get('state') == 'ERROR' else []
+        return [authored[cls]] if cls in authored else []
+
+    monkeypatch.setattr(attention.rows, 'where', where)
+    monkeypatch.setattr(attention.rows, 'get', lambda *args: None)
+    items = attention.attention(None, homes=homes)['items']
+    assert next(i for i in items if i['kind'] == 'verification')['reason'] == 'failed at its home'
+    assert all(i['reason'] == HOME for i in items if i['kind'] != 'verification')
+    assert len(items) == 6

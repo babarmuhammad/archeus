@@ -670,7 +670,8 @@ def homes(conn, registry, callers, *, shorts=None):
     for r in rows.where(conn, entities.RouteDecision):
         for a in (r.entity.input_snapshot or {}).get('accounts', ()):
             if not a.get('registered') and a.get('ref'):
-                defaults[a['ref']] = (a['harness'], a['ref'], a.get('home_ref'))
+                if a['ref'] not in defaults or not defaults[a['ref']][2] and a.get('home_ref'):
+                    defaults[a['ref']] = (a['harness'], a['ref'], a.get('home_ref'))
             elif a.get('registered'):
                 historical_homes.append(a.get('home_ref'))
     adapters = ([] if registry is None else [registry.get(i) for i in registry.ids()])
@@ -679,7 +680,8 @@ def homes(conn, registry, callers, *, shorts=None):
             ref = a.default_account()
         except Exception:  # A broken adapter must not prevent reading stored rows.
             continue
-        defaults.setdefault(ref.account_id, (a.id, ref.account_id, ref.home_ref))
+        if ref.account_id not in defaults or not defaults[ref.account_id][2] and ref.home_ref:
+            defaults[ref.account_id] = (a.id, ref.account_id, ref.home_ref)
     out = Homes(registered, defaults.values(), shorts=shorts, platform=sys.platform)
     historical = Homes(historical_homes, shorts=lambda _: None, platform=sys.platform)
     out.patterns += historical.patterns

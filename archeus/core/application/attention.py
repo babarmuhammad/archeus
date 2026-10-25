@@ -11,6 +11,7 @@ from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..domain import entities
 from .queries import approval_view
+from .public import system_value
 
 #: The kinds, in the order they are listed.
 KINDS = ('approval', 'verification', 'mission', 'knowledge', 'drift', 'automation', 'account')
@@ -53,7 +54,8 @@ def attention(conn, now=None, *, homes=None):
             mid = v.subject.id if v.subject.kind == 'mission' else _mission_of_task(conn, v.subject.id)
             items.append(_item('verification', 'verification', r, state,
                                'acceptance' if state == 'AWAITING_HUMAN' else 'verifier_error',
-                               v.error if state == 'ERROR' else None, mid, _project(conn, mid)))
+                               system_value(v.error, homes) if state == 'ERROR' else None,
+                               mid, _project(conn, mid)))
     for r in rows.where(conn, entities.Mission):
         pb, m = r.entity.planning_blocked, r.entity
         # a planning round that asked a question or was denied waits for the user,

@@ -14,6 +14,7 @@ value.
 """
 
 import hashlib
+import hmac
 import os
 import posixpath
 import re
@@ -22,7 +23,7 @@ from urllib.parse import quote, unquote
 
 REPLACEMENT = 'its home'
 _SEP = r'[\\/]+'
-_LEFT = r'(?<![\w/\\.~-])'
+_LEFT = r'(?:(?<![\w/.~])|(?<=\\[ntr]))'
 _RIGHT = r'(?![\w~-]|\.\w)'
 _FILE = re.compile(r'file:(?://([^/]*))?(/.*)?$', re.I)
 _LONG = re.compile(r'[\\/]{2}[?.][\\/](UNC[\\/])?', re.I)
@@ -89,12 +90,13 @@ def _win(win, rx):
 
 
 def public_account_id(key):
-    return 'account:' + hashlib.sha256(key.encode('utf-8')).hexdigest()
+    from ..infra.discovery import public_account_secret
+    return 'account:' + hmac.new(public_account_secret(), key.encode('utf-8'), hashlib.sha256).hexdigest()
 
 
 def account_key_map(default_accounts):
     return {key: public_account_id(key) for _, key, home in default_accounts
-            if isinstance(home, str) and home.strip()}
+            if '/' in key or '\\' in key}
 
 
 class Homes:

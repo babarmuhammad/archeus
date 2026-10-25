@@ -96,6 +96,11 @@ def test_a_sentence_dot_quotes_and_parens_still_match():
     assert H.scrub_text('%s then %s' % (HOME, HOME + r'\y'), h) == r'its home then its home\y'
 
 
+@pytest.mark.parametrize('prefix', [r'err\n', r'err\t', r'err\r', '-', r'\\'])
+def test_escaped_controls_and_punctuation_allow_left_boundary(prefix):
+    assert H.scrub_text(prefix + HOME + r'\x', _homes()) == prefix + r'its home\x'
+
+
 def test_a_typed_tilde_spelling_matches(monkeypatch):
     monkeypatch.setenv('USERPROFILE', r'C:\Users\mab')
     monkeypatch.setenv('HOME', r'C:\Users\mab')
@@ -147,7 +152,7 @@ def test_a_default_home_path_is_scrubbed_too():
 
 @pytest.mark.parametrize('text', [
     'plain', '', 'C:\\Users\\mab\\.claude-work\\projects\\a', 'x ' + HOME + ' y ' + KEY,
-    'its home\\x', H.public_account_id(KEY), 'file:///c%3A/Users/mab/.claude-work/x',
+    'its home\\x', 'account:' + 'a' * 64, 'file:///c%3A/Users/mab/.claude-work/x',
 ])
 def test_scrub_is_idempotent(text):
     h = _homes(defaults=[DEFAULT])
@@ -289,6 +294,13 @@ def test_distinct_exact_stored_keys_have_distinct_public_ids():
     assert H.public_value({'account': 'registered-a1'}, h) == {'account': 'registered-a1'}
 
 
+def test_path_keys_with_missing_homes_are_opaque():
+    rows = [('h', KEY, None), ('h', 'h:/retired/default', ''),
+            ('fake', 'fake:fake_local', None)]
+    assert H.account_key_map(rows) == {key: H.public_account_id(key)
+                                       for _, key, _ in rows[:2]}
+
+
 def test_same_key_id_survives_restart():
     code = ('import sys; sys.path.insert(0, %r); '
             'from archeus.core.homes import public_account_id; print(public_account_id(%r))'
@@ -319,7 +331,14 @@ def test_historical_identity_never_probes_homes(monkeypatch):
         pytest.fail('historical identity probed a home')
     with monkeypatch.context() as patch:
         patch.setattr(H, '_win_short', forbidden)
-        patch.setattr(H.os, 'stat', forbidden)
+        real_stat = H.os.stat
+
+        def stat(path, *args, **kwargs):
+            if str(path).lower().replace('\\', '/').startswith(
+                    ('c:/users/mab/.claude', 'd:/retired/.claude')):
+                forbidden(path)
+            return real_stat(path, *args, **kwargs)
+        patch.setattr(H.os, 'stat', stat)
         patch.setattr(H.os, 'scandir', forbidden)
         ids = H.account_key_map(HISTORY)
         h = H.Homes(default_accounts=HISTORY)
@@ -334,3 +353,26 @@ def test_public_ids_reveal_no_home_or_key_material():
         assert re.fullmatch(r'account:[0-9a-f]{64}', public_id)
         for material in (key, home, 'claude', 'users', 'retired', 'mab', '/', '\\'):
             assert material.lower() not in public_id.lower()
+
+
+def test_public_ids_are_install_specific_hmac(tmp_path, monkeypatch):
+    import hashlib
+    import hmac
+    import os
+    import stat
+
+    installs = [tmp_path / name for name in ('install-a', 'install-b')]
+    ids = []
+    for home in installs:
+        monkeypatch.setenv('ARCHEUS_HOME', str(home))
+        ids.append(H.public_account_id(KEY))
+        path = home / 'run' / 'public-account-secret'
+        secret = path.read_bytes()
+        assert len(secret) == 32
+        assert ids[-1] == 'account:' + hmac.new(secret, KEY.encode(), hashlib.sha256).hexdigest()
+        assert H.public_account_id(KEY) == ids[-1]
+        assert path.read_bytes() == secret
+        if os.name != 'nt':
+            assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert ids[0] != ids[1]
+    assert all(value != 'account:' + hashlib.sha256(KEY.encode()).hexdigest() for value in ids)

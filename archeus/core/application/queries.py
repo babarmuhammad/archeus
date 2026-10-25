@@ -441,8 +441,6 @@ def approval_view(conn, row, now=None, *, homes=None):
 def _public_approval(body, homes):
     return system_value(body, homes, authored=(('decision_note',),
                         ('presented', 'what', 'title'),
-                        ('presented', 'what', 'paths'),
-                        ('items', 'action', 'paths'),
                         ('presented', 'against', 'mission', 'title'),
                         ('presented', 'against', 'mission', 'objective'),
                         ('presented', 'against', 'plan', 'summary'),

@@ -2,7 +2,8 @@
 
     run/core.lock    empty; an OS lock held for the life of the Core process
     run/core.json    {pid, create_time, port, started_at, version, schema}
-    run/local-token  the CLI's device token (the one plaintext secret at rest)
+    run/local-token  the CLI's device token
+    run/public-account-secret  the install's public-account HMAC key
 
 The lock is `msvcrt.locking` / `fcntl.flock`, never a pid file, so a Core that
 dies releases it with its process and there is no stale lock to clean up. The
@@ -17,6 +18,7 @@ Stdlib plus the P0.5 `proc` seam only: the CLI imports this.
 
 import json
 import os
+import secrets
 import sys
 import time
 
@@ -224,3 +226,33 @@ def write_local_token(token):
     fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, 'w', encoding='utf-8') as f:
         f.write(token)
+
+
+def public_account_secret():
+    # Lock the secret itself so concurrent first reads cannot publish different ids.
+    ensure_run_dir()
+    path = os.path.join(paths.run_dir(), 'public-account-secret')
+    fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, 'O_BINARY', 0), 0o600)
+    deadline = time.monotonic() + 2.0
+    while True:
+        try:
+            _try_lock(fd)
+            break
+        except OSError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                raise LockHeld(path) from None
+            time.sleep(0.05)
+    lock = CoreLock(fd)
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        secret = os.read(fd, 33)
+        if not secret:
+            secret = secrets.token_bytes(32)
+            os.write(fd, secret)
+            os.fsync(fd)
+        if len(secret) != 32:
+            raise ValueError('invalid public account secret')
+        return secret
+    finally:
+        lock.release()
