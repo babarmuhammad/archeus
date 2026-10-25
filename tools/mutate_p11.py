@@ -88,10 +88,8 @@ MUTATIONS = [
      "    if False:")],
      [I + '::test_E46_a_workdir_escape_or_a_branch_mismatch_halts']),
     ('X14', 'an unclassified command classified permissive', [(CAN,
-     "    if '$' in cmd or '`' in cmd or _OPERATOR.search(_outside_quotes(cmd)):\n"
-     "        return [_unclassified('shell', (cmd,))], True",
-     "    if '$' in cmd or '`' in cmd or _OPERATOR.search(_outside_quotes(cmd)):\n"
-     "        return [_unclassified('shell', (cmd,))], False")],
+     "        return ([_unclassified('command', _stored_command(cmd, tool))], True), result",
+     "        return ([_unclassified('command', _stored_command(cmd, tool))], False), result")],
      [I + '::test_E42_an_unclassified_command_is_judged_as_the_strictest_class']),
     # ── runtime (§12) ──
     ('X15', 'the ceiling not enforced', [(MGR,
