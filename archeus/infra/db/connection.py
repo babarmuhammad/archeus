@@ -40,6 +40,13 @@ class SQLiteTooOld(RuntimeError):
     pass
 
 
+class Connection(sqlite3.Connection):
+    """`homes_cache`: the one dict of the Database that opened this connection
+    (resources.homes keeps what it derived from the RouteDecision history there);
+    None for a connection nothing owns."""
+    homes_cache = None
+
+
 def require_sqlite(version=None):
     """Refuse a SQLite build older than MIN_SQLITE (plan §31.1 P2)."""
     got = tuple(sqlite3.sqlite_version_info if version is None else version)
@@ -60,7 +67,7 @@ def connect(path, *, readonly=False):
     (one thread at a time); the write connection belongs to the writer thread."""
     require_sqlite()
     conn = sqlite3.connect(path, isolation_level=None, check_same_thread=not readonly,
-                           timeout=BUSY_TIMEOUT_MS / 1000)
+                           timeout=BUSY_TIMEOUT_MS / 1000, factory=Connection)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA busy_timeout = %d' % BUSY_TIMEOUT_MS)
     conn.execute('PRAGMA foreign_keys = ON')

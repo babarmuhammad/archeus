@@ -30,6 +30,8 @@ I2 = 'tests/v1/integration/test_t144_leak_sweep.py::'
 I3 = 'tests/v1/integration/test_t144_event_reads.py::'
 I4 = 'tests/v1/integration/test_t144_live_bound_writes.py::'
 I5 = 'tests/v1/integration/test_t144_cut_and_consumption.py::'
+I6 = 'tests/v1/integration/test_t144_homes_cache.py::'
+DB = 'archeus/infra/db/__init__.py'
 U3 = 'tests/v1/unit/test_t144_event_surfaces.py::'
 AT = 'archeus/core/application/attention.py'
 TR = 'archeus/core/application/trace.py'
@@ -682,6 +684,40 @@ MUTATIONS = [
      "            'handing_off': _clean(_asked(conn, e.id), homes) if e.state == 'HANDING_OFF' else None,",
      "            'handing_off': _asked(conn, e.id) if e.state == 'HANDING_OFF' else None,")],
      [I5 + 'test_execution_why_and_handoff_reason_project_recorded_reasons_with_the_read_homes']),
+    ('Z469', 'the decision history is never re-read', [(RS,
+     "        if hit and hit['key'] == key:",
+     "        if hit:")],
+     [I6 + 'test_a_home_introduced_after_the_cache_filled_is_scrubbed_on_read_and_write']),
+    ('Z470', 'a live default account is kept in the cached defaults', [(RS,
+     "        defaults = dict(defaults)",
+     "        pass")],
+     [I6 + 'test_the_live_registry_and_callers_are_read_on_every_call']),
+    ('Z471', 'the cache is shared across Database instances', [(DB,
+     "        cache = {}",
+     "        cache = SHARED"), (DB,
+     "class Database:",
+     "SHARED = {}\n\n\nclass Database:")],
+     [I6 + 'test_two_databases_never_share_the_cache']),
+    ('Z472', 'the cache key leaves out the last decision id', [(RS,
+     "        key = None if last is None else tuple(last)",
+     "        key = None if last is None else (last[0],)")],
+     [I6 + 'test_a_decision_that_reuses_the_rowid_of_a_rolled_back_one_is_read']),
+    ('Z473', 'the incremental read does not check the cached row id', [(RS,
+     "                'SELECT 1 FROM route_decisions WHERE rowid = ? AND id = ?',",
+     "                'SELECT 1 FROM route_decisions WHERE rowid = ? AND ? IS NOT NULL',")],
+     [I6 + 'test_a_decision_that_reuses_the_rowid_of_a_rolled_back_one_is_read']),
+    ('Z474', 'read connections get no cache', [(DB,
+     "            conn.homes_cache = self.homes_cache",
+     "            pass")],
+     [I6 + 'test_a_warm_call_decodes_no_decision_and_a_new_one_decodes_only_itself']),
+    ('Z475', 'the writer connection gets no cache', [(DB,
+     "            conn.homes_cache = cache",
+     "            pass")],
+     [I6 + 'test_a_warm_call_decodes_no_decision_and_a_new_one_decodes_only_itself']),
+    ('Z476', 'a new decision re-reads the whole history', [(RS,
+     "            after, built = hit['key'][0], hit['homes']",
+     "            after, built = 0, hit['homes']")],
+     [I6 + 'test_a_warm_call_decodes_no_decision_and_a_new_one_decodes_only_itself']),
 ]
 
 

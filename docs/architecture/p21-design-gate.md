@@ -325,14 +325,25 @@ The AST guard is not exception taint analysis. Stored database rows and artifact
 legacy GUI reads, symlink/junction aliases and the contained-text spelling ceilings documented
 in `core/homes.py` are outside the containment guarantee. Dictionary keys are not projected.
 
-Read-cost ceiling (slice 2 S-5): home discovery scans and decodes stored RouteDecision snapshots
-on nonempty reads and, since N-3, on the single writer thread inside the write transaction of
-every checkpoint derive (each ended execution), recorded context package, resume, hand-off and
-automation claim, and of a hook reason, hand-off reason or progress line longer than its cap. Slice 3
-measured about 16 ms per scan at 300 decisions and about 1.6 s at 30,000 (not re-measured); on the
-writer that stalls every writer, not one reader. There is no constant-time, cached, or fixed-latency
-guarantee, for reads or commits; matching cost also grows with output strings and known homes. Empty
-event polls avoid home construction. A cache of `Homes` per latest decision is a later card.
+Read-cost ceiling (slice 2 S-5, cached 2026-10-25): home discovery reads the RouteDecision
+snapshots, on nonempty reads and, since N-3, on the single writer thread inside the write transaction
+of every checkpoint derive (each ended execution), recorded context package, resume, hand-off and
+automation claim, and of a hook reason, hand-off reason or progress line longer than its cap. Before
+the cache one build cost about 1.8 s at 30,000 decisions (measured, one scan plus 30,000 duplicate
+historical patterns, so a scrub of one 350 character text cost about 300 ms) and stalled every writer.
+Now `resources.homes` keeps the history-derived half (default accounts and the retired registered
+homes, deduplicated) in the owning Database's `homes_cache` with the (rowid, id) of the last
+RouteDecision read, and a call reads only the rows after it. Measured at 30,000 decisions: first call
+per Database about 1.2 s (cold, once), a call with nothing new 0.5-1 ms, the first call after one new
+decision about 1.5 ms, a scrub 0.1 ms. The registry, the callers and the Account rows are read on every
+call, so a home from a changed registry, a caller or a newly registered account is scrubbed at once.
+The id is in the key because a rolled-back insert frees its rowid for a different decision; a cached
+last row that is no longer there forces a full re-read. A connection nothing owns (a bare `sqlite3`
+connection, unit tests) is not cached. Pinned by `integration/test_t144_homes_cache.py`, mutants
+Z469-Z476. Remaining ceiling: the cold build is still the full scan (1.2 s at 30,000, on whichever
+thread asks first, the writer included); the 8.3 short-name probe of registered homes runs on every
+call; matching cost still grows with output strings and known homes. Empty event polls avoid home
+construction.
 
 Registry ceiling (N-3), closed 2026-10-25: every write and worker path that builds `Homes` reads the
 live adapter registry and callers the owner bound to the writer (`writer.live`, seen by a command as
