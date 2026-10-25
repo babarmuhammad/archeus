@@ -46,7 +46,6 @@ def core_check(pg, mode):
         return
     check(not pg.evaluate(MARK_VISIBLE), 'full: no static mark, the breath is the cue')
     pg.evaluate("window.dispatchEvent(new Event('focus'))")
-    pg.wait_for_timeout(250)
     check(pg.evaluate(CORE_ANIMS) == 1, 'full: one core animation while running is confirmed')
     t = pg.evaluate("(() => { const e = %s.getAnimations()[0].effect; return [e.getTiming().duration, e.getTiming().iterations, e.getKeyframes().map(k => [k.transform, k.computedOffset, k.easing])]; })()" % CORE)
     check(t[0] == 6000 and t[1] in (None, float('inf')), 'full: 6000 ms cycle, repeating')

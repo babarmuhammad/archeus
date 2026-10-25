@@ -2544,8 +2544,9 @@
     markEl.hidden = !showMark;
     if (showMark) markEl.textContent = count('running') + ' verifying';
     if (on && !coreAnim) {
-      coreAnim = coreEl.animate([{ transform: 'scale(1)', easing: 'ease-in-out' }, { transform: 'scale(1.018)', easing: 'ease-in-out', offset: 0.5 }, { transform: 'scale(1)' }], { duration: 6000, iterations: Infinity });
-      coreAnim.oncancel = function () { coreAnim = null; };
+      var a = coreAnim = coreEl.animate([{ transform: 'scale(1)', easing: 'ease-in-out' }, { transform: 'scale(1.018)', easing: 'ease-in-out', offset: 0.5 }, { transform: 'scale(1)' }], { duration: 6000, iterations: Infinity });
+      // The cancel event is queued: an old animation's event must not clear a newer one (that left two breaths running).
+      a.oncancel = function () { if (coreAnim === a) coreAnim = null; };
     } else if (!on && coreAnim) { coreAnim.cancel(); coreAnim = null; }
   }
   function motionSync() {
