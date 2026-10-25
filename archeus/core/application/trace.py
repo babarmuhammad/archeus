@@ -12,7 +12,8 @@ from ...infra.db import rows
 from ..domain import entities
 from ..execution import output
 from . import attention, executions
-from .queries import list_policy_decisions, route_decisions
+from .public import public_output
+from .queries import _homes, list_policy_decisions, route_decisions
 
 MAX_EVENTS = 1000
 #: the newest executions read per trace: each costs an output read (and a live
@@ -51,13 +52,14 @@ def lanes(events):
 
 def trace(conn, mission_id, registry, *, homes=None):
     """The trace of *mission_id* (NotFound when there is no such mission)."""
-    t = attention.timeline(conn, mission_id, limit=MAX_EVENTS)
+    homes = _homes(conn, homes)
+    t = attention.timeline(conn, mission_id, limit=MAX_EVENTS, homes=homes)
     execs, rs = [], sorted(rows.where(conn, entities.Execution, mission_id=mission_id),
                            key=lambda r: r.entity.id)
     for r in rs[-MAX_EXECUTIONS:]:
         e = r.entity
         adapter = registry.get(e.harness_id) if e.harness_id in registry.ids() else None
-        o = output.read(e, adapter)
+        o = public_output(output.read(e, adapter), homes)
         execs.append({'id': e.id, 'task_id': e.task_id, 'state': e.state, 'attempt': e.attempt,
                       'route_decision_id': e.route_decision_id,
                       'policy_decision_id': e.policy_decision_id,
@@ -66,6 +68,6 @@ def trace(conn, mission_id, registry, *, homes=None):
                       'lanes': lanes(o['events'])})
     return {'mission_id': mission_id, 'events': t['events'][::-1],
             'truncated': t['next_before'] is not None,
-            'policy_decisions': list_policy_decisions(conn, mission_id),
+            'policy_decisions': list_policy_decisions(conn, mission_id, homes=homes),
             'route_decisions': route_decisions(conn, mission_id, homes=homes),
             'executions': execs, 'executions_truncated': len(rs) > MAX_EXECUTIONS}

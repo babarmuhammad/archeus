@@ -8,10 +8,12 @@ from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..domain import entities, ids, states
 from .commands import active_plan
-from .public import system_value
+from .public import PATH_KEYS, public_context, public_event, system_value
 
 
 def _homes(conn, homes):
+    if callable(homes):             # a read that may find nothing to project builds them lazily
+        return homes()
     if homes is None:
         from . import resources
         return resources.homes(conn, None, ())
@@ -104,11 +106,11 @@ def list_reviews(conn, mission_id, *, homes=None):
     return {'mission_id': mission_id, 'reviews': [_public_review(view(r), homes) for r in rs]}
 
 
-def get_context_package(conn, package_id):
+def get_context_package(conn, package_id, *, homes=None):
     row = rows.get(conn, entities.ContextPackage, package_id)
     if row is None:
         raise NotFound(package_id)
-    return view(row)
+    return public_context(view(row), _homes(conn, homes))
 
 
 def list_missions(conn, state=None, project_id=None):
@@ -170,12 +172,13 @@ def devices(conn):
     return out
 
 
-def events(conn, after_seq=0, *, limit=None):
-    """Envelopes after *after_seq*; every one when *limit* is None (paged)."""
+def events(conn, after_seq=0, *, limit=None, homes=None):
+    """Envelopes after *after_seq*, payloads projected; every one when *limit* is None (paged)."""
     out, cursor = [], after_seq
     while True:
         page = outbox.events_after(conn, cursor, limit=outbox.MAX_LIMIT if limit is None else limit)
-        out += [e.to_envelope() for e in page]
+        homes = _homes(conn, homes) if page else homes
+        out += [public_event(e.to_envelope(), homes) for e in page]
         if limit is not None or len(page) < outbox.MAX_LIMIT:
             return out
         cursor = page[-1].seq
@@ -464,18 +467,24 @@ def list_approvals(conn, state=None, mission_id=None, now=None, *, homes=None):
             for r in rows.where(conn, entities.Approval, **eq)]
 
 
-def get_policy_decision(conn, decision_id):
+def _public_policy_decision(body, homes):
+    return system_value(body, homes, path_keys=PATH_KEYS, authored=(('matched_rules',),))
+
+
+def get_policy_decision(conn, decision_id, *, homes=None):
     row = rows.get(conn, entities.PolicyDecision, decision_id)
     if row is None:
         raise NotFound(decision_id)
-    return view(row)
+    return _public_policy_decision(view(row), _homes(conn, homes))
 
 
-def list_policy_decisions(conn, mission_id=None, stage=None):
+def list_policy_decisions(conn, mission_id=None, stage=None, *, homes=None):
     if stage is not None and stage not in entities.POLICY_STAGES:
         raise ValueError('%r is not a policy stage' % (stage,))
     eq = {k: v for k, v in (('mission_id', mission_id), ('stage', stage)) if v is not None}
-    return [view(r) for r in rows.where(conn, entities.PolicyDecision, **eq)]
+    homes = _homes(conn, homes)
+    return [_public_policy_decision(view(r), homes)
+            for r in rows.where(conn, entities.PolicyDecision, **eq)]
 
 
 def policies(conn):

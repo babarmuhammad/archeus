@@ -24,6 +24,8 @@ from ..domain import entities, events as ev, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
 from . import authorization, commands, lifecycle
+from .public import public_event
+from .queries import _homes
 
 #: entity kind -> class, for resolving an event's subject
 KINDS = {cls._ID: cls for cls in rows.TABLES}
@@ -256,7 +258,9 @@ def _claim(tx, actor, a, e, why):
     if e.actor.kind == 'execution':
         return end('denied', 'denied', 'caused by an execution, which may not create missions '
                    '(domain-model §3.3)')
-    want = matcher.render(a.template, e.type, e.seq, (e.subject.kind, e.subject.id), e.payload)
+    # matching above keeps the raw payload; only what is written into the mission is projected
+    want = matcher.render(a.template, e.type, e.seq, (e.subject.kind, e.subject.id),
+                          public_event(e.to_envelope(), _homes(tx.conn, None))['payload'])
     m = commands.create_mission(tx, actor=me, title=want['title'], objective=want['objective'],
                                 project_id=a.project_id, workspace_id=a.workspace_id,
                                 success_criteria=want['success_criteria'],

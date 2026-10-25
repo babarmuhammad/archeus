@@ -30,8 +30,9 @@ from ...infra import paths
 from ...infra.db import rows
 from ...infra.eventlog import consumers, outbox
 from ..application import calls as C
-from ..application import commands
+from ..application import commands, resources
 from ..application.planning import PLANNING_STATES
+from ..application.public import public_context
 from ..application.work import PolicyDenied
 from ..domain import entities
 from . import planner
@@ -122,7 +123,8 @@ class Planner:
         pkg_id = self._package(mission_id)
         with self.db.read() as conn:
             m = rows.get(conn, entities.Mission, mission_id).entity
-            pkg = rows.get(conn, entities.ContextPackage, pkg_id).entity.to_dict()
+            pkg = public_context(rows.get(conn, entities.ContextPackage, pkg_id).entity.to_dict(),
+                                 resources.homes(conn, None, ()))
             lines, facts = planner.describe(conn, pkg, m)
             replan = _replan(conn, m, why)
         c = self.calls.run(purpose='planner', source={'kind': 'mission', 'id': mission_id},

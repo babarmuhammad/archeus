@@ -16,3 +16,42 @@ def system_value(value, homes, *, authored=(), path_keys=(), _path=()):
     projected = public_value(value, homes, path_keys=path_keys,
                              _key=_path[-1] if _path else None)
     return scrub_text(projected, homes)
+
+
+#: Authored payload leaves of an event, by type (T-144 O-8/O-10): what a user or
+#: model wrote, kept byte for byte. Provenance decides, never the event's actor:
+#: every other string of every event is system-owned and gets the fallback scrub.
+EVENT_AUTHORED = {
+    'mission.created': (('title',),),
+    'mission.updated': (('added', 'requirements'), ('added', 'constraints'),
+                        ('planning_blocked', 'questions')),
+    'idea.created': (('title',),),
+    'knowledge_item.created': (('title',),),
+    'feedback.received': tuple(('promoted', k) for k in ('title', 'text', 'anchors', 'constraint')),
+    'meeting.imported': (('name',),),
+    'automation.created': (('name',), ('trigger',)),
+    'project.created': (('name',),),
+    'repository.registered': (('path',),),
+    'repository.model_added': (('path',),),
+    'repository.file_added': (('path',),),
+    'policy_rule.created': (('before',), ('after',)),
+    'policy_rule.retired': (('before',),),
+}
+PATH_KEYS = ('account_ref', 'ref', 'home_ref', 'home_key')
+
+
+def public_event(envelope, homes):
+    """The envelope with its payload projected; the envelope is not touched."""
+    return dict(envelope, payload=system_value(
+        envelope['payload'], homes, path_keys=PATH_KEYS,
+        authored=EVENT_AUTHORED.get(envelope['type'], ())))
+
+
+def public_output(out, homes):
+    """An execution's output read with every event string scrubbed: agent text
+    is an approved scrub lane, and it is scrubbed before any truncation."""
+    return dict(out, events=system_value(out['events'], homes, path_keys=PATH_KEYS))
+
+
+def public_context(body, homes):
+    return system_value(body, homes, authored=(('query',),))

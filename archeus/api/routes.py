@@ -62,6 +62,7 @@ from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import automations, live, optins, sessions
 from ..core.application import verification
+from ..core.application.public import public_output
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -191,7 +192,8 @@ def events(req):
     if not 1 <= limit <= 1000:
         raise Invalid('limit', 'is 1..1000')
     with req.api.db.read() as conn:
-        return 200, {'events': queries.events(conn, after, limit=limit)}
+        return 200, {'events': queries.events(conn, after, limit=limit,
+                                              homes=lambda: _read_homes(req, conn))}
 
 
 def events_stream(req):
@@ -402,7 +404,8 @@ def ack_digest(req):
 
 def get_context_package(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_context_package(conn, req.params['id'])
+        return 200, queries.get_context_package(conn, req.params['id'],
+                                                homes=_read_homes(req, conn))
 
 
 def preview_context(req):
@@ -411,7 +414,8 @@ def preview_context(req):
     if 'limit_tokens' in kw and kw['limit_tokens'] < 1:
         raise Invalid('limit_tokens', 'is an integer >= 1')
     with req.api.db.read() as conn:
-        return 200, context.assemble(conn, b['subject']['kind'], b['subject']['id'], **kw)
+        return 200, context.assemble(conn, b['subject']['kind'], b['subject']['id'],
+                                     homes=_read_homes(req, conn), **kw)
 
 
 def list_knowledge(req):
@@ -591,9 +595,10 @@ def execution_stream(req):
     offset = 0 if raw is None else _cursor(raw, 'from')
     with req.api.db.read() as conn:
         e = executions.entity(conn, req.params['id'])
+        homes = _read_homes(req, conn)
     reg = req.api.resources.registry
     adapter = reg.get(e.harness_id) if e.harness_id in reg.ids() else None
-    return 200, output.read(e, adapter, offset)
+    return 200, public_output(output.read(e, adapter, offset), homes)
 
 
 def attention_items(req):
@@ -613,7 +618,7 @@ def mission_timeline(req):
     with req.api.db.read() as conn:
         return 200, attention.timeline(conn, req.params['id'],
                                        None if raw_b is None else _cursor(raw_b, 'before'),
-                                       limit)
+                                       limit, homes=_read_homes(req, conn))
 
 
 def mission_trace(req):
@@ -856,12 +861,14 @@ def simulate_policy(req):
 def list_policy_decisions(req):
     with req.api.db.read() as conn:
         return 200, {'policy_decisions': queries.list_policy_decisions(
-            conn, _one(req.query, 'mission'), _one(req.query, 'stage'))}
+            conn, _one(req.query, 'mission'), _one(req.query, 'stage'),
+            homes=_read_homes(req, conn))}
 
 
 def get_policy_decision(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_policy_decision(conn, req.params['id'])
+        return 200, queries.get_policy_decision(conn, req.params['id'],
+                                               homes=_read_homes(req, conn))
 
 
 def list_approvals(req):

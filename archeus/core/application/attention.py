@@ -10,8 +10,8 @@ from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..domain import entities
-from .queries import approval_view
-from .public import system_value
+from .queries import _homes, approval_view
+from .public import public_event, system_value
 
 #: The kinds, in the order they are listed.
 KINDS = ('approval', 'verification', 'mission', 'knowledge', 'drift', 'automation', 'account')
@@ -36,7 +36,6 @@ def _item(kind, ref_kind, row, state, reason_code, reason=None, mission_id=None,
 
 
 def attention(conn, now=None, *, homes=None):
-    from .queries import _homes
     homes = _homes(conn, homes)
     items = []
     for r in rows.where(conn, entities.Approval, **{'state': 'PENDING'}):
@@ -92,7 +91,7 @@ _OWN = (('plan', entities.Plan), ('task', entities.Task), ('execution', entities
 MAX_TIMELINE = 100
 
 
-def timeline(conn, mission_id, before=None, limit=50):
+def timeline(conn, mission_id, before=None, limit=50, *, homes=None):
     """The newest *limit* events (before seq *before*) whose subject is the
     mission or one of its own rows — never another mission's."""
     if rows.get(conn, entities.Mission, mission_id) is None:
@@ -120,6 +119,7 @@ def timeline(conn, mission_id, before=None, limit=50):
         return {'mission_id': mission_id, 'events': [], 'next_before': None}
     got = conn.execute('SELECT * FROM events WHERE seq IN (%s) ORDER BY seq DESC'
                        % ','.join('?' * len(seqs)), seqs)
-    events = [outbox.decode(r).to_envelope() for r in got]
+    shown = _homes(conn, homes)
+    events = [public_event(outbox.decode(r).to_envelope(), shown) for r in got]
     return {'mission_id': mission_id, 'events': events,
             'next_before': events[-1]['seq'] if len(events) == limit else None}

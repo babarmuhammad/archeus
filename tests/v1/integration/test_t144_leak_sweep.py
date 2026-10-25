@@ -351,6 +351,9 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
             tx.insert(v, actor=actor)
             tx.append(new_event('verification.created', Ref('verification', v.id), actor,
                 payload={}, workspace=mission.workspace_id))
+            tx.append(new_event('mission.state_changed', Ref('mission', mid), actor,
+                payload={'from': 'a', 'to': 'b', 'reason': 'auth ' + live_default},
+                workspace=mission.workspace_id))
             tx.insert(review, actor=actor)
             tx.append(new_event('review.requested', Ref('review', review.id), actor,
                 payload={'reviewer_resource': review.reviewer_resource},
@@ -365,7 +368,8 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
                  '/v1/route-decisions/' + route.id, '/v1/accounts', '/v1/status',
                  '/v1/verifications/' + vid, '/v1/missions/%s/verifications' % mid,
                  '/v1/missions/%s/reviews' % mid, '/v1/approvals',
-                 '/v1/approvals/' + approval['id'], '/v1/attention']
+                 '/v1/approvals/' + approval['id'], '/v1/attention', '/v1/policy-decisions',
+                 '/v1/missions/%s/timeline?limit=100' % mid]
         with r.db.read() as conn:
             before = _stored(conn)
             from archeus.core.application import attention
@@ -395,10 +399,35 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
                 assert item['reason'] == 'verifier crashed reading its home; auth its home'
         trace_response = core.http('GET', '/v1/missions/%s/trace' % mid)
         assert trace_response.status == 200
-        # Events and output lanes belong to slice 3.
         trace_decisions = trace_response.json()['route_decisions']
         assert rd_id in {d['id'] for d in trace_decisions}
-        _no_leak(trace_decisions, [home, private_default, live_default], [key])
+        private = [home, private_default, live_default]
+        _no_leak(trace_response.json(), private, [key])
+        feed, after = [], 0
+        while True:
+            page = core.http('GET', '/v1/events?after=%d&limit=1000' % after).json()['events']
+            feed += page
+            if len(page) < 1000:
+                break
+            after = page[-1]['seq']
+        types = {e['type'] for e in feed}
+        assert {'archeus_call.ended', 'review.requested', 'verification.created'} <= types
+        _no_leak(feed, private, [key])
+        ended = next(e for e in feed if e['type'] == 'archeus_call.ended'
+                     and e['subject']['id'] == rd_id)
+        assert ended['payload']['outcome']['account_ref'] == public_account_id(key)
+        preview = core.http('POST', '/v1/context/preview',
+                            body={'subject': {'kind': 'mission', 'id': mid}})
+        assert preview.status == 200, preview.body
+        _no_leak(preview.json(), private, [key])
+        stream = {'execution_id': execution.entity.id, 'offset': 0, 'next_offset': 1,
+                  'truncated': False, 'available': True,
+                  'events': [{'type': 'assistant', 'text': 'HOME is ' + home + ' / ' + key + ' / ' + live_default}]}
+        monkeypatch.setattr('archeus.core.execution.output.read', lambda e, a, offset=0: stream)
+        tail = core.http('GET', '/v1/executions/%s/stream' % execution.entity.id)
+        assert tail.status == 200, tail.body
+        assert tail.json()['events'] == [{'type': 'assistant', 'text': 'HOME is its home / ' + public_account_id(key) + ' / its home'}]
+        assert stream['events'][0]['text'] == 'HOME is ' + home + ' / ' + key + ' / ' + live_default
         with r.db.read() as conn:
             assert _stored(conn) == before
         assert acc['id'] == route.account_id

@@ -22,6 +22,7 @@ from ...infra.db import rows
 from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ...infra.search import bm25
+from ..application.public import public_event
 from ..domain import entities, events, ids, states
 from . import levels as P
 from claude_sessions.lexical import tokens_estimate
@@ -189,9 +190,12 @@ def _project(conn, project_id, out, missing):
                              constraints=sorted(f['constraint_id'] for f in violated)))
 
 
-def _history(conn, project_id, subject_id, as_of_at, out):
+def _history(conn, project_id, subject_id, as_of_at, out, homes):
     if as_of_at is None:
         return
+    if homes is None:
+        from ..application import resources
+        homes = resources.homes(conn, None, ())
     since = (_when(as_of_at) - timedelta(days=P.HISTORY_WINDOW_DAYS)).isoformat(
         timespec='milliseconds').replace('+00:00', 'Z')
     got = conn.execute(
@@ -200,8 +204,9 @@ def _history(conn, project_id, subject_id, as_of_at, out):
         (project_id, since, subject_id, P.HISTORY_CANDIDATES)).fetchall()
     for r in got:
         e = outbox.decode(r)
+        payload = public_event(e.to_envelope(), homes)['payload']
         text = '%s %s %s' % (e.type, events.REGISTRY[e.type][4],
-                             json.dumps(e.payload, sort_keys=True))
+                             json.dumps(payload, sort_keys=True))
         out.append(_cand({'kind': 'event', 'id': e.id, 'seq': e.seq}, 'L3', 'history', e.type,
                          e.subject.kind, e.subject.id, e.at, text, 'extracted',
                          '%s in this project within %d days' % (e.type,
@@ -260,8 +265,9 @@ def snapshot(conn):
     return outbox.head(conn), None if r is None else r[0]
 
 
-def gather(conn, subject_kind, subject_id):
-    """The candidates for one subject, read and never written."""
+def gather(conn, subject_kind, subject_id, homes=None):
+    """The candidates for one subject, read and never written. Event payloads
+    are projected through *homes* before any text is built from them (T-144 S20)."""
     as_of_seq, as_of_at = snapshot(conn)
     cands, excluded, missing = [], [], []
     if subject_kind == 'mission':
@@ -299,7 +305,7 @@ def gather(conn, subject_kind, subject_id):
         raise ValueError('a context subject is one of %s' % (entities.CONTEXT_SUBJECTS,))
     if project_id is not None:
         _project(conn, project_id, cands, missing)
-        _history(conn, project_id, subject_id, as_of_at, cands)
+        _history(conn, project_id, subject_id, as_of_at, cands, homes)
     _meetings(conn, workspace_id, project_id, cands)
     _knowledge(conn, workspace_id, project_id, cands, excluded)
     return {'workspace_id': workspace_id, 'project_id': project_id, 'query': query,
@@ -457,14 +463,14 @@ def _mission_of(conn, e):
 
 
 def assemble(conn, subject_kind, subject_id, *, query=None, levels=P.LEVELS,
-             limit_tokens=P.DEFAULT_BUDGET_TOKENS):
+             limit_tokens=P.DEFAULT_BUDGET_TOKENS, homes=None):
     """A context package, without an id: read, scored and budgeted, never
     written. `preview` returns it; a mission's `context_ready` records it."""
     if not set(levels) <= set(P.LEVELS):
         raise ValueError('levels are %s' % ', '.join(P.LEVELS))
     if isinstance(limit_tokens, bool) or not isinstance(limit_tokens, int) or limit_tokens < 1:
         raise ValueError('limit_tokens is an integer >= 1')
-    g = gather(conn, subject_kind, subject_id)
+    g = gather(conn, subject_kind, subject_id, homes)
     body = select(g, query=query, levels=levels, limit_tokens=limit_tokens)
     return dict(body, workspace_id=g['workspace_id'], project_id=g['project_id'],
                 subject_kind=subject_kind, subject_id=subject_id, as_of_seq=g['as_of_seq'],
