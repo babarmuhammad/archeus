@@ -719,6 +719,9 @@
   }
   function overviewSvg() {
     var L = window.ARCHEUS_LAYOUT, out = ovGlowDefs();
+    // The 88-unit targets shrink below 44 CSS px on the smallest phones.
+    // Keep all visible geometry and the Notes targets' shared boundary fixed.
+    var hit = window.matchMedia('(max-width: 340px)').matches ? Math.max(88, 44 * 804 / ($('#ov-art').clientWidth || window.innerWidth)) : 88;
     var amber = find('m-search'), blue = find('m-date');
     var ac = OV_FILL, bc = OV_BL;
     out += '<g class="ov-hit" data-act="open-list" role="button" tabindex="0" aria-label="Archeus: open the project list">' +
@@ -731,11 +734,11 @@
     out += ovText('label_search', 'ov-serif ov-title', amber.title);
     out += ovText('label_review_plan', 'ov-sans ov-sub', amber.stateText);
     out += '<a class="ov-review" href="#/plan/m-search" aria-label="Review plan: ' + esc(amber.title) + '">' +
-      '<rect class="ov-review-hit" x="' + (L.shapes.review[0] - 14) + '" y="' + (L.shapes.review[1] + (L.shapes.review[3] - L.shapes.review[1]) / 2 - 44) + '" width="' + (L.shapes.review[2] - L.shapes.review[0] + 28) + '" height="88" fill="transparent"/>' +
+      '<rect class="ov-review-hit" x="' + (L.shapes.review[0] - 14) + '" y="' + (L.shapes.review[1] + (L.shapes.review[3] - L.shapes.review[1]) / 2 - hit / 2) + '" width="' + (L.shapes.review[2] - L.shapes.review[0] + 28) + '" height="' + hit + '" fill="transparent"/>' +
       '<rect x="' + L.shapes.review[0] + '" y="' + L.shapes.review[1] + '" width="' + (L.shapes.review[2] - L.shapes.review[0]) + '" height="' + (L.shapes.review[3] - L.shapes.review[1]) + '" rx="9" fill="' + ac + '"/>' +
       ovText('review_label', 'ov-sans ov-btn', 'Review', (L.shapes.review[0] + L.shapes.review[2]) / 2) + '</a>';
     out += '<g class="ov-mark" data-open="m-search" role="button" tabindex="0" aria-label="' + esc(amber.title) + '">' +
-      '<circle cx="' + dm.cx + '" cy="' + dm.cy + '" r="' + 44 + '" fill="transparent"/></g>';
+      '<circle cx="' + dm.cx + '" cy="' + dm.cy + '" r="' + hit / 2 + '" fill="transparent"/></g>';
 
     out += '<g class="ov-glow" filter="url(#ov-glow-blue)">' + ovStar(sm, OV_GLOW_BLUE) + '</g>';
     out += ovStar(sm, bc);
@@ -743,14 +746,14 @@
     out += ovTriangle(tr, bc);
     out += ovText('label_codex', 'ov-sans ov-codex', blue.execText || 'Codex');
     out += '<g class="ov-mark" data-open="m-date" role="button" tabindex="0" aria-label="' + esc(blue.title) + '">' +
-      '<circle cx="' + sm.cx + '" cy="' + sm.cy + '" r="44" fill="transparent"/></g>';
+      '<circle cx="' + sm.cx + '" cy="' + sm.cy + '" r="' + hit / 2 + '" fill="transparent"/></g>';
 
     // The two Notes marks are 44 units apart, so 88 unit circles would overlap: the hit areas split at the midpoint and each grows away from the other.
     var nb = ovBox(L.marks.notes_index), nr = ovBox(L.marks.notes_read), nmid = (nb.cx + nr.cx) / 2;
     ['m-index', 'm-read'].forEach(function (id) {
       var mm = find(id), b = ovBox(L.marks[id === 'm-index' ? 'notes_index' : 'notes_read']);
       out += '<g class="ov-mark" data-open="' + id + '" role="button" tabindex="0" aria-label="' + esc(mm.title) + '">' +
-        '<rect x="' + (id === 'm-index' ? nmid - 88 : nmid) + '" y="' + (b.cy - 44) + '" width="88" height="88" rx="22" fill="transparent"/>' +
+        '<rect x="' + (id === 'm-index' ? nmid - hit : nmid) + '" y="' + (b.cy - hit / 2) + '" width="' + hit + '" height="' + hit + '" rx="22" fill="transparent"/>' +
         (id === 'm-index' ? ovDiamond(b, OV_IV, 3) : ovStar(b, OV_IV)) + '</g>';
     });
 
@@ -761,7 +764,7 @@
 
     var c = L.shapes.chip, cw = c[2] - c[0], cx0 = c[0];
     out += '<g class="ov-chip' + (FX.fresh ? ' is-fresh' : '') + '" data-act="open-list" role="button" tabindex="0" aria-label="' + (projects.length - 1) + ' more projects: open the list">' +
-      '<rect x="' + cx0 + '" y="' + (c[1] + (c[3] - c[1]) / 2 - 44) + '" width="' + cw + '" height="88" fill="transparent"/>' +
+      '<rect x="' + cx0 + '" y="' + (c[1] + (c[3] - c[1]) / 2 - hit / 2) + '" width="' + cw + '" height="' + hit + '" fill="transparent"/>' +
       '<rect class="ov-pill" x="' + cx0 + '" y="' + c[1] + '" width="' + cw + '" height="' + (c[3] - c[1]) + '" rx="' + ((c[3] - c[1]) / 2) + '" fill="rgba(20,16,26,0.7)" stroke="rgba(239,233,218,0.35)" stroke-width="2"/>' +
       ovText('chip_text', 'ov-sans ov-chip-text', (projects.length - 1) + ' more projects', cx0 + cw / 2) + '</g>';
     return out;

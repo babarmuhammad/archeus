@@ -2000,3 +2000,14 @@ body.frame-now .chat-feed button, body.frame-now .chat-feed a, body.frame-now .c
 
 /* Style pass 2: terminal status and focus cues share one neutral palette in every motion mode. */
 .term, .term .term-svg { --c-amber: var(--c-ivory); --c-blue: var(--c-ivory); --c-green: var(--c-ivory); --c-soft: var(--c-dim); --c-red: var(--c-ivory); --c-select: #303030; --focus: var(--c-ivory); }
+
+/* Small-phone targets: leave the transparent Places control's artwork fixed. */
+@media (max-width: 340px) {
+  #s-now .menu-btn { min-height: 44px; }
+  .frame .fr-crumb a::before { top: calc(50% - var(--hit) / 2 + 6px / var(--k, 1)); }
+}
+
+/* Replay exception: separate only the scene state from the mission title. */
+@media (max-width: 880px) {
+  #s-replay .rc-mission-state { margin-top: 6px; }
+}
