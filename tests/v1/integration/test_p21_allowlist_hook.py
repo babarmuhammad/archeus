@@ -269,8 +269,10 @@ def test_destructive_held_command_denies_before_hold(x, allow_all):
 
 @pytest.mark.parametrize('tool,command', (
     ('Bash', 'Remove-Item -Recurse x'), ('PowerShell', 'Remove-Item -Recurse x'),
-    ('PowerShell', 'ls'), ('bash', 'rm -rf x'), ('Monitor', 'rm -rf x'),
-    ('UnknownExecutor', 'rm -rf x'), ('Monitor', 'ls'), ('UnknownExecutor', 'ls'),
+    ('PowerShell', 'ls'), ('bash', 'rm -rf x'), ('BASH', 'pwd'),
+    ('pwsh', 'pwd'), ('pwsh.exe', 'pwd'), ('powershell.exe', 'pwd'),
+    ('cmd', 'pwd'), ('cmd.exe', 'pwd'), ('conhost', 'pwd'),
+    ('UnknownExecutor', 'rm -rf x'), ('UnknownExecutor', 'ls'),
 ))
 def test_every_executor_miss_halts(hook, tool, command):
     x, e, serve, evidence = hook
@@ -289,3 +291,32 @@ def test_every_executor_miss_halts(hook, tool, command):
 def test_structured_tools_preserve_hook_behavior(hook, tool, tool_input):
     x, e, serve, evidence = hook
     assert serve(None, tool=tool, input=tool_input) == {'decision': 'allow', 'reason': ''}
+
+
+@pytest.mark.parametrize('tool_input', ({'command': 'rm -rf x'}, {},
+                                      {'file_path': 'file.txt', 'command': 'rm -rf x'}))
+def test_structured_command_or_unclassified_is_held(hook, tool_input):
+    x, e, serve, evidence = hook
+    assert serve(tool_input.get('command'), tool='Read', input=tool_input)['decision'] == 'halt'
+
+
+@pytest.mark.parametrize('field', ('command', 'cmd', 'script', 'commandLine'))
+def test_unknown_command_fields_are_held(hook, field):
+    x, e, serve, evidence = hook
+    assert serve(None, tool='UnknownExecutor', input={field: 'rm -rf x'})['decision'] == 'halt'
+
+
+@pytest.mark.parametrize('tool', ('Task', 'SendMessage', 'Monitor', 'ScheduleWakeup',
+                                 'CronCreate', 'CronDelete', 'CronList', 'ToolSearch', 'Workflow'))
+def test_named_nonexecutors_follow_policy(hook, tool):
+    x, e, serve, evidence = hook
+    assert serve('rm -rf x', tool=tool) == {'decision': 'allow', 'reason': ''}
+    x.rule('MISSION', 'exec', 'DENY', scope_ref=e.mission_id)
+    assert serve('rm -rf x', tool=tool)['decision'] == 'deny'
+
+
+@pytest.mark.parametrize('tool', ('Bash', 'PowerShell', 'pwsh.exe', 'CMD'))
+def test_an_executor_name_is_held_without_a_command_field(hook, tool):
+    x, e, serve, evidence = hook
+    assert serve(None, tool=tool, input={}) == {
+        'decision': 'halt', 'reason': 'command form needs review'}

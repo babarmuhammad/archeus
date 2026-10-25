@@ -30,6 +30,7 @@ from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
 from ..execution.command_allowlist import Allowed
+from ..execution.canonical import needs_command_cap
 from ..redact import redact
 from . import authorization, lifecycle
 from .commands import active_plan
@@ -815,9 +816,7 @@ def serve_hook(tx, *, actor, policy, execution_id, seq, request, canon, cwd_ok, 
         _fire(tx, e.id, 'hook_asked', actor, 'waiting for approval %s' % asked['approval_id'])
         return _hook_answer(tx, actor, e, seq, 'halt', 'waiting for your approval (%s)'
                             % asked['approval_id'], _current(asker))
-    if request.get('tool') not in (
-            'Read', 'Glob', 'Grep', 'LS', 'Write', 'Edit', 'MultiEdit',
-            'NotebookEdit', 'WebFetch', 'WebSearch') and not (
+    if needs_command_cap(request.get('tool'), request.get('input'), unclassified) and not (
             isinstance(command_eligibility, Allowed) and command_eligibility.row_id
             or approved):
         return _hook_answer(tx, actor, e, seq, 'halt', 'command form needs review',

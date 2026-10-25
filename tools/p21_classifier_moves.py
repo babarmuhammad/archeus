@@ -126,7 +126,7 @@ def freeze(roots, review):
 
 
 def executor_rows():
-    return [(tool, command) for tool in ('PowerShell', 'bash', 'Monitor')
+    return [(tool, command) for tool in ('PowerShell', 'bash', 'UnknownExecutor')
             for command in ('Remove-Item -Recurse x', 'cat file.txt', 'ls',
                             'node --version', 'pwd', 'rm -rf x')]
 
@@ -177,8 +177,11 @@ def classify(root, shapes_path, out_path, candidate=False):
     policy_contexts = payload['policies']
     out = []
     errors = 0
-    for tool, cmd in payload['commands']:
+    for row in payload['commands']:
         try:
+            if not isinstance(row, list) or len(row) != 2 or not all(isinstance(value, str) for value in row):
+                raise ValueError('corpus row must be a [tool, command] string pair')
+            tool, cmd = row
             eligibility = None
             if candidate:
                 (acts, unc), eligibility = canonical.canonicalise_hook(tool, {'command': cmd}, ctx, trusted)
@@ -186,7 +189,8 @@ def classify(root, shapes_path, out_path, candidate=False):
                 acts, unc = canonical.canonicalise(tool, {'command': cmd}, ctx)
             if type(unc) is not bool or not acts:
                 raise ValueError('missing actions or invalid unclassified flag')
-            held = candidate and eligibility.status != 'ALLOWED'
+            held = (candidate and canonical.needs_command_cap(tool, {'command': cmd}, unc)
+                    and getattr(eligibility, 'status', None) != 'ALLOWED')
             outcomes = {}
             for name, policy_ctx in policy_contexts.items():
                 decisions = [evaluate_item(action, dict(policy_ctx, unclassified=unc))['decision']

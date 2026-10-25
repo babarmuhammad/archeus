@@ -26,7 +26,7 @@ def test_missing_profile_holds_without_legacy_parser(monkeypatch, command):
     (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
     assert isinstance(result, Held)
     assert unclassified and actions[0].action_class == 'exec'
-    assert actions[0].argv == (command,) and actions[0].target == 'command'
+    assert actions[0].argv == (command, 'Bash') and actions[0].target == 'command'
 
 
 def test_node_does_not_invent_profile():
@@ -62,7 +62,7 @@ def test_held_risk_labels_never_call_legacy(monkeypatch, command, cls):
     (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
     assert isinstance(result, Held) and not unclassified
     assert len(actions) == 1 and actions[0].action_class == cls
-    assert actions[0].argv == (command,)
+    assert actions[0].argv == (command, 'Bash')
 
 
 @pytest.mark.parametrize('command', (
@@ -78,7 +78,7 @@ def test_held_risk_lookup_is_exact(monkeypatch, command):
     (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
     assert isinstance(result, Held) and unclassified
     assert actions[0].action_class == 'exec' and actions[0].target == 'command'
-    assert actions[0].argv == (command,)
+    assert actions[0].argv == (command, 'Bash')
 
 
 @pytest.mark.parametrize('command', (
@@ -92,7 +92,7 @@ def test_adversarial_and_interpreter_held_inputs_skip_legacy(monkeypatch, comman
     monkeypatch.setattr(C, 'command', forbidden)
     (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
     assert isinstance(result, Held) and unclassified
-    assert actions[0].argv == (command,)
+    assert actions[0].argv[0] in (command, 'str') and actions[0].argv[-1] == 'Bash'
 
 
 def test_unclassified_held_commands_have_distinct_approval_identity():
@@ -160,25 +160,48 @@ def test_non_string_stored_repr_is_bounded_and_digest_binds_full_value():
                for value in values]
     for action in actions:
         assert action.argv[0] == 'list'
-        assert len(action.argv[1]) == C.MAX_COMMAND_REPR
+        assert len(action.argv[1]) == C.MAX_STORED_COMMAND - len('list') - 64
         assert len(action.argv[2]) == 64
+        assert action.argv[3] == 'Bash'
     assert actions[0].argv[1] == actions[1].argv[1]
     assert actions[0].canonical() != actions[1].canonical()
 
 
-def test_oversized_string_storage_is_bounded_and_still_held():
+def test_oversized_string_storage_shares_the_bound_and_is_still_held():
     from archeus.core.execution.command_allowlist import MAX_INPUT_LENGTH, Reason
     stored = []
-    for suffix in ('a', 'b'):
-        command = 'x' * MAX_INPUT_LENGTH + suffix
+    for command in ('x' * C.MAX_STORED_COMMAND + 'a', 'x' * C.MAX_STORED_COMMAND + 'b',
+                    'x' * (1 << 20) + 'a', 'x' * (1 << 20) + 'b'):
         (actions, unclassified), result = C.canonicalise_hook('Bash', command, {'workdir': '.'})
-        assert isinstance(result, Held) and result.reason == Reason.BUDGET and unclassified
-        assert sum(map(len, actions[0].argv)) == MAX_INPUT_LENGTH
-        stored.append(actions[0].argv)
-    assert stored[0] != stored[1]
+        assert isinstance(result, Held) and unclassified
+        assert (len(command) <= MAX_INPUT_LENGTH) == (result.reason != Reason.BUDGET)
+        assert sum(map(len, actions[0].argv)) <= C.MAX_STORED_COMMAND + len('Bash')
+        stored.append(actions[0].canonical())
+    assert len(set(stored)) == 4
 
 
-@pytest.mark.parametrize('tool', ('bash', 'BASH', 'PowerShell', 'powershell', 'Monitor'))
+def test_the_tool_name_is_part_of_the_approval_identity():
+    for command in ('rm x', 'x' * (C.MAX_STORED_COMMAND + 1), ['rm', 'x']):
+        first, second = (C.canonicalise_hook(tool, {'command': command}, {'workdir': '.'}, CONTEXT)[0][0][0]
+                         for tool in ('Bash', 'PowerShell'))
+        assert first.canonical() != second.canonical()
+    long_name = C.canonicalise_hook('P' * 10000, {'command': 'rm x'}, {'workdir': '.'})[0][0][0]
+    assert len(long_name.argv[-1]) == C.MAX_TOOL_NAME
+
+
+@pytest.mark.parametrize('tool', ('bash', 'BASH', 'PowerShell', 'powershell', 'pwsh.exe', 'cmd'))
 def test_non_table_tool_spellings_remain_held(tool):
     (actions, unclassified), result = C.canonicalise_hook(tool, 'pwd', {'workdir': '.'}, CONTEXT)
     assert isinstance(result, Held) and unclassified
+
+
+@pytest.mark.parametrize('tool,tool_input,capped', (
+    ('Read', {'file_path': 'f'}, False), ('Read', {'file_path': 'f', 'command': 'x'}, True),
+    ('Read', {}, True), ('WebFetch', {'url': 'https://example.com'}, False),
+    ('Bash', {}, True), ('PowerShell', {}, True), ('pwsh.exe', {}, True), ('CMD', {}, True),
+    ('Monitor', {'command': 'x'}, False), ('Task', {'script': 'x'}, False),
+    ('Mystery', {'command': 'x'}, True), ('mcp__s__t', {'commandLine': 'x'}, True),
+    ('Mystery', {'query': 'x'}, False), ('Mystery', 'x', False), (None, {}, False),
+))
+def test_command_cap_covers_executors_and_command_shaped_unknowns(tool, tool_input, capped):
+    assert C.needs_command_cap(tool, tool_input, tool == 'Read' and not tool_input) is capped

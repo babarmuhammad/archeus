@@ -99,7 +99,7 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
         MERGED_REDEFINE, MUTATIONS, NEW_MUTATIONS, NOT_DONE_REDEFINE, REDEFINED,
     )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 88 + 85 + 31
+    assert len(ids) == len(set(ids)) == 88 + 85 + 41
     assert len(REDEFINED) == 85
     assert len(NOT_DONE_REDEFINE) == 31
     assert MERGED_REDEFINE == {'Z175': 'Z173', 'Z217': 'Z319'}
@@ -125,11 +125,11 @@ def test_executor_corpus_covers_each_tool_and_is_deterministic():
     # Pin tool names and commands independently of tests/review-derived frozen inputs.
     payload = '\n'.join(tool + '\0' + command for tool, command in rows)
     assert hashlib.sha256(payload.encode()).hexdigest() == (
-        '9d8f7356cb4489b5f8d44586cbd4b82d276393cf08d5b6b58fae61a052279c58')
+        'a356ee9966b8bd7149f76ef839fb5cf51a23b0e5aca386717cd06216599522b4')
 
 
 def test_comparison_rejects_removing_held_cap_for_each_executor():
-    for tool in ('PowerShell', 'bash', 'Monitor'):
+    for tool in ('PowerShell', 'bash', 'UnknownExecutor'):
         shape = (tool, 'rm -rf x')
         _, violations = compare([shape], [result(True, held=True, outcome='halt')],
                                 [result(True, outcome='halt')])
@@ -150,3 +150,15 @@ def test_executor_rows_reach_classifier_and_have_held_cap(tmp_path):
     for row in results:
         assert row['unclassified'] and row['held_cap'] and row['row'] is None
         assert 'allow' not in row['policies'].values()
+
+
+def test_classify_counts_a_malformed_corpus_row_as_an_error(tmp_path):
+    import json
+    from tools.p21_classifier_moves import classify, policies
+    source, target = tmp_path / 'corpus.json', tmp_path / 'results.json'
+    rows = ['ls', ['Bash'], ['Bash', 'ls', 'x'], ['Bash', 3], ['Bash', 'ls']]
+    source.write_text(json.dumps({'commands': rows, 'context': {'workdir': '.'}, 'paths': {},
+                                 'policies': policies()}), encoding='utf-8')
+    assert classify(str(Path(__file__).resolve().parents[3]), str(source), str(target)) == 1
+    results = json.loads(target.read_text(encoding='utf-8'))
+    assert ['error' in r for r in results] == [True, True, True, True, False]

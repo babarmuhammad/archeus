@@ -154,7 +154,7 @@ def _path(token: _Token) -> str | None:
     if any(part in ('', '..') for part in parts):
         return None
     if any(part != '.' and (part.startswith(' ') or part.endswith(('.', ' '))
-            or part.split('.')[0].upper() in _DEVICE_NAMES) for part in parts):
+            or part.split('.')[0].rstrip(' .').upper() in _DEVICE_NAMES) for part in parts):
         return None
     return '/'.join(part for part in parts if part != '.') or '.'
 

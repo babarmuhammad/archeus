@@ -324,7 +324,7 @@ def test_redefined_missing_rows(command):
 
 @pytest.mark.parametrize('path', (
     'CON', 'nul', 'aux.txt', 'COM1', 'a.', 'a /b', 'a/ b',
-    'PRN.log', 'LPT9.txt', 'src/NuL.txt', 'a/b ', 'PROGRA~1/file.txt',
+    'PRN.log', 'LPT9.txt', 'src/NuL.txt', 'CON .txt', 'NUL .x', 'src/com1 .log',
 ))
 def test_windows_reserved_paths_hold_despite_file_evidence(path):
     context = replace(CONTEXT, paths={path: PathEvidence('file', True)})

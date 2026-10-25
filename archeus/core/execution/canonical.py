@@ -21,6 +21,7 @@ import re
 import shlex
 from urllib.parse import urlsplit
 
+from ...harnesses.claude_code.tools import SNAPSHOT
 from ..domain.actions import Action
 from . import command_allowlist
 
@@ -279,21 +280,39 @@ def _pieces(cmd):
 
 
 STRUCTURED_TOOLS = READ_TOOLS + WRITE_TOOLS + ('WebFetch', 'WebSearch')
-MAX_COMMAND_REPR = 4096
+MAX_STORED_COMMAND = 4096
+MAX_TOOL_NAME = 64
+EXECUTOR_TOOLS = ('bash', 'bash.exe', 'powershell', 'powershell.exe', 'pwsh', 'pwsh.exe',
+                  'cmd', 'cmd.exe', 'conhost', 'conhost.exe')
+COMMAND_FIELDS = ('command', 'cmd', 'script', 'commandLine')
 
 
-def _stored_command(cmd):
-    if isinstance(cmd, str) and len(cmd) <= command_allowlist.MAX_INPUT_LENGTH:
-        return (cmd,)
+def needs_command_cap(tool, tool_input, unclassified):
+    if tool in STRUCTURED_TOOLS:
+        return unclassified or isinstance(tool_input, dict) and 'command' in tool_input
+    if isinstance(tool, str) and tool.lower() in EXECUTOR_TOOLS:
+        return True
+    return (tool not in SNAPSHOT['tools'] and isinstance(tool_input, dict)
+            and any(field in tool_input for field in COMMAND_FIELDS))
+
+
+def _stored_command(cmd, tool):
+    # the tool name is part of the identity, so an approval for one shell never covers another
+    name = str(tool)[:MAX_TOOL_NAME]
+    if isinstance(cmd, str) and len(cmd) <= MAX_STORED_COMMAND:
+        return (cmd, name)
     value = cmd if isinstance(cmd, str) else repr(cmd)
-    bound = (command_allowlist.MAX_INPUT_LENGTH - len(type(cmd).__name__) - 64
-             if isinstance(cmd, str) else MAX_COMMAND_REPR)
+    bound = MAX_STORED_COMMAND - len(type(cmd).__name__) - 64
     digest = hashlib.sha256(value.encode('utf-8', errors='surrogatepass')).hexdigest()
-    return (type(cmd).__name__, value[:bound], digest)
+    return (type(cmd).__name__, value[:bound], digest, name)
 
 
 def canonicalise_hook(tool, tool_input, ctx, command_context=None):
     if tool in STRUCTURED_TOOLS:
+        canon = canonicalise(tool, tool_input, ctx)
+        if not needs_command_cap(tool, tool_input, canon[1]):
+            return canon, None
+    elif not needs_command_cap(tool, tool_input, True):
         return canonicalise(tool, tool_input, ctx), None
     cmd = tool_input.get('command') if isinstance(tool_input, dict) else tool_input
     result = command_allowlist.classify(
@@ -309,10 +328,9 @@ def canonicalise_hook(tool, tool_input, ctx, command_context=None):
                        or _HELD_PROGRAM_CLASSES.get(program))
                 if cls:
                     target = program + ' ' + sub if (program, sub) in _HELD_SUBCOMMAND_CLASSES else program
-                    return ([Action(action_class=cls, target=target, argv=(cmd,))], False), result
+                    return ([Action(action_class=cls, target=target, argv=_stored_command(cmd, tool))], False), result
         # Digest binds truncated input without retaining its unbounded representation.
-        argv = _stored_command(cmd)
-        return ([_unclassified('command', argv)], True), result
+        return ([_unclassified('command', _stored_command(cmd, tool))], True), result
     row = next(row for row in command_allowlist.ROWS if row.id == result.row_id)
     cwd = ctx.get('cwd') or ctx.get('workdir')
     paths = tuple(workspace_path(os.path.join(cwd, path), ctx.get('workdir'))
