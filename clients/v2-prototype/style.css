@@ -1914,6 +1914,38 @@ body.frame-terminal .term-reply { top: 1130px; max-height: 360px; overflow: auto
 body.frame-terminal #s-terminal { height: 1500px; }
 #term-review-actions .btn { min-width: 48px; min-height: 48px; }
 #s-terminal .term-reply .receipt { display: block; white-space: normal; overflow-wrap: anywhere; }
+/* Replay inspection only: retain scene and existing type weights. */
+#rp-controls { overflow-wrap: anywhere; }
+#rp-controls label, #rp-controls input, #rp-controls textarea { display: block; width: 100%; box-sizing: border-box; }
+#rp-controls input, #rp-controls textarea, #rp-controls button, #rp-controls a, #rp-controls summary { min-width: 48px; min-height: 48px; }
+#rp-controls input, #rp-controls textarea, #rp-controls summary { pointer-events: auto; }
+#rp-controls textarea { background: var(--bg); color: var(--text); font: inherit; }
+#rp-controls .rp-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+#rp-controls p { margin: 10px 0; }
+#rp-controls details { margin-top: 12px; }
+#rp-controls summary { cursor: pointer; }
+#rp-controls #rp-rows { position: static; display: block; width: auto; height: auto; margin: 0; padding-left: 24px; }
+#rp-controls #rp-rows li { position: static; margin: 12px 0; }
+#rp-controls :focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+body.frame-replay #s-replay .rp-panel { left: 779px; top: 68px; width: 641px; height: 718px; overflow-y: auto; padding: 12px 14px; box-sizing: border-box; pointer-events: auto; background: var(--rp-panel); border-radius: 12px; }
+body.frame-replay #s-replay .rp-panel > .rp-title { position: static; white-space: normal; margin: 0 0 12px; translate: none; }
+body.frame-replay #s-replay .rp-foot { position: static; width: auto; white-space: normal; translate: none; margin-top: 16px; }
+body.frame-replay #s-replay .rp-foot::before { display: none; }
+body.frame-replay #rp-controls, body.frame-replay #rp-controls * { pointer-events: auto; }
+body.frame-replay #rp-controls button, body.frame-replay #rp-controls a, body.frame-replay #rp-controls input, body.frame-replay #rp-controls textarea, body.frame-replay #rp-controls summary { min-height: max(48px, calc(48px / var(--k, 1))); min-width: max(48px, calc(48px / var(--k, 1))); }
+body.frame-replay #rp-controls button::after, body.frame-replay #rp-controls a::after { display: none; }
+#term.replay-text .term-svg text { fill: var(--text); }
+#term.replay-text .term-svg { animation: none; transition: none; }
+@media (max-width: 700px) {
+  #s-replay .rp-wrap { display: flex; flex-direction: column; }
+  #s-replay #replay-stage { flex-shrink: 0; }
+  #s-replay > .rp-wrap > .rp-back { display: none; }
+  #s-replay .rp-panel { position: relative; max-height: 56vh; overflow-y: auto; padding: 16px; border: 1px solid var(--line); border-radius: 16px 16px 0 0; }
+  #s-replay .rp-panel > .rp-title { position: static; white-space: normal; }
+  #rp-controls .rp-buttons > button { flex: 1 1 120px; }
+  #rp-controls p { margin: 6px 0; }
+  #rp-controls label[for=rp-scrub] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 /* T-153 slash menu (prototype): a popup over the chat bar, drawn only after a "/" or "?" command. Plum surface,
    ivory text, neutral outline chips. No amber (owner obligations only) and no blue (live work only). Rows 48 px. */
 .slash-cleared { display: none; }

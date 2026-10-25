@@ -1,5 +1,17 @@
 Serve with py -m http.server 8000, then open http://127.0.0.1:8000 (open a terminal in this folder first; file:// does not work for the PWA).
 
+Replay & Recovery fixture (2026-10-25): Mission Replay opens `#/replay/m-date`,
+with 13 source-labelled simulated entries, pointer/keyboard cursor, failed verification
+and a separate LOST execution. Recovery choices create explicit approval cards only;
+approval changes a local receipt and never changes evidence or executes anything.
+Phone uses a scrolling sheet below the retained constellation. Terminal: select Fix date test,
+Enter, p; Left/Right/Home/End scrub, 1/2/3 propose, y approves fixture, Escape cancels.
+Retry and owner-question drafts are editable in graphical Replay; terminal uses stated fixture drafts.
+Unsupported evidence is labelled NOT RECORDED. No Replay autoplay; Quiet/reduced motion preserve facts.
+Design and Claude verification handoff: `.pv20-out/V2-replay-design.md`, `.pv20-out/V2-replay-final.md`
+at worktree root. Codex has not run runtime/browser probes. Use port 8819 and testlock;
+run existing static/slash/chatbar/hit probes plus `tools/v2_replay_probe.py`.
+
 # Archeus V2 prototype (fake data, simulated chat)
 
 A clickable prototype of the V2 living space. Plain HTML, CSS and Canvas 2D. No framework, no build step, no npm, no web fonts, no CDN.

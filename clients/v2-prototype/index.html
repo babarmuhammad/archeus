@@ -224,10 +224,28 @@
           <a class="rp-back" href="#/now" data-rp-back>Back</a>
           <section class="rp-panel" aria-labelledby="rp-title">
             <h1 class="rp-title rk-title" id="rp-title" tabindex="-1"></h1>
+            <div id="rp-controls">
+              <p id="rp-context"></p>
+              <a class="btn" href="#/mission/m-date" data-rp-back>Back to Mission</a>
+              <label for="rp-scrub">Event cursor · arrows step, Home/End jump</label>
+              <input id="rp-scrub" type="range" min="0" max="12" value="0" step="1">
+              <div class="rp-buttons"><button class="btn" id="rp-prev">Previous event</button><button class="btn" id="rp-next">Next event</button></div>
+              <p id="rp-selected" role="status" aria-live="polite"></p>
+              <p>Recovery proposals · available from failed verification onward</p>
+              <div class="rp-buttons"><button class="btn" data-recovery="resume">Resume</button><button class="btn" data-recovery="retry">Retry with changes</button><button class="btn" data-recovery="ask">Ask the owner</button></div>
+              <section id="rp-proposal" aria-label="SIMULATED recovery proposal" hidden>
+                <p id="rp-proposal-text"></p>
+                <label>Changed instructions / unsent owner question<textarea id="rp-draft" rows="2"></textarea></label>
+                <div class="rp-buttons"><button class="btn" id="rp-approve">Approve fixture proposal</button><button class="btn" id="rp-cancel">Cancel</button></div>
+              </section>
+              <p id="rp-receipt" role="status"></p>
+              <p id="rp-gaps"></p>
+              <details><summary>Full SIMULATED timeline · sources</summary><div id="rp-history"></div></details>
+            </div>
             <ol class="rp-rows" id="rp-rows" aria-label="Timeline, sample data"></ol>
             <p class="rp-foot rk-footer">Not every external effect can be reversed.</p>
           </section>
-          <p class="rp-strip">Simulated: fake data, scripted replay, nothing is sent to Core. Reconcile is page-only.</p>
+          <p class="rp-strip">Simulated: fake data, scripted replay, nothing is sent to Core. Reconcile is page-only terminology; no reconciliation action exists.</p>
         </div>
       </section>
 

@@ -1918,14 +1918,69 @@
   ];
   var REPLAY = {
     'm-date': [
-      { time: '09:00', title: 'Task initiated', sub: 'Scope, authority and starting state captured', badge: 'Intended', tone: 'intended', mark: 'dot' },
-      { time: '09:12', title: 'Files changed', sub: 'Changes and resulting artifacts linked to the task', badge: 'Recorded', tone: 'recorded', mark: 'dot' },
-      { time: '09:18', title: 'Tests passed', sub: 'Validation evidence recorded', badge: 'Verified', tone: 'verified', mark: 'check' },
-      { time: '09:24', title: 'External response lost', sub: 'Side effect classified as uncertain', badge: 'Uncertain', tone: 'uncertain', mark: 'diamond' },
-      { time: '09:25', title: 'Workflow suspended', sub: 'No unsafe retry. Operator reconciliation required.', badge: 'Needs you', tone: 'needs-you', mark: 'diamond' }
+      { time: '09:00', title: 'Mission CREATED', sub: 'Mission row fx-m1', badge: 'INTENDED' },
+      { time: '09:02', title: 'Plan PROPOSED', sub: 'Plan row fx-p1; version 1', badge: 'INTENDED' },
+      { time: '09:03', title: 'Approval PENDING', sub: 'Approval row fx-a1; plan decision requested', badge: 'SUSPENDED' },
+      { time: '09:04', title: 'Approval APPROVED', sub: 'Approval row fx-a1; fixture owner decision', badge: 'AUTHORIZED' },
+      { time: '09:05', title: 'Execution INTENT', sub: 'Execution row fx-e1; committed before spawn', badge: 'INTENDED' },
+      { time: '09:06', title: 'Execution RUNNING', sub: 'Execution fx-e1; execution.started evidence', badge: 'MAY-HAVE-TAKEN-EFFECT' },
+      { time: '09:12', title: 'Checkpoint created', sub: 'Checkpoint row fx-c1; files_changed binding', badge: 'RECORDED' },
+      { time: '09:17', title: 'Execution ENDED_OK', sub: 'Execution fx-e1; exit_code 0, not verification', badge: 'RECORDED' },
+      { time: '09:18', title: 'Verification FAILED', sub: 'Verification row fx-v1; date-boundary check failed', badge: 'RECORDED' },
+      { time: '09:20', title: 'Execution INTENT', sub: 'Execution row fx-e2; separate attempt after fixture replan', badge: 'INTENDED' },
+      { time: '09:21', title: 'Execution RUNNING', sub: 'Execution fx-e2; execution.started evidence', badge: 'MAY-HAVE-TAKEN-EFFECT' },
+      { time: '09:24', title: 'Execution LOST', sub: 'Execution fx-e2; heartbeat_missing trigger, effects unknown', badge: 'UNCERTAIN' },
+      { time: '09:25', title: 'Mission BLOCKED', sub: 'Mission fx-m1; needs_clarification trigger', badge: 'SUSPENDED' }
     ]
   };
   var replayId = 'm-date';
+  var replayCursor = 0, replayProposal = null;
+  var REPLAY_GAPS = 'NOT RECORDED: external effects or responses; per-attempt starting digest; operator reconciliation; complete retained history; private reasoning/tool transcript; intermediate filesystem snapshots; actual cost or served/billed provenance; confinement proof.';
+  function replayRows() { return REPLAY[replayId] || []; }
+  function replaySelect(i) {
+    replayCursor = Math.max(0, Math.min(replayRows().length - 1, i));
+    replayProposal = null;
+    $('#rp-receipt').textContent = '';
+    renderReplayControls();
+  }
+  function renderReplayControls() {
+    var rows = replayRows(), r = rows[replayCursor], root = $('#rp-controls');
+    var slider = $('#rp-scrub');
+    slider.max = Math.max(0, rows.length - 1); slider.value = replayCursor;
+    slider.disabled = !r;
+    slider.setAttribute('aria-valuetext', r ? r.time + ' ' + r.title : 'No fixture');
+    $('#rp-prev').disabled = !r || replayCursor === 0;
+    $('#rp-next').disabled = !r || replayCursor === rows.length - 1;
+    $('#rp-selected').textContent = r ? 'SIMULATED · ' + (replayCursor + 1) + '/' + rows.length + ' · ' + r.time + ' · ' + r.title + ' · ' + r.badge + '. Source: ' + r.sub : 'SIMULATED · No replay fixture for this Mission.';
+    var eligible = r && (replayCursor >= 8);
+    root.querySelectorAll('[data-recovery]').forEach(function (b) { b.disabled = !eligible; });
+    $('#rp-proposal').hidden = true;
+    var state = $('#rc-labels .rc-mission-state');
+    if (state) state.textContent = r ? 'SIMULATED' : 'SIMULATED · no history';
+  }
+  function replayPropose(kind) {
+    if (!replayRows()[replayCursor] || replayCursor < 8) return;
+    replayProposal = { kind: kind, event: replayCursor, mission: replayId };
+    var descriptions = {
+      resume: 'Resume proposal: reconcile LOST and establish checkpoint eligibility first. Never spawn the same execution again.',
+      retry: 'Retry with changes proposal: create a new execution identity only after review and authorization.',
+      ask: 'Ask the owner proposal: preview an unsent question about verification failure or unknown effects.'
+    };
+    $('#rp-proposal-text').textContent = 'SIMULATED · ' + descriptions[kind] + ' Bound to ' + replayId + ', fixture event ' + (replayCursor + 1) + '. Nothing will run or be sent.';
+    $('#rp-draft').value = kind === 'ask' ? 'How should we proceed with failed verification and unknown effects?' : '';
+    $('#rp-draft').hidden = kind === 'resume';
+    $('#rp-proposal').hidden = false;
+    if (!$('#s-replay').hidden) $('#rp-approve').focus();
+  }
+  function replayApprove() {
+    if (!replayProposal || replayProposal.event !== replayCursor || replayProposal.mission !== replayId) return;
+    if (replayProposal.kind !== 'resume' && !$('#rp-draft').value.trim()) {
+      $('#rp-receipt').textContent = 'SIMULATED · Add changed instructions or an owner question before approval.'; return;
+    }
+    $('#rp-receipt').textContent = 'SIMULATED · Approved fixture proposal: ' + replayProposal.kind + '. Nothing resumed, retried, sent or reconciled. Evidence unchanged.';
+    replayProposal = null; $('#rp-proposal').hidden = true;
+    if (!$('#s-replay').hidden) $('#rp-controls [data-recovery]').focus();
+  }
 
   // Stage map: desktop is master px; phone maps the graph crop (RP_GRAPH) into the stage width.
   function rpMap() {
@@ -1992,20 +2047,33 @@
 
   function renderReplay(id) {
     var m = find(id) || find('m-date'), rows = REPLAY[m.id] || [];
+    if (replayId !== m.id) replayCursor = 0;
     replayId = m.id;
     $('#rp-title').textContent = 'Replay · ' + m.title;
-    var list = rows.map(function (r, i) { return rowHtml(r, RP_ROWS_GEOM[i]); });
-    if (!rows.length) list.push('<li class="rp-row rp-empty" style="--top:158px;--h:77px"><span class="rp-sub" style="--y:176px">No replay is recorded for this mission in the prototype. Sample data exists for Fix date test only.</span></li>');
-    var rc = RP_ROWS_GEOM[RP_ROWS_GEOM.length - 1];
-    list.push('<li class="rp-row rp-reconcile" style="--top:' + rc.top + 'px;--h:' + rc.h + 'px">' +
-      '<span class="rp-mark" aria-hidden="true" style="--y:' + rc.mark + 'px"></span>' +
-      '<span class="rp-body"><span class="rp-title" style="--y:' + rc.title + 'px">Reconcile</span>' +
-      '<span class="rp-actions"><button type="button" class="btn primary" data-act="reconcile">Reconcile</button><a class="btn" href="#/mission/' + m.id + '">Open evidence</a></span></span>' +
-      '<span class="rp-badge" style="--y:' + rc.chip + 'px;--x:' + rc.chipX + 'px;--w:' + rc.chipW + 'px">Operator</span></li>');
+    var list = rows.map(function (r, i) { return '<li>SIMULATED · ' + (i + 1) + ' · ' + r.time + ' · ' + esc(r.title) + ' · ' + r.badge + ' · Source: ' + esc(r.sub) + '</li>'; });
+    if (!rows.length) list.push('<li>SIMULATED · NOT RECORDED: no fixture history for this Mission.</li>');
     $('#rp-rows').innerHTML = list.join('');
+    $('#rp-history').appendChild($('#rp-rows'));
+    $$('[data-rp-back]').forEach(function (a) { a.href = '#/mission/' + m.id; });
+    $('#rp-context').textContent = projectOf(m.project).name + ' / Mission / Replay · CONCEPT FIXTURE';
+    $('#rp-gaps').textContent = REPLAY_GAPS;
     fitReplayFrame();
     renderReplayStage(m);
+    renderReplayControls();
   }
+
+  $('#rp-scrub').addEventListener('input', function (e) { replaySelect(Number(e.target.value)); });
+  $('#rp-prev').addEventListener('click', function () { replaySelect(replayCursor - 1); });
+  $('#rp-next').addEventListener('click', function () { replaySelect(replayCursor + 1); });
+  $('#rp-controls').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-recovery]');
+    if (b) replayPropose(b.dataset.recovery);
+  });
+  $('#rp-approve').addEventListener('click', replayApprove);
+  $('#rp-cancel').addEventListener('click', function () { replayProposal = null; $('#rp-proposal').hidden = true; });
+  $('#rp-proposal').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.stopPropagation(); replayProposal = null; this.hidden = true; $('#rp-controls [data-recovery]').focus(); }
+  });
 
   // The frame class and scale follow the active screen: desktop Replay is one fixed 1440 x 810 frame plus a footer strip.
   function fitReplayFrame() {
@@ -2016,7 +2084,7 @@
     document.documentElement.style.setProperty('--k', k.toFixed(4));
   }
   window.addEventListener('resize', function () {
-    if (!$('#s-replay').hidden) { fitReplayFrame(); renderReplayStage(find(replayId)); }
+    if (!$('#s-replay').hidden) { fitReplayFrame(); renderReplayStage(find(replayId)); renderReplayControls(); }
   });
 
   function renderShared() {
@@ -3562,25 +3630,32 @@
   }
 
   function termReplayScene() {
-    var m = find(term.mid) || find('m-date'), rows = REPLAY[m.id] || [];
-    var s = Scene(PAGE), n = 3;
-    s.put(0, 0, 'ARCHEUS', 'bold'); s.put(8, 0, '  Core connected | Not stopped - accepts new work');
-    s.put(0, 1, 'Overview / ' + projectOf(m.project).name + ' / Replay ' + m.title + ' (sample data)');
-    rows.forEach(function (r, i) {
-      var hot = r.tone === 'uncertain' || r.tone === 'needs-you' ? 'amber' : r.tone === 'verified' ? 'green' : '';
-      s.put(0, n, (r.mark === 'check' ? '+' : r.mark === 'diamond' ? '◇' : '*') + ' ' + r.time, hot || 'dim');
-      s.put(10, n, '[' + r.badge + ']', hot);
-      s.put(20, n, r.title);
-      s.put(20, n + 1, r.sub, 'dim');
-      n += 3;
-    });
-    s.put(0, n, '[Operator] Reconcile  --:--', 'dim');
-    s.put(0, n + 1, 'Record what happened on the remote. Nothing is pushed here.', 'dim');
-    s.put(0, n + 2, 'Not every external effect can be reversed.', 'dim');
-    s.put(0, 18, 'b back  t tell  s stop  ? help', 'dim');
+    var m = find(term.mid) || find('m-date');
+    if (replayId !== m.id) { replayId = m.id; replayCursor = 0; replayProposal = null; }
+    var rows = replayRows(), r = rows[replayCursor], s = Scene(PAGE);
+    s.put(0, 0, 'SIMULATED / CONCEPT FIXTURE / Replay');
+    s.put(0, 1, projectOf(m.project).name + ' / ' + m.title);
+    s.put(0, 3, '* Archeus -- Mission -- Execution');
+    s.put(0, 4, '                  |-- Verification -- Results');
+    s.put(0, 6, r ? (replayCursor + 1) + '/' + rows.length + ' ' + r.time + ' ' + r.title : 'No fixture history');
+    s.put(0, 7, r ? r.badge : 'NOT RECORDED');
+    s.put(0, 8, r ? 'Source: ' + r.sub : 'No source');
+    s.put(0, 10, 'NOT RECORDED: external effects, starting digest,');
+    s.put(0, 11, 'operator reconciliation, full retained history.');
+    s.put(0, 12, 'Other gaps: reasoning, file snapshots, cost, confinement.');
+    if (replayProposal) {
+      s.put(0, 14, 'SIMULATED proposal: ' + replayProposal.kind + ' event ' + (replayCursor + 1));
+      s.put(0, 15, replayProposal.kind === 'resume' ? 'Reconcile LOST; establish checkpoint eligibility first.' : 'Draft: ' + $('#rp-draft').value);
+      s.put(0, 16, 'y approve fixture only / Esc cancel / nothing runs');
+    } else {
+      s.put(0, 14, '1 Resume / 2 Retry with changes / 3 Ask owner');
+      s.put(0, 15, 'Recovery available from failed verification onward.');
+      var rc = $('#rp-receipt').textContent, cut = rc.length > 70 ? rc.lastIndexOf(' ', 70) : rc.length;
+      s.put(0, 16, rc.slice(0, cut)); s.put(0, 17, rc.slice(cut + 1, cut + 71));
+    }
+    s.put(0, 18, 'Left/Right step / Home/End / b back / p Replay');
     return s;
   }
-
   function termHelpScene() {
     var s = Scene(PAGE);
     s.put(0, 0, 'ARCHEUS', 'bold'); s.put(8, 0, '  Core connected | Not stopped - accepts new work');
@@ -3615,7 +3690,7 @@
       else if (term.screen === 'decision') s = termDecisionScene();
       else if (term.screen === 'replay') s = termReplayScene();
       else s = w >= 100 ? overview120() : overview80();
-      pre.className = 'term';
+      pre.className = 'term' + (term.screen === 'replay' ? ' replay-text' : '');
       pre.innerHTML = s.svg() + '<span class="sr-only">' + esc(srText(s)) + '</span>';
       fitTerm(pre);
     }
@@ -3654,6 +3729,21 @@
   function termKey(e) {
     if (!$('#s-terminal') || $('#s-terminal').hidden || e.target.id === 'term-tell' || e.target.closest('input, textarea, select, button, a, dialog')) return;
     var k = e.key, order = termOrder();
+    if (term.screen === 'replay' && !term.input && !term.help) {
+      if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'Home' || k === 'End') {
+        replaySelect(k === 'Home' ? 0 : k === 'End' ? replayRows().length - 1 : replayCursor + (k === 'ArrowLeft' ? -1 : 1));
+      } else if (k === '1' || k === '2' || k === '3') {
+        replayPropose({ '1': 'resume', '2': 'retry', '3': 'ask' }[k]);
+        if (replayProposal && k === '2') $('#rp-draft').value = 'Revise date-boundary handling; require a new verification.';
+      } else if (k === 'y' && replayProposal) replayApprove();
+      else if (k === 'Escape' && replayProposal) { replayProposal = null; $('#rp-proposal').hidden = true; }
+      else { return replayOtherKey(e); }
+      e.preventDefault(); renderTerm(); return;
+    }
+    return replayOtherKey(e);
+  }
+  function replayOtherKey(e) {
+    var k = e.key, order = termOrder();
     if (term.input) {
       e.preventDefault();
       if (k === 'Escape') { term.input = null; }
@@ -3679,7 +3769,7 @@
     else if (k === 'Enter' && term.screen === 'overview' && selected()) { term.mid = selected().id; term.screen = 'mission'; }
     else if (k === 'r') { e.preventDefault(); location.hash = '#/plan/' + (term.mid || selected().id); return; }
     else if (k === 'a' && term.screen === 'decision') { term.step = 'approve'; }
-    else if (k === 'p') { term.mid = selected().id; term.screen = 'replay'; }
+    else if (k === 'p') { if (term.screen === 'overview') term.mid = selected().id; term.screen = 'replay'; }
     else if (k === 'm') term.screen = 'mission';
     else if (k === 'Escape' || k === 'b') { term.screen = 'overview'; if (k === 'Escape') term.filter = ''; }
     else if (k === 's') { stop(); }
