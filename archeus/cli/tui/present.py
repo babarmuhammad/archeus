@@ -7,8 +7,9 @@ cases in `clients/app/test/fixtures/parity.json` run against both sides.
 
 import datetime
 import math
+import re
 
-from ._tables import CLASSES, EDGE_WORDS, LABELS, PRESENTATION, TRIGGERS
+from ._tables import CLASSES, EDGE_WORDS, LABELS, PRESENTATION, SPINE, TRIGGERS
 
 
 def offers(machine, state, *trigger):
@@ -37,6 +38,72 @@ def badge(machine, state):
 def is_done(machine, state):
     """A mission is Done only when COMPLETED — verified and reviewed (P13)."""
     return present(machine, state)['cls'] == 'done'
+
+
+#: a mark that does not depend on the state's own class
+_FLAT = {'ahead': 'ahead', 'cancelled': 'none', 'unknown': 'unknown', 'complete': 'passed'}
+
+
+def spine_of(state, held_from=None):
+    """Where a mission is in its life, from its state and held_from only (ADR-0054): the
+    SPA's `spineOf`. Never guessed: a hold whose held_from names no station has no
+    position, a CANCELLED mission ignores held_from, and a state this client does not
+    know is its own word and no stations."""
+    look = present('mission', state)
+    states = SPINE['states']
+    e = states.get(state) if isinstance(state, str) else None
+    if e is None:
+        return {'marks': [], 'at': None, 'done': False, 'look': None, 'text': look['label']}
+    total = len(SPINE['stations'])
+    kind, at = e['kind'], e.get('station')
+    if kind in ('held', 'resumed'):
+        frm = states.get(held_from) if isinstance(held_from, str) else None
+        if frm is not None and frm['kind'] == 'current':
+            at = frm['station']
+        else:
+            kind = 'unknown'
+    marks = []
+    for n in range(1, total + 1):
+        if kind in _FLAT:
+            marks.append(_FLAT[kind])
+        elif at is None:
+            marks.append('unknown')
+        elif kind == 'passed':
+            marks.append('passed' if n <= at else 'ahead')
+        elif n < at:
+            marks.append('passed')
+        elif n > at:
+            marks.append('ahead')
+        else:
+            marks.append(kind if kind in ('held', 'failed') else 'current')
+    marked = any(m in ('current', 'held', 'failed') for m in marks)
+    words = {'word': look['label'], 'n': str(at), 'total': str(total),
+             'station': '' if at is None else SPINE['stations'][at - 1]['label']}
+    return {'marks': marks, 'at': at if marked else None, 'done': kind == 'complete',
+            'look': {'cls': look['cls'], 'glyph': look['glyph'], 'role': look['role']} if marked else None,
+            'text': re.sub(r'\{(\w+)\}', lambda m: words[m.group(1)], SPINE['sentences'][kind])}
+
+
+def spine_cells(state, held_from=None):
+    """One glyph, ASCII glyph and role per station: the mark on the current, held or failed
+    station is the glyph of the mission state's own class, the rest are the table's.
+    Passed stations are ink until the mission is Done."""
+    s = spine_of(state, held_from)
+    cells = []
+    for kind in s['marks']:
+        if kind in ('current', 'held', 'failed'):
+            c, role = CLASSES[s['look']['cls']], s['look']['role']
+        else:
+            c = SPINE['marks'][kind]
+            role = 'state.done' if s['done'] and kind == 'passed' else c['role']
+        cells.append({'glyph': c['glyph'], 'ascii': c['ascii'], 'role': role})
+    return cells
+
+
+def spine(state, held_from=None, ascii=False):
+    """The cluster and the state's own word, as ADR-0054 §7 writes it: `✓✓✓●○○ Executing`."""
+    cluster = ''.join(c['ascii' if ascii else 'glyph'] for c in spine_cells(state, held_from))
+    return ' '.join(x for x in (cluster, present('mission', state)['label']) if x)
 
 
 def presence_label(p):

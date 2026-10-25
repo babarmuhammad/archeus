@@ -10,6 +10,7 @@ import * as cn from '../src/data/connection.ts';
 import * as cm from '../src/data/commands.ts';
 import { staleBy } from '../src/data/invalidation.ts';
 import { stateSentence } from '../src/state/now.ts';
+import { spineOf } from '../src/state/spine.ts';
 
 type Fn = (...a: never[]) => unknown;
 const FN: Record<string, Fn> = {
@@ -23,6 +24,7 @@ const FN: Record<string, Fn> = {
   keyAfter: ((p: string, o: 'ok' | 'refused' | 'network') => cm.keyAfter(p, o, () => 'NEW')) as Fn,
   staleBy: ((f: { event: string; data?: unknown }, p: string) => staleBy(f)(p)) as Fn,
   stateSentence: stateSentence as Fn,
+  spineOf: spineOf as Fn,
 };
 
 const { cases } = JSON.parse(readFileSync(new URL('./fixtures/parity.json', import.meta.url), 'utf-8')) as {

@@ -217,6 +217,9 @@ def relations(app, doc, kind, id_):
 
 def mission_row(app, doc, m, waiting=False):
     bits = [app.st.badge('mission', m['state']), T(app, m['title'], 'text')]
+    cluster = app.st.spine(m['state'], m.get('held_from'))
+    if cluster:
+        bits.insert(1, cluster)
     if waiting:
         bits.append(app.st.paint('waiting on you', 'state.attention'))
     line = P.status_line(m)

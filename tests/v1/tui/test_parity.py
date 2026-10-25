@@ -19,7 +19,7 @@ FN = {
     'present': P.present, 'badge': P.badge, 'isDone': P.is_done, 'offers': P.offers,
     'presenceLabel': P.presence_label, 'resourceLine': P.resource_line,
     'statusLine': P.status_line, 'explainState': P.explain_state, 'ago': P.ago,
-    'stateSentence': P.state_sentence, 'inventoryLines': P.inventory_lines,
+    'stateSentence': P.state_sentence, 'spineOf': P.spine_of, 'inventoryLines': P.inventory_lines,
     'consumptionText': P.consumption_text, 'consumersText': P.consumers_text,
     'usageText': P.usage_text,
     'next': S.next_state, 'freshness': S.freshness, 'canCommand': S.can_command,

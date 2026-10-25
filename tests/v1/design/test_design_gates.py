@@ -58,6 +58,37 @@ def test_only_a_completed_mission_is_done_and_ended_ok_is_not_success():
                                           'VERIFYING', 'REVIEWING', 'COMPLETED')}) == 6
 
 
+def test_every_mission_state_has_a_spine_position_and_the_closure_rules_hold():
+    """ADR-0054 §2: a mission state with no position, a station name Core does not use, a
+    hold entered from a state with no station, FAILED off its station and a second Done
+    state are all refused, so a new state or a new hold edge fails the build until the
+    table says where it goes. Mutation-verified by tools/mutate_v2u1.py."""
+    from archeus.core.domain import states
+    sp, p = gen_ui.load(gen_ui.SPINE), gen_ui.load(gen_ui.PRESENTATION)
+    assert gen_ui.spine_problems(sp, p) == []
+    assert set(sp['states']) == set(states.states('mission'))
+
+    def broke(edit, table=None):
+        d = copy.deepcopy(sp)
+        edit(d)
+        return gen_ui.spine_problems(d, p, table)
+
+    assert any('REVIEWING' in b for b in broke(lambda d: d['states'].pop('REVIEWING')))
+    assert any('NOT_A_STATE' in b for b in broke(lambda d: d['states'].update(NOT_A_STATE={'kind': 'ahead'})))
+
+    def swap(d):
+        d['stations'][4], d['stations'][5] = d['stations'][5], d['stations'][4]
+    assert any('anchor' in b for b in broke(swap))
+    assert any('Run' in b for b in broke(lambda d: d['stations'][3].update(label='Run')))
+    hold = list(states.TABLE) + [('mission', 'CREATED', 'BLOCKED', 'x', None)]
+    assert any('CREATED -> BLOCKED' in b for b in broke(lambda d: None, hold))
+    assert any('FAILED' in b for b in broke(lambda d: d['states']['FAILED'].update(station=5)))
+    assert any('COMPLETED' in b for b in broke(lambda d: d['states']['CANCELLED'].update(kind='complete')))
+    assert any('sentence' in b for b in broke(lambda d: d['sentences'].update(held='{word} at {step}')))
+    assert any('held' in b for b in broke(lambda d: d['sentences'].pop('held')))
+    assert any('resumed' in b for b in broke(lambda d: d['states']['PAUSED'].update(kind='current', station=4)))
+
+
 # ── contrast (§15.1; design system §3) ──
 
 def _lin(c):

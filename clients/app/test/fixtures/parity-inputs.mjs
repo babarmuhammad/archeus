@@ -36,6 +36,23 @@ export const INPUTS = [
   ['present', 'nope', 'X'],
   ['badge', 'mission', 'COMPLETED'],
   ['badge', 'task', 'RUNNING'],
+  // spineOf (ADR-0054): where a mission is, from its state and held_from only
+  ...['CREATED', 'UNDERSTANDING', 'CONTEXT_GATHERING', 'REASONING', 'PLANNING', 'REPLANNING', 'APPROVAL_REQUIRED', 'APPROVED', 'EXECUTING', 'VERIFYING', 'REVIEWING', 'COMPLETED', 'FAILED', 'CANCELLED']
+    .map((s) => ['spineOf', s, null]),
+  ['spineOf', 'BLOCKED', 'UNDERSTANDING'],
+  ['spineOf', 'BLOCKED', 'EXECUTING'],
+  ['spineOf', 'BLOCKED', 'VERIFYING'],
+  ['spineOf', 'BLOCKED', null],
+  ['spineOf', 'BLOCKED', 'COMPLETED'],
+  ['spineOf', 'BLOCKED', 'constructor'],
+  ['spineOf', 'PAUSED', 'EXECUTING'],
+  ['spineOf', 'PAUSED', null],
+  ['spineOf', 'PAUSED', 7],
+  ['spineOf', 'RESUMED', 'REASONING'],
+  ['spineOf', 'RESUMED', null],
+  ['spineOf', 'EXECUTING', 'VERIFYING'],
+  ['spineOf', 'CANCELLED', 'EXECUTING'],
+  ['spineOf', 'FROM_A_NEWER_CORE', 'EXECUTING'],
   ['isDone', 'mission', 'COMPLETED'],
   ['isDone', 'mission', 'VERIFYING'],
   ['isDone', 'execution', 'ENDED_OK'],
@@ -193,9 +210,11 @@ if (process.argv[1] && process.argv[1].endsWith('parity-inputs.mjs')) {
   const cm = await import('../../src/data/commands.ts');
   const inv = await import('../../src/data/invalidation.ts');
   const now = await import('../../src/state/now.ts');
+  const spine = await import('../../src/state/spine.ts');
   const FN = {
     ...rel, ...pr, ...cn, ...cm,
     stateSentence: now.stateSentence,
+    spineOf: spine.spineOf,
     staleBy: (f, p) => inv.staleBy(f)(p),
     keyAfter: (p, o) => cm.keyAfter(p, o, () => 'NEW'),
     ago: (iso, now) => pr.ago(iso, now),

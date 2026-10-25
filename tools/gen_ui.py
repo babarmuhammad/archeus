@@ -6,10 +6,11 @@
                                   has no presentation class, or a class is
                                   incomplete
 
-Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation,motion,edges}.json.
+Sources: clients/app/tokens/{tokens,presentation,navigation,invalidation,motion,edges,spine}.json.
 Outputs for the SPA: src/styles/tokens.css, src/state/tokens.ts,
 src/state/presentation.ts, src/nav/table.ts, src/data/rules.ts,
-src/state/motion.ts (the motion registry, ADR-0024 §3), src/graph/edgeWords.ts
+src/state/motion.ts (the motion registry, ADR-0024 §3), src/state/spineTable.ts
+(the mission spine, ADR-0054), src/graph/edgeWords.ts
 (the relationship vocabulary, p19-design-gate B1), src/state/appearance.js (the
 appearance boot, p19-design-gate B9). Outputs for the
 TUI (p17-design-gate A1, A7): archeus/cli/tui/_tables.py and
@@ -22,6 +23,7 @@ applied to the V1 clients.
 import json
 import os
 import pprint
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +41,8 @@ RULES_TS = os.path.join(APP, 'src', 'data', 'rules.ts')
 MOTION = os.path.join(APP, 'tokens', 'motion.json')
 MOTION_TS = os.path.join(APP, 'src', 'state', 'motion.ts')
 EDGES = os.path.join(APP, 'tokens', 'edges.json')
+SPINE = os.path.join(APP, 'tokens', 'spine.json')
+SPINE_TS = os.path.join(APP, 'src', 'state', 'spineTable.ts')
 EDGES_TS = os.path.join(APP, 'src', 'graph', 'edgeWords.ts')
 APPEARANCE_JS = os.path.join(APP, 'src', 'state', 'appearance.js')
 #: the localStorage key of this client's appearance choice (p19-design-gate B9)
@@ -268,6 +272,93 @@ def token_problems(t):
     return bad
 
 
+#: what a spine position may be (tokens/spine.json): the kinds spineOf draws, and `unknown`,
+#: which a hold without a station in held_from falls to
+SPINE_KINDS = ('ahead', 'current', 'passed', 'complete', 'failed', 'held', 'resumed', 'cancelled')
+_WITH_STATION = ('current', 'passed', 'failed')
+_SENTENCE_WORDS = {'word', 'n', 'total', 'station'}
+_COUNTS = ('current', 'resumed', 'passed', 'failed', 'held')
+
+
+def spine_problems(sp, p, table=None):
+    """Everything wrong with the spine table against the domain (ADR-0054 §2): a mission
+    state with no position, a station name Core does not use, and the closure rules, so a
+    new state or a new hold edge fails the build until the table says where it goes."""
+    from archeus.core.domain import states
+    table = states.TABLE if table is None else table
+    bad = []
+    st, stations = sp['states'], sp['stations']
+    want = set(states.states('mission'))
+    for s in sorted(want - set(st)):
+        bad.append('mission.%s has no spine position' % s)
+    for s in sorted(set(st) - want):
+        bad.append('spine.%s is not a mission state' % s)
+    for s, e in sorted(st.items()):
+        kind = e.get('kind')
+        if kind not in SPINE_KINDS:
+            bad.append('spine.%s has unknown kind %r' % (s, kind))
+            continue
+        if (kind in _WITH_STATION) != ('station' in e):
+            bad.append('spine.%s (%s) %s a station' % (s, kind, 'needs' if kind in _WITH_STATION
+                                                       else 'must not have'))
+        elif 'station' in e and not (isinstance(e['station'], int) and 1 <= e['station'] <= len(stations)):
+            bad.append('spine.%s names station %r, not one of 1..%d' % (s, e['station'], len(stations)))
+    labels = _labels(p)['mission']
+    for i, stn in enumerate(stations, 1):
+        anchor, label = stn.get('anchor'), stn.get('label')
+        if st.get(anchor) != {'kind': 'current', 'station': i}:
+            bad.append('station %d (%s): its anchor %s is not a current state on station %d' % (i, label, anchor, i))
+        elif not label or label.lower() not in labels[anchor].lower():
+            bad.append('station %d: %r does not occur in Core\'s label %r for %s' % (i, label, labels[anchor], anchor))
+    edges = [(row[1], row[2]) for row in table if row[0] == 'mission' and row[1] != '[*]']
+    for frm, to in edges:
+        if to in ('BLOCKED', 'PAUSED') and st.get(frm, {}).get('kind') != 'current':
+            bad.append('%s -> %s: a hold entered from a state with no station, so held_from could not resolve' % (frm, to))
+        if to == 'FAILED' and (st.get(frm, {}).get('kind') != 'current'
+                               or st[frm].get('station') != st.get('FAILED', {}).get('station')):
+            bad.append('%s -> FAILED: FAILED does not sit on the station it failed from' % frm)
+        if st.get(to, {}).get('kind') == 'resumed' and st.get(frm, {}).get('kind') != 'held':
+            bad.append('%s -> %s: only a hold is resumed' % (frm, to))
+    for kind, only in (('complete', ['COMPLETED']), ('cancelled', ['CANCELLED'])):
+        got = sorted(s for s, e in st.items() if e.get('kind') == kind)
+        if got != only:
+            bad.append('only %s may be %s, not %s' % (only[0], kind, got))
+    for kind in SPINE_KINDS + ('unknown',):
+        text = sp['sentences'].get(kind)
+        if not text:
+            bad.append('kind %s has no sentence' % kind)
+            continue
+        words = set(re.findall(r'\{(\w*)\}', text))
+        if words - _SENTENCE_WORDS or 'word' not in words or (words & {'n', 'station'} and kind not in _COUNTS):
+            bad.append('sentence %s: %r uses words it may not' % (kind, text))
+    for kind in ('passed', 'ahead', 'none', 'unknown'):
+        m = sp['marks'].get(kind)
+        if m is None:
+            bad.append('mark %s is missing' % kind)
+        elif 'class' in m and m['class'] not in p['classes']:
+            bad.append('mark %s names unknown class %r' % (kind, m['class']))
+        elif 'class' not in m and not (m.get('glyph') and m.get('ascii')):
+            bad.append('mark %s has no glyph and ASCII glyph' % kind)
+    return bad
+
+
+def spine_table(sp, p):
+    """The spine as the clients read it: marks resolved to glyph, ASCII glyph and role."""
+    marks = {}
+    for kind, m in sp['marks'].items():
+        c = p['classes'][m['class']] if 'class' in m else m
+        marks[kind] = {'glyph': c['glyph'], 'ascii': c['ascii'], 'role': m['role']}
+    return {'stations': sp['stations'], 'states': sp['states'], 'marks': marks,
+            'sentences': sp['sentences']}
+
+
+def render_spine_ts(sp, p):
+    return (HEAD + '// The mission spine (ADR-0054), from tokens/spine.json: stations, a position per\n'
+            '// mission state, mark glyphs and the text equivalent. state/spine.ts reads it.\n'
+            'export const SPINE = %s as const;\n'
+            % json.dumps(spine_table(sp, p), ensure_ascii=False, indent=2))
+
+
 def nav_problems(n):
     """Everything wrong with the navigation table."""
     bad = []
@@ -456,7 +547,7 @@ def render_words_py(p):
             + '\nLABELS = %s\n' % _py(_labels(p)))
 
 
-def render_tables_py(p, n, i, w):
+def render_tables_py(p, n, i, w, sp):
     machines = {m: dict(sorted(table.items())) for m, table in sorted(p['machines'].items())}
     parts = [PY_HEAD, '"""The TUI\'s copy of the V1 client tables (p17-design-gate A1):\n'
              'navigation, presentation, triggers, invalidation and the relationship words,\n'
@@ -466,7 +557,7 @@ def render_tables_py(p, n, i, w):
                         ('INSPECTOR_TABS', n['inspector_tabs']), ('TABS', n['tabs']),
                         ('CLASSES', p['classes']), ('PRESENTATION', machines),
                         ('LABELS', _labels(p)), ('TRIGGERS', triggers()), ('RULES', i['rules']),
-                        ('EDGE_WORDS', w['words'])):
+                        ('EDGE_WORDS', w['words']), ('SPINE', spine_table(sp, p))):
         parts.append('\n%s = %s\n' % (name, _py(value)))
     return ''.join(parts)
 
@@ -489,13 +580,13 @@ def render_tokens_py(t):
 
 def outputs():
     t, p = load(TOKENS), load(PRESENTATION)
-    n, i, mo, w = load(NAVIGATION), load(INVALIDATION), load(MOTION), load(EDGES)
+    n, i, mo, w, sp = load(NAVIGATION), load(INVALIDATION), load(MOTION), load(EDGES), load(SPINE)
     return {CSS_OUT: render_css(t), TOKENS_TS: render_tokens_ts(t),
             PRES_TS: render_presentation_ts(p), NAV_TS: render_nav_ts(n),
-            RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i, w),
+            RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i, w, sp),
             WORDS_PY: render_words_py(p),
-            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo), EDGES_TS: render_edges_ts(w),
-            APPEARANCE_JS: render_appearance_js(t)},         problems(p, t) + token_problems(t) + nav_problems(n) + motion_problems(mo, t)
+            TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo), EDGES_TS: render_edges_ts(w), SPINE_TS: render_spine_ts(sp, p),
+            APPEARANCE_JS: render_appearance_js(t)},         problems(p, t) + token_problems(t) + nav_problems(n) + motion_problems(mo, t) + spine_problems(sp, p)
 
 
 def main(argv):

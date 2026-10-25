@@ -422,6 +422,651 @@
    }
   },
   {
+   "fn": "spineOf",
+   "args": [
+    "CREATED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Created, not started."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "UNDERSTANDING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "current",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 1,
+    "done": false,
+    "look": {
+     "cls": "planning",
+     "glyph": "◌",
+     "role": "state.thinking"
+    },
+    "text": "Understanding, step 1 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "CONTEXT_GATHERING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "current",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 1,
+    "done": false,
+    "look": {
+     "cls": "planning",
+     "glyph": "◌",
+     "role": "state.thinking"
+    },
+    "text": "Context gathering, step 1 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "REASONING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "current",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 1,
+    "done": false,
+    "look": {
+     "cls": "planning",
+     "glyph": "◌",
+     "role": "state.thinking"
+    },
+    "text": "Reasoning, step 1 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "PLANNING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "current",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 2,
+    "done": false,
+    "look": {
+     "cls": "planning",
+     "glyph": "◌",
+     "role": "state.thinking"
+    },
+    "text": "Planning, step 2 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "REPLANNING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "current",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 2,
+    "done": false,
+    "look": {
+     "cls": "planning",
+     "glyph": "◌",
+     "role": "state.thinking"
+    },
+    "text": "Replanning, step 2 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "APPROVAL_REQUIRED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "current",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 3,
+    "done": false,
+    "look": {
+     "cls": "needs_you",
+     "glyph": "◆",
+     "role": "state.attention"
+    },
+    "text": "Waiting for approval, step 3 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "APPROVED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Approved — not started, 3 of 6 steps passed."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "EXECUTING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "current",
+     "ahead",
+     "ahead"
+    ],
+    "at": 4,
+    "done": false,
+    "look": {
+     "cls": "active",
+     "glyph": "●",
+     "role": "state.active"
+    },
+    "text": "Executing, step 4 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "VERIFYING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "passed",
+     "current",
+     "ahead"
+    ],
+    "at": 5,
+    "done": false,
+    "look": {
+     "cls": "verifying",
+     "glyph": "●",
+     "role": "state.active"
+    },
+    "text": "Verifying, step 5 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "REVIEWING",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "passed",
+     "passed",
+     "current"
+    ],
+    "at": 6,
+    "done": false,
+    "look": {
+     "cls": "reviewing",
+     "glyph": "●",
+     "role": "state.active"
+    },
+    "text": "Reviewing — verified, not accepted, step 6 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "COMPLETED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "passed",
+     "passed",
+     "passed"
+    ],
+    "at": null,
+    "done": true,
+    "look": null,
+    "text": "Done — verified and reviewed, all 6 steps passed."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "FAILED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "failed",
+     "ahead",
+     "ahead"
+    ],
+    "at": 4,
+    "done": false,
+    "look": {
+     "cls": "failed",
+     "glyph": "✕",
+     "role": "state.blocked"
+    },
+    "text": "Failed at step 4 of 6 (Executing)."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "CANCELLED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "none",
+     "none",
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Cancelled."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "BLOCKED",
+    "UNDERSTANDING"
+   ],
+   "out": {
+    "marks": [
+     "held",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 1,
+    "done": false,
+    "look": {
+     "cls": "blocked",
+     "glyph": "■",
+     "role": "state.blocked"
+    },
+    "text": "Blocked at step 1 of 6 (Understanding)."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "BLOCKED",
+    "EXECUTING"
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "held",
+     "ahead",
+     "ahead"
+    ],
+    "at": 4,
+    "done": false,
+    "look": {
+     "cls": "blocked",
+     "glyph": "■",
+     "role": "state.blocked"
+    },
+    "text": "Blocked at step 4 of 6 (Executing)."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "BLOCKED",
+    "VERIFYING"
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "passed",
+     "held",
+     "ahead"
+    ],
+    "at": 5,
+    "done": false,
+    "look": {
+     "cls": "blocked",
+     "glyph": "■",
+     "role": "state.blocked"
+    },
+    "text": "Blocked at step 5 of 6 (Verifying)."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "BLOCKED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Blocked, position unknown."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "BLOCKED",
+    "COMPLETED"
+   ],
+   "out": {
+    "marks": [
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Blocked, position unknown."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "BLOCKED",
+    "constructor"
+   ],
+   "out": {
+    "marks": [
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Blocked, position unknown."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "PAUSED",
+    "EXECUTING"
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "held",
+     "ahead",
+     "ahead"
+    ],
+    "at": 4,
+    "done": false,
+    "look": {
+     "cls": "paused",
+     "glyph": "‖",
+     "role": "state.paused"
+    },
+    "text": "Paused at step 4 of 6 (Executing)."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "PAUSED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Paused, position unknown."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "PAUSED",
+    7
+   ],
+   "out": {
+    "marks": [
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Paused, position unknown."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "RESUMED",
+    "REASONING"
+   ],
+   "out": {
+    "marks": [
+     "current",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead",
+     "ahead"
+    ],
+    "at": 1,
+    "done": false,
+    "look": {
+     "cls": "active",
+     "glyph": "●",
+     "role": "state.active"
+    },
+    "text": "Resuming, step 1 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "RESUMED",
+    null
+   ],
+   "out": {
+    "marks": [
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown",
+     "unknown"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Resuming, position unknown."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "EXECUTING",
+    "VERIFYING"
+   ],
+   "out": {
+    "marks": [
+     "passed",
+     "passed",
+     "passed",
+     "current",
+     "ahead",
+     "ahead"
+    ],
+    "at": 4,
+    "done": false,
+    "look": {
+     "cls": "active",
+     "glyph": "●",
+     "role": "state.active"
+    },
+    "text": "Executing, step 4 of 6."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "CANCELLED",
+    "EXECUTING"
+   ],
+   "out": {
+    "marks": [
+     "none",
+     "none",
+     "none",
+     "none",
+     "none",
+     "none"
+    ],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "Cancelled."
+   }
+  },
+  {
+   "fn": "spineOf",
+   "args": [
+    "FROM_A_NEWER_CORE",
+    "EXECUTING"
+   ],
+   "out": {
+    "marks": [],
+    "at": null,
+    "done": false,
+    "look": null,
+    "text": "FROM_A_NEWER_CORE"
+   }
+  },
+  {
    "fn": "isDone",
    "args": [
     "mission",

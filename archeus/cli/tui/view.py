@@ -15,7 +15,7 @@ import textwrap
 from claude_sessions import render
 
 from ._tables import CLASSES
-from .present import present
+from .present import present, spine_cells
 from .tokens import COLOURS
 
 # every escape and control sequence a terminal acts on, 7-bit and 8-bit
@@ -104,6 +104,11 @@ class Style:
         look = present(machine, state)
         return self.paint(self.glyph(look) + ' ', look['role']) + self.t(look['label'] or state,
                                                                            look['role'])
+
+    def spine(self, state, held_from=None):
+        """The mission's stations as one cluster of glyphs (ADR-0054 §7), never colour alone."""
+        return ''.join(self.paint(c['ascii'] if self.ascii else c['glyph'], c['role'])
+                       for c in spine_cells(state, held_from))
 
     def line(self, text, width):
         """The last step of every line: exactly *width* columns, and ASCII for an

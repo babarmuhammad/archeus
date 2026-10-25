@@ -1,0 +1,47 @@
+{
+  "$comment": "The mission lifecycle spine (ADR-0054): where a mission is, as six stations drawn from Core's mission state and held_from, never guessed. tools/gen_ui.py generates src/state/spineTable.ts and the SPINE table of archeus/cli/tui/_tables.py from this file and refuses it unless every mission state of states.py has an entry, every station label occurs in Core's label for its anchor state, and the closure rules hold. Kinds: ahead (no station reached), current (on `station`), passed (`station` and every one before it passed, nothing current), complete (all passed, the Done colour: COMPLETED only), failed (stopped on `station`), held (BLOCKED or PAUSED: on the station of held_from), resumed (RESUMED: current on the station of held_from), cancelled (no stations). A held or resumed state without a held_from that is a `current` state draws every station unknown. `marks` give a mark kind its presentation class (its glyph) and role; the mark on a current, held or failed station is the glyph and role of the mission state's own class. `sentences` are the text equivalent per kind; {word} is Core's label for the state, verbatim.",
+  "stations": [
+    {"label": "Understanding", "anchor": "UNDERSTANDING"},
+    {"label": "Planning", "anchor": "PLANNING"},
+    {"label": "Approval", "anchor": "APPROVAL_REQUIRED"},
+    {"label": "Executing", "anchor": "EXECUTING"},
+    {"label": "Verifying", "anchor": "VERIFYING"},
+    {"label": "Reviewing", "anchor": "REVIEWING"}
+  ],
+  "states": {
+    "CREATED": {"kind": "ahead"},
+    "UNDERSTANDING": {"kind": "current", "station": 1},
+    "CONTEXT_GATHERING": {"kind": "current", "station": 1},
+    "REASONING": {"kind": "current", "station": 1},
+    "PLANNING": {"kind": "current", "station": 2},
+    "REPLANNING": {"kind": "current", "station": 2},
+    "APPROVAL_REQUIRED": {"kind": "current", "station": 3},
+    "APPROVED": {"kind": "passed", "station": 3},
+    "EXECUTING": {"kind": "current", "station": 4},
+    "VERIFYING": {"kind": "current", "station": 5},
+    "REVIEWING": {"kind": "current", "station": 6},
+    "COMPLETED": {"kind": "complete"},
+    "FAILED": {"kind": "failed", "station": 4},
+    "BLOCKED": {"kind": "held"},
+    "PAUSED": {"kind": "held"},
+    "RESUMED": {"kind": "resumed"},
+    "CANCELLED": {"kind": "cancelled"}
+  },
+  "marks": {
+    "passed": {"class": "done", "role": "text"},
+    "ahead": {"class": "proposed", "role": "text-3"},
+    "none": {"class": "inactive", "role": "text-3"},
+    "unknown": {"glyph": "?", "ascii": "?", "role": "text-2"}
+  },
+  "sentences": {
+    "ahead": "{word}, not started.",
+    "current": "{word}, step {n} of {total}.",
+    "resumed": "{word}, step {n} of {total}.",
+    "passed": "{word}, {n} of {total} steps passed.",
+    "complete": "{word}, all {total} steps passed.",
+    "failed": "{word} at step {n} of {total} ({station}).",
+    "held": "{word} at step {n} of {total} ({station}).",
+    "unknown": "{word}, position unknown.",
+    "cancelled": "{word}."
+  }
+}
