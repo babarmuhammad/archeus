@@ -5,7 +5,7 @@
 // token sets are themes, so anything else stored is `system`. Control ->
 // Appearance calls it with the new choice, which it stores first.
 function archeusAppearance(next) {
-  var KEY = "archeus-appearance", BG = {"dark": "#0E1116", "light": "#F7F8FA"}, CONTRASTS = ["standard", "high"], p = null;
+  var KEY = "archeus-appearance", BG = {"dark": "#0C0811", "light": "#F4EFE4"}, CONTRASTS = ["standard", "high"], p = null;
   try {
     if (next) localStorage.setItem(KEY, JSON.stringify(next));
     p = JSON.parse(localStorage.getItem(KEY));

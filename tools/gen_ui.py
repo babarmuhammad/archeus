@@ -91,8 +91,7 @@ def render_css(t):
     # ADR-0044 §5: each theme under its attribute (set by the appearance boot),
     # and `system` — no attribute, or data-*="system" — mapped in media queries
     light = ['%s: %s;' % (_var(role), hexv) for role, hexv in t['themes']['light'].items()]
-    high = ['%s: var(%s);' % (_var(role), _var(src))
-            for role, src in t['high_contrast'].items() if not role.startswith('$')]
+    high = ['%s: var(%s);' % (_var(role), _var(src)) for role, src in _aliases(t).items()]
     high.append('--hairline: 2px;')
     out.append(":root[data-theme='dark'] {\n  color-scheme: dark;\n}")
     out.append("@media (prefers-color-scheme: light) {\n  :root:not([data-theme='dark']) {")
@@ -107,11 +106,50 @@ def render_css(t):
     out.append(":root[data-contrast='high'] {")
     out += ['  ' + d for d in high]
     out.append('}')
+    out += _high_contrast_blocks(t)
     out.append('@media (max-width: %dpx) {\n  :root {' % (t['breakpoints']['tablet'] - 1))
     for k, (size, line) in t['type']['phone'].items():
         out.append('    --type-%s: %.4frem/%.4frem var(--font);' % (k, size / 16, line / 16))
     out.append('  }\n}')
     return '\n'.join(out) + '\n'
+
+
+def _aliases(t):
+    """High contrast's aliases, over both themes: a role that reads another's value."""
+    return {k: v for k, v in t['high_contrast'].items() if k != 'themes' and not k.startswith('$')}
+
+
+def hc_theme(t, name):
+    """Theme *name* in high contrast as the cascade resolves it: its own overrides,
+    then each alias reading the (overridden) role it names."""
+    out = dict(t['themes'][name], **t['high_contrast']['themes'][name])
+    out.update({role: out[src] for role, src in _aliases(t).items()})
+    return out
+
+
+def _high_contrast_blocks(t):
+    """Each theme's own high-contrast values, under every form that selects it: the
+    attribute (`data-contrast='high'`) or the OS preference, over the theme's attribute
+    or over `system` with the OS scheme (the theme blocks above, ADR-0044 §5)."""
+    out = []
+    for name in ('dark', 'light'):
+        other = 'light' if name == 'dark' else 'dark'
+        decls = ['  %s: %s;' % (_var(r), v) for r, v in t['high_contrast']['themes'][name].items()]
+        for trigger, media in (("[data-contrast='high']", None),
+                               (":not([data-contrast='standard'])", 'prefers-contrast: more')):
+            for sel, scheme in ((":root[data-theme='%s']%s" % (name, trigger), None),
+                                (":root:not([data-theme='%s'])%s" % (other, trigger), name)):
+                conds = [c for c in (media, scheme and 'prefers-color-scheme: ' + scheme) if c]
+                if conds:
+                    out.append('@media %s {' % ' and '.join('(%s)' % c for c in conds))
+                    out.append('  %s {' % sel)
+                    out += ['  ' + d for d in decls]
+                    out += ['  }', '}']
+                else:
+                    out.append('%s {' % sel)
+                    out += decls
+                    out.append('}')
+    return out
 
 
 def _alpha(t):
@@ -205,6 +243,28 @@ def problems(p, t):
     used = [a for v in by_glyph.values() for a in v]
     for a in sorted({a for a in used if used.count(a) > 1}):
         bad.append('ASCII glyph %r stands for two glyphs' % a)
+    return bad
+
+
+def token_problems(t):
+    """Everything wrong with the token sets: only dark and light are themes, each has
+    the same roles, and high contrast overrides only roles of those themes."""
+    bad = []
+    if sorted(t['themes']) != ['dark', 'light']:
+        bad.append('the themes are exactly dark and light (ADR-0044), not %s' % sorted(t['themes']))
+    roles = set(t['themes'].get('dark', ()))
+    for name, theme in t['themes'].items():
+        if set(theme) != roles:
+            bad.append('theme %s and dark do not hold the same roles' % name)
+    hc = t['high_contrast']
+    if sorted(hc.get('themes', ())) != sorted(t['themes']):
+        bad.append('high contrast holds its own values for exactly the themes: %s' % sorted(hc.get('themes', ())))
+    for name, over in hc.get('themes', {}).items():
+        for role in sorted(set(over) - roles):
+            bad.append('high contrast %s overrides unknown role %r' % (name, role))
+    for role, src in _aliases(t).items():
+        if role not in roles or src not in roles:
+            bad.append('high contrast alias %s -> %s names an unknown role' % (role, src))
     return bad
 
 
@@ -435,7 +495,7 @@ def outputs():
             RULES_TS: render_rules_ts(i), TABLES_PY: render_tables_py(p, n, i, w),
             WORDS_PY: render_words_py(p),
             TOKENS_PY: render_tokens_py(t), MOTION_TS: render_motion_ts(mo), EDGES_TS: render_edges_ts(w),
-            APPEARANCE_JS: render_appearance_js(t)},         problems(p, t) + nav_problems(n) + motion_problems(mo, t)
+            APPEARANCE_JS: render_appearance_js(t)},         problems(p, t) + token_problems(t) + nav_problems(n) + motion_problems(mo, t)
 
 
 def main(argv):

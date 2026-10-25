@@ -3,6 +3,8 @@
 the stylesheets, the service worker, the components — so they run in the
 Node-free `test` job. Mutation-verified by tools/mutate_p16.py (M26, M27)."""
 
+import colorsys
+import copy
 import itertools
 import json
 import math
@@ -92,7 +94,7 @@ STATES = ('state.active', 'state.attention', 'state.blocked', 'state.paused', 's
 @pytest.mark.parametrize('theme', sorted(TOKENS['themes']))
 def test_every_role_clears_its_contrast_floor_on_every_surface(theme):
     t = TOKENS['themes'][theme]
-    floors = dict({'text': 4.5, 'text-2': 4.5, 'text-3': 3.0, 'focus': 3.0},
+    floors = dict({'text': 4.5, 'text-2': 4.5, 'text-3': 4.5, 'focus': 3.0},
                   **{s: 4.5 for s in STATES})
     for surface in SURFACES:
         for role, floor in floors.items():
@@ -128,6 +130,117 @@ def test_the_terminal_focus_is_never_a_state_colour():
     for theme, c in COLOURS.items():
         states = {c[s] for s in STATES}
         assert c['focus'] not in states, (theme, c['focus'])
+        assert len(states) == len(STATES), (theme, 'two states share a terminal colour')
+
+
+def _hue(h):
+    return colorsys.rgb_to_hls(*(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)))[0] * 360
+
+
+def _looks():
+    """The four looks the app has: each theme, standard and high contrast."""
+    return {'%s%s' % (name, suffix): t for name in sorted(TOKENS['themes'])
+            for suffix, t in (('', TOKENS['themes'][name]), (' high contrast', gen_ui.hc_theme(TOKENS, name)))}
+
+
+@pytest.mark.parametrize('theme', sorted(TOKENS['themes']))
+def test_high_contrast_reaches_its_floors_on_every_surface(theme):
+    """V2 visual language §4: text and every state 7:1 on every surface, focus 4.5:1,
+    both lines 3:1 (non-text), the states still told apart and focus still not a state.
+    Read through gen_ui.hc_theme (aliases over the per-theme overrides, as the cascade
+    resolves them); the emission test below holds the CSS to the same values."""
+    t = gen_ui.hc_theme(TOKENS, theme)
+    floors = dict({'text': 7.0, 'text-2': 7.0, 'text-3': 7.0, 'focus': 4.5, 'line': 3.0, 'line-strong': 3.0},
+                  **{s: 7.0 for s in STATES})
+    for surface in SURFACES:
+        for role, floor in floors.items():
+            got = ratio(t[role], t[surface])
+            assert got >= floor, '%s high contrast %s on %s: %.2f < %.1f' % (theme, role, surface, got, floor)
+    assert ratio(t['primary'], t['on-primary']) >= 7.0
+    for a, b in itertools.combinations(STATES, 2):
+        assert math.dist(_lab(t[a]), _lab(t[b])) >= 20, (theme, a, b)
+    for s in STATES:
+        assert math.dist(_lab(t['focus']), _lab(t[s])) >= 20, (theme, 'focus', s)
+
+
+def test_each_themes_high_contrast_values_are_emitted_under_every_form_that_selects_it():
+    """The per-theme overrides reach the page by the attribute and by the OS preference,
+    over the theme's own attribute and over `system` with its OS scheme (ADR-0044 §5)."""
+    css = _css()[STYLES[1]]
+    assert sorted(TOKENS['high_contrast']['themes']) == sorted(TOKENS['themes'])
+    for theme, over in TOKENS['high_contrast']['themes'].items():
+        other = 'light' if theme == 'dark' else 'dark'
+        forms = [(":root[data-theme='%s'][data-contrast='high']" % theme, set()),
+                 (":root:not([data-theme='%s'])[data-contrast='high']" % other, {'prefers-color-scheme: ' + theme}),
+                 (":root[data-theme='%s']:not([data-contrast='standard'])" % theme, {'prefers-contrast: more'}),
+                 (":root:not([data-theme='%s']):not([data-contrast='standard'])" % other,
+                  {'prefers-contrast: more', 'prefers-color-scheme: ' + theme})]
+        for sel, conds in forms:
+            m = re.search(r'(@media [^{]+\{\s*)?' + re.escape(sel) + r'\s*\{([^{}]*)\}', css)
+            assert m, (theme, sel)
+            assert set(re.findall(r'\(([^)]*)\)', m.group(1) or '')) == conds, (theme, sel, m.group(1))
+            for role, value in over.items():
+                assert '--%s: %s;' % (role.replace('.', '-'), value) in m.group(2), (theme, sel, role)
+
+
+def test_a_state_keeps_its_one_hue_in_every_look():
+    """ADR-0017: one colour, one meaning, in every theme. A theme or a high contrast
+    value moves a state's lightness, never its hue (V2 visual language §3.2)."""
+    for s in STATES:
+        hues = [_hue(t[s]) for t in _looks().values()]
+        spread = max(min(abs(a - b), 360 - abs(a - b)) for a in hues for b in hues)
+        assert spread <= 10, (s, [round(h) for h in hues])
+
+
+def test_done_is_green_and_blocked_and_focus_are_the_owners_dark_values():
+    """Owner, 2026-10-25: green Done (never the slate of paused), the V1 red for blocked,
+    the prototype's focus in Dark."""
+    for look, t in _looks().items():
+        assert 120 <= _hue(t['state.done']) <= 170, look
+    assert TOKENS['themes']['dark']['state.blocked'] == '#F07178'
+    assert TOKENS['themes']['dark']['focus'] == '#FFF3CF'
+
+
+def _over(fg, bg, alpha):
+    mix = [round(alpha * int(fg[i:i + 2], 16) + (1 - alpha) * int(bg[i:i + 2], 16)) for i in (1, 3, 5)]
+    return '#%02X%02X%02X' % tuple(mix)
+
+
+@pytest.mark.parametrize('theme', sorted(TOKENS['themes']))
+def test_text_on_the_attention_band_clears_its_floor(theme):
+    """V2 visual language §8: the band is `state.attention` at alpha.band over the row's
+    surface. The word is ink (4.5:1, every text role) and the amber figure is non-text
+    (3:1); amber as text is not promised on the band in Light."""
+    t = TOKENS['themes'][theme]
+    for surface in SURFACES:
+        band = _over(t['state.attention'], t[surface], TOKENS['alpha']['band'])
+        for role in ('text', 'text-2', 'text-3'):
+            assert ratio(t[role], band) >= 4.5, (theme, role, surface)
+        assert ratio(t['state.attention'], band) >= 3.0, (theme, surface)
+
+
+def test_the_v2_tokens_hold_their_approved_values_and_reach_the_css():
+    """Owner, 2026-10-25: 44 px for primary desktop controls only, the breath's 6000 ms,
+    the band's 12 %; no `text-muted` role (folded into `text-3`)."""
+    assert TOKENS['targets'] == {'desktop': 28, 'desktop-primary': 44, 'phone': 44}
+    assert TOKENS['motion']['breath'] == 6000 and TOKENS['alpha']['band'] == 0.12
+    css = _css()[STYLES[1]]
+    for decl in ('--target-desktop-primary: 44px;', '--dur-breath: 6000ms;', '--band: 0.12;'):
+        assert decl in css, decl
+    assert 'text-muted' not in TOKENS['themes']['dark']
+
+
+def test_the_token_sets_are_refused_unless_dark_and_light_with_the_same_roles():
+    assert gen_ui.token_problems(TOKENS) == []
+    third = copy.deepcopy(TOKENS)
+    third['themes']['sepia'] = dict(third['themes']['dark'])
+    assert gen_ui.token_problems(third)
+    short = copy.deepcopy(TOKENS)
+    short['themes']['light'].pop('state.done')
+    assert gen_ui.token_problems(short)
+    stray = copy.deepcopy(TOKENS)
+    stray['high_contrast']['themes']['dark']['state.mauve'] = '#FFFFFF'
+    assert gen_ui.token_problems(stray)
 
 
 def test_the_narrow_graph_note_is_not_a_problem():
@@ -450,7 +563,7 @@ def test_the_command_name_rule_fails_what_the_rulebook_found():
 def test_the_manifest_names_what_the_pwa_needs():
     m = json.load(open(os.path.join(APP, 'public', 'manifest.webmanifest'), encoding='utf-8'))
     assert m['start_url'] == '/' and m['display'] == 'standalone'
-    assert m['background_color'] == TOKENS['themes']['dark']['bg']
+    assert m['background_color'] == m['theme_color'] == TOKENS['themes']['dark']['bg']
     for icon in m['icons']:
         assert os.path.exists(os.path.join(APP, 'public', icon['src'].lstrip('/'))), icon
 
