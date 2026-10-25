@@ -128,7 +128,7 @@ check(/\.term-svg \.strip/.test(css) && /Roboto Mono/.test(css) && /fonts\/Robot
 check(/\.term-svg text\.amber/.test(css) && /\.term-svg text\.blue/.test(css), 'terminal state colour rules missing');
 check(/'Codex · execution'/.test(js) && /a_role/.test(js) && /openFeed/.test(js), 'phone Codex label or chat open-at-card missing');
 check(/Proposed · not run/.test(js) && /confirmBox\(title \+ '\?'/.test(js), 'effects must be proposed and confirmed');
-for (const word of ['Intended', 'Recorded', 'Verified', 'Uncertain', 'Needs you', 'Reconcile', 'Not every external effect can be reversed']) {
+for (const word of ['INTENDED', 'RECORDED', 'UNCERTAIN', 'SUSPENDED', 'NOT RECORDED', 'Not every external effect can be reversed']) {
   check(html.includes(word) || js.includes(word), `replay state or action missing: ${word}`);
 }
 check(/Tell Archeus what to do/.test(html), 'Tell box label missing');
@@ -140,12 +140,20 @@ check(/rp-rows/.test(html) && /rp-panel/.test(html), 'replay panel missing');
 check(/feed/.test(css) && /chatbar/.test(css), 'chat feed or bar styles missing');
 
 // Round 10c replay: the concept frame (art base, live labels, rows, chips, markers, Reconcile, footer) and the phone form.
-for (const word of ['orchestrates', 'executes', 'verifies', 'produces', 'Open evidence', 'Operator']) check(js.includes(word), `replay verb or button missing: ${word}`);
+for (const word of ['orchestrates', 'executes', 'verifies', 'produces', 'Source:', 'replayPropose']) check(js.includes(word), `replay verb or source missing: ${word}`);
 for (const t of ['09:00', '09:12', '09:18', '09:24', '09:25']) check(js.includes(t), `replay row time missing: ${t}`);
 check(/id="replay-stage"/.test(html) && /class="rc-stage"/.test(html) && /id="rc-labels"/.test(html), 'replay stage markup missing');
 check(/data-rp-back/.test(html) && /\.rp-back\s*\{/.test(css), 'replay Back control missing');
 check(/#s-replay/.test(css) && /\.rp-wrap/.test(css), 'replay layout styles missing');
 const rp = js.slice(js.indexOf('Replay (round 10c replay)'), js.indexOf('function renderShared'));
+const replayFixture = rp.slice(rp.indexOf('var REPLAY ='), rp.indexOf('var replayId'));
+check((replayFixture.match(/time: '/g) || []).length >= 12, 'Replay needs at least 12 fixture events');
+for (const fact of ['Execution LOST', 'Verification FAILED', 'Execution ENDED_OK', 'fx-e1', 'fx-e2']) check(replayFixture.includes(fact), `Replay fixture missing ${fact}`);
+for (const id of ['rp-scrub', 'rp-prev', 'rp-next', 'rp-selected', 'rp-proposal', 'rp-approve', 'rp-cancel', 'rp-draft']) check(html.includes(`id="${id}"`), `Replay control missing ${id}`);
+check(/id="rp-scrub" type="range"/.test(html) && /aria-live="polite"/.test(html), 'Replay needs native range and live detail');
+for (const kind of ['resume', 'retry', 'ask']) check(html.includes(`data-recovery="${kind}"`), `Replay proposal missing ${kind}`);
+check(rp.includes('replayProposal.event !== replayCursor') && rp.includes('replayProposal.mission !== replayId'), 'Replay proposal binding missing');
+check(rp.includes('Nothing resumed, retried, sent or reconciled. Evidence unchanged.'), 'Replay approval receipt must disclaim real effects');
 check(rp.length > 0 && !/requestAnimationFrame|setInterval|setTimeout/.test(rp), 'replay must not animate or auto-play');
 check(/RP_MASTER/.test(rp) && /RP_LABEL/.test(rp) && /RP_ROWS_GEOM/.test(rp), 'replay master frame or layout table missing');
 check(/body\.frame-replay \.shell[^{]*\{[^}]*art\/replay-base\.webp/.test(css), 'replay desktop frame must use the base art');
@@ -240,7 +248,7 @@ check(/ph3-back/.test(html) && /setPhoneFrame\(3\)/.test(js) && /What does exit 
 check(/data-promote/.test(js) && /Remember in…/.test(js), 'memory confirmation control missing');
 check(/gen-tag" aria-hidden="true">General<\/span><span class=\"sr-only\">General answer, not saved to project memory/.test(js), 'general tag missing');
 check(/ov-glow/.test(js) && /feGaussianBlur/.test(js), 'soft glow filters missing');
-check(/archeus-v2-proto-final/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-final');
+check(/archeus-v2-proto-(final|replay-\d+)/.test(sw) && !/archeus-v2-proto-13/.test(sw), 'service worker cache name is not archeus-v2-proto-final');
 check(/art\/phone-2-base\.webp/.test(sw) && /art\/phone-3-base\.webp/.test(sw), 'service worker does not cache the phone-2 and phone-3 art');
 check(/art\/phone-2-layout\.js/.test(html) && /art\/phone-3-type\.js/.test(html), 'index.html does not load the phone-2 and phone-3 data');
 
@@ -287,7 +295,7 @@ for (const [frame, sec] of [['mission', 'm-frame'], ['shared', 'sh-frame']]) {
   for (const [id, v] of Object.entries(table)) check(Number.isFinite(v.x) && Number.isFinite(v.y), `${frame} ${id} has no position`);
 }
 check(/fitFrame/.test(js) && /--k/.test(css), 'frames do not scale to the window');
-check(/archeus-v2-proto-final/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-final and cache the frame assets');
+check(/archeus-v2-proto-(final|replay-\d+)/.test(sw) && /art\/mission-base\.webp/.test(sw) && /layout-r10c\.js/.test(sw), 'service worker cache must be archeus-v2-proto-final and cache the frame assets');
 
 // Shell pass (v2/merged): one font stack, one plum ground, every surface reachable from the rail, hash routing intact.
 check(!/Archeus Serif/.test(css) && !/Segoe UI Variable/.test(css.split('\n').filter((l) => /--(serif|sans):/.test(l)).join('\n')), 'a second serif or sans stack is still declared');
