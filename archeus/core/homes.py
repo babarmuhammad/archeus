@@ -5,7 +5,7 @@ A home is written many ways: another case, `C:/` for `C:\\`, MSYS `/c/`, a
 trailing separators. `Homes` holds one compiled pattern per home and
 `scrub_text` replaces a contained home with `its home`, keeping the separator
 and the rest of the path. A default account's key (`<harness>:<canonical
-home>`) becomes `<harness>:default`. Both are idempotent.
+home>`) becomes a stable opaque public id. Both are idempotent.
 
 Ceilings: dot-segment spellings inside free text (`C:\\a\\..\\.claude-work`),
 symlink or junction aliases, and a home that has a space-containing sibling are
@@ -13,6 +13,7 @@ not matched in contained text. `norm_path` does handle dot segments in a whole
 value.
 """
 
+import hashlib
 import os
 import posixpath
 import re
@@ -26,14 +27,14 @@ _RIGHT = r'(?![\w~-]|\.\w)'
 _FILE = re.compile(r'file:(?://([^/]*))?(/.*)?$', re.I)
 _LONG = re.compile(r'[\\/]{2}[?.][\\/](UNC[\\/])?', re.I)
 _MSYS = re.compile(r'/(?:cygdrive/|mnt/)?([A-Za-z])(?:/|$)')
-_DRIVE = re.compile(r'([A-Za-z]):(?:[\\/]|$)')
+_DRIVE = re.compile(r'([A-Za-z]):[\\/]')
 
 
 def _windows_style(p):
     return bool(_DRIVE.match(p) or re.match(r'[\\/]{2}', p))
 
 
-def _canon(s):
+def _canon(s, *, platform=None, path_flavour=None):
     """The case-kept canonical spelling of an absolute path, or None."""
     if not isinstance(s, str):
         return None
@@ -47,18 +48,22 @@ def _canon(s):
     m = _LONG.match(s)
     if m:
         s = ('//' if m.group(1) else '') + s[m.end():]
+    if re.match(r'^[A-Za-z]:(?![\\/])', s):
+        return None
     if _windows_style(s):
         s = s.replace('\\', '/')
     m = _MSYS.match(s)
-    if m:
+    if m and (path_flavour in ('windows', 'msys', 'cygwin', 'wsl') or path_flavour is None and platform == 'win32'):
         s = '%s:/%s' % (m.group(1), s[m.end():])
     s = posixpath.normpath(s)
+    if re.fullmatch(r'[A-Za-z]:', s):
+        s += '/'
     return s if s.startswith('/') or _DRIVE.match(s) else None
 
 
-def norm_path(s):
+def norm_path(s, *, platform=None, path_flavour=None):
     """The whole-value canonical form of an absolute path, None if it is not one."""
-    p = _canon(s)
+    p = _canon(s, platform=platform, path_flavour=path_flavour)
     return p.lower() if p and _windows_style(p) else p
 
 
@@ -83,24 +88,42 @@ def _win(win, rx):
     return '(?i:%s)' % rx if win else rx
 
 
+def public_account_id(key):
+    return 'account:' + hashlib.sha256(key.encode('utf-8')).hexdigest()
+
+
+def account_key_map(default_accounts):
+    return {key: public_account_id(key) for _, key, _ in default_accounts}
+
+
 class Homes:
     """`registered_homes`: home_ref strings as stored. `default_accounts`:
-    (harness_id, key, home_ref). `shorts(path)`: the 8.3 form of an existing
-    path or None (default: the Windows probe, failing soft); tests inject it."""
+    current and historical (harness_id, key, home_ref), never probed.
+    `shorts(path)` probes registered homes only; tests inject it.
+    MSYS aliases require Windows-compatible platform or path_flavour metadata."""
 
-    def __init__(self, registered_homes=(), default_accounts=(), shorts=None):
+    def __init__(self, registered_homes=(), default_accounts=(), shorts=None, *,
+                 platform=None, path_flavour=None):
+        self.platform, self.path_flavour = platform, path_flavour
+        default_accounts = tuple(default_accounts)
         self._shorts = _win_short if shorts is None else shorts
-        homes = [h for h in [*registered_homes, *(a[2] for a in default_accounts)]
-                 if isinstance(h, str) and h.strip()]
+        registered_homes = [h for h in registered_homes if isinstance(h, str) and h.strip()]
+        default_homes = [a[2] for a in default_accounts if isinstance(a[2], str) and a[2].strip()]
+        homes = registered_homes + default_homes
+        sources = [(h, True) for h in registered_homes] + [(h, False) for h in default_homes]
         self.patterns = [re.compile(_LEFT + '(?:%s)' % '|'.join(alts) + _RIGHT)
-                         for alts in map(self._alts, homes) if alts]
-        self.norms = {n for h in homes for n in map(norm_path, _spellings(h)) if n}
-        self.keys = {k: '%s:default' % h for h, k, _ in default_accounts}
-        self._ikeys = {k.lower(): v for k, v in self.keys.items()}
+                         for h, probe in sources
+                         if (alts := self._alts(h, probe=probe))]
+        self.norms = {n for h in homes for sp in _spellings(h)
+                      if (n := self.norm_path(sp))}
+        self.keys = account_key_map(default_accounts)
         self._key_rx = re.compile('(?<!\\w)(?:%s)%s' % ('|'.join(
-            _win(_windows_style(_canon(home) or ''), re.escape(k))
+            re.escape(k)
             for h, k, home in sorted(default_accounts, key=lambda a: -len(a[1]))), _RIGHT)
         ) if self.keys else None
+
+    def norm_path(self, s):
+        return norm_path(s, platform=self.platform, path_flavour=self.path_flavour)
 
     def _short(self, prefix):
         try:
@@ -109,10 +132,10 @@ class Homes:
             return None
         return s.replace('\\', '/').rsplit('/', 1)[-1] if s else None
 
-    def _alts(self, home):
+    def _alts(self, home, *, probe=True):
         out = []
         for sp in _spellings(home):
-            c = _canon(sp)
+            c = _canon(sp, platform=self.platform, path_flavour=self.path_flavour)
             if c is None:
                 if sp.startswith('~'):
                     parts = [p for p in re.split(r'[\\/]+', sp) if p]
@@ -134,12 +157,15 @@ class Homes:
                 rest, anchor, head, prefixes = c[1:], '', None, ['']
             comps = [x for x in rest.split('/') if x]
             if not comps:
+                sep = _SEP if m or unc else '/+'
+                root = '(?:%s)' % '|'.join(prefixes) + '(?=%s)' % sep
+                out.append(_win(bool(m or unc), root))
                 continue
             win = m or unc
             parts, cur = [], anchor
             for x in comps:
                 cur = cur + '/' + x
-                parts.append(_comp(x, self._short(cur) if m else None))
+                parts.append(_comp(x, self._short(cur) if m and probe else None))
             sep = _SEP if win else '/+'
             out.append(_win(bool(win), '(?:%s)' % '|'.join(prefixes) + ''.join(sep + p for p in parts)))
         return list(dict.fromkeys(out))
@@ -147,6 +173,8 @@ class Homes:
 
 def _spellings(home):
     home = home.strip()
+    if re.match(r'^[A-Za-z]:(?![\\/])', home):
+        return [home]
     out = [home, os.path.expanduser(home)]
     if _canon(out[1]) is None:
         out.append(os.path.abspath(out[1]))
@@ -157,7 +185,7 @@ def scrub_text(text, homes):
     if not isinstance(text, str) or not text:
         return text
     if homes._key_rx:
-        text = homes._key_rx.sub(lambda m: homes.keys.get(m.group(0)) or homes._ikeys[m.group(0).lower()], text)
+        text = homes._key_rx.sub(lambda m: homes.keys[m.group(0)], text)
     for p in homes.patterns:
         text = p.sub(REPLACEMENT, text)
     return text
@@ -175,9 +203,9 @@ def public_value(x, homes, *, text_keys=(), path_keys=(), _key=None, _text=False
                              _text=_text) for v in x]
     if not isinstance(x, str):
         return x
-    handle = homes.keys.get(x.strip()) or homes._ikeys.get(x.strip().lower())
+    handle = homes.keys.get(x.strip())
     if handle:
         return handle
-    if _key in path_keys and norm_path(x) in homes.norms:
+    if _key in path_keys and homes.norm_path(x) in homes.norms:
         return None
     return scrub_text(x, homes) if _text else x

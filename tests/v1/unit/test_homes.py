@@ -2,6 +2,10 @@
 8.3 name is injected through `shorts`."""
 
 import copy
+from pathlib import Path
+import re
+import subprocess
+import sys
 
 import pytest
 
@@ -14,7 +18,7 @@ DEFAULT = ('claude_code', KEY, r'C:\Users\mab\.claude')
 
 
 def _homes(*registered, defaults=(), shorts=SHORTS):
-    return H.Homes(list(registered or (HOME,)), list(defaults), shorts=lambda p: shorts.get(p.lower()))
+    return H.Homes(list(registered or (HOME,)), list(defaults), shorts=lambda p: shorts.get(p.lower()), path_flavour='windows')
 
 
 def scrub(v, *registered, **kw):
@@ -69,7 +73,7 @@ def test_a_look_alike_is_left_byte_identical(v):
 
 @pytest.mark.parametrize('v,suffix', [m for m in MATCH if 'MAB~1' not in m[0]])
 def test_scrub_and_norm_path_agree_on_every_spelling(v, suffix):
-    n, h = H.norm_path(v), H.norm_path(HOME)
+    n, h = H.norm_path(v, path_flavour='windows'), H.norm_path(HOME, path_flavour='windows')
     assert n == h or n.startswith(h + '/')
 
 
@@ -82,7 +86,7 @@ def test_a_failing_short_name_probe_is_soft():
         raise OSError('no such path')
     h = H.Homes([HOME], shorts=boom)
     assert H.scrub_text(HOME + r'\x', h) == r'its home\x'
-    assert H.Homes([r'C:\no\such\home']).patterns
+    assert H.Homes([r'C:\no\such\home'], shorts=boom).patterns
 
 
 def test_a_sentence_dot_quotes_and_parens_still_match():
@@ -129,12 +133,11 @@ def test_a_posix_home_is_case_sensitive():
 
 def test_a_default_key_becomes_its_handle_whole_or_inside_text():
     h = _homes(defaults=[DEFAULT])
-    assert H.scrub_text(KEY, h) == 'claude_code:default'
+    assert H.scrub_text(KEY, h) == H.public_account_id(KEY)
     t = 'task T1 on %s (approval a1)' % KEY
-    assert H.scrub_text(t, h) == 'task T1 on claude_code:default (approval a1)'
-    assert H.scrub_text(KEY.upper(), h) == 'claude_code:default'
+    assert H.scrub_text(t, h) == 'task T1 on %s (approval a1)' % H.public_account_id(KEY)
     assert H.scrub_text(KEY + '-tools', h) == KEY + '-tools'
-    assert h.keys == {KEY: 'claude_code:default'}
+    assert h.keys == {KEY: H.public_account_id(KEY)}
 
 
 def test_a_default_home_path_is_scrubbed_too():
@@ -144,7 +147,7 @@ def test_a_default_home_path_is_scrubbed_too():
 
 @pytest.mark.parametrize('text', [
     'plain', '', 'C:\\Users\\mab\\.claude-work\\projects\\a', 'x ' + HOME + ' y ' + KEY,
-    'its home\\x', 'claude_code:default', 'file:///c%3A/Users/mab/.claude-work/x',
+    'its home\\x', H.public_account_id(KEY), 'file:///c%3A/Users/mab/.claude-work/x',
 ])
 def test_scrub_is_idempotent(text):
     h = _homes(defaults=[DEFAULT])
@@ -171,7 +174,7 @@ def test_a_non_string_is_returned_as_is():
     (r'/home/mab/a\b', r'/home/mab/a\b'),
 ])
 def test_norm_path_gives_one_form_per_place(s, want):
-    assert H.norm_path(s) == want
+    assert H.norm_path(s, path_flavour='windows') == want
 
 
 @pytest.mark.parametrize('s', ['relative/path', '~/x', '', None, 'C:foo', 'file://'])
@@ -188,9 +191,9 @@ def test_public_value_maps_keys_and_nulls_home_paths_only_under_path_keys():
     out = H.public_value(body, h, text_keys=('reason',), path_keys=('account_ref', 'home_ref'))
     assert body == before
     assert out == {'account_ref': None, 'home_ref': None, 'title': HOME, 'root': HOME,
-                   'who': {'reviewer': ['claude_code:default', 'x']}, 'n': 3,
+                   'who': {'reviewer': [H.public_account_id(KEY), 'x']}, 'n': 3,
                    'reason': 'no login in its home', 'note': 'see ' + HOME,
-                   'account': 'claude_code:default'}
+                   'account': H.public_account_id(KEY)}
     assert H.public_value(out, h, text_keys=('reason',), path_keys=('account_ref', 'home_ref')) == out
 
 
@@ -199,3 +202,135 @@ def test_public_value_scrubs_nested_strings_under_a_text_key():
     out = H.public_value({'consequences': ['ran ' + HOME, {'a': HOME}], 'other': HOME}, h,
                          text_keys=('consequences',))
     assert out == {'consequences': ['ran its home', {'a': 'its home'}], 'other': HOME}
+
+
+@pytest.mark.parametrize('home', ['/c/Foo', '/mnt/c/Foo', '/cygdrive/c/Foo'])
+@pytest.mark.parametrize('platform', ['linux', 'win32'])
+def test_native_posix_msys_names_stay_literal(home, platform):
+    h = H.Homes([home], shorts=lambda _: None, platform=platform, path_flavour='posix')
+    assert H.norm_path(home, platform=platform, path_flavour='posix') == home
+    assert H.scrub_text(home + '/x', h) == 'its home/x'
+    for text in (r'C:\Foo\x', home.lower() + '/x', home.replace('/', '\\')):
+        assert H.scrub_text(text, h) == text
+    assert H.norm_path(home + r'/a\b', path_flavour='posix') == home + r'/a\b'
+
+
+def test_windows_platform_enables_aliases_without_flavour_override():
+    assert H.norm_path('/mnt/c/Foo', platform='win32') == 'c:/foo'
+    assert H.norm_path('/mnt/c/Foo') == '/mnt/c/Foo'
+
+
+@pytest.mark.parametrize('flavour', ['windows', 'msys', 'cygwin', 'wsl'])
+@pytest.mark.parametrize('path', ['/c/Foo', '/mnt/c/Foo', '/cygdrive/c/Foo'])
+def test_explicit_windows_flavours_reclassify_msys_paths(flavour, path):
+    assert H.norm_path(path, path_flavour=flavour) == 'c:/foo'
+    h = H.Homes([path], shorts=lambda _: None, path_flavour=flavour)
+    assert H.scrub_text(r'C:\FOO\x', h) == r'its home\x'
+    assert H.public_value({'ref': r'C:\Foo'}, h, path_keys=('ref',)) == {'ref': None}
+
+
+@pytest.mark.parametrize('path', ['C:', 'C:foo', 'C:foo/bar'])
+def test_drive_relative_paths_are_rejected(path):
+    assert H.norm_path(path, path_flavour='windows') is None
+    assert H.scrub_text(path, _homes('C:\\')) == path
+    assert H.Homes([path], shorts=lambda _: None).patterns == []
+
+
+def test_localhost_url_prefix_keeps_suffix():
+    assert scrub('file://localhost/C:/Users/mab/.claude-work/x') == 'read its home/x now'
+    assert H.norm_path('file://localhost/C:/Users/mab/.claude-work/x') == 'c:/users/mab/.claude-work/x'
+
+
+def test_device_prefix_keeps_suffix():
+    assert scrub(r'\\.\C:\Users\mab\.claude-work\x') == r'read its home\x now'
+    assert H.norm_path(r'\\.\C:\Users\mab\.claude-work\x') == 'c:/users/mab/.claude-work/x'
+
+
+def test_url_encoded_space_matches():
+    h = _homes(r'C:\Users\Example User\.claude')
+    text = 'file:///C:/Users/Example%20User/.claude/x'
+    assert H.scrub_text(text, h) == 'its home/x'
+    assert H.norm_path(text) == 'c:/users/example user/.claude/x'
+
+
+@pytest.mark.parametrize('home,text,want', [
+    ('C:\\', 'C:\\', 'its home\\'),
+    ('C:\\', r'C:\x', r'its home\x'),
+    ('C:\\', 'file://localhost/C:/x', 'its home/x'),
+    ('C:\\', 'C:/\\x', 'its home/\\x'),
+    ('C:\\', 'C:', 'C:'),
+    ('C:\\', 'C:foo', 'C:foo'),
+    ('\\\\srv\\share\\', '\\\\srv\\share\\', 'its home\\'),
+    ('\\\\srv\\share\\', r'\\srv\share\x', r'its home\x'),
+    ('\\\\srv\\share\\', r'\\srv\share2\x', r'\\srv\share2\x'),
+    ('/', '/', 'its home/'),
+    ('/', '/x', 'its home/x'),
+    ('/', '//x', 'its home//x'),
+])
+def test_root_separator_is_structural_and_preserved(home, text, want):
+    h = H.Homes([home], shorts=lambda _: None)
+    assert H.scrub_text(text, h) == want
+    assert H.scrub_text(want, h) == want
+    assert H.norm_path(home) is not None
+
+
+HISTORY = [DEFAULT, ('claude_code', r'claude_code:d:\retired\.claude', r'D:\retired\.claude')]
+
+
+def test_distinct_exact_stored_keys_have_distinct_public_ids():
+    rows = HISTORY + [('claude_code', KEY.upper(), DEFAULT[2])]
+    ids = H.account_key_map(rows)
+    assert len(set(ids.values())) == len(rows)
+    assert H.account_key_map(reversed(rows)) == ids
+    h = H.Homes(default_accounts=rows, shorts=lambda _: None)
+    for key, public_id in ids.items():
+        assert H.scrub_text(key, h) == public_id
+        assert H.public_value({'account': key}, h) == {'account': public_id}
+    assert H.public_value({'account': 'registered-a1'}, h) == {'account': 'registered-a1'}
+
+
+def test_same_key_id_survives_restart():
+    code = ('import sys; sys.path.insert(0, %r); '
+            'from archeus.core.homes import public_account_id; print(public_account_id(%r))'
+            % (str(Path(H.__file__).resolve().parents[2]), KEY))
+    expected = H.public_account_id(KEY)
+    for _ in range(2):
+        assert subprocess.check_output([sys.executable, '-I', '-c', code], text=True).strip() == expected
+    assert H.Homes(default_accounts=HISTORY, shorts=lambda _: None).keys[KEY] == expected
+
+
+def test_historical_keys_map_whole_and_embedded_without_mutation():
+    rows = copy.deepcopy(HISTORY)
+    h = H.Homes(default_accounts=iter(rows), shorts=lambda _: None)
+    assert set(h.keys) == {row[1] for row in HISTORY}
+    for _, key, _ in HISTORY:
+        public_id = H.public_account_id(key)
+        body = {'nested': [{'account': key}], 'reason': 'task on ' + key}
+        before = copy.deepcopy(body)
+        out = H.public_value(body, h, text_keys=('reason',))
+        assert out == {'nested': [{'account': public_id}], 'reason': 'task on ' + public_id}
+        assert body == before
+        assert H.public_value(out, h, text_keys=('reason',)) == out
+    assert rows == HISTORY
+
+
+def test_historical_identity_never_probes_homes(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail('historical identity probed a home')
+    with monkeypatch.context() as patch:
+        patch.setattr(H, '_win_short', forbidden)
+        patch.setattr(H.os, 'stat', forbidden)
+        patch.setattr(H.os, 'scandir', forbidden)
+        ids = H.account_key_map(HISTORY)
+        h = H.Homes(default_accounts=HISTORY)
+    assert len(ids) == 2
+    assert len(h.keys) == 2
+    assert H.scrub_text(HISTORY[1][1], h) == h.keys[HISTORY[1][1]]
+
+
+def test_public_ids_reveal_no_home_or_key_material():
+    for _, key, home in HISTORY:
+        public_id = H.public_account_id(key)
+        assert re.fullmatch(r'account:[0-9a-f]{64}', public_id)
+        for material in (key, home, 'claude', 'users', 'retired', 'mab', '/', '\\'):
+            assert material.lower() not in public_id.lower()
