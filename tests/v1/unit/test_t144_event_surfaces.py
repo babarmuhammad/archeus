@@ -93,7 +93,7 @@ def test_authored_leaves_of_a_system_envelope_are_exact(homes):
         'message_id': 'msg'}), homes)['payload']
     assert out['added'] == {'requirements': [{'text': HOME + ' ' + KEY}], 'constraints': [HOME],
                             'notes': 'its home'}
-    assert out['planning_blocked'] == {'questions': [HOME], 'detail': 'its home'}
+    assert out['planning_blocked'] == {'questions': ['its home'], 'detail': 'its home'}
 
 
 def test_authored_leaves_are_copies(homes):
@@ -165,3 +165,73 @@ def test_S22_sse_frames_carry_identities_only():
     assert data == {'subject': {'kind': 'mission', 'id': mid},
                     'scope': {'workspace': e.workspace, 'project': None}}
     assert HOME not in raw.decode()
+
+
+def _leaf(path, value):
+    out = value
+    for k in reversed(path):
+        out = {k: out}
+    return out
+
+
+def _with_sibling(payload, path):
+    node = payload
+    for k in path[:-1]:
+        node = node[k]
+    node['zz_sibling'] = HOME
+    return payload
+
+
+# written out, not read from the table, so that dropping an entry fails here
+EXEMPT = [
+    ('mission.created', ('title',)),
+    ('mission.updated', ('added', 'requirements')), ('mission.updated', ('added', 'constraints')),
+    ('idea.created', ('title',)),
+    ('feedback.received', ('promoted', 'title')), ('feedback.received', ('promoted', 'text')),
+    ('feedback.received', ('promoted', 'anchors')),
+    ('feedback.received', ('promoted', 'constraint')),
+    ('meeting.imported', ('name',)),
+    ('automation.created', ('name',)), ('automation.created', ('trigger',)),
+    ('project.created', ('name',)),
+    ('repository.registered', ('path',)), ('repository.model_added', ('path',)),
+    ('repository.file_added', ('path',)),
+    ('policy_rule.created', ('before',)), ('policy_rule.created', ('after',)),
+    ('policy_rule.retired', ('before',)),
+]
+
+
+def test_S2_the_exemption_table_is_exactly_the_owner_list():
+    assert sorted(EXEMPT) == sorted((t, p) for t, ps in public.EVENT_AUTHORED.items() for p in ps)
+
+
+@pytest.mark.parametrize('type_,path', EXEMPT, ids=['%s.%s' % (t, '.'.join(p)) for t, p in EXEMPT])
+def test_S2_every_exemption_entry_keeps_its_authored_leaf_and_scrubs_the_rest(homes, type_, path):
+    leaf = {'k': [HOME + '/x', KEY]}
+    payload = _with_sibling(_leaf(path, deepcopy(leaf)), path)
+    got = public.public_event(envelope(type_, deepcopy(payload)), homes)['payload']
+    node, want = got, deepcopy(payload)
+    for k in path[:-1]:
+        node, want = node[k], want[k]
+    assert node[path[-1]] == leaf
+    assert node['zz_sibling'] == 'its home'
+    system = public.public_event(envelope('mission.state_changed', deepcopy(payload)), homes)['payload']
+    node = system
+    for k in path[:-1]:
+        node = node[k]
+    assert node[path[-1]] == {'k': ['its home/x', public_account_id(KEY)]}
+    sys_actor = public.public_event(envelope(type_, deepcopy(payload), 'system'), homes)['payload']
+    node = sys_actor
+    for k in path[:-1]:
+        node = node[k]
+    assert node[path[-1]] == leaf
+
+
+@pytest.mark.parametrize('type_,path', [
+    ('mission.updated', ('planning_blocked', 'questions')),
+    ('knowledge_item.created', ('title',))], ids=['planning_blocked.questions', 'knowledge_title'])
+def test_OB_model_authored_leaves_are_scrubbed(homes, type_, path):
+    got = public.public_event(envelope(type_, _leaf(path, [HOME + '/x'])), homes)['payload']
+    node = got
+    for k in path:
+        node = node[k]
+    assert node == ['its home/x']

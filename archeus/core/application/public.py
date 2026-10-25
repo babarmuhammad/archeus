@@ -18,15 +18,14 @@ def system_value(value, homes, *, authored=(), path_keys=(), _path=()):
     return scrub_text(projected, homes)
 
 
-#: Authored payload leaves of an event, by type (T-144 O-8/O-10): what a user or
-#: model wrote, kept byte for byte. Provenance decides, never the event's actor:
+#: Authored payload leaves of an event, by type (T-144 O-8/O-10): what the user
+#: typed, kept byte for byte (owner 2026-10-25: model-written text is scrubbed).
+#: Provenance decides, never the event's actor:
 #: every other string of every event is system-owned and gets the fallback scrub.
 EVENT_AUTHORED = {
     'mission.created': (('title',),),
-    'mission.updated': (('added', 'requirements'), ('added', 'constraints'),
-                        ('planning_blocked', 'questions')),
+    'mission.updated': (('added', 'requirements'), ('added', 'constraints')),
     'idea.created': (('title',),),
-    'knowledge_item.created': (('title',),),
     'feedback.received': tuple(('promoted', k) for k in ('title', 'text', 'anchors', 'constraint')),
     'meeting.imported': (('name',),),
     'automation.created': (('name',), ('trigger',)),

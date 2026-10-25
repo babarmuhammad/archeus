@@ -12,6 +12,8 @@ from ...infra.db import rows
 from ...infra.eventlog import outbox
 from ..context import assemble as context
 from ..application.commands import active_plan, record_context_package
+from ..application.public import system_value
+from ..application.queries import _homes
 from ..domain import entities
 from ..world.digest import digest
 
@@ -46,7 +48,7 @@ def mission_state(conn, mission_id):
             'tasks': tasks, 'needs_you': needs}, []
 
 
-def open_problems(conn, mission_id):
+def open_problems(conn, mission_id, homes=None):
     """The latest checkpoint of every task of the mission's plan in force that
     is not done: history, shown as history."""
     if mission_id is None:
@@ -58,13 +60,16 @@ def open_problems(conn, mission_id):
     latest = {}
     for r in rows.where(conn, entities.Checkpoint, mission_id=mission_id):
         latest[r.entity.task_id] = r.entity
-    out = []
+    out, shown = [], []
     for tid, cp in sorted(latest.items(), key=lambda x: keys[x[0]].key if x[0] in keys else ''):
         t = keys.get(tid)
         if t is None or t.state in ('SUCCEEDED', 'SKIPPED', 'CANCELLED'):
             continue
+        if cp.open_problems and not shown:        # hook reasons and the agent's last error
+            shown.append(_homes(conn, homes))
         out.append({'task_key': t.key, 'execution_id': cp.execution_id, 'trigger': cp.trigger,
-                    'open_problems': list(cp.open_problems), 'next_action': cp.next_action,
+                    'open_problems': system_value(list(cp.open_problems), shown[0])
+                    if cp.open_problems else [], 'next_action': cp.next_action,
                     'checkpoint_id': cp.id})
     return out
 
@@ -96,7 +101,7 @@ def package(tx, actor, session):
     return {'package_id': pkg.id, 'as_of_seq': pkg.as_of_seq, 'rebuilt': True}
 
 
-def brief(conn, session, ctx, head=None):
+def brief(conn, session, ctx, head=None, homes=None):
     """The continuity brief for *session* now (§11.4). `ctx` is `package()`'s
     answer (or a preview's)."""
     head = outbox.head(conn) if head is None else head
@@ -110,8 +115,8 @@ def brief(conn, session, ctx, head=None):
                         'last_seen_seq': session.last_seen_seq,
                         'last_active_at': session.last_active_at},
             'as_of_seq': head, 'mission': state, 'changes': changes,
-            'open_problems': open_problems(conn, session.mission_id), 'context': ctx,
-            'missing': missing}
+            'open_problems': open_problems(conn, session.mission_id, homes),
+            'context': ctx, 'missing': missing}
 
 
 def handoff_state(conn, session, ctx, head=None):

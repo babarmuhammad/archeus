@@ -63,7 +63,7 @@ def trace(conn, mission_id, registry, *, homes=None):
         execs.append({'id': e.id, 'task_id': e.task_id, 'state': e.state, 'attempt': e.attempt,
                       'route_decision_id': e.route_decision_id,
                       'policy_decision_id': e.policy_decision_id,
-                      'checkpoints': [c['id'] for c in executions.checkpoints(conn, e.id)],
+                      'checkpoints': [c['id'] for c in executions.checkpoints(conn, e.id, homes=homes)],
                       'available': o['available'], 'truncated': o['truncated'],
                       'lanes': lanes(o['events'])})
     return {'mission_id': mission_id, 'events': t['events'][::-1],

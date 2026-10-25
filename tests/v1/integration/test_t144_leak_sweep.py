@@ -1,12 +1,16 @@
 from copy import deepcopy
+from dataclasses import replace
+import json
 import re
 from urllib.parse import unquote
 
 import pytest
 
 from archeus.core import ports
+from archeus.core.context import assemble as context
 from archeus.core.application import calls, queries, resources, verification
 from archeus.core.domain import entities, ids
+from archeus.core.domain.actions import Action
 from archeus.core.domain.values import Ref
 from archeus.core.homes import public_account_id
 from archeus.core.routing import router
@@ -43,6 +47,22 @@ def _normalized(text):
     return re.sub('/+', '/', text)
 
 
+def _raw_stream(core, head):
+    from v1.judge.http import SSEClient
+    s = SSEClient(core.base_url, core.token, after=0)
+    try:
+        s.sock.settimeout(10)
+        raw = b''
+        while True:
+            line = s.resp.fp.readline()
+            assert line, 'the stream ended before seq %d' % head
+            raw += line
+            if line == b'id: %d\n' % head:
+                return raw + s.resp.fp.readline() + s.resp.fp.readline()
+    finally:
+        s.close()
+
+
 def _stored(conn):
     return {t: [tuple(row) for row in conn.execute('SELECT * FROM %s ORDER BY id' % t)]
             for t in ('route_decisions', 'usage_ledger', 'verifications', 'reviews', 'approvals')}
@@ -74,7 +94,6 @@ def _record_call(r, home, source_id=None):
 
 @pytest.mark.parametrize('home_first', [True, False])
 def test_homeless_snapshot_ordering_keeps_projection(db, tmp_path, home_first):
-    from dataclasses import replace
 
     r = Rig(db)
     home = str(tmp_path / 'Shared-Default')
@@ -307,6 +326,11 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
               'mission completed')
         _wait(lambda: core.core.exec.state == 'idle' and not core.core.manager._procs,
               'execution manager idle with no live processes')
+        auto = _post(core, '/v1/automations', {
+            'name': 'live', 'trigger': {'type': 'mission.state_changed',
+                                        'where': {'reason': {'glob': '*Live-Only-Default*'}}},
+            'template': {'title': 'saw {payload.reason}', 'objective': 'o'}}).json()['id']
+        assert _post(core, '/v1/automations/%s/state' % auto, {'action': 'enable'}).status == 200
         # COMPLETED is not a barrier for background passes. Stop and join all
         # producers before seeding historical rows (including review.requested),
         # so only the HTTP reads can change stored rows during the sweep.
@@ -361,7 +385,51 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
             return v.id
 
         vid = r.do(historical_rows)
-        from dataclasses import replace
+
+        def live_rows(tx, actor):
+            from archeus.core.domain.events import new_event
+            did, sid, pkg_id = (ids.new_id(k) for k in (
+                'policy_decision', 'session', 'context_package'))
+            tx.insert(entities.ContextPackage(
+                id=pkg_id, workspace_id=mission.workspace_id, subject_kind='mission', subject_id=mid,
+                items=({'ref': {'kind': 'event', 'id': 'e'}, 'level': 'L3', 'store': 'history',
+                        'type': 'x', 'reason': 'at ' + live_default, 'text': live_default},),
+                missing_information=(live_default + ' is gone',)), actor=actor)
+            tx.append(new_event('context_package.created', Ref('context_package', pkg_id), actor,
+                                payload={}, workspace=mission.workspace_id))
+            (cp,) = tx.where(entities.Checkpoint, execution_id=execution.entity.id)
+            tx.insert(entities.PolicyDecision(
+                id=did, decision='DENY', stage='action', mission_id=mid, outcome='deny',
+                reason='denied ' + live_default,
+                action=Action(action_class='write_repo', target=live_default + '/x',
+                              argv=('cat', live_default), paths=(live_default,)),
+                items=({'task': 't1', 'decision': 'DENY', 'reason': 'read ' + live_default,
+                        'action': {'target': live_default}},)), actor=actor)
+            tx.append(new_event('policy_decision.created', Ref('policy_decision', did), actor,
+                                payload={'stage': 'action'}, workspace=mission.workspace_id))
+            problems = ('deny: read of ' + live_default, 'last error: ' + private_default)
+            tx.update(entities.Checkpoint, cp.entity.id, {'open_problems': problems}, actor=actor)
+            open_task = entities.Task(id=ids.new_id('task'), plan_id=plan.id, mission_id=mid,
+                                      key='t9', title='open', kind=task.entity.kind)
+            tx.insert(open_task, actor=actor)
+            other = replace(execution.entity, id=ids.new_id('execution'), task_id=open_task.id)
+            tx.insert(other, actor=actor)
+            tx.insert(entities.Checkpoint(
+                id=ids.new_id('checkpoint'), execution_id=other.id, mission_id=mid,
+                task_id=open_task.id, trigger='failure', open_problems=problems), actor=actor)
+            tx.insert(entities.Session(
+                id=sid, harness_id='fake', workspace_id=mission.workspace_id, cwd=str(tmp_path),
+                mode='interactive_attached', mission_id=mid), actor=actor)
+            tx.append(new_event('session.created', Ref('session', sid), actor, payload={
+                'mode': 'interactive_attached', 'harness_id': 'fake', 'account_id': None,
+                'mission_id': mid, 'handoff_from': None}, workspace=mission.workspace_id))
+            return did, sid, pkg_id
+
+        did, sid, pkg_id = r.do(live_rows)
+        for _ in range(20):
+            if not core.core.automation.world.pass_once()['changed']:
+                break
+        run_id = core.http('GET', '/v1/automations/%s' % auto).json()['runs'][-1]['id']
         approval, _ = r.do(resources.request_route, mission=mission, plan=plan, task=task.entity,
             route=replace(route, account_id=None, account_ref=key, harness_id='historical'))
         paths = ['/v1/route-decisions', '/v1/route-decisions/' + rd_id,
@@ -369,7 +437,11 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
                  '/v1/verifications/' + vid, '/v1/missions/%s/verifications' % mid,
                  '/v1/missions/%s/reviews' % mid, '/v1/approvals',
                  '/v1/approvals/' + approval['id'], '/v1/attention', '/v1/policy-decisions',
-                 '/v1/missions/%s/timeline?limit=100' % mid]
+                 '/v1/missions/%s/timeline?limit=100' % mid,
+                 '/v1/policy-decisions/' + did, '/v1/context/' + pkg_id,
+                 '/v1/executions/%s/checkpoints' % execution.entity.id,
+                 '/v1/sessions/%s/brief' % sid, '/v1/automations/' + auto,
+                 '/v1/automations/%s/simulate?days=1' % auto, '/v1/automation-runs/' + run_id]
         with r.db.read() as conn:
             before = _stored(conn)
             from archeus.core.application import attention
@@ -388,12 +460,28 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
             assert any(x.entity.reviewer_resource and x.entity.reviewer_resource['account'] == key
                        for x in rows.where(conn, entities.Review, mission_id=mid))
             assert rows.get(conn, entities.RouteDecision, rd_id).entity.outcome['account_ref'] == key
+            for stored in (rows.get(conn, entities.ContextPackage, pkg_id).entity.to_dict(),
+                           rows.get(conn, entities.AutomationRun, run_id).entity.rationale,
+                           rows.get(conn, entities.Checkpoint, rows.where(
+                               conn, entities.Checkpoint, execution_id=execution.entity.id)[0].entity.id
+                           ).entity.open_problems,
+                           rows.get(conn, entities.PolicyDecision, did).entity.reason):
+                assert live_default in ' '.join(_strings(stored)), stored
+            assert any(json.dumps(live_default)[1:-1] in e for (e,) in conn.execute('SELECT payload FROM events'))
+            for repo in rows.where(conn, entities.Repository):
+                for private in (home, private_default, live_default):
+                    root = _normalized(repo.entity.path)
+                    assert root != _normalized(private) and not root.startswith(
+                        _normalized(private) + '/'), repo.entity.path
             assert rows.get(conn, entities.RouteDecision, rd_id).entity.requirements[
                 'preferred']['accounts'] == [key]
         for path in paths:
             response = core.http('GET', path)
             assert response.status == 200, (path, response.body)
             _no_leak(response.json(), [home, private_default, live_default], [key])
+            if path.endswith('/brief'):
+                (problem,) = response.json()['open_problems']
+                assert problem['open_problems'] == ['deny: read of its home', 'last error: its home']
             if path == '/v1/attention':
                 item = next(i for i in response.json()['items'] if i['ref']['id'] == vid)
                 assert item['reason'] == 'verifier crashed reading its home; auth its home'
@@ -416,6 +504,14 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
         ended = next(e for e in feed if e['type'] == 'archeus_call.ended'
                      and e['subject']['id'] == rd_id)
         assert ended['payload']['outcome']['account_ref'] == public_account_id(key)
+        with r.db.read() as conn:
+            head = conn.execute('SELECT max(seq) FROM events').fetchone()[0]
+        raw = _raw_stream(core, head)
+        assert b'data: ' in raw and len(raw) > 1000
+        _no_leak([raw.decode()], private, [key])
+        for line in raw.decode().split('\n'):
+            if line.startswith('data: '):
+                assert set(json.loads(line[6:])) == {'subject', 'scope'}, line
         preview = core.http('POST', '/v1/context/preview',
                             body={'subject': {'kind': 'mission', 'id': mid}})
         assert preview.status == 200, preview.body
@@ -431,6 +527,51 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
         with r.db.read() as conn:
             assert _stored(conn) == before
         assert acc['id'] == route.account_id
+    finally:
+        core.stop()
+
+
+def test_S3_context_routes_scrub_with_the_live_homes(archeus_home, tmp_path, monkeypatch):
+    from archeus.core import engine, runtime
+    from archeus.core.domain.events import new_event
+    from v1.judge.http import TempCore
+
+    monkeypatch.setattr('archeus.core.homes._win_short', lambda _: None)
+    core = TempCore(archeus_home, ports=runtime.Ports(
+        brain=ports.FixedPlanBrain(engine.SKELETON_PLAN), callers=[FakeCaller()],
+        preference=ports.FixedOwnCallPreference(), usage=FakeUsageFeed())).start()
+    try:
+        live = str(tmp_path / 'Live-Only-Default')
+        core.core.api.resources.callers.append(HomeCaller(live, 'live-only'))
+        r = Rig(core.core.db)
+        pid, pkg_id = ids.new_id('project'), ids.new_id('context_package')
+
+        def seed(tx, actor):
+            tx.insert(entities.Project(id=pid, workspace_id=ids.GLOBAL_WORKSPACE, name='P'),
+                      actor=actor)
+            tx.append(new_event('project.created', Ref('project', pid), actor, project=pid))
+            tx.append(new_event('mission.state_changed', Ref('mission', ids.new_id('mission')),
+                                actor, project=pid, payload={
+                                    'from': 'a', 'to': 'b', 'reason': ' '.join([live] * 5)}))
+            tx.insert(entities.ContextPackage(
+                id=pkg_id, workspace_id=ids.GLOBAL_WORKSPACE, subject_kind='project',
+                subject_id=pid, project_id=pid, missing_information=(live + '/repo is gone',)),
+                actor=actor)
+            tx.append(new_event('context_package.created', Ref('context_package', pkg_id), actor,
+                                payload={}, workspace=ids.GLOBAL_WORKSPACE))
+        r.do(seed)
+        preview = core.http('POST', '/v1/context/preview',
+                            body={'subject': {'kind': 'project', 'id': pid}})
+        assert preview.status == 200, preview.body
+        with core.core.db.read() as conn:
+            res = core.core.api.resources
+            want = context.assemble(conn, 'project', pid,
+                                    homes=resources.homes(conn, res.registry, res.callers))
+            blind = context.assemble(conn, 'project', pid)
+        assert want['items'] != blind['items']
+        assert preview.json()['items'] == json.loads(json.dumps(want['items']))
+        got = core.http('GET', '/v1/context/' + pkg_id)
+        assert got.json()['missing_information'] == ['its home/repo is gone']
     finally:
         core.stop()
 

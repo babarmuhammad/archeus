@@ -376,7 +376,7 @@ def listing(conn, *, project_id=None, mission_id=None, state=None):
     return [view_of(s) for s in got]
 
 
-def preview_brief(conn, session_id):
+def preview_brief(conn, session_id, homes=None):
     """The brief now, without moving the cursor or recording a package."""
     from ...infra.db import rows
     from ..context import assemble as C
@@ -390,4 +390,4 @@ def preview_brief(conn, session_id):
         if p is not None:
             ctx = {'package_id': p.entity.id, 'as_of_seq': p.entity.as_of_seq,
                    'rebuilt': False, 'fresh': C.fresh(conn, p.entity)}
-    return continuity.brief(conn, s, ctx)
+    return continuity.brief(conn, s, ctx, homes=homes)

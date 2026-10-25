@@ -30,6 +30,8 @@ from ..domain.events import new_event
 from ..domain.values import Ref
 from . import authorization, lifecycle
 from .commands import active_plan
+from .public import system_value
+from .queries import _homes
 
 #: live states: a process may exist, or the execution may still get one
 LIVE = ('INTENT', 'STARTING', 'RUNNING', 'AWAITING_APPROVAL', 'PAUSING', 'PAUSED',
@@ -1017,12 +1019,19 @@ def entity(conn, execution_id):
     return row.entity
 
 
-def checkpoints(conn, execution_id):
-    """The checkpoints of an execution (p12-design-gate §19): at most one."""
+def checkpoints(conn, execution_id, homes=None):
+    """The checkpoints of an execution (p12-design-gate §19): at most one. What the
+    task and mission authored is as written; the rest (hook reasons, the agent's
+    last error) is system text and is projected."""
     if rows.get(conn, entities.Execution, execution_id) is None:
         raise lifecycle.NotFound(execution_id)
-    return [r.entity.to_dict() for r in rows.where(conn, entities.Checkpoint,
-                                                   execution_id=execution_id)]
+    got = rows.where(conn, entities.Checkpoint, execution_id=execution_id)
+    if not got:
+        return []
+    homes = _homes(conn, homes)
+    return [system_value(r.entity.to_dict(), homes,
+                         authored=(('objective',), ('constraints',), ('success_criteria',)))
+            for r in got]
 
 
 def of_task(conn, task_id):

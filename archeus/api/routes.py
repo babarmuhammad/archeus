@@ -404,8 +404,8 @@ def ack_digest(req):
 
 def get_context_package(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_context_package(conn, req.params['id'],
-                                                homes=_read_homes(req, conn))
+        h = _read_homes(req, conn)
+        return 200, queries.get_context_package(conn, req.params['id'], homes=h)
 
 
 def preview_context(req):
@@ -414,8 +414,8 @@ def preview_context(req):
     if 'limit_tokens' in kw and kw['limit_tokens'] < 1:
         raise Invalid('limit_tokens', 'is an integer >= 1')
     with req.api.db.read() as conn:
-        return 200, context.assemble(conn, b['subject']['kind'], b['subject']['id'],
-                                     homes=_read_homes(req, conn), **kw)
+        h, subject = _read_homes(req, conn), b['subject']
+        return 200, context.assemble(conn, subject['kind'], subject['id'], homes=h, **kw)
 
 
 def list_knowledge(req):
@@ -701,7 +701,8 @@ def get_session(req):
 
 def session_brief(req):
     with req.api.db.read() as conn:
-        return 200, sessions.preview_brief(conn, req.params['id'])
+        h = lambda: _read_homes(req, conn)
+        return 200, sessions.preview_brief(conn, req.params['id'], homes=h)
 
 
 def create_session(req):
@@ -745,7 +746,8 @@ def close_session(req):
 
 def list_checkpoints(req):
     with req.api.db.read() as conn:
-        return 200, {'checkpoints': executions.checkpoints(conn, req.params['id'])}
+        h = lambda: _read_homes(req, conn)
+        return 200, {'checkpoints': executions.checkpoints(conn, req.params['id'], homes=h)}
 
 
 def handoff_execution(req):
@@ -860,15 +862,15 @@ def simulate_policy(req):
 
 def list_policy_decisions(req):
     with req.api.db.read() as conn:
+        h = _read_homes(req, conn)
         return 200, {'policy_decisions': queries.list_policy_decisions(
-            conn, _one(req.query, 'mission'), _one(req.query, 'stage'),
-            homes=_read_homes(req, conn))}
+            conn, _one(req.query, 'mission'), _one(req.query, 'stage'), homes=h)}
 
 
 def get_policy_decision(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_policy_decision(conn, req.params['id'],
-                                               homes=_read_homes(req, conn))
+        h = _read_homes(req, conn)
+        return 200, queries.get_policy_decision(conn, req.params['id'], homes=h)
 
 
 def list_approvals(req):
@@ -934,7 +936,8 @@ def list_automations(req):
 
 def get_automation(req):
     with req.api.db.read() as conn:
-        return 200, automations.get_automation(conn, req.params['id'])
+        h = lambda: _read_homes(req, conn)
+        return 200, automations.get_automation(conn, req.params['id'], homes=h)
 
 
 def simulate_automation(req):
@@ -943,12 +946,14 @@ def simulate_automation(req):
     if not 1 <= days <= 180:
         raise Invalid('days', 'is 1..180')
     with req.api.db.read() as conn:
-        return 200, automations.simulate(conn, req.params['id'], now=queries._now(), days=days)
+        h = lambda: _read_homes(req, conn)
+        return 200, automations.simulate(conn, req.params['id'], now=queries._now(), days=days, homes=h)
 
 
 def get_automation_run(req):
     with req.api.db.read() as conn:
-        return 200, automations.explain(conn, req.params['id'])
+        h = lambda: _read_homes(req, conn)
+        return 200, automations.explain(conn, req.params['id'], homes=h)
 
 
 def create_automation(req):

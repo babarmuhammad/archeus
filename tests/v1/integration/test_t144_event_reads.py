@@ -7,7 +7,7 @@ from copy import deepcopy
 import pytest
 
 from archeus.core import ports
-from archeus.core.application import attention, calls, commands, queries, resources, trace
+from archeus.core.application import attention, calls, commands, executions, queries, resources, trace
 from archeus.core.context import assemble as A
 from archeus.core.domain import entities, ids
 from archeus.core.domain.actions import Action
@@ -326,3 +326,84 @@ def test_S21_automation_render_is_projected_and_matching_keeps_the_raw_payload(
         stored = conn.execute('SELECT payload FROM events WHERE seq = ?', (seq,)).fetchone()[0]
     assert json.loads(stored)['reason'] == 'read ' + home + '/x'
 
+
+
+def test_R1_automation_reads_project_the_matching_rationale(rig, tmp_path):  # noqa: F811
+    from archeus.core.application import automations
+    home = str(tmp_path / 'Work-Claude')
+    rig.do(resources.register_account, harness_id='zzz', label='A', auth_kind='api_key',
+           home_ref=home)
+    glob = '*' + home + '*'
+    aid = rig.automation(trigger={'type': 'mission.state_changed',
+                                  'where': {'reason': {'glob': glob}}},
+                         template={'title': 'saw {payload.reason}', 'objective': 'o'})
+    mid = rig.seed(title='other')
+    seq = rig.raw('mission.state_changed', Ref('mission', mid), {'to': 'CREATED', 'reason': 'read ' + home + '/x'})
+    rig.pump()
+    (run,) = [x for x in rig.runs() if x.triggering_event_seq == seq]
+    assert run.rationale['where']['reason']['value'] == 'read ' + home + '/x'
+    with rig.db.read() as conn:
+        before = [tuple(r) for r in conn.execute('SELECT * FROM automation_runs')]
+        got = automations.get_automation(conn, aid)
+        why = automations.explain(conn, run.id)
+        sim = automations.simulate(conn, aid, now=queries._now())
+        assert [tuple(r) for r in conn.execute('SELECT * FROM automation_runs')] == before
+    want = {'reason': {'test': {'glob': glob}, 'value': 'read its home/x'}}
+    (shown,) = [r for r in got['runs'] if r['id'] == run.id]
+    (hit,) = sim['matched']
+    for rationale in (shown['rationale'], why['run']['rationale'], why['why']['rationale'],
+                      hit['rationale']):
+        assert rationale['where'] == want and rationale['type'] == 'mission.state_changed'
+
+
+def _checkpoint(r, mid, home, key):
+    (ex,) = r.all(entities.Execution, mission_id=mid)
+
+    def seed(tx, *, actor):
+        cp = entities.Checkpoint(
+            id=ids.new_id('checkpoint'), execution_id=ex.id, mission_id=mid, task_id=ex.task_id,
+            trigger='failure', objective='fix ' + home, constraints=('keep ' + home,),
+            success_criteria=(home,), completed_steps=('t1 ' + home,),
+            files_changed=(home + '/a',), decisions=('use ' + key,),
+            open_problems=('deny: read of ' + home + '/settings.json',
+                           'last error: cannot read ' + home + '/settings.json on ' + key))
+        tx.insert(cp, actor=actor)
+        tx.append(new_event('checkpoint.created', Ref('checkpoint', cp.id), actor, payload={
+            'execution': ex.id, 'trigger': 'failure', 'task_id': ex.task_id}))
+    r.do(seed)
+    return ex
+
+
+def test_R2_checkpoints_and_the_brief_project_open_problems(db, tmp_path):
+    from archeus.core.application import sessions
+    from archeus.core.sessions import continuity
+    r, home, dhome, key, _, mid = _world(db, tmp_path)
+    r.dispatch(mid)
+    ex = _checkpoint(r, mid, home, key)
+    sid = ids.new_id('session')
+
+    def session(tx, *, actor):
+        tx.insert(entities.Session(id=sid, harness_id='fake', workspace_id=ids.GLOBAL_WORKSPACE,
+                                   cwd=str(tmp_path), mode='interactive_attached',
+                                   mission_id=mid), actor=actor)
+        tx.append(new_event('session.created', Ref('session', sid), actor, payload={
+            'mode': 'interactive_attached', 'harness_id': 'fake', 'account_id': None,
+            'mission_id': mid, 'handoff_from': None}))
+    r.do(session)
+    pid = public_account_id(key)
+    problems = ['deny: read of its home/settings.json',
+                'last error: cannot read its home/settings.json on ' + pid]
+    with db.read() as conn:
+        before = [tuple(x) for x in conn.execute('SELECT * FROM checkpoints')]
+        (cp,) = executions.checkpoints(conn, ex.id)
+        brief = sessions.preview_brief(conn, sid)
+        handoff = continuity.handoff_state(conn, rows.get(conn, entities.Session, sid).entity, {})
+        assert [tuple(x) for x in conn.execute('SELECT * FROM checkpoints')] == before
+    assert list(cp['open_problems']) == problems
+    assert cp['completed_steps'] == ['t1 its home'] and cp['files_changed'] == ['its home/a']
+    assert cp['decisions'] == ['use ' + pid]
+    assert (cp['objective'], cp['constraints'], cp['success_criteria']) == (
+        'fix ' + home, ('keep ' + home,), (home,))
+    for body in (brief, handoff):
+        (item,) = body['open_problems']
+        assert item['open_problems'] == problems
