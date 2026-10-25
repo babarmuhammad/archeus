@@ -84,10 +84,12 @@ svg { display: block; }
 .nav-item[aria-current='page'] { background: var(--s3); border-color: var(--line-strong); color: var(--text); }
 .nav-item svg { flex: none; }
 .nav-item .count { margin-left: auto; min-width: 22px; padding: 0 6px; border: var(--hair) solid var(--attention); border-radius: 11px; color: var(--text); font-size: var(--fs-cap); font-weight: 700; text-align: center; line-height: 20px; }
-.app:not([data-rail='open']) .nav-item .nl, .app:not([data-rail='open']) .rail-head .brand { display: none; }
+.app:not([data-rail='open']) .nav-item .nl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.app:not([data-rail='open']) .rail-head .brand { display: none; }
 .app:not([data-rail='open']) .nav-item .count { position: absolute; top: 1px; right: 1px; min-width: 18px; padding: 0 4px; line-height: 14px; font-size: 11px; background: var(--s1); }
 @container dev (min-width: 1024px) {
-  .app:not([data-rail='open']) .nav-item .nl, .app:not([data-rail='open']) .rail-head .brand { display: inline; }
+  .app:not([data-rail='open']) .nav-item .nl { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }
+  .app:not([data-rail='open']) .rail-head .brand { display: inline; }
   .app:not([data-rail='open']) .nav-item .count { position: static; min-width: 22px; padding: 0 6px; line-height: 20px; font-size: var(--fs-cap); background: transparent; }
   .rail-toggle { display: none; }
   .nav-item { min-height: var(--target-primary); }
@@ -242,7 +244,7 @@ dl.kv dd { overflow-wrap: anywhere; }
 .now-hero { display: flex; flex-direction: column; gap: 6px; }
 .state-sentence { font-family: var(--serif); font-size: var(--fs-disp); line-height: 1.22; font-weight: 500; overflow-wrap: anywhere; }
 .now-hero .sub2 { color: var(--text-2); font-size: var(--fs-cap); }
-.map-box { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 70vh; min-height: 240px; margin-inline: auto; }
+.map-box { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: min(70vh, calc(var(--base) * 38)); min-height: 240px; margin-inline: auto; }
 .map-box svg.map { position: absolute; inset: 0; width: 100%; height: 100%; }
 .map-box.wide { aspect-ratio: 16 / 10; }
 .map-box .map-edge { stroke: var(--line-strong); fill: none; stroke-width: 1; }
@@ -330,3 +332,9 @@ html[data-motion='reduced'] .core[data-live='true'] .core-txt { display: block; 
 .sep { height: var(--hair); margin: 8px 0; background: var(--line); }
 .app[data-term='true'] .rail, .app[data-term='true'] .main-col, .app[data-term='true'] .bottombar, .app[data-term='true'] .inspector, .app[data-term='true'] .scrim { display: none; }
 .inspector > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+
+.spine-insp .ring { fill: var(--s2); }
+.inspector h2[tabindex='-1']:focus { outline: none; }
+
+.col { display: flex; flex-direction: column; }
+@container view (max-width: 879px) { .now-cols > :first-child { order: 2; } }

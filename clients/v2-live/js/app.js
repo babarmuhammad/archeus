@@ -4,7 +4,7 @@ import { icon } from './icons.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
-import { ROUTES, viewNow, viewWork, viewAttention, viewMap, viewReplay, viewChat, viewSettings, inspectorMission, inspectorApproval, simControls, badge } from './views.js';
+import { ROUTES, viewNow, viewWork, viewAttention, viewMap, viewReplay, viewChat, viewSettings, inspectorMission, inspectorApproval, simControls } from './views.js';
 import { viewTerminal } from './terminal.js';
 
 store.apply();
@@ -184,12 +184,12 @@ function fit() {
   const d = DEVICES.find((x) => x.id === store.get('device'));
   if (!d || !d.w) { delete stage.dataset.frame; device.removeAttribute('style'); framenote.hidden = true; return; }
   stage.dataset.frame = d.id;
+  framenote.hidden = false;
   const availW = stage.clientWidth - 24, availH = stage.clientHeight - 16;
   const k = Math.min(1, availW / d.w);
   const hgt = Math.min(FRAME_H[d.id] || 1e9, availH / k);
   device.style.width = d.w + 'px'; device.style.height = hgt + 'px'; device.style.top = '8px';
   device.style.transform = 'translateX(-50%) scale(' + k + ')';
-  framenote.hidden = false;
   framenote.textContent = d.label + ' frame, ' + d.w + ' px wide, shown at ' + Math.round(k * 100) + '%' + (k < 1 ? '. Scaled down to fit this window, so controls look smaller than they are.' : '.');
   render();
 }
