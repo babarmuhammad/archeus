@@ -270,6 +270,58 @@ change to credentials, the boundary or PV-20.
 
 ## 12. As built
 
+### 12.0 T-144 containment guarantees and limits
+
+The following guarantees describe the tested boundaries, subject to the exemptions and
+limits below. Slice 4 adds tests; its test and mutation results must be supplied by the
+coordinator before this gate is declared passed.
+
+| Surfaces | Guarantee | Evidence in `tests/v1/` |
+|---|---|---|
+| S01-S06 | Route-decision reads and trace decisions hide home fields, map historical default keys to stable opaque IDs, and scrub system reasons. Reads preserve stored snapshots, routing and ledger identities. | `unit/test_t144_stored_reads.py`; `integration/test_t144_leak_sweep.py` T8 tests |
+| S07-S11 | Status, accounts, verification, review and approval reads project private account data; authored fields remain unchanged. | `unit/test_t144_stored_reads.py`; S04, S09, S10, S11 tests and the HTTP sweep (status and accounts routes) in `integration/test_t144_leak_sweep.py` |
+| S12-S19, S17a | Events, timeline, trace, policy actions and policy items project system content using the same matcher. | `integration/test_t144_event_reads.py`; `unit/test_t144_event_surfaces.py` |
+| S20-S21 | Context history and historical package reads, planner consumption, automation render and rationale reads project system strings; automation matching and stored rationale remain raw. Context preview applies the same projection as GET. | S20/S21/R1 tests in `integration/test_t144_event_reads.py`; S3 preview test in `integration/test_t144_leak_sweep.py` |
+| S22 | Live event SSE frames expose only subject and scope, without payloads. | Raw-byte SSE leg in `integration/test_t144_leak_sweep.py`; `unit/test_t144_event_surfaces.py` S22 pin |
+| S23-S23a | Execution output and trace lanes scrub agent text before truncation. | S23a test in `integration/test_t144_event_reads.py`; HTTP output leg in `integration/test_t144_leak_sweep.py` |
+| S24 | Not a guarantee: `POST /v1/accounts` and `/state` are admin scope and return the account view, including the `home_ref` the caller supplied. No test pins this response. | none, by owner design (S24 NONE) |
+| S25 | No `log.*` call (on the module logger named `log`) names `account_ref`, `home_ref` or `home_key` in its arguments. A value formatted into a variable first, or another logger name, is not seen. | AST guard and detector vectors in `unit/test_t144_log_guard.py` |
+| S26 | CLI/TUI readers inherit the API projection on the swept routes. This is an API boundary guarantee, not a claim that every screen was exercised. | Route walk; coordinator's rule-13 TUI run |
+| S27 | Every observe GET must be walked or explicitly skipped with a reason. Walked JSON bodies reject `home_ref` and `home_key`, including a full `queries.get_account` view accidentally returned by a route. | Coverage guard and HTTP sweep; Z329 and Z430 |
+| S28 | Execution workdir and branch are worktree identity, not account identity; ordinary worktree strings are not removed. No claim is made that arbitrary user-selected workdirs can never equal a home. | System-value workdir pin in `unit/test_t144_event_surfaces.py`; execution GET in the HTTP sweep |
+
+Checkpoint API reads and session briefs project open problems. New checkpoint artifacts
+project system fields before rendering and capping; continuation prompts rebuild historical
+checkpoint renderings with live registry homes. Stored checkpoint rows and historical artifact
+bytes remain unchanged. Evidence: R2 and checkpoint-write tests in
+`integration/test_t144_event_reads.py`, and `unit/test_t144_checkpoint_consumption.py`.
+
+Owner-decided exemptions (2026-10-25) are user-typed fields only: mission titles, objectives,
+requirements and constraints; authored plan/task content; project/repository paths and names;
+authored review text and policy inputs; context queries; checkpoint objective, constraints and
+success criteria. Event exemptions are exactly the leaf table pinned by the S2 tests:
+`mission.created.title`, `mission.updated.added.requirements/constraints`, `idea.created.title`,
+`feedback.received.promoted.title/text/anchors/constraint`, `meeting.imported.name`,
+`automation.created.name/trigger`, `project.created.name`, the `path` of
+`repository.registered/model_added/file_added`, and policy-rule `before/after` on creation
+or `before` on retirement. `session.handed_off.reason`, `planning_blocked.questions` and
+`knowledge_item.created.title` remain scrubbed. T5 pins authored mission/plan/project round trips.
+
+O-4 carve-out: local logs and tracebacks can contain homes embedded in exception text.
+The AST guard is not exception taint analysis. Stored database rows and artifacts on disk,
+legacy GUI reads, symlink/junction aliases and the contained-text spelling ceilings documented
+in `core/homes.py` are outside the containment guarantee. Dictionary keys are not projected.
+
+Read-cost ceiling (slice 2 S-5): home discovery scans and decodes stored RouteDecision snapshots
+on nonempty reads. There is no constant-time, cached, or fixed-latency guarantee; matching cost
+also grows with output strings and known homes. Empty event polls avoid home construction.
+
+Remaining registry ceiling: checkpoint artifact writes and resume/handoff write paths still
+discover homes without the live adapter registry. A default home absent from every stored
+snapshot can remain in those artifacts. The continuation prompt boundary does use the live
+registry. Registry-less context/automation/planner write/consumption fallbacks retain the same
+limit. These paths are not included in a universal live-only-default guarantee.
+
 ### 12.A Slice A — provenance (D4, D11) and the producer record (D5)
 
 1. **Served model (D4, ADR-0031 §6).** `Execution` gains `served_model`, `served_level`

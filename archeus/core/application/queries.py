@@ -391,7 +391,8 @@ def get_plan(conn, plan_id):
         raise NotFound(plan_id)
     p = row.entity
     tasks = sorted((view(t) for t in rows.where(conn, entities.Task, plan_id=p.id)),
-                   key=lambda t: int(t['key'][1:]) if t['key'][1:].isdigit() else t['key'])
+                   key=lambda t: (not t['key'][1:].isdigit(),
+                                    int(t['key'][1:]) if t['key'][1:].isdigit() else 0, t['key']))
     current, why = True, 'planned without a recorded context package'
     if p.context_package_id is not None:
         mission = rows.get(conn, entities.Mission, p.mission_id).entity

@@ -368,13 +368,14 @@ class ExecutionManager:
         n, cur = 0, e
         with self.db.read() as r:
             cp = checkpoint.of_execution(r, e.handoff_from)
+            homes = resources.homes(r, self.registry, ()) if cp is not None else None
             while cur is not None and cur.handoff_from is not None and n < 1000:
                 n += 1
                 row = rows.get(r, entities.Execution, cur.handoff_from)
                 cur = row.entity if row else None
         if cp is None:
             return prompt, n
-        return '%s\n\n%s\n' % (prompt.rstrip('\n'), checkpoint.text_of(cp)), n
+        return '%s\n\n%s\n' % (prompt.rstrip('\n'), checkpoint.text_of(cp, homes)), n
 
     def _window(self, e, adapter):
         """(window, source) of the execution's model (§13.1, ADR-0047 §2): the

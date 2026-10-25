@@ -99,7 +99,8 @@ def derive(tx, *, actor, execution, facts=None, context_package_id=None):
         decisions=_clip(decisions), open_problems=_clip(problems), verification=_clip(checks),
         next_action='', context_package_id=context_package_id or m.context_package_id,
         usage=dict(e.usage) if e.usage else None)
-    data = render.checkpoint(cp).encode('utf-8')
+    from ..application import resources
+    data = render.checkpoint(cp, resources.homes(tx.conn, None, ())).encode('utf-8')
     sha = artifacts.put(data)
     cp = entities.Checkpoint(**dict(cp.to_dict(), artifact_sha=sha))
     tx.insert(cp, actor=actor)
@@ -123,11 +124,12 @@ def of_execution(conn, execution_id):
     return got[0].entity if got else None
 
 
-def text_of(cp):
+def text_of(cp, homes=None):
     """The rendering of a checkpoint, or a statement that it is unavailable —
     never an invented one (§18)."""
     try:
-        return artifacts.get(cp.artifact_sha).decode('utf-8')
+        text = artifacts.get(cp.artifact_sha).decode('utf-8')
+        return render.checkpoint(cp, homes) if homes is not None else text
     except (OSError, ValueError, TypeError):
         return ('[checkpoint %s of execution %s is unavailable: its rendering could not be '
                 'read. Continue from the task and the workdir.]' % (cp.id, cp.execution_id))

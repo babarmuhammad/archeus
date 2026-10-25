@@ -407,3 +407,16 @@ def test_R2_checkpoints_and_the_brief_project_open_problems(db, tmp_path):
     for body in (brief, handoff):
         (item,) = body['open_problems']
         assert item['open_problems'] == problems
+
+
+def test_checkpoint_write_projects_artifact_keeps_raw_row(db, tmp_path):
+    from archeus.core.execution import checkpoint
+    from archeus.infra.artifacts import store
+    r, home, _, _, _, mid = _world(db, tmp_path)
+    out = r.dispatch(mid)
+    ex = r.one(entities.Execution, id=out['execution_id'])
+    r.do(checkpoint.derive, execution=ex, facts={'last_error': 'read ' + home + '/x'})
+    cp = r.one(entities.Checkpoint, execution_id=ex.id)
+    assert cp.open_problems == ('last error: read ' + home + '/x',)
+    text = store.get(cp.artifact_sha).decode('utf-8')
+    assert 'last error: read its home/x' in text and home not in text

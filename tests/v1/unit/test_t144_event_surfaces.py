@@ -108,6 +108,12 @@ def test_unlisted_nested_system_field_gets_the_production_fallback(homes):
         'workdir': 'D:/w', 'unlisted': {'a': [{'b': ['x ' + HOME, KEY, OLD_KEY + '/y']}]}}), homes)
     assert out['payload']['unlisted'] == {'a': [{'b': [
         'x its home', public_account_id(KEY), public_account_id(OLD_KEY) + '/y']}]}
+    assert out['payload']['workdir'] == 'D:/w'
+
+
+def test_S28_starting_keeps_worktree_workdir_and_branch(homes):
+    payload = {'workdir': 'D:/worktrees/mission.t1', 'branch': 'archeus/mission.t1'}
+    assert public.public_event(envelope('execution.starting', payload), homes)['payload'] == payload
 
 
 def test_every_authored_event_type_is_registered():

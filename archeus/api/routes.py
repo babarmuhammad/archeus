@@ -62,7 +62,7 @@ from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import automations, live, optins, sessions
 from ..core.application import verification
-from ..core.application.public import public_output
+from ..core.application.public import public_context, public_output
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -415,7 +415,8 @@ def preview_context(req):
         raise Invalid('limit_tokens', 'is an integer >= 1')
     with req.api.db.read() as conn:
         h, subject = _read_homes(req, conn), b['subject']
-        return 200, context.assemble(conn, subject['kind'], subject['id'], homes=h, **kw)
+        body = context.assemble(conn, subject['kind'], subject['id'], homes=h, **kw)
+        return 200, public_context(body, h)
 
 
 def list_knowledge(req):

@@ -21,6 +21,88 @@ from archeus.infra.db import rows
 from v1.integration.test_routing import Rig
 
 
+SKIPPED = {'/v1/events/stream': 'Raw SSE bytes checked by _raw_stream in the same sweep.'}
+WALKED = {
+    '/v1/health': None, '/v1/version': None, '/v1/missions': None,
+    '/v1/missions/{id}': 'mission', '/v1/missions/{id}/plan': 'mission',
+    '/v1/plans/{id}': 'plan', '/v1/events': None, '/v1/devices': None,
+    '/v1/sync': None, '/v1/status': None, '/v1/projects': None,
+    '/v1/projects/{id}': 'project', '/v1/world/graph': None,
+    '/v1/repositories/{id}/graph': 'repository',
+    '/v1/repositories/{id}/inspections': 'repository', '/v1/digest': None,
+    '/v1/context/{id}': 'context', '/v1/knowledge': None, '/v1/search': None,
+    '/v1/knowledge/{id}': 'knowledge', '/v1/route-decisions': None,
+    '/v1/route-decisions/{id}': 'route', '/v1/provider-terms': None,
+    '/v1/harnesses': None, '/v1/accounts': None, '/v1/opt-ins': None,
+    '/v1/executions/{id}': 'execution', '/v1/tasks/{id}/executions': 'task',
+    '/v1/executions/{id}/stream': 'execution', '/v1/sessions': None,
+    '/v1/sessions/{id}': 'session', '/v1/sessions/{id}/brief': 'session',
+    '/v1/executions/{id}/checkpoints': 'execution',
+    '/v1/conversations/{id}/messages': 'conversation', '/v1/intents/{id}': 'intent',
+    '/v1/ideas': None, '/v1/policies': None, '/v1/policy-decisions': None,
+    '/v1/policy-decisions/{id}': 'policy', '/v1/approvals': None,
+    '/v1/approvals/{id}': 'approval', '/v1/missions/{id}/verifications': 'mission',
+    '/v1/verifications/{id}': 'verification', '/v1/missions/{id}/reviews': 'mission',
+    '/v1/attention': None, '/v1/missions/{id}/timeline': 'mission',
+    '/v1/missions/{id}/trace': 'mission', '/v1/automations': None,
+    '/v1/automations/{id}': 'automation', '/v1/automations/{id}/simulate': 'automation',
+    '/v1/automation-runs/{id}': 'run',
+}
+
+
+def test_T144_observe_route_coverage():
+    from archeus.api import routes
+    observed = {r.path for r in routes.ROUTES if r.method == 'GET' and r.scope == 'observe'}
+    assert not (WALKED.keys() & SKIPPED.keys())
+    assert all(SKIPPED.values())
+    assert observed == WALKED.keys() | SKIPPED.keys()
+
+
+def test_T5_authored_mission_plan_and_project_root_round_trip(db, tmp_path):
+    from archeus.core.application import commands
+    from archeus.core.domain.events import new_event
+    from archeus.core.world import status
+    from v1.integration.test_policy import AUTO, task
+    r = Rig(db)
+    home = str(tmp_path / 'Authored-home')
+    r.account('Work', home_ref=home)
+    project = ids.new_id('project')
+    def seed(tx, actor):
+        tx.insert(entities.Project(id=project, workspace_id=ids.GLOBAL_WORKSPACE,
+                                   name=home, root_paths=(home,)), actor=actor)
+        tx.append(new_event('project.created', Ref('project', project), actor,
+                            payload={'name': home}, workspace=ids.GLOBAL_WORKSPACE))
+    r.do(seed)
+    mid = r.do(commands.create_mission, who=r.user, title=home, objective='read ' + home,
+               project_id=project, success_criteria=[AUTO])['id']
+    for trigger in ('start', 'understood'):
+        r.do(r.missions.fire, mission_id=mid, trigger=trigger, reason='test')
+    r.do(r.missions.context_ready, mission_id=mid)
+    r.propose(mid, task('t1', 'write_repo', title=home, objective='keep ' + home))
+    with db.read() as conn:
+        mission = queries.get_mission(conn, mid)
+        plan = queries.get_plan(conn, mission['plan_id'])
+        assert (mission['title'], mission['objective']) == (home, 'read ' + home)
+        assert (plan['tasks'][0]['title'], plan['tasks'][0]['objective']) == (home, 'keep ' + home)
+        assert status.project(conn, project)['root_paths'] == (home,)
+
+
+def _no_account_home_fields(value):
+    if isinstance(value, dict):
+        assert not {'home_ref', 'home_key'} & value.keys(), value
+        for child in value.values():
+            _no_account_home_fields(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            _no_account_home_fields(child)
+
+
+@pytest.mark.parametrize('home_ref', [None, 'C:/T144/Private'])
+def test_S27_detector_rejects_full_account_view(home_ref):
+    with pytest.raises(AssertionError):
+        _no_account_home_fields({'accounts': [{'id': 'account', 'home_ref': home_ref}]})
+
+
 def _strings(value):
     if isinstance(value, str):
         yield value
@@ -475,10 +557,56 @@ def test_S01_S11_http_stored_row_leak_sweep(archeus_home, tmp_path, monkeypatch)
                         _normalized(private) + '/'), repo.entity.path
             assert rows.get(conn, entities.RouteDecision, rd_id).entity.requirements[
                 'preferred']['accounts'] == [key]
+        from archeus.api import routes
+
+        def sweep_rows(tx, actor):
+            from archeus.core.application import conversation as conv
+            from archeus.core.domain.events import new_event
+            project, repo, knowledge, message, intent = (ids.new_id(k) for k in (
+                'project', 'repository', 'knowledge_item', 'message', 'intent'))
+            tx.insert(entities.Project(id=project, workspace_id=ids.GLOBAL_WORKSPACE,
+                                       name='Sweep project'), actor=actor)
+            root = str(tmp_path / 'Sweep-repo')
+            tx.insert(entities.Repository(id=repo, workspace_id=ids.GLOBAL_WORKSPACE,
+                project_id=project, path=root, path_key=root), actor=actor)
+            tx.insert(entities.KnowledgeItem(id=knowledge, workspace_id=ids.GLOBAL_WORKSPACE,
+                type='DECISION', title='Sweep knowledge', state='CONFIRMED'), actor=actor)
+            conversation = conv.primary(tx, actor)
+            tx.insert(entities.Message(id=message, conversation_id=conversation,
+                                       author='user', text='Sweep question'), actor=actor)
+            tx.insert(entities.Intent(id=intent, message_id=message, utterance='Sweep question',
+                                      kind='question', resolution='answered'), actor=actor)
+            tx.append(new_event('project.created', Ref('project', project), actor,
+                                payload={'name': 'Sweep project'}, workspace=ids.GLOBAL_WORKSPACE))
+            return project, repo, knowledge, intent, conversation
+
+        project, repo, knowledge, intent, conversation = r.do(sweep_rows)
+        assert all(not _normalized(str(tmp_path / 'Sweep-repo')).startswith(_normalized(h) + '/')
+                   and _normalized(str(tmp_path / 'Sweep-repo')) != _normalized(h)
+                   for h in (home, private_default, live_default))
+        route_ids = dict(mission=mid, plan=plan.id, project=project, repository=repo,
+            knowledge=knowledge, intent=intent, conversation=conversation, context=pkg_id,
+            route=rd_id, execution=execution.entity.id, task=task.entity.id, session=sid,
+            policy=did, approval=approval['id'], verification=vid, automation=auto, run=run_id)
+        walked = set()
+        for registered in routes.ROUTES:
+            if registered.method != 'GET' or registered.scope != 'observe':
+                continue
+            template = registered.path
+            if template in SKIPPED:
+                continue
+            kind = WALKED[template]
+            path = template.replace('{id}', route_ids[kind]) if kind else template
+            path += {'/v1/search': '?q=Sweep',
+                     '/v1/automations/{id}/simulate': '?days=1'}.get(template, '')
+            paths.append(path)
+            walked.add(template)
+        assert walked == WALKED.keys()
         for path in paths:
             response = core.http('GET', path)
             assert response.status == 200, (path, response.body)
             _no_leak(response.json(), [home, private_default, live_default], [key])
+            _no_account_home_fields(response.json())
             if path.endswith('/brief'):
                 (problem,) = response.json()['open_problems']
                 assert problem['open_problems'] == ['deny: read of its home', 'last error: its home']
@@ -570,6 +698,14 @@ def test_S3_context_routes_scrub_with_the_live_homes(archeus_home, tmp_path, mon
             blind = context.assemble(conn, 'project', pid)
         assert want['items'] != blind['items']
         assert preview.json()['items'] == json.loads(json.dumps(want['items']))
+        original = context.assemble
+        def with_missing(*args, **kw):
+            return dict(original(*args, **kw), missing_information=[live + '/repo is gone'])
+        monkeypatch.setattr(context, 'assemble', with_missing)
+        projected = core.http('POST', '/v1/context/preview',
+                              body={'subject': {'kind': 'project', 'id': pid}})
+        assert projected.status == 200, projected.body
+        assert projected.json()['missing_information'] == ['its home/repo is gone']
         got = core.http('GET', '/v1/context/' + pkg_id)
         assert got.json()['missing_information'] == ['its home/repo is gone']
     finally:

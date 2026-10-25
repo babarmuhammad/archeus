@@ -27,8 +27,13 @@ def _lines(items, fmt=str):
     return ['- %s' % fmt(x) for x in items] or ['- (none)']
 
 
-def checkpoint(cp):
+def checkpoint(cp, homes=None):
     """The markdown of one checkpoint: what the next execution's prompt ends with."""
+    if homes is not None:
+        from ..application.public import system_value
+        from dataclasses import replace
+        cp = replace(cp, **system_value(cp.to_dict(), homes,
+                     authored=(('objective',), ('constraints',), ('success_criteria',))))
     out = ['# Checkpoint %s' % cp.id, '',
            'Continuing task `%s` of mission `%s` (plan v%s), from execution `%s` (%s).'
            % (cp.task_id, cp.mission_id, cp.plan_version, cp.execution_id, cp.trigger), '',
