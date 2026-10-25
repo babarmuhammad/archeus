@@ -10,6 +10,8 @@ BASE = os.environ.get('BASE', 'http://127.0.0.1:8861').rstrip('/')
 OUT = os.environ.get('OUT', os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.pv20-out', 'shots', 'probe'))
 URL = BASE + '/clients/v2-live-map/demo.html?embed=1'
 SIZES = [(320, 640), (390, 844), (768, 1024), (1280, 720), (1440, 900), (2000, 930), (2560, 1440)]
+if os.environ.get('SIZES'):
+    SIZES = [tuple(map(int, s.split('x'))) for s in os.environ['SIZES'].split(',')]
 THEMES = ['dark', 'light', 'dark-high-contrast', 'light-high-contrast']
 failures = []
 os.makedirs(OUT, exist_ok=True)
@@ -108,6 +110,15 @@ def geometry_checks(pg, tag, phone):
     return g
 
 
+def label_checks(pg, tag):
+    g = pg.evaluate(GEOM)
+    L = g['labels']
+    over = [(a['id'], b['id']) for i, a in enumerate(L) for b in L[i + 1:] if rects_overlap(a, b)]
+    covered = [(l['id'], s['id']) for l in L for s in g['stars'] if rect_hits_circle(l, s)]
+    core = [l['id'] for l in L for c in g['core'] if rects_overlap(l, c)]
+    check(not over and not covered and not core and len(L) > 0, f'{tag}: {len(L)} labels, no overlap, none over a node or the core {over[:2]} {covered[:2]} {core[:2]}')
+
+
 def motion_checks(pg, tag, reduced):
     pg.wait_for_timeout(900)
     names = pg.evaluate("document.getAnimations().filter(a => a.playState === 'running').map(a => a.animationName || a.constructor.name)")
@@ -176,12 +187,22 @@ def view_checks(pg, tag, w, h):
         pg.click('button[aria-label="Zoom out"]')
     small = pg.evaluate("[...document.querySelectorAll('.am-hit circle')].filter(c => { const b = c.getBoundingClientRect(); return Math.min(b.width, b.height) < 43.99; }).length")
     check(small == 0 and 'scale(1)' not in tf(), f'{tag}: targets stay >= 44 px zoomed out ({tf()})')
+    label_checks(pg, f'{tag} zoomed out')
     pg.click('button[aria-label="Fit all nodes"]')
+    label_checks(pg, f'{tag} fitted')
     fit = tf()
     check(fit != base, f'{tag}: Fit changes the view ({fit})')
     pg.click('button[aria-label="Zoom in"]')
     pg.click('button[aria-label="Reset map view"]')
     check(tf() == base, f'{tag}: Reset after Fit and Zoom in')
+    pg.mouse.move(w / 2, h / 2)
+    pg.mouse.wheel(0, -500)
+    pg.wait_for_timeout(100)
+    label_checks(pg, f'{tag} wheel zoomed in')
+    pg.click('button[aria-label="Reset map view"]')
+    pg.evaluate("document.querySelector('#add').click()")
+    pg.wait_for_timeout(300)
+    label_checks(pg, f'{tag} after adding a node and selecting it')
 
 
 PERF = """async () => {
@@ -245,6 +266,14 @@ def main():
                 check(g['dpr'] == 2 and g['raster'] == 0 and (pw, ph) == (w * 2, h * 2), f'{w}x{h}@2 {theme}: DPR 2 vector only, capture {pw}x{ph}')
                 check(not errors, f'{w}x{h}@2 {theme}: no console errors')
                 pg.context.close()
+        pg, errors = open_page(br, 1440, 900)
+        for (rw, rh) in [(2560, 1440), (390, 844), (320, 640), (1280, 720)]:
+            pg.set_viewport_size({'width': rw, 'height': rh})
+            pg.wait_for_timeout(300)
+            label_checks(pg, f'live resize to {rw}x{rh}')
+            check(pg.evaluate("document.querySelector('.am-world').getAttribute('transform')") == 'translate(0 0) scale(1)' and pg.evaluate("document.querySelectorAll('.am-star').length") == 25, f'live resize to {rw}x{rh}: camera reset, 25 stars')
+        check(not errors, 'live resize: no console errors')
+        pg.context.close()
         pg, errors = open_page(br, 1440, 900, forced_colors='active')
         g = pg.evaluate(GEOM)
         check(len(g['labels']) > 5 and g['raster'] == 0, 'forced-colors 1440x900: labels drawn, no raster')
