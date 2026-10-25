@@ -786,3 +786,94 @@ The owner's answer on missed times (2026-10-21): "Once together (Recommended)", 
   Z411 the API's `waiting` reason, Z412 a held schedule listed as upcoming, Z233 Control's row
   drops the reason (`scheduleRows`), Z234 the TUI row drops the reason, Z235 the worker keeps no
   cause for a quarantine, Z236 the view drops the quarantine.
+
+### Slice C-write as built (2026-10-21, card T-126)
+
+The owner's word that line 180 asks for, 2026-10-21 (AskUserQuestion, verbatim): "Build P21's
+remaining pieces today (B live activity/usage, E what an agent is doing now, H scheduled work,
+Health page + attention, C-write cause of each action) instead of waiting for P20?" = "Yes, all
+five (Recommended)". D13 (b) as approved; "P21 cannot be declared complete before P20 is" stands.
+
+- **One place, not every call.** The writer's transaction carries a `cause`: an event appended
+  without a `cause_chain` of its own gets it (`archeus/infra/db/writer.py`, `Tx.append`); an
+  explicit cause still wins (the automation consumer's chains, `create_mission(cause=)`). A command
+  takes its cause from `events.CAUSE`, a context variable that `Writer.submit` reads on the
+  submitting thread and queues beside the arguments, never inside them: the idempotency request
+  hash, `PROOF_ARGS` and the token rows are unchanged, and a keyed retry under another cause is a
+  replay, not a conflict.
+- **Issued from an event.** `consumers.deliver` sets `CAUSE` to the event's chain plus its id
+  (`events.caused_by`: the newest 16, the automation consumer's own rule, which now calls it) while
+  the handler runs, and resets it afterwards, a `Hold` included. Everything the intent, planning,
+  knowledge and automation consumers write carries the event that triggered it, their own calls'
+  route records and ends (`core/calls.py`) included, with no edit to `core/calls.py`,
+  `resources.py`, `commands.py` or `conversation.py`.
+- **Issued from an approval.** In `authorization.py`, once the approval's own decision event is
+  written (`decide`'s reject and request-changes path, `_approve`, `_approve_route`), `tx.cause`
+  becomes that event's chain plus its id, so the plan, task and mission moves the decision issues
+  carry it. The decision event itself is the user's command: a root (or, decided under a consumer,
+  that consumer's event). Three assignments, each after every check: the re-judging, the guards,
+  the step-up check and every refusal run before them and are unchanged, and a refused decision
+  still writes nothing.
+- **Roots, by (b)'s wording.** A route's command (a direct user command), the engine and execution
+  loops (they poll rows), the verification worker, policy expiry and the world worker.
+- **The reply to an execution ending (addition, owner 2026-10-21).** Asked whether the task's
+  response to an execution ending (in the transaction that appends `execution.ended`, so not
+  issued from an event by (b)'s wording) should be caused by `execution.ended`, the owner answered
+  (AskUserQuestion, verbatim): "Yes, link it (Recommended)". Built in `executions.py`: each of the
+  four writers of `execution.ended` (`refuse`, `_ended`, `record_handoff`, `approval_answered`)
+  keeps the event it appends and runs what follows (the task's retry, verification or failure, a
+  refusal's mission block, a hand-off's continuation) inside `_after(tx, ended)`, which sets
+  `tx.cause` to that event's chain plus its id and restores the previous cause on the way out, so
+  one command that ends several executions (an e-stop, a mission stop) gives each reply its own
+  end and leaves its own later events (`core.estopped`) unaffected. An INTENT refused before it
+  spawned writes no `execution.ended`; its reply stays a root. The hook-token clearing on those
+  paths is unchanged (the same `hook_token_hash: None` fields in the same edges), and a test
+  asserts the token is gone after the end.
+- **Deviation from the file-scope note.** `.collab/T-119-cwrite-scope.md` passed `cause` as an
+  argument through every issuing call (twelve modules, credential- and auth-bearing ones among
+  them) and rejected a writer default for touching `writer.py`. Built instead: the writer default,
+  a few lines in `writer.py` away from its hash, proof and token code, so no issuing call can be
+  missed and only `authorization.py` among the excluded files is edited (three lines), under the
+  owner's word.
+- **Decision scope (review of b0bc245, Required 1).** `decide` is wrapped by `_restores_cause`
+  (`authorization.py`): the cause the three assignments set ends when the decision returns, so the
+  command that called it keeps its own cause. Before, a chat approve's reply (`decide_by_message`,
+  `conversation.py`) was written caused by the decision; that reply is the route command's, a root.
+  The decision's arguments, guards and outcomes are unchanged.
+- **Files as built.** `archeus/infra/db/writer.py` (`Tx.__init__`, `Tx.append`, `Writer.submit`,
+  `Writer._run`, `Writer._one`; not `request_hash`, `PROOF_ARGS`, the idempotency table or the
+  token methods), `archeus/core/domain/events.py` (`CAUSE`, `caused_by`), `archeus/infra/eventlog/
+  consumers.py` (`deliver`), `archeus/core/application/authorization.py` (`_restores_cause`, the
+  three assignments, the `functools` import), `archeus/core/application/automations.py` (`_claim`),
+  `archeus/core/application/executions.py` (`_after` and its four call sites). Nothing else under
+  `archeus/`. Stated on the record because the scope note flagged `writer.py`.
+- **Recorded from the review, not changed.** Own-call ends of `core/calls.py` (no harness, emergency
+  stop, provider terms, adapter error, invalid answer) run on a consumer thread and now carry its
+  cause; that is (b)'s rule, reached without editing `calls.py`. `approval_answered` is called from
+  the manager's poll loop, a root, so the task's reply is caused by its `execution.ended` and not by
+  the approval decision (no link from approval to reply; the owner's rule for the reply, unchanged).
+  A human verification decision (`verification.py` `Decisions.decide`) is not an approval and
+  causes nothing, as (b) says.
+- **Display.** Nothing new: the trace (C-read), the timeline and the TUI already show a
+  `cause_chain`; more events now have one.
+- **Tests:** `tests/v1/integration/test_cwrite.py` (25). The original thirteen: a command under a
+  cause, an explicit cause winning and a route command a root; the cause outside the request hash;
+  the newest 16 kept; a consumer's writes caused and nothing left behind, a `Hold` included; the
+  intent consumer's mission and reply caused by the user's message; plan approve, reject and
+  request changes, each deciding as before and causing everything it moved; a decision under an
+  event passing it on; a fallback route's approve and reject; a refused decision writing nothing
+  (a rollback check, GuardFailed). The addition: an ok and an error end each caused into the task's
+  reply with the hook token cleared, and one command ending two executions keeping each reply to its
+  own end. Fix round: a chat approve's reply a root while its moves carry the decision; a consumer
+  handler that raises leaves no cause behind; each other end site (a mission stop over two paused
+  executions, an estop with a paused one, a rejected action approval, a refused hand-off, a
+  continuation) caused by its own end, with the mission block and `core.estopped` after an end a
+  root. Round 3: a blocking refusal (`path_too_long`) blocks its mission under its end; a decision
+  made inside a consumer is caused by that event, and so is its reply.
+- **Mutants:** Z70-Z79 (the writer, the consumer, the event chain and the decision's assignments)
+  and Z110-Z111 (the `_after` body). For the review: Z170-Z173, one per `_after` site (refuse,
+  record_handoff, approval_answered, `_ended`); Z174 (the decision's restore removed); Z175 (a
+  blocking refusal's mission block uncaused); Z176 (deliver's reset removed when a handler raises);
+  Z180 (the writer ignores the cause it was given). All in `tools/mutate_p21.py`, each killed by a
+  test it names. The ids are Z170-Z176 and Z180, not the review's Z112-Z115: T-128 owns
+  Z112-Z122 on p21-e, and the two would collide at integration.

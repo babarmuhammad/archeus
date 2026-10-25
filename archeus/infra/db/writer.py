@@ -116,13 +116,18 @@ def _commit(conn):
 
 
 class Tx:
-    """One command's transaction. Made only by the writer thread."""
+    """One command's transaction. Made only by the writer thread.
 
-    def __init__(self, conn):
+    `cause` (p21 D13 (b)) is the `cause_chain` of every event appended without
+    one of its own: the consumer's event the command was submitted under
+    (`ev.CAUSE`), or an approval's event once `authorization.decide` set it."""
+
+    def __init__(self, conn, cause=()):
         self.conn = conn
         self.now = ev.now_iso()
         self.events = []
         self.mutated = False
+        self.cause = cause
 
     def execute(self, sql, params=()):
         """Raw SQL for infrastructure rows (cursors, effects, retention).
@@ -199,6 +204,8 @@ class Tx:
         """Record an event; SQLite assigns its seq. Returns the event with it."""
         if event.seq is not None:
             raise ValueError('seq is assigned by the writer, not the caller')
+        if not event.cause_chain and self.cause:
+            event = dataclasses.replace(event, cause_chain=self.cause)
         cur = self.conn.execute(
             'INSERT INTO events (id, type, at, actor_kind, actor_id, cause_chain, '
             'subject_kind, subject_id, workspace_id, project_id, visibility, payload) '
@@ -337,7 +344,9 @@ class Writer:
             if self._closed:
                 raise WriterClosed('the writer is closed')
             try:
-                self._q.put_nowait((fut, command, kwargs, idempotency_key, name, rhash))
+                # the cause rides beside the arguments, never in them: it is not hashed
+                self._q.put_nowait((fut, command, kwargs, idempotency_key, name, rhash,
+                                    ev.CAUSE.get()))
             except queue.Full:
                 raise WriterBusy('%d commands already queued' % self._q.maxsize) from None
         return fut
@@ -395,13 +404,14 @@ class Writer:
                 item = self._q.get()
                 if item is _STOP:
                     break
-                fut, command, kwargs, key, name, rhash = item
+                fut, command, kwargs, key, name, rhash, cause = item
                 if not fut.set_running_or_notify_cancel():
                     continue
                 try:
                     # `replayed` tells a caller with effects outside the writer
                     # (a sentinel, a counter) that nothing ran this time
-                    result, fut.replayed = self._one(conn, command, kwargs, key, name, rhash)
+                    result, fut.replayed = self._one(conn, command, kwargs, key, name, rhash,
+                                                     cause)
                 except BaseException as e:
                     self.failed += 1
                     fut.set_exception(e)
@@ -413,7 +423,7 @@ class Writer:
         finally:
             conn.close()
 
-    def _one(self, conn, command, kwargs, key, name, rhash):
+    def _one(self, conn, command, kwargs, key, name, rhash, cause):
         conn.execute('BEGIN IMMEDIATE')
         try:
             if key is not None:
@@ -421,7 +431,7 @@ class Writer:
                 if replay is not None:
                     conn.execute('ROLLBACK')
                     return json.loads(replay), True
-            tx = Tx(conn)
+            tx = Tx(conn, cause)
             result = command(tx, **kwargs)
             if tx.mutated and not tx.events:
                 raise UnrecordedMutation('%s changed state and recorded no event' % name)
