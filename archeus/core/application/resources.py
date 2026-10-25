@@ -11,6 +11,7 @@ a policy rule, or run anything. `ask` is recorded; asking the user is P9's
 `authorization.request_route`, called by the dispatch command.
 """
 
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -659,10 +660,43 @@ class Resources:
 
 # ── views ──────────────────────────────────────────────────────────────────
 
+HOME_FIELDS = ('home_ref', 'home_key')
+
+
+def homes(conn, registry, callers, *, shorts=None):
+    from ..homes import Homes
+    registered = [r.entity.home_ref for r in rows.where(conn, entities.Account)]
+    defaults, historical_homes = {}, []
+    for r in rows.where(conn, entities.RouteDecision):
+        for a in (r.entity.input_snapshot or {}).get('accounts', ()):
+            if not a.get('registered') and a.get('ref'):
+                defaults[a['ref']] = (a['harness'], a['ref'], a.get('home_ref'))
+            elif a.get('registered'):
+                historical_homes.append(a.get('home_ref'))
+    adapters = ([] if registry is None else [registry.get(i) for i in registry.ids()])
+    for a in [*adapters, *callers]:
+        try:
+            ref = a.default_account()
+        except Exception:  # A broken adapter must not prevent reading stored rows.
+            continue
+        defaults.setdefault(ref.account_id, (a.id, ref.account_id, ref.home_ref))
+    out = Homes(registered, defaults.values(), shorts=shorts, platform=sys.platform)
+    historical = Homes(historical_homes, shorts=lambda _: None, platform=sys.platform)
+    out.patterns += historical.patterns
+    out.norms |= historical.norms
+    return out
+
+
 def account_view(conn, row):
     (p,) = rows.where(conn, entities.ResourcePolicy, account_id=row.entity.id)
     return dict(view(row), resource_policy=view(p), usage=latest_usage(conn, row.entity.id))
 
 
-def accounts(conn):
-    return [account_view(conn, r) for r in rows.where(conn, entities.Account)]
+def accounts(conn, public_homes=None):
+    from .public import system_value
+    public_homes = public_homes if public_homes is not None else homes(conn, None, ())
+    return [system_value({k: v for k, v in account_view(conn, r).items()
+                          if k not in HOME_FIELDS}, public_homes,
+                         authored=(('label',), ('resource_policy', 'project_allow'),
+                                   ('resource_policy', 'project_deny')))
+            for r in rows.where(conn, entities.Account)]

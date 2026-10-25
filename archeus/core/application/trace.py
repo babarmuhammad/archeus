@@ -49,7 +49,7 @@ def lanes(events):
              'steps': v} for k, v in out.items()]
 
 
-def trace(conn, mission_id, registry):
+def trace(conn, mission_id, registry, *, homes=None):
     """The trace of *mission_id* (NotFound when there is no such mission)."""
     t = attention.timeline(conn, mission_id, limit=MAX_EVENTS)
     execs, rs = [], sorted(rows.where(conn, entities.Execution, mission_id=mission_id),
@@ -67,5 +67,5 @@ def trace(conn, mission_id, registry):
     return {'mission_id': mission_id, 'events': t['events'][::-1],
             'truncated': t['next_before'] is not None,
             'policy_decisions': list_policy_decisions(conn, mission_id),
-            'route_decisions': route_decisions(conn, mission_id),
+            'route_decisions': route_decisions(conn, mission_id, homes=homes),
             'executions': execs, 'executions_truncated': len(rs) > MAX_EXECUTIONS}

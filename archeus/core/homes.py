@@ -93,7 +93,8 @@ def public_account_id(key):
 
 
 def account_key_map(default_accounts):
-    return {key: public_account_id(key) for _, key, _ in default_accounts}
+    return {key: public_account_id(key) for _, key, home in default_accounts
+            if isinstance(home, str) and home.strip()}
 
 
 class Homes:
@@ -119,7 +120,7 @@ class Homes:
         self.keys = account_key_map(default_accounts)
         self._key_rx = re.compile('(?<!\\w)(?:%s)%s' % ('|'.join(
             re.escape(k)
-            for h, k, home in sorted(default_accounts, key=lambda a: -len(a[1]))), _RIGHT)
+            for k in sorted(self.keys, key=len, reverse=True)), _RIGHT)
         ) if self.keys else None
 
     def norm_path(self, s):

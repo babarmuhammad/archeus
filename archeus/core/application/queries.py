@@ -8,6 +8,29 @@ from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..domain import entities, ids, states
 from .commands import active_plan
+from .public import system_value
+
+
+def _homes(conn, homes):
+    if homes is None:
+        from . import resources
+        return resources.homes(conn, None, ())
+    return homes
+
+
+def _public_verification(body, homes):
+    out = dict(body)
+    if out.get('performed_by') is not None:
+        out['performed_by'] = {k: v for k, v in out['performed_by'].items()
+                               if k != 'account_ref'}
+    return system_value(out, homes, authored=(('checks', 'name'), ('checks', 'argv'),
+                        ('checks', 'files'), ('criteria', 'text'), ('note',),
+                        ('workspace',), ('evidence', 'check')))
+
+
+def _public_review(body, homes):
+    return system_value(body, homes, authored=tuple((k,) for k in
+                        (*entities.REVIEW_LISTS, 'summary', 'reviewer')))
 
 
 def view(row):
@@ -43,22 +66,23 @@ def _of_mission(conn, mission_id):
     return tasks, plans
 
 
-def list_verifications(conn, mission_id):
+def list_verifications(conn, mission_id, *, homes=None):
     """Every Verification of the mission — its tasks' and its criteria' — oldest first."""
     if rows.get(conn, entities.Mission, mission_id) is None:
         raise NotFound(mission_id)
+    homes = _homes(conn, homes)
     tasks, plans = _of_mission(conn, mission_id)
     out = []
     for pid in plans:
         for r in rows.where(conn, entities.Verification, plan_id=pid):
             s = r.entity.subject
             if (s.kind == 'mission' and s.id == mission_id) or (s.kind == 'task' and s.id in tasks):
-                out.append(view(r))
+                out.append(_public_verification(view(r), homes))
     return {'mission_id': mission_id,
             'verifications': sorted(out, key=lambda v: (v['created_at'], v['id']))}
 
 
-def get_verification(conn, verification_id):
+def get_verification(conn, verification_id, *, homes=None):
     """One Verification, and whether each check's evidence is still in the store."""
     from ...infra.artifacts import store
     row = rows.get(conn, entities.Verification, verification_id)
@@ -69,14 +93,15 @@ def get_verification(conn, verification_id):
                         'available': c.get('output_sha256') is not None
                         and os.path.exists(store.path_for(c['output_sha256']))}
                        for c in row.entity.checks]
-    return out
+    return _public_verification(out, _homes(conn, homes))
 
 
-def list_reviews(conn, mission_id):
+def list_reviews(conn, mission_id, *, homes=None):
     if rows.get(conn, entities.Mission, mission_id) is None:
         raise NotFound(mission_id)
     rs = rows.where(conn, entities.Review, mission_id=mission_id)
-    return {'mission_id': mission_id, 'reviews': [view(r) for r in rs]}
+    homes = _homes(conn, homes)
+    return {'mission_id': mission_id, 'reviews': [_public_review(view(r), homes) for r in rs]}
 
 
 def get_context_package(conn, package_id):
@@ -215,16 +240,32 @@ def get_knowledge(conn, knowledge_item_id):
     return dict(view(row), chain=chain + [knowledge_item_id] + after, relations=rels)
 
 
-def get_route_decision(conn, route_decision_id):
+def _public_decision(body, homes):
+    out = dict(body)
+    if body.get('input_snapshot') is not None:
+        snap = dict(body['input_snapshot'])
+        snap['accounts'] = [{k: v for k, v in a.items()
+                             if k not in ('home_ref', 'home_key')}
+                            for a in snap.get('accounts', ())]
+        out['input_snapshot'] = snap
+    # Identity refs stay in the read contract; only home-bearing values change.
+    return system_value(out, homes, path_keys=('account_ref', 'ref', 'home_ref', 'home_key'),
+                        authored=(('input_snapshot', 'accounts', 'label'),
+                        ('candidates', 'label'),
+                        ('input_snapshot', 'accounts', 'policy', 'project_allow'),
+                        ('input_snapshot', 'accounts', 'policy', 'project_deny')))
+
+
+def get_route_decision(conn, route_decision_id, *, homes=None):
     row = rows.get(conn, entities.RouteDecision, route_decision_id)
     if row is None:
         raise NotFound(route_decision_id)
     usage = [view(r) for r in rows.where(conn, entities.UsageLedger,
                                          route_decision_id=route_decision_id)]
-    return dict(view(row), usage=usage)
+    return _public_decision(dict(view(row), usage=usage), _homes(conn, homes))
 
 
-def route_decisions(conn, source_id=None, purpose=None):
+def route_decisions(conn, source_id=None, purpose=None, *, homes=None):
     """Route decisions, oldest first; those about *source_id* when given (what
     the decision is about, or its subject: a task's decisions are found by the
     task and by its mission)."""
@@ -233,7 +274,8 @@ def route_decisions(conn, source_id=None, purpose=None):
     if source_id is not None:
         got = [r for r in got if source_id in (r.entity.subject.id, r.entity.source
                                                and r.entity.source.id)]
-    return [view(r) for r in got]
+    homes = _homes(conn, homes)
+    return [_public_decision(view(r), homes) for r in got]
 
 
 def get_account(conn, account_id):
@@ -385,28 +427,43 @@ def _now():
     return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
 
-def approval_view(conn, row, now=None):
+def approval_view(conn, row, now=None, *, homes=None):
     from . import authorization
     a = row.entity
     bad = (None if a.state != 'PENDING'
            else authorization.ineligible(conn, a, now=now or _now()))
-    return dict(view(row), eligible=a.state == 'PENDING' and bad is None,
+    out = dict(view(row), eligible=a.state == 'PENDING' and bad is None,
                 eligible_why=None if bad is None else bad[0],
                 eligible_detail=None if bad is None else bad[1])
+    return _public_approval(out, _homes(conn, homes))
 
 
-def get_approval(conn, approval_id, now=None):
+def _public_approval(body, homes):
+    return system_value(body, homes, authored=(('decision_note',),
+                        ('presented', 'what', 'title'),
+                        ('presented', 'what', 'paths'),
+                        ('items', 'action', 'paths'),
+                        ('presented', 'against', 'mission', 'title'),
+                        ('presented', 'against', 'mission', 'objective'),
+                        ('presented', 'against', 'plan', 'summary'),
+                        ('presented', 'against', 'task', 'title'),
+                        ('presented', 'against', 'project', 'root')))
+
+
+def get_approval(conn, approval_id, now=None, *, homes=None):
     row = rows.get(conn, entities.Approval, approval_id)
     if row is None:
         raise NotFound(approval_id)
-    return approval_view(conn, row, now)
+    return approval_view(conn, row, now, homes=homes)
 
 
-def list_approvals(conn, state=None, mission_id=None, now=None):
+def list_approvals(conn, state=None, mission_id=None, now=None, *, homes=None):
     if state is not None and state not in states.states('approval'):
         raise ValueError('%r is not an approval state' % (state,))
     eq = {k: v for k, v in (('state', state), ('mission_id', mission_id)) if v is not None}
-    return [approval_view(conn, r, now) for r in rows.where(conn, entities.Approval, **eq)]
+    homes = _homes(conn, homes)
+    return [approval_view(conn, r, now, homes=homes)
+            for r in rows.where(conn, entities.Approval, **eq)]
 
 
 def get_policy_decision(conn, decision_id):

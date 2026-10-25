@@ -34,10 +34,12 @@ def _item(kind, ref_kind, row, state, reason_code, reason=None, mission_id=None,
                  'since': row.updated_at}, **extra)
 
 
-def attention(conn, now=None):
+def attention(conn, now=None, *, homes=None):
+    from .queries import _homes
+    homes = _homes(conn, homes)
     items = []
     for r in rows.where(conn, entities.Approval, **{'state': 'PENDING'}):
-        a = approval_view(conn, r, now)
+        a = approval_view(conn, r, now, homes=homes)
         items.append(_item('approval', 'approval', r, 'PENDING', r.entity.kind,
                            a['eligible_why'], r.entity.mission_id,
                            _project(conn, r.entity.mission_id),
