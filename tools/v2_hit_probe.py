@@ -4,6 +4,8 @@ hit-tested to their owner). A control passes when the hit extent is at least 44 
 (desktop frames are measured at their master size, so one frame px is one CSS px). Run:
   BASE=http://127.0.0.1:8791 py -I tools/v2_hit_probe.py        (serve clients/v2-prototype first)
 PHONE=WxHxDPR overrides the phone viewport (default 402x687x2).
+A control cut by the screen edge, or by its own scroll area, is first scrolled into view (block: nearest, the least a user would
+scroll); a fixed control does not move, so one cut by the screen edge still fails. Controls wholly off screen stay unmeasured.
 Exit 1 when any control is under its minimum. With the composer sheet open, controls fully covered by the sheet are skipped."""
 import os
 import sys
@@ -19,10 +21,14 @@ DESK_MIN = 48
 JS = """([covered_ok, MIN]) => {
   const sel = 'a[href], button, input, textarea, select, [role=button], summary';
   const STEP = 2, PAD = 40, out = [];
-  document.querySelectorAll(sel).forEach(e => {
+  const seen = [...document.querySelectorAll(sel)].filter(e => {
     const cs = getComputedStyle(e), b = e.getBoundingClientRect();
-    if (cs.display === 'none' || cs.visibility === 'hidden' || e.closest('[hidden], [inert]') || e.closest('#slash-menu,.slash-menu')) return;
-    if (b.width < 1 || b.height < 1 || b.bottom <= 0 || b.top >= innerHeight || b.right <= 0 || b.left >= innerWidth) return;
+    if (cs.display === 'none' || cs.visibility === 'hidden' || e.closest('[hidden], [inert]') || e.closest('#slash-menu,.slash-menu')) return false;
+    return !(b.width < 1 || b.height < 1 || b.bottom <= 0 || b.top >= innerHeight || b.right <= 0 || b.left >= innerWidth);
+  });
+  seen.forEach(e => {
+    e.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const b = e.getBoundingClientRect();
     let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (let y = Math.max(0, b.top - PAD); y < Math.min(innerHeight, b.bottom + PAD); y += STEP)
       for (let x = Math.max(0, b.left - PAD); x < Math.min(innerWidth, b.right + PAD); x += STEP) {

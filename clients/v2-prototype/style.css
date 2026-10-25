@@ -2005,6 +2005,9 @@ body.frame-now .chat-feed button, body.frame-now .chat-feed a, body.frame-now .c
 @media (max-width: 340px) {
   #s-now .menu-btn { min-height: 44px; }
   .frame .fr-crumb a::before { top: calc(50% - var(--hit) / 2 + 6px / var(--k, 1)); }
+  /* Replay: lift Back to Mission and the scrubber inside a 320 x 640 screen at rest. */
+  #s-replay .rc-stage { margin-bottom: 6px; }
+  #s-replay .rp-panel > .rp-title { line-height: 34px; }
 }
 
 /* Static running mark: shown by coreBreath only in reduced motion and Quiet, where the core does not breathe. Fixed, no blink. */
@@ -2018,17 +2021,19 @@ body.frame-now .core-mark::before { content: ""; display: inline-block; width: 6
 
 /* Overview list disclosure on the phone: beside the wordmark, clear of the headline. Open, it spans the width as before. */
 @media (max-width: 639px) {
-  #s-now:not([data-frame="3"]) .list-d { top: 48px; left: auto; width: max-content; }
-  #s-now:not([data-frame="3"]) .list-d[open] { left: 16px; width: auto; }
+  #s-now .list-d { left: auto; width: max-content; }
+  #s-now:not([data-frame="3"]) .list-d { top: 48px; }
+  #s-now .list-d[open] { left: 16px; width: auto; }
 }
 @media (max-width: 340px) {
-  #s-now:not([data-frame="3"]) .list-d { padding: 0 8px; }
-  #s-now:not([data-frame="3"]) .list-d summary { font-size: 14px; }
+  #s-now .list-d { padding: 0 8px; }
+  #s-now .list-d summary { font-size: 14px; }
 }
 
 /* Replay exception: separate only the scene state from the mission title. */
 @media (max-width: 880px) {
-  #s-replay .rc-mission-state { margin-top: 12px; }
+  #s-replay .rc-mission-state { margin-top: 9px; }
+  #s-replay .rk-executes, #s-replay .rk-verifies { margin-top: 3px; }
 }
 
 @media (max-width: 639px) {
