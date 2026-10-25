@@ -3,6 +3,7 @@ visible control is hit-tested with elementFromPoint, so ::after hit areas, paddi
 hit-tested to their owner). A control passes when the hit extent is at least 44 x 44 CSS px on the phone and 48 x 48 CSS px on desktop
 (desktop frames are measured at their master size, so one frame px is one CSS px). Run:
   BASE=http://127.0.0.1:8791 py -I tools/v2_hit_probe.py        (serve clients/v2-prototype first)
+PHONE=WxHxDPR overrides the phone viewport (default 402x687x2).
 Exit 1 when any control is under its minimum. With the composer sheet open, controls fully covered by the sheet are skipped."""
 import os
 import sys
@@ -10,7 +11,7 @@ import sys
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get('BASE', 'http://127.0.0.1:8791') + '/index.html'
-PHONE = (402, 687, 2)
+PHONE = tuple(int(n) for n in os.environ.get('PHONE', '402x687x2').split('x'))  # PHONE=320x640x2 measures the 320 width
 ROUTES = ['#/now', '#/plan/m-search', '#/mission/m-date', '#/shared', '#/replay/m-date']
 DESKTOP = [('#/now', 1296, 755), ('#/mission/m-date', 1244, 855), ('#/shared', 1382, 948), ('#/replay/m-date', 1440, 836), ('#/terminal', 1600, 900)]
 DESK_MIN = 48
