@@ -31,7 +31,14 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'accounts', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash']
+ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'accounts', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash',
+          'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
+          'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read']
+# terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
+TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
+       'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
+TUI_RESET = "() => { const c = window.v2live.ui.tui.ctl; c.setPrefs({ look: 'app', ascii: false, linear: false }); c.state.mode = null; c.go('now'); window.v2live.ui.tui.redraw(); }"
+TUI_SET = "([keys, prefs]) => { const c = window.v2live.ui.tui.ctl; c.setPrefs(prefs); if (keys) c.keys(keys); window.v2live.ui.tui.redraw(); }"
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
 KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'error']
 
@@ -188,6 +195,7 @@ def open_overlay(pg, name):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     ap = argparse.ArgumentParser()
     ap.add_argument('--viewports', default=','.join(VIEWPORTS))
     ap.add_argument('--routes', default=','.join(ROUTES))
@@ -243,6 +251,13 @@ def main():
                             pg.wait_for_timeout(200)
                             pg.fill('input[data-key="chat-input"]', '/')
                             pg.wait_for_timeout(150)
+                        elif route.startswith('tui:'):
+                            pg.evaluate("location.hash = '#/terminal'")
+                            pg.wait_for_timeout(200)
+                            pg.evaluate(TUI_RESET)
+                            keys, prefs = TUI[route]
+                            pg.evaluate(TUI_SET, [keys, prefs])
+                            pg.wait_for_timeout(250)
                         elif route.startswith('menu:'):
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(120)
@@ -281,6 +296,8 @@ def main():
                             pg.screenshot(path=os.path.join(a.shots, '%s_%s_%s.png' % (vp, route.replace('/', '-').replace(':', '-'), theme)))
                         if layer == '.menu':
                             pg.keyboard.press('Escape')
+                        if route.startswith('tui:'):
+                            pg.evaluate(TUI_RESET)
                     ctx.close()
             br.close()
     finally:
@@ -291,7 +308,7 @@ def main():
             srv.kill()
 
     # table: rows viewports, columns routes, cell = defects over both themes
-    short = lambda r: r.replace('chat-slash', 'slash').replace('device:all', 'm-all').replace('settings', 'settng').replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
+    short = lambda r: r.replace('terminal/', 't-').replace('tui:', 'u-').replace('chat-slash', 'slash').replace('device:all', 'm-all').replace('settings', 'settng').replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
     print('\nDefects per viewport x route (dark + light)')
     print('%-10s' % 'viewport' + ''.join('%8s' % short(r)[:7] for r in routes) + '%7s' % 'total')
     for vp in viewports:

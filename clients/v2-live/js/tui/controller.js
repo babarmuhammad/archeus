@@ -9,7 +9,7 @@ import {
   TABS, SECTIONS, PLACES, helpLines
 } from './screens.js';
 
-export const LOOKS = [{ id: 'app', label: 'App colours' }, { id: 'ansi', label: 'ANSI 16 colours' }, { id: 'hc', label: 'High contrast' }, { id: 'mono', label: 'Monochrome' }];
+export const LOOKS = [{ id: 'app', label: 'App colours', short: 'Colours' }, { id: 'ansi', label: 'ANSI 16 colours', short: 'ANSI 16' }, { id: 'hc', label: 'High contrast', short: 'Contrast' }, { id: 'mono', label: 'Monochrome', short: 'Mono' }];
 const SAY = { approve: 'Approved (simulated). Nothing was run.', reject: 'Rejected (simulated).', accept: 'Accepted (simulated).', changes: 'Changes requested (simulated).', unblock: 'Unblocked (simulated).', resume: 'Resumed (simulated).', replan: 'Replanning (simulated).', cancel: 'Cancelled (simulated).', pause: 'Pausing (simulated).', confirm: 'Remembered (simulated).', retract: 'Not remembered (simulated).', enable: 'Enabled (simulated).' };
 const NAV = [['1', 'now', 'Now', 'Adesso'], ['2', 'work', 'Work', 'Lavoro'], ['3', 'world', 'World', 'Mondo'], ['a', 'attention', 'Attention', 'Attenzione'], ['r', 'replay', 'Replay', 'Replay'], ['4', 'control', 'Control', 'Controllo']];
 const SCREENS = { now: nowScreen, work: workScreen, attention: attentionScreen, world: worldScreen, replay: replayScreen, mission: missionScreen, control: controlScreen };
@@ -322,7 +322,7 @@ export function createTui(sim, opts = {}) {
     const st = sim.state, att = sim.counts(), verifying = Object.values(st.missions).filter((m) => m.state === 'VERIFYING').length;
     const clock = clockLabel(st.clock) + ' ' + (st.playing ? 'x' + st.speed : 'paused');
     const head = [
-      { s: lr([seg('ARCHEUS', 'b'), seg('  '), seg(g.tag + ' SIMULATED', 'att b'), seg(' ' + g.dot + ' no Core connected', 'dim')], [seg(clock, 'dim')], cols, g.ell, true), k: 'head' },
+      { s: lr([seg('ARCHEUS', 'b'), seg('  '), seg(g.tag + ' SIMULATED', 'att b', null, 'SIMULATED'), seg(' ' + g.dot + ' no Core connected', 'dim')], [seg(clock, 'dim')], cols, g.ell, true), k: 'head' },
       { s: navLine(L), k: 'nav' },
       { s: lr(stateLine(att, verifying, g), [seg([prefs.look === 'app' ? '' : LOOKS.find((x) => x.id === prefs.look).label, prefs.ascii ? 'ASCII' : '', opts.reduced && opts.reduced() ? 'Quiet' : ''].filter(Boolean).join(' ' + g.dot + ' '), 'dim')], cols, g.ell, true), k: 'state' },
       { rule: true, s: [seg(boxChar(3, prefs.ascii).repeat(cols), 'ln')] }
