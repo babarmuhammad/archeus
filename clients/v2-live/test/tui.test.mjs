@@ -165,6 +165,9 @@ test('emergency stop asks, then stops every running mission', () => {
   const { sim, t } = mk(30); t.key('E'); assert.equal(t.state.mode.kind, 'confirm'); t.key('y'); sim.advance(10000);
   assert.equal(Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING').length, 0);
   assert.equal(sim.state.missions['m-date'].reason, 'Emergency stop');
+  assert.equal(sim.state.estop.engaged, true);
+  t.key('E'); assert.equal(t.state.mode.kind, 'confirm'); assert.match(textOf(t), /nothing new starts/); t.key('n'); assert.equal(sim.state.estop.engaged, true);
+  t.key('E'); t.key('y'); assert.equal(sim.state.estop.engaged, false);
   t.key('E'); assert.match(t.frame({ cols: 100, rows: 30 }).lines.at(-1).s.map((x) => x[0]).join(''), /Nothing is running/);
 });
 

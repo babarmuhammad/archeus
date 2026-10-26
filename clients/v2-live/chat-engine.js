@@ -93,7 +93,7 @@ export function createChat(sim, env = {}) {
   function readCmd(name, args) {
     const st = S(), ms = Object.values(st.missions);
     if (name === 'help') return { c: tp('The commands, by class. READ and NAVIGATE answer, CREATE writes one record, PROPOSE only makes a card you confirm.', 'I comandi, per classe. READ e NAVIGATE rispondono, CREATE scrive un record, PROPOSE crea solo una scheda che confermi tu.'), card: { kind: 'help', arg: args } };
-    if (name === 'status') { const n = sim.counts(); return { c: BASED, card: { kind: 'status', running: n.running, waiting: n.need, stopped: n.stopped, at: st.clock } }; }
+    if (name === 'status') { const n = sim.counts(); return { c: BASED, card: { kind: 'status', running: n.running, waiting: n.need, stopped: n.stopped, estop: st.estop.engaged, at: st.clock } }; }
     if (name === 'usage') return { c: tp('Usage is Unknown. The read is not built yet (T-154); Archeus shows no number it cannot source.', 'L\'utilizzo è Sconosciuto. La lettura non esiste ancora (T-154); Archeus non mostra numeri che non può documentare.'), card: { kind: 'usage', rows: st.accounts.filter((a) => !args || norm(a.label).includes(norm(args))).map((a) => a.label) } };
     if (name === 'projects') return { c: BASED, card: lines(st.projects.map((p) => ({ label: p.name, meta: ms.filter((m) => m.project === p.id && !['COMPLETED', 'CANCELLED'].includes(m.state)).length + ' open', href: '#/map' }))) };
     if (name === 'missions') {
@@ -166,6 +166,7 @@ export function createChat(sim, env = {}) {
     const st = S();
     if (name === 'estop' || (name === 'pause' && norm(args) === 'all')) {
       const run = Object.values(st.missions).filter((m) => m.state === 'EXECUTING');
+      if (name === 'estop' && st.estop.engaged) return { c: tp('The emergency stop is already engaged. Nothing new starts until you re-arm it in Settings; that needs a step-up and is not done from chat.', 'L\'arresto d\'emergenza è già attivo. Non parte nulla di nuovo finché non lo riarmi in Impostazioni; serve una conferma rafforzata e non si fa dalla chat.'), card: { kind: 'link', text: 'Open Settings', href: '#/settings' } };
       if (!run.length) return { c: tp('Nothing is running, so there is nothing to {v}.', 'Niente è in esecuzione, quindi non c\'è nulla da {v}.', { v: name === 'estop' ? 'stop' : 'pause' }) };
       return { c: name === 'estop' ? tp('Emergency stop is a proposal. Nothing has happened.', 'L\'arresto d\'emergenza è una proposta. Non è successo nulla.') : tp('Pausing everything that runs is a proposal. Nothing has happened.', 'Mettere in pausa tutto ciò che gira è una proposta. Non è successo nulla.'), card: { kind: 'confirm', action: name === 'estop' ? 'estop' : 'pause', targets: run.map((m) => m.id), step: 'ask', state: 'open' } };
     }
@@ -311,7 +312,8 @@ export function createChat(sim, env = {}) {
         const kind = c.action === 'estop' ? 'stop' : c.action;
         if (['stop', 'estop', 'cancel'].includes(c.action) && c.step !== 'confirm') return { ok: false, reason: 'Confirm first' };
         let okn = 0, why = '';
-        c.targets.forEach((t) => { const r = sim.act(kind, t); if (r.ok) okn++; else why = r.reason; });
+        if (c.action === 'estop') { const r = sim.act('estop'); if (r.ok) okn = r.n; else why = r.reason; }
+        else c.targets.forEach((t) => { const r = sim.act(kind, t); if (r.ok) okn++; else why = r.reason; });
         if (!okn) return stale(id, why || 'It no longer applies');
         setCard(id, { step: 'done', state: 'done', n: okn }); return { ok: true };
       }

@@ -99,7 +99,8 @@ test('PROPOSE: /estop stops running executions only after both steps; Dismiss do
   send(chat, '/estop'); chat.card(last(sim).id, 'dismiss'); assert.equal(sim.state.missions['m-date'].state, 'EXECUTING');
   tick(3000); send(chat, '/estop'); const id2 = last(sim).id; chat.card(id2, 'step2'); chat.card(id2, 'yes');
   assert.equal(Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING').length, 0);
-  tick(3000); send(chat, '/estop'); assert.match(fmt(last(sim).c, 'en'), /Nothing is running/);
+  tick(3000); send(chat, '/estop'); assert.match(fmt(last(sim).c, 'en'), /already engaged/); assert.equal(last(sim).card.href, '#/settings');
+  assert.equal(sim.state.estop.engaged, true);
 });
 
 test('PROPOSE: /approve opens the card and decides nothing; the card needs a step-up; an approval id works', () => {

@@ -38,7 +38,7 @@ ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings'
           'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'attention/a-1~policy', 'attention/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
           'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned',
-          'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv']
+          'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'security~estop', 'terminal/security~estop']
 # terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
 TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
        'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
@@ -57,6 +57,7 @@ STATES = {
     'offline': "window.v2live.areas.goOffline()",
     'pinned': "window.v2live.areas.togglePin('m-date'); window.v2live.areas.togglePin('i-1')",
     'adv': "window.v2live.sim.advance(700000)",
+    'estop': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop')",
     'confirm': "(() => { const b = document.querySelector('[data-key^=\"trip-\"], .decide.danger, .ax-sw[aria-checked=true]'); if (b) b.click(); })()",
 }
 RESET = "(() => { window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"

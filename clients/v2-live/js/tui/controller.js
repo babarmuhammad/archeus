@@ -91,14 +91,14 @@ export function createTui(sim, opts = {}) {
     if (item.kind === 'mission') return missionActs(st.missions[item.mission]);
     return [];
   }
-  const estop = () => { const run = Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING'); return run.length ? { key: 'E', label: 'Emergency stop', kind: 'estop', confirm: 'Stop every running mission (' + run.map((m) => m.title).join(', ') + '). Each one stops and waits for you.' } : null; };
+  const estop = () => { if (sim.state.estop.engaged) return { key: 'E', label: 'Re-arm', kind: 'rearm', confirm: 'The emergency stop is engaged, so nothing new starts. Allow new work to start again? Re-arming needs a step-up (simulated).' }; const run = Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING'); return run.length ? { key: 'E', label: 'Emergency stop', kind: 'estop', confirm: 'Stop every running mission (' + run.map((m) => m.title).join(', ') + '). Each one stops and waits for you.' } : null; };
   function run(act) {
     if (act.confirm && !act.done) { S.mode = { kind: 'confirm', act }; changed(); return; }
     S.mode = null;
-    const ids = act.kind === 'estop' ? [null] : act.ids || [act.id]; let r = { ok: true };
+    const ids = act.kind === 'estop' || act.kind === 'rearm' ? [null] : act.ids || [act.id]; let r = { ok: true };
     ids.forEach((id) => { const x = sim.act(act.kind, id); if (!x.ok) r = x; });
     if (r.ok && S.screen === 'decision') back();
-    say(r.ok ? (act.kind === 'estop' ? 'Emergency stop: every running mission stopped (simulated).' : SAY[act.kind] || 'Done (simulated).') : 'Not done: ' + r.reason, !r.ok);
+    say(r.ok ? (act.kind === 'estop' ? 'Emergency stop: every running mission stopped; new dispatch is blocked until you re-arm with E (simulated).' : act.kind === 'rearm' ? 'Re-armed: new work can start again (simulated).' : SAY[act.kind] || 'Done (simulated).') : 'Not done: ' + r.reason, !r.ok);
     changed();
   }
 

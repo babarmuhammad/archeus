@@ -172,12 +172,14 @@ export const meter = (label, v, cap) => h('div', { class: 'meter' }, h('div', { 
 function controlBody(ctx) {
   const ms = Object.values(ctx.sim.state.missions), run = ms.filter((m) => m.state === 'EXECUTING').length, paused = ms.filter((m) => m.state === 'PAUSED').length;
   const b = (cls, label, onclick, key) => h('button', { class: 'btn ' + cls, type: 'button', 'data-key': key, onclick }, label);
-  const ask = ctx.ui.estopAsk;
+  const ask = ctx.ui.estopAsk, armed = ctx.sim.state.estop.engaged, askR = ctx.ui.rearmAsk;
   return h('div', { class: 'body' },
+    armed ? h('p', { class: 'note', style: 'padding:0 0 8px', 'data-key': 'estop-note' }, 'The emergency stop is engaged: nothing new starts and no mission resumes until you re-arm. Re-arming needs a step-up (simulated here).') : null,
     h('p', { class: 'note', style: 'padding:0 0 8px' }, run + ' running, ' + paused + ' paused. Pause all waits for each execution to reach a safe boundary. Emergency stop ends every running execution; each mission then waits for you.'),
     h('div', { class: 'actions' },
       b('', 'Pause all', () => ctx.act('pause_all'), 'pause-all'), b('', 'Resume all', () => ctx.act('resume_all'), 'resume-all'),
-      ask ? [b('danger', 'Yes, stop everything', () => { ctx.ui.estopAsk = false; ctx.act('estop'); }, 'estop-yes'), b('', 'Back', () => { ctx.ui.estopAsk = false; ctx.render(); }, 'estop-back')]
+      armed ? (askR ? [b('primary', 'Yes, re-arm', () => { ctx.ui.rearmAsk = false; ctx.act('rearm'); }, 'rearm-yes'), b('', 'Back', () => { ctx.ui.rearmAsk = false; ctx.render(); }, 'rearm-back')] : b('primary', 'Re-arm', () => { ctx.ui.rearmAsk = true; ctx.render(); }, 'rearm'))
+      : ask ? [b('danger', 'Yes, stop everything', () => { ctx.ui.estopAsk = false; ctx.act('estop'); }, 'estop-yes'), b('', 'Back', () => { ctx.ui.estopAsk = false; ctx.render(); }, 'estop-back')]
         : b('danger', 'Emergency stop', () => { ctx.ui.estopAsk = true; ctx.render(); }, 'estop')));
 }
 

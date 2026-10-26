@@ -216,6 +216,7 @@ export function createSim(opts = {}) {
     // dispatch waits while the harness breaker is open (derived, never stored apart: T-106)
     at(delay, 'dispatch ' + m.id, () => {
       if (m.state !== 'APPROVED') return;
+      if (S.estop.engaged) { m.reason = 'cannot start: the emergency stop is engaged; re-arm it first'; emit('mission.updated', { kind: 'mission', id: m.id }, { reason: m.reason }, { mission: m.id, project: m.project }); startExecution(m, sec(30)); return; }
       if (breakerOpen('claude_code')) { m.reason = 'cannot start: the claude_code harness breaker is open'; emit('mission.updated', { kind: 'mission', id: m.id }, { reason: m.reason }, { mission: m.id, project: m.project }); startExecution(m, sec(30)); return; }
       m.reason = null;
       move('mission', m, 'EXECUTING', 'dispatch');
@@ -308,11 +309,17 @@ export function createSim(opts = {}) {
   }
   function doAct(kind, id, arg) {
     const bad = (reason) => ({ ok: false, reason });
+    if (S.estop.engaged && ['resume', 'resume_all', 'unblock'].includes(kind)) return bad('The emergency stop is engaged: nothing new starts or resumes until you re-arm it');
+    if (kind === 'rearm') {
+      if (!S.estop.engaged) return bad('The emergency stop is not engaged');
+      S.estop = { engaged: false, at: null }; emit('core.estop_rearmed', { kind: 'core', id: 'core' }, {}, {});
+      return { ok: true };
+    }
     if (kind === 'pause_all' || kind === 'resume_all' || kind === 'estop') {
       const [from, one] = { pause_all: ['EXECUTING', 'pause'], resume_all: ['PAUSED', 'resume'], estop: ['EXECUTING', 'stop'] }[kind];
       const done = Object.values(S.missions).filter((x) => x.state === from && doAct(one, x.id).ok);
       if (!done.length) return bad(kind === 'resume_all' ? 'Nothing is paused' : 'Nothing is running');
-      if (kind === 'estop') done.forEach((x) => { x.reason = 'Emergency stop'; });
+      if (kind === 'estop') { done.forEach((x) => { x.reason = 'Emergency stop'; }); S.estop = { engaged: true, at: S.clock }; emit('core.estop_engaged', { kind: 'core', id: 'core' }, { stopped: done.length }, {}); }
       return { ok: true, n: done.length };
     }
     if (kind === 'approve' || kind === 'reject') {
@@ -509,7 +516,7 @@ export function createSim(opts = {}) {
   function build(sd) {
     rng = mulberry32(sd); queue = []; qn = 0; seq = 0;
     S = {
-      seed: sd, clock: 0, speed: 1, playing: false, actor: 'system', quiet: true, pruned: false,
+      seed: sd, clock: 0, speed: 1, playing: false, actor: 'system', quiet: true, pruned: false, estop: { engaged: false, at: null },
       counters: { approval: 0, verification: 0, review: 0, knowledge: 6, idea: 5, message: 4, mission: 0 },
       projects: [
         { id: 'archeus', name: 'Archeus', note: 'Active. Your projects, in context.', root: 'archeus/' },
@@ -728,7 +735,7 @@ export function createSim(opts = {}) {
       { id: 'origin', label: 'Core API origin gate', state: 'off', word: 'HTTP side built, switch off', note: 'The native interface is a fail-closed stub.' },
       { id: 'dispatch', label: 'Production dispatch switch', state: 'off', word: 'Off', note: 'No execution is started by a real Core in this build.' },
       { id: 'breaker', label: 'Spawn breaker (per harness)', state: h.state === 'closed' ? 'ok' : 'attention', word: h.state === 'closed' ? 'Closed' : h.state === 'open' ? 'Open: cannot start' : 'Half open: one trial', note: h.last_error || 'Trips at 3 failed starts in 10 minutes; a doubling wait of 15 s to 5 min per task; one trial after 5 minutes.' },
-      { id: 'estop', label: 'Emergency stop and re-arm', state: 'ok', word: 'Built', note: 'Stops every execution; re-arming needs a step-up.' },
+      { id: 'estop', label: 'Emergency stop and re-arm', state: S.estop.engaged ? 'attention' : 'ok', word: S.estop.engaged ? 'Engaged: nothing new starts' : 'Built', note: S.estop.engaged ? 'Missions stay Blocked "Emergency stop" and no new dispatch starts until you re-arm (a step-up).' : 'Stops every execution and blocks new dispatch until re-armed; re-arming needs a step-up.' },
       { id: 'cred', label: 'Credentials', state: 'ok', word: 'Rule: never handled', note: 'Archeus does not read, store, copy, inject or relay subscription tokens. Usage numbers come only from the existing usage reader (owner exception 2026-10-22).' },
       { id: 'stepup', label: 'Approvals', state: 'ok', word: 'Scoped and step-up', note: 'Deciding needs the approve scope; the chat decides only the card on screen.' }
     ];

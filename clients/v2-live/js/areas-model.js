@@ -260,7 +260,7 @@ export function security(S, X, A) {
     { id: 'sw-dispatch', label: 'Production dispatch of isolated runs', state: 'off', word: 'Off', note: 'A constant false in V1. No isolated process has been started by production code.' },
     { id: 'sw-broker', label: 'Provider broker', state: 'off', word: 'Built, switch off', note: 'Named pipe and bridge exist and pass fixture tests. Nothing runs them.' },
     { id: 'sw-origin', label: 'Core API origin gate', state: 'off', word: 'HTTP side built, switch off', note: 'The native side is a fail-closed stub.' },
-    { id: 'sw-estop', label: 'Emergency stop and re-arm', state: 'ok', word: 'Built', note: 'Stops every execution. Re-arming needs a step-up.' },
+    { id: 'sw-estop', label: 'Emergency stop and re-arm', state: S.estop.engaged ? 'attention' : 'ok', word: S.estop.engaged ? 'Engaged: nothing new starts' : 'Built', note: S.estop.engaged ? 'Missions stay Blocked "Emergency stop" and no new dispatch starts until you re-arm (a step-up).' : 'Stops every execution and blocks new dispatch until re-armed. Re-arming needs a step-up.' },
     { id: 'sw-notify', label: 'OS notification per approval and per breaker trip', state: 'ok', word: 'Built', note: 'One notification each, with no secret in the text.' }
   ];
   return { switches, open, breakers: bk.length, rows: { acceptance: { closed: 0, total: 15 }, additions: { closed: 0, total: 6 } }, boundaries: BOUNDARIES, policyList: ISOLATED_BY_POLICY, notList: NOT_ISOLATED };

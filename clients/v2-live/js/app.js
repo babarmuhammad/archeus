@@ -122,7 +122,7 @@ function patchLive() {
 }
 
 // ---------- actions ----------
-const SAY = { approve: 'Approved (simulated). Nothing was run.', reject: 'Rejected (simulated).', accept: 'Accepted (simulated).', changes: 'Changes requested (simulated).', unblock: 'Unblocked (simulated).', resume: 'Resumed (simulated).', replan: 'Replanning (simulated).', cancel: 'Cancelled (simulated).', pause: 'Pausing (simulated).', pause_all: 'Pausing every running mission (simulated).', resume_all: 'Resuming every paused mission (simulated).', estop: 'Emergency stop: every running mission stopped (simulated).', confirm: 'Remembered (simulated).', retract: 'Not remembered (simulated).', enable: 'Enabled (simulated).' };
+const SAY = { approve: 'Approved (simulated). Nothing was run.', reject: 'Rejected (simulated).', accept: 'Accepted (simulated).', changes: 'Changes requested (simulated).', unblock: 'Unblocked (simulated).', resume: 'Resumed (simulated).', replan: 'Replanning (simulated).', cancel: 'Cancelled (simulated).', pause: 'Pausing (simulated).', pause_all: 'Pausing every running mission (simulated).', resume_all: 'Resuming every paused mission (simulated).', estop: 'Emergency stop: every running mission stopped, new dispatch blocked until re-armed (simulated).', rearm: 'Re-armed: new work can start again (simulated).', confirm: 'Remembered (simulated).', retract: 'Not remembered (simulated).', enable: 'Enabled (simulated).' };
 function act(kind, id) {
   let r = { ok: true }, msg = SAY[kind];
   if (kind === 'play-sim') { sim.play(); msg = 'Simulation running.'; } else if (kind === 'pause-sim') { sim.pause(); msg = 'Simulation paused.'; }

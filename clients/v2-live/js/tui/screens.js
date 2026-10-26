@@ -372,7 +372,7 @@ export function controlScreen(sim, o) {
   } else {
     p.head('This build');
     p.kv([['Prototype', 'V2 Live, a simulation'], ['Core', 'none connected'], ['Seed', String(st.seed)], ['Simulated time', clockLabel(st.clock, true)], ['Events kept', st.events.length + (st.pruned ? ' (older ones pruned)' : '')]], 0, 16);
-    p.blank(); p.head('Emergency stop'); p.para('Pauses every running mission. Press E; you confirm first.', 0, 'dim');
+    p.blank(); p.head('Emergency stop'); p.para(st.estop.engaged ? 'ENGAGED: nothing new starts and no mission resumes. Press E to re-arm; you confirm first (a step-up).' : 'Stops every running mission and blocks new dispatch until re-armed. Press E; you confirm first.', 0, st.estop.engaged ? 'att' : 'dim');
   }
   return { title: 'Control', panes: { main: p }, focus: ['main'], lead: 'main', section: sec };
 }
@@ -383,7 +383,7 @@ export const KEYS = [
   ['1 2 3 a r 4', 'Now, Work, World, Attention, Replay, Control', 'Adesso, Lavoro, Mondo, Attenzione, Replay, Controllo'], ['g', 'places: every screen by letter', 'luoghi: ogni schermata con una lettera'],
   [': or /', 'command line: go to, or a slash command', 'riga di comando: vai a, o un comando con barra'], ['t', 'tell Archeus (opens the command line)', 'scrivi ad Archeus (apre la riga di comando)'],
   ['[ ]  PgUp PgDn', 'page', 'pagina'], ['A  R  C  P  X', 'the actions on the bottom line; decisions ask y first', 'le azioni nella riga in basso; le decisioni chiedono prima y'],
-  ['E', 'emergency stop: stop every running mission (asks y)', 'arresto di emergenza: ferma ogni missione in corso (chiede y)'], ['n N', 'next or previous mission in Replay', 'missione successiva o precedente in Replay'],
+  ['E', 'emergency stop: stop every running mission and block new dispatch; E again re-arms (asks y)', 'arresto di emergenza: ferma ogni missione in corso e blocca i nuovi avvii; E di nuovo riarma (chiede y)'], ['n N', 'next or previous mission in Replay', 'missione successiva o precedente in Replay'],
   ['?', 'this help', 'questo aiuto'], ['q', 'back; on Now it leaves the terminal view', 'indietro; in Adesso esce dal terminale']
 ];
 export function helpLines(w, lang, ascii) {

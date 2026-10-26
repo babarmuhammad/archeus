@@ -295,3 +295,23 @@ test('H16: pause all, resume all and emergency stop are one action each', () => 
   assert.equal(s.state.missions['m-date'].reason, 'Emergency stop');
   assert.equal(s.act('estop').ok, false);
 });
+
+test('after an emergency stop nothing new dispatches or resumes until it is re-armed (a step-up in the apps)', () => {
+  const s = createSim(); s.advance(60000);
+  assert.equal(s.state.estop.engaged, false); assert.equal(s.act('rearm').ok, false);
+  assert.equal(s.act('estop').ok, true);
+  assert.equal(s.state.estop.engaged, true);
+  assert.equal(s.security().find((x) => x.id === 'estop').state, 'attention');
+  const m = s.state.missions['m-date']; assert.equal(m.state, 'BLOCKED'); assert.equal(m.reason, 'Emergency stop');
+  for (const k of ['unblock', 'resume_all']) assert.equal(s.act(k, 'm-date').ok, false, k);
+  assert.match(s.act('unblock', 'm-date').reason, /re-arm/);
+  // a plan approved now waits instead of dispatching
+  const a = Object.values(s.state.approvals).find((x) => x.state === 'PENDING' && x.kind === 'plan'), pm = s.state.missions[a.mission];
+  assert.equal(s.act('approve', a.id).ok, true); s.advance(120000);
+  assert.equal(pm.state, 'APPROVED'); assert.match(pm.reason, /emergency stop is engaged/);
+  assert.equal(Object.values(s.state.missions).filter((x) => x.state === 'EXECUTING').length, 0);
+  // re-arm: dispatch starts again and a blocked mission can be unblocked
+  assert.equal(s.act('rearm').ok, true); assert.equal(s.state.estop.engaged, false);
+  s.advance(120000); assert.equal(pm.state, 'EXECUTING');
+  assert.equal(s.act('unblock', 'm-date').ok, true);
+});
