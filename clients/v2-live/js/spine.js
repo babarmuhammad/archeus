@@ -52,12 +52,12 @@ export function spineCard(state, held) {
   return h('span', { class: 'spine-card' }, wrap('card', sp, strip(sp, 10, 22, 0)), h('span', { class: 'cap', 'aria-hidden': 'true' }, sp.unknown ? 'Position unknown' : sp.none ? sp.text.replace(/\.$/, '') : cur));
 }
 
-export function spineInspector(state, held) {
+export function spineInspector(state, held, d = 16) {
   const sp = spineOf(state, held);
   if (!sp.marks.length) return h('p', null, sp.text);
   const ol = h('ol', { class: 'spine spine-insp', 'data-done': sp.done ? 'true' : 'false', 'aria-label': 'Mission steps' });
   sp.marks.forEach((m, i) => {
-    const svg = s('svg', { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true', focusable: 'false' }, mark(m, 8, 8, 16));
+    const svg = s('svg', { width: d, height: d, viewBox: '0 0 ' + d + ' ' + d, 'aria-hidden': 'true', focusable: 'false' }, mark(m, d / 2, d / 2, d));
     const cur = m.kind === 'current' || (sp.station === i + 1 && !sp.unknown && !sp.done && m.kind !== 'ahead');
     ol.append(h('li', { 'aria-current': cur ? 'step' : null }, i > 0 ? h('span', { class: 'seg-l ' + sp.segments[i - 1], 'aria-hidden': 'true' }) : null, svg, h('span', { class: 'st-f' }, STATIONS[i]), h('span', { class: 'st-s' }, SHORT[i])));
   });

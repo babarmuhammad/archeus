@@ -6,10 +6,11 @@ import { icon } from './icons.js';
 import { present } from '../core-words.js';
 import { clockLabel, categoryOf } from '../sim.js';
 import { badge, projName, word, dnote } from './views.js';
-import { spineInspector } from './spine.js';
+import { spineInspector, spineRow } from './spine.js';
 import { areasOf, kindOfId, whyOf, routeOf, policyOf, execOutput, checkpoints, relationsOf, stationTimes, harnessLabel, accountLabel, IDEA_PATH } from './areas-model.js';
 import { pill, sec, note, kv, link, entity, hrefFor } from './ax.js';
 import { inspectorArea } from './inspectors2.js';
+import { overview, pane, meta } from './inspector-mission.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
 export const isCompact = () => (document.getElementById('device') || document.body).clientWidth < 600;
@@ -25,10 +26,11 @@ export function frame(ctx, A, o) {
   const tabs = o.tabs || [], cur = (tabs.find((t) => t[0] === ctx.ui.tab) || tabs[0] || [])[0];
   const off = A.isOffline(), on = o.pin ? A.pinned(o.pin) : false;
   const foot = off ? null : confirmNodes(ctx) || (o.foot ? [].concat(o.foot(cur)).filter(Boolean) : null);
-  return h('div', null, h('div', { class: 'grab', 'aria-hidden': 'true' }),
+  return h('div', { class: o.cls || null }, h('div', { class: 'grab', 'aria-hidden': 'true' }),
     h('div', { class: 'insp-head' }, h('div', { class: 'ax-ih' }, h('p', { class: 'ax-eyebrow' }, o.kind), h('h2', null, o.title), o.sub ? h('p', { class: 'm' }, o.sub) : null),
       h('div', { class: 'ax-head-actions' }, o.pin ? h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: () => { A.togglePin(o.pin); ctx.toast(A.pinned(o.pin) ? 'Pinned.' : 'Unpinned.'); ctx.render(); } }, on ? 'Pinned' : 'Pin') : null,
         h('button', { class: 'btn quiet', type: 'button', 'aria-label': 'Close details', onclick: () => ctx.closeInsp() }, 'Close'))),
+    o.meta || null,
     tabs.length > 1 ? h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, l]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'aria-selected': id === cur ? 'true' : 'false', onclick: () => { ctx.ui.tab = id; ctx.render(); } }, l))) : null,
     h('div', { class: 'insp-body' }, off ? h('p', { class: 'ax-stale-note' }, 'Offline: last seen ' + clockLabel(A.offlineAt()) + '. This is what the client kept. Actions are off until Core is back.') : null, o.body(cur)),
     foot && foot.length ? h('div', { class: 'insp-foot' }, ...foot) : null);
@@ -63,12 +65,9 @@ function mission(ctx, A, S, id) {
   };
   const body = (tab) => {
     if (tab === 'outcome') {
-      const sp = spineInspector(m.state, m.held_from), times = stationTimes(S, m);
-      if (times) sp.querySelectorAll('ol > li').forEach((li, i) => { if (times[i] != null) li.append(h('span', { class: 'ax-st-time' }, clockLabel(times[i]))); });
       const last = S.events.filter((e) => e.mission === id && e.type === 'mission.state_changed').pop();
-      return h('div', { class: 'ax-body' },
-        sec('Where it is', sp, times ? note('The time under a station is when the mission first reached it.') : note('Station times are left out: older steps were pruned from the event log.'), dnote('D08', 'Time at each station on the inspector spine; omitted when events are pruned.')),
-        sec('Facts', kv([['State', badge('mission', m.state)], ['Project', link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project))], ['Branch', m.branch], ['Origin', m.origin], ['Plan', m.plan_version ? 'version ' + m.plan_version : 'none yet'], ['Tasks', tasks.filter((t) => t.state === 'SUCCEEDED').length + ' of ' + tasks.length + ' done'], ['Account', link(hrefFor('account', m.account), accountLabel(S, m.account))], last ? ['Last change', clockLabel(last.at) + (last.actor === 'device' ? ' by you' : ' by Core')] : null, m.reason ? ['Why', m.reason] : null])));
+      const facts = kv([['State', badge('mission', m.state)], ['Project', link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project))], ['Branch', m.branch], ['Origin', m.origin], ['Plan', m.plan_version ? 'version ' + m.plan_version : 'none yet'], ['Tasks', tasks.filter((t) => t.state === 'SUCCEEDED').length + ' of ' + tasks.length + ' done'], ['Account', link(hrefFor('account', m.account), accountLabel(S, m.account))], last ? ['Last change', clockLabel(last.at) + (last.actor === 'device' ? ' by you' : ' by Core')] : null, m.reason ? ['Why', m.reason] : null]);
+      return overview(ctx, S, m, tasks, execs, { compact: isCompact(), facts, d08: dnote('D08', 'Time at each station on the inspector spine; omitted when events are pruned.') });
     }
     if (tab === 'plan') {
       const plans = Object.values(S.plans).filter((p) => p.mission === id), aps = Object.values(S.approvals).filter((a) => a.mission === id);
@@ -98,7 +97,8 @@ function mission(ctx, A, S, id) {
     }
     return relTab(S, 'mission', id);
   };
-  return frame(ctx, A, { kind: KIND_WORD.mission, title: m.title, sub: projName(ctx.sim, m.project) + ' · ' + m.branch, pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
+  const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: meta(ctx, S, m), pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
+  return h('div', { class: 'msn' }, pane(ctx, S, m), fr);
 }
 
 // ---------- task and route decision ----------
@@ -147,7 +147,8 @@ function approval(ctx, A, S, id) {
     const run = () => { const r = ctx.act(kind, id); if (kind === 'plan_changes' && r.ok) ctx.toast('Plan sent back (simulated). Core plans again.'); };
     if (isCompact() || kind === 'reject') ask(ctx, { text, label: 'Confirm: ' + label.toLowerCase(), tone: danger ? 'danger' : 'primary', run }); else run();
   } }, label);
-  const foot = () => (open ? [decide('approve', 'Approve', 'Approve this? ' + a.presented.consequence), plan ? decide('plan_changes', 'Request changes', 'Send the plan back? Core plans again and asks you once more.') : null, decide('reject', 'Reject', 'Reject this? ' + (plan ? 'The mission is cancelled.' : 'The execution ends and the mission is blocked.'), true)] : null);
+  const noundo = h('div', { class: 'noundo', role: 'note' }, icon('warning', 22), h('p', null, h('b', null, 'No Undo.'), h('span', null, ' Decision cannot be changed.')));
+  const foot = () => (open ? [noundo, decide('approve', 'Approve', 'Approve this? ' + a.presented.consequence), plan ? decide('plan_changes', 'Request changes', 'Send the plan back? Core plans again and asks you once more.') : null, decide('reject', 'Reject', 'Reject this? ' + (plan ? 'The mission is cancelled.' : 'The execution ends and the mission is blocked.'), true)] : null);
   const body = (tab) => {
     if (tab === 'policy') {
       const p = policyOf(S, a);
@@ -155,13 +156,13 @@ function approval(ctx, A, S, id) {
     }
     if (tab === 'relations') return relTab(S, 'approval', id);
     return h('div', { class: 'ax-body' },
-      sec('What', h('p', null, a.presented.what)), sec('Why it asks', h('p', null, a.presented.why)), sec('What Core does next', h('p', null, a.presented.consequence)),
+      sec('What you approve', h('p', null, a.presented.what)), sec('Why Archeus asks', h('p', null, a.presented.why)), sec('What Core does next', h('p', null, a.presented.consequence)),
+      plan && m.tasks.length ? sec('Plan v' + (m.plan_version || 1), h('ol', { class: 'dcn-steps' }, ...m.tasks.map((x) => S.tasks[x]).map((t, i) => h('li', { 'data-now': i === 0 ? 'true' : null }, h('span', { class: 'st-g', 'aria-hidden': 'true' }), t.title)))) : null,
       sec('Where the mission is', spineInspector(m.state, m.held_from)),
-      open ? h('div', { class: 'noundo', role: 'note' }, icon('warning', 22), h('p', null, h('b', null, 'No Undo.'), h('span', null, ' Decision cannot be changed.'))) : null,
       h('p', { class: 'sp-text' }, open ? 'Expires ' + clockLabel(a.expires_at) + '. This is a simulated decision: nothing is run, sent or spent.' : 'Decided: ' + word('approval', a.state) + '.'),
       dnote('I05', 'On a phone a decision takes two steps: choose, then confirm. Reject always asks twice.'));
   };
-  return frame(ctx, A, { kind: KIND_WORD.approval, title: plan ? 'Approve this plan?' : 'Allow this action?', sub: m.title + ' · ' + projName(ctx.sim, a.project), tabs: [['decision', 'Decision'], ['policy', 'Policy'], ['relations', 'Relations']], body, foot });
+  return frame(ctx, A, { cls: 'dcn', kind: KIND_WORD.approval, title: plan ? 'Approve this plan?' : 'Allow this action?', sub: m.title + ' · ' + projName(ctx.sim, a.project), tabs: [['decision', 'Decision'], ['policy', 'Policy'], ['relations', 'Relations']], body, foot });
 }
 
 // ---------- plan, verification, review ----------
@@ -209,5 +210,6 @@ function project(ctx, A, S, id) {
   const c = A.launch(pid), pv = A.preview(pid);
   return frame(ctx, A, { kind: KIND_WORD.project, title: p.name, sub: p.note, pin: id, tabs: [['project', 'Project'], ['relations', 'Relations']],
     body: (tab) => tab === 'relations' ? relTab(S, 'project', id) : h('div', { class: 'ax-body' }, sec('Repository', kv([['Folder', p.root], ['Missions', String(Object.values(S.missions).filter((m) => m.project === pid).length)], ['Confirmed knowledge', String(S.knowledge.filter((k) => k.project === pid && k.state === 'CONFIRMED').length)]])),
+      sec('Phase', h('ul', { class: 'prj-phase' }, ...Object.values(S.missions).filter((m) => m.project === pid).map((m) => h('li', null, h('a', { href: hrefFor('mission', m.id) }, h('span', { class: 'ph-n' }, m.title), spineRow(m.state, m.held_from), h('span', { class: 'ph-w' }, word('mission', m.state))))))),
       sec('Next mission launches', h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note), link('#/accounts', 'Change the launch settings'))) });
 }
