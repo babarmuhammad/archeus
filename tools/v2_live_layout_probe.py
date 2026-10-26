@@ -239,7 +239,7 @@ def s4_send(pg, where, text):
 
 
 def s4_reset(pg):
-    pg.evaluate("window.v2live.sim.reset(); window.v2live.ui.draft = ''; window.v2live.ui.s4 = undefined; window.v2live.ui.rp = undefined; window.v2live.ui.replaySel = null")
+    pg.evaluate("window.v2live.sim.reset(); window.v2live.ui.draft = ''; window.v2live.ui.tellOpen = false; window.v2live.ui.s4 = undefined; window.v2live.ui.rp = undefined; window.v2live.ui.replaySel = null")
     pg.wait_for_timeout(250)
 
 
@@ -283,12 +283,14 @@ def s4_state(pg, route, w):
                 pg.wait_for_timeout(600)
             pg.wait_for_timeout(300)
             return '.chatsheet'
+        pg.click('[data-key="tell"]')
+        pg.wait_for_timeout(200)
         if route == 'dock-slash':
             pg.fill('input[data-key="chat-in-dock"]', '/')
         elif route == 'dock-reply':
             s4_send(pg, 'dock', '/mission Probe mission')
         pg.wait_for_timeout(250)
-        return None
+        return '.chatdock.tell'
     pg.evaluate("window.v2live.sim.advance(520000)")
     pg.evaluate("location.hash = '#/replay/m-date'")
     pg.wait_for_timeout(400)
