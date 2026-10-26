@@ -1,6 +1,7 @@
 // V2 Live shell: toolbar (tool chrome), device frame, app shell, router, simulation loop.
 import { h, clear } from './dom.js';
 import { icon } from './icons.js';
+import { lockup } from './brand.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
@@ -43,7 +44,7 @@ const navItem = (r, cls) => h('a', { class: cls, href: '#/' + r.id, 'data-route'
 
 function buildShell() {
   rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
-    h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, 'archeus')),
+    h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, lockup())),
     ...ROUTES.flatMap((r) => [navItem(r, 'nav-item'), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
     h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 22), h('span', { class: 'nl' }, 'Terminal view')),
     h('p', { class: 'rail-foot' }, 'V2 Live prototype. Simulated. No Core is connected.'));
