@@ -167,7 +167,7 @@ export function createChat(sim, env = {}) {
     if (name === 'estop' || (name === 'pause' && norm(args) === 'all')) {
       const run = Object.values(st.missions).filter((m) => m.state === 'EXECUTING');
       if (name === 'estop' && st.estop.engaged) return { c: tp('The emergency stop is already engaged. Nothing new starts until you re-arm it in Settings; that needs a step-up and is not done from chat.', 'L\'arresto d\'emergenza è già attivo. Non parte nulla di nuovo finché non lo riarmi in Impostazioni; serve una conferma rafforzata e non si fa dalla chat.'), card: { kind: 'link', text: 'Open Settings', href: '#/settings' } };
-      if (!run.length) return { c: tp('Nothing is running, so there is nothing to {v}.', 'Niente è in esecuzione, quindi non c\'è nulla da {v}.', { v: name === 'estop' ? 'stop' : 'pause' }) };
+      if (!run.length && name !== 'estop') return { c: tp('Nothing is running, so there is nothing to pause.', 'Niente è in esecuzione, quindi non c\'è nulla da mettere in pausa.') };
       return { c: name === 'estop' ? tp('Emergency stop is a proposal. Nothing has happened.', 'L\'arresto d\'emergenza è una proposta. Non è successo nulla.') : tp('Pausing everything that runs is a proposal. Nothing has happened.', 'Mettere in pausa tutto ciò che gira è una proposta. Non è successo nulla.'), card: { kind: 'confirm', action: name === 'estop' ? 'estop' : 'pause', targets: run.map((m) => m.id), step: 'ask', state: 'open' } };
     }
     if ((name === 'approve' || name === 'reject') && st.approvals[norm(args)]) {
@@ -312,7 +312,7 @@ export function createChat(sim, env = {}) {
         const kind = c.action === 'estop' ? 'stop' : c.action;
         if (['stop', 'estop', 'cancel'].includes(c.action) && c.step !== 'confirm') return { ok: false, reason: 'Confirm first' };
         let okn = 0, why = '';
-        if (c.action === 'estop') { const r = sim.act('estop'); if (r.ok) okn = r.n; else why = r.reason; }
+        if (c.action === 'estop') { const r = sim.act('estop'); if (r.ok) okn = r.n || 1; else why = r.reason; }
         else c.targets.forEach((t) => { const r = sim.act(kind, t); if (r.ok) okn++; else why = r.reason; });
         if (!okn) return stale(id, why || 'It no longer applies');
         setCard(id, { step: 'done', state: 'done', n: okn }); return { ok: true };

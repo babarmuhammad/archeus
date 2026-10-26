@@ -91,7 +91,7 @@ export function createTui(sim, opts = {}) {
     if (item.kind === 'mission') return missionActs(st.missions[item.mission]);
     return [];
   }
-  const estop = () => { if (sim.state.estop.engaged) return { key: 'E', label: 'Re-arm', kind: 'rearm', confirm: 'The emergency stop is engaged, so nothing new starts. Allow new work to start again? Re-arming needs a step-up (simulated).' }; const run = Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING'); return run.length ? { key: 'E', label: 'Emergency stop', kind: 'estop', confirm: 'Stop every running mission (' + run.map((m) => m.title).join(', ') + '). Each one stops and waits for you.' } : null; };
+  const estop = () => { if (sim.state.estop.engaged) return { key: 'E', label: 'Re-arm', kind: 'rearm', confirm: 'The emergency stop is engaged, so nothing new starts. Allow new work to start again? Re-arming needs a step-up (simulated).' }; const run = Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING'); return { key: 'E', label: 'Emergency stop', kind: 'estop', confirm: run.length ? 'Stop every running mission (' + run.map((m) => m.title).join(', ') + '). Each one stops and waits for you.' : 'Nothing is running. Block new dispatch until you re-arm?' }; };
   function run(act) {
     if (act.confirm && !act.done) { S.mode = { kind: 'confirm', act }; changed(); return; }
     S.mode = null;
@@ -217,7 +217,7 @@ export function createTui(sim, opts = {}) {
     else if (k === 'a' && scr !== 'mission') go('attention');
     else if (k === 'r' && scr !== 'mission') { const it = selected(); go('replay', it && it.mission); }
     else if ((k === 'n' || k === 'N') && scr === 'replay') { const n = missionIds().length; S.replayMission = (S.replayMission + (k === 'n' ? 1 : n - 1)) % n; S.sel['replay:list'] = undefined; S.idx['replay:list'] = undefined; S.replaySel = null; changed(); }
-    else if (k === 'E') { const e = estop(); if (e) run(e); else { say('Nothing is running.'); changed(); } }
+    else if (k === 'E') { const e = estop(); run(e); }
     else if (k === 'L') { prefs.look = LOOKS[(LOOKS.findIndex((x) => x.id === prefs.look) + 1) % LOOKS.length].id; if (opts.onPrefs) opts.onPrefs(prefs); changed(); }
     else if (k === 'G') { prefs.ascii = !prefs.ascii; if (opts.onPrefs) opts.onPrefs(prefs); changed(); } else if (k === 'T' ) { prefs.linear = !prefs.linear; if (opts.onPrefs) opts.onPrefs(prefs); changed(); }
     else if (k.length === 1 && k === k.toUpperCase() && k !== k.toLowerCase()) {

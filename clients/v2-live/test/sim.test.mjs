@@ -315,3 +315,12 @@ test('after an emergency stop nothing new dispatches or resumes until it is re-a
   s.advance(120000); assert.equal(pm.state, 'EXECUTING');
   assert.equal(s.act('unblock', 'm-date').ok, true);
 });
+
+test('the emergency stop can be engaged while nothing runs: it blocks dispatch before anything starts', () => {
+  const s = createSim(); s.advance(60000);
+  s.act('estop'); s.act('rearm'); assert.equal(Object.values(s.state.missions).filter((m) => m.state === 'EXECUTING').length, 0);
+  const r = s.act('estop'); assert.equal(r.ok, true); assert.equal(r.n, 0);
+  assert.equal(s.state.estop.engaged, true);
+  assert.match(s.act('estop').reason, /already engaged/);
+  assert.equal(s.act('rearm').ok, true);
+});

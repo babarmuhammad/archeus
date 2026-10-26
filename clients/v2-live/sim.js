@@ -5,8 +5,7 @@
 import { present } from './core-words.js';
 import { createChat } from './chat-engine.js';
 
-// The slash commands live in slash.js, one table for the chat, the terminal command line and say(). views2.js (the old chat page, no longer routed) still imports COMMANDS from here.
-export { COMMANDS } from './slash.js';
+// The slash commands live in slash.js, one table for the chat, the terminal command line and say().
 
 export const TIME_SCALE = 10; // one real second at 1x is ten simulated seconds
 export const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -315,10 +314,11 @@ export function createSim(opts = {}) {
       S.estop = { engaged: false, at: null }; emit('core.estop_rearmed', { kind: 'core', id: 'core' }, {}, {});
       return { ok: true };
     }
+    if (kind === 'estop' && S.estop.engaged) return bad('The emergency stop is already engaged');
     if (kind === 'pause_all' || kind === 'resume_all' || kind === 'estop') {
       const [from, one] = { pause_all: ['EXECUTING', 'pause'], resume_all: ['PAUSED', 'resume'], estop: ['EXECUTING', 'stop'] }[kind];
       const done = Object.values(S.missions).filter((x) => x.state === from && doAct(one, x.id).ok);
-      if (!done.length) return bad(kind === 'resume_all' ? 'Nothing is paused' : 'Nothing is running');
+      if (!done.length && kind !== 'estop') return bad(kind === 'resume_all' ? 'Nothing is paused' : 'Nothing is running');
       if (kind === 'estop') { done.forEach((x) => { x.reason = 'Emergency stop'; }); S.estop = { engaged: true, at: S.clock }; emit('core.estop_engaged', { kind: 'core', id: 'core' }, { stopped: done.length }, {}); }
       return { ok: true, n: done.length };
     }
@@ -699,16 +699,6 @@ export function createSim(opts = {}) {
   // The same brain as the chat page and the terminal: slash.js parses, chat-engine.js answers.
   let sayChat = null;
   const say = (text) => (sayChat || (sayChat = createChat(api))).say(text);
-  function cardAction(id, what) {
-    const m = S.messages.find((x) => x.id === id);
-    if (!m || !m.card || m.card.kind !== 'proposal' || m.card.state !== 'open') return { ok: false, reason: 'This card is already answered' };
-    if (what === 'dismiss') { m.card.state = 'dismissed'; emit('message.updated', { kind: 'message', id }, {}, {}); return { ok: true }; }
-    let ok = true, why = '';
-    m.card.acts.forEach(([k, target]) => { const r = act(k, target); if (!r.ok) { ok = false; why = r.reason; } });
-    m.card.state = ok ? 'done' : 'dismissed'; emit('message.updated', { kind: 'message', id }, {}, {});
-    return ok ? { ok: true } : { ok: false, reason: why };
-  }
-
   // ---------- S4: the chat module writes its records through these, so every record has an event and an actor ----------
   const asOwner = (fn) => { S.actor = 'device'; try { return fn(); } finally { S.actor = 'system'; } };
   const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
@@ -761,7 +751,7 @@ export function createSim(opts = {}) {
   const api = {
     get state() { return S; },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    advance, act, edgeOk, say, cardAction, chat: chatApi, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
+    advance, act, edgeOk, say, chat: chatApi, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
     play() { S.playing = true; emit('sim.play', null, {}, {}); }, pause() { S.playing = false; emit('sim.pause', null, {}, {}); },
     setSpeed(x) { if (!SPEEDS.includes(x)) return false; S.speed = x; emit('sim.speed', null, { speed: x }, {}); return true; },
     reset(seed) { const sp = S.speed; build(seed == null ? seed0 : seed); S.speed = sp; subs.forEach((f) => f({ seq, at: 0, type: 'sim.reset', subject: null, payload: {} })); },

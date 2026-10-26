@@ -38,7 +38,6 @@ export function cardNode(ctx, m, act, sample) {
   const mis = c.mission ? st.missions[c.mission] : null;
   const mtitle = mis ? mis.title : (c.sample || '');
   if (c.kind === 'link') return h('div', { class: 'actions', style: 'margin-top:8px' }, h('a', { class: 'btn', href: c.href }, L(c.text, c.text === 'Open the review' ? 'Apri la revisione' : c.text)));
-  if (c.kind === 'proposal') return c.state !== 'open' ? h('p', { class: 'sp-text' }, c.text + ' · ' + (c.state === 'done' ? L('Confirmed', 'Confermato') : L('Dismissed', 'Scartato'))) : h('div', { class: 'ccard', 'data-kind': 'proposal' }, h('p', null, c.text), h('div', { class: 'actions' }, btn(L('Confirm', 'Conferma'), () => ctx.act('card', m.id + '|confirm'), 'primary'), btn(L('Dismiss', 'Scarta'), () => ctx.act('card', m.id + '|dismiss'))));
   const box = (kind, kids, state) => h('div', { class: 'ccard', 'data-kind': kind, 'data-state': state || c.state || null, 'data-sample': off ? 'true' : null }, ...kids);
 
   if (c.kind === 'help') {
@@ -68,7 +67,7 @@ export function cardNode(ctx, m, act, sample) {
       h('div', { class: 'actions' }, review ? [B(L('Start and plan', 'Avvia e pianifica'), 'start', 'primary'), B(L('Back', 'Indietro'), 'back')] : [B(L('Review proposal', 'Rivedi la proposta'), 'review', 'primary'), B(L('Keep as mission', 'Tieni come missione'), 'keep')])]);
   }
   if (c.kind === 'confirm') {
-    const ts = c.targets.map((id) => st.missions[id]).filter(Boolean), name = ts.map((x) => x.title).join(', ');
+    const ts = c.targets.map((id) => st.missions[id]).filter(Boolean), name = ts.map((x) => x.title).join(', ') || (c.action === 'estop' ? L('(nothing is running now)', '(niente in esecuzione ora)') : '');
     const V = { stop: [L('Stop', 'Ferma'), L('Ends its running execution. Work already recorded stays recorded. This cannot be undone from chat.', 'Termina la sua esecuzione in corso. Il lavoro già registrato resta registrato. Dalla chat non si può disfare.')],
       estop: [L('Emergency stop', 'Arresto d\'emergenza'), L('Stops every running execution, not only their scheduling, and blocks new dispatch until you re-arm in Settings (a step-up). This cannot be undone from chat.', 'Ferma ogni esecuzione in corso, non solo la loro pianificazione, e blocca ogni nuovo avvio finché non riarmi in Impostazioni (conferma rafforzata). Dalla chat non si può disfare.')],
       cancel: [L('Cancel', 'Annulla'), L('Cancels the mission. It cannot undo effects an earlier run may have had.', 'Annulla la missione. Non può disfare gli effetti che un\'esecuzione precedente può aver avuto.')],

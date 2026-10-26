@@ -134,7 +134,6 @@ function act(kind, id) {
   else if (kind === 'offline-toggle') { const A = areasOf(sim); r = A.isOffline() ? A.reconnect() : A.goOffline(); msg = A.isOffline() ? 'Offline: showing what this client kept.' : 'Reconnected.'; }
   else if (kind === 'reset') { sim.reset(); ui.replaySel = null; msg = 'Simulation reset.'; if (ctx.route.id) { nav('#/' + ctx.route.name); } }
   else if (kind === 'say') { r = sim.say(id); msg = null; }
-  else if (kind === 'card') { const [mid, what] = id.split('|'); r = sim.cardAction(mid, what); msg = what === 'confirm' ? 'Confirmed (simulated).' : 'Dismissed.'; }
   else r = sim.act(kind, id);
   if (!r.ok) toast('Not done: ' + r.reason); else if (msg) toast(msg);
   if (kind === 'approve' || kind === 'reject' || kind === 'plan_changes') { if (ctx.route.name === 'attention' && ctx.route.id) closeInsp(); }

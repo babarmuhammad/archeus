@@ -168,7 +168,7 @@ test('emergency stop asks, then stops every running mission', () => {
   assert.equal(sim.state.estop.engaged, true);
   t.key('E'); assert.equal(t.state.mode.kind, 'confirm'); assert.match(textOf(t), /nothing new starts/); t.key('n'); assert.equal(sim.state.estop.engaged, true);
   t.key('E'); t.key('y'); assert.equal(sim.state.estop.engaged, false);
-  t.key('E'); assert.match(t.frame({ cols: 100, rows: 30 }).lines.at(-1).s.map((x) => x[0]).join(''), /Nothing is running/);
+  t.key('E'); assert.equal(t.state.mode.kind, 'confirm'); assert.match(textOf(t), /Nothing is running/); t.key('y'); assert.equal(sim.state.estop.engaged, true);
 });
 
 test('places: g then a letter goes there', () => {

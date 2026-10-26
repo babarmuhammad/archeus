@@ -11,7 +11,7 @@ const argsOf = (c) => (c.choices ? c.choices[0] : c.arg === 'none' ? '' : 'date'
 const line = (c, name) => '/' + name + (argsOf(c) ? ' ' + argsOf(c) : '');
 
 test('there is one slash table: sim.js, the chat and the terminal all read slash.js', () => {
-  assert.equal(simModule.COMMANDS, COMMANDS);
+  assert.equal(simModule.COMMANDS, undefined);
   assert.equal(COMMANDS.length, 34);
   const src = (f) => readFileSync(new URL(f, import.meta.url), 'utf8');
   assert.ok(!/findCommand|SECRET\s*=|name: 'help'/.test(src('../sim.js')), 'sim.js keeps no table, parser or secret rule of its own');
