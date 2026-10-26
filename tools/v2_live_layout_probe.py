@@ -64,13 +64,14 @@ MEASURE = r"""
   for (let n; (n = walker.nextNode());) {
     const t = n.nodeValue.trim(); if (!t) continue;
     const p = n.parentElement;
-    if (!p || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'OPTION', 'TITLE'].includes(p.tagName) || !inLayer(p) || !vis(p)) continue;
+    if (!p || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'OPTION', 'TITLE'].includes(p.tagName) || !inLayer(p) || !vis(p) || p.closest('.am-sr')) continue;
     const pb = p.getBoundingClientRect(); if (pb.width <= 1 || pb.height <= 1) continue; // visually hidden text
     const r = document.createRange(); r.selectNodeContents(n);
     for (const rc of r.getClientRects()) if (rc.width >= 2 && rc.height >= 2) boxes.push({ kind: 'text', el: p, r: rc, label: t.slice(0, 32) });
   }
-  const ctl = [...document.querySelectorAll('a[href], button, input, select, textarea, summary, [role=button], [role=tab], [tabindex]:not([tabindex="-1"])')].filter((e) => inLayer(e) && vis(e) && e.getBoundingClientRect().width > 1);
-  ctl.forEach((e) => boxes.push({ kind: 'ctl', el: e, r: e.getBoundingClientRect(), label: name(e) }));
+  const ctl = [...document.querySelectorAll('a[href], button, input, select, textarea, summary, [role=button], [role=tab], [tabindex]:not([tabindex="-1"])')].filter((e) => inLayer(e) && vis(e) && !e.closest('.am-sr') && e.getBoundingClientRect().width > 1);
+  // the map's invisible 44 px hit circles overlap their neighbours by design (a click picks the nearest star), so they count for size only
+  ctl.forEach((e) => { if (!e.matches('.am-hit')) boxes.push({ kind: 'ctl', el: e, r: e.getBoundingClientRect(), label: name(e) }); });
 
   // clipped: sticks out of the viewport or is cut by an overflow:hidden parent, horizontally
   const seenClip = new Set();
@@ -102,7 +103,7 @@ MEASURE = r"""
     const r = e.getBoundingClientRect(), need = opts.desktop && e.matches(primary) ? 48 : 44;
     if (Math.min(r.width, r.height) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
     const c = clipOf(e), v = c && inter(r, c);
-    if (v && v.width > 4 && v.height > 4) {
+    if (v && v.width > 4 && v.height > 4 && !e.matches('.am-hit')) {
       const top = document.elementFromPoint(v.left + v.width / 2, v.top + v.height / 2);
       if (top && !e.contains(top)) add('covered', name(e) + ' covered by ' + name(top));
     }
@@ -155,25 +156,37 @@ def start_server(port):
 
 
 def motion_invariants(br, base):
-    """ADR-0055: with live work and full motion exactly one animation runs (core-breath); under reduced motion none; paused tab none."""
+    """ADR-0055: with a playing simulation, fresh live work and full motion exactly one animation runs (core-breath); paused, offline or under reduced motion none; off the map none."""
     bad = []
     ctx = br.new_context(viewport={'width': 1440, 'height': 900})
     pg = ctx.new_page()
+    css = "document.getAnimations().map(a => a.animationName).filter(Boolean)"
     pg.goto(base + '?theme=dark&motion=full&sim=paused#/now', wait_until='load')
-    pg.wait_for_timeout(500)
-    names = pg.evaluate('document.getAnimations().map(a => a.animationName)')
+    pg.wait_for_timeout(700)
+    names = pg.evaluate(css)
+    if names:
+        bad.append('a paused simulation still runs %r' % names)
+    pg.evaluate("window.v2live.sim.play()")
+    pg.wait_for_timeout(900)
+    names = pg.evaluate(css)
     if names != ['core-breath']:
         bad.append('full motion with live work runs %r, expected exactly [core-breath]' % names)
     pg.evaluate("window.v2live.store.set('motion', 'reduced')")
     pg.wait_for_timeout(300)
-    names = pg.evaluate('document.getAnimations().map(a => a.animationName)')
+    names = pg.evaluate(css)
     if names:
         bad.append('reduced motion still runs %r' % names)
-    if pg.evaluate("getComputedStyle(document.querySelector('.core-txt')).display") != 'block':
+    if 'running' not in pg.evaluate("(document.querySelector('.am-running') || {}).textContent || ''"):
         bad.append('reduced motion does not show the static running text')
-    pg.goto(base + '?theme=dark&motion=full&sim=paused#/work', wait_until='load')
+    pg.evaluate("window.v2live.store.set('motion', 'full'); window.v2live.sim.pause()")
     pg.wait_for_timeout(300)
-    names = pg.evaluate('document.getAnimations().map(a => a.animationName)')
+    names = pg.evaluate(css)
+    if names:
+        bad.append('pausing the simulation still runs %r' % names)
+    pg.evaluate("window.v2live.sim.play()")
+    pg.goto(base + '?theme=dark&motion=full#/work', wait_until='load')
+    pg.wait_for_timeout(300)
+    names = pg.evaluate(css)
     if names:
         bad.append('a page without the core mark runs %r' % names)
     ctx.close()
@@ -301,7 +314,7 @@ def main():
     for m in inv:
         print('MOTION INVARIANT FAILED: ' + m)
     n = sum(total.values()) + len(inv)
-    print('Motion invariants (ADR-0055): %s' % ('FAILED' if inv else 'ok, one animation with live work, none under reduced motion or off the map'))
+    print('Motion invariants (ADR-0055): %s' % ('FAILED' if inv else 'ok, one animation with a playing simulation and fresh live work, none when paused, under reduced motion or off the map'))
     print('Measured %d text boxes and %d controls in %d pages.' % (stats[0], stats[1], len(viewports) * len(routes) * len(themes)))
     print('TOTAL DEFECTS: %d   (%d viewports x %d routes x %d themes, %.0f s)' % (n, len(viewports), len(routes), len(themes), time.time() - t0))
     if n and (a.verbose or n < 60):
