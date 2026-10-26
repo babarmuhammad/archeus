@@ -186,7 +186,7 @@ export function createMap(container, options = {}) {
   const f = v => +v.toFixed(2);
   function starMarkup(n) {
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, g = Math.max(1, r / 8);
-    const crystal = isCrystal(n), [tag, shape] = crystal ? ['path', {d: crystalPaths(n.id, r).outline}] : starShape(n.kind, r);
+    const crystal = isCrystal(n), cp = crystal ? crystalPaths(n.id, r) : null, [tag, shape] = crystal ? ['path', {d: cp.outline}] : starShape(n.kind, r);
     const attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
     let glyph = '', outside = '';
     if (state === 'idle') glyph = '<circle r="1.2" fill="currentColor"/>';
@@ -200,7 +200,7 @@ export function createMap(container, options = {}) {
       outside = `<path d="M0,${-d}L${d},0L0,${d}L${-d},0Z" class="am-attention-ring"/>`;
       glyph = `<path d="M0,-3V1 M0,3v.5" class="${crystal ? 'am-glyph' : 'am-attention-glyph'}"/>`;
     }
-    return `<g transform="translate(${f(n.x)} ${f(n.y)})" class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><circle r="${f(r * glowReach[colorState])}" fill="url(#${prefix}-${colorState === 'paused' ? 'idle' : colorState})" class="am-glow"/><${tag} ${attrs} class="am-body${crystal ? ' am-crystal' : ['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/>${crystal ? `<path d="${crystalPaths(n.id, r).facets}" class="am-facets"/>` : ''}${outside}${glyph ? `<g transform="scale(${f(g)})">${glyph}</g>` : ''}</g>`;
+    return `<g transform="translate(${f(n.x)} ${f(n.y)})" class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><circle r="${f(r * glowReach[colorState])}" fill="url(#${prefix}-${colorState === 'paused' ? 'idle' : colorState})" class="am-glow"/><${tag} ${attrs} class="am-body${crystal ? ' am-crystal' : ['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/>${crystal ? `<path d="${cp.facets}" class="am-facets"/>` : ''}${outside}${glyph ? `<g transform="scale(${f(g)})">${glyph}</g>` : ''}</g>`;
   }
   function drawStar(n) {
     const holder = svgElement('g');

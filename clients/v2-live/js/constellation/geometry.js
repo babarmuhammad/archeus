@@ -28,8 +28,8 @@ export function layout(graph, width, height, seed = 'archeus') {
   if (!keys.length) return [];
   const weight = n => isCrystal(n) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
   const groups = keys.map(key => graph.nodes.filter(n => (n.project || 'unassigned') === key)
-    .map(n => ({...n, radius: nodeRadius(weight(n), u)}))
-    .sort((a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || weight(b) - weight(a) || String(a.id).localeCompare(String(b.id))));
+    .map(n => { const w = weight(n); return {...n, radius: nodeRadius(w, u), rank: w}; })
+    .sort((a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || b.rank - a.rank || String(a.id).localeCompare(String(b.id))));
   const left = Math.min(INSET.left, width / 10), right = Math.min(INSET.right, width / 10);
   const top = Math.min(INSET.top, height / 10), bottom = Math.min(INSET.bottom, height / 5);
   const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y);

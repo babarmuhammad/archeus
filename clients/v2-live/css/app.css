@@ -247,7 +247,7 @@ dl.kv dd { overflow-wrap: anywhere; }
 .map-box { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: min(70vh, calc(var(--base) * 38)); min-height: 240px; margin-inline: auto; }
 .map-box.wide { aspect-ratio: 16 / 10; }
 @container view (min-width: 880px) { .map-box.wide { aspect-ratio: auto; height: clamp(440px, calc(100vh - 360px), 860px); max-height: none; } }
-@container view (max-width: 520px) { .map-box.wide { aspect-ratio: 3 / 4; max-height: none; } }
+@container view (max-width: 520px) { .map-box.wide { aspect-ratio: 2 / 3; max-height: none; } }
 .map-box .archeus-map { position: absolute; inset: 0; width: auto; height: auto; min-height: 0; --am-serif: var(--serif); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 4px 16px 12px; color: var(--text-2); font-size: var(--fs-cap); }
 .legend .k { display: inline-flex; align-items: center; gap: 6px; }

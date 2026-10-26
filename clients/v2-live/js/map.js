@@ -82,7 +82,7 @@ export function notePulse(sim, ev) {
   if (ev.type === 'execution.state_changed') pending.push(ev.payload.to === 'RUNNING' ? x.mission + '->' + x.id + ':runs' : x.project + '->' + x.mission + ':contains');
   else if (ev.type === 'execution.progress') {
     const now = performance.now();
-    if (now - (lastPulse.get(x.id) || 0) < 2000) return;
+    if (now - (lastPulse.get(x.id) ?? -Infinity) < 2000) return;
     lastPulse.set(x.id, now);
     for (const e of maps.values()) if (e.map) e.map.pulse(x.mission + '->' + x.id + ':runs');
   }
