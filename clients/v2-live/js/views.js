@@ -8,11 +8,12 @@ import { spineRow, spineCard, spineInspector } from './spine.js';
 import { mapBox, syncMap } from './map.js';
 import { THEMES, DEVICES } from './store.js';
 import * as store from './store.js';
+import { areasOf } from './areas-model.js';
 
 export const ROUTES = [
   { id: 'now', label: 'Now', icon: 'now' }, { id: 'work', label: 'Work', icon: 'work' }, { id: 'attention', label: 'Attention', icon: 'attention' },
   { id: 'map', label: 'Map', icon: 'map' }, { id: 'replay', label: 'Replay', icon: 'replay' }, { id: 'chat', label: 'Chat', icon: 'chat' },
-  { id: 'security', label: 'Security', icon: 'security' }, { id: 'health', label: 'Health', icon: 'health' }, { id: 'accounts', label: 'Accounts', icon: 'accounts' },
+  { id: 'security', label: 'Security', icon: 'security' }, { id: 'health', label: 'Health', icon: 'health' }, { id: 'usage', label: 'Usage', icon: 'usage' }, { id: 'accounts', label: 'Accounts', icon: 'accounts' }, { id: 'extensions', label: 'Extensions', icon: 'extensions' },
   { id: 'settings', label: 'Settings', icon: 'settings' }
 ];
 export const BOTTOM = ['now', 'work', 'attention', 'chat'];
@@ -159,7 +160,7 @@ export function simControls(ctx) {
   return h('div', { class: 'col', style: 'gap:10px' },
     h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', 'aria-pressed': st.playing ? 'true' : 'false', onclick: () => ctx.act(st.playing ? 'pause-sim' : 'play-sim') }, st.playing ? 'Pause' : 'Play'),
       h('div', { class: 'sel-wrap', style: 'padding:0' }, h('label', { for: 'sim-speed-' + (ctx.where || 'a') }, 'Speed'), h('select', { id: 'sim-speed-' + (ctx.where || 'a'), onchange: (e) => ctx.act('speed', e.target.value) }, ...SPEEDS.map((x) => h('option', { value: String(x), selected: x === st.speed ? true : null }, 'x' + x))))),
-    h('div', { class: 'actions' }, pr('trigger-approval', 'Trigger an approval'), pr('inject-failure', 'Inject a failure'), pr('inject-spawn', 'Break the harness'), pr('reset', 'Reset')),
+    h('div', { class: 'actions' }, pr('trigger-approval', 'Trigger an approval'), pr('inject-failure', 'Inject a failure'), pr('inject-spawn', 'Break the harness'), pr('offline-toggle', areasOf(sim).isOffline() ? 'Reconnect' : 'Go offline'), pr('reset', 'Reset')),
     h('p', { class: 'note', style: 'padding:0' }, 'Simulated clock ', h('span', { 'data-live': 'clock' }, clockLabel(st.clock)), '. One real second is ten simulated seconds at x1. Same seed, same story.'));
 }
 

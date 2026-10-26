@@ -1,0 +1,181 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createSim } from '../sim.js';
+import * as M from '../js/areas-model.js';
+
+const run = (sim, secs) => sim.advance(secs * 1000);
+const mk = (seed) => { const s = createSim(seed == null ? {} : { seed }); return [s, M.areasOf(s)]; };
+
+test('meter thresholds: the 20% line, almost out, out, and unknown is never 0', () => {
+  assert.equal(M.meterState(50).key, 'ok');
+  assert.equal(M.meterState(79.9).key, 'ok');
+  assert.equal(M.meterState(80).key, 'low');
+  assert.equal(M.meterState(95).key, 'critical');
+  assert.equal(M.meterState(100).key, 'out');
+  const u = M.meterState(null);
+  assert.equal(u.key, 'unknown'); assert.equal(u.left, null);
+});
+
+test('usage rows: three accounts in failover order, the Codex reading stays unknown', () => {
+  const [, A] = mk();
+  const rows = A.usage();
+  assert.deepEqual(rows.map((r) => r.id), ['acc-work', 'acc-personal', 'acc-codex']);
+  assert.equal(rows[2].session.key, 'unknown'); assert.equal(rows[2].week.left, null);
+  assert.equal(rows[1].session.key, 'low');
+});
+
+test('the story: personal window nearly full at 12 min, work week reaches the 20% line at 24 min', () => {
+  const [s, A] = mk();
+  run(s, 12 * 60 + 5);
+  const p = A.usage().find((r) => r.id === 'acc-personal').session; assert.equal(p.key, 'low'); assert.equal(p.left, 6);
+  assert.notEqual(A.usage().find((r) => r.id === 'acc-work').week.key, 'low');
+  run(s, 12 * 60);
+  assert.equal(A.usage().find((r) => r.id === 'acc-work').week.key, 'low');
+  assert.ok(A.log().some((l) => /20% reserve line/.test(l.text)));
+});
+
+test('health: six checks; the Codex breaker trips at 8 min and the Harness check follows it, with a cause and a fix', () => {
+  const [s, A] = mk();
+  assert.equal(A.health().checks.length, 6);
+  assert.equal(A.health().checks.find((c) => c.id === 'chk-harness').state, 'ok');
+  assert.equal(A.health().checks.find((c) => c.id === 'chk-disk').state, 'unknown');
+  run(s, 8 * 60 + 5);
+  const c = A.health().checks.find((x) => x.id === 'chk-harness');
+  assert.equal(c.state, 'attention'); assert.ok(c.cause && c.fix.length >= 1);
+  assert.equal(A.security().open, 1);
+});
+
+test('breaker: trip, reset and the scheduled half-open does not reopen a reset breaker', () => {
+  const [s, A] = mk();
+  assert.equal(A.tripBreaker('claude_code').ok, true);
+  assert.equal(A.breaker('claude_code').state, 'open');
+  assert.equal(A.tripBreaker('claude_code').ok, false);
+  assert.equal(A.resetBreaker('claude_code').ok, true);
+  assert.equal(A.breaker('claude_code').state, 'closed');
+  run(s, 400);
+  assert.equal(A.breaker('claude_code').state, 'closed');
+  assert.ok(!s.state.events.some((e) => e.type === 'harness.breaker_half_open' && e.subject.id === 'claude_code'));
+  assert.equal(A.resetBreaker('claude_code').ok, false);
+  assert.equal(A.tripBreaker('pi').ok, false);
+});
+
+test('breaker that is left alone goes open, half open after 5 min, then closes', () => {
+  const [s, A] = mk();
+  A.tripBreaker('claude_code');
+  run(s, 301); assert.equal(A.breaker('claude_code').state, 'half_open');
+  run(s, 45); assert.equal(A.breaker('claude_code').state, 'closed');
+});
+
+test('hooks: a locked hook cannot be switched off, the push hook counts runs and gates the simulated approval', () => {
+  const [s, A] = mk();
+  assert.equal(A.toggleHook('h-live-5').ok, false);
+  run(s, 30);
+  const before = A.hooks().find((h) => h.id === 'h-1').runs;
+  assert.equal(s.triggerApproval().ok, true);
+  assert.equal(A.hooks().find((h) => h.id === 'h-1').runs, before + 1);
+  assert.equal(A.toggleHook('h-1').on, false);
+  assert.equal(A.hookAllows('h-1'), false);
+  assert.equal(A.privileges().find((p) => p.id === 'p5').state, 'unguarded');
+});
+
+test('MCP: enabling connects after a moment, a server that was never checked cannot be enabled', () => {
+  const [s, A] = mk();
+  const x = A.mcp().find((m) => m.id === 'mcp-2');
+  assert.equal(A.mcpStatus(x), 'DISABLED');
+  A.toggleMcp('mcp-2');
+  assert.equal(A.mcpStatus(x), 'CONNECTING');
+  run(s, 10); assert.equal(A.mcpStatus(x), 'CONNECTED');
+  assert.equal(A.mcpStatus(A.mcp().find((m) => m.id === 'mcp-live-4')), 'UNKNOWN');
+  const calls = A.mcp()[0].calls; run(s, 120); assert.ok(A.mcp()[0].calls > calls);
+});
+
+test('agents: the planner works while a mission is planning, the verifier while checks run', () => {
+  const [s, A] = mk();
+  run(s, 100);
+  assert.equal(A.agentStatus(A.agents()[0]).key, 'working');
+  assert.equal(A.agentStatus(A.agents()[1]).key, 'working');
+  A.toggleAgent('ag-1'); assert.equal(A.agentStatus(A.agents()[0]).key, 'off');
+});
+
+test('launch preview follows accounts and breakers; failover order is editable', () => {
+  const [s, A] = mk();
+  assert.match(A.preview('archeus').note, /work/);
+  assert.equal(A.moveAccount('acc-personal', -1).ok, true);
+  assert.deepEqual(A.failover().order.slice(0, 2), ['acc-personal', 'acc-work']);
+  assert.equal(A.moveAccount('acc-personal', -1).ok, false);
+  A.setLaunch('archeus', 'harness', 'codex');
+  assert.equal(A.launch('archeus').model, 'codex-main');
+  run(s, 8 * 60 + 5);
+  assert.equal(A.preview('archeus').tone, 'attention');
+  assert.equal(A.setDefaultModel('claude-opus').ok, true); assert.equal(A.defaultModel(), 'claude-opus');
+  assert.equal(A.setDefaultModel('nope').ok, false);
+});
+
+test('digest: groups changes since the cursor, and marking it seen empties it', () => {
+  const [s, A] = mk();
+  run(s, 600);
+  const d = A.digest(A.cursor());
+  assert.ok(d.counts.missions >= 4 && d.counts.decisions >= 1);
+  assert.ok(d.items.every((i, k) => k === 0 || d.items[k - 1].at >= i.at));
+  A.acknowledge();
+  assert.equal(A.digest(A.cursor()).items.length, 0);
+});
+
+test('why, station times, relations and route decisions', () => {
+  const [s, A] = mk();
+  run(s, 700);
+  const S = A.S(), m = S.missions['m-date'];
+  const why = M.whyOf(S, m);
+  assert.ok(why.some((r) => r.title === 'Adopted the execution again'));
+  assert.ok(why.some((r) => r.title === 'Asked you to decide' && r.by === 'Core'));
+  const t = M.stationTimes(S, m);
+  assert.equal(t.length, 6);
+  assert.ok(t.filter((x) => x != null).every((x, i, a) => i === 0 || x >= a[i - 1] - 1));
+  const rel = M.relationsOf(S, 'mission', 'm-date').map((g) => g.title);
+  for (const need of ['Project', 'Tasks', 'Executions', 'Decisions', 'Verifications']) assert.ok(rel.includes(need), need);
+  const r = M.routeOf(S, S.tasks['t-date-1']);
+  assert.equal(r.chosen.account, 'acc-work');
+  assert.equal(r.considered.filter((c) => c.result === 'Chosen').length, 1);
+  assert.equal(M.policyOf(S, Object.values(S.approvals)[0]).checks.length >= 3, true);
+  assert.equal(M.kindOfId('mcp-1'), 'mcp'); assert.equal(M.kindOfId('m-date'), 'mission'); assert.equal(M.kindOfId('rd-t-date-1'), 'route'); assert.equal(M.kindOfId('mdl-claude-sonnet'), 'model');
+});
+
+test('offline keeps a stale read while the simulation moves on, and reconnect returns the live one', () => {
+  const [s, A] = mk();
+  run(s, 100);
+  const k0 = M.keptSummary(A.S());
+  assert.equal(A.goOffline().ok, true); assert.equal(A.goOffline().ok, false);
+  const at = A.offlineAt(); run(s, 500);
+  assert.equal(A.offlineAt(), at);
+  assert.equal(JSON.stringify(M.keptSummary(A.S())), JSON.stringify(k0));
+  assert.notEqual(A.S(), s.state);
+  assert.equal(A.reconnect().ok, true); assert.equal(A.S(), s.state);
+});
+
+test('request changes on a plan decision sends the plan back and a new decision follows', () => {
+  const [s] = mk();
+  const id = s.state.missions['m-search'].approval;
+  assert.equal(s.act('plan_changes', id).ok, true);
+  assert.equal(s.state.missions['m-search'].state, 'PLANNING');
+  run(s, 40);
+  assert.equal(s.state.missions['m-search'].state, 'APPROVAL_REQUIRED');
+  assert.notEqual(s.state.missions['m-search'].approval, id);
+  assert.equal(s.state.approvals[id].state, 'SUPERSEDED');
+});
+
+test('ideas move along the path; exec output and checkpoints are bounded', () => {
+  const [s, A] = mk();
+  assert.equal(A.advanceIdea('i-5').ok, true);
+  assert.equal(s.state.ideas.find((i) => i.id === 'i-5').state, 'UNDERSTOOD');
+  assert.equal(A.advanceIdea('i-2').ok, false);
+  run(s, 300);
+  const o = M.execOutput(A.S(), s.state.executions['x-date-1']);
+  assert.ok(o.lines.length > 0 && o.lines.length <= 12);
+  assert.ok(M.checkpoints(A.S(), s.state.executions['x-date-1']).length <= 6);
+});
+
+test('the areas do not change the simulation: same seed, same hash with or without them', () => {
+  const a = createSim({ seed: 7 }), b = createSim({ seed: 7 }); M.areasOf(b);
+  run(a, 1500); run(b, 1500);
+  assert.equal(a.hash(), b.hash());
+});

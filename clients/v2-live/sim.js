@@ -210,6 +210,7 @@ export function createSim(opts = {}) {
       const u = usage(x.account);
       if (u && u.window5h != null) {
         u.window5h = Math.min(100, Math.round((u.window5h + 0.15 + rng() * 0.1) * 100) / 100);
+        if (u.week != null) u.week = Math.round((u.week + 0.04) * 100) / 100;
         accountHealthCheck(x.account);
       }
       emit('execution.progress', { kind: 'execution', id: x.id }, { outputs: x.outputs }, { mission: x.mission, project: x.project });
@@ -350,6 +351,22 @@ export function createSim(opts = {}) {
       }
       return { ok: true };
     }
+    if (kind === 'plan_changes') {
+      const a = S.approvals[id]; if (!a || a.state !== 'PENDING' || a.kind !== 'plan') return bad('No plan decision to change');
+      const m = M(a.mission), p = S.plans[a.ref];
+      if (m.state !== 'APPROVAL_REQUIRED') return bad('This plan is no longer waiting');
+      move('approval', a, 'SUPERSEDED', 'plan_replaced'); a.decided_by = 'user_device'; a.decided_at = S.clock;
+      if (p && p.state === 'PROPOSED') move('plan', p, 'SUPERSEDED', 'superseded');
+      m.approval = null; m.reason = 'Changes requested on the plan';
+      move('mission', m, 'PLANNING', 'request_changes');
+      at(sec(30), 'replan after changes ' + m.id, () => {
+        if (m.state !== 'PLANNING') return;
+        const p2 = newPlan(m);
+        const a2 = newApproval(m, 'plan', { what: 'Plan v' + p2.version + ' for "' + m.title + '"', why: 'You asked for changes to the previous plan.', consequence: 'Approving starts the tasks on ' + m.branch + '. Rejecting cancels the mission.' }, p2.id);
+        m.reason = null; move('mission', m, 'APPROVAL_REQUIRED', 'plan_needs_approval'); m.approval = a2.id;
+      });
+      return { ok: true };
+    }
     if (kind === 'confirm' || kind === 'retract') {
       const k = S.knowledge.find((x) => x.id === id);
       if (!k || k.state !== 'CANDIDATE') return bad('Nothing to decide on this item');
@@ -438,15 +455,15 @@ export function createSim(opts = {}) {
     newApproval(m, 'action', { what: 'Run: ' + ask, why: 'The execution asked before crossing its boundary.', consequence: 'Approving lets the execution continue with this one action. Rejecting ends the execution and blocks the mission.' }, x.id);
     return { ok: true, execution: x.id };
   }
-  function injectFailure(kind) {
+  function injectFailure(kind, harness) {
     S.actor = 'system';
     kind = kind || 'execution';
     if (kind === 'spawn') {
-      const b = S.harnesses.find((h) => h.id === 'claude_code').breaker;
+      const hid = harness || 'claude_code', b = S.harnesses.find((h) => h.id === hid).breaker;
       for (let i = 0; i < 3; i++) b.failures.push(S.clock - i * 1000);
       b.state = 'open'; b.until = S.clock + min(5); b.last_error = 'spawn failed: could not start the process';
-      emit('harness.breaker_opened', { kind: 'harness', id: 'claude_code' }, { failures: 3, window_min: 10 }, {});
-      at(min(5), 'half open', () => { b.state = 'half_open'; emit('harness.breaker_half_open', { kind: 'harness', id: 'claude_code' }, {}, {}); at(sec(40), 'close', () => { b.state = 'closed'; b.failures = []; b.last_error = null; emit('harness.breaker_closed', { kind: 'harness', id: 'claude_code' }, {}, {}); }); });
+      emit('harness.breaker_opened', { kind: 'harness', id: hid }, { failures: 3, window_min: 10 }, {});
+      at(min(5), 'half open', () => { if (b.state !== 'open') return; b.state = 'half_open'; emit('harness.breaker_half_open', { kind: 'harness', id: hid }, {}, {}); at(sec(40), 'close', () => { if (b.state !== 'half_open') return; b.state = 'closed'; b.failures = []; b.last_error = null; emit('harness.breaker_closed', { kind: 'harness', id: hid }, {}, {}); }); });
       return { ok: true };
     }
     if (kind === 'verification') {
@@ -481,6 +498,9 @@ export function createSim(opts = {}) {
     atAbs(stuckAt + sec(190), 'date adopted', () => { const x = S.executions['x-date-1']; if (x && x.state === 'LOST') { move('execution', x, 'RUNNING', 'adopted'); x.stuck = false; x.last_output_at = S.clock; } });
     atAbs(sec(480), 'date ends', () => { const m = M('m-date'), x = S.executions['x-date-1'], t = S.tasks[x.task]; m.fail_check = 'date-boundary check'; if (x.state === 'RUNNING' && m.state === 'EXECUTING') { move('execution', x, 'ENDED_OK', 'exited_success', { exit_code: 0 }); move('task', t, 'VERIFYING', 'execution_succeeded'); verifyMission(m, true); } });
     atAbs(sec(300), 'ambient', ambient);
+    atAbs(min(8), 'codex breaker trips', () => injectFailure('spawn', 'codex'));
+    atAbs(min(12), 'personal window nearly full', () => { usage('acc-personal').window5h = 94; S.actor = 'system'; emit('usage.observed', { kind: 'account', id: 'acc-personal' }, { note: 'its 5 hour window is nearly full' }, {}); });
+    atAbs(min(24), 'work week reaches the reserve line', () => { usage('acc-work').week = 80; S.actor = 'system'; emit('usage.observed', { kind: 'account', id: 'acc-work' }, { note: 'the week reached the 20% reserve line' }, {}); });
   }
   function ambient() {
     const roll = rng();
