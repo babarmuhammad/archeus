@@ -257,3 +257,4 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 }
 @container view (max-width: 600px) { .ax-ent:has(.e-pills) .e-main { flex: 1 1 100%; } .ax-ent .e-pills { flex: 1 1 100%; flex-direction: column; align-items: flex-start; } .ax-ent .lay { flex-wrap: wrap; } .ax-ent .lay .l { text-align: left; min-width: 5em; } }
 .ax-stat { gap: 6px; } .ax-stat .big { line-height: 1.25; }
+@media (forced-colors: active) { .ax-ring .line20, .ax-spark .ln { stroke: CanvasText; } }

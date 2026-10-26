@@ -250,7 +250,7 @@ if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => { if (ctx.ro
 let last = performance.now();
 if (!embed) setInterval(() => { const n = performance.now(); if (!document.hidden) sim.tickReal(n - last); last = n; }, 250);
 if (store.get('device') === 'terminal' && !location.hash) location.hash = '#/terminal';
-window.v2live = { sim, ui, store, setPrefs, areas: areasOf(sim) };
+window.v2live = { sim, ui, store, setPrefs, areas: areasOf(sim), help: () => ctx.openHelp(), toast };
 
 // ---------- the All devices view: phone, tablet, desktop and terminal at once, one shared simulation ----------
 const ALL = [{ id: 'phone', label: 'Phone', w: 390, h: 844, hash: '#/now' }, { id: 'tablet', label: 'Tablet', w: 820, h: 1100, hash: '#/work' }, { id: 'desktop', label: 'Desktop', w: 1440, h: 900, hash: '#/now' }, { id: 'terminal', label: 'Terminal', w: 640, h: 800, hash: '#/terminal' }];

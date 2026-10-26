@@ -361,9 +361,9 @@ body[data-embed='1'] #stage { grid-row: 1; }
 /* ---------- S6: phone counters, the Now control strip, the No Undo banner, toasts with Dismiss ---------- */
 .counters { display: none; }
 @container view (max-width: 599px) { .counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: var(--hair) solid var(--line); border-radius: var(--r-m); background: var(--s1); } }
-.ctr { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 72px; padding: 8px 2px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.2; text-align: center; text-decoration: none; }
+.ctr { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 76px; padding: 8px 2px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.2; text-align: center; text-decoration: none; }
 .ctr + .ctr { border-left: var(--hair) solid var(--line); }
-.ctr b { font-size: 30px; line-height: 1.1; font-weight: 600; color: var(--bc, var(--text)); }
+.ctr b { font-size: 30px; line-height: 1.2; font-weight: 600; color: var(--bc, var(--text)); }
 .ctr[data-role='needs_you'] { --bc: var(--attention); } .ctr[data-role='active'], .ctr[data-role='verifying'] { --bc: var(--active); } .ctr[data-role='blocked'] { --bc: var(--blocked); }
 .ctlbar { padding: 8px 12px; border: var(--hair) solid var(--line); border-radius: var(--r-m); background: var(--s1); }
 .ctlbar > .body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
@@ -371,7 +371,7 @@ body[data-embed='1'] #stage { grid-row: 1; }
 .noundo { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: var(--s1); }
 .noundo svg { flex: none; color: var(--attention); }
 .noundo p { margin: 0; line-height: 1.35; }
-.toast { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 4px; padding: 4px 6px 4px 16px; }
+.toast { width: max-content; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 4px; padding: 4px 6px 4px 16px; }
 .toast .tt { padding: 6px 4px; }
 .toast .btn { min-height: 44px; }
 .toast[data-kind='error'] { border-color: var(--blocked); }
@@ -383,6 +383,13 @@ body[data-embed='1'] #stage { grid-row: 1; }
 .helpbox h2 { font-size: var(--fs-t2); font-weight: 600; }
 .keys { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; align-items: baseline; }
 .keys dd { margin: 0; line-height: 1.35; }
+@container dev (max-width: 479px) { .keys { grid-template-columns: minmax(0, 1fr); gap: 2px; } .keys dd { margin-bottom: 8px; } }
 kbd { display: inline-block; padding: 1px 8px; border: var(--hair) solid var(--line-strong); border-radius: 4px; background: var(--s2); font-family: var(--mono); font-size: var(--fs-mono); white-space: nowrap; }
 .card:focus-visible { outline-offset: -3px; }
 @media (forced-colors: active) { .helpbox { border: 1px solid CanvasText; } }
+
+/* forced colors, S6: a selected thing is told by a 3 px Highlight line (not by colour alone, not by a fill that vanishes), and state icons use ink */
+@media (forced-colors: active) {
+  :is(.nav-item[aria-current='page'], .bb-item[aria-current='page'], .chip[aria-pressed='true'], .chip[aria-current='true'], .tab[aria-selected='true'], .mrow[aria-current='true'], .tl-row[aria-current='true'], .tb-btn[aria-pressed='true'], .tb-btn[aria-expanded='true'], .menu-item[aria-checked='true'], .menu-item[aria-pressed='true'], .tui-btn[aria-pressed='true'], .rtl .tl-row[aria-selected='true']):not(:focus-visible) { border-color: Highlight; box-shadow: none; outline: 3px solid Highlight; outline-offset: -4px; }
+  .card .kind > svg, .noundo svg, .illustration { color: CanvasText; }
+}
