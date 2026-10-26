@@ -1,0 +1,34 @@
+﻿html { background: var(--bg); }
+body { margin: 0; }
+.atlas-head { padding: 2rem clamp(1rem,4vw,4rem); display: grid; gap: 1.5rem; border-bottom: var(--hair) solid var(--line); background: radial-gradient(ellipse at 80% 0%, color-mix(in srgb,var(--thinking) 7%,transparent),transparent 60%),var(--bg); }
+.atlas-head h1 { font-size: clamp(1.75rem,3vw,3rem); font-weight: 400; letter-spacing: -.03em; }
+.atlas-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.atlas-controls .ds-field { min-width: 12rem; }
+.atlas-controls a { min-height: 44px; display: inline-flex; align-items: center; }
+.atlas-stage { overflow: auto; padding: 2rem; }
+.atlas-devices { display: flex; align-items: start; gap: 2rem; width: max-content; }
+.atlas-device { display: grid; gap: 1rem; }
+.atlas-device h2 { font-size: .875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+.atlas-device iframe { height: 82dvh; min-height: 34rem; border: var(--hair) solid var(--line-strong); border-radius: 1rem; background: var(--bg); }
+.atlas-foot { padding: 1rem 2rem 2rem; color: var(--text-2); font-size: .8125rem; }
+.specimen { display: grid; gap: 2rem; padding: 1.25rem; }
+.specimen-section { display: grid; gap: 1rem; min-width: 0; }
+.specimen-section > header { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; border-top: var(--hair) solid var(--line); padding-top: 1.5rem; }
+.specimen-section > header h2 { font-size: 1rem; }
+.specimen-section > header span { color: var(--text-3); font: .75rem var(--mono); }
+.specimen-hero { display: grid; grid-template-columns: minmax(0,1fr) 96px; gap: 1rem; padding-block: 1rem 2rem; align-items: center; }
+.specimen-hero .ds-state-sentence { margin-block: 1rem; }
+.specimen-hero > .ds-core { align-self: center; }
+.specimen-icons { display: grid; grid-template-columns: repeat(auto-fill,minmax(96px,1fr)); gap: .5rem; }
+.specimen-icon { display: grid; justify-items: center; gap: .5rem; padding: 1rem .25rem; color: var(--text-2); font-size: .75rem; border: var(--hair) solid var(--line); border-radius: .375rem; }
+.specimen-swatches { display: grid; grid-template-columns: repeat(auto-fit,minmax(100px,1fr)); gap: .75rem; }
+.specimen-swatch { display: grid; gap: .5rem; padding: .75rem; border: var(--hair) solid var(--line-strong); border-radius: .375rem; font-size: .8125rem; }
+.specimen-swatch i { display: block; height: 2rem; border: var(--hair) solid var(--line-strong); border-radius: .25rem; }
+.specimen-skeleton { display: grid; gap: .75rem; padding: 1.5rem; background: var(--s1); border: var(--hair) solid var(--line); border-radius: .75rem; }
+.specimen-brand { display: flex; flex-wrap: wrap; align-items: center; gap: 2rem; padding: 2rem; background: var(--s1); border: var(--hair) solid var(--line); border-radius: .75rem; }
+.specimen-brand > img { width: 64px; height: 64px; }
+.specimen-terminal { margin: 0; padding: 1rem; white-space: pre-wrap; font: .8125rem/1.7 var(--mono); background: var(--s1); border: var(--hair) solid var(--line); border-radius: .375rem; }
+.specimen .ds-frame { border: var(--hair) solid var(--line); border-radius: .75rem; overflow: hidden; }
+.specimen .ds-state-sentence { font-size: clamp(1.75rem,4cqi,2.5rem); }
+@media (max-width: 480px) { .atlas-stage { padding: 1rem; } .specimen { padding: 1rem; } }
+@media (forced-colors: active) { .atlas-head { background: Canvas; } }
