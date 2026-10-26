@@ -1,18 +1,12 @@
 /* S3: inspectors and the required areas (Security, Health, Usage, Accounts, Extensions), digest, pins, idea path, offline.
-   Same tokens as the rest. The glow is one soft edge in the state colour, drawn with a box-shadow (no backdrop-filter), and it is off in the
-   light, high contrast and forced looks, where a hairline and a word carry the state. Colour never carries a state alone. */
+   Same tokens as the rest. No glow: a hairline and a word carry the state. Colour never carries a state alone. */
 
-:root { --ax-glow: 36%; --ax-edge: 60%; }
-:root[data-theme='light'], :root[data-theme='light-hc'], :root[data-theme='dark-hc'], :root[data-theme='forced'] { --ax-glow: 0%; --ax-edge: 0%; }
-@media (prefers-color-scheme: light) { :root[data-theme='system'] { --ax-glow: 0%; --ax-edge: 0%; } }
-@media (prefers-contrast: more) { :root[data-theme='system'] { --ax-glow: 0%; --ax-edge: 0%; } }
 
 
 .ax-eyebrow { margin: 0 0 4px; color: var(--text-2); font-size: var(--fs-cap); font-weight: 600; letter-spacing: .16em; text-transform: uppercase; line-height: 1.3; }
 .ax-note { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.45; }
 .ax-note.pad { padding: 4px 16px 14px; }
 .ax-page { display: block; }
-.ax-hero { background: radial-gradient(120% 100% at 50% -35%, color-mix(in srgb, var(--active) calc(var(--ax-glow) * .32), transparent), transparent 66%); }
 .ax-hero .page-head h1 { font-size: calc(var(--fs-t1) * 1.3); font-weight: 600; letter-spacing: .01em; }
 .ax-lede { max-width: 48em; padding: 8px var(--gut) 0; color: var(--text-2); font-size: var(--fs-body); line-height: 1.5; }
 .ax-sh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-top: 8px; font-size: var(--fs-t2); font-weight: 600; }
@@ -20,15 +14,14 @@
 
 /* ---- big figures, like the concepts' "1 needs you" ---- */
 .ax-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5em), 1fr)); gap: var(--gap); }
-.ax-stat { --tone: var(--text-2); position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 12px 14px; text-align: center; background: var(--s1); border: var(--hair) solid color-mix(in srgb, var(--tone) 46%, var(--line)); border-radius: 12px; box-shadow: 0 0 34px -14px color-mix(in srgb, var(--tone) var(--ax-glow), transparent); }
+.ax-stat { --tone: var(--text-2); position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 16px 12px 14px; text-align: center; background: var(--s1); border: var(--hair) solid color-mix(in srgb, var(--tone) 46%, var(--line)); border-radius: 12px; }
 .ax-stat .big { color: var(--tone); font-size: calc(var(--base) * 2.1); font-weight: 500; line-height: 1.1; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .ax-stat .lab { font-size: var(--fs-body); font-weight: 600; }
 .ax-stat .sub { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.35; }
 
 /* ---- cards ---- */
 .ax-card { --tone: var(--text-2); position: relative; min-width: 0; background: var(--s1); border: var(--hair) solid var(--line); border-radius: 12px; }
-.ax-card::before { content: ''; position: absolute; left: 12%; right: 12%; top: -1px; height: 1px; background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--tone) var(--ax-edge), transparent), transparent); pointer-events: none; }
-.ax-card[data-tone] { border-color: color-mix(in srgb, var(--tone) 50%, var(--line)); box-shadow: 0 0 36px -14px color-mix(in srgb, var(--tone) var(--ax-glow), transparent); }
+.ax-card[data-tone] { border-color: color-mix(in srgb, var(--tone) 50%, var(--line)); }
 .ax-card-h { padding: 14px 16px 6px; }
 .ax-card-h h2, .ax-card > h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: var(--fs-t2); font-weight: 600; line-height: 1.3; }
 .ax-card-h h2 .n { color: var(--text-2); font-size: var(--fs-cap); font-weight: 400; }
@@ -124,7 +117,7 @@
 .ax-steps { padding-left: 1.3em; display: flex; flex-direction: column; gap: 4px; list-style: decimal; }
 
 /* ---- usage ---- */
-.ax-banner { --tone: var(--attention); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 16px; border: var(--hair) solid color-mix(in srgb, var(--tone) 60%, var(--line)); border-radius: 12px; background: var(--s1); box-shadow: 0 0 36px -14px color-mix(in srgb, var(--tone) var(--ax-glow), transparent); }
+.ax-banner { --tone: var(--attention); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 16px; border: var(--hair) solid color-mix(in srgb, var(--tone) 60%, var(--line)); border-radius: 12px; background: var(--s1); }
 .ax-banner .g { color: var(--tone); } .ax-banner p { flex: 1 1 16em; line-height: 1.4; }
 .ax-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--text-2); font-size: var(--fs-cap); }
 .ax-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
@@ -146,7 +139,7 @@
 .ax-ring { --tone: var(--active); position: relative; width: calc(var(--base) * 7); height: calc(var(--base) * 7); }
 .ax-ring .ring-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ax-ring .trk { fill: none; stroke: var(--line-strong); stroke-width: 6; } .ax-ring .trk.unk { stroke-dasharray: 3 5; }
-.ax-ring .arc { fill: none; stroke: var(--tone); stroke-width: 6; stroke-linecap: round; filter: drop-shadow(0 0 5px color-mix(in srgb, var(--tone) var(--ax-glow), transparent)); }
+.ax-ring .arc { fill: none; stroke: var(--tone); stroke-width: 6; stroke-linecap: round; }
 .ax-ring .line20 { stroke: var(--text-2); stroke-width: 1.6; stroke-linecap: round; }
 .ax-ring .ring-c { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .ax-ring .big { color: var(--text); font-size: calc(var(--base) * 1.55); font-weight: 600; line-height: 1.1; }

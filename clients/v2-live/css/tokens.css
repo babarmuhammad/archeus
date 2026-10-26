@@ -1,59 +1,65 @@
-/* V2 Live tokens. Values from docs/architecture/ARCHEUS_V2_VISUAL_LANGUAGE.md (V2, section 3 and 4) as measured there:
-   text roles at least 4.5:1 on bg and every surface, high contrast at least 7:1.
+/* V2 Live tokens. Concept images are the visual authority (docs/design/v2-concepts, V2-live-concept-gap.md section 1.2): flat near-black ground,
+   surfaces of the same hue as the ground, 1 px hairlines, no glow. Text roles at least 4.5:1 on bg and every surface, UI edges 3:1, high contrast at least 7:1.
    Themes: dark, light, dark-hc, light-hc, system (follows the OS), forced (a simulation of Windows forced colours).
    Set on <html data-theme="...">. Colour never carries a state alone: every state also has a glyph and a word. */
 
 :root, :root[data-theme='dark'], :root[data-theme='dark-hc'] {
   color-scheme: dark;
-  --bg: #0C0811; --s1: #0E131C; --s2: #151C2A; --s3: #1C2536;
-  --line: #292D33; --line-strong: #484B4D;
+  --bg: #0B090E; --s1: #0E0C12; --s2: #141118; --s3: #1A171F; --rail: #0B090E;
+  --line: #2A2630; --line-strong: #6A6672;
   --text: #EFE9DA; --text-2: #BDB7A8; --text-3: #ABA699;
-  --primary: #EFE9DA; --on-primary: #0C0811; --thread: #EFE9DA; --focus: #FFF3CF;
+  --primary: #EFE9DA; --on-primary: #0B090E; --thread: #EFE9DA; --focus: #FFF3CF;
   --active: #6FB1FF; --attention: #F2B544; --blocked: #F07178; --paused: #9AA5B8; --thinking: #C7B2F0; --done: #6FD39A;
+  --decide-bg: #F2B544; --decide-fg: #0B090E; --decide-line: #F2B544;
+  --stop-bg: #2A1214; --stop-line: #C9423C; --stop-fg: #FF8A80; --stop-solid: #B23A3A;
   --band: #292621; --scrim: rgba(0, 0, 0, 0.55); --hair: 1px;
 }
 
 :root[data-theme='light'], :root[data-theme='light-hc'] {
   color-scheme: light;
-  --bg: #F4EFE4; --s1: #FBF9F4; --s2: #EDE8DA; --s3: #FFFFFF;
-  --line: #DBD8D5; --line-strong: #B6B3B3;
-  --text: #14101A; --text-2: #4A4452; --text-3: #5C5666;
-  --primary: #14101A; --on-primary: #FBF9F4; --thread: #14101A; --focus: #14101A;
+  --bg: #FDFCF8; --s1: #FFFFFF; --s2: #F3F2EF; --s3: #FFFFFF; --rail: #F3F2EF;
+  --line: #D9D6D0; --line-strong: #8C8893;
+  --text: #1B1530; --text-2: #4A4452; --text-3: #5C5666;
+  --primary: #1B1530; --on-primary: #FDFCF8; --thread: #1B1530; --focus: #1B1530;
   --active: #0063D8; --attention: #8C5E0A; --blocked: #CE1620; --paused: #5B6982; --thinking: #7947DB; --done: #247647;
-  --band: #EEE6D8; --scrim: rgba(20, 16, 26, 0.45);
+  --decide-bg: #FFCD66; --decide-fg: #14101A; --decide-line: #8C5E0A;
+  --stop-bg: #FDECEA; --stop-line: #B3261E; --stop-fg: #991018; --stop-solid: #B23A3A;
+  --band: #FBF1DA; --scrim: rgba(27, 21, 48, 0.45);
 }
 
 :root[data-theme='dark-hc'] {
   --active: #74B4FF; --blocked: #F4969B; --paused: #A6B0C0; --text-3: #BDB7A8;
-  --line: #6C6F74; --line-strong: #6C6F74; --band: #0E131C; --hair: 2px;
+  --line: #8A8693; --line-strong: #8A8693; --stop-line: #FF8A80; --band: #0E0C12; --hair: 2px;
 }
 
 :root[data-theme='light-hc'] {
   --active: #00489D; --attention: #664407; --blocked: #991018; --paused: #424C5E; --thinking: #5925BF; --done: #1A5533;
-  --text-3: #4A4452; --line: #878280; --line-strong: #878280; --band: #FBF9F4; --hair: 2px;
+  --text-3: #4A4452; --line: #6A6672; --line-strong: #6A6672; --decide-line: #664407; --stop-line: #991018; --band: #FFFFFF; --hair: 2px;
 }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme='system'] {
     color-scheme: light;
-    --bg: #F4EFE4; --s1: #FBF9F4; --s2: #EDE8DA; --s3: #FFFFFF;
-    --line: #DBD8D5; --line-strong: #B6B3B3;
-    --text: #14101A; --text-2: #4A4452; --text-3: #5C5666;
-    --primary: #14101A; --on-primary: #FBF9F4; --thread: #14101A; --focus: #14101A;
+    --bg: #FDFCF8; --s1: #FFFFFF; --s2: #F3F2EF; --s3: #FFFFFF; --rail: #F3F2EF;
+    --line: #D9D6D0; --line-strong: #8C8893;
+    --text: #1B1530; --text-2: #4A4452; --text-3: #5C5666;
+    --primary: #1B1530; --on-primary: #FDFCF8; --thread: #1B1530; --focus: #1B1530;
     --active: #0063D8; --attention: #8C5E0A; --blocked: #CE1620; --paused: #5B6982; --thinking: #7947DB; --done: #247647;
-    --band: #EEE6D8; --scrim: rgba(20, 16, 26, 0.45);
+    --decide-bg: #FFCD66; --decide-fg: #14101A; --decide-line: #8C5E0A;
+    --stop-bg: #FDECEA; --stop-line: #B3261E; --stop-fg: #991018; --stop-solid: #B23A3A;
+    --band: #FBF1DA; --scrim: rgba(27, 21, 48, 0.45);
   }
 }
 @media (prefers-contrast: more) {
   :root[data-theme='system'] {
     --active: #74B4FF; --blocked: #F4969B; --paused: #A6B0C0; --text-3: #BDB7A8;
-    --line: #6C6F74; --line-strong: #6C6F74; --band: #0E131C; --hair: 2px;
+    --line: #8A8693; --line-strong: #8A8693; --stop-line: #FF8A80; --band: #0E0C12; --hair: 2px;
   }
 }
 @media (prefers-color-scheme: light) and (prefers-contrast: more) {
   :root[data-theme='system'] {
     --active: #00489D; --attention: #664407; --blocked: #991018; --paused: #424C5E; --thinking: #5925BF; --done: #1A5533;
-    --text-3: #4A4452; --line: #878280; --line-strong: #878280; --band: #FBF9F4; --hair: 2px;
+    --text-3: #4A4452; --line: #6A6672; --line-strong: #6A6672; --decide-line: #664407; --stop-line: #991018; --band: #FFFFFF; --hair: 2px;
   }
 }
 
@@ -61,11 +67,13 @@
    one highlight colour, state told by glyph and word only. The real `forced-colors: active` media query is handled in app.css. */
 :root[data-theme='forced'] {
   color-scheme: dark;
-  --bg: #000000; --s1: #000000; --s2: #000000; --s3: #000000;
+  --bg: #000000; --s1: #000000; --s2: #000000; --s3: #000000; --rail: #000000;
   --line: #FFFFFF; --line-strong: #FFFFFF;
   --text: #FFFFFF; --text-2: #FFFFFF; --text-3: #FFFFFF;
   --primary: #FFFFFF; --on-primary: #000000; --thread: #FFFFFF; --focus: #1AEBFF;
   --active: #1AEBFF; --attention: #FFFFFF; --blocked: #FFFFFF; --paused: #FFFFFF; --thinking: #FFFFFF; --done: #FFFFFF;
+  --decide-bg: #FFFFFF; --decide-fg: #000000; --decide-line: #FFFFFF;
+  --stop-bg: #000000; --stop-line: #FFFFFF; --stop-fg: #FFFFFF; --stop-solid: #FFFFFF;
   --band: #000000; --scrim: rgba(0, 0, 0, 0.8); --hair: 2px;
 }
 
@@ -76,6 +84,10 @@
   --ease: cubic-bezier(.22, .8, .18, 1);
   --dur-state: 160ms; --dur-sheet: 280ms; --dur-breath: 6000ms;
   --tb: 48px;
-  --r-s: 6px; --r-m: 12px; --r-l: 20px;
-  --edge: var(--line-strong); --glow: var(--thread);
+  --r-s: 4px; --r-m: 6px; --r-l: 16px;
+  --edge: var(--line-strong);
+  /* type scale for the concept layouts. Serif (--serif) only for the display headline / state sentence and map node names; page, mission, project and inspector titles, controls, rows and logs stay sans (owner, 2026-10-26) */
+  --fs-disp: clamp(40px, 3.9vw, 58px); --lh-disp: 1.05; --ls-disp: .01em;
+  --fs-title: clamp(30px, 2.8vw, 40px); --fs-section: 22px; --fs-lede: 17px; --lh-lede: 1.4;
+  --fs-node: 22px; --fs-node-sub: 15px; --fs-eyebrow: 11px; --ls-eyebrow: .16em; --ls-wordmark: .32em;
 }

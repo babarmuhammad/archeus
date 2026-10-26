@@ -49,7 +49,6 @@
 .app {
   --base: 16px;
   --fs-body: calc(var(--base) * 1.0625); --fs-cap: calc(var(--base) * .8125); --fs-t1: calc(var(--base) * 1.375); --fs-t2: calc(var(--base) * 1.125); --fs-mono: calc(var(--base) * .875);
-  --fs-disp: calc(var(--base) * 1.75);
   --target: max(44px, calc(var(--base) * 2.75)); --target-primary: max(44px, calc(var(--base) * 2.75));
   --gut: calc(var(--base) * 1); --gap: calc(var(--base) * .75); --rail-w: 0px; --insp-w: 0px;
   position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: 'main' 'bottom';
@@ -66,7 +65,7 @@
 @container dev (min-width: 1920px) { .app { --base: 18px; } }
 @container dev (min-width: 2400px) { .app { --base: 20px; } }
 
-.rail { grid-area: rail; display: none; flex-direction: column; gap: 4px; min-height: 0; padding: 8px; overflow-y: auto; background: var(--s1); border-right: var(--hair) solid var(--line); }
+.rail { grid-area: rail; display: none; flex-direction: column; gap: 4px; min-height: 0; padding: 8px; overflow-y: auto; background: var(--rail); border-right: var(--hair) solid var(--line); }
 @container dev (min-width: 600px) { .rail { display: flex; } }
 .rail-head { display: flex; align-items: center; gap: 8px; min-height: var(--target); padding: 0 4px; }
 .rail-head .brand { font-size: calc(var(--base) * 1.0625); white-space: nowrap; }

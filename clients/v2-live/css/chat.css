@@ -23,7 +23,7 @@
 
 /* ---------- the composer ---------- */
 .composer2 { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.dockin .composer2 { padding: 10px 12px; border: var(--hair) solid var(--line-strong); border-radius: 16px; background: var(--s1); box-shadow: 0 0 36px -16px color-mix(in srgb, var(--thread) 30%, transparent); }
+.dockin .composer2 { padding: 10px 12px; border: var(--hair) solid var(--line-strong); border-radius: 16px; background: var(--s1); }
 .convo .composer2, .cs-main .composer2 { padding: 12px 16px; border-top: var(--hair) solid var(--line); }
 .crow2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .cscope { flex: 0 1 17em; min-width: 0; max-width: 100%; min-height: var(--target); padding: 0 10px; border: var(--hair) solid var(--line-strong); border-radius: 22px; background: var(--s3); color: var(--text); font-size: var(--fs-cap); font-weight: 600; }
@@ -74,7 +74,7 @@
 
 .ccard { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 12px 14px; border: var(--hair) solid var(--line-strong); border-radius: 10px; background: var(--s1); min-width: 0; }
 .ccard[data-state='open'][data-kind='start'], .ccard[data-state='open'][data-kind='confirm'], .ccard[data-state='open'][data-kind='approval'], .ccard[data-state='open'][data-kind='remember'], .ccard[data-kind='proposal'] {
-  border-color: color-mix(in srgb, var(--attention) 55%, var(--line-strong)); box-shadow: 0 0 28px -12px color-mix(in srgb, var(--attention) 45%, transparent); }
+  border-color: color-mix(in srgb, var(--attention) 55%, var(--line-strong)); }
 .ccard[data-kind='refusal'] { border-style: dashed; }
 .kick { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); }
 .kick[data-role='needs_you'] .g { color: var(--attention); }
@@ -122,7 +122,7 @@
 
 /* ---------- the phone chat sheet ---------- */
 .cscrim { position: absolute; inset: 0; z-index: 21; background: var(--scrim); }
-.chatsheet { --sh: 50%; --kbh: 0px; position: absolute; z-index: 22; left: 0; right: 0; bottom: var(--kbh-real, 0px); display: flex; flex-direction: column; height: min(calc(var(--sh) + var(--kbh)), 100%); background: var(--s3); border-top: var(--hair) solid var(--line-strong); border-radius: 16px 16px 0 0; box-shadow: 0 -18px 40px -24px color-mix(in srgb, var(--thread) 30%, transparent); }
+.chatsheet { --sh: 50%; --kbh: 0px; position: absolute; z-index: 22; left: 0; right: 0; bottom: var(--kbh-real, 0px); display: flex; flex-direction: column; height: min(calc(var(--sh) + var(--kbh)), 100%); background: var(--s3); border-top: var(--hair) solid var(--line-strong); border-radius: 16px 16px 0 0; }
 .chatsheet[data-exp='1'] { --sh: 94%; }
 .chatsheet[data-kb='1'] { --kbh: min(260px, 40%); }
 .cs-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
