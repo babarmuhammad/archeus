@@ -322,6 +322,8 @@ dl.kv dd { overflow-wrap: anywhere; }
 .inspector > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 
 .spine-insp .ring { fill: var(--s3); }
+.spine-insp .st-s { display: none; }
+@container insp (max-width: 639px) { .spine-insp .st-f { display: none; } .spine-insp .st-s { display: inline; } }
 .spine-insp li svg { position: relative; z-index: 1; }
 .inspector h2[tabindex='-1']:focus { outline: none; }
 

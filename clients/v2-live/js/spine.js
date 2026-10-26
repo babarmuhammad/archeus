@@ -2,6 +2,9 @@
 import { h, s } from './dom.js';
 import { spineOf, STATIONS } from '../spine-model.js';
 
+// Owner decision: in narrow inspectors the stations show their short imperative names (the concepts' Understand, Plan, Approve, Run, Verify, Review); the full Core names stay for wide ones.
+const SHORT = ['Understand', 'Plan', 'Approve', 'Run', 'Verify', 'Review'];
+
 // One mark centred at (cx, cy) in a box of size `d`. Shape carries the meaning; colour only confirms it.
 function mark(m, cx, cy, d) {
   const r = d / 2, sw = d >= 14 ? 2 : 1.5;
@@ -56,7 +59,7 @@ export function spineInspector(state, held) {
   sp.marks.forEach((m, i) => {
     const svg = s('svg', { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true', focusable: 'false' }, mark(m, 8, 8, 16));
     const cur = m.kind === 'current' || (sp.station === i + 1 && !sp.unknown && !sp.done && m.kind !== 'ahead');
-    ol.append(h('li', { 'aria-current': cur ? 'step' : null }, i > 0 ? h('span', { class: 'seg-l ' + sp.segments[i - 1], 'aria-hidden': 'true' }) : null, svg, h('span', null, STATIONS[i])));
+    ol.append(h('li', { 'aria-current': cur ? 'step' : null }, i > 0 ? h('span', { class: 'seg-l ' + sp.segments[i - 1], 'aria-hidden': 'true' }) : null, svg, h('span', { class: 'st-f' }, STATIONS[i]), h('span', { class: 'st-s' }, SHORT[i])));
   });
   return h('div', null, ol, h('p', { class: 'sp-text' }, sp.text));
 }

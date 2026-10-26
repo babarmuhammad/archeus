@@ -41,7 +41,7 @@ const IT = {
   'Answer and unblock': 'Rispondi e sblocca', 'Cancel mission': 'Annulla la missione', 'Resume': 'Riprendi', 'Replan': 'Ripianifica', 'Accept': 'Accetta', 'Request changes': 'Chiedi modifiche', 'Pause': 'Pausa',
   'Approve this plan?': 'Approvare questo piano?', 'Allow this action?': 'Consentire questa azione?', 'What': 'Cosa', 'Why it asks': 'Perché lo chiede', 'What Core does next': 'Cosa fa il Core dopo', 'Where the mission is': 'A che punto è la missione',
   // spine
-  'Understanding': 'Comprensione', 'Approval': 'Approvazione', 'Executing': 'Esecuzione', 'Verifying': 'Verifica', 'Reviewing': 'Revisione', 'Position unknown': 'Posizione sconosciuta',
+  'Understanding': 'Comprensione', 'Understand': 'Capisci', 'Run': 'Esegui', 'Verify': 'Verifica', 'Approval': 'Approvazione', 'Executing': 'Esecuzione', 'Verifying': 'Verifica', 'Reviewing': 'Revisione', 'Position unknown': 'Posizione sconosciuta',
   // mission/other state words
   'Created': 'Creata', 'Context gathering': 'Raccolta del contesto', 'Reasoning': 'Ragionamento', 'Replanning': 'Ripianificazione', 'Waiting for approval': 'In attesa di approvazione', 'Approved \u2014 not started': 'Approvata \u2014 non avviata',
   'Resuming': 'Ripresa', 'Reviewing \u2014 verified, not accepted': 'In revisione \u2014 verificata, non accettata', 'Failed': 'Fallita', 'Done \u2014 verified and reviewed': 'Fatta \u2014 verificata e rivista', 'Cancelled': 'Annullata',
