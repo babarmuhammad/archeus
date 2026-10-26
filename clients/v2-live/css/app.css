@@ -86,7 +86,7 @@ svg { display: block; }
 .rail-toggle:hover { background: var(--s3); border-color: var(--line-strong); }
 .nav-item { position: relative; display: flex; align-items: center; gap: 12px; min-height: var(--target); padding: 0 12px; border: var(--hair) solid transparent; border-radius: 6px; color: var(--text-2); font-weight: 600; white-space: nowrap; }
 .nav-item:hover { background: var(--s3); color: var(--text); }
-.nav-item[aria-current='page'] { background: var(--s3); border-color: var(--line-strong); color: var(--text); }
+.nav-item[aria-current='page'] { background: var(--s3); border-color: var(--line-strong); color: var(--text); box-shadow: inset 3px 0 0 var(--thread); }
 .nav-item svg { flex: none; }
 .nav-item .count { margin-left: auto; min-width: 22px; padding: 0 6px; border: var(--hair) solid var(--attention); border-radius: 11px; color: var(--text); font-size: var(--fs-cap); font-weight: 700; text-align: center; line-height: 20px; }
 .app:not([data-rail='open']) .nav-item .nl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -311,6 +311,7 @@ dl.kv dd { overflow-wrap: anywhere; }
   .meter .bar i { forced-color-adjust: none; background: Highlight; }
   .illustration { background: Canvas; }
   .nav-item[aria-current='page'], .tab[aria-selected='true'] { border-color: Highlight; }
+  .spine-insp .ring { fill: Canvas; }
   .spine .disc { fill: CanvasText; } .spine .ring, .spine .seg { stroke: CanvasText; } .spine .cur { fill: Highlight; } .spine .cur.o { stroke: Highlight; fill: none; }
   .term-screen .l.sel { background: Highlight; color: HighlightText; }
   .core .core-mark circle.o { stroke: CanvasText; fill: Canvas; } .core .core-mark circle.i { fill: CanvasText; }

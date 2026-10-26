@@ -244,7 +244,6 @@ let last = performance.now();
 if (!embed) setInterval(() => { const n = performance.now(); if (!document.hidden) sim.tickReal(n - last); last = n; }, 250);
 if (store.get('device') === 'terminal' && !location.hash) location.hash = '#/terminal';
 window.v2live = { sim, ui, store, setPrefs, areas: areasOf(sim) };
-if (embed) render(); else { fit(); if (store.get('device') === 'auto' || store.get('device') === 'terminal') render(); }
 
 // ---------- the All devices view: phone, tablet, desktop and terminal at once, one shared simulation ----------
 const ALL = [{ id: 'phone', label: 'Phone', w: 390, h: 844, hash: '#/now' }, { id: 'tablet', label: 'Tablet', w: 820, h: 1100, hash: '#/work' }, { id: 'desktop', label: 'Desktop', w: 1440, h: 900, hash: '#/now' }, { id: 'terminal', label: 'Terminal', w: 640, h: 800, hash: '#/terminal' }];
@@ -286,3 +285,6 @@ function broadcast() {
   document.querySelectorAll('iframe').forEach((f) => { try { f.contentWindow.v2live.setPrefs({ theme: store.get('theme'), lang: store.get('lang'), notes: store.get('notes'), motion: store.get('motion') }); } catch (e) { /* frame not ready */ } });
 }
 function setPrefs(o) { Object.keys(o).forEach((k) => { if (store.get(k) !== o[k]) store.set(k, o[k]); }); render(); }
+
+// first draw, last: fit() reads the All devices declarations above, which a stored 'all' device would hit too early
+if (embed) render(); else { fit(); if (store.get('device') === 'auto' || store.get('device') === 'terminal') render(); }
