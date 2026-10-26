@@ -74,7 +74,7 @@ const IT = {
   'List the commands by class': 'Elenca i comandi per classe', 'What is running, waiting and stopped': 'Cosa è in corso, in attesa e fermo', 'Usage of the accounts (unknown until the read exists)': 'Utilizzo degli account (sconosciuto finché la lettura non esiste)', 'The projects': 'I progetti',
   'The missions, optionally of one project': 'Le missioni, eventualmente di un progetto', 'What waits for you': 'Cosa aspetta te', 'The ideas': 'Le idee', 'Open the Replay of a mission': 'Apri il Replay di una missione', 'Open a mission': 'Apri una missione',
   'Create a mission (it waits for your approval here)': 'Crea una missione (qui aspetta la tua approvazione)', 'Capture an idea': 'Cattura un\'idea', 'Propose pausing a mission': 'Proponi di mettere in pausa una missione', 'Propose resuming a mission': 'Proponi di riprendere una missione',
-  'Propose cancelling a mission': 'Proponi di annullare una missione', 'Open the decision; it decides nothing': 'Apri la decisione; non decide nulla', 'Propose an emergency stop of every running mission': 'Proponi un arresto d'emergenza di ogni missione in corso'
+  'Propose cancelling a mission': 'Proponi di annullare una missione', 'Open the decision; it decides nothing': 'Apri la decisione; non decide nulla', 'Propose an emergency stop of every running mission': 'Proponi un arresto d’emergenza di ogni missione in corso'
 };
 
 const RULES = [
