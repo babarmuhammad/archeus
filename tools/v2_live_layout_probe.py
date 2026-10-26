@@ -207,6 +207,7 @@ def open_overlay(pg, name):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     ap = argparse.ArgumentParser()
     ap.add_argument('--viewports', default=','.join(VIEWPORTS))
     ap.add_argument('--routes', default=','.join(ROUTES))

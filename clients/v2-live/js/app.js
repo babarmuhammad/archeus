@@ -110,7 +110,7 @@ function headNow() {
 function syncCore() {
   const live = sim.liveWork().length;
   const breathe = live > 0 && !store.reducedMotion() && !document.hidden;
-  document.querySelectorAll('.core').forEach((c) => { c.dataset.core = breathe ? 'breath' : live ? 'still' : 'idle'; c.dataset.live = live ? 'true' : 'false'; const t = c.querySelector('.core-txt'); if (t) t.textContent = live + ' running'; });
+  document.querySelectorAll('.core').forEach((c) => { c.dataset.core = breathe ? 'breath' : live ? 'still' : 'idle'; c.dataset.live = live ? 'true' : 'false'; const t = c.querySelector('.core-txt'); if (t) { t.textContent = live + ' running'; translate(t); } });
 }
 function patchLive() {
   const t = clockLabel(sim.state.clock);

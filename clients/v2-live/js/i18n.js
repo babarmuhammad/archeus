@@ -2,6 +2,7 @@
 // slash aliases, menus). The DOM is translated after each render by exact string, so views stay plain English text.
 // Fixture content (mission titles, reasons, replies) stays English: it stands in for Core's own words.
 import { get } from './store.js';
+import { IT_AREAS, RULES_AREAS, setTr } from './i18n-areas.js';
 
 const IT = {
   // shell
@@ -118,3 +119,5 @@ export function translate(root) {
 
 // Italian command names are real aliases (T-153); the list is used by the chat menu and by sim.js
 export const ALIASES = { help: 'aiuto', status: 'stato', usage: 'usa', projects: 'progetti', missions: 'missioni', needs: 'attesa', ideas: 'idee', replay: 'rigioca', open: 'apri', mission: 'missione', idea: 'idea', pause: 'pausa', resume: 'riprendi', cancel: 'annulla', approve: 'approva', estop: 'arresto' };
+
+Object.assign(IT, IT_AREAS); RULES.push(...RULES_AREAS); setTr(tr);
