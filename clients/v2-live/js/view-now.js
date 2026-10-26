@@ -22,7 +22,7 @@ export function render(ctx) {
   const live = Object.values(st.missions).filter((m) => ['active', 'verifying', 'reviewing'].includes(present('mission', m.state).cls));
   const upcoming = Object.values(st.missions).filter((m) => ['planning', 'approved'].includes(present('mission', m.state).cls));
   const recent = st.events.filter((e) => /state_changed$/.test(e.type) && e.subject.kind === 'mission').slice(-6).reverse();
-  const calm = !att.some((a) => a.kind !== 'knowledge') && !sim.liveWork().length;
+  const calm = sim.sentence() === 'Nothing needs you.';
   const box = mapBox('now', true, nowInset);
   ctx.mounts.push(() => syncMap(ctx, 'now'));
   const open = ctx.ui.nowDrawer === true;
@@ -45,7 +45,7 @@ export function render(ctx) {
   return h('div', { class: 'now-wrap' }, h('div', { class: 'view now-view', 'data-calm': String(calm) },
     h('div', { class: 'now-scene' }, box),
     h('div', { class: 'now-hero' }, h('p', { class: 'eyebrow' }, tr('Overview')),
-      h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, calm ? tr('Nothing running. Tell Archeus what to do.') : sim.sentence()),
+      h('h1', { class: 'state-sentence' + (calm ? ' calm' : ''), 'data-key': 'sentence' }, calm ? tr('Nothing running. Tell Archeus what to do.') : sim.sentence()),
       h('p', { class: 'lede' }, calm ? tr('Archeus is quiet. Tell it what to do next, or open a project.') : tr('Live constellation of your work. Missions, projects and ideas in context, moving forward together.'))),
     drawer));
 }

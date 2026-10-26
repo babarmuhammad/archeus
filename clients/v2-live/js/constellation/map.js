@@ -1,4 +1,4 @@
-import {clamp, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, hullVertices, hullPadding, wordmarkSize, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {clamp, coversNode, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, hullVertices, hullPadding, wordmarkSize, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {ICONS, polyhedron, triangle, coreStar} from './nodeart.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
@@ -69,7 +69,7 @@ export function createMap(container, options = {}) {
   const tagline = svgElement('text', {class: 'am-tagline', 'text-anchor': 'middle'}, T('Your projects. In context.'));
   const runningText = svgElement('text', {class: 'am-running', 'text-anchor': 'middle'});
   core.append(coreMark, wordmark, tagline, runningText);
-  svg.append(title, summary, world, leaders, labels, reviews, hits);
+  svg.append(title, summary, world, leaders, labels, hits, reviews);
   const controls = element('div', 'am-controls');
   controls.setAttribute('aria-label', T('Map view'));
   const status = element('p', 'am-sr');
@@ -84,7 +84,7 @@ export function createMap(container, options = {}) {
   table.append(caption, head, body); equivalent.append(table);
   host.append(svg, controls, status, equivalent); container.append(host);
   let graph = {nodes: [], edges: [], projects: []}, positions = [], selected = null;
-  let inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
+  let controlsBottom = 12, inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
   let reducedOverride = options.reducedMotion;
   let layoutKey = '';
   const media = matchMedia('(prefers-reduced-motion: reduce)');
@@ -123,12 +123,15 @@ export function createMap(container, options = {}) {
     const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * coreReach(width) + 6) * k, below = (coreRadius() * coreReach(width) + wordmarkSize(u) * (width < 480 ? 3 : 5)) * k;
     const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
     const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
-    const reviewBox = reviewFor && width >= 480 && options.review !== false ? {id: reviewFor.id, x: reviewFor.x - 56, y: reviewFor.y + reviewFor.radius + 12, width: 112, height: 44} : null;
+    // The button goes below, above, right or left of its node, whichever side clears every other node and the bands the headline and drawer own.
+    const reviewBox = reviewFor && width >= 480 && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22]]
+      .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
+      .find(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !nodes.some(o => coversNode(b, o, 2))) ?? null : null;
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
     const boxes = placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
       obstacles: [{x: cx - Math.max(reach, 62 * u * k), y: cy - reach, width: Math.max(reach, 62 * u * k) * 2, height: reach + below},
-        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: width - 200, y: height - 58, width: 200, height: 58}, ...(reviewBox ? [reviewBox] : [])]});
+        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, {x: width - 200, y: height - controlsBottom - 48, width: 200, height: controlsBottom + 48}, ...(reviewBox ? [reviewBox] : [])]});
     const byId = new Map(nodes.map(n => [n.id, n]));
     const items = boxes.map(box => ({box, n: byId.get(box.id), meta: box.rich ? metaOf(byId.get(box.id)) : ''}));
     const labelSig = ({box, n, meta}) => `${box.rich}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}|${subOf(n)}`;
@@ -157,7 +160,7 @@ export function createMap(container, options = {}) {
     const placeReview = (rec, b) => setAttr(rec.el, 'transform', `translate(${f(b.x + b.width / 2)} ${f(b.y + b.height / 2)})`);
     reconcile(reviews, reviewRecs, reviewBox ? [reviewBox] : [], b => b.id, b => {
       const el = svgElement('g', {class: 'am-review am-state-needs-you', tabindex: 0, role: 'button', 'data-node-id': b.id, 'aria-label': `${T('Review')}: ${byId.get(b.id).label}`});
-      el.append(svgElement('rect', {x: -54, y: -18, width: 108, height: 36, rx: 6}), svgElement('text', {x: -20, y: 5, class: 'am-review-label'}, T('Review')), svgElement('path', {d: 'M22 0h14m-5-5 5 5-5 5', class: 'am-review-arrow'}));
+      el.append(svgElement('rect', {x: -56, y: -22, width: 112, height: 44, rx: 6}), svgElement('text', {x: -20, y: 5, class: 'am-review-label'}, T('Review')), svgElement('path', {d: 'M22 0h14m-5-5 5 5-5 5', class: 'am-review-arrow'}));
       el.addEventListener('click', () => emit('review', el.dataset.nodeId));
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('review', el.dataset.nodeId); } });
       const rec = {el}; placeReview(rec, b); return rec;
@@ -331,6 +334,7 @@ export function createMap(container, options = {}) {
     const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
     if (w === width && h === height && positions.length) return;
     inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
+    controlsBottom = inset.bottom > INSET.bottom ? inset.bottom + 8 : 12; controls.style.bottom = `${controlsBottom}px`;
     width = w; height = h; u = unit(w, h); centre = coreCentre(w, h, inset); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     drawCore();

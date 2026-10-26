@@ -8,7 +8,6 @@
 .now-view .state-sentence { font-family: var(--serif); font-size: var(--fs-disp); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
 .now-view .map-title { font-family: var(--sans); font-size: var(--fs-section); font-weight: 500; margin: 0; }
 .now-view .lede { font-family: var(--serif); font-size: var(--fs-lede); line-height: 1.4; color: var(--text-2); max-width: 30rem; margin: 0; }
-.now-view .archeus-map .am-controls { bottom: 84px; right: 16px; }
 .now-drawer { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; max-height: 62%; background: var(--bg); border-top: var(--hair) solid var(--line); }
 .now-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 6px var(--gut); }
 .now-strip .counters { margin: 0; flex: 1; }
@@ -20,7 +19,7 @@
 .now-drawer[data-open='true'] .now-body { display: block; }
 .now-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: var(--gut); align-items: start; }
 .now-body .ctlbar { margin-bottom: var(--gut); }
-@media (max-width: 599px) {
+@container view (max-width: 599px) {
   .now-view .now-hero { top: 14px; left: 16px; right: 16px; }
   .now-strip { padding-inline: 12px; }
   .now-drawer { max-height: 70%; }
@@ -28,16 +27,19 @@
 .now-strip .counters { display: flex; gap: 4px; border: 0; background: transparent; border-radius: 0; }
 .now-strip .ctr { flex-direction: row; gap: 8px; min-height: 44px; padding: 0 14px; border: 0; }
 .now-strip .ctr b { font-size: 20px; }
-@media (max-width: 599px) {
+@container view (max-width: 599px) {
   .now-strip .counters { gap: 0; }
-  .now-strip .ctr { flex-direction: column; gap: 0; padding: 0 6px; min-width: 56px; font-size: 11px; }
+  .now-strip .ctr { flex-direction: column; gap: 3px; line-height: 1.3; padding: 0 6px; min-width: 56px; font-size: 11px; }
   .now-strip .ctr b { font-size: 16px; }
   .now-toggle { font-size: 0; padding: 0; width: 44px; }
   .now-toggle::after { font-size: 16px; }
 }
-@media (max-width: 599px) {
+@container view (max-width: 599px) {
   .now-view .state-sentence { font-size: 30px; }
   .now-view .lede { display: none; }
 }
 .now-wrap { height: 100%; }
 .now-wrap > .ax-digest { margin: var(--gut); }
+.now-view .state-sentence.calm { font-size: var(--fs-title); }
+.now-wrap { position: relative; }
+.now-wrap > .page-head { display: none; }
