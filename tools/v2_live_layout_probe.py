@@ -38,7 +38,9 @@ ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings'
           'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'attention/a-1~policy', 'attention/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
           'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~toast', 'attention~help', 'chat~toast',
-          'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop']
+          'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
+          # S1: the safety popover, its two-step Stop, the Tell overlay
+          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'chat~tell', 'now~estopsafety']
 # terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
 TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
        'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
@@ -57,6 +59,10 @@ STATES = {
     'offline': "window.v2live.areas.goOffline()",
     'pinned': "window.v2live.areas.togglePin('m-date'); window.v2live.areas.togglePin('i-1')",
     'adv': "window.v2live.sim.advance(700000)",
+    'safety': "document.querySelector('[data-key=safety]').click()",
+    'stopask': "document.querySelector('[data-key=stop]').click()",
+    'tell': "document.querySelector('[data-key=tell]').click()",
+    'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
     'help': "window.v2live.help()",
     'toast': "window.v2live.toast('Not done: Nothing is paused', { action: { label: 'Open Settings', href: '#/settings' } })",
@@ -233,7 +239,7 @@ def s4_send(pg, where, text):
 
 
 def s4_reset(pg):
-    pg.evaluate("window.v2live.sim.reset(); window.v2live.ui.draft = ''; window.v2live.ui.s4 = undefined; window.v2live.ui.rp = undefined; window.v2live.ui.replaySel = null")
+    pg.evaluate("window.v2live.sim.reset(); window.v2live.ui.draft = ''; window.v2live.ui.tellOpen = false; window.v2live.ui.s4 = undefined; window.v2live.ui.rp = undefined; window.v2live.ui.replaySel = null")
     pg.wait_for_timeout(250)
 
 
@@ -260,9 +266,11 @@ def s4_state(pg, route, w):
         return None
     if route.startswith('dock') or route.startswith('sheet'):
         if route.startswith('sheet') and w >= 600:
-            pg.click('[data-tb="device"]')
+            (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
             pg.click('[data-device="phone"]')
             pg.wait_for_timeout(400)
+            pg.click('[data-tb="tools"]')
+            pg.wait_for_timeout(300)
         pg.evaluate("location.hash = '#/now'")
         pg.wait_for_timeout(250)
         phone = pg.evaluate("document.getElementById('app').clientWidth < 600")
@@ -277,12 +285,14 @@ def s4_state(pg, route, w):
                 pg.wait_for_timeout(600)
             pg.wait_for_timeout(300)
             return '.chatsheet'
+        pg.click('[data-key="tell"]')
+        pg.wait_for_timeout(200)
         if route == 'dock-slash':
             pg.fill('input[data-key="chat-in-dock"]', '/')
         elif route == 'dock-reply':
             s4_send(pg, 'dock', '/mission Probe mission')
         pg.wait_for_timeout(250)
-        return None
+        return '.chatdock.tell'
     pg.evaluate("window.v2live.sim.advance(520000)")
     pg.evaluate("location.hash = '#/replay/m-date'")
     pg.wait_for_timeout(400)
@@ -297,14 +307,14 @@ def s4_state(pg, route, w):
 
 def s4_after(pg, route, w):
     if route.startswith('sheet') and w >= 600:
-        pg.click('[data-tb="device"]')
+        (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
         pg.click('[data-device="auto"]')
         pg.wait_for_timeout(250)
 
 
 def open_overlay(pg, name):
     kind, which = name.split(':')
-    pg.click('[data-tb="%s"]' % which)
+    (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="%s"]' % which) else None, pg.click('[data-tb="%s"]' % which))
     pg.wait_for_selector('.menu', state='visible')
     return '.menu'
 
@@ -357,7 +367,7 @@ def main():
                         if route == 'device:all':
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(100)
-                            pg.click('[data-tb="device"]')
+                            (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
                             pg.click('[data-device="all"]')
                             pg.wait_for_timeout(2500)
                             frames = [f for f in pg.frames if f != pg.main_frame]
@@ -382,7 +392,7 @@ def main():
                                 pg.evaluate(STATES[st])
                                 pg.evaluate("window.dispatchEvent(new Event('hashchange'))")
                                 pg.wait_for_timeout(250)
-                                layer = {'help': '.helpbox', 'toast': '.toast'}.get(st)
+                                layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.chatdock.tell'}.get(st)
                             if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'map', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
                                 pos = pg.evaluate("getComputedStyle(document.querySelector('#inspector')).position")
                                 if pos == 'absolute':
@@ -394,7 +404,7 @@ def main():
                             fw = f.evaluate('innerWidth')
                             res += [r for r in f.evaluate(MEASURE, {'layer': None, 'desktop': fw >= 1024}) if r['kind'] != 'stat']
                         if route == 'device:all':
-                            pg.click('[data-tb="device"]')
+                            (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
                             pg.click('[data-device="auto"]')
                             pg.wait_for_timeout(200)
                         if route in S4_ROUTES:

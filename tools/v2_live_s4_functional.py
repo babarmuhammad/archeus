@@ -221,7 +221,8 @@ def main():
 
             # ---- the dock on Now (desktop), then the phone sheet ----
             ctx, pg, errs = new_page(br, base, hash_='#/now')
-            check(pg.is_visible('input[data-key="chat-in-dock"]'), 'the chat bar is docked on Now')
+            pg.click('[data-key="tell"]'); pg.wait_for_timeout(200)
+            check(pg.is_visible('input[data-key="chat-in-dock"]'), 'Tell opens the chat bar over Now')
             check(pg.get_attribute('input[data-key="chat-in-dock"]', 'placeholder').startswith('Tell Archeus what you need'), 'placeholder: Tell Archeus what you need')
             check('Ask a question, capture an idea, or describe work.' in pg.inner_text('#chatdock'), 'the intro line shows before the first message')
             send(pg, '/status', where='dock')

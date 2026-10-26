@@ -47,7 +47,7 @@ try:
         check('Esc closes the help', pg.locator('.helpbox').count() == 0)
         pg.evaluate("location.hash = '#/chat'"); pg.wait_for_timeout(300); pg.click('input.cinput'); pg.keyboard.type('what?'); pg.wait_for_timeout(100)
         check('? typed in the chat box is text, not a shortcut', pg.locator('.helpbox').count() == 0 and pg.input_value('input.cinput') == 'what?')
-        pg.evaluate("location.hash = '#/now'"); pg.wait_for_timeout(300); pg.click('[data-tb="theme"]'); pg.wait_for_selector('.menu'); pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+        pg.evaluate("location.hash = '#/now'"); pg.wait_for_timeout(300); (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="theme"]') else None, pg.click('[data-tb="theme"]')); pg.wait_for_selector('.menu'); pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
         check('Esc closes a toolbar menu', pg.locator('.menu').count() == 0)
         check('no page errors (keyboard)', not errs)
         ctx.close()

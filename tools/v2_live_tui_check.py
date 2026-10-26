@@ -223,7 +223,7 @@ def main():
 
             # All devices: the terminal pane
             ctx, pg, errs = open_term(br, base, 1600, 1000, hash_='#/now', wait=False)
-            pg.click('[data-tb="device"]'); pg.click('[data-device="all"]')
+            (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]')); pg.click('[data-device="all"]')
             pg.wait_for_timeout(2500)
             fr = [f for f in pg.frames if f != pg.main_frame and f.evaluate("!!document.querySelector('.tui-grid')")]
             check('the All devices view has a terminal pane that draws the grid', len(fr) == 1 and fr[0].evaluate("document.querySelectorAll('.tui-grid .r').length") > 10)

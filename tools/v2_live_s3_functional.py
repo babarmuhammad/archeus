@@ -64,7 +64,7 @@ try:
         check('new decision follows', pg.evaluate("window.v2live.sim.state.missions['m-search'].state") == 'APPROVAL_REQUIRED')
         # 6 offline
         pg.evaluate("location.hash='#/now'"); pg.wait_for_timeout(200)
-        pg.click('[data-tb="sim"]'); pg.click('.menu .btn:has-text("Go offline")'); pg.wait_for_timeout(300)
+        (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="sim"]') else None, pg.click('[data-tb="sim"]')); pg.click('.menu .btn:has-text("Go offline")'); pg.wait_for_timeout(300)
         check('offline banner and stale sentence', pg.locator('.ax-offline').count() >= 1 and pg.locator('.ax-stale-sentence').count() == 1)
         pg.evaluate("window.v2live.sim.advance(300000)"); pg.wait_for_timeout(300)
         check('offline read stays stale', 'Offline: last seen' in T(pg, 0))
@@ -105,7 +105,7 @@ try:
         check('Italian emergency stop panel', 'riarmi' in T(pg2, 0) and 'Riarma' in T(pg2, 0))
         check('no page errors (estop it)', not errs2); ctx2.close()
         # 10 italian
-        pg.evaluate("location.hash='#/security'"); pg.click('[data-tb="lang"]'); pg.wait_for_timeout(400)
+        pg.evaluate("location.hash='#/security'"); (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="lang"]') else None, pg.click('[data-tb="lang"]')); pg.wait_for_timeout(400)
         t = T(pg, 0)
         check('italian security', 'Due confini' in t and 'Interruttori di avvio' in t)
         pg.evaluate("location.hash='#/health'"); pg.wait_for_timeout(300)
