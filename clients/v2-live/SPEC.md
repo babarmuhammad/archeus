@@ -13,7 +13,7 @@ Written 2026-10-25, slice 1. Everything the owner has decided, designed, built i
 
 A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and simulated here. Rows marked `S1` are shown by slice 1; `S2` to `S6` are what later slices must add.
 
-**Screens and devices** (the "Where" column): Screens `NOW`, `WORK`, `ATT` (Attention), `MAP`, `REP` (Replay), `CHAT`, `SEC` (Security, `#/security`), `HLT` (Health, `#/health`), `ACC` (Accounts, `#/accounts`), `SET` (Settings), `MORE` (phone menu of the other screens), `TERM` (terminal view), `ALL` (every screen), `SHELL` (toolbar, frames, All devices view). Devices `P` phone 320 to 480, `T` tablet 600 to 1024, `D` desktop 1280 to 2560, `X` terminal.
+**Screens and devices** (the "Where" column): Screens `NOW`, `WORK`, `ATT` (Attention), `MAP`, `REP` (Replay), `CHAT`, `SEC` (Security, `#/security`), `HLT` (Health, `#/health`), `ACC` (Accounts, `#/accounts`), `USE` (Usage, `#/usage`), `EXT` (Extensions, `#/extensions`), `SET` (Settings), `MORE` (phone menu of the other screens), `TERM` (terminal view), `ALL` (every screen), `SHELL` (toolbar, frames, All devices view). Devices `P` phone 320 to 480, `T` tablet 600 to 1024, `D` desktop 1280 to 2560, `X` terminal.
 
 **Slices.** S1 shell, simulation, tokens, probe (this one). S2 constellation and Now. S3 mission, spine, decisions. S4 chat, slash commands, Replay. S5 terminal view. S6 themes and motion polish, probes, zip.
 
@@ -39,7 +39,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | A10 | Serif display font (Libre Caslon Text) for the state-sentence line only | VL §6 (Q4) | SIMULATED | NOW | S1 |
 | A11 | Targets 44 px, 48 px for desktop primary controls | VL §7 (Q6), owner brief | SIMULATED | ALL | S1 (probe checks both) |
 | A12 | The core mark sits on the live map centre on Now | VL §1 (Q5), A55 §3 | SIMULATED | NOW | S1 (centre of the placeholder map), S2 |
-| A13 | Six-station spine, labels from Core's own state words | A54 §1 (Q11) | SIMULATED | NOW, WORK, ATT, MAP, TERM | S1 (components), S3 (full use) |
+| A13 | Six-station spine, labels from Core's own state words | A54 §1 (Q11) | SIMULATED | NOW, WORK, ATT, MAP, TERM | S1 (components), S3 (done: full use) |
 | A14 | Prototype palette taken as the V2 base (ground `#0C0811`, ivory, amber, blue, green) | VL §1 (Q2) | SIMULATED | ALL | S1 |
 | A15 | Every simulated element labelled SIMULATED and the app says nothing is connected to a Core | owner brief | SIMULATED | ALL | S1 (badge, page header, terminal line) |
 | A16 | Chat: "reads and creates, not effects" (run, spend, settings, delete are cards the owner approves) | owner 2026-10-21, CAT | DESIGNED | CHAT | S4 |
@@ -109,10 +109,10 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | D05 | Row size: six 8 px marks, 64 by 12 px, no labels | A54 §5 | SIMULATED | WORK, NOW, MAP | S1 |
 | D06 | Card size: six 10 px marks, about 120 px, current station label | A54 §5 | SIMULATED | NOW, ATT | S1 |
 | D07 | Inspector size: 16 px marks, all six labels, `ol` with `aria-current='step'`, vertical below 480 px container width | A54 §5 | SIMULATED | inspector, sheet | S1 |
-| D08 | Time at each station on the inspector spine (omitted when events are pruned) | A54 §5 | DESIGNED | inspector | S3 |
+| D08 | Time at each station on the inspector spine (omitted when events are pruned) | A54 §5 | DESIGNED | inspector | S3 (done: built) |
 | D09 | Text equivalent sentence generated from Core's word and the table | A54 §6 | SIMULATED | all spines (visually hidden text) | S1 |
 | D10 | Terminal form `✓✓✓●○○ Executing` and ASCII `+++*oo Executing` | A54 §7 | SIMULATED | TERM | S1 |
-| D11 | Offline view draws the row spine from kept missions, outlined, with "as of" | A54 §8, UIA §O | DESIGNED | NOW (offline) | S3 |
+| D11 | Offline view draws the row spine from kept missions, outlined, with "as of" | A54 §8, UIA §O | DESIGNED | NOW (offline) | S3 (done: built) |
 | D12 | Spine on Attention rows by joining the missions read, not a request per row | A54 §9 | SIMULATED | ATT | S1 |
 | D13 | Prototype six-station stepper at fixed x positions on one frame | PROTO `phases(m)` | PROTOTYPED | none | replaced by D05 to D07 |
 
@@ -122,24 +122,24 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 |---|---|---|---|---|---|
 | E01 | Navigation table: Now, Work, World, Attention, Control; shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K | V1 `tokens/navigation.json` | BUILT | SHELL | S1 (routes; shortcuts S6) |
 | E02 | Now: state sentence, Needs you (at most 3 Decide rows), Happening now, Upcoming, Live map, Recent decisions, Since you last looked digest | V1 `Now.tsx` | BUILT + SIMULATED | NOW | S1 (all but the digest), S2 |
-| E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 |
+| E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 (done: built) |
 | E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 |
 | E05 | World: Projects and Knowledge tabs, repositories, inspections, supersession chain | V1 `World.tsx` | BUILT | MAP, SET | S1 (knowledge in the simulation only), S2 |
-| E06 | Control sections: Autonomy, Automations, Resources, Sessions, Clients, Appearance, About, Emergency stop | V1 `Control.tsx`, navigation.json | BUILT + SIMULATED | SET | S1 (accounts, harnesses, automations, clients, hooks, MCP, agents), S5 |
-| E07 | Mission inspector tabs: Outcome, Plan, Now, Evidence, Why, Timeline, Relations | V1 `Mission.tsx`, navigation.json | BUILT + SIMULATED | WORK, MAP, ATT inspector | S1 (five tabs), S3 (Why, Relations) |
-| E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 |
-| E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | ATT, NOW, inspector | S1 (decision sheet), S3 |
+| E06 | Control sections: Autonomy, Automations, Resources, Sessions, Clients, Appearance, About, Emergency stop | V1 `Control.tsx`, navigation.json | BUILT + SIMULATED | SET | S3 (Automations, Resources, Clients, hooks, MCP and agents as the Extensions and Accounts pages); Autonomy and Emergency stop left |
+| E07 | Mission inspector tabs: Outcome, Plan, Now, Evidence, Why, Timeline, Relations | V1 `Mission.tsx`, navigation.json | BUILT + SIMULATED | WORK, MAP, ATT inspector | S1 (five tabs), S3 (done: Why, Relations) |
+| E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 (done: built) |
+| E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | ATT, NOW, inspector | S1 (decision sheet), S3 (done: built) |
 | E10 | Command bar and palette (Ctrl+K), grammar of ADR-0042 | V1 `CommandBar.tsx`, `state/palette.ts` | BUILT | CHAT | S4 |
 | E11 | Conversation thread with cards: approval, e-stop, stop mission, route explanation, change card | V1 `Now.tsx` Conversation | BUILT | CHAT | S4 |
-| E12 | Offline Now: kept missions, "as of hh:mm", Decide rows read-only | V1 `OfflineNow`, UIA §O | BUILT | NOW | S3 |
+| E12 | Offline Now: kept missions, "as of hh:mm", Decide rows read-only | V1 `OfflineNow`, UIA §O | BUILT | NOW | S3 (done: built) |
 | E13 | Live map with halo, travelling marker, hulls, depth alpha, search, legend and text mirror (Canvas 2D) | V1 `graph/` | BUILT | NOW, MAP | S2 (V2 Live draws SVG, same facts, text mirror kept) |
 | E14 | Phone: graph hidden below 600 px, the list stands in | UIA §M, V1 P18 A12 | BUILT | NOW, MAP · P | S1 (map shown small, list under it), S2 |
 | E15 | Toasts and the polite announcer (at most one per 5 s) | V1 `toast.ts`, `a11y/announce.ts` | BUILT | ALL | S1 (one status toast), S6 |
-| E16 | Pins and saved views | V1 `pins.ts` | BUILT | WORK, MAP | S3 |
-| E17 | Idea path stepper (Captured to Learned) | V1 `Work.tsx` IdeaPath | BUILT | WORK | S3 |
-| E18 | Digest "since you last looked", acknowledge cursor | V1 `Now.tsx` DigestSection | BUILT | NOW | S3 |
+| E16 | Pins and saved views | V1 `pins.ts` | BUILT | WORK, MAP | S3 (done: built) |
+| E17 | Idea path stepper (Captured to Learned) | V1 `Work.tsx` IdeaPath | BUILT | WORK | S3 (done: built) |
+| E18 | Digest "since you last looked", acknowledge cursor | V1 `Now.tsx` DigestSection | BUILT | NOW | S3 (done: built) |
 | E19 | Fresh/stale readings with age ("no output for 12 min"), never a client timer | UIA §D, A55 §3 | BUILT + SIMULATED | WORK, NOW, TERM | S1 |
-| E20 | Obligation groups Decide, Review, Unblock; at most 3 Decide rows on Now; acknowledge and snooze need a Core ADR | UIA §H, PLAN §5 | DESIGNED | ATT, NOW | S1 (groups), S3 (keys, snooze not built) |
+| E20 | Obligation groups Decide, Review, Unblock; at most 3 Decide rows on Now; acknowledge and snooze need a Core ADR | UIA §H, PLAN §5 | DESIGNED | ATT, NOW | S3 (groups kept; the j/k keys go to S6, snooze stays unbuilt) |
 | E21 | Keyboard model: Enter primary, Ctrl+Enter secondary, j/k, `?` lists keys | PLAN U2-c | DESIGNED | ALL · D | S6 |
 
 ## F. Chat and slash commands
@@ -183,7 +183,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | G10 | Recovery choices create explicit approval cards only; approval changes a receipt, never the evidence; retry and owner-question drafts editable | PROTO README | PROTOTYPED | REP | S4 |
 | G11 | Never claim an external effect can be reversed; no operator spawn, adopt or retry; no second spawn (retry is a new execution id) | T148 N7, `harnesses/base.py` | DESIGNED | REP | S4 |
 | G12 | Four other meanings of "replay" stay separate: router replay, stream replay from Last-Event-ID, queued command resend, Trace tab two-clock playback | T148 N4 | BUILT | none | naming only |
-| G13 | Mission Trace tab (P21 slice C-read) | BOARD T-119 | BUILT | WORK inspector | S3 (Timeline tab today) |
+| G13 | Mission Trace tab (P21 slice C-read) | BOARD T-119 | BUILT | WORK inspector | S3 (done: Timeline tab today) |
 
 ## H. Platform facts shown as simulated state
 
@@ -191,20 +191,20 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 |---|---|---|---|---|---|
 | H01 | Mission machine, 17 states, with edges from `states.py`; `held_from` on BLOCKED and PAUSED | ST, A54 | BUILT + SIMULATED | WORK, ATT, spine | S1 (`sim.js` edge table, tested) |
 | H02 | Execution machine (INTENT to ENDED_*, LOST, adopted, reconciled_kill), task, plan, approval, verification, review machines | ST | BUILT + SIMULATED | WORK inspector, REP | S1 |
-| H03 | Account health states (UNVERIFIED, AVAILABLE, CONSTRAINED, LIMITED, DEGRADED, OPEN, UNAUTHENTICATED) and usage windows; unknown shown as "unknown", never 0 | ST, UIA, BOARD T-125 (review branch) | states BUILT; consumption read on a review branch + SIMULATED | ACC | S1 |
-| H04 | Spawn breaker O7: per harness, trips at 3 failures in 10 min, doubling wait 15 s to 5 min, half-open after 5 min, visible as "cannot start" | BOARD T-106 | BUILT on branch fix/t106 (in review, production dispatch switch off) + SIMULATED | SEC, HLT, WORK | S1 (inject a spawn failure, dispatch waits), S3 |
+| H03 | Account health states (UNVERIFIED, AVAILABLE, CONSTRAINED, LIMITED, DEGRADED, OPEN, UNAUTHENTICATED) and usage windows; unknown shown as "unknown", never 0 | ST, UIA, BOARD T-125 (review branch) | states BUILT; consumption read on a review branch + SIMULATED | ACC | S1, S3 (done: rings that empty, the 20% line, per-account, climbing with the simulation) |
+| H04 | Spawn breaker O7: per harness, trips at 3 failures in 10 min, doubling wait 15 s to 5 min, half-open after 5 min, visible as "cannot start" | BOARD T-106 | BUILT on branch fix/t106 (in review, production dispatch switch off) + SIMULATED | SEC, HLT, WORK | S1 (inject a spawn failure, dispatch waits), S3 (done: built) |
 | H05 | Execution quiet reading ("no output for N min") and LOST then adopted recovery | A55, ST, BOARD T-125/T-128 | LOST and adopted BUILT in ST; the quiet reading and activity chip BUILT on review branches + SIMULATED | WORK, NOW | S1 |
 | H06 | Verification pass and fail; failed verification replans; replan budget then BLOCKED | ST, BOARD | BUILT + SIMULATED | WORK, REP | S1 |
 | H07 | Hook asks before an action: execution AWAITING_APPROVAL, approval card, reject blocks the mission | ST, T149 | BUILT + SIMULATED | ATT (trigger an approval) | S1 |
 | H08 | Automations (ENABLED, PENDING_APPROVAL, SUSPENDED by the loop guard), schedule triggers and next_run | ST, BOARD T-129 | BUILT + SIMULATED | ACC, ATT | S1 |
-| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (read-only lists), S5 |
-| H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | ACC | S1 |
-| H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | ACC | S1 |
+| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (lists), S3 (done: Extensions page, switches with confirm, details sheet, last run and calls from the simulation) |
+| H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | ACC | S1, S3 (done: Accounts page with failover order, default model, per-project launch settings with a live preview; Usage page) |
+| H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | ACC | S1, S3 (done: Clients rows and a details sheet; revoke stays a step-up note) |
 | H12 | Knowledge items (CANDIDATE, CONFIRMED, RETRACTED, SUPERSEDED), confirm or reject | ST, V1 World | BUILT + SIMULATED | ATT, SET | S1 (candidates in Attention) |
 | H13 | Ideas with their own states | ST, V1 Work | BUILT + SIMULATED | WORK | S1 |
-| H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1 (status list as the board records it; never simulated as working), S5 |
-| H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 |
-| H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 |
+| H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1, S3 (done: two boundaries, isolated and not isolated, eight boundaries, privileges, switches, log), S5 |
+| H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 (done: built) |
+| H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 (the usage line and failover rules; Pause all, Resume all and Emergency stop are not built here) |
 | H17 | Themes in V1: dark and light with contrast aliases; the "6 themes" were confirmed in VL §1 | V1 tokens.json, VL | BUILT + SIMULATED | SET | S1 |
 
 ## I. Prototype features (clients/v2-prototype)
@@ -212,10 +212,10 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
 | I01 | Overview hub with chat bar, zoomable projects (`#/now/harbor`) | PROTO README | PROTOTYPED | NOW, MAP | S2 |
-| I02 | Mission screen: chain, phase stepper, tabbed inspector, Tell and Stop | PROTO README | PROTOTYPED | WORK | S3 |
-| I03 | Shared: agents and devices as endpoints, tabbed inspector | PROTO README | PROTOTYPED | SET, MAP | S3 |
-| I04 | Plan approval screen: What, Why, Core consequence, Approve, Request changes, Reject; local receipt only | PROTO README | PROTOTYPED | ATT | S1 (Approve, Reject), S3 |
-| I05 | Decision sheet with two-step confirm on the phone | PROTO README | PROTOTYPED | ATT · P | S1 (one step), S3 |
+| I02 | Mission screen: chain, phase stepper, tabbed inspector, Tell and Stop | PROTO README | PROTOTYPED | WORK | S3 (done: built) |
+| I03 | Shared: agents and devices as endpoints, tabbed inspector | PROTO README | PROTOTYPED | SET, MAP | S3 (done: built) |
+| I04 | Plan approval screen: What, Why, Core consequence, Approve, Request changes, Reject; local receipt only | PROTO README | PROTOTYPED | ATT | S1 (Approve, Reject), S3 (done: built) |
+| I05 | Decision sheet with two-step confirm on the phone | PROTO README | PROTOTYPED | ATT · P | S1 (one step), S3 (done: built) |
 | I06 | Fixtures: 3 projects (Archeus, Notes, Ideas) and 5 missions (Search provenance, Fix date test, Docs refresh, Offline capture, Export backup) | PROTO app.js | PROTOTYPED | ALL | S1 (extended to 8 missions) |
 | I07 | Terminal screens (overview, mission, replay) as a text grid; keys 1 2 3, p, y, Left and Right | PROTO README | PROTOTYPED | TERM | S1 (Now, Work, Attention, Replay), S5 |
 | I08 | Phone frames: hub, Review, slim sheet, chat sheet | PROTO README | PROTOTYPED | P | S1 (real layout instead of art) |
@@ -259,12 +259,31 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | M01 | Now, Work, Attention, spine, decisions | NOW, WORK, ATT, inspector and decision sheet, MAP | `#/now`, `#/work/<id>`, `#/attention/<id>` | S1 shell and lists, S2 Now, S3 mission and decisions |
 | M02 | Chat and slash commands | CHAT | `#/chat` | S1 (working commands), S4 |
 | M03 | Replay | REP | `#/replay/<id>` | S1, S4 |
-| M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1 (status), S5 |
-| M05 | Health: checks and readings | HLT | `#/health` | S1, S3 |
-| M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S5 |
-| M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1 (read-only lists), S5 |
+| M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1, S3 (done: #/security with trip and reset) |
+| M05 | Health: checks and readings | HLT | `#/health` | S1, S3 (done: built) |
+| M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S3 (done: #/usage and #/accounts) |
+| M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1, S3 (done: #/extensions) |
 | M08 | Terminal view | TERM | `#/terminal`, device switch | S1, S5 |
 | M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 |
+
+## N. S3 additions (2026-10-26)
+
+Routes added: `#/usage`, `#/extensions`; any inspector opens on `#/<area>/<id>` (ids: m- mission, t- task, x- execution, p- plan, a- approval, v- verification, r- review, k- knowledge, i- idea, prj- project, au- automation, acc- account, mdl- model, h- hook, mcp- MCP server, ag- agent, d- client, bk- breaker, sec- boundary, chk- health check, rd- route decision).
+
+| ID | Item | Status | Where | Devices |
+|---|---|---|---|---|
+| N01 | Mission inspector: Outcome, Plan, Now, Evidence, Why, Timeline (bounded attempts), Relations; pin | SIMULATED | inspector | P T D |
+| N02 | Task, route decision, execution (Output, Checkpoints), plan, verification, review, idea path, knowledge, project inspectors | SIMULATED | inspector | P T D |
+| N03 | Decision sheet: What, Why, Core next, Policy, Relations; Approve, Request changes, Reject; two-step confirm on a phone, Reject always twice | SIMULATED | ATT, inspector | P T D |
+| N04 | Offline: stale read with the last-seen time, outlined spines, Decide rows read only, Reconnect (Sim menu, "Go offline") | SIMULATED | NOW, WORK, ATT | P T D |
+| N05 | Digest: since you last looked and today, mark as seen | SIMULATED | NOW | P T D |
+| N06 | Security page: two boundaries, isolated and not isolated, eight boundaries, switches, breaker trip and reset per CLI, privileges, log | SIMULATED | SEC | P T D |
+| N07 | Health: six checks with cause and fix, driven by the simulation | SIMULATED | HLT | P T D |
+| N08 | Usage: session and week rings per account, the 20% line, climbing story, sparkline | SIMULATED | USE | P T D |
+| N09 | Accounts and models, failover rules, launch settings with a live preview | SIMULATED | ACC | P T D |
+| N10 | Extensions: hooks, MCP servers, agents, automations, clients, each with a switch and a details sheet | SIMULATED | EXT | P T D |
+
+S3 story additions (sim.js, additive): the Codex spawn breaker trips at +8 min and recovers; the personal 5 hour window reaches 94% at +12 min; the work week reaches the 20% line at +24 min; a plan decision can be sent back (Request changes).
 
 ## L. Not decided or not planned (do not simulate as decided)
 
