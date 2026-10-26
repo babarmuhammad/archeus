@@ -5,7 +5,7 @@ import { present } from '../core-words.js';
 import { clockLabel, REPLAY_CATEGORIES, SPEEDS } from '../sim.js';
 import { missionGroups } from '../term.js';
 import { spineRow, spineCard, spineInspector } from './spine.js';
-import { drawMap } from './map.js';
+import { mapBox, syncMap } from './map.js';
 import { THEMES, DEVICES } from './store.js';
 import * as store from './store.js';
 
@@ -65,20 +65,12 @@ function attentionItem(ctx, a) {
 }
 
 // ---------- Now ----------
-export function coreMark(live, n) {
-  return h('div', { class: 'core', 'data-core': 'idle', 'data-live': live ? 'true' : 'false', 'data-n': String(n) },
-    s('svg', { class: 'core-mark', viewBox: '0 0 44 44', 'aria-hidden': 'true', focusable: 'false' }, s('circle', { class: 'o', cx: 22, cy: 22, r: 20 }), s('circle', { class: 'i', cx: 22, cy: 22, r: 8 })),
-    h('span', { class: 'core-txt' }, n + ' running'));
-}
-
 function mapPanel(ctx, wide, title) {
-  const sim = ctx.sim, st = sim.state;
-  const live = sim.liveWork();
-  const svg = s('svg', { class: 'map', role: 'img', 'aria-label': 'Live map of ' + st.projects.length + ' projects and ' + Object.keys(st.missions).length + ' missions. The list beside it has the same content.' });
-  const box = h('div', { class: 'map-box' + (wide ? ' wide' : '') }, svg, coreMark(live.length > 0, live.length));
-  ctx.mounts.push(() => drawMap(svg, box, sim, ctx.route.id));
-  const legend = h('div', { class: 'legend' },
-    h('span', { class: 'k' }, '○ Project'), h('span', { class: 'k' }, '● Mission'), h('span', { class: 'k' }, '▲ Execution'), h('span', { class: 'k' }, '◆ Decision'),
+  const sim = ctx.sim, live = sim.liveWork();
+  const key = ctx.route.name, box = mapBox(key, wide);
+  ctx.mounts.push(() => syncMap(ctx, key));
+  const k = (g, w) => h('span', { class: 'k' }, h('span', { 'aria-hidden': 'true' }, g), ' ' + w);
+  const legend = h('div', { class: 'legend' }, k('⬡', 'Project'), k('●', 'Mission'), k('▲', 'Execution'), k('◆', 'Decision'),
     h('span', { class: 'k' }, 'Centre: Core, ', live.length ? live.length + ' running' : 'nothing running'));
   return h('section', { class: 'panel' }, h('h2', null, title || 'Live map', h('span', { class: 'n' }, 'vector, redrawn at every size')), box, legend);
 }

@@ -29,16 +29,16 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 |---|---|---|---|---|---|
 | A01 | Build a prototype that simulates the real app experience on all devices and shows everything decided and built | owner request 2026-10-25 | SIMULATED | ALL, SHELL | S1 |
 | A02 | Fully responsive 1280 to 2560 wide, plus tablet and phone; no fixed-size concept images, no absolutely positioned controls | owner 2026-10-25, PLAN | SIMULATED | ALL · P/T/D | S1 (probe 0 defects), S6 |
-| A03 | Vector constellation map (crisp at any size and DPR), no overlap at any size, working interactions | owner 2026-10-25 | SIMULATED | NOW, MAP | S1 (placeholder map), S2 |
+| A03 | Vector constellation map (crisp at any size and DPR), no overlap at any size, working interactions | owner 2026-10-25 | SIMULATED | NOW, MAP | S1 (placeholder map), S2 BUILT (js/constellation module on #/map and #/now; probes: 732 map checks and the layout probe, 0 defects) |
 | A04 | Six modes: Dark and Light, each standard and high contrast, plus System, plus forced colours | VL §1 (Q3) | SIMULATED | SHELL, SET | S1 (menu, tokens), S6 (polish) |
 | A05 | Reduced motion is Quiet (no third setting) | A55 §3, VL §1 (Q5) | SIMULATED | SHELL, SET | S1 |
-| A06 | The core breath is the one allowed loop: scale 1 to 1.018 to 1 over 6000 ms, core mark only, static twin under Reduced | A55 §3 | SIMULATED | NOW, MAP | S1 (mark and rules), S2 (on the live map) |
+| A06 | The core breath is the one allowed loop: scale 1 to 1.018 to 1 over 6000 ms, core mark only, static twin under Reduced | A55 §3 | SIMULATED | NOW, MAP | S1 (mark and rules), S2 BUILT (the map's own core mark; breath only for a playing simulation with fresh output) |
 | A07 | Done is green; V1 blocked red `#F07178` in dark | VL §3.3, A54 §3 | SIMULATED | ALL | S1 |
 | A08 | Dark focus colour `#FFF3CF` | VL §1 | SIMULATED | ALL | S1 |
 | A09 | No `backdrop-filter`: solid materials only | VL §8 (Q10) | SIMULATED | ALL | S1 |
 | A10 | Serif display font (Libre Caslon Text) for the state-sentence line only | VL §6 (Q4) | SIMULATED | NOW | S1 |
 | A11 | Targets 44 px, 48 px for desktop primary controls | VL §7 (Q6), owner brief | SIMULATED | ALL | S1 (probe checks both) |
-| A12 | The core mark sits on the live map centre on Now | VL §1 (Q5), A55 §3 | SIMULATED | NOW | S1 (centre of the placeholder map), S2 |
+| A12 | The core mark sits on the live map centre on Now | VL §1 (Q5), A55 §3 | SIMULATED | NOW | S1 (centre of the placeholder map), S2 BUILT (core at the centre of the module) |
 | A13 | Six-station spine, labels from Core's own state words | A54 §1 (Q11) | SIMULATED | NOW, WORK, ATT, MAP, TERM | S1 (components), S3 (full use) |
 | A14 | Prototype palette taken as the V2 base (ground `#0C0811`, ivory, amber, blue, green) | VL §1 (Q2) | SIMULATED | ALL | S1 |
 | A15 | Every simulated element labelled SIMULATED and the app says nothing is connected to a Core | owner brief | SIMULATED | ALL | S1 (badge, page header, terminal line) |
@@ -52,7 +52,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | A23 | Text weight 400 for body text; one material for chat and replies, with a solid fallback | PROTO README (owner 2026-10-23) | PROTOTYPED | CHAT | S4 (solid only, see A09) |
 | A24 | Language: English UI with an Italian switch for the main surfaces (Now, Work, Attention, spine words, slash aliases); toggle in the toolbar, persisted in try/catch localStorage | VLD (Language) | SIMULATED | ALL, SHELL | S1 (chrome, state words, spine, menus, slash aliases; fixture text and the terminal stay English) |
 | A25 | Areas that must be in V2 Live: Now/Work/Attention/spine/decisions; Chat/slash/Replay; Security, health, usage, accounts; Terminal view and themes | VLD (Areas) | SIMULATED | see section M | S1 (a route for each) |
-| A26 | Look: match the concepts' mood (dark, glowing constellation) but crisp vector; layout follows content | VLD (Look) | SIMULATED | ALL, MAP | S1 (dark palette, vector map), S2 (glow, richer map) |
+| A26 | Look: match the concepts' mood (dark, glowing constellation) but crisp vector; layout follows content | VLD (Look) | SIMULATED | ALL, MAP | S1 (dark palette, vector map), S2 BUILT (glow, hulls, crystals, serif labels, six themes) |
 | A27 | Simulation: scripted story plus the owner's actions; approve, reject, chat, slash commands and Replay change state accordingly | VLD (Simulation) | SIMULATED | ATT, CHAT, REP, WORK | S1 |
 | A28 | Devices: toolbar switch plus an All devices side-by-side view, all driven by one simulation instance | VLD (Devices) | SIMULATED | SHELL | S1 |
 | A29 | Audience: the owner only, internal review: short toggleable inline decision notes name the decision each choice implements | VLD (Audience) | SIMULATED | ALL | S1 (notes on every main screen, toggle in the Theme menu and Settings), S2 to S6 (extend) |
@@ -70,9 +70,9 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | B05 | Forced colours: system colours, hairline in place of the attention tint, glyph plus word for state | VL §5 | SIMULATED | ALL | S1 (simulated palette and a real `forced-colors` block), S6 (review on a real forced-colors run) |
 | B06 | Fixed state colours across themes: one colour, one meaning; never the only carrier (glyph and word too) | ADR-0017, UIA §G | BUILT + SIMULATED | ALL | S1 |
 | B07 | State figures ◌ ○ ◆ ◇ ● ■ ‖ ✕ ✓ · – with ASCII twins | VL §9, `presentation.json` | BUILT + SIMULATED | ALL, TERM | S1 (`core-words.js`) |
-| B08 | Node shapes: circle mission, ring project hub, triangle execution, diamond decision (one shape, one fact) | VL §9, V1 `graph/encoding.ts` | BUILT + SIMULATED | MAP, NOW | S1 (placeholder), S2 |
+| B08 | Node shapes: circle mission, ring project hub, triangle execution, diamond decision (one shape, one fact) | VL §9, V1 `graph/encoding.ts` | BUILT + SIMULATED | MAP, NOW | S1 (placeholder), S2 BUILT (module draws mission disc or crystal, project hexagon, execution triangle, decision diamond) |
 | B09 | Attention band: static tint at 12 % of amber over the row, never a left edge; the word is ink, the ◆ carries colour; off in high contrast and forced colours | VL §8 | SIMULATED | NOW, ATT | S1 |
-| B10 | Line-style vocabulary: solid recorded or passed, filled current, dashed not reached or suggested, hollow not started, dotted unknown | VL §8 | SIMULATED | spine, MAP | S1 (spine), S2 (map edges) |
+| B10 | Line-style vocabulary: solid recorded or passed, filled current, dashed not reached or suggested, hollow not started, dotted unknown | VL §8 | SIMULATED | spine, MAP | S1 (spine), S2 BUILT (map edges: contains, runs, asks; accent colour for needs-you and running) |
 | B11 | Type scale: body 13/20 desktop and 17/24 phone, caption 12 and 13, display 28/34; system fonts; mono for terminal and times | VL §6, V1 `tokens.json` | BUILT + SIMULATED | ALL | S1 |
 | B12 | Solid material: overlays are opaque surface-3, elevation by surface step plus line, no shadows added | VL §8 | SIMULATED | menus, sheets | S1 |
 | B13 | Compact density (24 px rows) and the meta column | VL §7, §12 | DESIGNED (not decided) | none | owner question |
@@ -85,12 +85,12 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 |---|---|---|---|---|---|
 | C01 | One motion registry: nothing animates without an entry; transform and opacity only | A55, ADR-0024 | BUILT | ALL | S1 (V2 Live has exactly one animation) |
 | C02 | Duration classes: instant, quick 160, standard 240, layer 200 to 280, travel 600, orbit 900, breath 6000 | A55 §1 | DESIGNED | ALL | S6 |
-| C03 | Idle invariant: zero running animations at idle; with live work exactly one, `core-breath` | A55 §3 | SIMULATED | NOW, MAP | S1 (checked in a script, see report) |
-| C04 | Breath runs only while a fresh read shows an active execution, the tab is visible and motion is full; never for a queued mission or a fixture | A55 §3 | SIMULATED | NOW, MAP | S1 (driven by the simulation's live work) |
-| C05 | Static twin: scale 1 and the text "N running" under Reduced or Quiet | A55 §3 | SIMULATED | NOW, MAP | S1 |
+| C03 | Idle invariant: zero running animations at idle; with live work exactly one, `core-breath` | A55 §3 | SIMULATED | NOW, MAP | S1 (checked in a script, see report), S2 BUILT (layout probe checks it on the map) |
+| C04 | Breath runs only while a fresh read shows an active execution, the tab is visible and motion is full; never for a queued mission or a fixture | A55 §3 | SIMULATED | NOW, MAP | S1 (driven by the simulation's live work), S2 BUILT (playing, RUNNING and not stuck, output under 2 min old) |
+| C05 | Static twin: scale 1 and the text "N running" under Reduced or Quiet | A55 §3 | SIMULATED | NOW, MAP | S1, S2 BUILT ("N running" at the map's core) |
 | C06 | Still moments written down: arriving rows, thinking, failing, reconnecting, scrolling | A55 §2 | DESIGNED | ALL | S6 |
 | C07 | State change: 160 ms cross-fade of the badge; failure has no shake or pulse | A55, UIA §D | BUILT | ALL | S6 |
-| C08 | Output pulse (once per batch, at most one per 2 s per object) and the travelling marker (600 ms) | UIA §C.2, V1 motion registry | BUILT | MAP, NOW | S2 |
+| C08 | Output pulse (once per batch, at most one per 2 s per object) and the travelling marker (600 ms) | UIA §C.2, V1 motion registry | BUILT | MAP, NOW | S2 BUILT (pulse on execution start, end and output) |
 | C09 | Luminous thread: a line from what Archeus said to what it changed, drawn once, then a rule | UIA §B, §J, ADR-0026 | BUILT (T1/T2) | CHAT, NOW | S4 |
 | C10 | Creation beats from chat: reply 0, appear 160, relation 240, label 180 (dropped), accent gone by 800; Quiet shows all at once | PROTO README, A55 §4 | PROTOTYPED | CHAT, MAP | S4 |
 | C11 | Hero moments (handover, plan arming, resolution, causality path), gated and skippable | UIA §K | DESIGNED | NOW, WORK | not planned (prototype-gated PR-6) |
@@ -121,7 +121,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
 | E01 | Navigation table: Now, Work, World, Attention, Control; shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K | V1 `tokens/navigation.json` | BUILT | SHELL | S1 (routes; shortcuts S6) |
-| E02 | Now: state sentence, Needs you (at most 3 Decide rows), Happening now, Upcoming, Live map, Recent decisions, Since you last looked digest | V1 `Now.tsx` | BUILT + SIMULATED | NOW | S1 (all but the digest), S2 |
+| E02 | Now: state sentence, Needs you (at most 3 Decide rows), Happening now, Upcoming, Live map, Recent decisions, Since you last looked digest | V1 `Now.tsx` | BUILT + SIMULATED | NOW | S1 (all but the digest), S2 BUILT (live map is the module) |
 | E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 |
 | E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 |
 | E05 | World: Projects and Knowledge tabs, repositories, inspections, supersession chain | V1 `World.tsx` | BUILT | MAP, SET | S1 (knowledge in the simulation only), S2 |
@@ -132,8 +132,8 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | E10 | Command bar and palette (Ctrl+K), grammar of ADR-0042 | V1 `CommandBar.tsx`, `state/palette.ts` | BUILT | CHAT | S4 |
 | E11 | Conversation thread with cards: approval, e-stop, stop mission, route explanation, change card | V1 `Now.tsx` Conversation | BUILT | CHAT | S4 |
 | E12 | Offline Now: kept missions, "as of hh:mm", Decide rows read-only | V1 `OfflineNow`, UIA §O | BUILT | NOW | S3 |
-| E13 | Live map with halo, travelling marker, hulls, depth alpha, search, legend and text mirror (Canvas 2D) | V1 `graph/` | BUILT | NOW, MAP | S2 (V2 Live draws SVG, same facts, text mirror kept) |
-| E14 | Phone: graph hidden below 600 px, the list stands in | UIA §M, V1 P18 A12 | BUILT | NOW, MAP · P | S1 (map shown small, list under it), S2 |
+| E13 | Live map with halo, travelling marker, hulls, depth alpha, search, legend and text mirror (Canvas 2D) | V1 `graph/` | BUILT | NOW, MAP | S2 BUILT (V2 Live draws SVG with the module: hulls, travelling marker, legend, text mirror and node table; search not built) |
+| E14 | Phone: graph hidden below 600 px, the list stands in | UIA §M, V1 P18 A12 | BUILT | NOW, MAP · P | S1 (map shown small, list under it), S2 BUILT (map kept on the phone, taller 3:4 on #/map) |
 | E15 | Toasts and the polite announcer (at most one per 5 s) | V1 `toast.ts`, `a11y/announce.ts` | BUILT | ALL | S1 (one status toast), S6 |
 | E16 | Pins and saved views | V1 `pins.ts` | BUILT | WORK, MAP | S3 |
 | E17 | Idea path stepper (Captured to Learned) | V1 `Work.tsx` IdeaPath | BUILT | WORK | S3 |
@@ -282,4 +282,5 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 190 rows: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas.
 By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 50 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 88.
+Slice 2 (map integration) builds 13 of these rows (A03, A06, A12, A26, B08, B10, C03, C04, C05, C08, E02, E13, E14); row and status counts above are unchanged.
 Slice 1 shows 126 rows (the Slice column names S1, fully or in part); the rest, and the "part" rows, are the later slices' to-do list.

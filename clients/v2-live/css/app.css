@@ -245,32 +245,10 @@ dl.kv dd { overflow-wrap: anywhere; }
 .state-sentence { font-family: var(--serif); font-size: var(--fs-disp); line-height: 1.22; font-weight: 500; overflow-wrap: anywhere; }
 .now-hero .sub2 { color: var(--text-2); font-size: var(--fs-cap); }
 .map-box { position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: min(70vh, calc(var(--base) * 38)); min-height: 240px; margin-inline: auto; }
-.map-box svg.map { position: absolute; inset: 0; width: 100%; height: 100%; }
 .map-box.wide { aspect-ratio: 16 / 10; }
-.map-box .map-edge { stroke: var(--line-strong); fill: none; stroke-width: 1; }
-.map-box .map-edge.dash { stroke-dasharray: 4 4; }
-.map-box .hub { fill: var(--s2); stroke: var(--text-2); stroke-width: 1.5; }
-.map-box .nd { fill: var(--nc, var(--text-2)); stroke: var(--s1); stroke-width: 1.5; }
-.map-box .nd.ring { fill: var(--s1); stroke: var(--nc, var(--text-2)); stroke-width: 2; }
-.map-box .nd.sel { stroke: var(--focus); stroke-width: 3; }
-.map-box [data-c='needs_you'] { --nc: var(--attention); } .map-box [data-c='active'], .map-box [data-c='verifying'], .map-box [data-c='reviewing'] { --nc: var(--active); }
-.map-box [data-c='blocked'], .map-box [data-c='failed'] { --nc: var(--blocked); } .map-box [data-c='paused'] { --nc: var(--paused); } .map-box [data-c='planning'] { --nc: var(--thinking); }
-.map-box [data-c='done'] { --nc: var(--done); } .map-box [data-c='approved'] { --nc: var(--text-2); }
-.core { position: absolute; left: 50%; top: 50%; width: 120px; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; pointer-events: none; }
-.core .core-mark { width: 44px; height: 44px; transform: scale(1); }
-.core .core-mark circle.o { fill: var(--s1); stroke: var(--thread); stroke-width: 2; }
-.core .core-mark circle.i { fill: var(--thread); }
-.core[data-core='idle'] .core-mark circle.i { fill: none; stroke: var(--thread); stroke-width: 2; }
-.core .core-txt { display: none; color: var(--text); font-size: var(--fs-cap); font-weight: 600; line-height: 1.2; }
-/* ADR-0055: the one loop. A CSS keyframe on one element, only while a fresh read shows live work, never under reduced motion. */
-[data-core='breath'] .core-mark { animation: core-breath var(--dur-breath) ease-in-out infinite; }
-@keyframes core-breath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.018); } }
-html[data-motion='reduced'] [data-core] .core-mark { animation: none; transform: scale(1); }
-html[data-motion='reduced'] .core[data-live='true'] .core-txt { display: block; }
-@media (prefers-reduced-motion: reduce) {
-  html:not([data-motion='full']) [data-core] .core-mark { animation: none; transform: scale(1); }
-  html:not([data-motion='full']) .core[data-live='true'] .core-txt { display: block; }
-}
+@container view (min-width: 880px) { .map-box.wide { aspect-ratio: auto; height: clamp(440px, calc(100vh - 360px), 860px); max-height: none; } }
+@container view (max-width: 520px) { .map-box.wide { aspect-ratio: 2 / 3; max-height: none; } }
+.map-box .archeus-map { position: absolute; inset: 0; width: auto; height: auto; min-height: 0; --am-serif: var(--serif); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 4px 16px 12px; color: var(--text-2); font-size: var(--fs-cap); }
 .legend .k { display: inline-flex; align-items: center; gap: 6px; }
 
@@ -325,7 +303,6 @@ html[data-motion='reduced'] .core[data-live='true'] .core-txt { display: block; 
   .btn.primary { background: ButtonFace; color: ButtonText; }
   .nav-item[aria-current='page'], .tab[aria-selected='true'] { border-color: Highlight; }
   .spine .disc { fill: CanvasText; } .spine .ring, .spine .seg { stroke: CanvasText; } .spine .cur { fill: Highlight; } .spine .cur.o { stroke: Highlight; fill: none; }
-  .core .core-mark circle.o { stroke: CanvasText; fill: Canvas; } .core .core-mark circle.i { fill: CanvasText; }
   .term-screen .l.sel { background: Highlight; color: HighlightText; }
 }
 

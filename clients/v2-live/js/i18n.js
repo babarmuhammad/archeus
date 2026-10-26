@@ -49,6 +49,10 @@ const IT = {
   // statuses of other machines used on the main surfaces
   'Planned': 'Pianificata', 'Parked': 'Parcheggiata', 'Explored': 'Esplorata', 'Scheduled': 'Programmata', 'Captured': 'Catturata',
   // Map / Replay
+  'Approve plan': 'Approva il piano', 'Allow action': 'Consenti l\'azione', 'Done': 'Fatta', 'Idle': 'Inattiva', 'Thinking': 'In pianificazione', 'Knowledge': 'Conoscenza', 'Idea': 'Idea', 'Node': 'Nodo', 'Kind': 'Tipo', 'Unassigned': 'Senza progetto',
+  'Live map of your projects and missions. The list beside it has the same content.': 'Mappa viva dei tuoi progetti e delle tue missioni. L\'elenco accanto ha lo stesso contenuto.',
+  'Constellation nodes. Select a row to focus its star.': 'Nodi della costellazione. Scegli una riga per portare il focus sulla sua stella.',
+  'Map view': 'Vista della mappa', 'Zoom out': 'Riduci', 'Zoom in': 'Ingrandisci', 'Fit all nodes': 'Mostra tutti i nodi', 'Reset map view': 'Ripristina la vista', 'Fit': 'Adatta',
   'Constellation': 'Costellazione', 'Selected step': 'Passo selezionato', 'Categories': 'Categorie', 'Not recorded': 'Non registrato', 'Earlier': 'Prima', 'Later': 'Dopo', 'Step': 'Passo', 'Time': 'Ora', 'Category': 'Categoria', 'Trigger': 'Causa', 'Settled by': 'Chiuso da', 'Record': 'Registro',
   'What Core recorded, in order. Each step carries a Replay category and who settled it. Nothing here can be re-run.': 'Ciò che il Core ha registrato, in ordine. Ogni passo ha una categoria Replay e chi lo ha chiuso. Qui nulla può essere rieseguito.',
   'Older steps were pruned from the event log, so anything before them is UNKNOWN, not "nothing happened".': 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non "non è successo nulla".',
@@ -87,6 +91,8 @@ const RULES = [
   [/^\(running, x([\d.]+)\)$/, (m) => '(in corso, x' + m[1] + ')'], [/^Expires (\d\d:\d\d)\. This is a simulated decision: nothing is run, sent or spent\.$/, (m) => 'Scade alle ' + m[1] + '. Decisione simulata: nulla viene eseguito, inviato o speso.'],
   [/^Decided: (.+)\.$/, (m) => 'Deciso: ' + tr(m[1]) + '.'], [/^Version (\d+)$/, (m) => 'Versione ' + m[1]],
   [/^(Approved|Rejected|Accepted|Changes requested|Unblocked|Resumed|Replanning|Cancelled|Pausing|Remembered|Not remembered|Enabled) \(simulated\)\.(.*)$/, (m) => ({ Approved: 'Approvata', Rejected: 'Rifiutata', Accepted: 'Accettata', 'Changes requested': 'Modifiche richieste', Unblocked: 'Sbloccata', Resumed: 'Ripresa', Replanning: 'Ripianificazione', Cancelled: 'Annullata', Pausing: 'In pausa', Remembered: 'Ricordato', 'Not remembered': 'Non ricordato', Enabled: 'Attivata' })[m[1]] + ' (simulato).' + (m[2] ? ' Nulla è stato eseguito.' : '')],
+  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*$/, (m) => m[1] + ' nodi in ' + m[2] + ' progetti. ' + m[3] + ' ti servono. Usa Tab per scorrere le stelle, Invio per scegliere, le frecce per spostarti. La tabella equivalente segue i controlli della mappa.'],
+  [/^(\d+) priority labels cannot fit\. .*$/, (m) => m[1] + ' etichette prioritarie non entrano. Le etichette complete sono nella tabella dei nodi.'],
   [/^(\d+) boxes$/, (m) => m[0]]
 ];
 
