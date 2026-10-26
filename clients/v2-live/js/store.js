@@ -8,7 +8,7 @@ export const DEVICES = [
   { id: 'tablet', label: 'Tablet', w: 820, note: '820 px' }, { id: 'desktop', label: 'Desktop', w: 1440, note: '1440 px' }, { id: 'terminal', label: 'Terminal', note: 'Text mode' }, { id: 'all', label: 'All devices', note: 'Side by side' }
 ];
 const KEY = 'archeus-v2-live';
-const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on' };
+const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed' };
 
 function read() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
 function write(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* private window or blocked storage: the app still works */ } }
@@ -21,6 +21,8 @@ if (!DEVICES.some((d) => d.id === prefs.device)) prefs.device = defaults.device;
 if (!['system', 'full', 'reduced'].includes(prefs.motion)) prefs.motion = defaults.motion;
 if (!['en', 'it'].includes(prefs.lang)) prefs.lang = defaults.lang;
 if (!['on', 'off'].includes(prefs.notes)) prefs.notes = defaults.notes;
+if (!['on', 'off'].includes(prefs.heronotes)) prefs.heronotes = defaults.heronotes;
+if (!['open', 'closed'].includes(prefs.tools)) prefs.tools = defaults.tools;
 
 export const get = (k) => prefs[k];
 export function set(k, v) { prefs[k] = v; write(Object.fromEntries(Object.keys(defaults).map((x) => [x, prefs[x]]))); apply(); }
@@ -35,5 +37,6 @@ export function apply() {
   r.dataset.theme = prefs.theme;
   r.dataset.motion = prefs.motion === 'system' ? 'system' : prefs.motion;
   r.dataset.notes = prefs.notes;
+  r.dataset.heronotes = prefs.heronotes;
   r.lang = prefs.lang;
 }

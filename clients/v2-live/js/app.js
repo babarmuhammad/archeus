@@ -1,11 +1,11 @@
 // V2 Live shell: toolbar (tool chrome), device frame, app shell, router, simulation loop.
 import { h, clear } from './dom.js';
 import { icon } from './icons.js';
-import { lockup } from './brand.js';
+import { lockup, wordmark } from './brand.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
-import { ROUTES, BOTTOM, simControls } from './views.js';
+import { ROUTES, BOTTOM, simControls, controlBody } from './views.js';
 import * as vNow from './view-now.js';
 import * as vWork from './view-work.js';
 import * as vAttention from './view-attention.js';
@@ -43,24 +43,26 @@ const toolbar = document.getElementById('toolbar');
 const stage = document.getElementById('stage');
 const device = document.getElementById('device');
 const framenote = document.getElementById('framenote');
-let app, page, rail, bottom, dock, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
+let app, page, rail, bottom, dock, topbar, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
 
-const navItem = (r, cls) => h('a', { class: cls, href: '#/' + r.id, 'data-route': r.id, 'aria-label': cls === 'nav-item' ? null : r.label },
-  icon(r.icon, cls === 'nav-item' ? 22 : 24), h('span', { class: cls === 'nav-item' ? 'nl' : '' }, r.label), cls === 'nav-item' || r.id === 'attention' ? h('span', { class: 'count', 'data-count': r.id, hidden: true }) : null);
+const navLabel = (r) => (r.id === 'now' ? 'Overview' : r.label);
+const navItem = (r, cls) => h('a', { class: cls, href: '#/' + r.id, 'data-route': r.id, 'aria-label': cls === 'nav-item' ? null : navLabel(r) },
+  icon(r.icon, cls === 'nav-item' ? 20 : 24), h('span', { class: cls === 'nav-item' ? 'nl' : '' }, navLabel(r)), cls === 'nav-item' || r.id === 'attention' ? h('span', { class: 'count', 'data-count': r.id, hidden: true }) : null);
 
 function buildShell() {
   rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
-    h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, lockup())),
+    h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, wordmark())),
     ...ROUTES.flatMap((r) => [navItem(r, 'nav-item'), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
-    h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 22), h('span', { class: 'nl' }, 'Terminal view')),
-    h('p', { class: 'rail-foot' }, 'V2 Live prototype. Simulated. No Core is connected.'));
+    h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view')),
+    h('div', { class: 'rail-sep' }), h('p', { class: 'eyebrow rail-eye' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
+  topbar = h('header', { class: 'topbar' });
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
   bottom = h('nav', { class: 'bottombar', 'aria-label': 'Main' }, ...BOTTOM.map((id) => navItem(ROUTES.find((r) => r.id === id), 'bb-item')), navItem({ id: 'more', label: 'More', icon: 'menu' }, 'bb-item'));
   dock = h('div', { class: 'chatdock', id: 'chatdock', hidden: true });
   inspector = h('aside', { class: 'inspector', 'aria-label': 'Details', id: 'inspector' });
   scrim = h('div', { class: 'scrim', 'aria-hidden': 'true', onclick: closeInsp });
   toastEl = h('div', { class: 'toast', role: 'status', hidden: true });
-  app = h('div', { class: 'app', id: 'app', 'data-rail': '', 'data-insp': '' }, rail, page, dock, bottom, scrim, inspector, toastEl);
+  app = h('div', { class: 'app', id: 'app', 'data-rail': '', 'data-insp': '' }, rail, h('div', { class: 'main-wrap' }, topbar, page), dock, bottom, scrim, inspector, toastEl);
   clear(device).append(app);
 }
 
@@ -80,16 +82,17 @@ function render() {
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
-  document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'more' ? 'More' : ROUTES.find((x) => x.id === r.name).label);
+  document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'more' ? 'More' : navLabel(ROUTES.find((x) => x.id === r.name)));
 
   let content;
   if (term) content = viewTerminal(ctx);
   else content = VIEWS[r.name](ctx);
-  if (r.name === 'now') content.prepend(headNow());
+  if (r.name === 'now') content.prepend(h('h1', { class: 'vh' }, 'Overview'));
+  app.dataset.hero = ['now', 'map'].includes(r.name) ? '1' : '';
   if (!term) content = decorate(ctx, content);
   if (term) { clear(page); page.hidden = true; const old = app.querySelector('.term-wrap'); if (old) old.remove(); app.append(content); } else { page.hidden = false; const old = app.querySelector('.term-wrap'); if (old) old.remove(); clear(page).append(content); }
 
@@ -106,7 +109,8 @@ function render() {
   const n = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
   app.querySelectorAll('[data-count="attention"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
 
-  if (term) { app.dataset.dock = ''; dock.hidden = true; } else mountDock(ctx, dock, app);
+  mountTell(term);
+  syncTopbar(); syncRail();
   ctx.mounts.forEach((f) => f());
   pruneMaps(['now', 'map'].includes(r.name) ? r.name : null);
   translate(app);
@@ -114,12 +118,6 @@ function render() {
   page.scrollTop = keep.top; inspector.scrollTop = keep.itop;
   if (keep.key) { const el = app.querySelector('[data-key="' + keep.key + '"]'); if (el && el !== document.activeElement) el.focus({ preventScroll: true }); }
   if (insp && !wasOpen) { const hd = inspector.querySelector('h2'); if (hd) { hd.setAttribute('tabindex', '-1'); hd.focus({ preventScroll: true }); } }
-}
-
-function headNow() {
-  const st = sim.state;
-  return h('header', { class: 'page-head', style: 'padding:0' }, h('div', null, h('h1', null, 'Now'),
-    h('p', { class: 'sub' }, h('span', { class: 'sim-tag' }, 'SIMULATED'), ' Fixture data, nothing is connected to a Core. Simulated time ', h('span', { 'data-live': 'clock' }, clockLabel(st.clock)), st.playing ? ' (running, x' + st.speed + ')' : ' (paused)')));
 }
 
 // ---------- the one allowed loop: the core breath on the map's core mark (ADR-0055), switched by syncLive ----------
@@ -159,20 +157,70 @@ function toast(text, o) {
 }
 function dismissToast() { clearTimeout(toastTimer); toastEl.hidden = true; }
 
+// ---------- top bar: safety cluster (status popover, Tell, Stop) ----------
+const isPhone = () => app.clientWidth < 600;
+function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk = ui.rearmAsk = false; render(); } }
+function stopClick() { ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
+function tellClick() {
+  if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); return; }
+  ui.tellOpen = !ui.tellOpen; ui.safetyOpen = false; render();
+  if (ui.tellOpen) { const i = dock.querySelector('input.cinput'); if (i) i.focus(); }
+}
+function syncTopbar() {
+  const eng = sim.state.estop.engaged, open = !!ui.safetyOpen;
+  clear(topbar).append(
+    h('span', { class: 'tb-lock' }, lockup()),
+    h('div', { class: 'safety', 'data-state': eng ? 'stopped' : 'ok' },
+      h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'true', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) closeSafety(); else { ui.safetyOpen = true; ui.tellOpen = false; render(); } } },
+        h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, eng ? 'Stopped' : 'Not stopped'), h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), h('span', { class: 'sx' }, eng ? 'new work blocked' : 'accepts new work')),
+      open ? h('div', { class: 'safety-pop', role: 'group', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)) : null),
+    h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell'),
+    h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
+}
+// The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
+function mountTell(term) {
+  if (term) { app.dataset.dock = ''; dock.hidden = true; return; }
+  const phone = isPhone(), open = !phone && ui.tellOpen && ctx.route.name !== 'chat';
+  dock.classList.toggle('tell', !phone);
+  mountDock(phone ? ctx : Object.assign({}, ctx, { route: { name: open ? 'now' : 'none' } }), dock, app);
+  if (!phone) {
+    app.dataset.dock = '';
+    if (open) dock.append(h('button', { class: 'btn quiet tell-x', type: 'button', 'aria-label': 'Close', onclick: () => { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } }, icon('close', 18)));
+  }
+}
+
+// ---------- sidebar: PROJECTS with a state dot ----------
+const PSTATE = { needs_you: 'decision waiting', running: 'work running', done: 'all verified', idle: 'nothing running' };
+function projState(p) {
+  const ms = Object.values(sim.state.missions).filter((m) => m.project === p.id);
+  if (sim.attention().some((a) => a.project_id === p.id && (a.group === 'Decide' || a.group === 'Review'))) return 'needs_you';
+  if (ms.some((m) => m.state === 'EXECUTING')) return 'running';
+  return ms.length && ms.every((m) => m.state === 'COMPLETED') ? 'done' : 'idle';
+}
+function syncRail() {
+  const box = rail.querySelector('#railproj');
+  clear(box).append(...sim.state.projects.map((p) => { const st = projState(p), here = ctx.route.name === 'work' && ui.workProject === p.id;
+    return h('a', { class: 'proj-item', href: '#/work', 'data-proj': p.id, 'aria-current': here ? 'page' : null, onclick: (e) => { e.preventDefault(); ui.workProject = p.id; nav('#/work'); } },
+      h('span', { class: 'pdot', 'data-s': st, 'aria-hidden': 'true' }), h('span', { class: 'nl' }, p.name), h('span', { class: 'vh' }, PSTATE[st])); }));
+}
+
 // ---------- toolbar and menus ----------
 function buildToolbar() {
   clear(toolbar);
+  const open = store.get('tools') === 'open';
+  toolbar.dataset.open = open ? '1' : '0';
+  const tools = h('button', { class: 'tb-btn', type: 'button', 'data-tb': 'tools', 'aria-label': 'Prototype tools', 'aria-expanded': open ? 'true' : 'false', onclick: toggleTools }, icon('settings'), h('span', { class: 'tb-label' }, 'Tools'));
   toolbar.append(
-    h('span', { class: 'tb-brand' }, 'V2 Live'),
     h('span', { class: 'sim-badge', role: 'note' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), 'SIMULATED', h('span', { class: 'long' }, 'no Core connected')),
-    h('span', { class: 'tb-spacer' }),
-    tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'));
+    h('span', { class: 'tb-spacer' }), tools,
+    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('notes', 'Notes', 'Decision notes on the Overview and Map')));
   translate(toolbar);
 }
+function toggleTools() { closeMenu(); store.set('tools', store.get('tools') === 'open' ? 'closed' : 'open'); buildToolbar(); syncToolbar(); const b = toolbar.querySelector('[data-tb="tools"]'); if (b) b.focus(); fit(); }
 function tbBtn(id, label, aria) {
-  const b = h('button', { class: 'tb-btn', type: 'button', 'data-tb': id, 'aria-label': aria, onclick: () => (id === 'motion' ? toggleMotion() : id === 'lang' ? setLang(store.get('lang') === 'it' ? 'en' : 'it') : toggleMenu(id, b)) }, icon(id === 'sim' ? 'sim' : id === 'lang' ? 'lang' : id), h('span', { class: id === 'lang' ? 'tb-label tb-always' : 'tb-label' }, label));
-  if (id === 'lang' || id === 'motion') b.classList.add('tb-opt');
-  if (id !== 'motion' && id !== 'lang') { b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false'); }
+  const b = h('button', { class: 'tb-btn', type: 'button', 'data-tb': id, 'aria-label': aria, onclick: () => (id === 'motion' ? toggleMotion() : id === 'notes' ? setHeroNotes() : id === 'lang' ? setLang(store.get('lang') === 'it' ? 'en' : 'it') : toggleMenu(id, b)) }, icon(id === 'sim' ? 'sim' : id === 'lang' ? 'lang' : id === 'notes' ? 'note' : id), h('span', { class: id === 'lang' ? 'tb-label tb-always' : 'tb-label' }, label));
+  if (id === 'lang' || id === 'motion' || id === 'notes') b.classList.add('tb-opt');
+  if (id !== 'motion' && id !== 'lang' && id !== 'notes') { b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false'); }
   return b;
 }
 function syncToolbar() {
@@ -180,11 +228,13 @@ function syncToolbar() {
   const dev = DEVICES.find((d) => d.id === store.get('device')), th = THEMES.find((t) => t.id === store.get('theme'));
   tb('device').querySelector('.tb-label').textContent = dev.label; tb('theme').querySelector('.tb-label').textContent = th.label.replace(', high contrast', ' HC').replace(' (simulated)', '');
   const red = store.reducedMotion(); const m = tb('motion'); m.setAttribute('aria-pressed', red ? 'true' : 'false'); m.querySelector('.tb-label').textContent = red ? 'Quiet' : 'Motion';
+  tb('notes').setAttribute('aria-pressed', store.get('heronotes') === 'on' ? 'true' : 'false');
   tb('lang').querySelector('.tb-label').textContent = store.get('lang') === 'it' ? 'IT' : 'EN'; tb('lang').setAttribute('aria-pressed', store.get('lang') === 'it' ? 'true' : 'false');
   const sb = tb('sim'); sb.querySelector('.tb-label').textContent = sim.state.playing ? 'x' + sim.state.speed : 'Paused';
   translate(toolbar);
 }
 function setLang(id) { store.set('lang', id); buildToolbar(); syncToolbar(); render(); refreshMenu(); broadcast(); }
+function setHeroNotes() { store.set('heronotes', store.get('heronotes') === 'on' ? 'off' : 'on'); syncToolbar(); broadcast(); }
 function setNotes(id) { store.set('notes', id); refreshMenu(); render(); broadcast(); }
 function toggleMotion() { store.set('motion', store.reducedMotion() ? 'full' : 'reduced'); syncCore(); syncToolbar(); toast(store.reducedMotion() ? 'Reduced motion on: the core mark is still.' : 'Motion on: the core mark breathes while work is live.'); render(); refreshMenu(); broadcast(); }
 function closeMenu() { if (menu) { menu.remove(); menu = null; } toolbar.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); menuName = null; }
@@ -206,11 +256,12 @@ function buildMenu() {
   menu = h('div', { class: 'menu', role: 'menu', 'aria-label': menuName }, ...kids);
   translate(menu);
   document.body.append(menu);
+  menu.style.top = toolbar.offsetHeight + 2 + 'px';
 }
-document.addEventListener('click', (e) => { if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
+document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (app.dataset.insp === 'open') closeInsp();
+  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); const b = app.querySelector('[data-key="safety"]'); if (b) b.focus(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
 });
 
 // ---------- device frames ----------
