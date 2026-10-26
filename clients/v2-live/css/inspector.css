@@ -142,3 +142,4 @@
   .dcn-steps .st-g { border-color: CanvasText; } .dcn-steps li[data-now] .st-g { background: Highlight; border-color: Highlight; forced-color-adjust: none; }
 }
 @media (prefers-reduced-motion: reduce) { .msn-box > summary svg { transition: none; } }
+@container dev (max-width: 599px) { .msn .grab, .dcn .grab { display: none; } }
