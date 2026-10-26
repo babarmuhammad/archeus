@@ -39,3 +39,5 @@
   .now-view .state-sentence { font-size: 30px; }
   .now-view .lede { display: none; }
 }
+.now-wrap { height: 100%; }
+.now-wrap > .ax-digest { margin: var(--gut); }

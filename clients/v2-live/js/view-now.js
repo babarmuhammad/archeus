@@ -42,10 +42,10 @@ export function render(ctx) {
         panel('Happening now', live.length, live.length ? h('div', { class: 'stack' }, ...live.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is running.')),
         panel('Upcoming', upcoming.length, upcoming.length ? h('div', { class: 'stack' }, ...upcoming.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is planned or approved.')),
         panel('Recent decisions and changes', recent.length, h('div', { class: 'body' }, ...recent.map((e) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, (st.missions[e.subject.id] || { title: e.subject.id }).title, ': ', word('mission', e.payload.from), ' to ', word('mission', e.payload.to)), h('span', { class: 'b' }, clockLabel(e.at) + (e.actor === 'device' ? ' · you' : ' · Core')))), recent.length ? null : empty('Nothing has changed yet.'))))));
-  return h('div', { class: 'view now-view', 'data-calm': String(calm) },
+  return h('div', { class: 'now-wrap' }, h('div', { class: 'view now-view', 'data-calm': String(calm) },
     h('div', { class: 'now-scene' }, box),
     h('div', { class: 'now-hero' }, h('p', { class: 'eyebrow' }, tr('Overview')),
       h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, calm ? tr('Nothing running. Tell Archeus what to do.') : sim.sentence()),
       h('p', { class: 'lede' }, calm ? tr('Archeus is quiet. Tell it what to do next, or open a project.') : tr('Live constellation of your work. Missions, projects and ideas in context, moving forward together.'))),
-    drawer);
+    drawer));
 }
