@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, hullPath, hullVertices, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, hullPath, hullVertices, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('layout is seeded, deterministic, input-order independent and bounded', () => {
@@ -80,4 +80,11 @@ test('state aliases normalise and rich labels reserve the eyebrow width', () => 
   const node = {id: 'a', label: 'Hi', x: 400, y: 300, radius: 6, state: 'idle', kind: 'Mission'};
   const [box] = placeLabels([node], 1440, 900, {size: 15, rich: true, measure: () => 20, metaOf: () => 'MISSION · IDLE', measureMeta: () => 150});
   assert.ok(box.width >= 150 && box.rich);
+});
+test('running and needs-you missions lay out as larger crystals than idle ones', () => {
+  const mk = (id, state) => ({id, label: id, project: 'p', kind: 'Mission', state, weight: 3});
+  const nodes = layout({nodes: [mk('a', 'idle'), mk('b', 'running'), mk('c', 'needs-you'), mk('d', 'done')], edges: []}, 1440, 900, 's');
+  const r = id => nodes.find(n => n.id === id).radius;
+  assert.ok(isCrystal({kind: 'Mission', state: 'Needs you'}) && !isCrystal({kind: 'Idea', state: 'running'}));
+  assert.ok(r('b') > r('a') * 2 && r('c') === r('b') && r('d') === r('a'));
 });

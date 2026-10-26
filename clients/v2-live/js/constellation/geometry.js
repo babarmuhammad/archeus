@@ -5,7 +5,7 @@ export const INSET = Object.freeze({top: 16, right: 16, bottom: 60, left: 16});
 export const unit = (width, height) => clamp(Math.sqrt(width * height) / 900, .9, 1.6);
 export const coreCentre = (width, height) => ({x: width / 2, y: (INSET.top + height - INSET.bottom) / 2});
 export const coreRadius = u => 40 * u;
-export const nodeRadius = (weight, u = 1) => (3 + Math.sqrt(clamp(Number(weight) || 1, .25, 16)) * 2) * u;
+export const nodeRadius = (weight, u = 1) => (3 + Math.sqrt(clamp(Number(weight) || 1, .25, 100)) * 2) * u;
 export function randomSeed(seed) {
   let n = 2166136261;
   for (const c of String(seed)) n = Math.imul(n ^ c.charCodeAt(0), 16777619);
@@ -20,13 +20,15 @@ export function stateKey(state) {
   const key = String(state || 'idle').toLowerCase().replace(/[ _]/g, '-');
   return ({waiting: 'needs-you', attention: 'needs-you', active: 'running', completed: 'done'})[key] || key;
 }
+export const isCrystal = n => n.kind === 'Mission' && ['running', 'needs-you'].includes(stateKey(n.state));
+export const CRYSTAL_WEIGHT = 100;
 export function layout(graph, width, height, seed = 'archeus') {
   const u = unit(width, height), core = coreCentre(width, height);
   const keys = [...new Set(graph.nodes.map(n => n.project || 'unassigned'))].sort();
   if (!keys.length) return [];
-  const weight = n => Number(n.weight) || 1;
+  const weight = n => isCrystal(n) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
   const groups = keys.map(key => graph.nodes.filter(n => (n.project || 'unassigned') === key)
-    .map(n => ({...n, radius: nodeRadius(n.weight, u)}))
+    .map(n => ({...n, radius: nodeRadius(weight(n), u)}))
     .sort((a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || weight(b) - weight(a) || String(a.id).localeCompare(String(b.id))));
   const left = Math.min(INSET.left, width / 10), right = Math.min(INSET.right, width / 10);
   const top = Math.min(INSET.top, height / 10), bottom = Math.min(INSET.bottom, height / 5);

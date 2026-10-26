@@ -48,18 +48,20 @@ map.destroy();
 | `update(graph)` | Copies input, validates unique node IDs, patches state-only changes, and deterministically lays out structural changes. Exact repeated input is skipped. Missing edge endpoints are ignored. |
 | `setSelection(id)` | Selects a node; `null` clears. Reveals offscreen selection. Emits `select`. |
 | `setTheme(name)` | `dark`, `light`, `dark-high-contrast`, `light-high-contrast`, `system`; `high-contrast` aliases dark high contrast. |
-| `setReducedMotion(bool)` | Enables Quiet; system reduced-motion preference always wins. |
+| `setReducedMotion(bool)` | Enables or disables Quiet explicitly; before it is called (or when `reducedMotion` is not an option) the system preference decides. |
 | `resize()` | Measures container and relays out when dimensions change; also called by `ResizeObserver`. Resizing resets camera. |
 | `fitView()` | Fits node envelopes inside viewport with room for controls. |
 | `pulse(edgeId)` | One 600 ms travelling marker; returns false when missing, hidden, reduced, destroyed, or already at eight simultaneous markers. |
 | `on(event, fn)` | Subscribe; returns unsubscribe function. Events: `select` (ID or null), `update` (`{nodes}`), `resize` (`{width,height}`), `viewchange` (`{x,y,k}`), `pulse` (edge ID). |
+| `setLive(bool)` | Switches the core breath on or off after creation (the host passes a playing simulation with fresh output). |
+| `element` | The map's root element. |
 | `destroy()` | Disconnects observer and external listeners, cancels animations, removes owned DOM. Idempotent. |
 
-Edges accept optional `id`. Otherwise `edgeId(edge)` returns `from->to:kind`, with `relation` as the default kind. Parallel edges with identical endpoints and kind need distinct explicit IDs. Node IDs are strings, unique within one map. Data strings are inserted through DOM text/attributes, never HTML. Missing projects group under Unassigned. Weights clamp to 0.25–16. Supported states are `idle`, `running`, `needs-you`, `blocked`, `done`, `paused`, `thinking`; capitalization and spaces/underscores normalize, and `waiting`, `attention`, `active`, `completed` are accepted aliases.
+Edges accept optional `id`. Otherwise `edgeId(edge)` returns `from->to:kind`, with `relation` as the default kind. Parallel edges with identical endpoints and kind need distinct explicit IDs. Node IDs are strings, unique within one map. Data strings are inserted through DOM text/attributes, never HTML. Missing projects group under Unassigned. Weights clamp to 0.25–100. Node kinds: Mission (disc, or a faceted crystal when it is running or needs you, drawn about three times larger), Project (hexagon), Knowledge (square), Idea (sparkle), Execution (triangle), Decision (diamond). `options.t(string)` translates every fixed string (state and kind words, controls, table headings, status text). Supported states are `idle`, `running`, `needs-you`, `blocked`, `done`, `paused`, `thinking`; capitalization and spaces/underscores normalize, and `waiting`, `attention`, `active`, `completed` are accepted aliases.
 
 The only animation allowed to loop is one core mark: scale 1 → 1.018 → 1 in 6000 ms. `live: true`, `fresh !== false`, a Running node, visible document, and full motion are all required. Defaults are static. Demo opts into simulated live work explicitly because the task requests it; ADR-0055 forbids fixture-driven liveness in the real app. Integration must pass real freshness/liveness; recreate the map when those options change. Quiet shows a static count at the core. Hidden tabs cancel transient effects and stop breath. Re-reading does not replace the core DOM element or restart its animation.
 
-`MOTION` exports the local duration registry: appear 160 ms, relation 240 ms, label 180 ms, travel 600 ms, breath 6000 ms. The task explicitly requests 180 ms labels; ADR-0055 instead drops that duration in favor of 160 ms. Integration must reconcile this difference before production. Selection, focus, layout, pan and zoom are instant. No frame loop, large blur, backdrop filter, or external asset is used.
+`MOTION` exports the local duration registry: appear 160 ms, relation 240 ms, label 160 ms, travel 600 ms, breath 6000 ms. The label duration is 160 ms (ADR-0055). Selection, focus, layout, pan and zoom are instant. No frame loop, large blur, backdrop filter, or external asset is used.
 
 ## Layout and visual treatment
 

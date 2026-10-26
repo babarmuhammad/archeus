@@ -1,6 +1,6 @@
-import {clamp, layout, coreRadius as coreSize, hullVertices, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre, randomSeed} from './geometry.js';
+import {clamp, isCrystal, layout, coreRadius as coreSize, hullVertices, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre, randomSeed} from './geometry.js';
 
-export const MOTION = Object.freeze({appear: 160, relation: 240, label: 180, travel: 600, breath: 6000});
+export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
 let instance = 0;
 const words = {'needs-you': 'Needs you', running: 'Running', done: 'Done', blocked: 'Blocked', idle: 'Idle', paused: 'Paused', thinking: 'Thinking'};
@@ -31,13 +31,25 @@ function corePaths(R) {
     spokes: range.map(k => `M0,0L${pt(tip(k))}M${pt(tip(k))}L${pt(inner((k + 7) % 8))}`).join('')
   };
 }
+function crystalPaths(id, r) {
+  const rng = randomSeed(`crystal:${id}`), n = 7, at = k => { const a = -Math.PI / 2 + k * Math.PI * 2 / n + (rng() - .5) * .25, d = r * (.9 + rng() * .2); return [d * Math.cos(a), d * Math.sin(a)]; };
+  const v = Array.from({length: n}, (_, k) => at(k)), c = [(rng() - .5) * r * .24, (rng() - .5) * r * .24];
+  const pt = ([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`;
+  return {outline: `M${v.map(pt).join('L')}Z`, facets: v.map(q => `M${pt(c)}L${pt(q)}`).join('') + [0, 2, 4, 5].map(k => `M${pt(v[k])}L${pt(v[(k + 2) % n])}`).join('')};
+}
 function starShape(kind, r) {
+  if (kind === 'Execution') return ['path', {d: `M0,${-r * 1.25}L${r * 1.15},${r * .85}L${-r * 1.15},${r * .85}Z`}];
+  if (kind === 'Decision') return ['path', {d: `M0,${-r * 1.3}L${r * 1.3},0L0,${r * 1.3}L${-r * 1.3},0Z`}];
   if (kind === 'Project') return ['path', {d: `M${r * 1.15},0L${r * .575},${r}L${-r * .575},${r}L${-r * 1.15},0L${-r * .575},${-r}L${r * .575},${-r}Z`}];
   if (kind === 'Knowledge') return ['rect', {x: -r * .85, y: -r * .85, width: r * 1.7, height: r * 1.7, rx: 1}];
   if (kind === 'Idea') { const s = r * 1.35; return ['path', {d: `M0,${-s}Q0,0 ${s},0Q0,0 0,${s}Q0,0 ${-s},0Q0,0 0,${-s}Z`}]; }
   return ['circle', {r}];
 }
 export function createMap(container, options = {}) {
+  const T = options.t || (x => x);
+  const W = k => T(words[k] || k);
+  const nodeWord = n => W(stateKey(n.state));
+  const kindWord = n => T(n.kind || 'Node');
   const prefix = `constellation-${++instance}`;
   const host = element('div', 'archeus-map');
   host.dataset.theme = options.theme || 'dark';
@@ -70,14 +82,14 @@ export function createMap(container, options = {}) {
   core.append(coreMark, wordmark, runningText);
   svg.append(title, summary, defs, haze, dust, world, labels, hits);
   const controls = element('div', 'am-controls');
-  controls.setAttribute('aria-label', 'Map view');
+  controls.setAttribute('aria-label', T('Map view'));
   const status = element('p', 'am-sr');
   status.setAttribute('role', 'status');
   const equivalent = element('div', 'am-equivalent am-sr');
   const table = element('table');
-  const caption = element('caption', '', 'Constellation nodes. Select a row to focus its star.');
+  const caption = element('caption', '', T('Constellation nodes. Select a row to focus its star.'));
   const head = element('thead'), heading = element('tr');
-  for (const word of ['Node', 'Kind', 'State', 'Project']) heading.append(element('th', '', word));
+  for (const word of ['Node', 'Kind', 'State', 'Project']) heading.append(element('th', '', T(word)));
   head.append(heading);
   const body = element('tbody');
   table.append(caption, head, body); equivalent.append(table);
@@ -92,13 +104,13 @@ export function createMap(container, options = {}) {
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
   const emit = (event, detail) => { for (const fn of listeners.get(event) || []) fn(detail); };
-  const isReduced = () => reducedOverride === true || media.matches;
+  const isReduced = () => reducedOverride === true || (reducedOverride === undefined && media.matches);
   const isLive = () => options.live === true && options.fresh !== false && graph.nodes.some(n => stateKey(n.state) === 'running');
   const coreRadius = () => coreSize(u);
   function motion() {
     host.dataset.reduced = String(isReduced());
     coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
-    runningText.textContent = isLive() && isReduced() ? `${graph.nodes.filter(n => stateKey(n.state) === 'running').length} running` : '';
+    runningText.textContent = isLive() && isReduced() ? T(`${graph.nodes.filter(n => stateKey(n.state) === 'running').length} running`) : '';
     if (isReduced() || document.hidden) {
       for (const animation of host.getAnimations({subtree: true})) if (animation.animationName !== 'core-breath') animation.cancel();
       for (const marker of activePulses) marker.remove();
@@ -118,7 +130,7 @@ export function createMap(container, options = {}) {
     const size = clamp(Math.round(11.6 * u + 1), 13, 19), rich = width >= 1280;
     if (context) context.font = `400 ${size}px ${serif}`;
     const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() + 6) * k;
-    const metaOf = n => `${n.kind || 'Node'} · ${words[stateKey(n.state)] || n.state || 'Idle'}`.toUpperCase();
+    const metaOf = n => `${kindWord(n)} · ${words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle')}`.toUpperCase();
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
     const boxes = placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
@@ -150,7 +162,7 @@ export function createMap(container, options = {}) {
     }
     const missing = nodes.filter(n => (n.id === selected || stateKey(n.state) === 'needs-you') && !boxes.some(b => b.id === n.id));
     host.dataset.labelOverflow = String(missing.length);
-    status.textContent = missing.length ? `${missing.length} priority labels cannot fit. Full labels available in node table.` : '';
+    status.textContent = missing.length ? T(`${missing.length} priority labels cannot fit. Full labels available in node table.`) : '';
   }
   function choose(id, reveal = false) {
     if (id !== null && !positions.some(n => n.id === id)) return;
@@ -174,7 +186,7 @@ export function createMap(container, options = {}) {
   const f = v => +v.toFixed(2);
   function starMarkup(n) {
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, g = Math.max(1, r / 8);
-    const [tag, shape] = starShape(n.kind, r);
+    const crystal = isCrystal(n), [tag, shape] = crystal ? ['path', {d: crystalPaths(n.id, r).outline}] : starShape(n.kind, r);
     const attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
     let glyph = '', outside = '';
     if (state === 'idle') glyph = '<circle r="1.2" fill="currentColor"/>';
@@ -186,9 +198,9 @@ export function createMap(container, options = {}) {
     if (state === 'needs-you') {
       const d = f(r + 7);
       outside = `<path d="M0,${-d}L${d},0L0,${d}L${-d},0Z" class="am-attention-ring"/>`;
-      glyph = '<path d="M0,-3V1 M0,3v.5" class="am-attention-glyph"/>';
+      glyph = `<path d="M0,-3V1 M0,3v.5" class="${crystal ? 'am-glyph' : 'am-attention-glyph'}"/>`;
     }
-    return `<g transform="translate(${f(n.x)} ${f(n.y)})" class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><circle r="${f(r * glowReach[colorState])}" fill="url(#${prefix}-${colorState === 'paused' ? 'idle' : colorState})" class="am-glow"/><${tag} ${attrs} class="am-body${['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/>${outside}${glyph ? `<g transform="scale(${f(g)})">${glyph}</g>` : ''}</g>`;
+    return `<g transform="translate(${f(n.x)} ${f(n.y)})" class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><circle r="${f(r * glowReach[colorState])}" fill="url(#${prefix}-${colorState === 'paused' ? 'idle' : colorState})" class="am-glow"/><${tag} ${attrs} class="am-body${crystal ? ' am-crystal' : ['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/>${crystal ? `<path d="${crystalPaths(n.id, r).facets}" class="am-facets"/>` : ''}${outside}${glyph ? `<g transform="scale(${f(g)})">${glyph}</g>` : ''}</g>`;
   }
   function drawStar(n) {
     const holder = svgElement('g');
@@ -196,7 +208,7 @@ export function createMap(container, options = {}) {
     return holder.firstElementChild;
   }
   function updateSummary() {
-    summary.textContent = `${positions.length} nodes across ${graph.projects.length} projects. ${positions.filter(n => stateKey(n.state) === 'needs-you').length} need you. Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.`;
+    summary.textContent = T(`${positions.length} nodes across ${graph.projects.length} projects. ${positions.filter(n => stateKey(n.state) === 'needs-you').length} need you. Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.`);
   }
   function accent(...states) {
     const keys = states.map(stateKey);
@@ -234,7 +246,7 @@ export function createMap(container, options = {}) {
     const keys = [...new Set(positions.map(n => n.project || 'unassigned'))].sort();
     keys.forEach((project, i) => {
       const members = positions.filter(n => (n.project || 'unassigned') === project);
-      const vertices = hullVertices(members, 17 * u + 7), mx = members.reduce((s, n) => s + n.x, 0) / members.length, my = members.reduce((s, n) => s + n.y, 0) / members.length;
+      const vertices = hullVertices(members, Math.max(17 * u + 7, Math.max(...members.map(n => n.radius)) + 10)), mx = members.reduce((s, n) => s + n.x, 0) / members.length, my = members.reduce((s, n) => s + n.y, 0) / members.length;
       const group = svgElement('g', {class: 'am-project', 'data-project': project});
       group.append(svgElement('path', {d: polygonPath(vertices, 6 * u), class: `am-hull-fill am-tint-${i % 3}`, fill: `url(#${prefix}-tint-${i % 3})`}),
         svgElement('path', {d: polygonPath(vertices, 6 * u), class: 'am-hull'}));
@@ -265,9 +277,9 @@ export function createMap(container, options = {}) {
     const rows = [], targets = [];
     nodeLayer.innerHTML = positions.map(starMarkup).join('');
     positions.forEach((n, i) => {
-      const state = stateKey(n.state), place = projects.get(n.project) || n.project || 'Unassigned';
-      targets.push(`<g tabindex="0" role="button" class="am-hit" data-node-id="${esc(n.id)}" aria-label="${esc(`${n.label || n.id}, ${n.kind || 'Node'}, ${words[state] || state}, ${place}`)}"><circle r="22"/></g>`);
-      rows.push(`<tr data-node-id="${esc(n.id)}"><td><button type="button">${esc(n.label || n.id)}</button></td>${[n.kind || 'Node', words[state] || state, place].map(v => `<td>${esc(v)}</td>`).join('')}</tr>`);
+      const state = stateKey(n.state), place = projects.get(n.project) || n.project || T('Unassigned');
+      targets.push(`<g tabindex="0" role="button" class="am-hit" data-node-id="${esc(n.id)}" aria-label="${esc(`${n.label || n.id}, ${kindWord(n)}, ${words[state] ? nodeWord(n) : state}, ${place}`)}"><circle r="22"/></g>`);
+      rows.push(`<tr data-node-id="${esc(n.id)}"><td><button type="button">${esc(n.label || n.id)}</button></td>${[kindWord(n), words[state] ? nodeWord(n) : state, place].map(v => `<td>${esc(v)}</td>`).join('')}</tr>`);
       if (arrivals && (!previous.has(n.id) || previous.get(n.id).state !== n.state)) animate(nodeLayer.children[i], MOTION.appear);
     });
     hits.innerHTML = targets.join('');
@@ -310,7 +322,7 @@ export function createMap(container, options = {}) {
     camera = {k, x: width / 2 - (minX + maxX) / 2 * k, y: (height - 50) / 2 - (minY + maxY) / 2 * k};
     refreshOverlay(); emit('viewchange', {...camera});
   }
-  for (const [label, text, action] of [['Zoom out', '−', () => zoom(camera.k / 1.25)], ['Zoom in', '+', () => zoom(camera.k * 1.25)], ['Fit all nodes', 'Fit', fitView], ['Reset map view', 'Reset', reset]]) {
+  for (const [label, text, action] of [['Zoom out', '−', () => zoom(camera.k / 1.25)], ['Zoom in', '+', () => zoom(camera.k * 1.25)], ['Fit all nodes', 'Fit', fitView], ['Reset map view', 'Reset', reset]].map(([a, t, g]) => [T(a), t === 'Fit' || t === 'Reset' ? T(t) : t, g])) {
     const button = element('button', '', text); button.type = 'button'; button.setAttribute('aria-label', label); button.addEventListener('click', action); controls.append(button);
   }
   function point(event) { const r = svg.getBoundingClientRect(); return {x: event.clientX - r.left, y: event.clientY - r.top}; }
@@ -365,6 +377,8 @@ export function createMap(container, options = {}) {
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
   media.addEventListener('change', motion); document.addEventListener('visibilitychange', motion);
   const observer = new ResizeObserver(resize); observer.observe(host);
+  const refit = () => { if (!destroyed && positions.length) refreshOverlay(); };
+  document.fonts?.addEventListener('loadingdone', refit);
   const api = {
     update(next) {
       if (destroyed) return;
@@ -373,7 +387,7 @@ export function createMap(container, options = {}) {
       const previous = new Map(graph.nodes.map(n => [n.id, n]));
       graph = {nodes: next.nodes.map(n => ({...n})), edges: (next.edges || []).map(e => ({...e})), projects: (next.projects || []).map(p => ({...p}))};
       if (!ids.has(selected)) selected = null;
-      const key = JSON.stringify({nodes: graph.nodes.map(({state, ...n}) => n), edges: graph.edges, projects: graph.projects});
+      const key = JSON.stringify({nodes: graph.nodes.map(n => { const {state, ...rest} = n; return {...rest, c: isCrystal(n)}; }), edges: graph.edges, projects: graph.projects});
       if (key === layoutKey && graph.nodes.every(n => previous.get(n.id)?.state === n.state)) return;
       if (key === layoutKey) {
         const nextById = new Map(graph.nodes.map(n => [n.id, n]));
@@ -383,9 +397,9 @@ export function createMap(container, options = {}) {
         const rows = new Map([...body.children].map(el => [el.dataset.nodeId, el]));
         const projects = new Map(graph.projects.map(p => [p.id, p.label]));
         for (const n of positions) if (previous.get(n.id).state !== n.state) {
-          const star = drawStar(n), state = words[stateKey(n.state)] || n.state;
+          const star = drawStar(n), state = words[stateKey(n.state)] ? nodeWord(n) : n.state;
           stars.get(n.id).replaceWith(star); animate(star, MOTION.appear);
-          targets.get(n.id).setAttribute('aria-label', `${n.label || n.id}, ${n.kind || 'Node'}, ${state}, ${projects.get(n.project) || n.project || 'Unassigned'}`);
+          targets.get(n.id).setAttribute('aria-label', `${n.label || n.id}, ${kindWord(n)}, ${state}, ${projects.get(n.project) || n.project || T('Unassigned')}`);
           rows.get(n.id).children[2].textContent = state;
         }
         paintAccents(); updateSummary(); refreshOverlay(); motion(); animate(labels, MOTION.label);
@@ -398,6 +412,8 @@ export function createMap(container, options = {}) {
     setTheme(name) { if (!destroyed) host.dataset.theme = name; },
     setReducedMotion(bool) { reducedOverride = Boolean(bool); if (!destroyed) motion(); },
     resize, fitView,
+    element: host,
+    setLive(live) { options.live = live === true; if (!destroyed) motion(); },
     pulse(id) {
       const path = paths.get(id);
       if (destroyed || !path || isReduced() || document.hidden || activePulses.size >= 8) return false;
@@ -411,7 +427,7 @@ export function createMap(container, options = {}) {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add(fn); return () => listeners.get(event)?.delete(fn); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; observer.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion);
+      destroyed = true; observer.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.fonts?.removeEventListener('loadingdone', refit);
       for (const animation of host.getAnimations({subtree: true})) animation.cancel();
       pointers.clear(); paths.clear(); activePulses.clear(); listeners.clear(); host.remove();
     }
