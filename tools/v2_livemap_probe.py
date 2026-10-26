@@ -218,6 +218,7 @@ PERF = """async () => {
   const graph = () => ({nodes: nodes.map(n => ({...n})), edges, projects});
   map.update(graph());
   const time = fn => { const t = performance.now(); fn(); return performance.now() - t; };
+  for (let i = 0; i < 12; i++) { nodes[i].label += ','; map.update(graph()); }
   const structural = [], stateOnly = [];
   for (let i = 0; i < 40; i++) { nodes[i].label += '.'; structural.push(time(() => map.update(graph()))); }
   for (let i = 0; i < 60; i++) { nodes[i].state = states[(states.indexOf(nodes[i].state) + 1) % 5]; stateOnly.push(time(() => map.update(graph()))); }
