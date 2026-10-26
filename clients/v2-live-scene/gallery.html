@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Archeus — scene comparison gallery</title>
+<link rel="stylesheet" href="./scene.css">
+<style>
+  * { box-sizing:border-box; } body { margin:0; background:#18151c; color:#efe9da; font:14px "Segoe UI",system-ui,sans-serif; }
+  header { padding:24px; position:sticky; top:0; z-index:2; background:#18151c; border-bottom:1px solid #625e69; }
+  h1 { font-size:22px; font-weight:400; margin:0 0 12px; } p { margin:8px 0; } label { display:inline-flex; align-items:center; min-height:44px; gap:10px; margin-right:24px; } input { width:22px; height:22px; }
+  main { padding:24px; } section { margin-bottom:48px; } h2 { font-size:18px; font-weight:400; }
+  .pair { display:flex; gap:24px; width:max-content; align-items:flex-start; } figure { margin:0; } figcaption { padding:12px 0; }
+  .frame { border:1px solid #625e69; } .frame>div { width:100%; height:100%; } output { display:block; min-height:24px; }
+</style>
+<header><h1>ARCHEUS · Scene comparison gallery</h1><p>Concept fixtures · no live telemetry. Each dark/light pair uses exact frame dimensions. Scroll page horizontally; phone scenes scroll inside frames.</p><label><input id="contrast" type="checkbox">High contrast</label><output id="selection" aria-live="polite">Select a node or Review to inspect its event.</output></header>
+<main id="gallery"></main>
+<script type="module" src="./gallery.js"></script>
+</html>
