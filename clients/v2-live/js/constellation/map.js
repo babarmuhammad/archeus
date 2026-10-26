@@ -1,10 +1,12 @@
-import {clamp, isCrystal, layout, coreRadius as coreSize, hullVertices, hullPadding, wordmarkSize, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre, randomSeed} from './geometry.js';
+import {clamp, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, hullVertices, hullPadding, wordmarkSize, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {ICONS, polyhedron, triangle, coreStar} from './nodeart.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
 let instance = 0;
 const words = {'needs-you': 'Needs you', running: 'Running', done: 'Done', blocked: 'Blocked', idle: 'Idle', paused: 'Paused', thinking: 'Thinking'};
-const glowReach = {'needs-you': 6.5, running: 5.5, blocked: 4.8, done: 4.4, thinking: 4.4, paused: 3.4, idle: 3.4};
+const kinds = {Execution: 'Agent execution'};
+const ICON = {Project: 'notes', Execution: 'code', Idea: 'bulb', Knowledge: 'doc'};
 const esc = s => String(s).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 export const edgeId = edge => edge.id ?? `${edge.from}->${edge.to}:${edge.kind || 'relation'}`;
 function svgElement(tag, attributes = {}, text) {
@@ -35,29 +37,8 @@ function reconcile(parent, cache, items, keyOf, build, patch) {
   }
   for (const [key, rec] of cache) if (!seen.has(key)) { rec.el.remove(); cache.delete(key); }
 }
-function corePaths(R) {
-  const at = (k, r, turn) => { const a = (k * 45 + turn) * Math.PI / 180; return [r * Math.cos(a), r * Math.sin(a)]; };
-  const tip = k => at(k, R, -90), inner = k => at(k, R * .4, -67.5);
-  const pt = ([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`;
-  const range = Array.from({length: 8}, (_, k) => k);
-  return {
-    outline: `M${range.map(k => `${pt(tip(k))}L${pt(inner(k))}`).join('L')}Z`,
-    chords: range.map(k => `M${pt(tip(k))}L${pt(tip((k + 3) % 8))}`).join(''),
-    ring: `M${range.map(k => pt(inner(k))).join('L')}Z`,
-    spokes: range.map(k => `M0,0L${pt(tip(k))}M${pt(tip(k))}L${pt(inner((k + 7) % 8))}`).join('')
-  };
-}
-function crystalPaths(id, r) {
-  const rng = randomSeed(`crystal:${id}`), n = 7, at = k => { const a = -Math.PI / 2 + k * Math.PI * 2 / n + (rng() - .5) * .25, d = r * (.9 + rng() * .2); return [d * Math.cos(a), d * Math.sin(a)]; };
-  const v = Array.from({length: n}, (_, k) => at(k)), c = [(rng() - .5) * r * .24, (rng() - .5) * r * .24];
-  const pt = ([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`, inner = v.map(([x, y]) => [c[0] + (x - c[0]) * .5, c[1] + (y - c[1]) * .5]);
-  return {outline: `M${v.map(pt).join('L')}Z`, dots: v.map(q => `M${pt(q)}h0`).join(''),
-    facets: v.map(q => `M${pt(c)}L${pt(q)}`).join('') + [0, 2, 4, 5].map(k => `M${pt(v[k])}L${pt(v[(k + 2) % n])}`).join('') + `M${inner.map(pt).join('L')}Z` + v.map((q, k) => `M${pt(inner[k])}L${pt(v[(k + 1) % n])}`).join('')};
-}
 function starShape(kind, r) {
-  if (kind === 'Execution') return ['path', {d: `M0,${-r * 1.25}L${r * 1.15},${r * .85}L${-r * 1.15},${r * .85}Z`}];
   if (kind === 'Decision') return ['path', {d: `M0,${-r * 1.3}L${r * 1.3},0L0,${r * 1.3}L${-r * 1.3},0Z`}];
-  if (kind === 'Project') return ['path', {d: `M${r * 1.15},0L${r * .575},${r}L${-r * .575},${r}L${-r * 1.15},0L${-r * .575},${-r}L${r * .575},${-r}Z`}];
   if (kind === 'Knowledge') return ['rect', {x: -r * .85, y: -r * .85, width: r * 1.7, height: r * 1.7, rx: 1}];
   if (kind === 'Idea') { const s = r * 1.35; return ['path', {d: `M0,${-s}Q0,0 ${s},0Q0,0 0,${s}Q0,0 ${-s},0Q0,0 0,${-s}Z`}]; }
   return ['circle', {r}];
@@ -75,29 +56,20 @@ export function createMap(container, options = {}) {
   const svg = svgElement('svg', {role: 'img', 'aria-labelledby': `${prefix}-title ${prefix}-summary`});
   const title = svgElement('title', {id: `${prefix}-title`}, options.label || 'Work constellation');
   const summary = svgElement('desc', {id: `${prefix}-summary`});
-  const defs = svgElement('defs');
-  for (const name of ['idle', 'running', 'needs-you', 'blocked', 'done', 'thinking', 'core', 'tint-0', 'tint-1', 'tint-2', 'haze', 'plate']) {
-    const gradient = svgElement('radialGradient', {id: `${prefix}-${name}`, class: `am-grad-${name}`});
-    const hull = name.startsWith('tint'), plate = name === 'plate';
-    gradient.append(svgElement('stop', {offset: '0', 'stop-color': 'currentColor', 'stop-opacity': hull ? '.2' : name === 'haze' ? '.9' : plate ? '.92' : '.5'}),
-      svgElement('stop', {offset: plate ? '.6' : hull ? '.7' : '.22', 'stop-color': 'currentColor', 'stop-opacity': hull ? '.07' : name === 'haze' ? '.35' : plate ? '.8' : '.2'}),
-      svgElement('stop', {offset: '1', 'stop-color': 'currentColor', 'stop-opacity': '0'}));
-    defs.append(gradient);
-  }
-  const haze = svgElement('rect', {class: 'am-haze', fill: `url(#${prefix}-haze)`});
-  const dust = svgElement('g', {class: 'am-dust', 'aria-hidden': 'true'});
   const world = svgElement('g', {class: 'am-world', 'aria-hidden': 'true'});
-  const spokeLayer = svgElement('g', {class: 'am-spokes'}), hullLayer = svgElement('g', {class: 'am-hulls'}), edgeLayer = svgElement('g', {class: 'am-edges'}), plateLayer = svgElement('g', {class: 'am-plates'});
+  const spokeLayer = svgElement('g', {class: 'am-spokes'}), hullLayer = svgElement('g', {class: 'am-hulls'}), edgeLayer = svgElement('g', {class: 'am-edges'});
   const core = svgElement('g', {class: 'am-core am-state-core'});
   const nodeLayer = svgElement('g', {class: 'am-nodes'}), pulseLayer = svgElement('g', {class: 'am-pulses'});
-  world.append(spokeLayer, hullLayer, edgeLayer, plateLayer, core, nodeLayer, pulseLayer);
+  world.append(spokeLayer, hullLayer, edgeLayer, core, nodeLayer, pulseLayer);
   const leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
+  const reviews = svgElement('g', {class: 'am-reviews'});
   const hits = svgElement('g', {class: 'am-hits'}), selectRing = svgElement('circle', {class: 'am-select-ring'});
   const coreMark = svgElement('g', {'data-core': 'static'});
   const wordmark = svgElement('text', {class: 'am-wordmark', 'text-anchor': 'middle'}, String(options.coreLabel ?? 'Archeus').toUpperCase());
+  const tagline = svgElement('text', {class: 'am-tagline', 'text-anchor': 'middle'}, T('Your projects. In context.'));
   const runningText = svgElement('text', {class: 'am-running', 'text-anchor': 'middle'});
-  core.append(coreMark, wordmark, runningText);
-  svg.append(title, summary, defs, haze, dust, world, leaders, labels, hits);
+  core.append(coreMark, wordmark, tagline, runningText);
+  svg.append(title, summary, world, leaders, labels, reviews, hits);
   const controls = element('div', 'am-controls');
   controls.setAttribute('aria-label', T('Map view'));
   const status = element('p', 'am-sr');
@@ -112,12 +84,12 @@ export function createMap(container, options = {}) {
   table.append(caption, head, body); equivalent.append(table);
   host.append(svg, controls, status, equivalent); container.append(host);
   let graph = {nodes: [], edges: [], projects: []}, positions = [], selected = null;
-  let width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
+  let inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
   let reducedOverride = options.reducedMotion;
   let layoutKey = '';
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   const listeners = new Map(), activePulses = new Set(), pointers = new Map();
-  const starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), hullRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), plateRecs = new Map(), leaderRecs = new Map();
+  const starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), hullRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
   let selectedEl = null, fullKey = '';
   let gesture = null;
   const canvas = document.createElement('canvas');
@@ -146,43 +118,50 @@ export function createMap(container, options = {}) {
   function refreshOverlay() {
     world.setAttribute('transform', `translate(${camera.x} ${camera.y}) scale(${camera.k})`);
     const nodes = screenNodes();
-    const size = clamp(Math.round(11.6 * u + 1), 13, 19), rich = width >= 1280;
+    const size = width < 360 ? 12 : width < 480 ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
     if (context) context.font = `400 ${size}px ${serif}`;
-    const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() + 6) * k;
-    const metaOf = n => `${kindWord(n)} · ${words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle')}`.toUpperCase();
+    const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * coreReach(width) + 6) * k, below = (coreRadius() * coreReach(width) + wordmarkSize(u) * (width < 480 ? 3 : 5)) * k;
+    const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
+    const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
+    const reviewBox = reviewFor && width >= 480 && options.review !== false ? {id: reviewFor.id, x: reviewFor.x - 56, y: reviewFor.y + reviewFor.radius + 12, width: 112, height: 44} : null;
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
     const boxes = placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
-      obstacles: [{x: cx - Math.max(reach, 62 * u * k), y: cy - reach, width: Math.max(reach, 62 * u * k) * 2, height: reach + (coreRadius() + 34 * u) * k},
-        {x: width - 200, y: height - 58, width: 200, height: 58}]});
+      obstacles: [{x: cx - Math.max(reach, 62 * u * k), y: cy - reach, width: Math.max(reach, 62 * u * k) * 2, height: reach + below},
+        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: width - 200, y: height - 58, width: 200, height: 58}, ...(reviewBox ? [reviewBox] : [])]});
     const byId = new Map(nodes.map(n => [n.id, n]));
     const items = boxes.map(box => ({box, n: byId.get(box.id), meta: box.rich ? metaOf(byId.get(box.id)) : ''}));
-    const labelSig = ({box, n, meta}) => `${box.rich}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}`;
+    const labelSig = ({box, n, meta}) => `${box.rich}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}|${subOf(n)}`;
     const placeLabel = (rec, {box}) => {
       const meta = box.size * .68;
       for (const [name, value] of [['x', box.x], ['y', box.y], ['width', box.width], ['height', box.height]]) setAttr(rec.el, `data-${name}`, value);
       if (rec.meta) { setAttr(rec.meta, 'x', box.x + 2); setAttr(rec.meta, 'y', box.y + meta * 1.05); }
       setAttr(rec.title, 'x', box.x + 2); setAttr(rec.title, 'y', box.rich ? box.y + meta * 1.4 + box.size : box.y + box.size);
+      if (rec.sub) { setAttr(rec.sub, 'x', box.x + 2); setAttr(rec.sub, 'y', box.y + meta * 1.4 + box.size * 1.95); }
     };
     const buildLabel = item => {
       const {box, n} = item, state = stateKey(n.state), meta = box.size * .68;
       const el = svgElement('g', {class: `am-label am-state-${words[state] ? state : 'idle'}${n.id === selected ? ' am-selected-label' : ''}`, 'data-node-id': n.id});
       const rec = {el, sig: labelSig(item), meta: box.rich ? svgElement('text', {class: 'am-label-meta', style: `font-size:${meta}px`}, item.meta) : null,
         title: svgElement('text', {class: 'am-label-title', style: `font-size:${box.size}px`}, box.text)};
+      rec.sub = box.rich && subOf(n) ? svgElement('text', {class: 'am-label-sub', style: `font-size:${box.size * .72}px`}, subOf(n)) : null;
       if (rec.meta) el.append(rec.meta);
       el.append(rec.title);
+      if (rec.sub) el.append(rec.sub);
       placeLabel(rec, item);
       return rec;
     };
     reconcile(labels, labelRecs, items, item => item.box.id, buildLabel, (rec, item) => {
       if (rec.sig !== labelSig(item)) Object.assign(rec, buildLabel(item)); else placeLabel(rec, item);
     });
-    const placePlate = (rec, {box}) => {
-      const k = camera.k;
-      setAttr(rec.el, 'cx', f((box.x + box.width / 2 - camera.x) / k)); setAttr(rec.el, 'cy', f((box.y + box.height / 2 - camera.y) / k));
-      setAttr(rec.el, 'rx', f((box.width / 2 + 14) / k)); setAttr(rec.el, 'ry', f((box.height / 2 + 9) / k));
-    };
-    reconcile(plateLayer, plateRecs, items, item => item.box.id, item => { const rec = {el: svgElement('ellipse', {class: 'am-plate', fill: `url(#${prefix}-plate)`})}; placePlate(rec, item); return rec; }, placePlate);
+    const placeReview = (rec, b) => setAttr(rec.el, 'transform', `translate(${f(b.x + b.width / 2)} ${f(b.y + b.height / 2)})`);
+    reconcile(reviews, reviewRecs, reviewBox ? [reviewBox] : [], b => b.id, b => {
+      const el = svgElement('g', {class: 'am-review am-state-needs-you', tabindex: 0, role: 'button', 'data-node-id': b.id, 'aria-label': `${T('Review')}: ${byId.get(b.id).label}`});
+      el.append(svgElement('rect', {x: -54, y: -18, width: 108, height: 36, rx: 6}), svgElement('text', {x: -20, y: 5, class: 'am-review-label'}, T('Review')), svgElement('path', {d: 'M22 0h14m-5-5 5 5-5 5', class: 'am-review-arrow'}));
+      el.addEventListener('click', () => emit('review', el.dataset.nodeId));
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('review', el.dataset.nodeId); } });
+      const rec = {el}; placeReview(rec, b); return rec;
+    }, placeReview);
     const far = [];
     for (const {box, n} of items) {
       const ex = clamp(n.x, box.x, box.x + box.width), ey = clamp(n.y, box.y, box.y + box.height), d = Math.hypot(ex - n.x, ey - n.y);
@@ -227,23 +206,15 @@ export function createMap(container, options = {}) {
   }
   const f = v => +v.toFixed(2);
   function starMarkup(n) {
-    const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, crystal = isCrystal(n), g = crystal ? r / 14 : Math.max(1, r / 8);
-    const cp = crystal ? crystalPaths(n.id, r) : null, [tag, shape] = crystal ? ['path', {d: cp.outline}] : starShape(n.kind, r);
-    const attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
-    let glyph = '', outside = '';
-    if (state === 'idle') glyph = '<circle r="1.2" fill="currentColor"/>';
-    if (state === 'done') glyph = '<path d="M-3,0L-1,2L3,-2" class="am-attention-glyph"/>';
-    if (state === 'paused') glyph = '<path d="M-2,-3V3M2,-3V3" class="am-glyph"/>';
-    if (state === 'thinking') glyph = '<path d="M0,-3L3,0L0,3L-3,0Z" class="am-attention-glyph"/>';
-    if (state === 'blocked') glyph = '<path d="M-3,-3L3,3M3,-3L-3,3" class="am-glyph"/>';
-    if (state === 'running' && crystal) glyph = '<circle r="3.4" class="am-glyph"/><circle r="1.1" fill="currentColor"/>';
-    if (state === 'running') outside = `<path d="M0,${f(-r - 5)}v-3 M${f(r + 5)},0h3 M0,${f(r + 5)}v3 M${f(-r - 5)},0h-3" class="am-glyph"/>`;
-    if (state === 'needs-you') {
-      const d = f(r + 7);
-      outside = `<path d="M0,${-d}L${d},0L0,${d}L${-d},0Z" class="am-attention-ring"/>`;
-      glyph = `<path d="M0,-3.4V.9 M0,3.1v.4" class="${crystal ? 'am-glyph' : 'am-attention-glyph'}"/>`;
+    const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, body = ['Mission', 'Project', 'Execution'].includes(n.kind);
+    if (body) {
+      const art = n.kind === 'Execution' ? triangle(n.id, r) : polyhedron(n.id, r), big = r > 40, ic = n.kind === 'Mission' ? (state === 'done' ? 'check' : state === 'needs-you' ? 'doc-search' : 'doc') : ICON[n.kind];
+      const plate = big ? 17 : Math.max(8, r * .42), scale = big ? 28 / 24 : plate * 1.5 / 24;
+      const mark = state === 'needs-you' ? `<path d="M${f(-r * .9)},${f(-r * .78)}l7,-8l7,8l-7,8Z" class="am-diamond"/>` : state === 'blocked' ? `<path d="M${f(r * .72)},${f(-r * .8)}l7,7m0,-7l-7,7" class="am-glyph"/>` : '';
+      return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><path d="${art.outline}" class="am-body am-poly${isCrystal(n) ? ' am-crystal' : ''}"/><path d="${art.mesh}" class="am-facets"/><path d="${art.dots}" class="am-crystal-dots"/><circle r="${f(plate)}" class="am-mark-plate"/><g transform="translate(${f(-12 * scale)} ${f(-12 * scale + (n.kind === 'Execution' ? r * .2 : 0))}) scale(${f(scale)})"><path d="${ICONS[ic]}" class="am-icon"/></g>${mark}</g>`;
     }
-    return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><circle r="${f(r * (crystal ? 3.6 : glowReach[colorState]))}" fill="url(#${prefix}-${colorState === 'paused' ? 'idle' : colorState})" class="am-glow"/><${tag} ${attrs} class="am-body${crystal ? ' am-crystal' : ['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/>${crystal ? `<path d="${cp.facets}" class="am-facets"/><path d="${cp.dots}" class="am-crystal-dots"/>` : ''}${outside}${glyph ? `<g transform="scale(${f(g)})">${crystal ? '<circle r="5" class="am-mark-plate"/>' : ''}${glyph}</g>` : ''}</g>`;
+    const [tag, shape] = starShape(n.kind, r), attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
+    return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><${tag} ${attrs} class="am-body${['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/></g>`;
   }
   function drawStar(n) {
     const holder = svgElement('g');
@@ -257,23 +228,14 @@ export function createMap(container, options = {}) {
     const keys = states.map(stateKey);
     return keys.includes('needs-you') ? 'needs-you' : keys.includes('running') ? 'running' : 'none';
   }
-  function drawDust() {
-    dust.replaceChildren();
-    const rng = randomSeed(`${options.seed || 'archeus'}:dust`), count = clamp(Math.round(width * height / 5200), 36, 420);
-    const tiers = [[], [], []];
-    for (let i = 0; i < count; i++) tiers[i % 3 === 0 ? 2 : i % 3 === 1 ? 1 : 0].push(`M${(rng() * width).toFixed(1)},${(rng() * height).toFixed(1)}h0`);
-    tiers.forEach((list, i) => dust.append(svgElement('path', {d: list.join(''), class: `am-dust-${i}`})));
-  }
   function drawCore() {
-    const R = coreRadius(), p = corePaths(R);
+    const R = coreRadius(), p = coreStar(R, coreReach(width));
     core.setAttribute('transform', `translate(${centre.x} ${centre.y})`);
-    coreMark.replaceChildren(svgElement('circle', {r: R * 2.6, fill: `url(#${prefix}-core)`, class: 'am-core-glow'}),
-      svgElement('path', {d: p.chords, class: 'am-core-chords'}), svgElement('path', {d: p.spokes, class: 'am-core-thread'}),
-      svgElement('path', {d: p.ring, class: 'am-core-ring'}), svgElement('path', {d: p.outline, class: 'am-core-outline'}),
-      svgElement('circle', {r: Math.max(2.5, R * .09), class: 'am-core-dot'}));
-    const ws = wordmarkSize(u);
-    wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', R + ws * 1.9); wordmark.style.fontSize = `${ws}px`;
-    runningText.setAttribute('y', R + ws * 3.5); runningText.style.fontSize = `${ws * .9}px`;
+    coreMark.replaceChildren(svgElement('path', {d: p.threads, class: 'am-core-chords'}), svgElement('path', {d: p.spikes, class: 'am-core-thread'}), svgElement('path', {d: p.tips, class: 'am-core-dot'}));
+    const ws = wordmarkSize(u), base = R * coreReach(width) + ws * 1.9;
+    wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', base); wordmark.style.fontSize = `${ws}px`;
+    tagline.style.display = width < 480 ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * .95}px`;
+    runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
   }
   function render(previous = new Map(), arrivals = false, moved = true) {
     if (moved) { for (const marker of activePulses) marker.remove(); activePulses.clear(); }
@@ -284,7 +246,6 @@ export function createMap(container, options = {}) {
     const patchHull = (rec, item) => {
       const {i, members} = item;
       setAttr(rec.el, 'class', `am-project am-accent-${accent(...members.map(n => n.state))}`);
-      setAttr(rec.fill, 'class', `am-hull-fill am-tint-${i % 3}`); setAttr(rec.fill, 'fill', `url(#${prefix}-tint-${i % 3})`);
       const shape = [width, u];
       for (const n of members) shape.push(n.x, n.y, n.radius);
       if (rec.shape && rec.shape.length === shape.length && rec.shape.every((v, k) => v === shape[k])) { item.mx = rec.mx; item.my = rec.my; return; }
@@ -292,14 +253,12 @@ export function createMap(container, options = {}) {
       const vertices = hullVertices(members, hullPadding(members, u));
       item.mx = rec.mx = members.reduce((s, n) => s + n.x, 0) / members.length; item.my = rec.my = members.reduce((s, n) => s + n.y, 0) / members.length;
       const d = polygonPath(vertices, 6 * u);
-      setAttr(rec.fill, 'd', d); setAttr(rec.outline, 'd', d);
-      const inner = vertices.map(v => ({x: item.mx + (v.x - item.mx) * .55, y: item.my + (v.y - item.my) * .55}));
-      setAttr(rec.facet, 'd', width >= 480 ? `${polygonPath(inner)}${vertices.map((v, j) => `M${v.x},${v.y}L${inner[j].x},${inner[j].y}`).join('')}` : '');
+      setAttr(rec.outline, 'd', d);
       setAttr(rec.vertex, 'd', vertices.map(v => `M${v.x},${v.y}h0`).join(''));
     };
     reconcile(hullLayer, hullRecs, hulls, item => item.project, item => {
-      const rec = {el: svgElement('g', {'data-project': item.project}), fill: svgElement('path'), outline: svgElement('path', {class: 'am-hull'}), facet: svgElement('path', {class: 'am-facet'}), vertex: svgElement('path', {class: 'am-vertex'})};
-      rec.el.append(rec.fill, rec.outline, rec.facet, rec.vertex);
+      const rec = {el: svgElement('g', {'data-project': item.project}), outline: svgElement('path', {class: 'am-hull'}), vertex: svgElement('path', {class: 'am-vertex'})};
+      rec.el.append(rec.outline, rec.vertex);
       patchHull(rec, item);
       return rec;
     }, patchHull);
@@ -371,11 +330,11 @@ export function createMap(container, options = {}) {
     const rect = host.getBoundingClientRect();
     const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
     if (w === width && h === height && positions.length) return;
-    width = w; height = h; u = unit(w, h); centre = coreCentre(w, h); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    haze.setAttribute('width', width); haze.setAttribute('height', height);
+    inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
+    width = w; height = h; u = unit(w, h); centre = coreCentre(w, h, inset); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
-    drawDust(); drawCore();
-    camera = {x: 0, y: 0, k: 1}; positions = layout(graph, width, height, options.seed); render(); emit('resize', {width, height});
+    drawCore();
+    camera = {x: 0, y: 0, k: 1}; positions = layout(graph, width, height, options.seed, inset); render(); emit('resize', {width, height});
   }
   function zoom(k, x = width / 2, y = height / 2) {
     const next = clamp(k, .5, 4), ratio = next / camera.k;
@@ -465,7 +424,7 @@ export function createMap(container, options = {}) {
       fullKey = full;
       const key = graph.nodes.map(n => `${n.id}|${n.kind}|${n.project}|${n.weight}|${isCrystal(n)}`).join(';');
       const moved = key !== layoutKey;
-      if (moved) positions = layout(graph, width, height, options.seed);
+      if (moved) positions = layout(graph, width, height, options.seed, inset);
       else { const at = new Map(positions.map(p => [p.id, p])); positions = graph.nodes.map(n => { const p = at.get(n.id); return {...n, x: p.x, y: p.y, radius: p.radius, rank: p.rank}; }).sort((x, y) => String(x.id).localeCompare(String(y.id))); }
       layoutKey = key;
       render(previous, true, moved);

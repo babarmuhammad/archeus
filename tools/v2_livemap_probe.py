@@ -30,7 +30,7 @@ GEOM = """() => {
   const stars = [...host.querySelectorAll('.am-star')].map(g => { const b = g.querySelector('.am-body').getBoundingClientRect(); return {id: g.dataset.nodeId, cx: b.x + b.width / 2, cy: b.y + b.height / 2, r: Math.max(b.width, b.height) / 2}; });
   const hits = [...host.querySelectorAll('.am-hit circle')].map(c => r(c));
   const buttons = [...host.querySelectorAll('.am-controls button')].map(r);
-  const core = ['.am-core-outline', '.am-wordmark'].map(s => r(host.querySelector(s)));
+  const core = ['.am-core-chords', '.am-wordmark'].map(s => r(host.querySelector(s)));
   const needs = [...host.querySelectorAll('.am-star.am-state-needs-you')].map(g => g.dataset.nodeId);
   const col = s => { const m = getComputedStyle(s).fill.match(/[\\d.]+/g).map(Number); return m; };
   const bg = getComputedStyle(host).backgroundColor.match(/[\\d.]+/g).map(Number);
@@ -110,7 +110,7 @@ def geometry_checks(pg, tag, phone):
     least = 40 if phone else 56
     cr = [round(min(c['w'], c['h'])) for c in g['crystals']]
     check(len(cr) >= 2 and min(cr) >= least, f'{tag}: needs-you and running missions draw as crystals, each >= {least} px across ({cr})')
-    far = [l['id'] for l in L for s in g['stars'] if s['id'] == l['id'] and ((s['cx'] - min(max(s['cx'], l['x']), l['x'] + l['w'])) ** 2 + (s['cy'] - min(max(s['cy'], l['y']), l['y'] + l['h'])) ** 2) ** .5 > 100]
+    far = [l['id'] for l in L for s in g['stars'] if s['id'] == l['id'] and ((s['cx'] - min(max(s['cx'], l['x']), l['x'] + l['w'])) ** 2 + (s['cy'] - min(max(s['cy'], l['y']), l['y'] + l['h'])) ** 2) ** .5 > 44 + s['r']]
     check(all(i in g['leaders'] for i in far), f'{tag}: a label more than 100 px from its star has a leader line ({len(far)} far, {len(g["leaders"])} leaders)')
     check(g['raster'] == 0, f'{tag}: map holds no img, canvas or other raster element')
     check(g['filters'] == 0, f'{tag}: no filter or backdrop-filter in the map')
@@ -122,7 +122,7 @@ HULLS = """async () => {
   const host = document.querySelector('.archeus-map'), hr = host.getBoundingClientRect();
   const polys = [...host.querySelectorAll('.am-project')].map(g => ({id: g.dataset.project, pts: [...g.querySelector('.am-vertex').getAttribute('d').matchAll(/M([-\\d.]+),([-\\d.]+)h0/g)].map(m => ({x: +m[1], y: +m[2]}))}));
   const box = s => { const b = host.querySelector(s).getBoundingClientRect(); return rectPolygon(b.x - hr.x, b.y - hr.y, b.right - hr.x, b.bottom - hr.y); };
-  const marks = [['wordmark', box('.am-wordmark')], ['core', box('.am-core-outline')]];
+  const marks = [['wordmark', box('.am-wordmark')], ['core', box('.am-core-chords')]];
   const hulls = [], core = [];
   polys.forEach((a, i) => {
     polys.slice(i + 1).forEach(b => { if (overlapDepth(a.pts, b.pts, 0)) hulls.push(a.id + '/' + b.id); });

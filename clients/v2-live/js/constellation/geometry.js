@@ -3,8 +3,9 @@ const GOLDEN = 2.399963229728653;
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 export const INSET = Object.freeze({top: 16, right: 16, bottom: 60, left: 16});
 export const unit = (width, height) => clamp(Math.sqrt(width * height) / 900, .9, 1.6);
-export const coreCentre = (width, height) => ({x: width / 2, y: (INSET.top + height - INSET.bottom) / 2});
+export const coreCentre = (width, height, inset = INSET) => ({x: width / 2, y: (inset.top + height - inset.bottom) / 2});
 export const coreRadius = u => 40 * u;
+export const coreReach = width => (width < 480 ? 1.25 : 1.75);
 export const nodeRadius = (weight, u = 1) => (3 + Math.sqrt(clamp(Number(weight) || 1, .25, 100)) * 2) * u;
 export function randomSeed(seed) {
   let n = 2166136261;
@@ -22,7 +23,8 @@ export function stateKey(state) {
 }
 export const isCrystal = n => n.kind === 'Mission' && ['running', 'needs-you'].includes(stateKey(n.state));
 export const CRYSTAL_WEIGHT = 100;
-export const crystalRadius = (u, width) => (width < 480 ? 24 : 40) * u;
+export const crystalRadius = (u, width) => (width < 480 ? 25 : 62) * u;
+export const bodyRadius = (n, u, width) => (n.kind === 'Project' ? (width < 480 ? 17 : 34) : n.kind === 'Execution' ? (width < 480 ? 17 : 38) : (width < 480 ? 13 : 26)) * u;
 export const hullPadding = (members, u) => Math.max(17 * u + 7, Math.max(...members.map(n => n.radius)) + 10);
 export const wordmarkSize = u => Math.round(11 * u + 1);
 // Convex polygons: the vector that moves `a` clear of `b` along the axis of least penetration (plus `margin`), or null when they are already apart.
@@ -42,23 +44,23 @@ export function overlapDepth(a, b, margin = 0) {
 }
 export const rectPolygon = (x0, y0, x1, y1) => [{x: x0, y: y0}, {x: x1, y: y0}, {x: x1, y: y1}, {x: x0, y: y1}];
 // What a hull must stay clear of: the core star and the wordmark and running count under it.
-export function coreObstacles(width, height, u) {
-  const c = coreCentre(width, height), R = coreRadius(u), ws = wordmarkSize(u);
-  return [Array.from({length: 12}, (_, i) => ({x: c.x + (R + 4 * u) * Math.cos(i * TAU / 12 + .26), y: c.y + (R + 4 * u) * Math.sin(i * TAU / 12 + .26)})),
-    rectPolygon(c.x - 4.8 * ws, c.y + R * .6, c.x + 4.8 * ws, c.y + R + 3.9 * ws)];
+export function coreObstacles(width, height, u, inset = INSET) {
+  const c = coreCentre(width, height, inset), R = coreRadius(u), ws = wordmarkSize(u), S = R * coreReach(width) + 4 * u;
+  return [Array.from({length: 12}, (_, i) => ({x: c.x + S * Math.cos(i * TAU / 12 + .26), y: c.y + S * Math.sin(i * TAU / 12 + .26)})),
+    rectPolygon(c.x - 6.5 * ws, c.y + R * .6, c.x + 6.5 * ws, c.y + R * coreReach(width) + (width < 480 ? 2.8 : 4.6) * ws)];
 }
-export function layout(graph, width, height, seed = 'archeus') {
-  const u = unit(width, height), core = coreCentre(width, height);
+export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
+  const u = unit(width, height), core = coreCentre(width, height, inset);
   const keys = [...new Set(graph.nodes.map(n => n.project || 'unassigned'))].sort();
   if (!keys.length) return [];
   const weight = n => isCrystal(n) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
   const groups = keys.map(key => graph.nodes.filter(n => (n.project || 'unassigned') === key)
-    .map(n => { const w = weight(n); return {...n, radius: isCrystal(n) ? crystalRadius(u, width) : nodeRadius(w, u), rank: w}; })
+    .map(n => { const w = weight(n); return {...n, radius: isCrystal(n) ? crystalRadius(u, width) : ['Mission', 'Project', 'Execution'].includes(n.kind) ? bodyRadius(n, u, width) : nodeRadius(w, u), rank: w}; })
     .sort((a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || b.rank - a.rank || String(a.id).localeCompare(String(b.id))));
-  const left = Math.min(INSET.left, width / 10), right = Math.min(INSET.right, width / 10);
-  const top = Math.min(INSET.top, height / 10), bottom = Math.min(INSET.bottom, height / 5);
+  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10);
+  const top = Math.min(inset.top, height / 3), bottom = Math.min(inset.bottom, height / 5);
   const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y);
-  const pad = 20 * u, keepOut = coreRadius(u) + 16 * u, P = keys.length;
+  const pad = 20 * u, keepOut = coreRadius(u) * coreReach(width) + 8 * u, P = keys.length;
   const reach = (s, group) => s * Math.sqrt(Math.max(0, group.length - 1)) + pad + 8 * u;
   const widest = Math.max(...groups.map(g => g.length));
   const ring = (s, angles) => {
@@ -105,7 +107,8 @@ export function layout(graph, width, height, seed = 'archeus') {
       }
       for (const n of nodes) {
         const dx = n.x - core.x, dy = n.y - core.y, d = Math.hypot(dx, dy);
-        if (d < keepOut) { n.x = core.x + (dx || 1) / (d || 1) * keepOut; n.y = core.y + dy / (d || 1) * keepOut; }
+        const need = keepOut + n.radius * .5;
+        if (d < need) { n.x = core.x + (dx || 1) / (d || 1) * need; n.y = core.y + dy / (d || 1) * need; }
         n.x = clamp(n.x, left + n.radius, width - right - n.radius);
         n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
       }
@@ -113,7 +116,7 @@ export function layout(graph, width, height, seed = 'archeus') {
     return placed;
   };
   // Hulls are the real polygons: push whole clusters apart (and off the core mark and its wordmark) until none touch, keeping them in view.
-  const obstacles = coreObstacles(width, height, u), gap = 6 * u;
+  const obstacles = coreObstacles(width, height, u, inset), gap = 6 * u;
   const shift = (g, dx, dy) => { for (const n of g) { n.x += dx; n.y += dy; } };
   const hullOf = g => hullVertices(g, hullPadding(g, u));
   const settle = (placed, rounds) => {
@@ -200,7 +203,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
   const rank = new Map(nodes.map(n => [n, priority(n)]));
   const sorted = [...nodes].sort((a, b) => rank.get(b) - rank.get(a) || String(a.id).localeCompare(String(b.id)));
   const budget = width < 480 ? 5 : width < 1280 ? 13 : 30;
-  const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 : lineHeight;
+  const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 + size * .95 : lineHeight;
   for (const n of sorted) {
     const mandatory = n.id === selected || keys.get(n) === 'needs-you';
     if (!mandatory && result.length >= budget) continue;
