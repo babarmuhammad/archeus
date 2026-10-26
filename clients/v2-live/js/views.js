@@ -1,6 +1,7 @@
 // Screens. Each view takes ctx = { sim, nav(hash), act(kind, id), toast(text), route, ui } and returns the content node.
 // Everything shown comes from the simulation (fixtures), and every screen says so in its header.
 import { h, s } from './dom.js';
+import { icon, glyph } from './icons.js';
 import { present } from '../core-words.js';
 import { clockLabel, REPLAY_CATEGORIES, SPEEDS } from '../sim.js';
 import { missionGroups } from '../term.js';
@@ -23,7 +24,7 @@ export const word = (machine, state) => present(machine, state).label;
 
 export function badge(machine, state) {
   const p = present(machine, state);
-  return h('span', { class: 'badge', 'data-role': p.cls }, h('span', { class: 'g', 'aria-hidden': 'true' }, p.glyph), h('span', { class: 'w' }, p.label));
+  return h('span', { class: 'badge', 'data-role': p.cls }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(p.cls)), h('span', { class: 'w' }, p.label));
 }
 
 export function head(ctx, title, extra) {
@@ -48,6 +49,7 @@ export function missionRow(ctx, m, base) {
     h('span', { class: 'sp' }, spineRow(m.state, m.held_from)));
 }
 
+const KIND_ICON = { approval: 'approval', verification: 'status', mission: 'mission', knowledge: 'knowledge', automation: 'execution', account: 'account' };
 function attentionItem(ctx, a) {
   const sim = ctx.sim, m = a.mission_id ? sim.state.missions[a.mission_id] : null;
   const need = a.group === 'Decide' || a.group === 'Review';
@@ -57,8 +59,8 @@ function attentionItem(ctx, a) {
   else if (a.kind === 'automation') btns.push(h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('enable', a.ref) }, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve'));
   else if (a.kind === 'account') btns.push(h('a', { class: 'btn', href: '#/settings' }, 'Open Settings'));
   else if (open) btns.push(h('a', { class: 'btn primary', href: open }, a.kind === 'approval' ? 'Open decision' : a.group === 'Review' ? 'Open review' : 'Open'));
-  return h('article', { class: 'card' + (a.group === 'Decide' ? ' band' : ''), 'data-key': a.id },
-    h('div', { class: 'top' }, a.kind === 'approval' || a.kind === 'verification' || a.kind === 'mission' ? badge('mission', m ? m.state : 'APPROVAL_REQUIRED') : h('span', { class: 'badge', 'data-role': need ? 'needs_you' : 'blocked' }, h('span', { class: 'g', 'aria-hidden': 'true' }, need ? '◆' : '■'), h('span', { class: 'w' }, a.kind === 'knowledge' ? 'Candidate' : a.kind === 'automation' ? 'Automation' : 'Account')),
+  return h('article', { class: 'card' + (a.group === 'Decide' ? ' band' : ''), 'data-key': a.id, 'data-state': need ? 'needs_you' : 'blocked' },
+    h('div', { class: 'top' }, h('span', { class: 'kind' }, icon(KIND_ICON[a.kind] || 'status', 20), a.kind === 'approval' || a.kind === 'verification' || a.kind === 'mission' ? badge('mission', m ? m.state : 'APPROVAL_REQUIRED') : h('span', { class: 'badge', 'data-role': need ? 'needs_you' : 'blocked' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(need ? 'needs_you' : 'blocked')), h('span', { class: 'w' }, a.kind === 'knowledge' ? 'Candidate' : a.kind === 'automation' ? 'Automation' : 'Account'))),
       h('span', { class: 'why' }, [projName(sim, a.project_id), a.since ? 'since ' + clockLabel(a.since) : ''].filter(Boolean).join(' · '))),
     h('p', { class: 'ttl' }, a.reason),
     m ? spineCard(m.state, m.held_from) : null,
@@ -248,7 +250,7 @@ export function inspectorApproval(ctx, a) {
       h('div', null, h('h3', null, 'What Core does next'), h('p', null, a.presented.consequence)),
       h('div', null, h('h3', null, 'Where the mission is'), spineInspector(m.state, m.held_from)),
       h('p', { class: 'sp-text' }, open ? 'Expires ' + clockLabel(a.expires_at) + '. This is a simulated decision: nothing is run, sent or spent.' : 'Decided: ' + word('approval', a.state) + '.')),
-    open ? h('div', { class: 'insp-foot' }, h('button', { class: 'btn primary decide', type: 'button', onclick: () => ctx.act('approve', a.id) }, 'Approve'), h('button', { class: 'btn danger decide', type: 'button', onclick: () => ctx.act('reject', a.id) }, 'Reject')) : null);
+    open ? h('div', { class: 'insp-foot' }, h('button', { class: 'btn primary decide', type: 'button', onclick: () => ctx.act('approve', a.id) }, 'Approve'), h('button', { class: 'btn danger outline decide', type: 'button', onclick: () => ctx.act('reject', a.id) }, 'Reject')) : null);
 }
 
 export function viewAccounts(ctx) {

@@ -152,10 +152,13 @@ svg { display: block; }
 
 .card { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
 .card[data-state] { border-block-start: var(--hair) solid var(--edge); }
+.panel > .card { border-radius: inherit; }
 .card::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 40% 0%, color-mix(in srgb, var(--glow) 7%, transparent), transparent 65%); opacity: 0; }
 .card:hover::after, .card:focus-within::after { opacity: 1; }
 [data-state='needs_you'] { --edge: var(--attention); --glow: var(--attention); } [data-state='active'] { --edge: var(--active); --glow: var(--active); }
 [data-state='blocked'] { --edge: var(--blocked); --glow: var(--blocked); } [data-state='done'] { --edge: var(--done); --glow: var(--done); }
+.card .kind { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.card .kind > svg { color: var(--edge); }
 .card .why { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; }
 .card .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .card .ttl { min-height: var(--target); display: flex; align-items: center; font-weight: 600; overflow-wrap: anywhere; }
@@ -313,7 +316,8 @@ dl.kv dd { overflow-wrap: anywhere; }
 .app[data-term='true'] .rail, .app[data-term='true'] .main-col, .app[data-term='true'] .bottombar, .app[data-term='true'] .inspector, .app[data-term='true'] .scrim { display: none; }
 .inspector > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 
-.spine-insp .ring { fill: var(--s2); }
+.spine-insp .ring { fill: var(--s3); }
+.spine-insp li svg { position: relative; z-index: 1; }
 .inspector h2[tabindex='-1']:focus { outline: none; }
 
 .col { display: flex; flex-direction: column; }

@@ -142,7 +142,7 @@ function execution(ctx, A, S, id) {
 function approval(ctx, A, S, id) {
   const a = S.approvals[id]; if (!a) return null;
   const m = S.missions[a.mission], open = a.state === 'PENDING', plan = a.kind === 'plan';
-  const decide = (kind, label, text, danger) => h('button', { class: 'btn decide ' + (danger ? 'danger' : 'primary'), type: 'button', onclick: () => {
+  const decide = (kind, label, text, danger) => h('button', { class: 'btn decide ' + (danger ? 'danger outline' : kind === 'approve' ? 'primary' : ''), type: 'button', onclick: () => {
     const run = () => { const r = ctx.act(kind, id); if (kind === 'plan_changes' && r.ok) ctx.toast('Plan sent back (simulated). Core plans again.'); };
     if (isCompact() || kind === 'reject') ask(ctx, { text, label: 'Confirm: ' + label.toLowerCase(), tone: danger ? 'danger' : 'primary', run }); else run();
   } }, label);

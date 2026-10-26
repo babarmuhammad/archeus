@@ -1,6 +1,7 @@
 // Replay and Recovery (S4): what Core recorded, step by step, from rows and events. Nothing here plays by itself or re-runs anything.
 // Recovery options only create an approval card; approving changes a receipt and the simulation through its ordinary actions, never the evidence.
 import { h, clear } from './dom.js';
+import { glyph } from './icons.js';
 import { head, dnote, panel, empty } from './views.js';
 import { L, C } from './chat-cards.js';
 import { tp } from '../chat-engine.js';
@@ -78,7 +79,7 @@ export function viewReplay(ctx) {
     h('div', { class: 'wl' }, h('div', null, h('h4', null, L('Archeus would', 'Archeus farebbe')), h('ul', null, ...o.would.map((w) => h('li', null, C(w))))), h('div', null, h('h4', null, L('Archeus will not', 'Archeus non farà')), h('ul', null, ...o.wont.map((w) => h('li', null, C(w)))))),
     o.ok ? h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: () => propose(o) }, L('Draft a proposal', 'Prepara una proposta'))) : h('p', { class: 'sp-text why' }, C(o.why)));
   const pc = rp.rec && rp.rec.step === (row && row.n) ? (() => { const o = opts.find((x) => x.id === rp.rec.id); const ta = h('textarea', { class: 'cta', rows: 3, 'aria-label': o.id === 'ask' ? L('Question for you (unsent)', 'Domanda per te (non inviata)') : L('Changed instructions', 'Istruzioni modificate'), oninput: (e) => { rp.rec.text = e.target.value; } }); ta.value = rp.rec.text;
-    return h('div', { class: 'ccard', 'data-kind': 'proposal' }, h('p', { class: 'kick', 'data-role': 'needs_you' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), h('span', null, L('Proposed · nothing has happened', 'Proposta · non è successo nulla'))),
+    return h('div', { class: 'ccard', 'data-kind': 'proposal' }, h('p', { class: 'kick', 'data-role': 'needs_you' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('needs_you')), h('span', null, L('Proposed · nothing has happened', 'Proposta · non è successo nulla'))),
       h('p', { class: 'ctitle' }, C(o.title)), h('p', { class: 'sp-text' }, L('Bound to {t}, step {n}. Nothing will run or be sent until you approve. A retry is a new execution id.', 'Legata a {t}, passo {n}. Non girerà né sarà inviato nulla finché non approvi. Un nuovo tentativo è una nuova esecuzione.', { t: m.title, n: rp.rec.step })),
       o.id === 'resume' ? null : h('label', { class: 'cfield' }, h('span', null, o.id === 'ask' ? L('Question for you (unsent)', 'Domanda per te (non inviata)') : L('Changed instructions', 'Istruzioni modificate')), ta),
       h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', onclick: approve }, L('Approve proposal', 'Approva la proposta')), h('button', { class: 'btn', type: 'button', onclick: () => { rp.rec = null; ctx.render(); } }, L('Cancel', 'Annulla'))), h('p', { class: 'sp-text' }, L('This is a simulated decision: nothing is run, sent or spent.', 'Decisione simulata: nulla viene eseguito, inviato o speso.'))); })() : null;
