@@ -44,7 +44,7 @@ export function viewTerminal(ctx) {
     t.ctl = createTui(sim, {
       lang: () => store.get('lang'), reduced: () => store.reducedMotion(),
       prefs: { look: LOOKS.some((x) => x.id === (q.get('look') || saved.look)) ? (q.get('look') || saved.look) : 'app', ascii: q.get('ascii') ? q.get('ascii') === '1' : !!saved.ascii, linear: q.get('sr') ? q.get('sr') === '1' : !!saved.linear },
-      onQuit: () => ctx.nav('#/now'), onPrefs: (p) => writePrefs({ look: p.look, ascii: p.ascii, linear: p.linear })
+      onQuit: () => ctx.nav('#/now'), onSetting: ([k, v]) => store.set(k, k === 'theme' && v === 'contrast' ? (store.get('theme').startsWith('light') ? 'light-hc' : 'dark-hc') : v), onPrefs: (p) => writePrefs({ look: p.look, ascii: p.ascii, linear: p.linear })
     });
   }
   const ctl = t.ctl;

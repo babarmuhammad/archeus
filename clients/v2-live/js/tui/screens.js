@@ -2,7 +2,8 @@
 // A pane is { id, w, lines, items }; a line is { s: segments, it?: item index, h?: heading level }; an item is something to select.
 import { present } from '../../core-words.js';
 import { spineOf, spineText, STATIONS } from '../../spine-model.js';
-import { clockLabel, REPLAY_CATEGORIES, REPLAY_GAPS, COMMANDS } from '../../sim.js';
+import { clockLabel, REPLAY_CATEGORIES, REPLAY_GAPS } from '../../sim.js';
+import { COMMANDS, nameIn } from '../../slash.js';
 import { missionGroups } from '../../term.js';
 import { seg, len, clip, pad, lr, wrap, mark, role, glyphs, Canvas, L, R, U, D } from './cells.js';
 
@@ -135,7 +136,6 @@ function attentionItem(p, sim, a) {
   return i;
 }
 
-const MSG = (sim) => sim.state.messages.slice(-3);
 
 export function nowScreen(sim, o) {
   const st = sim.state, att = sim.attention(), g = glyphs(o.ascii), list = new Pane('list', o.w1, o.ascii);
@@ -157,7 +157,7 @@ export function nowScreen(sim, o) {
   feed.head('Recent decisions and changes', recent.length);
   recent.forEach((e) => feed.add(clip([seg(clockLabel(e.at), 'dim'), seg(' ' + (st.missions[e.subject.id] || { title: e.subject.id }).title + ' ' + g.dot + ' ' + word('mission', e.payload.from) + ' ' + g.right + ' ' + word('mission', e.payload.to)), seg(e.actor === 'device' ? '  you' : '', 'dim')], feed.w, g.ell)));
   feed.blank(); feed.head('Conversation', null, 'use : to talk');
-  MSG(sim).forEach((m) => { const who = m.from === 'you' ? 'you' : 'archeus'; const t = (who + ': ').padEnd(9) + m.text; wrap(t, feed.w).slice(0, 2).forEach((l, i) => feed.add([seg(i ? '         ' + l.trimStart() : l, m.from === 'you' ? '' : 't2')])); });
+  (o.thread || []).slice(-3).forEach((m) => { const who = m.from === 'you' ? 'you' : 'archeus'; const t = (who + ': ').padEnd(9) + m.text; wrap(t, feed.w).slice(0, 2).forEach((l, i) => feed.add([seg(i ? '         ' + l.trimStart() : l, m.from === 'you' ? '' : 't2')])); });
   const map = mapPane(sim, o.wm, Object.assign({}, o, { maxH: o.mapMax }));
   return { title: 'Now', sentence: sim.sentence(), panes: { list, map, feed }, focus: ['list', 'map'], lead: 'list' };
 }
@@ -393,7 +393,7 @@ export function helpLines(w, lang, ascii) {
     wrap(it ? ita : en, Math.max(10, w - kw - 2)).forEach((l, i) => out.push({ s: [seg(i ? ' '.repeat(kw) : kk.padEnd(kw), 'b'), seg(l)] }));
   });
   out.push({ s: [] }, { s: [seg('Slash commands', 'b')] });
-  ['READ', 'NAVIGATE', 'CREATE', 'PROPOSE'].forEach((c) => wrap(COMMANDS.filter((x) => x.cls === c).map((x) => '/' + (it ? x.it : x.name)).join(' '), Math.max(10, w - 12)).forEach((l, i) => out.push({ s: [seg(i ? ' '.repeat(10) : c.padEnd(10), 'dim'), seg(l)] })));
+  ['READ', 'NAVIGATE', 'CREATE', 'PROPOSE'].forEach((c) => wrap(COMMANDS.filter((x) => x.cls === c && !x.unavailable).map((x) => '/' + nameIn(x, lang)).join(' '), Math.max(10, w - 12)).forEach((l, i) => out.push({ s: [seg(i ? ' '.repeat(10) : c.padEnd(10), 'dim'), seg(l)] })));
   out.push({ s: [] }, { s: [seg(it ? 'Qualsiasi tasto chiude.' : 'Any key closes this.', 'dim')] });
   return out;
 }

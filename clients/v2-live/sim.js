@@ -3,30 +3,10 @@
 // State words and edges are copies of archeus/core/domain/states.py (V1); the table is checked by test/sim.test.mjs.
 
 import { present } from './core-words.js';
+import { createChat } from './chat-engine.js';
 
-// Slash commands (T-153). Class decides what a command may do: READ and NAVIGATE answer, CREATE writes a record,
-// PROPOSE only makes a card that the owner confirms (nothing is decided by the command itself). Italian aliases are registered.
-export const COMMANDS = [
-  { name: 'help', it: 'aiuto', cls: 'NAVIGATE', args: '[command]', desc: 'List the commands by class' },
-  { name: 'status', it: 'stato', cls: 'READ', args: '', desc: 'What is running, waiting and stopped' },
-  { name: 'usage', it: 'usa', cls: 'READ', args: '', desc: 'Usage of the accounts (unknown until the read exists)' },
-  { name: 'projects', it: 'progetti', cls: 'READ', args: '', desc: 'The projects' },
-  { name: 'missions', it: 'missioni', cls: 'READ', args: '[project]', desc: 'The missions, optionally of one project' },
-  { name: 'needs', it: 'attesa', cls: 'READ', args: '', desc: 'What waits for you' },
-  { name: 'ideas', it: 'idee', cls: 'READ', args: '', desc: 'The ideas' },
-  { name: 'replay', it: 'rigioca', cls: 'NAVIGATE', args: '<mission>', desc: 'Open the Replay of a mission' },
-  { name: 'open', it: 'apri', cls: 'NAVIGATE', args: '<mission>', desc: 'Open a mission' },
-  { name: 'mission', it: 'missione', cls: 'CREATE', args: '<what to do>', desc: 'Create a mission (it waits for your approval here)' },
-  { name: 'idea', it: 'idea', cls: 'CREATE', args: '<idea>', desc: 'Capture an idea' },
-  { name: 'pause', it: 'pausa', cls: 'PROPOSE', args: '<mission>', desc: 'Propose pausing a mission' },
-  { name: 'resume', it: 'riprendi', cls: 'PROPOSE', args: '<mission>', desc: 'Propose resuming a mission' },
-  { name: 'cancel', it: 'annulla', cls: 'PROPOSE', args: '<mission>', desc: 'Propose cancelling a mission' },
-  { name: 'approve', it: 'approva', cls: 'PROPOSE', args: '<mission>', desc: 'Open the decision; it decides nothing' },
-  { name: 'estop', it: 'arresto', cls: 'PROPOSE', args: '', desc: 'Propose an emergency stop of every running mission' }
-];
-const SECRET = /sk-[A-Za-z0-9]|ghp_|AKIA|Bearer /;
-export function findCommand(word) { const w = word.toLowerCase(); return COMMANDS.find((c) => c.name === w || c.it === w); }
-
+// The slash commands live in slash.js, one table for the chat, the terminal command line and say(). views2.js (the old chat page, no longer routed) still imports COMMANDS from here.
+export { COMMANDS } from './slash.js';
 
 export const TIME_SCALE = 10; // one real second at 1x is ten simulated seconds
 export const SPEEDS = [0.5, 1, 2, 4, 8];
@@ -702,14 +682,6 @@ export function createSim(opts = {}) {
   // ---------- chat ----------
   const mid = () => 'c-' + (++S.counters.message);
   const post = (from, text, card) => { const m = { id: mid(), from, text, at: S.clock }; if (card) m.card = card; S.messages.push(m); emit('message.created', { kind: 'message', id: m.id }, {}, {}); return m; };
-  function resolveMission(q) {
-    const ms = Object.values(S.missions), w = q.trim().toLowerCase();
-    if (!w) return { err: 'Which mission? Say a name or an id.' };
-    const exact = ms.filter((m) => m.id === w || m.id === 'm-' + w || m.title.toLowerCase() === w);
-    const hit = exact.length ? exact : ms.filter((m) => m.title.toLowerCase().includes(w));
-    if (hit.length === 1) return { m: hit[0] };
-    return { err: hit.length ? 'Which one? ' + hit.map((m) => m.title).join(', ') + '.' : 'No mission matches "' + q.trim() + '".' };
-  }
   function newMission(title, opts) {
     const id = 'm-n' + (++S.counters.mission);
     const m = { id, title, project: (opts && opts.project) || 'archeus', branch: 'feat/' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 24), state: 'CREATED', held_from: null, tasks: [], plan_version: 0, replans: 0, origin: 'conversation', reason: null, created_at: S.clock, updated_at: S.clock, account: 'acc-work', model: 'claude-sonnet' };
@@ -717,55 +689,9 @@ export function createSim(opts = {}) {
     if (!(opts && opts.hold)) at(sec(20), 'start ' + id, () => { move('mission', m, 'UNDERSTANDING', 'start'); planningChain(m, false); });
     return m;
   }
-  function runCommand(c, arg) {
-    const list = () => Object.values(S.missions);
-    const word = (m) => present('mission', m.state).label;
-    if (c.name === 'help') return { text: 'Commands: ' + ['READ', 'NAVIGATE', 'CREATE', 'PROPOSE'].map((k) => k + ' ' + COMMANDS.filter((x) => x.cls === k).map((x) => '/' + x.name).join(' ')).join(' \u00b7 ') + '. "//text" sends a slash as plain text.' };
-    if (c.name === 'status') return { text: sentence() + '.' };
-    if (c.name === 'usage') return { text: 'Usage is unknown: the read is not built yet (T-154). Archeus shows no number it cannot source.' };
-    if (c.name === 'projects') return { text: S.projects.map((p) => p.name + ' (' + list().filter((m) => m.project === p.id).length + ')').join(', ') + '.' };
-    if (c.name === 'missions') { const p = arg ? S.projects.find((x) => x.name.toLowerCase() === arg.toLowerCase() || x.id === arg.toLowerCase()) : null; if (arg && !p) return { err: 'No project "' + arg + '".' }; return { text: list().filter((m) => !p || m.project === p.id).map((m) => m.title + ': ' + word(m)).join('; ') + '.' }; }
-    if (c.name === 'needs') { const a = attention().filter((x) => x.kind !== 'knowledge'); return { text: a.length ? a.map((x) => x.reason).join('; ') + '.' : 'Nothing waits for you.', card: a.length ? { kind: 'link', text: 'Open Attention', href: '#/attention' } : null }; }
-    if (c.name === 'ideas') return { text: S.ideas.map((i) => i.title + ' (' + present('idea', i.state).label + ')').join('; ') + '.' };
-    if (c.name === 'replay' || c.name === 'open' || c.name === 'approve') {
-      const r = resolveMission(arg); if (r.err) return { err: r.err };
-      if (c.name === 'replay') return { text: 'Replay of ' + r.m.title + '.', card: { kind: 'link', text: 'Open Replay', href: '#/replay/' + r.m.id } };
-      if (c.name === 'open') return { text: r.m.title + ': ' + word(r.m) + '.', card: { kind: 'link', text: 'Open mission', href: '#/work/' + r.m.id } };
-      if (r.m.state !== 'APPROVAL_REQUIRED' || !r.m.approval) return { text: r.m.title + ' has no decision waiting. /approve only opens a decision; it never decides.' };
-      return { text: 'A decision waits for you on ' + r.m.title + '. /approve decides nothing; open it to decide.', card: { kind: 'link', text: 'Open the decision', href: '#/attention/' + r.m.approval } };
-    }
-    if (c.name === 'mission') { if (!arg) return { err: 'Say what to do: /mission <what to do>.' }; const m = newMission(arg, { hold: true }); return { text: 'Created the mission "' + m.title + '" on Archeus. Not started: starting it needs your approval.', card: { kind: 'proposal', text: 'Start and plan ' + m.title, acts: [['start', m.id]], state: 'open' } }; }
-    if (c.name === 'idea') { if (!arg) return { err: 'Say the idea: /idea <idea>.' }; const i = { id: 'i-' + (++S.counters.idea), project: 'ideas', title: arg, state: 'CAPTURED' }; S.ideas.push(i); emit('idea.created', { kind: 'idea', id: i.id }, {}, { project: 'ideas' }); return { text: 'Captured the idea "' + arg + '". It is not a commitment.' }; }
-    if (c.name === 'estop') { const run = list().filter((m) => m.state === 'EXECUTING'); return { text: run.length ? 'Stop every running mission? ' + run.map((m) => m.title).join(', ') + '.' : 'Nothing is running.', card: run.length ? { kind: 'proposal', text: 'Emergency stop: ' + run.length + ' running', acts: [['estop']], state: 'open' } : null }; }
-    const r = resolveMission(arg); if (r.err) return { err: r.err };
-    const need = { pause: 'EXECUTING', resume: 'PAUSED', cancel: null }[c.name];
-    if (need && r.m.state !== need) return { text: r.m.title + ' is ' + word(r.m).toLowerCase() + ', so /' + c.name + ' does not apply.' };
-    if (c.name === 'cancel' && !edgeOk('mission', r.m.state, 'CANCELLED', 'cancel')) return { text: r.m.title + ' is ' + word(r.m).toLowerCase() + ' and cannot be cancelled here.' };
-    return { text: 'Proposal: ' + c.name + ' "' + r.m.title + '". Nothing happens until you confirm.', card: { kind: 'proposal', text: c.name[0].toUpperCase() + c.name.slice(1) + ' ' + r.m.title, acts: [[c.name, r.m.id]], state: 'open' } };
-  }
-  function say(text) {
-    const t0 = String(text || '').trim();
-    if (!t0) return { ok: false, reason: 'Empty message' };
-    if (SECRET.test(t0)) return { ok: false, reason: 'That looks like a secret, so it was not sent.' };
-    let t = t0, cmd = null, arg = '';
-    if (t.startsWith('//')) t = t.slice(1);
-    else if (t.startsWith('/')) {
-      const sp = t.indexOf(' '), name = (sp < 0 ? t.slice(1) : t.slice(1, sp));
-      arg = sp < 0 ? '' : t.slice(sp + 1).trim();
-      cmd = findCommand(name);
-      if (!cmd) return { ok: false, reason: 'Unknown command /' + name + '. Try /help.' };
-      if (!cmd.args && arg) return { ok: false, reason: '/' + cmd.name + ' takes no argument.' };
-    } else if (/^mission\s+\S/i.test(t)) { cmd = findCommand('mission'); arg = t.replace(/^mission\s+/i, '').replace(/^"|"$/g, ''); }
-    S.actor = 'device';
-    post('you', t0);
-    S.actor = 'system';
-    if (!cmd) { post('archeus', /need|status|today/i.test(t) ? 'Right now: ' + sentence() + '. Simulated reply.' : 'I heard you. Nothing is connected to a Core, so this reply is scripted. Simulated reply.'); return { ok: true }; }
-    S.actor = 'device';
-    const r = runCommand(cmd, arg);
-    S.actor = 'system';
-    post('archeus', (r.err || r.text) + ' Simulated reply.', r.card ? Object.assign({ state: 'open' }, r.card) : null);
-    return { ok: true };
-  }
+  // The same brain as the chat page and the terminal: slash.js parses, chat-engine.js answers.
+  let sayChat = null;
+  const say = (text) => (sayChat || (sayChat = createChat(api))).say(text);
   function cardAction(id, what) {
     const m = S.messages.find((x) => x.id === id);
     if (!m || !m.card || m.card.kind !== 'proposal' || m.card.state !== 'open') return { ok: false, reason: 'This card is already answered' };
@@ -828,7 +754,7 @@ export function createSim(opts = {}) {
   const api = {
     get state() { return S; },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
-    advance, act, say, cardAction, chat: chatApi, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
+    advance, act, edgeOk, say, cardAction, chat: chatApi, security, health, counts, attention, liveWork, reading, sentence, replay, triggerApproval, injectFailure,
     play() { S.playing = true; emit('sim.play', null, {}, {}); }, pause() { S.playing = false; emit('sim.pause', null, {}, {}); },
     setSpeed(x) { if (!SPEEDS.includes(x)) return false; S.speed = x; emit('sim.speed', null, { speed: x }, {}); return true; },
     reset(seed) { const sp = S.speed; build(seed == null ? seed0 : seed); S.speed = sp; subs.forEach((f) => f({ seq, at: 0, type: 'sim.reset', subject: null, payload: {} })); },

@@ -4,7 +4,6 @@
 // general answers are not project memory; retention is Unknown; a bare approve is declined; model-like text is never parsed for commands.
 import { parse, find, nameIn, looksSecret } from './slash.js';
 import { present } from './core-words.js';
-import { EDGES } from './sim.js';
 
 export const tp = (en, it, v) => ({ en, it, v: v || {} });
 export const fmt = (c, lang) => String((lang === 'it' ? c.it : c.en)).replace(/\{(\w+)\}/g, (_, k) => (c.v[k] == null ? '' : c.v[k]));
@@ -187,7 +186,7 @@ export function createChat(sim, env = {}) {
     if (need && m.state !== need[0]) return { c: tp('“{t}” is {w}, so /{n} does not apply.', '“{t}” è {w}, quindi /{n} non si applica.', { t: m.title, w: word(m).toLowerCase(), n: name }) };
     return { c: tp('{v} “{t}” is a proposal. Nothing has happened.', '“{t}”: {v} è una proposta. Non è successo nulla.', { v: name[0].toUpperCase() + name.slice(1), t: m.title }), card: { kind: 'confirm', action: name, targets: [m.id], step: 'ask', state: 'open' } };
   }
-  const edge = (s, to, trig) => EDGES.mission.some((e) => e[0] === s && e[1] === to && e[2] === trig);
+  const edge = (s, to, trig) => sim.edgeOk('mission', s, to, trig);
 
   // ---------- plain text: scripted, deterministic, honest about what is faked ----------
   const REFUSE = [
@@ -263,6 +262,12 @@ export function createChat(sim, env = {}) {
     const run = () => api.finish(m.id);
     if (!recorded) { const out = run(); return { ok: true, id: m.id, cmd: cmd.name, done: true, out }; }
     return { ok: true, id: m.id, cmd: cmd && cmd.name, run };
+  };
+  // send and answer in one step, for a surface without a pending-reply animation (the terminal, sim.say). A duplicate within 2 s is allowed here.
+  api.say = (input, o = {}) => {
+    const r = api.send(input, Object.assign({ force: true }, o));
+    if (!r.ok) return { ok: false, keep: !!r.keep, href: r.href || null, reason: r.notice ? fmt(r.notice, 'en') : r.arg ? '/' + r.arg.name + ' needs an argument: ' + r.arg.label[0] + '.' : r.menu ? 'Type a command after /. Try /help.' : 'Not sent.' };
+    return Object.assign({ ok: true, id: r.id }, r.out || (r.run && r.run()) || {});
   };
   api.finish = (id) => {
     const m = get(id); if (!m || m.status === 'sent' || m.status === 'failed' || done.has(m.key)) return null;

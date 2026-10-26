@@ -1,6 +1,7 @@
 """Playwright functional run of the S3 interactions (breakers, hooks, tabs, pins, two-step decision, offline, usage, accounts, digest, Italian). Run: py D:\Archeus\.collab\testlock.py -- py -I tools\v2_live_s3_functional.py"""
+import os
 import sys
-sys.path.insert(0, r'D:\archeus-v2-live-s3\tools')
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import v2_live_layout_probe as P
 from playwright.sync_api import sync_playwright
 

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createChat } from '../chat-engine.js';
 import { createSim, EDGES, TIME_SCALE, SPEEDS, clockLabel, categoryOf, REPLAY_CATEGORIES } from '../sim.js';
 
 const run = (sim, secs) => sim.advance(secs * 1000);
@@ -211,11 +212,12 @@ test('replay: categories come from the vocabulary, an unclassified state is UNKN
   assert.match(r.gaps, /NOT RECORDED/);
 });
 
-test('say records the message and a scripted, labelled reply', () => {
+test('say records the message and a scripted reply from the shared chat engine', () => {
   const s = createSim(); const n = s.state.messages.length;
-  assert.equal(s.say('what needs me today').ok, true);
+  const r = s.say('what needs me today');
+  assert.equal(r.ok, true);
   assert.equal(s.state.messages.length, n + 2);
-  assert.match(s.state.messages.at(-1).text, /Simulated reply/);
+  assert.equal(r.reply.card.kind, 'status');
   assert.equal(s.say('   ').ok, false);
 });
 
@@ -239,34 +241,30 @@ test('knowledge candidates and automations that wait for you can be decided', ()
   assert.equal(s.act('enable', 'au-2').ok, true);
 });
 
-test('slash commands: READ answers, CREATE writes, PROPOSE only proposes until the owner confirms', () => {
-  const s = createSim();
+test('say runs the one slash table: READ answers, CREATE writes, PROPOSE only proposes until the card is confirmed', () => {
+  const s = createSim(), eng = createChat(s);
   assert.equal(s.say('/nope').ok, false);
   assert.equal(s.say('/status extra').ok, false);
-  assert.equal(s.say('/usage').ok, true); assert.match(s.state.messages.at(-1).text, /unknown/);
-  assert.equal(s.say('/stato').ok, true); assert.match(s.state.messages.at(-1).text, /need you/);
+  assert.equal(s.say('/usage').reply.card.kind, 'usage');
+  assert.equal(s.say('/stato').reply.card.kind, 'status');
   assert.equal(s.say('/sk-abcdef1234').ok, false);
   assert.equal(s.say('here is sk-abcdefghij').ok, false);
   const n = Object.keys(s.state.missions).length;
-  assert.equal(s.say('/missione add dark mode').ok, true);
+  const made = s.say('/missione add dark mode');
   assert.equal(Object.keys(s.state.missions).length, n + 1);
   const m = s.state.missions['m-n1']; assert.equal(m.state, 'CREATED');
   s.advance(200000); assert.equal(m.state, 'CREATED');
-  const start = s.state.messages.at(-1); assert.equal(start.card.kind, 'proposal');
-  assert.equal(s.cardAction(start.id, 'confirm').ok, true);
+  assert.equal(made.reply.card.kind, 'start');
+  assert.equal(eng.card(made.reply.id, 'start').ok, true);
   s.advance(200000); assert.equal(m.state, 'APPROVAL_REQUIRED');
   assert.equal(s.say('/idea try a calm mode').ok, true); assert.ok(s.state.ideas.some((i) => i.title === 'try a calm mode'));
-  // PROPOSE: nothing changes until the card is confirmed
-  assert.equal(s.say('/pausa fix date').ok, true);
-  const card = s.state.messages.at(-1); assert.equal(card.card.kind, 'proposal');
+  const prop = s.say('/pausa fix date');
+  assert.equal(prop.reply.card.kind, 'confirm');
   assert.equal(s.state.missions['m-date'].state, 'EXECUTING');
-  assert.equal(s.cardAction(card.id, 'confirm').ok, true);
+  assert.equal(eng.card(prop.reply.id, 'yes').ok, true);
   s.advance(10000); assert.equal(s.state.missions['m-date'].state, 'PAUSED');
-  assert.equal(s.cardAction(card.id, 'confirm').ok, false);
-  // /approve decides nothing
   s.say('/approve search');
   assert.equal(s.state.approvals['a-1'].state, 'PENDING');
-  assert.equal(s.state.messages.at(-1).card.kind, 'link');
   assert.equal(s.say('//status').ok, true);
 });
 

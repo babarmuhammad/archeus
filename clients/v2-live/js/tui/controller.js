@@ -3,7 +3,9 @@
 import { present } from '../../core-words.js';
 import { clockLabel } from '../../sim.js';
 import { seg, len, clip, pad, lr, wrap, slice, speech, glyphs, boxChar, asciify } from './cells.js';
-import { parse, complete } from './cmd.js';
+import { createChat, fmt } from '../../chat-engine.js';
+import { parse, filter, find, nameIn, labelOf, descOf } from '../../slash.js';
+import { replyOf } from './reply.js';
 import {
   nowScreen, workScreen, attentionScreen, worldScreen, replayScreen, missionScreen, controlScreen, decisionPane, summaryPane, Pane,
   TABS, SECTIONS, PLACES, helpLines
@@ -29,6 +31,9 @@ export function createTui(sim, opts = {}) {
   const prefs = Object.assign({ look: 'app', ascii: false, linear: false }, opts.prefs);
   let last = null, dirty = true;
   const changed = () => { dirty = true; if (opts.onChange) opts.onChange(); };
+  // the same brain as the chat page: slash.js parses, chat-engine.js answers and records (READ and NAVIGATE answers stay local, as in the chat)
+  const eng = createChat(sim); eng.onChange = changed;
+  const thread = () => eng.thread().map((m) => ({ from: m.from, text: m.c ? fmt(m.c, lang()) : m.text }));
   const say = (text, err) => { S.status = { text, err: !!err }; };
   const missionIds = () => Object.keys(sim.state.missions);
 
@@ -108,15 +113,18 @@ export function createTui(sim, opts = {}) {
   };
   function cmdHits() {
     const buf = S.mode.buf;
-    if (buf.startsWith('/') && !buf.includes(' ')) return complete(buf, lang()).map((c) => ({ label: c.label, cls: c.cls, desc: c.desc, insert: c.insert, run: () => { S.mode.buf = c.insert; } }));
-    if (buf.startsWith('/')) { const p = parse(buf); return [{ label: p.kind === 'command' ? 'Run ' + buf.trim() : p.reason || 'Unknown command', cls: p.kind === 'command' ? p.cmd.cls : '', run: () => tell(buf) }]; }
+    if (buf.startsWith('/') && !buf.includes(' ') && !buf.startsWith('//')) return filter(buf.slice(1), [], lang()).map((c) => { const name = '/' + nameIn(c, lang()), insert = name + (c.arg === 'none' ? '' : ' '); return { label: name + (c.arg === 'none' ? '' : ' <' + labelOf(c, lang()) + '>'), cls: c.cls, desc: descOf(c, lang()), insert, run: () => { S.mode.buf = insert; } }; });
+    if (buf.startsWith('/')) { const p = parse(buf); return [{ label: p && p.kind === 'command' ? 'Run ' + buf.trim() : p && p.say ? p.say[lang() === 'it' ? 1 : 0] : p && p.kind === 'unknown' ? 'No such command /' + p.name : 'Run ' + buf.trim(), cls: p && p.kind === 'command' ? p.cmd.cls : '', run: () => tell(buf) }]; }
     return navHits(buf);
   }
   function tell(text) {
-    const before = sim.state.messages.length, r = sim.say(text);
-    if (!r.ok) { say(r.reason, true); return false; }
-    const msgs = sim.state.messages.slice(before + 1);
-    S.mode = msgs.length ? { kind: 'reply', msg: msgs[msgs.length - 1] } : null;
+    const r = eng.say(text);
+    if (!r.ok) { say(r.reason, true); if (!S.mode) S.mode = { kind: 'cmd', buf: text, i: 0 }; changed(); return false; }
+    if (r.pref && opts.onSetting) opts.onSetting(r.pref);
+    S.mode = null;
+    if (r.nav) { openHref(r.nav); if (r.tab && TABS.some((x) => x[0] === r.tab)) S.tab = r.tab; }
+    else if (r.cleared) say(lang() === 'it' ? 'Messaggi precedenti nascosti. La cronologia resta.' : 'Earlier messages hidden. History is kept.');
+    else if (r.reply) S.mode = { kind: 'reply', msg: r.reply };
     changed(); return true;
   }
   function cmdKey(k) {
@@ -127,7 +135,7 @@ export function createTui(sim, opts = {}) {
     else if (k === 'enter') {
       const h = hits[m.i];
       if (!m.buf.trim()) S.mode = null;
-      else if (m.buf.startsWith('/') && !m.buf.includes(' ') && h && h.insert && m.buf.trim() !== h.insert.trim()) m.buf = h.insert;
+      else if (m.buf.startsWith('/') && !m.buf.includes(' ') && h && h.insert && m.buf.trim() !== h.insert.trim() && !find(m.buf.trim().slice(1))) m.buf = h.insert;
       else if (m.buf.startsWith('/')) tell(m.buf);
       else if (h) { S.mode = null; h.run(); }
       else tell(m.buf);
@@ -143,10 +151,11 @@ export function createTui(sim, opts = {}) {
     if (m.kind === 'confirm') { const a = m.act; S.mode = null; if (k === 'y' || k === 'Y') run(Object.assign({}, a, { done: true })); else say('Cancelled. Nothing was sent.'); changed(); return true; }
     if (m.kind === 'places') { const p = PLACES.find((x) => x[0] === k); S.mode = null; if (p) go(p[1]); changed(); return true; }
     if (m.kind === 'reply') {
-      const c = m.msg.card;
-      if (c && c.kind === 'proposal' && c.state === 'open' && (k === 'y' || k === 'n')) { const r = sim.cardAction(m.msg.id, k === 'y' ? 'confirm' : 'dismiss'); S.mode = null; say(r.ok ? (k === 'y' ? 'Confirmed (simulated).' : 'Dismissed.') : 'Not done: ' + r.reason, !r.ok); }
-      else if (c && c.kind === 'link' && (k === 'enter' || k === 'o')) { S.mode = null; openHref(c.href); }
-      else S.mode = null;
+      const hit = replyOf(m.msg, eng, sim, lang()).keys.find((x) => x.k === k || (x.k === 'enter' && k === 'o'));
+      const r = hit ? hit.run() || {} : {};
+      if (!r.keep) S.mode = null;
+      if (r.say) say(r.say, r.err);
+      if (r.href) { openHref(r.href); if (r.tab && TABS.some((x) => x[0] === r.tab)) S.tab = r.tab; }
       changed(); return true;
     }
     S.mode = null; changed(); return true; // help: any key closes
@@ -244,7 +253,7 @@ export function createTui(sim, opts = {}) {
   function build(L) {
     const o = {
       ascii: prefs.ascii, wide: L.wide, cols: L.cols, rows: L.rows, tier: L.tier, look: LOOKS.find((x) => x.id === prefs.look), linear: prefs.linear, reduced: opts.reduced ? opts.reduced() : false,
-      mission: S.screen === 'replay' ? S.replayMission : S.mission, replaySel: S.replaySel, tab: S.tab, section: S.section, breath: S.breath
+      thread: thread(), mission: S.screen === 'replay' ? S.replayMission : S.mission, replaySel: S.replaySel, tab: S.tab, section: S.section, breath: S.breath
     };
     const single = ['control', 'decision'].includes(S.screen);
     o.w1 = L.wide && !single ? L.cl - 2 : L.cols - 2; o.wd = L.wide && !single ? L.cr - 2 : L.cols - 2; o.wm = o.wd; o.wf = o.w1;
@@ -379,10 +388,12 @@ export function createTui(sim, opts = {}) {
     else if (m.kind === 'places') { title = lang() === 'it' ? 'Vai a' : 'Go to'; body = PLACES.map(([k, id, en, it]) => ({ s: [seg(k, 'b'), seg('  ' + (lang() === 'it' ? it : en))] })).concat([T(''), T(lang() === 'it' ? 'Premi la lettera; Esc annulla.' : 'Press the letter; Esc cancels.', 'dim')]); }
     else if (m.kind === 'confirm') { title = m.act.label; const w = Math.min(L.cols - 2, 74) - 4; body = wrap(m.act.confirm, w).map((l) => T(l)).concat([T(''), { s: [seg('[y] Yes', 'b', 'act:y'), seg('   '), seg('[n] No', 'b', 'act:n'), seg('  ' + (lang() === 'it' ? 'Qualsiasi altro tasto annulla.' : 'Any other key cancels.'), 'dim')] }]); }
     else if (m.kind === 'reply') {
-      title = lang() === 'it' ? 'Archeus (risposta simulata)' : 'Archeus (simulated reply)'; const w = Math.min(L.cols - 2, 74) - 4, c = m.msg.card;
-      body = wrap(m.msg.text, w).map((l) => T(l)); body.push(T(''));
-      if (c && c.kind === 'proposal' && c.state === 'open') body.push({ s: [seg('[y] Confirm', 'b', 'act:y'), seg('   '), seg('[n] Dismiss', 'b', 'act:n'), seg('  ' + (c.text || ''), 'dim')] });
-      else if (c && c.kind === 'link') body.push({ s: [seg('[Enter] ' + c.text, 'b', 'act:enter')] }); else body.push(T(lang() === 'it' ? 'Qualsiasi tasto chiude.' : 'Any key closes this.', 'dim'));
+      title = lang() === 'it' ? 'Archeus (risposta simulata)' : 'Archeus (simulated reply)'; const w = Math.min(L.cols - 2, 74) - 4, rv = replyOf(m.msg, eng, sim, lang()), shown = rv.keys.filter((x) => !x.hidden);
+      body = []; rv.lines.forEach((ln, i) => wrap(ln, w).forEach((l) => body.push(T(l, i ? 'dim' : '')))); body.push(T(''));
+      const keyed = (x) => [seg('[' + (x.k === 'enter' ? 'Enter' : x.k) + '] ' + x.label, 'b', 'act:' + x.k)];
+      if (shown.length && shown.length <= 3) body.push({ s: shown.reduce((a, x, i) => a.concat([seg(i ? '   ' : '')], keyed(x)), []) });
+      else shown.forEach((x) => body.push({ s: keyed(x) }));
+      if (!shown.length) body.push(T(lang() === 'it' ? 'Qualsiasi tasto chiude.' : 'Any key closes this.', 'dim'));
     } else if (m.kind === 'cmd') {
       const hits = cmdHits(); m.i = Math.max(0, Math.min(m.i || 0, hits.length - 1));
       const room = Math.max(1, L.bodyH - 3), from = Math.max(0, Math.min(m.i - Math.floor(room / 2), hits.length - room)), shown = hits.slice(from, from + room);

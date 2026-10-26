@@ -4,7 +4,7 @@ import { createSim } from '../sim.js';
 import { present } from '../core-words.js';
 import { spineText } from '../spine-model.js';
 import { createTui, LOOKS } from '../js/tui/controller.js';
-import { parse, complete } from '../js/tui/cmd.js';
+import { parse, COMMANDS } from '../slash.js';
 import { Canvas, clip, lr, wrap, len } from '../js/tui/cells.js';
 
 const mk = (adv = 400, o = {}) => { const sim = createSim(); sim.advance(adv * 1000); return { sim, t: createTui(sim, Object.assign({ lang: () => 'en' }, o)) }; };
@@ -184,9 +184,11 @@ test('the command line: places, slash commands, a mission by name, and plain tex
   t.openCmd(''); t.cmdSet('wo'); assert.match(textOf(t), /Go to Work/); t.key('enter'); assert.equal(t.state.screen, 'work');
   t.openCmd(''); t.cmdSet('search'); t.key('down'); t.key('enter');
   t.go('now'); t.openCmd('/'); assert.match(textOf(t), /\/status/); t.cmdSet('/stat'); t.key('tab'); assert.equal(t.state.mode.buf, '/status'); t.cmdSet('/paus'); t.key('tab'); assert.equal(t.state.mode.buf, '/pause ');
+  const before = sim.state.messages.length;
   t.cmdSet('/status'); t.key('enter'); assert.equal(t.state.mode.kind, 'reply'); assert.match(textOf(t), /Archeus \(simulated reply\)/);
-  assert.ok(sim.state.messages.at(-1).text.includes('Simulated reply'));
-  t.key('x'); assert.equal(t.state.mode, null);
+  assert.match(textOf(t), /Running \d+, waiting for you \d+, stopped \d+/);
+  assert.equal(sim.state.messages.length, before, 'a READ answer is a local echo, not a record');
+  t.key('x'); assert.equal(t.state.mode, null); assert.match(textOf(t), /Based on available Core context/);
   t.openCmd(''); t.cmdSet('hello there'); t.cmdSubmit(); assert.equal(sim.state.messages.at(-2).text, 'hello there');
 });
 
@@ -198,16 +200,39 @@ test('the command line: /pause makes a card, y confirms it and the mission pause
   t.cmdSet('/mission x sk-abcdefghij'); t.cmdSubmit(); assert.equal(t.state.mode.kind, 'cmd');
 });
 
-test('the command line: a card with a link opens the screen it names', () => {
-  const { t } = mk(); t.openCmd('/'); t.cmdSet('/replay search'); t.cmdSubmit(); assert.equal(t.state.mode.msg.card.href, '#/replay/m-search'); t.key('enter');
-  assert.equal(t.state.screen, 'replay'); assert.match(textOf(t), /Search provenance/);
+test('the command line: a navigate command opens the screen it names', () => {
+  const { t } = mk(); t.openCmd('/'); t.cmdSet('/replay search'); t.cmdSubmit();
+  assert.equal(t.state.screen, 'replay'); assert.equal(t.state.mode, null); assert.match(textOf(t), /Search provenance/);
 });
 
-test('the slash grammar is shared with the chat: names, Italian aliases, arguments', () => {
-  assert.equal(parse('/stato').cmd.name, 'status'); assert.equal(parse('/pausa fix').arg, 'fix'); assert.equal(parse('/nope').kind, 'unknown');
-  assert.equal(parse('/status x').kind, 'error'); assert.equal(parse('//status').kind, 'tell'); assert.equal(parse('hi').kind, 'text'); assert.equal(parse('  ').kind, 'empty');
-  assert.ok(complete('/p', 'en').every((c) => c.insert.startsWith('/p'))); assert.ok(complete('/ap', 'it').some((c) => c.insert === '/apri ' || c.insert === '/approva '));
-  assert.ok(complete('/', 'en').length >= 16);
+test('the command line: a mission made by /mission is held, y starts it, and a stop needs two steps', () => {
+  const { sim, t } = mk(30);
+  t.openCmd('/'); t.cmdSet('/mission add dark mode'); t.cmdSubmit();
+  assert.equal(sim.state.missions['m-n1'].state, 'CREATED'); assert.match(textOf(t), /\[y\] Start and plan/);
+  t.key('y'); sim.advance(200000); assert.equal(sim.state.missions['m-n1'].state, 'APPROVAL_REQUIRED');
+  t.openCmd('/'); t.cmdSet('/stop fix'); t.cmdSubmit(); assert.match(textOf(t), /Step 1 of 2/);
+  t.key('y'); assert.equal(t.state.mode.kind, 'reply'); assert.match(textOf(t), /Step 2 of 2/); assert.equal(sim.state.missions['m-date'].state, 'EXECUTING');
+  t.key('y'); sim.advance(10000); assert.notEqual(sim.state.missions['m-date'].state, 'EXECUTING');
+});
+
+test('the terminal reads the one slash table: names, Italian aliases, arguments, completion', () => {
+  assert.equal(parse('/stato').cmd.name, 'status'); assert.equal(parse('/pausa fix').args, 'fix'); assert.equal(parse('/nope').kind, 'unknown');
+  assert.equal(parse('/status x').kind, 'usage'); assert.equal(parse('//status').kind, 'text'); assert.equal(parse('hi'), null);
+  const en = mk().t; en.openCmd('/p'); const a = textOf(en); for (const s of ['/pause', '/plan', '/projects']) assert.ok(a.includes(s), s);
+  const it = mk(400, { lang: () => 'it' }).t; it.openCmd('/ap'); const b = textOf(it); assert.ok(b.includes('/apri') && b.includes('/approva'));
+  assert.equal(COMMANDS.length, 34);
+});
+
+test('every command of the shared table runs from the terminal command line', () => {
+  for (const c of COMMANDS) {
+    const { t } = mk(30); t.openCmd('');
+    const args = c.choices ? c.choices[0] : c.arg === 'none' ? '' : 'date';
+    for (const name of [c.name, c.alias]) {
+      t.cmdSet('/' + name + (args ? ' ' + args : '')); const ok = t.cmdSubmit();
+      assert.equal(ok === false || t.state.status && t.state.status.err ? 'refused' : 'ran', c.unavailable ? 'refused' : 'ran', name);
+      t.key('esc'); if (!t.state.mode) t.openCmd('');
+    }
+  }
 });
 
 test('the key hints are in Italian when the language is Italian', () => {
