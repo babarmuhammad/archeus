@@ -31,7 +31,7 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'accounts', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash']
+ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'accounts', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec']
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
 KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'error']
 
@@ -193,6 +193,85 @@ def motion_invariants(br, base):
     return bad
 
 
+S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec')
+
+
+def s4_send(pg, where, text):
+    pg.fill('input[data-key="chat-in-%s"]' % where, text)
+    pg.keyboard.press('Enter')
+    pg.wait_for_timeout(1000)
+
+
+def s4_reset(pg):
+    pg.evaluate("window.v2live.sim.reset(); window.v2live.ui.draft = ''; window.v2live.ui.s4 = undefined; window.v2live.ui.rp = undefined; window.v2live.ui.replaySel = null")
+    pg.wait_for_timeout(250)
+
+
+def s4_state(pg, route, w):
+    """S4 states: slash menu open, confirm card, card gallery, general answer, the dock bar, the phone chat sheet with the keyboard simulated, Replay with evidence and a recovery proposal.
+    Returns the layer to measure (an overlay is measured on its own)."""
+    s4_reset(pg)
+    if route.startswith('chat'):
+        pg.evaluate("location.hash = '#/chat'")
+        pg.wait_for_timeout(250)
+        if route == 'chat-slash':
+            pg.fill('input[data-key="chat-in-page"]', '/')
+        elif route == 'chat-confirm':
+            s4_send(pg, 'page', '/stop fix date')
+        elif route == 'chat-cards':
+            s4_send(pg, 'page', '/approve search')
+            s4_send(pg, 'page', '/mission Probe mission')
+        elif route == 'chat-general':
+            pg.select_option('select.cscope', 'general')
+            s4_send(pg, 'page', 'Explain a checkpoint')
+            pg.click('.ccard[data-kind="general"] .btn')
+            pg.wait_for_timeout(400)
+        pg.wait_for_timeout(200)
+        return None
+    if route.startswith('dock') or route.startswith('sheet'):
+        if route.startswith('sheet') and w >= 600:
+            pg.click('[data-tb="device"]')
+            pg.click('[data-device="phone"]')
+            pg.wait_for_timeout(400)
+        pg.evaluate("location.hash = '#/now'")
+        pg.wait_for_timeout(250)
+        phone = pg.evaluate("document.getElementById('app').clientWidth < 600")
+        if phone:
+            pg.click('[data-key="tell-open"]')
+            pg.wait_for_timeout(300)
+            if route in ('sheet-slash', 'dock-slash'):
+                pg.keyboard.type('/')
+            elif route == 'dock-reply':
+                pg.keyboard.type('/status')
+                pg.keyboard.press('Enter')
+                pg.wait_for_timeout(600)
+            pg.wait_for_timeout(300)
+            return '.chatsheet'
+        if route == 'dock-slash':
+            pg.fill('input[data-key="chat-in-dock"]', '/')
+        elif route == 'dock-reply':
+            s4_send(pg, 'dock', '/mission Probe mission')
+        pg.wait_for_timeout(250)
+        return None
+    pg.evaluate("window.v2live.sim.advance(520000)")
+    pg.evaluate("location.hash = '#/replay/m-date'")
+    pg.wait_for_timeout(400)
+    if route == 'replay-ev':
+        pg.click('#rs-9')
+    else:
+        pg.click('#rs-12')
+        pg.click('.rcv[data-ok="true"] .btn')
+    pg.wait_for_timeout(250)
+    return None
+
+
+def s4_after(pg, route, w):
+    if route.startswith('sheet') and w >= 600:
+        pg.click('[data-tb="device"]')
+        pg.click('[data-device="auto"]')
+        pg.wait_for_timeout(250)
+
+
 def open_overlay(pg, name):
     kind, which = name.split(':')
     pg.click('[data-tb="%s"]' % which)
@@ -201,6 +280,7 @@ def open_overlay(pg, name):
 
 
 def main():
+    sys.stdout.reconfigure(encoding='utf-8')
     ap = argparse.ArgumentParser()
     ap.add_argument('--viewports', default=','.join(VIEWPORTS))
     ap.add_argument('--routes', default=','.join(ROUTES))
@@ -251,11 +331,8 @@ def main():
                             pg.click('[data-device="all"]')
                             pg.wait_for_timeout(2500)
                             frames = [f for f in pg.frames if f != pg.main_frame]
-                        elif route == 'chat-slash':
-                            pg.evaluate("location.hash = '#/chat'")
-                            pg.wait_for_timeout(200)
-                            pg.fill('input[data-key="chat-input"]', '/')
-                            pg.wait_for_timeout(150)
+                        elif route in S4_ROUTES:
+                            layer = s4_state(pg, route, w)
                         elif route.startswith('menu:'):
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(120)
@@ -268,7 +345,7 @@ def main():
                                 if pos == 'absolute':
                                     layer = '#inspector'
                             pg.evaluate("document.querySelector('.main-col') && (document.querySelector('.main-col').scrollTop = 0)")
-                        desktop = w >= 1024
+                        desktop = w >= 1024 and not route.startswith('sheet')
                         res = pg.evaluate(MEASURE, {'layer': layer, 'desktop': desktop})
                         for f in frames:   # each pane is a real document laid out at its own width
                             fw = f.evaluate('innerWidth')
@@ -277,6 +354,12 @@ def main():
                             pg.click('[data-tb="device"]')
                             pg.click('[data-device="auto"]')
                             pg.wait_for_timeout(200)
+                        if route in S4_ROUTES:
+                            if a.shots:
+                                os.makedirs(a.shots, exist_ok=True)
+                                pg.screenshot(path=os.path.join(a.shots, '%s_%s_%s.png' % (vp, route, theme)))
+                            s4_after(pg, route, w)
+                            s4_reset(pg)
                         for e in errs:
                             res.append({'kind': 'error', 'msg': e})
                         cell = cells.setdefault((vp, route), dict.fromkeys(KINDS, 0))
@@ -289,7 +372,7 @@ def main():
                             cell[r['kind']] += 1
                             total[r['kind']] += 1
                             details.setdefault((vp, route, theme), []).append(r)
-                        if a.shots:
+                        if a.shots and route not in S4_ROUTES:
                             os.makedirs(a.shots, exist_ok=True)
                             pg.screenshot(path=os.path.join(a.shots, '%s_%s_%s.png' % (vp, route.replace('/', '-').replace(':', '-'), theme)))
                         if layer == '.menu':
@@ -304,7 +387,7 @@ def main():
             srv.kill()
 
     # table: rows viewports, columns routes, cell = defects over both themes
-    short = lambda r: r.replace('chat-slash', 'slash').replace('device:all', 'm-all').replace('settings', 'settng').replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
+    short = lambda r: r.replace('chat-slash', 'slash').replace('chat-confirm', 'cfm').replace('chat-cards', 'cards').replace('chat-general', 'gen').replace('dock-slash', 'dk-sl').replace('dock-reply', 'dk-rp').replace('sheet-slash', 'sh-sl').replace('replay-ev', 'rp-ev').replace('replay-rec', 'rp-rec').replace('device:all', 'm-all').replace('settings', 'settng').replace('replay/m-date', 'replay').replace('work/m-date', 'insp').replace('work/m-export', 'insp2').replace('attention/a-1', 'decide').replace('menu:', 'm-')
     print('\nDefects per viewport x route (dark + light)')
     print('%-10s' % 'viewport' + ''.join('%8s' % short(r)[:7] for r in routes) + '%7s' % 'total')
     for vp in viewports:

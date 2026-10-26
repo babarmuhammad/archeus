@@ -42,14 +42,14 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | A13 | Six-station spine, labels from Core's own state words | A54 §1 (Q11) | SIMULATED | NOW, WORK, ATT, MAP, TERM | S1 (components), S3 (full use) |
 | A14 | Prototype palette taken as the V2 base (ground `#0C0811`, ivory, amber, blue, green) | VL §1 (Q2) | SIMULATED | ALL | S1 |
 | A15 | Every simulated element labelled SIMULATED and the app says nothing is connected to a Core | owner brief | SIMULATED | ALL | S1 (badge, page header, terminal line) |
-| A16 | Chat: "reads and creates, not effects" (run, spend, settings, delete are cards the owner approves) | owner 2026-10-21, CAT | DESIGNED | CHAT | S4 |
-| A17 | Slash commands: read and create shortcuts direct, effects only as cards or the two-step confirm; English names canonical with Italian aliases | owner 2026-10-22, T153 | PROTOTYPED | CHAT | S4 |
-| A18 | `/usa` (usage) answers `unknown` until the usage read card exists; usage shown as numbers and reset times, never a token | owner 2026-10-22, T153 | PROTOTYPED | CHAT, SET | S4 (SET shows unknown today) |
-| A19 | Replay and Recovery is a V2 surface plus a V1 read; nothing builds a reversal or an operator retry | owner 2026-10-21, T148 | DESIGNED | REP | S4 |
+| A16 | Chat: "reads and creates, not effects" (run, spend, settings, delete are cards the owner approves) | owner 2026-10-21, CAT | DESIGNED | CHAT | S1, S4 built (cards for every effect; refusals) |
+| A17 | Slash commands: read and create shortcuts direct, effects only as cards or the two-step confirm; English names canonical with Italian aliases | owner 2026-10-22, T153 | PROTOTYPED | CHAT | S1, S4 built (34 commands, two-step confirms) |
+| A18 | `/usa` (usage) answers `unknown` until the usage read card exists; usage shown as numbers and reset times, never a token | owner 2026-10-22, T153 | PROTOTYPED | CHAT, SET | S1, S4 built (`/usage` answers Unknown) |
+| A19 | Replay and Recovery is a V2 surface plus a V1 read; nothing builds a reversal or an operator retry | owner 2026-10-21, T148 | DESIGNED | REP | S1, S4 built (Replay page, recovery cards) |
 | A20 | V2 production code waits for P26; this prototype and the `v2/real` branch do not merge before it | PLAN §0.8, UIA §S | DESIGNED | none | none |
-| A21 | A project made in chat is a record only (folders, clones and access are proposals) | PROTO README (owner answers) | PROTOTYPED | CHAT | S4 |
-| A22 | No camera move for a creation off screen: a receipt with "Show" | PROTO README | PROTOTYPED | CHAT, MAP | S4 |
-| A23 | Text weight 400 for body text; one material for chat and replies, with a solid fallback | PROTO README (owner 2026-10-23) | PROTOTYPED | CHAT | S4 (solid only, see A09) |
+| A21 | A project made in chat is a record only (folders, clones and access are proposals) | PROTO README (owner answers) | PROTOTYPED | CHAT | S4 built (`Create a project called X` is a record only, labelled) |
+| A22 | No camera move for a creation off screen: a receipt with "Show" | PROTO README | PROTOTYPED | CHAT, MAP | S4 partly: the receipt names the project; no camera move (map module) |
+| A23 | Text weight 400 for body text; one material for chat and replies, with a solid fallback | PROTO README (owner 2026-10-23) | PROTOTYPED | CHAT | S4 built (solid surfaces) |
 | A24 | Language: English UI with an Italian switch for the main surfaces (Now, Work, Attention, spine words, slash aliases); toggle in the toolbar, persisted in try/catch localStorage | VLD (Language) | SIMULATED | ALL, SHELL | S1 (chrome, state words, spine, menus, slash aliases; fixture text and the terminal stay English) |
 | A25 | Areas that must be in V2 Live: Now/Work/Attention/spine/decisions; Chat/slash/Replay; Security, health, usage, accounts; Terminal view and themes | VLD (Areas) | SIMULATED | see section M | S1 (a route for each) |
 | A26 | Look: match the concepts' mood (dark, glowing constellation) but crisp vector; layout follows content | VLD (Look) | SIMULATED | ALL, MAP | S1 (dark palette, vector map), S2 BUILT (glow, hulls, crystals, serif labels, six themes) |
@@ -129,8 +129,8 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | E07 | Mission inspector tabs: Outcome, Plan, Now, Evidence, Why, Timeline, Relations | V1 `Mission.tsx`, navigation.json | BUILT + SIMULATED | WORK, MAP, ATT inspector | S1 (five tabs), S3 (Why, Relations) |
 | E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 |
 | E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | ATT, NOW, inspector | S1 (decision sheet), S3 |
-| E10 | Command bar and palette (Ctrl+K), grammar of ADR-0042 | V1 `CommandBar.tsx`, `state/palette.ts` | BUILT | CHAT | S4 |
-| E11 | Conversation thread with cards: approval, e-stop, stop mission, route explanation, change card | V1 `Now.tsx` Conversation | BUILT | CHAT | S4 |
+| E10 | Command bar and palette (Ctrl+K), grammar of ADR-0042 | V1 `CommandBar.tsx`, `state/palette.ts` | BUILT | CHAT | S4 built (bar, slash combobox; no Ctrl+K palette) |
+| E11 | Conversation thread with cards: approval, e-stop, stop mission, route explanation, change card | V1 `Now.tsx` Conversation | BUILT | CHAT | S4 built (thread with start, confirm, approval, plan, status, remember cards) |
 | E12 | Offline Now: kept missions, "as of hh:mm", Decide rows read-only | V1 `OfflineNow`, UIA §O | BUILT | NOW | S3 |
 | E13 | Live map with halo, travelling marker, hulls, depth alpha, search, legend and text mirror (Canvas 2D) | V1 `graph/` | BUILT | NOW, MAP | S2 BUILT (V2 Live draws SVG with the module: hulls, travelling marker, legend, text mirror and node table; search not built) |
 | E14 | Phone: graph hidden below 600 px, the list stands in | UIA §M, V1 P18 A12 | BUILT | NOW, MAP · P | S1 (map shown small, list under it), S2 BUILT (map kept on the phone, taller 3:4 on #/map) |
@@ -146,42 +146,42 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| F01 | Chat bar entry on Now with placeholder "Tell Archeus what you need...", SIMULATED tag on every reply | PROTO build steps 1 to 3 | PROTOTYPED | NOW, CHAT | S1 (own screen, every reply says "Simulated reply"), S4 (bar on Now) |
-| F02 | Message creates: message, mission, idea, remembered preference, feedback candidate, mission thread, narrowing directive | T149 §1 | BUILT | CHAT | S4 |
-| F03 | Under the `standard` profile a new-work message starts and dispatches without a card (G1, an owner-rule breach) | T149 §1, §4 | BUILT (flagged) | CHAT | S4 (must be labelled, never shown as owner-approved) |
-| F04 | General (non-project) questions cannot be answered today (G5); replies are scripted | T149 §2, §4 | DESIGNED | CHAT | S4 (label as faked) |
-| F05 | Create a project from chat has no path in V1 | T149 §1 | PROTOTYPED | CHAT | S4 (label as faked) |
-| F06 | Comment on a mission or plan: no comment object, only messages | T149 §1 | BUILT (limit) | CHAT | S4 |
-| F07 | Route classes: 58 READ, 6 CREATE, 36 PROPOSE, 7 NEVER of 107 routes; chat calls READ and CREATE directly, drafts PROPOSE as cards, never calls NEVER | CAT | DESIGNED | CHAT | S4 |
-| F08 | NEVER routes: device launch and pair, approvals decide, verifications decide, missions review | CAT | DESIGNED | CHAT | S4 |
-| F09 | Stop mission: confirm card; e-stop: card then control scope; pause all, resume all, reprioritise: direct, no card | T149 §1 | BUILT | CHAT | S4 |
-| F10 | Approve from chat only on the card on screen with its hash; a bare "approve" is declined | T149 §1 | BUILT | CHAT | S4 |
-| F11 | Slash menu: `/` opens a list above the bar; `?` lists by class; `//name` sends text; keyboard combobox (Up, Down, Tab, Enter, Escape, `aria-activedescendant`) | T153, PROTO slash.js | PROTOTYPED | CHAT | S1 (menu of buttons, `//`), S4 (combobox keys) |
-| F12 | READ and NAVIGATE: /help /status /usage /projects /missions /needs /digest /ideas /plan /why /search /trace /replay /open /focus /clear /theme /motion (Italian aliases /aiuto /stato /usa /progetti /missioni /attesa /riepilogo /idee /piano /perche /cerca /traccia /rigioca /apri /vai /pulisci /tema /movimento) | T153 §3.1, PROTO | PROTOTYPED | CHAT | S1 (/help /status /usage /projects /missions /needs /ideas /replay /open), S4 (rest) |
-| F13 | CREATE: /mission /idea /feedback /remember /tell /general (/remember is a confirm card naming the scope) | T153 §3.2, PROTO | PROTOTYPED | CHAT | S1 (/mission creates a real simulated mission, /idea), S4 (rest) |
-| F14 | PROPOSE (card or two-step confirm, decides nothing): /start /stop /estop /pause /resume /cancel /review /approve /reject /account | T153, PROTO | PROTOTYPED | CHAT | S1 (/pause /resume /cancel /estop confirm cards that change the simulation; /approve only opens the decision), S4 (rest, two-step) |
-| F15 | Refused before sending: extra arguments, bad choices, unknown names, text that looks like a secret (`sk-`, `ghp_`, `AKIA`, `Bearer `) | PROTO README slash | PROTOTYPED | CHAT | S1 (all but bad choices) |
-| F16 | `@` mentions; 2 s duplicate-send prompt and rate limit (Core side) | T153 | DESIGNED | CHAT | S4 (mentions), not built (Core) |
-| F17 | Phone chat sheet follows `visualViewport` (keyboard) and expands | PROTO step 2 | PROTOTYPED | CHAT · P | S4 |
-| F18 | Chat delay and error fixtures, General routing, Review plan | PROTO steps 4 to 6 | PROTOTYPED | CHAT | S4 |
-| F19 | Usage in chat: `/usage` answers `unknown` until T-154 | T153 owner answers | PROTOTYPED | CHAT | S1 |
+| F01 | Chat bar entry on Now with placeholder "Tell Archeus what you need...", SIMULATED tag on every reply | PROTO build steps 1 to 3 | PROTOTYPED | NOW, CHAT | S4 built (bar on Now with the placeholder, SIMULATED on every reply) |
+| F02 | Message creates: message, mission, idea, remembered preference, feedback candidate, mission thread, narrowing directive | T149 §1 | BUILT | CHAT | S4 built (message, mission, idea, remembered preference, feedback candidate) |
+| F03 | Under the `standard` profile a new-work message starts and dispatches without a card (G1, an owner-rule breach) | T149 §1, §4 | BUILT (flagged) | CHAT | S4 built (a chat mission is held; labelled, never shown as owner-approved) |
+| F04 | General (non-project) questions cannot be answered today (G5); replies are scripted | T149 §2, §4 | DESIGNED | CHAT | S4 built (scripted General answers, labelled) |
+| F05 | Create a project from chat has no path in V1 | T149 §1 | PROTOTYPED | CHAT | S4 built (labelled simulated) |
+| F06 | Comment on a mission or plan: no comment object, only messages | T149 §1 | BUILT (limit) | CHAT | S4 built (a comment is a message) |
+| F07 | Route classes: 58 READ, 6 CREATE, 36 PROPOSE, 7 NEVER of 107 routes; chat calls READ and CREATE directly, drafts PROPOSE as cards, never calls NEVER | CAT | DESIGNED | CHAT | S4 built (engine classes) |
+| F08 | NEVER routes: device launch and pair, approvals decide, verifications decide, missions review | CAT | DESIGNED | CHAT | S4 built (refused) |
+| F09 | Stop mission: confirm card; e-stop: card then control scope; pause all, resume all, reprioritise: direct, no card | T149 §1 | BUILT | CHAT | S4 built (stop, estop: two steps; pause, resume: card) |
+| F10 | Approve from chat only on the card on screen with its hash; a bare "approve" is declined | T149 §1 | BUILT | CHAT | S4 built (bare approve declined; card needs a step-up) |
+| F11 | Slash menu: `/` opens a list above the bar; `?` lists by class; `//name` sends text; keyboard combobox (Up, Down, Tab, Enter, Escape, `aria-activedescendant`) | T153, PROTO slash.js | PROTOTYPED | CHAT | S4 built (combobox: Up, Down, Tab, Enter, Esc, aria-activedescendant, five rows then +N more, recents, `//`) |
+| F12 | READ and NAVIGATE: /help /status /usage /projects /missions /needs /digest /ideas /plan /why /search /trace /replay /open /focus /clear /theme /motion (Italian aliases /aiuto /stato /usa /progetti /missioni /attesa /riepilogo /idee /piano /perche /cerca /traccia /rigioca /apri /vai /pulisci /tema /movimento) | T153 §3.1, PROTO | PROTOTYPED | CHAT | S4 built (all 18, Italian aliases; READ and NAVIGATE are local, not recorded) |
+| F13 | CREATE: /mission /idea /feedback /remember /tell /general (/remember is a confirm card naming the scope) | T153 §3.2, PROTO | PROTOTYPED | CHAT | S4 built (/remember is a confirm card naming the scope) |
+| F14 | PROPOSE (card or two-step confirm, decides nothing): /start /stop /estop /pause /resume /cancel /review /approve /reject /account | T153, PROTO | PROTOTYPED | CHAT | S4 built (/start /stop /estop /pause /resume /cancel /review /approve /reject; /account unavailable) |
+| F15 | Refused before sending: extra arguments, bad choices, unknown names, text that looks like a secret (`sk-`, `ghp_`, `AKIA`, `Bearer `) | PROTO README slash | PROTOTYPED | CHAT | S4 built (extra arguments, bad choices, unknown names, secrets) |
+| F16 | `@` mentions; 2 s duplicate-send prompt and rate limit (Core side) | T153 | DESIGNED | CHAT | S4 built (`@` mentions, 2 s duplicate prompt; rate limit is Core side, not built) |
+| F17 | Phone chat sheet follows `visualViewport` (keyboard) and expands | PROTO step 2 | PROTOTYPED | CHAT · P | S4 built (visualViewport, simulated keyboard, Expand, Back) |
+| F18 | Chat delay and error fixtures, General routing, Review plan | PROTO steps 4 to 6 | PROTOTYPED | CHAT | S4 built (slow and failed send fixtures, General routing; Review plan stays on the decision sheet) |
+| F19 | Usage in chat: `/usage` answers `unknown` until T-154 | T153 owner answers | PROTOTYPED | CHAT | S1, S4 built |
 | F20 | Subscription token read by `claude_sessions/usage.py` conflicts with AGENT-RULES item 6 (G2) | T149 §4 | BUILT (flagged) | none | owner decision, never shown |
 
 ## G. Replay and Recovery
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| G01 | Eight Replay categories: INTENDED, AUTHORIZED, RECORDED, MAY-HAVE-TAKEN-EFFECT, UNCERTAIN, SUSPENDED, RECONCILED, NONE; plus UNKNOWN for "cannot tell" | RC, T148 | DESIGNED | REP | S1 (all nine drawn), S4 |
-| G02 | 130 states over 19 machines classified (INTENDED 29, RECORDED 46, SUSPENDED 16, MAY-HAVE-TAKEN-EFFECT 12, AUTHORIZED 9, UNCERTAIN 5, RECONCILED 5, UNKNOWN 5, NONE 3) | RC Part A | DESIGNED | REP | S1 (the machines the simulation uses), S4 (rest) |
-| G03 | `GET /v1/missions/{id}/replay` from rows, not the event log; a state with no entry answers UNKNOWN | T148 R1 | DESIGNED | REP | S1 (simulated read), S4 |
-| G04 | Evidence rows labelled by real strength (checkpoint lists capped at 30 are summaries, an ERROR verification is not a verdict) | T148 R2 | DESIGNED | REP | S4 |
-| G05 | `settled_by` core, device or unknown from the event actor, never a new record | T148 R3 | DESIGNED | REP | S1 |
-| G06 | Retention honesty: events kept 180 days; a pruned range answers UNKNOWN with a reason, never "nothing happened" | T148 R4, RC gap 6 | DESIGNED | REP | S1 (pruned note) |
-| G07 | "NOT RECORDED": external effects, starting digest, operator reconciliation, complete history, reasoning transcript, file snapshots, cost provenance, confinement proof | RC gaps, PROTO REPLAY_GAPS | PROTOTYPED | REP | S1 |
-| G08 | Five example rows (task initiated, files changed, tests passed, external response lost, workflow suspended) | RC Part B | DESIGNED | REP | S4 |
-| G09 | Prototype Replay: 13 source-labelled entries for Fix date test, pointer and keyboard cursor, a failed verification and a LOST execution, no autoplay | PROTO README | PROTOTYPED | REP | S1 (cursor via Earlier and Later), S4 |
-| G10 | Recovery choices create explicit approval cards only; approval changes a receipt, never the evidence; retry and owner-question drafts editable | PROTO README | PROTOTYPED | REP | S4 |
-| G11 | Never claim an external effect can be reversed; no operator spawn, adopt or retry; no second spawn (retry is a new execution id) | T148 N7, `harnesses/base.py` | DESIGNED | REP | S4 |
+| G01 | Eight Replay categories: INTENDED, AUTHORIZED, RECORDED, MAY-HAVE-TAKEN-EFFECT, UNCERTAIN, SUSPENDED, RECONCILED, NONE; plus UNKNOWN for "cannot tell" | RC, T148 | DESIGNED | REP | S4 built (all nine, with definitions) |
+| G02 | 130 states over 19 machines classified (INTENDED 29, RECORDED 46, SUSPENDED 16, MAY-HAVE-TAKEN-EFFECT 12, AUTHORIZED 9, UNCERTAIN 5, RECONCILED 5, UNKNOWN 5, NONE 3) | RC Part A | DESIGNED | REP | S4 built (130 states, 19 machines, totals pinned by a test) |
+| G03 | `GET /v1/missions/{id}/replay` from rows, not the event log; a state with no entry answers UNKNOWN | T148 R1 | DESIGNED | REP | S4 built (read from rows and events; no entry answers UNKNOWN) |
+| G04 | Evidence rows labelled by real strength (checkpoint lists capped at 30 are summaries, an ERROR verification is not a verdict) | T148 R2 | DESIGNED | REP | S4 built (evidence labelled Recorded, Reported, Summary, NOT RECORDED, UNKNOWN) |
+| G05 | `settled_by` core, device or unknown from the event actor, never a new record | T148 R3 | DESIGNED | REP | S4 built (read only, with its reason) |
+| G06 | Retention honesty: events kept 180 days; a pruned range answers UNKNOWN with a reason, never "nothing happened" | T148 R4, RC gap 6 | DESIGNED | REP | S4 built (180 days, extension not built, pruned answers UNKNOWN) |
+| G07 | "NOT RECORDED": external effects, starting digest, operator reconciliation, complete history, reasoning transcript, file snapshots, cost provenance, confinement proof | RC gaps, PROTO REPLAY_GAPS | PROTOTYPED | REP | S4 built (eight gaps, NOT RECORDED) |
+| G08 | Five example rows (task initiated, files changed, tests passed, external response lost, workflow suspended) | RC Part B | DESIGNED | REP | S4 built (five example rows with strengths) |
+| G09 | Prototype Replay: 13 source-labelled entries for Fix date test, pointer and keyboard cursor, a failed verification and a LOST execution, no autoplay | PROTO README | PROTOTYPED | REP | S4 built (cursor, keyboard, filters; no autoplay) |
+| G10 | Recovery choices create explicit approval cards only; approval changes a receipt, never the evidence; retry and owner-question drafts editable | PROTO README | PROTOTYPED | REP | S4 built (cards only; receipt says evidence unchanged) |
+| G11 | Never claim an external effect can be reversed; no operator spawn, adopt or retry; no second spawn (retry is a new execution id) | T148 N7, `harnesses/base.py` | DESIGNED | REP | S4 built (never list on the recovery panel) |
 | G12 | Four other meanings of "replay" stay separate: router replay, stream replay from Last-Event-ID, queued command resend, Trace tab two-clock playback | T148 N4 | BUILT | none | naming only |
 | G13 | Mission Trace tab (P21 slice C-read) | BOARD T-119 | BUILT | WORK inspector | S3 (Timeline tab today) |
 
@@ -257,8 +257,8 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | ID | Area | Screens that show it | Route | Slice |
 |---|---|---|---|---|
 | M01 | Now, Work, Attention, spine, decisions | NOW, WORK, ATT, inspector and decision sheet, MAP | `#/now`, `#/work/<id>`, `#/attention/<id>` | S1 shell and lists, S2 Now, S3 mission and decisions |
-| M02 | Chat and slash commands | CHAT | `#/chat` | S1 (working commands), S4 |
-| M03 | Replay | REP | `#/replay/<id>` | S1, S4 |
+| M02 | Chat and slash commands | CHAT | `#/chat` | S1, S4 built |
+| M03 | Replay | REP | `#/replay/<id>` | S1, S4 built |
 | M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1 (status), S5 |
 | M05 | Health: checks and readings | HLT | `#/health` | S1, S3 |
 | M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S5 |

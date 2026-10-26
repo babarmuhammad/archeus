@@ -4,8 +4,10 @@ import { icon } from './icons.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
-import { ROUTES, BOTTOM, viewNow, viewWork, viewAttention, viewMap, viewReplay, viewSettings, viewAccounts, inspectorMission, inspectorApproval, simControls } from './views.js';
-import { viewChat, viewSecurity, viewHealth, viewMore } from './views2.js';
+import { ROUTES, BOTTOM, viewNow, viewWork, viewAttention, viewMap, viewSettings, viewAccounts, inspectorMission, inspectorApproval, simControls } from './views.js';
+import { viewSecurity, viewHealth, viewMore } from './views2.js';
+import { viewChat, mountDock } from './chat.js';
+import { viewReplay } from './replay.js';
 import { translate } from './i18n.js';
 import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
@@ -31,7 +33,7 @@ const toolbar = document.getElementById('toolbar');
 const stage = document.getElementById('stage');
 const device = document.getElementById('device');
 const framenote = document.getElementById('framenote');
-let app, page, rail, bottom, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
+let app, page, rail, bottom, dock, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
 
 const navItem = (r, cls) => h('a', { class: cls, href: '#/' + r.id, 'data-route': r.id, 'aria-label': cls === 'nav-item' ? null : r.label },
   icon(r.icon, cls === 'nav-item' ? 22 : 24), h('span', { class: cls === 'nav-item' ? 'nl' : '' }, r.label), cls === 'nav-item' || r.id === 'attention' ? h('span', { class: 'count', 'data-count': r.id, hidden: true }) : null);
@@ -44,10 +46,11 @@ function buildShell() {
     h('p', { class: 'rail-foot' }, 'V2 Live prototype. Simulated. No Core is connected.'));
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
   bottom = h('nav', { class: 'bottombar', 'aria-label': 'Main' }, ...BOTTOM.map((id) => navItem(ROUTES.find((r) => r.id === id), 'bb-item')), navItem({ id: 'more', label: 'More', icon: 'menu' }, 'bb-item'));
+  dock = h('div', { class: 'chatdock', id: 'chatdock', hidden: true });
   inspector = h('aside', { class: 'inspector', 'aria-label': 'Details', id: 'inspector' });
   scrim = h('div', { class: 'scrim', 'aria-hidden': 'true', onclick: closeInsp });
   toastEl = h('div', { class: 'toast', role: 'status', hidden: true });
-  app = h('div', { class: 'app', id: 'app', 'data-rail': '', 'data-insp': '' }, rail, page, bottom, scrim, inspector, toastEl);
+  app = h('div', { class: 'app', id: 'app', 'data-rail': '', 'data-insp': '' }, rail, page, dock, bottom, scrim, inspector, toastEl);
   clear(device).append(app);
 }
 
@@ -92,6 +95,7 @@ function render() {
   const n = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
   app.querySelectorAll('[data-count="attention"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
 
+  if (term) { app.dataset.dock = ''; dock.hidden = true; } else mountDock(ctx, dock, app);
   ctx.mounts.forEach((f) => f());
   pruneMaps(['now', 'map'].includes(r.name) ? r.name : null);
   translate(app);
