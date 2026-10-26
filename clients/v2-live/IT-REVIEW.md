@@ -64,7 +64,6 @@ Status: to review. 2 strings.
 
 | English | Italian |
 |---|---|
-|  Fixture data, nothing is connected to a Core. Simulated time  |  Dati di esempio, nessun Core collegato. Ora simulata  |
 | (paused) | (in pausa) |
 
 ## Main dictionary: Now

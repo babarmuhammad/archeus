@@ -2,7 +2,7 @@ import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
 import { tr } from './i18n.js';
-import { word, panel, empty, missionRow, attentionItem, controlBody } from './views.js';
+import { word, panel, empty, missionRow, attentionItem } from './views.js';
 import { mapBox, syncMap } from './map.js';
 
 function counters(ctx) {
@@ -35,7 +35,6 @@ export function render(ctx) {
   const drawer = h('section', { class: 'now-drawer', 'data-open': String(open), 'aria-label': 'Details' },
     h('div', { class: 'now-strip' }, counters(ctx), h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), onclick: toggle }, tr('Details'))),
     h('div', { class: 'now-body' },
-      h('section', { class: 'ctlbar', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)),
       h('div', { class: 'now-panels' },
         panel('Needs you', decide.length, decide.length ? h('div', { class: 'stack' }, ...decide.slice(0, 3).map((a) => attentionItem(ctx, a))) : empty('Nothing is waiting for a decision.'),
           att.filter((a) => a.group !== 'Decide').length ? h('div', { class: 'actions', style: 'padding:12px 16px 16px' }, h('a', { class: 'btn', href: '#/attention' }, att.filter((a) => a.group !== 'Decide').length + ' more in Attention')) : null),

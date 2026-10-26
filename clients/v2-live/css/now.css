@@ -18,7 +18,6 @@
 .now-body { display: none; overflow: auto; padding: 0 var(--gut) var(--gut); }
 .now-drawer[data-open='true'] .now-body { display: block; }
 .now-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: var(--gut); align-items: start; }
-.now-body .ctlbar { margin-bottom: var(--gut); }
 @container view (max-width: 599px) {
   .now-view .now-hero { top: 14px; left: 16px; right: 16px; }
   .now-strip { padding-inline: 12px; }
@@ -42,4 +41,4 @@
 .now-wrap > .ax-digest { margin: var(--gut); }
 .now-view .state-sentence.calm { font-size: var(--fs-title); }
 .now-wrap { position: relative; }
-.now-wrap > .page-head { display: none; }
+

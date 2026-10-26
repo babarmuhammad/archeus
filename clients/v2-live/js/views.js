@@ -25,11 +25,7 @@ export function badge(machine, state) {
 }
 
 export function head(ctx, title, extra) {
-  const st = ctx.sim.state;
-  return h('header', { class: 'page-head' },
-    h('div', null, h('h1', null, title),
-      h('p', { class: 'sub' }, h('span', { class: 'sim-tag' }, 'SIMULATED'), ' Fixture data, nothing is connected to a Core. Simulated time ', h('span', { 'data-live': 'clock' }, clockLabel(st.clock)), st.playing ? ' (running, x' + st.speed + ')' : ' (paused)')),
-    extra || null);
+  return h('header', { class: 'page-head' }, h('div', null, h('h1', null, title)), extra || null);
 }
 
 export const panel = (title, n, ...kids) => h('section', { class: 'panel' }, h('h2', null, h('span', { class: 'gt' }, title), n != null ? h('span', { class: 'n' }, String(n)) : null), ...kids);

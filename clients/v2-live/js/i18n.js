@@ -28,7 +28,7 @@ const IT = {
   'System follows the OS (including high contrast). Forced colours is a simulation; the real forced-colors mode is also honoured.': 'Sistema segue il sistema operativo (anche l\'alto contrasto). I colori forzati sono una simulazione; anche la vera modalità forced-colors è rispettata.',
   'Decision notes': 'Note sulle decisioni', 'Show which decision each choice implements': 'Mostra quale decisione attua ogni scelta',
   // page heads
-  ' Fixture data, nothing is connected to a Core. Simulated time ': ' Dati di esempio, nessun Core collegato. Ora simulata ', '(paused)': '(in pausa)',
+  '(paused)': '(in pausa)',
   // Now
   'The sentence is built only from Core state words and counts.': 'La frase è costruita solo con parole di stato del Core e conteggi.',
   'Live map': 'Mappa viva', 'vector, redrawn at every size': 'vettoriale, ridisegnata a ogni dimensione', 'Happening now': 'In corso adesso', 'Upcoming': 'In arrivo',
