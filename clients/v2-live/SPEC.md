@@ -322,7 +322,7 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 
 ## Counts
 
-190 rows: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas.
-By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 50 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 88.
-Slice 2 (map integration) builds 13 of these rows (A03, A06, A12, A26, B08, B10, C03, C04, C05, C08, E02, E13, E14); row and status counts above are unchanged.
-Slice 1 shows 126 rows (the Slice column names S1, fully or in part); the rest, and the "part" rows, are the later slices' to-do list.
+216 rows, recounted from the tables after the integration of slices 2 to 5: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas · N 10 S3 additions · O 16 terminal view (S5).
+By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 51 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 114. Rows A to M (190) give BUILT 51 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 88; the earlier line said BUILT 50, a miscount by one; N and O add 26 simulated rows. Slices 2 to 5 changed the Slice column, not the Status column, so no row moved between BUILT, DESIGNED and PROTOTYPED.
+Slice 2 (map integration) builds 13 of these rows (A03, A06, A12, A26, B08, B10, C03, C04, C05, C08, E02, E13, E14).
+Slice 1 shows 126 rows (the Slice column names S1, fully or in part); the rest, and the "part" rows, are the later slices' to-do list. Slice 5 adds section O (16 rows, all done) and completes the S5 part of E06, H09, H14, I07, M04, M06, M07 and M08. Slice 3 adds section N. The integration adds H16 (pause all, resume all, emergency stop).

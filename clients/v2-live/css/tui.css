@@ -73,7 +73,7 @@
 /* ---------- the key bar (touch and narrow windows), the command line ---------- */
 .tui-keys { flex: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); border-top: var(--hair) solid var(--line); background: var(--s1); }
 .tui-keys .tui-btn { flex: 1 1 44px; padding: 0 6px; }
-.tui-keys .tui-btn.act { flex: 1 1 5.5em; }
+.tui-keys .tui-btn.act { flex: 1 1 5.5em; min-width: max-content; }
 @container dev (min-width: 900px) { .tui-keys { display: none; } }
 .tui-cmd { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-top: var(--hair) solid var(--line-strong); background: var(--s2); }
 .tui-prompt { font: 700 16px/1 var(--mono); padding: 0 4px; }
