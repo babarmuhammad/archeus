@@ -6,7 +6,6 @@ import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
 import { clockLabel, SPEEDS } from '../sim.js';
 import { spineRow, spineCard } from './spine.js';
-import { mapBox, syncMap } from './map.js';
 import { areasOf } from './areas-model.js';
 
 export const ROUTES = [
@@ -63,16 +62,6 @@ export function attentionItem(ctx, a) {
     h('p', { class: 'ttl' }, a.reason),
     m ? spineCard(m.state, m.held_from) : null,
     btns.length ? h('div', { class: 'actions' }, ...btns) : null);
-}
-
-export function mapPanel(ctx, wide, title) {
-  const sim = ctx.sim, live = sim.liveWork();
-  const key = ctx.route.name, box = mapBox(key, wide);
-  ctx.mounts.push(() => syncMap(ctx, key));
-  const k = (g, w) => h('span', { class: 'k' }, h('span', { 'aria-hidden': 'true' }, g), ' ' + w);
-  const legend = h('div', { class: 'legend' }, k('⬡', 'Project'), k('●', 'Mission'), k('▲', 'Execution'), k('◆', 'Decision'),
-    h('span', { class: 'k' }, 'Centre: Core, ', live.length ? live.length + ' running' : 'nothing running'));
-  return h('section', { class: 'panel' }, h('h2', null, title || 'Live map', h('span', { class: 'n' }, 'vector, redrawn at every size')), box, legend);
 }
 
 export function simControls(ctx) {

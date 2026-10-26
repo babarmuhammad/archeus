@@ -115,5 +115,18 @@ test('layout keeps project hulls apart and clear of the core mark and wordmark',
   }
 });
 test('crystal radius is large on desktop and smaller on phones', () => {
-  assert.ok(crystalRadius(1, 1440) >= 40 && crystalRadius(1, 390) <= 24 && crystalRadius(1, 390) >= 20);
+  assert.ok(crystalRadius(1, 1440) >= 60 && crystalRadius(1, 390) <= 28 && crystalRadius(1, 390) >= 20);
+});
+test('node art is seeded, dense and bounded: polyhedron mesh, execution triangle, core star', async () => {
+  const {polyhedron, triangle, coreStar, ICONS} = await import('./nodeart.js');
+  const a = polyhedron('m1', 70), b = polyhedron('m1', 70), small = polyhedron('m1', 20);
+  assert.deepEqual(a, b);
+  assert.ok((a.mesh.match(/M/g) || []).length >= 30 && (small.mesh.match(/M/g) || []).length < (a.mesh.match(/M/g) || []).length);
+  assert.ok(triangle('x1', 40).outline.split('L').length === 3 && Object.keys(ICONS).length >= 6);
+  const star = coreStar(40, 1.75);
+  assert.ok((star.spikes.match(/M/g) || []).length === 16 && (star.threads.match(/M/g) || []).length >= 20);
+});
+test('layout honours a custom inset: stars stay below the headline band', () => {
+  const nodes = layout({nodes: Array.from({length: 12}, (_, i) => ({id: `n${i}`, project: `p${i % 2}`, weight: 3, kind: 'Mission', state: 'idle'})), edges: []}, 1280, 800, 's', {top: 180, bottom: 76, left: 24, right: 24});
+  for (const n of nodes) assert.ok(n.y >= 180 && n.y <= 800 - 76, `${n.id} outside the inset`);
 });

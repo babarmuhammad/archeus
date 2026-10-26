@@ -53,6 +53,7 @@ try:
         ctx.close()
         # 3 Now: control strip with ask-first, and toasts
         ctx, pg, errs = page(clock=True)
+        pg.click('.now-toggle')
         check('the control strip is on Now', pg.locator('.ctlbar [data-key="estop"]').count() == 1 and pg.locator('.ctlbar [data-key="pause-all"]').count() == 1 and pg.locator('.ctlbar [data-key="resume-all"]').count() == 1)
         pg.click('[data-key="estop"]'); pg.wait_for_timeout(100)
         check('Emergency stop asks first and nothing is stopped yet', pg.locator('[data-key="estop-yes"]').count() == 1 and not pg.evaluate('window.v2live.sim.state.estop.engaged'))
