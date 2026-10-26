@@ -232,6 +232,7 @@ export function createChat(sim, env = {}) {
       if (c.cls === 'PROPOSE') return proposeCmd(c.name, msg.args);
       return readCmd(c.name, msg.args);
     }
+    if (msg.escaped) return { c: tp('Sent as ordinary text: {t}. No slash handler ran.', 'Inviato come testo normale: {t}. Nessun comando slash è partito.', { t: msg.text }) };
     return msg.dest === 'general' ? plainGeneral(msg.text) : plainWork(msg.text, o);
   }
 
@@ -248,19 +249,19 @@ export function createChat(sim, env = {}) {
     const tm = now();
     if (!o.force && !o.retry && last.text === t0 && tm - last.at < 2000) return { ok: false, keep: true, dup: { secs: Math.max(1, Math.round((tm - last.at) / 1000)), text: t0 } };
     last = { text: t0, at: tm };
-    let cmd = p && p.kind === 'command' ? p.cmd : null, args = p && p.kind === 'command' ? p.args : '', text = t0, dest = o.dest === 'general' ? 'general' : 'work';
-    if (p && p.kind === 'text') text = p.text;
+    let escaped = false, cmd = p && p.kind === 'command' ? p.cmd : null, args = p && p.kind === 'command' ? p.args : '', text = t0, dest = o.dest === 'general' ? 'general' : 'work';
+    if (p && p.kind === 'text') { text = p.text; escaped = true; }
     if (cmd && cmd.name === 'tell') { text = args; cmd = null; args = ''; }
     if (cmd && cmd.name === 'general') dest = 'general';
     const recorded = !cmd || cmd.cls === 'CREATE' || cmd.cls === 'PROPOSE';
     const key = o.key || 'k-' + (++kn);
-    const extra = { dest: cmd && cmd.name !== 'general' ? 'command' : dest, project: o.project || 'archeus', cmd: cmd ? cmd.name : null, cls: cmd ? cmd.cls : null, args, key, status: o.fail ? 'failed' : 'submitted' };
+    const extra = { dest: cmd && cmd.name !== 'general' ? 'command' : dest, project: o.project || 'archeus', cmd: cmd ? cmd.name : null, cls: cmd ? cmd.cls : null, args, key, escaped, status: o.fail ? 'failed' : 'submitted' };
     const m = post('you', tp(t0, t0), extra, recorded);
-    m.text = t0;
+    m.text = escaped ? text : t0;
     if (cmd) m.c = tp(t0, t0);
     if (o.fail) return { ok: true, id: m.id, failed: true, cmd: cmd && cmd.name };
     const run = () => api.finish(m.id);
-    if (!recorded) { run(); return { ok: true, id: m.id, cmd: cmd.name, done: true }; }
+    if (!recorded) { const out = run(); return { ok: true, id: m.id, cmd: cmd.name, done: true, out }; }
     return { ok: true, id: m.id, cmd: cmd && cmd.name, run };
   };
   api.finish = (id) => {

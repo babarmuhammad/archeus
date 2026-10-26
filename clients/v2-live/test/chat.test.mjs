@@ -185,3 +185,9 @@ test('Italian copy: every reply carries both languages', () => {
   for (const t of ['/mission Prova', '/estop', '/status', '/idea x', '/pause fix', 'approve']) send(chat, t);
   [...sim.state.messages, ...chat.local()].filter((m) => m.from === 'archeus' && m.c).forEach((m) => { assert.ok(m.c && m.c.it && m.c.it !== m.c.en, m.text); });
 });
+
+test('// escape: the text is sent as ordinary text, the idea handler and the intent guesser do not run', () => {
+  const { sim, chat } = mk(); const n = sim.state.ideas.length;
+  send(chat, '//idea x'); assert.equal(sim.state.ideas.length, n);
+  assert.equal(sim.state.messages.at(-2).text, '/idea x'); assert.match(fmt(last(sim).c, 'en'), /Sent as ordinary text/);
+});
