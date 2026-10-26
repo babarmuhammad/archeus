@@ -2,6 +2,7 @@
 // approval (the decision sheet), plan, verification, review, idea, knowledge, project. Area inspectors are in inspectors2.js.
 // A sheet on a phone, a right sheet on a tablet, a column on a desktop; the same content. Offline it reads what was kept and offers no actions.
 import { h } from './dom.js';
+import { icon } from './icons.js';
 import { present } from '../core-words.js';
 import { clockLabel, categoryOf } from '../sim.js';
 import { badge, projName, word, dnote } from './views.js';
@@ -156,6 +157,7 @@ function approval(ctx, A, S, id) {
     return h('div', { class: 'ax-body' },
       sec('What', h('p', null, a.presented.what)), sec('Why it asks', h('p', null, a.presented.why)), sec('What Core does next', h('p', null, a.presented.consequence)),
       sec('Where the mission is', spineInspector(m.state, m.held_from)),
+      open ? h('div', { class: 'noundo', role: 'note' }, icon('warning', 22), h('p', null, h('b', null, 'No Undo.'), h('span', null, ' Decision cannot be changed.'))) : null,
       h('p', { class: 'sp-text' }, open ? 'Expires ' + clockLabel(a.expires_at) + '. This is a simulated decision: nothing is run, sent or spent.' : 'Decided: ' + word('approval', a.state) + '.'),
       dnote('I05', 'On a phone a decision takes two steps: choose, then confirm. Reject always asks twice.'));
   };

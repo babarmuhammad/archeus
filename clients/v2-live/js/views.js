@@ -79,6 +79,14 @@ function mapPanel(ctx, wide, title) {
   return h('section', { class: 'panel' }, h('h2', null, title || 'Live map', h('span', { class: 'n' }, 'vector, redrawn at every size')), box, legend);
 }
 
+function counters(ctx) {
+  const sim = ctx.sim, ms = Object.values(sim.state.missions);
+  const c = (n, label, role, href) => h('a', { class: 'ctr', 'data-role': role, href }, h('b', null, String(n)), h('span', null, label));
+  return h('nav', { class: 'counters', 'aria-label': 'Counts' },
+    c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', '#/attention'), c(sim.liveWork().length, 'running', 'active', '#/work'),
+    c(ms.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length, 'stopped', 'blocked', '#/work'), c(ms.filter((m) => present('mission', m.state).cls === 'verifying').length, 'verifying', 'verifying', '#/work'));
+}
+
 export function viewNow(ctx) {
   const sim = ctx.sim, st = sim.state, att = sim.attention();
   const decide = att.filter((a) => a.group === 'Decide').slice(0, 3);
@@ -87,6 +95,8 @@ export function viewNow(ctx) {
   const recent = st.events.filter((e) => /state_changed$/.test(e.type) && e.subject.kind === 'mission').slice(-6).reverse();
   return h('div', { class: 'view' },
     h('div', { class: 'now-hero' }, h('p', { class: 'state-sentence', 'data-key': 'sentence' }, sim.sentence()), h('p', { class: 'sub2' }, 'The sentence is built only from Core state words and counts.'), dnote('A10', 'The serif display font is used for this one line only.'), dnote('A12', 'The core mark sits on the centre of the live map, with its static twin under reduced motion.')),
+    counters(ctx),
+    h('section', { class: 'ctlbar', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)),
     h('div', { class: 'cols two now-cols' },
       mapPanel(ctx, false),
       h('div', { class: 'col', style: 'gap:var(--gut)' },
@@ -172,13 +182,13 @@ export function simControls(ctx) {
 export const meter = (label, v, cap) => h('div', { class: 'meter' }, h('div', { class: 'cap' }, h('span', null, label), h('span', null, v == null ? 'unknown' : Math.round(v) + '%')),
   h('div', { class: 'bar' + (v == null ? ' unk' : v >= 85 ? ' warn' : ''), role: 'img', 'aria-label': label + ' ' + (v == null ? 'unknown' : Math.round(v) + ' percent') }, v == null ? null : h('i', { style: 'width:' + Math.min(100, v) + '%' })), cap ? h('div', { class: 'cap' }, h('span', null, cap)) : null);
 
-function controlBody(ctx) {
+export function controlBody(ctx, compact) {
   const ms = Object.values(ctx.sim.state.missions), run = ms.filter((m) => m.state === 'EXECUTING').length, paused = ms.filter((m) => m.state === 'PAUSED').length;
   const b = (cls, label, onclick, key) => h('button', { class: 'btn ' + cls, type: 'button', 'data-key': key, onclick }, label);
   const ask = ctx.ui.estopAsk, armed = ctx.sim.state.estop.engaged, askR = ctx.ui.rearmAsk;
   return h('div', { class: 'body' },
-    armed ? h('p', { class: 'note', style: 'padding:0 0 8px', 'data-key': 'estop-note' }, 'The emergency stop is engaged: nothing new starts and no mission resumes until you re-arm. Re-arming needs a step-up (simulated here).') : null,
-    h('p', { class: 'note', style: 'padding:0 0 8px' }, run + ' running, ' + paused + ' paused. Pause all waits for each execution to reach a safe boundary. Emergency stop ends every running execution; each mission then waits for you.'),
+    armed ? h('p', { class: 'note', style: 'padding:0 0 8px', 'data-key': 'estop-note' }, 'The emergency stop is engaged: nothing new starts and no mission resumes until you re-arm. Re-arming needs a step-up (simulated here).') : compact ? h('p', { class: 'note', style: 'padding:0 0 8px' }, ask ? 'Stop every running mission and block new dispatch until you re-arm? Each mission then waits for you.' : 'Not stopped: accepts new work.') : null,
+    compact ? null : h('p', { class: 'note', style: 'padding:0 0 8px' }, run + ' running, ' + paused + ' paused. Pause all waits for each execution to reach a safe boundary. Emergency stop ends every running execution; each mission then waits for you.'),
     h('div', { class: 'actions' },
       b('', 'Pause all', () => ctx.act('pause_all'), 'pause-all'), b('', 'Resume all', () => ctx.act('resume_all'), 'resume-all'),
       armed ? (askR ? [b('primary', 'Yes, re-arm', () => { ctx.ui.rearmAsk = false; ctx.act('rearm'); }, 'rearm-yes'), b('', 'Back', () => { ctx.ui.rearmAsk = false; ctx.render(); }, 'rearm-back')] : b('primary', 'Re-arm', () => { ctx.ui.rearmAsk = true; ctx.render(); }, 'rearm'))
@@ -198,7 +208,7 @@ export function viewSettings(ctx) {
         h('div', { class: 'chips', role: 'group', 'aria-label': 'Motion' }, ...[['system', 'Follow the system'], ['full', 'Full'], ['reduced', 'Reduced (Quiet)']].map(([id, l]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': store.get('motion') === id ? 'true' : 'false', onclick: () => { store.set('motion', id); ctx.render(); } }, l))),
         h('p', { class: 'note', style: 'padding:8px 0 0' }, 'The core mark is the one thing that moves: a 6 second breath while a fresh read shows live work. Reduced motion shows it still, with a count.'))),
       panel('Device preview', null, h('div', { class: 'body' }, h('div', { class: 'chips', role: 'group', 'aria-label': 'Device preview' }, ...DEVICES.map((d) => h('button', { class: 'chip', type: 'button', 'aria-pressed': store.get('device') === d.id ? 'true' : 'false', onclick: () => ctx.setDevice(d.id) }, d.label + (d.w ? ' ' + d.w : ''))), h('a', { class: 'chip', href: '#/terminal' }, 'Open the terminal view')))),
-      panel('Simulation', null, h('div', { class: 'body' }, simControls(Object.assign({}, ctx, { where: 'set' }))))),
+      panel('Simulation', null, h('div', { class: 'body' }, simControls(Object.assign({}, ctx, { where: 'set' })), h('div', { class: 'actions', style: 'margin-top:12px' }, h('button', { class: 'btn', type: 'button', 'data-key': 'show-keys', onclick: () => ctx.openHelp() }, 'Keyboard shortcuts (?)'))))),
     h('div', { class: 'cols eq' },
       panel('Pause, resume and emergency stop', null, controlBody(ctx)),
       panel('Language and notes', null, h('div', { class: 'body' }, h('h3', { class: 'group-h', style: 'font-size:var(--fs-cap)' }, 'Language'),

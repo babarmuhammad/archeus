@@ -3,6 +3,7 @@
 // Fixture content (mission titles, reasons, replies) stays English: it stands in for Core's own words.
 import { get } from './store.js';
 import { IT_AREAS, RULES_AREAS, setTr } from './i18n-areas.js';
+import { IT_S6 } from './i18n-s6.js';
 
 const IT = {
   // shell
@@ -126,7 +127,7 @@ export function translate(root) {
 // Italian command names are real aliases (T-153); the list is used by the chat menu and by sim.js
 export const ALIASES = { help: 'aiuto', status: 'stato', usage: 'usa', projects: 'progetti', missions: 'missioni', needs: 'attesa', ideas: 'idee', replay: 'rigioca', open: 'apri', mission: 'missione', idea: 'idea', pause: 'pausa', resume: 'riprendi', cancel: 'annulla', approve: 'approva', estop: 'arresto' };
 
-Object.assign(IT, IT_AREAS, {
+Object.assign(IT, IT_AREAS, IT_S6, {
   'Pause, resume and emergency stop': 'Pausa, ripresa e arresto d’emergenza', 'Pause all': 'Metti tutto in pausa', 'Resume all': 'Riprendi tutto', 'Emergency stop': 'Arresto d’emergenza', 'Yes, stop everything': 'Sì, ferma tutto', 'Re-arm': 'Riarma', 'Yes, re-arm': 'Sì, riarma',
   'A vector constellation drawn from the simulation and redrawn at every size. Selecting a star opens it; the list beside it is the text mirror with the same content.': 'Una costellazione vettoriale disegnata dalla simulazione e ridisegnata a ogni dimensione. Selezionare una stella la apre; l’elenco accanto è lo specchio testuale con lo stesso contenuto.',
   'The shell, the map, the mission and decision views, chat, Replay and the terminal view are built on the simulation. A Core connection, real accounts and the native apps are not built.': 'La struttura, la mappa, le viste di missione e decisione, la chat, il Replay e la vista terminale sono costruiti sulla simulazione. La connessione a un Core, gli account reali e le app native non sono costruiti.',

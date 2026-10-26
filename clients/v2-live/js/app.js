@@ -15,6 +15,7 @@ import { areasOf } from './areas-model.js';
 import { translate } from './i18n.js';
 import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
+import { installKeys } from './keys.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -72,7 +73,7 @@ function render() {
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.confirm = null; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
@@ -135,15 +136,21 @@ function act(kind, id) {
   else if (kind === 'reset') { sim.reset(); ui.replaySel = null; msg = 'Simulation reset.'; if (ctx.route.id) { nav('#/' + ctx.route.name); } }
   else if (kind === 'say') { r = sim.say(id); msg = null; }
   else r = sim.act(kind, id);
-  if (!r.ok) toast('Not done: ' + r.reason); else if (msg) toast(msg);
+  if (!r.ok) toast('Not done: ' + r.reason); else if (msg) toast(msg, kind === 'estop' ? { action: { label: 'Open Settings', href: '#/settings' } } : null);
   if (kind === 'approve' || kind === 'reject' || kind === 'plan_changes') { if (ctx.route.name === 'attention' && ctx.route.id) closeInsp(); }
   render(); if (!embed) refreshMenu();
   return r;
 }
-function toast(text) {
-  toastEl.textContent = text; translate(toastEl); toastEl.hidden = false; clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastEl.hidden = true; }, 4500);
+// Info toasts leave after 4.5 s. An error, or a toast that carries an action, stays until Dismiss.
+function toast(text, o) {
+  const err = !!(o && o.error) || /^(Not done|Non fatto)/.test(text), keep = err || !!(o && o.action);
+  clearTimeout(toastTimer); clear(toastEl);
+  toastEl.dataset.kind = err ? 'error' : 'info'; toastEl.setAttribute('role', err ? 'alert' : 'status');
+  toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
+  translate(toastEl); toastEl.hidden = false;
+  if (!keep) toastTimer = setTimeout(dismissToast, 4500);
 }
+function dismissToast() { clearTimeout(toastTimer); toastEl.hidden = true; }
 
 // ---------- toolbar and menus ----------
 function buildToolbar() {
@@ -196,7 +203,7 @@ function buildMenu() {
 document.addEventListener('click', (e) => { if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
-  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
+  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (app.dataset.insp === 'open') closeInsp();
 });
 
 // ---------- device frames ----------
@@ -227,6 +234,7 @@ function fit() {
 // ---------- boot ----------
 if (!embed) buildToolbar();
 buildShell();
+ctx.openHelp = installKeys(ctx, app, page).openHelp;
 const unsub = sim.subscribe((e) => {
   if (e.type === 'clock' || e.type === 'execution.progress' || e.type === 'usage.observed') { if (e.type === 'execution.progress') notePulse(sim, e); patchLive(); if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); return; }
   if (e.type === 'sim.play' || e.type === 'sim.pause' || e.type === 'sim.speed') { syncCore(); if (!embed) syncToolbar(); return; }

@@ -199,8 +199,7 @@ dl.kv dd { overflow-wrap: anywhere; }
 .meter .bar.unk { background: repeating-linear-gradient(135deg, var(--s2) 0 6px, var(--line-strong) 6px 7px); }
 .meter .cap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; color: var(--text-2); font-size: var(--fs-cap); }
 
-.toast { position: absolute; z-index: 25; left: 50%; bottom: calc(var(--gut) + 56px); transform: translateX(-50%); max-width: min(32em, calc(100% - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; text-align: center; }
-@container dev (min-width: 600px) { .toast { bottom: var(--gut); } }
+.toast { position: absolute; z-index: 25; left: 50%; top: var(--gut); transform: translateX(-50%); max-width: min(32em, calc(100% - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; text-align: center; }
 
 /* ---------- spine (ADR-0054): static, drawn for its size ---------- */
 .spine { color: var(--text-2); }
@@ -224,12 +223,8 @@ dl.kv dd { overflow-wrap: anywhere; }
 .spine-insp[data-done='true'] .seg-l { border-top-color: var(--done); }
 .spine-insp li:first-child .seg-l { display: none; }
 @container insp (max-width: 479px) {
-  .spine-insp { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .spine-insp li { flex-direction: row; align-items: center; gap: 10px; min-height: 28px; text-align: left; }
-  .spine-insp li svg { flex: none; }
-  .spine-insp .seg-l { top: auto; bottom: 50%; left: 7px; right: auto; width: 0; height: 100%; border-top: 0; border-left: calc(var(--hair) * 2) solid var(--text-2); }
-  .spine-insp .seg-l.dashed { border-left-style: dashed; } .spine-insp .seg-l.dotted { border-left-style: dotted; }
-  .spine-insp[data-done='true'] .seg-l { border-left-color: var(--done); }
+  .spine-insp { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 14px; }
+  .spine-insp li:nth-child(4) .seg-l { display: none; }
 }
 
 /* ---------- inspector and sheets ---------- */
@@ -362,3 +357,32 @@ body[data-embed='1'] #stage { grid-row: 1; }
 .tb-always { display: inline !important; }
 @media (max-width: 479px) { .tb-opt { display: none; } }
 .group-h { }
+
+/* ---------- S6: phone counters, the Now control strip, the No Undo banner, toasts with Dismiss ---------- */
+.counters { display: none; }
+@container view (max-width: 599px) { .counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: var(--hair) solid var(--line); border-radius: var(--r-m); background: var(--s1); } }
+.ctr { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 72px; padding: 8px 2px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.2; text-align: center; text-decoration: none; }
+.ctr + .ctr { border-left: var(--hair) solid var(--line); }
+.ctr b { font-size: 30px; line-height: 1.1; font-weight: 600; color: var(--bc, var(--text)); }
+.ctr[data-role='needs_you'] { --bc: var(--attention); } .ctr[data-role='active'], .ctr[data-role='verifying'] { --bc: var(--active); } .ctr[data-role='blocked'] { --bc: var(--blocked); }
+.ctlbar { padding: 8px 12px; border: var(--hair) solid var(--line); border-radius: var(--r-m); background: var(--s1); }
+.ctlbar > .body { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+.ctlbar .note { flex: 1 1 14em; margin: 0; padding: 0 !important; }
+.noundo { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: var(--s1); }
+.noundo svg { flex: none; color: var(--attention); }
+.noundo p { margin: 0; line-height: 1.35; }
+.toast { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 4px; padding: 4px 6px 4px 16px; }
+.toast .tt { padding: 6px 4px; }
+.toast .btn { min-height: 44px; }
+.toast[data-kind='error'] { border-color: var(--blocked); }
+@media (forced-colors: active) { .toast, .noundo, .ctlbar, .counters { border: 1px solid CanvasText; } }
+
+/* ---------- S6: the keyboard help ---------- */
+.helpscrim { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: var(--gut); background: var(--scrim); }
+.helpbox { width: min(34em, 100%); max-height: 100%; overflow: auto; padding: 16px 20px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); display: flex; flex-direction: column; gap: 10px; }
+.helpbox h2 { font-size: var(--fs-t2); font-weight: 600; }
+.keys { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; align-items: baseline; }
+.keys dd { margin: 0; line-height: 1.35; }
+kbd { display: inline-block; padding: 1px 8px; border: var(--hair) solid var(--line-strong); border-radius: 4px; background: var(--s2); font-family: var(--mono); font-size: var(--fs-mono); white-space: nowrap; }
+.card:focus-visible { outline-offset: -3px; }
+@media (forced-colors: active) { .helpbox { border: 1px solid CanvasText; } }
