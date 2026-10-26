@@ -1,6 +1,8 @@
 // S3 areas: Security, Health, Usage, Accounts and models, Hooks / MCP / agents (Extensions), plus what S3 adds to Now and Work
 // (digest, pins, idea path) and the offline view. Everything is SIMULATED; each page says so in its header.
 import { h } from './dom.js';
+import { icon, glyph } from './icons.js';
+import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
 import { head, dnote, missionRow, badge, projName } from './views.js';
@@ -55,8 +57,8 @@ export function viewSecurity(ctx) {
           h('div', null, pill('ok', 'Built'), h('h3', null, 'Application policy'), h('p', null, 'What Archeus lets a run do: the workdir, the stripped environment, the fail-closed hook, approvals. This is V1 today.')),
           h('div', null, pill('attention', 'Designed, not built'), h('h3', null, 'Physical reach'), h('p', null, 'What a process can physically reach, whatever the agent tries: an isolated identity, AppContainer, job object, ACLs. Gated off.')))),
       card('What is isolated and what is not', 'Held by policy, and the gaps that policy cannot close.',
-        h('div', { class: 'ax-lists' }, h('div', null, h('h3', { class: 'ok' }, 'Held by policy'), h('ul', { class: 'ax-ul' }, ...sc.policyList.map((t) => h('li', { 'data-t': 'ok' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '✓'), h('span', null, t))))),
-          h('div', null, h('h3', { class: 'gap' }, 'Not isolated'), h('ul', { class: 'ax-ul' }, ...sc.notList.map((t) => h('li', { 'data-t': 'gap' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '■'), h('span', null, t))))))),
+        h('div', { class: 'ax-lists' }, h('div', null, h('h3', { class: 'ok' }, 'Held by policy'), h('ul', { class: 'ax-ul' }, ...sc.policyList.map((t) => h('li', { 'data-t': 'ok' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('ok')), h('span', null, t))))),
+          h('div', null, h('h3', { class: 'gap' }, 'Not isolated'), h('ul', { class: 'ax-ul' }, ...sc.notList.map((t) => h('li', { 'data-t': 'gap' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('blocked')), h('span', null, t))))))),
       card('Eight boundaries', 'Each with its policy layer and its physical layer.', h('div', { class: 'ax-ents' }, ...sc.boundaries.map((b) => h('a', { class: 'ax-ent', href: hrefFor('boundary', b.id), 'data-key': b.id }, h('span', { class: 'e-main' }, h('span', { class: 'e-name' }, b.n + ' · ' + b.name), h('span', { class: 'e-note' }, b.what)), h('span', { class: 'e-pills' }, h('span', { class: 'lay' }, h('span', { class: 'l' }, 'Policy'), pill(LAYER(b.policy), b.policy)), h('span', { class: 'lay' }, h('span', { class: 'l' }, 'Physical'), pill(LAYER(b.physical), b.physical)))))),
         h('p', { class: 'ax-note pad' }, 'Design acceptance rows closed: ' + sc.rows.acceptance.closed + ' of ' + sc.rows.acceptance.total + ', and ' + sc.rows.additions.closed + ' of ' + sc.rows.additions.total + ' additions. No row about physical reach can be closed in this build.')),
     ], [
@@ -104,7 +106,7 @@ export function viewUsage(ctx) {
   onTick(ctx, () => { const now = A.usage(); live.forEach(([id, s, w]) => { const r = now.find((x) => x.id === id); patchRing(s, r.session.left, r.session.key); patchRing(w, r.week.left, r.week.key); }); });
   return h('div', { class: 'ax-page' }, axHead(ctx, 'Usage', 'Usage', 'How much of each account is left, read only from the existing usage reader. Archeus shows a number only when it can source it.'), h('div', { class: 'view' },
     dnote('H03', 'Usage: a ring is what is left and empties as it is used; the tick is your 20% line. "20% weekly usage" is read here as 20% left (owner to confirm). Unknown stays unknown.'),
-    low.length ? h('div', { class: 'ax-banner', 'data-tone': 'attention', role: 'status' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), h('p', null, low.map((r) => r.label).join(' and ') + (low.length === 1 ? ' is' : ' are') + ' at or under the ' + f.pauseAt + '% line.' + (f.pauseOn ? ' New work waits on a week that low.' : '')), link('#/accounts', 'Failover rules', 'btn')) : null,
+    low.length ? h('div', { class: 'ax-banner', 'data-tone': 'attention', role: 'status' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('attention')), h('p', null, low.map((r) => r.label).join(' and ') + (low.length === 1 ? ' is' : ' are') + ' at or under the ' + f.pauseAt + '% line.' + (f.pauseOn ? ' New work waits on a week that low.' : '')), link('#/accounts', 'Failover rules', 'btn')) : null,
     h('div', { class: 'ax-legend' }, ...[['active', 'On track, more than 20% left'], ['attention', 'Low, 20% or less left'], ['blocked', 'Almost out, 5% or less'], ['unknown', 'Unknown, never 0']].map(([t, w]) => h('span', { class: 'lg', 'data-tone': t }, h('i', { 'aria-hidden': 'true' }), w)), h('span', { class: 'lg' }, h('b', { class: 'tk', 'aria-hidden': 'true' }), 'The tick is the 20% line')),
     h('div', { class: 'ax-accs' }, ...rows.map(accCard)),
     note('These are account percentages read about every 15 minutes, not the cost or tokens of one session.')));
@@ -186,7 +188,6 @@ export function viewExtensions(ctx) {
 }
 
 // ---------- what S3 adds to Now and Work ----------
-const GL = { needs_you: '◆', active: '●', verifying: '●', reviewing: '●', blocked: '■', failed: '✕', paused: '‖', planning: '◌', done: '✓', neutral: '○', inactive: '–' };
 function digestPanel(ctx, A) {
   const S = A.S(), range = ctx.ui.digestRange || 'since', since = range === 'since' ? A.cursor() : -120 * 60000;
   const d = A.digest(since), shown = d.items.slice(0, 8);
@@ -194,7 +195,7 @@ function digestPanel(ctx, A) {
   return h('section', { class: 'panel ax-digest' }, h('h2', null, h('span', { class: 'gt' }, 'Since you last looked'), h('span', { class: 'n' }, range === 'since' ? 'since ' + clockLabel(since) : 'today, since ' + clockLabel(since))),
     h('div', { class: 'body' }, h('div', { class: 'chips', role: 'group', 'aria-label': 'Digest range' }, ...[['since', 'Since you last looked'], ['today', 'Today']].map(([id, l]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': range === id ? 'true' : 'false', onclick: () => { ctx.ui.digestRange = id; ctx.render(); } }, l))),
       h('p', { class: 'dg-sum' }, sentence),
-      shown.length ? h('ul', { class: 'ax-dig' }, ...shown.map((i) => h('li', null, h('a', { href: i.href }, h('span', { class: 'g', 'data-tone': i.tone, 'aria-hidden': 'true' }, GL[i.tone] || '○'), h('span', { class: 'dg-x' }, i.text), h('span', { class: 'dg-t' }, clockLabel(i.at)))))) : null,
+      shown.length ? h('ul', { class: 'ax-dig' }, ...shown.map((i) => h('li', null, h('a', { href: i.href }, h('span', { class: 'g', 'data-tone': i.tone, 'aria-hidden': 'true' }, glyph(i.tone)), h('span', { class: 'dg-x' }, i.text), h('span', { class: 'dg-t' }, clockLabel(i.at)))))) : null,
       d.items.length > shown.length ? note((d.items.length - shown.length) + ' more are in Replay and Attention.') : null,
       range === 'since' ? h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', disabled: d.items.length ? null : true, onclick: () => { A.acknowledge(); ctx.toast('Marked as seen.'); ctx.render(); } }, 'Mark as seen')) : null, dnote('E18', 'The digest groups what changed since your cursor; marking it seen moves the cursor. It reads the event log; nothing is counted twice.')));
 }
@@ -202,7 +203,7 @@ function pinnedPanel(ctx, A) {
   const S = A.S(), pins = A.X.pins, ms = pins.filter((id) => S.missions[id]), others = pins.filter((id) => !S.missions[id]);
   const it = (id) => { const i = S.ideas.find((x) => x.id === id); if (i) return entity({ kind: 'idea', id, label: i.title, note: projName(ctx.sim, i.project) }); const p = S.projects.find((x) => 'prj-' + x.id === id); return p ? entity({ kind: 'project', id, label: p.name, note: p.note }) : null; };
   return h('section', { class: 'panel ax-pinned' }, h('h2', null, h('span', { class: 'gt' }, 'Pinned'), h('span', { class: 'n' }, String(pins.length))),
-    pins.length ? h('div', { class: 'stack' }, ...ms.map((id) => missionRow(ctx, S.missions[id], 'work')), ...others.map(it).filter(Boolean)) : h('p', { class: 'empty' }, 'Nothing is pinned. Pin a mission or an idea from its details and it stays here.'));
+    pins.length ? h('div', { class: 'stack' }, ...ms.map((id) => missionRow(ctx, S.missions[id], 'work')), ...others.map(it).filter(Boolean)) : h('div', { class: 'empty art' }, illustration('first'), h('p', null, 'Nothing is pinned. Pin a mission or an idea from its details and it stays here.')));
 }
 function ideasPanel(ctx, A) {
   const S = A.S();
@@ -216,7 +217,7 @@ function staleRow(ctx, m) {
   return h('a', { class: 'mrow ax-stale', href: '#/work/' + m.id }, h('span', { class: 't' }, badge('mission', m.state), h('span', { class: 'name' }, m.title)), h('span', { class: 'm' }, projName(ctx.sim, m.project) + ' · ' + m.branch), h('span', { class: 'sp' }, spineRow(m.state, m.held_from)));
 }
 export function offlineBanner(ctx, A) {
-  return h('div', { class: 'ax-offline', role: 'status' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◌'), h('div', { class: 'of-t' }, h('b', null, 'Offline: last seen ' + clockLabel(A.offlineAt())), h('span', null, 'Showing what this client kept. Decisions are read only until Core is reachable.')), h('button', { class: 'btn primary', type: 'button', onclick: () => { A.reconnect(); ctx.toast('Reconnected.'); ctx.render(); } }, 'Reconnect'));
+  return h('div', { class: 'ax-offline', role: 'status' }, h('span', { class: 'g', 'aria-hidden': 'true' }, icon('offline', 20)), h('div', { class: 'of-t' }, h('b', null, 'Offline: last seen ' + clockLabel(A.offlineAt())), h('span', null, 'Showing what this client kept. Decisions are read only until Core is reachable.')), h('button', { class: 'btn primary', type: 'button', onclick: () => { A.reconnect(); ctx.toast('Reconnected.'); ctx.render(); } }, 'Reconnect'));
 }
 const GROUPS = [['Active', ['active', 'verifying', 'reviewing']], ['Planning', ['planning', 'approved']], ['Blocked or failed', ['blocked', 'failed']], ['Paused', ['paused']], ['Done', ['done']]];
 function offlineList(ctx, A) {

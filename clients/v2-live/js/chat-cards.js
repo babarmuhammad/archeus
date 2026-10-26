@@ -1,6 +1,7 @@
 // Chat messages and cards (S4). Every card is drawn from its stored data and, where it shows live state (plan, approval), from the simulation.
 // A card's own buttons call the engine; the command that made the card decided nothing. SIMULATED is stated on every reply.
 import { h } from './dom.js';
+import { glyph } from './icons.js';
 import * as store from './store.js';
 import { fmt } from '../chat-engine.js';
 import { COMMANDS, CLASSES, nameIn, otherName, descOf, labelOf, find } from '../slash.js';
@@ -13,7 +14,8 @@ export const C = (c) => fmt(c, lang());
 const pname = (sim, id) => { const p = sim.state.projects.find((x) => x.id === id); return p ? p.name : id; };
 const btn = (label, on, cls, attrs) => h('button', Object.assign({ class: 'btn ' + (cls || ''), type: 'button', onclick: on }, attrs || {}), label);
 const kv = (...rows) => h('dl', { class: 'kv ckv' }, ...rows.filter(Boolean).flatMap(([a, b]) => [h('dt', null, a), h('dd', null, b)]));
-const kicker = (glyph, text, role) => h('p', { class: 'kick', 'data-role': role || null }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph), h('span', null, text));
+const KICK = { '◆': 'needs_you', '✓': 'done', '✕': 'blocked', '■': 'blocked' };
+const kicker = (mark, text, role) => h('p', { class: 'kick', 'data-role': role || null }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(KICK[mark])), h('span', null, text));
 const SIMLINE = () => L('This is a simulated decision: nothing is run, sent or spent.', 'Decisione simulata: nulla viene eseguito, inviato o speso.');
 const CLSNAME = { READ: ['READ', 'LETTURA'], CREATE: ['CREATE', 'CREA'], PROPOSE: ['PROPOSE', 'PROPONI'], NAVIGATE: ['NAVIGATE', 'NAVIGA'] };
 export const clsLabel = (c) => CLSNAME[c][lang() === 'it' ? 1 : 0];

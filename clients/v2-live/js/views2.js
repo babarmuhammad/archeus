@@ -1,12 +1,12 @@
 // Security, Health, More and Chat screens (decided areas: security and health, chat with slash commands).
 import { h } from './dom.js';
-import { icon } from './icons.js';
+import { icon, glyph } from './icons.js';
 import { clockLabel, COMMANDS } from '../sim.js';
 import * as store from './store.js';
 import { ROUTES, head, panel, empty, dnote, projName } from './views.js';
 
-const FIG = { ok: ['done', '✓', 'Ok'], off: ['paused', '‖', 'Off'], open: ['blocked', '■', 'Open'], attention: ['needs_you', '◆', 'Needs attention'], unknown: ['inactive', '–', 'Unknown'] };
-const fig = (state, word) => { const f = FIG[state] || FIG.unknown; return h('span', { class: 'badge', 'data-role': f[0] }, h('span', { class: 'g', 'aria-hidden': 'true' }, f[1]), h('span', { class: 'w' }, word || f[2])); };
+const FIG = { ok: ['done', 'Ok'], off: ['paused', 'Off'], open: ['blocked', 'Open'], attention: ['needs_you', 'Needs attention'], unknown: ['inactive', 'Unknown'] };
+const fig = (state, word) => { const f = FIG[state] || FIG.unknown; return h('span', { class: 'badge', 'data-role': f[0] }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(f[0])), h('span', { class: 'w' }, word || f[1])); };
 
 export function viewSecurity(ctx) {
   const sim = ctx.sim, st = sim.state;

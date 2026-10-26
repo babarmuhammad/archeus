@@ -1,11 +1,10 @@
 // Small DOM pieces shared by the S3 inspectors and areas: pills, rings, bars, switches, links. Text is always set as text.
 import { h, s } from './dom.js';
-import { icon } from './icons.js';
+import { icon, glyph } from './icons.js';
 import { LOW_LINE, METER_WORD, ROUTE_OF } from './areas-model.js';
 
 // tone -> [glyph]; the colour never carries a state alone: every tone has a glyph and a word.
-const GLYPH = { ok: '✓', attention: '◆', blocked: '■', paused: '‖', active: '●', thinking: '◌', unknown: '–' };
-export const pill = (tone, word, extra) => h('span', { class: 'ax-pill' + (extra ? ' ' + extra : ''), 'data-tone': tone }, h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[tone] || GLYPH.unknown), h('span', { class: 'w' }, word));
+export const pill = (tone, word, extra) => h('span', { class: 'ax-pill' + (extra ? ' ' + extra : ''), 'data-tone': tone }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(tone)), h('span', { class: 'w' }, word));
 
 export const TONE_OF_METER = { ok: 'active', low: 'attention', critical: 'blocked', out: 'blocked', unknown: 'unknown' };
 export const TONE_OF_STATE = { ok: 'ok', attention: 'attention', unknown: 'unknown', off: 'paused', open: 'blocked' };
