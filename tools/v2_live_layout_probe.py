@@ -269,6 +269,8 @@ def s4_state(pg, route, w):
             (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
             pg.click('[data-device="phone"]')
             pg.wait_for_timeout(400)
+            pg.click('[data-tb="tools"]')
+            pg.wait_for_timeout(300)
         pg.evaluate("location.hash = '#/now'")
         pg.wait_for_timeout(250)
         phone = pg.evaluate("document.getElementById('app').clientWidth < 600")

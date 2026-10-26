@@ -120,9 +120,9 @@
   .safety-pop { left: auto; right: 0; }
 }
 .chatdock.tell { grid-area: auto; position: absolute; z-index: 22; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(760px, calc(100% - 2 * var(--gut))); max-height: 70%; overflow-y: auto; background: var(--s2); border: var(--hair) solid var(--line-strong); border-radius: 16px; }
-.chatdock.tell .dockin { width: 100%; padding: 10px 52px 10px 12px; }
+.chatdock.tell .dockin { width: 100%; padding: 10px 64px 10px 12px; }
 .chatdock.tell .dockin .composer2 { padding: 0; border: 0; background: transparent; }
-.tell-x { position: absolute; top: 4px; right: 4px; }
+.tell-x { position: absolute; top: 4px; right: 4px; min-width: 44px; min-height: 44px; }
 html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
 
 .bottombar { grid-area: bottom; display: flex; background: var(--s1); border-top: var(--hair) solid var(--line); }
