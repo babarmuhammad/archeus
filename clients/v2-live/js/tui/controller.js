@@ -35,7 +35,7 @@ export function createTui(sim, opts = {}) {
   // ---------- going places ----------
   function go(screen, arg) {
     if (screen !== S.screen && S.screen !== 'mission' && S.screen !== 'decision') S.stack = [];
-    if (screen === 'security' || screen === 'health' || screen === 'accounts') { S.section = screen; screen = 'control'; }
+    if (SECTIONS.some((x) => x[0] === screen)) { S.section = screen; screen = 'control'; }
     if (screen === 'control' && arg) S.section = arg;
     if (screen === 'replay') { const i = missionIds().indexOf(arg || S.mission); S.replayMission = i < 0 ? S.replayMission : i; S.sel['replay:list'] = undefined; S.idx['replay:list'] = undefined; }
     S.screen = screen; S.focus = ''; S.mode = null; S.status = null;
@@ -414,7 +414,7 @@ export function createTui(sim, opts = {}) {
     if (id === routeId() || (!id && S.screen === 'now')) return;
     if (!id) return go('now');
     if (id === 'help') { S.mode = { kind: 'help' }; return changed(); }
-    if (['now', 'work', 'world', 'attention', 'replay', 'control', 'security', 'health', 'accounts'].includes(id)) return go(id);
+    if (['now', 'work', 'world', 'attention', 'replay', 'control'].includes(id) || SECTIONS.some((x) => x[0] === id)) return go(id);
     if (sim.state.missions[id]) return push('mission', { mission: id });
     if (sim.state.approvals[id]) return push('decision', { approval: id });
   }
