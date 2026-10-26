@@ -35,7 +35,8 @@ GEOM = """() => {
   const col = s => { const m = getComputedStyle(s).fill.match(/[\\d.]+/g).map(Number); return m; };
   const bg = getComputedStyle(host).backgroundColor.match(/[\\d.]+/g).map(Number);
   const text = [...host.querySelectorAll('.am-label-title, .am-label-meta')].map(t => ({fill: col(t), cls: t.getAttribute('class'), id: t.parentNode.dataset.nodeId}));
-  return {labels, stars, hits, buttons, core, needs, bg, text, overflow: host.dataset.labelOverflow,
+  const crystals = [...host.querySelectorAll('.am-crystal')].map(r), leaders = [...host.querySelectorAll('.am-leader')].map(e => e.dataset.nodeId);
+  return {crystals, leaders, labels, stars, hits, buttons, core, needs, bg, text, overflow: host.dataset.labelOverflow,
     raster: host.querySelectorAll('img, canvas, image, foreignObject, video').length,
     filters: [...host.querySelectorAll('*')].filter(e => { const s = getComputedStyle(e); return (s.filter !== 'none') || (s.backdropFilter && s.backdropFilter !== 'none'); }).length,
     scrollW: document.documentElement.scrollWidth, scrollH: document.documentElement.scrollHeight, w: innerWidth, h: innerHeight, dpr: devicePixelRatio,
@@ -105,9 +106,38 @@ def geometry_checks(pg, tag, phone):
     low = sorted({round(ratio(t['fill'], g['bg']), 2) for t in g['text']})
     bad = [t['cls'] for t in g['text'] if ratio(t['fill'], g['bg']) < 4.5]
     check(not bad, f'{tag}: label text contrast >= 4.5 (min {low[0] if low else None})')
+    hull_checks(pg, tag)
+    least = 40 if phone else 56
+    cr = [round(min(c['w'], c['h'])) for c in g['crystals']]
+    check(len(cr) >= 2 and min(cr) >= least, f'{tag}: needs-you and running missions draw as crystals, each >= {least} px across ({cr})')
+    far = [l['id'] for l in L for s in g['stars'] if s['id'] == l['id'] and ((s['cx'] - min(max(s['cx'], l['x']), l['x'] + l['w'])) ** 2 + (s['cy'] - min(max(s['cy'], l['y']), l['y'] + l['h'])) ** 2) ** .5 > 100]
+    check(all(i in g['leaders'] for i in far), f'{tag}: a label more than 100 px from its star has a leader line ({len(far)} far, {len(g["leaders"])} leaders)')
     check(g['raster'] == 0, f'{tag}: map holds no img, canvas or other raster element')
     check(g['filters'] == 0, f'{tag}: no filter or backdrop-filter in the map')
     return g
+
+
+HULLS = """async () => {
+  const {overlapDepth, rectPolygon} = await import('/clients/v2-live/js/constellation/geometry.js');
+  const host = document.querySelector('.archeus-map'), hr = host.getBoundingClientRect();
+  const polys = [...host.querySelectorAll('.am-project')].map(g => ({id: g.dataset.project, pts: [...g.querySelector('.am-vertex').getAttribute('d').matchAll(/M([-\\d.]+),([-\\d.]+)h0/g)].map(m => ({x: +m[1], y: +m[2]}))}));
+  const box = s => { const b = host.querySelector(s).getBoundingClientRect(); return rectPolygon(b.x - hr.x, b.y - hr.y, b.right - hr.x, b.bottom - hr.y); };
+  const marks = [['wordmark', box('.am-wordmark')], ['core', box('.am-core-outline')]];
+  const hulls = [], core = [];
+  polys.forEach((a, i) => {
+    polys.slice(i + 1).forEach(b => { if (overlapDepth(a.pts, b.pts, 0)) hulls.push(a.id + '/' + b.id); });
+    marks.forEach(([name, rect]) => { if (overlapDepth(a.pts, rect, 0)) core.push(a.id + '/' + name); });
+  });
+  const inside = polys.every(p => p.pts.every(v => v.x >= -1 && v.x <= hr.width + 1 && v.y >= -1 && v.y <= hr.height + 1));
+  return {n: polys.length, hulls, core, inside};
+}"""
+
+
+def hull_checks(pg, tag):
+    h = pg.evaluate(HULLS)
+    check(h['n'] >= 2 and not h['hulls'], f'{tag}: no two project hulls overlap ({h["n"]} hulls {h["hulls"]})')
+    check(not h['core'], f'{tag}: no hull touches the core mark or its wordmark {h["core"]}')
+    check(h['inside'], f'{tag}: every hull corner inside the map')
 
 
 def label_checks(pg, tag):
@@ -203,6 +233,8 @@ def view_checks(pg, tag, w, h):
     pg.evaluate("document.querySelector('#add').click()")
     pg.wait_for_timeout(300)
     label_checks(pg, f'{tag} after adding a node and selecting it')
+    pg.click('button[aria-label="Reset map view"]')
+    hull_checks(pg, f'{tag} after adding a node')
 
 
 PERF = """async () => {
@@ -292,6 +324,16 @@ def main():
         pg.evaluate("document.querySelector('#add').click()")
         pg.wait_for_timeout(500)
         check(pg.evaluate("document.querySelectorAll('.am-star').length") == 26 and pg.evaluate("document.getAnimations().filter(a => a.playState === 'running').length") == 1, 'add node: 26 stars, arrival effects finish, one animation left')
+        reuse = pg.evaluate("""() => {
+          const q = id => document.querySelector(`.am-hit[data-node-id="${id}"]`), s = id => document.querySelector(`.am-star[data-node-id="${id}"]`);
+          const hit = q('n3'), star = s('n3'), node = window.mapFixture.nodes.find(x => x.id === 'n3');
+          node.label = 'Renamed'; window.map.update(window.mapFixture);
+          const same = q('n3') === hit && s('n3') === star && hit.getAttribute('aria-label').startsWith('Renamed');
+          const removed = window.mapFixture.nodes.pop();
+          window.mapFixture.edges = window.mapFixture.edges.filter(e => e.to !== removed.id && e.from !== removed.id); window.map.update(window.mapFixture);
+          return {same, gone: !s(removed.id) && !q(removed.id), stars: document.querySelectorAll('.am-star').length, hits: document.querySelectorAll('.am-hit').length, rows: document.querySelectorAll('.am-equivalent tbody tr').length};
+        }""")
+        check(reuse['same'] and reuse['gone'] and reuse['stars'] == reuse['hits'] == reuse['rows'] == 25, f'keyed diff: a renamed node keeps its star and target element, a removed node leaves no trace {reuse}')
         check(not errors, 'pulse/add: no console errors')
         runs = sorted((pg.evaluate(PERF) for _ in range(3)), key=lambda r: r['structural']['p95'])
         perf = runs[1]  # median of three runs: one noisy run on a busy machine should not fail the 16 ms limit

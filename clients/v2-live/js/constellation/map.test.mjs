@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, hullPath, hullVertices, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {overlapDepth, rectPolygon, hullPadding, coreObstacles, crystalRadius, isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, hullPath, hullVertices, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('layout is seeded, deterministic, input-order independent and bounded', () => {
@@ -87,4 +87,33 @@ test('running and needs-you missions lay out as larger crystals than idle ones',
   const r = id => nodes.find(n => n.id === id).radius;
   assert.ok(isCrystal({kind: 'Mission', state: 'Needs you'}) && !isCrystal({kind: 'Idea', state: 'running'}));
   assert.ok(r('b') > r('a') * 2 && r('c') === r('b') && r('d') === r('a'));
+});
+
+test('overlapDepth gives the push that clears two convex polygons', () => {
+  const a = rectPolygon(0, 0, 10, 10), b = rectPolygon(8, 0, 18, 10);
+  const push = overlapDepth(a, b);
+  assert.ok(push.x < 0 && push.y === 0 && Math.abs(push.x + 2) < 1e-9);
+  assert.equal(overlapDepth(a, rectPolygon(10, 0, 20, 10)), null);
+  assert.ok(overlapDepth(a, rectPolygon(10, 0, 20, 10), 1));
+  assert.equal(overlapDepth(a, rectPolygon(30, 30, 40, 40)), null);
+});
+test('hulls are octagon faceted, so a thin cluster has no spike longer than the padding', () => {
+  const points = [{x: 0, y: 0}, {x: 120, y: 4}, {x: 240, y: 0}], pad = 30, hull = hullVertices(points, pad);
+  assert.ok(hull.length >= 8);
+  for (const v of hull) assert.ok(Math.min(...points.map(p => Math.hypot(v.x - p.x, v.y - p.y))) <= pad * 1.1);
+});
+test('layout keeps project hulls apart and clear of the core mark and wordmark', () => {
+  const kinds = ['Mission', 'Project', 'Idea', 'Knowledge'], states = ['idle', 'running', 'needs-you', 'done'];
+  for (const [w, h] of [[320, 640], [390, 844], [768, 1024], [1280, 720], [1440, 900], [2000, 930]]) for (const projects of [2, 3, 4]) {
+    const nodes = layout({nodes: Array.from({length: 24}, (_, i) => ({id: `n${i}`, project: `p${i % projects}`, weight: 1 + i % 4, kind: kinds[i % 4], state: states[i % 4 === 0 ? i % 3 + 1 : 0]})), edges: []}, w, h, 'hulls');
+    const u = unit(w, h), keys = [...new Set(nodes.map(n => n.project))];
+    const hulls = keys.map(k => { const members = nodes.filter(n => n.project === k); return hullVertices(members, hullPadding(members, u)); });
+    hulls.forEach((a, i) => {
+      for (const b of hulls.slice(i + 1)) assert.equal(overlapDepth(a, b), null, `${w}x${h} ${projects}: hulls overlap`);
+      for (const o of coreObstacles(w, h, u)) assert.equal(overlapDepth(a, o), null, `${w}x${h} ${projects}: a hull touches the core mark`);
+    });
+  }
+});
+test('crystal radius is large on desktop and smaller on phones', () => {
+  assert.ok(crystalRadius(1, 1440) >= 40 && crystalRadius(1, 390) <= 24 && crystalRadius(1, 390) >= 20);
 });

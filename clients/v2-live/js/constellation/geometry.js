@@ -22,13 +22,38 @@ export function stateKey(state) {
 }
 export const isCrystal = n => n.kind === 'Mission' && ['running', 'needs-you'].includes(stateKey(n.state));
 export const CRYSTAL_WEIGHT = 100;
+export const crystalRadius = (u, width) => (width < 480 ? 24 : 40) * u;
+export const hullPadding = (members, u) => Math.max(17 * u + 7, Math.max(...members.map(n => n.radius)) + 10);
+export const wordmarkSize = u => Math.round(11 * u + 1);
+// Convex polygons: the vector that moves `a` clear of `b` along the axis of least penetration (plus `margin`), or null when they are already apart.
+export function overlapDepth(a, b, margin = 0) {
+  let best = Infinity, push = null;
+  for (const poly of [a, b]) for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length], len = Math.hypot(q.x - p.x, q.y - p.y) || 1, nx = (q.y - p.y) / len, ny = -(q.x - p.x) / len;
+    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
+    for (const v of a) { const d = v.x * nx + v.y * ny; if (d < a0) a0 = d; if (d > a1) a1 = d; }
+    for (const v of b) { const d = v.x * nx + v.y * ny; if (d < b0) b0 = d; if (d > b1) b1 = d; }
+    const toward = a1 - b0 + margin, away = b1 - a0 + margin;
+    if (toward <= 0 || away <= 0) return null;
+    const depth = Math.min(toward, away);
+    if (depth < best) { best = depth; const sign = toward < away ? -1 : 1; push = {x: nx * depth * sign, y: ny * depth * sign}; }
+  }
+  return push;
+}
+export const rectPolygon = (x0, y0, x1, y1) => [{x: x0, y: y0}, {x: x1, y: y0}, {x: x1, y: y1}, {x: x0, y: y1}];
+// What a hull must stay clear of: the core star and the wordmark and running count under it.
+export function coreObstacles(width, height, u) {
+  const c = coreCentre(width, height), R = coreRadius(u), ws = wordmarkSize(u);
+  return [Array.from({length: 12}, (_, i) => ({x: c.x + (R + 4 * u) * Math.cos(i * TAU / 12 + .26), y: c.y + (R + 4 * u) * Math.sin(i * TAU / 12 + .26)})),
+    rectPolygon(c.x - 4.8 * ws, c.y + R * .6, c.x + 4.8 * ws, c.y + R + 3.9 * ws)];
+}
 export function layout(graph, width, height, seed = 'archeus') {
   const u = unit(width, height), core = coreCentre(width, height);
   const keys = [...new Set(graph.nodes.map(n => n.project || 'unassigned'))].sort();
   if (!keys.length) return [];
   const weight = n => isCrystal(n) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
   const groups = keys.map(key => graph.nodes.filter(n => (n.project || 'unassigned') === key)
-    .map(n => { const w = weight(n); return {...n, radius: nodeRadius(w, u), rank: w}; })
+    .map(n => { const w = weight(n); return {...n, radius: isCrystal(n) ? crystalRadius(u, width) : nodeRadius(w, u), rank: w}; })
     .sort((a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || b.rank - a.rank || String(a.id).localeCompare(String(b.id))));
   const left = Math.min(INSET.left, width / 10), right = Math.min(INSET.right, width / 10);
   const top = Math.min(INSET.top, height / 10), bottom = Math.min(INSET.bottom, height / 5);
@@ -57,34 +82,69 @@ export function layout(graph, width, height, seed = 'archeus') {
     else continue;
     if (spacing > best.score + 1e-6) best = {spacing, angles, score: spacing};
   }
-  const spacing = best.spacing, {points: centres} = ring(spacing, best.angles);
-  const nodes = [];
-  groups.forEach((group, gi) => {
-    const phase = randomSeed(`${seed}:${keys[gi]}`)() * TAU;
-    group.forEach((node, i) => {
-      const rng = randomSeed(`${seed}:${node.id}`);
-      const a = phase + i * GOLDEN + (rng() - .5) * .5, d = spacing * Math.sqrt(i) * (.9 + rng() * .2);
-      nodes.push({...node, x: core.x + centres[gi].x + Math.cos(a) * d, y: core.y + centres[gi].y + Math.sin(a) * d});
+  const place = spacing => {
+    const {points: centres} = ring(spacing, best.angles), placed = groups.map(() => []);
+    groups.forEach((group, gi) => {
+      const phase = randomSeed(`${seed}:${keys[gi]}`)() * TAU;
+      group.forEach((node, i) => {
+        const rng = randomSeed(`${seed}:${node.id}`);
+        const a = phase + i * GOLDEN + (rng() - .5) * .5, d = spacing * Math.sqrt(i) * (.9 + rng() * .2);
+        placed[gi].push({...node, x: core.x + centres[gi].x + Math.cos(a) * d, y: core.y + centres[gi].y + Math.sin(a) * d});
+      });
     });
-  });
-  for (let step = 0; step < 4; step++) {
-    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i], b = nodes[j];
-      const gap = a.radius + b.radius + 10 * u, dx = b.x - a.x, dy = b.y - a.y;
-      if (Math.abs(dx) >= gap || Math.abs(dy) >= gap) continue;
-      const d = Math.hypot(dx, dy) || .01;
-      if (d >= gap) continue;
-      const f = (gap - d) / d * .5, ux = dx || .01;
-      a.x -= ux * f; a.y -= dy * f; b.x += ux * f; b.y += dy * f;
+    const nodes = placed.flat();
+    for (let step = 0; step < (placed.flat().length > 60 ? 4 : 8); step++) {
+      for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j];
+        const gap = a.radius + b.radius + 10 * u, dx = b.x - a.x, dy = b.y - a.y;
+        if (Math.abs(dx) >= gap || Math.abs(dy) >= gap) continue;
+        const d = Math.hypot(dx, dy) || .01;
+        if (d >= gap) continue;
+        const f = (gap - d) / d * .5, ux = dx || .01;
+        a.x -= ux * f; a.y -= dy * f; b.x += ux * f; b.y += dy * f;
+      }
+      for (const n of nodes) {
+        const dx = n.x - core.x, dy = n.y - core.y, d = Math.hypot(dx, dy);
+        if (d < keepOut) { n.x = core.x + (dx || 1) / (d || 1) * keepOut; n.y = core.y + dy / (d || 1) * keepOut; }
+        n.x = clamp(n.x, left + n.radius, width - right - n.radius);
+        n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
+      }
     }
-    for (const n of nodes) {
-      const dx = n.x - core.x, dy = n.y - core.y, d = Math.hypot(dx, dy);
-      if (d < keepOut) { n.x = core.x + (dx || 1) / (d || 1) * keepOut; n.y = core.y + dy / (d || 1) * keepOut; }
-      n.x = clamp(n.x, left + n.radius, width - right - n.radius);
-      n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
+    return placed;
+  };
+  // Hulls are the real polygons: push whole clusters apart (and off the core mark and its wordmark) until none touch, keeping them in view.
+  const obstacles = coreObstacles(width, height, u), gap = 6 * u;
+  const shift = (g, dx, dy) => { for (const n of g) { n.x += dx; n.y += dy; } };
+  const hullOf = g => hullVertices(g, hullPadding(g, u));
+  const settle = (placed, rounds) => {
+    for (let round = 0; round < rounds; round++) {
+      let moved = false;
+      const hull = placed.map(hullOf);
+      for (let i = 0; i < P; i++) for (let j = i + 1; j < P; j++) {
+        const push = overlapDepth(hull[i], hull[j], gap);
+        if (!push) continue;
+        shift(placed[i], push.x / 2, push.y / 2); shift(placed[j], -push.x / 2, -push.y / 2);
+        hull[i] = hullOf(placed[i]); hull[j] = hullOf(placed[j]); moved ||= Math.hypot(push.x, push.y) > 1;
+      }
+      for (let i = 0; i < P; i++) {
+        for (const o of obstacles) { const push = overlapDepth(hull[i], o, gap); if (push) { shift(placed[i], push.x, push.y); hull[i] = hullOf(placed[i]); moved ||= Math.hypot(push.x, push.y) > 1; } }
+        const xs = hull[i].map(v => v.x), ys = hull[i].map(v => v.y), g = placed[i];
+        const lo = {x: Math.min(...xs) - 4, y: Math.min(...ys) - 4}, hi = {x: Math.max(...xs) + 4, y: Math.max(...ys) + 6};
+        const nlo = {x: Math.min(...g.map(n => n.x - n.radius)) - left, y: Math.min(...g.map(n => n.y - n.radius)) - top};
+        const nhi = {x: Math.max(...g.map(n => n.x + n.radius)) - (width - right), y: Math.max(...g.map(n => n.y + n.radius)) - (height - bottom)};
+        const dx = Math.max(-lo.x, -nlo.x, 0) + Math.min(width - hi.x, -nhi.x, 0), dy = Math.max(-lo.y, -nlo.y, 0) + Math.min(height - hi.y, -nhi.y, 0);
+        if (Math.abs(dx) > .01 || Math.abs(dy) > .01) { shift(g, dx, dy); moved ||= Math.hypot(dx, dy) > 1; }
+      }
+      if (!moved) break;
     }
-  }
-  return nodes.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    const hull = placed.map(hullOf);
+    return hull.every((h, i) => hull.slice(i + 1).every(o => !overlapDepth(h, o, 0)) && obstacles.every(o => !overlapDepth(h, o, 0)));
+  };
+  let spacing = best.spacing, placed;
+  // ponytail: past 60 nodes no layout fits the box, so hulls are not separated; a real packing solver if big graphs matter.
+  const crowded = groups.reduce((s, g) => s + g.length, 0) > 60;
+  for (let attempt = 0; attempt < (crowded ? 1 : 4); attempt++) { placed = place(spacing); if (crowded || settle(placed, 14) || spacing < lowest * .5) break; spacing *= .86; }
+  return placed.flat().sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 export function convexHull(points) {
   const sorted = [...new Map(points.map(p => [`${p.x}:${p.y}`, {x: p.x, y: p.y}])).values()]
@@ -101,18 +161,11 @@ export function convexHull(points) {
   };
   return [...half(sorted), ...half([...sorted].reverse())];
 }
+// The hull of the members grown by `padding`: each corner of the member hull becomes an octagon, so thin or collinear clusters get faceted ends, never spikes.
 export function hullVertices(points, padding = 22) {
   if (!points.length) return [];
-  const hull = convexHull(points);
-  if (hull.length < 3) return convexHull(points.flatMap(p => Array.from({length: 6}, (_, i) => ({x: p.x + Math.cos(i * TAU / 6 + .5236) * padding, y: p.y + Math.sin(i * TAU / 6 + .5236) * padding}))));
-  const area = hull.reduce((sum, p, i) => sum + p.x * hull[(i + 1) % hull.length].y - hull[(i + 1) % hull.length].x * p.y, 0);
-  const side = area > 0 ? 1 : -1;
-  const normal = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1; return [side * dy / d, -side * dx / d]; };
-  return hull.map((v, i) => {
-    const [x1, y1] = normal(hull.at(i - 1), v), [x2, y2] = normal(v, hull[(i + 1) % hull.length]);
-    const k = padding / (1 + x1 * x2 + y1 * y2), mx = (x1 + x2) * k, my = (y1 + y2) * k, m = Math.hypot(mx, my), cap = Math.min(1, padding * 2.2 / (m || 1));
-    return {x: v.x + mx * cap, y: v.y + my * cap};
-  });
+  const r = padding / Math.cos(Math.PI / 8);
+  return convexHull(convexHull(points).flatMap(p => Array.from({length: 8}, (_, i) => ({x: p.x + Math.cos((i + .5) * TAU / 8) * r, y: p.y + Math.sin((i + .5) * TAU / 8) * r}))));
 }
 export function polygonPath(vertices, round = 0) {
   if (!vertices.length) return '';
@@ -124,26 +177,32 @@ export function polygonPath(vertices, round = 0) {
 export const hullPath = (points, round = 6, padding = 22) => polygonPath(hullVertices(points, padding), round);
 export const overlaps = (a, b, pad = 0) => a.x < b.x + b.width + pad && a.x + a.width + pad > b.x && a.y < b.y + b.height + pad && a.y + a.height + pad > b.y;
 export function coversNode(box, node, pad = 3) {
+  const r = node.radius + pad;
+  if (node.x + r < box.x || node.x - r > box.x + box.width || node.y + r < box.y || node.y - r > box.y + box.height) return false;
   const x = clamp(node.x, box.x, box.x + box.width), y = clamp(node.y, box.y, box.y + box.height);
   return Math.hypot(x - node.x, y - node.y) < node.radius + pad;
 }
 export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta} = {}) {
   const result = [], occupied = [...obstacles], widths = new Map(), metas = new Map();
   const width_ = text => widths.get(text) ?? (widths.set(text, measure(text)), widths.get(text));
-  const reach = Math.max(0, ...nodes.map(n => n.radius)) + 4, cell = 64, grid = new Map();
-  for (const p of nodes) { const key = `${Math.floor(p.x / cell)},${Math.floor(p.y / cell)}`; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(p); }
-  const near = box => {
-    const out = [];
+  const large = nodes.filter(n => n.radius > 24), small = nodes.filter(n => n.radius <= 24);
+  const reach = Math.max(0, ...small.map(n => n.radius)) + 4, cell = 64, grid = new Map();
+  for (const p of small) { const key = `${Math.floor(p.x / cell)},${Math.floor(p.y / cell)}`; if (!grid.has(key)) grid.set(key, []); grid.get(key).push(p); }
+  const touchesNode = box => {
+    if (large.some(p => coversNode(box, p))) return true;
     for (let gx = Math.floor((box.x - reach) / cell); gx <= Math.floor((box.x + box.width + reach) / cell); gx++)
-      for (let gy = Math.floor((box.y - reach) / cell); gy <= Math.floor((box.y + box.height + reach) / cell); gy++) out.push(...(grid.get(`${gx},${gy}`) || []));
-    return out;
+      for (let gy = Math.floor((box.y - reach) / cell); gy <= Math.floor((box.y + box.height + reach) / cell); gy++)
+        for (const p of grid.get(`${gx},${gy}`) || []) if (coversNode(box, p)) return true;
+    return false;
   };
-  const priority = n => n.id === selected ? 10000 : stateKey(n.state) === 'needs-you' ? 5000 : stateKey(n.state) === 'running' ? 1000 : Number(n.weight) || 1;
-  const sorted = [...nodes].sort((a, b) => priority(b) - priority(a) || String(a.id).localeCompare(String(b.id)));
+  const keys = new Map(nodes.map(n => [n, stateKey(n.state)]));
+  const priority = n => n.id === selected ? 10000 : keys.get(n) === 'needs-you' ? 5000 : keys.get(n) === 'running' ? 1000 : Number(n.weight) || 1;
+  const rank = new Map(nodes.map(n => [n, priority(n)]));
+  const sorted = [...nodes].sort((a, b) => rank.get(b) - rank.get(a) || String(a.id).localeCompare(String(b.id)));
   const budget = width < 480 ? 5 : width < 1280 ? 13 : 30;
   const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 : lineHeight;
   for (const n of sorted) {
-    const mandatory = n.id === selected || stateKey(n.state) === 'needs-you';
+    const mandatory = n.id === selected || keys.get(n) === 'needs-you';
     if (!mandatory && result.length >= budget) continue;
     const full = String(n.label || n.id);
     const metaText = metaOf ? metaOf(n) : `${n.kind || 'Node'} · ${n.state || 'Idle'}`.toUpperCase();
@@ -164,7 +223,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
       const found = candidates.find(([x, y]) => {
         const box = {x, y, width: labelWidth, height: labelHeight};
         return !(x < 8 || y < 8 || x + box.width > width - 8 || y + box.height > height - 8)
-          && !occupied.some(b => overlaps(box, b, 4)) && !near(box).some(p => coversNode(box, p));
+          && !occupied.some(b => overlaps(box, b, 4)) && !touchesNode(box);
       });
       if (found) {
         const box = {id: n.id, x: found[0], y: found[1], width: labelWidth, height: labelHeight, text, rich, mandatory, size};
