@@ -121,7 +121,7 @@ export function viewAttention(ctx) {
 export function viewMap(ctx) {
   const sim = ctx.sim, st = sim.state;
   return h('div', null, head(ctx, 'Map'), h('div', { class: 'view' },
-    dnote('A03', 'A vector constellation redrawn at every size; the list beside it is the text mirror and where selection happens in slice 1.'),
+    dnote('A03', 'A vector constellation drawn from the simulation and redrawn at every size. Selecting a star opens it; the list beside it is the text mirror with the same content.'),
     h('div', { class: 'cols two' }, mapPanel(ctx, true, 'Constellation'),
       h('div', { style: 'display:flex;flex-direction:column;gap:var(--gut)' },
         ...st.projects.map((p) => { const ms = Object.values(st.missions).filter((m) => m.project === p.id); return panel(p.name, ms.length, h('p', { class: 'lede' }, p.note), h('div', { class: 'stack' }, ...ms.map((m) => missionRow(ctx, m, 'map')))); })))));
@@ -204,7 +204,7 @@ export function viewSettings(ctx) {
         h('div', { class: 'chips', role: 'group', 'aria-label': 'Decision notes' }, ...[['on', 'Show'], ['off', 'Hide']].map(([id, l]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': store.get('notes') === id ? 'true' : 'false', onclick: () => ctx.setNotes(id) }, l))),
         dnote('A15', 'Everything on screen is simulated and says so; no Core is connected.'))),
       panel('About this prototype', null, h('div', { class: 'body' }, h('p', null, 'V2 Live is a prototype that simulates the Archeus app on every device. Nothing here is connected to a Core: the projects, missions, approvals, usage numbers and replies are fixtures and a scripted clock.'),
-        h('p', { style: 'margin-top:8px' }, 'Slice 1 of about 6: the shell, the simulation, the tokens and the layout probe. The map, mission views, chat and terminal are filled in by later slices.'))))));
+        h('p', { style: 'margin-top:8px' }, 'The shell, the map, the mission and decision views, chat, Replay and the terminal view are built on the simulation. A Core connection, real accounts and the native apps are not built.'))))));
 }
 
 // ---------- inspector content ----------
