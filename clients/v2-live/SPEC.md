@@ -28,9 +28,9 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | ID | Decision or request | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
 | A01 | Build a prototype that simulates the real app experience on all devices and shows everything decided and built | owner request 2026-10-25 | SIMULATED | ALL, SHELL | S1 |
-| A02 | Fully responsive 1280 to 2560 wide, plus tablet and phone; no fixed-size concept images, no absolutely positioned controls | owner 2026-10-25, PLAN | SIMULATED | ALL · P/T/D | S1 (probe 0 defects), S6 |
+| A02 | Fully responsive 1280 to 2560 wide, plus tablet and phone; no fixed-size concept images, no absolutely positioned controls | owner 2026-10-25, PLAN | SIMULATED | ALL · P/T/D | S1 (probe 0 defects), S6 done (layout probe full matrix, 14 viewports, dark and light, EN and IT: see the final report for the run) |
 | A03 | Vector constellation map (crisp at any size and DPR), no overlap at any size, working interactions | owner 2026-10-25 | SIMULATED | NOW, MAP | S1 (placeholder map), S2 BUILT (js/constellation module on #/map and #/now; probes: 732 map checks and the layout probe, 0 defects) |
-| A04 | Six modes: Dark and Light, each standard and high contrast, plus System, plus forced colours | VL §1 (Q3) | SIMULATED | SHELL, SET | S1 (menu, tokens), S6 (polish) |
+| A04 | Six modes: Dark and Light, each standard and high contrast, plus System, plus forced colours | VL §1 (Q3) | SIMULATED | SHELL, SET | S1 (menu, tokens), S6 done in Chromium: Light contrast checked by the probe on every route (owner approved the Light look as is, 2026-10-26), forced colours swept by computed contrast; not run on a real Windows High Contrast or a phone |
 | A05 | Reduced motion is Quiet (no third setting) | A55 §3, VL §1 (Q5) | SIMULATED | SHELL, SET | S1 |
 | A06 | The core breath is the one allowed loop: scale 1 to 1.018 to 1 over 6000 ms, core mark only, static twin under Reduced | A55 §3 | SIMULATED | NOW, MAP | S1 (mark and rules), S2 BUILT (the map's own core mark; breath only for a playing simulation with fresh output) |
 | A07 | Done is green; V1 blocked red `#F07178` in dark | VL §3.3, A54 §3 | SIMULATED | ALL | S1 |
@@ -67,7 +67,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | B02 | Light token set derived by hue-keeping (bg `#F4EFE4`, ink `#14101A`, states darkened to 4.5:1) | VL §3.2 | SIMULATED | ALL | S1 |
 | B03 | High contrast Dark and Light: per-theme overrides, 7:1 text and states, 2 px lines | VL §4 | SIMULATED | ALL | S1 |
 | B04 | System theme follows `prefers-color-scheme` and `prefers-contrast` | VL §1, ADR-0044 | SIMULATED | SHELL | S1 |
-| B05 | Forced colours: system colours, hairline in place of the attention tint, glyph plus word for state | VL §5 | SIMULATED | ALL | S1 (simulated palette and a real `forced-colors` block), S6 (review on a real forced-colors run) |
+| B05 | Forced colours: system colours, hairline in place of the attention tint, glyph plus word for state | VL §5 | SIMULATED | ALL | S1 (simulated palette and a real `forced-colors` block), S6 done with Chromium's `forced_colors` emulation (Now, Map, Chat, Security, Terminal and eight more routes: borders visible, no ink on ink, a 3 px Highlight line on every selected item); a real OS run is not done |
 | B06 | Fixed state colours across themes: one colour, one meaning; never the only carrier (glyph and word too) | ADR-0017, UIA §G | BUILT + SIMULATED | ALL | S1 |
 | B07 | State figures ◌ ○ ◆ ◇ ● ■ ‖ ✕ ✓ · – with ASCII twins | VL §9, `presentation.json` | BUILT + SIMULATED | ALL, TERM | S1 (`core-words.js`) |
 | B08 | Node shapes: circle mission, ring project hub, triangle execution, diamond decision (one shape, one fact) | VL §9, V1 `graph/encoding.ts` | BUILT + SIMULATED | MAP, NOW | S1 (placeholder), S2 BUILT (module draws mission disc or crystal, project hexagon, execution triangle, decision diamond) |
@@ -84,17 +84,17 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
 | C01 | One motion registry: nothing animates without an entry; transform and opacity only | A55, ADR-0024 | BUILT | ALL | S1 (V2 Live has exactly one animation) |
-| C02 | Duration classes: instant, quick 160, standard 240, layer 200 to 280, travel 600, orbit 900, breath 6000 | A55 §1 | DESIGNED | ALL | S6 |
+| C02 | Duration classes: instant, quick 160, standard 240, layer 200 to 280, travel 600, orbit 900, breath 6000 | A55 §1 | DESIGNED | ALL | not built (the durations in `tokens.css` are used where an animation exists; no duration-class table) |
 | C03 | Idle invariant: zero running animations at idle; with live work exactly one, `core-breath` | A55 §3 | SIMULATED | NOW, MAP | S1 (checked in a script, see report), S2 BUILT (layout probe checks it on the map) |
 | C04 | Breath runs only while a fresh read shows an active execution, the tab is visible and motion is full; never for a queued mission or a fixture | A55 §3 | SIMULATED | NOW, MAP | S1 (driven by the simulation's live work), S2 BUILT (playing, RUNNING and not stuck, output under 2 min old) |
 | C05 | Static twin: scale 1 and the text "N running" under Reduced or Quiet | A55 §3 | SIMULATED | NOW, MAP | S1, S2 BUILT ("N running" at the map's core) |
-| C06 | Still moments written down: arriving rows, thinking, failing, reconnecting, scrolling | A55 §2 | DESIGNED | ALL | S6 |
-| C07 | State change: 160 ms cross-fade of the badge; failure has no shake or pulse | A55, UIA §D | BUILT | ALL | S6 |
+| C06 | Still moments written down: arriving rows, thinking, failing, reconnecting, scrolling | A55 §2 | DESIGNED | ALL | not built (no still-moment rules beyond Quiet) |
+| C07 | State change: 160 ms cross-fade of the badge; failure has no shake or pulse | A55, UIA §D | BUILT | ALL | not verified in S6 |
 | C08 | Output pulse (once per batch, at most one per 2 s per object) and the travelling marker (600 ms) | UIA §C.2, V1 motion registry | BUILT | MAP, NOW | S2 BUILT (pulse on execution start, end and output) |
 | C09 | Luminous thread: a line from what Archeus said to what it changed, drawn once, then a rule | UIA §B, §J, ADR-0026 | BUILT (T1/T2) | CHAT, NOW | S4 |
 | C10 | Creation beats from chat: reply 0, appear 160, relation 240, label 180 (dropped), accent gone by 800; Quiet shows all at once | PROTO README, A55 §4 | PROTOTYPED | CHAT, MAP | S4 |
 | C11 | Hero moments (handover, plan arming, resolution, causality path), gated and skippable | UIA §K | DESIGNED | NOW, WORK | not planned (prototype-gated PR-6) |
-| C12 | View transitions between routes | A55 §2 | DESIGNED | ALL | S6 (optional) |
+| C12 | View transitions between routes | A55 §2 | DESIGNED | ALL | not built (optional) |
 | C13 | E-stop drops every halo and trace to rest in one 160 ms step | UIA §K | DESIGNED | MAP, NOW | S2 |
 | C14 | Prototype breath by WAAPI infinite animation | PROTO app.js ~2533 | PROTOTYPED | NOW | replaced: V2 Live uses the CSS keyframe of A55 |
 
@@ -120,7 +120,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| E01 | Navigation table: Now, Work, World, Attention, Control; shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K | V1 `tokens/navigation.json` | BUILT | SHELL | S1 (routes; shortcuts S6) |
+| E01 | Navigation table: Now, Work, World, Attention, Control; shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K | V1 `tokens/navigation.json` | BUILT | SHELL | S1 (routes); the shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K are not built (S6 built j, k, Enter, Space, Esc and ? instead: E21) |
 | E02 | Now: state sentence, Needs you (at most 3 Decide rows), Happening now, Upcoming, Live map, Recent decisions, Since you last looked digest | V1 `Now.tsx` | BUILT + SIMULATED | NOW | S1 (all but the digest), S2 BUILT (live map is the module), S3 (digest built) |
 | E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 (done: built) |
 | E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 |
@@ -134,13 +134,13 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | E12 | Offline Now: kept missions, "as of hh:mm", Decide rows read-only | V1 `OfflineNow`, UIA §O | BUILT | NOW | S3 (done: built) |
 | E13 | Live map with halo, travelling marker, hulls, depth alpha, search, legend and text mirror (Canvas 2D) | V1 `graph/` | BUILT | NOW, MAP | S2 BUILT (V2 Live draws SVG with the module: hulls, travelling marker, legend, text mirror and node table; search not built) |
 | E14 | Phone: graph hidden below 600 px, the list stands in | UIA §M, V1 P18 A12 | BUILT | NOW, MAP · P | S1 (map shown small, list under it), S2 BUILT (map kept on the phone, taller 3:4 on #/map) |
-| E15 | Toasts and the polite announcer (at most one per 5 s) | V1 `toast.ts`, `a11y/announce.ts` | BUILT | ALL | S1 (one status toast), S6 |
+| E15 | Toasts and the polite announcer (at most one per 5 s) | V1 `toast.ts`, `a11y/announce.ts` | BUILT | ALL | S1 (one status toast), S6 built: info toasts leave after 4.5 s, an error or a toast with an action stays until Dismiss (role alert for errors); the at-most-one-per-5-s announcer is not built |
 | E16 | Pins and saved views | V1 `pins.ts` | BUILT | WORK, MAP | S3 (done: built) |
 | E17 | Idea path stepper (Captured to Learned) | V1 `Work.tsx` IdeaPath | BUILT | WORK | S3 (done: built) |
 | E18 | Digest "since you last looked", acknowledge cursor | V1 `Now.tsx` DigestSection | BUILT | NOW | S3 (done: built) |
 | E19 | Fresh/stale readings with age ("no output for 12 min"), never a client timer | UIA §D, A55 §3 | BUILT + SIMULATED | WORK, NOW, TERM | S1 |
-| E20 | Obligation groups Decide, Review, Unblock; at most 3 Decide rows on Now; acknowledge and snooze need a Core ADR | UIA §H, PLAN §5 | DESIGNED | ATT, NOW | S3 (groups kept; the j/k keys go to S6, snooze stays unbuilt) |
-| E21 | Keyboard model: Enter primary, Ctrl+Enter secondary, j/k, `?` lists keys | PLAN U2-c | DESIGNED | ALL · D | S6 |
+| E20 | Obligation groups Decide, Review, Unblock; at most 3 Decide rows on Now; acknowledge and snooze need a Core ADR | UIA §H, PLAN §5 | DESIGNED | ATT, NOW | S3 (groups kept), S6 built the j and k keys on cards and rows; acknowledge and snooze stay unbuilt (need a Core ADR) |
+| E21 | Keyboard model: Enter primary, Ctrl+Enter secondary, j/k, `?` lists keys | PLAN U2-c | DESIGNED | ALL · D | S6 built: j and k move through rows and cards, Enter acts on the focused row or card, Space opens a row, Esc closes the help, menu, ask-first question or sheet, `?` lists the keys in EN and IT and states the focus order, visible focus is 3 px `#FFF3CF` in dark; Ctrl+Enter is not built (a one-key Reject is unsafe) |
 
 ## F. Chat and slash commands
 
@@ -204,7 +204,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | H13 | Ideas with their own states | ST, V1 Work | BUILT + SIMULATED | WORK | S1 |
 | H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1, S3 (done: two boundaries, isolated and not isolated, eight boundaries, privileges, switches, log), S5 done in TERM (`g s`, same list and words) |
 | H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 (done: built) |
-| H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 (the usage line and failover rules), integration (Pause all, Resume all and Emergency stop: one sim action each, `pause_all`, `resume_all`, `estop`, used by the Settings page, the terminal `E` key and the `/estop` card; Emergency stop ends every running execution and leaves each mission Blocked as "Emergency stop"; re-arming and a dispatch block are not modelled) |
+| H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 (the usage line and failover rules), integration (Pause all, Resume all and Emergency stop: one sim action each, `pause_all`, `resume_all`, `estop`, used by the Settings page, the terminal `E` key and the `/estop` card; Emergency stop ends every running execution and leaves each mission Blocked as "Emergency stop"; re-arming and a dispatch block are not modelled) → S6: re-arm and the dispatch block are modelled (owner decision 2026-10-26); the stop can be engaged while nothing runs; Pause all, Resume all and Emergency stop with an ask-first step are also on Now |
 | H17 | Themes in V1: dark and light with contrast aliases; the "6 themes" were confirmed in VL §1 | V1 tokens.json, VL | BUILT + SIMULATED | SET | S1 |
 
 ## I. Prototype features (clients/v2-prototype)
@@ -264,7 +264,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S3 (done: #/usage and #/accounts), S5 done in TERM (`#/terminal/accounts`) |
 | M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1, S3 (done: #/extensions), S5 done in TERM (`#/terminal/clients`) |
 | M08 | Terminal view | TERM | `#/terminal`, device switch | S1, S5 done (section O) |
-| M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 |
+| M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 done (see A04 and B05) |
 
 ## N. S3 additions (2026-10-26)
 
@@ -320,9 +320,26 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 | O15 | Mouse and touch: click selects and a second click opens; tabs, navigation and action text are clickable; wheel moves; a key bar of 44 px buttons below 900 px with the actions of the selected thing; a real input for the command line | A11 | SIMULATED | TERM | S5 done |
 | O16 | Window frame (dots, name, Colours, ASCII, Read, Keys) in the V2 Live visual language: solid surfaces, 3 px focus ring, 2 px hairline in high contrast | A09, B15 | SIMULATED | TERM | S5 done |
 
+## P. S6 additions (2026-10-26)
+
+| ID | Item | Source | Status | Where | Slice |
+|---|---|---|---|---|---|
+| P01 | Phone Now counters row: needs you, running, stopped, verifying (4 targets of at least 44 px, equal to the simulation counts) | concepts 09, 10 | SIMULATED | NOW · P | S6 done |
+| P02 | Phone mission inspector spine in two rows of three with the short names | concept 12, VLD (narrow inspectors) | SIMULATED | WORK, ATT · P | S6 done |
+| P03 | "No Undo. Decision cannot be changed." banner with a warning icon on an open decision | concept 11 | SIMULATED | ATT, NOW | S6 done |
+| P04 | Pause all, Resume all and Emergency stop strip on Now, ask-first for the stop, Esc cancels, re-arm in place | H16, VLD (E-stop) | SIMULATED | NOW | S6 done |
+| P05 | Tell, Places and Stop as three round buttons on the phone | concepts 09, 10 | DESIGNED | NOW · P | not built: the Tell field, the bottom bar and the Stop button in the dock already do these three jobs; owner question |
+| P06 | Toasts: info leaves after 4.5 s, errors and toasts with an action stay until an explicit Dismiss | VLD (toasts, 2026-10-26) | SIMULATED | ALL | S6 done |
+| P07 | Keyboard help overlay (`?`) in EN and IT with the shortcut list and the focus order | E21 | SIMULATED | ALL · D | S6 done |
+| P08 | All devices: panes do not overlap, a click in a pane hits that pane's content, one simulation drives all panes (`tools/v2_live_alldevices_probe.py`) | A01, J-section | SIMULATED | ALL, SHELL | S6 done |
+| P09 | Forced colours: a selected item has a 3 px Highlight line; state icons use ink | B05 | SIMULATED | ALL | S6 done |
+| P10 | Package: `Archeus-V2-Live.zip` from `tools/v2_live_package.py` (the app folder, `start.cmd`, `README-FIRST.txt`) | owner, 2026-10-26 | SIMULATED | SHELL | S6 done |
+| P11 | Italian review list of every builder-written Italian string, all marked to review (`IT-REVIEW.md`) | VLD (Italian) | SIMULATED | ALL | S6 done |
+
 ## Counts
 
-216 rows, recounted from the tables after the integration of slices 2 to 5: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas · N 10 S3 additions · O 16 terminal view (S5).
-By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 51 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 114. Rows A to M (190) give BUILT 51 · DESIGNED 35 · PROTOTYPED 32 · SIMULATED 88; the earlier line said BUILT 50, a miscount by one; N and O add 26 simulated rows. Slices 2 to 5 changed the Slice column, not the Status column, so no row moved between BUILT, DESIGNED and PROTOTYPED.
+227 rows, recounted from the Status column of the tables by script after slice 6: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas · N 10 S3 additions · O 16 terminal view (S5) · P 11 S6 additions.
+By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 50 · DESIGNED 36 · PROTOTYPED 32 · SIMULATED 124. Earlier lines said BUILT 51: counting the Status column gives 50 (a row whose Slice cell says "BUILT" is not a BUILT row). Slice 6 added section P (10 simulated rows and P05, a DESIGNED row that is not built) and changed only the Slice column of A02, A04, B05, C02, C06, C07, C12, E01, E15, E20, E21, H16 and M09, so no existing row moved between BUILT, DESIGNED, PROTOTYPED and SIMULATED.
+S6 left unbuilt, honestly: C02 and C06 (duration-class table, still-moment rules), C12 (view transitions), E01 shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K, E21 Ctrl+Enter, the E15 one-per-5-s announcer, P05 round buttons, and real-device checks (Windows High Contrast, touch, screen reader).
 Slice 2 (map integration) builds 13 of these rows (A03, A06, A12, A26, B08, B10, C03, C04, C05, C08, E02, E13, E14).
 Slice 1 shows 126 rows (the Slice column names S1, fully or in part); the rest, and the "part" rows, are the later slices' to-do list. Slice 5 adds section O (16 rows, all done) and completes the S5 part of E06, H09, H14, I07, M04, M06, M07 and M08. Slice 3 adds section N. The integration adds H16 (pause all, resume all, emergency stop).
