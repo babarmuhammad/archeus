@@ -68,7 +68,7 @@ def main():
                 pg.on('console', lambda m: errs.append('console: ' + m.text) if m.type == 'error' else None)
                 pg.goto('%s?theme=%s&lang=%s&notes=off&motion=reduced#/now' % (base, a.theme, a.lang), wait_until='load')
                 pg.wait_for_timeout(300)
-                pg.click('[data-tb="device"]')
+                (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
                 pg.click('[data-device="all"]')
                 pg.wait_for_function("() => document.querySelectorAll('[data-pane] iframe').length === 4 && [...document.querySelectorAll('[data-pane] iframe')].every((f) => f.contentWindow && f.contentWindow.v2live)", timeout=15000)
                 pg.wait_for_timeout(1500)
