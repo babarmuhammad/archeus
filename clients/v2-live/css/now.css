@@ -1,0 +1,41 @@
+/* Overview and Map: the scene is the page. It fills the main area edge to edge; the headline floats on it and the detail panels sit in a drawer on the bottom edge. */
+.view.now-view { position: relative; padding: 0; gap: 0; max-width: none; height: 100%; min-height: 560px; overflow: hidden; }
+.now-scene { position: absolute; inset: 0; }
+.now-scene .map-box, .now-scene .map-box.wide { position: absolute; inset: 0; width: auto; height: auto; max-height: none; min-height: 0; aspect-ratio: auto; margin: 0; }
+.now-view .now-hero { position: absolute; z-index: 2; top: calc(var(--gut) * 1.2); left: calc(var(--gut) * 1.5); right: calc(var(--gut) * 1.5); max-width: 62rem; pointer-events: none; gap: 8px; }
+.now-view .now-hero a, .now-view .now-hero button { pointer-events: auto; }
+.now-view .eyebrow { font: 500 var(--fs-eyebrow) / 1 var(--sans); letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-3); margin: 0; }
+.now-view .state-sentence { font-family: var(--serif); font-size: var(--fs-disp); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
+.now-view .map-title { font-family: var(--sans); font-size: var(--fs-section); font-weight: 500; margin: 0; }
+.now-view .lede { font-family: var(--serif); font-size: var(--fs-lede); line-height: 1.4; color: var(--text-2); max-width: 30rem; margin: 0; }
+.now-view .archeus-map .am-controls { bottom: 84px; right: 16px; }
+.now-drawer { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; max-height: 62%; background: var(--bg); border-top: var(--hair) solid var(--line); }
+.now-strip { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 6px var(--gut); }
+.now-strip .counters { margin: 0; flex: 1; }
+.now-strip .legend { padding: 0; }
+.now-toggle { min-height: 44px; min-width: 44px; padding: 0 16px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.now-toggle::after { content: ' \25B4'; }
+.now-drawer[data-open='true'] .now-toggle::after { content: ' \25BE'; }
+.now-body { display: none; overflow: auto; padding: 0 var(--gut) var(--gut); }
+.now-drawer[data-open='true'] .now-body { display: block; }
+.now-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: var(--gut); align-items: start; }
+.now-body .ctlbar { margin-bottom: var(--gut); }
+@media (max-width: 599px) {
+  .now-view .now-hero { top: 14px; left: 16px; right: 16px; }
+  .now-strip { padding-inline: 12px; }
+  .now-drawer { max-height: 70%; }
+}
+.now-strip .counters { display: flex; gap: 4px; border: 0; background: transparent; border-radius: 0; }
+.now-strip .ctr { flex-direction: row; gap: 8px; min-height: 44px; padding: 0 14px; border: 0; }
+.now-strip .ctr b { font-size: 20px; }
+@media (max-width: 599px) {
+  .now-strip .counters { gap: 0; }
+  .now-strip .ctr { flex-direction: column; gap: 0; padding: 0 6px; min-width: 56px; font-size: 11px; }
+  .now-strip .ctr b { font-size: 16px; }
+  .now-toggle { font-size: 0; padding: 0; width: 44px; }
+  .now-toggle::after { font-size: 16px; }
+}
+@media (max-width: 599px) {
+  .now-view .state-sentence { font-size: 30px; }
+  .now-view .lede { display: none; }
+}
