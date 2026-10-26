@@ -5,10 +5,15 @@ import { lockup } from './brand.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
-import { ROUTES, BOTTOM, viewNow, viewWork, viewAttention, viewMap, viewSettings, simControls } from './views.js';
+import { ROUTES, BOTTOM, simControls } from './views.js';
+import * as vNow from './view-now.js';
+import * as vWork from './view-work.js';
+import * as vAttention from './view-attention.js';
+import * as vMap from './view-map.js';
+import * as vReplay from './view-replay.js';
+import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
 import { viewChat, mountDock } from './chat.js';
-import { viewReplay } from './replay.js';
 import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate } from './areas.js';
 import { inspectorFor } from './inspectors.js';
 import { areasOf } from './areas-model.js';
@@ -60,6 +65,8 @@ function buildShell() {
 }
 
 // ---------- routing ----------
+// The one place that maps a route to the function that renders it: render(ctx) returns the page node.
+const VIEWS = { now: vNow.render, work: vWork.render, attention: vAttention.render, map: vMap.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
 function parse() {
   const m = /^#\/([a-z]+)(?:\/([\w-]+))?/.exec(location.hash) || [];
   const name = [...ROUTES.map((r) => r.id), 'terminal', 'more'].includes(m[1]) ? m[1] : 'now';
@@ -81,7 +88,7 @@ function render() {
 
   let content;
   if (term) content = viewTerminal(ctx);
-  else content = ({ now: viewNow, work: viewWork, attention: viewAttention, map: viewMap, replay: viewReplay, chat: viewChat, settings: viewSettings, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore })[r.name](ctx);
+  else content = VIEWS[r.name](ctx);
   if (r.name === 'now') content.prepend(headNow());
   if (!term) content = decorate(ctx, content);
   if (term) { clear(page); page.hidden = true; const old = app.querySelector('.term-wrap'); if (old) old.remove(); app.append(content); } else { page.hidden = false; const old = app.querySelector('.term-wrap'); if (old) old.remove(); clear(page).append(content); }

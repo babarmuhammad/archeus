@@ -4,6 +4,13 @@
 import { get } from './store.js';
 import { IT_AREAS, RULES_AREAS, setTr } from './i18n-areas.js';
 import { IT_S6 } from './i18n-s6.js';
+import { IT_SHELL, RULES_SHELL } from './i18n-shell.js';
+import { IT_NOW, RULES_NOW } from './i18n-now.js';
+import { IT_WORK, RULES_WORK } from './i18n-work.js';
+import { IT_ATTN, RULES_ATTN } from './i18n-attn.js';
+import { IT_INSP, RULES_INSP } from './i18n-insp.js';
+import { IT_CHAT, RULES_CHAT } from './i18n-chat.js';
+import { IT_PHONE, RULES_PHONE } from './i18n-phone.js';
 
 const IT = {
   // shell
@@ -127,7 +134,7 @@ export function translate(root) {
 // Italian command names are real aliases (T-153); the list is used by the chat menu and by sim.js
 export const ALIASES = { help: 'aiuto', status: 'stato', usage: 'usa', projects: 'progetti', missions: 'missioni', needs: 'attesa', ideas: 'idee', replay: 'rigioca', open: 'apri', mission: 'missione', idea: 'idea', pause: 'pausa', resume: 'riprendi', cancel: 'annulla', approve: 'approva', estop: 'arresto' };
 
-Object.assign(IT, IT_AREAS, IT_S6, {
+Object.assign(IT, IT_AREAS, IT_S6, IT_SHELL, IT_NOW, IT_WORK, IT_ATTN, IT_INSP, IT_CHAT, IT_PHONE, {
   'Pause, resume and emergency stop': 'Pausa, ripresa e arresto d’emergenza', 'Pause all': 'Metti tutto in pausa', 'Resume all': 'Riprendi tutto', 'Emergency stop': 'Arresto d’emergenza', 'Yes, stop everything': 'Sì, ferma tutto', 'Re-arm': 'Riarma', 'Yes, re-arm': 'Sì, riarma',
   'A vector constellation drawn from the simulation and redrawn at every size. Selecting a star opens it; the list beside it is the text mirror with the same content.': 'Una costellazione vettoriale disegnata dalla simulazione e ridisegnata a ogni dimensione. Selezionare una stella la apre; l’elenco accanto è lo specchio testuale con lo stesso contenuto.',
   'The shell, the map, the mission and decision views, chat, Replay and the terminal view are built on the simulation. A Core connection, real accounts and the native apps are not built.': 'La struttura, la mappa, le viste di missione e decisione, la chat, il Replay e la vista terminale sono costruiti sulla simulazione. La connessione a un Core, gli account reali e le app native non sono costruiti.',
@@ -135,5 +142,5 @@ Object.assign(IT, IT_AREAS, IT_S6, {
   'Re-armed: new work can start again (simulated).': 'Riarmato: il nuovo lavoro può ripartire (simulato).', 'Show all projects': 'Mostra tutti i progetti', 'Project filter': 'Filtro progetto',
   'Pausing every running mission (simulated).': 'Metto in pausa ogni missione in corso (simulato).', 'Resuming every paused mission (simulated).': 'Riprendo ogni missione in pausa (simulato).', 'Emergency stop: every running mission stopped, new dispatch blocked until re-armed (simulated).': 'Arresto d’emergenza: ogni missione in corso è ferma, ogni nuovo avvio bloccato finché non riarmi (simulato).'
 });
-RULES.push(...RULES_AREAS, [/^Project: (.+)$/, (m) => 'Progetto: ' + m[1]], [/^(\d+) running, (\d+) paused\. Pause all waits for each execution to reach a safe boundary\. Emergency stop ends every running execution; each mission then waits for you\.$/, (m) => m[1] + ' in corso, ' + m[2] + ' in pausa. Metti tutto in pausa aspetta che ogni esecuzione raggiunga un punto sicuro. L’arresto d’emergenza chiude ogni esecuzione in corso; ogni missione resta poi in attesa di te.']);
+RULES.push(...RULES_AREAS, ...RULES_SHELL, ...RULES_NOW, ...RULES_WORK, ...RULES_ATTN, ...RULES_INSP, ...RULES_CHAT, ...RULES_PHONE, [/^Project: (.+)$/, (m) => 'Progetto: ' + m[1]], [/^(\d+) running, (\d+) paused\. Pause all waits for each execution to reach a safe boundary\. Emergency stop ends every running execution; each mission then waits for you\.$/, (m) => m[1] + ' in corso, ' + m[2] + ' in pausa. Metti tutto in pausa aspetta che ogni esecuzione raggiunga un punto sicuro. L’arresto d’emergenza chiude ogni esecuzione in corso; ogni missione resta poi in attesa di te.']);
 setTr(tr);
