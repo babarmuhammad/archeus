@@ -124,6 +124,9 @@ svg { display: block; }
 .panel > .body { padding: 8px 16px 16px; }
 .panel > .lede { padding: 0 16px 8px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; }
 .empty { padding: 8px 16px 16px; color: var(--text-2); }
+.empty.art { display: grid; justify-items: center; gap: 4px; padding: 16px 16px 24px; text-align: center; }
+.empty.art p { max-width: 34ch; }
+.illustration { max-width: 100%; height: auto; color: var(--text-2); background: radial-gradient(ellipse at center, color-mix(in srgb, var(--thread) 5%, transparent), transparent 70%); }
 .stack { display: flex; flex-direction: column; }
 .stack > * + * { border-top: var(--hair) solid var(--line); }
 .cols { display: grid; gap: var(--gut); grid-template-columns: minmax(0, 1fr); align-items: start; }
@@ -306,6 +309,7 @@ dl.kv dd { overflow-wrap: anywhere; }
   .btn.primary, .btn.danger, .card[data-state='needs_you'] .btn.primary, .insp-foot .btn.primary { forced-color-adjust: none; background: ButtonText; color: ButtonFace; border-color: ButtonText; }
   .btn.danger.outline { background: ButtonFace; color: ButtonText; }
   .meter .bar i { forced-color-adjust: none; background: Highlight; }
+  .illustration { background: Canvas; }
   .nav-item[aria-current='page'], .tab[aria-selected='true'] { border-color: Highlight; }
   .spine .disc { fill: CanvasText; } .spine .ring, .spine .seg { stroke: CanvasText; } .spine .cur { fill: Highlight; } .spine .cur.o { stroke: Highlight; fill: none; }
   .term-screen .l.sel { background: Highlight; color: HighlightText; }

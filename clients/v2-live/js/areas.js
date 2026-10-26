@@ -2,6 +2,7 @@
 // (digest, pins, idea path) and the offline view. Everything is SIMULATED; each page says so in its header.
 import { h } from './dom.js';
 import { icon, glyph } from './icons.js';
+import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
 import { head, dnote, missionRow, badge, projName } from './views.js';
@@ -202,7 +203,7 @@ function pinnedPanel(ctx, A) {
   const S = A.S(), pins = A.X.pins, ms = pins.filter((id) => S.missions[id]), others = pins.filter((id) => !S.missions[id]);
   const it = (id) => { const i = S.ideas.find((x) => x.id === id); if (i) return entity({ kind: 'idea', id, label: i.title, note: projName(ctx.sim, i.project) }); const p = S.projects.find((x) => 'prj-' + x.id === id); return p ? entity({ kind: 'project', id, label: p.name, note: p.note }) : null; };
   return h('section', { class: 'panel ax-pinned' }, h('h2', null, h('span', { class: 'gt' }, 'Pinned'), h('span', { class: 'n' }, String(pins.length))),
-    pins.length ? h('div', { class: 'stack' }, ...ms.map((id) => missionRow(ctx, S.missions[id], 'work')), ...others.map(it).filter(Boolean)) : h('p', { class: 'empty' }, 'Nothing is pinned. Pin a mission or an idea from its details and it stays here.'));
+    pins.length ? h('div', { class: 'stack' }, ...ms.map((id) => missionRow(ctx, S.missions[id], 'work')), ...others.map(it).filter(Boolean)) : h('div', { class: 'empty art' }, illustration('first'), h('p', null, 'Nothing is pinned. Pin a mission or an idea from its details and it stays here.')));
 }
 function ideasPanel(ctx, A) {
   const S = A.S();

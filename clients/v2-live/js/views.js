@@ -2,6 +2,7 @@
 // Everything shown comes from the simulation (fixtures), and every screen says so in its header.
 import { h, s } from './dom.js';
 import { icon, glyph } from './icons.js';
+import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
 import { clockLabel, REPLAY_CATEGORIES, SPEEDS } from '../sim.js';
 import { missionGroups } from '../term.js';
@@ -37,7 +38,7 @@ export function head(ctx, title, extra) {
 
 export const panel = (title, n, ...kids) => h('section', { class: 'panel' }, h('h2', null, h('span', { class: 'gt' }, title), n != null ? h('span', { class: 'n' }, String(n)) : null), ...kids);
 export const dnote = (id, text) => h('p', { class: 'dnote' }, h('b', null, 'Decision ' + id), ' \u00b7 ' + text);
-export const empty = (t) => h('p', { class: 'empty' }, t);
+export const empty = (t, art) => (art ? h('div', { class: 'empty art' }, illustration(art), h('p', null, t)) : h('p', { class: 'empty' }, t));
 
 export function missionRow(ctx, m, base) {
   const p = present('mission', m.state);
@@ -89,9 +90,9 @@ export function viewNow(ctx) {
     h('div', { class: 'cols two now-cols' },
       mapPanel(ctx, false),
       h('div', { class: 'col', style: 'gap:var(--gut)' },
-        panel('Needs you', att.filter((a) => a.group === 'Decide').length, decide.length ? h('div', { class: 'stack' }, ...decide.map((a) => attentionItem(ctx, a))) : empty('Nothing is waiting for a decision.'),
+        panel('Needs you', att.filter((a) => a.group === 'Decide').length, decide.length ? h('div', { class: 'stack' }, ...decide.map((a) => attentionItem(ctx, a))) : empty('Nothing is waiting for a decision.', 'clear'),
           att.filter((a) => a.group !== 'Decide').length ? h('div', { class: 'actions', style: 'padding:12px 16px 16px' }, h('a', { class: 'btn', href: '#/attention' }, att.filter((a) => a.group !== 'Decide').length + ' more in Attention')) : null),
-        panel('Happening now', live.length, live.length ? h('div', { class: 'stack' }, ...live.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is running.')))),
+        panel('Happening now', live.length, live.length ? h('div', { class: 'stack' }, ...live.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is running.', 'missions')))),
     h('div', { class: 'cols eq' },
       panel('Upcoming', upcoming.length, upcoming.length ? h('div', { class: 'stack' }, ...upcoming.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is planned or approved.')),
       panel('Recent decisions and changes', recent.length, h('div', { class: 'body' }, ...recent.map((e) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, (st.missions[e.subject.id] || { title: e.subject.id }).title, ': ', word('mission', e.payload.from), ' to ', word('mission', e.payload.to)), h('span', { class: 'b' }, clockLabel(e.at) + (e.actor === 'device' ? ' · you' : ' · Core')))), recent.length ? null : empty('Nothing has changed yet.')))));
@@ -116,7 +117,7 @@ export function viewAttention(ctx) {
   return h('div', null, head(ctx, 'Attention'), h('div', { class: 'view' },
     dnote('E20', 'Groups Decide, Review, Unblock; the band is a 12 % tint with the word in ink (B09). No acknowledge or snooze: that needs a Core record.'),
     groups.length ? groups.map(([g, items]) => h('section', { class: 'col', style: 'gap:8px' }, h('h2', { class: 'group-h' }, g, h('span', { class: 'n' }, items.length + (g === 'Decide' ? ' · asks you to decide' : g === 'Review' ? ' · results to accept' : ' · work that needs a person'))),
-      h('div', { class: 'cols eq' }, ...items.map((a) => h('div', { class: 'panel' }, attentionItem(ctx, a)))))) : [panel('Attention', 0, empty('Nothing waits on you.'))]));
+      h('div', { class: 'cols eq' }, ...items.map((a) => h('div', { class: 'panel' }, attentionItem(ctx, a)))))) : [panel('Attention', 0, empty('Nothing waits on you.', 'clear'))]));
 }
 
 // ---------- Map ----------
