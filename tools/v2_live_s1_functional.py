@@ -1,0 +1,70 @@
+"""Playwright functional run of the S1 shell: sidebar (Overview label, 12 items, PROJECTS filter), the safety popover with its ask-first
+steps, Stop and Re-arm, the Tell overlay, the collapsed tool strip and the Notes toggle. Run:
+  py D:\\Archeus\\.collab\\testlock.py -- py -I tools\\v2_live_s1_functional.py"""
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import v2_live_layout_probe as P
+from playwright.sync_api import sync_playwright
+
+ok = []; bad = []
+def check(name, cond):
+    (ok if cond else bad).append(name)
+    print(('PASS ' if cond else 'FAIL ') + name)
+
+port = P.free_port(); srv = P.start_server(port)
+base = 'http://127.0.0.1:%d/index.html' % port
+try:
+    with sync_playwright() as p:
+        br = p.chromium.launch()
+        def page(w=1440, h=900, extra='', hash='now'):
+            ctx = br.new_context(viewport={'width': w, 'height': h}); pg = ctx.new_page()
+            errs = []; pg.on('pageerror', lambda e: errs.append(str(e))); pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
+            pg.goto(base + '?sim=paused&motion=reduced&theme=dark' + extra + '#/' + hash, wait_until='load'); pg.wait_for_timeout(400)
+            return ctx, pg, errs
+        ctx, pg, errs = page()
+        navs = pg.evaluate("() => [...document.querySelectorAll('.rail .nav-item')].map((e) => e.textContent.replace(/[0-9]/g, '').trim())")
+        check('the nav keeps its order and Now is Overview', navs == ['Overview', 'Work', 'Attention', 'Map', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings', 'Terminal view'])
+        check('the route of Overview is still #/now', pg.get_attribute('.rail [data-route="now"]', 'href') == '#/now')
+        w = pg.evaluate("document.querySelector('.rail').getBoundingClientRect().width")
+        check('sidebar is 176 to 208 px wide at 1440', 176 <= w <= 208)
+        check('PROJECTS lists the three sim projects', pg.locator('.proj-item').count() == 3)
+        check('the tool strip is collapsed: Tools shown, Device hidden, SIMULATED visible', pg.is_visible('[data-tb="tools"]') and not pg.is_visible('[data-tb="device"]') and pg.is_visible('.sim-badge'))
+        pg.click('[data-tb="tools"]'); check('Tools opens the tray', pg.is_visible('[data-tb="device"]') and pg.is_visible('[data-tb="notes"]'))
+        pg.click('[data-tb="tools"]'); check('Tools closes it again', not pg.is_visible('[data-tb="device"]'))
+        check('decision notes are hidden on Overview by default', not pg.is_visible('.dnote'))
+        pg.click('[data-tb="tools"]'); pg.click('[data-tb="notes"]'); pg.wait_for_timeout(100)
+        check('the Notes toggle shows them', pg.locator('.dnote').count() > 0 and pg.is_visible('.dnote'))
+        # safety popover
+        pg.click('[data-key="safety"]'); pg.wait_for_timeout(100)
+        check('the status button opens Pause all, Resume all and Emergency stop', all(pg.locator('.safety-pop [data-key="%s"]' % k).count() == 1 for k in ('pause-all', 'resume-all', 'estop')))
+        pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+        check('Esc closes the popover', pg.locator('.safety-pop').count() == 0)
+        pg.click('[data-key="stop"]'); pg.wait_for_timeout(150)
+        check('Stop asks first and nothing is stopped yet', pg.locator('.safety-pop [data-key="estop-yes"]').count() == 1 and not pg.evaluate('window.v2live.sim.state.estop.engaged'))
+        pg.click('.safety-pop [data-key="estop-back"]'); pg.wait_for_timeout(100)
+        check('Back returns to the buttons', pg.locator('.safety-pop [data-key="estop"]').count() == 1)
+        pg.click('.safety-pop [data-key="estop"]'); pg.click('.safety-pop [data-key="estop-yes"]'); pg.wait_for_timeout(200)
+        check('the second step engages the stop and the cluster says so', pg.evaluate('window.v2live.sim.state.estop.engaged') and 'Stopped' in pg.inner_text('.safety-btn') and pg.inner_text('[data-key="stop"]') == 'Re-arm')
+        pg.click('[data-key="stop"]'); pg.click('.safety-pop [data-key="rearm-yes"]'); pg.wait_for_timeout(200)
+        check('Re-arm asks, then releases the stop', not pg.evaluate('window.v2live.sim.state.estop.engaged') and pg.inner_text('[data-key="stop"]') == 'Stop')
+        # Tell overlay
+        check('no chat dock is shown on Overview until Tell', not pg.is_visible('#chatdock'))
+        pg.click('[data-key="tell"]'); pg.wait_for_timeout(150)
+        check('Tell opens the composer with the input focused', pg.is_visible('#chatdock input[data-key="chat-in-dock"]') and pg.evaluate("document.activeElement.dataset.key") == 'chat-in-dock')
+        pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
+        check('Esc closes the Tell overlay', not pg.is_visible('#chatdock'))
+        # project filter
+        pg.click('.proj-item[data-proj="notes"]'); pg.wait_for_timeout(250)
+        check('a project opens Work filtered with the Show all chip', pg.evaluate('location.hash') == '#/work' and pg.locator('[data-key="work-all"]').count() == 1)
+        check('no page errors', not errs)
+        ctx.close()
+        ctx, pg, errs = page(w=390, h=844)
+        check('phone: the top bar has the status button and no Stop duplicate', pg.is_visible('[data-key="safety"]') and not pg.is_visible('.topbar [data-key="stop"]'))
+        check('no page errors (phone)', not errs)
+        ctx.close()
+        br.close()
+finally:
+    srv.terminate()
+print('\n%d passed, %d failed' % (len(ok), len(bad)))
+sys.exit(1 if bad else 0)
