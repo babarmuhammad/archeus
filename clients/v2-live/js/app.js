@@ -8,6 +8,7 @@ import { ROUTES, BOTTOM, viewNow, viewWork, viewAttention, viewMap, viewReplay, 
 import { viewChat, viewSecurity, viewHealth, viewMore } from './views2.js';
 import { translate } from './i18n.js';
 import { viewTerminal } from './terminal.js';
+import { pruneMaps, syncLive, notePulse } from './map.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -92,6 +93,7 @@ function render() {
   app.querySelectorAll('[data-count="attention"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
 
   ctx.mounts.forEach((f) => f());
+  pruneMaps(['now', 'map'].includes(r.name) ? r.name : null);
   translate(app);
   syncCore(); if (!embed) syncToolbar();
   page.scrollTop = keep.top; inspector.scrollTop = keep.itop;
@@ -105,12 +107,8 @@ function headNow() {
     h('p', { class: 'sub' }, h('span', { class: 'sim-tag' }, 'SIMULATED'), ' Fixture data, nothing is connected to a Core. Simulated time ', h('span', { 'data-live': 'clock' }, clockLabel(st.clock)), st.playing ? ' (running, x' + st.speed + ')' : ' (paused)')));
 }
 
-// ---------- the one allowed loop: the core breath (ADR-0055) ----------
-function syncCore() {
-  const live = sim.liveWork().length;
-  const breathe = live > 0 && !store.reducedMotion() && !document.hidden;
-  document.querySelectorAll('.core').forEach((c) => { c.dataset.core = breathe ? 'breath' : live ? 'still' : 'idle'; c.dataset.live = live ? 'true' : 'false'; const t = c.querySelector('.core-txt'); if (t) t.textContent = live + ' running'; });
-}
+// ---------- the one allowed loop: the core breath on the map's core mark (ADR-0055), switched by syncLive ----------
+function syncCore() { syncLive(sim); }
 function patchLive() {
   const t = clockLabel(sim.state.clock);
   document.querySelectorAll('[data-live="clock"]').forEach((e) => { if (e.textContent !== t) e.textContent = t; });
@@ -223,8 +221,9 @@ function fit() {
 if (!embed) buildToolbar();
 buildShell();
 const unsub = sim.subscribe((e) => {
-  if (e.type === 'clock' || e.type === 'execution.progress' || e.type === 'usage.observed') { patchLive(); if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); return; }
-  if (e.type === 'sim.play' || e.type === 'sim.pause' || e.type === 'sim.speed') { if (!embed) syncToolbar(); return; }
+  if (e.type === 'clock' || e.type === 'execution.progress' || e.type === 'usage.observed') { if (e.type === 'execution.progress') notePulse(sim, e); patchLive(); if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); return; }
+  if (e.type === 'sim.play' || e.type === 'sim.pause' || e.type === 'sim.speed') { syncCore(); if (!embed) syncToolbar(); return; }
+  notePulse(sim, e);
   clearTimeout(boot.t); boot.t = setTimeout(() => { render(); if (!embed) refreshMenu(); }, 120);
 });
 const boot = { t: 0 };
