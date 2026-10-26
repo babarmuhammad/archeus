@@ -76,4 +76,6 @@
   --ease: cubic-bezier(.22, .8, .18, 1);
   --dur-state: 160ms; --dur-sheet: 280ms; --dur-breath: 6000ms;
   --tb: 48px;
+  --r-s: 6px; --r-m: 12px; --r-l: 20px;
+  --edge: var(--line-strong); --glow: var(--thread);
 }
