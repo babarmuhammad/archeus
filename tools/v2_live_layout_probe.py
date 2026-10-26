@@ -32,11 +32,18 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
 ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
+          'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
+          'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
           'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'attention/a-1~policy', 'attention/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
           'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv']
+# terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
+TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
+       'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
+TUI_RESET = "() => { const c = window.v2live.ui.tui.ctl; c.setPrefs({ look: 'app', ascii: false, linear: false }); c.state.mode = null; c.go('now'); window.v2live.ui.tui.redraw(); }"
+TUI_SET = "([keys, prefs]) => { const c = window.v2live.ui.tui.ctl; c.setPrefs(prefs); if (keys) c.keys(keys); window.v2live.ui.tui.redraw(); }"
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
 KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'error']
 
@@ -352,6 +359,13 @@ def main():
                             frames = [f for f in pg.frames if f != pg.main_frame]
                         elif route in S4_ROUTES:
                             layer = s4_state(pg, route, w)
+                        elif route.startswith('tui:'):
+                            pg.evaluate("location.hash = '#/terminal'")
+                            pg.wait_for_timeout(200)
+                            pg.evaluate(TUI_RESET)
+                            keys, prefs = TUI[route]
+                            pg.evaluate(TUI_SET, [keys, prefs])
+                            pg.wait_for_timeout(250)
                         elif route.startswith('menu:'):
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(120)
@@ -403,6 +417,8 @@ def main():
                             pg.keyboard.press('Escape')
                         if '~' in route:
                             pg.evaluate(RESET)
+                        if route.startswith('tui:'):
+                            pg.evaluate(TUI_RESET)
                     ctx.close()
             br.close()
     finally:

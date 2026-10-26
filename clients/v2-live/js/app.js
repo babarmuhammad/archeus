@@ -67,6 +67,7 @@ function nav(hash) { if (location.hash === hash) render(); else location.hash = 
 function closeInsp() { nav('#/' + ctx.route.name); }
 
 function render() {
+  if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();

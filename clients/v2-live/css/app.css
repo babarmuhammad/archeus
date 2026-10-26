@@ -278,22 +278,8 @@ dl.kv dd { overflow-wrap: anywhere; }
 .sel-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 4px 16px 12px; }
 .sel-wrap select { min-height: var(--target); padding: 0 10px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s3); color: var(--text); font-size: var(--fs-body); }
 
-/* ---------- terminal (the TUI as text) ---------- */
-.term-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
-.term-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: var(--hair) solid var(--line); background: var(--s1); }
-.term-bar .btn { min-height: var(--target); padding: 0 12px; font-size: var(--fs-cap); }
-.term-bar .btn[aria-current='true'] { background: var(--s3); border-color: var(--text-2); }
-.term-bar .sp { flex: 1 1 auto; }
-.term-screen { flex: 1 1 auto; min-height: 0; margin: 0; padding: 10px 12px; overflow: hidden; background: var(--bg); color: var(--text); font: 400 var(--fs-mono)/1.45 var(--mono); white-space: pre; tab-size: 4; }
-.term-screen:focus-visible { outline-offset: -3px; }
-.term-screen .l { display: block; min-height: 1.45em; }
-.term-screen .l.head { font-weight: 700; }
-.term-screen .l.dim { color: var(--text-3); }
-.term-screen .l.warn { color: var(--attention); }
-.term-screen .l.sel { background: var(--text); color: var(--bg); }
-.term-probe { position: absolute; visibility: hidden; font: 400 var(--fs-mono)/1.45 var(--mono); white-space: pre; }
-.term-keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); border-top: var(--hair) solid var(--line); background: var(--s1); }
-.term-keys .btn { min-height: var(--target); padding: 0 12px; font-family: var(--mono); font-size: var(--fs-cap); }
+/* ---------- terminal: see tui.css ---------- */
+.term-wrap { position: absolute; inset: 0; }
 
 @font-face { font-family: "Libre Caslon Text"; src: url('../fonts/LibreCaslonText-VF.ttf') format('truetype'); font-weight: 400 700; font-display: swap; }
 
@@ -304,6 +290,7 @@ dl.kv dd { overflow-wrap: anywhere; }
   .nav-item[aria-current='page'], .tab[aria-selected='true'] { border-color: Highlight; }
   .spine .disc { fill: CanvasText; } .spine .ring, .spine .seg { stroke: CanvasText; } .spine .cur { fill: Highlight; } .spine .cur.o { stroke: Highlight; fill: none; }
   .term-screen .l.sel { background: Highlight; color: HighlightText; }
+  .core .core-mark circle.o { stroke: CanvasText; fill: Canvas; } .core .core-mark circle.i { fill: CanvasText; }
 }
 
 .sep { height: var(--hair); margin: 8px 0; background: var(--line); }

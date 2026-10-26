@@ -125,7 +125,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 (done: built) |
 | E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 |
 | E05 | World: Projects and Knowledge tabs, repositories, inspections, supersession chain | V1 `World.tsx` | BUILT | MAP, SET | S1 (knowledge in the simulation only), S2 |
-| E06 | Control sections: Autonomy, Automations, Resources, Sessions, Clients, Appearance, About, Emergency stop | V1 `Control.tsx`, navigation.json | BUILT + SIMULATED | SET | S1 (accounts, harnesses, automations, clients, hooks, MCP, agents), S3 (Automations, Resources, Clients, hooks, MCP and agents as the Extensions, Usage and Accounts pages), S5 (terminal Control screen) |
+| E06 | Control sections: Autonomy, Automations, Resources, Sessions, Clients, Appearance, About, Emergency stop | V1 `Control.tsx`, navigation.json | BUILT + SIMULATED | SET | S1 (accounts, harnesses, automations, clients, hooks, MCP, agents), S3 (Automations, Resources, Clients, hooks, MCP and agents as the Extensions, Usage and Accounts pages), S5 done in TERM (`4` Control: accounts and usage, automations, clients with hooks, MCP and agents, security, health, appearance, about; Autonomy, Sessions and Resources are not simulated) |
 | E07 | Mission inspector tabs: Outcome, Plan, Now, Evidence, Why, Timeline, Relations | V1 `Mission.tsx`, navigation.json | BUILT + SIMULATED | WORK, MAP, ATT inspector | S1 (five tabs), S3 (done: Why, Relations) |
 | E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 (done: built) |
 | E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | ATT, NOW, inspector | S1 (decision sheet), S3 (done: built) |
@@ -197,12 +197,12 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | H06 | Verification pass and fail; failed verification replans; replan budget then BLOCKED | ST, BOARD | BUILT + SIMULATED | WORK, REP | S1 |
 | H07 | Hook asks before an action: execution AWAITING_APPROVAL, approval card, reject blocks the mission | ST, T149 | BUILT + SIMULATED | ATT (trigger an approval) | S1 |
 | H08 | Automations (ENABLED, PENDING_APPROVAL, SUSPENDED by the loop guard), schedule triggers and next_run | ST, BOARD T-129 | BUILT + SIMULATED | ACC, ATT | S1 |
-| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (lists), S3 (done: Extensions page, switches with confirm, details sheet, last run and calls from the simulation) |
+| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (lists), S3 (done: Extensions page, switches with confirm, details sheet, last run and calls from the simulation), S5 done in TERM (lists in `4` Control; no enable or disable) |
 | H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | ACC | S1, S3 (done: Accounts page with failover order, default model, per-project launch settings with a live preview; Usage page) |
 | H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | ACC | S1, S3 (done: Clients rows and a details sheet; revoke stays a step-up note) |
 | H12 | Knowledge items (CANDIDATE, CONFIRMED, RETRACTED, SUPERSEDED), confirm or reject | ST, V1 World | BUILT + SIMULATED | ATT, SET | S1 (candidates in Attention) |
 | H13 | Ideas with their own states | ST, V1 Work | BUILT + SIMULATED | WORK | S1 |
-| H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1, S3 (done: two boundaries, isolated and not isolated, eight boundaries, privileges, switches, log), S5 |
+| H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1, S3 (done: two boundaries, isolated and not isolated, eight boundaries, privileges, switches, log), S5 done in TERM (`g s`, same list and words) |
 | H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 (done: built) |
 | H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 (the usage line and failover rules; Pause all, Resume all and Emergency stop are not built here) |
 | H17 | Themes in V1: dark and light with contrast aliases; the "6 themes" were confirmed in VL §1 | V1 tokens.json, VL | BUILT + SIMULATED | SET | S1 |
@@ -217,7 +217,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | I04 | Plan approval screen: What, Why, Core consequence, Approve, Request changes, Reject; local receipt only | PROTO README | PROTOTYPED | ATT | S1 (Approve, Reject), S3 (done: built) |
 | I05 | Decision sheet with two-step confirm on the phone | PROTO README | PROTOTYPED | ATT · P | S1 (one step), S3 (done: built) |
 | I06 | Fixtures: 3 projects (Archeus, Notes, Ideas) and 5 missions (Search provenance, Fix date test, Docs refresh, Offline capture, Export backup) | PROTO app.js | PROTOTYPED | ALL | S1 (extended to 8 missions) |
-| I07 | Terminal screens (overview, mission, replay) as a text grid; keys 1 2 3, p, y, Left and Right | PROTO README | PROTOTYPED | TERM | S1 (Now, Work, Attention, Replay), S5 |
+| I07 | Terminal screens (overview, mission, replay) as a text grid; keys 1 2 3, p, y, Left and Right | PROTO README | PROTOTYPED | TERM | S1 (Now, Work, Attention, Replay), S5 done (also World, Control, mission with seven tabs, the decision card, help; keys follow the real TUI, see section N) |
 | I08 | Phone frames: hub, Review, slim sheet, chat sheet | PROTO README | PROTOTYPED | P | S1 (real layout instead of art) |
 | I09 | Concept art rasters at fixed pixel coordinates, `CONCEPT_LAYOUT` tables | PROTO | PROTOTYPED | none | not ported (owner complaint) |
 | I10 | Hit probe by `elementFromPoint`, 44 pt phone and 48 CSS px desktop | PROTO `tools/v2_hit_probe.py` | PROTOTYPED | ALL | S1 (`tools/v2_live_layout_probe.py`) |
@@ -259,11 +259,11 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | M01 | Now, Work, Attention, spine, decisions | NOW, WORK, ATT, inspector and decision sheet, MAP | `#/now`, `#/work/<id>`, `#/attention/<id>` | S1 shell and lists, S2 Now, S3 mission and decisions |
 | M02 | Chat and slash commands | CHAT | `#/chat` | S1, S4 built |
 | M03 | Replay | REP | `#/replay/<id>` | S1, S4 built |
-| M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1, S3 (done: #/security with trip and reset), S5 |
+| M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1, S3 (done: #/security with trip and reset), S5 done in TERM (`#/terminal/security`) |
 | M05 | Health: checks and readings | HLT | `#/health` | S1, S3 (done: built) |
-| M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S3 (done: #/usage and #/accounts), S5 |
-| M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1, S3 (done: #/extensions), S5 |
-| M08 | Terminal view | TERM | `#/terminal`, device switch | S1, S5 |
+| M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S3 (done: #/usage and #/accounts), S5 done in TERM (`#/terminal/accounts`) |
+| M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1, S3 (done: #/extensions), S5 done in TERM (`#/terminal/clients`) |
+| M08 | Terminal view | TERM | `#/terminal`, device switch | S1, S5 done (section O) |
 | M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 |
 
 ## N. S3 additions (2026-10-26)
@@ -296,6 +296,29 @@ S3 story additions (sim.js, additive): the Codex spawn breaker trips at +8 min a
 | L05 | Acknowledge and snooze Core records | UIA §H, PLAN G0-7 | DESIGNED (open) | not simulated |
 | L06 | Voice, sound, OS-level presence, 3D and XR | UIA §S "Later" | DESIGNED (later) | not simulated |
 | L07 | Which Replay rows come from a broker (external effects) | T148 N7, PV-20 broker | DESIGNED (blocked on P20) | shown as NOT RECORDED |
+
+## O. Terminal view (slice 5)
+
+The terminal renders the same simulation as the GUI, in the same words (checked by `test/tui.test.mjs`, the "parity" tests). Code: `js/tui/` (cells, screens, controller, cmd: DOM free; view: DOM), `css/tui.css`. Key map: the real TUI's (`archeus/cli/tui/app.py`: 1 2 3 a 4, j k and arrows, Enter, Esc, Tab, `[ ]`, `:`, `?`, `q`, upper case = actions, y confirms) plus the concept's (`/` find, `g` places, `t` tell, `b` back).
+
+| ID | Item | Source | Status | Where | Slice |
+|---|---|---|---|---|---|
+| O01 | Now: state line (`N need you · N running · N stopped · N verifying`), the constellation in text (Core, project hubs, mission nodes with the state glyph and `▲` for a live execution, box lines, columns or a tree by width), Needs you, Happening now, Upcoming, Recent, Conversation | concept 13, E02, A03 | SIMULATED | TERM | S5 done |
+| O02 | Six-station spine as `✓✓◆○○○ Approval` on every row, station labels on the mission and decision cards, the generated sentence for a screen reader | A54 §7 (D10) | SIMULATED | TERM | S5 done |
+| O03 | Work (groups by what a mission waits on, ideas), World (projects, what Archeus knows), Attention (Decide, Review, Unblock) | E03, E04 | SIMULATED | TERM | S5 done |
+| O04 | Mission inspector with the seven real tabs (o Outcome, p Plan, n Now, e Evidence, w Why, t Timeline, r Relations); Why built from `reason`, `held_from`, the approval and a lost execution, never guessed | E07, V1 `Mission.tsx` | SIMULATED | TERM | S5 done |
+| O05 | Decision card (what, why it asks, what Core does next, expiry, where the mission is); A approve and R reject ask `y` first, any other key cancels | E09, V1 TUI | SIMULATED | TERM | S5 done |
+| O06 | Mission actions by state (P pause, R resume or replan or answer and unblock, A accept, C request changes, X cancel, E emergency stop = pause every running mission), all through the same sim edges | K04 | SIMULATED | TERM | S5 done |
+| O07 | Replay: nine categories as text with a count per category, the meaning of the selected one, trigger, settled by, record, NOT RECORDED, the pruned note; `n` and `N` change mission | G01 to G07 | SIMULATED | TERM | S5 done |
+| O08 | Control: Accounts and usage (text meters, `unknown` never 0), Automations, Clients with hooks, MCP and agents, Security, Health, Appearance, About; Tab cycles sections; `g s`, `g h`, `g u` | H03, H08, H09, H14, H15 | SIMULATED | TERM | S5 done |
+| O09 | Command line (`:` or `/`): go to a place or a mission, slash commands with completion (English names, Italian aliases, the table in `sim.js`), plain text to Archeus; the reply, its cards and links shown as an overlay with `y`, `n` and Enter; secret-looking text refused | F11 to F15, T153 | SIMULATED | TERM | S5 done |
+| O10 | Help overlay (`?`) and places overlay (`g`); key hints and navigation in Italian when the language is Italian | A24 | SIMULATED | TERM | S5 done |
+| O11 | Responsive character grid: 40, 80, 120 and 160+ columns (tiers at 60, 110 and 150 columns), whole pixels per cell, two panes with Tab from 110 columns, rows follow the height, deep links `#/terminal/<screen, section, mission or approval id>` | A02, J04 | SIMULATED | TERM | S5 done |
+| O12 | Looks: App colours (follows the six modes), ANSI 16, High contrast, Monochrome (reverse video for the selection); ASCII only (presentation.json twins, 1:1 text folding); Windows forced colours through system colours | A04, B05, B07 | SIMULATED | TERM | S5 done |
+| O13 | Reduced motion: nothing animates in the terminal; the one slow mark is the core glyph swapping between `◎` and `◉` every 3 s under full motion with live work, static under Quiet (the real TUI does not move at all: owner question) | A05, A06, C05 | SIMULATED | TERM | S5 done |
+| O14 | Linear mode (Read): the screen as headings and lists, glyphs spoken as words, no box characters, the selection marked with `aria-current`; a polite live region for the selection and the status line; Esc then Tab leaves the grid (no keyboard trap) | UIA §P | SIMULATED | TERM | S5 done |
+| O15 | Mouse and touch: click selects and a second click opens; tabs, navigation and action text are clickable; wheel moves; a key bar of 44 px buttons below 900 px with the actions of the selected thing; a real input for the command line | A11 | SIMULATED | TERM | S5 done |
+| O16 | Window frame (dots, name, Colours, ASCII, Read, Keys) in the V2 Live visual language: solid surfaces, 3 px focus ring, 2 px hairline in high contrast | A09, B15 | SIMULATED | TERM | S5 done |
 
 ## Counts
 
