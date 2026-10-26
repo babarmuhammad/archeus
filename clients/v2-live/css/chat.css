@@ -76,7 +76,6 @@
 .ccard[data-state='open'][data-kind='start'], .ccard[data-state='open'][data-kind='confirm'], .ccard[data-state='open'][data-kind='approval'], .ccard[data-state='open'][data-kind='remember'], .ccard[data-kind='proposal'] {
   border-color: color-mix(in srgb, var(--attention) 55%, var(--line-strong)); box-shadow: 0 0 28px -12px color-mix(in srgb, var(--attention) 45%, transparent); }
 .ccard[data-kind='refusal'] { border-style: dashed; }
-.ccard[data-sample='true'] { pointer-events: none; }
 .kick { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--text-2); }
 .kick[data-role='needs_you'] .g { color: var(--attention); }
 .kick[data-role='blocked'] .g { color: var(--blocked); }
