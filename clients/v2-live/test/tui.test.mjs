@@ -161,9 +161,10 @@ test('actions follow the state: pause a running mission, resume a paused one, re
   pick('m-export'); assert.ok(t.actions(t.selected()).some((a) => a.label === 'Answer and unblock'));
 });
 
-test('emergency stop asks, then pauses every running mission', () => {
+test('emergency stop asks, then stops every running mission', () => {
   const { sim, t } = mk(30); t.key('E'); assert.equal(t.state.mode.kind, 'confirm'); t.key('y'); sim.advance(10000);
   assert.equal(Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING').length, 0);
+  assert.equal(sim.state.missions['m-date'].reason, 'Emergency stop');
   t.key('E'); assert.match(t.frame({ cols: 100, rows: 30 }).lines.at(-1).s.map((x) => x[0]).join(''), /Nothing is running/);
 });
 

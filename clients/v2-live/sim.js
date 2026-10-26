@@ -22,7 +22,7 @@ export const COMMANDS = [
   { name: 'resume', it: 'riprendi', cls: 'PROPOSE', args: '<mission>', desc: 'Propose resuming a mission' },
   { name: 'cancel', it: 'annulla', cls: 'PROPOSE', args: '<mission>', desc: 'Propose cancelling a mission' },
   { name: 'approve', it: 'approva', cls: 'PROPOSE', args: '<mission>', desc: 'Open the decision; it decides nothing' },
-  { name: 'estop', it: 'arresto', cls: 'PROPOSE', args: '', desc: 'Propose pausing every running mission' }
+  { name: 'estop', it: 'arresto', cls: 'PROPOSE', args: '', desc: 'Propose an emergency stop of every running mission' }
 ];
 const SECRET = /sk-[A-Za-z0-9]|ghp_|AKIA|Bearer /;
 export function findCommand(word) { const w = word.toLowerCase(); return COMMANDS.find((c) => c.name === w || c.it === w); }
@@ -328,6 +328,13 @@ export function createSim(opts = {}) {
   }
   function doAct(kind, id, arg) {
     const bad = (reason) => ({ ok: false, reason });
+    if (kind === 'pause_all' || kind === 'resume_all' || kind === 'estop') {
+      const [from, one] = { pause_all: ['EXECUTING', 'pause'], resume_all: ['PAUSED', 'resume'], estop: ['EXECUTING', 'stop'] }[kind];
+      const done = Object.values(S.missions).filter((x) => x.state === from && doAct(one, x.id).ok);
+      if (!done.length) return bad(kind === 'resume_all' ? 'Nothing is paused' : 'Nothing is running');
+      if (kind === 'estop') done.forEach((x) => { x.reason = 'Emergency stop'; });
+      return { ok: true, n: done.length };
+    }
     if (kind === 'approve' || kind === 'reject') {
       const a = S.approvals[id]; if (!a) return bad('No such approval');
       if (a.state !== 'PENDING') return bad('This approval is already ' + a.state.toLowerCase());
@@ -727,9 +734,9 @@ export function createSim(opts = {}) {
       if (r.m.state !== 'APPROVAL_REQUIRED' || !r.m.approval) return { text: r.m.title + ' has no decision waiting. /approve only opens a decision; it never decides.' };
       return { text: 'A decision waits for you on ' + r.m.title + '. /approve decides nothing; open it to decide.', card: { kind: 'link', text: 'Open the decision', href: '#/attention/' + r.m.approval } };
     }
-    if (c.name === 'mission') { if (!arg) return { err: 'Say what to do: /mission <what to do>.' }; const m = newMission(arg); return { text: 'Created the mission "' + m.title + '" on Archeus. It plans first and then waits for your approval. (In V1 today a chat mission starts without a card; the owner has flagged that, so it is not shown as approved here.)', card: { kind: 'link', text: 'Open mission', href: '#/work/' + m.id } }; }
+    if (c.name === 'mission') { if (!arg) return { err: 'Say what to do: /mission <what to do>.' }; const m = newMission(arg, { hold: true }); return { text: 'Created the mission "' + m.title + '" on Archeus. Not started: starting it needs your approval.', card: { kind: 'proposal', text: 'Start and plan ' + m.title, acts: [['start', m.id]], state: 'open' } }; }
     if (c.name === 'idea') { if (!arg) return { err: 'Say the idea: /idea <idea>.' }; const i = { id: 'i-' + (++S.counters.idea), project: 'ideas', title: arg, state: 'CAPTURED' }; S.ideas.push(i); emit('idea.created', { kind: 'idea', id: i.id }, {}, { project: 'ideas' }); return { text: 'Captured the idea "' + arg + '". It is not a commitment.' }; }
-    if (c.name === 'estop') { const run = list().filter((m) => m.state === 'EXECUTING'); return { text: run.length ? 'Pause every running mission? ' + run.map((m) => m.title).join(', ') + '.' : 'Nothing is running.', card: run.length ? { kind: 'proposal', text: 'Pause ' + run.length + ' running', acts: run.map((m) => ['pause', m.id]), state: 'open' } : null }; }
+    if (c.name === 'estop') { const run = list().filter((m) => m.state === 'EXECUTING'); return { text: run.length ? 'Stop every running mission? ' + run.map((m) => m.title).join(', ') + '.' : 'Nothing is running.', card: run.length ? { kind: 'proposal', text: 'Emergency stop: ' + run.length + ' running', acts: [['estop']], state: 'open' } : null }; }
     const r = resolveMission(arg); if (r.err) return { err: r.err };
     const need = { pause: 'EXECUTING', resume: 'PAUSED', cancel: null }[c.name];
     if (need && r.m.state !== need) return { text: r.m.title + ' is ' + word(r.m).toLowerCase() + ', so /' + c.name + ' does not apply.' };

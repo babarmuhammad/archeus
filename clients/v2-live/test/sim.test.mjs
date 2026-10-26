@@ -251,6 +251,9 @@ test('slash commands: READ answers, CREATE writes, PROPOSE only proposes until t
   assert.equal(s.say('/missione add dark mode').ok, true);
   assert.equal(Object.keys(s.state.missions).length, n + 1);
   const m = s.state.missions['m-n1']; assert.equal(m.state, 'CREATED');
+  s.advance(200000); assert.equal(m.state, 'CREATED');
+  const start = s.state.messages.at(-1); assert.equal(start.card.kind, 'proposal');
+  assert.equal(s.cardAction(start.id, 'confirm').ok, true);
   s.advance(200000); assert.equal(m.state, 'APPROVAL_REQUIRED');
   assert.equal(s.say('/idea try a calm mode').ok, true); assert.ok(s.state.ideas.some((i) => i.title === 'try a calm mode'));
   // PROPOSE: nothing changes until the card is confirmed
@@ -278,4 +281,19 @@ test('security and health lists: unknown stays unknown, a tripped breaker shows'
   assert.equal(h.find((x) => x.id === 'h-pi').state, 'unknown');
   assert.equal(h.find((x) => x.id === 'h-claude_code').state, 'attention');
   assert.deepEqual(s.counts().need >= 1, true);
+});
+
+test('H16: pause all, resume all and emergency stop are one action each', () => {
+  const s = createSim();
+  s.advance(60000);
+  assert.equal(s.act('pause_all').ok, true); s.advance(10000);
+  assert.equal(Object.values(s.state.missions).filter((m) => m.state === 'EXECUTING').length, 0);
+  assert.equal(s.act('pause_all').ok, false);
+  assert.equal(s.act('resume_all').ok, true); s.advance(20000);
+  assert.ok(Object.values(s.state.missions).some((m) => m.state === 'EXECUTING'));
+  assert.equal(s.act('resume_all').ok, false);
+  assert.equal(s.act('estop').ok, true);
+  assert.equal(Object.values(s.state.missions).filter((m) => m.state === 'EXECUTING').length, 0);
+  assert.equal(s.state.missions['m-date'].reason, 'Emergency stop');
+  assert.equal(s.act('estop').ok, false);
 });

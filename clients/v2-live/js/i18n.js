@@ -74,7 +74,7 @@ const IT = {
   'List the commands by class': 'Elenca i comandi per classe', 'What is running, waiting and stopped': 'Cosa è in corso, in attesa e fermo', 'Usage of the accounts (unknown until the read exists)': 'Utilizzo degli account (sconosciuto finché la lettura non esiste)', 'The projects': 'I progetti',
   'The missions, optionally of one project': 'Le missioni, eventualmente di un progetto', 'What waits for you': 'Cosa aspetta te', 'The ideas': 'Le idee', 'Open the Replay of a mission': 'Apri il Replay di una missione', 'Open a mission': 'Apri una missione',
   'Create a mission (it waits for your approval here)': 'Crea una missione (qui aspetta la tua approvazione)', 'Capture an idea': 'Cattura un\'idea', 'Propose pausing a mission': 'Proponi di mettere in pausa una missione', 'Propose resuming a mission': 'Proponi di riprendere una missione',
-  'Propose cancelling a mission': 'Proponi di annullare una missione', 'Open the decision; it decides nothing': 'Apri la decisione; non decide nulla', 'Propose pausing every running mission': 'Proponi di mettere in pausa ogni missione in corso'
+  'Propose cancelling a mission': 'Proponi di annullare una missione', 'Open the decision; it decides nothing': 'Apri la decisione; non decide nulla', 'Propose an emergency stop of every running mission': 'Proponi un arresto d'emergenza di ogni missione in corso'
 };
 
 const RULES = [
@@ -126,4 +126,9 @@ export function translate(root) {
 // Italian command names are real aliases (T-153); the list is used by the chat menu and by sim.js
 export const ALIASES = { help: 'aiuto', status: 'stato', usage: 'usa', projects: 'progetti', missions: 'missioni', needs: 'attesa', ideas: 'idee', replay: 'rigioca', open: 'apri', mission: 'missione', idea: 'idea', pause: 'pausa', resume: 'riprendi', cancel: 'annulla', approve: 'approva', estop: 'arresto' };
 
-Object.assign(IT, IT_AREAS); RULES.push(...RULES_AREAS); setTr(tr);
+Object.assign(IT, IT_AREAS, {
+  'Pause, resume and emergency stop': 'Pausa, ripresa e arresto d’emergenza', 'Pause all': 'Metti tutto in pausa', 'Resume all': 'Riprendi tutto', 'Emergency stop': 'Arresto d’emergenza', 'Yes, stop everything': 'Sì, ferma tutto', 'Show all projects': 'Mostra tutti i progetti', 'Project filter': 'Filtro progetto',
+  'Pausing every running mission (simulated).': 'Metto in pausa ogni missione in corso (simulato).', 'Resuming every paused mission (simulated).': 'Riprendo ogni missione in pausa (simulato).', 'Emergency stop: every running mission stopped (simulated).': 'Arresto d’emergenza: ogni missione in corso è ferma (simulato).'
+});
+RULES.push(...RULES_AREAS, [/^Project: (.+)$/, (m) => 'Progetto: ' + m[1]], [/^(\d+) running, (\d+) paused\. Pause all waits for each execution to reach a safe boundary\. Emergency stop ends every running execution; each mission then waits for you\.$/, (m) => m[1] + ' in corso, ' + m[2] + ' in pausa. Metti tutto in pausa aspetta che ogni esecuzione raggiunga un punto sicuro. L’arresto d’emergenza chiude ogni esecuzione in corso; ogni missione resta poi in attesa di te.']);
+setTr(tr);

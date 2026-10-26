@@ -292,7 +292,8 @@ def main():
         pg.wait_for_timeout(500)
         check(pg.evaluate("document.querySelectorAll('.am-star').length") == 26 and pg.evaluate("document.getAnimations().filter(a => a.playState === 'running').length") == 1, 'add node: 26 stars, arrival effects finish, one animation left')
         check(not errors, 'pulse/add: no console errors')
-        perf = pg.evaluate(PERF)
+        runs = sorted((pg.evaluate(PERF) for _ in range(3)), key=lambda r: r['structural']['p95'])
+        perf = runs[1]  # median of three runs: one noisy run on a busy machine should not fail the 16 ms limit
         print('perf', perf, flush=True)
         check(perf['nodes'] == 200, 'perf: 200 nodes drawn')
         check(perf['structural']['p95'] < 16, f'perf: structural update of 200 nodes p95 {perf["structural"]["p95"]:.1f} ms (p50 {perf["structural"]["p50"]:.1f}, max {perf["structural"]["max"]:.1f}) < 16 ms')

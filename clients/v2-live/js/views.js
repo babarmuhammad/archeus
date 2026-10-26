@@ -98,9 +98,11 @@ export function viewNow(ctx) {
 // ---------- Work ----------
 export function viewWork(ctx) {
   const sim = ctx.sim, st = sim.state;
-  const groups = missionGroups(sim);
+  const pf = ctx.ui.workProject, pn = pf && st.projects.find((p) => p.id === pf);
+  const groups = missionGroups(sim).map((g) => (pn ? Object.assign({}, g, { items: g.items.filter((m) => m.project === pf) }) : g)).filter((g) => !pn || g.items.length);
   return h('div', null, head(ctx, 'Work'), h('div', { class: 'view' },
     dnote('E03', 'Missions grouped by what they wait on, as in V1; the spine shows where each one is (A13).'),
+    pn ? h('div', { class: 'chips', role: 'group', 'aria-label': 'Project filter' }, h('span', { class: 'chip', 'aria-pressed': 'true' }, 'Project: ' + pn.name), h('button', { class: 'chip', type: 'button', 'data-key': 'work-all', onclick: () => { ctx.ui.workProject = null; ctx.render(); } }, 'Show all projects')) : null,
     ...groups.map((g) => panel(g.title, g.items.length, h('div', { class: 'stack' }, ...g.items.map((m) => missionRow(ctx, m, 'work'))))),
     panel('Ideas', st.ideas.length, h('div', { class: 'body' }, ...st.ideas.map((i) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, i.title), h('span', { class: 'b' }, projName(sim, i.project) + ' · ' + word('idea', i.state))))))));
 }
@@ -167,6 +169,18 @@ export function simControls(ctx) {
 export const meter = (label, v, cap) => h('div', { class: 'meter' }, h('div', { class: 'cap' }, h('span', null, label), h('span', null, v == null ? 'unknown' : Math.round(v) + '%')),
   h('div', { class: 'bar' + (v == null ? ' unk' : v >= 85 ? ' warn' : ''), role: 'img', 'aria-label': label + ' ' + (v == null ? 'unknown' : Math.round(v) + ' percent') }, v == null ? null : h('i', { style: 'width:' + Math.min(100, v) + '%' })), cap ? h('div', { class: 'cap' }, h('span', null, cap)) : null);
 
+function controlBody(ctx) {
+  const ms = Object.values(ctx.sim.state.missions), run = ms.filter((m) => m.state === 'EXECUTING').length, paused = ms.filter((m) => m.state === 'PAUSED').length;
+  const b = (cls, label, onclick, key) => h('button', { class: 'btn ' + cls, type: 'button', 'data-key': key, onclick }, label);
+  const ask = ctx.ui.estopAsk;
+  return h('div', { class: 'body' },
+    h('p', { class: 'note', style: 'padding:0 0 8px' }, run + ' running, ' + paused + ' paused. Pause all waits for each execution to reach a safe boundary. Emergency stop ends every running execution; each mission then waits for you.'),
+    h('div', { class: 'actions' },
+      b('', 'Pause all', () => ctx.act('pause_all'), 'pause-all'), b('', 'Resume all', () => ctx.act('resume_all'), 'resume-all'),
+      ask ? [b('danger', 'Yes, stop everything', () => { ctx.ui.estopAsk = false; ctx.act('estop'); }, 'estop-yes'), b('', 'Back', () => { ctx.ui.estopAsk = false; ctx.render(); }, 'estop-back')]
+        : b('danger', 'Emergency stop', () => { ctx.ui.estopAsk = true; ctx.render(); }, 'estop')));
+}
+
 export function viewSettings(ctx) {
   const sim = ctx.sim, st = sim.state;
   const row = (a, b) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, a), h('span', { class: 'b' }, b));
@@ -181,6 +195,7 @@ export function viewSettings(ctx) {
       panel('Device preview', null, h('div', { class: 'body' }, h('div', { class: 'chips', role: 'group', 'aria-label': 'Device preview' }, ...DEVICES.map((d) => h('button', { class: 'chip', type: 'button', 'aria-pressed': store.get('device') === d.id ? 'true' : 'false', onclick: () => ctx.setDevice(d.id) }, d.label + (d.w ? ' ' + d.w : ''))), h('a', { class: 'chip', href: '#/terminal' }, 'Open the terminal view')))),
       panel('Simulation', null, h('div', { class: 'body' }, simControls(Object.assign({}, ctx, { where: 'set' }))))),
     h('div', { class: 'cols eq' },
+      panel('Pause, resume and emergency stop', null, controlBody(ctx)),
       panel('Language and notes', null, h('div', { class: 'body' }, h('h3', { class: 'group-h', style: 'font-size:var(--fs-cap)' }, 'Language'),
         h('div', { class: 'chips', role: 'group', 'aria-label': 'Language' }, ...[['en', 'English'], ['it', 'Italiano']].map(([id, l]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': store.get('lang') === id ? 'true' : 'false', onclick: () => ctx.setLang(id) }, l))),
         h('h3', { class: 'group-h', style: 'font-size:var(--fs-cap);margin-top:16px' }, 'Decision notes'),

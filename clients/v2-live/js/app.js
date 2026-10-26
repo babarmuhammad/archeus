@@ -71,7 +71,7 @@ function render() {
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) ui.confirm = null; }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.confirm = null; if (ctx.route.name !== 'work') ui.workProject = null; } }
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
@@ -122,7 +122,7 @@ function patchLive() {
 }
 
 // ---------- actions ----------
-const SAY = { approve: 'Approved (simulated). Nothing was run.', reject: 'Rejected (simulated).', accept: 'Accepted (simulated).', changes: 'Changes requested (simulated).', unblock: 'Unblocked (simulated).', resume: 'Resumed (simulated).', replan: 'Replanning (simulated).', cancel: 'Cancelled (simulated).', pause: 'Pausing (simulated).', confirm: 'Remembered (simulated).', retract: 'Not remembered (simulated).', enable: 'Enabled (simulated).' };
+const SAY = { approve: 'Approved (simulated). Nothing was run.', reject: 'Rejected (simulated).', accept: 'Accepted (simulated).', changes: 'Changes requested (simulated).', unblock: 'Unblocked (simulated).', resume: 'Resumed (simulated).', replan: 'Replanning (simulated).', cancel: 'Cancelled (simulated).', pause: 'Pausing (simulated).', pause_all: 'Pausing every running mission (simulated).', resume_all: 'Resuming every paused mission (simulated).', estop: 'Emergency stop: every running mission stopped (simulated).', confirm: 'Remembered (simulated).', retract: 'Not remembered (simulated).', enable: 'Enabled (simulated).' };
 function act(kind, id) {
   let r = { ok: true }, msg = SAY[kind];
   if (kind === 'play-sim') { sim.play(); msg = 'Simulation running.'; } else if (kind === 'pause-sim') { sim.pause(); msg = 'Simulation paused.'; }

@@ -204,7 +204,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | H13 | Ideas with their own states | ST, V1 Work | BUILT + SIMULATED | WORK | S1 |
 | H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1, S3 (done: two boundaries, isolated and not isolated, eight boundaries, privileges, switches, log), S5 done in TERM (`g s`, same list and words) |
 | H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 (done: built) |
-| H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 (the usage line and failover rules; Pause all, Resume all and Emergency stop are not built here) |
+| H16 | Usage limits and Pause all, Resume all, Emergency stop | V1 Control, T149 | BUILT | SET, NOW | S3 (the usage line and failover rules), integration (Pause all, Resume all and Emergency stop: one sim action each, `pause_all`, `resume_all`, `estop`, used by the Settings page, the terminal `E` key and the `/estop` card; Emergency stop ends every running execution and leaves each mission Blocked as "Emergency stop"; re-arming and a dispatch block are not modelled) |
 | H17 | Themes in V1: dark and light with contrast aliases; the "6 themes" were confirmed in VL §1 | V1 tokens.json, VL | BUILT + SIMULATED | SET | S1 |
 
 ## I. Prototype features (clients/v2-prototype)
