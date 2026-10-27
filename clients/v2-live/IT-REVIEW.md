@@ -1620,3 +1620,18 @@ Status: to review. 7 strings.
 | account | Account |
 | usage | Usage |
 | Sign in | A subscription login. Archeus never reads, stores, copies, injects or relays the token. |
+
+## Crystal map and mission graph (visual fidelity pass)
+
+Status: to review. Builder-written, not checked by a native speaker.
+
+| English | Italian |
+|---|---|
+| EXECUTION | ESECUZIONE |
+| VERIFICATION | VERIFICA |
+| REVIEW | REVISIONE |
+| TASK | ATTIVITÀ |
+| OUTPUT | RISULTATO |
+| MISSION | MISSIONE |
+| Branch: {name} | Ramo: {name} |
+| No items yet | Ancora nessuna voce |

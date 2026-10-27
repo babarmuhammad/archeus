@@ -627,6 +627,18 @@ export function createSim(opts = {}) {
     S.events.sort((a, b) => a.at - b.at || a.seq - b.seq).forEach((e, i) => { e.seq = i + 1; });
     seq = S.events.length; S.clock = 0; S.quiet = false;
     script();
+    if (opts.story === 'calm') calmDown();
+  }
+  // ?story=calm (concept 07): two finished missions, nothing running, nothing waiting, and the script silent.
+  function calmDown() {
+    const keep = new Set(['m-docs', 'm-offline']), gone = (x) => x.mission && !keep.has(x.mission);
+    for (const id of Object.keys(S.missions)) if (!keep.has(id)) delete S.missions[id];
+    S.missions['m-offline'].state = S.missions['m-docs'].state;
+    for (const key of ['tasks', 'executions', 'approvals', 'verifications', 'reviews', 'plans']) for (const [id, x] of Object.entries(S[key])) if (!keep.has(x.mission)) delete S[key][id];
+    S.events = S.events.filter((e) => !gone(e)); seq = S.events.length;
+    S.knowledge.forEach((k) => { if (k.state === 'CANDIDATE') k.state = 'CONFIRMED'; });
+    S.automations.forEach((x) => { if (x.state === 'SUSPENDED' || x.state === 'PENDING_APPROVAL') x.state = 'ENABLED'; });
+    queue = [];
   }
 
   // ---------- clock ----------

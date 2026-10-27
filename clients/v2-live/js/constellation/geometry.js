@@ -35,6 +35,18 @@ export function coreKeepOut(width, height, u, inset = INSET) {
   return {x: c.x, y: c.y, radius: R * coreReach(width) + 8 * u,
     box: {x: c.x - 6.5 * ws, y: c.y + R * .6, width: 13 * ws, height: R * coreReach(width) + (width < 480 ? 2.8 : 4.6) * ws - R * .6}};
 }
+// Moves a node off the core circle and the wordmark box (to the nearest free side), then back inside the area.
+function keepClear(n, keep, {left, right, top, bottom, width, height}) {
+  const dx = n.x - keep.x, dy = n.y - keep.y, d = Math.hypot(dx, dy) || .01, need = keep.radius + n.radius * .5;
+  if (d < need) { n.x = keep.x + dx / d * need; n.y = keep.y + dy / d * need; }
+  if (coversNode(keep.box, n, 6)) {
+    const r = n.radius + 6, bx = keep.box, fits = ([x, y]) => x >= left + n.radius && x <= width - right - n.radius && y >= top + n.radius && y <= height - bottom - n.radius;
+    const options = [[n.x, bx.y - r], [n.x, bx.y + bx.height + r], [bx.x - r, n.y], [bx.x + bx.width + r, n.y]].sort((p, q) => (fits(q) - fits(p)) || Math.hypot(p[0] - n.x, p[1] - n.y) - Math.hypot(q[0] - n.x, q[1] - n.y));
+    [n.x, n.y] = options[0];
+  }
+  n.x = clamp(n.x, left + n.radius, width - right - n.radius);
+  n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
+}
 // Open composition: each project is a hub on a ring round the core, its children spiral out from it by rank, executions and decisions
 // spiral round their mission, and a short relaxation pushes every pair apart. Nothing is drawn for a project but its own node.
 export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
@@ -64,7 +76,7 @@ export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
     spiral(group, hx, hy, hub ? hub.radius : 0, 92 * u, theta, rng);
   });
   for (const [pid, list] of kids) { const p = byId.get(pid), rng = randomSeed(`${seed}:${pid}`), away = Math.atan2(p.y - core.y, p.x - core.x); spiral(list.sort(order), p.x, p.y, p.radius, 30 * u, away, rng); }
-  const anchor = nodes.map(n => ({x: n.x, y: n.y})), gap = 18 * u;
+  const area = {left, right, top, bottom, width, height}, anchor = nodes.map(n => ({x: n.x, y: n.y})), gap = 18 * u;
   for (let step = 0; step < (nodes.length > 60 ? 10 : 70); step++) {
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
       const a = nodes[i], b = nodes[j], need = a.radius + b.radius + gap, dx = b.x - a.x, dy = b.y - a.y;
@@ -76,18 +88,25 @@ export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
     }
     nodes.forEach((n, i) => {
       n.x += (anchor[i].x - n.x) * .02; n.y += (anchor[i].y - n.y) * .02;
-      const dx = n.x - keep.x, dy = n.y - keep.y, d = Math.hypot(dx, dy) || .01, need = keep.radius + n.radius * .5;
-      if (d < need) { n.x = keep.x + dx / d * need; n.y = keep.y + dy / d * need; }
-      if (coversNode(keep.box, n, 6)) {
-        const r = n.radius + 6, bx = keep.box, fits = ([x, y]) => x >= left + n.radius && x <= width - right - n.radius && y >= top + n.radius && y <= height - bottom - n.radius;
-        const options = [[n.x, bx.y - r], [n.x, bx.y + bx.height + r], [bx.x - r, n.y], [bx.x + bx.width + r, n.y]].sort((p, q) => (fits(q) - fits(p)) || Math.hypot(p[0] - n.x, p[1] - n.y) - Math.hypot(q[0] - n.x, q[1] - n.y));
-        [n.x, n.y] = options[0];
-      }
-      n.x = clamp(n.x, left + n.radius, width - right - n.radius);
-      n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
+      keepClear(n, keep, area);
     });
   }
   return nodes;
+}
+// Calm (concept 07): only the projects, as large panels at the corners of an ellipse round the core, each one listing its own items.
+export function layoutCalm(graph, width, height, seed = 'archeus', inset = INSET) {
+  const u = unit(width, height), core = coreCentre(width, height, inset), keep = coreKeepOut(width, height, u, inset), P = graph.nodes.filter(n => n.kind === 'Project').length;
+  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height / 3), bottom = Math.min(inset.bottom, height / 5);
+  const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y), area = {left, right, top, bottom, width, height};
+  const radius = Math.max(40, Math.min(130 * u, halfX * .34, halfY * .42));
+  // Four corner slots clear the wordmark box; ponytail: past four projects they fall back to an ellipse and may touch.
+  const slots = [[-.62, -.45], [.62, -.45], [.62, .45], [-.62, .45]];
+  return graph.nodes.filter(n => n.kind === 'Project').sort((a, b) => String(a.id).localeCompare(String(b.id))).map((n, i) => {
+    const t = -3 * Math.PI / 4 + i * 2 * Math.PI / P, [fx, fy] = P <= 4 ? slots[i] : [Math.cos(t) * .68, Math.sin(t) * .6];
+    const out = {...n, radius, rank: 8, x: core.x + fx * halfX, y: core.y + fy * halfY};
+    keepClear(out, keep, area);
+    return out;
+  });
 }
 export function convexHull(points) {
   const sorted = [...new Map(points.map(p => [`${p.x}:${p.y}`, {x: p.x, y: p.y}])).values()]

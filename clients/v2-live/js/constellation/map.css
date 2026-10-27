@@ -148,3 +148,7 @@
 .archeus-map[data-theme$='high-contrast'] .am-edge, .archeus-map[data-theme$='high-contrast'] .am-spoke { stroke-opacity: .72; stroke-width: 1.2; }
 @media (forced-colors: active) { .archeus-map .am-edge, .archeus-map .am-spoke { stroke-opacity: 1; stroke-width: 1; } }
 .archeus-map[data-theme='forced'] .am-edge, .archeus-map[data-theme='forced'] .am-spoke { stroke-opacity: 1; }
+.archeus-map .am-panel { fill: var(--am-bg); stroke: var(--am-text); stroke-opacity: .5; stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.archeus-map .am-panel-dot { fill: currentColor; stroke: none; }
+.archeus-map .am-panel-row { fill: var(--am-text); font-family: var(--am-serif); }
+.archeus-map .am-panel-word { fill: var(--am-muted); font-family: var(--am-sans); letter-spacing: .08em; text-transform: uppercase; }

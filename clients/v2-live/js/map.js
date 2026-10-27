@@ -51,10 +51,11 @@ export function mapBox(key, wide, inset) {
 export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
-  if (e.map && e.lang !== lang) { e.map.destroy(); e.map = null; e.sel = undefined; }
+  const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
+  if (e.map && (e.lang !== lang || e.calm !== calm)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
-    e.lang = lang;
-    e.map = createMap(e.box, { seed: 'v2-live', theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
+    e.lang = lang; e.calm = calm;
+    e.map = createMap(e.box, { seed: 'v2-live', calm, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
     e.map.on('review', (id) => { const a = Object.values(sim.state.approvals).find((x) => x.state === 'PENDING' && x.mission === id); ctx.nav(a ? '#/attention/' + a.id : '#/' + ctx.route.name + '/' + id); });
     e.map.on('select', (id) => { if (!e.syncing && id && sim.state.projects.some((p) => p.id === id)) { ctx.ui.workProject = id; ctx.nav('#/work'); return; } if (!e.syncing && id && id !== ctx.route.id && (sim.state.missions[id] || sim.state.approvals[id] || sim.state.executions[id])) ctx.nav('#/' + ctx.route.name + '/' + (sim.state.executions[id] ? sim.state.executions[id].mission : id)); });
   }

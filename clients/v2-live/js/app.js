@@ -27,7 +27,7 @@ const q = new URLSearchParams(location.search);
 // An embedded frame (the All devices view) shares the parent's simulation instance, so all devices show one story.
 const embed = q.get('embed') === '1';
 const shared = embed && window.parent !== window && window.parent.v2live && window.parent.v2live.sim;
-const sim = shared || createSim({ seed: q.get('seed') ? Number(q.get('seed')) : undefined });
+const sim = shared || createSim({ seed: q.get('seed') ? Number(q.get('seed')) : undefined, story: q.get('story') || undefined });
 if (embed) document.body.dataset.embed = '1';
 if (!shared) {
   if (q.get('sim') !== 'paused') sim.play();

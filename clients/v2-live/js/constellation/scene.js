@@ -42,3 +42,17 @@ export function sceneMarkup(scene, t = x => x) {
   }
   return out;
 }
+
+// A project as a hexagon panel with its items listed inside (calm state, concept 07). rows: [{label, state, word}].
+export function panelMarkup(n, rows, none = 'No items yet') {
+  const R = n.radius, hex = Array.from({length: 6}, (_, i) => `${fx(R * Math.cos(i * Math.PI / 3))},${fx(R * Math.sin(i * Math.PI / 3))}`).join('L');
+  const shown = rows.slice(0, 3), line = R * .2, step = Math.max(32, Math.min(40, R * .3));
+  let out = `<g class="am-star am-state-idle" data-node-id="${esc(n.id)}"><path class="am-panel" d="M${hex}Z"/><text class="am-label-title" x="0" y="${fx(-R * .42)}" text-anchor="middle" style="font-size:${fx(Math.max(14, Math.min(21, R * .16)))}px">${esc(n.label || n.id)}</text>`;
+  shown.forEach((r, i) => {
+    const y = -line + i * step;
+    out += `<g class="am-state-${esc(r.state)}"><circle class="am-panel-dot" cx="${fx(-R * .56)}" cy="${fx(y - 4)}" r="4"/><text class="am-panel-row" x="${fx(-R * .46)}" y="${fx(y)}" style="font-size:14px">${esc(r.label)}</text><text class="am-panel-word" x="${fx(-R * .46)}" y="${fx(y + 15)}" style="font-size:11px">${esc(r.word)}</text></g>`;
+  });
+  if (!shown.length) out += `<text class="am-panel-word" x="0" y="${fx(-line)}" text-anchor="middle" style="font-size:12px">${esc(none)}</text>`;
+  else if (rows.length > shown.length) out += `<text class="am-panel-word" x="${fx(-R * .46)}" y="${fx(-line + shown.length * step)}" style="font-size:11px">+${rows.length - shown.length}</text>`;
+  return out + '</g>';
+}
