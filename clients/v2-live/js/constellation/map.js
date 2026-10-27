@@ -1,4 +1,4 @@
-import {ambientField, coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutPhone, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {driftOf, ambientField, coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutPhone, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {bodyMarkup, coreStar} from './nodeart.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
@@ -91,7 +91,7 @@ export function createMap(container, options = {}) {
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   const listeners = new Map(), activePulses = new Set(), pointers = new Map();
   const starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
-  let selectedEl = null, fullKey = '';
+  let selectedEl = null, fullKey = '', visible = true, playing = options.playing === true, hovered = null;
   let gesture = null;
   const canvas = document.createElement('canvas');
   const context = canvas.getContext('2d');
@@ -101,8 +101,11 @@ export function createMap(container, options = {}) {
   const phoneOverview = () => options.overview && !options.calm && width < 600;
   const layoutScene = () => (options.calm ? layoutCalm : phoneOverview() ? layoutPhone : layout)(graph, width, height, options.seed, inset);
   const coreRadius = () => phoneOverview() ? 28 : coreSize(u, options.calm, width), reachOf = () => coreReach(width, options.calm);
+  // Ambient motion (drift, rings, travelling markers) runs only for a playing simulation, with full motion, a visible tab and a visible map; the calm scene has none.
+  const ambientOn = () => playing && visible && !isReduced() && !document.hidden && !options.calm;
   function motion() {
     host.dataset.reduced = String(isReduced());
+    host.dataset.ambient = ambientOn() ? 'on' : 'off';
     coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
     runningText.textContent = isLive() && isReduced() ? T(`${graph.nodes.filter(n => stateKey(n.state) === 'running').length} running`) : '';
     if (isReduced() || document.hidden) {
@@ -111,10 +114,14 @@ export function createMap(container, options = {}) {
       activePulses.clear();
     }
   }
-  function animate(el, duration) {
+  function animate(el, duration, delay = 0, grow = false) {
     if (isReduced() || document.hidden || !el.animate) return;
-    el.animate([{opacity: 0}, {opacity: 1}], {duration, easing: 'ease-out'});
+    el.animate(grow ? [{opacity: 0, scale: .9}, {opacity: 1, scale: 1}] : [{opacity: 0}, {opacity: 1}], {duration, delay, easing: 'cubic-bezier(.23, 1, .32, 1)', fill: 'backwards'});
   }
+  // The hairlines of the selected, hovered or focused node brighten.
+  const hotEdge = rec => rec.el.classList.toggle('am-hot', [selected, hovered].some(id => id !== null && (rec.aid === id || rec.bid === id)));
+  const syncHot = () => { for (const rec of edgeRecs.values()) hotEdge(rec); };
+  const driftVars = (el, id) => { const d = driftOf(options.seed, id); el.style.setProperty('--dx', d.dx + 'px'); el.style.setProperty('--dy', d.dy + 'px'); el.style.setProperty('--dp', d.period + 'ms'); el.style.setProperty('--dd', d.delay + 'ms'); };
   function screenNodes() {
     return positions.map(n => ({...n, x: n.x * camera.k + camera.x, y: n.y * camera.k + camera.y, radius: n.radius * camera.k + (stateKey(n.state) === 'needs-you' ? 7 : 4)}));
   }
@@ -196,6 +203,7 @@ export function createMap(container, options = {}) {
       setAttr(rec.circle, 'r', Math.max(circle, n.radius));
       setAttr(rec.el, 'aria-pressed', n.id === selected);
     }
+    syncHot();
     const star = starRecs.get(selected)?.el ?? null;
     if (selectedEl && selectedEl !== star) selectedEl.classList.remove('am-selected');
     selectRing.remove();
@@ -236,7 +244,10 @@ export function createMap(container, options = {}) {
   function drawStar(n) {
     const holder = svgElement('g');
     holder.innerHTML = starMarkup(n);
-    return holder.firstElementChild;
+    const star = holder.firstElementChild, state = stateKey(n.state);
+    driftVars(star, n.id);
+    if (!options.calm && (state === 'needs-you' || state === 'running')) star.insertAdjacentHTML('afterbegin', `<circle class="am-ring" r="${f(n.radius + 4)}"/>`);
+    return star;
   }
   function updateSummary() {
     summary.textContent = T(`${positions.length} nodes across ${graph.projects.length} projects. ${positions.filter(n => stateKey(n.state) === 'needs-you').length} need you. Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.`);
@@ -275,17 +286,25 @@ export function createMap(container, options = {}) {
       if (rec.ax !== a.x || rec.ay !== a.y || rec.bx !== b.x || rec.by !== b.y || rec.ar !== a.radius || rec.br !== b.radius) {
         const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, ra = Math.min(a.radius, d / 2), rb = Math.min(b.radius, d / 2);
         const p = [a.x + ux * ra, a.y + uy * ra, b.x - ux * rb, b.y - uy * rb].map(f);
-        setAttr(rec.line, 'd', `M${p[0]},${p[1]}L${p[2]},${p[3]}`); setAttr(rec.joint, 'd', `M${p[0]},${p[1]}h0M${p[2]},${p[3]}h0`);
+        setAttr(rec.line, 'd', `M${p[0]},${p[1]}L${p[2]},${p[3]}`); setAttr(rec.hot, 'd', `M${p[0]},${p[1]}L${p[2]},${p[3]}`);
+        setAttr(rec.jointA, 'd', `M${p[0]},${p[1]}h0`); setAttr(rec.jointB, 'd', `M${p[2]},${p[3]}h0`);
+        for (const [i, v] of [['--x0', p[0]], ['--y0', p[1]], ['--x1', p[2]], ['--y1', p[3]]]) rec.marker.style.setProperty(i, v + 'px');
         rec.ax = a.x; rec.ay = a.y; rec.bx = b.x; rec.by = b.y; rec.ar = a.radius; rec.br = b.radius;
       }
       if (rec.sa !== a.state || rec.sb !== b.state || rec.kind !== kind) {
-        setAttr(rec.el, 'class', `am-edge am-edge-${kind} am-accent-${accent(a.state, b.state)}`);
-        rec.sa = a.state; rec.sb = b.state; rec.kind = kind;
+        const acc = accent(a.state, b.state);
+        setAttr(rec.el, 'class', `am-edge am-edge-${kind} am-accent-${acc}`);
+        setAttr(rec.marker, 'display', acc === 'running' && !options.calm ? 'inline' : 'none');
+        rec.sa = a.state; rec.sb = b.state; rec.kind = kind; rec.aid = a.id; rec.bid = b.id;
+        hotEdge(rec);
       }
     };
     reconcile(edgeLayer, edgeRecs, edges, e => e.id, e => {
-      const line = svgElement('path', {class: 'am-line'}), joint = svgElement('path', {class: 'am-joint'}), rec = {el: svgElement('g', {'data-edge-id': e.id}), line, joint};
-      rec.el.append(line, joint);
+      const line = svgElement('path', {class: 'am-line'}), hot = svgElement('path', {class: 'am-line-hot'}), jointA = svgElement('path', {class: 'am-joint'}), jointB = svgElement('path', {class: 'am-joint'}), marker = svgElement('circle', {class: 'am-travel', r: 2.6, display: 'none'});
+      const rec = {el: svgElement('g', {'data-edge-id': e.id}), line, hot, jointA, jointB, marker};
+      rec.el.append(line, hot, jointA, jointB, marker);
+      driftVars(jointA, e.a.id); driftVars(jointB, e.b.id);
+      const t = driftOf(options.seed, e.id); marker.style.setProperty('--tp', Math.round(t.period / 2.4) + 'ms'); marker.style.setProperty('--td', Math.round(t.delay / 2.4) + 'ms');
       patchEdge(rec, e);
       if (arrivals && (!previous.has(e.a.id) || !previous.has(e.b.id))) freshEdges.push(rec.el);
       return rec;
@@ -303,6 +322,10 @@ export function createMap(container, options = {}) {
     reconcile(hits, hitRecs, positions, n => n.id, n => {
       const circle = svgElement('circle', {r: 22}), rec = {el: svgElement('g', {tabindex: 0, role: 'button', class: 'am-hit', 'data-node-id': n.id}), circle};
       rec.el.append(circle);
+      // A node lifts a little under the pointer and under keyboard focus.
+      const lift = on => { starRecs.get(n.id)?.el.classList.toggle('am-lift', on); hovered = on ? n.id : hovered === n.id ? null : hovered; syncHot(); };
+      rec.el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') lift(true); }); rec.el.addEventListener('pointerleave', () => lift(false));
+      rec.el.addEventListener('focus', () => lift(rec.el.matches(':focus-visible'))); rec.el.addEventListener('blur', () => lift(false));
       patchHit(rec, n);
       return rec;
     }, patchHit);
@@ -317,7 +340,7 @@ export function createMap(container, options = {}) {
       patchRow(rec, n);
       return rec;
     }, patchRow);
-    for (const el of arrived) animate(el, MOTION.appear);
+    arrived.forEach((el, i) => animate(el, MOTION.appear, Math.min(i, 12) * 30, true));
     for (const el of freshEdges) animate(el, MOTION.relation);
     updateSummary();
     refreshOverlay(); motion();
@@ -413,6 +436,7 @@ export function createMap(container, options = {}) {
   svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
   media.addEventListener('change', motion); document.addEventListener('visibilitychange', motion);
   const observer = new ResizeObserver(resize); observer.observe(host);
+  const seen = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { visible = entries[entries.length - 1].isIntersecting; motion(); }) : null; seen?.observe(host);
   const refit = () => { if (!destroyed && positions.length) refreshOverlay(); };
   document.fonts?.addEventListener('loadingdone', refit);
   const api = {
@@ -440,6 +464,7 @@ export function createMap(container, options = {}) {
     resize, fitView,
     element: host,
     setLive(live) { options.live = live === true; if (!destroyed) motion(); },
+    setAmbient(on) { playing = on === true; if (!destroyed) motion(); },
     pulse(id) {
       const path = edgeRecs.get(id)?.line;
       if (destroyed || !path || isReduced() || document.hidden || activePulses.size >= 8) return false;
@@ -453,7 +478,7 @@ export function createMap(container, options = {}) {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add(fn); return () => listeners.get(event)?.delete(fn); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; observer.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.fonts?.removeEventListener('loadingdone', refit);
+      destroyed = true; observer.disconnect(); seen?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.fonts?.removeEventListener('loadingdone', refit);
       for (const animation of host.getAnimations({subtree: true})) animation.cancel();
       pointers.clear(); activePulses.clear(); listeners.clear(); host.remove();
     }

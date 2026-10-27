@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {coreKeepOut, crystalRadius, isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {driftOf, coreKeepOut, crystalRadius, isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('layout is seeded, deterministic, input-order independent and bounded', () => {
@@ -25,6 +25,12 @@ test('generated label sets never overlap another label, star, or reserved area',
       for (let j = i + 1; j < boxes.length; j++) assert.ok(!overlaps(boxes[i], boxes[j]));
     }
   }
+});
+test('drift is seeded, small and slow, and differs per id', () => {
+  const a = driftOf('s', 'n1'), b = driftOf('s', 'n2');
+  assert.deepEqual(a, driftOf('s', 'n1'));
+  assert.notDeepEqual(a, b);
+  for (let i = 0; i < 200; i++) { const d = driftOf('s', 'n' + i); assert.ok(Math.hypot(d.dx, d.dy) <= 3.01 && Math.hypot(d.dx, d.dy) >= 1.49); assert.ok(d.period >= 9000 && d.period <= 17000 && d.delay <= 0 && d.delay >= -d.period); }
 });
 test('selected and attention labels outrank ordinary labels', () => {
   const nodes = Array.from({length: 6}, (_, i) => ({id: `n${i}`, label: `Label ${i}`, x: 60 + i % 2 * 180, y: 65 + Math.floor(i / 2) * 130, radius: 5, state: i === 1 ? 'needs-you' : 'idle'}));

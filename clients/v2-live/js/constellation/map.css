@@ -164,3 +164,22 @@
 .archeus-map .am-ambient circle { fill: none; stroke: var(--am-text); stroke-opacity: .22; stroke-width: 1; vector-effect: non-scaling-stroke; }
 @media (forced-colors: active) { .archeus-map .am-ambient { display: none; } }
 .archeus-map[data-theme='forced'] .am-ambient { display: none; }
+
+/* Liveliness (owner decision 2026-10-27, on top of the core breath). Every loop below is transform or opacity, runs only while the host sets data-ambient='on'
+   (a playing simulation, full motion, a visible tab and map; the calm scene has none), lasts 3.6 s or longer per cycle (under 0.3 Hz) and carries no state by itself:
+   the state is always the node colour, glyph and label. Under Reduced motion nothing loops and the twin is the plain static scene. */
+.archeus-map .am-star { transform-box: fill-box; transform-origin: center; transition: scale 180ms cubic-bezier(.23, 1, .32, 1); }
+.archeus-map[data-reduced='false'] .am-star.am-lift { scale: 1.07; }
+.archeus-map[data-ambient='on'] .am-star, .archeus-map[data-ambient='on'] .am-joint { animation: am-drift var(--dp, 12000ms) ease-in-out var(--dd, 0ms) infinite alternate; }
+@keyframes am-drift { from { translate: 0 0; } to { translate: var(--dx, 2px) var(--dy, 2px); } }
+.archeus-map .am-ring { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: 0; pointer-events: none; transform-box: fill-box; transform-origin: center; }
+.archeus-map[data-ambient='on'] .am-ring { animation: am-ring 3600ms cubic-bezier(.23, 1, .32, 1) var(--dd, 0ms) infinite; }
+@keyframes am-ring { 0% { transform: scale(1); opacity: .5; } 75%, 100% { transform: scale(1.55); opacity: 0; } }
+.archeus-map .am-travel { fill: var(--am-text); opacity: 0; pointer-events: none; }
+.archeus-map[data-ambient='on'] .am-travel { animation: am-travel var(--tp, 4000ms) linear var(--td, 0ms) infinite; }
+@keyframes am-travel { 0% { translate: var(--x0) var(--y0); opacity: 0; } 12%, 88% { opacity: .95; } 100% { translate: var(--x1) var(--y1); opacity: 0; } }
+.archeus-map .am-line-hot { fill: none; stroke: var(--am-text); stroke-width: 1.8; stroke-opacity: .95; opacity: 0; transition: opacity 200ms ease; pointer-events: none; }
+.archeus-map .am-edge.am-accent-needs-you .am-line-hot { stroke: var(--am-attention); }
+.archeus-map .am-edge.am-accent-running .am-line-hot { stroke: var(--am-running); }
+.archeus-map .am-edge.am-hot .am-line-hot { opacity: 1; }
+.archeus-map[data-reduced='true'] .am-star, .archeus-map[data-reduced='true'] .am-line-hot { transition: none; }

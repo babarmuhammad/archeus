@@ -62,7 +62,7 @@ export function syncMap(ctx, key) {
   const g = buildGraph(sim);
   e.map.setTheme(THEME[store.get('theme')]);
   e.map.setReducedMotion(store.reducedMotion());
-  e.map.setLive(liveFresh(sim));
+  e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing);
   e.map.update(g);
   const want = g.nodes.some((n) => n.id === ctx.route.id) ? ctx.route.id : null;
   if (want !== e.sel) { e.sel = want; e.syncing = true; e.map.setSelection(want); e.syncing = false; }
@@ -75,7 +75,7 @@ export function pruneMaps(keep) {
 }
 
 export function syncLive(sim) {
-  for (const e of maps.values()) if (e.map) { e.map.setLive(liveFresh(sim)); e.map.setReducedMotion(store.reducedMotion()); }
+  for (const e of maps.values()) if (e.map) { e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing); e.map.setReducedMotion(store.reducedMotion()); }
 }
 
 // An execution starting draws a marker down its edge, one ending down the mission's edge (the execution node is gone by then); output pulses at most once per 2 s per execution.

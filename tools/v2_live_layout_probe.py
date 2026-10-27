@@ -197,11 +197,14 @@ def start_server(port):
 
 
 def motion_invariants(br, base):
-    """ADR-0055: with a playing simulation, fresh live work and full motion exactly one animation runs (core-breath); paused, offline or under reduced motion none; off the map none."""
+    """ADR-0055 as amended by the owner on 2026-10-27 (V2 Live only): with a playing simulation and full motion the map may run exactly the allowed loops (core-breath with fresh live work,
+    am-drift, am-ring, am-travel), each infinite, 3.6 s or longer per cycle (under 0.3 Hz) and made of transform or opacity only; paused, offline, under reduced motion or with a hidden tab none; off the map none."""
     bad = []
     ctx = br.new_context(viewport={'width': 1440, 'height': 900})
     pg = ctx.new_page()
     css = "document.getAnimations().map(a => a.animationName).filter(Boolean)"
+    allowed = ['core-breath', 'am-drift', 'am-ring', 'am-travel']
+    detail = """() => document.getAnimations().filter(a => a.animationName).map(a => { const t = a.effect.getTiming(); return { name: a.animationName, duration: t.duration, iterations: t.iterations, props: [...new Set(a.effect.getKeyframes().flatMap((k) => Object.keys(k)))].filter((p) => !['offset', 'easing', 'composite', 'computedOffset'].includes(p)) }; })"""
     pg.goto(base + '?theme=dark&motion=full&sim=paused#/now', wait_until='load')
     pg.wait_for_timeout(700)
     names = pg.evaluate(css)
@@ -209,9 +212,21 @@ def motion_invariants(br, base):
         bad.append('a paused simulation still runs %r' % names)
     pg.evaluate("window.v2live.sim.play()")
     pg.wait_for_timeout(900)
+    names = set(pg.evaluate(css))
+    if not {'core-breath', 'am-drift'} <= names or names - set(allowed):
+        bad.append('full motion with live work runs %r, expected core-breath and am-drift, nothing outside %r' % (sorted(names), allowed))
+    for a in pg.evaluate(detail):
+        if a['duration'] < 3600 or a['iterations'] is not None and a['iterations'] != float('inf') and a['iterations'] != 'Infinity':
+            bad.append('%s cycles in %s ms (%s times): a loop must be infinite and 3.6 s or longer' % (a['name'], a['duration'], a['iterations']))
+        if set(a['props']) - {'transform', 'opacity', 'translate', 'scale'}:
+            bad.append('%s animates %r: transform and opacity only' % (a['name'], a['props']))
+    pg.evaluate("Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange'))")
+    pg.wait_for_timeout(200)
     names = pg.evaluate(css)
-    if names != ['core-breath']:
-        bad.append('full motion with live work runs %r, expected exactly [core-breath]' % names)
+    if names:
+        bad.append('a hidden tab still runs %r' % names)
+    pg.evaluate("delete document.hidden; document.dispatchEvent(new Event('visibilitychange'))")
+    pg.wait_for_timeout(200)
     pg.evaluate("window.v2live.store.set('motion', 'reduced')")
     pg.wait_for_timeout(300)
     names = pg.evaluate(css)
@@ -297,7 +312,7 @@ def s4_state(pg, route, w):
         elif route == 'dock-reply':
             s4_send(pg, 'dock', '/mission Probe mission')
         pg.wait_for_timeout(250)
-        return '.chatdock.tell'
+        return '.tell-dock'
     pg.evaluate("window.v2live.sim.advance(520000)")
     pg.evaluate("location.hash = '#/replay/m-date'")
     pg.wait_for_timeout(400)
@@ -397,7 +412,7 @@ def main():
                                 pg.evaluate(STATES[st])
                                 pg.evaluate("window.dispatchEvent(new Event('hashchange'))")
                                 pg.wait_for_timeout(250)
-                                layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.chatdock.tell'}.get(st)
+                                layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.tell-dock' if rt == 'now' else '.chatdock.tell'}.get(st)
                                 if st == 'tell' and pg.evaluate("!!document.querySelector('.chatsheet')"):
                                     layer = '.chatsheet'
                             if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'map', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
@@ -459,7 +474,7 @@ def main():
     for m in inv:
         print('MOTION INVARIANT FAILED: ' + m)
     n = sum(total.values()) + len(inv)
-    print('Motion invariants (ADR-0055): %s' % ('FAILED' if inv else 'ok, one animation with a playing simulation and fresh live work, none when paused, under reduced motion or off the map'))
+    print('Motion invariants (ADR-0055): %s' % ('FAILED' if inv else 'ok, only core-breath, am-drift, am-ring and am-travel (transform or opacity, 3.6 s or longer) with a playing simulation, none when paused, hidden, under reduced motion or off the map'))
     print('Measured %d text boxes and %d controls in %d pages.' % (stats[0], stats[1], len(viewports) * len(routes) * len(themes)))
     print('TOTAL DEFECTS: %d   (%d viewports x %d routes x %d themes, %.0f s)' % (n, len(viewports), len(routes), len(themes), time.time() - t0))
     if n and (a.verbose or n < 60):

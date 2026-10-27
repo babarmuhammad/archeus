@@ -18,6 +18,11 @@ export function randomSeed(seed) {
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
 }
+// Ambient motion parameters of one node or relation, seeded by its id: a drift of 1.5 to 3 px along a fixed direction, 9 to 17 s per swing, started at its own phase.
+export function driftOf(seed, id) {
+  const r = randomSeed(`drift|${seed}|${id}`), amp = 1.5 + r() * 1.5, angle = r() * Math.PI * 2, period = 9000 + r() * 8000, phase = r();
+  return {dx: +(Math.cos(angle) * amp).toFixed(2), dy: +(Math.sin(angle) * amp).toFixed(2), period: Math.round(period), delay: -Math.round(phase * period)};
+}
 export function stateKey(state) {
   const key = String(state || 'idle').toLowerCase().replace(/[ _]/g, '-');
   return ({waiting: 'needs-you', attention: 'needs-you', active: 'running', completed: 'done'})[key] || key;
