@@ -292,3 +292,5 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
   .main-col .ax-stat { padding: 4px 10px; } .main-col .ax-stat:first-child { padding-left: 0; }
   .main-col .ax-stat .big { font-size: calc(var(--base) * 1.6); }
 }
+.main-col .ax-note.pad { padding-inline: 0; }
+.main-col .ax-model[data-default='true'] { padding-left: 14px; }
