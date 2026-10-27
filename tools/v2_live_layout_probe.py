@@ -275,7 +275,7 @@ def s4_state(pg, route, w):
         pg.wait_for_timeout(250)
         phone = pg.evaluate("document.getElementById('app').clientWidth < 600")
         if phone:
-            pg.click('[data-key="tell-open"]')
+            pg.click('[data-key="bb-tell"]')
             pg.wait_for_timeout(300)
             if route in ('sheet-slash', 'dock-slash'):
                 pg.keyboard.type('/')

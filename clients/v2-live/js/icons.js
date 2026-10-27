@@ -10,6 +10,7 @@ export const P = {
   settings: ['path:M4 7h8M16 7h4M4 17h4M12 17h8', 'circle:14,7,2', 'circle:10,17,2'],
   terminal: ['path:M4 5h16v14H4zM7 9l3 3-3 3M13 15h4'],
   menu: ['path:M4 6h16M4 12h16M4 18h16'],
+  places: ['path:M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z', 'circle:12,10,2.5'],
   device: ['path:M3 4h18v12H3zM8 20h8M12 16v4'],
   theme: ['circle:12,12,8', 'path:M12 4a8 8 0 0 1 0 16z:f'],
   motion: ['path:M3 12c3-7 6-7 9 0s6 7 9 0'],

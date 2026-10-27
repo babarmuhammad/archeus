@@ -5,7 +5,7 @@ import { lockup, wordmark } from './brand.js';
 import { createSim, clockLabel } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
-import { ROUTES, BOTTOM, simControls, controlBody } from './views.js';
+import { ROUTES, simControls, controlBody } from './views.js';
 import * as vNow from './view-now.js';
 import * as vWork from './view-work.js';
 import * as vAttention from './view-attention.js';
@@ -13,7 +13,8 @@ import * as vMap from './view-map.js';
 import * as vReplay from './view-replay.js';
 import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
-import { viewChat, mountDock } from './chat.js';
+import { viewChat, mountDock, openTell } from './chat.js';
+import { buildBottom, syncBottom, placesSheet } from './phone.js';
 import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate } from './areas.js';
 import { inspectorFor } from './inspectors.js';
 import { areasOf } from './areas-model.js';
@@ -46,18 +47,17 @@ const framenote = document.getElementById('framenote');
 let app, page, rail, bottom, dock, topbar, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
 
 const navLabel = (r) => (r.id === 'now' ? 'Overview' : r.label);
-const navItem = (r, cls) => h('a', { class: cls, href: '#/' + r.id, 'data-route': r.id, 'aria-label': cls === 'nav-item' ? null : navLabel(r) },
-  icon(r.icon, cls === 'nav-item' ? 20 : 24), h('span', { class: cls === 'nav-item' ? 'nl' : '' }, navLabel(r)), cls === 'nav-item' || r.id === 'attention' ? h('span', { class: 'count', 'data-count': r.id, hidden: true }) : null);
+const navItem = (r) => h('a', { class: 'nav-item', href: '#/' + r.id, 'data-route': r.id }, icon(r.icon, 20), h('span', { class: 'nl' }, navLabel(r)), h('span', { class: 'count', 'data-count': r.id, hidden: true }));
 
 function buildShell() {
   rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
     h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, wordmark())),
-    ...ROUTES.flatMap((r) => [navItem(r, 'nav-item'), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
+    ...ROUTES.flatMap((r) => [navItem(r), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
     h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view')),
     h('div', { class: 'rail-sep' }), h('p', { class: 'eyebrow rail-eye' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
   topbar = h('header', { class: 'topbar' });
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
-  bottom = h('nav', { class: 'bottombar', 'aria-label': 'Main' }, ...BOTTOM.map((id) => navItem(ROUTES.find((r) => r.id === id), 'bb-item')), navItem({ id: 'more', label: 'More', icon: 'menu' }, 'bb-item'));
+  bottom = buildBottom({ tell: tellClick, places: togglePlaces, stop: stopClick });
   dock = h('div', { class: 'chatdock', id: 'chatdock', hidden: true });
   inspector = h('aside', { class: 'inspector', 'aria-label': 'Details', id: 'inspector' });
   scrim = h('div', { class: 'scrim', 'aria-hidden': 'true', onclick: closeInsp });
@@ -82,7 +82,7 @@ function render() {
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
@@ -104,13 +104,12 @@ function render() {
   app.dataset.insp = insp ? 'open' : '';
 
   // navigation state and counts
-  const inMore = ['more', 'map', 'replay', 'security', 'health', 'usage', 'accounts', 'extensions', 'settings'].includes(r.name);
-  app.querySelectorAll('[data-route]').forEach((a) => { const here = a.dataset.route === r.name || (a.dataset.route === 'more' && inMore); if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  app.querySelectorAll('.rail [data-route]').forEach((a) => { const here = a.dataset.route === r.name; if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const n = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
   app.querySelectorAll('[data-count="attention"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
 
   mountTell(term);
-  syncTopbar(); syncRail();
+  syncTopbar(); syncRail(); syncPhone();
   ctx.mounts.forEach((f) => f());
   pruneMaps(['now', 'map'].includes(r.name) ? r.name : null);
   translate(app);
@@ -162,6 +161,7 @@ const isPhone = () => app.clientWidth < 600;
 function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk = ui.rearmAsk = false; render(); } }
 function stopClick() { ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
 function tellClick() {
+  if (isPhone()) { if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); } else openTell(ctx); return; }
   if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); return; }
   ui.tellOpen = !ui.tellOpen; ui.safetyOpen = false; render();
   if (ui.tellOpen) { const i = dock.querySelector('input.cinput'); if (i) i.focus(); }
@@ -187,6 +187,17 @@ function mountTell(term) {
     app.dataset.dock = '';
     if (open) dock.append(h('button', { class: 'btn quiet tell-x', type: 'button', 'aria-label': 'Close', onclick: () => { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } }, icon('close', 18)));
   }
+}
+
+// ---------- phone: Places sheet and the bottom bar state ----------
+function togglePlaces() { ui.placesOpen = !ui.placesOpen; ui.safetyOpen = false; render(); const f = app.querySelector(ui.placesOpen ? '.places .pl-item' : '[data-key="bb-places"]'); if (f) f.focus(); }
+function syncPhone() {
+  app.querySelectorAll('.pl-wrap').forEach((e) => e.remove());
+  const count = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
+  if (ui.placesOpen && isPhone() && app.dataset.term !== 'true') app.append(placesSheet(ctx, { close: togglePlaces, projState, count }));
+  syncBottom(app, { engaged: sim.state.estop.engaged, placesOpen: ui.placesOpen, count });
+  translate(bottom);
+  const pl = app.querySelector('.pl-wrap'); if (pl) translate(pl);
 }
 
 // ---------- sidebar: PROJECTS with a state dot ----------
@@ -258,7 +269,7 @@ function buildMenu() {
   document.body.append(menu);
   menu.style.top = toolbar.offsetHeight + 2 + 'px';
 }
-document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop, .stop-btn')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
+document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop, .stop-btn, .bb-stop')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); const b = app.querySelector('[data-key="safety"]'); if (b) b.focus(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();

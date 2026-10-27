@@ -237,30 +237,24 @@ export function viewChat(ctx) {
 }
 
 // ---------- the bar docked on Now, and the phone sheet ----------
+export const openTell = (ctx) => { const s = S4(ctx); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); s.sheet = true; s.focusSheet = true; ctx.render(); };
+// On the phone the dock is gone: Tell (bottom bar) opens the chat sheet from any page but Chat, which has its own composer.
 export function mountDock(ctx, dock, app) {
-  const s = S4(ctx), on = ctx.route.name === 'now';
-  const phone = phoneNow();
+  const s = S4(ctx), phone = phoneNow(), on = ctx.route.name === 'now' && !phone;
   if (!phone && s.sheet) s.sheet = false;
   app.dataset.dock = on ? '1' : '';
   dock.hidden = !on; clear(dock);
   const old = app.querySelector('.chatsheet'); if (old) old.remove();
   const oldS = app.querySelector('.cscrim'); if (oldS) oldS.remove();
+  if (phone) { if (s.sheet && ctx.route.name !== 'chat') buildSheet(ctx, app); else s.sheet = false; return; }
   if (!on) return;
-  if (phone) {
-    const pn = s.dest === 'general' ? L('General', 'Generale') : (ctx.sim.state.projects.find((p) => p.id === s.project) || {}).name;
-    const open = () => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); s.sheet = true; s.focusSheet = true; ctx.render(); };
-    dock.append(h('div', { class: 'tellbar' }, h('span', { class: 'tscope' }, pn), h('button', { class: 'tellfield', type: 'button', 'data-key': 'tell-open', onclick: open, 'aria-label': L('Tell Archeus what you need…', 'Dimmi cosa ti serve…') }, ctx.ui.draft ? ctx.ui.draft : L('Tell Archeus what you need…', 'Dimmi cosa ti serve…')),
-      h('button', { class: 'btn danger cstop', type: 'button', onclick: () => stopNow(ctx) }, L('Stop', 'Ferma'))));
-    if (s.sheet) buildSheet(ctx, app);
-    return;
-  }
   const comp = composer(ctx, 'dock');
   const strip = s.touched ? h('div', { class: 'dstrip' }, threadNode(ctx, { last: true, cls: 'last' }), h('a', { class: 'btn quiet openconv', href: '#/chat' }, L('Open conversation', 'Apri la conversazione'))) : h('p', { class: 'intro dintro' }, L('Ask a question, capture an idea, or describe work.', 'Fai una domanda, cattura un\'idea o descrivi un lavoro.'));
   dock.append(h('div', { class: 'dockin' }, strip, comp));
 }
 function buildSheet(ctx, app) {
   const s = S4(ctx), comp = composer(ctx, 'sheet');
-  const back = () => { s.sheet = false; s.kb = false; ctx.render(); const b = document.querySelector('[data-key="tell-open"]'); if (b) b.focus(); };
+  const back = () => { s.sheet = false; s.kb = false; ctx.render(); const b = document.querySelector('[data-key="bb-tell"]'); if (b) b.focus(); };
   const log = threadNode(ctx), nr = newReply(log);
   const sheet = h('section', { class: 'chatsheet', role: 'dialog', 'aria-label': L('Chat with Archeus', 'Chat con Archeus'), 'data-exp': s.exp ? '1' : '0', 'data-kb': s.kb ? '1' : '0' },
     h('div', { class: 'cs-main' }, h('div', { class: 'grab', 'aria-hidden': 'true' }),

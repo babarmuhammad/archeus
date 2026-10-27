@@ -14,7 +14,6 @@ export const ROUTES = [
   { id: 'security', label: 'Security', icon: 'security' }, { id: 'health', label: 'Health', icon: 'health' }, { id: 'usage', label: 'Usage', icon: 'usage' }, { id: 'accounts', label: 'Accounts', icon: 'accounts' }, { id: 'extensions', label: 'Extensions', icon: 'extensions' },
   { id: 'settings', label: 'Settings', icon: 'settings' }
 ];
-export const BOTTOM = ['now', 'work', 'attention', 'chat'];
 
 export const projName = (sim, id) => (sim.state.projects.find((p) => p.id === id) || { name: '' }).name;
 export const word = (machine, state) => present(machine, state).label;

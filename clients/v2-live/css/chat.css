@@ -17,9 +17,6 @@
 .dstrip { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: var(--hair) solid var(--line); border-radius: 12px; background: var(--s1); max-height: min(34dvh, 340px); overflow-y: auto; }
 .dstrip .msgs { padding: 0; gap: 8px; }
 .dstrip .openconv { align-self: flex-end; }
-.tellbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--s1); border-top: var(--hair) solid var(--line); }
-.tscope { flex: none; max-width: 30%; padding: 0 10px; min-height: 28px; display: inline-flex; align-items: center; border: var(--hair) solid var(--line-strong); border-radius: 14px; color: var(--text-2); font-size: var(--fs-cap); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tellfield { flex: 1 1 auto; min-width: 0; min-height: var(--target); padding: 4px 14px; border: var(--hair) solid var(--line-strong); border-radius: 22px; background: var(--s3); color: var(--text-2); text-align: left; cursor: pointer; overflow-wrap: anywhere; line-height: 1.25; }
 
 /* ---------- the composer ---------- */
 .composer2 { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

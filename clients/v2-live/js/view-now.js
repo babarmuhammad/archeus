@@ -2,12 +2,13 @@ import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
 import { tr } from './i18n.js';
-import { word, panel, empty, missionRow, attentionItem } from './views.js';
+import { word, panel, empty, missionRow, attentionItem, projName } from './views.js';
+import { icon } from './icons.js';
 import { mapBox, syncMap } from './map.js';
 
 function counters(ctx) {
   const sim = ctx.sim, ms = Object.values(sim.state.missions);
-  const c = (n, label, role, href) => h('a', { class: 'ctr', 'data-role': role, href }, h('b', null, String(n)), h('span', null, label));
+  const c = (n, label, role, href) => h('a', { class: 'ctr', 'data-role': role, 'data-zero': String(n === 0), href }, h('b', null, String(n)), h('span', null, label));
   return h('nav', { class: 'counters', 'aria-label': 'Counts' },
     c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', '#/attention'), c(sim.liveWork().length, 'running', 'active', '#/work'),
     c(ms.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length, 'stopped', 'blocked', '#/work'), c(ms.filter((m) => present('mission', m.state).cls === 'verifying').length, 'verifying', 'verifying', '#/work'));
@@ -15,7 +16,7 @@ function counters(ctx) {
 
 // The headline clears the top of the scene and the drawer strip the bottom; both shrink with the width.
 let calmNow = false;
-const nowInset = (w, hh) => calmNow ? { top: 16, bottom: w < 600 ? 170 : Math.max(250, Math.round(hh * .33)), left: 24, right: 24 } : { top: w >= 1000 ? 170 : 150, bottom: 76, left: 24, right: 24 };
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: w < 600 ? 170 : Math.max(250, Math.round(hh * .33)), left: 24, right: 24 } : w < 600 ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: w >= 1000 ? 170 : 150, bottom: 76, left: 24, right: 24 };
 
 // Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
 function calmBand(ctx) {
@@ -54,8 +55,15 @@ export function render(ctx) {
     d.dataset.open = String(ctx.ui.nowDrawer === true);
     e.currentTarget.setAttribute('aria-expanded', String(ctx.ui.nowDrawer === true));
   };
+  const first = att.find((a) => a.group === 'Decide' || a.group === 'Review'), fm = first && first.mission_id ? st.missions[first.mission_id] : null, ap = first && first.kind === 'approval' ? st.approvals[first.ref] : null;
+  const card = first && first.kind !== 'knowledge' ? h('article', { class: 'pn-card', 'data-key': 'pn-card' },
+    h('div', { class: 'pn-top' }, h('span', { class: 'pn-dot', 'aria-hidden': 'true' }), h('div', null, h('p', { class: 'pn-title' }, fm ? fm.title : first.reason), h('p', { class: 'pn-origin' }, tr('Origin') + ' ' + (projName(sim, first.project_id) || '-'))), icon('attention', 28)),
+    h('p', { class: 'pn-k' }, tr('What') + ':'), h('p', { class: 'pn-v' }, ap ? ap.presented.what : first.reason),
+    ap ? h('p', { class: 'pn-k' }, tr('Why') + ':') : null, ap ? h('p', { class: 'pn-v' }, ap.presented.why) : null,
+    h('a', { class: 'pn-review', href: first.kind === 'approval' ? '#/attention/' + first.ref : '#/attention/' + first.mission_id }, tr('Review'))) : null;
   const drawer = h('section', { class: 'now-drawer', 'data-open': String(open), 'aria-label': 'Details' },
-    h('div', { class: 'now-strip' }, counters(ctx), h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), onclick: toggle }, tr('Details'))),
+    h('div', { class: 'now-strip' }, counters(ctx), h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
+    card,
     h('div', { class: 'now-body' },
       h('div', { class: 'now-panels' },
         panel('Needs you', decide.length, decide.length ? h('div', { class: 'stack' }, ...decide.slice(0, 3).map((a) => attentionItem(ctx, a))) : empty('Nothing is waiting for a decision.'),

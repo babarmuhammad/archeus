@@ -117,19 +117,13 @@
 @container dev (max-width: 599px) {
   .tb-lock { display: inline-flex; }
   .tell-btn, .stop-btn, .safety .sep, .safety .sx { display: none; }
-  .safety-pop { left: auto; right: 0; }
+  .safety-pop { position: fixed; z-index: 30; top: auto; left: 12px; right: 12px; bottom: 88px; width: auto; }
 }
 .chatdock.tell { grid-area: auto; position: absolute; z-index: 22; left: 50%; bottom: 20px; transform: translateX(-50%); width: min(760px, calc(100% - 2 * var(--gut))); max-height: 70%; overflow-y: auto; background: var(--s2); border: var(--hair) solid var(--line-strong); border-radius: 16px; }
 .chatdock.tell .dockin { width: 100%; padding: 10px 64px 10px 12px; }
 .chatdock.tell .dockin .composer2 { padding: 0; border: 0; background: transparent; }
 .tell-x { position: absolute; top: 4px; right: 4px; min-width: 44px; min-height: 44px; }
 html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
-
-.bottombar { grid-area: bottom; display: flex; background: var(--s1); border-top: var(--hair) solid var(--line); }
-@container dev (min-width: 600px) { .bottombar { display: none; } }
-.bb-item { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; padding: 4px 2px; color: var(--text-2); font-size: 12px; font-weight: 600; }
-.bb-item[aria-current='page'] { color: var(--text); box-shadow: inset 0 calc(var(--hair) * 3) 0 var(--thread); }
-.bb-item .count { position: absolute; top: 4px; left: calc(50% + 6px); min-width: 18px; padding: 0 4px; border: var(--hair) solid var(--attention); border-radius: 9px; background: var(--s1); color: var(--text); font-size: 11px; font-weight: 700; line-height: 14px; text-align: center; }
 
 .toast { position: absolute; z-index: 25; left: 50%; top: var(--gut); transform: translateX(-50%); max-width: min(32em, calc(100% - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; text-align: center; }
 

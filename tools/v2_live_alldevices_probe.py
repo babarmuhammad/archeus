@@ -26,7 +26,7 @@ _spec.loader.exec_module(_lp)
 
 VIEWPORTS = ['1024x768', '1280x720', '1440x900', '1600x900', '1920x1080', '2560x1440']
 PANES = {'phone': 390, 'tablet': 820, 'desktop': 1440, 'terminal': 640}
-NAV = {'phone': ('work', '.bottombar [data-route="work"]'), 'tablet': ('attention', '[data-route="attention"]'), 'desktop': ('replay', '.rail [data-route="replay"]')}
+NAV = {'phone': ('attention', '.pn-review'), 'tablet': ('attention', '[data-route="attention"]'), 'desktop': ('replay', '.rail [data-route="replay"]')}
 REAL = "(p) => { const e = document.elementFromPoint(p[0], p[1]); return !!e && e !== document.documentElement && e !== document.body && !!e.closest('.app, .term-wrap, .tui, #app'); }"
 ROUTE_OF = "() => location.hash.replace(/^#\\/?/, '').split('/')[0]"
 
