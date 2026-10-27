@@ -14,7 +14,28 @@ function counters(ctx) {
 }
 
 // The headline clears the top of the scene and the drawer strip the bottom; both shrink with the width.
-const nowInset = (w) => ({ top: w >= 1000 ? 170 : w >= 600 ? 150 : 150, bottom: 76, left: 24, right: 24 });
+let calmNow = false;
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: w < 600 ? 170 : Math.max(250, Math.round(hh * .33)), left: 24, right: 24 } : { top: w >= 1000 ? 170 : 150, bottom: 76, left: 24, right: 24 };
+
+// Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
+function calmBand(ctx) {
+  const st = ctx.sim.state, ms = Object.values(st.missions), done = ms.filter((m) => m.state === 'COMPLETED');
+  const sentence = tr('Nothing running. Tell Archeus what to do.').split(/(?<=\.) /);
+  const dot = (s) => h('span', { class: 'cdot', 'data-s': s, 'aria-hidden': 'true' });
+  const projects = st.projects.map((p) => {
+    const own = ms.filter((m) => m.project === p.id), last = Math.max(0, ...own.map((m) => m.updated_at || 0));
+    return h('li', null, h('a', { class: 'cproj', href: '#/work', 'data-proj': p.id, onclick: (e) => { e.preventDefault(); ctx.ui.workProject = p.id; ctx.nav('#/work'); } },
+      dot(own.length && own.every((m) => m.state === 'COMPLETED') ? 'done' : 'idle'),
+      h('span', { class: 'ctext' }, h('b', null, p.name), h('small', null, tr(`${own.length} ${own.length === 1 ? 'item' : 'items'}`) + (last ? ' · ' + clockLabel(last) : ''))), h('span', { class: 'cchev', 'aria-hidden': 'true' }, '›')));
+  });
+  return h('section', { class: 'calm-band', 'aria-label': tr('Today and known projects') },
+    h('div', { class: 'calm-say' },
+      h('h1', { class: 'state-sentence calm', 'data-key': 'sentence' }, ...sentence.map((t) => h('span', null, t))),
+      h('button', { class: 'tell-cta', type: 'button', onclick: () => document.querySelector('[data-key="tell"]')?.click() }, h('span', null, tr('Tell')), h('span', { class: 'tell-arrow', 'aria-hidden': 'true' }, '→'))),
+    h('div', { class: 'calm-col calm-today' }, h('p', { class: 'eyebrow' }, tr('Today')), h('p', { class: 'calm-big' }, tr(`${done.length} verified`)),
+      h('ul', null, ...done.slice(0, 3).map((m) => h('li', null, dot('done'), h('span', { class: 'ctext' }, h('b', null, m.title)), h('span', { class: 'cword' }, tr('Done')))))),
+    h('div', { class: 'calm-col calm-known' }, h('p', { class: 'eyebrow' }, tr('Known projects')), h('ul', null, ...projects)));
+}
 
 export function render(ctx) {
   const sim = ctx.sim, st = sim.state, att = sim.attention();
@@ -23,6 +44,7 @@ export function render(ctx) {
   const upcoming = Object.values(st.missions).filter((m) => ['planning', 'approved'].includes(present('mission', m.state).cls));
   const recent = st.events.filter((e) => /state_changed$/.test(e.type) && e.subject.kind === 'mission').slice(-6).reverse();
   const calm = sim.sentence() === 'Nothing needs you.';
+  calmNow = calm;
   const box = mapBox('now', true, nowInset);
   ctx.mounts.push(() => syncMap(ctx, 'now'));
   const open = ctx.ui.nowDrawer === true;
@@ -43,8 +65,8 @@ export function render(ctx) {
         panel('Recent decisions and changes', recent.length, h('div', { class: 'body' }, ...recent.map((e) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, (st.missions[e.subject.id] || { title: e.subject.id }).title, ': ', word('mission', e.payload.from), ' to ', word('mission', e.payload.to)), h('span', { class: 'b' }, clockLabel(e.at) + (e.actor === 'device' ? ' · you' : ' · Core')))), recent.length ? null : empty('Nothing has changed yet.'))))));
   return h('div', { class: 'now-wrap' }, h('div', { class: 'view now-view', 'data-calm': String(calm) },
     h('div', { class: 'now-scene' }, box),
-    h('div', { class: 'now-hero' }, h('p', { class: 'eyebrow' }, tr('Overview')),
-      h('h1', { class: 'state-sentence' + (calm ? ' calm' : ''), 'data-key': 'sentence' }, calm ? tr('Nothing running. Tell Archeus what to do.') : sim.sentence()),
-      h('p', { class: 'lede' }, calm ? tr('Archeus is quiet. Tell it what to do next, or open a project.') : tr('Live constellation of your work. Missions, projects and ideas in context, moving forward together.'))),
-    drawer));
+    calm ? calmBand(ctx) : h('div', { class: 'now-hero' }, h('p', { class: 'eyebrow' }, tr('Overview')),
+      h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, sim.sentence()),
+      h('p', { class: 'lede' }, tr('Live constellation of your work. Missions, projects and ideas in context, moving forward together.'))),
+    calm ? null : drawer));
 }

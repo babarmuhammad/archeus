@@ -43,16 +43,51 @@ export function sceneMarkup(scene, t = x => x) {
   return out;
 }
 
-// A project as a hexagon panel with its items listed inside (calm state, concept 07). rows: [{label, state, word}].
-export function panelMarkup(n, rows, none = 'No items yet') {
-  const R = n.radius, hex = Array.from({length: 6}, (_, i) => `${fx(R * Math.cos(i * Math.PI / 3))},${fx(R * Math.sin(i * Math.PI / 3))}`).join('L');
-  const shown = rows.slice(0, 3), line = R * .2, step = Math.max(32, Math.min(40, R * .3));
-  let out = `<g class="am-star am-state-idle" data-node-id="${esc(n.id)}"><path class="am-panel" d="M${hex}Z"/><text class="am-label-title" x="0" y="${fx(-R * .42)}" text-anchor="middle" style="font-size:${fx(Math.max(14, Math.min(21, R * .16)))}px">${esc(n.label || n.id)}</text>`;
+const hexPoints = (R, cx = 0, cy = 0) => Array.from({length: 6}, (_, i) => [cx + R * Math.cos(Math.PI * (i / 3 - .5)), cy + R * Math.sin(Math.PI * (i / 3 - .5))]);
+const SQUARE = 7;
+const nearest = (list, p) => list.map(q => [Math.hypot(q[0] - p[0], q[1] - p[1]), q]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+// The calm thread grid: long hairlines between panel vertices and from the panels to the core, with square nodes where lines meet.
+// Pure and deterministic: lines run from vertex to vertex of neighbouring panels (and every second panel), and to the core rim.
+export function threadGrid(panels, core, {box, bounds} = {}) {
+  const C = [core.x, core.y], onCore = p => { const d = Math.hypot(p[0] - C[0], p[1] - C[1]) || 1; return [C[0] + (p[0] - C[0]) / d * core.radius * .95, C[1] + (p[1] - C[1]) / d * core.radius * .95]; };
+  const order = panels.map(p => ({...p, v: hexPoints(p.radius, p.x, p.y), a: Math.atan2(p.y - core.y, p.x - core.x)})).sort((a, b) => a.a - b.a), P = order.length, lines = [], squares = [], seen = new Set();
+  const line = (a, b) => { const k = [a, b].map(q => q.map(Math.round)).sort().join('|'); if (!seen.has(k)) { seen.add(k); lines.push(`M${fx(a[0])},${fx(a[1])}L${fx(b[0])},${fx(b[1])}`); } };
+  const link = (p, q, n) => { const used = new Set(); for (const a of nearest(p.v, [q.x, q.y])) { if (used.size >= n) break; const b = nearest(q.v, a).find(b => !used.has(b)); used.add(b); line(a, b); } };
+  for (const p of order) for (const v of nearest(p.v, C).slice(0, 2)) line(v, onCore(v));
+  for (let i = 0; i < P && P > 1; i++) { link(order[i], order[(i + 1) % P], 2); if (P > 3) link(order[i], order[(i + 2) % P], 1); }
+  for (let i = 0; i < P && P > 1; i++) {
+    const p = order[i], q = order[(i + 1) % P], m = [C[0] + ((p.x + q.x) / 2 - C[0]) * .6, C[1] + ((p.y + q.y) / 2 - C[1]) * .6];
+    if (order.some(o => Math.hypot(o.x - m[0], o.y - m[1]) < o.radius + 12) || Math.hypot(m[0] - C[0], m[1] - C[1]) < core.radius * 1.4) continue;
+    squares.push(m); line(m, nearest(p.v, m)[0]); line(m, nearest(q.v, m)[0]); line(m, onCore(m));
+  }
+  // A ring of free square nodes round the core, each tied to the core rim and the nearest panel vertex.
+  const all = order.flatMap(p => p.v), ring = [];
+  for (let k = 0; k < 6; k++) {
+    const a = Math.PI * (k / 3 - .5) + .5, d = core.radius * (k % 2 ? 3.1 : 2.3), m = [C[0] + Math.cos(a) * d, C[1] + Math.sin(a) * d];
+    const inBox = (x, y) => box && x > box.x - 8 && x < box.x + box.width + 8 && y > box.y - 8 && y < box.y + box.height + 8;
+    if (order.some(o => Math.hypot(o.x - m[0], o.y - m[1]) < o.radius + 12) || Array.from({length: 13}, (_, i) => inBox(C[0] + (m[0] - C[0]) * i / 12, C[1] + (m[1] - C[1]) * i / 12)).some(Boolean)
+      || (bounds && (m[0] < bounds.left || m[0] > bounds.right || m[1] < bounds.top || m[1] > bounds.bottom))) continue;
+    ring.push(m); squares.push(m); line(m, onCore(m)); if (all.length) line(m, nearest(all, m)[0]);
+  }
+  return {d: lines.join(''), squares};
+}
+export const gridMarkup = ({d, squares}) => `<path class="am-grid-line" d="${d}"/>${squares.map(([x, y]) => `<rect class="am-vertex" x="${fx(x - SQUARE / 2)}" y="${fx(y - SQUARE / 2)}" width="${SQUARE}" height="${SQUARE}"/>`).join('')}`;
+
+// A project as a pointy-top hexagon panel with its items listed inside (calm state, concept 07). rows: [{label, state, word}].
+// Small panels (phone) show the count only.
+export function panelMarkup(n, rows, none = 'No items yet', items = 'items') {
+  const R = n.radius, v = hexPoints(R), compact = R < 86, shown = compact ? [] : rows.slice(0, 3), step = R * .3, y0 = -R * .16, tx = -R * .5;
+  const size = fx(Math.max(13, Math.min(21, R * .17)));
+  let out = `<g class="am-star am-state-idle" data-node-id="${esc(n.id)}"><path class="am-panel" d="M${v.map(([x, y]) => `${fx(x)},${fx(y)}`).join('L')}Z"/>`
+    + `<circle class="am-panel-dot am-panel-title-dot" cx="${fx(tx)}" cy="${fx(compact ? -R * .12 : -R * .56)}" r="${compact ? 3 : 5}"/><text class="am-label-title" x="${fx(tx + (compact ? 9 : 12))}" y="${fx(compact ? -R * .12 + 4 : -R * .56 + 6)}" style="font-size:${size}px">${esc(n.label || n.id)}</text>`;
+  if (!compact) out += `<path class="am-panel-rule" d="M${fx(tx)},${fx(-R * .4)}h${fx(R)}"/>`;
   shown.forEach((r, i) => {
-    const y = -line + i * step;
-    out += `<g class="am-state-${esc(r.state)}"><circle class="am-panel-dot" cx="${fx(-R * .56)}" cy="${fx(y - 4)}" r="4"/><text class="am-panel-row" x="${fx(-R * .46)}" y="${fx(y)}" style="font-size:14px">${esc(r.label)}</text><text class="am-panel-word" x="${fx(-R * .46)}" y="${fx(y + 15)}" style="font-size:11px">${esc(r.word)}</text></g>`;
+    const y = y0 + i * step;
+    out += `<g class="am-state-${esc(r.state)}"><circle class="am-panel-dot" cx="${fx(tx)}" cy="${fx(y - 4)}" r="4"/><text class="am-panel-row" x="${fx(tx + 12)}" y="${fx(y)}" style="font-size:14px">${esc(r.label)}</text><text class="am-panel-word" x="${fx(tx + 12)}" y="${fx(y + 15)}" style="font-size:11px">${esc(r.word)}</text></g>`;
   });
-  if (!shown.length) out += `<text class="am-panel-word" x="0" y="${fx(-line)}" text-anchor="middle" style="font-size:12px">${esc(none)}</text>`;
-  else if (rows.length > shown.length) out += `<text class="am-panel-word" x="${fx(-R * .46)}" y="${fx(-line + shown.length * step)}" style="font-size:11px">+${rows.length - shown.length}</text>`;
+  if (compact) out += `<text class="am-panel-word" x="${fx(tx + 9)}" y="${fx(R * .12 + 8)}" style="font-size:11px">${rows.length ? `${rows.length} ${esc(items)}` : esc(none)}</text>`;
+  else if (!shown.length) out += `<text class="am-panel-word" x="${fx(tx + 12)}" y="${fx(y0)}" style="font-size:11px">${esc(none)}</text>`;
+  else if (rows.length > shown.length) out += `<text class="am-panel-word" x="${fx(tx + 12)}" y="${fx(y0 + shown.length * step)}" style="font-size:11px">+${rows.length - shown.length}</text>`;
+  out += v.map(([x, y]) => `<rect class="am-vertex" x="${fx(x - SQUARE / 2)}" y="${fx(y - SQUARE / 2)}" width="${SQUARE}" height="${SQUARE}"/>`).join('');
   return out + '</g>';
 }

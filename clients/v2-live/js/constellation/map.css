@@ -152,3 +152,10 @@
 .archeus-map .am-panel-dot { fill: currentColor; stroke: none; }
 .archeus-map .am-panel-row { fill: var(--am-text); font-family: var(--am-serif); }
 .archeus-map .am-panel-word { fill: var(--am-muted); font-family: var(--am-sans); letter-spacing: .08em; text-transform: uppercase; }
+.archeus-map .am-panel-rule { fill: none; stroke: var(--am-text); stroke-opacity: .3; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.archeus-map .am-grid-line { fill: none; stroke: var(--am-text); stroke-opacity: .34; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.archeus-map .am-vertex { fill: var(--am-bg); stroke: var(--am-text); stroke-opacity: .8; stroke-width: 1; vector-effect: non-scaling-stroke; }
+@media (prefers-contrast: more) { .archeus-map .am-grid-line { stroke-opacity: .72; } }
+.archeus-map[data-theme$='high-contrast'] .am-grid-line { stroke-opacity: .72; }
+@media (forced-colors: active) { .archeus-map .am-grid-line { stroke: CanvasText; stroke-opacity: 1; } .archeus-map .am-vertex { fill: Canvas; stroke: CanvasText; } }
+.archeus-map[data-calm='true'] .am-controls { display: none; }

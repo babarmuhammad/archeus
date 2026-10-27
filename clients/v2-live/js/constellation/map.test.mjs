@@ -120,15 +120,15 @@ test('layout is open: no two nodes overlap and none touches the core mark or its
   }
 });
 test('calm layout lists only projects: panels apart, clear of the core mark and wordmark, inside the inset', async () => {
-  const {layoutCalm} = await import('./geometry.js'), inset = {top: 170, bottom: 76, left: 24, right: 24};
-  for (const [w, h] of [[1280, 720], [1440, 900], [2000, 930]]) for (const count of [1, 2, 3, 4]) {
+  const {layoutCalm} = await import('./geometry.js'), inset = {top: 16, bottom: 300, left: 24, right: 24};
+  for (const [w, h] of [[1280, 720], [1440, 900], [2000, 930], [390, 700]]) for (const count of [1, 2, 3, 4, 5, 6, 8]) {
     const graph = {nodes: [...Array.from({length: count}, (_, i) => ({id: `p${i}`, kind: 'Project', project: `p${i}`})), {id: 'm', kind: 'Mission', project: 'p0'}], edges: []};
-    const nodes = layoutCalm(graph, w, h, 's', inset), keep = coreKeepOut(w, h, unit(w, h), inset);
+    const ins = w < 600 ? {...inset, bottom: 230} : inset, nodes = layoutCalm(graph, w, h, 's', ins), keep = coreKeepOut(w, h, unit(w, h), ins, true);
     assert.equal(nodes.length, count);
     nodes.forEach((a, i) => {
-      assert.ok(a.x - a.radius >= 0 && a.x + a.radius <= w && a.y - a.radius >= inset.top - 1 && a.y + a.radius <= h - inset.bottom + 1, `${w}x${h} ${count}: ${a.id} outside`);
+      assert.ok(a.x - a.radius >= 0 && a.x + a.radius <= w && a.y - a.radius >= ins.top - 1 && a.y + a.radius <= h - ins.bottom + 1, `${w}x${h} ${count}: ${a.id} outside`);
       assert.ok(Math.hypot(a.x - keep.x, a.y - keep.y) >= keep.radius + a.radius * .5 - 1 && !coversNode(keep.box, a, 0), `${w}x${h} ${count}: ${a.id} on the core`);
-      for (const b of nodes.slice(i + 1)) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= a.radius * 1.75, `${w}x${h} ${count}: panels touch`);
+      for (const b of nodes.slice(i + 1)) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= a.radius * 2, `${w}x${h} ${count}: panels touch`);
     });
   }
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {missionScene, sceneMarkup, BOX} from './scene.js';
+import {missionScene, sceneMarkup, BOX, threadGrid, gridMarkup, panelMarkup} from './scene.js';
 
 const full = {id: 'm1', title: 'Fix date test', lines: ['Project: Archeus'], state: 'running', exec: {title: 'Codex'}, result: {title: 'Verification', lines: ['Running']}, task: {title: 'Date suite'}, out: true};
 test('mission scene draws only the relations the record holds', () => {
@@ -24,4 +24,21 @@ test('scene markup uses the shared node art, escapes text and carries every labe
   assert.ok(svg.includes('am-e2') && svg.includes('am-arrowhead') && svg.includes('am-core-thread') && svg.includes('&#60;b&#62;&#38;&#34;'));
   assert.ok(!svg.includes('<b>'));
   for (const word of ['ORCHESTRATES', 'EXECUTES', 'RESULTS IN', 'USES', 'PRODUCES', 'VERIFIES', 'ARCHEUS']) assert.ok(svg.includes(word), word);
+});
+
+test('calm thread grid: deterministic long hairlines and square nodes, none inside a panel or the wordmark box', () => {
+  const core = {x: 400, y: 300, radius: 110}, box = {x: 300, y: 380, width: 200, height: 90};
+  for (const count of [1, 2, 3, 5, 8]) {
+    const panels = Array.from({length: count}, (_, i) => ({x: 400 + Math.cos(i * 2.2) * 330, y: 300 + Math.sin(i * 2.2) * 200, radius: 70}));
+    const a = threadGrid(panels, core, {box}), b = threadGrid(panels, core, {box});
+    assert.deepEqual(a, b);
+    assert.ok(a.d.startsWith('M') && (a.d.match(/M/g).length >= count), `${count}: lines`);
+    for (const [x, y] of a.squares) assert.ok(!panels.some(p => Math.hypot(p.x - x, p.y - y) < p.radius) && !(x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height), `${count}: square placed`);
+  }
+  assert.ok(gridMarkup(threadGrid([{x: 100, y: 100, radius: 50}], core)).includes('am-grid-line'));
+});
+test('calm panels: pointy-top hexagon, rows when large, count only when small, escaped names', () => {
+  const big = panelMarkup({id: 'p', label: '<i>', radius: 120}, [{label: 'A', state: 'done', word: 'Done'}], 'None'), small = panelMarkup({id: 'p', label: 'P', radius: 50}, [{label: 'A', state: 'done', word: 'Done'}], 'None', 'items');
+  assert.ok(big.includes('&#60;i&#62;') && big.includes('am-panel-row') && (big.match(/am-vertex/g) || []).length === 6);
+  assert.ok(!small.includes('am-panel-row') && small.includes('1 items'));
 });

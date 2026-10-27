@@ -1,6 +1,6 @@
-import {clamp, coversNode, overlaps, isCrystal, layout, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {bodyMarkup, coreStar} from './nodeart.js';
-import {panelMarkup} from './scene.js';
+import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
@@ -51,23 +51,23 @@ export function createMap(container, options = {}) {
   const kindWord = n => T(n.kind || 'Node');
   const prefix = `constellation-${++instance}`;
   const host = element('div', 'archeus-map');
-  host.dataset.theme = options.theme || 'dark';
+  host.dataset.theme = options.theme || 'dark'; host.dataset.calm = String(options.calm === true);
   host.setAttribute('role', 'group');
   host.setAttribute('aria-label', options.label || 'Work constellation');
   const svg = svgElement('svg', {role: 'img', 'aria-labelledby': `${prefix}-title ${prefix}-summary`});
   const title = svgElement('title', {id: `${prefix}-title`}, options.label || 'Work constellation');
   const summary = svgElement('desc', {id: `${prefix}-summary`});
   const world = svgElement('g', {class: 'am-world', 'aria-hidden': 'true'});
-  const spokeLayer = svgElement('g', {class: 'am-spokes'}), edgeLayer = svgElement('g', {class: 'am-edges'});
+  const spokeLayer = svgElement('g', {class: 'am-spokes'}), gridLayer = svgElement('g', {class: 'am-grid'}), edgeLayer = svgElement('g', {class: 'am-edges'});
   const core = svgElement('g', {class: 'am-core am-state-core'});
   const nodeLayer = svgElement('g', {class: 'am-nodes'}), pulseLayer = svgElement('g', {class: 'am-pulses'});
-  world.append(spokeLayer, edgeLayer, core, nodeLayer, pulseLayer);
+  world.append(spokeLayer, gridLayer, edgeLayer, core, nodeLayer, pulseLayer);
   const leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
   const reviews = svgElement('g', {class: 'am-reviews'});
   const hits = svgElement('g', {class: 'am-hits'}), selectRing = svgElement('circle', {class: 'am-select-ring'});
   const coreMark = svgElement('g', {'data-core': 'static'});
   const wordmark = svgElement('text', {class: 'am-wordmark', 'text-anchor': 'middle'}, String(options.coreLabel ?? 'Archeus').toUpperCase());
-  const tagline = svgElement('text', {class: 'am-tagline', 'text-anchor': 'middle'}, T('Your projects. In context.'));
+  const tagline = svgElement('text', {class: 'am-tagline', 'text-anchor': 'middle'}, options.calm ? T('Understand · Plan · Do').toUpperCase() : T('Your projects. In context.'));
   const runningText = svgElement('text', {class: 'am-running', 'text-anchor': 'middle'});
   core.append(coreMark, wordmark, tagline, runningText);
   svg.append(title, summary, world, leaders, labels, hits, reviews);
@@ -98,7 +98,7 @@ export function createMap(container, options = {}) {
   const emit = (event, detail) => { for (const fn of listeners.get(event) || []) fn(detail); };
   const isReduced = () => reducedOverride === true || (reducedOverride === undefined && media.matches);
   const isLive = () => options.live === true && options.fresh !== false && graph.nodes.some(n => stateKey(n.state) === 'running');
-  const coreRadius = () => coreSize(u);
+  const coreRadius = () => coreSize(u, options.calm, width), reachOf = () => coreReach(width, options.calm);
   function motion() {
     host.dataset.reduced = String(isReduced());
     coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
@@ -121,7 +121,7 @@ export function createMap(container, options = {}) {
     const nodes = screenNodes();
     const size = width < 360 ? 12 : width < 480 ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
     if (context) context.font = `400 ${size}px ${serif}`;
-    const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * coreReach(width) + 6) * k, below = (coreRadius() * coreReach(width) + wordmarkSize(u) * (width < 480 ? 3 : 5)) * k;
+    const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * reachOf() + 6) * k, below = (coreRadius() * reachOf() + wordmarkSize(u) * (width < 480 ? 3 : 5)) * k;
     const cw = (controls.offsetWidth || 200) + 24, hold = Math.max(reach, 62 * u * k), coreBox = {x: cx - hold, y: cy - reach, width: hold * 2, height: reach + below};
     const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
     const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
@@ -213,7 +213,7 @@ export function createMap(container, options = {}) {
   const calmRows = n => graph.nodes.filter(m => m.project === n.id && m.kind === 'Mission').map(m => ({label: m.label || m.id, state: words[stateKey(m.state)] ? stateKey(m.state) : 'idle', word: nodeWord(m)}));
   function starMarkup(n) {
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, body = ['Mission', 'Project', 'Execution'].includes(n.kind);
-    if (options.calm && n.kind === 'Project') return panelMarkup(n, calmRows(n), T('No items yet'));
+    if (options.calm && n.kind === 'Project') return panelMarkup(n, calmRows(n), T('No items yet'), T('items'));
     if (body) return bodyMarkup(n, n.kind === 'Mission' ? (state === 'done' ? 'check' : state === 'needs-you' ? 'doc-search' : 'doc') : ICON[n.kind]);
     const [tag, shape] = starShape(n.kind, r), attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
     return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><${tag} ${attrs} class="am-body${['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/></g>`;
@@ -231,12 +231,12 @@ export function createMap(container, options = {}) {
     return keys.includes('needs-you') ? 'needs-you' : keys.includes('running') ? 'running' : 'none';
   }
   function drawCore() {
-    const R = coreRadius(), p = coreStar(R, coreReach(width));
+    const R = coreRadius(), p = coreStar(R, reachOf());
     core.setAttribute('transform', `translate(${centre.x} ${centre.y})`);
     coreMark.replaceChildren(svgElement('path', {d: p.threads, class: 'am-core-chords'}), svgElement('path', {d: p.spikes, class: 'am-core-thread'}), svgElement('path', {d: p.tips, class: 'am-core-dot'}));
-    const ws = wordmarkSize(u), base = R * coreReach(width) + ws * 1.9;
+    const ws = wordmarkSize(u, options.calm), base = R * reachOf() + ws * 1.9;
     wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', base); wordmark.style.fontSize = `${ws}px`;
-    tagline.style.display = width < 480 ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * .95}px`;
+    tagline.style.display = width < 480 ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
     runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
   }
   function render(previous = new Map(), arrivals = false, moved = true) {
@@ -244,9 +244,10 @@ export function createMap(container, options = {}) {
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
     const groups = new Map();
     for (const n of positions) { const key = n.project || 'unassigned'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(n); }
-    const hubs = [...groups.keys()].sort().map(project => { const members = groups.get(project), hub = members.find(n => n.kind === 'Project'); return {project, mx: hub ? hub.x : members.reduce((t, n) => t + n.x, 0) / members.length, my: hub ? hub.y : members.reduce((t, n) => t + n.y, 0) / members.length}; });
+    const hubs = options.calm ? [] : [...groups.keys()].sort().map(project => { const members = groups.get(project), hub = members.find(n => n.kind === 'Project'); return {project, mx: hub ? hub.x : members.reduce((t, n) => t + n.x, 0) / members.length, my: hub ? hub.y : members.reduce((t, n) => t + n.y, 0) / members.length}; });
     const patchSpoke = (rec, item) => setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`);
     reconcile(spokeLayer, spokeRecs, hubs, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
+    gridLayer.innerHTML = options.calm && positions.length ? gridMarkup(threadGrid(positions, {...centre, radius: coreRadius() * 1.1}, {box: coreKeepOut(width, height, u, inset, true).box, bounds: {left: 8, top: inset.top, right: width - 8, bottom: height - inset.bottom}})) : '';
     const byId = new Map(positions.map(n => [n.id, n]));
     const edges = [];
     for (const edge of graph.edges || []) {

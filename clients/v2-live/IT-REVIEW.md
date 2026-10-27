@@ -1635,3 +1635,18 @@ Status: to review. Builder-written, not checked by a native speaker.
 | MISSION | MISSIONE |
 | Branch: {name} | Ramo: {name} |
 | No items yet | Ancora nessuna voce |
+
+## Calm band and panels (n1)
+
+Status: to review. Builder-written, not checked by a native speaker.
+
+| English | Italian |
+|---|---|
+| Today | Oggi |
+| Known projects | Progetti noti |
+| Tell | Dì |
+| Today and known projects | Oggi e progetti noti |
+| Understand · Plan · Do | Capisci · Pianifica · Fai |
+| items | voci |
+| {n} items / {n} item | {n} voci |
+| {n} verified | {n} verificata / verificate |
