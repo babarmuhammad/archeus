@@ -28,3 +28,14 @@ function fill(el, attrs, kids) {
 }
 
 export const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
+
+export function trapTab(e, root) {
+  if (e.key !== 'Tab') return;
+  const controls = [...root.querySelectorAll('a[href], button, input, select, textarea, [tabindex="0"]')].filter((el) => !el.disabled && el.getClientRects().length);
+  const first = controls[0], last = controls[controls.length - 1];
+  if (e.shiftKey ? document.activeElement === first || !root.contains(document.activeElement) : document.activeElement === last || !root.contains(document.activeElement)) {
+    e.preventDefault();
+    const next = e.shiftKey ? last : first;
+    if (next) next.focus();
+  }
+}

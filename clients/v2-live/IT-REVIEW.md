@@ -1658,3 +1658,8 @@ Status: to review. Builder-written, not checked by a native speaker.
 | English | Italian |
 |---|---|
 | Places | Luoghi |
+
+## Accessibility fixes (2026-10-27): to review
+
+- Emergency stop all missions → Arresto di emergenza di tutte le missioni
+- Re-arm new work → Riarma il nuovo lavoro

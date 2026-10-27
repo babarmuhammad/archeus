@@ -1,5 +1,5 @@
 // V2 Live shell: toolbar (tool chrome), device frame, app shell, router, simulation loop.
-import { h, clear } from './dom.js';
+import { h, clear, trapTab } from './dom.js';
 import { icon } from './icons.js';
 import { lockup, wordmark } from './brand.js';
 import { createSim, clockLabel } from '../sim.js';
@@ -45,6 +45,7 @@ const stage = document.getElementById('stage');
 const device = document.getElementById('device');
 const framenote = document.getElementById('framenote');
 let app, page, rail, bottom, dock, topbar, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
+let placesInert = [];
 
 const navLabel = (r) => (r.id === 'now' ? 'Overview' : r.label);
 const navItem = (r) => h('a', { class: 'nav-item', href: '#/' + r.id, 'data-route': r.id }, icon(r.icon, 20), h('span', { class: 'nl' }, navLabel(r)), h('span', { class: 'count', 'data-count': r.id, hidden: true }));
@@ -115,8 +116,18 @@ function render() {
   translate(app);
   syncCore(); if (!embed) syncToolbar();
   page.scrollTop = keep.top; inspector.scrollTop = keep.itop;
-  if (keep.key) { const el = app.querySelector('[data-key="' + keep.key + '"]'); if (el && el !== document.activeElement) el.focus({ preventScroll: true }); }
+  if (keep.key) {
+    const action = sim.state.estop.engaged ? 'rearm' : 'estop';
+    const replacements = { estop: ui.estopAsk ? 'estop-yes' : action, 'estop-yes': action, 'estop-back': action, rearm: ui.rearmAsk ? 'rearm-yes' : action, 'rearm-yes': action, 'rearm-back': action };
+    const el = app.querySelector('[data-key="' + keep.key + '"]') || app.querySelector('[data-key="' + (replacements[keep.key] || '') + '"]');
+    if (el && el !== document.activeElement) el.focus({ preventScroll: true });
+  }
   if (insp && !wasOpen) { const hd = inspector.querySelector('h2'); if (hd) { hd.setAttribute('tabindex', '-1'); hd.focus({ preventScroll: true }); } }
+  const places = app.querySelector('.places');
+  if (places && !places.contains(document.activeElement)) places.querySelector('.pl-item').focus();
+  else if (!places && keep.was && keep.was.closest('.places')) bottom.querySelector('[data-key="bb-places"]').focus();
+  const safety = app.querySelector('.safety-pop');
+  if (!places && safety && !safety.contains(document.activeElement)) safety.querySelector('button').focus();
 }
 
 // ---------- the one allowed loop: the core breath on the map's core mark (ADR-0055), switched by syncLive ----------
@@ -158,8 +169,8 @@ function dismissToast() { clearTimeout(toastTimer); toastEl.hidden = true; }
 
 // ---------- top bar: safety cluster (status popover, Tell, Stop) ----------
 const isPhone = () => app.clientWidth < 600;
-function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk = ui.rearmAsk = false; render(); } }
-function stopClick() { ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
+function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk = ui.rearmAsk = false; render(); const b = app.querySelector('[data-key="' + ui.safetyOpener + '"]'); if (b) b.focus(); } }
+function stopClick(e) { ui.safetyOpener = e.currentTarget.dataset.key; ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
 function tellClick() {
   if (isPhone()) { if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); } else openTell(ctx); return; }
   if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); return; }
@@ -171,11 +182,11 @@ function syncTopbar() {
   clear(topbar).append(
     h('span', { class: 'tb-lock' }, lockup()),
     h('div', { class: 'safety', 'data-state': eng ? 'stopped' : 'ok' },
-      h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'true', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) closeSafety(); else { ui.safetyOpen = true; ui.tellOpen = false; render(); } } },
+      h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) closeSafety(); else { ui.safetyOpener = 'safety'; ui.safetyOpen = true; ui.tellOpen = false; render(); } } },
         h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, eng ? 'Stopped' : 'Not stopped'), h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), h('span', { class: 'sx' }, eng ? 'new work blocked' : 'accepts new work')),
-      open ? h('div', { class: 'safety-pop', role: 'group', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)) : null),
+      open ? h('div', { class: 'safety-pop', role: 'dialog', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)) : null),
     h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell'),
-    h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
+    h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', 'aria-label': eng ? 'Re-arm new work' : 'Emergency stop all missions', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
 }
 // The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
 function mountTell(term) {
@@ -192,9 +203,16 @@ function mountTell(term) {
 // ---------- phone: Places sheet and the bottom bar state ----------
 function togglePlaces() { ui.placesOpen = !ui.placesOpen; ui.safetyOpen = false; render(); const f = app.querySelector(ui.placesOpen ? '.places .pl-item' : '[data-key="bb-places"]'); if (f) f.focus(); }
 function syncPhone() {
+  placesInert.forEach((el) => { el.inert = false; }); placesInert = [];
   app.querySelectorAll('.pl-wrap').forEach((e) => e.remove());
   const count = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
-  if (ui.placesOpen && isPhone() && app.dataset.term !== 'true') app.append(placesSheet(ctx, { close: togglePlaces, projState, count }));
+  if (ui.placesOpen && isPhone() && app.dataset.term !== 'true') {
+    const wrap = placesSheet(ctx, { close: togglePlaces, projState, projectStates: PSTATE, count });
+    app.append(wrap);
+    for (let node = wrap; node !== document.body; node = node.parentElement) {
+      [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert) { el.inert = true; placesInert.push(el); } });
+    }
+  }
   syncBottom(app, { engaged: sim.state.estop.engaged, placesOpen: ui.placesOpen, count });
   translate(bottom);
   const pl = app.querySelector('.pl-wrap'); if (pl) translate(pl);
@@ -271,8 +289,10 @@ function buildMenu() {
 }
 document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop, .stop-btn, .bb-stop')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
+  const dialog = app.querySelector('.places') || app.querySelector('.safety-pop');
+  if (dialog) trapTab(e, dialog);
   if (e.key !== 'Escape') return;
-  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); const b = app.querySelector('[data-key="safety"]'); if (b) b.focus(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
+  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
 });
 
 // ---------- device frames ----------

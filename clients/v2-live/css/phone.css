@@ -20,6 +20,9 @@
 .pl-item svg { flex: none; }
 .pl-item .count { margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--decide-bg); color: var(--decide-fg); font-size: 13px; font-weight: 700; text-align: center; line-height: 22px; }
 .pl-list .pdot { width: 24px; height: 24px; }
+[data-theme='forced'] .pl-item .nl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-theme='forced'] .pl-state { position: static; width: auto; height: auto; margin: 0 0 0 auto; clip: auto; clip-path: none; overflow: visible; white-space: nowrap; font-size: 12px; flex: none; }
+@media (forced-colors: active) { .pl-item .nl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pl-state { position: static; width: auto; height: auto; margin: 0 0 0 auto; clip: auto; clip-path: none; overflow: visible; white-space: nowrap; font-size: 12px; flex: none; } }
 @media (forced-colors: active) { .places, .bb-item svg { border: 1px solid CanvasText; } .pl-item[aria-current='page']::before { background: Highlight; } }
 
 /* Phone mission page (concept 12): the page sits above the bottom bar, so Tell, Places and Stop stay reachable. */
