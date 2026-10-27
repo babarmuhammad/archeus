@@ -280,7 +280,7 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 .main-col .ax-stat { align-items: flex-start; gap: 4px; padding: 4px 24px; text-align: left; background: transparent; border: 0; border-radius: 0; }
 .main-col .ax-stat:first-child { padding-left: 0; }
 .main-col .ax-stat + .ax-stat { border-left: var(--hair) solid var(--line); }
-.main-col .ax-stat .big { font-size: calc(var(--base) * 2.5); font-weight: 400; line-height: 1.1; }
+.main-col .ax-stat .big { font-size: calc(var(--base) * 2.5); font-weight: 400; line-height: 1.25; }
 .main-col .ax-stat .lab { font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
 
 .ax-pill { background: transparent; font-weight: 500; }
