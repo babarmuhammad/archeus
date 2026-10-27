@@ -23,3 +23,4 @@
 .dcn-steps li { position: relative; }
 .dcn-steps li + li::before { content: ''; position: absolute; left: 6px; top: -14px; height: 14px; border-left: var(--hair) solid var(--line-strong); }
 .main-col .card:not([data-state='needs_you']) .btn.primary { background: transparent; border-color: var(--text); color: var(--text); }
+.dcn-steps li[data-now] .st-g { border-color: var(--decide-line); background: var(--decide-bg); }
