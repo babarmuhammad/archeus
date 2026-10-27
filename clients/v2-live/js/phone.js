@@ -14,12 +14,12 @@ export function syncBottom(root, { engaged, placesOpen, count }) {
   if (pl) { pl.setAttribute('aria-expanded', String(!!placesOpen)); const c = pl.querySelector('.count'); c.hidden = !count; c.textContent = String(count); c.setAttribute('aria-label', count + ' need you'); }
 }
 
-// Same destinations and dividers as the desktop rail, then PROJECTS. Every row is 56 px; Attention carries its count.
+// Same destinations and dividers as the desktop rail, then PROJECTS. Every row is 56 px; Work carries the count of what needs you.
 export function placesSheet(ctx, { close, projState, projectStates, count }) {
   const ui = ctx.ui, here = (id) => ctx.route.name === id;
   const go = (href) => (e) => { ui.placesOpen = false; if (location.hash === href) { e.preventDefault(); ctx.render(); } };
   const row = (href, ic, label, id, extra) => h('a', { class: 'pl-item', href, 'data-key': 'places-route-' + id, 'data-route': id, 'aria-current': here(id) ? 'page' : null, onclick: go(href) }, icon(ic, 24), h('span', { class: 'nl' }, label), extra || null);
-  const items = ROUTES.flatMap((r) => [row('#/' + r.id, r.icon, r.id === 'now' ? 'Overview' : r.label, r.id, r.id === 'attention' && count ? h('span', { class: 'count', 'aria-label': count + ' need you' }, String(count)) : null),
+  const items = ROUTES.flatMap((r) => [row('#/' + r.id, r.icon, r.id === 'now' ? 'Overview' : r.label, r.id, r.id === 'work' && count ? h('span', { class: 'count', 'aria-label': count + ' need you' }, String(count)) : null),
     ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]);
   const projects = ctx.sim.state.projects.map((p) => h('a', { class: 'pl-item', href: '#/work', 'data-key': 'places-project-' + p.id, 'data-proj': p.id, onclick: (e) => { e.preventDefault(); ui.placesOpen = false; ui.workProject = p.id; ctx.nav('#/work'); } },
     h('span', { class: 'pdot', 'data-s': projState(p), 'aria-hidden': 'true' }), h('span', { class: 'nl' }, p.name), h('span', { class: 'vh pl-state' }, projectStates[projState(p)])));

@@ -9,7 +9,7 @@ import { spineRow, spineCard } from './spine.js';
 import { areasOf } from './areas-model.js';
 
 export const ROUTES = [
-  { id: 'now', label: 'Now', icon: 'now' }, { id: 'work', label: 'Work', icon: 'work' }, { id: 'attention', label: 'Attention', icon: 'attention' },
+  { id: 'now', label: 'Now', icon: 'now' }, { id: 'work', label: 'Work', icon: 'work' },
   { id: 'map', label: 'Map', icon: 'map' }, { id: 'replay', label: 'Replay', icon: 'replay' }, { id: 'chat', label: 'Chat', icon: 'chat' },
   { id: 'security', label: 'Security', icon: 'security' }, { id: 'health', label: 'Health', icon: 'health' }, { id: 'usage', label: 'Usage', icon: 'usage' }, { id: 'accounts', label: 'Accounts', icon: 'accounts' }, { id: 'extensions', label: 'Extensions', icon: 'extensions' },
   { id: 'settings', label: 'Settings', icon: 'settings' }
@@ -45,7 +45,7 @@ const KIND_ICON = { approval: 'approval', verification: 'status', mission: 'miss
 export function attentionItem(ctx, a) {
   const sim = ctx.sim, m = a.mission_id ? sim.state.missions[a.mission_id] : null;
   const need = a.group === 'Decide' || a.group === 'Review';
-  const open = a.kind === 'approval' ? '#/attention/' + a.ref : m ? '#/attention/' + m.id : null;
+  const open = a.kind === 'approval' ? '#/work/' + a.ref : m ? '#/work/' + m.id : null;
   const btns = [];
   if (a.kind === 'knowledge') btns.push(h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('confirm', a.ref) }, 'Remember'), h('button', { class: 'btn', type: 'button', onclick: () => ctx.act('retract', a.ref) }, 'Not this'));
   else if (a.kind === 'automation') btns.push(h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('enable', a.ref) }, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve'));

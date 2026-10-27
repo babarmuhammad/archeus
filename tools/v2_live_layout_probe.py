@@ -31,13 +31,13 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
+ROUTES = ['now', 'work', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
           'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
           'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
-          'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'attention/a-1~policy', 'attention/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
+          'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'work/a-1~policy', 'work/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
           'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
-          'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~toast', 'attention~help', 'chat~toast',
+          'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~toast', 'chat~toast',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
           # S1: the safety popover, its two-step Stop, the Tell overlay
           'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'chat~tell', 'now~estopsafety']
@@ -223,8 +223,14 @@ def motion_invariants(br, base):
     pg.goto(base + '?theme=dark&motion=full#/work', wait_until='load')
     pg.wait_for_timeout(300)
     names = pg.evaluate(css)
-    if names:
+    # 2026-10-27 owner: more liveliness. The Work graph may run its soft pulse on needs-you marks; nothing else, and nothing under reduced motion.
+    if set(names) - {'wg-soft'}:
         bad.append('a page without the core mark runs %r' % names)
+    pg.evaluate("window.v2live.store.set('motion', 'reduced')")
+    pg.wait_for_timeout(300)
+    names = pg.evaluate(css)
+    if names:
+        bad.append('the Work graph runs %r under reduced motion' % names)
     ctx.close()
     return bad
 

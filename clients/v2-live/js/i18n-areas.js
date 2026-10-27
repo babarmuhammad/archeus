@@ -276,7 +276,7 @@ export const RULES_AREAS = [
   [/^Not done: (.+)$/, (m) => 'Non fatto: ' + tr2(m[1])],
   [/^(\d+) missions? changed$/, (m) => plural(m[1], 'missione cambiata', 'missioni cambiate')], [/^(\d+) decisions? asked$/, (m) => plural(m[1], 'decisione richiesta', 'decisioni richieste')],
   [/^(\d+) results? to review$/, (m) => plural(m[1], 'risultato da rivedere', 'risultati da rivedere')], [/^(\d+) other$/, (m) => m[1] + ' altro'],
-  [/^(\d+) more are in Replay and Attention\.$/, (m) => 'Altri ' + m[1] + ' sono in Replay e Attenzione.'],
+  [/^(\d+) more are in Replay and Work\.$/, (m) => 'Altri ' + m[1] + ' sono in Replay e Lavoro.'],
   [/^today, since (\d\d:\d\d)$/, (m) => 'oggi, dalle ' + m[1]], [/^since (\d\d:\d\d)$/, (m) => 'dalle ' + m[1]],
   [/^A decision arrived: (.+)$/, (m) => 'È arrivata una decisione: ' + m[1]], [/^A result is ready to review: (.+)$/, (m) => 'Un risultato è pronto da rivedere: ' + m[1]],
   [/^Archeus suggests remembering: (.+)$/, (m) => 'Archeus suggerisce di ricordare: ' + m[1]],
