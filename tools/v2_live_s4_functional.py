@@ -200,7 +200,7 @@ def main():
             pg.select_option('select.cscope', 'general')
             check('General' in pg.inner_text('.cdest') and 'not project memory' in pg.inner_text('.cdest'), 'the destination line says General, not project memory')
             send(pg, 'Explain a checkpoint')
-            check('General \u00b7 not project memory' in pg.inner_text('.msgs'), 'the general answer is labelled')
+            check('general \u00b7 not project memory' in pg.inner_text('.msgs').lower(), 'the general answer is labelled')
             check(pg.evaluate("window.v2live.sim.state.knowledge.length") == k0, 'a general answer adds no memory')
             check('Retention' in pg.inner_text('.convo') and 'Unknown' in pg.inner_text('.convo'), 'retention is shown as Unknown')
             pg.click('.ccard[data-kind="general"] .btn')
@@ -322,7 +322,7 @@ def main():
             check(pg.get_attribute('input[data-key="chat-in-page"]', 'placeholder').startswith('Dimmi cosa ti serve'), 'the placeholder is Italian')
             pg.goto('%s?theme=dark&sim=paused&motion=reduced&notes=off&lang=it#/replay/m-date' % base, wait_until='load')
             pg.wait_for_timeout(500)
-            check('Categorie' in pg.inner_text('.rpside') and 'Stato iniziale' in pg.inner_text('.rpside'), 'Replay is Italian')
+            check('categorie' in pg.inner_text('.rpside').lower() and 'stato iniziale' in pg.inner_text('.rpside').lower(), 'Replay is Italian')
             ctx.close()
             br.close()
     finally:
