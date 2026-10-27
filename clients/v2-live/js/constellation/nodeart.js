@@ -62,13 +62,13 @@ export function triangle(id, r) {
   const mid = v.map((p, i) => { const q = v[(i + 1) % 3]; return [(p[0] + q[0]) / 2 + (rng() - .5) * r * .08, (p[1] + q[1]) / 2 + (rng() - .5) * r * .08]; });
   return {outline: `M${v.map(pt).join('L')}Z`, mesh: v.map((p, i) => seg(p, c) + seg(mid[i], mid[(i + 1) % 3]) + seg(p, mid[(i + 1) % 3])).join(''), dots: v.map(p => `M${pt(p)}h0`).join('')};
 }
-// Crossing ivory threads: long axial spikes, diagonals and many thin chords between points on two rings.
+// Crossing ivory threads: 16 spikes (long vertical and horizontal, shorter diagonals) over string-art chords between 32 rim points.
 export function coreStar(R, reach) {
   const L = R * reach, at = (k, rad) => { const a = k * Math.PI / 8 - Math.PI / 2; return [rad * Math.cos(a), rad * Math.sin(a)]; };
-  const rng = randomSeed('core-star');
+  const rim = k => { const a = k * Math.PI / 16 - Math.PI / 2, rad = R * (k % 8 === 0 ? 1.05 : k % 4 === 0 ? .8 : k % 2 === 0 ? .6 : .42); return [rad * Math.cos(a), rad * Math.sin(a)]; };
   let spikes = '', threads = '';
-  for (let k = 0; k < 16; k++) { const axis = k % 4 === 0, diag = k % 2 === 0; spikes += seg([0, 0], at(k, axis ? L : diag ? L * .62 : L * .36)); }
-  for (let i = 0; i < 26; i++) { const a = at(Math.floor(rng() * 16), R * (.35 + rng() * .65)), b = at(Math.floor(rng() * 16), R * (.35 + rng() * .65)); threads += seg(a, b); }
-  const tips = [0, 4, 8, 12].map(k => `M${pt(at(k, L))}h0`).join('');
+  for (let k = 0; k < 16; k++) { const axis = k % 4 === 0, diag = k % 2 === 0; spikes += seg([0, 0], at(k, axis ? L * 1.12 : diag ? L * .66 : L * .38)); }
+  for (let k = 0; k < 32; k++) for (const m of [5, 7, 9, 11]) threads += seg(rim(k), rim((k + m) % 32));
+  const tips = [0, 4, 8, 12].map(k => `M${pt(at(k, L * 1.12))}h0`).join('');
   return {spikes, threads, tips};
 }

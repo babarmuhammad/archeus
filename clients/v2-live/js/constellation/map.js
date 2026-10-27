@@ -1,4 +1,4 @@
-import {clamp, coversNode, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, hullVertices, hullPadding, wordmarkSize, polygonPath, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {clamp, coversNode, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {ICONS, crystal, triangle, coreStar} from './nodeart.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
@@ -57,10 +57,10 @@ export function createMap(container, options = {}) {
   const title = svgElement('title', {id: `${prefix}-title`}, options.label || 'Work constellation');
   const summary = svgElement('desc', {id: `${prefix}-summary`});
   const world = svgElement('g', {class: 'am-world', 'aria-hidden': 'true'});
-  const spokeLayer = svgElement('g', {class: 'am-spokes'}), hullLayer = svgElement('g', {class: 'am-hulls'}), edgeLayer = svgElement('g', {class: 'am-edges'});
+  const spokeLayer = svgElement('g', {class: 'am-spokes'}), edgeLayer = svgElement('g', {class: 'am-edges'});
   const core = svgElement('g', {class: 'am-core am-state-core'});
   const nodeLayer = svgElement('g', {class: 'am-nodes'}), pulseLayer = svgElement('g', {class: 'am-pulses'});
-  world.append(spokeLayer, hullLayer, edgeLayer, core, nodeLayer, pulseLayer);
+  world.append(spokeLayer, edgeLayer, core, nodeLayer, pulseLayer);
   const leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
   const reviews = svgElement('g', {class: 'am-reviews'});
   const hits = svgElement('g', {class: 'am-hits'}), selectRing = svgElement('circle', {class: 'am-select-ring'});
@@ -89,7 +89,7 @@ export function createMap(container, options = {}) {
   let layoutKey = '';
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   const listeners = new Map(), activePulses = new Set(), pointers = new Map();
-  const starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), hullRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
+  const starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
   let selectedEl = null, fullKey = '';
   let gesture = null;
   const canvas = document.createElement('canvas');
@@ -247,28 +247,9 @@ export function createMap(container, options = {}) {
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
     const groups = new Map();
     for (const n of positions) { const key = n.project || 'unassigned'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(n); }
-    const hulls = [...groups.keys()].sort().map((project, i) => ({project, i, members: groups.get(project)}));
-    const patchHull = (rec, item) => {
-      const {i, members} = item;
-      setAttr(rec.el, 'class', `am-project am-accent-${accent(...members.map(n => n.state))}`);
-      const shape = [width, u];
-      for (const n of members) shape.push(n.x, n.y, n.radius);
-      if (rec.shape && rec.shape.length === shape.length && rec.shape.every((v, k) => v === shape[k])) { item.mx = rec.mx; item.my = rec.my; return; }
-      rec.shape = shape;
-      const vertices = hullVertices(members, hullPadding(members, u));
-      item.mx = rec.mx = members.reduce((s, n) => s + n.x, 0) / members.length; item.my = rec.my = members.reduce((s, n) => s + n.y, 0) / members.length;
-      const d = polygonPath(vertices, 6 * u);
-      setAttr(rec.outline, 'd', d);
-      setAttr(rec.vertex, 'd', vertices.map(v => `M${v.x},${v.y}h0`).join(''));
-    };
-    reconcile(hullLayer, hullRecs, hulls, item => item.project, item => {
-      const rec = {el: svgElement('g', {'data-project': item.project}), outline: svgElement('path', {class: 'am-hull'}), vertex: svgElement('path', {class: 'am-vertex'})};
-      rec.el.append(rec.outline, rec.vertex);
-      patchHull(rec, item);
-      return rec;
-    }, patchHull);
+    const hubs = [...groups.keys()].sort().map(project => { const members = groups.get(project), hub = members.find(n => n.kind === 'Project'); return {project, mx: hub ? hub.x : members.reduce((t, n) => t + n.x, 0) / members.length, my: hub ? hub.y : members.reduce((t, n) => t + n.y, 0) / members.length}; });
     const patchSpoke = (rec, item) => setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`);
-    reconcile(spokeLayer, spokeRecs, hulls, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
+    reconcile(spokeLayer, spokeRecs, hubs, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
     const byId = new Map(positions.map(n => [n.id, n]));
     const edges = [];
     for (const edge of graph.edges || []) {
@@ -276,11 +257,13 @@ export function createMap(container, options = {}) {
       if (a && b) edges.push({id: edgeId(edge), a, b, kind: String(edge.kind || 'relation').replace(/W/g, '')});
     }
     const freshEdges = [];
+    // Relations are straight hairlines from rim to rim with a joint dot at each end.
     const patchEdge = (rec, {a, b, kind}) => {
-      if (rec.ax !== a.x || rec.ay !== a.y || rec.bx !== b.x || rec.by !== b.y) {
-        const dx = b.x - a.x, dy = b.y - a.y, bend = a.project === b.project ? .05 : .13;
-        setAttr(rec.el, 'd', `M${f(a.x)},${f(a.y)} Q${f((a.x + b.x) / 2 - dy * bend)},${f((a.y + b.y) / 2 + dx * bend)} ${f(b.x)},${f(b.y)}`);
-        rec.ax = a.x; rec.ay = a.y; rec.bx = b.x; rec.by = b.y;
+      if (rec.ax !== a.x || rec.ay !== a.y || rec.bx !== b.x || rec.by !== b.y || rec.ar !== a.radius || rec.br !== b.radius) {
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, ra = Math.min(a.radius, d / 2), rb = Math.min(b.radius, d / 2);
+        const p = [a.x + ux * ra, a.y + uy * ra, b.x - ux * rb, b.y - uy * rb].map(f);
+        setAttr(rec.line, 'd', `M${p[0]},${p[1]}L${p[2]},${p[3]}`); setAttr(rec.joint, 'd', `M${p[0]},${p[1]}h0M${p[2]},${p[3]}h0`);
+        rec.ax = a.x; rec.ay = a.y; rec.bx = b.x; rec.by = b.y; rec.ar = a.radius; rec.br = b.radius;
       }
       if (rec.sa !== a.state || rec.sb !== b.state || rec.kind !== kind) {
         setAttr(rec.el, 'class', `am-edge am-edge-${kind} am-accent-${accent(a.state, b.state)}`);
@@ -288,7 +271,8 @@ export function createMap(container, options = {}) {
       }
     };
     reconcile(edgeLayer, edgeRecs, edges, e => e.id, e => {
-      const rec = {el: svgElement('path', {'data-edge-id': e.id})};
+      const line = svgElement('path', {class: 'am-line'}), joint = svgElement('path', {class: 'am-joint'}), rec = {el: svgElement('g', {'data-edge-id': e.id}), line, joint};
+      rec.el.append(line, joint);
       patchEdge(rec, e);
       if (arrivals && (!previous.has(e.a.id) || !previous.has(e.b.id))) freshEdges.push(rec.el);
       return rec;
@@ -443,7 +427,7 @@ export function createMap(container, options = {}) {
     element: host,
     setLive(live) { options.live = live === true; if (!destroyed) motion(); },
     pulse(id) {
-      const path = edgeRecs.get(id)?.el;
+      const path = edgeRecs.get(id)?.line;
       if (destroyed || !path || isReduced() || document.hidden || activePulses.size >= 8) return false;
       const marker = svgElement('circle', {r: 3, class: 'am-marker'});
       marker.style.offsetPath = `path('${path.getAttribute('d')}')`;

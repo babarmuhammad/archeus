@@ -4,7 +4,7 @@ export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 export const INSET = Object.freeze({top: 16, right: 16, bottom: 60, left: 16});
 export const unit = (width, height) => clamp(Math.sqrt(width * height) / 900, .9, 1.6);
 export const coreCentre = (width, height, inset = INSET) => ({x: width / 2, y: (inset.top + height - inset.bottom) / 2});
-export const coreRadius = u => 40 * u;
+export const coreRadius = u => 52 * u;
 export const coreReach = width => (width < 480 ? 1.25 : 1.75);
 export const nodeRadius = (weight, u = 1) => (3 + Math.sqrt(clamp(Number(weight) || 1, .25, 100)) * 2) * u;
 export function randomSeed(seed) {
@@ -23,131 +23,67 @@ export function stateKey(state) {
 }
 export const isCrystal = n => n.kind === 'Mission' && ['running', 'needs-you'].includes(stateKey(n.state));
 export const CRYSTAL_WEIGHT = 100;
-export const crystalRadius = (u, width) => (width < 480 ? 25 : 62) * u;
-export const bodyRadius = (n, u, width) => (n.kind === 'Project' ? (width < 480 ? 17 : 34) : n.kind === 'Execution' ? (width < 480 ? 17 : 38) : (width < 480 ? 13 : 26)) * u;
-export const hullPadding = (members, u) => Math.max(17 * u + 7, Math.max(...members.map(n => n.radius)) + 10);
-export const wordmarkSize = u => Math.round(11 * u + 1);
-// Convex polygons: the vector that moves `a` clear of `b` along the axis of least penetration (plus `margin`), or null when they are already apart.
-export function overlapDepth(a, b, margin = 0) {
-  let best = Infinity, push = null;
-  for (const poly of [a, b]) for (let i = 0; i < poly.length; i++) {
-    const p = poly[i], q = poly[(i + 1) % poly.length], len = Math.hypot(q.x - p.x, q.y - p.y) || 1, nx = (q.y - p.y) / len, ny = -(q.x - p.x) / len;
-    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
-    for (const v of a) { const d = v.x * nx + v.y * ny; if (d < a0) a0 = d; if (d > a1) a1 = d; }
-    for (const v of b) { const d = v.x * nx + v.y * ny; if (d < b0) b0 = d; if (d > b1) b1 = d; }
-    const toward = a1 - b0 + margin, away = b1 - a0 + margin;
-    if (toward <= 0 || away <= 0) return null;
-    const depth = Math.min(toward, away);
-    if (depth < best) { best = depth; const sign = toward < away ? -1 : 1; push = {x: nx * depth * sign, y: ny * depth * sign}; }
-  }
-  return push;
+export const crystalRadius = (u, width) => (width < 480 ? 25 * u : Math.min(60 * u, 92));
+// Open space: only the top few running or needs-you missions are drawn as big crystals, the rest shrink to minor nodes.
+export const CRYSTAL_BUDGET = 3;
+export const crystalIds = nodes => new Set(nodes.filter(isCrystal).sort((a, b) => (stateKey(b.state) === 'needs-you') - (stateKey(a.state) === 'needs-you') || String(a.id).localeCompare(String(b.id))).slice(0, CRYSTAL_BUDGET).map(n => n.id));
+export const bodyRadius = (n, u, width) => (n.kind === 'Project' ? (width < 480 ? 17 : 40) : n.kind === 'Execution' ? (width < 480 ? 17 : 38) : (width < 480 ? 13 : 21)) * u;
+export const wordmarkSize = u => Math.round(12.5 * u + 2);
+// What the layout keeps clear of: the core star (a circle) and the wordmark with its tagline under it (a box).
+export function coreKeepOut(width, height, u, inset = INSET) {
+  const c = coreCentre(width, height, inset), R = coreRadius(u), ws = wordmarkSize(u);
+  return {x: c.x, y: c.y, radius: R * coreReach(width) + 8 * u,
+    box: {x: c.x - 6.5 * ws, y: c.y + R * .6, width: 13 * ws, height: R * coreReach(width) + (width < 480 ? 2.8 : 4.6) * ws - R * .6}};
 }
-export const rectPolygon = (x0, y0, x1, y1) => [{x: x0, y: y0}, {x: x1, y: y0}, {x: x1, y: y1}, {x: x0, y: y1}];
-// What a hull must stay clear of: the core star and the wordmark and running count under it.
-export function coreObstacles(width, height, u, inset = INSET) {
-  const c = coreCentre(width, height, inset), R = coreRadius(u), ws = wordmarkSize(u), S = R * coreReach(width) + 4 * u;
-  return [Array.from({length: 12}, (_, i) => ({x: c.x + S * Math.cos(i * TAU / 12 + .26), y: c.y + S * Math.sin(i * TAU / 12 + .26)})),
-    rectPolygon(c.x - 6.5 * ws, c.y + R * .6, c.x + 6.5 * ws, c.y + R * coreReach(width) + (width < 480 ? 2.8 : 4.6) * ws)];
-}
+// Open composition: each project is a hub on a ring round the core, its children spiral out from it by rank, executions and decisions
+// spiral round their mission, and a short relaxation pushes every pair apart. Nothing is drawn for a project but its own node.
 export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
-  const u = unit(width, height), core = coreCentre(width, height, inset);
-  const keys = [...new Set(graph.nodes.map(n => n.project || 'unassigned'))].sort();
-  if (!keys.length) return [];
-  const weight = n => isCrystal(n) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
-  const groups = keys.map(key => graph.nodes.filter(n => (n.project || 'unassigned') === key)
-    .map(n => { const w = weight(n); return {...n, radius: isCrystal(n) ? crystalRadius(u, width) : ['Mission', 'Project', 'Execution'].includes(n.kind) ? bodyRadius(n, u, width) : nodeRadius(w, u), rank: w}; })
-    .sort((a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || b.rank - a.rank || String(a.id).localeCompare(String(b.id))));
-  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10);
-  const top = Math.min(inset.top, height / 3), bottom = Math.min(inset.bottom, height / 5);
+  if (!graph.nodes.length) return [];
+  const u = unit(width, height), core = coreCentre(width, height, inset), keep = coreKeepOut(width, height, u, inset);
+  const big = crystalIds(graph.nodes), weight = n => big.has(n.id) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
+  const nodes = graph.nodes.map(n => { const w = weight(n); return {...n, radius: big.has(n.id) ? crystalRadius(u, width) : ['Mission', 'Project', 'Execution'].includes(n.kind) ? bodyRadius(n, u, width) : nodeRadius(w, u), rank: w}; })
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const byId = new Map(nodes.map(n => [n.id, n])), keys = [...new Set(nodes.map(n => n.project || 'unassigned'))].sort(), P = keys.length;
+  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height / 3), bottom = Math.min(inset.bottom, height / 5);
   const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y);
-  const pad = 20 * u, keepOut = coreRadius(u) * coreReach(width) + 8 * u, P = keys.length;
-  const reach = (s, group) => s * Math.sqrt(Math.max(0, group.length - 1)) + pad + 8 * u;
-  const widest = Math.max(...groups.map(g => g.length));
-  const ring = (s, angles) => {
-    const rc = reach(s, {length: widest}), a = halfX - rc, b = halfY - rc;
-    return {rc, a, b, points: angles.map(t => ({x: a * Math.cos(t), y: b * Math.sin(t)}))};
-  };
-  const fits = (s, angles) => {
-    const {rc, a, b, points} = ring(s, angles);
-    if (a <= 0 || b <= 0 || points.some(p => Math.hypot(p.x, p.y - 12 * u) < keepOut + rc * .8)) return false;
-    for (let i = 0; i < P; i++) for (let j = i + 1; j < P; j++)
-      if (Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y) < (reach(s, groups[i]) + reach(s, groups[j])) * .82) return false;
-    return true;
-  };
-  const lowest = 14 * u, highest = 66 * u;
-  let best = {spacing: lowest, angles: keys.map((_, i) => -Math.PI / 2 + i * TAU / P), score: -1};
-  for (let k = 0; k < 12; k++) {
-    const turn = -Math.PI / 2 + k * (P === 1 ? TAU : TAU / P) / 12, angles = keys.map((_, i) => turn + i * TAU / P);
-    let lo = lowest, hi = highest, spacing = lowest;
-    if (fits(hi, angles)) spacing = hi;
-    else if (fits(lo, angles)) { for (let i = 0; i < 22; i++) { const mid = (lo + hi) / 2; if (fits(mid, angles)) lo = mid; else hi = mid; } spacing = lo; }
-    else continue;
-    if (spacing > best.score + 1e-6) best = {spacing, angles, score: spacing};
-  }
-  const place = spacing => {
-    const {points: centres} = ring(spacing, best.angles), placed = groups.map(() => []);
-    groups.forEach((group, gi) => {
-      const phase = randomSeed(`${seed}:${keys[gi]}`)() * TAU;
-      group.forEach((node, i) => {
-        const rng = randomSeed(`${seed}:${node.id}`);
-        const a = phase + i * GOLDEN + (rng() - .5) * .5, d = spacing * Math.sqrt(i) * (.9 + rng() * .2);
-        placed[gi].push({...node, x: core.x + centres[gi].x + Math.cos(a) * d, y: core.y + centres[gi].y + Math.sin(a) * d});
-      });
+  const parentOf = new Map();
+  for (const e of graph.edges || []) if (byId.has(e.from) && byId.has(e.to) && byId.get(e.from).kind !== 'Project' && !parentOf.has(e.to)) parentOf.set(e.to, e.from);
+  const order = (a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || b.rank - a.rank || String(a.id).localeCompare(String(b.id));
+  const spiral = (list, cx, cy, r0, step, phase, rng) => list.forEach((n, i) => {
+    const a = phase + i * GOLDEN + (rng() - .5) * .3, d = r0 + n.radius + step * Math.sqrt(i + .6) * (.9 + rng() * .2);
+    n.x = cx + Math.cos(a) * d; n.y = cy + Math.sin(a) * d;
+  });
+  const kids = new Map();
+  for (const n of nodes) if (parentOf.has(n.id)) { if (!kids.has(parentOf.get(n.id))) kids.set(parentOf.get(n.id), []); kids.get(parentOf.get(n.id)).push(n); }
+  keys.forEach((key, pi) => {
+    const rng = randomSeed(`${seed}:${key}`), theta = -Math.PI / 2 + Math.PI / P + pi * TAU / P + (P === 1 ? Math.PI / 2 : 0);
+    let hx = core.x + Math.cos(theta) * halfX * .6; const hy = core.y + Math.sin(theta) * halfY * .55, hub = nodes.find(n => n.kind === 'Project' && (n.project || 'unassigned') === key);
+    const group = nodes.filter(n => (n.project || 'unassigned') === key && n !== hub && !parentOf.has(n.id)).sort(order);
+    if (hy > keep.box.y - 80 * u && Math.abs(hx - core.x) < keep.box.width / 2 + 90 * u) hx = core.x + (hx < core.x ? -1 : 1) * (keep.box.width / 2 + 90 * u);
+    if (hub) { hub.x = hx; hub.y = hy; }
+    spiral(group, hx, hy, hub ? hub.radius : 0, 62 * u, theta, rng);
+  });
+  for (const [pid, list] of kids) { const p = byId.get(pid), rng = randomSeed(`${seed}:${pid}`), away = Math.atan2(p.y - core.y, p.x - core.x); spiral(list.sort(order), p.x, p.y, p.radius, 30 * u, away, rng); }
+  const anchor = nodes.map(n => ({x: n.x, y: n.y})), gap = 18 * u;
+  for (let step = 0; step < (nodes.length > 60 ? 10 : 70); step++) {
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j], need = a.radius + b.radius + gap, dx = b.x - a.x, dy = b.y - a.y;
+      if (Math.abs(dx) >= need || Math.abs(dy) >= need) continue;
+      const d = Math.hypot(dx, dy) || .01;
+      if (d >= need) continue;
+      const f = (need - d) / d * .5, ux = dx || .01;
+      a.x -= ux * f; a.y -= dy * f; b.x += ux * f; b.y += dy * f;
+    }
+    nodes.forEach((n, i) => {
+      n.x += (anchor[i].x - n.x) * .02; n.y += (anchor[i].y - n.y) * .02;
+      const dx = n.x - keep.x, dy = n.y - keep.y, d = Math.hypot(dx, dy) || .01, need = keep.radius + n.radius * .5;
+      if (d < need) { n.x = keep.x + dx / d * need; n.y = keep.y + dy / d * need; }
+      if (coversNode(keep.box, n, 6)) { const below = n.y > keep.box.y + keep.box.height / 2; n.y = below ? keep.box.y + keep.box.height + n.radius + 6 : keep.box.y - n.radius - 6; }
+      n.x = clamp(n.x, left + n.radius, width - right - n.radius);
+      n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
     });
-    const nodes = placed.flat();
-    for (let step = 0; step < (placed.flat().length > 60 ? 4 : 8); step++) {
-      for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i], b = nodes[j];
-        const gap = a.radius + b.radius + 10 * u, dx = b.x - a.x, dy = b.y - a.y;
-        if (Math.abs(dx) >= gap || Math.abs(dy) >= gap) continue;
-        const d = Math.hypot(dx, dy) || .01;
-        if (d >= gap) continue;
-        const f = (gap - d) / d * .5, ux = dx || .01;
-        a.x -= ux * f; a.y -= dy * f; b.x += ux * f; b.y += dy * f;
-      }
-      for (const n of nodes) {
-        const dx = n.x - core.x, dy = n.y - core.y, d = Math.hypot(dx, dy);
-        const need = keepOut + n.radius * .5;
-        if (d < need) { n.x = core.x + (dx || 1) / (d || 1) * need; n.y = core.y + dy / (d || 1) * need; }
-        n.x = clamp(n.x, left + n.radius, width - right - n.radius);
-        n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
-      }
-    }
-    return placed;
-  };
-  // Hulls are the real polygons: push whole clusters apart (and off the core mark and its wordmark) until none touch, keeping them in view.
-  const obstacles = coreObstacles(width, height, u, inset), gap = 6 * u;
-  const shift = (g, dx, dy) => { for (const n of g) { n.x += dx; n.y += dy; } };
-  const hullOf = g => hullVertices(g, hullPadding(g, u));
-  const settle = (placed, rounds) => {
-    for (let round = 0; round < rounds; round++) {
-      let moved = false;
-      const hull = placed.map(hullOf);
-      for (let i = 0; i < P; i++) for (let j = i + 1; j < P; j++) {
-        const push = overlapDepth(hull[i], hull[j], gap);
-        if (!push) continue;
-        shift(placed[i], push.x / 2, push.y / 2); shift(placed[j], -push.x / 2, -push.y / 2);
-        hull[i] = hullOf(placed[i]); hull[j] = hullOf(placed[j]); moved ||= Math.hypot(push.x, push.y) > 1;
-      }
-      for (let i = 0; i < P; i++) {
-        for (const o of obstacles) { const push = overlapDepth(hull[i], o, gap); if (push) { shift(placed[i], push.x, push.y); hull[i] = hullOf(placed[i]); moved ||= Math.hypot(push.x, push.y) > 1; } }
-        const xs = hull[i].map(v => v.x), ys = hull[i].map(v => v.y), g = placed[i];
-        const lo = {x: Math.min(...xs) - 4, y: Math.min(...ys) - 4}, hi = {x: Math.max(...xs) + 4, y: Math.max(...ys) + 6};
-        const nlo = {x: Math.min(...g.map(n => n.x - n.radius)) - left, y: Math.min(...g.map(n => n.y - n.radius)) - top};
-        const nhi = {x: Math.max(...g.map(n => n.x + n.radius)) - (width - right), y: Math.max(...g.map(n => n.y + n.radius)) - (height - bottom)};
-        const dx = Math.max(-lo.x, -nlo.x, 0) + Math.min(width - hi.x, -nhi.x, 0), dy = Math.max(-lo.y, -nlo.y, 0) + Math.min(height - hi.y, -nhi.y, 0);
-        if (Math.abs(dx) > .01 || Math.abs(dy) > .01) { shift(g, dx, dy); moved ||= Math.hypot(dx, dy) > 1; }
-      }
-      if (!moved) break;
-    }
-    const hull = placed.map(hullOf);
-    return hull.every((h, i) => hull.slice(i + 1).every(o => !overlapDepth(h, o, 0)) && obstacles.every(o => !overlapDepth(h, o, 0)));
-  };
-  let spacing = best.spacing, placed;
-  // ponytail: past 60 nodes no layout fits the box, so hulls are not separated; a real packing solver if big graphs matter.
-  const crowded = groups.reduce((s, g) => s + g.length, 0) > 60;
-  for (let attempt = 0; attempt < (crowded ? 1 : 4); attempt++) { placed = place(spacing); if (crowded || settle(placed, 14) || spacing < lowest * .5) break; spacing *= .86; }
-  return placed.flat().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  }
+  return nodes;
 }
 export function convexHull(points) {
   const sorted = [...new Map(points.map(p => [`${p.x}:${p.y}`, {x: p.x, y: p.y}])).values()]
@@ -164,20 +100,6 @@ export function convexHull(points) {
   };
   return [...half(sorted), ...half([...sorted].reverse())];
 }
-// The hull of the members grown by `padding`: each corner of the member hull becomes an octagon, so thin or collinear clusters get faceted ends, never spikes.
-export function hullVertices(points, padding = 22) {
-  if (!points.length) return [];
-  const r = padding / Math.cos(Math.PI / 8);
-  return convexHull(convexHull(points).flatMap(p => Array.from({length: 8}, (_, i) => ({x: p.x + Math.cos((i + .5) * TAU / 8) * r, y: p.y + Math.sin((i + .5) * TAU / 8) * r}))));
-}
-export function polygonPath(vertices, round = 0) {
-  if (!vertices.length) return '';
-  if (!round) return `M${vertices.map(p => `${p.x},${p.y}`).join('L')}Z`;
-  const n = vertices.length;
-  const corner = (v, to) => { const d = Math.hypot(to.x - v.x, to.y - v.y) || 1, t = Math.min(round / d, .4); return `${v.x + (to.x - v.x) * t},${v.y + (to.y - v.y) * t}`; };
-  return vertices.map((v, i) => `${i ? 'L' : 'M'}${corner(v, vertices.at(i - 1))}Q${v.x},${v.y} ${corner(v, vertices[(i + 1) % n])}`).join('') + 'Z';
-}
-export const hullPath = (points, round = 6, padding = 22) => polygonPath(hullVertices(points, padding), round);
 export const overlaps = (a, b, pad = 0) => a.x < b.x + b.width + pad && a.x + a.width + pad > b.x && a.y < b.y + b.height + pad && a.y + a.height + pad > b.y;
 export function coversNode(box, node, pad = 3) {
   const r = node.radius + pad;

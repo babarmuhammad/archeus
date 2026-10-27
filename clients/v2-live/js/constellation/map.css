@@ -48,14 +48,13 @@
 .archeus-map .am-state-thinking, .archeus-map .am-grad-thinking { color: var(--am-thinking); }
 .archeus-map .am-state-core, .archeus-map .am-grad-core { color: var(--am-text); }
 .archeus-map .am-leader { fill: none; stroke: var(--am-muted); stroke-opacity: .5; stroke-width: .8; pointer-events: none; }
-.archeus-map .am-hull { fill: none; stroke: var(--am-text); stroke-opacity: .16; stroke-width: 1; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.archeus-map .am-accent-needs-you .am-hull { stroke: var(--am-attention); stroke-opacity: .32; }
-.archeus-map .am-accent-running .am-hull { stroke: var(--am-running); stroke-opacity: .3; }
 .archeus-map .am-spoke { fill: none; stroke: var(--am-text); stroke-opacity: .2; stroke-width: .8; vector-effect: non-scaling-stroke; }
-.archeus-map .am-edge { fill: none; stroke: var(--am-text); stroke-opacity: .3; stroke-width: .8; vector-effect: non-scaling-stroke; }
-.archeus-map .am-edge-contains { stroke-opacity: .2; }
-.archeus-map .am-edge.am-accent-needs-you { stroke: var(--am-attention); stroke-opacity: .85; stroke-width: 1.1; }
-.archeus-map .am-edge.am-accent-running { stroke: var(--am-running); stroke-opacity: .8; stroke-width: 1.1; }
+.archeus-map .am-edge { fill: none; stroke: var(--am-text); stroke-opacity: .45; stroke-width: 1; }
+.archeus-map .am-edge path { vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.archeus-map .am-edge .am-joint { stroke-width: 4; stroke-opacity: .9; }
+.archeus-map .am-edge-contains { stroke-opacity: .34; }
+.archeus-map .am-edge.am-accent-needs-you { stroke: var(--am-attention); stroke-opacity: .85; }
+.archeus-map .am-edge.am-accent-running { stroke: var(--am-running); stroke-opacity: .8; }
 .archeus-map .am-body { fill: currentColor; stroke: currentColor; stroke-width: 1.3; }
 .archeus-map .am-fill { fill: var(--am-bg); stroke: none; }
 .archeus-map [class^='am-e'] { fill: none; stroke: currentColor; stroke-width: 1; stroke-linecap: round; vector-effect: non-scaling-stroke; }
@@ -85,8 +84,8 @@
 .archeus-map .am-core { color: var(--am-text); pointer-events: none; }
 .archeus-map [data-core] { transform-box: fill-box; transform-origin: center; }
 .archeus-map [data-core='breath'] { animation: core-breath 6000ms ease-in-out infinite; }
-.archeus-map .am-core-chords { fill: none; stroke: currentColor; stroke-opacity: .5; stroke-width: .7; }
-.archeus-map .am-core-thread { fill: none; stroke: currentColor; stroke-opacity: .85; stroke-width: .8; }
+.archeus-map .am-core-chords { fill: none; stroke: currentColor; stroke-opacity: .42; stroke-width: .8; vector-effect: non-scaling-stroke; }
+.archeus-map .am-core-thread { fill: none; stroke: currentColor; stroke-opacity: .9; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .archeus-map .am-core-dot { fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; }
 .archeus-map .am-wordmark { fill: var(--am-text); font-family: var(--am-sans); font-weight: 500; letter-spacing: .32em; }
 .archeus-map .am-tagline { fill: var(--am-muted); font-family: var(--am-serif); }
@@ -122,9 +121,7 @@
     --am-line: #878280; --am-running: #00489d; --am-attention: #664407; --am-blocked: #991018;
     --am-done: #1a5533; --am-idle: #424c5e; --am-thinking: #5925bf;
   }
-  .archeus-map .am-edge, .archeus-map .am-hull, .archeus-map .am-spoke { stroke-opacity: .72; stroke-width: 1.2; }
   }
-.archeus-map[data-theme$='high-contrast'] .am-edge, .archeus-map[data-theme$='high-contrast'] .am-hull, .archeus-map[data-theme$='high-contrast'] .am-spoke { stroke-opacity: .72; stroke-width: 1.2; }
 .archeus-map[data-theme$='high-contrast'] .am-label text { stroke-width: 5px; stroke-opacity: 1; }
 @media (prefers-color-scheme: light) and (prefers-contrast: more) {
   .archeus-map[data-theme='system'] {
@@ -139,16 +136,15 @@
     --am-blocked: CanvasText; --am-done: CanvasText; --am-idle: CanvasText; --am-thinking: CanvasText;
     forced-color-adjust: none;
   }
-  .archeus-map .am-hull { stroke-dasharray: 3 5; }
-  .archeus-map .am-edge, .archeus-map .am-hull, .archeus-map .am-spoke { stroke-opacity: 1; stroke-width: 1; }
 }
 .archeus-map[data-theme='forced'] {
   --am-bg: #000; --am-surface: #000; --am-text: #fff; --am-muted: #fff; --am-line: #fff; --am-focus: #1aebff;
   --am-running: #1aebff; --am-attention: #fff; --am-blocked: #fff; --am-done: #fff; --am-idle: #fff; --am-thinking: #fff;
     color-scheme: dark;
 }
-.archeus-map[data-theme='forced'] .am-hull, .archeus-map[data-theme='forced'] .am-edge, .archeus-map[data-theme='forced'] .am-spoke { stroke-opacity: 1; }
-.archeus-map[data-theme='forced'] .am-hull { stroke-dasharray: 3 5; }
 .archeus-map[data-theme='light'] .am-review rect, .archeus-map[data-theme='light-high-contrast'] .am-review rect { fill: #ffcd66; stroke: #8c5e0a; }
 .archeus-map[data-theme='light'] .am-review, .archeus-map[data-theme='light-high-contrast'] .am-review { color: #14101a; }
-.archeus-map .am-vertex { fill: none; stroke: var(--am-text); stroke-opacity: .4; stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+@media (prefers-contrast: more) { .archeus-map .am-edge, .archeus-map .am-spoke { stroke-opacity: .72; stroke-width: 1.2; } }
+.archeus-map[data-theme$='high-contrast'] .am-edge, .archeus-map[data-theme$='high-contrast'] .am-spoke { stroke-opacity: .72; stroke-width: 1.2; }
+@media (forced-colors: active) { .archeus-map .am-edge, .archeus-map .am-spoke { stroke-opacity: 1; stroke-width: 1; } }
+.archeus-map[data-theme='forced'] .am-edge, .archeus-map[data-theme='forced'] .am-spoke { stroke-opacity: 1; }

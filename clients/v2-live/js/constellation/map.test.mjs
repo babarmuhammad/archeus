@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {overlapDepth, rectPolygon, hullPadding, coreObstacles, crystalRadius, isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, hullPath, hullVertices, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {coreKeepOut, crystalRadius, isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('layout is seeded, deterministic, input-order independent and bounded', () => {
@@ -40,11 +40,6 @@ test('hull drops duplicates, interior points, and collinear points', () => {
   const square = [{x: 0, y: 0}, {x: 10, y: 0}, {x: 10, y: 10}, {x: 0, y: 10}];
   assert.deepEqual(convexHull([...square, {x: 5, y: 5}, square[0]]), square);
   assert.deepEqual(convexHull([{x: 0, y: 0}, {x: 5, y: 0}, {x: 10, y: 0}]), [{x: 0, y: 0}, {x: 10, y: 0}]);
-  assert.equal(hullPath([]), '');
-  for (const points of [[square[0]], square.slice(0, 2), square]) {
-    const smooth = hullPath(points); assert.ok(smooth.startsWith('M')); assert.ok(smooth.endsWith('Z')); assert.ok(smooth.includes('Q')); assert.ok(!smooth.includes('NaN'));
-    assert.ok(!hullPath(points, 0).includes('Q'));
-  }
 });
 test('arrow movement picks directional neighbour and handles boundaries', () => {
   const nodes = [{id: 'a', x: 0, y: 0}, {id: 'b', x: 20, y: 0}, {id: 'c', x: 0, y: 30}, {id: 'd', x: 1, y: 100}];
@@ -69,12 +64,6 @@ test('layout keeps every star inside the inset and clear of the core for 1 to 6 
     }
   }
 });
-test('hull polygon encloses every member centre', () => {
-  const points = Array.from({length: 12}, (_, i) => ({x: 100 + Math.cos(i * 2.4) * (10 + i * 6), y: 100 + Math.sin(i * 2.4) * (10 + i * 6)}));
-  const hull = hullVertices(points, 20), sign = (a, b, p) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-  const side = Math.sign(sign(hull[0], hull[1], {x: 100, y: 100}));
-  for (const p of points) for (let i = 0; i < hull.length; i++) assert.equal(Math.sign(sign(hull[i], hull[(i + 1) % hull.length], p)), side);
-});
 test('state aliases normalise and rich labels reserve the eyebrow width', () => {
   assert.equal(stateKey('Needs You'), 'needs-you'); assert.equal(stateKey('waiting'), 'needs-you'); assert.equal(stateKey(undefined), 'idle');
   const node = {id: 'a', label: 'Hi', x: 400, y: 300, radius: 6, state: 'idle', kind: 'Mission'};
@@ -89,31 +78,6 @@ test('running and needs-you missions lay out as larger crystals than idle ones',
   assert.ok(r('b') > r('a') * 2 && r('c') === r('b') && r('d') === r('a'));
 });
 
-test('overlapDepth gives the push that clears two convex polygons', () => {
-  const a = rectPolygon(0, 0, 10, 10), b = rectPolygon(8, 0, 18, 10);
-  const push = overlapDepth(a, b);
-  assert.ok(push.x < 0 && push.y === 0 && Math.abs(push.x + 2) < 1e-9);
-  assert.equal(overlapDepth(a, rectPolygon(10, 0, 20, 10)), null);
-  assert.ok(overlapDepth(a, rectPolygon(10, 0, 20, 10), 1));
-  assert.equal(overlapDepth(a, rectPolygon(30, 30, 40, 40)), null);
-});
-test('hulls are octagon faceted, so a thin cluster has no spike longer than the padding', () => {
-  const points = [{x: 0, y: 0}, {x: 120, y: 4}, {x: 240, y: 0}], pad = 30, hull = hullVertices(points, pad);
-  assert.ok(hull.length >= 8);
-  for (const v of hull) assert.ok(Math.min(...points.map(p => Math.hypot(v.x - p.x, v.y - p.y))) <= pad * 1.1);
-});
-test('layout keeps project hulls apart and clear of the core mark and wordmark', () => {
-  const kinds = ['Mission', 'Project', 'Idea', 'Knowledge'], states = ['idle', 'running', 'needs-you', 'done'];
-  for (const [w, h] of [[320, 640], [390, 844], [768, 1024], [1280, 720], [1440, 900], [2000, 930]]) for (const projects of [2, 3, 4]) {
-    const nodes = layout({nodes: Array.from({length: 24}, (_, i) => ({id: `n${i}`, project: `p${i % projects}`, weight: 1 + i % 4, kind: kinds[i % 4], state: states[i % 4 === 0 ? i % 3 + 1 : 0]})), edges: []}, w, h, 'hulls');
-    const u = unit(w, h), keys = [...new Set(nodes.map(n => n.project))];
-    const hulls = keys.map(k => { const members = nodes.filter(n => n.project === k); return hullVertices(members, hullPadding(members, u)); });
-    hulls.forEach((a, i) => {
-      for (const b of hulls.slice(i + 1)) assert.equal(overlapDepth(a, b), null, `${w}x${h} ${projects}: hulls overlap`);
-      for (const o of coreObstacles(w, h, u)) assert.equal(overlapDepth(a, o), null, `${w}x${h} ${projects}: a hull touches the core mark`);
-    });
-  }
-});
 test('crystal radius is large on desktop and smaller on phones', () => {
   assert.ok(crystalRadius(1, 1440) >= 60 && crystalRadius(1, 390) <= 28 && crystalRadius(1, 390) >= 20);
 });
@@ -135,9 +99,23 @@ test('crystal is a seeded convex hull: 60 to 100 edges, depth bands, bounded by 
   assert.equal(new Set(edges.flat()).size, pts.length);
   assert.ok(triangle('x1', 40).outline.split('L').length === 3 && Object.keys(ICONS).length >= 6);
   const star = coreStar(40, 1.75);
-  assert.ok((star.spikes.match(/M/g) || []).length === 16 && (star.threads.match(/M/g) || []).length >= 20);
+  assert.ok((star.spikes.match(/M/g) || []).length === 16 && (star.threads.match(/M/g) || []).length >= 80);
 });
 test('layout honours a custom inset: stars stay below the headline band', () => {
   const nodes = layout({nodes: Array.from({length: 12}, (_, i) => ({id: `n${i}`, project: `p${i % 2}`, weight: 3, kind: 'Mission', state: 'idle'})), edges: []}, 1280, 800, 's', {top: 180, bottom: 76, left: 24, right: 24});
   for (const n of nodes) assert.ok(n.y >= 180 && n.y <= 800 - 76, `${n.id} outside the inset`);
+});
+test('layout is open: no two nodes overlap and none touches the core mark or its wordmark', () => {
+  const kinds = ['Mission', 'Idea', 'Knowledge', 'Mission'], states = ['idle', 'running', 'needs-you', 'done'];
+  for (const [w, h] of [[1280, 720], [1440, 900], [2000, 930]]) for (const projects of [1, 2, 3]) {
+    const input = {nodes: [...Array.from({length: projects}, (_, i) => ({id: `p${i}`, kind: 'Project', project: `p${i}`, weight: 8})), ...Array.from({length: 12}, (_, i) => ({id: `n${i}`, project: `p${i % projects}`, weight: 3, kind: kinds[i % 4], state: states[i % 4]}))],
+      edges: Array.from({length: 12}, (_, i) => ({from: `p${i % projects}`, to: `n${i}`}))};
+    const nodes = layout(input, w, h, 'open', {top: 170, bottom: 76, left: 24, right: 24}), keep = coreKeepOut(w, h, unit(w, h), {top: 170, bottom: 76, left: 24, right: 24});
+    nodes.forEach((a, i) => {
+      assert.ok(Math.hypot(a.x - keep.x, a.y - keep.y) >= keep.radius * .99, `${w}x${h} ${projects}: ${a.id} on the core`);
+      assert.ok(!coversNode(keep.box, a, 0), `${w}x${h} ${projects}: ${a.id} on the wordmark`);
+      for (const b of nodes.slice(i + 1)) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= (a.radius + b.radius) * .98, `${w}x${h} ${projects}: ${a.id} touches ${b.id}`);
+    });
+    assert.ok(nodes.filter(n => n.radius > 60).length <= 3);
+  }
 });
