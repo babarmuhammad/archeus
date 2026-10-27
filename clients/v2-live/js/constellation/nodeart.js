@@ -1,4 +1,4 @@
-import {randomSeed} from './geometry.js';
+import {randomSeed, convexHull} from './geometry.js';
 
 // Node art as SVG path strings: open wireframe polyhedra (silhouette plus a triangulated hairline mesh), the execution triangle and the core star. Hairlines only, no fills but the ground.
 const pt = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -13,19 +13,49 @@ export const ICONS = {
   check: 'M4 12l5 5 11-12',
   shield: 'M12 2l9 5v9l-9 6-9-6V7ZM7 12l4 4 6-7'
 };
-export function polyhedron(id, r) {
-  const rng = randomSeed(`poly:${id}`), n = r > 40 ? 5 + Math.floor(rng() * 3) : 6, full = r > 40;
-  const ring = (k, rad, jit, turn) => Array.from({length: k}, (_, i) => { const a = -Math.PI / 2 + turn + i * Math.PI * 2 / k + (rng() - .5) * jit, d = rad * (1 - jit * .5 + rng() * jit); return [d * Math.cos(a), d * Math.sin(a)]; });
-  const outer = ring(n, r, .22, 0), mid = ring(n, r * .6, .3, Math.PI / n), inner = full ? ring(Math.max(3, n - 2), r * .3, .4, .4) : [];
-  let mesh = '';
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    mesh += seg(outer[i], mid[i]) + seg(outer[j], mid[i]) + seg(mid[i], mid[j]);
-    if (full) mesh += seg(outer[i], outer[(i + 2) % n]) + seg(mid[i], inner[i % inner.length]) + seg(mid[j], inner[i % inner.length]);
+const GOLDEN = 2.399963229728653;
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+// Seeded points on an ellipsoid are all hull vertices, so the convex hull is a triangulated polyhedron with 3V-6 edges.
+// ponytail: O(V^4) face search; V is at most about 32 and the result is cached per node id.
+const hulls = new Map();
+export function hull3(id, count) {
+  const key = `${id}:${count}`;
+  if (hulls.has(key)) return hulls.get(key);
+  const rng = randomSeed(`crystal:${id}`), axis = [.8 + rng() * .2, .8 + rng() * .2, .8 + rng() * .2];
+  const pts = Array.from({length: count}, (_, i) => {
+    const y = 1 - 2 * (i + .5) / count, rr = Math.sqrt(1 - y * y), t = i * GOLDEN + (rng() - .5) * .8;
+    return [rr * Math.cos(t) * axis[0], y * axis[1], rr * Math.sin(t) * axis[2]];
+  });
+  const edges = new Set();
+  for (let i = 0; i < count; i++) for (let j = i + 1; j < count; j++) for (let k = j + 1; k < count; k++) {
+    const nrm = cross(sub(pts[j], pts[i]), sub(pts[k], pts[i]));
+    let lo = false, hi = false;
+    for (let m = 0; m < count && !(lo && hi); m++) { if (m === i || m === j || m === k) continue; const d = dot(nrm, sub(pts[m], pts[i])); if (d > 1e-9) hi = true; else if (d < -1e-9) lo = true; }
+    if (lo && hi) continue;
+    edges.add(`${i}-${j}`); edges.add(`${j}-${k}`); edges.add(`${i}-${k}`);
   }
-  if (full) inner.forEach((p, i) => { mesh += seg(p, inner[(i + 1) % inner.length]); });
-  const dots = [...outer, ...(full ? mid : [])];
-  return {outline: `M${outer.map(pt).join('L')}Z`, mesh, dots: dots.map(p => `M${pt(p)}h0`).join('')};
+  const out = {pts, edges: [...edges].map(e => e.split('-').map(Number))};
+  hulls.set(key, out);
+  return out;
+}
+// A wireframe crystal: seeded hull, one fixed rotation per node, perspective projection fitted into radius r.
+// Edges and vertices come back in depth bands (front brightest, back dimmest) as path strings; the outline is the silhouette.
+export function crystal(id, r) {
+  const rng = randomSeed(`spin:${id}`), [ax, ay, az] = [rng() * Math.PI * 2, rng() * Math.PI * 2, rng() * Math.PI * 2];
+  const [cx, sx, cy, sy, cz, sz] = [Math.cos(ax), Math.sin(ax), Math.cos(ay), Math.sin(ay), Math.cos(az), Math.sin(az)];
+  const pick = randomSeed(`crystal:${id}`)(), {pts, edges} = hull3(id, r > 40 ? 24 + Math.floor(pick * 8) : 10 + Math.floor(pick * 3));
+  const cam = 3.4, turned = pts.map(([x, y, z]) => {
+    [y, z] = [y * cx - z * sx, y * sx + z * cx]; [x, z] = [x * cy + z * sy, -x * sy + z * cy]; [x, y] = [x * cz - y * sz, x * sz + y * cz];
+    const k = cam / (cam - z);
+    return {x: x * k, y: y * k, z};
+  });
+  const fit = r / Math.max(...turned.map(p => Math.hypot(p.x, p.y))), v = turned.map(p => ({x: p.x * fit, y: p.y * fit, z: p.z}));
+  const bands = ['', '', ''], band = z => (z > .3 ? 2 : z > -.3 ? 1 : 0), dots = ['', ''];
+  for (const [a, b] of edges) bands[band((v[a].z + v[b].z) / 2)] += seg([v[a].x, v[a].y], [v[b].x, v[b].y]);
+  for (const p of v) dots[p.z >= 0 ? 1 : 0] += `M${pt([p.x, p.y])}h0`;
+  return {back: bands[0], mid: bands[1], front: bands[2], dotsBack: dots[0], dotsFront: dots[1], outline: `M${convexHull(v).map(p => pt([p.x, p.y])).join('L')}Z`, edgeCount: edges.length, vertexCount: pts.length};
 }
 export function triangle(id, r) {
   const rng = randomSeed(`tri:${id}`), v = [[0, -r * 1.1], [r * 1.05, r * .75], [-r * 1.05, r * .75]], c = [(rng() - .5) * r * .1, r * .1];

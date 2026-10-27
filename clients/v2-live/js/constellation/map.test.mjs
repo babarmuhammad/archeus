@@ -117,11 +117,22 @@ test('layout keeps project hulls apart and clear of the core mark and wordmark',
 test('crystal radius is large on desktop and smaller on phones', () => {
   assert.ok(crystalRadius(1, 1440) >= 60 && crystalRadius(1, 390) <= 28 && crystalRadius(1, 390) >= 20);
 });
-test('node art is seeded, dense and bounded: polyhedron mesh, execution triangle, core star', async () => {
-  const {polyhedron, triangle, coreStar, ICONS} = await import('./nodeart.js');
-  const a = polyhedron('m1', 70), b = polyhedron('m1', 70), small = polyhedron('m1', 20);
-  assert.deepEqual(a, b);
-  assert.ok((a.mesh.match(/M/g) || []).length >= 30 && (small.mesh.match(/M/g) || []).length < (a.mesh.match(/M/g) || []).length);
+test('crystal is a seeded convex hull: 60 to 100 edges, depth bands, bounded by its radius', async () => {
+  const {crystal, hull3, triangle, coreStar, ICONS} = await import('./nodeart.js');
+  const count = d => (d.match(/M/g) || []).length;
+  for (const id of ['m-date', 'm-export', 'a1', 'prj-notes', 'x', 'long node id 7']) {
+    const c = crystal(id, 80);
+    assert.deepEqual(c, crystal(id, 80));
+    assert.ok(c.edgeCount >= 60 && c.edgeCount <= 100, id + ' ' + c.edgeCount);
+    assert.equal(c.edgeCount, 3 * c.vertexCount - 6);
+    assert.equal(count(c.back) + count(c.mid) + count(c.front), c.edgeCount);
+    assert.ok(count(c.front) > 0 && count(c.back) > 0 && count(c.dotsBack) + count(c.dotsFront) === c.vertexCount);
+    for (const n of (c.outline.match(/-?d+.d/g) || []).map(Number)) assert.ok(Math.abs(n) <= 80.1);
+  }
+  assert.notDeepEqual(crystal('a', 80), crystal('b', 80));
+  assert.ok(crystal('a', 20).edgeCount < 40 && crystal('a', 20).edgeCount === 3 * crystal('a', 20).vertexCount - 6);
+  const {pts, edges} = hull3('a', 12);   // every point sits on the ellipsoid, so all of them are hull vertices
+  assert.equal(new Set(edges.flat()).size, pts.length);
   assert.ok(triangle('x1', 40).outline.split('L').length === 3 && Object.keys(ICONS).length >= 6);
   const star = coreStar(40, 1.75);
   assert.ok((star.spikes.match(/M/g) || []).length === 16 && (star.threads.match(/M/g) || []).length >= 20);
