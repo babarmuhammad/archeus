@@ -18,7 +18,7 @@ export function replyOf(m, eng, sim, lang) {
   const pname = (id) => { const p = st.projects.find((x) => x.id === id); return p ? p.name : id; };
   if (!c) return out;
   if (c.kind === 'link') key('enter', c.text, () => ({ href: c.href }));
-  else if (c.kind === 'refusal') { if (c.href) key('enter', c.href === '#/security' ? T('Open Security', 'Apri Sicurezza') : c.href === '#/attention' ? T('Open Attention', 'Apri Attenzione') : T('Open Work', 'Apri Lavoro'), () => ({ href: c.href })); }
+  else if (c.kind === 'refusal') { if (c.href) key('enter', c.href === '#/security' ? T('Open Security', 'Apri Sicurezza') : T('Open Work', 'Apri Lavoro'), () => ({ href: c.href })); }
   else if (c.kind === 'status') L(T(`Running ${c.running}, waiting for you ${c.waiting}, stopped ${c.stopped}. Accepting new work: Unknown.`, `In corso ${c.running}, aspettano te ${c.waiting}, fermi ${c.stopped}. Accetta nuovo lavoro: Sconosciuto.`) + (c.estop ? T(' Emergency stop: engaged, nothing new starts.', " Arresto d'emergenza: attivo, non parte nulla di nuovo.") : ''));
   else if (c.kind === 'usage') { (c.rows || []).forEach((r) => L(r + ': ' + T('Unknown', 'Sconosciuto'))); L(T('Unknown is never shown as 0.', 'Sconosciuto non è mai mostrato come 0.')); }
   else if (c.kind === 'why') L(T(`Route decision ${c.id}. Served model and billed cost: Unknown. Account: selected by Core.`, `Decisione di instradamento ${c.id}. Modello servito e costo fatturato: Sconosciuti. Account: scelto dal Core.`));

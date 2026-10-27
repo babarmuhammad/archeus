@@ -11,7 +11,7 @@ function counters(ctx) {
   const sim = ctx.sim, ms = Object.values(sim.state.missions);
   const c = (n, label, role, href) => h('a', { class: 'ctr', 'data-role': role, 'data-zero': String(n === 0), href }, h('b', null, String(n)), h('span', null, label));
   return h('nav', { class: 'counters', 'aria-label': 'Counts' },
-    c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', '#/attention'), c(sim.liveWork().length, 'running', 'active', '#/work'),
+    c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', '#/work'), c(sim.liveWork().length, 'running', 'active', '#/work'),
     c(ms.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length, 'stopped', 'blocked', '#/work'), c(ms.filter((m) => present('mission', m.state).cls === 'verifying').length, 'verifying', 'verifying', '#/work'));
 }
 
@@ -71,14 +71,14 @@ export function render(ctx) {
     h('div', { class: 'pn-top' }, h('span', { class: 'pn-dot', 'aria-hidden': 'true' }), h('div', null, h('p', { class: 'pn-title' }, fm ? fm.title : first.reason), h('p', { class: 'pn-origin' }, tr('Origin') + ' ' + (projName(sim, first.project_id) || '-'))), icon('attention', 28)),
     h('p', { class: 'pn-k' }, tr('What') + ':'), h('p', { class: 'pn-v' }, ap ? ap.presented.what : first.reason),
     ap ? h('p', { class: 'pn-k' }, tr('Why') + ':') : null, ap ? h('p', { class: 'pn-v' }, ap.presented.why) : null,
-    h('a', { class: 'pn-review', href: first.kind === 'approval' ? '#/attention/' + first.ref : '#/attention/' + first.mission_id }, tr('Review'))) : null;
+    h('a', { class: 'pn-review', href: first.kind === 'approval' ? '#/work/' + first.ref : '#/work/' + first.mission_id }, tr('Review'))) : null;
   const drawer = h('section', { class: 'now-drawer', 'data-open': String(open), 'aria-label': 'Details' },
     h('div', { class: 'now-strip' }, counters(ctx), h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
     card,
     h('div', { class: 'now-body', id: 'now-details' },
       h('div', { class: 'now-panels' },
         panel('Needs you', decide.length, decide.length ? h('div', { class: 'stack' }, ...decide.slice(0, 3).map((a) => attentionItem(ctx, a))) : empty('Nothing is waiting for a decision.'),
-          att.filter((a) => a.group !== 'Decide').length ? h('div', { class: 'actions', style: 'padding:12px 16px 16px' }, h('a', { class: 'btn', href: '#/attention' }, att.filter((a) => a.group !== 'Decide').length + ' more in Attention')) : null),
+          att.filter((a) => a.group !== 'Decide').length ? h('div', { class: 'actions', style: 'padding:12px 16px 16px' }, h('a', { class: 'btn', href: '#/work' }, att.filter((a) => a.group !== 'Decide').length + ' more in Attention')) : null),
         panel('Happening now', live.length, live.length ? h('div', { class: 'stack' }, ...live.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is running.')),
         panel('Upcoming', upcoming.length, upcoming.length ? h('div', { class: 'stack' }, ...upcoming.map((m) => missionRow(ctx, m, 'now'))) : empty('Nothing is planned or approved.')),
         panel('Recent decisions and changes', recent.length, h('div', { class: 'body' }, ...recent.map((e) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, (st.missions[e.subject.id] || { title: e.subject.id }).title, ': ', word('mission', e.payload.from), ' to ', word('mission', e.payload.to)), h('span', { class: 'b' }, clockLabel(e.at) + (e.actor === 'device' ? ' · you' : ' · Core')))), recent.length ? null : empty('Nothing has changed yet.'))))));

@@ -101,11 +101,11 @@ export function createChat(sim, env = {}) {
       if (args) { const r = resolve(args, ['project']); if (!r.one) return refReply(r, args); p = r.one; list = ms.filter((m) => m.project === p.id); }
       return { c: BASED, card: lines(missionRows(list.slice(0, 10)), Math.max(0, list.length - 10)) };
     }
-    if (name === 'needs') { const a = sim.attention().filter((x) => x.kind !== 'knowledge'); return { c: a.length ? tp('{n} wait for you. Nothing is decided here; each row opens its card.', '{n} aspettano te. Qui non si decide nulla; ogni riga apre la sua scheda.', { n: a.length }) : tp('Nothing waits for you.', 'Niente aspetta te.'), card: a.length ? lines(a.map((x) => ({ label: x.reason, meta: x.group, href: x.kind === 'approval' ? '#/attention/' + x.ref : '#/attention' }))) : null }; }
+    if (name === 'needs') { const a = sim.attention().filter((x) => x.kind !== 'knowledge'); return { c: a.length ? tp('{n} wait for you. Nothing is decided here; each row opens its card.', '{n} aspettano te. Qui non si decide nulla; ogni riga apre la sua scheda.', { n: a.length }) : tp('Nothing waits for you.', 'Niente aspetta te.'), card: a.length ? lines(a.map((x) => ({ label: x.reason, meta: x.group, href: x.kind === 'approval' ? '#/work/' + x.ref : '#/work' }))) : null }; }
     if (name === 'digest') {
       const since = st.clock - 3600000, ev = st.events.filter((e) => e.at >= since);
       const n = (re) => ev.filter((e) => re.test(e.type)).length;
-      return { c: tp('Since you left (the last simulated hour).', 'Da quando sei andato via (l\'ultima ora simulata).'), card: lines([{ label: n(/^mission\.state_changed$/) + ' mission state changes', meta: '', href: '#/work' }, { label: n(/^approval\.requested$/) + ' approvals requested', meta: '', href: '#/attention' }, { label: n(/^idea\.created$/) + ' ideas captured', meta: '', href: '#/work' }]) };
+      return { c: tp('Since you left (the last simulated hour).', 'Da quando sei andato via (l\'ultima ora simulata).'), card: lines([{ label: n(/^mission\.state_changed$/) + ' mission state changes', meta: '', href: '#/work' }, { label: n(/^approval\.requested$/) + ' approvals requested', meta: '', href: '#/work' }, { label: n(/^idea\.created$/) + ' ideas captured', meta: '', href: '#/work' }]) };
     }
     if (name === 'ideas') return { c: BASED, card: lines(st.ideas.map((i) => ({ label: i.title, meta: present('idea', i.state).label + ' · ' + pname(i.project), href: '#/work' }))) };
     if (name === 'search') {
@@ -151,7 +151,7 @@ export function createChat(sim, env = {}) {
       return { c: tp('Created “{t}” in {p}. Not started. Starting it needs your approval.', 'Creata “{t}” in {p}. Non avviata. Per avviarla serve la tua approvazione.', { t: m.title, p: pname(m.project) }), card: startCard(m.id), created: { kind: 'mission', id: m.id } };
     }
     if (name === 'idea') { const i = sim.chat.createIdea(args, o.project === 'archeus' ? 'archeus' : 'ideas'); return { c: tp('Idea captured. It is not a commitment.', 'Idea catturata. Non è un impegno.'), card: { kind: 'created', what: 'idea', title: i.title, id: i.id, project: pname(i.project), href: '#/work' }, created: { kind: 'idea', id: i.id } }; }
-    if (name === 'feedback') { const k = sim.chat.addKnowledge({ project: o.project || 'archeus', text: args, source: 'feedback' }); return { c: tp('Feedback saved as a candidate.', 'Feedback salvato come candidato.'), card: { kind: 'created', what: 'feedback', title: k.text, id: k.id, project: pname(k.project), href: '#/attention' }, created: { kind: 'knowledge_item', id: k.id } }; }
+    if (name === 'feedback') { const k = sim.chat.addKnowledge({ project: o.project || 'archeus', text: args, source: 'feedback' }); return { c: tp('Feedback saved as a candidate.', 'Feedback salvato come candidato.'), card: { kind: 'created', what: 'feedback', title: k.text, id: k.id, project: pname(k.project), href: '#/work' }, created: { kind: 'knowledge_item', id: k.id } }; }
     if (name === 'remember') return { c: tp('Nothing is written until you confirm where to remember it.', 'Non si scrive nulla finché non confermi dove ricordarlo.'), card: { kind: 'remember', excerpt: args, scope: o.dest === 'general' ? '' : (o.project || 'archeus'), step: 'ask', state: 'open' } };
     return null;
   }
@@ -191,7 +191,7 @@ export function createChat(sim, env = {}) {
 
   // ---------- plain text: scripted, deterministic, honest about what is faked ----------
   const REFUSE = [
-    [/^(approve|reject|yes|ok|okay|si|sì|approva|rifiuta|confirm|confirmed)[.!]*$/i, tp('A bare word never approves. Open the decision card; only its own button decides, bound to its hash.', 'Una parola da sola non approva mai. Apri la scheda della decisione; decide solo il suo pulsante, legato al suo hash.'), '#/attention'],
+    [/^(approve|reject|yes|ok|okay|si|sì|approva|rifiuta|confirm|confirmed)[.!]*$/i, tp('A bare word never approves. Open the decision card; only its own button decides, bound to its hash.', 'Una parola da sola non approva mai. Apri la scheda della decisione; decide solo il suo pulsante, legato al suo hash.'), '#/work'],
     [/\b(delete|remove|archive|wipe)\b.*\b(all|every)\b|\b(delete|archive)\b.*\bmissions?\b/i, tp('I can’t do that from chat; open Work. Deleting or archiving needs a card.', 'Non posso farlo dalla chat; apri Lavoro. Eliminare o archiviare richiede una scheda.'), '#/work'],
     [/\b(run|execute|exec)\b.*\b(command|shell|script|bash|powershell)\b|\bsudo\b|\brm -rf\b/i, tp('I can’t do that from chat; open Work. A command, shell or script never runs from here.', 'Non posso farlo dalla chat; apri Lavoro. Un comando, una shell o uno script non girano mai da qui.'), '#/work'],
     [/\b(change|set|edit|update)\b.*\b(policy|permissions?|limit|budget|hook|token|password)\b|\b(token|password|credential)s?\b/i, tp('I can’t do that from chat; open Work. Policy, limits and credentials are never changed from here.', 'Non posso farlo dalla chat; apri Lavoro. Policy, limiti e credenziali non si cambiano mai da qui.'), '#/security']
