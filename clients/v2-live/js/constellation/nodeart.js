@@ -70,6 +70,7 @@ const STATES = ['needs-you', 'running', 'done', 'blocked', 'idle', 'paused', 'th
 // The map and the mission graph both draw their nodes with this, so state is only ever line colour.
 export function bodyMarkup(n, ic) {
   const state = stateKey(n.state), cls = STATES.includes(state) ? state : 'idle', r = n.radius, big = r > 40;
+  if (n.phone) return `<g class="am-star am-state-${cls}" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-attention-ring"/><circle r="${state === 'needs-you' ? 7 : 3}" class="am-body"/></g>`;
   const plate = big ? 17 : Math.max(8, r * .42), scale = big ? 28 / 24 : plate * 1.5 / 24;
   const mark = state === 'needs-you' ? `<path d="M${fx(-r * .9)},${fx(-r * .78)}l7,-8l7,8l-7,8Z" class="am-diamond"/>` : state === 'blocked' ? `<path d="M${fx(r * .72)},${fx(-r * .8)}l7,7m0,-7l-7,7" class="am-glyph"/>` : '';
   const wire = n.kind === 'Execution' ? (t => `<path d="${t.outline}" class="am-fill"/><path d="${t.mesh}" class="am-e1"/><path d="${t.outline}" class="am-e2"/><path d="${t.dots}" class="am-d1"/>`)(triangle(n.id, r))

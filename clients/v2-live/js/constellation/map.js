@@ -1,4 +1,4 @@
-import {ambientField, coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {ambientField, coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutPhone, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {bodyMarkup, coreStar} from './nodeart.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
@@ -98,7 +98,9 @@ export function createMap(container, options = {}) {
   const emit = (event, detail) => { for (const fn of listeners.get(event) || []) fn(detail); };
   const isReduced = () => reducedOverride === true || (reducedOverride === undefined && media.matches);
   const isLive = () => options.live === true && options.fresh !== false && graph.nodes.some(n => stateKey(n.state) === 'running');
-  const coreRadius = () => coreSize(u, options.calm, width), reachOf = () => coreReach(width, options.calm);
+  const phoneOverview = () => options.overview && !options.calm && width < 600;
+  const layoutScene = () => (options.calm ? layoutCalm : phoneOverview() ? layoutPhone : layout)(graph, width, height, options.seed, inset);
+  const coreRadius = () => phoneOverview() ? 28 : coreSize(u, options.calm, width), reachOf = () => coreReach(width, options.calm);
   function motion() {
     host.dataset.reduced = String(isReduced());
     coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
@@ -126,7 +128,7 @@ export function createMap(container, options = {}) {
     const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
     const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
     // The button goes below, above, right or left of its node, whichever side clears every other node and the bands the headline and drawer own.
-    const reviewSpots = reviewFor && width >= 480 && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84]]
+    const reviewSpots = reviewFor && width >= 480 && !phoneOverview() && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84]]
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
       .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !nodes.some(o => coversNode(b, o, 2))) : [];
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
@@ -142,6 +144,12 @@ export function createMap(container, options = {}) {
       for (const spot of reviewSpots.slice(1)) { if (best === 2) break; const trial = labelsFor(spot), g = grade(trial); if (g > best) { best = g; reviewBox = spot; boxes = trial; } }
     }
     const byId = new Map(nodes.map(n => [n.id, n]));
+    if (phoneOverview()) boxes = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').slice(0, 1).map(n => {
+      const full = String(n.label || n.id), x = n.x + n.radius + 10, available = width - x - 8;
+      let text = full;
+      while (text.length > 1 && (context ? context.measureText(text).width : text.length * 7.5) > available) text = text.slice(0, -2) + '…';
+      return {id: n.id, x, y: n.y - 8, width: available, height: 20, text, rich: false, mandatory: true, size: 14};
+    });
     const items = boxes.map(box => ({box, n: byId.get(box.id), meta: box.rich ? metaOf(byId.get(box.id)) : ''}));
     const labelSig = ({box, n, meta}) => `${box.rich}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}|${subOf(n)}`;
     const placeLabel = (rec, {box}) => {
@@ -217,7 +225,7 @@ export function createMap(container, options = {}) {
     hitRecs.get(id)?.el.focus({preventScroll: true});
   }
   const f = v => +v.toFixed(2);
-  const calmRows = n => graph.nodes.filter(m => m.project === n.id && m.kind === 'Mission').map(m => ({label: m.label || m.id, state: words[stateKey(m.state)] ? stateKey(m.state) : 'idle', word: nodeWord(m)}));
+  const calmRows = n => graph.nodes.filter(m => m.project === n.id && m.kind === 'Mission').map(m => ({label: m.label || m.id, state: words[stateKey(m.state)] ? stateKey(m.state) : 'idle', word: nodeWord(m)})).concat((graph.projects.find(p => p.id === n.id)?.captured || []).map(label => ({label, state: 'idle', word: T('Captured')})));
   function starMarkup(n) {
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, body = ['Mission', 'Project', 'Execution'].includes(n.kind);
     if (options.calm && n.kind === 'Project') return panelMarkup(n, calmRows(n), T('No items yet'), T('items'));
@@ -243,7 +251,7 @@ export function createMap(container, options = {}) {
     coreMark.replaceChildren(svgElement('path', {d: p.threads, class: 'am-core-chords'}), svgElement('path', {d: p.spikes, class: 'am-core-thread'}), svgElement('path', {d: p.tips, class: 'am-core-dot'}));
     const ws = wordmarkSize(u, options.calm), base = R * reachOf() + ws * 1.9;
     wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', base); wordmark.style.fontSize = `${ws}px`;
-    tagline.style.display = width < 480 ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
+    tagline.style.display = phoneOverview() || width < 480 ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
     runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
   }
   function render(previous = new Map(), arrivals = false, moved = true) {
@@ -251,7 +259,7 @@ export function createMap(container, options = {}) {
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
     const groups = new Map();
     for (const n of positions) { const key = n.project || 'unassigned'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(n); }
-    const hubs = options.calm ? [] : [...groups.keys()].sort().map(project => { const members = groups.get(project), hub = members.find(n => n.kind === 'Project'); return {project, mx: hub ? hub.x : members.reduce((t, n) => t + n.x, 0) / members.length, my: hub ? hub.y : members.reduce((t, n) => t + n.y, 0) / members.length}; });
+    const hubs = options.calm ? [] : phoneOverview() ? positions.map(n => ({project: n.id, mx: n.x, my: n.y})) : [...groups.keys()].sort().map(project => { const members = groups.get(project), hub = members.find(n => n.kind === 'Project'); return {project, mx: hub ? hub.x : members.reduce((t, n) => t + n.x, 0) / members.length, my: hub ? hub.y : members.reduce((t, n) => t + n.y, 0) / members.length}; });
     const patchSpoke = (rec, item) => setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`);
     reconcile(spokeLayer, spokeRecs, hubs, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
     gridLayer.innerHTML = options.calm && positions.length ? gridMarkup(threadGrid(positions, {...centre, radius: coreRadius() * 1.1}, {box: coreKeepOut(width, height, u, inset, true).box, bounds: {left: 8, top: inset.top, right: width - 8, bottom: height - inset.bottom}})) : '';
@@ -283,7 +291,7 @@ export function createMap(container, options = {}) {
       return rec;
     }, patchEdge);
     const arrived = [];
-    const starSig = n => `${n.state}|${n.kind}|${n.radius}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
+    const starSig = n => `${n.phone}|${n.state}|${n.kind}|${n.radius}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
     const placeStar = (rec, n) => { if (rec.x !== n.x || rec.y !== n.y) { setAttr(rec.el, 'transform', `translate(${f(n.x)} ${f(n.y)})`); rec.x = n.x; rec.y = n.y; } };
     const buildStar = n => { const rec = {el: drawStar(n), sig: starSig(n)}; placeStar(rec, n); if (arrivals) arrived.push(rec.el); return rec; };
     reconcile(nodeLayer, starRecs, positions, n => n.id, buildStar, (rec, n) => { if (rec.sig !== starSig(n)) { Object.assign(rec, buildStar(n)); rec.x = rec.y = undefined; placeStar(rec, n); } else placeStar(rec, n); });
@@ -326,11 +334,11 @@ export function createMap(container, options = {}) {
     if (w === width && h === height && positions.length) return;
     inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
     controlsBottom = inset.bottom > INSET.bottom ? inset.bottom + 8 : 12; controls.style.bottom = `${controlsBottom}px`;
-    width = w; height = h; u = unit(w, h); centre = coreCentre(w, h, inset); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    width = w; height = h; u = unit(w, h); centre = options.overview && !options.calm && w < 600 ? {x: w / 2, y: h * .32} : coreCentre(w, h, inset); host.dataset.phoneOverview = String(phoneOverview()); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     drawCore();
-    ambient.innerHTML = options.calm || options.ambient === false ? '' : (f => `<path d="${f.d}"/>${f.dots.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"/>`).join('')}`)(ambientField(width, height, options.seed));
-    camera = {x: 0, y: 0, k: 1}; positions = (options.calm ? layoutCalm : layout)(graph, width, height, options.seed, inset); render(); emit('resize', {width, height});
+    ambient.innerHTML = options.calm || phoneOverview() || options.ambient === false ? '' : (f => `<path d="${f.d}"/>${f.dots.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"/>`).join('')}`)(ambientField(width, height, options.seed));
+    camera = {x: 0, y: 0, k: 1}; positions = layoutScene(); render(); emit('resize', {width, height});
   }
   function zoom(k, x = width / 2, y = height / 2) {
     const next = clamp(k, .5, 4), ratio = next / camera.k;
@@ -418,10 +426,10 @@ export function createMap(container, options = {}) {
       const full = JSON.stringify(graph);
       if (full === fullKey) return;
       fullKey = full;
-      const key = graph.nodes.map(n => `${n.id}|${n.kind}|${n.project}|${n.weight}|${isCrystal(n)}`).join(';');
+      const key = graph.nodes.map(n => `${n.id}|${n.kind}|${n.project}|${n.weight}|${isCrystal(n)}|${phoneOverview() ? n.state : ''}`).join(';');
       const moved = key !== layoutKey;
-      if (moved) positions = (options.calm ? layoutCalm : layout)(graph, width, height, options.seed, inset);
-      else { const at = new Map(positions.map(p => [p.id, p])); positions = graph.nodes.map(n => { const p = at.get(n.id); return {...n, x: p.x, y: p.y, radius: p.radius, rank: p.rank}; }).sort((x, y) => String(x.id).localeCompare(String(y.id))); }
+      if (moved) positions = layoutScene();
+      else { const byId = new Map(graph.nodes.map(n => [n.id, n])); positions = positions.map(p => ({...p, ...byId.get(p.id)})).sort((x, y) => String(x.id).localeCompare(String(y.id))); }
       layoutKey = key;
       render(previous, true, moved);
       emit('update', {nodes: positions.length});

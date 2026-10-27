@@ -629,11 +629,24 @@ export function createSim(opts = {}) {
     script();
     if (opts.story === 'calm') calmDown();
   }
-  // ?story=calm (concept 07): two finished missions, nothing running, nothing waiting, and the script silent.
+  // ?story=calm (concept 07): five projects, each with a finished mission and a captured idea, and the script silent.
   function calmDown() {
-    const keep = new Set(['m-docs', 'm-offline']), gone = (x) => x.mission && !keep.has(x.mission);
+    const keep = new Set(['m-docs']), gone = (x) => x.mission && !keep.has(x.mission);
     for (const id of Object.keys(S.missions)) if (!keep.has(id)) delete S.missions[id];
-    S.missions['m-offline'].state = S.missions['m-docs'].state;
+    S.projects = [
+      {id: 'notes', name: 'Notes', note: '', root: 'notes/'},
+      {id: 'archeus', name: 'Archeus', note: '', root: 'archeus/'},
+      {id: 'ideas', name: 'Website', note: '', root: 'website/'},
+      {id: 'alpha', name: 'Project Alpha', note: '', root: 'alpha/'},
+      {id: 'research', name: 'Research', note: '', root: 'research/'}
+    ];
+    const finished = S.missions['m-docs'];
+    finished.title = 'Fix date test';
+    for (const p of S.projects) if (p.id !== 'archeus') {
+      const id = 'm-calm-' + p.id;
+      S.missions[id] = {...finished, id, project: p.id, tasks: [], plan_version: 0, branch: 'fix/date-test'};
+    }
+    S.ideas = S.projects.map((p, i) => ({id: 'i-calm-' + i, project: p.id, title: 'Offline capture', state: 'CAPTURED'}));
     for (const key of ['tasks', 'executions', 'approvals', 'verifications', 'reviews', 'plans']) for (const [id, x] of Object.entries(S[key])) if (!keep.has(x.mission)) delete S[key][id];
     S.events = S.events.filter((e) => !gone(e)); seq = S.events.length;
     S.knowledge.forEach((k) => { if (k.state === 'CANDIDATE') k.state = 'CONFIRMED'; });

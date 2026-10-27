@@ -25,10 +25,10 @@ function calmBand(ctx) {
   const sentence = tr('Nothing running. Tell Archeus what to do.').split(/(?<=\.) /);
   const dot = (s) => h('span', { class: 'cdot', 'data-s': s, 'aria-hidden': 'true' });
   const projects = st.projects.map((p) => {
-    const own = ms.filter((m) => m.project === p.id), last = Math.max(0, ...own.map((m) => m.updated_at || 0));
+    const own = ms.filter((m) => m.project === p.id), count = own.length + st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').length, last = Math.max(0, ...own.map((m) => m.updated_at || 0));
     return h('li', null, h('a', { class: 'cproj', href: '#/work', 'data-proj': p.id, onclick: (e) => { e.preventDefault(); ctx.ui.workProject = p.id; ctx.nav('#/work'); } },
       dot(own.length && own.every((m) => m.state === 'COMPLETED') ? 'done' : 'idle'),
-      h('span', { class: 'ctext' }, h('b', null, p.name), h('small', null, tr(`${own.length} ${own.length === 1 ? 'item' : 'items'}`) + (last ? ' · ' + clockLabel(last) : ''))), h('span', { class: 'cchev', 'aria-hidden': 'true' }, '›')));
+      h('span', { class: 'ctext' }, h('b', null, p.name), h('small', null, tr(`${count} ${count === 1 ? 'item' : 'items'}`) + (last ? ' · ' + clockLabel(last) : ''))), h('span', { class: 'cchev', 'aria-hidden': 'true' }, '›')));
   });
   return h('section', { class: 'calm-band', 'aria-label': tr('Today and known projects') },
     h('div', { class: 'calm-say' },

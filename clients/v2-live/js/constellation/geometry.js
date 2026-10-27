@@ -48,6 +48,16 @@ function keepClear(n, keep, {left, right, top, bottom, width, height}) {
   n.x = clamp(n.x, left + n.radius, width - right - n.radius);
   n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
 }
+export function layoutPhone(graph, width, height) {
+  const priority = n => stateKey(n.state) === 'needs-you' ? 3 : stateKey(n.state) === 'running' ? 2 : 1;
+  const missions = graph.nodes.filter(n => n.kind === 'Mission').sort((a, b) => priority(b) - priority(a) || String(a.id).localeCompare(String(b.id)));
+  const lead = missions[0];
+  const others = missions.filter(n => n !== lead && stateKey(n.state) !== 'needs-you');
+  const projects = graph.nodes.filter(n => n.kind === 'Project').sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const nodes = [...(lead ? [lead] : []), ...others, ...projects].slice(0, 4);
+  const slots = [[.2, .78], [.82, .43], [.16, .16], [.82, .13]];
+  return nodes.map((n, i) => ({...n, phone: true, x: width * slots[i][0], y: height * slots[i][1], radius: i === 0 && stateKey(n.state) === 'needs-you' ? 26 : 9, rank: priority(n)}));
+}
 // Open composition: each project is a hub on a ring round the core, its children spiral out from it by rank, executions and decisions
 // spiral round their mission, and a short relaxation pushes every pair apart. Nothing is drawn for a project but its own node.
 export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
@@ -111,12 +121,14 @@ export function ambientField(width, height, seed = 'archeus', cell = 170) {
 export function layoutCalm(graph, width, height, seed = 'archeus', inset = INSET) {
   const u = unit(width, height), core = coreCentre(width, height, inset), keep = coreKeepOut(width, height, u, inset, true);
   const projects = graph.nodes.filter(n => n.kind === 'Project').sort((a, b) => String(a.id).localeCompare(String(b.id))), P = projects.length;
-  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height / 3), bottom = Math.min(inset.bottom, height / 5);
+  // Five-panel slots must fit above the full reserved bottom band.
+  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height / 3), bottom = P === 5 ? inset.bottom : Math.min(inset.bottom, height / 5);
   const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y), area = {left, right, top, bottom, width, height};
   const slots = [[-.62, -.5], [.5, -.55], [.74, .45], [-.74, .45]];
-  const at = P <= 4 ? slots.slice(0, P) : Array.from({length: P}, (_, i) => { const t = Math.PI / 2 + .6 + i * (2 * Math.PI - 1.2) / (P - 1); return [Math.cos(t) * .72, Math.sin(t) * .72]; });
+  const at = P <= 4 ? slots.slice(0, P) : P === 5 ? [[-.62, -.5], [.5, -.55], [.74, .18], [.5, .6], [-.7, .5]] : Array.from({length: P}, (_, i) => { const t = Math.PI / 2 + .6 + i * (2 * Math.PI - 1.2) / (P - 1); return [Math.cos(t) * .72, Math.sin(t) * .72]; });
   const spots = at.map(([fx, fy]) => ({x: core.x + fx * halfX, y: core.y + fy * halfY}));
   let R = Math.min(120 * u, halfX * .3, halfY * .5);
+  if (P === 5 && width < 600) R = Math.min(R, 24); // Leave room beside the wordmark after keepClear.
   for (const [i, s] of spots.entries()) {
     R = Math.min(R, Math.hypot(s.x - core.x, s.y - core.y) - keep.radius - 4, Math.min(s.x - left, width - right - s.x, s.y - top, height - bottom - s.y));
     for (const t of spots.slice(i + 1)) R = Math.min(R, Math.hypot(s.x - t.x, s.y - t.y) / 2 - 5);
