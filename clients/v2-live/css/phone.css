@@ -32,5 +32,5 @@
   .app[data-insp='open']:has(.msn) .scrim { display: none; }
   .msn-meta > div:last-child { display: none; }
   .msn-meta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-bottom: 4px; }
-  .msn-graph .msn-scene { height: 170px; }
+  .msn-graph .msn-scene { height: 240px; }
 }

@@ -10,7 +10,7 @@ import { spineInspector, spineRow } from './spine.js';
 import { areasOf, kindOfId, whyOf, routeOf, policyOf, execOutput, checkpoints, relationsOf, stationTimes, harnessLabel, accountLabel, IDEA_PATH } from './areas-model.js';
 import { pill, sec, note, kv, link, entity, hrefFor } from './ax.js';
 import { inspectorArea } from './inspectors2.js';
-import { overview, pane, meta } from './inspector-mission.js';
+import { overview, pane, meta, position } from './inspector-mission.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
 export const isCompact = () => (document.getElementById('device') || document.body).clientWidth < 600;
@@ -52,6 +52,7 @@ export function inspectorFor(ctx) {
 function mission(ctx, A, S, id) {
   const m = S.missions[id]; if (!m) return null;
   const tasks = m.tasks.map((x) => S.tasks[x]), execs = Object.values(S.executions).filter((x) => x.mission === id);
+  const pos = position(S, m, dnote('D08', 'Time at each station on the inspector spine; omitted when events are pruned.'));
   const act = (kind, label, primary, confirm) => h('button', { class: 'btn' + (primary ? ' primary' : ''), type: 'button', onclick: () => (confirm ? ask(ctx, { text: confirm, label, tone: 'danger', run: () => ctx.act(kind, id) }) : ctx.act(kind, id)) }, label);
   const foot = () => {
     if (m.state === 'BLOCKED') return [act('unblock', 'Answer and unblock', true), act('cancel', 'Cancel mission', false, 'Cancel "' + m.title + '"? Cancelling ends the mission and stops its runs. This cannot be undone.')];
@@ -67,7 +68,7 @@ function mission(ctx, A, S, id) {
     if (tab === 'outcome') {
       const last = S.events.filter((e) => e.mission === id && e.type === 'mission.state_changed').pop();
       const facts = kv([['State', badge('mission', m.state)], ['Project', link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project))], ['Branch', m.branch], ['Origin', m.origin], ['Plan', m.plan_version ? 'version ' + m.plan_version : 'none yet'], ['Tasks', tasks.filter((t) => t.state === 'SUCCEEDED').length + ' of ' + tasks.length + ' done'], ['Account', link(hrefFor('account', m.account), accountLabel(S, m.account))], last ? ['Last change', clockLabel(last.at) + (last.actor === 'device' ? ' by you' : ' by Core')] : null, m.reason ? ['Why', m.reason] : null]);
-      return overview(ctx, S, m, tasks, execs, { compact: isCompact(), facts, d08: dnote('D08', 'Time at each station on the inspector spine; omitted when events are pruned.') });
+      return overview(ctx, S, m, tasks, execs, { compact: isCompact(), facts, position: pos });
     }
     if (tab === 'plan') {
       const plans = Object.values(S.plans).filter((p) => p.mission === id), aps = Object.values(S.approvals).filter((a) => a.mission === id);
@@ -98,7 +99,32 @@ function mission(ctx, A, S, id) {
     return relTab(S, 'mission', id);
   };
   const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: meta(ctx, S, m), pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
-  return h('div', { class: 'msn' }, pane(ctx, S, m, isCompact()), fr);
+  const page = h('div', { class: 'msn' }, pane(ctx, S, m, isCompact()), fr);
+  const identity = h('div', { class: 'msn-identity' }), progress = h('div', { class: 'msn-progress' });
+  const nodes = [fr.querySelector('.insp-head'), fr.querySelector('.msn-meta'), pos.phase, pos.progress];
+  const homes = nodes.map((node) => {
+    const home = document.createTextNode('');
+    if (node.parentNode) node.before(home);
+    return home;
+  });
+  let phone;
+  // Use the device resize hook so node order follows container changes without a rerender.
+  ctx.mounts.push(() => {
+    const compact = isCompact();
+    if (phone === compact) return;
+    phone = compact;
+    if (compact) {
+      identity.append(...nodes.slice(0, 3));
+      progress.append(pos.progress);
+      page.prepend(identity);
+      fr.before(progress);
+    } else {
+      nodes.forEach((node, i) => { if (homes[i].parentNode) homes[i].after(node); else node.remove(); });
+      identity.remove();
+      progress.remove();
+    }
+  });
+  return page;
 }
 
 // ---------- task and route decision ----------

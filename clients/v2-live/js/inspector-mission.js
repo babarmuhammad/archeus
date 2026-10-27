@@ -19,7 +19,7 @@ const TASK_MARK = (st) => (st === 'SUCCEEDED' ? 'done' : ACTIVE.includes(st) ? '
 const TASK_ICON = { done: 'approve', now: 'running', bad: 'reject', open: 'running' };
 
 // The graph is the live map's engine: seeded crystals, depth-dimmed wireframe, state as line colour (js/constellation/scene.js).
-function graph(S, m, compact) {
+function graph(S, m) {
   const execs = Object.values(S.executions).filter((x) => x.mission === m.id).sort((a, b) => a.started_at - b.started_at), x = execs[execs.length - 1];
   const vs = Object.values(S.verifications).filter((v) => v.mission === m.id), v = vs[vs.length - 1];
   const rs = Object.values(S.reviews).filter((r) => r.mission === m.id), r = rs[rs.length - 1];
@@ -30,7 +30,7 @@ function graph(S, m, compact) {
     exec: x ? { title: harnessLabel(x.harness), lines: [word('execution', x.state)], state: ACTIVE.includes(x.state) ? 'running' : 'idle' } : null,
     result: resTxt ? { title: v ? 'Verification' : 'Review', meta: v ? 'VERIFICATION' : 'REVIEW', lines: [resTxt] } : null,
     task: tk ? { title: cut(tk.title, 24), lines: [word('task', tk.state)] } : null, out: Boolean(resTxt && tk) });
-  const svg = s('svg', { class: 'msn-svg', viewBox: compact ? '0 20 ' + BOX.width + ' 420' : '0 0 ' + BOX.width + ' ' + BOX.height, role: 'img', preserveAspectRatio: 'xMidYMid meet',
+  const svg = s('svg', { class: 'msn-svg', viewBox: '0 0 ' + BOX.width + ' ' + BOX.height, role: 'img', preserveAspectRatio: 'xMidYMid meet',
     'aria-label': 'Mission graph: ' + m.title + '. ' + scene.arrows.map((a) => (scene.nodes.find((n) => n.id === a.from) || { title: 'Archeus' }).title + ' ' + a.label.toLowerCase() + ' ' + scene.nodes.find((n) => n.id === a.to).title).join('; ') });
   svg.innerHTML = sceneMarkup(scene, tr);
   return h('div', { class: 'archeus-map msn-scene', 'data-theme': themeOf() }, svg);
@@ -41,17 +41,24 @@ const labelled = (ic, k, t, d) => h('div', { class: 'msn-row' }, h('span', { cla
 const evText = (e) => (e.type === 'mission.state_changed' ? word('mission', e.payload.to) : e.type.replace(/[._]/g, ' ').replace(/^./, (c) => c.toUpperCase()));
 const isBad = (e) => e.type === 'mission.state_changed' && ['FAILED', 'BLOCKED'].includes(e.payload.to);
 
-export function overview(ctx, S, m, tasks, execs, bits) {
+export function position(S, m, d08) {
   const sp = spineInspector(m.state, m.held_from, 22), times = stationTimes(S, m), spn = spineOf(m.state, m.held_from);
   if (times) sp.querySelectorAll('ol > li').forEach((li, i) => { if (times[i] != null) li.append(h('span', { class: 'ax-st-time' }, clockLabel(times[i]))); });
+  return {
+    progress: sec('Where it is', sp, times ? note('The time under a station is when the mission first reached it.') : note('Station times are left out: older steps were pruned from the event log.'), d08),
+    phase: h('div', { class: 'msn-phase' }, h('p', { class: 'ax-eyebrow' }, 'Current phase'), h('p', { class: 'msn-ph' }, word('mission', m.state)), h('p', { class: 'msn-d' }, spn.text))
+  };
+}
+
+export function overview(ctx, S, m, tasks, execs, bits) {
   const evs = S.events.filter((e) => e.mission === m.id), last = evs[evs.length - 1];
   const x = execs.slice().sort((a, b) => a.started_at - b.started_at).pop();
   const tk = tasks.find((t) => ACTIVE.includes(t.state)) || tasks.find((t) => !['SUCCEEDED', 'SKIPPED'].includes(t.state));
   const compact = bits.compact;
   const why = whyOf(S, m).slice(0, 3);
   return h('div', { class: 'ax-body msn-ov' },
-    sec('Where it is', sp, times ? note('The time under a station is when the mission first reached it.') : note('Station times are left out: older steps were pruned from the event log.'), bits.d08),
-    h('div', { class: 'msn-phase' }, h('p', { class: 'ax-eyebrow' }, 'Current phase'), h('p', { class: 'msn-ph' }, word('mission', m.state)), h('p', { class: 'msn-d' }, spn.text)),
+    bits.position.progress,
+    bits.position.phase,
     h('div', { class: 'msn-rows' },
       labelled('execution', 'Agent', x ? harnessLabel(x.harness) + ' · ' + word('execution', x.state) : 'Not recorded.', x ? (S.models.find((q) => q.id === x.model) || {}).label + ' · ' + accountLabel(S, x.account) : null),
       labelled('task', 'Current task', tk ? tk.title : 'Not recorded.', tk ? word('task', tk.state) : null),
@@ -73,7 +80,7 @@ export function crumb(ctx, S, m) {
     h('ol', null, h('li', null, h('a', { href: '#/now' }, 'Overview')), proj ? h('li', null, h('a', { href: hrefFor('project', 'prj-' + proj.id) }, proj.name)) : null, h('li', { 'aria-current': 'page' }, cut(m.title, 30))));
 }
 
-export const pane = (ctx, S, m, compact) => h('section', { class: 'msn-graph', 'aria-label': 'Mission graph' }, crumb(ctx, S, m), graph(S, m, compact));
+export const pane = (ctx, S, m, compact) => h('section', { class: 'msn-graph', 'aria-label': 'Mission graph' }, crumb(ctx, S, m), graph(S, m));
 
 export function meta(ctx, S, m) {
   const cell = (k, v) => h('div', null, h('dt', null, k), h('dd', null, v));
