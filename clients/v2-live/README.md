@@ -24,18 +24,22 @@ Options go in the query string, for example `index.html?theme=light&lang=it&sim=
 | `advance` | seconds | move the simulated clock forward before the first draw |
 | `seed` | number | another scripted story; the same seed gives the same story |
 | `embed` | `1` | used by All devices: the page shares its parent's simulation |
+| `story` | `calm` | finished-work fixture with Tell, Today and known projects |
+| `look` | `app`, `ansi`, `hc`, `mono` | terminal colours |
+| `ascii` | `1`, `0` | terminal ASCII glyphs on or off |
+| `sr` | `1`, `0` | terminal linear Read mode on or off |
 
 ## Routes
 
-`#/now`, `#/work`, `#/attention`, `#/map`, `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (phone menu), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`.
+`#/now`, `#/work`, `#/attention`, `#/map`, `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (direct-link menu; phone navigation uses Places), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`.
 
 ## Devices
 
-The toolbar's Device button picks Auto (fills the window), Phone 390, Tablet 820, Desktop 1440, Terminal (a text-mode view of the same state), or All devices: four live panes side by side, each laid out at its own real width, all driven by one simulation (act in one pane and the others change). Wide frames are scaled down to fit the window, which the note under the toolbar says.
+The toolbar's Device button picks Auto (fills the window), Phone 390, Tablet 820, Desktop 1440, Terminal (a text-mode view of the same state), or All devices: four live panes side by side, each laid out at its own real width, all driven by one simulation (act in one pane and the others change). Wide frames are scaled down to fit the window, which the note under the toolbar says. On phones, three round buttons provide Tell, Places and Stop (Re-arm when stopped); Places opens the destinations and projects sheet.
 
 ## Simulation controls
 
-Toolbar, Sim button (and Settings, Simulation): Play or Pause, speed x0.5 to x8, Trigger an approval, Inject a failure, Break the harness (trips the spawn breaker), Go offline or Reconnect, Reset. One real second is ten simulated seconds at x1. Pause all, Resume all and Emergency stop are on Now and in Settings; the emergency stop asks first, blocks new dispatch until re-armed (also possible while nothing runs) and Re-arm asks again.
+Toolbar, Sim button (and Settings, Simulation): Play or Pause, speed x0.5 to x8, Trigger an approval, Inject a failure, Break the harness (trips the spawn breaker), Go offline or Reconnect, Reset. One real second is ten simulated seconds at x1. Pause all, Resume all and Emergency stop are in the top-bar safety dialog and Settings; the emergency stop asks first, blocks new dispatch until re-armed (also possible while nothing runs) and Re-arm asks again.
 
 ## Keyboard
 
@@ -66,5 +70,5 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 - The Light look is approved as is by the owner (2026-10-26); the contrast of every route is checked, but not on a real display.
 - Checked in headless Chromium only: no real touch device, no screen reader, no Firefox or Safari, no real Windows High Contrast (forced colours were checked with Chromium's emulation), no 200 or 400 percent zoom.
 - Map performance is measured in headless Chromium on a PC, not on a phone; above 60 nodes hulls are not separated.
-- Not built: Ctrl+Enter, the Alt+1/2/3 and Ctrl+K shortcuts, view transitions, a duration-class table, round Tell, Places and Stop buttons on the phone, the font subset for production, the service worker.
+- Not built: Ctrl+Enter, the Alt+1/2/3 and Ctrl+K shortcuts, view transitions, a duration-class table, the font subset for production, the service worker.
 - Pause all, Emergency stop and decisions act on the simulation only.

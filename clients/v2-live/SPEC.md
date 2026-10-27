@@ -40,7 +40,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | A11 | Targets 44 px, 48 px for desktop primary controls | VL §7 (Q6), owner brief | SIMULATED | ALL | S1 (probe checks both) |
 | A12 | The core mark sits on the live map centre on Now | VL §1 (Q5), A55 §3 | SIMULATED | NOW | S1 (centre of the placeholder map), S2 BUILT (core at the centre of the module) |
 | A13 | Six-station spine, labels from Core's own state words | A54 §1 (Q11) | SIMULATED | NOW, WORK, ATT, MAP, TERM | S1 (components), S3 (done: full use) |
-| A14 | Prototype palette taken as the V2 base (ground `#0C0811`, ivory, amber, blue, green) | VL §1 (Q2) | SIMULATED | ALL | S1 |
+| A14 | Concepts are the visual authority: flat near-black ground `#0B090E` (S0 token), ivory, amber, blue, green; no nebula/bloom/blur (was ground `#0C0811`) | owner 2026-10-26, concept authority + consolidated S0 tokens | SIMULATED | ALL | S1 |
 | A15 | Every simulated element labelled SIMULATED and the app says nothing is connected to a Core | owner brief | SIMULATED | ALL | S1 (badge, page header, terminal line) |
 | A16 | Chat: "reads and creates, not effects" (run, spend, settings, delete are cards the owner approves) | owner 2026-10-21, CAT | DESIGNED | CHAT | S1, S4 built (cards for every effect; refusals) |
 | A17 | Slash commands: read and create shortcuts direct, effects only as cards or the two-step confirm; English names canonical with Italian aliases | owner 2026-10-22, T153 | PROTOTYPED | CHAT | S1, S4 built (34 commands, two-step confirms) |
@@ -63,8 +63,8 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| B01 | Dark token set (bg `#0C0811`, surfaces `#0E131C` `#151C2A` `#1C2536`, text `#EFE9DA` `#BDB7A8` `#ABA699`, six state colours) | VL §3.1 | SIMULATED | ALL | S1 (`css/tokens.css`) |
-| B02 | Light token set derived by hue-keeping (bg `#F4EFE4`, ink `#14101A`, states darkened to 4.5:1) | VL §3.2 | SIMULATED | ALL | S1 |
+| B01 | Dark token set: concept near-black bg `#0B090E`, same-hue S0 surfaces `#0E0C12` `#141118` `#1A171F`, text `#EFE9DA` `#BDB7A8` `#ABA699`, six state colours (was bg `#0C0811`, surfaces `#0E131C` `#151C2A` `#1C2536`) | owner 2026-10-26, concept authority + consolidated S0 tokens | SIMULATED | ALL | S1 (`css/tokens.css`) |
+| B02 | Approved derived Light token set: bg `#FDFCF8`, ink `#1B1530`, states darkened to 4.5:1; contrast verification only (was bg `#F4EFE4`, ink `#14101A`) | owner 2026-10-25 Slice 1 “Approve as is”; reaffirmed 2026-10-26 | SIMULATED | ALL | S1 |
 | B03 | High contrast Dark and Light: per-theme overrides, 7:1 text and states, 2 px lines | VL §4 | SIMULATED | ALL | S1 |
 | B04 | System theme follows `prefers-color-scheme` and `prefers-contrast` | VL §1, ADR-0044 | SIMULATED | SHELL | S1 |
 | B05 | Forced colours: system colours, hairline in place of the attention tint, glyph plus word for state | VL §5 | SIMULATED | ALL | S1 (simulated palette and a real `forced-colors` block), S6 done with Chromium's `forced_colors` emulation (Now, Map, Chat, Security, Terminal and eight more routes: borders visible, no ink on ink, a 3 px Highlight line on every selected item); a real OS run is not done |
@@ -83,7 +83,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| C01 | One motion registry: nothing animates without an entry; transform and opacity only | A55, ADR-0024 | BUILT | ALL | S1 (V2 Live has exactly one animation) |
+| C01 | One motion registry: nothing animates without an entry; transform and opacity only | A55, ADR-0024 | BUILT + SIMULATED | ALL | S1, S2 (breath, arrival fades and travelling marker: `js/constellation/map.js`; chevron transition: `css/inspector.css`) |
 | C02 | Duration classes: instant, quick 160, standard 240, layer 200 to 280, travel 600, orbit 900, breath 6000 | A55 §1 | DESIGNED | ALL | not built (the durations in `tokens.css` are used where an animation exists; no duration-class table) |
 | C03 | Idle invariant: zero running animations at idle; with live work exactly one, `core-breath` | A55 §3 | SIMULATED | NOW, MAP | S1 (checked in a script, see report), S2 BUILT (layout probe checks it on the map) |
 | C04 | Breath runs only while a fresh read shows an active execution, the tab is visible and motion is full; never for a queued mission or a fixture | A55 §3 | SIMULATED | NOW, MAP | S1 (driven by the simulation's live work), S2 BUILT (playing, RUNNING and not stuck, output under 2 min old) |
@@ -109,7 +109,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | D05 | Row size: six 8 px marks, 64 by 12 px, no labels | A54 §5 | SIMULATED | WORK, NOW, MAP | S1 |
 | D06 | Card size: six 10 px marks, about 120 px, current station label | A54 §5 | SIMULATED | NOW, ATT | S1 |
 | D07 | Inspector size: 16 px marks, all six labels, `ol` with `aria-current='step'`, vertical below 480 px container width | A54 §5 | SIMULATED | inspector, sheet | S1 |
-| D08 | Time at each station on the inspector spine (omitted when events are pruned) | A54 §5 | DESIGNED | inspector | S3 (done: built) |
+| D08 | Time at each station on the inspector spine (omitted when events are pruned) | A54 §5 | SIMULATED | inspector | S3 (done: `js/inspector-mission.js`, `js/areas-model.js`) |
 | D09 | Text equivalent sentence generated from Core's word and the table | A54 §6 | SIMULATED | all spines (visually hidden text) | S1 |
 | D10 | Terminal form `✓✓✓●○○ Executing` and ASCII `+++*oo Executing` | A54 §7 | SIMULATED | TERM | S1 |
 | D11 | Offline view draws the row spine from kept missions, outlined, with "as of" | A54 §8, UIA §O | DESIGNED | NOW (offline) | S3 (done: built) |
@@ -123,11 +123,11 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | E01 | Navigation table: Now, Work, World, Attention, Control; shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K | V1 `tokens/navigation.json` | BUILT | SHELL | S1 (routes); the shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K are not built (S6 built j, k, Enter, Space, Esc and ? instead: E21) |
 | E02 | Now: state sentence, Needs you (at most 3 Decide rows), Happening now, Upcoming, Live map, Recent decisions, Since you last looked digest | V1 `Now.tsx` | BUILT + SIMULATED | NOW | S1 (all but the digest), S2 BUILT (live map is the module), S3 (digest built) |
 | E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 (done: built) |
-| E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 |
+| E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 (`sim.js`: all listed kinds except drift) |
 | E05 | World: Projects and Knowledge tabs, repositories, inspections, supersession chain | V1 `World.tsx` | BUILT | MAP, SET | S1 (knowledge in the simulation only), S2 |
 | E06 | Control sections: Autonomy, Automations, Resources, Sessions, Clients, Appearance, About, Emergency stop | V1 `Control.tsx`, navigation.json | BUILT + SIMULATED | SET | S1 (accounts, harnesses, automations, clients, hooks, MCP, agents), S3 (Automations, Resources, Clients, hooks, MCP and agents as the Extensions, Usage and Accounts pages), S5 done in TERM (`4` Control: accounts and usage, automations, clients with hooks, MCP and agents, security, health, appearance, about; Autonomy, Sessions and Resources are not simulated) |
 | E07 | Mission inspector tabs: Outcome, Plan, Now, Evidence, Why, Timeline, Relations | V1 `Mission.tsx`, navigation.json | BUILT + SIMULATED | WORK, MAP, ATT inspector | S1 (five tabs), S3 (done: Why, Relations) |
-| E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 (done: built) |
+| E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 partly (`js/inspectors.js`, `js/inspectors2.js`; session, policy decision, context package and repository not simulated) |
 | E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | ATT, NOW, inspector | S1 (decision sheet), S3 (done: built) |
 | E10 | Command bar and palette (Ctrl+K), grammar of ADR-0042 | V1 `CommandBar.tsx`, `state/palette.ts` | BUILT | CHAT | S4 built (bar, slash combobox; no Ctrl+K palette) |
 | E11 | Conversation thread with cards: approval, e-stop, stop mission, route explanation, change card | V1 `Now.tsx` Conversation | BUILT | CHAT | S4 built (thread with start, confirm, approval, plan, status, remember cards) |
@@ -146,14 +146,14 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| F01 | Chat bar entry on Now with placeholder "Tell Archeus what you need...", SIMULATED tag on every reply | PROTO build steps 1 to 3 | PROTOTYPED | NOW, CHAT | S4 built (bar on Now with the placeholder, SIMULATED on every reply) |
+| F01 | Tell opens a chat overlay (phone sheet), placeholder "Tell Archeus what you need…", SIMULATED tag on every reply | PROTO build steps 1 to 3 | PROTOTYPED + SIMULATED | NOW, CHAT | S4 built (`js/app.js`, `js/chat.js`, `js/chat-cards.js`) |
 | F02 | Message creates: message, mission, idea, remembered preference, feedback candidate, mission thread, narrowing directive | T149 §1 | BUILT | CHAT | S4 built (message, mission, idea, remembered preference, feedback candidate) |
 | F03 | Under the `standard` profile a new-work message starts and dispatches without a card (G1, an owner-rule breach) | T149 §1, §4 | BUILT (flagged) | CHAT | S4 built (a chat mission is held; labelled, never shown as owner-approved) |
 | F04 | General (non-project) questions cannot be answered today (G5); replies are scripted | T149 §2, §4 | DESIGNED | CHAT | S4 built (scripted General answers, labelled) |
 | F05 | Create a project from chat has no path in V1 | T149 §1 | PROTOTYPED | CHAT | S4 built (labelled simulated) |
 | F06 | Comment on a mission or plan: no comment object, only messages | T149 §1 | BUILT (limit) | CHAT | S4 built (a comment is a message) |
-| F07 | Route classes: 58 READ, 6 CREATE, 36 PROPOSE, 7 NEVER of 107 routes; chat calls READ and CREATE directly, drafts PROPOSE as cards, never calls NEVER | CAT | DESIGNED | CHAT | S4 built (engine classes) |
-| F08 | NEVER routes: device launch and pair, approvals decide, verifications decide, missions review | CAT | DESIGNED | CHAT | S4 built (refused) |
+| F07 | Route classes: 58 READ, 6 CREATE, 36 PROPOSE, 7 NEVER of 107 routes; chat calls READ and CREATE directly, drafts PROPOSE as cards, never calls NEVER | CAT | DESIGNED | CHAT | S4 partly (`slash.js`, `chat-engine.js`: local command classes, not the 107-route catalogue) |
+| F08 | NEVER routes: device launch and pair, approvals decide, verifications decide, missions review | CAT | DESIGNED | CHAT | S4 (`slash.js`, `chat-engine.js`: pair refused; approval and review commands open cards, decide nothing; no Core routes called) |
 | F09 | Stop mission: confirm card; e-stop: card then control scope; pause all, resume all, reprioritise: direct, no card | T149 §1 | BUILT | CHAT | S4 built (stop, estop: two steps; pause, resume: card) |
 | F10 | Approve from chat only on the card on screen with its hash; a bare "approve" is declined | T149 §1 | BUILT | CHAT | S4 built (bare approve declined; card needs a step-up) |
 | F11 | Slash menu: `/` opens a list above the bar; `?` lists by class; `//name` sends text; keyboard combobox (Up, Down, Tab, Enter, Escape, `aria-activedescendant`) | T153, PROTO slash.js | PROTOTYPED | CHAT | S4 built (combobox: Up, Down, Tab, Enter, Esc, aria-activedescendant, five rows then +N more, recents, `//`) |
@@ -229,24 +229,27 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 |---|---|---|---|---|---|
 | J01 | Desktop at 1024 and wider: rail, main, optional right inspector | owner brief | SIMULATED | ALL · D | S1 |
 | J02 | Tablet 600 to 1023: collapsible rail, inspector as a right sheet | owner brief | SIMULATED | ALL · T | S1 |
-| J03 | Phone under 600: bottom navigation, sheets, thumb-reachable decisions | owner brief, UIA §M | SIMULATED | ALL · P | S1 |
+| J03 | Phone under 600: Tell, Places and Stop bar, navigation in the Places sheet, thumb-reachable decisions | owner brief, UIA §M | SIMULATED | ALL · P | S1, S6 done (`js/phone.js`, `css/phone.css`) |
 | J04 | Terminal view as a device switch and as `#/terminal` | owner brief | SIMULATED | TERM · X | S1 |
 | J05 | Device preview: Auto, Phone, Tablet, Desktop, Terminal; frames scale down to fit | owner brief | SIMULATED | SHELL | S1 |
 | J10 | All devices: phone, tablet, desktop and terminal side by side, each a real document at its own width in an iframe, all sharing the parent's simulation instance | VLD (Devices) | SIMULATED | SHELL | S1 |
 | J11 | Italian switch (`js/i18n.js`): the DOM is translated by exact string after each render, with regex rules for counts and spine sentences | VLD (Language) | SIMULATED | ALL | S1 |
 | J12 | Decision notes: `.dnote` blocks naming the SPEC row each choice implements; toggle persisted | VLD (Audience) | SIMULATED | ALL | S1 |
-| J13 | More screen: the phone's way to every screen that is not on the bottom bar (bottom bar: Now, Work, Attention, Chat, More) | owner brief | SIMULATED | MORE · P | S1 |
+| J13 | More remains at `#/more`; phone navigation uses Places (bottom bar: Tell, Places, Stop) | owner brief | SIMULATED | MORE, SHELL · P | S1, S6 done (`js/views2.js`, `js/phone.js`) |
 | J06 | Theme menu, Reduced motion toggle, simulation menu in a thin toolbar | owner brief | SIMULATED | SHELL | S1 |
 | J07 | Fonts: Libre Caslon Text VF copied from the prototype with its OFL notice (127 KB) | VL §6 | SIMULATED | NOW | S1 |
 | J08 | Layout probe: 14 viewports by every route and overlay by dark and light | owner brief | SIMULATED | none | S1 |
 | J09 | localStorage only inside try/catch; URL parameters `theme`, `device`, `motion`, `sim`, `speed`, `seed`, `advance` | owner brief | SIMULATED | SHELL | S1 |
+| J14 | Toolbar Notes toggle: independent `heronotes` switch for Overview and Map, default off; global notes switch still applies | `js/app.js`, `js/store.js`, `css/shell.css` | SIMULATED | SHELL, NOW, MAP | S6 done |
+| J15 | Device and Theme trays: radio choices, device size hints, scaling note and System / forced-colours note | `js/app.js` | SIMULATED | SHELL | S6 done |
+| J16 | Extra URL options: `story=calm`, `embed=1` (shared parent simulation); terminal `look=app/ansi/hc/mono`, `ascii=1`, `sr=1` (Read) | `js/app.js`, `js/tui/view.js` | SIMULATED | SHELL, NOW, TERM | S6 done |
 
 ## K. Simulation (sim.js)
 
 | ID | Item | Where | Slice |
 |---|---|---|---|
 | K01 | Seeded and deterministic: same seed and calls, same event log, whatever the chunking | all | S1 (tested) |
-| K02 | Controls: play, pause, speed x0.5 to x8, trigger an approval, inject a failure (execution, verification or spawn), reset | SHELL, SET | S1 |
+| K02 | Controls: play, pause, speed x0.5 to x8, trigger an approval, inject an execution failure, break the harness (spawn), Go offline / Reconnect, reset | SHELL, SET | S1 (`js/views.js`, `js/app.js`) |
 | K03 | Events a UI subscribes to, with Core event names (`mission.state_changed`, `approval.requested`, `execution.progress`) | all | S1 |
 | K04 | Owner actions go through the same edges: approve, reject, accept, request changes, unblock, resume, replan, pause, cancel, confirm, retract, enable | ATT, WORK | S1 |
 | K05 | Bounded log with a pruned flag, so Replay can say UNKNOWN | REP | S1 |
@@ -282,6 +285,7 @@ Routes added: `#/usage`, `#/extensions`; any inspector opens on `#/<area>/<id>` 
 | N08 | Usage: session and week rings per account, the 20% line, climbing story, sparkline | SIMULATED | USE | P T D |
 | N09 | Accounts and models, failover rules, launch settings with a live preview | SIMULATED | ACC | P T D |
 | N10 | Extensions: hooks, MCP servers, agents, automations, clients, each with a switch and a details sheet | SIMULATED | EXT | P T D |
+| N11 | Mission graph uses the map's shared node art and recorded relations; shown on desktop and phone, hidden on tablet | SIMULATED | inspector (`js/inspector-mission.js`, `js/constellation/scene.js`, `css/inspector.css`) | P D |
 
 S3 story additions (sim.js, additive): the Codex spawn breaker trips at +8 min and recovers; the personal 5 hour window reaches 94% at +12 min; the work week reaches the 20% line at +24 min; a plan decision can be sent back (Request changes).
 
@@ -303,7 +307,7 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| O01 | Now: state line (`N need you · N running · N stopped · N verifying`), the constellation in text (Core, project hubs, mission nodes with the state glyph and `▲` for a live execution, box lines, columns or a tree by width), Needs you, Happening now, Upcoming, Recent, Conversation | concept 13, E02, A03 | SIMULATED | TERM | S5 done |
+| O01 | Now: state line (nonzero need-you, running and stopped counts; "Nothing needs you." when empty), the constellation in text (Core, project hubs, mission nodes with the state glyph and `▲` for a live execution, box lines, columns or a tree by width), Needs you, Happening now, Upcoming, Recent, Conversation | concept 13, E02, A03 | SIMULATED | TERM | S5 done (`sim.js`, `js/tui/screens.js`) |
 | O02 | Six-station spine as `✓✓◆○○○ Approval` on every row, station labels on the mission and decision cards, the generated sentence for a screen reader | A54 §7 (D10) | SIMULATED | TERM | S5 done |
 | O03 | Work (groups by what a mission waits on, ideas), World (projects, what Archeus knows), Attention (Decide, Review, Unblock) | E03, E04 | SIMULATED | TERM | S5 done |
 | O04 | Mission inspector with the seven real tabs (o Outcome, p Plan, n Now, e Evidence, w Why, t Timeline, r Relations); Why built from `reason`, `held_from`, the approval and a lost execution, never guessed | E07, V1 `Mission.tsx` | SIMULATED | TERM | S5 done |
@@ -324,17 +328,21 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| P01 | Phone Now counters row: needs you, running, stopped, verifying (4 targets of at least 44 px, equal to the simulation counts) | concepts 09, 10 | SIMULATED | NOW · P | S6 done |
+| P01 | Now counters in the Details strip: needs you, running, stopped, verifying; phone hides verifying and zero stopped counts | concepts 09, 10 | SIMULATED | NOW · P/T/D | S6 done (`js/view-now.js`, `css/now.css`) |
 | P02 | Phone mission inspector spine in two rows of three with the short names | concept 12, VLD (narrow inspectors) | SIMULATED | WORK, ATT · P | S6 done |
 | P03 | "No Undo. Decision cannot be changed." banner with a warning icon on an open decision | concept 11 | SIMULATED | ATT, NOW | S6 done |
-| P04 | Pause all, Resume all and Emergency stop strip on Now, ask-first for the stop, Esc cancels, re-arm in place | H16, VLD (E-stop) | SIMULATED | NOW | S6 done |
-| P05 | Tell, Places and Stop as three round buttons on the phone | concepts 09, 10 | DESIGNED | NOW · P | not built: the Tell field, the bottom bar and the Stop button in the dock already do these three jobs; owner question |
+| P04 | Pause all, Resume all and Emergency stop in the top-bar safety dialog and Settings; ask-first for the stop, Esc cancels, re-arm in place | H16, VLD (E-stop) | SIMULATED | SHELL, SET | S6 done (`js/app.js`, `js/views.js`, `js/view-settings.js`) |
+| P05 | Tell, Places and Stop as three round buttons on the phone | concepts 09, 10 | SIMULATED | SHELL · P | S6 done (`js/phone.js`, `css/phone.css`; Stop becomes Re-arm when engaged) |
 | P06 | Toasts: info leaves after 4.5 s, errors and toasts with an action stay until an explicit Dismiss | VLD (toasts, 2026-10-26) | SIMULATED | ALL | S6 done |
 | P07 | Keyboard help overlay (`?`) in EN and IT with the shortcut list and the focus order | E21 | SIMULATED | ALL · D | S6 done |
 | P08 | All devices: panes do not overlap, a click in a pane hits that pane's content, one simulation drives all panes (`tools/v2_live_alldevices_probe.py`) | A01, J-section | SIMULATED | ALL, SHELL | S6 done |
 | P09 | Forced colours: a selected item has a 3 px Highlight line; state icons use ink | B05 | SIMULATED | ALL | S6 done |
 | P10 | Package: `Archeus-V2-Live.zip` from `tools/v2_live_package.py` (the app folder, `start.cmd`, `README-FIRST.txt`) | owner, 2026-10-26 | SIMULATED | SHELL | S6 done |
 | P11 | Italian review list of every builder-written Italian string, all marked to review (`IT-REVIEW.md`) | VLD (Italian) | SIMULATED | ALL | S6 done |
+| P12 | Calm Now: `?story=calm` seeds finished work; "Nothing needs you." selects the calm band with Tell, Today and known projects | concept 07, `sim.js` | SIMULATED | NOW · P/T/D | S6 done (`js/view-now.js`) |
+| P13 | Phone Overview Review card: first Decide or Review item, title, origin, What, Why for approvals, link to the decision or mission | `js/view-now.js`, `css/now.css` | SIMULATED | NOW · P | S6 done |
+| P14 | Places sheet: destinations, Terminal, projects and attention count; modal dialog, close button, Esc and scrim dismiss | `js/phone.js`, `js/app.js` | SIMULATED | SHELL · P | S6 done |
+| P15 | Safety status opens a dialog: Not stopped / accepts new work or Stopped / new work blocked; focus kept inside, Esc and outside click dismiss | `js/app.js` | SIMULATED | SHELL | S6 done |
 
 ## Counts
 

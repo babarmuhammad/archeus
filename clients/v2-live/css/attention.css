@@ -2,7 +2,22 @@
 .att-rows { display: flex; flex-direction: column; }
 .att-rows > .panel + .panel { border-top: var(--hair) solid var(--line); }
 .main-col .att-rows .card { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'top act' 'ttl act' 'spine act'; align-items: center; gap: 2px 24px; min-height: 72px; padding: 12px 8px; border: 0; background: transparent; }
-.main-col .att-rows .card.band { background: transparent; box-shadow: inset 2px 0 0 var(--attention); }
+/* Theme-specific amber supplies a flat 12% tint, never a left-edge bar. */
+.att-rows { --attention-tint: color-mix(in srgb, var(--attention) 12%, transparent); }
+.main-col .att-rows .card.band { background: var(--attention-tint); box-shadow: none; }
+.main-col .att-rows .card .badge .w { color: var(--text); }
+:root[data-theme='dark-hc'] .main-col .att-rows .card.band,
+:root[data-theme='light-hc'] .main-col .att-rows .card.band,
+:root[data-theme='forced'] .main-col .att-rows .card.band {
+  background: transparent; outline: var(--hair) solid var(--text); outline-offset: calc(-1 * var(--hair));
+}
+@media (prefers-contrast: more) {
+  .main-col .att-rows .card.band { background: transparent; outline: var(--hair) solid var(--text); outline-offset: calc(-1 * var(--hair)); }
+}
+@media (forced-colors: active) {
+  .main-col .att-rows .card.band { background: Canvas; outline: var(--hair) solid CanvasText; outline-offset: calc(-1 * var(--hair)); }
+  .main-col .att-rows .card .badge .w { color: CanvasText; }
+}
 .main-col .att-rows .card .top { grid-area: top; justify-content: flex-start; gap: 4px 16px; }
 .main-col .att-rows .card .kind { gap: 4px 8px; }
 .main-col .att-rows .card .badge { padding: 0; border: 0; background: transparent; font-weight: 500; }

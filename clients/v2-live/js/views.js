@@ -51,7 +51,7 @@ export function attentionItem(ctx, a) {
   else if (a.kind === 'automation') btns.push(h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('enable', a.ref) }, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve'));
   else if (a.kind === 'account') btns.push(h('a', { class: 'btn', href: '#/settings' }, 'Open Settings'));
   else if (open) btns.push(h('a', { class: 'btn primary', href: open }, a.kind === 'approval' ? 'Open decision' : a.group === 'Review' ? 'Open review' : 'Open'));
-  return h('article', { class: 'card' + (a.group === 'Decide' ? ' band' : ''), 'data-key': a.id, 'data-state': need ? 'needs_you' : 'blocked' },
+  return h('article', { class: 'card band', 'data-key': a.id, 'data-state': need ? 'needs_you' : 'blocked' },
     h('div', { class: 'top' }, h('span', { class: 'kind' }, icon(KIND_ICON[a.kind] || 'status', 20), a.kind === 'approval' || a.kind === 'verification' || a.kind === 'mission' ? badge('mission', m ? m.state : 'APPROVAL_REQUIRED') : h('span', { class: 'badge', 'data-role': need ? 'needs_you' : 'blocked' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(need ? 'needs_you' : 'blocked')), h('span', { class: 'w' }, a.kind === 'knowledge' ? 'Candidate' : a.kind === 'automation' ? 'Automation' : 'Account'))),
       h('span', { class: 'why' }, [projName(sim, a.project_id), a.since ? 'since ' + clockLabel(a.since) : ''].filter(Boolean).join(' · '))),
     h('p', { class: 'ttl' }, a.reason),
