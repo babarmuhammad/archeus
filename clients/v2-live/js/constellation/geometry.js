@@ -57,11 +57,11 @@ export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
   for (const n of nodes) if (parentOf.has(n.id)) { if (!kids.has(parentOf.get(n.id))) kids.set(parentOf.get(n.id), []); kids.get(parentOf.get(n.id)).push(n); }
   keys.forEach((key, pi) => {
     const rng = randomSeed(`${seed}:${key}`), theta = -Math.PI / 2 + Math.PI / P + pi * TAU / P + (P === 1 ? Math.PI / 2 : 0);
-    let hx = core.x + Math.cos(theta) * halfX * .6; const hy = core.y + Math.sin(theta) * halfY * .55, hub = nodes.find(n => n.kind === 'Project' && (n.project || 'unassigned') === key);
+    let hx = core.x + Math.cos(theta) * halfX * .5; const hy = core.y + Math.sin(theta) * halfY * .45, hub = nodes.find(n => n.kind === 'Project' && (n.project || 'unassigned') === key);
     const group = nodes.filter(n => (n.project || 'unassigned') === key && n !== hub && !parentOf.has(n.id)).sort(order);
     if (hy > keep.box.y - 80 * u && Math.abs(hx - core.x) < keep.box.width / 2 + 90 * u) hx = core.x + (hx < core.x ? -1 : 1) * (keep.box.width / 2 + 90 * u);
     if (hub) { hub.x = hx; hub.y = hy; }
-    spiral(group, hx, hy, hub ? hub.radius : 0, 62 * u, theta, rng);
+    spiral(group, hx, hy, hub ? hub.radius : 0, 92 * u, theta, rng);
   });
   for (const [pid, list] of kids) { const p = byId.get(pid), rng = randomSeed(`${seed}:${pid}`), away = Math.atan2(p.y - core.y, p.x - core.x); spiral(list.sort(order), p.x, p.y, p.radius, 30 * u, away, rng); }
   const anchor = nodes.map(n => ({x: n.x, y: n.y})), gap = 18 * u;
@@ -78,7 +78,11 @@ export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
       n.x += (anchor[i].x - n.x) * .02; n.y += (anchor[i].y - n.y) * .02;
       const dx = n.x - keep.x, dy = n.y - keep.y, d = Math.hypot(dx, dy) || .01, need = keep.radius + n.radius * .5;
       if (d < need) { n.x = keep.x + dx / d * need; n.y = keep.y + dy / d * need; }
-      if (coversNode(keep.box, n, 6)) { const below = n.y > keep.box.y + keep.box.height / 2; n.y = below ? keep.box.y + keep.box.height + n.radius + 6 : keep.box.y - n.radius - 6; }
+      if (coversNode(keep.box, n, 6)) {
+        const r = n.radius + 6, bx = keep.box, fits = ([x, y]) => x >= left + n.radius && x <= width - right - n.radius && y >= top + n.radius && y <= height - bottom - n.radius;
+        const options = [[n.x, bx.y - r], [n.x, bx.y + bx.height + r], [bx.x - r, n.y], [bx.x + bx.width + r, n.y]].sort((p, q) => (fits(q) - fits(p)) || Math.hypot(p[0] - n.x, p[1] - n.y) - Math.hypot(q[0] - n.x, q[1] - n.y));
+        [n.x, n.y] = options[0];
+      }
       n.x = clamp(n.x, left + n.radius, width - right - n.radius);
       n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
     });

@@ -1,4 +1,4 @@
-import {clamp, coversNode, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {clamp, coversNode, overlaps, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {ICONS, crystal, triangle, coreStar} from './nodeart.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
@@ -121,16 +121,17 @@ export function createMap(container, options = {}) {
     const size = width < 360 ? 12 : width < 480 ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
     if (context) context.font = `400 ${size}px ${serif}`;
     const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * coreReach(width) + 6) * k, below = (coreRadius() * coreReach(width) + wordmarkSize(u) * (width < 480 ? 3 : 5)) * k;
+    const hold = Math.max(reach, 62 * u * k), coreBox = {x: cx - hold, y: cy - reach, width: hold * 2, height: reach + below};
     const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
     const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
     // The button goes below, above, right or left of its node, whichever side clears every other node and the bands the headline and drawer own.
-    const reviewBox = reviewFor && width >= 480 && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22]]
+    const reviewBox = reviewFor && width >= 480 && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84]]
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
-      .find(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !nodes.some(o => coversNode(b, o, 2))) ?? null : null;
+      .find(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !nodes.some(o => coversNode(b, o, 2))) ?? null : null;
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
     const boxes = placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
-      obstacles: [{x: cx - Math.max(reach, 62 * u * k), y: cy - reach, width: Math.max(reach, 62 * u * k) * 2, height: reach + below},
+      obstacles: [coreBox,
         {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, {x: width - 200, y: height - controlsBottom - 48, width: 200, height: controlsBottom + 48}, ...(reviewBox ? [reviewBox] : [])]});
     const byId = new Map(nodes.map(n => [n.id, n]));
     const items = boxes.map(box => ({box, n: byId.get(box.id), meta: box.rich ? metaOf(byId.get(box.id)) : ''}));
@@ -160,7 +161,7 @@ export function createMap(container, options = {}) {
     const placeReview = (rec, b) => setAttr(rec.el, 'transform', `translate(${f(b.x + b.width / 2)} ${f(b.y + b.height / 2)})`);
     reconcile(reviews, reviewRecs, reviewBox ? [reviewBox] : [], b => b.id, b => {
       const el = svgElement('g', {class: 'am-review am-state-needs-you', tabindex: 0, role: 'button', 'data-node-id': b.id, 'aria-label': `${T('Review')}: ${byId.get(b.id).label}`});
-      el.append(svgElement('rect', {x: -56, y: -22, width: 112, height: 44, rx: 6}), svgElement('text', {x: -20, y: 5, class: 'am-review-label'}, T('Review')), svgElement('path', {d: 'M22 0h14m-5-5 5 5-5 5', class: 'am-review-arrow'}));
+      el.append(svgElement('rect', {x: -56, y: -22, width: 112, height: 44, rx: 6}), svgElement('text', {x: -42, y: 5, class: 'am-review-label'}, T('Review')), svgElement('path', {d: 'M26 0h14m-5-5 5 5-5 5', class: 'am-review-arrow'}));
       el.addEventListener('click', () => emit('review', el.dataset.nodeId));
       el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emit('review', el.dataset.nodeId); } });
       const rec = {el}; placeReview(rec, b); return rec;
