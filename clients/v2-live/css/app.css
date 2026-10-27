@@ -160,9 +160,6 @@ dl.kv dd { overflow-wrap: anywhere; }
 .cat[data-cat='MAY-HAVE-TAKEN-EFFECT'] { border-style: dashed; }
 .cat[data-cat='UNKNOWN'] { border-style: dotted; }
 .msgs { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; }
-.msg { max-width: 42em; padding: 10px 14px; border: var(--hair) solid var(--line); border-radius: 12px; background: var(--s2); overflow-wrap: anywhere; }
-.msg.you { align-self: flex-end; background: var(--s3); border-color: var(--line-strong); }
-.msg .who { display: block; margin-bottom: 2px; color: var(--text-2); font-size: var(--fs-cap); font-weight: 600; }
 .composer { display: flex; gap: 8px; padding: 12px 16px; border-top: var(--hair) solid var(--line); }
 .composer input { flex: 1 1 auto; min-width: 0; min-height: var(--target-primary); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s3); color: var(--text); font-size: var(--fs-body); }
 .composer input::placeholder { color: var(--text-3); opacity: 1; }

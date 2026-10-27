@@ -23,8 +23,8 @@
 .dockin .composer2 { padding: 10px 12px; border: var(--hair) solid var(--line-strong); border-radius: 16px; background: var(--s1); }
 .convo .composer2, .cs-main .composer2 { padding: 12px 16px; border-top: var(--hair) solid var(--line); }
 .crow2 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
-.cscope { flex: 0 1 17em; min-width: 0; max-width: 100%; min-height: var(--target); padding: 0 10px; border: var(--hair) solid var(--line-strong); border-radius: 22px; background: var(--s3); color: var(--text); font-size: var(--fs-cap); font-weight: 600; }
-.cinput { flex: 1 1 11em; min-width: 0; min-height: var(--target-primary); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 22px; background: var(--s3); color: var(--text); font-size: var(--fs-body); }
+.cscope { flex: 0 1 17em; min-width: 0; max-width: 100%; min-height: var(--target); padding: 0 10px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font-size: var(--fs-cap); font-weight: 600; }
+.cinput { flex: 1 1 11em; min-width: 0; min-height: var(--target-primary); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font-size: var(--fs-body); }
 .cinput::placeholder { color: var(--text-3); opacity: 1; }
 .cslash { padding: 0; width: var(--target); font-family: var(--mono); }
 .csend, .cstop { flex: none; }
@@ -54,11 +54,11 @@
 /* ---------- messages and cards ---------- */
 .msgs { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; overflow-y: auto; min-height: 0; }
 .msgs:focus-visible { outline-offset: -3px; }
-.msg { max-width: min(42em, 100%); padding: 10px 14px; border: var(--hair) solid var(--line); border-radius: 14px; background: var(--s2); overflow-wrap: anywhere; }
-.msg.you { align-self: flex-end; background: var(--s3); border-color: var(--line-strong); border-bottom-right-radius: 4px; }
-.msg.archeus { align-self: flex-start; border-bottom-left-radius: 4px; }
-.msg.general { background: var(--bg); border-style: dashed; border-color: var(--line-strong); }
-.msg .who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin-bottom: 4px; color: var(--text-2); font-size: var(--fs-cap); font-weight: 600; }
+.msg { max-width: min(46em, 100%); padding: 2px 0 2px 14px; border: 0; border-left: var(--hair) solid var(--line-strong); border-radius: 0; background: transparent; overflow-wrap: anywhere; }
+.msg.you { align-self: stretch; border-left: calc(var(--hair) * 2) solid var(--attention); }
+.msg.archeus { align-self: stretch; }
+.msg.general { border-left-style: dashed; }
+.msg .who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin-bottom: 4px; color: var(--text-2); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; }
 .msg .who .dest { font-weight: 400; }
 .mbody { overflow-wrap: anywhere; }
 .mstat { margin-top: 4px; color: var(--text-2); font-size: var(--fs-cap); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }

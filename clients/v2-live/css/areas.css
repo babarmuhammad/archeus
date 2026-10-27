@@ -251,3 +251,46 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 @container view (max-width: 600px) { .ax-ent:has(.e-pills) .e-main { flex: 1 1 100%; } .ax-ent .e-pills { flex: 1 1 100%; flex-direction: column; align-items: flex-start; } .ax-ent .lay { flex-wrap: wrap; } .ax-ent .lay .l { text-align: left; min-width: 5em; } }
 .ax-stat { gap: 6px; } .ax-stat .big { line-height: 1.25; }
 @media (forced-colors: active) { .ax-ring .line20, .ax-spark .ln { stroke: CanvasText; } }
+
+/* ---------- concept layer (04, 08 inspector style): control pages are hairline-separated sections, not cards; figures are a strip; no fills ---------- */
+.main-col .ax-hero .page-head { padding-top: calc(var(--gut) * 1.25); gap: 0; }
+.main-col .ax-hero .page-head h1 { font-size: clamp(26px, 2.2vw, 32px); font-weight: 500; letter-spacing: 0; }
+.main-col .ax-eyebrow { font-size: var(--fs-eyebrow); letter-spacing: var(--ls-eyebrow); color: var(--text-3); margin-bottom: 8px; }
+.main-col .ax-lede { max-width: 40em; padding-top: 10px; font-size: calc(var(--base) * 1.0625); line-height: 1.5; }
+
+.main-col .ax-card, .main-col .ax-banner { background: transparent; border-width: var(--hair) 0 0; border-radius: 0; }
+.main-col .ax-banner { border-width: var(--hair) 0; padding-inline: 0; }
+.main-col .ax-offline { background: transparent; border-radius: 0; border-width: var(--hair) 0; border-style: solid; border-color: var(--line-strong); padding-inline: 0; }
+.main-col .ax-card-h { padding: 12px 0 4px; }
+.main-col .ax-card-h h2, .main-col .ax-card > h2 { font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
+.main-col .ax-card-h h2 .n { letter-spacing: .08em; text-transform: none; color: var(--text-3); }
+.main-col .ax-card-h p { font-size: var(--fs-body); color: var(--text-2); }
+.main-col .ax-card > .ax-ents, .main-col .ax-card > .ax-ents .ax-ent { padding-inline: 0; }
+.main-col .ax-row, .main-col .ax-acct, .main-col .ax-model, .main-col .ax-xrow, .main-col .ax-br, .main-col .ax-two > div, .main-col .ax-lists { padding-inline: 0; }
+.main-col .ax-row, .main-col .ax-ent { min-height: 56px; }
+.main-col .ax-acc, .main-col .ax-check, .main-col .ax-launch { padding-inline: 0; }
+.main-col .ax-ent:hover, .main-col .ax-row-link:hover, .main-col .ax-model[data-default='true'] { background: transparent; }
+.main-col .ax-ent:hover .e-name, .main-col .ax-row-link:hover .r-name { text-decoration: underline; text-underline-offset: 3px; }
+.main-col .ax-cols, .main-col .ax-col, .main-col .ax-accs, .main-col .ax-checks, .main-col .ax-launches { gap: calc(var(--gut) * 1.25); }
+.main-col .ax-cols { column-gap: calc(var(--gut) * 2.5); }
+.main-col .r-name, .main-col .e-name { font-weight: 500; font-size: calc(var(--base) * 1.0625); }
+.main-col .ax-ul li, .main-col .ck-sum { font-size: var(--fs-body); }
+
+.main-col .ax-stats { gap: 0; }
+.main-col .ax-stat { align-items: flex-start; gap: 4px; padding: 4px 24px; text-align: left; background: transparent; border: 0; border-radius: 0; }
+.main-col .ax-stat:first-child { padding-left: 0; }
+.main-col .ax-stat + .ax-stat { border-left: var(--hair) solid var(--line); }
+.main-col .ax-stat .big { font-size: calc(var(--base) * 2.5); font-weight: 400; line-height: 1.25; }
+.main-col .ax-stat .lab { font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
+
+.ax-pill { background: transparent; font-weight: 500; }
+.ax-ring .trk { stroke-width: 3; } .ax-ring .arc { stroke-width: 4; }
+.ax-spark .area { display: none; }
+.main-col .ax-sel, .main-col .ax-inline-confirm { background: transparent; }
+.ax-sw .track { background: transparent; } .ax-sw[aria-checked='true'] .track { background: color-mix(in srgb, var(--active) 18%, transparent); }
+@container view (max-width: 560px) {
+  .main-col .ax-stat { padding: 4px 10px; } .main-col .ax-stat:first-child { padding-left: 0; }
+  .main-col .ax-stat .big { font-size: calc(var(--base) * 1.6); }
+}
+.main-col .ax-note.pad { padding-inline: 0; }
+.main-col .ax-model[data-default='true'] { padding-left: 14px; }

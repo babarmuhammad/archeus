@@ -1,0 +1,49 @@
+/* Page layer for Work, Attention, Replay, Chat and the control pages (concepts 04, 08, 03 inspector): surfaces are the ground itself, 1 px hairlines, eyebrow caps group labels,
+   15 px body, 44 px rows, no fills, no glow. Scoped to .main-col so Overview and Map (now.css) keep their own scene. */
+
+@container dev (min-width: 600px) {
+  .main-col, .inspector:not(:has(.msn)) { --fs-body: calc(var(--base) * .9375); --fs-cap: calc(var(--base) * .8125); --fs-mono: calc(var(--base) * .8125); --fs-t1: calc(var(--base) * 1.125); --fs-t2: calc(var(--base) * .9375); font-size: var(--fs-body); }
+  .inspector:not(:has(.msn)) :is(.ax-sec h3, .insp-body h3, .ax-eyebrow) { letter-spacing: var(--ls-eyebrow); }
+}
+
+.main-col .page-head { padding-top: calc(var(--gut) * 1.25); }
+.main-col .page-head h1 { font-size: clamp(26px, 2.2vw, 32px); line-height: 1.15; font-weight: 500; letter-spacing: 0; }
+.main-col .page-head .sub { font-size: var(--fs-body); }
+.main-col .view:not(.now-view) { gap: calc(var(--gut) * 1.25); padding-top: calc(var(--gut) * .75); }
+
+.main-col .panel { background: transparent; border: 0; border-radius: 0; }
+.main-col .panel > h2, .main-col .sect-h, .main-col .group-h { padding: 0 0 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); align-items: center; gap: 4px 12px; }
+.main-col .panel > h2 .n, .main-col .sect-h .n, .main-col .group-h .n { font-size: var(--fs-eyebrow); letter-spacing: .08em; color: var(--text-3); text-transform: none; }
+.main-col .panel > h2 .n::before { content: '\00b7\00a0'; }
+.main-col .panel > .body, .main-col .panel > .lede, .main-col .panel > .note, .main-col .empty { padding-inline: 0; }
+.main-col .empty { padding-block: 12px 4px; }
+.main-col .empty.art { justify-items: start; text-align: left; }
+.main-col .empty.art .illustration { display: none; }
+
+.main-col .mrow { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'title badge spine' 'meta badge spine'; gap: 0 20px; min-height: 56px; padding: 8px 8px; border-radius: var(--r-s); }
+.main-col .mrow .t { display: contents; }
+.main-col .mrow .name { grid-area: title; font-size: calc(var(--base) * 1.0625); font-weight: 500; }
+.main-col .mrow .badge { grid-area: badge; justify-self: end; padding: 0; border: 0; background: transparent; font-weight: 500; }
+.main-col .mrow .m { font-size: var(--fs-cap); color: var(--text-2); }
+.main-col .mrow:hover, .main-col .mrow[aria-current='true'] { background: transparent; box-shadow: inset 2px 0 0 var(--attention); }
+@container view (max-width: 520px) {
+  .main-col .mrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title badge' 'meta meta' 'spine spine'; }
+}
+
+.main-col .badge { font-size: var(--fs-cap); }
+.main-col .chip { border-radius: var(--r-m); font-weight: 500; }
+.main-col .chip[aria-pressed='true'], .main-col .chip[aria-current='true'] { background: transparent; border-color: var(--active); color: var(--text); }
+.main-col .chip.static { min-height: 28px; border-color: var(--line); }
+
+.main-col .btn { background: transparent; border-color: var(--line-strong); font-weight: 500; }
+.main-col .btn:hover { background: var(--s2); }
+.main-col .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.main-col .btn.danger { background: var(--stop-bg); border-color: var(--stop-line); color: var(--stop-fg); }
+
+:is(.main-col, .inspector:not(:has(.msn))) .dnote { padding: 2px 0 2px 10px; border: 0; border-left: 2px solid var(--line-strong); border-radius: 0; font-size: var(--fs-cap); }
+.main-col .row-line { padding: 12px 0; min-height: var(--target); align-items: center; }
+.main-col .noundo { background: transparent; border-color: var(--attention); }
+
+.inspector { background: var(--s1); }
+.insp-foot .btn:not(.primary):not(.danger) { background: transparent; }
+.main-col:has(.att-rows) .page-head h1 { font-size: var(--fs-title); }
