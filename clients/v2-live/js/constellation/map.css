@@ -160,3 +160,7 @@
 @media (forced-colors: active) { .archeus-map .am-grid-line { stroke: CanvasText; stroke-opacity: 1; } .archeus-map .am-vertex { fill: Canvas; stroke: CanvasText; } }
 .archeus-map[data-calm='true'] .am-controls { display: none; }
 .archeus-map[data-narrow='true'] .am-controls { display: none; }
+.archeus-map .am-ambient path { fill: none; stroke: var(--am-text); stroke-opacity: .09; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.archeus-map .am-ambient circle { fill: none; stroke: var(--am-text); stroke-opacity: .22; stroke-width: 1; vector-effect: non-scaling-stroke; }
+@media (forced-colors: active) { .archeus-map .am-ambient { display: none; } }
+.archeus-map[data-theme='forced'] .am-ambient { display: none; }

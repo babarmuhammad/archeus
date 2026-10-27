@@ -1,4 +1,4 @@
-import {coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {ambientField, coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
 import {bodyMarkup, coreStar} from './nodeart.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
@@ -58,10 +58,10 @@ export function createMap(container, options = {}) {
   const title = svgElement('title', {id: `${prefix}-title`}, options.label || 'Work constellation');
   const summary = svgElement('desc', {id: `${prefix}-summary`});
   const world = svgElement('g', {class: 'am-world', 'aria-hidden': 'true'});
-  const spokeLayer = svgElement('g', {class: 'am-spokes'}), gridLayer = svgElement('g', {class: 'am-grid'}), edgeLayer = svgElement('g', {class: 'am-edges'});
+  const spokeLayer = svgElement('g', {class: 'am-spokes'}), gridLayer = svgElement('g', {class: 'am-grid'}), ambient = svgElement('g', {class: 'am-ambient'}), edgeLayer = svgElement('g', {class: 'am-edges'});
   const core = svgElement('g', {class: 'am-core am-state-core'});
   const nodeLayer = svgElement('g', {class: 'am-nodes'}), pulseLayer = svgElement('g', {class: 'am-pulses'});
-  world.append(spokeLayer, gridLayer, edgeLayer, core, nodeLayer, pulseLayer);
+  world.append(ambient, spokeLayer, gridLayer, edgeLayer, core, nodeLayer, pulseLayer);
   const leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
   const reviews = svgElement('g', {class: 'am-reviews'});
   const hits = svgElement('g', {class: 'am-hits'}), selectRing = svgElement('circle', {class: 'am-select-ring'});
@@ -126,14 +126,21 @@ export function createMap(container, options = {}) {
     const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
     const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
     // The button goes below, above, right or left of its node, whichever side clears every other node and the bands the headline and drawer own.
-    const reviewBox = reviewFor && width >= 480 && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84]]
+    const reviewSpots = reviewFor && width >= 480 && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84]]
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
-      .find(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !nodes.some(o => coversNode(b, o, 2))) ?? null : null;
+      .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !nodes.some(o => coversNode(b, o, 2))) : [];
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
-    const boxes = options.calm ? [] : placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
+    const labelsFor = review => options.calm ? [] : placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
       obstacles: [coreBox,
-        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, {x: width - cw, y: height - controlsBottom - 56, width: cw, height: controlsBottom + 56}, ...(reviewBox ? [reviewBox] : [])]});
+        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, {x: width - cw, y: height - controlsBottom - 56, width: cw, height: controlsBottom + 56}, ...(review ? [review] : [])]});
+    // The button takes the first spot that leaves its node a full label; failing that, one that leaves a shortened label.
+    let reviewBox = reviewSpots[0] ?? null, boxes = labelsFor(reviewBox);
+    if (reviewFor && reviewBox) {
+      const full = String(reviewFor.label || reviewFor.id), grade = list => { const b = list.find(x => x.id === reviewFor.id); return b ? (b.text === full ? 2 : 1) : 0; };
+      let best = grade(boxes);
+      for (const spot of reviewSpots.slice(1)) { if (best === 2) break; const trial = labelsFor(spot), g = grade(trial); if (g > best) { best = g; reviewBox = spot; boxes = trial; } }
+    }
     const byId = new Map(nodes.map(n => [n.id, n]));
     const items = boxes.map(box => ({box, n: byId.get(box.id), meta: box.rich ? metaOf(byId.get(box.id)) : ''}));
     const labelSig = ({box, n, meta}) => `${box.rich}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}|${subOf(n)}`;
@@ -322,6 +329,7 @@ export function createMap(container, options = {}) {
     width = w; height = h; u = unit(w, h); centre = coreCentre(w, h, inset); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     drawCore();
+    ambient.innerHTML = options.calm || options.ambient === false ? '' : (f => `<path d="${f.d}"/>${f.dots.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"/>`).join('')}`)(ambientField(width, height, options.seed));
     camera = {x: 0, y: 0, k: 1}; positions = (options.calm ? layoutCalm : layout)(graph, width, height, options.seed, inset); render(); emit('resize', {width, height});
   }
   function zoom(k, x = width / 2, y = height / 2) {

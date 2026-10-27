@@ -1650,3 +1650,11 @@ Status: to review. Builder-written, not checked by a native speaker.
 | items | voci |
 | {n} items / {n} item | {n} voci |
 | {n} verified | {n} verificata / verificate |
+
+## Phone bottom bar and Places sheet (n1)
+
+Status: to review. Builder-written, not checked by a native speaker.
+
+| English | Italian |
+|---|---|
+| Places | Luoghi |

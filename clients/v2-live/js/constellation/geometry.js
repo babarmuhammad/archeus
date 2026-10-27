@@ -28,7 +28,7 @@ export const crystalRadius = (u, width) => (width < 480 ? 25 * u : Math.min(60 *
 // Open space: only the top few running or needs-you missions are drawn as big crystals, the rest shrink to minor nodes.
 export const CRYSTAL_BUDGET = 3;
 export const crystalIds = nodes => new Set(nodes.filter(isCrystal).sort((a, b) => (stateKey(b.state) === 'needs-you') - (stateKey(a.state) === 'needs-you') || String(a.id).localeCompare(String(b.id))).slice(0, CRYSTAL_BUDGET).map(n => n.id));
-export const bodyRadius = (n, u, width) => (n.kind === 'Project' ? (width < 480 ? 17 : 40) : n.kind === 'Execution' ? (width < 480 ? 17 : 38) : (width < 480 ? 13 : 21)) * u;
+export const bodyRadius = (n, u, width) => (n.kind === 'Project' ? (width < 480 ? 15 : 30) : n.kind === 'Execution' ? (width < 480 ? 17 : 38) : (width < 480 ? 11 : 15)) * u;
 export const wordmarkSize = (u, calm) => Math.round((12.5 * u + 2) * (calm ? 1.35 : 1));
 // What the layout keeps clear of: the core star (a circle) and the wordmark with its tagline under it (a box).
 export function coreKeepOut(width, height, u, inset = INSET, calm = false) {
@@ -94,6 +94,18 @@ export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
   }
   return nodes;
 }
+// A faint ambient field behind the scene: hollow dots on a jittered grid joined by hairlines. Pure: the same size and seed give the same field.
+export function ambientField(width, height, seed = 'archeus', cell = 170) {
+  const rng = randomSeed(`${seed}:ambient`), cols = Math.max(2, Math.round(width / cell)), rows = Math.max(2, Math.round(height / cell)), dots = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) dots.push([(c + .2 + rng() * .6) * width / cols, (r + .2 + rng() * .6) * height / rows]);
+  let d = '';
+  const at = (c, r) => dots[r * cols + c];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const p = at(c, r), links = [[c + 1, r], [c, r + 1], rng() < .45 ? [c + 1, r + 1] : null, rng() < .3 ? [c - 1, r + 1] : null];
+    for (const l of links) if (l && l[0] >= 0 && l[0] < cols && l[1] < rows) { const q = at(l[0], l[1]); d += `M${p[0].toFixed(1)},${p[1].toFixed(1)}L${q[0].toFixed(1)},${q[1].toFixed(1)}`; }
+  }
+  return {d, dots};
+}
 // Calm (concept 07): only the projects, as large pointy-top hexagon panels round the core, each one listing its own items.
 // Up to four sit at the corners; more spread along an ellipse that skips the wordmark below the core. The radius shrinks until no two panels or the core keep-out touch.
 export function layoutCalm(graph, width, height, seed = 'archeus', inset = INSET) {
@@ -158,7 +170,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
   const priority = n => n.id === selected ? 10000 : keys.get(n) === 'needs-you' ? 5000 : keys.get(n) === 'running' ? 1000 : Number(n.weight) || 1;
   const rank = new Map(nodes.map(n => [n, priority(n)]));
   const sorted = [...nodes].sort((a, b) => rank.get(b) - rank.get(a) || String(a.id).localeCompare(String(b.id)));
-  const budget = width < 480 ? 5 : width < 1280 ? 13 : 30;
+  const budget = width < 480 ? 4 : width < 1280 ? 7 : 9;
   const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 + size * .95 : lineHeight;
   for (const n of sorted) {
     const mandatory = n.id === selected || keys.get(n) === 'needs-you';
@@ -170,7 +182,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
     const variants = [full];
     if (mandatory) for (const cut of [18, 11]) if ([...full].length > cut) variants.push(`${[...full].slice(0, cut - 1).join('').trimEnd()}…`);
     const gap = n.radius + 8;
-    const distances = mandatory ? [gap, gap + 10, gap + 24, gap + 44, gap + 70] : [gap, gap + 10, gap + 24];
+    const distances = mandatory ? [gap, gap + 10, gap + 24, gap + 44, gap + 70, gap + 100, gap + 140] : [gap, gap + 10, gap + 24];
     for (const text of variants) {
       const labelWidth = Math.min(width - 16, Math.max(width_(text), rich ? metaWidth : 0) + 4);
       const labelHeight = height2;
@@ -178,6 +190,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
       for (const d of distances) {
         candidates.push([n.x + d, n.y - labelHeight / 2], [n.x - d - labelWidth, n.y - labelHeight / 2],
           [n.x - labelWidth / 2, n.y - d - labelHeight], [n.x - labelWidth / 2, n.y + d]);
+        if (mandatory) { const k = d * .75; candidates.push([n.x + k, n.y + k], [n.x - k - labelWidth, n.y + k], [n.x + k, n.y - k - labelHeight], [n.x - k - labelWidth, n.y - k - labelHeight]); }
       }
       const found = candidates.find(([x, y]) => {
         const box = {x, y, width: labelWidth, height: labelHeight};
