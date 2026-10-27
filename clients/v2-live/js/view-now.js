@@ -16,7 +16,8 @@ function counters(ctx) {
 
 // The headline clears the top of the scene and the drawer strip the bottom; both shrink with the width.
 let calmNow = false;
-const nowInset = (w, hh) => calmNow ? { top: 16, bottom: w < 600 ? 170 : Math.max(250, Math.round(hh * .33)), left: 24, right: 24 } : w < 600 ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: w >= 1000 ? 170 : 150, bottom: 76, left: 24, right: 24 };
+const phone = () => document.getElementById('app').clientWidth < 600;
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: phone() ? 170 : Math.max(250, Math.round(hh * .33)), left: 24, right: 24 } : phone() ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: w >= 1000 ? 170 : 150, bottom: 76, left: 24, right: 24 };
 
 // Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
 function calmBand(ctx) {

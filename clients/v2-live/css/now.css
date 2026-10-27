@@ -69,7 +69,7 @@
   .calm-band > div + div { display: none; }
   .calm-say .state-sentence { font-size: 30px; }
 }
-@container view (max-width: 599px) {
+@container dev (max-width: 599px) {
   .calm-band { height: 160px; }
   .calm-band > div { padding: 16px; }
   .tell-cta { display: none; }
@@ -78,7 +78,7 @@
 
 /* Phone Overview (concepts 09 and 10): the scene, two large counts, the Review card. The headline stays for screen readers. */
 .pn-card { display: none; }
-@container view (max-width: 599px) {
+@container dev (max-width: 599px) {
   .view.now-view[data-calm='false'] { display: flex; flex-direction: column; }
   .now-view[data-calm='false'] .now-scene { position: relative; inset: auto; flex: 1 1 0; min-height: 190px; }
   .now-view[data-calm='false'] .now-hero { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); }
