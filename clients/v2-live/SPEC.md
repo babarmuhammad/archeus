@@ -13,7 +13,7 @@ Written 2026-10-25, slice 1. Everything the owner has decided, designed, built i
 
 A row can carry two words (for example `BUILT + SIMULATED`): built in V1 and simulated here. Rows marked `S1` are shown by slice 1; `S2` to `S6` are what later slices must add.
 
-**Screens and devices** (the "Where" column): Screens `NOW`, `WORK`, `ATT` (Attention), `MAP`, `REP` (Replay), `CHAT`, `SEC` (Security, `#/security`), `HLT` (Health, `#/health`), `ACC` (Accounts, `#/accounts`), `USE` (Usage, `#/usage`), `EXT` (Extensions, `#/extensions`), `SET` (Settings), `MORE` (phone menu of the other screens), `TERM` (terminal view), `ALL` (every screen), `SHELL` (toolbar, frames, All devices view). Devices `P` phone 320 to 480, `T` tablet 600 to 1024, `D` desktop 1280 to 2560, `X` terminal.
+**Screens and devices** (the "Where" column): Screens `NOW`, `WORK` (Work, which also holds what Attention showed; `#/attention` redirects to `#/work`), `MAP`, `REP` (Replay), `CHAT`, `SEC` (Security, `#/security`), `HLT` (Health, `#/health`), `ACC` (Accounts, `#/accounts`), `USE` (Usage, `#/usage`), `EXT` (Extensions, `#/extensions`), `SET` (Settings), `MORE` (phone menu of the other screens), `TERM` (terminal view), `ALL` (every screen), `SHELL` (toolbar, frames, All devices view). Devices `P` phone 320 to 480, `T` tablet 600 to 1024, `D` desktop 1280 to 2560, `X` terminal.
 
 **Slices.** S1 shell, simulation, tokens, probe (this one). S2 constellation and Now. S3 mission, spine, decisions. S4 chat, slash commands, Replay. S5 terminal view. S6 themes and motion polish, probes, zip.
 
@@ -71,7 +71,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | B06 | Fixed state colours across themes: one colour, one meaning; never the only carrier (glyph and word too) | ADR-0017, UIA §G | BUILT + SIMULATED | ALL | S1 |
 | B07 | State figures ◌ ○ ◆ ◇ ● ■ ‖ ✕ ✓ · – with ASCII twins | VL §9, `presentation.json` | BUILT + SIMULATED | ALL, TERM | S1 (`core-words.js`) |
 | B08 | Node shapes: circle mission, ring project hub, triangle execution, diamond decision (one shape, one fact) | VL §9, V1 `graph/encoding.ts` | BUILT + SIMULATED | MAP, NOW | S1 (placeholder), S2 BUILT (module draws mission disc or crystal, project hexagon, execution triangle, decision diamond) |
-| B09 | Attention band: static tint at 12 % of amber over the row, never a left edge; the word is ink, the ◆ carries colour; off in high contrast and forced colours | VL §8 | SIMULATED | NOW, ATT | S1 |
+| B09 | Attention band: static tint at 12 % of amber over the row, never a left edge; the word is ink, the ◆ carries colour; off in high contrast and forced colours | VL §8 | SIMULATED | NOW, WORK | S1, B (Needs you rows on Work) |
 | B10 | Line-style vocabulary: solid recorded or passed, filled current, dashed not reached or suggested, hollow not started, dotted unknown | VL §8 | SIMULATED | spine, MAP | S1 (spine), S2 BUILT (map edges: contains, runs, asks; accent colour for needs-you and running) |
 | B11 | Type scale: body 13/20 desktop and 17/24 phone, caption 12 and 13, display 28/34; system fonts; mono for terminal and times | VL §6, V1 `tokens.json` | BUILT + SIMULATED | ALL | S1 |
 | B12 | Solid material: overlays are opaque surface-3, elevation by surface step plus line, no shadows added | VL §8 | SIMULATED | menus, sheets | S1 |
@@ -113,7 +113,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | D09 | Text equivalent sentence generated from Core's word and the table | A54 §6 | SIMULATED | all spines (visually hidden text) | S1 |
 | D10 | Terminal form `✓✓✓●○○ Executing` and ASCII `+++*oo Executing` | A54 §7 | SIMULATED | TERM | S1 |
 | D11 | Offline view draws the row spine from kept missions, outlined, with "as of" | A54 §8, UIA §O | DESIGNED | NOW (offline) | S3 (done: built) |
-| D12 | Spine on Attention rows by joining the missions read, not a request per row | A54 §9 | SIMULATED | ATT | S1 |
+| D12 | Spine on Attention rows by joining the missions read, not a request per row | A54 §9 | SIMULATED | WORK | S1 |
 | D13 | Prototype six-station stepper at fixed x positions on one frame | PROTO `phases(m)` | PROTOTYPED | none | replaced by D05 to D07 |
 
 ## E. V1 surfaces (BUILT) and what V2 Live shows of them
@@ -122,13 +122,13 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 |---|---|---|---|---|---|
 | E01 | Navigation table: Now, Work, World, Attention, Control; shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K | V1 `tokens/navigation.json` | BUILT | SHELL | S1 (routes); the shortcuts Alt+1/2/3/J, Ctrl+, and Ctrl+K are not built (S6 built j, k, Enter, Space, Esc and ? instead: E21) |
 | E02 | Now: state sentence, Needs you (at most 3 Decide rows), Happening now, Upcoming, Live map, Recent decisions, Since you last looked digest | V1 `Now.tsx` | BUILT + SIMULATED | NOW | S1 (all but the digest), S2 BUILT (live map is the module), S3 (digest built) |
-| E03 | Work: missions grouped by what they wait on (Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled), Pinned, Ideas | V1 `Work.tsx` | BUILT + SIMULATED | WORK | S1 (no pins), S3 (done: built) |
-| E04 | Attention: flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | ATT | S1 (`sim.js`: all listed kinds except drift) |
+| E03 | Work: one page with its own graph (`js/constellation/workgraph.js`, concepts 03/04/08: missions and the decisions they ask for as nodes grouped by what they wait on, project as a faint label, Review button on the first needs-you node) over the list Needs you, Active, Blocked, Done, then Pinned and Ideas; project filter chips; graph and list follow the route id, so selecting in one marks the other and opens the inspector | V1 `Work.tsx`, concepts 03, 04, 08 | BUILT + SIMULATED | WORK | S1 (no pins), S3 (done: built), B (graph and merged page) |
+| E04 | Attention items (now the Needs you and Blocked sections of Work): flat Core list of approvals, verification, mission, knowledge, drift, automation, account items; V2 groups Decide, Review, Unblock | V1 `Attention.tsx`, UIA §H | BUILT + SIMULATED | WORK | S1 (`sim.js`: all listed kinds except drift), B (merged into Work; the Attention nav item is gone) |
 | E05 | World: Projects and Knowledge tabs, repositories, inspections, supersession chain | V1 `World.tsx` | BUILT | MAP, SET | S1 (knowledge in the simulation only), S2 |
 | E06 | Control sections: Autonomy, Automations, Resources, Sessions, Clients, Appearance, About, Emergency stop | V1 `Control.tsx`, navigation.json | BUILT + SIMULATED | SET | S1 (accounts, harnesses, automations, clients, hooks, MCP, agents), S3 (Automations, Resources, Clients, hooks, MCP and agents as the Extensions, Usage and Accounts pages), S5 done in TERM (`4` Control: accounts and usage, automations, clients with hooks, MCP and agents, security, health, appearance, about; Autonomy, Sessions and Resources are not simulated) |
 | E07 | Mission inspector tabs: Outcome, Plan, Now, Evidence, Why, Timeline, Relations | V1 `Mission.tsx`, navigation.json | BUILT + SIMULATED | WORK, MAP, ATT inspector | S1 (five tabs), S3 (done: Why, Relations) |
 | E08 | Other inspectors: execution (Output, Checkpoints), session (Brief, Lineage), knowledge, automation run, approval, plan, verification, route decision, policy decision, context package, project, repository | V1 navigation.json | BUILT | inspector | S3 partly (`js/inspectors.js`, `js/inspectors2.js`; session, policy decision, context package and repository not simulated) |
-| E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | ATT, NOW, inspector | S1 (decision sheet), S3 (done: built) |
+| E09 | Approval card: canonical action, why, consequence of reject, expiry; decide needs the approve scope and step-up | V1 `Attention.tsx` ApprovalCard, T149 | BUILT + SIMULATED | WORK, NOW, inspector | S1 (decision sheet), S3 (done: built) |
 | E10 | Command bar and palette (Ctrl+K), grammar of ADR-0042 | V1 `CommandBar.tsx`, `state/palette.ts` | BUILT | CHAT | S4 built (bar, slash combobox; no Ctrl+K palette) |
 | E11 | Conversation thread with cards: approval, e-stop, stop mission, route explanation, change card | V1 `Now.tsx` Conversation | BUILT | CHAT | S4 built (thread with start, confirm, approval, plan, status, remember cards) |
 | E12 | Offline Now: kept missions, "as of hh:mm", Decide rows read-only | V1 `OfflineNow`, UIA §O | BUILT | NOW | S3 (done: built) |
@@ -200,7 +200,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (lists), S3 (done: Extensions page, switches with confirm, details sheet, last run and calls from the simulation), S5 done in TERM (lists in `4` Control; no enable or disable) |
 | H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | ACC | S1, S3 (done: Accounts page with failover order, default model, per-project launch settings with a live preview; Usage page) |
 | H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | ACC | S1, S3 (done: Clients rows and a details sheet; revoke stays a step-up note) |
-| H12 | Knowledge items (CANDIDATE, CONFIRMED, RETRACTED, SUPERSEDED), confirm or reject | ST, V1 World | BUILT + SIMULATED | ATT, SET | S1 (candidates in Attention) |
+| H12 | Knowledge items (CANDIDATE, CONFIRMED, RETRACTED, SUPERSEDED), confirm or reject | ST, V1 World | BUILT + SIMULATED | WORK, SET | S1 (candidates under Needs you on Work) |
 | H13 | Ideas with their own states | ST, V1 Work | BUILT + SIMULATED | WORK | S1 |
 | H14 | P20 security and isolation (PV-20 AppContainer, broker, origin gate): physical reach not built in V1, switches off | BOARD T-131 to T-138 | DESIGNED | SEC | S1, S3 (done: two boundaries, isolated and not isolated, eight boundaries, privileges, switches, log), S5 done in TERM (`g s`, same list and words) |
 | H15 | P21: trace, health (Control, About), activity chip, schedules, search, notifications, privacy | BOARD T-118 to T-130 | trace, search and notifications merged at f483f87; provenance, health, activity chip and schedules built on review branches (T-130 integrates) | HLT, WORK | S1 (Health checks derived from readings, unknown stays unknown), S3 (done: built) |
@@ -259,7 +259,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Area | Screens that show it | Route | Slice |
 |---|---|---|---|---|
-| M01 | Now, Work, Attention, spine, decisions | NOW, WORK, ATT, inspector and decision sheet, MAP | `#/now`, `#/work/<id>`, `#/attention/<id>` | S1 shell and lists, S2 Now, S3 mission and decisions |
+| M01 | Now, Work, Attention, spine, decisions | NOW, WORK (graph, Needs you, Active, Blocked, Done), inspector and decision sheet, MAP | `#/now`, `#/work/<id>` (decisions too: `#/work/a-1`; `#/attention/<id>` redirects here) | S1 shell and lists, S2 Now, S3 mission and decisions |
 | M02 | Chat and slash commands | CHAT | `#/chat` | S1, S4 built |
 | M03 | Replay | REP | `#/replay/<id>` | S1, S4 built |
 | M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1, S3 (done: #/security with trip and reset), S5 done in TERM (`#/terminal/security`) |
@@ -341,7 +341,7 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 | P11 | Italian review list of every builder-written Italian string, all marked to review (`IT-REVIEW.md`) | VLD (Italian) | SIMULATED | ALL | S6 done |
 | P12 | Calm Now: `?story=calm` seeds finished work; "Nothing needs you." selects the calm band with Tell, Today and known projects | concept 07, `sim.js` | SIMULATED | NOW · P/T/D | S6 done (`js/view-now.js`) |
 | P13 | Phone Overview Review card: first Decide or Review item, title, origin, What, Why for approvals, link to the decision or mission | `js/view-now.js`, `css/now.css` | SIMULATED | NOW · P | S6 done |
-| P14 | Places sheet: destinations, Terminal, projects and attention count; modal dialog, close button, Esc and scrim dismiss | `js/phone.js`, `js/app.js` | SIMULATED | SHELL · P | S6 done |
+| P14 | Places sheet: destinations, Terminal, projects and the count of what needs you (on Work); modal dialog, close button, Esc and scrim dismiss | `js/phone.js`, `js/app.js` | SIMULATED | SHELL · P | S6 done |
 | P15 | Safety status opens a dialog: Not stopped / accepts new work or Stopped / new work blocked; focus kept inside, Esc and outside click dismiss | `js/app.js` | SIMULATED | SHELL | S6 done |
 
 ## Counts

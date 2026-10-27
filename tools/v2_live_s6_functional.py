@@ -29,7 +29,12 @@ try:
         pg.keyboard.press('j'); k1 = pg.evaluate(active)
         pg.keyboard.press('j'); k2 = pg.evaluate(active)
         pg.keyboard.press('k'); k3 = pg.evaluate(active)
-        check('j moves to the first row, j to the next, k back', k1.startswith('m-') and k2.startswith('m-') and k1 != k2 and k3 == k1)
+        check('j moves to the first row (a Needs you card on Work), j to the next, k back', k1.startswith('att-') and k2 != '' and k1 != k2 and k3 == k1)
+        for _ in range(12):
+            if k1.startswith('m-'):
+                break
+            pg.keyboard.press('j'); k1 = pg.evaluate(active)
+        pg.keyboard.press('k'); pg.keyboard.press('j'); k1 = pg.evaluate(active)
         ring = pg.evaluate("() => { const c = getComputedStyle(document.activeElement); return [c.outlineColor, parseFloat(c.outlineWidth), c.outlineStyle]; }")
         check('the focused row shows the dark focus colour #FFF3CF, 3 px', ring[0] == 'rgb(255, 243, 207)' and ring[1] >= 3 and ring[2] == 'solid')
         pg.keyboard.press('Space'); pg.wait_for_timeout(250)
