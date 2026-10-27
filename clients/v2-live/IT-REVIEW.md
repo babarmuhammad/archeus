@@ -15,7 +15,6 @@ Status: to review. 45 strings.
 | Now | Adesso |
 | Work | Lavoro |
 | Attention | Attenzione |
-| Map | Mappa |
 | Settings | Impostazioni |
 | More | Altro |
 | Security | Sicurezza |
@@ -227,7 +226,7 @@ Status: to review. 5 strings.
 | Scheduled | Programmata |
 | Captured | Catturata |
 
-## Main dictionary: Map / Replay
+## Main dictionary: Replay
 
 Status: to review. 33 strings.
 
@@ -250,7 +249,6 @@ Status: to review. 33 strings.
 | Fit all nodes | Mostra tutti i nodi |
 | Reset map view | Ripristina la vista |
 | Fit | Adatta |
-| Constellation | Costellazione |
 | Selected step | Passo selezionato |
 | Categories | Categorie |
 | Not recorded | Non registrato |
@@ -1332,7 +1330,7 @@ Status: to review. 56 strings.
 | Destination: Command · /{n} · {c} | Destinazione: Comando · /{n} · {c} |
 | Destination: General · not project memory. Nothing here is saved to a project. | Destinazione: Generale · non è memoria di progetto. Qui non si salva nulla in un progetto. |
 | Destination: Work · {p}. Replies and records stay in this project. | Destinazione: Lavoro · {p}. Risposte e record restano in questo progetto. |
-| Tell Archeus what you need… | Dimmi cosa ti serve… |
+| Tell Archeus what to do… | Dì ad Archeus cosa fare… |
 | Destination | Destinazione |
 | Stop: propose an emergency stop | Ferma: proponi un arresto d'emergenza |
 | mission | missione |
@@ -1663,3 +1661,9 @@ Status: to review. Builder-written, not checked by a native speaker.
 
 - Emergency stop all missions → Arresto di emergenza di tutte le missioni
 - Re-arm new work → Riarma il nuovo lavoro
+
+## Overview rework (2026-10-27): to review
+
+- Tell Archeus what to do… → Dì ad Archeus cosa fare… (the field placeholder of the Tell dock and the Chat page; replaces Tell Archeus what you need… / Dimmi cosa ti serve…)
+- Decision notes on the Overview → Note sulle decisioni in Panoramica (the toolbar switch; replaces the string that named the Map as well)
+- Removed with the Map screen: Map → Mappa, Constellation → Costellazione.

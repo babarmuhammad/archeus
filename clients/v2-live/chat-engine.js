@@ -95,7 +95,7 @@ export function createChat(sim, env = {}) {
     if (name === 'help') return { c: tp('The commands, by class. READ and NAVIGATE answer, CREATE writes one record, PROPOSE only makes a card you confirm.', 'I comandi, per classe. READ e NAVIGATE rispondono, CREATE scrive un record, PROPOSE crea solo una scheda che confermi tu.'), card: { kind: 'help', arg: args } };
     if (name === 'status') { const n = sim.counts(); return { c: BASED, card: { kind: 'status', running: n.running, waiting: n.need, stopped: n.stopped, estop: st.estop.engaged, at: st.clock } }; }
     if (name === 'usage') return { c: tp('Usage is Unknown. The read is not built yet (T-154); Archeus shows no number it cannot source.', 'L\'utilizzo è Sconosciuto. La lettura non esiste ancora (T-154); Archeus non mostra numeri che non può documentare.'), card: { kind: 'usage', rows: st.accounts.filter((a) => !args || norm(a.label).includes(norm(args))).map((a) => a.label) } };
-    if (name === 'projects') return { c: BASED, card: lines(st.projects.map((p) => ({ label: p.name, meta: ms.filter((m) => m.project === p.id && !['COMPLETED', 'CANCELLED'].includes(m.state)).length + ' open', href: '#/map' }))) };
+    if (name === 'projects') return { c: BASED, card: lines(st.projects.map((p) => ({ label: p.name, meta: ms.filter((m) => m.project === p.id && !['COMPLETED', 'CANCELLED'].includes(m.state)).length + ' open', href: '#/now' }))) };
     if (name === 'missions') {
       let list = ms, p = null;
       if (args) { const r = resolve(args, ['project']); if (!r.one) return refReply(r, args); p = r.one; list = ms.filter((m) => m.project === p.id); }
@@ -111,7 +111,7 @@ export function createChat(sim, env = {}) {
     if (name === 'search') {
       const q = norm(args), hit = [];
       ms.filter((m) => norm(m.title).includes(q)).forEach((m) => hit.push({ label: m.title, meta: 'mission · ' + word(m), href: '#/work/' + m.id }));
-      st.projects.filter((p) => norm(p.name).includes(q)).forEach((p) => hit.push({ label: p.name, meta: 'project', href: '#/map' }));
+      st.projects.filter((p) => norm(p.name).includes(q)).forEach((p) => hit.push({ label: p.name, meta: 'project', href: '#/now' }));
       st.ideas.filter((i) => norm(i.title).includes(q)).forEach((i) => hit.push({ label: i.title, meta: 'idea', href: '#/work' }));
       return hit.length ? { c: tp('{n} found for “{q}”. A row opens the object.', '{n} trovati per “{q}”. Una riga apre l\'oggetto.', { n: hit.length, q: args }), card: lines(hit.slice(0, 8), Math.max(0, hit.length - 8)) } : { c: tp('Nothing found for “{q}”.', 'Niente trovato per “{q}”.', { q: args }) };
     }
@@ -124,7 +124,7 @@ export function createChat(sim, env = {}) {
       if (name === 'replay' && !args) { const m = ms.slice().sort((a, b) => b.updated_at - a.updated_at)[0]; return { c: tp('Opening the Replay of “{t}”, the latest.', 'Apro il Replay di “{t}”, l\'ultima.', { t: m.title }), nav: '#/replay/' + m.id }; }
       const r = resolve(args, name === 'focus' ? ['project'] : name === 'open' ? ['mission', 'project'] : ['mission']); if (!r.one) return refReply(r, args);
       const x = r.one;
-      if (name === 'focus' || x.kind === 'project') return { c: tp('Focusing the map on {t}.', 'Porto la mappa su {t}.', { t: x.name }), nav: '#/map' };
+      if (name === 'focus' || x.kind === 'project') return { c: tp('Focusing the map on {t}.', 'Porto la mappa su {t}.', { t: x.name }), nav: '#/now' };
       if (name === 'replay') return { c: tp('Opening the Replay of “{t}”.', 'Apro il Replay di “{t}”.', { t: x.name }), nav: '#/replay/' + x.id };
       if (name === 'trace') return { c: tp('Opening the trace of “{t}”.', 'Apro la traccia di “{t}”.', { t: x.name }), nav: '#/work/' + x.id, tab: 'timeline' };
       return { c: tp('Opening “{t}”.', 'Apro “{t}”.', { t: x.name }), nav: '#/work/' + x.id };
@@ -203,7 +203,7 @@ export function createChat(sim, env = {}) {
     const proj = /\b(create|add|new|make)\b.*\bproject\b\s*(?:called|named)?\s*["“]?([\w][\w \-]{1,30})/i.exec(text);
     if (proj && !/\bmission\b/i.test(text)) {
       const p = sim.chat.createProject(proj[2].trim().replace(/\s+(and|to)\b.*$/i, ''));
-      return { c: tp('SIMULATED · Project “{t}” created in this demo. Core chat creation is not connected. It is a record only; folders, clones and access are proposals.', 'SIMULATO · Progetto “{t}” creato in questa demo. La creazione da chat nel Core non è collegata. È solo un record; cartelle, cloni e accessi sono proposte.', { t: p.name }), card: { kind: 'created', what: 'project', title: p.name, id: p.id, project: p.name, href: '#/map' }, created: { kind: 'project', id: p.id } };
+      return { c: tp('SIMULATED · Project “{t}” created in this demo. Core chat creation is not connected. It is a record only; folders, clones and access are proposals.', 'SIMULATO · Progetto “{t}” creato in questa demo. La creazione da chat nel Core non è collegata. È solo un record; cartelle, cloni e accessi sono proposte.', { t: p.name }), card: { kind: 'created', what: 'project', title: p.name, id: p.id, project: p.name, href: '#/now' }, created: { kind: 'project', id: p.id } };
     }
     if (/\bidea\b/i.test(text) && !/\bmission\b/i.test(text)) return createCmd('idea', text.replace(/^.*?\bidea\b[:\s,-]*/i, '').replace(/^(for|about|to|that)\s+/i, '') || text, o);
     const mis = /\b(create|add|make|new|draft|open)\b.*\bmission\b(?:\s+(?:to|for|called|named|:))?\s*(.*)$/i.exec(text) || /^mission\s+(.+)$/i.exec(text);

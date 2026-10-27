@@ -9,7 +9,6 @@ import { ROUTES, simControls, controlBody } from './views.js';
 import * as vNow from './view-now.js';
 import * as vWork from './view-work.js';
 import * as vAttention from './view-attention.js';
-import * as vMap from './view-map.js';
 import * as vReplay from './view-replay.js';
 import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
@@ -69,7 +68,7 @@ function buildShell() {
 
 // ---------- routing ----------
 // The one place that maps a route to the function that renders it: render(ctx) returns the page node.
-const VIEWS = { now: vNow.render, work: vWork.render, attention: vAttention.render, map: vMap.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
+const VIEWS = { now: vNow.render, work: vWork.render, attention: vAttention.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
 function parse() {
   const m = /^#\/([a-z]+)(?:\/([\w-]+))?/.exec(location.hash) || [];
   const name = [...ROUTES.map((r) => r.id), 'terminal', 'more'].includes(m[1]) ? m[1] : 'now';
@@ -79,6 +78,7 @@ function nav(hash) { if (location.hash === hash) render(); else location.hash = 
 function closeInsp() { nav('#/' + ctx.route.name); }
 
 function render() {
+  if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
   if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
@@ -93,13 +93,13 @@ function render() {
   if (term) content = viewTerminal(ctx);
   else content = VIEWS[r.name](ctx);
   if (r.name === 'now') content.prepend(h('h1', { class: 'vh' }, 'Overview'));
-  app.dataset.hero = ['now', 'map'].includes(r.name) ? '1' : '';
+  app.dataset.hero = r.name === 'now' ? '1' : '';
   if (!term) content = decorate(ctx, content);
   if (term) { clear(page); page.hidden = true; const old = app.querySelector('.term-wrap'); if (old) old.remove(); app.append(content); } else { page.hidden = false; const old = app.querySelector('.term-wrap'); if (old) old.remove(); clear(page).append(content); }
 
   // inspector
   let insp = null;
-  if (!term && ['now', 'work', 'map', 'attention', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
+  if (!term && ['now', 'work', 'attention', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
   clear(inspector); if (insp) inspector.append(insp);
   const wasOpen = app.dataset.insp === 'open';
   app.dataset.insp = insp ? 'open' : '';
@@ -112,7 +112,7 @@ function render() {
   mountTell(term);
   syncTopbar(); syncRail(); syncPhone();
   ctx.mounts.forEach((f) => f());
-  pruneMaps(['now', 'map'].includes(r.name) ? r.name : null);
+  pruneMaps(r.name === 'now' ? 'now' : null);
   translate(app);
   syncCore(); if (!embed) syncToolbar();
   page.scrollTop = keep.top; inspector.scrollTop = keep.itop;
@@ -242,7 +242,7 @@ function buildToolbar() {
   toolbar.append(
     h('span', { class: 'sim-badge', role: 'note' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), 'SIMULATED', h('span', { class: 'long' }, 'no Core connected')),
     h('span', { class: 'tb-spacer' }), tools,
-    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('notes', 'Notes', 'Decision notes on the Overview and Map')));
+    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('notes', 'Notes', 'Decision notes on the Overview')));
   translate(toolbar);
 }
 function toggleTools() { closeMenu(); store.set('tools', store.get('tools') === 'open' ? 'closed' : 'open'); buildToolbar(); syncToolbar(); const b = toolbar.querySelector('[data-tb="tools"]'); if (b) b.focus(); fit(); }

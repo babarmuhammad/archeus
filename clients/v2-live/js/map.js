@@ -1,6 +1,6 @@
 // The live map: the constellation module (js/constellation) fed from the simulation.
 // Projects are hubs, missions are nodes (needs-you and running ones draw as crystals), live executions and pending decisions sit beside their mission.
-// One map per route (Now, Map) survives the page re-renders: its box element is reused, so camera and focus are not lost on every simulation event.
+// The Overview map survives the page re-renders: its box element is reused, so camera and focus are not lost on every simulation event.
 // The module draws the core mark; its breath is the one allowed loop and is only switched on for a playing simulation with fresh output.
 import { h } from './dom.js';
 import { present } from '../core-words.js';

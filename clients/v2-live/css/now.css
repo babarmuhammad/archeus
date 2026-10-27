@@ -1,4 +1,4 @@
-/* Overview and Map: the scene is the page. It fills the main area edge to edge; the headline floats on it and the detail panels sit in a drawer on the bottom edge. */
+/* Overview: the scene is the page. It fills the main area edge to edge; the headline floats on it and the detail panels sit in a drawer on the bottom edge. */
 .view.now-view { position: relative; padding: 0; gap: 0; max-width: none; height: 100%; min-height: 560px; overflow: hidden; }
 .now-scene { position: absolute; inset: 0; }
 .now-scene .map-box, .now-scene .map-box.wide { position: absolute; inset: 0; width: auto; height: auto; max-height: none; min-height: 0; aspect-ratio: auto; margin: 0; }
@@ -6,7 +6,6 @@
 .now-view .now-hero a, .now-view .now-hero button { pointer-events: auto; }
 .now-view .eyebrow { font: 500 var(--fs-eyebrow) / 1 var(--sans); letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-3); margin: 0; }
 .now-view .state-sentence { font-family: var(--serif); font-size: var(--fs-disp); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
-.now-view .map-title { font-family: var(--sans); font-size: var(--fs-section); font-weight: 500; margin: 0; }
 .now-view .lede { font-family: var(--serif); font-size: var(--fs-lede); line-height: 1.4; color: var(--text-2); max-width: 30rem; margin: 0; }
 .view.now-view { --strip-h: 56px; --hero-h: 150px; --sheet-w: min(440px, 44%); --sheet-h: min(46%, 340px); }
 /* The drawer is an overlay layer: the status strip is the bottom edge, the Details sheet floats over the scene (beside it when wide, over its bottom when narrow). Opening it never resizes the scene. */

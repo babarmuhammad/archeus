@@ -31,7 +31,7 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
+ROUTES = ['now', 'work', 'attention', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'attention/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
           'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
           'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
@@ -415,7 +415,7 @@ def main():
                                 layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.tell-dock' if rt == 'now' else '.chatdock.tell'}.get(st)
                                 if st == 'tell' and pg.evaluate("!!document.querySelector('.chatsheet')"):
                                     layer = '.chatsheet'
-                            if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'map', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
+                            if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
                                 pos = pg.evaluate("getComputedStyle(document.querySelector('#inspector')).position")
                                 if pos == 'absolute':
                                     layer = '#inspector'

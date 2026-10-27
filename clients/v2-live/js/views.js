@@ -10,7 +10,7 @@ import { areasOf } from './areas-model.js';
 
 export const ROUTES = [
   { id: 'now', label: 'Now', icon: 'now' }, { id: 'work', label: 'Work', icon: 'work' }, { id: 'attention', label: 'Attention', icon: 'attention' },
-  { id: 'map', label: 'Map', icon: 'map' }, { id: 'replay', label: 'Replay', icon: 'replay' }, { id: 'chat', label: 'Chat', icon: 'chat' },
+  { id: 'replay', label: 'Replay', icon: 'replay' }, { id: 'chat', label: 'Chat', icon: 'chat' },
   { id: 'security', label: 'Security', icon: 'security' }, { id: 'health', label: 'Health', icon: 'health' }, { id: 'usage', label: 'Usage', icon: 'usage' }, { id: 'accounts', label: 'Accounts', icon: 'accounts' }, { id: 'extensions', label: 'Extensions', icon: 'extensions' },
   { id: 'settings', label: 'Settings', icon: 'settings' }
 ];

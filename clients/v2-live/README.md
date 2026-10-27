@@ -10,7 +10,7 @@ A prototype of the Archeus V2 app that runs entirely on a fixture simulation: no
 
 ## URL options
 
-Options go in the query string, for example `index.html?theme=light&lang=it&sim=paused#/map`. The URL wins over what the app stored and is not stored itself.
+Options go in the query string, for example `index.html?theme=light&lang=it&sim=paused#/now`. The URL wins over what the app stored and is not stored itself.
 
 | Option | Values | Effect |
 |---|---|---|
@@ -31,7 +31,7 @@ Options go in the query string, for example `index.html?theme=light&lang=it&sim=
 
 ## Routes
 
-`#/now`, `#/work`, `#/attention`, `#/map`, `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (direct-link menu; phone navigation uses Places), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`.
+`#/now`, `#/work`, `#/attention`, `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (direct-link menu; phone navigation uses Places), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`. The Overview is the map (there is no Map screen: `#/map` redirects to `#/now`).
 
 ## Devices
 
@@ -52,7 +52,7 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 | What | Command |
 |---|---|
 | unit tests (sim, spine, terminal, chat, replay, map) | `node --test clients/v2-live/test/*.test.mjs clients/v2-live/js/constellation/*.test.mjs` |
-| layout probe: every route and overlay, 14 viewports, dark and light, overlap, clipping, targets, contrast, console errors, the one-animation rule | `py tools\v2_live_layout_probe.py` (`--lang it`, `--routes now,map`, `--viewports 390x844`) |
+| layout probe: every route and overlay, 14 viewports, dark and light, overlap, clipping, targets, contrast, console errors, the motion invariant (only the allowed loops) | `py tools\v2_live_layout_probe.py` (`--lang it`, `--routes now,now~details`, `--viewports 390x844`) |
 | map probe | `py tools\v2_livemap_probe.py` |
 | design kit probe | `py tools\v2_live_design_probe.py` |
 | All devices hit-test | `py tools\v2_live_alldevices_probe.py` |
@@ -69,6 +69,6 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 - Italian was written by the builders and is not native-checked (`IT-REVIEW.md`).
 - The Light look is approved as is by the owner (2026-10-26); the contrast of every route is checked, but not on a real display.
 - Checked in headless Chromium only: no real touch device, no screen reader, no Firefox or Safari, no real Windows High Contrast (forced colours were checked with Chromium's emulation), no 200 or 400 percent zoom.
-- Map performance is measured in headless Chromium on a PC, not on a phone; above 60 nodes hulls are not separated.
+- Map performance (the Overview map) is measured in headless Chromium on a PC, not on a phone; above 60 nodes hulls are not separated.
 - Not built: Ctrl+Enter, the Alt+1/2/3 and Ctrl+K shortcuts, view transitions, a duration-class table, the font subset for production, the service worker.
 - Pause all, Emergency stop and decisions act on the simulation only.

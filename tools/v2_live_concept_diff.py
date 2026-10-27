@@ -27,7 +27,6 @@ PRESETS = {
     'mission-light': dict(hash='work/m-date', concept='08-day-attention.png', size='1440x900', theme='light'),
     'phone': dict(hash='now', concept='10-phone-needs-you.png', size='390x844', theme='dark'),
     'mission-phone': dict(hash='work/m-date', concept='12-phone-mission.png', size='390x844', theme='dark'),
-    'map': dict(hash='map', concept='02-now.png', size='1440x900', theme='dark'),
 }
 GROUND = {'dark': (9, 8, 12), 'light': (253, 252, 248)}
 

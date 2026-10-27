@@ -4,7 +4,6 @@ export const P = {
   now: ['circle:12,12,8', 'circle:12,12,2:f'],
   work: ['path:M5 6h14M5 12h14M5 18h9'],
   attention: ['path:M12 3l9 9-9 9-9-9zM12 8v5M12 16v.1'],
-  map: ['circle:6,6,2', 'circle:18,8,2', 'circle:11,18,2', 'path:M8 6l8 2M7 8l3 8M17 10l-5 6'],
   replay: ['path:M4 10a8 8 0 1 1 1 7M4 4v6h6M12 7v5l3 2'],
   chat: ['path:M4 5h16v11H9l-5 4zM8 9h8M8 12h5'],
   settings: ['path:M4 7h8M16 7h4M4 17h4M12 17h8', 'circle:14,7,2', 'circle:10,17,2'],

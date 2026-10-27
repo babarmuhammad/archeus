@@ -1,4 +1,4 @@
-"""Playwright functional run of the S1 shell: sidebar (Overview label, 12 items, PROJECTS filter), the safety popover with its ask-first
+"""Playwright functional run of the S1 shell: sidebar (Overview label, 11 items, no Map, PROJECTS filter), the safety popover with its ask-first
 steps, Stop and Re-arm, the Tell overlay, the collapsed tool strip and the Notes toggle. Run:
   py D:\\Archeus\\.collab\\testlock.py -- py -I tools\\v2_live_s1_functional.py"""
 import os
@@ -24,8 +24,11 @@ try:
             return ctx, pg, errs
         ctx, pg, errs = page()
         navs = pg.evaluate("() => [...document.querySelectorAll('.rail .nav-item')].map((e) => e.textContent.replace(/[0-9]/g, '').trim())")
-        check('the nav keeps its order and Now is Overview', navs == ['Overview', 'Work', 'Attention', 'Map', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings', 'Terminal view'])
+        check('the nav keeps its order and Now is Overview', navs == ['Overview', 'Work', 'Attention', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings', 'Terminal view'])
         check('the route of Overview is still #/now', pg.get_attribute('.rail [data-route="now"]', 'href') == '#/now')
+        check('the Overview keeps the map controls (zoom out, zoom in, Fit, Reset)', pg.evaluate("() => [...document.querySelectorAll('.now-view .am-controls button')].map((b) => b.textContent.trim())") == ['−', '+', 'Fit', 'Reset'] or pg.locator('.now-view .am-controls button').count() == 4)
+        pg.goto(base + '?sim=paused&motion=reduced&theme=dark#/map', wait_until='load'); pg.wait_for_timeout(400)
+        check('#/map redirects to #/now', pg.evaluate('location.hash') == '#/now' and pg.get_attribute('.rail [data-route="now"]', 'aria-current') == 'page')
         w = pg.evaluate("document.querySelector('.rail').getBoundingClientRect().width")
         check('sidebar is 176 to 208 px wide at 1440', 176 <= w <= 208)
         check('PROJECTS lists the three sim projects', pg.locator('.proj-item').count() == 3)
@@ -65,9 +68,9 @@ try:
         check('phone: the bottom bar is Tell | Places | Stop, each 44 px or more', [b[0] for b in bar] == ['Tell', 'Places', 'Stop'] and all(b[1] >= 44 and b[2] >= 44 for b in bar))
         pg.click('[data-key="bb-places"]'); pg.wait_for_timeout(250)
         rows = pg.evaluate("() => [...document.querySelectorAll('.places .pl-item')].map((e) => [e.textContent.replace(/[0-9]/g, '').trim(), e.getBoundingClientRect().height])")
-        check('phone: Places lists the 12 destinations, Terminal view and the projects, 56 px rows', [r[0] for r in rows][:12] == ['Overview', 'Work', 'Attention', 'Map', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and rows[12][0] == 'Terminal view' and len(rows) == 16 and all(r[1] >= 56 for r in rows))
-        pg.click('.places [data-route="map"]'); pg.wait_for_timeout(250)
-        check('phone: a Places row opens its page and closes the sheet', pg.evaluate('location.hash') == '#/map' and pg.locator('.places').count() == 0)
+        check('phone: Places lists the 11 destinations, Terminal view and the projects, 56 px rows', [r[0] for r in rows][:11] == ['Overview', 'Work', 'Attention', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and rows[11][0] == 'Terminal view' and len(rows) == 15 and all(r[1] >= 56 for r in rows))
+        pg.click('.places [data-route="replay"]'); pg.wait_for_timeout(250)
+        check('phone: a Places row opens its page and closes the sheet', pg.evaluate('location.hash') == '#/replay' and pg.locator('.places').count() == 0)
         check('phone: Stop stays visible on every page and opens the two-step ask', pg.is_visible('.bb-stop'))
         pg.click('[data-key="bb-stop"]'); pg.wait_for_timeout(250)
         check('phone: Stop asks before stopping', pg.is_visible('.safety-pop [data-key="estop-yes"]') and not pg.evaluate('window.v2live.sim.state.estop.engaged'))
