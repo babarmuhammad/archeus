@@ -393,6 +393,8 @@ def main():
                                 pg.evaluate("window.dispatchEvent(new Event('hashchange'))")
                                 pg.wait_for_timeout(250)
                                 layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.chatdock.tell'}.get(st)
+                                if st == 'tell' and pg.evaluate("!!document.querySelector('.chatsheet')"):
+                                    layer = '.chatsheet'
                             if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'map', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
                                 pos = pg.evaluate("getComputedStyle(document.querySelector('#inspector')).position")
                                 if pos == 'absolute':

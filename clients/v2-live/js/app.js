@@ -82,7 +82,7 @@ function render() {
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (ui.s4) ui.s4.sheet = false; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';

@@ -85,7 +85,8 @@
   .now-view[data-calm='false'] .now-drawer { position: static; flex: none; max-height: 56%; overflow-y: auto; }
   .now-view[data-calm='false'] .now-strip { padding: 4px 12px 0; }
   .now-view[data-calm='false'] .ctr { flex: 1; align-items: center; justify-content: center; gap: 2px; min-height: 64px; font-size: 17px; }
-  .now-view[data-calm='false'] .ctr b { font: 500 44px / 1 var(--serif); }
+  .now-view[data-calm='false'] .ctr b { font: 500 44px / 1.1 var(--serif); }
+  .now-view[data-calm='false'] .ctr { gap: 6px; }
   .now-view[data-calm='false'] .ctr[data-role='verifying'], .now-view[data-calm='false'] .ctr[data-role='blocked'][data-zero='true'] { display: none; }
   .now-view .ctr[data-role='needs_you'] b { color: var(--attention); }
   .now-view .ctr[data-role='active'] b { color: var(--active); }
