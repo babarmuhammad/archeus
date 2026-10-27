@@ -66,7 +66,7 @@ export function replyOf(m, eng, sim, lang) {
     else if (a.state !== 'PENDING') L(present('approval', a.state).label);
     else {
       L(a.presented.what, T('Why it asks: ', 'Perché lo chiede: ') + a.presented.why, T('Only the decision screen decides; this message never does.', 'Decide solo la schermata della decisione; questo messaggio non decide mai.'));
-      key('enter', T('Open the decision', 'Apri la decisione'), () => ({ href: '#/attention/' + a.id }));
+      key('enter', T('Open the decision', 'Apri la decisione'), () => ({ href: '#/work/' + a.id }));
     }
   } else if (c.kind === 'remember') {
     if (c.step === 'done') L(T('Remembered: ', 'Ricordato: ') + c.excerpt);

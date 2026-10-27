@@ -31,7 +31,7 @@ Options go in the query string, for example `index.html?theme=light&lang=it&sim=
 
 ## Routes
 
-`#/now`, `#/work`, `#/attention`, `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (direct-link menu; phone navigation uses Places), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`. The Overview is the map (there is no Map screen: `#/map` redirects to `#/now`).
+`#/now`, `#/work` (the graph and the list of what is happening and what needs you; `#/attention` and `#/attention/<id>` redirect to `#/work` and `#/work/<id>`), `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (direct-link menu; phone navigation uses Places), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`.
 
 ## Devices
 

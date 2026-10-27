@@ -148,6 +148,50 @@ export function layoutCalm(graph, width, height, seed = 'archeus', inset = INSET
   }
   return out;
 }
+// Work graph (concepts 04 and 08): the missions and the decisions they ask for, grouped by what they wait on, round a small core.
+// Groups run clockwise from the upper left: needs you, running, blocked, the rest, done. A node whose parent is in the graph (a decision) sits just outside its mission.
+export const workGroup = n => { const s = stateKey(n.state); return s === 'needs-you' ? 0 : s === 'running' ? 1 : s === 'blocked' ? 2 : s === 'done' ? 4 : 3; };
+export function workCore(width, height, inset = INSET) {
+  const c = coreCentre(width, height, inset), R = clamp(Math.min(width * .08, (height - inset.top - inset.bottom) * .12), 12, 40);
+  return {x: c.x, y: c.y, radius: R, keep: R * 1.7 + 4};
+}
+export function layoutWork(graph, width, height, seed = 'archeus', inset = INSET) {
+  if (!graph.nodes.length) return [];
+  const core = workCore(width, height, inset), {left, right, top, bottom} = inset, innerH = height - top - bottom, parentOf = new Map();
+  for (const e of graph.edges || []) if (!parentOf.has(e.to)) parentOf.set(e.to, e.from);
+  const order = (a, b) => workGroup(a) - workGroup(b) || String(a.id).localeCompare(String(b.id));
+  const nodes = graph.nodes.map(n => ({...n, rank: 1})).sort(order), byId = new Map(nodes.map(n => [n.id, n]));
+  const isKid = n => parentOf.has(n.id) && byId.has(parentOf.get(n.id)), prime = nodes.filter(n => !isKid(n)), kids = nodes.filter(isKid);
+  const big = crystalIds(prime), rng = randomSeed(`${seed}:work`), P = prime.length, jitter = prime.map(() => rng() - .5);
+  let scale = 1;
+  for (let pass = 0; pass < 10; pass++, scale *= .88) {
+    const crystal = clamp(innerH * .17, 22, 62) * scale, plain = clamp(innerH * .06, 10, 18) * scale;
+    for (const n of nodes) n.radius = isKid(n) ? plain * .8 : big.has(n.id) ? crystal : plain;
+    const halfX = (width - left - right) / 2, halfY = innerH / 2;
+    prime.forEach((n, i) => {
+      const a = -Math.PI * .75 + (i + .5) * TAU / P + jitter[i] * .12, k = i % 2 ? .66 : .86;
+      n.x = core.x + Math.cos(a) * (halfX - n.radius) * k; n.y = core.y + Math.sin(a) * (halfY - n.radius) * k;
+    });
+    kids.forEach(n => {
+      const p = byId.get(parentOf.get(n.id)), nth = kids.filter(k => parentOf.get(k.id) === p.id).indexOf(n), away = Math.atan2(p.y - core.y, p.x - core.x) + (nth - .5) * .9, d = p.radius + n.radius + 14;
+      n.x = p.x + Math.cos(away) * d; n.y = p.y + Math.sin(away) * d;
+    });
+    for (let step = 0; step < 90; step++) {
+      for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+        const a = nodes[i], b = nodes[j], need = a.radius + b.radius + 12, dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || .01;
+        if (d >= need) continue;
+        const f = (need - d) / d * .5; a.x -= dx * f; a.y -= dy * f; b.x += dx * f; b.y += dy * f;
+      }
+      for (const n of nodes) {
+        const dx = n.x - core.x, dy = n.y - core.y, d = Math.hypot(dx, dy) || .01, need = core.keep + n.radius;
+        if (d < need) { n.x = core.x + dx / d * need; n.y = core.y + dy / d * need; }
+        n.x = clamp(n.x, left + n.radius, width - right - n.radius); n.y = clamp(n.y, top + n.radius, height - bottom - n.radius);
+      }
+    }
+    if (!nodes.some((a, i) => Math.hypot(a.x - core.x, a.y - core.y) < core.keep + a.radius - .5 || nodes.slice(i + 1).some(b => Math.hypot(a.x - b.x, a.y - b.y) < a.radius + b.radius - .5))) break;
+  }
+  return nodes;
+}
 export function convexHull(points) {
   const sorted = [...new Map(points.map(p => [`${p.x}:${p.y}`, {x: p.x, y: p.y}])).values()]
     .sort((a, b) => a.x - b.x || a.y - b.y);
@@ -170,7 +214,7 @@ export function coversNode(box, node, pad = 3) {
   const x = clamp(node.x, box.x, box.x + box.width), y = clamp(node.y, box.y, box.y + box.height);
   return Math.hypot(x - node.x, y - node.y) < node.radius + pad;
 }
-export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta} = {}) {
+export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta, budget: limit, all = false} = {}) {
   const result = [], occupied = [...obstacles], widths = new Map(), metas = new Map();
   const width_ = text => widths.get(text) ?? (widths.set(text, measure(text)), widths.get(text));
   const large = nodes.filter(n => n.radius > 24), small = nodes.filter(n => n.radius <= 24);
@@ -187,10 +231,10 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
   const priority = n => n.id === selected ? 10000 : keys.get(n) === 'needs-you' ? 5000 : keys.get(n) === 'running' ? 1000 : Number(n.weight) || 1;
   const rank = new Map(nodes.map(n => [n, priority(n)]));
   const sorted = [...nodes].sort((a, b) => rank.get(b) - rank.get(a) || String(a.id).localeCompare(String(b.id)));
-  const budget = width < 480 ? 4 : width < 1280 ? 7 : 9;
+  const budget = limit ?? (width < 480 ? 4 : width < 1280 ? 7 : 9);
   const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 + size * .95 : lineHeight;
   for (const n of sorted) {
-    const mandatory = n.id === selected || keys.get(n) === 'needs-you';
+    const mandatory = all || n.id === selected || keys.get(n) === 'needs-you';
     if (!mandatory && result.length >= budget) continue;
     const full = String(n.label || n.id);
     const metaText = metaOf ? metaOf(n) : `${n.kind || 'Node'} · ${n.state || 'Idle'}`.toUpperCase();

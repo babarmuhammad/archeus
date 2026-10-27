@@ -1667,3 +1667,12 @@ Status: to review. Builder-written, not checked by a native speaker.
 - Tell Archeus what to do… → Dì ad Archeus cosa fare… (the field placeholder of the Tell dock and the Chat page; replaces Tell Archeus what you need… / Dimmi cosa ti serve…)
 - Decision notes on the Overview → Note sulle decisioni in Panoramica (the toolbar switch; replaces the string that named the Map as well)
 - Removed with the Map screen: Map → Mappa, Constellation → Costellazione.
+## One Work page with its graph (2026-10-27, builder B): to review
+
+File: `js/i18n-work.js`. Attention is no longer a page; its words live on Work.
+
+- All projects → Tutti i progetti
+- Work graph → Grafo del lavoro
+- Work graph: missions and decisions grouped by what they wait on. The list below has the same content. → Grafo del lavoro: missioni e decisioni raggruppate per ciò che attendono. L'elenco qui sotto ha lo stesso contenuto.
+- One page for Work and Attention: missions and decisions grouped by what they wait on, as a graph and as a list. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09). → Una sola pagina per Lavoro e Attenzione: missioni e decisioni raggruppate per ciò che attendono, come grafo e come elenco. La spina mostra a che punto è ogni missione (A13); un obbligo è una tinta ambra al 12 % con lo stato a parole (B09).
+- N more are in Replay and Work. → Altri N sono in Replay e Lavoro. (rule in `js/i18n-areas.js`, was "Replay and Attention")

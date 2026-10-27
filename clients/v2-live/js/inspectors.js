@@ -60,7 +60,7 @@ function mission(ctx, A, S, id) {
     if (m.state === 'FAILED') return [act('replan', 'Replan', true), act('cancel', 'Cancel mission', false, 'Cancel "' + m.title + '"? This cannot be undone.')];
     if (m.state === 'REVIEWING') return [act('accept', 'Accept', true), act('changes', 'Request changes')];
     if (m.state === 'EXECUTING') return [act('pause', 'Pause')];
-    if (m.state === 'APPROVAL_REQUIRED' && m.approval) return [h('a', { class: 'btn primary', href: '#/attention/' + m.approval }, 'Open decision')];
+    if (m.state === 'APPROVAL_REQUIRED' && m.approval) return [h('a', { class: 'btn primary', href: '#/work/' + m.approval }, 'Open decision')];
     if (m.state === 'CREATED') return [act('cancel', 'Cancel mission', false, 'Cancel "' + m.title + '"? This cannot be undone.')];
     return null;
   };

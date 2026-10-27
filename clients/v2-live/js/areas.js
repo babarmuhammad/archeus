@@ -196,7 +196,7 @@ function digestPanel(ctx, A) {
     h('div', { class: 'body' }, h('div', { class: 'chips', role: 'group', 'aria-label': 'Digest range' }, ...[['since', 'Since you last looked'], ['today', 'Today']].map(([id, l]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': range === id ? 'true' : 'false', onclick: () => { ctx.ui.digestRange = id; ctx.render(); } }, l))),
       h('p', { class: 'dg-sum' }, sentence),
       shown.length ? h('ul', { class: 'ax-dig' }, ...shown.map((i) => h('li', null, h('a', { href: i.href }, h('span', { class: 'g', 'data-tone': i.tone, 'aria-hidden': 'true' }, glyph(i.tone)), h('span', { class: 'dg-x' }, i.text), h('span', { class: 'dg-t' }, clockLabel(i.at)))))) : null,
-      d.items.length > shown.length ? note((d.items.length - shown.length) + ' more are in Replay and Attention.') : null,
+      d.items.length > shown.length ? note((d.items.length - shown.length) + ' more are in Replay and Work.') : null,
       range === 'since' ? h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', disabled: d.items.length ? null : true, onclick: () => { A.acknowledge(); ctx.toast('Marked as seen.'); ctx.render(); } }, 'Mark as seen')) : null, dnote('E18', 'The digest groups what changed since your cursor; marking it seen moves the cursor. It reads the event log; nothing is counted twice.')));
 }
 function pinnedPanel(ctx, A) {
@@ -228,25 +228,24 @@ function offlineDecide(ctx, A, k) {
   if (!k.decide.length && !k.review.length) return h('section', { class: 'panel' }, h('h2', null, h('span', { class: 'gt' }, 'Needs you')), h('p', { class: 'empty' }, 'Nothing was waiting for a decision when this was kept.'));
   const S = A.S();
   return h('section', { class: 'panel' }, h('h2', null, h('span', { class: 'gt' }, 'Needs you'), h('span', { class: 'n' }, String(k.decide.length + k.review.length) + ' · read only')), h('div', { class: 'stack' },
-    ...k.decide.map((a) => h('a', { class: 'card band ax-stale', href: '#/attention/' + a.id }, h('div', { class: 'top' }, badge('mission', 'APPROVAL_REQUIRED'), h('span', { class: 'why' }, projName(ctx.sim, a.project))), h('p', { class: 'ttl' }, a.presented.what), h('span', { class: 'ax-lock' }, 'Read only: decide when Core is back.'))),
+    ...k.decide.map((a) => h('a', { class: 'card band ax-stale', href: '#/work/' + a.id }, h('div', { class: 'top' }, badge('mission', 'APPROVAL_REQUIRED'), h('span', { class: 'why' }, projName(ctx.sim, a.project))), h('p', { class: 'ttl' }, a.presented.what), h('span', { class: 'ax-lock' }, 'Read only: decide when Core is back.'))),
     ...k.review.map((m) => h('a', { class: 'card band ax-stale', href: '#/work/' + m.id }, h('div', { class: 'top' }, badge('mission', m.state), h('span', { class: 'why' }, projName(ctx.sim, m.project))), h('p', { class: 'ttl' }, 'Verified, waiting for your review: ' + m.title), h('span', { class: 'ax-lock' }, 'Read only: accept when Core is back.')))));
 }
 function offlinePage(ctx, A, name) {
-  const S = A.S(), k = keptSummary(S), title = { now: 'Now', work: 'Work', attention: 'Attention' }[name];
+  const S = A.S(), k = keptSummary(S), title = { now: 'Now', work: 'Work' }[name];
   return h('div', { class: 'view ax-offline-page' }, offlineBanner(ctx, A),
     name === 'now' ? h('div', { class: 'now-hero' }, h('p', { class: 'state-sentence ax-stale-sentence' }, 'As of ' + clockLabel(A.offlineAt()) + ': ' + k.sentence), h('p', { class: 'sub2' }, 'This is the last read. It is not live.'), dnote('E12', 'Offline Now: kept missions with their spine drawn outlined, the time it was last seen, and Decide rows read only (D11).')) : h('header', { class: 'page-head', style: 'padding:0' }, h('div', null, h('h1', null, title), h('p', { class: 'sub' }, 'Offline: last seen ' + clockLabel(A.offlineAt())))),
-    offlineDecide(ctx, A, k), ...(name === 'attention' ? [] : offlineList(ctx, A)));
+    offlineDecide(ctx, A, k), ...offlineList(ctx, A));
 }
 
 export function decorate(ctx, content) {
   const A = areasOf(ctx.sim), name = ctx.route.name;
-  if (A.isOffline() && ['now', 'work', 'attention'].includes(name)) return offlinePage(ctx, A, name);
+  if (A.isOffline() && ['now', 'work'].includes(name)) return offlinePage(ctx, A, name);
   if (A.isOffline() && !['terminal'].includes(name)) { const v = content.querySelector('.view') || content; v.prepend(offlineBanner(ctx, A)); return content; }
   if (name === 'now') { content.append(digestPanel(ctx, A)); return content; }
   if (name === 'work') {
     const view = content.querySelector('.view'), ideas = [...view.querySelectorAll('.panel')].find((p) => p.querySelector('h2') && /^Ideas/.test(p.querySelector('h2').textContent));
-    if (ideas) ideas.replaceWith(ideasPanel(ctx, A));
-    const first = view.querySelector('.panel'); if (first) first.before(pinnedPanel(ctx, A)); else view.append(pinnedPanel(ctx, A));
+    ideas.replaceWith(pinnedPanel(ctx, A), ideasPanel(ctx, A));
   }
   return content;
 }

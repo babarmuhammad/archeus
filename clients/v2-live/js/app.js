@@ -8,7 +8,6 @@ import { THEMES, DEVICES } from './store.js';
 import { ROUTES, simControls, controlBody } from './views.js';
 import * as vNow from './view-now.js';
 import * as vWork from './view-work.js';
-import * as vAttention from './view-attention.js';
 import * as vReplay from './view-replay.js';
 import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
@@ -68,7 +67,9 @@ function buildShell() {
 
 // ---------- routing ----------
 // The one place that maps a route to the function that renders it: render(ctx) returns the page node.
-const VIEWS = { now: vNow.render, work: vWork.render, attention: vAttention.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
+const VIEWS = { now: vNow.render, work: vWork.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
+// Attention became part of Work: its deep links land on the same page and inspector.
+const GONE = /^#\/attention(?=\/|$)/;
 function parse() {
   const m = /^#\/([a-z]+)(?:\/([\w-]+))?/.exec(location.hash) || [];
   const name = [...ROUTES.map((r) => r.id), 'terminal', 'more'].includes(m[1]) ? m[1] : 'now';
@@ -78,7 +79,8 @@ function nav(hash) { if (location.hash === hash) render(); else location.hash = 
 function closeInsp() { nav('#/' + ctx.route.name); }
 
 function render() {
-  if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
+  if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
+  if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
   if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
@@ -99,7 +101,7 @@ function render() {
 
   // inspector
   let insp = null;
-  if (!term && ['now', 'work', 'attention', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
+  if (!term && ['now', 'work', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
   clear(inspector); if (insp) inspector.append(insp);
   const wasOpen = app.dataset.insp === 'open';
   app.dataset.insp = insp ? 'open' : '';
@@ -107,12 +109,13 @@ function render() {
   // navigation state and counts
   app.querySelectorAll('.rail [data-route]').forEach((a) => { const here = a.dataset.route === r.name; if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const n = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
-  app.querySelectorAll('[data-count="attention"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
+  app.querySelectorAll('[data-count="work"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
 
   mountTell(term);
   syncTopbar(); syncRail(); syncPhone();
   ctx.mounts.forEach((f) => f());
-  pruneMaps(r.name === 'now' ? 'now' : null);
+  pruneMaps(r.name === 'now' ? 'now' : null);
+  if (r.name !== 'work') vWork.leave();
   translate(app);
   syncCore(); if (!embed) syncToolbar();
   page.scrollTop = keep.top; inspector.scrollTop = keep.itop;
@@ -152,7 +155,7 @@ function act(kind, id) {
   else if (kind === 'say') { r = sim.say(id); msg = null; }
   else r = sim.act(kind, id);
   if (!r.ok) toast('Not done: ' + r.reason); else if (msg) toast(msg, kind === 'estop' ? { action: { label: 'Open Settings', href: '#/settings' } } : null);
-  if (kind === 'approve' || kind === 'reject' || kind === 'plan_changes') { if (ctx.route.name === 'attention' && ctx.route.id) closeInsp(); }
+  if (kind === 'approve' || kind === 'reject' || kind === 'plan_changes') { if (ctx.route.name === 'work' && ctx.route.id) closeInsp(); }
   render(); if (!embed) refreshMenu();
   return r;
 }

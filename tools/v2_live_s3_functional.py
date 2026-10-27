@@ -50,14 +50,14 @@ try:
         check('relation opens task', pg.evaluate("location.hash").startswith('#/work/t-date-1'))
         errs and print(errs); check('no page errors (desktop)', not errs); ctx.close()
         # 4 phone decision two step
-        ctx, pg, errs = page(390, 844); pg.evaluate("location.hash='#/attention/a-1'"); pg.wait_for_timeout(300)
+        ctx, pg, errs = page(390, 844); pg.evaluate("location.hash='#/work/a-1'"); pg.wait_for_timeout(300)
         pg.click('.insp-foot .btn:has-text("Approve")'); pg.wait_for_timeout(200)
         check('phone approve needs a second step', pg.locator('.ax-confirm-q').count() == 1 and pg.evaluate("window.v2live.sim.state.approvals['a-1'].state") == 'PENDING')
         pg.click('[data-key="confirm-yes"]'); pg.wait_for_timeout(300)
         check('confirm approves', pg.evaluate("window.v2live.sim.state.approvals['a-1'].state") in ('APPROVED', 'CONSUMED'))
         ctx.close()
         # 5 request changes
-        ctx, pg, errs = page(); pg.evaluate("location.hash='#/attention/a-1'"); pg.wait_for_timeout(300)
+        ctx, pg, errs = page(); pg.evaluate("location.hash='#/work/a-1'"); pg.wait_for_timeout(300)
         pg.click('.insp-foot .btn:has-text("Request changes")'); pg.wait_for_timeout(300)
         check('request changes sends plan back', pg.evaluate("window.v2live.sim.state.missions['m-search'].state") == 'PLANNING')
         pg.evaluate("window.v2live.sim.advance(40000)"); pg.wait_for_timeout(400)

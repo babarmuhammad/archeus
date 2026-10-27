@@ -54,8 +54,8 @@ export function createTui(sim, opts = {}) {
   }
   function openHref(href) {
     const m = /^#\/(\w+)(?:\/([\w-]+))?/.exec(href || ''); if (!m) return;
-    if (m[1] === 'work' && m[2]) push('mission', { mission: m[2] });
-    else if (m[1] === 'attention' && m[2] && sim.state.approvals[m[2]]) push('decision', { approval: m[2] });
+    if (m[1] === 'work' && m[2] && sim.state.approvals[m[2]]) push('decision', { approval: m[2] });
+    else if (m[1] === 'work' && m[2]) push('mission', { mission: m[2] });
     else if (m[1] === 'replay') go('replay', m[2]);
     else go(m[1] === 'attention' ? 'attention' : 'now');
   }
