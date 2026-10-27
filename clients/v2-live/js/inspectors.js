@@ -98,7 +98,7 @@ function mission(ctx, A, S, id) {
     return relTab(S, 'mission', id);
   };
   const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: meta(ctx, S, m), pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
-  return h('div', { class: 'msn' }, pane(ctx, S, m), fr);
+  return h('div', { class: 'msn' }, pane(ctx, S, m, isCompact()), fr);
 }
 
 // ---------- task and route decision ----------

@@ -8,8 +8,9 @@ import { tr } from './i18n.js';
 import * as store from './store.js';
 import { createMap } from './constellation/map.js';
 
-const STATE = { needs_you: 'needs-you', active: 'running', verifying: 'running', reviewing: 'running', blocked: 'blocked', failed: 'blocked', paused: 'paused', planning: 'thinking', done: 'done' };
+export const STATE = { needs_you: 'needs-you', active: 'running', verifying: 'running', reviewing: 'running', blocked: 'blocked', failed: 'blocked', paused: 'paused', planning: 'thinking', done: 'done' };
 const THEME = { dark: 'dark', light: 'light', 'dark-hc': 'dark-high-contrast', 'light-hc': 'light-high-contrast', system: 'system', forced: 'forced' };
+export const themeOf = () => THEME[store.get('theme')];
 const maps = new Map();
 const pending = [];
 const lastPulse = new Map();

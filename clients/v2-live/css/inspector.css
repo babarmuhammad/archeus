@@ -17,33 +17,28 @@
   .app[data-insp='open']:has(.msn) { grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-areas: 'rail insp'; }
   .app[data-insp='open']:has(.msn) .main-col, .app[data-insp='open']:has(.msn) .chatdock { display: none; }
   .app[data-insp='open']:has(.msn) .inspector { border-left: 0; background: var(--bg); }
+  .app[data-insp='open']:has(.msn) .main-wrap { grid-area: insp; align-self: end; justify-self: end; z-index: 25; }
+  .app[data-insp='open']:has(.msn) .inspector { padding-bottom: 56px; }
   .inspector > .msn { display: grid; grid-template-columns: minmax(0, 1fr) clamp(420px, 32cqi, 480px); grid-template-rows: minmax(0, 1fr); }
   .msn-graph { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 8px var(--gut) var(--gut); background: var(--bg); }
-  .msn-graph .msn-svg { flex: 1 1 auto; min-height: 0; }
+  .msn-graph .msn-scene { flex: 1 1 auto; }
   .msn-panel { border-left: var(--hair) solid var(--line); }
 }
 @container dev (max-width: 599px) {
   .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { top: 0; max-height: none; border: 0; border-radius: 0; }
   .msn-graph { display: flex; flex-direction: column; flex: none; padding: 0 12px; }
-  .msn-graph .msn-svg { height: 170px; }
-  .msn-svg .sub, .msn-svg .arr-l { display: none; }
-  .msn-svg .nm { font-size: 26px; }
+  .msn-graph .msn-scene { height: 200px; flex: none; }
+  .msn-svg .am-arrow-label, .msn-svg .am-label-sub, .msn-svg .am-label-meta, .msn-svg .am-wordmark { display: none; }
+  .msn-svg .am-label-title { font-size: 30px !important; }
 }
 .crumb-back .cb-w { display: none; }
 @container dev (max-width: 599px) { .msn-crumb ol { display: none; } .crumb-back .cb-w { display: inline; } }
 
-/* graph pieces: one hairline, flat, theme tokens only */
-.msn-svg .g-poly polygon, .msn-svg .g-poly path, .msn-svg .g-star path, .msn-svg .g-arr { fill: none; stroke: var(--text-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.msn-svg .g-poly.main polygon, .msn-svg .g-poly.main path { stroke: var(--active); stroke-width: 1.5; }
-.msn-svg .g-star path { stroke: var(--text); }
-.msn-svg .g-star circle { fill: var(--text); }
-.msn-svg .g-ah { fill: none; stroke: var(--text-2); stroke-width: 1.2; }
-.msn-svg .g-ico { color: var(--text); overflow: visible; }
-.msn-svg text { fill: var(--text-2); font-family: var(--font); font-size: 13px; }
-.msn-svg .g-core { font-size: 12px; letter-spacing: .24em; fill: var(--text); }
-.msn-svg .arr-l { font-size: 11px; letter-spacing: .12em; fill: var(--text-2); }
-.msn-svg .nm { font-size: 19px; font-weight: 600; fill: var(--text); }
-.msn-svg .nm.main { font-size: 22px; }
+/* graph pieces: the live map's art and tokens (map.css), here only the frame */
+.msn-scene { min-height: 0; }
+.msn-scene .am-arrow { fill: none; stroke: var(--am-text); stroke-opacity: .6; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.msn-scene .am-arrowhead { fill: none; stroke: var(--am-text); stroke-opacity: .8; stroke-width: 1.2; }
+.msn-scene .am-arrow-label { fill: var(--am-muted); font: 500 10.5px var(--am-sans); letter-spacing: .16em; paint-order: stroke; stroke: var(--am-bg); stroke-width: 4px; }
 
 /* ---------- panel: head, meta, tabs, overview ---------- */
 .msn-panel .insp-head { padding: 12px 20px 4px; }
@@ -137,8 +132,6 @@
 
 @media (forced-colors: active) {
   .msn-panel, .msn-box, .msn-rows { border: 1px solid CanvasText; }
-  .msn-svg .g-poly polygon, .msn-svg .g-poly path, .msn-svg .g-star path, .msn-svg .g-arr, .msn-svg .g-ah { stroke: CanvasText; }
-  .msn-svg .g-star circle { fill: CanvasText; } .msn-svg text { fill: CanvasText; }
   .dcn-steps .st-g { border-color: CanvasText; } .dcn-steps li[data-now] .st-g { background: Highlight; border-color: Highlight; forced-color-adjust: none; }
 }
 @media (prefers-reduced-motion: reduce) { .msn-box > summary svg { transition: none; } }

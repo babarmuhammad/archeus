@@ -1,5 +1,5 @@
 import {clamp, coversNode, overlaps, isCrystal, layout, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
-import {ICONS, crystal, triangle, coreStar} from './nodeart.js';
+import {bodyMarkup, coreStar} from './nodeart.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
@@ -211,14 +211,7 @@ export function createMap(container, options = {}) {
   const f = v => +v.toFixed(2);
   function starMarkup(n) {
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, body = ['Mission', 'Project', 'Execution'].includes(n.kind);
-    if (body) {
-      const big = r > 40, ic = n.kind === 'Mission' ? (state === 'done' ? 'check' : state === 'needs-you' ? 'doc-search' : 'doc') : ICON[n.kind];
-      const plate = big ? 17 : Math.max(8, r * .42), scale = big ? 28 / 24 : plate * 1.5 / 24;
-      const mark = state === 'needs-you' ? `<path d="M${f(-r * .9)},${f(-r * .78)}l7,-8l7,8l-7,8Z" class="am-diamond"/>` : state === 'blocked' ? `<path d="M${f(r * .72)},${f(-r * .8)}l7,7m0,-7l-7,7" class="am-glyph"/>` : '';
-      const wire = n.kind === 'Execution' ? (t => `<path d="${t.outline}" class="am-fill"/><path d="${t.mesh}" class="am-e1"/><path d="${t.outline}" class="am-e2"/><path d="${t.dots}" class="am-d1"/>`)(triangle(n.id, r))
-        : (c => `<path d="${c.outline}" class="am-fill"/><path d="${c.back}" class="am-e0"/><path d="${c.mid}" class="am-e1"/><path d="${c.front}" class="am-e2"/><path d="${c.dotsBack}" class="am-d0"/><path d="${c.dotsFront}" class="am-d1"/>`)(crystal(n.id, r));
-      return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}">${wire}<circle r="${f(plate)}" class="am-mark-plate"/><g transform="translate(${f(-12 * scale)} ${f(-12 * scale + (n.kind === 'Execution' ? r * .2 : 0))}) scale(${f(scale)})"><path d="${ICONS[ic]}" class="am-icon"/></g>${mark}</g>`;
-    }
+    if (body) return bodyMarkup(n, n.kind === 'Mission' ? (state === 'done' ? 'check' : state === 'needs-you' ? 'doc-search' : 'doc') : ICON[n.kind]);
     const [tag, shape] = starShape(n.kind, r), attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
     return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><${tag} ${attrs} class="am-body${['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/></g>`;
   }

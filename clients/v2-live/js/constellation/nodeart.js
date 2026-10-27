@@ -1,4 +1,4 @@
-import {randomSeed, convexHull} from './geometry.js';
+import {randomSeed, convexHull, stateKey} from './geometry.js';
 
 // Node art as SVG path strings: open wireframe polyhedra (silhouette plus a triangulated hairline mesh), the execution triangle and the core star. Hairlines only, no fills but the ground.
 const pt = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -11,7 +11,9 @@ export const ICONS = {
   code: 'M8 7 3 12l5 5M16 7l5 5-5 5M14 5l-4 14',
   bulb: 'M9 20h6M10 23h4M8 16c0-3-3-3-3-7a7 7 0 0 1 14 0c0 4-3 4-3 7v1H8Z',
   check: 'M4 12l5 5 11-12',
-  shield: 'M12 2l9 5v9l-9 6-9-6V7ZM7 12l4 4 6-7'
+  shield: 'M12 2l9 5v9l-9 6-9-6V7ZM7 12l4 4 6-7',
+  terminal: 'M3 4h18v16H3ZM7 9l3 3-3 3M13 15h4',
+  chart: 'M5 20V10M10 20V4M15 20v-8M20 20V8'
 };
 const GOLDEN = 2.399963229728653;
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -61,6 +63,18 @@ export function triangle(id, r) {
   const rng = randomSeed(`tri:${id}`), v = [[0, -r * 1.1], [r * 1.05, r * .75], [-r * 1.05, r * .75]], c = [(rng() - .5) * r * .1, r * .1];
   const mid = v.map((p, i) => { const q = v[(i + 1) % 3]; return [(p[0] + q[0]) / 2 + (rng() - .5) * r * .08, (p[1] + q[1]) / 2 + (rng() - .5) * r * .08]; });
   return {outline: `M${v.map(pt).join('L')}Z`, mesh: v.map((p, i) => seg(p, c) + seg(mid[i], mid[(i + 1) % 3]) + seg(p, mid[(i + 1) % 3])).join(''), dots: v.map(p => `M${pt(p)}h0`).join('')};
+}
+const esc = t => String(t).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`), fx = v => +v.toFixed(2);
+const STATES = ['needs-you', 'running', 'done', 'blocked', 'idle', 'paused', 'thinking'];
+// One node as SVG markup: the wireframe (crystal, or the triangle for an execution), a plate and a line icon, and the state mark (amber diamond, red cross).
+// The map and the mission graph both draw their nodes with this, so state is only ever line colour.
+export function bodyMarkup(n, ic) {
+  const state = stateKey(n.state), cls = STATES.includes(state) ? state : 'idle', r = n.radius, big = r > 40;
+  const plate = big ? 17 : Math.max(8, r * .42), scale = big ? 28 / 24 : plate * 1.5 / 24;
+  const mark = state === 'needs-you' ? `<path d="M${fx(-r * .9)},${fx(-r * .78)}l7,-8l7,8l-7,8Z" class="am-diamond"/>` : state === 'blocked' ? `<path d="M${fx(r * .72)},${fx(-r * .8)}l7,7m0,-7l-7,7" class="am-glyph"/>` : '';
+  const wire = n.kind === 'Execution' ? (t => `<path d="${t.outline}" class="am-fill"/><path d="${t.mesh}" class="am-e1"/><path d="${t.outline}" class="am-e2"/><path d="${t.dots}" class="am-d1"/>`)(triangle(n.id, r))
+    : (c => `<path d="${c.outline}" class="am-fill"/><path d="${c.back}" class="am-e0"/><path d="${c.mid}" class="am-e1"/><path d="${c.front}" class="am-e2"/><path d="${c.dotsBack}" class="am-d0"/><path d="${c.dotsFront}" class="am-d1"/>`)(crystal(n.id, r));
+  return `<g class="am-star am-state-${cls}" data-node-id="${esc(n.id)}">${wire}<circle r="${fx(plate)}" class="am-mark-plate"/><g transform="translate(${fx(-12 * scale)} ${fx(-12 * scale + (n.kind === 'Execution' ? r * .2 : 0))}) scale(${fx(scale)})"><path d="${ICONS[ic]}" class="am-icon"/></g>${mark}</g>`;
 }
 // Crossing ivory threads: 16 spikes (long vertical and horizontal, shorter diagonals) over string-art chords between 32 rim points.
 export function coreStar(R, reach) {

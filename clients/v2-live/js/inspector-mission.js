@@ -2,6 +2,10 @@
 // Only relations that exist in the record are drawn: a node without a record is left out with its arrows.
 import { h, s } from './dom.js';
 import { icon } from './icons.js';
+import { present } from '../core-words.js';
+import { tr } from './i18n.js';
+import { STATE, themeOf } from './map.js';
+import { missionScene, sceneMarkup, BOX } from './constellation/scene.js';
 import { spineOf } from '../spine-model.js';
 import { clockLabel } from '../sim.js';
 import { badge, projName, word } from './views.js';
@@ -14,50 +18,22 @@ const ACTIVE = ['ROUTING', 'RUNNING', 'VERIFYING'];
 const TASK_MARK = (st) => (st === 'SUCCEEDED' ? 'done' : ACTIVE.includes(st) ? 'now' : st === 'FAILED' || st === 'BLOCKED' ? 'bad' : 'open');
 const TASK_ICON = { done: 'approve', now: 'running', bad: 'reject', open: 'running' };
 
-function hex(cx, cy, r, cls) {
-  const p = (i, k) => [cx + r * k * Math.cos(Math.PI / 6 + i * Math.PI / 3), cy + r * k * Math.sin(Math.PI / 6 + i * Math.PI / 3)];
-  const v = [0, 1, 2, 3, 4, 5].map((i) => p(i, 1));
-  return s('g', { class: 'g-poly ' + (cls || '') },
-    s('polygon', { points: v.map((q) => q.join(',')).join(' ') }),
-    s('path', { d: [1, 3, 5].map((i) => 'M' + cx + ' ' + cy + 'L' + v[i].join(' ')).join('') }));
-}
-function glyph(name, cx, cy, d) {
-  const g = icon(name, d); g.setAttribute('x', cx - d / 2); g.setAttribute('y', cy - d / 2); g.setAttribute('class', 'g-ico');
-  return g;
-}
-const text = (cls, x, y, t, anchor) => s('text', { class: cls, x, y, 'text-anchor': anchor || 'middle' }, t);
-const arrow = (x1, y1, x2, y2) => s('line', { class: 'g-arr', x1, y1, x2, y2, 'marker-end': 'url(#g-head)' });
-
-function graph(S, m) {
+// The graph is the live map's engine: seeded crystals, depth-dimmed wireframe, state as line colour (js/constellation/scene.js).
+function graph(S, m, compact) {
   const execs = Object.values(S.executions).filter((x) => x.mission === m.id).sort((a, b) => a.started_at - b.started_at), x = execs[execs.length - 1];
   const vs = Object.values(S.verifications).filter((v) => v.mission === m.id), v = vs[vs.length - 1];
   const rs = Object.values(S.reviews).filter((r) => r.mission === m.id), r = rs[rs.length - 1];
   const tasks = m.tasks.map((t) => S.tasks[t]), tk = tasks.find((t) => !['SUCCEEDED', 'SKIPPED'].includes(t.state)) || tasks[tasks.length - 1];
   const resTxt = v ? word('verification', v.state) : r ? word('review', r.state) : null;
-  const svg = s('svg', { class: 'msn-svg', viewBox: '0 0 640 420', role: 'img', 'aria-label': 'Mission graph: ' + m.title, preserveAspectRatio: 'xMidYMid meet' },
-    s('defs', null, s('marker', { id: 'g-head', viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 8, markerHeight: 8, orient: 'auto' }, s('path', { d: 'M1 1L7 4L1 7', class: 'g-ah' }))),
-    s('g', { class: 'g-star' }, s('path', { d: 'M320 18V62M298 40H342M305 25L335 55M335 25L305 55' }), s('circle', { cx: 320, cy: 40, r: 3 })),
-    text('g-core', 320, 82, 'ARCHEUS'),
-    arrow(320, 92, 320, 114), text('arr-l', 332, 108, 'ORCHESTRATES', 'start'),
-    hex(320, 190, 70, 'main'), glyph('terminal', 320, 190, 34),
-    text('nm main', 320, 288, cut(m.title, 24)), text('sub', 320, 308, cut(projName({ state: S }, m.project) || '', 28) + (m.branch ? ' · ' + cut(m.branch, 22) : '')));
-  if (x) {
-    svg.append(arrow(250, 190, 156, 190), text('arr-l', 203, 180, 'EXECUTES'), hex(100, 190, 52), glyph('execution', 100, 190, 30),
-      text('nm', 100, 266, harnessLabel(x.harness)), text('sub', 100, 286, 'Execution'));
-  }
-  if (v || r) {
-    svg.append(arrow(390, 190, 484, 190), text('arr-l', 437, 180, 'RESULTS IN'), hex(540, 190, 52), glyph('security', 540, 190, 30),
-      text('nm', 540, 266, v ? 'Verification' : 'Review'), text('sub', 540, 286, resTxt));
-  }
-  if (tk) {
-    svg.append(arrow(272, 246, 206, 316), text('arr-l', 232, 274, 'USES', 'end'), hex(170, 350, 40), glyph('task', 170, 350, 24),
-      text('nm', 170, 412, cut(tk.title, 20)));
-  }
-  if (resTxt && tk) {
-    svg.append(arrow(214, 350, 422, 350), text('arr-l', 318, 340, 'PRODUCES'), hex(470, 350, 40), glyph('repository', 470, 350, 24), text('nm', 470, 412, 'Results'));
-    if (v) svg.append(arrow(520, 246, 490, 306), text('arr-l', 516, 282, 'VERIFIES', 'start'));
-  }
-  return svg;
+  const scene = missionScene({ id: m.id, title: cut(m.title, 26), state: STATE[present('mission', m.state).cls] || 'idle',
+    lines: ['Project: ' + cut(projName({ state: S }, m.project) || '', 24), m.branch ? 'Branch: ' + cut(m.branch, 24) : null].filter(Boolean),
+    exec: x ? { title: harnessLabel(x.harness), lines: [word('execution', x.state)], state: ACTIVE.includes(x.state) ? 'running' : 'idle' } : null,
+    result: resTxt ? { title: v ? 'Verification' : 'Review', meta: v ? 'VERIFICATION' : 'REVIEW', lines: [resTxt] } : null,
+    task: tk ? { title: cut(tk.title, 24), lines: [word('task', tk.state)] } : null, out: Boolean(resTxt && tk) });
+  const svg = s('svg', { class: 'msn-svg', viewBox: compact ? '0 20 ' + BOX.width + ' 420' : '0 0 ' + BOX.width + ' ' + BOX.height, role: 'img', preserveAspectRatio: 'xMidYMid meet',
+    'aria-label': 'Mission graph: ' + m.title + '. ' + scene.arrows.map((a) => (scene.nodes.find((n) => n.id === a.from) || { title: 'Archeus' }).title + ' ' + a.label.toLowerCase() + ' ' + scene.nodes.find((n) => n.id === a.to).title).join('; ') });
+  svg.innerHTML = sceneMarkup(scene, tr);
+  return h('div', { class: 'archeus-map msn-scene', 'data-theme': themeOf() }, svg);
 }
 
 const labelled = (ic, k, t, d) => h('div', { class: 'msn-row' }, h('span', { class: 'msn-ic', 'aria-hidden': 'true' }, icon(ic, 22)), h('div', null, h('p', { class: 'ax-eyebrow' }, k), h('p', { class: 'msn-t' }, t), d ? h('p', { class: 'msn-d' }, d) : null));
@@ -97,7 +73,7 @@ export function crumb(ctx, S, m) {
     h('ol', null, h('li', null, h('a', { href: '#/now' }, 'Overview')), proj ? h('li', null, h('a', { href: hrefFor('project', 'prj-' + proj.id) }, proj.name)) : null, h('li', { 'aria-current': 'page' }, cut(m.title, 30))));
 }
 
-export const pane = (ctx, S, m) => h('section', { class: 'msn-graph', 'aria-label': 'Mission graph' }, crumb(ctx, S, m), graph(S, m));
+export const pane = (ctx, S, m, compact) => h('section', { class: 'msn-graph', 'aria-label': 'Mission graph' }, crumb(ctx, S, m), graph(S, m, compact));
 
 export function meta(ctx, S, m) {
   const cell = (k, v) => h('div', null, h('dt', null, k), h('dd', null, v));
