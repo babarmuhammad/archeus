@@ -67,7 +67,7 @@ export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
   const nodes = graph.nodes.map(n => { const w = weight(n); return {...n, radius: big.has(n.id) ? crystalRadius(u, width) : ['Mission', 'Project', 'Execution'].includes(n.kind) ? bodyRadius(n, u, width) : nodeRadius(w, u), rank: w}; })
     .sort((a, b) => String(a.id).localeCompare(String(b.id)));
   const byId = new Map(nodes.map(n => [n.id, n])), keys = [...new Set(nodes.map(n => n.project || 'unassigned'))].sort(), P = keys.length;
-  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height / 3), bottom = Math.min(inset.bottom, height / 5);
+  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height * .42), bottom = Math.min(inset.bottom, height * .26);
   const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y);
   const parentOf = new Map();
   for (const e of graph.edges || []) if (byId.has(e.from) && byId.has(e.to) && byId.get(e.from).kind !== 'Project' && !parentOf.has(e.to)) parentOf.set(e.to, e.from);

@@ -3,6 +3,7 @@ Run through the shared lock, from the worktree root:
   py D:\\Archeus\\.collab\\testlock.py -- py -I tools\\v2_live_s4_functional.py
 Exit code 1 when a check fails. It serves clients/v2-live on its own port and stops only that server."""
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -221,16 +222,15 @@ def main():
 
             # ---- the dock on Now (desktop), then the phone sheet ----
             ctx, pg, errs = new_page(br, base, hash_='#/now')
-            pg.click('[data-key="tell"]'); pg.wait_for_timeout(200)
-            check(pg.is_visible('input[data-key="chat-in-dock"]'), 'Tell opens the chat bar over Now')
-            check(pg.get_attribute('input[data-key="chat-in-dock"]', 'placeholder').startswith('Tell Archeus what you need'), 'placeholder: Tell Archeus what you need')
-            check('Ask a question, capture an idea, or describe work.' in pg.inner_text('#chatdock'), 'the intro line shows before the first message')
+            check(pg.is_visible('.tell-dock input[data-key="chat-in-dock"]'), 'the chat bar is anchored in the Overview scene, no click needed')
+            d = pg.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), a = r('.tell-dock .composer2'), sc = r('.now-scene'), st = r('.now-strip'), cs = getComputedStyle(document.querySelector('.tell-dock .composer2')); return { off: Math.abs((a.left + a.right) / 2 - (sc.left + sc.right) / 2), w: a.width, scw: sc.width, gap: st.top - a.bottom, bg: cs.backgroundColor, bf: cs.backdropFilter, h: a.height }; }""")
+            check(d['off'] < 2 and d['w'] >= min(700, d['scw'] * .9) and d['gap'] >= 0 and d['h'] < 90, 'the dock is bottom centre, about 760 px wide, slim, above the status strip (%s)' % d)
+            check(d['bf'] == 'none' and 0.5 < float(re.findall(r'([0-9.]+)\)$', d['bg'])[0]) < 0.75, 'the dock is a flat translucent fill, no blur (%s %s)' % (d['bg'], d['bf']))
+            check(pg.get_attribute('input[data-key="chat-in-dock"]', 'placeholder').startswith('Tell Archeus what to do'), 'placeholder: Tell Archeus what to do')
             send(pg, '/status', where='dock')
-            check(pg.locator('#chatdock .dstrip').count() == 1 and 'status' in pg.inner_text('#chatdock').lower(), 'the last exchange shows above the bar')
-            check(pg.locator('#chatdock a.openconv').count() == 1, 'Open conversation is offered')
-            pg.click('#chatdock .cstop')
-            pg.wait_for_timeout(900)
-            check(pg.locator('#chatdock .ccard[data-kind="confirm"]').count() == 1, 'Stop proposes an emergency stop card')
+            check(pg.locator('.tell-dock .dstrip').count() == 1 and 'status' in pg.inner_text('.tell-dock').lower(), 'the last exchange shows above the bar')
+            check(pg.locator('.tell-dock a.openconv').count() == 1, 'Open conversation is offered')
+            check(not pg.is_visible('.tell-dock .cstop'), 'the slim dock leaves Stop to the top bar')
             ctx.close()
             ctx, pg, errs = new_page(br, base, w=390, h=844, hash_='#/now')
             check(pg.is_visible('[data-key="bb-tell"]') and not pg.is_visible('.chatsheet'), 'phone: a Tell button in the bottom bar, no sheet yet')
@@ -318,7 +318,7 @@ def main():
             # ---- language switch re-draws the chat in Italian ----
             ctx, pg, errs = new_page(br, base, q='&lang=it')
             check('Destinazione' in pg.inner_text('.cdest'), 'the destination line is Italian')
-            check(pg.get_attribute('input[data-key="chat-in-page"]', 'placeholder').startswith('Dimmi cosa ti serve'), 'the placeholder is Italian')
+            check(pg.get_attribute('input[data-key="chat-in-page"]', 'placeholder').startswith('Dì ad Archeus cosa fare'), 'the placeholder is Italian')
             pg.goto('%s?theme=dark&sim=paused&motion=reduced&notes=off&lang=it#/replay/m-date' % base, wait_until='load')
             pg.wait_for_timeout(500)
             check('categorie' in pg.inner_text('.rpside').lower() and 'stato iniziale' in pg.inner_text('.rpside').lower(), 'Replay is Italian')

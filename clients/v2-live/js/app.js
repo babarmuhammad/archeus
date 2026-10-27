@@ -173,7 +173,7 @@ function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk
 function stopClick(e) { ui.safetyOpener = e.currentTarget.dataset.key; ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
 function tellClick() {
   if (isPhone()) { if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); } else openTell(ctx); return; }
-  if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); return; }
+  if (ctx.route.name === 'chat' || ctx.route.name === 'now') { if (ui.nowDrawer || ui.safetyOpen) { ui.nowDrawer = ui.safetyOpen = false; render(); } const i = page.querySelector('input.cinput'); if (i) i.focus(); return; }
   ui.tellOpen = !ui.tellOpen; ui.safetyOpen = false; render();
   if (ui.tellOpen) { const i = dock.querySelector('input.cinput'); if (i) i.focus(); }
 }
@@ -191,7 +191,7 @@ function syncTopbar() {
 // The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
 function mountTell(term) {
   if (term) { app.dataset.dock = ''; dock.hidden = true; return; }
-  const phone = isPhone(), open = !phone && ui.tellOpen && ctx.route.name !== 'chat';
+  const phone = isPhone(), open = !phone && ui.tellOpen && !['chat', 'now'].includes(ctx.route.name); // the Overview carries its own composer in the scene
   dock.classList.toggle('tell', !phone);
   mountDock(phone ? ctx : Object.assign({}, ctx, { route: { name: open ? 'now' : 'none' } }), dock, app);
   if (!phone) {
@@ -292,7 +292,7 @@ document.addEventListener('keydown', (e) => {
   const dialog = app.querySelector('.places') || app.querySelector('.safety-pop');
   if (dialog) trapTab(e, dialog);
   if (e.key !== 'Escape') return;
-  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
+  if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (ui.nowDrawer && ctx.route.name === 'now') { ui.nowDrawer = false; render(); const b = app.querySelector('[data-key="now-details-btn"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
 });
 
 // ---------- device frames ----------

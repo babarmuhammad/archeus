@@ -98,7 +98,7 @@ export function composer(ctx, where) {
     scope.value = s.dest === 'general' ? 'general' : 'work:' + s.project;
   }
   function refresh() {
-    input.placeholder = L('Tell Archeus what you need…', 'Dimmi cosa ti serve…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
+    input.placeholder = L('Tell Archeus what to do…', 'Dì ad Archeus cosa fare…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
     scope.setAttribute('aria-label', L('Destination', 'Destinazione')); slashBtn.setAttribute('aria-label', L('Commands', 'Comandi'));
     send.textContent = L('Send', 'Invia'); stop.textContent = L('Stop', 'Ferma'); stop.setAttribute('aria-label', L('Stop: propose an emergency stop', 'Ferma: proponi un arresto d\'emergenza'));
     clear(scope).append(...ctx.sim.state.projects.map((p) => h('option', { value: 'work:' + p.id }, L('Work · {p}', 'Lavoro · {p}', { p: p.name }))), h('option', { value: 'general' }, L('General · not project memory', 'Generale · non è memoria di progetto')));
@@ -248,9 +248,13 @@ export function mountDock(ctx, dock, app) {
   const oldS = app.querySelector('.cscrim'); if (oldS) oldS.remove();
   if (phone) { if (s.sheet && ctx.route.name !== 'chat') buildSheet(ctx, app); else s.sheet = false; return; }
   if (!on) return;
-  const comp = composer(ctx, 'dock');
+  dock.append(dockNode(ctx));
+}
+// The composer with the last exchange above it: on the Overview it sits in the scene, on other pages it is the Tell overlay.
+export function dockNode(ctx) {
+  const s = S4(ctx), comp = composer(ctx, 'dock');
   const strip = s.touched ? h('div', { class: 'dstrip' }, threadNode(ctx, { last: true, cls: 'last' }), h('a', { class: 'btn quiet openconv', href: '#/chat' }, L('Open conversation', 'Apri la conversazione'))) : h('p', { class: 'intro dintro' }, L('Ask a question, capture an idea, or describe work.', 'Fai una domanda, cattura un\'idea o descrivi un lavoro.'));
-  dock.append(h('div', { class: 'dockin' }, strip, comp));
+  return h('div', { class: 'dockin' }, strip, comp);
 }
 function buildSheet(ctx, app) {
   const s = S4(ctx), comp = composer(ctx, 'sheet');

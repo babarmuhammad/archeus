@@ -49,9 +49,9 @@ try:
         pg.click('[data-key="stop"]'); pg.click('.safety-pop [data-key="rearm-yes"]'); pg.wait_for_timeout(200)
         check('Re-arm asks, then releases the stop', not pg.evaluate('window.v2live.sim.state.estop.engaged') and pg.inner_text('[data-key="stop"]') == 'Stop')
         # Tell overlay
-        check('no chat dock is shown on Overview until Tell', not pg.is_visible('#chatdock'))
+        check('the Overview carries its own Tell dock, the app level overlay stays closed', pg.is_visible('.tell-dock input[data-key="chat-in-dock"]') and not pg.is_visible('#chatdock'))
         pg.click('[data-key="tell"]'); pg.wait_for_timeout(150)
-        check('Tell opens the composer with the input focused', pg.is_visible('#chatdock input[data-key="chat-in-dock"]') and pg.evaluate("document.activeElement.dataset.key") == 'chat-in-dock')
+        check('Tell focuses the dock input on the Overview', pg.evaluate("document.activeElement.dataset.key") == 'chat-in-dock')
         pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
         check('Esc closes the Tell overlay', not pg.is_visible('#chatdock'))
         # project filter

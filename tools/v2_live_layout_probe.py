@@ -37,7 +37,7 @@ ROUTES = ['now', 'work', 'attention', 'map', 'replay/m-date', 'chat', 'settings'
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
           'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'attention/a-1~policy', 'attention/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
           'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
-          'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~toast', 'attention~help', 'chat~toast',
+          'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'attention~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~details', 'now~toast', 'attention~help', 'chat~toast',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
           # S1: the safety popover, its two-step Stop, the Tell overlay
           'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'chat~tell', 'now~estopsafety']
@@ -47,7 +47,7 @@ TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A',
 TUI_RESET = "() => { const c = window.v2live.ui.tui.ctl; c.setPrefs({ look: 'app', ascii: false, linear: false }); c.state.mode = null; c.go('now'); window.v2live.ui.tui.redraw(); }"
 TUI_SET = "([keys, prefs]) => { const c = window.v2live.ui.tui.ctl; c.setPrefs(prefs); if (keys) c.keys(keys); window.v2live.ui.tui.redraw(); }"
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
-KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'error']
+KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'narrow', 'error']
 
 STATES = {
     'why': "window.v2live.ui.tab = 'why'",
@@ -62,6 +62,7 @@ STATES = {
     'safety': "document.querySelector('[data-key=safety]').click()",
     'stopask': "document.querySelector('[data-key=stop]').click()",
     'tell': "document.querySelector('[data-key=tell]').click()",
+    'details': "document.querySelector('.now-toggle').click()",
     'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
     'help': "window.v2live.help()",
@@ -69,7 +70,7 @@ STATES = {
     'estop': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop')",
     'confirm': "(() => { const b = document.querySelector('[data-key^=\"trip-\"], .decide.danger, .ax-sw[aria-checked=true]'); if (b) b.click(); })()",
 }
-RESET = "(() => { window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; window.v2live.ui.estopAsk = window.v2live.ui.rearmAsk = false; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); const tt = document.querySelector('.toast'); if (tt) tt.hidden = true; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
+RESET = "(() => { window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; window.v2live.ui.nowDrawer = false; window.v2live.ui.estopAsk = window.v2live.ui.rearmAsk = false; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); const tt = document.querySelector('.toast'); if (tt) tt.hidden = true; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
 
 MEASURE = r"""
 (opts) => {
@@ -164,6 +165,10 @@ MEASURE = r"""
     const k = name(el) + cs.color + bg.join(',');
     if (ratio < 4.5 && !seenC.has(k)) { seenC.add(k); add('contrast', name(el) + ' "' + label + '" ' + ratio.toFixed(2) + ' (' + cs.color + ' on rgb(' + bg.slice(0, 3).map(Math.round).join(',') + '))'); }
   });
+  // narrow: a column or a row title squeezed below 120 px (text breaking one letter per line), and a Details sheet that squeezes the scene
+  document.querySelectorAll('.now-panels > .panel, .now-panels .mrow .t, .now-panels .mrow .m').forEach((e) => { const w = e.getBoundingClientRect().width; if (inLayer(e) && vis(e) && w < 120) add('narrow', name(e) + ' ' + Math.round(w) + ' px wide'); });
+  const sc = document.querySelector('.now-scene'), nv = document.querySelector('.now-view');
+  if (sc && nv && vis(sc) && sc.getBoundingClientRect().height < Math.min(240, nv.getBoundingClientRect().height * 0.5)) add('narrow', 'scene squeezed to ' + Math.round(sc.getBoundingClientRect().height) + ' px');
   out.push({ kind: 'stat', msg: boxes.length + ' boxes, ' + ctl.length + ' controls' });
   return out;
 }
