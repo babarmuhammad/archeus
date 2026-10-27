@@ -80,7 +80,7 @@ try:
         check('phone: the bottom bar is Tell | Places | Stop, each 44 px or more', [b[0] for b in bar] == ['Tell', 'Places', 'Stop'] and all(b[1] >= 44 and b[2] >= 44 for b in bar))
         pg.click('[data-key="bb-places"]'); pg.wait_for_timeout(250)
         rows = pg.evaluate("() => [...document.querySelectorAll('.places .pl-item')].map((e) => [e.textContent.replace(/[0-9]/g, '').trim(), e.getBoundingClientRect().height])")
-        check('phone: Places lists the 10 destinations, Terminal view and the projects, 56 px rows', [r[0] for r in rows][:10] == ['Overview', 'Work', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and rows[11][0] == 'Terminal view' and len(rows) == 15 and all(r[1] >= 56 for r in rows))
+        check('phone: Places lists the 10 destinations, Terminal view and the projects, 56 px rows', [r[0] for r in rows][:10] == ['Overview', 'Work', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and rows[10][0] == 'Terminal view' and len(rows) == 14 and all(r[1] >= 56 for r in rows))
         pg.click('.places [data-route="replay"]'); pg.wait_for_timeout(250)
         check('phone: a Places row opens its page and closes the sheet', pg.evaluate('location.hash') == '#/replay' and pg.locator('.places').count() == 0)
         check('phone: Stop stays visible on every page and opens the two-step ask', pg.is_visible('.bb-stop'))
