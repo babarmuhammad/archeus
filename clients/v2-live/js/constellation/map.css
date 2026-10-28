@@ -212,3 +212,9 @@
 .archeus-map button:hover { border-color: var(--am-text); }
 @media (prefers-reduced-motion: reduce) { .archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; } }
 @media (forced-colors: active) { .archeus-map .am-hub-disc, .archeus-map .am-hub-inner { stroke: CanvasText; } .archeus-map .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; } }
+/* Work graph highlight: the shared dim (data-hot, am-in) plus a state-coloured ring on what matches; the hovered or selected node stays readable and its path is stronger. */
+.wg[data-hot] .wg-node.am-in .am-select-ring { display: inline; stroke: currentColor; stroke-dasharray: none; stroke-opacity: .7; }
+.wg[data-hot] .wg-node.wg-focus .am-star { opacity: 1; }
+.wg[data-hot] :is(.am-edge, .am-spoke).wg-path { opacity: 1; stroke-opacity: .9; }
+.wg[data-hot] .am-spoke.wg-path { stroke-width: 1.6; }
+.wg .wg-node .am-select-ring { transition: stroke-opacity 100ms var(--am-ease); }

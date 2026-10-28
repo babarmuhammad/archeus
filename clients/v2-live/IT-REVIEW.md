@@ -2105,3 +2105,8 @@ Status: **to review**. Inline `L(en, it)` strings in `js/replay.js`.
 - Number of simulated projects → Numero di progetti simulati (button name)
 - 3 (the default story) → 3 (la storia predefinita)
 - Reloads the prototype with that many projects and the same mission mix, to see how every page scales. → Ricarica il prototipo con quel numero di progetti e la stessa miscela di missioni, per vedere come scala ogni pagina.
+## Work graph highlight — 2026-10-28
+- Nothing matches this filter. → Nessun risultato per questo filtro.
+- Clear filter → Azzera il filtro
+- Filter by state (legend group name) → Filtra per stato
+- Legend chips reuse the existing Needs you / Running / Blocked / Done words (Ti serve, In corso, Bloccate, Fatte).

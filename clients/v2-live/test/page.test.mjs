@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseHash, workQuery, workHref, viewOfCls, filterWork, workCounts, countLine, relTime, sortProjects, sortOf, projectTab, projectHref, replayQuery, replayHref, openStep, compactRows, whatChanged, vocabOf } from '../page-model.js';
+import { graphPick, parseHash, workQuery, workHref, viewOfCls, filterWork, workCounts, countLine, relTime, sortProjects, sortOf, projectTab, projectHref, replayQuery, replayHref, openStep, compactRows, whatChanged, vocabOf } from '../page-model.js';
 
 test('parseHash reads the route, an id, a sub page and the query', () => {
   assert.deepEqual(parseHash('#/work'), { name: 'work', id: null, sub: null, q: {} });
@@ -81,4 +81,21 @@ test('the what-changed line counts steps and bad steps', () => {
   assert.equal(whatChanged([]), null);
   const w = whatChanged([S(1, 'mission', 'CREATED'), S(2, 'execution', 'LOST', 'UNCERTAIN')]);
   assert.deepEqual([w.count, w.from, w.to, w.bad, w.last.n], [2, '08:01', '08:02', 1, 2]);
+});
+
+test('the graph draws what the filter keeps first, never fewer than it keeps, and the legend counts agree with the highlight', () => {
+  const items = Array.from({ length: 20 }, (_, i) => ({ id: 'e' + i, project: i % 2 ? 'a' : 'b', cls: ['needs_you', 'active', 'failed', 'done'][i % 4] }));
+  const rank = (e) => ({ needs_you: 0, active: 1, failed: 2, done: 4 })[e.cls];
+  const shown = filterWork(items, { view: 'blocked' }), picked = graphPick(items, shown, 12, rank);
+  assert.equal(picked.length, 12);
+  assert.ok(shown.every((e) => picked.some((p) => p.id === e.id)), 'every kept entry is drawn');
+  assert.deepEqual(picked.slice(0, shown.length).map((e) => e.id).sort(), shown.map((e) => e.id).sort(), 'kept entries come first');
+  const few = items.slice(0, 8), all = graphPick(few, filterWork(few, { view: 'running' }), 12, rank);
+  assert.equal(all.length, 8, 'a small scene is drawn whole, whatever the filter');
+  const lit = all.filter((e) => filterWork(few, { view: 'running' }).some((s) => s.id === e.id)).length;
+  assert.equal(lit, workCounts(few).running, 'highlighted entries equal the view count');
+  assert.equal(graphPick(items, items, 12, rank).length, 12);
+  const ids = picked.map((e) => e.id), again = graphPick(items, filterWork(items, { view: 'needs' }), 12, rank, ids);
+  assert.deepEqual(again.map((e) => e.id), ids, 'a filter the drawing already holds keeps the drawing as it was');
+  assert.notDeepEqual(graphPick(items, filterWork(items, { view: 'running' }), 12, rank, ids).map((e) => e.id), ids, 'a filter it does not hold draws again');
 });

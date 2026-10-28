@@ -60,7 +60,7 @@ try:
         pg.click('.proj-item[data-proj="notes"]'); pg.wait_for_timeout(250)
         check('a project opens Work filtered with the Show all chip', pg.evaluate('location.hash') == '#/work' and pg.locator('[data-key="work-all"]').count() == 1)
         pg.click('[data-key="work-as-graph"]'); pg.wait_for_timeout(300)
-        check('the filter chip is pressed and the graph shows only that project', pg.get_attribute('[data-key="work-p-notes"]', 'aria-pressed') == 'true' and pg.evaluate("[...document.querySelectorAll('.work-graph .wg-node')].length") == 2)
+        check('the filter chip is pressed and the graph lights only that project', pg.get_attribute('[data-key="work-p-notes"]', 'aria-pressed') == 'true' and pg.evaluate("new Set([...document.querySelectorAll('.work-graph .wg-node.am-in')].map((e) => e.dataset.entry)).size") == pg.locator('.work-list [data-link]').count())
         pg.click('[data-key="work-all"]'); pg.wait_for_timeout(250)
         # one Work page: Attention redirects, the graph and the list stay in sync
         pg.evaluate("location.hash = '#/attention/a-1'"); pg.wait_for_timeout(400)
