@@ -2146,3 +2146,19 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - A kind of extension is offered only where a harness supports it. → Un tipo di estensione è offerto solo dove un harness lo supporta.
 - The new ledes of Usage, Extensions and Launch settings, and the three notes that name a harness (Security approval mode, git push note, Health fix line "Or put another {x} account first in its failover order.") are in the same block of the dictionary.
 
+
+## Network semantic zoom and worktrees (2026-10-28): to review
+- Worktree → Worktree (kept in English: the Git word; the plural is the same)
+- +3 worktrees → +3 worktree (chip on a project hub when its worktrees are folded away)
+- 3 worktrees → 3 worktree (chip on a Projects cell; also its tooltip and spoken name)
+- Worktrees → Worktree (heading of the list in a project's focus panel)
+- linked → collegato (a worktree made by you or another tool; Archeus never deletes or resets it)
+- task → attività (a worktree Archeus made for a task and removes after a verified merge)
+- Active, Stale → Attivo, Obsoleto (existing words, reused for a worktree state)
+- Missing → Mancante (the worktree folder is gone)
+- Merged → Unito (the branch was merged)
+- Abandoned → Abbandonato (the task was given up)
+- Last activity → Ultima attività (hover card of a worktree)
+- No mission → Nessuna missione (a worktree that holds no mission)
+- Attempt → Tentativo (one run of a task, a small mark at the close zoom level)
+- Task, Verification, Event → existing words, reused as kinds of the small marks at the close zoom levels
