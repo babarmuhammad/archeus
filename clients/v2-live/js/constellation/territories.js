@@ -60,9 +60,10 @@ export function createTerritoryMap(container, options = {}) {
   svg.append(world, hits);
   const card = htmlEl('div', 'am-card'); card.hidden = true; card.setAttribute('role', 'status');
   const equivalent = htmlEl('div', 'am-equivalent am-sr'), status = htmlEl('p', 'am-sr'); status.setAttribute('role', 'status');
-  host.append(svg, card, status, equivalent); container.append(host);
+  const panel = htmlEl('section', 'am-focus'); panel.hidden = true;
+  host.append(svg, panel, card, status, equivalent); container.append(host);
 
-  let model = {projects: []}, width = 1, height = 1, inset = INSET, destroyed = false, selected = null, playing = options.playing === true, visible = true, hot = null, cardTimer = 0;
+  let model = {projects: []}, width = 1, height = 1, inset = INSET, destroyed = false, selected = null, playing = options.playing === true, visible = true, hot = null, cardTimer = 0, focused = null;
   let reducedOverride = options.reducedMotion, layout = null, serif = 'serif', sans = 'sans-serif';
   const slotOf = new Map(), cellRecs = new Map(), listeners = new Map(), markers = new Set();
   const media = matchMedia('(prefers-reduced-motion: reduce)'), canvas = document.createElement('canvas'), ctx2d = canvas.getContext('2d');
@@ -130,7 +131,9 @@ export function createTerritoryMap(container, options = {}) {
       const line = lineOf(p, state);
       if (line) g.append(svgEl('text', {class: 'am-cell-last', x: 12, y: h - 12}, fit(line, w - 24, `400 12px ${sans}`)));
     } else {
-      const room = Math.max(1, Math.floor((w - 28) / 24)), shown = ms.slice(0, ms.length > room ? room - 1 : room), cy = h - 28;
+      const line = h >= 100 && w >= 150 ? lineOf(p, state) : '';
+      if (line) g.append(svgEl('text', {class: 'am-cell-last', x: 12, y: h - 12}, fit(line, w - 24, `400 12px ${sans}`)));
+      const room = Math.max(1, Math.floor((w - 28) / 24)), shown = ms.slice(0, ms.length > room ? room - 1 : room), cy = h - (line ? 38 : 28);
       shown.forEach((m, i) => { const mx = 22 + i * 24, s = crystal(m, 9); s.setAttribute('transform', `translate(${f(mx)} ${f(cy)})`); g.append(s); hitsOf.push({id: m.id, kind: 'Mission', x: cell.x + mx, y: cell.y + cy, r: 13, label: m.title, state: stateKey(m.state)}); });
       if (ms.length > shown.length) g.append(svgEl('text', {class: 'am-cell-more', x: 22 + shown.length * 24 - 8, y: cy + 4}, `+${ms.length - shown.length}`));
     }
@@ -164,6 +167,43 @@ export function createTerritoryMap(container, options = {}) {
     el.addEventListener('blur', () => { setHot(null); hideCard(); });
   }
   function select(id) { selected = id; paintSelection(); emit('select', id); }
+  function focus(id) {
+    focused = id; card.hidden = true; setHot(null); renderFocus(true);
+    if (id) panel.querySelector('.am-focus-back').focus({preventScroll: true});
+    else { const c = [...hits.querySelectorAll('.am-chit:not(.am-chit-mission)')].find(n => n.dataset.nodeId === lastFocused); c?.focus({preventScroll: true}); }
+    if (id) lastFocused = id;
+    emit('focus', id);
+  }
+  let lastFocused = null;
+  let focusSig = '';
+  function renderFocus(force) {
+    const p = focused && model.projects.find(x => x.id === focused);
+    if (focused && !p) { focused = null; }
+    const sig = p ? JSON.stringify([p, T('x')]) : '';
+    if (!force && sig === focusSig) return;
+    focusSig = sig;
+    host.dataset.focus = focused ? 'on' : 'off';
+    panel.hidden = !focused;
+    if (!p) { panel.replaceChildren(); return; }
+    const state = stateOf(p), btn = (cls, text, fn) => { const b = htmlEl('button', cls, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
+    const head = htmlEl('header', 'am-focus-head'), title = htmlEl('div', 'am-focus-title');
+    title.append(htmlEl('span', 'am-focus-code', p.code), htmlEl('h2', 'am-focus-name', p.name), htmlEl('span', `am-focus-state am-state-${state}`, wordOf(state)));
+    head.append(btn('am-focus-back', '← ' + T('All projects'), () => focus(null)), title, btn('am-focus-open', T('Open work'), () => select(p.id)));
+    const list = htmlEl('ul', 'am-focus-list'), ms = [...p.missions].sort((a, b) => RANK[stateKey(b.state)] - RANK[stateKey(a.state)] || (b.at || 0) - (a.at || 0) || String(a.id).localeCompare(String(b.id)));
+    for (const m of ms) {
+      const st = stateKey(m.state), li = htmlEl('li', 'am-focus-item'), row = htmlEl('button', `am-focus-row am-state-${st}`);
+      row.type = 'button'; row.dataset.nodeId = m.id; row.addEventListener('click', () => select(m.id));
+      const art = svgEl('svg', {class: 'am-focus-art', width: 30, height: 30, viewBox: '-15 -15 30 30', 'aria-hidden': 'true'}); art.append(crystal(m, 11));
+      const text = htmlEl('span', 'am-focus-text'); text.append(htmlEl('span', 'am-focus-mission', m.title), htmlEl('span', `am-focus-word am-state-${st}`, wordOf(st) + (m.time ? ' · ' + m.time : '')));
+      row.append(art, text); li.append(row);
+      if (st === 'needs-you') li.append(btn('am-focus-review', T('Review'), () => emit('review', m.id)));
+      list.append(li);
+    }
+    const kids = [head];
+    if (p.last) kids.push(htmlEl('p', 'am-focus-last', `${p.last.time} · ${p.last.text}`));
+    kids.push(ms.length ? list : htmlEl('p', 'am-focus-empty', p.ideas ? T(`${p.ideas} ${p.ideas === 1 ? 'idea' : 'ideas'} captured, no missions yet`) : T('No missions yet')));
+    panel.replaceChildren(...kids);
+  }
   function paintSelection() {
     ring.remove();
     for (const rec of cellRecs.values()) rec.g.classList.toggle('am-selected-cell', rec.p.id === selected);
@@ -200,7 +240,7 @@ export function createTerritoryMap(container, options = {}) {
     }
     hits.replaceChildren();
     for (const {p, cell, rec} of hitNodes) {
-      const info = {kind: T('Project'), title: p.name, state: stateOf(p), stateWord: wordOf(stateOf(p)), project: `${p.code}${p.total ? ' · ' + T(`${p.total} ${p.total === 1 ? 'mission' : 'missions'}`) : ''}`, line: p.last ? `${p.last.time} · ${p.last.text}` : '', action: T('Open work')};
+      const info = {kind: T('Project'), title: p.name, state: stateOf(p), stateWord: wordOf(stateOf(p)), project: `${p.code}${p.total ? ' · ' + T(`${p.total} ${p.total === 1 ? 'mission' : 'missions'}`) : ''}`, line: p.last ? `${p.last.time} · ${p.last.text}` : '', action: T('Show missions')};
       const hit = svgEl('g', {class: 'am-chit', tabindex: 0, role: 'button', 'data-node-id': p.id, 'aria-label': describe(p)});
       hit.append(svgEl('rect', {x: f(cell.x), y: f(cell.y), width: f(cell.w), height: f(cell.h)}));
       bindHit(hit, info, p, {x: cell.x, y: cell.y, w: cell.w}); hits.append(hit);
@@ -218,23 +258,25 @@ export function createTerritoryMap(container, options = {}) {
     const needs = model.projects.reduce((t, p) => t + p.attention, 0);
     status.textContent = T(`${model.projects.length} projects. ${needs} need you.`);
     equivalent.replaceChildren(...(() => { const ul = htmlEl('ul'); for (const p of ordered) { const li = htmlEl('li'), b = htmlEl('button', '', describe(p)); b.type = 'button'; b.dataset.nodeId = p.id; li.append(b); ul.append(li); } return [ul]; })());
-    paintSelection(); motion();
+    renderFocus(); paintSelection(); motion();
   }
   function relayout() {
     if (destroyed) return;
     const r = host.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height);
     inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
     width = w; height = h; svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    panel.style.inset = `${f(inset.top)}px ${f(inset.right)}px ${f(inset.bottom)}px ${f(inset.left)}px`;
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     layout = layoutTerritories(Math.max(1, model.projects.length), w, h, inset);
     for (const rec of cellRecs.values()) rec.sig = '';
     build();
   }
-  hits.addEventListener('click', e => { const id = e.target.closest('.am-chit')?.dataset.nodeId; if (id) select(id); });
+  const open = chit => (chit.classList.contains('am-chit-mission') ? select : focus)(chit.dataset.nodeId);
+  hits.addEventListener('click', e => { const c = e.target.closest('.am-chit'); if (c) open(c); });
   hits.addEventListener('keydown', e => {
     const id = e.target.closest('.am-chit')?.dataset.nodeId;
     if (!id) return;
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(id); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e.target.closest('.am-chit')); }
     else if (e.key === 'Escape') { card.hidden = true; }
     else if (e.key.startsWith('Arrow')) {
       e.preventDefault();
@@ -247,8 +289,9 @@ export function createTerritoryMap(container, options = {}) {
       best?.focus({preventScroll: true});
     }
   });
-  equivalent.addEventListener('click', e => { const id = e.target.closest('button')?.dataset.nodeId; if (id) select(id); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !card.hidden) card.hidden = true; });
+  equivalent.addEventListener('click', e => { const id = e.target.closest('button')?.dataset.nodeId; if (id) focus(id); });
+  const onKey = e => { if (e.key !== 'Escape') return; if (!card.hidden) card.hidden = true; else if (focused && host.contains(document.activeElement)) focus(null); };
+  document.addEventListener('keydown', onKey);
   media.addEventListener('change', motion); document.addEventListener('visibilitychange', motion);
   const observer = new ResizeObserver(relayout); observer.observe(host);
   const seenObs = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { visible = entries[entries.length - 1].isIntersecting; motion(); }) : null; seenObs?.observe(host);
@@ -281,7 +324,7 @@ export function createTerritoryMap(container, options = {}) {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add(fn); return () => listeners.get(event)?.delete(fn); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; observer.disconnect(); seenObs?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); clearTimeout(cardTimer);
+      destroyed = true; observer.disconnect(); seenObs?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.removeEventListener('keydown', onKey); clearTimeout(cardTimer);
       for (const a of host.getAnimations({subtree: true})) a.cancel();
       markers.clear(); listeners.clear(); host.remove();
     }

@@ -64,7 +64,7 @@ export function buildOverview(sim) {
     return { id: p.id, name: p.name, code: code(p.name), total: own.length, attention: att.filter((a) => a.project_id === p.id).length,
       running: own.filter((m) => ['active', 'verifying', 'reviewing'].includes(cls(m))).length, stopped: own.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length,
       ideas: st.ideas.filter((i) => i.project === p.id && i.state === 'CAPTURED').length, last: l || null, lastAt: l ? l.at : 0,
-      missions: own.map((m) => ({ id: m.id, title: m.title, state: STATE[cls(m)] || 'idle', at: m.updated_at })) };
+      missions: own.map((m) => ({ id: m.id, title: m.title, state: STATE[cls(m)] || 'idle', at: m.updated_at, time: clockLabel(m.updated_at) })) };
   });
   const byProject = [...done].map(([id, n]) => ({ name: st.projects.find((p) => p.id === id).name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
   return { projects, ledger: { done: byProject.reduce((t, x) => t + x.n, 0), byProject } };
@@ -80,7 +80,7 @@ export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
-  const terr = key === 'now' && !calm && document.getElementById('app').clientWidth >= 600;
+  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && document.getElementById('app').clientWidth >= 600;
   if (e.map && (e.lang !== lang || e.calm !== calm || e.terr !== terr)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
     e.lang = lang; e.calm = calm; e.terr = terr;

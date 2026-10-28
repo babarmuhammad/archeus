@@ -1,5 +1,6 @@
 /* Overview territories: one open outline per project round the core. Hairlines and the ground colour only; state is line colour and a word. */
 .am-territories .am-cell { transition: opacity 180ms cubic-bezier(.2, .8, .2, 1); }
+.am-territories[data-hot] .am-cell { transition-duration: 100ms; }
 .am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms cubic-bezier(.2, .8, .2, 1); }
 .am-territories .am-cell.am-state-needs-you .am-cell-outline { stroke: var(--am-attention); stroke-width: 1.5; }
 .am-territories .am-cell.am-state-running .am-cell-outline { stroke: var(--am-running); stroke-opacity: .75; }
@@ -36,9 +37,31 @@
 .am-territories .am-card-state { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
 .am-territories .am-card-last { color: var(--am-muted); }
 .am-territories .am-card-act { margin-top: 8px; font-weight: 600; }
+/* Focus: one project open, its missions as 48 px rows. */
+.am-territories[data-focus='on'] > svg { visibility: hidden; }
+.am-territories .am-focus { position: absolute; display: flex; flex-direction: column; gap: 10px; min-height: 0; color: var(--am-text); font: 400 14px/1.4 var(--am-sans); }
+.am-territories .am-focus[hidden] { display: none; }
+.am-territories .am-focus button { font: inherit; color: inherit; background: none; border: 1px solid var(--am-line); border-radius: 6px; min-height: 48px; padding: 0 14px; cursor: pointer; }
+.am-territories .am-focus button:hover { border-color: var(--am-text); }
+.am-territories .am-focus button:focus-visible { outline: 3px solid var(--am-focus); outline-offset: 2px; }
+.am-territories .am-focus-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.am-territories .am-focus-title { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.am-territories .am-focus-code { border: 1px solid var(--am-line); border-radius: 4px; padding: 3px 8px; font-weight: 600; font-size: 12px; letter-spacing: .06em; }
+.am-territories .am-focus-name { margin: 0; font: 400 28px/1.15 var(--am-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-territories .am-focus-state { font-size: 12px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
+.am-territories .am-focus-last { margin: 0; color: var(--am-muted); }
+.am-territories .am-focus-empty { margin: 0; color: var(--am-muted); }
+.am-territories .am-focus-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 8px; align-content: start; overflow-y: auto; min-height: 0; }
+.am-territories .am-focus-item { display: flex; gap: 8px; }
+.am-territories .am-focus-row { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; padding: 6px 12px; }
+.am-territories .am-focus-text { display: flex; flex-direction: column; min-width: 0; }
+.am-territories .am-focus-mission { font: 400 16px/1.25 var(--am-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-territories .am-focus-word { font-size: 12px; font-weight: 500; }
+.am-territories .am-focus-review { border-color: var(--am-attention); color: var(--am-attention); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .am-territories .am-cell, .am-territories .am-cell-outline, .am-territories .am-spoke { transition: none; } }
 @media (forced-colors: active) {
   .am-territories .am-cell-outline, .am-territories .am-cell-chip, .am-territories .am-spoke { stroke: CanvasText; }
+  .am-territories .am-focus button, .am-territories .am-focus-code { border-color: ButtonText; }
   .am-territories .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; }
   .am-territories .am-chit:focus-visible rect, .am-territories .am-chit:focus-visible circle { stroke: Highlight; }
 }

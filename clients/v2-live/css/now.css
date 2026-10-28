@@ -144,3 +144,10 @@
 .tell-dock .cdest { display: none; }
 .tell-dock .cinput:focus-visible { outline: 0; }
 .tell-dock .dockin .composer2:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+.view-switch { position: absolute; z-index: 3; top: calc(var(--gut) * 1.2); right: calc(var(--gut) * 1.5); display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 10px; }
+.view-switch .vs-btn { width: 44px; height: 44px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--text-2); cursor: pointer; }
+.view-switch .vs-btn[aria-pressed='true'] { background: var(--line); color: var(--text); }
+.view-switch .vs-btn:hover { color: var(--text); }
+.view-switch .vs-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.now-view .now-hero { right: calc(var(--gut) * 1.5 + 120px); }
+@media (max-width: 599px) { .view-switch { display: none; } }

@@ -9,6 +9,8 @@ export const P = {
   settings: ['path:M4 7h8M16 7h4M4 17h4M12 17h8', 'circle:14,7,2', 'circle:10,17,2'],
   terminal: ['path:M4 5h16v14H4zM7 9l3 3-3 3M13 15h4'],
   menu: ['path:M4 6h16M4 12h16M4 18h16'],
+  viewgrid: ['path:M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'],
+  viewnet: ['circle:12,12,2.5', 'circle:5,6,2', 'circle:19,6,2', 'circle:5,18,2', 'circle:19,18,2', 'path:M7 7l3.5 3.5M17 7l-3.5 3.5M7 17l3.5-3.5M17 17l-3.5-3.5'],
   places: ['path:M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z', 'circle:12,10,2.5'],
   device: ['path:M3 4h18v12H3zM8 20h8M12 16v4'],
   theme: ['circle:12,12,8', 'path:M12 4a8 8 0 0 1 0 16z:f'],

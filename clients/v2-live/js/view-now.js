@@ -4,6 +4,7 @@ import { clockLabel } from '../sim.js';
 import { tr } from './i18n.js';
 import { word, panel, empty, missionRow, attentionItem, projName } from './views.js';
 import { icon } from './icons.js';
+import * as store from './store.js';
 import { mapBox, syncMap, buildOverview } from './map.js';
 import { dockNode } from './chat.js';
 
@@ -57,6 +58,11 @@ function calmBand(ctx) {
     h('div', { class: 'calm-col calm-known' }, h('p', { class: 'eyebrow' }, tr('Known projects')), h('ul', null, ...projects)));
 }
 
+function viewSwitch(ctx) {
+  const cur = store.get('overview'), opt = (id, ic, label) => h('button', { class: 'vs-btn', type: 'button', 'aria-pressed': String(cur === id), 'aria-label': tr(label), title: tr(label), 'data-key': 'vs-' + id, onclick: () => { if (cur !== id) { store.set('overview', id); ctx.render(); } } }, icon(ic, 20));
+  return h('div', { class: 'view-switch', role: 'group', 'aria-label': tr('Overview view') }, opt('projects', 'viewgrid', 'Projects view'), opt('network', 'viewnet', 'Network view'));
+}
+
 export function render(ctx) {
   const sim = ctx.sim, st = sim.state, att = sim.attention();
   const decide = att.filter((a) => a.group === 'Decide');
@@ -97,6 +103,7 @@ export function render(ctx) {
     calm ? calmBand(ctx) : h('div', { class: 'now-hero' },
       h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, ...sentenceNodes(sim.sentence())),
       h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(buildOverview(sim).ledger))),
+    calm ? null : viewSwitch(ctx),
     calm ? null : drawer,
     phone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));
 }
