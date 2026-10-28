@@ -47,7 +47,6 @@ from dataclasses import dataclass, field
 from claude_sessions import proc
 
 from ..api import auth, server
-from ..harnesses.fake import FakeHarness
 from ..harnesses.registry import AdapterRegistry
 from ..infra import discovery, paths
 from ..infra.db import Database

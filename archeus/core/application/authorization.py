@@ -27,7 +27,7 @@ import hashlib
 import json
 import os
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from ...infra import paths
 from ...infra.db import rows

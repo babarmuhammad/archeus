@@ -271,6 +271,8 @@ def test_accounts_scrub_system_fields_and_preserve_authored_policy(homes, monkey
     body = {'id': 'acc_registered', 'home_ref': HOME, 'home_key': HOME.lower(),
             'label': KEY, 'why_not': 'login at ' + HOME,
             'resource_policy': {'project_allow': [HOME], 'project_deny': [KEY]},
+            'policy': {'project_allow': [HOME], 'project_deny': [KEY],
+                       'note': 'login at ' + HOME},
             'unlisted': {'nested': 'retry ' + OLD_KEY}}
     before = deepcopy(body)
     monkeypatch.setattr(resources.rows, 'where', lambda conn, cls: [object()])
@@ -280,6 +282,9 @@ def test_accounts_scrub_system_fields_and_preserve_authored_policy(homes, monkey
     (out,) = resources.accounts(None, homes)
     assert not {'home_ref', 'home_key'} & out.keys()
     assert out['label'] == KEY and out['resource_policy'] == body['resource_policy']
+    assert out['policy']['project_allow'] == [HOME]
+    assert out['policy']['project_deny'] == [KEY]
+    assert out['policy']['note'] == 'login at its home'
     assert out['why_not'] == 'login at its home'
     assert out['unlisted']['nested'] == 'retry ' + public_account_id(OLD_KEY)
     assert body == before

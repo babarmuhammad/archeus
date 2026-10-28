@@ -38,7 +38,6 @@ verification worker, core/verification/worker.py, P13 — the engine verifies an
 reviews only through injected stubs, and otherwise only judges what it recorded).
 """
 
-import os
 import time
 
 from ..infra.db import rows

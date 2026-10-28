@@ -18,7 +18,6 @@ from dataclasses import replace
 from ...infra.db import rows
 from ..context import assemble as context
 from ..domain import entities, guards, ids, states
-from ..domain.actions import Action
 from ..domain.events import new_event
 from ..domain.values import Ref
 from . import authorization, lifecycle

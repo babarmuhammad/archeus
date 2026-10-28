@@ -33,36 +33,47 @@ PV-20's isolation work.
 ## 1. What exists [V = verified at `4d37280`]
 
 - **D-26 is already built** (ADR-0047 "As built", 2026-10-01): `archeus/core/execution/pressure.py`;
-  `live_work(conn)` in `archeus/core/application/live.py:54` with `context` and `handoff`, served
-  as `/v1/status.live` (`archeus/api/routes.py:318`); gates CX-1…CX-18 in
+  `live_work(conn)` in `archeus/core/application/live.py:56` with `context` and `handoff`, served
+  as the `live` field of `/v1/status` (`archeus/api/routes.py:323, 1073`); gates CX-1…CX-18 in
   `tests/v1/unit/test_pressure_units.py`, `tests/v1/integration/test_context_capacity.py`;
   `tools/mutate_p21.py` (Z01–Z22). [V]
-- **Own calls in flight are not in `live_work`** (`live.py:12` says so). The in-flight test exists
-  for AP-1's concurrency count: `resources.own_call_live` (`archeus/core/application/resources.py:183`). [V]
+- **Own calls in flight are the second kind of `live_work` item** (`live.py:56-59, 87-99`),
+  selected by `resources.own_call_live` (`archeus/core/application/resources.py:192-200`).
+  Each has no state, task or context, and nothing animates it (`live.py:12-13`; orchestration G8). [V]
 - **`/v1/accounts`** returns each account's view, effective `resource_policy` and latest usage
-  snapshot (`resources.py:646-652`, `routes.py:501`). No live consumers and no ledger totals,
-  although `resources.ledger_totals` (`resources.py:194`) computes the totals. [V]
-- **Provenance:** `Execution.model` exists (`archeus/core/domain/entities.py:975`); no
-  `model_revision`, `served_model`, `task_family` or `capability_snapshot` anywhere in `archeus/`
-  (grep). `RouteDecision.input_snapshot` exists (`entities.py:1573`, `core/routing/router.py`). [V]
-- **Artifacts** are content-addressed blobs only (`entities.py:1271`): no producer record and no
+  snapshot (`resources.py:779-799`, `routes.py:522-525`), plus live consumers from `live_work`
+  and today's ledger totals from `resources.ledger_totals` (`resources.py:788-799, 244`). [V]
+- **Provenance:** `Execution.model` exists (`archeus/core/domain/entities.py:982`), as do
+  `served_model`, `served_level` and `model_revision` (`entities.py:1037-1039`) and
+  `RouteDecision.task_family` and `capability_snapshot` (`entities.py:1673-1674`).
+  `RouteDecision.input_snapshot` exists (`entities.py:1659`, `core/routing/router.py`). [V]
+- **Artifacts** are content-addressed blobs only (`entities.py:1292-1301`): no producer record and no
   `artifact.recorded` event (grep). ADR-0047 clause 5(ii) therefore passes progress artifacts
   empty (ADR-0047 "As built"). [V]
 - **Decision records:** `RouteDecision`, `PolicyDecision`, `UsageLedger`, `UsageSnapshot`,
-  `AutomationRun` (`entities.py:1573, 1705, 1532, 1503, 1817`); `/v1/events`,
-  the event stream and a mission timeline (`routes.py:187, 197, 590`). No trace view and no
+  `AutomationRun` (`entities.py:1625, 1761, 1584, 1555, 1876`); `/v1/events`,
+  the event stream and a mission timeline (`routes.py:192, 202, 626`). No trace view and no
   decision-log read. [V]
-- **Health:** `/v1/health` read by Control → About (`clients/app/src/surfaces/Control.tsx:869`).
-  No `metrics_daily` table, no metrics read, no Health section beyond Core's state. [V]
-- **Diagnostics:** `core.log` is a plain `logging.FileHandler` (`archeus/core/runtime.py:526`), no
-  rotation. No `doctor` verb: `archeus/cli/main.py:27` lists the verbs. [V]
-- **Command bar:** `clients/app/src/state/palette.ts:57` filters client-side; no Core search. [V]
-- **Notifications:** the Qt shell has a tray (`claude_sessions/gui_qt.py:194`) and uses
+- **Health:** `/v1/health` read by Control → About (`clients/app/src/surfaces/Control.tsx:876`),
+  which also renders a Health section (`Control.tsx:895, 919-923`) over `metrics_daily`
+  (`archeus/infra/db/migrations/0018_metrics_daily.sql:8`) read at `/v1/metrics`
+  (`archeus/api/routes.py:615-623, 1030`); `/v1/health` includes the metrics worker's state
+  (`archeus/core/runtime.py:585-586`). [V]
+- **Diagnostics:** `core.log` uses `logging.handlers.RotatingFileHandler`, 5 MB with three old
+  files (`archeus/core/runtime.py:543-544, 77`). `archeus doctor` is a verb
+  (`archeus/cli/main.py:29, 125-127`; `archeus/core/doctor.py:22`). [V]
+- **Command bar:** `clients/app/src/state/palette.ts:57` filters client-side, and the bar reads
+  Core's `/v1/search` while connected (`clients/app/src/surfaces/CommandBar.tsx:36`;
+  `archeus/api/routes.py:428, 1095`). [V]
+- **Notifications:** the Qt shell has a tray (`claude_sessions/gui_qt.py:198`) and uses
   `showMessage` only to report its own tray actions, e-stop and Pause all (`gui_qt.py:253-266`); no attention or e-stop
   notification while hidden, no push. [V]
 - **Schedule triggers:** refused by `archeus/core/automation/matcher.py:43` ("schedule and
   condition triggers are not built: p14-design-gate D14"); no `next_run`. [V]
-- **Activity chip:** no Core record of an execution's current action (r13 §5; grep). [V]
+- **Activity chip:** Core records an execution's last judged action in `Execution.current_action`
+  (`entities.py:1042`), written in the hook answer (`core/application/executions.py:1049-1051`)
+  from `_current`/`_label` (`:1016, 1024`); the client chip reads it
+  (`clients/app/src/state/chips.ts:47, 130`). [V]
 
 ## 2. Contradictions this gate cannot resolve alone
 
@@ -989,18 +1000,18 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   solve symlink/junction escapes, mounts, races or TOCTOU. Missing/unknown evidence means HELD.
   A14/A15 without operands currently require no explicit cwd path evidence; review remains open.
 - **Production Bash auto-allows nothing until a node attests the POSIX profile.** Re-grounded on
-  this tree: `canonical.py:249` dispatches `canonicalise_hook`, classification is at :253, row
-  construction at :271-:279. `manager.py:518` handles hooks, checks cwd at :536, builds context
-  at :539-:542, asks node at :543-:544, canonicalises at :545-:546 and forwards eligibility at
-  :547-:551; exceptions halt at :552-:554. `local.py:151-:153` returns `None` because current
+  this tree: `canonical.py:311` dispatches `canonicalise_hook`, classification is at :319-:320, row
+  construction at :335-:343. `manager.py:519` handles hooks, checks cwd at :537, builds context
+  at :540-:543, asks node at :544-:545, canonicalises at :546-:547 and forwards eligibility at
+  :548-:552; exceptions halt at :553-:555. `local.py:151-:153` returns `None` because current
   isolation does not attest resolution/startup environment. No production profile is enabled.
-- **HELD caps automatic allow.** `executions.py:765` authenticates/state/sequence checks before
-  authorization; DENY at :812-:813 and ASK at :814-:817 remain in force. Bash cap at :818-:822
+- **HELD caps automatic allow.** `executions.py:922` authenticates/state/sequence checks before
+  authorization; DENY at :969-:970 and ASK at :971-:974 remain in force. Bash cap at :975-:979
   halts otherwise automatic ALLOW with fixed reason `command form needs review` and fixed
   exec/command label. A permissive policy cannot admit a table miss. Explicit approval-backed
-  ALLOW remains a separate, exact single-use path (:797, :803, :820), never table membership.
-  Structured tools do not enter this cap. `_current` (:859), `_label` (:867) and `_hook_answer`
-  (:889-:899) retain closed labels and same-transaction current_action/hook_seq/event writes.
+  ALLOW remains a separate, exact single-use path (:954, :960, :977), never table membership.
+  Structured tools do not enter this cap. `_current` (:1016), `_label` (:1024) and `_hook_answer`
+  (:1046-:1056) retain closed labels and same-transaction current_action/hook_seq/event writes.
   The old classifier is not an eligibility fallback: `canonicalise_hook` preserves risk classes
   through closed exact program/subcommand tables after strict scan, with no policy host. This path
   remains; it cannot open automatic allow. Offline proof imports baseline versions only in child

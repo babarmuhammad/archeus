@@ -33,7 +33,6 @@ from ..domain.events import caused_by, new_event
 from ..domain.values import Ref
 from ..execution.command_allowlist import Allowed
 from ..execution.canonical import needs_command_cap
-from ..redact import redact
 from . import authorization, lifecycle
 from .commands import active_plan
 
