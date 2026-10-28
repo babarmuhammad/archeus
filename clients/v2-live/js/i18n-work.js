@@ -26,7 +26,7 @@ export const RULES_WORK = [
   [/^Showing (\d+) of (\d+)$/, (m) => 'Mostro ' + m[1] + ' di ' + m[2]],
   [/^(\d+)m ago$/, (m) => m[1] + ' min fa'], [/^(\d+)h ago$/, (m) => m[1] + ' h fa'], [/^(\d+)d ago$/, (m) => m[1] + ' g fa'],
   [/^No work in (.+) yet\.$/, (m) => 'Ancora nessun lavoro in ' + m[1] + '.'],
-  [/^Paused “(.+)”\.$/, (m) => 'Messa in pausa: “' + m[1] + '”.'],
+  [/^Pausing “(.+)”\.$/, (m) => 'Messa in pausa: “' + m[1] + '”.'],
   [/^(\d+) steps recorded$/, (m) => m[1] + ' passi registrati'],
   [/^(\d\d:\d\d) to (\d\d:\d\d)$/, (m) => m[1] + ' a ' + m[2]],
   [/^Last: (.+)$/, (m) => 'Ultimo: ' + m[1]],

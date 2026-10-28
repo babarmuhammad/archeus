@@ -41,7 +41,7 @@ function picker(ctx, st, q, counts) {
   const opt = (id, name, n) => h('a', { class: 'pick-opt', role: 'option', href: workHref({ view: q.view, project: id, as: q.as }), 'aria-selected': String(id === q.project), onclick: () => { ctx.ui.workProject = id; ctx.ui.workPick = false; }, 'data-name': name.toLowerCase() }, h('span', { class: 'po-n' }, name), h('span', { class: 'po-c' }, String(n)));
   const list = h('div', { class: 'pick-list', role: 'listbox', 'aria-label': 'Project filter' }, opt(null, 'All projects', counts.all), ...st.projects.map((p) => opt(p.id, p.name, counts.by[p.id] || 0)));
   const search = h('input', { class: 'pick-search', type: 'search', placeholder: 'Find a project', 'aria-label': 'Find a project', oninput: (e) => { const v = e.target.value.trim().toLowerCase(); list.querySelectorAll('.pick-opt').forEach((o) => { o.hidden = !!v && !o.dataset.name.includes(v); }); } });
-  const set = (on) => { ctx.ui.workPick = on; pop.hidden = !on; btn.setAttribute('aria-expanded', String(on)); if (on) search.focus(); };
+  const set = (on) => { ctx.ui.workPick = on; pop.hidden = !on; btn.setAttribute('aria-expanded', String(on)); if (on) { search.value = ''; search.dispatchEvent(new Event('input')); search.focus(); } };
   btn.addEventListener('click', () => set(pop.hidden));
   pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); set(false); btn.focus(); } });
   pop.append(search, list);
@@ -131,6 +131,8 @@ export function render(ctx) {
   if (qs) list.querySelectorAll('a[href^="#/work/"]').forEach((a) => a.setAttribute('href', a.getAttribute('href') + qs)); // opening a row and closing it again keeps the view
   const pane = h('aside', { class: 'wk-pane', 'aria-label': 'Selected work', 'data-key': 'work-pane' });
   const evLine = (e) => (e.type === 'approval.requested' ? 'Asked you to decide' : word('mission', e.payload.to));
+  // A pause lands a few seconds after the request, and only a paused mission can resume: Undo waits for the halt, up to 15 s.
+  const undoPause = (id, tries = 0) => { if (st.missions[id].state === 'PAUSED') ctx.act('resume', id); else if (tries < 30) setTimeout(() => undoPause(id, tries + 1), 500); };
   const paint = (id) => {
     const e = entries.find((x) => x.id === id);
     ctx.ui.workPeek = e ? e.id : null;
@@ -142,7 +144,7 @@ export function render(ctx) {
     const evs = st.events.filter((x) => x.mission === m.id && (x.type === 'mission.state_changed' || x.type === 'approval.requested')).slice(-4).reverse();
     const x = Object.values(st.executions).find((z) => z.mission === m.id && (z.state === 'RUNNING' || z.state === 'LOST')), reading = x ? sim.reading(x) : null;
     const approval = m.approval && st.approvals[m.approval] && st.approvals[m.approval].state === 'PENDING' ? m.approval : null;
-    const pause = m.state === 'EXECUTING' ? h('button', { class: 'btn', type: 'button', 'data-key': 'work-pause', onclick: () => { const r = ctx.act('pause', m.id); if (r.ok) ctx.toast('Paused “' + m.title + '”.', { action: { label: 'Undo', run: () => ctx.act('resume', m.id) } }); } }, 'Pause')
+    const pause = m.state === 'EXECUTING' ? h('button', { class: 'btn', type: 'button', 'data-key': 'work-pause', onclick: () => { const r = ctx.act('pause', m.id); if (r.ok) ctx.toast('Pausing “' + m.title + '”.', { action: { label: 'Undo', run: () => undoPause(m.id) } }); } }, 'Pause')
       : m.state === 'PAUSED' ? h('button', { class: 'btn', type: 'button', onclick: () => ctx.act('resume', m.id) }, 'Resume') : null;
     const why = e.kind === 'card' ? e.a.reason : m.reason || reading;
     pane.append(

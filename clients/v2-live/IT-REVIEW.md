@@ -1934,7 +1934,7 @@ Status: **to review**. Source: `js/i18n-work.js`. Rules (with a number) are writ
 | No work in X yet. | Ancora nessun lavoro in X. |
 | See what is running | Vedi cosa è in corso |
 | Tell Archeus what to do | Dì ad Archeus cosa fare |
-| Paused “X”. (toast, with Undo) | Messa in pausa: “X”. |
+| Pausing “X”. (toast, with Undo) | Messa in pausa: “X”. |
 | One page for Work and Attention: missions and decisions grouped by what they wait on, as a list with a detail pane and as a graph. … | Una sola pagina per Lavoro e Attenzione: … come elenco con un pannello di dettaglio e come grafo. … |
 | Sections / View / Detail | Sezioni / Vista / Dettaglio |
 | Timeline / Compact | Cronologia / Compatta |
