@@ -114,6 +114,6 @@ test('clusters: missions of a project without a Project node still get a place, 
 });
 
 test('core scale shrinks with the project count and the tagline gives way', () => {
-  assert.deepEqual([1, 3, 4, 8, 9, 16, 17, 100].map(coreScaleFor), [1, 1, .85, .85, .7, .7, .5, .5]);
+  assert.deepEqual([1, 3, 4, 8, 9, 16, 17, 100].map(coreScaleFor), [.8, .8, .8, .8, .7, .7, .5, .5]);
   assert.ok(taglineOn(.7) && !taglineOn(.5));
 });

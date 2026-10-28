@@ -166,7 +166,7 @@
    (a playing simulation, full motion, a visible tab and map; the calm scene has none), lasts 3.6 s or longer per cycle (under 0.3 Hz) and carries no state by itself:
    the state is always the node colour, glyph and label. Under Reduced motion nothing loops and the twin is the plain static scene. */
 .archeus-map .am-star { transform-box: fill-box; transform-origin: center; }
-.archeus-map[data-reduced='false'] .am-star.am-lift { scale: 1.07; }
+.archeus-map[data-reduced='false']:not([data-grouped='true']) .am-star.am-lift { scale: 1.07; }
 .archeus-map[data-ambient='on']:not([data-dense='true']) :is(.am-star, .am-joint) { animation: am-drift var(--dp, 12000ms) ease-in-out var(--dd, 0ms) infinite alternate; }
 @keyframes am-drift { from { translate: 0 0; } to { translate: var(--dx, 2px) var(--dy, 2px); } }
 .archeus-map .am-ring { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: 0; pointer-events: none; transform-box: fill-box; transform-origin: center; }
@@ -192,15 +192,23 @@
 .archeus-map .am-tag-sub { fill: var(--am-muted); font: 400 12px var(--am-sans); }
 .archeus-map .am-tag-quiet { fill: var(--am-muted); font: 400 11px var(--am-sans); letter-spacing: .04em; }
 .archeus-map .am-label-word { fill: currentColor; font-family: var(--am-sans); font-weight: 500; letter-spacing: .1em; }
-.archeus-map .am-star { transition: scale 180ms var(--am-ease), opacity 180ms var(--am-ease); }
-.archeus-map :is(.am-edge, .am-spoke, .am-tag, .am-label) { transition: opacity 180ms var(--am-ease); }
-.archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition-duration: 100ms; }
-.archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label):not(.am-in) { opacity: .3; }
+/* The dim is a continuous cross-fade, all CSS transitions on the cluster members: marks and hairlines fall to 38 %, text only to 92 % (a lower floor drops the
+   state words under 4.5:1 in the light theme); the lit cluster grows 4 % about its hub (transform only) and its hairlines brighten. */
+.archeus-map { --am-dim: .38; --am-dim-text: .92; }
+.archeus-map .am-star { transition: scale 140ms ease-out, opacity 180ms var(--am-ease); }
+.archeus-map :is(.am-edge, .am-spoke) { transition: scale 140ms ease-out, opacity 180ms var(--am-ease), stroke-opacity 180ms var(--am-ease); }
+.archeus-map :is(.am-tag, .am-label) { transition: opacity 180ms var(--am-ease); }
+.archeus-map[data-hot] .am-star { transition: scale 140ms ease-out, opacity 100ms var(--am-ease); }
+.archeus-map[data-hot] :is(.am-edge, .am-spoke) { transition: scale 140ms ease-out, opacity 100ms var(--am-ease), stroke-opacity 100ms var(--am-ease); }
+.archeus-map[data-hot] :is(.am-tag, .am-label) { transition: opacity 100ms var(--am-ease); }
+.archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke):not(.am-in) { opacity: var(--am-dim); }
+.archeus-map[data-hot] :is(.am-tag, .am-label):not(.am-in) { opacity: var(--am-dim-text); }
+.archeus-map[data-hot] .am-edge.am-in { stroke-opacity: .85; }
+.archeus-map[data-hot] .am-spoke.am-in { stroke-opacity: .55; }
+.archeus-map[data-grouped='true'] :is(.am-star, .am-edge) { transform-box: view-box; transform-origin: var(--hx, 0px) var(--hy, 0px); }
+.archeus-map[data-grouped='true'][data-reduced='false'] :is(.am-star, .am-edge).am-in { scale: 1.04; }
 .archeus-map[data-reduced='true'] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; }
 .archeus-map button { transition: border-color 180ms var(--am-ease); }
 .archeus-map button:hover { border-color: var(--am-text); }
-.archeus-map .am-card:not([hidden]) { animation: am-card-in 100ms var(--am-ease); }
-@keyframes am-card-in { from { opacity: 0; transform: translateY(4px); } }
-.archeus-map[data-reduced='true'] .am-card { animation: none; }
-@media (prefers-reduced-motion: reduce) { .archeus-map .am-card { animation: none; } .archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; } }
 @media (forced-colors: active) { .archeus-map .am-hub-disc, .archeus-map .am-hub-inner { stroke: CanvasText; } .archeus-map .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; } }

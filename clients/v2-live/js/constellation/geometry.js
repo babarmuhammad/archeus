@@ -61,7 +61,7 @@ export function layoutPhone(graph, width, height) {
 // Project clusters (the Network view). Each project is a hub on a staggered lattice of cells round the core, its missions orbit it as satellites and their
 // executions and decisions sit beside them. The cell size is the density level: the largest that holds every project, so the slots of a level never move when a project is added.
 // Cells nearest the core come first and are given to the projects the owner has to look at first (the caller freezes that order). Satellites keep the slot they were first given.
-export const coreScaleFor = count => (count <= 3 ? 1 : count <= 8 ? .85 : count <= 16 ? .7 : .5);
+export const coreScaleFor = count => (count <= 8 ? .8 : count <= 16 ? .7 : .5);
 export const taglineOn = scale => scale >= .7;
 // Cell and radii per level, roomy to tight. lines: hub label lines (2 name and last action, 1 name, 0 the code only); cap: satellites shown; only: attention, running and blocked ones only.
 export const CELLS = Object.freeze([
@@ -70,7 +70,7 @@ export const CELLS = Object.freeze([
   {w: 164, h: 120, hub: 22, sat: 12, kid: 7, lines: 1, cap: 8}, {w: 128, h: 96, hub: 19, sat: 10, kid: 0, lines: 1, cap: 6, only: true},
   {w: 100, h: 80, hub: 17, sat: 8, kid: 0, lines: 1, cap: 4, only: true}, {w: 80, h: 66, hub: 15, sat: 7, kid: 0, lines: 0, cap: 3, only: true},
   {w: 64, h: 54, hub: 13, sat: 0, kid: 0, lines: 0, cap: 0, only: true}, {w: 48, h: 44, hub: 10, sat: 0, kid: 0, lines: 0, cap: 0, only: true}]);
-const CELL_PAD = 6, GAP = 5, TAG = [13, 22, 40];
+const CELL_PAD = 6, GAP = 5, TAG = [13, 34, 40];
 export const satRank = n => ({'needs-you': 0, running: 1, blocked: 2, paused: 3, thinking: 3, idle: 4, done: 5})[stateKey(n.state)] ?? 4;
 const byRank = (a, b) => satRank(a) - satRank(b) || String(a.id).localeCompare(String(b.id));
 const inside = (x, y, r, box) => x - r >= box.x && x + r <= box.x + box.width && y - r >= box.y && y + r <= box.y + box.height;
@@ -111,8 +111,10 @@ export function layout(graph, width, height, inset = INSET, {slots, memory, avoi
     const sats = mine.filter(n => n !== hub && !parentOf.has(n.id)).sort(byRank), kids = new Map();
     for (const n of mine) if (parentOf.has(n.id)) { if (!kids.has(parentOf.get(n.id))) kids.set(parentOf.get(n.id), []); kids.get(parentOf.get(n.id)).push(n); }
     const content = {x: cell.x + CELL_PAD, y: cell.y + CELL_PAD, width: cell.w - 2 * CELL_PAD, height: cell.h - 2 * CELL_PAD}, hubR = hub ? P.hub : 0, lines = hub ? P.lines : 0;
-    const tagH = hub ? TAG[lines] : 0, block = 2 * hubR + (tagH ? 4 + tagH : 0), hx = cell.x + cell.w / 2, hy = cell.y + cell.h / 2 - block / 2 + hubR;
-    const tag = tagH ? {x: hx - Math.min(content.width, 220) / 2, y: hy + hubR + 4, width: Math.min(content.width, 220), height: tagH} : null;
+    const tagH = hub ? TAG[lines] : 0, block = 2 * hubR + (tagH ? 4 + tagH : 0), tagW = Math.min(content.width, P.level <= 1 ? 200 : 220);
+    // In the roomy levels the hub leans towards the core as far as its label allows (the label stays inside the cell), so a few projects sit close to it and their satellites open outward.
+    const lean = P.level <= 2 && tagH ? Math.sign(core.x - (cell.x + cell.w / 2)) * (content.width - tagW) / 2 : 0, hx = cell.x + cell.w / 2 + lean, hy = cell.y + cell.h / 2 - block / 2 + hubR;
+    const tag = tagH ? {x: hx - tagW / 2, y: hy + hubR + 4, width: tagW, height: tagH} : null;
     const outward = Math.atan2(hy - core.y, hx - core.x), spin = a => Math.abs(((a - outward + 3 * Math.PI) % TAU) - Math.PI);
     const clear = (x, y, r) => inside(x, y, r, content) && !(tag && coversNode(tag, {x, y, radius: r}, gap)) && !avoid.some(a => coversNode(a, {x, y, radius: r}, 0)) && Math.hypot(x - hx, y - hy) >= hubR + r + gap;
     const cand = [];

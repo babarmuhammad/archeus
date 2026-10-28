@@ -141,34 +141,43 @@ export function createTerritoryMap(container, options = {}) {
   }
   const describe = p => `${p.name}, ${p.code}, ${wordOf(stateOf(p))}${p.attention ? `, ${p.attention} ${T('need you')}` : ''}${p.last ? `, ${p.last.text}` : ''}`;
 
+  let graceTimer = 0, hideTimer = 0, over = null;
+  // The card fades out over 120 ms; the dim holds a 120 ms grace so moving from one cell to the next cross-fades instead of flashing back to full.
+  const closeCard = () => { clearTimeout(hideTimer); card.classList.remove('am-on'); hideTimer = setTimeout(() => { card.hidden = true; }, isReduced() ? 0 : 120); };
   function showCard(info, at) {
     clearTimeout(cardTimer);
+    if (!card.hidden) card.classList.remove('am-on');
     const open = () => {
       card.replaceChildren(htmlEl('p', 'am-card-kind', info.kind), htmlEl('p', 'am-card-name', info.title), htmlEl('p', `am-card-state am-state-${info.state}`, info.stateWord), ...(info.project ? [htmlEl('p', 'am-card-line', info.project)] : []), ...(info.line ? [htmlEl('p', 'am-card-last', info.line)] : []), htmlEl('p', 'am-card-act', info.action));
-      card.hidden = false;
-      const cw = card.offsetWidth, ch = card.offsetHeight;
-      let x = at.x + at.w + 12; if (x + cw > width - 8) x = at.x - cw - 12;
-      if (x < 8) x = clamp(at.x + 8, 8, Math.max(8, width - cw - 8));
-      card.style.left = f(x) + 'px'; card.style.top = f(clamp(at.y, 8, Math.max(8, height - ch - 8))) + 'px';
+      clearTimeout(hideTimer); card.classList.remove('am-on'); card.hidden = false;
+      const cw = card.offsetWidth, ch = card.offsetHeight, top = Math.max(8, inset.top), bottom = Math.max(top + ch, height - inset.bottom), gap = 16;
+      // Beside the hovered cell (right, left, below, above), never over its code chip or name; inside its lower right only when no side has room.
+      const sides = [[at.x + at.w + gap, clamp(at.y, top, bottom - ch)], [at.x - cw - gap, clamp(at.y, top, bottom - ch)], [clamp(at.x, 8, width - cw - 8), at.y + at.h + gap], [clamp(at.x, 8, width - cw - 8), at.y - ch - gap]];
+      const [x, y] = sides.find(([x, y]) => x >= 8 && x + cw <= width - 8 && y >= top && y + ch <= bottom) || [clamp(at.x + at.w - cw - 8, 8, Math.max(8, width - cw - 8)), clamp(at.y + at.h - ch - 8, at.y + 44, Math.max(at.y + 44, bottom - ch))];
+      card.style.left = f(x) + 'px'; card.style.top = f(clamp(y, 8, Math.max(8, height - ch - 8))) + 'px';
+      card.style.setProperty('--tx', f(x < at.x ? 4 : x >= at.x + at.w ? -4 : 0) + 'px'); card.style.setProperty('--ty', f(y < at.y ? 4 : y >= at.y + at.h ? -4 : 0) + 'px');
+      void card.offsetWidth; card.classList.add('am-on');
     };
     if (at.now) open(); else cardTimer = setTimeout(open, 180);
   }
-  const hideCard = () => { clearTimeout(cardTimer); cardTimer = setTimeout(() => { card.hidden = true; }, 120); };
+  const hideCard = () => { clearTimeout(cardTimer); clearTimeout(graceTimer); graceTimer = setTimeout(() => { setHot(null); closeCard(); }, 120); };
   function setHot(id) {
     hot = id;
     if (id) host.dataset.hot = id; else delete host.dataset.hot;
     for (const [pid, rec] of cellRecs) { rec.g.classList.toggle('am-hot', pid === id); rec.spoke?.classList.toggle('am-spoke-hot', pid === id); }
   }
   function bindHit(el, info, project, at) {
-    const enter = now => { setHot(project.id); showCard(info, {...at, now}); };
+    // The element last entered owns the card: a late leave from the one before (a mission mark sits on its cell) must not close it.
+    const enter = now => { over = el; clearTimeout(graceTimer); setHot(project.id); showCard(info, {...at, now}); };
+    const leave = () => { if (over === el) { over = null; hideCard(); } };
     el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') enter(false); });
-    el.addEventListener('pointerleave', () => { setHot(null); hideCard(); });
+    el.addEventListener('pointerleave', leave);
     el.addEventListener('focus', () => { if (el.matches(':focus-visible')) enter(true); });
-    el.addEventListener('blur', () => { setHot(null); hideCard(); });
+    el.addEventListener('blur', leave);
   }
   function select(id) { selected = id; paintSelection(); emit('select', id); }
   function focus(id) {
-    focused = id; card.hidden = true; setHot(null); renderFocus(true);
+    focused = id; clearTimeout(graceTimer); closeCard(); setHot(null); renderFocus(true);
     if (id) panel.querySelector('.am-focus-back').focus({preventScroll: true});
     else { const c = [...hits.querySelectorAll('.am-chit:not(.am-chit-mission)')].find(n => n.dataset.nodeId === lastFocused); c?.focus({preventScroll: true}); }
     if (id) lastFocused = id;
@@ -243,11 +252,11 @@ export function createTerritoryMap(container, options = {}) {
       const info = {kind: T('Project'), title: p.name, state: stateOf(p), stateWord: wordOf(stateOf(p)), project: `${p.code}${p.total ? ' · ' + T(`${p.total} ${p.total === 1 ? 'mission' : 'missions'}`) : ''}`, line: p.last ? `${p.last.time} · ${p.last.text}` : '', action: T('Show missions')};
       const hit = svgEl('g', {class: 'am-chit', tabindex: 0, role: 'button', 'data-node-id': p.id, 'aria-label': describe(p)});
       hit.append(svgEl('rect', {x: f(cell.x), y: f(cell.y), width: f(cell.w), height: f(cell.h)}));
-      bindHit(hit, info, p, {x: cell.x, y: cell.y, w: cell.w}); hits.append(hit);
+      bindHit(hit, info, p, {x: cell.x, y: cell.y, w: cell.w, h: cell.h}); hits.append(hit);
       for (const m of rec.hitsOf) {
         const mi = {kind: T('Mission'), title: m.label, state: m.state, stateWord: wordOf(m.state), project: p.name, line: p.last ? `${p.last.time} · ${p.last.text}` : '', action: T('Open mission')};
         const mh = svgEl('g', {class: 'am-chit am-chit-mission', tabindex: -1, 'aria-hidden': 'true', 'data-node-id': m.id});
-        mh.append(svgEl('circle', {cx: f(m.x), cy: f(m.y), r: f(m.r)})); bindHit(mh, mi, p, {x: m.x - m.r, y: m.y - m.r, w: m.r * 2}); hits.append(mh);
+        mh.append(svgEl('circle', {cx: f(m.x), cy: f(m.y), r: f(m.r)})); bindHit(mh, mi, p, {x: cell.x, y: cell.y, w: cell.w, h: cell.h}); hits.append(mh);
       }
     }
     core.setAttribute('transform', `translate(${f(layout.core.x)} ${f(layout.core.y)})`);
@@ -277,7 +286,7 @@ export function createTerritoryMap(container, options = {}) {
     const id = e.target.closest('.am-chit')?.dataset.nodeId;
     if (!id) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e.target.closest('.am-chit')); }
-    else if (e.key === 'Escape') { card.hidden = true; }
+    else if (e.key === 'Escape') { closeCard(); }
     else if (e.key.startsWith('Arrow')) {
       e.preventDefault();
       const nodes = [...hits.querySelectorAll('.am-chit:not(.am-chit-mission)')], cur = nodes.find(n => n.dataset.nodeId === id) || e.target.closest('.am-chit');
@@ -290,7 +299,7 @@ export function createTerritoryMap(container, options = {}) {
     }
   });
   equivalent.addEventListener('click', e => { const id = e.target.closest('button')?.dataset.nodeId; if (id) focus(id); });
-  const onKey = e => { if (e.key !== 'Escape') return; if (!card.hidden) card.hidden = true; else if (focused && host.contains(document.activeElement)) focus(null); };
+  const onKey = e => { if (e.key !== 'Escape') return; if (card.classList.contains('am-on')) closeCard(); else if (focused && host.contains(document.activeElement)) focus(null); };
   document.addEventListener('keydown', onKey);
   media.addEventListener('change', motion); document.addEventListener('visibilitychange', motion);
   const observer = new ResizeObserver(relayout); observer.observe(host);
@@ -324,7 +333,7 @@ export function createTerritoryMap(container, options = {}) {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add(fn); return () => listeners.get(event)?.delete(fn); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; observer.disconnect(); seenObs?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.removeEventListener('keydown', onKey); clearTimeout(cardTimer);
+      destroyed = true; observer.disconnect(); seenObs?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.removeEventListener('keydown', onKey); clearTimeout(cardTimer); clearTimeout(graceTimer); clearTimeout(hideTimer);
       for (const a of host.getAnimations({subtree: true})) a.cancel();
       markers.clear(); listeners.clear(); host.remove();
     }

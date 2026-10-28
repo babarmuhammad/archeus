@@ -1,7 +1,7 @@
 /* Overview territories: one open outline per project round the core. Hairlines and the ground colour only; state is line colour and a word. */
-.am-territories .am-cell { transition: opacity 180ms cubic-bezier(.2, .8, .2, 1); }
+.am-territories .am-cell { transition: opacity 180ms var(--am-ease, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories[data-hot] .am-cell { transition-duration: 100ms; }
-.am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms cubic-bezier(.2, .8, .2, 1); }
+.am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms var(--am-ease, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories .am-cell.am-state-needs-you .am-cell-outline { stroke: var(--am-attention); stroke-width: 1.5; }
 .am-territories .am-cell.am-state-running .am-cell-outline { stroke: var(--am-running); stroke-opacity: .75; }
 .am-territories .am-cell.am-state-blocked .am-cell-outline { stroke: var(--am-blocked); stroke-opacity: .75; }
@@ -17,12 +17,16 @@
 .am-territories .am-cell-dot { fill: currentColor; stroke: none; }
 .am-territories .am-cell-dot.am-hollow { fill: none; stroke: currentColor; stroke-width: 1.5; }
 .am-territories .am-cross { fill: none; stroke: currentColor; stroke-width: 1.5; }
-.am-territories .am-spoke { fill: none; stroke: var(--am-line); stroke-opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms cubic-bezier(.2, .8, .2, 1), stroke-opacity 180ms cubic-bezier(.2, .8, .2, 1); }
+.am-territories .am-spoke { fill: none; stroke: var(--am-line); stroke-opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms var(--am-ease, cubic-bezier(.23, 1, .32, 1)), stroke-opacity 180ms var(--am-ease, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories .am-spoke-needs-you { stroke: var(--am-attention); stroke-opacity: .85; }
 .am-territories .am-spoke-running { stroke: var(--am-running); stroke-opacity: .85; }
 .am-territories .am-spoke-hot { stroke: var(--am-text); stroke-opacity: 1; }
-.am-territories[data-hot] .am-cell:not(.am-hot) { opacity: .5; }
-.am-territories[data-hot] .am-spoke:not(.am-spoke-hot) { stroke-opacity: .15; }
+.am-territories[data-hot] .am-cell:not(.am-hot) { opacity: var(--am-dim-text, .92); }
+.am-territories .am-cell > :not(text) { transition: opacity 180ms var(--am-ease, cubic-bezier(.23, 1, .32, 1)); }
+.am-territories[data-hot] .am-cell > :not(text) { transition-duration: 100ms; }
+.am-territories[data-hot] .am-cell:not(.am-hot) > :not(text) { opacity: var(--am-dim, .38); }
+.am-territories[data-hot] .am-spoke { transition-duration: 100ms; }
+.am-territories[data-hot] .am-spoke:not(.am-spoke-hot) { stroke-opacity: .2; }
 .am-territories .am-cell.am-hot .am-cell-outline { stroke: var(--am-text); stroke-width: 2; }
 .am-territories .am-cell.am-selected-cell .am-cell-outline { stroke-width: 2; }
 .am-territories .am-chit { cursor: pointer; outline: 0; }
@@ -30,6 +34,11 @@
 .am-territories .am-chit:focus-visible rect, .am-territories .am-chit:focus-visible circle { stroke: var(--am-focus); stroke-width: 3; }
 .archeus-map .am-card { position: absolute; z-index: 5; width: 280px; max-width: calc(100% - 16px); box-sizing: border-box; padding: 12px; background: var(--am-surface); border: 1px solid var(--am-line); color: var(--am-text); font: 400 13px/1.4 var(--am-sans); pointer-events: none; }
 .archeus-map .am-card[hidden] { display: none; }
+/* The card fades in over 100 ms from 4 px towards its place (the script sets --tx/--ty) and out over 120 ms; opacity and transform only, instant under Reduced motion. */
+.archeus-map .am-card { opacity: 0; transform: translate(var(--tx, 0px), var(--ty, 4px)); transition: opacity 120ms var(--am-ease, ease-out), transform 120ms var(--am-ease, ease-out); }
+.archeus-map .am-card.am-on { opacity: 1; transform: none; transition-duration: 100ms; }
+.archeus-map[data-reduced='true'] .am-card { transition: none; }
+@media (prefers-reduced-motion: reduce) { .archeus-map .am-card { transition: none; } }
 .archeus-map .am-card p { margin: 0; }
 .archeus-map .am-card p + p { margin-top: 4px; }
 .archeus-map .am-card-kind { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--am-muted); }
@@ -58,7 +67,8 @@
 .am-territories .am-focus-mission { font: 400 16px/1.25 var(--am-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .am-territories .am-focus-word { font-size: 12px; font-weight: 500; }
 .am-territories .am-focus-review { border-color: var(--am-attention); color: var(--am-attention); font-weight: 600; }
-@media (prefers-reduced-motion: reduce) { .am-territories .am-cell, .am-territories .am-cell-outline, .am-territories .am-spoke { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .am-territories .am-cell, .am-territories .am-cell > *, .am-territories .am-cell-outline, .am-territories .am-spoke { transition: none; } }
+.am-territories[data-reduced='true'] .am-cell, .am-territories[data-reduced='true'] .am-cell > *, .am-territories[data-reduced='true'] .am-cell-outline, .am-territories[data-reduced='true'] .am-spoke { transition: none; }
 @media (forced-colors: active) {
   .am-territories .am-cell-outline, .am-territories .am-cell-chip, .am-territories .am-spoke { stroke: CanvasText; }
   .am-territories .am-focus button, .am-territories .am-focus-code { border-color: ButtonText; }
