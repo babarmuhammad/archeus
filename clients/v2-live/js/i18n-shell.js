@@ -5,6 +5,10 @@ export const IT_SHELL = {
   'Not stopped': 'Non fermato', 'Stopped': 'Fermato', 'accepts new work': 'accetta nuovo lavoro', 'new work blocked': 'nuovo lavoro bloccato',
   'decision waiting': 'decisione in attesa', 'work running': 'lavoro in corso', 'all verified': 'tutto verificato', 'nothing running': 'niente in corso',
   'Decision notes on the Overview': 'Note sulle decisioni in Panoramica',
+  'Nothing needs you': 'Niente ti serve', 'Last seen': 'Visto l’ultima volta', 'Search extensions': 'Cerca estensioni', 'Search extensions…': 'Cerca estensioni…',
+  'No extension matches.': 'Nessuna estensione corrisponde.', 'Nothing is listed here.': 'Qui non c’è ancora nulla.', 'Extension types': 'Tipi di estensione', 'Open review': 'Apri la revisione',
+  'Undo': 'Annulla', 'Clear search': 'Cancella la ricerca',
+  'Settings sections': 'Sezioni delle impostazioni', 'Safety': 'Sicurezza', 'Prototype': 'Prototipo', 'About': 'Informazioni',
   'Back to the app': 'Torna all’app', 'Show': 'Mostra', 'Hide': 'Nascondi',
   'Live work moves the map slowly: nodes drift, markers travel along active links and the core mark breathes. Reduced motion stops all of it.': 'Il lavoro in corso muove piano la mappa: i nodi si spostano appena, i segnalini viaggiano lungo i collegamenti attivi e il simbolo del Core respira. Il movimento ridotto ferma tutto.',
   'Simulated clock': 'Orologio simulato', '. One real second is ten simulated seconds at x1. Same seed, same story.': '. Un secondo reale sono dieci secondi simulati a x1. Stesso seme, stessa storia.',
@@ -14,5 +18,6 @@ export const IT_SHELL = {
 };
 export const RULES_SHELL = [
   [/^All (\d+) projects$/, (m) => 'Tutti i ' + m[1] + ' progetti'],
-  [/^(\d+) extensions$/, (m) => m[1] + ' estensioni'], [/^(\d+) off$/, (m) => m[1] + ' spente'], [/^1 needs you$/, () => '1 ti serve']
+  [/^(\d+) extensions$/, (m) => m[1] + ' estensioni'], [/^(\d+) off$/, (m) => m[1] + ' spente'], [/^1 needs you$/, () => '1 ti serve'], [/^(\d+) need you$/, (m) => m[1] + ' ti servono'],
+  [/^Today (\d\d:\d\d)$/, (m) => 'Oggi ' + m[1]], [/^Yesterday (\d\d:\d\d)$/, (m) => 'Ieri ' + m[1]], [/^Earlier (\d\d:\d\d)$/, (m) => 'Prima ' + m[1]]
 ];

@@ -29,6 +29,7 @@ try:
         check('reset breaker closes it', pg.evaluate("window.v2live.sim.state.harnesses[0].breaker.state") == 'closed')
         # 2 hook off + approval gating
         pg.evaluate("location.hash='#/extensions'"); pg.wait_for_timeout(250)
+        pg.click('[data-key="xtab-hooks"]')  # the kinds are tabs now; Extensions opens on the first one that needs you
         pg.click('[data-key="sw-h-1"]'); pg.wait_for_timeout(200)
         check('sensitive hook asks to confirm', pg.locator('.ax-inline-confirm').count() == 1 and pg.evaluate("window.v2live.areas.hookAllows('h-1')"))
         pg.click('.ax-inline-confirm .btn.danger'); pg.wait_for_timeout(250)
