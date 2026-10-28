@@ -36,7 +36,7 @@ ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'healt
           'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
           'work/m-date~why', 'work/m-date~relations', 'work/m-date~timeline', 'work/m-date~plan', 'work/a-1~policy', 'work/a-1~confirm', 'work/x-date-1', 'work/t-date-1', 'work/p-search-v1', 'work/v-1',
-          'work/i-1', 'work/k-4', 'work/prj-archeus', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
+          'work/i-1', 'work/k-4', 'work/prj-archeus', 'projects', 'projects/prj-archeus', 'projects/prj-notes', 'projects~offline', 'work/rd-t-date-1', 'security/sec-b5', 'extensions/h-1', 'extensions/h-1~confirm', 'extensions/mcp-1', 'extensions/mcp-live-4', 'extensions/ag-1', 'extensions/au-3', 'accounts/acc-personal', 'accounts/acc-personal~usage',
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~details', 'now~toast', 'chat~toast',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
           # S1: the safety popover, its two-step Stop, the Tell overlay
@@ -326,6 +326,7 @@ def s4_state(pg, route, w):
         pg.click('#rs-9')
     else:
         pg.click('#rs-12')
+        pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
         pg.click('.rcv[data-ok="true"] .btn')
     pg.wait_for_timeout(250)
     return None

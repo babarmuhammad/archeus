@@ -263,7 +263,7 @@ def main():
             # ---- failed send, retry, duplicate ----
             ctx, pg, errs = new_page(br, base)
             pg.evaluate("document.querySelectorAll('details.cp-disclosure').forEach(d => d.open = true)")
-            pg.click('.chip:has-text("Failed send")')
+            pg.click('.btn:has-text("Failed send")')
             send(pg, '/idea retry me')
             check('Not sent. Send again?' in pg.inner_text('.msgs'), 'a failed send says Not sent. Send again?')
             check(pg.evaluate("window.v2live.sim.state.ideas.every(i => i.title !== 'retry me')"), 'nothing was recorded by the failed send')

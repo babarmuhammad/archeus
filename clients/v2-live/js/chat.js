@@ -216,7 +216,7 @@ function chatPageEntries(s, st) {
 
 export function viewChat(ctx) {
   const s = S4(ctx), st = ctx.sim.state;
-  const P = s.page || (s.page = { search: '', commands: '', seen: new Set(), read: new Set(), pins: [], sheet: null, switched: false, scroll: 0, bottom: true });
+  const P = s.page || (s.page = { search: '', commands: '', seen: new Set(), read: new Set(), open: {}, pins: [], sheet: null, switched: false, scroll: 0, bottom: true });
   if (P.messages && P.messages !== st.messages) { P.pins = []; P.seen.clear(); P.read.clear(); P.mission = null; P.lastYou = null; P.bottom = true; }
   P.messages = st.messages;
   const comp = composer(ctx, 'page'), A = actions(ctx), entries = chatPageEntries(s, st);
@@ -305,7 +305,7 @@ export function viewChat(ctx) {
   if (visible.some((e) => e.m.status === 'submitted')) log.append(h('p', { class: 'cp-working', role: 'status' }, 'Archeus is working', h('span', { class: 'cp-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))));
   const newer = h('button', { class: 'btn newreply', type: 'button', hidden: P.bottom || !visible.some((e) => !P.seen.has(e.m.id)), onclick: () => { P.bottom = true; log.scrollTop = log.scrollHeight; newer.hidden = true; visible.forEach((e) => P.read.add(e.m.id)); } }, L('New reply', 'Nuova risposta'));
   log.addEventListener('scroll', () => { P.scroll = log.scrollTop; P.bottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (P.bottom) { newer.hidden = true; visible.forEach((e) => P.read.add(e.m.id)); } });
-  const disclosure = (label, ...children) => h('details', { class: 'cp-disclosure' }, h('summary', null, label), h('div', { class: 'cp-disclosure-body' }, ...children));
+  const disclosure = (label, ...children) => h('details', { class: 'cp-disclosure', open: !!P.open[label], ontoggle: (e) => { P.open[label] = e.currentTarget.open; } }, h('summary', null, label), h('div', { class: 'cp-disclosure-body' }, ...children));
   const openSheet = (name) => { P.sheet = name; ctx.render(); };
   const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false' }, head(ctx, L('Chat', 'Chat'), h('span', { class: 'cp-subtitle' }, 'Conversation workspace')),
     h('div', { class: 'view chatview' }, h('div', { class: 'chatgrid' },
