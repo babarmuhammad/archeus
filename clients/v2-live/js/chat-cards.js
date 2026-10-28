@@ -1,6 +1,7 @@
 // Chat messages and cards (S4). Every card is drawn from its stored data and, where it shows live state (plan, approval), from the simulation.
 // A card's own buttons call the engine; the command that made the card decided nothing. SIMULATED is stated on every reply.
 import { h } from './dom.js';
+import { picker } from './picker.js';
 import { glyph } from './icons.js';
 import * as store from './store.js';
 import { fmt } from '../chat-engine.js';
@@ -97,11 +98,10 @@ export function cardNode(ctx, m, act, sample) {
     if (c.step === 'done') return box('remember', [kicker('✓', L('Remembered', 'Ricordato')), done(L('Remembered for {s}: “{t}” (item {i}).', 'Ricordato per {s}: “{t}” (voce {i}).', { s: scopeName, t: c.excerpt, i: c.item })), h('p', { class: 'sp-text' }, SIMLINE())]);
     if (c.step === 'dismissed') return box('remember', [kicker('○', L('Not remembered', 'Non ricordato')), done(L('Nothing was written.', 'Non è stato scritto nulla.'))]);
     const ta = h('textarea', { class: 'cta', rows: 2, 'aria-label': L('What to remember', 'Cosa ricordare'), maxlength: 300, readonly: off ? true : null, oninput: (e) => { if (!off) c.excerpt = e.target.value; } }); ta.value = c.excerpt || '';
-    const sel = h('select', { 'aria-label': L('Remember in', 'Ricorda in'), 'aria-disabled': off ? 'true' : null, onchange: (e) => { if (!off) { c.scope = e.target.value; act(m.id, 'scope', { scope: e.target.value }); } } },
-      h('option', { value: '' }, L('Choose where…', 'Scegli dove…')), ...st.projects.map((p) => h('option', { value: p.id }, p.name)), h('option', { value: 'all' }, L('All projects', 'Tutti i progetti')));
-    sel.value = c.scope || '';
+    const sel = picker({ key: 'remember-scope-' + m.id, label: L('Remember in', 'Ricorda in'), cls: 'cpk', value: c.scope || '', text: scopeName || L('Choose where…', 'Scegli dove…'), disabled: off,
+      items: st.projects.map((p) => ({ value: p.id, label: p.name })).concat({ value: 'all', label: L('All projects', 'Tutti i progetti') }), onPick: (v) => { if (!off) { c.scope = v; act(m.id, 'scope', { scope: v }); } } });
     return box('remember', [kicker('◆', scopeName ? L('Remember in {s}?', 'Ricordare in {s}?', { s: scopeName }) : L('Remember in…', 'Ricorda in…'), 'needs_you'),
-      h('label', { class: 'cfield' }, h('span', null, L('What to remember', 'Cosa ricordare')), ta), h('label', { class: 'cfield' }, h('span', null, L('Remember in', 'Ricorda in')), sel),
+      h('label', { class: 'cfield' }, h('span', null, L('What to remember', 'Cosa ricordare')), ta), h('div', { class: 'cfield' }, h('span', null, L('Remember in', 'Ricorda in')), sel),
       h('p', { class: 'sp-text' }, L('Nothing is written until you confirm. There is no silent global memory. Conversation retention: Unknown.', 'Non si scrive nulla finché non confermi. Non esiste memoria globale implicita. Conservazione della conversazione: Sconosciuta.')),
       h('div', { class: 'actions' }, B(L('Remember', 'Ricorda'), 'save', 'primary', { excerpt: null }), B(L('Cancel', 'Annulla'), 'dismiss'))]);
   }

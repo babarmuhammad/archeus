@@ -31,7 +31,7 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
+ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
           'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
           'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
@@ -256,7 +256,7 @@ def motion_invariants(br, base):
     return bad
 
 
-S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec')
+S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec')
 
 
 def s4_send(pg, where, text):
@@ -266,6 +266,7 @@ def s4_send(pg, where, text):
 
 
 def s4_reset(pg):
+    pg.keyboard.press('Escape')
     pg.evaluate("window.v2live.sim.reset(); window.v2live.ui.draft = ''; window.v2live.ui.tellOpen = false; window.v2live.ui.s4 = undefined; window.v2live.ui.rp = undefined; window.v2live.ui.replaySel = null")
     pg.wait_for_timeout(250)
 
@@ -285,12 +286,20 @@ def s4_state(pg, route, w):
             s4_send(pg, 'page', '/approve search')
             s4_send(pg, 'page', '/mission Probe mission')
         elif route == 'chat-general':
-            pg.select_option('select.cscope', 'general')
+            pg.click('.composer2[data-where="page"] .cscope'); pg.click('.pkpop [role="option"][data-value="general"]')
             s4_send(pg, 'page', 'Explain a checkpoint')
             pg.click('.ccard[data-kind="general"] .btn')
             pg.wait_for_timeout(400)
+        elif route == 'chat-picker':
+            pg.click('.composer2[data-where="page"] .cscope')
+        elif route == 'chat-mission':
+            pg.click('[data-key="chat-mission"]')
+        elif route == 'chat-more':
+            pg.click('[data-key="chat-more"]')
+        elif route in ('chat-receipts', 'chat-context'):
+            pg.click('[data-key="chat-tab-%s"]' % route.split('-')[1])
         pg.wait_for_timeout(200)
-        return '.slash' if route == 'chat-slash' else None
+        return '.pkpop' if route in ('chat-picker', 'chat-mission', 'chat-more') else '.slash' if route == 'chat-slash' else None
     if route.startswith('dock') or route.startswith('sheet'):
         if route.startswith('sheet') and w >= 600:
             (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
