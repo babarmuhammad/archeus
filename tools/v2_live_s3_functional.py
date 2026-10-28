@@ -107,7 +107,7 @@ try:
         # 10 italian
         pg.evaluate("location.hash='#/security'"); (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="lang"]') else None, pg.click('[data-tb="lang"]')); pg.wait_for_timeout(400)
         t = T(pg, 0)
-        check('italian security', 'due confini' in t.lower() and 'interruttori di avvio' in t.lower())
+        check('italian security', 'cosa può fare archeus' in t.lower() and 'decisioni da prendere ora' in t.lower() and 'inside the execution workdir' not in t.lower())
         pg.evaluate("location.hash='#/health'"); pg.wait_for_timeout(300)
         check('italian health', 'richiedono attenzione' in T(pg, 0).lower())
         check('no page errors (rest)', not errs); ctx.close()

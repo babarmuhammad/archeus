@@ -1794,3 +1794,18 @@ File: `js/i18n-chat.js`. Dynamic label: `{n} unread` → `{n} non letti`.
 - Waiting → In attesa
 - Position unknown → Posizione sconosciuta
 - Cancelled → Annullata
+
+## Security policy notes, standalone forms (2026-10-28): to review
+
+File: `js/i18n-areas.js`. The notes were only translated joined to their source (for example "Policy. Only Core dispatches."); the new Security page shows them alone, so each has its own key now. The Italian is the second half of the old joined pair.
+
+- Inside the execution workdir only. → Solo dentro la cartella di lavoro dell’esecuzione.
+- Anything outside is denied, and a hook that cannot answer denies. → Tutto ciò che sta fuori è negato, e un hook che non sa rispondere nega.
+- With the stripped environment. → Con l’ambiente ripulito.
+- A push is a separate action. → Il push è un’azione a parte.
+- Stops and asks you with the exact command. → Si ferma e ti chiede, con il comando esatto.
+- The hook is off, so a push goes ahead without asking you. → L’hook è spento: un push parte senza chiederti nulla.
+- Asks with the package name. → Chiede indicando il nome del pacchetto.
+- Only Core dispatches. → Solo il Core avvia.
+- Denied by policy, not by the OS: physical reach is not built (finding G1). → Negato dalla policy, non dal sistema operativo: il raggio d’azione fisico non è costruito (rilievo G1).
+- Provider access is not brokered yet and the network is not walled off. → L’accesso al provider non passa ancora da un broker e la rete non è isolata.
