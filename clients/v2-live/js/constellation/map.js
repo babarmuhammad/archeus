@@ -3,7 +3,7 @@ import {bodyMarkup, hubMarkup, coreStar} from './nodeart.js';
 import {orderProjects} from './territories.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
-export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, glide: 280, travel: 600, breath: 6000});
+export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, glide: 220, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
 let instance = 0;
 const words = {'needs-you': 'Needs you', running: 'Running', done: 'Done', blocked: 'Blocked', idle: 'Idle', paused: 'Paused', thinking: 'Thinking'};

@@ -175,7 +175,7 @@
 .archeus-map .am-travel { fill: var(--am-text); opacity: 0; pointer-events: none; }
 .archeus-map[data-ambient='on'] .am-travel { animation: am-travel var(--tp, 4000ms) linear var(--td, 0ms) infinite; }
 @keyframes am-travel { 0% { translate: var(--x0) var(--y0); opacity: 0; } 12%, 88% { opacity: .95; } 100% { translate: var(--x1) var(--y1); opacity: 0; } }
-.archeus-map .am-line-hot { fill: none; stroke: var(--am-text); stroke-width: 1.8; stroke-opacity: .95; opacity: 0; transition: opacity var(--dur-2, 180ms) var(--am-ease); pointer-events: none; }
+.archeus-map .am-line-hot { fill: none; stroke: var(--am-text); stroke-width: 1.8; stroke-opacity: .95; opacity: 0; transition: opacity var(--dur-2, 160ms) var(--am-ease); pointer-events: none; }
 .archeus-map .am-edge.am-accent-needs-you .am-line-hot { stroke: var(--am-attention); }
 .archeus-map .am-edge.am-accent-running .am-line-hot { stroke: var(--am-running); }
 .archeus-map .am-edge.am-hot .am-line-hot { opacity: 1; }
@@ -192,12 +192,12 @@
 .archeus-map .am-tag-sub { fill: var(--am-muted); font: 400 12px var(--am-sans); }
 .archeus-map .am-tag-quiet { fill: var(--am-muted); font: 400 11px var(--am-sans); letter-spacing: .04em; }
 .archeus-map .am-label-word { fill: currentColor; font-family: var(--am-sans); font-weight: 500; letter-spacing: .1em; }
-.archeus-map .am-star { transition: scale var(--dur-2, 180ms) var(--am-ease), opacity var(--dur-2, 180ms) var(--am-ease); }
-.archeus-map :is(.am-edge, .am-spoke, .am-tag, .am-label) { transition: opacity var(--dur-2, 180ms) var(--am-ease); }
+.archeus-map .am-star { transition: scale var(--dur-2, 160ms) var(--am-ease), opacity var(--dur-2, 160ms) var(--am-ease); }
+.archeus-map :is(.am-edge, .am-spoke, .am-tag, .am-label) { transition: opacity var(--dur-2, 160ms) var(--am-ease); }
 .archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition-duration: var(--dur-1, 100ms); }
 .archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label):not(.am-in) { opacity: .3; }
 .archeus-map[data-reduced='true'] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; }
-.archeus-map button { transition: border-color var(--dur-2, 180ms) var(--am-ease); }
+.archeus-map button { transition: border-color var(--dur-2, 160ms) var(--am-ease); }
 .archeus-map button:hover { border-color: var(--am-text); }
 .archeus-map .am-card:not([hidden]) { animation: am-card-in var(--dur-1, 100ms) var(--am-ease); }
 @keyframes am-card-in { from { opacity: 0; transform: translateY(4px); } }

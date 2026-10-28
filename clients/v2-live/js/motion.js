@@ -21,7 +21,7 @@ let tok = null;
 const T = () => {
   if (tok) return tok;
   const cs = getComputedStyle(root), n = (v, d) => parseFloat(cs.getPropertyValue(v)) || d, e = (v, d) => cs.getPropertyValue(v).trim() || d;
-  return (tok = { 1: n('--dur-1', 100), 2: n('--dur-2', 180), 3: n('--dur-3', 280), 4: n('--dur-4', 420), out: e('--ease-out', 'cubic-bezier(.23, 1, .32, 1)'), move: e('--ease-move', 'cubic-bezier(.65, 0, .35, 1)') });
+  return (tok = { 1: n('--dur-1', 100), 2: n('--dur-2', 160), 3: n('--dur-3', 200), 4: n('--dur-4', 240), out: e('--ease-out', 'cubic-bezier(.23, 1, .32, 1)'), move: e('--ease-move', 'cubic-bezier(.65, 0, .35, 1)') });
 };
 export const on = () => !reducedMotion() && typeof Element.prototype.animate === 'function';
 

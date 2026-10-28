@@ -18,7 +18,7 @@
 :root[data-vt]::view-transition-group(*) { animation: none; }
 :root[data-vt]::view-transition-old(root), :root[data-vt]::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 :root[data-vt]::view-transition-old(page) { animation: m-vt-out var(--dur-1) var(--ease-out) both; mix-blend-mode: normal; }
-:root[data-vt]::view-transition-new(page) { animation: m-vt-in var(--dur-3) var(--ease-out) 60ms both; mix-blend-mode: normal; }
+:root[data-vt]::view-transition-new(page) { animation: m-vt-in var(--dur-2) var(--ease-out) 40ms both; mix-blend-mode: normal; }
 @keyframes m-vt-out { to { opacity: 0; transform: translateX(calc(var(--vt-dx) * -.5)); } }
 @keyframes m-vt-in { from { opacity: 0; transform: translateX(var(--vt-dx)); } }
 
