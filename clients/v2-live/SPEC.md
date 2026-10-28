@@ -165,6 +165,8 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | F17 | Phone chat sheet follows `visualViewport` (keyboard) and expands | PROTO step 2 | PROTOTYPED | CHAT · P | S4 built (visualViewport, simulated keyboard, Expand, Back) |
 | F18 | Chat delay and error fixtures, General routing, Review plan | PROTO steps 4 to 6 | PROTOTYPED | CHAT | S4 built (slow and failed send fixtures, General routing; Review plan stays on the decision sheet) |
 | F19 | Usage in chat: `/usage` answers `unknown` until T-154 | T153 owner answers | PROTOTYPED | CHAT | S1, S4 built |
+| F21 | Full conversation workspace: searchable General/project/mission rail, unread and pending-decision markers, unboxed thread, sticky project/General composer; context rail with mission spine, session-pinned decisions and searchable command drafts | owner 2026-10-27 | PROTOTYPED + SIMULATED | CHAT | Chat page redesign; mission rows filter linked messages, delivery remains project scoped; context at 1440+ when space permits, native sheets below; shared composer/dock/engine unchanged; visual and functional verification pending |
+| F22 | Chat motion: unseen message arrival, destination fade, inline card height changes, submitted-message working dots; static under Reduced motion | owner 2026-10-27 | PROTOTYPED | CHAT | Page-scoped CSS and mount animation; OS and app Reduced motion honored; verification pending |
 | F20 | Subscription token read by `claude_sessions/usage.py` conflicts with AGENT-RULES item 6 (G2) | T149 §4 | BUILT (flagged) | none | owner decision, never shown |
 
 ## G. Replay and Recovery
