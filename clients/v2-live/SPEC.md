@@ -95,7 +95,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | C10 | Creation beats from chat: reply 0, appear 160, relation 240, label 180 (dropped), accent gone by 800; Quiet shows all at once | PROTO README, A55 §4 | PROTOTYPED | CHAT | S4 |
 | C11 | Hero moments (handover, plan arming, resolution, causality path), gated and skippable | UIA §K | DESIGNED | NOW, WORK | not planned (prototype-gated PR-6) |
 | C12 | View transitions between routes | A55 §2 | DESIGNED | ALL | not built (optional) |
-| C13 | E-stop drops every halo and trace to rest in one 160 ms step | UIA §K | DESIGNED | NOW | S2 |
+| C13 | E-stop drops every halo and trace to rest in one 160 ms step | UIA §K | SIMULATED | NOW | S2 (drift, rings and travelling markers stop when the emergency stop is engaged: `js/map.js` passes `playing and not engaged` to the map; the nodes snap to rest, there is no 160 ms tween) |
 | C14 | Prototype breath by WAAPI infinite animation | PROTO app.js ~2533 | PROTOTYPED | NOW | replaced: V2 Live uses the CSS keyframe of A55 |
 
 ## D. The spine (ADR-0054)
