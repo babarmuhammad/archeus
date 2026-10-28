@@ -30,8 +30,9 @@ from ...infra import paths
 from ...infra.db import rows
 from ...infra.eventlog import consumers, outbox
 from ..application import calls as C
-from ..application import commands
+from ..application import commands, resources
 from ..application.planning import PLANNING_STATES
+from ..application.public import public_context, system_value
 from ..application.work import PolicyDenied
 from ..domain import entities
 from . import planner
@@ -122,9 +123,11 @@ class Planner:
         pkg_id = self._package(mission_id)
         with self.db.read() as conn:
             m = rows.get(conn, entities.Mission, mission_id).entity
-            pkg = rows.get(conn, entities.ContextPackage, pkg_id).entity.to_dict()
+            homes = resources.bound_homes(conn, self.db.writer.live)
+            pkg = public_context(rows.get(conn, entities.ContextPackage, pkg_id).entity.to_dict(),
+                                 homes)
             lines, facts = planner.describe(conn, pkg, m)
-            replan = _replan(conn, m, why)
+            replan = _replan(conn, m, why, homes)
         c = self.calls.run(purpose='planner', source={'kind': 'mission', 'id': mission_id},
                            workspace_id=m.workspace_id, project_id=m.project_id,
                            prompt=planner.prompt(m, lines, replan=replan),
@@ -176,7 +179,7 @@ class Planner:
                         subject_id=mission_id)['id']
 
 
-def _replan(conn, m, why):
+def _replan(conn, m, why, homes):
     """What the previous version did, for a round that replaces one (§14)."""
     prev = commands.active_plan(conn, m.id)
     if prev is None:
@@ -192,7 +195,8 @@ def _replan(conn, m, why):
     latest = {}
     for r in rows.where(conn, entities.Checkpoint, mission_id=m.id):
         latest[r.entity.task_id] = r.entity
-    checkpoints = [{'key': t.key, 'open_problems': list(latest[t.id].open_problems),
+    checkpoints = [{'key': t.key,
+                    'open_problems': system_value(list(latest[t.id].open_problems), homes),
                     'next_action': latest[t.id].next_action}
                    for t in tasks if t.state in ('FAILED', 'BLOCKED') and t.id in latest]
     return {'why': why, 'plan_version': prev.entity.plan_version, 'failed': failed,

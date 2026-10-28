@@ -241,6 +241,7 @@ class InProcessClient:
             registry.register(FakeHarness(sources=True, tools=self._tool_removal))
             callers = real_callers() if self._callers is None else self._callers
             self._resources = resources.Resources(registry=registry, callers=callers)
+            self._db.writer.live = (registry, callers)
             self._engine = engine.Engine(
                 self._db, actor=Ref('system', self._system),
                 work=work.Work(missions=self._missions,

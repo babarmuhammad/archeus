@@ -466,8 +466,8 @@ MUTATIONS = [
      "'route_decisions': [dict(r.entity.to_dict(), version=r.version) for r in rows.where(conn, entities.RouteDecision) if r.entity.source is not None and r.entity.source.id == mission_id],")],
      [PL + 'test_owner_2026_10_21_the_mission_trace_reads_no_home_field']),
     ('Z203', 'the status read names account_ref on each live item (N-2)', [(ROUTES,
-     "live=live.live_work(conn, project), armed=not LocalNode.disarmed(),",
-     "live=[dict(x, account_ref=x['account_id']) for x in live.live_work(conn, project)], armed=not LocalNode.disarmed(),")],
+     "live=live.live_work(conn, project, h), armed=not LocalNode.disarmed(),",
+     "live=[dict(x, account_ref=x['account_id']) for x in live.live_work(conn, project, h)], armed=not LocalNode.disarmed(),")],
      ['tests/v1/integration/test_routing_http.py::test_H09_the_status_read_with_a_live_own_call_names_no_home_field']),
     # ── slice D Health: Attention items (D12, K7) and the metrics read (D2) ──
     ('Z80', 'a LIMITED account waits on nobody', [(AT,
@@ -852,8 +852,8 @@ MUTATIONS = [
      [CW + 'test_a_handler_that_raises_leaves_no_cause_behind']),
     ('Z180', "a command under a cause ignores it (the writer does not give its Tx the cause)",
      [(WR,
-     "            tx = Tx(conn, cause)",
-     "            tx = Tx(conn)")],
+     "            tx = Tx(conn, self.live, cause)",
+     "            tx = Tx(conn, self.live)")],
      [CW + 'test_what_a_command_writes_under_a_cause_carries_it_and_a_route_command_is_a_root']),
     # C-write review (T-126 round 4): a scope restores its cause when it raises, not only on return
     ('Z177', "a decision restores its cause only when it returns, not when it raises",

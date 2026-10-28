@@ -120,10 +120,13 @@ class Tx:
 
     `cause` (p21 D13 (b)) is the `cause_chain` of every event appended without
     one of its own: the consumer's event the command was submitted under
-    (`ev.CAUSE`), or an approval's event once `authorization.decide` set it."""
+    (`ev.CAUSE`), or an approval's event once `authorization.decide` set it.
+    `live` is the (registry, callers) the owner bound to the writer, for a write
+    path that needs the registered homes."""
 
-    def __init__(self, conn, cause=()):
+    def __init__(self, conn, live=(None, ()), cause=()):
         self.conn = conn
+        self.live = live
         self.now = ev.now_iso()
         self.events = []
         self.mutated = False
@@ -319,6 +322,9 @@ class Writer:
         self._ready = threading.Event()
         self._error = None
         self.committed = self.failed = 0
+        # the live (adapter registry, callers) a command reads through `tx.live`; bound by
+        # whoever owns the adapters, never a command argument, so never in a request hash
+        self.live = (None, ())
         # commit notification (api-and-realtime §4): readers — SSE streams, the
         # engine loop — wait here instead of polling the head
         self._commits = threading.Condition()
@@ -431,7 +437,7 @@ class Writer:
                 if replay is not None:
                     conn.execute('ROLLBACK')
                     return json.loads(replay), True
-            tx = Tx(conn, cause)
+            tx = Tx(conn, self.live, cause)
             result = command(tx, **kwargs)
             if tx.mutated and not tx.events:
                 raise UnrecordedMutation('%s changed state and recorded no event' % name)

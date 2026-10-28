@@ -750,17 +750,54 @@ CONSUMER_FIELDS = ('kind', 'id', 'purpose', 'mission_id', 'task_key', 'state', '
                    'account_id')
 
 
-def homes(conn, registry, callers, *, shorts=None):
+def _decision_homes(conn):
+    """(default accounts, `Homes` of the retired registered homes) every RouteDecision
+    snapshot names. A decision's snapshot is frozen and decisions are never deleted, so
+    the history only grows: the owning Database's `homes_cache` keeps it with the (rowid,
+    id) of the last row read, and a call reads only the rows after that one. The id is in
+    the key because a rolled-back insert frees its rowid for another decision: a cached
+    last row that is no longer there (same rowid, other id) means a full re-read. The
+    cache holds no live state: the registry, the callers and the Account rows are read
+    on every call."""
     from ..homes import Homes
-    registered = [r.entity.home_ref for r in rows.where(conn, entities.Account)]
-    defaults, historical_homes = {}, []
-    for r in rows.where(conn, entities.RouteDecision):
+    cache = getattr(conn, 'homes_cache', None)
+    defaults, historical, after, built, key = {}, {}, None, None, None
+    if cache is not None:
+        last = conn.execute('SELECT rowid, id FROM route_decisions '
+                            'ORDER BY rowid DESC LIMIT 1').fetchone()
+        key = None if last is None else tuple(last)
+        hit = cache.get('decisions')
+        if hit and hit['key'] == key:
+            return dict(hit['defaults']), hit['homes']
+        if hit and hit['key'] and conn.execute(
+                'SELECT 1 FROM route_decisions WHERE rowid = ? AND id = ?',
+                hit['key']).fetchone():
+            defaults, historical = dict(hit['defaults']), dict(hit['historical'])
+            after, built = hit['key'][0], hit['homes']
+    fresh = (rows.where(conn, entities.RouteDecision) if after is None else
+             [rows.decode(entities.RouteDecision, r) for r in conn.execute(
+                 'SELECT * FROM route_decisions WHERE rowid > ? ORDER BY rowid', (after,))])
+    known = len(historical)
+    for r in fresh:
         for a in (r.entity.input_snapshot or {}).get('accounts', ()):
             if not a.get('registered') and a.get('ref'):
                 if a['ref'] not in defaults or not defaults[a['ref']][2] and a.get('home_ref'):
                     defaults[a['ref']] = (a['harness'], a['ref'], a.get('home_ref'))
-            elif a.get('registered'):
-                historical_homes.append(a.get('home_ref'))
+            elif a.get('registered') and isinstance(a.get('home_ref'), str):
+                historical[a['home_ref']] = None
+    if built is None or len(historical) != known:
+        built = Homes(list(historical), shorts=lambda _: None, platform=sys.platform)
+    if cache is not None:
+        cache['decisions'] = {'key': key, 'defaults': defaults, 'historical': historical,
+                              'homes': built}
+        defaults = dict(defaults)
+    return defaults, built
+
+
+def homes(conn, registry, callers, *, shorts=None):
+    from ..homes import Homes
+    registered = [r.entity.home_ref for r in rows.where(conn, entities.Account)]
+    defaults, historical = _decision_homes(conn)
     adapters = ([] if registry is None else [registry.get(i) for i in registry.ids()])
     for a in [*adapters, *callers]:
         try:
@@ -770,10 +807,22 @@ def homes(conn, registry, callers, *, shorts=None):
         if ref.account_id not in defaults or not defaults[ref.account_id][2] and ref.home_ref:
             defaults[ref.account_id] = (a.id, ref.account_id, ref.home_ref)
     out = Homes(registered, defaults.values(), shorts=shorts, platform=sys.platform)
-    historical = Homes(historical_homes, shorts=lambda _: None, platform=sys.platform)
     out.patterns += historical.patterns
     out.norms |= historical.norms
     return out
+
+
+def bound_homes(conn, live):
+    """`homes` for a write or worker path, from the (registry, callers) the owner
+    bound to the writer (`tx.live`, `db.writer.live`)."""
+    return homes(conn, *live)
+
+
+def cut_bound(tx, text, n):
+    """`text[:n]` that never splits a home; the homes are built only for a text that
+    needs the cut."""
+    from ..homes import cut_safe
+    return text if len(text) <= n else cut_safe(text, bound_homes(tx.conn, tx.live), n)
 
 
 def account_view(conn, row, work=None, now=None, counts=None):

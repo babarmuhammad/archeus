@@ -63,6 +63,7 @@ from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import automations, live, optins, sessions
 from ..core.application import verification
+from ..core.application.public import public_context, public_output
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -132,7 +133,7 @@ def list_missions(req):
 
 def get_mission(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_mission(conn, req.params['id'])
+        return 200, queries.get_mission(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def get_mission_plan(req):
@@ -196,7 +197,8 @@ def events(req):
     if not 1 <= limit <= 1000:
         raise Invalid('limit', 'is 1..1000')
     with req.api.db.read() as conn:
-        return 200, {'events': queries.events(conn, after, limit=limit)}
+        return 200, {'events': queries.events(conn, after, limit=limit,
+                                              homes=lambda: _read_homes(req, conn))}
 
 
 def events_stream(req):
@@ -319,8 +321,9 @@ def status(req):
         # `armed`: the e-stop's state as Health reads it, for the operations strip;
         # `resumable`: the missions Resume all would resume now (workspace-wide,
         # like the command), from the rule the command itself runs
-        return 200, dict(world_status.status(conn, project),
-                         live=live.live_work(conn, project), armed=not LocalNode.disarmed(),
+        h = _read_homes(req, conn)
+        return 200, dict(world_status.status(conn, project, h),
+                         live=live.live_work(conn, project, h), armed=not LocalNode.disarmed(),
                          resumable=commands.resumable(conn)[1])
 
 
@@ -407,7 +410,8 @@ def ack_digest(req):
 
 def get_context_package(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_context_package(conn, req.params['id'])
+        h = _read_homes(req, conn)
+        return 200, queries.get_context_package(conn, req.params['id'], homes=h)
 
 
 def preview_context(req):
@@ -416,7 +420,9 @@ def preview_context(req):
     if 'limit_tokens' in kw and kw['limit_tokens'] < 1:
         raise Invalid('limit_tokens', 'is an integer >= 1')
     with req.api.db.read() as conn:
-        return 200, context.assemble(conn, b['subject']['kind'], b['subject']['id'], **kw)
+        h, subject = _read_homes(req, conn), b['subject']
+        body = context.assemble(conn, subject['kind'], subject['id'], homes=h, **kw)
+        return 200, public_context(body, h)
 
 
 def list_knowledge(req):
@@ -589,7 +595,7 @@ def set_mission_resources(req):
 
 def get_execution(req):
     with req.api.db.read() as conn:
-        return 200, executions.view(conn, req.params['id'])
+        return 200, executions.view(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def execution_stream(req):
@@ -600,9 +606,10 @@ def execution_stream(req):
     offset = 0 if raw is None else _cursor(raw, 'from')
     with req.api.db.read() as conn:
         e = executions.entity(conn, req.params['id'])
+        homes = _read_homes(req, conn)
     reg = req.api.resources.registry
     adapter = reg.get(e.harness_id) if e.harness_id in reg.ids() else None
-    return 200, output.read(e, adapter, offset)
+    return 200, public_output(output.read(e, adapter, offset), homes)
 
 
 def attention_items(req):
@@ -633,7 +640,7 @@ def mission_timeline(req):
     with req.api.db.read() as conn:
         return 200, attention.timeline(conn, req.params['id'],
                                        None if raw_b is None else _cursor(raw_b, 'before'),
-                                       limit)
+                                       limit, homes=_read_homes(req, conn))
 
 
 def mission_trace(req):
@@ -723,7 +730,8 @@ def get_session(req):
 
 def session_brief(req):
     with req.api.db.read() as conn:
-        return 200, sessions.preview_brief(conn, req.params['id'])
+        h = lambda: _read_homes(req, conn)
+        return 200, sessions.preview_brief(conn, req.params['id'], homes=h)
 
 
 def create_session(req):
@@ -767,7 +775,8 @@ def close_session(req):
 
 def list_checkpoints(req):
     with req.api.db.read() as conn:
-        return 200, {'checkpoints': executions.checkpoints(conn, req.params['id'])}
+        h = lambda: _read_homes(req, conn)
+        return 200, {'checkpoints': executions.checkpoints(conn, req.params['id'], homes=h)}
 
 
 def handoff_execution(req):
@@ -882,13 +891,15 @@ def simulate_policy(req):
 
 def list_policy_decisions(req):
     with req.api.db.read() as conn:
+        h = _read_homes(req, conn)
         return 200, {'policy_decisions': queries.list_policy_decisions(
-            conn, _one(req.query, 'mission'), _one(req.query, 'stage'))}
+            conn, _one(req.query, 'mission'), _one(req.query, 'stage'), homes=h)}
 
 
 def get_policy_decision(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_policy_decision(conn, req.params['id'])
+        h = _read_homes(req, conn)
+        return 200, queries.get_policy_decision(conn, req.params['id'], homes=h)
 
 
 def list_approvals(req):
@@ -954,7 +965,8 @@ def list_automations(req):
 
 def get_automation(req):
     with req.api.db.read() as conn:
-        return 200, automations.get_automation(conn, req.params['id'],
+        h = lambda: _read_homes(req, conn)
+        return 200, automations.get_automation(conn, req.params['id'], homes=h,
                                                schedule_faults=req.api.schedule_faults())
 
 
@@ -964,12 +976,14 @@ def simulate_automation(req):
     if not 1 <= days <= 180:
         raise Invalid('days', 'is 1..180')
     with req.api.db.read() as conn:
-        return 200, automations.simulate(conn, req.params['id'], now=queries._now(), days=days)
+        h = lambda: _read_homes(req, conn)
+        return 200, automations.simulate(conn, req.params['id'], now=queries._now(), days=days, homes=h)
 
 
 def get_automation_run(req):
     with req.api.db.read() as conn:
-        return 200, automations.explain(conn, req.params['id'])
+        h = lambda: _read_homes(req, conn)
+        return 200, automations.explain(conn, req.params['id'], homes=h)
 
 
 def create_automation(req):

@@ -11,6 +11,7 @@ from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..application.queries import view
 from ..domain import entities, states
+from ..homes import scrub_text
 
 _SETTLED = states.terminal('mission')
 
@@ -25,7 +26,7 @@ def _last_inspection(conn, repository_id):
             'attempts': i.attempts}
 
 
-def status(conn, project_id=None):
+def status(conn, project_id=None, homes=None):
     projects = rows.where(conn, entities.Project)
     known = {p.entity.id for p in projects}
     if project_id is not None:
@@ -67,7 +68,7 @@ def status(conn, project_id=None):
                 counts[m['state']] = counts.get(m['state'], 0) + 1
         out_projects.append({'id': p.entity.id, 'name': p.entity.name, 'state': p.entity.state,
                              'repositories': repos, 'missions': counts,
-                             'knowledge_pass': knowledge_pass(conn, p.entity.id)})
+                             'knowledge_pass': knowledge_pass(conn, p.entity.id, homes)})
     return {'source': 'deterministic', 'as_of_seq': outbox.head(conn),
             'projects': out_projects, 'missions': unsettled + settled,
             'drift': drift, 'unchecked': unchecked,
@@ -76,7 +77,7 @@ def status(conn, project_id=None):
                 if m['project_id'] is not None and m['project_id'] not in known)}
 
 
-def knowledge_pass(conn, project_id):
+def knowledge_pass(conn, project_id, homes=None):
     """The project's initial knowledge pass (P6, K3), derived from the rows:
     `queued` once a repository has a COMPLETED inspection and no pass has
     started; then the state of its latest RouteDecision's outcome (`running`
@@ -90,7 +91,8 @@ def knowledge_pass(conn, project_id):
         d = passes[-1]
         o = d.outcome or {}
         return {'state': o.get('state', 'running'), 'route_decision_id': d.id,
-                'items': o.get('items', 0), 'reason': o.get('reason')}
+                'items': o.get('items', 0),
+                'reason': o.get('reason') if homes is None else scrub_text(o.get('reason'), homes)}
     for r in rows.where(conn, entities.Repository, project_id=project_id):
         if any(i.entity.state == 'COMPLETED' for i in rows.where(
                 conn, entities.RepositoryInspection, repository_id=r.entity.id)):

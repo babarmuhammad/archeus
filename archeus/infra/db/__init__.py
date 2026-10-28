@@ -25,9 +25,10 @@ class Database:
     from a single committed snapshot.
     """
 
-    def __init__(self, path, writer):
+    def __init__(self, path, writer, homes_cache=None):
         self.path = path
         self.writer = writer
+        self.homes_cache = {} if homes_cache is None else homes_cache
         self._idle = queue.LifoQueue()
         self._closed = False
 
@@ -41,8 +42,11 @@ class Database:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         backups = backup.backups_dir(os.path.dirname(path))
 
+        cache = {}
+
         def open_write_conn():
             conn = connection.connect(path)
+            conn.homes_cache = cache
             try:
                 migrate.migrate(conn, directory=migrations_dir,
                                 before=lambda have, to: backup.before_migration(
@@ -51,7 +55,7 @@ class Database:
                 conn.close()
                 raise
             return conn
-        return cls(path, Writer(open_write_conn))
+        return cls(path, Writer(open_write_conn), cache)
 
     @contextlib.contextmanager
     def read(self):
@@ -61,6 +65,7 @@ class Database:
             conn = self._idle.get_nowait()
         except queue.Empty:
             conn = connection.connect(self.path, readonly=True)
+            conn.homes_cache = self.homes_cache
         try:
             conn.execute('BEGIN')
             try:

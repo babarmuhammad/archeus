@@ -376,3 +376,15 @@ def test_public_ids_are_install_specific_hmac(tmp_path, monkeypatch):
             assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert ids[0] != ids[1]
     assert all(value != 'account:' + hashlib.sha256(KEY.encode()).hexdigest() for value in ids)
+
+
+def test_cut_safe_never_splits_a_home_and_leaves_other_text_alone():
+    h = _homes(HOME, defaults=(DEFAULT,))
+    pad = 'x' * 20 + ' '
+    for home in (HOME, DEFAULT[2]):
+        for into in (1, 7, len(home) - 1):
+            text = pad + home + '/settings.json'
+            assert H.cut_safe(text, h, len(pad) + into) == pad
+        assert H.cut_safe(pad + home + '/s', h, len(pad) + len(home)) == pad + home
+    assert H.cut_safe(pad + KEY + ' more', h, len(pad) + 5) == pad
+    assert H.cut_safe('abcdefghij', h, 4) == 'abcd' and H.cut_safe('abc', h, 4) == 'abc'

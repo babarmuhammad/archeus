@@ -18,6 +18,7 @@ import time
 from ...infra.db import rows
 from ...infra.eventlog import outbox
 from ..domain import entities
+from ..homes import scrub_text
 from ..execution import checkpoint, pressure
 from .executions import LIVE
 
@@ -28,6 +29,11 @@ def transitions(conn, execution_id):
             for ev in (outbox.decode(r) for r in conn.execute(
                 "SELECT * FROM events WHERE subject_kind = 'execution' AND subject_id = ? "
                 "AND type = 'execution.state_changed' ORDER BY seq", (execution_id,)))]
+
+
+def _clean(text, homes):
+    """System text (a recorded reason, a route explanation) as read by a client."""
+    return text if homes is None else scrub_text(text, homes)
 
 
 def _asked(conn, execution_id):
@@ -46,14 +52,14 @@ def chain(conn, e):
     return out
 
 
-def handoff_of(conn, e):
+def handoff_of(conn, e, homes=None):
     """{from, count, reason}: what *e* continues and why that one handed off."""
     before = chain(conn, e)
     return {'from': e.handoff_from, 'count': len(before),
-            'reason': _asked(conn, e.handoff_from) if e.handoff_from else None}
+            'reason': _clean(_asked(conn, e.handoff_from), homes) if e.handoff_from else None}
 
 
-def live_work(conn, project_id=None, now=None):
+def live_work(conn, project_id=None, homes=None, now=None):
     """Every execution in a live state, then every own call in flight (ADR-0043
     §2), each oldest first."""
     from .resources import own_call_live, own_calls
@@ -80,8 +86,8 @@ def live_work(conn, project_id=None, now=None):
             'harness_id': e.harness_id, 'account_id': e.account_id, 'model': e.model,
             'effort': e.effort, 'route_decision_id': e.route_decision_id,
             'checkpoints': len(rows.where(conn, entities.Checkpoint, task_id=t.id)),
-            'waits_on': waits, 'handoff': handoff_of(conn, e),
-            'handing_off': _asked(conn, e.id) if e.state == 'HANDING_OFF' else None,
+            'waits_on': waits, 'handoff': handoff_of(conn, e, homes),
+            'handing_off': _clean(_asked(conn, e.id), homes) if e.state == 'HANDING_OFF' else None,
             'context': pressure.view(e)})
     now = time.time() if now is None else now
     for r in own_calls(conn, now):
@@ -102,7 +108,7 @@ def live_work(conn, project_id=None, now=None):
     return out
 
 
-def explain(conn, e):
+def explain(conn, e, homes=None):
     """Why *e* runs where it runs, and why it stopped or continued, in words."""
     parts = []
     if e.route_decision_id is not None:
@@ -132,4 +138,4 @@ def explain(conn, e):
                      'file change(s), %d open problem(s).'
                      % (cp.id, cp.trigger, len(cp.completed_steps), len(cp.files_changed),
                         len(cp.open_problems)))
-    return ' '.join(parts)
+    return _clean(' '.join(parts), homes)

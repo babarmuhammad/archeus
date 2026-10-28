@@ -21,6 +21,7 @@ from ..domain import entities, guards, ids, states
 from ..domain.events import new_event
 from ..domain.values import Ref
 from . import authorization, lifecycle
+from .public import public_context
 
 
 def register_principal(tx, *, kind, scopes=()):
@@ -44,7 +45,10 @@ def record_context_package(tx, *, actor, subject_kind, subject_id, query=None):
     record it: the one place a ContextPackage is built (P5). A mission's
     `context_ready` move records one for the mission; a knowledge pass records
     one for the project it reads, so every item it produces can cite it (P6)."""
-    body = context.assemble(tx.conn, subject_kind, subject_id, query=query)
+    from . import resources
+    homes = resources.bound_homes(tx.conn, tx.live)
+    body = public_context(context.assemble(tx.conn, subject_kind, subject_id, query=query,
+                                           homes=homes), homes)
     pkg = entities.ContextPackage(id=ids.new_id('context_package'), **body)
     tx.insert(pkg, actor=actor)
     tx.append(new_event('context_package.created', Ref('context_package', pkg.id), actor,

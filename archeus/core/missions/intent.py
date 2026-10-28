@@ -36,7 +36,7 @@ from ...infra import paths
 from ...infra.db import rows
 from ...infra.eventlog import consumers, outbox
 from ..application import calls as C
-from ..application import commands, grammar
+from ..application import commands, grammar, resources
 from ..brain import intent as brain
 from ..domain import entities, ids
 
@@ -125,7 +125,8 @@ class Intents:
         pkg = self._do(commands.record_context_package, subject_kind='message',
                        subject_id=msg.id)
         with self.db.read() as conn:
-            lines, facts = brain.describe(conn, pkg)
+            lines, facts = brain.describe(conn, pkg,
+                                          resources.bound_homes(conn, self.db.writer.live))
             answering = None
             if ask:
                 q = rows.get(conn, entities.Message, msg.in_reply_to).entity

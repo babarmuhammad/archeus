@@ -194,6 +194,19 @@ def scrub_text(text, homes):
     return text
 
 
+def cut_safe(text, homes, n):
+    """`text[:n]`, moved back to the start of any home or default key the cut would
+    split: a cut home no longer matches, so its readable prefix would survive a
+    later scrub. The text stays raw."""
+    cut = n
+    if len(text) > n:
+        spans = [m.span() for p in (*homes.patterns, *([homes._key_rx] if homes._key_rx else ()))
+                 for m in p.finditer(text)]
+        while any(a < cut < b for a, b in spans):
+            cut = min(a for a, b in spans if a < cut < b)
+    return text[:cut]
+
+
 def public_value(x, homes, *, text_keys=(), path_keys=(), _key=None, _text=False):
     """A projected copy: a default key (whole value) becomes its handle at any
     depth; a registered home's path under a `path_keys` key becomes None; strings

@@ -296,6 +296,127 @@ change to credentials, the boundary or PV-20.
 
 ## 12. As built
 
+### 12.0 T-144 containment guarantees and limits
+
+The following guarantees describe the tested boundaries, subject to the exemptions and
+limits below. Slice 4 adds tests; its test and mutation results must be supplied by the
+coordinator before this gate is declared passed.
+
+| Surfaces | Guarantee | Evidence in `tests/v1/` |
+|---|---|---|
+| S01-S06 | Route-decision reads and trace decisions hide home fields, map historical default keys to stable opaque IDs, and scrub system reasons. Reads preserve stored snapshots, routing and ledger identities. | `unit/test_t144_stored_reads.py`; `integration/test_t144_leak_sweep.py` T8 tests |
+| S07-S11 | Accounts, verification, review and approval reads project private account data; authored fields remain unchanged. `/v1/status` (knowledge-pass reason, live-work hand-off reasons), the execution view (`why`, hand-off reason) and the mission view's embedded context package project with the read homes. The sweep requests `/v1/status` and checks only that no seeded home appears; it seeds no own-call item with home content there, so the status projection is pinned by the direct tests named here. | `unit/test_t144_stored_reads.py`; S04, S09, S10, S11 tests and the HTTP sweep (accounts route) in `integration/test_t144_leak_sweep.py`; status, execution and mission views in `integration/test_t144_cut_and_consumption.py` (Z612-Z620) |
+| S12-S19, S17a | Events, timeline, trace, policy actions and policy items project system content using the same matcher. | `integration/test_t144_event_reads.py`; `unit/test_t144_event_surfaces.py` |
+| S20-S21 | Context history and historical package reads, the planner's reused package and replan prompt (checkpoint open problems), automation render and rationale reads project system strings; automation matching and stored rationale remain raw. Context preview applies the same projection as GET. | S20/S21/R1 tests in `integration/test_t144_event_reads.py`; replan prompt in `integration/test_t144_cut_and_consumption.py`; S3 preview test in `integration/test_t144_leak_sweep.py` |
+| S22 | Live event SSE frames expose only subject and scope, without payloads. | Raw-byte SSE leg in `integration/test_t144_leak_sweep.py`; `unit/test_t144_event_surfaces.py` S22 pin |
+| S23-S23a | Execution output and trace lanes scrub agent text before truncation. | S23a test in `integration/test_t144_event_reads.py`; HTTP output leg in `integration/test_t144_leak_sweep.py` |
+| S24 | Not a guarantee: `POST /v1/accounts` and `/state` are admin scope and return the account view, including the `home_ref` the caller supplied. No test pins this response. | none, by owner design (S24 NONE) |
+| S25 | No `log.*` call (on the module logger named `log`) names `account_ref`, `home_ref` or `home_key` in its arguments. A value formatted into a variable first, or another logger name, is not seen. | AST guard and detector vectors in `unit/test_t144_log_guard.py` |
+| S26 | CLI/TUI readers inherit the API projection on the swept routes. This is an API boundary guarantee, not a claim that every screen was exercised. | Route walk; coordinator's rule-13 TUI run |
+| S27 | Every observe GET must be walked or explicitly skipped with a reason. Walked JSON bodies reject `home_ref` and `home_key`, including a full `queries.get_account` view accidentally returned by a route. | Coverage guard and HTTP sweep; Z576 and Z582 |
+| S28 | Execution workdir and branch are worktree identity, not account identity; ordinary worktree strings are not removed. No claim is made that arbitrary user-selected workdirs can never equal a home. | System-value workdir pin in `unit/test_t144_event_surfaces.py`; execution GET in the HTTP sweep |
+
+Checkpoint API reads and session briefs project open problems. New checkpoint artifacts
+project system fields at rendering; continuation prompts rebuild historical checkpoint
+renderings with live registry homes; the planner's replan prompt projects each failed task's
+checkpoint open problems with the live homes. Stored checkpoint rows and historical artifact
+bytes remain unchanged. Evidence: R2 and checkpoint-write tests in
+`integration/test_t144_event_reads.py`, `unit/test_t144_checkpoint_consumption.py`, and the replan
+test in `integration/test_t144_cut_and_consumption.py`.
+
+Size caps cut without splitting a home (`homes.cut_safe`): a checkpoint item (300 characters), a
+hand-off reason and a hook reason (500) and a progress line (200) are cut back to the start of any
+known home or default key the cut would land inside, so no readable prefix of a home survives for a
+later projection to miss. The stored row or event payload stays raw apart from that earlier cut.
+The manager keeps up to 2000 characters of a fact or stream line so its own cut never lands inside
+the writer's. Ceiling: this holds for homes the matcher recognises; other caps not on a T-144
+surface were not changed or audited. Evidence:
+`integration/test_t144_cut_and_consumption.py` (R2 tests), `unit/test_homes.py` (`cut_safe`),
+mutants Z601-Z607.
+
+Model prompts built from rows (slice 5): the review prompt's agent claim (`reviewer.prompt`, the 500
+character CLAIM line of each execution summary) is projected with the live homes and capped after the
+projection, so the cap cannot split a home; the intent brain's context lines (`brain.describe`) project
+a project's root paths, a knowledge item's title and text, and the text of an Archeus or system turn,
+and cap each line (400 characters) after the projection. Both read the homes bound to the writer
+(`resources.bound_homes`). What the user typed stays raw there: a user turn, a mission or idea title, a
+meeting or project name; stored rows stay raw. Evidence:
+`integration/test_t144_prompt_projection.py`, mutants Z629-Z637. Remaining limits: the review prompt's
+other lines (mission and task text, verification check names and results, the diff paths) and the
+brain's message being read are authored or checked content and are not projected; a project root path
+is a registered, user-typed path (exempt on the read surfaces), projected here only because it enters
+a model prompt, and it changes only when it equals an account home.
+
+Owner-decided exemptions (2026-10-25) are user-typed fields only: mission titles, objectives,
+requirements and constraints; authored plan/task content; project/repository paths and names;
+authored review text and policy inputs; context queries; checkpoint objective, constraints and
+success criteria. Event exemptions are exactly the leaf table pinned by the S2 tests:
+`mission.created.title`, `mission.updated.added.requirements/constraints`, `idea.created.title`,
+`feedback.received.promoted.title/text/anchors/constraint`, `meeting.imported.name`,
+`automation.created.name/trigger`, `project.created.name`, the `path` of
+`repository.registered/model_added/file_added`, and policy-rule `before/after` on creation
+or `before` on retirement. `session.handed_off.reason`, `planning_blocked.questions` and
+`knowledge_item.created.title` remain scrubbed. T5 pins authored mission/plan/project round trips.
+
+O-4 carve-out: local logs and tracebacks can contain homes embedded in exception text.
+The AST guard is not exception taint analysis. Stored database rows and artifacts on disk,
+legacy GUI reads, symlink/junction aliases and the contained-text spelling ceilings documented
+in `core/homes.py` are outside the containment guarantee. Dictionary keys are not projected.
+
+Read-cost ceiling (slice 2 S-5, cached 2026-10-25): home discovery reads the RouteDecision
+snapshots, on nonempty reads and, since N-3, on the single writer thread inside the write transaction
+of every checkpoint derive (each ended execution), recorded context package, resume, hand-off and
+automation claim, and of a hook reason, hand-off reason or progress line longer than its cap. Before
+the cache one build cost about 1.8 s at 30,000 decisions (measured, one scan plus 30,000 duplicate
+historical patterns, so a scrub of one 350 character text cost about 300 ms) and stalled every writer.
+Now `resources.homes` keeps the history-derived half (default accounts and the retired registered
+homes, deduplicated) in the owning Database's `homes_cache` with the (rowid, id) of the last
+RouteDecision read, and a call reads only the rows after it. Measured at 30,000 decisions: first call
+per Database about 1.2 s (cold, once), a call with nothing new 0.5-1 ms, the first call after one new
+decision about 1.5 ms, a scrub 0.1 ms. The registry, the callers and the Account rows are read on every
+call, so a home from a changed registry, a caller or a newly registered account is scrubbed at once.
+The id is in the key because a rolled-back insert frees its rowid for a different decision; a cached
+last row that is no longer there forces a full re-read. A connection nothing owns (a bare `sqlite3`
+connection, unit tests) is not cached. Pinned by `integration/test_t144_homes_cache.py`, mutants
+Z621-Z628. Remaining ceiling: the cold build is still the full scan (1.2 s at 30,000, on whichever
+thread asks first, the writer included); the 8.3 short-name probe of registered homes runs on every
+call; matching cost still grows with output strings and known homes. Empty event polls avoid home
+construction.
+
+Registry ceiling (N-3), closed 2026-10-25: every write and worker path that builds `Homes` reads the
+live adapter registry and callers the owner bound to the writer (`writer.live`, seen by a command as
+`tx.live`, bound by the Core runtime and the judge client). Closed paths: resume
+(`application/sessions.py` `resume`) and hand-off (`handoff`, `continuity.handoff_state`) briefs and
+artifacts, the checkpoint artifact (`checkpoint.derive`), the recorded context package
+(`commands.record_context_package`), the planner's reused package (`planning/worker.py`), the
+automation mission render (`automations.react`) and the continuation prompt (registry and callers).
+The planner's replan prompt is built with the same homes as its package (`planning/worker.py` `plan`).
+The binding is outside command kwargs, so idempotency hashes, stored keys, entity ids, matching,
+exemptions and SSE frames are unchanged. Evidence: `integration/test_t144_live_bound_writes.py`
+(a live-only default home absent from every stored snapshot is scrubbed in each artifact when it is
+known through the bound callers, and, in `integration/test_t144_cut_and_consumption.py`, when it is
+known only through the bound registry; control test shows it is raw when unbound; hash identity and
+runtime binding pinned), mutants Z585-Z600.
+Hand-off from a session with no mission: the source's text turns (read by its adapter) are scrubbed
+for assistant and system turns with the live homes; user turns stay raw, matching the owner rule that
+exemptions are user-typed only (an assistant echoed the path from tool output; the user typed theirs).
+Z608 and Z609 pin both halves. If the owner reads user turns as including pasted tool output, scrub
+them too.
+Covered by synthetic or unit vectors only, no integration test drives the real writer: S14 (an
+`account_health.state_changed` envelope through `public_event` in `unit/test_t144_event_surfaces.py`; no
+stub adapter names a home), S16 (a default key inside free text: unit vector only, the approval-wait
+reason of `work.py` has no test), and the HTTP leg of an S03 route-decision `explanation` (unit
+vector; the execution `why` that repeats it is tested). `conversation._status` reads status and live
+work inside a write transaction without homes, but renders only counts, titles and states.
+A keyed command replays its pre-binding response for the idempotency TTL (informational).
+`POST /v1/policies/simulate` echoes the caller's action and extra rules and the stored policy rules
+(user-authored, as `matched_rules` of a decision); no system-owned string reaches it, and it is not
+projected. `integration/test_t144_cut_and_consumption.py` pins that a mission title holding a home
+is not echoed.
+Remaining limits, not registry related: a `Database` used without the binding (tests, embedders that
+never set `writer.live`) discovers stored homes only; mission or task titles in a brief are authored
+content (exempt, as above).
+
 ### 12.A Slice A — provenance (D4, D11) and the producer record (D5)
 
 1. **Served model (D4, ADR-0031 §6).** `Execution` gains `served_model`, `served_level`

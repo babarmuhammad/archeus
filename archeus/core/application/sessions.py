@@ -20,6 +20,7 @@ from ...infra.eventlog import outbox
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
+from ..homes import scrub_text
 from ..sessions import continuity, render
 from . import authorization, lifecycle
 
@@ -245,6 +246,11 @@ def expire_launches(tx, *, actor):
     return {'expired': out}
 
 
+def _live_homes(tx):
+    from . import resources
+    return resources.bound_homes(tx.conn, tx.live)
+
+
 # ── resume (§9) ─────────────────────────────────────────────────────────────
 
 def resume(tx, *, actor, session_id, request_id, models=(), efforts=(), model=None,
@@ -271,7 +277,7 @@ def resume(tx, *, actor, session_id, request_id, models=(), efforts=(), model=No
     effort = _vocabulary(effort, efforts, 'effort', s.harness_id) or s.effort
     head = outbox.head(tx.conn)
     ctx = continuity.package(tx, actor, s)
-    b = continuity.brief(tx.conn, s, ctx, head=head)
+    b = continuity.brief(tx.conn, s, ctx, head=head, homes=_live_homes(tx))
     sha = artifacts.put(render.brief(b).encode('utf-8'))
     tx.update(entities.Session, s.id, {
         'last_seen_seq': head, 'context_package_id': ctx['package_id'],
@@ -294,6 +300,7 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
     are the source's text turns, read by the source's adapter — used only when
     the source continues no mission. The same request id twice makes one
     target (D10)."""
+    from . import resources
     _user(actor)
     if not request_id:
         raise ValueError('a hand-off names its request id')
@@ -310,11 +317,13 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
     head = outbox.head(tx.conn)
     if src.mission_id is not None:
         ctx = continuity.package(tx, actor, src)
-        text = render.handoff(view_of(src), continuity.handoff_state(tx.conn, src, ctx, head),
-                              None)
+        text = render.handoff(view_of(src), continuity.handoff_state(
+            tx.conn, src, ctx, head, _live_homes(tx)), None)
     elif turns:
         ctx = continuity.package(tx, actor, src)
-        text = render.handoff(view_of(src), None, [tuple(t) for t in turns])
+        homes = _live_homes(tx)
+        text = render.handoff(view_of(src), None, [
+            (role, body if role == 'user' else scrub_text(body, homes)) for role, body in turns])
     else:
         raise lifecycle.IllegalTrigger('session', src.state, 'handoff',
                                        'it continues no mission and has no readable '
@@ -332,7 +341,8 @@ def handoff(tx, *, actor, source_session_id, request_id, harness_id, account_id=
                                              'account_id': account_id,
                                              'mission_id': t.mission_id, 'handoff_from': src.id})
     _event(tx, 'session.handed_off', t, actor, {'from': src.id, 'to': t.id,
-                                                'reason': reason[:500], 'artifact': sha})
+                                                'reason': resources.cut_bound(tx, reason, 500),
+                                                'artifact': sha})
     return dict(view_of(t), duplicate=False)
 
 
@@ -376,7 +386,7 @@ def listing(conn, *, project_id=None, mission_id=None, state=None):
     return [view_of(s) for s in got]
 
 
-def preview_brief(conn, session_id):
+def preview_brief(conn, session_id, homes=None):
     """The brief now, without moving the cursor or recording a package."""
     from ...infra.db import rows
     from ..context import assemble as C
@@ -390,4 +400,4 @@ def preview_brief(conn, session_id):
         if p is not None:
             ctx = {'package_id': p.entity.id, 'as_of_seq': p.entity.as_of_seq,
                    'rebuilt': False, 'fresh': C.fresh(conn, p.entity)}
-    return continuity.brief(conn, s, ctx)
+    return continuity.brief(conn, s, ctx, homes=homes)

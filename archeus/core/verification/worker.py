@@ -27,7 +27,7 @@ from ...infra.db import rows
 from ...node import staging
 from ...node.local import LocalNode, PathTooLong
 from ..application import calls as C
-from ..application import errors, verification as V
+from ..application import errors, resources, verification as V
 from ..application.commands import active_plan
 from ..domain import entities
 from ..domain.values import Ref
@@ -474,7 +474,8 @@ class VerifyWorker:
         diff = (self.node.git_numstat(root, m.integration_base, m.integration_head)
                 if m.integration_base and m.integration_head and not guarded else None)
         with self.db.read() as conn:
-            text = reviewer.prompt(conn, m, diff)
+            text = reviewer.prompt(conn, m, diff,
+                                   resources.bound_homes(conn, self.db.writer.live))
         if guarded:
             text += ('\nChanges on the mission branch: withheld, not empty (the mission has '
                      'isolated or unknown provenance).')

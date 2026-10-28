@@ -24,6 +24,8 @@ from ..domain import entities, events as ev, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
 from . import authorization, commands, lifecycle
+from .public import public_event, system_value
+from .queries import _homes
 
 #: entity kind -> class, for resolving an event's subject
 KINDS = {cls._ID: cls for cls in rows.TABLES}
@@ -317,7 +319,11 @@ def _claim(tx, actor, a, e, why):
     if e.actor.kind == 'execution':
         return end('denied', 'denied', 'caused by an execution, which may not create missions '
                    '(domain-model §3.3)')
-    want = matcher.render(a.template, e.type, e.seq, (e.subject.kind, e.subject.id), e.payload)
+    # matching above keeps the raw payload; only what is written into the mission is projected
+    from . import resources
+    shown = resources.bound_homes(tx.conn, tx.live)
+    want = matcher.render(a.template, e.type, e.seq, (e.subject.kind, e.subject.id),
+                          public_event(e.to_envelope(), shown)['payload'])
     m = commands.create_mission(tx, actor=me, title=want['title'], objective=want['objective'],
                                 project_id=a.project_id, workspace_id=a.workspace_id,
                                 success_criteria=want['success_criteria'],
@@ -356,9 +362,27 @@ def _view(conn, row, quarantined=None):
                 created_at=row.created_at, updated_at=row.updated_at)
 
 
-def _run_view(row):
-    return dict(row.entity.to_dict(), version=row.version, created_at=row.created_at,
-                updated_at=row.updated_at)
+def _lazy(conn, homes):
+    box = []
+
+    def get():
+        if not box:
+            box.append(_homes(conn, homes))
+        return box[0]
+    return get
+
+
+def _rationale(rationale, homes):
+    # the user's own trigger tests (where.*.test) stay as written; what the event held is projected
+    if not rationale:
+        return rationale
+    authored = tuple(('where', k, 'test') for k in rationale['where'])
+    return system_value(rationale, homes(), authored=authored)
+
+
+def _run_view(row, homes):
+    return dict(row.entity.to_dict(), rationale=_rationale(row.entity.rationale, homes),
+                version=row.version, created_at=row.created_at, updated_at=row.updated_at)
 
 
 def quarantined(conn):
@@ -374,12 +398,13 @@ def list_automations(conn, schedule_faults=None):
             'quarantined': quarantined(conn)}
 
 
-def get_automation(conn, automation_id, *, runs=50, schedule_faults=None):
+def get_automation(conn, automation_id, *, runs=50, homes=None, schedule_faults=None):
     row = rows.get(conn, entities.Automation, automation_id)
     if row is None:
         raise lifecycle.NotFound(automation_id)
     rs = rows.where(conn, entities.AutomationRun, automation_id=automation_id)
-    return dict(_view(conn, row, schedule_faults), runs=[_run_view(r) for r in rs[-runs:]])
+    get = _lazy(conn, homes)
+    return dict(_view(conn, row, schedule_faults), runs=[_run_view(r, get) for r in rs[-runs:]])
 
 
 def _mine(conn, cls, mission_id):
@@ -388,7 +413,7 @@ def _mine(conn, cls, mission_id):
     return [r.entity for r in rows.where(conn, cls) if r.entity.mission_id == mission_id]
 
 
-def explain(conn, run_id):
+def explain(conn, run_id, *, homes=None):
     """Why an automated action happened, from rows (§15, E15, E25)."""
     row = rows.get(conn, entities.AutomationRun, run_id)
     if row is None:
@@ -396,7 +421,8 @@ def explain(conn, run_id):
     run = row.entity
     a = rows.get(conn, entities.Automation, run.automation_id).entity
     e = _event(conn, run.triggering_event_seq)
-    out = {'run': _run_view(row),
+    get = _lazy(conn, homes)
+    out = {'run': _run_view(row, get),
            'automation': {'id': a.id, 'name': a.name, 'trigger': a.trigger,
                           'project_id': a.project_id, 'principal_id': a.principal_id,
                           'state': a.state},
@@ -406,7 +432,7 @@ def explain(conn, run_id):
                'subject': {'kind': e.subject.kind, 'id': e.subject.id},
                'scope': {'workspace': e.workspace, 'project': e.project},
                'cause_chain': list(e.cause_chain)},
-           'why': {'rationale': run.rationale, 'depth': run.depth, 'max_depth': a.max_depth,
+           'why': {'rationale': _rationale(run.rationale, get), 'depth': run.depth, 'max_depth': a.max_depth,
                    'outcome': run.state, 'reason_code': run.reason_code, 'reason': run.reason},
            'mission': None}
     if run.mission_id is None:
@@ -451,7 +477,7 @@ def explain(conn, run_id):
     return out
 
 
-def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT):
+def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT, homes=None):
     """The events of the last *days* the automation's trigger and scope would
     have fired on, and why (ADR-0020); for a schedule, how many times it would
     have come due had it run for the whole window. Writes nothing; depth, rate
@@ -460,6 +486,7 @@ def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT):
     if a['trigger'].get('kind') == 'schedule':
         return {'automation_id': automation_id, 'days': days, 'examined': 0, 'matched': [],
                 'scheduled': days * 86400 // matcher.every_s(a['trigger'])}
+    get = _lazy(conn, homes)
     since = _ago(now, days * 86400)
     hits, examined = [], 0
     for r in conn.execute('SELECT * FROM events WHERE at >= ? AND type = ? ORDER BY seq',
@@ -470,7 +497,7 @@ def simulate(conn, automation_id, *, now, days=30, limit=outbox.MAX_LIMIT):
         if hit and scope_of(conn, e) == (a['workspace_id'], a['project_id']):
             hits.append({'seq': e.seq, 'at': e.at, 'subject': {'kind': e.subject.kind,
                                                                'id': e.subject.id},
-                         'rationale': why,
+                         'rationale': _rationale(why, get),
                          'denied': e.actor.kind == 'execution'})
             if len(hits) >= limit:
                 break
