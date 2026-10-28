@@ -79,12 +79,14 @@ export function bodyMarkup(n, ic) {
     : (c => `<path d="${c.outline}" class="am-fill"/><path d="${c.back}" class="am-e0"/><path d="${c.mid}" class="am-e1"/><path d="${c.front}" class="am-e2"/><path d="${c.dotsBack}" class="am-d0"/><path d="${c.dotsFront}" class="am-d1"/>`)(crystal(n.id, r));
   return `<g class="am-star am-state-${cls}" data-node-id="${esc(n.id)}">${wire}${tiny ? '' : `<circle r="${fx(plate)}" class="am-mark-plate"/><g transform="translate(${fx(-12 * scale)} ${fx(-12 * scale + (n.kind === 'Execution' ? r * .2 : 0))}) scale(${fx(scale)})"><path d="${ICONS[ic]}" class="am-icon"/></g>`}${mark}</g>`;
 }
-// A project hub: a double ring round its neutral two-letter code. Identity is the code and the place, never a colour; the diamond says it needs you.
-export function hubMarkup(n) {
-  const r = n.radius, code = esc(n.code || String(n.label || n.id).slice(0, 2).toUpperCase()), size = fx(Math.max(9, r * .5)), state = stateKey(n.state);
-  const text = r >= 12 ? `<text class="am-hub-code" y="${fx(size * .36)}" style="font-size:${size}px" text-anchor="middle">${code}</text>` : '';
-  const flag = state === 'needs-you' ? `<g class="am-state-needs-you"><path class="am-diamond" d="M${fx(r * .72)},${fx(-r * .95)}l6,-7l6,7l-6,7Z"/></g>` : '';
-  return `<g class="am-star am-hub am-state-core" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-hub-disc"/><circle r="${fx(Math.max(2, r - 4))}" class="am-hub-inner"/>${text}${flag}</g>`;
+// A project mark: one thin ring, no letters, no chip. In the Overview rings (n.lane) the ring wears its state colour (the lane's) and carries the diamond (needs you) or the cross (blocked);
+// in the Network view it stays neutral (identity is the place) and only the diamond marks what needs you. A worktree is never a project: up to two tiny hollow squares trail the ring.
+// Everything is drawn at the design radius n.radius, so the markup is the same picture at any size; a detailed mark is scaled by the caller.
+export function ringMarkMarkup(n) {
+  const r = n.radius, state = stateKey(n.state), flag = state === 'needs-you' ? 'diamond' : state === 'blocked' ? 'cross' : '', lane = Boolean(n.lane), k = Math.min(1, Math.max(.45, r / 16)), a = fx(6 * k), b = fx(7 * k);
+  const mark = flag === 'diamond' ? `<path class="am-diamond" d="M${fx(r * .72)},${fx(-r * .95)}l${a},-${b}l${a},${b}l-${a},${b}Z"/>` : flag === 'cross' && lane ? `<path class="am-glyph" d="M${fx(r * .72)},${fx(-r * .95)}l${a},${a}m0,-${a}l-${a},${a}"/>` : '';
+  const wt = Math.min(2, n.worktrees || 0), q = Math.max(2.5, r * .17), sq = Array.from({length: wt}, (_, i) => `M${fx(-r - q * 2.4 - i * q * 3)},${fx(-q)}h${fx(q * 2)}v${fx(q * 2)}h${fx(-q * 2)}Z`).join('');
+  return `<g class="am-star am-hub am-state-${lane ? (['needs-you', 'blocked', 'running', 'paused', 'done'].includes(state) ? state : 'idle') : 'core'}" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-hub-disc"/>${mark}${sq ? `<path class="am-vertex" d="${sq}"${n.tangent ? ` transform="rotate(${fx(n.tangent * 180 / Math.PI)})"` : ''}/>` : ''}</g>`;
 }
 // A worktree sub-hub: one ring round a branch glyph, smaller than a project hub. Its owner (linked or task) and state are words beside it, never colour alone; a missing one carries the cross.
 export function worktreeMarkup(n) {
@@ -92,16 +94,71 @@ export function worktreeMarkup(n) {
   const cross = state === 'blocked' ? `<path d="M${fx(r * .62)},${fx(-r * .85)}l${a},${a}m0,-${a}l-${a},${a}" class="am-glyph"/>` : '';
   return `<g class="am-star am-worktree am-state-${cls}" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-hub-disc"/><g transform="translate(${fx(-12 * k)} ${fx(-12 * k)}) scale(${fx(k)})"><path d="${ICONS.branch}" class="am-icon"/></g>${cross}</g>`;
 }
-// Crossing ivory threads: 16 spikes (long vertical and horizontal, shorter diagonals) over string-art chords between 32 rim points.
-export function coreStar(R, reach) {
-  const L = R * reach, at = (k, rad) => { const a = k * Math.PI / 8 - Math.PI / 2; return [rad * Math.cos(a), rad * Math.sin(a)]; };
-  const rim = k => { const a = k * Math.PI / 16 - Math.PI / 2, rad = R * (k % 8 === 0 ? 1.05 : k % 4 === 0 ? .8 : k % 2 === 0 ? .6 : .42); return [rad * Math.cos(a), rad * Math.sin(a)]; };
-  let spikes = '', threads = '';
-  for (let k = 0; k < 16; k++) { const axis = k % 4 === 0, diag = k % 2 === 0; spikes += seg([0, 0], at(k, axis ? L * 1.12 : diag ? L * .66 : L * .38)); }
-  for (let k = 0; k < 32; k++) for (const m of [5, 7, 9, 11]) threads += seg(rim(k), rim((k + m) % 32));
-  const tips = [0, 4, 8, 12].map(k => `M${pt(at(k, L * 1.12))}h0`).join('');
-  return {spikes, threads, tips};
+// The core mark (owner choice 2026-10-28, concept R2-A5 M3, the thread driven merge): four cross arms with end dots, four diagonal spokes, an eight point star of fine string art
+// between them, one partial outer arc and a centre ring. State is drawn by threads and arcs only: a heavier sector with a blue arc and dot (working), one amber thread ending in a
+// diamond (needs you), a dashed arc, slack threads and a red cross (stopped). L = R * reach is the star radius; angles run clockwise from 12 o'clock; nothing but the
+// amber diamond goes beyond 1.12 L, so the keep zone, the wordmark and every layout are unchanged. Strokes are non-scaling (see map.css); no halo, gradient or filter.
+const rad = deg => deg * Math.PI / 180, polar = (r, deg) => [r * Math.sin(rad(deg)), -r * Math.cos(rad(deg))];
+export function arcPath(r, from, to) {
+  const sweep = ((to - from) % 360 + 360) % 360, [a, b] = [polar(r, from), polar(r, to)];
+  return `M${pt(a)}A${fx(r)},${fx(r)} 0 ${sweep > 180 ? 1 : 0} 1 ${pt(b)}`;
 }
+// What the core says, most urgent first: stopped, then needs you, then working, then calm. Working and needs you draw together (different marks); stopped replaces them.
+export const coreState = ({stopped, needsYou, running} = {}) => (stopped ? 'stopped' : needsYou ? 'needs-you' : running ? 'working' : 'calm');
+// Size tiers by the star radius in screen pixels, with a 4 px hysteresis so a pinch never flickers: full (a mark 160 px or more), standard (the 96 px mark), mini (48), micro (24).
+export const CORE_TIERS = Object.freeze(['full', 'standard', 'mini', 'micro']);
+const TIER_AT = Object.freeze([71, 36, 18]);
+export function coreTier(Lpx, prev) {
+  const raw = TIER_AT.findIndex(min => Lpx >= min), i = raw < 0 ? 3 : raw, was = CORE_TIERS.indexOf(prev);
+  if (was < 0 || was === i) return CORE_TIERS[i];
+  // Keep the old tier until the radius is 4 px past the boundary between the two.
+  const edge = TIER_AT[Math.min(i, was)];
+  return Math.abs(Lpx - edge) < 4 ? CORE_TIERS[was] : CORE_TIERS[i];
+}
+const ARMS = [[0, 1.12], [90, 1.10], [180, 1.12], [270, 1.14]], DIAG = [45, 135, 225, 315], TIPS = [.60, .50];
+// String art between neighbouring radial lines of the star: point i/n out along one line joins point 1 - i/n out along the next (or the one after).
+function web(L, n, skip) {
+  const tip = j => (j % 2 ? TIPS[1] : TIPS[0]) * L;
+  let d = '';
+  for (let j = 0; j < 8; j++) for (let i = 1; i < n; i++) d += seg(polar(tip(j) * i / n, j * 45), polar(tip(j + skip) * (1 - i / n), (j + skip) * 45));
+  return d;
+}
+const cache = new Map();
+// The paths of the core, as [{c: class, d | r}] in drawing order. opts: tier, stopped, needsYou, running. At most 19 elements in any state (calm 9, working 14, working and needs you 16, stopped 10).
+export function corePaths(R, reach = 1.75, {tier = 'full', stopped = false, needsYou = false, running = false} = {}) {
+  const L = R * reach, key = `${fx(L)}|${tier}|${stopped}`;
+  let base = cache.get(key);
+  if (!base) {
+    if (cache.size > 48) cache.clear();
+    const slack = stopped ? .82 : 1, big = tier === 'full', mid = tier === 'standard', micro = tier === 'micro';
+    const arm = ARMS.map(([a, r]) => `M0,0L${pt(polar(r * L * slack, a))}`).join(''), diag = DIAG.map(a => `M0,0L${pt(polar(.76 * L * (stopped ? .7 : 1), a))}`).join('');
+    const out = [];
+    if (!micro) {
+      const dense = stopped ? '' : web(L, big ? 14 : mid ? 10 : 6, 1), loose = big || stopped ? web(L, 10, 2) : '';
+      if (dense) out.push({c: 'am-core-chords', d: dense});
+      if (loose) out.push({c: 'am-core-chords am-core-loose', d: loose});
+    }
+    out.push({c: 'am-core-thread', d: arm + diag});
+    out.push({c: 'am-core-dot', d: ARMS.map(([a, r]) => `M${pt(polar(r * L * slack, a))}h0`).join('')});
+    out.push({c: 'am-core-dot am-core-dot-s', d: DIAG.map(a => `M${pt(polar(.76 * L * (stopped ? .7 : 1), a))}h0`).join('')});
+    out.push({c: `am-core-arc${stopped ? ' am-core-arc-stopped' : ''}`, d: arcPath(.94 * L, 150, 355)});
+    if (tier === 'full' || tier === 'standard') out.push({t: 'circle', c: 'am-core-ring', r: fx(Math.max(3.5, .06 * L))});
+    if (!stopped) out.push({t: 'circle', c: 'am-core-centre', r: fx(Math.max(2, .028 * L))});
+    base = out; cache.set(key, base);
+  }
+  const out = [...base];
+  if (stopped) { out.push({c: 'am-core-cross', d: `M${pt([-.1 * L, -.1 * L])}L${pt([.1 * L, .1 * L])}M${pt([.1 * L, -.1 * L])}L${pt([-.1 * L, .1 * L])}`}); return out; }
+  if (running) {
+    out.push({c: 'am-core-sector', d: `M0,0L${pt(polar(1.12 * L, 0))}M0,0L${pt(polar(.94 * L, 45))}M0,0L${pt(polar(1.10 * L, 90))}`}, {c: 'am-core-state-arc', d: arcPath(.94 * L, 0, 90)}, {c: 'am-core-state-dot', d: `M${pt(polar(.94 * L, 45))}h0`},
+      {t: 'circle', c: 'am-ring am-state-running am-core-pulse', r: fx(.7 * L)}, {c: 'am-travel am-core-travel', d: 'M0,0h0', x1: fx(polar(.94 * L, 45)[0]), y1: fx(polar(.94 * L, 45)[1])});
+  }
+  if (needsYou) {
+    const a = running ? 315 : 45, h = Math.max(4, .07 * L), [x, y] = polar(1.04 * L, a);
+    out.push({c: 'am-core-needs', d: `M0,0L${pt(polar(1.0 * L, a))}`}, {c: 'am-diamond am-core-diamond', d: `M${pt([x, y - h])}L${pt([x + h * .75, y])}L${pt([x, y + h])}L${pt([x - h * .75, y])}Z`});
+  }
+  return out;
+}
+export const coreMarkup = (R, reach, opts) => corePaths(R, reach, opts).map(p => (p.t === 'circle' ? `<circle class="${p.c}" r="${p.r}"/>` : `<path class="${p.c}" d="${p.d}"${p.x1 !== undefined ? ` style="--x0:0px;--y0:0px;--x1:${p.x1}px;--y1:${p.y1}px"` : ''}/>`)).join('');
 
 export function projectPlateMarkup(n, t = x => x) {
   const x = -n.width / 2, y = -n.height / 2;

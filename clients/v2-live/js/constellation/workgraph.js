@@ -1,5 +1,5 @@
 import {layoutWork, workCore, placeLabels, overlaps, coversNode, nearestNeighbour, stateKey} from './geometry.js';
-import {bodyMarkup, coreStar} from './nodeart.js';
+import {bodyMarkup, coreMarkup, coreTier} from './nodeart.js';
 
 // The Work graph (concepts 04 and 08): the shared node art, labels and tokens of the live map on a layout of its own (layoutWork).
 // Model: {nodes: [{id, kind: 'Mission'|'Decision', label, word, project, state}], edges: [{from, to}]}. Plain SVG, no camera: the graph is sparse and sits beside its list.
@@ -28,7 +28,7 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
     const inset = insetFor(width), narrow = width < 480, rich = width >= 520, text = narrow ? 13 : width < 900 ? 15 : 17;
     const css = getComputedStyle(host), serif = css.getPropertyValue('--am-serif').trim() || 'serif', sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     pos = layoutWork(model, width, height, 'v2-live-work', inset);
-    const core = workCore(width, height, inset), star = coreStar(core.radius, 1.5), by = new Map(pos.map(n => [n.id, n])), kid = new Set(model.edges.map(e => e.to));
+    const core = workCore(width, height, inset), by = new Map(pos.map(n => [n.id, n])), kid = new Set(model.edges.map(e => e.to));
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     let out = `<g class="wg-spokes">${pos.filter(n => !kid.has(n.id)).map(n => `<path class="am-spoke" data-node-id="${esc(n.id)}" d="M${f(core.x)},${f(core.y)}L${f(n.x)},${f(n.y)}"/>`).join('')}</g><g class="am-edges">`;
     for (const e of model.edges) {
@@ -37,7 +37,7 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
       const d = Math.hypot(b.x - a.x, b.y - a.y) || 1, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d, p = [a.x + ux * a.radius, a.y + uy * a.radius, b.x - ux * b.radius, b.y - uy * b.radius].map(f);
       out += `<g class="am-edge am-edge-asks am-accent-needs-you" data-from="${esc(e.from)}" data-to="${esc(e.to)}"><path class="am-line" d="M${p[0]},${p[1]}L${p[2]},${p[3]}"/><path class="am-joint" d="M${p[0]},${p[1]}h0M${p[2]},${p[3]}h0"/></g>`;
     }
-    out += `</g><g class="am-core am-state-core" transform="translate(${f(core.x)} ${f(core.y)})"><path class="am-core-chords" d="${star.threads}"/><path class="am-core-thread" d="${star.spikes}"/><path class="am-core-dot" d="${star.tips}"/></g><g class="am-nodes">`;
+    out += `</g><g class="am-core am-state-core" transform="translate(${f(core.x)} ${f(core.y)})">${coreMarkup(core.radius, 1.5, {tier: coreTier(core.radius * 1.5)})}</g><g class="am-nodes">`;
     const fresh = [];
     for (const n of pos) {
       if (!seen.has(n.id)) fresh.push(n.id);

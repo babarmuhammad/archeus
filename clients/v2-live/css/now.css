@@ -154,7 +154,6 @@
 /* The Attention strip under the ledger: one chip per project that waits on the owner (at most three, then a link). */
 .att-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
 .att-chip { display: inline-flex; align-items: center; gap: 8px; min-height: var(--target); padding: 0 14px 0 8px; border: var(--hair) solid var(--attention); border-radius: var(--r-m); background: color-mix(in srgb, var(--attention) 10%, var(--bg)); color: var(--text); font: inherit; font-size: var(--fs-cap); cursor: pointer; }
-.att-chip .ac-code { display: grid; place-items: center; width: 26px; height: 26px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-s); font: 600 11px/1 var(--mono); letter-spacing: .04em; color: var(--text-2); }
 .att-chip .ac-name { font-weight: 600; }
 .att-chip .ac-n { color: var(--text-2); }
 .att-chip:focus-visible, .att-more:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }

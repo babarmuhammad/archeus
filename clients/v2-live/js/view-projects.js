@@ -5,7 +5,7 @@ import {h} from './dom.js';
 import {areasOf} from './areas-model.js';
 import {present} from '../core-words.js';
 import {buildOverview} from './map.js';
-import {leadMission} from './constellation/territories.js';
+import {leadMission} from './constellation/order.js';
 import * as store from './store.js';
 import {sortProjects, sortOf, PROJECT_SORTS, workHref, relTime} from '../page-model.js';
 

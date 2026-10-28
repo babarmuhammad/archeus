@@ -1,4 +1,4 @@
-import {bodyMarkup, coreStar} from './nodeart.js';
+import {bodyMarkup, coreMarkup} from './nodeart.js';
 
 // The mission graph, drawn with the same node art and tokens as the live map. Pure: a model in, a scene (positions, arrows) and SVG markup out.
 // Only relations that exist in the record are drawn: a node without a record is left out together with its arrows.
@@ -30,10 +30,10 @@ export function missionScene(model) {
 }
 
 export function sceneMarkup(scene, t = x => x) {
-  const star = coreStar(scene.core.radius, 1.7), c = scene.core;
+  const c = scene.core;
   let out = '<defs><marker id="am-arrowhead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1L7 4L1 7" class="am-arrowhead"/></marker></defs>';
   out += `<g class="am-arrows">${scene.arrows.map(a => `<line class="am-arrow" x1="${a.x1}" y1="${a.y1}" x2="${a.x2}" y2="${a.y2}" marker-end="url(#am-arrowhead)"/><text class="am-arrow-label" x="${a.lx}" y="${a.ly}" text-anchor="${a.anchor}">${esc(t(a.label))}</text>`).join('')}</g>`;
-  out += `<g class="am-core am-state-core" transform="translate(${c.x} ${c.y})"><path class="am-core-chords" d="${star.threads}"/><path class="am-core-thread" d="${star.spikes}"/><path class="am-core-dot" d="${star.tips}"/><text class="am-wordmark" x="2" y="${c.radius + 30}" text-anchor="middle" style="font-size:13px">ARCHEUS</text></g>`;
+  out += `<g class="am-core am-state-core" transform="translate(${c.x} ${c.y})">${coreMarkup(c.radius, 1.7, {tier: 'standard'})}<text class="am-wordmark" x="2" y="${c.radius + 30}" text-anchor="middle" style="font-size:13px">ARCHEUS</text></g>`;
   for (const n of scene.nodes) {
     out += `<g transform="translate(${n.x} ${n.y})">${bodyMarkup(n, n.icon)}</g>`;
     const rows = [n.title, ...n.lines], big = n.role === 'main';

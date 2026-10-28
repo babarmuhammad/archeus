@@ -252,7 +252,7 @@ export function coversNode(box, node, pad = 3) {
   const x = clamp(node.x, box.x, box.x + box.width), y = clamp(node.y, box.y, box.y + box.height);
   return Math.hypot(x - node.x, y - node.y) < node.radius + pad;
 }
-export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta, budget: limit, all = false, only, sub = false} = {}) {
+export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta, budget: limit, all = false, only, sub = false, priorityOf, subWidth, outwardOf} = {}) {
   const result = [], occupied = [...obstacles], widths = new Map(), metas = new Map();
   const width_ = text => widths.get(text) ?? (widths.set(text, measure(text)), widths.get(text));
   const large = nodes.filter(n => n.radius > 24), small = nodes.filter(n => n.radius <= 24);
@@ -266,7 +266,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
     return false;
   };
   const keys = new Map(nodes.map(n => [n, stateKey(n.state)]));
-  const priority = n => n.id === selected ? 10000 : keys.get(n) === 'needs-you' ? 5000 : keys.get(n) === 'running' ? 1000 : Number(n.weight) || 1;
+  const priority = priorityOf ?? (n => n.id === selected ? 10000 : keys.get(n) === 'needs-you' ? 5000 : keys.get(n) === 'running' ? 1000 : Number(n.weight) || 1);
   const rank = new Map(nodes.map(n => [n, priority(n)]));
   const sorted = [...nodes].sort((a, b) => rank.get(b) - rank.get(a) || String(a.id).localeCompare(String(b.id)));
   const budget = limit ?? (width < 480 ? 4 : width < 1280 ? 7 : 9);
@@ -284,10 +284,13 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
     const gap = n.radius + 8;
     const distances = mandatory ? [gap, gap + 10, gap + 24, gap + 44, gap + 70, gap + 100, gap + 140] : [gap, gap + 10, gap + 24];
     for (const text of variants) {
-      const labelWidth = Math.min(width - 16, Math.max(width_(text), rich ? metaWidth : 0) + 4);
+      const labelWidth = Math.min(width - 16, Math.max(width_(text), rich ? metaWidth : 0, subWidth ? subWidth(n) : 0) + 4);
       const labelHeight = height2;
       const candidates = [];
       for (const d of distances) {
+        // On the rings a label prefers straight out from the core, then along the lane on either side, then inward (outwardOf gives the unit vector).
+        const u = outwardOf?.(n);
+        if (u) { const ext = (Math.abs(u[0]) * labelWidth + Math.abs(u[1]) * labelHeight) / 2, at = (dx, dy, e) => [n.x + dx * (d + e) - labelWidth / 2, n.y + dy * (d + e) - labelHeight / 2]; candidates.push(at(u[0], u[1], ext), at(-u[1], u[0], ext), at(u[1], -u[0], ext), at(-u[0], -u[1], ext)); }
         candidates.push([n.x + d, n.y - labelHeight / 2], [n.x - d - labelWidth, n.y - labelHeight / 2],
           [n.x - labelWidth / 2, n.y - d - labelHeight], [n.x - labelWidth / 2, n.y + d]);
         if (mandatory) { const k = d * .75; candidates.push([n.x + k, n.y + k], [n.x - k - labelWidth, n.y + k], [n.x + k, n.y - k - labelHeight], [n.x - k - labelWidth, n.y - k - labelHeight]); }

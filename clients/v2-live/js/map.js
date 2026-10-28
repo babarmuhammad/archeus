@@ -8,7 +8,7 @@ import { tr } from './i18n.js';
 import * as store from './store.js';
 import { isPhone } from './viewport.js';
 import { createMap } from './constellation/map.js';
-import { createTerritoryMap } from './constellation/territories.js';
+import { laneOf, stateCounts, activityByProject } from './constellation/rings.js';
 import { clockLabel } from '../sim.js';
 import { projectCodes } from './project-code.js';
 
@@ -29,11 +29,9 @@ export const liveFresh = (sim) => { const st = sim.state; return st.playing && s
 
 export function buildGraph(sim) {
   const st = sim.state, nodes = [], edges = [];
-  const missions = Object.values(st.missions);
-  for (const p of st.projects) {
-    const own = missions.map((m) => (m.project === p.id ? STATE[present('mission', m.state).cls] : null));
-    nodes.push({ id: p.id, kind: 'Project', label: p.name, project: p.id, weight: 8, state: own.includes('needs-you') ? 'needs-you' : own.includes('running') ? 'running' : 'idle' });
-  }
+  const missions = Object.values(st.missions), view = buildOverview(sim).projects;
+  // A project's state is its lane: the worst of its missions and attention items (needs you, blocked, running, paused, done).
+  for (const [i, p] of st.projects.entries()) nodes.push({ id: p.id, kind: 'Project', label: p.name, project: p.id, weight: 8, state: view[i].lane });
   for (const m of missions) {
     nodes.push({ id: m.id, kind: 'Mission', label: m.title, project: m.project, weight: 3, worktree: m.worktree || null, state: STATE[present('mission', m.state).cls] || 'idle' });
     edges.push({ from: m.project, to: m.id, kind: 'contains' });
@@ -50,7 +48,6 @@ export function buildGraph(sim) {
     edges.push({ from: a.mission, to: a.id, kind: 'asks' });
   }
   // Each project also carries what the Network view says about its hub: the neutral code, the counts and the last thing Archeus did (the same text as the Projects view).
-  const view = buildOverview(sim).projects;
   return { nodes, edges, projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title), ideaList: st.ideas.filter(i => i.project === p.id).map(i => ({ id: i.id, title: i.title, word: cap(i.state.toLowerCase()) })) }; }) };
 }
 
@@ -77,7 +74,7 @@ const DAY = 24 * 3600 * 1000;
 // The Overview model: one entry per project with its missions, counts and the last thing Archeus did there, and the day's ledger of completed missions.
 export function buildOverview(sim) {
   const st = sim.state, codes = projectCodes(st.projects.map((p) => p.name)), missions = Object.values(st.missions), att = sim.attention().filter((a) => a.kind !== 'knowledge');
-  const last = new Map(), done = new Map();
+  const last = new Map(), done = new Map(), busy = activityByProject(st.events, st.clock);
   for (let i = st.events.length - 1; i >= 0; i--) {
     const e = st.events[i];
     if (!e.project || e.subject.kind !== 'mission' || e.type !== 'mission.state_changed') continue;
@@ -87,11 +84,11 @@ export function buildOverview(sim) {
     if (VERB[to] && !last.has(e.project)) last.set(e.project, { at: e.at, time: clockLabel(e.at), text: tr('Archeus') + ' ' + tr(VERB[to]) + ' “' + m.title + '”' });
   }
   const projects = st.projects.map((p, i) => {
-    const own = missions.filter((m) => m.project === p.id), cls = (m) => present('mission', m.state).cls, l = last.get(p.id);
+    const own = missions.filter((m) => m.project === p.id), cls = (m) => present('mission', m.state).cls, l = last.get(p.id), states = stateCounts(own.map((m) => STATE[cls(m)] || 'idle'));
     return { id: p.id, name: p.name, code: codes[i], total: own.length, attention: att.filter((a) => a.project_id === p.id).length,
       running: own.filter((m) => ['active', 'verifying', 'reviewing'].includes(cls(m))).length, stopped: own.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length,
       ideas: st.ideas.filter((i) => i.project === p.id && i.state === 'CAPTURED').length, last: l || null, lastAt: l ? l.at : 0,
-      worktrees: worktreesOf(st, p),
+      worktrees: worktreesOf(st, p), worktreeCount: (p.worktrees || []).length, states, lane: laneOf(states, att.filter((a) => a.project_id === p.id).length), weight: busy.get(p.id) || 0,
       missions: own.map((m) => ({ id: m.id, title: m.title, state: STATE[cls(m)] || 'idle', at: m.updated_at, time: clockLabel(m.updated_at) })) };
   });
   const byProject = [...done].map(([id, n]) => ({ name: st.projects.find((p) => p.id === id).name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
@@ -108,20 +105,21 @@ export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
-  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && !isPhone();
-  if (e.map && (e.lang !== lang || e.calm !== calm || e.terr !== terr)) { e.map.destroy(); e.map = null; e.sel = undefined; }
+  // The Projects view is the ring layout (lanes by state round the core); the Network view is the constellation of missions. Both are the same map, one with `rings`.
+  const rings = key === 'now' && !calm && store.get('overview') === 'projects' && !isPhone();
+  if (e.map && (e.lang !== lang || e.calm !== calm || e.rings !== rings)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
-    e.lang = lang; e.calm = calm; e.terr = terr;
-    e.map = (terr ? createTerritoryMap : createMap)(e.box, { seed: 'v2-live', overview: key === 'now', calm, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, detail: (id) => buildDetail(sim, id), events: (id) => buildEvents(sim, id), inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
+    e.lang = lang; e.calm = calm; e.rings = rings;
+    e.map = createMap(e.box, { seed: 'v2-live', overview: key === 'now', calm, rings, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, detail: (id) => buildDetail(sim, id), events: (id) => buildEvents(sim, id), inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
     e.map.on('review', (id) => { const a = Object.values(sim.state.approvals).find((x) => x.state === 'PENDING' && x.mission === id); ctx.nav(a ? '#/work/' + a.id : '#/' + ctx.route.name + '/' + id); });
     e.map.on('select', (id) => { if (!e.syncing && id && sim.state.projects.some((p) => p.id === id)) { ctx.ui.workProject = id; ctx.nav('#/work'); return; } if (!e.syncing && id && id !== ctx.route.id && (sim.state.missions[id] || sim.state.approvals[id] || sim.state.executions[id])) ctx.nav('#/' + ctx.route.name + '/' + (sim.state.executions[id] ? sim.state.executions[id].mission : id)); });
   }
-  const g = terr ? buildOverview(sim) : buildGraph(sim);
+  const g = buildGraph(sim);
   e.map.setTheme(THEME[store.get('theme')]);
   e.map.setReducedMotion(store.reducedMotion());
-  e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged);
+  e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged); e.map.setStopped(sim.state.estop.engaged);
   e.map.update(g);
-  const want = (terr ? g.projects.some((p) => p.id === ctx.route.id || p.missions.some((m) => m.id === ctx.route.id)) : g.nodes.some((n) => n.id === ctx.route.id)) ? ctx.route.id : null;
+  const want = g.nodes.some((n) => n.id === ctx.route.id) ? ctx.route.id : null;
   if (want !== e.sel) { e.sel = want; e.syncing = true; e.map.setSelection(want); e.syncing = false; }
   for (const id of pending.splice(0)) e.map.pulse(id);
 }
@@ -132,7 +130,7 @@ export function pruneMaps(keep) {
 }
 
 export function syncLive(sim) {
-  for (const e of maps.values()) if (e.map) { e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged); e.map.setReducedMotion(store.reducedMotion()); }
+  for (const e of maps.values()) if (e.map) { e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged); e.map.setStopped(sim.state.estop.engaged); e.map.setReducedMotion(store.reducedMotion()); }
 }
 
 // An execution starting draws a marker down its edge, one ending down the mission's edge (the execution node is gone by then); output pulses at most once per 2 s per execution.

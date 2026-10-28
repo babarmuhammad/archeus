@@ -65,11 +65,11 @@ function attentionStrip(ctx, ov) {
   if (!waiting.length) return null;
   const top = waiting.slice(0, 3), more = waiting.length - top.length;
   const focus = (p) => {
-    const b = store.get('overview') === 'projects' ? document.querySelector('.now-view .am-equivalent button[data-node-id="' + p.id + '"]') : null;
+    const b = store.get('overview') === 'projects' ? document.querySelector('.now-view .am-equivalent tr[data-node-id="' + p.id + '"] button') : null;
     if (b) b.click(); else { ctx.ui.workProject = p.id; ctx.nav(workHref({ view: 'needs', project: p.id })); }
   };
   return h('div', { class: 'att-strip', role: 'group', 'aria-label': tr('Projects that need you') },
-    ...top.map((p) => h('button', { class: 'att-chip', type: 'button', 'data-key': 'att-chip-' + p.id, onclick: () => focus(p) }, h('span', { class: 'ac-code', 'aria-hidden': 'true' }, p.code), h('span', { class: 'ac-name' }, p.name), h('span', { class: 'ac-n' }, p.attention + (p.attention === 1 ? ' needs you' : ' need you')))),
+    ...top.map((p) => h('button', { class: 'att-chip', type: 'button', 'data-key': 'att-chip-' + p.id, onclick: () => focus(p) }, h('span', { class: 'ac-name' }, p.name), h('span', { class: 'ac-n' }, p.attention + (p.attention === 1 ? ' needs you' : ' need you')))),
     more > 0 ? h('a', { class: 'att-more', href: workHref({ view: 'needs' }) }, '+' + more + ' more') : null);
 }
 

@@ -5,7 +5,7 @@
 //   level 3  the focused mission's events as a small timeline ring
 // Glyphs keep their size on screen: a level is laid out for the camera scale it starts at (REF), so zooming in spreads the marks apart instead of only magnifying them.
 // A worktree is never a project: it is a sub-hub between its project's hub and the missions that work in it.
-import {satRank, coversNode} from './geometry.js';
+import {satRank, coversNode, stateKey} from './geometry.js';
 const TAU = Math.PI * 2;
 
 export const REF = Object.freeze([1, 1.6, 3.2, 6.4]);
@@ -17,6 +17,7 @@ const PX = Object.freeze({hub: 26, mission: 17, worktree: 13, kid: 6.5, kidOrbit
 const CAP = Object.freeze({missions: [0, 80, 60, 60], worktrees: [0, 12, 12, 12], ideas: [0, 6, 10, 10], kids: [0, 2, 6, 6], rings: 6, events: 16});
 // The radius each kind of node is drawn at; the art is then scaled to the laid out radius, so a small mark is the same picture as a big one.
 export const DRAW = Object.freeze({Project: 26, Mission: 18, Worktree: 14, Execution: 11, Task: 11, Verification: 11, Decision: 11, Idea: 11, Event: 6});
+const LANE_ORDER = ['needs-you', 'blocked', 'running', 'paused', 'done'], laneState = m => { const s = stateKey(m.state); return LANE_ORDER.includes(s) ? s : 'paused'; };
 const EDGE = Object.freeze({Execution: 'runs', Decision: 'asks', Idea: 'contains', Mission: 'contains', Worktree: 'contains'});
 
 // The level the camera scale asks for, with hysteresis around every threshold so a wheel or pinch hovering at one does not flicker.
@@ -64,7 +65,7 @@ export function receding(hubs, open, margin = 60) {
 // The laid-out cluster of one project at one level. Inputs: hub {x, y, tag:{width}, outward}, missions (graph nodes; a mission with `worktree` hangs off that worktree),
 // worktrees (Worktree nodes of the project), kids Map(missionId -> nodes), ideas, events, blocked(x, y, r) -> true where a node may not stand (the core, the zoom column,
 // other hubs), limit (nodes). Returns {nodes, edges, quiet, wtQuiet, extent, hub} in world units; edges run hub - worktree - mission and mission - its marks, nothing else.
-export function expandCluster({level, key, hub, missions, worktrees = [], kids = new Map(), ideas = [], events = [], focusId = null, blocked = () => false, limit = BUDGET}) {
+export function expandCluster({level, key, hub, missions, worktrees = [], kids = new Map(), ideas = [], events = [], focusId = null, blocked = () => false, limit = BUDGET, lanes = false}) {
   const s = 1 / REF[Math.min(level, 2)], px = v => v * s, hubR = px(PX.hub), mr = px(PX.mission), wr = px(PX.worktree), kr = px(PX.kid), gap = px(PX.gap);
   const fp = level >= 2 ? px(PX.kidOrbit) : mr, tagW = hub.tag?.width ?? 200, tagH = 40;
   const tagBox = {x: hub.x - px(tagW) / 2, y: hub.y + hubR + px(4), width: px(tagW), height: px(tagH)};
@@ -114,8 +115,21 @@ export function expandCluster({level, key, hub, missions, worktrees = [], kids =
       if (spot) { slots.push({x: spot[0], y: spot[1], r: fp}); add(m, spot[0], spot[1], mr, w.id); } else free.push(m);
     }
   }
-  // The missions of no worktree sit on rings round the hub, as before.
+  // The missions of no worktree sit on rings round the hub. With `lanes` (the Overview rings) a ring holds one state, in the order needs you, blocked, running, paused, done; a state
+  // that outgrows its ring gets another ring of the same state just outside before the next state starts.
   let next = 0;
+  if (lanes) {
+    const lane = m => LANE_ORDER.indexOf(laneState(m)), all = free.splice(0).sort((a, b) => lane(a) - lane(b) || String(a.id).localeCompare(String(b.id)));
+    for (let ring = 0; ring < CAP.rings + 3 && next < all.length && room(); ring++) {
+      const ro = hubR + fp + gap + ring * (2 * fp + gap), count = Math.max(6, Math.floor(TAU * ro / (2 * fp + gap))), state = lane(all[next]);
+      const list = Array.from({length: count}, (_, i) => -Math.PI + (i + (ring % 2 ? .5 : 0)) * TAU / count).sort((p, q) => spin(p) - spin(q) || p - q);
+      for (const a of list) {
+        if (next >= all.length || !room() || lane(all[next]) !== state) break;
+        const x = hub.x + Math.cos(a) * ro, y = hub.y + Math.sin(a) * ro;
+        if (clear(x, y, fp, slots)) { slots.push({x, y, r: fp}); add(all[next++], x, y, mr, key); }
+      }
+    }
+  } else
   for (const [x, y] of spots(fp)) {
     if (next >= free.length || !room()) break;
     if (clear(x, y, fp, slots)) { slots.push({x, y, r: fp}); add(free[next++], x, y, mr, key); }
