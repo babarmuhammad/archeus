@@ -542,16 +542,19 @@ export function createSim(opts = {}) {
       accounts: [
         { id: 'acc-work', label: 'Claude Code, work', harness: 'claude_code', kind: 'subscription_oauth', state: 'AVAILABLE', priority: 1 },
         { id: 'acc-personal', label: 'Claude Code, personal', harness: 'claude_code', kind: 'subscription_oauth', state: 'CONSTRAINED', priority: 2 },
-        { id: 'acc-codex', label: 'Codex, work', harness: 'codex', kind: 'subscription_oauth', state: 'UNVERIFIED', priority: 3 }
+        { id: 'acc-codex', label: 'Codex, work', harness: 'codex', kind: 'subscription_oauth', state: 'UNVERIFIED', priority: 3 },
+        { id: 'acc-codex-2', label: 'Codex, personal', harness: 'codex', kind: 'subscription_oauth', state: 'AVAILABLE', priority: 4 }
       ],
       models: [
         { id: 'claude-sonnet', label: 'Sonnet 5.5', harness: 'claude_code', tier: 'large' }, { id: 'claude-opus', label: 'Opus', harness: 'claude_code', tier: 'xlarge' },
-        { id: 'claude-haiku', label: 'Haiku', harness: 'claude_code', tier: 'small' }, { id: 'codex-main', label: 'Codex default', harness: 'codex', tier: 'large' }
+        { id: 'claude-haiku', label: 'Haiku', harness: 'claude_code', tier: 'small' }, { id: 'codex-main', label: 'Codex default', harness: 'codex', tier: 'large' },
+        { id: 'codex-mini', label: 'Codex mini', harness: 'codex', tier: 'small' }
       ],
       usage: {
         'acc-work': { window5h: 38, week: 52, resets: '5 h window resets 13:10' },
         'acc-personal': { window5h: 84.6, week: 71, resets: '5 h window resets 12:40' },
-        'acc-codex': { window5h: null, week: null, resets: null } // unknown, never shown as 0
+        'acc-codex': { window5h: null, week: null, resets: null }, // unknown, never shown as 0
+        'acc-codex-2': { window5h: 22, week: 31, resets: '5 h window resets 14:05' }
       },
       harnesses: [
         { id: 'claude_code', label: 'Claude Code', state: 'AVAILABLE', breaker: { state: 'closed', failures: [], until: 0, last_error: null } },

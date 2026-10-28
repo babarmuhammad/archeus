@@ -2094,3 +2094,29 @@ Inline `L(en, it)` strings in `js/chat.js`.
 - Number of simulated projects → Numero di progetti simulati (button name)
 - 3 (the default story) → 3 (la storia predefinita)
 - Reloads the prototype with that many projects and the same mission mix, to see how every page scales. → Ricarica il prototipo con quel numero di progetti e la stessa miscela di missioni, per vedere come scala ogni pagina.
+
+## Harness as a facet of Accounts, Usage and Extensions (2026-10-28): to review
+
+File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word in the UI); the names Claude Code, Codex and pi are not translated. Exact strings are in the dictionary, the ones with a count or a name are patterns at the start of `RULES_AREAS`.
+
+- {n} harnesses / {n} accounts / {n} near the ceiling / {n} cannot take work (headline parts) → {n} harness / {n} account / {n} vicino al limite / {n} non può prendere lavoro
+- Each harness has its own accounts, models, failover order and launch settings. A subscription login belongs to you. → Ogni harness ha i propri account, modelli, ordine di failover e impostazioni di avvio. Un accesso in abbonamento è tuo.
+- Near its ceiling / Not verified / Ready / No account / Cannot start / No account can take work / Not installed (state words on a harness) → Vicino al limite / Non verificato / Pronto / Nessun account / Non può partire / Nessun account può prendere lavoro / Non installato
+- Not detected → Non rilevato (version note of a harness that is not installed)
+- {x} is not installed on this machine. → {x} non è installato su questa macchina.
+- Install its CLI and Archeus detects it. It would support {list}. → Installa la sua CLI e Archeus la rileva. Supporterebbe {list}. (new capability names: Agents, Skills, Slash commands, Plugins, Sandbox profiles → Agenti, Competenze, Comandi slash, Plugin, Profili sandbox)
+- Run Health after installing → Esegui Salute dopo l'installazione
+- In failover order within {x}. {a} takes the next {x} mission. → In ordine di failover dentro {x}. {a} prende la prossima missione di {x}.
+- No account is signed in for {x}. Sign in with its own CLI; Archeus never reads the token. → Nessun account ha effettuato l'accesso a {x}. Accedi con la sua CLI; Archeus non legge mai il token.
+- The default is what a new {x} mission asks for. Saved as you choose. → Il predefinito è ciò che chiede una nuova missione di {x}. Si salva appena scegli.
+- Order within each harness / Rules for every harness / Change order → Ordine dentro ogni harness / Regole per ogni harness / Cambia ordine
+- An order only makes sense inside one harness: a run never fails over from one harness to another without asking. → Un ordine ha senso solo dentro un harness: un'esecuzione non passa da un harness a un altro senza chiedere.
+- The run writes a checkpoint and continues on the next account of the same harness. → L'esecuzione scrive un checkpoint e continua sul prossimo account dello stesso harness.
+- Starts with / Defaults for {x} → Parte con / Predefiniti di {x}
+- Not supported by {x}. / Available in → Non supportato da {x}. / Disponibile in
+- On in {x} / Off in {x} (a shared MCP server) → Attivo in {x} / Spento in {x}
+- {n} of {m} in {x} (position in a failover order) → {n} di {m} in {x}
+- Not tied to one harness: these apply to every harness. → Non legati a un harness: valgono per ogni harness.
+- A kind of extension is offered only where a harness supports it. → Un tipo di estensione è offerto solo dove un harness lo supporta.
+- The new ledes of Usage, Extensions and Launch settings, and the three notes that name a harness (Security approval mode, git push note, Health fix line "Or put another {x} account first in its failover order.") are in the same block of the dictionary.
+
