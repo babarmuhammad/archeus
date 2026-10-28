@@ -63,7 +63,7 @@
 @container view (max-width: 599px) { .work-graph { height: 240px; } .work-legend { display: none; } }
 .wg .am-label-meta.wg-project { fill: var(--am-muted); }
 .wg .am-label-sub { fill: currentColor; }
-.wg .wg-node .am-star { transform-box: fill-box; transform-origin: center; transition: transform 160ms ease-out; }
+.wg .wg-node .am-star { transform-box: fill-box; transform-origin: center; transition: transform var(--dur-2) var(--ease-out); }
 .wg .wg-node.wg-hover .am-star { transform: scale(1.06); }
 .wg .am-state-needs-you .am-diamond { animation: wg-soft 2600ms ease-in-out infinite; }
 @keyframes wg-soft { 50% { opacity: .35; } }
@@ -72,12 +72,12 @@
 /* The row or card the route (or a hover on the graph) points at: a flat tint and an outline, never a left-edge bar. */
 .work-view .mrow:hover, .work-view .mrow[aria-current='true'] { box-shadow: none; }
 .work-view :is(.mrow, .att-rows .card) { position: relative; isolation: isolate; }
-.work-view :is(.mrow, .att-rows .card)::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: var(--r-s); background: var(--s2); opacity: 0; transition: opacity 180ms ease-out; pointer-events: none; }
+.work-view :is(.mrow, .att-rows .card)::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: var(--r-s); background: var(--s2); opacity: 0; transition: opacity var(--dur-2) var(--ease-out); pointer-events: none; }
 .work-view .att-rows .card.band::before { background: var(--attention); }
-.work-view :is(.mrow, .att-rows .card).is-linked::before { opacity: 1; transition-duration: 100ms; }
+.work-view :is(.mrow, .att-rows .card).is-linked::before { opacity: 1; transition-duration: var(--dur-1); }
 .work-view .att-rows .card.band.is-linked::before { opacity: .12; }
 @media (hover: hover) and (pointer: fine) {
-  .work-view :is(.mrow, .att-rows .card):hover::before { opacity: 1; transition-duration: 100ms; }
+  .work-view :is(.mrow, .att-rows .card):hover::before { opacity: 1; transition-duration: var(--dur-1); }
   .work-view .att-rows .card.band:hover::before { opacity: .12; }
 }
 :root[data-motion='reduced'] .work-view :is(.mrow, .att-rows .card)::before { transition: none; }
@@ -128,8 +128,8 @@
 .pick { flex: 0 1 18rem; min-width: 0; font-weight: 500; }
 .wk-fold > summary { display: flex; align-items: center; gap: 4px 12px; min-height: var(--target); padding: 0 0 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); cursor: pointer; list-style: none; }
 .wk-fold > summary::-webkit-details-marker { display: none; }
-.wk-fold > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform 180ms ease-out; }
-.wk-fold[open] > summary::before { transform: rotate(90deg); transition-duration: 100ms; }
+.wk-fold > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform var(--dur-2) var(--ease-out); }
+.wk-fold[open] > summary::before { transform: rotate(90deg); transition-duration: var(--dur-1); }
 .wk-fold .n { letter-spacing: .08em; color: var(--text-3); text-transform: none; }
 .wk-fold .n::before { content: '\00b7\00a0'; }
 .wk-more { margin-top: 8px; }

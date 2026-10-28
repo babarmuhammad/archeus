@@ -3,7 +3,7 @@ import {bodyMarkup, hubMarkup, coreStar} from './nodeart.js';
 import {orderProjects} from './territories.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
-export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
+export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, glide: 220, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
 let instance = 0;
 const words = {'needs-you': 'Needs you', running: 'Running', done: 'Done', blocked: 'Blocked', idle: 'Idle', paused: 'Paused', thinking: 'Thinking'};
@@ -312,7 +312,9 @@ export function createMap(container, options = {}) {
     tagline.style.display = phoneOverview() || width < 480 || !taglineOn(coreFactor()) ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
     runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
   }
-  function render(previous = new Map(), arrivals = false, moved = true) {
+  // glide: a layout step (a level change, a new project, the Details sheet) moves the nodes that stay by transform; the edges, which are redrawn at once, fade in once the nodes are on the way.
+  function render(previous = new Map(), arrivals = false, moved = true, glide = false) {
+    glide = glide && !isReduced() && !document.hidden && typeof Element.prototype.animate === 'function';
     if (moved) { for (const marker of activePulses) marker.remove(); activePulses.clear(); }
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
     const graphHubs = positions.filter(n => n.hub).length;
@@ -359,7 +361,13 @@ export function createMap(container, options = {}) {
     const starSig = n => `${n.phone}|${n.state}|${n.kind}|${n.radius}|${projectOf.get(n.id)?.code}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
     const placeStar = (rec, n) => { if (rec.x !== n.x || rec.y !== n.y) { setAttr(rec.el, 'transform', `translate(${f(n.x)} ${f(n.y)})`); rec.x = n.x; rec.y = n.y; } };
     const buildStar = n => { const rec = {el: drawStar(n), sig: starSig(n)}; placeStar(rec, n); if (arrivals) arrived.push(rec.el); return rec; };
-    reconcile(nodeLayer, starRecs, positions, n => n.id, buildStar, (rec, n) => { if (rec.sig !== starSig(n)) { Object.assign(rec, buildStar(n)); rec.x = rec.y = undefined; placeStar(rec, n); } else placeStar(rec, n); });
+    const glideStar = (el, from, n) => el.animate([{transform: `translate(${f(from.x)}px, ${f(from.y)}px)`}, {transform: `translate(${f(n.x)}px, ${f(n.y)}px)`}], {duration: MOTION.glide, easing: 'cubic-bezier(.65, 0, .35, 1)'});
+    reconcile(nodeLayer, starRecs, positions, n => n.id, buildStar, (rec, n) => {
+      const was = {x: rec.x, y: rec.y};
+      if (rec.sig !== starSig(n)) { Object.assign(rec, buildStar(n)); rec.x = rec.y = undefined; placeStar(rec, n); } else placeStar(rec, n);
+      if (glide && was.x !== undefined && (was.x !== n.x || was.y !== n.y)) glideStar(rec.el, was, n);
+    });
+    if (glide) for (const layer of [edgeLayer, spokeLayer]) layer.animate([{opacity: 0}, {opacity: 0, offset: .55}, {opacity: 1}], {duration: MOTION.glide, easing: 'linear'});
     const placeOf = n => projects.get(n.project) || n.project || T('Unassigned');
     const stateOf = n => { const state = stateKey(n.state); return words[state] ? nodeWord(n) : state; };
     const same = (rec, n) => rec.stamped && rec.label === n.label && rec.kind === n.kind && rec.state === n.state && rec.place === placeOf(n);
@@ -442,12 +450,14 @@ export function createMap(container, options = {}) {
     const rect = host.getBoundingClientRect();
     const w = Math.max(1, rect.width), h = Math.max(1, rect.height);
     if (w === width && h === height && positions.length) return;
+    const was = {w: width, h: height};
     inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
     controlsBottom = inset.bottom > INSET.bottom ? inset.bottom + 8 : 12; controls.style.bottom = `${controlsBottom}px`;
     width = w; height = h; u = unit(w, h); centre = options.overview && !options.calm && w < 600 ? {x: w / 2, y: h * .32} : coreCentre(w, h, inset); host.dataset.phoneOverview = String(phoneOverview()); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     drawCore();
-    camera = {x: 0, y: 0, k: 1}; positions = layoutScene(); render(); emit('resize', {width, height});
+    const step = Math.abs(w - was.w) + Math.abs(h - was.h) > 120 && positions.length > 0;
+    camera = {x: 0, y: 0, k: 1}; positions = layoutScene(); render(new Map(), false, true, step); emit('resize', {width, height});
   }
   function zoom(k, x = width / 2, y = height / 2) {
     const next = clamp(k, .5, 4), ratio = next / camera.k;
@@ -543,7 +553,7 @@ export function createMap(container, options = {}) {
       const placed = layoutScene(), moved = placed.length !== positions.length || placed.some((n, i) => n.id !== positions[i].id || n.x !== positions[i].x || n.y !== positions[i].y);
       positions = placed;
       if (moved) drawCore();
-      render(previous, true, moved);
+      render(previous, true, moved, moved && previous.size > 0);
       emit('update', {nodes: positions.length});
     },
     setSelection: id => { if (!destroyed) choose(id, true); },

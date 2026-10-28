@@ -269,6 +269,8 @@ def motion_invariants(br, base):
     return bad
 
 
+SETTLE = """() => Promise.race([new Promise((r) => setTimeout(r, 800)), Promise.allSettled(document.getAnimations().filter((x) => x.effect && x.effect.getTiming().iterations !== Infinity).map((x) => x.finished))])"""
+
 S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec')
 
 
@@ -452,6 +454,9 @@ def main():
                                     layer = '#inspector'
                             pg.evaluate("document.querySelector('.main-col') && (document.querySelector('.main-col').scrollTop = 0)")
                         desktop = w >= 1024 and not route.startswith('sheet')
+                        # layout is judged at rest: the motion layer's finite transitions (route cross-fade, row glide, sheets) are given up to 800 ms to end; loops stay (they are checked in motion_invariants)
+                        pg.mouse.move(2, 2)   # the pointer left where the last click was: cells that glide under it would open a preview card, which is a popover, not a defect
+                        pg.evaluate(SETTLE)
                         res = pg.evaluate(MEASURE, {'layer': layer, 'desktop': desktop})
                         for f in frames:   # each pane is a real document laid out at its own width
                             fw = f.evaluate('innerWidth')

@@ -1,7 +1,7 @@
 /* Overview territories: one open outline per project round the core. Hairlines and the ground colour only; state is line colour and a word. */
-.am-territories .am-cell { transition: opacity 180ms cubic-bezier(.2, .8, .2, 1); }
-.am-territories[data-hot] .am-cell { transition-duration: 100ms; }
-.am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms cubic-bezier(.2, .8, .2, 1); }
+.am-territories .am-cell { transition: opacity var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
+.am-territories[data-hot] .am-cell { transition-duration: var(--dur-1, 100ms); }
+.am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories .am-cell.am-state-needs-you .am-cell-outline { stroke: var(--am-attention); stroke-width: 1.5; }
 .am-territories .am-cell.am-state-running .am-cell-outline { stroke: var(--am-running); stroke-opacity: .75; }
 .am-territories .am-cell.am-state-blocked .am-cell-outline { stroke: var(--am-blocked); stroke-opacity: .75; }
@@ -17,7 +17,7 @@
 .am-territories .am-cell-dot { fill: currentColor; stroke: none; }
 .am-territories .am-cell-dot.am-hollow { fill: none; stroke: currentColor; stroke-width: 1.5; }
 .am-territories .am-cross { fill: none; stroke: currentColor; stroke-width: 1.5; }
-.am-territories .am-spoke { fill: none; stroke: var(--am-line); stroke-opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke 180ms cubic-bezier(.2, .8, .2, 1), stroke-opacity 180ms cubic-bezier(.2, .8, .2, 1); }
+.am-territories .am-spoke { fill: none; stroke: var(--am-line); stroke-opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)), stroke-opacity var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories .am-spoke-needs-you { stroke: var(--am-attention); stroke-opacity: .85; }
 .am-territories .am-spoke-running { stroke: var(--am-running); stroke-opacity: .85; }
 .am-territories .am-spoke-hot { stroke: var(--am-text); stroke-opacity: 1; }
@@ -65,3 +65,4 @@
   .archeus-map .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; }
   .am-territories .am-chit:focus-visible rect, .am-territories .am-chit:focus-visible circle { stroke: Highlight; }
 }
+.am-territories .am-cell-tint { fill: currentColor; fill-opacity: .16; stroke: none; pointer-events: none; }
