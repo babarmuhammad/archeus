@@ -1760,3 +1760,33 @@ Builder translations; no native review. Source: `js/i18n-insp.js`.
 | Advance along the idea path | Avanza nel percorso dell’idea |
 | No launch settings recorded. | Nessuna impostazione di avvio registrata. |
 | N mission / N missions | N missione / N missioni |
+
+## Chat workspace page (2026-10-28, Codex): to review
+
+File: `js/i18n-chat.js`. Dynamic label: `{n} unread` → `{n} non letti`.
+
+- Conversation workspace → Spazio di conversazione
+- Conversations → Conversazioni
+- Search conversations → Cerca conversazioni
+- Projects → Progetti
+- Missions → Missioni
+- Context → Contesto
+- No conversations match → Nessuna conversazione corrispondente
+- No messages here yet → Ancora nessun messaggio qui
+- Mission focus shows linked messages. Replies go to the project. → La vista della missione mostra i messaggi collegati. Le risposte vanno al progetto.
+- Mission focus · Replies go to the project → Vista missione · Le risposte vanno al progetto
+- Current state → Stato attuale
+- Active mission → Missione attiva
+- No active mission → Nessuna missione attiva
+- Pinned decisions → Decisioni fissate
+- No pinned decisions → Nessuna decisione fissata
+- Command reference → Guida ai comandi
+- Search commands → Cerca comandi
+- No commands match → Nessun comando corrispondente
+- Archeus is working → Archeus sta lavorando
+- Simulation fixtures → Scenari di simulazione
+- Privacy and storage → Privacy e conservazione
+- Pin decision → Fissa decisione
+- Unpin decision → Rimuovi decisione dai fissati
+- Draft a command → Prepara un comando
+- Emergency stop engaged → Arresto di emergenza attivo
