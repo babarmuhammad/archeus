@@ -130,7 +130,7 @@
 @media (hover: hover) and (pointer: fine) { .rp-nav-a:not([aria-current='true']):hover { color: var(--text); } }
 .rp-reading, #rp-recovery, #rp-reference, #rp-events, #rp-evidence { scroll-margin-top: calc(var(--target) + 8px); }
 .rp-modes { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; }
-.rp-modes .seg-opt { min-height: 36px; padding-inline: 12px; }
+.rp-modes .seg-opt { padding-inline: 12px; }
 .rp-steps { padding: 1px 8px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-s); font-size: var(--fs-cap); color: var(--text-2); }
 .rp-why { flex-basis: 100%; font-size: var(--fs-cap); color: var(--text-2); line-height: 1.4; }
 .rp-why.mono { font-family: var(--mono); }

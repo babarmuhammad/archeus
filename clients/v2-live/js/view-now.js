@@ -118,7 +118,7 @@ export function render(ctx) {
     calm ? calmBand(ctx) : h('div', { class: 'now-hero' },
       h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, ...sentenceNodes(sim.sentence())),
       h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(ov.ledger)),
-      attentionStrip(ctx, ov)),
+      phone() ? null : attentionStrip(ctx, ov)),
     calm ? null : viewSwitch(ctx),
     calm ? null : drawer,
     phone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));
