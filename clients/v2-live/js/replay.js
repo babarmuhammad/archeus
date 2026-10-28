@@ -1,6 +1,7 @@
 // Replay and Recovery (S4): what Core recorded, step by step, from rows and events. Nothing here plays by itself or re-runs anything.
 // Recovery options only create an approval card; approving changes a receipt and the simulation through its ordinary actions, never the evidence.
 import { h } from './dom.js';
+import { picker } from './picker.js';
 import { glyph } from './icons.js';
 import { head, dnote, panel, empty } from './views.js';
 import { L, C } from './chat-cards.js';
@@ -155,7 +156,7 @@ export function viewReplay(ctx) {
   const legend = panel(L('Categories', 'Categorie'), CATS.length, h('div', { class: 'body' }, ...CATS.map((c) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, catChip(c)), h('span', { class: 'b cd' }, C(CAT_DEF[c]))))));
   const recs = h('details', { class: 'panel recs', open: rp.recordsOpen, ontoggle: (e) => { rp.recordsOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-records' }, h('span', { class: 'gt' }, L('Records now', 'Record attuali')), h('span', { class: 'n' }, String(r.records.length))), h('div', { class: 'body' }, ...r.records.map((x) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, h('span', { class: 'mono' }, x.machine + ' ' + x.id), h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, x.state.replace(/_/g, ' ') + ' · ' + reasonText(x.reason))), catChip(x.answer)))));
   const vc = vocabCounts(), machines = Object.keys(VOCAB);
-  const vsel = h('select', { 'aria-label': L('Machine', 'Macchina'), 'data-key': 'rp-machine', onchange: (e) => { rp.machine = e.target.value; ctx.render(); } }, ...machines.map((x) => h('option', { value: x }, x + ' (' + VOCAB[x].length + ')'))); vsel.value = rp.machine;
+  const vsel = picker({ key: 'rp-machine', label: L('Machine', 'Macchina'), value: rp.machine, items: machines.map((x) => ({ value: x, label: x + ' (' + VOCAB[x].length + ')' })), onPick: (v) => { rp.machine = v; ctx.render(); } });
   const vocab = h('details', { class: 'panel vocab', open: rp.vocabOpen, ontoggle: (e) => { rp.vocabOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-vocab' }, h('span', { class: 'gt' }, L('The vocabulary', 'Il vocabolario')), h('span', { class: 'n' }, vc.total + ' ' + L('states', 'stati') + ' · ' + vc.machines + ' ' + L('machines', 'macchine'))),
     h('div', { class: 'body' }, h('p', { class: 'sp-text', style: 'padding:0 0 8px' }, L('One table in Core covers every state of every machine; a state with no entry answers UNKNOWN. execution.ENDED_REJECTED is RECORDED (owner clarification, 2026-10-25). Source notes stay in English.', 'Una sola tabella nel Core copre ogni stato di ogni macchina; uno stato senza voce risponde SCONOSCIUTO. execution.ENDED_REJECTED è REGISTRATO (chiarimento del proprietario, 2026-10-25). Le note sulle fonti restano in inglese.')),
       h('div', { class: 'sel-wrap', style: 'padding:0 0 8px' }, h('label', null, L('Machine', 'Macchina')), vsel),
@@ -184,8 +185,7 @@ export function viewReplay(ctx) {
       if (!sheet.open) { sheet.append(stepPanel); sheet.showModal(); }
     } else if (sheet.open) { sheet.close(); side.append(stepPanel); }
   });
-  const missionPick = h('select', { class: 'pick', 'aria-label': L('Mission', 'Missione'), 'data-key': 'rp-mission', onchange: (e) => ctx.nav('#/replay/' + e.target.value) }, ...ms.map((x) => h('option', { value: x.id }, x.title)));
-  missionPick.value = m.id;
+  const missionPick = picker({ key: 'rp-mission', label: L('Mission', 'Missione'), cls: 'pick', value: m.id, items: ms.map((x) => ({ value: x.id, label: x.title })), onPick: (v) => ctx.nav('#/replay/' + v) });
   return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay'), missionPick), h('div', { class: 'view replayview' },
     reading, reference, recPanel, sheet,
     dnote('A19', 'Replay answers from what Core recorded: nine categories, a reason when it cannot tell, nothing that can be re-run (G03, G11).'),
