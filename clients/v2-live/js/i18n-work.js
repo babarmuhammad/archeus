@@ -4,6 +4,7 @@
 export const IT_WORK = {
   'All projects': 'Tutti i progetti',
   'Work graph': 'Grafo del lavoro',
+  'Nothing matches this filter.': 'Nessun risultato per questo filtro.', 'Clear filter': 'Azzera il filtro', 'Filter by state': 'Filtra per stato',
   'Work graph: missions and decisions grouped by what they wait on. The list below has the same content.': 'Grafo del lavoro: missioni e decisioni raggruppate per ciò che attendono. L\'elenco qui sotto ha lo stesso contenuto.',
   'One page for Work and Attention: missions and decisions grouped by what they wait on, as a list with a detail pane and as a graph. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09).': 'Una sola pagina per Lavoro e Attenzione: missioni e decisioni raggruppate per ciò che attendono, come elenco con un pannello di dettaglio e come grafo. La spina mostra a che punto è ogni missione (A13); un obbligo è una tinta ambra al 12 % con lo stato a parole (B09).',
   'Saved views': 'Viste salvate', 'Layout': 'Disposizione', 'List': 'Elenco', 'Graph': 'Grafo', 'Find a project': 'Cerca un progetto',

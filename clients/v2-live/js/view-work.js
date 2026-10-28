@@ -12,26 +12,35 @@ import { spineRow, spineCard } from './spine.js';
 import { icon } from './icons.js';
 import { STATE, themeOf } from './map.js';
 import { createWorkGraph } from './constellation/workgraph.js';
-import { WORK_VIEWS, workQuery, workHref, filterWork, workCounts, countLine, relTime, vocabOf, viewOfCls } from '../page-model.js';
+import { WORK_VIEWS, workQuery, workHref, filterWork, workCounts, countLine, relTime, vocabOf, viewOfCls, graphPick } from '../page-model.js';
 
-const LEGEND = [['needs-you', 'Needs you'], ['running', 'Running'], ['blocked', 'Blocked'], ['done', 'Done']];
+const LEGEND = [['needs-you', 'Needs you', 'needs'], ['running', 'Running', 'running'], ['blocked', 'Blocked', 'blocked'], ['done', 'Done', 'done']];
 const MAX_NODES = 12, CAP = 8, CHIPS = 6;
 const EMPTY = {
   needs: ['Nothing waits on you.', 'See what is running', 'running'], running: ['Nothing is running.', 'Tell Archeus what to do', 'tell'],
   blocked: ['Nothing is stuck.', 'See what is running', 'running'], done: ['Nothing has finished yet.', 'See what is running', 'running'], all: ['No work yet.', 'Tell Archeus what to do', 'tell']
 };
-let graph = null;
+let graph = null, drawn = [];
 
 // The graph survives the re-renders the simulation causes; app.js destroys it when the route leaves Work.
 export function leave() { if (graph) graph.destroy(); graph = null; }
 
-function modelOf(sim, pf) {
-  const st = sim.state, rank = (m) => ({ needs_you: 0, active: 1, verifying: 1, reviewing: 1, blocked: 2, failed: 2, done: 4 })[present('mission', m.state).cls] ?? 3;
-  const all = Object.values(st.missions).filter((m) => !pf || m.project === pf).sort((a, b) => rank(a) - rank(b)), ms = all.slice(0, MAX_NODES);
-  const nodes = ms.map((m) => ({ id: m.id, kind: 'Mission', label: m.title, word: tr(word('mission', m.state)), project: projName(sim, m.project), state: STATE[present('mission', m.state).cls] || 'idle' }));
-  const asks = Object.values(st.approvals).filter((a) => a.state === 'PENDING' && ms.some((m) => m.id === a.mission));
-  for (const a of asks) nodes.push({ id: a.id, kind: 'Decision', label: tr(a.kind === 'plan' ? 'Approve plan' : 'Allow action'), word: tr('Needs you'), project: projName(sim, a.project), state: 'needs-you' });
-  return { nodes, edges: asks.map((a) => ({ from: a.mission, to: a.id })), hidden: all.length - ms.length };
+// One graph node per mission, one small node per decision on it; every node carries the id of the list entry it belongs to, so the highlight and the tab counts speak of the same things.
+// The graph holds the MAX_NODES entries most worth seeing, those the filter keeps first (graphPick); the list has all.
+const RANK = { needs_you: 0, active: 1, verifying: 1, reviewing: 1, blocked: 2, failed: 2, done: 4 };
+function modelOf(sim, entries, shown) {
+  const st = sim.state, picked = graphPick(entries, shown, MAX_NODES, (e) => RANK[e.cls] ?? 3, drawn), nodes = [], edges = [], seen = new Set();
+  drawn = picked.map((e) => e.id);
+  const add = (n) => { if (!seen.has(n.id)) { seen.add(n.id); nodes.push(n); } };
+  const mission = (m, entry) => ({ id: m.id, entry, kind: 'Mission', label: m.title, word: tr(word('mission', m.state)), project: projName(sim, m.project), state: STATE[present('mission', m.state).cls] || 'idle' });
+  for (const e of picked) {
+    if (e.kind === 'row') { add(mission(e.m, e.id)); continue; }
+    const m = st.missions[e.a.mission_id], ap = st.approvals[e.a.ref];
+    if (m) add(mission(m, e.id));
+    if (m && e.a.kind === 'approval' && ap) { add({ id: ap.id, entry: e.id, kind: 'Decision', label: tr(ap.kind === 'plan' ? 'Approve plan' : 'Allow action'), word: tr('Needs you'), project: projName(sim, ap.project), state: 'needs-you' }); edges.push({ from: ap.mission, to: ap.id }); }
+    else if (!m) add({ id: e.a.ref, entry: e.id, kind: 'Decision', label: tr(e.a.reason || e.a.kind), word: tr('Needs you'), project: projName(sim, e.project), state: e.cls === 'blocked' ? 'blocked' : 'needs-you' });
+  }
+  return { nodes, edges, hidden: entries.length - picked.length };
 }
 
 export function render(ctx) {
@@ -50,14 +59,15 @@ export function render(ctx) {
   ];
   const counts = workCounts(entries, pf), shown = filterWork(entries, { view: q.view, project: pf });
   counts.by = {}; for (const e of entries) if (e.project) counts.by[e.project] = (counts.by[e.project] || 0) + 1;
-  const model = asGraph ? modelOf(sim, pf) : null, gids = new Set(model ? model.nodes.map((n) => n.id) : []);
+  const filtered = q.view !== 'all' || !!pf, model = asGraph ? modelOf(sim, entries, shown) : null, gids = new Set(model ? model.nodes.map((n) => n.id) : []);
+  const on = new Set(shown.map((e) => e.id)), litIds = model && filtered && shown.length ? model.nodes.filter((n) => on.has(n.entry)).map((n) => n.id) : null; // null: nothing to dim
 
   // The row or card the route points at carries aria-current; data-link ties it to the graph.
   const link = (el, ...keys) => {
     const own = keys.filter(Boolean), node = own.find((k) => gids.has(k));
     el.dataset.link = own.join(' ');
     if (sel && own.includes(sel)) el.setAttribute('aria-current', 'true');
-    if (node) { el.addEventListener('pointerenter', () => graph.hover(node)); el.addEventListener('pointerleave', () => graph.hover(null)); }
+    if (node) { for (const [a, b] of [['pointerenter', node], ['pointerleave', null], ['focusin', node], ['focusout', null]]) el.addEventListener(a, () => graph.hover(b)); }
     return el;
   };
   const rowOf = (e) => {
@@ -164,14 +174,25 @@ export function render(ctx) {
       graph = createWorkGraph(h('div'), { t: tr, theme: themeOf(), reduced: store.reducedMotion(), label: tr('Work graph: missions and decisions grouped by what they wait on. The list below has the same content.'),
         onSelect: (id) => ctx.nav(ctx.route.id === id ? workHref(q) : '#/work/' + id + qs),
         onReview: (id) => { const a = Object.values(sim.state.approvals).find((x) => x.state === 'PENDING' && x.mission === id); ctx.nav('#/work/' + (a ? a.id : id)); } });
-      graph.element.addEventListener('wg-hover', (e) => document.querySelectorAll('[data-link]').forEach((x) => x.classList.toggle('is-linked', !!e.detail && x.dataset.link.split(' ').includes(e.detail))));
+      // A node under the pointer or focus lights its row and, after a 120 ms dwell, brings it into view.
+      let dwell = 0;
+      graph.element.addEventListener('wg-hover', (e) => {
+        clearTimeout(dwell);
+        document.querySelectorAll('[data-link]').forEach((x) => x.classList.toggle('is-linked', !!e.detail && x.dataset.link.split(' ').includes(e.detail)));
+        if (e.detail) dwell = setTimeout(() => document.querySelector('.is-linked')?.scrollIntoView({ block: 'nearest', behavior: store.reducedMotion() ? 'auto' : 'smooth' }), 120);
+      });
     }
-    graph.setTheme(themeOf()); graph.setReduced(store.reducedMotion()); graph.update(model); graph.setSelection(gids.has(sel) ? sel : null);
+    graph.setTheme(themeOf()); graph.setReduced(store.reducedMotion()); graph.update(model); graph.setSelection(gids.has(sel) ? sel : null); graph.setHighlight(litIds);
   } else leave();
 
   const split = asGraph
     ? h('div', { class: 'work-split' },
-      h('section', { class: 'work-graph', 'aria-label': tr('Work graph') }, graph.element, h('ul', { class: 'work-legend', 'aria-hidden': 'true' }, ...LEGEND.map(([s, w]) => h('li', { 'data-s': s }, h('span', { class: 'wl-dot' }), w)), model.hidden > 0 ? h('li', { class: 'wl-more' }, 'Graph shows the first ' + MAX_NODES + ' of ' + (MAX_NODES + model.hidden) + ' missions, the list has all') : null)), list)
+      h('section', { class: 'work-graph', 'aria-label': tr('Work graph') },
+        filtered && !shown.length ? h('div', { class: 'wg-empty', 'data-key': 'work-graph-empty' }, h('p', null, 'Nothing matches this filter.'), h('a', { class: 'btn', href: workHref({ as: 'graph' }), 'data-key': 'work-clear-filter', onclick: () => { ctx.ui.workProject = null; } }, 'Clear filter')) : null,
+        graph.element,
+        // The legend is the state filter: the same ?view= as the tabs, one state. A second click on the active one shows everything again.
+        h('div', { class: 'work-legend', role: 'group', 'aria-label': tr('Filter by state') }, ...LEGEND.map(([s, w, v]) => h('button', { class: 'chip s', type: 'button', 'data-s': s, 'data-key': 'work-legend-' + v, 'aria-pressed': String(q.view === v), onclick: () => ctx.nav(workHref({ view: q.view === v ? 'all' : v, project: pf, as: q.as })) }, h('span', { class: 'wl-dot' }), h('span', { class: 'gt' }, w), h('span', { class: 'tn' }, String(counts[v])))),
+          model.hidden > 0 ? h('p', { class: 'wl-more' }, 'Graph shows the first ' + MAX_NODES + ' of ' + (MAX_NODES + model.hidden) + ' missions, the list has all') : null)), list)
     : h('div', { class: 'work-master' }, list, pane);
   return h('div', { class: 'work-page' },
     h('header', { class: 'page-head wk-head' }, h('div', null, h('h1', null, 'Work'), sub), h('nav', { class: 'seg', 'aria-label': 'Layout' }, layoutOpt('list', 'List'), layoutOpt('graph', 'Graph'))),
