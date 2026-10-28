@@ -5,9 +5,10 @@ export const FLICK = 0.5;          // px per ms: a faster release goes to the ne
 export const KEYBOARD_GAP = 8;     // px kept free above the keyboard or the top edge
 
 // The detents a sheet offers, smallest first, as { name, px }. A detent never exceeds the space left above the keyboard.
-export function heights(names, avail) {
+export function heights(names, avail, fixed = {}) {
   const cap = Math.max(0, avail - KEYBOARD_GAP);
-  return names.map((name) => ({ name, px: Math.min(Math.round(DETENTS[name] * avail), cap) })).sort((a, b) => a.px - b.px);
+  let floor = 0; // a fixed detent can be taller than a share on a short viewport: a larger name is never shorter than a smaller one
+  return [...names].sort((a, b) => DETENTS[a] - DETENTS[b]).map((name) => ({ name, px: (floor = Math.min(Math.max(fixed[name] ?? Math.round(DETENTS[name] * avail), floor), cap)) }));
 }
 
 // Where a drag released at `height` lands: a detent name, or 'close'. Flick (|velocity| over FLICK, up positive): the next detent that way, or close past the lowest.

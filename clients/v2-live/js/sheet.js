@@ -5,23 +5,33 @@
 // modal (default true): scrim, the page behind inert, focus trapped, aria-modal. modal: false is modeless (page stays usable) until the sheet reaches full.
 import { h, trapTab } from './dom.js';
 import { icon } from './icons.js';
-import { translate } from './i18n.js';
+import { translate, tr } from './i18n.js';
 import { reducedMotion } from './store.js';
 import { heights, snap, velocity, follow, step, stepLabel, isModal } from './sheet-model.js';
 
 const stack = [];
+// One popstate listener for every sheet: Back closes the top sheet that owns a history entry. A back() the sheet made itself (closing by its own button) is swallowed,
+// or it would close the sheet underneath.
+let ownBack = 0;
+addEventListener('popstate', () => {
+  if (ownBack) { ownBack--; return; }
+  const top = [...stack].reverse().find((x) => x.entry);
+  if (top) top.close(false);
+});
 let seq = 0;
 
 // Everything outside the sheet's own branch goes inert, and comes back when the sheet closes.
 function inertRest(wrap) {
   const done = [];
   for (let node = wrap; node !== document.body; node = node.parentElement) {
-    [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert) { el.inert = true; done.push(el); } });
+    [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert && !el.matches('.toast')) { el.inert = true; done.push(el); } });
   }
   return () => done.forEach((el) => { el.inert = false; });
 }
 
-export function openSheet({ id, title, detents = ['half', 'full'], initial, content, onClose, footer, modal = true, host = document.getElementById('app') }) {
+// history: false for a sheet whose address is the route (an inspector at #/work/a-1): it adds no history entry, so Back is the route's and onClose(fromUi) navigates.
+// fixed: { peek: 180 } pins a detent to pixels instead of a share (the Tell sheet's peek is just the composer).
+export function openSheet({ id, title, detents = ['half', 'full'], initial, content, onClose, footer, modal = true, host = document.getElementById('app'), history: own = true, fixed }) {
   const uid = 'sheet-' + (id || ++seq), many = detents.length > 1, opener = document.activeElement;
   let detent = detents.includes(initial) ? initial : detents[0], closed = false, drag = null, release = null, ownEntry = false;
 
@@ -34,7 +44,7 @@ export function openSheet({ id, title, detents = ['half', 'full'], initial, cont
     footer ? h('div', { class: 'sheet-foot' }, footer) : null);
   const wrap = h('div', { class: 'sheet-wrap', 'data-sheet': uid, 'data-enter': '' }, h('div', { class: 'sheet-scrim', 'aria-hidden': 'true', onclick: () => close() }), el);
 
-  const sizes = () => heights(detents, wrap.clientHeight);
+  const sizes = () => heights(detents, wrap.clientHeight, fixed);
   const setPx = (v) => { el.style.setProperty('--sheet-h', v + 'px'); host.style.setProperty('--toast-b', 'calc(' + Math.round(v) + 'px + var(--vv-bottom) + 8px)'); };
   const modalNow = () => isModal(detent, modal);
   let unInert = null;
@@ -48,7 +58,7 @@ export function openSheet({ id, title, detents = ['half', 'full'], initial, cont
     if (closed || !detents.includes(name)) return;
     detent = name; el.dataset.detent = name;
     const d = sizes().find((x) => x.name === name); setPx(d ? d.px : 0);
-    if (many) grip.setAttribute('aria-label', stepLabel(name, detents));
+    if (many) grip.setAttribute('aria-label', tr(stepLabel(name, detents)));
     syncModal();
   }
 
@@ -84,29 +94,28 @@ export function openSheet({ id, title, detents = ['half', 'full'], initial, cont
     if (stack.at(-1) !== api || e.defaultPrevented) return;
     if (e.key === 'Escape') { e.preventDefault(); close(); } else if (modalNow()) trapTab(e, el);
   };
-  const onPop = () => { if (!closed) close(false); };
   const watch = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { if (!drag && !closed) setDetent(detent); });
 
   function close(fromUi = true) {
     if (closed) return;
     closed = true; stack.splice(stack.indexOf(api), 1);
-    document.removeEventListener('keydown', onKey); removeEventListener('popstate', onPop); if (watch) watch.disconnect();
+    document.removeEventListener('keydown', onKey); if (watch) watch.disconnect();
     if (unInert) unInert();
     host.style.removeProperty('--toast-b');
-    if (ownEntry && fromUi && history.state && history.state.sheet === uid) history.back();
+    if (ownEntry && fromUi && history.state && history.state.sheet === uid) { ownBack++; history.back(); }
     const key = opener && opener.dataset && opener.dataset.key, back = opener && opener.isConnected ? opener : key && document.querySelector('[data-key="' + key + '"]');
     wrap.inert = true;
     if (back) back.focus({ preventScroll: true });
-    if (onClose) onClose();
+    if (onClose) onClose(fromUi);
     if (reducedMotion()) wrap.remove(); else { wrap.dataset.leaving = ''; setTimeout(() => wrap.remove(), 160); }
   }
 
-  const api = { el, setDetent, close };
+  const api = { el, setDetent, close, entry: own };
   host.append(wrap); translate(wrap);
   el.dataset.drag = ''; setDetent(detent); void el.offsetHeight; delete el.dataset.drag; // the first height is set, not animated
   stack.push(api);
-  document.addEventListener('keydown', onKey); addEventListener('popstate', onPop); if (watch) watch.observe(wrap);
-  history.pushState({ sheet: uid }, ''); ownEntry = true;
+  document.addEventListener('keydown', onKey); if (watch) watch.observe(wrap);
+  if (own) { history.pushState({ sheet: uid }, ''); ownEntry = true; }
   const first = el.querySelector('[autofocus]') || heading; first.focus({ preventScroll: true });
   return api;
 }

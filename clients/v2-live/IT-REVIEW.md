@@ -2164,6 +2164,13 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - State chips reuse Needs you, Running, Blocked, Done (Ti serve, In corso, Bloccate, Fatte).
 
 
+## Phone sheets and composer, slice C (2026-10-28): to review
+- Simulated keyboard / Hide keyboard (the drawn keyboard of a mouse window, a prototype aid) → Tastiera simulata / Nascondi la tastiera
+- Show (the group of views in the Chat page's More menu on a phone: Conversation, Receipts, Context) → Mostra (the three view names are the existing Conversazione, Ricevute, Contesto)
+- Expand / Collapse (the handle of every sheet, set again after each step) → Espandi / Comprimi (already in the phone dictionary; the label is now translated after each step)
+- The Chat page "Needs you · {n}" on a phone shows the glyph and the count; the full words stay as its accessible name → Richiede te · {n}
+- Decision E03 and the other decision notes (now a one-line summary that opens) → unchanged wording, Decisione E03
+
 ## Phone shell: bar, top bar, Places, safety sheet (slice A) - 2026-10-28
 
 Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsewhere (Overview, Work, Tell, Stop, Pause all, Resume all, Emergency stop, Yes, stop everything, Prototype tools, Safety, Search projects, All N projects) are reused as they are.
