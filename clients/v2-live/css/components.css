@@ -24,7 +24,7 @@
 .project-mission-name { flex-basis: 100%; overflow-wrap: anywhere; }
 .project-capture { display: grid; gap: 8px; }
 .project-capture input { width: 100%; min-height: 48px; padding: 8px 12px; border: var(--hair) solid var(--line-strong); background: var(--s1); color: var(--text); font: inherit; }
-.project-capture .btn { min-height: 48px; justify-self: start; }
+.project-capture .btn { justify-self: start; }
 @keyframes projects-panel-enter { from { opacity: .6; transform: translateX(6px); } to { opacity: 1; transform: translateX(0); } }
 :root[data-motion='reduced'] .project-inspector { animation: none; transition: none; transform: none !important; }
 @media (prefers-reduced-motion: reduce) {
@@ -40,3 +40,67 @@
 .pr-w { font-size: 12px; color: var(--text-2); }
 .smark { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-cap); font-weight: 600; }
 .smark .g { flex: none; display: inline-flex; color: var(--tone); }
+
+/* ---- The button system (SPEC B01 to B14). One family: .btn, .chip, .tb-btn, .tui-btn, switches, tabs and selects share the radius, the height steps and the ring.
+   Variants: secondary (the default), .primary, .quiet, .danger, .icon and .link. Sizes: .s 32, default 36, .l 44. The picture is the visual size; a ::after
+   adds the hit area (44 px, 48 px for a primary at 1024 and wider), so rows of buttons are 8 px apart and never share a hit area. ---- */
+:root { --btn-r: 8px; --fill-1: color-mix(in srgb, var(--text) 6%, transparent); --fill-2: color-mix(in srgb, var(--text) 11%, transparent); --fill-3: color-mix(in srgb, var(--text) 16%, transparent); }
+:where(.btn, .chip:not(.static), .tb-btn, .tui-btn, .tb-search) { --bh: 36px; --hit: 44px; position: relative; box-sizing: border-box; }
+:where(.btn, .chip:not(.static), .tb-btn, .tui-btn, .tb-search)::after { content: ''; position: absolute; inset: calc((var(--bh) - var(--hit)) / 2); }
+.btn.s, .chip.s { --bh: 32px; }
+.btn.l { --bh: 44px; }
+@container dev (min-width: 1024px) { .btn:is(.primary, .decide) { --hit: 48px; } }
+@media (min-width: 1024px) { .menu .btn.primary { --hit: 48px; } } /* the prototype menus sit outside the device */
+
+:where(.btn, .tui-btn) { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: var(--bh); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: var(--btn-r); background: var(--fill-1); color: var(--text); white-space: nowrap; text-align: center; text-decoration: none; cursor: pointer; }
+.btn { font-size: calc(var(--base) * .875); font-weight: 500; line-height: 1.2; }
+.btn.s { padding: 0 12px; } .btn.l { padding: 0 18px; }
+.btn[hidden] { display: none; }
+.btn svg, .tui-btn svg { flex: none; width: 16px; height: 16px; }
+.btn:hover, .tui-btn:hover { background: var(--fill-2); }
+.btn:active, .tui-btn:active { background: var(--fill-3); transition-duration: 80ms; }
+
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 600; }
+.btn.primary:hover { background: color-mix(in srgb, var(--primary) 86%, var(--bg)); border-color: color-mix(in srgb, var(--primary) 86%, var(--bg)); }
+.btn.primary:active { background: color-mix(in srgb, var(--primary) 72%, var(--bg)); border-color: color-mix(in srgb, var(--primary) 72%, var(--bg)); }
+
+.btn.quiet { border-color: transparent; background: transparent; }
+.btn.quiet:hover { background: var(--fill-2); } .btn.quiet:active { background: var(--fill-3); }
+
+.btn.danger { background: transparent; border-color: var(--stop-line); color: var(--stop-fg); }
+.btn.danger:hover { background: color-mix(in srgb, var(--stop-line) 16%, transparent); }
+.btn.danger:active { background: color-mix(in srgb, var(--stop-line) 26%, transparent); }
+.btn.danger.solid { background: var(--stop-fg); border-color: var(--stop-fg); color: var(--bg); font-weight: 600; }
+.btn.danger.solid:hover { background: color-mix(in srgb, var(--stop-fg) 86%, var(--bg)); border-color: color-mix(in srgb, var(--stop-fg) 86%, var(--bg)); }
+
+.btn.icon { width: var(--bh); padding: 0; }
+.btn.link { --bh: auto; min-height: 0; padding: 0; border: 0; background: none; color: var(--text); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.btn.link::after { inset: -10px -4px; } .btn.link:hover { background: none; text-decoration-thickness: 2px; }
+
+.btn:is([disabled], [aria-disabled='true']), .tui-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.btn:is([disabled], [aria-disabled='true']):hover { background: var(--fill-1); }
+.btn.primary:is([disabled], [aria-disabled='true']):hover { background: var(--primary); }
+
+
+/* the others in the family */
+.chip:not(.static) { min-height: var(--bh); padding: 0 14px; border-radius: 999px; font-size: calc(var(--base) * .875); font-weight: 500; }
+.chip.static { border-radius: 999px; }
+.chip:not(.static):hover { background: var(--fill-2); }
+.chip[aria-pressed='true'], .chip[aria-current='true'] { background: var(--fill-2); border-color: var(--text); }
+.tb-btn, .tui-btn, .rail-toggle, .tb-search, .safety-btn { border-radius: var(--btn-r); }
+.tb-btn, .tb-search { min-height: var(--bh); }
+.tb-btn:hover, .tb-btn[aria-expanded='true'], .tb-btn[aria-pressed='true'] { background: var(--fill-2); }
+.tui-btn[aria-pressed='true'] { background: var(--fill-2); border-color: var(--text-2); }
+.ext-search, select { border-radius: var(--btn-r); }
+
+/* where a button sits */
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+@container dev (max-width: 479px) { .actions > .btn { flex: 1 1 auto; } }
+.toast .btn { min-height: var(--bh); }
+
+@media (forced-colors: active) {
+  .btn, .chip, .tui-btn, .tb-btn { border: 1px solid ButtonText; }
+  .btn.primary, .btn.danger.solid { forced-color-adjust: none; background: ButtonText; color: ButtonFace; border-color: ButtonText; }
+  .btn.danger:not(.solid) { color: ButtonText; }
+  .btn:is([disabled], [aria-disabled='true']) { opacity: 1; color: GrayText; border-color: GrayText; }
+}

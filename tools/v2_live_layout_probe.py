@@ -4,7 +4,8 @@ Defects counted (each with its own column in the table):
   overlap   two visible interactive or text boxes cover each other (nesting, such as text inside its own button, is not overlap)
   clipped   a box is cut off or sticks out of the viewport horizontally (not inside an intentional horizontal scroller)
   hscroll   the page itself scrolls sideways
-  target    an interactive element under 44 px (48 px for primary controls when the window is 1024 px or wider)
+  target    an interactive element under 44 px (48 px for primary controls when the window is 1024 px or wider); the button system's ::after hit area counts
+  wraps     a button, chip or tab whose label breaks onto a second line
   covered   the element at the centre of a control is not the control (something sits on top of it)
   contrast  text under 4.5:1 against its effective background (computed colours)
   error     a page error or a console error
@@ -47,7 +48,7 @@ TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A',
 TUI_RESET = "() => { const c = window.v2live.ui.tui.ctl; c.setPrefs({ look: 'app', ascii: false, linear: false }); c.state.mode = null; c.go('now'); window.v2live.ui.tui.redraw(); }"
 TUI_SET = "([keys, prefs]) => { const c = window.v2live.ui.tui.ctl; c.setPrefs(prefs); if (keys) c.keys(keys); window.v2live.ui.tui.redraw(); }"
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
-KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'narrow', 'error']
+KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'wraps', 'covered', 'contrast', 'narrow', 'error']
 
 STATES = {
     'why': "window.v2live.ui.tab = 'why'",
@@ -139,11 +140,23 @@ MEASURE = r"""
   // target size and covered
   ctl.forEach((e) => {
     const r = e.getBoundingClientRect(), need = opts.desktop && e.matches(primary) ? 48 : 44;
-    if (Math.min(r.width, r.height) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
+    const hit = getComputedStyle(e, '::after'), ext = (a, b) => (parseFloat(hit[a]) < 0 ? -parseFloat(hit[a]) : 0) + (parseFloat(hit[b]) < 0 ? -parseFloat(hit[b]) : 0), grow = hit.content !== 'none' && hit.position === 'absolute' ? [ext('left', 'right'), ext('top', 'bottom')] : [0, 0];
+    if (Math.min(r.width + grow[0], r.height + grow[1]) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
     const c = clipOf(e), v = c && inter(r, c);
     if (v && v.width > 4 && v.height > 4 && !e.matches('.am-hit')) {
       const top = document.elementFromPoint(v.left + v.width / 2, v.top + v.height / 2);
       if (top && !e.contains(top)) add('covered', name(e) + ' covered by ' + name(top));
+    }
+  });
+
+  // wraps: a button label on two lines
+  ctl.filter((e) => e.matches('.btn, .chip, .tb-btn, .tui-btn, .tb-search, .tab, .set-nav-item')).forEach((e) => {
+    const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) {
+      if (!n.nodeValue.trim() || !vis(n.parentElement)) continue;
+      const r = document.createRange(); r.selectNodeContents(n);
+      const tops = new Set([...r.getClientRects()].filter((q) => q.width > 1).map((q) => Math.round(q.top / 4)));
+      if (tops.size > 1) { add('wraps', name(e) + ' "' + (e.textContent || '').trim().slice(0, 24) + '" breaks onto ' + tops.size + ' lines'); break; }
     }
   });
 
