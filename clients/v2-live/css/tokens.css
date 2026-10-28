@@ -93,4 +93,13 @@
   --fs-disp: clamp(40px, 3.9vw, 58px); --lh-disp: 1.05; --ls-disp: .01em;
   --fs-title: clamp(30px, 2.8vw, 40px); --fs-section: 22px; --fs-lede: 17px; --lh-lede: 1.4;
   --fs-node: 22px; --fs-node-sub: 15px; --fs-eyebrow: 11px; --ls-eyebrow: .16em; --ls-wordmark: .32em;
+  /* phone. js/viewport.js sets html[data-phone], html[data-kb='open'] and overwrites --vv-h and --vv-bottom (the visual viewport, so the keyboard can be avoided).
+     html[data-phone='true'] (below) turns --phone to 1: the container queries read it as style(--phone: 1) next to the width test, so a phone held sideways flips them too.
+     Safe-area insets come from the device and are 0 elsewhere. */
+  --phone: 0; --vv-h: 100dvh; --vv-bottom: 0px;
+  --sa-t: env(safe-area-inset-top, 0px); --sa-r: env(safe-area-inset-right, 0px); --sa-b: env(safe-area-inset-bottom, 0px); --sa-l: env(safe-area-inset-left, 0px);
+  --bar-h: 64px; --bar-total: calc(var(--bar-h) + var(--sa-b)); --topbar-h: 48px;
+  --sheet-r: 16px; --detent-peek: 40%; --detent-half: 56%; --detent-full: 92%; --sheet-grip: 44px;
+  --fs-floor: 12px; --hit-min: 44px; --hit-primary: 48px; --thumb-zone: 40%;
 }
+:root[data-phone='true'] { --phone: 1; }

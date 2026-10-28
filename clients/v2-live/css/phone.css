@@ -1,6 +1,6 @@
 /* Phone shell (below 600 px): the bottom bar Tell | Places | Stop and the Places sheet. */
-.bottombar { grid-area: bottom; display: flex; background: var(--bg); border-top: var(--hair) solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); }
-@container dev (min-width: 600px) { .bottombar, .pl-wrap { display: none; } }
+.bottombar { grid-area: bottom; display: flex; background: var(--bg); border-top: var(--hair) solid var(--line); padding-bottom: var(--sa-b); }
+@container dev ((min-width: 600px) and style(--phone: 0)) { .bottombar, .pl-wrap { display: none; } }
 .bb-item { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 64px; padding: 4px 2px; border: 0; background: transparent; color: var(--text); font: 500 13px/1 var(--sans); cursor: pointer; }
 .bb-item svg { box-sizing: content-box; padding: 8px; border: var(--hair) solid var(--line-strong); border-radius: 50%; }
 .bb-item[aria-expanded='true'] svg { background: color-mix(in srgb, var(--text) 10%, transparent); }
@@ -13,7 +13,7 @@
 .places { position: absolute; left: 0; right: 0; bottom: 0; max-height: 88%; display: flex; flex-direction: column; background: var(--s3); border-top: var(--hair) solid var(--line-strong); border-radius: var(--r-l) var(--r-l) 0 0; }
 .pl-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 20px; min-height: 52px; }
 .pl-head h2 { font: 500 var(--fs-t1) / 1.2 var(--sans); }
-.pl-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px calc(12px + env(safe-area-inset-bottom, 0px)); }
+.pl-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px calc(12px + var(--sa-b)); }
 .pl-item { position: relative; display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 0 12px; border-radius: 6px; color: var(--text-2); font-size: 17px; }
 .pl-item[aria-current='page'] { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 500; }
 .pl-item[aria-current='page']::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--attention); }
@@ -26,12 +26,12 @@
 @media (forced-colors: active) { .places, .bb-item svg { border: 1px solid CanvasText; } .pl-item[aria-current='page']::before { background: Highlight; } }
 
 /* Phone mission page (concept 12): the page sits above the bottom bar, so Tell, Places and Stop stay reachable. */
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { bottom: 77px; }
   .msn-panel .insp-head h2 { font-size: 36px; line-height: 1.1; }
   .msn-ph { font-size: 32px; }
 }
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .app[data-insp='open']:has(.msn) .scrim { display: none; }
   .msn-meta > div:last-child { display: none; }
   .msn-meta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-bottom: 4px; }

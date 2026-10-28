@@ -8,6 +8,17 @@ A prototype of the Archeus V2 app that runs entirely on a fixture simulation: no
 - Any OS: `python -m http.server 8000 --bind 127.0.0.1` in this folder, open `http://127.0.0.1:8000/`.
 - It must be served over http, not opened as a file (ES modules).
 
+## Open it on your phone
+
+The prototype is fixture data only, so it is safe to show on a phone on your own network. Binding the network is on demand and the firewall stays your decision.
+
+1. Double-click `start-lan.cmd` (or run `start-lan.cmd 8895` for another port). It finds the PC's private Wi-Fi or Ethernet IPv4 address, refuses 0.0.0.0 and any VPN or virtual adapter, prints `http://<that address>:<port>/` and a warning that anyone on the network can open the prototype, then serves in that window. Close the window to stop. It never opens the firewall and never opens a browser.
+2. Windows blocks other devices by default. Once, in an administrator PowerShell, allow that port from the local subnet only:
+   `New-NetFirewallRule -DisplayName "Archeus proto" -Direction Inbound -Protocol TCP -LocalPort <port> -RemoteAddress LocalSubnet -Profile Public -Action Allow`
+   Remove it when you are done: `Remove-NetFirewallRule -DisplayName "Archeus proto"`. (`-Profile Public` is what a Wi-Fi network marked Public needs; use `Private` if the network is Private.)
+3. On the phone, on the same Wi-Fi, open the printed address. `?story=huge&device=auto` shows 100 projects at the phone's own size; `device=auto` makes the app fill the screen.
+4. Add to Home Screen gives an icon and a full-screen launch. Over plain http a phone does not treat the page as installable (no service worker, no install prompt, nothing offline), so Add to Home Screen is all there is. The 180 px `apple-touch-icon.png` was made from `icon-512.png` (a resize, no new art); the star fills 62 % of the icon, inside the 80 % maskable safe zone, so one picture serves the `any` and `maskable` manifest entries.
+
 ## URL options
 
 Options go in the query string, for example `index.html?theme=light&lang=it&sim=paused#/now`. The URL wins over what the app stored and is not stored itself.
@@ -57,6 +68,7 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 | map probe | `py tools\v2_livemap_probe.py` |
 | design kit probe | `py tools\v2_live_design_probe.py` |
 | All devices hit-test | `py tools\v2_live_alldevices_probe.py` |
+| phone foundation: one threshold, PWA bits, safe areas, 44 px targets, no sideways scroll at 320 to 430 and 200 %, landscape flips to the phone shell | `py -I tools2_live_phone_probe.py` |
 | functional runs | `py tools\v2_live_s3_functional.py`, `v2_live_s4_functional.py`, `v2_live_tui_check.py`, `v2_live_s6_functional.py` |
 | package | `py tools\v2_live_package.py` writes `Archeus-V2-Live.zip` (this folder without tests, `start.cmd`, `README-FIRST.txt`) |
 
@@ -66,6 +78,7 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 
 ## Known limits
 
+- The phone shell flips for a phone held sideways through CSS container style queries (`style(--phone: 1)` beside the width test). That needs Chrome or Edge 111, Safari 18 or a recent Firefox; in an older browser the desktop layout rules are dropped.
 - Everything is a fixture. Replies are scripted, usage is made up, nothing runs and no Core, account or token is touched.
 - Italian was written by the builders and is not native-checked (`IT-REVIEW.md`).
 - The Light look is approved as is by the owner (2026-10-26); the contrast of every route is checked, but not on a real display.

@@ -6,7 +6,7 @@
 .chatdock { grid-area: dock; min-width: 0; background: var(--bg); }
 .chatdock[hidden] { display: none; }
 .app[data-dock='1'] { grid-template-rows: minmax(0, 1fr) auto auto; grid-template-areas: 'main' 'dock' 'bottom'; }
-@container dev (min-width: 600px) {
+@container dev ((min-width: 600px) and style(--phone: 0)) {
   .app[data-dock='1'] { grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: 'rail main' 'rail dock'; }
 }
 @container dev (min-width: 1024px) {

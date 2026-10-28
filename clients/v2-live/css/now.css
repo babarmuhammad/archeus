@@ -76,14 +76,14 @@
   .calm-band > div + div { display: none; }
   .calm-say .state-sentence { font-size: 30px; }
 }
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .calm-band { height: 160px; }
   .calm-band > div { padding: 16px; }
 }
 
 /* Phone Overview (concepts 09 and 10): the scene, two large counts, the Review card. The headline stays for screen readers. */
 .pn-card { display: none; }
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .view.now-view[data-calm='false'] { display: flex; flex-direction: column; }
   .now-view[data-calm='false'] .now-scene { position: relative; inset: auto; flex: 0 0 240px; height: 240px; min-height: 240px; }
   .now-view[data-calm='false'] .now-hero { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -147,7 +147,7 @@
 .view-switch .vs-btn:hover { color: var(--text); }
 .view-switch .vs-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 .now-view .now-hero { right: calc(var(--gut) * 1.5 + 120px); }
-@media (max-width: 599px) { .view-switch { display: none; } }
+@container dev ((max-width: 599px) or style(--phone: 1)) { .view-switch { display: none; } }
 
 /* The Attention strip under the ledger: one chip per project that waits on the owner (at most three, then a link). */
 .att-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
