@@ -2,7 +2,7 @@
 import { h, clear, trapTab } from './dom.js';
 import { icon } from './icons.js';
 import { lockup, wordmark } from './brand.js';
-import { createSim, clockLabel } from '../sim.js';
+import { createSim, clockLabel, localPlan } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
 import { ROUTES, simControls, controlBody } from './views.js';
@@ -32,7 +32,10 @@ const q = new URLSearchParams(location.search);
 // An embedded frame (the All devices view) shares the parent's simulation instance, so all devices show one story.
 const embed = q.get('embed') === '1';
 const shared = embed && window.parent !== window && window.parent.v2live && window.parent.v2live.sim;
-const sim = shared || createSim({ seed: q.get('seed') ? Number(q.get('seed')) : undefined, story: q.get('story') || undefined, projects: Number(q.get('projects')) || undefined });
+// "My projects": a gitignored list of this machine's projects (tools/v2_live_local_projects.py). Absent, the prototype never mentions it.
+const local = shared ? null : await fetch('local/projects.local.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const hasLocal = !!localPlan(local), useLocal = hasLocal && q.get('projects') === 'local';
+const sim = shared || createSim({ seed: q.get('seed') ? Number(q.get('seed')) : undefined, story: q.get('story') || undefined, projects: Number(q.get('projects')) || undefined, local: useLocal ? local : undefined });
 if (embed) document.body.dataset.embed = '1';
 if (!shared) {
   if (q.get('sim') !== 'paused') sim.play();
@@ -330,7 +333,8 @@ function buildMenu() {
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.get('lang') === 'it' ? 'true' : 'false', onclick: () => setLang(store.get('lang') === 'it' ? 'en' : 'it') }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.get('lang') === 'it' ? '\u2713' : ''), 'Language', h('span', { class: 'hint' }, 'Italiano')),
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.get('notes') === 'on' ? 'true' : 'false', onclick: () => setNotes(store.get('notes') === 'on' ? 'off' : 'on') }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.get('notes') === 'on' ? '\u2713' : ''), 'Decision notes', h('span', { class: 'hint' }, store.get('notes') === 'on' ? 'On' : 'Off')),
     h('p', { class: 'menu-note' }, 'System follows the OS (including high contrast). Forced colours is a simulation; the real forced-colors mode is also honoured.')];
-  else if (menuName === 'projects') kids = [h('h2', null, 'Simulated projects'), ...PROJECT_COUNTS.map((n) => item(n === 3 ? '3 (the default story)' : String(n), n === (Number(q.get('projects')) || 3), () => setProjectCount(n))),
+  else if (menuName === 'projects') kids = [h('h2', null, 'Simulated projects'), ...PROJECT_COUNTS.map((n) => item(n === 3 ? '3 (the default story)' : String(n), !useLocal && n === (Number(q.get('projects')) || 3), () => setProjectCount(n))),
+    ...(hasLocal ? [item('My projects', useLocal, () => setProjectCount('local'), String(localPlan(local).length))] : []),
     h('p', { class: 'menu-note' }, 'Reloads the prototype with that many projects and the same mission mix, to see how every page scales.')];
   else kids = [h('h2', null, 'Simulation'), simControls(Object.assign({}, ctx, { where: 'menu' }))];
   menu = h('div', { class: 'menu', role: 'menu', 'aria-label': menuName }, ...kids);

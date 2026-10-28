@@ -91,3 +91,5 @@ notes/reference/
 
 # Architecture
 docs/architecture/reference
+# The V2 Live prototype's "My projects" fixture: this machine's project names and counts, written by tools/v2_live_local_projects.py.
+clients/v2-live/local/

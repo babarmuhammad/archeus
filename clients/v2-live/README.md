@@ -25,6 +25,7 @@ Options go in the query string, for example `index.html?theme=light&lang=it&sim=
 | `seed` | number | another scripted story; the same seed gives the same story |
 | `embed` | `1` | used by All devices: the page shares its parent's simulation |
 | `story` | `calm` | finished-work fixture with Tell, Today and known projects |
+| `projects` | `10` to `100`, `local` | that many simulated projects; `local` builds this machine's own from `local/projects.local.json` (gitignored; written by `py tools/v2_live_local_projects.py`, names and counts only), and the Tools menu lists it only when the file exists |
 | `look` | `app`, `ansi`, `hc`, `mono` | terminal colours |
 | `ascii` | `1`, `0` | terminal ASCII glyphs on or off |
 | `sr` | `1`, `0` | terminal linear Read mode on or off |
