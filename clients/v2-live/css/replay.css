@@ -61,16 +61,11 @@
 .replayview [data-cat='RECORDED'] { --rp-tone: var(--text); }
 .replayview [data-cat='MAY-HAVE-TAKEN-EFFECT'], .replayview [data-cat='UNCERTAIN'], .replayview [data-cat='SUSPENDED'] { --rp-tone: var(--attention); }
 .replayview [data-cat='RECONCILED'] { --rp-tone: var(--done); }
-.rp-enter { animation: rp-row-in var(--dur-2) var(--ease-out) backwards; animation-delay: var(--delay); }
-.rp-evidence-enter { animation: rp-evidence-in var(--dur-2) var(--ease-out); }
-@keyframes rp-row-in { from { opacity: .6; transform: translateY(4px); } }
-@keyframes rp-evidence-in { from { opacity: .7; transform: translateX(8px); } }
 @keyframes rp-sheet-in { from { transform: translateY(12px); } }
 @media (hover: hover) and (pointer: fine) { .rp-event:hover { background: var(--s2); } .rp-event:hover b { color: var(--rp-tone, var(--text)); } }
 @container view (max-width: 900px) {
   .rp-reading { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .rp-side { display: contents; }
-  .rp-overview { order: -1; }
 }
 @container view (max-width: 600px) {
   .rp-side > .rp-evidence { display: none; }
@@ -78,7 +73,7 @@
   .rp-heading h2 { font-size: 20px; }
   .rp-heading > div { flex-basis: 100%; }
   .rp-position { margin-right: auto; }
-  .rp-intro { margin-bottom: 16px; }
+  .rp-intro { display: none; }
   .rp-stations .spine-insp li { font-size: 10px; gap: 8px; }
   .rp-inspect { display: inline-flex; margin-top: 8px; }
   .rp-filters .chip { padding-inline: 8px; font-size: 10px; }
@@ -88,8 +83,8 @@
   .rp-sheet .kv { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .rp-sheet .kv dd { margin-bottom: 12px; }
 }
-:root[data-motion='reduced'] :is(.rp-enter, .rp-evidence-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; }
-@media (prefers-reduced-motion: reduce) { :is(.rp-enter, .rp-evidence-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; } }
+:root[data-motion='reduced'] :is(.rp-sheet, .rp-playhead) { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.rp-sheet, .rp-playhead) { animation: none; transition: none; } }
 @media (forced-colors: active) {
   .rp-event[aria-pressed='true'] { outline: 2px solid Highlight; }
   .rp-playhead { background: Highlight; }
@@ -119,3 +114,21 @@
 .rp-flag::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 8px; height: 8px; margin-left: -4px; background: var(--text); transform: rotate(45deg); }
 .rp-axis { display: flex; justify-content: space-between; padding: 0 6px; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .rp-elapsed, .rp-flag, .rp-node, .rp-step { transition: none; } }
+
+/* What changed, view modes and the sticky section nav (Events, Evidence, Recovery, Reference). */
+.rp-changed { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 8px 0 4px; font-size: var(--fs-cap); color: var(--text-2); }
+.rp-changed span + span::before { content: ''; display: inline-block; width: 3px; height: 3px; margin: 0 16px 3px 0; border-radius: 50%; background: var(--text-3); }
+.rp-changed .rp-bad { color: var(--text); font-weight: 600; }
+.rp-nav { position: sticky; top: 0; z-index: 3; display: flex; gap: 2px; margin-block: -8px; overflow-x: auto; border-bottom: var(--hair) solid var(--line); background: var(--bg); scrollbar-width: thin; }
+.rp-nav-a { flex: none; display: inline-flex; align-items: center; min-height: var(--target); padding: 0 16px; border-bottom: calc(var(--hair) * 2) solid transparent; font-size: var(--fs-body); font-weight: 600; color: var(--text-2); text-decoration: none; }
+.rp-nav-a[aria-current='true'] { color: var(--text); border-bottom-color: var(--thread); }
+.rp-nav-a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (hover: hover) and (pointer: fine) { .rp-nav-a:not([aria-current='true']):hover { color: var(--text); } }
+.rp-reading, #rp-recovery, #rp-reference, #rp-events, #rp-evidence { scroll-margin-top: calc(var(--target) + 8px); }
+.rp-modes { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; }
+.rp-modes .seg-opt { padding-inline: 12px; }
+.rp-steps { padding: 1px 8px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-s); font-size: var(--fs-cap); color: var(--text-2); }
+.rp-why { flex-basis: 100%; font-size: var(--fs-cap); color: var(--text-2); line-height: 1.4; }
+.rp-why.mono { font-family: var(--mono); }
+.rp-events[data-mode='compact'] .rp-event { min-height: 48px; }
+.rp-side > .panel + .panel, .rp-side > details { margin-top: 8px; }

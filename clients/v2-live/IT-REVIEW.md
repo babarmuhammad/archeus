@@ -1924,6 +1924,52 @@ File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mi
 - No missions yet → Ancora nessuna missione (hub label of a project with no missions)
 - +N quiet → +N inattive (the count of idle or finished missions folded into a hub; the Italian is a short form of "missioni inattive")
 
+## Work, Replay, Projects and the Attention strip — 2026-10-28
+
+Status: **to review**. Source: `js/i18n-work.js`. Rules (with a number) are written as a pattern.
+
+| English | Italian |
+|---|---|
+| Saved views | Viste salvate |
+| Layout | Disposizione |
+| List / Graph | Elenco / Grafo |
+| Find a project | Cerca un progetto |
+| All (a view tab) | Tutto |
+| Running (a view tab and a group) | In corso |
+| N missions and decisions | N missioni e decisioni |
+| Showing N of M | Mostro N di M |
+| Selected work | Lavoro selezionato |
+| What Archeus did | Cosa ha fatto Archeus |
+| Select a row to see what Archeus did. | Scegli una riga per vedere cosa ha fatto Archeus. |
+| awaiting input / active / pending / error / complete / stale (the shared state vocabulary, lower case) | in attesa di te / attivo / in sospeso / errore / completo / fermo |
+| Nm ago, Nh ago, Nd ago, now | N min fa, N h fa, N g fa, ora |
+| Nothing is stuck. | Niente è bloccato. |
+| Nothing has finished yet. | Non è ancora finito nulla. |
+| No work yet. | Ancora nessun lavoro. |
+| No work in X yet. | Ancora nessun lavoro in X. |
+| See what is running | Vedi cosa è in corso |
+| Tell Archeus what to do | Dì ad Archeus cosa fare |
+| Pausing “X”. (toast, with Undo) | Messa in pausa: “X”. |
+| One page for Work and Attention: missions and decisions grouped by what they wait on, as a list with a detail pane and as a graph. … | Una sola pagina per Lavoro e Attenzione: … come elenco con un pannello di dettaglio e come grafo. … |
+| Sections / View / Detail | Sezioni / Vista / Dettaglio |
+| Timeline / Compact | Cronologia / Compatta |
+| Normal / Thinking / Verbose (detail levels; Thinking is Ragionamento here, not the mission state In pianificazione) | Normale / Ragionamento / Dettagliata |
+| Events / Evidence / Recovery / Reference | Eventi / Prove / Recupero / Riferimenti |
+| N steps recorded | N passi registrati |
+| HH:MM to HH:MM | HH:MM a HH:MM |
+| Last: plan APPROVED | Ultimo: plan APPROVED (the Core state names stay English) |
+| 1 step needs a look / N steps need a look | 1 passo da guardare / N passi da guardare |
+| N steps (a compact row) | N passi |
+| trigger X · by Y · seq N (Verbose) | causa X · da Y · seq N |
+| mission CREATED to EXECUTING (a compact row) | mission CREATED a EXECUTING |
+| Sort projects | Ordina i progetti |
+| Attention / Recent / Name | Attenzione / Recenti (existing) / Nome |
+| Activity | Attività |
+| N of M projects | N di M progetti |
+| Showing the latest 30 changes. | Mostro gli ultimi 30 cambiamenti. |
+| Projects that need you | Progetti che hanno bisogno di te |
+| +N more | +N altri (+1 altro) |
+
 ## Chat redesign, builder A (2026-10-28): to review
 
 Strings built inline with `L(en, it)` in `js/chat.js`, `js/chat-cards.js` and `js/picker.js`. The old rail, context column and pin strings were removed from `js/i18n-chat.js`.

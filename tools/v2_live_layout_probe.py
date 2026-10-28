@@ -124,6 +124,8 @@ MEASURE = r"""
     if (b.r.left < c.left - 1 || b.r.right > c.right + 1) { const k = name(b.el) + '|' + b.label; if (!seenClip.has(k)) { seenClip.add(k); add('clipped', name(b.el) + ' "' + b.label + '" x ' + Math.round(b.r.left) + '..' + Math.round(b.r.right) + ' of ' + Math.round(c.left) + '..' + Math.round(c.right)); } }
   });
 
+  // Content that has scrolled under an opaque sticky bar is hidden, not overlapping.
+  const stickyOf = (el) => { for (let a = el; a && a !== document.body; a = a.parentElement) if (getComputedStyle(a).position === 'sticky') return a; return null; };
   // overlap, on what is actually visible (clipped by scrollers and by the layer)
   const items = [];
   boxes.forEach((b) => { const c = clipOf(b.el); if (!c) return; const v = inter(b.r, c); if (v && v.width > 1.5 && v.height > 1.5) items.push({ b, v }); });
@@ -132,6 +134,8 @@ MEASURE = r"""
     const A = items[i], B = items[j];
     if (A.b.el === B.b.el || A.b.el.contains(B.b.el) || B.b.el.contains(A.b.el)) continue;
     const x = inter(A.v, B.v); if (!x || x.width <= 1.5 || x.height <= 1.5) continue;
+    const sa = stickyOf(A.b.el), sb = stickyOf(B.b.el);
+    if (sa !== sb) { const top = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2); if (top && ((sa && !sb && sa.contains(top)) || (sb && !sa && sb.contains(top)))) continue; }
     const k = name(A.b.el) + '|' + name(B.b.el) + '|' + A.b.label + '|' + B.b.label;
     if (seenOv.has(k)) continue; seenOv.add(k);
     add('overlap', name(A.b.el) + ' "' + A.b.label + '" x ' + name(B.b.el) + ' "' + B.b.label + '" ' + Math.round(x.width) + 'x' + Math.round(x.height));
@@ -145,7 +149,8 @@ MEASURE = r"""
     const c = clipOf(e), v = c && inter(r, c);
     if (v && v.width > 4 && v.height > 4 && !e.matches('.am-hit')) {
       const top = document.elementFromPoint(v.left + v.width / 2, v.top + v.height / 2);
-      if (top && !e.contains(top)) add('covered', name(e) + ' covered by ' + name(top));
+      const st = top && stickyOf(top);
+      if (top && !e.contains(top) && !(st && !st.contains(e))) add('covered', name(e) + ' covered by ' + name(top));
     }
   });
 

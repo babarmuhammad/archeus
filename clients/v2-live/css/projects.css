@@ -61,3 +61,13 @@
   .pcell[data-state='idle'] .pc-dot { background: transparent; }
   .pc-open:focus-visible::after, .pc-work:focus-visible, .pidea > a:focus-visible { outline-color: Highlight; }
 }
+
+.pctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; flex: 1 1 auto; min-width: 0; }
+button.seg-opt { border: 0; background: transparent; font: inherit; font-size: var(--fs-cap); font-weight: 500; cursor: pointer; }
+button.seg-opt[aria-pressed='true'] { background: var(--s3); color: var(--text); }
+@media (hover: hover) and (pointer: fine) { button.seg-opt[aria-pressed='false']:hover { background: var(--s2); color: var(--text); } }
+button.seg-opt:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.project-inspector .tab { padding-inline: 9px; }
+.project-inspector .tab .tn { margin-left: 6px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.project-activity a { grid-template-columns: 5.5em minmax(0, 1fr) auto; }
+@media (forced-colors: active) { .seg-opt[aria-current='true'], button.seg-opt[aria-pressed='true'] { outline: 2px solid Highlight; outline-offset: -2px; } }

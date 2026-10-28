@@ -13,6 +13,7 @@ import { inspectorArea } from './inspectors2.js';
 import { overview, pane, meta, position } from './inspector-mission.js';
 import {spineOf} from '../spine-model.js';
 import {projectState} from './view-projects.js';
+import {projectTab, PROJECT_TABS, relTime} from '../page-model.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
 export const isCompact = () => (document.getElementById('device') || document.body).clientWidth < 600;
@@ -24,6 +25,8 @@ export function confirmNodes(ctx) {
     h('button', { class: 'btn', type: 'button', onclick: () => { ctx.ui.confirm = null; ctx.render(); } }, 'Back')];
 }
 
+// A tab is part of the address (replaceState, so tabs do not fill the history): #/work/m-date/plan, #/projects/prj-notes/missions.
+const tabHref = (ctx, id) => '#/' + ctx.route.name + '/' + ctx.route.id + '/' + id + (location.hash.includes('?') ? '?' + location.hash.split('?')[1] : '');
 export function frame(ctx, A, o) {
   const tabs = o.tabs || [], cur = (tabs.find((t) => t[0] === ctx.ui.tab) || tabs[0] || [])[0];
   const off = A.isOffline(), on = o.pin ? A.pinned(o.pin) : false;
@@ -33,7 +36,7 @@ export function frame(ctx, A, o) {
       h('div', { class: 'ax-head-actions' }, o.pin ? h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: () => { A.togglePin(o.pin); ctx.toast(A.pinned(o.pin) ? 'Pinned.' : 'Unpinned.'); ctx.render(); } }, on ? 'Pinned' : 'Pin') : null,
         h('button', { class: 'btn quiet', type: 'button', 'aria-label': 'Close details', onclick: () => ctx.closeInsp() }, 'Close'))),
     o.meta || null,
-    tabs.length > 1 ? h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, l]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'aria-selected': id === cur ? 'true' : 'false', onclick: () => { ctx.ui.tab = id; ctx.render(); } }, l))) : null,
+    tabs.length > 1 ? h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, l, n]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'aria-selected': id === cur ? 'true' : 'false', onclick: () => { ctx.ui.tab = id; history.replaceState(null, '', tabHref(ctx, id)); ctx.render(); } }, l, n == null ? null : h('span', { class: 'tn' }, String(n))))) : null,
     h('div', { class: 'insp-body' }, off ? h('p', { class: 'ax-stale-note' }, 'Offline: last seen ' + clockLabel(A.offlineAt()) + '. This is what the client kept. Actions are off until Core is back.') : null, o.body(cur)),
     foot && foot.length ? h('div', { class: 'insp-foot' }, ...foot) : null);
 }
@@ -278,6 +281,10 @@ function project(ctx, A, S, id) {
     const seen = new Set(), rows = S.events.filter(e => e.project === pid && e.type === 'mission.state_changed' && S.missions[e.subject.id]).reverse().filter(e => !seen.has(e.subject.id) && seen.add(e.subject.id)).slice(0, 5);
     return sec('Recent', rows.length ? h('ul', {class: 'project-recent'}, ...rows.map(e => h('li', null, h('a', {href: hrefFor('mission', e.subject.id)}, h('time', null, clockLabel(e.at)), h('span', {class: 'pr-t'}, S.missions[e.subject.id].title), h('span', {class: 'pr-w'}, present('mission', e.payload.to).label))))) : note('Archeus has not acted here yet.'));
   };
+  const activity = () => {
+    const rows = S.events.filter(e => e.project === pid && e.type === 'mission.state_changed' && S.missions[e.subject.id]).reverse().slice(0, 30);
+    return sec('What Archeus did', rows.length ? h('ul', {class: 'project-recent project-activity'}, ...rows.map(e => h('li', null, h('a', {href: hrefFor('mission', e.subject.id)}, h('time', {title: clockLabel(e.at)}, relTime(S.clock, e.at)), h('span', {class: 'pr-t'}, S.missions[e.subject.id].title), h('span', {class: 'pr-w'}, present('mission', e.payload.to).label))))) : note('Archeus has not acted here yet.'), rows.length === 30 ? note('Showing the latest 30 changes.') : null);
+  };
   const ideaSection = () => h('section', {class: 'project-idea-section'}, h('div', {class: 'project-section-head'}, h('h3', null, 'Project ideas'), off ? null : h('button', {class: 'btn quiet', type: 'button', 'aria-label': 'Capture an idea', onclick: capture}, icon('plus', 20))), ideaRows());
   const captureForm = () => {
     const draft = ideaDraft(ctx.ui, pid);
@@ -292,11 +299,12 @@ function project(ctx, A, S, id) {
   };
   return frame(ctx, A, {cls: 'project-inspector', kind: KIND_WORD.project, title: p.name, sub: p.note, pin: id,
     meta: h('p', {class: 'project-state-sentence'}, sentence),
-    tabs: [['overview', 'Overview'], ['missions', 'Missions'], ['ideas', 'Ideas'], ['details', 'Details']],
-    body: tab => h('div', {class: 'ax-body'},
+    tabs: PROJECT_TABS.map(([t, l]) => (t === 'missions' ? [t, l, ms.length] : t === 'ideas' ? [t, l, ideas.length] : [t, l])),
+    body: raw => { const tab = projectTab(raw); return h('div', {class: 'ax-body'},
       tab === 'overview' ? [recent(), phases(), ideaSection()] : null,
       tab === 'missions' ? sec('Missions', ms.length ? h('ul', {class: 'project-missions'}, ...ms.map(m => h('li', null, h('a', {href: hrefFor('mission', m.id)}, h('span', {class: 'project-mission-name'}, m.title), spineRow(m.state, m.held_from), badge('mission', m.state))))) : note('No missions yet.')) : null,
       tab === 'ideas' ? [off ? null : captureForm(), ideaSection()] : null,
-      tab === 'details' ? [sec('Repository', kv([['Folder', p.root], ['Missions', String(ms.length)], ['Confirmed knowledge', String(S.knowledge.filter(k => k.project === pid && k.state === 'CONFIRMED').length)]])),
-        sec('Next mission launches', pv ? [h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note)] : note('No launch settings recorded.'), link('#/accounts', 'Change the launch settings')), ...relationsBody(S, 'project', id)] : null) });
+      tab === 'activity' ? activity() : null,
+      tab === 'settings' ? [sec('Repository', kv([['Folder', p.root], ['Missions', String(ms.length)], ['Confirmed knowledge', String(S.knowledge.filter(k => k.project === pid && k.state === 'CONFIRMED').length)]])),
+        sec('Next mission launches', pv ? [h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note)] : note('No launch settings recorded.'), link('#/accounts', 'Change the launch settings')), ...relationsBody(S, 'project', id)] : null); } });
 }

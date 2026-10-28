@@ -449,7 +449,7 @@ export function decorate(ctx, content) {
   if (name === 'now') { content.append(digestPanel(ctx, A)); return content; }
   if (name === 'work') {
     const view = content.querySelector('.view'), ideas = [...view.querySelectorAll('.panel')].find((p) => p.querySelector('h2') && /^Ideas/.test(p.querySelector('h2').textContent));
-    ideas.replaceWith(pinnedPanel(ctx, A), ideasPanel(ctx, A));
+    if (ideas) ideas.replaceWith(pinnedPanel(ctx, A), ideasPanel(ctx, A));
   }
   return content;
 }

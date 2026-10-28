@@ -43,8 +43,7 @@
 .inspector { background: var(--s1); }
 
 /* ---------- Work: graph on top, the grouped list under it (concepts 04 and 08) ---------- */
-.work-split { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'side' 'graph' 'list'; gap: calc(var(--gut) * 1.25); align-items: start; }
-.work-side { grid-area: side; display: flex; flex-direction: column; gap: calc(var(--gut) * .75); min-width: 0; }
+.work-split { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'graph' 'list'; gap: calc(var(--gut) * 1.25); align-items: start; }
 .work-graph { grid-area: graph; position: relative; height: clamp(300px, 44vh, 480px); min-width: 0; }
 .work-graph { display: flex; flex-direction: column; }
 .work-graph .archeus-map { position: relative; flex: 1; height: auto; min-height: 0; }
@@ -57,8 +56,8 @@
 .work-legend [data-s='blocked'] .wl-dot { background: var(--blocked); }
 .work-legend [data-s='done'] .wl-dot { background: var(--done); }
 @container view (min-width: 1180px) {
-  .work-split { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); grid-template-areas: 'graph side' 'graph list'; grid-template-rows: auto 1fr; }
-  .work-graph { position: sticky; top: 0; height: clamp(420px, calc(100dvh - 230px), 720px); }
+  .work-split { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); grid-template-areas: 'graph list'; }
+  .work-graph { position: sticky; top: 0; height: clamp(420px, calc(100dvh - 260px), 720px); }
 }
 @container view (max-width: 599px) { .work-graph { height: 240px; } .work-legend { display: none; } }
 .wg .am-label-meta.wg-project { fill: var(--am-muted); }
@@ -137,3 +136,53 @@
 :root[data-motion='reduced'] .wk-fold > summary::before { transition: none; }
 @media (prefers-reduced-motion: reduce) { .wk-fold > summary::before { transition: none; } }
 .main-col .page-head:has(.wk-filter, .chips) { align-items: flex-end; }
+
+/* ---------- Work: header, saved views, project filter, list with a detail pane ---------- */
+.wk-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.wk-sub { display: flex; flex-wrap: wrap; gap: 2px 16px; margin: 4px 0 0; color: var(--text-2); }
+.wk-need { color: var(--text); font-weight: 600; }
+.wk-need::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 8px; background: var(--attention); transform: rotate(45deg) scale(.85); }
+.seg { display: inline-flex; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); overflow: hidden; }
+.seg-opt { display: inline-flex; align-items: center; min-height: var(--target); padding: 0 16px; font-size: var(--fs-cap); font-weight: 500; color: var(--text-2); text-decoration: none; }
+.seg-opt + .seg-opt { border-left: var(--hair) solid var(--line-strong); }
+.seg-opt[aria-current='true'] { background: var(--s3); color: var(--text); }
+.seg-opt:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+@media (hover: hover) and (pointer: fine) { .seg-opt:not([aria-current='true']):hover { background: var(--s2); color: var(--text); } }
+.wk-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; border-bottom: var(--hair) solid var(--line); }
+.wk-bar .tabs { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
+.wk-bar .wk-filter, .wk-bar .chips { padding-bottom: 6px; }
+.tab { text-decoration: none; display: inline-flex; align-items: center; gap: 8px; }
+.tab[aria-current='true'] { color: var(--text); border-bottom-color: var(--thread); }
+.tab .tn { font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-3); }
+.wk-tab:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+
+.work-master { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--gut) * 1.25); align-items: start; }
+.work-master > .work-list { grid-area: auto; }
+.wk-pane { display: none; }
+@container view (min-width: 1000px) {
+  .work-master { grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); }
+  .wk-pane { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 0; max-height: calc(100dvh - 190px); overflow: auto; padding-left: calc(var(--gut) * 1.25); border-left: var(--hair) solid var(--line); }
+}
+.wk-pane > * { margin: 0; }
+.wk-pane-t { font-size: var(--fs-t1); font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.wk-pane-s { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: var(--fs-cap); color: var(--text-2); }
+.wk-pane-v { color: var(--text-3); }
+.wk-pane-r { line-height: 1.45; }
+.wk-pane-h { padding-top: 8px; border-bottom: var(--hair) solid var(--line); padding-bottom: 8px; font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
+.wk-did { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.wk-did li { display: flex; justify-content: space-between; gap: 12px; min-height: var(--target); align-items: center; border-bottom: var(--hair) solid var(--line); }
+.wk-did time, .mrow-time { font-size: var(--fs-cap); font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.wk-pane-a { padding-top: 8px; }
+.wk-empty { display: grid; justify-items: start; gap: 12px; padding: 12px 0 24px; }
+.wk-empty .empty { padding: 0; }
+.work-view .mrow.wk-row { grid-template-columns: minmax(0, 1fr) auto auto auto; grid-template-areas: 'title badge time spine' 'meta badge time spine'; }
+.mrow-time { grid-area: time; align-self: center; min-width: 5ch; text-align: right; }
+@container view (max-width: 520px) {
+  .work-view .mrow.wk-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title badge' 'meta time' 'spine spine'; }
+  .mrow-time { text-align: left; }
+}
+@container view (max-width: 640px) { .wk-bar .wk-filter, .wk-bar .chips { width: 100%; } }
+.work-view :is(.mrow, .att-rows .card)::before { transition-duration: 180ms; }
+.work-view .mrow[data-peek]::before, .work-view .att-rows .panel[data-peek] .card::before { opacity: 1; }
+.work-view .att-rows .panel[data-peek] .card.band::before { opacity: .12; }
+@media (max-width: 600px) { .wk-tabs { gap: 0; } .wk-tab { padding: 0 8px; gap: 5px; font-size: var(--fs-cap); } }
