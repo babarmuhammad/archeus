@@ -230,3 +230,22 @@ export function nearestNeighbour(nodes, id, direction) {
   }
   return best;
 }
+
+export const projectsCore = (width, height, inset = INSET) => width < 600
+  ? {x: width / 2, y: inset.top + 36} : coreCentre(width, height, inset);
+export function projectsKeepOut(width, height, inset = INSET) {
+  const core = projectsCore(width, height, inset);
+  return width < 600 ? {...core, radius: 32, box: {x: core.x - 100, y: core.y + 20, width: 200, height: 48}}
+    : coreKeepOut(width, height, unit(width, height), inset);
+}
+export function layoutProjects(graph, width, height, seed = 'archeus', inset = INSET) {
+  const projects = graph.nodes.filter(n => n.kind === 'Project').sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const items = projects.flatMap(p => [p, ...graph.nodes.filter(n => n.kind === 'Idea' && n.project === p.id).sort((a, b) => String(a.id).localeCompare(String(b.id)))]);
+  const phone = width < 600, keep = projectsKeepOut(width, height, inset), rows = phone ? items.length : Math.ceil(items.length / 2);
+  const plateWidth = phone ? width - inset.left - inset.right : Math.min(260, (width - inset.left - inset.right - keep.box.width - 56) / 2);
+  const available = height - inset.top - inset.bottom - (phone ? 120 : 0);
+  const plateHeight = Math.min(64, Math.max(44, available / Math.max(1, rows) - 12));
+  return items.map((n, i) => ({...n, width: plateWidth, height: plateHeight, radius: 22,
+    x: phone ? width / 2 : i % 2 ? width - inset.right - plateWidth / 2 : inset.left + plateWidth / 2,
+    y: inset.top + (phone ? 120 : 0) + (Math.floor(i / (phone ? 1 : 2)) + .5) * available / Math.max(1, rows)}));
+}

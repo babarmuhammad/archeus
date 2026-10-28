@@ -627,6 +627,7 @@ export function createSim(opts = {}) {
     S.events.sort((a, b) => a.at - b.at || a.seq - b.seq).forEach((e, i) => { e.seq = i + 1; });
     seq = S.events.length; S.clock = 0; S.quiet = false;
     script();
+    if (opts.story === 'full') S.projects.push({id: 'atlas', name: 'Atlas', note: 'Knowledge platform.', root: 'atlas/'});
     if (opts.story === 'calm') calmDown();
   }
   // ?story=calm (concept 07): five projects, each with a finished mission and a captured idea, and the script silent.

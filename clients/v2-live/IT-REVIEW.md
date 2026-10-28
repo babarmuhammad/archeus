@@ -1663,3 +1663,30 @@ Status: to review. Builder-written, not checked by a native speaker.
 
 - Emergency stop all missions → Arresto di emergenza di tutte le missioni
 - Re-arm new work → Riarma il nuovo lavoro
+# Projects concept rebuild — 2026-10-27 (to review)
+
+Builder translations; no native review. Source: `js/i18n-insp.js`.
+
+| English | Italian |
+|---|---|
+| Projects scene | Scena dei progetti |
+| Select a project to see its phases, missions and ideas. | Seleziona un progetto per vedere fasi, missioni e idee. |
+| No projects yet. | Ancora nessun progetto. |
+| No missions yet. | Ancora nessuna missione. |
+| No project ideas yet. | Ancora nessuna idea per questo progetto. |
+| Project ideas | Idee del progetto |
+| Phases | Fasi |
+| Recorded relation | Relazione registrata |
+| Suggested relation | Relazione suggerita |
+| Active / Waiting / Verified / Completed | Attiva / In attesa / Verificata / Completata |
+| Nothing running in this project. | Niente in esecuzione in questo progetto. |
+| Work needs you in this project. | Il lavoro in questo progetto richiede la tua attenzione. |
+| Work is active in this project. | Il lavoro in questo progetto è attivo. |
+| Every mission is completed. | Tutte le missioni sono completate. |
+| Capture an idea | Cattura un’idea |
+| Idea title | Titolo dell’idea |
+| Capture / Promote | Cattura / Promuovi |
+| Phase summary across missions | Riepilogo delle fasi delle missioni |
+| Advance along the idea path | Avanza nel percorso dell’idea |
+| No launch settings recorded. | Nessuna impostazione di avvio registrata. |
+| N mission / N missions | N missione / N missioni |

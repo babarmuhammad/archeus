@@ -5,6 +5,7 @@ const pt = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
 const seg = (a, b) => `M${pt(a)}L${pt(b)}`;
 // 24-unit line icons, drawn at 28 px inside the opaque centre disk.
 export const ICONS = {
+  folder: 'M3 6h7l2 3h9v12H3ZM3 6V4h7l2 2',
   'doc-search': 'M13 21H4V3h11l5 5v4M14 3v6h6M7 8h3M7 12h4M7 16h3M19 19l3 3M20 16a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
   doc: 'M5 2h10l5 5v15H5ZM14 2v6h6M8 12h9M8 16h9M8 19h6',
   notes: 'M4 2h16v20H4ZM7 7h10M7 11h10M7 15h10M7 19h6',
@@ -86,4 +87,13 @@ export function coreStar(R, reach) {
   for (let k = 0; k < 32; k++) for (const m of [5, 7, 9, 11]) threads += seg(rim(k), rim((k + m) % 32));
   const tips = [0, 4, 8, 12].map(k => `M${pt(at(k, L * 1.12))}h0`).join('');
   return {spikes, threads, tips};
+}
+
+export function projectPlateMarkup(n, t = x => x) {
+  const x = -n.width / 2, y = -n.height / 2;
+  const count = Math.max(5, Math.floor((n.width - 58) / 9));
+  const label = [...String(n.label || n.id)];
+  const title = label.length > count ? label.slice(0, count - 1).join('') + '…' : label.join('');
+  const meta = n.kind === 'Idea' ? t('Captured') : t(`${n.missionCount} ${n.missionCount === 1 ? 'mission' : 'missions'}`);
+  return `<g class="am-project-plate"><title>${esc(n.label || n.id)}</title><rect x="${x}" y="${y}" width="${n.width}" height="${n.height}"/><g transform="translate(${x + 12} -12)"><path class="am-icon" d="${ICONS[n.kind === 'Idea' ? 'bulb' : 'folder']}"/></g><circle class="projects-status" cx="${n.width / 2 - 9}" cy="${y + 9}" r="3"/><text class="am-plate-title" x="${x + 48}" y="-1">${esc(title)}</text><text class="am-plate-meta" x="${x + 48}" y="17">${esc(meta)}</text></g>`;
 }

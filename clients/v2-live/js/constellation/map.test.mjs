@@ -1,8 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {coreKeepOut, crystalRadius, isCrystal, layout, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {coreKeepOut, crystalRadius, isCrystal, layout, layoutProjects, projectsKeepOut, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
+test('projects plates fit the inset, avoid each other and reserve the core for 1 to 8 projects', () => {
+  for (const [width, height] of [[1280, 720], [1440, 900], [2000, 930], [390, 700]]) for (let count = 1; count <= 8; count++) {
+    const input = {nodes: Array.from({length: count}, (_, i) => ({id: `p${i}`, project: `p${i}`, kind: 'Project', label: `Project ${i}`, missionCount: i})), edges: []};
+    const snapshot = structuredClone(input), nodes = layoutProjects(input, width, height), keep = projectsKeepOut(width, height);
+    assert.equal(nodes.length, count);
+    assert.deepEqual(nodes, layoutProjects({...input, nodes: [...input.nodes].reverse()}, width, height));
+    assert.deepEqual(input, snapshot);
+    const boxes = nodes.map(n => ({x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height}));
+    boxes.forEach((box, i) => {
+      const message = `${width}x${height}, ${count} projects, ${i}`;
+      assert.ok(box.width >= 44 && box.height >= 44, message + ': target');
+      assert.ok(box.x >= INSET.left && box.y >= INSET.top && box.x + box.width <= width - INSET.right && box.y + box.height <= height - INSET.bottom, message + ': inset');
+      assert.ok(!overlaps(box, keep.box) && !coversNode(box, keep, 0), message + ': core');
+      for (const other of boxes.slice(i + 1)) assert.ok(!overlaps(box, other, 8), message + ': overlap');
+    });
+  }
+  assert.deepEqual(layoutProjects({nodes: [], edges: []}, 390, 700), []);
+});
+
+test('projects retain captured idea plates and ignore unrelated mission nodes', async () => {
+  const {projectPlateMarkup} = await import('./nodeart.js');
+  const input = {nodes: [{id: 'p', project: 'p', kind: 'Project', label: '<Project>', missionCount: 2}, {id: 'i', project: 'p', kind: 'Idea', label: '<Idea>'}, {id: 'm', project: 'p', kind: 'Mission'}]};
+  const nodes = layoutProjects(input, 1280, 720);
+  assert.deepEqual(nodes.map(n => n.id), ['p', 'i']);
+  const plate = projectPlateMarkup(nodes[0]);
+  assert.ok(plate.includes('2 missions') && !plate.includes('<Project>'));
+  assert.ok(projectPlateMarkup(nodes[1]).includes('Captured'));
+});
 test('layout is seeded, deterministic, input-order independent and bounded', () => {
   const input = graph(25), snapshot = structuredClone(input);
   const first = layout(input, 960, 640, 'same');

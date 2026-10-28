@@ -11,6 +11,8 @@ import { areasOf, kindOfId, whyOf, routeOf, policyOf, execOutput, checkpoints, r
 import { pill, sec, note, kv, link, entity, hrefFor } from './ax.js';
 import { inspectorArea } from './inspectors2.js';
 import { overview, pane, meta, position } from './inspector-mission.js';
+import {spineOf} from '../spine-model.js';
+import {projectState, projectsLegend} from './view-projects.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
 export const isCompact = () => (document.getElementById('device') || document.body).clientWidth < 600;
@@ -233,9 +235,45 @@ function knowledge(ctx, A, S, id) {
 }
 function project(ctx, A, S, id) {
   const pid = id.replace(/^prj-/, ''), p = S.projects.find((x) => x.id === pid); if (!p) return null;
-  const c = A.launch(pid), pv = A.preview(pid);
-  return frame(ctx, A, { kind: KIND_WORD.project, title: p.name, sub: p.note, pin: id, tabs: [['project', 'Project'], ['relations', 'Relations']],
-    body: (tab) => tab === 'relations' ? relTab(S, 'project', id) : h('div', { class: 'ax-body' }, sec('Repository', kv([['Folder', p.root], ['Missions', String(Object.values(S.missions).filter((m) => m.project === pid).length)], ['Confirmed knowledge', String(S.knowledge.filter((k) => k.project === pid && k.state === 'CONFIRMED').length)]])),
-      sec('Phase', h('ul', { class: 'prj-phase' }, ...Object.values(S.missions).filter((m) => m.project === pid).map((m) => h('li', null, h('a', { href: hrefFor('mission', m.id) }, h('span', { class: 'ph-n' }, m.title), spineRow(m.state, m.held_from), h('span', { class: 'ph-w' }, word('mission', m.state))))))),
-      sec('Next mission launches', h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note), link('#/accounts', 'Change the launch settings'))) });
+  const ms = Object.values(S.missions).filter(m => m.project === pid), ideas = S.ideas.filter(i => i.project === pid);
+  const state = projectState(ms), off = A.isOffline(), pv = A.launch(pid) ? A.preview(pid) : null;
+  const sentence = ({waiting: 'Work needs you in this project.', active: 'Work is active in this project.', verified: 'Every mission is completed.', idle: 'Nothing running in this project.'})[state];
+  const capture = () => { ctx.ui.tab = 'ideas'; ctx.render(); document.querySelector('[data-key="project-idea-title"]')?.focus(); };
+  const ideaRows = () => ideas.length ? h('ul', {class: 'project-ideas'}, ...ideas.map(i => {
+    const k = IDEA_PATH.indexOf(i.state), next = k >= 0 && k < IDEA_PATH.length - 1 ? IDEA_PATH[k + 1] : null;
+    return h('li', null, h('a', {href: hrefFor('idea', i.id)}, h('span', null, i.title), badge('idea', i.state)),
+      next && !off ? h('button', {class: 'btn quiet', type: 'button', title: 'Advance along the idea path', onclick: () => { if (A.isOffline()) return; const result = A.advanceIdea(i.id); if (!result.ok) ctx.toast('Not done: ' + result.reason); ctx.render(); }}, 'Promote') : null);
+  })) : note('No project ideas yet.');
+  const phases = () => {
+    const spines = ms.filter(m => m.state !== 'CANCELLED').map(m => spineOf(m.state, m.held_from));
+    return sec('Phases', h('p', {class: 'project-phase-note'}, 'Phase summary across missions'),
+      h('ol', {class: 'project-phases'}, ...['Understand', 'Plan', 'Approve', 'Run', 'Verify', 'Review'].map((label, i) => {
+        const marks = spines.map(sp => sp.marks[i]).filter(Boolean);
+        const current = marks.filter(m => m.kind === 'current');
+        const word = spines.some(sp => sp.unknown) ? 'Position unknown' : marks.length && marks.every(m => m.kind === 'passed') ? 'Completed'
+          : current.some(m => m.cls === 'failed') ? 'Failed' : current.some(m => m.cls === 'blocked') ? 'Blocked'
+          : current.some(m => m.cls === 'needs_you') ? 'Waiting' : current.some(m => m.cls === 'paused') ? 'Paused' : current.length ? 'Active' : 'Waiting';
+        return h('li', {'data-phase': word}, h('span', {class: 'project-phase-dot', 'aria-hidden': 'true'}), h('span', null, label), h('span', {class: 'project-phase-word'}, word));
+      })));
+  };
+  const ideaSection = () => h('section', {class: 'project-idea-section'}, h('div', {class: 'project-section-head'}, h('h3', null, 'Project ideas'), off ? null : h('button', {class: 'btn quiet', type: 'button', 'aria-label': 'Capture an idea', onclick: capture}, icon('plus', 20))), ideaRows());
+  const captureForm = () => {
+    const input = h('input', {id: 'project-idea-title', 'data-key': 'project-idea-title', name: 'idea', required: true, maxlength: 240, value: ctx.ui.projectIdeaDraft || ''});
+    input.addEventListener('input', () => { ctx.ui.projectIdeaDraft = input.value; });
+    return h('form', {class: 'project-capture', onsubmit: e => {
+      e.preventDefault(); const title = input.value.trim(); if (!title) return;
+      if (A.isOffline()) return;
+      ctx.ui.projectIdeaDraft = ''; ctx.sim.createIdea(title, pid); ctx.render();
+    }}, h('label', {for: 'project-idea-title'}, 'Idea title'), input, h('button', {class: 'btn primary', type: 'submit'}, 'Capture'));
+  };
+  return frame(ctx, A, {cls: 'project-inspector', kind: KIND_WORD.project, title: p.name, sub: p.note, pin: id,
+    meta: h('p', {class: 'project-state-sentence'}, sentence),
+    tabs: [['overview', 'Overview'], ['missions', 'Missions'], ['ideas', 'Ideas'], ['details', 'Details']],
+    body: tab => h('div', {class: 'ax-body'},
+      tab === 'overview' ? [phases(), ideaSection()] : null,
+      tab === 'missions' ? sec('Missions', ms.length ? h('ul', {class: 'project-missions'}, ...ms.map(m => h('li', null, h('a', {href: hrefFor('mission', m.id)}, h('span', {class: 'project-mission-name'}, m.title), spineRow(m.state, m.held_from), badge('mission', m.state))))) : note('No missions yet.')) : null,
+      tab === 'ideas' ? [off ? null : captureForm(), ideaSection()] : null,
+      tab === 'details' ? [sec('Repository', kv([['Folder', p.root], ['Missions', String(ms.length)], ['Confirmed knowledge', String(S.knowledge.filter(k => k.project === pid && k.state === 'CONFIRMED').length)]])),
+        sec('Next mission launches', pv ? [h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note)] : note('No launch settings recorded.'), link('#/accounts', 'Change the launch settings')), ...relationsBody(S, 'project', id)] : null,
+      projectsLegend()) });
 }
