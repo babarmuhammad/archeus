@@ -76,3 +76,17 @@
   .am-territories .am-chit:focus-visible rect, .am-territories .am-chit:focus-visible circle { stroke: Highlight; }
 }
 .am-territories .am-cell-tint { fill: currentColor; fill-opacity: .16; stroke: none; pointer-events: none; }
+
+/* Worktrees: a count chip on the cell and a list in the focus panel. A worktree belongs to its project and is never a cell of its own; the state is a word. */
+.am-territories .am-cell-wt-box { fill: none; stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.am-territories .am-cell-wt-icon { fill: none; stroke: var(--am-muted); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.am-territories .am-cell-wt-n { fill: var(--am-muted); font: 500 11px/1 var(--am-sans); }
+.am-territories .am-focus-wts { display: flex; flex-direction: column; gap: 6px; }
+.am-territories .am-focus-wt-head { margin: 0; font: 500 12px/1.2 var(--am-sans); letter-spacing: .12em; text-transform: uppercase; color: var(--am-muted); }
+.am-territories .am-focus-wt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.am-territories .am-focus-wt { display: grid; grid-template-columns: minmax(0, 1.4fr) auto auto minmax(0, 1.4fr); gap: 4px 14px; align-items: baseline; padding: 6px 12px; border: 1px solid var(--am-line); border-radius: 6px; }
+.am-territories .am-focus-wt-branch { font: 500 14px/1.3 var(--am-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.am-territories .am-focus-wt-owner { font: 400 12px/1.3 var(--am-sans); color: var(--am-muted); text-transform: uppercase; letter-spacing: .08em; }
+.am-territories .am-focus-wt-state { font: 500 12px/1.3 var(--am-sans); color: currentColor; text-transform: uppercase; letter-spacing: .1em; }
+.am-territories .am-focus-wt-mission { font: 400 14px/1.3 var(--am-serif); color: var(--am-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 599px) { .am-territories .am-focus-wt { grid-template-columns: 1fr auto; } }

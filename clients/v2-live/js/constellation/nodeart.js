@@ -10,6 +10,7 @@ export const ICONS = {
   doc: 'M5 2h10l5 5v15H5ZM14 2v6h6M8 12h9M8 16h9M8 19h6',
   notes: 'M4 2h16v20H4ZM7 7h10M7 11h10M7 15h10M7 19h6',
   code: 'M8 7 3 12l5 5M16 7l5 5-5 5M14 5l-4 14',
+  branch: 'M6 3v12M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM18 9a9 9 0 0 1-9 9',
   bulb: 'M9 20h6M10 23h4M8 16c0-3-3-3-3-7a7 7 0 0 1 14 0c0 4-3 4-3 7v1H8Z',
   check: 'M4 12l5 5 11-12',
   shield: 'M12 2l9 5v9l-9 6-9-6V7ZM7 12l4 4 6-7',
@@ -84,6 +85,12 @@ export function hubMarkup(n) {
   const text = r >= 12 ? `<text class="am-hub-code" y="${fx(size * .36)}" style="font-size:${size}px" text-anchor="middle">${code}</text>` : '';
   const flag = state === 'needs-you' ? `<g class="am-state-needs-you"><path class="am-diamond" d="M${fx(r * .72)},${fx(-r * .95)}l6,-7l6,7l-6,7Z"/></g>` : '';
   return `<g class="am-star am-hub am-state-core" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-hub-disc"/><circle r="${fx(Math.max(2, r - 4))}" class="am-hub-inner"/>${text}${flag}</g>`;
+}
+// A worktree sub-hub: one ring round a branch glyph, smaller than a project hub. Its owner (linked or task) and state are words beside it, never colour alone; a missing one carries the cross.
+export function worktreeMarkup(n) {
+  const r = n.radius, state = stateKey(n.state), cls = STATES.includes(state) ? state : 'idle', k = r * 1.15 / 24, a = fx(r * .35);
+  const cross = state === 'blocked' ? `<path d="M${fx(r * .62)},${fx(-r * .85)}l${a},${a}m0,-${a}l-${a},${a}" class="am-glyph"/>` : '';
+  return `<g class="am-star am-worktree am-state-${cls}" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-hub-disc"/><g transform="translate(${fx(-12 * k)} ${fx(-12 * k)}) scale(${fx(k)})"><path d="${ICONS.branch}" class="am-icon"/></g>${cross}</g>`;
 }
 // Crossing ivory threads: 16 spikes (long vertical and horizontal, shorter diagonals) over string-art chords between 32 rim points.
 export function coreStar(R, reach) {
