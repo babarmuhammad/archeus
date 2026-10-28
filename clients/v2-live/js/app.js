@@ -1,7 +1,7 @@
 // V2 Live shell: toolbar (tool chrome), device frame, app shell, router, simulation loop.
 import { h, clear, trapTab } from './dom.js';
 import { icon } from './icons.js';
-import { lockup, wordmark } from './brand.js';
+import { wordmark } from './brand.js';
 import { createSim, clockLabel, localPlan } from '../sim.js';
 import * as store from './store.js';
 import { THEMES, DEVICES } from './store.js';
@@ -11,9 +11,12 @@ import * as vWork from './view-work.js';
 import * as vProjects from './view-projects.js';
 import * as vReplay from './view-replay.js';
 import * as vSettings from './view-settings.js';
-import { viewMore } from './views2.js';
 import { viewChat, mountDock, openTell } from './chat.js';
-import { buildBottom, syncBottom, placesSheet } from './phone.js';
+import { buildBottom, syncBottom, topbarParts, closeThen, placesBody, safetyBody } from './phone.js';
+import { openSheet } from './sheet.js';
+import { places, stopStep, STOP_IDLE, sideOf, topTitle } from './phone-model.js';
+import { projectCodes } from './project-code.js';
+import { whenShort } from './time-model.js';
 import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate, isSection } from './areas.js';
 import { inspectorFor } from './inspectors.js';
 import { areasOf } from './areas-model.js';
@@ -56,7 +59,7 @@ const stage = document.getElementById('stage');
 const device = document.getElementById('device');
 const framenote = document.getElementById('framenote');
 let app, page, rail, bottom, dock, topbar, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
-let placesInert = [];
+let placesSheet = null, safetySheet = null, toolsSheet = null, toolsBox = null, safetyBox = null, safetySide = 'start', toolsView = '', stop = STOP_IDLE, stopTimer = 0;
 
 const navLabel = (r) => (r.id === 'now' ? 'Overview' : r.label);
 const navItem = (r) => h('a', { class: 'nav-item', href: '#/' + r.id, 'data-route': r.id }, icon(r.icon, 20), h('span', { class: 'nl' }, navLabel(r)), h('span', { class: 'count', 'data-count': r.id, hidden: true }));
@@ -69,7 +72,7 @@ function buildShell() {
     h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
   topbar = h('header', { class: 'topbar' });
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
-  bottom = buildBottom({ tell: tellClick, places: togglePlaces, stop: stopClick });
+  bottom = buildBottom((slot, e) => (slot.kind === 'route' ? nav('#/' + slot.routes[0]) : SLOT_ACTION[slot.id](e)));
   dock = h('div', { class: 'chatdock', id: 'chatdock', hidden: true });
   inspector = h('aside', { class: 'inspector', 'aria-label': 'Details', id: 'inspector' });
   scrim = h('div', { class: 'scrim', 'aria-hidden': 'true', onclick: closeInsp });
@@ -80,13 +83,13 @@ function buildShell() {
 
 // ---------- routing ----------
 // The one place that maps a route to the function that renders it: render(ctx) returns the page node.
-const VIEWS = { now: vNow.render, work: vWork.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
+const VIEWS = { now: vNow.render, work: vWork.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions };
 // Attention became part of Work: its deep links land on the same page and inspector.
 const GONE = /^#\/attention(?=\/|$)/;
 VIEWS.projects = vProjects.render;
 function parse() {
   const m = parseHash(location.hash);
-  const name = [...ROUTES.map((r) => r.id), 'terminal', 'more', 'projects'].includes(m.name) ? m.name : 'now';
+  const name = [...ROUTES.map((r) => r.id), 'terminal', 'projects'].includes(m.name) ? m.name : 'now';
   return { name, id: m.id, sub: m.sub, q: m.q };
 }
 function nav(hash) { if (location.hash === hash) render(); else location.hash = hash; }
@@ -96,7 +99,7 @@ let inspKey = '';
 const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
 // A change of page runs through the motion layer (a directional cross-fade); everything else, including each simulation event, redraws in place and only glides what moved.
 function render() {
-  if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
+  if (/^#\/(map|more)(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map; the phone's Places sheet replaced the More page
   if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
   const to = parse().name;
   if (to !== ctx.route.name && !embed && motion.canRoute()) { motion.route(ctx.route.name, to, drawRoute); return; }
@@ -110,12 +113,12 @@ function drawRoute() {
   const keep = { top: page.scrollTop, itops: inspScrollers().map((e) => e.scrollTop), ikey: inspKey, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; if (ui.s4) { ui.s4.sheet = false; if (ui.s4.page) ui.s4.page.sheet = null; } if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; if (ui.s4) { ui.s4.sheet = false; if (ui.s4.page) ui.s4.page.sheet = null; } if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { closePhoneSheets(); ui.tellOpen = ui.safetyOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
   if (ctx.route.id && ctx.route.sub) ui.tab = ctx.route.sub; // a tab is part of the address: #/work/m-date/plan, #/projects/prj-notes/missions
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
-  document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'projects' ? 'Projects' : r.name === 'more' ? 'More' : navLabel(ROUTES.find((x) => x.id === r.name)));
+  document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'projects' ? 'Projects' : navLabel(ROUTES.find((x) => x.id === r.name)));
 
   let content;
   if (term) content = viewTerminal(ctx);
@@ -138,7 +141,7 @@ function drawRoute() {
   app.querySelectorAll('[data-count="work"]').forEach((c) => { const was = c.textContent; c.hidden = !n; c.textContent = String(n); if (was && n && was !== String(n)) motion.tick(c); c.setAttribute('aria-label', n + ' need you'); });
 
   mountTell(term);
-  syncTopbar(); syncRail(); syncPhone();
+  syncFold(); syncTopbar(); syncRail(); syncPhone();
   ctx.mounts.forEach((f) => f());
   pruneMaps(r.name === 'now' ? 'now' : null);
   if (r.name !== 'work') vWork.leave();
@@ -155,11 +158,8 @@ function drawRoute() {
     if (el && el !== document.activeElement) el.focus({ preventScroll: true });
   }
   if (insp && !wasOpen) { const hd = inspector.querySelector('h2'); if (hd) { hd.setAttribute('tabindex', '-1'); hd.focus({ preventScroll: true }); } }
-  const places = app.querySelector('.places');
-  if (places && !places.contains(document.activeElement)) places.querySelector('.pl-item').focus();
-  else if (!places && keep.was && keep.was.closest('.places')) bottom.querySelector('[data-key="bb-places"]').focus();
   const safety = app.querySelector('.safety-pop');
-  if (!places && safety && !safety.contains(document.activeElement)) safety.querySelector('button').focus();
+  if (safety && !safety.contains(document.activeElement)) safety.querySelector('button').focus();
   // motion last: focus is settled on the real DOM first, so a leaving ghost (same classes, inert) can never take it
   motion.railMark(rail); motion.tabs([page, inspector]);
   if (prev.name !== ctx.route.name) motion.arrive(page, direction(prev.name, ctx.route.name)); else motion.play(snap, roots);
@@ -200,7 +200,7 @@ function toast(text, o) {
   toastEl.dataset.kind = err ? 'error' : 'info'; toastEl.setAttribute('role', err ? 'alert' : 'status');
   toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [o.action.run ? h('button', { class: 'btn', type: 'button', 'data-key': 'toast-undo', onclick: () => { dismissToast(); o.action.run(); } }, o.action.label) : h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
   translate(toastEl); toastEl.hidden = false;
-  if (shown) motion.enter(toastEl, { y: -6, s: .98, origin: '100% 0', dur: 1 });
+  if (shown) motion.enter(toastEl, isPhone() ? { y: 6, s: .98, origin: '50% 100%', dur: 1 } : { y: -6, s: .98, origin: '100% 0', dur: 1 });
   toastEl.toggleAttribute('data-auto', !keep);
   if (!keep) toastTimer = setTimeout(dismissToast, o && o.action ? 7000 : 4500);
 }
@@ -213,7 +213,7 @@ function dismissToast() {
 
 // ---------- top bar: safety cluster (status popover, Tell, Stop) ----------
 function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk = ui.rearmAsk = false; render(); const b = app.querySelector('[data-key="' + ui.safetyOpener + '"]'); if (b) b.focus(); } }
-function stopClick(e) { ui.safetyOpener = e.currentTarget.dataset.key; ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
+function stopClick(e) { if (isPhone()) { openSafety(e, true); return; } ui.safetyOpener = e.currentTarget.dataset.key; ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
 function tellClick() {
   if (isPhone()) { if (ctx.route.name === 'chat') { const i = page.querySelector('input.cinput'); if (i) i.focus(); } else openTell(ctx); return; }
   if (ctx.route.name === 'chat' || ctx.route.name === 'now') { if (ui.nowDrawer || ui.safetyOpen) { ui.nowDrawer = ui.safetyOpen = false; render(); } const i = page.querySelector('input.cinput'); if (i) i.focus(); return; }
@@ -222,8 +222,8 @@ function tellClick() {
 }
 function syncTopbar() {
   const eng = sim.state.estop.engaged, open = !!ui.safetyOpen;
+  if (isPhone()) { phoneTopbar(eng); return; }
   clear(topbar).append(
-    h('span', { class: 'tb-lock' }, lockup()),
     h('div', { class: 'safety', 'data-state': eng ? 'stopped' : 'ok' },
       h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) closeSafety(); else { ui.safetyOpener = 'safety'; ui.safetyOpen = true; ui.tellOpen = false; render(); } } },
         h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, eng ? 'Stopped' : 'Not stopped'), h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), h('span', { class: 'sx' }, eng ? 'new work blocked' : 'accepts new work')),
@@ -232,7 +232,7 @@ function syncTopbar() {
     ...(['now', 'chat'].includes(ctx.route.name) ? [] : [h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell')]),
     h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', 'aria-label': eng ? 'Re-arm new work' : 'Emergency stop all missions', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
 }
-// The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
+// The composer is an overlay on desktop, not an always-on dock; on the phone chat.js draws the Tell sheet from the bottom bar's Tell slot.
 function mountTell(term) {
   if (term) { app.dataset.dock = ''; dock.hidden = true; return; }
   const phone = isPhone(), open = !phone && ui.tellOpen && !['chat', 'now'].includes(ctx.route.name); // the Overview carries its own composer in the scene
@@ -244,23 +244,94 @@ function mountTell(term) {
   }
 }
 
-// ---------- phone: Places sheet and the bottom bar state ----------
-function togglePlaces() { ui.placesOpen = !ui.placesOpen; ui.placesFresh = ui.placesOpen; ui.safetyOpen = false; render(); const f = app.querySelector(ui.placesOpen ? '.places .pl-item' : '[data-key="bb-places"]'); if (f) f.focus(); }
+// ---------- phone: bar, top bar and sheets ----------
+// Everything below runs only when isPhone(). The sheets are openSheet() instances kept here, not rebuilt by render(), so a simulation tick never closes one.
+const SLOT_ACTION = { tell: tellClick, places: togglePlaces, stop: stopClick };
+const needCount = () => sim.attention().filter((a) => a.kind !== 'knowledge').length;
+
+// The prototype toolbar row is folded into the phone top bar when the window itself is the phone; a device frame on a desktop window keeps the toolbar (it holds the device switch).
+function syncFold() { document.body.toggleAttribute('data-fold', isPhone() && !stage.dataset.frame); }
+
+function phoneTopbar(eng) {
+  const h1 = page.querySelector('h1'), title = topTitle(ctx.route.name, h1 && h1.textContent);
+  if (title) h1.classList.add('vh');
+  clear(topbar).append(...topbarParts({ title, tag: document.body.hasAttribute('data-fold') ? (embed ? 'note' : 'tools') : null, playing: sim.state.playing, engaged: eng, safetyOpen: !!safetySheet,
+    on: { home: () => nav('#/now'), tools: openTools, safety: () => (safetySheet ? safetySheet.close() : openSafety(null, false)), search: () => ctx.openPalette() } }));
+}
+
+// A sheet opened from here keeps the toast live: it docks above the sheet and its Dismiss and action must still work.
+function phoneSheet(o) { const sheet = openSheet(o); toastEl.inert = false; return sheet; }
+function closePhoneSheets() { [placesSheet, safetySheet, toolsSheet].forEach((x) => { if (x) x.close(false); }); }
+
+function togglePlaces() {
+  if (placesSheet) { placesSheet.close(); return; }
+  const all = sim.state.projects, codes = projectCodes(all.map((p) => p.name)), n = needCount();
+  const to = (fn) => closeThen(placesSheet, fn);
+  placesSheet = phoneSheet({ id: 'places', title: 'Places', detents: ['full'], onClose: () => { placesSheet = null; syncPhone(); },
+    content: placesBody({ route: ctx.route.name, model: places({ routes: ROUTES, projects: all, stateOf: projState, selected: ui.workProject, attention: n }), total: all.length, codeOf: (p) => codes[all.indexOf(p)], stateOf: projState, wordOf: (st) => PSTATE[st], sinceOf: lastSeen,
+      on: { go: (href) => to(() => nav(href)), project: (p) => to(() => { ui.workProject = p.id; nav('#/work'); }), search: () => to(() => ctx.openPalette()),
+        all: () => to(() => { nav('#/projects'); requestAnimationFrame(() => { const i = page.querySelector('[data-key="projects-search"]'); if (i) i.focus(); }); }) } }) });
+  syncPhone();
+}
+// The last time anything in the project moved, as the rest of the app words times.
+function lastSeen(p) {
+  const t = Math.max(-1, ...Object.values(sim.state.missions).filter((m) => m.project === p.id).map((m) => m.updated_at));
+  return t < 0 ? 'Never' : whenShort(t, sim.state.clock, clockLabel);
+}
+
+// The safety sheet: Pause all, Resume all and the two-step Stop. Tapping Stop in the bar arms it at once; from the status word the sheet opens first and Emergency stop arms it.
+const stopCtx = () => ({ running: Object.values(sim.state.missions).filter((m) => m.state === 'EXECUTING').length, engaged: sim.state.estop.engaged, now: performance.now() });
+function openSafety(e, armNow) {
+  if (safetySheet) return;
+  safetyBox = h('div');
+  safetySheet = phoneSheet({ id: 'safety', title: 'Safety', detents: ['half'], content: safetyBox, onClose: () => { clearInterval(stopTimer); stop = STOP_IDLE; safetySheet = null; syncPhone(); } });
+  if (armNow) armStop(e); else drawSafety();
+  syncPhone();
+}
+function armStop(e) {
+  const r = app.getBoundingClientRect();
+  safetySide = sideOf(e && e.clientX, r.left, r.width);
+  stop = stopStep(STOP_IDLE, 'tap', stopCtx());
+  clearInterval(stopTimer);
+  stopTimer = setInterval(() => { const next = stopStep(stop, 'tick', stopCtx()); if (next.phase === 'idle') { stop = next; clearInterval(stopTimer); drawSafety(); } }, 500);
+  drawSafety();
+}
+function drawSafety() {
+  const ms = Object.values(sim.state.missions), done = (fn) => () => closeThen(safetySheet, fn);
+  clear(safetyBox).append(safetyBody({ engaged: sim.state.estop.engaged, running: ms.filter((m) => m.state === 'EXECUTING').length, paused: ms.filter((m) => m.state === 'PAUSED').length, stop, side: safetySide }, {
+    arm: armStop, pause: done(() => act('pause_all')), resume: done(() => act('resume_all')),
+    confirm: () => { stop = stopStep(stop, 'confirm'); if (stop.phase === 'done') { const kind = stop.action; closeThen(safetySheet, () => act(kind)); } },
+    back: () => { stop = STOP_IDLE; clearInterval(stopTimer); drawSafety(); }
+  }));
+  translate(safetyBox);
+  const k = safetyBox.querySelector('[data-key="estop-yes"], [data-key="rearm-yes"], [data-key="estop"], [data-key="rearm"]'); if (k) k.focus({ preventScroll: true });
+}
+
+// The prototype tools on the phone: the same menus as the toolbar, in a sheet (the toolbar row is folded away).
+function openTools() {
+  if (toolsSheet) return;
+  toolsBox = h('div', { class: 'tools' }); toolsView = '';
+  toolsSheet = phoneSheet({ id: 'tools', title: 'Prototype tools', detents: ['half', 'full'], initial: 'half', content: toolsBox, onClose: () => { toolsSheet = null; } });
+  drawTools();
+}
+function drawTools() {
+  if (!toolsSheet) return;
+  const row = (view, label, hint) => h('button', { class: 'menu-item', type: 'button', 'data-key': 'tools-' + view, onclick: () => { toolsView = view; drawTools(); } }, label, h('span', { class: 'hint' }, hint), icon('chevron', 18));
+  const th = THEMES.find((t) => t.id === store.get('theme')), dev = DEVICES.find((d) => d.id === store.get('device'));
+  clear(toolsBox).append(...(toolsView
+    ? [h('button', { class: 'menu-item', type: 'button', 'data-key': 'tools-back', onclick: () => { toolsView = ''; drawTools(); } }, icon('chevronl', 18), 'Prototype tools'), ...menuKids(toolsView)]
+    : [row('theme', 'Theme', th.label), row('sim', 'Simulation', sim.state.playing ? 'x' + sim.state.speed : 'Paused'), row('projects', 'Projects', String(sim.state.projects.length)), row('device', 'Device', dev.label)]));
+  // the sheet's own labels were translated once when it opened; a language switch inside it starts from English again
+  const el = toolsSheet.el, grip = el.querySelector('button.sheet-grip');
+  el.querySelector('h2').textContent = 'Prototype tools'; el.querySelector('.sheet-close').setAttribute('aria-label', 'Close');
+  if (grip) grip.setAttribute('aria-label', el.dataset.detent === 'full' ? 'Collapse' : 'Expand');
+  translate(el);
+}
+
 function syncPhone() {
-  placesInert.forEach((el) => { el.inert = false; }); placesInert = [];
-  app.querySelectorAll('.pl-wrap').forEach((e) => e.remove());
-  const count = sim.attention().filter((a) => a.kind !== 'knowledge').length;
-  if (ui.placesOpen && isPhone() && app.dataset.term !== 'true') {
-    const wrap = placesSheet(ctx, { close: togglePlaces, projState, projectStates: PSTATE, count });
-    if (ui.placesFresh) { wrap.classList.add('enter'); ui.placesFresh = false; }
-    app.append(wrap);
-    for (let node = wrap; node !== document.body; node = node.parentElement) {
-      [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert) { el.inert = true; placesInert.push(el); } });
-    }
-  }
-  syncBottom(app, { engaged: sim.state.estop.engaged, placesOpen: ui.placesOpen, count });
+  syncBottom(app, { route: ctx.route.name, attention: needCount(), engaged: sim.state.estop.engaged, placesOpen: !!placesSheet, tellOpen: !!(ui.s4 && ui.s4.sheet), safetyOpen: !!safetySheet });
+  const dot = topbar.querySelector('[data-key="safety"]'); if (dot && isPhone()) dot.setAttribute('aria-expanded', String(!!safetySheet));
   translate(bottom);
-  const pl = app.querySelector('.pl-wrap'); if (pl) translate(pl);
 }
 
 // ---------- sidebar: PROJECTS with a state dot ----------
@@ -307,8 +378,8 @@ function syncToolbar() {
   const red = store.reducedMotion(); const m = tb('motion'); m.setAttribute('aria-pressed', red ? 'true' : 'false'); m.querySelector('.tb-label').textContent = red ? 'Quiet' : 'Motion';
   tb('notes').setAttribute('aria-pressed', store.get('heronotes') === 'on' ? 'true' : 'false');
   tb('lang').querySelector('.tb-label').textContent = store.get('lang') === 'it' ? 'IT' : 'EN'; tb('lang').setAttribute('aria-pressed', store.get('lang') === 'it' ? 'true' : 'false');
-  const badge = toolbar.querySelector('.sim-badge'), mode = sim.state.playing ? 'playing' : 'paused';
-  if (badge.dataset.sim !== mode) { const was = badge.dataset.sim, g = badge.querySelector('.g'); badge.dataset.sim = mode; g.textContent = mode === 'playing' ? '◆' : '◇'; if (was) motion.tick(g); }
+  const mode = sim.state.playing ? 'playing' : 'paused';
+  document.querySelectorAll('.sim-badge').forEach((badge) => { if (badge.dataset.sim !== mode) { const was = badge.dataset.sim, g = badge.querySelector('.g'); badge.dataset.sim = mode; g.textContent = mode === 'playing' ? '◆' : '◇'; if (was) motion.tick(g); } });
   tb('projects').querySelector('.tb-label').textContent = sim.state.projects.length + ' projects';
   const sb = tb('sim'); sb.querySelector('.tb-label').textContent = sim.state.playing ? 'x' + sim.state.speed : 'Paused';
   translate(toolbar);
@@ -321,25 +392,27 @@ function setNotes(id) { store.set('notes', id); refreshMenu(); render(); broadca
 function toggleMotion() { store.set('motion', store.reducedMotion() ? 'full' : 'reduced'); syncCore(); syncToolbar(); toast(store.reducedMotion() ? 'Reduced motion on: the core mark is still.' : 'Motion on: the core mark breathes while work is live.'); render(); refreshMenu(); broadcast(); }
 function closeMenu() { if (menu) { menu.remove(); menu = null; } toolbar.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); menuName = null; }
 function toggleMenu(name, btn) { if (menuName === name) { closeMenu(); return; } closeMenu(); menuName = name; btn.setAttribute('aria-expanded', 'true'); buildMenu(); }
-function refreshMenu() { if (menuName) buildMenu(); }
-function buildMenu() {
-  const fresh = !menu;
-  if (menu) menu.remove();
+function refreshMenu() { if (menuName) buildMenu(); drawTools(); }
+// The items of one prototype menu: the toolbar shows them in a popover, the phone in a sheet.
+function menuKids(name) {
   const item = (label, checked, on, hint, dev) => h('button', { class: 'menu-item', type: 'button', 'data-device': dev, role: 'menuitemradio', 'aria-checked': checked ? 'true' : 'false', onclick: on }, h('span', { class: 'tick', 'aria-hidden': 'true' }, checked ? '✓' : ''), label, hint ? h('span', { class: 'hint' }, hint) : null);
-  let kids;
-  if (menuName === 'device') kids = [h('h2', null, 'Device preview'), ...DEVICES.map((d) => item(d.label, store.get('device') === d.id, () => { setDevice(d.id); closeMenu(); }, d.note, d.id)),
+  if (name === 'device') return [h('h2', null, 'Device preview'), ...DEVICES.map((d) => item(d.label, store.get('device') === d.id, () => { setDevice(d.id); closeMenu(); }, d.note, d.id)),
     h('p', { class: 'menu-note' }, 'A frame shows the real app at that width inside this page. If the window is narrower, the frame is scaled down to fit.')];
-  else if (menuName === 'theme') kids = [h('h2', null, 'Theme'), ...THEMES.map((t) => item(t.label, store.get('theme') === t.id, () => { store.set('theme', t.id); syncToolbar(); refreshMenu(); render(); })),
+  if (name === 'theme') return [h('h2', null, 'Theme'), ...THEMES.map((t) => item(t.label, store.get('theme') === t.id, () => { store.set('theme', t.id); syncToolbar(); refreshMenu(); render(); })),
     h('div', { class: 'menu-sep' }),
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.reducedMotion() ? 'true' : 'false', onclick: toggleMotion }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.reducedMotion() ? '\u2713' : ''), 'Reduced motion', h('span', { class: 'hint' }, 'Quiet')),
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.get('lang') === 'it' ? 'true' : 'false', onclick: () => setLang(store.get('lang') === 'it' ? 'en' : 'it') }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.get('lang') === 'it' ? '\u2713' : ''), 'Language', h('span', { class: 'hint' }, 'Italiano')),
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.get('notes') === 'on' ? 'true' : 'false', onclick: () => setNotes(store.get('notes') === 'on' ? 'off' : 'on') }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.get('notes') === 'on' ? '\u2713' : ''), 'Decision notes', h('span', { class: 'hint' }, store.get('notes') === 'on' ? 'On' : 'Off')),
     h('p', { class: 'menu-note' }, 'System follows the OS (including high contrast). Forced colours is a simulation; the real forced-colors mode is also honoured.')];
-  else if (menuName === 'projects') kids = [h('h2', null, 'Simulated projects'), ...PROJECT_COUNTS.map((n) => item(n === 3 ? '3 (the default story)' : String(n), !useLocal && n === (Number(q.get('projects')) || 3), () => setProjectCount(n))),
+  if (name === 'projects') return [h('h2', null, 'Simulated projects'), ...PROJECT_COUNTS.map((n) => item(n === 3 ? '3 (the default story)' : String(n), !useLocal && n === (Number(q.get('projects')) || 3), () => setProjectCount(n))),
     ...(hasLocal ? [item('My projects', useLocal, () => setProjectCount('local'), useLocal ? String(localPlan(local).length) : '')] : []),
     h('p', { class: 'menu-note' }, 'Reloads the prototype with that many projects and the same mission mix, to see how every page scales.')];
-  else kids = [h('h2', null, 'Simulation'), simControls(Object.assign({}, ctx, { where: 'menu' }))];
-  menu = h('div', { class: 'menu', role: 'menu', 'aria-label': menuName }, ...kids);
+  return [h('h2', null, 'Simulation'), simControls(Object.assign({}, ctx, { where: 'menu' }))];
+}
+function buildMenu() {
+  const fresh = !menu;
+  if (menu) menu.remove();
+  menu = h('div', { class: 'menu', role: 'menu', 'aria-label': menuName }, ...menuKids(menuName));
   translate(menu);
   document.body.append(menu);
   menu.style.top = toolbar.offsetHeight + 2 + 'px';
@@ -347,7 +420,7 @@ function buildMenu() {
 }
 document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop, .stop-btn, .bb-stop')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
-  const dialog = app.querySelector('.places') || app.querySelector('.safety-pop');
+  const dialog = app.querySelector('.safety-pop');
   if (dialog) trapTab(e, dialog);
   if (e.key !== 'Escape') return;
   if (menu) { const n = menuName; closeMenu(); const b = toolbar.querySelector('[data-tb="' + n + '"]'); if (b) b.focus(); } else if (ui.safetyOpen) { closeSafety(); } else if (ui.estopAsk || ui.rearmAsk) { ui.estopAsk = ui.rearmAsk = false; render(); } else if (ui.tellOpen) { ui.tellOpen = false; render(); const b = app.querySelector('[data-key="tell"]'); if (b) b.focus(); } else if (ui.nowDrawer && ctx.route.name === 'now') { ui.nowDrawer = false; render(); const b = app.querySelector('[data-key="now-details-btn"]'); if (b) b.focus(); } else if (app.dataset.insp === 'open') closeInsp();
@@ -358,6 +431,7 @@ function setDevice(id) {
   const was = store.get('device');
   if (was === 'all' && id !== 'all') leaveAll();
   store.set('device', id);
+  if (toolsSheet) toolsSheet.close();
   if (id === 'terminal') ctx.nav('#/terminal'); else if (was === 'terminal' && ctx.route.name === 'terminal') nav('#/now');
   fit(); syncToolbar();
 }
@@ -381,6 +455,7 @@ function fit() {
 // ---------- boot ----------
 if (!embed) buildToolbar();
 buildShell();
+new MutationObserver(syncFold).observe(stage, { attributes: true, attributeFilter: ['data-frame'] });
 ctx.openHelp = installKeys(ctx, app, page).openHelp;
 ctx.tell = tellClick;
 ctx.stop = () => stopClick({ currentTarget: { dataset: { key: isPhone() ? 'bb-stop' : 'stop' } } });
@@ -393,7 +468,7 @@ const unsub = sim.subscribe((e) => {
 });
 const boot = { t: 0 };
 window.addEventListener('pagehide', unsub);
-onPhoneChange(() => render());
+onPhoneChange((phone) => { if (!phone) closePhoneSheets(); render(); });
 window.addEventListener('hashchange', () => { closeMenu(); render(); });
 window.addEventListener('resize', () => { if (store.get('device') === 'all' || (store.get('device') !== 'auto' && store.get('device') !== 'terminal')) fit(); else if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); else document.dispatchEvent(new Event('v2live:resize')); });
 document.addEventListener('visibilitychange', syncCore);

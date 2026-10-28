@@ -2129,3 +2129,23 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - A kind of extension is offered only where a harness supports it. → Un tipo di estensione è offerto solo dove un harness lo supporta.
 - The new ledes of Usage, Extensions and Launch settings, and the three notes that name a harness (Security approval mode, git push note, Health fix line "Or put another {x} account first in its failover order.") are in the same block of the dictionary.
 
+
+## Phone shell: bar, top bar, Places, safety sheet (slice A) - 2026-10-28
+
+Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsewhere (Overview, Work, Tell, Stop, Pause all, Resume all, Emergency stop, Yes, stop everything, Prototype tools, Safety, Search projects, All N projects) are reused as they are.
+
+| English | Italian |
+|---|---|
+| Places | Luoghi |
+| Re-arm | Riarma |
+| Search | Cerca |
+| SIMULATED, prototype tools (the top bar tag that opens the tools sheet) | SIMULATO, strumenti del prototipo |
+| Not stopped. Archeus accepts new work. | Non fermato. Archeus accetta nuovo lavoro. |
+| Stopped. New work is blocked until you re-arm. | Fermato. Il nuovo lavoro è bloccato finché non riarmi. |
+| Every running mission stops. New work is blocked until you re-arm. | Ogni missione in corso si ferma. Il nuovo lavoro è bloccato finché non riarmi. |
+| New work can start again. | Il nuovo lavoro può ripartire. |
+| Re-arm new work? | Riarmare il nuovo lavoro? |
+| Stop all 1 mission? | Fermare la missione in corso? |
+| Stop all N missions? | Fermare tutte le N missioni? |
+| N running, M paused | N in corso, M in pausa |
+| Work, N need you (bar label for Work with a count) | Lavoro, N ti servono (N = 1: ti serve) |

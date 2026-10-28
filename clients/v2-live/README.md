@@ -43,11 +43,11 @@ Options go in the query string, for example `index.html?theme=light&lang=it&sim=
 
 ## Routes
 
-`#/now`, `#/work` (the graph and the list of what is happening and what needs you; `#/attention` and `#/attention/<id>` redirect to `#/work` and `#/work/<id>`), `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/more` (direct-link menu; phone navigation uses Places), `#/terminal`. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`.
+`#/now`, `#/work` (the graph and the list of what is happening and what needs you; `#/attention` and `#/attention/<id>` redirect to `#/work` and `#/work/<id>`), `#/replay/<mission>`, `#/chat`, `#/security`, `#/health`, `#/usage`, `#/accounts`, `#/extensions`, `#/settings`, `#/terminal`. `#/more` and `#/map` redirect to `#/now`; on a phone the Places sheet replaces the old More page. A thing opens in a details sheet at `#/<route>/<id>`: missions `m-`, tasks `t-`, executions `x-`, plans `p-`, approvals `a-`, verifications `v-`, ideas `i-`, knowledge `k-`, projects `prj-`, accounts `acc-`, hooks `h-`, MCP servers `mcp-`, agents `ag-`. Examples: `#/work/m-date`, `#/attention/a-1`, `#/replay/m-date`.
 
 ## Devices
 
-The toolbar's Device button picks Auto (fills the window), Phone 390, Tablet 820, Desktop 1440, Terminal (a text-mode view of the same state), or All devices: four live panes side by side, each laid out at its own real width, all driven by one simulation (act in one pane and the others change). Wide frames are scaled down to fit the window, which the note under the toolbar says. On phones, three round buttons provide Tell, Places and Stop (Re-arm when stopped); Places opens the destinations and projects sheet.
+The toolbar's Device button picks Auto (fills the window), Phone 390, Tablet 820, Desktop 1440, Terminal (a text-mode view of the same state), or All devices: four live panes side by side, each laid out at its own real width, all driven by one simulation (act in one pane and the others change). Wide frames are scaled down to fit the window, which the note under the toolbar says. On phones a five slot bottom bar gives Overview, Work (with the count of what needs you), Tell (the filled middle button), Places and Stop (Re-arm when stopped). Places opens a full height sheet with search, the destinations as tiles and the top five projects. Stop asks twice in a sheet, with the confirm on the side away from the thumb. The top bar carries the star (Overview), the page title, the SIMULATED tag, the status word (safety sheet) and search; when the window itself is the phone the toolbar row folds into the SIMULATED tag, which opens a Prototype tools sheet. A phone frame on a desktop window keeps the toolbar. No scrollbars are drawn on a phone.
 
 ## Simulation controls
 
@@ -68,7 +68,8 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 | map probe | `py tools\v2_livemap_probe.py` |
 | design kit probe | `py tools\v2_live_design_probe.py` |
 | All devices hit-test | `py tools\v2_live_alldevices_probe.py` |
-| phone foundation: one threshold, PWA bits, safe areas, 44 px targets, no sideways scroll at 320 to 430 and 200 %, landscape flips to the phone shell | `py -I tools2_live_phone_probe.py` |
+| phone foundation: one threshold, PWA bits, safe areas, 44 px targets, no sideways scroll at 320 to 430 and 200 %, landscape flips to the phone shell; the bar, top bar, sheets and toasts under a faked keyboard and injected insets; one vertical scroll surface per route (known nested scrollers are listed as expected failures with their owner) | `py -I tools2_live_phone_probe.py` |
+| phone shell in a real browser: bar slots, Places, palette, Stop two step, safety and tools sheets, language, phone frame on desktop | `py -I tools2_live_phone_functional.py` |
 | functional runs | `py tools\v2_live_s3_functional.py`, `v2_live_s4_functional.py`, `v2_live_tui_check.py`, `v2_live_s6_functional.py` |
 | package | `py tools\v2_live_package.py` writes `Archeus-V2-Live.zip` (this folder without tests, `start.cmd`, `README-FIRST.txt`) |
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { phoneBox, keyboard, slots, BAR, stopStep, STOP_IDLE, STOP_MS, confirmSide, places, overviewProjects, badgeText } from '../js/phone-model.js';
+import { phoneBox, keyboard, slots, BAR, stopStep, STOP_IDLE, STOP_MS, confirmSide, places, overviewProjects, badgeText, topTitle, sideOf } from '../js/phone-model.js';
 import { DETENTS, heights, snap, velocity, follow, step, stepLabel, isModal } from '../js/sheet-model.js';
 import { RAIL_GROUPS } from '../js/rail-model.js';
 
@@ -168,4 +168,15 @@ test('sheet handle: steps up through the detents and wraps to the smallest; labe
 test('sheet modality: modal always when asked, otherwise only at full', () => {
   assert.equal(isModal('peek'), true);
   assert.equal(isModal('peek', false), false); assert.equal(isModal('half', false), false); assert.equal(isModal('full', false), true);
+});
+test('top bar title: only a page whose h1 is its bare label gets one', () => {
+  assert.equal(topTitle('work', 'Work'), 'Work');
+  assert.equal(topTitle('settings', ' Settings '), 'Settings');
+  assert.equal(topTitle('work', 'Work, 3 need you'), null);
+  assert.equal(topTitle('now', 'Now'), null);
+  assert.equal(topTitle('work', ''), null); assert.equal(topTitle('work', null), null);
+});
+test('stop confirm side: opposite the thumb, start when the tap has no position (keyboard)', () => {
+  assert.equal(sideOf(300, 0, 390), 'start'); assert.equal(sideOf(80, 0, 390), 'end');
+  assert.equal(sideOf(150, 100, 390), 'end'); assert.equal(sideOf(320, 100, 390), 'start'); assert.equal(sideOf(0, 0, 390), 'start'); assert.equal(sideOf(undefined, 0, 390), 'start');
 });

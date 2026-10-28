@@ -2,7 +2,7 @@
 // No DOM here, so node can test it. Rects are { left, top, right, bottom } in viewport pixels; a snapshot is a Map of key to { rect, sig }.
 
 // The rail order is the route order: a route to the right in this list is "forward" and arrives from the right.
-export const ORDER = ['now', 'work', 'replay', 'chat', 'security', 'health', 'usage', 'accounts', 'extensions', 'projects', 'settings', 'terminal', 'more'];
+export const ORDER = ['now', 'work', 'replay', 'chat', 'security', 'health', 'usage', 'accounts', 'extensions', 'projects', 'settings', 'terminal'];
 
 export const direction = (from, to) => (ORDER.indexOf(to) >= ORDER.indexOf(from) ? 1 : -1);
 
