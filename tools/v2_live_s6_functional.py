@@ -98,7 +98,7 @@ try:
         check('the decision sheet has the No Undo banner', pg.locator('.noundo').count() == 1 and 'No Undo.' in pg.locator('.noundo').inner_text())
         pg.evaluate("location.hash = '#/work/m-date'"); pg.wait_for_timeout(400)
         ys = pg.evaluate("() => [...document.querySelectorAll('.inspector .spine-insp li')].map((e) => Math.round(e.getBoundingClientRect().top))")
-        check('the phone mission spine is two rows of three', len(ys) == 6 and len(set(ys[:3])) == 1 and len(set(ys[3:])) == 1 and ys[3] > ys[0])
+        check('the phone mission spine is one station per row, all six labels (D07)', len(ys) == 6 and all(ys[i] < ys[i + 1] for i in range(5)))
         check('the narrow spine shows the short names', 'Understand' in pg.locator('.inspector .spine-insp').inner_text())
         check('no page errors (phone)', not errs)
         ctx.close()
