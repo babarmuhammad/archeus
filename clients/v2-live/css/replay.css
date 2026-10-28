@@ -62,9 +62,7 @@
 .replayview [data-cat='MAY-HAVE-TAKEN-EFFECT'], .replayview [data-cat='UNCERTAIN'], .replayview [data-cat='SUSPENDED'] { --rp-tone: var(--attention); }
 .replayview [data-cat='RECONCILED'] { --rp-tone: var(--done); }
 .rp-enter { animation: rp-row-in 160ms var(--ease) backwards; animation-delay: var(--delay); }
-.rp-evidence-enter { animation: rp-evidence-in 180ms var(--ease); }
 @keyframes rp-row-in { from { opacity: .6; transform: translateY(4px); } }
-@keyframes rp-evidence-in { from { opacity: .7; transform: translateX(8px); } }
 @keyframes rp-sheet-in { from { transform: translateY(12px); } }
 @media (hover: hover) and (pointer: fine) { .rp-event:hover { background: var(--s2); } .rp-event:hover b { color: var(--rp-tone, var(--text)); } }
 @container view (max-width: 900px) {
@@ -87,8 +85,8 @@
   .rp-sheet .kv { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .rp-sheet .kv dd { margin-bottom: 12px; }
 }
-:root[data-motion='reduced'] :is(.rp-enter, .rp-evidence-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; }
-@media (prefers-reduced-motion: reduce) { :is(.rp-enter, .rp-evidence-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; } }
+:root[data-motion='reduced'] :is(.rp-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.rp-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; } }
 @media (forced-colors: active) {
   .rp-event[aria-pressed='true'] { outline: 2px solid Highlight; }
   .rp-playhead { background: Highlight; }
