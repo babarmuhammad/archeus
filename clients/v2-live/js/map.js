@@ -108,7 +108,7 @@ export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
-  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && !isPhone();
+  const terr = key === 'now' && !calm && (isPhone() ? ctx.route.q.as === 'map' : store.get('overview') === 'projects'); // the phone map view shows the territories at full height
   if (e.map && (e.lang !== lang || e.calm !== calm || e.terr !== terr)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
     e.lang = lang; e.calm = calm; e.terr = terr;

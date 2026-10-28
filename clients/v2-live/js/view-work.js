@@ -12,6 +12,8 @@ import { spineRow, spineCard } from './spine.js';
 import { icon } from './icons.js';
 import { STATE, themeOf } from './map.js';
 import { createWorkGraph } from './constellation/workgraph.js';
+import { isPhone } from './viewport.js';
+import { renderPhone, leavePhone } from './work-phone.js';
 import { WORK_VIEWS, workQuery, workHref, filterWork, workCounts, countLine, relTime, vocabOf, viewOfCls, graphPick } from '../page-model.js';
 
 const LEGEND = [['needs-you', 'Needs you', 'needs'], ['running', 'Running', 'running'], ['blocked', 'Blocked', 'blocked'], ['done', 'Done', 'done']];
@@ -23,7 +25,7 @@ const EMPTY = {
 let graph = null, drawn = [];
 
 // The graph survives the re-renders the simulation causes; app.js destroys it when the route leaves Work.
-export function leave() { if (graph) graph.destroy(); graph = null; }
+export function leave() { if (graph) graph.destroy(); graph = null; leavePhone(); }
 
 // One graph node per mission, one small node per decision on it; every node carries the id of the list entry it belongs to, so the highlight and the tab counts speak of the same things.
 // The graph holds the MAX_NODES entries most worth seeing, those the filter keeps first (graphPick); the list has all.
@@ -58,6 +60,7 @@ export function render(ctx) {
     ...Object.values(st.missions).filter((m) => !cards.has(m.id)).map((m) => ({ id: m.id, kind: 'row', m, project: m.project, cls: present('mission', m.state).cls, at: lastAt.get(m.id) || m.updated_at || 0 }))
   ];
   const counts = workCounts(entries, pf), shown = filterWork(entries, { view: q.view, project: pf });
+  if (isPhone()) { if (graph) graph.destroy(); graph = null; return renderPhone(ctx, { q, pf, pn, qs, entries, counts, shown }); } // the phone has its own lists and graph (work-phone.js)
   counts.by = {}; for (const e of entries) if (e.project) counts.by[e.project] = (counts.by[e.project] || 0) + 1;
   const filtered = q.view !== 'all' || !!pf, model = asGraph ? modelOf(sim, entries, shown) : null, gids = new Set(model ? model.nodes.map((n) => n.id) : []);
   const on = new Set(shown.map((e) => e.id)), litIds = model && filtered && shown.length ? model.nodes.filter((n) => on.has(n.entry)).map((n) => n.id) : null; // null: nothing to dim

@@ -189,3 +189,79 @@
 .work-view .mrow[data-peek]::before, .work-view .att-rows .panel[data-peek] .card::before { opacity: 1; }
 .work-view .att-rows .panel[data-peek] .card.band::before { opacity: .12; }
 @container dev ((max-width: 599px) or style(--phone: 1)) { .wk-tabs { gap: 0; } .wk-tab { padding: 0 8px; gap: 5px; font-size: var(--fs-cap); } }
+
+/* ---------- Work on a phone (js/work-phone.js): chip row, project picker, sticky section heads, rows of 64 px, and the graph as a view of its own ---------- */
+.view.wkp { --fs-eyebrow: var(--fs-floor); gap: 12px; padding: 8px 16px 24px; }
+.wp-head { display: flex; flex-direction: column; gap: 8px; }
+.wp-chips { display: flex; gap: 6px; margin-inline: -16px; padding: 0 16px; overflow-x: auto; overscroll-behavior-x: contain; }
+.wp-chips > * { flex: none; }
+.wp-chip { --bh: 44px; --hit: 44px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: var(--hair) solid var(--line-strong); border-radius: 22px; color: var(--text); font-size: 15px; font-weight: 500; white-space: nowrap; }
+.wp-chip[aria-current='true'] { background: var(--fill-2); border-color: var(--text); }
+.wp-chip .tn { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.wp-chip:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.wp-more, .wp-pick { --bh: 44px; --hit: 44px; min-height: 44px; }
+.wp-more { padding-inline: 14px; border-radius: 22px; } .wp-more .pk-v { display: none; }
+.wp-tools { display: flex; align-items: center; gap: 8px; }
+.wp-tools .wp-pick { flex: 1 1 auto; min-width: 0; font-size: 15px; }
+.wp-seg { flex: none; }
+.wp-count { margin: 0; color: var(--text-2); font-size: var(--fs-floor); }
+.wr-secs { display: flex; flex-direction: column; gap: 4px; }
+.wr-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 36px; margin: 0 -16px; padding: 0 16px; background: var(--bg); border-bottom: var(--hair) solid var(--line); font: 600 var(--fs-eyebrow) / 1 var(--font); letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
+.wr-head .n { letter-spacing: .08em; color: var(--text-3); text-transform: none; }
+.wr-head .n::before { content: '\00b7\00a0'; }
+.wr-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.wr { display: flex; align-items: center; gap: 8px; min-height: 64px; border-bottom: var(--hair) solid var(--line); content-visibility: auto; contain-intrinsic-size: auto 64px; }
+.wr-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 64px; padding: 8px 0; color: var(--text); }
+.wr-main:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.wr-main[aria-current='true'] { box-shadow: inset 0 0 0 var(--hair) var(--text); }
+.wr-main:active { background: var(--fill-3); }
+.wr-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 500; }
+.wr-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-width: 0; color: var(--text-2); font-size: 14px; }
+.wr-meta .ph-st { font-size: 14px; }
+.wr-proj { flex: none; }
+.wr-proj .ph-code { height: 24px; min-width: 32px; padding: 0 6px; font-size: var(--fs-floor); }
+.wr-time { flex: none; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.wr-meta .sp { flex: none; margin-left: auto; }
+.wr-act { flex: none; align-self: center; }
+.ph-more { width: 100%; margin: 8px 0; }
+
+/* the graph view: the page does not scroll, the stage is what the bars leave */
+.main-col:has(> .wkg) { overflow: hidden; }
+.work-page.wkg { height: 100%; min-height: 0; }
+.view.wkgv { height: 100%; min-height: 0; padding: 0; gap: 0; max-width: none; }
+.wg-bar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 0 8px 16px; }
+.wg-chips { flex: 1 1 auto; min-width: 0; display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-x: contain; }
+.wg-chips > * { flex: none; }
+.wg-chip { --bh: 44px; --hit: 44px; gap: 8px; padding: 0 14px; font-size: 15px; }
+.wg-chip .tn { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.wg-chip[data-s='needs-you'] .wl-dot { background: var(--attention); } .wg-chip[data-s='running'] .wl-dot { background: var(--active); }
+.wg-chip[data-s='blocked'] .wl-dot { background: var(--blocked); } .wg-chip[data-s='done'] .wl-dot { background: var(--done); }
+.wg-chip .wl-dot { width: 10px; height: 10px; }
+.wg-done { flex: none; margin-right: 16px; padding-inline: 20px; }
+.wg-stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.wg-area { position: relative; flex: 1 1 auto; min-height: 0; }
+.wg-box { position: absolute; inset: 0; }
+.wg-svg { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+.wg-edge { stroke: var(--line-strong); stroke-width: 1; }
+.wg-core { color: var(--text); }
+.wgn { cursor: pointer; --tone: var(--paused); color: var(--tone); outline: none; }
+.wgn[data-state='needs-you'] { --tone: var(--attention); } .wgn[data-state='running'] { --tone: var(--active); } .wgn[data-state='blocked'] { --tone: var(--blocked); }
+.wgn[data-state='done'] { --tone: var(--done); } .wgn[data-state='thinking'] { --tone: var(--thinking); }
+.wgn-body { fill: var(--bg); stroke: var(--tone); stroke-width: 2.5; }
+.wgn[data-state='needs-you'] .wgn-body { fill: color-mix(in srgb, var(--attention) 14%, var(--bg)); }
+.wgn-sel { fill: none; stroke: var(--text); stroke-width: 2; opacity: 0; }
+.wgn-on .wgn-sel, .wgn:focus-visible .wgn-sel { opacity: 1; }
+.wgn:focus-visible .wgn-sel { stroke: var(--focus); stroke-width: 3; }
+.wgn-label { fill: var(--text); font-family: var(--font); font-weight: 500; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.wg-fit { position: absolute; right: 12px; bottom: 12px; padding-inline: 14px; }
+.wg-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; color: var(--text-2); }
+.wg-empty p { margin: 0; }
+.wg-dock { flex: none; display: flex; align-items: center; gap: 12px; min-height: 104px; margin: 0 16px 12px; padding: 12px 0 0; border-top: var(--hair) solid var(--line); }
+.wg-card { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.wg-card-m { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0; }
+.wg-card-p { color: var(--text-2); font-size: 14px; }
+.wg-card-t { margin: 0; font: 600 17px / 1.25 var(--font); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.wg-open { --bh: 48px; --hit: 48px; flex: none; padding-inline: 20px; }
+.wg-hint { flex: 1 1 auto; margin: 0; color: var(--text-2); font-size: 14px; }
+.wg-more { flex: none; }
+@media (forced-colors: active) { .wgn-body { stroke: CanvasText; fill: Canvas; } .wgn-on .wgn-sel { stroke: Highlight; } .wgn-label { fill: CanvasText; stroke: Canvas; } .wg-edge { stroke: CanvasText; } .wp-chip[aria-current='true'] { outline: 2px solid Highlight; outline-offset: -2px; } }
