@@ -215,6 +215,7 @@ test('the project count option builds that many projects with a proportional mis
     assert.ok(Object.keys(st.missions).length > n);
   }
   assert.equal(createSim({ seed: 7 }).state.projects.length, 3);
+});
 
 test('harnesses: what each is, what it supports, and its own accounts, models and failover order', () => {
   const [, A] = mk(), hs = Object.fromEntries(A.harnesses().map((h) => [h.id, h]));
