@@ -169,12 +169,12 @@ function act(kind, id) {
 }
 // Info toasts leave after 4.5 s. An error, or a toast that carries an action, stays until Dismiss.
 function toast(text, o) {
-  const err = !!(o && o.error) || /^(Not done|Non fatto)/.test(text), keep = err || !!(o && o.action);
+  const err = !!(o && o.error) || /^(Not done|Non fatto)/.test(text), keep = err || !!(o && o.action && !o.action.run);
   clearTimeout(toastTimer); clear(toastEl); delete toastEl.dataset.leaving;
   toastEl.dataset.kind = err ? 'error' : 'info'; toastEl.setAttribute('role', err ? 'alert' : 'status');
-  toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
+  toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [o.action.run ? h('button', { class: 'btn', type: 'button', 'data-key': 'toast-undo', onclick: () => { dismissToast(); o.action.run(); } }, o.action.label) : h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
   translate(toastEl); toastEl.hidden = false;
-  if (!keep) toastTimer = setTimeout(dismissToast, 4500);
+  if (!keep) toastTimer = setTimeout(dismissToast, o && o.action ? 7000 : 4500);
 }
 function dismissToast() {
   clearTimeout(toastTimer); if (toastEl.hidden) return;

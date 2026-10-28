@@ -201,13 +201,13 @@ body[data-embed='1'] #stage { grid-row: 1; }
 
 /* ---------- motion and hover, one language (emil-design-eng): a tint that comes in over 100 ms and leaves over 180 ms, a press of .97,
    no movement under Reduced motion. Colour and transform only; nothing that moves layout. ---------- */
-:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow) { transition: background-color 180ms ease-out, border-color 180ms ease-out, transform 180ms ease-out; }
-:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow):hover { transition-duration: 100ms; }
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow) { transition: background-color 180ms ease-out, border-color 180ms ease-out, transform 180ms ease-out; }
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow):hover { transition-duration: 100ms; }
 :is(.btn, .chip, .tab, .tb-btn, .menu-item, .rail-toggle, .safety-btn, .bb-item, .tui-btn):active { transform: scale(.97); }
 @media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--s2); } .chip[aria-pressed='true']:hover { background: var(--s3); } }
 .pl-wrap.enter .places { animation: sheet-in 180ms ease-out; }
 .pl-wrap.enter .pl-scrim { animation: fade-in 100ms ease-out; }
 @keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }
 @keyframes fade-in { from { opacity: 0; } }
-:root[data-motion='reduced'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow, .toast, .places, .pl-scrim) { transition: none; animation: none; transform: none; }
-@media (prefers-reduced-motion: reduce) { :root[data-motion='system'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow, .toast, .places, .pl-scrim) { transition: none; animation: none; transform: none; } }
+:root[data-motion='reduced'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .toast, .places, .pl-scrim) { transition: none; animation: none; transform: none; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion='system'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .toast, .places, .pl-scrim) { transition: none; animation: none; transform: none; } }

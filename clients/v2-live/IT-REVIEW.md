@@ -1886,6 +1886,20 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 - Six looks: Dark and Light, each standard and high contrast, plus System and forced colours. Reduced motion is Quiet (A05). → Sei aspetti: Scuro e Chiaro, ciascuno standard e ad alto contrasto, più Sistema e colori forzati. Il movimento ridotto è Quieto (A05).
 - Everything on screen is simulated and says so; no Core is connected. → Tutto ciò che è sullo schermo è simulato e lo dice; nessun Core è collegato.
 
+Extensions tabs and Settings sections (second pass, same day):
+
+- Nothing needs you (Extensions state sentence) → Niente ti serve
+- {N} need you (plural, sentence part) → {N} ti servono
+- Last seen (clients column) → Visto l’ultima volta
+- Search extensions / Search extensions… (label, placeholder) → Cerca estensioni / Cerca estensioni…
+- No extension matches. / Clear search → Nessuna estensione corrisponde. / Cancella la ricerca
+- Nothing is listed here. → Qui non c’è ancora nulla.
+- Extension types (tab list label) → Tipi di estensione
+- Open review (Needs you band, an agent whose result waits) → Apri la revisione
+- Today HH:MM / Yesterday HH:MM / Earlier HH:MM (last activity) → Oggi HH:MM / Ieri HH:MM / Prima HH:MM
+- Undo (toast after a switch-off) → Annulla
+- Settings sections / Safety / Prototype / About (left nav) → Sezioni delle impostazioni / Sicurezza / Prototipo / Informazioni
+
 ## Network view clusters (2026-10-28, agent N): to review
 
 File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mission, Agent execution, Zoom in, Zoom out, Fit) were already translated; `Reset map view` was removed with its button (Fit also resets the view).
