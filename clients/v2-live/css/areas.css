@@ -423,3 +423,51 @@ a.chip { display: inline-flex; align-items: center; gap: 8px; text-decoration: n
 @container view (min-width: 1100px) { .ext-grid { grid-template-columns: minmax(0, 1fr) 21rem; } .ext-side { display: block; } }
 .app[data-insp='open'] .ext-grid { grid-template-columns: minmax(0, 1fr); }
 .app[data-insp='open'] .ext-side { display: none; }
+
+/* ---- Phone pages (Security, Health, Usage, Accounts, Extensions): one head, then a sticky tab strip ----
+   Eyebrow 12, state sentence 26, a lede of two lines with a 44 px More, a chip row and a tab strip that scroll sideways with a faded edge and no scrollbar. */
+@container dev ((max-width: 599px) or style(--phone: 1)) {
+  [data-edge='right'] { mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  [data-edge='left'] { mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
+  [data-edge='both'] { mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
+  .main-col .view.ax-view:not(.now-view) { gap: 8px; padding-top: 8px; }
+  .ax-top { gap: 4px; padding-top: 0; }
+  .main-col .ax-top .ax-eyebrow, .main-col .hl-body h3 { font-size: 12px; }
+  .ax-sentence { font-size: clamp(22px, 7.2cqw, 26px); line-height: 1.2; }
+  .ax-lede-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 44px; }
+  .ax-lede-t { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .ax-lede-row[data-open='true'] .ax-lede-t { display: block; overflow: visible; }
+  .ax-more { min-width: 56px; min-height: 44px; padding: 0 12px; border: 0; background: transparent; color: var(--text); font: 600 14px / 1 var(--font); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+  .ax-more[hidden] { display: none; }
+  .ax-facet { flex-wrap: nowrap; margin-inline: calc(var(--gut) * -1); padding: 4px var(--gut); overflow: auto hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .ax-facet .chip { flex: none; white-space: nowrap; }
+  .ax-subnav, .ext-bar .tabs { position: sticky; top: 0; z-index: 3; flex-wrap: nowrap; margin-inline: calc(var(--gut) * -1); padding-inline: var(--gut); background: var(--bg); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; border-bottom: var(--hair) solid var(--line); }
+  .ax-subnav .set-nav-item, .ext-tabs .tab { flex: none; min-height: 44px; padding: 0 12px; font-size: 15px; }
+  .ext-bar { display: contents; }
+  .ext-bar .tabs { max-width: none; }
+  .ext-search { width: 100%; flex: none; }
+  .hl-note { display: none; }
+  .ax-dots { flex: none; width: 44px; padding: 0; justify-content: center; }
+  .sec-decision .actions, .hl-body .actions { flex-wrap: nowrap; justify-content: flex-end; }
+  .ax-sheet-list { display: flex; flex-direction: column; }
+  .ax-sheet-row { display: flex; align-items: center; justify-content: space-between; min-height: 56px; border-top: var(--hair) solid var(--line); color: var(--text); font-size: 17px; }
+  .ax-sheet-row:first-child { border-top: 0; }
+  .ax-row, .sec-row { min-height: 56px; }
+}
+
+/* Phone Settings: a list of sections, each a page of its own with Back. */
+@container dev ((max-width: 599px) or style(--phone: 1)) {
+  .set-list { display: flex; flex-direction: column; border-top: var(--hair) solid var(--line); }
+  .set-li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; border-bottom: var(--hair) solid var(--line); color: var(--text); }
+  .set-li-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .set-li .r-name { font-size: 17px; font-weight: 500; }
+  .set-li .r-note { font-size: 14px; }
+  .set-li svg { flex: none; color: var(--text-2); }
+  .main-col .set-head { flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: 4px; min-height: 52px; padding: 4px var(--gut) 0; }
+  .main-col .set-head:has(.set-back) { padding-left: calc(var(--gut) - 8px); }
+  .main-col .set-head h1 { font-size: 20px; line-height: 1.2; font-weight: 600; }
+  .set-back { gap: 2px; padding-inline: 8px 12px; }
+  .set-txt { flex: none; }
+  .set-row { flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 8px; padding: 16px 0; }
+  .set-row .chip { min-height: 48px; }
+}

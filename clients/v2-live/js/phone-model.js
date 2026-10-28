@@ -92,3 +92,11 @@ export function overviewProjects({ projects, stateOf, query = '', cap = OVERVIEW
   const { shown, more } = railProjects(projects, stateOf, null, cap);
   return { searchable, rows: shown, more, total: projects.length, matches: projects.length };
 }
+
+// ---------- top bar ----------
+// Pages whose own h1 is a bare label: the 48 px top bar says it in 17 px and the in-page h1 stays for screen readers. A page with its own sentence or mission title keeps its heading.
+export const BARE_TITLE = ['work', 'replay', 'projects', 'settings', 'chat'];
+export const topTitle = (route, h1) => (BARE_TITLE.includes(route) && h1 && h1.trim().toLowerCase() === route ? h1.trim() : null);
+
+// The Stop confirm opens on the other half of the screen from the tap; a tap from the keyboard (no position) uses the left.
+export const sideOf = (clientX, left, width) => (clientX ? confirmSide(clientX - left, width) : 'start');

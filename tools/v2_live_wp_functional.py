@@ -165,9 +165,9 @@ try:
         ctx.close()
         ctx, pg, errs = page('replay/m-date', w=390, h=844)
         pg.click('[data-key="tl-4"]'); pg.wait_for_timeout(350)
-        check('on a phone a click opens the evidence sheet without a rebuild', pg.evaluate("document.querySelector('.rp-sheet').open") and 'step' in pg.inner_text('.rp-sheet').lower() or pg.evaluate("document.querySelector('.rp-sheet').open"))
-        pg.click('[data-key="rp-close-evidence"]'); pg.wait_for_timeout(300)
-        check('closing the sheet returns focus to the row and keeps the selection', not pg.evaluate("document.querySelector('.rp-sheet').open") and pg.evaluate("document.activeElement.dataset.key") == 'tl-4' and pg.get_attribute('[data-key="tl-4"]', 'aria-pressed') == 'true')
+        check('on a phone a row tap opens the evidence as a sheet without a rebuild', pg.evaluate("!!document.querySelector('.sheet') && document.querySelector('.sheet').textContent.toLowerCase().includes('step')"))
+        pg.click('.sheet-close'); pg.wait_for_timeout(300)
+        check('closing the sheet returns focus to the row and keeps the selection', not pg.evaluate("!!document.querySelector('.sheet')") and pg.evaluate("document.activeElement.dataset.key") == 'tl-4' and pg.get_attribute('[data-key="tl-4"]', 'aria-pressed') == 'true')
         ctx.close()
 
         # ---- Replay: the mission chooser ----

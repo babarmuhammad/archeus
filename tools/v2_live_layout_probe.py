@@ -32,7 +32,7 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'more', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec', 'replay-pick',
+ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec', 'replay-pick',
           'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
           'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
@@ -61,10 +61,10 @@ STATES = {
     'pinned': "window.v2live.areas.togglePin('m-date'); window.v2live.areas.togglePin('i-1')",
     'adv': "window.v2live.sim.advance(700000)",
     'safety': "document.querySelector('[data-key=safety]').click()",
-    'stopask': "document.querySelector('[data-key=stop]').click()",
-    'tell': "document.querySelector('[data-key=tell]').click()",
+    'stopask': "document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
+    'tell': "document.querySelector('[data-key=tell], [data-key=bb-tell]').click()",
     'details': "document.querySelector('.now-toggle').click()",
-    'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop]').click()",
+    'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
     'help': "window.v2live.help()",
     'toast': "window.v2live.toast('Not done: Nothing is paused', { action: { label: 'Open Settings', href: '#/settings' } })",
@@ -84,9 +84,9 @@ MEASURE = r"""
   const name = (el) => { let s = el.tagName.toLowerCase(); if (el.id) s += '#' + el.id; else if (el.className && typeof el.className === 'string') s += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.'); return s; };
   const inter = (a, b) => { const l = Math.max(a.left, b.left), t = Math.max(a.top, b.top), r = Math.min(a.right, b.right), bt = Math.min(a.bottom, b.bottom); return r > l && bt > t ? { left: l, top: t, right: r, bottom: bt, width: r - l, height: bt - t } : null; };
   const scrollerX = (el) => { for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === 'auto' || o === 'scroll') return true; } return false; };
-  const clipOf = (el) => {
+  const clipOf = (el) => { // starts at the element itself: a line clamped text (overflow hidden on its own box) is not visible below the clamp
     let c = { left: 0, top: 0, right: vw, bottom: vh, width: vw, height: vh };
-    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
       if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
       const r = a.getBoundingClientRect();
@@ -361,9 +361,11 @@ def s4_state(pg, route, w):
     else:
         pg.click('#rs-12')
         pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+        if pg.evaluate("!document.querySelector('.rcv')"):  # a phone shows one section at a time
+            pg.click('[data-key="rp-nav-recovery"]'); pg.wait_for_timeout(300)
         pg.click('.rcv[data-ok="true"] .btn')
     pg.wait_for_timeout(250)
-    return '.rp-sheet' if pg.evaluate("!!document.querySelector('.rp-sheet[open]')") else None
+    return '.sheet' if pg.evaluate("!!document.querySelector('.sheet')") else None
 
 
 def s4_after(pg, route, w):
@@ -373,11 +375,20 @@ def s4_after(pg, route, w):
         pg.wait_for_timeout(250)
 
 
+def open_tool(pg, which):
+    """A prototype tool (device, theme, sim): from the toolbar, or from the sheet the phone top bar's SIMULATED tag opens when the toolbar row is folded away."""
+    if pg.is_visible('[data-key="tools"]'):
+        pg.click('[data-key="tools"]')
+        pg.click('[data-key="tools-%s"]' % which)
+    else:
+        (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="%s"]' % which) else None, pg.click('[data-tb="%s"]' % which))
+
+
 def open_overlay(pg, name):
     kind, which = name.split(':')
-    (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="%s"]' % which) else None, pg.click('[data-tb="%s"]' % which))
-    pg.wait_for_selector('.menu', state='visible')
-    return '.menu'
+    open_tool(pg, which)
+    pg.wait_for_selector('.menu, .sheet', state='visible')
+    return '.menu' if pg.is_visible('.menu') else '.sheet'
 
 
 def main():
@@ -429,7 +440,7 @@ def main():
                         if route == 'device:all':
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(100)
-                            (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
+                            open_tool(pg, 'device')
                             pg.click('[data-device="all"]')
                             pg.wait_for_timeout(2500)
                             frames = [f for f in pg.frames if f != pg.main_frame]
@@ -454,7 +465,7 @@ def main():
                                 pg.evaluate(STATES[st])
                                 pg.evaluate("window.dispatchEvent(new Event('hashchange'))")
                                 pg.wait_for_timeout(250)
-                                layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.tell-dock' if rt == 'now' else '.chatdock.tell'}.get(st)
+                                layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop, .sheet', 'stopask': '.safety-pop, .sheet', 'estopsafety': '.safety-pop, .sheet', 'tell': '.tell-dock' if rt == 'now' else '.chatdock.tell'}.get(st)
                                 if st == 'tell' and pg.evaluate("!!document.querySelector('.chatsheet')"):
                                     layer = '.chatsheet'
                             if '/' in rt and rt.split('/')[0] in ('work', 'projects', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
@@ -495,7 +506,7 @@ def main():
                         if a.shots and route not in S4_ROUTES:
                             os.makedirs(a.shots, exist_ok=True)
                             pg.screenshot(path=os.path.join(a.shots, '%s_%s_%s.png' % (vp, route.replace('/', '-').replace(':', '-'), theme)))
-                        if layer == '.menu':
+                        if layer in ('.menu', '.sheet'):
                             pg.keyboard.press('Escape')
                         if '~' in route:
                             pg.evaluate(RESET)

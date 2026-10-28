@@ -300,6 +300,8 @@ const plural = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);
 // "3 min ago" / "2 h ago" / "just now" inside a longer line
 const itAgo = (t) => t.replace(/^(\d+) min ago$/, '$1 min fa').replace(/^(\d+) h ago$/, '$1 h fa').replace('just now', 'adesso');
 export const RULES_AREAS = [
+  [/^(\d+) running$/, (m) => m[1] + ' in corso'],
+  [/^(\d+) paused$/, (m) => m[1] + ' in pausa'],
   [/^Or put another (.+) account first in its failover order\.$/, (m) => 'Oppure metti un altro account di ' + m[1] + ' per primo nel suo ordine di subentro.'],
   [/^(\d+) harness(?:es)?$/, (m) => m[1] + (m[1] === '1' ? ' harness' : ' harness')],
   [/^(\d+) accounts?$/, (m) => m[1] + (m[1] === '1' ? ' account' : ' account')],
