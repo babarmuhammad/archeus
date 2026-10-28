@@ -110,7 +110,7 @@ function render() {
 
   // navigation state and counts
   app.querySelectorAll('.rail [data-route]').forEach((a) => { const here = a.dataset.route === r.name; if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
-  const n = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
+  const n = sim.attention().filter((a) => a.kind !== 'knowledge').length;
   app.querySelectorAll('[data-count="work"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
 
   mountTell(term);
@@ -210,7 +210,7 @@ function togglePlaces() { ui.placesOpen = !ui.placesOpen; ui.safetyOpen = false;
 function syncPhone() {
   placesInert.forEach((el) => { el.inert = false; }); placesInert = [];
   app.querySelectorAll('.pl-wrap').forEach((e) => e.remove());
-  const count = sim.attention().filter((a) => a.group === 'Decide' || a.group === 'Review').length;
+  const count = sim.attention().filter((a) => a.kind !== 'knowledge').length;
   if (ui.placesOpen && isPhone() && app.dataset.term !== 'true') {
     const wrap = placesSheet(ctx, { close: togglePlaces, projState, projectStates: PSTATE, count });
     app.append(wrap);
