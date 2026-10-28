@@ -105,7 +105,7 @@ try:
                 check('story=huge: capture + play cost under 16 ms on five pages', cost < 16, '%.1f ms worst' % cost)
             ctx.close()
         for name, act, go in ACTS:
-            d = worst[('full', name)] - worst[('reduced', name)]
+            d = worst[('full', name)] - max(worst[('reduced', name)], 50)  # the long task API reports from 50 ms up, so 0 means under 50
             check('story=huge, %s: motion adds no more than 30 ms to the longest task' % name, d <= 30, 'motion off %d ms, motion on %d ms' % (worst[('reduced', name)], worst[('full', name)]))
         br.close()
 finally:
