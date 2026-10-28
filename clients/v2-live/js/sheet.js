@@ -24,7 +24,7 @@ let seq = 0;
 function inertRest(wrap) {
   const done = [];
   for (let node = wrap; node !== document.body; node = node.parentElement) {
-    [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert && !el.matches('.toast')) { el.inert = true; done.push(el); } });
+    [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert && !el.matches('.toast, .apbar')) { el.inert = true; done.push(el); } });
   }
   return () => done.forEach((el) => { el.inert = false; });
 }

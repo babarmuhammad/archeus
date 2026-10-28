@@ -183,6 +183,7 @@ export function route(from, to, update) {
   const t = document.startViewTransition(() => update(dir));
   const clearVt = () => { delete root.dataset.vt; };
   t.finished.then(clearVt, clearVt);
+  t.ready.catch(() => {}); // a route change inside a running transition skips it, which rejects ready
 }
 
 // The page head and the first blocks of content come in one after the other (4 steps at most, 40 ms apart). Only after a route change, never on a live update.

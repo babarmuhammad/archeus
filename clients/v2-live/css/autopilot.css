@@ -1,0 +1,53 @@
+/* Autopilot caption bar and pointer (AP01 to AP12). Flat: no blur, glow or gradient, nothing loops. The bar takes a row of the page grid, so it never covers what is shown:
+   under the prototype toolbar on a desktop window, under the app on a phone sized window (the bottom bar stays whole and reachable). Reduced motion turns the cursor glide off (motion.css). */
+body[data-ap] { grid-template-rows: auto auto auto minmax(0, 1fr); }
+body[data-ap] #toolbar { grid-row: 1; } body[data-ap] .apbar { grid-row: 2; } body[data-ap] #framenote { grid-row: 3; } body[data-ap] #stage { grid-row: 4; }
+body[data-ap][data-fold] { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+body[data-ap][data-fold] #framenote { grid-row: 2; } body[data-ap][data-fold] #stage { grid-row: 3; } body[data-ap][data-fold] .apbar { grid-row: 4; border-top: var(--hair) solid var(--line-strong); border-bottom: 0; }
+
+.apbar { position: relative; z-index: 45; display: flex; align-items: center; gap: 8px 24px; padding: 8px 16px 10px; background: var(--s2); color: var(--text); border-bottom: var(--hair) solid var(--line-strong); }
+.apbar .ap-text { flex: 1 1 auto; min-width: 0; }
+.apbar p, .apbar h2 { margin: 0; }
+.ap-eye { font: 600 var(--fs-floor) / 1.3 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--text-2); }
+.ap-title { font: 600 17px / 1.25 var(--font); }
+.ap-cap { font-size: 14px; line-height: 1.35; color: var(--text); max-width: 78ch; }
+.ap-note { font-size: 13px; line-height: 1.3; color: var(--text-2); }
+.ap-note[hidden] { display: none; }
+.ap-ctl { flex: none; display: flex; align-items: center; gap: 8px; }
+.ap-btn { --bh: 44px; padding: 0 12px; }
+.ap-btn .ap-bl { white-space: nowrap; }
+.ap-btn:disabled { opacity: .4; cursor: default; }
+.ap-btn[aria-pressed='true'] { background: var(--fill-3); }
+.ap-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--fill-2); }
+.ap-prog > i { display: block; height: 100%; background: var(--text); }
+
+/* a phone sized window: the bar is two rows, text then a row of controls; labels fold into the icons */
+@media (max-width: 599px) {
+  .apbar { flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px 12px; }
+  .ap-cap { font-size: 13px; }
+  .ap-ctl { justify-content: space-between; gap: 4px; }
+  .ap-btn { flex: 1 1 0; min-width: 44px; padding: 0 6px; }
+  .ap-btn .ap-bl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .ap-btn[data-key='ap-speed'] .ap-bl { position: static; width: auto; height: auto; clip-path: none; font-size: 13px; }
+  .ap-btn[data-key='ap-speed'] svg { display: none; }
+}
+
+.ap-list { position: fixed; z-index: 60; right: 16px; top: 96px; width: min(380px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow-y: auto; padding: 8px; background: var(--s3); color: var(--text); border: var(--hair) solid var(--line-strong); border-radius: 12px; }
+body[data-fold] .ap-list { top: auto; bottom: 120px; right: 8px; left: 8px; width: auto; }
+.ap-gh { margin: 8px 8px 4px; font: 600 var(--fs-floor) / 1.2 var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+.ap-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: 400 15px / 1.2 var(--font); text-align: left; cursor: pointer; }
+.ap-row:hover { background: var(--fill-2); }
+.ap-row[aria-current='step'] { background: var(--fill-2); font-weight: 600; box-shadow: inset 3px 0 0 var(--text); }
+.ap-n { flex: none; width: 24px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* what the tour points at: a ring on the target and a small arrow that glides to it; both ignore the pointer */
+.ap-ring { position: fixed; z-index: 70; box-sizing: border-box; border: 2px solid var(--focus); border-radius: 10px; pointer-events: none; }
+.ap-cursor { position: fixed; z-index: 71; left: 0; top: 0; width: 20px; height: 20px; pointer-events: none; transition: transform var(--dur-4) var(--ease-move); }
+.ap-cursor svg { display: block; fill: var(--text); stroke: var(--bg); stroke-width: 1.2; stroke-linejoin: round; }
+.ap-ring[hidden], .ap-cursor[hidden], .ap-list[hidden] { display: none; }
+@media (forced-colors: active) {
+  .ap-ring { border-color: Highlight; }
+  .ap-cursor svg { fill: CanvasText; stroke: Canvas; }
+  .ap-prog > i { background: Highlight; }
+  .ap-row[aria-current='step'] { box-shadow: inset 3px 0 0 Highlight; }
+}
