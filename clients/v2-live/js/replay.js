@@ -20,7 +20,8 @@ function rpState(ctx) { const u = ctx.ui; if (!u.rp) u.rp = { filter: null, rec:
 export function viewReplay(ctx) {
   const sim = ctx.sim, st = sim.state, rp = rpState(ctx);
   const ms = Object.values(st.missions);
-  const m = st.missions[ctx.route.id] || st.missions['m-date'];
+  const m = st.missions[ctx.route.id] || st.missions['m-date'] || ms[0];
+  if (!m) return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay')), h('div', { class: 'view replayview' }, empty('No missions to replay yet.')));
   if (rp.mission !== m.id) { rp.mission = m.id; rp.rec = null; rp.receipt = null; rp.filter = null; rp.evidenceOpen = false; rp.tlTop = 0; rp.cursorPos = null; rp.lastSel = null; rp.evidenceN = null; rp.evidenceTrigger = null; ctx.ui.replaySel = null; }
   const r = buildReplay(sim, m.id);
   const shown = r.steps.filter((x) => !rp.filter || x.category === rp.filter);
@@ -62,35 +63,35 @@ export function viewReplay(ctx) {
   });
   const filters = h('div', { class: 'chips rp-filters', role: 'group', 'aria-label': L('Filter by category', 'Filtra per categoria') },
     h('button', { class: 'chip', type: 'button', 'data-key': 'rp-all', 'aria-pressed': !rp.filter ? 'true' : 'false', onclick: () => { rp.filter = null; rp.tlTop = 0; ctx.render(); } }, L('All', 'Tutte') + ' ' + r.steps.length),
-    ...CATS.map((c) => h('button', { class: 'chip', type: 'button', 'data-cat': c, 'data-key': 'rp-filter-' + c, 'aria-pressed': rp.filter === c ? 'true' : 'false', onclick: () => { rp.filter = rp.filter === c ? null : c; rp.tlTop = 0; ctx.render(); } },
+    ...CATS.filter((c) => r.counts[c] || rp.filter === c).map((c) => h('button', { class: 'chip', type: 'button', 'data-cat': c, 'data-key': 'rp-filter-' + c, 'aria-pressed': rp.filter === c ? 'true' : 'false', onclick: () => { rp.filter = rp.filter === c ? null : c; rp.tlTop = 0; ctx.render(); } },
       h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[c]), ' ' + c + ' ', h('span', { class: 'rp-count' }, String(r.counts[c] || 0)))));
 
   const firstAt = r.steps[0]?.at || 0, duration = (r.steps[r.steps.length - 1]?.at || firstAt) - firstAt;
   const position = (x) => duration ? (x.at - firstAt) / duration : (x.n - 1) / Math.max(1, r.steps.length - 1);
-  const cursorPos = row ? position(row) : 0;
-  const lanes = [-1, -1, -1, -1], gap = 14 / Math.max(280, Math.min(innerWidth - 60, 1200) - 14);
+  // The plot is as wide as the right column (half the page when the page is wide); a mark nudged past the end shrinks the scale instead of piling on the last one.
+  const mainW = (document.querySelector('.main-col') || {}).clientWidth || innerWidth, plotW = Math.max(220, (mainW > 900 ? (mainW - 80) / 2.05 : mainW - 40) - 24);
+  const lanes = [-1, -1, -1, -1], gap = 14 / plotW;
   const laneFor = (at) => { let l = lanes.findIndex((last) => at - last > gap); if (l < 0) { l = lanes.indexOf(Math.min(...lanes)); at = lanes[l] + gap + .001; } lanes[l] = at; return { at, l }; };
+  const marks = r.steps.map((x) => { const { at, l } = laneFor(position(x)); return { x, at, lane: l }; }), span = Math.max(1, ...marks.map((k) => k.at));
+  const cursorPos = row ? position(row) / span : 0;
   const playhead = h('span', { class: 'rp-playhead', 'aria-hidden': 'true' });
   const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' },
-    ...r.steps.map((x) => { const { at, l: lane } = laneFor(position(x)); return h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:calc(7px + ' + Math.min(at, 1) + ' * (100% - 14px));top:' + (4 + lane * 18) + 'px' }, GLYPH[x.category]); }), playhead);
+    ...marks.map(({ x, at, lane }) => h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:calc(7px + ' + at / span + ' * (100% - 14px));top:' + (4 + lane * 18) + 'px' }, GLYPH[x.category])), playhead);
   const scrub = h('input', { type: 'range', min: 0, max: Math.max(0, shown.length - 1), value: Math.max(0, idx), 'data-key': 'rp-cursor',
     'aria-label': L('Step cursor. Arrows step, Home and End jump', 'Cursore dei passi. Le frecce spostano, Home e Fine saltano'),
     'aria-valuetext': row ? row.time + ' ' + row.machine + ' ' + row.state : '', disabled: shown.length ? null : true,
     oninput: (e) => {
       const next = shown[Number(e.target.value)];
-      if (next) { playhead.style.transform = 'translateX(' + position(next) * plot.clientWidth + 'px)'; e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
+      if (next) { playhead.style.transform = 'translateX(' + position(next) / span * plot.clientWidth + 'px)'; e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
     }, onchange: (e) => { const next = shown[Number(e.target.value)]; if (next) pick(next.n, false); } });
+  const earlier = h('button', { class: 'btn', type: 'button', 'data-key': 'rp-earlier', disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, L('Earlier', 'Prima'));
+  const later = h('button', { class: 'btn', type: 'button', 'data-key': 'rp-later', disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, L('Later', 'Dopo'));
   const overview = h('section', { class: 'rp-overview', 'aria-label': 'Timeline overview' },
-    h('div', { class: 'rp-heading' }, h('h2', null, m.title), h('a', { class: 'btn', href: '#/work/' + m.id }, L('Mission', 'Missione'))),
-    h('p', { class: 'rp-intro' }, 'Read-only history. Select an event to inspect what Core recorded.'),
-    h('div', { class: 'rp-stations' }, spineInspector(m.state, m.held_from)), plot, scrub,
-    h('div', { class: 'rp-cursor-tools' }, h('span', { class: 'rp-time' }, r.steps[0]?.time || '—'),
-      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', 'data-key': 'rp-earlier', disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, L('Earlier', 'Prima')),
-        h('span', { class: 'rp-position', role: 'status' }, row ? row.n + ' / ' + r.steps.length + ' · ' + row.time : '0 / ' + r.steps.length),
-        h('button', { class: 'btn', type: 'button', 'data-key': 'rp-later', disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, L('Later', 'Dopo'))),
-      h('span', { class: 'rp-time' }, r.steps[r.steps.length - 1]?.time || '—')),
+    h('div', { class: 'rp-heading' }, h('div', null, h('h2', null, m.title), h('p', { class: 'rp-intro' }, 'Read-only history. Select an event to inspect what Core recorded.')),
+      h('span', { class: 'rp-position', role: 'status' }, row ? row.n + ' / ' + r.steps.length + ' · ' + row.time : '0 / ' + r.steps.length), h('a', { class: 'btn', href: '#/work/' + m.id }, L('Mission', 'Missione'))),
+    h('div', { class: 'rp-stations' }, spineInspector(m.state, m.held_from)), plot,
+    h('div', { class: 'rp-cursor-tools' }, earlier, scrub, later),
     h('button', { class: 'btn rp-inspect', type: 'button', 'data-key': 'rp-inspect', disabled: !row, onclick: () => pick(row.n) }, 'Inspect selected event'),
-    filters,
     r.history.answer === 'UNKNOWN' ? h('p', { class: 'note' }, L('Older steps were pruned from the event log, so anything before them is UNKNOWN, not “nothing happened”.', 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non “non è successo nulla”.')) : null);
   ctx.mounts.push(() => {
     const previous = rp.cursorPos ?? cursorPos;
@@ -173,18 +174,20 @@ export function viewReplay(ctx) {
   };
   const sheet = h('dialog', { class: 'rp-sheet', 'aria-label': L('Selected step', 'Passo selezionato'), oncancel: (e) => { e.preventDefault(); closeEvidence(); } },
     h('button', { class: 'btn rp-sheet-close', type: 'button', 'data-key': 'rp-close-evidence', onclick: closeEvidence }, 'Close evidence'));
-  const reading = h('div', { class: 'rp-reading' }, panel('Recorded events', shown.length, timeline), stepPanel);
+  const side = h('div', { class: 'rp-side' }, overview, stepPanel);
+  const reading = h('div', { class: 'rp-reading' }, panel('Recorded events', shown.length, filters, timeline), side);
   const reference = h('details', { class: 'rp-reference panel', open: rp.referenceOpen, ontoggle: (e) => { rp.referenceOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-reference' }, 'Reference and limits'),
     h('div', { class: 'rp-reference-grid' }, startPanel, histPanel, legend, five, recs, vocab, gaps, h('div', { class: 'actions' }, fwd)));
   ctx.mounts.push(() => {
     const narrow = reading.clientWidth <= 600;
     if (narrow && rp.evidenceOpen && row) {
       if (!sheet.open) { sheet.append(stepPanel); sheet.showModal(); }
-    } else if (sheet.open) { sheet.close(); reading.append(stepPanel); }
+    } else if (sheet.open) { sheet.close(); side.append(stepPanel); }
   });
-  return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay')), h('div', { class: 'view replayview' },
+  const missionPick = h('select', { class: 'pick', 'aria-label': L('Mission', 'Missione'), 'data-key': 'rp-mission', onchange: (e) => ctx.nav('#/replay/' + e.target.value) }, ...ms.map((x) => h('option', { value: x.id }, x.title)));
+  missionPick.value = m.id;
+  return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay'), missionPick), h('div', { class: 'view replayview' },
+    reading, reference, recPanel, sheet,
     dnote('A19', 'Replay answers from what Core recorded: nine categories, a reason when it cannot tell, nothing that can be re-run (G03, G11).'),
-    dnote('G10', 'Recovery choices create explicit approval cards only; approving changes a receipt, never the evidence. No autoplay (G09).'),
-    h('nav', { class: 'chips rp-missions', 'aria-label': L('Mission', 'Missione') }, ...ms.map((x) => h('a', { class: 'chip', href: '#/replay/' + x.id, 'aria-current': x.id === m.id ? 'true' : null }, x.title))),
-    overview, reading, reference, recPanel, sheet));
+    dnote('G10', 'Recovery choices create explicit approval cards only; approving changes a receipt, never the evidence. No autoplay (G09).')));
 }

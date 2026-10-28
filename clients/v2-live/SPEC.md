@@ -375,7 +375,12 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 
 | ID | Requirement | Source | Status | Area | Implementation |
 |---|---|---|---|---|---|
-| PR01 | Projects index at `#/projects`: core, project and captured-idea plates, recorded/suggested relations, joints, planes, legend; phone stack; project inspector with Overview / Missions / Ideas / Details, phase spine and capture/promotion | concept 04 (`04-projects-ideas.png`) | SIMULATED | PROJECTS · P/T/D | `js/view-projects.js`, additive constellation geometry/art exports, `js/inspectors.js`, `css/components.css`; four-project fixture only at `?story=full`; rendering and tests pending coordinator verification |
+| PR01 | Projects index at `#/projects`: one cell per project (code, name, state word, last thing Archeus did, counts, Open work), grouped Needs you / Running / Quiet, quiet group folded above 12 projects, search above 8, captured ideas listed; phone one column; project inspector with Recent / Phases / Ideas, Missions, Ideas, Details | concept 04 (`04-projects-ideas.png`), owner 2026-10-28 | SIMULATED | PROJECTS · P/T/D | `js/view-projects.js`, `css/projects.css`, `js/inspectors.js`, `css/components.css`; checked at `?story=many` and `huge` |
+| PW01 | Work: project filter is chips up to 6 projects and one select above; Active, Needs you and Blocked show their first 8 rows with Show all, Done folds; the graph says when it shows the first 12 missions; row hover is a 100 ms in, 180 ms out opacity overlay | owner 2026-10-28 | SIMULATED | WORK | `js/view-work.js`, `css/work.css` |
+| PW02 | Replay: events list on the left (largest, top-left), overview (stations, plot, scrubber with Earlier and Later) and selected step on the right, mission picked from a select, categories with no events hidden, recovery cards side by side, decision notes at the end | owner 2026-10-28 | SIMULATED | REP | `js/replay.js`, `css/replay.css` |
+| PW03 | Chat page: one composer row (destination, field, slash, Send; Stop stays in the top bar), conversations rail shows the missions of the selected project only above 8 projects, command reference folded | owner 2026-10-28 | SIMULATED | CHAT | `js/chat.js`, `css/chat.css` |
+| PW04 | Overview Tell dock: 48 px, nearly clear at rest (16 % ground), 45 % on hover, 85 % while typing, fill fades by opacity only, spans the scene up to the Details button | owner 2026-10-28 | SIMULATED | NOW | `css/now.css` |
+| PW05 | Mission inspector: six stations in one row with short names at 420 px, tabs fit without scrolling to the edge | owner 2026-10-28 | SIMULATED | WORK | `css/inspector.css` |
 
 ## Counts
 

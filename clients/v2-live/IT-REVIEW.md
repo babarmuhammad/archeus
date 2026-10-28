@@ -1845,3 +1845,22 @@ File: `js/i18n-areas.js`. New or changed visible strings. Existing strings that 
 | Open project | Apri il progetto |
 | 1 project / N projects (approval mode groups) | 1 progetto / N progetti |
 | + N more (names of projects in a group) | + altri N |
+
+## Page overhaul A: Projects, Work, Replay, Chat, inspectors (2026-10-28): to review
+
+File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Needs you, Running, Quiet, Waiting, Active, Verified, Captured, Done, Mission, Command reference) are reused.
+
+- Open work → Apri il lavoro
+- Archeus has not acted here yet. → Archeus non ha ancora agito qui.
+- Search projects → Cerca progetti
+- No project matches. → Nessun progetto corrisponde.
+- Captured ideas → Idee catturate
+- Recent → Recenti
+- Missions of the other projects: search by title. → Le missioni degli altri progetti: cerca per titolo.
+- N projects → N progetti (1 progetto)
+- N need you / N needs you → N richiedono te (1 richiede te)
+- N running → N in corso
+- N ideas → N idee (1 idea)
+- Show all N → Mostra tutti (N)
+- Graph shows the first 12 of N missions, the list has all → Il grafico mostra le prime 12 missioni su N, l’elenco le ha tutte
+- No missions to replay yet. → Ancora nessuna missione da rivedere.

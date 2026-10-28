@@ -69,7 +69,9 @@
 .msn .spine-insp .st-f { display: inline; } .msn .spine-insp .st-s { display: none; }
 .msn .spine-insp .seg-l { top: 8px; left: calc(-50% + 12px); right: calc(50% + 12px); }
 .msn .spine-insp li:nth-child(4) .seg-l { display: block; }
-@container mp (width < 480px) {
+/* A 420 px column keeps the six stations in one row with their short names (owner, 2026-10-26); only a phone-width panel stacks them, one station per row (D07). */
+@container mp (width < 480px) { .msn .spine-insp .st-f { display: none; } .msn .spine-insp .st-s { display: inline; } }
+@container mp (width < 400px) {
   .msn .spine-insp { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
   .msn .spine-insp li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; text-align: left; gap: 8px; min-height: 24px; padding: 0; font-size: 13px; line-height: 20px; }
   .msn .spine-insp li .seg-l { display: block; top: -4px; bottom: calc(100% - 4px); left: 7px; right: auto; width: 0; height: auto; border-top: 0; border-left: var(--hair) solid var(--text-2); }
@@ -154,3 +156,8 @@
   .msn-identity { padding: 8px 0 0; background: var(--s2); }
   .msn-panel .insp-body { flex: none; overflow: visible; }
 }
+@container mp (width < 480px) {
+  .msn-panel .tabs { padding-inline: 4px; gap: 0; }
+  .msn-panel .tab { padding-inline: 9px; font-size: calc(var(--base) * .875); }
+}
+@container mp (400px <= width < 480px) { .msn .spine-insp li { overflow-wrap: normal; font-size: 11px; } }
