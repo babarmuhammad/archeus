@@ -55,14 +55,12 @@
 .rp-sheet::backdrop { background: var(--scrim); }
 .rp-sheet-close { display: flex; margin-left: auto; }
 .rp-sheet .rp-evidence { display: block; position: static; }
-.rp-sheet[open] { animation: rp-sheet-in 180ms var(--ease); }
+.rp-sheet[open] { animation: rp-sheet-in var(--dur-2) var(--ease-out); }
 .replayview [data-cat='INTENDED'] { --rp-tone: var(--thinking); }
 .replayview [data-cat='AUTHORIZED'] { --rp-tone: var(--active); }
 .replayview [data-cat='RECORDED'] { --rp-tone: var(--text); }
 .replayview [data-cat='MAY-HAVE-TAKEN-EFFECT'], .replayview [data-cat='UNCERTAIN'], .replayview [data-cat='SUSPENDED'] { --rp-tone: var(--attention); }
 .replayview [data-cat='RECONCILED'] { --rp-tone: var(--done); }
-.rp-enter { animation: rp-row-in 160ms var(--ease) backwards; animation-delay: var(--delay); }
-@keyframes rp-row-in { from { opacity: .6; transform: translateY(4px); } }
 @keyframes rp-sheet-in { from { transform: translateY(12px); } }
 @media (hover: hover) and (pointer: fine) { .rp-event:hover { background: var(--s2); } .rp-event:hover b { color: var(--rp-tone, var(--text)); } }
 @container view (max-width: 900px) {
@@ -85,8 +83,8 @@
   .rp-sheet .kv { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .rp-sheet .kv dd { margin-bottom: 12px; }
 }
-:root[data-motion='reduced'] :is(.rp-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; }
-@media (prefers-reduced-motion: reduce) { :is(.rp-enter, .rp-sheet, .rp-playhead) { animation: none; transition: none; } }
+:root[data-motion='reduced'] :is(.rp-sheet, .rp-playhead) { animation: none; transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.rp-sheet, .rp-playhead) { animation: none; transition: none; } }
 @media (forced-colors: active) {
   .rp-event[aria-pressed='true'] { outline: 2px solid Highlight; }
   .rp-playhead { background: Highlight; }
@@ -95,7 +93,7 @@
 }
 /* The track is the scrubber: steps sit evenly on one rail, what already played is the bright part, a click or drag jumps to the nearest step, a long pause shows as a break with its length. */
 .rp-cursor-tools { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; }
-.rp-step { flex: none; width: 48px; height: 48px; display: grid; place-items: center; margin-top: 28px; background: none; border: var(--hair) solid var(--line-strong); border-radius: 10px; color: var(--text); cursor: pointer; transition: background-color 100ms var(--ease), border-color 100ms var(--ease); }
+.rp-step { flex: none; width: 48px; height: 48px; display: grid; place-items: center; margin-top: 28px; background: none; border: var(--hair) solid var(--line-strong); border-radius: 10px; color: var(--text); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out); }
 .rp-step:hover:not(:disabled) { background: var(--s2); border-color: var(--text); }
 .rp-step:active:not(:disabled) { background: var(--s3); }
 .rp-step:disabled { color: var(--text-3); border-color: var(--line); cursor: default; }
@@ -104,15 +102,15 @@
 .rp-track:focus-within .rp-plot { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 10px; }
 .rp-rail, .rp-elapsed { position: absolute; left: 14px; right: 14px; top: 52px; height: 2px; margin-top: -1px; border-radius: 1px; }
 .rp-rail { background: var(--line-strong); }
-.rp-elapsed { background: var(--text); transform-origin: left; transform: scaleX(0); transition: transform 180ms var(--ease); }
-.rp-node { position: absolute; top: 52px; display: grid; place-items: center; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--bg); border: var(--hair) solid var(--line-strong); color: var(--rp-tone, var(--text-2)); font-size: 13px; line-height: 1; transition: transform 100ms var(--ease), border-color 100ms var(--ease), background-color 100ms var(--ease); }
+.rp-elapsed { background: var(--text); transform-origin: left; transform: scaleX(0); transition: transform var(--dur-2) var(--ease-out); }
+.rp-node { position: absolute; top: 52px; display: grid; place-items: center; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--bg); border: var(--hair) solid var(--line-strong); color: var(--rp-tone, var(--text-2)); font-size: 13px; line-height: 1; transition: transform var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 .rp-node[data-dense='true'] { width: 8px; height: 8px; margin: -4px 0 0 -4px; border: 0; background: var(--rp-tone, var(--text-2)); }
 .rp-node[data-done='true'] { border-color: var(--rp-tone, var(--text)); }
 .rp-node[data-hot='true'] { transform: scale(1.25); border-color: var(--text); }
 .rp-node[data-sel='true'] { transform: scale(1.35); border-color: var(--text); background: var(--s3); color: var(--text); }
 .rp-node[data-dense='true'][data-sel='true'] { transform: scale(2); background: var(--text); }
 .rp-break { position: absolute; top: 72px; transform: translateX(-50%); color: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rp-flag { position: absolute; left: 0; top: 4px; width: 52px; margin-left: -26px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; transition: transform 180ms var(--ease); }
+.rp-flag { position: absolute; left: 0; top: 4px; width: 52px; margin-left: -26px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; transition: transform var(--dur-2) var(--ease-out); }
 .rp-flag::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 8px; height: 8px; margin-left: -4px; background: var(--text); transform: rotate(45deg); }
 .rp-axis { display: flex; justify-content: space-between; padding: 0 6px; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .rp-elapsed, .rp-flag, .rp-node, .rp-step { transition: none; } }

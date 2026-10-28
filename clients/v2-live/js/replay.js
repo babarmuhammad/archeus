@@ -47,15 +47,13 @@ export function viewReplay(ctx) {
   let idx = row ? shown.findIndex((x) => x.n === row.n) : -1;
   const move = (d) => { const t = shown[Math.max(0, Math.min(shown.length - 1, (idx < 0 ? 0 : idx) + d))]; if (t) pick(t.n); };
 
-  const entering = rp.enterMission !== m.id || rp.enterFilter !== rp.filter || rp.enterMode !== mode;
-  rp.enterMission = m.id; rp.enterFilter = rp.filter; rp.enterMode = mode;
   const rows = mode === 'compact' ? compactRows(shown) : shown.map((x) => ({ machine: x.machine, n: 1, first: x, last: x, step: x, bad: isBadStep(x) }));
   const rowIdx = row ? rows.findIndex((g) => row.n >= g.first.n && row.n <= g.last.n) : -1;
   const why = (x) => (detail === 'thinking' ? h('span', { class: 'rp-why' }, x.why || reasonText(x.reason)) : detail === 'verbose' ? h('span', { class: 'rp-why mono' }, [x.trigger ? 'trigger ' + x.trigger : null, 'by ' + (x.actor || 'unknown'), 'seq ' + x.seq].filter(Boolean).join(' · ')) : null);
   const timeline = h('div', { class: 'rp-events', role: 'group', 'aria-label': 'Recorded events', 'data-mode': mode },
     ...rows.map((g, i) => { const x = g.step; return h('button', {
-      class: 'rp-event' + (entering ? ' rp-enter' : ''), type: 'button', id: 'rs-' + x.n,
-      style: '--delay:' + Math.min(i * 20, 100) + 'ms', 'aria-pressed': i === rowIdx ? 'true' : 'false',
+      class: 'rp-event', type: 'button', id: 'rs-' + x.n,
+      'aria-pressed': i === rowIdx ? 'true' : 'false',
       'data-cat': x.category, 'data-key': 'tl-' + x.n, onclick: () => pick(x.n),
       onkeydown: (e) => {
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;

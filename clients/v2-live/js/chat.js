@@ -12,20 +12,18 @@ import { spineOf, isOpenMission } from '../spine-model.js';
 import { present } from '../core-words.js';
 import { L, C, lang, msgNode, cardNode, clsChip, clsLabel } from './chat-cards.js';
 
-const RKEY = 'archeus-v2-live-recents';
-const loadRecents = () => { try { const r = JSON.parse(localStorage.getItem(RKEY)); return Array.isArray(r) ? r.slice(0, 5) : []; } catch (e) { return []; } };
-const saveRecents = (r) => { try { localStorage.setItem(RKEY, JSON.stringify(r)); } catch (e) { /* blocked storage: the menu simply has no recents */ } };
-
 export function S4(ctx) {
   const ui = ctx.ui;
   if (!ui.s4) {
     const eng = createChat(ctx.sim, {});
     eng.onChange = () => ctx.render();
-    ui.s4 = { eng, dest: 'work', project: 'archeus', recents: loadRecents(), comps: {}, sheet: false, exp: false, kb: false, slow: false, fail: false, touched: false, pinned: true, unread: 0, notice: null, seen: 0 };
+    ui.s4 = { eng, dest: 'work', project: 'archeus', recents: SL.clean(store.get('slashrecent')), cpins: SL.clean(store.get('slashpins')), comps: {}, sheet: false, exp: false, kb: false, slow: false, fail: false, touched: false, pinned: true, unread: 0, notice: null, seen: 0 };
   }
   return ui.s4;
 }
 const phoneNow = () => { const a = document.getElementById('app'); return !!a && a.clientWidth < 600; };
+// From this main-area width the Chat page shows a side pane (Receipts and Context) beside the thread instead of tabs over it.
+const WIDE = 1100, wideNow = () => (document.querySelector('.main-col')?.clientWidth || 0) >= WIDE;
 const hoverDevice = () => !!(window.matchMedia && window.matchMedia('(hover: hover)').matches);
 
 // ---------- what a card button or a retry does ----------
@@ -100,6 +98,7 @@ export function composer(ctx, where) {
   const notice = h('div', { class: 'cnote', role: 'status', hidden: true });
   const live = h('p', { class: 'vh', role: 'status', 'aria-live': 'polite' });
   const dest = h('p', { class: 'cdest' });
+  const shint = h('p', { class: 'shint', hidden: true });
   const hint = h('p', { class: 'chint', 'aria-live': 'polite', hidden: true });
   const foot = h('div', { class: 'cfoot' }, dest, where === 'dock' ? null : hint);
   const scope = scopePicker(ctx, 'chat-scope-' + where, { cls: 'cscope', prefix: L('To', 'A'), up: true });
@@ -107,12 +106,12 @@ export function composer(ctx, where) {
   const send = h('button', { class: 'btn primary csend', type: 'button', onclick: () => submit() }, '');
   const stop = h('button', { class: 'btn danger cstop', type: 'button', onclick: () => stopNow(ctx) }, '');
   const maxRows = () => { const hgt = (document.getElementById('app') || {}).clientHeight || 800; return where === 'sheet' ? (hgt < 700 ? 2 : 3) : hgt < 760 ? 3 : 5; };
-  const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, live, h('div', { class: 'crow2' }, scope, input, where === 'dock' ? hint : null, slashBtn, send, where === 'sheet' ? null : stop), foot);
+  const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, shint, live, h('div', { class: 'crow2' }, scope, input, where === 'dock' ? hint : null, slashBtn, send, where === 'sheet' ? null : stop), foot);
 
   function fillDest() {
     const a = SL.parse(input.value || '');
     const pn = (ctx.sim.state.projects.find((p) => p.id === s.project) || { name: s.project }).name;
-    dest.textContent = a && a.kind === 'command' ? L('Command · /{n} · {c}', 'Comando · /{n} · {c}', { n: a.cmd.name, c: clsLabel(a.cmd.cls) })
+    dest.textContent = a && a.kind === 'command' ? L('Command · /{n} · {c}', 'Comando · /{n} · {c}', { n: SL.nameIn(a.cmd, lang()), c: clsLabel(a.cmd.cls) })
       : s.dest === 'general' ? L('Nothing here is saved to a project.', 'Qui non si salva nulla in un progetto.')
         : L('Replies and records stay in {p}.', 'Risposte e record restano in {p}.', { p: pn });
     scope.update({ value: scopeValue(s), items: scopeItems(ctx), prefix: L('To', 'A'), label: L('Destination', 'Destinazione') });
@@ -134,10 +133,23 @@ export function composer(ctx, where) {
   }
 
   // ----- the combobox -----
+  // A pinned command is never folded behind "+N more"; the headings (Pinned, Recent, then the classes) only show with an empty query.
+  function cmdRows(mf) {
+    const lim = M.expanded ? Infinity : maxRows(), pin = new Set(s.cpins), rows = [];
+    let shown = 0;
+    (mf.groups || [{ key: '', items: mf.items }]).forEach((g) => {
+      const vis = g.items.filter((c) => (shown < lim || pin.has(c.name)) && ++shown);
+      if (!vis.length) return;
+      if (g.key) rows.push({ kind: 'head', label: g.key === 'pinned' ? L('Pinned', 'Fissati') : g.key === 'recent' ? L('Recent', 'Recenti') : clsLabel(g.key) });
+      vis.forEach((c) => rows.push({ kind: 'cmd', c }));
+    });
+    return mf.items.length > shown ? rows.concat([{ kind: 'more', n: mf.items.length - shown }]) : rows;
+  }
+  const sel = (r) => r.kind !== 'head' && !(r.c && r.c.unavailable);
   function rowsFor() {
-    const mf = SL.menuFor(input.value, s.recents, lang());
+    const mf = SL.menuFor(input.value, s.recents, lang(), s.cpins);
     M.mode = mf.mode; M.cut = mf.cut || 0;
-    if (mf.mode === 'commands') { const all = mf.items, lim = M.expanded ? all.length : maxRows(); return { rows: all.slice(0, lim).map((c) => ({ kind: 'cmd', c })).concat(all.length > lim ? [{ kind: 'more', n: all.length - lim }] : []), mf }; }
+    if (mf.mode === 'commands') return { rows: cmdRows(mf), mf };
     if (mf.mode === 'mention') {
       const q = mf.q.toLowerCase(), st = ctx.sim.state;
       const pool = st.projects.map((p) => ({ kind: 'ref', label: p.name, meta: L('project', 'progetto') })).concat(Object.values(st.missions).map((m) => ({ kind: 'ref', label: m.title, meta: L('mission', 'missione') })));
@@ -149,13 +161,16 @@ export function composer(ctx, where) {
   function draw() {
     const { rows, mf } = rowsFor();
     M.rows = rows; if (M.active >= rows.length) M.active = 0;
-    while (M.active < rows.length && rows[M.active].kind === 'cmd' && rows[M.active].c.unavailable) M.active++;
+    if (M.keep) { const k = rows.findIndex((r) => r.c === M.keep); if (k >= 0) M.active = k; M.keep = null; }
+    while (M.active < rows.length && !sel(rows[M.active])) M.active++;
     M.open = rows.length > 0;
+    const top = list.scrollTop;
     clear(list).hidden = !M.open;
     list.dataset.mode = M.mode;
     rows.forEach((r, i) => {
+      if (r.kind === 'head') { list.append(h('div', { class: 'sgh', role: 'presentation' }, r.label)); return; }
       const o = h('div', { class: 'srow', role: 'option', id: id + '-o' + i, 'aria-selected': i === M.active ? 'true' : 'false', 'aria-disabled': r.c && r.c.unavailable ? 'true' : null, onmousedown: (e) => e.preventDefault(), onclick: () => { M.active = i; choose(); input.focus(); } });
-      if (r.kind === 'cmd') o.append(h('span', { class: 'sn' }, '/' + SL.nameIn(r.c, lang()), h('span', { class: 'sa' }, ' ' + (SL.otherName(r.c, lang()) !== SL.nameIn(r.c, lang()) ? '/' + SL.otherName(r.c, lang()) : ''), SL.labelOf(r.c, lang()) ? ' <' + SL.labelOf(r.c, lang()) + '>' : '')), clsChip(r.c.cls), h('span', { class: 'sd' }, r.c.unavailable ? SL.descOf(r.c, lang()) + ' · ' + r.c.unavailable[lang() === 'it' ? 1 : 0] : SL.descOf(r.c, lang())));
+      if (r.kind === 'cmd') o.append(h('span', { class: 'sn' }, '/' + SL.nameIn(r.c, lang()), h('span', { class: 'sa' }, SL.labelOf(r.c, lang()) ? ' <' + SL.labelOf(r.c, lang()) + '>' : '')), clsChip(r.c.cls), h('span', { class: 'sd' }, r.c.unavailable ? SL.descOf(r.c, lang()) + ' · ' + r.c.unavailable[lang() === 'it' ? 1 : 0] : SL.descOf(r.c, lang())), r.c.unavailable ? null : pinButton(r.c));
       else if (r.kind === 'more') o.append(h('span', { class: 'sn more' }, L('+{n} more', '+{n} altri', { n: r.n })));
       else o.append(h('span', { class: 'sn' }, '@' + r.label), h('span', { class: 'sd' }, r.meta));
       list.append(o);
@@ -163,9 +178,26 @@ export function composer(ctx, where) {
     const arg = mf.mode === 'arg' ? mf.cmd : null;
     argline.hidden = !arg;
     if (arg) argline.textContent = (SL.labelOf(arg, lang()) || arg.name) + (mf.empty ? ': ____' : '') + ' · ' + L('Enter sends, Esc cancels', 'Invio invia, Esc annulla');
+    list.scrollTop = top;
+    const cur = list.children[M.active];
+    if (M.open && cur) { // the active row stays inside the scrolling list, with its heading when it is the first of a group
+      const lead = cur.previousElementSibling, t = lead && lead.classList.contains('sgh') ? lead.offsetTop : cur.offsetTop, b = cur.offsetTop + cur.offsetHeight;
+      if (t < list.scrollTop) list.scrollTop = t; else if (b > list.scrollTop + list.clientHeight) list.scrollTop = b - list.clientHeight;
+    }
+    shint.hidden = !(M.open && M.mode === 'commands' && where !== 'sheet' && hoverDevice());
+    shint.textContent = shint.hidden ? '' : L('Alt+P pins or unpins the highlighted command', 'Alt+P fissa o rimuove il comando evidenziato');
     input.setAttribute('aria-expanded', M.open ? 'true' : 'false');
     if (M.open) input.setAttribute('aria-activedescendant', id + '-o' + M.active); else input.removeAttribute('aria-activedescendant');
     announce();
+  }
+  function pinButton(c) {
+    const on = s.cpins.includes(c.name), nm = '/' + SL.nameIn(c, lang()), label = on ? L('Unpin {c}', 'Rimuovi {c} dai fissati', { c: nm }) : L('Pin {c}', 'Fissa {c}', { c: nm });
+    return h('button', { class: 'spin', type: 'button', tabindex: '-1', 'aria-pressed': on ? 'true' : 'false', 'aria-label': label, title: label, onmousedown: (e) => e.preventDefault(),
+      onclick: (e) => { e.stopPropagation(); togglePin(c); input.focus(); } }, icon('pin', 18));
+  }
+  function togglePin(c) {
+    s.cpins = SL.togglePin(s.cpins, c.name); store.set('slashpins', s.cpins); M.keep = c; draw();
+    lastSay = live.textContent = s.cpins.includes(c.name) ? L('Pinned {c}', 'Fissato {c}', { c: '/' + SL.nameIn(c, lang()) }) : L('Unpinned {c}', 'Rimosso {c} dai fissati', { c: '/' + SL.nameIn(c, lang()) });
   }
   let lastSay = '';
   function announce() {
@@ -188,8 +220,11 @@ export function composer(ctx, where) {
   input.addEventListener('keydown', (e) => {
     if (e.isComposing || e.keyCode === 229) return;
     const n = M.rows.length;
-    if (M.open && e.key === 'ArrowDown') { e.preventDefault(); M.active = (M.active + 1) % n; while (M.rows[M.active].kind === 'cmd' && M.rows[M.active].c.unavailable) M.active = (M.active + 1) % n; draw(); }
-    else if (M.open && e.key === 'ArrowUp') { e.preventDefault(); M.active = (M.active + n - 1) % n; while (M.rows[M.active].kind === 'cmd' && M.rows[M.active].c.unavailable) M.active = (M.active + n - 1) % n; draw(); }
+    const walk = (d, steps) => { for (let k = 0; k < steps; k++) { let j = M.active; do j += d; while (j >= 0 && j < n && !sel(M.rows[j])); if (j < 0 || j >= n) break; M.active = j; } draw(); };
+    if (M.open && e.altKey && e.code === 'KeyP') { const r = M.rows[M.active]; e.preventDefault(); if (r && r.kind === 'cmd' && !r.c.unavailable) togglePin(r.c); }
+    else if (M.open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); const d = e.key === 'ArrowDown' ? 1 : n - 1; do M.active = (M.active + d) % n; while (!sel(M.rows[M.active])); draw(); }
+    else if (M.open && (e.key === 'PageDown' || e.key === 'PageUp')) { e.preventDefault(); walk(e.key === 'PageDown' ? 1 : -1, 5); }
+    else if (M.open && (e.key === 'Home' || e.key === 'End')) { e.preventDefault(); M.active = e.key === 'Home' ? -1 : n; walk(e.key === 'Home' ? 1 : -1, 1); }
     else if (M.open && e.key === 'Tab' && !e.shiftKey) { const r = M.rows[M.active]; if (r && r.kind === 'cmd' && !r.c.unavailable) { e.preventDefault(); input.value = '/' + SL.nameIn(r.c, lang()) + ' '; ctx.ui.draft = input.value; M.expanded = false; draw(); fillDest(); } else if (r && r.kind === 'ref') { e.preventDefault(); choose(); } }
     else if (e.key === 'Enter') { e.preventDefault(); if (M.open) choose(); else submit(false, e.metaKey || e.ctrlKey ? 'steer' : 'queue'); }
     else if (e.key === 'Escape') { if (M.open) { e.preventDefault(); e.stopPropagation(); M.open = false; clear(list).hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); } else if (!argline.hidden) { argline.hidden = true; e.stopPropagation(); } }
@@ -211,7 +246,7 @@ export function composer(ctx, where) {
     if (r.queued || r.steering) live.textContent = r.queued ? L('Queued. It is handled after the current step.', 'In coda. Viene gestito dopo il passo corrente.') : L('Steering. Waiting for Core to acknowledge; this is simulated.', 'Guida in corso. In attesa che il Core confermi; è simulato.');
     if (text === input.value) { input.value = ''; ctx.ui.draft = ''; }
     notice.hidden = true; M.open = false;
-    if (r.cmd) { s.recents = [r.cmd].concat(s.recents.filter((x) => x !== r.cmd)).slice(0, 5); saveRecents(s.recents); }
+    if (r.cmd && !r.failed) { s.recents = SL.pushRecent(s.recents, r.cmd); store.set('slashrecent', s.recents); }
     if (r.run) setTimeout(() => settle(ctx, s.eng.finish(r.id)), slow ? 3000 : 500);
     else if (r.done) setTimeout(() => settle(ctx, r.out), 0);
     ctx.render();
@@ -296,9 +331,10 @@ export function viewChat(ctx) {
     focused ? spineLine(focused) : summary ? h('span', { class: 'cb-sum' }, summary) : null,
     h('span', { class: 'cb-gap' }),
     here.length ? h('a', { class: 'btn cb-need', href: '#/work/' + here[0].id, 'data-key': 'chat-needs' }, glyph('needs_you'), L('Needs you · {n}', 'Richiede te · {n}', { n: here.length })) : null, more);
-  const tabs = h('div', { class: 'cb-tabs', role: 'tablist', 'aria-label': L('Chat sections', 'Sezioni della chat') }, ...TABS.map(([id, en, it]) => h('button', { class: 'cb-tab', type: 'button', role: 'tab', id: 'cbt-' + id, 'aria-selected': tab === id ? 'true' : 'false', 'aria-controls': 'cbp', tabindex: tab === id ? '0' : '-1', 'data-key': 'chat-tab-' + id,
+  const wide = P.wide = wideNow(), cur = wide && tab === 'chat' ? 'receipts' : tab;
+  const tabStrip = (list) => h('div', { class: 'cb-tabs', role: 'tablist', 'aria-label': L('Chat sections', 'Sezioni della chat') }, ...list.map(([id, en, it]) => h('button', { class: 'cb-tab', type: 'button', role: 'tab', id: 'cbt-' + id, 'aria-selected': cur === id ? 'true' : 'false', 'aria-controls': 'cbp', tabindex: cur === id ? '0' : '-1', 'data-key': 'chat-tab-' + id,
     onclick: () => { P.tab = id; ctx.render(); },
-    onkeydown: (e) => { const i = TABS.findIndex((x) => x[0] === id), n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key]; if (n == null) return; e.preventDefault(); P.tab = TABS[(n + TABS.length) % TABS.length][0]; ctx.render(); } }, L(en, it))));
+    onkeydown: (e) => { const i = list.findIndex((x) => x[0] === id), n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: list.length - 1 }[e.key]; if (n == null) return; e.preventDefault(); P.tab = list[(n + list.length) % list.length][0]; ctx.render(); } }, L(en, it))));
 
   // ----- the thread -----
   const log = h('div', { class: 'msgs cp-thread', role: 'log', 'aria-live': 'polite', 'aria-label': L('Conversation', 'Conversazione'), tabindex: '0' });
@@ -308,7 +344,7 @@ export function viewChat(ctx) {
     if (!P.switched && P.seen.size && !P.seen.has(m.id)) node.classList.add('cp-arrive');
     log.append(node);
   });
-  if (!visible.length) log.append(emptyNode());
+  if (visible.length) log.classList.add('cp-pin'); else log.append(emptyNode());
   if (visible.some((e) => e.m.status === 'submitted')) log.append(h('p', { class: 'cp-working', role: 'status' }, L('Archeus is working', 'Archeus sta lavorando'), h('span', { class: 'cp-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))));
   const newer = h('button', { class: 'btn newreply', type: 'button', hidden: P.bottom || !visible.some((e) => !P.seen.has(e.m.id)), onclick: () => { P.bottom = true; log.scrollTop = log.scrollHeight; newer.hidden = true; } }, L('New reply', 'Nuova risposta'));
   log.addEventListener('scroll', () => { P.scroll = log.scrollTop; P.bottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (P.bottom) newer.hidden = true; });
@@ -336,6 +372,7 @@ export function viewChat(ctx) {
     const shown = P.all ? evs : evs.slice(0, 30), waits = focused ? here.filter((a) => a.mission === focused.id) : here;
     return h('div', { class: 'cp-scroll' },
       waits.length ? h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Waiting for you', 'Aspettano te')), ...waits.map((a) => h('a', { class: 'cp-line', 'data-need': '', href: '#/work/' + a.id }, glyph('needs_you'), h('span', { class: 'cp-lt' }, st.missions[a.mission]?.title || a.id), h('span', { class: 'cp-lw' }, a.kind === 'plan' ? L('Approve this plan?', 'Approvare questo piano?') : L('Allow this action?', 'Consentire questa azione?'))))) : null,
+      open.length ? h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Open missions', 'Missioni aperte')), ...open.filter((m) => !focused || m.id === focused.id).map((m) => h('a', { class: 'cp-line', href: hrefFor('mission', m.id) }, spineDots(m), h('span', { class: 'cp-lt' }, m.title), h('span', { class: 'cp-lw' }, present('mission', m.state).label)))) : null,
       h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Done by Archeus', 'Fatto da Archeus')),
         ...(shown.length ? shown.map((e) => h('a', { class: 'cp-line', href: hrefFor('mission', e.subject.id) }, stamp(st, e.at), h('span', { class: 'cp-lt' }, st.missions[e.subject.id].title), h('span', { class: 'cp-lw' }, e.payload.to ? present('mission', e.payload.to).label : STEER[e.type]())))
           : [h('p', { class: 'cp-sub' }, L('Archeus has not acted here yet.', 'Archeus non ha ancora agito qui.'))]),
@@ -359,16 +396,20 @@ export function viewChat(ctx) {
       h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Commands', 'Comandi')), q, list));
   }
 
-  const body = tab === 'receipts' ? receiptsNode() : tab === 'context' ? contextNode() : [h('div', { class: 'logwrap' }, log, newer), comp];
-  const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false' },
-    h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, tabs, h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + tab }, body)));
+  const thread = [h('div', { class: 'logwrap' }, log, newer), comp];
+  const side = () => cur === 'context' ? contextNode() : receiptsNode();
+  const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false', 'data-wide': wide ? 'true' : 'false' },
+    wide ? h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, ...thread)
+      : h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, tabStrip(TABS), h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + tab }, tab === 'chat' ? thread : side())),
+    wide ? h('aside', { class: 'cside', 'aria-label': L('Activity', 'Attività') }, tabStrip(TABS.slice(1)), h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + cur }, side())) : null);
   ctx.mounts.push(() => {
     if (!store.reducedMotion()) log.querySelectorAll('.msg').forEach((el) => {
       const before = oldCards.get(el.dataset.key), card = el.querySelector('.ccard'), after = card?.getBoundingClientRect().height;
       if (before && after && Math.abs(before - after) > 1) card.animate([{ height: before + 'px', overflow: 'hidden' }, { height: after + 'px', overflow: 'hidden' }], { duration: 180, easing: 'ease-out' });
     });
     oldCards.clear();
-    if (tab === 'chat') log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
+    if (wideNow() !== wide) return ctx.render();
+    if (wide || tab === 'chat') log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
     visible.forEach((e) => P.seen.add(e.m.id));
     if (P.switched) { P.switched = false; if (!store.reducedMotion()) log.animate([{ opacity: .35 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' }); }
   });

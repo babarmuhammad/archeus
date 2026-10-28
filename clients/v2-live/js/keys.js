@@ -2,6 +2,7 @@
 // The terminal view keeps its own keys, so nothing here runs inside it.
 import { h } from './dom.js';
 import { translate } from './i18n.js';
+import * as motion from './motion.js';
 
 const ROWS = 'a.mrow, button.tl-row, article.card[data-key]';
 const typing = (t) => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
@@ -33,6 +34,7 @@ export function installKeys(ctx, app, page) {
         h('p', { class: 'note' }, 'The terminal view has its own keys; press ? there.'),
         h('div', { class: 'actions' }, close)));
     app.append(help); translate(help); close.focus();
+    motion.enter(help.firstElementChild, { y: 0, s: .98, dur: 1 });
   }
   document.addEventListener('keydown', (e) => {
     if (help) {

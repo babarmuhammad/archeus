@@ -85,6 +85,6 @@ export function controlBody(ctx, compact) {
     h('div', { class: 'actions' },
       b('', 'Pause all', () => ctx.act('pause_all'), 'pause-all'), b('', 'Resume all', () => ctx.act('resume_all'), 'resume-all'),
       armed ? (askR ? [b('primary', 'Yes, re-arm', () => { ctx.ui.rearmAsk = false; ctx.act('rearm'); }, 'rearm-yes'), b('', 'Back', () => { ctx.ui.rearmAsk = false; ctx.render(); }, 'rearm-back')] : b('primary', 'Re-arm', () => { ctx.ui.rearmAsk = true; ctx.render(); }, 'rearm'))
-      : ask ? [b('danger', 'Yes, stop everything', () => { ctx.ui.estopAsk = false; ctx.act('estop'); }, 'estop-yes'), b('', 'Back', () => { ctx.ui.estopAsk = false; ctx.render(); }, 'estop-back')]
+      : ask ? [b('danger solid', 'Yes, stop everything', () => { ctx.ui.estopAsk = false; ctx.act('estop'); }, 'estop-yes'), b('', 'Back', () => { ctx.ui.estopAsk = false; ctx.render(); }, 'estop-back')]
         : b('danger', 'Emergency stop', () => { ctx.ui.estopAsk = true; ctx.render(); }, 'estop')));
 }

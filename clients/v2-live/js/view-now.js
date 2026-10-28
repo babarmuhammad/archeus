@@ -8,6 +8,7 @@ import * as store from './store.js';
 import { mapBox, syncMap, buildOverview } from './map.js';
 import { dockNode } from './chat.js';
 import { workHref } from '../page-model.js';
+import * as motion from './motion.js';
 
 // The phone shows the four counts as its headline; the desktop headline already says them.
 function counters(ctx) {
@@ -90,11 +91,15 @@ export function render(ctx) {
   const open = ctx.ui.nowDrawer === true;
   sheetOn = open && !calm;
   const toggle = (e) => {
+    const closing = ctx.ui.nowDrawer === true, d = e.currentTarget.closest('.now-drawer'), body = d.querySelector('.now-body');
+    // the sheet comes from its edge (the right when wide, the bottom when narrow) and leaves the same way, a little faster; on the phone it is part of the page and does not fly
+    const fly = phone() ? null : viewWidth() >= 900 ? { x: 24, y: 0 } : { x: 0, y: 24 };
+    if (closing && fly) motion.exitClone(body, { ...fly, dur: 2 });
     ctx.ui.nowDrawer = !ctx.ui.nowDrawer; sheetOn = ctx.ui.nowDrawer === true;
-    const d = e.currentTarget.closest('.now-drawer');
     d.dataset.open = String(ctx.ui.nowDrawer === true);
     d.closest('.now-view').dataset.sheet = String(ctx.ui.nowDrawer === true);
     e.currentTarget.setAttribute('aria-expanded', String(ctx.ui.nowDrawer === true));
+    if (!closing && fly) motion.enter(body, { ...fly, dur: 3 });
   };
   const first = att.find((a) => a.group === 'Decide' || a.group === 'Review'), fm = first && first.mission_id ? st.missions[first.mission_id] : null, ap = first && first.kind === 'approval' ? st.approvals[first.ref] : null;
   const card = first && first.kind !== 'knowledge' ? h('article', { class: 'pn-card', 'data-key': 'pn-card' },
