@@ -67,7 +67,9 @@ export function render(ctx) {
       anchor.innerHTML = projectPlateMarkup(n, tr);
       svg.append(anchor);
     });
+    const focused = scene.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     clear(scene).append(svg, legend);
+    if (focused) svg.querySelector(`[data-key="${focused}"]`)?.focus({preventScroll: true});
   });
   return root;
 }

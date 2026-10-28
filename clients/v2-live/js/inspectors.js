@@ -7,7 +7,7 @@ import { present } from '../core-words.js';
 import { clockLabel, categoryOf } from '../sim.js';
 import { badge, projName, word, dnote } from './views.js';
 import { spineInspector, spineRow } from './spine.js';
-import { areasOf, kindOfId, whyOf, routeOf, policyOf, execOutput, checkpoints, relationsOf, stationTimes, harnessLabel, accountLabel, IDEA_PATH } from './areas-model.js';
+import { areasOf, kindOfId, whyOf, routeOf, policyOf, execOutput, checkpoints, relationsOf, stationTimes, ideaDraft, harnessLabel, accountLabel, IDEA_PATH } from './areas-model.js';
 import { pill, sec, note, kv, link, entity, hrefFor } from './ax.js';
 import { inspectorArea } from './inspectors2.js';
 import { overview, pane, meta, position } from './inspector-mission.js';
@@ -276,12 +276,14 @@ function project(ctx, A, S, id) {
   };
   const ideaSection = () => h('section', {class: 'project-idea-section'}, h('div', {class: 'project-section-head'}, h('h3', null, 'Project ideas'), off ? null : h('button', {class: 'btn quiet', type: 'button', 'aria-label': 'Capture an idea', onclick: capture}, icon('plus', 20))), ideaRows());
   const captureForm = () => {
-    const input = h('input', {id: 'project-idea-title', 'data-key': 'project-idea-title', name: 'idea', required: true, maxlength: 240, value: ctx.ui.projectIdeaDraft || ''});
-    input.addEventListener('input', () => { ctx.ui.projectIdeaDraft = input.value; });
+    const draft = ideaDraft(ctx.ui, pid);
+    const input = h('input', {id: 'project-idea-title', 'data-key': 'project-idea-title', name: 'idea', required: true, maxlength: 240, value: draft.v});
+    ['input', 'keyup', 'mouseup', 'select'].forEach(t => input.addEventListener(t, () => { draft.v = input.value; draft.sel = [input.selectionStart, input.selectionEnd, input.selectionDirection]; }));
+    ctx.mounts.push(() => { if (draft.sel) input.setSelectionRange(...draft.sel); });
     return h('form', {class: 'project-capture', onsubmit: e => {
       e.preventDefault(); const title = input.value.trim(); if (!title) return;
       if (A.isOffline()) return;
-      ctx.ui.projectIdeaDraft = ''; ctx.sim.createIdea(title, pid); ctx.render();
+      draft.v = ''; draft.sel = null; ctx.sim.createIdea(title, pid); ctx.render();
     }}, h('label', {for: 'project-idea-title'}, 'Idea title'), input, h('button', {class: 'btn primary', type: 'submit'}, 'Capture'));
   };
   return frame(ctx, A, {cls: 'project-inspector', kind: KIND_WORD.project, title: p.name, sub: p.note, pin: id,
