@@ -315,3 +315,8 @@ details.panel > .body { padding: 4px 16px 16px; }
 .cs-main { overflow: hidden; }
 .logwrap { overflow: hidden; }
 @media (max-height: 700px) { .chatsheet[data-kb='1'] .logwrap { display: none; } }
+
+@media (max-height: 700px) {
+  .chatpage .convo { overflow-y: auto; }
+  .chatpage .cp-thread-head, .chatpage .convo .composer2 { position: static; }
+}

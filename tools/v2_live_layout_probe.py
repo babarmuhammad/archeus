@@ -289,7 +289,7 @@ def s4_state(pg, route, w):
             pg.click('.ccard[data-kind="general"] .btn')
             pg.wait_for_timeout(400)
         pg.wait_for_timeout(200)
-        return None
+        return '.slash' if route == 'chat-slash' else None
     if route.startswith('dock') or route.startswith('sheet'):
         if route.startswith('sheet') and w >= 600:
             (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
