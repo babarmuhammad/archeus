@@ -1,5 +1,9 @@
 // Italian for the chat slice: add exact strings to IT_CHAT and [regex, fn] rules to RULES_CHAT. Merged by i18n.js.
 export const IT_CHAT = {
+  'Completed': 'Completato',
+  'Waiting': 'In attesa',
+  'Position unknown': 'Posizione sconosciuta',
+  'Cancelled': 'Annullata',
   'Conversation workspace': 'Spazio di conversazione',
   'Conversations': 'Conversazioni',
   'Search conversations': 'Cerca conversazioni',
