@@ -210,3 +210,4 @@
 .work-view :is(.mrow, .att-rows .card)::before { transition-duration: 180ms; }
 .work-view .mrow[data-peek]::before, .work-view .att-rows .panel[data-peek] .card::before { opacity: 1; }
 .work-view .att-rows .panel[data-peek] .card.band::before { opacity: .12; }
+@media (max-width: 600px) { .wk-tabs { gap: 0; } .wk-tab { padding: 0 8px; gap: 5px; font-size: var(--fs-cap); } }
