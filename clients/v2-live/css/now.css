@@ -118,10 +118,16 @@
 /* The Tell dock: anchored at the bottom centre of the scene, on the status strip. A flat translucent fill of the ground colour and a hairline, no blur.
    Slim by default (destination chip, field, slash, Send); it grows upward for the slash menu and for replies. */
 .tell-dock { position: absolute; z-index: 4; left: 0; right: 0; top: var(--hero-h); bottom: calc(var(--strip-h) + 12px); display: flex; justify-content: center; align-items: flex-end; padding: 0 var(--gut); pointer-events: none; }
-.tell-dock .dockin { pointer-events: auto; width: min(760px, 100%); padding: 0; gap: 6px; max-height: 100%; overflow-y: auto; }
+.tell-dock .dockin { pointer-events: auto; width: min(980px, 100%); padding: 0; gap: 6px; max-height: 100%; overflow-y: auto; }
 .tell-dock .dintro, .tell-dock .cstop { display: none; }
 .tell-dock .dockin .composer2, .tell-dock .dstrip, .tell-dock .slash, .tell-dock .cnote { background: color-mix(in srgb, var(--bg) 66%, transparent); border: var(--hair) solid var(--line-strong); }
-.tell-dock .dockin .composer2 { padding: 4px 6px 4px 8px; border-radius: 16px; }
+.tell-dock .dockin .composer2 { padding: 2px; gap: 0; border-radius: 28px; background: color-mix(in srgb, var(--bg) 40%, transparent); border-color: var(--line); transition: background-color 160ms ease-out, border-color 160ms ease-out; }
+.tell-dock .dockin .composer2:focus-within { background: color-mix(in srgb, var(--bg) 72%, transparent); border-color: var(--line-strong); }
+.tell-dock .crow2 { gap: 4px; }
+.tell-dock .cscope { flex: 0 1 13em; border: 0; border-right: var(--hair) solid var(--line); border-radius: 24px 0 0 24px; padding-inline: 16px 10px; }
+.tell-dock .cinput { padding-inline: 14px; }
+.tell-dock .cslash { border: 0; color: var(--text-3); }
+.tell-dock .csend { border-radius: 24px; padding-inline: 22px; min-height: var(--target-primary); }
 .tell-dock .dstrip { border-radius: 12px; }
 .tell-dock .dstrip .ccard { background: color-mix(in srgb, var(--bg) 40%, transparent); }
 .tell-dock .slash { border-radius: 12px; }
