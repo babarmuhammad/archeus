@@ -203,6 +203,7 @@ def main():
             send(pg, 'Explain a checkpoint')
             check('general \u00b7 not project memory' in pg.inner_text('.msgs').lower(), 'the general answer is labelled')
             check(pg.evaluate("window.v2live.sim.state.knowledge.length") == k0, 'a general answer adds no memory')
+            pg.evaluate("document.querySelectorAll('details.cp-disclosure').forEach(d => d.open = true)")
             check('Retention' in pg.inner_text('.convo') and 'Unknown' in pg.inner_text('.convo'), 'retention is shown as Unknown')
             pg.click('.ccard[data-kind="general"] .btn')
             pg.wait_for_timeout(300)
@@ -261,6 +262,7 @@ def main():
 
             # ---- failed send, retry, duplicate ----
             ctx, pg, errs = new_page(br, base)
+            pg.evaluate("document.querySelectorAll('details.cp-disclosure').forEach(d => d.open = true)")
             pg.click('.chip:has-text("Failed send")')
             send(pg, '/idea retry me')
             check('Not sent. Send again?' in pg.inner_text('.msgs'), 'a failed send says Not sent. Send again?')
