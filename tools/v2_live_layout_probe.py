@@ -329,7 +329,7 @@ def s4_state(pg, route, w):
         pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
         pg.click('.rcv[data-ok="true"] .btn')
     pg.wait_for_timeout(250)
-    return None
+    return '.rp-sheet' if pg.evaluate("!!document.querySelector('.rp-sheet[open]')") else None
 
 
 def s4_after(pg, route, w):
@@ -422,7 +422,7 @@ def main():
                                 layer = {'help': '.helpbox', 'toast': '.toast', 'safety': '.safety-pop', 'stopask': '.safety-pop', 'estopsafety': '.safety-pop', 'tell': '.tell-dock' if rt == 'now' else '.chatdock.tell'}.get(st)
                                 if st == 'tell' and pg.evaluate("!!document.querySelector('.chatsheet')"):
                                     layer = '.chatsheet'
-                            if '/' in rt and rt.split('/')[0] in ('work', 'attention', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
+                            if '/' in rt and rt.split('/')[0] in ('work', 'projects', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
                                 pos = pg.evaluate("getComputedStyle(document.querySelector('#inspector')).position")
                                 if pos == 'absolute':
                                     layer = '#inspector'

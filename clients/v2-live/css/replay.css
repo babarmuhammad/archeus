@@ -13,7 +13,7 @@
 .rp-stations .spine-insp .seg-l { top: 8px; left: calc(-50% + 14px); right: calc(50% + 14px); }
 .rp-stations .spine-insp li:nth-child(4) .seg-l { display: block; }
 .rp-stations .sp-text { padding: 8px 0; }
-.rp-plot { position: relative; height: 64px; margin: 8px 12px 0; border-block: var(--hair) solid var(--line); }
+.rp-plot { position: relative; height: 66px; margin: 8px 12px 0; border-block: var(--hair) solid var(--line); }
 .rp-tick { position: absolute; width: 14px; line-height: 16px; text-align: center; transform: translateX(-50%); color: var(--rp-tone, var(--text-2)); font-size: 14px; }
 .rp-tick[data-dim='true'] { opacity: .25; }
 .rp-playhead { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--text); transition: transform 180ms var(--ease); }

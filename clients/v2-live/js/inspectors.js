@@ -12,7 +12,7 @@ import { pill, sec, note, kv, link, entity, hrefFor } from './ax.js';
 import { inspectorArea } from './inspectors2.js';
 import { overview, pane, meta, position } from './inspector-mission.js';
 import {spineOf} from '../spine-model.js';
-import {projectState, projectsLegend} from './view-projects.js';
+import {projectState} from './view-projects.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
 export const isCompact = () => (document.getElementById('device') || document.body).clientWidth < 600;
@@ -274,6 +274,5 @@ function project(ctx, A, S, id) {
       tab === 'missions' ? sec('Missions', ms.length ? h('ul', {class: 'project-missions'}, ...ms.map(m => h('li', null, h('a', {href: hrefFor('mission', m.id)}, h('span', {class: 'project-mission-name'}, m.title), spineRow(m.state, m.held_from), badge('mission', m.state))))) : note('No missions yet.')) : null,
       tab === 'ideas' ? [off ? null : captureForm(), ideaSection()] : null,
       tab === 'details' ? [sec('Repository', kv([['Folder', p.root], ['Missions', String(ms.length)], ['Confirmed knowledge', String(S.knowledge.filter(k => k.project === pid && k.state === 'CONFIRMED').length)]])),
-        sec('Next mission launches', pv ? [h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note)] : note('No launch settings recorded.'), link('#/accounts', 'Change the launch settings')), ...relationsBody(S, 'project', id)] : null,
-      projectsLegend()) });
+        sec('Next mission launches', pv ? [h('p', null, harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : '')), note(pv.note)] : note('No launch settings recorded.'), link('#/accounts', 'Change the launch settings')), ...relationsBody(S, 'project', id)] : null) });
 }

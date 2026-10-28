@@ -68,9 +68,11 @@ export function viewReplay(ctx) {
   const firstAt = r.steps[0]?.at || 0, duration = (r.steps[r.steps.length - 1]?.at || firstAt) - firstAt;
   const position = (x) => duration ? (x.at - firstAt) / duration : (x.n - 1) / Math.max(1, r.steps.length - 1);
   const cursorPos = row ? position(row) : 0;
+  const lanes = [-1, -1, -1], gap = 14 / Math.max(280, Math.min(innerWidth - 60, 1200));
+  const laneFor = (at) => { let l = lanes.findIndex((last) => at - last > gap); if (l < 0) { l = lanes.indexOf(Math.min(...lanes)); at = lanes[l] + gap + .001; } lanes[l] = at; return { at, l }; };
   const playhead = h('span', { class: 'rp-playhead', 'aria-hidden': 'true' });
   const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' },
-    ...r.steps.map((x) => h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:' + position(x) * 100 + '%;top:' + (12 + (x.n % 3) * 12) + 'px' }, GLYPH[x.category])), playhead);
+    ...r.steps.map((x) => { const { at, l: lane } = laneFor(position(x)); return h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:' + at * 100 + '%;top:' + (4 + lane * 18) + 'px' }, GLYPH[x.category]); }), playhead);
   const scrub = h('input', { type: 'range', min: 0, max: Math.max(0, shown.length - 1), value: Math.max(0, idx), 'data-key': 'rp-cursor',
     'aria-label': L('Step cursor. Arrows step, Home and End jump', 'Cursore dei passi. Le frecce spostano, Home e Fine saltano'),
     'aria-valuetext': row ? row.time + ' ' + row.machine + ' ' + row.state : '', disabled: shown.length ? null : true,
