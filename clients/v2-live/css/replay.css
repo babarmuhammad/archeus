@@ -96,21 +96,26 @@
   .rp-tick { color: CanvasText; }
   .rp-sheet { background: Canvas; color: CanvasText; border-color: CanvasText; }
 }
-/* The track is the scrubber: marks sit on it, the part already played is a flat tint, a click or drag jumps to the nearest event. */
+/* The track is the scrubber: steps sit evenly on one rail, what already played is the bright part, a click or drag jumps to the nearest step, a long pause shows as a break with its length. */
 .rp-cursor-tools { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; }
-.rp-step { flex: none; width: 48px; height: 48px; display: grid; place-items: center; margin-top: 18px; background: none; border: var(--hair) solid var(--line-strong); border-radius: 10px; color: var(--text); cursor: pointer; transition: background-color 100ms var(--ease), border-color 100ms var(--ease); }
+.rp-step { flex: none; width: 48px; height: 48px; display: grid; place-items: center; margin-top: 28px; background: none; border: var(--hair) solid var(--line-strong); border-radius: 10px; color: var(--text); cursor: pointer; transition: background-color 100ms var(--ease), border-color 100ms var(--ease); }
 .rp-step:hover:not(:disabled) { background: var(--s2); border-color: var(--text); }
 .rp-step:active:not(:disabled) { background: var(--s3); }
 .rp-step:disabled { color: var(--text-3); border-color: var(--line); cursor: default; }
 .rp-track { position: relative; flex: 1; min-width: 0; touch-action: pan-y; cursor: pointer; }
-.rp-plot { position: relative; height: 92px; overflow: hidden; background: var(--bg); border: var(--hair) solid var(--line-strong); border-radius: 10px; }
-.rp-track:focus-within .rp-plot { outline: 3px solid var(--focus); outline-offset: 2px; }
-.rp-elapsed { position: absolute; inset: 0; background: color-mix(in srgb, var(--text) 9%, transparent); transform-origin: left; transform: scaleX(0); transition: transform 180ms var(--ease); }
-.rp-ghost { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--line-strong); opacity: 0; transition: opacity 100ms var(--ease); }
-.rp-ghost[data-on='true'] { opacity: 1; }
-.rp-tick { position: absolute; width: 14px; line-height: 16px; text-align: center; transform: translateX(-50%); color: var(--rp-tone, var(--text-2)); font-size: 14px; }
-.rp-tick[data-dim='true'] { opacity: .25; }
-.rp-playhead { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); transition: transform 180ms var(--ease); }
-.rp-playhead::before { content: ''; position: absolute; top: 0; left: -4px; width: 10px; height: 10px; background: var(--text); border-radius: 0 0 5px 5px; }
-.rp-axis { display: flex; justify-content: space-between; padding: 4px 4px 0; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
-@media (prefers-reduced-motion: reduce) { .rp-elapsed, .rp-playhead, .rp-ghost, .rp-step { transition: none; } }
+.rp-plot { position: relative; height: 88px; }
+.rp-track:focus-within .rp-plot { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 10px; }
+.rp-rail, .rp-elapsed { position: absolute; left: 14px; right: 14px; top: 52px; height: 2px; margin-top: -1px; border-radius: 1px; }
+.rp-rail { background: var(--line-strong); }
+.rp-elapsed { background: var(--text); transform-origin: left; transform: scaleX(0); transition: transform 180ms var(--ease); }
+.rp-node { position: absolute; top: 52px; display: grid; place-items: center; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; background: var(--bg); border: var(--hair) solid var(--line-strong); color: var(--rp-tone, var(--text-2)); font-size: 13px; line-height: 1; transition: transform 100ms var(--ease), border-color 100ms var(--ease), background-color 100ms var(--ease); }
+.rp-node[data-dense='true'] { width: 8px; height: 8px; margin: -4px 0 0 -4px; border: 0; background: var(--rp-tone, var(--text-2)); }
+.rp-node[data-done='true'] { border-color: var(--rp-tone, var(--text)); }
+.rp-node[data-hot='true'] { transform: scale(1.25); border-color: var(--text); }
+.rp-node[data-sel='true'] { transform: scale(1.35); border-color: var(--text); background: var(--s3); color: var(--text); }
+.rp-node[data-dense='true'][data-sel='true'] { transform: scale(2); background: var(--text); }
+.rp-break { position: absolute; top: 72px; transform: translateX(-50%); color: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rp-flag { position: absolute; left: 0; top: 4px; width: 52px; margin-left: -26px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; transition: transform 180ms var(--ease); }
+.rp-flag::after { content: ''; position: absolute; left: 50%; bottom: -4px; width: 8px; height: 8px; margin-left: -4px; background: var(--text); transform: rotate(45deg); }
+.rp-axis { display: flex; justify-content: space-between; padding: 0 6px; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .rp-elapsed, .rp-flag, .rp-node, .rp-step { transition: none; } }

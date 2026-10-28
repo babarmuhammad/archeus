@@ -66,49 +66,47 @@ export function viewReplay(ctx) {
     ...CATS.filter((c) => r.counts[c] || rp.filter === c).map((c) => h('button', { class: 'chip', type: 'button', 'data-cat': c, 'data-key': 'rp-filter-' + c, 'aria-pressed': rp.filter === c ? 'true' : 'false', onclick: () => { rp.filter = rp.filter === c ? null : c; rp.tlTop = 0; ctx.render(); } },
       h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[c]), ' ' + c + ' ', h('span', { class: 'rp-count' }, String(r.counts[c] || 0)))));
 
-  const firstAt = r.steps[0]?.at || 0, duration = (r.steps[r.steps.length - 1]?.at || firstAt) - firstAt;
-  const position = (x) => duration ? (x.at - firstAt) / duration : (x.n - 1) / Math.max(1, r.steps.length - 1);
-  // The plot is as wide as the right column (half the page when the page is wide); a mark nudged past the end shrinks the scale instead of piling on the last one.
-  const mainW = (document.querySelector('.main-col') || {}).clientWidth || innerWidth, plotW = Math.max(220, (mainW > 900 ? (mainW - 80) / 2.05 : mainW - 40) - 24);
-  const lanes = [-1, -1, -1, -1], gap = 14 / plotW;
-  const laneFor = (at) => { let l = lanes.findIndex((last) => at - last > gap); if (l < 0) { l = lanes.indexOf(Math.min(...lanes)); at = lanes[l] + gap + .001; } lanes[l] = at; return { at, l }; };
-  const marks = r.steps.map((x) => { const { at, l } = laneFor(position(x)); return { x, at, lane: l }; }), span = Math.max(1, ...marks.map((k) => k.at));
-  const cursorPos = row ? position(row) / span : 0;
-  const playhead = h('span', { class: 'rp-playhead', 'aria-hidden': 'true' }), elapsed = h('span', { class: 'rp-elapsed', 'aria-hidden': 'true' }), ghost = h('span', { class: 'rp-ghost', 'aria-hidden': 'true' });
-  const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' }, elapsed, ghost,
-    ...marks.map(({ x, at, lane }) => h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:calc(7px + ' + at / span + ' * (100% - 14px));top:' + (6 + lane * 18) + 'px' }, GLYPH[x.category])), playhead);
-  const at = (f) => 7 + f * Math.max(0, plot.clientWidth - 14);
-  const setCursor = (f, instant) => {
-    if (instant) { playhead.style.transition = elapsed.style.transition = 'none'; }
-    playhead.style.transform = 'translateX(' + at(f) + 'px)'; elapsed.style.transform = 'scaleX(' + (plot.clientWidth ? at(f) / plot.clientWidth : 0) + ')';
-    if (instant) { playhead.getBoundingClientRect(); playhead.style.transition = elapsed.style.transition = ''; }
+  // Steps are discrete, so they sit evenly on the track (a time scale piles ten events into the last second); a real pause between two steps is drawn as a break with its length.
+  const N = shown.length, fx = (i) => (N > 1 ? i / (N - 1) : .5);
+  const pauses = shown.map((x, i) => (i ? x.at - shown[i - 1].at : 0)), med = pauses.slice(1).sort((p, q) => p - q)[Math.floor((N - 1) / 2)] || 0;
+  const mainW = (document.querySelector('.main-col') || {}).clientWidth || innerWidth, dense = ((mainW > 900 ? (mainW - 80) / 2.05 : mainW - 40) - 96) / Math.max(1, N - 1) < 30;
+  const dur = (ms) => (ms >= 3600000 ? Math.round(ms / 3600000) + ' h' : ms >= 60000 ? Math.round(ms / 60000) + ' min' : Math.round(ms / 1000) + ' s');
+  const left = (f) => 'left:calc(14px + ' + f + ' * (100% - 28px))';
+  const nodes = shown.map((x, i) => h('span', { class: 'rp-node', 'data-cat': x.category, 'data-dense': dense ? 'true' : null, 'data-sel': i === idx ? 'true' : null, style: left(fx(i)) }, dense ? '' : GLYPH[x.category]));
+  const breaks = dense ? [] : shown.flatMap((x, i) => (i && pauses[i] >= Math.max(60000, med * 5) ? [h('span', { class: 'rp-break', style: left((fx(i) + fx(i - 1)) / 2) }, '+' + dur(pauses[i]))] : []));
+  const elapsed = h('span', { class: 'rp-elapsed' }), flag = h('span', { class: 'rp-flag' }, row ? row.time : '');
+  const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' }, h('span', { class: 'rp-rail' }), elapsed, ...breaks, ...nodes, flag);
+  const at = (f) => 14 + f * Math.max(0, plot.clientWidth - 28);
+  const setIdx = (i, instant) => {
+    const f = fx(i), x = at(f), w = plot.clientWidth;
+    if (instant) flag.style.transition = elapsed.style.transition = 'none';
+    flag.style.transform = 'translateX(' + Math.max(26, Math.min(w - 26, x)) + 'px)'; elapsed.style.transform = 'scaleX(' + (w ? (x - 14) / (w - 28) : 0) + ')';
+    if (instant) { flag.getBoundingClientRect(); flag.style.transition = elapsed.style.transition = ''; }
+    nodes.forEach((n, k) => { n.dataset.sel = k === i ? 'true' : 'false'; n.dataset.done = k < i ? 'true' : 'false'; });
+    if (shown[i]) flag.textContent = shown[i].time;
   };
-  const nearest = (clientX) => {
-    const r = plot.getBoundingClientRect(), f = Math.max(0, Math.min(1, (clientX - r.left - 7) / Math.max(1, r.width - 14)));
-    let best = null, d = Infinity;
-    for (const k of marks) if (shown.includes(k.x)) { const dd = Math.abs(k.at / span - f); if (dd < d) { d = dd; best = k; } }
-    return { f, mark: best };
-  };
+  const nearest = (clientX) => { const bx = plot.getBoundingClientRect(), f = Math.max(0, Math.min(1, (clientX - bx.left - 14) / Math.max(1, bx.width - 28))); return Math.max(0, Math.min(N - 1, Math.round(f * (N - 1)))); };
   const scrub = h('input', { type: 'range', min: 0, max: Math.max(0, shown.length - 1), value: Math.max(0, idx), 'data-key': 'rp-cursor', class: 'vh',
     'aria-label': L('Step cursor. Arrows step, Home and End jump', 'Cursore dei passi. Le frecce spostano, Home e Fine saltano'),
     'aria-valuetext': row ? row.time + ' ' + row.machine + ' ' + row.state : '', disabled: shown.length ? null : true,
     oninput: (e) => {
-      const next = shown[Number(e.target.value)];
-      if (next) { setCursor(position(next) / span); e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
+      const i = Number(e.target.value), next = shown[i];
+      if (next) { setIdx(i); e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
     }, onchange: (e) => { const next = shown[Number(e.target.value)]; if (next) pick(next.n, false); } });
   const earlier = h('button', { class: 'rp-step', type: 'button', 'data-key': 'rp-earlier', 'aria-label': L('Earlier event', 'Evento precedente'), title: L('Earlier', 'Prima'), disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, icon('chevronl', 20));
   const later = h('button', { class: 'rp-step', type: 'button', 'data-key': 'rp-later', 'aria-label': L('Later event', 'Evento successivo'), title: L('Later', 'Dopo'), disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, icon('chevron', 20));
-  let drag = null;
-  const track = h('div', { class: 'rp-track' }, plot, scrub, h('div', { class: 'rp-axis', 'aria-hidden': 'true' }, h('span', null, r.steps[0] ? r.steps[0].time : ''), h('span', null, r.steps.length ? r.steps[r.steps.length - 1].time : '')));
-  const preview = (mark) => { if (!mark) return; setCursor(mark.at / span); scrub.value = String(shown.indexOf(mark.x)); scrub.setAttribute('aria-valuetext', mark.x.time + ' ' + mark.x.machine + ' ' + mark.x.state); };
-  track.addEventListener('pointerdown', (e) => { if (!shown.length || e.button > 0) return; track.setPointerCapture(e.pointerId); drag = nearest(e.clientX).mark; preview(drag); });
+  let drag = null, hot = -1;
+  const track = h('div', { class: 'rp-track' }, plot, scrub, h('div', { class: 'rp-axis', 'aria-hidden': 'true' }, h('span', null, shown[0] ? shown[0].time : ''), h('span', null, N ? shown[N - 1].time : '')));
+  const heat = (i) => { if (hot === i) return; if (nodes[hot]) nodes[hot].dataset.hot = 'false'; hot = i; if (nodes[i]) nodes[i].dataset.hot = 'true'; };
+  const preview = (i) => { if (!shown[i]) return; setIdx(i); scrub.value = String(i); scrub.setAttribute('aria-valuetext', shown[i].time + ' ' + shown[i].machine + ' ' + shown[i].state); };
+  track.addEventListener('pointerdown', (e) => { if (!N || e.button > 0) return; track.setPointerCapture(e.pointerId); drag = nearest(e.clientX); preview(drag); });
   track.addEventListener('pointermove', (e) => {
-    if (drag) { drag = nearest(e.clientX).mark || drag; preview(drag); return; }
-    if (e.pointerType === 'mouse') { ghost.style.transform = 'translateX(' + at(nearest(e.clientX).f) + 'px)'; ghost.dataset.on = 'true'; }
+    if (drag !== null) { drag = nearest(e.clientX); preview(drag); return; }
+    if (e.pointerType === 'mouse' && N) heat(nearest(e.clientX));
   });
-  track.addEventListener('pointerleave', () => { ghost.dataset.on = 'false'; });
-  track.addEventListener('pointerup', () => { const m = drag; drag = null; if (m) pick(m.x.n, false); });
-  track.addEventListener('pointercancel', () => { drag = null; setCursor(cursorPos); });
+  track.addEventListener('pointerleave', () => heat(-1));
+  track.addEventListener('pointerup', () => { const i = drag; drag = null; if (i !== null && shown[i]) pick(shown[i].n, false); });
+  track.addEventListener('pointercancel', () => { drag = null; setIdx(Math.max(0, idx)); });
   const overview = h('section', { class: 'rp-overview', 'aria-label': 'Timeline overview' },
     h('div', { class: 'rp-heading' }, h('div', null, h('h2', null, m.title), h('p', { class: 'rp-intro' }, 'Read-only history. Select an event to inspect what Core recorded.')),
       h('span', { class: 'rp-position', role: 'status' }, row ? row.n + ' / ' + r.steps.length + ' · ' + row.time : '0 / ' + r.steps.length), h('a', { class: 'btn', href: '#/work/' + m.id }, L('Mission', 'Missione'))),
@@ -117,9 +115,9 @@ export function viewReplay(ctx) {
     h('button', { class: 'btn rp-inspect', type: 'button', 'data-key': 'rp-inspect', disabled: !row, onclick: () => pick(row.n) }, 'Inspect selected event'),
     r.history.answer === 'UNKNOWN' ? h('p', { class: 'note' }, L('Older steps were pruned from the event log, so anything before them is UNKNOWN, not “nothing happened”.', 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non “non è successo nulla”.')) : null);
   ctx.mounts.push(() => {
-    setCursor(rp.cursorPos ?? cursorPos, true);
-    setCursor(cursorPos);
-    rp.cursorPos = cursorPos;
+    setIdx(rp.cursorIdx ?? Math.max(0, idx), true);
+    setIdx(Math.max(0, idx));
+    rp.cursorIdx = Math.max(0, idx);
   });
 
   const stepPanel = panel(L('Selected step', 'Passo selezionato'), null, row ? h('div', { class: 'body' },
