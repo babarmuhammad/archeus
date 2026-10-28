@@ -1908,3 +1908,39 @@ File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mi
 - Open mission → Apri la missione (last line of a mission's preview card)
 - No missions yet → Ancora nessuna missione (hub label of a project with no missions)
 - +N quiet → +N inattive (the count of idle or finished missions folded into a hub; the Italian is a short form of "missioni inattive")
+
+## Security, Health, Usage and Accounts as parts of a page (2026-10-28, round 2): to review
+
+File: `js/i18n-areas.js`. Each of the four pages now has parts that are links; these are the new or changed visible strings. Exact strings are in the dictionary, the ones with a number, a time or a name are patterns at the start of `RULES_AREAS`.
+
+- Overview / Policy / Boundaries / Activity / Emergency (Security parts) → Panoramica / Regole / Confini / Attività / Emergenza (Policy already read Regole)
+- All / Needs attention / Unknown / OK (Health filter) → Tutti / Richiede attenzione / Sconosciuto / OK
+- Accounts / Windows / History (Usage parts) → Account / Finestre / Cronologia
+- Accounts / Models / Failover / Launch settings (Accounts parts) → Account / Modelli / Failover / Impostazioni di avvio
+- Security sections, Health filter, Usage views, Account sections (navigation names) → Sezioni della sicurezza, Filtro della salute, Viste dell'uso, Sezioni degli account
+- needs you / engaged / low / needs attention (hidden words beside a dot) → ti serve / attivo / basso / richiede attenzione
+- N of M actions → N azioni su M
+- Held commands never auto-allow. Policy applies to every project. → I comandi trattenuti non si autorizzano mai da soli. Le regole valgono per ogni progetto.
+- Scope: every project. Source: Archeus policy. Read only here. → Ambito: ogni progetto. Origine: regole di Archeus. Qui sono in sola lettura.
+- The mode a new mission starts with. No per-project command overrides are recorded. → La modalità con cui parte una nuova missione. Nessuna deroga per progetto è registrata.
+- Change it in Launch settings / See every action / See all events / See all N boundaries / Review the policy → Cambiala in Impostazioni di avvio / Vedi ogni azione / Vedi tutti gli eventi / Vedi tutti i N confini / Rivedi le regole
+- Where policy ends and physical confinement would have to begin. → Dove finiscono le regole e dovrebbe iniziare il confinamento fisico.
+- Security events; Every decision, hook and breaker change, newest first. → Eventi di sicurezza; Ogni decisione, hook e cambio di interruttore, dal più recente.
+- After three failed starts in ten minutes a harness stops starting new work until it recovers. → Dopo tre avvii falliti in dieci minuti un harness smette di avviare nuovo lavoro finché non si riprende.
+- just now / N min ago / N h ago (relative time; the exact time is in the tooltip, which stays numeric) → adesso / N min fa / N h fa
+- Showing N of M / Showing all N (filtered and folded counts) → Mostra N di M / Mostra tutti (N)
+- Run all / Check again / Stale → Esegui tutto / Controlla di nuovo / Non aggiornato
+- Last run (existing, now followed by a relative time) → Ultima esecuzione
+- Changed 3 min ago from OK / Checked 3 min ago / No change this session → Cambiato 3 min fa da OK / Controllato 3 min fa / Nessun cambiamento in questa sessione
+- Name checked again (simulated). / Every check ran again (simulated). → Nome ricontrollato (simulato). / Ogni controllo è stato rieseguito (simulato).
+- No check needs attention. / No check is unknown. / No check is OK. / Show all checks → Nessun controllo richiede attenzione. / Nessun controllo è sconosciuto. / Nessun controllo è OK. / Mostra tutti i controlli
+- Six checks, each read from records. A missing reading is unknown, never 0. → Sei controlli, ognuno letto dai registri. Una lettura mancante è sconosciuta, mai 0.
+- Headroom and reset (column) → Margine e azzeramento
+- At this rate you reach the limit at HH:MM (in N min). → Con questo ritmo arrivi al limite alle HH:MM (tra N min).
+- At this rate the 5 hour window does not run out. / No forecast yet: not enough readings. → Con questo ritmo la finestra di 5 ore non si esaurisce. / Ancora nessuna previsione: letture insufficienti.
+- Your line; New work waits at N% left; Running work finishes; nothing new starts on an account at or under the line. → La tua soglia; Il nuovo lavoro attende al N% rimasto; Il lavoro in corso finisce; non parte nulla di nuovo su un account alla soglia o sotto.
+- N% left · reset text; Reset time not recorded; No reading yet → N% rimasto · ...; Ora di azzeramento non registrata; Nessuna lettura
+- The 5 hour window, as the share used. Read about every two minutes.; N% to M% used; No readings yet. Unknown is not zero. → La finestra di 5 ore, come quota usata. Letta circa ogni due minuti.; Dal N% al M% usato; Ancora nessuna lettura. Sconosciuto non è zero.
+- Saved as you choose. / Each switch saves as you flip it. (autosave stated; three sentences that end this way) → Si salva appena scegli. / Ogni interruttore si salva appena lo cambi.
+- Name is off. (toast with Undo) → Nome è disattivato.
+
