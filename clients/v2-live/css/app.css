@@ -165,7 +165,18 @@ dl.kv dd { overflow-wrap: anywhere; }
 .composer input { flex: 1 1 auto; min-width: 0; min-height: var(--target-primary); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s3); color: var(--text); font-size: var(--fs-body); }
 .composer input::placeholder { color: var(--text-3); opacity: 1; }
 .composer .btn { min-height: var(--target-primary); }
-.set-col { display: flex; flex-direction: column; gap: calc(var(--gut) * 1.25); min-width: 0; }
+.set-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.set-body { min-width: 0; max-width: 56rem; display: flex; flex-direction: column; gap: calc(var(--gut) * 1.25); }
+.set-nav { display: flex; gap: 2px; overflow-x: auto; border-bottom: var(--hair) solid var(--line); scrollbar-width: thin; }
+.set-nav-item { flex: none; display: inline-flex; align-items: center; min-height: var(--target); padding: 0 14px; border-bottom: calc(var(--hair) * 2) solid transparent; color: var(--text-2); font-size: var(--fs-body); font-weight: 600; text-decoration: none; }
+.set-nav-item:hover { color: var(--text); background: var(--band); }
+.set-nav-item[aria-current='page'] { color: var(--text); border-bottom-color: var(--thread); }
+@container view (min-width: 720px) {
+  .set-wrap { grid-template-columns: 13rem minmax(0, 1fr); gap: 40px; }
+  .set-nav { position: sticky; top: 0; flex-direction: column; align-self: start; overflow: visible; border-bottom: 0; }
+  .set-nav-item { min-height: var(--target-primary); border-bottom: 0; border-left: calc(var(--hair) * 2) solid transparent; padding: 0 16px; }
+  .set-nav-item[aria-current='page'] { border-left-color: var(--thread); background: color-mix(in srgb, var(--text) 7%, transparent); }
+}
 .set-sec { min-width: 0; }
 .set-sec > h2 { padding-bottom: 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-t1); font-weight: 600; line-height: 1.3; }
 .set-sec > .body { padding-top: 12px; }
@@ -245,6 +256,6 @@ kbd { display: inline-block; padding: 1px 8px; border: var(--hair) solid var(--l
 
 /* forced colors, S6: a selected thing is told by a 3 px Highlight line (not by colour alone, not by a fill that vanishes), and state icons use ink */
 @media (forced-colors: active) {
-  :is(.nav-item[aria-current='page'], .bb-item[aria-current='page'], .chip[aria-pressed='true'], .chip[aria-current='true'], .tab[aria-selected='true'], .mrow[aria-current='true'], .tl-row[aria-current='true'], .tb-btn[aria-pressed='true'], .tb-btn[aria-expanded='true'], .menu-item[aria-checked='true'], .menu-item[aria-pressed='true'], .tui-btn[aria-pressed='true'], .rtl .tl-row[aria-selected='true']):not(:focus-visible) { border-color: Highlight; box-shadow: none; outline: 3px solid Highlight; outline-offset: -4px; }
+  :is(.nav-item[aria-current='page'], .set-nav-item[aria-current='page'], .bb-item[aria-current='page'], .chip[aria-pressed='true'], .chip[aria-current='true'], .tab[aria-selected='true'], .mrow[aria-current='true'], .tl-row[aria-current='true'], .tb-btn[aria-pressed='true'], .tb-btn[aria-expanded='true'], .menu-item[aria-checked='true'], .menu-item[aria-pressed='true'], .tui-btn[aria-pressed='true'], .rtl .tl-row[aria-selected='true']):not(:focus-visible) { border-color: Highlight; box-shadow: none; outline: 3px solid Highlight; outline-offset: -4px; }
   .card .kind > svg, .noundo svg, .illustration { color: CanvasText; }
 }

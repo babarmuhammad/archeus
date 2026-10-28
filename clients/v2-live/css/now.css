@@ -118,24 +118,19 @@
 .tell-dock { position: absolute; z-index: 4; left: 0; right: 0; top: var(--hero-h); bottom: 14px; display: flex; justify-content: center; align-items: flex-end; padding: 0 calc(var(--gut) + 112px) 0 calc(var(--gut) * 1.5); pointer-events: none; }
 .tell-dock .dockin { pointer-events: auto; width: min(1240px, 100%); padding: 0; gap: 6px; max-height: 100%; overflow-y: auto; }
 .tell-dock .dintro, .tell-dock .cstop { display: none; }
-.tell-dock .dstrip, .tell-dock .slash, .tell-dock .cnote { background: color-mix(in srgb, var(--bg) 66%, transparent); border: var(--hair) solid var(--line-strong); }
-.tell-dock .dockin .composer2 { position: relative; isolation: isolate; flex: none; padding: 0; gap: 0; border: var(--hair) solid var(--line); border-radius: 24px; background: transparent; }
-/* The fill is a layer of its own so it fades with opacity alone: nearly clear at rest, 45 % under the pointer, 85 % while typing. In 100 ms, out 180 ms. */
-.tell-dock .dockin .composer2::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--bg); opacity: .16; transition: opacity 180ms ease-out; }
-.tell-dock .dockin .composer2:hover::before { opacity: .45; transition-duration: 100ms; }
-.tell-dock .dockin .composer2:focus-within::before { opacity: .85; transition-duration: 100ms; }
-.tell-dock .dockin .composer2:focus-within { border-color: var(--line-strong); }
-.tell-dock .crow2 { gap: 4px; }
-.tell-dock .cscope { flex: 0 1 13em; min-height: var(--target-primary); border: 0; border-right: var(--hair) solid var(--line); border-radius: 24px 0 0 24px; padding-inline: 16px 10px; }
-.tell-dock .cinput { min-height: var(--target-primary); padding-inline: 14px; }
-.tell-dock .cslash { border: 0; color: var(--text-3); }
-.tell-dock .csend { border-radius: 23px; padding-inline: 22px; min-height: var(--target-primary); }
-.tell-dock .dstrip { border-radius: 12px; }
+.tell-dock .dstrip { background: color-mix(in srgb, var(--bg) 82%, transparent); border: var(--hair) solid var(--line-strong); border-radius: 12px; }
 .tell-dock .dstrip .ccard { background: color-mix(in srgb, var(--bg) 40%, transparent); }
-.tell-dock .slash { border-radius: 12px; }
-.tell-dock .crow2 { flex-wrap: nowrap; }
-.tell-dock .cscope { flex: 0 1 15em; }
-.tell-dock .cinput { flex: 1 1 8em; border-color: transparent; }
+.tell-dock .dockin .composer2 { flex: none; padding: 0; gap: 6px; border: 0; background: transparent; }
+/* The pill is the composer's row. Its fill is a layer of its own so it fades with opacity alone: nearly clear at rest, 45 % under the pointer, 85 % while typing. In 100 ms, out 180 ms. */
+.tell-dock .crow2 { flex-wrap: nowrap; gap: 0; padding: 0; border-color: var(--line); border-radius: 24px; }
+.tell-dock .crow2::before { background: var(--bg); opacity: .16; transition: opacity 180ms ease-out; }
+.tell-dock .crow2:hover::before { opacity: .45; transition-duration: 100ms; }
+.tell-dock .crow2:focus-within::before { opacity: .85; transition-duration: 100ms; }
+.tell-dock .crow2:focus-within { border-color: var(--line-strong); outline: 3px solid var(--focus); outline-offset: 2px; }
+.tell-dock .cscope { flex: 0 1 15em; min-height: var(--target-primary); border: 0; border-right: var(--hair) solid var(--line); border-radius: 24px 0 0 24px; padding-inline: 16px 10px; }
+.tell-dock .cinput { flex: 1 1 8em; min-height: var(--target-primary); padding-inline: 14px; }
+.tell-dock .cslash { color: var(--text-3); }
+.tell-dock .csend { border-radius: 23px; }
 .now-view[data-sheet='true'] .tell-dock { right: var(--sheet-w); }
 .now-view[data-calm='true'] .tell-dock { bottom: calc(max(33%, 250px) + 12px); }
 @container view (max-width: 899px) {
@@ -144,10 +139,8 @@
   .tell-dock .cscope { flex-basis: 9em; }
 }
 .tell-dock .cdest { display: none; }
-.tell-dock .cinput:focus-visible { outline: 0; }
-.tell-dock .dockin .composer2:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
-:root[data-motion='reduced'] .tell-dock .dockin .composer2::before { transition: none; }
-@media (prefers-reduced-motion: reduce) { .tell-dock .dockin .composer2::before { transition: none; } }
+:root[data-motion='reduced'] .tell-dock .crow2::before { transition: none; }
+@media (prefers-reduced-motion: reduce) { .tell-dock .crow2::before { transition: none; } }
 .view-switch { position: absolute; z-index: 3; top: calc(var(--gut) * 1.2); right: calc(var(--gut) * 1.5); display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 10px; }
 .view-switch .vs-btn { width: 44px; height: 44px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--text-2); cursor: pointer; }
 .view-switch .vs-btn[aria-pressed='true'] { background: var(--line); color: var(--text); }

@@ -136,7 +136,7 @@
 
 /* Many projects: one select instead of a chip per project; long groups fold or show their first rows. */
 .wk-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.pick { flex: 0 1 18rem; min-width: 0; min-height: var(--target); padding: 0 12px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font: inherit; font-weight: 500; }
+.pick { flex: 0 1 18rem; min-width: 0; font-weight: 500; }
 .wk-fold > summary { display: flex; align-items: center; gap: 4px 12px; min-height: var(--target); padding: 0 0 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); cursor: pointer; list-style: none; }
 .wk-fold > summary::-webkit-details-marker { display: none; }
 .wk-fold > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform var(--dur-2) var(--ease-out); }

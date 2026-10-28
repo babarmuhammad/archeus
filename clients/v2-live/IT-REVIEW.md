@@ -1843,7 +1843,13 @@ File: `js/i18n-areas.js`. New or changed visible strings. Existing strings that 
 | Last hour (Usage column) | Ultima ora |
 | Show all N / Show fewer | Mostra tutti (N) / Mostra meno |
 | Open project | Apri il progetto |
-| 1 project / N projects (approval mode groups) | 1 progetto / N progetti |
+| 1 project / N projects (approval mode groups; the group of projects without their own settings is labelled Default) | 1 progetto / N progetti |
+| Every project starts with the default. Only a project that differs has its own row. | Ogni progetto parte con le impostazioni predefinite. Solo un progetto che differisce ha una riga propria. |
+| Give a project its own settings (select) | Dai a un progetto impostazioni proprie |
+| Project that gets its own settings (label) | Progetto che riceve impostazioni proprie |
+| Use the default | Usa il predefinito |
+| Back to the default (simulated). | Tornato al predefinito (simulato). |
+| This project now has its own launch settings (simulated). | Questo progetto ha ora impostazioni di avvio proprie (simulato). |
 | + N more (names of projects in a group) | + altri N |
 
 ## Page overhaul A: Projects, Work, Replay, Chat, inspectors (2026-10-28): to review
@@ -1880,6 +1886,20 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 - Six looks: Dark and Light, each standard and high contrast, plus System and forced colours. Reduced motion is Quiet (A05). → Sei aspetti: Scuro e Chiaro, ciascuno standard e ad alto contrasto, più Sistema e colori forzati. Il movimento ridotto è Quieto (A05).
 - Everything on screen is simulated and says so; no Core is connected. → Tutto ciò che è sullo schermo è simulato e lo dice; nessun Core è collegato.
 
+Extensions tabs and Settings sections (second pass, same day):
+
+- Nothing needs you (Extensions state sentence) → Niente ti serve
+- {N} need you (plural, sentence part) → {N} ti servono
+- Last seen (clients column) → Visto l’ultima volta
+- Search extensions / Search extensions… (label, placeholder) → Cerca estensioni / Cerca estensioni…
+- No extension matches. / Clear search → Nessuna estensione corrisponde. / Cancella la ricerca
+- Nothing is listed here. → Qui non c’è ancora nulla.
+- Extension types (tab list label) → Tipi di estensione
+- Open review (Needs you band, an agent whose result waits) → Apri la revisione
+- Today HH:MM / Yesterday HH:MM / Earlier HH:MM (last activity) → Oggi HH:MM / Ieri HH:MM / Prima HH:MM
+- Undo (toast after a switch-off) → Annulla
+- Settings sections / Safety / Prototype / About (left nav) → Sezioni delle impostazioni / Sicurezza / Prototipo / Informazioni
+
 ## Network view clusters (2026-10-28, agent N): to review
 
 File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mission, Agent execution, Zoom in, Zoom out, Fit) were already translated; `Reset map view` was removed with its button (Fit also resets the view).
@@ -1888,3 +1908,52 @@ File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mi
 - Open mission → Apri la missione (last line of a mission's preview card)
 - No missions yet → Ancora nessuna missione (hub label of a project with no missions)
 - +N quiet → +N inattive (the count of idle or finished missions folded into a hub; the Italian is a short form of "missioni inattive")
+
+## Chat redesign, builder A (2026-10-28): to review
+
+Strings built inline with `L(en, it)` in `js/chat.js`, `js/chat-cards.js` and `js/picker.js`. The old rail, context column and pin strings were removed from `js/i18n-chat.js`.
+
+- To → A (prefix of the scope chip: "To Archeus")
+- Destination → Destinazione (accessible name of the scope picker)
+- General → Generale
+- Not project memory → Non è memoria di progetto
+- Projects → Progetti (group)
+- Needs you → Richiede te (group header)
+- Search → Cerca (picker search field)
+- Nothing matches. → Nessun risultato.
+- Replies and records stay in {p}. → Risposte e record restano in {p}.
+- Nothing here is saved to a project. → Qui non si salva nulla in un progetto.
+- Command · /{n} · {c} → Comando · /{n} · {c}
+- All missions → Tutte le missioni
+- Mission → Missione
+- Open / Closed (mission picker groups) → Aperte / Chiuse
+- {n} open → {n} aperte
+- Nothing open → Niente di aperto
+- More (menu button) → Altro
+- Needs you · {n} → Richiede te · {n}
+-  · step {n} of 6 → · passo {n} di 6
+- Chat sections → Sezioni della chat
+- Conversation / Receipts / Context (tabs) → Conversazione / Ricevute / Contesto
+- Ask anything. → Chiedi pure.
+- Ask a question. No mission starts from General. → Fai una domanda. Da Generale non parte nessuna missione.
+- Nothing said in {p} yet. → Ancora nulla detto in {p}.
+- Ask, or hand Archeus work. Replies and receipts appear here. → Chiedi, o affida un lavoro ad Archeus. Risposte e ricevute compaiono qui.
+- Explain a checkpoint → Spiega un checkpoint (starter chip; the same text is sent)
+- What can you do? → Cosa sai fare?
+- What needs me? → Cosa aspetta me?
+- Status → Stato
+- Start a mission… → Avvia una missione…
+- Capture an idea… → Cattura un'idea…
+- Waiting for you → Aspettano te
+- Approve this plan? / Allow this action? → Approvare questo piano? / Consentire questa azione?
+- Last receipts → Ultime ricevute
+- Done by Archeus → Fatto da Archeus
+- General keeps no receipts. → Generale non tiene ricevute.
+- Answers here do not touch a project. Pick a project to see what Archeus did in it. → Le risposte qui non toccano nessun progetto. Scegli un progetto per vedere cosa ha fatto Archeus.
+- Archeus has not acted here yet. → Archeus non ha ancora agito qui.
+- Show {n} earlier → Mostra {n} precedenti
+- Commands / Search commands / No command matches. → Comandi / Cerca comandi / Nessun comando corrispondente.
+- No missions yet. → Ancora nessuna missione.
+- just now / {n} min ago / {n} h ago → adesso / {n} min fa / {n} h fa (relative time on the simulation clock; the exact time is the tooltip)
+- Commands (type /) → Comandi (scrivi /) (tooltip of the slash button)
+- Send (Enter) → Invia (Invio) (tooltip of Send)

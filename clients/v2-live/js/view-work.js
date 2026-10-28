@@ -1,6 +1,7 @@
 // Work: the one page for what is happening and what waits on you. The graph (js/constellation/workgraph.js) sits on top, the grouped list under it;
 // both show the same missions and decisions and follow the route id, so selecting in one highlights the other and opens the inspector.
 import { h } from './dom.js';
+import { picker } from './picker.js';
 import { present } from '../core-words.js';
 import { tr } from './i18n.js';
 import * as store from './store.js';
@@ -53,9 +54,8 @@ export function render(ctx) {
   const chip = (key, label, on, go) => h('button', { class: 'chip', type: 'button', 'aria-pressed': String(on), 'data-key': key, onclick: go }, label);
   const setProject = (id) => { ctx.ui.workProject = id; ctx.render(); };
   const allChip = chip('work-all', pn ? 'Show all projects' : 'All projects', !pn, () => setProject(null));
-  const pick = h('select', { class: 'pick', 'aria-label': 'Project filter', 'data-key': 'work-project', onchange: (e) => setProject(e.target.value || null) },
-    h('option', { value: '' }, 'All projects'), ...st.projects.map((p) => h('option', { value: p.id }, p.name)));
-  pick.value = pf || '';
+  const pick = picker({ key: 'work-project', label: tr('Project filter'), cls: 'pick', value: pf || '', onPick: (v) => setProject(v || null),
+    items: [{ value: '', label: tr('All projects') }].concat(st.projects.map((p) => ({ value: p.id, label: p.name }))) });
   const filter = st.projects.length > CHIPS ? h('div', { class: 'wk-filter' }, pick, pn ? allChip : null)
     : h('div', { class: 'chips', role: 'group', 'aria-label': 'Project filter' }, allChip, ...st.projects.map((p) => chip('work-p-' + p.id, p.name, pf === p.id, () => setProject(pf === p.id ? null : p.id))));
 

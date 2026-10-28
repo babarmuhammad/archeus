@@ -11,7 +11,8 @@ import { spineRow } from './spine.js';
 import { ask, ideaPath } from './inspectors.js';
 import { done, MCP_TONE } from './inspectors2.js';
 import { areasOf, breakerView, waitLabel, keptSummary, harnessLabel, METER_WORD } from './areas-model.js';
-import { pill, note, link, entity, hrefFor, sw, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
+import { EXT_TABS, tabOf, whenShort, matches } from './ext-model.js';
+import { pill, note, link, entity, hrefFor, sw, ringNode, patchRing, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
 
 function axHead(ctx, eyebrowText, title, lede) {
   const hd = head(ctx, title);
@@ -28,7 +29,6 @@ function inline(ctx, key) {
 
 // ---------- shared page pieces ----------
 // The page opens with its answer: a serif state sentence (the colour only on the part that is a state, always with its words) and one line of ledger under it.
-const cols = (a, b) => h('div', { class: 'ax-cols' }, h('div', { class: 'ax-col' }, ...a), h('div', { class: 'ax-col' }, ...b));
 const sentence = (parts) => parts.flatMap(([t, tone], i) => [i ? ' · ' : null, h('span', { 'data-tone': tone || null }, t)]);
 const top = (eye, parts, ledger, ...extra) => h('header', { class: 'ax-top' }, h('p', { class: 'ax-eyebrow' }, eye), h('div', { class: 'sec-sent-wrap' }, h('h1', { class: 'ax-sentence', 'data-key': 'sentence' }, ...sentence(parts))), ledger ? h('p', { class: 'ax-ledger' }, ledger) : null, ...extra);
 const sect = (title, count, sub, ...kids) => h('section', { class: 'ax-sect', 'aria-label': title }, h('h2', null, title, count != null ? h('span', { class: 'ax-count' }, String(count)) : null), sub ? h('p', { class: 'ax-sub' }, sub) : null, ...kids);
@@ -76,9 +76,10 @@ export function viewSecurity(ctx) {
   }));
   // What a run may do is the same for every project; only the approval mode differs, so it is grouped by mode instead of repeated per project.
   const privs = A.privileges().map((r) => ({ r, tone: PRIV[r.state][0], word: r.state === 'asks' ? 'Ask me each time' : PRIV[r.state][1] })).sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
-  const modeGroups = [...MODES.map(([id, label]) => [id, label, id === 'plan' ? 'paused' : 'attention', S.projects.filter((p) => A.launch(p.id)?.mode === id)]), ['unknown', 'Unknown', 'attention', S.projects.filter((p) => !A.launch(p.id))]].filter((g) => g[3].length);
+  const dflt = A.launch('default').mode, dfltTone = dflt === 'plan' ? 'paused' : 'attention', dfltWord = MODES.find(([id]) => id === dflt)[1];
+  const modeGroups = [...MODES.map(([id, label]) => [id, label, id === 'plan' ? 'paused' : 'attention', S.projects.filter((p) => A.isOverride(p.id) && A.launch(p.id).mode === id)]), ['default', 'Default', dfltTone, S.projects.filter((p) => !A.isOverride(p.id))]].filter((g) => g[3].length);
   const names = (ps) => (ps.length > 6 ? [ps.slice(0, 6).map((p) => p.name).join(', '), h('details', { class: 'sec-names' }, h('summary', null, '+ ' + (ps.length - 6) + ' more'), ps.slice(6).map((p) => p.name).join(', '))] : [ps.map((p) => p.name).join(', ')]);
-  const modes = modeGroups.map(([id, label, tone, ps]) => h('div', { class: 'sec-row sec-mode', 'data-key': 'sec-mode-' + id }, pill(tone, label), h('span', { class: 'sec-main' }, h('span', { class: 'sec-name' }, ps.length === 1 ? '1 project' : ps.length + ' projects'), h('span', { class: 'sec-detail' }, ...names(ps)))));
+  const modes = modeGroups.map(([id, label, tone, ps]) => h('div', { class: 'sec-row sec-mode', 'data-key': 'sec-mode-' + id }, pill(tone, label), h('span', { class: 'sec-main' }, h('span', { class: 'sec-name' }, ps.length === 1 ? '1 project' : ps.length + ' projects', id === 'default' ? ' · ' : null, id === 'default' ? h('span', null, dfltWord) : null), h('span', { class: 'sec-detail' }, ...names(ps)))));
   const boundaryRows = [['Execution isolation', sc.boundaries[0], 'Not confined', 'blocked'], ['Accounts and homes', sc.boundaries[4], 'Denied by policy only', 'attention'], ['Network', sc.boundaries[2], 'Not confined', 'blocked']].map(([title, b, state, tone]) => row(title, b.note, state, tone, '#/security/' + b.id));
   const events = A.log().filter((l) => ['hook', 'breaker'].includes(l.kind)).map((l) => {
     const hs = l.kind === 'breaker' ? S.harnesses.find((x) => l.text.includes(x.label)) : null;
@@ -157,33 +158,23 @@ export function viewHealth(ctx) {
 }
 
 // ---------- Usage ----------
-// A bar says how much is LEFT (it empties as it is used); lengths on one axis compare across accounts, which a ring cannot. The tick is the 20% line.
-function meter(m, label, live) {
-  const n = h('div', { class: 'us-meter', role: 'img', 'data-ax-meter': live, 'data-label': label }, h('span', { class: 'us-val' }), h('span', { class: 'us-track' }, h('i'), h('b', { class: 'tick' })));
-  patchMeter(n, m); return n;
-}
-function patchMeter(n, m) {
-  const unk = m.left == null; n.dataset.tone = TONE_OF_METER[m.key];
-  n.querySelector('.us-val').textContent = unk ? 'Unknown' : Math.round(m.left) + '%';
-  n.querySelector('i').style.transform = 'scaleX(' + (unk ? 0 : Math.min(100, m.left) / 100) + ')';
-  n.setAttribute('aria-label', n.dataset.label + ': ' + (unk ? 'unknown' : m.left + ' percent left. ' + METER_WORD[m.key]));
-}
+// A ring is what is LEFT and empties as it is used; its tick is the 20% line. Small and fixed in size, so a row per account scales.
 const USAGE_CAP = 12;
 export function viewUsage(ctx) {
   const A = areasOf(ctx.sim), rows = A.usage(), f = A.failover(), low = rows.filter((r) => ['low', 'critical', 'out'].includes(r.worst)), unk = rows.filter((r) => r.worst === 'unknown');
   const live = [], shown = ctx.ui.usAll ? rows : rows.slice(0, USAGE_CAP);
   const accRow = (r) => {
-    const s = meter(r.session, r.label + ', 5 hour window', r.id + ':session'), w = meter(r.week, r.label + ', week', r.id + ':week');
+    const s = ringNode({ left: r.session.left, key: r.session.key, label: r.label + ', 5 hour window', live: r.id + ':session' }), w = ringNode({ left: r.week.left, key: r.week.key, label: r.label + ', week', live: r.id + ':week' });
     live.push([r.id, s, w]);
     const msg = r.worst === 'unknown' ? 'No reading yet: Core has never started this account. Unknown is not zero.' : r.worst === 'out' ? 'Limit reached. New work uses another account.' : r.worst === 'critical' ? 'Almost out. New work prefers another account.' : 'At or under your ' + f.pauseAt + '% line. New work prefers another account.';
     return h('div', { class: 'us-row', 'data-tone': TONE_OF_METER[r.worst], 'data-key': 'us-' + r.id },
       h('div', { class: 'us-who' }, h('a', { class: 'us-name', href: hrefFor('account', r.id) }, r.label), h('span', { class: 'r-note' }, harnessLabel(r.harness) + ' · ' + r.role), badge('account_health', r.state)),
-      h('div', { class: 'us-m' }, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, '5 hour window'), s),
-      h('div', { class: 'us-m' }, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, 'Week'), w),
+      h('div', { class: 'us-m' }, s, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, '5 hour window')),
+      h('div', { class: 'us-m' }, w, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, 'Week')),
       h('div', { class: 'us-st' }, pill(TONE_OF_METER[r.worst], METER_WORD[r.worst]), r.worst === 'ok' ? null : h('p', { class: 'ac-msg', 'data-ax': 'umsg:' + r.id }, msg), h('p', { class: 'r-note' }, r.resets || 'Reset time unknown')),
       h('div', { class: 'us-sp' }, r.hist.length > 2 ? spark(r.hist, 120, 32) : null));
   };
-  onTick(ctx, () => { const now = A.usage(); live.forEach(([id, s, w]) => { const r = now.find((x) => x.id === id); patchMeter(s, r.session); patchMeter(w, r.week); }); });
+  onTick(ctx, () => { const now = A.usage(); live.forEach(([id, s, w]) => { const r = now.find((x) => x.id === id); patchRing(s, r.session.left, r.session.key); patchRing(w, r.week.left, r.week.key); }); });
   const parts = [low.length && [low.length === 1 ? '1 account is low' : low.length + ' accounts are low', 'attention'], unk.length && [unk.length + ' unknown', 'unknown']].filter(Boolean);
   return h('div', { class: 'ax-page' }, h('div', { class: 'view ax-view' },
     top('Usage', parts.length ? parts : [['Every account has room', 'ok']], 'How much of each account is left, read only from the existing usage reader. Archeus shows a number only when it can source it.'),
@@ -193,7 +184,7 @@ export function viewUsage(ctx) {
     rows.length > USAGE_CAP ? h('button', { class: 'btn', type: 'button', 'data-key': 'us-all', onclick: () => { ctx.ui.usAll = !ctx.ui.usAll; ctx.render(); } }, ctx.ui.usAll ? 'Show fewer' : 'Show all ' + rows.length) : null,
     h('div', { class: 'ax-legend' }, h('span', { class: 'lg' }, h('b', { class: 'tk', 'aria-hidden': 'true' }), 'The tick is the 20% line'), h('span', { class: 'lg', 'data-tone': 'unknown' }, h('i', { 'aria-hidden': 'true' }), 'Unknown, never 0'), link('#/accounts', 'Failover rules', 'ax-link')),
     note('These are account percentages read about every 15 minutes, not the cost or tokens of one session.'),
-    dnote('H03', 'Usage: a bar is what is left and empties as it is used; the tick is your 20% line. "20% weekly usage" is read here as 20% left (owner to confirm). Unknown stays unknown.')));
+    dnote('H03', 'Usage: a ring is what is left and empties as it is used; the tick is your 20% line. "20% weekly usage" is read here as 20% left (owner to confirm). Unknown stays unknown.')));
 }
 
 // ---------- Accounts and models ----------
@@ -207,24 +198,24 @@ export function viewAccounts(ctx) {
     h('a', { class: 'a-main', href: hrefFor('account', r.id) }, h('span', { class: 'r-name' }, r.label), h('span', { class: 'r-note' }, harnessLabel(r.harness) + ' · ' + r.role + ' · ' + (r.session.left == null ? 'usage unknown' : r.session.left + '% of the session left'))),
     badge('account_health', r.state),
     h('span', { class: 'a-mv' }, h('button', { class: 'btn', type: 'button', 'aria-label': 'Move ' + r.label + ' up', disabled: i === 0 ? true : null, onclick: () => done(ctx, A.moveAccount(r.id, -1), 'Moved up in the failover order.') }, '↑'), h('button', { class: 'btn', type: 'button', 'aria-label': 'Move ' + r.label + ' down', disabled: i === rows.length - 1 ? true : null, onclick: () => done(ctx, A.moveAccount(r.id, 1), 'Moved down in the failover order.') }, '↓')));
-  const launch = (p) => {
-    const c = A.launch(p.id), pv = A.preview(p.id), har = S.harnesses.filter((x) => x.state !== 'MISSING');
-    const set = (k) => (v) => { done(ctx, A.setLaunch(p.id, k, v), 'Launch setting saved (simulated).'); };
-    return h('details', { class: 'ln-row', 'data-tone': pv.tone, 'data-key': 'ln-' + p.id, open: opened[p.id] ? true : null, ontoggle: toggler(opened, p.id, false) },
-      h('summary', null, h('span', { class: 'ln-name' }, p.name), pill(pv.tone, pv.tone === 'ok' ? 'Can start' : pv.tone === 'blocked' ? 'Cannot start' : 'Waits'), chev(),
+  const launch = (id, name) => {
+    const c = A.launch(id), pv = A.preview(id), har = S.harnesses.filter((x) => x.state !== 'MISSING');
+    const set = (k) => (v) => { done(ctx, A.setLaunch(id, k, v), 'Launch setting saved (simulated).'); };
+    return h('details', { class: 'ln-row', 'data-tone': pv.tone, 'data-key': 'ln-' + id, open: opened[id] ? true : null, ontoggle: toggler(opened, id, false) },
+      h('summary', null, h('span', { class: 'ln-name' }, name), pill(pv.tone, pv.tone === 'ok' ? 'Can start' : pv.tone === 'blocked' ? 'Cannot start' : 'Waits'), chev(),
         h('span', { class: 'ln-prev' }, h('b', null, 'Next mission: '), harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : ''))),
       h('div', { class: 'ln-body' }, h('p', { class: 'ax-note' }, pv.note),
         h('div', { class: 'ax-form' },
-          h('label', null, h('span', null, 'Harness'), sel('ln-h-' + p.id, c.harness, har.map((x) => [x.id, x.label]), set('harness'), 'Harness for ' + p.name)),
-          h('label', null, h('span', null, 'Model'), sel('ln-m-' + p.id, c.model, models.filter((m) => m.harness === c.harness).map((m) => [m.id, m.label]), set('model'), 'Model for ' + p.name)),
-          h('label', null, h('span', null, 'Account'), sel('ln-a-' + p.id, c.account, [['auto', 'Automatic, by failover order'], ...st.filter((a) => a.harness === c.harness).map((a) => [a.id, a.label])], set('account'), 'Account for ' + p.name)),
-          h('label', null, h('span', null, 'Approvals'), sel('ln-d-' + p.id, c.mode, MODES, set('mode'), 'Approval mode for ' + p.name)),
-          h('label', null, h('span', null, 'Runs at once'), sel('ln-p-' + p.id, String(c.parallel), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], set('parallel'), 'Runs at once for ' + p.name)),
+          h('label', null, h('span', null, 'Harness'), sel('ln-h-' + id, c.harness, har.map((x) => [x.id, x.label]), set('harness'), 'Harness for ' + name)),
+          h('label', null, h('span', null, 'Model'), sel('ln-m-' + id, c.model, models.filter((m) => m.harness === c.harness).map((m) => [m.id, m.label]), set('model'), 'Model for ' + name)),
+          h('label', null, h('span', null, 'Account'), sel('ln-a-' + id, c.account, [['auto', 'Automatic, by failover order'], ...st.filter((a) => a.harness === c.harness).map((a) => [a.id, a.label])], set('account'), 'Account for ' + name)),
+          h('label', null, h('span', null, 'Approvals'), sel('ln-d-' + id, c.mode, MODES, set('mode'), 'Approval mode for ' + name)),
+          h('label', null, h('span', null, 'Runs at once'), sel('ln-p-' + id, String(c.parallel), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], set('parallel'), 'Runs at once for ' + name)),
           h('p', { class: 'ax-note' }, 'Isolation: required. It cannot be switched off here.')),
-        h('a', { class: 'ax-link', href: hrefFor('project', 'prj-' + p.id) }, 'Open project')));
+        id === 'default' ? null : h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', 'data-key': 'ln-reset-' + id, onclick: () => { delete opened[id]; done(ctx, A.resetLaunch(id), 'Back to the default (simulated).'); } }, 'Use the default'), h('a', { class: 'ax-link', href: hrefFor('project', 'prj-' + id) }, 'Open project'))));
   };
   const modelRow = (m) => { const d = A.defaultModel() === m.id; return h('div', { class: 'ax-model', 'data-default': d ? 'true' : 'false', 'data-key': 'md-' + m.id }, h('a', { class: 'm-main', href: hrefFor('model', 'mdl-' + m.id) }, h('span', { class: 'r-name' }, m.label), h('span', { class: 'r-note' }, harnessLabel(m.harness) + ' · tier ' + m.tier)), d ? pill('ok', 'Default') : h('button', { class: 'btn', type: 'button', onclick: () => done(ctx, A.setDefaultModel(m.id), m.label + ' is now the default (simulated).') }, 'Make default')); };
-  const launches = S.projects.filter((p) => A.launch(p.id));
+  const overrides = S.projects.filter((p) => A.isOverride(p.id)), inheriting = S.projects.filter((p) => !A.isOverride(p.id));
   return h('div', { class: 'ax-page' }, h('div', { class: 'view ax-view' },
     top('Accounts', [[next ? next.label + ' takes the next mission' : 'No account can take new work', next ? null : 'blocked']], 'Three accounts, four models, one default, and the rules that decide which account takes the next mission.'),
     h('div', { class: 'ac-layout' },
@@ -237,50 +228,101 @@ export function viewAccounts(ctx) {
           fo('never', 'Never run without isolation', 'There is no unisolated fallback, whatever else fails.', true)))),
       h('div', { class: 'ac-col' },
         sect('Models', models.length, 'The default is what a new mission asks for.', dim(...models.map(modelRow)), h('p', { class: 'ax-note' }, 'This is the model Archeus asks for, not proof of which model the provider served.')),
-        sect('Launch settings per project', launches.length, 'What a new mission starts with, and what would happen right now.', dim(...launches.map(launch))))),
+        sect('Launch settings per project', null, 'Every project starts with the default. Only a project that differs has its own row.',
+          dim(launch('default', 'Default'), ...overrides.map((p) => launch(p.id, p.name))),
+          inheriting.length ? sel('ln-add', '', [['', 'Give a project its own settings'], ...inheriting.map((p) => [p.id, p.name])], (v) => { if (v) { opened[v] = true; done(ctx, A.overrideLaunch(v), 'This project now has its own launch settings (simulated).'); } }, 'Project that gets its own settings') : null))),
     dnote('H10', 'Accounts and models: three accounts in a failover order, four models with one default, per-project launch settings. No token is shown or handled.')));
 }
 
 // ---------- Extensions: hooks, MCP servers, agents, automations, clients ----------
-// One row per extension: name and what it does (the whole row opens its details), its last use inline, a status word only where the switch does not say it, the switch.
-function xrow(ctx, o) {
-  const last = o.lastLabel === null ? [o.last] : [h('span', { class: 'l' }, o.lastLabel || 'Last run'), ' ', o.last];
-  return h('div', { class: 'ax-xrow', 'data-key': o.key, 'data-nost': o.status ? null : 'true' },
-    h('a', { class: 'x-main', href: o.href }, h('span', { class: 'r-name' }, o.name), h('span', { class: 'r-note' }, o.meta, ' · ', ...last)),
-    o.status ? h('span', { class: 'x-st' }, o.status) : null, h('span', { class: 'x-sw' }, o.control || null), o.below || null);
+// One strict row for every kind: [name and what it is] [status, only when it says more than On or Off] [last activity] [a switch or one action].
+// The kinds are tabs, one shown at a time; what needs you sits above them as the same rows with the action on the right.
+const TONE_OF_CLS = { needs_you: 'attention', blocked: 'blocked', failed: 'blocked', active: 'active', done: 'ok', neutral: 'ok', paused: 'paused', inactive: 'paused' };
+const roleStat = (machine, state) => { const p = present(machine, state); return [TONE_OF_CLS[p.cls] || 'unknown', p.label]; };
+function xrow(o) {
+  return h('div', { class: 'ax-xrow', 'data-key': o.key, 'data-q': (o.name + ' ' + o.does).toLowerCase(), 'data-nost': o.stat ? null : 'true' },
+    h('a', { class: 'x-main', href: o.href }, h('span', { class: 'r-name' }, o.name), h('span', { class: 'x-does' }, o.does),
+      o.stat ? h('span', { class: 'x-stat', 'data-tone': o.stat[0] }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(o.stat[0])), h('span', { class: 'w' }, o.stat[1])) : null,
+      h('span', { class: 'x-last' }, h('span', { class: 'vh' }, o.lastLabel + ' '), o.last)),
+    h('span', { class: 'x-ctl' }, o.control || null), o.below || null);
 }
+const needRow = (o) => h('div', { class: 'ax-xrow ax-need', 'data-key': 'need-' + o.id },
+  h('a', { class: 'x-main', href: o.href }, h('span', { class: 'r-name' }, o.name), h('span', { class: 'x-does' }, o.kind, ' · ', o.why)), h('span', { class: 'x-ctl' }, o.action));
 const needsYou = (n) => (n === 1 ? '1 needs you' : n + ' need you');
 export function viewExtensions(ctx) {
-  const A = areasOf(ctx.sim), S = A.S(), clock = S.clock;
-  const when = (t) => (t == null ? 'Never' : clockLabel(t));
-  const hookList = A.hooks(), mcpList = A.mcp(), agentList = A.agents();
-  const hooks = hookList.map((x) => {
-    const key = 'row:' + x.id, flip = () => { const r = A.toggleHook(x.id); done(ctx, r, r.on ? 'Hook switched on (simulated).' : 'Hook switched off (simulated).'); };
-    return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('hook', x.id), name: x.name, meta: x.event + ' · ' + x.matcher, last: when(x.last),
-      control: x.locked ? pill('ok', 'Built in') : sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => (x.enabled && x.sensitive ? ask(ctx, { at: key, text: 'Switch off "' + x.name + '"? An execution can then do this without asking you.', label: 'Switch off', tone: 'danger', run: flip }) : flip()) }), below: inline(ctx, key) });
-  });
-  const mcps = mcpList.map((x) => {
-    const st = A.mcpStatus(x, clock), t = MCP_TONE[st];
-    return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('mcp', x.id), name: x.name, meta: x.transport + ' · ' + (x.tools.length ? x.tools.length + (x.tools.length === 1 ? ' tool' : ' tools') : 'tools not known') + (st === 'CONNECTED' ? ' · ' + x.calls + ' calls' : ''), status: pill(t[0], t[1]), lastLabel: 'Last call', last: when(x.last),
-      control: x.unchecked ? h('span', { class: 'x-na' }, 'Not checked') : sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => { const r = A.toggleMcp(x.id); done(ctx, r, r.on ? 'Connecting (simulated).' : 'Switched off (simulated).'); } }) });
-  });
+  const A = areasOf(ctx.sim), S = A.S(), clock = S.clock, ui = ctx.ui;
+  const when = (t) => whenShort(t, clock, clockLabel);
+  const hookList = A.hooks(), mcpList = A.mcp(), agentList = A.agents(), autoList = S.automations, devList = S.devices;
   const agentState = agentList.map((x) => A.agentStatus(x));
-  const agents = agentList.map((x, i) => {
-    const s = agentState[i];
-    return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('agent', x.id), name: x.name, meta: x.role, status: pill(s.key === 'working' ? 'active' : s.key === 'off' ? 'paused' : s.key === 'ready' ? 'attention' : 'ok', s.key === 'working' ? 'Working' : s.key === 'off' ? 'Off' : s.key === 'ready' ? 'Result waits' : 'Idle'), last: when(x.last), control: sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => { const r = A.toggleAgent(x.id); done(ctx, r, r.on ? 'Agent switched on (simulated).' : 'Agent switched off (simulated).'); } }), below: s.key === 'working' || s.key === 'ready' ? h('p', { class: 'x-below' }, s.text) : null });
-  });
   const waits = (a) => a.state === 'SUSPENDED' || a.state === 'PENDING_APPROVAL';
-  const autos = S.automations.map((a) => xrow(ctx, { key: 'x-' + a.id, href: hrefFor('automation', a.id), name: a.name, meta: a.trigger, status: badge('automation', a.state), last: a.next_run ? 'Next ' + a.next_run : 'Not scheduled', lastLabel: null, control: waits(a) ? h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('enable', a.id) }, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve') : null, below: a.note ? h('p', { class: 'x-below' }, a.note) : null }));
-  const clients = S.devices.map((d) => xrow(ctx, { key: 'x-' + d.id, href: hrefFor('device', d.id), name: d.name, meta: 'Paired client', status: badge('device', d.state), last: d.state === 'ACTIVE' ? 'Now' : 'Revoked', lastLabel: 'Seen' }));
-  const need = { agents: agentState.filter((s) => s.key === 'ready').length, autos: S.automations.filter(waits).length };
-  const total = hooks.length + mcps.length + agents.length + autos.length + clients.length, off = [...hookList, ...mcpList, ...agentList].filter((x) => !x.enabled).length, needAll = need.agents + need.autos;
-  const sum = h('p', { class: 'ext-sum', role: 'status' }, h('span', null, total + ' extensions'), off ? h('span', null, off + ' off') : null, needAll ? pill('attention', needsYou(needAll)) : null);
-  const jump = (id, l, n) => h('button', { class: 'chip', type: 'button', onclick: () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ block: 'start' }); } }, l, h('span', { class: 'n' }, String(n)));
-  const group = (id, t, sub, rows, n) => h('section', { class: 'ax-card ax-ext', id }, h('div', { class: 'ax-card-h' }, h('h2', null, t, h('span', { class: 'n' }, String(rows.length)), n ? pill('attention', needsYou(n)) : null), h('p', null, sub)), h('div', { class: 'ax-xrows' }, ...rows));
-  return h('div', { class: 'ax-page' }, head(ctx, 'Extensions', sum), h('div', { class: 'view' },
-    h('div', { class: 'chips ax-jump' }, jump('x-hooks', 'Hooks', hooks.length), jump('x-mcp', 'MCP servers', mcps.length), jump('x-agents', 'Agents', agents.length), jump('x-autos', 'Automations', autos.length), jump('x-clients', 'Clients', clients.length)),
-    cols([group('x-hooks', 'Hooks', 'Run before or after a tool. A hook that guards something asks you to confirm before it is switched off.', hooks), group('x-mcp', 'MCP servers', 'Tools a run can call. A server that writes asks first.', mcps)],
-      [group('x-agents', 'Agents', 'The roles Core calls. None of them can decide for you.', agents, need.agents), group('x-autos', 'Automations', 'Work that starts on a schedule or an event.', autos, need.autos), group('x-clients', 'Clients', 'Paired devices that can read and decide.', clients)]),
+  const review = Object.values(S.reviews).find((r) => r.state === 'PENDING' || r.state === 'IN_REVIEW');
+  const act = (a, label, key) => h('button', { class: 'btn primary', type: 'button', 'data-key': key, onclick: () => ctx.act('enable', a.id) }, label);
+
+  const needs = [
+    ...autoList.filter(waits).map((a) => ({ id: a.id, name: a.name, kind: 'Automation', why: roleStat('automation', a.state)[1], href: hrefFor('automation', a.id), action: act(a, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve', 'need-act-' + a.id) })),
+    ...agentList.filter((x, i) => agentState[i].key === 'ready').map((x) => ({ id: x.id, name: x.name, kind: 'Agent', why: 'Result waits', href: hrefFor('agent', x.id), action: h('a', { class: 'btn primary', href: review ? '#/work/' + review.mission : hrefFor('agent', x.id), 'data-key': 'need-act-' + x.id }, 'Open review') }))
+  ];
+  const needIn = { agents: needs.filter((n) => n.kind === 'Agent').length, automations: needs.filter((n) => n.kind === 'Automation').length };
+  const off = [...hookList, ...mcpList, ...agentList].filter((x) => !x.enabled).length;
+
+  // A switch-off can be taken back from the toast; a switch-on cannot need it.
+  const flipped = (toggle, id, onMsg, offMsg) => {
+    const r = toggle(id);
+    if (!r.ok) { done(ctx, r); return; }
+    ctx.toast(r.on ? onMsg : offMsg, r.on ? null : { action: { label: 'Undo', run: () => { toggle(id); ctx.render(); } } });
+    ctx.render();
+  };
+  const hookRow = (x) => {
+    const key = 'row:' + x.id, flip = () => flipped(A.toggleHook, x.id, 'Hook switched on (simulated).', 'Hook switched off (simulated).');
+    return xrow({ key: 'x-' + x.id, href: hrefFor('hook', x.id), name: x.name, does: x.event + ' · ' + x.matcher, stat: x.locked ? ['ok', 'Built in'] : null, lastLabel: 'Last run', last: when(x.last),
+      control: sw({ on: x.enabled, disabled: x.locked, label: x.name, key: 'sw-' + x.id, onclick: () => (x.enabled && x.sensitive ? ask(ctx, { at: key, text: 'Switch off "' + x.name + '"? An execution can then do this without asking you.', label: 'Switch off', tone: 'danger', run: flip }) : flip()) }), below: inline(ctx, key) });
+  };
+  const mcpRow = (x) => {
+    const st = A.mcpStatus(x, clock);
+    return xrow({ key: 'x-' + x.id, href: hrefFor('mcp', x.id), name: x.name, does: x.transport + ' · ' + (x.tools.length ? x.tools.length + (x.tools.length === 1 ? ' tool' : ' tools') : 'tools not known') + (st === 'CONNECTED' ? ' · ' + x.calls + ' calls' : ''),
+      stat: x.unchecked ? ['unknown', 'Not checked'] : st === 'CONNECTING' ? ['active', 'Connecting'] : null, lastLabel: 'Last call', last: when(x.last),
+      control: sw({ on: x.enabled, disabled: x.unchecked, label: x.name, key: 'sw-' + x.id, onclick: () => flipped(A.toggleMcp, x.id, 'Connecting (simulated).', 'Switched off (simulated).') }) });
+  };
+  const agentRow = (x) => {
+    const s = agentState[agentList.indexOf(x)], live = s.key === 'working' || s.key === 'ready';
+    return xrow({ key: 'x-' + x.id, href: hrefFor('agent', x.id), name: x.name, does: live ? s.text : x.role, stat: s.key === 'working' ? ['active', 'Working'] : s.key === 'ready' ? ['attention', 'Result waits'] : null, lastLabel: 'Last run', last: when(x.last),
+      control: sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => flipped(A.toggleAgent, x.id, 'Agent switched on (simulated).', 'Agent switched off (simulated).') }) });
+  };
+  const autoRow = (a) => xrow({ key: 'x-' + a.id, href: hrefFor('automation', a.id), name: a.name, does: a.note || a.trigger, stat: roleStat('automation', a.state), lastLabel: 'Next run', last: a.next_run || 'Not scheduled',
+    control: waits(a) ? act(a, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve', 'act-' + a.id) : null });
+  const clientRow = (d) => xrow({ key: 'x-' + d.id, href: hrefFor('device', d.id), name: d.name, does: 'Paired client', stat: roleStat('device', d.state), lastLabel: 'Last seen', last: d.state === 'ACTIVE' ? 'Now' : 'Not recorded' });
+  const KINDS = { hooks: [hookList, hookRow, 'Last run'], mcp: [mcpList, mcpRow, 'Last call'], agents: [agentList, agentRow, 'Last run'], automations: [autoList, autoRow, 'Next run'], clients: [devList, clientRow, 'Last seen'] };
+
+  if (ctx.route.id && ui.extSeen !== ctx.route.id) ui.extTab = tabOf(ctx.route.id) || ui.extTab;
+  ui.extSeen = ctx.route.id;
+  const tab = ui.extTab || (EXT_TABS.find(([id]) => needIn[id]) || EXT_TABS[0])[0];
+  const [items, build, lastHead] = KINDS[tab];
+  ui.extQ = ui.extQ || {};
+  const q = ui.extQ[tab] || '';
+
+  const pick = (id) => { ui.extTab = id; ctx.render(); };
+  const tabs = h('div', { class: 'tabs ext-tabs', role: 'tablist', 'aria-label': 'Extension types' }, ...EXT_TABS.map(([id, label]) => h('button', { class: 'tab', type: 'button', role: 'tab', id: 'xtab-' + id, 'data-key': 'xtab-' + id, 'aria-selected': id === tab ? 'true' : 'false', 'aria-controls': 'ext-panel', tabindex: id === tab ? '0' : '-1', onclick: () => pick(id),
+    onkeydown: (e) => {
+      const i = EXT_TABS.findIndex(([x]) => x === id), n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: EXT_TABS.length - 1 }[e.key];
+      if (n == null) return;
+      e.preventDefault(); const to = EXT_TABS[(n + EXT_TABS.length) % EXT_TABS.length][0];
+      document.querySelector('[data-key="xtab-' + to + '"]').focus(); pick(to);
+    } },
+    label, h('span', { class: 'ax-count' }, String(KINDS[id][0].length)), needIn[id] ? h('span', { class: 'x-dot', 'data-tone': 'attention' }, h('span', { class: 'vh' }, 'needs you')) : null)));
+
+  const rows = items.map(build), anyStat = rows.some((r) => !r.dataset.nost), none = h('p', { class: 'x-empty', hidden: true }, 'No extension matches.', ' ', h('button', { class: 'btn quiet', type: 'button', 'data-key': 'ext-clear', onclick: () => { ui.extQ[tab] = ''; ctx.render(); } }, 'Clear search'));
+  const filter = (text) => { let shown = 0; rows.forEach((r) => { const ok = matches(text, r.dataset.q); r.hidden = !ok; if (ok) shown++; }); none.hidden = shown > 0 || !text.trim(); };
+  filter(q);
+  const search = items.length > 12 ? h('input', { class: 'ext-search', type: 'search', name: 'ext-q', 'data-key': 'ext-q', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Search extensions', placeholder: 'Search extensions…', value: q, oninput: (e) => { ui.extQ[tab] = e.target.value; filter(e.target.value); } }) : null;
+
+  const parts = [needs.length ? [needsYou(needs.length), 'attention'] : ['Nothing needs you', 'ok'], off ? [off + ' off'] : null].filter(Boolean);
+  return h('div', { class: 'ax-page' }, h('div', { class: 'view ax-view' },
+    top('Extensions', parts, 'What can act before, after and beside a run. Each row says its status and when it last ran; a switch changes it for the next run.'),
+    needs.length ? h('section', { class: 'ext-needs', 'aria-label': 'Needs you' }, h('h2', null, 'Needs you', h('span', { class: 'ax-count' }, String(needs.length))), h('div', { class: 'ax-dim' }, ...needs.map(needRow))) : null,
+    h('div', { class: 'ext-bar' }, tabs, search),
+    h('div', { class: 'ext-list' + (anyStat ? '' : ' nostat'), role: 'tabpanel', id: 'ext-panel', 'aria-labelledby': 'xtab-' + tab },
+      items.length ? h('div', { class: 'x-hd', 'aria-hidden': 'true' }, h('span', null), anyStat ? h('span', null, 'Status') : null, h('span', null, lastHead), h('span', null)) : null,
+      h('div', { class: 'ax-dim' }, ...rows, none), items.length ? null : h('p', { class: 'x-empty' }, 'Nothing is listed here.')),
     dnote('H09', 'Hooks, MCP servers and agents managers: status, last run, enable and disable, and a details sheet for each. Automations and clients are the other Control lists.')));
 }
 

@@ -247,6 +247,8 @@ export const IT_AREAS = {
   // Security, Health, Usage and Accounts overhaul, 2026-10-28. Italian wording to review.
   'Every check is OK': 'Tutti i controlli sono OK', 'Every account has room': 'Ogni account ha margine', 'No account can take new work': 'Nessun account può prendere nuovo lavoro',
   'Last hour': 'Ultima ora', 'Show fewer': 'Mostra meno', 'Open project': 'Apri il progetto', '1 project': '1 progetto', '1 account is low': '1 account è basso',
+  'Every project starts with the default. Only a project that differs has its own row.': 'Ogni progetto parte con le impostazioni predefinite. Solo un progetto che differisce ha una riga propria.', 'Give a project its own settings': 'Dai a un progetto impostazioni proprie', 'Project that gets its own settings': 'Progetto che riceve impostazioni proprie',
+  'Use the default': 'Usa il predefinito', 'Back to the default (simulated).': 'Tornato al predefinito (simulato).', 'This project now has its own launch settings (simulated).': 'Questo progetto ha ora impostazioni di avvio proprie (simulato).',
 };
 
 const ACC = { unverified: 'non verificato', available: 'disponibile', constrained: 'vincolato', limited: 'limitato', degraded: 'degradato', open: 'aperto', unauthenticated: 'non autenticato', disabled: 'disattivato' };
