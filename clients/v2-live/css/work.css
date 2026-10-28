@@ -76,8 +76,18 @@
 @media (prefers-reduced-motion: reduce) { .wg *, .wg *::before { animation: none !important; transition: none !important; } }
 /* The row or card the route (or a hover on the graph) points at: a flat tint and an outline, never a left-edge bar. */
 .work-view .mrow:hover, .work-view .mrow[aria-current='true'] { box-shadow: none; }
-.work-view :is(.mrow, .card).is-linked { background: var(--s2); }
-.work-view .card.band.is-linked { background: color-mix(in srgb, var(--attention) 22%, transparent); }
+.work-view :is(.mrow, .att-rows .card) { position: relative; isolation: isolate; }
+.work-view :is(.mrow, .att-rows .card)::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: var(--r-s); background: var(--s2); opacity: 0; transition: opacity 180ms ease-out; pointer-events: none; }
+.work-view .att-rows .card.band::before { background: var(--attention); }
+.work-view :is(.mrow, .att-rows .card).is-linked::before { opacity: 1; transition-duration: 100ms; }
+.work-view .att-rows .card.band.is-linked::before { opacity: .12; }
+@media (hover: hover) and (pointer: fine) {
+  .work-view :is(.mrow, .att-rows .card):hover::before { opacity: 1; transition-duration: 100ms; }
+  .work-view .att-rows .card.band:hover::before { opacity: .12; }
+}
+:root[data-motion='reduced'] .work-view :is(.mrow, .att-rows .card)::before { transition: none; }
+@media (prefers-reduced-motion: reduce) { .work-view :is(.mrow, .att-rows .card)::before { transition: none; } }
+@media (forced-colors: active) { .work-view :is(.mrow, .att-rows .card)::before { background: Canvas; } }
 .work-view :is(.mrow, .card)[aria-current='true'] { outline: var(--hair) solid var(--text); outline-offset: calc(-1 * var(--hair)); }
 .work-view .att-rows .panel { border: 0; }
 
@@ -123,3 +133,18 @@
 .dcn-steps li + li::before { content: ''; position: absolute; left: 6px; top: -14px; height: 14px; border-left: var(--hair) solid var(--line-strong); }
 .main-col .card:not([data-state='needs_you']) .btn.primary { background: transparent; border-color: var(--text); color: var(--text); }
 .dcn-steps li[data-now] .st-g { border-color: var(--decide-line); background: var(--decide-bg); }
+
+/* Many projects: one select instead of a chip per project; long groups fold or show their first rows. */
+.wk-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pick { flex: 0 1 18rem; min-width: 0; min-height: var(--target); padding: 0 12px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font: inherit; font-weight: 500; }
+.wk-fold > summary { display: flex; align-items: center; gap: 4px 12px; min-height: var(--target); padding: 0 0 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); cursor: pointer; list-style: none; }
+.wk-fold > summary::-webkit-details-marker { display: none; }
+.wk-fold > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform 180ms ease-out; }
+.wk-fold[open] > summary::before { transform: rotate(90deg); transition-duration: 100ms; }
+.wk-fold .n { letter-spacing: .08em; color: var(--text-3); text-transform: none; }
+.wk-fold .n::before { content: '\00b7\00a0'; }
+.wk-more { margin-top: 8px; }
+.work-legend .wl-more { flex-basis: 100%; }
+:root[data-motion='reduced'] .wk-fold > summary::before { transition: none; }
+@media (prefers-reduced-motion: reduce) { .wk-fold > summary::before { transition: none; } }
+.main-col .page-head:has(.wk-filter, .chips) { align-items: flex-end; }
