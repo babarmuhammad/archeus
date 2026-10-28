@@ -26,7 +26,7 @@ export const levelOf = (w, h) => (w >= 210 && h >= 140 ? 'full' : w >= 128 && h 
 export function layoutTerritories(count, width, height, inset = INSET) {
   const gap = count > 30 ? 6 : 12, aw = Math.max(40, width - inset.left - inset.right), ah = Math.max(40, height - inset.top - inset.bottom);
   const radius = clamp(Math.min(aw, ah) * .07, 16, 38), gutter = Math.max(120, radius * 2.6);
-  const g = pickGrid(Math.max(1, count), aw, ah, gap, gutter), cw = Math.min(g.cw, CELL_MAX.w), ch = Math.min(g.ch, CELL_MAX.h);
+  const g = pickGrid(Math.max(1, count), aw, ah, gap, gutter), cw = Math.max(24, Math.min(g.cw, CELL_MAX.w)), ch = Math.max(24, Math.min(g.ch, CELL_MAX.h)); // a narrow scene (the Details sheet open on a small window) never gives a negative size
   const bw = g.cols * cw + gap * (g.cols - 2) + gutter, bh = g.rows * ch + gap * (g.rows - 1), x0 = inset.left + (aw - bw) / 2, y0 = inset.top + (ah - bh) / 2;
   const half = g.cols / 2, ri = (g.rows - 1) / 2, level = levelOf(cw, ch), slots = [];
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
