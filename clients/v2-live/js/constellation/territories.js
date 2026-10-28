@@ -90,6 +90,19 @@ export function createTerritoryMap(container, options = {}) {
     runningText.textContent = isLive() && isReduced() ? T(`${running} running`) : '';
     if (isReduced() || document.hidden) { for (const a of host.getAnimations({subtree: true})) if (a.animationName !== 'core-breath') a.cancel(); for (const m of markers) m.remove(); markers.clear(); }
   };
+  // Motion: a cell glides to its new slot, a new one rises in, a gone one fades, a changed one takes a single tint. transform and opacity on the cell group, finite, nothing under Reduced motion.
+  const tok = (name, fallback) => parseFloat(getComputedStyle(host).getPropertyValue(name)) || fallback;
+  const curve = name => getComputedStyle(host).getPropertyValue(name).trim() || 'cubic-bezier(.23, 1, .32, 1)';
+  const canMove = () => !isReduced() && !document.hidden && typeof Element.prototype.animate === 'function';
+  const at = (x, y, dy = 0) => `translate(${f(x)}px, ${f(y + dy)}px)`;
+  const glideCell = (g, was, now) => g.animate([{transform: at(was.x, was.y)}, {transform: at(now.x, now.y)}], {duration: tok('--dur-3', 280), easing: curve('--ease-move')});
+  const riseCell = (g, cell) => g.animate([{opacity: 0, transform: at(cell.x, cell.y, 6)}, {opacity: 1, transform: at(cell.x, cell.y)}], {duration: tok('--dur-2', 180), easing: curve('--ease-out'), fill: 'backwards'});
+  const fadeCell = g => { const a = g.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-1', 100), easing: curve('--ease-out'), fill: 'forwards'}); a.onfinish = a.oncancel = () => g.remove(); };
+  const tintCell = g => {
+    const outline = g.querySelector('.am-cell-outline'); if (!outline) return;
+    const t = svgEl('path', {class: 'am-cell-tint', d: outline.getAttribute('d')}); g.prepend(t);
+    const a = t.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-2', 180), easing: curve('--ease-out')}); a.onfinish = a.oncancel = () => t.remove();
+  };
   const lineOf = (p, state) => (p.last ? `${p.last.time} · ${p.last.text}` : state === 'idle' ? T('No missions yet') : '');
 
   function cellSig(p, cell) {
@@ -168,13 +181,32 @@ export function createTerritoryMap(container, options = {}) {
   }
   function select(id) { selected = id; paintSelection(); emit('select', id); }
   function focus(id) {
+    const closing = !id && !panel.hidden && canMove() ? {ghost: panel.cloneNode(true), box: {x: panel.offsetLeft, y: panel.offsetTop, w: panel.offsetWidth, h: panel.offsetHeight}, rec: cellRecs.get(lastFocused)} : null;
     focused = id; card.hidden = true; setHot(null); renderFocus(true);
+    if (id && canMove()) expandFrom(cellRecs.get(id));
+    if (closing) collapseTo(closing);
     if (id) panel.querySelector('.am-focus-back').focus({preventScroll: true});
     else { const c = [...hits.querySelectorAll('.am-chit:not(.am-chit-mission)')].find(n => n.dataset.nodeId === lastFocused); c?.focus({preventScroll: true}); }
     if (id) lastFocused = id;
     emit('focus', id);
   }
   let lastFocused = null;
+  // The clicked cell becomes the panel: it grows from the cell's box (transform only; the words are not shown until it is most of the way there) and shrinks back into it.
+  const boxFrom = (cell, b) => `translate(${f(cell.x - b.x)}px, ${f(cell.y - b.y)}px) scale(${f(cell.w / b.w)}, ${f(cell.h / b.h)})`;
+  function expandFrom(rec) {
+    if (!rec) return;
+    const b = {x: panel.offsetLeft, y: panel.offsetTop, w: panel.offsetWidth, h: panel.offsetHeight}; if (!b.w || !b.h) return;
+    panel.style.transformOrigin = '0 0';
+    panel.animate([{opacity: 0, transform: boxFrom(rec.cell, b), offset: 0}, {opacity: 1, offset: .5}, {opacity: 1, transform: 'none', offset: 1}], {duration: tok('--dur-3', 280), easing: curve('--ease-move'), fill: 'backwards'});
+  }
+  function collapseTo({ghost, box, rec}) {
+    ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.hidden = false;
+    Object.assign(ghost.style, {inset: 'auto', left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', transformOrigin: '0 0', pointerEvents: 'none'});
+    host.append(ghost);
+    const to = rec ? boxFrom(rec.cell, box) : 'scale(.98)';
+    const a = ghost.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: to}], {duration: tok('--dur-2', 180), easing: curve('--ease-move'), fill: 'forwards'});
+    a.onfinish = a.oncancel = () => ghost.remove();
+  }
   let focusSig = '';
   function renderFocus(force) {
     const p = focused && model.projects.find(x => x.id === focused);
@@ -210,20 +242,27 @@ export function createTerritoryMap(container, options = {}) {
     if (!selected) return;
     for (const rec of cellRecs.values()) { const h = rec.hitsOf.find(x => x.id === selected); if (h) { const star = rec.g.querySelector(`[data-node-id="${CSS.escape(selected)}"]`); if (star) { ring.setAttribute('r', h.r - 4 + 8); star.append(ring); } } }
   }
-  function build() {
+  function build(animate = false) {
     if (destroyed || !layout) return;
+    const animated = animate && cellRecs.size > 0 && canMove();
+    let moved = false;
     const ordered = [...model.projects].sort((a, b) => (slotOf.get(a.id) ?? 1e9) - (slotOf.get(b.id) ?? 1e9));
     const cells = ordered.map((p, i) => ({p, cell: layout.cells[i] || layout.cells[layout.cells.length - 1]}));
     const seen = new Set(), spokes = [], hitNodes = [];
     for (const {p, cell} of cells) {
       seen.add(p.id);
       let rec = cellRecs.get(p.id);
-      const sig = cellSig(p, cell);
+      const sig = cellSig(p, cell), was = rec && rec.cell, wasState = rec && stateOf(rec.p);
       if (!rec || rec.sig !== sig) {
         const {g, hitsOf} = drawCell(p, cell);
         if (rec) rec.g.replaceWith(g);
         rec = Object.assign(rec || {}, {g, hitsOf, sig, p, cell}); cellRecs.set(p.id, rec);
         cellLayer.append(g);
+        if (animated) {
+          if (!was) riseCell(g, cell);
+          else if (was.x !== cell.x || was.y !== cell.y) { glideCell(g, was, cell); moved = true; }
+          else tintCell(g, wasState);
+        }
       } else { rec.p = p; rec.cell = cell; }
       const state = stateOf(p), active = state === 'needs-you' || state === 'running';
       if (active || cells.length <= 24) {
@@ -232,8 +271,10 @@ export function createTerritoryMap(container, options = {}) {
       }
       hitNodes.push({p, cell, rec});
     }
-    for (const [id, rec] of cellRecs) if (!seen.has(id)) { rec.g.remove(); rec.spoke?.remove(); cellRecs.delete(id); }
+    for (const [id, rec] of cellRecs) if (!seen.has(id)) { if (animated) fadeCell(rec.g); else rec.g.remove(); rec.spoke?.remove(); cellRecs.delete(id); }
     spokeLayer.replaceChildren();
+    // the spokes are redrawn at once, so while cells travel they stay out and then fade in: no line ever points at an empty slot
+    if (moved) spokeLayer.animate([{opacity: 0}, {opacity: 0, offset: .55}, {opacity: 1}], {duration: tok('--dur-3', 280), easing: 'linear'});
     for (const s of spokes) {
       const path = svgEl('path', {class: `am-spoke am-spoke-${s.state}`, d: s.d}); spokeLayer.append(path); cellRecs.get(s.id).spoke = path; cellRecs.get(s.id).spokeD = s;
       if (s.state === 'running') { const m = svgEl('circle', {class: 'am-travel', r: 2.6}); const t = driftOf(options.seed, s.id); m.style.setProperty('--tp', Math.round(t.period / 2.4) + 'ms'); m.style.setProperty('--td', Math.round(t.delay / 2.4) + 'ms'); for (const [k, v] of [['--x0', s.x0], ['--y0', s.y0], ['--x1', s.x1], ['--y1', s.y1]]) m.style.setProperty(k, v + 'px'); spokeLayer.append(m); }
@@ -262,14 +303,14 @@ export function createTerritoryMap(container, options = {}) {
   }
   function relayout() {
     if (destroyed) return;
-    const r = host.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height);
+    const r = host.getBoundingClientRect(), w = Math.max(1, r.width), h = Math.max(1, r.height), step = Math.abs(w - width) + Math.abs(h - height) > 120 && cellRecs.size > 0;
     inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
     width = w; height = h; svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     panel.style.inset = `${f(inset.top)}px ${f(inset.right)}px ${f(inset.bottom)}px ${f(inset.left)}px`;
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     layout = layoutTerritories(Math.max(1, model.projects.length), w, h, inset);
     for (const rec of cellRecs.values()) rec.sig = '';
-    build();
+    build(step);
   }
   const open = chit => (chit.classList.contains('am-chit-mission') ? select : focus)(chit.dataset.nodeId);
   hits.addEventListener('click', e => { const c = e.target.closest('.am-chit'); if (c) open(c); });
@@ -302,7 +343,7 @@ export function createTerritoryMap(container, options = {}) {
       const fresh = orderProjects(model.projects.filter(p => !slotOf.has(p.id)));
       for (const p of fresh) slotOf.set(p.id, slotOf.size);
       layout = layoutTerritories(Math.max(1, model.projects.length), width, height, inset);
-      build();
+      build(true);
     },
     setSelection: id => { if (!destroyed) { selected = id; paintSelection(); } },
     setTheme(name) { if (!destroyed) host.dataset.theme = name; },
