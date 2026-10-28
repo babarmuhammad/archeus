@@ -1,10 +1,13 @@
 // One popup and one picker for the whole app: a button that opens a listbox (or any small panel) in the top layer, so no scroller clips it.
 // The picker follows the W3C APG listbox keys: arrows, Home/End, PageUp/PageDown, type-ahead, Enter and Space pick, Escape closes and returns focus.
+// On a phone the listbox is a bottom sheet (48 px options, the sheet body is the one scroller) and the search field comes above twelve items.
 // Above eight items it gains a search field (an editable combobox: focus stays in the field, the active row is aria-activedescendant).
 import { h, clear, trapTab } from './dom.js';
 import { icon } from './icons.js';
 import * as store from './store.js';
 import { translate } from './i18n.js';
+import { isPhone } from './viewport.js';
+import { openSheet } from './sheet.js';
 
 const T = (en, it) => (store.get('lang') === 'it' ? it : en);
 let cur = null; // the single open popup: { key, trigger, pop, close, place }
@@ -77,7 +80,14 @@ export function picker(o) {
   const P = { searchAt: 8, ...o }, id = 'pk' + (++uid);
   const sel = () => P.items.find((i) => i.value === P.value);
   const btn = h('button', { class: 'pk ' + (P.cls || ''), type: 'button', 'data-key': P.key, 'aria-haspopup': 'listbox', 'aria-disabled': P.disabled ? 'true' : null, 'aria-expanded': cur && cur.key === P.key ? 'true' : 'false',
-    onclick: () => { if (P.disabled) return; if (cur && cur.key === P.key) closePopup(true); else openPopup({ key: P.key, trigger: btn, up: P.up, label: P.label, build }); } });
+    onclick: () => { if (P.disabled) return; if (cur && cur.key === P.key) closePopup(true); else if (isPhone()) openList(); else openPopup({ key: P.key, trigger: btn, up: P.up, label: P.label, build }); } });
+  function openList() {
+    closePopup(false);
+    const body = h('div'), sheet = openSheet({ id: 'pk', title: P.label, detents: ['half', 'full'], initial: 'half', content: body, onClose: () => btn.setAttribute('aria-expanded', 'false') });
+    btn.setAttribute('aria-expanded', 'true');
+    const first = build(body, () => sheet.close());
+    if (!first.matches('input') || matchMedia('(pointer: fine)').matches) first.focus({ preventScroll: true }); // no keyboard pops up for a touch
+  }
   const paint = () => {
     clear(btn).append(...[P.prefix ? h('span', { class: 'pk-p' }, P.prefix) : '', h('span', { class: 'pk-t' }, P.text || (sel() ? sel().label : '')), h('span', { class: 'pk-v' }, icon('chevron', 16))].filter(Boolean));
     btn.setAttribute('aria-label', P.label + ': ' + (P.text || (sel() ? sel().label : '')));
@@ -87,7 +97,7 @@ export function picker(o) {
   if (cur && cur.key === P.key) cur.trigger = btn;
 
   function build(pop, close) {
-    const searchable = P.items.length > P.searchAt, lid = id + '-list';
+    const searchable = P.items.length > (isPhone() ? Math.max(P.searchAt, 12) : P.searchAt), lid = id + '-list';
     const q = searchable ? h('input', { type: 'search', class: 'pk-q', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': lid, 'aria-autocomplete': 'list', autocomplete: 'off', placeholder: T('Search', 'Cerca'), 'aria-label': T('Search', 'Cerca') + ' ' + P.label.toLowerCase() }) : null;
     const list = h('div', { class: 'pk-list', role: 'listbox', id: lid, 'aria-label': P.label, tabindex: searchable ? null : '0' });
     const focusEl = q || list;

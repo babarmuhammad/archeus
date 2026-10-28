@@ -317,8 +317,12 @@ def s4_state(pg, route, w):
         elif route == 'chat-more':
             pg.click('[data-key="chat-more"]')
         elif route in ('chat-receipts', 'chat-context'):
+            if pg.evaluate("document.documentElement.dataset.phone === 'true'"):
+                pg.click('[data-key="chat-more"]')   # on a phone the three views live in More
             pg.click('[data-key="chat-tab-%s"]' % route.split('-')[1])
         pg.wait_for_timeout(200)
+        if route in ('chat-picker', 'chat-mission') and pg.evaluate("!!document.querySelector('.sheet')"):
+            return '.sheet'   # the picker is a bottom sheet on a phone
         return '.pkpop' if route in ('chat-picker', 'chat-mission', 'chat-more') else '.slash' if route == 'chat-slash' else None
     if route.startswith('dock') or route.startswith('sheet'):
         if route.startswith('sheet') and w >= 600:
@@ -364,6 +368,10 @@ def s4_state(pg, route, w):
 
 def s4_after(pg, route, w):
     if route.startswith('sheet') and w >= 600:
+        for _ in range(3):   # a mouse window opens the Tell sheet at full, which makes the page behind (the prototype toolbar too) inert; the first Escape may only close the slash menu
+            if pg.evaluate("!!document.querySelector('.sheet-wrap:not([data-leaving])')"):
+                pg.keyboard.press('Escape')
+                pg.wait_for_timeout(300)
         (pg.click('[data-tb="tools"]') if not pg.is_visible('[data-tb="device"]') else None, pg.click('[data-tb="device"]'))
         pg.click('[data-device="auto"]')
         pg.wait_for_timeout(250)
@@ -456,7 +464,7 @@ def main():
                             if '/' in rt and rt.split('/')[0] in ('work', 'projects', 'now', 'security', 'health', 'usage', 'accounts', 'extensions'):
                                 pos = pg.evaluate("getComputedStyle(document.querySelector('#inspector')).position")
                                 if pos == 'absolute':
-                                    layer = '#inspector'
+                                    layer = '.sheet[data-insp]' if pg.evaluate("!!document.querySelector('.sheet[data-insp]')") else '#inspector'
                             pg.evaluate("document.querySelector('.main-col') && (document.querySelector('.main-col').scrollTop = 0)")
                         desktop = w >= 1024 and not route.startswith('sheet')
                         # layout is judged at rest: the motion layer's finite transitions (route cross-fade, row glide, sheets) are given up to 800 ms to end; loops stay (they are checked in motion_invariants)

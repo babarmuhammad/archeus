@@ -27,7 +27,6 @@
 
 /* Phone mission page (concept 12): the page sits above the bottom bar, so Tell, Places and Stop stay reachable. */
 @container dev ((max-width: 599px) or style(--phone: 1)) {
-  .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { bottom: 77px; }
   .msn-panel .insp-head h2 { font-size: 36px; line-height: 1.1; }
   .msn-ph { font-size: 32px; }
 }

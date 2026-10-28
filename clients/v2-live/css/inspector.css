@@ -25,7 +25,7 @@
   .msn-panel { border-left: var(--hair) solid var(--line); }
 }
 @container dev ((max-width: 599px) or style(--phone: 1)) {
-  .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { top: 0; max-height: none; border: 0; border-radius: 0; }
+  .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { top: var(--page-top, var(--topbar-h)); bottom: var(--page-bottom, var(--bar-total)); max-height: none; border: 0; border-radius: 0; } /* a full page between the top bar and the bar, so Stop stays reachable */
   .msn-graph { display: flex; flex-direction: column; flex: none; padding: 0 12px; }
   .msn-graph .msn-scene { height: 200px; flex: none; }
   .msn-svg .am-arrow-label, .msn-svg .am-label-sub, .msn-svg .am-label-meta, .msn-svg .am-wordmark { display: none; }
@@ -156,3 +156,28 @@
   .msn-panel .tab { padding-inline: 9px; font-size: calc(var(--base) * .875); }
 }
 @container mp (400px <= width < 480px) { .msn .spine-insp li { overflow-wrap: normal; font-size: 11px; } }
+
+/* ---------- phone: every other inspector is a sheet (phoneSheet in js/inspectors.js) ----------
+   The aside keeps a hidden placeholder, so the app still reads data-insp='open' but draws nothing. The sheet body is the one vertical scroller: nothing inside it scrolls on its own. */
+@container dev ((max-width: 599px) or style(--phone: 1)) {
+  .app[data-insp='open']:has(.insp-ph) .inspector { display: block; width: 0; height: 0; padding: 0; border: 0; overflow: hidden; }
+  .app[data-insp='open']:has(.insp-ph) .scrim { display: none; }
+  .isl { display: flex; flex-wrap: wrap; align-items: center; gap: 0 12px; padding-bottom: 4px; }
+  .isl .ax-eyebrow { margin: 0; }
+  .isl .m { flex: 1 1 100%; margin: 0; color: var(--text-2); font-size: var(--fs-cap); overflow-wrap: anywhere; }
+  .isl .btn { margin-left: auto; }
+  .sheet .insp-body { flex: none; overflow: visible; padding: 8px 0 0; }
+  .sheet[data-detent='peek'] .tabs { display: none; }
+  .sheet .tabs { position: sticky; top: 0; z-index: 1; margin-inline: -16px; padding-inline: 12px; background: var(--s3); scrollbar-width: none; }
+  .isf { display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 8px; }
+  .isf > .btn { flex: 1 1 8em; }
+  .sheet-foot:has(> .isf:empty) { display: none; }
+  .sheet .btn:is(.primary, .decide) { --bh: 48px; --hit: 48px; }
+  .dnote-d { padding: 0; border: 0; border-radius: 0; }
+  .dnote-d > summary { display: flex; align-items: center; box-sizing: border-box; min-height: 44px; border-top: var(--hair) solid var(--line); font-weight: 600; color: var(--text); cursor: pointer; }
+  .dnote-d[open] { padding-bottom: 8px; }
+  /* a quiet fade at the foot of a scroller says there is more, in place of a scrollbar */
+  :is(.sheet-body, .slash, .pk-list, .msgs, .cp-scroll) { scrollbar-width: none; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 16px), transparent); }
+  :is(.slash, .pk-list) { padding-bottom: 16px; }
+  .chatsheet .sheet-body { -webkit-mask-image: none; mask-image: none; }
+}
