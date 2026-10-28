@@ -1935,3 +1935,5 @@ Strings built inline with `L(en, it)` in `js/chat.js`, `js/chat-cards.js` and `j
 - Commands / Search commands / No command matches. → Comandi / Cerca comandi / Nessun comando corrispondente.
 - No missions yet. → Ancora nessuna missione.
 - just now / {n} min ago / {n} h ago → adesso / {n} min fa / {n} h fa (relative time on the simulation clock; the exact time is the tooltip)
+- Commands (type /) → Comandi (scrivi /) (tooltip of the slash button)
+- Send (Enter) → Invia (Invio) (tooltip of Send)

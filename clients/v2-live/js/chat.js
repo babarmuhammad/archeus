@@ -116,7 +116,7 @@ export function composer(ctx, where) {
   }
   function refresh() {
     input.placeholder = L('Tell Archeus what to do…', 'Dì ad Archeus cosa fare…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
-    slashBtn.setAttribute('aria-label', L('Commands', 'Comandi'));
+    slashBtn.setAttribute('aria-label', L('Commands', 'Comandi')); slashBtn.title = L('Commands (type /)', 'Comandi (scrivi /)'); send.title = L('Send (Enter)', 'Invia (Invio)');
     send.textContent = L('Send', 'Invia'); stop.textContent = L('Stop', 'Ferma'); stop.setAttribute('aria-label', L('Stop: propose an emergency stop', 'Ferma: proponi un arresto d\'emergenza'));
     if (document.activeElement !== input && input.value !== (ctx.ui.draft || '')) input.value = ctx.ui.draft || '';
     fillDest(); draw();
@@ -264,7 +264,7 @@ export function viewChat(ctx) {
     onPick: (v) => { P.mission = v || null; P.switched = true; P.bottom = true; ctx.render(); } });
   const summary = general ? L('Not project memory', 'Non è memoria di progetto')
     : focused ? null : open.length ? L('{n} open', '{n} aperte', { n: open.length }) : L('Nothing open', 'Niente di aperto');
-  const more = popButton({ key: 'chat-more', label: L('More', 'Altro'), glyph: 'more', cls: 'cb-more', end: true, build: (pop) => {
+  const more = popButton({ key: 'chat-more', label: L('More', 'Altro'), glyph: 'more', cls: 'cb-more', end: true, title: L('More', 'Altro'), build: (pop) => {
     const fix = (key, label) => {
       const on = h('span', { class: 'fx-on' }, s[key] ? icon('check', 16) : null);
       const b = h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': s[key] ? 'true' : 'false', onclick: () => { s[key] = !s[key]; b.setAttribute('aria-pressed', s[key] ? 'true' : 'false'); clear(on).append(...(s[key] ? [icon('check', 16)] : [])); } }, on, label);
