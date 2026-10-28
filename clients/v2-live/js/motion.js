@@ -12,8 +12,9 @@ const ROWS = '.mrow, .card.band, .rp-event, .pcell, .pidea, .ax-xrow, .us-row, .
 const NUMS = [['.n', (el) => (el.parentElement.querySelector(':scope > .gt') || {}).textContent], ['.ctr b', (el) => (el.nextElementSibling || {}).textContent]];
 // A popover, a sheet or a dialog that the shell draws and removes. in: how it arrives (css owns the ones with a keyframe of their own); out: how its last copy leaves.
 const OVERLAYS = [
-  { sel: '.safety-pop', into: '.app', enter: { s: .98, origin: '0 0', dur: 1 }, exit: { s: .98, dur: 1 } },
-  { sel: '.pl-wrap', into: '.app', enter: null, exit: { y: 24, dur: 2 } }
+  { sel: '.safety-pop', into: '.app', enter: { s: .98, origin: '0 0', dur: 1 }, exit: null },
+  { sel: '.pl-wrap', into: '.app', enter: null, exit: { y: 24, dur: 2 } },
+  { sel: '.chatdock.tell:not([hidden])', into: '.app', clone: true, enter: { y: 8, s: .98, origin: '50% 100%', dur: 1 }, exit: { y: 8, s: .98, dur: 1 } }
 ];
 
 let tok = null;
@@ -37,12 +38,14 @@ function run(el, kind, frames, o) {
   a.onfinish = done; a.oncancel = done;
   return a;
 }
-const from = ({ x = 0, y = 0, s = 1 }) => ({ opacity: 0, transform: `translate(${x}px, ${y}px) scale(${s})` });
+// Individual transform properties (translate, scale) compose with an element's own transform instead of replacing it, so a centred dock or a rotated chevron keeps its place.
+const from = ({ x = 0, y = 0, s = 1 }) => ({ opacity: 0, translate: `${x}px ${y}px`, scale: s });
+const REST = { translate: 'none', scale: 'none' };
 
 // Something new on screen: opacity and a short move (6 px for rows), from its origin when it has one.
 export function enter(el, { x = 0, y = 6, s = 1, origin, dur = 2, delay = 0, ease } = {}) {
   if (origin) el.style.transformOrigin = origin;
-  return run(el, 'enter', [from({ x, y, s }), { opacity: 1, transform: 'none' }], { duration: T()[dur] || dur, delay, easing: ease || T().out });
+  return run(el, 'enter', [from({ x, y, s }), { opacity: 1, ...REST }], { duration: T()[dur] || dur, delay, easing: ease || T().out });
 }
 
 // A single 180 ms tint on a changed cell: a flat translucent fill that fades to the cell's own background. Paint only, never on a full redraw.
@@ -53,7 +56,7 @@ export function tint(el, color) {
 }
 
 // A number that changed: the new one rises into place instead of swapping.
-export function tick(el) { return run(el, 'tick', [{ opacity: 0, transform: 'translateY(40%)' }, { opacity: 1, transform: 'none' }], { duration: T()[2] }); }
+export function tick(el) { return run(el, 'tick', [{ opacity: 0, translate: '0 40%' }, { opacity: 1, translate: 'none' }], { duration: T()[2] }); }
 
 // ---------- ghosts: a leaving thing stays for one short exit ----------
 const COPY = ['display', 'flexDirection', 'backgroundColor', 'color', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft', 'borderRadius', 'overflow', 'zIndex'];
@@ -70,10 +73,10 @@ function ghost(node, box, into, { x = 0, y = 0, s = 1, dur = 2 } = {}) {
   if (!on()) return;
   hush(node);
   node.classList.add('m-ghost');
-  Object.assign(node.style, { position: 'absolute', left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', margin: '0', pointerEvents: 'none' });
+  Object.assign(node.style, { position: 'absolute', left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', margin: '0', transform: 'none', pointerEvents: 'none' });
   for (const [p, v] of box.css) node.style[p] = v;
   into.append(node);
-  const a = node.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translate(${x}px, ${y}px) scale(${s})` }], { duration: T()[dur], easing: T().out, fill: 'forwards' });
+  const a = node.animate([{ opacity: 1, ...REST }, { opacity: 0, translate: `${x}px ${y}px`, scale: s }], { duration: T()[dur], easing: T().out, fill: 'forwards' });
   a.onfinish = a.oncancel = () => node.remove();
 }
 // A box the user closes (the Details sheet): clone it before it is hidden, leave the clone beside it.
@@ -107,7 +110,7 @@ const shape = () => { const a = document.getElementById('app'); return [a.client
 export function capture(roots, extra = {}) {
   if (!on()) return null;
   const app = document.getElementById('app');
-  return { rows: rowsOf(roots), nums: numsOf(roots), shape: shape(), overlays: OVERLAYS.map((d) => { const el = app.querySelector(d.sel); return el ? { d, el, box: boxOf(el, app.querySelector(d.into) || app) } : { d, el: null }; }), ...extra };
+  return { rows: rowsOf(roots), nums: numsOf(roots), shape: shape(), overlays: OVERLAYS.map((d) => { const el = app.querySelector(d.sel); return el ? { d, el: d.clone ? el.cloneNode(true) : el, box: boxOf(el, app.querySelector(d.into) || app) } : { d, el: null }; }), ...extra };
 }
 
 export function play(prev, roots) {
@@ -130,7 +133,7 @@ export function play(prev, roots) {
     (before ? anchor.before(g) : anchor.after(g));
     const now = g.getBoundingClientRect();
     const dx = (r.left - now.left) / k, dy = (r.top - now.top) / k;
-    const a = g.animate([{ opacity: 1, transform: `translate(${dx}px, ${dy}px)` }, { opacity: 0, transform: `translate(${dx}px, ${dy - 6}px)` }], { duration: T()[1], easing: T().out, fill: 'forwards' });
+    const a = g.animate([{ opacity: 1, translate: `${dx}px ${dy}px` }, { opacity: 0, translate: `${dx}px ${dy - 6}px` }], { duration: T()[1], easing: T().out, fill: 'forwards' });
     a.onfinish = a.oncancel = () => g.remove();
   }
   for (const o of ops) {
@@ -138,7 +141,7 @@ export function play(prev, roots) {
     if (!el) continue;
     if (o.op === 'move') {
       const k = (el.getBoundingClientRect().width / (el.offsetWidth || 1)) || 1;
-      run(el, 'move', [{ transform: `translate(${o.dx / k}px, ${o.dy / k}px)` }, { transform: 'none' }], { duration: T()[3], easing: T().move });
+      run(el, 'move', [{ translate: `${o.dx / k}px ${o.dy / k}px` }, { translate: 'none' }], { duration: T()[3], easing: T().move });
     } else if (o.op === 'enter') enter(el, { dur: 2 });
     else if (o.op === 'tint') tint(el);
   }
@@ -146,7 +149,7 @@ export function play(prev, roots) {
   for (const p of prev.overlays) {
     const el = app.querySelector(p.d.sel);
     if (el && !p.el && p.d.enter) enter(el, { y: 0, ...p.d.enter });
-    else if (!el && p.el) ghost(p.el, p.box, app.querySelector(p.d.into) || app, p.d.exit);
+    else if (!el && p.el && p.d.exit) ghost(p.el, p.box, app.querySelector(p.d.into) || app, p.d.exit);
   }
 }
 
@@ -191,7 +194,7 @@ export function arrive(page, dir) {
   if (kids.length === 1) kids = [...kids[0].children];
   const items = [head, ...kids.filter((k) => k !== head && !k.matches('.now-scene, .dnote, dialog') && stage(k))].filter(Boolean).slice(0, 4);
   items.forEach((el, i) => enter(el, { y: 6, dur: 2, delay: staggerDelay(i) }));
-  if (!viaVT && page.firstElementChild) run(page.firstElementChild, 'route', [{ transform: `translateX(${dir * 12}px)` }, { transform: 'none' }], { duration: T()[3], easing: T().out });
+  if (!viaVT && page.firstElementChild) run(page.firstElementChild, 'route', [{ translate: `${dir * 12}px 0` }, { translate: 'none' }], { duration: T()[3], easing: T().out });
   viaVT = false;
 }
 
@@ -218,12 +221,11 @@ export function tabs(roots) {
     list.dataset.mark = '1';
     let m = list.querySelector('.tab-mark');
     if (!m) { m = document.createElement('span'); m.className = 'tab-mark'; m.setAttribute('aria-hidden', 'true'); list.append(m); }
-    const x = sel.offsetLeft, w = sel.offsetWidth, was = tabPos.get(id);
-    m.style.width = w + 'px';
-    if (was != null && on() && was !== x) { m.dataset.still = '1'; m.style.transform = `translateX(${was}px)`; m.getBoundingClientRect(); delete m.dataset.still; }
-    else m.dataset.still = '1';
-    m.style.transform = `translateX(${x}px)`;
-    if (was == null || !on()) m.dataset.still = '1'; else delete m.dataset.still;
+    const x = sel.offsetLeft, was = tabPos.get(id), slide = was != null && was !== x && on();
+    m.style.width = sel.offsetWidth + 'px';
+    m.dataset.still = '1';
+    m.style.transform = `translateX(${slide ? was : x}px)`;
+    if (slide) { m.getBoundingClientRect(); delete m.dataset.still; m.style.transform = `translateX(${x}px)`; }
     tabPos.set(id, x);
   }
 }

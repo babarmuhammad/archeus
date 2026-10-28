@@ -205,7 +205,7 @@ body[data-embed='1'] #stage { grid-row: 1; }
 :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow):hover { transition-duration: var(--dur-1); }
 :is(.btn, .chip, .tab, .tb-btn, .menu-item, .rail-toggle, .safety-btn, .bb-item, .tui-btn):active { transform: scale(.97); }
 @media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--s2); } .chip[aria-pressed='true']:hover { background: var(--s3); } }
-.pl-wrap.enter .places { animation: sheet-in var(--dur-3) var(--ease-out); }
+.pl-wrap.enter .places { animation: sheet-in var(--dur-2) var(--ease-out); }
 .pl-wrap.enter .pl-scrim { animation: fade-in var(--dur-2) var(--ease-out); }
 @keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }
 @keyframes fade-in { from { opacity: 0; } }

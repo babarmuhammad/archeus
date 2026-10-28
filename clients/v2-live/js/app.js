@@ -145,14 +145,15 @@ function drawRoute() {
     if (el && el !== document.activeElement) el.focus({ preventScroll: true });
   }
   if (insp && !wasOpen) { const hd = inspector.querySelector('h2'); if (hd) { hd.setAttribute('tabindex', '-1'); hd.focus({ preventScroll: true }); } }
-  motion.railMark(rail); motion.tabs([page, inspector]);
-  if (prev.name !== ctx.route.name) motion.arrive(page, direction(prev.name, ctx.route.name)); else motion.play(snap, roots);
-  if (insp && !wasOpen) motion.inspectorIn(inspector, app.clientWidth); else if (!insp && wasOpen) motion.inspectorOut(oldInsp, inspBox, app.clientWidth);
   const places = app.querySelector('.places');
   if (places && !places.contains(document.activeElement)) places.querySelector('.pl-item').focus();
   else if (!places && keep.was && keep.was.closest('.places')) bottom.querySelector('[data-key="bb-places"]').focus();
   const safety = app.querySelector('.safety-pop');
   if (!places && safety && !safety.contains(document.activeElement)) safety.querySelector('button').focus();
+  // motion last: focus is settled on the real DOM first, so a leaving ghost (same classes, inert) can never take it
+  motion.railMark(rail); motion.tabs([page, inspector]);
+  if (prev.name !== ctx.route.name) motion.arrive(page, direction(prev.name, ctx.route.name)); else motion.play(snap, roots);
+  if (insp && !wasOpen) motion.inspectorIn(inspector, app.clientWidth); else if (!insp && wasOpen) motion.inspectorOut(oldInsp, inspBox, app.clientWidth);
 }
 
 // ---------- the one allowed loop: the core breath on the map's core mark (ADR-0055), switched by syncLive ----------
@@ -303,7 +304,7 @@ function setLang(id) { store.set('lang', id); buildToolbar(); syncToolbar(); ren
 function setHeroNotes() { store.set('heronotes', store.get('heronotes') === 'on' ? 'off' : 'on'); syncToolbar(); broadcast(); }
 function setNotes(id) { store.set('notes', id); refreshMenu(); render(); broadcast(); }
 function toggleMotion() { store.set('motion', store.reducedMotion() ? 'full' : 'reduced'); syncCore(); syncToolbar(); toast(store.reducedMotion() ? 'Reduced motion on: the core mark is still.' : 'Motion on: the core mark breathes while work is live.'); render(); refreshMenu(); broadcast(); }
-function closeMenu() { if (menu) { motion.exitClone(menu, { y: -4, s: .98, dur: 1 }); menu.remove(); menu = null; } toolbar.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); menuName = null; }
+function closeMenu() { if (menu) { menu.remove(); menu = null; } toolbar.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); menuName = null; }
 function toggleMenu(name, btn) { if (menuName === name) { closeMenu(); return; } closeMenu(); menuName = name; btn.setAttribute('aria-expanded', 'true'); buildMenu(); }
 function refreshMenu() { if (menuName) buildMenu(); }
 function buildMenu() {
