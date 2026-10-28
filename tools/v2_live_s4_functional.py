@@ -25,6 +25,11 @@ def check(cond, msg):
         print('FAIL ' + msg)
 
 
+def pick_scope(pg, value):
+    pg.click('.composer2[data-where="page"] .cscope')
+    pg.click('.pkpop [role="option"][data-value="%s"]' % value)
+
+
 def free_port():
     s = socket.socket()
     s.bind(('127.0.0.1', 0))
@@ -197,25 +202,27 @@ def main():
             # ---- project vs general, Remember in..., the ambiguity card ----
             ctx, pg, errs = new_page(br, base)
             k0 = pg.evaluate("window.v2live.sim.state.knowledge.length")
-            check('Work \u00b7 Archeus' in pg.inner_text('.cdest') or 'Work' in pg.inner_text('.cdest'), 'the destination is visible (Work, with its project)')
-            pg.select_option('select.cscope', 'general')
-            check('General' in pg.inner_text('.cdest') and 'not project memory' in pg.inner_text('.cdest'), 'the destination line says General, not project memory')
+            check('Archeus' in pg.inner_text('.cscope') and 'Archeus' in pg.inner_text('.cdest'), 'the destination is visible (the scope chip and the line name the project)')
+            pick_scope(pg, 'general')
+            check('General' in pg.inner_text('.cscope') and 'nothing here is saved' in pg.inner_text('.cdest').lower(), 'the scope chip says General and the line says nothing is saved to a project')
             send(pg, 'Explain a checkpoint')
             check('general \u00b7 not project memory' in pg.inner_text('.msgs').lower(), 'the general answer is labelled')
             check(pg.evaluate("window.v2live.sim.state.knowledge.length") == k0, 'a general answer adds no memory')
-            pg.evaluate("document.querySelectorAll('details.cp-disclosure').forEach(d => d.open = true)")
-            check('Retention' in pg.inner_text('.convo') and 'Unknown' in pg.inner_text('.convo'), 'retention is shown as Unknown')
+            pg.click('[data-key="chat-more"]')
+            check('Retention' in pg.inner_text('.pkpop') and 'Unknown' in pg.inner_text('.pkpop'), 'retention is shown as Unknown (in the More menu)')
+            pg.keyboard.press('Escape')
             pg.click('.ccard[data-kind="general"] .btn')
             pg.wait_for_timeout(300)
             pg.click('.ccard[data-kind="remember"] .btn.primary')
             pg.wait_for_timeout(250)
             check(pg.evaluate("window.v2live.sim.state.knowledge.length") == k0, 'Remember with no destination writes nothing')
-            pg.select_option('.ccard[data-kind="remember"] select', 'notes')
+            pg.click('.ccard[data-kind="remember"] .pk')
+            pg.click('.pkpop [role="option"][data-value="notes"]')
             pg.wait_for_timeout(300)
             pg.click('.ccard[data-kind="remember"] .btn.primary')
             pg.wait_for_timeout(300)
             check(pg.evaluate("window.v2live.sim.state.knowledge.length") == k0 + 1, 'Remember writes one item after the confirm')
-            pg.select_option('select.cscope', 'work:archeus')
+            pick_scope(pg, 'work:archeus')
             pg.wait_for_timeout(2100)
             send(pg, 'What is a checkpoint')
             check(pg.locator('.ccard[data-kind="choice"]').count() == 1, 'an ambiguous question asks: Answer this, or create work?')
@@ -224,7 +231,7 @@ def main():
             # ---- the dock on Now (desktop), then the phone sheet ----
             ctx, pg, errs = new_page(br, base, hash_='#/now')
             check(pg.is_visible('.tell-dock input[data-key="chat-in-dock"]'), 'the chat bar is anchored in the Overview scene, no click needed')
-            d = pg.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), a = r('.tell-dock .composer2'), sc = r('.now-scene'), st = r('.now-strip'), cs = getComputedStyle(document.querySelector('.tell-dock .composer2')), fill = getComputedStyle(document.querySelector('.tell-dock .composer2'), '::before'); return { off: Math.abs((a.left + a.right) / 2 - (sc.left + sc.right) / 2), w: a.width, scw: sc.width, gap: st.left - a.right, bg: fill.backgroundColor, op: parseFloat(fill.opacity), bf: cs.backdropFilter, h: a.height }; }""")
+            d = pg.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), a = r('.tell-dock .composer2'), sc = r('.now-scene'), st = r('.now-strip'), cs = getComputedStyle(document.querySelector('.tell-dock .crow2')), fill = getComputedStyle(document.querySelector('.tell-dock .crow2'), '::before'); return { off: Math.abs((a.left + a.right) / 2 - (sc.left + sc.right) / 2), w: a.width, scw: sc.width, gap: st.left - a.right, bg: fill.backgroundColor, op: parseFloat(fill.opacity), bf: cs.backdropFilter, h: a.height }; }""")
             check(d['off'] < 80 and d['w'] >= min(700, d['scw'] * .9) and d['gap'] >= 0 and d['h'] < 60, 'the dock is anchored at the bottom, wide, slim (under 60 px), left of the Details button (%s)' % d)
             check(d['bf'] == 'none' and 0.05 < d['op'] < 0.5, 'the dock is a flat, mostly clear fill at rest, no blur (%s %s)' % (d['op'], d['bf']))
             check(pg.get_attribute('input[data-key="chat-in-dock"]', 'placeholder').startswith('Tell Archeus what to do'), 'placeholder: Tell Archeus what to do')
@@ -262,8 +269,9 @@ def main():
 
             # ---- failed send, retry, duplicate ----
             ctx, pg, errs = new_page(br, base)
-            pg.evaluate("document.querySelectorAll('details.cp-disclosure').forEach(d => d.open = true)")
-            pg.click('.btn:has-text("Failed send")')
+            pg.click('[data-key="chat-more"]')
+            pg.click('.pkpop .btn:has-text("Failed send")')
+            pg.keyboard.press('Escape')
             send(pg, '/idea retry me')
             check('Not sent. Send again?' in pg.inner_text('.msgs'), 'a failed send says Not sent. Send again?')
             check(pg.evaluate("window.v2live.sim.state.ideas.every(i => i.title !== 'retry me')"), 'nothing was recorded by the failed send')
@@ -320,7 +328,7 @@ def main():
 
             # ---- language switch re-draws the chat in Italian ----
             ctx, pg, errs = new_page(br, base, q='&lang=it')
-            check('Destinazione' in pg.inner_text('.cdest'), 'the destination line is Italian')
+            check('Risposte e record' in pg.inner_text('.cdest'), 'the destination line is Italian')
             check(pg.get_attribute('input[data-key="chat-in-page"]', 'placeholder').startswith('Dì ad Archeus cosa fare'), 'the placeholder is Italian')
             pg.goto('%s?theme=dark&sim=paused&motion=reduced&notes=off&lang=it#/replay/m-date' % base, wait_until='load')
             pg.wait_for_timeout(500)
