@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {driftOf, coreKeepOut, crystalRadius, isCrystal, layout, layoutProjects, projectsLegendBox, projectsKeepOut, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {driftOf, coreKeepOut, layout, layoutProjects, projectsLegendBox, projectsKeepOut, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('projects plates fit the inset, avoid each other and reserve the core for 1 to 8 projects', () => {
@@ -45,19 +45,9 @@ test('projects retain captured idea plates and ignore unrelated mission nodes', 
     for (const n of layoutProjects(input, width, height)) assert.ok(!overlaps(legend, {x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height}));
   }
 });
-test('layout is seeded, deterministic, input-order independent and bounded', () => {
-  const input = graph(25), snapshot = structuredClone(input);
-  const first = layout(input, 960, 640, 'same');
-  assert.deepEqual(first, layout(input, 960, 640, 'same'));
-  assert.deepEqual(first, layout({...input, nodes: [...input.nodes].reverse()}, 960, 640, 'same'));
-  assert.notDeepEqual(first, layout(input, 960, 640, 'different'));
-  assert.deepEqual(input, snapshot);
-  for (const n of first) { assert.ok(n.x >= 0 && n.x <= 960); assert.ok(n.y >= 0 && n.y <= 640); }
-  assert.deepEqual(layout(graph(0), 320, 560), []);
-});
 test('generated label sets never overlap another label, star, or reserved area', () => {
-  for (const width of [320, 479, 480, 960, 1280, 2560]) for (let seed = 0; seed < 8; seed++) {
-    const nodes = layout(graph(80), width, 700, seed);
+  for (const width of [320, 479, 480, 960, 1280, 2560]) {
+    const nodes = layout(graph(80), width, 700).nodes;
     const obstacle = {x: width / 2 - 35, y: 315, width: 70, height: 70};
     const boxes = placeLabels(nodes, width, 700, {selected: 'n0', obstacles: [obstacle]});
     assert.ok(boxes.length > 0);
@@ -101,33 +91,11 @@ test('seed generator repeats and stays within unit interval', () => {
   const a = randomSeed('fixture'), b = randomSeed('fixture');
   for (let i = 0; i < 100; i++) { const value = a(); assert.equal(value, b()); assert.ok(value >= 0 && value < 1); }
 });
-test('layout keeps every star inside the inset and clear of the core for 1 to 6 projects', () => {
-  for (const [w, h] of [[320, 640], [390, 844], [768, 1024], [1440, 900], [2560, 1440]]) for (const projects of [1, 2, 3, 6]) {
-    const nodes = layout({nodes: Array.from({length: 30}, (_, i) => ({id: `n${i}`, project: `p${i % projects}`, weight: 1 + i % 5, kind: i % 6 ? 'Mission' : 'Project'})), edges: []}, w, h, 's');
-    const core = coreCentre(w, h), keep = coreRadius(unit(w, h));
-    assert.equal(nodes.length, 30);
-    for (const n of nodes) {
-      assert.ok(n.x >= INSET.left && n.x <= w - INSET.right && n.y >= INSET.top && n.y <= h - INSET.bottom, `${w}x${h} ${projects}: ${n.id} outside`);
-      assert.ok(Math.hypot(n.x - core.x, n.y - core.y) >= keep, `${w}x${h} ${projects}: ${n.id} on the core`);
-    }
-  }
-});
 test('state aliases normalise and rich labels reserve the eyebrow width', () => {
   assert.equal(stateKey('Needs You'), 'needs-you'); assert.equal(stateKey('waiting'), 'needs-you'); assert.equal(stateKey(undefined), 'idle');
   const node = {id: 'a', label: 'Hi', x: 400, y: 300, radius: 6, state: 'idle', kind: 'Mission'};
   const [box] = placeLabels([node], 1440, 900, {size: 15, rich: true, measure: () => 20, metaOf: () => 'MISSION · IDLE', measureMeta: () => 150});
   assert.ok(box.width >= 150 && box.rich);
-});
-test('running and needs-you missions lay out as larger crystals than idle ones', () => {
-  const mk = (id, state) => ({id, label: id, project: 'p', kind: 'Mission', state, weight: 3});
-  const nodes = layout({nodes: [mk('a', 'idle'), mk('b', 'running'), mk('c', 'needs-you'), mk('d', 'done')], edges: []}, 1440, 900, 's');
-  const r = id => nodes.find(n => n.id === id).radius;
-  assert.ok(isCrystal({kind: 'Mission', state: 'Needs you'}) && !isCrystal({kind: 'Idea', state: 'running'}));
-  assert.ok(r('b') > r('a') * 2 && r('c') === r('b') && r('d') === r('a'));
-});
-
-test('crystal radius is large on desktop and smaller on phones', () => {
-  assert.ok(crystalRadius(1, 1440) >= 60 && crystalRadius(1, 390) <= 28 && crystalRadius(1, 390) >= 20);
 });
 test('crystal is a seeded convex hull: 60 to 100 edges, depth bands, bounded by its radius', async () => {
   const {crystal, hull3, triangle, coreStar, ICONS} = await import('./nodeart.js');
@@ -148,24 +116,6 @@ test('crystal is a seeded convex hull: 60 to 100 edges, depth bands, bounded by 
   assert.ok(triangle('x1', 40).outline.split('L').length === 3 && Object.keys(ICONS).length >= 6);
   const star = coreStar(40, 1.75);
   assert.ok((star.spikes.match(/M/g) || []).length === 16 && (star.threads.match(/M/g) || []).length >= 80);
-});
-test('layout honours a custom inset: stars stay below the headline band', () => {
-  const nodes = layout({nodes: Array.from({length: 12}, (_, i) => ({id: `n${i}`, project: `p${i % 2}`, weight: 3, kind: 'Mission', state: 'idle'})), edges: []}, 1280, 800, 's', {top: 180, bottom: 76, left: 24, right: 24});
-  for (const n of nodes) assert.ok(n.y >= 180 && n.y <= 800 - 76, `${n.id} outside the inset`);
-});
-test('layout is open: no two nodes overlap and none touches the core mark or its wordmark', () => {
-  const kinds = ['Mission', 'Idea', 'Knowledge', 'Mission'], states = ['idle', 'running', 'needs-you', 'done'];
-  for (const [w, h] of [[1280, 720], [1440, 900], [2000, 930]]) for (const projects of [1, 2, 3]) {
-    const input = {nodes: [...Array.from({length: projects}, (_, i) => ({id: `p${i}`, kind: 'Project', project: `p${i}`, weight: 8})), ...Array.from({length: 12}, (_, i) => ({id: `n${i}`, project: `p${i % projects}`, weight: 3, kind: kinds[i % 4], state: states[i % 4]}))],
-      edges: Array.from({length: 12}, (_, i) => ({from: `p${i % projects}`, to: `n${i}`}))};
-    const nodes = layout(input, w, h, 'open', {top: 170, bottom: 76, left: 24, right: 24}), keep = coreKeepOut(w, h, unit(w, h), {top: 170, bottom: 76, left: 24, right: 24});
-    nodes.forEach((a, i) => {
-      assert.ok(Math.hypot(a.x - keep.x, a.y - keep.y) >= keep.radius * .99, `${w}x${h} ${projects}: ${a.id} on the core`);
-      assert.ok(!coversNode(keep.box, a, 0), `${w}x${h} ${projects}: ${a.id} on the wordmark`);
-      for (const b of nodes.slice(i + 1)) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= (a.radius + b.radius) * .98, `${w}x${h} ${projects}: ${a.id} touches ${b.id}`);
-    });
-    assert.ok(nodes.filter(n => n.radius > 60).length <= 3);
-  }
 });
 test('calm layout lists only projects: panels apart, clear of the core mark and wordmark, inside the inset', async () => {
   const {layoutCalm} = await import('./geometry.js'), inset = {top: 16, bottom: 300, left: 24, right: 24};

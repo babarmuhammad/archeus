@@ -11,6 +11,7 @@
   --am-done: #6fd39a;
   --am-idle: #9aa5b8;
   --am-thinking: #c7b2f0;
+  --am-ease: cubic-bezier(.23, 1, .32, 1);
     --am-serif: 'Libre Caslon Text', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --am-sans: system-ui, sans-serif;
   position: relative;
@@ -96,7 +97,7 @@
 .archeus-map .am-review:focus-visible rect { stroke: var(--am-focus); stroke-width: 3; }
 .archeus-map .am-wordmark, .archeus-map .am-tagline, .archeus-map .am-running { paint-order: stroke; stroke: var(--am-bg); stroke-width: 4px; stroke-opacity: .85; stroke-linejoin: round; }
 .archeus-map .am-running { fill: var(--am-muted); font-family: var(--am-sans); letter-spacing: .08em; }
-.archeus-map .am-controls { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; }
+.archeus-map .am-controls { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
 .archeus-map button { min-width: 44px; min-height: 44px; box-sizing: border-box; border: 1px solid var(--am-line); border-radius: 7px; background: var(--am-surface); color: var(--am-text); font: inherit; cursor: pointer; padding: 8px; }
 .archeus-map button:focus-visible { outline: 3px solid var(--am-focus); outline-offset: 2px; }
 .archeus-map .am-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -160,17 +161,13 @@
 @media (forced-colors: active) { .archeus-map .am-grid-line { stroke: CanvasText; stroke-opacity: 1; } .archeus-map .am-vertex { fill: Canvas; stroke: CanvasText; } }
 .archeus-map[data-calm='true'] .am-controls { display: none; }
 .archeus-map[data-narrow='true'] .am-controls, .archeus-map[data-phone-overview='true'] .am-controls { display: none; }
-.archeus-map .am-ambient path { fill: none; stroke: var(--am-text); stroke-opacity: .09; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.archeus-map .am-ambient circle { fill: none; stroke: var(--am-text); stroke-opacity: .22; stroke-width: 1; vector-effect: non-scaling-stroke; }
-@media (forced-colors: active) { .archeus-map .am-ambient { display: none; } }
-.archeus-map[data-theme='forced'] .am-ambient { display: none; }
 
 /* Liveliness (owner decision 2026-10-27, on top of the core breath). Every loop below is transform or opacity, runs only while the host sets data-ambient='on'
    (a playing simulation, full motion, a visible tab and map; the calm scene has none), lasts 3.6 s or longer per cycle (under 0.3 Hz) and carries no state by itself:
    the state is always the node colour, glyph and label. Under Reduced motion nothing loops and the twin is the plain static scene. */
-.archeus-map .am-star { transform-box: fill-box; transform-origin: center; transition: scale 180ms cubic-bezier(.23, 1, .32, 1); }
+.archeus-map .am-star { transform-box: fill-box; transform-origin: center; }
 .archeus-map[data-reduced='false'] .am-star.am-lift { scale: 1.07; }
-.archeus-map[data-ambient='on'] .am-star, .archeus-map[data-ambient='on'] .am-joint { animation: am-drift var(--dp, 12000ms) ease-in-out var(--dd, 0ms) infinite alternate; }
+.archeus-map[data-ambient='on']:not([data-dense='true']) :is(.am-star, .am-joint) { animation: am-drift var(--dp, 12000ms) ease-in-out var(--dd, 0ms) infinite alternate; }
 @keyframes am-drift { from { translate: 0 0; } to { translate: var(--dx, 2px) var(--dy, 2px); } }
 .archeus-map .am-ring { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: 0; pointer-events: none; transform-box: fill-box; transform-origin: center; }
 .archeus-map[data-ambient='on'] .am-ring { animation: am-ring 3600ms cubic-bezier(.23, 1, .32, 1) var(--dd, 0ms) infinite; }
@@ -183,3 +180,27 @@
 .archeus-map .am-edge.am-accent-running .am-line-hot { stroke: var(--am-running); }
 .archeus-map .am-edge.am-hot .am-line-hot { opacity: 1; }
 .archeus-map[data-reduced='true'] .am-star, .archeus-map[data-reduced='true'] .am-line-hot { transition: none; }
+
+/* Network clusters. A hub is a double ring round a neutral two-letter code: identity is the code and the place, never a state colour (the diamond and the ring say what needs you or runs).
+   Hovering or focusing a node keeps its project's cluster lit and dims the rest: 100 ms in, 180 ms out, opacity only, nothing under Reduced motion. */
+.archeus-map .am-hub-disc { fill: var(--am-bg); stroke: var(--am-text); stroke-opacity: .85; stroke-width: 1.6; }
+.archeus-map .am-hub-inner { fill: none; stroke: var(--am-text); stroke-opacity: .35; stroke-width: 1; }
+.archeus-map .am-hub-code { fill: var(--am-text); font-family: var(--am-sans); font-weight: 600; letter-spacing: .06em; }
+.archeus-map .am-tag text { paint-order: stroke; stroke: var(--am-bg); stroke-width: 4px; stroke-opacity: .85; stroke-linejoin: round; pointer-events: none; }
+.archeus-map .am-tag-name { fill: var(--am-text); font-family: var(--am-serif); font-size: 16px; }
+.archeus-map .am-tag-word { fill: currentColor; font: 500 11px var(--am-sans); letter-spacing: .12em; }
+.archeus-map .am-tag-sub { fill: var(--am-muted); font: 400 12px var(--am-sans); }
+.archeus-map .am-tag-quiet { fill: var(--am-muted); font: 400 11px var(--am-sans); letter-spacing: .04em; }
+.archeus-map .am-label-word { fill: currentColor; font-family: var(--am-sans); font-weight: 500; letter-spacing: .1em; }
+.archeus-map .am-star { transition: scale 180ms var(--am-ease), opacity 180ms var(--am-ease); }
+.archeus-map :is(.am-edge, .am-spoke, .am-tag, .am-label) { transition: opacity 180ms var(--am-ease); }
+.archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition-duration: 100ms; }
+.archeus-map[data-hot] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label):not(.am-in) { opacity: .3; }
+.archeus-map[data-reduced='true'] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; }
+.archeus-map button { transition: border-color 180ms var(--am-ease); }
+.archeus-map button:hover { border-color: var(--am-text); }
+.archeus-map .am-card:not([hidden]) { animation: am-card-in 100ms var(--am-ease); }
+@keyframes am-card-in { from { opacity: 0; transform: translateY(4px); } }
+.archeus-map[data-reduced='true'] .am-card { animation: none; }
+@media (prefers-reduced-motion: reduce) { .archeus-map .am-card { animation: none; } .archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; } }
+@media (forced-colors: active) { .archeus-map .am-hub-disc, .archeus-map .am-hub-inner { stroke: CanvasText; } .archeus-map .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; } }

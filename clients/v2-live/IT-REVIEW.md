@@ -1879,3 +1879,12 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 - V2 Live is a prototype that simulates the Archeus app on every device. Nothing here is connected to a Core: the projects, missions, approvals, usage numbers and replies are fixtures and a scripted clock. → V2 Live è un prototipo che simula l’app Archeus su ogni dispositivo. Nulla qui è collegato a un Core: i progetti, le missioni, le approvazioni, i numeri di utilizzo e le risposte sono dati di prova e un orologio scritto.
 - Six looks: Dark and Light, each standard and high contrast, plus System and forced colours. Reduced motion is Quiet (A05). → Sei aspetti: Scuro e Chiaro, ciascuno standard e ad alto contrasto, più Sistema e colori forzati. Il movimento ridotto è Quieto (A05).
 - Everything on screen is simulated and says so; no Core is connected. → Tutto ciò che è sullo schermo è simulato e lo dice; nessun Core è collegato.
+
+## Network view clusters (2026-10-28, agent N): to review
+
+File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mission, Agent execution, Zoom in, Zoom out, Fit) were already translated; `Reset map view` was removed with its button (Fit also resets the view).
+
+- Open work → Apri il lavoro (last line of a project's preview card)
+- Open mission → Apri la missione (last line of a mission's preview card)
+- No missions yet → Ancora nessuna missione (hub label of a project with no missions)
+- +N quiet → +N inattive (the count of idle or finished missions folded into a hub; the Italian is a short form of "missioni inattive")

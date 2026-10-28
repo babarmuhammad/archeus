@@ -1,5 +1,4 @@
 const TAU = Math.PI * 2;
-const GOLDEN = 2.399963229728653;
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 export const INSET = Object.freeze({top: 16, right: 16, bottom: 60, left: 16});
 export const unit = (width, height) => clamp(Math.sqrt(width * height) / 900, .9, 1.6);
@@ -7,7 +6,6 @@ export const coreCentre = (width, height, inset = INSET) => ({x: width / 2, y: (
 export const CALM_CORE = 2.1;
 export const coreRadius = (u, calm, width = 1000) => 52 * u * (calm ? (width < 600 ? 1.2 : CALM_CORE) : 1);
 export const coreReach = (width, calm) => (calm ? 1.1 : width < 480 ? 1.25 : 1.75);
-export const nodeRadius = (weight, u = 1) => (3 + Math.sqrt(clamp(Number(weight) || 1, .25, 100)) * 2) * u;
 export function randomSeed(seed) {
   let n = 2166136261;
   for (const c of String(seed)) n = Math.imul(n ^ c.charCodeAt(0), 16777619);
@@ -28,18 +26,15 @@ export function stateKey(state) {
   return ({waiting: 'needs-you', attention: 'needs-you', active: 'running', completed: 'done'})[key] || key;
 }
 export const isCrystal = n => n.kind === 'Mission' && ['running', 'needs-you'].includes(stateKey(n.state));
-export const CRYSTAL_WEIGHT = 100;
-export const crystalRadius = (u, width) => (width < 480 ? 25 * u : Math.min(60 * u, 92));
 // Open space: only the top few running or needs-you missions are drawn as big crystals, the rest shrink to minor nodes.
 export const CRYSTAL_BUDGET = 3;
 export const crystalIds = nodes => new Set(nodes.filter(isCrystal).sort((a, b) => (stateKey(b.state) === 'needs-you') - (stateKey(a.state) === 'needs-you') || String(a.id).localeCompare(String(b.id))).slice(0, CRYSTAL_BUDGET).map(n => n.id));
-export const bodyRadius = (n, u, width) => (n.kind === 'Project' ? (width < 480 ? 15 : 30) : n.kind === 'Execution' ? (width < 480 ? 17 : 38) : (width < 480 ? 11 : 15)) * u;
 export const wordmarkSize = (u, calm) => Math.round((12.5 * u + 2) * (calm ? 1.35 : 1));
 // What the layout keeps clear of: the core star (a circle) and the wordmark with its tagline under it (a box).
-export function coreKeepOut(width, height, u, inset = INSET, calm = false) {
-  const c = coreCentre(width, height, inset), R = coreRadius(u, calm, width), ws = wordmarkSize(u, calm), reach = coreReach(width, calm);
+export function coreKeepOut(width, height, u, inset = INSET, calm = false, scale = 1) {
+  const c = coreCentre(width, height, inset), R = coreRadius(u, calm, width) * scale, ws = wordmarkSize(u, calm), reach = coreReach(width, calm);
   return {x: c.x, y: c.y, radius: R * reach + 8 * u,
-    box: {x: c.x - 6.5 * ws, y: c.y + R * .6, width: 13 * ws, height: R * reach + (width < 480 ? 2.8 : 4.6) * ws - R * .6}};
+    box: {x: c.x - 6.5 * ws, y: c.y + R * .6, width: 13 * ws, height: R * reach + (width < 480 || !(calm || taglineOn(scale)) ? 2.8 : 4.6) * ws - R * .6}};
 }
 // Moves a node off the core circle and the wordmark box (to the nearest free side), then back inside the area.
 function keepClear(n, keep, {left, right, top, bottom, width, height}) {
@@ -63,63 +58,91 @@ export function layoutPhone(graph, width, height) {
   const slots = [[.2, .78], [.82, .43], [.16, .16], [.82, .13]];
   return nodes.map((n, i) => ({...n, phone: true, x: width * slots[i][0], y: height * slots[i][1], radius: i === 0 && stateKey(n.state) === 'needs-you' ? 26 : 9, rank: priority(n)}));
 }
-// Open composition: each project is a hub on a ring round the core, its children spiral out from it by rank, executions and decisions
-// spiral round their mission, and a short relaxation pushes every pair apart. Nothing is drawn for a project but its own node.
-export function layout(graph, width, height, seed = 'archeus', inset = INSET) {
-  if (!graph.nodes.length) return [];
-  const u = unit(width, height), core = coreCentre(width, height, inset), keep = coreKeepOut(width, height, u, inset);
-  const big = crystalIds(graph.nodes), weight = n => big.has(n.id) ? Math.max(CRYSTAL_WEIGHT, Number(n.weight) || 1) : Number(n.weight) || 1;
-  const nodes = graph.nodes.map(n => { const w = weight(n); return {...n, radius: big.has(n.id) ? crystalRadius(u, width) : ['Mission', 'Project', 'Execution'].includes(n.kind) ? bodyRadius(n, u, width) : nodeRadius(w, u), rank: w}; })
-    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  const byId = new Map(nodes.map(n => [n.id, n])), keys = [...new Set(nodes.map(n => n.project || 'unassigned'))].sort(), P = keys.length;
-  const left = Math.min(inset.left, width / 10), right = Math.min(inset.right, width / 10), top = Math.min(inset.top, height * .42), bottom = Math.min(inset.bottom, height * .26);
-  const halfX = Math.min(core.x - left, width - right - core.x), halfY = Math.min(core.y - top, height - bottom - core.y);
-  const parentOf = new Map();
-  for (const e of graph.edges || []) if (byId.has(e.from) && byId.has(e.to) && byId.get(e.from).kind !== 'Project' && !parentOf.has(e.to)) parentOf.set(e.to, e.from);
-  const order = (a, b) => (a.kind === 'Project' ? 0 : 1) - (b.kind === 'Project' ? 0 : 1) || b.rank - a.rank || String(a.id).localeCompare(String(b.id));
-  const spiral = (list, cx, cy, r0, step, phase, rng) => list.forEach((n, i) => {
-    const a = phase + i * GOLDEN + (rng() - .5) * .3, d = r0 + n.radius + step * Math.sqrt(i + .6) * (.9 + rng() * .2);
-    n.x = cx + Math.cos(a) * d; n.y = cy + Math.sin(a) * d;
-  });
-  const kids = new Map();
-  for (const n of nodes) if (parentOf.has(n.id)) { if (!kids.has(parentOf.get(n.id))) kids.set(parentOf.get(n.id), []); kids.get(parentOf.get(n.id)).push(n); }
-  keys.forEach((key, pi) => {
-    const rng = randomSeed(`${seed}:${key}`), theta = -Math.PI / 2 + Math.PI / P + pi * TAU / P + (P === 1 ? Math.PI / 2 : 0);
-    let hx = core.x + Math.cos(theta) * halfX * .5; const hy = core.y + Math.sin(theta) * halfY * .45, hub = nodes.find(n => n.kind === 'Project' && (n.project || 'unassigned') === key);
-    const group = nodes.filter(n => (n.project || 'unassigned') === key && n !== hub && !parentOf.has(n.id)).sort(order);
-    if (hy > keep.box.y - 80 * u && Math.abs(hx - core.x) < keep.box.width / 2 + 90 * u) hx = core.x + (hx < core.x ? -1 : 1) * (keep.box.width / 2 + 90 * u);
-    if (hub) { hub.x = hx; hub.y = hy; }
-    spiral(group, hx, hy, hub ? hub.radius : 0, 92 * u, theta, rng);
-  });
-  for (const [pid, list] of kids) { const p = byId.get(pid), rng = randomSeed(`${seed}:${pid}`), away = Math.atan2(p.y - core.y, p.x - core.x); spiral(list.sort(order), p.x, p.y, p.radius, 30 * u, away, rng); }
-  const area = {left, right, top, bottom, width, height}, anchor = nodes.map(n => ({x: n.x, y: n.y})), gap = 18 * u;
-  for (let step = 0; step < (nodes.length > 60 ? 10 : 70); step++) {
-    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-      const a = nodes[i], b = nodes[j], need = a.radius + b.radius + gap, dx = b.x - a.x, dy = b.y - a.y;
-      if (Math.abs(dx) >= need || Math.abs(dy) >= need) continue;
-      const d = Math.hypot(dx, dy) || .01;
-      if (d >= need) continue;
-      const f = (need - d) / d * .5, ux = dx || .01;
-      a.x -= ux * f; a.y -= dy * f; b.x += ux * f; b.y += dy * f;
+// Project clusters (the Network view). Each project is a hub on a staggered lattice of cells round the core, its missions orbit it as satellites and their
+// executions and decisions sit beside them. The cell size is the density level: the largest that holds every project, so the slots of a level never move when a project is added.
+// Cells nearest the core come first and are given to the projects the owner has to look at first (the caller freezes that order). Satellites keep the slot they were first given.
+export const coreScaleFor = count => (count <= 3 ? 1 : count <= 8 ? .85 : count <= 16 ? .7 : .5);
+export const taglineOn = scale => scale >= .7;
+// Cell and radii per level, roomy to tight. lines: hub label lines (2 name and last action, 1 name, 0 the code only); cap: satellites shown; only: attention, running and blocked ones only.
+export const CELLS = Object.freeze([
+  {w: 340, h: 232, hub: 30, sat: 20, kid: 11, lines: 2, cap: 18}, {w: 300, h: 208, hub: 28, sat: 18, kid: 10, lines: 2, cap: 14},
+  {w: 250, h: 176, hub: 26, sat: 16, kid: 9, lines: 2, cap: 12}, {w: 206, h: 148, hub: 24, sat: 14, kid: 8, lines: 2, cap: 10},
+  {w: 164, h: 120, hub: 22, sat: 12, kid: 7, lines: 1, cap: 8}, {w: 128, h: 96, hub: 19, sat: 10, kid: 0, lines: 1, cap: 6, only: true},
+  {w: 100, h: 80, hub: 17, sat: 8, kid: 0, lines: 1, cap: 4, only: true}, {w: 80, h: 66, hub: 15, sat: 7, kid: 0, lines: 0, cap: 3, only: true},
+  {w: 64, h: 54, hub: 13, sat: 0, kid: 0, lines: 0, cap: 0, only: true}, {w: 48, h: 44, hub: 10, sat: 0, kid: 0, lines: 0, cap: 0, only: true}]);
+const CELL_PAD = 6, GAP = 5, TAG = [13, 22, 40];
+export const satRank = n => ({'needs-you': 0, running: 1, blocked: 2, paused: 3, thinking: 3, idle: 4, done: 5})[stateKey(n.state)] ?? 4;
+const byRank = (a, b) => satRank(a) - satRank(b) || String(a.id).localeCompare(String(b.id));
+const inside = (x, y, r, box) => x - r >= box.x && x + r <= box.x + box.width && y - r >= box.y && y + r <= box.y + box.height;
+// The cells of one level: the best of four lattice phases (rows and columns on or between the core's lines), minus what touches the core, its wordmark, the inset or a reserved box.
+function cellsOf(level, width, height, inset, keep, core, avoid) {
+  const {w, h} = CELLS[level], x0 = Math.min(inset.left, width / 10), x1 = width - Math.min(inset.right, width / 10), y0 = Math.min(inset.top, height * .42), y1 = height - Math.min(inset.bottom, height * .26);
+  const halfX = Math.max(1, Math.min(core.x - x0, x1 - core.x)), halfY = Math.max(1, Math.min(core.y - y0, y1 - core.y));
+  let best = [];
+  for (const [rows, cols] of [[0, 0], [.5, 0], [0, .5], [.5, .5]]) {
+    const found = [];
+    for (let j = -Math.ceil(height / h); j <= Math.ceil(height / h); j++) for (let i = -Math.ceil(width / w); i <= Math.ceil(width / w); i++) {
+      const cx = core.x + (i + cols + (j & 1 ? .5 : 0)) * w, cy = core.y + (j + rows) * h, box = {x: cx - w / 2, y: cy - h / 2, width: w, height: h};
+      if (box.x < x0 || box.y < y0 || box.x + w > x1 || box.y + h > y1 || coversNode(box, {x: keep.x, y: keep.y, radius: keep.radius}, 0) || overlaps(box, keep.box) || avoid.some(a => overlaps(box, a))) continue;
+      found.push({x: box.x, y: box.y, w, h, d: Math.round(Math.hypot((cx - core.x) / halfX, (cy - core.y) / halfY) * 12), a: ((Math.atan2(cy - core.y, cx - core.x) - Math.PI) % TAU + TAU) % TAU});
     }
-    nodes.forEach((n, i) => {
-      n.x += (anchor[i].x - n.x) * .02; n.y += (anchor[i].y - n.y) * .02;
-      keepClear(n, keep, area);
-    });
+    if (found.length > best.length) best = found;
   }
-  return nodes;
+  return best.sort((p, q) => p.d - q.d || p.a - q.a).map(({d, a, ...cell}) => cell);
 }
-// A faint ambient field behind the scene: hollow dots on a jittered grid joined by hairlines. Pure: the same size and seed give the same field.
-export function ambientField(width, height, seed = 'archeus', cell = 170) {
-  const rng = randomSeed(`${seed}:ambient`), cols = Math.max(2, Math.round(width / cell)), rows = Math.max(2, Math.round(height / cell)), dots = [];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) dots.push([(c + .2 + rng() * .6) * width / cols, (r + .2 + rng() * .6) * height / rows]);
-  let d = '';
-  const at = (c, r) => dots[r * cols + c];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const p = at(c, r), links = [[c + 1, r], [c, r + 1], rng() < .45 ? [c + 1, r + 1] : null, rng() < .3 ? [c - 1, r + 1] : null];
-    for (const l of links) if (l && l[0] >= 0 && l[0] < cols && l[1] < rows) { const q = at(l[0], l[1]); d += `M${p[0].toFixed(1)},${p[1].toFixed(1)}L${q[0].toFixed(1)},${q[1].toFixed(1)}`; }
-  }
-  return {d, dots};
+export function plan(count, width, height, inset = INSET, avoid = []) {
+  const u = unit(width, height), scale = coreScaleFor(count), keep = coreKeepOut(width, height, u, inset, false, scale), core = coreCentre(width, height, inset);
+  let level = 0, cells = cellsOf(0, width, height, inset, keep, core, avoid);
+  while (cells.length < count && level < CELLS.length - 1) cells = cellsOf(++level, width, height, inset, keep, core, avoid);
+  // A window too small for any cell still gets one, so every project has somewhere to be.
+  if (!cells.length) cells = [{x: inset.left, y: inset.top, w: Math.max(1, width - inset.left - inset.right), h: Math.max(1, height - inset.top - inset.bottom)}];
+  return {scale, keep, core, level, cells, ...CELLS[level]};
+}
+export function layout(graph, width, height, inset = INSET, {slots, memory, avoid = []} = {}) {
+  if (!graph.nodes.length) return {nodes: [], scale: 1, level: 0, memory: new Map()};
+  const keyOf = n => n.project || 'unassigned', byId = new Map(graph.nodes.map(n => [n.id, n]));
+  const order = [...new Set(graph.nodes.map(keyOf))].sort((a, b) => (slots?.get(a) ?? 1e9) - (slots?.get(b) ?? 1e9) || String(a).localeCompare(String(b)));
+  const P = plan(order.length, width, height, inset, avoid), {core} = P, gap = P.sat >= 12 ? GAP : 2, stamp = `${P.level}|${P.scale}|${width}x${height}`;
+  const parentOf = new Map();
+  for (const e of graph.edges || []) { const from = byId.get(e.from); if (from && from.kind !== 'Project' && byId.has(e.to) && !parentOf.has(e.to)) parentOf.set(e.to, e.from); }
+  const out = [], kept = new Map();
+  order.forEach((key, slot) => {
+    const cell = P.cells[slot] || P.cells[P.cells.length - 1], mine = graph.nodes.filter(n => keyOf(n) === key), hub = mine.find(n => n.kind === 'Project');
+    const sats = mine.filter(n => n !== hub && !parentOf.has(n.id)).sort(byRank), kids = new Map();
+    for (const n of mine) if (parentOf.has(n.id)) { if (!kids.has(parentOf.get(n.id))) kids.set(parentOf.get(n.id), []); kids.get(parentOf.get(n.id)).push(n); }
+    const content = {x: cell.x + CELL_PAD, y: cell.y + CELL_PAD, width: cell.w - 2 * CELL_PAD, height: cell.h - 2 * CELL_PAD}, hubR = hub ? P.hub : 0, lines = hub ? P.lines : 0;
+    const tagH = hub ? TAG[lines] : 0, block = 2 * hubR + (tagH ? 4 + tagH : 0), hx = cell.x + cell.w / 2, hy = cell.y + cell.h / 2 - block / 2 + hubR;
+    const tag = tagH ? {x: hx - Math.min(content.width, 220) / 2, y: hy + hubR + 4, width: Math.min(content.width, 220), height: tagH} : null;
+    const outward = Math.atan2(hy - core.y, hx - core.x), spin = a => Math.abs(((a - outward + 3 * Math.PI) % TAU) - Math.PI);
+    const clear = (x, y, r) => inside(x, y, r, content) && !(tag && coversNode(tag, {x, y, radius: r}, gap)) && !avoid.some(a => coversNode(a, {x, y, radius: r}, 0)) && Math.hypot(x - hx, y - hy) >= hubR + r + gap;
+    const cand = [];
+    for (let k = 0; k < 4 && P.sat; k++) {
+      const ro = hubR + P.sat + gap + (P.sat >= 12 ? 3 : 0) + k * (2 * P.sat + gap), ring = [];
+      for (let a = 0; a < 36; a++) ring.push(a * TAU / 36 - Math.PI);
+      for (const a of ring.sort((p, q) => spin(p) - spin(q) || p - q)) { const x = hx + Math.cos(a) * ro, y = hy + Math.sin(a) * ro; if (clear(x, y, P.sat)) cand.push([x, y]); }
+    }
+    const taken = [], free = (x, y, r) => clear(x, y, r) && taken.every(o => Math.hypot(x - o.x, y - o.y) >= r + o.r + gap);
+    const placed = new Map(), recall = id => { const m = memory?.get(id); return m && m.key === stamp ? [hx + m.dx, hy + m.dy] : null; };
+    const put = (n, x, y, r) => { placed.set(n.id, {x, y, r}); taken.push({x, y, r}); };
+    const shown = sats.filter(n => !P.only || satRank(n) <= 2).slice(0, P.cap);
+    for (const n of shown) { const at = recall(n.id); if (at && free(at[0], at[1], P.sat)) put(n, at[0], at[1], P.sat); }
+    if (P.kid) for (const n of shown) if (placed.has(n.id) && kids.has(n.id)) for (const k of kids.get(n.id).slice(0, 4)) { const at = recall(k.id); if (at && free(at[0], at[1], P.kid)) put(k, at[0], at[1], P.kid); }
+    for (const n of shown) if (!placed.has(n.id)) { const at = cand.find(([x, y]) => free(x, y, P.sat)); if (at) put(n, at[0], at[1], P.sat); }
+    if (P.kid) for (const n of shown) {
+      const m = placed.get(n.id);
+      if (!m || !kids.has(n.id)) continue;
+      const away = Math.atan2(m.y - hy, m.x - hx);
+      for (const k of kids.get(n.id).sort(byRank).slice(0, 4)) {
+        if (placed.has(k.id)) continue;
+        const spot = [0, 1, 2].flatMap(i => [0, 35, -35, 70, -70, 105, -105, 140, -140, 180].map(d => { const a = away + d * Math.PI / 180, dist = m.r + P.kid + 4 + i * (2 * P.kid + 4); return [m.x + Math.cos(a) * dist, m.y + Math.sin(a) * dist]; })).find(([x, y]) => free(x, y, P.kid));
+        if (spot) put(k, spot[0], spot[1], P.kid);
+      }
+    }
+    const quiet = sats.filter(n => !placed.has(n.id)).length;
+    if (hub) out.push({...hub, x: hx, y: hy, radius: hubR, rank: 8, hub: true, cluster: key, quiet, tag, lines});
+    for (const [id, p] of placed) { out.push({...byId.get(id), x: p.x, y: p.y, radius: p.r, rank: 1, cluster: key}); kept.set(id, {dx: p.x - hx, dy: p.y - hy, key: stamp}); }
+  });
+  return {nodes: out.sort((a, b) => String(a.id).localeCompare(String(b.id))), scale: P.scale, level: P.level, memory: kept};
 }
 // Calm (concept 07): only the projects, as large pointy-top hexagon panels round the core, each one listing its own items.
 // Up to four sit at the corners; more spread along an ellipse that skips the wordmark below the core. The radius shrinks until no two panels or the core keep-out touch.
@@ -214,7 +237,7 @@ export function coversNode(box, node, pad = 3) {
   const x = clamp(node.x, box.x, box.x + box.width), y = clamp(node.y, box.y, box.y + box.height);
   return Math.hypot(x - node.x, y - node.y) < node.radius + pad;
 }
-export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta, budget: limit, all = false} = {}) {
+export function placeLabels(nodes, width, height, {selected, measure = s => [...s].length * 7.5, obstacles = [], size = 12, rich = width >= 1280, metaOf, measureMeta, budget: limit, all = false, only, sub = false} = {}) {
   const result = [], occupied = [...obstacles], widths = new Map(), metas = new Map();
   const width_ = text => widths.get(text) ?? (widths.set(text, measure(text)), widths.get(text));
   const large = nodes.filter(n => n.radius > 24), small = nodes.filter(n => n.radius <= 24);
@@ -232,8 +255,9 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
   const rank = new Map(nodes.map(n => [n, priority(n)]));
   const sorted = [...nodes].sort((a, b) => rank.get(b) - rank.get(a) || String(a.id).localeCompare(String(b.id)));
   const budget = limit ?? (width < 480 ? 4 : width < 1280 ? 7 : 9);
-  const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 + size * .95 : lineHeight;
+  const metaSize = size * .68, lineHeight = size * 1.3, height2 = rich ? lineHeight + metaSize * 1.5 + size * .95 : sub ? lineHeight + size * 1.1 : lineHeight;
   for (const n of sorted) {
+    if (only && !only.has(n.id)) continue;
     const mandatory = all || n.id === selected || keys.get(n) === 'needs-you';
     if (!mandatory && result.length >= budget) continue;
     const full = String(n.label || n.id);
@@ -259,7 +283,7 @@ export function placeLabels(nodes, width, height, {selected, measure = s => [...
           && !occupied.some(b => overlaps(box, b, 4)) && !touchesNode(box);
       });
       if (found) {
-        const box = {id: n.id, x: found[0], y: found[1], width: labelWidth, height: labelHeight, text, rich, mandatory, size};
+        const box = {id: n.id, x: found[0], y: found[1], width: labelWidth, height: labelHeight, text, rich, sub, mandatory, size};
         result.push(box); occupied.push(box); break;
       }
     }

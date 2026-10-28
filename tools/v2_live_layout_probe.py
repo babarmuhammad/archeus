@@ -359,6 +359,7 @@ def main():
     ap.add_argument('--port', type=int, default=0)
     ap.add_argument('--lang', default='en')
     ap.add_argument('--notes', default='on')
+    ap.add_argument('--query', default='', help='extra URL query for the first load, for example overview=network&story=many')
     a = ap.parse_args()
     viewports = a.viewports.split(',')
     routes = a.routes.split(',') + ([] if a.no_overlays else OVERLAYS)
@@ -385,7 +386,7 @@ def main():
                     errs = []
                     pg.on('pageerror', lambda e: errs.append('pageerror: ' + str(e)))
                     pg.on('console', lambda m: errs.append('console: ' + m.text) if m.type == 'error' else None)
-                    pg.goto('%s?theme=%s&sim=paused&motion=reduced&lang=%s&notes=%s#/now' % (base, theme, a.lang, a.notes), wait_until='load')
+                    pg.goto('%s?theme=%s&sim=paused&motion=reduced&lang=%s&notes=%s%s#/now' % (base, theme, a.lang, a.notes, '&' + a.query if a.query else ''), wait_until='load')
                     pg.evaluate('document.fonts.ready.then(() => true)')
                     pg.wait_for_timeout(300)
                     for route in routes:

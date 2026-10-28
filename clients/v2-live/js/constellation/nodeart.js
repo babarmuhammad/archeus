@@ -72,11 +72,18 @@ const STATES = ['needs-you', 'running', 'done', 'blocked', 'idle', 'paused', 'th
 export function bodyMarkup(n, ic) {
   const state = stateKey(n.state), cls = STATES.includes(state) ? state : 'idle', r = n.radius, big = r > 40;
   if (n.phone) return `<g class="am-star am-state-${cls}" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-attention-ring"/><circle r="${state === 'needs-you' ? 7 : 3}" class="am-body"/></g>`;
-  const plate = big ? 17 : Math.max(8, r * .42), scale = big ? 28 / 24 : plate * 1.5 / 24;
-  const mark = state === 'needs-you' ? `<path d="M${fx(-r * .9)},${fx(-r * .78)}l7,-8l7,8l-7,8Z" class="am-diamond"/>` : state === 'blocked' ? `<path d="M${fx(r * .72)},${fx(-r * .8)}l7,7m0,-7l-7,7" class="am-glyph"/>` : '';
+  const tiny = r < 12, plate = big ? 17 : Math.max(8, r * .42), scale = big ? 28 / 24 : plate * 1.5 / 24, k = Math.min(1, r / 16), a = fx(7 * k), b = fx(8 * k);
+  const mark = state === 'needs-you' ? `<path d="M${fx(-r * .9)},${fx(-r * .78)}l${a},-${b}l${a},${b}l-${a},${b}Z" class="am-diamond"/>` : state === 'blocked' ? `<path d="M${fx(r * .72)},${fx(-r * .8)}l${a},${a}m0,-${a}l-${a},${a}" class="am-glyph"/>` : '';
   const wire = n.kind === 'Execution' ? (t => `<path d="${t.outline}" class="am-fill"/><path d="${t.mesh}" class="am-e1"/><path d="${t.outline}" class="am-e2"/><path d="${t.dots}" class="am-d1"/>`)(triangle(n.id, r))
     : (c => `<path d="${c.outline}" class="am-fill"/><path d="${c.back}" class="am-e0"/><path d="${c.mid}" class="am-e1"/><path d="${c.front}" class="am-e2"/><path d="${c.dotsBack}" class="am-d0"/><path d="${c.dotsFront}" class="am-d1"/>`)(crystal(n.id, r));
-  return `<g class="am-star am-state-${cls}" data-node-id="${esc(n.id)}">${wire}<circle r="${fx(plate)}" class="am-mark-plate"/><g transform="translate(${fx(-12 * scale)} ${fx(-12 * scale + (n.kind === 'Execution' ? r * .2 : 0))}) scale(${fx(scale)})"><path d="${ICONS[ic]}" class="am-icon"/></g>${mark}</g>`;
+  return `<g class="am-star am-state-${cls}" data-node-id="${esc(n.id)}">${wire}${tiny ? '' : `<circle r="${fx(plate)}" class="am-mark-plate"/><g transform="translate(${fx(-12 * scale)} ${fx(-12 * scale + (n.kind === 'Execution' ? r * .2 : 0))}) scale(${fx(scale)})"><path d="${ICONS[ic]}" class="am-icon"/></g>`}${mark}</g>`;
+}
+// A project hub: a double ring round its neutral two-letter code. Identity is the code and the place, never a colour; the diamond says it needs you.
+export function hubMarkup(n) {
+  const r = n.radius, code = esc(n.code || String(n.label || n.id).slice(0, 2).toUpperCase()), size = fx(Math.max(9, r * .5)), state = stateKey(n.state);
+  const text = r >= 12 ? `<text class="am-hub-code" y="${fx(size * .36)}" style="font-size:${size}px" text-anchor="middle">${code}</text>` : '';
+  const flag = state === 'needs-you' ? `<g class="am-state-needs-you"><path class="am-diamond" d="M${fx(r * .72)},${fx(-r * .95)}l6,-7l6,7l-6,7Z"/></g>` : '';
+  return `<g class="am-star am-hub am-state-core" data-node-id="${esc(n.id)}"><circle r="${r}" class="am-hub-disc"/><circle r="${fx(Math.max(2, r - 4))}" class="am-hub-inner"/>${text}${flag}</g>`;
 }
 // Crossing ivory threads: 16 spikes (long vertical and horizontal, shorter diagonals) over string-art chords between 32 rim points.
 export function coreStar(R, reach) {
