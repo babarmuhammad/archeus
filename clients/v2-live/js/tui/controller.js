@@ -148,7 +148,7 @@ export function createTui(sim, opts = {}) {
   function modeKey(k) {
     const m = S.mode;
     if (m.kind === 'cmd') return cmdKey(k);
-    if (m.kind === 'confirm') { const a = m.act; S.mode = null; if (k === 'y' || k === 'Y') run(Object.assign({}, a, { done: true })); else say('Cancelled. Nothing was sent.'); changed(); return true; }
+    if (m.kind === 'confirm') { const a = m.act; S.mode = null; if (k === 'y' || k === 'Y' || k === 'enter') run(Object.assign({}, a, { done: true })); else say('Cancelled. Nothing was sent.'); changed(); return true; }
     if (m.kind === 'places') { const p = PLACES.find((x) => x[0] === k); S.mode = null; if (p) go(p[1]); changed(); return true; }
     if (m.kind === 'reply') {
       const hit = replyOf(m.msg, eng, sim, lang()).keys.find((x) => x.k === k || (x.k === 'enter' && k === 'o'));
@@ -386,7 +386,7 @@ export function createTui(sim, opts = {}) {
     const T = (t, c) => ({ s: [seg(t, c || '')] });
     if (m.kind === 'help') { title = lang() === 'it' ? 'Tasti e aiuto' : 'Keys and help'; body = helpLines(Math.min(L.cols - 2, 74) - 4, lang(), prefs.ascii); }
     else if (m.kind === 'places') { title = lang() === 'it' ? 'Vai a' : 'Go to'; body = PLACES.map(([k, id, en, it]) => ({ s: [seg(k, 'b'), seg('  ' + (lang() === 'it' ? it : en))] })).concat([T(''), T(lang() === 'it' ? 'Premi la lettera; Esc annulla.' : 'Press the letter; Esc cancels.', 'dim')]); }
-    else if (m.kind === 'confirm') { title = m.act.label; const w = Math.min(L.cols - 2, 74) - 4; body = wrap(m.act.confirm, w).map((l) => T(l)).concat([T(''), { s: [seg('[y] Yes', 'b', 'act:y'), seg('   '), seg('[n] No', 'b', 'act:n'), seg('  ' + (lang() === 'it' ? 'Qualsiasi altro tasto annulla.' : 'Any other key cancels.'), 'dim')] }]); }
+    else if (m.kind === 'confirm') { title = m.act.label; const w = Math.min(L.cols - 2, 74) - 4; body = wrap(m.act.confirm, w).map((l) => T(l)).concat([T(''), { s: [seg('[y] Yes', 'b', 'act:y'), seg(' ⏎', 'dim'), seg('   '), seg('[n] No', 'b', 'act:n'), seg('  ' + (lang() === 'it' ? 'Qualsiasi altro tasto annulla.' : 'Any other key cancels.'), 'dim')] }]); }
     else if (m.kind === 'reply') {
       title = lang() === 'it' ? 'Archeus (risposta simulata)' : 'Archeus (simulated reply)'; const w = Math.min(L.cols - 2, 74) - 4, rv = replyOf(m.msg, eng, sim, lang()), shown = rv.keys.filter((x) => !x.hidden);
       body = []; rv.lines.forEach((ln, i) => wrap(ln, w).forEach((l) => body.push(T(l, i ? 'dim' : '')))); body.push(T(''));
