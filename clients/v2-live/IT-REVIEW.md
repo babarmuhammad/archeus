@@ -1,5 +1,47 @@
 # Italian review list for V2 Live
 
+## Security posture redesign — 2026-10-27
+
+Status: **to review**. Source: `js/i18n-areas.js`. Existing fixture content and existing translations are reused.
+
+| English | Italian |
+| --- | --- |
+| Needs a decision now | Decisioni da prendere ora |
+| What Archeus may do | Cosa può fare Archeus |
+| Boundaries | Confini |
+| Recent security events | Eventi di sicurezza recenti |
+| Emergency controls | Controlli di emergenza |
+| Nothing is blocked | Nessun blocco attivo |
+| New starts are blocked | Nuovi avvii bloccati |
+| Emergency stop engaged | Arresto di emergenza attivo |
+| 1 action is waiting for your decision | 1 azione attende la tua decisione |
+| {n} actions are waiting for your decision | {n} azioni attendono la tua decisione |
+| Physical isolation is not built | Isolamento fisico non realizzato |
+| A started CLI still runs as your user. Policy does not physically confine it. | Una CLI avviata usa ancora la tua identità. La policy non la confina fisicamente. |
+| Held commands never auto-allow. | I comandi in attesa non vengono mai autorizzati automaticamente. |
+| Ask me each time | Chiedimi ogni volta |
+| Allow once | Consenti una volta |
+| Deny | Nega |
+| No per-project command overrides are recorded. | Non sono registrate eccezioni ai comandi per singolo progetto. |
+| Last check | Ultimo controllo |
+| Execution isolation | Isolamento delle esecuzioni |
+| Accounts and homes | Account e cartelle personali |
+| Network | Rete |
+| More boundary evidence | Altre prove sui confini |
+| Held actions will appear here when a command needs your permission. | Qui appariranno le azioni in attesa quando un comando richiede il tuo permesso. |
+| Security events will appear here when an action is held, decided, or stopped. | Qui appariranno gli eventi di sicurezza quando un’azione viene sospesa, decisa o fermata. |
+| No projects are recorded. | Nessun progetto registrato. |
+| Approval mode | Modalità di approvazione |
+| Policy applies to every project below. | La policy si applica a ogni progetto qui sotto. |
+| Command policy applies inside an execution. Plan only never starts one. | La policy dei comandi vale all’interno di un’esecuzione. La modalità Solo piano non ne avvia nessuna. |
+| Latest events | Ultimi eventi |
+| Re-armed: new work can start again. | Riarmato: il nuovo lavoro può ripartire. |
+| Hook | Hook |
+| Spawn breaker | Interruttore di avvio |
+| Allow this action once? {consequence} No Undo. | Consentire questa azione una volta? {consequence, existing translation when available} Non si può annullare. |
+| Deny this action? The execution ends and the mission is blocked. No Undo. | Negare questa azione? L’esecuzione termina e la missione viene bloccata. Non si può annullare. |
+| {policy state} / {physical state} | {existing Italian policy state} / {existing Italian physical state} |
+
 Every Italian string in V2 Live was written by the builders (there is no native source). All 1364 pairs below are **to review**. English is the source; fixture words that stand in for Core's own text (mission titles, branches, project names, tool names, Replay categories) and the terminal view's program text stay English by design.
 
 Where a pair is a pattern (a number or name inside the sentence) the dictionary also holds regex rules in `js/i18n.js` and `js/i18n-areas.js` (`RULES`); those are not listed pair by pair here. Core state words (Waiting for approval, Executing, ...) come from `core-words.js` and are English in Core; their Italian is in the dictionary above.

@@ -1,11 +1,12 @@
 // S3 areas: Security, Health, Usage, Accounts and models, Hooks / MCP / agents (Extensions), plus what S3 adds to Now and Work
 // (digest, pins, idea path) and the offline view. Everything is SIMULATED; each page says so in its header.
 import { h } from './dom.js';
+import { reducedMotion } from './store.js';
 import { icon, glyph } from './icons.js';
 import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
-import { head, dnote, missionRow, badge, projName } from './views.js';
+import { head, dnote, missionRow, badge, projName, attentionItem, controlBody } from './views.js';
 import { spineRow } from './spine.js';
 import { ask, ideaPath } from './inspectors.js';
 import { done, MCP_TONE } from './inspectors2.js';
@@ -46,29 +47,82 @@ function breakerRow(ctx, A, S, hs) {
 }
 
 export function viewSecurity(ctx) {
-  const A = areasOf(ctx.sim), S = A.S(), sc = A.security();
-  const closed = sc.breakers - sc.open;
-  return h('div', { class: 'ax-page' }, axHead(ctx, 'Security', 'Security', 'Archeus stops what policy can stop. It does not yet confine a running process at the operating system level, and this page says so.'), h('div', { class: 'view' },
-    dnote('H14', 'Isolation (PV-20) is shown as the board records it: designed and fixture tested, physical reach not built, switches off. It is stated, never simulated as working.'),
-    h('div', { class: 'ax-stats' }, stat('ok', 'Built', 'Policy boundary', 'Five rules hold today'), stat('attention', 'Not built', 'Physical isolation', 'Designed, switches off'), stat(sc.open ? 'attention' : 'ok', closed + ' of ' + sc.breakers, 'Spawn breakers closed', sc.open ? sc.open + ' open: cannot start' : 'Every harness starts normally')),
-    cols([
-      card('Two boundaries', 'Neither stands in for the other.',
-        h('div', { class: 'ax-two' },
-          h('div', null, pill('ok', 'Built'), h('h3', null, 'Application policy'), h('p', null, 'What Archeus lets a run do: the workdir, the stripped environment, the fail-closed hook, approvals. This is V1 today.')),
-          h('div', null, pill('attention', 'Designed, not built'), h('h3', null, 'Physical reach'), h('p', null, 'What a process can physically reach, whatever the agent tries: an isolated identity, AppContainer, job object, ACLs. Gated off.')))),
-      card('What is isolated and what is not', 'Held by policy, and the gaps that policy cannot close.',
-        h('div', { class: 'ax-lists' }, h('div', null, h('h3', { class: 'ok' }, 'Held by policy'), h('ul', { class: 'ax-ul' }, ...sc.policyList.map((t) => h('li', { 'data-t': 'ok' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('ok')), h('span', null, t))))),
-          h('div', null, h('h3', { class: 'gap' }, 'Not isolated'), h('ul', { class: 'ax-ul' }, ...sc.notList.map((t) => h('li', { 'data-t': 'gap' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('blocked')), h('span', null, t))))))),
-      card('Eight boundaries', 'Each with its policy layer and its physical layer.', h('div', { class: 'ax-ents' }, ...sc.boundaries.map((b) => h('a', { class: 'ax-ent', href: hrefFor('boundary', b.id), 'data-key': b.id }, h('span', { class: 'e-main' }, h('span', { class: 'e-name' }, b.n + ' · ' + b.name), h('span', { class: 'e-note' }, b.what)), h('span', { class: 'e-pills' }, h('span', { class: 'lay' }, h('span', { class: 'l' }, 'Policy'), pill(LAYER(b.policy), b.policy)), h('span', { class: 'lay' }, h('span', { class: 'l' }, 'Physical'), pill(LAYER(b.physical), b.physical)))))),
-        h('p', { class: 'ax-note pad' }, 'Design acceptance rows closed: ' + sc.rows.acceptance.closed + ' of ' + sc.rows.acceptance.total + ', and ' + sc.rows.additions.closed + ' of ' + sc.rows.additions.total + ' additions. No row about physical reach can be closed in this build.')),
-    ], [
-      card('Spawn breakers', 'One per CLI. Trips at 3 failed starts in 10 minutes.', h('div', { class: 'ax-brs' }, ...S.harnesses.map((hs) => breakerRow(ctx, A, S, hs))),
-        h('p', { class: 'ax-note pad' }, 'A waiting task backs off 15 s, 30 s, 1 min, 2 min, 4 min, then 5 min. After 5 minutes one trial start is allowed. It never falls back to an unisolated run.'), dnote('H04', 'One breaker per CLI; trip and reset are simulated here; a mission says "cannot start" while it is open.')),
-      card('Switches', null, h('div', { class: 'ax-rows' }, ...sc.switches.map((x) => h('div', { class: 'ax-row' }, h('span', { class: 'r-main' }, h('span', { class: 'r-name' }, x.label), h('span', { class: 'r-note' }, x.note)), pill(x.state === 'ok' ? 'ok' : 'paused', x.word))))),
-      card('What an execution may do', 'Who stops each thing, and what is not stopped at all.', h('div', { class: 'ax-rows' }, ...A.privileges().map((p) => { const t = PRIV[p.state], r = h('div', { class: 'ax-row' }, h('span', { class: 'r-main' }, h('span', { class: 'r-name' }, p.label), h('span', { class: 'r-note' }, p.by + '. ' + p.note)), pill(t[0], t[1])); return p.link ? h('a', { class: 'ax-row-link', href: hrefFor(p.link.startsWith('sec-') ? 'boundary' : 'hook', p.link) }, r) : r; }))),
-      card('Security log', 'Breakers, hooks and what you changed.', h('div', { class: 'ax-rows' }, ...A.log().slice(0, 7).map((l) => h('div', { class: 'ax-row' }, h('span', { class: 'r-main' }, h('span', { class: 'r-note' }, l.text)), h('span', { class: 'r-time' }, clockLabel(l.at)))))),
-      card('Owner rules', null, h('div', { class: 'ax-rows' }, ...[['Never push, never touch credentials', 'Archeus does not read, store, copy, inject or relay subscription tokens.'], ['Decisions are the owner\'s', 'Chat proposes; only a card on screen with its hash is decided.'], ['No silent approval', 'A new mission from chat waits for a card here (V1 today starts it; flagged G1).']].map(([a, b]) => h('div', { class: 'ax-row' }, h('span', { class: 'r-main' }, h('span', { class: 'r-name' }, a), h('span', { class: 'r-note' }, b))))))
-    ])));
+  const A = areasOf(ctx.sim), S = A.S(), sc = A.security(), offline = A.isOffline();
+  const held = Object.values(S.approvals).filter((a) => a.kind === 'action' && a.state === 'PENDING');
+  const stopped = S.estop.engaged, previous = ctx.ui.securitySnapshot;
+  const sentence = stopped ? 'Emergency stop engaged' : held.length ? (held.length === 1 ? '1 action is waiting for your decision' : held.length + ' actions are waiting for your decision') : sc.open ? 'New starts are blocked' : 'Nothing is blocked';
+  const counts = [], cards = new Map();
+  const region = (title, count, ...body) => {
+    const n = h('span', { class: 'sec-count' }, String(count)); counts.push([title, n, count]);
+    return h('section', { class: 'sec-region', 'aria-label': title }, h('h2', null, title, n), ...body);
+  };
+  const row = (title, detail, state, tone, href) => h(href ? 'a' : 'div', { class: 'sec-row', href, 'aria-current': href === '#/security/' + ctx.route.id ? 'true' : null },
+    h('span', { class: 'sec-main' }, h('span', { class: 'sec-name' }, title), h('span', { class: 'sec-detail' }, detail)), pill(tone, state));
+  const decisions = h('div', { class: 'sec-decisions' }, ...held.map((a) => {
+    const item = attentionItem(ctx, { id: 'sec-' + a.id, kind: 'approval', group: 'Decide', mission_id: a.mission, project_id: a.project, since: a.created_at, reason: a.presented.what, ref: a.id });
+    item.querySelector('a').href = '#/security/' + a.id;
+    const decide = (kind, label) => h('button', { class: 'btn' + (kind === 'reject' ? ' danger outline' : ''), type: 'button', 'data-key': 'sec-' + kind + '-' + a.id,
+      onclick: () => ask(ctx, { at: 'sec-decision-' + a.id, text: (kind === 'approve' ? 'Allow this action once? ' + a.presented.consequence : 'Deny this action? The execution ends and the mission is blocked.') + ' No Undo.', label, tone: kind === 'reject' ? 'danger' : 'primary', run: () => ctx.act(kind, a.id) }) }, label);
+    item.querySelector('.actions').append(decide('approve', 'Allow once'), decide('reject', 'Deny'));
+    item.append(h('p', { class: 'sec-detail' }, 'Ask me each time'), h('p', { class: 'sec-detail' }, a.presented.why), inline(ctx, 'sec-decision-' + a.id));
+    const wrap = h('div', { class: 'sec-decision', 'data-approval': a.id }, item); cards.set(a.id, wrap); return wrap;
+  }));
+  const policies = S.projects.map((p) => {
+    const mode = MODES.find(([id]) => id === A.launch(p.id).mode);
+    return h('div', { class: 'sec-project', 'data-key': 'sec-project-' + p.id }, h('h3', null, p.name),
+      row('Approval mode', 'No per-project command overrides are recorded.', mode ? mode[1] : 'Unknown', A.launch(p.id).mode === 'plan' ? 'paused' : 'attention'),
+      ...A.privileges().map((r) => row(r.label, r.note, r.state === 'asks' ? 'Ask me each time' : PRIV[r.state][1], PRIV[r.state][0], r.link ? hrefFor(r.link.startsWith('sec-') ? 'boundary' : 'hook', r.link) : null)));
+  });
+  const boundaryRows = [['Execution isolation', sc.boundaries[0], 'Not confined', 'blocked'], ['Accounts and homes', sc.boundaries[4], 'Denied by policy only', 'attention'], ['Network', sc.boundaries[2], 'Not confined', 'blocked']]
+    .map(([title, b, state, tone]) => h('div', { class: 'sec-boundary' }, row(title, b.note, state, tone, '#/security/' + b.id), h('p', { class: 'sec-check' }, h('span', null, 'Last check'), ': ', h('span', null, 'Not recorded'))));
+  const events = A.log().filter((l) => ['hook', 'breaker'].includes(l.kind)).map((l) => {
+    const hs = l.kind === 'breaker' ? S.harnesses.find((x) => l.text.includes(x.label)) : null;
+    return { ...l, kind: l.kind === 'hook' ? 'Hook' : 'Spawn breaker', href: l.kind === 'hook' ? '#/extensions/h-1' : hs ? '#/security/bk-' + hs.id : null };
+  });
+  S.events.filter((e) => e.type.startsWith('approval.') || e.type.startsWith('core.estop')).forEach((e) => {
+    const a = S.approvals[e.subject.id]; if (a && a.kind !== 'action') return;
+    events.push({ at: e.at, kind: a ? 'Decision' : 'Emergency stop', text: a ? a.presented.what : e.type === 'core.estop_rearmed' ? 'Re-armed: new work can start again.' : 'Emergency stop engaged', state: a ? e.payload.to || 'PENDING' : null, href: a ? '#/security/' + a.id : null });
+  });
+  events.sort((a, b) => b.at - a.at);
+  const posture = h('p', { class: 'sec-sentence', role: 'status' }, sentence);
+  const page = h('div', { class: 'ax-page sec-page' }, head(ctx, 'Security'), h('div', { class: 'view sec-content' },
+    h('div', { class: 'sec-posture' }, posture, h('div', { class: 'sec-safety' }, pill(stopped ? 'blocked' : 'ok', stopped ? 'Engaged: nothing new starts' : 'Not stopped: accepts new work.'), stopped ? h('button', { class: 'btn primary', type: 'button', 'data-key': 'sec-rearm', onclick: () => { const controls = page.querySelector('.sec-controls'); controls.scrollIntoView({ block: 'center' }); controls.querySelector('[data-key="rearm"], [data-key="rearm-yes"]').focus(); } }, 'Re-arm') : null)),
+    h('p', { class: 'sec-warning' }, pill('attention', 'Physical isolation is not built'), h('span', null, 'A started CLI still runs as your user. Policy does not physically confine it.')),
+    region('Needs a decision now', held.length, decisions, !held.length ? h('p', { class: 'sec-empty' }, 'Held actions will appear here when a command needs your permission.') : null),
+    region('What Archeus may do', S.projects.length, h('p', { class: 'sec-rule' }, 'Held commands never auto-allow.'), h('p', { class: 'sec-detail' }, 'Policy applies to every project below.'), h('p', { class: 'sec-detail' }, 'Command policy applies inside an execution. Plan only never starts one.'), policies.length ? policies : h('p', { class: 'sec-empty' }, 'No projects are recorded.')),
+    region('Boundaries', sc.boundaries.length, ...boundaryRows, h('details', { class: 'sec-more', 'data-key': 'sec-more', open: !!((ctx.route.id || '').startsWith('bk-') || (ctx.ui.confirm && (ctx.ui.confirm.at || '').startsWith('row:bk-'))) }, h('summary', null, 'More boundary evidence'),
+      ...sc.boundaries.map((b) => row(b.n + ' · ' + b.name, b.what, b.policy + ' / ' + b.physical, LAYER(b.physical), '#/security/' + b.id)),
+      h('h3', null, 'Policy boundary'), h('ul', { class: 'sec-policy-notes' }, ...sc.policyList.map((text) => h('li', null, text))),
+      h('h3', null, 'Switches'), ...sc.switches.map((x) => row(x.label, x.note, x.word, x.state === 'ok' ? 'ok' : 'paused')),
+      h('h3', null, 'Spawn breakers'), ...S.harnesses.map((hs) => breakerRow(ctx, A, S, hs)),
+      h('p', { class: 'sec-detail' }, 'A waiting task backs off 15 s, 30 s, 1 min, 2 min, 4 min, then 5 min. After 5 minutes one trial start is allowed. It never falls back to an unisolated run.'))),
+    region('Recent security events', events.length, events.length ? h('ol', { class: 'sec-log' }, ...events.slice(0, 12).map((e) => h('li', null,
+      h('time', null, clockLabel(e.at)), h('span', { class: 'sec-category' }, e.kind), h('span', { class: 'sec-event-text' }, e.text, e.state ? badge('approval', e.state) : null), e.href ? h('a', { class: 'btn quiet', href: e.href }, 'Evidence') : h('span', { class: 'sec-detail' }, 'Not recorded')))) : h('p', { class: 'sec-empty' }, 'Security events will appear here when an action is held, decided, or stopped.'), events.length > 12 ? h('p', { class: 'sec-detail' }, 'Latest events', ': 12 / ' + events.length) : null),
+    region('Emergency controls', 3, h('div', { class: 'sec-controls' }, controlBody(ctx, false)))));
+  if (offline) {
+    page.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    page.querySelectorAll('.sec-decisions a').forEach((a) => { a.removeAttribute('href'); a.setAttribute('aria-disabled', 'true'); });
+  }
+  let mounted = false;
+  ctx.mounts.push(() => {
+    const motion = !reducedMotion() && !window.matchMedia('(prefers-reduced-motion: reduce)').matches && !offline;
+    if (!mounted && previous && motion) {
+      counts.forEach(([key, node, value]) => { if (previous.counts[key] !== value) node.animate([{ opacity: .4, transform: 'translateY(3px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 160, easing: 'ease-out' }); });
+      if (previous.sentence !== sentence) {
+        const old = h('span', { class: 'sec-old-sentence', 'aria-hidden': 'true' }, previous.sentence); posture.before(old);
+        old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180 }).finished.then(() => old.remove());
+        posture.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180 });
+      }
+      previous.cards.forEach((c, id) => {
+        if (cards.has(id) || !S.approvals[id] || S.approvals[id].state === 'PENDING') return;
+        const ghost = c.node; ghost.setAttribute('aria-hidden', 'true'); ghost.inert = true; ghost.classList.add('sec-resolved'); decisions.append(ghost);
+        ghost.animate([{ height: c.height + 'px', opacity: .6 }, { height: '0px', opacity: 0 }], { duration: 160, easing: 'ease-out' }).finished.then(() => ghost.remove());
+      });
+    }
+    mounted = true;
+    ctx.ui.securitySnapshot = { sentence, counts: Object.fromEntries(counts.map(([key, , value]) => [key, value])), cards: new Map([...cards].map(([id, node]) => [id, { node: node.cloneNode(true), height: node.getBoundingClientRect().height }])) };
+  });
+  return page;
 }
 
 // ---------- Health ----------
