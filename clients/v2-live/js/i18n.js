@@ -13,6 +13,15 @@ import { IT_CHAT, RULES_CHAT } from './i18n-chat.js';
 import { IT_PHONE, RULES_PHONE } from './i18n-phone.js';
 
 const IT = {
+  'Timeline overview': 'Panoramica della cronologia',
+  'Recorded events': 'Eventi registrati',
+  'Source record': 'Record di origine',
+  'Reference and limits': 'Riferimenti e limiti',
+  'Close evidence': 'Chiudi le prove',
+  'Inspect selected event': 'Esamina l’evento selezionato',
+  'No events in this category.': 'Nessun evento in questa categoria.',
+  'Read-only history. Select an event to inspect what Core recorded.': 'Cronologia in sola lettura. Seleziona un evento per esaminare ciò che il Core ha registrato.',
+  'Recovery proposals · SIMULATED': 'Proposte di recupero · SIMULATO',
   // shell
   'Now': 'Adesso', 'Work': 'Lavoro', 'Attention': 'Attenzione', 'Map': 'Mappa', 'Replay': 'Replay', 'Chat': 'Chat', 'Settings': 'Impostazioni', 'More': 'Altro',
   'Security': 'Sicurezza', 'Health': 'Stato di salute', 'Accounts': 'Account', 'Terminal view': 'Vista terminale', 'Terminal': 'Terminale', 'All devices': 'Tutti i dispositivi',
