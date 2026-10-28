@@ -16,6 +16,7 @@ import { overview, pane, meta, position } from './inspector-mission.js';
 import {spineOf} from '../spine-model.js';
 import {projectState} from './view-projects.js';
 import {projectTab, PROJECT_TABS, relTime} from '../page-model.js';
+import {worktreesOf} from './map.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
 export const ask = (ctx, c) => { ctx.ui.confirm = Object.assign({ at: ctx.route.id }, c); ctx.render(); };
@@ -326,6 +327,23 @@ function project(ctx, A, S, id) {
         return h('li', {'data-phase': word}, h('span', {class: 'project-phase-dot', 'aria-hidden': 'true'}), h('span', null, label), h('span', {class: 'project-phase-word'}, word));
       })));
   };
+  // A project's worktrees are its children, never projects. Stale and missing ones need the owner: Archeus never removes a linked one.
+  const trees = worktreesOf(S, p), treeOf = new Map(trees.map((w) => [w.id, w]));
+  const NEXT = { stale: ['Merge or drop its branch, then remove the folder yourself: Archeus never removes a linked worktree.', 'Archeus made it for a task. Finish or abandon the mission and Archeus removes it.'],
+    missing: ['The folder is gone. Restore it or drop the branch: Archeus does not reset or recreate a linked worktree.', 'The folder is gone. Abandon the mission, or restore the folder.'] };
+  const worktrees = () => sec('Worktrees', trees.length ? h('ul', {class: 'project-worktrees'}, ...trees.map((w) => h('li', {'data-state': w.state, 'data-key': 'wt-' + w.id},
+    h('div', {class: 'wt-top'}, h('span', {class: 'wt-branch mono'}, w.branch), h('span', {class: 'wt-owner'}, w.ownerWord), h('span', {class: 'wt-state'}, w.word), h('time', {title: w.time}, relTime(S.clock, w.at))),
+    w.missionId && S.missions[w.missionId] ? h('a', {class: 'wt-mission', href: hrefFor('mission', w.missionId)}, w.mission) : h('span', {class: 'wt-mission wt-none'}, 'No mission'),
+    NEXT[w.state] ? h('p', {class: 'wt-next'}, pill('attention', 'Needs you'), ' ', NEXT[w.state][w.owner === 'archeus' ? 1 : 0]) : null))) : note('No worktrees besides the main tree.'));
+  const wtOf = (m) => treeOf.get(m.worktree);
+  const wtFilter = ctx.ui.wtFilter && ctx.ui.wtFilter.pid === pid && treeOf.has(ctx.ui.wtFilter.id) ? ctx.ui.wtFilter.id : null;
+  const wtChips = () => {
+    const withMission = trees.filter((w) => ms.some((m) => m.worktree === w.id)).slice(0, 8);
+    if (!withMission.length) return null;
+    const set = (id) => () => { ctx.ui.wtFilter = id ? {pid, id} : null; ctx.render(); };
+    return h('div', {class: 'project-wt-filter', role: 'group', 'aria-label': 'Filter by worktree'}, h('button', {class: 'chip s', type: 'button', 'aria-pressed': String(!wtFilter), 'data-key': 'project-wtf-all', onclick: set(null)}, 'All worktrees'),
+      ...withMission.map((w) => h('button', {class: 'chip s', type: 'button', 'aria-pressed': String(wtFilter === w.id), 'data-key': 'project-wtf-' + w.id, onclick: set(w.id)}, w.branch)));
+  };
   const recent = () => {
     const seen = new Set(), rows = S.events.filter(e => e.project === pid && e.type === 'mission.state_changed' && S.missions[e.subject.id]).reverse().filter(e => !seen.has(e.subject.id) && seen.add(e.subject.id)).slice(0, 5);
     return sec('Recent', rows.length ? h('ul', {class: 'project-recent'}, ...rows.map(e => h('li', null, h('a', {href: hrefFor('mission', e.subject.id)}, h('time', null, clockLabel(e.at)), h('span', {class: 'pr-t'}, S.missions[e.subject.id].title), h('span', {class: 'pr-w'}, present('mission', e.payload.to).label))))) : note('Archeus has not acted here yet.'));
@@ -350,8 +368,8 @@ function project(ctx, A, S, id) {
     meta: h('p', {class: 'project-state-sentence'}, sentence),
     tabs: PROJECT_TABS.map(([t, l]) => (t === 'missions' ? [t, l, ms.length] : t === 'ideas' ? [t, l, ideas.length] : [t, l])),
     body: raw => { const tab = projectTab(raw); return h('div', {class: 'ax-body'},
-      tab === 'overview' ? [recent(), phases(), ideaSection()] : null,
-      tab === 'missions' ? sec('Missions', ms.length ? h('ul', {class: 'project-missions'}, ...ms.map(m => h('li', null, h('a', {href: hrefFor('mission', m.id)}, h('span', {class: 'project-mission-name'}, m.title), spineRow(m.state, m.held_from), badge('mission', m.state))))) : note('No missions yet.')) : null,
+      tab === 'overview' ? [recent(), worktrees(), phases(), ideaSection()] : null,
+      tab === 'missions' ? sec('Missions', wtChips(), ms.length ? h('ul', {class: 'project-missions'}, ...ms.filter((m) => !wtFilter || m.worktree === wtFilter).map(m => h('li', null, h('a', {href: hrefFor('mission', m.id)}, h('span', {class: 'project-mission-name'}, m.title), wtOf(m) ? h('span', {class: 'project-wt-tag mono', title: 'Worktree'}, wtOf(m).branch) : null, spineRow(m.state, m.held_from), badge('mission', m.state))))) : note('No missions yet.')) : null,
       tab === 'ideas' ? [off ? null : captureForm(), ideaSection()] : null,
       tab === 'activity' ? activity() : null,
       tab === 'settings' ? [sec('Repository', kv([['Folder', p.root], ['Missions', String(ms.length)], ['Confirmed knowledge', String(S.knowledge.filter(k => k.project === pid && k.state === 'CONFIRMED').length)]])),

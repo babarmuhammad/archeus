@@ -2146,6 +2146,24 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - A kind of extension is offered only where a harness supports it. → Un tipo di estensione è offerto solo dove un harness lo supporta.
 - The new ledes of Usage, Extensions and Launch settings, and the three notes that name a harness (Security approval mode, git push note, Health fix line "Or put another {x} account first in its failover order.") are in the same block of the dictionary.
 
+## Replay mission chooser — 2026-10-28
+- Replay a mission (phone sheet title) → Rivedi una missione
+- Choose a mission (popover name) → Scegli una missione
+- Search title, project, branch or id → Cerca titolo, progetto, ramo o id
+- Search missions → Cerca missioni
+- Project (group name) / State (group name) / Missions (list name) → Progetto / Stato / Missioni
+- All projects / All (state) / With steps → Tutti i progetti / Tutte / Con passi
+- More projects / Find a project → Altri progetti / Cerca un progetto
+- Type to narrow N more → Scrivi per restringere altri N
+- No project by that name. → Nessun progetto con quel nome.
+- Recent → Recenti
+- 1 step / N steps / no steps → 1 passo / N passi / nessun passo
+- Show N more / N not shown → Mostra altre N / N non mostrate
+- No mission matches. / Clear filters → Nessuna missione corrisponde. / Azzera i filtri
+- N of M missions (spoken count) → N di M missioni
+- State chips reuse Needs you, Running, Blocked, Done (Ti serve, In corso, Bloccate, Fatte).
+
+
 ## Phone sheets and composer, slice C (2026-10-28): to review
 - Simulated keyboard / Hide keyboard (the drawn keyboard of a mouse window, a prototype aid) → Tastiera simulata / Nascondi la tastiera
 - Show (the group of views in the Chat page's More menu on a phone: Conversation, Receipts, Context) → Mostra (the three view names are the existing Conversazione, Ricevute, Contesto)
@@ -2188,6 +2206,18 @@ Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsew
 - No mission → Nessuna missione (a worktree that holds no mission)
 - Attempt → Tentativo (one run of a task, a small mark at the close zoom level)
 - Task, Verification, Event → existing words, reused as kinds of the small marks at the close zoom levels
+
+## Worktrees on Projects, Work and the inspector — 2026-10-28
+- No worktrees besides the main tree. → Nessun worktree oltre all'albero principale.
+- All worktrees / Filter by worktree → Tutti i worktree / Filtra per worktree
+- Open project (worktree attention card) → Apri il progetto
+- Linked and task worktrees of this project (tooltip) → Worktree collegati e di attività di questo progetto
+- Merge or drop its branch, then remove the folder yourself: Archeus never removes a linked worktree. → Unisci o scarta il suo ramo, poi rimuovi tu la cartella: Archeus non rimuove mai un worktree collegato.
+- Archeus made it for a task. Finish or abandon the mission and Archeus removes it. → Lo ha creato Archeus per un'attività. Concludi o abbandona la missione e Archeus lo rimuove.
+- The folder is gone. Restore it or drop the branch: Archeus does not reset or recreate a linked worktree. → La cartella non c'è più. Ripristinala o scarta il ramo: Archeus non reimposta né ricrea un worktree collegato.
+- The folder is gone. Abandon the mission, or restore the folder. → La cartella non c'è più. Abbandona la missione oppure ripristina la cartella.
+- Reused from the Overview rows: Worktrees, linked (collegato), task (attività), Stale, Missing, Merged, Abandoned, N worktrees. Active (state) reads Attiva, a feminine form; the word should be masculine for worktree: Attivo. Needs your call.
+
 ## Phone pages (slice D) - 2026-10-28
 
 Status: to review. New pairs in `js/i18n-s6.js` and `js/i18n-areas.js` for Replay, the area pages, Settings and the terminal keys on the phone. Words that already had a pair (More, View, Layout, Detail, Places, Mission) are reused.

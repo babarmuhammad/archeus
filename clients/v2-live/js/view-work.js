@@ -44,7 +44,7 @@ function modelOf(sim, entries, shown) {
 }
 
 export function render(ctx) {
-  const sim = ctx.sim, st = sim.state, now = st.clock, ids = st.projects.map((p) => p.id);
+  const sim = ctx.sim, st = sim.state, now = st.clock, ids = st.projects.map((p) => p.id), trees = new Map(st.projects.flatMap((p) => p.worktrees || []).map((w) => [w.id, w]));
   const q = workQuery(ctx.route.q || {}, ids);
   if (location.hash.includes('?')) ctx.ui.workProject = q.project; else q.project = ids.includes(ctx.ui.workProject) ? ctx.ui.workProject : null; // a bare #/work keeps the filter another page set
   const sel = ctx.route.id, pf = q.project, pn = pf && st.projects.find((p) => p.id === pf), asGraph = q.as === 'graph';
@@ -72,7 +72,7 @@ export function render(ctx) {
   };
   const rowOf = (e) => {
     const m = e.m, p = present('mission', m.state), x = Object.values(st.executions).find((z) => z.mission === m.id && (z.state === 'RUNNING' || z.state === 'LOST'));
-    const meta = [projName(sim, m.project), m.branch, m.reason || (x ? sim.reading(x) : null)].filter(Boolean).join(' · ');
+    const meta = [projName(sim, m.project), (trees.get(m.worktree) || m).branch, m.reason || (x ? sim.reading(x) : null)].filter(Boolean).join(' · ');
     return link(h('a', { class: 'mrow wk-row', href: '#/work/' + m.id, 'data-key': 'm-' + m.id, 'data-peek-id': e.id, 'data-vocab': vocabOf(p.cls) },
       h('span', { class: 't' }, badge('mission', m.state), h('span', { class: 'name' }, m.title)), h('span', { class: 'm' }, meta, x ? h('span', { class: 'vh' }, ' ') : null),
       h('time', { class: 'mrow-time', title: clockLabel(e.at) }, relTime(now, e.at)), h('span', { class: 'sp' }, spineRow(m.state, m.held_from))), m.id);

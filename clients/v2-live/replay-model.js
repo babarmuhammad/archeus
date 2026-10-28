@@ -91,10 +91,14 @@ const STEER_WHY = {
   'mission.steer_requested': 'A steer is a request to be taken at the next safe boundary. This is a simulation; a real Core would record the request, not that the mission changed course.',
   'mission.steer_acknowledged': 'Core acknowledged the steer. The acknowledgement is recorded; it does not prove the mission changed course, and the boundary it took effect at is not modelled here.'
 };
+// The events Replay lists as steps, and how many each mission has: the chooser shows the count without building every replay.
+const isStepEvent = (e) => /state_changed$|created$|requested$|acknowledged$/.test(e.type) && !/^(message|task\.created)/.test(e.type);
+export function recordedSteps(events) { const n = new Map(); for (const e of events) if (e.mission && isStepEvent(e)) n.set(e.mission, (n.get(e.mission) || 0) + 1); return n; }
+
 export function buildReplay(sim, missionId) {
   const st = sim.state, m = st.missions[missionId];
   if (!m) return null;
-  const evs = st.events.filter((e) => e.mission === missionId && /state_changed$|created$|requested$|acknowledged$/.test(e.type) && !/^(message|task\.created)/.test(e.type));
+  const evs = st.events.filter((e) => e.mission === missionId && isStepEvent(e));
   const last = {}; evs.forEach((e) => { if (e.type.endsWith('state_changed')) last[e.subject.kind + ':' + e.subject.id] = e; });
   const steps = evs.map((e, i) => {
     const k = e.subject.kind, to = e.payload && e.payload.to, isState = e.type.endsWith('state_changed');
