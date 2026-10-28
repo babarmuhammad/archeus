@@ -65,7 +65,7 @@ try:
         # one Work page: Attention redirects, the graph and the list stay in sync
         pg.evaluate("location.hash = '#/attention/a-1'"); pg.wait_for_timeout(400)
         check('#/attention/<id> redirects to #/work/<id> and opens the inspector', pg.evaluate('location.hash') == '#/work/a-1' and pg.locator('#inspector .insp-foot').count() == 1)
-        check('the Work nav item carries the count and there is no Attention item', pg.locator('.rail [data-route="attention"]').count() == 0 and pg.locator('.rail [data-route="work"] .count').inner_text() == '4')
+        check('the Work nav item carries the count and there is no Attention item', pg.locator('.rail [data-route="attention"]').count() == 0 and pg.locator('.rail [data-route="work"] .count').inner_text() == str(pg.evaluate("window.v2live.sim.attention().filter((a) => a.kind !== 'knowledge').length")))
         pg.evaluate("location.hash = '#/work'"); pg.wait_for_timeout(300)
         pg.click('.work-graph .am-hit[data-node-id="m-date"]', force=True); pg.wait_for_timeout(400)
         check('a graph node opens its inspector and marks its row', pg.evaluate('location.hash') == '#/work/m-date' and pg.locator('.work-list [data-link~="m-date"][aria-current="true"]').count() == 1 and pg.locator('.work-graph .wg-node.am-selected').count() == 1)
