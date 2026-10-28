@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSim } from '../sim.js';
 import { createChat, fmt } from '../chat-engine.js';
+import { buildReplay } from "../replay-model.js";
 import { parse, menuFor, COMMANDS, find, CLASSES, ordered, filter } from '../slash.js';
 
 const mk = () => { const sim = createSim({ strict: true }); let t = 1e6; const chat = createChat(sim, { now: () => t }); return { sim, chat, tick: (ms) => { t += ms; } }; };
@@ -198,4 +199,101 @@ test('a reply carries the project it answers, so a slow reply is not filed under
   const a = chat.send('what is a mission', { project: 'archeus' }), b = chat.send('what is an idea', { project: 'notes' });
   b.run(); a.run();
   assert.deepEqual(sim.state.messages.slice(-2).map((m) => [m.from, m.project]), [['archeus', 'notes'], ['archeus', 'archeus']]);
+});
+
+// ---------- queue (Enter) and steer (Cmd/Ctrl+Enter) while a mission runs ----------
+const untilLeft = (sim, id, from) => { for (let i = 0; i < 400 && sim.state.missions[id].state === from; i++) sim.advance(10000); };
+
+test('queue: waits for the end of the step, then is answered; one message per send', () => {
+  const { sim, chat } = mk(), base = sim.state.messages.filter((x) => x.from === 'archeus').length;
+  const r = chat.send('Check the date again', { project: 'archeus', mode: 'queue' });
+  assert.ok(r.queued && r.mission === 'm-date' && !r.run);
+  const m = sim.state.messages.find((x) => x.id === r.id);
+  assert.deepEqual([m.status, m.target], ['queued', 'm-date']);
+  assert.equal(chat.queued('archeus').length, 1);
+  assert.equal(sim.state.messages.at(-1).id, r.id, 'no reply yet');
+  untilLeft(sim, 'm-date', 'EXECUTING');
+  assert.equal(m.status, 'sent');
+  assert.equal(chat.queued().length, 0);
+  assert.equal(sim.state.messages.filter((x) => x.from === 'archeus').length, base + 1);
+});
+
+test('queue: a removed message is never sent', () => {
+  const { sim, chat } = mk(), base = sim.state.messages.filter((x) => x.from === 'archeus').length;
+  const r = chat.send('Check the date again', { project: 'archeus', mode: 'queue' });
+  assert.equal(chat.unqueue(r.id), true);
+  assert.equal(chat.unqueue(r.id), false);
+  untilLeft(sim, 'm-date', 'EXECUTING');
+  assert.equal(sim.state.messages.find((x) => x.id === r.id).status, 'withdrawn');
+  assert.equal(sim.state.messages.filter((x) => x.from === 'archeus').length, base);
+});
+
+test('steer: steering until Core acknowledges, a request and an acknowledgement event, both said to be simulated', () => {
+  const { sim, chat } = mk();
+  const r = chat.send('Skip the slow test', { project: 'archeus', mode: 'steer' });
+  const m = sim.state.messages.find((x) => x.id === r.id);
+  assert.ok(r.steering);
+  assert.equal(m.status, 'steering');
+  const req = sim.state.events.find((e) => e.type === 'mission.steer_requested');
+  assert.deepEqual([req.mission, req.actor], ['m-date', 'device']);
+  sim.advance(31000);
+  assert.equal(m.status, 'sent');
+  const ack = sim.state.events.find((e) => e.type === 'mission.steer_acknowledged');
+  assert.equal(ack.actor, 'system');
+  assert.match(fmt(sim.state.messages.at(-1).c, 'en'), /^SIMULATED .*nothing changed course/);
+  const steps = buildReplay(sim, 'm-date').steps.filter((s) => /^STEER_/.test(s.state));
+  assert.deepEqual(steps.map((s) => [s.state, s.category]), [['STEER_REQUESTED', 'INTENDED'], ['STEER_ACKNOWLEDGED', 'RECORDED']]);
+  assert.ok(steps.every((s) => /not prove|not that/.test(s.why)));
+});
+
+test('queue and steer: with nothing running, or for a command, both just send', () => {
+  const { sim, chat } = mk();
+  const a = chat.send('Check the notes', { project: 'notes', mode: 'queue' }), b = chat.send('/status', { project: 'archeus', mode: 'steer', force: true });
+  assert.ok(a.run && !a.queued && sim.state.messages.find((x) => x.id === a.id).status === 'submitted');
+  assert.ok(!b.steering && !sim.state.events.some((e) => e.type === 'mission.steer_requested'));
+});
+
+test('pins and recents: canonical names, pin order, recents capped at 8 and deduped, only valid commands survive', async () => {
+  const { clean, togglePin, pushRecent, RECENT_CAP } = await import('../slash.js');
+  assert.deepEqual(clean(['stato', 'status', 'nope', 'account', 7, 'aiuto']), ['status', 'help'], 'aliases become the English name, repeats, unknown names and /account drop out');
+  assert.deepEqual(clean('not a list'), []);
+  let pins = []; pins = togglePin(pins, 'stop'); pins = togglePin(pins, 'idea'); pins = togglePin(pins, 'status');
+  assert.deepEqual(pins, ['stop', 'idea', 'status'], 'pin order is kept');
+  assert.deepEqual(togglePin(pins, 'idea'), ['stop', 'status'], 'toggling again unpins');
+  let r = []; for (const n of ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8', 'a9']) r = pushRecent(r, n);
+  assert.equal(r.length, RECENT_CAP); assert.equal(RECENT_CAP, 8); assert.deepEqual(r.slice(0, 2), ['a9', 'a8']);
+  assert.deepEqual(pushRecent(['status', 'idea', 'stop'], 'idea'), ['idea', 'status', 'stop'], 'a repeat moves to the front once');
+});
+
+test('menu with no query: Pinned, then the last five Recent without repeating a pin, then the rest by class', () => {
+  const g = menuFor('/', ['needs', 'status', 'idea', 'stop', 'plan', 'why', 'help'], 'en', ['status', 'digest']).groups;
+  assert.deepEqual(g.map((x) => x.key), ['pinned', 'recent', 'READ', 'CREATE', 'PROPOSE', 'NAVIGATE']);
+  assert.deepEqual(g[0].items.map((c) => c.name), ['status', 'digest']);
+  assert.deepEqual(g[1].items.map((c) => c.name), ['needs', 'idea', 'stop', 'plan'], 'five recents, minus the pinned /status');
+  const flat = g.flatMap((x) => x.items).map((c) => c.name);
+  assert.equal(new Set(flat).size, flat.length, 'no command twice');
+  assert.equal(flat.length, COMMANDS.length);
+  assert.deepEqual(menuFor('/', [], 'en', []).groups.map((x) => x.key), ['READ', 'CREATE', 'PROPOSE', 'NAVIGATE'], 'no pins and no recents: no empty headings');
+  assert.equal(menuFor('/st', [], 'en', []).groups, null, 'typing drops the headings');
+});
+
+test('ranking with a query: exact or prefix first, then pinned, then recent, then the others; Italian aliases match too', () => {
+  const names = (q, rec, pins, lang = 'en') => filter(q, rec, lang, pins).map((c) => c.name);
+  const plain = names('st', [], []);
+  assert.deepEqual(plain.slice(0, 3), ['status', 'start', 'stop'], 'prefix matches first, class then alphabetical');
+  assert.equal(names('st', [], ['stop'])[0], 'stop', 'a pinned prefix match leads the prefix matches');
+  const contain = names('e', [], []), pinnedContain = names('e', [], ['review']), prefixCount = contain.filter((n) => n.startsWith('e') || find(n).alias.startsWith('e')).length;
+  assert.equal(pinnedContain.indexOf('review'), prefixCount, 'pinned beats the others but never a prefix match');
+  const recentContain = names('e', ['pause'], []);
+  assert.equal(recentContain.indexOf('pause'), prefixCount, 'recent beats the others but never a prefix match');
+  const both = names('e', ['pause'], ['review']);
+  assert.ok(both.indexOf('review') < both.indexOf('pause'), 'pinned before recent');
+  assert.equal(names('stato', [], [], 'it')[0], 'status', 'the Italian alias matches');
+});
+
+test('the slash menu shows one language: the chat never prints the other name of a command', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../js/chat.js', import.meta.url), 'utf8');
+  assert.ok(!/otherName\(/.test(src), 'no row prints the alias in the other language');
+  assert.ok(!/a\.cmd\.name\b/.test(src), 'the destination line prints the active language name');
 });

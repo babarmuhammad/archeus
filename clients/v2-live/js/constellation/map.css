@@ -11,7 +11,7 @@
   --am-done: #6fd39a;
   --am-idle: #9aa5b8;
   --am-thinking: #c7b2f0;
-  --am-ease: cubic-bezier(.23, 1, .32, 1);
+  --am-ease: var(--ease-out, cubic-bezier(.23, 1, .32, 1));
     --am-serif: 'Libre Caslon Text', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
   --am-sans: system-ui, sans-serif;
   position: relative;
@@ -175,7 +175,7 @@
 .archeus-map .am-travel { fill: var(--am-text); opacity: 0; pointer-events: none; }
 .archeus-map[data-ambient='on'] .am-travel { animation: am-travel var(--tp, 4000ms) linear var(--td, 0ms) infinite; }
 @keyframes am-travel { 0% { translate: var(--x0) var(--y0); opacity: 0; } 12%, 88% { opacity: .95; } 100% { translate: var(--x1) var(--y1); opacity: 0; } }
-.archeus-map .am-line-hot { fill: none; stroke: var(--am-text); stroke-width: 1.8; stroke-opacity: .95; opacity: 0; transition: opacity 200ms ease; pointer-events: none; }
+.archeus-map .am-line-hot { fill: none; stroke: var(--am-text); stroke-width: 1.8; stroke-opacity: .95; opacity: 0; transition: opacity var(--dur-2, 160ms) var(--am-ease); pointer-events: none; }
 .archeus-map .am-edge.am-accent-needs-you .am-line-hot { stroke: var(--am-attention); }
 .archeus-map .am-edge.am-accent-running .am-line-hot { stroke: var(--am-running); }
 .archeus-map .am-edge.am-hot .am-line-hot { opacity: 1; }
@@ -208,7 +208,7 @@
 .archeus-map[data-grouped='true'] :is(.am-star, .am-edge) { transform-box: view-box; transform-origin: var(--hx, 0px) var(--hy, 0px); }
 .archeus-map[data-grouped='true'][data-reduced='false'] :is(.am-star, .am-edge).am-in { scale: 1.04; }
 .archeus-map[data-reduced='true'] :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; }
-.archeus-map button { transition: border-color 180ms var(--am-ease); }
+.archeus-map button { transition: border-color var(--dur-2, 160ms) var(--am-ease); }
 .archeus-map button:hover { border-color: var(--am-text); }
 @media (prefers-reduced-motion: reduce) { .archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; } }
 @media (forced-colors: active) { .archeus-map .am-hub-disc, .archeus-map .am-hub-inner { stroke: CanvasText; } .archeus-map .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; } }

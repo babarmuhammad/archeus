@@ -2008,3 +2008,37 @@ File: `js/i18n-areas.js`. Each of the four pages now has parts that are links; t
 - Saved as you choose. / Each switch saves as you flip it. (autosave stated; three sentences that end this way) → Si salva appena scegli. / Ogni interruttore si salva appena lo cambi.
 - Name is off. (toast with Undo) → Nome è disattivato.
 
+
+## Chat queue and steer, builder A (2026-10-28): to review
+
+Inline `L(en, it)` strings in `js/chat.js`, `js/chat-cards.js`, `chat-engine.js`; two Replay explanations in `js/i18n-chat.js`.
+
+- Enter queue · {k}Enter steer → Invio accoda · {k}Invio guida (key hint; {k} is ⌘ or Ctrl+; shown only while a mission runs)
+- {n} queued → {n} in coda
+- Queued → In coda
+- Handled after the current step. → Gestito dopo il passo corrente.
+- Remove → Rimuovi
+- Steering → Guida in corso
+- Waiting for Core to acknowledge. Simulated. → In attesa che il Core confermi. Simulato.
+- Removed from the queue. Nothing was sent. → Tolto dalla coda. Non è stato inviato nulla.
+- Queued. It is handled after the current step. → In coda. Viene gestito dopo il passo corrente. (screen reader announcement)
+- Steering. Waiting for Core to acknowledge; this is simulated. → Guida in corso. In attesa che il Core confermi; è simulato. (screen reader announcement)
+- SIMULATED · Core acknowledged the steer for “{t}”. A real Core would record the request and the safe boundary where it took effect; here nothing changed course. → SIMULATO · Il Core ha confermato la richiesta di guida per “{t}”. Un Core reale registrerebbe la richiesta e il confine sicuro in cui ha avuto effetto; qui nulla ha cambiato rotta.
+- Steer asked (simulated) → Guida richiesta (simulata) (Receipts line)
+- Steer acknowledged (simulated) → Guida confermata (simulata) (Receipts line)
+- Replay, steer request: A steer is a request to be taken at the next safe boundary. This is a simulation; a real Core would record the request, not that the mission changed course. → Una guida è una richiesta di essere presa al prossimo confine sicuro. Questa è una simulazione; un Core reale registrerebbe la richiesta, non che la missione abbia cambiato rotta.
+- Replay, steer acknowledgement: Core acknowledged the steer. The acknowledgement is recorded; it does not prove the mission changed course, and the boundary it took effect at is not modelled here. → Il Core ha confermato la guida. La conferma è registrata; non prova che la missione abbia cambiato rotta, e il confine in cui ha avuto effetto qui non è modellato.
+
+## Chat wide layout and slash pins, builder A (2026-10-28): to review
+
+Inline `L(en, it)` strings in `js/chat.js`.
+
+- Activity → Attività (name of the side pane on a wide Chat page)
+- Open missions → Missioni aperte (Receipts, section heading)
+- Pinned → Fissati (slash menu heading)
+- Recent → Recenti (slash menu heading)
+- Pin {c} → Fissa {c} (pin button name; {c} is the command, for example /stato)
+- Unpin {c} → Rimuovi {c} dai fissati
+- Pinned {c} → Fissato {c} (spoken when a pin is added)
+- Unpinned {c} → Rimosso {c} dai fissati (spoken when a pin is removed)
+- Alt+P pins or unpins the highlighted command → Alt+P fissa o rimuove il comando evidenziato (hint under the menu; not shown on the phone sheet)

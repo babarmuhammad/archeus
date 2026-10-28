@@ -49,6 +49,13 @@ def new_page(br, base, w=1440, h=900, q='', hash_='#/chat'):
     return ctx, pg, errs
 
 
+def idle(pg):
+    """No mission executes in the scope. While one does, Enter queues a plain message instead of answering it (PW08), so the checks
+    of plain text answers run with the one executing mission moved on."""
+    pg.evaluate("window.v2live.sim.state.missions['m-date'].state = 'VERIFYING'")
+    pg.wait_for_timeout(100)
+
+
 def send(pg, text, where='page', wait=900):
     pg.fill('input[data-key="chat-in-%s"]' % where, text)
     pg.keyboard.press('Enter')
@@ -76,6 +83,7 @@ def main():
 
             # ---- the slash combobox: keys, aria, five rows then more, recents, escape, alias ----
             ctx, pg, errs = new_page(br, base)
+            idle(pg)
             inp = 'input[data-key="chat-in-page"]'
             pg.click(inp)
             pg.keyboard.type('/')
@@ -201,6 +209,7 @@ def main():
 
             # ---- project vs general, Remember in..., the ambiguity card ----
             ctx, pg, errs = new_page(br, base)
+            idle(pg)
             k0 = pg.evaluate("window.v2live.sim.state.knowledge.length")
             check('Archeus' in pg.inner_text('.cscope') and 'Archeus' in pg.inner_text('.cdest'), 'the destination is visible (the scope chip and the line name the project)')
             pick_scope(pg, 'general')
@@ -226,6 +235,81 @@ def main():
             pg.wait_for_timeout(2100)
             send(pg, 'What is a checkpoint')
             check(pg.locator('.ccard[data-kind="choice"]').count() == 1, 'an ambiguous question asks: Answer this, or create work?')
+            ctx.close()
+
+            # ---- queue (Enter) and steer (Cmd or Ctrl+Enter) while a mission runs (PW08) ----
+            ctx, pg, errs = new_page(br, base)
+            inp = 'input[data-key="chat-in-page"]'
+            hint = lambda: pg.inner_text('.composer2[data-where="page"] .chint')
+            check('Enter queue' in hint() and 'steer' in hint(), 'the key hint shows while a mission runs')
+            pg.fill(inp, 'Check the date again')
+            pg.press(inp, 'Enter')
+            pg.wait_for_timeout(300)
+            check(pg.locator('.msg .qchip:has-text("Queued")').count() == 1 and '1 queued' in hint(), 'Enter queues: a Queued chip in the thread and a count on the composer')
+            check(pg.evaluate("window.v2live.sim.state.messages.at(-1).from") == 'you', 'a queued message gets no reply yet')
+            pg.click('.msg .btn:has-text("Remove")')
+            pg.wait_for_timeout(300)
+            check('Removed from the queue' in pg.inner_text('.msgs') and 'queued' not in hint(), 'a queued message can be removed')
+            pg.fill(inp, 'Skip the slow test')
+            pg.press(inp, 'Control+Enter')
+            pg.wait_for_timeout(300)
+            check(pg.locator('.msg .qchip:has-text("Steering")').count() == 1, 'Ctrl+Enter steers: Steering until Core acknowledges')
+            pg.evaluate("window.v2live.sim.advance(31000)")
+            pg.wait_for_timeout(400)
+            check(pg.locator('.msg .qchip:has-text("Steering")').count() == 0 and 'Core acknowledged the steer' in pg.inner_text('.msgs'), 'the acknowledgement ends Steering and says it is simulated')
+            pg.click('[data-key="chat-tab-receipts"]')
+            check('Steer asked (simulated)' in pg.inner_text('.cp-panel') and 'Steer acknowledged (simulated)' in pg.inner_text('.cp-panel'), 'both steer events are in Receipts')
+            check(not errs, 'no page errors in the queue and steer run: %s' % errs[:2])
+            ctx.close()
+
+            # ---- wide Chat: a side pane beside the thread; the composer ring; the slash menu scrolls, pins and speaks one language ----
+            ctx, pg, errs = new_page(br, base)
+            g = pg.evaluate("""() => { const r = (q) => document.querySelector(q).getBoundingClientRect(), c = r('.convo'), a = r('.cside'), m = r('.cp-thread .msg:not(.you)');
+              return { wide: document.querySelector('.chatpage').dataset.wide, chatTab: !!document.querySelector('[data-key="chat-tab-chat"]'), tabs: [...document.querySelectorAll('.cside [role=tab]')].length, side: a.width, cx: c.left, mx: m.left, ax: a.left, cw: c.width } }""")
+            check(g['wide'] == 'true' and not g['chatTab'] and g['tabs'] == 2 and g['mx'] - g['cx'] < 40 and g['ax'] >= g['cx'] + g['cw'] - 1 and 340 <= g['side'] <= 640,
+                  'wide Chat: the thread keeps the left edge and a Receipts and Context pane sits beside it (%s)' % g)
+            pg.click('[data-key="chat-tab-context"]')
+            check(pg.is_visible('.cside [data-key="chat-cmd-q"]') and pg.is_visible('.convo input.cinput'), 'the Context tab fills the pane and the conversation stays visible')
+            pg.click('[data-key="chat-tab-receipts"]')
+            check('open missions' in pg.inner_text('.cside').lower() and 'done by archeus' in pg.inner_text('.cside').lower(), 'the pane lists open missions and what Archeus did')
+            ring = "() => { const c = document.querySelector('.composer2[data-where=page] .crow2'), s = getComputedStyle(c); return [s.outlineStyle, s.outlineWidth, s.outlineOffset, s.borderColor === s.outlineColor, getComputedStyle(document.querySelector('.composer2[data-where=page] .cinput')).outlineStyle] }"
+            pg.focus('input[data-key="chat-in-page"]')
+            check(pg.evaluate(ring) == ['solid', '2px', '0px', True, 'none'], 'typing: one ring on the pill, flush, in the border colour, none on the field (%s)' % pg.evaluate(ring))
+            pg.keyboard.press('Tab'); pg.keyboard.press('Tab')
+            r = pg.evaluate(ring)
+            check(r[0] == 'none' and pg.evaluate("getComputedStyle(document.querySelector('.composer2[data-where=page] .csend')).outlineStyle") == 'solid', 'Send focused: the pill ring is off, the button shows its own (%s)' % r)
+            pg.click('input[data-key="chat-in-page"]'); pg.keyboard.type('/'); pg.wait_for_timeout(150)
+            vis = "() => { const l = document.querySelector('.composer2[data-where=page] .slash'), a = l.querySelector('[aria-selected=true]'); const r = a.getBoundingClientRect(), q = l.getBoundingClientRect(); return [r.top >= q.top - 1 && r.bottom <= q.bottom + 1, Math.round(l.scrollTop)] }"
+            n0 = pg.locator('.composer2[data-where=page] .slash .srow').count()
+            for _ in range(n0 - 1): pg.keyboard.press('ArrowDown')
+            pg.keyboard.press('Enter'); pg.wait_for_timeout(100)
+            check(pg.locator('.composer2[data-where=page] .slash .srow').count() > n0 + 20 and pg.evaluate(vis)[0], 'keyboard expands +N more and the active option is in view')
+            steps = [pg.keyboard.press('ArrowDown') or pg.evaluate(vis) for _ in range(20)]
+            check(all(v[0] for v in steps) and steps[-1][1] > 0, 'ArrowDown through 20 rows keeps the active option inside the scrolling list')
+            pg.keyboard.press('End'); check(pg.evaluate(vis)[0] and pg.evaluate(vis)[1] > 0, 'End shows the last command')
+            pg.keyboard.press('Home'); check(pg.evaluate(vis) == [True, 0], 'Home returns to the first command')
+            pg.keyboard.press('PageDown'); pg.keyboard.press('PageDown'); check(pg.evaluate(vis)[0] and pg.evaluate(vis)[1] > 0, 'PageDown moves by pages and stays in view')
+            check(pg.evaluate("document.activeElement.className") == 'cinput', 'focus stays in the field')
+            pg.keyboard.press('Home'); name = pg.evaluate("document.querySelector('.composer2[data-where=page] .slash [aria-selected=true] .sn').textContent")
+            pg.keyboard.press('Alt+P'); pg.wait_for_timeout(100)
+            check(pg.evaluate("JSON.parse(localStorage.getItem('archeus-v2-live')).slashpins.length") == 1, 'Alt+P pins the active command in the preference store (%s)' % name)
+            pg.keyboard.press('Escape'); pg.fill('input[data-key="chat-in-page"]', ''); pg.keyboard.type('/'); pg.wait_for_timeout(100)
+            top = pg.evaluate("[...document.querySelectorAll('.composer2[data-where=page] .slash > *')].slice(0, 2).map((e) => e.className + ':' + e.textContent.slice(0, 14))")
+            check(top[0] == 'sgh:Pinned' and name in top[1] and pg.locator('.composer2[data-where=page] .slash .spin[aria-pressed=true]').count() == 1, 'Pinned comes first under its heading, the pin button is pressed (%s)' % top)
+            check('/stato' not in pg.inner_text('.composer2[data-where=page] .slash'), 'English menu prints no Italian alias')
+            pg.fill('input[data-key="chat-in-page"]', '/needs'); pg.keyboard.press('Enter'); pg.wait_for_timeout(300)
+            pg.fill('input[data-key="chat-in-page"]', ''); pg.keyboard.type('/'); pg.wait_for_timeout(100)
+            check(pg.evaluate("[...document.querySelectorAll('.composer2[data-where=page] .slash .sgh')].slice(0, 2).map((e) => e.textContent)") == ['Pinned', 'Recent'] and pg.evaluate("JSON.parse(localStorage.getItem('archeus-v2-live')).slashrecent") == ['needs'], 'a sent command becomes Recent; a highlighted one does not')
+            check(not errs, 'no page errors in wide Chat: %s' % errs[:2])
+            ctx.close()
+            ctx, pg, errs = new_page(br, base, q='&lang=it')
+            pg.evaluate("localStorage.setItem('archeus-v2-live', JSON.stringify({ slashpins: ['status'], slashrecent: ['needs'] }))"); pg.reload(); pg.wait_for_timeout(500)
+            pg.click('input[data-key="chat-in-page"]'); pg.keyboard.type('/'); pg.wait_for_timeout(150)
+            t = pg.inner_text('.composer2[data-where=page] .slash')
+            check(t.startswith('FISSATI') and '/stato' in t and '/attesa' in t and '/status' not in t and '/needs' not in t and 'Pinned' not in t, 'Italian menu: Fissati and Recenti, Italian names only, pins survive the language switch')
+            ctx.close()
+            ctx, pg, errs = new_page(br, base, w=1024, h=768)
+            check(pg.evaluate("document.querySelector('.chatpage').dataset.wide") == 'false' and pg.locator('[data-key="chat-tab-chat"]').count() == 1 and pg.locator('.cside').count() == 0, 'below 1100 px the three tabs stay and there is no pane')
             ctx.close()
 
             # ---- the dock on Now (desktop), then the phone sheet ----

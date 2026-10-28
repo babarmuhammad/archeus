@@ -33,9 +33,7 @@
 .tui-name { color: var(--text-2); font: 400 13px/1.2 var(--mono); white-space: nowrap; }
 .tui-name b { color: var(--text); font-weight: 600; }
 .tui-title .sp { flex: 1 1 auto; }
-.tui-btn { appearance: none; display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 12px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s2); color: var(--text); font: 600 13px/1.1 var(--mono); cursor: pointer; white-space: nowrap; }
-.tui-btn:hover { background: var(--s3); }
-.tui-btn[aria-pressed='true'] { background: var(--s3); border-color: var(--text-2); }
+.tui-btn { min-width: var(--bh); padding-inline: 12px; font: 600 13px/1.1 var(--mono); }
 .tui-btn.act { font-family: var(--font); }
 @container dev (max-width: 479px) { .tui-name { display: none; } .tui-title { gap: 4px; padding: 4px; } .tui-title .sp { display: none; } .tui-title .tui-btn { flex: 1 1 0; padding: 0 4px; } }
 
@@ -70,7 +68,7 @@
 
 /* ---------- the key bar (touch and narrow windows), the command line ---------- */
 .tui-keys { flex: none; display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)); border-top: var(--hair) solid var(--line); background: var(--s1); }
-.tui-keys .tui-btn { flex: 1 1 44px; padding: 0 6px; }
+.tui-keys .tui-btn { --bh: 44px; flex: 1 1 44px; padding: 0 6px; }
 .tui-keys .tui-btn.act { flex: 1 1 5.5em; min-width: max-content; }
 @container dev (min-width: 900px) { .tui-keys { display: none; } }
 .tui-cmd { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-top: var(--hair) solid var(--line-strong); background: var(--s2); }

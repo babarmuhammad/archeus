@@ -23,6 +23,8 @@ import { pruneMaps, syncLive, notePulse } from './map.js';
 import { installKeys } from './keys.js';
 import { installPalette } from './palette.js';
 import { railProjects } from './rail-model.js';
+import * as motion from './motion.js';
+import { direction } from './motion-model.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -85,9 +87,18 @@ function closeInsp() { const sec = ui.sect && ui.sect[ctx.route.name]; nav('#/' 
 
 let inspKey = '';
 const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
+// A change of page runs through the motion layer (a directional cross-fade); everything else, including each simulation event, redraws in place and only glides what moved.
 function render() {
   if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
   if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
+  const to = parse().name;
+  if (to !== ctx.route.name && !embed && motion.canRoute()) { motion.route(ctx.route.name, to, drawRoute); return; }
+  drawRoute();
+}
+function drawRoute() {
+  const sameRoute = parse().name === ctx.route.name, roots = [page, topbar, rail.querySelector('#railproj')];
+  const snap = sameRoute ? motion.capture(roots) : null;
+  const oldInsp = app.dataset.insp === 'open' ? inspector.firstElementChild : null, inspBox = oldInsp ? motion.boxOfInspector(inspector) : null;
   if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
   const keep = { top: page.scrollTop, itops: inspScrollers().map((e) => e.scrollTop), ikey: inspKey, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
@@ -116,7 +127,7 @@ function render() {
   // navigation state and counts
   app.querySelectorAll('.rail [data-route]').forEach((a) => { const here = a.dataset.route === r.name; if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const n = sim.attention().filter((a) => a.kind !== 'knowledge').length;
-  app.querySelectorAll('[data-count="work"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
+  app.querySelectorAll('[data-count="work"]').forEach((c) => { const was = c.textContent; c.hidden = !n; c.textContent = String(n); if (was && n && was !== String(n)) motion.tick(c); c.setAttribute('aria-label', n + ' need you'); });
 
   mountTell(term);
   syncTopbar(); syncRail(); syncPhone();
@@ -141,6 +152,10 @@ function render() {
   else if (!places && keep.was && keep.was.closest('.places')) bottom.querySelector('[data-key="bb-places"]').focus();
   const safety = app.querySelector('.safety-pop');
   if (!places && safety && !safety.contains(document.activeElement)) safety.querySelector('button').focus();
+  // motion last: focus is settled on the real DOM first, so a leaving ghost (same classes, inert) can never take it
+  motion.railMark(rail); motion.tabs([page, inspector]);
+  if (prev.name !== ctx.route.name) motion.arrive(page, direction(prev.name, ctx.route.name)); else motion.play(snap, roots);
+  if (insp && !wasOpen) motion.inspectorIn(inspector, app.clientWidth); else if (!insp && wasOpen) motion.inspectorOut(oldInsp, inspBox, app.clientWidth);
 }
 
 // ---------- the one allowed loop: the core breath on the map's core mark (ADR-0055), switched by syncLive ----------
@@ -172,10 +187,12 @@ function act(kind, id) {
 // Info toasts leave after 4.5 s. An error, or a toast that carries an action, stays until Dismiss.
 function toast(text, o) {
   const err = !!(o && o.error) || /^(Not done|Non fatto)/.test(text), keep = err || !!(o && o.action && !o.action.run);
+  const shown = !toastEl.hidden && !toastEl.dataset.leaving;
   clearTimeout(toastTimer); clear(toastEl); delete toastEl.dataset.leaving;
   toastEl.dataset.kind = err ? 'error' : 'info'; toastEl.setAttribute('role', err ? 'alert' : 'status');
   toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [o.action.run ? h('button', { class: 'btn', type: 'button', 'data-key': 'toast-undo', onclick: () => { dismissToast(); o.action.run(); } }, o.action.label) : h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
   translate(toastEl); toastEl.hidden = false;
+  if (shown) motion.enter(toastEl, { y: -6, s: .98, origin: '100% 0', dur: 1 });
   toastEl.toggleAttribute('data-auto', !keep);
   if (!keep) toastTimer = setTimeout(dismissToast, o && o.action ? 7000 : 4500);
 }
@@ -205,7 +222,7 @@ function syncTopbar() {
         h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, eng ? 'Stopped' : 'Not stopped'), h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), h('span', { class: 'sx' }, eng ? 'new work blocked' : 'accepts new work')),
       open ? h('div', { class: 'safety-pop', role: 'dialog', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)) : null),
     h('button', { class: 'tb-search', type: 'button', 'data-key': 'search', 'aria-label': 'Search or run a command', 'aria-keyshortcuts': 'Control+K Meta+K', onclick: () => ctx.openPalette() }, icon('search', 18), h('span', { class: 'tbs-l' }, 'Search or run a command'), h('kbd', { 'aria-hidden': 'true' }, /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K')),
-    h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell'),
+    ...(['now', 'chat'].includes(ctx.route.name) ? [] : [h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell')]),
     h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', 'aria-label': eng ? 'Re-arm new work' : 'Emergency stop all missions', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
 }
 // The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
@@ -283,6 +300,8 @@ function syncToolbar() {
   const red = store.reducedMotion(); const m = tb('motion'); m.setAttribute('aria-pressed', red ? 'true' : 'false'); m.querySelector('.tb-label').textContent = red ? 'Quiet' : 'Motion';
   tb('notes').setAttribute('aria-pressed', store.get('heronotes') === 'on' ? 'true' : 'false');
   tb('lang').querySelector('.tb-label').textContent = store.get('lang') === 'it' ? 'IT' : 'EN'; tb('lang').setAttribute('aria-pressed', store.get('lang') === 'it' ? 'true' : 'false');
+  const badge = toolbar.querySelector('.sim-badge'), mode = sim.state.playing ? 'playing' : 'paused';
+  if (badge.dataset.sim !== mode) { const was = badge.dataset.sim, g = badge.querySelector('.g'); badge.dataset.sim = mode; g.textContent = mode === 'playing' ? '◆' : '◇'; if (was) motion.tick(g); }
   const sb = tb('sim'); sb.querySelector('.tb-label').textContent = sim.state.playing ? 'x' + sim.state.speed : 'Paused';
   translate(toolbar);
 }
@@ -294,6 +313,7 @@ function closeMenu() { if (menu) { menu.remove(); menu = null; } toolbar.querySe
 function toggleMenu(name, btn) { if (menuName === name) { closeMenu(); return; } closeMenu(); menuName = name; btn.setAttribute('aria-expanded', 'true'); buildMenu(); }
 function refreshMenu() { if (menuName) buildMenu(); }
 function buildMenu() {
+  const fresh = !menu;
   if (menu) menu.remove();
   const item = (label, checked, on, hint, dev) => h('button', { class: 'menu-item', type: 'button', 'data-device': dev, role: 'menuitemradio', 'aria-checked': checked ? 'true' : 'false', onclick: on }, h('span', { class: 'tick', 'aria-hidden': 'true' }, checked ? '✓' : ''), label, hint ? h('span', { class: 'hint' }, hint) : null);
   let kids;
@@ -310,6 +330,7 @@ function buildMenu() {
   translate(menu);
   document.body.append(menu);
   menu.style.top = toolbar.offsetHeight + 2 + 'px';
+  if (fresh) motion.enter(menu, { y: 0, s: .98, origin: '100% 0', dur: 1 });
 }
 document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop, .stop-btn, .bb-stop')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
@@ -411,3 +432,4 @@ function setPrefs(o) { Object.keys(o).forEach((k) => { if (store.get(k) !== o[k]
 
 // first draw, last: fit() reads the All devices declarations above, which a stored 'all' device would hit too early
 if (embed) render(); else { fit(); if (store.get('device') === 'auto' || store.get('device') === 'terminal') render(); }
+motion.arm();

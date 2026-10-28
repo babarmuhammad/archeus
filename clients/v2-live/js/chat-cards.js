@@ -80,7 +80,7 @@ export function cardNode(ctx, m, act, sample) {
     const two = ['stop', 'estop', 'cancel'].includes(c.action), second = c.step === 'confirm';
     return box('confirm', [kicker('◆', L('Proposed · nothing has happened', 'Proposta · non è successo nulla'), 'needs_you'), h('p', { class: 'ctitle' }, second ? L('Confirm: {a} {t} now?', 'Conferma: {a} {t} adesso?', { a: V[0].toLowerCase(), t: name }) : L('{a} {t}?', '{a} {t}?', { a: V[0], t: name })),
       h('p', { class: 'sp-text' }, V[1]), two ? h('p', { class: 'sp-text step' }, second ? L('Step 2 of 2', 'Passo 2 di 2') : L('Step 1 of 2', 'Passo 1 di 2')) : null,
-      h('div', { class: 'actions' }, second ? [B(L('Yes, {a}', 'Sì, {a}', { a: V[0].toLowerCase() }), 'yes', 'danger'), B(L('Back', 'Indietro'), 'back')] : [B(two ? L('{a} mission', '{a} missione', { a: V[0] }) : V[0], two ? 'step2' : 'yes', two ? 'danger' : 'primary'), B(L('Cancel', 'Annulla'), 'dismiss')])]);
+      h('div', { class: 'actions' }, second ? [B(L('Yes, {a}', 'Sì, {a}', { a: V[0].toLowerCase() }), 'yes', 'danger solid'), B(L('Back', 'Indietro'), 'back')] : [B(two ? L('{a} mission', '{a} missione', { a: V[0] }) : V[0], two ? 'step2' : 'yes', two ? 'danger' : 'primary'), B(L('Cancel', 'Annulla'), 'dismiss')])]);
   }
   if (c.kind === 'approval') {
     const a = st.approvals[c.approval], am = a ? st.missions[a.mission] : null;
@@ -91,7 +91,7 @@ export function cardNode(ctx, m, act, sample) {
     return box('approval', [kicker('◆', a.kind === 'plan' ? L('Approve this plan?', 'Approvare questo piano?') : L('Allow this action?', 'Consentire questa azione?'), 'needs_you'), h('p', { class: 'ctitle' }, am ? am.title : ''),
       kv([L('What', 'Cosa'), a.presented.what], [L('Why it asks', 'Perché lo chiede'), a.presented.why], [L('What Core does next', 'Cosa fa il Core dopo'), a.presented.consequence], [L('Bound to', 'Legata a'), L('action hash {h} · plan version {v}', 'hash dell\'azione {h} · versione del piano {v}', { h: (a.id + '9f3c').slice(0, 8), v: am ? am.plan_version || 1 : 1 })]),
       step ? h('p', { class: 'cstep' }, L('Step-up needed: confirm it is you before this is {w}. (Simulated step-up.)', 'Serve la conferma d\'identità: conferma che sei tu prima che sia {w}. (Conferma simulata.)', { w: c.pick === 'approve' ? L('approved', 'approvata') : L('rejected', 'rifiutata') })) : h('p', { class: 'sp-text' }, L('Only this card’s own button decides. A message or a bare “yes” never does.', 'Decide solo il pulsante di questa scheda. Un messaggio o un semplice “sì” non decide mai.')),
-      h('div', { class: 'actions' }, step ? [B(c.pick === 'approve' ? L('Confirm approval', 'Conferma l\'approvazione') : L('Confirm rejection', 'Conferma il rifiuto'), 'confirm', c.pick === 'approve' ? 'primary' : 'danger'), B(L('Back', 'Indietro'), 'back')] : [B(L('Approve', 'Approva'), 'approve', 'primary'), B(L('Reject', 'Rifiuta'), 'reject', 'danger'), h('a', { class: 'btn', href: off ? '#/chat' : '#/work/' + a.id }, L('Open decision', 'Apri la decisione'))]), h('p', { class: 'sp-text' }, SIMLINE())]);
+      h('div', { class: 'actions' }, step ? [B(c.pick === 'approve' ? L('Confirm approval', 'Conferma l\'approvazione') : L('Confirm rejection', 'Conferma il rifiuto'), 'confirm', c.pick === 'approve' ? 'primary' : 'danger solid'), B(L('Back', 'Indietro'), 'back')] : [B(L('Approve', 'Approva'), 'approve', 'primary'), B(L('Reject', 'Rifiuta'), 'reject', 'danger'), h('a', { class: 'btn', href: off ? '#/chat' : '#/work/' + a.id }, L('Open decision', 'Apri la decisione'))]), h('p', { class: 'sp-text' }, SIMLINE())]);
   }
   if (c.kind === 'remember') {
     const scopeName = c.scope === 'all' ? L('all projects', 'tutti i progetti') : c.scope ? pname(sim, c.scope) : '';
@@ -120,10 +120,13 @@ export function cardNode(ctx, m, act, sample) {
 }
 
 // ----- one message -----
-export function msgNode(ctx, m, act, retry) {
+export function msgNode(ctx, m, act, retry, unqueue) {
   const sim = ctx.sim, you = m.from === 'you', gen = m.dest === 'general';
   const body = m.c && !you ? C(m.c) : m.text;
-  const status = you && !m.local ? (m.status === 'submitted' ? h('p', { class: 'mstat' }, L('Submitted.', 'Inviato.')) : m.status === 'failed' ? h('p', { class: 'mstat bad' }, L('Not sent. Send again?', 'Non inviato. Rimandare?'), ' ', btn(L('Send again', 'Rimanda'), () => retry(m.id), 'quiet')) : null) : null;
+  const status = you && !m.local ? (m.status === 'submitted' ? h('p', { class: 'mstat' }, L('Submitted.', 'Inviato.')) : m.status === 'queued' ? h('p', { class: 'mstat' }, h('span', { class: 'qchip' }, L('Queued', 'In coda')), L('Handled after the current step.', 'Gestito dopo il passo corrente.'), unqueue ? btn(L('Remove', 'Rimuovi'), () => unqueue(m.id), 'quiet') : null)
+      : m.status === 'steering' ? h('p', { class: 'mstat' }, h('span', { class: 'qchip' }, L('Steering', 'Guida in corso')), L('Waiting for Core to acknowledge. Simulated.', 'In attesa che il Core confermi. Simulato.'))
+        : m.status === 'withdrawn' ? h('p', { class: 'mstat' }, L('Removed from the queue. Nothing was sent.', 'Tolto dalla coda. Non è stato inviato nulla.'))
+          : m.status === 'failed' ? h('p', { class: 'mstat bad' }, L('Not sent. Send again?', 'Non inviato. Rimandare?'), ' ', btn(L('Send again', 'Rimanda'), () => retry(m.id), 'quiet')) : null) : null;
   return h('article', { class: 'msg ' + (you ? 'you' : 'archeus') + (gen ? ' general' : ''), 'data-key': 'msg-' + m.id, 'data-dest': m.dest || null },
     h('p', { class: 'who' }, h('span', null, (you ? L('You', 'Tu') : 'Archeus') + ' · ' + clockLabel(m.at)), m.dest ? h('span', { class: 'dest' }, destLabel(sim, m)) : null, !you && m.c ? h('span', { class: 'sim-tag' }, L('SIMULATED', 'SIMULATO')) : null),
     h('p', { class: 'mbody' }, body), status, cardNode(ctx, m, act, false),

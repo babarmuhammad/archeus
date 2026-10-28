@@ -22,13 +22,20 @@
 .composer2 { container: cmp / inline-size; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .crow2 { position: relative; isolation: isolate; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 4px; border: var(--hair) solid var(--line-strong); border-radius: 28px; }
 .crow2::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--s1); }
-.crow2:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* One indicator at a time, flush to the pill so it follows the radius: the typing ring is the border turned to the focus colour plus an outline against it (no gap, no double line); a button inside shows its own ring inside itself, so the two never stack. */
+.crow2:has(.cinput:focus) { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0; }
+.crow2 button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.crow2 .csend:focus-visible { outline-color: var(--on-primary); outline-offset: -4px; }
 .cscope { flex: 0 1 auto; max-width: 16em; min-height: var(--target); padding: 0 8px 0 14px; border-color: transparent; border-radius: 22px; }
 .cinput { flex: 1 1 10em; min-width: 0; min-height: var(--target-primary); padding: 0 12px; border: 0; border-radius: 22px; background: transparent; color: var(--text); font-size: var(--fs-body); }
 .cinput:focus-visible { outline: 0; }
 .cinput::placeholder { color: var(--text-3); opacity: 1; }
 .crow2 .cslash { flex: none; width: var(--target); padding: 0; border-color: transparent; border-radius: 22px; font-family: var(--mono); }
 .csend, .cstop { flex: none; min-height: var(--target-primary); border-radius: 24px; padding-inline: 22px; }
+.cfoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 16px; }
+.chint { margin: 0; padding: 0 14px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.35; margin-left: auto; }
+.chint[hidden] { display: none; }
+.qchip { padding: 0 8px; border: var(--hair) dashed var(--text-2); border-radius: 999px; color: var(--text); font-weight: 600; line-height: 20px; }
 .cdest { margin: 0; padding: 0 14px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.35; overflow-wrap: anywhere; }
 .argline { margin: 0; padding: 6px 12px; border: var(--hair) dashed var(--line-strong); border-radius: 8px; background: var(--s3); color: var(--text-2); font-size: var(--fs-cap); }
 .cnote { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 12px; border: var(--hair) solid var(--attention); border-radius: 8px; background: var(--s3); font-size: var(--fs-cap); }
@@ -41,8 +48,8 @@
 }
 
 /* ---------- the slash combobox (in flow, above the field: it pushes, it never covers; an opaque surface so it reads over any scene) ---------- */
-.slash { margin: 0; max-height: 21rem; overflow-y: auto; border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); background: var(--s3); }
-.srow { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'n c' 'd d'; gap: 0 12px; align-items: center; min-height: 48px; padding: 6px 16px; cursor: pointer; }
+.slash { position: relative; overscroll-behavior: contain; margin: 0; max-height: min(21rem, 45dvh); overflow-y: auto; border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); background: var(--s3); }
+.srow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'n c p' 'd d p'; gap: 0 12px; align-items: center; min-height: 48px; padding: 6px 8px 6px 16px; cursor: pointer; }
 .srow + .srow { border-top: var(--hair) solid var(--line); }
 .srow:hover { background: var(--s2); }
 .srow[aria-selected='true'] { background: var(--s2); outline: 2px solid var(--focus); outline-offset: -2px; }
@@ -51,6 +58,13 @@
 .srow .sn.more { font-family: var(--font); font-weight: 600; color: var(--text-2); }
 .srow .sa { font-weight: 400; color: var(--text-2); }
 .srow .cat { grid-area: c; }
+.sgh { padding: 10px 16px 4px; color: var(--text-2); font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.spin { grid-area: p; display: grid; place-items: center; width: var(--target); height: var(--target); padding: 0; border: 0; border-radius: 22px; background: transparent; color: var(--text-2); cursor: pointer; }
+@media (hover: hover) { .spin:hover { background: var(--s1); color: var(--text); } }
+.spin[aria-pressed='true'] { color: var(--text); }
+.spin[aria-pressed='true'] svg, .spin[aria-pressed='true'] svg * { fill: currentColor; }
+.shint { margin: 0; padding: 0 14px; color: var(--text-2); font-size: var(--fs-cap); }
+.shint[hidden] { display: none; }
 .srow .sd { grid-area: d; color: var(--text-2); font-size: var(--fs-cap); overflow-wrap: anywhere; }
 .cat.cls { border-style: solid; font-weight: 600; letter-spacing: .06em; }
 .cat.cls[data-cls='PROPOSE'] { border-color: var(--attention); }
@@ -205,6 +219,20 @@
   .chatpage .cdest { padding-inline: 12px; }
   .chatpage .msg.you { max-width: 92%; }
 }
+.cp-pin > :first-child { margin-top: auto; }
+
+/* Wide main area: the thread keeps the left edge and grows; Receipts and Context stop being tabs over it and become a pane beside it, so reading a receipt never hides the conversation. */
+.chatpage[data-wide='true'] { flex-direction: row; }
+.chatpage[data-wide='true'] .convo { flex: 1 1 0; min-width: 0; max-width: none; margin: 0; }
+.chatpage[data-wide='true'] .cb { padding-inline: 32px; }
+.chatpage[data-wide='true'] .cp-thread { padding-inline: 32px; }
+.chatpage[data-wide='true'] .composer2 { padding-inline: 32px; }
+.chatpage[data-wide='true'] .cdest { padding-inline: 32px; }
+.chatpage[data-wide='true'] .msg:not(.you), .chatpage[data-wide='true'] .cp-empty { max-width: 72ch; }
+.cside { flex: 0 0 clamp(360px, 32%, 620px); min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: var(--hair) solid var(--line); }
+.cside .cb-tabs { min-height: 56px; align-items: flex-end; padding-inline: 20px; }
+.cside .cp-panel { flex: 1 1 0; }
+.cside .cp-scroll { padding-inline: 20px; }
 .chatpage[data-quiet='true'] *, :root[data-motion='reduced'] .cp-line::before, :root[data-motion='reduced'] .cp-cmd::before { animation: none !important; transition: none !important; }
 @media (prefers-reduced-motion: reduce) { .chatpage *, .cp-line::before, .cp-cmd::before { animation: none !important; transition: none !important; } }
 @media (forced-colors: active) {
@@ -227,7 +255,7 @@
 .cs-head .btn { padding: 0 10px; }
 .cs-main .logwrap { flex: 1 1 0; }
 .cs-main .composer2 { flex: none; padding: 8px 12px 10px; gap: 4px; overflow-y: auto; max-height: 62%; }
-.chatsheet[data-kb='1'] .cdest { display: none; }
+.chatsheet[data-kb='1'] .cfoot { display: none; }
 .kbsim { flex: none; height: var(--kbh); overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; background: var(--s2); border-top: var(--hair) solid var(--line); }
 .chatsheet[data-kb='0'] .kbsim { visibility: hidden; }
 .kbnote { margin: 0; color: var(--text-2); font-size: var(--fs-cap); }
@@ -295,7 +323,10 @@ details.panel > .body { padding: 4px 16px 16px; }
 
 @media (forced-colors: active) {
   .ccard, .msg.you, .srow, .str, .cnote, .chatsheet, .dstrip, .crow2, .tellfield { border: 1px solid CanvasText; }
-  .srow[aria-selected='true'] { outline: 2px solid Highlight; }
+  .srow[aria-selected='true'], .crow2 button:focus-visible { outline: 2px solid Highlight; }
+  .spin[aria-pressed='true'] { color: Highlight; }
+  .crow2:has(.cinput:focus) { border-color: Highlight; outline-color: Highlight; }
+  .crow2 .csend:focus-visible { outline-color: HighlightText; }
   .rtl .tl-row::after { border-color: CanvasText; background: Canvas; }
   .rtl .tl-row[data-cat='RECORDED']::after, .rtl .tl-row[data-cat='RECONCILED']::after { background: CanvasText; }
   .rtl .tl-row[aria-selected='true']::after { border-color: Highlight; }

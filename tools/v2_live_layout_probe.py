@@ -4,7 +4,8 @@ Defects counted (each with its own column in the table):
   overlap   two visible interactive or text boxes cover each other (nesting, such as text inside its own button, is not overlap)
   clipped   a box is cut off or sticks out of the viewport horizontally (not inside an intentional horizontal scroller)
   hscroll   the page itself scrolls sideways
-  target    an interactive element under 44 px (48 px for primary controls when the window is 1024 px or wider)
+  target    an interactive element under 44 px (48 px for primary controls when the window is 1024 px or wider); the button system's ::after hit area counts
+  wraps     a button, chip or tab whose label breaks onto a second line
   covered   the element at the centre of a control is not the control (something sits on top of it)
   contrast  text under 4.5:1 against its effective background (computed colours)
   error     a page error or a console error
@@ -40,14 +41,14 @@ ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'healt
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~details', 'now~toast', 'chat~toast',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
           # S1: the safety popover, its two-step Stop, the Tell overlay
-          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'chat~tell', 'now~estopsafety']
+          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'now~estopsafety']
 # terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
 TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
        'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
 TUI_RESET = "() => { const c = window.v2live.ui.tui.ctl; c.setPrefs({ look: 'app', ascii: false, linear: false }); c.state.mode = null; c.go('now'); window.v2live.ui.tui.redraw(); }"
 TUI_SET = "([keys, prefs]) => { const c = window.v2live.ui.tui.ctl; c.setPrefs(prefs); if (keys) c.keys(keys); window.v2live.ui.tui.redraw(); }"
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
-KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'covered', 'contrast', 'narrow', 'error']
+KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'wraps', 'covered', 'contrast', 'narrow', 'error']
 
 STATES = {
     'why': "window.v2live.ui.tab = 'why'",
@@ -139,11 +140,23 @@ MEASURE = r"""
   // target size and covered
   ctl.forEach((e) => {
     const r = e.getBoundingClientRect(), need = opts.desktop && e.matches(primary) ? 48 : 44;
-    if (Math.min(r.width, r.height) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
+    const hit = getComputedStyle(e, '::after'), ext = (a, b) => (parseFloat(hit[a]) < 0 ? -parseFloat(hit[a]) : 0) + (parseFloat(hit[b]) < 0 ? -parseFloat(hit[b]) : 0), grow = hit.content !== 'none' && hit.position === 'absolute' ? [ext('left', 'right'), ext('top', 'bottom')] : [0, 0];
+    if (Math.min(r.width + grow[0], r.height + grow[1]) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
     const c = clipOf(e), v = c && inter(r, c);
     if (v && v.width > 4 && v.height > 4 && !e.matches('.am-hit')) {
       const top = document.elementFromPoint(v.left + v.width / 2, v.top + v.height / 2);
       if (top && !e.contains(top)) add('covered', name(e) + ' covered by ' + name(top));
+    }
+  });
+
+  // wraps: a button label on two lines
+  ctl.filter((e) => e.matches('.btn, .chip, .tb-btn, .tui-btn, .tb-search, .tab, .set-nav-item')).forEach((e) => {
+    const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) {
+      if (!n.nodeValue.trim() || !vis(n.parentElement)) continue;
+      const r = document.createRange(); r.selectNodeContents(n);
+      const tops = new Set([...r.getClientRects()].filter((q) => q.width > 1).map((q) => Math.round(q.top / 4)));
+      if (tops.size > 1) { add('wraps', name(e) + ' "' + (e.textContent || '').trim().slice(0, 24) + '" breaks onto ' + tops.size + ' lines'); break; }
     }
   });
 
@@ -256,6 +269,8 @@ def motion_invariants(br, base):
     return bad
 
 
+SETTLE = """() => Promise.race([new Promise((r) => setTimeout(r, 800)), Promise.allSettled(document.getAnimations().filter((x) => x.effect && x.effect.getTiming().iterations !== Infinity).map((x) => x.finished))])"""
+
 S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec')
 
 
@@ -321,7 +336,7 @@ def s4_state(pg, route, w):
                 pg.wait_for_timeout(600)
             pg.wait_for_timeout(300)
             return '.chatsheet'
-        pg.click('[data-key="tell"]')
+        pg.click('input[data-key="chat-in-dock"]')
         pg.wait_for_timeout(200)
         if route == 'dock-slash':
             pg.fill('input[data-key="chat-in-dock"]', '/')
@@ -439,6 +454,9 @@ def main():
                                     layer = '#inspector'
                             pg.evaluate("document.querySelector('.main-col') && (document.querySelector('.main-col').scrollTop = 0)")
                         desktop = w >= 1024 and not route.startswith('sheet')
+                        # layout is judged at rest: the motion layer's finite transitions (route cross-fade, row glide, sheets) are given up to 800 ms to end; loops stay (they are checked in motion_invariants)
+                        pg.mouse.move(2, 2)   # the pointer left where the last click was: cells that glide under it would open a preview card, which is a popover, not a defect
+                        pg.evaluate(SETTLE)
                         res = pg.evaluate(MEASURE, {'layer': layer, 'desktop': desktop})
                         for f in frames:   # each pane is a real document laid out at its own width
                             fw = f.evaluate('innerWidth')

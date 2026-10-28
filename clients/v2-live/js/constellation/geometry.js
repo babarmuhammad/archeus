@@ -90,9 +90,22 @@ function cellsOf(level, width, height, inset, keep, core, avoid) {
   }
   return best.sort((p, q) => p.d - q.d || p.a - q.a).map(({d, a, ...cell}) => cell);
 }
+// One to three projects sit on a small ring instead of the lattice: left of the core, right of it, then above it, each cell hugging the core's keep-out, so a few
+// projects stay close to it and fill the scene. The slots are fixed, so adding a project never moves another. A level where all three do not fit returns null.
+function ringOf(level, width, height, inset, keep, core, avoid) {
+  const {w, h} = CELLS[level], x0 = Math.min(inset.left, width / 10), x1 = width - Math.min(inset.right, width / 10), y0 = Math.min(inset.top, height * .42), y1 = height - Math.min(inset.bottom, height * .26), near = keep.radius + 10;
+  const cells = [{x: core.x - near - w, y: core.y - h / 2}, {x: core.x + near, y: core.y - h / 2}, {x: core.x - w / 2, y: core.y - near - h}].map(c => ({...c, w, h}));
+  const ok = c => c.x >= x0 && c.y >= y0 && c.x + w <= x1 && c.y + h <= y1 && !coversNode(c, {x: keep.x, y: keep.y, radius: keep.radius}, 0) && !overlaps(c, keep.box) && !avoid.some(a => overlaps(c, a));
+  return cells.every(ok) && !cells.some((c, i) => cells.some((d, j) => j > i && overlaps(c, d))) ? cells : null;
+}
 export function plan(count, width, height, inset = INSET, avoid = []) {
   const u = unit(width, height), scale = coreScaleFor(count), keep = coreKeepOut(width, height, u, inset, false, scale), core = coreCentre(width, height, inset);
-  let level = 0, cells = cellsOf(0, width, height, inset, keep, core, avoid);
+  // The ring (1 to 3 projects) takes the first level where its three cells fit; the lattice never goes below that level, so the level still only grows with the count.
+  const k3 = coreKeepOut(width, height, u, inset, false, coreScaleFor(3)), rings = [];
+  let floor = -1;
+  for (let l = 0; l < 4 && floor < 0; l++) { const ring = ringOf(l, width, height, inset, k3, core, avoid); if (ring) { floor = l; rings[l] = ring; } }
+  if (count <= 3 && floor >= 0) return {scale, keep, core, level: floor, cells: rings[floor], ...CELLS[floor]};
+  let level = Math.max(0, floor), cells = cellsOf(level, width, height, inset, keep, core, avoid);
   while (cells.length < count && level < CELLS.length - 1) cells = cellsOf(++level, width, height, inset, keep, core, avoid);
   // A window too small for any cell still gets one, so every project has somewhere to be.
   if (!cells.length) cells = [{x: inset.left, y: inset.top, w: Math.max(1, width - inset.left - inset.right), h: Math.max(1, height - inset.top - inset.bottom)}];

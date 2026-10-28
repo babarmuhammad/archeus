@@ -1,0 +1,61 @@
+/* V2 Live motion layer (spec: .collab/v2live-motion-spec.md). Loaded last: it holds the one Reduced motion switch, the route transition, the rail mark, the tab underline,
+   the disclosure fade and the few helpers other pages opt into. Tokens (--dur-1..4, --ease-out, --ease-move) live in tokens.css; the moving parts that need logic are in js/motion.js.
+   Flat only: transform, opacity and a colour, no blur, no glow, no gradient, nothing on layout, nothing that loops. */
+
+/* ---------- 1. the switch: the in-app Reduced motion setting and the OS preference turn every transition and animation off ---------- */
+:root[data-motion='reduced'] *, :root[data-motion='reduced'] *::before, :root[data-motion='reduced'] *::after, :root[data-motion='reduced'] *::details-content { animation: none !important; transition: none !important; }
+:root[data-motion='reduced'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .rail-toggle, .safety-btn, .bb-item, .tui-btn):active { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-motion='system'] *, :root[data-motion='system'] *::before, :root[data-motion='system'] *::after, :root[data-motion='system'] *::details-content { animation: none !important; transition: none !important; }
+  :root[data-motion='system'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .rail-toggle, .safety-btn, .bb-item, .tui-btn):active { transform: none; }
+}
+
+/* ---------- 2. route change: a short directional cross-fade (View Transitions). The name exists only while a transition runs, so it never makes a stacking context at rest. ---------- */
+:root[data-vt='fwd'] { --vt-dx: 16px; }
+:root[data-vt='back'] { --vt-dx: -16px; }
+:root[data-vt] .main-col { view-transition-name: page; }
+:root[data-vt]::view-transition { pointer-events: none; }
+:root[data-vt]::view-transition-group(*) { animation: none; }
+:root[data-vt]::view-transition-old(root), :root[data-vt]::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+:root[data-vt]::view-transition-old(page) { animation: m-vt-out var(--dur-1) var(--ease-out) both; mix-blend-mode: normal; }
+:root[data-vt]::view-transition-new(page) { animation: m-vt-in var(--dur-2) var(--ease-out) 40ms both; mix-blend-mode: normal; }
+@keyframes m-vt-out { to { opacity: 0; transform: translateX(calc(var(--vt-dx) * -.5)); } }
+@keyframes m-vt-in { from { opacity: 0; transform: translateX(var(--vt-dx)); } }
+
+/* ---------- 3. the rail: one mark that slides to the current item (js/motion.js railMark) ---------- */
+.rail-mark { position: absolute; left: 0; top: 0; width: 3px; background: var(--text); pointer-events: none; transition: transform var(--dur-3) var(--ease-move); }
+.rail-mark[data-still], .rail-mark[hidden] { transition: none; }
+@media (forced-colors: active) { .rail-mark { background: Highlight; } }
+
+/* ---------- 4. tabs: the underline slides (js/motion.js tabs) ---------- */
+.tabs { position: relative; }
+.tab-mark { position: absolute; left: 0; bottom: 0; height: calc(var(--hair) * 2); background: var(--thread); pointer-events: none; transition: transform var(--dur-3) var(--ease-move); }
+.tab-mark[data-still] { transition: none; }
+.tabs[data-mark] .tab[aria-selected='true'] { border-bottom-color: transparent; }
+@media (forced-colors: active) { .tab-mark { background: Highlight; } }
+
+/* ---------- 5. ghosts and rows ---------- */
+.m-ghost { will-change: opacity, transform; }
+/* A new event row is entered by the motion layer, not by a keyframe of its own: one source of motion per row. */
+.rp-enter { animation: none; }
+/* Re-rendering must never replay an open disclosure: the fade below runs on the user's toggle only. */
+:is(.hl-row, .ln-row)[open] > :not(summary) { animation: none; }
+.n, .count, .ctr b, .pc-counts, .us-val, [data-live='clock'], time { font-variant-numeric: tabular-nums; }
+
+/* ---------- 6. disclosure: the content fades in and out with a 4 px move, no height (a <details> opens by user toggle only, so a re-render does not replay it) ---------- */
+details:not(.cp-disclosure)::details-content { opacity: 0; transform: translateY(-4px); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out), content-visibility var(--dur-1) allow-discrete; }
+details[open]:not(.cp-disclosure)::details-content { opacity: 1; transform: none; transition-duration: var(--dur-2); }
+
+/* ---------- 7. press and hover for the controls the shell list does not name ---------- */
+:is(.now-toggle, .vs-btn, .tell-cta, .pn-review, .pc-open, .pc-work, .ctr, .cproj) { transition: background-color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+:is(.now-toggle, .vs-btn, .tell-cta, .pn-review):active { transform: scale(.97); }
+:is(.now-toggle, .vs-btn, .tell-cta, .pn-review, .pc-open, .pc-work, .ctr, .cproj):hover { transition-duration: var(--dur-1); }
+.sim-badge .g { display: inline-block; transition: opacity var(--dur-2) var(--ease-out); }
+.sim-badge[data-sim='paused'] .g { opacity: .55; }
+
+/* ---------- 8. a reply that is pending: three dots, opacity only, six cycles at most (Chat opts in with <span class="m-dots"><i></i><i></i><i></i></span>) ---------- */
+.m-dots { display: inline-flex; gap: 4px; align-items: center; height: 1em; }
+.m-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--text-2); opacity: .25; animation: m-dot 1000ms var(--ease-out) 6 both; }
+.m-dots i:nth-child(2) { animation-delay: 160ms; }
+.m-dots i:nth-child(3) { animation-delay: 320ms; }
+@keyframes m-dot { 0%, 100% { opacity: .25; } 40% { opacity: 1; } }

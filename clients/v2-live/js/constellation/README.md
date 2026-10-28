@@ -64,7 +64,7 @@ V2 Live adds ambient motion on top of the core breath (owner decision 2026-10-27
 
 The core mark: scale 1 → 1.018 → 1 in 6000 ms. `live: true`, `fresh !== false`, a Running node, visible document, and full motion are all required. Defaults are static. Demo opts into simulated live work explicitly because the task requests it; ADR-0055 forbids fixture-driven liveness in the real app. Integration must pass real freshness/liveness; recreate the map when those options change. Quiet shows a static count at the core. Hidden tabs cancel transient effects and stop breath. Re-reading does not replace the core DOM element or restart its animation.
 
-`MOTION` exports the local duration registry: appear 160 ms, relation 240 ms, label 160 ms, travel 600 ms, breath 6000 ms. The label duration is 160 ms (ADR-0055). Selection, focus, layout, pan and zoom are instant. No frame loop, large blur, backdrop filter, or external asset is used.
+`MOTION` exports the local duration registry: appear 160 ms, relation 240 ms, label 160 ms, glide 220 ms (a layout step, motion layer), travel 600 ms, breath 6000 ms. The label duration is 160 ms (ADR-0055). Selection, focus, layout, pan and zoom are instant. No frame loop, large blur, backdrop filter, or external asset is used.
 
 ## Layout and visual treatment
 
@@ -98,3 +98,5 @@ Palette defaults follow the supplied visual-language document, including green D
 
 
 Hover and focus are CSS transitions on the cluster members (see `map.css`, SPEC QN04): the other projects fall to 38 % (text 92 %), the lit cluster grows 4 % about its hub through `--hx`/`--hy`, and `setHot` keeps the dim until the next hub is entered or a 120 ms grace passes. `placeCard` prices a 12 px grid for the preview card (at least radius + 16 px from the node, clear of its label, satellites, the zoom column and the dock band); the territory card in `territories.js` stands beside its cell.
+
+One to three projects use `ringOf` instead of the lattice: left of the core, right of it, then above it, cells hugging the keep-out. Four or more use the lattice from the level the ring needed.
