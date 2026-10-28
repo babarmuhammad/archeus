@@ -45,7 +45,7 @@ map.destroy();
 
 | Method | Behavior |
 | --- | --- |
-| `update(graph)` | Copies input, validates unique node IDs, diffs the DOM by node and edge id (elements are reused and their attributes patched; only a changed id, kind, project, weight or crystal state lays out again), and deterministically lays out structural changes. Exact repeated input is skipped. Missing edge endpoints are ignored. |
+| `update(graph)` | Copies input, validates unique node IDs, diffs the DOM by node and edge id (elements are reused and their attributes patched; any change of id, kind, project or state is laid out again, and nothing already placed moves), and deterministically lays out structural changes. Exact repeated input is skipped. Missing edge endpoints are ignored. |
 | `setSelection(id)` | Selects a node; `null` clears. Reveals offscreen selection. Emits `select`. |
 | `setTheme(name)` | `dark`, `light`, `dark-high-contrast`, `light-high-contrast`, `system`; `high-contrast` aliases dark high contrast. |
 | `setReducedMotion(bool)` | Enables or disables Quiet explicitly; before it is called (or when `reducedMotion` is not an option) the system preference decides. |
@@ -76,7 +76,7 @@ Hulls. Each cluster gets a convex polygon (the hull of the member centres grown 
 
 Nodes. The body shape tells the kind: disc Mission, hexagon Project, hollow square Knowledge, four-point sparkle Idea. State is never colour alone: Done solid with a check, Running hollow with four ticks, Needs you a static diamond ring with a mark and an amber glow, Blocked hollow with a cross, Idle hollow with a dot, Paused bars, Thinking a diamond. Running and needs-you missions are large faceted crystals (40 px radius at desktop, 24 on phones) with vertex dots and a small inner mark on a background plate (a ring and dot for running, an exclamation mark for needs you). The selected node gets a dashed focus ring.
 
-Camera. The core lives in the world layer, so it pans and zooms with the stars and the spokes stay attached. Wheel and pinch zoom around their midpoint, drag pans, zoom clamps to 0.5 to 4 and pan to one scaled viewport beyond the origin. Fit and Reset are separate. A click selects the node nearest the pointer within 22 px (24 px under 480 px wide), so overlapping 44 px targets never steal a tap; the invisible hit circles remain for keyboard focus and for assistive technology, and a click without coordinates (assistive activation) selects its own target.
+Camera. The core lives in the world layer, so it pans and zooms with the stars and the spokes stay attached. Wheel and pinch zoom around their midpoint, drag pans, zoom clamps to 0.5 to 4 and pan to one scaled viewport beyond the origin. The three buttons (zoom in, zoom out, Fit) stand in a column at the bottom right and the layout keeps every cell clear of them; Fit also resets the view. A click selects the node nearest the pointer within 22 px (24 px under 480 px wide), so overlapping 44 px targets never steal a tap; the invisible hit circles remain for keyboard focus and for assistive technology, and a click without coordinates (assistive activation) selects its own target.
 
 ## Label placement
 
@@ -91,3 +91,7 @@ Palette defaults follow the supplied visual-language document, including green D
 ## Probe
 
 `tools/v2_livemap_probe.py` (repository root `tools/`) drives `demo.html?embed=1` in Chromium at 320x640, 390x844, 768x1024, 1280x720, 1440x900, 2000x930 and 2560x1440, in dark, light and both high-contrast themes, plus reduced motion, forced colours and DPR 2. Serve the repository root (`py -m http.server 8861 --bind 127.0.0.1`) and run it through the shared lock: `py D:Archeus.collab	estlock.py -- py tools2_livemap_probe.py`. It checks label/label and label/node overlap, labels clear of the core and controls, every priority label shown, targets of at least 44 px (also zoomed out), one running animation at idle (the core breath, 6000 ms, scale 1 to 1.018 to 1) and none under reduced motion, a single finite marker per pulse, vector-only output at DPR 2, Tab, Enter and arrow keys, a click on every node, wheel, drag, Fit and Reset, label text contrast, no console errors, and 200-node update time. Unit tests: `py D:Archeus.collab	estlock.py -- node --test clients/v2-live/js/constellation/map.test.mjs`.
+
+## Network view (2026-10-28)
+
+`layout` in `geometry.js` replaces the old open composition: each project is a hub on a staggered lattice of cells round the core (`plan`), its missions orbit it as satellites, executions and decisions sit beside their mission. The cell size is the density level (`CELLS`, ten steps): the largest that holds every project, so a level never moves a cell when a project is added. The caller (`createMap`) freezes the slot order (needs you first, then running, then recent activity) and the satellite memory, so nothing already placed moves while the level holds. Per level a hub shows two label lines (name and last action), one (name) or only its code; from level 5 only needs-you, running and blocked satellites are drawn and the rest fold into "+N quiet". Tests: `layout.test.mjs`.

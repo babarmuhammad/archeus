@@ -1,5 +1,5 @@
 // The live map: the constellation module (js/constellation) fed from the simulation.
-// Projects are hubs, missions are nodes (needs-you and running ones draw as crystals), live executions and pending decisions sit beside their mission.
+// The Network view: each project is a hub on a ring of cells round the core, its missions orbit it as crystals, live executions and pending decisions sit beside their mission.
 // The Overview map survives the page re-renders: its box element is reused, so camera and focus are not lost on every simulation event.
 // The module draws the core mark; its breath is the one allowed loop and is only switched on for a playing simulation with fresh output.
 import { h } from './dom.js';
@@ -41,7 +41,9 @@ export function buildGraph(sim) {
     nodes.push({ id: a.id, kind: 'Decision', label: tr(a.kind === 'plan' ? 'Approve plan' : 'Allow action'), project: a.project, weight: 1.5, state: 'needs-you' });
     edges.push({ from: a.mission, to: a.id, kind: 'asks' });
   }
-  return { nodes, edges, projects: st.projects.map((p) => ({ id: p.id, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title) })) };
+  // Each project also carries what the Network view says about its hub: the neutral code, the counts and the last thing Archeus did (the same text as the Projects view).
+  const view = buildOverview(sim).projects;
+  return { nodes, edges, projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title) }; }) };
 }
 
 const VERB = { COMPLETED: 'completed', VERIFYING: 'is verifying', REVIEWING: 'is reviewing', EXECUTING: 'started', APPROVAL_REQUIRED: 'asks you to approve', BLOCKED: 'is blocked on', FAILED: 'stopped', PAUSED: 'paused' };

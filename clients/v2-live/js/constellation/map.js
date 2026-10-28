@@ -1,5 +1,6 @@
-import {driftOf, ambientField, coreKeepOut, clamp, coversNode, overlaps, isCrystal, layout, layoutPhone, layoutCalm, coreRadius as coreSize, coreReach, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
-import {bodyMarkup, coreStar} from './nodeart.js';
+import {driftOf, coreKeepOut, clamp, coversNode, overlaps, layout, layoutPhone, layoutCalm, coreRadius as coreSize, coreReach, coreScaleFor, taglineOn, satRank, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
+import {bodyMarkup, hubMarkup, coreStar} from './nodeart.js';
+import {orderProjects} from './territories.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, travel: 600, breath: 6000});
@@ -58,11 +59,11 @@ export function createMap(container, options = {}) {
   const title = svgElement('title', {id: `${prefix}-title`}, options.label || 'Work constellation');
   const summary = svgElement('desc', {id: `${prefix}-summary`});
   const world = svgElement('g', {class: 'am-world', 'aria-hidden': 'true'});
-  const spokeLayer = svgElement('g', {class: 'am-spokes'}), gridLayer = svgElement('g', {class: 'am-grid'}), ambient = svgElement('g', {class: 'am-ambient'}), edgeLayer = svgElement('g', {class: 'am-edges'});
+  const spokeLayer = svgElement('g', {class: 'am-spokes'}), gridLayer = svgElement('g', {class: 'am-grid'}), edgeLayer = svgElement('g', {class: 'am-edges'});
   const core = svgElement('g', {class: 'am-core am-state-core'});
   const nodeLayer = svgElement('g', {class: 'am-nodes'}), pulseLayer = svgElement('g', {class: 'am-pulses'});
-  world.append(ambient, spokeLayer, gridLayer, edgeLayer, core, nodeLayer, pulseLayer);
-  const leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
+  world.append(spokeLayer, gridLayer, edgeLayer, core, nodeLayer, pulseLayer);
+  const tagLayer = svgElement('g', {class: 'am-tags', 'aria-hidden': 'true'}), leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
   const reviews = svgElement('g', {class: 'am-reviews'});
   const hits = svgElement('g', {class: 'am-hits'}), selectRing = svgElement('circle', {class: 'am-select-ring'});
   const coreMark = svgElement('g', {'data-core': 'static'});
@@ -70,7 +71,7 @@ export function createMap(container, options = {}) {
   const tagline = svgElement('text', {class: 'am-tagline', 'text-anchor': 'middle'}, options.calm ? T('Understand · Plan · Do').toUpperCase() : T('Your projects. In context.'));
   const runningText = svgElement('text', {class: 'am-running', 'text-anchor': 'middle'});
   core.append(coreMark, wordmark, tagline, runningText);
-  svg.append(title, summary, world, leaders, labels, hits, reviews);
+  svg.append(title, summary, world, tagLayer, leaders, labels, hits, reviews);
   const controls = element('div', 'am-controls');
   controls.setAttribute('aria-label', T('Map view'));
   const status = element('p', 'am-sr');
@@ -83,14 +84,15 @@ export function createMap(container, options = {}) {
   head.append(heading);
   const body = element('tbody');
   table.append(caption, head, body); equivalent.append(table);
-  host.append(svg, controls, status, equivalent); container.append(host);
+  const card = element('div', 'am-card'); card.hidden = true; card.setAttribute('aria-hidden', 'true');
+  host.append(svg, card, controls, status, equivalent); container.append(host);
   let graph = {nodes: [], edges: [], projects: []}, positions = [], selected = null;
   let controlsBottom = 12, inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
   let reducedOverride = options.reducedMotion;
-  let layoutKey = '';
+  let slots = new Map(), memory = new Map(), level = 0, projectOf = new Map(), hotCluster = null, hotEls = new Set(), hoverId = null, cardTimer = 0;
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   const listeners = new Map(), activePulses = new Set(), pointers = new Map();
-  const starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
+  const tagRecs = new Map(), starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
   let selectedEl = null, fullKey = '', visible = true, playing = options.playing === true, hovered = null;
   let gesture = null;
   const canvas = document.createElement('canvas');
@@ -99,8 +101,19 @@ export function createMap(container, options = {}) {
   const isReduced = () => reducedOverride === true || (reducedOverride === undefined && media.matches);
   const isLive = () => options.live === true && options.fresh !== false && graph.nodes.some(n => stateKey(n.state) === 'running');
   const phoneOverview = () => options.overview && !options.calm && width < 600;
-  const layoutScene = () => (options.calm ? layoutCalm : phoneOverview() ? layoutPhone : layout)(graph, width, height, options.seed, inset);
-  const coreRadius = () => phoneOverview() ? 28 : coreSize(u, options.calm, width), reachOf = () => coreReach(width, options.calm);
+  // The Network view groups by project: hubs on a ring of cells round the core (the calm scene and the phone keep their own layouts).
+  const clustered = () => !options.calm && !phoneOverview();
+  const coreFactor = () => (clustered() ? coreScaleFor(new Set(graph.nodes.map(n => n.project || 'unassigned')).size) : 1);
+  // The zoom buttons stand in a column at the bottom right; no cell may sit under them.
+  const controlsBox = () => ({x: width - 68, y: height - controlsBottom - 156, width: 68, height: 160});
+  function layoutScene() {
+    if (options.calm) return layoutCalm(graph, width, height, options.seed, inset);
+    if (phoneOverview()) return layoutPhone(graph, width, height, options.seed, inset);
+    const out = layout(graph, width, height, inset, {slots, memory, avoid: [controlsBox()]});
+    memory = out.memory; level = out.level; host.dataset.dense = String(level >= 5);
+    return out.nodes;
+  }
+  const coreRadius = () => phoneOverview() ? 28 : coreSize(u, options.calm, width) * coreFactor(), reachOf = () => coreReach(width, options.calm);
   // Ambient motion (drift, rings, travelling markers) runs only for a playing simulation, with full motion, a visible tab and a visible map; the calm scene has none.
   const ambientOn = () => playing && visible && !isReduced() && !document.hidden && !options.calm;
   function motion() {
@@ -128,27 +141,35 @@ export function createMap(container, options = {}) {
   function refreshOverlay() {
     world.setAttribute('transform', `translate(${camera.x} ${camera.y}) scale(${camera.k})`);
     const nodes = screenNodes();
-    const size = width < 360 ? 12 : width < 480 ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
+    const size = width < 360 ? 12 : width < 480 || clustered() ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
     if (context) context.font = `400 ${size}px ${serif}`;
-    const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * reachOf() + 6) * k, below = (coreRadius() * reachOf() + wordmarkSize(u) * (width < 480 ? 3 : 5)) * k;
-    const cw = (controls.offsetWidth || 200) + 24, hold = Math.max(reach, 62 * u * k), coreBox = {x: cx - hold, y: cy - reach, width: hold * 2, height: reach + below};
+    const k = camera.k, cx = centre.x * k + camera.x, cy = centre.y * k + camera.y, reach = (coreRadius() * reachOf() + 6) * k, below = (coreRadius() * reachOf() + wordmarkSize(u) * (width < 480 || !taglineOn(coreFactor()) ? 3 : 5)) * k;
+    const hold = Math.max(reach, 62 * u * k), coreBox = {x: cx - hold, y: cy - reach, width: hold * 2, height: reach + below};
+    const ctl = {x: width - 68, y: height - controlsBottom - 156, width: 68, height: 160}, grouped = clustered();
+    // A hub's label stands under it and scales with the camera's position, not its size; below 0.8x the labels give way to the hub marks.
+    const tagged = grouped && k >= .8 ? nodes.filter(n => n.hub && n.tag) : [], tagBoxes = tagged.map(n => ({id: n.id, x: n.tag.x * k + camera.x, y: n.tag.y * k + camera.y, width: n.tag.width, height: n.tag.height}));
+    const shortOf = text => (grouped && [...text].length > 24 ? [...text].slice(0, 23).join('').trimEnd() + '…' : text);
+    const slotOf = n => slots.get(n.cluster) ?? 1e9, live = n => ['needs-you', 'running'].includes(stateKey(n.state));
+    // Only the hubs, the selected node and the first few that need you or run carry a label; the rest speak on hover and focus.
+    const eligible = grouped ? new Set([selected, ...nodes.filter(n => !n.hub && live(n)).sort((a, b) => slotOf(a) - slotOf(b) || satRank(a) - satRank(b) || String(a.id).localeCompare(String(b.id))).slice(0, [10, 10, 8, 6, 4][level] ?? 0).map(n => n.id)]) : null;
     const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' ? '' : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
-    const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : String(a.id).localeCompare(String(b.id))))[0];
+    const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : slotOf(a) - slotOf(b) || String(a.id).localeCompare(String(b.id))))[0];
     // The button goes below, above, right or left of its node, whichever side clears every other node and the bands the headline and drawer own.
-    const reviewSpots = reviewFor && width >= 480 && !phoneOverview() && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84]]
+    const reviewSpots = reviewFor && width >= 480 && !phoneOverview() && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84],
+      ...[60, 100, 140].flatMap(d => Array.from({length: 12}, (_, i) => [Math.cos(i * Math.PI / 6) * (reviewFor.radius + d) - 56, Math.sin(i * Math.PI / 6) * (reviewFor.radius + d) - 22]))]
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
-      .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !nodes.some(o => coversNode(b, o, 2))) : [];
+      .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !overlaps(b, ctl, 4) && !tagBoxes.some(t => overlaps(b, t, 4)) && !nodes.some(o => coversNode(b, o, 2))) : [];
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
-    const labelsFor = review => options.calm ? [] : placeLabels(nodes, width, height, {selected, size, rich, metaOf, measureMeta: context ? measureMeta : undefined,
+    const labelsFor = review => options.calm ? [] : placeLabels(grouped ? nodes.map(n => ({...n, label: shortOf(String(n.label || n.id))})) : nodes, width, height, {selected, size, rich: grouped ? false : rich, sub: grouped, only: eligible ?? undefined, metaOf, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
       obstacles: [coreBox,
-        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, {x: width - cw, y: height - controlsBottom - 56, width: cw, height: controlsBottom + 56}, ...(review ? [review] : [])]});
+        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, ctl, ...tagBoxes, ...(review ? [review] : [])]});
     // The button takes the first spot that leaves its node a full label; failing that, one that leaves a shortened label.
     let reviewBox = reviewSpots[0] ?? null, boxes = labelsFor(reviewBox);
     if (reviewFor && reviewBox) {
-      const full = String(reviewFor.label || reviewFor.id), grade = list => { const b = list.find(x => x.id === reviewFor.id); return b ? (b.text === full ? 2 : 1) : 0; };
+      const full = shortOf(String(reviewFor.label || reviewFor.id)), grade = list => { const b = list.find(x => x.id === reviewFor.id); return b ? (b.text === full ? 2 : 1) : 0; };
       let best = grade(boxes);
-      for (const spot of reviewSpots.slice(1)) { if (best === 2) break; const trial = labelsFor(spot), g = grade(trial); if (g > best) { best = g; reviewBox = spot; boxes = trial; } }
+      for (const spot of reviewSpots.slice(1)) { if (best === 2 || (eligible && !eligible.has(reviewFor.id))) break; const trial = labelsFor(spot), g = grade(trial); if (g > best) { best = g; reviewBox = spot; boxes = trial; } }
     }
     const byId = new Map(nodes.map(n => [n.id, n]));
     if (phoneOverview()) boxes = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').slice(0, 1).map(n => {
@@ -158,20 +179,20 @@ export function createMap(container, options = {}) {
       return {id: n.id, x, y: n.y - 8, width: available, height: 20, text, rich: false, mandatory: true, size: 14};
     });
     const items = boxes.map(box => ({box, n: byId.get(box.id), meta: box.rich ? metaOf(byId.get(box.id)) : ''}));
-    const labelSig = ({box, n, meta}) => `${box.rich}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}|${subOf(n)}`;
+    const labelSig = ({box, n, meta}) => `${box.rich}|${box.sub}|${box.size}|${stateKey(n.state)}|${n.id === selected}|${box.text}|${meta}|${subOf(n)}`;
     const placeLabel = (rec, {box}) => {
       const meta = box.size * .68;
       for (const [name, value] of [['x', box.x], ['y', box.y], ['width', box.width], ['height', box.height]]) setAttr(rec.el, `data-${name}`, value);
       if (rec.meta) { setAttr(rec.meta, 'x', box.x + 2); setAttr(rec.meta, 'y', box.y + meta * 1.05); }
       setAttr(rec.title, 'x', box.x + 2); setAttr(rec.title, 'y', box.rich ? box.y + meta * 1.4 + box.size : box.y + box.size);
-      if (rec.sub) { setAttr(rec.sub, 'x', box.x + 2); setAttr(rec.sub, 'y', box.y + meta * 1.4 + box.size * 1.95); }
+      if (rec.sub) { setAttr(rec.sub, 'x', box.x + 2); setAttr(rec.sub, 'y', box.rich ? box.y + meta * 1.4 + box.size * 1.95 : box.y + box.size * 2.15); }
     };
     const buildLabel = item => {
       const {box, n} = item, state = stateKey(n.state), meta = box.size * .68;
       const el = svgElement('g', {class: `am-label am-state-${words[state] ? state : 'idle'}${n.id === selected ? ' am-selected-label' : ''}`, 'data-node-id': n.id});
       const rec = {el, sig: labelSig(item), meta: box.rich ? svgElement('text', {class: 'am-label-meta', style: `font-size:${meta}px`}, item.meta) : null,
         title: svgElement('text', {class: 'am-label-title', style: `font-size:${box.size}px`}, box.text)};
-      rec.sub = box.rich && subOf(n) ? svgElement('text', {class: 'am-label-sub', style: `font-size:${box.size * .72}px`}, subOf(n)) : null;
+      rec.sub = (box.rich || box.sub) && subOf(n) ? svgElement('text', {class: box.rich ? 'am-label-sub' : 'am-label-word', style: `font-size:${box.size * .72}px`}, box.rich ? subOf(n) : subOf(n).toUpperCase()) : null;
       if (rec.meta) el.append(rec.meta);
       el.append(rec.title);
       if (rec.sub) el.append(rec.sub);
@@ -181,6 +202,31 @@ export function createMap(container, options = {}) {
     reconcile(labels, labelRecs, items, item => item.box.id, buildLabel, (rec, item) => {
       if (rec.sig !== labelSig(item)) Object.assign(rec, buildLabel(item)); else placeLabel(rec, item);
     });
+    // A hub's label: its name in serif (with the state word when it needs you or runs), then the last thing Archeus did there and how many missions are folded away.
+    const fitText = (text, max, font) => {
+      if (!context || !(max > 0)) return text;
+      context.font = font;
+      let t = String(text);
+      if (context.measureText(t).width <= max) return t;
+      while (t.length > 1 && context.measureText(t + '…').width > max) t = t.slice(0, -1);
+      return t.trimEnd() + '…';
+    };
+    const tagSig = n => [n.label, stateKey(n.state), n.quiet, n.tag.width, n.lines, projectOf.get(n.id)?.last?.text, projectOf.get(n.id)?.last?.time].join('|');
+    const buildTag = n => {
+      const p = projectOf.get(n.id), state = stateKey(n.state), w = n.tag.width, mid = w / 2, el = svgElement('g', {class: 'am-tag'});
+      const word = n.lines && (state === 'needs-you' || state === 'running') ? W(state).toUpperCase() : '', quiet = n.quiet ? T(`+${n.quiet} quiet`) : '';
+      const line = (y, cls, ...parts) => { const t = svgElement('text', {class: cls, x: mid, y, 'text-anchor': 'middle'}); parts.forEach(([text, klass], i) => { if (text) t.append(svgElement('tspan', {...(klass ? {class: klass} : {}), ...(i ? {dx: 8} : {})}, text)); }); el.append(t); };
+      if (n.lines === 0) line(11, 'am-tag-quiet', [n.quiet ? `+${n.quiet}` : '']);
+      else {
+        line(16, 'am-tag-name', [fitText(n.label || n.id, w - (word ? 84 : 0), `400 16px ${serif}`)], [word, `am-tag-word am-state-${state}`]);
+        if (n.lines === 2) line(34, 'am-tag-sub', [fitText(p?.last ? `${p.last.time} · ${p.last.text}` : p?.total === 0 ? T('No missions yet') : '', w - (quiet ? 70 : 0), `400 12px ${sans}`)], [quiet, 'am-tag-quiet']);
+        else if (quiet) line(34, 'am-tag-quiet', [quiet]);
+      }
+      return {el, sig: tagSig(n)};
+    };
+    const placeTag = (rec, n) => setAttr(rec.el, 'transform', `translate(${f(n.tag.x * k + camera.x)} ${f(n.tag.y * k + camera.y)})`);
+    reconcile(tagLayer, tagRecs, tagged, n => n.id, n => { const rec = buildTag(n); placeTag(rec, n); return rec; }, (rec, n) => { if (rec.sig !== tagSig(n)) Object.assign(rec, buildTag(n)); placeTag(rec, n); });
+    if (hotCluster !== null) setHot(hotCluster);
     const placeReview = (rec, b) => setAttr(rec.el, 'transform', `translate(${f(b.x + b.width / 2)} ${f(b.y + b.height / 2)})`);
     reconcile(reviews, reviewRecs, reviewBox ? [reviewBox] : [], b => b.id, b => {
       const el = svgElement('g', {class: 'am-review am-state-needs-you', tabindex: 0, role: 'button', 'data-node-id': b.id, 'aria-label': `${T('Review')}: ${byId.get(b.id).label}`});
@@ -209,12 +255,12 @@ export function createMap(container, options = {}) {
     selectRing.remove();
     if (star) { star.classList.add('am-selected'); selectRing.setAttribute('r', positions.find(p => p.id === selected).radius + 11); star.append(selectRing); }
     selectedEl = star;
-    const missing = nodes.filter(n => (n.id === selected || stateKey(n.state) === 'needs-you') && !boxes.some(b => b.id === n.id));
+    const missing = nodes.filter(n => (n.id === selected || (eligible ? eligible.has(n.id) && stateKey(n.state) === 'needs-you' : stateKey(n.state) === 'needs-you')) && !boxes.some(b => b.id === n.id));
     host.dataset.labelOverflow = String(missing.length);
     status.textContent = missing.length ? T(`${missing.length} priority labels cannot fit. Full labels available in node table.`) : '';
   }
   function choose(id, reveal = false) {
-    if (id !== null && !positions.some(n => n.id === id)) return;
+    if (id !== null && !graph.nodes.some(n => n.id === id)) return;
     selected = id;
     const visible = screenNodes().find(n => n.id === id);
     if (reveal && visible && (visible.x < 28 || visible.x > width - 28 || visible.y < 28 || visible.y > height - 80)) {
@@ -237,6 +283,7 @@ export function createMap(container, options = {}) {
   function starMarkup(n) {
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, body = ['Mission', 'Project', 'Execution'].includes(n.kind);
     if (options.calm && n.kind === 'Project') return panelMarkup(n, calmRows(n), T('No items yet'), T('items'));
+    if (n.hub) return hubMarkup({...n, code: projectOf.get(n.id)?.code});
     if (body) return bodyMarkup(n, n.kind === 'Mission' ? (state === 'done' ? 'check' : state === 'needs-you' ? 'doc-search' : 'doc') : ICON[n.kind]);
     const [tag, shape] = starShape(n.kind, r), attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
     return `<g class="am-star am-state-${colorState}" data-node-id="${esc(n.id)}"><${tag} ${attrs} class="am-body${['blocked', 'running', 'paused', 'idle'].includes(state) ? ' am-hollow' : ''}"/></g>`;
@@ -246,11 +293,11 @@ export function createMap(container, options = {}) {
     holder.innerHTML = starMarkup(n);
     const star = holder.firstElementChild, state = stateKey(n.state);
     driftVars(star, n.id);
-    if (!options.calm && (state === 'needs-you' || state === 'running')) star.insertAdjacentHTML('afterbegin', `<circle class="am-ring" r="${f(n.radius + 4)}"/>`);
+    if (!options.calm && (state === 'needs-you' || state === 'running')) star.insertAdjacentHTML('afterbegin', `<circle class="am-ring am-state-${state}" r="${f(n.radius + 4)}"/>`);
     return star;
   }
   function updateSummary() {
-    summary.textContent = T(`${positions.length} nodes across ${graph.projects.length} projects. ${positions.filter(n => stateKey(n.state) === 'needs-you').length} need you. Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.`);
+    summary.textContent = T(`${graph.nodes.length} nodes across ${graph.projects.length} projects. ${graph.nodes.filter(n => stateKey(n.state) === 'needs-you').length} need you. Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.`);
   }
   function accent(...states) {
     const keys = states.map(stateKey);
@@ -262,15 +309,14 @@ export function createMap(container, options = {}) {
     coreMark.replaceChildren(svgElement('path', {d: p.threads, class: 'am-core-chords'}), svgElement('path', {d: p.spikes, class: 'am-core-thread'}), svgElement('path', {d: p.tips, class: 'am-core-dot'}));
     const ws = wordmarkSize(u, options.calm), base = R * reachOf() + ws * 1.9;
     wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', base); wordmark.style.fontSize = `${ws}px`;
-    tagline.style.display = phoneOverview() || width < 480 ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
+    tagline.style.display = phoneOverview() || width < 480 || !taglineOn(coreFactor()) ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
     runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
   }
   function render(previous = new Map(), arrivals = false, moved = true) {
     if (moved) { for (const marker of activePulses) marker.remove(); activePulses.clear(); }
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
-    const groups = new Map();
-    for (const n of positions) { const key = n.project || 'unassigned'; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(n); }
-    const hubs = options.calm ? [] : phoneOverview() ? positions.map(n => ({project: n.id, mx: n.x, my: n.y})) : [...groups.keys()].sort().map(project => { const members = groups.get(project), hub = members.find(n => n.kind === 'Project'); return {project, mx: hub ? hub.x : members.reduce((t, n) => t + n.x, 0) / members.length, my: hub ? hub.y : members.reduce((t, n) => t + n.y, 0) / members.length}; });
+    const graphHubs = positions.filter(n => n.hub).length;
+    const hubs = options.calm ? [] : phoneOverview() ? positions.map(n => ({project: n.id, mx: n.x, my: n.y})) : positions.filter(n => n.hub && (graphHubs <= 24 || ['needs-you', 'running'].includes(stateKey(n.state)))).map(n => ({project: n.cluster, mx: n.x, my: n.y}));
     const patchSpoke = (rec, item) => setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`);
     reconcile(spokeLayer, spokeRecs, hubs, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
     gridLayer.innerHTML = options.calm && positions.length ? gridMarkup(threadGrid(positions, {...centre, radius: coreRadius() * 1.1}, {box: coreKeepOut(width, height, u, inset, true).box, bounds: {left: 8, top: inset.top, right: width - 8, bottom: height - inset.bottom}})) : '';
@@ -310,7 +356,7 @@ export function createMap(container, options = {}) {
       return rec;
     }, patchEdge);
     const arrived = [];
-    const starSig = n => `${n.phone}|${n.state}|${n.kind}|${n.radius}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
+    const starSig = n => `${n.phone}|${n.state}|${n.kind}|${n.radius}|${projectOf.get(n.id)?.code}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
     const placeStar = (rec, n) => { if (rec.x !== n.x || rec.y !== n.y) { setAttr(rec.el, 'transform', `translate(${f(n.x)} ${f(n.y)})`); rec.x = n.x; rec.y = n.y; } };
     const buildStar = n => { const rec = {el: drawStar(n), sig: starSig(n)}; placeStar(rec, n); if (arrivals) arrived.push(rec.el); return rec; };
     reconcile(nodeLayer, starRecs, positions, n => n.id, buildStar, (rec, n) => { if (rec.sig !== starSig(n)) { Object.assign(rec, buildStar(n)); rec.x = rec.y = undefined; placeStar(rec, n); } else placeStar(rec, n); });
@@ -318,14 +364,11 @@ export function createMap(container, options = {}) {
     const stateOf = n => { const state = stateKey(n.state); return words[state] ? nodeWord(n) : state; };
     const same = (rec, n) => rec.stamped && rec.label === n.label && rec.kind === n.kind && rec.state === n.state && rec.place === placeOf(n);
     const stamp = (rec, n) => { rec.stamped = true; rec.label = n.label; rec.kind = n.kind; rec.state = n.state; rec.place = placeOf(n); };
-    const patchHit = (rec, n) => { if (same(rec, n)) return; setAttr(rec.el, 'aria-label', `${n.label || n.id}, ${kindWord(n)}, ${stateOf(n)}, ${placeOf(n)}`); stamp(rec, n); };
+    const patchHit = (rec, n) => { setAttr(rec.el, 'tabindex', !clustered() || n.hub || ['needs-you', 'running'].includes(stateKey(n.state)) ? 0 : -1); if (same(rec, n)) return; setAttr(rec.el, 'aria-label', `${n.label || n.id}, ${kindWord(n)}, ${stateOf(n)}, ${placeOf(n)}`); stamp(rec, n); };
     reconcile(hits, hitRecs, positions, n => n.id, n => {
       const circle = svgElement('circle', {r: 22}), rec = {el: svgElement('g', {tabindex: 0, role: 'button', class: 'am-hit', 'data-node-id': n.id}), circle};
       rec.el.append(circle);
-      // A node lifts a little under the pointer and under keyboard focus.
-      const lift = on => { starRecs.get(n.id)?.el.classList.toggle('am-lift', on); hovered = on ? n.id : hovered === n.id ? null : hovered; syncHot(); };
-      rec.el.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') lift(true); }); rec.el.addEventListener('pointerleave', () => lift(false));
-      rec.el.addEventListener('focus', () => lift(rec.el.matches(':focus-visible'))); rec.el.addEventListener('blur', () => lift(false));
+      rec.el.addEventListener('focus', () => { if (rec.el.matches(':focus-visible')) hoverTo(n.id, true); }); rec.el.addEventListener('blur', () => hoverTo(null));
       patchHit(rec, n);
       return rec;
     }, patchHit);
@@ -334,7 +377,7 @@ export function createMap(container, options = {}) {
       stamp(rec, n);
       setText(rec.button, String(n.label || n.id)); setText(rec.cells[0], kindWord(n)); setText(rec.cells[1], stateOf(n)); setText(rec.cells[2], placeOf(n));
     };
-    reconcile(body, rowRecs, positions, n => n.id, n => {
+    reconcile(body, rowRecs, graph.nodes, n => n.id, n => {
       const button = element('button'), first = element('td'), rec = {el: element('tr'), button, cells: [element('td'), element('td'), element('td')]};
       button.type = 'button'; first.append(button); rec.el.dataset.nodeId = n.id; rec.el.append(first, ...rec.cells);
       patchRow(rec, n);
@@ -345,6 +388,50 @@ export function createMap(container, options = {}) {
     updateSummary();
     refreshOverlay(); motion();
     if (arrivals) animate(labels, MOTION.label);
+  }
+  // Hover and focus: the node lifts, its project's cluster stays lit and the rest dims (100 ms in, 180 ms out, see map.css); the preview card opens after a 180 ms dwell, at once on focus.
+  function setHot(cluster) {
+    hotCluster = cluster;
+    if (cluster === null) delete host.dataset.hot; else host.dataset.hot = 'on';
+    const next = new Set(), inside = new Set();
+    if (cluster !== null) {
+      for (const n of positions) if (n.cluster === cluster) { inside.add(n.id); next.add(starRecs.get(n.id)?.el); next.add(labelRecs.get(n.id)?.el); if (n.hub) next.add(tagRecs.get(n.id)?.el); }
+      for (const rec of edgeRecs.values()) if (inside.has(rec.aid) && inside.has(rec.bid)) next.add(rec.el);
+      next.add(spokeRecs.get(cluster)?.el);
+    }
+    for (const el of hotEls) if (el && !next.has(el)) el.classList.remove('am-in');
+    for (const el of next) el?.classList.add('am-in');
+    hotEls = next;
+  }
+  function placeCard(n) {
+    const p = projectOf.get(n.cluster), state = stateKey(n.state), at = screenNodes().find(m => m.id === n.id);
+    if (!at) return;
+    const line = p?.last ? `${p.last.time} · ${p.last.text}` : '', kind = n.hub ? T('Project') : n.kind === 'Execution' ? T('Agent execution') : T(n.kind || 'Node');
+    const place = n.hub ? `${p?.code ?? ''}${p?.total ? ' · ' + T(`${p.total} ${p.total === 1 ? 'mission' : 'missions'}`) : ''}` : p?.label || '';
+    card.replaceChildren(element('p', 'am-card-kind', kind), element('p', 'am-card-name', n.label || n.id), element('p', `am-card-state am-state-${words[state] ? state : 'idle'}`, words[state] ? W(state) : String(n.state || '')),
+      ...(place ? [element('p', 'am-card-line', place)] : []), ...(line ? [element('p', 'am-card-last', line)] : []), ...(n.hub || n.kind === 'Mission' ? [element('p', 'am-card-act', n.hub ? T('Open work') : T('Open mission'))] : []));
+    card.hidden = false;
+    const cw = card.offsetWidth, ch = card.offsetHeight;
+    let x = at.x + at.radius + 12; if (x + cw > width - 8) x = at.x - at.radius - cw - 12;
+    card.style.left = `${f(clamp(x, 8, Math.max(8, width - cw - 8)))}px`; card.style.top = `${f(clamp(at.y - at.radius, 8, Math.max(8, height - ch - 8)))}px`;
+  }
+  function hoverTo(id, now = false) {
+    if (id === hoverId) return;
+    starRecs.get(hoverId)?.el.classList.remove('am-lift');
+    hoverId = hovered = id;
+    clearTimeout(cardTimer);
+    const at = positions.find(m => m.id === id);
+    starRecs.get(id)?.el.classList.add('am-lift');
+    syncHot();
+    if (!clustered()) return;
+    setHot(at ? at.cluster : null);
+    if (!at) { cardTimer = setTimeout(() => { card.hidden = true; }, 120); return; }
+    if (now) placeCard(at); else cardTimer = setTimeout(() => placeCard(at), 180);
+  }
+  function hoverAt(p) {
+    let best = null, nearest = Infinity;
+    for (const m of screenNodes()) { const d = Math.hypot(m.x - p.x, m.y - p.y); if (d < Math.max(14, m.radius) && d < nearest) { best = m.id; nearest = d; } }
+    hoverTo(best);
   }
   function focusNodeIfOutside(id) {
     const n = screenNodes().find(n => n.id === id);
@@ -360,7 +447,6 @@ export function createMap(container, options = {}) {
     width = w; height = h; u = unit(w, h); centre = options.overview && !options.calm && w < 600 ? {x: w / 2, y: h * .32} : coreCentre(w, h, inset); host.dataset.phoneOverview = String(phoneOverview()); host.dataset.narrow = String(width < 480); svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
     const css = getComputedStyle(host); serif = css.getPropertyValue('--am-serif').trim() || 'serif'; sans = css.getPropertyValue('--am-sans').trim() || 'sans-serif';
     drawCore();
-    ambient.innerHTML = options.calm || phoneOverview() || options.ambient === false ? '' : (f => `<path d="${f.d}"/>${f.dots.map(([x, y]) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5"/>`).join('')}`)(ambientField(width, height, options.seed));
     camera = {x: 0, y: 0, k: 1}; positions = layoutScene(); render(); emit('resize', {width, height});
   }
   function zoom(k, x = width / 2, y = height / 2) {
@@ -381,7 +467,7 @@ export function createMap(container, options = {}) {
     camera = {k, x: width / 2 - (minX + maxX) / 2 * k, y: (height - 50) / 2 - (minY + maxY) / 2 * k};
     refreshOverlay(); emit('viewchange', {...camera});
   }
-  for (const [label, text, action] of [['Zoom out', '−', () => zoom(camera.k / 1.25)], ['Zoom in', '+', () => zoom(camera.k * 1.25)], ['Fit all nodes', 'Fit', fitView], ['Reset map view', 'Reset', reset]].map(([a, t, g]) => [T(a), t === 'Fit' || t === 'Reset' ? T(t) : t, g])) {
+  for (const [label, text, action] of [['Zoom in', '+', () => zoom(camera.k * 1.25)], ['Zoom out', '−', () => zoom(camera.k / 1.25)], ['Fit all nodes', 'Fit', fitView]].map(([a, t, g]) => [T(a), t === 'Fit' ? T(t) : t, g])) {
     const button = element('button', '', text); button.type = 'button'; button.setAttribute('aria-label', label); button.addEventListener('click', action); controls.append(button);
   }
   function point(event) { const r = svg.getBoundingClientRect(); return {x: event.clientX - r.left, y: event.clientY - r.top}; }
@@ -398,7 +484,7 @@ export function createMap(container, options = {}) {
     pointers.set(event.pointerId, point(event)); event.target.setPointerCapture(event.pointerId); startGesture();
   }
   function move(event) {
-    if (!pointers.has(event.pointerId)) return;
+    if (!pointers.has(event.pointerId)) { if (event.pointerType === 'mouse') hoverAt(point(event)); return; }
     pointers.set(event.pointerId, point(event));
     const values = [...pointers.values()];
     const center = values.length > 1 ? {x: (values[0].x + values[1].x) / 2, y: (values[0].y + values[1].y) / 2} : values[0];
@@ -417,6 +503,7 @@ export function createMap(container, options = {}) {
     const id = event.target.closest('.am-hit')?.dataset.nodeId;
     if (!id) return;
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(id); }
+    else if (event.key === 'Escape') { card.hidden = true; clearTimeout(cardTimer); }
     else if (event.key.startsWith('Arrow')) { event.preventDefault(); const next = nearestNeighbour(positions, id, event.key); if (next) focusNode(next); }
   });
   body.addEventListener('click', event => { const id = event.target.closest('tr')?.dataset.nodeId; if (id && event.target.closest('button')) { choose(id, true); focusNode(id); } });
@@ -433,7 +520,7 @@ export function createMap(container, options = {}) {
   });
   svg.addEventListener('wheel', wheel, {passive: false});
   svg.addEventListener('pointerdown', down); svg.addEventListener('pointermove', move);
-  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
+  svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up); svg.addEventListener('pointerleave', () => hoverTo(null));
   media.addEventListener('change', motion); document.addEventListener('visibilitychange', motion);
   const observer = new ResizeObserver(resize); observer.observe(host);
   const seen = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { visible = entries[entries.length - 1].isIntersecting; motion(); }) : null; seen?.observe(host);
@@ -450,11 +537,12 @@ export function createMap(container, options = {}) {
       const full = JSON.stringify(graph);
       if (full === fullKey) return;
       fullKey = full;
-      const key = graph.nodes.map(n => `${n.id}|${n.kind}|${n.project}|${n.weight}|${isCrystal(n)}|${phoneOverview() ? n.state : ''}`).join(';');
-      const moved = key !== layoutKey;
-      if (moved) positions = layoutScene();
-      else { const byId = new Map(graph.nodes.map(n => [n.id, n])); positions = positions.map(p => ({...p, ...byId.get(p.id)})).sort((x, y) => String(x.id).localeCompare(String(y.id))); }
-      layoutKey = key;
+      // A project keeps the slot it got when first seen (attention first, then recent activity), so nothing already placed moves when another arrives.
+      projectOf = new Map(graph.projects.map(p => [p.id, p]));
+      for (const p of orderProjects(graph.projects.filter(p => !slots.has(p.id)))) slots.set(p.id, slots.size);
+      const placed = layoutScene(), moved = placed.length !== positions.length || placed.some((n, i) => n.id !== positions[i].id || n.x !== positions[i].x || n.y !== positions[i].y);
+      positions = placed;
+      if (moved) drawCore();
       render(previous, true, moved);
       emit('update', {nodes: positions.length});
     },
@@ -478,7 +566,7 @@ export function createMap(container, options = {}) {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add(fn); return () => listeners.get(event)?.delete(fn); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; observer.disconnect(); seen?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.fonts?.removeEventListener('loadingdone', refit);
+      destroyed = true; clearTimeout(cardTimer); observer.disconnect(); seen?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.fonts?.removeEventListener('loadingdone', refit);
       for (const animation of host.getAnimations({subtree: true})) animation.cancel();
       pointers.clear(); activePulses.clear(); listeners.clear(); host.remove();
     }

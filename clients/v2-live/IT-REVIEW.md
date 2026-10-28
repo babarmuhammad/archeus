@@ -1809,3 +1809,12 @@ File: `js/i18n-areas.js`. The notes were only translated joined to their source 
 - Only Core dispatches. → Solo il Core avvia.
 - Denied by policy, not by the OS: physical reach is not built (finding G1). → Negato dalla policy, non dal sistema operativo: il raggio d’azione fisico non è costruito (rilievo G1).
 - Provider access is not brokered yet and the network is not walled off. → L’accesso al provider non passa ancora da un broker e la rete non è isolata.
+
+## Network view clusters (2026-10-28, agent N): to review
+
+File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mission, Agent execution, Zoom in, Zoom out, Fit) were already translated; `Reset map view` was removed with its button (Fit also resets the view).
+
+- Open work → Apri il lavoro (last line of a project's preview card)
+- Open mission → Apri la missione (last line of a mission's preview card)
+- No missions yet → Ancora nessuna missione (hub label of a project with no missions)
+- +N quiet → +N inattive (the count of idle or finished missions folded into a hub; the Italian is a short form of "missioni inattive")

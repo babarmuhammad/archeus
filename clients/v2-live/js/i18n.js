@@ -70,7 +70,7 @@ const IT = {
   'Approve plan': 'Approva il piano', 'Allow action': 'Consenti l\'azione', 'Done': 'Fatta', 'Idle': 'Inattiva', 'Thinking': 'In pianificazione', 'Knowledge': 'Conoscenza', 'Idea': 'Idea', 'Node': 'Nodo', 'Kind': 'Tipo', 'Unassigned': 'Senza progetto',
   'Live map of your projects and missions. The list beside it has the same content.': 'Mappa viva dei tuoi progetti e delle tue missioni. L\'elenco accanto ha lo stesso contenuto.',
   'Constellation nodes. Select a row to focus its star.': 'Nodi della costellazione. Scegli una riga per portare il focus sulla sua stella.',
-  'Map view': 'Vista della mappa', 'Zoom out': 'Riduci', 'Zoom in': 'Ingrandisci', 'Fit all nodes': 'Mostra tutti i nodi', 'Reset map view': 'Ripristina la vista', 'Fit': 'Adatta',
+  'Map view': 'Vista della mappa', 'Zoom out': 'Riduci', 'Zoom in': 'Ingrandisci', 'Fit all nodes': 'Mostra tutti i nodi', 'Fit': 'Adatta',
   'Selected step': 'Passo selezionato', 'Categories': 'Categorie', 'Not recorded': 'Non registrato', 'Earlier': 'Prima', 'Later': 'Dopo', 'Step': 'Passo', 'Time': 'Ora', 'Category': 'Categoria', 'Trigger': 'Causa', 'Settled by': 'Chiuso da', 'Record': 'Registro',
   'What Core recorded, in order. Each step carries a Replay category and who settled it. Nothing here can be re-run.': 'Ciò che il Core ha registrato, in ordine. Ogni passo ha una categoria Replay e chi lo ha chiuso. Qui nulla può essere rieseguito.',
   'Older steps were pruned from the event log, so anything before them is UNKNOWN, not "nothing happened".': 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non "non è successo nulla".',
