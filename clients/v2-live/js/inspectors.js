@@ -55,6 +55,12 @@ function mission(ctx, A, S, id) {
   const m = S.missions[id]; if (!m) return null;
   const tasks = m.tasks.map((x) => S.tasks[x]), execs = Object.values(S.executions).filter((x) => x.mission === id);
   const pos = position(S, m, dnote('D08', 'Time at each station on the inspector spine; omitted when events are pruned.'));
+  const stations = spineInspector(m.state, m.held_from);
+  const times = stationTimes(S, m);
+  if (times) stations.querySelectorAll('ol > li').forEach((li, i) => { if (times[i] != null) li.append(h('span', { class: 'ax-st-time' }, clockLabel(times[i]))); });
+  pos.progress.querySelector('.spine-insp')?.parentNode.replaceWith(stations);
+  const stationNotes = Array.from(pos.progress.children).filter((node) => node.matches('.ax-note, .dnote'));
+  pos.progress.append(h('details', { class: 'msn-station-notes' }, h('summary', null, 'Station details'), ...stationNotes));
   const act = (kind, label, primary, confirm) => h('button', { class: 'btn' + (primary ? ' primary' : ''), type: 'button', onclick: () => (confirm ? ask(ctx, { text: confirm, label, tone: 'danger', run: () => ctx.act(kind, id) }) : ctx.act(kind, id)) }, label);
   const foot = () => {
     if (m.state === 'BLOCKED') return [act('unblock', 'Answer and unblock', true), act('cancel', 'Cancel mission', false, 'Cancel "' + m.title + '"? Cancelling ends the mission and stops its runs. This cannot be undone.')];
@@ -70,7 +76,16 @@ function mission(ctx, A, S, id) {
     if (tab === 'outcome') {
       const last = S.events.filter((e) => e.mission === id && e.type === 'mission.state_changed').pop();
       const facts = kv([['State', badge('mission', m.state)], ['Project', link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project))], ['Branch', m.branch], ['Origin', m.origin], ['Plan', m.plan_version ? 'version ' + m.plan_version : 'none yet'], ['Tasks', tasks.filter((t) => t.state === 'SUCCEEDED').length + ' of ' + tasks.length + ' done'], ['Account', link(hrefFor('account', m.account), accountLabel(S, m.account))], last ? ['Last change', clockLabel(last.at) + (last.actor === 'device' ? ' by you' : ' by Core')] : null, m.reason ? ['Why', m.reason] : null]);
-      return overview(ctx, S, m, tasks, execs, { compact: isCompact(), facts, position: pos });
+      const content = overview(ctx, S, m, tasks, execs, { compact: isCompact(), facts, position: pos });
+      const rows = content.querySelector('.msn-rows');
+      const details = kv([
+        ['Current phase', h('span', null, word('mission', m.state), h('span', { class: 'msn-d' }, spineOf(m.state, m.held_from).text))],
+        ...Array.from(rows.children, (row) => [row.querySelector('.ax-eyebrow').textContent, h('div', null, ...Array.from(row.querySelector('div').children).slice(1))])
+      ]);
+      details.classList.add('msn-records');
+      rows.replaceWith(details);
+      pos.phase.remove();
+      return content;
     }
     if (tab === 'plan') {
       const plans = Object.values(S.plans).filter((p) => p.mission === id), aps = Object.values(S.approvals).filter((a) => a.mission === id);
@@ -100,10 +115,16 @@ function mission(ctx, A, S, id) {
     }
     return relTab(S, 'mission', id);
   };
-  const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: meta(ctx, S, m), pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
+  const metadata = h('div', { class: 'msn-meta' },
+    link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project)),
+    h('span', null, h('span', null, 'Started'), ' ', clockLabel(m.created_at)),
+    h('span', null, h('span', { class: 'vh' }, 'Phase'), badge('mission', m.state)));
+  const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: metadata, pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
+  fr.querySelector('.tabs').before(pos.progress);
+  pos.progress.classList.add('msn-stations');
   const page = h('div', { class: 'msn' }, pane(ctx, S, m, isCompact()), fr);
-  const identity = h('div', { class: 'msn-identity' }), progress = h('div', { class: 'msn-progress' });
-  const nodes = [fr.querySelector('.insp-head'), fr.querySelector('.msn-meta'), pos.phase, pos.progress];
+  const identity = h('div', { class: 'msn-identity' });
+  const nodes = [fr.querySelector('.insp-head'), metadata];
   const homes = nodes.map((node) => {
     const home = document.createTextNode('');
     if (node.parentNode) node.before(home);
@@ -116,14 +137,11 @@ function mission(ctx, A, S, id) {
     if (phone === compact) return;
     phone = compact;
     if (compact) {
-      identity.append(...nodes.slice(0, 3));
-      progress.append(pos.progress);
+      identity.append(...nodes);
       page.prepend(identity);
-      fr.before(progress);
     } else {
       nodes.forEach((node, i) => { if (homes[i].parentNode) homes[i].after(node); else node.remove(); });
       identity.remove();
-      progress.remove();
     }
   });
   return page;
