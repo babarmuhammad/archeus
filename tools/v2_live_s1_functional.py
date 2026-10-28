@@ -53,7 +53,7 @@ try:
         check('Re-arm asks, then releases the stop', not pg.evaluate('window.v2live.sim.state.estop.engaged') and pg.inner_text('[data-key="stop"]') == 'Stop')
         # Tell overlay
         check('the Overview carries its own Tell dock, the app level overlay stays closed', pg.is_visible('.tell-dock input[data-key="chat-in-dock"]') and not pg.is_visible('#chatdock'))
-        check('the Overview has no top bar Tell button, its own dock is the composer', pg.locator('.topbar [data-key="tell"]').count() == 0)
+        check('the Overview has no top bar Tell button, its own dock is the composer', pg.locator('.topbar [data-key="tell"]').count() == 0 and 'null' not in pg.inner_text('.topbar'))
         pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
         check('Esc closes the Tell overlay', not pg.is_visible('#chatdock'))
         # project filter
