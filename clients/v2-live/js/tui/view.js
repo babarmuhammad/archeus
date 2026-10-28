@@ -60,8 +60,8 @@ export function viewTerminal(ctx) {
   const lookBtn = btn('Colours', 'Colours: cycle the look', () => press('L'));
   const asciiBtn = btn('ASCII', 'ASCII glyphs only', () => press('G'));
   const readBtn = btn('Read', 'Linear text for a screen reader', () => press('T'));
-  const title = h('div', { class: 'tui-title' }, h('span', { class: 'tui-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), h('span', { class: 'tui-name' }, 'archeus ', h('b', null, 'terminal view')), h('span', { class: 'sp' }),
-    lookBtn, asciiBtn, readBtn, btn('Keys', 'Keys and help', () => press('?')));
+  const title = h('div', { class: 'tui-title' }, h('span', { class: 'tui-name' }, 'archeus ', h('b', null, 'terminal view')), h('span', { class: 'sp' }),
+    lookBtn, asciiBtn, readBtn, btn('Keys', 'Keys and help', () => press('?')), h('a', { class: 'tui-btn act', href: '#/now', 'aria-label': 'Back to the app', 'data-key': 'tui-exit' }, 'App'));
   const keys = h('div', { class: 'tui-keys', role: 'group', 'aria-label': 'Terminal keys' });
   const input = h('input', { type: 'text', class: 'tui-input', 'aria-label': 'Command line: a place, a slash command, or a message to Archeus', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', placeholder: 'Go to, or /status, /help ...' });
   const cmd = h('form', { class: 'tui-cmd', hidden: true }, h('label', { class: 'tui-prompt', for: 'tui-input' }, ':'), input, h('button', { class: 'tui-btn', type: 'submit' }, 'Run'), h('button', { class: 'tui-btn', type: 'button', onclick: () => { press('esc'); grid.focus(); } }, 'Esc'));

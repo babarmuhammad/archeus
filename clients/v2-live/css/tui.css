@@ -30,8 +30,6 @@
 /* ---------- window chrome ---------- */
 .tui { display: flex; flex-direction: column; min-height: 0; }
 .tui-title { flex: none; display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 4px 8px; background: var(--s1); border-bottom: var(--hair) solid var(--line); }
-.tui-dots { display: inline-flex; gap: 6px; padding: 0 6px 0 2px; }
-.tui-dots i { width: 11px; height: 11px; border: var(--hair) solid var(--line-strong); border-radius: 50%; }
 .tui-name { color: var(--text-2); font: 400 13px/1.2 var(--mono); white-space: nowrap; }
 .tui-name b { color: var(--text); font-weight: 600; }
 .tui-title .sp { flex: 1 1 auto; }
@@ -39,7 +37,7 @@
 .tui-btn:hover { background: var(--s3); }
 .tui-btn[aria-pressed='true'] { background: var(--s3); border-color: var(--text-2); }
 .tui-btn.act { font-family: var(--font); }
-@container dev (max-width: 479px) { .tui-dots, .tui-name { display: none; } .tui-title { gap: 4px; padding: 4px; } .tui-title .sp { display: none; } .tui-title .tui-btn { flex: 1 1 0; padding: 0 4px; } }
+@container dev (max-width: 479px) { .tui-name { display: none; } .tui-title { gap: 4px; padding: 4px; } .tui-title .sp { display: none; } .tui-title .tui-btn { flex: 1 1 0; padding: 0 4px; } }
 
 .tui-stage { flex: 1 1 auto; min-height: 0; padding: 8px; display: flex; justify-content: center; align-items: flex-start; overflow: hidden; background: var(--t-bg); }
 @container dev (min-width: 1280px) { .tui-stage { padding: 12px 16px; } }

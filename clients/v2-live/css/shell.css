@@ -4,7 +4,7 @@
 /* ---------- toolbar (tool chrome, outside the app frame) ---------- */
 :root { --tb: 44px; }
 #toolbar { position: relative; z-index: 40; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: var(--tb); padding: 0 8px; background: var(--bg); border-bottom: var(--hair) solid var(--line); }
-.tb-tray { flex: 1 0 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; padding: 0 0 4px; border-top: var(--hair) solid var(--line); }
+.tb-tray { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
 .tb-tray[hidden] { display: none; }
 .tb-brand { font-weight: 600; font-size: 15px; padding: 0 8px 0 4px; white-space: nowrap; }
 .star { flex: none; stroke-width: 1.25px; }
@@ -78,7 +78,7 @@
 .nav-item, .proj-item { position: relative; display: flex; align-items: center; gap: 12px; min-height: var(--target); padding: 0 12px; border: var(--hair) solid transparent; border-radius: 6px; color: var(--text-2); font-size: var(--base); font-weight: 400; white-space: nowrap; }
 .nav-item:hover, .proj-item:hover { background: color-mix(in srgb, var(--text) 5%, transparent); color: var(--text); }
 .nav-item[aria-current='page'], .proj-item[aria-current='page'] { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 500; }
-.nav-item[aria-current='page']::before { content: ''; position: absolute; left: -8px; top: 0; bottom: 0; width: 3px; background: var(--attention); }
+.nav-item[aria-current='page']::before { content: ''; position: absolute; left: -8px; top: 0; bottom: 0; width: 3px; background: var(--text); }
 .nav-item svg { flex: none; }
 .nav-item .count { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--decide-bg); color: var(--decide-fg); font-size: 12px; font-weight: 700; text-align: center; line-height: 20px; }
 .app:not([data-rail='open']) .nav-item .nl, .app:not([data-rail='open']) .proj-item .nl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -94,7 +94,9 @@
 }
 .rail-sep { height: var(--hair); margin: 6px 4px; background: var(--line); }
 .rail-eye { margin: 4px 12px 2px; font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
-.rail-proj { display: flex; flex-direction: column; }
+.rail-proj { flex: 1 1 auto; min-height: 96px; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+.proj-more { color: var(--text-2); } .proj-more .pdot::before { content: none; }
+.rail-foot { flex: none; display: flex; flex-direction: column; padding-top: 6px; border-top: var(--hair) solid var(--line); }
 .safety .sep { flex: none; width: 3px; height: 3px; border-radius: 50%; background: var(--text-3); font-size: 0; }
 .pdot { flex: none; display: grid; place-items: center; width: 20px; height: 20px; }
 .pdot::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--c, transparent); box-shadow: inset 0 0 0 1.5px var(--c, var(--text-3)); }
@@ -104,9 +106,9 @@
 /* ---------- top bar: safety cluster, Tell, Stop ---------- */
 .main-wrap { grid-area: main; position: relative; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .main-wrap > .main-col { flex: 1 1 auto; }
-.topbar { position: relative; z-index: 17; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 56px; padding: 6px var(--gut); }
+.topbar { position: relative; z-index: 17; flex: none; display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 52px; padding: 4px var(--gut); }
 .tb-lock { display: none; margin-right: auto; }
-.safety { position: relative; }
+.safety { position: relative; margin-right: auto; }
 .safety-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; border: var(--hair) solid transparent; border-radius: 6px; background: transparent; color: var(--text-2); font-size: calc(var(--base) * .875); cursor: pointer; white-space: nowrap; }
 .safety-btn:hover, .safety-btn[aria-expanded='true'] { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
 .sdot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--done); }
@@ -116,6 +118,7 @@
 .tell-btn, .stop-btn { min-width: 76px; }
 @container dev (max-width: 599px) {
   .tb-lock { display: inline-flex; }
+  .safety { margin-right: 0; }
   .tell-btn, .stop-btn, .safety .sep, .safety .sx { display: none; }
   .safety-pop { position: fixed; z-index: 30; top: auto; left: 12px; right: 12px; bottom: 88px; width: auto; }
 }
@@ -125,7 +128,11 @@
 .tell-x { position: absolute; top: 4px; right: 4px; min-width: 44px; min-height: 44px; }
 html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
 
-.toast { position: absolute; z-index: 25; left: 50%; top: var(--gut); transform: translateX(-50%); max-width: min(32em, calc(100% - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; text-align: center; }
+.toast { position: absolute; z-index: 25; right: calc(var(--insp-w) + var(--gut)); top: 52px; max-width: min(32em, calc(100% - var(--insp-w) - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; animation: toast-in 100ms ease-out; }
+.toast[data-leaving] { animation: toast-out 180ms ease-out forwards; pointer-events: none; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
+@container dev (min-width: 1280px) { .app:not([data-insp='open']) .toast { top: 0; right: calc(var(--gut) + 176px); } }
 
 /* ---------- inspector and sheets ---------- */
 .scrim { position: absolute; inset: 0; z-index: 18; background: var(--scrim); }
@@ -171,7 +178,7 @@ body[data-embed='1'] #stage { grid-row: 1; }
 .tb-always { display: inline !important; }
 @media (max-width: 479px) { .tb-opt { display: none; } }
 
-.toast { width: max-content; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 4px; padding: 4px 6px 4px 16px; }
+.toast { width: max-content; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0 4px; padding: 4px 6px 4px 16px; }
 .toast .tt { padding: 6px 4px; }
 .toast .btn { min-height: 44px; }
 .toast[data-kind='error'] { border-color: var(--blocked); }
@@ -191,3 +198,16 @@ body[data-embed='1'] #stage { grid-row: 1; }
   .safety-pop, .chatdock.tell { border: 1px solid CanvasText; }
   .toast { border: 1px solid CanvasText; }
 }
+
+/* ---------- motion and hover, one language (emil-design-eng): a tint that comes in over 100 ms and leaves over 180 ms, a press of .97,
+   no movement under Reduced motion. Colour and transform only; nothing that moves layout. ---------- */
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow) { transition: background-color 180ms ease-out, border-color 180ms ease-out, transform 180ms ease-out; }
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow):hover { transition-duration: 100ms; }
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .rail-toggle, .safety-btn, .bb-item, .tui-btn):active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--s2); } .chip[aria-pressed='true']:hover { background: var(--s3); } }
+.pl-wrap.enter .places { animation: sheet-in 180ms ease-out; }
+.pl-wrap.enter .pl-scrim { animation: fade-in 100ms ease-out; }
+@keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }
+@keyframes fade-in { from { opacity: 0; } }
+:root[data-motion='reduced'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow, .toast, .places, .pl-scrim) { transition: none; animation: none; transform: none; }
+@media (prefers-reduced-motion: reduce) { :root[data-motion='system'] :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .proj-item, .rail-toggle, .safety-btn, .pl-item, .bb-item, .tui-btn, .mrow, .ax-xrow, .toast, .places, .pl-scrim) { transition: none; animation: none; transform: none; } }

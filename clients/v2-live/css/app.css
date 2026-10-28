@@ -14,7 +14,7 @@ svg { display: block; }
 [hidden] { display: none !important; }
 
 .main-col { grid-area: main; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.page-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px var(--gap); padding: var(--gut) var(--gut) 0; }
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px var(--gap); padding: calc(var(--gut) * .5) var(--gut) 0; }
 .page-head h1 { font-size: var(--fs-t1); line-height: 1.25; font-weight: 600; }
 .page-head .sub { margin-top: 4px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; }
 .sim-tag { display: inline-block; padding: 0 6px; border: var(--hair) solid var(--attention); border-radius: 4px; color: var(--text); font-size: 11px; font-weight: 700; letter-spacing: .06em; line-height: 16px; vertical-align: 1px; }
@@ -164,6 +164,14 @@ dl.kv dd { overflow-wrap: anywhere; }
 .composer input { flex: 1 1 auto; min-width: 0; min-height: var(--target-primary); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s3); color: var(--text); font-size: var(--fs-body); }
 .composer input::placeholder { color: var(--text-3); opacity: 1; }
 .composer .btn { min-height: var(--target-primary); }
+.set-col { display: flex; flex-direction: column; gap: calc(var(--gut) * 1.25); min-width: 0; }
+.set-sec { min-width: 0; }
+.set-sec > h2 { padding-bottom: 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-t1); font-weight: 600; line-height: 1.3; }
+.set-sec > .body { padding-top: 12px; }
+.set-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px; padding: 12px 0; border-bottom: var(--hair) solid var(--line); }
+.set-txt { flex: 1 1 14em; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-ctl { flex: 0 1 auto; max-width: 100%; }
+.set-about { max-width: 60ch; padding-top: 12px; color: var(--text-2); line-height: 1.5; }
 .note { padding: 0 16px 12px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; }
 .sel-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 4px 16px 12px; }
 .sel-wrap select { min-height: var(--target); padding: 0 10px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s3); color: var(--text); font-size: var(--fs-body); }

@@ -209,36 +209,46 @@ export function viewAccounts(ctx) {
 }
 
 // ---------- Extensions: hooks, MCP servers, agents, automations, clients ----------
+// One row per extension: name and what it does (the whole row opens its details), its last use inline, a status word only where the switch does not say it, the switch.
 function xrow(ctx, o) {
-  return h('div', { class: 'ax-xrow', 'data-key': o.key },
-    h('a', { class: 'x-main', href: o.href }, h('span', { class: 'r-name' }, o.name), h('span', { class: 'r-note' }, o.meta)),
-    h('span', { class: 'x-st' }, o.status), h('span', { class: 'x-last' }, h('span', { class: 'l' }, o.lastLabel || 'Last run'), h('span', null, o.last)), h('span', { class: 'x-sw' }, o.control || null), o.below || null);
+  const last = o.lastLabel === null ? [o.last] : [h('span', { class: 'l' }, o.lastLabel || 'Last run'), ' ', o.last];
+  return h('div', { class: 'ax-xrow', 'data-key': o.key, 'data-nost': o.status ? null : 'true' },
+    h('a', { class: 'x-main', href: o.href }, h('span', { class: 'r-name' }, o.name), h('span', { class: 'r-note' }, o.meta, ' · ', ...last)),
+    o.status ? h('span', { class: 'x-st' }, o.status) : null, h('span', { class: 'x-sw' }, o.control || null), o.below || null);
 }
+const needsYou = (n) => (n === 1 ? '1 needs you' : n + ' need you');
 export function viewExtensions(ctx) {
   const A = areasOf(ctx.sim), S = A.S(), clock = S.clock;
   const when = (t) => (t == null ? 'Never' : clockLabel(t));
-  const hooks = A.hooks().map((x) => {
+  const hookList = A.hooks(), mcpList = A.mcp(), agentList = A.agents();
+  const hooks = hookList.map((x) => {
     const key = 'row:' + x.id, flip = () => { const r = A.toggleHook(x.id); done(ctx, r, r.on ? 'Hook switched on (simulated).' : 'Hook switched off (simulated).'); };
-    return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('hook', x.id), name: x.name, meta: x.event + ' · ' + x.matcher, status: pill(x.enabled ? 'ok' : 'paused', x.enabled ? 'Enabled' : 'Disabled'), last: when(x.last),
+    return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('hook', x.id), name: x.name, meta: x.event + ' · ' + x.matcher, last: when(x.last),
       control: x.locked ? pill('ok', 'Built in') : sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => (x.enabled && x.sensitive ? ask(ctx, { at: key, text: 'Switch off "' + x.name + '"? An execution can then do this without asking you.', label: 'Switch off', tone: 'danger', run: flip }) : flip()) }), below: inline(ctx, key) });
   });
-  const mcps = A.mcp().map((x) => {
+  const mcps = mcpList.map((x) => {
     const st = A.mcpStatus(x, clock), t = MCP_TONE[st];
     return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('mcp', x.id), name: x.name, meta: x.transport + ' · ' + (x.tools.length ? x.tools.length + (x.tools.length === 1 ? ' tool' : ' tools') : 'tools not known') + (st === 'CONNECTED' ? ' · ' + x.calls + ' calls' : ''), status: pill(t[0], t[1]), lastLabel: 'Last call', last: when(x.last),
       control: x.unchecked ? h('span', { class: 'x-na' }, 'Not checked') : sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => { const r = A.toggleMcp(x.id); done(ctx, r, r.on ? 'Connecting (simulated).' : 'Switched off (simulated).'); } }) });
   });
-  const agents = A.agents().map((x) => {
-    const s = A.agentStatus(x);
+  const agentState = agentList.map((x) => A.agentStatus(x));
+  const agents = agentList.map((x, i) => {
+    const s = agentState[i];
     return xrow(ctx, { key: 'x-' + x.id, href: hrefFor('agent', x.id), name: x.name, meta: x.role, status: pill(s.key === 'working' ? 'active' : s.key === 'off' ? 'paused' : s.key === 'ready' ? 'attention' : 'ok', s.key === 'working' ? 'Working' : s.key === 'off' ? 'Off' : s.key === 'ready' ? 'Result waits' : 'Idle'), last: when(x.last), control: sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => { const r = A.toggleAgent(x.id); done(ctx, r, r.on ? 'Agent switched on (simulated).' : 'Agent switched off (simulated).'); } }), below: s.key === 'working' || s.key === 'ready' ? h('p', { class: 'x-below' }, s.text) : null });
   });
-  const autos = S.automations.map((a) => xrow(ctx, { key: 'x-' + a.id, href: hrefFor('automation', a.id), name: a.name, meta: a.trigger, status: badge('automation', a.state), last: a.next_run ? 'Next ' + a.next_run : 'Not scheduled', lastLabel: 'Schedule', control: a.state === 'SUSPENDED' || a.state === 'PENDING_APPROVAL' ? h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('enable', a.id) }, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve') : null, below: a.note ? h('p', { class: 'x-below' }, a.note) : null }));
+  const waits = (a) => a.state === 'SUSPENDED' || a.state === 'PENDING_APPROVAL';
+  const autos = S.automations.map((a) => xrow(ctx, { key: 'x-' + a.id, href: hrefFor('automation', a.id), name: a.name, meta: a.trigger, status: badge('automation', a.state), last: a.next_run ? 'Next ' + a.next_run : 'Not scheduled', lastLabel: null, control: waits(a) ? h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('enable', a.id) }, a.state === 'SUSPENDED' ? 'Re-enable' : 'Approve') : null, below: a.note ? h('p', { class: 'x-below' }, a.note) : null }));
   const clients = S.devices.map((d) => xrow(ctx, { key: 'x-' + d.id, href: hrefFor('device', d.id), name: d.name, meta: 'Paired client', status: badge('device', d.state), last: d.state === 'ACTIVE' ? 'Now' : 'Revoked', lastLabel: 'Seen' }));
+  const need = { agents: agentState.filter((s) => s.key === 'ready').length, autos: S.automations.filter(waits).length };
+  const total = hooks.length + mcps.length + agents.length + autos.length + clients.length, off = [...hookList, ...mcpList, ...agentList].filter((x) => !x.enabled).length, needAll = need.agents + need.autos;
+  const sum = h('p', { class: 'ext-sum', role: 'status' }, h('span', null, total + ' extensions'), off ? h('span', null, off + ' off') : null, needAll ? pill('attention', needsYou(needAll)) : null);
   const jump = (id, l, n) => h('button', { class: 'chip', type: 'button', onclick: () => { const el = document.getElementById(id); if (el) el.scrollIntoView({ block: 'start' }); } }, l, h('span', { class: 'n' }, String(n)));
-  return h('div', { class: 'ax-page' }, axHead(ctx, 'Extensions', 'Hooks, MCP servers and agents', 'What can act before, after and beside a run. Each row says its status and when it last ran; a switch changes it for the next run.'), h('div', { class: 'view' },
-    dnote('H09', 'Hooks, MCP servers and agents managers: status, last run, enable and disable, and a details sheet for each. Automations and clients are the other Control lists.'),
+  const group = (id, t, sub, rows, n) => h('section', { class: 'ax-card ax-ext', id }, h('div', { class: 'ax-card-h' }, h('h2', null, t, h('span', { class: 'n' }, String(rows.length)), n ? pill('attention', needsYou(n)) : null), h('p', null, sub)), h('div', { class: 'ax-xrows' }, ...rows));
+  return h('div', { class: 'ax-page' }, head(ctx, 'Extensions', sum), h('div', { class: 'view' },
     h('div', { class: 'chips ax-jump' }, jump('x-hooks', 'Hooks', hooks.length), jump('x-mcp', 'MCP servers', mcps.length), jump('x-agents', 'Agents', agents.length), jump('x-autos', 'Automations', autos.length), jump('x-clients', 'Clients', clients.length)),
-    ...[['x-hooks', 'Hooks', 'Run before or after a tool. A hook that guards something asks you to confirm before it is switched off.', hooks], ['x-mcp', 'MCP servers', 'Tools a run can call. A server that writes asks first.', mcps], ['x-agents', 'Agents', 'The roles Core calls. None of them can decide for you.', agents], ['x-autos', 'Automations', 'Work that starts on a schedule or an event.', autos], ['x-clients', 'Clients', 'Paired devices that can read and decide.', clients]]
-      .map(([id, t, sub, rows]) => h('section', { class: 'ax-card ax-ext', id }, h('div', { class: 'ax-card-h' }, h('h2', null, t, h('span', { class: 'n' }, String(rows.length))), h('p', null, sub)), h('div', { class: 'ax-xrows' }, ...rows)))));
+    cols([group('x-hooks', 'Hooks', 'Run before or after a tool. A hook that guards something asks you to confirm before it is switched off.', hooks), group('x-mcp', 'MCP servers', 'Tools a run can call. A server that writes asks first.', mcps)],
+      [group('x-agents', 'Agents', 'The roles Core calls. None of them can decide for you.', agents, need.agents), group('x-autos', 'Automations', 'Work that starts on a schedule or an event.', autos, need.autos), group('x-clients', 'Clients', 'Paired devices that can read and decide.', clients)]),
+    dnote('H09', 'Hooks, MCP servers and agents managers: status, last run, enable and disable, and a details sheet for each. Automations and clients are the other Control lists.')));
 }
 
 // ---------- what S3 adds to Now and Work ----------

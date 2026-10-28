@@ -69,7 +69,7 @@ try:
         check('a refused action raises an error toast', pg.locator('.toast[data-kind="error"]').is_visible() and pg.locator('.toast').get_attribute('role') == 'alert')
         pg.clock.run_for(6000); pg.wait_for_timeout(100)
         check('the error toast stays after 6 s', pg.locator('.toast').is_visible())
-        pg.click('.toast [data-key="toast-x"]'); pg.wait_for_timeout(100)
+        pg.click('.toast [data-key="toast-x"]'); pg.wait_for_timeout(260)
         check('Dismiss closes it', not pg.locator('.toast').is_visible())
         op(); pg.click('.safety-pop [data-key="pause-all"]'); pg.wait_for_timeout(150)
         check('an info toast shows without an action', pg.locator('.toast[data-kind="info"]').is_visible())
