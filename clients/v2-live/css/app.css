@@ -5,6 +5,7 @@
 html { background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; }
 body { margin: 0; height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); background: var(--bg); color: var(--text); font: 400 16px/1.4 var(--font); overflow: hidden; }
 button, input, select { font: inherit; color: inherit; }
+select option, select optgroup { background-color: var(--s3); color: var(--text); }
 h1, h2, h3, p, ul, ol, dl, dd { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 a { color: inherit; text-decoration: none; }
