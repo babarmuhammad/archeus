@@ -290,13 +290,15 @@ export function projectsKeepOut(width, height, inset = INSET) {
     : coreKeepOut(width, height, Math.min(unit(width, height), (height - 142) / 400), projectsInset(inset));
 }
 export function layoutProjects(graph, width, height, seed = 'archeus', inset = INSET) {
-  const projects = graph.nodes.filter(n => n.kind === 'Project').sort((a, b) => String(a.id).localeCompare(String(b.id)));
-  const items = projects.flatMap(p => [p, ...graph.nodes.filter(n => n.kind === 'Idea' && n.project === p.id).sort((a, b) => String(a.id).localeCompare(String(b.id)))]);
+  const byId = (a, b) => String(a.id).localeCompare(String(b.id));
+  const projects = graph.nodes.filter(n => n.kind === 'Project').sort(byId), ideas = graph.nodes.filter(n => n.kind === 'Idea').sort(byId);
+  const known = new Set(projects.map(p => p.id));
+  const items = projects.flatMap(p => [p, ...ideas.filter(n => n.project === p.id)]).concat(ideas.filter(n => !known.has(n.project)));
   const phone = width < 600, keep = projectsKeepOut(width, height, inset), rows = phone ? items.length : Math.ceil(items.length / 2);
   const plateWidth = phone ? width - inset.left - inset.right - 16 : Math.min(260, (width - inset.left - inset.right - keep.box.width - 56) / 2);
   const available = height - inset.top - projectsInset(inset).bottom - (phone ? 120 : 0);
-  const plateHeight = Math.min(64, Math.max(44, available / Math.max(1, rows) - 12));
+  const plateHeight = Math.min(64, Math.max(44, available / Math.max(1, rows) - 12)), pitch = Math.max(available / Math.max(1, rows), plateHeight + 12);
   return items.map((n, i) => ({...n, width: plateWidth, height: plateHeight, radius: 22,
     x: phone ? width / 2 + 8 : i % 2 ? width - inset.right - plateWidth / 2 : inset.left + plateWidth / 2,
-    y: inset.top + (phone ? 120 : 0) + (Math.floor(i / (phone ? 1 : 2)) + .5) * available / Math.max(1, rows)}));
+    y: inset.top + (phone ? 120 : 0) + (Math.floor(i / (phone ? 1 : 2)) + .5) * pitch}));
 }
