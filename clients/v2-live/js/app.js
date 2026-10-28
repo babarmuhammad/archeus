@@ -22,6 +22,8 @@ import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
 import { installKeys } from './keys.js';
 import { railProjects } from './rail-model.js';
+import * as motion from './motion.js';
+import { direction } from './motion-model.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -83,9 +85,18 @@ function closeInsp() { nav('#/' + ctx.route.name); }
 
 let inspKey = '';
 const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
+// A change of page runs through the motion layer (a directional cross-fade); everything else, including each simulation event, redraws in place and only glides what moved.
 function render() {
   if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
   if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
+  const to = parse().name;
+  if (to !== ctx.route.name && !embed && motion.canRoute()) { motion.route(ctx.route.name, to, drawRoute); return; }
+  drawRoute();
+}
+function drawRoute() {
+  const sameRoute = parse().name === ctx.route.name, roots = [page, topbar, rail.querySelector('#railproj')];
+  const snap = sameRoute ? motion.capture(roots) : null;
+  const oldInsp = app.dataset.insp === 'open' ? inspector.firstElementChild : null, inspBox = oldInsp ? motion.boxOfInspector(inspector) : null;
   if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
   const keep = { top: page.scrollTop, itops: inspScrollers().map((e) => e.scrollTop), ikey: inspKey, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
@@ -114,7 +125,7 @@ function render() {
   // navigation state and counts
   app.querySelectorAll('.rail [data-route]').forEach((a) => { const here = a.dataset.route === r.name; if (here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const n = sim.attention().filter((a) => a.kind !== 'knowledge').length;
-  app.querySelectorAll('[data-count="work"]').forEach((c) => { c.hidden = !n; c.textContent = String(n); c.setAttribute('aria-label', n + ' need you'); });
+  app.querySelectorAll('[data-count="work"]').forEach((c) => { const was = c.textContent; c.hidden = !n; c.textContent = String(n); if (was && n && was !== String(n)) motion.tick(c); c.setAttribute('aria-label', n + ' need you'); });
 
   mountTell(term);
   syncTopbar(); syncRail(); syncPhone();
@@ -134,6 +145,9 @@ function render() {
     if (el && el !== document.activeElement) el.focus({ preventScroll: true });
   }
   if (insp && !wasOpen) { const hd = inspector.querySelector('h2'); if (hd) { hd.setAttribute('tabindex', '-1'); hd.focus({ preventScroll: true }); } }
+  motion.railMark(rail); motion.tabs([page, inspector]);
+  if (prev.name !== ctx.route.name) motion.arrive(page, direction(prev.name, ctx.route.name)); else motion.play(snap, roots);
+  if (insp && !wasOpen) motion.inspectorIn(inspector, app.clientWidth); else if (!insp && wasOpen) motion.inspectorOut(oldInsp, inspBox, app.clientWidth);
   const places = app.querySelector('.places');
   if (places && !places.contains(document.activeElement)) places.querySelector('.pl-item').focus();
   else if (!places && keep.was && keep.was.closest('.places')) bottom.querySelector('[data-key="bb-places"]').focus();
@@ -170,10 +184,12 @@ function act(kind, id) {
 // Info toasts leave after 4.5 s. An error, or a toast that carries an action, stays until Dismiss.
 function toast(text, o) {
   const err = !!(o && o.error) || /^(Not done|Non fatto)/.test(text), keep = err || !!(o && o.action);
+  const shown = !toastEl.hidden && !toastEl.dataset.leaving;
   clearTimeout(toastTimer); clear(toastEl); delete toastEl.dataset.leaving;
   toastEl.dataset.kind = err ? 'error' : 'info'; toastEl.setAttribute('role', err ? 'alert' : 'status');
   toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
   translate(toastEl); toastEl.hidden = false;
+  if (shown) motion.enter(toastEl, { y: -6, s: .98, origin: '100% 0', dur: 1 });
   if (!keep) toastTimer = setTimeout(dismissToast, 4500);
 }
 function dismissToast() {
@@ -278,6 +294,8 @@ function syncToolbar() {
   const red = store.reducedMotion(); const m = tb('motion'); m.setAttribute('aria-pressed', red ? 'true' : 'false'); m.querySelector('.tb-label').textContent = red ? 'Quiet' : 'Motion';
   tb('notes').setAttribute('aria-pressed', store.get('heronotes') === 'on' ? 'true' : 'false');
   tb('lang').querySelector('.tb-label').textContent = store.get('lang') === 'it' ? 'IT' : 'EN'; tb('lang').setAttribute('aria-pressed', store.get('lang') === 'it' ? 'true' : 'false');
+  const badge = toolbar.querySelector('.sim-badge'), mode = sim.state.playing ? 'playing' : 'paused';
+  if (badge.dataset.sim !== mode) { const was = badge.dataset.sim, g = badge.querySelector('.g'); badge.dataset.sim = mode; g.textContent = mode === 'playing' ? '◆' : '◇'; if (was) motion.tick(g); }
   const sb = tb('sim'); sb.querySelector('.tb-label').textContent = sim.state.playing ? 'x' + sim.state.speed : 'Paused';
   translate(toolbar);
 }
@@ -285,10 +303,11 @@ function setLang(id) { store.set('lang', id); buildToolbar(); syncToolbar(); ren
 function setHeroNotes() { store.set('heronotes', store.get('heronotes') === 'on' ? 'off' : 'on'); syncToolbar(); broadcast(); }
 function setNotes(id) { store.set('notes', id); refreshMenu(); render(); broadcast(); }
 function toggleMotion() { store.set('motion', store.reducedMotion() ? 'full' : 'reduced'); syncCore(); syncToolbar(); toast(store.reducedMotion() ? 'Reduced motion on: the core mark is still.' : 'Motion on: the core mark breathes while work is live.'); render(); refreshMenu(); broadcast(); }
-function closeMenu() { if (menu) { menu.remove(); menu = null; } toolbar.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); menuName = null; }
+function closeMenu() { if (menu) { motion.exitClone(menu, { y: -4, s: .98, dur: 1 }); menu.remove(); menu = null; } toolbar.querySelectorAll('[aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false')); menuName = null; }
 function toggleMenu(name, btn) { if (menuName === name) { closeMenu(); return; } closeMenu(); menuName = name; btn.setAttribute('aria-expanded', 'true'); buildMenu(); }
 function refreshMenu() { if (menuName) buildMenu(); }
 function buildMenu() {
+  const fresh = !menu;
   if (menu) menu.remove();
   const item = (label, checked, on, hint, dev) => h('button', { class: 'menu-item', type: 'button', 'data-device': dev, role: 'menuitemradio', 'aria-checked': checked ? 'true' : 'false', onclick: on }, h('span', { class: 'tick', 'aria-hidden': 'true' }, checked ? '✓' : ''), label, hint ? h('span', { class: 'hint' }, hint) : null);
   let kids;
@@ -305,6 +324,7 @@ function buildMenu() {
   translate(menu);
   document.body.append(menu);
   menu.style.top = toolbar.offsetHeight + 2 + 'px';
+  if (fresh) motion.enter(menu, { y: 0, s: .98, origin: '100% 0', dur: 1 });
 }
 document.addEventListener('click', (e) => { if (ui.safetyOpen && !e.target.closest('.safety, .safety-pop, .stop-btn, .bb-stop')) closeSafety(); if (menu && !menu.contains(e.target) && !toolbar.contains(e.target)) closeMenu(); });
 document.addEventListener('keydown', (e) => {
@@ -403,3 +423,4 @@ function setPrefs(o) { Object.keys(o).forEach((k) => { if (store.get(k) !== o[k]
 
 // first draw, last: fit() reads the All devices declarations above, which a stored 'all' device would hit too early
 if (embed) render(); else { fit(); if (store.get('device') === 'auto' || store.get('device') === 'terminal') render(); }
+motion.arm();
