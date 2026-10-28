@@ -72,9 +72,10 @@ test('sim: recent projects run and ask, old ones are done', () => {
 test('sim: the local story is deterministic, the worktrees ride along, the default is untouched', () => {
   const a = createSim({ local: LIST, seed: 3 }), b = createSim({ local: LIST, seed: 3 });
   assert.equal(a.hash(), b.hash());
-  assert.equal(a.state.worktrees.length, 2);
-  assert.deepEqual(a.state.worktrees.map((w) => w.state), ['stale', 'active']);
-  assert.ok(a.state.worktrees.every((w) => a.state.projects.some((p) => p.id === w.project)));
+  const trees = a.state.projects.flatMap((p) => p.worktrees);
+  assert.equal(trees.length, 2);
+  assert.deepEqual(trees.map((w) => w.state), ['stale', 'active']);
+  assert.ok(trees.every((w) => a.state.projects.some((p) => p.id === w.project)));
   assert.equal(createSim().state.projects.length, 3);
   assert.equal(createSim({ projects: 10 }).state.projects.length, 10);
 });

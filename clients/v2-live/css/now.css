@@ -45,9 +45,11 @@
 @container view (max-width: 599px) {
   .now-view .state-sentence { font-size: 30px; }
 }
-.now-wrap { height: 100%; }
-.now-wrap > .ax-digest { margin: var(--gut); }
+/* The scene is pinned while the digest scrolls up over it, so the Tell dock (inside the scene) stays at the bottom of the viewport. */
+.main-col:has(> .now-wrap) { container: main / size; }
 .now-wrap { position: relative; }
+.now-wrap > .now-view { position: sticky; top: 0; height: max(100cqh, 560px); }
+.main-col .now-wrap > .ax-digest { position: relative; z-index: 5; margin: 0; padding: var(--gut); background: var(--bg); border-top: var(--hair) solid var(--line); border-radius: 0; }
 
 
 /* Calm: the bottom band (headline and Tell, Today, Known projects) under the scene. */

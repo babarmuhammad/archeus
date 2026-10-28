@@ -319,7 +319,7 @@ export function viewReplay(ctx) {
     const drop = () => { rp.pin = null; }; sc.addEventListener('scroll', onScroll, { passive: true }); for (const t of ['wheel', 'touchmove', 'keydown']) sc.addEventListener(t, drop, { passive: true });
     spyOff = () => { sc.removeEventListener('scroll', onScroll); for (const t of ['wheel', 'touchmove', 'keydown']) sc.removeEventListener(t, drop); spyOff = null; }; spy();
   });
-  const missionPick = picker({ key: 'rp-mission', label: L('Mission', 'Missione'), cls: 'pick', value: m.id, items: ms.map((x) => ({ value: x.id, label: x.title })), onPick: (v) => ctx.nav(replayHref(v, cur)) });
+  const missionPick = picker({ key: 'rp-mission', label: L('Mission', 'Missione'), cls: 'pick', value: m.id, items: st.projects.flatMap((p) => ms.filter((x) => x.project === p.id).map((x) => ({ value: x.id, label: x.title, group: p.name }))), onPick: (v) => ctx.nav(replayHref(v, cur)) });
   if (phone) {
     const hd = head(ctx, L('Replay', 'Replay')); hd.querySelector('h1').classList.add('vh');
     const pane = { events, evidence: h('div', { class: 'rp-pane', id: 'rp-evidence' }, stepPanel, recs, gaps), recovery: recPanel, reference }[sec];

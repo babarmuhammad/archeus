@@ -47,7 +47,7 @@ export function missionRow(ctx, m, base) {
     h('span', { class: 'sp' }, spineRow(m.state, m.held_from)));
 }
 
-const KIND_ICON = { approval: 'approval', verification: 'status', mission: 'mission', knowledge: 'knowledge', automation: 'execution', account: 'account' };
+const KIND_ICON = { approval: 'approval', verification: 'status', mission: 'mission', knowledge: 'knowledge', automation: 'execution', account: 'account', worktree: 'mission' };
 export function attentionItem(ctx, a) {
   const sim = ctx.sim, m = a.mission_id ? sim.state.missions[a.mission_id] : null;
   const need = a.group === 'Decide' || a.group === 'Review';
@@ -58,7 +58,7 @@ export function attentionItem(ctx, a) {
   else if (a.kind === 'account') btns.push(h('a', { class: 'btn', href: '#/settings' }, 'Open Settings'));
   else if (open) btns.push(h('a', { class: 'btn primary', href: open }, a.kind === 'approval' ? 'Open decision' : a.group === 'Review' ? 'Open review' : 'Open'));
   return h('article', { class: 'card band', 'data-key': a.id, 'data-state': need ? 'needs_you' : 'blocked' },
-    h('div', { class: 'top' }, h('span', { class: 'kind' }, icon(KIND_ICON[a.kind] || 'status', 20), a.kind === 'approval' || a.kind === 'verification' || a.kind === 'mission' ? badge('mission', m ? m.state : 'APPROVAL_REQUIRED') : h('span', { class: 'badge', 'data-role': need ? 'needs_you' : 'blocked' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(need ? 'needs_you' : 'blocked')), h('span', { class: 'w' }, a.kind === 'knowledge' ? 'Candidate' : a.kind === 'automation' ? 'Automation' : 'Account'))),
+    h('div', { class: 'top' }, h('span', { class: 'kind' }, icon(KIND_ICON[a.kind] || 'status', 20), a.kind === 'approval' || a.kind === 'verification' || a.kind === 'mission' ? badge('mission', m ? m.state : 'APPROVAL_REQUIRED') : h('span', { class: 'badge', 'data-role': need ? 'needs_you' : 'blocked' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(need ? 'needs_you' : 'blocked')), h('span', { class: 'w' }, a.kind === 'knowledge' ? 'Candidate' : a.kind === 'automation' ? 'Automation' : a.kind === 'worktree' ? 'Worktree' : 'Account'))),
       h('span', { class: 'why' }, [projName(sim, a.project_id), a.since ? 'since ' + clockLabel(a.since) : ''].filter(Boolean).join(' · '))),
     h('p', { class: 'ttl' }, a.reason),
     m ? spineCard(m.state, m.held_from) : null,
