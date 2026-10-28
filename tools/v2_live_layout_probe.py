@@ -41,7 +41,7 @@ ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'healt
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~details', 'now~toast', 'chat~toast',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
           # S1: the safety popover, its two-step Stop, the Tell overlay
-          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'chat~tell', 'now~estopsafety']
+          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'now~estopsafety']
 # terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
 TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
        'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
