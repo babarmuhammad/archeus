@@ -14,7 +14,7 @@ import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
 import { viewChat, mountDock, openTell } from './chat.js';
 import { buildBottom, syncBottom, placesSheet } from './phone.js';
-import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate } from './areas.js';
+import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate, isSection } from './areas.js';
 import { inspectorFor } from './inspectors.js';
 import { areasOf } from './areas-model.js';
 import { translate } from './i18n.js';
@@ -79,7 +79,7 @@ function parse() {
   return { name, id: m[2] || null };
 }
 function nav(hash) { if (location.hash === hash) render(); else location.hash = hash; }
-function closeInsp() { nav('#/' + ctx.route.name); }
+function closeInsp() { const sec = ui.sect && ui.sect[ctx.route.name]; nav('#/' + ctx.route.name + (sec ? '/' + sec : '')); } // a page with parts returns to the part the inspector was opened from
 
 let inspKey = '';
 const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
@@ -106,7 +106,7 @@ function render() {
 
   // inspector
   let insp = null;
-  if (!term && ['now', 'work', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
+  if (!term && ['now', 'work', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id && !isSection(r.name, r.id)) insp = inspectorFor(ctx);
   clear(inspector); if (insp) inspector.append(insp);
   const wasOpen = app.dataset.insp === 'open';
   app.dataset.insp = insp ? 'open' : '';
