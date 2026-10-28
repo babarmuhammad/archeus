@@ -274,6 +274,10 @@ function project(ctx, A, S, id) {
         return h('li', {'data-phase': word}, h('span', {class: 'project-phase-dot', 'aria-hidden': 'true'}), h('span', null, label), h('span', {class: 'project-phase-word'}, word));
       })));
   };
+  const recent = () => {
+    const seen = new Set(), rows = S.events.filter(e => e.project === pid && e.type === 'mission.state_changed' && S.missions[e.subject.id]).reverse().filter(e => !seen.has(e.subject.id) && seen.add(e.subject.id)).slice(0, 5);
+    return sec('Recent', rows.length ? h('ul', {class: 'project-recent'}, ...rows.map(e => h('li', null, h('a', {href: hrefFor('mission', e.subject.id)}, h('time', null, clockLabel(e.at)), h('span', {class: 'pr-t'}, S.missions[e.subject.id].title), h('span', {class: 'pr-w'}, present('mission', e.payload.to).label))))) : note('Archeus has not acted here yet.'));
+  };
   const ideaSection = () => h('section', {class: 'project-idea-section'}, h('div', {class: 'project-section-head'}, h('h3', null, 'Project ideas'), off ? null : h('button', {class: 'btn quiet', type: 'button', 'aria-label': 'Capture an idea', onclick: capture}, icon('plus', 20))), ideaRows());
   const captureForm = () => {
     const draft = ideaDraft(ctx.ui, pid);
@@ -290,7 +294,7 @@ function project(ctx, A, S, id) {
     meta: h('p', {class: 'project-state-sentence'}, sentence),
     tabs: [['overview', 'Overview'], ['missions', 'Missions'], ['ideas', 'Ideas'], ['details', 'Details']],
     body: tab => h('div', {class: 'ax-body'},
-      tab === 'overview' ? [phases(), ideaSection()] : null,
+      tab === 'overview' ? [recent(), phases(), ideaSection()] : null,
       tab === 'missions' ? sec('Missions', ms.length ? h('ul', {class: 'project-missions'}, ...ms.map(m => h('li', null, h('a', {href: hrefFor('mission', m.id)}, h('span', {class: 'project-mission-name'}, m.title), spineRow(m.state, m.held_from), badge('mission', m.state))))) : note('No missions yet.')) : null,
       tab === 'ideas' ? [off ? null : captureForm(), ideaSection()] : null,
       tab === 'details' ? [sec('Repository', kv([['Folder', p.root], ['Missions', String(ms.length)], ['Confirmed knowledge', String(S.knowledge.filter(k => k.project === pid && k.state === 'CONFIRMED').length)]])),

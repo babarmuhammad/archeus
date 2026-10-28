@@ -1,10 +1,11 @@
-import {h, s, clear} from './dom.js';
+// Projects: every project as a cell that says what Archeus did there, grouped by what needs attention, so ten or a hundred projects still read at a glance.
+// The groups, the count line and the search keep the page short; the quiet group folds away once there are many.
+// Text is plain English: i18n translates the rendered DOM.
+import {h} from './dom.js';
 import {areasOf} from './areas-model.js';
 import {present} from '../core-words.js';
-import {tr} from './i18n.js';
-import {reducedMotion} from './store.js';
-import {layoutProjects, projectsCore, projectsLegendBox, unit, INSET} from './constellation/geometry.js';
-import {coreStar, projectPlateMarkup} from './constellation/nodeart.js';
+import {buildOverview} from './map.js';
+import {orderProjects, leadMission} from './constellation/territories.js';
 
 export function projectState(missions) {
   const cls = missions.map(m => present('mission', m.state).cls);
@@ -13,63 +14,54 @@ export function projectState(missions) {
   return missions.length && missions.every(m => m.state === 'COMPLETED') ? 'verified' : 'idle';
 }
 
-export function projectsLegend() {
-  return h('div', {class: 'projects-legend', role: 'note'},
-    ...['Recorded relation', 'Suggested relation'].map((label, i) => h('p', null, h('span', {class: 'projects-key' + (i ? ' suggested' : ''), 'aria-hidden': 'true'}), label)),
-    h('div', {class: 'projects-states'}, ...['Active', 'Waiting', 'Verified'].map(label => h('span', null, h('i', {class: 'projects-dot ' + label.toLowerCase(), 'aria-hidden': 'true'}), label))));
+const WORD = {waiting: 'Waiting', active: 'Active', verified: 'Verified', idle: 'Quiet'};
+const GROUPS = [['waiting', 'Needs you'], ['active', 'Running'], ['quiet', 'Quiet']];
+const MANY = 12;
+const MWORD = {'needs-you': 'Needs you', running: 'Running', done: 'Done', blocked: 'Blocked', idle: 'Quiet', paused: 'Paused', thinking: 'Planning'};
+const n1 = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+function cell(ctx, p, state) {
+  const lead = leadMission(p), id = 'prj-' + p.id, selected = ctx.route.id === id;
+  const counts = [n1(p.total, 'mission', 'missions'), p.attention ? p.attention + ' needs you' : null, p.running ? p.running + ' running' : null, p.ideas ? n1(p.ideas, 'idea', 'ideas') : null].filter(Boolean).join(' · ');
+  return h('li', {class: 'pcell', 'data-state': state, 'aria-current': selected ? 'true' : null},
+    h('div', {class: 'pc-top'}, h('span', {class: 'pc-code', 'aria-hidden': 'true'}, p.code), h('a', {class: 'pc-open', href: '#/projects/' + id, 'data-key': 'project-plate-' + id, 'aria-current': selected ? 'true' : null}, p.name),
+      h('span', {class: 'pc-state'}, h('i', {class: 'pc-dot', 'aria-hidden': 'true'}), WORD[state])),
+    h('p', {class: 'pc-last'}, p.last ? [h('time', null, p.last.time), ' ' + p.last.text] : lead ? lead.title + ' · ' + MWORD[lead.state] : 'Archeus has not acted here yet.'),
+    h('div', {class: 'pc-foot'}, h('span', {class: 'pc-counts'}, counts),
+      h('a', {class: 'pc-work', href: '#/work', 'data-key': 'project-work-' + p.id, onclick: e => { e.preventDefault(); ctx.ui.workProject = p.id; ctx.nav('#/work'); }}, 'Open work')));
+}
+
+const ideaRow = (ctx, i, p) => h('li', {class: 'pidea'},
+  h('a', {href: '#/projects/' + i.id, 'data-key': 'project-plate-' + i.id, 'aria-current': ctx.route.id === i.id ? 'true' : null},
+    h('span', {class: 'pc-code', 'aria-hidden': 'true'}, p.code), h('b', null, i.title), h('span', {class: 'pidea-meta'}, p.name + ' · Captured')));
+
+// A heading, or a folded one when the list is long (the fold survives re-renders in ctx.ui).
+function group(ctx, key, label, count, fold, body) {
+  const head = [h('span', {class: 'gt'}, label), h('span', {class: 'n'}, String(count))];
+  if (!fold) return h('section', {class: 'pgroup', 'data-group': key}, h('h2', null, ...head), body);
+  return h('details', {class: 'pgroup', 'data-group': key, open: ctx.ui['fold-' + key], ontoggle: e => { ctx.ui['fold-' + key] = e.currentTarget.open; }}, h('summary', {'data-key': 'projects-fold-' + key}, ...head), body);
 }
 
 export function render(ctx) {
-  const S = areasOf(ctx.sim).S(), missions = Object.values(S.missions);
-  const nodes = S.projects.map(p => ({id: p.id, kind: 'Project', label: p.name, project: p.id,
-    missionCount: missions.filter(m => m.project === p.id).length, state: projectState(missions.filter(m => m.project === p.id))}));
-  nodes.push(...S.ideas.filter(i => i.state === 'CAPTURED').map(i => ({id: i.id, kind: 'Idea', label: i.title, project: i.project, state: 'idle'})));
-  const legend = projectsLegend();
-  const scene = h('div', {class: 'projects-scene'}, legend);
-  const root = h('div', {class: 'projects-page', 'data-quiet': String(reducedMotion())},
-    h('header', {class: 'page-head'}, h('div', null, h('h1', null, 'Projects'), h('p', {class: 'sub'}, 'Select a project to see its phases, missions and ideas.'))),
-    scene, nodes.length ? null : h('p', {class: 'empty'}, 'No projects yet.'));
-  let lastSize;
-  ctx.mounts.push(() => {
-    const width = Math.floor(scene.clientWidth);
-    const page = scene.closest('.main-col');
-    const viewportHeight = page ? page.clientHeight - root.querySelector('.page-head').offsetHeight : 600;
-    const size = `${width}:${viewportHeight}`;
-    if (!width || size === lastSize) return;
-    lastSize = size;
-    const phone = width < 600, rows = phone ? nodes.length : Math.ceil(nodes.length / 2);
-    const height = Math.max(viewportHeight, rows * 56 + (phone ? 120 : 0) + INSET.top + 142);
-    scene.style.height = `${height}px`;
-    legend.style.width = `${projectsLegendBox(width, height).width}px`;
-    const placed = layoutProjects({nodes}, width, height), core = projectsCore(width, height), star = coreStar(phone ? 23 : 52 * Math.min(unit(width, height), (height - 142) / 400), phone ? 1 : 1.75);
-    const svg = s('svg', {viewBox: `0 0 ${width} ${height}`, width, height, role: 'group', 'aria-label': tr('Projects scene')});
-    if (!phone) {
-      for (const fy of [.28, .65]) svg.append(s('path', {class: 'projects-plane', d: `M16 ${height * fy}L${width / 2} ${height * fy - Math.min(90, height * .14)}L${width - 16} ${height * fy}L${width / 2} ${height * fy + Math.min(90, height * .14)}Z`, 'aria-hidden': 'true'}));
-    }
-    for (const n of placed) {
-      const parent = n.kind === 'Idea' ? placed.find(p => p.id === n.project) : core;
-      if (!parent) continue;
-      const side = n.x < parent.x ? 1 : -1;
-      const x = phone ? n.x - n.width / 2 : n.x + side * n.width / 2;
-      const fromX = n.kind === 'Idea' ? phone ? parent.x - parent.width / 2 : parent.x - side * parent.width / 2 : parent.x;
-      const selected = ctx.route.id === 'prj-' + n.id || (n.kind === 'Idea' && ctx.route.id === n.id);
-      const d = phone ? `M${fromX} ${parent.y}H${INSET.left}V${n.y}H${x}` : `M${fromX} ${parent.y}L${x} ${n.y}`;
-      svg.append(s('path', {class: 'projects-relation' + (n.kind === 'Idea' ? ' suggested' : '') + (selected ? ' selected' : ''), d, 'aria-hidden': 'true'}), s('circle', {class: 'projects-joint', cx: x, cy: n.y, r: 2.5, 'aria-hidden': 'true'}));
-    }
-    svg.append(s('g', {class: 'projects-core', transform: `translate(${core.x} ${core.y})`, 'aria-hidden': 'true'},
-      s('path', {d: star.threads, class: 'projects-threads'}), s('path', {d: star.spikes}),
-      s('text', {y: phone ? 60 : 115, 'text-anchor': 'middle'}, 'ARCHEUS')));
-    placed.forEach((n, i) => {
-      const id = n.kind === 'Project' ? 'prj-' + n.id : n.id;
-      const selected = ctx.route.id === id;
-      const label = n.label + ' · ' + tr(n.kind === 'Idea' ? 'Captured' : `${n.missionCount} ${n.missionCount === 1 ? 'mission' : 'missions'}`) + (n.kind === 'Project' ? ' · ' + tr(({active: 'Active', waiting: 'Waiting', verified: 'Verified', idle: 'Nothing running in this project.'})[n.state]) : '');
-      const anchor = s('a', {href: '#/projects/' + id, class: 'projects-node ' + n.state + (n.kind === 'Idea' ? ' projects-idea' : ''), transform: `translate(${n.x} ${n.y})`, 'aria-label': label, 'aria-current': selected ? 'true' : null, 'data-key': 'project-plate-' + id, style: `--plate-delay:${Math.min(i * 30, 150)}ms`});
-      anchor.innerHTML = projectPlateMarkup(n, tr);
-      svg.append(anchor);
-    });
-    const focused = scene.contains(document.activeElement) ? document.activeElement.dataset.key : null;
-    clear(scene).append(svg, legend);
-    if (focused) svg.querySelector(`[data-key="${focused}"]`)?.focus({preventScroll: true});
+  const S = areasOf(ctx.sim).S(), ov = buildOverview(ctx.sim), q = (ctx.ui.projQuery || '').trim().toLowerCase();
+  const state = new Map(ov.projects.map(p => [p.id, projectState(Object.values(S.missions).filter(m => m.project === p.id))]));
+  const shown = orderProjects(ov.projects).filter(p => !q || p.name.toLowerCase().includes(q) || p.code.toLowerCase() === q);
+  const nProj = ov.projects.length, many = nProj > MANY && !q;
+  const byId = new Map(ov.projects.map(p => [p.id, p]));
+  const ideas = S.ideas.filter(i => i.state === 'CAPTURED' && byId.has(i.project) && (!q || byId.get(i.project).name.toLowerCase().includes(q) || i.title.toLowerCase().includes(q)));
+  const sections = GROUPS.map(([key, label]) => {
+    const list = shown.filter(p => (key === 'quiet' ? !['waiting', 'active'].includes(state.get(p.id)) : state.get(p.id) === key));
+    return list.length ? group(ctx, key, label, list.length, key === 'quiet' && many, h('ul', {class: 'pgrid'}, ...list.map(p => cell(ctx, p, state.get(p.id))))) : null;
   });
-  return root;
+  const search = nProj > 8 ? h('input', {class: 'psearch', type: 'search', 'aria-label': 'Search projects', placeholder: 'Search projects', 'data-key': 'projects-search', value: ctx.ui.projQuery || '', oninput: e => {
+    const pos = e.target.selectionStart; ctx.ui.projQuery = e.target.value; ctx.render();
+    const i = document.querySelector('[data-key="projects-search"]'); if (i) { i.focus(); i.setSelectionRange(pos, pos); }
+  }}) : null;
+  const need = ov.projects.filter(p => p.attention).length, run = ov.projects.filter(p => p.running).length;
+  const sub = nProj ? [n1(nProj, 'project', 'projects'), need ? need + ' need you' : null, run ? run + ' running' : null].filter(Boolean).join(' · ') : 'No projects yet.';
+  return h('div', {class: 'projects-page'},
+    h('header', {class: 'page-head'}, h('div', null, h('h1', null, 'Projects'), h('p', {class: 'sub'}, sub)), search),
+    h('div', {class: 'view pview'}, ...sections,
+      nProj && !shown.length ? h('p', {class: 'empty'}, 'No project matches.') : null,
+      ideas.length ? group(ctx, 'ideas', 'Captured ideas', ideas.length, ideas.length > 6 && !q, h('ul', {class: 'pgrid pideas'}, ...ideas.map(i => ideaRow(ctx, i, byId.get(i.project))))) : null));
 }

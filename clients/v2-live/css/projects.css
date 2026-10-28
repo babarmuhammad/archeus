@@ -1,0 +1,63 @@
+/* Projects: one cell per project (what Archeus did there, what waits), grouped by state, quiet group folded when there are many.
+   The cell is one hit area (the name link stretches over it); "Open work" sits above it. Hover and focus are a flat overlay fading in 100 ms and out 180 ms, opacity only. */
+.projects-page { min-width: 0; }
+.projects-page .page-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+.psearch { flex: 0 1 18rem; min-width: 12rem; min-height: var(--target); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font: inherit; }
+.psearch::placeholder { color: var(--text-3); opacity: 1; }
+.pview { display: flex; flex-direction: column; gap: calc(var(--gut) * 1.25); }
+.pgroup > :is(h2, summary) { display: flex; align-items: center; gap: 4px 12px; min-height: 36px; padding: 0 0 8px; border-bottom: var(--hair) solid var(--line); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
+.pgroup > summary { min-height: var(--target); cursor: pointer; list-style: none; }
+.pgroup > summary::-webkit-details-marker { display: none; }
+.pgroup > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform 180ms ease-out; }
+.pgroup[open] > summary::before { transform: rotate(90deg); transition-duration: 100ms; }
+.pgroup .n { letter-spacing: .08em; color: var(--text-3); text-transform: none; }
+.pgroup .n::before { content: '\00b7\00a0'; }
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; margin: 0; padding: 12px 0 0; list-style: none; }
+.pcell { position: relative; isolation: isolate; display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 124px; padding: 14px 16px 6px; border: var(--hair) solid var(--line); border-radius: var(--r-m); }
+.pcell[data-state='waiting'] { background: color-mix(in srgb, var(--attention) 10%, transparent); border-color: var(--attention); }
+.pcell::before, .pidea::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--s2); opacity: 0; transition: opacity 180ms ease-out; }
+.pcell[aria-current='true'] { outline: var(--hair) solid var(--text); outline-offset: calc(-1 * var(--hair)); }
+.pc-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pc-code { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-s); font: 600 12px/1 var(--mono); letter-spacing: .04em; color: var(--text-2); }
+.pc-open { flex: 1; min-width: 0; margin-block: -7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: var(--target); font-size: calc(var(--base) * 1.0625); font-weight: 600; color: var(--text); text-decoration: none; }
+.pc-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+.pc-open:focus-visible { outline: 0; }
+.pc-open:focus-visible::after { outline: 3px solid var(--focus); outline-offset: 2px; }
+.pc-state { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-cap); font-weight: 500; color: var(--text); }
+.pc-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--paused); }
+.pcell[data-state='waiting'] .pc-dot { background: var(--attention); border-radius: 0; transform: rotate(45deg) scale(.85); }
+.pcell[data-state='active'] .pc-dot { background: var(--active); }
+.pcell[data-state='verified'] .pc-dot { background: var(--done); }
+.pcell[data-state='idle'] .pc-dot { background: transparent; border: var(--hair) solid var(--paused); }
+.pc-last { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--fs-body); line-height: 1.4; color: var(--text-2); }
+.pc-last time { margin-right: 4px; font-variant-numeric: tabular-nums; color: var(--text); }
+.pc-foot { display: flex; align-items: center; justify-content: space-between; gap: 4px 12px; margin-top: auto; }
+.pc-counts { min-width: 0; font-size: var(--fs-cap); color: var(--text-2); }
+.pc-work { position: relative; z-index: 1; flex: none; display: inline-flex; align-items: center; min-height: var(--target); padding: 0 4px; font-size: var(--fs-cap); font-weight: 500; color: var(--text); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--line-strong); }
+.pc-work:focus-visible { outline: 3px solid var(--focus); outline-offset: -2px; border-radius: var(--r-s); }
+.pideas { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 0 24px; }
+.pidea { position: relative; isolation: isolate; border-bottom: var(--hair) solid var(--line); }
+.pidea > a { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 4px; color: var(--text); text-decoration: none; }
+.pidea > a b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pidea-meta { flex: none; font-size: var(--fs-cap); color: var(--text-2); }
+.pidea > a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.pidea > a[aria-current='true'] b { text-decoration: underline; text-underline-offset: 4px; }
+@media (hover: hover) and (pointer: fine) {
+  .pcell:hover::before, .pidea:hover::before { opacity: 1; transition-duration: 100ms; }
+}
+.pcell:has(.pc-open:focus-visible)::before { opacity: 1; transition-duration: 100ms; }
+@container view (max-width: 599px) {
+  .pidea-meta { display: none; }
+}
+:root[data-theme='dark-hc'] .pcell[data-state='waiting'], :root[data-theme='light-hc'] .pcell[data-state='waiting'], :root[data-theme='forced'] .pcell[data-state='waiting'] { background: transparent; }
+@media (prefers-contrast: more) { .pcell[data-state='waiting'] { background: transparent; } }
+:root[data-motion='reduced'] :is(.pcell, .pidea)::before, :root[data-motion='reduced'] .pgroup > summary::before { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.pcell, .pidea)::before, .pgroup > summary::before { transition: none; } }
+@media (forced-colors: active) {
+  .pcell, .pc-code { border-color: CanvasText; }
+  .pcell::before, .pidea::before { background: Canvas; }
+  .pcell[data-state='waiting'] { background: Canvas; border-width: 2px; }
+  .pc-dot { background: CanvasText; border-color: CanvasText; }
+  .pcell[data-state='idle'] .pc-dot { background: transparent; }
+  .pc-open:focus-visible::after, .pc-work:focus-visible, .pidea > a:focus-visible { outline-color: Highlight; }
+}
