@@ -2088,3 +2088,15 @@ Inline `L(en, it)` strings in `js/chat.js`.
 - Pinned {c} → Fissato {c} (spoken when a pin is added)
 - Unpinned {c} → Rimosso {c} dai fissati (spoken when a pin is removed)
 - Alt+P pins or unpins the highlighted command → Alt+P fissa o rimuove il comando evidenziato (hint under the menu; not shown on the phone sheet)
+
+## Replay: Recovery and Reference regrouped — 2026-10-28
+
+Status: **to review**. Inline `L(en, it)` strings in `js/replay.js`.
+
+| Recovery proposals (heading, now with one SIMULATED tag for the section) | Proposte di recupero |
+| Recommended (the option that fits the mission now) | Consigliata |
+| What Archeus would and will not do (disclosure on each option) | Cosa farebbe e cosa non farà Archeus |
+| Not available now (options that do not apply, one line each) | Non disponibili ora |
+| Where it stands (rail beside the options) | Dove siamo |
+| Choose an option to draft a proposal. Nothing runs until you approve it. | Scegli un'opzione per preparare una proposta. Non gira nulla finché non la approvi. |
+| How Replay reads Core (the two Decision notes, folded) | Come il Replay legge il Core |
