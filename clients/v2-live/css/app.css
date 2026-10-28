@@ -64,7 +64,7 @@ svg { display: block; }
 [data-state='blocked'] { --edge: var(--blocked); } [data-state='done'] { --edge: var(--done); }
 .card .kind { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .card .kind > svg { color: var(--edge); }
-.card .why { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; }
+.card .why { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; overflow-wrap: anywhere; }
 .card .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .card .ttl { min-height: var(--target); display: flex; align-items: center; font-weight: 600; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
