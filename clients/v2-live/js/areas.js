@@ -6,12 +6,13 @@ import { icon, glyph } from './icons.js';
 import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
-import { head, dnote, missionRow, badge, projName, attentionItem, controlBody } from './views.js';
+import { head, dnote, missionRow, badge, projName, attentionItem, controlBody, mark } from './views.js';
 import { spineRow } from './spine.js';
 import { ask, ideaPath } from './inspectors.js';
 import { done, MCP_TONE } from './inspectors2.js';
 import { areasOf, breakerView, waitLabel, keptSummary, harnessLabel, METER_WORD } from './areas-model.js';
-import { EXT_TABS, tabOf, whenShort, matches } from './ext-model.js';
+import { EXT_TABS, tabOf, matches } from './ext-model.js';
+import { whenShort, whenExact } from './time-model.js';
 import { pill, note, link, entity, hrefFor, sw, ringNode, patchRing, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
 
 function axHead(ctx, eyebrowText, title, lede) {
@@ -242,8 +243,8 @@ const roleStat = (machine, state) => { const p = present(machine, state); return
 function xrow(o) {
   return h('div', { class: 'ax-xrow', 'data-key': o.key, 'data-q': (o.name + ' ' + o.does).toLowerCase(), 'data-nost': o.stat ? null : 'true' },
     h('a', { class: 'x-main', href: o.href }, h('span', { class: 'r-name' }, o.name), h('span', { class: 'x-does' }, o.does),
-      o.stat ? h('span', { class: 'x-stat', 'data-tone': o.stat[0] }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(o.stat[0])), h('span', { class: 'w' }, o.stat[1])) : null,
-      h('span', { class: 'x-last' }, h('span', { class: 'vh' }, o.lastLabel + ' '), o.last)),
+      o.stat ? mark(o.stat[0], o.stat[1]) : null,
+      h('span', { class: 'x-last', title: o.exact || null }, h('span', { class: 'vh' }, o.lastLabel + ' '), o.last)),
     h('span', { class: 'x-ctl' }, o.control || null), o.below || null);
 }
 const needRow = (o) => h('div', { class: 'ax-xrow ax-need', 'data-key': 'need-' + o.id },
@@ -274,18 +275,18 @@ export function viewExtensions(ctx) {
   };
   const hookRow = (x) => {
     const key = 'row:' + x.id, flip = () => flipped(A.toggleHook, x.id, 'Hook switched on (simulated).', 'Hook switched off (simulated).');
-    return xrow({ key: 'x-' + x.id, href: hrefFor('hook', x.id), name: x.name, does: x.event + ' · ' + x.matcher, stat: x.locked ? ['ok', 'Built in'] : null, lastLabel: 'Last run', last: when(x.last),
+    return xrow({ key: 'x-' + x.id, href: hrefFor('hook', x.id), name: x.name, does: x.event + ' · ' + x.matcher, stat: x.locked ? ['ok', 'Built in'] : null, lastLabel: 'Last run', last: when(x.last), exact: whenExact(x.last, clockLabel),
       control: sw({ on: x.enabled, disabled: x.locked, label: x.name, key: 'sw-' + x.id, onclick: () => (x.enabled && x.sensitive ? ask(ctx, { at: key, text: 'Switch off "' + x.name + '"? An execution can then do this without asking you.', label: 'Switch off', tone: 'danger', run: flip }) : flip()) }), below: inline(ctx, key) });
   };
   const mcpRow = (x) => {
     const st = A.mcpStatus(x, clock);
     return xrow({ key: 'x-' + x.id, href: hrefFor('mcp', x.id), name: x.name, does: x.transport + ' · ' + (x.tools.length ? x.tools.length + (x.tools.length === 1 ? ' tool' : ' tools') : 'tools not known') + (st === 'CONNECTED' ? ' · ' + x.calls + ' calls' : ''),
-      stat: x.unchecked ? ['unknown', 'Not checked'] : st === 'CONNECTING' ? ['active', 'Connecting'] : null, lastLabel: 'Last call', last: when(x.last),
+      stat: x.unchecked ? ['unknown', 'Not checked'] : st === 'CONNECTING' ? ['active', 'Connecting'] : null, lastLabel: 'Last call', last: when(x.last), exact: whenExact(x.last, clockLabel),
       control: sw({ on: x.enabled, disabled: x.unchecked, label: x.name, key: 'sw-' + x.id, onclick: () => flipped(A.toggleMcp, x.id, 'Connecting (simulated).', 'Switched off (simulated).') }) });
   };
   const agentRow = (x) => {
     const s = agentState[agentList.indexOf(x)], live = s.key === 'working' || s.key === 'ready';
-    return xrow({ key: 'x-' + x.id, href: hrefFor('agent', x.id), name: x.name, does: live ? s.text : x.role, stat: s.key === 'working' ? ['active', 'Working'] : s.key === 'ready' ? ['attention', 'Result waits'] : null, lastLabel: 'Last run', last: when(x.last),
+    return xrow({ key: 'x-' + x.id, href: hrefFor('agent', x.id), name: x.name, does: live ? s.text : x.role, stat: s.key === 'working' ? ['active', 'Working'] : s.key === 'ready' ? ['attention', 'Result waits'] : null, lastLabel: 'Last run', last: when(x.last), exact: whenExact(x.last, clockLabel),
       control: sw({ on: x.enabled, label: x.name, key: 'sw-' + x.id, onclick: () => flipped(A.toggleAgent, x.id, 'Agent switched on (simulated).', 'Agent switched off (simulated).') }) });
   };
   const autoRow = (a) => xrow({ key: 'x-' + a.id, href: hrefFor('automation', a.id), name: a.name, does: a.note || a.trigger, stat: roleStat('automation', a.state), lastLabel: 'Next run', last: a.next_run || 'Not scheduled',

@@ -1900,6 +1900,21 @@ Extensions tabs and Settings sections (second pass, same day):
 - Undo (toast after a switch-off) → Annulla
 - Settings sections / Safety / Prototype / About (left nav) → Sezioni delle impostazioni / Sicurezza / Prototipo / Informazioni
 
+Shell round two (rail groups, command palette, relative time):
+
+- Govern / Configure (rail group labels; Work already existed) → Governa / Configura
+- Search or run a command (top-bar button) → Cerca o esegui un comando
+- Search pages, actions and projects (palette field) → Cerca pagine, azioni e progetti
+- Command palette / Results / Pages / Actions → Comandi rapidi / Risultati / Pagine / Azioni
+- Nothing matches. Try a page, an action or a project name. → Nessun risultato. Prova il nome di una pagina, di un’azione o di un progetto.
+- move / run / close (palette footer, after the arrow and Enter and Esc keys) → muovi / esegui / chiudi
+- Stop all / Tell Archeus → Ferma tutto / Dì ad Archeus
+- Settings: Safety / Appearance / Prototype → Impostazioni: Sicurezza / Aspetto / Prototipo
+- Language: Italiano / Language: English → Lingua: Italiano / Lingua: English
+- Stale (state vocabulary) → Non aggiornato
+- Ctrl+K or Cmd+K, Search pages, actions and projects, and run them (keyboard help) → Ctrl+K o Cmd+K, Cerca pagine, azioni e progetti ed eseguili
+- Mon, Tue, Wed, Thu, Fri, Sat, Sun before a time (Mon 14:20) → Lun, Mar, Mer, Gio, Ven, Sab, Dom
+
 ## Network view clusters (2026-10-28, agent N): to review
 
 File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mission, Agent execution, Zoom in, Zoom out, Fit) were already translated; `Reset map view` was removed with its button (Fit also resets the view).

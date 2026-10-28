@@ -127,8 +127,7 @@
 .ax-xrow:has(.x-main:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
 .ax-xrow .r-name { grid-area: name; overflow-wrap: anywhere; }
 .x-does { grid-area: does; overflow-wrap: anywhere; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.35; }
-.x-stat { grid-area: stat; display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-cap); font-weight: 600; }
-.x-stat .g { flex: none; color: var(--tone); display: inline-flex; }
+.ax-xrow .smark { grid-area: stat; }
 .x-last { grid-area: last; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
 .x-ctl { position: relative; z-index: 1; display: flex; justify-content: flex-end; }
 .x-ctl .btn { width: 96px; padding-inline: 8px; }
