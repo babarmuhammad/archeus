@@ -1809,3 +1809,22 @@ File: `js/i18n-areas.js`. The notes were only translated joined to their source 
 - Only Core dispatches. → Solo il Core avvia.
 - Denied by policy, not by the OS: physical reach is not built (finding G1). → Negato dalla policy, non dal sistema operativo: il raggio d’azione fisico non è costruito (rilievo G1).
 - Provider access is not brokered yet and the network is not walled off. → L’accesso al provider non passa ancora da un broker e la rete non è isolata.
+
+## Page overhaul A: Projects, Work, Replay, Chat, inspectors (2026-10-28): to review
+
+File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Needs you, Running, Quiet, Waiting, Active, Verified, Captured, Done, Mission, Command reference) are reused.
+
+- Open work → Apri il lavoro
+- Archeus has not acted here yet. → Archeus non ha ancora agito qui.
+- Search projects → Cerca progetti
+- No project matches. → Nessun progetto corrisponde.
+- Captured ideas → Idee catturate
+- Recent → Recenti
+- Missions of the other projects: search by title. → Le missioni degli altri progetti: cerca per titolo.
+- N projects → N progetti (1 progetto)
+- N need you / N needs you → N richiedono te (1 richiede te)
+- N running → N in corso
+- N ideas → N idee (1 idea)
+- Show all N → Mostra tutti (N)
+- Graph shows the first 12 of N missions, the list has all → Il grafico mostra le prime 12 missioni su N, l’elenco le ha tutte
+- No missions to replay yet. → Ancora nessuna missione da rivedere.

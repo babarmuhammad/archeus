@@ -25,5 +25,11 @@ export const IT_INSP = {
   'ORCHESTRATES': 'ORCHESTRA', 'EXECUTES': 'ESEGUE', 'RESULTS IN': 'PORTA A', 'USES': 'USA', 'PRODUCES': 'PRODUCE', 'VERIFIES': 'VERIFICA', 'Results': 'Risultati',
   'MISSION': 'MISSIONE', 'EXECUTION': 'ESECUZIONE', 'VERIFICATION': 'VERIFICA', 'REVIEW': 'REVISIONE', 'TASK': 'ATTIVITÀ', 'OUTPUT': 'RISULTATO', 'ARCHEUS': 'ARCHEUS',
   'What you approve': 'Cosa approvi', 'Why Archeus asks': 'Perché Archeus lo chiede', 'Phase': 'Fase',
+  // V2 Live page overhaul, 2026-10-28 (Projects, Work, Replay, Chat)
+  'Open work': 'Apri il lavoro', 'Archeus has not acted here yet.': 'Archeus non ha ancora agito qui.', 'Search projects': 'Cerca progetti', 'No project matches.': 'Nessun progetto corrisponde.',
+  'Captured ideas': 'Idee catturate', 'Recent': 'Recenti', 'No missions to replay yet.': 'Ancora nessuna missione da rivedere.', 'Missions of the other projects: search by title.': 'Le missioni degli altri progetti: cerca per titolo.',
 };
-export const RULES_INSP = [[/^Branch: (.+)$/, (m) => 'Ramo: ' + m[1]], [/^(\d+) missions?$/, m => m[1] + (m[1] === '1' ? ' missione' : ' missioni')]];
+export const RULES_INSP = [[/^Branch: (.+)$/, (m) => 'Ramo: ' + m[1]], [/^(\d+) missions?$/, m => m[1] + (m[1] === '1' ? ' missione' : ' missioni')],
+  [/^(\d+) projects?$/, m => m[1] + (m[1] === '1' ? ' progetto' : ' progetti')], [/^(\d+) needs? you$/, m => m[1] + (m[1] === '1' ? ' richiede te' : ' richiedono te')],
+  [/^(\d+) running$/, m => m[1] + ' in corso'], [/^(\d+) ideas?$/, m => m[1] + (m[1] === '1' ? ' idea' : ' idee')], [/^Show all (\d+)$/, m => 'Mostra tutti (' + m[1] + ')'],
+  [/^Graph shows the first (\d+) of (\d+) missions, the list has all$/, m => 'Il grafico mostra le prime ' + m[1] + ' missioni su ' + m[2]  + ', l’elenco le ha tutte']];
