@@ -199,7 +199,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | H06 | Verification pass and fail; failed verification replans; replan budget then BLOCKED | ST, BOARD | BUILT + SIMULATED | WORK, REP | S1 |
 | H07 | Hook asks before an action: execution AWAITING_APPROVAL, approval card, reject blocks the mission | ST, T149 | BUILT + SIMULATED | ATT (trigger an approval) | S1 |
 | H08 | Automations (ENABLED, PENDING_APPROVAL, SUSPENDED by the loop guard), schedule triggers and next_run | ST, BOARD T-129 | BUILT + SIMULATED | ACC, ATT | S1 |
-| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (lists), S3 (done: Extensions page, switches with confirm, details sheet, last run and calls from the simulation), S5 done in TERM (lists in `4` Control; no enable or disable) |
+| H09 | Hooks, MCP servers and agents managers (lists, enable and disable) | V1 Control, BOARD T-099 | BUILT (lists) + SIMULATED | ACC | S1 (lists), S3 (done: Extensions page, switches with confirm, details sheet, last run and calls from the simulation), S5 done in TERM (lists in `4` Control; no enable or disable); overhaul 2026-10-28: one summary line (count, off, needs you), sticky jump row, two columns from 960 px, one row per extension with its last use inline and the whole row opening its sheet, status word only where the switch does not say it |
 | H10 | Accounts and models: harnesses, per-account usage, models by tier | BOARD T-125, PLAN | BUILT + SIMULATED | ACC | S1, S3 (done: Accounts page with failover order, default model, per-project launch settings with a live preview; Usage page) |
 | H11 | Clients (paired devices) with revoke | V1 Control, BOARD | BUILT + SIMULATED | ACC | S1, S3 (done: Clients rows and a details sheet; revoke stays a step-up note) |
 | H12 | Knowledge items (CANDIDATE, CONFIRMED, RETRACTED, SUPERSEDED), confirm or reject | ST, V1 World | BUILT + SIMULATED | WORK, SET | S1 (candidates under Needs you on Work) |
@@ -229,9 +229,9 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 
 | ID | Item | Source | Status | Where | Slice |
 |---|---|---|---|---|---|
-| J01 | Desktop at 1024 and wider: rail, main, optional right inspector | owner brief | SIMULATED | ALL · D | S1 |
+| J01 | Desktop at 1024 and wider: rail, main, optional right inspector | owner brief | SIMULATED | ALL · D | S1; overhaul 2026-10-28: the safety status is top-left in the top bar, the rail keeps the destinations and Settings and Terminal view in view, and lists at most 4 projects (needs you first, then running, the selected one always) with an All N projects row; the Tools tray shares the SIMULATED row instead of adding one |
 | J02 | Tablet 600 to 1023: collapsible rail, inspector as a right sheet | owner brief | SIMULATED | ALL · T | S1 |
-| J03 | Phone under 600: Tell, Places and Stop bar, navigation in the Places sheet, thumb-reachable decisions | owner brief, UIA §M | SIMULATED | ALL · P | S1, S6 done (`js/phone.js`, `css/phone.css`) |
+| J03 | Phone under 600: Tell, Places and Stop bar, navigation in the Places sheet, thumb-reachable decisions | owner brief, UIA §M | SIMULATED | ALL · P | S1, S6 done (`js/phone.js`, `css/phone.css`); overhaul 2026-10-28: bar 64 px, Places sheet slides up once (180 ms, none under Reduced motion), project list capped at 5 with an All N projects row |
 | J04 | Terminal view as a device switch and as `#/terminal` | owner brief | SIMULATED | TERM · X | S1 |
 | J05 | Device preview: Auto, Phone, Tablet, Desktop, Terminal; frames scale down to fit | owner brief | SIMULATED | SHELL | S1 |
 | J10 | All devices: phone, tablet, desktop and terminal side by side, each a real document at its own width in an iframe, all sharing the parent's simulation instance | VLD (Devices) | SIMULATED | SHELL | S1 |
@@ -269,7 +269,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S3 (done: #/usage and #/accounts), S5 done in TERM (`#/terminal/accounts`) |
 | M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1, S3 (done: #/extensions), S5 done in TERM (`#/terminal/clients`) |
 | M08 | Terminal view | TERM | `#/terminal`, device switch | S1, S5 done (section O) |
-| M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 done (see A04 and B05) |
+| M09 | Themes (six looks), reduced motion, language, device preview | SET, SHELL | `#/settings`, toolbar | S1, S6 done (see A04 and B05); overhaul 2026-10-28: Safety first, then Appearance (rows of label, note, control), Prototype controls and About in the second column |
 
 ## N. S3 additions (2026-10-26)
 
@@ -335,7 +335,7 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 | P03 | "No Undo. Decision cannot be changed." banner with a warning icon on an open decision | concept 11 | SIMULATED | ATT, NOW | S6 done |
 | P04 | Pause all, Resume all and Emergency stop in the top-bar safety dialog and Settings; ask-first for the stop, Esc cancels, re-arm in place | H16, VLD (E-stop) | SIMULATED | SHELL, SET | S6 done (`js/app.js`, `js/views.js`, `js/view-settings.js`) |
 | P05 | Tell, Places and Stop as three round buttons on the phone | concepts 09, 10 | SIMULATED | SHELL · P | S6 done (`js/phone.js`, `css/phone.css`; Stop becomes Re-arm when engaged) |
-| P06 | Toasts: info leaves after 4.5 s, errors and toasts with an action stay until an explicit Dismiss | VLD (toasts, 2026-10-26) | SIMULATED | ALL | S6 done |
+| P06 | Toasts: info leaves after 4.5 s, errors and toasts with an action stay until an explicit Dismiss | VLD (toasts, 2026-10-26) | SIMULATED | ALL | S6 done; 2026-10-28: sits in the top-bar band left of Tell and Stop at 1280 px and wider (under the bar otherwise), enters in 100 ms and leaves in 180 ms (opacity and a 6 px move), no motion under Reduced motion |
 | P07 | Keyboard help overlay (`?`) in EN and IT with the shortcut list and the focus order | E21 | SIMULATED | ALL · D | S6 done |
 | P08 | All devices: panes do not overlap, a click in a pane hits that pane's content, one simulation drives all panes (`tools/v2_live_alldevices_probe.py`) | A01, J-section | SIMULATED | ALL, SHELL | S6 done |
 | P09 | Forced colours: a selected item has a 3 px Highlight line; state icons use ink | B05 | SIMULATED | ALL | S6 done |

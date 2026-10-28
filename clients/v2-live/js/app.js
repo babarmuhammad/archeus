@@ -21,6 +21,7 @@ import { translate } from './i18n.js';
 import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
 import { installKeys } from './keys.js';
+import { railProjects } from './rail-model.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -52,9 +53,9 @@ const navItem = (r) => h('a', { class: 'nav-item', href: '#/' + r.id, 'data-rout
 function buildShell() {
   rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
     h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, wordmark())),
-    ...ROUTES.flatMap((r) => [navItem(r), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
-    h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view')),
-    h('div', { class: 'rail-sep' }), h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
+    ...ROUTES.filter((r) => r.id !== 'settings').flatMap((r) => [navItem(r), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
+    h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }),
+    h('div', { class: 'rail-foot' }, navItem(ROUTES.find((r) => r.id === 'settings')), h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view'))));
   topbar = h('header', { class: 'topbar' });
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
   bottom = buildBottom({ tell: tellClick, places: togglePlaces, stop: stopClick });
@@ -169,13 +170,17 @@ function act(kind, id) {
 // Info toasts leave after 4.5 s. An error, or a toast that carries an action, stays until Dismiss.
 function toast(text, o) {
   const err = !!(o && o.error) || /^(Not done|Non fatto)/.test(text), keep = err || !!(o && o.action);
-  clearTimeout(toastTimer); clear(toastEl);
+  clearTimeout(toastTimer); clear(toastEl); delete toastEl.dataset.leaving;
   toastEl.dataset.kind = err ? 'error' : 'info'; toastEl.setAttribute('role', err ? 'alert' : 'status');
   toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
   translate(toastEl); toastEl.hidden = false;
   if (!keep) toastTimer = setTimeout(dismissToast, 4500);
 }
-function dismissToast() { clearTimeout(toastTimer); toastEl.hidden = true; }
+function dismissToast() {
+  clearTimeout(toastTimer); if (toastEl.hidden) return;
+  if (store.reducedMotion()) { toastEl.hidden = true; return; }
+  toastEl.dataset.leaving = '1'; toastTimer = setTimeout(() => { toastEl.hidden = true; delete toastEl.dataset.leaving; }, 180);
+}
 
 // ---------- top bar: safety cluster (status popover, Tell, Stop) ----------
 const isPhone = () => app.clientWidth < 600;
@@ -211,13 +216,14 @@ function mountTell(term) {
 }
 
 // ---------- phone: Places sheet and the bottom bar state ----------
-function togglePlaces() { ui.placesOpen = !ui.placesOpen; ui.safetyOpen = false; render(); const f = app.querySelector(ui.placesOpen ? '.places .pl-item' : '[data-key="bb-places"]'); if (f) f.focus(); }
+function togglePlaces() { ui.placesOpen = !ui.placesOpen; ui.placesFresh = ui.placesOpen; ui.safetyOpen = false; render(); const f = app.querySelector(ui.placesOpen ? '.places .pl-item' : '[data-key="bb-places"]'); if (f) f.focus(); }
 function syncPhone() {
   placesInert.forEach((el) => { el.inert = false; }); placesInert = [];
   app.querySelectorAll('.pl-wrap').forEach((e) => e.remove());
   const count = sim.attention().filter((a) => a.kind !== 'knowledge').length;
   if (ui.placesOpen && isPhone() && app.dataset.term !== 'true') {
     const wrap = placesSheet(ctx, { close: togglePlaces, projState, projectStates: PSTATE, count });
+    if (ui.placesFresh) { wrap.classList.add('enter'); ui.placesFresh = false; }
     app.append(wrap);
     for (let node = wrap; node !== document.body; node = node.parentElement) {
       [...node.parentElement.children].forEach((el) => { if (el !== node && !el.inert) { el.inert = true; placesInert.push(el); } });
@@ -229,6 +235,7 @@ function syncPhone() {
 }
 
 // ---------- sidebar: PROJECTS with a state dot ----------
+const RAIL_CAP = 4;
 const PSTATE = { needs_you: 'decision waiting', running: 'work running', done: 'all verified', idle: 'nothing running' };
 function projState(p) {
   const ms = Object.values(sim.state.missions).filter((m) => m.project === p.id);
@@ -238,9 +245,11 @@ function projState(p) {
 }
 function syncRail() {
   const box = rail.querySelector('#railproj');
-  clear(box).append(...sim.state.projects.map((p) => { const st = projState(p), here = ctx.route.name === 'work' && ui.workProject === p.id;
+  const { shown, more } = railProjects(sim.state.projects, projState, ui.workProject, RAIL_CAP);
+  clear(box).append(...shown.map((p) => { const st = projState(p), here = ctx.route.name === 'work' && ui.workProject === p.id;
     return h('a', { class: 'proj-item', href: '#/work', 'data-proj': p.id, 'aria-current': here ? 'page' : null, onclick: (e) => { e.preventDefault(); ui.workProject = p.id; nav('#/work'); } },
-      h('span', { class: 'pdot', 'data-s': st, 'aria-hidden': 'true' }), h('span', { class: 'nl' }, p.name), h('span', { class: 'vh' }, PSTATE[st])); }));
+      h('span', { class: 'pdot', 'data-s': st, 'aria-hidden': 'true' }), h('span', { class: 'nl' }, p.name), h('span', { class: 'vh' }, PSTATE[st])); }),
+    ...(more ? [h('a', { class: 'proj-item proj-more', href: '#/projects' }, h('span', { class: 'pdot', 'aria-hidden': 'true' }), h('span', { class: 'nl' }, 'All ' + sim.state.projects.length + ' projects'))] : []));
 }
 
 // ---------- toolbar and menus ----------
@@ -251,8 +260,8 @@ function buildToolbar() {
   const tools = h('button', { class: 'tb-btn', type: 'button', 'data-tb': 'tools', 'aria-label': 'Prototype tools', 'aria-expanded': open ? 'true' : 'false', onclick: toggleTools }, icon('settings'), h('span', { class: 'tb-label' }, 'Tools'));
   toolbar.append(
     h('span', { class: 'sim-badge', role: 'note' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), 'SIMULATED', h('span', { class: 'long' }, 'no Core connected')),
-    h('span', { class: 'tb-spacer' }), tools,
-    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('notes', 'Notes', 'Decision notes on the Overview')));
+    h('span', { class: 'tb-spacer' }),
+    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('notes', 'Notes', 'Decision notes on the Overview')), tools);
   translate(toolbar);
 }
 function toggleTools() { closeMenu(); store.set('tools', store.get('tools') === 'open' ? 'closed' : 'open'); buildToolbar(); syncToolbar(); const b = toolbar.querySelector('[data-tb="tools"]'); if (b) b.focus(); fit(); }

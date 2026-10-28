@@ -2,6 +2,7 @@
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { ROUTES } from './views.js';
+import { railProjects } from './rail-model.js';
 
 export function buildBottom({ tell, places, stop }) {
   const b = (key, ic, label, fn, cls = '') => h('button', { class: 'bb-item ' + cls, type: 'button', 'data-key': key, onclick: fn }, icon(ic, 24), h('span', null, label), key === 'bb-places' ? h('span', { class: 'count', hidden: true }) : null);
@@ -21,8 +22,10 @@ export function placesSheet(ctx, { close, projState, projectStates, count }) {
   const row = (href, ic, label, id, extra) => h('a', { class: 'pl-item', href, 'data-key': 'places-route-' + id, 'data-route': id, 'aria-current': here(id) ? 'page' : null, onclick: go(href) }, icon(ic, 24), h('span', { class: 'nl' }, label), extra || null);
   const items = ROUTES.flatMap((r) => [row('#/' + r.id, r.icon, r.id === 'now' ? 'Overview' : r.label, r.id, r.id === 'work' && count ? h('span', { class: 'count', 'aria-label': count + ' need you' }, String(count)) : null),
     ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]);
-  const projects = ctx.sim.state.projects.map((p) => h('a', { class: 'pl-item', href: '#/work', 'data-key': 'places-project-' + p.id, 'data-proj': p.id, onclick: (e) => { e.preventDefault(); ui.placesOpen = false; ui.workProject = p.id; ctx.nav('#/work'); } },
+  const { shown, more } = railProjects(ctx.sim.state.projects, projState, ui.workProject, 5);
+  const projects = shown.map((p) => h('a', { class: 'pl-item', href: '#/work', 'data-key': 'places-project-' + p.id, 'data-proj': p.id, onclick: (e) => { e.preventDefault(); ui.placesOpen = false; ui.workProject = p.id; ctx.nav('#/work'); } },
     h('span', { class: 'pdot', 'data-s': projState(p), 'aria-hidden': 'true' }), h('span', { class: 'nl' }, p.name), h('span', { class: 'vh pl-state' }, projectStates[projState(p)])));
+  if (more) projects.push(h('a', { class: 'pl-item', href: '#/projects', 'data-key': 'places-all-projects', onclick: go('#/projects') }, h('span', { class: 'pdot', 'aria-hidden': 'true' }), h('span', { class: 'nl' }, 'All ' + ctx.sim.state.projects.length + ' projects')));
   const sheet = h('section', { class: 'places', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Places' },
     h('div', { class: 'grab', 'aria-hidden': 'true' }),
     h('div', { class: 'pl-head' }, h('h2', null, 'Places'), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'places-x', 'aria-label': 'Close', onclick: close }, icon('close', 20))),

@@ -1864,3 +1864,18 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 - Show all N → Mostra tutti (N)
 - Graph shows the first 12 of N missions, the list has all → Il grafico mostra le prime 12 missioni su N, l’elenco le ha tutte
 - No missions to replay yet. → Ancora nessuna missione da rivedere.
+
+## Shell, Extensions, Settings and Terminal overhaul (2026-10-28, builder C): to review
+
+- All {N} projects (rail and Places sheet, when there are more projects than fit) → Tutti i {N} progetti
+- {N} extensions (Extensions summary) → {N} estensioni
+- {N} off (Extensions summary) → {N} spente
+- 1 needs you (Extensions summary and group headers; the plural form {N} need you already existed) → 1 ti serve
+- Back to the app (terminal view exit button, label App) → Torna all’app
+- Show / Hide (Decision notes choice in Settings) → Mostra / Nascondi
+- Live work moves the map slowly: nodes drift, markers travel along active links and the core mark breathes. Reduced motion stops all of it. (replaces the older "the core mark is the one thing that moves" note) → Il lavoro in corso muove piano la mappa: i nodi si spostano appena, i segnalini viaggiano lungo i collegamenti attivi e il simbolo del Core respira. Il movimento ridotto ferma tutto.
+- Simulated clock → Orologio simulato
+- . One real second is ten simulated seconds at x1. Same seed, same story. → . Un secondo reale sono dieci secondi simulati a x1. Stesso seme, stessa storia.
+- V2 Live is a prototype that simulates the Archeus app on every device. Nothing here is connected to a Core: the projects, missions, approvals, usage numbers and replies are fixtures and a scripted clock. → V2 Live è un prototipo che simula l’app Archeus su ogni dispositivo. Nulla qui è collegato a un Core: i progetti, le missioni, le approvazioni, i numeri di utilizzo e le risposte sono dati di prova e un orologio scritto.
+- Six looks: Dark and Light, each standard and high contrast, plus System and forced colours. Reduced motion is Quiet (A05). → Sei aspetti: Scuro e Chiaro, ciascuno standard e ad alto contrasto, più Sistema e colori forzati. Il movimento ridotto è Quieto (A05).
+- Everything on screen is simulated and says so; no Core is connected. → Tutto ciò che è sullo schermo è simulato e lo dice; nessun Core è collegato.
