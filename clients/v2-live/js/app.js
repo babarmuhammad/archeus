@@ -8,6 +8,7 @@ import { THEMES, DEVICES } from './store.js';
 import { ROUTES, simControls, controlBody } from './views.js';
 import * as vNow from './view-now.js';
 import * as vWork from './view-work.js';
+import * as vProjects from './view-projects.js';
 import * as vReplay from './view-replay.js';
 import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
@@ -53,7 +54,7 @@ function buildShell() {
     h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, wordmark())),
     ...ROUTES.flatMap((r) => [navItem(r), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
     h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view')),
-    h('div', { class: 'rail-sep' }), h('p', { class: 'eyebrow rail-eye' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
+    h('div', { class: 'rail-sep' }), h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
   topbar = h('header', { class: 'topbar' });
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
   bottom = buildBottom({ tell: tellClick, places: togglePlaces, stop: stopClick });
@@ -67,20 +68,21 @@ function buildShell() {
 
 // ---------- routing ----------
 // The one place that maps a route to the function that renders it: render(ctx) returns the page node.
-const VIEWS = { now: vNow.render, work: vWork.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
+const VIEWS = { now: vNow.render, work: vWork.render, replay: vReplay.render, chat: viewChat, settings: vSettings.render, security: viewSecurity, health: viewHealth, usage: viewUsage, accounts: viewAccounts, extensions: viewExtensions, more: viewMore };
 // Attention became part of Work: its deep links land on the same page and inspector.
 const GONE = /^#\/attention(?=\/|$)/;
+VIEWS.projects = vProjects.render;
 function parse() {
   const m = /^#\/([a-z]+)(?:\/([\w-]+))?/.exec(location.hash) || [];
-  const name = [...ROUTES.map((r) => r.id), 'terminal', 'more'].includes(m[1]) ? m[1] : 'now';
+  const name = [...ROUTES.map((r) => r.id), 'terminal', 'more', 'projects'].includes(m[1]) ? m[1] : 'now';
   return { name, id: m[2] || null };
 }
 function nav(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 function closeInsp() { nav('#/' + ctx.route.name); }
 
 function render() {
-  if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
-  if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
+  if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
+  if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
   if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
   const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
@@ -89,7 +91,7 @@ function render() {
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
-  document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'more' ? 'More' : navLabel(ROUTES.find((x) => x.id === r.name)));
+  document.title = 'V2 Live \u00b7 ' + (term ? 'Terminal' : r.name === 'projects' ? 'Projects' : r.name === 'more' ? 'More' : navLabel(ROUTES.find((x) => x.id === r.name)));
 
   let content;
   if (term) content = viewTerminal(ctx);
@@ -101,7 +103,7 @@ function render() {
 
   // inspector
   let insp = null;
-  if (!term && ['now', 'work', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
+  if (!term && ['now', 'work', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
   clear(inspector); if (insp) inspector.append(insp);
   const wasOpen = app.dataset.insp === 'open';
   app.dataset.insp = insp ? 'open' : '';
@@ -114,7 +116,7 @@ function render() {
   mountTell(term);
   syncTopbar(); syncRail(); syncPhone();
   ctx.mounts.forEach((f) => f());
-  pruneMaps(r.name === 'now' ? 'now' : null);
+  pruneMaps(r.name === 'now' ? 'now' : null);
   if (r.name !== 'work') vWork.leave();
   translate(app);
   syncCore(); if (!embed) syncToolbar();

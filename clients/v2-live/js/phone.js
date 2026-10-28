@@ -26,7 +26,7 @@ export function placesSheet(ctx, { close, projState, projectStates, count }) {
   const sheet = h('section', { class: 'places', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Places' },
     h('div', { class: 'grab', 'aria-hidden': 'true' }),
     h('div', { class: 'pl-head' }, h('h2', null, 'Places'), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'places-x', 'aria-label': 'Close', onclick: close }, icon('close', 20))),
-    h('div', { class: 'pl-list' }, ...items, row('#/terminal', 'terminal', 'Terminal view', 'terminal'), h('div', { class: 'rail-sep' }), h('p', { class: 'eyebrow rail-eye' }, 'Projects'), ...projects));
+    h('div', { class: 'pl-list' }, ...items, row('#/terminal', 'terminal', 'Terminal view', 'terminal'), h('div', { class: 'rail-sep' }), h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects', 'aria-current': here('projects') ? 'page' : null, onclick: go('#/projects') }, 'Projects'), ...projects));
   sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } });
   return h('div', { class: 'pl-wrap' }, h('div', { class: 'pl-scrim', 'aria-hidden': 'true', onclick: close }), sheet);
 }

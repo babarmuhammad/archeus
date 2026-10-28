@@ -1733,3 +1733,30 @@ File: `js/i18n-work.js`. Attention is no longer a page; its words live on Work.
 - Work graph: missions and decisions grouped by what they wait on. The list below has the same content. → Grafo del lavoro: missioni e decisioni raggruppate per ciò che attendono. L'elenco qui sotto ha lo stesso contenuto.
 - One page for Work and Attention: missions and decisions grouped by what they wait on, as a graph and as a list. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09). → Una sola pagina per Lavoro e Attenzione: missioni e decisioni raggruppate per ciò che attendono, come grafo e come elenco. La spina mostra a che punto è ogni missione (A13); un obbligo è una tinta ambra al 12 % con lo stato a parole (B09).
 - N more are in Replay and Work. → Altri N sono in Replay e Lavoro. (rule in `js/i18n-areas.js`, was "Replay and Attention")
+# Projects concept rebuild — 2026-10-27 (to review)
+
+Builder translations; no native review. Source: `js/i18n-insp.js`.
+
+| English | Italian |
+|---|---|
+| Projects scene | Scena dei progetti |
+| Select a project to see its phases, missions and ideas. | Seleziona un progetto per vedere fasi, missioni e idee. |
+| No projects yet. | Ancora nessun progetto. |
+| No missions yet. | Ancora nessuna missione. |
+| No project ideas yet. | Ancora nessuna idea per questo progetto. |
+| Project ideas | Idee del progetto |
+| Phases | Fasi |
+| Recorded relation | Relazione registrata |
+| Suggested relation | Relazione suggerita |
+| Active / Waiting / Verified / Completed | Attiva / In attesa / Verificata / Completata |
+| Nothing running in this project. | Niente in esecuzione in questo progetto. |
+| Work needs you in this project. | Il lavoro in questo progetto richiede la tua attenzione. |
+| Work is active in this project. | Il lavoro in questo progetto è attivo. |
+| Every mission is completed. | Tutte le missioni sono completate. |
+| Capture an idea | Cattura un’idea |
+| Idea title | Titolo dell’idea |
+| Capture / Promote | Cattura / Promuovi |
+| Phase summary across missions | Riepilogo delle fasi delle missioni |
+| Advance along the idea path | Avanza nel percorso dell’idea |
+| No launch settings recorded. | Nessuna impostazione di avvio registrata. |
+| N mission / N missions | N missione / N missioni |

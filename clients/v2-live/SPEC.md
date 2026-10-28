@@ -355,8 +355,15 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 | Q03 | Liveliness (V2 Live only, ADR-0055 still binds the real app): seeded drift of nodes (1.5 to 3 px, 9 to 17 s), soft ring on needs-you and running nodes (3.6 s), travelling markers on running relations (3.7 to 7 s); transform or opacity only; only for a playing simulation with full motion in a visible tab and map; never in the calm scene; Reduced motion shows the static twin; no state by motion alone | owner 2026-10-27 ("a bit more liveliness") | SIMULATED | NOW | `js/constellation/map.js`, `map.css`, layout probe motion invariant |
 | Q04 | Nodes lift 7 percent under the pointer and keyboard focus, new nodes grow in from 90 percent over 160 ms with a 30 ms stagger, the hairlines of the selected or hovered node brighten | owner 2026-10-27, Emil Kowalski craft notes (advice only) | SIMULATED | NOW | `js/constellation/map.js`, `map.css` |
 | Q05 | Map is not a menu item: Overview is the map (zoom out, zoom in, Fit, Reset stay on it); `#/map` redirects to `#/now`; 11 destinations in the sidebar and the Places sheet | owner 2026-10-27 ("map in menu is obsolete") | SIMULATED | SHELL, NOW | `js/app.js`, `js/views.js` |
+## Projects concept rebuild (2026-10-27)
+
+| ID | Requirement | Source | Status | Area | Implementation |
+|---|---|---|---|---|---|
+| PR01 | Projects index at `#/projects`: core, project and captured-idea plates, recorded/suggested relations, joints, planes, legend; phone stack; project inspector with Overview / Missions / Ideas / Details, phase spine and capture/promotion | concept 04 (`04-projects-ideas.png`) | SIMULATED | PROJECTS · P/T/D | `js/view-projects.js`, additive constellation geometry/art exports, `js/inspectors.js`, `css/components.css`; four-project fixture only at `?story=full`; rendering and tests pending coordinator verification |
 
 ## Counts
+
+Projects rebuild adds PR01: one SIMULATED row beyond the historical slice-6 counts below.
 
 227 rows, recounted from the Status column of the tables by script after slice 6: A 31 owner decisions · B 15 tokens · C 14 motion · D 13 spine · E 21 V1 surfaces · F 20 chat and slash · G 13 Replay · H 17 platform facts · I 11 prototype features · J 13 shell · K 6 simulation · L 7 open · M 9 required areas · N 10 S3 additions · O 16 terminal view (S5) · P 11 S6 additions.
 By status word (a row can carry two; K counts as simulated, M is a map of areas and carries none): BUILT 50 · DESIGNED 36 · PROTOTYPED 32 · SIMULATED 124. Earlier lines said BUILT 51: counting the Status column gives 50 (a row whose Slice cell says "BUILT" is not a BUILT row). Slice 6 added section P (10 simulated rows and P05, a DESIGNED row that is not built) and changed only the Slice column of A02, A04, B05, C02, C06, C07, C12, E01, E15, E20, E21, H16 and M09, so no existing row moved between BUILT, DESIGNED, PROTOTYPED and SIMULATED.
