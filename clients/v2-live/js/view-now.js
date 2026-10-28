@@ -52,8 +52,7 @@ function calmBand(ctx) {
   });
   return h('section', { class: 'calm-band', 'aria-label': tr('Today and known projects') },
     h('div', { class: 'calm-say' },
-      h('h1', { class: 'state-sentence calm', 'data-key': 'sentence' }, ...sentence.map((t) => h('span', null, t))),
-      h('button', { class: 'tell-cta', type: 'button', onclick: () => document.querySelector('[data-key="tell"]')?.click() }, h('span', null, tr('Tell')), h('span', { class: 'tell-arrow', 'aria-hidden': 'true' }, '→'))),
+      h('h1', { class: 'state-sentence calm', 'data-key': 'sentence' }, ...sentence.map((t) => h('span', null, t)))),
     h('div', { class: 'calm-col calm-today' }, h('p', { class: 'eyebrow' }, tr('Today')), h('p', { class: 'calm-big' }, tr(`${done.length} verified`)),
       h('ul', null, ...done.slice(0, 3).map((m) => h('li', null, dot('done'), h('span', { class: 'ctext' }, h('b', null, m.title)), h('span', { class: 'cword' }, tr('Done')))))),
     h('div', { class: 'calm-col calm-known' }, h('p', { class: 'eyebrow' }, tr('Known projects')), h('ul', null, ...projects)));

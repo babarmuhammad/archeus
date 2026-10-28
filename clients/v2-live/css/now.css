@@ -56,7 +56,6 @@
 .calm-say { display: flex; flex-direction: column; justify-content: center; gap: 20px; }
 .calm-say .state-sentence { display: flex; flex-direction: column; font-size: clamp(28px, 3.2cqw, 48px); }
 .calm-say .state-sentence span { white-space: nowrap; }
-.tell-cta { align-self: flex-start; display: inline-flex; align-items: center; justify-content: space-between; gap: 28px; min-width: 220px; min-height: 56px; padding: 0 22px; border: 0; border-radius: var(--r-m); background: var(--text); color: var(--bg); font: 500 22px/1 var(--serif); cursor: pointer; }
 .calm-col .eyebrow { margin-bottom: 14px; }
 .calm-big { font: 500 var(--fs-title) / 1.1 var(--serif); margin: 0 0 14px; padding-bottom: 14px; border-bottom: var(--hair) solid var(--line); }
 .calm-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -79,9 +78,7 @@
 @container dev (max-width: 599px) {
   .calm-band { height: 160px; }
   .calm-band > div { padding: 16px; }
-  .tell-cta { display: none; }
 }
-.tell-cta .tell-arrow { font: 400 28px/1 var(--sans); }
 
 /* Phone Overview (concepts 09 and 10): the scene, two large counts, the Review card. The headline stays for screen readers. */
 .pn-card { display: none; }
