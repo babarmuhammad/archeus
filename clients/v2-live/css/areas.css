@@ -115,13 +115,15 @@
 .x-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tone); }
 .ext-search { flex: 0 1 18em; min-width: 0; min-height: var(--target); padding: 0 12px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: transparent; color: var(--text); font-size: var(--fs-body); }
 .ext-search::placeholder { color: var(--text-3); opacity: 1; }
-.x-hd, .ax-xrow { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem 7.5rem 96px; align-items: center; column-gap: 16px; padding-inline: 16px; }
+.x-hd, .ax-xrow { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem 7.5rem 7rem; align-items: center; column-gap: 16px; padding-inline: 16px; }
 .x-hd { min-height: 32px; color: var(--text-3); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; border-bottom: var(--hair) solid var(--line); }
 .x-hd > :nth-child(2) { grid-column: 2; } .x-hd > :nth-child(3) { grid-column: 3; }
-.ax-xrow { position: relative; grid-template-columns: minmax(0, 1fr) 96px; }
+.ax-xrow { position: relative; grid-template-columns: minmax(0, 1fr) 7rem; }
+.ax-xrow.ax-need { grid-template-columns: minmax(0, 1fr) auto; }
+.ext-needs, .ext-bar, .ext-list { max-width: 72rem; }
 .ax-xrow .x-main { display: grid; grid-template-columns: minmax(0, 1fr) 9.5rem 7.5rem; grid-template-areas: 'name stat last' 'does stat last'; align-items: center; align-content: center; column-gap: 16px; row-gap: 2px; min-width: 0; min-height: calc(64px - var(--hair)); padding-block: 8px; outline: none; }
 .nostat .x-hd, .nostat .ax-xrow .x-main { grid-template-columns: minmax(0, 1fr) 7.5rem; }
-.nostat .x-hd { grid-template-columns: minmax(0, 1fr) 7.5rem 96px; }
+.nostat .x-hd { grid-template-columns: minmax(0, 1fr) 7.5rem 7rem; }
 .nostat .ax-xrow .x-main { grid-template-areas: 'name last' 'does last'; }
 .ax-xrow .x-main::after { content: ''; position: absolute; inset: 0; }
 .ax-xrow:has(.x-main:focus-visible) { outline: 3px solid var(--focus); outline-offset: -3px; }
@@ -130,7 +132,7 @@
 .ax-xrow .smark { grid-area: stat; }
 .x-last { grid-area: last; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
 .x-ctl { position: relative; z-index: 1; display: flex; justify-content: flex-end; }
-.x-ctl .btn { width: 96px; padding-inline: 8px; }
+.x-ctl .btn { min-width: 6.5rem; }
 .ax-xrow .ax-inline-confirm { grid-column: 1 / -1; position: relative; z-index: 1; margin-bottom: 10px; }
 .ax-need .x-main { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'name' 'does'; }
 .x-empty { padding: 16px; color: var(--text-2); }
@@ -247,11 +249,11 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 .ax-count { color: var(--text-3); font-weight: 400; letter-spacing: .08em; font-variant-numeric: tabular-nums; }
 .ax-sub { margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-body); line-height: 1.45; }
 
-/* Hover: the others step back in 100 ms and return in 180 ms (the Overview language). Opacity only, and only where there is a pointer. */
-.ax-dim > * { border-bottom: var(--hair) solid var(--line); transition: opacity 180ms ease-out; }
+/* Hover: the row under the pointer takes a tint in 100 ms and gives it back in 180 ms, so a button in another row never looks greyed. Only where there is a pointer. */
+.ax-dim > * { border-bottom: var(--hair) solid var(--line); transition: background-color 180ms ease-out; }
 .ax-dim > .ax-row { border-top: 0; }
 @media (hover: hover) and (pointer: fine) {
-  .ax-dim:has(> :hover) > :not(:hover):not(:focus-within) { opacity: .55; transition-duration: 100ms; }
+  .ax-dim > :hover { background: var(--fill-1); transition-duration: 100ms; }
 }
 .ax-go { display: grid; place-items: center; color: var(--text-2); transition: transform 180ms ease-out; }
 [open] > summary .ax-go { transform: rotate(90deg); }
@@ -300,8 +302,6 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 .sec-category { width: fit-content; padding: 3px 7px; border: var(--hair) solid var(--line-strong); font-size: var(--fs-cap); }
 .sec-event-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; min-width: 0; line-height: 1.5; }
 .sec-controls > .body { padding: 0; }
-.sec-page .btn { min-height: 44px; }
-.sec-page .btn.primary { min-height: 48px; }
 .sec-resolved { overflow: hidden; pointer-events: none; }
 @container view (max-width: 700px) {
   .sec-log li { grid-template-columns: 6.5rem minmax(0, 1fr) auto; }
@@ -365,7 +365,7 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 .ax-acct .n { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: var(--hair) solid var(--line-strong); border-radius: 50%; color: var(--text-2); font-size: var(--fs-cap); font-weight: 600; }
 .ax-acct .a-main, .m-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; min-height: var(--target); justify-content: center; }
 .ax-acct:hover .r-name, .ax-model:hover .r-name { text-decoration: underline; text-underline-offset: 3px; }
-.a-mv { display: flex; gap: 6px; } .a-mv .btn { padding: 0; }
+.a-mv { display: flex; gap: 8px; } .a-mv .btn { width: var(--bh); padding: 0; }
 @container view (max-width: 560px) { .ax-acct { grid-template-columns: auto minmax(0, 1fr); } .ax-acct .badge, .ax-acct .a-mv { grid-column: 2; justify-self: start; } }
 .ax-model { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; padding-block: 8px; }
 .ax-model[data-default='true'] { box-shadow: inset 3px 0 0 var(--done); }

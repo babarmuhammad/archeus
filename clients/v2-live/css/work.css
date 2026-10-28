@@ -35,17 +35,12 @@
 .main-col .chip[aria-pressed='true'], .main-col .chip[aria-current='true'] { background: transparent; border-color: var(--active); color: var(--text); }
 .main-col .chip.static { min-height: 28px; border-color: var(--line); }
 
-.main-col .btn { background: transparent; border-color: var(--line-strong); font-weight: 500; }
-.main-col .btn:hover { background: var(--s2); }
-.main-col .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-.main-col .btn.danger { background: var(--stop-bg); border-color: var(--stop-line); color: var(--stop-fg); }
 
 :is(.main-col, .inspector:not(:has(.msn))) .dnote { padding: 2px 0 2px 10px; border: 0; border-left: 2px solid var(--line-strong); border-radius: 0; font-size: var(--fs-cap); }
 .main-col .row-line { padding: 12px 0; min-height: var(--target); align-items: center; }
 .main-col .noundo { background: transparent; border-color: var(--attention); }
 
 .inspector { background: var(--s1); }
-.insp-foot .btn:not(.primary):not(.danger) { background: transparent; }
 
 /* ---------- Work: graph on top, the grouped list under it (concepts 04 and 08) ---------- */
 .work-split { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: 'side' 'graph' 'list'; gap: calc(var(--gut) * 1.25); align-items: start; }
@@ -122,16 +117,10 @@
   .main-col .att-rows .card { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'top' 'ttl' 'spine' 'act'; gap: 4px; }
   .main-col .att-rows .card .actions { justify-content: flex-start; padding-top: 6px; }
 }
-.main-col .card[data-state='needs_you'] .btn.primary { background: light-dark(var(--decide-bg), transparent); border-color: var(--attention); color: light-dark(var(--decide-fg), var(--text)); }
-.main-col .card[data-state='needs_you'] .btn.primary:hover { background: light-dark(var(--decide-bg), color-mix(in srgb, var(--attention) 14%, transparent)); outline: 0; }
-.main-col .card[data-state='needs_you'] .btn.primary { min-height: var(--target-primary); padding-inline: 20px; }
-@media (forced-colors: active) { .main-col .card[data-state='needs_you'] .btn.primary { forced-color-adjust: none; background: ButtonFace; color: ButtonText; border-color: ButtonText; } }
 
-.dcn .insp-foot .btn:not(.primary):not(.danger) { background: transparent; }
 .dcn-steps { position: relative; gap: 14px; }
 .dcn-steps li { position: relative; }
 .dcn-steps li + li::before { content: ''; position: absolute; left: 6px; top: -14px; height: 14px; border-left: var(--hair) solid var(--line-strong); }
-.main-col .card:not([data-state='needs_you']) .btn.primary { background: transparent; border-color: var(--text); color: var(--text); }
 .dcn-steps li[data-now] .st-g { border-color: var(--decide-line); background: var(--decide-bg); }
 
 /* Many projects: one select instead of a chip per project; long groups fold or show their first rows. */

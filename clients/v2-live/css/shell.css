@@ -26,7 +26,7 @@
 @media (max-width: 899px) { .sim-badge .long { display: none; } }
 
 .menu { --target: 44px; --target-primary: 44px; --fs-body: 15px; --fs-cap: 13px; font-size: 15px; position: absolute; z-index: 50; top: calc(var(--tb) + 2px); right: 8px; width: min(340px, calc(100vw - 16px)); max-height: calc(100dvh - var(--tb) - 12px); overflow-y: auto; padding: 8px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: 12px; }
-@media (min-width: 1024px) { .menu { --target-primary: 48px; } .menu .btn.primary { min-height: var(--target-primary); } }
+@media (min-width: 1024px) { .menu { --target-primary: 48px; } }
 .menu h2 { padding: 8px 8px 4px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 10px; border: var(--hair) solid transparent; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; font-size: 15px; }
 .menu-item:hover { background: var(--s2); }
@@ -117,7 +117,7 @@
 .safety[data-state='stopped'] .sdot { background: var(--stop-fg); }
 .safety[data-state='stopped'] .stext { color: var(--stop-fg); font-weight: 600; }
 .safety-pop { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: min(400px, calc(100cqw - 2 * var(--gut))); padding: 12px 14px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: 12px; }
-.tell-btn, .stop-btn { min-width: 76px; }
+@container dev (min-width: 1024px) { .tell-btn, .stop-btn { --hit: 48px; } }
 .tb-search { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: var(--hair) solid var(--line); border-radius: 6px; background: transparent; color: var(--text-2); font-size: var(--fs-cap); cursor: pointer; white-space: nowrap; }
 .tb-search:hover { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); border-color: var(--line-strong); }
 .tb-search svg { flex: none; }
@@ -141,7 +141,7 @@ html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
 .toast[data-leaving] { animation: toast-out 180ms ease-out forwards; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(-6px); } }
-@container dev (min-width: 1280px) { .app:not([data-insp='open']) .toast { top: 0; right: calc(var(--gut) + 176px); } }
+@container dev (min-width: 1280px) { .app:not([data-insp='open']) .toast { top: 0; right: calc(var(--gut) + 424px); max-width: min(32em, calc(100% - 2 * var(--gut) - 424px - 240px)); } }
 
 /* ---------- inspector and sheets ---------- */
 .scrim { position: absolute; inset: 0; z-index: 18; background: var(--scrim); }
@@ -189,7 +189,6 @@ body[data-embed='1'] #stage { grid-row: 1; }
 
 .toast { width: max-content; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0 4px; padding: 4px 6px 4px 16px; }
 .toast .tt { padding: 6px 4px; }
-.toast .btn { min-height: 44px; }
 .toast[data-kind='error'] { border-color: var(--blocked); }
 
 /* ---------- S6: the keyboard help ---------- */
@@ -228,7 +227,7 @@ body[data-embed='1'] #stage { grid-row: 1; }
    no movement under Reduced motion. Colour and transform only; nothing that moves layout. ---------- */
 :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .tb-search, .pal-row, .pl-item, .bb-item, .tui-btn, .mrow) { transition: background-color 180ms ease-out, border-color 180ms ease-out, transform 180ms ease-out; }
 :is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .tb-search, .pal-row, .pl-item, .bb-item, .tui-btn, .mrow):hover { transition-duration: 100ms; }
-:is(.btn, .chip, .tab, .tb-btn, .menu-item, .rail-toggle, .safety-btn, .bb-item, .tui-btn):active { transform: scale(.97); }
+:is(.menu-item, .rail-toggle, .safety-btn, .bb-item):active { transform: scale(.97); }
 @media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--s2); } .chip[aria-pressed='true']:hover { background: var(--s3); } }
 .pl-wrap.enter .places { animation: sheet-in 180ms ease-out; }
 .pl-wrap.enter .pl-scrim { animation: fade-in 100ms ease-out; }

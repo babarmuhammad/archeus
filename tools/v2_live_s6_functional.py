@@ -36,7 +36,7 @@ try:
             pg.keyboard.press('j'); k1 = pg.evaluate(active)
         pg.keyboard.press('k'); pg.keyboard.press('j'); k1 = pg.evaluate(active)
         ring = pg.evaluate("() => { const c = getComputedStyle(document.activeElement); return [c.outlineColor, parseFloat(c.outlineWidth), c.outlineStyle]; }")
-        check('the focused row shows the dark focus colour #FFF3CF, 3 px', ring[0] == 'rgb(255, 243, 207)' and ring[1] >= 3 and ring[2] == 'solid')
+        check('the focused row shows the dark focus colour #FFF3CF, 2 px', ring[0] == 'rgb(255, 243, 207)' and ring[1] >= 2 and ring[2] == 'solid')
         pg.keyboard.press('Space'); pg.wait_for_timeout(250)
         check('Space opens the focused row', pg.evaluate('location.hash') == '#/work/' + k1[2:])
         pg.keyboard.press('Escape'); pg.wait_for_timeout(250)

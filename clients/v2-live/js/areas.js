@@ -25,7 +25,7 @@ export const onTick = (ctx, fn) => { (ctx.ticks = ctx.ticks || []).push(fn); };
 function inline(ctx, key) {
   const c = ctx.ui.confirm; if (!c || c.at !== key) return null;
   return h('div', { class: 'ax-inline-confirm', role: 'group' }, h('p', null, c.text), h('div', { class: 'actions' },
-    h('button', { class: 'btn ' + (c.tone === 'danger' ? 'danger' : 'primary'), type: 'button', onclick: () => { ctx.ui.confirm = null; c.run(); } }, c.label), h('button', { class: 'btn', type: 'button', onclick: () => { ctx.ui.confirm = null; ctx.render(); } }, 'Back')));
+    h('button', { class: 'btn ' + (c.tone === 'danger' ? 'danger solid' : 'primary'), type: 'button', onclick: () => { ctx.ui.confirm = null; c.run(); } }, c.label), h('button', { class: 'btn', type: 'button', onclick: () => { ctx.ui.confirm = null; ctx.render(); } }, 'Back')));
 }
 
 // ---------- shared page pieces ----------
@@ -97,7 +97,7 @@ export function viewSecurity(ctx) {
   const decisions = h('div', { class: 'sec-decisions' }, ...held.map((a) => {
     const item = attentionItem(ctx, { id: 'sec-' + a.id, kind: 'approval', group: 'Decide', mission_id: a.mission, project_id: a.project, since: a.created_at, reason: a.presented.what, ref: a.id });
     item.querySelector('a').href = '#/security/' + a.id;
-    const decide = (kind, label) => h('button', { class: 'btn' + (kind === 'reject' ? ' danger outline' : ''), type: 'button', 'data-key': 'sec-' + kind + '-' + a.id,
+    const decide = (kind, label) => h('button', { class: 'btn' + (kind === 'reject' ? ' danger' : ''), type: 'button', 'data-key': 'sec-' + kind + '-' + a.id,
       onclick: () => ask(ctx, { at: 'sec-decision-' + a.id, text: (kind === 'approve' ? 'Allow this action once? ' + a.presented.consequence : 'Deny this action? The execution ends and the mission is blocked.') + ' No Undo.', label, tone: kind === 'reject' ? 'danger' : 'primary', run: () => ctx.act(kind, a.id) }) }, label);
     item.querySelector('.actions').append(decide('approve', 'Allow once'), decide('reject', 'Deny'));
     item.append(h('p', { class: 'sec-detail' }, 'Ask me each time'), h('p', { class: 'sec-detail' }, a.presented.why), inline(ctx, 'sec-decision-' + a.id));

@@ -11,7 +11,7 @@ ul, ol { list-style: none; }
 a { color: inherit; text-decoration: none; }
 svg { display: block; }
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap; }
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 [hidden] { display: none !important; }
 
 .main-col { grid-area: main; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
@@ -69,21 +69,8 @@ svg { display: block; }
 .card .ttl { min-height: var(--target); display: flex; align-items: center; font-weight: 600; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
-.btn { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: var(--target); min-height: var(--target); padding: 0 16px; border: var(--hair) solid var(--line-strong); border-radius: 6px; background: var(--s2); color: var(--text); font-size: var(--fs-body); font-weight: 600; line-height: 1.2; cursor: pointer; text-align: center; }
-.btn:hover { background: var(--s3); }
-.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-.btn.primary:hover { background: var(--text-2); border-color: var(--text-2); }
-.card[data-state='needs_you'] .btn.primary, .insp-foot .btn.primary { background: var(--decide-bg); border-color: var(--decide-line); color: var(--decide-fg); }
-.card[data-state='needs_you'] .btn.primary:hover, .insp-foot .btn.primary:hover { outline: 1px solid var(--attention); outline-offset: 2px; }
-.btn.danger { background: var(--stop-bg); border-color: var(--stop-line); color: var(--stop-fg); }
-.btn.danger:hover { background: color-mix(in srgb, var(--stop-line) 20%, var(--stop-bg)); }
-.btn.danger.outline { background: var(--s1); border-color: var(--blocked); color: var(--blocked); }
-.btn.quiet { border-color: transparent; background: transparent; }
-.btn[disabled] { cursor: not-allowed; color: var(--text-3); }
-@container dev (min-width: 1024px) { .btn.primary, .btn.decide { min-height: var(--target-primary); } }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { display: inline-flex; align-items: center; gap: 6px; min-height: var(--target); padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 22px; background: transparent; color: var(--text); font-size: var(--fs-cap); font-weight: 600; cursor: pointer; }
-.chip[aria-pressed='true'], .chip[aria-current='true'] { background: var(--s3); border-color: var(--text); }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: var(--hair) solid var(--line-strong); background: transparent; color: var(--text); cursor: pointer; }
 .chip.static { cursor: default; border-color: var(--line); color: var(--text-2); min-height: 28px; padding: 0 10px; }
 
 .tabs { flex: none; display: flex; gap: 2px; overflow-x: auto; border-bottom: var(--hair) solid var(--line); scrollbar-width: thin; }
@@ -196,8 +183,6 @@ dl.kv dd { overflow-wrap: anywhere; }
 @media (forced-colors: active) {
   .panel, .btn, .chip, .msg { border: 1px solid CanvasText; }
   .band { background: Canvas; border-block: 1px solid Highlight; }
-  .btn.primary, .btn.danger, .card[data-state='needs_you'] .btn.primary, .insp-foot .btn.primary { forced-color-adjust: none; background: ButtonText; color: ButtonFace; border-color: ButtonText; }
-  .btn.danger.outline { background: ButtonFace; color: ButtonText; }
   .meter .bar i { forced-color-adjust: none; background: Highlight; }
   .illustration { background: Canvas; }
   .tab[aria-selected='true'] { border-color: Highlight; }
