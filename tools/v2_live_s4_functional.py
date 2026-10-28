@@ -224,9 +224,9 @@ def main():
             # ---- the dock on Now (desktop), then the phone sheet ----
             ctx, pg, errs = new_page(br, base, hash_='#/now')
             check(pg.is_visible('.tell-dock input[data-key="chat-in-dock"]'), 'the chat bar is anchored in the Overview scene, no click needed')
-            d = pg.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), a = r('.tell-dock .composer2'), sc = r('.now-scene'), st = r('.now-strip'), cs = getComputedStyle(document.querySelector('.tell-dock .composer2')); return { off: Math.abs((a.left + a.right) / 2 - (sc.left + sc.right) / 2), w: a.width, scw: sc.width, gap: st.left - a.right, bg: cs.backgroundColor, bf: cs.backdropFilter, h: a.height }; }""")
-            check(d['off'] < 2 and d['w'] >= min(700, d['scw'] * .9) and d['gap'] >= 0 and d['h'] < 90, 'the dock is bottom centre, wide, slim, left of the Details button (%s)' % d)
-            check(d['bf'] == 'none' and 0.3 < float(re.findall(r'([0-9.]+)\)$', d['bg'])[0]) < 0.75, 'the dock is a flat translucent fill, no blur (%s %s)' % (d['bg'], d['bf']))
+            d = pg.evaluate("""() => { const r = (s) => document.querySelector(s).getBoundingClientRect(), a = r('.tell-dock .composer2'), sc = r('.now-scene'), st = r('.now-strip'), cs = getComputedStyle(document.querySelector('.tell-dock .composer2')), fill = getComputedStyle(document.querySelector('.tell-dock .composer2'), '::before'); return { off: Math.abs((a.left + a.right) / 2 - (sc.left + sc.right) / 2), w: a.width, scw: sc.width, gap: st.left - a.right, bg: fill.backgroundColor, op: parseFloat(fill.opacity), bf: cs.backdropFilter, h: a.height }; }""")
+            check(d['off'] < 80 and d['w'] >= min(700, d['scw'] * .9) and d['gap'] >= 0 and d['h'] < 60, 'the dock is anchored at the bottom, wide, slim (under 60 px), left of the Details button (%s)' % d)
+            check(d['bf'] == 'none' and 0.05 < d['op'] < 0.5, 'the dock is a flat, mostly clear fill at rest, no blur (%s %s)' % (d['op'], d['bf']))
             check(pg.get_attribute('input[data-key="chat-in-dock"]', 'placeholder').startswith('Tell Archeus what to do'), 'placeholder: Tell Archeus what to do')
             send(pg, '/status', where='dock')
             check(pg.locator('.tell-dock .dstrip').count() == 1 and 'status' in pg.inner_text('.tell-dock').lower(), 'the last exchange shows above the bar')

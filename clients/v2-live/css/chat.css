@@ -107,7 +107,6 @@
 .chatpage > .page-head { flex: none; padding-bottom: 16px; }
 .chatpage .chatgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; height: 100%; min-height: 0; align-items: stretch; border-top: var(--hair) solid var(--line); }
 .chatpage .convo { display: flex; flex-direction: column; min-height: 0; min-width: 0; height: 100%; background: transparent; }
-.cp-subtitle { color: var(--text-2); font-size: var(--fs-cap); }
 .chatpage .cp-thread-head { position: sticky; top: 0; z-index: 1; flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 16px; background: var(--bg); border-bottom: var(--hair) solid var(--line); }
 .cp-thread-head > div { min-width: 0; }
 .cp-thread-head h2 { margin: 0; font-family: var(--font); font-size: var(--fs-t2); font-weight: 600; overflow-wrap: anywhere; }
@@ -122,12 +121,11 @@
 .chatpage .cstep { border-style: solid; border-radius: var(--r-m); color: var(--text); background: var(--s2); }
 .chatpage .ccard .actions { padding-top: 8px; border-top: var(--hair) solid var(--line); }
 .chatpage .composer2 { position: sticky; bottom: 0; flex: none; padding: 12px 16px; background: var(--bg); border-top: var(--hair) solid var(--line-strong); }
-.chatpage .crow2 { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
-.chatpage .cscope { grid-column: 1 / -1; justify-self: start; max-width: 100%; min-width: 0; width: auto; }
-.chatpage .cinput { width: 100%; grid-column: 1; grid-row: 2; }
-.chatpage .cslash { grid-column: 2; grid-row: 2; }
-.chatpage .csend { grid-column: 3; grid-row: 2; }
-.chatpage .cstop { grid-column: 3; grid-row: 1; }
+.chatpage .crow2 { flex-wrap: nowrap; }
+.chatpage .cscope { flex: 0 1 14em; }
+.chatpage .cinput { flex: 1 1 8em; }
+.chatpage .cstop { display: none; }
+@container chatp (max-width: 700px) { .chatpage .crow2 { flex-wrap: wrap; } .chatpage .cscope { flex-basis: 100%; } .chatpage .cinput { flex-basis: 8em; } }
 .chatpage .cdest { padding: 0; }
 .cp-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 16px; padding: 0 16px 8px; }
 .cp-disclosure { min-width: 0; font-size: var(--fs-cap); color: var(--text-2); }
@@ -196,7 +194,6 @@
   }
 }
 @container chatp (max-width: 520px) {
-  .cp-subtitle { display: none; }
   .chatpage .cp-thread-head { padding: 12px 16px; }
   .chatpage .cp-thread { padding: 20px 16px; }
   .chatpage .ccard { padding: 12px; }
@@ -317,3 +314,4 @@ details.panel > .body { padding: 4px 16px 16px; }
   .chatpage .convo { overflow-y: auto; }
   .chatpage .cp-thread-head, .chatpage .convo .composer2 { position: static; }
 }
+.cp-cmdref .cp-cmdref-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }

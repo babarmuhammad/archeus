@@ -251,13 +251,16 @@ export function viewChat(ctx) {
           unread ? h('span', { class: 'cp-unread', 'aria-label': L('{n} unread', '{n} non letti', { n: unread }) }, String(unread)) : null));
       };
       row(L('General', 'Generale'), 'general');
-      rows.append(h('h3', null, 'Projects')); st.projects.forEach((p) => row(p.name, 'work', p.id));
+      const needs = (p) => pending.some((a) => a.project === p.id), many = st.projects.length > 8 && !P.search;
+      rows.append(h('h3', null, 'Projects')); [...st.projects].sort((a, b) => needs(b) - needs(a)).forEach((p) => row(p.name, 'work', p.id));
       rows.append(h('h3', null, 'Missions'));
       st.projects.forEach((p) => {
+        if (many && p.id !== s.project) return;
         const missions = Object.values(st.missions).filter((m) => m.project === p.id);
         if (!missions.some((m) => !P.search || m.title.toLocaleLowerCase().includes(P.search.toLocaleLowerCase()))) return;
         rows.append(h('p', { class: 'cp-group' }, p.name)); missions.forEach((m) => row(m.title, 'work', p.id, m.id));
       });
+      if (many) rows.append(h('p', { class: 'sp-text' }, 'Missions of the other projects: search by title.'));
       if (!count) rows.append(h('p', { class: 'sp-text' }, 'No conversations match'));
       translate(rows);
     };
@@ -291,7 +294,7 @@ export function viewChat(ctx) {
       h('section', null, h('h2', null, 'Current state'), h('p', { class: 'cp-context-title' }, title), h('p', { class: 'sp-text' }, s.dest === 'general' ? L('General · not project memory', 'Generale · non è memoria di progetto') : project?.note || ''), st.estop.engaged ? h('p', { class: 'cp-needs' }, L('Emergency stop engaged', 'Arresto di emergenza attivo')) : null),
       h('section', null, h('h2', null, 'Active mission'), active ? [h('a', { class: 'cp-link', href: '#/work/' + active.id }, active.title), missionSpine] : h('p', { class: 'sp-text' }, 'No active mission')),
       h('section', null, h('h2', null, 'Pinned decisions'), pins.length && s.dest !== 'general' ? pins.map((e) => h('button', { class: 'cp-command', type: 'button', onclick: () => { P.sheet = null; P.mission = null; ctx.render(); const el = document.querySelector('[data-key="msg-' + e.m.id + '"]'); el?.scrollIntoView({ block: 'center', behavior: 'instant' }); el?.focus({ preventScroll: true }); } }, L('Open decision', 'Apri la decisione'), h('span', { class: 'cp-command-desc' }, e.m.c ? C(e.m.c) : e.m.text))) : h('p', { class: 'sp-text' }, 'No pinned decisions')),
-      h('section', null, h('h2', null, 'Command reference'), search, commands));
+      h('details', { class: 'cp-disclosure cp-cmdref', open: !!P.open.commands, ontoggle: (e) => { P.open.commands = e.currentTarget.open; } }, h('summary', { 'data-key': sheet ? 'cp-cmdref-sheet' : 'cp-cmdref' }, 'Command reference'), h('div', { class: 'cp-cmdref-body' }, search, commands)));
   }
   const log = h('div', { class: 'msgs cp-thread', role: 'log', 'aria-live': 'polite', 'aria-label': L('Conversation', 'Conversazione'), tabindex: '0' });
   if (s.eng.hidden()) log.append(h('p', { class: 'cut' }, L('Earlier messages hidden on this screen. History kept.', 'Messaggi precedenti nascosti su questo schermo. La cronologia resta.')));
@@ -307,7 +310,7 @@ export function viewChat(ctx) {
   log.addEventListener('scroll', () => { P.scroll = log.scrollTop; P.bottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (P.bottom) { newer.hidden = true; visible.forEach((e) => P.read.add(e.m.id)); } });
   const disclosure = (label, ...children) => h('details', { class: 'cp-disclosure', open: !!P.open[label], ontoggle: (e) => { P.open[label] = e.currentTarget.open; } }, h('summary', null, label), h('div', { class: 'cp-disclosure-body' }, ...children));
   const openSheet = (name) => { P.sheet = name; ctx.render(); };
-  const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false' }, head(ctx, L('Chat', 'Chat'), h('span', { class: 'cp-subtitle' }, 'Conversation workspace')),
+  const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false' }, head(ctx, L('Chat', 'Chat')),
     h('div', { class: 'view chatview' }, h('div', { class: 'chatgrid' },
       h('aside', { class: 'cp-rail', 'aria-label': 'Conversations' }, destinations()),
       h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') },
