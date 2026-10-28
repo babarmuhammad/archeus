@@ -5,7 +5,7 @@
 .now-view .now-hero { position: absolute; z-index: 2; top: calc(var(--gut) * 1.2); left: calc(var(--gut) * 1.5); right: calc(var(--gut) * 1.5); max-width: 62rem; pointer-events: none; gap: 8px; }
 .now-view .now-hero a, .now-view .now-hero button { pointer-events: auto; }
 .now-view .eyebrow { font: 500 var(--fs-eyebrow) / 1 var(--sans); letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-3); margin: 0; }
-.now-view .state-sentence { font-family: var(--serif); font-size: var(--fs-disp); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
+.now-view .state-sentence { font-family: var(--serif); font-size: clamp(32px, 2.8vw, 42px); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
 .now-view .lede { font-family: var(--serif); font-size: var(--fs-lede); line-height: 1.4; color: var(--text-2); max-width: 30rem; margin: 0; }
 .view.now-view { --strip-h: 56px; --hero-h: 150px; --sheet-w: min(440px, 44%); --sheet-h: min(46%, 340px); }
 /* The drawer is an overlay layer: the status strip is the bottom edge, the Details sheet floats over the scene (beside it when wide, over its bottom when narrow). Opening it never resizes the scene. */
