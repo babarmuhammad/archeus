@@ -1,5 +1,14 @@
 # Italian review list for V2 Live
 
+## Phone foundation (F0) - 2026-10-28
+
+Status: to review. New pairs in `js/i18n-phone.js` (the bottom sheet's handle button). The bar, Places and Stop strings in `js/phone-model.js` are not shown yet; the slices that draw them add their Italian.
+
+| English | Italian |
+|---|---|
+| Expand | Espandi |
+| Collapse | Comprimi |
+
 ## Replay structure redesign — 2026-10-27
 
 Status: to review. New pairs in `js/i18n.js`; Italian has not been checked by a native speaker.

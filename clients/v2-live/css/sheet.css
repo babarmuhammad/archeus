@@ -1,0 +1,32 @@
+/* One bottom sheet (js/sheet.js). Pinned to the visual viewport: the wrapper stops above the keyboard (--vv-bottom), the sheet is a share of what is left.
+   Flat: the scrim is a plain alpha fill, no blur, no gradient. Motion is the tokens in tokens.css; Reduced motion switches every transition and animation off (css/motion.css).
+   The snap animates height, one element, on release only (a drag follows the finger with no easing). */
+.sheet-wrap { position: absolute; inset: 0 0 var(--vv-bottom) 0; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end; pointer-events: none; }
+.sheet-wrap > * { pointer-events: auto; }
+.sheet-wrap:not([data-modal]) .sheet-scrim { display: none; }
+.sheet-scrim { position: absolute; inset: 0; background: var(--scrim); }
+.sheet { position: relative; display: flex; flex-direction: column; width: min(100%, 40rem); height: var(--sheet-h, 0px); max-height: 100%; margin-inline: auto; padding-bottom: var(--sa-b); overflow: hidden;
+  background: var(--s3); color: var(--text); border: var(--hair) solid var(--line-strong); border-bottom: 0; border-radius: var(--sheet-r) var(--sheet-r) 0 0; transition: height var(--dur-3) var(--ease-move); }
+.sheet[data-drag] { transition: none; }
+.sheet-grip { flex: none; display: grid; place-items: center; width: 100%; height: var(--sheet-grip); padding: 0; border: 0; background: transparent; color: inherit; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.sheet-grip::before { content: ''; width: 36px; height: 4px; border-radius: 999px; background: var(--text-3); }
+.sheet[data-drag] .sheet-grip { cursor: grabbing; }
+div.sheet-grip { cursor: default; }
+.sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 0 8px 0 16px; }
+.sheet-head h2 { min-width: 0; font: 500 var(--fs-t1) / 1.2 var(--font); overflow-wrap: anywhere; }
+.sheet-head h2:focus { outline: none; }
+.sheet-close { flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: var(--hair) solid transparent; border-radius: var(--r-m); background: transparent; cursor: pointer; }
+.sheet-close:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 16px 16px; }
+.sheet-foot { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: var(--hair) solid var(--line); }
+
+@keyframes sheet-up { from { transform: translateY(24px); opacity: 0; } }
+@keyframes sheet-down { to { transform: translateY(24px); opacity: 0; } }
+@keyframes sheet-fade { from { opacity: 0; } }
+@keyframes sheet-unfade { to { opacity: 0; } }
+.sheet-wrap[data-enter] .sheet { animation: sheet-up var(--dur-3) var(--ease-out); }
+.sheet-wrap[data-enter] .sheet-scrim { animation: sheet-fade var(--dur-2) var(--ease-out); }
+.sheet-wrap[data-leaving] { pointer-events: none; }
+.sheet-wrap[data-leaving] .sheet { animation: sheet-down var(--dur-2) var(--ease-out) forwards; }
+.sheet-wrap[data-leaving] .sheet-scrim { animation: sheet-unfade var(--dur-2) var(--ease-out) forwards; }
+@media (forced-colors: active) { .sheet { border: 1px solid CanvasText; } .sheet-grip::before { background: CanvasText; } }
