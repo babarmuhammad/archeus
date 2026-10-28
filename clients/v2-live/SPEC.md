@@ -264,7 +264,7 @@ The owner's answers of 2026-10-25 are recorded in `.collab/V2-live-decisions.md`
 | M01 | Now, Work, Attention, spine, decisions | NOW, WORK (graph, Needs you, Active, Blocked, Done), inspector and decision sheet | `#/now`, `#/work/<id>` (decisions too: `#/work/a-1`; `#/attention/<id>` redirects here) | S1 shell and lists, S2 Now, S3 mission and decisions |
 | M02 | Chat and slash commands | CHAT | `#/chat` | S1, S4 built |
 | M03 | Replay | REP | `#/replay/<id>` | S1, S4 built |
-| M04 | Security: isolation (PV-20) status, switches, spawn breaker, owner rules | SEC | `#/security` | S1, S3 (done: #/security with trip and reset), S5 done in TERM (`#/terminal/security`) |
+| M04 | Security: posture sentence, held action decisions, project policy, boundaries, security events, emergency controls; physical isolation explicitly not built | SEC | `#/security` | S1, S3; 2026-10-27 posture-first structure, existing decision and safety confirmations; rendering pending. S5 in TERM (`#/terminal/security`) |
 | M05 | Health: checks and readings | HLT | `#/health` | S1, S3 (done: built) |
 | M06 | Usage meters, accounts and models | ACC | `#/accounts` | S1, S3 (done: #/usage and #/accounts), S5 done in TERM (`#/terminal/accounts`) |
 | M07 | Hooks, MCP servers, agents managers; automations; clients | ACC | `#/accounts` | S1, S3 (done: #/extensions), S5 done in TERM (`#/terminal/clients`) |
@@ -282,7 +282,7 @@ Routes added: `#/usage`, `#/extensions`; any inspector opens on `#/<area>/<id>` 
 | N03 | Decision sheet: What, Why, Core next, Policy, Relations; Approve, Request changes, Reject; two-step confirm on a phone, Reject always twice | SIMULATED | ATT, inspector | P T D |
 | N04 | Offline: stale read with the last-seen time, outlined spines, Decide rows read only, Reconnect (Sim menu, "Go offline") | SIMULATED | NOW, WORK, ATT | P T D |
 | N05 | Digest: since you last looked and today, mark as seen | SIMULATED | NOW | P T D |
-| N06 | Security page: two boundaries, isolated and not isolated, eight boundaries, switches, breaker trip and reset per CLI, privileges, log | SIMULATED | SEC | P T D |
+| N06 | Security page: posture and re-arm; held action cards with Allow once / Deny and ask-each-time policy; project launch modes and command states (no per-project overrides in fixture); eight boundaries, unknown last-check times, switches and breaker controls in disclosure; latest 12 security events with inspector evidence where recorded; Pause all / Resume all / two-step emergency stop. Counter tick, resolving-card collapse and posture cross-fade respect Quiet and Reduced motion. | SIMULATED | SEC | P T D; render and interaction verification pending |
 | N07 | Health: six checks with cause and fix, driven by the simulation | SIMULATED | HLT | P T D |
 | N08 | Usage: session and week rings per account, the 20% line, climbing story, sparkline | SIMULATED | USE | P T D |
 | N09 | Accounts and models, failover rules, launch settings with a live preview | SIMULATED | ACC | P T D |

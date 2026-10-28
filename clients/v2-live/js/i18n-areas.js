@@ -1,6 +1,38 @@
 // Italian for the S3 inspectors and areas. Merged into i18n.js (exact strings first, then the patterns below).
 // Fixture words that stand in for Core's own text (mission titles, branches, project names, tool names, Replay categories) stay English.
 export const IT_AREAS = {
+  // Security posture and control page, 2026-10-27. Italian wording to review.
+  'Needs a decision now': 'Decisioni da prendere ora',
+  'What Archeus may do': 'Cosa può fare Archeus',
+  'Boundaries': 'Confini',
+  'Recent security events': 'Eventi di sicurezza recenti',
+  'Emergency controls': 'Controlli di emergenza',
+  'Nothing is blocked': 'Nessun blocco attivo',
+  'New starts are blocked': 'Nuovi avvii bloccati',
+  'Emergency stop engaged': 'Arresto di emergenza attivo',
+  '1 action is waiting for your decision': '1 azione attende la tua decisione',
+  'Physical isolation is not built': 'Isolamento fisico non realizzato',
+  'A started CLI still runs as your user. Policy does not physically confine it.': 'Una CLI avviata usa ancora la tua identità. La policy non la confina fisicamente.',
+  'Held commands never auto-allow.': 'I comandi in attesa non vengono mai autorizzati automaticamente.',
+  'Ask me each time': 'Chiedimi ogni volta',
+  'Allow once': 'Consenti una volta',
+  'Deny': 'Nega',
+  'No per-project command overrides are recorded.': 'Non sono registrate eccezioni ai comandi per singolo progetto.',
+  'Last check': 'Ultimo controllo',
+  'Execution isolation': 'Isolamento delle esecuzioni',
+  'Accounts and homes': 'Account e cartelle personali',
+  'Network': 'Rete',
+  'More boundary evidence': 'Altre prove sui confini',
+  'Held actions will appear here when a command needs your permission.': 'Qui appariranno le azioni in attesa quando un comando richiede il tuo permesso.',
+  'Security events will appear here when an action is held, decided, or stopped.': 'Qui appariranno gli eventi di sicurezza quando un’azione viene sospesa, decisa o fermata.',
+  'No projects are recorded.': 'Nessun progetto registrato.',
+  'Approval mode': 'Modalità di approvazione',
+  'Policy applies to every project below.': 'La policy si applica a ogni progetto qui sotto.',
+  'Command policy applies inside an execution. Plan only never starts one.': 'La policy dei comandi vale all’interno di un’esecuzione. La modalità Solo piano non ne avvia nessuna.',
+  'Latest events': 'Ultimi eventi',
+  'Re-armed: new work can start again.': 'Riarmato: il nuovo lavoro può ripartire.',
+  'Hook': 'Hook',
+  'Spawn breaker': 'Interruttore di avvio',
   // routes and areas
   'Usage': 'Utilizzo', 'Extensions': 'Estensioni', 'Accounts and models': 'Account e modelli', 'Hooks, MCP servers and agents': 'Hook, server MCP e agenti',
   'Hooks': 'Hook', 'MCP servers': 'Server MCP', 'Agents': 'Agenti', 'Clients': 'Client', 'Automations': 'Automazioni', 'Models': 'Modelli',
@@ -217,6 +249,10 @@ const ACC = { unverified: 'non verificato', available: 'disponibile', constraine
 const num = (s) => String(s).replace('.', ',');
 const plural = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);
 export const RULES_AREAS = [
+  [/^(\d+) actions are waiting for your decision$/, (m) => m[1] + ' azioni attendono la tua decisione'],
+  [/^Allow this action once\? (.+) No Undo\.$/, (m) => 'Consentire questa azione una volta? ' + tr2(m[1]) + ' Non si può annullare.'],
+  [/^Deny this action\? The execution ends and the mission is blocked\. No Undo\.$/, () => 'Negare questa azione? L’esecuzione termina e la missione viene bloccata. Non si può annullare.'],
+  [/^(Built|Partly|Designed|Built, switch off) \/ (Designed|Open)$/, (m) => tr2(m[1]) + ' / ' + tr2(m[2])],
   [/^· (.+)$/, (m) => '· ' + tr2(m[1])],
   [/^Design acceptance rows closed: (\d+) of (\d+), and (\d+) of (\d+) additions\. No row about physical reach can be closed in this build\.$/, (m) => 'Righe di accettazione del progetto chiuse: ' + m[1] + ' su ' + m[2] + ', e ' + m[3] + ' su ' + m[4] + ' aggiunte. Nessuna riga sul raggio d’azione fisico può essere chiusa in questa versione.'],
   [/^This task class prefers (.+), and the account is (.+)\.$/, (m) => 'Questa classe di attività preferisce ' + m[1] + ', e l’account è ' + (ACC[m[2]] || m[2]) + '.'],

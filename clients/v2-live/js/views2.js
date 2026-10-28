@@ -6,19 +6,6 @@ import { ROUTES, head, panel, empty, dnote, projName } from './views.js';
 const FIG = { ok: ['done', 'Ok'], off: ['paused', 'Off'], open: ['blocked', 'Open'], attention: ['needs_you', 'Needs attention'], unknown: ['inactive', 'Unknown'] };
 const fig = (state, word) => { const f = FIG[state] || FIG.unknown; return h('span', { class: 'badge', 'data-role': f[0] }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(f[0])), h('span', { class: 'w' }, word || f[1])); };
 
-export function viewSecurity(ctx) {
-  const sim = ctx.sim, st = sim.state;
-  return h('div', null, head(ctx, 'Security'), h('div', { class: 'view' },
-    dnote('H14', 'Isolation (PV-20) status as the board records it: designed and fixture-tested, physical reach not built, switches off. It is stated, never simulated as working.'),
-    h('div', { class: 'cols two' },
-      panel('Isolation and switches', sim.security().length, h('div', { class: 'body' }, ...sim.security().map((x) => h('div', { class: 'row-line', 'data-key': 'sec-' + x.id }, h('span', { class: 'a' }, x.label, h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, x.note)), fig(x.state, x.word))))),
-      h('div', { style: 'display:flex;flex-direction:column;gap:var(--gut)' },
-        panel('Spawn breaker', st.harnesses.length, h('div', { class: 'body' }, ...st.harnesses.map((x) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, x.label, h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, x.breaker.state === 'closed' ? 'Starts normally.' : (x.breaker.last_error || '') + ' Dispatch waits; the mission says "cannot start".')), fig(x.breaker.state === 'closed' ? 'ok' : 'attention', x.breaker.state === 'closed' ? 'Closed' : x.breaker.state === 'open' ? 'Open' : 'Half open'))),
-          h('div', { class: 'actions', style: 'margin-top:12px' }, h('button', { class: 'btn', type: 'button', onclick: () => ctx.act('inject-spawn') }, 'Break the harness')),
-          dnote('H04', 'One breaker per CLI; trips at 3 failed starts in 10 minutes; doubling wait 15 s to 5 min; one trial after 5 minutes; never an unisolated fallback.'))),
-        panel('Owner rules', null, h('div', { class: 'body' }, ...[['Never push, never touch credentials', 'Archeus does not read, store, copy, inject or relay subscription tokens.'], ['Decisions are the owner\'s', 'Chat proposes; only a card on screen with its hash is decided.'], ['No silent approval', 'A new mission from chat waits for a card here (V1 today starts it; flagged G1).']].map(([a, b]) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, a, h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, b))))))))));
-}
-
 export function viewHealth(ctx) {
   const items = ctx.sim.health();
   const n = (s) => items.filter((x) => x.state === s).length;
