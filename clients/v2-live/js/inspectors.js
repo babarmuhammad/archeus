@@ -60,7 +60,7 @@ function mission(ctx, A, S, id) {
   if (times) stations.querySelectorAll('ol > li').forEach((li, i) => { if (times[i] != null) li.append(h('span', { class: 'ax-st-time' }, clockLabel(times[i]))); });
   pos.progress.querySelector('.spine-insp')?.parentNode.replaceWith(stations);
   const stationNotes = Array.from(pos.progress.children).filter((node) => node.matches('.ax-note, .dnote'));
-  pos.progress.append(h('details', { class: 'msn-station-notes' }, h('summary', null, 'Station details'), ...stationNotes));
+  pos.progress.append(h('details', { class: 'msn-station-notes', open: !!ctx.ui.stationOpen?.[id], ontoggle: (e) => { (ctx.ui.stationOpen ||= {})[id] = e.currentTarget.open; } }, h('summary', null, 'Station details'), ...stationNotes));
   const act = (kind, label, primary, confirm) => h('button', { class: 'btn' + (primary ? ' primary' : ''), type: 'button', onclick: () => (confirm ? ask(ctx, { text: confirm, label, tone: 'danger', run: () => ctx.act(kind, id) }) : ctx.act(kind, id)) }, label);
   const foot = () => {
     if (m.state === 'BLOCKED') return [act('unblock', 'Answer and unblock', true), act('cancel', 'Cancel mission', false, 'Cancel "' + m.title + '"? Cancelling ends the mission and stops its runs. This cannot be undone.')];

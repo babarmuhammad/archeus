@@ -222,6 +222,8 @@ export function viewChat(ctx) {
   if (P.lastYou && P.lastYou !== lastYou) P.mission = null;
   P.lastYou = lastYou;
   const oldCards = new Map([...document.querySelectorAll('.chatpage .msg')].map((el) => [el.dataset.key, el.querySelector('.ccard')?.getBoundingClientRect().height]));
+  const scrollers = ':is(.cp-rail, .cp-context, .cp-sheet, .cp-commands)', scrollKey = (el) => el.className + (el.closest('.cp-sheet') ? '/sheet' : '');
+  const oldScroll = new Map([...document.querySelectorAll('.chatpage ' + scrollers)].map((el) => [scrollKey(el), el.scrollTop]));
   const project = st.projects.find((p) => p.id === s.project);
   const focused = s.dest !== 'general' && st.missions[P.mission]?.project === s.project ? st.missions[P.mission] : null;
   const title = s.dest === 'general' ? L('General', 'Generale') : focused?.title || project?.name || s.project;
@@ -328,6 +330,7 @@ export function viewChat(ctx) {
       if (before && after && Math.abs(before - after) > 1) card.animate([{ height: before + 'px', overflow: 'hidden' }, { height: after + 'px', overflow: 'hidden' }], { duration: 180, easing: 'ease-out' });
     });
     oldCards.clear();
+    page.querySelectorAll(scrollers).forEach((el) => { el.scrollTop = oldScroll.get(scrollKey(el)) || 0; });
     log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
     visible.forEach((e) => P.seen.add(e.m.id));
     if (P.switched) { P.switched = false; if (!store.reducedMotion()) log.animate([{ opacity: .35 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' }); }

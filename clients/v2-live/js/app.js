@@ -80,14 +80,16 @@ function parse() {
 function nav(hash) { if (location.hash === hash) render(); else location.hash = hash; }
 function closeInsp() { nav('#/' + ctx.route.name); }
 
+let inspKey = '';
+const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
 function render() {
   if (/^#\/map(\/|$)/.test(location.hash)) { location.replace('#/now'); return; } // Overview is the map
   if (GONE.test(location.hash)) { location.replace(location.hash.replace(GONE, '#/work')); return; }
   if (ctx.route.name === 'terminal' && parse().name === 'terminal' && ctx.termRoute && app.querySelector('.tui')) { ctx.route = parse(); ctx.termRoute(ctx.route); return; } // the terminal view redraws itself and keeps its state
-  const keep = { top: page.scrollTop, itop: inspector.scrollTop, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
+  const keep = { top: page.scrollTop, itops: inspScrollers().map((e) => e.scrollTop), ikey: inspKey, key: document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.key : null, was: document.activeElement };
   const prev = ctx.route;
   ctx.route = parse();
-  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; keep.itop = 0; if (ui.s4) ui.s4.sheet = false; if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; if (ui.s4) { ui.s4.sheet = false; if (ui.s4.page) ui.s4.page.sheet = null; } if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
@@ -120,7 +122,10 @@ function render() {
   if (r.name !== 'work') vWork.leave();
   translate(app);
   syncCore(); if (!embed) syncToolbar();
-  page.scrollTop = keep.top; inspector.scrollTop = keep.itop;
+  page.scrollTop = keep.top;
+  const nk = r.name + '/' + r.id + '/' + ui.tab;
+  if (nk === keep.ikey) inspScrollers().forEach((e, i) => { e.scrollTop = keep.itops[i] || 0; });
+  inspKey = nk;
   if (keep.key) {
     const action = sim.state.estop.engaged ? 'rearm' : 'estop';
     const replacements = { estop: ui.estopAsk ? 'estop-yes' : action, 'estop-yes': action, 'estop-back': action, rearm: ui.rearmAsk ? 'rearm-yes' : action, 'rearm-yes': action, 'rearm-back': action };
