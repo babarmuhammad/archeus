@@ -14,13 +14,14 @@ import * as vSettings from './view-settings.js';
 import { viewMore } from './views2.js';
 import { viewChat, mountDock, openTell } from './chat.js';
 import { buildBottom, syncBottom, placesSheet } from './phone.js';
-import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate } from './areas.js';
+import { viewSecurity, viewHealth, viewUsage, viewAccounts, viewExtensions, decorate, isSection } from './areas.js';
 import { inspectorFor } from './inspectors.js';
 import { areasOf } from './areas-model.js';
 import { translate } from './i18n.js';
 import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
 import { installKeys } from './keys.js';
+import { installPalette } from './palette.js';
 import { railProjects } from './rail-model.js';
 import * as motion from './motion.js';
 import { direction } from './motion-model.js';
@@ -49,22 +50,23 @@ const framenote = document.getElementById('framenote');
 let app, page, rail, bottom, dock, topbar, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
 let placesInert = [];
 
+const RAIL_GROUPS = [['Work', ['now', 'work', 'chat', 'replay', 'terminal']], ['Govern', ['security', 'health', 'usage']], ['Configure', ['accounts', 'extensions', 'settings']]];
 const navLabel = (r) => (r.id === 'now' ? 'Overview' : r.label);
 const navItem = (r) => h('a', { class: 'nav-item', href: '#/' + r.id, 'data-route': r.id }, icon(r.icon, 20), h('span', { class: 'nl' }, navLabel(r)), h('span', { class: 'count', 'data-count': r.id, hidden: true }));
 
 function buildShell() {
   rail = h('nav', { class: 'rail', 'aria-label': 'Main' },
     h('div', { class: 'rail-head' }, h('button', { class: 'rail-toggle', type: 'button', 'aria-label': 'Expand or collapse the navigation', onclick: () => { app.dataset.rail = app.dataset.rail === 'open' ? '' : 'open'; } }, icon('menu')), h('span', { class: 'brand' }, wordmark())),
-    ...ROUTES.filter((r) => r.id !== 'settings').flatMap((r) => [navItem(r), ['chat', 'extensions'].includes(r.id) ? h('div', { class: 'rail-sep' }) : null]),
-    h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }),
-    h('div', { class: 'rail-foot' }, navItem(ROUTES.find((r) => r.id === 'settings')), h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view'))));
+    ...RAIL_GROUPS.map(([label, ids]) => h('div', { class: 'rail-grp', role: 'group', 'aria-label': label }, h('span', { class: 'eyebrow rail-eye', 'aria-hidden': 'true' }, label),
+      ...ids.map((id) => (id === 'terminal' ? h('a', { class: 'nav-item', href: '#/terminal', 'data-route': 'terminal' }, icon('terminal', 20), h('span', { class: 'nl' }, 'Terminal view')) : navItem(ROUTES.find((r) => r.id === id)))))),
+    h('a', { class: 'eyebrow rail-eye projects-nav', href: '#/projects', 'data-route': 'projects' }, 'Projects'), h('div', { class: 'rail-proj', id: 'railproj' }));
   topbar = h('header', { class: 'topbar' });
   page = h('main', { class: 'main-col', id: 'page', tabindex: '-1' });
   bottom = buildBottom({ tell: tellClick, places: togglePlaces, stop: stopClick });
   dock = h('div', { class: 'chatdock', id: 'chatdock', hidden: true });
   inspector = h('aside', { class: 'inspector', 'aria-label': 'Details', id: 'inspector' });
   scrim = h('div', { class: 'scrim', 'aria-hidden': 'true', onclick: closeInsp });
-  toastEl = h('div', { class: 'toast', role: 'status', hidden: true });
+  toastEl = h('div', { class: 'toast', role: 'status', hidden: true, onmouseenter: () => clearTimeout(toastTimer), onfocusin: () => clearTimeout(toastTimer), onmouseleave: restartToast, onfocusout: restartToast });
   app = h('div', { class: 'app', id: 'app', 'data-rail': '', 'data-insp': '' }, rail, h('div', { class: 'main-wrap' }, topbar, page), dock, bottom, scrim, inspector, toastEl);
   clear(device).append(app);
 }
@@ -81,7 +83,7 @@ function parse() {
   return { name, id: m[2] || null };
 }
 function nav(hash) { if (location.hash === hash) render(); else location.hash = hash; }
-function closeInsp() { nav('#/' + ctx.route.name); }
+function closeInsp() { const sec = ui.sect && ui.sect[ctx.route.name]; nav('#/' + ctx.route.name + (sec ? '/' + sec : '')); } // a page with parts returns to the part the inspector was opened from
 
 let inspKey = '';
 const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
@@ -117,7 +119,7 @@ function drawRoute() {
 
   // inspector
   let insp = null;
-  if (!term && ['now', 'work', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id) insp = inspectorFor(ctx);
+  if (!term && ['now', 'work', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions'].includes(r.name) && r.id && !isSection(r.name, r.id)) insp = inspectorFor(ctx);
   clear(inspector); if (insp) inspector.append(insp);
   const wasOpen = app.dataset.insp === 'open';
   app.dataset.insp = insp ? 'open' : '';
@@ -191,8 +193,10 @@ function toast(text, o) {
   toastEl.append(h('span', { class: 'tt' }, text), ...(o && o.action ? [o.action.run ? h('button', { class: 'btn', type: 'button', 'data-key': 'toast-undo', onclick: () => { dismissToast(); o.action.run(); } }, o.action.label) : h('a', { class: 'btn', href: o.action.href, onclick: dismissToast }, o.action.label)] : []), h('button', { class: 'btn quiet', type: 'button', 'data-key': 'toast-x', onclick: dismissToast }, 'Dismiss'));
   translate(toastEl); toastEl.hidden = false;
   if (shown) motion.enter(toastEl, { y: -6, s: .98, origin: '100% 0', dur: 1 });
+  toastEl.toggleAttribute('data-auto', !keep);
   if (!keep) toastTimer = setTimeout(dismissToast, o && o.action ? 7000 : 4500);
 }
+function restartToast() { if (toastEl.hasAttribute('data-auto') && !toastEl.hidden) toastTimer = setTimeout(dismissToast, 2000); } // a toast being read or pointed at stays; it leaves 2 s after the pointer does
 function dismissToast() {
   clearTimeout(toastTimer); if (toastEl.hidden) return;
   if (store.reducedMotion()) { toastEl.hidden = true; return; }
@@ -217,7 +221,8 @@ function syncTopbar() {
       h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'dialog', 'aria-expanded': open ? 'true' : 'false', onclick: () => { if (open) closeSafety(); else { ui.safetyOpener = 'safety'; ui.safetyOpen = true; ui.tellOpen = false; render(); } } },
         h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, eng ? 'Stopped' : 'Not stopped'), h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), h('span', { class: 'sx' }, eng ? 'new work blocked' : 'accepts new work')),
       open ? h('div', { class: 'safety-pop', role: 'dialog', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)) : null),
-    h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell'),
+    h('button', { class: 'tb-search', type: 'button', 'data-key': 'search', 'aria-label': 'Search or run a command', 'aria-keyshortcuts': 'Control+K Meta+K', onclick: () => ctx.openPalette() }, icon('search', 18), h('span', { class: 'tbs-l' }, 'Search or run a command'), h('kbd', { 'aria-hidden': 'true' }, /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K')),
+    ...(['now', 'chat'].includes(ctx.route.name) ? [] : [h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell')]),
     h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', 'aria-label': eng ? 'Re-arm new work' : 'Emergency stop all missions', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
 }
 // The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
@@ -364,6 +369,9 @@ function fit() {
 if (!embed) buildToolbar();
 buildShell();
 ctx.openHelp = installKeys(ctx, app, page).openHelp;
+ctx.tell = tellClick;
+ctx.stop = () => stopClick({ currentTarget: { dataset: { key: isPhone() ? 'bb-stop' : 'stop' } } });
+ctx.openPalette = installPalette(ctx, app, { projHint: (p) => PSTATE[projState(p)] }).open;
 const unsub = sim.subscribe((e) => {
   if (e.type === 'clock' || e.type === 'execution.progress' || e.type === 'usage.observed') { if (e.type === 'execution.progress') notePulse(sim, e); patchLive(); if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); return; }
   if (e.type === 'sim.play' || e.type === 'sim.pause' || e.type === 'sim.speed') { syncCore(); if (!embed) syncToolbar(); return; }

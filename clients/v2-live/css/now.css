@@ -56,7 +56,6 @@
 .calm-say { display: flex; flex-direction: column; justify-content: center; gap: 20px; }
 .calm-say .state-sentence { display: flex; flex-direction: column; font-size: clamp(28px, 3.2cqw, 48px); }
 .calm-say .state-sentence span { white-space: nowrap; }
-.tell-cta { align-self: flex-start; display: inline-flex; align-items: center; justify-content: space-between; gap: 28px; min-width: 220px; min-height: 56px; padding: 0 22px; border: 0; border-radius: var(--r-m); background: var(--text); color: var(--bg); font: 500 22px/1 var(--serif); cursor: pointer; }
 .calm-col .eyebrow { margin-bottom: 14px; }
 .calm-big { font: 500 var(--fs-title) / 1.1 var(--serif); margin: 0 0 14px; padding-bottom: 14px; border-bottom: var(--hair) solid var(--line); }
 .calm-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -79,9 +78,7 @@
 @container dev (max-width: 599px) {
   .calm-band { height: 160px; }
   .calm-band > div { padding: 16px; }
-  .tell-cta { display: none; }
 }
-.tell-cta .tell-arrow { font: 400 28px/1 var(--sans); }
 
 /* Phone Overview (concepts 09 and 10): the scene, two large counts, the Review card. The headline stays for screen readers. */
 .pn-card { display: none; }
@@ -139,6 +136,9 @@
   .tell-dock .cscope { flex-basis: 9em; }
 }
 .tell-dock .cdest { display: none; }
+/* in the dock the key hint sits in the pill, left of the slash button, while the field has focus; the row stays 48 px */
+.tell-dock .chint { flex: none; align-self: center; padding: 0 8px; white-space: nowrap; }
+.tell-dock .composer2:not(:focus-within) .chint { display: none; }
 :root[data-motion='reduced'] .tell-dock .crow2::before { transition: none; }
 @media (prefers-reduced-motion: reduce) { .tell-dock .crow2::before { transition: none; } }
 .view-switch { position: absolute; z-index: 3; top: calc(var(--gut) * 1.2); right: calc(var(--gut) * 1.5); display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 10px; }
@@ -148,3 +148,5 @@
 .view-switch .vs-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 .now-view .now-hero { right: calc(var(--gut) * 1.5 + 120px); }
 @media (max-width: 599px) { .view-switch { display: none; } }
+
+@container cmp (max-width: 720px) { .tell-dock .chint { display: none; } }

@@ -29,6 +29,10 @@
 .cinput::placeholder { color: var(--text-3); opacity: 1; }
 .crow2 .cslash { flex: none; width: var(--target); padding: 0; border-color: transparent; border-radius: 22px; font-family: var(--mono); }
 .csend, .cstop { flex: none; min-height: var(--target-primary); border-radius: 24px; padding-inline: 22px; }
+.cfoot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 16px; }
+.chint { margin: 0; padding: 0 14px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.35; margin-left: auto; }
+.chint[hidden] { display: none; }
+.qchip { padding: 0 8px; border: var(--hair) dashed var(--text-2); border-radius: 999px; color: var(--text); font-weight: 600; line-height: 20px; }
 .cdest { margin: 0; padding: 0 14px; color: var(--text-2); font-size: var(--fs-cap); line-height: 1.35; overflow-wrap: anywhere; }
 .argline { margin: 0; padding: 6px 12px; border: var(--hair) dashed var(--line-strong); border-radius: 8px; background: var(--s3); color: var(--text-2); font-size: var(--fs-cap); }
 .cnote { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 8px 12px; border: var(--hair) solid var(--attention); border-radius: 8px; background: var(--s3); font-size: var(--fs-cap); }
@@ -227,7 +231,7 @@
 .cs-head .btn { padding: 0 10px; }
 .cs-main .logwrap { flex: 1 1 0; }
 .cs-main .composer2 { flex: none; padding: 8px 12px 10px; gap: 4px; overflow-y: auto; max-height: 62%; }
-.chatsheet[data-kb='1'] .cdest { display: none; }
+.chatsheet[data-kb='1'] .cfoot { display: none; }
 .kbsim { flex: none; height: var(--kbh); overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; background: var(--s2); border-top: var(--hair) solid var(--line); }
 .chatsheet[data-kb='0'] .kbsim { visibility: hidden; }
 .kbnote { margin: 0; color: var(--text-2); font-size: var(--fs-cap); }

@@ -9,6 +9,11 @@ export const IT_SHELL = {
   'No extension matches.': 'Nessuna estensione corrisponde.', 'Nothing is listed here.': 'Qui non c’è ancora nulla.', 'Extension types': 'Tipi di estensione', 'Open review': 'Apri la revisione',
   'Undo': 'Annulla', 'Clear search': 'Cancella la ricerca',
   'Settings sections': 'Sezioni delle impostazioni', 'Safety': 'Sicurezza', 'Prototype': 'Prototipo', 'About': 'Informazioni',
+  'Govern': 'Governa', 'Configure': 'Configura', 'Search or run a command': 'Cerca o esegui un comando', 'Search pages, actions and projects': 'Cerca pagine, azioni e progetti',
+  'Command palette': 'Comandi rapidi', 'Results': 'Risultati', 'Pages': 'Pagine', 'Actions': 'Azioni', 'Nothing matches. Try a page, an action or a project name.': 'Nessun risultato. Prova il nome di una pagina, di un’azione o di un progetto.',
+  'move': 'muovi', 'run': 'esegui', 'close': 'chiudi', 'Stop all': 'Ferma tutto', 'Tell Archeus': 'Dì ad Archeus', 'Settings: Safety': 'Impostazioni: Sicurezza', 'Settings: Appearance': 'Impostazioni: Aspetto',
+  'Settings: Prototype': 'Impostazioni: Prototipo', 'Language: Italiano': 'Lingua: Italiano', 'Language: English': 'Lingua: English', 'Stale': 'Non aggiornato',
+  'Ctrl+K or Cmd+K': 'Ctrl+K o Cmd+K', 'Search pages, actions and projects, and run them': 'Cerca pagine, azioni e progetti ed eseguili',
   'Back to the app': 'Torna all’app', 'Show': 'Mostra', 'Hide': 'Nascondi',
   'Live work moves the map slowly: nodes drift, markers travel along active links and the core mark breathes. Reduced motion stops all of it.': 'Il lavoro in corso muove piano la mappa: i nodi si spostano appena, i segnalini viaggiano lungo i collegamenti attivi e il simbolo del Core respira. Il movimento ridotto ferma tutto.',
   'Simulated clock': 'Orologio simulato', '. One real second is ten simulated seconds at x1. Same seed, same story.': '. Un secondo reale sono dieci secondi simulati a x1. Stesso seme, stessa storia.',
@@ -19,5 +24,6 @@ export const IT_SHELL = {
 export const RULES_SHELL = [
   [/^All (\d+) projects$/, (m) => 'Tutti i ' + m[1] + ' progetti'],
   [/^(\d+) extensions$/, (m) => m[1] + ' estensioni'], [/^(\d+) off$/, (m) => m[1] + ' spente'], [/^1 needs you$/, () => '1 ti serve'], [/^(\d+) need you$/, (m) => m[1] + ' ti servono'],
-  [/^Today (\d\d:\d\d)$/, (m) => 'Oggi ' + m[1]], [/^Yesterday (\d\d:\d\d)$/, (m) => 'Ieri ' + m[1]], [/^Earlier (\d\d:\d\d)$/, (m) => 'Prima ' + m[1]]
+  [/^Today (\d\d:\d\d)$/, (m) => 'Oggi ' + m[1]], [/^Yesterday (\d\d:\d\d)$/, (m) => 'Ieri ' + m[1]], [/^Earlier (\d\d:\d\d)$/, (m) => 'Prima ' + m[1]],
+  [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d\d:\d\d)$/, (m) => ({ Mon: 'Lun', Tue: 'Mar', Wed: 'Mer', Thu: 'Gio', Fri: 'Ven', Sat: 'Sab', Sun: 'Dom' })[m[1]] + ' ' + m[2]]
 ];

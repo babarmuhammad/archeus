@@ -33,6 +33,7 @@ function actions(ctx) {
   const s = S4(ctx);
   return {
     act(id, what, data) { const r = s.eng.card(id, what, data); if (!r.ok) ctx.toast(L('Not done: {r}', 'Non fatto: {r}', { r: r.reason })); ctx.render(); if (r.nav) ctx.nav(r.nav); return r; },
+    unqueue(id) { s.eng.unqueue(id); ctx.render(); },
     retry(id) { const r = s.eng.retry(id); if (r) setTimeout(() => { settle(ctx, s.eng.finish(id)); }, 500); ctx.render(); }
   };
 }
@@ -58,7 +59,7 @@ export function threadNode(ctx, opts = {}) {
   if (opts.last) { const out = []; for (let i = list.length - 1; i >= 0 && out.length < 2; i--) { out.unshift(list[i]); if (list[i].from === 'you') break; } list = out; }
   const log = h('div', { class: 'msgs ' + (opts.cls || ''), role: 'log', 'aria-live': 'polite', 'aria-label': L('Conversation', 'Conversazione'), tabindex: opts.last ? null : '0' },
     s.eng.hidden() ? h('p', { class: 'cut' }, L('Earlier messages hidden on this screen. History kept.', 'Messaggi precedenti nascosti su questo schermo. La cronologia resta.')) : null,
-    ...list.map((m) => msgNode(ctx, m, A.act, A.retry)),
+    ...list.map((m) => msgNode(ctx, m, A.act, A.retry, A.unqueue)),
     !list.length ? h('p', { class: 'intro' }, L('Ask a question, capture an idea, or describe work.', 'Fai una domanda, cattura un\'idea o descrivi un lavoro.')) : null);
   if (!opts.last) {
     log.addEventListener('scroll', () => { s.pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (s.pinned) { s.unread = 0; const b = log.parentElement && log.parentElement.querySelector('.newreply'); if (b) b.hidden = true; } });
@@ -99,12 +100,14 @@ export function composer(ctx, where) {
   const notice = h('div', { class: 'cnote', role: 'status', hidden: true });
   const live = h('p', { class: 'vh', role: 'status', 'aria-live': 'polite' });
   const dest = h('p', { class: 'cdest' });
+  const hint = h('p', { class: 'chint', 'aria-live': 'polite', hidden: true });
+  const foot = h('div', { class: 'cfoot' }, dest, where === 'dock' ? null : hint);
   const scope = scopePicker(ctx, 'chat-scope-' + where, { cls: 'cscope', prefix: L('To', 'A'), up: true });
   const slashBtn = h('button', { class: 'btn cslash', type: 'button', 'aria-label': 'Commands', onclick: () => { input.value = '/'; ctx.ui.draft = '/'; input.focus(); onInput(); } }, '/');
   const send = h('button', { class: 'btn primary csend', type: 'button', onclick: () => submit() }, '');
   const stop = h('button', { class: 'btn danger cstop', type: 'button', onclick: () => stopNow(ctx) }, '');
   const maxRows = () => { const hgt = (document.getElementById('app') || {}).clientHeight || 800; return where === 'sheet' ? (hgt < 700 ? 2 : 3) : hgt < 760 ? 3 : 5; };
-  const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, live, h('div', { class: 'crow2' }, scope, input, slashBtn, send, where === 'sheet' ? null : stop), dest);
+  const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, live, h('div', { class: 'crow2' }, scope, input, where === 'dock' ? hint : null, slashBtn, send, where === 'sheet' ? null : stop), foot);
 
   function fillDest() {
     const a = SL.parse(input.value || '');
@@ -114,9 +117,17 @@ export function composer(ctx, where) {
         : L('Replies and records stay in {p}.', 'Risposte e record restano in {p}.', { p: pn });
     scope.update({ value: scopeValue(s), items: scopeItems(ctx), prefix: L('To', 'A'), label: L('Destination', 'Destinazione') });
   }
+  // While a mission runs in this scope: the two keys, and how many messages wait for the step. Hidden otherwise.
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘' : 'Ctrl+';
+  function drawHint() {
+    const live = s.dest === 'work' && s.eng.running(s.project).length, n = s.dest === 'work' ? s.eng.queued(s.project).length : 0;
+    hint.hidden = !live && !n;
+    hint.textContent = [live ? L('Enter queue · {k}Enter steer', 'Invio accoda · {k}Invio guida', { k: mod }) : '', n ? L('{n} queued', '{n} in coda', { n }) : ''].filter(Boolean).join(' · ');
+  }
   function refresh() {
     input.placeholder = L('Tell Archeus what to do…', 'Dì ad Archeus cosa fare…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
     slashBtn.setAttribute('aria-label', L('Commands', 'Comandi')); slashBtn.title = L('Commands (type /)', 'Comandi (scrivi /)'); send.title = L('Send (Enter)', 'Invia (Invio)');
+    drawHint();
     send.textContent = L('Send', 'Invia'); stop.textContent = L('Stop', 'Ferma'); stop.setAttribute('aria-label', L('Stop: propose an emergency stop', 'Ferma: proponi un arresto d\'emergenza'));
     if (document.activeElement !== input && input.value !== (ctx.ui.draft || '')) input.value = ctx.ui.draft || '';
     fillDest(); draw();
@@ -180,7 +191,7 @@ export function composer(ctx, where) {
     if (M.open && e.key === 'ArrowDown') { e.preventDefault(); M.active = (M.active + 1) % n; while (M.rows[M.active].kind === 'cmd' && M.rows[M.active].c.unavailable) M.active = (M.active + 1) % n; draw(); }
     else if (M.open && e.key === 'ArrowUp') { e.preventDefault(); M.active = (M.active + n - 1) % n; while (M.rows[M.active].kind === 'cmd' && M.rows[M.active].c.unavailable) M.active = (M.active + n - 1) % n; draw(); }
     else if (M.open && e.key === 'Tab' && !e.shiftKey) { const r = M.rows[M.active]; if (r && r.kind === 'cmd' && !r.c.unavailable) { e.preventDefault(); input.value = '/' + SL.nameIn(r.c, lang()) + ' '; ctx.ui.draft = input.value; M.expanded = false; draw(); fillDest(); } else if (r && r.kind === 'ref') { e.preventDefault(); choose(); } }
-    else if (e.key === 'Enter') { e.preventDefault(); if (M.open) choose(); else submit(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (M.open) choose(); else submit(false, e.metaKey || e.ctrlKey ? 'steer' : 'queue'); }
     else if (e.key === 'Escape') { if (M.open) { e.preventDefault(); e.stopPropagation(); M.open = false; clear(list).hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); } else if (!argline.hidden) { argline.hidden = true; e.stopPropagation(); } }
   });
 
@@ -191,12 +202,13 @@ export function composer(ctx, where) {
     if (r.notice) { notice.append(h('span', null, C(r.notice))); if (r.href) notice.append(h('a', { class: 'btn', href: r.href }, L('Open', 'Apri'))); return; }
     notice.hidden = true;
   }
-  function run(text, force) {
-    const o = { dest: s.dest, project: s.project, force: !!force, fail: s.fail };
+  function run(text, force, mode) {
+    const o = { dest: s.dest, project: s.project, force: !!force, fail: s.fail, mode: mode || 'queue', mission: where === 'page' && s.page ? s.page.mission : null };
     const slow = s.slow; s.fail = false; s.slow = false;
     const r = s.eng.send(text, o);
     if (!r.ok) { if (r.menu) { input.value = '/'; draw(); return r; } if (r.arg) { M.mode = 'arg'; draw(); return r; } showNotice(r); return r; }
     s.touched = true; s.pinned = true;
+    if (r.queued || r.steering) live.textContent = r.queued ? L('Queued. It is handled after the current step.', 'In coda. Viene gestito dopo il passo corrente.') : L('Steering. Waiting for Core to acknowledge; this is simulated.', 'Guida in corso. In attesa che il Core confermi; è simulato.');
     if (text === input.value) { input.value = ''; ctx.ui.draft = ''; }
     notice.hidden = true; M.open = false;
     if (r.cmd) { s.recents = [r.cmd].concat(s.recents.filter((x) => x !== r.cmd)).slice(0, 5); saveRecents(s.recents); }
@@ -205,7 +217,7 @@ export function composer(ctx, where) {
     ctx.render();
     return r;
   }
-  function submit(force) { return run(input.value, force); }
+  function submit(force, mode) { return run(input.value, force, mode); }
 
   const comp = { root, input, refresh, run, draw, setText(t) { input.value = t; ctx.ui.draft = t; fillDest(); draw(); input.focus(); } };
   s.comps[where] = comp; refresh();
@@ -239,6 +251,8 @@ const spineLine = (m) => { const sp = spineOf(m.state, m.held_from); return h('s
 // Relative time on the simulation clock; the exact time is the tooltip.
 const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? L('just now', 'adesso') : m < 60 ? L('{n} min ago', '{n} min fa', { n: m }) : L('{n} h ago', '{n} h fa', { n: Math.floor(m / 60) }); };
 const stamp = (st, at) => h('time', { class: 'cp-tm', title: clockLabel(at, true) }, ago(st.clock - at));
+const STEPS = /^mission\.(state_changed|steer_requested|steer_acknowledged)$/;
+const STEER = { 'mission.steer_requested': () => L('Steer asked (simulated)', 'Guida richiesta (simulata)'), 'mission.steer_acknowledged': () => L('Steer acknowledged (simulated)', 'Guida confermata (simulata)') };
 const TABS = [['chat', 'Conversation', 'Conversazione'], ['receipts', 'Receipts', 'Ricevute'], ['context', 'Context', 'Contesto']];
 
 export function viewChat(ctx) {
@@ -290,7 +304,7 @@ export function viewChat(ctx) {
   const log = h('div', { class: 'msgs cp-thread', role: 'log', 'aria-live': 'polite', 'aria-label': L('Conversation', 'Conversazione'), tabindex: '0' });
   if (s.eng.hidden()) log.append(h('p', { class: 'cut' }, L('Earlier messages hidden on this screen. History kept.', 'Messaggi precedenti nascosti su questo schermo. La cronologia resta.')));
   visible.forEach(({ m }) => {
-    const node = msgNode(ctx, m, A.act, A.retry); node.tabIndex = -1;
+    const node = msgNode(ctx, m, A.act, A.retry, A.unqueue); node.tabIndex = -1;
     if (!P.switched && P.seen.size && !P.seen.has(m.id)) node.classList.add('cp-arrive');
     log.append(node);
   });
@@ -318,12 +332,12 @@ export function viewChat(ctx) {
   // Receipts: what Archeus did here, newest first, each a line you can open.
   function receiptsNode() {
     if (general) return h('div', { class: 'cp-empty' }, h('h2', null, L('General keeps no receipts.', 'Generale non tiene ricevute.')), h('p', { class: 'cp-sub' }, L('Answers here do not touch a project. Pick a project to see what Archeus did in it.', 'Le risposte qui non toccano nessun progetto. Scegli un progetto per vedere cosa ha fatto Archeus.')));
-    const evs = st.events.filter((e) => e.project === s.project && e.type === 'mission.state_changed' && st.missions[e.subject.id] && (!focused || e.subject.id === focused.id)).reverse();
+    const evs = st.events.filter((e) => e.project === s.project && STEPS.test(e.type) && st.missions[e.subject.id] && (!focused || e.subject.id === focused.id)).reverse();
     const shown = P.all ? evs : evs.slice(0, 30), waits = focused ? here.filter((a) => a.mission === focused.id) : here;
     return h('div', { class: 'cp-scroll' },
       waits.length ? h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Waiting for you', 'Aspettano te')), ...waits.map((a) => h('a', { class: 'cp-line', 'data-need': '', href: '#/work/' + a.id }, glyph('needs_you'), h('span', { class: 'cp-lt' }, st.missions[a.mission]?.title || a.id), h('span', { class: 'cp-lw' }, a.kind === 'plan' ? L('Approve this plan?', 'Approvare questo piano?') : L('Allow this action?', 'Consentire questa azione?'))))) : null,
       h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Done by Archeus', 'Fatto da Archeus')),
-        ...(shown.length ? shown.map((e) => h('a', { class: 'cp-line', href: hrefFor('mission', e.subject.id) }, stamp(st, e.at), h('span', { class: 'cp-lt' }, st.missions[e.subject.id].title), h('span', { class: 'cp-lw' }, present('mission', e.payload.to).label)))
+        ...(shown.length ? shown.map((e) => h('a', { class: 'cp-line', href: hrefFor('mission', e.subject.id) }, stamp(st, e.at), h('span', { class: 'cp-lt' }, st.missions[e.subject.id].title), h('span', { class: 'cp-lw' }, e.payload.to ? present('mission', e.payload.to).label : STEER[e.type]())))
           : [h('p', { class: 'cp-sub' }, L('Archeus has not acted here yet.', 'Archeus non ha ancora agito qui.'))]),
         evs.length > shown.length ? h('button', { class: 'btn quiet cp-more', type: 'button', onclick: () => { P.all = true; ctx.render(); } }, L('Show {n} earlier', 'Mostra {n} precedenti', { n: evs.length - shown.length })) : null));
   }

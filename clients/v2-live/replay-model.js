@@ -86,17 +86,22 @@ function evidence(sim, ev) {
   return out;
 }
 
+// A steer is the owner's request (INTENDED) and Core's acknowledgement (RECORDED). Neither row says the mission changed course.
+const STEER_WHY = {
+  'mission.steer_requested': 'A steer is a request to be taken at the next safe boundary. This is a simulation; a real Core would record the request, not that the mission changed course.',
+  'mission.steer_acknowledged': 'Core acknowledged the steer. The acknowledgement is recorded; it does not prove the mission changed course, and the boundary it took effect at is not modelled here.'
+};
 export function buildReplay(sim, missionId) {
   const st = sim.state, m = st.missions[missionId];
   if (!m) return null;
-  const evs = st.events.filter((e) => e.mission === missionId && /state_changed$|created$|requested$/.test(e.type) && !/^(message|task\.created)/.test(e.type));
+  const evs = st.events.filter((e) => e.mission === missionId && /state_changed$|created$|requested$|acknowledged$/.test(e.type) && !/^(message|task\.created)/.test(e.type));
   const last = {}; evs.forEach((e) => { if (e.type.endsWith('state_changed')) last[e.subject.kind + ':' + e.subject.id] = e; });
   const steps = evs.map((e, i) => {
     const k = e.subject.kind, to = e.payload && e.payload.to, isState = e.type.endsWith('state_changed');
-    const cl = isState ? classify(k, to, e, st.pruned) : { answer: e.type === 'approval.requested' ? 'SUSPENDED' : e.type.endsWith('created') ? 'INTENDED' : 'UNKNOWN', reason: 'durable_row', by: 'unknown', byWhy: 'transition_does_not_reconcile' };
+    const cl = isState ? classify(k, to, e, st.pruned) : { answer: e.type === 'approval.requested' ? 'SUSPENDED' : e.type.endsWith('created') || e.type === 'mission.steer_requested' ? 'INTENDED' : e.type === 'mission.steer_acknowledged' ? 'RECORDED' : 'UNKNOWN', reason: 'durable_row', by: 'unknown', byWhy: 'transition_does_not_reconcile' };
     return {
       n: i + 1, seq: e.seq, at: e.at, time: clockLabel(e.at), machine: k, id: e.subject.id, state: to || e.type.split('.')[1].toUpperCase(), from: e.payload && e.payload.from || null,
-      trigger: e.payload && e.payload.trigger || null, category: cl.answer, reason: cl.reason, why: isState ? whyOf(k, to) : '', settled_by: cl.by, settled_why: cl.byWhy,
+      trigger: e.payload && e.payload.trigger || null, category: cl.answer, reason: cl.reason, why: isState ? whyOf(k, to) : STEER_WHY[e.type] || '', settled_by: cl.by, settled_why: cl.byWhy,
       actor: e.actor === 'device' ? 'device' : e.actor === 'system' ? 'core' : 'unknown', evidence: evidence(sim, e)
     };
   });

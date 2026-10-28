@@ -323,7 +323,7 @@ def s4_state(pg, route, w):
                 pg.wait_for_timeout(600)
             pg.wait_for_timeout(300)
             return '.chatsheet'
-        pg.click('[data-key="tell"]')
+        pg.click('input[data-key="chat-in-dock"]')
         pg.wait_for_timeout(200)
         if route == 'dock-slash':
             pg.fill('input[data-key="chat-in-dock"]', '/')

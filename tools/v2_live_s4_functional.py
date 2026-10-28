@@ -49,6 +49,13 @@ def new_page(br, base, w=1440, h=900, q='', hash_='#/chat'):
     return ctx, pg, errs
 
 
+def idle(pg):
+    """No mission executes in the scope. While one does, Enter queues a plain message instead of answering it (PW08), so the checks
+    of plain text answers run with the one executing mission moved on."""
+    pg.evaluate("window.v2live.sim.state.missions['m-date'].state = 'VERIFYING'")
+    pg.wait_for_timeout(100)
+
+
 def send(pg, text, where='page', wait=900):
     pg.fill('input[data-key="chat-in-%s"]' % where, text)
     pg.keyboard.press('Enter')
@@ -76,6 +83,7 @@ def main():
 
             # ---- the slash combobox: keys, aria, five rows then more, recents, escape, alias ----
             ctx, pg, errs = new_page(br, base)
+            idle(pg)
             inp = 'input[data-key="chat-in-page"]'
             pg.click(inp)
             pg.keyboard.type('/')
@@ -201,6 +209,7 @@ def main():
 
             # ---- project vs general, Remember in..., the ambiguity card ----
             ctx, pg, errs = new_page(br, base)
+            idle(pg)
             k0 = pg.evaluate("window.v2live.sim.state.knowledge.length")
             check('Archeus' in pg.inner_text('.cscope') and 'Archeus' in pg.inner_text('.cdest'), 'the destination is visible (the scope chip and the line name the project)')
             pick_scope(pg, 'general')
@@ -226,6 +235,31 @@ def main():
             pg.wait_for_timeout(2100)
             send(pg, 'What is a checkpoint')
             check(pg.locator('.ccard[data-kind="choice"]').count() == 1, 'an ambiguous question asks: Answer this, or create work?')
+            ctx.close()
+
+            # ---- queue (Enter) and steer (Cmd or Ctrl+Enter) while a mission runs (PW08) ----
+            ctx, pg, errs = new_page(br, base)
+            inp = 'input[data-key="chat-in-page"]'
+            hint = lambda: pg.inner_text('.composer2[data-where="page"] .chint')
+            check('Enter queue' in hint() and 'steer' in hint(), 'the key hint shows while a mission runs')
+            pg.fill(inp, 'Check the date again')
+            pg.press(inp, 'Enter')
+            pg.wait_for_timeout(300)
+            check(pg.locator('.msg .qchip:has-text("Queued")').count() == 1 and '1 queued' in hint(), 'Enter queues: a Queued chip in the thread and a count on the composer')
+            check(pg.evaluate("window.v2live.sim.state.messages.at(-1).from") == 'you', 'a queued message gets no reply yet')
+            pg.click('.msg .btn:has-text("Remove")')
+            pg.wait_for_timeout(300)
+            check('Removed from the queue' in pg.inner_text('.msgs') and 'queued' not in hint(), 'a queued message can be removed')
+            pg.fill(inp, 'Skip the slow test')
+            pg.press(inp, 'Control+Enter')
+            pg.wait_for_timeout(300)
+            check(pg.locator('.msg .qchip:has-text("Steering")').count() == 1, 'Ctrl+Enter steers: Steering until Core acknowledges')
+            pg.evaluate("window.v2live.sim.advance(31000)")
+            pg.wait_for_timeout(400)
+            check(pg.locator('.msg .qchip:has-text("Steering")').count() == 0 and 'Core acknowledged the steer' in pg.inner_text('.msgs'), 'the acknowledgement ends Steering and says it is simulated')
+            pg.click('[data-key="chat-tab-receipts"]')
+            check('Steer asked (simulated)' in pg.inner_text('.cp-panel') and 'Steer acknowledged (simulated)' in pg.inner_text('.cp-panel'), 'both steer events are in Receipts')
+            check(not errs, 'no page errors in the queue and steer run: %s' % errs[:2])
             ctx.close()
 
             # ---- the dock on Now (desktop), then the phone sheet ----

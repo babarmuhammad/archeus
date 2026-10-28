@@ -24,7 +24,7 @@ try:
             return ctx, pg, errs
         ctx, pg, errs = page()
         navs = pg.evaluate("() => [...document.querySelectorAll('.rail .nav-item')].map((e) => e.textContent.replace(/[0-9]/g, '').trim())")
-        check('the nav keeps its order and Now is Overview', navs == ['Overview', 'Work', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings', 'Terminal view'])
+        check('the nav is in three labelled groups (Work, Govern, Configure) and Now is Overview', navs == ['Overview', 'Work', 'Chat', 'Replay', 'Terminal view', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and pg.evaluate("() => [...document.querySelectorAll('.rail .rail-grp')].map((g) => g.getAttribute('aria-label'))") == ['Work', 'Govern', 'Configure'])  # owner round two 2026-10-28: grouped rail
         check('the route of Overview is still #/now', pg.get_attribute('.rail [data-route="now"]', 'href') == '#/now')
         check('the Overview shows one territory per project', pg.locator('.now-view .am-cell').count() >= 3)
         pg.goto(base + '?sim=paused&motion=reduced&theme=dark#/map', wait_until='load'); pg.wait_for_timeout(400)
@@ -53,8 +53,7 @@ try:
         check('Re-arm asks, then releases the stop', not pg.evaluate('window.v2live.sim.state.estop.engaged') and pg.inner_text('[data-key="stop"]') == 'Stop')
         # Tell overlay
         check('the Overview carries its own Tell dock, the app level overlay stays closed', pg.is_visible('.tell-dock input[data-key="chat-in-dock"]') and not pg.is_visible('#chatdock'))
-        pg.click('[data-key="tell"]'); pg.wait_for_timeout(150)
-        check('Tell focuses the dock input on the Overview', pg.evaluate("document.activeElement.dataset.key") == 'chat-in-dock')
+        check('the Overview has no top bar Tell button, its own dock is the composer', pg.locator('.topbar [data-key="tell"]').count() == 0 and 'null' not in pg.inner_text('.topbar'))
         pg.keyboard.press('Escape'); pg.wait_for_timeout(100)
         check('Esc closes the Tell overlay', not pg.is_visible('#chatdock'))
         # project filter

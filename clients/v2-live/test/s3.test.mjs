@@ -199,3 +199,11 @@ test('idea drafts are kept per project, so a draft typed in one project is not o
   assert.equal(M.ideaDraft(ui, 'b').v, '');
   assert.equal(M.ideaDraft(ui, 'a').v, 'half an idea');
 });
+
+test('forecast: a rising window gives minutes to the limit; flat, or too few readings, gives no limit', () => {
+  const rising = Array.from({ length: 30 }, (_, i) => ({ t: i * 120000, s: 60 + i * 0.9 }));
+  assert.equal(M.forecast(rising).mins, 31); // 0.45% per minute, 14.7% left after the last reading
+  assert.deepEqual(M.forecast(rising.map((p) => ({ t: p.t, s: 50 }))), { flat: true });
+  assert.equal(M.forecast(rising.slice(0, 2)), null);
+  assert.equal(M.forecast([{ t: 0, s: null }, { t: 1, s: null }, { t: 2, s: null }]), null);
+});

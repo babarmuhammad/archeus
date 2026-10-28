@@ -773,6 +773,12 @@ export function createSim(opts = {}) {
   const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 24) || 'x';
   const chatApi = {
     post: (from, text, extra) => (from === 'you' ? asOwner : (f) => f())(() => { const m = post(from, text); if (extra) Object.assign(m, extra); return m; }),
+    // A steer is a request now (the owner's) and an acknowledgement at the next safe boundary (Core's). Neither changes the mission here.
+    steer(mid, msg) {
+      const m = M(mid);
+      asOwner(() => emit('mission.steer_requested', { kind: 'mission', id: mid }, { message: msg }, { mission: mid, project: m.project }));
+      at(sec(30), 'steer ack ' + mid, () => emit('mission.steer_acknowledged', { kind: 'mission', id: mid }, { message: msg }, { mission: mid, project: m.project }));
+    },
     patch(id, fields) { const m = S.messages.find((x) => x.id === id); if (!m) return null; Object.assign(m, fields); emit('message.updated', { kind: 'message', id }, {}, {}); return m; },
     createMission: (title, project) => asOwner(() => newMission(title, { hold: true, project })),
     createIdea: (title, project) => asOwner(() => { const i = { id: 'i-' + (++S.counters.idea), project: project || 'ideas', title, state: 'CAPTURED' }; S.ideas.push(i); emit('idea.created', { kind: 'idea', id: i.id }, {}, { project: i.project }); return i; }),

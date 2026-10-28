@@ -12,6 +12,7 @@ export const KEYS = [
   ['Enter', 'Open the focused row, or do the primary action of the focused card'],
   ['Space', 'The same as Enter on a row'],
   ['Esc', 'Close the open help, menu, question or details sheet'],
+  ['Ctrl+K or Cmd+K', 'Search pages, actions and projects, and run them'],
   ['?', 'Show or hide this list'],
   ['Tab and Shift+Tab', 'Move between controls'],
   ['/ in the chat bar', 'Open the command list; Up, Down, Tab, Enter and Esc work inside it']

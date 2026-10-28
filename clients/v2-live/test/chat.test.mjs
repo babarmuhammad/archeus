@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSim } from '../sim.js';
 import { createChat, fmt } from '../chat-engine.js';
+import { buildReplay } from "../replay-model.js";
 import { parse, menuFor, COMMANDS, find, CLASSES, ordered, filter } from '../slash.js';
 
 const mk = () => { const sim = createSim({ strict: true }); let t = 1e6; const chat = createChat(sim, { now: () => t }); return { sim, chat, tick: (ms) => { t += ms; } }; };
@@ -198,4 +199,56 @@ test('a reply carries the project it answers, so a slow reply is not filed under
   const a = chat.send('what is a mission', { project: 'archeus' }), b = chat.send('what is an idea', { project: 'notes' });
   b.run(); a.run();
   assert.deepEqual(sim.state.messages.slice(-2).map((m) => [m.from, m.project]), [['archeus', 'notes'], ['archeus', 'archeus']]);
+});
+
+// ---------- queue (Enter) and steer (Cmd/Ctrl+Enter) while a mission runs ----------
+const untilLeft = (sim, id, from) => { for (let i = 0; i < 400 && sim.state.missions[id].state === from; i++) sim.advance(10000); };
+
+test('queue: waits for the end of the step, then is answered; one message per send', () => {
+  const { sim, chat } = mk(), base = sim.state.messages.filter((x) => x.from === 'archeus').length;
+  const r = chat.send('Check the date again', { project: 'archeus', mode: 'queue' });
+  assert.ok(r.queued && r.mission === 'm-date' && !r.run);
+  const m = sim.state.messages.find((x) => x.id === r.id);
+  assert.deepEqual([m.status, m.target], ['queued', 'm-date']);
+  assert.equal(chat.queued('archeus').length, 1);
+  assert.equal(sim.state.messages.at(-1).id, r.id, 'no reply yet');
+  untilLeft(sim, 'm-date', 'EXECUTING');
+  assert.equal(m.status, 'sent');
+  assert.equal(chat.queued().length, 0);
+  assert.equal(sim.state.messages.filter((x) => x.from === 'archeus').length, base + 1);
+});
+
+test('queue: a removed message is never sent', () => {
+  const { sim, chat } = mk(), base = sim.state.messages.filter((x) => x.from === 'archeus').length;
+  const r = chat.send('Check the date again', { project: 'archeus', mode: 'queue' });
+  assert.equal(chat.unqueue(r.id), true);
+  assert.equal(chat.unqueue(r.id), false);
+  untilLeft(sim, 'm-date', 'EXECUTING');
+  assert.equal(sim.state.messages.find((x) => x.id === r.id).status, 'withdrawn');
+  assert.equal(sim.state.messages.filter((x) => x.from === 'archeus').length, base);
+});
+
+test('steer: steering until Core acknowledges, a request and an acknowledgement event, both said to be simulated', () => {
+  const { sim, chat } = mk();
+  const r = chat.send('Skip the slow test', { project: 'archeus', mode: 'steer' });
+  const m = sim.state.messages.find((x) => x.id === r.id);
+  assert.ok(r.steering);
+  assert.equal(m.status, 'steering');
+  const req = sim.state.events.find((e) => e.type === 'mission.steer_requested');
+  assert.deepEqual([req.mission, req.actor], ['m-date', 'device']);
+  sim.advance(31000);
+  assert.equal(m.status, 'sent');
+  const ack = sim.state.events.find((e) => e.type === 'mission.steer_acknowledged');
+  assert.equal(ack.actor, 'system');
+  assert.match(fmt(sim.state.messages.at(-1).c, 'en'), /^SIMULATED .*nothing changed course/);
+  const steps = buildReplay(sim, 'm-date').steps.filter((s) => /^STEER_/.test(s.state));
+  assert.deepEqual(steps.map((s) => [s.state, s.category]), [['STEER_REQUESTED', 'INTENDED'], ['STEER_ACKNOWLEDGED', 'RECORDED']]);
+  assert.ok(steps.every((s) => /not prove|not that/.test(s.why)));
+});
+
+test('queue and steer: with nothing running, or for a command, both just send', () => {
+  const { sim, chat } = mk();
+  const a = chat.send('Check the notes', { project: 'notes', mode: 'queue' }), b = chat.send('/status', { project: 'archeus', mode: 'steer', force: true });
+  assert.ok(a.run && !a.queued && sim.state.messages.find((x) => x.id === a.id).status === 'submitted');
+  assert.ok(!b.steering && !sim.state.events.some((e) => e.type === 'mission.steer_requested'));
 });

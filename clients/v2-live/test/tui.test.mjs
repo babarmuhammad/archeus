@@ -137,10 +137,10 @@ test('keys: in the map pane j k and left right walk the nodes', () => {
   t.key('right'); const k2 = t.selected().key; assert.notEqual(k1, k2); t.key('left'); assert.equal(t.selected().key.startsWith('mission:'), true);
 });
 
-test('the decision keys: approve asks first, y approves, any other key cancels, nothing is decided without the card', () => {
+test('the decision keys: approve asks first, y or Enter approves, any other key cancels, nothing is decided without the card', () => {
   const { sim, t } = mk(); t.keys('a enter'); assert.equal(sim.state.approvals['a-1'].state, 'PENDING');
   t.key('A'); assert.equal(t.state.mode.kind, 'confirm'); assert.match(textOf(t), /Type|\[y\] Yes/); t.key('x'); assert.equal(t.state.mode, null); assert.equal(sim.state.approvals['a-1'].state, 'PENDING');
-  t.key('A'); t.key('y');
+  t.key('A'); t.key('enter');
   assert.equal(sim.state.missions['m-search'].state, 'APPROVED'); assert.equal(t.state.screen, 'attention');
   assert.match(t.frame({ cols: 100, rows: 30 }).lines.at(-1).s.map((x) => x[0]).join(''), /Approved \(simulated\)/);
 });

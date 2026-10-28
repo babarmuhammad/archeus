@@ -7,6 +7,7 @@ import { present } from '../core-words.js';
 import { clockLabel, SPEEDS } from '../sim.js';
 import { spineRow, spineCard } from './spine.js';
 import { areasOf } from './areas-model.js';
+import { STATES } from './state-vocab.js';
 
 export const ROUTES = [
   { id: 'now', label: 'Now', icon: 'now' }, { id: 'work', label: 'Work', icon: 'work' },
@@ -22,6 +23,11 @@ export function badge(machine, state) {
   const p = present(machine, state);
   return h('span', { class: 'badge', 'data-role': p.cls }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph(p.cls)), h('span', { class: 'w' }, p.label));
 }
+
+// A state as a glyph and a word, coloured by tone. mark(tone, word) takes any tone the areas use; stateMark(kind) takes one of STATES (pending, active,
+// awaiting, error, complete, stale, cancelled) and may be given a more exact word. Documented in SPEC, P09.
+export const mark = (tone, word, ic) => h('span', { class: 'smark', 'data-tone': tone }, h('span', { class: 'g', 'aria-hidden': 'true' }, ic ? icon(ic, 14) : glyph(tone)), h('span', { class: 'w' }, word));
+export const stateMark = (kind, label) => { const s = STATES[kind]; return mark(s.tone, label || s.word, s.icon); };
 
 export function head(ctx, title, extra) {
   return h('header', { class: 'page-head' }, h('div', null, h('h1', null, title)), extra || null);
