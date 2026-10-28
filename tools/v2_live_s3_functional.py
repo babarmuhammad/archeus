@@ -22,7 +22,7 @@ try:
             return ctx, pg, errs
         T = lambda pg, s: pg.inner_text('body')
         # 1 breakers
-        ctx, pg, errs = page(); pg.evaluate("location.hash='#/security'"); pg.wait_for_timeout(250)
+        ctx, pg, errs = page(); pg.evaluate("location.hash='#/security'"); pg.wait_for_timeout(250); pg.evaluate("document.querySelector('details.sec-more').open = true")
         pg.click('[data-key="trip-claude_code"]'); pg.click('.ax-inline-confirm .btn.danger'); pg.wait_for_timeout(300)
         check('trip breaker opens it', pg.evaluate("window.v2live.sim.state.harnesses[0].breaker.state") == 'open' and 'Open: cannot start' in T(pg, 0))
         pg.click('[data-key="reset-claude_code"]'); pg.click('.ax-inline-confirm .btn.primary'); pg.wait_for_timeout(300)
@@ -33,7 +33,7 @@ try:
         check('sensitive hook asks to confirm', pg.locator('.ax-inline-confirm').count() == 1 and pg.evaluate("window.v2live.areas.hookAllows('h-1')"))
         pg.click('.ax-inline-confirm .btn.danger'); pg.wait_for_timeout(250)
         check('hook switched off', not pg.evaluate("window.v2live.areas.hookAllows('h-1')"))
-        pg.evaluate("location.hash='#/security'"); pg.wait_for_timeout(250)
+        pg.evaluate("location.hash='#/security'"); pg.wait_for_timeout(250); pg.evaluate("document.querySelector('details.sec-more').open = true")
         check('privilege p5 unguarded', 'Unguarded' in T(pg, 0))
         check('locked hook cannot switch', pg.evaluate("window.v2live.areas.toggleHook('h-live-5').ok") is False)
         # 3 mission inspector tabs and pin
@@ -93,7 +93,7 @@ try:
         ctx2, pg2, errs2 = page(1440, 900, '&advance=60'); pg2.evaluate("location.hash='#/settings'"); pg2.wait_for_timeout(300)
         pg2.click('[data-key="estop"]'); pg2.click('[data-key="estop-yes"]'); pg2.wait_for_timeout(300)
         check('emergency stop engages and the panel offers Re-arm', pg2.evaluate("window.v2live.sim.state.estop.engaged") and pg2.locator('[data-key="rearm"]').count() == 1 and pg2.locator('[data-key="estop-note"]').count() == 1)
-        pg2.evaluate("location.hash='#/security'"); pg2.wait_for_timeout(250)
+        pg2.evaluate("location.hash='#/security'"); pg2.wait_for_timeout(250); pg2.evaluate("document.querySelector('details.sec-more').open = true")
         check('Security shows the stop as engaged', 'Engaged: nothing new starts' in T(pg2, 0))
         pg2.evaluate("location.hash='#/settings'"); pg2.wait_for_timeout(250)
         pg2.click('[data-key="rearm"]'); check('re-arm asks first', pg2.locator('[data-key="rearm-yes"]').count() == 1 and pg2.evaluate("window.v2live.sim.state.estop.engaged"))
