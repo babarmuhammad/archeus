@@ -3,7 +3,7 @@
 // List and pane show the same missions and decisions; hover, focus and j/k fill the pane, a click opens the mission (inspector) as before.
 import { h } from './dom.js';
 import { present } from '../core-words.js';
-import { tr } from './i18n.js';
+import { tr, translate } from './i18n.js';
 import * as store from './store.js';
 import { clockLabel } from '../sim.js';
 import { panel, dnote, empty, badge, attentionItem, projName, word } from './views.js';
@@ -136,8 +136,8 @@ export function render(ctx) {
     ctx.ui.workPeek = e ? e.id : null;
     document.querySelectorAll('[data-peek-id]').forEach((n) => { if (e && n.dataset.peekId === e.id) n.setAttribute('data-peek', 'true'); else n.removeAttribute('data-peek'); });
     pane.replaceChildren();
-    if (!e) { pane.append(h('p', { class: 'empty' }, 'Select a row to see what Archeus did.')); return; }
-    if (e.kind === 'card' && !e.a.mission_id) { pane.append(h('p', { class: 'ax-eyebrow' }, projName(sim, e.project) || 'Archeus'), attentionItem(ctx, e.a)); return; }
+    if (!e) { pane.append(h('p', { class: 'empty' }, 'Select a row to see what Archeus did.')); translate(pane); return; }
+    if (e.kind === 'card' && !e.a.mission_id) { pane.append(h('p', { class: 'ax-eyebrow' }, projName(sim, e.project) || 'Archeus'), attentionItem(ctx, e.a)); translate(pane); return; }
     const m = e.m || st.missions[e.a.mission_id], p = present('mission', m.state), proj = st.projects.find((x) => x.id === m.project);
     const evs = st.events.filter((x) => x.mission === m.id && (x.type === 'mission.state_changed' || x.type === 'approval.requested')).slice(-4).reverse();
     const x = Object.values(st.executions).find((z) => z.mission === m.id && (z.state === 'RUNNING' || z.state === 'LOST')), reading = x ? sim.reading(x) : null;
@@ -156,6 +156,7 @@ export function render(ctx) {
       h('div', { class: 'actions wk-pane-a' },
         approval ? h('a', { class: 'btn primary', href: '#/work/' + approval, 'data-key': 'work-pane-decide' }, 'Open decision') : h('a', { class: 'btn primary', href: '#/work/' + m.id, 'data-key': 'work-pane-open' }, 'Open mission'),
         h('a', { class: 'btn', href: '#/replay/' + m.id }, 'Open Replay'), pause));
+    translate(pane);
   };
   if (!asGraph) {
     const idOf = (t) => { const n = t.closest && t.closest('[data-peek-id]'); return n ? n.dataset.peekId : null; };

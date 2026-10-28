@@ -7,6 +7,7 @@ import { icon } from './icons.js';
 import * as store from './store.js';
 import { mapBox, syncMap, buildOverview } from './map.js';
 import { dockNode } from './chat.js';
+import { workHref } from '../page-model.js';
 
 // The phone shows the four counts as its headline; the desktop headline already says them.
 function counters(ctx) {
@@ -58,6 +59,20 @@ function calmBand(ctx) {
     h('div', { class: 'calm-col calm-known' }, h('p', { class: 'eyebrow' }, tr('Known projects')), h('ul', null, ...projects)));
 }
 
+// First thing under the headline, only when something needs the owner: the projects that wait, as chips. A chip focuses that project on the map (or opens its Needs you view).
+function attentionStrip(ctx, ov) {
+  const waiting = ov.projects.filter((p) => p.attention).sort((a, b) => b.attention - a.attention || b.lastAt - a.lastAt || a.name.localeCompare(b.name));
+  if (!waiting.length) return null;
+  const top = waiting.slice(0, 3), more = waiting.length - top.length;
+  const focus = (p) => {
+    const b = store.get('overview') === 'projects' ? document.querySelector('.now-view .am-equivalent button[data-node-id="' + p.id + '"]') : null;
+    if (b) b.click(); else { ctx.ui.workProject = p.id; ctx.nav(workHref({ view: 'needs', project: p.id })); }
+  };
+  return h('div', { class: 'att-strip', role: 'group', 'aria-label': tr('Projects that need you') },
+    ...top.map((p) => h('button', { class: 'att-chip', type: 'button', 'data-key': 'att-chip-' + p.id, onclick: () => focus(p) }, h('span', { class: 'ac-code', 'aria-hidden': 'true' }, p.code), h('span', { class: 'ac-name' }, p.name), h('span', { class: 'ac-n' }, p.attention + (p.attention === 1 ? ' needs you' : ' need you')))),
+    more > 0 ? h('a', { class: 'att-more', href: workHref({ view: 'needs' }) }, '+' + more + ' more') : null);
+}
+
 function viewSwitch(ctx) {
   const cur = store.get('overview'), opt = (id, ic, label) => h('button', { class: 'vs-btn', type: 'button', 'aria-pressed': String(cur === id), 'aria-label': tr(label), title: tr(label), 'data-key': 'vs-' + id, onclick: () => { if (cur !== id) { store.set('overview', id); ctx.render(); } } }, icon(ic, 20));
   return h('div', { class: 'view-switch', role: 'group', 'aria-label': tr('Overview view') }, opt('projects', 'viewgrid', 'Projects view'), opt('network', 'viewnet', 'Network view'));
@@ -69,7 +84,7 @@ export function render(ctx) {
   const live = Object.values(st.missions).filter((m) => ['active', 'verifying', 'reviewing'].includes(present('mission', m.state).cls));
   const upcoming = Object.values(st.missions).filter((m) => ['planning', 'approved'].includes(present('mission', m.state).cls));
   const recent = st.events.filter((e) => /state_changed$/.test(e.type) && e.subject.kind === 'mission').slice(-6).reverse();
-  const calm = sim.sentence() === 'Nothing needs you.';
+  const calm = sim.sentence() === 'Nothing needs you.', ov = buildOverview(sim);
   calmNow = calm;
   const box = mapBox('now', true, nowInset);
   ctx.mounts.push(() => syncMap(ctx, 'now'));
@@ -102,7 +117,8 @@ export function render(ctx) {
     h('div', { class: 'now-scene' }, box),
     calm ? calmBand(ctx) : h('div', { class: 'now-hero' },
       h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, ...sentenceNodes(sim.sentence())),
-      h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(buildOverview(sim).ledger))),
+      h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(ov.ledger)),
+      attentionStrip(ctx, ov)),
     calm ? null : viewSwitch(ctx),
     calm ? null : drawer,
     phone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));

@@ -73,7 +73,7 @@ export function viewReplay(ctx) {
     }
     rp.lastSel = row ? row.n : null;
   });
-  const seg = (label, opts, on, hrefOf, key) => h('nav', { class: 'seg', 'aria-label': label }, ...opts.map(([id, l]) => h('a', { class: 'seg-opt', href: hrefOf(id), 'aria-current': on === id ? 'true' : null, 'data-key': key + id }, l)));
+  const seg = (label, opts, on, hrefOf, key) => h('nav', { class: 'seg', 'aria-label': label }, ...opts.map(([id, l]) => h('a', { class: 'seg-opt', href: hrefOf(id), 'aria-current': on === id ? 'true' : null, 'data-key': key + id }, h('span', { class: 'gt' }, l))));
   const modes = h('div', { class: 'rp-modes' },
     seg('View', [['timeline', 'Timeline'], ['compact', 'Compact']], mode, (id) => replayHref(m.id, { mode: id, detail }), 'rp-mode-'),
     seg('Detail', RP_DETAILS, detail, (id) => replayHref(m.id, { mode, detail: id }), 'rp-detail-'));
