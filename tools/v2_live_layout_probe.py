@@ -84,9 +84,9 @@ MEASURE = r"""
   const name = (el) => { let s = el.tagName.toLowerCase(); if (el.id) s += '#' + el.id; else if (el.className && typeof el.className === 'string') s += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.'); return s; };
   const inter = (a, b) => { const l = Math.max(a.left, b.left), t = Math.max(a.top, b.top), r = Math.min(a.right, b.right), bt = Math.min(a.bottom, b.bottom); return r > l && bt > t ? { left: l, top: t, right: r, bottom: bt, width: r - l, height: bt - t } : null; };
   const scrollerX = (el) => { for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === 'auto' || o === 'scroll') return true; } return false; };
-  const clipOf = (el) => {
+  const clipOf = (el) => { // starts at the element itself: a line clamped text (overflow hidden on its own box) is not visible below the clamp
     let c = { left: 0, top: 0, right: vw, bottom: vh, width: vw, height: vh };
-    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) {
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
       const cs = getComputedStyle(a);
       if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
       const r = a.getBoundingClientRect();
@@ -357,9 +357,11 @@ def s4_state(pg, route, w):
     else:
         pg.click('#rs-12')
         pg.keyboard.press('Escape'); pg.wait_for_timeout(150)
+        if pg.evaluate("!document.querySelector('.rcv')"):  # a phone shows one section at a time
+            pg.click('[data-key="rp-nav-recovery"]'); pg.wait_for_timeout(300)
         pg.click('.rcv[data-ok="true"] .btn')
     pg.wait_for_timeout(250)
-    return '.rp-sheet' if pg.evaluate("!!document.querySelector('.rp-sheet[open]')") else None
+    return '.sheet' if pg.evaluate("!!document.querySelector('.sheet')") else None
 
 
 def s4_after(pg, route, w):
