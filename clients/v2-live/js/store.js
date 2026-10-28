@@ -8,7 +8,7 @@ export const DEVICES = [
   { id: 'tablet', label: 'Tablet', w: 820, note: '820 px' }, { id: 'desktop', label: 'Desktop', w: 1440, note: '1440 px' }, { id: 'terminal', label: 'Terminal', note: 'Text mode' }, { id: 'all', label: 'All devices', note: 'Side by side' }
 ];
 const KEY = 'archeus-v2-live';
-const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed', overview: 'projects', slashpins: [], slashrecent: [], projsort: 'attention' };
+const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed', overview: 'projects', slashpins: [], slashrecent: [], projsort: 'attention', rpchooser: {}, rprecent: [] };
 
 function read() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
 function write(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* private window or blocked storage: the app still works */ } }
@@ -25,7 +25,7 @@ if (!['on', 'off'].includes(prefs.heronotes)) prefs.heronotes = defaults.heronot
 if (!['open', 'closed'].includes(prefs.tools)) prefs.tools = defaults.tools;
 if (!['projects', 'network'].includes(prefs.overview)) prefs.overview = defaults.overview;
 if (!['attention', 'recent', 'name'].includes(prefs.projsort)) prefs.projsort = defaults.projsort;
-for (const k of ['slashpins', 'slashrecent']) if (!Array.isArray(prefs[k])) prefs[k] = [];
+for (const k of ['slashpins', 'slashrecent', 'rprecent']) if (!Array.isArray(prefs[k])) prefs[k] = [];
 
 export const get = (k) => prefs[k];
 export function set(k, v) { prefs[k] = v; write(Object.fromEntries(Object.keys(defaults).map((x) => [x, prefs[x]]))); apply(); }

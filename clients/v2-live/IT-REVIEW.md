@@ -2146,3 +2146,19 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - A kind of extension is offered only where a harness supports it. → Un tipo di estensione è offerto solo dove un harness lo supporta.
 - The new ledes of Usage, Extensions and Launch settings, and the three notes that name a harness (Security approval mode, git push note, Health fix line "Or put another {x} account first in its failover order.") are in the same block of the dictionary.
 
+## Replay mission chooser — 2026-10-28
+- Replay a mission (phone sheet title) → Rivedi una missione
+- Choose a mission (popover name) → Scegli una missione
+- Search title, project, branch or id → Cerca titolo, progetto, ramo o id
+- Search missions → Cerca missioni
+- Project (group name) / State (group name) / Missions (list name) → Progetto / Stato / Missioni
+- All projects / All (state) / With steps → Tutti i progetti / Tutte / Con passi
+- More projects / Find a project → Altri progetti / Cerca un progetto
+- Type to narrow N more → Scrivi per restringere altri N
+- No project by that name. → Nessun progetto con quel nome.
+- Recent → Recenti
+- 1 step / N steps / no steps → 1 passo / N passi / nessun passo
+- Show N more / N not shown → Mostra altre N / N non mostrate
+- No mission matches. / Clear filters → Nessuna missione corrisponde. / Azzera i filtri
+- N of M missions (spoken count) → N di M missioni
+- State chips reuse Needs you, Running, Blocked, Done (Ti serve, In corso, Bloccate, Fatte).
