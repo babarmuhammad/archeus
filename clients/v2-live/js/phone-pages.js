@@ -28,7 +28,3 @@ export function lede(text) {
   return row;
 }
 
-// A sheet closes by stepping history back, which would undo a navigation started in the same tick, so `go` waits for that step.
-export function closeThen(sheet, go) {
-  if (history.state && history.state.sheet) { addEventListener('popstate', () => go(), { once: true }); sheet.close(); } else { sheet.close(); go(); }
-}

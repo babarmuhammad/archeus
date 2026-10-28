@@ -14,7 +14,8 @@ import { clockLabel } from '../sim.js';
 import { spineInspector } from './spine.js';
 import { openSheet } from './sheet.js';
 import { isPhone } from './viewport.js';
-import { edgeRow, closeThen } from './phone-pages.js';
+import { edgeRow } from './phone-pages.js';
+import { closeThen } from './phone.js';
 import { eventLine } from './phone-pages-model.js';
 import { CATS, CAT_DEF, STRENGTH, VOCAB, buildReplay, recovery, FIVE_ROWS, GAPS, NEVER, vocabCounts, whyOf } from '../replay-model.js';
 

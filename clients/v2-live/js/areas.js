@@ -15,7 +15,8 @@ import { EXT_TABS, tabOf, matches } from './ext-model.js';
 import { whenShort, whenExact } from './time-model.js';
 import { isPhone } from './viewport.js';
 import { openSheet } from './sheet.js';
-import { edgeRow, lede, closeThen } from './phone-pages.js';
+import { edgeRow, lede } from './phone-pages.js';
+import { closeThen } from './phone.js';
 import { pill, note, link, entity, hrefFor, sw, ringNode, patchRing, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
 
 function axHead(ctx, eyebrowText, title, lede) {

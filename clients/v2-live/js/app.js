@@ -458,6 +458,7 @@ buildShell();
 new MutationObserver(syncFold).observe(stage, { attributes: true, attributeFilter: ['data-frame'] });
 ctx.openHelp = installKeys(ctx, app, page).openHelp;
 ctx.tell = tellClick;
+ctx.openPlaces = togglePlaces;
 ctx.stop = () => stopClick({ currentTarget: { dataset: { key: isPhone() ? 'bb-stop' : 'stop' } } });
 ctx.openPalette = installPalette(ctx, app, { projHint: (p) => PSTATE[projState(p)] }).open;
 const unsub = sim.subscribe((e) => {

@@ -127,7 +127,7 @@ export function viewTerminal(ctx) {
     acts.forEach((a) => keys.append(kb(a.label, a.label + ' (key ' + a.key + ')', a.key, 'act')));
     // The phone shell hides its bar here, so the two ways out of the terminal are keys: Places opens the Places sheet over the Overview, Stop the safety sheet.
     if (phone) keys.append(
-      h('button', { class: 'tui-btn k act', type: 'button', 'aria-label': 'Places: leave the terminal and open Places', 'data-key': 'tui-places', onclick: () => leave(() => { ctx.ui.placesOpen = ctx.ui.placesFresh = true; ctx.render(); }) }, 'Places'),
+      h('button', { class: 'tui-btn k act', type: 'button', 'aria-label': 'Places: leave the terminal and open Places', 'data-key': 'tui-places', onclick: () => leave(() => ctx.openPlaces()) }, 'Places'),
       h('button', { class: 'tui-btn k act', type: 'button', 'aria-label': 'Stop: leave the terminal and open the emergency stop', 'data-key': 'tui-stop', onclick: () => leave(() => ctx.stop()) }, 'Stop'));
   }
 

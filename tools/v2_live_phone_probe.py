@@ -265,7 +265,7 @@ def sizes(br, base):
 
 
 # ---------- slice D: the pages ----------
-SCROLLERS = """() => { const mc = document.querySelector('.main-col'), out = [];
+PAGE_SCROLLERS = """() => { const mc = document.querySelector('.main-col'), out = [];
   for (const e of [mc, ...mc.querySelectorAll('*')]) { const cs = getComputedStyle(e); if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && e.scrollHeight > e.clientHeight + 1) out.push(e.tagName.toLowerCase() + '.' + String(e.className).slice(0, 24)); }
   return out; }"""
 BARS = """() => { const mc = document.querySelector('.main-col'), out = [];
@@ -291,7 +291,7 @@ def page_checks(br, base):
         for route in PAGES:
             pg.evaluate("location.hash = '#/%s'" % route)
             pg.wait_for_timeout(300)
-            sc = pg.evaluate(SCROLLERS)
+            sc = pg.evaluate(PAGE_SCROLLERS)
             if len(sc) > 1 or (sc and not sc[0].startswith('main')):
                 bad_scroll.append('%s: %s' % (route, sc))
             for st in pg.evaluate(STRIPS):
@@ -444,7 +444,7 @@ SCROLLERS = """() => { const m = document.querySelector('.main-col'); if (!m) re
 def scroll_surfaces(br, base):
     """The owner's rule: one vertical scroll surface per page (the main column), no scrollbar drawn on a phone. A route that still has a nested scroller is
     named here; the fix belongs to the slice that owns the page (now~details: B, replay: D), so it is an expected failure until then."""
-    owner = {'now~details': 'B', 'replay/m-date': 'D'}
+    owner = {'now~details': 'B'}
     bad, bars = [], []
     ctx, pg = new_page(br, 390, 844, base)
     for route in ['now', 'now~details', 'work', 'work/m-date', 'chat', 'settings', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions', 'replay/m-date']:

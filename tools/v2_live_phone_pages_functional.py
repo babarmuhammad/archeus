@@ -99,7 +99,7 @@ try:
             check('Esc closes the ... sheet', n(pg, '.sheet') == 0)
             dots.first.click(); settle(pg)
             pg.click('.sheet .ax-sheet-row >> nth=0'); settle(pg, 500)
-            check('a row in the ... sheet closes it and goes to its page', n(pg, '.sheet') == 0 and hashof(pg) != '#/health')
+            check('a row in the ... sheet closes it and goes to its page', n(pg, '[data-sheet="sheet-ax-more"]') == 0 and hashof(pg) != '#/health')
         check('no console errors on Security and Health', not errs)
         ctx.close()
         ctx, pg, errs = page('extensions')
