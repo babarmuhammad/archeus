@@ -2094,3 +2094,19 @@ Inline `L(en, it)` strings in `js/chat.js`.
 - Number of simulated projects → Numero di progetti simulati (button name)
 - 3 (the default story) → 3 (la storia predefinita)
 - Reloads the prototype with that many projects and the same mission mix, to see how every page scales. → Ricarica il prototipo con quel numero di progetti e la stessa miscela di missioni, per vedere come scala ogni pagina.
+
+## Network semantic zoom and worktrees (2026-10-28): to review
+- Worktree → Worktree (kept in English: the Git word; the plural is the same)
+- +3 worktrees → +3 worktree (chip on a project hub when its worktrees are folded away)
+- 3 worktrees → 3 worktree (chip on a Projects cell; also its tooltip and spoken name)
+- Worktrees → Worktree (heading of the list in a project's focus panel)
+- linked → collegato (a worktree made by you or another tool; Archeus never deletes or resets it)
+- task → attività (a worktree Archeus made for a task and removes after a verified merge)
+- Active, Stale → Attivo, Obsoleto (existing words, reused for a worktree state)
+- Missing → Mancante (the worktree folder is gone)
+- Merged → Unito (the branch was merged)
+- Abandoned → Abbandonato (the task was given up)
+- Last activity → Ultima attività (hover card of a worktree)
+- No mission → Nessuna missione (a worktree that holds no mission)
+- Attempt → Tentativo (one run of a task, a small mark at the close zoom level)
+- Task, Verification, Event → existing words, reused as kinds of the small marks at the close zoom levels

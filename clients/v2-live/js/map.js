@@ -10,6 +10,12 @@ import { createMap } from './constellation/map.js';
 import { createTerritoryMap } from './constellation/territories.js';
 import { clockLabel } from '../sim.js';
 
+// A worktree is never a project. A project lists its own (the 'main' tree is the project itself and is not listed); the map hangs them between the hub and the missions that work in them.
+const WT_TONE = { active: 'idle', stale: 'paused', missing: 'blocked', merged: 'done', abandoned: 'idle' };
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+export const worktreesOf = (st, p) => (p.worktrees || []).map((w) => ({ id: w.id, branch: w.branch, owner: w.owner, ownerWord: w.owner === 'archeus' ? 'task' : 'linked', state: w.state, tone: WT_TONE[w.state] || 'idle', word: cap(w.state),
+  missionId: w.mission || null, mission: w.mission && st.missions[w.mission] ? st.missions[w.mission].title : '', at: w.last_at, time: clockLabel(w.last_at) }));
+
 export const STATE = { needs_you: 'needs-you', active: 'running', verifying: 'running', reviewing: 'running', blocked: 'blocked', failed: 'blocked', paused: 'paused', planning: 'thinking', done: 'done' };
 const THEME = { dark: 'dark', light: 'light', 'dark-hc': 'dark-high-contrast', 'light-hc': 'light-high-contrast', system: 'system', forced: 'forced' };
 export const themeOf = () => THEME[store.get('theme')];
@@ -27,7 +33,7 @@ export function buildGraph(sim) {
     nodes.push({ id: p.id, kind: 'Project', label: p.name, project: p.id, weight: 8, state: own.includes('needs-you') ? 'needs-you' : own.includes('running') ? 'running' : 'idle' });
   }
   for (const m of missions) {
-    nodes.push({ id: m.id, kind: 'Mission', label: m.title, project: m.project, weight: 3, state: STATE[present('mission', m.state).cls] || 'idle' });
+    nodes.push({ id: m.id, kind: 'Mission', label: m.title, project: m.project, weight: 3, worktree: m.worktree || null, state: STATE[present('mission', m.state).cls] || 'idle' });
     edges.push({ from: m.project, to: m.id, kind: 'contains' });
   }
   for (const x of Object.values(st.executions)) {
@@ -43,7 +49,25 @@ export function buildGraph(sim) {
   }
   // Each project also carries what the Network view says about its hub: the neutral code, the counts and the last thing Archeus did (the same text as the Projects view).
   const view = buildOverview(sim).projects;
-  return { nodes, edges, projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title) }; }) };
+  return { nodes, edges, projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title), ideaList: st.ideas.filter(i => i.project === p.id).map(i => ({ id: i.id, title: i.title, word: cap(i.state.toLowerCase()) })) }; }) };
+}
+
+// What a project says in detail when the Network view zooms into it: per mission its tasks, attempts, verifications and approvals (as small marks) and, for the focused mission, its last events.
+export function buildDetail(sim, projectId) {
+  const st = sim.state, out = {}, tone = (machine, state) => { const p = present(machine, state); return { state: STATE[p.cls] || 'idle', word: p.label }; };
+  const add = (mission, n) => { (out[mission] ||= []).push({ ...n, project: projectId }); };
+  for (const t of Object.values(st.tasks)) if (t.project === projectId) add(t.mission, { id: t.id, kind: 'Task', label: t.title, ...tone('task', t.state) });
+  for (const x of Object.values(st.executions)) if (x.project === projectId) add(x.mission, { id: x.id, kind: 'Execution', label: tr('Attempt') + ' ' + x.id.split('-').pop(), ...tone('execution', x.state) });
+  for (const v of Object.values(st.verifications)) if (v.project === projectId) add(v.mission, { id: v.id, kind: 'Verification', label: tr('Verification'), ...tone('verification', v.state) });
+  for (const a of Object.values(st.approvals)) if (a.project === projectId) add(a.mission, { id: a.id, kind: 'Decision', label: tr(a.kind === 'plan' ? 'Approve plan' : 'Allow action'), ...tone('approval', a.state) });
+  return out;
+}
+export function buildEvents(sim, missionId) {
+  const rows = sim.state.events.filter((e) => e.mission === missionId && e.type !== 'execution.progress' && e.type !== 'clock').slice(-16);
+  return rows.map((e, i) => {
+    const to = e.payload && e.payload.to, label = to ? present(e.subject.kind, to).label : e.type.replace(/[._]/g, ' ').replace(/^./, (c) => c.toUpperCase());
+    return { id: 'ev-' + e.seq, kind: 'Event', label: clockLabel(e.at) + ' ' + label, state: to ? STATE[present(e.subject.kind, to).cls] || 'idle' : 'idle', word: label, last: i >= rows.length - 2 };
+  });
 }
 
 const VERB = { COMPLETED: 'completed', VERIFYING: 'is verifying', REVIEWING: 'is reviewing', EXECUTING: 'started', APPROVAL_REQUIRED: 'asks you to approve', BLOCKED: 'is blocked on', FAILED: 'has stopped', PAUSED: 'paused' };
@@ -66,6 +90,7 @@ export function buildOverview(sim) {
     return { id: p.id, name: p.name, code: code(p.name), total: own.length, attention: att.filter((a) => a.project_id === p.id).length,
       running: own.filter((m) => ['active', 'verifying', 'reviewing'].includes(cls(m))).length, stopped: own.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length,
       ideas: st.ideas.filter((i) => i.project === p.id && i.state === 'CAPTURED').length, last: l || null, lastAt: l ? l.at : 0,
+      worktrees: worktreesOf(st, p),
       missions: own.map((m) => ({ id: m.id, title: m.title, state: STATE[cls(m)] || 'idle', at: m.updated_at, time: clockLabel(m.updated_at) })) };
   });
   const byProject = [...done].map(([id, n]) => ({ name: st.projects.find((p) => p.id === id).name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
@@ -86,7 +111,7 @@ export function syncMap(ctx, key) {
   if (e.map && (e.lang !== lang || e.calm !== calm || e.terr !== terr)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
     e.lang = lang; e.calm = calm; e.terr = terr;
-    e.map = (terr ? createTerritoryMap : createMap)(e.box, { seed: 'v2-live', overview: key === 'now', calm, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
+    e.map = (terr ? createTerritoryMap : createMap)(e.box, { seed: 'v2-live', overview: key === 'now', calm, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, detail: (id) => buildDetail(sim, id), events: (id) => buildEvents(sim, id), inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
     e.map.on('review', (id) => { const a = Object.values(sim.state.approvals).find((x) => x.state === 'PENDING' && x.mission === id); ctx.nav(a ? '#/work/' + a.id : '#/' + ctx.route.name + '/' + id); });
     e.map.on('select', (id) => { if (!e.syncing && id && sim.state.projects.some((p) => p.id === id)) { ctx.ui.workProject = id; ctx.nav('#/work'); return; } if (!e.syncing && id && id !== ctx.route.id && (sim.state.missions[id] || sim.state.approvals[id] || sim.state.executions[id])) ctx.nav('#/' + ctx.route.name + '/' + (sim.state.executions[id] ? sim.state.executions[id].mission : id)); });
   }

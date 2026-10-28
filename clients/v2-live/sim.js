@@ -120,7 +120,7 @@ const min = (n) => n * 60000;
 
 export function createSim(opts = {}) {
   const seed0 = opts.seed == null ? 20261025 : opts.seed;
-  const MAX_EVENTS = opts.maxEvents || 600;
+  const MAX_EVENTS = opts.maxEvents || (opts.story === 'skew' ? 2000 : 600);
   let S, rng, queue, qn, seq, subs = new Set();
 
   // ---------- helpers ----------
@@ -492,6 +492,7 @@ export function createSim(opts = {}) {
     atAbs(stuckAt + sec(190), 'date adopted', () => { const x = S.executions['x-date-1']; if (x && x.state === 'LOST') { move('execution', x, 'RUNNING', 'adopted'); x.stuck = false; x.last_output_at = S.clock; } });
     atAbs(sec(480), 'date ends', () => { const m = M('m-date'), x = S.executions['x-date-1'], t = S.tasks[x.task]; m.fail_check = 'date-boundary check'; if (x.state === 'RUNNING' && m.state === 'EXECUTING') { move('execution', x, 'ENDED_OK', 'exited_success', { exit_code: 0 }); move('task', t, 'VERIFYING', 'execution_succeeded'); verifyMission(m, true); } });
     atAbs(sec(300), 'ambient', ambient);
+    atAbs(min(10), 'a linked worktree folder is gone', () => { const w = S.projects[0].worktrees.find((x) => x.state === 'stale'); if (w) { w.state = 'missing'; w.last_at = S.clock; S.actor = 'system'; emit('worktree.missing', { kind: 'worktree', id: w.id }, { branch: w.branch, owner: w.owner, mission: null }, { project: w.project }); } });
     atAbs(min(8), 'codex breaker trips', () => injectFailure('spawn', 'codex'));
     atAbs(min(12), 'personal window nearly full', () => { usage('acc-personal').window5h = 94; S.actor = 'system'; emit('usage.observed', { kind: 'account', id: 'acc-personal' }, { note: 'its 5 hour window is nearly full' }, {}); });
     atAbs(min(24), 'work week reaches the reserve line', () => { usage('acc-work').week = 80; S.actor = 'system'; emit('usage.observed', { kind: 'account', id: 'acc-work' }, { note: 'the week reached the 20% reserve line' }, {}); });
@@ -519,9 +520,9 @@ export function createSim(opts = {}) {
       seed: sd, clock: 0, speed: 1, playing: false, actor: 'system', quiet: true, pruned: false, estop: { engaged: false, at: null },
       counters: { approval: 0, verification: 0, review: 0, knowledge: 6, idea: 5, message: 4, mission: 0 },
       projects: [
-        { id: 'archeus', name: 'Archeus', note: 'Active. Your projects, in context.', root: 'archeus/' },
-        { id: 'notes', name: 'Notes', note: 'Research and capture evolving context.', root: 'notes/' },
-        { id: 'ideas', name: 'Ideas', note: 'Early concepts.', root: 'ideas/' }
+        { id: 'archeus', name: 'Archeus', note: 'Active. Your projects, in context.', root: 'archeus/', worktrees: [] },
+        { id: 'notes', name: 'Notes', note: 'Research and capture evolving context.', root: 'notes/', worktrees: [] },
+        { id: 'ideas', name: 'Ideas', note: 'Early concepts.', root: 'ideas/', worktrees: [] }
       ],
       missions: {}, tasks: {}, executions: {}, plans: {}, approvals: {}, verifications: {}, reviews: {}, events: [],
       ideas: [
@@ -570,6 +571,15 @@ export function createSim(opts = {}) {
       ]
     };
     const mk = (id, title, project, branch, extra) => (S.missions[id] = Object.assign({ id, title, project, branch, state: 'CREATED', held_from: null, tasks: [], plan_version: 0, replans: 0, origin: 'conversation', reason: null, created_at: 0, updated_at: 0, account: 'acc-work', model: 'claude-sonnet' }, extra || {}));
+    const worktree = (project, branch, owner, state, mission, ago) => {
+      const w = { id: 'wt-' + branch.replace(/[^a-z0-9]+/gi, '-'), project, branch, owner, state, mission: mission || null, label: branch.split('/').pop(), last_at: -min(ago) };
+      S.projects.find((p) => p.id === project).worktrees.push(w);
+      if (mission) S.missions[mission].worktree = w.id;
+      const subject = { kind: 'worktree', id: w.id }, payload = { branch, owner, mission: w.mission };
+      S.clock = -min(ago + 60); emit('worktree.created', subject, payload, { project });
+      if (['merged', 'abandoned', 'missing'].includes(state)) { S.clock = -min(ago); emit('worktree.' + state, subject, payload, { project }); }
+      return w;
+    };
     const path = (m, steps, t0) => { S.clock = t0; steps.forEach(([to, trig], i) => { S.clock = t0 + i * sec(45); move('mission', m, to, trig); }); };
 
     // m-docs: a finished mission with its history
@@ -624,8 +634,14 @@ export function createSim(opts = {}) {
     m = mk('m-theme', 'Theme tokens audit', 'archeus', 'chore/tokens');
     S.clock = -min(2); emit('mission.created', { kind: 'mission', id: m.id }, {}, { mission: m.id, project: m.project });
 
-    const crowdSize = opts.projects > 3 ? opts.projects : opts.story === 'many' ? 12 : opts.story === 'huge' ? 100 : 0;
-    if (crowdSize) crowd([crowdSize, Math.round(crowdSize * 2.4), Math.round(crowdSize * 1.2)], mk, path);
+    // Worktrees: a project owns them and a worktree is never a project. 'main' is the project's own tree and is not listed. owner 'archeus' = made for a task, removed after a verified merge; 'linked' = made by the owner or another tool, never deleted or reset.
+    worktree('archeus', 'fix/date-test', 'archeus', 'active', 'm-date', 40);
+    worktree('archeus', 'feat/search', 'linked', 'active', 'm-search', 300);
+    worktree('archeus', 'chore/old-lint', 'linked', 'stale', null, 60 * 24 * 9);
+    worktree('notes', 'feat/offline-index', 'linked', 'active', 'm-offline', 25);
+
+    const crowdSize = opts.projects > 3 ? opts.projects : opts.story === 'many' ? 12 : opts.story === 'huge' ? 100 : opts.story === 'skew' ? 10 : 0;
+    if (crowdSize) crowd([crowdSize, Math.round(crowdSize * 2.4), Math.round(crowdSize * 1.2)], mk, path, worktree, opts.story === 'skew');
     S.events.sort((a, b) => a.at - b.at || a.seq - b.seq).forEach((e, i) => { e.seq = i + 1; });
     seq = S.events.length; S.clock = 0; S.quiet = false;
     script();
@@ -633,12 +649,13 @@ export function createSim(opts = {}) {
     if (opts.story === 'calm') calmDown();
   }
   // ?projects=N (10 to 100), ?story=many (12 projects) and ?story=huge (100): the same mission shapes as the default story, spread over many projects with a skewed ownership so some projects stay empty.
-  function crowd([np, nm, ni], mk, path) {
+  // ?story=skew: ten projects, one with 60 missions, three with 3, 2 and 1, the rest with none (for the Network view's levels of detail).
+  function crowd([np, nm, ni], mk, path, worktree, skew) {
     const head = ['Atlas', 'Beacon', 'Cinder', 'Delta', 'Ember', 'Fjord', 'Garnet', 'Harbor', 'Iris', 'Juniper', 'Kestrel', 'Lumen', 'Mosaic', 'Nimbus', 'Orbit', 'Prism', 'Quartz', 'Relay', 'Summit', 'Tidal'];
     const projects = S.projects;
     for (let i = projects.length; i < np; i++) {
       const name = head[i % head.length] + (i >= head.length ? ' ' + (1 + Math.floor(i / head.length)) : ''), id = name.toLowerCase().replace(/ /g, '-');
-      projects.push({ id, name, note: '', root: id + '/' });
+      projects.push({ id, name, note: '', root: id + '/', worktrees: [] });
     }
     const up = ['UNDERSTANDING', 'start'], ctx = ['CONTEXT_GATHERING', 'understood'], rea = ['REASONING', 'context_ready'], pln = ['PLANNING', 'reasoned'], apr = ['APPROVED', 'plan_auto_approved'], exe = ['EXECUTING', 'dispatch'];
     const stem = [up, ctx, rea, pln, apr, exe];
@@ -653,9 +670,11 @@ export function createSim(opts = {}) {
     };
     const mix = ['done', 'done', 'done', 'run', 'run', 'plan', 'blocked', 'done', 'verify', 'failed', 'paused', 'run', 'plan', 'done'];
     const verbs = ['Fix', 'Refactor', 'Document', 'Audit', 'Migrate', 'Test', 'Profile', 'Clean up'], objs = ['date parsing', 'the login flow', 'build scripts', 'the API client', 'config loading', 'the search index', 'release notes', 'retry logic'];
-    const owner = () => projects[Math.floor(np * rng() ** 2.2)];
+    const plan = skew ? [...Array(60).fill(3), 4, 4, 4, 5, 5, 6] : null;
+    if (plan) nm = plan.length;
+    const owner = (i) => (plan ? projects[plan[i % plan.length]] : projects[Math.floor(np * rng() ** 2.2)]);
     for (let i = 0; i < nm; i++) {
-      const pr = owner(), kind = mix[i % mix.length], [steps, tState, eState] = KINDS[kind], id = 'm-x' + (i + 1);
+      const pr = owner(i), kind = mix[i % mix.length], [steps, tState, eState] = KINDS[kind], id = 'm-x' + (i + 1);
       const m = mk(id, verbs[i % verbs.length] + ' ' + objs[Math.floor(rng() * objs.length)], pr.id, 'work/' + id);
       const t0 = -min(8 + Math.floor(rng() * 1400));
       S.clock = t0; emit('mission.created', { kind: 'mission', id }, {}, { mission: id, project: pr.id });
@@ -672,7 +691,19 @@ export function createSim(opts = {}) {
       }
     }
     const states = ['CAPTURED', 'CAPTURED', 'PLANNED', 'PARKED', 'EXPLORED'];
-    for (let i = 0; i < ni; i++) S.ideas.push({ id: 'i-x' + (i + 1), project: owner().id, title: ['Quick capture', 'Digest by email', 'Shared view', 'Weekly map'][i % 4] + ' ' + (i + 1), state: states[i % states.length] });
+    for (let i = 0; i < ni; i++) S.ideas.push({ id: 'i-x' + (i + 1), project: owner(i * 9).id, title: ['Quick capture', 'Digest by email', 'Shared view', 'Weekly map'][i % 4] + ' ' + (i + 1), state: states[i % states.length] });
+    // Worktrees, 0 to 6 per project and skewed (most 0 or 1, a few 4 or more). A mission that has one works in it; a few are stale or missing, and some hold no mission.
+    projects.forEach((pr, i) => {
+      if (i < 3) return;
+      const r = ((i * 2654435761) >>> 0) % 100, n = skew ? [0, 0, 0, 6, 3, 2, 1, 0, 0, 0][i] : r < 55 ? 0 : r < 78 ? 1 : r < 88 ? 2 : r < 94 ? 3 : r < 98 ? 4 : 6;
+      const mine = Object.values(S.missions).filter((m) => m.project === pr.id);
+      for (let k = 0; k < n; k++) {
+        const m = mine[k], ago = 10 + ((i * 37 + k * 91) % 600);
+        if (!m) { worktree(pr.id, 'wip/' + pr.id + '-' + k, 'linked', k % 2 ? 'stale' : 'missing', null, ago * 40); continue; }
+        const state = m.state === 'COMPLETED' ? 'merged' : m.state === 'FAILED' ? 'abandoned' : (i + k) % 7 === 0 ? 'stale' : 'active';
+        worktree(pr.id, m.branch, k % 3 === 1 ? 'linked' : 'archeus', state, m.id, ago);
+      }
+    });
   }
   // ?story=calm (concept 07): five projects, each with a finished mission and a captured idea, and the script silent.
   function calmDown() {
@@ -724,6 +755,8 @@ export function createSim(opts = {}) {
       if (m.state === 'BLOCKED') out.push({ id: 'att-blk-' + m.id, group: 'Unblock', kind: 'mission', ref: m.id, state: m.state, reason: m.reason || 'Blocked', mission_id: m.id, project_id: m.project, since: m.updated_at });
       if (m.state === 'FAILED') out.push({ id: 'att-fail-' + m.id, group: 'Unblock', kind: 'mission', ref: m.id, state: m.state, reason: m.reason || 'Failed', mission_id: m.id, project_id: m.project, since: m.updated_at });
     });
+    // A stale or missing worktree whose branch is not merged needs you: Archeus never deletes or resets a linked one.
+    S.projects.forEach((p) => (p.worktrees || []).filter((w) => w.state === 'stale' || w.state === 'missing').forEach((w) => out.push({ id: 'att-' + w.id, group: 'Unblock', kind: 'worktree', ref: w.id, state: w.state, reason: 'Worktree ' + w.branch + ' is ' + w.state + ' and its branch is not merged', mission_id: null, project_id: p.id, since: w.last_at })));
     S.knowledge.filter((k) => k.state === 'CANDIDATE').forEach((k) => out.push({ id: 'att-' + k.id, group: 'Review', kind: 'knowledge', ref: k.id, state: k.state, reason: 'Remember this? ' + k.text, mission_id: null, project_id: k.project, since: 0 }));
     S.automations.filter((a) => a.state === 'SUSPENDED' || a.state === 'PENDING_APPROVAL').forEach((a) => out.push({ id: 'att-' + a.id, group: a.state === 'SUSPENDED' ? 'Unblock' : 'Decide', kind: 'automation', ref: a.id, state: a.state, reason: a.name + (a.state === 'SUSPENDED' ? ' is suspended' : ' waits for approval'), mission_id: null, project_id: null, since: 0 }));
     S.accounts.filter((a) => a.state === 'LIMITED' || a.state === 'UNAUTHENTICATED').forEach((a) => out.push({ id: 'att-' + a.id, group: 'Unblock', kind: 'account', ref: a.id, state: a.state, reason: a.label + ' is ' + a.state.toLowerCase(), mission_id: null, project_id: null, since: 0 }));
