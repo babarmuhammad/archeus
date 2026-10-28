@@ -62,6 +62,24 @@ export function createChat(sim, env = {}) {
   const reset = () => { local = []; ln = 0; hide = null; done = new Set(); last = { text: '', at: -1e9 }; };
   sim.subscribe((e) => { if (e.type === 'sim.reset') reset(); });
 
+  // ---------- queue and steer ----------
+  // While a mission runs, plain text sent with mode 'queue' waits for the end of the step; mode 'steer' asks to be taken at the next safe boundary and
+  // stays 'steering' until Core acknowledges. With nothing running both just send. The state lives on the recorded message (status, target).
+  const running = (project) => Object.values(S().missions).filter((x) => x.state === 'EXECUTING' && (!project || x.project === project));
+  api.running = running;
+  api.queued = (project) => S().messages.filter((x) => x.status === 'queued' && (!project || x.project === project));
+  api.unqueue = (id) => { const m = get(id); if (!m || m.status !== 'queued') return false; patch(id, { status: 'withdrawn' }); return true; };
+  sim.subscribe((e) => {
+    if (e.type === 'mission.state_changed' && e.payload.from === 'EXECUTING') api.queued().filter((m) => m.target === e.mission).forEach((m) => { patch(m.id, { status: 'submitted' }); api.finish(m.id); });
+    if (e.type === 'mission.steer_acknowledged') {
+      const m = get(e.payload.message), x = S().missions[e.mission];
+      if (m && m.status === 'steering' && x) {
+        patch(m.id, { status: 'sent' });
+        post('archeus', tp('SIMULATED · Core acknowledged the steer for “{t}”. A real Core would record the request and the safe boundary where it took effect; here nothing changed course.', 'SIMULATO · Il Core ha confermato la richiesta di guida per “{t}”. Un Core reale registrerebbe la richiesta e il confine sicuro in cui ha avuto effetto; qui nulla ha cambiato rotta.', { t: x.title }), { dest: 'work', project: x.project, mission: x.id }, true);
+      }
+    }
+  });
+
   // ---------- resolving a name: exact, word prefix, substring, fuzzy (T-153 section 2). Never a silent first pick ----------
   function resolve(q0, kinds) {
     const q = norm(String(q0).replace(/^@/, '').replace(/^"|"$/g, ''));
@@ -256,11 +274,14 @@ export function createChat(sim, env = {}) {
     if (cmd && cmd.name === 'general') dest = 'general';
     const recorded = !cmd || cmd.cls === 'CREATE' || cmd.cls === 'PROPOSE';
     const key = o.key || 'k-' + (++kn);
-    const extra = { dest: cmd && cmd.name !== 'general' ? 'command' : dest, project: o.project || 'archeus', cmd: cmd ? cmd.name : null, cls: cmd ? cmd.cls : null, args, key, escaped, status: o.fail ? 'failed' : 'submitted' };
+    const target = !cmd && dest === 'work' && o.mode && !o.fail ? (o.mission && running().find((x) => x.id === o.mission)) || running(o.project || 'archeus')[0] : null;
+    const extra = { dest: cmd && cmd.name !== 'general' ? 'command' : dest, project: o.project || 'archeus', cmd: cmd ? cmd.name : null, cls: cmd ? cmd.cls : null, args, key, escaped, status: o.fail ? 'failed' : target ? (o.mode === 'steer' ? 'steering' : 'queued') : 'submitted' };
+    if (target) extra.target = target.id;
     const m = post('you', tp(t0, t0), extra, recorded);
     m.text = escaped ? text : t0;
     if (cmd) m.c = tp(t0, t0);
     if (o.fail) return { ok: true, id: m.id, failed: true, cmd: cmd && cmd.name };
+    if (target) { if (o.mode === 'steer') sim.chat.steer(target.id, m.id); return { ok: true, id: m.id, [o.mode === 'steer' ? 'steering' : 'queued']: true, mission: target.id }; }
     const run = () => api.finish(m.id);
     if (!recorded) { const out = run(); return { ok: true, id: m.id, cmd: cmd.name, done: true, out }; }
     return { ok: true, id: m.id, cmd: cmd && cmd.name, run };

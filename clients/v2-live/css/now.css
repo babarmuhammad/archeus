@@ -139,6 +139,9 @@
   .tell-dock .cscope { flex-basis: 9em; }
 }
 .tell-dock .cdest { display: none; }
+/* in the dock the key hint sits in the pill, left of the slash button, while the field has focus; the row stays 48 px */
+.tell-dock .chint { flex: none; align-self: center; padding: 0 8px; white-space: nowrap; }
+.tell-dock .composer2:not(:focus-within) .chint { display: none; }
 :root[data-motion='reduced'] .tell-dock .crow2::before { transition: none; }
 @media (prefers-reduced-motion: reduce) { .tell-dock .crow2::before { transition: none; } }
 .view-switch { position: absolute; z-index: 3; top: calc(var(--gut) * 1.2); right: calc(var(--gut) * 1.5); display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: 10px; }
@@ -148,3 +151,5 @@
 .view-switch .vs-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 .now-view .now-hero { right: calc(var(--gut) * 1.5 + 120px); }
 @media (max-width: 599px) { .view-switch { display: none; } }
+
+@container cmp (max-width: 720px) { .tell-dock .chint { display: none; } }

@@ -120,10 +120,13 @@ export function cardNode(ctx, m, act, sample) {
 }
 
 // ----- one message -----
-export function msgNode(ctx, m, act, retry) {
+export function msgNode(ctx, m, act, retry, unqueue) {
   const sim = ctx.sim, you = m.from === 'you', gen = m.dest === 'general';
   const body = m.c && !you ? C(m.c) : m.text;
-  const status = you && !m.local ? (m.status === 'submitted' ? h('p', { class: 'mstat' }, L('Submitted.', 'Inviato.')) : m.status === 'failed' ? h('p', { class: 'mstat bad' }, L('Not sent. Send again?', 'Non inviato. Rimandare?'), ' ', btn(L('Send again', 'Rimanda'), () => retry(m.id), 'quiet')) : null) : null;
+  const status = you && !m.local ? (m.status === 'submitted' ? h('p', { class: 'mstat' }, L('Submitted.', 'Inviato.')) : m.status === 'queued' ? h('p', { class: 'mstat' }, h('span', { class: 'qchip' }, L('Queued', 'In coda')), L('Handled after the current step.', 'Gestito dopo il passo corrente.'), unqueue ? btn(L('Remove', 'Rimuovi'), () => unqueue(m.id), 'quiet') : null)
+      : m.status === 'steering' ? h('p', { class: 'mstat' }, h('span', { class: 'qchip' }, L('Steering', 'Guida in corso')), L('Waiting for Core to acknowledge. Simulated.', 'In attesa che il Core confermi. Simulato.'))
+        : m.status === 'withdrawn' ? h('p', { class: 'mstat' }, L('Removed from the queue. Nothing was sent.', 'Tolto dalla coda. Non è stato inviato nulla.'))
+          : m.status === 'failed' ? h('p', { class: 'mstat bad' }, L('Not sent. Send again?', 'Non inviato. Rimandare?'), ' ', btn(L('Send again', 'Rimanda'), () => retry(m.id), 'quiet')) : null) : null;
   return h('article', { class: 'msg ' + (you ? 'you' : 'archeus') + (gen ? ' general' : ''), 'data-key': 'msg-' + m.id, 'data-dest': m.dest || null },
     h('p', { class: 'who' }, h('span', null, (you ? L('You', 'Tu') : 'Archeus') + ' · ' + clockLabel(m.at)), m.dest ? h('span', { class: 'dest' }, destLabel(sim, m)) : null, !you && m.c ? h('span', { class: 'sim-tag' }, L('SIMULATED', 'SIMULATO')) : null),
     h('p', { class: 'mbody' }, body), status, cardNode(ctx, m, act, false),
