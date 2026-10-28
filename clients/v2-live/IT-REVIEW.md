@@ -1790,3 +1790,7 @@ File: `js/i18n-chat.js`. Dynamic label: `{n} unread` → `{n} non letti`.
 - Unpin decision → Rimuovi decisione dai fissati
 - Draft a command → Prepara un comando
 - Emergency stop engaged → Arresto di emergenza attivo
+- Completed → Completato
+- Waiting → In attesa
+- Position unknown → Posizione sconosciuta
+- Cancelled → Annullata
