@@ -1,7 +1,8 @@
 // The chat surfaces (S4): the full Chat page, the bar docked on Now, and the phone chat sheet. One composer per place, cached across renders so
 // typing, focus and the caret survive a redraw. The slash menu is a combobox: focus stays in the field, the menu never takes it.
 import { h, clear } from './dom.js';
-import { picker, popButton } from './picker.js';
+import { picker, popButton, closePopup } from './picker.js';
+import { openSheet } from './sheet.js';
 import { icon, glyph } from './icons.js';
 import * as store from './store.js';
 import { isPhone } from './viewport.js';
@@ -18,7 +19,7 @@ export function S4(ctx) {
   if (!ui.s4) {
     const eng = createChat(ctx.sim, {});
     eng.onChange = () => ctx.render();
-    ui.s4 = { eng, dest: 'work', project: 'archeus', recents: SL.clean(store.get('slashrecent')), cpins: SL.clean(store.get('slashpins')), comps: {}, sheet: false, exp: false, kb: false, slow: false, fail: false, touched: false, pinned: true, unread: 0, notice: null, seen: 0 };
+    ui.s4 = { eng, dest: 'work', project: 'archeus', recents: SL.clean(store.get('slashrecent')), cpins: SL.clean(store.get('slashpins')), comps: {}, sheet: false, tell: null, kb: false, slow: false, fail: false, touched: false, pinned: true, unread: 0, notice: null, seen: 0 };
   }
   return ui.s4;
 }
@@ -105,7 +106,7 @@ export function composer(ctx, where) {
   const slashBtn = h('button', { class: 'btn cslash', type: 'button', 'aria-label': 'Commands', onclick: () => { input.value = '/'; ctx.ui.draft = '/'; input.focus(); onInput(); } }, '/');
   const send = h('button', { class: 'btn primary csend', type: 'button', onclick: () => submit() }, '');
   const stop = h('button', { class: 'btn danger cstop', type: 'button', onclick: () => stopNow(ctx) }, '');
-  const maxRows = () => { const hgt = (document.getElementById('app') || {}).clientHeight || 800; return where === 'sheet' ? (hgt < 700 ? 2 : 3) : hgt < 760 ? 3 : 5; };
+  const maxRows = () => { const hgt = (document.getElementById('app') || {}).clientHeight || 800; return where === 'sheet' ? (hgt < 700 ? 4 : 6) : hgt < 760 ? 3 : 5; };
   const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, shint, live, h('div', { class: 'crow2' }, scope, input, where === 'dock' ? hint : null, slashBtn, send, where === 'sheet' ? null : stop), foot);
 
   function fillDest() {
@@ -164,6 +165,7 @@ export function composer(ctx, where) {
     if (M.keep) { const k = rows.findIndex((r) => r.c === M.keep); if (k >= 0) M.active = k; M.keep = null; }
     while (M.active < rows.length && !sel(rows[M.active])) M.active++;
     M.open = rows.length > 0;
+    if (where === 'sheet' && M.open && s.tell && s.tell.el.dataset.detent === 'peek') s.tell.setDetent(document.documentElement.dataset.kb === 'open' ? 'full' : 'half'); // the menu needs room, and is measured below
     const top = list.scrollTop;
     clear(list).hidden = !M.open;
     list.dataset.mode = M.mode;
@@ -216,7 +218,7 @@ export function composer(ctx, where) {
   }
   function onInput() { ctx.ui.draft = input.value; M.active = 0; M.expanded = false; notice.hidden = true; fillDest(); draw(); }
   input.addEventListener('input', onInput);
-  input.addEventListener('focus', () => { if (where === 'sheet' && hoverDevice()) { s.kb = true; const sh = root.closest('.chatsheet'); if (sh) sh.dataset.kb = '1'; } });
+  input.addEventListener('focus', () => { if (where === 'sheet' && hoverDevice() && s.tell) { s.kb = true; s.tell.el.dataset.kbsim = ''; s.tell.setDetent('full'); } });
   input.addEventListener('keydown', (e) => {
     if (e.isComposing || e.keyCode === 229) return;
     const n = M.rows.length;
@@ -313,6 +315,7 @@ export function viewChat(ctx) {
     onPick: (v) => { P.mission = v || null; P.switched = true; P.bottom = true; ctx.render(); } });
   const summary = general ? L('Not project memory', 'Non è memoria di progetto')
     : focused ? null : open.length ? L('{n} open', '{n} aperte', { n: open.length }) : L('Nothing open', 'Niente di aperto');
+  const phone = isPhone();
   const more = popButton({ key: 'chat-more', label: L('More', 'Altro'), glyph: 'more', cls: 'cb-more', end: true, title: L('More', 'Altro'), build: (pop) => {
     const fix = (key, label) => {
       const on = h('span', { class: 'fx-on' }, s[key] ? icon('check', 16) : null);
@@ -321,7 +324,8 @@ export function viewChat(ctx) {
     };
     pop.classList.add('cb-menu');
     const first = fix('slow', L('Slow reply (3 s)', 'Risposta lenta (3 s)'));
-    pop.append(h('h3', { class: 'pk-gh' }, L('Privacy and storage', 'Privacy e conservazione')),
+    const views = phone ? [h('h3', { class: 'pk-gh' }, L('Show', 'Mostra')), h('div', { class: 'cb-fix cb-views' }, ...TABS.map(([id, en, it]) => h('button', { class: 'btn', type: 'button', 'data-key': 'chat-tab-' + id, 'aria-pressed': P.tab === id ? 'true' : 'false', onclick: () => { P.tab = id; closePopup(true); ctx.render(); } }, L(en, it))))] : [];
+    pop.append(...views, h('h3', { class: 'pk-gh' }, L('Privacy and storage', 'Privacy e conservazione')),
       h('p', { class: 'cb-note' }, L('Retention: Unknown. “Not project memory” does not mean “not stored”. Account selected by Core. Usage: Unknown.', 'Conservazione: Sconosciuta. “Non è memoria di progetto” non vuol dire “non archiviato”. Account scelto dal Core. Utilizzo: Sconosciuto.')),
       h('h3', { class: 'pk-gh' }, L('Simulation fixtures', 'Scenari di simulazione')), h('div', { class: 'cb-fix' }, first, fix('fail', L('Failed send', 'Invio fallito'))));
     return first;
@@ -330,7 +334,7 @@ export function viewChat(ctx) {
   const bar = h('header', { class: 'cb' }, h('h1', { class: 'vh' }, L('Chat', 'Chat')), scopeHead, missionPick,
     focused ? spineLine(focused) : summary ? h('span', { class: 'cb-sum' }, summary) : null,
     h('span', { class: 'cb-gap' }),
-    here.length ? h('a', { class: 'btn cb-need', href: '#/work/' + here[0].id, 'data-key': 'chat-needs' }, glyph('needs_you'), L('Needs you · {n}', 'Richiede te · {n}', { n: here.length })) : null, more);
+    here.length ? h('a', { class: 'btn cb-need', href: '#/work/' + here[0].id, 'data-key': 'chat-needs', 'aria-label': L('Needs you · {n}', 'Richiede te · {n}', { n: here.length }) }, glyph('needs_you'), h('span', { class: 'cb-nw' }, L('Needs you · ', 'Richiede te · ')), here.length) : null, more);
   const wide = P.wide = wideNow(), cur = wide && tab === 'chat' ? 'receipts' : tab;
   const tabStrip = (list) => h('div', { class: 'cb-tabs', role: 'tablist', 'aria-label': L('Chat sections', 'Sezioni della chat') }, ...list.map(([id, en, it]) => h('button', { class: 'cb-tab', type: 'button', role: 'tab', id: 'cbt-' + id, 'aria-selected': cur === id ? 'true' : 'false', 'aria-controls': 'cbp', tabindex: cur === id ? '0' : '-1', 'data-key': 'chat-tab-' + id,
     onclick: () => { P.tab = id; ctx.render(); },
@@ -400,7 +404,7 @@ export function viewChat(ctx) {
   const side = () => cur === 'context' ? contextNode() : receiptsNode();
   const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false', 'data-wide': wide ? 'true' : 'false' },
     wide ? h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, ...thread)
-      : h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, tabStrip(TABS), h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + tab }, tab === 'chat' ? thread : side())),
+      : h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, phone ? null : tabStrip(TABS), h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + tab }, tab === 'chat' ? thread : side())),
     wide ? h('aside', { class: 'cside', 'aria-label': L('Activity', 'Attività') }, tabStrip(TABS.slice(1)), h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + cur }, side())) : null);
   ctx.mounts.push(() => {
     if (!store.reducedMotion()) log.querySelectorAll('.msg').forEach((el) => {
@@ -423,9 +427,9 @@ export function mountDock(ctx, dock, app) {
   if (!phone && s.sheet) s.sheet = false;
   app.dataset.dock = on ? '1' : '';
   dock.hidden = !on; clear(dock);
-  const old = app.querySelector('.chatsheet'); if (old) old.remove();
-  const oldS = app.querySelector('.cscrim'); if (oldS) oldS.remove();
-  if (phone) { if (s.sheet && ctx.route.name !== 'chat') buildSheet(ctx, app); else s.sheet = false; return; }
+  if (phone && s.sheet && ctx.route.name !== 'chat') { syncTell(ctx, app); return; }
+  if (s.tell) { const t = s.tell; s.tell = null; t.close(); }
+  if (phone) { s.sheet = false; return; }
   if (!on) return;
   dock.append(dockNode(ctx));
 }
@@ -435,20 +439,18 @@ export function dockNode(ctx) {
   const strip = s.touched ? h('div', { class: 'dstrip' }, threadNode(ctx, { last: true, cls: 'last' }), h('a', { class: 'btn quiet openconv', href: '#/chat' }, L('Open conversation', 'Apri la conversazione'))) : h('p', { class: 'intro dintro' }, L('Ask a question, capture an idea, or describe work.', 'Fai una domanda, cattura un\'idea o descrivi un lavoro.'));
   return h('div', { class: 'dockin' }, strip, comp);
 }
-function buildSheet(ctx, app) {
+// The Tell sheet. It outlives a redraw: only the thread is replaced, so the composer keeps its focus, caret and open slash menu. The composer sits in the sheet's footer
+// (thumb zone); the thread is the one scroller, and while the slash menu is open the menu takes the thread's place (chat.css), so the field is never pushed out.
+const PEEK = 280; // handle 44 + header 44 + the two-row composer 108 + a bubble of the last reply
+function syncTell(ctx, app) {
   const s = S4(ctx), comp = composer(ctx, 'sheet');
-  const back = () => { s.sheet = false; s.kb = false; ctx.render(); const b = document.querySelector('[data-key="bb-tell"]'); if (b) b.focus(); };
-  const log = threadNode(ctx), nr = newReply(log);
-  const sheet = h('section', { class: 'chatsheet', role: 'dialog', 'aria-label': L('Chat with Archeus', 'Chat con Archeus'), 'data-exp': s.exp ? '1' : '0', 'data-kb': s.kb ? '1' : '0' },
-    h('div', { class: 'cs-main' }, h('div', { class: 'grab', 'aria-hidden': 'true' }),
-      h('div', { class: 'cs-head' }, h('button', { class: 'btn quiet', type: 'button', onclick: back }, icon('chevron', 18), L('Back', 'Indietro')), h('h2', null, L('Chat', 'Chat')),
-        h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': s.exp ? 'true' : 'false', onclick: () => { s.exp = !s.exp; ctx.render(); } }, s.exp ? L('Collapse', 'Riduci') : L('Expand', 'Espandi'))),
-      h('div', { class: 'logwrap' }, log, nr), comp),
-    h('div', { class: 'kbsim', 'aria-hidden': s.kb ? null : 'true' }, h('p', { class: 'kbnote' }, L('Simulated keyboard', 'Tastiera simulata')), h('div', { class: 'kbkeys', 'aria-hidden': 'true' }, ...'qwertyuiop asdfghjkl zxcvbnm'.split(' ').map((r) => h('div', { class: 'kbrow' }, ...r.split('').map((k) => h('span', { class: 'kbk' }, k))))),
-      h('button', { class: 'btn quiet', type: 'button', onclick: () => { s.kb = false; sheet.dataset.kb = '0'; } }, L('Hide keyboard', 'Nascondi la tastiera'))));
-  sheet.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); back(); } });
-  app.append(h('div', { class: 'cscrim', onclick: back }), sheet);
-  if (window.visualViewport && !hoverDevice()) { const vv = window.visualViewport, f = () => sheet.style.setProperty('--kbh-real', Math.max(0, window.innerHeight - vv.height - vv.offsetTop) + 'px'); vv.addEventListener('resize', f); f(); }
-  ctx.mounts.push(() => { if (s.focusSheet) { s.focusSheet = false; const i = sheet.querySelector('input.cinput'); if (i) i.focus({ preventScroll: true }); } });
+  const log = threadNode(ctx), body = h('div', { class: 'logwrap' }, log, newReply(log));
+  ctx.mounts.push(() => { if (s.focusSheet) { s.focusSheet = false; comp.querySelector('input.cinput').focus({ preventScroll: true }); } });
+  if (s.tell) { s.tell.el.querySelector('.logwrap').replaceWith(body); return; }
+  const kbsim = h('div', { class: 'kbsim', 'aria-hidden': 'true' }, h('p', { class: 'kbnote' }, 'Simulated keyboard'), h('div', { class: 'kbkeys', 'aria-hidden': 'true' }, ...'qwertyuiop asdfghjkl zxcvbnm'.split(' ').map((r) => h('div', { class: 'kbrow' }, ...r.split('').map((k) => h('span', { class: 'kbk' }, k))))),
+    h('button', { class: 'btn quiet', type: 'button', onclick: () => { s.kb = false; delete s.tell.el.dataset.kbsim; } }, 'Hide keyboard'));
+  const api = s.tell = openSheet({ id: 'tell', title: 'Tell Archeus', detents: ['peek', 'half', 'full'], initial: 'peek', fixed: { peek: PEEK }, modal: false, host: app, content: body, footer: [comp, kbsim],
+    onClose: () => { if (s.tell !== api) return; s.tell = null; s.sheet = false; s.kb = false; const b = document.querySelector('[data-key="bb-tell"]'); if (b) b.focus({ preventScroll: true }); } });
+  api.el.classList.add('chatsheet');
 }
 void clockLabel;

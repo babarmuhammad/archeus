@@ -3,7 +3,8 @@
 // A sheet on a phone, a right sheet on a tablet, a column on a desktop; the same content. Offline it reads what was kept and offers no actions.
 import { h } from './dom.js';
 import { icon } from './icons.js';
-import { isPhone } from './viewport.js';
+import { isPhone, onPhoneChange } from './viewport.js';
+import { openSheet } from './sheet.js';
 import { present } from '../core-words.js';
 import { clockLabel, categoryOf } from '../sim.js';
 import { badge, projName, word, dnote } from './views.js';
@@ -27,18 +28,66 @@ export function confirmNodes(ctx) {
 
 // A tab is part of the address (replaceState, so tabs do not fill the history): #/work/m-date/plan, #/projects/prj-notes/missions.
 const tabHref = (ctx, id) => '#/' + ctx.route.name + '/' + ctx.route.id + '/' + id + (location.hash.includes('?') ? '?' + location.hash.split('?')[1] : '');
+// On a phone every inspector but the mission and the decision (o.page: a full page under the top bar) is a sheet: peek 40 % with the title, the state and the primary action in
+// the thumb zone, full 92 %. The sheet outlives a redraw and the aside keeps only a hidden placeholder, so the route stays the address and the system Back closes it.
 export function frame(ctx, A, o) {
   const tabs = o.tabs || [], cur = (tabs.find((t) => t[0] === ctx.ui.tab) || tabs[0] || [])[0];
   const off = A.isOffline(), on = o.pin ? A.pinned(o.pin) : false;
   const foot = off ? null : confirmNodes(ctx) || (o.foot ? [].concat(o.foot(cur)).filter(Boolean) : null);
+  const pin = o.pin ? h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: () => { A.togglePin(o.pin); ctx.toast(A.pinned(o.pin) ? 'Pinned.' : 'Unpinned.'); ctx.render(); } }, on ? 'Pinned' : 'Pin') : null;
+  const strip = tabs.length > 1 ? h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, l, n]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'data-key': 'itab-' + id, 'aria-selected': id === cur ? 'true' : 'false', onclick: () => { ctx.ui.tab = id; history.replaceState(null, '', tabHref(ctx, id)); ctx.render(); } }, l, n == null ? null : h('span', { class: 'tn' }, String(n))))) : null;
+  const body = h('div', { class: 'insp-body' }, off ? h('p', { class: 'ax-stale-note' }, 'Offline: last seen ' + clockLabel(A.offlineAt()) + '. This is what the client kept. Actions are off until Core is back.') : null, o.body(cur));
+  const nodes = foot && foot.length ? foot : null;
+  if (isPhone() && !o.page) return phoneSheet(ctx, o, { pin, strip, body, nodes });
+  quiet();
+  if (o.page) ctx.mounts.push(fitPage);
   return h('div', { class: o.cls || null }, h('div', { class: 'grab', 'aria-hidden': 'true' }),
     h('div', { class: 'insp-head' }, h('div', { class: 'ax-ih' }, h('p', { class: 'ax-eyebrow' }, o.kind), h('h2', null, o.title), o.sub ? h('p', { class: 'm' }, o.sub) : null),
-      h('div', { class: 'ax-head-actions' }, o.pin ? h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': on ? 'true' : 'false', onclick: () => { A.togglePin(o.pin); ctx.toast(A.pinned(o.pin) ? 'Pinned.' : 'Unpinned.'); ctx.render(); } }, on ? 'Pinned' : 'Pin') : null,
-        h('button', { class: 'btn quiet', type: 'button', 'aria-label': 'Close details', onclick: () => ctx.closeInsp() }, 'Close'))),
-    o.meta || null,
-    tabs.length > 1 ? h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, l, n]) => h('button', { class: 'tab', type: 'button', role: 'tab', 'aria-selected': id === cur ? 'true' : 'false', onclick: () => { ctx.ui.tab = id; history.replaceState(null, '', tabHref(ctx, id)); ctx.render(); } }, l, n == null ? null : h('span', { class: 'tn' }, String(n))))) : null,
-    h('div', { class: 'insp-body' }, off ? h('p', { class: 'ax-stale-note' }, 'Offline: last seen ' + clockLabel(A.offlineAt()) + '. This is what the client kept. Actions are off until Core is back.') : null, o.body(cur)),
-    foot && foot.length ? h('div', { class: 'insp-foot' }, ...foot) : null);
+      h('div', { class: 'ax-head-actions' }, pin, h('button', { class: 'btn quiet', type: 'button', 'aria-label': 'Close details', onclick: () => ctx.closeInsp() }, 'Close'))),
+    o.meta || null, strip, body, nodes ? h('div', { class: 'insp-foot' }, ...nodes) : null);
+}
+
+// The full page of a mission or a decision sits between the top bar and the bar, wherever those are (measured, so no offset is written down): --page-top, --page-bottom.
+function fitPage() {
+  const app = document.getElementById('app'), a = app.getBoundingClientRect(), top = app.querySelector('.topbar'), bar = app.querySelector('.bottombar');
+  app.style.setProperty('--page-top', (top ? Math.round(top.getBoundingClientRect().bottom - a.top) : 0) + 'px');
+  app.style.setProperty('--page-bottom', (bar && bar.offsetParent ? Math.round(a.bottom - bar.getBoundingClientRect().top) : 0) + 'px');
+}
+addEventListener('resize', fitPage);
+
+let live = null; // the open inspector sheet: { sheet, key, foot, body, heading, silent }
+function phoneSheet(ctx, o, p) {
+  const key = ctx.route.id + '/' + ctx.ui.tab;
+  const content = h('div', { class: 'isc' }, h('div', { class: 'isl' }, h('p', { class: 'ax-eyebrow' }, o.kind), o.badge || null, p.pin, o.sub ? h('p', { class: 'm' }, o.sub) : null), o.meta || null, p.strip, p.body);
+  // a decision note is one 44 px line you can open (F26); which are open survives a redraw
+  const seen = (ctx.ui.notesOpen ||= new Set());
+  content.querySelectorAll('.dnote').forEach((n) => {
+    const b = n.querySelector('b').textContent, text = n.textContent.slice(b.length + 3);
+    n.replaceWith(h('details', { class: 'dnote dnote-d', open: seen.has(b + text), ontoggle: (e) => { if (e.currentTarget.open) seen.add(b + text); else seen.delete(b + text); } }, h('summary', null, b), text));
+  });
+  if (live) {
+    const top = live.body.scrollTop;
+    live.heading.textContent = o.title; live.body.replaceChildren(content); live.foot.replaceChildren(...(p.nodes || []));
+    live.body.scrollTop = live.key === key ? top : 0; live.key = key;
+  } else {
+    const foot = h('div', { class: 'isf' }, p.nodes);
+    const sheet = openSheet({ id: 'insp', title: o.title, detents: ['peek', 'full'], initial: 'peek', content, footer: foot, history: false,
+      onClose: () => { if (live && live.sheet === sheet) { const quiet = live.silent; live = null; if (!quiet) ctx.closeInsp(); } } });
+    live = { sheet, key, foot, body: sheet.el.querySelector('.sheet-body'), heading: sheet.el.querySelector('h2'), silent: false };
+    sheet.el.dataset.insp = '';
+    watch();
+  }
+  return h('div', { class: 'insp-ph', hidden: true });
+}
+// The route is the sheet's address: it closes (quietly, the route is already gone) when the aside is emptied by a route that has no inspector, or the shell stops being a phone.
+let watching = false;
+function quiet() { if (live) { live.silent = true; live.sheet.close(); } }
+function watch() {
+  if (watching) return;
+  watching = true;
+  const aside = document.getElementById('inspector');
+  new MutationObserver(() => { if (!aside.firstElementChild) quiet(); }).observe(aside, { childList: true });
+  onPhoneChange((phone) => { if (!phone) quiet(); });
 }
 
 export const rowLine = (a, b) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, a), b == null ? null : h('span', { class: 'b' }, b));
@@ -122,7 +171,7 @@ function mission(ctx, A, S, id) {
     link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project)),
     h('span', null, h('span', null, 'Started'), ' ', clockLabel(m.created_at)),
     h('span', null, h('span', { class: 'vh' }, 'Phase'), badge('mission', m.state)));
-  const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: metadata, pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
+  const fr = frame(ctx, A, { page: true, cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: metadata, pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
   fr.querySelector('.tabs').before(pos.progress);
   pos.progress.classList.add('msn-stations');
   const page = h('div', { class: 'msn' }, pane(ctx, S, m, isPhone()), fr);
@@ -161,7 +210,7 @@ function routeBody(S, t) {
 function task(ctx, A, S, id) {
   const t = S.tasks[id]; if (!t) return null;
   const m = S.missions[t.mission];
-  return frame(ctx, A, { kind: KIND_WORD.task, title: t.title, sub: m.title, tabs: [['overview', 'Overview'], ['route', 'Route'], ['relations', 'Relations']],
+  return frame(ctx, A, { kind: KIND_WORD.task, title: t.title, sub: m.title, badge: badge('task', t.state), tabs: [['overview', 'Overview'], ['route', 'Route'], ['relations', 'Relations']],
     body: (tab) => tab === 'route' ? routeBody(S, t) : tab === 'relations' ? relTab(S, 'task', id) : h('div', { class: 'ax-body' }, sec('Facts', kv([['State', badge('task', t.state)], ['Mission', link(hrefFor('mission', m.id), m.title)], ['Execution', t.execution ? link(hrefFor('execution', t.execution), t.execution) : 'None yet'], ['Task key', t.key]]))) });
 }
 function route(ctx, A, S, id) {
@@ -185,7 +234,7 @@ function execution(ctx, A, S, id) {
     if (tab === 'relations') return relTab(S, 'execution', id);
     return h('div', { class: 'ax-body' }, sec('Facts', kv([['State', badge('execution', x.state)], ['Harness', harnessLabel(x.harness)], ['Model', (S.models.find((q) => q.id === x.model) || {}).label], ['Account', link(hrefFor('account', x.account), accountLabel(S, x.account))], ['Task', link(hrefFor('task', t.id), t.title)], ['Mission', link(hrefFor('mission', m.id), m.title)], ['Started', clockLabel(x.started_at)], ['Last output', clockLabel(x.last_output_at)], x.reason ? ['Ended because', x.reason] : null])));
   };
-  return frame(ctx, A, { kind: KIND_WORD.execution, title: x.id, sub: m.title + ' · ' + t.title, tabs: [['output', 'Output'], ['checkpoints', 'Checkpoints'], ['facts', 'Facts'], ['relations', 'Relations']], body });
+  return frame(ctx, A, { kind: KIND_WORD.execution, title: x.id, sub: m.title + ' · ' + t.title, badge: badge('execution', x.state), tabs: [['output', 'Output'], ['checkpoints', 'Checkpoints'], ['facts', 'Facts'], ['relations', 'Relations']], body });
 }
 
 // ---------- approval: the decision sheet ----------
@@ -211,28 +260,28 @@ function approval(ctx, A, S, id) {
       h('p', { class: 'sp-text' }, open ? 'Expires ' + clockLabel(a.expires_at) + '. This is a simulated decision: nothing is run, sent or spent.' : 'Decided: ' + word('approval', a.state) + '.'),
       dnote('I05', 'On a phone a decision takes two steps: choose, then confirm. Reject always asks twice.'));
   };
-  return frame(ctx, A, { cls: 'dcn', kind: KIND_WORD.approval, title: plan ? 'Approve this plan?' : 'Allow this action?', sub: m.title + ' · ' + projName(ctx.sim, a.project), tabs: [['decision', 'Decision'], ['policy', 'Policy'], ['relations', 'Relations']], body, foot });
+  return frame(ctx, A, { page: true, cls: 'dcn', kind: KIND_WORD.approval, title: plan ? 'Approve this plan?' : 'Allow this action?', sub: m.title + ' · ' + projName(ctx.sim, a.project), tabs: [['decision', 'Decision'], ['policy', 'Policy'], ['relations', 'Relations']], body, foot });
 }
 
 // ---------- plan, verification, review ----------
 function plan(ctx, A, S, id) {
   const p = S.plans[id]; if (!p) return null;
   const m = S.missions[p.mission], prev = Object.values(S.plans).find((x) => x.mission === m.id && x.version === p.version - 1);
-  return frame(ctx, A, { kind: KIND_WORD.plan, title: 'Plan version ' + p.version, sub: m.title, tabs: [['plan', 'Plan'], ['relations', 'Relations']],
+  return frame(ctx, A, { kind: KIND_WORD.plan, title: 'Plan version ' + p.version, sub: m.title, badge: badge('plan', p.state), tabs: [['plan', 'Plan'], ['relations', 'Relations']],
     body: (tab) => tab === 'relations' ? relTab(S, 'plan', id) : h('div', { class: 'ax-body' }, sec('Facts', kv([['State', badge('plan', p.state)], ['Mission', link(hrefFor('mission', m.id), m.title)], prev ? ['Before it', link(hrefFor('plan', prev.id), 'Version ' + prev.version + ', ' + word('plan', prev.state).toLowerCase())] : null])),
       sec('Tasks', h('div', { class: 'ax-ents' }, ...m.tasks.map((x) => S.tasks[x]).map((t) => entity({ kind: 'task', id: t.id, label: t.title }, badge('task', t.state))))), prev ? note('A new version replaces the one before it; the old version stays in the record.') : null) });
 }
 function verification(ctx, A, S, id) {
   const v = S.verifications[id]; if (!v) return null;
   const m = S.missions[v.mission];
-  return frame(ctx, A, { kind: KIND_WORD.verification, title: v.id + ' on ' + v.base_revision, sub: m.title, tabs: [['checks', 'Checks'], ['relations', 'Relations']],
+  return frame(ctx, A, { kind: KIND_WORD.verification, title: v.id + ' on ' + v.base_revision, sub: m.title, badge: badge('verification', v.state), tabs: [['checks', 'Checks'], ['relations', 'Relations']],
     body: (tab) => tab === 'relations' ? relTab(S, 'verification', id) : h('div', { class: 'ax-body' }, sec('Result', kv([['State', badge('verification', v.state)], ['Base revision', v.base_revision], ['Mission', link(hrefFor('mission', m.id), m.title)]])),
       sec('Checks', v.checks.length ? v.checks.map((c) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, c.name + ' · ' + c.kind), pill(c.result === 'pass' ? 'ok' : 'blocked', c.result === 'pass' ? 'Passed' : 'Failed'))) : note(v.state === 'RUNNING' ? 'The checks are running.' : 'No check has run yet.')), note('A verifier error is not a failure of the work. Passing a check does not accept the result: you do that on the review.')) });
 }
 function review(ctx, A, S, id) {
   const r = S.reviews[id]; if (!r) return null;
   const m = S.missions[r.mission];
-  return frame(ctx, A, { kind: KIND_WORD.review, title: 'Review of ' + m.title, sub: projName(ctx.sim, m.project), body: () => h('div', { class: 'ax-body' }, sec('Facts', kv([['State', badge('review', r.state)], ['Mission', link(hrefFor('mission', m.id), m.title)]])), note('Verified is not accepted. The verdict is yours.')),
+  return frame(ctx, A, { kind: KIND_WORD.review, title: 'Review of ' + m.title, sub: projName(ctx.sim, m.project), badge: badge('review', r.state), body: () => h('div', { class: 'ax-body' }, sec('Facts', kv([['State', badge('review', r.state)], ['Mission', link(hrefFor('mission', m.id), m.title)]])), note('Verified is not accepted. The verdict is yours.')),
     foot: () => (m.state === 'REVIEWING' ? [h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('accept', m.id) }, 'Accept'), h('button', { class: 'btn', type: 'button', onclick: () => ctx.act('changes', m.id) }, 'Request changes')] : null) });
 }
 
@@ -244,13 +293,13 @@ export function ideaPath(state, compact) {
 function idea(ctx, A, S, id) {
   const i = S.ideas.find((x) => x.id === id); if (!i) return null;
   const k = IDEA_PATH.indexOf(i.state), next = k >= 0 && k < IDEA_PATH.length - 1 ? IDEA_PATH[k + 1] : null;
-  return frame(ctx, A, { kind: KIND_WORD.idea, title: i.title, sub: projName(ctx.sim, i.project), pin: id, tabs: [['path', 'Path'], ['relations', 'Relations']],
+  return frame(ctx, A, { kind: KIND_WORD.idea, title: i.title, sub: projName(ctx.sim, i.project), badge: badge('idea', i.state), pin: id, tabs: [['path', 'Path'], ['relations', 'Relations']],
     body: (tab) => tab === 'relations' ? relTab(S, 'idea', id) : h('div', { class: 'ax-body' }, sec('Where it is', ideaPath(i.state), note(k < 0 ? 'This idea is off the path: ' + present('idea', i.state).label + '.' : 'An idea is not a commitment. It moves forward only when you say so.')), dnote('E17', 'The idea path runs Captured to Learned; Parked and Discarded sit beside it.')),
     foot: () => [next ? h('button', { class: 'btn primary', type: 'button', onclick: () => { A.advanceIdea(id); ctx.toast('Moved to ' + present('idea', next).label + ' (simulated).'); ctx.render(); } }, 'Move to ' + present('idea', next).label) : null, i.state !== 'PARKED' && i.state !== 'DISCARDED' && i.state !== 'LEARNED' ? h('button', { class: 'btn', type: 'button', onclick: () => { A.setIdea(id, 'PARKED'); ctx.render(); } }, 'Park') : null, i.state === 'PARKED' ? h('button', { class: 'btn', type: 'button', onclick: () => { A.setIdea(id, 'CAPTURED'); ctx.render(); } }, 'Bring back') : null] });
 }
 function knowledge(ctx, A, S, id) {
   const k = S.knowledge.find((x) => x.id === id); if (!k) return null;
-  return frame(ctx, A, { kind: KIND_WORD.knowledge, title: k.text, sub: projName(ctx.sim, k.project), tabs: [['item', 'Item'], ['relations', 'Relations']],
+  return frame(ctx, A, { kind: KIND_WORD.knowledge, title: k.text, sub: projName(ctx.sim, k.project), badge: badge('knowledge_item', k.state), tabs: [['item', 'Item'], ['relations', 'Relations']],
     body: (tab) => tab === 'relations' ? relTab(S, 'knowledge', id) : h('div', { class: 'ax-body' }, sec('Facts', kv([['State', badge('knowledge_item', k.state)], ['Source', k.source === 'user' ? 'You said it' : 'Suggested from feedback'], ['Project', link(hrefFor('project', 'prj-' + k.project), projName(ctx.sim, k.project))]])), note(k.state === 'CANDIDATE' ? 'Archeus will not remember this until you confirm it.' : k.state === 'CONFIRMED' ? 'Confirmed: new missions in this project can use it as context.' : 'Not used as context.')),
     foot: () => (k.state === 'CANDIDATE' ? [h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.act('confirm', id) }, 'Remember'), h('button', { class: 'btn', type: 'button', onclick: () => ctx.act('retract', id) }, 'Not this')] : null) });
 }

@@ -244,20 +244,23 @@
   .cb-tab[aria-selected='true'] { text-decoration: underline; }
 }
 
-/* ---------- the phone chat sheet ---------- */
-.cscrim { position: absolute; inset: 0; z-index: 21; background: var(--scrim); }
-.chatsheet { --sh: 50%; --kbh: 0px; position: absolute; z-index: 22; left: 0; right: 0; bottom: var(--kbh-real, 0px); display: flex; flex-direction: column; height: min(calc(var(--sh) + var(--kbh)), 100%); background: var(--s3); border-top: var(--hair) solid var(--line-strong); border-radius: 16px 16px 0 0; }
-.chatsheet[data-exp='1'] { --sh: 94%; }
-.chatsheet[data-kb='1'] { --kbh: min(260px, 40%); }
-.cs-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-.cs-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px; }
-.cs-head h2 { font-size: var(--fs-t2); font-weight: 600; }
-.cs-head .btn { padding: 0 10px; }
-.cs-main .logwrap { flex: 1 1 0; }
-.cs-main .composer2 { flex: none; padding: 8px 12px 10px; gap: 4px; overflow-y: auto; max-height: 62%; }
-.chatsheet[data-kb='1'] .cfoot { display: none; }
-.kbsim { flex: none; height: var(--kbh); overflow: hidden; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; background: var(--s2); border-top: var(--hair) solid var(--line); }
-.chatsheet[data-kb='0'] .kbsim { visibility: hidden; }
+/* ---------- the Tell sheet (syncTell in js/chat.js, on js/sheet.js) ----------
+   The composer is the sheet's footer, in the thumb zone. The thread is the one scroller. While the slash menu is open it takes the thread's place, so the field is
+   never pushed out: the footer is what shrinks (the menu, at most 40 % of the visual viewport), never the composer. */
+.chatsheet { min-height: min(100%, calc(224px + var(--sa-b))); }
+.chatsheet .sheet-body { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.chatsheet .logwrap { flex: 1 1 0; min-height: 0; }
+.chatsheet .sheet-foot { flex: 0 1 auto; min-height: 0; flex-wrap: nowrap; flex-direction: column; gap: 0; padding: 8px 12px; }
+.chatsheet .composer2 { flex: 1 1 auto; min-height: 0; gap: 4px; }
+.chatsheet .composer2 > :not(.slash) { flex: none; }
+.chatsheet .slash { flex: 0 1 auto; min-height: 0; max-height: calc(var(--vv-h) * .4); }
+.chatsheet:has(.slash:not([hidden])) .sheet-body { display: none; }
+.chatsheet[data-detent='peek'] .cfoot { display: none; }
+.chatsheet .csend { min-height: 48px; }
+html[data-kb='open'] .chatsheet { padding-bottom: 0; }
+/* the prototype aid for a mouse window: a drawn keyboard under the composer (a touch device has the real one) */
+.kbsim { display: none; flex: none; height: 240px; overflow: hidden; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; background: var(--s2); border-top: var(--hair) solid var(--line); }
+.chatsheet[data-kbsim] .kbsim { display: flex; }
 .kbnote { margin: 0; color: var(--text-2); font-size: var(--fs-cap); }
 .kbkeys { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; min-height: 0; overflow: hidden; }
 .kbrow { display: flex; justify-content: center; gap: 4px; }
@@ -322,7 +325,7 @@ details.panel > .body { padding: 4px 16px 16px; }
 .vlist { max-height: 22rem; overflow-y: auto; }
 
 @media (forced-colors: active) {
-  .ccard, .msg.you, .srow, .str, .cnote, .chatsheet, .dstrip, .crow2, .tellfield { border: 1px solid CanvasText; }
+  .ccard, .msg.you, .srow, .str, .cnote, .dstrip, .crow2, .tellfield { border: 1px solid CanvasText; }
   .srow[aria-selected='true'], .crow2 button:focus-visible { outline: 2px solid Highlight; }
   .spin[aria-pressed='true'] { color: Highlight; }
   .crow2:has(.cinput:focus) { border-color: Highlight; outline-color: Highlight; }
@@ -332,15 +335,25 @@ details.panel > .body { padding: 4px 16px 16px; }
   .rtl .tl-row[aria-selected='true']::after { border-color: Highlight; }
 }
 :root[data-theme='forced'] .msg.you { border: var(--hair) solid var(--line-strong); }
-.chatsheet[data-kb='1'] { --sh: 62%; }
-.chatsheet[data-kb='1'][data-exp='1'] { --sh: 94%; }
-.cs-main .composer2 { max-height: none; overflow: visible; }
-.cs-main .slash { max-height: 9.8rem; }
-.cs-head .btn svg { transform: scaleX(-1); }
 .rtl .tl-row { flex: none; }
-.chatsheet[data-kb='1'] { --kbh: min(240px, 38%); }
-.chatsheet[data-kb='1'] .logwrap { min-height: 0; }
-.cs-main { overflow: hidden; }
 .logwrap { overflow: hidden; }
-@media (max-height: 700px) { .chatsheet[data-kb='1'] .logwrap { display: none; } }
 
+
+/* ---------- phone ---------- */
+@container dev ((max-width: 599px) or style(--phone: 1)) {
+  /* the Chat page header is one row: scope, mission, what needs you, More (the three views live in More) */
+  .cb { flex-wrap: nowrap; min-height: 52px; padding: 4px 8px; gap: 4px; }
+  .cb-scope { order: 0; flex: 0 1 auto; min-width: 0; max-width: 40%; }
+  .cb-mission { order: 1; flex: 0 1 auto; min-width: 0; max-width: 40%; }
+  .cb-state, .cb-sum { display: none; }
+  .cb-gap { display: block; order: 2; }
+  .cb-need { order: 3; margin-left: 0; flex: none; padding-inline: 10px; }
+  .cb-more { order: 4; flex: none; }
+  .cb-nw { display: none; }
+  .cb-views { padding-inline: 12px; }
+  .chatpage .cp-thread { scrollbar-gutter: auto; padding-bottom: 16px; }
+}
+/* with the keyboard up the Chat page is what is left of the visual viewport, so its pinned composer sits on the keyboard; the bar steps aside */
+html[data-kb='open'] .bottombar { display: none; }
+html[data-kb='open'] .chatpage .logwrap { min-height: 0; }
+html[data-kb='open'][data-phone='true'] .app:has(.chatpage):not(:has(.sheet-wrap)) { bottom: var(--vv-bottom); }

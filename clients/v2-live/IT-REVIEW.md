@@ -2146,6 +2146,12 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - A kind of extension is offered only where a harness supports it. → Un tipo di estensione è offerto solo dove un harness lo supporta.
 - The new ledes of Usage, Extensions and Launch settings, and the three notes that name a harness (Security approval mode, git push note, Health fix line "Or put another {x} account first in its failover order.") are in the same block of the dictionary.
 
+## Phone sheets and composer, slice C (2026-10-28): to review
+- Simulated keyboard / Hide keyboard (the drawn keyboard of a mouse window, a prototype aid) → Tastiera simulata / Nascondi la tastiera
+- Show (the group of views in the Chat page's More menu on a phone: Conversation, Receipts, Context) → Mostra (the three view names are the existing Conversazione, Ricevute, Contesto)
+- Expand / Collapse (the handle of every sheet, set again after each step) → Espandi / Comprimi (already in the phone dictionary; the label is now translated after each step)
+- The Chat page "Needs you · {n}" on a phone shows the glyph and the count; the full words stay as its accessible name → Richiede te · {n}
+- Decision E03 and the other decision notes (now a one-line summary that opens) → unchanged wording, Decisione E03
 
 ## Phone shell: bar, top bar, Places, safety sheet (slice A) - 2026-10-28
 

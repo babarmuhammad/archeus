@@ -42,3 +42,10 @@
   .pk-o[aria-selected='true'] .pk-l { text-decoration: underline; }
   .pk-b { border-color: CanvasText; }
 }
+
+/* On a phone the listbox is a bottom sheet (js/picker.js openList): the sheet body is the one scroller, so the list itself does not scroll and the search field sticks above it. */
+.sheet .pk-list { overflow: visible; padding: 0 0 8px; }
+.sheet .pk-qw { position: sticky; top: 0; z-index: 1; margin: 0 -16px; padding: 4px 16px 8px; border-bottom: 0; background: var(--s3); }
+.sheet .pk-q { min-height: 48px; }
+.sheet .pk-gh { padding-inline: 0; }
+.sheet .pk-o { scroll-margin-top: 64px; padding-inline: 4px 0; }
