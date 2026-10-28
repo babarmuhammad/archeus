@@ -40,7 +40,7 @@ export function topbarParts({ title, tag, playing, engaged, safetyOpen, on }) {
     h('div', { class: 'safety', 'data-state': engaged ? 'stopped' : 'ok' },
       h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'dialog', 'aria-expanded': safetyOpen ? 'true' : 'false', onclick: on.safety }, h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, engaged ? 'Stopped' : 'Not stopped'))),
     h('button', { class: 'tb-search', type: 'button', 'data-key': 'search', 'aria-label': 'Search or run a command', onclick: on.search }, icon('search', 22))
-  ];
+  ].filter(Boolean);
 }
 
 // ---------- sheets ----------
