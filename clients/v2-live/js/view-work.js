@@ -2,6 +2,7 @@
 // The address carries the state: #/work?view=running&project=notes&as=graph. Saved views, the project filter, the counts and the rows come from page-model.js.
 // List and pane show the same missions and decisions; hover, focus and j/k fill the pane, a click opens the mission (inspector) as before.
 import { h } from './dom.js';
+import { picker } from './picker.js';
 import { present } from '../core-words.js';
 import { tr, translate } from './i18n.js';
 import * as store from './store.js';
@@ -19,11 +20,10 @@ const EMPTY = {
   needs: ['Nothing waits on you.', 'See what is running', 'running'], running: ['Nothing is running.', 'Tell Archeus what to do', 'tell'],
   blocked: ['Nothing is stuck.', 'See what is running', 'running'], done: ['Nothing has finished yet.', 'See what is running', 'running'], all: ['No work yet.', 'Tell Archeus what to do', 'tell']
 };
-let graph = null, closePick = null;
-document.addEventListener('pointerdown', (e) => { if (closePick) closePick(e); }, true);
+let graph = null;
 
 // The graph survives the re-renders the simulation causes; app.js destroys it when the route leaves Work.
-export function leave() { if (graph) graph.destroy(); graph = null; closePick = null; }
+export function leave() { if (graph) graph.destroy(); graph = null; }
 
 function modelOf(sim, pf) {
   const st = sim.state, rank = (m) => ({ needs_you: 0, active: 1, verifying: 1, reviewing: 1, blocked: 2, failed: 2, done: 4 })[present('mission', m.state).cls] ?? 3;
@@ -32,22 +32,6 @@ function modelOf(sim, pf) {
   const asks = Object.values(st.approvals).filter((a) => a.state === 'PENDING' && ms.some((m) => m.id === a.mission));
   for (const a of asks) nodes.push({ id: a.id, kind: 'Decision', label: tr(a.kind === 'plan' ? 'Approve plan' : 'Allow action'), word: tr('Needs you'), project: projName(sim, a.project), state: 'needs-you' });
   return { nodes, edges: asks.map((a) => ({ from: a.mission, to: a.id })), hidden: all.length - ms.length };
-}
-
-// A project filter that scales: one button that opens a searchable list with a count per project, instead of a chip per project.
-function picker(ctx, st, q, counts) {
-  const cur = st.projects.find((p) => p.id === q.project), pop = h('div', { class: 'pick-pop', hidden: !ctx.ui.workPick });
-  const btn = h('button', { class: 'pick-btn', type: 'button', 'aria-haspopup': 'listbox', 'aria-expanded': String(!!ctx.ui.workPick), 'data-key': 'work-project' }, h('span', { class: 'pb-k' }, 'Project'), h('span', { class: 'pb-v' }, cur ? cur.name : 'All projects'), icon('chevron', 16));
-  const opt = (id, name, n) => h('a', { class: 'pick-opt', role: 'option', href: workHref({ view: q.view, project: id, as: q.as }), 'aria-selected': String(id === q.project), onclick: () => { ctx.ui.workProject = id; ctx.ui.workPick = false; }, 'data-name': name.toLowerCase() }, h('span', { class: 'po-n' }, name), h('span', { class: 'po-c' }, String(n)));
-  const list = h('div', { class: 'pick-list', role: 'listbox', 'aria-label': 'Project filter' }, opt(null, 'All projects', counts.all), ...st.projects.map((p) => opt(p.id, p.name, counts.by[p.id] || 0)));
-  const search = h('input', { class: 'pick-search', type: 'search', placeholder: 'Find a project', 'aria-label': 'Find a project', oninput: (e) => { const v = e.target.value.trim().toLowerCase(); list.querySelectorAll('.pick-opt').forEach((o) => { o.hidden = !!v && !o.dataset.name.includes(v); }); } });
-  const set = (on) => { ctx.ui.workPick = on; pop.hidden = !on; btn.setAttribute('aria-expanded', String(on)); if (on) { search.value = ''; search.dispatchEvent(new Event('input')); search.focus(); } };
-  btn.addEventListener('click', () => set(pop.hidden));
-  pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); set(false); btn.focus(); } });
-  pop.append(search, list);
-  const wrap = h('div', { class: 'pick-wrap' }, btn, pop);
-  closePick = (e) => { if (wrap.isConnected && !pop.hidden && !wrap.contains(e.target)) set(false); };
-  return wrap;
 }
 
 export function render(ctx) {
@@ -102,7 +86,10 @@ export function render(ctx) {
   const setProject = (id) => { ctx.ui.workProject = id; ctx.nav(workHref({ view: q.view, project: id, as: q.as })); };
   const chip = (key, label, on, go) => h('button', { class: 'chip', type: 'button', 'aria-pressed': String(on), 'data-key': key, onclick: go }, label);
   const allChip = chip('work-all', pn ? 'Show all projects' : 'All projects', !pn, () => setProject(null));
-  const filter = st.projects.length > CHIPS ? h('div', { class: 'wk-filter' }, picker(ctx, st, q, counts), pn ? allChip : null)
+  // Past six projects the chips give way to the shared searchable picker, with the count per project beside each name.
+  const pick = st.projects.length > CHIPS ? picker({ key: 'work-project', label: tr('Project filter'), cls: 'pick', value: pf || '', onPick: (v) => setProject(v || null),
+    items: [{ value: '', label: tr('All projects'), meta: String(counts.all) }].concat(st.projects.map((p) => ({ value: p.id, label: p.name, meta: String(counts.by[p.id] || 0) }))) }) : null;
+  const filter = st.projects.length > CHIPS ? h('div', { class: 'wk-filter' }, pick, pn ? allChip : null)
     : h('div', { class: 'chips', role: 'group', 'aria-label': 'Project filter' }, allChip, ...st.projects.map((p) => chip('work-p-' + p.id, p.name, pf === p.id, () => setProject(pf === p.id ? null : p.id))));
   const layoutOpt = (as, label) => h('a', { class: 'seg-opt', href: workHref({ view: q.view, project: pf, as }), 'aria-current': q.as === as ? 'true' : null, 'data-key': 'work-as-' + as }, label);
   const total = entries.length, need = counts.needs;

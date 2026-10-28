@@ -1,12 +1,15 @@
 // The chat surfaces (S4): the full Chat page, the bar docked on Now, and the phone chat sheet. One composer per place, cached across renders so
 // typing, focus and the caret survive a redraw. The slash menu is a combobox: focus stays in the field, the menu never takes it.
 import { h, clear } from './dom.js';
-import { icon } from './icons.js';
+import { picker, popButton } from './picker.js';
+import { icon, glyph } from './icons.js';
 import * as store from './store.js';
 import { createChat } from '../chat-engine.js';
 import * as SL from '../slash.js';
 import { clockLabel } from '../sim.js';
-import { head, dnote, panel } from './views.js';
+import { hrefFor } from './ax.js';
+import { spineOf, isOpenMission } from '../spine-model.js';
+import { present } from '../core-words.js';
 import { L, C, lang, msgNode, cardNode, clsChip, clsLabel } from './chat-cards.js';
 
 const RKEY = 'archeus-v2-live-recents';
@@ -30,6 +33,7 @@ function actions(ctx) {
   const s = S4(ctx);
   return {
     act(id, what, data) { const r = s.eng.card(id, what, data); if (!r.ok) ctx.toast(L('Not done: {r}', 'Non fatto: {r}', { r: r.reason })); ctx.render(); if (r.nav) ctx.nav(r.nav); return r; },
+    unqueue(id) { s.eng.unqueue(id); ctx.render(); },
     retry(id) { const r = s.eng.retry(id); if (r) setTimeout(() => { settle(ctx, s.eng.finish(id)); }, 500); ctx.render(); }
   };
 }
@@ -55,7 +59,7 @@ export function threadNode(ctx, opts = {}) {
   if (opts.last) { const out = []; for (let i = list.length - 1; i >= 0 && out.length < 2; i--) { out.unshift(list[i]); if (list[i].from === 'you') break; } list = out; }
   const log = h('div', { class: 'msgs ' + (opts.cls || ''), role: 'log', 'aria-live': 'polite', 'aria-label': L('Conversation', 'Conversazione'), tabindex: opts.last ? null : '0' },
     s.eng.hidden() ? h('p', { class: 'cut' }, L('Earlier messages hidden on this screen. History kept.', 'Messaggi precedenti nascosti su questo schermo. La cronologia resta.')) : null,
-    ...list.map((m) => msgNode(ctx, m, A.act, A.retry)),
+    ...list.map((m) => msgNode(ctx, m, A.act, A.retry, A.unqueue)),
     !list.length ? h('p', { class: 'intro' }, L('Ask a question, capture an idea, or describe work.', 'Fai una domanda, cattura un\'idea o descrivi un lavoro.')) : null);
   if (!opts.last) {
     log.addEventListener('scroll', () => { s.pinned = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (s.pinned) { s.unread = 0; const b = log.parentElement && log.parentElement.querySelector('.newreply'); if (b) b.hidden = true; } });
@@ -68,6 +72,20 @@ export function threadNode(ctx, opts = {}) {
   return log;
 }
 const newReply = (log) => h('button', { class: 'btn newreply', type: 'button', hidden: true, onclick: (e) => { log.scrollTop = log.scrollHeight; e.currentTarget.hidden = true; } }, L('New reply', 'Nuova risposta'));
+
+// ---------- the scope picker: General or a project. It is the conversation list: projects that wait for you come first, a long list is searchable ----------
+const scopeValue = (s) => (s.dest === 'general' ? 'general' : 'work:' + s.project);
+function scopeItems(ctx) {
+  const st = ctx.sim.state, need = new Set(Object.values(st.approvals).filter((a) => a.state === 'PENDING').map((a) => a.project));
+  const row = (p, group) => ({ value: 'work:' + p.id, label: p.name, group });
+  return [{ value: 'general', label: L('General', 'Generale'), meta: L('Not project memory', 'Non è memoria di progetto') }].concat(
+    st.projects.filter((p) => need.has(p.id)).map((p) => row(p, L('Needs you', 'Richiede te'))), st.projects.filter((p) => !need.has(p.id)).map((p) => row(p, L('Projects', 'Progetti'))));
+}
+function scopePicker(ctx, key, o) {
+  const s = S4(ctx);
+  return picker({ key, label: L('Destination', 'Destinazione'), prefix: o.prefix, cls: o.cls, up: o.up, value: scopeValue(s), items: scopeItems(ctx),
+    onPick: (v) => { if (v === 'general') s.dest = 'general'; else { s.dest = 'work'; s.project = v.slice(5); } if (s.onScope) s.onScope(); ctx.render(); } });
+}
 
 // ---------- the composer: destination, field, slash combobox ----------
 let uid = 0;
@@ -82,26 +100,35 @@ export function composer(ctx, where) {
   const notice = h('div', { class: 'cnote', role: 'status', hidden: true });
   const live = h('p', { class: 'vh', role: 'status', 'aria-live': 'polite' });
   const dest = h('p', { class: 'cdest' });
-  const scope = h('select', { class: 'cscope', 'aria-label': 'Destination', onchange: (e) => { const v = e.target.value; if (v === 'general') s.dest = 'general'; else { s.dest = 'work'; s.project = v.slice(5); } fillDest(); } });
+  const hint = h('p', { class: 'chint', 'aria-live': 'polite', hidden: true });
+  const foot = h('div', { class: 'cfoot' }, dest, where === 'dock' ? null : hint);
+  const scope = scopePicker(ctx, 'chat-scope-' + where, { cls: 'cscope', prefix: L('To', 'A'), up: true });
   const slashBtn = h('button', { class: 'btn cslash', type: 'button', 'aria-label': 'Commands', onclick: () => { input.value = '/'; ctx.ui.draft = '/'; input.focus(); onInput(); } }, '/');
   const send = h('button', { class: 'btn primary csend', type: 'button', onclick: () => submit() }, '');
   const stop = h('button', { class: 'btn danger cstop', type: 'button', onclick: () => stopNow(ctx) }, '');
   const maxRows = () => { const hgt = (document.getElementById('app') || {}).clientHeight || 800; return where === 'sheet' ? (hgt < 700 ? 2 : 3) : hgt < 760 ? 3 : 5; };
-  const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, live, h('div', { class: 'crow2' }, scope, input, slashBtn, send, where === 'sheet' ? null : stop), dest);
+  const root = h('div', { class: 'composer2', 'data-where': where }, notice, argline, list, live, h('div', { class: 'crow2' }, scope, input, where === 'dock' ? hint : null, slashBtn, send, where === 'sheet' ? null : stop), foot);
 
   function fillDest() {
     const a = SL.parse(input.value || '');
     const pn = (ctx.sim.state.projects.find((p) => p.id === s.project) || { name: s.project }).name;
-    dest.textContent = a && a.kind === 'command' ? L('Destination: Command · /{n} · {c}', 'Destinazione: Comando · /{n} · {c}', { n: a.cmd.name, c: clsLabel(a.cmd.cls) })
-      : s.dest === 'general' ? L('Destination: General · not project memory. Nothing here is saved to a project.', 'Destinazione: Generale · non è memoria di progetto. Qui non si salva nulla in un progetto.')
-        : L('Destination: Work · {p}. Replies and records stay in this project.', 'Destinazione: Lavoro · {p}. Risposte e record restano in questo progetto.', { p: pn });
-    scope.value = s.dest === 'general' ? 'general' : 'work:' + s.project;
+    dest.textContent = a && a.kind === 'command' ? L('Command · /{n} · {c}', 'Comando · /{n} · {c}', { n: a.cmd.name, c: clsLabel(a.cmd.cls) })
+      : s.dest === 'general' ? L('Nothing here is saved to a project.', 'Qui non si salva nulla in un progetto.')
+        : L('Replies and records stay in {p}.', 'Risposte e record restano in {p}.', { p: pn });
+    scope.update({ value: scopeValue(s), items: scopeItems(ctx), prefix: L('To', 'A'), label: L('Destination', 'Destinazione') });
+  }
+  // While a mission runs in this scope: the two keys, and how many messages wait for the step. Hidden otherwise.
+  const mod = /Mac|iPhone|iPad/.test(navigator.platform || '') ? '⌘' : 'Ctrl+';
+  function drawHint() {
+    const live = s.dest === 'work' && s.eng.running(s.project).length, n = s.dest === 'work' ? s.eng.queued(s.project).length : 0;
+    hint.hidden = !live && !n;
+    hint.textContent = [live ? L('Enter queue · {k}Enter steer', 'Invio accoda · {k}Invio guida', { k: mod }) : '', n ? L('{n} queued', '{n} in coda', { n }) : ''].filter(Boolean).join(' · ');
   }
   function refresh() {
     input.placeholder = L('Tell Archeus what to do…', 'Dì ad Archeus cosa fare…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
-    scope.setAttribute('aria-label', L('Destination', 'Destinazione')); slashBtn.setAttribute('aria-label', L('Commands', 'Comandi'));
+    slashBtn.setAttribute('aria-label', L('Commands', 'Comandi')); slashBtn.title = L('Commands (type /)', 'Comandi (scrivi /)'); send.title = L('Send (Enter)', 'Invia (Invio)');
+    drawHint();
     send.textContent = L('Send', 'Invia'); stop.textContent = L('Stop', 'Ferma'); stop.setAttribute('aria-label', L('Stop: propose an emergency stop', 'Ferma: proponi un arresto d\'emergenza'));
-    clear(scope).append(...ctx.sim.state.projects.map((p) => h('option', { value: 'work:' + p.id }, L('Work · {p}', 'Lavoro · {p}', { p: p.name }))), h('option', { value: 'general' }, L('General · not project memory', 'Generale · non è memoria di progetto')));
     if (document.activeElement !== input && input.value !== (ctx.ui.draft || '')) input.value = ctx.ui.draft || '';
     fillDest(); draw();
   }
@@ -164,7 +191,7 @@ export function composer(ctx, where) {
     if (M.open && e.key === 'ArrowDown') { e.preventDefault(); M.active = (M.active + 1) % n; while (M.rows[M.active].kind === 'cmd' && M.rows[M.active].c.unavailable) M.active = (M.active + 1) % n; draw(); }
     else if (M.open && e.key === 'ArrowUp') { e.preventDefault(); M.active = (M.active + n - 1) % n; while (M.rows[M.active].kind === 'cmd' && M.rows[M.active].c.unavailable) M.active = (M.active + n - 1) % n; draw(); }
     else if (M.open && e.key === 'Tab' && !e.shiftKey) { const r = M.rows[M.active]; if (r && r.kind === 'cmd' && !r.c.unavailable) { e.preventDefault(); input.value = '/' + SL.nameIn(r.c, lang()) + ' '; ctx.ui.draft = input.value; M.expanded = false; draw(); fillDest(); } else if (r && r.kind === 'ref') { e.preventDefault(); choose(); } }
-    else if (e.key === 'Enter') { e.preventDefault(); if (M.open) choose(); else submit(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (M.open) choose(); else submit(false, e.metaKey || e.ctrlKey ? 'steer' : 'queue'); }
     else if (e.key === 'Escape') { if (M.open) { e.preventDefault(); e.stopPropagation(); M.open = false; clear(list).hidden = true; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); } else if (!argline.hidden) { argline.hidden = true; e.stopPropagation(); } }
   });
 
@@ -175,12 +202,13 @@ export function composer(ctx, where) {
     if (r.notice) { notice.append(h('span', null, C(r.notice))); if (r.href) notice.append(h('a', { class: 'btn', href: r.href }, L('Open', 'Apri'))); return; }
     notice.hidden = true;
   }
-  function run(text, force) {
-    const o = { dest: s.dest, project: s.project, force: !!force, fail: s.fail };
+  function run(text, force, mode) {
+    const o = { dest: s.dest, project: s.project, force: !!force, fail: s.fail, mode: mode || 'queue', mission: where === 'page' && s.page ? s.page.mission : null };
     const slow = s.slow; s.fail = false; s.slow = false;
     const r = s.eng.send(text, o);
     if (!r.ok) { if (r.menu) { input.value = '/'; draw(); return r; } if (r.arg) { M.mode = 'arg'; draw(); return r; } showNotice(r); return r; }
     s.touched = true; s.pinned = true;
+    if (r.queued || r.steering) live.textContent = r.queued ? L('Queued. It is handled after the current step.', 'In coda. Viene gestito dopo il passo corrente.') : L('Steering. Waiting for Core to acknowledge; this is simulated.', 'Guida in corso. In attesa che il Core confermi; è simulato.');
     if (text === input.value) { input.value = ''; ctx.ui.draft = ''; }
     notice.hidden = true; M.open = false;
     if (r.cmd) { s.recents = [r.cmd].concat(s.recents.filter((x) => x !== r.cmd)).slice(0, 5); saveRecents(s.recents); }
@@ -189,7 +217,7 @@ export function composer(ctx, where) {
     ctx.render();
     return r;
   }
-  function submit(force) { return run(input.value, force); }
+  function submit(force, mode) { return run(input.value, force, mode); }
 
   const comp = { root, input, refresh, run, draw, setText(t) { input.value = t; ctx.ui.draft = t; fillDest(); draw(); input.focus(); } };
   s.comps[where] = comp; refresh();
@@ -197,11 +225,8 @@ export function composer(ctx, where) {
 }
 
 // ---------- the Chat page ----------
-import { spineInspector } from './spine.js';
-import { spineOf, isOpenMission } from '../spine-model.js';
-import { present } from '../core-words.js';
-import { translate } from './i18n.js';
-
+// One thread. Scope (General or a project) is chosen in the composer or the bar above the thread: that picker is the history. The bar holds the
+// mission filter, the mission's state in one line, a link to what waits for you, and a menu for privacy and the simulation switches.
 function chatPageEntries(s, st) {
   let project = 'archeus', mission = null, general = false;
   return s.eng.thread().map((m) => {
@@ -212,134 +237,141 @@ function chatPageEntries(s, st) {
   });
 }
 
+const missionItems = (st, project, pending) => {
+  const need = new Set(pending.map((a) => a.mission)), all = Object.values(st.missions).filter((m) => m.project === project);
+  const row = (m, group) => ({ value: m.id, label: m.title, meta: present('mission', m.state).label, group });
+  return [{ value: '', label: L('All missions', 'Tutte le missioni') }].concat(
+    all.filter((m) => need.has(m.id)).map((m) => row(m, L('Needs you', 'Richiede te'))),
+    all.filter((m) => !need.has(m.id) && isOpenMission(m)).map((m) => row(m, L('Open', 'Aperte'))),
+    all.filter((m) => !need.has(m.id) && !isOpenMission(m)).map((m) => row(m, L('Closed', 'Chiuse'))));
+};
+
+const spineDots = (m) => { const sp = spineOf(m.state, m.held_from); return h('span', { class: 'cb-spine', role: 'img', 'aria-label': sp.text }, ...sp.marks.map((k) => h('i', { 'data-k': k.kind, 'data-c': k.cls || null }))); };
+const spineLine = (m) => { const sp = spineOf(m.state, m.held_from); return h('span', { class: 'cb-state' }, spineDots(m), h('span', null, present('mission', m.state).label + (sp.station ? L(' · step {n} of 6', ' · passo {n} di 6', { n: sp.station }) : ''))); };
+// Relative time on the simulation clock; the exact time is the tooltip.
+const ago = (ms) => { const m = Math.floor(ms / 60000); return m < 1 ? L('just now', 'adesso') : m < 60 ? L('{n} min ago', '{n} min fa', { n: m }) : L('{n} h ago', '{n} h fa', { n: Math.floor(m / 60) }); };
+const stamp = (st, at) => h('time', { class: 'cp-tm', title: clockLabel(at, true) }, ago(st.clock - at));
+const STEPS = /^mission\.(state_changed|steer_requested|steer_acknowledged)$/;
+const STEER = { 'mission.steer_requested': () => L('Steer asked (simulated)', 'Guida richiesta (simulata)'), 'mission.steer_acknowledged': () => L('Steer acknowledged (simulated)', 'Guida confermata (simulata)') };
+const TABS = [['chat', 'Conversation', 'Conversazione'], ['receipts', 'Receipts', 'Ricevute'], ['context', 'Context', 'Contesto']];
+
 export function viewChat(ctx) {
   const s = S4(ctx), st = ctx.sim.state;
-  const P = s.page || (s.page = { search: '', commands: '', seen: new Set(), read: new Set(), open: {}, pins: [], sheet: null, switched: false, scroll: 0, bottom: true });
-  if (P.messages && P.messages !== st.messages) { P.pins = []; P.seen.clear(); P.read.clear(); P.mission = null; P.lastYou = null; P.bottom = true; }
+  const P = s.page || (s.page = { seen: new Set(), mission: null, switched: false, scroll: 0, bottom: true, tab: 'chat', all: false });
+  if (P.messages && P.messages !== st.messages) { P.seen.clear(); P.mission = null; P.lastYou = null; P.bottom = true; }
   P.messages = st.messages;
-  const comp = composer(ctx, 'page'), A = actions(ctx), entries = chatPageEntries(s, st);
+  s.onScope = () => { P.mission = null; P.switched = true; P.scroll = 0; P.bottom = true; };
+  const comp = composer(ctx, 'page'), A = actions(ctx), entries = chatPageEntries(s, st), general = s.dest === 'general';
   const lastYou = entries.filter((e) => e.m.from === 'you').at(-1)?.m.id;
   if (P.lastYou && P.lastYou !== lastYou) P.mission = null;
   P.lastYou = lastYou;
   const oldCards = new Map([...document.querySelectorAll('.chatpage .msg')].map((el) => [el.dataset.key, el.querySelector('.ccard')?.getBoundingClientRect().height]));
-  const scrollers = ':is(.cp-rail, .cp-context, .cp-sheet, .cp-commands)', scrollKey = (el) => el.className + (el.closest('.cp-sheet') ? '/sheet' : '');
-  const oldScroll = new Map([...document.querySelectorAll('.chatpage ' + scrollers)].map((el) => [scrollKey(el), el.scrollTop]));
   const project = st.projects.find((p) => p.id === s.project);
-  const focused = s.dest !== 'general' && st.missions[P.mission]?.project === s.project ? st.missions[P.mission] : null;
-  const title = s.dest === 'general' ? L('General', 'Generale') : focused?.title || project?.name || s.project;
-  const visible = entries.filter((e) => s.dest === 'general' ? e.general : !e.general && e.project === s.project && (!focused || e.mission === focused.id));
-  if (P.bottom) visible.forEach((e) => P.read.add(e.m.id));
-  const select = (dest, id, mid) => {
-    s.dest = dest; if (id) s.project = id;
-    P.mission = mid || null; P.sheet = null; P.switched = true; P.scroll = 0; P.bottom = true;
-    ctx.render(); s.comps.page.input.focus({ preventScroll: true });
-  };
-  const pending = Object.values(st.approvals).filter((a) => a.state === 'PENDING');
-  function destinations(sheet = false) {
-    const rows = h('div', { class: 'cp-destinations' });
-    const search = h('input', { type: 'search', class: 'cp-search', placeholder: 'Search conversations', 'aria-label': 'Search conversations', 'data-key': sheet ? 'cp-sheet-search' : 'cp-search', value: P.search });
-    const draw = () => {
-      clear(rows); let count = 0;
-      const row = (label, dest, id, mid) => {
-        if (P.search && !label.toLocaleLowerCase().includes(P.search.toLocaleLowerCase())) return;
-        count++;
-        const active = dest === s.dest && (dest === 'general' || id === s.project && (mid || null) === (focused?.id || null));
-        const need = dest !== 'general' && pending.some((a) => mid ? a.mission === mid : a.project === id);
-        const unread = entries.filter((e) => e.m.from === 'archeus' && !P.read.has(e.m.id) && (dest === 'general' ? e.general : !e.general && e.project === id && (!mid || e.mission === mid))).length;
-        rows.append(h('button', { class: 'cp-destination', type: 'button', 'aria-current': active ? 'true' : null, 'data-key': 'cp-dest-' + (mid || id || dest) + (sheet ? '-sheet' : ''), onclick: () => select(dest, id, mid) },
-          h('span', { class: 'cp-name' }, label), need ? h('span', { class: 'cp-needs' }, L('Needs you', 'Richiede te')) : null,
-          unread ? h('span', { class: 'cp-unread', 'aria-label': L('{n} unread', '{n} non letti', { n: unread }) }, String(unread)) : null));
-      };
-      row(L('General', 'Generale'), 'general');
-      const needs = (p) => pending.some((a) => a.project === p.id), many = st.projects.length > 8 && !P.search;
-      rows.append(h('h3', null, 'Projects')); [...st.projects].sort((a, b) => needs(b) - needs(a)).forEach((p) => row(p.name, 'work', p.id));
-      rows.append(h('h3', null, 'Missions'));
-      st.projects.forEach((p) => {
-        if (many && p.id !== s.project) return;
-        const missions = Object.values(st.missions).filter((m) => m.project === p.id);
-        if (!missions.some((m) => !P.search || m.title.toLocaleLowerCase().includes(P.search.toLocaleLowerCase()))) return;
-        rows.append(h('p', { class: 'cp-group' }, p.name)); missions.forEach((m) => row(m.title, 'work', p.id, m.id));
-      });
-      if (many) rows.append(h('p', { class: 'sp-text' }, 'Missions of the other projects: search by title.'));
-      if (!count) rows.append(h('p', { class: 'sp-text' }, 'No conversations match'));
-      translate(rows);
+  const focused = !general && st.missions[P.mission]?.project === s.project ? st.missions[P.mission] : null;
+  const visible = entries.filter((e) => general ? e.general : !e.general && e.project === s.project && (!focused || e.mission === focused.id));
+  const pending = Object.values(st.approvals).filter((a) => a.state === 'PENDING'), here = general ? [] : pending.filter((a) => a.project === s.project);
+  const open = general ? [] : Object.values(st.missions).filter((m) => m.project === s.project && isOpenMission(m));
+
+  // ----- the bar above the thread -----
+  const scopeHead = scopePicker(ctx, 'chat-scope-head', { cls: 'cb-scope' });
+  const missionPick = general ? null : picker({ key: 'chat-mission', label: L('Mission', 'Missione'), cls: 'cb-mission', value: focused ? focused.id : '', items: missionItems(st, s.project, pending), text: focused ? focused.title : L('All missions', 'Tutte le missioni'),
+    onPick: (v) => { P.mission = v || null; P.switched = true; P.bottom = true; ctx.render(); } });
+  const summary = general ? L('Not project memory', 'Non è memoria di progetto')
+    : focused ? null : open.length ? L('{n} open', '{n} aperte', { n: open.length }) : L('Nothing open', 'Niente di aperto');
+  const more = popButton({ key: 'chat-more', label: L('More', 'Altro'), glyph: 'more', cls: 'cb-more', end: true, title: L('More', 'Altro'), build: (pop) => {
+    const fix = (key, label) => {
+      const on = h('span', { class: 'fx-on' }, s[key] ? icon('check', 16) : null);
+      const b = h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': s[key] ? 'true' : 'false', onclick: () => { s[key] = !s[key]; b.setAttribute('aria-pressed', s[key] ? 'true' : 'false'); clear(on).append(...(s[key] ? [icon('check', 16)] : [])); } }, on, label);
+      return b;
     };
-    search.addEventListener('input', () => { P.search = search.value; draw(); }); draw();
-    return h('div', { class: 'cp-rail-content' }, h('h2', null, 'Conversations'), search, rows);
-  }
-  function context(sheet = false) {
-    const active = focused || (s.dest !== 'general' && Object.values(st.missions).find((m) => m.project === s.project && isOpenMission(m)));
-    const missionSpine = active ? spineInspector(active.state, active.held_from) : null;
-    if (active) {
-      const sp = spineOf(active.state, active.held_from);
-      missionSpine.querySelectorAll('li').forEach((row, i) => {
-        const mark = sp.marks[i];
-        const word = mark.kind === 'passed' ? 'Completed' : mark.kind === 'ahead' ? 'Waiting' : mark.kind === 'unknown' ? 'Position unknown' : mark.kind === 'none' ? 'Cancelled' : present('mission', active.state).label;
-        row.append(h('span', { class: 'cp-phase-word' }, word));
-      });
-    }
-    const commands = h('div', { class: 'cp-commands' });
-    const search = h('input', { type: 'search', class: 'cp-search', placeholder: 'Search commands', 'aria-label': 'Search commands', 'data-key': sheet ? 'cp-cmd-sheet' : 'cp-cmd', value: P.commands });
-    const draw = () => {
-      clear(commands);
-      const hit = SL.COMMANDS.filter((c) => !c.unavailable && ('/' + c.name + ' /' + c.alias + ' ' + SL.descOf(c, lang())).toLocaleLowerCase().includes(P.commands.toLocaleLowerCase()));
-      hit.forEach((c) => commands.append(h('button', { class: 'cp-command', type: 'button', onclick: () => { P.sheet = null; ctx.render(); s.comps.page.setText('/' + SL.nameIn(c, lang()) + (c.arg === 'none' ? '' : ' ')); } },
-        h('span', { class: 'mono' }, '/' + SL.nameIn(c, lang())), clsChip(c.cls), h('span', { class: 'cp-command-desc' }, SL.descOf(c, lang())))));
-      if (!hit.length) commands.append(h('p', { class: 'sp-text' }, 'No commands match'));
-      translate(commands);
-    };
-    search.addEventListener('input', () => { P.commands = search.value; draw(); }); draw();
-    const pins = P.pins.map((id) => entries.find((e) => e.m.id === id)).filter((e) => e && !e.general && e.project === s.project);
-    return h('div', { class: 'cp-context-content' },
-      h('section', null, h('h2', null, 'Current state'), h('p', { class: 'cp-context-title' }, title), h('p', { class: 'sp-text' }, s.dest === 'general' ? L('General · not project memory', 'Generale · non è memoria di progetto') : project?.note || ''), st.estop.engaged ? h('p', { class: 'cp-needs' }, L('Emergency stop engaged', 'Arresto di emergenza attivo')) : null),
-      h('section', null, h('h2', null, 'Active mission'), active ? [h('a', { class: 'cp-link', href: '#/work/' + active.id }, active.title), missionSpine] : h('p', { class: 'sp-text' }, 'No active mission')),
-      h('section', null, h('h2', null, 'Pinned decisions'), pins.length && s.dest !== 'general' ? pins.map((e) => h('button', { class: 'cp-command', type: 'button', onclick: () => { P.sheet = null; P.mission = null; ctx.render(); const el = document.querySelector('[data-key="msg-' + e.m.id + '"]'); el?.scrollIntoView({ block: 'center', behavior: 'instant' }); el?.focus({ preventScroll: true }); } }, L('Open decision', 'Apri la decisione'), h('span', { class: 'cp-command-desc' }, e.m.c ? C(e.m.c) : e.m.text))) : h('p', { class: 'sp-text' }, 'No pinned decisions')),
-      h('details', { class: 'cp-disclosure cp-cmdref', open: !!P.open.commands, ontoggle: (e) => { P.open.commands = e.currentTarget.open; } }, h('summary', { 'data-key': sheet ? 'cp-cmdref-sheet' : 'cp-cmdref' }, 'Command reference'), h('div', { class: 'cp-cmdref-body' }, search, commands)));
-  }
+    pop.classList.add('cb-menu');
+    const first = fix('slow', L('Slow reply (3 s)', 'Risposta lenta (3 s)'));
+    pop.append(h('h3', { class: 'pk-gh' }, L('Privacy and storage', 'Privacy e conservazione')),
+      h('p', { class: 'cb-note' }, L('Retention: Unknown. “Not project memory” does not mean “not stored”. Account selected by Core. Usage: Unknown.', 'Conservazione: Sconosciuta. “Non è memoria di progetto” non vuol dire “non archiviato”. Account scelto dal Core. Utilizzo: Sconosciuto.')),
+      h('h3', { class: 'pk-gh' }, L('Simulation fixtures', 'Scenari di simulazione')), h('div', { class: 'cb-fix' }, first, fix('fail', L('Failed send', 'Invio fallito'))));
+    return first;
+  } });
+  const tab = P.tab;
+  const bar = h('header', { class: 'cb' }, h('h1', { class: 'vh' }, L('Chat', 'Chat')), scopeHead, missionPick,
+    focused ? spineLine(focused) : summary ? h('span', { class: 'cb-sum' }, summary) : null,
+    h('span', { class: 'cb-gap' }),
+    here.length ? h('a', { class: 'btn cb-need', href: '#/work/' + here[0].id, 'data-key': 'chat-needs' }, glyph('needs_you'), L('Needs you · {n}', 'Richiede te · {n}', { n: here.length })) : null, more);
+  const tabs = h('div', { class: 'cb-tabs', role: 'tablist', 'aria-label': L('Chat sections', 'Sezioni della chat') }, ...TABS.map(([id, en, it]) => h('button', { class: 'cb-tab', type: 'button', role: 'tab', id: 'cbt-' + id, 'aria-selected': tab === id ? 'true' : 'false', 'aria-controls': 'cbp', tabindex: tab === id ? '0' : '-1', 'data-key': 'chat-tab-' + id,
+    onclick: () => { P.tab = id; ctx.render(); },
+    onkeydown: (e) => { const i = TABS.findIndex((x) => x[0] === id), n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key]; if (n == null) return; e.preventDefault(); P.tab = TABS[(n + TABS.length) % TABS.length][0]; ctx.render(); } }, L(en, it))));
+
+  // ----- the thread -----
   const log = h('div', { class: 'msgs cp-thread', role: 'log', 'aria-live': 'polite', 'aria-label': L('Conversation', 'Conversazione'), tabindex: '0' });
   if (s.eng.hidden()) log.append(h('p', { class: 'cut' }, L('Earlier messages hidden on this screen. History kept.', 'Messaggi precedenti nascosti su questo schermo. La cronologia resta.')));
   visible.forEach(({ m }) => {
-    const node = msgNode(ctx, m, A.act, A.retry); node.tabIndex = -1;
+    const node = msgNode(ctx, m, A.act, A.retry, A.unqueue); node.tabIndex = -1;
     if (!P.switched && P.seen.size && !P.seen.has(m.id)) node.classList.add('cp-arrive');
-    if (m.card && ['approval', 'confirm', 'plan'].includes(m.card.kind)) node.append(h('button', { class: 'btn quiet cp-pin', type: 'button', 'aria-pressed': P.pins.includes(m.id) ? 'true' : 'false', onclick: () => { P.pins = P.pins.includes(m.id) ? P.pins.filter((id) => id !== m.id) : P.pins.concat(m.id); ctx.render(); } }, P.pins.includes(m.id) ? L('Unpin decision', 'Rimuovi decisione dai fissati') : L('Pin decision', 'Fissa decisione')));
     log.append(node);
   });
-  if (!visible.length) log.append(h('div', { class: 'cp-empty' }, h('h2', null, 'No messages here yet'), h('p', null, focused ? 'Mission focus shows linked messages. Replies go to the project.' : L('Ask a question, capture an idea, or describe work.', "Fai una domanda, cattura un’idea o descrivi un lavoro.")), h('button', { class: 'btn', type: 'button', onclick: () => s.comps.page.setText(focused ? '/plan ' + focused.id : '/status') }, L('Draft a command', 'Prepara un comando'))));
-  if (visible.some((e) => e.m.status === 'submitted')) log.append(h('p', { class: 'cp-working', role: 'status' }, 'Archeus is working', h('span', { class: 'cp-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))));
-  const newer = h('button', { class: 'btn newreply', type: 'button', hidden: P.bottom || !visible.some((e) => !P.seen.has(e.m.id)), onclick: () => { P.bottom = true; log.scrollTop = log.scrollHeight; newer.hidden = true; visible.forEach((e) => P.read.add(e.m.id)); } }, L('New reply', 'Nuova risposta'));
-  log.addEventListener('scroll', () => { P.scroll = log.scrollTop; P.bottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (P.bottom) { newer.hidden = true; visible.forEach((e) => P.read.add(e.m.id)); } });
-  const disclosure = (label, ...children) => h('details', { class: 'cp-disclosure', open: !!P.open[label], ontoggle: (e) => { P.open[label] = e.currentTarget.open; } }, h('summary', null, label), h('div', { class: 'cp-disclosure-body' }, ...children));
-  const openSheet = (name) => { P.sheet = name; ctx.render(); };
-  const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false' }, head(ctx, L('Chat', 'Chat')),
-    h('div', { class: 'view chatview' }, h('div', { class: 'chatgrid' },
-      h('aside', { class: 'cp-rail', 'aria-label': 'Conversations' }, destinations()),
-      h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') },
-        h('header', { class: 'cp-thread-head' }, h('div', null, h('h2', null, title), h('p', { class: 'sp-text' }, focused ? 'Mission focus · Replies go to the project' : s.dest === 'general' ? L('General · not project memory', 'Generale · non è memoria di progetto') : L('Work · {p}', 'Lavoro · {p}', { p: project?.name || s.project }))),
-          h('div', { class: 'actions' }, h('button', { class: 'btn cp-switch', type: 'button', 'data-key': 'cp-switch', 'aria-haspopup': 'dialog', onclick: () => openSheet('destinations') }, 'Conversations'), h('button', { class: 'btn cp-context-toggle', type: 'button', 'data-key': 'cp-context', 'aria-haspopup': 'dialog', onclick: () => openSheet('context') }, 'Context'))),
-        h('div', { class: 'logwrap' }, log, newer), comp,
-        h('div', { class: 'cp-footer' }, disclosure('Privacy and storage', h('p', { class: 'sp-text' }, L('Retention: Unknown. “Not project memory” does not mean “not stored”. Account selected by Core. Usage: Unknown.', 'Conservazione: Sconosciuta. “Non è memoria di progetto” non vuol dire “non archiviato”. Account scelto dal Core. Utilizzo: Sconosciuto.'))),
-          disclosure('Simulation fixtures', h('div', { class: 'actions' }, ...[['slow', L('Slow reply (3 s)', 'Risposta lenta (3 s)')], ['fail', L('Failed send', 'Invio fallito')]].map(([key, label]) => h('button', { class: 'btn quiet', type: 'button', 'aria-pressed': s[key] ? 'true' : 'false', onclick: () => { s[key] = !s[key]; ctx.render(); } }, label)))))),
-      h('aside', { class: 'cp-context', 'aria-label': 'Context' }, context()))));
-  if (P.sheet) {
-    const which = P.sheet;
-    const close = () => { P.sheet = null; ctx.render(); document.querySelector('[data-key="' + (which === 'context' ? 'cp-context' : 'cp-switch') + '"]')?.focus(); };
-    const dialog = h('dialog', { class: 'cp-sheet', 'aria-label': which === 'context' ? 'Context' : 'Conversations', oncancel: (e) => { e.preventDefault(); close(); } },
-      h('header', null, h('h2', null, which === 'context' ? 'Context' : 'Conversations'), h('button', { class: 'btn', type: 'button', onclick: close }, L('Close', 'Chiudi'))), which === 'context' ? context(true) : destinations(true));
-    page.append(dialog); ctx.mounts.push(() => { if (!dialog.open) dialog.showModal(); });
+  if (!visible.length) log.append(emptyNode());
+  if (visible.some((e) => e.m.status === 'submitted')) log.append(h('p', { class: 'cp-working', role: 'status' }, L('Archeus is working', 'Archeus sta lavorando'), h('span', { class: 'cp-dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'))));
+  const newer = h('button', { class: 'btn newreply', type: 'button', hidden: P.bottom || !visible.some((e) => !P.seen.has(e.m.id)), onclick: () => { P.bottom = true; log.scrollTop = log.scrollHeight; newer.hidden = true; } }, L('New reply', 'Nuova risposta'));
+  log.addEventListener('scroll', () => { P.scroll = log.scrollTop; P.bottom = log.scrollHeight - log.scrollTop - log.clientHeight < 24; if (P.bottom) newer.hidden = true; });
+
+  // What the empty thread offers: ways to start, what waits for you, what Archeus did last.
+  function emptyNode() {
+    const say = (t) => () => s.comps.page.setText(t);
+    const cmd = (n, tail) => '/' + SL.nameIn(SL.find(n), lang()) + (tail || '');
+    const starters = general ? [[L('Explain a checkpoint', 'Spiega un checkpoint'), L('Explain a checkpoint', 'Spiega un checkpoint')], [L('What can you do?', 'Cosa sai fare?'), cmd('help')]]
+      : [[L('What needs me?', 'Cosa aspetta me?'), cmd('needs')], [L('Status', 'Stato'), cmd('status')], [L('Start a mission…', 'Avvia una missione…'), cmd('mission', ' ')], [L('Capture an idea…', 'Cattura un\'idea…'), cmd('idea', ' ')]];
+    const seen = new Set(), last = general ? [] : st.events.filter((e) => e.project === s.project && e.type === 'mission.state_changed' && st.missions[e.subject.id] && (!focused || e.subject.id === focused.id)).reverse().filter((e) => !seen.has(e.subject.id) && seen.add(e.subject.id)).slice(0, 4);
+    const waits = focused ? here.filter((a) => a.mission === focused.id) : here;
+    return h('div', { class: 'cp-empty' },
+      h('h2', null, general ? L('Ask anything.', 'Chiedi pure.') : L('Nothing said in {p} yet.', 'Ancora nulla detto in {p}.', { p: focused ? focused.title : project?.name || s.project })),
+      h('p', { class: 'cp-sub' }, general ? L('Ask a question. No mission starts from General.', 'Fai una domanda. Da Generale non parte nessuna missione.') : L('Ask, or hand Archeus work. Replies and receipts appear here.', 'Chiedi, o affida un lavoro ad Archeus. Risposte e ricevute compaiono qui.')),
+      h('div', { class: 'cp-starts' }, ...starters.map(([label, text]) => h('button', { class: 'btn cp-start', type: 'button', onclick: say(text) }, label))),
+      waits.length ? h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Waiting for you', 'Aspettano te')), ...waits.map((a) => h('a', { class: 'cp-line', 'data-need': '', href: '#/work/' + a.id }, glyph('needs_you'), h('span', { class: 'cp-lt' }, st.missions[a.mission]?.title || a.id), h('span', { class: 'cp-lw' }, a.kind === 'plan' ? L('Approve this plan?', 'Approvare questo piano?') : L('Allow this action?', 'Consentire questa azione?'))))) : null,
+      last.length ? h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Last receipts', 'Ultime ricevute')), ...last.map((e) => h('a', { class: 'cp-line', href: hrefFor('mission', e.subject.id) }, stamp(st, e.at), h('span', { class: 'cp-lt' }, st.missions[e.subject.id].title), h('span', { class: 'cp-lw' }, present('mission', e.payload.to).label)))) : null);
   }
+
+  // Receipts: what Archeus did here, newest first, each a line you can open.
+  function receiptsNode() {
+    if (general) return h('div', { class: 'cp-empty' }, h('h2', null, L('General keeps no receipts.', 'Generale non tiene ricevute.')), h('p', { class: 'cp-sub' }, L('Answers here do not touch a project. Pick a project to see what Archeus did in it.', 'Le risposte qui non toccano nessun progetto. Scegli un progetto per vedere cosa ha fatto Archeus.')));
+    const evs = st.events.filter((e) => e.project === s.project && STEPS.test(e.type) && st.missions[e.subject.id] && (!focused || e.subject.id === focused.id)).reverse();
+    const shown = P.all ? evs : evs.slice(0, 30), waits = focused ? here.filter((a) => a.mission === focused.id) : here;
+    return h('div', { class: 'cp-scroll' },
+      waits.length ? h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Waiting for you', 'Aspettano te')), ...waits.map((a) => h('a', { class: 'cp-line', 'data-need': '', href: '#/work/' + a.id }, glyph('needs_you'), h('span', { class: 'cp-lt' }, st.missions[a.mission]?.title || a.id), h('span', { class: 'cp-lw' }, a.kind === 'plan' ? L('Approve this plan?', 'Approvare questo piano?') : L('Allow this action?', 'Consentire questa azione?'))))) : null,
+      h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Done by Archeus', 'Fatto da Archeus')),
+        ...(shown.length ? shown.map((e) => h('a', { class: 'cp-line', href: hrefFor('mission', e.subject.id) }, stamp(st, e.at), h('span', { class: 'cp-lt' }, st.missions[e.subject.id].title), h('span', { class: 'cp-lw' }, e.payload.to ? present('mission', e.payload.to).label : STEER[e.type]())))
+          : [h('p', { class: 'cp-sub' }, L('Archeus has not acted here yet.', 'Archeus non ha ancora agito qui.'))]),
+        evs.length > shown.length ? h('button', { class: 'btn quiet cp-more', type: 'button', onclick: () => { P.all = true; ctx.render(); } }, L('Show {n} earlier', 'Mostra {n} precedenti', { n: evs.length - shown.length })) : null));
+  }
+  // Context: the project's missions and the command reference (what the old right column held, one click away).
+  function contextNode() {
+    const list = h('div', { class: 'cp-cmds' }), q = h('input', { type: 'search', class: 'cp-q', placeholder: L('Search commands', 'Cerca comandi'), 'aria-label': L('Search commands', 'Cerca comandi'), 'data-key': 'chat-cmd-q', autocomplete: 'off' });
+    const draw = () => {
+      clear(list); const n = q.value.trim().toLowerCase();
+      const hit = SL.COMMANDS.filter((c) => !c.unavailable && (!n || ('/' + c.name + ' /' + c.alias + ' ' + SL.descOf(c, lang())).toLowerCase().includes(n)));
+      hit.forEach((c) => list.append(h('button', { class: 'cp-cmd', type: 'button', onclick: () => { P.tab = 'chat'; ctx.render(); s.comps.page.setText('/' + SL.nameIn(c, lang()) + (c.arg === 'none' ? '' : ' ')); } },
+        h('span', { class: 'mono' }, '/' + SL.nameIn(c, lang())), clsChip(c.cls), h('span', { class: 'cp-cd' }, SL.descOf(c, lang())))));
+      if (!hit.length) list.append(h('p', { class: 'cp-sub' }, L('No command matches.', 'Nessun comando corrispondente.')));
+    };
+    q.addEventListener('input', draw); draw();
+    const ms = general ? [] : Object.values(st.missions).filter((m) => m.project === s.project).sort((a, b) => isOpenMission(b) - isOpenMission(a));
+    return h('div', { class: 'cp-scroll' },
+      general ? null : h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, project?.name || s.project), project?.note ? h('p', { class: 'cp-sub' }, project.note) : null,
+        ...(ms.length ? ms.map((m) => h('a', { class: 'cp-line', href: hrefFor('mission', m.id) }, spineDots(m), h('span', { class: 'cp-lt' }, m.title), h('span', { class: 'cp-lw' }, present('mission', m.state).label))) : [h('p', { class: 'cp-sub' }, L('No missions yet.', 'Ancora nessuna missione.'))])),
+      h('section', { class: 'cp-sec' }, h('h3', { class: 'pk-gh' }, L('Commands', 'Comandi')), q, list));
+  }
+
+  const body = tab === 'receipts' ? receiptsNode() : tab === 'context' ? contextNode() : [h('div', { class: 'logwrap' }, log, newer), comp];
+  const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false' },
+    h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, tabs, h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + tab }, body)));
   ctx.mounts.push(() => {
     if (!store.reducedMotion()) log.querySelectorAll('.msg').forEach((el) => {
       const before = oldCards.get(el.dataset.key), card = el.querySelector('.ccard'), after = card?.getBoundingClientRect().height;
       if (before && after && Math.abs(before - after) > 1) card.animate([{ height: before + 'px', overflow: 'hidden' }, { height: after + 'px', overflow: 'hidden' }], { duration: 180, easing: 'ease-out' });
     });
     oldCards.clear();
-    page.querySelectorAll(scrollers).forEach((el) => { el.scrollTop = oldScroll.get(scrollKey(el)) || 0; });
-    log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
+    if (tab === 'chat') log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
     visible.forEach((e) => P.seen.add(e.m.id));
     if (P.switched) { P.switched = false; if (!store.reducedMotion()) log.animate([{ opacity: .35 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' }); }
   });
-  // Page-only listener; the cached composer's original listener still owns destination changes.
-  comp.querySelector('.cscope').onchange = () => { P.mission = null; P.switched = true; P.bottom = true; ctx.render(); };
   return page;
 }
 // ---------- the bar docked on Now, and the phone sheet ----------

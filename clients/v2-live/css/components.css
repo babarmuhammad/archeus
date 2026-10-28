@@ -38,3 +38,5 @@
 .project-recent time { font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 12px; }
 .pr-t { overflow-wrap: anywhere; }
 .pr-w { font-size: 12px; color: var(--text-2); }
+.smark { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-cap); font-weight: 600; }
+.smark .g { flex: none; display: inline-flex; color: var(--tone); }

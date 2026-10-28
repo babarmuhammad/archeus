@@ -198,6 +198,15 @@ export function usageRows(S, X) {
   });
 }
 
+// Forecast of the 5 hour window: the share used rises by `rate` per ms over the last readings, so the limit arrives in (100 - used) / rate. Null with too few readings.
+export function forecast(hist) {
+  const pts = hist.filter((p) => p.s != null).slice(-15);
+  if (pts.length < 3) return null;
+  const a = pts[0], b = pts[pts.length - 1], rate = (b.s - a.s) / (b.t - a.t);
+  if (!(rate > 0)) return { flat: true };
+  return { mins: Math.round((100 - b.s) / rate / MIN) };
+}
+
 // ---------- extensions ----------
 export function mcpStatus(x, clock) {
   if (x.unchecked) return 'UNKNOWN';

@@ -1900,6 +1900,21 @@ Extensions tabs and Settings sections (second pass, same day):
 - Undo (toast after a switch-off) → Annulla
 - Settings sections / Safety / Prototype / About (left nav) → Sezioni delle impostazioni / Sicurezza / Prototipo / Informazioni
 
+Shell round two (rail groups, command palette, relative time):
+
+- Govern / Configure (rail group labels; Work already existed) → Governa / Configura
+- Search or run a command (top-bar button) → Cerca o esegui un comando
+- Search pages, actions and projects (palette field) → Cerca pagine, azioni e progetti
+- Command palette / Results / Pages / Actions → Comandi rapidi / Risultati / Pagine / Azioni
+- Nothing matches. Try a page, an action or a project name. → Nessun risultato. Prova il nome di una pagina, di un’azione o di un progetto.
+- move / run / close (palette footer, after the arrow and Enter and Esc keys) → muovi / esegui / chiudi
+- Stop all / Tell Archeus → Ferma tutto / Dì ad Archeus
+- Settings: Safety / Appearance / Prototype → Impostazioni: Sicurezza / Aspetto / Prototipo
+- Language: Italiano / Language: English → Lingua: Italiano / Lingua: English
+- Stale (state vocabulary) → Non aggiornato
+- Ctrl+K or Cmd+K, Search pages, actions and projects, and run them (keyboard help) → Ctrl+K o Cmd+K, Cerca pagine, azioni e progetti ed eseguili
+- Mon, Tue, Wed, Thu, Fri, Sat, Sun before a time (Mon 14:20) → Lun, Mar, Mer, Gio, Ven, Sab, Dom
+
 ## Network view clusters (2026-10-28, agent N): to review
 
 File: `js/i18n-now.js`. The map's other strings (Needs you, Running, Project, Mission, Agent execution, Zoom in, Zoom out, Fit) were already translated; `Reset map view` was removed with its button (Fit also resets the view).
@@ -1955,3 +1970,107 @@ Status: **to review**. Source: `js/i18n-work.js`. Rules (with a number) are writ
 | Projects that need you | Progetti che hanno bisogno di te |
 | +N more | +N altri (+1 altro) |
 
+## Chat redesign, builder A (2026-10-28): to review
+
+Strings built inline with `L(en, it)` in `js/chat.js`, `js/chat-cards.js` and `js/picker.js`. The old rail, context column and pin strings were removed from `js/i18n-chat.js`.
+
+- To → A (prefix of the scope chip: "To Archeus")
+- Destination → Destinazione (accessible name of the scope picker)
+- General → Generale
+- Not project memory → Non è memoria di progetto
+- Projects → Progetti (group)
+- Needs you → Richiede te (group header)
+- Search → Cerca (picker search field)
+- Nothing matches. → Nessun risultato.
+- Replies and records stay in {p}. → Risposte e record restano in {p}.
+- Nothing here is saved to a project. → Qui non si salva nulla in un progetto.
+- Command · /{n} · {c} → Comando · /{n} · {c}
+- All missions → Tutte le missioni
+- Mission → Missione
+- Open / Closed (mission picker groups) → Aperte / Chiuse
+- {n} open → {n} aperte
+- Nothing open → Niente di aperto
+- More (menu button) → Altro
+- Needs you · {n} → Richiede te · {n}
+-  · step {n} of 6 → · passo {n} di 6
+- Chat sections → Sezioni della chat
+- Conversation / Receipts / Context (tabs) → Conversazione / Ricevute / Contesto
+- Ask anything. → Chiedi pure.
+- Ask a question. No mission starts from General. → Fai una domanda. Da Generale non parte nessuna missione.
+- Nothing said in {p} yet. → Ancora nulla detto in {p}.
+- Ask, or hand Archeus work. Replies and receipts appear here. → Chiedi, o affida un lavoro ad Archeus. Risposte e ricevute compaiono qui.
+- Explain a checkpoint → Spiega un checkpoint (starter chip; the same text is sent)
+- What can you do? → Cosa sai fare?
+- What needs me? → Cosa aspetta me?
+- Status → Stato
+- Start a mission… → Avvia una missione…
+- Capture an idea… → Cattura un'idea…
+- Waiting for you → Aspettano te
+- Approve this plan? / Allow this action? → Approvare questo piano? / Consentire questa azione?
+- Last receipts → Ultime ricevute
+- Done by Archeus → Fatto da Archeus
+- General keeps no receipts. → Generale non tiene ricevute.
+- Answers here do not touch a project. Pick a project to see what Archeus did in it. → Le risposte qui non toccano nessun progetto. Scegli un progetto per vedere cosa ha fatto Archeus.
+- Archeus has not acted here yet. → Archeus non ha ancora agito qui.
+- Show {n} earlier → Mostra {n} precedenti
+- Commands / Search commands / No command matches. → Comandi / Cerca comandi / Nessun comando corrispondente.
+- No missions yet. → Ancora nessuna missione.
+- just now / {n} min ago / {n} h ago → adesso / {n} min fa / {n} h fa (relative time on the simulation clock; the exact time is the tooltip)
+- Commands (type /) → Comandi (scrivi /) (tooltip of the slash button)
+- Send (Enter) → Invia (Invio) (tooltip of Send)
+
+## Security, Health, Usage and Accounts as parts of a page (2026-10-28, round 2): to review
+
+File: `js/i18n-areas.js`. Each of the four pages now has parts that are links; these are the new or changed visible strings. Exact strings are in the dictionary, the ones with a number, a time or a name are patterns at the start of `RULES_AREAS`.
+
+- Overview / Policy / Boundaries / Activity / Emergency (Security parts) → Panoramica / Regole / Confini / Attività / Emergenza (Policy already read Regole)
+- All / Needs attention / Unknown / OK (Health filter) → Tutti / Richiede attenzione / Sconosciuto / OK
+- Accounts / Windows / History (Usage parts) → Account / Finestre / Cronologia
+- Accounts / Models / Failover / Launch settings (Accounts parts) → Account / Modelli / Failover / Impostazioni di avvio
+- Security sections, Health filter, Usage views, Account sections (navigation names) → Sezioni della sicurezza, Filtro della salute, Viste dell'uso, Sezioni degli account
+- needs you / engaged / low / needs attention (hidden words beside a dot) → ti serve / attivo / basso / richiede attenzione
+- N of M actions → N azioni su M
+- Held commands never auto-allow. Policy applies to every project. → I comandi trattenuti non si autorizzano mai da soli. Le regole valgono per ogni progetto.
+- Scope: every project. Source: Archeus policy. Read only here. → Ambito: ogni progetto. Origine: regole di Archeus. Qui sono in sola lettura.
+- The mode a new mission starts with. No per-project command overrides are recorded. → La modalità con cui parte una nuova missione. Nessuna deroga per progetto è registrata.
+- Change it in Launch settings / See every action / See all events / See all N boundaries / Review the policy → Cambiala in Impostazioni di avvio / Vedi ogni azione / Vedi tutti gli eventi / Vedi tutti i N confini / Rivedi le regole
+- Where policy ends and physical confinement would have to begin. → Dove finiscono le regole e dovrebbe iniziare il confinamento fisico.
+- Security events; Every decision, hook and breaker change, newest first. → Eventi di sicurezza; Ogni decisione, hook e cambio di interruttore, dal più recente.
+- After three failed starts in ten minutes a harness stops starting new work until it recovers. → Dopo tre avvii falliti in dieci minuti un harness smette di avviare nuovo lavoro finché non si riprende.
+- just now / N min ago / N h ago (relative time; the exact time is in the tooltip, which stays numeric) → adesso / N min fa / N h fa
+- Showing N of M / Showing all N (filtered and folded counts) → Mostra N di M / Mostra tutti (N)
+- Run all / Check again / Stale → Esegui tutto / Controlla di nuovo / Non aggiornato
+- Last run (existing, now followed by a relative time) → Ultima esecuzione
+- Changed 3 min ago from OK / Checked 3 min ago / No change this session → Cambiato 3 min fa da OK / Controllato 3 min fa / Nessun cambiamento in questa sessione
+- Name checked again (simulated). / Every check ran again (simulated). → Nome ricontrollato (simulato). / Ogni controllo è stato rieseguito (simulato).
+- No check needs attention. / No check is unknown. / No check is OK. / Show all checks → Nessun controllo richiede attenzione. / Nessun controllo è sconosciuto. / Nessun controllo è OK. / Mostra tutti i controlli
+- Six checks, each read from records. A missing reading is unknown, never 0. → Sei controlli, ognuno letto dai registri. Una lettura mancante è sconosciuta, mai 0.
+- Headroom and reset (column) → Margine e azzeramento
+- At this rate you reach the limit at HH:MM (in N min). → Con questo ritmo arrivi al limite alle HH:MM (tra N min).
+- At this rate the 5 hour window does not run out. / No forecast yet: not enough readings. → Con questo ritmo la finestra di 5 ore non si esaurisce. / Ancora nessuna previsione: letture insufficienti.
+- Your line; New work waits at N% left; Running work finishes; nothing new starts on an account at or under the line. → La tua soglia; Il nuovo lavoro attende al N% rimasto; Il lavoro in corso finisce; non parte nulla di nuovo su un account alla soglia o sotto.
+- N% left · reset text; Reset time not recorded; No reading yet → N% rimasto · ...; Ora di azzeramento non registrata; Nessuna lettura
+- The 5 hour window, as the share used. Read about every two minutes.; N% to M% used; No readings yet. Unknown is not zero. → La finestra di 5 ore, come quota usata. Letta circa ogni due minuti.; Dal N% al M% usato; Ancora nessuna lettura. Sconosciuto non è zero.
+- Saved as you choose. / Each switch saves as you flip it. (autosave stated; three sentences that end this way) → Si salva appena scegli. / Ogni interruttore si salva appena lo cambi.
+- Name is off. (toast with Undo) → Nome è disattivato.
+
+
+## Chat queue and steer, builder A (2026-10-28): to review
+
+Inline `L(en, it)` strings in `js/chat.js`, `js/chat-cards.js`, `chat-engine.js`; two Replay explanations in `js/i18n-chat.js`.
+
+- Enter queue · {k}Enter steer → Invio accoda · {k}Invio guida (key hint; {k} is ⌘ or Ctrl+; shown only while a mission runs)
+- {n} queued → {n} in coda
+- Queued → In coda
+- Handled after the current step. → Gestito dopo il passo corrente.
+- Remove → Rimuovi
+- Steering → Guida in corso
+- Waiting for Core to acknowledge. Simulated. → In attesa che il Core confermi. Simulato.
+- Removed from the queue. Nothing was sent. → Tolto dalla coda. Non è stato inviato nulla.
+- Queued. It is handled after the current step. → In coda. Viene gestito dopo il passo corrente. (screen reader announcement)
+- Steering. Waiting for Core to acknowledge; this is simulated. → Guida in corso. In attesa che il Core confermi; è simulato. (screen reader announcement)
+- SIMULATED · Core acknowledged the steer for “{t}”. A real Core would record the request and the safe boundary where it took effect; here nothing changed course. → SIMULATO · Il Core ha confermato la richiesta di guida per “{t}”. Un Core reale registrerebbe la richiesta e il confine sicuro in cui ha avuto effetto; qui nulla ha cambiato rotta.
+- Steer asked (simulated) → Guida richiesta (simulata) (Receipts line)
+- Steer acknowledged (simulated) → Guida confermata (simulata) (Receipts line)
+- Replay, steer request: A steer is a request to be taken at the next safe boundary. This is a simulation; a real Core would record the request, not that the mission changed course. → Una guida è una richiesta di essere presa al prossimo confine sicuro. Questa è una simulazione; un Core reale registrerebbe la richiesta, non che la missione abbia cambiato rotta.
+- Replay, steer acknowledgement: Core acknowledged the steer. The acknowledgement is recorded; it does not prove the mission changed course, and the boundary it took effect at is not modelled here. → Il Core ha confermato la guida. La conferma è registrata; non prova che la missione abbia cambiato rotta, e il confine in cui ha avuto effetto qui non è modellato.

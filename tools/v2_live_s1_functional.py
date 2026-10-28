@@ -24,7 +24,7 @@ try:
             return ctx, pg, errs
         ctx, pg, errs = page()
         navs = pg.evaluate("() => [...document.querySelectorAll('.rail .nav-item')].map((e) => e.textContent.replace(/[0-9]/g, '').trim())")
-        check('the nav keeps its order and Now is Overview', navs == ['Overview', 'Work', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings', 'Terminal view'])
+        check('the nav is in three labelled groups (Work, Govern, Configure) and Now is Overview', navs == ['Overview', 'Work', 'Chat', 'Replay', 'Terminal view', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and pg.evaluate("() => [...document.querySelectorAll('.rail .rail-grp')].map((g) => g.getAttribute('aria-label'))") == ['Work', 'Govern', 'Configure'])  # owner round two 2026-10-28: grouped rail
         check('the route of Overview is still #/now', pg.get_attribute('.rail [data-route="now"]', 'href') == '#/now')
         check('the Overview shows one territory per project', pg.locator('.now-view .am-cell').count() >= 3)
         pg.goto(base + '?sim=paused&motion=reduced&theme=dark#/map', wait_until='load'); pg.wait_for_timeout(400)

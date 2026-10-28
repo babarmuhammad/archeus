@@ -249,12 +249,54 @@ export const IT_AREAS = {
   'Last hour': 'Ultima ora', 'Show fewer': 'Mostra meno', 'Open project': 'Apri il progetto', '1 project': '1 progetto', '1 account is low': '1 account è basso',
   'Every project starts with the default. Only a project that differs has its own row.': 'Ogni progetto parte con le impostazioni predefinite. Solo un progetto che differisce ha una riga propria.', 'Give a project its own settings': 'Dai a un progetto impostazioni proprie', 'Project that gets its own settings': 'Progetto che riceve impostazioni proprie',
   'Use the default': 'Usa il predefinito', 'Back to the default (simulated).': 'Tornato al predefinito (simulato).', 'This project now has its own launch settings (simulated).': 'Questo progetto ha ora impostazioni di avvio proprie (simulato).',
+  // Security, Health, Usage and Accounts as parts of a page (round 2), 2026-10-28. Italian wording to review.
+  'Activity': 'Attività', 'Emergency': 'Emergenza', 'All': 'Tutti', 'Windows': 'Finestre', 'History': 'Cronologia', 'Launch settings': 'Impostazioni di avvio',
+  'Security sections': 'Sezioni della sicurezza', 'Health filter': 'Filtro della salute', 'Usage views': 'Viste dell’uso', 'Account sections': 'Sezioni degli account',
+  'needs you': 'ti serve', 'engaged': 'attivo', 'low': 'basso', 'needs attention': 'richiede attenzione',
+  'See every action': 'Vedi ogni azione', 'See all events': 'Vedi tutti gli eventi', 'Review the policy': 'Rivedi le regole',
+  'Held commands never auto-allow. Policy applies to every project.': 'I comandi trattenuti non si autorizzano mai da soli. Le regole valgono per ogni progetto.',
+  'Scope: every project. Source: Archeus policy. Read only here.': 'Ambito: ogni progetto. Origine: regole di Archeus. Qui sono in sola lettura.',
+  'The mode a new mission starts with. No per-project command overrides are recorded.': 'La modalità con cui parte una nuova missione. Nessuna deroga per progetto è registrata.',
+  'Change it in Launch settings': 'Cambiala in Impostazioni di avvio',
+  'Where policy ends and physical confinement would have to begin.': 'Dove finiscono le regole e dovrebbe iniziare il confinamento fisico.',
+  'Security events': 'Eventi di sicurezza', 'Every decision, hook and breaker change, newest first.': 'Ogni decisione, hook e cambio di interruttore, dal più recente.',
+  'After three failed starts in ten minutes a harness stops starting new work until it recovers.': 'Dopo tre avvii falliti in dieci minuti un harness smette di avviare nuovo lavoro finché non si riprende.',
+  'Run all': 'Esegui tutto', 'Stale': 'Non aggiornato', 'Check again': 'Controlla di nuovo', 'No change this session': 'Nessun cambiamento in questa sessione',
+  'No check needs attention.': 'Nessun controllo richiede attenzione.', 'No check is unknown.': 'Nessun controllo è sconosciuto.', 'No check is OK.': 'Nessun controllo è OK.',
+  'Show all checks': 'Mostra tutti i controlli', 'Six checks, each read from records. A missing reading is unknown, never 0.': 'Sei controlli, ognuno letto dai registri. Una lettura mancante è sconosciuta, mai 0.',
+  'Every check ran again (simulated).': 'Ogni controllo è stato rieseguito (simulato).',
+  'Headroom and reset': 'Margine e azzeramento', 'Your line': 'La tua soglia', 'Reset time not recorded': 'Ora di azzeramento non registrata', 'No reading yet': 'Nessuna lettura',
+  'Running work finishes; nothing new starts on an account at or under the line.': 'Il lavoro in corso finisce; non parte nulla di nuovo su un account alla soglia o sotto.',
+  'The 5 hour window, as the share used. Read about every two minutes.': 'La finestra di 5 ore, come quota usata. Letta circa ogni due minuti.',
+  'No readings yet. Unknown is not zero.': 'Ancora nessuna lettura. Sconosciuto non è zero.',
+  'No forecast yet: not enough readings.': 'Ancora nessuna previsione: letture insufficienti.', 'At this rate the 5 hour window does not run out.': 'Con questo ritmo la finestra di 5 ore non si esaurisce.',
+  'The default is what a new mission asks for. Saved as you choose.': 'Il predefinito è ciò che chiede una nuova missione. Si salva appena scegli.',
+  'What happens when an account runs low or out. Each switch saves as you flip it.': 'Cosa succede quando un account è quasi al limite o esaurito. Ogni interruttore si salva appena lo cambi.',
+  'Every project starts with the default. Only a project that differs has its own row. Saved as you choose.': 'Ogni progetto parte con le impostazioni predefinite. Solo un progetto che differisce ha una riga propria. Si salva appena scegli.',
+  'just now': 'adesso'
+
 };
 
 const ACC = { unverified: 'non verificato', available: 'disponibile', constrained: 'vincolato', limited: 'limitato', degraded: 'degradato', open: 'aperto', unauthenticated: 'non autenticato', disabled: 'disattivato' };
 const num = (s) => String(s).replace('.', ',');
 const plural = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);
+// "3 min ago" / "2 h ago" / "just now" inside a longer line
+const itAgo = (t) => t.replace(/^(\d+) min ago$/, '$1 min fa').replace(/^(\d+) h ago$/, '$1 h fa').replace('just now', 'adesso');
 export const RULES_AREAS = [
+  [/^Showing (\d+) of (\d+)$/, (m) => 'Mostra ' + m[1] + ' di ' + m[2]],
+  [/^Showing all (\d+)$/, (m) => 'Mostra tutti (' + m[1] + ')'],
+  [/^(\d+) of (\d+) actions$/, (m) => m[1] + ' azioni su ' + m[2]],
+  [/^See all (\d+) boundaries$/, (m) => 'Vedi tutti i ' + m[1] + ' confini'],
+  [/^(\d+) min ago$/, (m) => m[1] + ' min fa'],
+  [/^(\d+) h ago$/, (m) => m[1] + ' h fa'],
+  [/^Changed (.+) from (OK|Needs attention|Unknown)$/, (m) => 'Cambiato ' + itAgo(m[1]) + ' da ' + ({ OK: 'OK', 'Needs attention': 'Richiede attenzione', Unknown: 'Sconosciuto' })[m[2]]],
+  [/^Checked (just now|\d+ min ago|\d+ h ago|\d\d:\d\d)$/, (m) => 'Controllato ' + itAgo(m[1])],
+  [/^(.+) checked again \(simulated\)\.$/, (m) => m[1] + ' ricontrollato (simulato).'],
+  [/^(.+) is off\.$/, (m) => m[1] + ' è disattivato.'],
+  [/^New work waits at (\d+)% left$/, (m) => 'Il nuovo lavoro attende al ' + m[1] + '% rimasto'],
+  [/^(\d+)% left$/, (m) => m[1] + '% rimasto'],
+  [/^(\d+(?:\.\d+)?)% to (\d+(?:\.\d+)?)% used$/, (m) => 'Dal ' + m[1] + '% al ' + m[2] + '% usato'],
+  [/^At this rate you reach the limit at (\d\d:\d\d) \(in (.+)\)\.$/, (m) => 'Con questo ritmo arrivi al limite alle ' + m[1] + ' (tra ' + m[2].replace('under 1 min', 'meno di 1 min') + ').'],
   [/^(\d+) checks? needs? attention$/, (m) => (m[1] === '1' ? '1 controllo richiede attenzione' : m[1] + ' controlli richiedono attenzione')],
   [/^(\d+) unknown$/, (m) => (m[1] === '1' ? '1 sconosciuto' : m[1] + ' sconosciuti')],
   [/^(\d+) accounts are low$/, (m) => m[1] + ' account sono bassi'],
