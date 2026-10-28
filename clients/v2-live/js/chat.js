@@ -205,12 +205,10 @@ import { translate } from './i18n.js';
 function chatPageEntries(s, st) {
   let project = 'archeus', mission = null, general = false;
   return s.eng.thread().map((m) => {
-    if (m.from === 'you') {
-      project = m.project || 'archeus'; general = m.dest === 'general';
-      mission = Object.values(st.missions).find((x) => m.args && (x.id === m.args || x.title.toLowerCase() === m.args.toLowerCase()))?.id || null;
-    }
-    const ref = m.card?.mission || st.approvals[m.card?.approval]?.mission || mission;
-    return { m, project: m.project || project, mission: ref, general: m.general || m.dest === 'general' || (m.from !== 'you' && general) };
+    const own = m.from !== 'you' && m.project !== undefined;
+    if (m.from === 'you') { project = m.project || 'archeus'; general = m.dest === 'general'; mission = s.eng.originOf(m).mission; }
+    const ref = m.card?.mission || st.approvals[m.card?.approval]?.mission || (own ? m.mission : mission);
+    return { m, project: m.project || project, mission: ref, general: m.general || m.dest === 'general' || (m.from !== 'you' && !own && general) };
   });
 }
 
