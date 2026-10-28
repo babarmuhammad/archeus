@@ -2179,3 +2179,14 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - No mission → Nessuna missione (a worktree that holds no mission)
 - Attempt → Tentativo (one run of a task, a small mark at the close zoom level)
 - Task, Verification, Event → existing words, reused as kinds of the small marks at the close zoom levels
+
+## Worktrees on Projects, Work and the inspector — 2026-10-28
+- No worktrees besides the main tree. → Nessun worktree oltre all'albero principale.
+- All worktrees / Filter by worktree → Tutti i worktree / Filtra per worktree
+- Open project (worktree attention card) → Apri il progetto
+- Linked and task worktrees of this project (tooltip) → Worktree collegati e di attività di questo progetto
+- Merge or drop its branch, then remove the folder yourself: Archeus never removes a linked worktree. → Unisci o scarta il suo ramo, poi rimuovi tu la cartella: Archeus non rimuove mai un worktree collegato.
+- Archeus made it for a task. Finish or abandon the mission and Archeus removes it. → Lo ha creato Archeus per un'attività. Concludi o abbandona la missione e Archeus lo rimuove.
+- The folder is gone. Restore it or drop the branch: Archeus does not reset or recreate a linked worktree. → La cartella non c'è più. Ripristinala o scarta il ramo: Archeus non reimposta né ricrea un worktree collegato.
+- The folder is gone. Abandon the mission, or restore the folder. → La cartella non c'è più. Abbandona la missione oppure ripristina la cartella.
+- Reused from the Overview rows: Worktrees, linked (collegato), task (attività), Stale, Missing, Merged, Abandoned, N worktrees. Active (state) reads Attiva, a feminine form; the word should be masculine for worktree: Attivo. Needs your call.

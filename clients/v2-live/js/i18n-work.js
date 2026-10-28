@@ -4,6 +4,11 @@
 export const IT_WORK = {
   'All projects': 'Tutti i progetti',
   'Work graph': 'Grafo del lavoro',
+  'No worktrees besides the main tree.': 'Nessun worktree oltre all\'albero principale.', 'All worktrees': 'Tutti i worktree', 'Filter by worktree': 'Filtra per worktree', 'Open project': 'Apri il progetto', 'Linked and task worktrees of this project': 'Worktree collegati e di attività di questo progetto',
+  'Merge or drop its branch, then remove the folder yourself: Archeus never removes a linked worktree.': 'Unisci o scarta il suo ramo, poi rimuovi tu la cartella: Archeus non rimuove mai un worktree collegato.',
+  'Archeus made it for a task. Finish or abandon the mission and Archeus removes it.': 'Lo ha creato Archeus per un\'attività. Concludi o abbandona la missione e Archeus lo rimuove.',
+  'The folder is gone. Restore it or drop the branch: Archeus does not reset or recreate a linked worktree.': 'La cartella non c\'è più. Ripristinala o scarta il ramo: Archeus non reimposta né ricrea un worktree collegato.',
+  'The folder is gone. Abandon the mission, or restore the folder.': 'La cartella non c\'è più. Abbandona la missione oppure ripristina la cartella.',
   'Nothing matches this filter.': 'Nessun risultato per questo filtro.', 'Clear filter': 'Azzera il filtro', 'Filter by state': 'Filtra per stato',
   'Work graph: missions and decisions grouped by what they wait on. The list below has the same content.': 'Grafo del lavoro: missioni e decisioni raggruppate per ciò che attendono. L\'elenco qui sotto ha lo stesso contenuto.',
   'One page for Work and Attention: missions and decisions grouped by what they wait on, as a list with a detail pane and as a graph. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09).': 'Una sola pagina per Lavoro e Attenzione: missioni e decisioni raggruppate per ciò che attendono, come elenco con un pannello di dettaglio e come grafo. La spina mostra a che punto è ogni missione (A13); un obbligo è una tinta ambra al 12 % con lo stato a parole (B09).',
