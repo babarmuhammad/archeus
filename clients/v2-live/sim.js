@@ -624,11 +624,54 @@ export function createSim(opts = {}) {
     m = mk('m-theme', 'Theme tokens audit', 'archeus', 'chore/tokens');
     S.clock = -min(2); emit('mission.created', { kind: 'mission', id: m.id }, {}, { mission: m.id, project: m.project });
 
+    if (opts.story === 'many' || opts.story === 'huge') crowd(opts.story === 'many' ? [12, 28, 15] : [100, 240, 120], mk, path);
     S.events.sort((a, b) => a.at - b.at || a.seq - b.seq).forEach((e, i) => { e.seq = i + 1; });
     seq = S.events.length; S.clock = 0; S.quiet = false;
     script();
     if (opts.story === 'full') S.projects.push({id: 'atlas', name: 'Atlas', note: 'Knowledge platform.', root: 'atlas/'});
     if (opts.story === 'calm') calmDown();
+  }
+  // ?story=many (12 projects) and ?story=huge (100): the same mission shapes as the default story, spread over many projects with a skewed ownership so some projects stay empty.
+  function crowd([np, nm, ni], mk, path) {
+    const head = ['Atlas', 'Beacon', 'Cinder', 'Delta', 'Ember', 'Fjord', 'Garnet', 'Harbor', 'Iris', 'Juniper', 'Kestrel', 'Lumen', 'Mosaic', 'Nimbus', 'Orbit', 'Prism', 'Quartz', 'Relay', 'Summit', 'Tidal'];
+    const projects = S.projects;
+    for (let i = projects.length; i < np; i++) {
+      const name = head[i % head.length] + (i >= head.length ? ' ' + (1 + Math.floor(i / head.length)) : ''), id = name.toLowerCase().replace(/ /g, '-');
+      projects.push({ id, name, note: '', root: id + '/' });
+    }
+    const up = ['UNDERSTANDING', 'start'], ctx = ['CONTEXT_GATHERING', 'understood'], rea = ['REASONING', 'context_ready'], pln = ['PLANNING', 'reasoned'], apr = ['APPROVED', 'plan_auto_approved'], exe = ['EXECUTING', 'dispatch'];
+    const stem = [up, ctx, rea, pln, apr, exe];
+    const KINDS = {
+      done: [[...stem, ['VERIFYING', 'all_tasks_done'], ['REVIEWING', 'verified'], ['COMPLETED', 'accepted']], 'SUCCEEDED', 'ENDED_OK'],
+      run: [stem, 'RUNNING', 'RUNNING'],
+      plan: [[up, ctx, rea, pln, ['APPROVAL_REQUIRED', 'plan_needs_approval']]],
+      blocked: [[up, ['BLOCKED', 'needs_clarification']]],
+      failed: [[...stem, ['FAILED', 'unrecoverable']], 'FAILED', 'ENDED_ERROR'],
+      paused: [[...stem, ['PAUSED', 'pause']], 'PAUSED', 'PAUSED'],
+      verify: [[...stem, ['VERIFYING', 'all_tasks_done']], 'VERIFYING', 'ENDED_OK']
+    };
+    const mix = ['done', 'done', 'done', 'run', 'run', 'plan', 'blocked', 'done', 'verify', 'failed', 'paused', 'run', 'plan', 'done'];
+    const verbs = ['Fix', 'Refactor', 'Document', 'Audit', 'Migrate', 'Test', 'Profile', 'Clean up'], objs = ['date parsing', 'the login flow', 'build scripts', 'the API client', 'config loading', 'the search index', 'release notes', 'retry logic'];
+    const owner = () => projects[Math.floor(np * rng() ** 2.2)];
+    for (let i = 0; i < nm; i++) {
+      const pr = owner(), kind = mix[i % mix.length], [steps, tState, eState] = KINDS[kind], id = 'm-x' + (i + 1);
+      const m = mk(id, verbs[i % verbs.length] + ' ' + objs[Math.floor(rng() * objs.length)], pr.id, 'work/' + id);
+      const t0 = -min(8 + Math.floor(rng() * 1400));
+      S.clock = t0; emit('mission.created', { kind: 'mission', id }, {}, { mission: id, project: pr.id });
+      path(m, steps, t0);
+      if (kind === 'plan') {
+        ['Read the sources', 'Make the change', 'Add a test'].forEach((tt, k) => newTask(m, String(k + 1), tt));
+        S.clock = t0 + min(6); const pl = newPlan(m);
+        m.approval = newApproval(m, 'plan', { what: 'Plan v1 for "' + m.title + '"', why: 'Plan approval required.', consequence: 'Approving starts 3 tasks. Rejecting cancels the mission. No undo.' }, pl.id).id;
+      } else if (kind === 'blocked') m.reason = 'Archeus asks: which option should it take?';
+      else {
+        newPlan(m, 'APPROVED'); const t = newTask(m, '1', 'Do the work', tState); newExec(m, t, eState, { started_at: t0 + min(4) });
+        if (kind === 'failed') m.reason = 'Unrecoverable: a check kept failing';
+        if (kind === 'verify') { const v = { id: 'v-' + (++S.counters.verification), mission: id, project: pr.id, task: t.id, state: 'PENDING', checks: [], base_revision: 'r90' }; S.verifications[v.id] = v; S.clock = t0 + min(6); move('verification', v, 'RUNNING', 'start'); }
+      }
+    }
+    const states = ['CAPTURED', 'CAPTURED', 'PLANNED', 'PARKED', 'EXPLORED'];
+    for (let i = 0; i < ni; i++) S.ideas.push({ id: 'i-x' + (i + 1), project: owner().id, title: ['Quick capture', 'Digest by email', 'Shared view', 'Weekly map'][i % 4] + ' ' + (i + 1), state: states[i % states.length] });
   }
   // ?story=calm (concept 07): five projects, each with a finished mission and a captured idea, and the script silent.
   function calmDown() {
