@@ -1,6 +1,10 @@
 // Italian for the insp slice: add exact strings to IT_INSP and [regex, fn] rules to RULES_INSP. Merged by i18n.js.
 // Written by the builder, not checked by a native speaker: see IT-REVIEW.md.
 export const IT_INSP = {
+  'Started': 'Avviata',
+  'Station details': 'Dettagli delle fasi',
+  'Understanding': 'Comprensione', 'Planning': 'In pianificazione', 'Approval': 'Approvazione',
+  'Executing': 'Esecuzione', 'Verifying': 'Verifica', 'Reviewing': 'Revisione',
   'Projects scene': 'Scena dei progetti',
   'Select a project to see its phases, missions and ideas.': 'Seleziona un progetto per vedere fasi, missioni e idee.',
   'No projects yet.': 'Ancora nessun progetto.', 'No missions yet.': 'Ancora nessuna missione.',
