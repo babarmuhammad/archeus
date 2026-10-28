@@ -377,3 +377,8 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
   .ax-legend .tk { background: CanvasText; }
   .sec-row[href]:focus-visible, .sec-more > summary:focus-visible { outline: 2px solid Highlight; }
 }
+.ax-cols { display: grid; gap: var(--gut); grid-template-columns: minmax(0, 1fr); align-items: start; }
+.ax-col { display: flex; flex-direction: column; gap: var(--gut); min-width: 0; }
+@container view (min-width: 960px) { .ax-cols { grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); } }
+.main-col .ax-cols, .main-col .ax-col, .main-col .ax-accs, .main-col .ax-checks, .main-col .ax-launches { gap: calc(var(--gut) * 1.25); }
+.main-col .ax-cols { column-gap: calc(var(--gut) * 2.5); }

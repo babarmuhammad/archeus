@@ -1,7 +1,7 @@
 // Replay and Recovery (S4): what Core recorded, step by step, from rows and events. Nothing here plays by itself or re-runs anything.
 // Recovery options only create an approval card; approving changes a receipt and the simulation through its ordinary actions, never the evidence.
 import { h } from './dom.js';
-import { glyph } from './icons.js';
+import { glyph, icon } from './icons.js';
 import { head, dnote, panel, empty } from './views.js';
 import { L, C } from './chat-cards.js';
 import { tp } from '../chat-engine.js';
@@ -74,32 +74,51 @@ export function viewReplay(ctx) {
   const laneFor = (at) => { let l = lanes.findIndex((last) => at - last > gap); if (l < 0) { l = lanes.indexOf(Math.min(...lanes)); at = lanes[l] + gap + .001; } lanes[l] = at; return { at, l }; };
   const marks = r.steps.map((x) => { const { at, l } = laneFor(position(x)); return { x, at, lane: l }; }), span = Math.max(1, ...marks.map((k) => k.at));
   const cursorPos = row ? position(row) / span : 0;
-  const playhead = h('span', { class: 'rp-playhead', 'aria-hidden': 'true' });
-  const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' },
-    ...marks.map(({ x, at, lane }) => h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:calc(7px + ' + at / span + ' * (100% - 14px));top:' + (4 + lane * 18) + 'px' }, GLYPH[x.category])), playhead);
-  const scrub = h('input', { type: 'range', min: 0, max: Math.max(0, shown.length - 1), value: Math.max(0, idx), 'data-key': 'rp-cursor',
+  const playhead = h('span', { class: 'rp-playhead', 'aria-hidden': 'true' }), elapsed = h('span', { class: 'rp-elapsed', 'aria-hidden': 'true' }), ghost = h('span', { class: 'rp-ghost', 'aria-hidden': 'true' });
+  const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' }, elapsed, ghost,
+    ...marks.map(({ x, at, lane }) => h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:calc(7px + ' + at / span + ' * (100% - 14px));top:' + (6 + lane * 18) + 'px' }, GLYPH[x.category])), playhead);
+  const at = (f) => 7 + f * Math.max(0, plot.clientWidth - 14);
+  const setCursor = (f, instant) => {
+    if (instant) { playhead.style.transition = elapsed.style.transition = 'none'; }
+    playhead.style.transform = 'translateX(' + at(f) + 'px)'; elapsed.style.transform = 'scaleX(' + (plot.clientWidth ? at(f) / plot.clientWidth : 0) + ')';
+    if (instant) { playhead.getBoundingClientRect(); playhead.style.transition = elapsed.style.transition = ''; }
+  };
+  const nearest = (clientX) => {
+    const r = plot.getBoundingClientRect(), f = Math.max(0, Math.min(1, (clientX - r.left - 7) / Math.max(1, r.width - 14)));
+    let best = null, d = Infinity;
+    for (const k of marks) if (shown.includes(k.x)) { const dd = Math.abs(k.at / span - f); if (dd < d) { d = dd; best = k; } }
+    return { f, mark: best };
+  };
+  const scrub = h('input', { type: 'range', min: 0, max: Math.max(0, shown.length - 1), value: Math.max(0, idx), 'data-key': 'rp-cursor', class: 'vh',
     'aria-label': L('Step cursor. Arrows step, Home and End jump', 'Cursore dei passi. Le frecce spostano, Home e Fine saltano'),
     'aria-valuetext': row ? row.time + ' ' + row.machine + ' ' + row.state : '', disabled: shown.length ? null : true,
     oninput: (e) => {
       const next = shown[Number(e.target.value)];
-      if (next) { playhead.style.transform = 'translateX(' + position(next) / span * plot.clientWidth + 'px)'; e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
+      if (next) { setCursor(position(next) / span); e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
     }, onchange: (e) => { const next = shown[Number(e.target.value)]; if (next) pick(next.n, false); } });
-  const earlier = h('button', { class: 'btn', type: 'button', 'data-key': 'rp-earlier', disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, L('Earlier', 'Prima'));
-  const later = h('button', { class: 'btn', type: 'button', 'data-key': 'rp-later', disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, L('Later', 'Dopo'));
+  const earlier = h('button', { class: 'rp-step', type: 'button', 'data-key': 'rp-earlier', 'aria-label': L('Earlier event', 'Evento precedente'), title: L('Earlier', 'Prima'), disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, icon('chevronl', 20));
+  const later = h('button', { class: 'rp-step', type: 'button', 'data-key': 'rp-later', 'aria-label': L('Later event', 'Evento successivo'), title: L('Later', 'Dopo'), disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, icon('chevron', 20));
+  let drag = null;
+  const track = h('div', { class: 'rp-track' }, plot, scrub, h('div', { class: 'rp-axis', 'aria-hidden': 'true' }, h('span', null, r.steps[0] ? r.steps[0].time : ''), h('span', null, r.steps.length ? r.steps[r.steps.length - 1].time : '')));
+  const preview = (mark) => { if (!mark) return; setCursor(mark.at / span); scrub.value = String(shown.indexOf(mark.x)); scrub.setAttribute('aria-valuetext', mark.x.time + ' ' + mark.x.machine + ' ' + mark.x.state); };
+  track.addEventListener('pointerdown', (e) => { if (!shown.length || e.button > 0) return; track.setPointerCapture(e.pointerId); drag = nearest(e.clientX).mark; preview(drag); });
+  track.addEventListener('pointermove', (e) => {
+    if (drag) { drag = nearest(e.clientX).mark || drag; preview(drag); return; }
+    if (e.pointerType === 'mouse') { ghost.style.transform = 'translateX(' + at(nearest(e.clientX).f) + 'px)'; ghost.dataset.on = 'true'; }
+  });
+  track.addEventListener('pointerleave', () => { ghost.dataset.on = 'false'; });
+  track.addEventListener('pointerup', () => { const m = drag; drag = null; if (m) pick(m.x.n, false); });
+  track.addEventListener('pointercancel', () => { drag = null; setCursor(cursorPos); });
   const overview = h('section', { class: 'rp-overview', 'aria-label': 'Timeline overview' },
     h('div', { class: 'rp-heading' }, h('div', null, h('h2', null, m.title), h('p', { class: 'rp-intro' }, 'Read-only history. Select an event to inspect what Core recorded.')),
       h('span', { class: 'rp-position', role: 'status' }, row ? row.n + ' / ' + r.steps.length + ' · ' + row.time : '0 / ' + r.steps.length), h('a', { class: 'btn', href: '#/work/' + m.id }, L('Mission', 'Missione'))),
-    h('div', { class: 'rp-stations' }, spineInspector(m.state, m.held_from)), plot,
-    h('div', { class: 'rp-cursor-tools' }, earlier, scrub, later),
+    h('div', { class: 'rp-stations' }, spineInspector(m.state, m.held_from)),
+    h('div', { class: 'rp-cursor-tools' }, earlier, track, later),
     h('button', { class: 'btn rp-inspect', type: 'button', 'data-key': 'rp-inspect', disabled: !row, onclick: () => pick(row.n) }, 'Inspect selected event'),
     r.history.answer === 'UNKNOWN' ? h('p', { class: 'note' }, L('Older steps were pruned from the event log, so anything before them is UNKNOWN, not “nothing happened”.', 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non “non è successo nulla”.')) : null);
   ctx.mounts.push(() => {
-    const previous = rp.cursorPos ?? cursorPos;
-    playhead.style.transition = 'none';
-    playhead.style.transform = 'translateX(' + previous * plot.clientWidth + 'px)';
-    playhead.getBoundingClientRect();
-    playhead.style.transition = '';
-    playhead.style.transform = 'translateX(' + cursorPos * plot.clientWidth + 'px)';
+    setCursor(rp.cursorPos ?? cursorPos, true);
+    setCursor(cursorPos);
     rp.cursorPos = cursorPos;
   });
 
