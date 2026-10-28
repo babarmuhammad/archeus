@@ -61,7 +61,7 @@ export function layoutPhone(graph, width, height) {
 // Project clusters (the Network view). Each project is a hub on a staggered lattice of cells round the core, its missions orbit it as satellites and their
 // executions and decisions sit beside them. The cell size is the density level: the largest that holds every project, so the slots of a level never move when a project is added.
 // Cells nearest the core come first and are given to the projects the owner has to look at first (the caller freezes that order). Satellites keep the slot they were first given.
-export const coreScaleFor = count => (count <= 3 ? 1 : count <= 8 ? .85 : count <= 16 ? .7 : .5);
+export const coreScaleFor = count => (count <= 8 ? .8 : count <= 16 ? .7 : .5);
 export const taglineOn = scale => scale >= .7;
 // Cell and radii per level, roomy to tight. lines: hub label lines (2 name and last action, 1 name, 0 the code only); cap: satellites shown; only: attention, running and blocked ones only.
 export const CELLS = Object.freeze([
@@ -70,7 +70,7 @@ export const CELLS = Object.freeze([
   {w: 164, h: 120, hub: 22, sat: 12, kid: 7, lines: 1, cap: 8}, {w: 128, h: 96, hub: 19, sat: 10, kid: 0, lines: 1, cap: 6, only: true},
   {w: 100, h: 80, hub: 17, sat: 8, kid: 0, lines: 1, cap: 4, only: true}, {w: 80, h: 66, hub: 15, sat: 7, kid: 0, lines: 0, cap: 3, only: true},
   {w: 64, h: 54, hub: 13, sat: 0, kid: 0, lines: 0, cap: 0, only: true}, {w: 48, h: 44, hub: 10, sat: 0, kid: 0, lines: 0, cap: 0, only: true}]);
-const CELL_PAD = 6, GAP = 5, TAG = [13, 22, 40];
+const CELL_PAD = 6, GAP = 5, TAG = [13, 34, 40];
 export const satRank = n => ({'needs-you': 0, running: 1, blocked: 2, paused: 3, thinking: 3, idle: 4, done: 5})[stateKey(n.state)] ?? 4;
 const byRank = (a, b) => satRank(a) - satRank(b) || String(a.id).localeCompare(String(b.id));
 const inside = (x, y, r, box) => x - r >= box.x && x + r <= box.x + box.width && y - r >= box.y && y + r <= box.y + box.height;
@@ -90,9 +90,22 @@ function cellsOf(level, width, height, inset, keep, core, avoid) {
   }
   return best.sort((p, q) => p.d - q.d || p.a - q.a).map(({d, a, ...cell}) => cell);
 }
+// One to three projects sit on a small ring instead of the lattice: left of the core, right of it, then above it, each cell hugging the core's keep-out, so a few
+// projects stay close to it and fill the scene. The slots are fixed, so adding a project never moves another. A level where all three do not fit returns null.
+function ringOf(level, width, height, inset, keep, core, avoid) {
+  const {w, h} = CELLS[level], x0 = Math.min(inset.left, width / 10), x1 = width - Math.min(inset.right, width / 10), y0 = Math.min(inset.top, height * .42), y1 = height - Math.min(inset.bottom, height * .26), near = keep.radius + 10;
+  const cells = [{x: core.x - near - w, y: core.y - h / 2}, {x: core.x + near, y: core.y - h / 2}, {x: core.x - w / 2, y: core.y - near - h}].map(c => ({...c, w, h}));
+  const ok = c => c.x >= x0 && c.y >= y0 && c.x + w <= x1 && c.y + h <= y1 && !coversNode(c, {x: keep.x, y: keep.y, radius: keep.radius}, 0) && !overlaps(c, keep.box) && !avoid.some(a => overlaps(c, a));
+  return cells.every(ok) && !cells.some((c, i) => cells.some((d, j) => j > i && overlaps(c, d))) ? cells : null;
+}
 export function plan(count, width, height, inset = INSET, avoid = []) {
   const u = unit(width, height), scale = coreScaleFor(count), keep = coreKeepOut(width, height, u, inset, false, scale), core = coreCentre(width, height, inset);
-  let level = 0, cells = cellsOf(0, width, height, inset, keep, core, avoid);
+  // The ring (1 to 3 projects) takes the first level where its three cells fit; the lattice never goes below that level, so the level still only grows with the count.
+  const k3 = coreKeepOut(width, height, u, inset, false, coreScaleFor(3)), rings = [];
+  let floor = -1;
+  for (let l = 0; l < 4 && floor < 0; l++) { const ring = ringOf(l, width, height, inset, k3, core, avoid); if (ring) { floor = l; rings[l] = ring; } }
+  if (count <= 3 && floor >= 0) return {scale, keep, core, level: floor, cells: rings[floor], ...CELLS[floor]};
+  let level = Math.max(0, floor), cells = cellsOf(level, width, height, inset, keep, core, avoid);
   while (cells.length < count && level < CELLS.length - 1) cells = cellsOf(++level, width, height, inset, keep, core, avoid);
   // A window too small for any cell still gets one, so every project has somewhere to be.
   if (!cells.length) cells = [{x: inset.left, y: inset.top, w: Math.max(1, width - inset.left - inset.right), h: Math.max(1, height - inset.top - inset.bottom)}];
@@ -111,8 +124,10 @@ export function layout(graph, width, height, inset = INSET, {slots, memory, avoi
     const sats = mine.filter(n => n !== hub && !parentOf.has(n.id)).sort(byRank), kids = new Map();
     for (const n of mine) if (parentOf.has(n.id)) { if (!kids.has(parentOf.get(n.id))) kids.set(parentOf.get(n.id), []); kids.get(parentOf.get(n.id)).push(n); }
     const content = {x: cell.x + CELL_PAD, y: cell.y + CELL_PAD, width: cell.w - 2 * CELL_PAD, height: cell.h - 2 * CELL_PAD}, hubR = hub ? P.hub : 0, lines = hub ? P.lines : 0;
-    const tagH = hub ? TAG[lines] : 0, block = 2 * hubR + (tagH ? 4 + tagH : 0), hx = cell.x + cell.w / 2, hy = cell.y + cell.h / 2 - block / 2 + hubR;
-    const tag = tagH ? {x: hx - Math.min(content.width, 220) / 2, y: hy + hubR + 4, width: Math.min(content.width, 220), height: tagH} : null;
+    const tagH = hub ? TAG[lines] : 0, block = 2 * hubR + (tagH ? 4 + tagH : 0), tagW = Math.min(content.width, P.level <= 1 ? 200 : 220);
+    // In the roomy levels the hub leans towards the core as far as its label allows (the label stays inside the cell), so a few projects sit close to it and their satellites open outward.
+    const lean = P.level <= 2 && tagH ? Math.sign(core.x - (cell.x + cell.w / 2)) * (content.width - tagW) / 2 : 0, hx = cell.x + cell.w / 2 + lean, hy = cell.y + cell.h / 2 - block / 2 + hubR;
+    const tag = tagH ? {x: hx - tagW / 2, y: hy + hubR + 4, width: tagW, height: tagH} : null;
     const outward = Math.atan2(hy - core.y, hx - core.x), spin = a => Math.abs(((a - outward + 3 * Math.PI) % TAU) - Math.PI);
     const clear = (x, y, r) => inside(x, y, r, content) && !(tag && coversNode(tag, {x, y, radius: r}, gap)) && !avoid.some(a => coversNode(a, {x, y, radius: r}, 0)) && Math.hypot(x - hx, y - hy) >= hubR + r + gap;
     const cand = [];

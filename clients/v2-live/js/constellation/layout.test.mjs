@@ -53,7 +53,7 @@ test('clusters: adding a project moves nothing already placed while the density 
     let memory, before = null, steady = 0;
     for (let P = 1; P <= 60; P++) {
       const out = layout(world(P), w, h, INSET, {slots: slots(P), memory});
-      if (before && plan(P - 1, w, h, INSET).level === plan(P, w, h, INSET).level && coreScaleFor(P - 1) === coreScaleFor(P)) {
+      if (before && P !== 4 && plan(P - 1, w, h, INSET).level === plan(P, w, h, INSET).level && coreScaleFor(P - 1) === coreScaleFor(P)) {
         steady++;
         const now = new Map(out.nodes.map(n => [n.id, n]));
         for (const n of before.nodes) assert.ok(same(n, now.get(n.id)), `${w}x${h}: ${n.id} moved when project ${P} arrived`);
@@ -114,6 +114,16 @@ test('clusters: missions of a project without a Project node still get a place, 
 });
 
 test('core scale shrinks with the project count and the tagline gives way', () => {
-  assert.deepEqual([1, 3, 4, 8, 9, 16, 17, 100].map(coreScaleFor), [1, 1, .85, .85, .7, .7, .5, .5]);
+  assert.deepEqual([1, 3, 4, 8, 9, 16, 17, 100].map(coreScaleFor), [.8, .8, .8, .8, .7, .7, .5, .5]);
   assert.ok(taglineOn(.7) && !taglineOn(.5));
+});
+
+test('clusters: one to three projects sit on a ring close to the core and never move when another joins the ring', () => {
+  const inset = {top: 190, right: 24, bottom: 110, left: 24};
+  for (const [w, h] of [[1440, 900], [1248, 804]]) {
+    const hubs = P => new Map(layout(world(P), w, h, inset, {slots: slots(P)}).nodes.filter(n => n.hub).map(n => [n.id, n])), core = coreCentre(w, h, inset);
+    const three = hubs(3);
+    for (const n of three.values()) assert.ok(Math.hypot(n.x - core.x, n.y - core.y) < 330, `${w}x${h}: ${n.id} ${Math.round(Math.hypot(n.x - core.x, n.y - core.y))} px from the core`);
+    for (const P of [1, 2]) for (const [id, n] of hubs(P)) assert.deepEqual([n.x, n.y], [three.get(id).x, three.get(id).y], `${w}x${h}: ${id} moved when a project joined`);
+  }
 });
