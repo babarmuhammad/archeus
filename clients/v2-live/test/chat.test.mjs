@@ -48,7 +48,7 @@ test('READ writes nothing recorded: the echo is local, the simulation log does n
   assert.equal(sim.state.messages.length, n); assert.equal(sim.state.events.length, ev);
   assert.ok(chat.thread().length >= 12);
   const u = chat.thread().find((m) => m.card && m.card.kind === 'usage');
-  assert.match(fmt(u.c, 'en'), /Unknown/); assert.equal(u.card.rows.length, 3);
+  assert.match(fmt(u.c, 'en'), /Unknown/); assert.equal(u.card.rows.length, 4);
 });
 
 test('CREATE: /mission makes one mission that is NOT started; Start needs its card; Keep leaves it idle', () => {

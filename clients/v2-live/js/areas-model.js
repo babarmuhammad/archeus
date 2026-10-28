@@ -24,10 +24,19 @@ export function kindOfId(id) { const p = PREFIX.find(([x]) => String(id).startsW
 
 const HARNESS_LABEL = { claude_code: 'Claude Code', codex: 'Codex', pi: 'pi' };
 export const harnessLabel = (id) => HARNESS_LABEL[id] || id;
+// What each harness is and what it supports, so a page offers only what a harness can do. Fixture: a real Core reads this from detection.
+export const HARNESS_META = {
+  claude_code: { short: 'Claude', kind: 'CLI', version: '2.1.4', caps: ['hooks', 'mcp', 'subagents', 'skills', 'slash', 'plugins'] },
+  codex: { short: 'Codex', kind: 'CLI', version: '0.46.0', caps: ['mcp', 'sandbox', 'slash'] },
+  pi: { short: 'pi', kind: 'CLI', version: null, caps: ['skills', 'plugins'] }
+};
+export const CAP_LABEL = { hooks: 'Hooks', mcp: 'MCP servers', subagents: 'Agents', skills: 'Skills', slash: 'Slash commands', plugins: 'Plugins', sandbox: 'Sandbox profiles' };
+export const harnessShort = (id) => (HARNESS_META[id] || {}).short || harnessLabel(id);
+export const supports = (id, cap) => ((HARNESS_META[id] || {}).caps || []).includes(cap);
 
 // ---------- fixtures ----------
 function fresh(S) {
-  return {
+  const X = {
     hooks: [
       { id: 'h-1', event: 'PreToolUse', name: 'ask before git push', matcher: 'Bash(git push:*)', does: 'Opens an approval and stops the action. It never pushes by itself.', enabled: true, locked: false, sensitive: true, runs: 41, last: -26 * MIN, outcome: 'Asked, you approved', scope: 'All projects' },
       { id: 'h-2', event: 'PostToolUse', name: 'format changed files', matcher: 'Edit | Write', does: 'Runs the project formatter on the files just written. Simulated receipt only.', enabled: true, locked: false, sensitive: false, runs: 188, last: -3 * MIN, outcome: '2 files formatted', scope: 'Archeus' },
@@ -36,10 +45,10 @@ function fresh(S) {
       { id: 'h-live-5', event: 'PreToolUse', name: 'keep writes inside the workdir', matcher: 'Any tool', does: 'Denies any path outside the execution workdir. If the hook cannot answer, the action is denied.', enabled: true, locked: true, sensitive: true, runs: 2406, last: -10 * SEC, outcome: 'Allowed, inside the workdir', scope: 'Built in' }
     ],
     mcp: [
-      { id: 'mcp-1', name: 'filesystem (read only)', transport: 'Local process', enabled: true, tools: [['read_file', 'read'], ['list_dir', 'read'], ['search_text', 'read']], calls: 312, last: -40 * SEC, scope: 'Archeus, Notes', connectAt: null, fixed: false, error: null, detail: 'Returns the fixture schema. No real filesystem access.' },
-      { id: 'mcp-2', name: 'issue tracker', transport: 'HTTPS', enabled: false, tools: [['list_issues', 'read'], ['comment', 'write']], calls: 0, last: null, scope: 'Archeus', connectAt: null, fixed: false, error: null, detail: 'Makes no external requests while it is off.' },
-      { id: 'mcp-live-3', name: 'documentation index', transport: 'Local process', enabled: false, tools: [['search_docs', 'read']], calls: 0, last: null, scope: 'Archeus', connectAt: null, fixed: false, error: null, detail: 'Proposed local search over the docs folder.' },
-      { id: 'mcp-live-4', name: 'release notes', transport: 'Unknown', enabled: false, unchecked: true, tools: [], calls: 0, last: null, scope: 'Notes', connectAt: null, fixed: false, error: null, detail: 'Its capability has not been checked, so it cannot be switched on from chat.' }
+      { id: 'mcp-1', name: 'filesystem (read only)', transport: 'Local process', harnesses: ['claude_code', 'codex'], on: { claude_code: true, codex: false }, enabled: true, tools: [['read_file', 'read'], ['list_dir', 'read'], ['search_text', 'read']], calls: 312, last: -40 * SEC, scope: 'Archeus, Notes', connectAt: null, fixed: false, error: null, detail: 'Returns the fixture schema. No real filesystem access.' },
+      { id: 'mcp-2', name: 'issue tracker', transport: 'HTTPS', harnesses: ['claude_code'], on: { claude_code: false }, enabled: false, tools: [['list_issues', 'read'], ['comment', 'write']], calls: 0, last: null, scope: 'Archeus', connectAt: null, fixed: false, error: null, detail: 'Makes no external requests while it is off.' },
+      { id: 'mcp-live-3', name: 'documentation index', transport: 'Local process', harnesses: ['claude_code', 'codex'], on: { claude_code: false, codex: false }, enabled: false, tools: [['search_docs', 'read']], calls: 0, last: null, scope: 'Archeus', connectAt: null, fixed: false, error: null, detail: 'Proposed local search over the docs folder.' },
+      { id: 'mcp-live-4', name: 'release notes', transport: 'Unknown', harnesses: ['codex'], on: { codex: false }, enabled: false, unchecked: true, tools: [], calls: 0, last: null, scope: 'Notes', connectAt: null, fixed: false, error: null, detail: 'Its capability has not been checked, so it cannot be switched on from chat.' }
     ],
     agents: [
       { id: 'ag-1', name: 'planner', role: 'Proposes plan versions. It cannot grant an approval.', tier: 'large', model: 'claude-sonnet', enabled: true, runs: 19, last: -31 * MIN },
@@ -47,10 +56,13 @@ function fresh(S) {
       { id: 'ag-3', name: 'reviewer', role: 'Reviews the evidence. Its verdict is not the same as the process exit.', tier: 'large', model: 'claude-sonnet', enabled: true, runs: 11, last: -70 * MIN },
       { id: 'ag-4', name: 'doc writer', role: 'Drafts documentation. Publishing stays a separate effect.', tier: 'small', model: 'claude-haiku', enabled: true, runs: 6, last: -118 * MIN }
     ],
-    defaultModel: 'claude-sonnet',
-    failover: { order: S.accounts.slice().sort((a, b) => a.priority - b.priority).map((a) => a.id), handoff: true, pauseOn: true, pauseAt: LOW_LINE, askHarness: true },
-    // One default for every project; a project has its own entry here only when its settings differ.
-    launchDefault: { harness: 'claude_code', model: 'claude-sonnet', account: 'auto', mode: 'ask', parallel: 2 },
+    // An order of accounts only makes sense within one harness, so each harness has its own.
+    failover: { order: Object.fromEntries(S.harnesses.map((hn) => [hn.id, S.accounts.filter((a) => a.harness === hn.id).sort((a, b) => a.priority - b.priority).map((a) => a.id)])), handoff: true, pauseOn: true, pauseAt: LOW_LINE, askHarness: true },
+    // Every harness has its own defaults (model, account, approvals, runs at once); the default harness says which one a project starts with.
+    // A project has its own entry in `launch` only when its settings differ.
+    harnessLaunch: Object.fromEntries(S.harnesses.map((hn) => [hn.id, { harness: hn.id, model: (S.models.find((m) => m.harness === hn.id) || {}).id || null, account: 'auto', mode: 'ask', parallel: 2 }])),
+    defaultHarness: 'claude_code',
+    get launchDefault() { return this.harnessLaunch[this.defaultHarness]; },
     launch: {
       notes: { harness: 'claude_code', model: 'claude-haiku', account: 'auto', mode: 'plan', parallel: 1 },
       ideas: { harness: 'codex', model: 'codex-main', account: 'acc-codex', mode: 'ask', parallel: 1 }
@@ -62,6 +74,9 @@ function fresh(S) {
       { at: -140 * MIN, kind: 'owner', text: 'You set the failover line to 20% left.' }
     ]
   };
+  X.hooks.forEach((x) => { x.harnesses = ['claude_code']; });
+  X.agents.forEach((x) => { x.harnesses = ['claude_code']; });
+  return X;
 }
 function readPins() { try { return JSON.parse(localStorage.getItem(PIN_KEY)) || []; } catch (e) { return []; } }
 function backfill(S) {
@@ -129,37 +144,45 @@ function createAreas(sim) {
     },
     mcp: () => X.mcp,
     mcpStatus: (x, clock) => mcpStatus(x, clock == null ? sim.state.clock : clock),
-    toggleMcp(id) {
+    toggleMcp(id, hid) {
       const x = by(X.mcp, id); if (!x) return { ok: false, reason: 'No such server' };
-      x.enabled = !x.enabled; x.connectAt = x.enabled ? sim.state.clock + 8 * SEC : null; log('owner', 'You ' + (x.enabled ? 'enabled' : 'disabled') + ' the MCP server "' + x.name + '".'); return { ok: true, on: x.enabled };
+      // With a harness it flips that harness only; without one it turns every harness off, or on when all were off.
+      if (hid && !(hid in x.on)) return { ok: false, reason: 'This server is not configured for ' + harnessLabel(hid) };
+      const to = hid ? !x.on[hid] : !x.enabled; (hid ? [hid] : Object.keys(x.on)).forEach((k) => { x.on[k] = to; });
+      x.enabled = Object.values(x.on).some(Boolean); x.connectAt = x.enabled ? (to ? sim.state.clock + 8 * SEC : x.connectAt) : null;
+      log('owner', 'You ' + (to ? 'enabled' : 'disabled') + ' the MCP server "' + x.name + '"' + (hid ? ' for ' + harnessLabel(hid) : '') + '.'); return { ok: true, on: hid ? to : x.enabled };
     },
     agents: () => X.agents,
     toggleAgent(id) { const a = by(X.agents, id); if (!a) return { ok: false, reason: 'No such agent' }; a.enabled = !a.enabled; log('owner', 'You ' + (a.enabled ? 'enabled' : 'disabled') + ' the agent "' + a.name + '".'); return { ok: true, on: a.enabled }; },
     agentStatus: (a) => agentStatus(S(), a),
 
     // accounts, models, failover, launch
-    defaultModel: () => X.defaultModel,
-    setDefaultModel(id) { if (!by(live().models, id)) return { ok: false, reason: 'No such model' }; X.defaultModel = id; log('owner', 'You made ' + by(live().models, id).label + ' the default model.'); return { ok: true }; },
+    defaultModel: (hid) => X.harnessLaunch[hid || X.defaultHarness].model,
+    setDefaultModel(id) { const m = by(live().models, id); if (!m) return { ok: false, reason: 'No such model' }; X.harnessLaunch[m.harness].model = id; log('owner', 'You made ' + by(live().models, id).label + ' the default model.'); return { ok: true }; },
     failover: () => X.failover,
     setFailover(key, v) { if (!(key in X.failover) || key === 'order') return { ok: false, reason: 'No such rule' }; X.failover[key] = v; log('owner', 'You changed the failover rule "' + key + '".'); return { ok: true }; },
     moveAccount(id, dir) {
-      const o = X.failover.order, i = o.indexOf(id), j = i + dir;
+      const acc = by(live().accounts, id), o = acc && X.failover.order[acc.harness], i = o ? o.indexOf(id) : -1, j = i + dir;
       if (i < 0 || j < 0 || j >= o.length) return { ok: false, reason: 'Already at the end' };
-      [o[i], o[j]] = [o[j], o[i]]; o.forEach((a, k) => { by(live().accounts, a).priority = k + 1; }); log('owner', 'You changed the account order.'); return { ok: true };
+      [o[i], o[j]] = [o[j], o[i]]; Object.values(X.failover.order).flat().forEach((a, k) => { by(live().accounts, a).priority = k + 1; }); log('owner', 'You changed the order of the ' + harnessLabel(acc.harness) + ' accounts.'); return { ok: true };
     },
     launch: (pid) => X.launch[pid] || X.launchDefault,
+    defaultHarness: () => X.defaultHarness,
+    harnessDefault: (hid) => X.harnessLaunch[hid],
+    setHarnessDefault(hid, key, v) { const c = X.harnessLaunch[hid]; if (!c || key === 'harness') return { ok: false, reason: 'No such harness' }; c[key] = key === 'parallel' ? Number(v) : v; log('owner', 'You changed the ' + harnessLabel(hid) + ' default "' + key + '".'); return { ok: true }; },
     isOverride: (pid) => !!X.launch[pid],
     overrideLaunch(pid) { if (!by(live().projects, pid)) return { ok: false, reason: 'No such project' }; X.launch[pid] ||= { ...X.launchDefault }; log('owner', 'You gave ' + by(live().projects, pid).name + ' its own launch settings.'); return { ok: true }; },
     resetLaunch(pid) { if (!X.launch[pid]) return { ok: false, reason: 'This project already uses the default' }; delete X.launch[pid]; log('owner', 'You set ' + by(live().projects, pid).name + ' back to the default launch settings.'); return { ok: true }; },
     // 'default' edits the default itself; any other id edits (and creates) that project's own entry
     setLaunch(pid, key, v) {
       const project = by(live().projects, pid); if (!project && pid !== 'default') return { ok: false, reason: 'No such project' };
+      if (pid === 'default' && key === 'harness') { if (!X.harnessLaunch[v]) return { ok: false, reason: 'No such harness' }; X.defaultHarness = v; log('owner', 'You made ' + harnessLabel(v) + ' the harness a project starts with.'); return { ok: true }; }
       const c = pid === 'default' ? X.launchDefault : (X.launch[pid] ||= { ...X.launchDefault });
       c[key] = key === 'parallel' ? Number(v) : v;
-      if (key === 'harness') { c.model = live().models.find((m) => m.harness === v).id; c.account = 'auto'; }
+      if (key === 'harness') Object.assign(c, { model: X.harnessLaunch[v].model, account: 'auto' });
       log('owner', 'You changed the launch setting "' + key + '" of ' + (project ? project.name : 'the default') + '.'); return { ok: true };
     },
-    preview: (pid) => launchPreview(S(), X, pid),
+    preview: (pidOrConfig) => launchPreview(S(), X, pidOrConfig),
 
     // breakers
     breaker: (id) => by(live().harnesses, id).breaker,
@@ -179,6 +202,8 @@ function createAreas(sim) {
 
     // derived reads
     usage: () => usageRows(S(), X),
+    harnesses: () => harnessRows(S(), X),
+    nextAccount: (hid) => usageRows(S(), X).find((r) => r.harness === hid && takesWork(r, X)),
     security: () => security(S(), X, A),
     health: () => health(S(), X, A),
     privileges: () => privileges(S(), X),
@@ -189,9 +214,22 @@ function createAreas(sim) {
 
 // ---------- usage ----------
 export function accountLabel(S, id) { const a = S.accounts.find((x) => x.id === id); return a ? a.label : id; }
+// An account can take the next mission when it is usable and not under the owner's line for the week.
+export const takesWork = (r, X) => ['AVAILABLE', 'CONSTRAINED', 'UNVERIFIED'].includes(r.state) && !(X.failover.pauseOn && r.week.left != null && r.week.left <= X.failover.pauseAt);
+// One row per harness: what it is, whether it is installed, its accounts in failover order, its models, and who takes the next mission.
+export function harnessRows(S, X) {
+  const rows = usageRows(S, X);
+  return S.harnesses.map((hn) => {
+    const meta = HARNESS_META[hn.id] || { short: hn.label, kind: 'CLI', version: null, caps: [] }, installed = hn.state !== 'MISSING';
+    const accounts = rows.filter((r) => r.harness === hn.id), next = accounts.find((r) => takesWork(r, X)), ceiling = accounts.filter((r) => ['low', 'critical', 'out'].includes(r.worst)).length;
+    const [tone, word] = !installed ? ['unknown', 'Not installed'] : hn.breaker.state !== 'closed' ? ['blocked', 'Cannot start'] : !accounts.length ? ['unknown', 'No account'] : !next ? ['blocked', 'No account can take work'] : ceiling ? ['attention', 'Near its ceiling'] : next.state === 'UNVERIFIED' ? ['paused', 'Not verified'] : ['ok', 'Ready'];
+    return { id: hn.id, label: hn.label, short: meta.short, kind: meta.kind, version: meta.version, caps: meta.caps, installed, tone, word, breaker: hn.breaker, accounts, models: S.models.filter((m) => m.harness === hn.id), next, ceiling };
+  });
+}
 export function usageRows(S, X) {
-  return S.accounts.slice().sort((a, b) => a.priority - b.priority).map((a, i) => {
-    const u = S.usage[a.id] || {};
+  const rank = (a) => [S.harnesses.findIndex((hn) => hn.id === a.harness), (X.failover.order[a.harness] || []).indexOf(a.id)];
+  return S.accounts.slice().sort((a, b) => rank(a)[0] - rank(b)[0] || rank(a)[1] - rank(b)[1]).map((a) => {
+    const i = rank(a)[1], u = S.usage[a.id] || {};
     const session = meterState(u.window5h), week = meterState(u.week);
     const worst = ['out', 'critical', 'low', 'ok', 'unknown'].find((k) => session.key === k || week.key === k);
     return { id: a.id, label: a.label, harness: a.harness, state: a.state, priority: a.priority, role: i === 0 ? 'First choice' : a.state === 'UNVERIFIED' ? 'Not verified' : 'Failover', session, week, worst, resets: u.resets, hist: (X.hist[a.id] || []).slice(-30) };
@@ -226,18 +264,18 @@ export const IDEA_PATH = ['CAPTURED', 'UNDERSTOOD', 'EXPLORED', 'VALIDATED', 'CO
 
 // ---------- launch preview (which account a new mission would take) ----------
 export function launchPreview(S, X, pid) {
-  const c = X.launch[pid] || X.launchDefault, har = S.harnesses.find((h) => h.id === c.harness), model = S.models.find((m) => m.id === c.model);
+  const c = typeof pid === 'object' ? pid : X.launch[pid] || X.launchDefault, har = S.harnesses.find((h) => h.id === c.harness), model = S.models.find((m) => m.id === c.model);
   const out = { harness: c.harness, model: model ? model.label : c.model, account: null, tone: 'ok', note: '' };
   if (!har || har.state === 'MISSING') return Object.assign(out, { tone: 'blocked', note: harnessLabel(c.harness) + ' is not installed, so a mission here cannot start.' });
   if (har.breaker.state === 'open') return Object.assign(out, { tone: 'attention', note: 'The ' + har.label + ' spawn breaker is open, so a mission here waits and says "cannot start".' });
-  const pool = X.failover.order.map((id) => S.accounts.find((a) => a.id === id)).filter((a) => a.harness === c.harness);
+  const order = X.failover.order[c.harness] || [], pool = order.map((id) => S.accounts.find((a) => a.id === id)).filter((a) => a.harness === c.harness);
   let pick = c.account === 'auto' ? pool.find((a) => ['AVAILABLE', 'CONSTRAINED', 'UNVERIFIED'].includes(a.state)) : pool.find((a) => a.id === c.account);
   if (!pick) return Object.assign(out, { tone: 'blocked', note: 'No account of ' + har.label + ' can take new work right now.' });
   out.account = pick.label;
   const wk = meterState((S.usage[pick.id] || {}).week);
   if (X.failover.pauseOn && wk.left != null && wk.left <= X.failover.pauseAt) return Object.assign(out, { tone: 'attention', note: pick.label + ' has ' + wk.left + '% of its week left, at or under your ' + X.failover.pauseAt + '% line, so new work waits.' });
   if (pick.state === 'UNVERIFIED') return Object.assign(out, { tone: 'paused', note: pick.label + ' is not verified yet: the first start checks it.' });
-  out.note = c.account === 'auto' && pick.id !== X.failover.order[0] ? 'Failover: the first account is not available, so ' + pick.label + ' takes it.' : pick.label + ' takes the next mission.';
+  out.note = c.account === 'auto' && pick.id !== order[0] ? 'Failover: the first account is not available, so ' + pick.label + ' takes it.' : pick.label + ' takes the next mission.';
   return out;
 }
 
@@ -288,7 +326,7 @@ export function privileges(S, X) {
     { id: 'p2', label: 'Write files in its workdir', state: 'allowed', by: 'Hook: keep writes inside the workdir', note: 'Anything outside is denied, and a hook that cannot answer denies.', link: 'h-live-5' },
     { id: 'p3', label: 'Run the project tests and commands', state: 'allowed', by: 'Policy', note: 'With the stripped environment.' },
     { id: 'p4', label: 'Commit locally', state: 'allowed', by: 'Policy', note: 'A push is a separate action.' },
-    { id: 'p5', label: 'git push', state: push.enabled ? 'asks' : 'unguarded', by: 'Hook: ask before git push', note: push.enabled ? 'Stops and asks you with the exact command.' : 'The hook is off, so a push goes ahead without asking you.', link: 'h-1' },
+    { id: 'p5', label: 'git push', state: push.enabled ? 'asks' : 'unguarded', by: 'Hook: ask before git push', note: push.enabled ? 'Stops and asks you with the exact command. Claude Code only: Codex asks through its approval profile.' : 'The hook is off, so a push goes ahead without asking you. Claude Code only: Codex asks through its approval profile.', link: 'h-1' },
     { id: 'p6', label: 'Install a package', state: 'asks', by: 'Policy', note: 'Asks with the package name.' },
     { id: 'p7', label: 'Start another execution', state: 'denied', by: 'Policy', note: 'Only Core dispatches.' },
     { id: 'p8', label: 'Read your credential stores', state: 'denied-policy', by: 'Policy only', note: 'Denied by policy, not by the OS: physical reach is not built (finding G1).', link: 'sec-b5' },
@@ -313,7 +351,7 @@ export function health(S, X, A) {
   const rows = usageRows(S, X), low = rows.filter((r) => ['low', 'critical', 'out'].includes(r.worst)), unv = S.accounts.filter((a) => a.state === 'UNVERIFIED');
   const accState = low.length || S.accounts.some((a) => ['LIMITED', 'DEGRADED', 'OPEN', 'UNAUTHENTICATED'].includes(a.state)) ? 'attention' : unv.length ? 'unknown' : 'ok';
   const lw = low[0];
-  checks.push({ id: 'chk-accounts', label: 'Accounts and usage', state: accState, summary: low.length ? low.length + (low.length === 1 ? ' account is' : ' accounts are') + ' at or under your ' + LOW_LINE + '% line.' : unv.length ? 'One account is not verified: ' + unv[0].label + '.' : 'Every account has room.', readings: rows.map((r) => [r.label, r.session.left == null ? 'Unknown' : r.session.left + '% of the session, ' + (r.week.left == null ? 'week unknown' : r.week.left + '% of the week')]), cause: low.length ? lw.label + ' has ' + (lw.week.key !== 'ok' && lw.week.left != null ? lw.week.left + '% of its week' : lw.session.left + '% of its 5 hour window') + ' left, at or under the ' + LOW_LINE + '% line. New work prefers another account. These are account percentages, not the cost or tokens of one session.' : unv.length ? 'The account is UNVERIFIED and no live authentication probe has run. An unknown reading stays unknown; it is never shown as 0%.' : null, fix: low.length ? ['Let the window reset' + (lw.resets ? ' (' + lw.resets.replace('5 h window ', '') + ')' : '') + '.', 'Or put another account first in the failover order.', 'Or change the line under Failover rules.'] : unv.length ? ['Start one small mission on it so Core can read its usage.'] : null, action: { label: 'Open Usage', href: '#/usage' } });
+  checks.push({ id: 'chk-accounts', label: 'Accounts and usage', state: accState, summary: low.length ? low.length + (low.length === 1 ? ' account is' : ' accounts are') + ' at or under your ' + LOW_LINE + '% line.' : unv.length ? 'One account is not verified: ' + unv[0].label + '.' : 'Every account has room.', readings: rows.map((r) => [r.label, r.session.left == null ? 'Unknown' : r.session.left + '% of the session, ' + (r.week.left == null ? 'week unknown' : r.week.left + '% of the week')]), cause: low.length ? lw.label + ' has ' + (lw.week.key !== 'ok' && lw.week.left != null ? lw.week.left + '% of its week' : lw.session.left + '% of its 5 hour window') + ' left, at or under the ' + LOW_LINE + '% line. New work prefers another account. These are account percentages, not the cost or tokens of one session.' : unv.length ? 'The account is UNVERIFIED and no live authentication probe has run. An unknown reading stays unknown; it is never shown as 0%.' : null, fix: low.length ? ['Let the window reset' + (lw.resets ? ' (' + lw.resets.replace('5 h window ', '') + ')' : '') + '.', 'Or put another ' + harnessLabel(lw.harness) + ' account first in its failover order.', 'Or change the line under Failover rules.'] : unv.length ? ['Start one small mission on it so Core can read its usage.'] : null, action: { label: 'Open Usage', href: '#/usage' } });
 
   checks.push({ id: 'chk-disk', label: 'Disk space', state: 'unknown', summary: 'No reading yet.', readings: [['Free space', 'Unknown'], ['Last reading', 'None']], cause: 'Core does not read the disk yet. A missing reading is shown as unknown, never as 0 bytes.', fix: ['Nothing to do. The reading shows up when Core records it.'], action: null });
 

@@ -16,10 +16,10 @@ test('meter thresholds: the 20% line, almost out, out, and unknown is never 0', 
   assert.equal(u.key, 'unknown'); assert.equal(u.left, null);
 });
 
-test('usage rows: three accounts in failover order, the Codex reading stays unknown', () => {
+test('usage rows: accounts grouped by harness in failover order, the unverified Codex reading stays unknown', () => {
   const [, A] = mk();
   const rows = A.usage();
-  assert.deepEqual(rows.map((r) => r.id), ['acc-work', 'acc-personal', 'acc-codex']);
+  assert.deepEqual(rows.map((r) => r.id), ['acc-work', 'acc-personal', 'acc-codex', 'acc-codex-2']);
   assert.equal(rows[2].session.key, 'unknown'); assert.equal(rows[2].week.left, null);
   assert.equal(rows[1].session.key, 'low');
 });
@@ -101,7 +101,7 @@ test('launch preview follows accounts and breakers; failover order is editable',
   const [s, A] = mk();
   assert.match(A.preview('archeus').note, /work/);
   assert.equal(A.moveAccount('acc-personal', -1).ok, true);
-  assert.deepEqual(A.failover().order.slice(0, 2), ['acc-personal', 'acc-work']);
+  assert.deepEqual(A.failover().order.claude_code, ['acc-personal', 'acc-work']); assert.deepEqual(A.failover().order.codex, ['acc-codex', 'acc-codex-2']); // each harness has its own order
   assert.equal(A.moveAccount('acc-personal', -1).ok, false);
   A.setLaunch('archeus', 'harness', 'codex');
   assert.equal(A.launch('archeus').model, 'codex-main');
@@ -206,4 +206,41 @@ test('forecast: a rising window gives minutes to the limit; flat, or too few rea
   assert.deepEqual(M.forecast(rising.map((p) => ({ t: p.t, s: 50 }))), { flat: true });
   assert.equal(M.forecast(rising.slice(0, 2)), null);
   assert.equal(M.forecast([{ t: 0, s: null }, { t: 1, s: null }, { t: 2, s: null }]), null);
+});
+
+test('harnesses: what each is, what it supports, and its own accounts, models and failover order', () => {
+  const [, A] = mk(), hs = Object.fromEntries(A.harnesses().map((h) => [h.id, h]));
+  assert.deepEqual(Object.keys(hs), ['claude_code', 'codex', 'pi']);
+  assert.ok(M.supports('claude_code', 'hooks') && !M.supports('codex', 'hooks') && M.supports('codex', 'sandbox'));
+  assert.equal(hs.pi.installed, false); assert.equal(hs.pi.word, 'Not installed'); assert.equal(hs.pi.accounts.length, 0);
+  assert.deepEqual(hs.codex.accounts.map((r) => r.id), ['acc-codex', 'acc-codex-2']);
+  assert.deepEqual(hs.codex.models.map((m) => m.id), ['codex-main', 'codex-mini']);
+  assert.equal(hs.claude_code.word, 'Near its ceiling'); assert.equal(hs.claude_code.next.id, 'acc-work');
+  assert.equal(A.nextAccount('codex').id, 'acc-codex'); assert.equal(A.nextAccount('pi'), undefined);
+  assert.equal(A.moveAccount('acc-codex-2', -1).ok, true); // moves inside Codex only
+  assert.deepEqual(A.failover().order.codex, ['acc-codex-2', 'acc-codex']); assert.deepEqual(A.failover().order.claude_code, ['acc-work', 'acc-personal']);
+  assert.equal(A.moveAccount('acc-codex-2', -1).ok, false); // the first of its own harness, though it is not first overall
+  assert.equal(A.nextAccount('codex').id, 'acc-codex-2');
+});
+
+test('launch defaults are per harness; the default harness says which a project starts with', () => {
+  const [, A] = mk();
+  assert.equal(A.setDefaultModel('codex-mini').ok, true);
+  assert.equal(A.defaultModel('codex'), 'codex-mini'); assert.equal(A.defaultModel(), 'claude-sonnet'); // the default harness is still Claude Code
+  assert.equal(A.setHarnessDefault('codex', 'mode', 'plan').ok, true);
+  assert.equal(A.harnessDefault('codex').mode, 'plan'); assert.equal(A.launch('default').mode, 'ask');
+  assert.equal(A.setLaunch('default', 'harness', 'codex').ok, true);
+  assert.equal(A.defaultHarness(), 'codex'); assert.equal(A.launch('archeus').model, 'codex-mini'); assert.equal(A.launch('archeus').mode, 'plan');
+  assert.equal(A.setLaunch('default', 'harness', 'nope').ok, false);
+  assert.equal(A.preview(A.harnessDefault('claude_code')).harness, 'claude_code'); // a preview of a harness default, not only of a project
+});
+
+test('a shared MCP server has one switch per harness; a harness it is not set up for is refused', () => {
+  const [, A] = mk(), x = () => A.mcp().find((q) => q.id === 'mcp-1');
+  assert.deepEqual(x().on, { claude_code: true, codex: false }); assert.equal(x().enabled, true);
+  assert.equal(A.toggleMcp('mcp-1', 'codex').on, true); assert.deepEqual(x().on, { claude_code: true, codex: true });
+  assert.equal(A.toggleMcp('mcp-1', 'claude_code').on, false); assert.equal(x().enabled, true); // still on in Codex
+  assert.equal(A.toggleMcp('mcp-1').on, false); assert.equal(x().enabled, false); assert.deepEqual(x().on, { claude_code: false, codex: false });
+  assert.equal(A.toggleMcp('mcp-2', 'codex').ok, false);
+  assert.ok(A.hooks().every((h) => h.harnesses.join() === 'claude_code'));
 });

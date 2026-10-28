@@ -256,7 +256,7 @@ export const IT_AREAS = {
   'See every action': 'Vedi ogni azione', 'See all events': 'Vedi tutti gli eventi', 'Review the policy': 'Rivedi le regole',
   'Held commands never auto-allow. Policy applies to every project.': 'I comandi trattenuti non si autorizzano mai da soli. Le regole valgono per ogni progetto.',
   'Scope: every project. Source: Archeus policy. Read only here.': 'Ambito: ogni progetto. Origine: regole di Archeus. Qui sono in sola lettura.',
-  'The mode a new mission starts with. No per-project command overrides are recorded.': 'La modalità con cui parte una nuova missione. Nessuna deroga per progetto è registrata.',
+  'The mode a new mission starts with. Each harness has its own default; a project can differ. No per-project command overrides are recorded.': 'La modalità con cui parte una nuova missione. Ogni harness ha il proprio predefinito; un progetto può differire. Nessuna deroga per progetto è registrata.',
   'Change it in Launch settings': 'Cambiala in Impostazioni di avvio',
   'Where policy ends and physical confinement would have to begin.': 'Dove finiscono le regole e dovrebbe iniziare il confinamento fisico.',
   'Security events': 'Eventi di sicurezza', 'Every decision, hook and breaker change, newest first.': 'Ogni decisione, hook e cambio di interruttore, dal più recente.',
@@ -273,7 +273,24 @@ export const IT_AREAS = {
   'The default is what a new mission asks for. Saved as you choose.': 'Il predefinito è ciò che chiede una nuova missione. Si salva appena scegli.',
   'What happens when an account runs low or out. Each switch saves as you flip it.': 'Cosa succede quando un account è quasi al limite o esaurito. Ogni interruttore si salva appena lo cambi.',
   'Every project starts with the default. Only a project that differs has its own row. Saved as you choose.': 'Ogni progetto parte con le impostazioni predefinite. Solo un progetto che differisce ha una riga propria. Si salva appena scegli.',
-  'just now': 'adesso'
+  'just now': 'adesso',
+  // Harness as a facet of Accounts, Usage and Extensions, 2026-10-28. Italian wording to review.
+  'Harness': 'Harness', 'Harnesses': 'Harness', 'Not detected': 'Non rilevato', 'Starts with': 'Parte con', 'Change order': 'Cambia ordine', 'Agents': 'Agenti', 'Skills': 'Competenze', 'Slash commands': 'Comandi slash', 'Plugins': 'Plugin', 'Sandbox profiles': 'Profili sandbox',
+  'Near its ceiling': 'Vicino al limite', 'Not verified': 'Non verificato', 'Ready': 'Pronto', 'No account': 'Nessun account', 'Cannot start': 'Non può partire', 'No account can take work': 'Nessun account può prendere lavoro', 'Not installed': 'Non installato',
+  'Each harness has its own accounts, models, failover order and launch settings. A subscription login belongs to you.': 'Ogni harness ha i propri account, modelli, ordine di failover e impostazioni di avvio. Un accesso in abbonamento è tuo.',
+  'Install its CLI and Archeus detects it. It would support ': 'Installa la sua CLI e Archeus la rileva. Supporterebbe ', 'Run Health after installing': 'Esegui Salute dopo l’installazione',
+  'Order within each harness': 'Ordine dentro ogni harness', 'An order only makes sense inside one harness: a run never fails over from one harness to another without asking.': 'Un ordine ha senso solo dentro un harness: un’esecuzione non passa da un harness a un altro senza chiedere.',
+  'No account is signed in.': 'Nessun account ha effettuato l’accesso.', 'Not installed.': 'Non installato.', 'Rules for every harness': 'Regole per ogni harness',
+  'The run writes a checkpoint and continues on the next account of the same harness.': 'L’esecuzione scrive un checkpoint e continua sul prossimo account dello stesso harness.',
+  'A project starts with the default harness and that harness’s defaults. Only a project that differs has its own row. Saved as you choose.': 'Un progetto parte con l’harness predefinito e le sue impostazioni predefinite. Solo un progetto che differisce ha una riga propria. Si salva appena scegli.',
+  'How much of each account is left, per harness, read only from the existing usage reader. Archeus shows a number only when it can source it.': 'Quanto resta di ogni account, per harness, letto solo dal lettore di uso esistente. Archeus mostra un numero solo quando può ricavarlo.',
+  'No readings: ': 'Nessuna lettura: ',
+  'What can act before, after and beside a run, in each harness. Each row says its harness, its status and when it last ran; a switch changes it for the next run.': 'Ciò che può agire prima, dopo e accanto a un’esecuzione, in ogni harness. Ogni riga dice il suo harness, il suo stato e quando è stata eseguita l’ultima volta; un interruttore la cambia per la prossima esecuzione.',
+  'A kind of extension is offered only where a harness supports it.': 'Un tipo di estensione è offerto solo dove un harness lo supporta.', 'Available in ': 'Disponibile in ', 'Not tied to one harness: these apply to every harness.': 'Non legati a un harness: valgono per ogni harness.',
+  'Accounts and models: each harness has its own accounts in a failover order, its own models with one default, and its own launch defaults; a project can differ. No token is shown or handled.': 'Account e modelli: ogni harness ha i propri account in un ordine di failover, i propri modelli con un predefinito e le proprie impostazioni di avvio; un progetto può differire. Nessun token è mostrato o gestito.',
+  'Accounts and models: each harness lists its own models with one default; a project can override it in its launch settings.': 'Account e modelli: ogni harness elenca i propri modelli con un predefinito; un progetto può cambiarlo nelle sue impostazioni di avvio.',
+  'Stops and asks you with the exact command. Claude Code only: Codex asks through its approval profile.': 'Si ferma e ti chiede con il comando esatto. Solo Claude Code: Codex chiede tramite il suo profilo di approvazione.',
+  'The hook is off, so a push goes ahead without asking you. Claude Code only: Codex asks through its approval profile.': 'L’hook è spento, quindi un push parte senza chiederti nulla. Solo Claude Code: Codex chiede tramite il suo profilo di approvazione.'
 
 };
 
@@ -283,6 +300,24 @@ const plural = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);
 // "3 min ago" / "2 h ago" / "just now" inside a longer line
 const itAgo = (t) => t.replace(/^(\d+) min ago$/, '$1 min fa').replace(/^(\d+) h ago$/, '$1 h fa').replace('just now', 'adesso');
 export const RULES_AREAS = [
+  [/^Or put another (.+) account first in its failover order\.$/, (m) => 'Oppure metti un altro account di ' + m[1] + ' per primo nel suo ordine di subentro.'],
+  [/^(\d+) harness(?:es)?$/, (m) => m[1] + (m[1] === '1' ? ' harness' : ' harness')],
+  [/^(\d+) accounts?$/, (m) => m[1] + (m[1] === '1' ? ' account' : ' account')],
+  [/^(\d+) near the ceiling$/, (m) => m[1] + ' vicino al limite'],
+  [/^(\d+) cannot take work$/, (m) => m[1] + ' non può prendere lavoro'],
+  [/^CLI · not detected$/, () => 'CLI · non rilevato'],
+  [/^(.+) is not installed on this machine\.$/, (m) => m[1] + ' non è installato su questa macchina.'],
+  [/^(.+) is not installed on this machine\. Nothing is listed until it is detected\.$/, (m) => m[1] + ' non è installato su questa macchina. Nulla è elencato finché non viene rilevato.'],
+  [/^In failover order within (.+)\. (.+) takes the next (.+) mission\.$/, (m) => 'In ordine di failover dentro ' + m[1] + '. ' + m[2] + ' prende la prossima missione di ' + m[3] + '.'],
+  [/^In failover order within (.+)\. No account can take new work\.$/, (m) => 'In ordine di failover dentro ' + m[1] + '. Nessun account può prendere nuovo lavoro.'],
+  [/^No account is signed in for (.+)\. Sign in with its own CLI; Archeus never reads the token\.$/, (m) => 'Nessun account ha effettuato l’accesso a ' + m[1] + '. Accedi con la sua CLI; Archeus non legge mai il token.'],
+  [/^The default is what a new (.+) mission asks for\. Saved as you choose\.$/, (m) => 'Il predefinito è ciò che chiede una nuova missione di ' + m[1] + '. Si salva appena scegli.'],
+  [/^No model is listed for (.+)\.$/, (m) => 'Nessun modello è elencato per ' + m[1] + '.'],
+  [/^Defaults for (.+), and the projects that use (.+) differently\.$/, (m) => 'Impostazioni predefinite di ' + m[1] + ' e i progetti che usano ' + m[2] + ' in modo diverso.'],
+  [/^Defaults for (.+)$/, (m) => 'Predefiniti di ' + m[1]],
+  [/^Not supported by (.+)\.$/, (m) => 'Non supportato da ' + m[1] + '.'],
+  [/^(On|Off) in (.+)$/, (m) => (m[1] === 'On' ? 'Attivo in ' : 'Spento in ') + m[2]],
+  [/^(\d+) of (\d+) in (.+)$/, (m) => m[1] + ' di ' + m[2] + ' in ' + m[3]],
   [/^Showing (\d+) of (\d+)$/, (m) => 'Mostra ' + m[1] + ' di ' + m[2]],
   [/^Showing all (\d+)$/, (m) => 'Mostra tutti (' + m[1] + ')'],
   [/^(\d+) of (\d+) actions$/, (m) => m[1] + ' azioni su ' + m[2]],

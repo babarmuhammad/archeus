@@ -393,3 +393,33 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
   .sec-row[href]:focus-visible, .sec-more > summary:focus-visible { outline: 2px solid Highlight; }
 }
 .main-col .ax-accs, .main-col .ax-checks, .main-col .ax-launches { gap: calc(var(--gut) * 1.25); }
+
+/* ---------- Harness: a facet of Accounts, Usage and Extensions. Chips that are links, a tag on every row, a section per harness. ---------- */
+.ax-facet { align-items: center; }
+a.chip { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; white-space: nowrap; }
+.ax-facet .ax-count { margin: 0; }
+.hn-tag { display: inline-flex; align-items: center; margin-left: 8px; padding: 0 6px; border: var(--hair) solid var(--line-strong); border-radius: 4px; color: var(--text-2); font-size: var(--fs-eyebrow); font-weight: 600; letter-spacing: .04em; line-height: 1.6; vertical-align: middle; white-space: nowrap; }
+.hn-tag + .hn-tag { margin-left: 4px; }
+.ax-hh { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 6px; }
+.ax-hh h2 { margin: 0; color: var(--text); font-size: calc(var(--base) * 1.0625); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.ax-hh .ax-count { margin: 0; }
+.ax-hh .r-note { margin: 0; flex: 1 1 auto; }
+.ax-hgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: 0 40px; align-items: start; }
+.ax-hgrid:has(> :only-child) { grid-template-columns: minmax(0, 56rem); }
+.ax-hgrid > .ax-sect { padding-top: 16px; }
+.us-group { margin-top: 12px; }
+.us-group:first-of-type { margin-top: 0; }
+.ax-empty p { margin: 0 0 6px; }
+.x-muted { color: var(--text-2); }
+.ext-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--gut) * 1.5); align-items: start; }
+.ext-col { display: flex; flex-direction: column; gap: calc(var(--gut) * 1.25); min-width: 0; }
+.ext-side { display: none; position: sticky; top: 0; padding-top: 4px; }
+.ext-side > h2 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; color: var(--text-2); font-size: var(--fs-cap); font-weight: 600; letter-spacing: var(--ls-eyebrow); text-transform: uppercase; }
+.ext-h { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; min-height: 56px; color: var(--text); text-decoration: none; }
+.ext-h[aria-current='true'] { box-shadow: inset 3px 0 0 var(--thread); padding-left: 12px; }
+.ext-h-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ext-h-caps { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.ext-cap { padding: 0 6px; border: var(--hair) solid var(--line); border-radius: 4px; color: var(--text-2); font-size: var(--fs-eyebrow); line-height: 1.6; }
+@container view (min-width: 1100px) { .ext-grid { grid-template-columns: minmax(0, 1fr) 21rem; } .ext-side { display: block; } }
+.app[data-insp='open'] .ext-grid { grid-template-columns: minmax(0, 1fr); }
+.app[data-insp='open'] .ext-side { display: none; }
