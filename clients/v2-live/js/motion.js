@@ -5,6 +5,7 @@
 // The shell re-renders the whole page on every simulation event, so rows are matched by key across renders: capture(roots) before, play(snap, roots) after.
 // A page opts a row in with one attribute: data-mk="<stable key>" (or it already carries data-key or matches ROWS). Chat and Usage rows do that after their merge.
 import { reducedMotion } from './store.js';
+import { isPhone } from './viewport.js';
 import { plan, direction, staggerDelay, keyOf, ticks } from './motion-model.js';
 
 const root = document.documentElement;
@@ -158,14 +159,14 @@ export function flip(container, mutate) { const s = capture([container]); mutate
 
 // ---------- the inspector: a column on a wide window, a sheet on a narrow one ----------
 export function inspectorIn(el, width) {
-  if (width < 600) return enter(el, { y: 24, dur: 3 });
+  if (isPhone()) return enter(el, { y: 24, dur: 3 });
   return enter(el, { x: width < 1024 ? 32 : 12, y: 0, dur: 3 });
 }
 export function inspectorOut(oldContent, box, width) {
   if (!on() || !oldContent) return;
   const app = document.getElementById('app'), g = document.createElement('div');
   g.className = 'inspector'; g.append(oldContent);
-  ghost(g, box, app, width < 600 ? { y: 24, dur: 2 } : { x: width < 1024 ? 32 : 12, dur: 2 });
+  ghost(g, box, app, isPhone() ? { y: 24, dur: 2 } : { x: width < 1024 ? 32 : 12, dur: 2 });
 }
 export const boxOfInspector = (el) => (on() && el.offsetParent ? boxOf(el, document.getElementById('app')) : null);
 

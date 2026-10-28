@@ -24,7 +24,7 @@
   .msn-graph .msn-scene { flex: 1 1 auto; }
   .msn-panel { border-left: var(--hair) solid var(--line); }
 }
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { top: 0; max-height: none; border: 0; border-radius: 0; }
   .msn-graph { display: flex; flex-direction: column; flex: none; padding: 0 12px; }
   .msn-graph .msn-scene { height: 200px; flex: none; }
@@ -32,7 +32,7 @@
   .msn-svg .am-label-title { font-size: 30px !important; }
 }
 .crumb-back .cb-w { display: none; }
-@container dev (max-width: 599px) { .msn-crumb ol { display: none; } .crumb-back .cb-w { display: inline; } }
+@container dev ((max-width: 599px) or style(--phone: 1)) { .msn-crumb ol { display: none; } .crumb-back .cb-w { display: inline; } }
 
 /* graph pieces: the live map's art and tokens (map.css), here only the frame */
 .msn-scene { min-height: 0; }
@@ -95,7 +95,7 @@
 .msn-box[open] > summary svg { transform: rotate(90deg); }
 .msn-box > .ax-note { padding: 0 0 8px; }
 .msn-box.why { display: none; }
-@container dev (max-width: 599px) { .msn-box.why { display: block; } }
+@container dev ((max-width: 599px) or style(--phone: 1)) { .msn-box.why { display: block; } }
 .msn-log, .msn-steps { display: flex; flex-direction: column; padding: 0; }
 .msn-log li { display: flex; align-items: center; gap: 8px; min-height: 28px; border-top: var(--hair) solid var(--line); font-size: 13px; line-height: 20px; }
 .msn-log li:first-child, .msn-steps li:first-child { border-top: 0; }
@@ -125,7 +125,7 @@
 .dcn .insp-foot .btn { flex: none; width: 100%; --bh: 44px; }
 .dcn .ax-confirm-q { flex: none; }
 .dcn .insp-foot .noundo { padding: 8px 12px; }
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .dcn .insp-head h2 { font-size: 30px; }
 }
 
@@ -143,9 +143,9 @@
   .dcn-steps .st-g { border-color: CanvasText; } .dcn-steps li[data-now] .st-g { background: Highlight; border-color: Highlight; forced-color-adjust: none; }
 }
 @media (prefers-reduced-motion: reduce) { .msn-box > summary svg { transition: none; } }
-@container dev (max-width: 599px) { .msn .grab, .dcn .grab { display: none; } }
+@container dev ((max-width: 599px) or style(--phone: 1)) { .msn .grab, .dcn .grab { display: none; } }
 
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .inspector > .msn { overflow-y: auto; overscroll-behavior: contain; }
   .msn > * { flex: none; min-width: 0; }
   .msn-identity { padding: 8px 0 0; background: var(--s2); }

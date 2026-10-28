@@ -6,6 +6,7 @@ import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { tr } from './i18n.js';
 import * as store from './store.js';
+import { isPhone } from './viewport.js';
 import { createMap } from './constellation/map.js';
 import { createTerritoryMap } from './constellation/territories.js';
 import { clockLabel } from '../sim.js';
@@ -82,7 +83,7 @@ export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
-  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && document.getElementById('app').clientWidth >= 600;
+  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && !isPhone();
   if (e.map && (e.lang !== lang || e.calm !== calm || e.terr !== terr)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
     e.lang = lang; e.calm = calm; e.terr = terr;

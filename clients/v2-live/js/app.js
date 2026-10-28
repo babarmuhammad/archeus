@@ -22,9 +22,10 @@ import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
 import { installKeys } from './keys.js';
 import { installPalette } from './palette.js';
-import { railProjects } from './rail-model.js';
+import { railProjects, RAIL_GROUPS } from './rail-model.js';
 import { parseHash } from '../page-model.js';
 import * as motion from './motion.js';
+import { isPhone, onPhoneChange } from './viewport.js';
 import { direction } from './motion-model.js';
 
 store.apply();
@@ -51,7 +52,6 @@ const framenote = document.getElementById('framenote');
 let app, page, rail, bottom, dock, topbar, inspector, scrim, toastEl, menu = null, menuName = null, toastTimer = 0;
 let placesInert = [];
 
-const RAIL_GROUPS = [['Work', ['now', 'work', 'chat', 'replay', 'terminal']], ['Govern', ['security', 'health', 'usage']], ['Configure', ['accounts', 'extensions', 'settings']]];
 const navLabel = (r) => (r.id === 'now' ? 'Overview' : r.label);
 const navItem = (r) => h('a', { class: 'nav-item', href: '#/' + r.id, 'data-route': r.id }, icon(r.icon, 20), h('span', { class: 'nl' }, navLabel(r)), h('span', { class: 'count', 'data-count': r.id, hidden: true }));
 
@@ -206,7 +206,6 @@ function dismissToast() {
 }
 
 // ---------- top bar: safety cluster (status popover, Tell, Stop) ----------
-const isPhone = () => app.clientWidth < 600;
 function closeSafety() { if (ui.safetyOpen) { ui.safetyOpen = false; ui.estopAsk = ui.rearmAsk = false; render(); const b = app.querySelector('[data-key="' + ui.safetyOpener + '"]'); if (b) b.focus(); } }
 function stopClick(e) { ui.safetyOpener = e.currentTarget.dataset.key; ui.safetyOpen = true; ui.tellOpen = false; if (sim.state.estop.engaged) ui.rearmAsk = true; else ui.estopAsk = true; render(); const k = app.querySelector('[data-key="' + (sim.state.estop.engaged ? 'rearm-yes' : 'estop-yes') + '"]'); if (k) k.focus(); }
 function tellClick() {
@@ -382,6 +381,7 @@ const unsub = sim.subscribe((e) => {
 });
 const boot = { t: 0 };
 window.addEventListener('pagehide', unsub);
+onPhoneChange(() => render());
 window.addEventListener('hashchange', () => { closeMenu(); render(); });
 window.addEventListener('resize', () => { if (store.get('device') === 'all' || (store.get('device') !== 'auto' && store.get('device') !== 'terminal')) fit(); else if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); else document.dispatchEvent(new Event('v2live:resize')); });
 document.addEventListener('visibilitychange', syncCore);

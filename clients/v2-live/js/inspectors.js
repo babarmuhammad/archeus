@@ -3,6 +3,7 @@
 // A sheet on a phone, a right sheet on a tablet, a column on a desktop; the same content. Offline it reads what was kept and offers no actions.
 import { h } from './dom.js';
 import { icon } from './icons.js';
+import { isPhone } from './viewport.js';
 import { present } from '../core-words.js';
 import { clockLabel, categoryOf } from '../sim.js';
 import { badge, projName, word, dnote } from './views.js';
@@ -16,7 +17,6 @@ import {projectState} from './view-projects.js';
 import {projectTab, PROJECT_TABS, relTime} from '../page-model.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
-export const isCompact = () => (document.getElementById('device') || document.body).clientWidth < 600;
 export const ask = (ctx, c) => { ctx.ui.confirm = Object.assign({ at: ctx.route.id }, c); ctx.render(); };
 export function confirmNodes(ctx) {
   const c = ctx.ui.confirm; if (!c || c.at !== ctx.route.id) return null;
@@ -79,7 +79,7 @@ function mission(ctx, A, S, id) {
     if (tab === 'outcome') {
       const last = S.events.filter((e) => e.mission === id && e.type === 'mission.state_changed').pop();
       const facts = kv([['State', badge('mission', m.state)], ['Project', link(hrefFor('project', 'prj-' + m.project), projName(ctx.sim, m.project))], ['Branch', m.branch], ['Origin', m.origin], ['Plan', m.plan_version ? 'version ' + m.plan_version : 'none yet'], ['Tasks', tasks.filter((t) => t.state === 'SUCCEEDED').length + ' of ' + tasks.length + ' done'], ['Account', link(hrefFor('account', m.account), accountLabel(S, m.account))], last ? ['Last change', clockLabel(last.at) + (last.actor === 'device' ? ' by you' : ' by Core')] : null, m.reason ? ['Why', m.reason] : null]);
-      const content = overview(ctx, S, m, tasks, execs, { compact: isCompact(), facts, position: pos });
+      const content = overview(ctx, S, m, tasks, execs, { compact: isPhone(), facts, position: pos });
       const rows = content.querySelector('.msn-rows');
       const details = kv([
         ['Current phase', h('span', null, word('mission', m.state), h('span', { class: 'msn-d' }, spineOf(m.state, m.held_from).text))],
@@ -125,7 +125,7 @@ function mission(ctx, A, S, id) {
   const fr = frame(ctx, A, { cls: 'msn-panel', kind: KIND_WORD.mission, title: m.title, meta: metadata, pin: id, tabs: [['outcome', 'Outcome'], ['plan', 'Plan'], ['now', 'Now'], ['evidence', 'Evidence'], ['why', 'Why'], ['timeline', 'Timeline'], ['relations', 'Relations']], body, foot });
   fr.querySelector('.tabs').before(pos.progress);
   pos.progress.classList.add('msn-stations');
-  const page = h('div', { class: 'msn' }, pane(ctx, S, m, isCompact()), fr);
+  const page = h('div', { class: 'msn' }, pane(ctx, S, m, isPhone()), fr);
   const identity = h('div', { class: 'msn-identity' });
   const nodes = [fr.querySelector('.insp-head'), metadata];
   const homes = nodes.map((node) => {
@@ -136,7 +136,7 @@ function mission(ctx, A, S, id) {
   let phone;
   // Use the device resize hook so node order follows container changes without a rerender.
   ctx.mounts.push(() => {
-    const compact = isCompact();
+    const compact = isPhone();
     if (phone === compact) return;
     phone = compact;
     if (compact) {
@@ -194,7 +194,7 @@ function approval(ctx, A, S, id) {
   const m = S.missions[a.mission], open = a.state === 'PENDING', plan = a.kind === 'plan';
   const decide = (kind, label, text, danger) => h('button', { class: 'btn decide ' + (danger ? 'danger' : kind === 'approve' ? 'primary' : ''), type: 'button', onclick: () => {
     const run = () => { const r = ctx.act(kind, id); if (kind === 'plan_changes' && r.ok) ctx.toast('Plan sent back (simulated). Core plans again.'); };
-    if (isCompact() || kind === 'reject') ask(ctx, { text, label: 'Confirm: ' + label.toLowerCase(), tone: danger ? 'danger' : 'primary', run }); else run();
+    if (isPhone() || kind === 'reject') ask(ctx, { text, label: 'Confirm: ' + label.toLowerCase(), tone: danger ? 'danger' : 'primary', run }); else run();
   } }, label);
   const noundo = h('div', { class: 'noundo', role: 'note' }, icon('warning', 22), h('p', null, h('b', null, 'No Undo.'), h('span', null, ' Decision cannot be changed.')));
   const foot = () => (open ? [noundo, decide('approve', 'Approve', 'Approve this? ' + a.presented.consequence), plan ? decide('plan_changes', 'Request changes', 'Send the plan back? Core plans again and asks you once more.') : null, decide('reject', 'Reject', 'Reject this? ' + (plan ? 'The mission is cancelled.' : 'The execution ends and the mission is blocked.'), true)] : null);
