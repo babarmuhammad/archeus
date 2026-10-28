@@ -207,3 +207,12 @@ test('forecast: a rising window gives minutes to the limit; flat, or too few rea
   assert.equal(M.forecast(rising.slice(0, 2)), null);
   assert.equal(M.forecast([{ t: 0, s: null }, { t: 1, s: null }, { t: 2, s: null }]), null);
 });
+
+test('the project count option builds that many projects with a proportional mission mix', () => {
+  for (const n of [10, 15, 30, 50, 100]) {
+    const st = createSim({ seed: 7, projects: n }).state;
+    assert.equal(st.projects.length, n);
+    assert.ok(Object.keys(st.missions).length > n);
+  }
+  assert.equal(createSim({ seed: 7 }).state.projects.length, 3);
+});

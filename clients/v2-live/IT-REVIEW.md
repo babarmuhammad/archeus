@@ -2100,3 +2100,8 @@ Status: **to review**. Inline `L(en, it)` strings in `js/replay.js`.
 | Where it stands (rail beside the options) | Dove siamo |
 | Choose an option to draft a proposal. Nothing runs until you approve it. | Scegli un'opzione per preparare una proposta. Non gira nulla finché non la approvi. |
 | How Replay reads Core (the two Decision notes, folded) | Come il Replay legge il Core |
+## Simulated project count (Tools)
+- Simulated projects → Progetti simulati (menu title)
+- Number of simulated projects → Numero di progetti simulati (button name)
+- 3 (the default story) → 3 (la storia predefinita)
+- Reloads the prototype with that many projects and the same mission mix, to see how every page scales. → Ricarica il prototipo con quel numero di progetti e la stessa miscela di missioni, per vedere come scala ogni pagina.

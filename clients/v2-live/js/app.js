@@ -32,7 +32,7 @@ const q = new URLSearchParams(location.search);
 // An embedded frame (the All devices view) shares the parent's simulation instance, so all devices show one story.
 const embed = q.get('embed') === '1';
 const shared = embed && window.parent !== window && window.parent.v2live && window.parent.v2live.sim;
-const sim = shared || createSim({ seed: q.get('seed') ? Number(q.get('seed')) : undefined, story: q.get('story') || undefined });
+const sim = shared || createSim({ seed: q.get('seed') ? Number(q.get('seed')) : undefined, story: q.get('story') || undefined, projects: Number(q.get('projects')) || undefined });
 if (embed) document.body.dataset.embed = '1';
 if (!shared) {
   if (q.get('sim') !== 'paused') sim.play();
@@ -285,12 +285,12 @@ function buildToolbar() {
   toolbar.append(
     h('span', { class: 'sim-badge', role: 'note' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), 'SIMULATED', h('span', { class: 'long' }, 'no Core connected')),
     h('span', { class: 'tb-spacer' }),
-    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('notes', 'Notes', 'Decision notes on the Overview')), tools);
+    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('projects', 'Projects', 'Number of simulated projects'), tbBtn('notes', 'Notes', 'Decision notes on the Overview')), tools);
   translate(toolbar);
 }
 function toggleTools() { closeMenu(); store.set('tools', store.get('tools') === 'open' ? 'closed' : 'open'); buildToolbar(); syncToolbar(); const b = toolbar.querySelector('[data-tb="tools"]'); if (b) b.focus(); fit(); }
 function tbBtn(id, label, aria) {
-  const b = h('button', { class: 'tb-btn', type: 'button', 'data-tb': id, 'aria-label': aria, onclick: () => (id === 'motion' ? toggleMotion() : id === 'notes' ? setHeroNotes() : id === 'lang' ? setLang(store.get('lang') === 'it' ? 'en' : 'it') : toggleMenu(id, b)) }, icon(id === 'sim' ? 'sim' : id === 'lang' ? 'lang' : id === 'notes' ? 'note' : id), h('span', { class: id === 'lang' ? 'tb-label tb-always' : 'tb-label' }, label));
+  const b = h('button', { class: 'tb-btn', type: 'button', 'data-tb': id, 'aria-label': aria, onclick: () => (id === 'motion' ? toggleMotion() : id === 'notes' ? setHeroNotes() : id === 'lang' ? setLang(store.get('lang') === 'it' ? 'en' : 'it') : toggleMenu(id, b)) }, icon(id === 'sim' ? 'sim' : id === 'lang' ? 'lang' : id === 'notes' ? 'note' : id === 'projects' ? 'viewgrid' : id), h('span', { class: id === 'lang' ? 'tb-label tb-always' : 'tb-label' }, label));
   if (id === 'lang' || id === 'motion' || id === 'notes') b.classList.add('tb-opt');
   if (id !== 'motion' && id !== 'lang' && id !== 'notes') { b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false'); }
   return b;
@@ -304,9 +304,12 @@ function syncToolbar() {
   tb('lang').querySelector('.tb-label').textContent = store.get('lang') === 'it' ? 'IT' : 'EN'; tb('lang').setAttribute('aria-pressed', store.get('lang') === 'it' ? 'true' : 'false');
   const badge = toolbar.querySelector('.sim-badge'), mode = sim.state.playing ? 'playing' : 'paused';
   if (badge.dataset.sim !== mode) { const was = badge.dataset.sim, g = badge.querySelector('.g'); badge.dataset.sim = mode; g.textContent = mode === 'playing' ? '◆' : '◇'; if (was) motion.tick(g); }
+  tb('projects').querySelector('.tb-label').textContent = sim.state.projects.length + ' projects';
   const sb = tb('sim'); sb.querySelector('.tb-label').textContent = sim.state.playing ? 'x' + sim.state.speed : 'Paused';
   translate(toolbar);
 }
+const PROJECT_COUNTS = [3, 10, 15, 30, 50, 100];
+function setProjectCount(n) { const u = new URL(location.href); u.searchParams.delete('story'); if (n === 3) u.searchParams.delete('projects'); else u.searchParams.set('projects', String(n)); location.assign(u); }
 function setLang(id) { store.set('lang', id); buildToolbar(); syncToolbar(); render(); refreshMenu(); broadcast(); }
 function setHeroNotes() { store.set('heronotes', store.get('heronotes') === 'on' ? 'off' : 'on'); syncToolbar(); broadcast(); }
 function setNotes(id) { store.set('notes', id); refreshMenu(); render(); broadcast(); }
@@ -327,6 +330,8 @@ function buildMenu() {
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.get('lang') === 'it' ? 'true' : 'false', onclick: () => setLang(store.get('lang') === 'it' ? 'en' : 'it') }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.get('lang') === 'it' ? '\u2713' : ''), 'Language', h('span', { class: 'hint' }, 'Italiano')),
     h('button', { class: 'menu-item', type: 'button', role: 'menuitemcheckbox', 'aria-checked': store.get('notes') === 'on' ? 'true' : 'false', onclick: () => setNotes(store.get('notes') === 'on' ? 'off' : 'on') }, h('span', { class: 'tick', 'aria-hidden': 'true' }, store.get('notes') === 'on' ? '\u2713' : ''), 'Decision notes', h('span', { class: 'hint' }, store.get('notes') === 'on' ? 'On' : 'Off')),
     h('p', { class: 'menu-note' }, 'System follows the OS (including high contrast). Forced colours is a simulation; the real forced-colors mode is also honoured.')];
+  else if (menuName === 'projects') kids = [h('h2', null, 'Simulated projects'), ...PROJECT_COUNTS.map((n) => item(n === 3 ? '3 (the default story)' : String(n), n === (Number(q.get('projects')) || 3), () => setProjectCount(n))),
+    h('p', { class: 'menu-note' }, 'Reloads the prototype with that many projects and the same mission mix, to see how every page scales.')];
   else kids = [h('h2', null, 'Simulation'), simControls(Object.assign({}, ctx, { where: 'menu' }))];
   menu = h('div', { class: 'menu', role: 'menu', 'aria-label': menuName }, ...kids);
   translate(menu);
