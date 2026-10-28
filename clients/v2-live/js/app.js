@@ -22,6 +22,7 @@ import { viewTerminal } from './terminal.js';
 import { pruneMaps, syncLive, notePulse } from './map.js';
 import { installKeys } from './keys.js';
 import { railProjects } from './rail-model.js';
+import { parseHash } from '../page-model.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -74,12 +75,12 @@ const VIEWS = { now: vNow.render, work: vWork.render, replay: vReplay.render, ch
 const GONE = /^#\/attention(?=\/|$)/;
 VIEWS.projects = vProjects.render;
 function parse() {
-  const m = /^#\/([a-z]+)(?:\/([\w-]+))?/.exec(location.hash) || [];
-  const name = [...ROUTES.map((r) => r.id), 'terminal', 'more', 'projects'].includes(m[1]) ? m[1] : 'now';
-  return { name, id: m[2] || null };
+  const m = parseHash(location.hash);
+  const name = [...ROUTES.map((r) => r.id), 'terminal', 'more', 'projects'].includes(m.name) ? m.name : 'now';
+  return { name, id: m.id, sub: m.sub, q: m.q };
 }
 function nav(hash) { if (location.hash === hash) render(); else location.hash = hash; }
-function closeInsp() { nav('#/' + ctx.route.name); }
+function closeInsp() { nav('#/' + ctx.route.name + (location.hash.includes('?') ? location.hash.slice(location.hash.indexOf('?')) : '')); }
 
 let inspKey = '';
 const inspScrollers = () => [inspector, ...inspector.querySelectorAll('.insp-body, .msn')];
@@ -91,6 +92,7 @@ function render() {
   const prev = ctx.route;
   ctx.route = parse();
   if (prev.name !== ctx.route.name || prev.id !== ctx.route.id) { keep.top = 0; if (ui.s4) { ui.s4.sheet = false; if (ui.s4.page) ui.s4.page.sheet = null; } if (prev.id !== ctx.route.id) ui.tab = 'outcome'; if (prev.name !== ctx.route.name) { ui.tellOpen = ui.safetyOpen = ui.placesOpen = false; ui.confirm = null; ui.estopAsk = ui.rearmAsk = false; if (ctx.route.name !== 'work') ui.workProject = null; } }
+  if (ctx.route.id && ctx.route.sub) ui.tab = ctx.route.sub; // a tab is part of the address: #/work/m-date/plan, #/projects/prj-notes/missions
   ctx.mounts = []; ctx.ticks = [];
   const r = ctx.route, term = r.name === 'terminal';
   app.dataset.term = term ? 'true' : 'false';
