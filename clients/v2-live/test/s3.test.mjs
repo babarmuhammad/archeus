@@ -179,3 +179,10 @@ test('the areas do not change the simulation: same seed, same hash with or witho
   run(a, 1500); run(b, 1500);
   assert.equal(a.hash(), b.hash());
 });
+
+test('idea drafts are kept per project, so a draft typed in one project is not offered in another', () => {
+  const ui = {};
+  M.ideaDraft(ui, 'a').v = 'half an idea';
+  assert.equal(M.ideaDraft(ui, 'b').v, '');
+  assert.equal(M.ideaDraft(ui, 'a').v, 'half an idea');
+});

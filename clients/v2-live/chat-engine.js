@@ -43,6 +43,7 @@ export function createChat(sim, env = {}) {
     if (recorded) { const ex = Object.assign({}, m); delete ex.from; delete ex.at; delete ex.text; return sim.chat.post(from, m.text, ex); }
     m.id = 'l-' + (++ln); m.ref = S().messages.length; m.local = true; local.push(m); changed(); return m;
   }
+  const originOf = (m) => ({ project: m.project, mission: Object.values(S().missions).find((x) => m.args && (x.id === m.args || x.title.toLowerCase() === m.args.toLowerCase()))?.id || null });
   const get = (id) => (String(id).startsWith('l-') ? local.find((x) => x.id === id) : S().messages.find((x) => x.id === id));
   function patch(id, fields) {
     const m = get(id); if (!m) return null;
@@ -278,7 +279,7 @@ export function createChat(sim, env = {}) {
     patch(id, { status: 'sent' });
     const recorded = !m.local;
     let reply = null;
-    if (r.c) reply = post('archeus', r.c, { dest: m.dest, card: r.card || null, general: !!r.general }, recorded);
+    if (r.c) reply = post('archeus', r.c, { dest: m.dest, card: r.card || null, general: !!r.general, ...originOf(m) }, recorded);
     return Object.assign({ reply }, r);
   };
   // a failed send is retried with the same key, so it cannot be recorded twice
@@ -345,18 +346,18 @@ export function createChat(sim, env = {}) {
       if (what === 'general' || what === 'work') {
         setCard(id, { state: 'done', step: what });
         const r = what === 'general' ? general(c.text) : (() => { const x = plainWork(c.text, { dest: 'work' }); if (x.card && x.card.kind === 'choice') return { c: tp('I heard you. Name the project, mission, idea or proposal you want. Nothing was created or executed.', 'Ti ho sentito. Dimmi il progetto, la missione, l\'idea o la proposta che vuoi. Non è stato creato né eseguito nulla.') }; return x; })();
-        post('archeus', r.c, { dest: what, card: r.card || null, general: !!r.general }, true); return { ok: true };
+        post('archeus', r.c, { dest: what, card: r.card || null, general: !!r.general, project: m.project, mission: m.mission }, true); return { ok: true };
       }
     }
     if (k === 'pick' && what === 'pick') {
       const orig = get(c.origin);
       setCard(id, { state: 'done', step: 'picked', picked: data.id });
       if (!orig) return { ok: true };
-      const r = answer(Object.assign({}, orig, { args: data.id })); if (r) post('archeus', r.c, { dest: 'command', card: r.card || null }, !(orig.local));
+      const r = answer(Object.assign({}, orig, { args: data.id })); if (r) post('archeus', r.c, { dest: 'command', card: r.card || null, ...originOf(Object.assign({}, orig, { args: data.id })) }, !(orig.local));
       return { ok: true, nav: r && r.nav };
     }
     if (k === 'general' && what === 'remember') {
-      post('archeus', tp('Where should this be remembered? Nothing is written until you confirm.', 'Dove va ricordato? Non si scrive nulla finché non confermi.'), { dest: 'general', card: { kind: 'remember', excerpt: c.question, scope: '', step: 'ask', state: 'open' } }, true);
+      post('archeus', tp('Where should this be remembered? Nothing is written until you confirm.', 'Dove va ricordato? Non si scrive nulla finché non confermi.'), { dest: 'general', card: { kind: 'remember', excerpt: c.question, scope: '', step: 'ask', state: 'open' }, project: m.project, mission: m.mission }, true);
       return { ok: true };
     }
     return { ok: false, reason: 'Unknown card action' };
@@ -367,6 +368,7 @@ export function createChat(sim, env = {}) {
   api.reset = reset;
   api.post = post;
   api.answer = answer;
+  api.originOf = originOf;
   api.nameIn = nameIn;
   return api;
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spineOf, spineText, STATIONS } from '../spine-model.js';
+import { spineOf, spineText, isOpenMission, STATIONS } from '../spine-model.js';
 import { WORDS, present } from '../core-words.js';
 
 const MISSION_STATES = Object.keys(WORDS.machines.mission);
@@ -86,4 +86,9 @@ test('terminal form matches the ADR-0054 table, unicode and ascii', () => {
     ['CANCELLED', null, '\u2013\u2013\u2013\u2013\u2013\u2013 Cancelled', '------ Cancelled']
   ];
   for (const [st, held, uni, asc] of cases) { assert.equal(spineText(st, held, false), uni, st); assert.equal(spineText(st, held, true), asc, st); }
+});
+
+test('isOpenMission: COMPLETED, CANCELLED and FAILED are over; every other Core state is open', () => {
+  for (const s of MISSION_STATES) assert.equal(isOpenMission({ state: s }), !['COMPLETED', 'CANCELLED', 'FAILED'].includes(s), s);
+  assert.equal(isOpenMission({ state: 'DONE' }), true);
 });

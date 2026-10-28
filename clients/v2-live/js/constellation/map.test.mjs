@@ -4,7 +4,8 @@ import {driftOf, coreKeepOut, crystalRadius, isCrystal, layout, layoutProjects, 
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('projects plates fit the inset, avoid each other and reserve the core for 1 to 8 projects', () => {
-  for (const [width, height] of [[1280, 720], [1440, 900], [2000, 930], [390, 700], [620, 500], [760, 650], [1000, 700]]) for (let count = 1; count <= 8; count++) {
+  for (const [width, viewport] of [[1280, 720], [1440, 900], [2000, 930], [390, 700], [620, 500], [760, 650], [1000, 700]]) for (let count = 1; count <= 8; count++) {
+    const height = Math.max(viewport, (width < 600 ? count : Math.ceil(count / 2)) * 56 + (width < 600 ? 120 : 0) + INSET.top + 142);
     const input = {nodes: Array.from({length: count}, (_, i) => ({id: `p${i}`, project: `p${i}`, kind: 'Project', label: `Project ${i}`, missionCount: i})), edges: []};
     const snapshot = structuredClone(input), nodes = layoutProjects(input, width, height), keep = projectsKeepOut(width, height);
     const legend = projectsLegendBox(width, height);
@@ -178,4 +179,19 @@ test('calm layout lists only projects: panels apart, clear of the core mark and 
       for (const b of nodes.slice(i + 1)) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= a.radius * 2, `${w}x${h} ${count}: panels touch`);
     });
   }
+});
+
+test('projects: a long list keeps a plate-high step between rows, so no plate sits on another', () => {
+  const input = {nodes: Array.from({length: 200}, (_, i) => ({id: `p${String(i).padStart(3, '0')}`, project: `p${i}`, kind: 'Project', label: `Project ${i}`, missionCount: 0})), edges: []};
+  for (const [width, height] of [[1280, 600], [1440, 900], [390, 700]]) {
+    const boxes = layoutProjects(input, width, height).map(n => ({x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height}));
+    boxes.forEach((box, i) => { for (const other of boxes.slice(i + 1)) assert.ok(!overlaps(box, other), `${width}x${height}: ${i}`); });
+  }
+});
+
+test('projects: a captured idea whose project is missing or unknown still gets a plate', () => {
+  const idea = (id, project) => ({id, project, kind: 'Idea', label: id});
+  assert.deepEqual(layoutProjects({nodes: [idea('i1', null)]}, 1280, 720).map(n => n.id), ['i1']);
+  const nodes = layoutProjects({nodes: [{id: 'p', project: 'p', kind: 'Project', label: 'P', missionCount: 0}, idea('i2', 'gone'), idea('i1', 'p')]}, 1280, 720);
+  assert.deepEqual(nodes.map(n => n.id), ['p', 'i1', 'i2']);
 });

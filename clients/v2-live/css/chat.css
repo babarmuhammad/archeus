@@ -237,9 +237,6 @@
 .kbsim .btn { flex: none; }
 
 /* ---------- Replay and Recovery ---------- */
-.rpcols { align-items: start; }
-.rpmain, .rpside { gap: var(--gut); min-width: 0; }
-.rtools { display: flex; flex-direction: column; gap: 10px; padding-bottom: 8px; }
 .scrub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .scrub input[type='range'] { flex: 1 1 10em; min-width: 0; min-height: var(--target); accent-color: var(--text); }
 .rtl { position: relative; padding: 4px 0 8px; max-height: 26rem; overflow-y: auto; overscroll-behavior: contain; }

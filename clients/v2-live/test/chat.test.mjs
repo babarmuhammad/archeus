@@ -192,3 +192,10 @@ test('// escape: the text is sent as ordinary text, the idea handler and the int
   send(chat, '//idea x'); assert.equal(sim.state.ideas.length, n);
   assert.equal(sim.state.messages.at(-2).text, '/idea x'); assert.match(fmt(last(sim).c, 'en'), /Sent as ordinary text/);
 });
+
+test('a reply carries the project it answers, so a slow reply is not filed under the project sent after it', () => {
+  const { sim, chat } = mk();
+  const a = chat.send('what is a mission', { project: 'archeus' }), b = chat.send('what is an idea', { project: 'notes' });
+  b.run(); a.run();
+  assert.deepEqual(sim.state.messages.slice(-2).map((m) => [m.from, m.project]), [['archeus', 'notes'], ['archeus', 'archeus']]);
+});

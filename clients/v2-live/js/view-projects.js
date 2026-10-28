@@ -38,7 +38,7 @@ export function render(ctx) {
     if (!width || size === lastSize) return;
     lastSize = size;
     const phone = width < 600, rows = phone ? nodes.length : Math.ceil(nodes.length / 2);
-    const height = phone ? Math.max(viewportHeight, rows * 56 + 120 + INSET.top + 142) : viewportHeight;
+    const height = Math.max(viewportHeight, rows * 56 + (phone ? 120 : 0) + INSET.top + 142);
     scene.style.height = `${height}px`;
     legend.style.width = `${projectsLegendBox(width, height).width}px`;
     const placed = layoutProjects({nodes}, width, height), core = projectsCore(width, height), star = coreStar(phone ? 23 : 52 * Math.min(unit(width, height), (height - 142) / 400), phone ? 1 : 1.75);
@@ -67,7 +67,9 @@ export function render(ctx) {
       anchor.innerHTML = projectPlateMarkup(n, tr);
       svg.append(anchor);
     });
+    const focused = scene.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     clear(scene).append(svg, legend);
+    if (focused) svg.querySelector(`[data-key="${focused}"]`)?.focus({preventScroll: true});
   });
   return root;
 }

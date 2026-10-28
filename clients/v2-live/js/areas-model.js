@@ -505,3 +505,5 @@ export function keptSummary(S) {
   if (running) parts.push(running + ' running');
   return { decide, review, stopped, running, need, sentence: parts.length ? parts.join(' · ') : 'Nothing needed you' };
 }
+
+export const ideaDraft = (ui, pid) => ((ui.projectIdeaDrafts ||= {})[pid] ||= { v: '', sel: null });

@@ -198,19 +198,17 @@ export function composer(ctx, where) {
 
 // ---------- the Chat page ----------
 import { spineInspector } from './spine.js';
-import { spineOf } from '../spine-model.js';
+import { spineOf, isOpenMission } from '../spine-model.js';
 import { present } from '../core-words.js';
 import { translate } from './i18n.js';
 
 function chatPageEntries(s, st) {
   let project = 'archeus', mission = null, general = false;
   return s.eng.thread().map((m) => {
-    if (m.from === 'you') {
-      project = m.project || 'archeus'; general = m.dest === 'general';
-      mission = Object.values(st.missions).find((x) => m.args && (x.id === m.args || x.title.toLowerCase() === m.args.toLowerCase()))?.id || null;
-    }
-    const ref = m.card?.mission || st.approvals[m.card?.approval]?.mission || mission;
-    return { m, project: m.project || project, mission: ref, general: m.general || m.dest === 'general' || (m.from !== 'you' && general) };
+    const own = m.from !== 'you' && m.project !== undefined;
+    if (m.from === 'you') { project = m.project || 'archeus'; general = m.dest === 'general'; mission = s.eng.originOf(m).mission; }
+    const ref = m.card?.mission || st.approvals[m.card?.approval]?.mission || (own ? m.mission : mission);
+    return { m, project: m.project || project, mission: ref, general: m.general || m.dest === 'general' || (m.from !== 'you' && !own && general) };
   });
 }
 
@@ -224,6 +222,8 @@ export function viewChat(ctx) {
   if (P.lastYou && P.lastYou !== lastYou) P.mission = null;
   P.lastYou = lastYou;
   const oldCards = new Map([...document.querySelectorAll('.chatpage .msg')].map((el) => [el.dataset.key, el.querySelector('.ccard')?.getBoundingClientRect().height]));
+  const scrollers = ':is(.cp-rail, .cp-context, .cp-sheet, .cp-commands)', scrollKey = (el) => el.className + (el.closest('.cp-sheet') ? '/sheet' : '');
+  const oldScroll = new Map([...document.querySelectorAll('.chatpage ' + scrollers)].map((el) => [scrollKey(el), el.scrollTop]));
   const project = st.projects.find((p) => p.id === s.project);
   const focused = s.dest !== 'general' && st.missions[P.mission]?.project === s.project ? st.missions[P.mission] : null;
   const title = s.dest === 'general' ? L('General', 'Generale') : focused?.title || project?.name || s.project;
@@ -265,7 +265,7 @@ export function viewChat(ctx) {
     return h('div', { class: 'cp-rail-content' }, h('h2', null, 'Conversations'), search, rows);
   }
   function context(sheet = false) {
-    const active = focused || (s.dest !== 'general' && Object.values(st.missions).find((m) => m.project === s.project && !['DONE', 'CANCELLED', 'FAILED'].includes(m.state)));
+    const active = focused || (s.dest !== 'general' && Object.values(st.missions).find((m) => m.project === s.project && isOpenMission(m)));
     const missionSpine = active ? spineInspector(active.state, active.held_from) : null;
     if (active) {
       const sp = spineOf(active.state, active.held_from);
@@ -330,6 +330,7 @@ export function viewChat(ctx) {
       if (before && after && Math.abs(before - after) > 1) card.animate([{ height: before + 'px', overflow: 'hidden' }, { height: after + 'px', overflow: 'hidden' }], { duration: 180, easing: 'ease-out' });
     });
     oldCards.clear();
+    page.querySelectorAll(scrollers).forEach((el) => { el.scrollTop = oldScroll.get(scrollKey(el)) || 0; });
     log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
     visible.forEach((e) => P.seen.add(e.m.id));
     if (P.switched) { P.switched = false; if (!store.reducedMotion()) log.animate([{ opacity: .35 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' }); }
