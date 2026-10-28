@@ -9,6 +9,8 @@ Checks that run and must pass (any FAIL gives exit code 1):
   no sideways scroll  320, 360, 390, 430 wide, 200 % zoom (320 CSS px) and landscape 844x390 and 667x375
   landscape           a coarse-pointer window under 500 high and 950 wide is the phone shell; a mouse window of the same size, and a wide one, are not
   frame               a 390 px frame on a desktop window is the phone shell, so the Projects / Network switch is hidden there
+  pages (slice D)     Replay, Security, Health, Usage, Accounts, Extensions, Settings: one vertical scroller per route, no scrollbar of their own, the first row early (Replay under 75 % of the height,
+                      the five area pages under 260 px of the page), tab strips and chip rows not cut mid-label, no text under 12 px, the Replay evidence as a sheet
   sheet               role, aria-modal, inert, focus in and back, detents by button, key and drag (flick and slow), Back and Esc, modeless until full, pinned above the keyboard, flat scrim, instant under Reduced motion
 
 Expected failures (XFAIL, never block): the checks that need the slices after F0. Those marked "measured" run and print what they find; an unexpected pass prints XPASS.
@@ -30,7 +32,9 @@ sys.path.insert(0, HERE)
 import v2_live_layout_probe as lp  # noqa: E402  (its measuring script, server helpers and settle wait)
 
 APP = lp.APP_DIR
-ROUTES = ['now', 'work', 'chat', 'settings', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions', 'replay/m-date']
+ROUTES = ['now', 'work', 'chat', 'settings', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions', 'replay/m-date', 'settings/appearance', 'settings/prototype', 'replay/m-date?section=evidence', 'replay/m-date?section=recovery', 'replay/m-date?section=reference']
+PAGES = ['replay/m-date', 'replay/m-date?section=evidence', 'replay/m-date?section=recovery', 'replay/m-date?section=reference', 'security', 'health', 'usage', 'accounts', 'extensions', 'settings', 'settings/appearance']
+AREAS = ['security', 'health', 'usage', 'accounts', 'extensions']
 results = []
 
 
@@ -260,6 +264,76 @@ def sizes(br, base):
     check('no sideways scroll at 320, 360, 390, 430, 200 % zoom and in landscape (page and main column)', not over, '; '.join(over[:5]))
 
 
+# ---------- slice D: the pages ----------
+SCROLLERS = """() => { const mc = document.querySelector('.main-col'), out = [];
+  for (const e of [mc, ...mc.querySelectorAll('*')]) { const cs = getComputedStyle(e); if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && e.scrollHeight > e.clientHeight + 1) out.push(e.tagName.toLowerCase() + '.' + String(e.className).slice(0, 24)); }
+  return out; }"""
+BARS = """() => { const mc = document.querySelector('.main-col'), out = [];
+  for (const e of [...mc.querySelectorAll('*'), ...document.querySelectorAll('.sheet *')]) { const cs = getComputedStyle(e); if (!['auto', 'scroll'].includes(cs.overflowX) && !['auto', 'scroll'].includes(cs.overflowY)) continue;
+    if (cs.scrollbarWidth !== 'none' && (e.offsetWidth - e.clientWidth - e.clientLeft * 2 > 0 || e.offsetHeight - e.clientHeight - e.clientTop * 2 > 0)) out.push(e.tagName.toLowerCase() + '.' + String(e.className).slice(0, 24)); }
+  const m = getComputedStyle(mc); return { rows: out, main: m.scrollbarWidth === 'none' || mc.offsetWidth - mc.clientWidth === 0 }; }"""
+FIRST = """() => { const mc = document.querySelector('.main-col'), top = mc.getBoundingClientRect().top, panel = document.querySelector('.ax-panel'), ext = document.querySelector('.ext-needs, .ext-list');
+  const first = panel ? [...panel.children].find((c) => c.getBoundingClientRect().height > 0) : ext; return first ? Math.round(first.getBoundingClientRect().top - top) : null; }"""
+STRIPS = """() => [...document.querySelectorAll('.ax-subnav, .ext-tabs, .rp-nav, .ax-facet, .rp-filters')].filter((e) => e.getClientRects().length).map((row) => {
+  const r = row.getBoundingClientRect(), items = [...row.children].filter((c) => c.getClientRects().length), cur = items.find((c) => c.matches('[aria-current], [aria-selected=true], [aria-pressed=true]')) || null;
+  const inside = (c) => { const b = c.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; };
+  const scrolls = row.scrollWidth > row.clientWidth + 1;
+  return { cls: String(row.className).slice(0, 20), scrolls, edge: row.dataset.edge || '', curIn: cur ? inside(cur) : true, allIn: items.every(inside), bar: getComputedStyle(row).scrollbarWidth }; })"""
+SMALL = """() => [...document.querySelectorAll('.main-col *, .sheet *')].filter((e) => !e.closest('svg') && e.checkVisibility({ checkVisibilityCSS: true }) && [...e.childNodes].some((c) => c.nodeType === 3 && c.nodeValue.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12 && parseFloat(getComputedStyle(e).fontSize) > 0).map((e) => e.tagName.toLowerCase() + '.' + String(e.className).slice(0, 20) + ' ' + getComputedStyle(e).fontSize).slice(0, 6)"""
+
+
+def page_checks(br, base):
+    errs = []
+    for w, h_ in [(390, 844), (360, 740), (430, 932)]:
+        ctx, pg = new_page(br, w, h_, base, errs=errs)
+        vp = '%dx%d' % (w, h_)
+        bad_scroll, bad_strip, bad_small, bad_first = [], [], [], []
+        for route in PAGES:
+            pg.evaluate("location.hash = '#/%s'" % route)
+            pg.wait_for_timeout(300)
+            sc = pg.evaluate(SCROLLERS)
+            if len(sc) > 1 or (sc and not sc[0].startswith('main')):
+                bad_scroll.append('%s: %s' % (route, sc))
+            for st in pg.evaluate(STRIPS):
+                if (st['scrolls'] and (not st['edge'] or not st['curIn'] or st['bar'] != 'none')) or (not st['scrolls'] and not st['allIn']):
+                    bad_strip.append('%s %s' % (route, st))
+            bad_small += ['%s %s' % (route, t) for t in pg.evaluate(SMALL)]
+            if route in AREAS:
+                top = pg.evaluate(FIRST)
+                if top is None or top >= 260:
+                    bad_first.append('%s %s' % (route, top))
+        check('pages %s: no vertical scroller but the main column' % vp, not bad_scroll, '; '.join(bad_scroll[:3]))
+        check('pages %s: tab strips and chip rows scroll with a faded edge, no scrollbar, the current item whole; a strip that fits is not cut' % vp, not bad_strip, '; '.join(bad_strip[:3]))
+        check('pages %s: no visible text under 12 px' % vp, not bad_small, '; '.join(bad_small[:4]))
+        check('pages %s: Security, Health, Usage, Accounts, Extensions show their first row under 260 px' % vp, not bad_first, '; '.join(bad_first))
+        pg.evaluate("location.hash = '#/replay/m-date'")
+        pg.wait_for_timeout(300)
+        r = pg.evaluate("() => { const e = document.querySelector('.rp-event'), b = e.getBoundingClientRect(), s = document.querySelector('.rp-scrub').getBoundingClientRect(); return { bottom: Math.round(b.bottom), h: innerHeight, scrub: Math.round(s.height), sticky: getComputedStyle(document.querySelector('.rp-scrub')).position }; }")
+        check('pages %s: the first Replay event row is above 75 %% of the height, under a sticky 56 px scrubber' % vp, r['bottom'] < .75 * r['h'] and r['scrub'] == 56 and r['sticky'] == 'sticky', str(r))
+        ctx.close()
+    check('pages: no console or page errors', not errs, '; '.join(errs[:3]))
+    ctx, pg = new_page(br, 390, 844, base, hash_='#/replay/m-date', query='story=many')
+    pg.evaluate("document.querySelector('.main-col').scrollTop = 300")
+    pg.wait_for_timeout(100)
+    top = pg.evaluate("Math.round(document.querySelector('.rp-scrub').getBoundingClientRect().top - document.querySelector('.main-col').getBoundingClientRect().top)")
+    check('replay: the scrubber stays at the top of the column while the list scrolls', top == 0, 'top %s' % top)
+    ctx.close()
+    # a mouse window shows classic scrollbars, so any scroller that did not hide its own bar shows up here
+    ctx, pg = new_page(br, 1440, 900, base, touch=False, query='device=phone')
+    bars, mains = [], []
+    for route in PAGES:
+        pg.evaluate("location.hash = '#/%s'" % route)
+        pg.wait_for_timeout(250)
+        b = pg.evaluate(BARS)
+        if b['rows']:
+            bars.append('%s: %s' % (route, b['rows']))
+        if not b['main']:
+            mains.append(route)
+    check('scrollbars: no scroller inside the pages shows a bar (rows, chips, tabs, sheets)', not bars, '; '.join(bars[:3]))
+    check('scrollbars: the main column hides its bar on the phone', not mains, ', '.join(mains))
+    ctx.close()
+
+
 def shell_flip(br, base):
     probe = "() => { const v = (s) => { const e = document.querySelector(s); return !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0; }; return { phone: document.documentElement.dataset.phone, dev: document.getElementById('device').dataset.phone, bar: v('.bottombar'), rail: v('.rail'), sw: v('.view-switch') }; }"
     for label, w, h, touch, query, want in [('844x390 touch', 844, 390, True, '', True), ('667x375 touch', 667, 375, True, '', True), ('844x390 mouse', 844, 390, False, '', False),
@@ -418,9 +492,9 @@ def expected_failures(br, base):
         ('a swipe that starts on the Work graph and on every sheet handle scrolls or drags', 'B, C', 'Work graph and the existing sheets are not on the new primitive yet'),
         ('the Tell input stays above the keyboard (faked 440 and 300 px)', 'C', 'the Tell sheet is not on the sheet primitive yet'),
         ('first screen: sentence, ledger, counts and Review above the bar, centre in the lower 60 %', 'B', 'the Overview is still the map page'),
-        ('Work first row under 60 % of the height; Security, Health, Usage, Accounts, Extensions first row under 260 px', 'B, D', 'page heads not rebuilt'),
+        ('Work first row under 60 % of the height', 'B', 'Work is still the graph page'),
         ('scale at ?story=huge: under 1200 elements in the main column and under 8 screens on Work, Projects and Overview', 'B', 'lists are not capped yet'),
-        ('the Tell sheet, the inspectors and the Replay evidence sheet are openSheet() with detents', 'C, D', 'Places, the safety sheet, the palette and the prototype tools are on it; these are not migrated yet'),
+        ('the Tell sheet and the inspectors are openSheet() with detents', 'C', 'Places, the safety sheet, the palette, the prototype tools, the Replay evidence and the "..." sheets are on it; these are not migrated yet'),
         ('sheet primaries are 48 px in the inspectors and the Tell sheet', 'C', 'no inspector has a sticky primary action yet')]:
         xfail(name, slice_, reason)
 
@@ -438,7 +512,7 @@ def main():
     try:
         with sync_playwright() as p:
             br = p.chromium.launch()
-            for fn in (shell_flip, safe_areas, sheet_checks, sizes, shell_chrome, shell_insets, scroll_surfaces, expected_failures):
+            for fn in (shell_flip, safe_areas, sheet_checks, sizes, shell_chrome, shell_insets, scroll_surfaces, page_checks, expected_failures):
                 try:
                     fn(br, base)
                 except Exception as e:  # a crashed check is a failure, not a silent skip

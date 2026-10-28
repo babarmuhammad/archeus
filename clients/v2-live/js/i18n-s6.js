@@ -13,5 +13,10 @@ export const IT_S6 = {
   'Tab and Shift+Tab': 'Tab e Maiusc+Tab', 'Move between controls': 'Passa da un controllo all’altro',
   '/ in the chat bar': '/ nella barra della chat', 'Open the command list; Up, Down, Tab, Enter and Esc work inside it': 'Apre l’elenco dei comandi; dentro funzionano Su, Giù, Tab, Invio e Esc',
   'Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet, which takes focus when it opens and gives it back when it closes.': 'Ordine del focus: barra degli strumenti, navigazione, pagina, barra della chat, barra in basso, poi il pannello dei dettagli, che prende il focus quando si apre e lo restituisce quando si chiude.',
+  // Phone pages (Replay, the area pages, Settings, terminal keys), 2026-10-28. Italian wording to review.
+  'Less': 'Meno', 'More actions': 'Altre azioni', 'Open the decision': 'Apri la decisione', 'Back to Settings': 'Torna alle Impostazioni',
+  'new work is blocked': 'il nuovo lavoro è bloccato', 'English': 'Inglese', 'Quiet motion': 'Movimento quieto', 'Full motion': 'Movimento pieno', 'Motion follows the system': 'Il movimento segue il sistema',
+  'simulation playing': 'simulazione in corso', 'simulation paused': 'simulazione in pausa', 'Simulated': 'Simulato',
+  'Places: leave the terminal and open Places': 'Luoghi: esci dal terminale e apri i Luoghi', 'Stop: leave the terminal and open the emergency stop': 'Stop: esci dal terminale e apri l’arresto d’emergenza',
   'The terminal view has its own keys; press ? there.': 'La vista terminale ha i suoi tasti; premi ? lì.'
 };

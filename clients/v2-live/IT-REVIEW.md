@@ -2182,3 +2182,25 @@ Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsew
 - No mission → Nessuna missione (a worktree that holds no mission)
 - Attempt → Tentativo (one run of a task, a small mark at the close zoom level)
 - Task, Verification, Event → existing words, reused as kinds of the small marks at the close zoom levels
+## Phone pages (slice D) - 2026-10-28
+
+Status: to review. New pairs in `js/i18n-s6.js` and `js/i18n-areas.js` for Replay, the area pages, Settings and the terminal keys on the phone. Words that already had a pair (More, View, Layout, Detail, Places, Mission) are reused.
+
+| English | Italian |
+|---|---|
+| Less | Meno |
+| More actions | Altre azioni |
+| Open the decision | Apri la decisione |
+| Back to Settings | Torna alle Impostazioni |
+| new work is blocked | il nuovo lavoro è bloccato |
+| English | Inglese |
+| Quiet motion | Movimento quieto |
+| Full motion | Movimento pieno |
+| Motion follows the system | Il movimento segue il sistema |
+| simulation playing | simulazione in corso |
+| simulation paused | simulazione in pausa |
+| Simulated | Simulato |
+| {n} running | {n} in corso |
+| {n} paused | {n} in pausa |
+| Places: leave the terminal and open Places | Luoghi: esci dal terminale e apri i Luoghi |
+| Stop: leave the terminal and open the emergency stop | Stop: esci dal terminale e apri l’arresto d’emergenza |

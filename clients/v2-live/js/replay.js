@@ -12,6 +12,10 @@ import { L, C } from './chat-cards.js';
 import { tp } from '../chat-engine.js';
 import { clockLabel } from '../sim.js';
 import { spineInspector } from './spine.js';
+import { openSheet } from './sheet.js';
+import { isPhone } from './viewport.js';
+import { edgeRow, closeThen } from './phone-pages.js';
+import { eventLine } from './phone-pages-model.js';
 import { CATS, CAT_DEF, STRENGTH, VOCAB, buildReplay, recovery, FIVE_ROWS, GAPS, NEVER, vocabCounts, whyOf } from '../replay-model.js';
 
 const GLYPH = { INTENDED: '○', AUTHORIZED: '◇', RECORDED: '●', 'MAY-HAVE-TAKEN-EFFECT': '◐', UNCERTAIN: '?', SUSPENDED: '‖', RECONCILED: '✓', NONE: '–', UNKNOWN: '?' };
@@ -20,7 +24,8 @@ const strChip = (k) => h('span', { class: 'str', 'data-str': k }, C(STRENGTH[k])
 const reasonText = (r) => r.replace(/_/g, ' ');
 const nm = (x) => (typeof x === 'object' && x && x.en ? C(x) : x);
 
-let spyOff = null;
+addEventListener('hashchange', () => { if (evSheet && !/^#\/replay/.test(location.hash)) evSheet.close(); });
+let spyOff = null, evSheet = null; // evSheet: the phone's evidence sheet, kept across redraws so a step change does not close it
 function rpState(ctx) { const u = ctx.ui; if (!u.rp) u.rp = { filter: null, rec: null, receipt: null, machine: 'execution', mission: null }; return u.rp; }
 
 export function viewReplay(ctx) {
@@ -29,12 +34,12 @@ export function viewReplay(ctx) {
   const m = st.missions[ctx.route.id] || st.missions['m-date'] || ms[0];
   if (!m) return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay')), h('div', { class: 'view replayview' }, empty('No missions to replay yet.')));
   if (rp.mission !== m.id) { rp.mission = m.id; rp.rec = null; rp.receipt = null; rp.filter = null; rp.evidenceOpen = false; rp.tlTop = 0; rp.cursorPos = null; rp.lastSel = null; rp.evidenceN = null; rp.evidenceTrigger = null; ctx.ui.replaySel = null; }
-  const r = buildReplay(sim, m.id);
+  const phone = isPhone(), r = buildReplay(sim, m.id);
   const shown = r.steps.filter((x) => !rp.filter || x.category === rp.filter);
   const qq = ctx.route.q || {}, rq = replayQuery(qq);
   if (qq.mode) rp.mode = rq.mode; if (qq.detail) rp.detail = rq.detail; // the view modes come from the address, and stay for the next mission
-  const mode = rp.mode || 'timeline', detail = rp.detail || 'normal', cur = { mode, detail };
-  if (rq.section && rp.sectionSeen !== m.id + rq.section) { rp.sectionSeen = m.id + rq.section; rp.jump = rq.section; }
+  const mode = rp.mode || 'timeline', detail = rp.detail || 'normal', cur = { mode, detail }, sec = rq.section || 'events'; // sec: the section on show on a phone
+  if (!phone && rq.section && rp.sectionSeen !== m.id + rq.section) { rp.sectionSeen = m.id + rq.section; rp.jump = rq.section; }
   // Open on the step that explains why the mission needs you; a mission that moved on opens on its last step.
   const needs = ['needs_you', 'blocked', 'failed', 'reviewing'].includes(present('mission', m.state).cls);
   const selN = ctx.ui.replaySel == null ? openStep(r.steps, needs) ?? r.steps.length : ctx.ui.replaySel;           // 1-based step number
@@ -45,11 +50,14 @@ export function viewReplay(ctx) {
     ctx.ui.replaySel = n; rp.rec = null; rp.receipt = null; rp.evidenceOpen = evidence; rp.evidenceTrigger = document.activeElement?.dataset?.key; ctx.render();
   };
   let idx = row ? shown.findIndex((x) => x.n === row.n) : -1;
-  const move = (d) => { const t = shown[Math.max(0, Math.min(shown.length - 1, (idx < 0 ? 0 : idx) + d))]; if (t) pick(t.n); };
+  const move = (d) => { const t = shown[Math.max(0, Math.min(shown.length - 1, (idx < 0 ? 0 : idx) + d))]; if (t) pick(t.n, rp.evidenceOpen); };
 
   const rows = mode === 'compact' ? compactRows(shown) : shown.map((x) => ({ machine: x.machine, n: 1, first: x, last: x, step: x, bad: isBadStep(x) }));
   const rowIdx = row ? rows.findIndex((g) => row.n >= g.first.n && row.n <= g.last.n) : -1;
   const why = (x) => (detail === 'thinking' ? h('span', { class: 'rp-why' }, x.why || reasonText(x.reason)) : detail === 'verbose' ? h('span', { class: 'rp-why mono' }, [x.trigger ? 'trigger ' + x.trigger : null, 'by ' + (x.actor || 'unknown'), 'seq ' + x.seq].filter(Boolean).join(' · ')) : null);
+  const phoneEvent = (g, x) => h('span', { class: 'rp-event-copy' },
+    h('b', null, g.n > 1 ? g.machine + ' ' + g.first.state.replace(/_/g, ' ') + ' to ' + g.last.state.replace(/_/g, ' ') : eventLine(x, detail).title),
+    h('span', { class: 'rp-sub' }, catChip(x.category), h('span', { class: 'rp-sum' }, g.n > 1 ? g.n + ' steps' : eventLine(x, detail).summary)));
   const timeline = h('div', { class: 'rp-events', role: 'group', 'aria-label': 'Recorded events', 'data-mode': mode },
     ...rows.map((g, i) => { const x = g.step; return h('button', {
       class: 'rp-event', type: 'button', id: 'rs-' + x.n,
@@ -59,34 +67,40 @@ export function viewReplay(ctx) {
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
         e.preventDefault();
         const t = (e.key === 'Home' ? rows[0] : e.key === 'End' ? rows[rows.length - 1] : rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]).step;
-        pick(t.n, false); document.getElementById('rs-' + t.n)?.focus({ preventScroll: true });
+        pick(t.n, rp.evidenceOpen); document.getElementById('rs-' + t.n)?.focus({ preventScroll: true });
       }
-    }, h('span', { class: 'rp-time' }, g.n > 1 && g.first.time !== g.last.time ? g.first.time + ' to ' + g.last.time : x.time), h('span', { class: 'rp-event-copy' },
+    }, h('span', { class: 'rp-time' }, g.n > 1 && g.first.time !== g.last.time ? g.first.time + ' to ' + g.last.time : x.time), phone ? phoneEvent(g, x) : h('span', { class: 'rp-event-copy' },
       h('b', null, g.n > 1 ? g.machine + ' ' + g.first.state.replace(/_/g, ' ') + ' to ' + g.last.state.replace(/_/g, ' ') : x.machine + ' ' + x.state.replace(/_/g, ' ')), catChip(x.category), g.n > 1 ? h('span', { class: 'rp-steps' }, g.n + ' steps') : null,
-      h('span', { class: 'rp-source' }, x.id), why(x)), h('span', { class: 'rp-number', 'aria-hidden': 'true' }, String(x.n))); }),
+      h('span', { class: 'rp-source' }, x.id), why(x)), phone ? null : h('span', { class: 'rp-number', 'aria-hidden': 'true' }, String(x.n))); }),
     !shown.length ? empty(r.steps.length ? 'No events in this category.' : L('No recorded steps for this mission.', 'Nessun passo registrato per questa missione.')) : null);
   const evBtns = [...timeline.querySelectorAll('.rp-event')];
   timeline.addEventListener('scroll', () => { rp.tlTop = timeline.scrollTop; });
   // Bring a row into view only when it is out of view; a step change glides there, a first paint does not.
   const reveal = (el, glide) => {
     if (!el) return;
+    if (phone) { el.scrollIntoView({ block: 'nearest', behavior: glide && !store.reducedMotion() ? 'smooth' : 'auto' }); return; }
     const top = el.offsetTop, bottom = top + el.offsetHeight, at = timeline.scrollTop;
     const to = top < at ? top : bottom > at + timeline.clientHeight ? bottom - timeline.clientHeight : null;
     if (to != null) timeline.scrollTo({ top: to, behavior: glide && !store.reducedMotion() ? 'smooth' : 'auto' });
   };
   ctx.mounts.push(() => {
-    timeline.scrollTop = rp.tlTop || 0;
-    if (row && rp.lastSel !== row.n) reveal(document.getElementById('rs-' + row.n));
+    if (!phone) { timeline.scrollTop = rp.tlTop || 0; if (row && rp.lastSel !== row.n) reveal(document.getElementById('rs-' + row.n)); }
     rp.lastSel = row ? row.n : null;
   });
   const seg = (label, opts, on, hrefOf, key) => h('nav', { class: 'seg', 'aria-label': label }, ...opts.map(([id, l]) => h('a', { class: 'seg-opt', href: hrefOf(id), 'aria-current': on === id ? 'true' : null, 'data-key': key + id }, h('span', { class: 'gt' }, l))));
   const modes = h('div', { class: 'rp-modes' },
     seg('View', [['timeline', 'Timeline'], ['compact', 'Compact']], mode, (id) => replayHref(m.id, { mode: id, detail }), 'rp-mode-'),
     seg('Detail', RP_DETAILS, detail, (id) => replayHref(m.id, { mode, detail: id }), 'rp-detail-'));
-  const filters = h('div', { class: 'chips rp-filters', role: 'group', 'aria-label': L('Filter by category', 'Filtra per categoria') },
+  const filters = edgeRow(h('div', { class: 'chips rp-filters', role: 'group', 'aria-label': L('Filter by category', 'Filtra per categoria') },
     h('button', { class: 'chip', type: 'button', 'data-key': 'rp-all', 'aria-pressed': !rp.filter ? 'true' : 'false', onclick: () => { rp.filter = null; rp.tlTop = 0; ctx.render(); } }, L('All', 'Tutte') + ' ' + r.steps.length),
     ...CATS.filter((c) => r.counts[c] || rp.filter === c).map((c) => h('button', { class: 'chip', type: 'button', 'data-cat': c, 'data-key': 'rp-filter-' + c, 'aria-pressed': rp.filter === c ? 'true' : 'false', onclick: () => { rp.filter = rp.filter === c ? null : c; rp.tlTop = 0; ctx.render(); } },
-      h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[c]), ' ' + c + ' ', h('span', { class: 'rp-count' }, String(r.counts[c] || 0)))));
+      h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[c]), ' ' + c + ' ', h('span', { class: 'rp-count' }, String(r.counts[c] || 0))))));
+  const openView = (e) => {
+    const body = h('div', { class: 'rp-viewsheet' }, ...[['Layout', [['timeline', 'Timeline'], ['compact', 'Compact']], mode, (id) => replayHref(m.id, { mode: id, detail })], ['Detail', RP_DETAILS, detail, (id) => replayHref(m.id, { mode, detail: id })]].map(([label, opts, on, hrefOf]) =>
+      h('div', { class: 'rp-viewgroup' }, h('h3', { class: 'rp-bh' }, label), h('div', { class: 'chips', role: 'group', 'aria-label': label }, ...opts.map(([id, l]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': on === id ? 'true' : 'false', 'data-key': 'rp-view-' + id, onclick: () => closeThen(s, () => ctx.nav(hrefOf(id))) }, l))))));
+    const s = openSheet({ id: 'rp-view', title: L('View', 'Vista'), detents: ['peek'], content: body });
+  };
+  const viewBtn = h('button', { class: 'btn rp-view', type: 'button', 'data-key': 'rp-view', onclick: openView }, L('View', 'Vista'));
 
   // Steps are discrete, so they sit evenly on the track (a time scale piles ten events into the last second); a real pause between two steps is drawn as a break with its length.
   const N = shown.length, fx = (i) => (N > 1 ? i / (N - 1) : .5);
@@ -118,7 +132,7 @@ export function viewReplay(ctx) {
     oninput: (e) => {
       const i = Number(e.target.value), next = shown[i];
       if (next) { setIdx(i); e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
-    }, onchange: (e) => { const next = shown[Number(e.target.value)]; if (next) pick(next.n, false); } });
+    }, onchange: (e) => { const next = shown[Number(e.target.value)]; if (next) pick(next.n, rp.evidenceOpen); } });
   const earlier = h('button', { class: 'rp-step', type: 'button', 'data-key': 'rp-earlier', 'aria-label': L('Earlier event', 'Evento precedente'), title: L('Earlier', 'Prima'), disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, icon('chevronl', 20));
   const later = h('button', { class: 'rp-step', type: 'button', 'data-key': 'rp-later', 'aria-label': L('Later event', 'Evento successivo'), title: L('Later', 'Dopo'), disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, icon('chevron', 20));
   let drag = null, hot = -1;
@@ -137,12 +151,14 @@ export function viewReplay(ctx) {
     if (e.pointerType === 'mouse' && N) heat(nearest(e.clientX));
   });
   track.addEventListener('pointerleave', () => heat(-1));
-  track.addEventListener('pointerup', () => { const i = drag; drag = null; if (i !== null && shown[i]) pick(shown[i].n, false, false); });
+  track.addEventListener('pointerup', () => { const i = drag; drag = null; if (i !== null && shown[i]) pick(shown[i].n, rp.evidenceOpen, false); });
   track.addEventListener('pointercancel', () => { drag = null; cancelAnimationFrame(frame); frame = 0; setIdx(Math.max(0, idx)); scrub.value = String(Math.max(0, idx)); paintStep(row, false); });
   const wc = whatChanged(r.steps);
   const changed = wc ? h('p', { class: 'rp-changed', 'data-key': 'rp-changed' }, h('span', null, wc.count + ' steps recorded'), h('span', null, wc.from === wc.to ? wc.from : wc.from + ' to ' + wc.to), h('span', null, 'Last: ' + wc.last.machine + ' ' + wc.last.state.replace(/_/g, ' ')), wc.bad ? h('span', { class: 'rp-bad' }, wc.bad + (wc.bad === 1 ? ' step needs a look' : ' steps need a look')) : null) : null;
   const posText = (x) => (x ? x.n + ' / ' + r.steps.length + ' · ' + x.time : '0 / ' + r.steps.length), position = h('span', { class: 'rp-position', role: 'status' }, posText(row));
-  const overview = h('section', { class: 'rp-overview', 'aria-label': 'Timeline overview' },
+  const phoneState = h('p', { class: 'rp-state' }, badge('mission', m.state), h('span', { class: 'rp-state-t' }, r.steps.length + ' ' + L('events', 'eventi') + (wc && wc.bad ? ' · ' + wc.bad + ' ' + L('need a look', 'da guardare') : '')));
+  const scrubBar = phone ? h('div', { class: 'rp-scrub' }, earlier, h('div', { class: 'rp-mid' }, position, track), later) : null;
+  const overview = phone ? null : h('section', { class: 'rp-overview', 'aria-label': 'Timeline overview' },
     h('div', { class: 'rp-heading' }, h('div', null, h('h2', null, m.title), h('p', { class: 'rp-intro' }, 'Read-only history. Select an event to inspect what Core recorded.')),
       position, h('a', { class: 'btn', href: '#/work/' + m.id }, L('Mission', 'Missione'))),
     changed,
@@ -252,25 +268,22 @@ export function viewReplay(ctx) {
   const how = fold('rp-how', 'rp-how', rp.howOpen, (v) => { rp.howOpen = v; }, L('How Replay reads Core', 'Come il Replay legge il Core'), null,
     h('div', { class: 'body' }, dnote('A19', 'Replay answers from what Core recorded: nine categories, a reason when it cannot tell, nothing that can be re-run (G03, G11).'), dnote('G10', 'Recovery choices create explicit approval cards only; approving changes a receipt, never the evidence. No autoplay (G09).')));
   stepPanel.classList.add('rp-evidence');
-  const closeEvidence = () => {
-    rp.evidenceOpen = false; syncSheet();
-    const trigger = document.querySelector('[data-key="' + rp.evidenceTrigger + '"]');
-    (trigger && !trigger.disabled ? trigger : document.getElementById('rs-' + row?.n))?.focus({ preventScroll: true });
-  };
-  const sheet = h('dialog', { class: 'rp-sheet', 'aria-label': L('Selected step', 'Passo selezionato'), oncancel: (e) => { e.preventDefault(); closeEvidence(); } },
-    h('button', { class: 'btn rp-sheet-close', type: 'button', 'data-key': 'rp-close-evidence', onclick: closeEvidence }, 'Close evidence'));
   const side = h('div', { class: 'rp-side', id: 'rp-evidence' }, stepPanel, recs, gaps);
-  const events = panel('Recorded events', shown.length, modes, filters, timeline); events.id = 'rp-events';
+  const events = phone ? h('div', { class: 'rp-pane', id: 'rp-events' }, scrubBar, h('div', { class: 'rp-filterbar' }, filters, viewBtn), timeline, r.history.answer === 'UNKNOWN' ? h('p', { class: 'note' }, L('Older steps were pruned from the event log, so anything before them is UNKNOWN, not “nothing happened”.', 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non “non è successo nulla”.')) : null) : panel('Recorded events', shown.length, modes, filters, timeline);
+  if (!phone) events.id = 'rp-events';
   const reading = h('div', { class: 'rp-reading' }, events, side);
   recPanel.id = 'rp-recovery';
-  const reference = h('details', { class: 'rp-reference panel', open: rp.referenceOpen, ontoggle: (e) => { rp.referenceOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-reference' }, 'Reference and limits'),
-    h('div', { class: 'rp-reference-grid' }, h('div', { class: 'rp-ref-top' }, legend, h('div', { class: 'rp-ref-col' }, startPanel, histPanel)), never, five, vocab, how, h('div', { class: 'actions' }, fwd)));
+  const referenceBody = h('div', { class: 'rp-reference-grid' }, h('div', { class: 'rp-ref-top' }, legend, h('div', { class: 'rp-ref-col' }, startPanel, histPanel)), never, five, vocab, how, h('div', { class: 'actions' }, fwd));
+  const reference = phone ? h('section', { class: 'rp-reference panel', 'aria-label': 'Reference and limits' }, referenceBody) : h('details', { class: 'rp-reference panel', open: rp.referenceOpen, ontoggle: (e) => { rp.referenceOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-reference' }, 'Reference and limits'), referenceBody);
   reference.id = 'rp-reference';
+  // The phone's evidence sheet: opened by a row tap, only while the Events section is showing. A redraw hands the open sheet the new panel.
   function syncSheet() {
-    const narrow = reading.clientWidth <= 600;
-    if (narrow && rp.evidenceOpen && row) {
-      if (!sheet.open) { sheet.append(stepPanel); sheet.showModal(); }
-    } else if (sheet.open) { sheet.close(); side.prepend(stepPanel); }
+    const want = phone && rp.evidenceOpen && row && sec === 'events';
+    if (evSheet && !want) { const o = evSheet; evSheet = null; o.close(); return; }
+    if (!want) return;
+    if (evSheet) { evSheet.el.querySelector('.sheet-body').replaceChildren(stepPanel); return; }
+    evSheet = openSheet({ id: 'rp-evidence', title: L('Selected step', 'Passo selezionato'), detents: ['peek', 'full'], initial: 'peek', modal: false, content: stepPanel, onClose: () => { if (evSheet) { evSheet = null; rp.evidenceOpen = false; } } });
+    requestAnimationFrame(() => reveal(document.getElementById('rs-' + row.n), true)); // the sheet now covers the foot of the list
   }
   ctx.mounts.push(syncSheet);
   // The step change, in place: selection state by attribute, the scrubber glides, the panel cross-fades. Nothing is rebuilt, so scroll, focus and hover survive.
@@ -293,8 +306,8 @@ export function viewReplay(ctx) {
     syncSheet();
   }
   // The section nav is part of the address (?section=recovery); a click scrolls to the section, and scrolling lights the section in view.
-  const nav = h('nav', { class: 'rp-nav', 'aria-label': 'Sections' }, ...RP_SECTIONS.map(([id, label]) => h('a', { class: 'rp-nav-a', href: replayHref(m.id, { mode, detail, section: id }), 'data-section': id, 'data-key': 'rp-nav-' + id, onclick: () => { rp.pin = id; rp.jump = id; if (id === 'reference') rp.referenceOpen = true; if (id === 'evidence' && reading.clientWidth <= 600) rp.evidenceOpen = true; } }, label)));
-  ctx.mounts.push(() => {
+  const nav = h('nav', { class: 'rp-nav', 'aria-label': 'Sections' }, ...RP_SECTIONS.map(([id, label]) => h('a', { class: 'rp-nav-a', href: replayHref(m.id, { mode, detail, section: id }), 'data-section': id, 'data-key': 'rp-nav-' + id, 'aria-current': phone && id === sec ? 'page' : null, onclick: () => { rp.pin = id; rp.jump = id; if (id === 'reference') rp.referenceOpen = true; } }, label)));
+  if (!phone) ctx.mounts.push(() => {
     const at = (id) => document.getElementById('rp-' + id);
     if (rp.jump) { const el = at(rp.jump); if (el) { if (rp.jump === 'reference') el.open = true; requestAnimationFrame(() => el.scrollIntoView({ block: 'start' })); } rp.jump = null; }
     let sc = nav.parentElement; while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
@@ -307,6 +320,12 @@ export function viewReplay(ctx) {
     spyOff = () => { sc.removeEventListener('scroll', onScroll); for (const t of ['wheel', 'touchmove', 'keydown']) sc.removeEventListener(t, drop); spyOff = null; }; spy();
   });
   const missionPick = picker({ key: 'rp-mission', label: L('Mission', 'Missione'), cls: 'pick', value: m.id, items: st.projects.flatMap((p) => ms.filter((x) => x.project === p.id).map((x) => ({ value: x.id, label: x.title, group: p.name }))), onPick: (v) => ctx.nav(replayHref(v, cur)) });
+  if (phone) {
+    const hd = head(ctx, L('Replay', 'Replay')); hd.querySelector('h1').classList.add('vh');
+    const pane = { events, evidence: h('div', { class: 'rp-pane', id: 'rp-evidence' }, stepPanel, recs, gaps), recovery: recPanel, reference }[sec];
+    return h('div', { class: 'rp-page', 'data-phone': 'true' }, hd, h('div', { class: 'view replayview' },
+      h('div', { class: 'rp-phead' }, missionPick, h('a', { class: 'btn rp-mission', href: '#/work/' + m.id, 'aria-label': L('Open the mission', 'Apri la missione') }, L('Mission', 'Missione'))), phoneState, nav, pane));
+  }
   return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay'), missionPick), h('div', { class: 'view replayview' },
-    overview, nav, reading, recPanel, reference, sheet));
+    overview, nav, reading, recPanel, reference));
 }

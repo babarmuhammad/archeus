@@ -462,6 +462,26 @@ Row ids are PH because P01 to P18 are taken by section P.
 | PA07 | No scrollbar is drawn in phone mode and the main column is the one vertical scroll surface (`overscroll-behavior: contain`); nested scrollers still on `#/now` details (slice B) and Replay events (slice D) are measured expected failures | owner 2026-10-28 coordinator | SIMULATED | ALL · P | `css/phone.css`, phone probe `scroll_surfaces` |
 | PA08 | Phone shell functional checks: slots, Tell sheet, Places, palette, Stop two step, safety sheet, Prototype tools sheet (theme, language), phone frame on a desktop window | owner 2026-10-28 (2) | SIMULATED | SHELL · P | `tools/v2_live_phone_functional.py` |
 
+## Phone pages (slice D, 2026-10-28)
+
+Designed from the phone, not squeezed from the desktop. One vertical scroller per page (the main column), no scrollbars, rows and chips that scroll sideways fade their edge instead. Row ids are PD because PH is the foundation.
+
+| ID | Requirement | Source | Status | Area | Implementation |
+|---|---|---|---|---|---|
+| PD01 | Replay on the phone: the mission chooser and a Mission link in one head row, one state line (N events, K need a look), four section tabs in a grid that fits 360 px (Events, Evidence, Recovery, Reference; the section is in the address), a sticky 56 px scrubber (44 px earlier and later buttons, the position label, a 34 px track), one chip row of filters and a View button, then the events as 64 px rows: time and kind word, a one line summary, the category chip | owner 2026-10-28 ("think of the design system from the mobile perspective") | SIMULATED | REP · P | `js/replay.js`, `css/replay.css` |
+| PD02 | The Replay evidence opens as a bottom sheet (`openSheet`, peek or full, not modal) when a row is tapped. Stepping with the buttons or the keys keeps the sheet open on the new step; Esc, Close and the system Back close it and keep the page; the selected row stays above the sheet (`--toast-b`) | plan section c | SIMULATED | REP · P | `js/replay.js` (`syncSheet`), `css/replay.css` |
+| PD03 | View (layout Timeline or Compact, detail Normal, Thinking or Verbose) is one button that opens a peek sheet; a choice closes it and goes to the address. `closeThen` waits for the history step a sheet's close takes, so the navigation is not undone | plan section c | SIMULATED | REP · P | `js/replay.js` (`openView`), `js/phone-pages.js` (`closeThen`) |
+| PD04 | Replay event rows say what Core recorded in one line: Normal `after <trigger>` or the reason, Thinking the reason in words, Verbose the trigger, the actor and the sequence | plan section c | SIMULATED | REP · P | `js/phone-pages-model.js` (`eventLine`), `test/phone-pages.test.mjs` |
+| PD05 | Security, Health, Usage, Accounts and Extensions share a phone head: eyebrow 12 px, the state sentence at 22 to 26 px, the lede on two lines with a 44 px More (Less when open) only when the text is longer, then a sticky 44 px tab strip whose selected tab is scrolled into view. The first row starts under 260 px at 360, 390 and 430 wide | owner 2026-10-28 | SIMULATED | SEC · HLT · USE · ACC · EXT · P | `js/areas.js`, `js/phone-pages.js` (`lede`, `edgeRow`), `css/areas.css` |
+| PD06 | A row on these pages has at most two visible actions; Health keeps one and puts Readings behind a `...` button, Security keeps Allow once and Deny and puts Open the decision behind it. The `...` button opens a peek sheet of 44 px rows, each a link | owner 2026-10-28 | SIMULATED | SEC · HLT · P | `js/areas.js` (`more`), `css/areas.css` |
+| PD07 | Accounts and Extensions keep the harness facet as one chip row that scrolls and fades its edge | VLD harnesses as a facet | SIMULATED | ACC · EXT · P | `js/areas.js`, `css/areas.css` |
+| PD08 | Rows and strips that scroll sideways fade the edge that has more behind it (a mask on `[data-edge]`, which edge is pure: `edgeOf`) and bring the current item to the middle once; no scrollbar | owner 2026-10-28 ("that scroll bar shouldn't exist") | SIMULATED | P | `js/phone-pages-model.js` (`edgeOf`, `centerLeft`), `js/phone-pages.js`, `css/areas.css` |
+| PD09 | Settings on the phone is a list of four groups (Safety, Appearance, Prototype, About), each row with its current choices in grey; a row opens as a page of its own at `#/settings/<section>` with a Back button. The Back button and the system Back return to the list; a cold link to a section goes to the list. Desktop keeps the tabs | owner 2026-10-28 | SIMULATED | SET · P | `js/view-settings.js`, `js/phone-pages-model.js` (`settingsPage`, `settingsLine`), `css/areas.css` |
+| PD10 | The terminal key row on the phone has Places and Stop: each leaves the terminal and opens the Places sheet or the stop confirmation on `#/now`. Text mode is unchanged | owner 2026-10-28 | SIMULATED | TUI · P | `js/tui/view.js`, `css/tui.css` |
+| PD11 | Phone pages probe and flows: no vertical scroller but the main column, no visible scrollbar (also in a mouse window), no text under 12 px, tab strips and chip rows not cut, area first rows under 260 px, Replay first row above 75 % of the height under a sticky scrubber | plan section g | SIMULATED | P | `tools/v2_live_phone_probe.py`, `tools/v2_live_phone_pages_functional.py` |
+
+PD01 to PD11: 11 rows, all SIMULATED.
+
 ## Counts
 
 Phone slice A adds PA01 to PA08 (eight SIMULATED rows) and rewrites J13, P05, P14 and P15 in place.

@@ -89,3 +89,4 @@
   .c-sel, .c-nsel { background: Highlight; color: HighlightText; }
   .tui-grid .bx, .tui-grid .bk { forced-color-adjust: none; color: CanvasText; }
 }
+.tui-keys .tui-btn[data-key='tui-stop'] { color: var(--stop-fg); border-color: var(--stop-line); }

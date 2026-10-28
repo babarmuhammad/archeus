@@ -4,6 +4,7 @@ import { h, clear } from '../dom.js';
 import { createTui, LOOKS } from './controller.js';
 import { BOX_MASK, speech } from './cells.js';
 import * as store from '../store.js';
+import { isPhone } from '../viewport.js';
 
 const PREFS = 'archeus-v2-live-tui';
 const readPrefs = () => { try { return JSON.parse(localStorage.getItem(PREFS)) || {}; } catch (e) { return {}; } };
@@ -40,6 +41,8 @@ export function viewTerminal(ctx) {
   const sim = ctx.sim;
   const saved = readPrefs(), q = new URLSearchParams(location.search);
   const t = ctx.ui.tui || (ctx.ui.tui = {});
+  // The app closes Places and the stop sheet when the route changes, so they open once #/now is drawn.
+  const leave = (open) => { addEventListener('hashchange', open, { once: true }); ctx.nav('#/now'); };
   if (!t.ctl) {
     t.ctl = createTui(sim, {
       lang: () => store.get('lang'), reduced: () => store.reducedMotion(),
@@ -117,11 +120,15 @@ export function viewTerminal(ctx) {
 
   function keybar(f) {
     const acts = ctl.actions(ctl.selected());
-    const sig = acts.map((a) => a.key + a.label).join('|') + f.mode;
+    const phone = isPhone(), sig = acts.map((a) => a.key + a.label).join('|') + f.mode + phone;
     if (sig === keySig) return; keySig = sig; clear(keys);
     const kb = (label, aria, k, cls) => h('button', { class: 'tui-btn k' + (cls ? ' ' + cls : ''), type: 'button', 'aria-label': aria, 'data-k': k, onclick: () => { press(k); if (ctl.state.mode && ctl.state.mode.kind === 'cmd') input.focus(); else grid.focus({ preventScroll: true }); } }, label);
     keys.append(kb('↑', 'Up', 'up'), kb('↓', 'Down', 'down'), kb('⏎', 'Enter, open', 'enter'), kb('Esc', 'Escape, back', 'esc'), kb('Tab', 'Tab, next pane', 'tab'), kb(':', 'Command line', ':'), kb('?', 'Help', '?'));
     acts.forEach((a) => keys.append(kb(a.label, a.label + ' (key ' + a.key + ')', a.key, 'act')));
+    // The phone shell hides its bar here, so the two ways out of the terminal are keys: Places opens the Places sheet over the Overview, Stop the safety sheet.
+    if (phone) keys.append(
+      h('button', { class: 'tui-btn k act', type: 'button', 'aria-label': 'Places: leave the terminal and open Places', 'data-key': 'tui-places', onclick: () => leave(() => { ctx.ui.placesOpen = ctx.ui.placesFresh = true; ctx.render(); }) }, 'Places'),
+      h('button', { class: 'tui-btn k act', type: 'button', 'aria-label': 'Stop: leave the terminal and open the emergency stop', 'data-key': 'tui-stop', onclick: () => leave(() => ctx.stop()) }, 'Stop'));
   }
 
   function draw() {

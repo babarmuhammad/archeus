@@ -13,6 +13,9 @@ import { done, MCP_TONE } from './inspectors2.js';
 import { areasOf, forecast, breakerView, waitLabel, keptSummary, harnessLabel, harnessShort, CAP_LABEL, METER_WORD } from './areas-model.js';
 import { EXT_TABS, tabOf, matches } from './ext-model.js';
 import { whenShort, whenExact } from './time-model.js';
+import { isPhone } from './viewport.js';
+import { openSheet } from './sheet.js';
+import { edgeRow, lede, closeThen } from './phone-pages.js';
 import { pill, note, link, entity, hrefFor, sw, ringNode, patchRing, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
 
 function axHead(ctx, eyebrowText, title, lede) {
@@ -31,7 +34,7 @@ function inline(ctx, key) {
 // ---------- shared page pieces ----------
 // The page opens with its answer: a serif state sentence (the colour only on the part that is a state, always with its words) and one line of ledger under it.
 const sentence = (parts) => parts.flatMap(([t, tone], i) => [i ? ' · ' : null, h('span', { 'data-tone': tone || null }, t)]);
-const top = (eye, parts, ledger, ...extra) => h('header', { class: 'ax-top' }, h('p', { class: 'ax-eyebrow' }, eye), h('div', { class: 'sec-sent-wrap' }, h('h1', { class: 'ax-sentence', 'data-key': 'sentence' }, ...sentence(parts))), ledger ? h('p', { class: 'ax-ledger' }, ledger) : null, ...extra);
+const top = (eye, parts, ledger, ...extra) => h('header', { class: 'ax-top' }, h('p', { class: 'ax-eyebrow' }, eye), h('div', { class: 'sec-sent-wrap' }, h('h1', { class: 'ax-sentence', 'data-key': 'sentence' }, ...sentence(parts))), ledger ? (isPhone() && typeof ledger === 'string' ? lede(ledger) : h('p', { class: 'ax-ledger' }, ledger)) : null, ...extra);
 const sect = (title, count, sub, ...kids) => h('section', { class: 'ax-sect', 'aria-label': title }, h('h2', null, title, count != null ? h('span', { class: 'ax-count' }, String(count)) : null), sub ? h('p', { class: 'ax-sub' }, sub) : null, ...kids);
 const dim = (...kids) => h('div', { class: 'ax-dim' }, ...kids);
 const chev = () => h('span', { class: 'ax-go', 'aria-hidden': 'true' }, icon('chevron', 18));
@@ -55,9 +58,9 @@ function whereAt(ctx, name) {
   mem[name] = s; return s;
 }
 // Counts are plain totals; a dot (always with its word for a screen reader) marks the part that needs you.
-const subnav = (name, cur, label, counts = {}, dots = {}, qs = '') => h('nav', { class: 'ax-subnav', 'aria-label': label },
+const subnav = (name, cur, label, counts = {}, dots = {}, qs = '') => edgeRow(h('nav', { class: 'ax-subnav', 'aria-label': label },
   ...SECTIONS[name].map(([id, t]) => h('a', { class: 'set-nav-item', href: '#/' + name + '/' + id + qs, 'data-key': name + '-nav-' + id, 'aria-current': id === cur ? 'page' : null }, t,
-    counts[id] != null ? h('span', { class: 'ax-count' }, String(counts[id])) : null, dots[id] ? h('span', { class: 'x-dot', 'data-tone': dots[id][0] }, h('span', { class: 'vh' }, dots[id][1])) : null)));
+    counts[id] != null ? h('span', { class: 'ax-count' }, String(counts[id])) : null, dots[id] ? h('span', { class: 'x-dot', 'data-tone': dots[id][0] }, h('span', { class: 'vh' }, dots[id][1])) : null))));
 const frame = (cur, header, nav, ...body) => h('div', { class: 'ax-page' }, h('div', { class: 'view ax-view' }, header, ...[].concat(nav), h('div', { class: 'ax-panel', 'data-section': cur }, ...body)));
 // Relative under a day, with the exact time on hover.
 const ago = (ctx, t) => { const m = Math.floor(Math.max(0, ctx.sim.state.clock - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.floor(m / 60) + ' h ago' : clockLabel(t); };
@@ -67,15 +70,20 @@ const fold = (ctx, key, total, cap, dk) => (total > cap ? h('div', { class: 'ax-
 // A flat row: the state first, then what it is and why.
 const lrow = (title, detail, state, tone, href, here) => h(href ? 'a' : 'div', { class: 'sec-row', href, 'aria-current': here ? 'true' : null }, pill(tone, state), h('span', { class: 'sec-main' }, h('span', { class: 'sec-name' }, title), h('span', { class: 'sec-detail' }, ...[].concat(detail))));
 
+// A phone row shows two actions at 44 px; the rest wait behind a "..." that opens a sheet of links.
+const more = (title, links) => h('button', { class: 'btn quiet ax-dots', type: 'button', 'aria-label': 'More actions', 'aria-haspopup': 'dialog', onclick: () => {
+  const s = openSheet({ id: 'ax-more', title, detents: ['peek'], content: h('div', { class: 'ax-sheet-list' }, ...links.map(([label, href]) => h('a', { class: 'ax-sheet-row', href, onclick: (e) => { e.preventDefault(); closeThen(s, () => { location.hash = href; }); } }, label, icon('chevron', 18)))) });
+} }, icon('more', 20));
+
 // ---------- harness ----------
 // Archeus drives several harnesses, each with its own accounts, models, failover order, launch settings and extensions. The harness is a facet
 // of the pages that hold those things: chips that are links, the choice kept in the address (?harness=codex), "All" grouping by harness.
 const hvOf = (ctx, hs) => { const v = ctx.route.q && ctx.route.q.harness; return hs.some((x) => x.id === v) ? v : ''; };
 const hqs = (v) => (v ? '?harness=' + v : '');
 const dot = (tone, word) => h('span', { class: 'x-dot', 'data-tone': tone }, h('span', { class: 'vh' }, word));
-const facet = (name, part, hs, cur, countOf) => h('nav', { class: 'chips ax-facet', 'aria-label': 'Harness' },
+const facet = (name, part, hs, cur, countOf) => edgeRow(h('nav', { class: 'chips ax-facet', 'aria-label': 'Harness' },
   ...[{ id: '', label: 'All', n: countOf(null) }, ...hs.map((x) => ({ id: x.id, label: x.label, n: countOf(x), tone: x.tone, word: x.word }))].map((o) => h('a', { class: 'chip', href: '#/' + name + (part && part !== SECTIONS[name][0][0] ? '/' + part : '') + hqs(o.id), 'data-key': 'hf-' + (o.id || 'all'), 'aria-current': o.id === cur ? 'true' : null },
-    o.label, h('span', { class: 'ax-count' }, String(o.n)), o.tone ? dot(o.tone, o.word) : null)));
+    o.label, h('span', { class: 'ax-count' }, String(o.n)), o.tone ? dot(o.tone, o.word) : null))));
 // A small tag: the short name in words, so a harness is never told by colour alone.
 const htag = (id) => h('span', { class: 'hn-tag', title: harnessLabel(id) }, harnessShort(id));
 const capList = (caps) => caps.flatMap((c, i) => (i ? [', ', CAP_LABEL[c]] : [CAP_LABEL[c]]));
@@ -118,7 +126,8 @@ export function viewSecurity(ctx) {
     item.querySelector('a').href = '#/security/' + a.id;
     const decide = (kind, label) => h('button', { class: 'btn' + (kind === 'reject' ? ' danger' : ''), type: 'button', 'data-key': 'sec-' + kind + '-' + a.id,
       onclick: () => ask(ctx, { at: 'sec-decision-' + a.id, text: (kind === 'approve' ? 'Allow this action once? ' + a.presented.consequence : 'Deny this action? The execution ends and the mission is blocked.') + ' No Undo.', label, tone: kind === 'reject' ? 'danger' : 'primary', run: () => ctx.act(kind, a.id) }) }, label);
-    item.querySelector('.actions').append(decide('approve', 'Allow once'), decide('reject', 'Deny'));
+    const acts = item.querySelector('.actions'), open = acts.querySelector('a');
+    if (isPhone()) { open.remove(); acts.append(decide('approve', 'Allow once'), decide('reject', 'Deny'), more('Decision', [['Open the decision', '#/security/' + a.id]])); } else acts.append(decide('approve', 'Allow once'), decide('reject', 'Deny'));
     item.append(h('p', { class: 'sec-detail' }, 'Ask me each time'), h('p', { class: 'sec-detail' }, a.presented.why), inline(ctx, 'sec-decision-' + a.id));
     const wrap = h('div', { class: 'sec-decision', 'data-approval': a.id }, item); cards.set(a.id, wrap); return wrap;
   }));
@@ -141,8 +150,8 @@ export function viewSecurity(ctx) {
   events.sort((a, b) => b.at - a.at);
   const log = (list) => h('ol', { class: 'sec-log ax-dim' }, ...list.map((e) => h('li', null, when(ctx, e.at), h('span', { class: 'sec-category' }, e.kind), h('span', { class: 'sec-event-text' }, e.text, e.state ? badge('approval', e.state) : null), e.href ? h('a', { class: 'btn quiet', href: e.href }, 'Evidence') : h('span', { class: 'sec-detail' }, 'Not recorded'))));
   const rearm = stopped ? h('a', { class: 'btn primary', href: '#/security/emergency', 'data-key': 'sec-rearm' }, 'Re-arm') : null;
-  const header = top('Security', [[text, stopped || held.length ? 'attention' : null]], null,
-    h('div', { class: 'ax-ledger sec-warning' }, pill('attention', 'Physical isolation is not built'), h('span', null, 'A started CLI still runs as your user. Policy does not physically confine it.'), rearm));
+  const warn = 'A started CLI still runs as your user. Policy does not physically confine it.', isoPill = pill('attention', 'Physical isolation is not built');
+  const header = top('Security', [[text, stopped || held.length ? 'attention' : null]], null, ...(isPhone() ? [h('div', { class: 'ax-ledger sec-warning' }, isoPill, rearm), lede(warn)] : [h('div', { class: 'ax-ledger sec-warning' }, isoPill, h('span', null, warn), rearm)]));
   const posture = header.querySelector('.ax-sentence');
 
   const tally = [...new Map(privs.map((p) => [p.word, p.tone])).entries()].map(([word, tone]) => { const ps = privs.filter((p) => p.word === word); return row(ps.length + ' of ' + privs.length + ' actions', ps.flatMap((p, i) => (i ? [', ', p.r.label] : [p.r.label])), word, tone, '#/security/policy'); });
@@ -215,12 +224,13 @@ export function viewHealth(ctx) {
         k.cause ? h('div', null, h('h3', null, 'Cause'), h('p', null, k.cause)) : null,
         k.fix ? h('div', null, h('h3', null, 'Fix'), h('ol', { class: 'ax-steps' }, ...k.fix.map((t) => h('li', null, t)))) : h('p', { class: 'ax-note' }, 'Nothing to fix.'),
         h('p', { class: 'ax-note hl-meta' }, s.at != null ? h('span', { title: clockLabel(s.at, true) }, 'Changed ' + ago(ctx, s.at) + ' from ' + HEALTH_WORD[s.from]) : h('span', null, 'No change this session'), ' · ', h('span', { title: clockLabel(ran[k.id], true) }, 'Checked ' + ago(ctx, ran[k.id]))),
-        h('div', { class: 'actions' }, k.action ? h('a', { class: 'btn' + (k.state === 'attention' ? ' primary' : ''), href: k.action.href }, k.action.label) : null, h('button', { class: 'btn', type: 'button', 'data-key': 'hl-run-' + k.id, onclick: runAgain([k.id], k.label + ' checked again (simulated).') }, 'Check again'), h('a', { class: 'btn quiet', href: hrefFor('check', k.id) }, 'Readings'))));
+        h('div', { class: 'actions' }, k.action ? h('a', { class: 'btn' + (k.state === 'attention' ? ' primary' : ''), href: k.action.href }, k.action.label) : null, h('button', { class: 'btn', type: 'button', 'data-key': 'hl-run-' + k.id, onclick: runAgain([k.id], k.label + ' checked again (simulated).') }, 'Check again'),
+          k.action && isPhone() ? more(k.label, [['Readings', hrefFor('check', k.id)]]) : h('a', { class: 'btn quiet', href: hrefFor('check', k.id) }, 'Readings'))));
   };
   const header = top('Health', parts.length ? parts : [['Every check is OK', 'ok']], null,
     h('div', { class: 'ax-ledger hl-run' }, stale ? pill('paused', 'Stale') : null, h('span', null, h('span', null, 'Last run'), ' ', h('time', { title: clockLabel(last, true) }, ago(ctx, last))), h('button', { class: 'btn', type: 'button', 'data-key': 'hl-run', onclick: runAgain(hl.checks.map((k) => k.id), 'Every check ran again (simulated).') }, 'Run all')));
   return frame(cur, header, subnav('health', cur, 'Health filter', { all: all.length, attention: c.attention, unknown: c.unknown, ok: c.ok }, { attention: c.attention ? ['attention', 'needs attention'] : null }),
-    cur === 'all' ? h('p', { class: 'ax-ledger' }, 'Six checks, each read from records. A missing reading is unknown, never 0.') : h('p', { class: 'ax-ledger' }, 'Showing ' + shown.length + ' of ' + all.length),
+    cur === 'all' ? h('p', { class: 'ax-ledger hl-note' }, 'Six checks, each read from records. A missing reading is unknown, never 0.') : h('p', { class: 'ax-ledger' }, 'Showing ' + shown.length + ' of ' + all.length),
     shown.length ? h('div', { class: 'ax-dim' }, ...shown.map(rowOf)) : h('div', null, h('p', { class: 'sec-empty' }, HEALTH_NONE[cur]), link('#/health/all', 'Show all checks', 'ax-link')),
     dnote('H15', 'Health is read from records, one live derivation (P21 D12). Each check has a cause and a fix when it is not OK.'));
 }
@@ -423,14 +433,14 @@ export function viewExtensions(ctx) {
   const countIn = (id) => KINDS[id][0].filter(inFacet).length;
 
   const pick = (id) => { ui.extTab = id; ctx.render(); };
-  const tabs = h('div', { class: 'tabs ext-tabs', role: 'tablist', 'aria-label': 'Extension types' }, ...tabsShown.map(([id, label]) => h('button', { class: 'tab', type: 'button', role: 'tab', id: 'xtab-' + id, 'data-key': 'xtab-' + id, 'aria-selected': id === tab ? 'true' : 'false', 'aria-controls': 'ext-panel', tabindex: id === tab ? '0' : '-1', onclick: () => pick(id),
+  const tabs = edgeRow(h('div', { class: 'tabs ext-tabs', role: 'tablist', 'aria-label': 'Extension types' }, ...tabsShown.map(([id, label]) => h('button', { class: 'tab', type: 'button', role: 'tab', id: 'xtab-' + id, 'data-key': 'xtab-' + id, 'aria-selected': id === tab ? 'true' : 'false', 'aria-controls': 'ext-panel', tabindex: id === tab ? '0' : '-1', onclick: () => pick(id),
     onkeydown: (e) => {
       const i = tabsShown.findIndex(([x]) => x === id), n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabsShown.length - 1 }[e.key];
       if (n == null) return;
       e.preventDefault(); const to = tabsShown[(n + tabsShown.length) % tabsShown.length][0];
       document.querySelector('[data-key="xtab-' + to + '"]').focus(); pick(to);
     } },
-    label, h('span', { class: 'ax-count' }, String(countIn(id))), needIn[id] ? h('span', { class: 'x-dot', 'data-tone': 'attention' }, h('span', { class: 'vh' }, 'needs you')) : null)));
+    label, h('span', { class: 'ax-count' }, String(countIn(id))), needIn[id] ? h('span', { class: 'x-dot', 'data-tone': 'attention' }, h('span', { class: 'vh' }, 'needs you')) : null))));
 
   const rows = items.map(build), anyStat = rows.some((r) => !r.dataset.nost), none = h('p', { class: 'x-empty', hidden: true }, 'No extension matches.', ' ', h('button', { class: 'btn quiet', type: 'button', 'data-key': 'ext-clear', onclick: () => { ui.extQ[tab] = ''; ctx.render(); } }, 'Clear search'));
   const filter = (text) => { let shown = 0; rows.forEach((r) => { const ok = matches(text, r.dataset.q); r.hidden = !ok; if (ok) shown++; }); none.hidden = shown > 0 || !text.trim(); };
