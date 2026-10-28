@@ -624,14 +624,15 @@ export function createSim(opts = {}) {
     m = mk('m-theme', 'Theme tokens audit', 'archeus', 'chore/tokens');
     S.clock = -min(2); emit('mission.created', { kind: 'mission', id: m.id }, {}, { mission: m.id, project: m.project });
 
-    if (opts.story === 'many' || opts.story === 'huge') crowd(opts.story === 'many' ? [12, 28, 15] : [100, 240, 120], mk, path);
+    const crowdSize = opts.projects > 3 ? opts.projects : opts.story === 'many' ? 12 : opts.story === 'huge' ? 100 : 0;
+    if (crowdSize) crowd([crowdSize, Math.round(crowdSize * 2.4), Math.round(crowdSize * 1.2)], mk, path);
     S.events.sort((a, b) => a.at - b.at || a.seq - b.seq).forEach((e, i) => { e.seq = i + 1; });
     seq = S.events.length; S.clock = 0; S.quiet = false;
     script();
     if (opts.story === 'full') S.projects.push({id: 'atlas', name: 'Atlas', note: 'Knowledge platform.', root: 'atlas/'});
     if (opts.story === 'calm') calmDown();
   }
-  // ?story=many (12 projects) and ?story=huge (100): the same mission shapes as the default story, spread over many projects with a skewed ownership so some projects stay empty.
+  // ?projects=N (10 to 100), ?story=many (12 projects) and ?story=huge (100): the same mission shapes as the default story, spread over many projects with a skewed ownership so some projects stay empty.
   function crowd([np, nm, ni], mk, path) {
     const head = ['Atlas', 'Beacon', 'Cinder', 'Delta', 'Ember', 'Fjord', 'Garnet', 'Harbor', 'Iris', 'Juniper', 'Kestrel', 'Lumen', 'Mosaic', 'Nimbus', 'Orbit', 'Prism', 'Quartz', 'Relay', 'Summit', 'Tidal'];
     const projects = S.projects;

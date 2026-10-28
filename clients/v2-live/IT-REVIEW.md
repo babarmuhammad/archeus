@@ -2088,3 +2088,9 @@ Inline `L(en, it)` strings in `js/chat.js`.
 - Pinned {c} → Fissato {c} (spoken when a pin is added)
 - Unpinned {c} → Rimosso {c} dai fissati (spoken when a pin is removed)
 - Alt+P pins or unpins the highlighted command → Alt+P fissa o rimuove il comando evidenziato (hint under the menu; not shown on the phone sheet)
+
+## Simulated project count (Tools)
+- Simulated projects → Progetti simulati (menu title)
+- Number of simulated projects → Numero di progetti simulati (button name)
+- 3 (the default story) → 3 (la storia predefinita)
+- Reloads the prototype with that many projects and the same mission mix, to see how every page scales. → Ricarica il prototipo con quel numero di progetti e la stessa miscela di missioni, per vedere come scala ogni pagina.
