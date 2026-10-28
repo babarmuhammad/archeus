@@ -67,3 +67,5 @@ export function spineText(state, heldFrom, ascii) {
   else word = p.label;
   return cluster + ' ' + word;
 }
+
+export const isOpenMission = (m) => !['COMPLETED', 'CANCELLED', 'FAILED'].includes(m.state);

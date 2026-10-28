@@ -198,7 +198,7 @@ export function composer(ctx, where) {
 
 // ---------- the Chat page ----------
 import { spineInspector } from './spine.js';
-import { spineOf } from '../spine-model.js';
+import { spineOf, isOpenMission } from '../spine-model.js';
 import { present } from '../core-words.js';
 import { translate } from './i18n.js';
 
@@ -265,7 +265,7 @@ export function viewChat(ctx) {
     return h('div', { class: 'cp-rail-content' }, h('h2', null, 'Conversations'), search, rows);
   }
   function context(sheet = false) {
-    const active = focused || (s.dest !== 'general' && Object.values(st.missions).find((m) => m.project === s.project && !['DONE', 'CANCELLED', 'FAILED'].includes(m.state)));
+    const active = focused || (s.dest !== 'general' && Object.values(st.missions).find((m) => m.project === s.project && isOpenMission(m)));
     const missionSpine = active ? spineInspector(active.state, active.held_from) : null;
     if (active) {
       const sp = spineOf(active.state, active.held_from);

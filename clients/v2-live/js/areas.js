@@ -68,9 +68,9 @@ export function viewSecurity(ctx) {
     const wrap = h('div', { class: 'sec-decision', 'data-approval': a.id }, item); cards.set(a.id, wrap); return wrap;
   }));
   const policies = S.projects.map((p) => {
-    const mode = MODES.find(([id]) => id === A.launch(p.id).mode);
+    const launch = A.launch(p.id), mode = MODES.find(([id]) => id === launch?.mode);
     return h('div', { class: 'sec-project', 'data-key': 'sec-project-' + p.id }, h('h3', null, p.name),
-      row('Approval mode', 'No per-project command overrides are recorded.', mode ? mode[1] : 'Unknown', A.launch(p.id).mode === 'plan' ? 'paused' : 'attention'),
+      row('Approval mode', 'No per-project command overrides are recorded.', mode ? mode[1] : 'Unknown', launch?.mode === 'plan' ? 'paused' : 'attention'),
       ...A.privileges().map((r) => row(r.label, r.note, r.state === 'asks' ? 'Ask me each time' : PRIV[r.state][1], PRIV[r.state][0], r.link ? hrefFor(r.link.startsWith('sec-') ? 'boundary' : 'hook', r.link) : null)));
   });
   const boundaryRows = [['Execution isolation', sc.boundaries[0], 'Not confined', 'blocked'], ['Accounts and homes', sc.boundaries[4], 'Denied by policy only', 'attention'], ['Network', sc.boundaries[2], 'Not confined', 'blocked']]
@@ -205,7 +205,7 @@ export function viewAccounts(ctx) {
         h('p', { class: 'ax-note pad' }, 'This is the model Archeus asks for, not proof of which model the provider served.')),
     ]),
     h('h2', { class: 'ax-sh' }, 'Launch settings per project', h('span', null, 'What a new mission starts with, and what would happen right now.')),
-    h('div', { class: 'ax-launches' }, ...S.projects.map(launch))));
+    h('div', { class: 'ax-launches' }, ...S.projects.filter((p) => A.launch(p.id)).map(launch))));
 }
 
 // ---------- Extensions: hooks, MCP servers, agents, automations, clients ----------
