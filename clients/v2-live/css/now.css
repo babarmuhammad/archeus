@@ -6,13 +6,12 @@
 .now-view .now-hero a, .now-view .now-hero button { pointer-events: auto; }
 .now-view .eyebrow { font: 500 var(--fs-eyebrow) / 1 var(--sans); letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-3); margin: 0; }
 .now-view .state-sentence { font-family: var(--serif); font-size: clamp(32px, 2.8vw, 42px); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
-.now-view .lede { font-family: var(--serif); font-size: var(--fs-lede); line-height: 1.4; color: var(--text-2); max-width: 30rem; margin: 0; }
-.view.now-view { --strip-h: 56px; --hero-h: 150px; --sheet-w: min(440px, 44%); --sheet-h: min(46%, 340px); }
+.now-view .ledger { font: 400 var(--fs-body) / 1.4 var(--sans); color: var(--text-2); margin: 0; max-width: 46rem; }
+.state-sentence .ss-need { color: var(--attention); } .state-sentence .ss-run { color: var(--active); } .state-sentence .ss-stop { color: var(--blocked); }
+.view.now-view { --strip-h: 76px; --hero-h: 112px; --sheet-w: min(440px, 44%); --sheet-h: min(46%, 340px); }
 /* The drawer is an overlay layer: the status strip is the bottom edge, the Details sheet floats over the scene (beside it when wide, over its bottom when narrow). Opening it never resizes the scene. */
 .now-drawer { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
-.now-strip { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; pointer-events: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--strip-h); padding: 6px var(--gut); background: var(--bg); border-top: var(--hair) solid var(--line); }
-.now-strip .counters { margin: 0; flex: 1; }
-.now-strip .legend { padding: 0; }
+.now-strip { position: absolute; right: var(--gut); bottom: 14px; z-index: 4; pointer-events: auto; }
 .now-toggle { min-height: 44px; min-width: 44px; padding: 0 16px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
 .now-toggle::after { content: ' \25B4'; }
 .now-drawer[data-open='true'] .now-toggle::after { content: ' \25BE'; }
@@ -44,7 +43,6 @@
 }
 @container view (max-width: 599px) {
   .now-view .state-sentence { font-size: 30px; }
-  .now-view .lede { display: none; }
 }
 .now-wrap { height: 100%; }
 .now-wrap > .ax-digest { margin: var(--gut); }
@@ -117,7 +115,7 @@
 
 /* The Tell dock: anchored at the bottom centre of the scene, on the status strip. A flat translucent fill of the ground colour and a hairline, no blur.
    Slim by default (destination chip, field, slash, Send); it grows upward for the slash menu and for replies. */
-.tell-dock { position: absolute; z-index: 4; left: 0; right: 0; top: var(--hero-h); bottom: calc(var(--strip-h) + 12px); display: flex; justify-content: center; align-items: flex-end; padding: 0 var(--gut); pointer-events: none; }
+.tell-dock { position: absolute; z-index: 4; left: 0; right: 0; top: var(--hero-h); bottom: 14px; display: flex; justify-content: center; align-items: flex-end; padding: 0 calc(var(--gut) + 112px) 0 calc(var(--gut) + 112px); pointer-events: none; }
 .tell-dock .dockin { pointer-events: auto; width: min(980px, 100%); padding: 0; gap: 6px; max-height: 100%; overflow-y: auto; }
 .tell-dock .dintro, .tell-dock .cstop { display: none; }
 .tell-dock .dockin .composer2, .tell-dock .dstrip, .tell-dock .slash, .tell-dock .cnote { background: color-mix(in srgb, var(--bg) 66%, transparent); border: var(--hair) solid var(--line-strong); }

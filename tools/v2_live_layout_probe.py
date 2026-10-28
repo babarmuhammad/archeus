@@ -103,12 +103,13 @@ MEASURE = r"""
     const p = n.parentElement;
     if (!p || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'OPTION', 'TITLE'].includes(p.tagName) || !inLayer(p) || !vis(p) || p.closest('.am-sr')) continue;
     const pb = p.getBoundingClientRect(); if (pb.width <= 1 || pb.height <= 1) continue; // visually hidden text
+    if ((() => { for (let a = p.parentElement; a; a = a.parentElement) { const ar = a.getBoundingClientRect(); if (ar.width <= 1 && getComputedStyle(a).overflowX === 'hidden') return true; } return false; })()) continue; // inside a visually hidden box
     const r = document.createRange(); r.selectNodeContents(n);
     for (const rc of r.getClientRects()) if (rc.width >= 2 && rc.height >= 2) boxes.push({ kind: 'text', el: p, r: rc, label: t.slice(0, 32) });
   }
   const ctl = [...document.querySelectorAll('a[href], button, input, select, textarea, summary, [role=button], [role=tab], [tabindex]:not([tabindex="-1"])')].filter((e) => inLayer(e) && vis(e) && !e.closest('.am-sr') && e.getBoundingClientRect().width > 1);
   // the map's invisible 44 px hit circles overlap their neighbours by design (a click picks the nearest star), so they count for size only
-  ctl.forEach((e) => { if (!e.matches('.am-hit')) boxes.push({ kind: 'ctl', el: e, r: e.getBoundingClientRect(), label: name(e) }); });
+  ctl.forEach((e) => { if (!e.matches('.am-hit, .am-chit')) boxes.push({ kind: 'ctl', el: e, r: e.getBoundingClientRect(), label: name(e) }); });
 
   // clipped: sticks out of the viewport or is cut by an overflow:hidden parent, horizontally
   const seenClip = new Set();

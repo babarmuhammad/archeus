@@ -206,7 +206,7 @@ export function createTerritoryMap(container, options = {}) {
       bindHit(hit, info, p, {x: cell.x, y: cell.y, w: cell.w}); hits.append(hit);
       for (const m of rec.hitsOf) {
         const mi = {kind: T('Mission'), title: m.label, state: m.state, stateWord: wordOf(m.state), project: p.name, line: p.last ? `${p.last.time} · ${p.last.text}` : '', action: T('Open mission')};
-        const mh = svgEl('g', {class: 'am-chit am-chit-mission', tabindex: 0, role: 'button', 'data-node-id': m.id, 'aria-label': `${m.label}, ${T('Mission')}, ${wordOf(m.state)}, ${p.name}`});
+        const mh = svgEl('g', {class: 'am-chit am-chit-mission', tabindex: -1, 'aria-hidden': 'true', 'data-node-id': m.id});
         mh.append(svgEl('circle', {cx: f(m.x), cy: f(m.y), r: f(m.r)})); bindHit(mh, mi, p, {x: m.x - m.r, y: m.y - m.r, w: m.r * 2}); hits.append(mh);
       }
     }

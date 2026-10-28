@@ -4,15 +4,25 @@ import { clockLabel } from '../sim.js';
 import { tr } from './i18n.js';
 import { word, panel, empty, missionRow, attentionItem, projName } from './views.js';
 import { icon } from './icons.js';
-import { mapBox, syncMap } from './map.js';
+import { mapBox, syncMap, buildOverview } from './map.js';
 import { dockNode } from './chat.js';
 
+// The phone shows the four counts as its headline; the desktop headline already says them.
 function counters(ctx) {
   const sim = ctx.sim, ms = Object.values(sim.state.missions);
   const c = (n, label, role, href) => h('a', { class: 'ctr', 'data-role': role, 'data-zero': String(n === 0), href }, h('b', null, String(n)), h('span', null, label));
   return h('nav', { class: 'counters', 'aria-label': 'Counts' },
     c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', '#/work'), c(sim.liveWork().length, 'running', 'active', '#/work'),
     c(ms.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length, 'stopped', 'blocked', '#/work'), c(ms.filter((m) => present('mission', m.state).cls === 'verifying').length, 'verifying', 'verifying', '#/work'));
+}
+
+const KIND = [[/need/, 'need'], [/running/, 'run'], [/stopped/, 'stop']];
+// The headline counts wear the state colour: amber needs you, blue running, red stopped.
+const sentenceNodes = (text) => text.split(' · ').flatMap((part, i) => [i ? ' · ' : null, h('span', { class: 'ss ss-' + ((KIND.find(([re]) => re.test(part)) || [])[1] || 'plain') }, tr(part))]);
+function ledgerText(l) {
+  if (!l.done) return tr('Archeus has not completed a mission today.');
+  const top = l.byProject.slice(0, 2).map((x) => `${x.n} in ${x.name}`), more = l.byProject.length - 2;
+  return tr(`Archeus completed ${l.done} ${l.done === 1 ? 'mission' : 'missions'} today:`) + ' ' + top.join(', ') + (more > 0 ? ', ' + tr(`+${more} more projects`) : '') + '.';
 }
 
 // The headline clears the top of the scene and the drawer strip the bottom; both shrink with the width.
@@ -24,8 +34,8 @@ let sheetOn = false;
 const viewWidth = () => { const e = document.querySelector('.now-view'); return e ? e.clientWidth : 1e4; };
 // The map starts under the headline whatever its height (one or two lines of headline, the lede), measured on the page.
 const heroBottom = () => { const e = document.querySelector('.now-hero'); return e ? Math.round(e.offsetTop + e.offsetHeight + 8) : 150; };
-const DOCK = 56 + 12 + 14;
-const nowInset = (w, hh) => calmNow ? { top: 16, bottom: phone() ? 170 : Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : phone() ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : 56 + DOCK + 16, left: 24, right: 24 };
+const DOCK = 56 + 12 + 14, BAND = 76;
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: phone() ? 170 : Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : phone() ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
 
 // Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
 function calmBand(ctx) {
@@ -73,7 +83,7 @@ export function render(ctx) {
     ap ? h('p', { class: 'pn-k' }, tr('Why') + ':') : null, ap ? h('p', { class: 'pn-v' }, ap.presented.why) : null,
     h('a', { class: 'pn-review', href: first.kind === 'approval' ? '#/work/' + first.ref : '#/work/' + first.mission_id }, tr('Review'))) : null;
   const drawer = h('section', { class: 'now-drawer', 'data-open': String(open), 'aria-label': 'Details' },
-    h('div', { class: 'now-strip' }, counters(ctx), h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
+    h('div', { class: 'now-strip' }, phone() ? counters(ctx) : null, h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
     card,
     h('div', { class: 'now-body', id: 'now-details' },
       h('div', { class: 'now-panels' },
@@ -84,9 +94,9 @@ export function render(ctx) {
         panel('Recent decisions and changes', recent.length, h('div', { class: 'body' }, ...recent.map((e) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, (st.missions[e.subject.id] || { title: e.subject.id }).title, ': ', word('mission', e.payload.from), ' to ', word('mission', e.payload.to)), h('span', { class: 'b' }, clockLabel(e.at) + (e.actor === 'device' ? ' · you' : ' · Core')))), recent.length ? null : empty('Nothing has changed yet.'))))));
   return h('div', { class: 'now-wrap' }, h('div', { class: 'view now-view', 'data-calm': String(calm), 'data-sheet': String(open && !calm) },
     h('div', { class: 'now-scene' }, box),
-    calm ? calmBand(ctx) : h('div', { class: 'now-hero' }, h('p', { class: 'eyebrow' }, tr('Overview')),
-      h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, sim.sentence()),
-      h('p', { class: 'lede' }, tr('Live constellation of your work. Missions, projects and ideas in context, moving forward together.'))),
+    calm ? calmBand(ctx) : h('div', { class: 'now-hero' },
+      h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, ...sentenceNodes(sim.sentence())),
+      h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(buildOverview(sim).ledger))),
     calm ? null : drawer,
     phone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));
 }

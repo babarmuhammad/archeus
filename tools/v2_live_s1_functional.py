@@ -26,7 +26,7 @@ try:
         navs = pg.evaluate("() => [...document.querySelectorAll('.rail .nav-item')].map((e) => e.textContent.replace(/[0-9]/g, '').trim())")
         check('the nav keeps its order and Now is Overview', navs == ['Overview', 'Work', 'Replay', 'Chat', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings', 'Terminal view'])
         check('the route of Overview is still #/now', pg.get_attribute('.rail [data-route="now"]', 'href') == '#/now')
-        check('the Overview keeps the map controls (zoom out, zoom in, Fit, Reset)', pg.evaluate("() => [...document.querySelectorAll('.now-view .am-controls button')].map((b) => b.textContent.trim())") == ['−', '+', 'Fit', 'Reset'] or pg.locator('.now-view .am-controls button').count() == 4)
+        check('the Overview shows one territory per project', pg.locator('.now-view .am-cell').count() >= 3)
         pg.goto(base + '?sim=paused&motion=reduced&theme=dark#/map', wait_until='load'); pg.wait_for_timeout(400)
         check('#/map redirects to #/now', pg.evaluate('location.hash') == '#/now' and pg.get_attribute('.rail [data-route="now"]', 'aria-current') == 'page')
         w = pg.evaluate("document.querySelector('.rail').getBoundingClientRect().width")
