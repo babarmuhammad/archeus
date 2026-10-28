@@ -21,7 +21,7 @@ function hook(ctx, A, S, id) {
   const flip = () => { const r = A.toggleHook(id); done(ctx, r, r.on ? 'Hook switched on (simulated).' : 'Hook switched off (simulated).'); };
   return frame(ctx, A, { kind: 'Hook · ' + x.event, title: x.name, sub: x.scope,
     body: () => h('div', { class: 'ax-body' }, sec('What it does', h('p', null, x.does)),
-      sec('Facts', kv([['State', pill(x.enabled ? 'ok' : 'paused', x.enabled ? 'Enabled' : 'Disabled')], ['Event', x.event], ['Matches', h('code', null, x.matcher)], ['Scope', x.scope], ['Runs', String(x.runs)], ['Last run', ago(S, x.last)], ['Last outcome', x.outcome]])),
+      sec('Facts', kv([['State', pill(x.enabled ? 'ok' : 'paused', x.enabled ? 'Enabled' : 'Disabled')], ['Harness', x.harnesses.map(harnessLabel).join(', ')], ['Event', x.event], ['Matches', h('code', null, x.matcher)], ['Scope', x.scope], ['Runs', String(x.runs)], ['Last run', ago(S, x.last)], ['Last outcome', x.outcome]])),
       x.locked ? note('Built in and fail closed: it cannot be switched off.') : x.sensitive && x.enabled ? note('Switching this off changes what an execution may do without asking you. It asks you to confirm.') : null,
       link('#/security', 'See the privileges on Security'), dnote('H09', 'Hooks are listed with status and last run; enable and disable go through a confirm when they guard something.')),
     foot: () => (x.locked ? null : [h('button', { class: 'btn' + (x.enabled ? '' : ' primary'), type: 'button', onclick: () => (x.enabled && x.sensitive ? ask(ctx, { text: 'Switch off "' + x.name + '"? An execution can then do this without asking you.', label: 'Switch off', tone: 'danger', run: flip }) : flip()) }, x.enabled ? 'Switch off' : 'Switch on')]) });
@@ -33,6 +33,8 @@ function mcp(ctx, A, S, id) {
   return frame(ctx, A, { kind: 'MCP server · ' + x.transport, title: x.name, sub: x.scope,
     body: () => h('div', { class: 'ax-body' }, sec('What it is', h('p', null, x.detail)),
       sec('Facts', kv([['State', pill(t[0], t[1])], ['Scope', x.scope], ['Calls', String(x.calls)], ['Last call', ago(S, x.last)]])),
+      sec('Harnesses', Object.keys(x.on).map((k) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, harnessLabel(k)), pill(x.on[k] ? 'ok' : 'paused', x.on[k] ? 'On' : 'Off'),
+        x.unchecked ? null : h('button', { class: 'btn', type: 'button', 'data-key': 'mcp-' + k, onclick: () => { const r = A.toggleMcp(id, k); done(ctx, r, r.on ? 'Connecting (simulated).' : 'Switched off (simulated).'); } }, x.on[k] ? 'Switch off' : 'Switch on')))),
       sec('Tools', x.tools.length ? x.tools.map(([n, k]) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, h('code', null, n)), pill(k === 'read' ? 'ok' : 'attention', k === 'read' ? 'Read only' : 'Writes, asks first'))) : note('No tool is known yet.')),
       note('Credentials are never passed to an MCP server by Archeus.'), dnote('H09', 'MCP servers: status, last call, enable and disable. A server whose capability has not been checked cannot be switched on from chat.')),
     foot: () => (x.unchecked ? null : [h('button', { class: 'btn' + (x.enabled ? '' : ' primary'), type: 'button', onclick: () => { const r = A.toggleMcp(id); done(ctx, r, r.on ? 'Connecting (simulated).' : 'Switched off (simulated).'); } }, x.enabled ? 'Switch off' : 'Switch on')]) });
@@ -42,27 +44,27 @@ function agent(ctx, A, S, id) {
   const x = A.agents().find((q) => q.id === id); if (!x) return null;
   const st = A.agentStatus(x), md = S.models.find((q) => q.id === x.model);
   return frame(ctx, A, { kind: 'Agent · ' + x.tier, title: x.name, sub: x.role,
-    body: () => h('div', { class: 'ax-body' }, sec('Facts', kv([['Status', pill(st.key === 'working' ? 'active' : st.key === 'off' ? 'paused' : st.key === 'ready' ? 'attention' : 'ok', st.text)], ['Model', link(hrefFor('model', 'mdl-' + x.model), md.label)], ['Tier', x.tier], ['Runs', String(x.runs)], ['Last run', ago(S, x.last)]])),
+    body: () => h('div', { class: 'ax-body' }, sec('Facts', kv([['Status', pill(st.key === 'working' ? 'active' : st.key === 'off' ? 'paused' : st.key === 'ready' ? 'attention' : 'ok', st.text)], ['Harness', x.harnesses.map(harnessLabel).join(', ')], ['Model', link(hrefFor('model', 'mdl-' + x.model), md.label)], ['Tier', x.tier], ['Runs', String(x.runs)], ['Last run', ago(S, x.last)]])),
       note('An agent proposes or records. It never decides for you: approvals and acceptance stay yours.'), dnote('H09', 'Agents are listed with the model tier they use, what they are doing now and when they last ran.')),
     foot: () => [h('button', { class: 'btn' + (x.enabled ? '' : ' primary'), type: 'button', onclick: () => { const r = A.toggleAgent(id); done(ctx, r, r.on ? 'Agent switched on (simulated).' : 'Agent switched off (simulated).'); } }, x.enabled ? 'Switch off' : 'Switch on')] });
 }
 
 function account(ctx, A, S, id) {
   const a = S.accounts.find((q) => q.id === id); if (!a) return null;
-  const u = A.usage().find((q) => q.id === id), order = A.failover().order, i = order.indexOf(id);
+  const u = A.usage().find((q) => q.id === id), order = A.failover().order[a.harness], i = order.indexOf(id);
   return frame(ctx, A, { kind: 'Account · ' + harnessLabel(a.harness), title: a.label, sub: present('account_health', a.state).label, tabs: [['account', 'Account'], ['usage', 'Usage']],
     body: (tab) => tab === 'usage' ? h('div', { class: 'ax-body' }, h('div', { class: 'ax-rings' }, h('figure', null, ringNode({ left: u.session.left, key: u.session.key, label: '5 hour window' }), h('figcaption', null, '5 hour window')), h('figure', null, ringNode({ left: u.week.left, key: u.week.key, label: 'Week' }), h('figcaption', null, 'Week'))),
       sec('Session over the last hour', h('div', { class: 'ax-spark-w' }, spark(u.hist.map((p) => ({ t: p.t, s: p.s })), 200, 44)), note(u.resets ? u.resets + '.' : 'No reset time is known.')), note('These are account percentages, not the cost or tokens of one session. Unknown stays unknown, never 0.'))
-      : h('div', { class: 'ax-body' }, sec('Facts', kv([['Health', badge('account_health', a.state)], ['Harness', harnessLabel(a.harness)], ['Sign in', 'A subscription login. Archeus never reads, stores, copies, injects or relays the token.'], ['Failover order', (i + 1) + ' of ' + order.length], ['Role', u.role]])), dnote('H03', 'Account health states are Core\'s own words; the order decides which account takes the next mission.')),
+      : h('div', { class: 'ax-body' }, sec('Facts', kv([['Health', badge('account_health', a.state)], ['Harness', harnessLabel(a.harness)], ['Sign in', 'A subscription login. Archeus never reads, stores, copies, injects or relays the token.'], ['Failover order', (i + 1) + ' of ' + order.length + ' in ' + harnessLabel(a.harness)], ['Role', u.role]])), dnote('H03', 'Account health states are Core\'s own words; the order decides which account takes the next mission.')),
     foot: () => [h('button', { class: 'btn', type: 'button', disabled: i <= 0 ? true : null, onclick: () => done(ctx, A.moveAccount(id, -1), 'Moved up in the failover order.') }, 'Move up'), h('button', { class: 'btn', type: 'button', disabled: i >= order.length - 1 ? true : null, onclick: () => done(ctx, A.moveAccount(id, 1), 'Moved down in the failover order.') }, 'Move down')] });
 }
 
 function model(ctx, A, S, id) {
   const mid = id.replace(/^mdl-/, ''), m = S.models.find((q) => q.id === mid); if (!m) return null;
-  const isDef = A.defaultModel() === mid, used = Object.values(S.missions).filter((q) => q.model === mid).length;
+  const isDef = A.defaultModel(m.harness) === mid, used = Object.values(S.missions).filter((q) => q.model === mid).length;
   return frame(ctx, A, { kind: 'Model · ' + harnessLabel(m.harness), title: m.label, sub: 'Tier ' + m.tier,
     body: () => h('div', { class: 'ax-body' }, sec('Facts', kv([['Default', pill(isDef ? 'ok' : 'paused', isDef ? 'Default model' : 'Not the default')], ['Harness', harnessLabel(m.harness)], ['Tier', m.tier], ['Missions using it', String(used)]])),
-      note('This is the model Archeus asks for. It is not proof of which model the provider served.'), dnote('H10', 'Accounts and models: four models across two harnesses, one default; a project can override it in its launch settings.')),
+      note('This is the model Archeus asks for. It is not proof of which model the provider served.'), dnote('H10', 'Accounts and models: each harness lists its own models with one default; a project can override it in its launch settings.')),
     foot: () => [isDef ? null : h('button', { class: 'btn primary', type: 'button', onclick: () => done(ctx, A.setDefaultModel(mid), m.label + ' is now the default (simulated).') }, 'Make default')] });
 }
 

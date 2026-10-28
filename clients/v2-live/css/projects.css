@@ -19,7 +19,7 @@
 .pcell[aria-current='true'] { outline: var(--hair) solid var(--text); outline-offset: calc(-1 * var(--hair)); }
 .pc-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .pc-code { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-s); font: 600 12px/1 var(--mono); letter-spacing: .04em; color: var(--text-2); }
-.pc-open { flex: 1; min-width: 0; margin-block: -7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: var(--target); font-size: calc(var(--base) * 1.0625); font-weight: 600; color: var(--text); text-decoration: none; }
+.pc-open { flex: 1; min-width: 0; margin-block: -7px; display: flex; align-items: center; min-height: var(--target); overflow-wrap: anywhere; line-height: 1.3; font-size: calc(var(--base) * 1.0625); font-weight: 600; color: var(--text); text-decoration: none; }
 .pc-open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
 .pc-open:focus-visible { outline: 0; }
 .pc-open:focus-visible::after { outline: 3px solid var(--focus); outline-offset: 2px; }

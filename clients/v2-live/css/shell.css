@@ -57,7 +57,7 @@
   position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: 'main' 'bottom';
   overflow: hidden; background: var(--bg); font-size: var(--fs-body); line-height: 1.45;
 }
-@container dev (min-width: 600px) {
+@container dev ((min-width: 600px) and style(--phone: 0)) {
   .app { --fs-body: calc(var(--base) * .8125); --fs-cap: calc(var(--base) * .75); --fs-t1: calc(var(--base) * 1.25); --fs-t2: var(--base); --fs-mono: calc(var(--base) * .75); --gut: calc(var(--base) * 1.5); --rail-w: calc(var(--base) * 4); grid-template-columns: var(--rail-w) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: 'rail main'; }
   .app[data-rail='open'] { --rail-w: calc(var(--base) * 12); }
 }
@@ -69,7 +69,7 @@
 @container dev (min-width: 2400px) { .app { --base: 20px; } }
 
 .rail { position: relative; grid-area: rail; display: none; flex-direction: column; gap: 0; min-height: 0; padding: 8px; overflow-y: auto; background: var(--rail); border-right: var(--hair) solid var(--line); }
-@container dev (min-width: 600px) { .rail { display: flex; } }
+@container dev ((min-width: 600px) and style(--phone: 0)) { .rail { display: flex; } }
 .rail-head { display: flex; align-items: center; gap: 8px; min-height: var(--target); padding: 0 4px; }
 .rail-head .brand { font-size: calc(var(--base) * 1.0625); white-space: nowrap; }
 .rail-head .wordmark { font-size: calc(var(--base) * .9375); padding-left: 8px; }
@@ -124,7 +124,7 @@
 .tb-search kbd, .pal kbd { padding: 1px 6px; border: var(--hair) solid var(--line); border-radius: 4px; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-eyebrow); }
 @container dev (max-width: 1023px) { .tb-search .tbs-l, .tb-search kbd { display: none; } .tb-search { min-width: 44px; justify-content: center; padding: 0; } }
 @container dev (max-width: 1279px) { .app[data-insp='open'] .tb-search .tbs-l, .app[data-insp='open'] .tb-search kbd, .app[data-insp='open'] .safety .sep, .app[data-insp='open'] .safety .sx { display: none; } .app[data-insp='open'] .tb-search { min-width: 44px; justify-content: center; padding: 0; } }
-@container dev (max-width: 599px) {
+@container dev ((max-width: 599px) or style(--phone: 1)) {
   .tb-lock { display: inline-flex; }
   .tb-search { margin-left: 8px; }
   .safety { margin-right: 0; }
@@ -149,7 +149,7 @@ html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
 .app[data-insp='open'] .inspector { display: flex; flex-direction: column; position: absolute; z-index: 20; left: 0; right: 0; bottom: 0; max-height: 86%; border-top: var(--hair) solid var(--line-strong); border-radius: var(--r-l) var(--r-l) 0 0; background: var(--s3); }
 .app[data-insp='open'] .scrim { display: block; }
 .app:not([data-insp='open']) .scrim { display: none; }
-@container dev (min-width: 600px) {
+@container dev ((min-width: 600px) and style(--phone: 0)) {
   .app[data-insp='open'] .inspector { left: auto; top: 0; bottom: 0; width: min(28em, 92%); max-height: none; border-top: 0; border-left: var(--hair) solid var(--line-strong); border-radius: 0; }
 }
 @container dev (min-width: 1024px) {
@@ -162,10 +162,10 @@ html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
 .insp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 16px; padding: 8px 16px 24px; }
 .insp-body h3 { margin-bottom: 6px; font-size: var(--fs-cap); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
 
-.insp-foot { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: var(--hair) solid var(--line); }
+.insp-foot { flex: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px calc(12px + var(--sa-b)); border-top: var(--hair) solid var(--line); }
 .insp-foot .btn { flex: 1 1 8em; }
 .grab { flex: none; width: 36px; height: 4px; margin: 10px auto 2px; border-radius: 999px; background: var(--text-3); }
-@container dev (min-width: 600px) { .grab { display: none; } }
+@container dev ((min-width: 600px) and style(--phone: 0)) { .grab { display: none; } }
 
 .app[data-term='true'] .rail, .app[data-term='true'] .main-wrap, .app[data-term='true'] .bottombar, .app[data-term='true'] .inspector, .app[data-term='true'] .scrim { display: none; }
 .inspector > div { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
@@ -192,7 +192,7 @@ body[data-embed='1'] #stage { grid-row: 1; }
 .toast[data-kind='error'] { border-color: var(--blocked); }
 
 /* ---------- S6: the keyboard help ---------- */
-.pal-scrim { position: absolute; inset: 0; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: min(14vh, 120px) var(--gut) var(--gut); background: var(--scrim); }
+.pal-scrim { position: absolute; inset: 0; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: min(14dvh, 120px) var(--gut) var(--gut); background: var(--scrim); }
 .pal { width: min(38rem, 100%); max-height: min(30rem, 100%); display: flex; flex-direction: column; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); overflow: hidden; animation: pal-in 100ms ease-out; }
 @keyframes pal-in { from { opacity: 0; transform: scale(.98); } }
 .pal-in { flex: none; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 16px; border-bottom: var(--hair) solid var(--line); color: var(--text-2); }

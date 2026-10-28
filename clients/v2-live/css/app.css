@@ -3,12 +3,13 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--bg); color: var(--text); -webkit-text-size-adjust: 100%; }
-body { margin: 0; height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); background: var(--bg); color: var(--text); font: 400 16px/1.4 var(--font); overflow: hidden; }
+body { margin: 0; padding: var(--sa-t) var(--sa-r) 0 var(--sa-l); overscroll-behavior-y: none; height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); background: var(--bg); color: var(--text); font: 400 16px/1.4 var(--font); overflow: hidden; }
 button, input, select { font: inherit; color: inherit; }
 select option, select optgroup { background-color: var(--s3); color: var(--text); }
 h1, h2, h3, p, ul, ol, dl, dd { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 a { color: inherit; text-decoration: none; }
+button, a, summary, input, select, [role='button'] { touch-action: manipulation; }
 svg { display: block; }
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); border: 0; white-space: nowrap; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -64,7 +65,7 @@ svg { display: block; }
 [data-state='blocked'] { --edge: var(--blocked); } [data-state='done'] { --edge: var(--done); }
 .card .kind { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 .card .kind > svg { color: var(--edge); }
-.card .why { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; }
+.card .why { color: var(--text-2); font-size: var(--fs-cap); line-height: 1.4; overflow-wrap: anywhere; }
 .card .top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
 .card .ttl { min-height: var(--target); display: flex; align-items: center; font-weight: 600; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; }

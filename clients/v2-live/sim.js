@@ -99,6 +99,30 @@ export function clockLabel(ms, seconds) {
   return p(Math.floor(s / 3600)) + ':' + p(Math.floor((s % 3600) / 60)) + (seconds ? ':' + p(s % 60) : '');
 }
 
+const LOCAL_MIX = {
+  running: ['run', 'done', 'run', 'plan', 'run', 'verify', 'done', 'blocked', 'run', 'done'],
+  waiting: ['plan', 'done', 'blocked', 'done', 'plan', 'paused', 'done', 'verify', 'failed', 'done'],
+  quiet: ['done', 'done', 'done', 'done', 'failed', 'done', 'done', 'done', 'paused', 'done']
+};
+// The simulated projects of ?projects=local, from a list of { name, slug, missions_hint, ideas_hint, last_active_days, kind, worktrees } written on this machine (tools/v2_live_local_projects.py): clean names and unique ids, and a state mix by kind.
+// The first three are the three most recently active, the biggest first: they take over the default story's projects, so its live script keeps its owners.
+// Fewer than three usable rows give null, and the default story runs instead.
+export function localPlan(list) {
+  if (!Array.isArray(list)) return null;
+  const num = (v, max) => Math.max(0, Math.min(max, Math.floor(Number(v)) || 0)), taken = new Set(['archeus', 'notes', 'ideas']);
+  const clean = (v, max) => Array.from(String(v == null ? '' : v).replace(/\p{Cc}+/gu, ' ').replace(/\s+/g, ' ').trim()).slice(0, max).join('');
+  const rows = list.filter((x) => x && typeof x === 'object').map((x, k) => {
+    const slug = String(x.slug || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'project', kind = LOCAL_MIX[x.kind] ? x.kind : 'quiet';
+    const trees = (Array.isArray(x.worktrees) ? x.worktrees : []).filter((w) => w && typeof w === 'object').slice(0, 40).map((w) => ({ branch: clean(w.branch, 40) || 'detached', label: clean(w.label, 24), owner: w.owner === 'archeus' ? 'archeus' : 'linked', state: ['active', 'stale', 'missing'].includes(w.state) ? w.state : 'active' }));
+    return { id: slug, name: clean(x.name, 60) || slug, missions: num(x.missions_hint, 40), ideas: num(x.ideas_hint, 20), days: num(x.last_active_days, 60), mix: LOCAL_MIX[kind], trees };
+  });
+  if (rows.length < 3) return null;
+  const head = rows.map((r, i) => [r, i]).sort((a, b) => a[0].days - b[0].days || a[1] - b[1]).slice(0, 3).map((x) => x[0]).sort((a, b) => b.missions - a.missions);
+  const out = [...head, ...rows.filter((r) => !head.includes(r))];
+  out.slice(3).forEach((r) => { let id = r.id; for (let i = 2; taken.has(id); i++) id = r.id + '-' + i; taken.add(id); r.id = id; });
+  return out;
+}
+
 function mulberry32(a) {
   return function () {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -542,16 +566,19 @@ export function createSim(opts = {}) {
       accounts: [
         { id: 'acc-work', label: 'Claude Code, work', harness: 'claude_code', kind: 'subscription_oauth', state: 'AVAILABLE', priority: 1 },
         { id: 'acc-personal', label: 'Claude Code, personal', harness: 'claude_code', kind: 'subscription_oauth', state: 'CONSTRAINED', priority: 2 },
-        { id: 'acc-codex', label: 'Codex, work', harness: 'codex', kind: 'subscription_oauth', state: 'UNVERIFIED', priority: 3 }
+        { id: 'acc-codex', label: 'Codex, work', harness: 'codex', kind: 'subscription_oauth', state: 'UNVERIFIED', priority: 3 },
+        { id: 'acc-codex-2', label: 'Codex, personal', harness: 'codex', kind: 'subscription_oauth', state: 'AVAILABLE', priority: 4 }
       ],
       models: [
         { id: 'claude-sonnet', label: 'Sonnet 5.5', harness: 'claude_code', tier: 'large' }, { id: 'claude-opus', label: 'Opus', harness: 'claude_code', tier: 'xlarge' },
-        { id: 'claude-haiku', label: 'Haiku', harness: 'claude_code', tier: 'small' }, { id: 'codex-main', label: 'Codex default', harness: 'codex', tier: 'large' }
+        { id: 'claude-haiku', label: 'Haiku', harness: 'claude_code', tier: 'small' }, { id: 'codex-main', label: 'Codex default', harness: 'codex', tier: 'large' },
+        { id: 'codex-mini', label: 'Codex mini', harness: 'codex', tier: 'small' }
       ],
       usage: {
         'acc-work': { window5h: 38, week: 52, resets: '5 h window resets 13:10' },
         'acc-personal': { window5h: 84.6, week: 71, resets: '5 h window resets 12:40' },
-        'acc-codex': { window5h: null, week: null, resets: null } // unknown, never shown as 0
+        'acc-codex': { window5h: null, week: null, resets: null }, // unknown, never shown as 0
+        'acc-codex-2': { window5h: 22, week: 31, resets: '5 h window resets 14:05' }
       },
       harnesses: [
         { id: 'claude_code', label: 'Claude Code', state: 'AVAILABLE', breaker: { state: 'closed', failures: [], until: 0, last_error: null } },
@@ -624,8 +651,9 @@ export function createSim(opts = {}) {
     m = mk('m-theme', 'Theme tokens audit', 'archeus', 'chore/tokens');
     S.clock = -min(2); emit('mission.created', { kind: 'mission', id: m.id }, {}, { mission: m.id, project: m.project });
 
-    const crowdSize = opts.projects > 3 ? opts.projects : opts.story === 'many' ? 12 : opts.story === 'huge' ? 100 : 0;
-    if (crowdSize) crowd([crowdSize, Math.round(crowdSize * 2.4), Math.round(crowdSize * 1.2)], mk, path);
+    const local = localPlan(opts.local);
+    const crowdSize = local ? local.length : opts.projects > 3 ? opts.projects : opts.story === 'many' ? 12 : opts.story === 'huge' ? 100 : 0;
+    if (crowdSize) crowd([crowdSize, Math.round(crowdSize * 2.4), Math.round(crowdSize * 1.2)], mk, path, local);
     S.events.sort((a, b) => a.at - b.at || a.seq - b.seq).forEach((e, i) => { e.seq = i + 1; });
     seq = S.events.length; S.clock = 0; S.quiet = false;
     script();
@@ -633,9 +661,11 @@ export function createSim(opts = {}) {
     if (opts.story === 'calm') calmDown();
   }
   // ?projects=N (10 to 100), ?story=many (12 projects) and ?story=huge (100): the same mission shapes as the default story, spread over many projects with a skewed ownership so some projects stay empty.
-  function crowd([np, nm, ni], mk, path) {
+  // With a local plan (?projects=local) the owners come from it instead: each project has its own mission and idea counts and a state mix that follows how recently it was active.
+  function crowd([np, nm, ni], mk, path, local) {
     const head = ['Atlas', 'Beacon', 'Cinder', 'Delta', 'Ember', 'Fjord', 'Garnet', 'Harbor', 'Iris', 'Juniper', 'Kestrel', 'Lumen', 'Mosaic', 'Nimbus', 'Orbit', 'Prism', 'Quartz', 'Relay', 'Summit', 'Tidal'];
     const projects = S.projects;
+    if (local) local.forEach((l, i) => { projects[i] = Object.assign(projects[i] || {}, { id: i < 3 ? projects[i].id : l.id, name: l.name, note: '', root: l.id + '/' }); });
     for (let i = projects.length; i < np; i++) {
       const name = head[i % head.length] + (i >= head.length ? ' ' + (1 + Math.floor(i / head.length)) : ''), id = name.toLowerCase().replace(/ /g, '-');
       projects.push({ id, name, note: '', root: id + '/' });
@@ -654,10 +684,12 @@ export function createSim(opts = {}) {
     const mix = ['done', 'done', 'done', 'run', 'run', 'plan', 'blocked', 'done', 'verify', 'failed', 'paused', 'run', 'plan', 'done'];
     const verbs = ['Fix', 'Refactor', 'Document', 'Audit', 'Migrate', 'Test', 'Profile', 'Clean up'], objs = ['date parsing', 'the login flow', 'build scripts', 'the API client', 'config loading', 'the search index', 'release notes', 'retry logic'];
     const owner = () => projects[Math.floor(np * rng() ** 2.2)];
-    for (let i = 0; i < nm; i++) {
-      const pr = owner(), kind = mix[i % mix.length], [steps, tState, eState] = KINDS[kind], id = 'm-x' + (i + 1);
+    const own = (k, pr) => Object.values(S[k]).filter((x) => x.project === pr.id).length;
+    const plan = local && local.flatMap((l, k) => Array.from({ length: Math.max(0, l.missions - own('missions', projects[k])) }, (_, j) => [projects[k], l.mix[j % l.mix.length], l.days]));
+    for (let i = 0; i < (plan ? plan.length : nm); i++) {
+      const [pr, kind, days] = plan ? plan[i] : [owner(), mix[i % mix.length], 0], [steps, tState, eState] = KINDS[kind], id = 'm-x' + (i + 1);
       const m = mk(id, verbs[i % verbs.length] + ' ' + objs[Math.floor(rng() * objs.length)], pr.id, 'work/' + id);
-      const t0 = -min(8 + Math.floor(rng() * 1400));
+      const t0 = -min(8 + Math.floor(rng() * 1400) + days * 1440);
       S.clock = t0; emit('mission.created', { kind: 'mission', id }, {}, { mission: id, project: pr.id });
       path(m, steps, t0);
       if (kind === 'plan') {
@@ -672,7 +704,9 @@ export function createSim(opts = {}) {
       }
     }
     const states = ['CAPTURED', 'CAPTURED', 'PLANNED', 'PARKED', 'EXPLORED'];
-    for (let i = 0; i < ni; i++) S.ideas.push({ id: 'i-x' + (i + 1), project: owner().id, title: ['Quick capture', 'Digest by email', 'Shared view', 'Weekly map'][i % 4] + ' ' + (i + 1), state: states[i % states.length] });
+    if (local) (S.worktrees = S.worktrees || []).push(...local.flatMap((l, k) => l.trees.map((w, j) => ({ id: 'w-x' + (k + 1) + '-' + (j + 1), project: projects[k].id, ...w }))));
+    const owners = local ? local.flatMap((l, k) => Array(Math.max(0, l.ideas - own('ideas', projects[k]))).fill(projects[k])) : null;
+    for (let i = 0; i < (owners ? owners.length : ni); i++) S.ideas.push({ id: 'i-x' + (i + 1), project: (owners ? owners[i] : owner()).id, title: ['Quick capture', 'Digest by email', 'Shared view', 'Weekly map'][i % 4] + ' ' + (i + 1), state: states[i % states.length] });
   }
   // ?story=calm (concept 07): five projects, each with a finished mission and a captured idea, and the script silent.
   function calmDown() {

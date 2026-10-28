@@ -5,6 +5,7 @@ import { tr } from './i18n.js';
 import { word, panel, empty, missionRow, attentionItem, projName } from './views.js';
 import { icon } from './icons.js';
 import * as store from './store.js';
+import { isPhone } from './viewport.js';
 import { mapBox, syncMap, buildOverview } from './map.js';
 import { dockNode } from './chat.js';
 import { workHref } from '../page-model.js';
@@ -30,7 +31,6 @@ function ledgerText(l) {
 
 // The headline clears the top of the scene and the drawer strip the bottom; both shrink with the width.
 let calmNow = false;
-const phone = () => document.getElementById('app').clientWidth < 600;
 // The slim Tell dock (56 px) stands on the status strip (56 px) and the map keeps clear of both. While the Details sheet is open the scene box itself gives up the area the sheet takes
 // (its right side when wide, its bottom when narrow, see now.css), so the map lays itself out again in what is left and the strip and dock are not in it.
 let sheetOn = false;
@@ -38,7 +38,7 @@ const viewWidth = () => { const e = document.querySelector('.now-view'); return 
 // The map starts under the headline whatever its height (one or two lines of headline, the lede), measured on the page.
 const heroBottom = () => { const e = document.querySelector('.now-hero'); return e ? Math.round(e.offsetTop + e.offsetHeight + 8) : 150; };
 const DOCK = 56 + 12 + 14, BAND = 76;
-const nowInset = (w, hh) => calmNow ? { top: 16, bottom: phone() ? 170 : Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : phone() ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: isPhone() ? 170 : Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : isPhone() ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
 
 // Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
 function calmBand(ctx) {
@@ -93,7 +93,7 @@ export function render(ctx) {
   const toggle = (e) => {
     const closing = ctx.ui.nowDrawer === true, d = e.currentTarget.closest('.now-drawer'), body = d.querySelector('.now-body');
     // the sheet comes from its edge (the right when wide, the bottom when narrow) and leaves the same way, a little faster; on the phone it is part of the page and does not fly
-    const fly = phone() ? null : viewWidth() >= 900 ? { x: 24, y: 0 } : { x: 0, y: 24 };
+    const fly = isPhone() ? null : viewWidth() >= 900 ? { x: 24, y: 0 } : { x: 0, y: 24 };
     if (closing && fly) motion.exitClone(body, { ...fly, dur: 2 });
     ctx.ui.nowDrawer = !ctx.ui.nowDrawer; sheetOn = ctx.ui.nowDrawer === true;
     d.dataset.open = String(ctx.ui.nowDrawer === true);
@@ -108,7 +108,7 @@ export function render(ctx) {
     ap ? h('p', { class: 'pn-k' }, tr('Why') + ':') : null, ap ? h('p', { class: 'pn-v' }, ap.presented.why) : null,
     h('a', { class: 'pn-review', href: first.kind === 'approval' ? '#/work/' + first.ref : '#/work/' + first.mission_id }, tr('Review'))) : null;
   const drawer = h('section', { class: 'now-drawer', 'data-open': String(open), 'aria-label': 'Details' },
-    h('div', { class: 'now-strip' }, phone() ? counters(ctx) : null, h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
+    h('div', { class: 'now-strip' }, isPhone() ? counters(ctx) : null, h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
     card,
     h('div', { class: 'now-body', id: 'now-details' },
       h('div', { class: 'now-panels' },
@@ -122,8 +122,8 @@ export function render(ctx) {
     calm ? calmBand(ctx) : h('div', { class: 'now-hero' },
       h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, ...sentenceNodes(sim.sentence())),
       h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(ov.ledger)),
-      phone() ? null : attentionStrip(ctx, ov)),
+      isPhone() ? null : attentionStrip(ctx, ov)),
     calm ? null : viewSwitch(ctx),
     calm ? null : drawer,
-    phone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));
+    isPhone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));
 }

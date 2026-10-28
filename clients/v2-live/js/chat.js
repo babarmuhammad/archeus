@@ -4,6 +4,7 @@ import { h, clear } from './dom.js';
 import { picker, popButton } from './picker.js';
 import { icon, glyph } from './icons.js';
 import * as store from './store.js';
+import { isPhone } from './viewport.js';
 import { createChat } from '../chat-engine.js';
 import * as SL from '../slash.js';
 import { clockLabel } from '../sim.js';
@@ -21,7 +22,6 @@ export function S4(ctx) {
   }
   return ui.s4;
 }
-const phoneNow = () => { const a = document.getElementById('app'); return !!a && a.clientWidth < 600; };
 // From this main-area width the Chat page shows a side pane (Receipts and Context) beside the thread instead of tabs over it.
 const WIDE = 1100, wideNow = () => (document.querySelector('.main-col')?.clientWidth || 0) >= WIDE;
 const hoverDevice = () => !!(window.matchMedia && window.matchMedia('(hover: hover)').matches);
@@ -45,7 +45,7 @@ function settle(ctx, f) {
 // Stop is a distinct, stable control: it only proposes the emergency stop; the card asks twice.
 export function stopNow(ctx) {
   const s = S4(ctx), r = s.eng.send('/estop', { dest: 'work', project: s.project, force: true });
-  s.touched = true; if (phoneNow()) s.sheet = true;
+  s.touched = true; if (isPhone()) s.sheet = true;
   if (r.run) setTimeout(() => settle(ctx, s.eng.finish(r.id)), 500);
   ctx.render();
 }
@@ -419,7 +419,7 @@ export function viewChat(ctx) {
 export const openTell = (ctx) => { const s = S4(ctx); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); s.sheet = true; s.focusSheet = true; ctx.render(); };
 // On the phone the dock is gone: Tell (bottom bar) opens the chat sheet from any page but Chat, which has its own composer.
 export function mountDock(ctx, dock, app) {
-  const s = S4(ctx), phone = phoneNow(), on = ctx.route.name === 'now' && !phone;
+  const s = S4(ctx), phone = isPhone(), on = ctx.route.name === 'now' && !phone;
   if (!phone && s.sheet) s.sheet = false;
   app.dataset.dock = on ? '1' : '';
   dock.hidden = !on; clear(dock);

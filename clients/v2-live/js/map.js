@@ -6,9 +6,11 @@ import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { tr } from './i18n.js';
 import * as store from './store.js';
+import { isPhone } from './viewport.js';
 import { createMap } from './constellation/map.js';
 import { createTerritoryMap } from './constellation/territories.js';
 import { clockLabel } from '../sim.js';
+import { projectCodes } from './project-code.js';
 
 export const STATE = { needs_you: 'needs-you', active: 'running', verifying: 'running', reviewing: 'running', blocked: 'blocked', failed: 'blocked', paused: 'paused', planning: 'thinking', done: 'done' };
 const THEME = { dark: 'dark', light: 'light', 'dark-hc': 'dark-high-contrast', 'light-hc': 'light-high-contrast', system: 'system', forced: 'forced' };
@@ -50,8 +52,7 @@ const VERB = { COMPLETED: 'completed', VERIFYING: 'is verifying', REVIEWING: 'is
 const DAY = 24 * 3600 * 1000;
 // The Overview model: one entry per project with its missions, counts and the last thing Archeus did there, and the day's ledger of completed missions.
 export function buildOverview(sim) {
-  const st = sim.state, used = new Set(), missions = Object.values(st.missions), att = sim.attention().filter((a) => a.kind !== 'knowledge');
-  const code = (name) => { const w = name.trim().split(/\s+/); let c = (w.length > 1 ? w.map((x) => x[0]).join('').slice(0, 3) : name.slice(0, 2)).toUpperCase(); for (let i = 2; used.has(c); i++) c = c.slice(0, 2) + i; used.add(c); return c; };
+  const st = sim.state, codes = projectCodes(st.projects.map((p) => p.name)), missions = Object.values(st.missions), att = sim.attention().filter((a) => a.kind !== 'knowledge');
   const last = new Map(), done = new Map();
   for (let i = st.events.length - 1; i >= 0; i--) {
     const e = st.events[i];
@@ -61,9 +62,9 @@ export function buildOverview(sim) {
     if (to === 'COMPLETED' && st.clock - e.at < DAY) done.set(e.project, (done.get(e.project) || 0) + 1);
     if (VERB[to] && !last.has(e.project)) last.set(e.project, { at: e.at, time: clockLabel(e.at), text: tr('Archeus') + ' ' + tr(VERB[to]) + ' “' + m.title + '”' });
   }
-  const projects = st.projects.map((p) => {
+  const projects = st.projects.map((p, i) => {
     const own = missions.filter((m) => m.project === p.id), cls = (m) => present('mission', m.state).cls, l = last.get(p.id);
-    return { id: p.id, name: p.name, code: code(p.name), total: own.length, attention: att.filter((a) => a.project_id === p.id).length,
+    return { id: p.id, name: p.name, code: codes[i], total: own.length, attention: att.filter((a) => a.project_id === p.id).length,
       running: own.filter((m) => ['active', 'verifying', 'reviewing'].includes(cls(m))).length, stopped: own.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length,
       ideas: st.ideas.filter((i) => i.project === p.id && i.state === 'CAPTURED').length, last: l || null, lastAt: l ? l.at : 0,
       missions: own.map((m) => ({ id: m.id, title: m.title, state: STATE[cls(m)] || 'idle', at: m.updated_at, time: clockLabel(m.updated_at) })) };
@@ -82,7 +83,7 @@ export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
-  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && document.getElementById('app').clientWidth >= 600;
+  const terr = key === 'now' && !calm && store.get('overview') === 'projects' && !isPhone();
   if (e.map && (e.lang !== lang || e.calm !== calm || e.terr !== terr)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
     e.lang = lang; e.calm = calm; e.terr = terr;
