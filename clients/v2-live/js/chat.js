@@ -198,6 +198,7 @@ export function composer(ctx, where) {
 
 // ---------- the Chat page ----------
 import { spineInspector } from './spine.js';
+import { spineOf } from '../spine-model.js';
 import { present } from '../core-words.js';
 import { translate } from './i18n.js';
 
@@ -265,6 +266,15 @@ export function viewChat(ctx) {
   }
   function context(sheet = false) {
     const active = focused || (s.dest !== 'general' && Object.values(st.missions).find((m) => m.project === s.project && !['DONE', 'CANCELLED', 'FAILED'].includes(m.state)));
+    const missionSpine = active ? spineInspector(active.state, active.held_from) : null;
+    if (active) {
+      const sp = spineOf(active.state, active.held_from);
+      missionSpine.querySelectorAll('li').forEach((row, i) => {
+        const mark = sp.marks[i];
+        const word = mark.kind === 'passed' ? 'Completed' : mark.kind === 'ahead' ? 'Waiting' : mark.kind === 'unknown' ? 'Position unknown' : mark.kind === 'none' ? 'Cancelled' : present('mission', active.state).label;
+        row.append(h('span', { class: 'cp-phase-word' }, word));
+      });
+    }
     const commands = h('div', { class: 'cp-commands' });
     const search = h('input', { type: 'search', class: 'cp-search', placeholder: 'Search commands', 'aria-label': 'Search commands', 'data-key': sheet ? 'cp-cmd-sheet' : 'cp-cmd', value: P.commands });
     const draw = () => {
@@ -279,7 +289,7 @@ export function viewChat(ctx) {
     const pins = P.pins.map((id) => entries.find((e) => e.m.id === id)).filter((e) => e && !e.general && e.project === s.project);
     return h('div', { class: 'cp-context-content' },
       h('section', null, h('h2', null, 'Current state'), h('p', { class: 'cp-context-title' }, title), h('p', { class: 'sp-text' }, s.dest === 'general' ? L('General · not project memory', 'Generale · non è memoria di progetto') : project?.note || ''), st.estop.engaged ? h('p', { class: 'cp-needs' }, L('Emergency stop engaged', 'Arresto di emergenza attivo')) : null),
-      h('section', null, h('h2', null, 'Active mission'), active ? [h('a', { class: 'cp-link', href: '#/work/' + active.id }, active.title), h('p', { class: 'sp-text' }, present('mission', active.state).label), spineInspector(active.state, active.held_from)] : h('p', { class: 'sp-text' }, 'No active mission')),
+      h('section', null, h('h2', null, 'Active mission'), active ? [h('a', { class: 'cp-link', href: '#/work/' + active.id }, active.title), missionSpine] : h('p', { class: 'sp-text' }, 'No active mission')),
       h('section', null, h('h2', null, 'Pinned decisions'), pins.length && s.dest !== 'general' ? pins.map((e) => h('button', { class: 'cp-command', type: 'button', onclick: () => { P.sheet = null; P.mission = null; ctx.render(); const el = document.querySelector('[data-key="msg-' + e.m.id + '"]'); el?.scrollIntoView({ block: 'center', behavior: 'instant' }); el?.focus({ preventScroll: true }); } }, L('Open decision', 'Apri la decisione'), h('span', { class: 'cp-command-desc' }, e.m.c ? C(e.m.c) : e.m.text))) : h('p', { class: 'sp-text' }, 'No pinned decisions')),
       h('section', null, h('h2', null, 'Command reference'), search, commands));
   }
