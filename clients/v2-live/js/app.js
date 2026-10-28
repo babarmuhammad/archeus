@@ -205,7 +205,7 @@ function syncTopbar() {
         h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, eng ? 'Stopped' : 'Not stopped'), h('span', { class: 'sep', 'aria-hidden': 'true' }, '·'), h('span', { class: 'sx' }, eng ? 'new work blocked' : 'accepts new work')),
       open ? h('div', { class: 'safety-pop', role: 'dialog', 'aria-label': 'Pause, resume and emergency stop' }, controlBody(ctx, true)) : null),
     h('button', { class: 'tb-search', type: 'button', 'data-key': 'search', 'aria-label': 'Search or run a command', 'aria-keyshortcuts': 'Control+K Meta+K', onclick: () => ctx.openPalette() }, icon('search', 18), h('span', { class: 'tbs-l' }, 'Search or run a command'), h('kbd', { 'aria-hidden': 'true' }, /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K')),
-    h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell'),
+    ['now', 'chat'].includes(ctx.route.name) ? null : h('button', { class: 'btn tell-btn', type: 'button', 'data-key': 'tell', 'aria-expanded': ui.tellOpen ? 'true' : 'false', onclick: tellClick }, 'Tell'),
     h('button', { class: 'btn danger stop-btn', type: 'button', 'data-key': 'stop', 'aria-label': eng ? 'Re-arm new work' : 'Emergency stop all missions', onclick: stopClick }, eng ? 'Re-arm' : 'Stop'));
 }
 // The composer is an overlay on desktop, not an always-on dock; the phone keeps its tell bar until the phone slice replaces it.
