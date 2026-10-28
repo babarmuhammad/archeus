@@ -4,6 +4,12 @@ export const IT_NOW = {
   'Your projects. In context.': 'I tuoi progetti. Nel contesto.',
   'Nothing running. Tell Archeus what to do.': 'Niente in corso. Dì ad Archeus cosa fare.',
   'Archeus is quiet. Tell it what to do next, or open a project.': 'Archeus è a riposo. Digli cosa fare, oppure apri un progetto.',
-  'Live constellation of your work. Missions, projects and ideas in context, moving forward together.': 'Costellazione viva del tuo lavoro. Missioni, progetti e idee nel loro contesto, che avanzano insieme.'
+  'Live constellation of your work. Missions, projects and ideas in context, moving forward together.': 'Costellazione viva del tuo lavoro. Missioni, progetti e idee nel loro contesto, che avanzano insieme.',
+  'All projects': 'Tutti i progetti', 'Open work': 'Apri il lavoro', 'Show missions': 'Mostra le missioni', 'Open mission': 'Apri la missione', 'Overview view': 'Vista della panoramica', 'Projects view': 'Vista a progetti', 'Network view': 'Vista a rete',
+  'No missions yet': 'Ancora nessuna missione', 'Archeus': 'Archeus', 'Archeus has not completed a mission today.': 'Oggi Archeus non ha ancora completato nessuna missione.',
+  'completed': 'ha completato', 'is verifying': 'sta verificando', 'is reviewing': 'sta rivedendo', 'started': 'ha avviato', 'asks you to approve': 'ti chiede di approvare', 'is blocked on': 'è bloccato su', 'stopped': 'ha fermato', 'paused': 'ha messo in pausa'
 };
-export const RULES_NOW = [[/^(\d+) items?$/, (m) => m[1] + ' voci'], [/^(\d+) verified$/, (m) => m[1] + (m[1] === '1' ? ' verificata' : ' verificate')]];
+export const RULES_NOW = [[/^(\d+) items?$/, (m) => m[1] + ' voci'],
+  [/^Archeus completed (\d+) missions? today:$/, (m) => 'Oggi Archeus ha completato ' + (m[1] === '1' ? 'una missione' : m[1] + ' missioni') + ':'], [/^\+(\d+) more projects$/, (m) => '+' + m[1] + (m[1] === '1' ? ' altro progetto' : ' altri progetti')],
+  [/^(\d+) missions?$/, (m) => m[1] + (m[1] === '1' ? ' missione' : ' missioni')], [/^(\d+) ideas? captured$/, (m) => m[1] + (m[1] === '1' ? ' idea raccolta' : ' idee raccolte')], [/^(\d+) ideas? captured, no missions yet$/, (m) => m[1] + (m[1] === '1' ? ' idea raccolta, ancora nessuna missione' : ' idee raccolte, ancora nessuna missione')],
+  [/^(\d+) projects?\. (\d+) need you\.$/, (m) => m[1] + (m[1] === '1' ? ' progetto. ' : ' progetti. ') + (m[2] === '0' ? 'Nessuno ti serve.' : m[2] === '1' ? 'Ne serve uno a te.' : 'Ne servono ' + m[2] + ' a te.')], [/^(\d+) verified$/, (m) => m[1] + (m[1] === '1' ? ' verificata' : ' verificate')]];

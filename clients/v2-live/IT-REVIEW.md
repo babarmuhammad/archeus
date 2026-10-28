@@ -1809,3 +1809,20 @@ File: `js/i18n-areas.js`. The notes were only translated joined to their source 
 - Only Core dispatches. → Solo il Core avvia.
 - Denied by policy, not by the OS: physical reach is not built (finding G1). → Negato dalla policy, non dal sistema operativo: il raggio d’azione fisico non è costruito (rilievo G1).
 - Provider access is not brokered yet and the network is not walled off. → L’accesso al provider non passa ancora da un broker e la rete non è isolata.
+
+## Overview territories, focus and view switch — 2026-10-28: to review
+
+File: `js/i18n-now.js`. Not checked by a native speaker.
+
+- All projects → Tutti i progetti
+- Open work → Apri il lavoro
+- Show missions → Mostra le missioni
+- Open mission → Apri la missione
+- Projects view / Network view → Vista a progetti / Vista a rete
+- No missions yet → Ancora nessuna missione
+- Archeus has not completed a mission today. → Oggi Archeus non ha ancora completato nessuna missione.
+- Archeus completed N missions today: → Oggi Archeus ha completato N missioni:
+- +N more projects → +N altri progetti
+- N missions, N ideas captured → N missioni, N idee raccolte
+- N projects. M need you. → N progetti. Ne servono M a te.
+- Action verbs after “Archeus”: completed → ha completato; is verifying → sta verificando; is reviewing → sta rivedendo; started → ha avviato; asks you to approve → ti chiede di approvare; is blocked on → è bloccato su; stopped → ha fermato; paused → ha messo in pausa

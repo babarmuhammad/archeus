@@ -358,6 +358,19 @@ The terminal renders the same simulation as the GUI, in the same words (checked 
 | Q06 | One needs-you count: the headline, the status strip, the Work badge and the Places badge all count every attention item except knowledge, so they never disagree (the badge counted Decide and Review only and read 4 against the headline's 5) | critique 2026-10-28 (consistency) | SIMULATED | SHELL, NOW | `js/app.js`, `sim.js` counts |
 | Q07 | Disclosures keep their open state across re-renders (Security boundary evidence, Chat privacy and fixtures, Replay reference); a simulation tick or a confirmation never snaps one shut under the pointer | probe and functional runs 2026-10-28 | SIMULATED | SECURITY, CHAT, REPLAY | `ctx.ui.secMore`, `P.open`, `rp.referenceOpen` |
 | Q08 | Replay timeline marks sit in three lanes and nudge sideways when crowded, so no two marks overlap at any width; the Overview state sentence is 32 to 42 px (concept size; B11 stays an owner question) | probe 2026-10-28, concept 02 | SIMULATED | REPLAY, NOW | `js/replay.js`, `css/now.css` |
+
+## R. Overview territories (2026-10-28, owner feedback on space, attribution and scale)
+
+| ID | Item | Source | Status | Where | Slice |
+|---|---|---|---|---|---|
+| R01 | Overview map = one territory per project, stable slot after first placement, neutral two-letter project code as identity (never the state colour), state as outline colour plus a word; 1 to 100 projects fit without overlap (full, compact, mark levels) | owner 2026-10-28, Codex map-scale spec | SIMULATED | NOW | S7 |
+| R02 | Attribution: each territory says what Archeus did there last ("Archeus completed “title”" with time); a ledger line under the headline says what Archeus finished today and in which projects | owner 2026-10-28 | SIMULATED | NOW | S7 |
+| R03 | Headline counts coloured by state (needs you amber, running blue, stopped red), each with its word; generic lede and eyebrow removed; phone keeps the three counters | owner 2026-10-28 | SIMULATED | NOW, NOW · P | S7 |
+| R04 | Bottom band: translucent dock and Details button share one row (no separate strip, no zoom cluster on Projects view) | owner 2026-10-28 | SIMULATED | NOW | S7 |
+| R05 | Hover: other territories dim in 100 ms and restore in 180 ms, ease-out, no lift or scale; preview card after 180 ms dwell, at once on keyboard focus, Escape closes; Reduced motion = instant | Codex map-scale spec | SIMULATED | NOW | S7 |
+| R06 | Click on a territory focuses the project: its missions as 48 px rows with Review on each one that needs the user, Open work in the header, All projects (or Escape) goes back; mission crystals stay pointer-only, keyboard users get the rows | owner 2026-10-28 | SIMULATED | NOW | S7 |
+| R07 | Projects / Network switch beside the headline (preference `overview`, URL `?overview=network`): Network is the node-link map kept as an alternative view | owner 2026-10-28 | SIMULATED | NOW | S7 |
+| R08 | Test fixtures `?story=many` (12 projects, 36 missions, 20 ideas) and `?story=huge` (100 projects, 248 missions, 125 ideas), deterministic | Codex map-scale spec | SIMULATED | sim.js | S7 |
 ## Projects concept rebuild (2026-10-27)
 
 | ID | Requirement | Source | Status | Area | Implementation |
