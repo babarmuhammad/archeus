@@ -81,7 +81,7 @@ button.seg-opt:focus-visible { outline: 3px solid var(--focus); outline-offset: 
 .wt-state, .wt-top time { color: var(--text-2); font-size: var(--fs-cap); }
 .wt-top time { margin-left: auto; }
 .wt-mission { color: var(--text-2); font-size: var(--fs-cap); }
-a.wt-mission { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+a.wt-mission { display: inline-flex; align-items: center; align-self: flex-start; min-height: var(--target); color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .wt-next { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; color: var(--text-2); font-size: var(--fs-cap); }
 .project-worktrees li[data-state='stale'], .project-worktrees li[data-state='missing'] { padding-left: 12px; border-left: 3px solid var(--attention); }
 .project-wt-filter { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 0 0 8px; }
