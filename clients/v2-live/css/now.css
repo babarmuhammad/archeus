@@ -24,8 +24,9 @@
   .now-body { top: auto; left: 0; width: auto; min-width: 0; height: var(--sheet-h); border-left: 0; border-top: var(--hair) solid var(--line); }
   .now-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); align-items: start; }
 }
-/* Rows in the sheet always stack: title and state word on top, meta and the spine under them, so a column never collapses to a letter per line (work.css lays the same rows out in three columns for the Work page). */
-.main-col .now-panels .mrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'title badge' 'meta meta' 'spine spine'; gap: 4px 12px; padding: 10px 0; }
+/* Rows in the sheet always stack in one column: title, state word, meta, spine (a state word like “Reviewing — verified, not accepted” is wider than the title column), so a column never collapses to a letter per line (work.css lays the same rows out in three columns for the Work page). */
+.main-col .now-panels .mrow { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'title' 'badge' 'meta' 'spine'; gap: 4px; padding: 12px 0; }
+.main-col .now-panels .mrow .badge { justify-self: start; }
 .main-col .now-panels .mrow .name, .main-col .now-panels .mrow .m { overflow-wrap: break-word; }
 @container view (max-width: 599px) {
   .now-view .now-hero { top: 14px; left: 16px; right: 16px; }
