@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {driftOf, coreKeepOut, crystalRadius, isCrystal, layout, layoutProjects, projectsKeepOut, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
+import {driftOf, coreKeepOut, crystalRadius, isCrystal, layout, layoutProjects, projectsLegendBox, projectsKeepOut, randomSeed, placeLabels, overlaps, coversNode, convexHull, nearestNeighbour, stateKey, coreCentre, coreRadius, unit, INSET} from './geometry.js';
 
 const graph = count => ({nodes: Array.from({length: count}, (_, i) => ({id: `n${i}`, label: `Node ${i}`, project: `p${i % 3}`, weight: i % 4 + 1, state: i === 2 ? 'needs-you' : 'idle'})), edges: []});
 test('projects plates fit the inset, avoid each other and reserve the core for 1 to 8 projects', () => {
-  for (const [width, height] of [[1280, 720], [1440, 900], [2000, 930], [390, 700]]) for (let count = 1; count <= 8; count++) {
+  for (const [width, height] of [[1280, 720], [1440, 900], [2000, 930], [390, 700], [620, 500], [760, 650], [1000, 700]]) for (let count = 1; count <= 8; count++) {
     const input = {nodes: Array.from({length: count}, (_, i) => ({id: `p${i}`, project: `p${i}`, kind: 'Project', label: `Project ${i}`, missionCount: i})), edges: []};
     const snapshot = structuredClone(input), nodes = layoutProjects(input, width, height), keep = projectsKeepOut(width, height);
+    const legend = projectsLegendBox(width, height);
+    assert.equal(legend.x, 16);
+    assert.equal(height - legend.y - legend.height, 16);
+    assert.ok(legend.x >= 0 && legend.y >= 0 && legend.x + legend.width <= width && legend.y + legend.height <= height);
+    assert.ok(!overlaps(legend, keep.box) && !coversNode(legend, keep, 0), `${width}x${height}: legend/core`);
     assert.equal(nodes.length, count);
     assert.deepEqual(nodes, layoutProjects({...input, nodes: [...input.nodes].reverse()}, width, height));
     assert.deepEqual(input, snapshot);
@@ -16,6 +21,7 @@ test('projects plates fit the inset, avoid each other and reserve the core for 1
       assert.ok(box.width >= 44 && box.height >= 44, message + ': target');
       assert.ok(box.x >= INSET.left && box.y >= INSET.top && box.x + box.width <= width - INSET.right && box.y + box.height <= height - INSET.bottom, message + ': inset');
       assert.ok(!overlaps(box, keep.box) && !coversNode(box, keep, 0), message + ': core');
+      assert.ok(!overlaps(box, legend, 2), message + ': legend');
       for (const other of boxes.slice(i + 1)) assert.ok(!overlaps(box, other, 8), message + ': overlap');
     });
   }
@@ -30,6 +36,13 @@ test('projects retain captured idea plates and ignore unrelated mission nodes', 
   const plate = projectPlateMarkup(nodes[0]);
   assert.ok(plate.includes('2 missions') && !plate.includes('<Project>'));
   assert.ok(projectPlateMarkup(nodes[1]).includes('Captured'));
+  const {ICONS} = await import('./nodeart.js');
+  assert.ok(plate.includes(ICONS.folder));
+  assert.ok(projectPlateMarkup(nodes[1]).includes(ICONS.bulb));
+  for (const [width, height] of [[1280, 720], [1440, 900], [2000, 930], [390, 700], [620, 500]]) {
+    const legend = projectsLegendBox(width, height);
+    for (const n of layoutProjects(input, width, height)) assert.ok(!overlaps(legend, {x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height}));
+  }
 });
 test('layout is seeded, deterministic, input-order independent and bounded', () => {
   const input = graph(25), snapshot = structuredClone(input);
