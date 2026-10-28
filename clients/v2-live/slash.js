@@ -106,26 +106,36 @@ function tier(c, q, lang) {
   return -1;
 }
 
-// Default order: recent names first (this device, names only), then READ, CREATE, PROPOSE, NAVIGATE, alphabetical inside a class.
-export function ordered(recent) {
-  const out = [];
-  (recent || []).forEach((n) => { const c = find(n); if (c && !out.includes(c)) out.push(c); });
-  CLASSES.forEach((k) => COMMANDS.filter((c) => c.cls === k).sort((a, b) => (a.name < b.name ? -1 : 1)).forEach((c) => { if (!out.includes(c)) out.push(c); }));
-  return out;
+// Pins and recents are lists of canonical English names, so they survive a language switch. The browser keeps them (the app's preference store); the pure rules are here.
+export const RECENT_CAP = 8, RECENT_SHOWN = 5;
+export const clean = (list) => [...new Set((Array.isArray(list) ? list : []).map((n) => { const c = typeof n === 'string' ? find(n) : null; return c && !c.unavailable ? c.name : null; }).filter(Boolean))];
+export const togglePin = (pins, name) => (pins.includes(name) ? pins.filter((n) => n !== name) : pins.concat(name));
+export const pushRecent = (recent, name) => [name].concat(recent.filter((n) => n !== name)).slice(0, RECENT_CAP);
+
+// With no query: Pinned (pin order), Recent (the last five sent, no repeat of a pin), then the rest by class, alphabetical inside a class.
+export function grouped(recent, pins) {
+  const seen = new Set(), take = (names) => names.map(find).filter((c) => c && !seen.has(c) && seen.add(c));
+  const out = [{ key: 'pinned', items: take(clean(pins)) }, { key: 'recent', items: take(clean(recent).slice(0, RECENT_SHOWN)) }];
+  CLASSES.forEach((k) => out.push({ key: k, items: COMMANDS.filter((c) => c.cls === k && !seen.has(c)).sort((a, b) => (a.name < b.name ? -1 : 1)) }));
+  return out.filter((g) => g.items.length);
 }
-export function filter(query, recent, lang) {
-  const q = String(query || '').trim().toLowerCase(), base = ordered(recent);
+export const ordered = (recent, pins) => grouped(recent, pins).flatMap((g) => g.items);
+// Typing: an exact or prefix match first, then pinned, then recent, then the others; tier breaks ties.
+export function filter(query, recent, lang, pins) {
+  const q = String(query || '').trim().toLowerCase(), base = ordered(recent, pins);
   if (!q) return base;
-  return base.map((c, i) => ({ c, t: tier(c, q, lang), i })).filter((x) => x.t >= 0).sort((a, b) => a.t - b.t || a.i - b.i).map((x) => x.c);
+  const pin = clean(pins), rec = clean(recent), rank = (list, c) => { const i = list.indexOf(c.name); return i < 0 ? 99 : i; };
+  return base.map((c, i) => ({ c, t: tier(c, q, lang), i })).filter((x) => x.t >= 0)
+    .sort((a, b) => Math.min(a.t, 2) - Math.min(b.t, 2) || rank(pin, a.c) - rank(pin, b.c) || rank(rec, a.c) - rank(rec, b.c) || a.t - b.t || a.i - b.i).map((x) => x.c);
 }
 
 // What the combobox shows for the composer text: { mode: 'off' | 'commands' | 'arg' | 'mention', ... }.
-export function menuFor(text, recent, lang) {
+export function menuFor(text, recent, lang, pins) {
   const t = String(text);
-  if (t === '?') return { mode: 'commands', items: ordered(recent), q: '' };
+  if (t === '?') return { mode: 'commands', items: ordered(recent, pins), groups: grouped(recent, pins), q: '' };
   if (!t.startsWith('/') || t.startsWith('//')) return { mode: 'off' };
   const sp = t.search(/\s/);
-  if (sp < 0) { const items = filter(t.slice(1), recent, lang); return { mode: 'commands', items, q: t.slice(1) }; }
+  if (sp < 0) { const q = t.slice(1); return { mode: 'commands', items: filter(q, recent, lang, pins), groups: q.trim() ? null : grouped(recent, pins), q }; }
   const cmd = find(t.slice(1, sp));
   if (!cmd || cmd.unavailable) return { mode: 'off' };
   const rest = t.slice(sp + 1), at = /(?:^|\s)@([^\s"]*)$/.exec(rest);
