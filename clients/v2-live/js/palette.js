@@ -1,14 +1,18 @@
 // The command palette (Ctrl+K or Cmd+K, or the Search button in the top bar): pages, actions and projects in one list.
 // Arrow keys move, Enter runs, Esc closes and gives focus back. The terminal view keeps Ctrl+K for the shell.
+// On the phone the same list is a full-height sheet (js/sheet.js): the search field on top, the list in what the on-screen keyboard leaves.
 import { h, clear } from './dom.js';
 import { icon } from './icons.js';
 import { translate, tr } from './i18n.js';
 import * as store from './store.js';
 import { ROUTES } from './views.js';
 import { search, sections, remember } from './palette-model.js';
+import { isPhone } from './viewport.js';
+import { openSheet } from './sheet.js';
+import { closeThen } from './phone.js';
 
 export function installPalette(ctx, app, { projHint }) {
-  let root = null, from = null, active = 0, flat = [];
+  let root = null, from = null, sheet = null, active = 0, flat = [];
   const items = () => {
     const nav = (hash) => () => ctx.nav(hash), act = (kind) => () => ctx.act(kind), lang = store.get('lang') === 'it' ? 'en' : 'it';
     const page = (id, label, hash, pin) => ({ id: 'p-' + id, group: 'Pages', label, pin, run: nav(hash) });
@@ -32,14 +36,14 @@ export function installPalette(ctx, app, { projHint }) {
 
   function close() {
     if (!root) return;
+    if (sheet) { sheet.close(); return; }
     root.remove(); root = null;
     if (from && from.isConnected) from.focus({ preventScroll: true });
     from = null;
   }
   function run(item) {
     ctx.ui.palRecent = remember(recent(), item.id);
-    close();
-    item.run();
+    if (sheet) closeThen(sheet, item.run); else { close(); item.run(); }
   }
   function paint(input, list) {
     const shown = search(all, input.value, recent()), secs = sections(shown, input.value, recent());
@@ -62,13 +66,19 @@ export function installPalette(ctx, app, { projHint }) {
   function open() {
     if (root || app.querySelector('.helpscrim')) return;
     from = document.activeElement; all = items(); active = 0;
-    const input = h('input', { class: 'pal-q', type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'pal-list', 'aria-autocomplete': 'list', 'aria-label': 'Search pages, actions and projects', placeholder: 'Search or run a command', autocomplete: 'off', spellcheck: 'false', 'data-key': 'pal-q' });
+    const input = h('input', { class: 'pal-q', type: 'text', role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'pal-list', 'aria-autocomplete': 'list', 'aria-label': 'Search pages, actions and projects', placeholder: 'Search or run a command', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'go', 'data-key': 'pal-q', autofocus: isPhone() });
     const list = h('div', { class: 'pal-list', id: 'pal-list', role: 'listbox', 'aria-label': 'Results' });
     input.addEventListener('input', () => { active = 0; paint(input, list); });
     input.addEventListener('keydown', (e) => {
       const last = flat.length - 1, to = { ArrowDown: active >= last ? 0 : active + 1, ArrowUp: active <= 0 ? Math.max(0, last) : active - 1, Home: 0, End: Math.max(0, last) }[e.key];
       if (to != null) { e.preventDefault(); active = to; mark(input, list); } else if (e.key === 'Enter') { e.preventDefault(); if (flat[active]) run(flat[active]); } else if (e.key === 'Tab') e.preventDefault();
     });
+    if (isPhone()) {
+      const body = h('div', { class: 'pal-phone' }, h('div', { class: 'pal-in' }, icon('search', 22), input), list);
+      sheet = openSheet({ id: 'palette', title: 'Search', detents: ['full'], content: body, onClose: () => { root = sheet = null; } });
+      root = sheet.el; paint(input, list); input.focus();
+      return;
+    }
     root = h('div', { class: 'pal-scrim', onclick: (e) => { if (e.target === root) close(); } },
       h('section', { class: 'pal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Command palette' },
         h('div', { class: 'pal-in' }, icon('search', 18), input, h('kbd', { class: 'pal-esc', 'aria-hidden': 'true' }, 'Esc')), list,

@@ -2098,11 +2098,28 @@ Inline `L(en, it)` strings in `js/chat.js`.
 - Unpinned {c} → Rimosso {c} dai fissati (spoken when a pin is removed)
 - Alt+P pins or unpins the highlighted command → Alt+P fissa o rimuove il comando evidenziato (hint under the menu; not shown on the phone sheet)
 
+## Replay: Recovery and Reference regrouped — 2026-10-28
+
+Status: **to review**. Inline `L(en, it)` strings in `js/replay.js`.
+
+| Recovery proposals (heading, now with one SIMULATED tag for the section) | Proposte di recupero |
+| Recommended (the option that fits the mission now) | Consigliata |
+| What Archeus would and will not do (disclosure on each option) | Cosa farebbe e cosa non farà Archeus |
+| Not available now (options that do not apply, one line each) | Non disponibili ora |
+| Where it stands (rail beside the options) | Dove siamo |
+| Choose an option to draft a proposal. Nothing runs until you approve it. | Scegli un'opzione per preparare una proposta. Non gira nulla finché non la approvi. |
+| How Replay reads Core (the two Decision notes, folded) | Come il Replay legge il Core |
 ## Simulated project count (Tools)
 - Simulated projects → Progetti simulati (menu title)
 - Number of simulated projects → Numero di progetti simulati (button name)
 - 3 (the default story) → 3 (la storia predefinita)
 - Reloads the prototype with that many projects and the same mission mix, to see how every page scales. → Ricarica il prototipo con quel numero di progetti e la stessa miscela di missioni, per vedere come scala ogni pagina.
+## Work graph highlight — 2026-10-28
+- Nothing matches this filter. → Nessun risultato per questo filtro.
+- Clear filter → Azzera il filtro
+- Filter by state (legend group name) → Filtra per stato
+- Legend chips reuse the existing Needs you / Running / Blocked / Done words (Ti serve, In corso, Bloccate, Fatte).
+
 
 ## Harness as a facet of Accounts, Usage and Extensions (2026-10-28): to review
 
@@ -2135,3 +2152,39 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - Expand / Collapse (the handle of every sheet, set again after each step) → Espandi / Comprimi (already in the phone dictionary; the label is now translated after each step)
 - The Chat page "Needs you · {n}" on a phone shows the glyph and the count; the full words stay as its accessible name → Richiede te · {n}
 - Decision E03 and the other decision notes (now a one-line summary that opens) → unchanged wording, Decisione E03
+
+## Phone shell: bar, top bar, Places, safety sheet (slice A) - 2026-10-28
+
+Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsewhere (Overview, Work, Tell, Stop, Pause all, Resume all, Emergency stop, Yes, stop everything, Prototype tools, Safety, Search projects, All N projects) are reused as they are.
+
+| English | Italian |
+|---|---|
+| Places | Luoghi |
+| Re-arm | Riarma |
+| Search | Cerca |
+| SIMULATED, prototype tools (the top bar tag that opens the tools sheet) | SIMULATO, strumenti del prototipo |
+| Not stopped. Archeus accepts new work. | Non fermato. Archeus accetta nuovo lavoro. |
+| Stopped. New work is blocked until you re-arm. | Fermato. Il nuovo lavoro è bloccato finché non riarmi. |
+| Every running mission stops. New work is blocked until you re-arm. | Ogni missione in corso si ferma. Il nuovo lavoro è bloccato finché non riarmi. |
+| New work can start again. | Il nuovo lavoro può ripartire. |
+| Re-arm new work? | Riarmare il nuovo lavoro? |
+| Stop all 1 mission? | Fermare la missione in corso? |
+| Stop all N missions? | Fermare tutte le N missioni? |
+| N running, M paused | N in corso, M in pausa |
+| Work, N need you (bar label for Work with a count) | Lavoro, N ti servono (N = 1: ti serve) |
+
+## Network semantic zoom and worktrees (2026-10-28): to review
+- Worktree → Worktree (kept in English: the Git word; the plural is the same)
+- +3 worktrees → +3 worktree (chip on a project hub when its worktrees are folded away)
+- 3 worktrees → 3 worktree (chip on a Projects cell; also its tooltip and spoken name)
+- Worktrees → Worktree (heading of the list in a project's focus panel)
+- linked → collegato (a worktree made by you or another tool; Archeus never deletes or resets it)
+- task → attività (a worktree Archeus made for a task and removes after a verified merge)
+- Active, Stale → Attivo, Obsoleto (existing words, reused for a worktree state)
+- Missing → Mancante (the worktree folder is gone)
+- Merged → Unito (the branch was merged)
+- Abandoned → Abbandonato (the task was given up)
+- Last activity → Ultima attività (hover card of a worktree)
+- No mission → Nessuna missione (a worktree that holds no mission)
+- Attempt → Tentativo (one run of a task, a small mark at the close zoom level)
+- Task, Verification, Event → existing words, reused as kinds of the small marks at the close zoom levels

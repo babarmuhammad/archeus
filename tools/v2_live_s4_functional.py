@@ -397,7 +397,8 @@ def main():
             check('Mission.integration_head' in pg.inner_text('.rp-reference') and 'UNKNOWN' in pg.inner_text('.rp-reference'), 'the starting state shows its three bindings with UNKNOWN')
             check(pg.locator('.five').count() == 5, 'the five example rows')
             check('130 states' in pg.inner_text('.vocab summary'), 'the vocabulary says 130 states')
-            check(pg.locator('.rcv').count() == 3, 'three recovery cards')
+            check(pg.locator('.rcv').count() == 3, 'three recovery options')
+            pg.click('.rcv >> nth=0 >> summary')  # the would and will-not columns open on choosing an option
             check('archeus would' in pg.inner_text('.rcv').lower() and 'archeus will not' in pg.inner_text('.rcv').lower(), 'recovery says what Archeus would and will not do')
             before = pg.evaluate("window.v2live.sim.state.events.length")
             pg.click('.rcv[data-ok="true"] .btn >> nth=0')

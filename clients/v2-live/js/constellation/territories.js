@@ -1,5 +1,5 @@
 import {clamp, stateKey, driftOf, INSET} from './geometry.js';
-import {bodyMarkup, coreStar} from './nodeart.js';
+import {bodyMarkup, coreStar, ICONS} from './nodeart.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const f = v => +v.toFixed(1);
@@ -106,7 +106,7 @@ export function createTerritoryMap(container, options = {}) {
   const lineOf = (p, state) => (p.last ? `${p.last.time} · ${p.last.text}` : state === 'idle' ? T('No missions yet') : '');
 
   function cellSig(p, cell) {
-    return [cell.x, cell.y, cell.w, cell.h, cell.level, p.name, p.code, p.attention, p.running, p.stopped, p.total, p.ideas, p.last && p.last.text, p.last && p.last.time, p.missions.map(m => m.id + m.state + m.title).join(',')].join('|');
+    return [cell.x, cell.y, cell.w, cell.h, cell.level, p.name, p.code, p.attention, p.running, p.stopped, p.total, p.ideas, p.last && p.last.text, p.last && p.last.time, (p.worktrees || []).length, p.missions.map(m => m.id + m.state + m.title).join(',')].join('|');
   }
   function drawCell(p, cell) {
     const state = stateOf(p), g = svgEl('g', {class: `am-cell am-cell-${cell.level} am-state-${state}`, 'data-project': p.id, transform: `translate(${f(cell.x)} ${f(cell.y)})`});
@@ -129,6 +129,8 @@ export function createTerritoryMap(container, options = {}) {
     if (cell.level === 'full') g.append(svgEl('text', {class: 'am-cell-state', x: w - 12, y: 23, 'text-anchor': 'end'}, stateWord));
     else if (state === 'needs-you') g.append(svgEl('path', {class: 'am-diamond', d: `M${w - 18},${12}l6,6l-6,6l-6,-6Z`}));
     const ms = [...p.missions].sort((a, b) => RANK[stateKey(b.state)] - RANK[stateKey(a.state)] || (b.at || 0) - (a.at || 0) || String(a.id).localeCompare(String(b.id)));
+    // A project's worktrees are counted in a small chip (never as projects of their own); the focus panel lists them.
+    const wts = (p.worktrees || []).length, chipW = 24 + String(wts).length * 7, chipOn = wts > 0 && (cell.level === 'full' || (h >= 100 && w >= 150)), reserve = chipOn ? chipW + 8 : 0;
     if (cell.level === 'full') {
       const bodyH = h - 76, cy = 40 + bodyH / 2, lead = ms[0];
       if (lead) {
@@ -142,17 +144,22 @@ export function createTerritoryMap(container, options = {}) {
         if (rest.length > shown.length) g.append(svgEl('text', {class: 'am-cell-more', x: lx + 8 + shown.length * 26 - 8, y: cy + 42}, `+${rest.length - shown.length}`));
       } else if (p.ideas) g.append(svgEl('text', {class: 'am-cell-quiet', x: 14, y: cy + 5}, T(`${p.ideas} ${p.ideas === 1 ? 'idea' : 'ideas'} captured`)));
       const line = lineOf(p, state);
-      if (line) g.append(svgEl('text', {class: 'am-cell-last', x: 12, y: h - 12}, fit(line, w - 24, `400 12px ${sans}`)));
+      if (line) g.append(svgEl('text', {class: 'am-cell-last', x: 12, y: h - 12}, fit(line, w - 24 - reserve, `400 12px ${sans}`)));
     } else {
       const line = h >= 100 && w >= 150 ? lineOf(p, state) : '';
-      if (line) g.append(svgEl('text', {class: 'am-cell-last', x: 12, y: h - 12}, fit(line, w - 24, `400 12px ${sans}`)));
+      if (line) g.append(svgEl('text', {class: 'am-cell-last', x: 12, y: h - 12}, fit(line, w - 24 - reserve, `400 12px ${sans}`)));
       const room = Math.max(1, Math.floor((w - 28) / 24)), shown = ms.slice(0, ms.length > room ? room - 1 : room), cy = h - (line ? 38 : 28);
       shown.forEach((m, i) => { const mx = 22 + i * 24, s = crystal(m, 9); s.setAttribute('transform', `translate(${f(mx)} ${f(cy)})`); g.append(s); hitsOf.push({id: m.id, kind: 'Mission', x: cell.x + mx, y: cell.y + cy, r: 13, label: m.title, state: stateKey(m.state)}); });
       if (ms.length > shown.length) g.append(svgEl('text', {class: 'am-cell-more', x: 22 + shown.length * 24 - 8, y: cy + 4}, `+${ms.length - shown.length}`));
     }
+    if (chipOn) {
+      const cx = w - 12 - chipW, label = T(`${wts} ${wts === 1 ? 'worktree' : 'worktrees'}`), chip = svgEl('g', {class: 'am-cell-wt', transform: `translate(${f(cx)} ${h - 28})`});
+      chip.append(svgEl('title', {}, label), svgEl('rect', {class: 'am-cell-wt-box', width: chipW, height: 18, rx: 4}), svgEl('path', {class: 'am-cell-wt-icon', d: ICONS.branch, transform: 'translate(4 3) scale(.5)'}), svgEl('text', {class: 'am-cell-wt-n', x: chipW - 6, y: 13, 'text-anchor': 'end'}, String(wts)));
+      g.append(chip);
+    }
     return {g, hitsOf};
   }
-  const describe = p => `${p.name}, ${p.code}, ${wordOf(stateOf(p))}${p.attention ? `, ${p.attention} ${T('need you')}` : ''}${p.last ? `, ${p.last.text}` : ''}`;
+  const describe = p => `${p.name}, ${p.code}, ${wordOf(stateOf(p))}${p.attention ? `, ${p.attention} ${T('need you')}` : ''}${(p.worktrees || []).length ? `, ${T(`${p.worktrees.length} ${p.worktrees.length === 1 ? 'worktree' : 'worktrees'}`)}` : ''}${p.last ? `, ${p.last.text}` : ''}`;
 
   let graceTimer = 0, hideTimer = 0, over = null;
   // The card fades out over 120 ms; the dim holds a 120 ms grace so moving from one cell to the next cross-fades instead of flashing back to full.
@@ -240,9 +247,21 @@ export function createTerritoryMap(container, options = {}) {
       if (st === 'needs-you') li.append(btn('am-focus-review', T('Review'), () => emit('review', m.id)));
       list.append(li);
     }
+    const wl = (p.worktrees || []).length ? htmlEl('section', 'am-focus-wts') : null;
+    if (wl) {
+      wl.append(htmlEl('h3', 'am-focus-wt-head', T('Worktrees')));
+      const rows = htmlEl('ul', 'am-focus-wt-list');
+      for (const w of p.worktrees) {
+        const li = htmlEl('li', `am-focus-wt am-state-${w.tone}`);
+        li.append(htmlEl('span', 'am-focus-wt-branch', w.branch), htmlEl('span', 'am-focus-wt-owner', T(w.ownerWord)), htmlEl('span', `am-focus-wt-state am-state-${w.tone}`, T(w.word)), htmlEl('span', 'am-focus-wt-mission', w.mission || T('No mission')));
+        rows.append(li);
+      }
+      wl.append(rows);
+    }
     const kids = [head];
     if (p.last) kids.push(htmlEl('p', 'am-focus-last', `${p.last.time} · ${p.last.text}`));
     kids.push(ms.length ? list : htmlEl('p', 'am-focus-empty', p.ideas ? T(`${p.ideas} ${p.ideas === 1 ? 'idea' : 'ideas'} captured, no missions yet`) : T('No missions yet')));
+    if (wl) kids.push(wl);
     panel.replaceChildren(...kids);
   }
   function paintSelection() {

@@ -14,7 +14,6 @@ const NUMS = [['.n', (el) => (el.parentElement.querySelector(':scope > .gt') || 
 // A popover, a sheet or a dialog that the shell draws and removes. in: how it arrives (css owns the ones with a keyframe of their own); out: how its last copy leaves.
 const OVERLAYS = [
   { sel: '.safety-pop', into: '.app', enter: { s: .98, origin: '0 0', dur: 1 }, exit: null },
-  { sel: '.pl-wrap', into: '.app', enter: null, exit: { y: 24, dur: 2 } },
   { sel: '.chatdock.tell:not([hidden])', into: '.app', clone: true, enter: { y: 8, s: .98, origin: '50% 100%', dur: 1 }, exit: { y: 8, s: .98, dur: 1 } }
 ];
 

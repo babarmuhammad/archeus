@@ -48,8 +48,11 @@
 .work-graph { display: flex; flex-direction: column; }
 .work-graph .archeus-map { position: relative; flex: 1; height: auto; min-height: 0; }
 .work-list { grid-area: list; display: flex; flex-direction: column; gap: calc(var(--gut) * 1.25); min-width: 0; }
-.work-legend { display: flex; flex: none; flex-wrap: wrap; gap: 2px 16px; margin: 0; padding: 8px 0 0; font-size: var(--fs-cap); color: var(--text-2); pointer-events: none; }
-.work-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.work-legend { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 8px 0 0; font-size: var(--fs-cap); color: var(--text-2); }
+.work-legend .chip { gap: 8px; }
+.work-legend .tn { font-variant-numeric: tabular-nums; color: var(--text-3); }
+.wg-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 0 0 8px; }
+.wg-empty p { margin: 0; color: var(--text-2); }
 .wl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--paused); }
 .work-legend [data-s='needs-you'] .wl-dot { background: var(--attention); }
 .work-legend [data-s='running'] .wl-dot { background: var(--active); }
@@ -132,7 +135,7 @@
 .wk-fold .n { letter-spacing: .08em; color: var(--text-3); text-transform: none; }
 .wk-fold .n::before { content: '\00b7\00a0'; }
 .wk-more { margin-top: 8px; }
-.work-legend .wl-more { flex-basis: 100%; }
+.work-legend .wl-more { flex-basis: 100%; margin: 0; }
 :root[data-motion='reduced'] .wk-fold > summary::before { transition: none; }
 @media (prefers-reduced-motion: reduce) { .wk-fold > summary::before { transition: none; } }
 .main-col .page-head:has(.wk-filter, .chips) { align-items: flex-end; }

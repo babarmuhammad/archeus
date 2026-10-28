@@ -32,6 +32,14 @@ export const workCounts = (items, project = null) => {
 };
 export const countLine = (shown, total) => (shown === total ? String(total) : shown + ' of ' + total);
 
+// The entries the Work graph draws: those the filter keeps first, then the rest, at most cap, each group in rank order. The filter dims in the graph, it never removes: the rest only make way when there are more than cap.
+// prev: the ids drawn last time. When they still all exist and already hold what the filter keeps, they are kept as they were, so a filter change is a highlight and not a new drawing.
+export function graphPick(entries, shown, cap, rank = () => 0, prev = []) {
+  const on = new Set(shown.map((e) => e.id)), by = (a, b) => rank(a) - rank(b), byId = new Map(entries.map((e) => [e.id, e]));
+  if (prev.length && prev.every((id) => byId.has(id)) && [...shown].sort(by).slice(0, cap).every((e) => prev.includes(e.id))) return prev.map((id) => byId.get(id));
+  return [...entries.filter((e) => on.has(e.id)).sort(by), ...entries.filter((e) => !on.has(e.id)).sort(by)].slice(0, cap);
+}
+
 // Relative time against the simulated clock: 'now', '3m ago', '2h ago', '4d ago'. The exact time goes in the title.
 export function relTime(now, at) {
   const s = Math.max(0, Math.round((now - at) / 1000));

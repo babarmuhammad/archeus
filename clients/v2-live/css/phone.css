@@ -1,36 +1,125 @@
-/* Phone shell (below 600 px): the bottom bar Tell | Places | Stop and the Places sheet. */
-.bottombar { grid-area: bottom; display: flex; background: var(--bg); border-top: var(--hair) solid var(--line); padding-bottom: var(--sa-b); }
-@container dev ((min-width: 600px) and style(--phone: 0)) { .bottombar, .pl-wrap { display: none; } }
-.bb-item { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 64px; padding: 4px 2px; border: 0; background: transparent; color: var(--text); font: 500 13px/1 var(--sans); cursor: pointer; }
-.bb-item svg { box-sizing: content-box; padding: 8px; border: var(--hair) solid var(--line-strong); border-radius: 50%; }
-.bb-item[aria-expanded='true'] svg { background: color-mix(in srgb, var(--text) 10%, transparent); }
-.bb-item .count { position: absolute; top: 2px; left: calc(50% + 8px); min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: var(--decide-bg); color: var(--decide-fg); font-size: 12px; font-weight: 700; line-height: 20px; text-align: center; }
-.bb-stop { color: var(--stop-fg); }
-.bb-stop svg { border-color: var(--stop-line); background: var(--stop-bg, transparent); }
+/* Phone shell (below 600 px): the bottom bar, the 48 px top bar, and the contents of the Places, safety, palette and prototype tools sheets (js/sheet.js draws the sheets).
+   Flat: no blur, glow or gradient. Colour never carries a state alone. Offsets come from tokens (--bar-total, --toast-b, --vv-bottom), never from a literal. */
 
-.pl-wrap { position: absolute; inset: 0; z-index: 40; }
-.pl-scrim { position: absolute; inset: 0; background: var(--scrim); }
-.places { position: absolute; left: 0; right: 0; bottom: 0; max-height: 88%; display: flex; flex-direction: column; background: var(--s3); border-top: var(--hair) solid var(--line-strong); border-radius: var(--r-l) var(--r-l) 0 0; }
-.pl-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 20px; min-height: 52px; }
-.pl-head h2 { font: 500 var(--fs-t1) / 1.2 var(--sans); }
-.pl-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px calc(12px + var(--sa-b)); }
-.pl-item { position: relative; display: flex; align-items: center; gap: 16px; min-height: 56px; padding: 0 12px; border-radius: 6px; color: var(--text-2); font-size: 17px; }
-.pl-item[aria-current='page'] { background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-weight: 500; }
-.pl-item[aria-current='page']::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; background: var(--attention); }
-.pl-item svg { flex: none; }
-.pl-item .count { margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--decide-bg); color: var(--decide-fg); font-size: 13px; font-weight: 700; text-align: center; line-height: 22px; }
-.pl-list .pdot { width: 24px; height: 24px; }
-[data-theme='forced'] .pl-item .nl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[data-theme='forced'] .pl-state { position: static; width: auto; height: auto; margin: 0 0 0 auto; clip: auto; clip-path: none; overflow: visible; white-space: nowrap; font-size: 12px; flex: none; }
-@media (forced-colors: active) { .pl-item .nl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .pl-state { position: static; width: auto; height: auto; margin: 0 0 0 auto; clip: auto; clip-path: none; overflow: visible; white-space: nowrap; font-size: 12px; flex: none; } }
-@media (forced-colors: active) { .places, .bb-item svg { border: 1px solid CanvasText; } .pl-item[aria-current='page']::before { background: Highlight; } }
+/* ---------- bottom bar: Overview | Work | Tell | Places | Stop, from BAR in js/phone-model.js ---------- */
+.bottombar { grid-area: bottom; box-sizing: border-box; display: flex; align-items: stretch; height: var(--bar-total); padding: 0 8px var(--sa-b); background: var(--bg); box-shadow: inset 0 var(--hair) 0 var(--line); }
+@container dev ((min-width: 600px) and style(--phone: 0)) { .bottombar { display: none; } }
+html[data-kb='open'] .bottombar { display: none; }
+.bb-item { position: relative; flex: 1 1 0; min-width: 0; min-height: var(--bar-h); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 2px 2px 0; border: 0; background: transparent; color: var(--text-2); font: 500 var(--fs-floor) / 16px var(--font); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.bb-item[aria-current='page'], .bb-item[data-current] { color: var(--text); }
+.bb-ic { position: relative; display: grid; place-items: center; width: 56px; height: 40px; }
+.bb-ic::before { content: ''; position: absolute; width: 56px; height: 32px; border-radius: 16px; background: transparent; transition: background-color var(--dur-1) var(--ease-out); }
+.bb-ic > svg { position: relative; }
+.bb-item[aria-current='page'] .bb-ic::before, .bb-item[data-current]:not(.bb-primary) .bb-ic::before { background: var(--fill-2); }
+.bb-item:active .bb-ic::before { background: var(--fill-3); transition-duration: 80ms; }
+.bb-lab { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bb-ic .count { position: absolute; top: 0; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--decide-bg); color: var(--decide-fg); font-size: var(--fs-floor); font-weight: 700; line-height: 18px; text-align: center; }
+.bb-ic .count[hidden] { display: none; }
+.bb-primary .bb-ic::before { width: 48px; height: 40px; border-radius: 12px; background: var(--primary); }
+.bb-primary .bb-ic > svg { color: var(--on-primary); }
+.bb-primary:active .bb-ic::before { background: color-mix(in srgb, var(--primary) 72%, var(--bg)); }
+.bb-primary[data-current] .bb-ic::before { outline: 2px solid var(--focus); outline-offset: 2px; }
+.bb-stop { flex-grow: 1.15; margin-left: 8px; border-left: var(--hair) solid var(--line); color: var(--stop-fg); }
+.bb-stop[data-current] .bb-ic::before { background: color-mix(in srgb, var(--stop-line) 24%, transparent); }
+.bb-stop .bb-lab { padding: 0 8px; border: var(--hair) solid var(--stop-line); border-radius: 4px; line-height: 14px; }
+.bb-stop[data-engaged] .bb-lab { background: var(--stop-fg); border-color: var(--stop-fg); color: var(--bg); font-weight: 700; }
+@media (forced-colors: active) {
+  .bb-primary .bb-ic::before { forced-color-adjust: none; background: ButtonText; }
+  .bb-primary .bb-ic > svg { color: ButtonFace; }
+  .bb-stop .bb-lab { border-color: ButtonText; }
+  .bb-stop[data-engaged] .bb-lab { forced-color-adjust: none; background: ButtonText; color: ButtonFace; }
+  .bb-item[data-current] .bb-ic::before { outline: 2px solid Highlight; }
+}
 
-/* Phone mission page (concept 12): the page sits above the bottom bar, so Tell, Places and Stop stay reachable. */
+@container dev ((max-width: 599px) or style(--phone: 1)) {
+  /* ---------- top bar, 48 px: star | page title | SIMULATED | safety | search ---------- */
+  .topbar { height: var(--topbar-h); min-height: var(--topbar-h); padding: 0 4px; gap: 0; justify-content: flex-start; }
+  .tb-home { position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 44px; padding: 0; border: 0; background: transparent; color: var(--text); cursor: pointer; }
+  .tb-title { flex: 1 1 auto; min-width: 0; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 17px / 1.2 var(--font); }
+  .tb-home::after { content: ''; position: absolute; inset: -2px; }
+  .tb-fill { flex: 1 1 auto; }
+  .topbar .sim-badge { position: relative; flex: none; margin: 0; padding: 0 5px; background: transparent; cursor: default; font-size: var(--fs-floor); letter-spacing: .03em; }
+  .topbar .sim-badge .g { margin-right: 4px; }
+  .topbar button.sim-badge { cursor: pointer; font-family: inherit; }
+  .topbar button.sim-badge::after { content: ''; position: absolute; inset: -11px 0; }
+  .topbar .safety { flex: none; margin: 0; }
+  .topbar .safety-btn { gap: 6px; padding: 0 5px; font-size: 13px; }
+  .topbar .tb-search { --bh: 44px; flex: none; margin: 0; width: 44px; min-width: 44px; border-color: transparent; }
+}
+
+/* ---------- Places sheet ---------- */
+.pl { display: flex; flex-direction: column; gap: 16px; padding-top: 4px; }
+.pl-search { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 12px; background: var(--fill-1); color: var(--text-2); font: 400 16px / 1.2 var(--font); text-align: left; cursor: pointer; }
+.pl-search:active, .pl-tile:active, .pl-proj:active { background: var(--fill-3); }
+.pl-eye { margin: 0 0 8px 4px; font: 600 var(--fs-floor) / 1.2 var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
+.pl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pl-tile { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 48px; padding: 0 12px; border: var(--hair) solid var(--line); border-radius: 12px; color: var(--text); font-size: 16px; }
+.pl-tile > svg { flex: none; }
+.pl-tile .nl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-tile[aria-current='page'] { background: var(--fill-2); border-color: var(--text); font-weight: 500; }
+.pl-tile .count { flex: none; margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--decide-bg); color: var(--decide-fg); font-size: var(--fs-floor); font-weight: 700; line-height: 18px; text-align: center; }
+.pl-proj { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 56px; padding: 0 4px; border-bottom: var(--hair) solid var(--line); color: var(--text); }
+.pl-code { display: grid; place-items: center; height: 32px; border: var(--hair) solid var(--line-strong); border-radius: 8px; font: 600 var(--fs-floor) / 1 var(--mono); letter-spacing: .04em; }
+.pl-pn { min-width: 0; display: flex; flex-direction: column; }
+.pl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 500; }
+.pl-st { display: flex; align-items: center; gap: 4px; color: var(--text-2); font-size: 14px; }
+.pl-st .pdot { width: 16px; height: 16px; }
+.pl-when { color: var(--text-2); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-all { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 4px; color: var(--text); font-size: 16px; font-weight: 500; }
+@media (forced-colors: active) { .pl-search, .pl-tile, .pl-code { border: 1px solid CanvasText; } .pl-tile[aria-current='page'] { outline: 3px solid Highlight; outline-offset: -4px; } }
+
+/* ---------- safety sheet ---------- */
+.sf { display: flex; flex-direction: column; gap: 12px; padding-top: 4px; }
+.sf-state { font: 500 17px / 1.35 var(--font); }
+.sf-state[data-state='stopped'] { color: var(--stop-fg); }
+.sf-count { color: var(--text-2); font-size: 14px; }
+.sf-row { display: flex; gap: 8px; }
+.sf .sf-row > .btn.l { flex: 1 1 0; --bh: 48px; --hit: 48px; }
+.sf-confirm { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--hair) solid var(--line); }
+.sf-q { font: 600 17px / 1.3 var(--font); }
+.sf-note { color: var(--text-2); font-size: 14px; }
+.sf-side[data-side='end'] { flex-direction: row-reverse; }
+
+/* ---------- palette as a sheet: the field on top, the list in what the keyboard leaves ---------- */
+.sheet-body:has(> .pal-phone), .sheet-body:has(> .tools) { padding: 0; }
+.sheet-body:has(> .pal-phone) { display: flex; flex-direction: column; overflow: hidden; }
+.pal-phone { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.pal-phone .pal-in { margin: 0 16px 8px; padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 12px; }
+.pal-phone .pal-q { font-size: 18px; }
+.pal-phone .pal-in:has(.pal-q:focus-visible) { box-shadow: none; outline: 2px solid var(--focus); }
+.pal-phone .pal-list { padding: 0 8px 8px; }
+
+/* ---------- prototype tools in a sheet ---------- */
+.tools { padding: 0 8px 8px; }
+.tools .menu-item { min-height: 48px; font-size: 16px; }
+.tools .menu-item .hint { font-size: 13px; }
+.tools h2 { padding: 12px 8px 4px; font: 600 var(--fs-floor) / 1.2 var(--font); letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.tools .btn { --bh: 44px; }
+
+@container dev ((max-width: 599px) or style(--phone: 1)) {
+  /* ---------- toast: docked above the bar, or above the sheet that is open; one at a time ---------- */
+  .toast { z-index: 35; top: auto; right: 0; left: 0; bottom: var(--toast-b, calc(var(--bar-total) + 8px)); box-sizing: border-box; width: min(358px, calc(100% - 32px)); max-width: none; margin-inline: auto; transform-origin: 50% 100%; animation-name: toast-in-b; }
+  .toast[data-leaving] { animation-name: toast-out-b; }
+  .toast .btn { --bh: 44px; }
+  html[data-kb='open'] .toast { bottom: var(--toast-b, calc(var(--vv-bottom) + 8px)); }
+  /* a full height sheet leaves no room above it: the toast sits inside it, at the foot, clear of its header */
+  .app:has(.sheet[data-detent='full']) .toast { bottom: calc(var(--vv-bottom) + var(--sa-b) + 8px); }
+  .app[data-insp='open']:has(:is(.msn, .dcn)) .inspector { bottom: var(--bar-total); }
+
+  /* ---------- one scroll surface: the main column. Bars are never drawn on the phone; fade edges and the content itself say there is more ---------- */
+  .app * { scrollbar-width: none; }
+  .app *::-webkit-scrollbar { display: none; }
+}
+@keyframes toast-in-b { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes toast-out-b { to { opacity: 0; transform: translateY(6px) scale(.98); } }
+
+/* the prototype toolbar row is folded into the phone top bar when the window itself is the phone */
+body[data-fold] #toolbar { display: none; }
+
+/* Phone mission page (concept 12): the page sits above the bottom bar, so the bar's slots stay reachable. */
 @container dev ((max-width: 599px) or style(--phone: 1)) {
   .msn-panel .insp-head h2 { font-size: 36px; line-height: 1.1; }
   .msn-ph { font-size: 32px; }
-}
-@container dev ((max-width: 599px) or style(--phone: 1)) {
   .app[data-insp='open']:has(.msn) .scrim { display: none; }
   .msn-meta > div:last-child { display: none; }
   .msn-meta { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-bottom: 4px; }

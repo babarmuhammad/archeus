@@ -223,9 +223,9 @@ def safe_areas(br, base):
     ctx, pg = new_page(br, 390, 844, base)
     pg.evaluate("() => { const s = document.documentElement.style; s.setProperty('--sa-t', '47px'); s.setProperty('--sa-r', '44px'); s.setProperty('--sa-b', '34px'); s.setProperty('--sa-l', '44px'); }")
     r = pg.evaluate("""() => { const b = document.querySelector('.bottombar'), br = b.getBoundingClientRect(), items = [...b.querySelectorAll('.bb-item')].map((e) => e.getBoundingClientRect().bottom), cs = getComputedStyle(document.body);
-      return { pad: getComputedStyle(b).paddingBottom, gap: br.bottom - Math.max(...items), top: cs.paddingTop, left: cs.paddingLeft, right: cs.paddingRight, toolbar: document.getElementById('toolbar').getBoundingClientRect().top }; }""")
+      return { pad: getComputedStyle(b).paddingBottom, gap: br.bottom - Math.max(...items), top: cs.paddingTop, left: cs.paddingLeft, right: cs.paddingRight, toolbar: document.querySelector('.topbar').getBoundingClientRect().top }; }""")
     check('safe areas: the bar items sit above the bottom inset', r['pad'] == '34px' and r['gap'] >= 33.5, str(r))
-    check('safe areas: the page keeps inside the top, left and right insets', r['top'] == '47px' and r['left'] == '44px' and r['right'] == '44px' and r['toolbar'] >= 46.5, str(r))
+    check('safe areas: the page and the top bar keep inside the top, left and right insets', r['top'] == '47px' and r['left'] == '44px' and r['right'] == '44px' and r['toolbar'] >= 46.5, str(r))
     pg.evaluate(SHEET_OPEN)
     r = pg.evaluate("() => { const e = document.querySelector('.sheet'), f = e.querySelector('.sheet-foot').getBoundingClientRect(); return { pad: getComputedStyle(e).paddingBottom, gap: e.getBoundingClientRect().bottom - f.bottom }; }")
     check('safe areas: the sheet footer sits above the bottom inset', r['pad'] == '34px' and r['gap'] >= 33.5, str(r))
@@ -278,16 +278,130 @@ def shell_flip(br, base):
     ctx.close()
 
 
-def expected_failures(br, base):
+def fake_keyboard(pg, height):
+    pg.evaluate("(h) => { Object.defineProperty(visualViewport, 'height', { get: () => h, configurable: true }); visualViewport.dispatchEvent(new Event('resize')); }", height)
+    pg.wait_for_timeout(300)
+
+
+SMALL_TEXT = """() => [...document.querySelectorAll('.topbar *, .bottombar *, .sheet *')].filter((e) => !e.closest('svg') && e.checkVisibility({ checkVisibilityCSS: true }) && [...e.childNodes].some((c) => c.nodeType === 3 && c.nodeValue.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).map((e) => e.className)"""
+CHROME = """() => { const b = document.querySelector('.bottombar'), br = b.getBoundingClientRect(), t = document.querySelector('.topbar').getBoundingClientRect(), q = (k) => document.querySelector('[data-key=' + k + ']').getBoundingClientRect();
+  return { bar: br.height, top: t.height, items: [...b.querySelectorAll('.bb-item')].map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]), icon: getComputedStyle(b.querySelector('svg')).borderTopWidth,
+    pill: getComputedStyle(b.querySelector('[data-key=bb-overview] .bb-ic'), '::before').backgroundColor, label: getComputedStyle(b.querySelector('.bb-lab')).fontSize + ' ' + getComputedStyle(b.querySelector('.bb-lab')).fontWeight,
+    hair: getComputedStyle(b).boxShadow, home: q('home').height, safety: q('safety').height, search: q('search').height }; }"""
+PALETTE_BOX = """() => { const i = document.querySelector('[data-key=pal-q]'), l = document.querySelector('.pal-list'), ir = i.getBoundingClientRect(), lr = l.getBoundingClientRect(), v = visualViewport.height, hit = document.elementFromPoint(ir.left + ir.width / 2, ir.top + ir.height / 2);
+  return { inside: ir.top >= 0 && ir.bottom <= v, hit: hit === i, list: lr.bottom <= v + 0.5, listH: Math.round(lr.height), kb: document.documentElement.dataset.kb, bar: getComputedStyle(document.querySelector('.bottombar')).display, wrap: Math.round(document.querySelector('.sheet-wrap').getBoundingClientRect().bottom) }; }"""
+TOAST = "window.v2live.toast('Not done: Nothing is paused', { action: { label: 'Open Settings', href: '#/settings' } })"
+
+
+def shell_chrome(br, base):
+    """Bar, top bar and the sheets of slice A: sizes, the literal gate, the text floor, and the bottom stack under a faked keyboard."""
     lits = []
     for rel in source_files(('.js', '.css')):
         for i, line in enumerate(read(rel).splitlines(), 1):
             if re.search(r'bottom:\s*(77|88)px', line):
                 lits.append('%s:%d' % (rel, i))
-    xfail('no 77px or 88px bar offset literals (measured)', 'A', 'the safety popover and the mission page still sit on hard-coded offsets', not lits, ', '.join(lits))
+    check('no 77px or 88px bar offset literals: the bar, popover and mission page use tokens', not lits, ', '.join(lits))
+
     ctx, pg = new_page(br, 390, 844, base)
-    n = pg.evaluate("""() => [...document.querySelectorAll('.main-col *, .topbar *, .bottombar *')].filter((e) => !e.closest('svg') && e.checkVisibility({ checkVisibilityCSS: true }) && [...e.childNodes].some((c) => c.nodeType === 3 && c.nodeValue.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).length""")
-    xfail('no visible text under 12 px on the Overview (measured)', 'A, B', '%d elements are under 12 px (eyebrows, wordmark)' % n, n == 0)
+    r = pg.evaluate(CHROME)
+    check('bar: 64 px, flat with a hairline (inset shadow, no border eating the 64 px), 12/500 labels, 24 px icons without a bordered circle', round(r['bar']) == 64 and 'inset' in r['hair'] and r['label'] == '12px 500' and r['icon'] == '0px' and all(it[1] >= 64 and it[0] >= 62 for it in r['items']), str(r))
+    check('bar: the current destination has a flat --fill-2 pill behind its icon', r['pill'] not in ('rgba(0, 0, 0, 0)', 'transparent'), r['pill'])
+    check('top bar: 48 px; star, status and search are 44 px targets', round(r['top']) == 48 and r['home'] >= 44 and r['safety'] >= 44 and r['search'] >= 44, str(r))
+    small = pg.evaluate(SMALL_TEXT)
+    pg.click('[data-key=bb-places]')
+    pg.wait_for_timeout(300)
+    small += pg.evaluate(SMALL_TEXT)
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(250)
+    pg.click('[data-key=bb-stop]')
+    pg.wait_for_timeout(300)
+    small += pg.evaluate(SMALL_TEXT)
+    c48 = pg.evaluate("document.querySelector('[data-key=estop-yes]').getBoundingClientRect().height")
+    check('sheet primaries are 48 px: the Stop confirm', round(c48) == 48, c48)
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(250)
+    check('no text under 12 px in the top bar, the bar, Places and the safety sheet', not small, ', '.join(small[:6]))
+    ctx.close()
+
+    for vv in (440, 300):
+        ctx, pg = new_page(br, 390, 844, base, query='projects=100')
+        pg.click('[data-key=search]')
+        pg.wait_for_timeout(400)
+        fake_keyboard(pg, vv)
+        r = pg.evaluate(PALETTE_BOX)
+        check('bottom stack (keyboard %d px): the palette field is inside the visual viewport and on top, the list fills what is left, the bar is hidden' % vv, r['inside'] and r['hit'] and r['list'] and r['listH'] > 40 and r['kb'] == 'open' and r['bar'] == 'none' and r['wrap'] == vv, str(r))
+        pg.evaluate(TOAST)
+        pg.wait_for_timeout(200)
+        t = pg.evaluate("() => { const t = document.querySelector('.toast').getBoundingClientRect(), h = document.querySelector('.sheet-head').getBoundingClientRect(); return { b: t.bottom, top: t.top, v: visualViewport.height, headB: h.bottom }; }")
+        check('bottom stack (keyboard %d px): a toast stays above the keyboard and clear of the sheet header' % vv, t['b'] <= vv + 0.5 and t['top'] >= t['headB'] - 0.5, str(t))
+        ctx.close()
+
+    ctx, pg = new_page(br, 390, 844, base)
+    pg.evaluate(TOAST)
+    pg.wait_for_timeout(200)
+    t = pg.evaluate("() => { const t = document.querySelector('.toast').getBoundingClientRect(), b = document.querySelector('.bottombar').getBoundingClientRect(), tb = document.querySelector('.topbar').getBoundingClientRect(); return { gap: b.top - t.bottom, over: t.top < tb.bottom, count: document.querySelectorAll('.toast:not([hidden])').length, w: t.width }; }")
+    check('toast: 8 px above the bar, never over the top bar, one at a time, at most 358 px wide', abs(t['gap'] - 8) <= 1.5 and not t['over'] and t['count'] == 1 and t['w'] <= 358.5, str(t))
+    ctx.close()
+
+
+def shell_insets(br, base):
+    ctx, pg = new_page(br, 390, 844, base)
+    pg.evaluate("() => { const s = document.documentElement.style; s.setProperty('--sa-t', '47px'); s.setProperty('--sa-r', '44px'); s.setProperty('--sa-b', '34px'); s.setProperty('--sa-l', '44px'); }")
+    r = pg.evaluate("() => { const t = document.querySelector('.topbar').getBoundingClientRect(), b = document.querySelector('.bottombar').getBoundingClientRect(); return { top: t.top, h: t.height, bar: b.height, barTop: b.top, vh: innerHeight }; }")
+    check('safe areas: the top bar sits under the top inset once (no double padding) and the bar is 64 px plus the bottom inset', abs(r['top'] - 47) <= 0.5 and round(r['h']) == 48 and round(r['bar']) == 98 and abs(r['barTop'] + r['bar'] - r['vh']) <= 0.5, str(r))
+    pg.click('[data-key=bb-stop]')
+    pg.wait_for_timeout(300)
+    r = pg.evaluate("() => { const e = document.querySelector('.sheet'), back = document.querySelector('[data-key=estop-back]').getBoundingClientRect(); return { pad: getComputedStyle(e).paddingBottom, gap: innerHeight - back.bottom }; }")
+    check('safe areas: the safety sheet keeps its buttons above the bottom inset', r['pad'] == '34px' and r['gap'] >= 33.5, str(r))
+    pg.keyboard.press('Escape')
+    pg.wait_for_timeout(250)
+    pg.evaluate("location.hash = '#/work/m-date'")
+    pg.wait_for_timeout(500)
+    r = pg.evaluate("() => { const i = document.querySelector('#inspector').getBoundingClientRect(), b = document.querySelector('.bottombar').getBoundingClientRect(), page = !!document.querySelector('#inspector .msn, #inspector .dcn'); return { page, gap: b.top - i.bottom }; }")
+    check('safe areas: a mission page ends at the top of the bar, never under it', not r['page'] or r['gap'] >= -0.5, str(r))
+    ctx.close()
+
+
+SCROLLERS = """() => { const m = document.querySelector('.main-col'); if (!m) return null; const out = [];
+  for (const e of m.querySelectorAll('*')) { const cs = getComputedStyle(e); if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && e.scrollHeight > e.clientHeight + 1 && e.checkVisibility()) out.push((e.className || e.tagName).toString().split(' ')[0]); }
+  const cs = getComputedStyle(m); return { main: cs.overflowY === 'auto' && m.scrollHeight > m.clientHeight + 1, bar: m.offsetWidth - m.clientWidth, sbw: cs.scrollbarWidth, oc: cs.overscrollBehaviorY, nested: out }; }"""
+
+
+def scroll_surfaces(br, base):
+    """The owner's rule: one vertical scroll surface per page (the main column), no scrollbar drawn on a phone. A route that still has a nested scroller is
+    named here; the fix belongs to the slice that owns the page (now~details: B, replay: D), so it is an expected failure until then."""
+    owner = {'now~details': 'B', 'replay/m-date': 'D'}
+    bad, bars = [], []
+    ctx, pg = new_page(br, 390, 844, base)
+    for route in ['now', 'now~details', 'work', 'work/m-date', 'chat', 'settings', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions', 'replay/m-date']:
+        pg.evaluate("location.hash = '#/%s'" % route.split('~')[0])
+        pg.wait_for_timeout(300)
+        if '~' in route:
+            pg.evaluate("document.querySelector('.now-toggle').click()")
+            pg.wait_for_timeout(300)
+        r = pg.evaluate(SCROLLERS)
+        if r['bar'] or r['sbw'] != 'none' or r['oc'] != 'contain':
+            bars.append('%s %s' % (route, r))
+        if r['nested']:
+            if route in owner:
+                xfail('one vertical scroll surface on %s (measured)' % route, owner[route], 'a nested scroller is still there', False, ', '.join(r['nested']))
+            else:
+                bad.append('%s: %s' % (route, ', '.join(r['nested'])))
+        elif route in owner:
+            record('XPASS', 'one vertical scroll surface on %s [%s]' % (route, owner[route]), 'now passes, move it to a real check')
+    check('one vertical scroll surface: no nested vertical scroller inside the main column on the phone routes', not bad, '; '.join(bad))
+    check('no scrollbar drawn on a phone and the main column contains its overscroll', not bars, '; '.join(bars[:3]))
+    pg.click('[data-key=bb-places]')
+    pg.wait_for_timeout(300)
+    sb = pg.evaluate("() => { const b = document.querySelector('.sheet-body'), cs = getComputedStyle(b); return { sbw: cs.scrollbarWidth, bar: b.offsetWidth - b.clientWidth }; }")
+    check('no scrollbar in a sheet either', sb['sbw'] == 'none' and sb['bar'] == 0, str(sb))
+    ctx.close()
+
+
+def expected_failures(br, base):
+    ctx, pg = new_page(br, 390, 844, base)
+    n = pg.evaluate("""() => [...document.querySelectorAll('.main-col *')].filter((e) => !e.closest('svg') && e.checkVisibility({ checkVisibilityCSS: true }) && [...e.childNodes].some((c) => c.nodeType === 3 && c.nodeValue.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).length""")
+    xfail('no visible text under 12 px on the Overview page (measured)', 'B', '%d elements are under 12 px (eyebrows)' % n, n == 0)
     cdp = ctx.new_cdp_session(pg)
     top = pg.evaluate("() => { const e = document.querySelector('.archeus-map > svg'); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height * .7 }; }")
     if top:
@@ -302,15 +416,10 @@ def expected_failures(br, base):
     ctx.close()
     for name, slice_, reason in [
         ('a swipe that starts on the Work graph scrolls', 'B', 'the Work graph is not rebuilt yet'),
-        ('palette input stays above the keyboard (faked 440 and 300 px)', 'A', 'the palette is not pinned to --vv-bottom yet'),
-        ('toast sits above the bar and not over a sheet header', 'A', 'the toast is still anchored at the top'),
         ('first screen: sentence, ledger, counts and Review above the bar, centre in the lower 60 %', 'B', 'the Overview is still the map page'),
         ('Work first row under 60 % of the height; Security, Health, Usage, Accounts, Extensions first row under 260 px', 'B, D', 'page heads not rebuilt'),
-        ('scale at ?story=huge: under 1200 elements in the main column and under 8 screens on Work, Projects and Overview, 100 projects searchable in the palette', 'B', 'lists are not capped yet'),
-        ('safety sheet and bar never overlap with injected insets', 'A', 'the safety popover still uses a literal offset of its own'),
-        ('Stop two-step from the bar with the confirm on the far side', 'A', 'the bar is still Tell, Places, Stop with the old safety popover'),
-        ('Places and Replay evidence are openSheet() sheets with detents', 'A, D', 'not migrated yet'),
-        ('Places and safety sheet primaries are 48 px', 'A', 'not migrated yet')]:
+        ('scale at ?story=huge: under 1200 elements in the main column and under 8 screens on Work, Projects and Overview', 'B', 'lists are not capped yet'),
+        ('the Replay evidence sheet is an openSheet() with detents', 'D', 'Places, the safety sheet, the palette and the prototype tools are on it; it is not migrated yet')]:
         xfail(name, slice_, reason)
 
 
@@ -321,7 +430,7 @@ VV_OFF = "() => { delete visualViewport.height; visualViewport.dispatchEvent(new
 FIELD = """() => { const e = document.activeElement; if (!e) return null; const r = e.getBoundingClientRect(), vv = visualViewport.height, hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
   return { tag: e.tagName, cls: e.className, top: Math.round(r.top), bottom: Math.round(r.bottom), vv, inside: r.top >= 0 && r.bottom <= vv + 0.5, hits: hit === e }; }"""
 # vertical scrollers inside the open sheet: only one may really scroll, and none may draw a scrollbar
-SCROLLERS = """() => { const sh = document.querySelector('.sheet'); if (!sh) return null; const out = [];
+SHEET_SCROLLERS = """() => { const sh = document.querySelector('.sheet'); if (!sh) return null; const out = [];
   for (const e of [sh, ...sh.querySelectorAll('*')]) { const cs = getComputedStyle(e); if (!/(auto|scroll)/.test(cs.overflowY) || e.scrollHeight <= e.clientHeight + 1 || !e.checkVisibility()) continue;
     out.push({ cls: String(e.className).slice(0, 28), bar: cs.scrollbarWidth }); }
   return out; }"""
@@ -354,7 +463,7 @@ def tell_sheet(br, base):
     check('tell sheet: the handle button steps peek, half, full', a['detent'] == 'half' and b['detent'] == 'full' and b['modal'] == 'true', '%s %s' % (a, b))
     s = drag(pg, 150)
     check('tell sheet: a drag down on the handle goes to the detent below', s and s['detent'] == 'half', str(s))
-    check('tell sheet: the thread is its one scroller and draws no scrollbar', all(x['bar'] == 'none' for x in pg.evaluate(SCROLLERS)) and len(pg.evaluate(SCROLLERS)) <= 1, str(pg.evaluate(SCROLLERS)))
+    check('tell sheet: the thread is its one scroller and draws no scrollbar', all(x['bar'] == 'none' for x in pg.evaluate(SHEET_SCROLLERS)) and len(pg.evaluate(SHEET_SCROLLERS)) <= 1, str(pg.evaluate(SHEET_SCROLLERS)))
     pg.go_back()
     pg.wait_for_timeout(300)
     check('tell sheet: the system Back closes it', pg.evaluate("!document.querySelector('.sheet') && !document.querySelector('.sheet-wrap')") or pg.evaluate("!!document.querySelector('.sheet-wrap[data-leaving]')"), '')
@@ -389,7 +498,7 @@ def tell_sheet(br, base):
           return { menu: sl && !sl.hidden ? Math.round(sl.getBoundingClientRect().height) : -1, vv, row: Math.round(row.height), inside: cr.top >= 0 && cr.bottom <= vv + .5, hits: document.elementFromPoint(cr.left + cr.width / 2, cr.top + cr.height / 2) === c, log: document.querySelector('.chatsheet .sheet-body').getBoundingClientRect().height }; }""")
         check('slash menu at 360x740%s: the composer stays visible (row >= 96 px), the menu is at most 40 %% of the viewport and takes the thread\'s place' % (' with a %d px viewport' % vv if vv else ''),
               m['menu'] > 0 and m['inside'] and m['hits'] and m['row'] >= 96 and m['menu'] <= m['vv'] * .4 + 1 and m['log'] == 0, str(m))
-        sc = pg.evaluate(SCROLLERS)
+        sc = pg.evaluate(SHEET_SCROLLERS)
         check('slash menu%s: it is the one scroller and has no scrollbar' % (' (%d px)' % vv if vv else ''), len(sc) <= 1 and all(x['bar'] == 'none' for x in sc), str(sc))
         if vv:
             pg.evaluate(VV_OFF)
@@ -423,7 +532,7 @@ def inspector_sheets(br, base):
             if not peek:
                 pg.click('.sheet-grip')
                 pg.wait_for_timeout(250)
-            sc = pg.evaluate(SCROLLERS)
+            sc = pg.evaluate(SHEET_SCROLLERS)
             if len(sc) > 1 or any(x['bar'] != 'none' for x in sc):
                 bad_scroll.append('%s %s: %s' % (r, 'peek' if peek else 'full', sc))
         for sel in ('.sheet .btn.primary', '.sheet .btn.decide'):
@@ -513,7 +622,7 @@ def picker_sheet(br, base):
           return { n: opts.length, minH: Math.min(...vis.map((o) => Math.round(o.getBoundingClientRect().height))), sel: sh.querySelectorAll('[role=option][aria-selected=true]').length, tick: !!sh.querySelector('[aria-selected=true] svg'), search: !!sh.querySelector('input[type=search]'), role: sh.getAttribute('role'), pop: !!document.querySelector('.pkpop') }; }""")
         check('picker sheet (%s): a bottom sheet, not a popover; 48 px options; the current one has aria-selected and a tick' % (story or 'default'), r and not r['pop'] and r['role'] == 'dialog' and r['minH'] >= 48 and r['sel'] == 1 and r['tick'], str(r))
         check('picker sheet (%s): a search field exactly when there are more than 12 options (%s)' % (story or 'default', r and r['n']), r and r['search'] == (r['n'] > 12), str(r))
-        sc = pg.evaluate(SCROLLERS)
+        sc = pg.evaluate(SHEET_SCROLLERS)
         check('picker sheet (%s): one scroller, no scrollbar' % (story or 'default'), len(sc) <= 1 and all(x['bar'] == 'none' for x in sc), str(sc))
         if r and r['search']:
             for vv in (440, 300):
@@ -592,7 +701,7 @@ def main():
     try:
         with sync_playwright() as p:
             br = p.chromium.launch()
-            for fn in (shell_flip, safe_areas, sheet_checks, sizes, sheets_slice_c, expected_failures):
+            for fn in (shell_flip, safe_areas, sheet_checks, sizes, shell_chrome, shell_insets, scroll_surfaces, sheets_slice_c, expected_failures):
                 try:
                     fn(br, base)
                 except Exception as e:  # a crashed check is a failure, not a silent skip

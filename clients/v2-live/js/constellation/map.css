@@ -72,7 +72,7 @@
 .archeus-map .am-select-ring { display: none; fill: none; stroke: var(--am-focus); stroke-width: 1.5; stroke-dasharray: 2 3; }
 .archeus-map .am-selected .am-select-ring { display: inline; }
 .archeus-map .am-selected .am-body, .archeus-map .am-selected .am-e2 { stroke: var(--am-focus); stroke-width: 2; }
-.archeus-map .am-marker { fill: var(--am-text); pointer-events: none; }
+.archeus-map .am-marker { fill: none; stroke: var(--am-text); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
 .archeus-map .am-label { pointer-events: none; }
 .archeus-map .am-label text { paint-order: stroke; stroke: var(--am-bg); stroke-width: 4px; stroke-opacity: .85; stroke-linejoin: round; }
 .archeus-map .am-label-title { fill: var(--am-text); font-family: var(--am-serif); }
@@ -172,7 +172,7 @@
 .archeus-map .am-ring { fill: none; stroke: currentColor; stroke-width: 1.2; vector-effect: non-scaling-stroke; opacity: 0; pointer-events: none; transform-box: fill-box; transform-origin: center; }
 .archeus-map[data-ambient='on'] .am-ring { animation: am-ring 3600ms cubic-bezier(.23, 1, .32, 1) var(--dd, 0ms) infinite; }
 @keyframes am-ring { 0% { transform: scale(1); opacity: .5; } 75%, 100% { transform: scale(1.55); opacity: 0; } }
-.archeus-map .am-travel { fill: var(--am-text); opacity: 0; pointer-events: none; }
+.archeus-map .am-travel { fill: none; stroke: var(--am-text); stroke-width: 5.2; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0; pointer-events: none; }
 .archeus-map[data-ambient='on'] .am-travel { animation: am-travel var(--tp, 4000ms) linear var(--td, 0ms) infinite; }
 @keyframes am-travel { 0% { translate: var(--x0) var(--y0); opacity: 0; } 12%, 88% { opacity: .95; } 100% { translate: var(--x1) var(--y1); opacity: 0; } }
 .archeus-map .am-line-hot { fill: none; stroke: var(--am-text); stroke-width: 1.8; stroke-opacity: .95; opacity: 0; transition: opacity var(--dur-2, 160ms) var(--am-ease); pointer-events: none; }
@@ -212,3 +212,16 @@
 .archeus-map button:hover { border-color: var(--am-text); }
 @media (prefers-reduced-motion: reduce) { .archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag, .am-label) { transition: none; } }
 @media (forced-colors: active) { .archeus-map .am-hub-disc, .archeus-map .am-hub-inner { stroke: CanvasText; } .archeus-map .am-card { border-color: CanvasText; background: Canvas; color: CanvasText; } }
+/* Work graph highlight: the shared dim (data-hot, am-in) plus a state-coloured ring on what matches; the hovered or selected node stays readable and its path is stronger. */
+.wg[data-hot] .wg-node.am-in .am-select-ring { display: inline; stroke: currentColor; stroke-dasharray: none; stroke-opacity: .7; }
+.wg[data-hot] .wg-node.wg-focus .am-star { opacity: 1; }
+.wg[data-hot] :is(.am-edge, .am-spoke).wg-path { opacity: 1; stroke-opacity: .9; }
+.wg[data-hot] .am-spoke.wg-path { stroke-width: 1.6; }
+.wg .wg-node .am-select-ring { transition: stroke-opacity 100ms var(--am-ease); }
+
+/* Semantic zoom. A project that an open one has grown over gives way (opacity only, the same 180 ms transition); a worktree is a smaller ring with a branch glyph, its state shown in the
+   line colour of the existing vocabulary and always with its word beside it. */
+.archeus-map :is(.am-star, .am-edge, .am-spoke, .am-tag).am-recede:not(.am-in) { opacity: .14; }
+.archeus-map .am-ghosts { pointer-events: none; }
+.archeus-map .am-worktree .am-hub-disc { stroke: currentColor; stroke-opacity: .9; }
+.archeus-map .am-worktree .am-icon { stroke-width: 1.6; }

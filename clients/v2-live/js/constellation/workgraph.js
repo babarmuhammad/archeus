@@ -16,7 +16,7 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
   svg.setAttribute('role', 'group'); svg.setAttribute('aria-label', label);
   host.append(svg); container.append(host);
   const measureCtx = document.createElement('canvas').getContext('2d');
-  let model = {nodes: [], edges: []}, selected = null, hovered = null, size = '', pos = [], seen = new Set(), destroyed = false, drawn = '';
+  let model = {nodes: [], edges: []}, selected = null, hovered = null, lit = null, size = '', pos = [], seen = new Set(), destroyed = false, drawn = '';
   const onHover = id => { if (id !== hovered) api.hover(id); host.dispatchEvent(new CustomEvent('wg-hover', {detail: id})); };
 
   function draw() {
@@ -30,18 +30,18 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
     pos = layoutWork(model, width, height, 'v2-live-work', inset);
     const core = workCore(width, height, inset), star = coreStar(core.radius, 1.5), by = new Map(pos.map(n => [n.id, n])), kid = new Set(model.edges.map(e => e.to));
     svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    let out = `<g class="wg-spokes">${pos.filter(n => !kid.has(n.id)).map(n => `<path class="am-spoke" d="M${f(core.x)},${f(core.y)}L${f(n.x)},${f(n.y)}"/>`).join('')}</g><g class="am-edges">`;
+    let out = `<g class="wg-spokes">${pos.filter(n => !kid.has(n.id)).map(n => `<path class="am-spoke" data-node-id="${esc(n.id)}" d="M${f(core.x)},${f(core.y)}L${f(n.x)},${f(n.y)}"/>`).join('')}</g><g class="am-edges">`;
     for (const e of model.edges) {
       const a = by.get(e.from), b = by.get(e.to);
       if (!a || !b) continue;
       const d = Math.hypot(b.x - a.x, b.y - a.y) || 1, ux = (b.x - a.x) / d, uy = (b.y - a.y) / d, p = [a.x + ux * a.radius, a.y + uy * a.radius, b.x - ux * b.radius, b.y - uy * b.radius].map(f);
-      out += `<g class="am-edge am-edge-asks am-accent-needs-you"><path class="am-line" d="M${p[0]},${p[1]}L${p[2]},${p[3]}"/><path class="am-joint" d="M${p[0]},${p[1]}h0M${p[2]},${p[3]}h0"/></g>`;
+      out += `<g class="am-edge am-edge-asks am-accent-needs-you" data-from="${esc(e.from)}" data-to="${esc(e.to)}"><path class="am-line" d="M${p[0]},${p[1]}L${p[2]},${p[3]}"/><path class="am-joint" d="M${p[0]},${p[1]}h0M${p[2]},${p[3]}h0"/></g>`;
     }
     out += `</g><g class="am-core am-state-core" transform="translate(${f(core.x)} ${f(core.y)})"><path class="am-core-chords" d="${star.threads}"/><path class="am-core-thread" d="${star.spikes}"/><path class="am-core-dot" d="${star.tips}"/></g><g class="am-nodes">`;
     const fresh = [];
     for (const n of pos) {
       if (!seen.has(n.id)) fresh.push(n.id);
-      out += `<g class="wg-node${n.id === selected ? ' am-selected' : ''}" data-node-id="${esc(n.id)}" transform="translate(${f(n.x)} ${f(n.y)})">${bodyMarkup(n, iconOf(n))}<circle class="am-select-ring" r="${f(n.radius + 11)}"/></g>`;
+      out += `<g class="wg-node am-state-${stateKey(n.state)}${n.id === selected ? ' am-selected' : ''}" data-node-id="${esc(n.id)}"${n.entry ? ` data-entry="${esc(n.entry)}"` : ''} transform="translate(${f(n.x)} ${f(n.y)})">${bodyMarkup(n, iconOf(n))}<circle class="am-select-ring" r="${f(n.radius + 11)}"/></g>`;
     }
     out += '</g>';
     // The Review button goes beside the first needs-you mission (the selected one when it needs you), on the first side that clears every node.
@@ -66,7 +66,7 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
     const fit = (s, room, px) => { measureCtx.font = `400 ${px}px ${serif}`; while (s.length > 2 && measureCtx.measureText(s).width > room) s = s.slice(0, -2) + '…'; return s; };
     for (const b of boxes) {
       const n = by.get(b.id), meta = b.size * .68, state = stateKey(n.state), word = rich && n.word ? fit(n.word, b.width, b.size * .72) : '';
-      out += `<g class="am-label am-state-${state}${n.id === selected ? ' am-selected-label' : ''}">`
+      out += `<g class="am-label am-state-${state}${n.id === selected ? ' am-selected-label' : ''}" data-node-id="${esc(n.id)}">`
         + (rich && n.project ? `<text class="am-label-meta wg-project" x="${f(b.x + 2)}" y="${f(b.y + meta * 1.05)}" style="font-size:${f(meta)}px">${esc(String(n.project).toUpperCase())}</text>` : '')
         + `<text class="am-label-title" x="${f(b.x + 2)}" y="${f(rich ? b.y + meta * 1.4 + b.size : b.y + b.size)}" style="font-size:${b.size}px">${esc(b.text)}</text>`
         + (word ? `<text class="am-label-sub wg-word" x="${f(b.x + 2)}" y="${f(b.y + meta * 1.4 + b.size * 1.95)}" style="font-size:${f(b.size * .72)}px">${esc(word)}</text>` : '') + '</g>';
@@ -77,7 +77,7 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
     const had = svg.contains(document.activeElement) ? document.activeElement.dataset.key : null;
     svg.innerHTML = out;
     if (had) svg.querySelector(`[data-key="${CSS.escape(had)}"]`)?.focus({preventScroll: true});
-    api.hover(hovered);
+    api.hover(hovered); applyLit();
     if (!reduced && !document.hidden) fresh.forEach((id, i) => svg.querySelector(`.wg-node[data-node-id="${CSS.escape(id)}"]`)?.animate([{opacity: 0}, {opacity: 1}], {duration: 240, delay: i * 40, easing: 'ease-out', fill: 'backwards'}));
     seen = new Set(pos.map(n => n.id));
   }
@@ -93,12 +93,35 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
   const point = e => { const h = e.target.closest('.am-hit'); return h ? h.dataset.nodeId : null; };
   svg.addEventListener('pointerover', e => { const id = point(e); if (id) onHover(id); });
   svg.addEventListener('pointerout', e => { if (point(e) && !svg.contains(e.relatedTarget?.closest?.('.am-hit'))) onHover(null); });
+  // Highlight: the same dim as the Overview hover (host data-hot, am-in on what stays lit, see map.css). Nothing is re-drawn: classes only, so a filter change costs a few toggles.
+  const q = sel => svg.querySelectorAll(sel), rootOf = id => { const e = model.edges.find(x => x.to === id); return e ? e.from : id; };
+  function applyLit() {
+    if (lit === null) delete host.dataset.hot; else host.dataset.hot = 'on';
+    const on = id => lit !== null && lit.has(id);
+    for (const el of q('.wg-node')) { const x = on(el.dataset.nodeId); el.classList.toggle('am-in', x); el.querySelector('.am-star')?.classList.toggle('am-in', x); }
+    for (const el of q('.am-label')) el.classList.toggle('am-in', on(el.dataset.nodeId));
+    for (const el of q('.am-edge')) el.classList.toggle('am-in', on(el.dataset.from) && on(el.dataset.to));
+    for (const el of q('.am-spoke')) el.classList.toggle('am-in', on(el.dataset.nodeId));
+    markPath();
+  }
+  // The hovered or selected node stays readable whatever the filter says, and the path from the core to it (spoke, then its decision edge) is drawn stronger.
+  function markPath() {
+    const id = hovered || selected, chain = new Set(id ? [id, rootOf(id)] : []);
+    for (const el of q('.wg-node')) el.classList.toggle('wg-focus', chain.has(el.dataset.nodeId) && el.dataset.nodeId === id);
+    for (const el of q('.am-spoke')) el.classList.toggle('wg-path', !!id && el.dataset.nodeId === rootOf(id));
+    for (const el of q('.am-edge')) el.classList.toggle('wg-path', !!id && (el.dataset.to === id || el.dataset.from === id));
+  }
+  svg.addEventListener('focusin', e => { const id = point(e); if (id) onHover(id); });
+  svg.addEventListener('focusout', e => { if (point(e) && !svg.contains(e.relatedTarget?.closest?.('.am-hit'))) onHover(null); });
   const observer = new ResizeObserver(draw); observer.observe(host);
   const api = {
     element: host,
     update(next) { model = {nodes: next.nodes.map(n => ({...n})), edges: (next.edges || []).map(e => ({...e}))}; draw(); },
     setSelection(id) { selected = id; draw(); },
-    hover(id) { hovered = id; svg.querySelector('.wg-hover')?.classList.remove('wg-hover'); if (id) svg.querySelector(`.wg-node[data-node-id="${CSS.escape(id)}"]`)?.classList.add('wg-hover'); },
+    hover(id) { hovered = id; svg.querySelector('.wg-hover')?.classList.remove('wg-hover'); if (id) svg.querySelector(`.wg-node[data-node-id="${CSS.escape(id)}"]`)?.classList.add('wg-hover'); markPath(); },
+    // ids: the node ids that stay lit, or null for no highlight (everything at full colour).
+    setHighlight(ids) { lit = ids ? new Set(ids) : null; applyLit(); },
+    get lit() { return lit; },
     setTheme(name) { theme = name; host.dataset.theme = name; },
     setReduced(bool) { reduced = bool === true; host.dataset.reduced = String(reduced); },
     get size() { return size; },
