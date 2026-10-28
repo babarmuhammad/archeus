@@ -243,13 +243,23 @@ export const IT_AREAS = {
   'Read the task and the project notes': 'Ha letto l’attività e le note del progetto', 'Ran the checks: 3 failing': 'Ha eseguito i controlli: 3 falliscono', 'Found the cause in two helpers': 'Ha trovato la causa in due funzioni di supporto', 'Edited the first helper': 'Ha modificato la prima funzione di supporto', 'Re-ran the checks: 1 failing': 'Ha rieseguito i controlli: 1 fallisce',
   'Edited the second helper': 'Ha modificato la seconda funzione di supporto', 'Wrote a test for the edge case': 'Ha scritto un test per il caso limite', 'Re-ran the checks: all passing': 'Ha rieseguito i controlli: tutti superati', 'Summarised the change for verification': 'Ha riassunto la modifica per la verifica', 'Checked the diff against the plan': 'Ha confrontato le differenze con il piano', 'Wrote the commit message': 'Ha scritto il messaggio di commit',
   'Wrote the notes and the list of changed files': 'Ha scritto le note e l’elenco dei file modificati', 'Saved the plan position and 2 changed files': 'Ha salvato la posizione nel piano e 2 file modificati',
-  'First eligible by priority; its state is available.': 'Primo idoneo per priorità; il suo stato è disponibile.', 'Lower priority, and Claude Code, work was available.': 'Priorità più bassa, e Claude Code, work era disponibile.'
+  'First eligible by priority; its state is available.': 'Primo idoneo per priorità; il suo stato è disponibile.', 'Lower priority, and Claude Code, work was available.': 'Priorità più bassa, e Claude Code, work era disponibile.',
+  // Security, Health, Usage and Accounts overhaul, 2026-10-28. Italian wording to review.
+  'Every check is OK': 'Tutti i controlli sono OK', 'Every account has room': 'Ogni account ha margine', 'No account can take new work': 'Nessun account può prendere nuovo lavoro',
+  'Last hour': 'Ultima ora', 'Show fewer': 'Mostra meno', 'Open project': 'Apri il progetto', '1 project': '1 progetto', '1 account is low': '1 account è basso',
 };
 
 const ACC = { unverified: 'non verificato', available: 'disponibile', constrained: 'vincolato', limited: 'limitato', degraded: 'degradato', open: 'aperto', unauthenticated: 'non autenticato', disabled: 'disattivato' };
 const num = (s) => String(s).replace('.', ',');
 const plural = (n, one, many) => n + ' ' + (Number(n) === 1 ? one : many);
 export const RULES_AREAS = [
+  [/^(\d+) checks? needs? attention$/, (m) => (m[1] === '1' ? '1 controllo richiede attenzione' : m[1] + ' controlli richiedono attenzione')],
+  [/^(\d+) unknown$/, (m) => (m[1] === '1' ? '1 sconosciuto' : m[1] + ' sconosciuti')],
+  [/^(\d+) accounts are low$/, (m) => m[1] + ' account sono bassi'],
+  [/^(.+) takes the next mission$/, (m) => m[1] + ' prende la prossima missione'],
+  [/^Show all (\d+)$/, (m) => 'Mostra tutti (' + m[1] + ')'],
+  [/^(\d+) projects$/, (m) => m[1] + ' progetti'],
+  [/^\+ (\d+) more$/, (m) => '+ altri ' + m[1]],
   [/^(\d+) actions are waiting for your decision$/, (m) => m[1] + ' azioni attendono la tua decisione'],
   [/^Allow this action once\? (.+) No Undo\.$/, (m) => 'Consentire questa azione una volta? ' + tr2(m[1]) + ' Non si può annullare.'],
   [/^Deny this action\? The execution ends and the mission is blocked\. No Undo\.$/, () => 'Negare questa azione? L’esecuzione termina e la missione viene bloccata. Non si può annullare.'],

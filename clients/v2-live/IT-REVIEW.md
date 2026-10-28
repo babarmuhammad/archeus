@@ -1826,3 +1826,22 @@ File: `js/i18n-now.js`. Not checked by a native speaker.
 - N missions, N ideas captured → N missioni, N idee raccolte
 - N projects. M need you. → N progetti. Ne servono M a te.
 - Action verbs after “Archeus”: completed → ha completato; is verifying → sta verificando; is reviewing → sta rivedendo; started → ha avviato; asks you to approve → ti chiede di approvare; is blocked on → è bloccato su; stopped → ha fermato; paused → ha messo in pausa
+
+## Security, Health, Usage and Accounts overhaul (2026-10-28): to review
+
+File: `js/i18n-areas.js`. New or changed visible strings. Existing strings that moved (labels, notes, column names such as 5 hour window, Week, Status) keep their earlier Italian.
+
+| English | Italian |
+|---|---|
+| 1 check needs attention / N checks need attention | 1 controllo richiede attenzione / N controlli richiedono attenzione |
+| N unknown | 1 sconosciuto / N sconosciuti |
+| Every check is OK | Tutti i controlli sono OK |
+| 1 account is low / N accounts are low | 1 account è basso / N account sono bassi |
+| Every account has room (sentence, no full stop) | Ogni account ha margine |
+| <Account> takes the next mission (sentence, no full stop) | <Account> prende la prossima missione |
+| No account can take new work | Nessun account può prendere nuovo lavoro |
+| Last hour (Usage column) | Ultima ora |
+| Show all N / Show fewer | Mostra tutti (N) / Mostra meno |
+| Open project | Apri il progetto |
+| 1 project / N projects (approval mode groups) | 1 progetto / N progetti |
+| + N more (names of projects in a group) | + altri N |

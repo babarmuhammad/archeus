@@ -62,7 +62,3 @@ export function spark(points, w, hgt) {
   svg.append(s('path', { class: 'area', d: d + 'L' + xy[xy.length - 1][0].toFixed(1) + ' ' + hgt + 'L1 ' + hgt + 'Z' }), s('path', { class: 'ln', d }));
   return svg;
 }
-
-export function stat(tone, big, label, sub) {
-  return h('div', { class: 'ax-stat', 'data-tone': tone }, h('span', { class: 'big' }, big), h('span', { class: 'lab' }, label), sub ? h('span', { class: 'sub' }, sub) : null);
-}
