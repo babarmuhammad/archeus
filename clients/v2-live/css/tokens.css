@@ -81,8 +81,11 @@
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", monospace;
   --serif: "Libre Caslon Text", Georgia, serif;
-  --ease: cubic-bezier(.22, .8, .18, 1);
-  --dur-state: 160ms; --dur-sheet: 280ms; --dur-breath: 6000ms;
+  /* motion tokens (css/motion.css and js/motion.js read these; nothing else carries a duration or a curve): 100 hover in and popover out, 180 state and exit,
+     280 move and sheet in, 420 route and the longest layout glide. ease-out for what enters or answers, ease-move for what travels on screen. */
+  --dur-1: 100ms; --dur-2: 180ms; --dur-3: 280ms; --dur-4: 420ms;
+  --ease-out: cubic-bezier(.23, 1, .32, 1); --ease-move: cubic-bezier(.65, 0, .35, 1); --ease: var(--ease-out);
+  --dur-state: var(--dur-2); --dur-sheet: var(--dur-3); --dur-breath: 6000ms;
   --tb: 48px;
   --r-s: 4px; --r-m: 6px; --r-l: 16px;
   --edge: var(--line-strong);

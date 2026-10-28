@@ -1,7 +1,7 @@
 .projects-nav { display: flex; align-items: center; min-height: 44px; }
 .rail .projects-nav { align-content: center; }
 .projects-nav[aria-current='page'] { color: var(--text); text-decoration: underline; text-underline-offset: 5px; }
-.project-inspector { min-width: 0; animation: projects-panel-enter 180ms var(--ease); }
+.project-inspector { min-width: 0; animation: projects-panel-enter var(--dur-2) var(--ease-out); }
 .project-inspector > :is(.insp-head, .tabs, .project-state-sentence) { flex-shrink: 0; }
 .project-inspector .ax-ih .m { max-width: 48ch; }
 .project-state-sentence { margin: 0 16px 16px; font: 500 var(--fs-lede)/1.4 var(--font); }
