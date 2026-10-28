@@ -46,7 +46,7 @@ export function buildGraph(sim) {
   return { nodes, edges, projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title) }; }) };
 }
 
-const VERB = { COMPLETED: 'completed', VERIFYING: 'is verifying', REVIEWING: 'is reviewing', EXECUTING: 'started', APPROVAL_REQUIRED: 'asks you to approve', BLOCKED: 'is blocked on', FAILED: 'stopped', PAUSED: 'paused' };
+const VERB = { COMPLETED: 'completed', VERIFYING: 'is verifying', REVIEWING: 'is reviewing', EXECUTING: 'started', APPROVAL_REQUIRED: 'asks you to approve', BLOCKED: 'is blocked on', FAILED: 'has stopped', PAUSED: 'paused' };
 const DAY = 24 * 3600 * 1000;
 // The Overview model: one entry per project with its missions, counts and the last thing Archeus did there, and the day's ledger of completed missions.
 export function buildOverview(sim) {

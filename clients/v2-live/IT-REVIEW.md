@@ -1825,7 +1825,7 @@ File: `js/i18n-now.js`. Not checked by a native speaker.
 - +N more projects → +N altri progetti
 - N missions, N ideas captured → N missioni, N idee raccolte
 - N projects. M need you. → N progetti. Ne servono M a te.
-- Action verbs after “Archeus”: completed → ha completato; is verifying → sta verificando; is reviewing → sta rivedendo; started → ha avviato; asks you to approve → ti chiede di approvare; is blocked on → è bloccato su; stopped → ha fermato; paused → ha messo in pausa
+- Action verbs after “Archeus”: completed → ha completato; is verifying → sta verificando; is reviewing → sta rivedendo; started → ha avviato; asks you to approve → ti chiede di approvare; is blocked on → è bloccato su; has stopped → ha fermato; paused → ha messo in pausa
 
 ## Security, Health, Usage and Accounts overhaul (2026-10-28): to review
 

@@ -25,6 +25,7 @@ export const P = {
   lang: ['circle:12,12,8', 'path:M4 12h16M12 4c4 4 4 12 0 16-4-4-4-12 0-16'],
   note: ['path:M5 4h14v12l-5 4H5zM14 20v-4h5M8 8h8M8 12h6'],
   chevron: ['path:M9 6l6 6-6 6'],
+  chevronl: ['path:M15 6l-6 6 6 6'],
   home: ['path:M3 11l9-8 9 8M5 9v11h5v-6h4v6h5V9'],
   back: ['path:M14 5l-7 7 7 7'],
   forward: ['path:M10 5l7 7-7 7'],

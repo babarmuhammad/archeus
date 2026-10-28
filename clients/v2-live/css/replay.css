@@ -13,14 +13,6 @@
 .rp-stations .spine-insp .seg-l { top: 8px; left: calc(-50% + 14px); right: calc(50% + 14px); }
 .rp-stations .spine-insp li:nth-child(4) .seg-l { display: block; }
 .rp-stations .sp-text { padding: 4px 0; }
-.rp-plot { position: relative; height: 84px; margin: 4px 12px 0; border-block: var(--hair) solid var(--line); }
-.rp-tick { position: absolute; width: 14px; line-height: 16px; text-align: center; transform: translateX(-50%); color: var(--rp-tone, var(--text-2)); font-size: 14px; }
-.rp-tick[data-dim='true'] { opacity: .25; }
-.rp-playhead { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--text); transition: transform 180ms var(--ease); }
-.rp-playhead::before { content: ''; position: absolute; top: -4px; left: -3px; width: 7px; height: 7px; border: 1px solid var(--text); background: var(--bg); transform: rotate(45deg); }
-.rp-overview input[type='range'] { display: block; width: 100%; min-height: 44px; margin: 0; accent-color: var(--text); cursor: pointer; }
-.rp-cursor-tools { display: flex; align-items: center; gap: 8px; }
-.rp-cursor-tools input[type='range'] { flex: 1; min-width: 0; }
 .rp-time, .rp-number, .rp-position, .rp-count { font-variant-numeric: tabular-nums; }
 .rp-time, .rp-number, .rp-source { color: var(--text-2); font-size: var(--fs-cap); }
 .rp-position { font-size: var(--fs-cap); }
@@ -104,3 +96,21 @@
   .rp-tick { color: CanvasText; }
   .rp-sheet { background: Canvas; color: CanvasText; border-color: CanvasText; }
 }
+/* The track is the scrubber: marks sit on it, the part already played is a flat tint, a click or drag jumps to the nearest event. */
+.rp-cursor-tools { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.rp-step { flex: none; width: 48px; height: 48px; display: grid; place-items: center; margin-top: 18px; background: none; border: var(--hair) solid var(--line-strong); border-radius: 10px; color: var(--text); cursor: pointer; transition: background-color 100ms var(--ease), border-color 100ms var(--ease); }
+.rp-step:hover:not(:disabled) { background: var(--s2); border-color: var(--text); }
+.rp-step:active:not(:disabled) { background: var(--s3); }
+.rp-step:disabled { color: var(--text-3); border-color: var(--line); cursor: default; }
+.rp-track { position: relative; flex: 1; min-width: 0; touch-action: pan-y; cursor: pointer; }
+.rp-plot { position: relative; height: 92px; overflow: hidden; background: var(--bg); border: var(--hair) solid var(--line-strong); border-radius: 10px; }
+.rp-track:focus-within .rp-plot { outline: 3px solid var(--focus); outline-offset: 2px; }
+.rp-elapsed { position: absolute; inset: 0; background: color-mix(in srgb, var(--text) 9%, transparent); transform-origin: left; transform: scaleX(0); transition: transform 180ms var(--ease); }
+.rp-ghost { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--line-strong); opacity: 0; transition: opacity 100ms var(--ease); }
+.rp-ghost[data-on='true'] { opacity: 1; }
+.rp-tick { position: absolute; width: 14px; line-height: 16px; text-align: center; transform: translateX(-50%); color: var(--rp-tone, var(--text-2)); font-size: 14px; }
+.rp-tick[data-dim='true'] { opacity: .25; }
+.rp-playhead { position: absolute; left: 0; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); transition: transform 180ms var(--ease); }
+.rp-playhead::before { content: ''; position: absolute; top: 0; left: -4px; width: 10px; height: 10px; background: var(--text); border-radius: 0 0 5px 5px; }
+.rp-axis { display: flex; justify-content: space-between; padding: 4px 4px 0; color: var(--text-2); font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .rp-elapsed, .rp-playhead, .rp-ghost, .rp-step { transition: none; } }
