@@ -1843,7 +1843,13 @@ File: `js/i18n-areas.js`. New or changed visible strings. Existing strings that 
 | Last hour (Usage column) | Ultima ora |
 | Show all N / Show fewer | Mostra tutti (N) / Mostra meno |
 | Open project | Apri il progetto |
-| 1 project / N projects (approval mode groups) | 1 progetto / N progetti |
+| 1 project / N projects (approval mode groups; the group of projects without their own settings is labelled Default) | 1 progetto / N progetti |
+| Every project starts with the default. Only a project that differs has its own row. | Ogni progetto parte con le impostazioni predefinite. Solo un progetto che differisce ha una riga propria. |
+| Give a project its own settings (select) | Dai a un progetto impostazioni proprie |
+| Project that gets its own settings (label) | Progetto che riceve impostazioni proprie |
+| Use the default | Usa il predefinito |
+| Back to the default (simulated). | Tornato al predefinito (simulato). |
+| This project now has its own launch settings (simulated). | Questo progetto ha ora impostazioni di avvio proprie (simulato). |
 | + N more (names of projects in a group) | + altri N |
 
 ## Page overhaul A: Projects, Work, Replay, Chat, inspectors (2026-10-28): to review

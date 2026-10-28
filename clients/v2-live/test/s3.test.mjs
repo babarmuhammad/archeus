@@ -111,6 +111,19 @@ test('launch preview follows accounts and breakers; failover order is editable',
   assert.equal(A.setDefaultModel('nope').ok, false);
 });
 
+test('launch settings: one default, and a project has its own entry only when it differs', () => {
+  const [, A] = mk();
+  assert.equal(A.isOverride('archeus'), false);
+  assert.equal(A.launch('archeus'), A.launch('default'));
+  assert.equal(A.isOverride('notes'), true); assert.equal(A.launch('notes').mode, 'plan');
+  assert.equal(A.setLaunch('archeus', 'parallel', 4).ok, true);
+  assert.equal(A.isOverride('archeus'), true); assert.equal(A.launch('archeus').parallel, 4); assert.equal(A.launch('default').parallel, 2);
+  assert.equal(A.setLaunch('default', 'mode', 'plan').ok, true);
+  assert.equal(A.launch('nope-but-inherits').mode, 'plan'); assert.equal(A.launch('archeus').mode, 'ask');
+  assert.equal(A.resetLaunch('archeus').ok, true); assert.equal(A.launch('archeus'), A.launch('default'));
+  assert.equal(A.resetLaunch('archeus').ok, false); assert.equal(A.overrideLaunch('nope').ok, false); assert.equal(A.setLaunch('nope', 'mode', 'ask').ok, false);
+});
+
 test('digest: groups changes since the cursor, and marking it seen empties it', () => {
   const [s, A] = mk();
   run(s, 600);

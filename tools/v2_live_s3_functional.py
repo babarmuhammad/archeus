@@ -72,16 +72,18 @@ try:
         check('reconnect shows live', pg.locator('.ax-offline').count() == 0)
         # 7 usage live
         pg.evaluate("location.hash='#/usage'"); pg.wait_for_timeout(250)
-        before = pg.inner_text('[data-ax-meter="acc-work:session"] .us-val')
+        before = pg.inner_text('[data-ax-ring="acc-work:session"] .big')
         pg.evaluate("window.v2live.sim.play(); window.v2live.sim.advance(20*60000)"); pg.wait_for_timeout(500)
-        after = pg.inner_text('[data-ax-meter="acc-work:session"] .us-val')
-        check('usage meter moves with the simulation (%s -> %s)' % (before, after), before != after)
+        after = pg.inner_text('[data-ax-ring="acc-work:session"] .big')
+        check('usage ring moves with the simulation (%s -> %s)' % (before, after), before != after)
         # 8 accounts
         pg.evaluate("location.hash='#/accounts'"); pg.wait_for_timeout(250)
         pg.click('[data-key="md-claude-opus"] .btn'); pg.wait_for_timeout(250)
         check('make default model', pg.evaluate("window.v2live.areas.defaultModel()") == 'claude-opus')
-        pg.click('[data-key="ln-archeus"] summary'); pg.select_option('[data-key="ln-h-archeus"]', 'codex'); pg.wait_for_timeout(250)
-        check('launch harness change updates preview', 'Codex' in pg.inner_text('[data-key="ln-archeus"] .ln-prev'))
+        pg.click('[data-key="ln-default"] summary'); pg.select_option('[data-key="ln-h-default"]', 'codex'); pg.wait_for_timeout(250)
+        check('default launch change updates preview', 'Codex' in pg.inner_text('[data-key="ln-default"] .ln-prev'))
+        pg.select_option('[data-key="ln-add"]', 'archeus'); pg.wait_for_timeout(250)
+        check('a project can be given its own settings, and uses the default until then', pg.locator('[data-key="ln-archeus"]').count() == 1 and pg.evaluate("window.v2live.areas.launch('archeus').harness") == 'codex')
         pg.click('[aria-label="Move Claude Code, personal up"]'); pg.wait_for_timeout(250)
         check('failover order changes', pg.evaluate("window.v2live.areas.failover().order[0]") == 'acc-personal')
         # 9 digest

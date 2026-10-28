@@ -49,8 +49,9 @@ function fresh(S) {
     ],
     defaultModel: 'claude-sonnet',
     failover: { order: S.accounts.slice().sort((a, b) => a.priority - b.priority).map((a) => a.id), handoff: true, pauseOn: true, pauseAt: LOW_LINE, askHarness: true },
+    // One default for every project; a project has its own entry here only when its settings differ.
+    launchDefault: { harness: 'claude_code', model: 'claude-sonnet', account: 'auto', mode: 'ask', parallel: 2 },
     launch: {
-      archeus: { harness: 'claude_code', model: 'claude-sonnet', account: 'auto', mode: 'ask', parallel: 2 },
       notes: { harness: 'claude_code', model: 'claude-haiku', account: 'auto', mode: 'plan', parallel: 1 },
       ideas: { harness: 'codex', model: 'codex-main', account: 'acc-codex', mode: 'ask', parallel: 1 }
     },
@@ -146,12 +147,17 @@ function createAreas(sim) {
       if (i < 0 || j < 0 || j >= o.length) return { ok: false, reason: 'Already at the end' };
       [o[i], o[j]] = [o[j], o[i]]; o.forEach((a, k) => { by(live().accounts, a).priority = k + 1; }); log('owner', 'You changed the account order.'); return { ok: true };
     },
-    launch: (pid) => X.launch[pid],
+    launch: (pid) => X.launch[pid] || X.launchDefault,
+    isOverride: (pid) => !!X.launch[pid],
+    overrideLaunch(pid) { if (!by(live().projects, pid)) return { ok: false, reason: 'No such project' }; X.launch[pid] ||= { ...X.launchDefault }; log('owner', 'You gave ' + by(live().projects, pid).name + ' its own launch settings.'); return { ok: true }; },
+    resetLaunch(pid) { if (!X.launch[pid]) return { ok: false, reason: 'This project already uses the default' }; delete X.launch[pid]; log('owner', 'You set ' + by(live().projects, pid).name + ' back to the default launch settings.'); return { ok: true }; },
+    // 'default' edits the default itself; any other id edits (and creates) that project's own entry
     setLaunch(pid, key, v) {
-      const c = X.launch[pid]; if (!c) return { ok: false, reason: 'No such project' };
+      const project = by(live().projects, pid); if (!project && pid !== 'default') return { ok: false, reason: 'No such project' };
+      const c = pid === 'default' ? X.launchDefault : (X.launch[pid] ||= { ...X.launchDefault });
       c[key] = key === 'parallel' ? Number(v) : v;
       if (key === 'harness') { c.model = live().models.find((m) => m.harness === v).id; c.account = 'auto'; }
-      log('owner', 'You changed the launch setting "' + key + '" of ' + by(live().projects, pid).name + '.'); return { ok: true };
+      log('owner', 'You changed the launch setting "' + key + '" of ' + (project ? project.name : 'the default') + '.'); return { ok: true };
     },
     preview: (pid) => launchPreview(S(), X, pid),
 
@@ -211,7 +217,7 @@ export const IDEA_PATH = ['CAPTURED', 'UNDERSTOOD', 'EXPLORED', 'VALIDATED', 'CO
 
 // ---------- launch preview (which account a new mission would take) ----------
 export function launchPreview(S, X, pid) {
-  const c = X.launch[pid], har = S.harnesses.find((h) => h.id === c.harness), model = S.models.find((m) => m.id === c.model);
+  const c = X.launch[pid] || X.launchDefault, har = S.harnesses.find((h) => h.id === c.harness), model = S.models.find((m) => m.id === c.model);
   const out = { harness: c.harness, model: model ? model.label : c.model, account: null, tone: 'ok', note: '' };
   if (!har || har.state === 'MISSING') return Object.assign(out, { tone: 'blocked', note: harnessLabel(c.harness) + ' is not installed, so a mission here cannot start.' });
   if (har.breaker.state === 'open') return Object.assign(out, { tone: 'attention', note: 'The ' + har.label + ' spawn breaker is open, so a mission here waits and says "cannot start".' });

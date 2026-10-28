@@ -11,7 +11,7 @@ import { spineRow } from './spine.js';
 import { ask, ideaPath } from './inspectors.js';
 import { done, MCP_TONE } from './inspectors2.js';
 import { areasOf, breakerView, waitLabel, keptSummary, harnessLabel, METER_WORD } from './areas-model.js';
-import { pill, note, link, entity, hrefFor, sw, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
+import { pill, note, link, entity, hrefFor, sw, ringNode, patchRing, spark, eyebrow, TONE_OF_METER, TONE_OF_STATE } from './ax.js';
 
 function axHead(ctx, eyebrowText, title, lede) {
   const hd = head(ctx, title);
@@ -75,9 +75,10 @@ export function viewSecurity(ctx) {
   }));
   // What a run may do is the same for every project; only the approval mode differs, so it is grouped by mode instead of repeated per project.
   const privs = A.privileges().map((r) => ({ r, tone: PRIV[r.state][0], word: r.state === 'asks' ? 'Ask me each time' : PRIV[r.state][1] })).sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]);
-  const modeGroups = [...MODES.map(([id, label]) => [id, label, id === 'plan' ? 'paused' : 'attention', S.projects.filter((p) => A.launch(p.id)?.mode === id)]), ['unknown', 'Unknown', 'attention', S.projects.filter((p) => !A.launch(p.id))]].filter((g) => g[3].length);
+  const dflt = A.launch('default').mode, dfltTone = dflt === 'plan' ? 'paused' : 'attention', dfltWord = MODES.find(([id]) => id === dflt)[1];
+  const modeGroups = [...MODES.map(([id, label]) => [id, label, id === 'plan' ? 'paused' : 'attention', S.projects.filter((p) => A.isOverride(p.id) && A.launch(p.id).mode === id)]), ['default', 'Default', dfltTone, S.projects.filter((p) => !A.isOverride(p.id))]].filter((g) => g[3].length);
   const names = (ps) => (ps.length > 6 ? [ps.slice(0, 6).map((p) => p.name).join(', '), h('details', { class: 'sec-names' }, h('summary', null, '+ ' + (ps.length - 6) + ' more'), ps.slice(6).map((p) => p.name).join(', '))] : [ps.map((p) => p.name).join(', ')]);
-  const modes = modeGroups.map(([id, label, tone, ps]) => h('div', { class: 'sec-row sec-mode', 'data-key': 'sec-mode-' + id }, pill(tone, label), h('span', { class: 'sec-main' }, h('span', { class: 'sec-name' }, ps.length === 1 ? '1 project' : ps.length + ' projects'), h('span', { class: 'sec-detail' }, ...names(ps)))));
+  const modes = modeGroups.map(([id, label, tone, ps]) => h('div', { class: 'sec-row sec-mode', 'data-key': 'sec-mode-' + id }, pill(tone, label), h('span', { class: 'sec-main' }, h('span', { class: 'sec-name' }, ps.length === 1 ? '1 project' : ps.length + ' projects', id === 'default' ? ' · ' : null, id === 'default' ? h('span', null, dfltWord) : null), h('span', { class: 'sec-detail' }, ...names(ps)))));
   const boundaryRows = [['Execution isolation', sc.boundaries[0], 'Not confined', 'blocked'], ['Accounts and homes', sc.boundaries[4], 'Denied by policy only', 'attention'], ['Network', sc.boundaries[2], 'Not confined', 'blocked']].map(([title, b, state, tone]) => row(title, b.note, state, tone, '#/security/' + b.id));
   const events = A.log().filter((l) => ['hook', 'breaker'].includes(l.kind)).map((l) => {
     const hs = l.kind === 'breaker' ? S.harnesses.find((x) => l.text.includes(x.label)) : null;
@@ -156,33 +157,23 @@ export function viewHealth(ctx) {
 }
 
 // ---------- Usage ----------
-// A bar says how much is LEFT (it empties as it is used); lengths on one axis compare across accounts, which a ring cannot. The tick is the 20% line.
-function meter(m, label, live) {
-  const n = h('div', { class: 'us-meter', role: 'img', 'data-ax-meter': live, 'data-label': label }, h('span', { class: 'us-val' }), h('span', { class: 'us-track' }, h('i'), h('b', { class: 'tick' })));
-  patchMeter(n, m); return n;
-}
-function patchMeter(n, m) {
-  const unk = m.left == null; n.dataset.tone = TONE_OF_METER[m.key];
-  n.querySelector('.us-val').textContent = unk ? 'Unknown' : Math.round(m.left) + '%';
-  n.querySelector('i').style.transform = 'scaleX(' + (unk ? 0 : Math.min(100, m.left) / 100) + ')';
-  n.setAttribute('aria-label', n.dataset.label + ': ' + (unk ? 'unknown' : m.left + ' percent left. ' + METER_WORD[m.key]));
-}
+// A ring is what is LEFT and empties as it is used; its tick is the 20% line. Small and fixed in size, so a row per account scales.
 const USAGE_CAP = 12;
 export function viewUsage(ctx) {
   const A = areasOf(ctx.sim), rows = A.usage(), f = A.failover(), low = rows.filter((r) => ['low', 'critical', 'out'].includes(r.worst)), unk = rows.filter((r) => r.worst === 'unknown');
   const live = [], shown = ctx.ui.usAll ? rows : rows.slice(0, USAGE_CAP);
   const accRow = (r) => {
-    const s = meter(r.session, r.label + ', 5 hour window', r.id + ':session'), w = meter(r.week, r.label + ', week', r.id + ':week');
+    const s = ringNode({ left: r.session.left, key: r.session.key, label: r.label + ', 5 hour window', live: r.id + ':session' }), w = ringNode({ left: r.week.left, key: r.week.key, label: r.label + ', week', live: r.id + ':week' });
     live.push([r.id, s, w]);
     const msg = r.worst === 'unknown' ? 'No reading yet: Core has never started this account. Unknown is not zero.' : r.worst === 'out' ? 'Limit reached. New work uses another account.' : r.worst === 'critical' ? 'Almost out. New work prefers another account.' : 'At or under your ' + f.pauseAt + '% line. New work prefers another account.';
     return h('div', { class: 'us-row', 'data-tone': TONE_OF_METER[r.worst], 'data-key': 'us-' + r.id },
       h('div', { class: 'us-who' }, h('a', { class: 'us-name', href: hrefFor('account', r.id) }, r.label), h('span', { class: 'r-note' }, harnessLabel(r.harness) + ' · ' + r.role), badge('account_health', r.state)),
-      h('div', { class: 'us-m' }, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, '5 hour window'), s),
-      h('div', { class: 'us-m' }, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, 'Week'), w),
+      h('div', { class: 'us-m' }, s, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, '5 hour window')),
+      h('div', { class: 'us-m' }, w, h('span', { class: 'us-cap', 'aria-hidden': 'true' }, 'Week')),
       h('div', { class: 'us-st' }, pill(TONE_OF_METER[r.worst], METER_WORD[r.worst]), r.worst === 'ok' ? null : h('p', { class: 'ac-msg', 'data-ax': 'umsg:' + r.id }, msg), h('p', { class: 'r-note' }, r.resets || 'Reset time unknown')),
       h('div', { class: 'us-sp' }, r.hist.length > 2 ? spark(r.hist, 120, 32) : null));
   };
-  onTick(ctx, () => { const now = A.usage(); live.forEach(([id, s, w]) => { const r = now.find((x) => x.id === id); patchMeter(s, r.session); patchMeter(w, r.week); }); });
+  onTick(ctx, () => { const now = A.usage(); live.forEach(([id, s, w]) => { const r = now.find((x) => x.id === id); patchRing(s, r.session.left, r.session.key); patchRing(w, r.week.left, r.week.key); }); });
   const parts = [low.length && [low.length === 1 ? '1 account is low' : low.length + ' accounts are low', 'attention'], unk.length && [unk.length + ' unknown', 'unknown']].filter(Boolean);
   return h('div', { class: 'ax-page' }, h('div', { class: 'view ax-view' },
     top('Usage', parts.length ? parts : [['Every account has room', 'ok']], 'How much of each account is left, read only from the existing usage reader. Archeus shows a number only when it can source it.'),
@@ -192,7 +183,7 @@ export function viewUsage(ctx) {
     rows.length > USAGE_CAP ? h('button', { class: 'btn', type: 'button', 'data-key': 'us-all', onclick: () => { ctx.ui.usAll = !ctx.ui.usAll; ctx.render(); } }, ctx.ui.usAll ? 'Show fewer' : 'Show all ' + rows.length) : null,
     h('div', { class: 'ax-legend' }, h('span', { class: 'lg' }, h('b', { class: 'tk', 'aria-hidden': 'true' }), 'The tick is the 20% line'), h('span', { class: 'lg', 'data-tone': 'unknown' }, h('i', { 'aria-hidden': 'true' }), 'Unknown, never 0'), link('#/accounts', 'Failover rules', 'ax-link')),
     note('These are account percentages read about every 15 minutes, not the cost or tokens of one session.'),
-    dnote('H03', 'Usage: a bar is what is left and empties as it is used; the tick is your 20% line. "20% weekly usage" is read here as 20% left (owner to confirm). Unknown stays unknown.')));
+    dnote('H03', 'Usage: a ring is what is left and empties as it is used; the tick is your 20% line. "20% weekly usage" is read here as 20% left (owner to confirm). Unknown stays unknown.')));
 }
 
 // ---------- Accounts and models ----------
@@ -206,24 +197,24 @@ export function viewAccounts(ctx) {
     h('a', { class: 'a-main', href: hrefFor('account', r.id) }, h('span', { class: 'r-name' }, r.label), h('span', { class: 'r-note' }, harnessLabel(r.harness) + ' · ' + r.role + ' · ' + (r.session.left == null ? 'usage unknown' : r.session.left + '% of the session left'))),
     badge('account_health', r.state),
     h('span', { class: 'a-mv' }, h('button', { class: 'btn', type: 'button', 'aria-label': 'Move ' + r.label + ' up', disabled: i === 0 ? true : null, onclick: () => done(ctx, A.moveAccount(r.id, -1), 'Moved up in the failover order.') }, '↑'), h('button', { class: 'btn', type: 'button', 'aria-label': 'Move ' + r.label + ' down', disabled: i === rows.length - 1 ? true : null, onclick: () => done(ctx, A.moveAccount(r.id, 1), 'Moved down in the failover order.') }, '↓')));
-  const launch = (p) => {
-    const c = A.launch(p.id), pv = A.preview(p.id), har = S.harnesses.filter((x) => x.state !== 'MISSING');
-    const set = (k) => (v) => { done(ctx, A.setLaunch(p.id, k, v), 'Launch setting saved (simulated).'); };
-    return h('details', { class: 'ln-row', 'data-tone': pv.tone, 'data-key': 'ln-' + p.id, open: opened[p.id] ? true : null, ontoggle: toggler(opened, p.id, false) },
-      h('summary', null, h('span', { class: 'ln-name' }, p.name), pill(pv.tone, pv.tone === 'ok' ? 'Can start' : pv.tone === 'blocked' ? 'Cannot start' : 'Waits'), chev(),
+  const launch = (id, name) => {
+    const c = A.launch(id), pv = A.preview(id), har = S.harnesses.filter((x) => x.state !== 'MISSING');
+    const set = (k) => (v) => { done(ctx, A.setLaunch(id, k, v), 'Launch setting saved (simulated).'); };
+    return h('details', { class: 'ln-row', 'data-tone': pv.tone, 'data-key': 'ln-' + id, open: opened[id] ? true : null, ontoggle: toggler(opened, id, false) },
+      h('summary', null, h('span', { class: 'ln-name' }, name), pill(pv.tone, pv.tone === 'ok' ? 'Can start' : pv.tone === 'blocked' ? 'Cannot start' : 'Waits'), chev(),
         h('span', { class: 'ln-prev' }, h('b', null, 'Next mission: '), harnessLabel(pv.harness) + ' · ' + pv.model + (pv.account ? ' · ' + pv.account : ''))),
       h('div', { class: 'ln-body' }, h('p', { class: 'ax-note' }, pv.note),
         h('div', { class: 'ax-form' },
-          h('label', null, h('span', null, 'Harness'), sel('ln-h-' + p.id, c.harness, har.map((x) => [x.id, x.label]), set('harness'), 'Harness for ' + p.name)),
-          h('label', null, h('span', null, 'Model'), sel('ln-m-' + p.id, c.model, models.filter((m) => m.harness === c.harness).map((m) => [m.id, m.label]), set('model'), 'Model for ' + p.name)),
-          h('label', null, h('span', null, 'Account'), sel('ln-a-' + p.id, c.account, [['auto', 'Automatic, by failover order'], ...st.filter((a) => a.harness === c.harness).map((a) => [a.id, a.label])], set('account'), 'Account for ' + p.name)),
-          h('label', null, h('span', null, 'Approvals'), sel('ln-d-' + p.id, c.mode, MODES, set('mode'), 'Approval mode for ' + p.name)),
-          h('label', null, h('span', null, 'Runs at once'), sel('ln-p-' + p.id, String(c.parallel), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], set('parallel'), 'Runs at once for ' + p.name)),
+          h('label', null, h('span', null, 'Harness'), sel('ln-h-' + id, c.harness, har.map((x) => [x.id, x.label]), set('harness'), 'Harness for ' + name)),
+          h('label', null, h('span', null, 'Model'), sel('ln-m-' + id, c.model, models.filter((m) => m.harness === c.harness).map((m) => [m.id, m.label]), set('model'), 'Model for ' + name)),
+          h('label', null, h('span', null, 'Account'), sel('ln-a-' + id, c.account, [['auto', 'Automatic, by failover order'], ...st.filter((a) => a.harness === c.harness).map((a) => [a.id, a.label])], set('account'), 'Account for ' + name)),
+          h('label', null, h('span', null, 'Approvals'), sel('ln-d-' + id, c.mode, MODES, set('mode'), 'Approval mode for ' + name)),
+          h('label', null, h('span', null, 'Runs at once'), sel('ln-p-' + id, String(c.parallel), [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']], set('parallel'), 'Runs at once for ' + name)),
           h('p', { class: 'ax-note' }, 'Isolation: required. It cannot be switched off here.')),
-        h('a', { class: 'ax-link', href: hrefFor('project', 'prj-' + p.id) }, 'Open project')));
+        id === 'default' ? null : h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', 'data-key': 'ln-reset-' + id, onclick: () => { delete opened[id]; done(ctx, A.resetLaunch(id), 'Back to the default (simulated).'); } }, 'Use the default'), h('a', { class: 'ax-link', href: hrefFor('project', 'prj-' + id) }, 'Open project'))));
   };
   const modelRow = (m) => { const d = A.defaultModel() === m.id; return h('div', { class: 'ax-model', 'data-default': d ? 'true' : 'false', 'data-key': 'md-' + m.id }, h('a', { class: 'm-main', href: hrefFor('model', 'mdl-' + m.id) }, h('span', { class: 'r-name' }, m.label), h('span', { class: 'r-note' }, harnessLabel(m.harness) + ' · tier ' + m.tier)), d ? pill('ok', 'Default') : h('button', { class: 'btn', type: 'button', onclick: () => done(ctx, A.setDefaultModel(m.id), m.label + ' is now the default (simulated).') }, 'Make default')); };
-  const launches = S.projects.filter((p) => A.launch(p.id));
+  const overrides = S.projects.filter((p) => A.isOverride(p.id)), inheriting = S.projects.filter((p) => !A.isOverride(p.id));
   return h('div', { class: 'ax-page' }, h('div', { class: 'view ax-view' },
     top('Accounts', [[next ? next.label + ' takes the next mission' : 'No account can take new work', next ? null : 'blocked']], 'Three accounts, four models, one default, and the rules that decide which account takes the next mission.'),
     h('div', { class: 'ac-layout' },
@@ -236,7 +227,9 @@ export function viewAccounts(ctx) {
           fo('never', 'Never run without isolation', 'There is no unisolated fallback, whatever else fails.', true)))),
       h('div', { class: 'ac-col' },
         sect('Models', models.length, 'The default is what a new mission asks for.', dim(...models.map(modelRow)), h('p', { class: 'ax-note' }, 'This is the model Archeus asks for, not proof of which model the provider served.')),
-        sect('Launch settings per project', launches.length, 'What a new mission starts with, and what would happen right now.', dim(...launches.map(launch))))),
+        sect('Launch settings per project', null, 'Every project starts with the default. Only a project that differs has its own row.',
+          dim(launch('default', 'Default'), ...overrides.map((p) => launch(p.id, p.name))),
+          inheriting.length ? sel('ln-add', '', [['', 'Give a project its own settings'], ...inheriting.map((p) => [p.id, p.name])], (v) => { if (v) { opened[v] = true; done(ctx, A.overrideLaunch(v), 'This project now has its own launch settings (simulated).'); } }, 'Project that gets its own settings') : null))),
     dnote('H10', 'Accounts and models: three accounts in a failover order, four models with one default, per-project launch settings. No token is shown or handled.')));
 }
 
