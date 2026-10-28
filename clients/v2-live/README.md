@@ -77,6 +77,7 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 
 ## Known limits
 
+- The phone shell flips for a phone held sideways through CSS container style queries (`style(--phone: 1)` beside the width test). That needs Chrome or Edge 111, Safari 18 or a recent Firefox; in an older browser the desktop layout rules are dropped.
 - Everything is a fixture. Replies are scripted, usage is made up, nothing runs and no Core, account or token is touched.
 - Italian was written by the builders and is not native-checked (`IT-REVIEW.md`).
 - The Light look is approved as is by the owner (2026-10-26); the contrast of every route is checked, but not on a real display.
