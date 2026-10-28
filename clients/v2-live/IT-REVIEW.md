@@ -1,5 +1,21 @@
 # Italian review list for V2 Live
 
+## Replay structure redesign — 2026-10-27
+
+Status: to review. New pairs in `js/i18n.js`; Italian has not been checked by a native speaker.
+
+| English | Italian |
+|---|---|
+| Timeline overview | Panoramica della cronologia |
+| Recorded events | Eventi registrati |
+| Source record | Record di origine |
+| Reference and limits | Riferimenti e limiti |
+| Close evidence | Chiudi le prove |
+| Inspect selected event | Esamina l’evento selezionato |
+| No events in this category. | Nessun evento in questa categoria. |
+| Read-only history. Select an event to inspect what Core recorded. | Cronologia in sola lettura. Seleziona un evento per esaminare ciò che il Core ha registrato. |
+| Recovery proposals · SIMULATED | Proposte di recupero · SIMULATO |
+
 Every Italian string in V2 Live was written by the builders (there is no native source). All 1364 pairs below are **to review**. English is the source; fixture words that stand in for Core's own text (mission titles, branches, project names, tool names, Replay categories) and the terminal view's program text stay English by design.
 
 Where a pair is a pattern (a number or name inside the sentence) the dictionary also holds regex rules in `js/i18n.js` and `js/i18n-areas.js` (`RULES`); those are not listed pair by pair here. Core state words (Waiting for approval, Executing, ...) come from `core-words.js` and are English in Core; their Italian is in the dictionary above.

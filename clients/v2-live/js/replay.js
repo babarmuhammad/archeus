@@ -1,11 +1,12 @@
 // Replay and Recovery (S4): what Core recorded, step by step, from rows and events. Nothing here plays by itself or re-runs anything.
 // Recovery options only create an approval card; approving changes a receipt and the simulation through its ordinary actions, never the evidence.
-import { h, clear } from './dom.js';
+import { h } from './dom.js';
 import { glyph } from './icons.js';
 import { head, dnote, panel, empty } from './views.js';
 import { L, C } from './chat-cards.js';
 import { tp } from '../chat-engine.js';
 import { clockLabel } from '../sim.js';
+import { spineInspector } from './spine.js';
 import { CATS, CAT_DEF, STRENGTH, VOCAB, buildReplay, recovery, FIVE_ROWS, GAPS, NEVER, vocabCounts, whyOf } from '../replay-model.js';
 
 const GLYPH = { INTENDED: '○', AUTHORIZED: '◇', RECORDED: '●', 'MAY-HAVE-TAKEN-EFFECT': '◐', UNCERTAIN: '?', SUSPENDED: '‖', RECONCILED: '✓', NONE: '–', UNKNOWN: '?' };
@@ -20,37 +21,84 @@ export function viewReplay(ctx) {
   const sim = ctx.sim, st = sim.state, rp = rpState(ctx);
   const ms = Object.values(st.missions);
   const m = st.missions[ctx.route.id] || st.missions['m-date'];
-  if (rp.mission !== m.id) { rp.mission = m.id; rp.rec = null; rp.receipt = null; rp.filter = null; ctx.ui.replaySel = null; }
+  if (rp.mission !== m.id) { rp.mission = m.id; rp.rec = null; rp.receipt = null; rp.filter = null; rp.evidenceOpen = false; rp.tlTop = 0; rp.cursorPos = null; rp.lastSel = null; rp.evidenceN = null; rp.evidenceTrigger = null; ctx.ui.replaySel = null; }
   const r = buildReplay(sim, m.id);
   const shown = r.steps.filter((x) => !rp.filter || x.category === rp.filter);
   const selN = ctx.ui.replaySel == null ? r.steps.length : ctx.ui.replaySel;           // 1-based step number
-  const row = r.steps.find((x) => x.n === selN) || r.steps[r.steps.length - 1];
-  const pick = (n) => { ctx.ui.replaySel = n; rp.rec = null; rp.receipt = null; ctx.render(); };
+  const row = shown.find((x) => x.n === selN) || shown[shown.length - 1];
+  const pick = (n, evidence = true) => { ctx.ui.replaySel = n; rp.rec = null; rp.receipt = null; rp.evidenceOpen = evidence; rp.evidenceTrigger = document.activeElement?.dataset?.key; ctx.render(); };
   const idx = row ? shown.findIndex((x) => x.n === row.n) : -1;
   const move = (d) => { const t = shown[Math.max(0, Math.min(shown.length - 1, (idx < 0 ? 0 : idx) + d))]; if (t) pick(t.n); };
 
-  const timeline = r.steps.length ? h('div', { class: 'tl rtl', role: 'listbox', 'aria-label': L('Recorded steps', 'Passi registrati'), 'aria-activedescendant': row ? 'rs-' + row.n : null }, ...shown.map((x) => h('button', {
-    class: 'tl-row', type: 'button', role: 'option', id: 'rs-' + x.n, 'aria-selected': row && x.n === row.n ? 'true' : 'false', 'aria-current': row && x.n === row.n ? 'true' : null, 'data-cat': x.category, 'data-key': 'tl-' + x.n, onclick: () => pick(x.n),
-    onkeydown: (e) => { const k = e.key; if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'Home' || k === 'End') { e.preventDefault(); const i = shown.indexOf(x), t = k === 'Home' ? shown[0] : k === 'End' ? shown[shown.length - 1] : shown[Math.max(0, Math.min(shown.length - 1, i + (k === 'ArrowDown' ? 1 : -1)))]; ctx.ui.replaySel = t.n; rp.rec = null; rp.receipt = null; ctx.render(); const el = document.getElementById('rs-' + t.n); if (el) el.focus(); } } },
-    h('span', { class: 'tm' }, x.time), h('span', { class: 'mn' }, h('b', null, x.machine + ' ' + x.state.replace(/_/g, ' ')), catChip(x.category), x.settled_by !== 'unknown' ? h('span', { class: 'sp-text', style: 'padding:0' }, L('settled by {w}', 'chiuso da {w}', { w: x.settled_by })) : null)))) : empty(L('No recorded steps for this mission.', 'Nessun passo registrato per questa missione.'));
+  const entering = rp.enterMission !== m.id || rp.enterFilter !== rp.filter;
+  rp.enterMission = m.id; rp.enterFilter = rp.filter;
+  const timeline = h('div', { class: 'rp-events', role: 'group', 'aria-label': 'Recorded events' },
+    ...shown.map((x, i) => h('button', {
+      class: 'rp-event' + (entering ? ' rp-enter' : ''), type: 'button', id: 'rs-' + x.n,
+      style: '--delay:' + Math.min(i * 20, 100) + 'ms', 'aria-pressed': row && x.n === row.n ? 'true' : 'false',
+      'data-cat': x.category, 'data-key': 'tl-' + x.n, onclick: () => pick(x.n),
+      onkeydown: (e) => {
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+        e.preventDefault();
+        const i = shown.indexOf(x), t = e.key === 'Home' ? shown[0] : e.key === 'End' ? shown[shown.length - 1] : shown[Math.max(0, Math.min(shown.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+        pick(t.n, false); document.getElementById('rs-' + t.n)?.focus({ preventScroll: true });
+      }
+    }, h('span', { class: 'rp-time' }, x.time), h('span', { class: 'rp-event-copy' },
+      h('b', null, x.machine + ' ' + x.state.replace(/_/g, ' ')), catChip(x.category),
+      h('span', { class: 'rp-source' }, x.id)), h('span', { class: 'rp-number', 'aria-hidden': 'true' }, String(x.n)))),
+    !shown.length ? empty(r.steps.length ? 'No events in this category.' : L('No recorded steps for this mission.', 'Nessun passo registrato per questa missione.')) : null);
+  timeline.addEventListener('scroll', () => { rp.tlTop = timeline.scrollTop; });
+  ctx.mounts.push(() => {
+    timeline.scrollTop = rp.tlTop || 0;
+    if (row && rp.lastSel !== row.n) {
+      const el = document.getElementById('rs-' + row.n);
+      if (el) {
+        const top = el.offsetTop, bottom = top + el.offsetHeight;
+        if (top < timeline.scrollTop) timeline.scrollTop = top;
+        else if (bottom > timeline.scrollTop + timeline.clientHeight) timeline.scrollTop = bottom - timeline.clientHeight;
+      }
+    }
+    rp.lastSel = row ? row.n : null;
+  });
+  const filters = h('div', { class: 'chips rp-filters', role: 'group', 'aria-label': L('Filter by category', 'Filtra per categoria') },
+    h('button', { class: 'chip', type: 'button', 'data-key': 'rp-all', 'aria-pressed': !rp.filter ? 'true' : 'false', onclick: () => { rp.filter = null; rp.tlTop = 0; ctx.render(); } }, L('All', 'Tutte') + ' ' + r.steps.length),
+    ...CATS.map((c) => h('button', { class: 'chip', type: 'button', 'data-cat': c, 'data-key': 'rp-filter-' + c, 'aria-pressed': rp.filter === c ? 'true' : 'false', onclick: () => { rp.filter = rp.filter === c ? null : c; rp.tlTop = 0; ctx.render(); } },
+      h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[c]), ' ' + c + ' ', h('span', { class: 'rp-count' }, String(r.counts[c] || 0)))));
 
-  if (timeline.classList) {
-    timeline.addEventListener('scroll', () => { rp.tlTop = timeline.scrollTop; });
-    ctx.mounts.push(() => {
-      timeline.scrollTop = rp.tlTop || 0;
-      if (row && rp.lastSel !== row.n) { const el = document.getElementById('rs-' + row.n); if (el) { const t = el.offsetTop, b = t + el.offsetHeight; if (t < timeline.scrollTop) timeline.scrollTop = t - 8; else if (b > timeline.scrollTop + timeline.clientHeight) timeline.scrollTop = b - timeline.clientHeight + 8; } }
-      rp.lastSel = row ? row.n : null;
-    });
-  }
-  const filters = h('div', { class: 'chips rfilters', role: 'group', 'aria-label': L('Filter by category', 'Filtra per categoria') }, h('button', { class: 'chip', type: 'button', 'aria-pressed': !rp.filter ? 'true' : 'false', onclick: () => { rp.filter = null; ctx.render(); } }, L('All', 'Tutte') + ' ' + r.steps.length),
-    ...CATS.filter((c) => r.counts[c]).map((c) => h('button', { class: 'chip', type: 'button', 'aria-pressed': rp.filter === c ? 'true' : 'false', onclick: () => { rp.filter = rp.filter === c ? null : c; ctx.render(); } }, GLYPH[c] + ' ' + c + ' ' + r.counts[c])));
-
-  const scrub = h('input', { type: 'range', min: 1, max: Math.max(1, r.steps.length), value: row ? row.n : 1, 'aria-label': L('Step cursor. Arrows step, Home and End jump', 'Cursore dei passi. Le frecce spostano, Home e Fine saltano'), 'aria-valuetext': row ? row.time + ' ' + row.machine + ' ' + row.state : '', disabled: r.steps.length ? null : true, oninput: (e) => pick(Number(e.target.value)) });
-
-  const tlPanel = panel(m.title, r.steps.length, h('p', { class: 'lede' }, L('What Core recorded, in order. Each step carries a Replay category and, for a settlement, who settled it. Nothing here plays by itself and nothing can be re-run.', 'Ciò che il Core ha registrato, in ordine. Ogni passo ha una categoria Replay e, per una chiusura, chi l\'ha chiusa. Qui nulla parte da solo e nulla si può rieseguire.')),
-    h('div', { class: 'body rtools' }, filters, h('div', { class: 'scrub' }, h('label', { class: 'sp-text', style: 'padding:0' }, L('Cursor', 'Cursore')), scrub, h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, L('Earlier', 'Prima')), h('button', { class: 'btn', type: 'button', disabled: idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, L('Later', 'Dopo'))))),
-    timeline,
+  const firstAt = r.steps[0]?.at || 0, duration = (r.steps[r.steps.length - 1]?.at || firstAt) - firstAt;
+  const position = (x) => duration ? (x.at - firstAt) / duration : (x.n - 1) / Math.max(1, r.steps.length - 1);
+  const cursorPos = row ? position(row) : 0;
+  const playhead = h('span', { class: 'rp-playhead', 'aria-hidden': 'true' });
+  const plot = h('div', { class: 'rp-plot', 'aria-hidden': 'true' },
+    ...r.steps.map((x) => h('span', { class: 'rp-tick', 'data-cat': x.category, 'data-dim': rp.filter && x.category !== rp.filter ? 'true' : null, style: 'left:' + position(x) * 100 + '%;top:' + (12 + (x.n % 3) * 12) + 'px' }, GLYPH[x.category])), playhead);
+  const scrub = h('input', { type: 'range', min: 0, max: Math.max(0, shown.length - 1), value: Math.max(0, idx), 'data-key': 'rp-cursor',
+    'aria-label': L('Step cursor. Arrows step, Home and End jump', 'Cursore dei passi. Le frecce spostano, Home e Fine saltano'),
+    'aria-valuetext': row ? row.time + ' ' + row.machine + ' ' + row.state : '', disabled: shown.length ? null : true,
+    oninput: (e) => {
+      const next = shown[Number(e.target.value)];
+      if (next) { playhead.style.transform = 'translateX(' + position(next) * plot.clientWidth + 'px)'; e.target.setAttribute('aria-valuetext', next.time + ' ' + next.machine + ' ' + next.state); }
+    }, onchange: (e) => { const next = shown[Number(e.target.value)]; if (next) pick(next.n, false); } });
+  const overview = h('section', { class: 'rp-overview', 'aria-label': 'Timeline overview' },
+    h('div', { class: 'rp-heading' }, h('h2', null, m.title), h('a', { class: 'btn', href: '#/work/' + m.id }, L('Mission', 'Missione'))),
+    h('p', { class: 'rp-intro' }, 'Read-only history. Select an event to inspect what Core recorded.'),
+    h('div', { class: 'rp-stations' }, spineInspector(m.state, m.held_from)), plot, scrub,
+    h('div', { class: 'rp-cursor-tools' }, h('span', { class: 'rp-time' }, r.steps[0]?.time || '—'),
+      h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', 'data-key': 'rp-earlier', disabled: idx <= 0 ? true : null, onclick: () => move(-1) }, L('Earlier', 'Prima')),
+        h('span', { class: 'rp-position', role: 'status' }, row ? row.n + ' / ' + r.steps.length + ' · ' + row.time : '0 / ' + r.steps.length),
+        h('button', { class: 'btn', type: 'button', 'data-key': 'rp-later', disabled: idx < 0 || idx >= shown.length - 1 ? true : null, onclick: () => move(1) }, L('Later', 'Dopo'))),
+      h('span', { class: 'rp-time' }, r.steps[r.steps.length - 1]?.time || '—')),
+    h('button', { class: 'btn rp-inspect', type: 'button', 'data-key': 'rp-inspect', disabled: !row, onclick: () => pick(row.n) }, 'Inspect selected event'),
+    filters,
     r.history.answer === 'UNKNOWN' ? h('p', { class: 'note' }, L('Older steps were pruned from the event log, so anything before them is UNKNOWN, not “nothing happened”.', 'I passi più vecchi sono stati eliminati dal registro eventi, quindi ciò che li precede è SCONOSCIUTO, non “non è successo nulla”.')) : null);
+  ctx.mounts.push(() => {
+    const previous = rp.cursorPos ?? cursorPos;
+    playhead.style.transition = 'none';
+    playhead.style.transform = 'translateX(' + previous * plot.clientWidth + 'px)';
+    playhead.getBoundingClientRect();
+    playhead.style.transition = '';
+    playhead.style.transform = 'translateX(' + cursorPos * plot.clientWidth + 'px)';
+    rp.cursorPos = cursorPos;
+  });
 
   const stepPanel = panel(L('Selected step', 'Passo selezionato'), null, row ? h('div', { class: 'body' },
     h('p', { class: 'ctitle' }, row.machine + ' ' + row.state.replace(/_/g, ' ')),
@@ -60,6 +108,8 @@ export function viewReplay(ctx) {
       h('dt', null, L('Trigger', 'Causa')), h('dd', null, row.trigger || L('none recorded', 'nessuna registrata')),
       h('dt', null, L('Recorded by', 'Registrato da')), h('dd', null, row.actor === 'device' ? L('you (device)', 'te (dispositivo)') : row.actor === 'core' ? L('Core', 'Core') : L('unknown', 'sconosciuto')),
       h('dt', null, L('Settled by', 'Chiuso da')), h('dd', null, row.settled_by === 'unknown' ? h('span', { class: 'unk' }, L('unknown', 'sconosciuto')) : row.settled_by, h('span', { class: 'sp-text cdef' }, L('Read only, from the recorded edge and its event actor ({r}). Not a new record.', 'Sola lettura, dal passaggio registrato e dal suo attore ({r}). Non è un nuovo record.', { r: reasonText(row.settled_why) })))),
+    h('h3', { class: 'gh' }, 'Source record'),
+    h('p', { class: 'rp-record mono' }, row.machine + ' · ' + row.id + ' · seq ' + row.seq),
     h('h3', { class: 'gh' }, L('Evidence', 'Prove')),
     h('ul', { class: 'evid' }, ...row.evidence.map((e) => h('li', null, h('span', { class: 'el' }, nm(e.label)), h('span', { class: 'ev' }, nm(e.value)), strChip(e.strength)))),
     h('p', { class: 'sp-text' }, L('A report is never the completion signal. A decision is never proof that it happened.', 'Un rapporto non è mai il segnale di completamento. Una decisione non è mai la prova che sia avvenuta.'))) : empty(L('Nothing selected.', 'Niente di selezionato.')));
@@ -75,15 +125,15 @@ export function viewReplay(ctx) {
       const rr = ctx.act(o.act, m.id); rp.receipt = rr.ok ? L('Approved: {n}. The simulation moves on through its own steps; the evidence above is unchanged.', 'Approvata: {n}. La simulazione prosegue con i suoi passi; le prove qui sopra restano invariate.', { n: C(o.title).toLowerCase() }) : L('Not done: {r}', 'Non fatto: {r}', { r: rr.reason }); }
     rp.rec = null; ctx.render();
   };
-  const optCard = (o) => h('article', { class: 'ccard rcv', 'data-kind': 'recovery', 'data-ok': o.ok ? 'true' : 'false' }, h('p', { class: 'ctitle' }, C(o.title)),
+  const optCard = (o) => h('article', { class: 'ccard rcv', 'data-kind': 'recovery', 'data-ok': o.ok ? 'true' : 'false' }, h('span', { class: 'cat rp-sim' }, L('SIMULATED', 'SIMULATO')), h('p', { class: 'ctitle' }, C(o.title)),
     h('div', { class: 'wl' }, h('div', null, h('h4', null, L('Archeus would', 'Archeus farebbe')), h('ul', null, ...o.would.map((w) => h('li', null, C(w))))), h('div', null, h('h4', null, L('Archeus will not', 'Archeus non farà')), h('ul', null, ...o.wont.map((w) => h('li', null, C(w)))))),
     o.ok ? h('div', { class: 'actions' }, h('button', { class: 'btn', type: 'button', onclick: () => propose(o) }, L('Draft a proposal', 'Prepara una proposta'))) : h('p', { class: 'sp-text why' }, C(o.why)));
   const pc = rp.rec && rp.rec.step === (row && row.n) ? (() => { const o = opts.find((x) => x.id === rp.rec.id); const ta = h('textarea', { class: 'cta', rows: 3, 'aria-label': o.id === 'ask' ? L('Question for you (unsent)', 'Domanda per te (non inviata)') : L('Changed instructions', 'Istruzioni modificate'), oninput: (e) => { rp.rec.text = e.target.value; } }); ta.value = rp.rec.text;
     return h('div', { class: 'ccard', 'data-kind': 'proposal' }, h('p', { class: 'kick', 'data-role': 'needs_you' }, h('span', { class: 'g', 'aria-hidden': 'true' }, glyph('needs_you')), h('span', null, L('Proposed · nothing has happened', 'Proposta · non è successo nulla'))),
-      h('p', { class: 'ctitle' }, C(o.title)), h('p', { class: 'sp-text' }, L('Bound to {t}, step {n}. Nothing will run or be sent until you approve. A retry is a new execution id.', 'Legata a {t}, passo {n}. Non girerà né sarà inviato nulla finché non approvi. Un nuovo tentativo è una nuova esecuzione.', { t: m.title, n: rp.rec.step })),
+      h('span', { class: 'cat rp-sim' }, L('SIMULATED', 'SIMULATO')), h('p', { class: 'ctitle' }, C(o.title)), h('p', { class: 'sp-text' }, L('Bound to {t}, step {n}. Nothing will run or be sent until you approve. A retry is a new execution id.', 'Legata a {t}, passo {n}. Non girerà né sarà inviato nulla finché non approvi. Un nuovo tentativo è una nuova esecuzione.', { t: m.title, n: rp.rec.step })),
       o.id === 'resume' ? null : h('label', { class: 'cfield' }, h('span', null, o.id === 'ask' ? L('Question for you (unsent)', 'Domanda per te (non inviata)') : L('Changed instructions', 'Istruzioni modificate')), ta),
       h('div', { class: 'actions' }, h('button', { class: 'btn primary', type: 'button', onclick: approve }, L('Approve proposal', 'Approva la proposta')), h('button', { class: 'btn', type: 'button', onclick: () => { rp.rec = null; ctx.render(); } }, L('Cancel', 'Annulla'))), h('p', { class: 'sp-text' }, L('This is a simulated decision: nothing is run, sent or spent.', 'Decisione simulata: nulla viene eseguito, inviato o speso.'))); })() : null;
-  const recPanel = panel(L('Recovery', 'Recupero'), null, h('p', { class: 'lede' }, L('Options depend on where the mission is now. Each one makes an approval card; none re-runs, resumes or reconciles by itself.', 'Le opzioni dipendono da dove si trova ora la missione. Ognuna crea una scheda di approvazione; nessuna riesegue, riprende o riconcilia da sola.')),
+  const recPanel = panel('Recovery proposals · SIMULATED', null, h('p', { class: 'lede' }, L('Options depend on where the mission is now. Each one makes an approval card; none re-runs, resumes or reconciles by itself.', 'Le opzioni dipendono da dove si trova ora la missione. Ognuna crea una scheda di approvazione; nessuna riesegue, riprende o riconcilia da sola.')),
     h('div', { class: 'body rcvs' }, ...opts.map(optCard), pc, rp.receipt ? h('p', { class: 'receipt', role: 'status' }, rp.receipt) : null,
       h('div', { class: 'never' }, h('h4', null, L('What Archeus will not do, ever', 'Cosa Archeus non farà, mai')), h('ul', null, ...NEVER.map((n) => h('li', null, C(n)))))));
 
@@ -100,10 +150,10 @@ export function viewReplay(ctx) {
   const five = panel(L('Five example rows', 'Cinque righe di esempio'), 5, h('p', { class: 'lede' }, L('The strategy’s example day, each row answered with what Core records today. An example, not this mission.', 'La giornata d\'esempio della strategia, ogni riga con ciò che il Core registra oggi. Un esempio, non questa missione.')),
     h('div', { class: 'body fiverows' }, ...FIVE_ROWS.map((f) => h('article', { class: 'five' }, h('p', { class: 'ctitle' }, h('span', { class: 'mono' }, f.t), ' ', C(f.title)), h('p', { class: 'sp-text q' }, '“' + C(f.says) + '”'), h('ul', { class: 'evid' }, ...f.parts.map(([s, t]) => h('li', null, h('span', { class: 'ev', style: 'grid-column:1/3' }, C(t)), strChip(s))))))));
   const legend = panel(L('Categories', 'Categorie'), CATS.length, h('div', { class: 'body' }, ...CATS.map((c) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, catChip(c)), h('span', { class: 'b cd' }, C(CAT_DEF[c]))))));
-  const recs = h('details', { class: 'panel recs' }, h('summary', null, h('span', { class: 'gt' }, L('Records now', 'Record attuali')), h('span', { class: 'n' }, String(r.records.length))), h('div', { class: 'body' }, ...r.records.map((x) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, h('span', { class: 'mono' }, x.machine + ' ' + x.id), h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, x.state.replace(/_/g, ' ') + ' · ' + reasonText(x.reason))), catChip(x.answer)))));
+  const recs = h('details', { class: 'panel recs', open: rp.recordsOpen, ontoggle: (e) => { rp.recordsOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-records' }, h('span', { class: 'gt' }, L('Records now', 'Record attuali')), h('span', { class: 'n' }, String(r.records.length))), h('div', { class: 'body' }, ...r.records.map((x) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, h('span', { class: 'mono' }, x.machine + ' ' + x.id), h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, x.state.replace(/_/g, ' ') + ' · ' + reasonText(x.reason))), catChip(x.answer)))));
   const vc = vocabCounts(), machines = Object.keys(VOCAB);
-  const vsel = h('select', { 'aria-label': L('Machine', 'Macchina'), onchange: (e) => { rp.machine = e.target.value; ctx.render(); } }, ...machines.map((x) => h('option', { value: x }, x + ' (' + VOCAB[x].length + ')'))); vsel.value = rp.machine;
-  const vocab = h('details', { class: 'panel vocab' }, h('summary', null, h('span', { class: 'gt' }, L('The vocabulary', 'Il vocabolario')), h('span', { class: 'n' }, vc.total + ' ' + L('states', 'stati') + ' · ' + vc.machines + ' ' + L('machines', 'macchine'))),
+  const vsel = h('select', { 'aria-label': L('Machine', 'Macchina'), 'data-key': 'rp-machine', onchange: (e) => { rp.machine = e.target.value; ctx.render(); } }, ...machines.map((x) => h('option', { value: x }, x + ' (' + VOCAB[x].length + ')'))); vsel.value = rp.machine;
+  const vocab = h('details', { class: 'panel vocab', open: rp.vocabOpen, ontoggle: (e) => { rp.vocabOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-vocab' }, h('span', { class: 'gt' }, L('The vocabulary', 'Il vocabolario')), h('span', { class: 'n' }, vc.total + ' ' + L('states', 'stati') + ' · ' + vc.machines + ' ' + L('machines', 'macchine'))),
     h('div', { class: 'body' }, h('p', { class: 'sp-text', style: 'padding:0 0 8px' }, L('One table in Core covers every state of every machine; a state with no entry answers UNKNOWN. execution.ENDED_REJECTED is RECORDED (owner clarification, 2026-10-25). Source notes stay in English.', 'Una sola tabella nel Core copre ogni stato di ogni macchina; uno stato senza voce risponde SCONOSCIUTO. execution.ENDED_REJECTED è REGISTRATO (chiarimento del proprietario, 2026-10-25). Le note sulle fonti restano in inglese.')),
       h('div', { class: 'sel-wrap', style: 'padding:0 0 8px' }, h('label', null, L('Machine', 'Macchina')), vsel),
       h('div', { class: 'vlist' }, ...VOCAB[rp.machine].map(([s, c]) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, h('span', { class: 'mono' }, s), h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, whyOf(rp.machine, s).slice(0, 160))), catChip(c)))),
@@ -111,10 +161,28 @@ export function viewReplay(ctx) {
   const gaps = panel(L('Not recorded', 'Non registrato'), GAPS.length, h('div', { class: 'body' }, h('ul', { class: 'gaps' }, ...GAPS.map((g) => h('li', null, h('span', null, C(g)), strChip('NOT_RECORDED'))))), h('p', { class: 'note' }, L('Not every external effect can be reversed.', 'Non ogni effetto esterno si può annullare.')));
   const fwd = h('button', { class: 'btn', type: 'button', onclick: () => { sim.advance(10 * 60 * 1000); ctx.toast(L('The simulation moved 10 minutes forward. Replay shows its new steps.', 'La simulazione è avanzata di 10 minuti. Il Replay mostra i suoi nuovi passi.')); ctx.render(); } }, L('Advance the simulation 10 minutes', 'Avanza la simulazione di 10 minuti'));
 
-  return h('div', null, head(ctx, L('Replay', 'Replay')), h('div', { class: 'view replayview' },
+  stepPanel.classList.add('rp-evidence');
+  if (rp.evidenceN !== row?.n) stepPanel.classList.add('rp-evidence-enter');
+  rp.evidenceN = row?.n;
+  const closeEvidence = () => {
+    rp.evidenceOpen = false; sheet.close(); ctx.render();
+    const trigger = document.querySelector('[data-key="' + rp.evidenceTrigger + '"]');
+    (trigger && !trigger.disabled ? trigger : document.getElementById('rs-' + row?.n))?.focus({ preventScroll: true });
+  };
+  const sheet = h('dialog', { class: 'rp-sheet', 'aria-label': L('Selected step', 'Passo selezionato'), oncancel: (e) => { e.preventDefault(); closeEvidence(); } },
+    h('button', { class: 'btn rp-sheet-close', type: 'button', 'data-key': 'rp-close-evidence', onclick: closeEvidence }, 'Close evidence'));
+  const reading = h('div', { class: 'rp-reading' }, panel('Recorded events', shown.length, timeline), stepPanel);
+  const reference = h('details', { class: 'rp-reference panel', open: rp.referenceOpen, ontoggle: (e) => { rp.referenceOpen = e.currentTarget.open; } }, h('summary', { 'data-key': 'rp-reference' }, 'Reference and limits'),
+    h('div', { class: 'rp-reference-grid' }, startPanel, histPanel, legend, five, recs, vocab, gaps, h('div', { class: 'actions' }, fwd)));
+  ctx.mounts.push(() => {
+    const narrow = reading.clientWidth <= 600;
+    if (narrow && rp.evidenceOpen && row) {
+      if (!sheet.open) { sheet.append(stepPanel); sheet.showModal(); }
+    } else if (sheet.open) { sheet.close(); reading.append(stepPanel); }
+  });
+  return h('div', { class: 'rp-page' }, head(ctx, L('Replay', 'Replay')), h('div', { class: 'view replayview' },
     dnote('A19', 'Replay answers from what Core recorded: nine categories, a reason when it cannot tell, nothing that can be re-run (G03, G11).'),
     dnote('G10', 'Recovery choices create explicit approval cards only; approving changes a receipt, never the evidence. No autoplay (G09).'),
-    h('div', { class: 'chips' }, ...ms.map((x) => h('a', { class: 'chip', href: '#/replay/' + x.id, 'aria-current': x.id === m.id ? 'true' : null }, x.title))),
-    h('div', { class: 'cols two rpcols' }, h('div', { class: 'col rpmain' }, tlPanel, stepPanel, recPanel), h('div', { class: 'col rpside' }, startPanel, histPanel, five, legend, recs, vocab, gaps, h('div', { class: 'actions' }, fwd)))));
+    h('nav', { class: 'chips rp-missions', 'aria-label': L('Mission', 'Missione') }, ...ms.map((x) => h('a', { class: 'chip', href: '#/replay/' + x.id, 'aria-current': x.id === m.id ? 'true' : null }, x.title))),
+    overview, reading, reference, recPanel, sheet));
 }
-void clear;
