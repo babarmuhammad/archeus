@@ -143,3 +143,6 @@
   .now-view[data-calm='true'] .tell-dock { bottom: 212px; }
   .tell-dock .cscope { flex-basis: 9em; }
 }
+.tell-dock .cdest { display: none; }
+.tell-dock .cinput:focus-visible { outline: 0; }
+.tell-dock .dockin .composer2:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
