@@ -56,9 +56,10 @@ export function pickFocus(prevId, candidates) {
   return kept && kept.d <= best.d + 20 ? kept.id : best.id;
 }
 // Projects whose hub lies inside the grown cluster (plus a margin) give way to it: they fade instead of crossing it.
+// `open` is in priority order (nearest the centre first): an open project is never made to give way by one that comes after it, or two neighbours would hide each other and the one in view would lose its name.
 export function receding(hubs, open, margin = 60) {
-  const out = new Set();
-  for (const o of open) for (const h of hubs) if (h.id !== o.id && Math.hypot(h.x - o.x, h.y - o.y) < o.extent + margin) out.add(h.id);
+  const out = new Set(), rank = new Map(open.map((o, i) => [o.id, i]));
+  for (const o of open) for (const h of hubs) if (h.id !== o.id && !(rank.get(h.id) < rank.get(o.id)) && Math.hypot(h.x - o.x, h.y - o.y) < o.extent + margin) out.add(h.id);
   return out;
 }
 

@@ -57,6 +57,11 @@ test('a closed project under an open one gives way', () => {
   assert.deepEqual([...out], ['b']);
   assert.ok(sameLevels(new Map([['a', 1]]), new Map([['a', 1]])) && !sameLevels(new Map([['a', 1]]), new Map([['a', 2]])));
 });
+test('two open projects that overlap: the one nearer the centre stays, the other gives way to it', () => {
+  const hubs = [{id: 'a', x: 0, y: 0}, {id: 'b', x: 80, y: 0}, {id: 'c', x: 900, y: 0}], open = [{id: 'a', x: 0, y: 0, extent: 100}, {id: 'b', x: 80, y: 0, extent: 100}];
+  assert.deepEqual([...receding(hubs, open)], ['b']);
+  assert.deepEqual([...receding(hubs, [open[1], open[0]])], ['a']);
+});
 
 for (const level of [1, 2, 3]) {
   test(`level ${level}: a project with 60 missions fits rings with no overlap, the count and the extent grow, and the rest is counted`, () => {
