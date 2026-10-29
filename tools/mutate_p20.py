@@ -18,7 +18,7 @@ sinks and the runtime secrets gate (Q125-Q128); T-098's review: the
 Re-arm PIN rule, the PIN cleared, the count reset (Q129-Q131); T-116: a launch
 is claimed once, so one terminal opens (Q133); T-106: O7's start wait and spawn
 breaker (Q134-Q141), its correction r1 (Q142-Q152), and its correction r2 (Q153-Q158), and its correction r3, r4 (Q159-Q163), r5 (Q164-Q168) r6 (Q169-Q172), r7 (Q173-Q174) and r8 (Q175-Q179: replay, the builder's instants, the streak's 600-row ceiling and its key), and r9 (Q180-Q183: the router's UTC key and the replay of written resets), and r11 (Q184: non-counting rows take no slot of the 600 cap).
-PV20-09, the provider broker plumbing, every switch off, with its review rounds (Q185-Q257).
+PV20-09, the provider broker plumbing, every switch off, with its review rounds (Q185-Q257); PV20-10, the Core API origin gate, switch off (Q258-Q268).
 
     py tools/mutate_p20.py            every mutation
     py tools/mutate_p20.py Q01 Q05    only these
@@ -1284,6 +1284,83 @@ MUTATIONS = [
      '            cut = len(buf) - _prefix_tail(buf.lower(), forms)',
      '            cut = len(buf)')],
      ['tests/v1/unit/test_provider_broker.py::test_a_form_of_the_key_split_across_stream_chunks_cuts_the_stream']),
+]
+
+ORIGIN = 'archeus/api/origin.py'
+SERVER = 'archeus/api/server.py'
+ORIGIN_UNIT = 'tests/v1/unit/test_api_origin.py::'
+ORIGIN_HTTP = 'tests/v1/integration/test_api_origin_transport.py::'
+MUTATIONS += [
+    ('Q258', 'unknown origin receives transport authority', [(ORIGIN,
+     "    if not isinstance(evidence, OriginEvidence) or evidence.origin != OriginClass.USER:\n"
+     "        return False",
+     "    if not isinstance(evidence, OriginEvidence) or evidence.origin != OriginClass.USER:\n"
+     "        return True")],
+     [ORIGIN_UNIT + 'test_Q160_Q161_transport_matrix']),
+    ('Q259', 'a user identity alone becomes direct local', [(ORIGIN,
+     "    if evidence.path == PathClass.DIRECT_LOCAL:",
+     "    if evidence.origin == OriginClass.USER:")],
+     [ORIGIN_UNIT + 'test_Q160_Q161_transport_matrix']),
+    ('Q260', 'bootstrap redemption skips the origin gate', [('archeus/api/server.py',
+     "            if routes.CLASS.get((route.method, route.path), 'privileged') != 'public':",
+     "            if routes.CLASS.get((route.method, route.path), 'privileged')"
+     " not in ('public', 'authority'):")],
+     [ORIGIN_HTTP + 'test_Q162_bootstrap_refusal_consumes_no_code']),
+    ('Q261', 'local device credential passes through registered tunnel', [
+     (ORIGIN, "return bool(remote_host and tunnel_route and credential_origin in (None, 'paired'))",
+      "return bool(remote_host)"),
+     ('archeus/api/server.py', "                    if not self.api.origin.local_host(host):",
+      "                    if not self.api.origin.local_host(host) and False:")],
+     [ORIGIN_HTTP + 'test_Q163_tunnel_requires_paired_credential_and_retains_scope']),
+    ('Q262', 'the SSE stream skips both switched-on gate stages', [
+     (SERVER,
+      "                if self.api.origin_enforcement_enabled:\n"
+      "                    self.attested = self.transport_evidence()",
+      "                if self.api.origin_enforcement_enabled and route.path != routes.STREAM:\n"
+      "                    self.attested = self.transport_evidence()"),
+     (SERVER,
+      "                if (self.api.origin_enforcement_enabled\n"
+      "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):",
+      "                if (self.api.origin_enforcement_enabled and route.path != routes.STREAM\n"
+      "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):")],
+     [ORIGIN_HTTP + 'test_every_route_class_is_refused_by_the_switched_on_gate']),
+    ('Q263', '/v1/digest/ack skips both switched-on gate stages', [
+     (SERVER,
+      "                if self.api.origin_enforcement_enabled:\n"
+      "                    self.attested = self.transport_evidence()",
+      "                if self.api.origin_enforcement_enabled and route.path != '/v1/digest/ack':\n"
+      "                    self.attested = self.transport_evidence()"),
+     (SERVER,
+      "                if (self.api.origin_enforcement_enabled\n"
+      "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):",
+      "                if (self.api.origin_enforcement_enabled and route.path != '/v1/digest/ack'\n"
+      "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):")],
+     [ORIGIN_HTTP + 'test_every_route_class_is_refused_by_the_switched_on_gate']),
+    ('Q264', 'a paired device is honoured on the direct local path', [(ORIGIN,
+     "return bool(local_host) and credential_origin in (None, 'local')",
+     "return bool(local_host)")],
+     [ORIGIN_UNIT + 'test_Q160_Q161_transport_matrix',
+      ORIGIN_HTTP + 'test_a_paired_device_is_refused_on_the_direct_local_path_and_kept_on_the_tunnel']),
+    ('Q265', 'an authority route other than pair/redeem reaches a tunnel', [(ORIGIN,
+     "bool(remote_host and tunnel_route and credential_origin in (None, 'paired'))",
+     "bool(remote_host and credential_origin in (None, 'paired'))")],
+     [ORIGIN_UNIT + 'test_Q160_Q161_transport_matrix',
+      ORIGIN_HTTP + 'test_a_tunnel_reaches_only_pair_redeem_before_a_credential']),
+    ('Q266', 'a stream is not re-checked for its origin', [(SSE,
+     "            if not req.origin_holds():",
+     "            if False:")],
+     [ORIGIN_HTTP + 'test_a_stream_over_a_tunnel_closes_when_its_origin_is_lost']),
+    ('Q267', 'a non-bool switch is coerced to off', [(SERVER,
+     "            raise TypeError('origin_enforcement_enabled is a bool, not %s'\n"
+     "                            % type(origin_enforcement_enabled).__name__)",
+     "            origin_enforcement_enabled = origin_enforcement_enabled is True")],
+     [ORIGIN_UNIT + 'test_a_non_bool_switch_is_refused_not_coerced_to_off']),
+    ('Q268', 'the second, credential-stage gate is removed', [(SERVER,
+     "                if (self.api.origin_enforcement_enabled\n"
+     "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):",
+     "                if (False\n"
+     "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):")],
+     [ORIGIN_HTTP + 'test_a_paired_device_is_refused_on_the_direct_local_path_and_kept_on_the_tunnel']),
 ]
 
 if __name__ == '__main__':

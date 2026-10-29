@@ -223,3 +223,7 @@ class Streams:
             # a revocation made any other way still closes within one wake
             if not self._still_valid(req.token_hash):
                 return 'revoked'
+            # the transport origin is re-checked too: a stream opened over a tunnel
+            # that is withdrawn, or whose binding lapses, closes within one wake
+            if not req.origin_holds():
+                return 'origin_lost'
