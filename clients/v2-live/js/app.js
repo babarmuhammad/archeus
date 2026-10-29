@@ -30,6 +30,7 @@ import { parseHash } from '../page-model.js';
 import * as motion from './motion.js';
 import { isPhone, onPhoneChange } from './viewport.js';
 import { direction } from './motion-model.js';
+import { installAutopilot } from './autopilot.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -320,7 +321,7 @@ function drawTools() {
   const th = THEMES.find((t) => t.id === store.get('theme')), dev = DEVICES.find((d) => d.id === store.get('device'));
   clear(toolsBox).append(...(toolsView
     ? [h('button', { class: 'menu-item', type: 'button', 'data-key': 'tools-back', onclick: () => { toolsView = ''; drawTools(); } }, icon('chevronl', 18), 'Prototype tools'), ...menuKids(toolsView)]
-    : [row('theme', 'Theme', th.label), row('sim', 'Simulation', sim.state.playing ? 'x' + sim.state.speed : 'Paused'), row('projects', 'Projects', String(sim.state.projects.length)), row('device', 'Device', dev.label)]));
+    : [row('theme', 'Theme', th.label), row('sim', 'Simulation', sim.state.playing ? 'x' + sim.state.speed : 'Paused'), row('projects', 'Projects', String(sim.state.projects.length)), row('device', 'Device', dev.label), h('button', { class: 'menu-item', type: 'button', 'data-key': 'tools-autopilot', onclick: () => { toolsSheet.close(); window.v2live.autopilot.start(); } }, 'Autopilot', h('span', { class: 'hint' }, 'Guided tour'), icon('chevron', 18))]));
   // the sheet's own labels were translated once when it opened; a language switch inside it starts from English again
   const el = toolsSheet.el, grip = el.querySelector('button.sheet-grip');
   el.querySelector('h2').textContent = 'Prototype tools'; el.querySelector('.sheet-close').setAttribute('aria-label', 'Close');
@@ -361,14 +362,14 @@ function buildToolbar() {
   toolbar.append(
     h('span', { class: 'sim-badge', role: 'note' }, h('span', { class: 'g', 'aria-hidden': 'true' }, '◆'), 'SIMULATED', h('span', { class: 'long' }, 'no Core connected')),
     h('span', { class: 'tb-spacer' }),
-    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('projects', 'Projects', 'Number of simulated projects'), tbBtn('notes', 'Notes', 'Decision notes on the Overview')), tools);
+    h('div', { class: 'tb-tray', hidden: !open }, tbBtn('device', 'Device', 'Device preview'), tbBtn('theme', 'Theme', 'Theme'), tbBtn('motion', 'Motion', 'Reduced motion'), tbBtn('lang', 'EN', 'Language'), tbBtn('sim', 'Sim', 'Simulation'), tbBtn('projects', 'Projects', 'Number of simulated projects'), tbBtn('notes', 'Notes', 'Decision notes on the Overview'), tbBtn('autopilot', 'Autopilot', 'Autopilot guided tour')), tools);
   translate(toolbar);
 }
 function toggleTools() { closeMenu(); store.set('tools', store.get('tools') === 'open' ? 'closed' : 'open'); buildToolbar(); syncToolbar(); const b = toolbar.querySelector('[data-tb="tools"]'); if (b) b.focus(); fit(); }
 function tbBtn(id, label, aria) {
-  const b = h('button', { class: 'tb-btn', type: 'button', 'data-tb': id, 'aria-label': aria, onclick: () => (id === 'motion' ? toggleMotion() : id === 'notes' ? setHeroNotes() : id === 'lang' ? setLang(store.get('lang') === 'it' ? 'en' : 'it') : toggleMenu(id, b)) }, icon(id === 'sim' ? 'sim' : id === 'lang' ? 'lang' : id === 'notes' ? 'note' : id === 'projects' ? 'viewgrid' : id), h('span', { class: id === 'lang' ? 'tb-label tb-always' : 'tb-label' }, label));
+  const b = h('button', { class: 'tb-btn', type: 'button', 'data-tb': id, 'aria-label': aria, onclick: () => (id === 'autopilot' ? window.v2live.autopilot.start() : id === 'motion' ? toggleMotion() : id === 'notes' ? setHeroNotes() : id === 'lang' ? setLang(store.get('lang') === 'it' ? 'en' : 'it') : toggleMenu(id, b)) }, icon(id === 'sim' ? 'sim' : id === 'autopilot' ? 'resume' : id === 'lang' ? 'lang' : id === 'notes' ? 'note' : id === 'projects' ? 'viewgrid' : id), h('span', { class: id === 'lang' ? 'tb-label tb-always' : 'tb-label' }, label));
   if (id === 'lang' || id === 'motion' || id === 'notes') b.classList.add('tb-opt');
-  if (id !== 'motion' && id !== 'lang' && id !== 'notes') { b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false'); }
+  if (!['motion', 'lang', 'notes', 'autopilot'].includes(id)) { b.setAttribute('aria-haspopup', 'true'); b.setAttribute('aria-expanded', 'false'); }
   return b;
 }
 function syncToolbar() {
@@ -478,6 +479,7 @@ let last = performance.now();
 if (!embed) setInterval(() => { const n = performance.now(); if (!document.hidden) sim.tickReal(n - last); last = n; }, 250);
 if (store.get('device') === 'terminal' && !location.hash) location.hash = '#/terminal';
 window.v2live = { sim, ui, store, setPrefs, areas: areasOf(sim), help: () => ctx.openHelp(), toast };
+if (!embed) window.v2live.autopilot = installAutopilot(ctx, { setPrefs });
 
 // ---------- the All devices view: phone, tablet, desktop and terminal at once, one shared simulation ----------
 const ALL = [{ id: 'phone', label: 'Phone', w: 390, h: 844, hash: '#/now' }, { id: 'tablet', label: 'Tablet', w: 820, h: 1100, hash: '#/work' }, { id: 'desktop', label: 'Desktop', w: 1440, h: 900, hash: '#/now' }, { id: 'terminal', label: 'Terminal', w: 640, h: 800, hash: '#/terminal' }];

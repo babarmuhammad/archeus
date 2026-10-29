@@ -35,6 +35,7 @@ Options go in the query string, for example `index.html?theme=light&lang=it&sim=
 | `advance` | seconds | move the simulated clock forward before the first draw |
 | `seed` | number | another scripted story; the same seed gives the same story |
 | `embed` | `1` | used by All devices: the page shares its parent's simulation |
+| `autopilot` | `1` | starts the guided tour on load (`resume` is used by the tour itself after a project count reload) |
 | `story` | `calm` | finished-work fixture with Tell, Today and known projects |
 | `projects` | `10` to `100`, `local` | that many simulated projects; `local` builds this machine's own from `local/projects.local.json` (gitignored; written by `py tools/v2_live_local_projects.py`, names and counts only), and the Tools menu lists it only when the file exists |
 | `look` | `app`, `ansi`, `hc`, `mono` | terminal colours |
@@ -53,6 +54,10 @@ The toolbar's Device button picks Auto (fills the window), Phone 390, Tablet 820
 
 Toolbar, Sim button (and Settings, Simulation): Play or Pause, speed x0.5 to x8, Trigger an approval, Inject a failure, Break the harness (trips the spawn breaker), Go offline or Reconnect, Reset. One real second is ten simulated seconds at x1. Pause all, Resume all and Emergency stop are in the top-bar safety dialog and Settings; the emergency stop asks first, blocks new dispatch until re-armed (also possible while nothing runs) and Re-arm asks again.
 
+## Autopilot
+
+A guided tour of the real app: 39 chapters in 13 groups (35 on a phone), each a few real clicks and key presses under a caption bar. Start it from Tools, from the Autopilot button on the toolbar or with `?autopilot=1`. The bar has Previous, Pause, Next, Speed (0.5x, 1x, 2x), Chapters (jump to any chapter) and Stop. A click or a key of your own (Escape too) stops it. It changes themes, language, motion, the project count and so on while it runs, and puts all of it back at the end; the simulated story starts over, so a tour you left running does not leave the missions it made. It only approves one decision and never rejects. The chapters are data in `js/autopilot-script.js`, the runner is `js/autopilot.js`.
+
 ## Keyboard
 
 `?` lists the keys. `j` and `k` move through list rows and cards, Enter acts on the focused row or card, Space opens a row, Esc closes the help, a menu, an ask-first question or the details sheet. Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet (it takes focus when it opens and gives it back). The terminal view has its own keys (`?` there). The chat bar takes `/` for the 34 slash commands (English names, Italian aliases).
@@ -70,6 +75,7 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 | All devices hit-test | `py tools\v2_live_alldevices_probe.py` |
 | phone foundation: one threshold, PWA bits, safe areas, 44 px targets, no sideways scroll at 320 to 430 and 200 %, landscape flips to the phone shell; the bar, top bar, sheets and toasts under a faked keyboard and injected insets; one vertical scroll surface per route (known nested scrollers are listed as expected failures with their owner) | `py -I tools2_live_phone_probe.py` |
 | phone shell in a real browser: bar slots, Places, palette, Stop two step, safety and tools sheets, language, phone frame on desktop | `py -I tools2_live_phone_functional.py` |
+| Autopilot: the whole tour at 8x at 1440x900 and 390x844 (every chapter reached, no step skipped that is not optional, no console error, settings and story back, a key, a click, Escape and a mid chapter stop), `--shots DIR` for a picture per chapter, `--speed 1` for real time | `py tools2_live_autopilot_check.py` |
 | functional runs | `py tools\v2_live_s3_functional.py`, `v2_live_s4_functional.py`, `v2_live_tui_check.py`, `v2_live_s6_functional.py` |
 | package | `py tools\v2_live_package.py` writes `Archeus-V2-Live.zip` (this folder without tests, `start.cmd`, `README-FIRST.txt`) |
 

@@ -223,7 +223,7 @@ try:
         pg.click('[data-key=tools]')
         pg.wait_for_timeout(350)
         t = pg.evaluate("() => ({ title: document.querySelector('.sheet h2').textContent, rows: [...document.querySelectorAll('.sheet .menu-item')].map((e) => e.dataset.key) })")
-        check('tools: the SIMULATED tag opens the prototype tools sheet (Theme, Simulation, Projects, Device)', t['title'] == 'Prototype tools' and t['rows'] == ['tools-theme', 'tools-sim', 'tools-projects', 'tools-device'], t)
+        check('tools: the SIMULATED tag opens the prototype tools sheet (Theme, Simulation, Projects, Device, Autopilot)', t['title'] == 'Prototype tools' and t['rows'] == ['tools-theme', 'tools-sim', 'tools-projects', 'tools-device', 'tools-autopilot'], t)
         pg.click('[data-key=tools-theme]')
         pg.wait_for_timeout(200)
         pg.click('.sheet .menu-item:has-text("Light")')
