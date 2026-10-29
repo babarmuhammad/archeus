@@ -74,6 +74,8 @@ the other, and both are required.
   granted. Whether the per-execution principal is a separate profile or a per-execution capability
   is a mechanism choice: **DESIGN PROPOSAL — UNVERIFIED**. Sharing a principal between executions
   would need a new owner decision.
+  Since 2026-10-29 the MXC `processcontainer` backend manages the profile and token lifecycle (ADR-0053 R7,
+  amended); the requirement above is unchanged and each observed principal is evidenced, not assumed.
 - **Grants it receives.** Deny-by-default. The proposed runtime grant inventory — every component
   that must execute or be read inside the boundary — is below. **Every row is DESIGN PROPOSAL —
   UNVERIFIED**: neither the set nor the access level of any row has been established.
