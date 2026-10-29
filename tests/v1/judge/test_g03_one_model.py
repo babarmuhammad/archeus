@@ -36,7 +36,12 @@ def test_the_tui_shows_the_mission_the_api_reports(client, rig):
 def test_every_client_agrees(client, rig):
     """P19: the SPA, the TUI and the CLI say one state for one mission."""
     m = client.create_mission(title='One model', objective='Seen everywhere')
-    views = {rig.gui().mission_card(m['id'])['state'],
-             rig.tui().mission_row(m['id'])['state'],
-             rig.cli('status', m['id'])['state']}
-    assert views == {client.get_mission(m['id'])['state']}
+    for _ in range(50):
+        # the three reads bracketed by two API reads that agree: the mission did not move while they were taken
+        before = client.get_mission(m['id'])['state']
+        views = {rig.gui().mission_card(m['id'])['state'],
+                 rig.tui().mission_row(m['id'])['state'],
+                 rig.cli('status', m['id'])['state']}
+        if client.get_mission(m['id'])['state'] == before:
+            break
+    assert views == {before}
