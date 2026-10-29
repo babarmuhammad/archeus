@@ -17,7 +17,7 @@ test('chips: three states, a hidden view takes a fourth chip while it is shown',
   assert.equal(workChips(counts, 'needs').chips.length, 3);
 });
 
-test('sections: counts add up, 20 rows each, needs you oldest first, the rest newest first', () => {
+test('sections: counts add up, 10 rows each, needs you oldest first, the rest newest first', () => {
   const s = workSections(entries);
   assert.equal(s.reduce((n, x) => n + x.count, 0), 97);
   assert.ok(s.every((x) => x.rows.length <= SECTION_CAP));
@@ -30,13 +30,14 @@ test('sections: counts add up, 20 rows each, needs you oldest first, the rest ne
 
 test('sections: show more adds a page, the last page is partial, an empty section is gone', () => {
   const many = Array.from({ length: 45 }, (_, i) => ({ id: 'm' + i, cls: 'active', at: i }));
-  assert.deepEqual(workSections(many).map((s) => [s.key, s.rows.length, s.left, s.next]), [['running', 20, 25, 20]]);
-  assert.deepEqual(workSections(many, { running: 1 }).map((s) => [s.rows.length, s.left, s.next]), [[40, 5, 5]]);
-  assert.deepEqual(workSections(many, { running: 2 }).map((s) => [s.rows.length, s.left, s.next]), [[45, 0, 0]]);
+  assert.deepEqual(workSections(many).map((s) => [s.key, s.rows.length, s.left, s.next]), [['running', 10, 35, 10]]);
+  assert.deepEqual(workSections(many, { running: 1 }).map((s) => [s.rows.length, s.left, s.next]), [[20, 25, 10]]);
+  assert.deepEqual(workSections(many, { running: 3 }).map((s) => [s.rows.length, s.left, s.next]), [[40, 5, 5]]);
+  assert.deepEqual(workSections(many, { running: 4 }).map((s) => [s.rows.length, s.left, s.next]), [[45, 0, 0]]);
   assert.deepEqual(workSections([]), []);
 });
 
-test('the main column stays small at 100 projects of rows: capped sections never exceed 4 pages of 20', () => {
+test('the main column stays small at 100 projects of rows: capped sections never exceed 4 pages of 10', () => {
   const all = Array.from({ length: 2000 }, (_, i) => ({ id: 'x' + i, cls: CLS[i % CLS.length], at: i }));
   assert.ok(workSections(all).reduce((n, s) => n + s.rows.length, 0) <= 4 * SECTION_CAP);
 });

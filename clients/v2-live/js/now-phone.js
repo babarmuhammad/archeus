@@ -9,6 +9,7 @@ import { openTell } from './chat.js';
 import { overviewProjects } from './phone-model.js';
 import { workHref } from '../page-model.js';
 
+const LIVE_CAP = 5; // a hundred projects can run dozens of missions; the rest is one tap away in Work
 const n1 = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // The count chips open Work on that state. Verifying and a zero stopped count stay out of sight, as before.
 function counters(ctx) {
@@ -63,7 +64,7 @@ function details(ctx) {
   const sec = (key, label, n, ...kids) => h('details', { class: 'np-sec', 'data-key': 'np-sec-' + key, open: open[key], ontoggle: (e) => { open[key] = e.currentTarget.open; } },
     h('summary', null, h('span', { class: 'gt' }, label), h('span', { class: 'n' }, String(n))), h('div', { class: 'np-sec-b now-panels' }, ...kids));
   return [
-    sec('live', 'Happening now', live.length, live.length ? live.map((m) => missionRow(ctx, m, 'now')) : h('p', { class: 'np-none' }, 'Nothing is running.')),
+    sec('live', 'Happening now', live.length, live.length ? [...live.slice(0, LIVE_CAP).map((m) => missionRow(ctx, m, 'now')), live.length > LIVE_CAP ? h('a', { class: 'np-all', href: workHref({ view: 'running' }), 'data-key': 'np-all-live' }, 'All ' + live.length + ' in Work') : null] : h('p', { class: 'np-none' }, 'Nothing is running.')),
     sec('recent', 'Recent', recent.length, recent.length ? recent.map((e) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, (st.missions[e.subject.id] || { title: e.subject.id }).title, ': ', word('mission', e.payload.from), ' to ', word('mission', e.payload.to)), h('span', { class: 'b' }, clockLabel(e.at) + (e.actor === 'device' ? ' · you' : ' · Core')))) : h('p', { class: 'np-none' }, 'Nothing has changed yet.'))
   ];
 }

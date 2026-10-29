@@ -2,7 +2,7 @@
 // The desktop pages keep their own layout; the phone gets these so a hundred projects or ninety-seven missions are never a wall.
 import { WORK_VIEWS, graphPick, viewOfCls } from '../page-model.js';
 
-export const SECTION_CAP = 20;   // rows per section until "Show 20 more"
+export const SECTION_CAP = 10;   // rows per section until "Show 10 more": a work row is about 14 elements and 4 sections of 10 keep the page under 1200
 export const GRAPH_NODES = 9;    // what the phone graph draws; the list has the rest
 export const PROJECT_STEP = 20;  // projects per group until "Show 20 more"
 const LABEL = Object.fromEntries(WORK_VIEWS);
