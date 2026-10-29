@@ -104,6 +104,10 @@ export function installAutopilot(ctx, { setPrefs }) {
 
   // ---------- one step ----------
   const here = (s) => !s.on || (s.on === 'phone') === isPhone();
+  // a chapter keyed on: is judged by the shape the tour started in (a chapter may switch the device itself)
+  const inTour = (ch) => !ch.on || (ch.on === 'phone') === run.base.phone;
+  const nextIn = (i, d) => { while (CHAPTERS[i] && !inTour(CHAPTERS[i])) i += d; return i; };
+  const inTourIdx = () => CHAPTERS.map((c, i) => i).filter((i) => inTour(CHAPTERS[i]));
   async function exec(s) {
     if (!here(s)) return 'off';
     if (s.do === 'wait') { await nap(s.ms); return 'ok'; }
@@ -165,15 +169,21 @@ export function installAutopilot(ctx, { setPrefs }) {
       drawBar(); save();
       await doChapter(ch);
       if (!run || run.stopped) return;
-      run.i = run.token.go != null ? run.token.go : run.i + 1;
+      run.i = nextIn(run.token.go != null ? run.token.go : run.i + 1, 1);
     }
     if (run && !run.stopped) end('finished');
   }
-  const go = (i) => { if (!run || run.stopped || i < 0) return; if (i >= CHAPTERS.length) { end('finished'); return; } run.token.go = i; run.token.dead = true; if (run.shown) { run.i = i; drawBar(); } };
+  const go = (i) => {
+    if (!run || run.stopped) return;
+    i = nextIn(i, i < run.i ? -1 : 1);
+    if (i < 0) return;
+    if (i >= CHAPTERS.length) { end('finished'); return; }
+    run.token.go = i; run.token.dead = true; if (run.shown) { run.i = i; drawBar(); }
+  };
 
   // ---------- settings: what the tour changed goes back ----------
   const snapshot = () => ({ ...Object.fromEntries(['lang', 'device', 'tools', ...PREFS].map((k) => [k, store.get(k)])), playing: sim.state.playing, speed: sim.state.speed, estop: sim.state.estop.engaged,
-    offline: window.v2live.areas.isOffline(), search: marked(location.search, false) });
+    offline: window.v2live.areas.isOffline(), search: marked(location.search, false), phone: isPhone() });
   const worldDiffers = () => { const a = new URLSearchParams(location.search), b = new URLSearchParams(run.base.search); return ['projects', 'story', 'seed'].some((k) => a.get(k) !== b.get(k)); };
   function restoreSettings() {
     const b = run.base, same = (k) => JSON.stringify(store.get(k)) === JSON.stringify(b[k]);
@@ -184,7 +194,9 @@ export function installAutopilot(ctx, { setPrefs }) {
     if (sim.state.estop.engaged && !b.estop) sim.act('rearm');
     if (window.v2live.areas.isOffline() && !b.offline) window.v2live.areas.reconnect();
   }
+  // the story starts over: the tour added missions, ideas, failures and an offline spell, and the exact earlier moment of a run is not kept
   function restoreAll(why) {
+    sim.reset(); ctx.ui.replaySel = null;
     restoreSettings();
     if (store.get('device') !== run.base.device) ctx.setDevice(run.base.device);
     const tray = document.querySelector('[data-tb="tools"]');
@@ -233,16 +245,16 @@ export function installAutopilot(ctx, { setPrefs }) {
   }
   function drawBar() {
     if (!bar) return;
-    const ch = CHAPTERS[run.i], n = CHAPTERS.length;
-    bar.querySelector('.ap-eye').textContent = tr('Autopilot') + ' · ' + pick(GROUPS[ch.group]) + ' · ' + tr('Chapter ' + (run.i + 1) + ' of ' + n);
+    const ch = CHAPTERS[run.i], ids = inTourIdx(), n = ids.length, at = ids.indexOf(run.i) + 1;
+    bar.querySelector('.ap-eye').textContent = tr('Autopilot') + ' · ' + pick(GROUPS[ch.group]) + ' · ' + tr('Chapter ' + at + ' of ' + n);
     bar.querySelector('.ap-title').textContent = pick(ch.t);
     bar.querySelector('.ap-cap').textContent = pick(ch.c);
     const note = bar.querySelector('.ap-note'); note.textContent = run.note || ''; note.hidden = !run.note;
     const label = (key, text) => { const b = bar.querySelector('[data-key="' + key + '"]'); b.setAttribute('aria-label', tr(text)); b.title = tr(text); b.querySelector('.ap-bl').textContent = tr(text); return b; };
-    label('ap-prev', 'Previous chapter').disabled = run.i === 0; label('ap-next', 'Next chapter'); label('ap-chapters', 'Chapters').setAttribute('aria-expanded', String(!!list)); label('ap-stop', 'Stop');
+    label('ap-prev', 'Previous chapter').disabled = at <= 1; label('ap-next', 'Next chapter'); label('ap-chapters', 'Chapters').setAttribute('aria-expanded', String(!!list)); label('ap-stop', 'Stop');
     const p = label('ap-pause', run.paused ? 'Resume' : 'Pause'); p.setAttribute('aria-pressed', String(run.paused)); p.replaceChildren(icon(run.paused ? 'resume' : 'pause', 18), h('span', { class: 'ap-bl' }, tr(run.paused ? 'Resume' : 'Pause')));
     const sp = label('ap-speed', 'Speed'); sp.querySelector('.ap-bl').textContent = tr('Speed') + ' ' + run.speed + 'x';
-    const prog = bar.querySelector('.ap-prog'); prog.setAttribute('aria-valuemax', n); prog.setAttribute('aria-valuenow', run.i + 1); prog.setAttribute('aria-label', tr('Chapter ' + (run.i + 1) + ' of ' + n)); prog.firstChild.style.width = ((run.i + 1) / n * 100) + '%';
+    const prog = bar.querySelector('.ap-prog'); prog.setAttribute('aria-valuemax', n); prog.setAttribute('aria-valuenow', at); prog.setAttribute('aria-label', tr('Chapter ' + at + ' of ' + n)); prog.firstChild.style.width = (at / n * 100) + '%';
     if (list) drawList();
   }
   function toggleList() {
@@ -252,8 +264,9 @@ export function installAutopilot(ctx, { setPrefs }) {
   function drawList() {
     clear(list); let g = '';
     CHAPTERS.forEach((ch, i) => {
+      if (!inTour(ch)) return;
       if (ch.group !== g) { g = ch.group; list.append(h('p', { class: 'ap-gh' }, pick(GROUPS[g]))); }
-      list.append(h('button', { class: 'ap-row', type: 'button', 'data-key': 'ap-ch-' + ch.id, 'aria-current': i === run.i ? 'step' : null, onclick: () => { toggleList(); go(i); } }, h('span', { class: 'ap-n' }, String(i + 1)), pick(ch.t)));
+      list.append(h('button', { class: 'ap-row', type: 'button', 'data-key': 'ap-ch-' + ch.id, 'aria-current': i === run.i ? 'step' : null, onclick: () => { toggleList(); go(i); } }, h('span', { class: 'ap-n' }, String(inTourIdx().indexOf(i) + 1)), pick(ch.t)));
     });
   }
 

@@ -22,7 +22,7 @@ def check(name, cond, detail=''):
 
 SNAP = """() => { const v = window.v2live, s = v.store, k = ['theme', 'motion', 'device', 'lang', 'notes', 'heronotes', 'tools', 'overview', 'slashpins', 'slashrecent', 'projsort'];
   return { prefs: Object.fromEntries(k.map((x) => [x, JSON.stringify(s.get(x))])), playing: v.sim.state.playing, speed: v.sim.state.speed, estop: v.sim.state.estop.engaged, offline: v.areas.isOffline(),
-    search: location.search, bar: !!document.querySelector('.apbar'), ap: document.body.hasAttribute('data-ap') } }"""
+    search: location.search, missions: Object.keys(v.sim.state.missions).length + '/' + (v.sim.state.ideas || []).length, bar: !!document.querySelector('.apbar'), ap: document.body.hasAttribute('data-ap') } }"""
 STATE = "() => ({ active: window.v2live.autopilot.active(), chapter: window.v2live.autopilot.chapter(), last: window.v2live.autopilot.last })"
 
 
@@ -85,6 +85,7 @@ def tour(br, w, h, base, speed, shots, ids):
     check('%s: no console or page error' % tag, not errs, errs[:3])
     check('%s: every setting is back as it was' % tag, after.get('prefs') == before['prefs'] and after.get('playing') == before['playing'] and after.get('speed') == before['speed']
           and after.get('estop') == before['estop'] and after.get('offline') == before['offline'] and after.get('search') == before['search'], (before, after))
+    check('%s: the simulated story starts over (the tour added missions and ideas)' % tag, after.get('missions') == before['missions'], (before['missions'], after.get('missions')))
     check('%s: the bar and the page row are gone' % tag, after.get('bar') is False and after.get('ap') is False)
     print('chapter times at %sx (s, real):' % speed)
     for i in ids:
@@ -113,7 +114,7 @@ def stops(br, w, h, base):
         check('%s: the stop says so in a notice' % tag, pg.locator('.toast').count() == 1 and 'Autopilot stopped' in pg.inner_text('.toast'))
         pg.wait_for_timeout(300)
         after = pg.evaluate(SNAP)
-        check('%s: stopped by a %s, settings are back' % (tag, how), after['prefs'] == before['prefs'] and after['search'] == before['search'] and not after['bar'], (before['prefs'], after['prefs']))
+        check('%s: stopped by a %s, settings are back' % (tag, how), after['prefs'] == before['prefs'] and after['search'] == before['search'] and not after['bar'] and after['missions'] == before['missions'], (before['prefs'], after['prefs']))
         check('%s: no error when stopped by a %s' % (tag, how), not errs, errs[:3])
         ctx.close()
     # a stop in the middle of a chapter that changes the theme puts the theme back
@@ -146,10 +147,11 @@ def main():
         with sync_playwright() as p:
             br = p.chromium.launch()
             ctx, pg, _ = fresh(br, 1440, 900, base)
-            ids = pg.evaluate("import('./js/autopilot-script.js').then((m) => m.CHAPTERS.map((c) => c.id))")
+            chapters = pg.evaluate("import('./js/autopilot-script.js').then((m) => m.CHAPTERS.map((c) => [c.id, c.on || '']))")
             ctx.close()
             for vp in a.viewports.split(','):
                 w, h = (int(x) for x in vp.split('x'))
+                ids = [i for i, on in chapters if not on or (on == 'phone') == (w < 600)]
                 tour(br, w, h, base, a.speed, a.shots, ids)
                 if not a.no_stops:
                     stops(br, w, h, base)
