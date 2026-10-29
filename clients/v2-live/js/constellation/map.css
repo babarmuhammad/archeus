@@ -1,3 +1,8 @@
+.now-scene .archeus-map { container: core-scene / inline-size; }
+@container core-scene (width < 640px) {
+  .am-wordmark { display: none; }
+}
+
 .archeus-map {
   --am-bg: #0b090e;
   --am-surface: #141118;

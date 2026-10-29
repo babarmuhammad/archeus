@@ -35,10 +35,10 @@ export function topbarParts({ title, tag, playing, engaged, safetyOpen, on }) {
   return [
     h('button', { class: 'tb-home', type: 'button', 'data-key': 'home', 'aria-label': 'Overview', onclick: on.home }, star(24)),
     title ? h('span', { class: 'tb-title' }, title) : h('span', { class: 'tb-fill' }),
-    tag === 'tools' ? h('button', { class: 'sim-badge', type: 'button', 'data-key': 'tools', 'data-sim': playing ? 'playing' : 'paused', 'aria-label': 'SIMULATED, prototype tools', 'aria-haspopup': 'dialog', onclick: on.tools }, glyph, 'SIMULATED')
-      : tag ? h('span', { class: 'sim-badge', role: 'note', 'data-sim': playing ? 'playing' : 'paused' }, glyph, 'SIMULATED') : null,
+    tag === 'tools' ? h('button', { class: 'sim-badge', type: 'button', 'data-key': 'tools', 'data-sim': playing ? 'playing' : 'paused', 'aria-label': 'SIMULATED, prototype tools', 'aria-haspopup': 'dialog', onclick: on.tools }, glyph, h('span', { class: 'sim-label' }, 'SIMULATED'))
+      : tag ? h('span', { class: 'sim-badge', role: 'note', 'aria-label': 'SIMULATED', 'data-sim': playing ? 'playing' : 'paused' }, glyph, h('span', { class: 'sim-label' }, 'SIMULATED')) : null,
     h('div', { class: 'safety', 'data-state': engaged ? 'stopped' : 'ok' },
-      h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-haspopup': 'dialog', 'aria-expanded': safetyOpen ? 'true' : 'false', onclick: on.safety }, h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, engaged ? 'Stopped' : 'Not stopped'))),
+      h('button', { class: 'safety-btn', type: 'button', 'data-key': 'safety', 'aria-label': engaged ? 'Stopped' : 'Not stopped', 'aria-haspopup': 'dialog', 'aria-expanded': safetyOpen ? 'true' : 'false', onclick: on.safety }, h('span', { class: 'sdot', 'aria-hidden': 'true' }), h('span', { class: 'stext' }, engaged ? 'Stopped' : 'Not stopped'))),
     h('button', { class: 'tb-search', type: 'button', 'data-key': 'search', 'aria-label': 'Search or run a command', onclick: on.search }, icon('search', 22))
   ].filter(Boolean);
 }

@@ -47,6 +47,16 @@ html[data-kb='open'] .bottombar { display: none; }
   .topbar .tb-search { --bh: 44px; flex: none; margin: 0; width: 44px; min-width: 44px; border-color: transparent; }
 }
 
+@container dev (max-width: 479px) {
+  .topbar .safety-btn { width: 44px; justify-content: center; padding: 0; }
+  .topbar .stext { display: none; }
+}
+@container dev (max-width: 360px) {
+  .topbar .sim-label { display: none; }
+  .topbar .sim-badge { box-sizing: border-box; width: 44px; justify-content: center; padding: 0; }
+  .topbar .sim-badge .g { margin-right: 0; }
+}
+
 /* ---------- Places sheet ---------- */
 .pl { display: flex; flex-direction: column; gap: 16px; padding-top: 4px; }
 .pl-search { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 14px; border: var(--hair) solid var(--line-strong); border-radius: 12px; background: var(--fill-1); color: var(--text-2); font: 400 16px / 1.2 var(--font); text-align: left; cursor: pointer; }
