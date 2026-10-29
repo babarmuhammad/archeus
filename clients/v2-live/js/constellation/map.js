@@ -668,7 +668,7 @@ export function createMap(container, options = {}) {
   }
   const zoomBy = (ratio, node) => { const k = clamp(camera.k * ratio, MIN_K, maxK()), r = k / camera.k, x = node ? node.x * camera.k + camera.x : width / 2, y = node ? node.y * camera.k + camera.y : height / 2; pointerAt = node ? {x, y, t: performance.now() + 1500} : null; tween({k, x: x - (x - camera.x) * r, y: y - (y - camera.y) * r}); };
   // The first click on a hub focuses it (the camera flies there and its project opens); a click on one that is already open opens the project.
-  function flyToHub(n) { pointerAt = null; const k = Math.max(camera.k, 2.6); tween({k, x: width / 2 - n.x * k, y: height * .45 - n.y * k}); }
+  function flyToHub(n) { pointerAt = null; closeCard(); const k = Math.max(camera.k, 2.6); tween({k, x: width / 2 - n.x * k, y: height * .45 - n.y * k}); }
   function limitCamera() {
     camera.x = clamp(camera.x, -width * camera.k, width);
     camera.y = clamp(camera.y, -height * camera.k, height);

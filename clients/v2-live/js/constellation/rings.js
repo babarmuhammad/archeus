@@ -36,6 +36,10 @@ export function pointsOn(rx, ry, n, start = 0) {
   return out;
 }
 const SCALES = [1, .85, .72, .62, .52];
+// The order a lane's slots fill in: bit-reversed, so the first members sit opposite each other and a part-filled lane is balanced round the core instead of bunched (Van der Corput).
+const spread = n => Array.from({length: n}, (_, i) => i).sort((p, q) => rev(p, n) - rev(q, n));
+const rev = (i, n) => { let r = 0, bits = Math.max(1, Math.ceil(Math.log2(n))); for (let b = 0; b < bits; b++) r = (r << 1) | ((i >> b) & 1); return r; };
+
 const byId = (a, b) => String(a.id).localeCompare(String(b.id));
 // projects: [{id, lane, missions, worktrees, ...}]. memory: Map(id -> {state, v}) kept between calls so a mark keeps its place: v is the index inside its state's lanes (lane 0 first), a
 // new project takes the lowest free one and nothing already placed moves. avoid: boxes no mark may touch (the zoom column). Returns {nodes, lanes, order, tier, scale, memory, core, keep}.
@@ -77,7 +81,7 @@ export function layoutRings(projects, width, height, inset = INSET, {memory = ne
         const ry = first + j * gap, rx = ry / aspect, cap = Math.max(1, Math.floor(perimeter(rx, ry) / pitch)), pts = pointsOn(rx, ry, cap, 40 * j + 25);
         const clear = pts.filter(q => !blocked(core.x + q.x, core.y + q.y, rMax)), usable = clear.length ? clear : pts;
         lanes.push({state, n, index: j, rx, ry, capacity: usable.length, slots: cap, members: []});
-        for (const q of usable) slots.push({...q, lane: lanes.length - 1});
+        for (const i of spread(usable.length)) slots.push({...usable[i], lane: lanes.length - 1});
       }
       for (const p of list) {
         const sl = slots[next.get(p.id).v] || slots[slots.length - 1], lane = lanes[sl.lane];

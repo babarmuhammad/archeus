@@ -97,3 +97,10 @@ test('a scene too small for any slot still places every project (no throw)', () 
   const r = layoutRings(mk(3), 40, 40, {top: 16, right: 16, bottom: 16, left: 16});
   assert.equal(r.nodes.length, 3);
 });
+test('a part-filled lane is balanced round the core, not bunched on one side', () => {
+  for (const count of [2, 3, 4]) {
+    const r = lay(mk(count, () => 'running')), cx = r.core.x, cy = r.core.y;
+    const sx = r.nodes.reduce((t, n) => t + (n.x - cx), 0) / count, sy = r.nodes.reduce((t, n) => t + (n.y - cy), 0) / count, lane = r.lanes[0];
+    assert.ok(Math.hypot(sx / lane.rx, sy / lane.ry) < .6, `${count}: centroid ${sx.toFixed(0)},${sy.toFixed(0)}`);
+  }
+});
