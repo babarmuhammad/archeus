@@ -306,7 +306,7 @@ def s4_state(pg, route, w):
             s4_send(pg, 'page', '/approve search')
             s4_send(pg, 'page', '/mission Probe mission')
         elif route == 'chat-general':
-            pg.click('.composer2[data-where="page"] .cscope'); pg.click('.pkpop [role="option"][data-value="general"]')
+            pg.click('.composer2[data-where="page"] .cscope'); pg.click('[role="option"][data-value="general"]')
             s4_send(pg, 'page', 'Explain a checkpoint')
             pg.click('.ccard[data-kind="general"] .btn')
             pg.wait_for_timeout(400)

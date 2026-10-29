@@ -105,8 +105,9 @@ a.wt-mission { display: inline-flex; align-items: center; align-self: flex-start
 .pp-main[aria-current='true'] { box-shadow: inset 0 0 0 var(--hair) var(--text); }
 .pp-row[data-state='needs_you'] { box-shadow: inset 3px 0 0 var(--attention); }
 .pp-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; padding: 0 4px 6px 60px; }
+.pp-foot:has(.pp-wt) { min-height: 44px; padding-bottom: 0; }
 .pp-counts { min-width: 0; color: var(--text-2); font-size: 13px; line-height: 1.35; }
-.pp-wt { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin: -8px -6px -8px 0; padding: 0 6px 0 10px; border: 0; background: transparent; color: var(--text); font: 500 14px / 1 var(--font); cursor: pointer; }
+.pp-wt { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin: 0 -6px 0 0; padding: 0 6px 0 10px; border: 0; background: transparent; color: var(--text); font: 500 14px / 1 var(--font); cursor: pointer; }
 .pp-wt svg { transition: transform var(--dur-2) var(--ease-out); } .pp-wt[aria-expanded='true'] svg { transform: rotate(90deg); transition-duration: var(--dur-1); }
 .pp-wt:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .pp-trees { margin: 0 0 8px 28px; padding-left: 16px; border-left: var(--hair) solid var(--line-strong); }
