@@ -38,7 +38,7 @@
 .pideas { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 0 24px; }
 .pidea { position: relative; isolation: isolate; border-bottom: var(--hair) solid var(--line); }
 .pidea > a { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 4px; color: var(--text); text-decoration: none; }
-.pidea > a b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pidea > a b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
 .pidea-meta { flex: none; font-size: var(--fs-cap); color: var(--text-2); }
 .pidea > a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .pidea > a[aria-current='true'] b { text-decoration: underline; text-underline-offset: 4px; }
