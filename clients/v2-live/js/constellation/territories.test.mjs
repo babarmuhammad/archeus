@@ -5,6 +5,20 @@ import {pickGrid, layoutTerritories, levelOf, edgePoint} from './territories.js'
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const INSET = {top: 150, right: 24, bottom: 80, left: 24};
 
+test('cramped Details scenes use the scrollable project grid instead of overflowing minimum cells', () => {
+  for (const count of [30, 100]) for (const width of [180, 240, 360]) {
+    const layout = layoutTerritories(count, width, 480, INSET);
+    if (layout.overflow) assert.deepEqual(layout.cells, []);
+    else for (const cell of layout.cells) {
+      assert.ok(cell.w >= 24 && cell.h >= 24);
+      assert.ok(cell.x >= INSET.left && cell.x + cell.w <= width - INSET.right + .01);
+      assert.ok(cell.y >= INSET.top && cell.y + cell.h <= 480 - INSET.bottom + .01);
+    }
+  }
+  assert.equal(layoutTerritories(30, 180, 480, INSET).overflow, true);
+  assert.equal(layoutTerritories(100, 360, 480, INSET).overflow, true);
+});
+
 test('every count from 1 to 100 gets a cell each, none overlapping, none on the core', () => {
   for (const n of [1, 2, 3, 5, 12, 28, 60, 100]) {
     const {cells, core} = layoutTerritories(n, 1248, 800, INSET);

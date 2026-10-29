@@ -28,6 +28,7 @@ export function layoutTerritories(count, width, height, inset = INSET) {
   const gap = count > 30 ? 6 : 12, aw = Math.max(40, width - inset.left - inset.right), ah = Math.max(40, height - inset.top - inset.bottom);
   const radius = clamp(Math.min(aw, ah) * .07, 16, 38), gutter = Math.max(120, radius * 2.6);
   const g = pickGrid(Math.max(1, count), aw, ah, gap, gutter), cw = Math.max(24, Math.min(g.cw, CELL_MAX.w)), ch = Math.max(24, Math.min(g.ch, CELL_MAX.h)); // a narrow scene (the Details sheet open on a small window) never gives a negative size
+  if (g.cw < 24 || g.ch < 24 || g.cols * g.rows < count) return {core: {x: inset.left + aw / 2, y: inset.top + ah / 2, radius}, cells: [], cols: 0, rows: 0, level: 'mark', gutter, overflow: true};
   const bw = g.cols * cw + gap * (g.cols - 2) + gutter, bh = g.rows * ch + gap * (g.rows - 1), x0 = inset.left + (aw - bw) / 2, y0 = inset.top + (ah - bh) / 2;
   const half = g.cols / 2, ri = (g.rows - 1) / 2, level = levelOf(cw, ch), slots = [];
   for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) {
@@ -200,7 +201,7 @@ export function createTerritoryMap(container, options = {}) {
     if (id && canMove()) expandFrom(cellRecs.get(id));
     if (closing) collapseTo(closing);
     if (id) panel.querySelector('.am-focus-back').focus({preventScroll: true});
-    else { const c = [...hits.querySelectorAll('.am-chit:not(.am-chit-mission)')].find(n => n.dataset.nodeId === lastFocused); c?.focus({preventScroll: true}); }
+    else { const c = [...(layout.overflow ? equivalent.querySelectorAll('button') : hits.querySelectorAll('.am-chit:not(.am-chit-mission)'))].find(n => n.dataset.nodeId === lastFocused); c?.focus(); }
     if (id) lastFocused = id;
     emit('focus', id);
   }
@@ -273,7 +274,9 @@ export function createTerritoryMap(container, options = {}) {
     const animated = animate && cellRecs.size > 0 && canMove();
     let moved = false;
     const ordered = [...model.projects].sort((a, b) => (slotOf.get(a.id) ?? 1e9) - (slotOf.get(b.id) ?? 1e9));
-    const cells = ordered.map((p, i) => ({p, cell: layout.cells[i] || layout.cells[layout.cells.length - 1]}));
+    host.dataset.overflow = String(Boolean(layout.overflow));
+    equivalent.classList.toggle('am-sr', !layout.overflow);
+    const cells = layout.overflow ? [] : ordered.map((p, i) => ({p, cell: layout.cells[i]}));
     const seen = new Set(), spokes = [], hitNodes = [];
     for (const {p, cell} of cells) {
       seen.add(p.id);
@@ -341,6 +344,7 @@ export function createTerritoryMap(container, options = {}) {
   function readInset(w, h) {
     inset = {...INSET, ...(typeof options.inset === 'function' ? options.inset(w, h) : options.inset)};
     panel.style.inset = `${f(inset.top)}px ${f(inset.right)}px ${f(inset.bottom)}px ${f(inset.left)}px`;
+    equivalent.style.inset = panel.style.inset;
   }
   function relayout() {
     if (destroyed) return;

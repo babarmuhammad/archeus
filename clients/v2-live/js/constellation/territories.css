@@ -1,4 +1,13 @@
 /* Overview territories: one open outline per project round the core. Hairlines and the ground colour only; state is line colour and a word. */
+.am-territories[data-overflow='true'] > svg,
+.am-territories[data-focus='on'][data-overflow='true'] > .am-equivalent { display: none; }
+.am-territories[data-overflow='true'] > .am-equivalent { position: absolute; overflow-y: auto; overflow-x: hidden; color: var(--am-text); }
+.am-territories[data-overflow='true'] > .am-equivalent:focus-within { padding: 0; overflow-x: hidden; }
+.am-territories[data-overflow='true'] > .am-equivalent ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 8px; list-style: none; margin: 0; padding: 4px; }
+.am-territories[data-overflow='true'] > .am-equivalent li { min-width: 0; }
+.am-territories[data-overflow='true'] > .am-equivalent button { width: 100%; min-height: 48px; padding: 8px; border: 1px solid var(--am-line); background: var(--am-bg); color: inherit; font: 400 14px/1.4 var(--am-sans); text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.am-territories[data-overflow='true'] > .am-equivalent button:focus-visible { outline: 2px solid var(--am-focus); outline-offset: 1px; }
+@media (forced-colors: active) { .am-territories[data-overflow='true'] > .am-equivalent button { border-color: ButtonText; } }
 .am-territories .am-cell { transition: opacity var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories[data-hot] .am-cell { transition-duration: var(--dur-1, 100ms); }
 .am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
