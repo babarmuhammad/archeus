@@ -73,6 +73,7 @@ export function renderPhone(ctx, d) {
   const none = h('div', { class: 'wk-empty' }, h('p', { class: 'empty' }, pn && !counts.all ? 'No work in ' + pn.name + ' yet.' : 'Nothing here.'),
     h('a', { class: 'btn l', href: workHref({ view: 'all' }), 'data-key': 'work-empty-action', onclick: () => { ctx.ui.workProject = null; } }, 'Show everything'));
   return h('div', { class: 'work-page' }, h('div', { class: 'view wkp' },
+    h('h1', { class: 'vh' }, 'Work'),
     h('header', { class: 'wp-head' },
       edgeRow(h('div', { class: 'wp-chips', role: 'group', 'aria-label': 'Show' }, ...chipsFor.chips.map(chip), morePick)),
       h('div', { class: 'wp-tools' }, projectPick, seg),
@@ -100,6 +101,7 @@ function graphView(ctx, g) {
       open.href ? h('a', { class: 'btn primary l wg-open', href: open.href, 'data-key': 'wg-open' }, open.label) : h('button', { class: 'btn primary l wg-open', type: 'button', 'data-key': 'wg-open', onclick: open.run }, open.label)]
     : [h('p', { class: 'wg-hint' }, nodes.length ? 'Tap a node to see the mission.' : ''), more > 0 ? h('a', { class: 'btn l wg-more', href: hrefOf({ as: 'list' }), 'data-key': 'work-graph-more' }, '+' + more + ' more in the list') : null]);
   return h('div', { class: 'work-page wkg' }, h('div', { class: 'view wkgv' },
+    h('h1', { class: 'vh' }, 'Work'),
     h('header', { class: 'wg-bar' }, legend, h('a', { class: 'btn l wg-done', href: hrefOf({ as: 'list' }), 'data-key': 'work-as-list' }, 'Done')),
     h('div', { class: 'wg-stage' },
       h('div', { class: 'wg-area' }, graph.el,

@@ -254,8 +254,8 @@
 .wgn:focus-visible .wgn-sel { stroke: var(--focus); stroke-width: 3; }
 .wgn-label { fill: var(--text); font-family: var(--font); font-weight: 500; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 .wg-fit { position: absolute; right: 12px; bottom: 12px; padding-inline: 14px; }
-.wg-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; color: var(--text-2); }
-.wg-empty p { margin: 0; }
+.wg-area .wg-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; color: var(--text-2); }
+.wg-area .wg-empty p { margin: 0; }
 .wg-dock { flex: none; display: flex; align-items: center; gap: 12px; min-height: 104px; margin: 0 16px 12px; padding: 12px 0 0; border-top: var(--hair) solid var(--line); }
 .wg-card { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .wg-card-m { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0; }
