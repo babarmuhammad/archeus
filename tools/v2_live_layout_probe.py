@@ -63,7 +63,7 @@ STATES = {
     'safety': "document.querySelector('[data-key=safety]').click()",
     'stopask': "document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'tell': "document.querySelector('[data-key=tell], [data-key=bb-tell]').click()",
-    'details': "document.querySelector('.now-toggle').click()",
+    'details': "(() => { const t = document.querySelector('.now-toggle'); if (t) t.click(); document.querySelectorAll('.np-sec').forEach((d) => { d.open = true; }); })()",
     'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
     'help': "window.v2live.help()",

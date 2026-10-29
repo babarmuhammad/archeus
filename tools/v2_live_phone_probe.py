@@ -443,15 +443,15 @@ SCROLLERS = """() => { const m = document.querySelector('.main-col'); if (!m) re
 
 def scroll_surfaces(br, base):
     """The owner's rule: one vertical scroll surface per page (the main column), no scrollbar drawn on a phone. A route that still has a nested scroller is
-    named here; the fix belongs to the slice that owns the page (now~details: B, replay: D), so it is an expected failure until then."""
-    owner = {'now~details': 'B'}
+    named here; the fix belongs to the slice that owns the page, so it is an expected failure until then."""
+    owner = {}
     bad, bars = [], []
     ctx, pg = new_page(br, 390, 844, base)
     for route in ['now', 'now~details', 'work', 'work/m-date', 'chat', 'settings', 'projects', 'security', 'health', 'usage', 'accounts', 'extensions', 'replay/m-date']:
         pg.evaluate("location.hash = '#/%s'" % route.split('~')[0])
         pg.wait_for_timeout(300)
         if '~' in route:
-            pg.evaluate("document.querySelector('.now-toggle').click()")
+            pg.evaluate("document.querySelectorAll('.np-sec').forEach((d) => { d.open = true; })")
             pg.wait_for_timeout(300)
         r = pg.evaluate(SCROLLERS)
         if r['bar'] or r['sbw'] != 'none' or r['oc'] != 'contain':
@@ -472,28 +472,48 @@ def scroll_surfaces(br, base):
     ctx.close()
 
 
-def expected_failures(br, base):
+def slice_b(br, base):
+    """Slice B: the Overview, Work and Projects lists on a phone. First screens, what a swipe does, text size, and how much page a hundred projects make."""
     ctx, pg = new_page(br, 390, 844, base)
     n = pg.evaluate("""() => [...document.querySelectorAll('.main-col *')].filter((e) => !e.closest('svg') && e.checkVisibility({ checkVisibilityCSS: true }) && [...e.childNodes].some((c) => c.nodeType === 3 && c.nodeValue.trim()) && parseFloat(getComputedStyle(e).fontSize) < 12).length""")
-    xfail('no visible text under 12 px on the Overview page (measured)', 'B', '%d elements are under 12 px (eyebrows)' % n, n == 0)
+    check('no visible text under 12 px on the Overview page', n == 0, '%d elements are under 12 px' % n)
+    f = pg.evaluate("""() => { const q = (s) => document.querySelector(s), r = (e) => e && e.getBoundingClientRect(), bar = r(q('.bottombar')).top, rv = r(q('.pn-review'));
+      return { sentence: r(q('.state-sentence')).bottom, ledger: r(q('.ledger')).bottom, ctr: r(q('.counters')).bottom, review: rv && rv.bottom, mid: rv && (rv.top + rv.bottom) / 2, bar, vh: innerHeight }; }""")
+    check('Overview first screen: the sentence, the ledger, the counts and Review are above the bar, Review centred in the lower 60 %', f['review'] and max(f['sentence'], f['ledger'], f['ctr'], f['review']) <= f['bar'] and f['mid'] >= f['vh'] * .4, str(f))
     cdp = ctx.new_cdp_session(pg)
-    top = pg.evaluate("() => { const e = document.querySelector('.archeus-map > svg'); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height * .7 }; }")
-    if top:
-        cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': top['x'], 'y': top['y']}]})
+
+    def swipe(x, y):
+        cdp.send('Input.dispatchTouchEvent', {'type': 'touchStart', 'touchPoints': [{'x': x, 'y': y}]})
         for i in range(1, 9):
-            cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': top['x'], 'y': top['y'] - 25 * i}]})
+            cdp.send('Input.dispatchTouchEvent', {'type': 'touchMove', 'touchPoints': [{'x': x, 'y': y - 25 * i}]})
             pg.wait_for_timeout(16)
         cdp.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
         pg.wait_for_timeout(300)
-        moved = pg.evaluate("document.querySelector('.main-col').scrollTop")
-        xfail('a swipe that starts on the Overview map scrolls the page (measured)', 'B', 'the map svg is touch-action: none, scrollTop stays 0', moved > 0, 'scrollTop %s' % moved)
+        return pg.evaluate("document.querySelector('.main-col').scrollTop")
+    check('a swipe that starts on the Overview scrolls the page (there is no map to trap it)', swipe(195, 560) > 0 and not pg.evaluate("!!document.querySelector('.map-box, .archeus-map')"), 'scrollTop did not move or a map is on the phone Overview')
+    pg.evaluate("location.hash = '#/work'")
+    pg.wait_for_timeout(500)
+    w = pg.evaluate("() => { const e = document.querySelector('.wr'); if (!e) return null; const b = e.getBoundingClientRect(); return { top: b.top, vh: innerHeight }; }")
+    check('Work first row starts under 60 % of the height', w and w['top'] < w['vh'] * .6, str(w))
+    check('a swipe that starts on the Work list scrolls the page', swipe(195, 600) > 0, 'scrollTop did not move')
+    pg.evaluate("location.hash = '#/work?as=graph'")
+    pg.wait_for_timeout(600)
+    g = pg.evaluate("() => { const e = document.querySelector('.wg-svg'); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height * .7, nodes: document.querySelectorAll('.wgn').length, ta: getComputedStyle(e).touchAction, over: getComputedStyle(document.querySelector('.main-col')).overflowY }; }")
+    check('Work graph: at most 9 nodes, touch-action none on the graph only, and the page behind it does not scroll', g and 0 < g['nodes'] <= 9 and g['ta'] == 'none' and g['over'] == 'hidden', str(g))
+    moved = swipe(g['x'], g['y']) if g else -1
+    check('a swipe on the Work graph pans the graph and never scrolls the page', moved == 0, 'scrollTop %s' % moved)
+    pg.click('[data-key=work-as-list]')
+    pg.wait_for_timeout(500)
+    check('Done on the graph is back on the list, which scrolls by swipe', pg.evaluate("!!document.querySelector('.wr-secs')") and swipe(195, 600) > 0, '')
     ctx.close()
-    for name, slice_, reason in [
-        ('a swipe that starts on the Work graph scrolls', 'B', 'the Work graph is not rebuilt yet'),
-        ('first screen: sentence, ledger, counts and Review above the bar, centre in the lower 60 %', 'B', 'the Overview is still the map page'),
-        ('Work first row under 60 % of the height', 'B', 'Work is still the graph page'),
-        ('scale at ?story=huge: under 1200 elements in the main column and under 8 screens on Work, Projects and Overview', 'B', 'lists are not capped yet')]:
-        xfail(name, slice_, reason)
+    ctx, pg = new_page(br, 390, 844, base, query='story=huge')
+    out = []
+    for route in ('now', 'work', 'projects'):
+        pg.evaluate("location.hash = '#/%s'" % route)
+        pg.wait_for_timeout(600)
+        out.append((route, pg.evaluate("() => { const e = document.querySelector('.main-col'); return [e.querySelectorAll('*').length, e.scrollHeight / innerHeight]; }")))
+    check('scale at ?story=huge: under 1200 elements in the main column and under 8 screens on Overview, Work and Projects', all(els < 1200 and screens < 8 for _, (els, screens) in out), '; '.join('%s %d elements %.1f screens' % (r, e, s) for r, (e, s) in out))
+    ctx.close()
 
 
 # ---------- slice C: the Tell sheet, the inspector sheets, the picker sheet, the Chat page ----------
@@ -774,7 +794,7 @@ def main():
     try:
         with sync_playwright() as p:
             br = p.chromium.launch()
-            for fn in (shell_flip, safe_areas, sheet_checks, sizes, shell_chrome, shell_insets, scroll_surfaces, page_checks, sheets_slice_c, expected_failures):
+            for fn in (shell_flip, safe_areas, sheet_checks, sizes, shell_chrome, shell_insets, scroll_surfaces, page_checks, sheets_slice_c, slice_b):
                 try:
                     fn(br, base)
                 except Exception as e:  # a crashed check is a failure, not a silent skip
