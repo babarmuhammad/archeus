@@ -401,7 +401,14 @@ export function viewChat(ctx) {
   }
 
   const thread = [h('div', { class: 'logwrap' }, log, newer), comp];
-  const side = () => cur === 'context' ? contextNode() : receiptsNode();
+  const scrollKey = (general ? 'general' : s.project) + '/' + cur;
+  const sideScroll = P.sideScroll ||= {};
+  const side = () => {
+    const node = cur === 'context' ? contextNode() : receiptsNode();
+    node.addEventListener('scroll', () => { sideScroll[scrollKey] = node.scrollTop; });
+    ctx.mounts.push(() => { node.scrollTop = sideScroll[scrollKey] || 0; });
+    return node;
+  };
   const page = h('div', { class: 'chatpage', 'data-quiet': store.reducedMotion() ? 'true' : 'false', 'data-wide': wide ? 'true' : 'false' },
     wide ? h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, ...thread)
       : h('section', { class: 'convo', 'aria-label': L('Conversation', 'Conversazione') }, bar, phone ? null : tabStrip(TABS), h('div', { class: 'cp-panel', id: 'cbp', role: 'tabpanel', 'aria-labelledby': 'cbt-' + tab }, tab === 'chat' ? thread : side())),
