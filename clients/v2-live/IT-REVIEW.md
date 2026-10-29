@@ -1708,7 +1708,7 @@ Status: to review. Builder-written, not checked by a native speaker.
 |---|---|
 | Today | Oggi |
 | Known projects | Progetti noti |
-| Tell | Dì |
+| Tell | Dimmi (owner 2026-10-29) |
 | Today and known projects | Oggi e progetti noti |
 | Understand · Plan · Do | Capisci · Pianifica · Fai |
 | items | voci |
@@ -2403,5 +2403,7 @@ Status: to review. New pairs in `js/i18n-now.js` and the Autopilot chapter in `j
 | Network view (unchanged) | Vista a rete |
 | Territories, Rings or Network (Autopilot chapter title) | Territori, Anelli o Rete |
 | The switch beside the headline shows the same projects three ways: territories (one cell each), rings (one lane per state) and a network of missions round each project hub. (Autopilot caption) | L’interruttore accanto al titolo mostra gli stessi progetti in tre modi: territori (una cella ciascuno), anelli (una corsia per stato) e una rete di missioni attorno a ogni progetto. |
+
+Phone Tell label: Dimmi (owner 2026-10-29); the phrases "Dì ad Archeus ..." (sheet title, placeholder) are imperative sentences and still say Dì: reviewer to say if they should read "Dimmi" too.
 
 Questions for the reviewer: the coordinator asked for the short names Territori / Anelli / Rete; the switch has no visible text, so only the Autopilot title uses them and the tooltips use the full "Vista a ..." form already used for Rete. Say if the tooltips should be the short names too.

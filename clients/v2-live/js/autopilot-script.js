@@ -53,12 +53,12 @@ export const CHAPTERS = [
 
   { id: 'ov-network', group: 'overview', on: 'desktop', t: ['Territories, Rings or Network', 'Territori, Anelli o Rete'], covers: ['QN', 'TV'],
     c: ['The switch beside the headline shows the same projects three ways: territories (one cell each), rings (one lane per state) and a network of missions round each project hub.', 'L’interruttore accanto al titolo mostra gli stessi progetti in tre modi: territori (una cella ciascuno), anelli (una corsia per stato) e una rete di missioni attorno a ogni progetto.'],
-    steps: [N('#/now', 500), C('vs-territories', 1600), C('vs-network', 1800), H('.am-hit', 1600, { nth: 2, optional: true }), C('vs-rings', 1200), U] },
+    steps: [N('#/now', 500), C('vs-territories', 1600), C('vs-rings', 1500), C('vs-network', 1800), H('.am-hit', 1600, { nth: 2, optional: true }), C('vs-territories', 1200), U] },
 
   { id: 'ov-zoom', group: 'overview', on: 'desktop', t: ['Semantic zoom', 'Zoom semantico'], covers: ['QN', 'Q'],
     c: ['Zoom in and the map shows more: names, then states, then the small marks of each attempt. Fit brings it all back.', 'Ingrandisci e la mappa mostra di più: nomi, stati, poi i segni di ogni tentativo. Adatta riporta tutto in vista.'],
     steps: [N('#/now', 500), C('vs-network', 900), C('[aria-label="Zoom in"]', 1000, { optional: true }), C('[aria-label="Zoom in"]', 1000, { optional: true }), C('[aria-label="Zoom in"]', 1200, { optional: true }),
-      C('[aria-label="Fit all nodes"]', 1200, { optional: true }), C('vs-rings', 800)] },
+      C('[aria-label="Fit all nodes"]', 1200, { optional: true }), C('vs-territories', 800)] },
 
   { id: 'ov-details', group: 'overview', on: 'desktop', t: ['Details drawer', 'Pannello dei dettagli'], covers: ['Q', 'N', 'P', 'E'],
     c: ['Details opens over the map, never squeezes it: counters, what is happening now and what changed since you last looked.', 'I dettagli si aprono sopra la mappa senza schiacciarla: contatori, cosa succede adesso e cosa è cambiato dall’ultima volta.'],

@@ -1,7 +1,7 @@
 // Italian for the Overview scene: exact strings in IT_NOW, [regex, fn] rules in RULES_NOW. Merged by i18n.js. Written by the builder, not native-checked: see IT-REVIEW.md.
 export const IT_NOW = {
   'Worktree': 'Worktree', 'Worktrees': 'Worktree', 'linked': 'collegato', 'task': 'attività', 'Missing': 'Mancante', 'Merged': 'Unito', 'Abandoned': 'Abbandonato', 'Last activity': 'Ultima attività', 'No mission': 'Nessuna missione', 'Attempt': 'Tentativo',
-  'Open work': 'Apri il lavoro', 'Open mission': 'Apri la missione', 'No missions yet': 'Ancora nessuna missione', 'Agent execution': 'Esecuzione agente', 'No items yet': 'Ancora nessuna voce', 'items': 'voci', 'Today': 'Oggi', 'Known projects': 'Progetti noti', 'Tell': 'Dì', 'Today and known projects': 'Oggi e progetti noti', 'Understand · Plan · Do': 'Capisci · Pianifica · Fai',
+  'Open work': 'Apri il lavoro', 'Open mission': 'Apri la missione', 'No missions yet': 'Ancora nessuna missione', 'Agent execution': 'Esecuzione agente', 'No items yet': 'Ancora nessuna voce', 'items': 'voci', 'Today': 'Oggi', 'Known projects': 'Progetti noti', 'Tell': 'Dimmi', 'Today and known projects': 'Oggi e progetti noti', 'Understand · Plan · Do': 'Capisci · Pianifica · Fai',
   'Your projects. In context.': 'I tuoi progetti. Nel contesto.',
   'Nothing running. Tell Archeus what to do.': 'Niente in corso. Dì ad Archeus cosa fare.',
   'Archeus is quiet. Tell it what to do next, or open a project.': 'Archeus è a riposo. Digli cosa fare, oppure apri un progetto.',

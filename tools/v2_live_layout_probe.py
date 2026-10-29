@@ -43,7 +43,7 @@ ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'healt
           # S1: the safety popover, its two-step Stop, the Tell overlay
           'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'now~estopsafety',
           # Autopilot: the paused caption bar on chapter 1 over four pages (the bar takes a row of the page grid, so the page below it is measured whole)
-          'now~zoomin', 'now~flyhub', 'now~autopilot', 'work~autopilot', 'projects~autopilot', 'chat~autopilot']
+          'now~zoomin', 'now~flyhub', 'now~rings', 'now~ringszoom', 'now~ringsfly', 'now~network', 'now~networkzoom', 'now~networkfly', 'now~autopilot', 'work~autopilot', 'projects~autopilot', 'chat~autopilot']
 # terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
 TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
        'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
@@ -51,6 +51,15 @@ TUI_RESET = "() => { const c = window.v2live.ui.tui.ctl; c.setPrefs({ look: 'app
 TUI_SET = "([keys, prefs]) => { const c = window.v2live.ui.tui.ctl; c.setPrefs(prefs); if (keys) c.keys(keys); window.v2live.ui.tui.redraw(); }"
 OVERLAYS = ['menu:device', 'menu:theme', 'menu:sim', 'device:all']
 KINDS = ['overlap', 'clipped', 'hscroll', 'target', 'wraps', 'covered', 'contrast', 'narrow', 'error']
+
+ZOOM = "for (let i = 0; i < 3; i++) document.querySelector('[aria-label=\"Zoom in\"]')?.click();"
+FLY = "document.querySelector('.am-equivalent button[data-node-id=\"archeus\"]')?.click();"
+
+
+def VIEW(view, then=''):
+    """The Overview view is a preference: pick it through the switch, let the map settle, then run `then`."""
+    return "(async () => { const w = (ms) => new Promise((r) => setTimeout(r, ms)); document.querySelector('[data-key=\"vs-%s\"]')?.click(); await w(700); %s await w(900); })()" % (view, then)
+
 
 STATES = {
     'why': "window.v2live.ui.tab = 'why'",
@@ -69,6 +78,8 @@ STATES = {
     'autopilot': "window.v2live.autopilot.show()",
     'zoomin': "(() => { for (let i = 0; i < 3; i++) document.querySelector('[aria-label=\"Zoom in\"]')?.click(); })()",
     'flyhub': "(async () => { document.querySelector('.am-equivalent button[data-node-id=\"archeus\"]')?.click(); await new Promise((r) => setTimeout(r, 900)); })()",
+    'rings': VIEW('rings'), 'network': VIEW('network'),
+    'ringszoom': VIEW('rings', ZOOM), 'networkzoom': VIEW('network', ZOOM), 'ringsfly': VIEW('rings', FLY), 'networkfly': VIEW('network', FLY),
     'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
     'help': "window.v2live.help()",
@@ -76,7 +87,7 @@ STATES = {
     'estop': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop')",
     'confirm': "(() => { const b = document.querySelector('[data-key^=\"trip-\"], .decide.danger, .ax-sw[aria-checked=true]'); if (b) b.click(); })()",
 }
-RESET = "(() => { window.v2live.autopilot.hide(); window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; window.v2live.ui.nowDrawer = false; window.v2live.ui.estopAsk = window.v2live.ui.rearmAsk = false; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); const tt = document.querySelector('.toast'); if (tt) tt.hidden = true; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
+RESET = "(() => { window.v2live.autopilot.hide(); window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; window.v2live.ui.nowDrawer = false; window.v2live.store.set('overview', new URLSearchParams(location.search).get('overview') || 'territories'); window.v2live.ui.estopAsk = window.v2live.ui.rearmAsk = false; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); const tt = document.querySelector('.toast'); if (tt) tt.hidden = true; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
 
 MEASURE = r"""
 (opts) => {
@@ -148,7 +159,7 @@ MEASURE = r"""
 
   // target size and covered
   ctl.forEach((e) => {
-    const r = e.getBoundingClientRect(), need = e.matches('.am-hit') && e.closest('[data-tier="dense"]') ? 24 : opts.desktop && e.matches(primary) ? 48 : 44; // the dense rings (41 to 100 projects, marks 28 px apart by owner decision) keep the WCAG 2.2 AA minimum of 24 px; zooming in or the list gives more
+    const r = e.getBoundingClientRect(), need = e.matches('.am-hit') && (e.closest('[data-tier="dense"]') || e.matches('[tabindex="-1"]')) ? 24 : opts.desktop && e.matches(primary) ? 48 : 44; // the dense rings (41 to 100 projects, marks 28 px apart by owner decision) keep the WCAG 2.2 AA minimum of 24 px; zooming in or the list gives more. The same 24 px for the pointer-only marks of the deepest zoom (tabindex -1: tasks, attempts, ideas), whose keyboard path is the node table
     const hit = getComputedStyle(e, '::after'), ext = (a, b) => (parseFloat(hit[a]) < 0 ? -parseFloat(hit[a]) : 0) + (parseFloat(hit[b]) < 0 ? -parseFloat(hit[b]) : 0), grow = hit.content !== 'none' && hit.position === 'absolute' ? [ext('left', 'right'), ext('top', 'bottom')] : [0, 0];
     if (Math.min(r.width + grow[0], r.height + grow[1]) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
     const c = clipOf(e), v = c && inter(r, c);
@@ -454,7 +465,7 @@ def main():
                             pg.evaluate("location.hash = '#/now'")
                             pg.wait_for_timeout(100)
                             open_tool(pg, 'device')
-                            pg.click('[data-device="all"]')
+                            pg.click('[data-device="all"]'); pg.mouse.move(2, 2)   # the click point lands inside a pane once it opens: a hover card there is not a layout defect
                             pg.wait_for_timeout(2500)
                             frames = [f for f in pg.frames if f != pg.main_frame]
                         elif route in S4_ROUTES:

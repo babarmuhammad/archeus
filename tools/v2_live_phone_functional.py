@@ -232,7 +232,7 @@ try:
         pg.click('.sheet .menu-item:has-text("Language")')
         pg.wait_for_timeout(400)
         it = pg.evaluate("() => ({ bar: [...document.querySelectorAll('.bb-lab')].map((e) => e.textContent), home: document.querySelector('[data-key=home]').getAttribute('aria-label'), title: document.querySelector('.sheet h2').textContent, status: document.querySelector('.topbar .stext').textContent })")
-        check('italian: bar labels, star, status word and the sheet title switch live', it['bar'] == ['Panoramica', 'Lavoro', 'Dì', 'Luoghi', 'Ferma'] and it['home'] == 'Panoramica' and it['title'] == 'Strumenti del prototipo' and it['status'] == 'Non fermato', it)
+        check('italian: bar labels, star, status word and the sheet title switch live', it['bar'] == ['Panoramica', 'Lavoro', 'Dimmi', 'Luoghi', 'Ferma'] and it['home'] == 'Panoramica' and it['title'] == 'Strumenti del prototipo' and it['status'] == 'Non fermato', it)
         pg.keyboard.press('Escape')
         pg.wait_for_timeout(300)
         pg.click('[data-key=bb-places]')

@@ -8,7 +8,7 @@ export const DEVICES = [
   { id: 'tablet', label: 'Tablet', w: 820, note: '820 px' }, { id: 'desktop', label: 'Desktop', w: 1440, note: '1440 px' }, { id: 'terminal', label: 'Terminal', note: 'Text mode' }, { id: 'all', label: 'All devices', note: 'Side by side' }
 ];
 const KEY = 'archeus-v2-live';
-const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed', overview: 'rings', slashpins: [], slashrecent: [], projsort: 'attention', rpchooser: {}, rprecent: [] };
+const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed', overview: 'territories', slashpins: [], slashrecent: [], projsort: 'attention', rpchooser: {}, rprecent: [] };
 
 function read() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
 function write(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* private window or blocked storage: the app still works */ } }
