@@ -18,6 +18,7 @@ import json
 import os
 import signal
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -66,6 +67,26 @@ def _issue_principal(tx, *, kind, token_hash):
 #: request is a new connection, thousands sit in TIME_WAIT) or take the port a
 #: Core was about to bind: both are retried, nothing was sent yet (T-115e)
 _BUSY = {errno.EADDRINUSE, errno.EADDRNOTAVAIL, 10048, 10049}
+
+
+class _HardClose(http.client.HTTPConnection):
+    """Closes with an RST, so a finished request leaves no TIME_WAIT behind: the
+    route-by-route floor tests make thousands of requests and one Windows runner
+    ran out of local ports for the tests after them. Every reply is read in full
+    before the close, so nothing is cut."""
+
+    def connect(self):
+        super().connect()
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+
+
+class _HardCloseHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        # a big body is the server's drain test: its lingering close must not be cut by our RST
+        return self.do_open(_HardClose if len(req.data or b'') < 1 << 16 else http.client.HTTPConnection, req)
+
+
+urllib.request.install_opener(urllib.request.build_opener(_HardCloseHandler))
 _RETRY_S = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2)
 
 
