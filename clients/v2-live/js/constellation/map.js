@@ -90,9 +90,11 @@ export function createMap(container, options = {}) {
   const body = element('tbody');
   table.append(caption, head, body); equivalent.append(table);
   const card = element('div', 'am-card'); card.hidden = true; card.setAttribute('aria-hidden', 'true');
-  host.append(svg, card, controls, status, equivalent); container.append(host);
+  // The focus caption: once the camera is in close it names the project in view (hover is never needed to know which project this is); a click opens its work.
+  const focusCap = element('button', 'am-focuscap'); focusCap.type = 'button'; focusCap.hidden = true;
+  host.append(svg, card, focusCap, controls, status, equivalent); container.append(host);
   let graph = {nodes: [], edges: [], projects: []}, positions = [], selected = null;
-  let controlsBottom = 12, inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
+  let focusCapId = null, focusCapSig = '', controlsBottom = 12, inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
   let reducedOverride = options.reducedMotion;
   let slots = new Map(), memory = new Map(), level = 0, projectOf = new Map(), hotCluster = null, hotEls = new Set(), hoverId = null, cardTimer = 0, graceTimer = 0, cardHide = 0;
   const media = matchMedia('(prefers-reduced-motion: reduce)');
@@ -196,6 +198,7 @@ export function createMap(container, options = {}) {
   }
   // A hub's tag stands centred under it, 4 px below its rim, in screen space (its width and height are pixels at any zoom).
   const tagRect = n => ({x: n.x - n.tag.width / 2, y: n.y + n.rk + 4, width: n.tag.width, height: n.tag.height});
+  const inScene = b => b.x >= 0 && b.x + b.width <= width && b.y >= 0 && b.y + b.height <= height;
   function refreshOverlay() {
     world.setAttribute('transform', `translate(${camera.x} ${camera.y}) scale(${camera.k})`);
     syncCore();
@@ -206,7 +209,19 @@ export function createMap(container, options = {}) {
     const hold = Math.max(reach, 62 * u * k), coreBox = {x: cx - hold, y: cy - reach, width: hold * 2, height: reach + below};
     const ctl = {x: width - 68, y: height - controlsBottom - 156, width: 68, height: 160}, grouped = clustered();
     // A hub's label stands under it and scales with the camera's position, not its size; below 0.8x the labels give way to the hub marks.
-    const tagged = grouped && k >= .8 ? nodes.filter(n => n.hub && n.tag && !receded.has(n.cluster)) : [], tagBoxes = tagged.map(n => ({id: n.id, ...tagRect(n)}));
+    const tagged = grouped && k >= .8 ? nodes.filter(n => n.hub && n.tag && !receded.has(n.cluster) && inScene(tagRect(n))) : [], tagBoxes = tagged.map(n => ({id: n.id, ...tagRect(n)}));
+    // The caption takes the first corner that no tag, label slot, mark, the core or the controls occupy; with none free it stays away (the name is then on the map itself).
+    const CAP = {width: 300, height: 60};
+    let capBox = null, capNode = null;
+    if (options.overview && grouped && k >= 1.3) {
+      const mx = (inset.left + width - inset.right) / 2, my = (inset.top + height - inset.bottom) / 2, lim = Math.min(width, height) * .45;
+      focusCapId = pickFocus(focusCapId, nodes.filter(n => n.hub).map(n => ({id: n.id, d: Math.hypot(n.x - mx, n.y - my)})).filter(c => c.d <= lim));
+      capNode = nodes.find(n => n.id === focusCapId) || null;
+      const corners = [[inset.left, inset.top + 8], [inset.left, height - inset.bottom - CAP.height - 8], [width - inset.right - CAP.width - 72, inset.top + 8]].map(([x, y]) => ({x, y, ...CAP}))
+        .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !overlaps(b, ctl, 4) && !tagBoxes.some(t => overlaps(b, t, 4)));
+      // A corner clear of every mark first; failing that one that only covers marks (the caption is opaque, and no text is ever covered).
+      if (capNode) capBox = corners.find(b => !nodes.some(o => coversNode(b, o, 4))) ?? corners[0] ?? null;
+    } else focusCapId = null;
     const shortOf = text => (grouped && [...text].length > 24 ? [...text].slice(0, 23).join('').trimEnd() + '…' : text);
     const slotOf = n => slots.get(n.cluster) ?? 1e9, live = n => ['needs-you', 'running'].includes(stateKey(n.state));
     // Only the hubs, the selected node and the first few that need you or run carry a label; the rest speak on hover and focus.
@@ -229,7 +244,7 @@ export function createMap(container, options = {}) {
     const reviewSpots = reviewFor && width >= 480 && !phoneOverview() && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84],
       ...[60, 100, 140].flatMap(d => Array.from({length: 12}, (_, i) => [Math.cos(i * Math.PI / 6) * (reviewFor.radius + d) - 56, Math.sin(i * Math.PI / 6) * (reviewFor.radius + d) - 22]))]
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
-      .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !overlaps(b, ctl, 4) && !tagBoxes.some(t => overlaps(b, t, 4)) && !nodes.some(o => coversNode(b, o, 2))) : [];
+      .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !overlaps(b, ctl, 4) && !tagBoxes.some(t => overlaps(b, t, 4)) && !(capBox && overlaps(b, capBox, 4)) && !nodes.some(o => coversNode(b, o, 2))) : [];
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
     const labelsFor = review => options.calm ? [] : placeLabels(grouped ? nodes.map(n => ({...n, label: shortOf(String(n.label || n.id))})) : nodes, width, height, {selected, size, rich: grouped ? false : rich, sub: grouped, only: eligible ?? undefined, metaOf, budget: ringed() ? 1e3 : undefined,
       priorityOf: ringed() ? n => (n.id === selected ? 1e4 : (({'needs-you': 5000, blocked: 3000, running: 1000})[stateKey(n.state)] || 0) + (projectOf.get(n.id)?.total || 0)) : undefined,
@@ -237,7 +252,7 @@ export function createMap(container, options = {}) {
       subWidth: grouped && context ? n => { const s = subOf(n).toUpperCase(); context.font = `500 ${size * .72}px ${sans}`; const w = context.measureText(s).width + s.length * size * .72 * .1; context.font = `400 ${size}px ${serif}`; return w; } : undefined, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
       obstacles: [coreBox,
-        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, ctl, ...tagBoxes, ...(review ? [review] : [])]});
+        {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, ctl, ...tagBoxes, ...(capBox ? [capBox] : []), ...(review ? [review] : [])]});
     // The button takes the first spot that leaves its node a full label; failing that, one that leaves a shortened label.
     let reviewBox = reviewSpots[0] ?? null, boxes = labelsFor(reviewBox);
     if (reviewFor && reviewBox) {
@@ -340,7 +355,20 @@ export function createMap(container, options = {}) {
     const missing = nodes.filter(n => (n.id === selected || (eligible ? eligible.has(n.id) && stateKey(n.state) === 'needs-you' : stateKey(n.state) === 'needs-you')) && !boxes.some(b => b.id === n.id));
     host.dataset.labelOverflow = String(missing.length);
     status.textContent = missing.length ? T(`${missing.length} priority labels cannot fit. Full labels available in node table.`) : '';
+    paintFocusCap(capBox, capNode);
   }
+  function paintFocusCap(box, n) {
+    if (!box || !n) { focusCap.hidden = true; focusCapSig = ''; return; }
+    const p = projectOf.get(n.id), word = nodeWord(n), count = p?.total ? T(`${p.total} ${p.total === 1 ? 'mission' : 'missions'}`) : '', sig = [n.id, n.label, stateKey(n.state), word, count].join('|');
+    if (sig !== focusCapSig) {
+      focusCapSig = sig;
+      focusCap.setAttribute('aria-label', `${T('Project')}: ${n.label || n.id}, ${word}${count ? ', ' + count : ''}. ${T('Open work')}`);
+      focusCap.dataset.nodeId = n.id;
+      focusCap.replaceChildren(element('span', 'am-cap-kind', T('Project')), element('span', 'am-cap-name', String(n.label || n.id)), element('span', `am-cap-sub am-state-${words[stateKey(n.state)] ? stateKey(n.state) : 'idle'}`, [word, count].filter(Boolean).join(' · ')));
+    }
+    focusCap.style.left = f(box.x) + 'px'; focusCap.style.top = f(box.y) + 'px'; focusCap.hidden = false;
+  }
+  focusCap.addEventListener('click', () => { if (focusCap.dataset.nodeId) emit('select', focusCap.dataset.nodeId); });
   // A mark answers a pointer within 22 px (24 on a narrow scene, 12 on the dense rings whose marks are 28 px apart), a detailed one within its own radius or 9 px.
   const hitR = n => (n.detail ? Math.max(9, n.radius) : Math.max(ringed() && ringsOut?.tier.name === 'dense' && camera.k < 1.6 ? 12 : width < 480 ? 24 : 22, n.radius));
   function choose(id, reveal = false) {

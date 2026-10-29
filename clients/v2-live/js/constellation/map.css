@@ -282,6 +282,13 @@
 @media (prefers-reduced-motion: reduce) { .archeus-map .am-card { transition: none; } }
 .archeus-map .am-card p { margin: 0; }
 .archeus-map .am-card p + p { margin-top: 4px; }
+.archeus-map .am-focuscap { position: absolute; z-index: 4; width: 300px; height: 60px; box-sizing: border-box; padding: 7px 12px; display: grid; grid-template-columns: minmax(0, 1fr); row-gap: 2px; align-content: center; text-align: left; background: var(--am-surface); border: 1px solid var(--am-line); border-radius: 0; color: var(--am-text); cursor: pointer; font: inherit; }
+.archeus-map .am-focuscap[hidden] { display: none; }
+.archeus-map .am-focuscap:hover { border-color: var(--am-text); }
+.archeus-map .am-cap-kind { font: 500 10px/1.2 var(--am-sans); letter-spacing: .14em; text-transform: uppercase; color: var(--am-muted); }
+.archeus-map .am-cap-name { font: 400 18px/1.15 var(--am-serif); white-space: nowrap; overflow: hidden; text-overflow: clip; }
+.archeus-map .am-cap-sub { font: 500 11px/1.2 var(--am-sans); letter-spacing: .1em; text-transform: uppercase; }
+@media (forced-colors: active) { .archeus-map .am-focuscap { border-color: CanvasText; background: Canvas; color: CanvasText; } }
 .archeus-map .am-card-kind { font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--am-muted); }
 .archeus-map .am-card-name { font: 400 17px/1.25 var(--am-serif); }
 .archeus-map .am-card-state { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
