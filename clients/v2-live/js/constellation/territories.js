@@ -1,6 +1,7 @@
 import {clamp, stateKey, driftOf, INSET} from './geometry.js';
 import {bodyMarkup, corePaths, coreTier, ICONS} from './nodeart.js';
 import {orderProjects, leadMission} from './order.js';
+import {laneOf, stateCounts} from './rings.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const f = v => +v.toFixed(1);
@@ -45,6 +46,17 @@ export function edgePoint(cell, to) {
   return {x: cx + dx * t, y: cy + dy * t};
 }
 
+export const stateOf = p => laneOf(stateCounts(p.missions.map(m => stateKey(m.state))), p.attention);
+export const describeProject = (p, T = x => x) => `${p.name}, ${p.code}, ${T(words[stateOf(p)])}${p.attention ? `, ${T(`${p.attention} need you`)}` : ''}${(p.worktrees || []).length ? `, ${T(`${p.worktrees.length} ${p.worktrees.length === 1 ? 'worktree' : 'worktrees'}`)}` : ''}${p.last ? `, ${p.last.text}` : ''}`;
+
+export function preserveFocus(root, render) {
+  const active = document.activeElement, key = root.contains(active) && active.dataset.focusKey;
+  render();
+  if (!key || root.contains(active)) return;
+  const target = [...root.querySelectorAll('[data-focus-key]')].find(el => el.dataset.focusKey === key);
+  (target || root.querySelector('.am-focus-back'))?.focus({preventScroll: true});
+}
+
 export function createTerritoryMap(container, options = {}) {
   const T = options.t || (x => x);
   const host = htmlEl('div', 'archeus-map am-territories');
@@ -78,7 +90,6 @@ export function createTerritoryMap(container, options = {}) {
     while (s.length > 1 && ctx2d.measureText(s + '…').width > max) s = s.slice(0, -1);
     return s.trimEnd() + '…';
   };
-  const stateOf = p => (p.attention ? 'needs-you' : p.running ? 'running' : p.stopped ? 'blocked' : p.total ? 'done' : 'idle');
   const wordOf = state => T(words[state] || state);
   const driftVars = (e, id) => { const d = driftOf(options.seed, id); e.style.setProperty('--dx', d.dx + 'px'); e.style.setProperty('--dy', d.dy + 'px'); e.style.setProperty('--dp', d.period + 'ms'); e.style.setProperty('--dd', d.delay + 'ms'); };
   const crystal = (m, r) => { const holder = svgEl('g'); const st = stateKey(m.state); holder.innerHTML = bodyMarkup({id: m.id, kind: 'Mission', state: st, radius: r}, ICON[st] || 'doc'); const star = holder.firstElementChild; driftVars(star, m.id); return star; };
@@ -158,7 +169,7 @@ export function createTerritoryMap(container, options = {}) {
     }
     return {g, hitsOf};
   }
-  const describe = p => `${p.name}, ${p.code}, ${wordOf(stateOf(p))}${p.attention ? `, ${p.attention} ${T('need you')}` : ''}${(p.worktrees || []).length ? `, ${T(`${p.worktrees.length} ${p.worktrees.length === 1 ? 'worktree' : 'worktrees'}`)}` : ''}${p.last ? `, ${p.last.text}` : ''}`;
+  const describe = p => describeProject(p, T);
 
   let graceTimer = 0, hideTimer = 0, over = null;
   // The card fades out over 120 ms; the dim holds a 120 ms grace so moving from one cell to the next cross-fades instead of flashing back to full.
@@ -232,18 +243,18 @@ export function createTerritoryMap(container, options = {}) {
     host.dataset.focus = focused ? 'on' : 'off';
     panel.hidden = !focused;
     if (!p) { panel.replaceChildren(); return; }
-    const state = stateOf(p), btn = (cls, text, fn) => { const b = htmlEl('button', cls, text); b.type = 'button'; b.addEventListener('click', fn); return b; };
+    const state = stateOf(p), btn = (cls, text, fn) => { const b = htmlEl('button', cls, text); b.type = 'button'; b.dataset.focusKey = cls; b.addEventListener('click', fn); return b; };
     const head = htmlEl('header', 'am-focus-head'), title = htmlEl('div', 'am-focus-title');
     title.append(htmlEl('span', 'am-focus-code', p.code), htmlEl('h2', 'am-focus-name', p.name), htmlEl('span', `am-focus-state am-state-${state}`, wordOf(state)));
     head.append(btn('am-focus-back', '← ' + T('All projects'), () => focus(null)), title, btn('am-focus-open', T('Open work'), () => select(p.id)));
     const list = htmlEl('ul', 'am-focus-list'), ms = [...p.missions].sort((a, b) => RANK[stateKey(b.state)] - RANK[stateKey(a.state)] || (b.at || 0) - (a.at || 0) || String(a.id).localeCompare(String(b.id)));
     for (const m of ms) {
       const st = stateKey(m.state), li = htmlEl('li', 'am-focus-item'), row = htmlEl('button', `am-focus-row am-state-${st}`);
-      row.type = 'button'; row.dataset.nodeId = m.id; row.addEventListener('click', () => select(m.id));
+      row.type = 'button'; row.dataset.focusKey = `mission:${m.id}`; row.dataset.nodeId = m.id; row.addEventListener('click', () => select(m.id));
       const art = svgEl('svg', {class: 'am-focus-art', width: 30, height: 30, viewBox: '-15 -15 30 30', 'aria-hidden': 'true'}); art.append(crystal(m, 11));
       const text = htmlEl('span', 'am-focus-text'); text.append(htmlEl('span', 'am-focus-mission', m.title), htmlEl('span', `am-focus-word am-state-${st}`, wordOf(st) + (m.time ? ' · ' + m.time : '')));
       row.append(art, text); li.append(row);
-      if (st === 'needs-you') li.append(btn('am-focus-review', T('Review'), () => emit('review', m.id)));
+      if (st === 'needs-you') { const review = btn('am-focus-review', T('Review'), () => emit('review', m.id)); review.dataset.focusKey = `review:${m.id}`; li.append(review); }
       list.append(li);
     }
     const wl = (p.worktrees || []).length ? htmlEl('section', 'am-focus-wts') : null;
@@ -269,7 +280,8 @@ export function createTerritoryMap(container, options = {}) {
     if (!selected) return;
     for (const rec of cellRecs.values()) { const h = rec.hitsOf.find(x => x.id === selected); if (h) { const star = rec.g.querySelector(`[data-node-id="${CSS.escape(selected)}"]`); if (star) { ring.setAttribute('r', h.r - 4 + 8); star.append(ring); } } }
   }
-  function build(animate = false) {
+  const build = (animate = false) => preserveFocus(host, () => buildContent(animate));
+  function buildContent(animate) {
     if (destroyed || !layout) return;
     const animated = animate && cellRecs.size > 0 && canMove();
     let moved = false;
@@ -311,7 +323,7 @@ export function createTerritoryMap(container, options = {}) {
     hits.replaceChildren();
     for (const {p, cell, rec} of hitNodes) {
       const info = {kind: T('Project'), title: p.name, state: stateOf(p), stateWord: wordOf(stateOf(p)), project: `${p.code}${p.total ? ' · ' + T(`${p.total} ${p.total === 1 ? 'mission' : 'missions'}`) : ''}`, line: p.last ? `${p.last.time} · ${p.last.text}` : '', action: T('Show missions')};
-      const hit = svgEl('g', {class: 'am-chit', tabindex: 0, role: 'button', 'data-node-id': p.id, 'aria-label': describe(p)});
+      const hit = svgEl('g', {class: 'am-chit', tabindex: 0, role: 'button', 'data-node-id': p.id, 'data-focus-key': `project:${p.id}`, 'aria-label': describe(p)});
       hit.append(svgEl('rect', {x: f(cell.x), y: f(cell.y), width: f(cell.w), height: f(cell.h)}));
       bindHit(hit, info, p, {x: cell.x, y: cell.y, w: cell.w, h: cell.h}); hits.append(hit);
       for (const m of rec.hitsOf) {
@@ -326,7 +338,7 @@ export function createTerritoryMap(container, options = {}) {
     wordmark.style.fontSize = ws + 'px'; wordmark.setAttribute('y', f(layout.core.radius * 1.6 + ws * 1.9)); runningText.style.fontSize = ws * .9 + 'px'; runningText.setAttribute('y', f(layout.core.radius * 1.6 + ws * 3.6));
     const needs = model.projects.reduce((t, p) => t + p.attention, 0);
     status.textContent = T(`${model.projects.length} projects. ${needs} need you.`);
-    equivalent.replaceChildren(...(() => { const ul = htmlEl('ul'); for (const p of ordered) { const li = htmlEl('li'), b = htmlEl('button', '', describe(p)); b.type = 'button'; b.dataset.nodeId = p.id; li.append(b); ul.append(li); } return [ul]; })());
+    equivalent.replaceChildren(...(() => { const ul = htmlEl('ul'); for (const p of ordered) { const li = htmlEl('li'), b = htmlEl('button', '', describe(p)); b.type = 'button'; b.dataset.nodeId = p.id; b.dataset.focusKey = `equivalent:${p.id}`; li.append(b); ul.append(li); } return [ul]; })());
     renderFocus(); paintSelection(); motion();
   }
   // The current core (M3): its tier follows the core's size on screen, its marks follow the work and the emergency stop.

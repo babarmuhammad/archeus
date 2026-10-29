@@ -34,3 +34,18 @@ test('the Autopilot view chapter keeps its English and Italian text apart', () =
     assert.doesNotMatch(it, EN_WORDS);
   }
 });
+
+
+test('territory state words and composed counts translate fully in Italian', () => {
+  for (const en of ['Needs you', 'Running', 'Done', 'Blocked', 'Quiet', 'Paused', 'Planning',
+    '1 need you', '2 need you', '1 running', '2 running',
+    '1 idea captured', '2 ideas captured', '1 idea captured, no missions yet', '2 ideas captured, no missions yet',
+    '1 projects. 1 need you.', '2 projects. 2 need you.']) {
+    assert.notEqual(tr(en), en, en);
+    assert.doesNotMatch(tr(en), /\b(need you|running|ideas|captured|projects?|missions?|yet)\b/i, en);
+  }
+  assert.equal(tr('1 worktree'), '1 worktree');
+  assert.equal(tr('2 worktrees'), '2 worktree');
+  assert.equal(tr('1 need you'), '1 ti serve');
+  assert.equal(tr('2 need you'), '2 ti servono');
+});

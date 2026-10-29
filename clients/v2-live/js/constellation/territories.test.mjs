@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {pickGrid, layoutTerritories, levelOf, edgePoint} from './territories.js';
+import {pickGrid, layoutTerritories, levelOf, edgePoint, stateOf, describeProject, preserveFocus} from './territories.js';
 
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const INSET = {top: 150, right: 24, bottom: 80, left: 24};
@@ -64,4 +64,49 @@ test('a spoke ends on the cell outline, on the side facing the core', () => {
   const cell = {x: 100, y: 100, w: 200, h: 100}, p = edgePoint(cell, {x: 600, y: 150});
   assert.equal(p.x, 300);
   assert.equal(p.y, 150);
+});
+
+
+test('rebuilds preserve project, equivalent-list and panel controls by identity', () => {
+  const previous = globalThis.document;
+  const control = key => ({dataset: {focusKey: key}, focus() { document.activeElement = this; }});
+  let controls = [];
+  const root = {contains: el => controls.includes(el), querySelectorAll: () => controls, querySelector: () => controls.find(el => el.dataset.focusKey === 'am-focus-back')};
+  globalThis.document = {activeElement: null};
+  try {
+    for (const key of ['project:p1', 'equivalent:p1', 'am-focus-back', 'am-focus-open', 'mission:m1', 'review:m1']) {
+      const old = control(key); controls = [old]; document.activeElement = old;
+      preserveFocus(root, () => { controls = [control('project:p2'), control(key)]; });
+      assert.equal(document.activeElement, controls[1], key);
+    }
+    const outside = control('outside'); document.activeElement = outside;
+    preserveFocus(root, () => { controls = [control('am-focus-back')]; });
+    assert.equal(document.activeElement, outside);
+    document.activeElement = controls[0];
+    preserveFocus(root, () => {});
+    assert.equal(document.activeElement, controls[0]);
+    const mission = control('mission:removed'); controls.push(mission); document.activeElement = mission;
+    preserveFocus(root, () => { controls = [control('am-focus-back')]; });
+    assert.equal(document.activeElement, controls[0]);
+  } finally { if (previous === undefined) delete globalThis.document; else globalThis.document = previous; }
+});
+
+test('project state follows mission lanes, including paused, planning and mixed work', () => {
+  for (const [states, attention, expected] of [
+    [['paused'], 0, 'paused'], [['thinking'], 0, 'paused'], [['done', 'thinking'], 0, 'paused'],
+    [[], 0, 'paused'], [['done', 'completed'], 0, 'done'], [['running', 'blocked'], 0, 'blocked'],
+    [['running', 'done'], 0, 'running'], [['blocked'], 1, 'needs-you'], [['needs-you'], 0, 'needs-you']
+  ]) {
+    assert.equal(stateOf({missions: states.map(state => ({state})), attention, total: states.length}), expected);
+  }
+});
+
+test('project descriptions translate whole attention phrases for accessible names and equivalent lists', async () => {
+  globalThis.location = {search: '?lang=it'};
+  const {tr} = await import('../i18n.js');
+  for (const [attention, phrase] of [[1, '1 ti serve'], [2, '2 ti servono']]) {
+    const project = {name: 'Alpha', code: 'AL', attention, missions: [], worktrees: [{}, {}]};
+    assert.equal(describeProject(project), 'Alpha, AL, Needs you, ' + attention + ' need you, 2 worktrees');
+    assert.equal(describeProject(project, tr), 'Alpha, AL, Richiede te, ' + phrase + ', 2 worktree');
+  }
 });
