@@ -138,8 +138,13 @@ class ClaudeCodeAdapter:
                 {'type': 'command', 'command': cmd, 'timeout': HOOK_TIMEOUT_S}]}],
                      'PreCompact': [{'hooks': [
                          {'type': 'command', 'command': cmd, 'timeout': 30}]}]}
+        doc = {'hooks': hooks}
+        if spec.broker is not None:
+            # PV-20 (PV20-08 §1): a brokered process reaches nothing but its bridge, so
+            # Claude Code's own pre-flight fetch to the provider is switched off
+            doc['skipWebFetchPreflight'] = True
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        config.write_json_atomic(path, {'hooks': hooks}, indent=None)
+        config.write_json_atomic(path, doc, indent=None)
         return path
 
     def argv(self, spec, session):

@@ -312,7 +312,7 @@ There is no post-redemption confirmation step (D11); the new client is announced
 and revocable at once. `GET /v1/devices` lists clients with presence; `GET /v1/sync` is the
 resync anchor (§4 *as built*).
 
-Tokens are typed (`dev_…` device, `node_…` node, `hook_…` execution hook token) and verified
+Tokens are typed (`dev_…` device, `node_…` node, `hook_…` execution hook token, `brk_…` provider broker grant) and verified
 with `hmac.compare_digest` on bytes. Token prefixes are a namespace of their own, disjoint from
 entity-id prefixes: `exe_…` is always an Execution **id**, never a credential (both tables live
 in `archeus/core/domain/ids.py`, and a test fails if they overlap).

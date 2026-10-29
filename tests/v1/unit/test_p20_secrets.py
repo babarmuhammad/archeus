@@ -82,6 +82,13 @@ SITES = {
         (1, AT_REST, 'the hook token: env of the child; sha256 in executions.hook_token_hash, '
                      'cleared on every end path; plaintext in run/exec/<id>/req/<seq>.req.json, '
                      'written by the hook beside the raw tool input, dead once the hash is cleared'),
+    ('archeus/node/broker.py', 'new_token', 'secrets.token_urlsafe'):
+        (1, FLOW, 'the PV-20 broker token: launch input of the bridge and the CLI only; sha256 '
+                  'in executions.broker_token_hash, cleared on every end path'),
+    ('archeus/node/broker.py', 'Broker.issue', 'auth.new_token'):
+        (1, FLOW, 'the PV-20 broker token minted per grant; its callers are the new_token row'),
+    ('archeus/node/broker.py', 'Broker.issue', 'secrets.token_hex'):
+        (1, NOT_SECRET, "a broker pipe name's nonce; the pipe authenticates nothing by name"),
     ('archeus/core/application/commands.py', 'hash_pin', 'secrets.token_bytes'):
         (1, AT_REST, 'the salt of a step-up PIN record, pbkdf2_sha256 in devices.pin_hash'),
     ('archeus/infra/discovery.py', 'public_account_secret', 'secrets.token_bytes'):
@@ -346,7 +353,7 @@ def test_device_and_hook_credentials_are_stored_as_hashes_only():
     assert 'token_hash' in params and not [p for p in params if p in ('token', 'secret', 'code')]
     assert hasattr(writer.Tx, 'insert_token')
     fields = {f for f in entities.Execution.__dataclass_fields__ if 'token' in f}
-    assert fields == {'hook_token_hash'}
+    assert fields == {'hook_token_hash', 'broker_token_hash'}
 
 
 def test_a_step_up_pin_is_kept_only_as_a_pbkdf2_record():
