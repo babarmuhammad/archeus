@@ -98,7 +98,7 @@ const RULES = [
   [/^(\d+) needs? you$/, (m) => m[1] + (m[1] === '1' ? ' ti serve' : ' ti servono')], [/^(\d+) running$/, (m) => m[1] + ' in corso'], [/^(\d+) stopped$/, (m) => m[1] + (m[1] === '1' ? ' fermo' : ' fermi')],
   [/^Nothing needs you\.$/, () => 'Niente richiede la tua attenzione.'],
   [/^(\d+) more in Attention$/, (m) => m[1] + ' altri in Attenzione'],
-  [/^(\d+) need you$/, (m) => m[1] + ' ti servono'],
+  [/^(\d+) need you$/, (m) => m[1] + (m[1] === '1' ? ' ti serve' : ' ti servono')],
   [/^(.+), step (\d) of 6\.$/, (m) => tr(m[1]) + ', passo ' + m[2] + ' di 6.'],
   [/^(.+) at step (\d) of 6 \((\w+)\)\.$/, (m) => tr(m[1]) + ' al passo ' + m[2] + ' di 6 (' + tr(m[3]) + ').'],
   [/^(.+), (\d) of 6 steps passed\.$/, (m) => tr(m[1]) + ', ' + m[2] + ' passi su 6 superati.'],
@@ -109,7 +109,7 @@ const RULES = [
   [/^\(running, x([\d.]+)\)$/, (m) => '(in corso, x' + m[1] + ')'], [/^Expires (\d\d:\d\d)\. This is a simulated decision: nothing is run, sent or spent\.$/, (m) => 'Scade alle ' + m[1] + '. Decisione simulata: nulla viene eseguito, inviato o speso.'],
   [/^Decided: (.+)\.$/, (m) => 'Deciso: ' + tr(m[1]) + '.'], [/^Version (\d+)$/, (m) => 'Versione ' + m[1]],
   [/^(Approved|Rejected|Accepted|Changes requested|Unblocked|Resumed|Replanning|Cancelled|Pausing|Remembered|Not remembered|Enabled) \(simulated\)\.(.*)$/, (m) => ({ Approved: 'Approvata', Rejected: 'Rifiutata', Accepted: 'Accettata', 'Changes requested': 'Modifiche richieste', Unblocked: 'Sbloccata', Resumed: 'Ripresa', Replanning: 'Ripianificazione', Cancelled: 'Annullata', Pausing: 'In pausa', Remembered: 'Ricordato', 'Not remembered': 'Non ricordato', Enabled: 'Attivata' })[m[1]] + ' (simulato).' + (m[2] ? ' Nulla è stato eseguito.' : '')],
-  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*$/, (m) => m[1] + ' nodi in ' + m[2] + ' progetti. ' + m[3] + ' ti servono. Usa Tab per scorrere le stelle, Invio per scegliere, le frecce per spostarti. La tabella equivalente segue i controlli della mappa.'],
+  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*$/, (m) => m[1] + ' nodi in ' + m[2] + ' progetti. ' + m[3] + (m[3] === '1' ? ' ti serve.' : ' ti servono.') + ' Usa Tab per scorrere le stelle, Invio per scegliere, le frecce per spostarti. La tabella equivalente segue i controlli della mappa.'],
   [/^(\d+) priority labels cannot fit\. .*$/, (m) => m[1] + ' etichette prioritarie non entrano. Le etichette complete sono nella tabella dei nodi.'],
   [/^(\d+) boxes$/, (m) => m[0]]
 ];
