@@ -1,0 +1,863 @@
+"""Resources and routing (P10; resource-router, p10-design-gate §5-§9).
+
+Commands that register accounts, set their resource policies and a mission's
+resource preferences; the gatherer that builds the router's snapshot from the
+database, the adapters and the usage feed; the command that records a
+RouteDecision; and `ResourceRouter`, the Router port a task's dispatch uses.
+
+What this module never does: authorise (a task reaches the router only with
+a current `covered` P9 dispatch decision, checked again here), approve, change
+a policy rule, or run anything. `ask` is recorded; asking the user is P9's
+`authorization.request_route`, called by the dispatch command.
+"""
+
+import json
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
+from ...infra.db import rows
+from ..domain import actions, entities, ids, instants, states
+from ..domain.events import new_event
+from ..domain.values import Ref
+from ..routing import router as R
+from . import authorization as A
+from . import executions as X
+from . import lifecycle
+from .queries import view
+
+#: A registered account's policy before the user sets one (resource-router §2).
+REGISTER_DEFAULTS = {'allocation_pct': 80, 'reserve_pct': 10, 'brain_reserve_pct': 10,
+                     'fallback': 'ask'}
+POLICY_FIELDS = ('priority', 'allocation_pct', 'reserve_pct', 'brain_reserve_pct', 'fallback',
+                 'budgets', 'project_allow', 'project_deny', 'consumption')
+#: How long a fallback question waits for its answer (as a task approval does).
+ROUTE_TTL = timedelta(hours=24)
+#: Where each recorded requirement came from (K5, p21-design-gate D11): `requirements._source`
+#: maps every requirement key to one of these. The keys in REQ_IDENTITY name the subject and
+#: are not requirements, so they carry no source.
+REQ_SOURCES = ('plan_contract', 'user_override', 'conversation', 'policy', 'user_preference',
+               'caller', 'core')
+REQ_IDENTITY = ('subject', 'purpose', 'mission_id', 'task_id', 'project_id')
+_LIVE_EXEC = tuple(s for s in states.states('execution') if s not in states.terminal('execution'))
+
+
+class NotAuthorised(PermissionError):
+    """Routing refused: the task has no current `covered` P9 dispatch decision
+    (policy before routing: the router never routes what P9 did not authorise)."""
+
+
+def _user(actor, what):
+    if actor.kind != 'user_device':
+        raise A.NotPermitted('only a user device %s' % what)
+
+
+def _epoch(iso):
+    return datetime.fromisoformat(iso.replace('Z', '+00:00')).timestamp()
+
+
+def _iso(epoch):
+    return datetime.fromtimestamp(epoch, timezone.utc).isoformat(
+        timespec='milliseconds').replace('+00:00', 'Z')
+
+
+# ── accounts and policies (resource-router §2) ─────────────────────────────
+
+def register_account(tx, *, actor, harness_id, label, auth_kind, home_ref=None, auth=None):
+    """A new account, UNVERIFIED, with the first-run policy (priority in
+    registration order); `auth` is the adapter's probe, made before this
+    command by the caller ({'ok', 'detail'}, or None when no adapter can
+    probe it: it stays UNVERIFIED and is not routed to)."""
+    from ...harnesses.base import canonical_home
+    _user(actor, 'registers an account')
+    key = canonical_home(home_ref) if home_ref else None
+    if key is not None:
+        for r in rows.where(tx.conn, entities.Account, harness_id=harness_id):
+            o = r.entity
+            if o.node_id is None and (o.home_key or (o.home_ref and canonical_home(o.home_ref))
+                                      ) == key:
+                raise ValueError('that home is already registered as account %s: one home, '
+                                 'one account (ADR-0048)' % o.id)
+    a = entities.Account(id=ids.new_id('account'), harness_id=harness_id, label=label,
+                         auth_kind=auth_kind, home_ref=home_ref, home_key=key)
+    tx.insert(a, actor=actor)
+    tx.append(new_event('account.registered', Ref('account', a.id), actor,
+                        payload={'harness_id': harness_id, 'label': label,
+                                 'auth_kind': auth_kind}))
+    p = entities.ResourcePolicy(id=ids.new_id('resource_policy'), account_id=a.id,
+                                priority=len(tx.where(entities.ResourcePolicy)) + 1,
+                                **REGISTER_DEFAULTS)
+    tx.insert(p, actor=actor)
+    if auth is not None:
+        lifecycle.fire(tx, entities.Account, a.id, 'auth_ok' if auth['ok'] else 'auth_failed',
+                       actor=actor, reason=auth.get('detail') or 'the adapter probed the login')
+    return account_view(tx.conn, tx.get(entities.Account, a.id))
+
+
+def set_account_enabled(tx, *, actor, account_id, enabled, auth=None):
+    """The user disables an account (never routed to) or enables it again
+    (UNVERIFIED, then the probe's answer)."""
+    _user(actor, 'enables or disables an account')
+    lifecycle.fire(tx, entities.Account, account_id, 'user_enables' if enabled
+                   else 'user_disables', actor=actor,
+                   reason='enabled on request' if enabled else 'disabled on request')
+    if enabled and auth is not None:
+        lifecycle.fire(tx, entities.Account, account_id,
+                       'auth_ok' if auth['ok'] else 'auth_failed', actor=actor,
+                       reason=auth.get('detail') or 'the adapter probed the login')
+    return account_view(tx.conn, lifecycle.load(tx, entities.Account, account_id))
+
+
+def set_resource_policy(tx, *, actor, account_id, expected_version=None, usage_measures=None,
+                        **fields):
+    """Change an account's priority, allocation, reserves, fallback, budgets,
+    project restrictions or consumption class. A ceiling, never a quota Archeus
+    must spend. `usage_measures` is what the account's adapter declares it
+    reports (the caller asks the adapter, outside the transaction): a budget on
+    any other measure is refused, so it is never evaluated against a number
+    nobody reports (ADR-0041 §3, ADR-0048 D-25.3)."""
+    _user(actor, 'changes a resource policy')
+    lifecycle.load(tx, entities.Account, account_id)
+    (row,) = tx.where(entities.ResourcePolicy, account_id=account_id)
+    got = {k: v for k, v in fields.items() if k in POLICY_FIELDS and v is not None}
+    if set(fields) - set(POLICY_FIELDS):
+        raise ValueError('a resource policy has only %s' % (POLICY_FIELDS,))
+    for k in sorted(got.get('budgets') or {}):
+        m = R.BUDGET_MEASURES.get(k)
+        if m is not None and m not in (usage_measures or ()):
+            raise ValueError('a %s budget needs the %s measure, which this account does not '
+                             'report: it would be evaluated against a missing number' % (k, m))
+    entities.ResourcePolicy(**dict(row.entity.to_dict(), **got))            # validate
+    out = tx.update(entities.ResourcePolicy, row.entity.id, got, actor=actor,
+                    expected_version=expected_version)
+    tx.append(new_event('resource_policy.updated', Ref('resource_policy', row.entity.id), actor,
+                        payload={'account_id': account_id, 'fields': dict(got)}))
+    return view(out)
+
+
+def set_mission_resources(tx, *, actor, mission_id, preferences):
+    """The mission's own resource choices (resource-router §10 D): preferred
+    and forbidden accounts and harnesses, and the plan gate's auto-approve
+    ceiling. Only a user device sets them: `max_cost_band` loosens what may be
+    approved without asking. Setting them clears the mission's affinity."""
+    _user(actor, "sets a mission's resources")
+    m = lifecycle.load(tx, entities.Mission, mission_id).entity
+    prefs = dict(preferences, since=tx.now)
+    entities.Mission(**dict(m.to_dict(), resource_preferences=prefs))       # validate
+    out = tx.update(entities.Mission, mission_id, {'resource_preferences': prefs}, actor=actor)
+    tx.append(new_event('mission.updated', Ref('mission', mission_id), actor,
+                        payload={'resource_preferences': prefs},
+                        workspace=m.workspace_id, project=m.project_id))
+    return view(out)
+
+
+# ── usage (resource-router §4) ─────────────────────────────────────────────
+
+def latest_usage(conn, account_id):
+    """The newest stored snapshot of each window, as a feed reading, or None."""
+    newest = {}
+    for r in rows.where(conn, entities.UsageSnapshot, account_id=account_id):
+        newest[r.entity.window] = r.entity                  # oldest first: last wins
+    if not newest:
+        return None
+    return {'windows': {w: s.utilisation_pct for w, s in newest.items()},
+            'resets_at': {w: s.resets_at for w, s in newest.items() if s.resets_at},
+            'observed_at': max(_epoch(s.observed_at) for s in newest.values()),
+            'source': sorted({s.source for s in newest.values()})[0]}
+
+
+def observe(tx, *, actor, readings):
+    """Record what the feed said about registered accounts, when it differs
+    from the newest stored snapshot of that window (observed truth)."""
+    for account_id, rd in sorted((readings or {}).items()):
+        if not rd:
+            continue
+        have = latest_usage(tx.conn, account_id) or {'windows': {}}
+        at = _iso(rd['observed_at'])
+        # the same value, observed again within the staleness window, is not news
+        fresh = have.get('observed_at') is not None and (
+            rd['observed_at'] - have['observed_at'] <= R.STALE_S)
+        for w, pct in sorted(rd['windows'].items()):
+            if have['windows'].get(w) == pct and fresh:
+                continue
+            s = entities.UsageSnapshot(id=ids.new_id('usage_snapshot'), account_id=account_id,
+                                       window=w, utilisation_pct=pct, source=rd['source'],
+                                       observed_at=at, resets_at=rd['resets_at'].get(w))
+            tx.insert(s, actor=actor)
+            tx.append(new_event('usage.observed', Ref('account', account_id), actor,
+                                payload={'window': w, 'pct': pct, 'source': rd['source']},
+                                visibility='system'))
+
+
+def own_call_live(row, now):
+    """An own call (its RouteDecision row) is in flight from its decision's
+    commit until its outcome, within its maximum run (ADR-0043 §1, ADR-0048
+    D-25.4): a Core that died mid-call cannot hold a slot for ever."""
+    rd = row.entity
+    if rd.outcome is not None or rd.result not in ('selected', 'fallback'):
+        return False
+    bound = (rd.requirements or {}).get('max_run_s')
+    return bound is None or now - _epoch(row.created_at) <= bound
+
+
+def own_calls(conn, now):
+    """The own calls (`archeus_call` decisions) of the last day, oldest first:
+    the one scan behind `live_work` and `live_counts` (orchestration G6). The
+    kind is read from each body in Python (no json_extract: SQLite 3.31)."""
+    # ponytail: a day's decisions by a scan of created_at, bodies parsed in Python; an indexed
+    # kind or account column when the decision history makes that scan matter
+    for rec in conn.execute("SELECT * FROM route_decisions WHERE created_at >= ? "
+                            "ORDER BY rowid", (_iso(now - 86400),)):
+        if (json.loads(rec['body']).get('subject') or {}).get('kind') == 'archeus_call':
+            yield rows.decode(entities.RouteDecision, rec)
+
+
+_NO_WORK = {'running': 0, 'lapsed': False}
+
+
+def live_counts(conn, today, now, account_id=None):
+    """Per account (only *account_id*, when given): `running`, the live
+    executions and own calls in flight, and `lapsed`, an own call of *today*
+    that ended with no outcome (it may have run and will never write its row).
+    Two scans for every account together, not two per account."""
+    out = {}
+
+    def mine(a):
+        return out.setdefault(a, {'running': 0, 'lapsed': False})
+    for rec in conn.execute('SELECT body FROM executions WHERE state IN (%s)'
+                            % ','.join('?' * len(_LIVE_EXEC)), _LIVE_EXEC):
+        a = json.loads(rec['body']).get('account_id')
+        if account_id is None or a == account_id:
+            mine(a)['running'] += 1
+    for r in own_calls(conn, now):
+        rd = r.entity
+        if rd.account_id is None or (account_id is not None and rd.account_id != account_id):
+            continue
+        if own_call_live(r, now):
+            mine(rd.account_id)['running'] += 1
+        elif rd.outcome is None and rd.result in ('selected', 'fallback') \
+                and r.created_at >= today:
+            mine(rd.account_id)['lapsed'] = True
+    return out
+
+
+def ledger_totals(conn, account_id, today, now=None, counts=None):
+    """What Archeus consumed on *account_id* since *today* (an ISO date), and
+    its live work (the budget path, §4).
+
+    `tokens_today` / `cost_today` sum only what was reported and are a lower
+    bound unless `complete` says so: a row that is not the harness's own
+    total, a figure not reported, or an own call that ended with no outcome
+    makes its measure incomplete — unknown is never 0 (ADR-0048 §3). `running`
+    is the account's live work: live executions and own calls in flight.
+    *counts* is `live_counts` for every account, when the caller has it."""
+    now = time.time() if now is None else now
+    live = (live_counts(conn, today, now, account_id) if counts is None
+            else counts).get(account_id, _NO_WORK)
+    tokens = cost = 0
+    complete = {'tokens': True, 'cost': True}
+    for r in rows.where(conn, entities.UsageLedger, account_id=account_id):
+        if r.created_at < today:
+            continue
+        e = r.entity
+        whole = e.basis == 'reported_total'
+        for v in (e.tokens_in, e.tokens_out):
+            tokens += v or 0
+        complete['tokens'] &= whole and None not in (e.tokens_in, e.tokens_out)
+        cost += e.cost_usd or 0
+        complete['cost'] &= whole and e.cost_usd is not None
+    if live['lapsed']:
+        complete = {'tokens': False, 'cost': False}
+    return {'tokens_today': tokens, 'cost_today': round(cost, 6), 'running': live['running'],
+            'complete': complete}
+
+
+# ── the snapshot (resource-router §5: everything a decision is made from) ──
+
+def _models(caps):
+    out = []
+    for m in caps.models:
+        if isinstance(m, str):
+            out.append({'id': m, 'tier': None, 'context_window': None})
+        else:
+            out.append({'id': m.id, 'tier': m.tier, 'context_window': m.context_window})
+    return out
+
+
+def harness_view(adapter, exempt):
+    info = adapter.discover()
+    caps = adapter.capabilities(None) if info.installed else None
+    # the version it reports, None when unprobed (ADR-0031 §6: the snapshot records it)
+    return {'id': adapter.id, 'installed': bool(info.installed), 'installed_version': info.version,
+            'capabilities': sorted(caps.capabilities) if caps else [],
+            'enforcement': caps.enforcement if caps else None,
+            'structured_output': caps.structured_output if caps else None,
+            'efforts': list(caps.efforts) if caps else [],
+            'models': _models(caps) if caps else [], 'exempt': bool(exempt)}
+
+
+def _terms(conn):
+    """Every ADR-0021 answer, through P6's one reader (`calls.terms`)."""
+    from .calls import terms
+    return {h: {'headless': t.headless, 'rotation': t.rotation}
+            for h, t in sorted(terms(conn).items())}
+
+
+def _account_offers(accounts, adapters, hs):
+    """Each account's own offers (domain-model §8.3: an offer is an account's,
+    ADR-0022): the adapter asked for THAT account, so one home never lends its
+    models to another (C-22). The harness-level list stays for the harness view
+    and for a snapshot taken before this field existed."""
+    from ...harnesses.base import AccountRef
+    by = {a.id: a for a in adapters}
+    installed = {h['id'] for h in hs if h['installed']}
+    for e in accounts:
+        ad = by.get(e['harness'])
+        if ad is None or e['harness'] not in installed:
+            continue
+        try:
+            caps = ad.capabilities(AccountRef(e['id'] or e['ref'] or e['harness'],
+                                              e['home_ref']))
+        except Exception as err:            # an adapter bug offers nothing
+            e['models'], e['models_note'] = [], '%s: %s' % (type(err).__name__, err)
+            e['usage_measures'] = []
+            continue
+        e['models'], e['models_note'] = _models(caps), caps.models_note
+        e['usage_measures'] = sorted(caps.usage_measures)
+
+
+def _registered(conn, harness_ids, feed, now):
+    """The registered accounts of *harness_ids*, with policy, usage and ledger.
+    Returns (entries, readings): the feed's readings are recorded by the
+    decision's command (`observe`)."""
+    policies = {r.entity.account_id: r.entity for r in rows.where(conn, entities.ResourcePolicy)}
+    today = _iso(now)[:10]
+    now_dt = datetime.fromtimestamp(now, timezone.utc)
+    out, readings = [], {}
+    for r in rows.where(conn, entities.Account):
+        a = r.entity
+        if a.harness_id not in harness_ids:
+            continue
+        fed = feed.read({'id': a.id, 'harness_id': a.harness_id, 'home_ref': a.home_ref})
+        if fed:
+            readings[a.id] = fed
+        rd = fed or latest_usage(conn, a.id)
+        resets = (rd or {}).get('resets_at')
+        usage = None if not rd else {
+            'windows': dict(rd['windows']),
+            # each reset still ahead as {at, key} (instants.ahead), else None: the router
+            # orders by key and never parses a provider's free text (T-106 r8)
+            'resets_at': {w: instants.ahead(v, now_dt) for w, v in resets.items()}
+            if isinstance(resets, dict) else {},
+            'observed_at': _iso(rd['observed_at']),
+            'age_s': max(0, round(now - rd['observed_at'], 3)), 'source': rd['source']}
+        out.append({'id': a.id, 'ref': a.home_ref or a.id, 'home_ref': a.home_ref,
+                    'harness': a.harness_id, 'label': a.label, 'auth_kind': a.auth_kind,
+                    'registered': True, 'health': a.health, 'why_not': None,
+                    'policy': effective_policy(policies[a.id]),
+                    'usage': usage, 'ledger': ledger_totals(conn, a.id, today, now)})
+    return out, readings
+
+
+def effective_policy(p):
+    """An account's policy exactly as the router reads it (ADR-0041 §5; G13)."""
+    return {k: getattr(p, k) for k in POLICY_FIELDS} | {
+        'budgets': dict(p.budgets or {}), 'project_allow': list(p.project_allow),
+        'project_deny': list(p.project_deny)}
+
+
+def refresh_ledgers(conn, snap, now):
+    """*snap* with every registered account's ledger read again from *conn*:
+    an own call's snapshot is gathered outside the writer, so its decision is
+    taken again inside the transaction that records it, where no other
+    decision can interleave (a concurrency slot is never granted twice)."""
+    today = _iso(now)[:10]
+    counts = live_counts(conn, today, now)
+    accts = [dict(a, ledger=ledger_totals(conn, a['id'], today, now, counts))
+             if a.get('registered') else a for a in snap['accounts']]
+    return dict(snap, accounts=accts)
+
+
+def call_snapshot(conn, *, callers, feed, preference, purpose, schema, project_id, min_tier,
+                  now=None, forbidden=None, max_run_s=None, no_tools=False):
+    """(requirements, snapshot, readings) for one of Archeus's own calls
+    (ADR-0022): every own-call adapter; a harness with no registered account
+    offers its one fixed default account (ADR-0048 D-25.1), with the adapter's
+    reason when it cannot be spent. `max_run_s` bounds how long the call
+    counts as live work. `no_tools` is recorded as the `no_tools` capability,
+    so the router's capability step drops a harness that cannot honour it."""
+    from ...harnesses.fake import is_fake_caller
+    now = time.time() if now is None else now
+    terms = _terms(conn)
+    hs = [harness_view(a, is_fake_caller(a)) for a in sorted(callers, key=lambda a: a.id)]
+    accounts, readings = _registered(conn, {h['id'] for h in hs}, feed, now)
+    have = {a['harness'] for a in accounts}
+    for a, h in zip(sorted(callers, key=lambda a: a.id), hs):
+        if h['installed'] and 'headless' in h['capabilities'] and a.id not in have:
+            try:
+                ref = a.default_account()
+                why = a.why_not(ref)
+            except Exception as e:          # an adapter bug is an unusable account
+                ref, why = None, '%s: %s' % (type(e).__name__, e)
+            accounts.append({'id': None, 'ref': ref and ref.account_id,
+                             'home_ref': ref and ref.home_ref, 'harness': a.id,
+                             'label': a.id, 'auth_kind': None, 'registered': False,
+                             'health': None, 'why_not': why or None, 'policy': None,
+                             'usage': None, 'ledger': None})
+    _account_offers(accounts, callers, hs)
+    models = {h['id']: preference.model_for(h['id']) for h in hs
+              if preference.model_for(h['id'])}
+    req = {'subject': 'archeus_call', 'purpose': purpose, 'project_id': project_id,
+           'capabilities': ['headless', 'no_tools'] if no_tools else ['headless'],
+           'structured_output': schema is not None,
+           'min_model_tier': min_tier, 'min_context_window': None, 'models': models,
+           'model_required': False, 'effort': None, 'effort_required': False,
+           'preferred': {'harnesses': [preference.harness] if preference.harness else [],
+                         'accounts': []},
+           'forbidden': {k: sorted(v) for k, v in (forbidden or {}).items() if v},
+           'required': {}, 'size': None, 'policy': None, 'max_run_s': max_run_s}
+    req['_source'] = dict.fromkeys(set(req) - set(REQ_IDENTITY), 'core')
+    req['_source'].update(models='user_preference',
+                          preferred='user_preference', forbidden='caller')
+    snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': terms,
+            'affinity': None, 'approved_fallbacks': []}
+    return req, snap, readings
+
+
+def current_authorization(conn, task, plan, policy_decision_id):
+    """The P9 dispatch decision that authorises *task* now, or NotAuthorised:
+    it must exist, be a `covered` dispatch decision of this exact task, plan
+    version and digest, carry no DENY, and be the task's latest dispatch
+    decision (a later one supersedes it). Routing never creates or widens it."""
+    row = policy_decision_id and rows.get(conn, entities.PolicyDecision, policy_decision_id)
+    if not row:
+        raise NotAuthorised('task %s has no authorisation to route' % task.key)
+    d = row.entity
+    if (d.stage, d.outcome, d.task_id) != ('dispatch', 'covered', task.id):
+        raise NotAuthorised('decision %s does not authorise task %s to dispatch (%s %s)'
+                            % (d.id, task.key, d.stage, d.outcome))
+    if (d.plan_id, d.plan_digest) != (plan.id, plan.digest):
+        raise NotAuthorised('decision %s is for another plan version' % d.id)
+    if d.decision == 'DENY' or any(i.get('decision') == 'DENY' for i in d.items):
+        raise NotAuthorised('decision %s denies an item of task %s' % (d.id, task.key))
+    latest = [r.entity for r in rows.where(conn, entities.PolicyDecision, task_id=task.id)
+              if r.entity.stage == 'dispatch']
+    if latest[-1].id != d.id:
+        raise NotAuthorised('decision %s was superseded by %s' % (d.id, latest[-1].id))
+    return d
+
+
+def _affinity(conn, mission):
+    """Where the mission's work last ran (§5 step 1), unless the user set its
+    resources since (that clears affinity)."""
+    since = (mission.resource_preferences or {}).get('since') or ''
+    # an execution stopped by its resource (a ceiling, a limit, the breaker) drops
+    # the affinity to it (resource-router §7; P11 D10): it must not route straight back
+    dropped = {r.entity.route_decision_id for r in rows.where(
+        conn, entities.Execution, mission_id=mission.id)
+        if r.entity.stop_reason in ('ceiling', 'limit', 'breaker')}
+    got = [r for r in rows.where(conn, entities.RouteDecision, mission_id=mission.id)
+           if r.entity.subject.kind == 'task' and r.entity.result in ('selected', 'fallback')
+           and r.created_at > since and r.entity.id not in dropped]
+    if not got:
+        return None
+    rd = got[-1].entity
+    return {'harness': rd.harness_id, 'account': rd.account_id or rd.account_ref}
+
+
+def _approved_fallbacks(conn, task, plan):
+    return sorted({a.entity.items[0]['resource']['account']
+                   for a in rows.where(conn, entities.Approval, task_id=task.id)
+                   if a.entity.kind == 'route' and a.entity.state == 'APPROVED'
+                   and a.entity.plan_id == plan.id})
+
+
+def breaker(conn, harness_id, now):
+    """O7's spawn breaker of a harness as the snapshot and the harness view
+    carry it (T-106): None when closed."""
+    b = X.spawn_breaker(conn, harness_id, now)
+    return b and dict(b, until=b['until'] and _iso(b['until']))
+
+
+def route_wait(conn, task_id, now):
+    """Until when (epoch) the task waits because its latest route found it could
+    run only on harnesses that cannot start (O7), or None: it is not routed again
+    on every pass (T-106)."""
+    rec = conn.execute('SELECT * FROM route_decisions WHERE task_id = ? ORDER BY rowid DESC'
+                       ' LIMIT 1', (task_id,)).fetchone()
+    d = rec and rows.decode(entities.RouteDecision, rec).entity
+    if not (d and d.result == 'blocked' and d.unblock_at
+            and any(c.get('eliminated_at_step') == 'breaker' for c in d.candidates)):
+        return None
+    at = instants.instant(d.unblock_at)    # the same parse the snapshot used: any zone, one instant
+    until = at and at.timestamp()
+    return until if until and until > now else None
+
+
+def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
+    """(requirements, snapshot, readings) for an authorised task: the execution
+    adapters (the registry's), whose own account is the harness's default."""
+    from ...harnesses.registry import _is_fake
+    rp = mission.resource_preferences or {}
+    hs = [harness_view(a, _is_fake(a)) for a in sorted(adapters, key=lambda a: a.id)]
+    for h in hs:
+        b = breaker(conn, h['id'], now)
+        if b:
+            h['breaker'] = b
+    accounts, readings = _registered(conn, {h['id'] for h in hs}, feed, now)
+    have = {a['harness'] for a in accounts}
+    by = {a.id: a for a in adapters}
+    for h in hs:
+        if h['installed'] and h['id'] not in have:
+            try:
+                ref, why = by[h['id']].default_account(), None
+            except Exception as e:          # an adapter bug is an unusable account
+                ref, why = None, '%s: %s' % (type(e).__name__, e)
+            accounts.append({'id': None, 'ref': ref and ref.account_id,
+                             'home_ref': ref and ref.home_ref,
+                             'harness': h['id'], 'label': h['id'], 'auth_kind': None,
+                             'registered': False, 'health': None, 'why_not': why,
+                             'policy': None, 'usage': None, 'ledger': None})
+    _account_offers(accounts, adapters, hs)
+    req = {'subject': 'task', 'purpose': None, 'mission_id': mission.id, 'task_id': task.id,
+           'project_id': mission.project_id,
+           'capabilities': sorted(task.capabilities_required), 'structured_output': False,
+           'min_model_tier': task.min_model_tier, 'min_context_window': None, 'models': {},
+           'model_required': False, 'effort': None, 'effort_required': False,
+           'preferred': {'accounts': list(rp.get('preferred_accounts') or ()),
+                         'harnesses': list(rp.get('preferred_harnesses') or ())},
+           'forbidden': {'accounts': list(rp.get('forbidden_accounts') or ()),
+                         'harnesses': list(rp.get('forbidden_harnesses') or ())},
+           'conversational': {'accounts': [d['id'] for d in rp.get('directives') or ()
+                                           if d['key'] == 'preferred_accounts']},
+           'required': {}, 'size': R.size_of(task.estimate),
+           'policy': {'decision_id': decision.id, 'outcome': decision.outcome,
+                      'items': [{'class': i['class'], 'decision': i['decision'],
+                                 'boundary': i.get('boundary')} for i in decision.items]}}
+    req['_source'] = dict.fromkeys(set(req) - set(REQ_IDENTITY), 'core')
+    req['_source'].update(capabilities='plan_contract', min_model_tier='plan_contract',
+                          size='plan_contract', preferred='user_override',
+                          forbidden='user_override', conversational='conversation',
+                          policy='policy')
+    snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': _terms(conn),
+            'affinity': _affinity(conn, mission),
+            'approved_fallbacks': _approved_fallbacks(conn, task, plan)}
+    return req, snap, readings
+
+
+# ── the decision (resource-router §8, §9) ──────────────────────────────────
+
+def record_route(tx, *, actor, subject, requirements, snapshot, decision, readings=None,
+                 source=None, purpose=None, workspace_id=None, project_id=None,
+                 context_package_id=None):
+    """Insert the immutable RouteDecision and `route.decided`, and record the
+    usage readings it was decided on. Returns the Row."""
+    observe(tx, actor=actor, readings=readings)
+    d = decision
+    rd = entities.RouteDecision(
+        id=ids.new_id('route_decision'), subject=subject, selected=d['selected'],
+        explanation=R.explain(d, requirements), purpose=purpose, decided_by='router',
+        workspace_id=workspace_id, project_id=project_id, source=source,
+        requirements=requirements, candidates=tuple(d['candidates']),
+        account_ref=d['account_ref'], model=d['model'], input_snapshot=snapshot,
+        context_package_id=context_package_id, mission_id=requirements.get('mission_id'),
+        task_id=requirements.get('task_id'), harness_id=d['harness_id'],
+        account_id=d['account_id'], effort=d['effort'], result=d['result'],
+        capability_snapshot={},
+        fallback_from=tuple(d['fallback_from']),
+        policy_decision_id=(requirements.get('policy') or {}).get('decision_id'),
+        unblock_at=d['unblock_at'])
+    row = tx.insert(rd, actor=actor)
+    tx.append(new_event('route.decided', Ref('route_decision', rd.id), actor, payload={
+        'purpose': purpose, 'selected': rd.selected, 'model': rd.model, 'result': rd.result,
+        'harness_id': rd.harness_id, 'account_id': rd.account_id, 'task_id': rd.task_id,
+        'mission_id': rd.mission_id,
+        'source': None if source is None else {'kind': source.kind, 'id': source.id}},
+        workspace=workspace_id or ids.GLOBAL_WORKSPACE, project=project_id))
+    return row
+
+
+def record_call_route(tx, *, actor, purpose, source, workspace_id, project_id, requirements,
+                      snapshot, readings=None, context_package_id=None, now=None):
+    """An own call's decision, taken and committed before anything runs (P6's
+    INTENT rule), inside this transaction over freshly read ledgers."""
+    snapshot = refresh_ledgers(tx.conn, snapshot, time.time() if now is None else now)
+    decision = R.route(requirements, snapshot)
+    row = record_route(tx, actor=actor, subject=Ref('archeus_call', purpose),
+                       requirements=requirements, snapshot=snapshot, decision=decision,
+                       readings=readings, source=Ref(**source), purpose=purpose,
+                       workspace_id=workspace_id, project_id=project_id,
+                       context_package_id=context_package_id)
+    return {'route_decision_id': row.entity.id, 'decision': decision, 'snapshot': snapshot}
+
+
+def _written_resets(snap):
+    """*snap* with each account's resets written as the builder writes them, judged at
+    the snapshot's own `now`: a decision recorded before the router compared written
+    instants (T-106 r8) holds the providers' text, and it must replay as it was decided.
+    A reset already written ({at, key}) is kept as it is."""
+    now = instants.instant(snap['now'])
+    accts = []
+    for a in snap.get('accounts') or ():
+        rs = (a.get('usage') or {}).get('resets_at')
+        if isinstance(rs, dict):
+            a = dict(a, usage=dict(a['usage'], resets_at={
+                w: v if isinstance(v, dict) else instants.ahead(v, now) for w, v in rs.items()}))
+        accts.append(a)
+    return dict(snap, accounts=accts)
+
+
+def replay(route_decision):
+    """Route a recorded decision again from its own record (§9)."""
+    return R.replay({'requirements': route_decision.requirements,
+                     'input_snapshot': _written_resets(route_decision.input_snapshot)})
+
+
+def terms_permit(conn, adapter):
+    """ADR-0021's second check, immediately before an adapter runs: a fresh
+    read. Scripted adapters (FakeCaller, FakeHarness by class) are exempt."""
+    from ...harnesses.fake import is_fake_caller
+    from ...harnesses.registry import _is_fake
+    if is_fake_caller(adapter) or _is_fake(adapter):
+        return True
+    t = rows.get(conn, entities.ProviderTerms, adapter.id)
+    return t is not None and t.entity.headless == 'permitted'
+
+
+class ResourceRouter:
+    """The Router port for tasks (ports.Router): `route(subject, now, tx=,
+    actor=, authorization=, mission=, plan=, task=)` checks the authorisation
+    is current, routes over the registry's execution adapters and records the
+    decision in the dispatching transaction. Returns the RouteDecision."""
+
+    def __init__(self, registry, feed):
+        self.registry, self.feed = registry, feed
+
+    def adapters(self):
+        return [self.registry.get(i) for i in self.registry.ids()]
+
+    def route(self, subject, now, *, tx, actor, authorization, mission, plan, task):
+        decision = current_authorization(tx.conn, task, plan,
+                                         (authorization or {}).get('policy_decision_id'))
+        req, snap, readings = task_snapshot(tx.conn, adapters=self.adapters(), feed=self.feed,
+                                            mission=mission, plan=plan, task=task,
+                                            decision=decision, now=now)
+        d = R.route(req, snap)
+        return record_route(tx, actor=actor, subject=subject, requirements=req, snapshot=snap,
+                            decision=d, readings=readings, source=Ref('mission', mission.id),
+                            workspace_id=mission.workspace_id,
+                            project_id=mission.project_id).entity
+
+
+def request_route(tx, *, actor, mission, plan, task, route):
+    """Ask for the user's consent to run *task* on the fallback account a
+    RouteDecision answered `ask` for (resource-router §7): a PENDING `route`
+    approval of exactly (this task of this plan version, that harness and
+    account), the same thing asked twice finding the same row. It authorises
+    no action — the task's next dispatch is judged by P9 again — and it is only
+    ever decided by a user device, through P9's `decide`. The pure router never
+    calls this: the dispatch command that recorded the `ask` does. It lives here,
+    not in P9's module, because it names a resource and policy never does
+    (p9-design-gate §14.1)."""
+    key = route.account_id or route.account_ref
+    items = [{'task': task.key, 'resource': {'harness': route.harness_id, 'account': key}}]
+    h = actions.action_hash('route', A.bind(plan, task), items)
+    got = A.live_approval(tx.conn, h)
+    if got is not None:
+        return got.entity, False
+    a = entities.Approval(
+        id=ids.new_id('approval'), kind='route', subject=Ref('task', task.id), action_hash=h,
+        requested_by=actor.id, mission_id=mission.id, plan_id=plan.id,
+        plan_version=plan.plan_version, plan_digest=plan.digest, task_id=task.id,
+        presented={'what': [{'task': task.key, 'title': task.title,
+                             'harness': route.harness_id, 'account': key}],
+                   'why': [route.explanation],
+                   'against': {'mission': {'id': mission.id, 'title': mission.title},
+                               'task': {'id': task.id, 'key': task.key, 'title': task.title},
+                               'route_decision': route.id},
+                   'scope': 'this task of this plan version, on this account',
+                   'consequences': {'approve': 'the task runs on %s' % key,
+                                    'reject': 'the task stays blocked for you to resume or '
+                                              'cancel'},
+                   'reusable': 'task-lifetime'},
+        items=tuple(items), expires_at=A._plus(tx.now, ROUTE_TTL),
+        policy_decision_id=route.policy_decision_id)
+    tx.insert(a, actor=actor)
+    tx.append(new_event('approval.requested', Ref('approval', a.id), actor, payload={
+        'kind': 'route', 'mission_id': mission.id, 'plan_id': plan.id, 'task_id': task.id,
+        'action_hash': h, 'step_up': False, 'expires_at': a.expires_at},
+        workspace=mission.workspace_id, project=mission.project_id))
+    return a, True
+
+
+class Resources:
+    """What a transport needs beyond the database: the adapters. `probe` asks
+    the harness's adapter whether a login works (cheap, no inference) BEFORE
+    the registering command runs — a side effect never happens inside a
+    transaction; `harnesses` lists every adapter Core knows and what it
+    declares."""
+
+    def __init__(self, *, registry, callers):
+        self.registry, self.callers = registry, list(callers)
+
+    def _adapters(self, harness_id):
+        exe = [self.registry.get(i) for i in self.registry.ids() if i == harness_id]
+        return exe + [c for c in self.callers if c.id == harness_id]
+
+    def probe(self, harness_id, home_ref=None):
+        """{'ok', 'detail'} from the first adapter of *harness_id* that can
+        authenticate, or None: nothing can tell, so the account stays UNVERIFIED."""
+        from ...harnesses import base
+        for a in self._adapters(harness_id):
+            if callable(getattr(a, 'authenticate', None)):
+                try:
+                    st = a.authenticate(base.AccountRef(harness_id, home_ref))
+                except Exception as e:          # an adapter bug is a failed probe
+                    return {'ok': False, 'detail': '%s: %s' % (type(e).__name__, e)}
+                return {'ok': bool(st.ok), 'detail': st.detail or ''}
+        return None
+
+    def usage_measures(self, harness_id, home_ref=None):
+        """What the first adapter of *harness_id* declares it reports for that
+        account (ADR-0048 D-25.3), or () when none can tell."""
+        from ...harnesses import base
+        for a in self._adapters(harness_id):
+            try:
+                return tuple(sorted(a.capabilities(
+                    base.AccountRef(harness_id, home_ref)).usage_measures))
+            except Exception:               # an adapter bug declares nothing
+                return ()
+        return ()
+
+    def harnesses(self):
+        from ...harnesses.fake import is_fake_caller
+        from ...harnesses.registry import _is_fake
+        out = {}
+        for a in [self.registry.get(i) for i in self.registry.ids()]:
+            out[a.id] = dict(harness_view(a, _is_fake(a)), execution=True, calls=False)
+        for a in self.callers:
+            v = out.get(a.id) or dict(harness_view(a, is_fake_caller(a)), execution=False)
+            out[a.id] = dict(v, calls=True)
+        return [out[k] for k in sorted(out)]
+
+
+# ── views ──────────────────────────────────────────────────────────────────
+
+#: the account fields that name a home on this machine: the accounts view leaves them out
+HOME_FIELDS = ('home_ref', 'home_key')
+#: the live-item fields an account's consumers carry (the clients name only these)
+CONSUMER_FIELDS = ('kind', 'id', 'purpose', 'mission_id', 'task_key', 'state', 'attempt',
+                   'account_id')
+
+
+def _decision_homes(conn):
+    """(default accounts, `Homes` of the retired registered homes) every RouteDecision
+    snapshot names. A decision's snapshot is frozen and decisions are never deleted, so
+    the history only grows: the owning Database's `homes_cache` keeps it with the (rowid,
+    id) of the last row read, and a call reads only the rows after that one. The id is in
+    the key because a rolled-back insert frees its rowid for another decision: a cached
+    last row that is no longer there (same rowid, other id) means a full re-read. The
+    cache holds no live state: the registry, the callers and the Account rows are read
+    on every call."""
+    from ..homes import Homes
+    cache = getattr(conn, 'homes_cache', None)
+    defaults, historical, after, built, key = {}, {}, None, None, None
+    if cache is not None:
+        last = conn.execute('SELECT rowid, id FROM route_decisions '
+                            'ORDER BY rowid DESC LIMIT 1').fetchone()
+        key = None if last is None else tuple(last)
+        hit = cache.get('decisions')
+        if hit and hit['key'] == key:
+            return dict(hit['defaults']), hit['homes']
+        if hit and hit['key'] and conn.execute(
+                'SELECT 1 FROM route_decisions WHERE rowid = ? AND id = ?',
+                hit['key']).fetchone():
+            defaults, historical = dict(hit['defaults']), dict(hit['historical'])
+            after, built = hit['key'][0], hit['homes']
+    fresh = (rows.where(conn, entities.RouteDecision) if after is None else
+             [rows.decode(entities.RouteDecision, r) for r in conn.execute(
+                 'SELECT * FROM route_decisions WHERE rowid > ? ORDER BY rowid', (after,))])
+    known = len(historical)
+    for r in fresh:
+        for a in (r.entity.input_snapshot or {}).get('accounts', ()):
+            if not a.get('registered') and a.get('ref'):
+                if a['ref'] not in defaults or not defaults[a['ref']][2] and a.get('home_ref'):
+                    defaults[a['ref']] = (a['harness'], a['ref'], a.get('home_ref'))
+            elif a.get('registered') and isinstance(a.get('home_ref'), str):
+                historical[a['home_ref']] = None
+    if built is None or len(historical) != known:
+        built = Homes(list(historical), shorts=lambda _: None, platform=sys.platform)
+    if cache is not None:
+        cache['decisions'] = {'key': key, 'defaults': defaults, 'historical': historical,
+                              'homes': built}
+        defaults = dict(defaults)
+    return defaults, built
+
+
+def homes(conn, registry, callers, *, shorts=None):
+    from ..homes import Homes
+    registered = [r.entity.home_ref for r in rows.where(conn, entities.Account)]
+    defaults, historical = _decision_homes(conn)
+    adapters = ([] if registry is None else [registry.get(i) for i in registry.ids()])
+    for a in [*adapters, *callers]:
+        try:
+            ref = a.default_account()
+        except Exception:  # A broken adapter must not prevent reading stored rows.
+            continue
+        if ref.account_id not in defaults or not defaults[ref.account_id][2] and ref.home_ref:
+            defaults[ref.account_id] = (a.id, ref.account_id, ref.home_ref)
+    out = Homes(registered, defaults.values(), shorts=shorts, platform=sys.platform)
+    out.patterns += historical.patterns
+    out.norms |= historical.norms
+    return out
+
+
+def bound_homes(conn, live):
+    """`homes` for a write or worker path, from the (registry, callers) the owner
+    bound to the writer (`tx.live`, `db.writer.live`)."""
+    return homes(conn, *live)
+
+
+def cut_bound(tx, text, n):
+    """`text[:n]` that never splits a home; the homes are built only for a text that
+    needs the cut."""
+    from ..homes import cut_safe
+    return text if len(text) <= n else cut_safe(text, bound_homes(tx.conn, tx.live), n)
+
+
+def account_view(conn, row, work=None, now=None, counts=None):
+    """The account with its consumption (ADR-0043 §3, §4): its live consumers
+    from `live_work`, today's ledger and the effective policy, each exactly what
+    the router reads; a missing reading stays None or incomplete, never 0. The
+    ledger is complete only when nothing is in flight: the work still running
+    has not written its usage yet (G12). The router reads `ledger_totals` itself."""
+    from .live import live_work
+    a = row.entity
+    now = time.time() if now is None else now
+    work = live_work(conn, now=now) if work is None else work
+    (p,) = rows.where(conn, entities.ResourcePolicy, account_id=a.id)
+    led = ledger_totals(conn, a.id, _iso(now)[:10], now, counts)
+    if led['running']:
+        led['complete'] = {'tokens': False, 'cost': False}
+    # an account's home is a path on this machine, so the accounts view never shows it
+    # (owner, 2026-10-21); the adapters and Core's own reads take it from the row
+    return dict({k: v for k, v in view(row).items() if k not in HOME_FIELDS},
+                resource_policy=view(p), usage=latest_usage(conn, a.id),
+                policy=effective_policy(p.entity), ledger=led,
+                consumers=[{k: w.get(k) for k in CONSUMER_FIELDS}
+                           for w in work if w['account_id'] == a.id])
+
+
+def accounts(conn, public_homes=None):
+    from .live import live_work
+    from .public import system_value
+    public_homes = public_homes if public_homes is not None else homes(conn, None, ())
+    now = time.time()
+    work = live_work(conn, now=now)
+    counts = live_counts(conn, _iso(now)[:10], now)
+    return [system_value({k: v for k, v in account_view(conn, r, work, now, counts).items()
+                          if k not in HOME_FIELDS}, public_homes,
+                         authored=(('label',), ('resource_policy', 'project_allow'),
+                                   ('resource_policy', 'project_deny'),
+                                   ('policy', 'project_allow'), ('policy', 'project_deny')))
+            for r in rows.where(conn, entities.Account)]

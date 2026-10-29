@@ -250,6 +250,7 @@ def pytest_sessionfinish(session, exitstatus):
     thing it is cleaning up was created by a DETACHED grandchild process, and
     no in-process guard can promise to have covered every way to reach one.
     Belt and braces, and it reports rather than tidying up silently."""
+    ci_diag.record('session_end', census=ci_diag.census())
     leaked = _leaked_project_dirs()
     if not leaked:
         return
@@ -438,3 +439,41 @@ def _no_network(monkeypatch):
             return real(url, *a, **kw)
         raise OSError('the test suite does not reach the network: %s' % str(full)[:80])
     monkeypatch.setattr(urllib.request, 'urlopen', guarded)
+
+
+# ── CI performance diagnostics (off unless ARCHEUS_CI_DIAG is set) ───────────
+# One JSON line per test: its setup/call/teardown seconds and how many processes
+# this pytest process launched during it, plus a process census at the start of
+# every V1 module. `tools/ci_diag.py` summarises the file. See tests/ci_diag.py.
+
+import ci_diag  # noqa: E402
+
+_diag = {'module': None, 'launches': 0, 'phases': {}}
+
+
+def pytest_sessionstart(session):
+    ci_diag.install()
+    ci_diag.record('session_start', census=ci_diag.census())
+
+
+def pytest_runtest_logstart(nodeid, location):
+    if not ci_diag.enabled:
+        return
+    module = nodeid.split('::')[0]
+    if module != _diag['module']:
+        _diag['module'] = module
+        if module.startswith('tests/v1/'):
+            ci_diag.record('module_start', module=module, census=ci_diag.census())
+    _diag['launches'] = ci_diag.launches
+
+
+def pytest_runtest_logreport(report):
+    if not ci_diag.enabled:
+        return
+    ph = _diag['phases'].setdefault(report.nodeid, {'outcome': 'passed'})
+    ph[report.when] = round(report.duration, 3)
+    if report.outcome != 'passed' and ph['outcome'] == 'passed':
+        ph['outcome'] = '%s@%s' % (report.outcome, report.when)
+    if report.when == 'teardown':
+        ci_diag.record('test', id=report.nodeid, **_diag['phases'].pop(report.nodeid),
+                       launches=ci_diag.launches - _diag['launches'])

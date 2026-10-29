@@ -30,8 +30,26 @@ jobs:
           echo "tag=$tag pyproject=$ver"
           test "$tag" = "$ver"
 
+      # The wheel ships the built V1 SPA (git-ignored archeus/api/static):
+      # build it first, or the release silently ships without it.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: clients/app/.nvmrc
+          cache: npm
+          cache-dependency-path: clients/app/package-lock.json
+      - name: Build the V1 SPA into archeus/api/static
+        working-directory: clients/app
+        run: |
+          npm ci
+          npm run build
+
       - run: python -m pip install build
       - run: python -m build
+      - name: The wheel carries the SPA and serves it without Node
+        run: |
+          python -m venv .wheeltest
+          .wheeltest/bin/python -m pip install --quiet dist/*.whl
+          python tools/check_wheel.py dist/*.whl --python .wheeltest/bin/python
       - uses: actions/upload-artifact@v4
         with:
           name: dist

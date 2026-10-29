@@ -1,0 +1,511 @@
+"""Queries: read-only views over one snapshot (`Database.read()`)."""
+
+import json
+import os
+
+from ...infra.db import rows
+from ...infra.db.writer import NotFound
+from ...infra.eventlog import outbox
+from ..domain import entities, ids, states
+from .commands import active_plan
+from .public import PATH_KEYS, public_context, public_event, system_value
+
+
+def _homes(conn, homes):
+    if callable(homes):             # a read that may find nothing to project builds them lazily
+        return homes()
+    if homes is None:
+        from . import resources
+        return resources.homes(conn, None, ())
+    return homes
+
+
+def _public_verification(body, homes):
+    out = dict(body)
+    if out.get('performed_by') is not None:
+        out['performed_by'] = {k: v for k, v in out['performed_by'].items()
+                               if k != 'account_ref'}
+    return system_value(out, homes, authored=(('checks', 'name'), ('checks', 'argv'),
+                        ('checks', 'files'), ('criteria', 'text'), ('note',),
+                        ('workspace',), ('evidence', 'check')))
+
+
+def _public_review(body, homes):
+    return system_value(body, homes, authored=tuple((k,) for k in
+                        (*entities.REVIEW_LISTS, 'summary', 'reviewer')))
+
+
+def view(row):
+    """An entity row as the API shows it: the entity plus its row metadata."""
+    return dict(row.entity.to_dict(), version=row.version, created_at=row.created_at,
+                updated_at=row.updated_at)
+
+
+def get_mission(conn, mission_id, *, homes=None):
+    """One mission, with the context package its `context_ready` move
+    recorded (None before it has one) and the plan in force (P8): its id and
+    `plan_version`, derived from the plans and never stored twice."""
+    row = rows.get(conn, entities.Mission, mission_id)
+    if row is None:
+        raise NotFound(mission_id)
+    pid = row.entity.context_package_id
+    plan = active_plan(conn, mission_id)
+    pending = [r.entity.id for r in rows.where(conn, entities.Approval, mission_id=mission_id)
+               if r.entity.state == 'PENDING']
+    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid, homes=homes),
+                plan_id=None if plan is None else plan.entity.id,
+                plan_version=None if plan is None else plan.entity.plan_version,
+                pending_approval_id=pending[-1] if pending else None,
+                # P13 (p13-design-gate §21): where the result is merged
+                integration_branch='archeus/%s' % mission_id)
+
+
+# ── verification and review (P13, p13-design-gate §21) ─────────────────────
+
+def _of_mission(conn, mission_id):
+    tasks = {r.entity.id for r in rows.where(conn, entities.Task, mission_id=mission_id)}
+    plans = {r.entity.id for r in rows.where(conn, entities.Plan, mission_id=mission_id)}
+    return tasks, plans
+
+
+def list_verifications(conn, mission_id, *, homes=None):
+    """Every Verification of the mission — its tasks' and its criteria' — oldest first."""
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    homes = _homes(conn, homes)
+    tasks, plans = _of_mission(conn, mission_id)
+    out = []
+    for pid in plans:
+        for r in rows.where(conn, entities.Verification, plan_id=pid):
+            s = r.entity.subject
+            if (s.kind == 'mission' and s.id == mission_id) or (s.kind == 'task' and s.id in tasks):
+                out.append(_public_verification(view(r), homes))
+    return {'mission_id': mission_id,
+            'verifications': sorted(out, key=lambda v: (v['created_at'], v['id']))}
+
+
+def get_verification(conn, verification_id, *, homes=None):
+    """One Verification, and whether each check's evidence is still in the store."""
+    from ...infra.artifacts import store
+    row = rows.get(conn, entities.Verification, verification_id)
+    if row is None:
+        raise NotFound(verification_id)
+    out = view(row)
+    out['evidence'] = [{'check': c['name'], 'output_sha256': c.get('output_sha256'),
+                        'available': c.get('output_sha256') is not None
+                        and os.path.exists(store.path_for(c['output_sha256']))}
+                       for c in row.entity.checks]
+    return _public_verification(out, _homes(conn, homes))
+
+
+def list_reviews(conn, mission_id, *, homes=None):
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    rs = rows.where(conn, entities.Review, mission_id=mission_id)
+    homes = _homes(conn, homes)
+    return {'mission_id': mission_id, 'reviews': [_public_review(view(r), homes) for r in rs]}
+
+
+def get_context_package(conn, package_id, *, homes=None):
+    row = rows.get(conn, entities.ContextPackage, package_id)
+    if row is None:
+        raise NotFound(package_id)
+    return public_context(view(row), _homes(conn, homes))
+
+
+def list_missions(conn, state=None, project_id=None):
+    """Every mission, oldest first; only those in *state*, and of *project_id*,
+    when given (an unknown project is NotFound, not an empty list)."""
+    if state is not None and state not in states.states('mission'):
+        raise ValueError('%r is not a mission state' % (state,))
+    eq = {} if state is None else {'state': state}
+    if project_id is not None:
+        if rows.get(conn, entities.Project, project_id) is None:
+            raise NotFound(project_id)
+        eq['project_id'] = project_id
+    return [view(r) for r in rows.where(conn, entities.Mission, **eq)]
+
+
+def system_principal(conn):
+    """The oldest `system` principal (the engine's actor), or None."""
+    return next((r.entity.id for r in rows.where(conn, entities.Principal)
+                 if r.entity.kind == 'system'), None)
+
+
+def credential(conn, token_hash):
+    """The device a token hash belongs to: `{principal_id, device_id, scopes,
+    expires_at, revoked_at, device_state, device_origin}`, or None. Judging it (revoked,
+    expired, inactive) is the caller's."""
+    t = conn.execute("SELECT * FROM tokens WHERE token_hash = ? AND kind = 'device'",
+                     (token_hash,)).fetchone()
+    if t is None:
+        return None
+    dev = rows.where(conn, entities.Device, principal_id=t['principal_id'])
+    return {'token_hash': t['token_hash'], 'principal_id': t['principal_id'],
+            'device_id': dev[0].entity.id if dev else None,
+            'device_state': dev[0].entity.state if dev else None,
+            'device_origin': dev[0].entity.origin if dev else None,
+            'scopes': tuple(json.loads(t['scopes'])), 'expires_at': t['expires_at'],
+            'revoked_at': t['revoked_at']}
+
+
+def devices(conn):
+    """Every client registration (entity `Device`, p15-design-gate §4), oldest
+    first, with its credential's scopes and expiry and its derived step-up
+    capability. Never its PIN record or token hash. Presence is not here: it
+    is transport observation, added by the API from its own memory (§5)."""
+    from .authorization import is_paired
+    out = []
+    for r in sorted(rows.where(conn, entities.Device), key=lambda r: (r.created_at, r.entity.id)):
+        d = r.entity
+        t = conn.execute("SELECT scopes, expires_at FROM tokens WHERE principal_id = ? AND "
+                         "kind = 'device' ORDER BY created_at DESC LIMIT 1",
+                         (d.principal_id,)).fetchone()
+        step_up = ('local' if not is_paired(d) else 'pin' if d.pin_hash else 'none')
+        out.append({'id': d.id, 'principal_id': d.principal_id, 'name': d.name,
+                    'platform': d.platform, 'origin': d.origin,
+                    'client_type': d.client_type or ('cli' if d.platform == 'tui' else 'spa'),
+                    'host_label': d.host_label, 'state': d.state, 'created_at': r.created_at,
+                    'scopes': json.loads(t['scopes']) if t else [],
+                    'expires_at': t['expires_at'] if t else None,
+                    'capabilities': {'step_up': step_up}})
+    return out
+
+
+def events(conn, after_seq=0, *, limit=None, homes=None):
+    """Envelopes after *after_seq*, payloads projected; every one when *limit* is None (paged)."""
+    out, cursor = [], after_seq
+    while True:
+        page = outbox.events_after(conn, cursor, limit=outbox.MAX_LIMIT if limit is None else limit)
+        homes = _homes(conn, homes) if page else homes
+        out += [public_event(e.to_envelope(), homes) for e in page]
+        if limit is not None or len(page) < outbox.MAX_LIMIT:
+            return out
+        cursor = page[-1].seq
+
+
+# ── knowledge and own calls (P6) ────────────────────────────────────────────
+
+def list_knowledge(conn, project_id=None, state=None, type=None):
+    """Knowledge items, oldest first; filtered by project, state and type."""
+    if state is not None and state not in states.states('knowledge_item'):
+        raise ValueError('%r is not a knowledge state' % (state,))
+    if type is not None and type not in entities.KNOWLEDGE_TYPES:
+        raise ValueError('%r is not a knowledge type' % (type,))
+    eq = {k: v for k, v in (('project_id', project_id), ('state', state), ('type', type))
+          if v is not None}
+    return [view(r) for r in rows.where(conn, entities.KnowledgeItem, **eq)]
+
+
+#: how many hits of each kind one search answers
+SEARCH_LIMIT = 20
+
+
+def search(conn, needle, limit=SEARCH_LIMIT):
+    """Missions, projects and knowledge items whose title holds *needle*, case
+    ignored (p21-design-gate D7): the same rows `/v1/missions`, `/v1/projects` and
+    `/v1/knowledge` already answer, cut to what the command bar shows."""
+    n = needle.casefold()
+
+    def hits(cls, text, keys):
+        got = (view(r) for r in rows.where(conn, cls) if n in getattr(r.entity, text).casefold())
+        return [{k: v[k] for k in keys} for v in got][:limit]
+    # ponytail: a scan of three tables in Python; an FTS index when titles reach the tens of thousands
+    return {'missions': hits(entities.Mission, 'title', ('id', 'title', 'state', 'version')),
+            'projects': hits(entities.Project, 'name', ('id', 'name')),
+            'knowledge': hits(entities.KnowledgeItem, 'title', ('id', 'title'))}
+
+
+def get_knowledge(conn, knowledge_item_id):
+    """One item with its supersession chain (oldest first) and its relations."""
+    row = rows.get(conn, entities.KnowledgeItem, knowledge_item_id)
+    if row is None:
+        raise NotFound(knowledge_item_id)
+    chain, cur = [], row.entity
+    while cur.supersedes_id is not None:                 # back to the first
+        prev = rows.get(conn, entities.KnowledgeItem, cur.supersedes_id)
+        if prev is None:
+            break
+        chain.insert(0, prev.entity.id)
+        cur = prev.entity
+    cur = row.entity
+    after = []
+    while cur.superseded_by_id is not None:
+        nxt = rows.get(conn, entities.KnowledgeItem, cur.superseded_by_id)
+        if nxt is None:
+            break
+        after.append(nxt.entity.id)
+        cur = nxt.entity
+    rels = [view(r) for r in rows.where(conn, entities.Relation, src_kind='knowledge_item',
+                                        src_id=knowledge_item_id)]
+    rels += [view(r) for r in rows.where(conn, entities.Relation, dst_kind='knowledge_item',
+                                         dst_id=knowledge_item_id)]
+    return dict(view(row), chain=chain + [knowledge_item_id] + after, relations=rels)
+
+
+def _drop(d, *keys):
+    return {k: v for k, v in d.items() if k not in keys}
+
+
+def _public_decision(decision, homes):
+    """A decision as the API reads it. Owner, 2026-10-21: a decision names its account's home
+    in three fields (the snapshot entry's `ref`, `home_ref` and `home_key`, and `account_ref`
+    on the decision, each candidate and each usage row); those fields are left out. T-144:
+    what stays is scrubbed, so `outcome.account_ref` is the public account id and a home
+    inside a system text is replaced. The stored row keeps them: the execution manager reads
+    the snapshot."""
+    snap = decision.get('input_snapshot')
+    if snap is not None and 'accounts' in snap:
+        snap = dict(snap, accounts=[_drop(a, 'home_ref', 'home_key', 'ref')
+                                    for a in snap['accounts'] or ()])
+    cands = [_drop(c, 'account_ref') for c in decision.get('candidates') or ()]
+    out = _drop(dict(decision, input_snapshot=snap, candidates=cands), 'account_ref')
+    return system_value(out, homes, path_keys=('account_ref', 'ref', 'home_ref', 'home_key'),
+                        authored=(('input_snapshot', 'accounts', 'label'),
+                                  ('candidates', 'label'),
+                                  ('input_snapshot', 'accounts', 'policy', 'project_allow'),
+                                  ('input_snapshot', 'accounts', 'policy', 'project_deny')))
+
+
+def get_route_decision(conn, route_decision_id, *, homes=None):
+    row = rows.get(conn, entities.RouteDecision, route_decision_id)
+    if row is None:
+        raise NotFound(route_decision_id)
+    usage = [_drop(view(r), 'account_ref') for r in rows.where(
+        conn, entities.UsageLedger, route_decision_id=route_decision_id)]
+    return _public_decision(dict(view(row), usage=usage), _homes(conn, homes))
+
+
+def route_decisions(conn, source_id=None, purpose=None, *, homes=None):
+    """Route decisions, oldest first; those about *source_id* when given (what
+    the decision is about, or its subject: a task's decisions are found by the
+    task and by its mission)."""
+    eq = {} if purpose is None else {'purpose': purpose}
+    got = rows.where(conn, entities.RouteDecision, **eq)
+    if source_id is not None:
+        got = [r for r in got if source_id in (r.entity.subject.id, r.entity.source
+                                               and r.entity.source.id)]
+    homes = _homes(conn, homes)
+    return [_public_decision(view(r), homes) for r in got]
+
+
+def get_account(conn, account_id):
+    row = rows.get(conn, entities.Account, account_id)
+    if row is None:
+        raise NotFound(account_id)
+    return view(row)
+
+
+def provider_terms(conn, harness_ids=()):
+    """Every ADR-0021 answer given, plus `unknown` for each named harness that
+    has none (no row IS the unknown answer)."""
+    have = {r.entity.id: view(r) for r in rows.where(conn, entities.ProviderTerms)}
+    for h in harness_ids:
+        have.setdefault(h, {'id': h, 'headless': 'unknown', 'rotation': 'unknown', 'note': '',
+                            'version': 0, 'created_at': None, 'updated_at': None})
+    return [have[k] for k in sorted(have)]
+
+
+
+# ── conversation, intent, ideas (P7) ────────────────────────────────────────
+
+def _conversation(conn, conversation_id):
+    """A conversation id, or `primary` for the primary one (None before any
+    message was written)."""
+    if conversation_id == 'primary':
+        got = rows.where(conn, entities.Conversation, kind='primary')
+        return got[0].entity.id if got else None
+    if rows.get(conn, entities.Conversation, conversation_id) is None:
+        raise NotFound(conversation_id)
+    return conversation_id
+
+
+def messages(conn, conversation_id, after=None):
+    """A conversation's messages, oldest first; those after message *after*. A
+    mission's thread (named by the mission's id, P19 S1) is its own messages
+    and every message of the primary conversation whose links name the
+    mission (ADR-0015: linked into its thread, never copied)."""
+    if ids.kind_of(conversation_id) == 'mission':
+        got = _thread(conn, conversation_id)
+    else:
+        cid = _conversation(conn, conversation_id)
+        if cid is None:
+            return []
+        got = [view(r) for r in rows.where(conn, entities.Message, conversation_id=cid)]
+    if after is not None:
+        idx = [i for i, m in enumerate(got) if m['id'] == after]
+        if not idx:
+            raise NotFound(after)
+        got = got[idx[0] + 1:]
+    return got
+
+
+def _thread(conn, mission_id):
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    own = rows.where(conn, entities.Conversation, mission_id=mission_id)
+    prim = rows.where(conn, entities.Conversation, kind='primary')
+    got = []
+    if own:
+        got += rows.where(conn, entities.Message, conversation_id=own[0].entity.id)
+    if prim:
+        # ponytail: every primary message is read to find the linked ones;
+        # an index of message links when a long conversation makes it slow
+        got += [r for r in rows.where(conn, entities.Message, conversation_id=prim[0].entity.id)
+                if any((x.get('ref') or {}).get('id') == mission_id for x in r.entity.links or ())]
+    got.sort(key=lambda r: (r.created_at, r.entity.id))
+    return [view(r) for r in got]
+
+
+def reply_to(conn, message_id):
+    """Archeus's reply to a message, or None while it is still being read."""
+    got = rows.where(conn, entities.Message, in_reply_to=message_id)
+    got = [r for r in got if r.entity.author == 'archeus']
+    return view(got[0]) if got else None
+
+
+def get_intent(conn, intent_id):
+    row = rows.get(conn, entities.Intent, intent_id)
+    if row is None:
+        raise NotFound(intent_id)
+    return view(row)
+
+
+def question_of(conn, intent_id):
+    """The reply that asked the user about an intent (its clarification or
+    challenge card), as a message view."""
+    it = get_intent(conn, intent_id)
+    reply = reply_to(conn, it['message_id'])
+    if reply is None or it['resolution'] != 'clarification_requested':
+        raise ValueError('intent %s is not waiting for an answer' % intent_id)
+    return reply
+
+
+def list_ideas(conn, state=None):
+    if state is not None and state not in states.states('idea'):
+        raise ValueError('%r is not an idea state' % (state,))
+    eq = {} if state is None else {'state': state}
+    return [view(r) for r in rows.where(conn, entities.Idea, **eq)]
+
+
+# ── plans (P8) ──────────────────────────────────────────────────────────────
+
+def get_plan(conn, plan_id):
+    """One exact PlanVersion with its tasks (by key), the parallel waves derived
+    from its graph, and whether what it was planned from is still current."""
+    from ..planning import planner, validate
+    row = rows.get(conn, entities.Plan, plan_id)
+    if row is None:
+        raise NotFound(plan_id)
+    p = row.entity
+    tasks = sorted((view(t) for t in rows.where(conn, entities.Task, plan_id=p.id)),
+                   key=lambda t: (not t['key'][1:].isdigit(),
+                                    int(t['key'][1:]) if t['key'][1:].isdigit() else 0, t['key']))
+    current, why = True, 'planned without a recorded context package'
+    if p.context_package_id is not None:
+        mission = rows.get(conn, entities.Mission, p.mission_id).entity
+        current, why = planner.currency(conn, mission, p.context_package_id)
+    # P9 (§10.2): `current` keeps P8's meaning (context currency); these say
+    # whether this exact version can be authorised now
+    from . import authorization
+    in_force = (p.state in ('PROPOSED', 'APPROVED')
+                and active_plan(conn, p.mission_id).entity.id == p.id)
+    whole = authorization.intact(conn, p)
+    eligible_why = ('not in force' if not in_force else 'its content does not match its digest'
+                    if not whole else None if current else why)
+    return dict(view(row), tasks=tasks, waves=validate.waves(tasks),
+                current=current, current_why=why, in_force=in_force,
+                eligible=eligible_why is None, eligible_why=eligible_why)
+
+
+def mission_plan(conn, mission_id):
+    """The plan in force (None before the first) and every version, oldest first."""
+    if rows.get(conn, entities.Mission, mission_id) is None:
+        raise NotFound(mission_id)
+    versions = sorted(rows.where(conn, entities.Plan, mission_id=mission_id),
+                      key=lambda r: r.entity.plan_version)
+    return {'mission_id': mission_id,
+            'plan': get_plan(conn, versions[-1].entity.id) if versions else None,
+            'versions': [{'id': r.entity.id, 'plan_version': r.entity.plan_version,
+                          'state': r.entity.state,
+                          'supersedes_plan_id': r.entity.supersedes_plan_id,
+                          'digest': r.entity.digest} for r in versions]}
+
+
+# ── policy and approvals (P9) ───────────────────────────────────────────────
+
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+
+
+def approval_view(conn, row, now=None, *, homes=None):
+    from . import authorization
+    a = row.entity
+    bad = (None if a.state != 'PENDING'
+           else authorization.ineligible(conn, a, now=now or _now()))
+    out = dict(view(row), eligible=a.state == 'PENDING' and bad is None,
+                eligible_why=None if bad is None else bad[0],
+                eligible_detail=None if bad is None else bad[1])
+    return _public_approval(out, _homes(conn, homes))
+
+
+def _public_approval(body, homes):
+    return system_value(body, homes, authored=(('decision_note',),
+                        ('presented', 'what', 'title'),
+                        ('presented', 'against', 'mission', 'title'),
+                        ('presented', 'against', 'mission', 'objective'),
+                        ('presented', 'against', 'plan', 'summary'),
+                        ('presented', 'against', 'task', 'title'),
+                        ('presented', 'against', 'project', 'root')))
+
+
+def get_approval(conn, approval_id, now=None, *, homes=None):
+    row = rows.get(conn, entities.Approval, approval_id)
+    if row is None:
+        raise NotFound(approval_id)
+    return approval_view(conn, row, now, homes=homes)
+
+
+def list_approvals(conn, state=None, mission_id=None, now=None, *, homes=None):
+    if state is not None and state not in states.states('approval'):
+        raise ValueError('%r is not an approval state' % (state,))
+    eq = {k: v for k, v in (('state', state), ('mission_id', mission_id)) if v is not None}
+    homes = _homes(conn, homes)
+    return [approval_view(conn, r, now, homes=homes)
+            for r in rows.where(conn, entities.Approval, **eq)]
+
+
+def _public_policy_decision(body, homes):
+    return system_value(body, homes, path_keys=PATH_KEYS, authored=(('matched_rules',),))
+
+
+def get_policy_decision(conn, decision_id, *, homes=None):
+    row = rows.get(conn, entities.PolicyDecision, decision_id)
+    if row is None:
+        raise NotFound(decision_id)
+    return _public_policy_decision(view(row), _homes(conn, homes))
+
+
+def list_policy_decisions(conn, mission_id=None, stage=None, *, homes=None):
+    if stage is not None and stage not in entities.POLICY_STAGES:
+        raise ValueError('%r is not a policy stage' % (stage,))
+    eq = {k: v for k, v in (('mission_id', mission_id), ('stage', stage)) if v is not None}
+    homes = _homes(conn, homes)
+    return [_public_policy_decision(view(r), homes)
+            for r in rows.where(conn, entities.PolicyDecision, **eq)]
+
+
+def policies(conn):
+    """The policy in force: Core's own rules, the profiles, the user's rules
+    (retired ones kept, marked), the user's default profile and the version."""
+    from ..policy import rules as R
+    from . import authorization
+    u = authorization.owner(conn)
+    user = [view(r) for r in rows.where(conn, entities.PolicyRule)]
+    return {'builtin': R.builtin(), 'profiles': {
+        name: {c: {'decision': d, 'boundary': b} for c, (d, b) in table.items()}
+        for name, table in R.PROFILES.items()},
+        'profiles_version': R.PROFILES_VERSION, 'rules': user,
+        'user_profile': u.autonomy_profile if u else 'standard',
+        'policy_version': authorization.policy_version(authorization.user_rules(conn))}
