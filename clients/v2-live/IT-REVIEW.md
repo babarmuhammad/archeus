@@ -2391,3 +2391,17 @@ Status: to review. New pairs in `js/i18n-phone.js` for the Overview, Work and Pr
 | One page for Work and Attention: missions and decisions grouped by what they wait on, as a list and as a graph. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09). | Una sola pagina per Lavoro e Attenzione: missioni e decisioni raggruppate per ciò che attendono, come elenco e come grafo. La spina mostra a che punto è ogni missione (A13); un obbligo è una tinta ambra al 12 % con lo stato a parole (B09). |
 
 Questions for the reviewer: "Show {n} more" reads "Mostra altri {n}" (the count is how many appear next, not the total). The project group "Quiet" reuses Quieto, which also names a motion setting; a word such as Inattivi may read better for projects.
+
+## Overview views and names while zoomed (2026-10-29, branch v2/live-v3): to review
+
+Status: to review. New pairs in `js/i18n-now.js` and the Autopilot chapter in `js/autopilot-script.js`. Each name shows in one language only. The caption chip reuses existing pairs (Project, Open work, N missions, the state words). "Vista a progetti" is gone: Rings replaces the old Projects view.
+
+| English | Italian |
+|---|---|
+| Territories view (tooltip and accessible name of the first switch button) | Vista a territori |
+| Rings view (tooltip and accessible name of the second switch button) | Vista ad anelli |
+| Network view (unchanged) | Vista a rete |
+| Territories, Rings or Network (Autopilot chapter title) | Territori, Anelli o Rete |
+| The switch beside the headline shows the same projects three ways: territories (one cell each), rings (one lane per state) and a network of missions round each project hub. (Autopilot caption) | L’interruttore accanto al titolo mostra gli stessi progetti in tre modi: territori (una cella ciascuno), anelli (una corsia per stato) e una rete di missioni attorno a ogni progetto. |
+
+Questions for the reviewer: the coordinator asked for the short names Territori / Anelli / Rete; the switch has no visible text, so only the Autopilot title uses them and the tooltips use the full "Vista a ..." form already used for Rete. Say if the tooltips should be the short names too.

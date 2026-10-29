@@ -91,6 +91,7 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 - The Light look is approved as is by the owner (2026-10-26); the contrast of every route is checked, but not on a real display.
 - Checked in headless Chromium only: no real touch device, no screen reader, no Firefox or Safari, no real Windows High Contrast (forced colours were checked with Chromium's emulation), no 200 or 400 percent zoom.
 - The Overview rings and the core (branch v2/live-net) are not drawn under 600 px: the phone keeps its own scene. Rings carry colour only; project names are drawn for a bounded set (SPEC RG05), the rest are reachable by Tab and in the node table.
+- The Overview has three views beside the headline: Territories, Rings (default) and Network (SPEC section U; `?overview=territories|rings|network`). From zoom 1.3 a caption chip in Rings and Network names the project nearest the centre, so a project is named without hover; it is not drawn on a phone or when no scene corner is free. Territories names every cell, so it has no caption.
 - Map performance (the Overview map) is measured in headless Chromium on a PC, not on a phone; above 60 nodes hulls are not separated.
 - Not built: Ctrl+Enter, the Alt+1/2/3 and Ctrl+K shortcuts, view transitions, a duration-class table, the font subset for production, the service worker.
 - Pause all, Emergency stop and decisions act on the simulation only.
