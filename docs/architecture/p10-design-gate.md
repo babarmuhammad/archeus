@@ -135,7 +135,9 @@ after every registered account). Model and effort are resolved per candidate (§
 | `model` | a required model that is not an offer meeting the tier/context minimum; no offer meeting the minimum; a required effort not declared |
 | `enforcement` | (task) an item P9 decided that the harness cannot enforce: `hook` enforces all, `sandbox` only `ALLOW_WITHIN_BOUNDARY` on path boundaries, `none` only `ALLOW` |
 | `provider_terms` | ADR-0021 headless use not `permitted`; a second subscription account of a harness whose rotation is not `permitted` (scripted adapters exempt by class) |
+| `broker` | (task, only while PV-20 isolated dispatch is on) an account whose kind does not reach its model through the provider broker; a snapshot without `isolated_dispatch` filters nothing |
 | `restriction` | required/forbidden harness or account; the account's project rules |
+| `breaker` | a harness whose spawn breaker is open (O7, T-106); half-open lets one task try |
 | `health` | no account; an unregistered one the adapter cannot spend; health not AVAILABLE/CONSTRAINED (DEGRADED stays a fallback candidate); an exhausted window (≥ 100%, never a fallback) |
 | `allocation` | observed `worst + projected ≥ ceiling`; no readable window and no budget; a budget reached |
 
