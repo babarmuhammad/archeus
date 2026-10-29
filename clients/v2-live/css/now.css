@@ -83,11 +83,6 @@
 .np .ctr + .ctr { border-left: var(--hair) solid var(--line-strong); }
 .np .ctr b { font: 600 18px / 1 var(--sans); }
 .np .ctr[data-role='verifying'], .np .ctr[data-role='blocked'][data-zero='true'] { display: none; }
-.np-switch { display: flex; align-self: flex-start; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); overflow: hidden; }
-.np-opt { min-width: 104px; min-height: 44px; padding: 0 18px; border: 0; background: transparent; color: var(--text-2); font: 500 15px / 1 var(--font); cursor: pointer; }
-.np-opt + .np-opt { border-left: var(--hair) solid var(--line-strong); }
-.np-opt[aria-pressed='true'] { background: var(--fill-2); color: var(--text); }
-.np-opt:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .np .np-tell { --bh: 48px; --hit: 48px; width: 100%; font-size: 17px; }
 
 .ph-st { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; font-weight: 500; white-space: nowrap; }
@@ -136,14 +131,7 @@
 :root[data-motion='reduced'] .np-sec > summary::before { transition: none; }
 @media (prefers-reduced-motion: reduce) { .np-sec > summary::before { transition: none; } }
 
-/* Map view: the box is the scene between the bars. The page does not scroll, so touch-action none on the map only ever moves the map. */
-.now-wrap.np-mapmode > .now-view { height: 100cqh; min-height: 0; }
-.main-col:has(> .np-mapmode) { overflow: hidden; }
-.np-maptop { position: absolute; z-index: 3; top: 8px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }
-.np-maptop > * { pointer-events: auto; }
-.np-mapnote { margin: 0; color: var(--text-2); font-size: 14px; }
-.np-done { flex: none; margin-left: auto; padding-inline: 20px; }
-@media (forced-colors: active) { .np .ctr, .np-switch, .np-opt + .np-opt, .np-card, .np-pill, .ph-code, .np-search { border-color: CanvasText; } .np-opt[aria-pressed='true'] { outline: 2px solid Highlight; outline-offset: -2px; } .pn-review { forced-color-adjust: none; background: ButtonText; color: ButtonFace; } }
+@media (forced-colors: active) { .np .ctr, .np-card, .np-pill, .ph-code, .np-search { border-color: CanvasText; } .pn-review { forced-color-adjust: none; background: ButtonText; color: ButtonFace; } }
 
 /* The Tell dock: anchored at the bottom centre of the scene, on the status strip. A flat translucent fill of the ground colour and a hairline, no blur.
    Slim by default (destination chip, field, slash, Send); it grows upward for the slash menu and for replies. */

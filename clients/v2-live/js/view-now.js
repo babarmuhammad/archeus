@@ -30,8 +30,7 @@ const viewWidth = () => { const e = document.querySelector('.now-view'); return 
 // The map starts under the headline whatever its height (one or two lines of headline, the lede), measured on the page.
 const heroBottom = () => { const e = document.querySelector('.now-hero'); return e ? Math.round(e.offsetTop + e.offsetHeight + 8) : 150; };
 const DOCK = 56 + 12 + 14, BAND = 76;
-// The phone map is a full height view of its own (now-phone.js): clear of the Done row at the top and nothing at the bottom.
-const nowInset = (w, hh) => isPhone() ? { top: 60, bottom: 12, left: 6, right: 6 } : calmNow ? { top: 16, bottom: Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
 
 // Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
 function calmBand(ctx) {
@@ -79,7 +78,7 @@ export function render(ctx) {
   const recent = st.events.filter((e) => /state_changed$/.test(e.type) && e.subject.kind === 'mission').slice(-6).reverse();
   const calm = sim.sentence() === 'Nothing needs you.', ov = buildOverview(sim);
   calmNow = calm;
-  if (isPhone()) return renderPhone(ctx, { ov, calm, sentence: sentenceNodes, ledger: ledgerText, inset: nowInset });
+  if (isPhone()) return renderPhone(ctx, { ov, calm, sentence: sentenceNodes, ledger: ledgerText });
   const box = mapBox('now', true, nowInset);
   ctx.mounts.push(() => syncMap(ctx, 'now'));
   const open = ctx.ui.nowDrawer === true;

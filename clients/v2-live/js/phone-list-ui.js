@@ -13,3 +13,9 @@ export function projectTone(p) {
   const key = p.attention ? 'needs_you' : p.running ? 'running' : p.total && p.missions.every((m) => m.state === 'done') ? 'done' : 'idle';
   return { key, cls: TONE[key][0], word: TONE[key][1] };
 }
+
+// A decision note on a phone is one 44 px line you can open, as in the sheets; which are open survives a redraw. Hidden with the rest of the notes when they are off.
+export function foldedNote(ctx, id, text) {
+  const seen = (ctx.ui.notesOpen ||= new Set()), key = id + text;
+  return h('details', { class: 'dnote dnote-d', open: seen.has(key), ontoggle: (e) => { if (e.currentTarget.open) seen.add(key); else seen.delete(key); } }, h('summary', null, 'Decision ' + id), text);
+}

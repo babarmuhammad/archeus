@@ -1,11 +1,10 @@
 // The Overview on a phone. One column and one scroll surface, list first: what is true (the state sentence, the ledger, the counts), the first decision with its Review button where the thumb
-// is, the projects that need you most, then the detail in folded sections. The map is a second view (#/now?as=map) that fills the space between the bars and does not scroll the page.
+// is, the projects that need you most, then the detail in folded sections. There is no map on a phone: the list is the Overview.
 import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
 import { word, missionRow, projName } from './views.js';
 import { stateMark, codeChip, projectTone } from './phone-list-ui.js';
-import { mapBox, syncMap } from './map.js';
 import { openTell } from './chat.js';
 import { overviewProjects } from './phone-model.js';
 import { workHref } from '../page-model.js';
@@ -18,11 +17,6 @@ function counters(ctx) {
   return h('nav', { class: 'counters', 'aria-label': 'Counts' },
     c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', 'needs'), c(sim.liveWork().length, 'running', 'active', 'running'),
     c(ms.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length, 'stopped', 'blocked', 'blocked'), c(ms.filter((m) => present('mission', m.state).cls === 'verifying').length, 'verifying', 'verifying', 'running'));
-}
-
-function modeSwitch(ctx, map) {
-  const opt = (id, label, on) => h('button', { class: 'np-opt', type: 'button', 'aria-pressed': String(on), 'data-key': 'ov-' + id, onclick: () => { if (!on) ctx.nav(id === 'map' ? '#/now?as=map' : '#/now'); } }, label);
-  return h('div', { class: 'np-switch', role: 'group', 'aria-label': 'Overview view' }, opt('list', 'Projects', !map), opt('map', 'Map', map));
 }
 
 // The first thing that waits on the owner: project, title, what, why, and one 48 px Review button. Two more as compact rows, then the way to the rest.
@@ -74,22 +68,14 @@ function details(ctx) {
   ];
 }
 
-// o: { ov, calm, sentence(text) -> nodes, ledger, inset } from view-now.js, which owns the words both layouts share.
+// o: { ov, calm, sentence(text) -> nodes, ledger } from view-now.js, which owns the words both layouts share.
 export function renderPhone(ctx, o) {
-  const sim = ctx.sim, map = ctx.route.q.as === 'map' && !o.calm;
-  if (map) {
-    // The map fills the space between the bars. Its box is the scene; the page itself does not scroll, so a swipe on the map moves the map.
-    ctx.mounts.push(() => syncMap(ctx, 'now'));
-    return h('div', { class: 'now-wrap np-mapmode' }, h('div', { class: 'view now-view np-map', 'data-calm': 'false' },
-      h('div', { class: 'now-scene' }, mapBox('now', true, o.inset)),
-      h('div', { class: 'np-maptop' }, h('p', { class: 'np-mapnote' }, 'Tap a project to focus it'), h('button', { class: 'btn l np-done', type: 'button', 'data-key': 'ov-done', onclick: () => ctx.nav('#/now') }, 'Done'))));
-  }
-  const att = sim.attention();
+  const sim = ctx.sim, att = sim.attention();
   return h('div', { class: 'view np', 'data-calm': String(o.calm) },
     h('section', { class: 'np-hero' },
       h('h1', { class: 'state-sentence' + (o.calm ? ' calm' : ''), 'data-key': 'sentence' }, ...(o.calm ? ['Nothing running. Tell Archeus what to do.'] : o.sentence(sim.sentence()))),
       h('p', { class: 'ledger', 'data-key': 'ledger' }, o.ledger(o.ov.ledger)),
-      o.calm ? h('button', { class: 'btn primary l np-tell', type: 'button', 'data-key': 'np-tell', onclick: () => openTell(ctx) }, 'Tell Archeus') : [counters(ctx), modeSwitch(ctx, false)]),
+      o.calm ? h('button', { class: 'btn primary l np-tell', type: 'button', 'data-key': 'np-tell', onclick: () => openTell(ctx) }, 'Tell Archeus') : counters(ctx)),
     o.calm ? null : needsYou(ctx, att),
     projectsList(ctx, o.ov),
     o.calm ? null : details(ctx));

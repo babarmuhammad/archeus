@@ -7,7 +7,7 @@ import { picker } from './picker.js';
 import { icon } from './icons.js';
 import { spineRow } from './spine.js';
 import { edgeRow } from './phone-pages.js';
-import { stateMark, codeChip, moreButton } from './phone-list-ui.js';
+import { stateMark, codeChip, moreButton, foldedNote } from './phone-list-ui.js';
 import { projectCodes } from './project-code.js';
 import { createPhoneGraph } from './workgraph.js';
 import { STATE } from './map.js';
@@ -77,7 +77,8 @@ export function renderPhone(ctx, d) {
       edgeRow(h('div', { class: 'wp-chips', role: 'group', 'aria-label': 'Show' }, ...chipsFor.chips.map(chip), morePick)),
       h('div', { class: 'wp-tools' }, projectPick, seg),
       filtered ? h('p', { class: 'wp-count', 'data-key': 'work-count' }, 'Showing ' + shown.length + ' of ' + entries.length) : null),
-    sections.length ? h('div', { class: 'wr-secs' }, ...sections) : none));
+    sections.length ? h('div', { class: 'wr-secs' }, ...sections) : none,
+    foldedNote(ctx, 'E03', 'One page for Work and Attention: missions and decisions grouped by what they wait on, as a list and as a graph. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09).')));
 }
 
 // ---------- the graph view ----------

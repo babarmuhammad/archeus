@@ -265,3 +265,6 @@
 .wg-hint { flex: 1 1 auto; margin: 0; color: var(--text-2); font-size: 14px; }
 .wg-more { flex: none; }
 @media (forced-colors: active) { .wgn-body { stroke: CanvasText; fill: Canvas; } .wgn-on .wgn-sel { stroke: Highlight; } .wgn-label { fill: CanvasText; stroke: Canvas; } .wg-edge { stroke: CanvasText; } .wp-chip[aria-current='true'] { outline: 2px solid Highlight; outline-offset: -2px; } }
+.view.wkp .dnote.dnote-d { padding: 0; border: 0; border-radius: 0; }
+.view.wkp .dnote-d > summary { display: flex; align-items: center; box-sizing: border-box; min-height: 44px; border-top: var(--hair) solid var(--line); font-weight: 600; color: var(--text); cursor: pointer; }
+.view.wkp .dnote-d[open] { padding-bottom: 8px; }
