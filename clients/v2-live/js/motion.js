@@ -126,7 +126,7 @@ export function play(prev, roots) {
     let anchor = null, before = false;
     for (let j = i - 1; j >= 0 && !anchor; j--) if (next.has(order[j])) anchor = next.get(order[j]).el;
     for (let j = i + 1; j < order.length && !anchor; j++) if (next.has(order[j])) { anchor = next.get(order[j]).el; before = true; }
-    if (!anchor || anchor.parentElement.className !== old.el.parentElement.className) continue;
+    if (!anchor || !old.el.parentElement || anchor.parentElement.className !== old.el.parentElement.className) continue;
     const g = old.el, r = old.rect, k = (anchor.getBoundingClientRect().width / (anchor.offsetWidth || 1)) || 1;
     hush(g); g.classList.add('m-ghost');
     Object.assign(g.style, { position: 'absolute', width: (r.right - r.left) / k + 'px', margin: '0', pointerEvents: 'none' });
