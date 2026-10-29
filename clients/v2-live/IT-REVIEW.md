@@ -2240,3 +2240,127 @@ Status: to review. New pairs in `js/i18n-s6.js` and `js/i18n-areas.js` for Repla
 | {n} paused | {n} in pausa |
 | Places: leave the terminal and open Places | Luoghi: esci dal terminale e apri i Luoghi |
 | Stop: leave the terminal and open the emergency stop | Stop: esci dal terminale e apri l’arresto d’emergenza |
+
+## Autopilot guided tour (2026-10-29): to review
+
+Status: to review. The controls and notices are in `js/i18n-autopilot.js`; the group names, chapter titles and one line captions are written beside their English in `js/autopilot-script.js` (a pair `[English, Italian]`), so a fix goes there. Mission titles stay as Core wrote them. The chapter number line reads "Capitolo n di m".
+
+| English | Italian |
+|---|---|
+| Autopilot | Autopilot |
+| Autopilot guided tour | Giro guidato Autopilot |
+| Guided tour | Giro guidato |
+| Autopilot controls | Controlli dell’Autopilot |
+| Previous chapter | Capitolo precedente |
+| Next chapter | Capitolo successivo |
+| Chapters | Capitoli |
+| Skipped a step: nothing to point at on this screen. | Passo saltato: su questa schermata non c’è nulla da indicare. |
+| Autopilot finished. Your settings are back as they were. | Autopilot terminato. Le tue impostazioni sono tornate come prima. |
+| Autopilot stopped because you used the app. Your settings are back as they were. | Autopilot fermato perché hai usato l’app. Le tue impostazioni sono tornate come prima. |
+| Autopilot stopped. Your settings are back as they were. | Autopilot fermato. Le tue impostazioni sono tornate come prima. |
+
+Groups
+
+| English | Italian |
+|---|---|
+| Start | Inizio |
+| Overview | Panoramica |
+| Tell | Dimmi |
+| Parallel life | Vita in parallelo |
+| Work | Lavoro |
+| Projects | Progetti |
+| Chat | Chat |
+| Replay | Replay |
+| Govern and configure | Governo e configurazione |
+| Terminal view | Vista terminale |
+| Quick actions and safety | Azioni rapide e sicurezza |
+| Look and scale | Aspetto e scala |
+| Phone | Telefono |
+
+Chapter titles
+
+| English | Italian |
+|---|---|
+| Autopilot | Autopilot |
+| State at a glance | Lo stato a colpo d’occhio |
+| Hover cards and focus | Schede al passaggio e focus |
+| Projects or Network | Progetti o Rete |
+| Semantic zoom | Zoom semantico |
+| Details drawer | Pannello dei dettagli |
+| Slash menu, pins and recents | Menu slash, fissati e recenti |
+| Send a mission | Invia una missione |
+| Capture an idea | Cattura un’idea |
+| Effects ask first | Gli effetti chiedono prima |
+| Simulation controls | Controlli della simulazione |
+| Work: the list | Lavoro: l’elenco |
+| Work: the graph | Lavoro: il grafo |
+| Mission inspector | Ispettore della missione |
+| Approve or reject | Approva o rifiuta |
+| Projects and worktrees | Progetti e worktree |
+| The Chat page | La pagina Chat |
+| Replay: scrub the record | Replay: scorri la registrazione |
+| Replay: recovery and reference | Replay: recupero e riferimenti |
+| Security | Sicurezza |
+| Health | Stato di salute |
+| Usage | Utilizzo |
+| Accounts and harnesses | Account e harness |
+| Extensions | Estensioni |
+| Settings | Impostazioni |
+| Terminal view | Vista terminale |
+| Search and commands (Ctrl K) | Cerca e comandi (Ctrl K) |
+| Stop and re-arm | Ferma e riarma |
+| Decision notes | Note sulle decisioni |
+| Italian and English | Italiano e inglese |
+| Six themes | Sei temi |
+| Reduced motion | Movimento ridotto |
+| Ten, thirty, a hundred projects | Dieci, trenta, cento progetti |
+| Device frames | Cornici dei dispositivi |
+| Phone: bar and Places | Telefono: barra e Luoghi |
+| Phone: the Tell sheet | Telefono: la scheda Dimmi |
+| Phone: inspector and safety sheets | Telefono: schede ispettore e sicurezza |
+| Phone: Replay | Telefono: Replay |
+| Phone: the other pages | Telefono: le altre pagine |
+
+Chapter captions
+
+| English | Italian |
+|---|---|
+| A guided tour of the real app. The simulation keeps running underneath. Pause, skip or stop at any time; a click or a key stops it. | Un giro guidato dell’app vera. La simulazione continua a girare sotto. Pausa, salta o ferma quando vuoi; un clic o un tasto la ferma. |
+| One sentence says what needs you, what runs and what stopped. Each project says what Archeus did there last. | Una frase dice cosa ti serve, cosa gira e cosa si è fermato. Ogni progetto dice cosa ha fatto Archeus per ultimo. |
+| Point at a project and the others step back; a card says what it holds. A click focuses the project and lists its missions. | Punta un progetto e gli altri si abbassano; una scheda dice cosa contiene. Un clic mette a fuoco il progetto e ne elenca le missioni. |
+| The switch beside the headline turns the territories into a network: every mission is a node around its project hub. | L’interruttore accanto al titolo trasforma i territori in una rete: ogni missione è un nodo attorno al suo progetto. |
+| Zoom in and the map shows more: names, then states, then the small marks of each attempt. Fit brings it all back. | Ingrandisci e la mappa mostra di più: nomi, stati, poi i segni di ogni tentativo. Adatta riporta tutto in vista. |
+| Details opens over the map, never squeezes it: counters, what is happening now and what changed since you last looked. | I dettagli si aprono sopra la mappa senza schiacciarla: contatori, cosa succede adesso e cosa è cambiato dall’ultima volta. |
+| Type / to see the commands by class. Pin the ones you use, and the recent ones come first. Up, Down and Enter work inside the list. | Scrivi / per vedere i comandi per classe. Fissa quelli che usi e i recenti vengono per primi. Su, Giù e Invio funzionano nell’elenco. |
+| Plain words become a mission. Archeus replies at once and the new work appears on the map and in Work, waiting for its plan. | Parole semplici diventano una missione. Archeus risponde subito e il nuovo lavoro compare sulla mappa e in Lavoro. |
+| An idea is not a mission. It is kept as a note with its own path, from Captured to Learned, until you decide. | Un’idea non è una missione. Resta come appunto, con il suo percorso da Catturata a Imparata, finché non decidi. |
+| Chat reads and creates; anything with an effect is a proposal. /estop makes a card, and nothing stops until you confirm. | La chat legge e crea; ogni cosa con un effetto è una proposta. /estop crea una scheda e nulla si ferma finché non confermi. |
+| The simulation is always running. Here the tour asks it for a decision, a failure and an offline spell; the same buttons are in the Sim menu. | La simulazione gira sempre. Qui il giro le chiede una decisione, un guasto e un periodo offline; gli stessi pulsanti sono nel menu Sim. |
+| One page for everything in flight. Saved views, a project filter and groups by what a mission is waiting on. | Una pagina per tutto ciò che è in corso. Viste salvate, filtro per progetto e gruppi per ciò che una missione aspetta. |
+| The same work as a graph. A view or a project dims everything else, and a node and its row light each other up. | Lo stesso lavoro come grafo. Una vista o un progetto attenua il resto, e un nodo e la sua riga si accendono a vicenda. |
+| A mission opens in seven tabs: Outcome, Plan, Now, Evidence, Why, Timeline and Relations, with its six-station spine on top. | Una missione si apre in sette schede: Esito, Piano, Adesso, Prove, Perché, Cronologia e Relazioni, con la barra a sei stazioni in alto. |
+| A decision says what, why, what Core does next and what rejecting costs. There is no undo. Deciding leaves a receipt. | Una decisione dice cosa, perché, cosa fa il Core dopo e cosa costa rifiutare. Non c’è annulla. Decidere lascia una ricevuta. |
+| Every project on one page, sorted by attention. Its details have tabs for missions, ideas, activity and settings; worktrees belong to a project. | Ogni progetto in una pagina, ordinato per attenzione. I dettagli hanno schede per missioni, idee, attività e impostazioni; i worktree appartengono a un progetto. |
+| A full conversation with a scope and a mission to talk about, receipts of what Archeus did, and the context it is using. | Una conversazione completa con un ambito e una missione di cui parlare, le ricevute di ciò che Archeus ha fatto e il contesto che usa. |
+| What Core recorded, in order, read-only. Pick a mission, step back and forward, and open the evidence behind any step. | Ciò che il Core ha registrato, in ordine, in sola lettura. Scegli una missione, vai avanti e indietro, apri le prove di ogni passo. |
+| Evidence is labelled by its real strength. Recovery only proposes cards you approve; Reference says what was never recorded. | Le prove sono etichettate per la loro forza reale. Il recupero propone solo schede da approvare; i Riferimenti dicono cosa non è mai stato registrato. |
+| A posture sentence, held actions you allow once or deny, project policy, boundaries and the emergency controls. | Una frase sulla postura, azioni trattenute da consentire una volta o negare, politica dei progetti, confini e controlli di emergenza. |
+| Checks and readings, filtered by what needs attention. Run a check and see its answer; unknown is never shown as fine. | Controlli e letture, filtrati per ciò che richiede attenzione. Esegui un controllo e vedi la risposta; sconosciuto non è mai mostrato come a posto. |
+| Limits as numbers with their reset time, per account and per harness. A reading that is missing says unknown, never zero. | Limiti come numeri con l’ora di reset, per account e per harness. Una lettura mancante dice sconosciuto, mai zero. |
+| Claude Code, Codex and pi side by side: accounts, models, the failover order per harness and what each one starts with. | Claude Code, Codex e pi affiancati: account, modelli, ordine di failover per harness e con cosa parte ciascuno. |
+| Hooks, MCP servers, agents, automations and paired clients, each with a switch, a details sheet and the harnesses that support it. | Hook, server MCP, agenti, automazioni e client abbinati, ciascuno con un interruttore, una scheda e gli harness che lo supportano. |
+| Safety, Appearance, Prototype and About. Pause all, Resume all and the emergency stop live here too, and the key list opens from here. | Sicurezza, Aspetto, Prototipo e Informazioni. Qui ci sono anche Pausa, Riprendi e arresto d’emergenza, e da qui si apre l’elenco dei tasti. |
+| The same state as text. Number keys switch screens, j and k move, Enter opens, ? lists the keys; L, G and T change colours, glyphs and Read mode. | Lo stesso stato come testo. I numeri cambiano schermata, j e k si muovono, Invio apre, ? elenca i tasti; L, G e T cambiano colori, glifi e modo Lettura. |
+| Ctrl K opens one box for pages, projects and actions. Type a few letters, press Enter, and you are there. | Ctrl K apre un’unica casella per pagine, progetti e azioni. Scrivi poche lettere, premi Invio e sei arrivato. |
+| Stop always asks twice. It ends every running mission, blocks new work until you re-arm, and re-arming asks again. | Ferma chiede sempre due volte. Termina ogni missione in corso, blocca il nuovo lavoro finché non riarmi, e riarmare chiede di nuovo. |
+| A dashed note under a choice names the owner decision behind it. They can be switched off for a clean view. | Una nota tratteggiata sotto una scelta nomina la decisione del proprietario che c’è dietro. Si possono spegnere per una vista pulita. |
+| The whole interface switches to Italian and back. Mission titles stay as Core wrote them. | Tutta l’interfaccia passa all’italiano e ritorna. I titoli delle missioni restano come li ha scritti il Core. |
+| Dark and Light, each in standard and high contrast, plus System and a forced colours simulation. The ground is flat; state never relies on colour alone. | Scuro e Chiaro, ciascuno standard e ad alto contrasto, più Sistema e una simulazione dei colori forzati. Lo sfondo è piatto; lo stato non dipende mai dal solo colore. |
+| Quiet mode stops every loop and every glide. The core mark stands still and says how many missions run. | La modalità Quieta ferma ogni ciclo e ogni scorrimento. Il simbolo del nucleo sta fermo e dice quante missioni girano. |
+| The same pages at scale: 10, 30 and 100 simulated projects, a calm story with finished work, and your own projects when this PC has them. | Le stesse pagine in scala: 10, 30 e 100 progetti simulati, una storia calma con il lavoro finito e i tuoi progetti se questo PC li ha. |
+| Tablet, desktop and Terminal frames of the same app, and All devices: four panes driven by one simulation. | Cornici tablet, desktop e Terminale della stessa app, e Tutti i dispositivi: quattro riquadri guidati da una sola simulazione. |
+| On a phone the bar holds Overview, Work, Tell, Places and Stop. Places lists every destination and your projects. | Su un telefono la barra ha Panoramica, Lavoro, Dimmi, Luoghi e Ferma. I Luoghi elencano ogni destinazione e i tuoi progetti. |
+| Tell is a sheet you can pull up or down. The slash menu takes the place of the thread, so the composer is never pushed out. | Dimmi è una scheda che si tira su o giù. Il menu slash prende il posto della conversazione, così il campo non viene mai spinto fuori. |
+| An inspector is a sheet over the page. Stop on the bar arms a two step stop; the confirm sits away from the thumb. | Un ispettore è una scheda sopra la pagina. Ferma nella barra arma un arresto in due passi; la conferma sta lontano dal pollice. |
+| Replay on a phone shows one section at a time. Evidence opens as a sheet, and one button sets the layout and the detail. | Replay su un telefono mostra una sezione alla volta. Le prove si aprono in una scheda e un pulsante imposta layout e dettaglio. |
+| Security, Health, Accounts and Settings share one phone head. Pickers are lists in a sheet, and the terminal keeps a Places and Stop row. | Sicurezza, Salute, Account e Impostazioni condividono una testata da telefono. I selettori sono elenchi in una scheda e il terminale ha una riga Luoghi e Ferma. |
