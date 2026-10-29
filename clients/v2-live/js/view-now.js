@@ -1,7 +1,7 @@
 import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
-import { tr } from './i18n.js';
+import { tr, translate } from './i18n.js';
 import { word, panel, empty, missionRow, attentionItem } from './views.js';
 import { icon } from './icons.js';
 import * as store from './store.js';
@@ -28,7 +28,12 @@ let calmNow = false;
 let sheetOn = false;
 const viewWidth = () => { const e = document.querySelector('.now-view'); return e ? e.clientWidth : 1e4; };
 // The map starts under the headline whatever its height (one or two lines of headline, the lede), measured on the page.
-const heroBottom = () => { const e = document.querySelector('.now-hero'); return e ? Math.round(e.offsetTop + e.offsetHeight + 8) : 150; };
+const heroBottom = () => {
+  const e = document.querySelector('.now-hero');
+  // Map mounting precedes global translation; measure the final Italian chip rows.
+  if (e && store.get('lang') === 'it') translate(e);
+  return e ? Math.round(e.offsetTop + e.offsetHeight + 8) : 150;
+};
 const DOCK = 56 + 12 + 14, BAND = 76;
 const nowInset = (w, hh) => calmNow ? { top: 16, bottom: Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
 

@@ -95,6 +95,17 @@
 
 /* where a button sits */
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+/* Italian attention wording needs its own line instead of taking the name's column. */
+.np-proj:lang(it) { grid-template-columns: 44px minmax(0, 1fr); }
+.np-proj:lang(it) > .ph-st { grid-column: 2; }
+.pp-main:lang(it) { grid-template-columns: 44px minmax(0, 1fr); grid-template-areas: 'c n' '. s' '. l'; }
+:is(.np-proj, .pp-main):lang(it) .ph-st { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+:is(.np-pname, .pp-name):lang(it) { white-space: normal; overflow-wrap: anywhere; }
+.np:lang(it) .state-sentence .ss { white-space: normal; overflow-wrap: anywhere; }
+.now-view:lang(it) .state-sentence > .ss { white-space: normal; overflow-wrap: anywhere; }
+.now-view:lang(it) .att-chip { min-width: 0; max-width: 100%; flex-wrap: wrap; padding-block: 8px; overflow-wrap: anywhere; }
+.now-view:lang(it) .att-chip > span { min-width: 0; }
 @container dev (max-width: 479px) { .actions > .btn { flex: 1 1 auto; } }
 .toast .btn { min-height: var(--bh); }
 
