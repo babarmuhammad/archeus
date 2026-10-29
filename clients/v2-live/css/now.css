@@ -8,6 +8,10 @@
 .now-view .state-sentence { font-family: var(--serif); font-size: clamp(32px, 2.8vw, 42px); line-height: var(--lh-disp); letter-spacing: var(--ls-disp); font-weight: 500; margin: 0; overflow-wrap: normal; text-wrap: balance; }
 .now-view .ledger { font: 400 var(--fs-body) / 1.4 var(--sans); color: var(--text-2); margin: 0; max-width: 46rem; }
 .state-sentence .ss-need { color: var(--attention); } .state-sentence .ss-run { color: var(--active); } .state-sentence .ss-stop { color: var(--blocked); }
+@media (min-width: 600px) {
+  .now-view .state-sentence:has(> .ss) { line-height: 1.4; }
+  .now-view .state-sentence > .ss { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+}
 .view.now-view { --strip-h: 76px; --hero-h: 112px; --sheet-w: min(440px, 44%); --sheet-h: min(46%, 340px); }
 /* The drawer is an overlay layer: the status strip is the bottom edge, the Details sheet floats over the scene (beside it when wide, over its bottom when narrow). Opening it never resizes the scene. */
 .now-drawer { position: absolute; z-index: 3; inset: 0; pointer-events: none; }
