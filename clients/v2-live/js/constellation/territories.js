@@ -375,6 +375,8 @@ export function createTerritoryMap(container, options = {}) {
   document.addEventListener('keydown', onKey);
   media.addEventListener('change', motion); document.addEventListener('visibilitychange', motion);
   const observer = new ResizeObserver(relayout); observer.observe(host);
+  const settle = () => { if (!destroyed && JSON.stringify(inset) !== JSON.stringify({...INSET, ...(typeof options.inset === 'function' ? options.inset(width, height) : options.inset)})) relayout(); };
+  document.fonts?.addEventListener('loadingdone', settle);
   const seenObs = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => { visible = entries[entries.length - 1].isIntersecting; motion(); }) : null; seenObs?.observe(host);
   const api = {
     update(next) {
@@ -407,7 +409,7 @@ export function createTerritoryMap(container, options = {}) {
     on(event, fn) { if (!listeners.has(event)) listeners.set(event, new Set()); listeners.get(event).add(fn); return () => listeners.get(event)?.delete(fn); },
     destroy() {
       if (destroyed) return;
-      destroyed = true; observer.disconnect(); seenObs?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.removeEventListener('keydown', onKey); clearTimeout(cardTimer); clearTimeout(graceTimer); clearTimeout(hideTimer);
+      destroyed = true; document.fonts?.removeEventListener('loadingdone', settle); observer.disconnect(); seenObs?.disconnect(); media.removeEventListener('change', motion); document.removeEventListener('visibilitychange', motion); document.removeEventListener('keydown', onKey); clearTimeout(cardTimer); clearTimeout(graceTimer); clearTimeout(hideTimer);
       for (const a of host.getAnimations({subtree: true})) a.cancel();
       markers.clear(); listeners.clear(); host.remove();
     }

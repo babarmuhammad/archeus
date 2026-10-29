@@ -170,7 +170,7 @@
 .view-switch .vs-btn[aria-pressed='true'] { background: var(--line); color: var(--text); }
 .view-switch .vs-btn:hover { color: var(--text); }
 .view-switch .vs-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
-.now-view .now-hero { right: calc(var(--gut) * 1.5 + 120px); }
+.now-view .now-hero { right: calc(var(--gut) * 1.5 + 152px); }
 
 /* The Attention strip under the ledger: one chip per project that waits on the owner (at most three, then a link). */
 .att-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }

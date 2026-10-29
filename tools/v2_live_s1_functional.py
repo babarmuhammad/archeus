@@ -26,7 +26,9 @@ try:
         navs = pg.evaluate("() => [...document.querySelectorAll('.rail .nav-item')].map((e) => e.textContent.replace(/[0-9]/g, '').trim())")
         check('the nav is in three labelled groups (Work, Govern, Configure) and Now is Overview', navs == ['Overview', 'Work', 'Chat', 'Replay', 'Terminal view', 'Security', 'Health', 'Usage', 'Accounts', 'Extensions', 'Settings'] and pg.evaluate("() => [...document.querySelectorAll('.rail .rail-grp')].map((g) => g.getAttribute('aria-label'))") == ['Work', 'Govern', 'Configure'])  # owner round two 2026-10-28: grouped rail
         check('the route of Overview is still #/now', pg.get_attribute('.rail [data-route="now"]', 'href') == '#/now')
-        check('the Overview shows one ring mark per project', pg.locator('.now-view .am-hit').count() >= 3 and pg.locator('.now-view .am-lane').count() >= 1)
+        check('the Overview opens on Territories: one cell per project', pg.locator('.now-view .am-cell-name').count() >= 3 and pg.locator('.now-view .am-lane').count() == 0)
+        pg.click('[data-key="vs-rings"]'); pg.wait_for_timeout(500)
+        check('the Rings view shows one ring mark per project', pg.locator('.now-view .am-hit').count() >= 3 and pg.locator('.now-view .am-lane').count() >= 1)
         pg.goto(base + '?sim=paused&motion=reduced&theme=dark#/map', wait_until='load'); pg.wait_for_timeout(400)
         check('#/map redirects to #/now', pg.evaluate('location.hash') == '#/now' and pg.get_attribute('.rail [data-route="now"]', 'aria-current') == 'page')
         w = pg.evaluate("document.querySelector('.rail').getBoundingClientRect().width")

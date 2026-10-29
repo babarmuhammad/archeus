@@ -198,10 +198,11 @@ export function createMap(container, options = {}) {
   }
   // A hub's tag stands centred under it, 4 px below its rim, in screen space (its width and height are pixels at any zoom).
   const tagRect = n => ({x: n.x - n.tag.width / 2, y: n.y + n.rk + 4, width: n.tag.width, height: n.tag.height});
-  const inScene = b => b.x >= 0 && b.x + b.width <= width && b.y >= 0 && b.y + b.height <= height;
+  const inScene = b => b.x >= 0 && b.x + b.width <= width && b.y >= inset.top && b.y + b.height <= height;
   function refreshOverlay() {
     world.setAttribute('transform', `translate(${camera.x} ${camera.y}) scale(${camera.k})`);
     syncCore();
+    tagline.style.visibility = tagline.getComputedTextLength() * camera.k > width - 16 ? 'hidden' : '';
     const nodes = screenNodes();
     const size = width < 360 ? 12 : width < 480 || clustered() ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
     if (context) context.font = `400 ${size}px ${serif}`;
@@ -246,7 +247,7 @@ export function createMap(container, options = {}) {
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
       .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !overlaps(b, ctl, 4) && !tagBoxes.some(t => overlaps(b, t, 4)) && !(capBox && overlaps(b, capBox, 4)) && !nodes.some(o => coversNode(b, o, 2))) : [];
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
-    const labelsFor = review => options.calm ? [] : placeLabels(grouped ? nodes.map(n => ({...n, label: shortOf(String(n.label || n.id))})) : nodes, width, height, {selected, size, rich: grouped ? false : rich, sub: grouped, only: eligible ?? undefined, metaOf, budget: ringed() ? 1e3 : undefined,
+    const labelsFor = review => options.calm ? [] : placeLabels(grouped ? nodes.filter(n => n.x >= 0 && n.x <= width && n.y >= 0 && n.y <= height).map(n => ({...n, label: shortOf(String(n.label || n.id))})) : nodes, width, height, {selected, size, rich: grouped ? false : rich, sub: grouped, only: eligible ?? undefined, metaOf, budget: ringed() ? 1e3 : undefined,
       priorityOf: ringed() ? n => (n.id === selected ? 1e4 : (({'needs-you': 5000, blocked: 3000, running: 1000})[stateKey(n.state)] || 0) + (projectOf.get(n.id)?.total || 0)) : undefined,
       outwardOf: ringed() ? n => { const dx = n.x - cx, dy = n.y - cy, d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; } : undefined,
       subWidth: grouped && context ? n => { const s = subOf(n).toUpperCase(); context.font = `500 ${size * .72}px ${sans}`; const w = context.measureText(s).width + s.length * size * .72 * .1; context.font = `400 ${size}px ${serif}`; return w; } : undefined, measureMeta: context ? measureMeta : undefined,
