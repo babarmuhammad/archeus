@@ -26,6 +26,10 @@ const THEME = '.menu [role=menuitemradio], .tools [role=menuitemradio]';
 const TOGGLE = '.menu [role=menuitemcheckbox], .tools [role=menuitemcheckbox]';
 const SIMBTN = '.menu .col > .actions:nth-child(2) .btn, .tools .col > .actions:nth-child(2) .btn';
 const OPEN_DECISION = '[data-key^="att-a-"] a.btn.primary';
+// The phone's pickers (Work's More states and project filter) are bottom sheets: a trigger, then an option by its value.
+const OPT = (value) => '[role="option"][data-value="' + value + '"]';
+const PHONE = { on: 'phone' }, DESK = { on: 'desktop' };
+const PICK = (trigger, value, ms = 1300) => [C(trigger, 700, PHONE), C(OPT(value), ms, PHONE)];
 const STOP = '[data-key="stop"], [data-key="bb-stop"]';
 
 export const GROUPS = {
@@ -41,7 +45,7 @@ export const CHAPTERS = [
 
   { id: 'ov-state', group: 'overview', t: ['State at a glance', 'Lo stato a colpo d’occhio'], covers: ['E', 'O', 'R', 'WP', 'I'],
     c: ['One sentence says what needs you, what runs and what stopped. Each project says what Archeus did there last.', 'Una frase dice cosa ti serve, cosa gira e cosa si è fermato. Ogni progetto dice cosa ha fatto Archeus per ultimo.'],
-    steps: [N('#/now', 500), H('sentence', 1800), H('ledger', 1600, { optional: true }), H('att-chip-*', 1800, { optional: true }), U] },
+    steps: [N('#/now', 500), H('sentence', 1800), H('ledger', 1600, { optional: true }), H('att-chip-*', 1800, { optional: true, ...DESK }), U] },
 
   { id: 'ov-hover', group: 'overview', on: 'desktop', t: ['Hover cards and focus', 'Schede al passaggio e focus'], covers: ['R', 'Q'],
     c: ['Point at a project and the others step back; a card says what it holds. A click focuses the project and lists its missions.', 'Punta un progetto e gli altri si abbassano; una scheda dice cosa contiene. Un clic mette a fuoco il progetto e ne elenca le missioni.'],
@@ -56,7 +60,7 @@ export const CHAPTERS = [
     steps: [N('#/now', 500), C('vs-network', 900), C('[aria-label="Zoom in"]', 1000, { optional: true }), C('[aria-label="Zoom in"]', 1000, { optional: true }), C('[aria-label="Zoom in"]', 1200, { optional: true }),
       C('[aria-label="Fit all nodes"]', 1200, { optional: true }), C('vs-projects', 800)] },
 
-  { id: 'ov-details', group: 'overview', t: ['Details drawer', 'Pannello dei dettagli'], covers: ['Q', 'N', 'P', 'E'],
+  { id: 'ov-details', group: 'overview', on: 'desktop', t: ['Details drawer', 'Pannello dei dettagli'], covers: ['Q', 'N', 'P', 'E'],
     c: ['Details opens over the map, never squeezes it: counters, what is happening now and what changed since you last looked.', 'I dettagli si aprono sopra la mappa senza schiacciarla: contatori, cosa succede adesso e cosa è cambiato dall’ultima volta.'],
     steps: [N('#/now', 500), C('now-details-btn', 1800), H('m-*', 1400, { optional: true }), U, K('Escape', 600)] },
 
@@ -84,11 +88,13 @@ export const CHAPTERS = [
 
   { id: 'work-list', group: 'work', t: ['Work: the list', 'Lavoro: l’elenco'], covers: ['WP', 'E', 'PW', 'O'],
     c: ['One page for everything in flight. Saved views, a project filter and groups by what a mission is waiting on.', 'Una pagina per tutto ciò che è in corso. Viste salvate, filtro per progetto e gruppi per ciò che una missione aspetta.'],
-    steps: [N('#/work', 900), H('att-*', 1300, { optional: true }), U, C('work-view-running', 1300), C('work-view-blocked', 1300), C('work-view-needs', 1200), C('work-p-archeus', 1400), C('work-all', 1000), C('work-view-all', 800)] },
+    steps: [N('#/work', 900), H('att-*', 1300, { optional: true, ...DESK }), U, C('work-view-running', 1300), C('work-view-blocked', 1300, DESK), ...PICK('work-more-states', 'blocked'), C('work-view-needs', 1200),
+      C('work-p-archeus', 1400, DESK), C('work-all', 1000, DESK), ...PICK('work-project', 'archeus', 1400), ...PICK('work-project', '', 1000), C('work-view-all', 800)] },
 
   { id: 'work-graph', group: 'work', t: ['Work: the graph', 'Lavoro: il grafo'], covers: ['WP', 'N', 'E'],
     c: ['The same work as a graph. A view or a project dims everything else, and a node and its row light each other up.', 'Lo stesso lavoro come grafo. Una vista o un progetto attenua il resto, e un nodo e la sua riga si accendono a vicenda.'],
-    steps: [N('#/work', 700), C('work-as-graph', 1500), H('wg-m-date', 1600, { optional: true }), U, C('work-view-needs', 1600), C('work-p-notes', 1600), C('work-all', 800), C('work-view-all', 800), C('work-as-list', 800)] },
+    steps: [N('#/work', 700), C('work-as-graph', 1500), H('wg-m-date', 1600, { optional: true, ...DESK }), U, C('work-view-needs', 1600, DESK), C('work-p-notes', 1600, DESK), C('work-all', 800, DESK), C('work-view-all', 800, DESK),
+      C('work-legend-needs', 1600, PHONE), ...PICK('work-project', 'notes', 1600), C('wg-fit', 900, PHONE), ...PICK('work-project', '', 800), C('work-legend-needs', 800, PHONE), C('work-as-list', 800)] },
 
   { id: 'work-inspect', group: 'work', t: ['Mission inspector', 'Ispettore della missione'], covers: ['D', 'E', 'N', 'PW', 'O', 'I'],
     c: ['A mission opens in seven tabs: Outcome, Plan, Now, Evidence, Why, Timeline and Relations, with its six-station spine on top.', 'Una missione si apre in sette schede: Esito, Piano, Adesso, Prove, Perché, Cronologia e Relazioni, con la barra a sei stazioni in alto.'],
@@ -97,7 +103,8 @@ export const CHAPTERS = [
 
   { id: 'work-approve', group: 'work', t: ['Approve or reject', 'Approva o rifiuta'], covers: ['E', 'N', 'P', 'H'],
     c: ['A decision says what, why, what Core does next and what rejecting costs. There is no undo. Deciding leaves a receipt.', 'Una decisione dice cosa, perché, cosa fa il Core dopo e cosa costa rifiutare. Non c’è annulla. Decidere lascia una ricevuta.'],
-    steps: [N('#/work', 600), C(OPEN_DECISION, 1600), C('itab-policy', 1200), C('itab-decision', 900), C('#inspector .btn.decide.primary', 2400)] },
+    steps: [N('#/work', 600), C(OPEN_DECISION, 1600, DESK), C('wr-act-att-a-*', 1600, PHONE), C('itab-policy', 1200), C('itab-decision', 900), C('#inspector .btn.decide.primary', 2400, DESK),
+      C('.btn.decide.primary', 1000, PHONE), C('confirm-yes', 2200, PHONE)] },
 
   { id: 'projects', group: 'projects', t: ['Projects and worktrees', 'Progetti e worktree'], covers: ['PR', 'WP', 'QN', 'WT'],
     c: ['Every project on one page, sorted by attention. Its details have tabs for missions, ideas, activity and settings; worktrees belong to a project.', 'Ogni progetto in una pagina, ordinato per attenzione. I dettagli hanno schede per missioni, idee, attività e impostazioni; i worktree appartengono a un progetto.'],
