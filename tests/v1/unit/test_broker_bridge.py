@@ -249,10 +249,15 @@ class _Timer:
             self.fn(*self.args)
 
 
-def _read_to_eof(c):
+def _read_to_eof(c, reset_ends_it=False):
     out = b''
     while True:
-        chunk = c.recv(65536)
+        try:
+            chunk = c.recv(65536)
+        except ConnectionResetError:
+            if reset_ends_it:               # a cut with request bytes unread is an RST on Windows, a FIN elsewhere
+                return out
+            raise
         if not chunk:
             return out
         out += chunk
@@ -268,7 +273,7 @@ def test_a_request_that_trickles_past_its_deadline_is_cut_and_frees_its_slot():
             assert _wait_for(lambda: timers.made)
             assert timers.made[0].delay == 0.5
             timers.fire_all()
-            got = _read_to_eof(c)
+            got = _read_to_eof(c, reset_ends_it=True)
         assert got == b''                   # cut: no reply, the connection just ends
         assert _exchange(b, ok_request()).startswith(b'HTTP/1.1 502')
     finally:
