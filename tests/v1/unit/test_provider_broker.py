@@ -566,7 +566,8 @@ def test_an_unauthenticated_head_is_refused_before_any_body_is_read():
 def test_a_deeply_nested_body_is_a_400_not_an_escape():
     b, calls = broker()
     _, token, _ = issued(b)
-    body = b'[' * 5000 + b']' * 5000
+    depth = 200_000                 # past every build's limit: 5000 deep parses on 3.14, Linux and macOS
+    body = b'[' * depth + b']' * depth
     assert serve(b, request(token=token, body=body))[1]['status'] == 400 and calls == []
 
 
