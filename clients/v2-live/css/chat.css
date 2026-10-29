@@ -128,6 +128,8 @@
 .cb { position: relative; z-index: 1; flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-height: 56px; padding: 6px 16px; border-bottom: var(--hair) solid var(--line); }
 .cb-scope { min-height: var(--target); padding: 0 8px; border-color: transparent; font: 600 var(--fs-t2)/1.2 var(--font); }
 .cb-mission { max-width: min(26em, 100%); }
+.cb .pk { flex-shrink: 0; }
+.cb .pk-t { white-space: normal; overflow-wrap: anywhere; }
 .cb-sum, .cb-state { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); font-size: var(--fs-cap); }
 .cb-gap { flex: 1 1 0; min-width: 0; }
 .cb-need { gap: 8px; border-color: var(--attention); color: var(--text); font-weight: 600; }
@@ -341,10 +343,10 @@ details.panel > .body { padding: 4px 16px 16px; }
 
 /* ---------- phone ---------- */
 @container dev ((max-width: 599px) or style(--phone: 1)) {
-  /* the Chat page header is one row: scope, mission, what needs you, More (the three views live in More) */
-  .cb { flex-wrap: nowrap; min-height: 52px; padding: 4px 8px; gap: 4px; }
-  .cb-scope { order: 0; flex: 0 1 auto; min-width: 0; max-width: 40%; }
-  .cb-mission { order: 1; flex: 0 1 auto; min-width: 0; max-width: 40%; }
+  /* Scope and mission wrap before their labels lose room; the three views live in More. */
+  .cb { flex-wrap: wrap; min-height: 52px; padding: 4px 8px; gap: 4px; }
+  .cb-scope { order: 0; flex: none; min-width: 0; max-width: 100%; }
+  .cb-mission { order: 1; flex: none; min-width: 0; max-width: 100%; }
   .cb-state, .cb-sum { display: none; }
   .cb-gap { display: block; order: 2; }
   .cb-need { order: 3; margin-left: 0; flex: none; padding-inline: 10px; }

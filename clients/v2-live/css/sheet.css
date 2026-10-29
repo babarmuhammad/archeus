@@ -12,7 +12,7 @@
 .sheet-grip::before { content: ''; width: 36px; height: 4px; border-radius: 999px; background: var(--text-3); }
 .sheet[data-drag] .sheet-grip { cursor: grabbing; }
 div.sheet-grip { cursor: default; }
-.sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 0 8px 0 16px; }
+.sheet-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding: 8px 8px 8px 16px; }
 .sheet-head h2 { min-width: 0; font: 500 var(--fs-t1) / 1.2 var(--font); overflow-wrap: anywhere; }
 .sheet-head h2:focus { outline: none; }
 .sheet-close { flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: var(--hair) solid transparent; border-radius: var(--r-m); background: transparent; cursor: pointer; }
