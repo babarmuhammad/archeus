@@ -2364,3 +2364,12 @@ Chapter captions
 | An inspector is a sheet over the page. Stop on the bar arms a two step stop; the confirm sits away from the thumb. | Un ispettore è una scheda sopra la pagina. Ferma nella barra arma un arresto in due passi; la conferma sta lontano dal pollice. |
 | Replay on a phone shows one section at a time. Evidence opens as a sheet, and one button sets the layout and the detail. | Replay su un telefono mostra una sezione alla volta. Le prove si aprono in una scheda e un pulsante imposta layout e dettaglio. |
 | Security, Health, Accounts and Settings share one phone head. Pickers are lists in a sheet, and the terminal keeps a Places and Stop row. | Sicurezza, Salute, Account e Impostazioni condividono una testata da telefono. I selettori sono elenchi in una scheda e il terminale ha una riga Luoghi e Ferma. |
+## Overview rings and core (2026-10-28, branch v2/live-net): to review
+
+File: `js/i18n.js`. Not checked by a native speaker. The rings carry colour only, so the only new words are for screen readers.
+
+| English | Italian |
+|---|---|
+| N nodes across M projects. K need you. … Tab through the projects in the order of the lanes, arrow keys walk along a lane and between lanes, Enter to select. Equivalent node table follows map controls. | N nodi in M progetti. K ti servono. Usa Tab per scorrere i progetti nell’ordine delle corsie, le frecce per muoverti lungo una corsia e tra le corsie, Invio per scegliere. La tabella equivalente segue i controlli della mappa. |
+| lane N of M for <state> (spoken after a project's name, state and mission count) | corsia N di M per <stato> |
+| 1 mission / N missions, 1 worktree / N worktrees (spoken on a ring mark) | 1 missione / N missioni, 1 worktree / N worktree (existing rules) |

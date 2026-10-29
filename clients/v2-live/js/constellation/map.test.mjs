@@ -98,7 +98,7 @@ test('state aliases normalise and rich labels reserve the eyebrow width', () => 
   assert.ok(box.width >= 150 && box.rich);
 });
 test('crystal is a seeded convex hull: 60 to 100 edges, depth bands, bounded by its radius', async () => {
-  const {crystal, hull3, triangle, coreStar, ICONS} = await import('./nodeart.js');
+  const {crystal, hull3, triangle, corePaths, ICONS} = await import('./nodeart.js');
   const count = d => (d.match(/M/g) || []).length;
   for (const id of ['m-date', 'm-export', 'a1', 'prj-notes', 'x', 'long node id 7']) {
     const c = crystal(id, 80);
@@ -114,8 +114,8 @@ test('crystal is a seeded convex hull: 60 to 100 edges, depth bands, bounded by 
   const {pts, edges} = hull3('a', 12);   // every point sits on the ellipsoid, so all of them are hull vertices
   assert.equal(new Set(edges.flat()).size, pts.length);
   assert.ok(triangle('x1', 40).outline.split('L').length === 3 && Object.keys(ICONS).length >= 6);
-  const star = coreStar(40, 1.75);
-  assert.ok((star.spikes.match(/M/g) || []).length === 16 && (star.threads.match(/M/g) || []).length >= 80);
+  const star = corePaths(40, 1.75);
+  assert.ok(star.some(p => p.c === 'am-core-thread') && star.some(p => p.c.startsWith('am-core-chords') && (p.d.match(/M/g) || []).length >= 100));
 });
 test('calm layout lists only projects: panels apart, clear of the core mark and wordmark, inside the inset', async () => {
   const {layoutCalm} = await import('./geometry.js'), inset = {top: 16, bottom: 300, left: 24, right: 24};

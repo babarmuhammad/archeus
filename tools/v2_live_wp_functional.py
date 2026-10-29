@@ -282,7 +282,7 @@ try:
         ctx, pg, errs = page('now')
         check('the strip lists the projects that need you', n(pg, '.att-chip') >= 1 and n(pg, '.att-chip') <= 3)
         pg.click('.att-chip >> nth=0'); pg.wait_for_timeout(450)
-        check('a chip focuses that project on the map', pg.is_visible('.am-focus') and n(pg, '.am-focus-name') == 1)
+        pg.wait_for_timeout(600); check('a chip flies the map to that project', pg.get_attribute('.archeus-map', 'data-level') not in (None, '0'))
         ctx.close()
         ctx, pg, errs = page('now', extra='&story=calm')
         check('the strip is absent when nothing needs the owner', n(pg, '.att-strip') == 0)

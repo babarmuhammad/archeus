@@ -146,7 +146,7 @@ MEASURE = r"""
 
   // target size and covered
   ctl.forEach((e) => {
-    const r = e.getBoundingClientRect(), need = opts.desktop && e.matches(primary) ? 48 : 44;
+    const r = e.getBoundingClientRect(), need = e.matches('.am-hit') && e.closest('[data-tier="dense"]') ? 24 : opts.desktop && e.matches(primary) ? 48 : 44; // the dense rings (41 to 100 projects, marks 28 px apart by owner decision) keep the WCAG 2.2 AA minimum of 24 px; zooming in or the list gives more
     const hit = getComputedStyle(e, '::after'), ext = (a, b) => (parseFloat(hit[a]) < 0 ? -parseFloat(hit[a]) : 0) + (parseFloat(hit[b]) < 0 ? -parseFloat(hit[b]) : 0), grow = hit.content !== 'none' && hit.position === 'absolute' ? [ext('left', 'right'), ext('top', 'bottom')] : [0, 0];
     if (Math.min(r.width + grow[0], r.height + grow[1]) < need - 0.5) add('target', name(e) + ' "' + (e.textContent || e.getAttribute('aria-label') || '').trim().slice(0, 24) + '" ' + Math.round(r.width) + 'x' + Math.round(r.height) + ' < ' + need);
     const c = clipOf(e), v = c && inter(r, c);

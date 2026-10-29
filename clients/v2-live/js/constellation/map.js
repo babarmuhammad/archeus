@@ -1,7 +1,8 @@
 import {driftOf, coreKeepOut, clamp, coversNode, overlaps, layout, layoutPhone, layoutCalm, coreRadius as coreSize, coreReach, coreScaleFor, taglineOn, satRank, INSET, wordmarkSize, placeLabels, nearestNeighbour, stateKey, unit, coreCentre} from './geometry.js';
-import {bodyMarkup, hubMarkup, worktreeMarkup, coreStar} from './nodeart.js';
+import {bodyMarkup, ringMarkMarkup, worktreeMarkup, corePaths, coreTier, coreState} from './nodeart.js';
+import {layoutRings, ringStep, LANES} from './rings.js';
 import {expansion, expandCluster, sameLevels, pickFocus, receding, DRAW, MAX_K, MIN_K, OVERVIEW_MAX, REF, BUDGET} from './detail.js';
-import {orderProjects} from './territories.js';
+import {orderProjects} from './order.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, glide: 220, travel: 600, breath: 6000});
@@ -97,7 +98,9 @@ export function createMap(container, options = {}) {
   const media = matchMedia('(prefers-reduced-motion: reduce)');
   const listeners = new Map(), activePulses = new Set(), pointers = new Map();
   const tagRecs = new Map(), starRecs = new Map(), hitRecs = new Map(), rowRecs = new Map(), spokeRecs = new Map(), edgeRecs = new Map(), labelRecs = new Map(), leaderRecs = new Map(), reviewRecs = new Map();
-  let selectedEl = null, fullKey = '', visible = true, playing = options.playing === true, hovered = null;
+  let selectedEl = null, fullKey = '', visible = true, playing = options.playing === true, hovered = null, stopped = false, coreSig = '', coreTierNow = 'full', ringsOut = null;
+  const laneLayer = svgElement('g', {class: 'am-lanes'}), laneRecs = new Map();
+  world.prepend(laneLayer);
   let gesture = null;
   // Semantic zoom (detail.js): which projects are open and how far, the mission whose timeline is open, what each project says in detail, and the clusters that give way.
   let levels = new Map(), gLevel = 0, focusM = null, extra = {edges: [], open: new Map()}, receded = new Set(), pointerAt = null, flight = 0, counts = new Map(), baseCache = null, projOf = new Map(), kidsOf = new Map(), detailData = new Map(), eventData = new Map(), compact = [];
@@ -106,7 +109,9 @@ export function createMap(container, options = {}) {
   const emit = (event, detail) => { for (const fn of listeners.get(event) || []) fn(detail); };
   const isReduced = () => reducedOverride === true || (reducedOverride === undefined && media.matches);
   const isLive = () => options.live === true && options.fresh !== false && graph.nodes.some(n => stateKey(n.state) === 'running');
-  const phoneOverview = () => options.overview && !options.calm && width < 600;
+  // The Projects view (options.rings): lanes by state round the core, one mark per project (js/constellation/rings.js); the Network view lays the same projects out as clusters.
+  const ringed = () => options.rings === true && !options.calm;
+  const phoneOverview = () => options.overview && !options.calm && width < 600 && !options.rings;
   // The Network view groups by project: hubs on a ring of cells round the core (the calm scene and the phone keep their own layouts).
   const clustered = () => !options.calm && !phoneOverview();
   const coreFactor = () => (clustered() ? coreScaleFor(new Set(graph.nodes.map(n => n.project || 'unassigned')).size) : 1);
@@ -116,11 +121,25 @@ export function createMap(container, options = {}) {
     host.dataset.grouped = String(clustered());
     if (options.calm) return layoutCalm(graph, width, height, options.seed, inset);
     if (phoneOverview()) return layoutPhone(graph, width, height, options.seed, inset);
+    if (ringed()) {
+      // The ring layout (one mark per project) also only changes with the graph or the size. Its nodes come in attention order, which is the Tab order of the hit areas.
+      const out = baseCache ?? (baseCache = layoutRings(ringInput(), width, height, inset, {memory, avoid: [controlsBox()]}));
+      memory = out.memory; ringsOut = out; level = 0; host.dataset.dense = String(out.tier.name === 'dense'); host.dataset.tier = out.tier.name; host.dataset.scale = String(out.scale);
+      const byId = new Map(out.nodes.map(n => [n.id, n]));
+      compact = out.order.map(id => byId.get(id));
+      return expandScene(compact);
+    }
+    ringsOut = null;
     // The compact layout only changes with the graph or the size: a level change reuses it.
     const out = baseCache ?? (baseCache = layout(graph, width, height, inset, {slots, memory, avoid: [controlsBox()]}));
     memory = out.memory; level = out.level; host.dataset.dense = String(level >= 5);
     compact = out.nodes;
     return expandScene(out.nodes);
+  }
+  // What the ring layout needs of a project: its lane (the worst state), all its missions, its worktrees; the busiest dozen running ones pulse.
+  function ringInput() {
+    const info = id => projectOf.get(id), busy = new Set(graph.nodes.filter(n => n.kind === 'Project' && stateKey(n.state) === 'running').sort((a, b) => (info(b.id)?.weight || 0) - (info(a.id)?.weight || 0) || String(a.id).localeCompare(String(b.id))).slice(0, 12).map(n => n.id));
+    return graph.nodes.filter(n => n.kind === 'Project').map(n => ({...n, lane: stateKey(n.state), missions: info(n.id)?.total ?? 0, worktrees: info(n.id)?.worktrees?.length ?? 0, hub: true, cluster: n.id, rank: 8, pulse: busy.has(n.id)}));
   }
   const detailFor = id => { if (!detailData.has(id)) detailData.set(id, options.detail?.(id) || {}); return detailData.get(id); };
   const eventsFor = id => { if (!eventData.has(id)) eventData.set(id, options.events?.(id) || []); return eventData.get(id); };
@@ -139,7 +158,7 @@ export function createMap(container, options = {}) {
       const detail = lv >= 2 ? detailFor(id) : {}, kids = new Map(missions.map(m => [m.id, lv >= 2 ? detail[m.id] || [] : kidsOf.get(m.id) || []]));
       const ideas = (p?.ideaList || []).map(i => ({id: i.id, kind: 'Idea', label: i.title, project: id, state: 'idle', word: i.word}));
       const res = expandCluster({level: lv, key: id, hub: {x: hub.x, y: hub.y, tag: hub.tag, outward: Math.atan2(hub.y - keep.y, hub.x - keep.x)}, missions, worktrees: (p?.worktrees || []).map(w => wtNode(w, id)), kids, ideas,
-        events: lv >= 3 && focusM && missions.some(m => m.id === focusM) ? eventsFor(focusM).map(e => ({...e, project: id})) : [], focusId: focusM, blocked, limit: left});
+        events: lv >= 3 && focusM && missions.some(m => m.id === focusM) ? eventsFor(focusM).map(e => ({...e, project: id})) : [], focusId: focusM, blocked, limit: left, lanes: ringed()});
       left -= res.nodes.length;
       nodes = nodes.filter(n => n.cluster !== id || n.hub).map(n => (n.hub && n.cluster === id ? {...n, ...res.hub, quiet: res.quiet, wtQuiet: res.wtQuiet, expanded: lv} : n)).concat(res.nodes);
       extra.edges.push(...res.edges); extra.open.set(id, {id, x: hub.x, y: hub.y, extent: res.extent});
@@ -155,7 +174,9 @@ export function createMap(container, options = {}) {
     host.dataset.reduced = String(isReduced());
     host.dataset.ambient = ambientOn() ? 'on' : 'off';
     coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
-    runningText.textContent = isLive() && isReduced() ? T(`${graph.nodes.filter(n => stateKey(n.state) === 'running').length} running`) : '';
+    // The static twin carries the core's working or stopped state as a word under the wordmark (the needs you thread is static and loses nothing) (the art itself is aria-hidden).
+    const cf = coreFlags();
+    runningText.textContent = !isReduced() ? '' : cf.stopped ? T('Stopped') : isLive() ? T(`${graph.nodes.filter(n => stateKey(n.state) === 'running').length} running`) : '';
     if (isReduced() || document.hidden) {
       for (const animation of host.getAnimations({subtree: true})) if (animation.animationName !== 'core-breath') animation.cancel();
       for (const marker of activePulses) marker.remove();
@@ -177,6 +198,7 @@ export function createMap(container, options = {}) {
   const tagRect = n => ({x: n.x - n.tag.width / 2, y: n.y + n.rk + 4, width: n.tag.width, height: n.tag.height});
   function refreshOverlay() {
     world.setAttribute('transform', `translate(${camera.x} ${camera.y}) scale(${camera.k})`);
+    syncCore();
     const nodes = screenNodes();
     const size = width < 360 ? 12 : width < 480 || clustered() ? 14 : clamp(Math.round(17 * u + 2), 15, 24), rich = width >= 700;
     if (context) context.font = `400 ${size}px ${serif}`;
@@ -190,8 +212,18 @@ export function createMap(container, options = {}) {
     // Only the hubs, the selected node and the first few that need you or run carry a label; the rest speak on hover and focus.
     const onScreen = n => n.x > -10 && n.x < width + 10 && n.y > -10 && n.y < height + 10, deep = n => n.detail && onScreen(n) && !receded.has(n.cluster);
     const titled = n => n.kind === 'Mission' || n.kind === 'Worktree' || (['needs-you', 'running', 'blocked'].includes(stateKey(n.state)) && n.kind !== 'Event') || (n.kind === 'Event' && n.last);
-    const eligible = grouped ? new Set([selected, ...nodes.filter(n => deep(n) && titled(n)).slice(0, 70).map(n => n.id), ...nodes.filter(n => !n.hub && !n.detail && live(n) && !receded.has(n.cluster)).sort((a, b) => slotOf(a) - slotOf(b) || satRank(a) - satRank(b) || String(a.id).localeCompare(String(b.id))).slice(0, [10, 10, 8, 6, 4][level] ?? 0).map(n => n.id)]) : null;
-    const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Project' || n.kind === 'Event' ? '' : n.kind === 'Worktree' ? `${nodeWord(n)} · ${T(n.ownerWord)}` : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
+    // The rings label by priority and size tier: all named at 12 projects or fewer (or when zoomed in), the ones that need you, are blocked or are busy at 40 or fewer, only the first needs you lane and a few blocked beyond.
+    const ringLabelIds = () => {
+      if (!ringed() || !ringsOut) return [];
+      const tierName = k >= 1.3 ? 'named' : ringsOut.tier.name, on = nodes.filter(n => n.hub && n.lane && !n.expanded && !receded.has(n.cluster) && onScreen(n)), miss = n => projectOf.get(n.id)?.total || 0, st = n => stateKey(n.state);
+      if (tierName === 'named') return on.map(n => n.id);
+      if (tierName === 'mixed') { const run = on.filter(n => st(n) === 'running').map(miss).sort((a, b) => a - b), med = run[Math.floor(run.length / 2)] || 0; return on.filter(n => ['needs-you', 'blocked'].includes(st(n)) || (st(n) === 'running' && miss(n) >= med)).map(n => n.id); }
+      const top = (state, limit, first) => on.filter(n => st(n) === state && (!first || n.laneNo === 0)).sort((a, b) => miss(b) - miss(a) || String(a.id).localeCompare(String(b.id))).slice(0, limit).map(n => n.id);
+      return [...top('needs-you', 8, true), ...top('blocked', 4, false)];
+    };
+    const labelTier = ringed() && ringsOut ? (k >= 1.3 ? 'named' : ringsOut.tier.name) : '';
+    const eligible = grouped ? new Set([selected, ...ringLabelIds(), ...nodes.filter(n => deep(n) && titled(n)).slice(0, 70).map(n => n.id), ...nodes.filter(n => !n.hub && !n.detail && live(n) && !receded.has(n.cluster)).sort((a, b) => slotOf(a) - slotOf(b) || satRank(a) - satRank(b) || String(a.id).localeCompare(String(b.id))).slice(0, [10, 10, 8, 6, 4][level] ?? 0).map(n => n.id)]) : null;
+    const metaOf = n => kindWord(n).toUpperCase(), subOf = n => n.kind === 'Event' ? '' : n.kind === 'Project' ? (labelTier && n.lane ? nodeWord(n) + (labelTier === 'named' ? ' · ' + T(`${projectOf.get(n.id)?.total || 0} ${projectOf.get(n.id)?.total === 1 ? 'mission' : 'missions'}`) : '') : '') : n.kind === 'Worktree' ? `${nodeWord(n)} · ${T(n.ownerWord)}` : words[stateKey(n.state)] ? nodeWord(n) : n.state || T('Idle');
     const reviewFor = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').sort((a, b) => (a.id === selected ? -1 : b.id === selected ? 1 : slotOf(a) - slotOf(b) || String(a.id).localeCompare(String(b.id))))[0];
     // The button goes below, above, right or left of its node, whichever side clears every other node and the bands the headline and drawer own.
     const reviewSpots = reviewFor && width >= 480 && !phoneOverview() && options.review !== false ? [[-56, reviewFor.radius + 12], [-130, reviewFor.radius + 12], [8, reviewFor.radius + 12], [-56, -reviewFor.radius - 56], [-130, -reviewFor.radius - 56], [8, -reviewFor.radius - 56], [reviewFor.radius + 12, -22], [-reviewFor.radius - 124, -22], [-56, reviewFor.radius + 40], [-56, -reviewFor.radius - 84],
@@ -199,7 +231,10 @@ export function createMap(container, options = {}) {
       .map(([dx, dy]) => ({id: reviewFor.id, x: reviewFor.x + dx, y: reviewFor.y + dy, width: 112, height: 44}))
       .filter(b => b.x >= 8 && b.x + b.width <= width - 8 && b.y >= inset.top && b.y + b.height <= height - inset.bottom && !overlaps(b, coreBox, 6) && !overlaps(b, ctl, 4) && !tagBoxes.some(t => overlaps(b, t, 4)) && !nodes.some(o => coversNode(b, o, 2))) : [];
     const measureMeta = text => { context.font = `500 ${size * .68}px ${sans}`; const w = context.measureText(text).width + text.length * size * .68 * .14; context.font = `400 ${size}px ${serif}`; return w; };
-    const labelsFor = review => options.calm ? [] : placeLabels(grouped ? nodes.map(n => ({...n, label: shortOf(String(n.label || n.id))})) : nodes, width, height, {selected, size, rich: grouped ? false : rich, sub: grouped, only: eligible ?? undefined, metaOf, measureMeta: context ? measureMeta : undefined,
+    const labelsFor = review => options.calm ? [] : placeLabels(grouped ? nodes.map(n => ({...n, label: shortOf(String(n.label || n.id))})) : nodes, width, height, {selected, size, rich: grouped ? false : rich, sub: grouped, only: eligible ?? undefined, metaOf, budget: ringed() ? 1e3 : undefined,
+      priorityOf: ringed() ? n => (n.id === selected ? 1e4 : (({'needs-you': 5000, blocked: 3000, running: 1000})[stateKey(n.state)] || 0) + (projectOf.get(n.id)?.total || 0)) : undefined,
+      outwardOf: ringed() ? n => { const dx = n.x - cx, dy = n.y - cy, d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; } : undefined,
+      subWidth: grouped && context ? n => { const s = subOf(n).toUpperCase(); context.font = `500 ${size * .72}px ${sans}`; const w = context.measureText(s).width + s.length * size * .72 * .1; context.font = `400 ${size}px ${serif}`; return w; } : undefined, measureMeta: context ? measureMeta : undefined,
       measure: context ? text => context.measureText(text).width : undefined,
       obstacles: [coreBox,
         {x: 0, y: 0, width, height: Math.max(0, inset.top - 8)}, {x: 0, y: height - Math.max(0, inset.bottom - 12), width, height: Math.max(0, inset.bottom - 12)}, ctl, ...tagBoxes, ...(review ? [review] : [])]});
@@ -290,11 +325,10 @@ export function createMap(container, options = {}) {
     }
     const placeLeader = (rec, item) => setAttr(rec.el, 'd', item.d);
     reconcile(leaders, leaderRecs, far, item => item.id, item => { const rec = {el: svgElement('path', {class: 'am-leader', 'data-node-id': item.id})}; placeLeader(rec, item); return rec; }, placeLeader);
-    const circle = width < 480 ? 24 : 22;
     for (const n of nodes) {
       const rec = hitRecs.get(n.id);
       setAttr(rec.el, 'transform', `translate(${n.x} ${n.y})`);
-      setAttr(rec.circle, 'r', n.detail ? Math.max(9, n.radius) : Math.max(circle, n.radius));
+      setAttr(rec.circle, 'r', hitR(n));
       setAttr(rec.el, 'aria-pressed', n.id === selected);
     }
     syncHot();
@@ -307,6 +341,8 @@ export function createMap(container, options = {}) {
     host.dataset.labelOverflow = String(missing.length);
     status.textContent = missing.length ? T(`${missing.length} priority labels cannot fit. Full labels available in node table.`) : '';
   }
+  // A mark answers a pointer within 22 px (24 on a narrow scene, 12 on the dense rings whose marks are 28 px apart), a detailed one within its own radius or 9 px.
+  const hitR = n => (n.detail ? Math.max(9, n.radius) : Math.max(ringed() && ringsOut?.tier.name === 'dense' && camera.k < 1.6 ? 12 : width < 480 ? 24 : 22, n.radius));
   function choose(id, reveal = false) {
     if (id !== null && !positions.some(n => n.id === id) && !graph.nodes.some(n => n.id === id)) return;
     selected = id;
@@ -333,7 +369,7 @@ export function createMap(container, options = {}) {
     if (n.art && n.art !== n.radius) return starMarkup({...n, radius: n.art, art: 0}).replace(/^(<g[^>]*>)([\s\S]*)<\/g>$/, `$1<g transform="scale(${f(n.radius / n.art)})">$2</g></g>`);
     const state = stateKey(n.state), colorState = words[state] ? state : 'idle', r = n.radius, body = ['Mission', 'Project', 'Execution'].includes(n.kind);
     if (options.calm && n.kind === 'Project') return panelMarkup(n, calmRows(n), T('No items yet'), T('items'));
-    if (n.hub) return hubMarkup({...n, code: projectOf.get(n.id)?.code});
+    if (n.hub) return ringMarkMarkup(n.expanded ? {...n, worktrees: 0} : n);
     if (n.kind === 'Worktree') return worktreeMarkup(n);
     if (body) return bodyMarkup(n, n.kind === 'Mission' ? (state === 'done' ? 'check' : state === 'needs-you' ? 'doc-search' : 'doc') : ICON[n.kind]);
     const [tag, shape] = starShape(n.kind, r), attrs = Object.entries(shape).map(([key, value]) => `${key}="${typeof value === 'number' ? f(value) : value}"`).join(' ');
@@ -344,24 +380,41 @@ export function createMap(container, options = {}) {
     holder.innerHTML = starMarkup(n);
     const star = holder.firstElementChild, state = stateKey(n.state);
     driftVars(star, n.id);
-    if (!options.calm && (state === 'needs-you' || state === 'running') && (!n.detail || n.kind === 'Mission')) (n.art ? star.firstElementChild : star).insertAdjacentHTML('afterbegin', `<circle class="am-ring am-state-${state}" r="${f((n.art || n.radius) + 4)}"/>`);
+    if (!options.calm && (state === 'needs-you' || state === 'running') && (!n.detail || n.kind === 'Mission') && (!ringed() || !n.hub || n.pulse)) (n.art ? star.firstElementChild : star).insertAdjacentHTML('afterbegin', `<circle class="am-ring am-state-${state}" r="${f((n.art || n.radius) + 4)}"/>`);
     return star;
   }
   function updateSummary() {
-    summary.textContent = T(`${graph.nodes.length} nodes across ${graph.projects.length} projects. ${graph.nodes.filter(n => stateKey(n.state) === 'needs-you').length} need you. Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.`);
+    const cf = coreFlags(), word = cf.stopped ? 'is stopped' : cf.needsYou ? 'needs you' : cf.running ? 'is working' : 'is calm';
+    summary.textContent = T(`${graph.nodes.length} nodes across ${graph.projects.length} projects. ${graph.nodes.filter(n => stateKey(n.state) === 'needs-you').length} need you.`) + ' ' + T(`Archeus ${word}.`) + ' ' + T(ringed() ? 'Tab through the projects in the order of the lanes, arrow keys walk along a lane and between lanes, Enter to select. Equivalent node table follows map controls.' : 'Tab through stars, Enter to select, arrow keys move by direction. Equivalent node table follows map controls.');
   }
   function accent(...states) {
     const keys = states.map(stateKey);
     return keys.includes('needs-you') ? 'needs-you' : keys.includes('running') ? 'running' : 'none';
   }
+  // The core mark: its size tier follows the camera (hysteresis in coreTier) and its state marks follow the work; it is only rebuilt when one of them changes.
+  const coreFlags = () => ({stopped, needsYou: graph.nodes.some(n => n.kind !== 'Project' && stateKey(n.state) === 'needs-you'), running: graph.nodes.some(n => n.kind !== 'Project' && stateKey(n.state) === 'running')});
+  function syncCore() {
+    const R = coreRadius(), reach = reachOf(), flags = coreFlags();
+    coreTierNow = coreTier(R * reach * camera.k, coreTierNow);
+    const sig = [f(R), reach, coreTierNow, flags.stopped, flags.needsYou, flags.running].join('|');
+    if (sig === coreSig) return;
+    coreSig = sig;
+    coreMark.replaceChildren(...corePaths(R, reach, {tier: coreTierNow, ...flags}).map(q => {
+      const el = svgElement(q.t || 'path', q.t ? {class: q.c, r: q.r} : {class: q.c, d: q.d});
+      if (q.x1 !== undefined) { for (const [k, v] of [['--x0', 0], ['--y0', 0], ['--x1', q.x1], ['--y1', q.y1]]) el.style.setProperty(k, v + 'px'); }
+      return el;
+    }));
+    coreMark.dataset.state = flags.stopped ? 'stopped' : flags.running ? 'working' : flags.needsYou ? 'needs-you' : 'calm'; coreMark.dataset.needs = String(flags.needsYou && !flags.stopped);
+    motion();
+  }
   function drawCore() {
-    const R = coreRadius(), p = coreStar(R, reachOf());
+    const R = coreRadius();
     core.setAttribute('transform', `translate(${centre.x} ${centre.y})`);
-    coreMark.replaceChildren(svgElement('path', {d: p.threads, class: 'am-core-chords'}), svgElement('path', {d: p.spikes, class: 'am-core-thread'}), svgElement('path', {d: p.tips, class: 'am-core-dot'}));
+    coreSig = ''; syncCore();
     const ws = wordmarkSize(u, options.calm), base = R * reachOf() + ws * 1.9;
     wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', base); wordmark.style.fontSize = `${ws}px`;
     tagline.style.display = phoneOverview() || width < 480 || !taglineOn(coreFactor()) ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
-    runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
+    runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`; runningText.style.display = phoneOverview() ? 'none' : '';
   }
   // glide: a layout step (a level change, a new project, the Details sheet) moves the nodes that stay by transform; the edges, which are redrawn at once, fade in once the nodes are on the way.
   function render(previous = new Map(), arrivals = false, moved = true, glide = false) {
@@ -369,9 +422,12 @@ export function createMap(container, options = {}) {
     if (moved) { for (const marker of activePulses) marker.remove(); activePulses.clear(); }
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
     const graphHubs = positions.filter(n => n.hub).length;
-    const hubs = options.calm ? [] : phoneOverview() ? positions.map(n => ({project: n.id, mx: n.x, my: n.y})) : positions.filter(n => n.hub && (graphHubs <= 24 || ['needs-you', 'running'].includes(stateKey(n.state)))).map(n => ({project: n.cluster, mx: n.x, my: n.y}));
+    const hubs = options.calm || ringed() ? [] : phoneOverview() ? positions.map(n => ({project: n.id, mx: n.x, my: n.y})) : positions.filter(n => n.hub && (graphHubs <= 24 || ['needs-you', 'running'].includes(stateKey(n.state)))).map(n => ({project: n.cluster, mx: n.x, my: n.y}));
     const patchSpoke = (rec, item) => setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`);
     reconcile(spokeLayer, spokeRecs, hubs, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
+    // The lanes: thin dotted ellipses in the state colour, no text on or beside them (state is read from colour, dash, the marks' own labels and the list).
+    const patchLane = (rec, l) => { for (const [k, v] of [['cx', centre.x], ['cy', centre.y], ['rx', f(l.rx)], ['ry', f(l.ry)]]) setAttr(rec.el, k, v); };
+    reconcile(laneLayer, laneRecs, ringed() && ringsOut ? ringsOut.lanes : [], l => `${l.state}:${l.n}`, l => { const rec = {el: svgElement('ellipse', {class: `am-lane am-lane-${l.state} am-state-${l.state}`})}; patchLane(rec, l); return rec; }, patchLane);
     gridLayer.innerHTML = options.calm && positions.length ? gridMarkup(threadGrid(positions, {...centre, radius: coreRadius() * 1.1}, {box: coreKeepOut(width, height, u, inset, true).box, bounds: {left: 8, top: inset.top, right: width - 8, bottom: height - inset.bottom}})) : '';
     const byId = new Map(positions.map(n => [n.id, n]));
     // A lit cluster grows 4% about its hub (CSS scale, origin from --hx/--hy), so every member and edge carries its hub's place.
@@ -413,7 +469,7 @@ export function createMap(container, options = {}) {
       return rec;
     }, patchEdge);
     const arrived = [];
-    const starSig = n => `${n.phone}|${n.state}|${n.kind}|${n.radius}|${n.art}|${projectOf.get(n.id)?.code}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
+    const starSig = n => `${n.phone}|${n.state}|${n.kind}|${n.radius}|${n.art}|${n.lane}|${n.worktrees}|${n.pulse}|${n.expanded}|${n.tangent}${options.calm && n.kind === 'Project' ? '|' + calmRows(n).map(r => r.label + r.state).join(',') : ''}`;
     const placeStar = (rec, n) => {
       const hub = hubAt.get(n.cluster) ?? n;
       if (rec.x !== n.x || rec.y !== n.y || rec.hx !== hub.x || rec.hy !== hub.y) { setAttr(rec.el, 'transform', `translate(${f(n.x)} ${f(n.y)})`); rec.el.style.setProperty('--hx', f(hub.x) + 'px'); rec.el.style.setProperty('--hy', f(hub.y) + 'px'); rec.x = n.x; rec.y = n.y; rec.hx = hub.x; rec.hy = hub.y; }
@@ -434,21 +490,30 @@ export function createMap(container, options = {}) {
     const stateOf = n => { const state = stateKey(n.state); return words[state] ? nodeWord(n) : state; };
     const same = (rec, n) => rec.stamped && rec.label === n.label && rec.kind === n.kind && rec.state === n.state && rec.place === placeOf(n);
     const stamp = (rec, n) => { rec.stamped = true; rec.label = n.label; rec.kind = n.kind; rec.state = n.state; rec.place = placeOf(n); };
-    const patchHit = (rec, n) => { setAttr(rec.el, 'tabindex', !clustered() || n.hub || (!n.detail && ['needs-you', 'running'].includes(stateKey(n.state))) ? 0 : -1); if (same(rec, n)) return; setAttr(rec.el, 'aria-label', `${n.label || n.id}, ${kindWord(n)}, ${stateOf(n)}, ${placeOf(n)}`); stamp(rec, n); };
+    const ringAria = n => {
+      const p = projectOf.get(n.id), ofState = ringsOut.lanes.filter(l => l.state === n.state).length, w = p?.worktrees?.length || 0;
+      return [n.label || n.id, kindWord(n), stateOf(n), T(`lane ${n.laneNo + 1} of ${ofState} for ${W(stateKey(n.state))}`), T(`${p?.total || 0} ${p?.total === 1 ? 'mission' : 'missions'}`), ...(w ? [T(`${w} ${w === 1 ? 'worktree' : 'worktrees'}`)] : [])].join(', ');
+    };
+    const patchHit = (rec, n) => {
+      setAttr(rec.el, 'tabindex', !clustered() || n.hub || (!n.detail && ['needs-you', 'running'].includes(stateKey(n.state))) ? 0 : -1);
+      if (ringed() && n.hub && n.lane) { const label = ringAria(n); if (rec.aria !== label) { setAttr(rec.el, 'aria-label', label); rec.aria = label; } return; }
+      if (same(rec, n)) return; setAttr(rec.el, 'aria-label', `${n.label || n.id}, ${kindWord(n)}, ${stateOf(n)}, ${placeOf(n)}`); stamp(rec, n);
+    };
     reconcile(hits, hitRecs, positions, n => n.id, n => {
       const circle = svgElement('circle', {r: 22}), rec = {el: svgElement('g', {tabindex: 0, role: 'button', class: 'am-hit', 'data-node-id': n.id}), circle};
       rec.el.append(circle);
       rec.el.addEventListener('focus', () => { if (rec.el.matches(':focus-visible')) hoverTo(n.id, true); }); rec.el.addEventListener('blur', () => hoverTo(null));
       patchHit(rec, n);
       return rec;
-    }, patchHit, true);
+    }, patchHit, !ringed() || hits.contains(document.activeElement));
     const patchRow = (rec, n) => {
       if (same(rec, n)) return;
       stamp(rec, n);
       setText(rec.button, String(n.label || n.id)); setText(rec.cells[0], kindWord(n)); setText(rec.cells[1], stateOf(n)); setText(rec.cells[2], placeOf(n));
     };
     const detailIds = new Set(positions.filter(n => n.detail).map(n => n.id));
-    reconcile(body, rowRecs, [...graph.nodes.filter(n => !detailIds.has(n.id)), ...positions.filter(n => n.detail && n.kind !== 'Event')], n => n.id, n => {
+    const listed = [...graph.nodes.filter(n => !detailIds.has(n.id)), ...positions.filter(n => n.detail && n.kind !== 'Event')], byListed = new Map(listed.map(n => [n.id, n]));
+    reconcile(body, rowRecs, ringed() && ringsOut ? [...ringsOut.order.map(id => byListed.get(id)).filter(Boolean), ...listed.filter(n => !ringsOut.order.includes(n.id))] : listed, n => n.id, n => {
       const button = element('button'), first = element('td'), rec = {el: element('tr'), button, cells: [element('td'), element('td'), element('td')]};
       button.type = 'button'; first.append(button); rec.el.dataset.nodeId = n.id; rec.el.append(first, ...rec.cells);
       patchRow(rec, n);
@@ -603,7 +668,7 @@ export function createMap(container, options = {}) {
   }
   const zoomBy = (ratio, node) => { const k = clamp(camera.k * ratio, MIN_K, maxK()), r = k / camera.k, x = node ? node.x * camera.k + camera.x : width / 2, y = node ? node.y * camera.k + camera.y : height / 2; pointerAt = node ? {x, y, t: performance.now() + 1500} : null; tween({k, x: x - (x - camera.x) * r, y: y - (y - camera.y) * r}); };
   // The first click on a hub focuses it (the camera flies there and its project opens); a click on one that is already open opens the project.
-  function flyToHub(n) { pointerAt = null; const k = Math.max(camera.k, 2.6); tween({k, x: width / 2 - n.x * k, y: height * .45 - n.y * k}); }
+  function flyToHub(n) { pointerAt = null; closeCard(); const k = Math.max(camera.k, 2.6); tween({k, x: width / 2 - n.x * k, y: height * .45 - n.y * k}); }
   function limitCamera() {
     camera.x = clamp(camera.x, -width * camera.k, width);
     camera.y = clamp(camera.y, -height * camera.k, height);
@@ -613,8 +678,9 @@ export function createMap(container, options = {}) {
     if (!positions.length) return reset();
     // Fit frames the compact scene (every project closed) and stays under the first level of detail: it always brings the overview back.
     const all = clustered() ? compact : positions;
-    const minX = Math.min(...all.map(n => n.x - n.radius - 28)), maxX = Math.max(...all.map(n => n.x + n.radius + 28));
-    const minY = Math.min(...all.map(n => n.y - n.radius - 28)), maxY = Math.max(...all.map(n => n.y + n.radius + 28));
+    let minX = Math.min(...all.map(n => n.x - n.radius - 28)), maxX = Math.max(...all.map(n => n.x + n.radius + 28)), minY = Math.min(...all.map(n => n.y - n.radius - 28)), maxY = Math.max(...all.map(n => n.y + n.radius + 28));
+    const outer = ringed() && ringsOut ? ringsOut.lanes[ringsOut.lanes.length - 1] : null;
+    if (outer) { minX = Math.min(minX, centre.x - outer.rx - 8); maxX = Math.max(maxX, centre.x + outer.rx + 8); minY = Math.min(minY, centre.y - outer.ry - 8); maxY = Math.max(maxY, centre.y + outer.ry + 8); }
     const k = clamp(Math.min((width - 32) / (maxX - minX || 1), (height - 90) / (maxY - minY || 1)), MIN_K, clustered() ? OVERVIEW_MAX : 4);
     pointerAt = null; tween({k, x: width / 2 - (minX + maxX) / 2 * k, y: (height - 50) / 2 - (minY + maxY) / 2 * k});
   }
@@ -662,9 +728,13 @@ export function createMap(container, options = {}) {
     if (!id) return;
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); choose(id); }
     else if (event.key === 'Escape') { clearTimeout(cardTimer); closeCard(); }
-    else if (event.key.startsWith('Arrow')) { event.preventDefault(); const next = nearestNeighbour(positions, id, event.key); if (next) focusNode(next); }
+    else if (event.key.startsWith('Arrow')) { event.preventDefault(); const next = (ringed() && ringsOut && ringsOut.order.includes(id) ? ringStep(ringsOut, id, event.key) : null) ?? nearestNeighbour(positions, id, event.key); if (next) focusNode(next); }
   });
-  body.addEventListener('click', event => { const id = event.target.closest('tr')?.dataset.nodeId; if (id && event.target.closest('button')) { choose(id, true); focusNode(id); } });
+  // A row of the table is the list entry of a mark: on the rings a project's row flies the camera to it (its project opens), as a click on the mark does.
+  body.addEventListener('click', event => {
+    const id = event.target.closest('tr')?.dataset.nodeId, hub = id && ringed() && positions.find(n => n.id === id && n.hub);
+    if (id && event.target.closest('button')) { if (hub) { flyToHub(hub); focusNode(id); } else { choose(id, true); focusNode(id); } }
+  });
   hits.addEventListener('click', event => {
     if (suppressClick) return;
     if (!event.detail) { const id = event.target.closest('.am-hit')?.dataset.nodeId; if (id) choose(id); return; }
@@ -672,7 +742,7 @@ export function createMap(container, options = {}) {
     let best = null, nearest = Infinity;
     for (const n of screenNodes()) {
       const d = Math.hypot(n.x - p.x, n.y - p.y);
-      if (d < (n.detail ? Math.max(9, n.radius) : Math.max(width < 480 ? 24 : 22, n.radius)) && d < nearest) { best = n.id; nearest = d; }
+      if (d < hitR(n) && d < nearest) { best = n.id; nearest = d; }
     }
     const hub = best && positions.find(n => n.id === best && n.hub);
     if (hub && clustered() && (event.detail > 1 || !levels.has(hub.cluster))) flyToHub(hub); else if (best) choose(best);
@@ -718,6 +788,8 @@ export function createMap(container, options = {}) {
     element: host,
     setLive(live) { options.live = live === true; if (!destroyed) motion(); },
     setAmbient(on) { playing = on === true; if (!destroyed) motion(); },
+    // The e-stop (or a lost Core): the core mark goes slack with a red cross.
+    setStopped(on) { if (stopped === (on === true)) return; stopped = on === true; if (!destroyed) { syncCore(); updateSummary(); } },
     pulse(id) {
       const path = edgeRecs.get(id)?.line;
       if (destroyed || !path || isReduced() || document.hidden || activePulses.size >= 8) return false;
