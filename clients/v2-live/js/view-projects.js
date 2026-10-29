@@ -29,7 +29,7 @@ function cell(ctx, p, state, now) {
     h('div', {class: 'pc-top'}, h('span', {class: 'pc-code', 'aria-hidden': 'true'}, p.code), h('a', {class: 'pc-open', href: '#/projects/' + id, 'data-key': 'project-plate-' + id, 'aria-current': selected ? 'true' : null}, p.name),
       h('span', {class: 'pc-state'}, h('i', {class: 'pc-dot', 'aria-hidden': 'true'}), WORD[state])),
     h('p', {class: 'pc-last'}, p.last ? [h('time', {title: p.last.time}, relTime(now, p.last.at)), ' ' + p.last.text] : lead ? lead.title + ' · ' + MWORD[lead.state] : 'Archeus has not acted here yet.'),
-    h('div', {class: 'pc-foot'}, h('span', {class: 'pc-counts'}, counts),
+    h('div', {class: 'pc-foot'}, h('span', {class: 'pc-counts'}, counts), p.worktrees && p.worktrees.length ? h('span', {class: 'chip static pc-wt', 'data-key': 'project-wt-' + id, title: 'Linked and task worktrees of this project'}, n1(p.worktrees.length, 'worktree', 'worktrees')) : null,
       h('a', {class: 'pc-work', href: workHref({view: p.attention ? 'needs' : 'all', project: p.id}), 'data-key': 'project-work-' + p.id}, 'Open work')));
 }
 
