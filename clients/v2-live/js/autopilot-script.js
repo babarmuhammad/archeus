@@ -181,9 +181,9 @@ export const CHAPTERS = [
     steps: [N('#/now', 400), TOOL('device', '[data-device="tablet"]', 2400, { on: 'desktop' }), TOOL('device', '[data-device="desktop"]', 2000, { on: 'desktop' }), TOOL('device', '[data-device="terminal"]', 2200, { on: 'desktop' }),
       TOOL('device', '[data-device="all"]', 4000, { on: 'desktop' }), TOOL('device', '[data-device="auto"]', 1200, { on: 'desktop' })] },
 
-  { id: 'phone-bar', group: 'phone', t: ['Phone: bar and Places', 'Telefono: barra e Luoghi'], covers: ['PA', 'PH', 'J'],
+  { id: 'phone-bar', group: 'phone', t: ['Phone: bar and Places', 'Telefono: barra e Luoghi'], covers: ['PA', 'PB', 'PH', 'J'],
     c: ['On a phone the bar holds Overview, Work, Tell, Places and Stop. Places lists every destination and your projects.', 'Su un telefono la barra ha Panoramica, Lavoro, Dimmi, Luoghi e Ferma. I Luoghi elencano ogni destinazione e i tuoi progetti.'],
-    steps: [TOOL('device', '[data-device="phone"]', 2200, { on: 'desktop' }), N('#/now', 600), C('bb-work', 1200), C('bb-places', 1600), C('places-route-replay', 1600), C('bb-places', 1200), C('places-search', 1500), K('Escape', 500), K('Escape', 500)] },
+    steps: [TOOL('device', '[data-device="phone"]', 2200, { on: 'desktop' }), N('#/now', 600), C('bb-work', 1200), N('#/projects', 1400), C('bb-places', 1600), C('places-route-replay', 1600), C('bb-places', 1200), C('places-search', 1500), K('Escape', 500), K('Escape', 500)] },
 
   { id: 'phone-tell', group: 'phone', env: { device: 'phone' }, t: ['Phone: the Tell sheet', 'Telefono: la scheda Dimmi'], covers: ['PS', 'F'],
     c: ['Tell is a sheet you can pull up or down. The slash menu takes the place of the thread, so the composer is never pushed out.', 'Dimmi è una scheda che si tira su o giù. Il menu slash prende il posto della conversazione, così il campo non viene mai spinto fuori.'],
