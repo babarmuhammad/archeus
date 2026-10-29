@@ -2240,3 +2240,13 @@ Status: to review. New pairs in `js/i18n-s6.js` and `js/i18n-areas.js` for Repla
 | {n} paused | {n} in pausa |
 | Places: leave the terminal and open Places | Luoghi: esci dal terminale e apri i Luoghi |
 | Stop: leave the terminal and open the emergency stop | Stop: esci dal terminale e apri l’arresto d’emergenza |
+
+## Overview rings and core (2026-10-28, branch v2/live-net): to review
+
+File: `js/i18n.js`. Not checked by a native speaker. The rings carry colour only, so the only new words are for screen readers.
+
+| English | Italian |
+|---|---|
+| N nodes across M projects. K need you. … Tab through the projects in the order of the lanes, arrow keys walk along a lane and between lanes, Enter to select. Equivalent node table follows map controls. | N nodi in M progetti. K ti servono. Usa Tab per scorrere i progetti nell’ordine delle corsie, le frecce per muoverti lungo una corsia e tra le corsie, Invio per scegliere. La tabella equivalente segue i controlli della mappa. |
+| lane N of M for <state> (spoken after a project's name, state and mission count) | corsia N di M per <stato> |
+| 1 mission / N missions, 1 worktree / N worktrees (spoken on a ring mark) | 1 missione / N missioni, 1 worktree / N worktree (existing rules) |
