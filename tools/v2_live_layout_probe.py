@@ -65,7 +65,7 @@ STATES = {
     'safety': "document.querySelector('[data-key=safety]').click()",
     'stopask': "document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'tell': "document.querySelector('[data-key=tell], [data-key=bb-tell]').click()",
-    'details': "document.querySelector('.now-toggle').click()",
+    'details': "(() => { const t = document.querySelector('.now-toggle'); if (t) t.click(); document.querySelectorAll('.np-sec').forEach((d) => { d.open = true; }); })()",
     'autopilot': "window.v2live.autopilot.show()",
     'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
@@ -309,7 +309,7 @@ def s4_state(pg, route, w):
             s4_send(pg, 'page', '/approve search')
             s4_send(pg, 'page', '/mission Probe mission')
         elif route == 'chat-general':
-            pg.click('.composer2[data-where="page"] .cscope'); pg.click('.pkpop [role="option"][data-value="general"]')
+            pg.click('.composer2[data-where="page"] .cscope'); pg.click('[role="option"][data-value="general"]')
             s4_send(pg, 'page', 'Explain a checkpoint')
             pg.click('.ccard[data-kind="general"] .btn')
             pg.wait_for_timeout(400)

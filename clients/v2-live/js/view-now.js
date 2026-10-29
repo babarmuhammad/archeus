@@ -2,7 +2,7 @@ import { h } from './dom.js';
 import { present } from '../core-words.js';
 import { clockLabel } from '../sim.js';
 import { tr } from './i18n.js';
-import { word, panel, empty, missionRow, attentionItem, projName } from './views.js';
+import { word, panel, empty, missionRow, attentionItem } from './views.js';
 import { icon } from './icons.js';
 import * as store from './store.js';
 import { isPhone } from './viewport.js';
@@ -10,15 +10,7 @@ import { mapBox, syncMap, buildOverview } from './map.js';
 import { dockNode } from './chat.js';
 import { workHref } from '../page-model.js';
 import * as motion from './motion.js';
-
-// The phone shows the four counts as its headline; the desktop headline already says them.
-function counters(ctx) {
-  const sim = ctx.sim, ms = Object.values(sim.state.missions);
-  const c = (n, label, role, href) => h('a', { class: 'ctr', 'data-role': role, 'data-zero': String(n === 0), href }, h('b', null, String(n)), h('span', null, label));
-  return h('nav', { class: 'counters', 'aria-label': 'Counts' },
-    c(sim.attention().filter((i) => i.kind !== 'knowledge').length, 'needs you', 'needs_you', '#/work'), c(sim.liveWork().length, 'running', 'active', '#/work'),
-    c(ms.filter((m) => m.state === 'BLOCKED' || m.state === 'FAILED').length, 'stopped', 'blocked', '#/work'), c(ms.filter((m) => present('mission', m.state).cls === 'verifying').length, 'verifying', 'verifying', '#/work'));
-}
+import { renderPhone } from './now-phone.js';
 
 const KIND = [[/need/, 'need'], [/running/, 'run'], [/stopped/, 'stop']];
 // The headline counts wear the state colour: amber needs you, blue running, red stopped.
@@ -38,7 +30,7 @@ const viewWidth = () => { const e = document.querySelector('.now-view'); return 
 // The map starts under the headline whatever its height (one or two lines of headline, the lede), measured on the page.
 const heroBottom = () => { const e = document.querySelector('.now-hero'); return e ? Math.round(e.offsetTop + e.offsetHeight + 8) : 150; };
 const DOCK = 56 + 12 + 14, BAND = 76;
-const nowInset = (w, hh) => calmNow ? { top: 16, bottom: isPhone() ? 170 : Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : isPhone() ? { top: 16, bottom: 16, left: 16, right: 16 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
+const nowInset = (w, hh) => calmNow ? { top: 16, bottom: Math.max(250, Math.round(hh * .33)) + DOCK, left: 24, right: 24 } : { top: heroBottom(), bottom: sheetOn && viewWidth() < 900 ? 16 : BAND + 12, left: 24, right: 24 };
 
 // Calm (concept 07): the bottom band says what is true now (headline and Tell), what was verified today and the known projects.
 function calmBand(ctx) {
@@ -86,30 +78,24 @@ export function render(ctx) {
   const recent = st.events.filter((e) => /state_changed$/.test(e.type) && e.subject.kind === 'mission').slice(-6).reverse();
   const calm = sim.sentence() === 'Nothing needs you.', ov = buildOverview(sim);
   calmNow = calm;
+  if (isPhone()) return renderPhone(ctx, { ov, calm, sentence: sentenceNodes, ledger: ledgerText });
   const box = mapBox('now', true, nowInset);
   ctx.mounts.push(() => syncMap(ctx, 'now'));
   const open = ctx.ui.nowDrawer === true;
   sheetOn = open && !calm;
   const toggle = (e) => {
     const closing = ctx.ui.nowDrawer === true, d = e.currentTarget.closest('.now-drawer'), body = d.querySelector('.now-body');
-    // the sheet comes from its edge (the right when wide, the bottom when narrow) and leaves the same way, a little faster; on the phone it is part of the page and does not fly
-    const fly = isPhone() ? null : viewWidth() >= 900 ? { x: 24, y: 0 } : { x: 0, y: 24 };
-    if (closing && fly) motion.exitClone(body, { ...fly, dur: 2 });
+    // the sheet comes from its edge (the right when wide, the bottom when narrow) and leaves the same way, a little faster
+    const fly = viewWidth() >= 900 ? { x: 24, y: 0 } : { x: 0, y: 24 };
+    if (closing) motion.exitClone(body, { ...fly, dur: 2 });
     ctx.ui.nowDrawer = !ctx.ui.nowDrawer; sheetOn = ctx.ui.nowDrawer === true;
     d.dataset.open = String(ctx.ui.nowDrawer === true);
     d.closest('.now-view').dataset.sheet = String(ctx.ui.nowDrawer === true);
     e.currentTarget.setAttribute('aria-expanded', String(ctx.ui.nowDrawer === true));
-    if (!closing && fly) motion.enter(body, { ...fly, dur: 3 });
+    if (!closing) motion.enter(body, { ...fly, dur: 3 });
   };
-  const first = att.find((a) => a.group === 'Decide' || a.group === 'Review'), fm = first && first.mission_id ? st.missions[first.mission_id] : null, ap = first && first.kind === 'approval' ? st.approvals[first.ref] : null;
-  const card = first && first.kind !== 'knowledge' ? h('article', { class: 'pn-card', 'data-key': 'pn-card' },
-    h('div', { class: 'pn-top' }, h('span', { class: 'pn-dot', 'aria-hidden': 'true' }), h('div', null, h('p', { class: 'pn-title' }, fm ? fm.title : first.reason), h('p', { class: 'pn-origin' }, tr('Origin') + ' ' + (projName(sim, first.project_id) || '-'))), icon('attention', 28)),
-    h('p', { class: 'pn-k' }, tr('What') + ':'), h('p', { class: 'pn-v' }, ap ? ap.presented.what : first.reason),
-    ap ? h('p', { class: 'pn-k' }, tr('Why') + ':') : null, ap ? h('p', { class: 'pn-v' }, ap.presented.why) : null,
-    h('a', { class: 'pn-review', href: first.kind === 'approval' ? '#/work/' + first.ref : '#/work/' + first.mission_id }, tr('Review'))) : null;
   const drawer = h('section', { class: 'now-drawer', 'data-open': String(open), 'aria-label': 'Details' },
-    h('div', { class: 'now-strip' }, isPhone() ? counters(ctx) : null, h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
-    card,
+    h('div', { class: 'now-strip' }, h('button', { class: 'now-toggle', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'now-details', 'data-key': 'now-details-btn', 'aria-label': tr('Details'), onclick: toggle }, tr('Details'))),
     h('div', { class: 'now-body', id: 'now-details' },
       h('div', { class: 'now-panels' },
         panel('Needs you', decide.length, decide.length ? h('div', { class: 'stack' }, ...decide.slice(0, 3).map((a) => attentionItem(ctx, a))) : empty('Nothing is waiting for a decision.'),
@@ -122,8 +108,8 @@ export function render(ctx) {
     calm ? calmBand(ctx) : h('div', { class: 'now-hero' },
       h('h1', { class: 'state-sentence', 'data-key': 'sentence' }, ...sentenceNodes(sim.sentence())),
       h('p', { class: 'ledger', 'data-key': 'ledger' }, ledgerText(ov.ledger)),
-      isPhone() ? null : attentionStrip(ctx, ov)),
+      attentionStrip(ctx, ov)),
     calm ? null : viewSwitch(ctx),
     calm ? null : drawer,
-    isPhone() ? null : h('div', { class: 'tell-dock' }, dockNode(ctx))));
+    h('div', { class: 'tell-dock' }, dockNode(ctx))));
 }

@@ -38,7 +38,7 @@
 .pideas { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 0 24px; }
 .pidea { position: relative; isolation: isolate; border-bottom: var(--hair) solid var(--line); }
 .pidea > a { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 4px; color: var(--text); text-decoration: none; }
-.pidea > a b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.pidea > a b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
 .pidea-meta { flex: none; font-size: var(--fs-cap); color: var(--text-2); }
 .pidea > a:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
 .pidea > a[aria-current='true'] b { text-decoration: underline; text-underline-offset: 4px; }
@@ -87,3 +87,39 @@ a.wt-mission { display: inline-flex; align-items: center; align-self: flex-start
 .project-wt-filter { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 0 0 8px; }
 .project-wt-tag { flex: none; padding: 0 8px; border: var(--hair) solid var(--line); border-radius: var(--r-s); color: var(--text-2); font-size: var(--fs-cap); }
 @media (forced-colors: active) { .seg-opt[aria-current='true'], button.seg-opt[aria-pressed='true'] { outline: 2px solid Highlight; outline-offset: -2px; } }
+
+/* Projects on a phone (js/projects-phone.js): one row per project that says what Archeus did there, grouped by what asks most of the owner. */
+.pp .page-head { padding-bottom: 4px; }
+.pp .pview { gap: 12px; padding-top: 4px; }
+.pp-sort { display: flex; width: 100%; } .pp-sort .seg-opt { flex: 1 1 0; min-height: 44px; font-size: 15px; }
+.pp-sec .np-h { position: sticky; top: 0; z-index: 2; margin-inline: calc(var(--gut) * -1); padding: 10px var(--gut) 8px; background: var(--bg); }
+.pp-list, .pp-trees, .pp-items { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.pp-row { border-bottom: var(--hair) solid var(--line); content-visibility: auto; contain-intrinsic-size: auto 96px; }
+.pp-main { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: 'c n s' '. l l'; align-items: center; gap: 2px 12px; min-height: 64px; padding: 10px 4px 4px; color: var(--text); }
+.pp-main .ph-code { grid-area: c; }
+.pp-name { grid-area: n; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; font-weight: 600; }
+.pp-main .ph-st { grid-area: s; }
+.pp-last { grid-area: l; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--text-2); font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.pp-main:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.pp-main:active { background: var(--fill-3); }
+.pp-main[aria-current='true'] { box-shadow: inset 0 0 0 var(--hair) var(--text); }
+.pp-row[data-state='needs_you'] { box-shadow: inset 3px 0 0 var(--attention); }
+.pp-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; padding: 0 4px 6px 60px; }
+.pp-foot:has(.pp-wt) { min-height: 44px; padding-bottom: 0; }
+.pp-counts { min-width: 0; color: var(--text-2); font-size: 13px; line-height: 1.35; }
+.pp-wt { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; margin: 0 -6px 0 0; padding: 0 6px 0 10px; border: 0; background: transparent; color: var(--text); font: 500 14px / 1 var(--font); cursor: pointer; }
+.pp-wt svg { transition: transform var(--dur-2) var(--ease-out); } .pp-wt[aria-expanded='true'] svg { transform: rotate(90deg); transition-duration: var(--dur-1); }
+.pp-wt:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.pp-trees { margin: 0 0 8px 28px; padding-left: 16px; border-left: var(--hair) solid var(--line-strong); }
+.pp-tl { display: flex; align-items: center; gap: 10px; min-height: 44px; color: var(--text); }
+a.pp-tl:active { background: var(--fill-3); } a.pp-tl:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.pp-tb { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 14px / 1.2 var(--mono); }
+.pp-to { flex: none; color: var(--text-2); font-size: 13px; }
+.pp-item { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 56px; padding: 6px 4px; border-bottom: var(--hair) solid var(--line); color: var(--text); }
+.pp-item:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; } .pp-item:active { background: var(--fill-3); }
+.pp-it { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 500; }
+.pp-is { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 13px; }
+.pp-fold > summary { border-top: 0; }
+:root[data-motion='reduced'] .pp-wt svg { transition: none; }
+@media (prefers-reduced-motion: reduce) { .pp-wt svg { transition: none; } }
+@media (forced-colors: active) { .pp-row[data-state='needs_you'] { box-shadow: inset 3px 0 0 Highlight; } .pp-trees { border-color: CanvasText; } }
