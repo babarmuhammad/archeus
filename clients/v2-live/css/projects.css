@@ -70,4 +70,20 @@ button.seg-opt:focus-visible { outline: 3px solid var(--focus); outline-offset: 
 .project-inspector .tab { padding-inline: 9px; }
 .project-inspector .tab .tn { margin-left: 6px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-3); }
 .project-activity a { grid-template-columns: 5.5em minmax(0, 1fr) auto; }
+/* Worktrees: children of a project, listed on its Overview, counted on its card, tagged on its missions. */
+.pc-wt { flex: none; }
+.project-worktrees { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.project-worktrees li { display: flex; flex-direction: column; gap: 4px; padding: 12px 0; }
+.project-worktrees li + li { border-top: var(--hair) solid var(--line); }
+.wt-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.wt-branch { font-weight: 600; overflow-wrap: anywhere; }
+.wt-owner { padding: 0 8px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-s); font-size: var(--fs-cap); }
+.wt-state, .wt-top time { color: var(--text-2); font-size: var(--fs-cap); }
+.wt-top time { margin-left: auto; }
+.wt-mission { color: var(--text-2); font-size: var(--fs-cap); }
+a.wt-mission { display: inline-flex; align-items: center; align-self: flex-start; min-height: var(--target); color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.wt-next { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; color: var(--text-2); font-size: var(--fs-cap); }
+.project-worktrees li[data-state='stale'], .project-worktrees li[data-state='missing'] { padding-left: 12px; border-left: 3px solid var(--attention); }
+.project-wt-filter { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 0 0 8px; }
+.project-wt-tag { flex: none; padding: 0 8px; border: var(--hair) solid var(--line); border-radius: var(--r-s); color: var(--text-2); font-size: var(--fs-cap); }
 @media (forced-colors: active) { .seg-opt[aria-current='true'], button.seg-opt[aria-pressed='true'] { outline: 2px solid Highlight; outline-offset: -2px; } }

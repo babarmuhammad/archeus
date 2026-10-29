@@ -55,6 +55,7 @@ try:
         pg.click('[data-key=bb-work]')
         pg.wait_for_timeout(350)
         check('bar: Work opens #/work, becomes current, and the top bar names the page', pg.evaluate('location.hash') == '#/work' and pg.get_attribute('[data-key=bb-work]', 'aria-current') == 'page' and pg.inner_text('.tb-title') == 'Work')
+        check('top bar: no stray "null" text (a null child rendered by append)', 'null' not in pg.inner_text('.topbar').lower().split())
         pg.click('[data-key=home]')
         pg.wait_for_timeout(350)
         check('top bar: the star goes to the Overview (aria-label Overview)', pg.evaluate('location.hash') == '#/now' and pg.get_attribute('[data-key=home]', 'aria-label') == 'Overview')

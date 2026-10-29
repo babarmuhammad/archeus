@@ -32,7 +32,7 @@ APP_DIR = os.path.join(ROOT, 'clients', 'v2-live')
 
 VIEWPORTS = ['320x640', '390x844', '430x932', '600x800', '768x1024', '1024x768', '1280x720', '1366x768', '1440x900', '1536x864',
              '1920x1080', '2000x930', '2560x1080', '2560x1440']
-ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec',
+ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'health', 'usage', 'accounts', 'extensions', 'terminal', 'work/m-date', 'work/m-export', 'work/a-1', 'chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec', 'replay-pick',
           'terminal/work', 'terminal/attention', 'terminal/m-date', 'terminal/a-1', 'terminal/replay', 'terminal/accounts', 'terminal/security',
           'tui:help', 'tui:cmd', 'tui:confirm', 'tui:ansi', 'tui:hc', 'tui:mono', 'tui:ascii', 'tui:read',
           # S3: inspectors, tabs, offline and confirm states ("~state" runs STATES[state] first); the ~adv states advance the simulation and so come last
@@ -276,7 +276,7 @@ def motion_invariants(br, base):
 
 SETTLE = """() => Promise.race([new Promise((r) => setTimeout(r, 800)), Promise.allSettled(document.getAnimations().filter((x) => x.effect && x.effect.getTiming().iterations !== Infinity).map((x) => x.finished))])"""
 
-S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec')
+S4_ROUTES = ('chat-slash', 'chat-confirm', 'chat-cards', 'chat-general', 'chat-picker', 'chat-mission', 'chat-more', 'chat-receipts', 'chat-context', 'dock-slash', 'dock-reply', 'sheet', 'sheet-slash', 'replay-ev', 'replay-rec', 'replay-pick')
 
 
 def s4_send(pg, where, text):
@@ -356,6 +356,10 @@ def s4_state(pg, route, w):
     pg.evaluate("window.v2live.sim.advance(520000)")
     pg.evaluate("location.hash = '#/replay/m-date'")
     pg.wait_for_timeout(400)
+    if route == 'replay-pick':  # the mission chooser: a popover on a desktop, a full sheet on a phone
+        pg.click('[data-key="rp-mission"]')
+        pg.wait_for_timeout(300)
+        return '.mc-sheet' if pg.evaluate("!!document.querySelector('.mc-sheet')") else '.mc-pop'
     if route == 'replay-ev':
         pg.click('#rs-9')
     else:
