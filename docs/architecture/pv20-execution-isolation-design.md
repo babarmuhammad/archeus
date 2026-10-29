@@ -45,11 +45,8 @@ identity can physically reach. This framing is load-bearing and must not be rewr
 
 ## 2. Mechanism (confirmed, §6.1)
 
-The PV-20 baseline is **AppContainer + Job object**:
+**Mechanism replacement:** The PV-20 baseline remains AppContainer + Core-held Job object. Following the owner’s 2026-10-29 decision, Microsoft MXC’s `processcontainer` backend supplies AppContainer establishment and launch. Core supplies and exclusively holds the outer kill-on-close Job. MXC replaces the hand-built profile/token/AppContainer-spawn implementation, not the identity, authority, resource or lifecycle contracts. ADR-0053 §1 governs policy, network, UI and dependency constraints.
 
-- **AppContainer** is the primary execution-isolation (identity/ACL) mechanism.
-- **The Job object** is the process-tree and resource envelope, and the authority for execution
-  lifetime (§3.7).
 - **A separate standard user** remains the later escalation/fallback design path, used only if
   AppContainer evidence later proves insufficient and only by a **new owner decision** (ADR-0053
   §1); every boundary below is expressed so it can be substituted without re-deciding the
@@ -69,8 +66,7 @@ the other, and both are required.
 - **What executes untrusted agent work.** An **execution identity that is not the user's OS
   identity**: under the baseline, an AppContainer identity; under the escalation path, a dedicated
   standard user.
-- **Creation / lifecycle.** Baseline: an AppContainer profile created before spawn and torn down
-  at end — no standing OS account, no stored OS credential, no elevation.
+- **Creation / lifecycle replacement:** MXC establishes and disposes the AppContainer resources for each execution-specific principal. Archeus records the observed principal, generation and owned resources, proves separation and admission invariants, and refuses uncertain or reused authority. Fresh verifier principals remain mandatory. No standing OS account, stored OS credential or elevation is introduced by this backend decision. Windows-managed registrations and storage effects require an explicit run inventory; no account-home access is implicitly authorized.
 - **Granularity (R7 — implementation constraint, not an owner decision; §6).** One
   execution-specific identity/principal, created before spawn and torn down after the execution;
   other executions' state is inaccessible to it; grants on shared runtime material (install paths)
@@ -110,6 +106,11 @@ the other, and both are required.
   decision): Core cannot establish from a server definition that it carries no credential. A settings item or plugin that would bring an MCP
   server, an environment block or a credential helper is excluded and recorded. The account-level
   CLAUDE.md loads only if opted in. No legacy account-home behaviour is preserved silently.
+- **Network containment.** MXC implements the selected backend’s network restrictions; Archeus does not maintain a parallel hand-built firewall mechanism for this path. P23 retains network-policy ownership. Default egress, ingress and host-loopback access are denied. Any broker transport exception is explicit, narrowly scoped and tested for both intended reachability and forbidden destinations, including descendants and alternate connection APIs. Proxy environment variables are routing hints, not containment. No machine-wide firewall rule or loopback exemption is silently installed. Broker routing never grants execution-origin requests privileged Core authority.
+
+- **UI policy — proposal pending evidence and owner decision.** The proposed default blocks the UI subsystem. Exact `ui.disable` and `ui.allowWindows` values and their interaction must be verified against the pinned SDK schema; neither may be inferred from a tool’s failure. Tools requiring a window station or UI subsystem remain unsupported under that default until separately tested and explicitly admitted. No automatic UI enablement or retry occurs after an initialization failure. Enabling UI does not imply permission for desktop input, screen capture, clipboard, microphone, interactive login or other user-session authority.
+
+- **Dependency and update policy.** The implementation uses an exact reviewed MXC SDK/runtime version, locked transitive dependencies and recorded artifact hashes. Package installation uses `--ignore-scripts`; required artifacts must be verified without silently re-enabling lifecycle scripts. License notices, dependency inventory, package integrity, provenance where available, vulnerability findings and runtime DLL inventory are reviewed before admission. Updates require a reviewed change, compatibility and security evidence, and explicit activation of the new pinned version; no runtime auto-update, floating version or automatic weaker fallback is permitted.
 
 ### 3.2 Workspace and repository boundary (§6.7)
 
@@ -193,10 +194,11 @@ the other, and both are required.
   withdraws it for isolated executions: no execution runs in the user's project root, and no
   failure falls back to it (§3.4). Any future supported alternative needs its own security analysis
   and explicit architectural approval (§6.3).
-- **Cleanup.** On execution end (clean, crashed, or e-stopped), its grants are removed and its
-  execution-specific identity torn down (R7). Stale grants/profiles are reclaimed on boot.
+- **Cleanup replacement:** On clean end, crash or e-stop, Core first proves the owned process tree quiescent, then invokes the pinned MXC disposal path and verifies grant/resource disposition. Unknown ownership, incomplete disposal or stale access quarantines the generation and blocks reuse. Restart reconciliation never adopts a live isolated process or deletes resources based only on a stale journal entry or name.
 
 ### 3.3 Core boundary and mailbox authority (§6.6)
+
+**Mailbox insertion:** MXC policy implements filesystem exposure for the existing seven resource classes. Requests are writable; responses, spawn configuration and sentinels are readable but not writable; lifecycle, halt and Core-private state remain inaccessible. Broad writable ancestor grants are forbidden. Hostile creator descriptors, inherited handles and aliases require native evidence; policy serialization alone does not establish this table.
 
 - **The mailbox is a split-authority boundary,** not a generic execution-writable directory. The
   execution reaches Core only through its own request/response mailbox and reads the STOP
@@ -310,6 +312,7 @@ the other, and both are required.
   charged and whether it re-dispatches interacts with P11's `SpawnFailed` behaviour (O7, deferred
   to P11; p20-design-gate §12 item 72). PV-20 does not resolve O7; it requires P11's decision
   before implementation. Whatever O7 decides, a spawn failure never bypasses isolation.
+- **MXC launch contract.** Core compiles a closed, versioned policy from its approved resource inventory; execution-controlled policy fragments, backend selection and launcher flags are refused. The launcher/runtime and policy schema are pinned. Core starts the launcher suspended, assigns it to the Core-held Job, verifies assignment and permitted handle inheritance, then resumes it. Equivalent atomic assignment is acceptable only when verified. A launcher that cannot satisfy this ordering is not admitted. Filesystem, network, UI, environment and resource controls are independently checked against the actual launched process. No permissive backend or unisolated fallback is allowed.
 
 ### 3.5 Credential boundary
 
@@ -358,6 +361,8 @@ by R1-A (§3.3). That Core enforces this is **DESIGN PROPOSAL — UNVERIFIED** u
 tested.
 
 ### 3.7 Lifecycle, failure and recovery (§6.8, §6.10)
+
+**Lifecycle insertion:** R6-A applies to the outer Core-held Job. MXC may own inner containment Jobs, but must not hold or recover the outer Job. Core death must terminate launcher, bridge, agent, children and grandchildren, including processes already running when the Core dies. The smoke’s two-process observation is corroboration, not acceptance of this product-path property.
 
 - **Job = process-lifetime authority.** An execution's processes live and end with its Job.
 - **Core registry = accounting/state,** not lifetime authority.
@@ -652,11 +657,11 @@ decision matrix recommended. None authorises implementation.
 ## 7. Status
 
 **`PV-20 ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (ADR-0053); IMPLEMENTATION: SLICE S0 ONLY;
-EMPIRICAL EVIDENCE OUTSTANDING`.** PV-20 is a V1.x security remediation. **Only slice S0 (§7.4 Gap A)
-has been implemented; no isolation mechanism exists, no acceptance evidence has been produced, and the
-security boundary is not claimed to exist.** P20 G stays PAUSED and NOT CLOSED, and G1 and G2 stay Critical and open. The audit blockers
+EMPIRICAL EVIDENCE OUTSTANDING`.** Only slice S0 (§7.4 Gap A) has been implemented; no acceptance evidence has been produced, and the security boundary is not claimed to exist. The audit blockers
 A1–A6 are decided and A7 is corrected (§6 items 18–24); that closes architecture questions, not
 implementation authorization.
+
+**Evidence status, 2026-10-29:** `.collab/PV20-mxc-feasibility.md` records eight successful smoke checks and a separately authorized `claude.exe` 2.1.312 `--version`/`--help` addendum on Windows 11 Home build 26300.9711, using `@microsoft/mxc-sdk@1.0.1`, `wxc-exec.exe` x64 and the `processcontainer` backend. These establish bounded startup, filesystem/network-denial and short process-tree cleanup observations only. They do not establish any N1–N5 acceptance result, a real agent session, strict peer exclusion, credential-authority denial, broker reach, origin attestation, or production lifecycle correctness. G1 and G2 remain Critical and open; slice G remains PAUSED and NOT CLOSED.
 
 ### 7.1 Unverified (DESIGN PROPOSAL — UNVERIFIED)
 
@@ -862,6 +867,8 @@ superseding decision and ADR-0053 are current.
 
 ## 8. Acceptance-row classification (2026-10-07)
 
+**Ledger qualification:** Historical 2026-10-07 classifications remain historical. The 2026-10-29 MXC smoke and Claude version/help addendum are feasibility evidence only. No acceptance row is promoted to PASS by backend adoption. Maintain a current row-by-row ledger containing candidate and artifact hashes, effective backend/policy/identity, commands, controls, outcomes, cleanup, reviewer and authorization scope. Missing mandatory cases remain evidence-blocked.
+
 Every §4 row is **implementation-blocked**: none can be executed until PV-20 exists. **None is
 passed, and no row is passed by the design existing.** Labels:
 
@@ -916,3 +923,34 @@ and booleans only, like §4:
   access-denied, and Core-authored configuration is not writable from inside.
 - *A3:* a forwarded request and a verifier-origin request are refused every §3.6 effect.
 - *A4:* the router refuses a harness that cannot launch inside the PV-20 identity.
+
+## MXC backend risk register and evidence ledger (proposed, 2026-10-29)
+
+Proposed register entries for the MXC backend decision (ADR-0053 amendment, 2026-10-29):
+
+| ID | Risk/evidence status | Required treatment |
+|---|---|---|
+| MXC-R01 | GA date 2026-10-07 supplied by task; **not independently verified**. At review date, only 22 days since stated GA. | Treat maturity as limited; pin, stage, retain rollback artifact and require regression evidence. |
+| MXC-R02 | Pre-GA README “not a security boundary” statement supplied by task; exact revision/context/current disposition **unverified**. | Retrieve and preserve dated source in separately authorized research. Do not claim GA alone resolves statement. Boundary claims require evidence and upstream clarification. |
+| MXC-R03 | git-bash/MSYS2 issue `microsoft/mxc#1061` recorded by smoke; issue content/status **unverified**. | Exclude git-bash-dependent agent routes until pinned reproducer passes. No native-shell fallback outside isolation. |
+| MXC-R04 | BaseContainer crash reports supplied by task; affected builds/reproducer **unverified**. | Capture actual selected tier, crash/exit diagnostics and no-survivor result. Crash means unavailable, never fallback. |
+| MXC-R05 | BitLocker-locked volume failure supplied by task; exact behavior **unverified**. | Use reviewed volume inventory; refuse unsupported placement. No unlocking, mounting or modifying owner volumes in N1–N5. |
+| MXC-R06 | Window-station/UI denial: smoke records PowerShell/choice initialization failure `0xC0000142`. | UI-blocked default proposed; per-tool tests and explicit decision before enabling UI. |
+| MXC-R07 | Malicious/changed SDK, transitive dependency or native binary. Lock integrity is not publisher authenticity. | Exact version/lock/hashes, provenance and license/dependency review; offline runtime inventory; verify distributed binary separately. |
+| MXC-R08 | Package lifecycle scripts or absent artifacts with `--ignore-scripts`. | Keep scripts disabled. Verify package contains required runtime; missing artifact blocks installation, never triggers silent script enablement. |
+| MXC-R09 | Vendor update changes policy semantics, principals, Jobs or cleanup. | No auto-update. Reviewed version change; rerun affected N stages before activation. |
+| MXC-R10 | MXC profile residue/opaque cleanup. Smoke notes 173 mappings, attribution unknown. | Do not attribute or delete existing registrations. Owned-resource disposal evidence and quarantine required; storage absence remains unverified without authorized proof. |
+| MXC-R11 | Nested Jobs, shared principal or broker deputy defeats contract. | Prove outer Job sole ownership, actual principal separation and origin preservation. Wrapper success insufficient. |
+
+Proposed initial evidence-ledger rows (the ledger file `.collab/PV20-mxc-evidence-ledger.md` does not exist yet):
+
+| Evidence ID | Recorded scope | Acceptance disposition |
+|---|---|---|
+| MXC-SMOKE-T1 | Fixture `cmd.exe` startup | Feasibility only |
+| MXC-SMOKE-T2 | Allowed write; sibling write/read denied | Partial filesystem corroboration |
+| MXC-SMOKE-T3 | Host positive control; contained curl denied; zero listener connections | Partial network corroboration |
+| MXC-SMOKE-T4 | Two-process tree gone within 5 s, launcher kill and Core-owned Job close | Partial lifetime corroboration |
+| MXC-CLAUDE-INFO | Version/help exit 0, under 2.5 s | CLI startup only |
+| MXC-N1…N5 | No runs recorded | NOT_RUN |
+
+Never equate eight checks with eight acceptance rows.
