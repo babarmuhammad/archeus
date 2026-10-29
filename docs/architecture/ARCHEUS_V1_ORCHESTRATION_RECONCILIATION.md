@@ -197,7 +197,7 @@ conversation; and learn only through recorded outcomes promoted by explicit rule
 
 | Capability | Exists as | Evidence |
 |---|---|---|
-| (harness, account, model, effort) selection | pure router, STEPS installed → headless → capability → model → enforcement → provider_terms → restriction → health → allocation → election; ordering affinity, preference, priority, tier, not-near-ceiling, id | `archeus/core/routing/router.py:43`, `:95-114`, `:119-276`, `:284-293` |
+| (harness, account, model, effort) selection | pure router, STEPS installed → headless → capability → model → enforcement → provider_terms → broker → restriction → breaker → health → allocation → partition → election; ordering affinity, preference, priority, tier, not-near-ceiling, id | `archeus/core/routing/router.py:43`, `:95-114`, `:119-276`, `:284-293` |
 | Model step | preferred model if it fits, else smallest tier meeting `min_model_tier`/`min_context_window`; unknown tier = smallest | `router.py:141-167` |
 | Routing explanation and replay | `RouteDecision` (requirements, candidates with `eliminated_at_step` + reason, `input_snapshot`, result, `fallback_from`, `unblock_at`, `outcome`); `explain()`, `replay()`; API and `route_explanation` card; `archeus route why` | `entities.py:1424-1469`, `router.py:365-392`, `archeus/api/routes.py:947-949`, `entities.py:561` |
 | Model offers per harness | `ModelInfo(id, tier, context_window)`, `Capabilities.models/efforts/structured_output/enforcement` | `archeus/harnesses/base.py:47-65` |

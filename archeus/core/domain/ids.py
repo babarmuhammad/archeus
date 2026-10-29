@@ -45,7 +45,8 @@ assert len(set(PREFIXES.values())) == len(PREFIXES), 'two kinds share a prefix'
 #: id prefix: `exe_…` is always an Execution id, and the execution-scoped
 #: credential is the hook token (`hook_…`, delivered as ARCHEUS_HOOK_TOKEN).
 #: Minting and verifying tokens arrives with P2/P3.5; the namespace is fixed now.
-TOKEN_PREFIXES = {'device': 'dev', 'node': 'node', 'execution': 'hook'}
+#: PV-20's provider broker grant (`brk_…`) is a third kind no Core route accepts.
+TOKEN_PREFIXES = {'device': 'dev', 'node': 'node', 'execution': 'hook', 'broker': 'brk'}
 assert not set(TOKEN_PREFIXES.values()) & set(PREFIXES.values()), \
     'a token prefix collides with an id prefix'
 

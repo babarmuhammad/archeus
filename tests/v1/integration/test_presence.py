@@ -306,7 +306,10 @@ def test_R5_presence_is_traced_on_transitions_only_with_the_connection(tc):
     _wait(lambda: _device(tc, did)['presence']['connections'] == 1, 'one connection left')
     two.close()
     _wait(lambda: _device(tc, did)['presence']['connections'] == 0, 'no connection left')
-    traces = [e for e in _events(tc) if e['seq'] > before and e['subject']['id'] == did]
+    def traced():       # the count drops before the closing event is committed
+        return [e for e in _events(tc) if e['seq'] > before and e['subject']['id'] == did]
+    _wait(lambda: len(traced()) == 2, 'both transitions traced')
+    traces = traced()
     assert [e['type'] for e in traces] == ['device.stream_opened', 'device.stream_closed']
     assert all(e['payload']['connection_id'] for e in traces)
     assert traces[1]['payload']['reason'] == 'client_gone'

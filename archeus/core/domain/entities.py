@@ -999,6 +999,9 @@ class Execution(Entity):
     branch: str = None
     process_seq: int = 0
     hook_token_hash: str = None
+    # PV-20 (PV20-08 §1): the sha256 of this process generation's provider broker
+    # token, None when it has none; cleared on every end path with the hook's
+    broker_token_hash: str = None
     hook_seq: int = 0
     stream_offset: int = 0
     usage: dict = None

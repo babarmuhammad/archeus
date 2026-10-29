@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from archeus.api import auth, routes, server
+from archeus.api import auth, origin, routes, server
 from archeus.cli.tui import sync
 from archeus.infra.eventlog import outbox
 from v1.judge.http import TempCore, request
@@ -91,10 +91,93 @@ def test_only_an_authority_route_can_register_a_device():
 
 
 def test_by_default_every_peer_is_the_user_so_nothing_changes(core):
+    assert origin.ORIGIN_ENFORCEMENT_ENABLED is False
+    assert core.core.api.origin_enforcement_enabled is False
+    assert core.core.api.isolated_dispatch_qualified is False
     assert core.core.api.attestor is auth.attest_user
     assert server.Api.__init__.__kwdefaults__['attestor'] is auth.attest_user
     assert auth.attest_user(('127.0.0.1', 1)) == auth.USER
     assert core.http('GET', '/v1/health').status == 200
+
+
+@pytest.mark.parametrize('switch', [1, 'yes', None, 0])
+def test_a_non_bool_switch_is_refused_not_coerced_to_off(switch):
+    with pytest.raises(TypeError):
+        server.Api(db=None, missions=None, port=0, health=None, version='x',
+                   origin_enforcement_enabled=switch)
+
+
+@pytest.mark.parametrize('kind', list(origin.OriginClass))
+@pytest.mark.parametrize('path', list(origin.PathClass))
+@pytest.mark.parametrize('local,remote', [(True, False), (False, True), (False, False)])
+def test_Q258_Q259_transport_matrix(kind, path, local, remote):
+    evidence = origin.OriginEvidence(origin=kind, path=path)
+    for credential in (None, 'local', 'paired'):
+        for tunnel_route in (True, False):
+            expected = (kind == origin.OriginClass.USER and (
+                path == origin.PathClass.DIRECT_LOCAL and local
+                and credential in (None, 'local') or
+                path == origin.PathClass.REGISTERED_TUNNEL and remote and tunnel_route
+                and credential in (None, 'paired')))
+            assert origin.authorize_transport(
+                evidence, local_host=local, remote_host=remote,
+                credential_origin=credential, tunnel_route=tunnel_route) == expected
+
+
+def test_evidence_validation_and_native_stub():
+    from dataclasses import replace
+    from archeus.node.origin_windows import WindowsOriginBackend
+    context = origin.ConnectionContext(object(), ('127.0.0.1', 1), ('127.0.0.1', 2), 'a')
+    evidence = origin.OriginEvidence(
+        origin=origin.OriginClass.USER, path=origin.PathClass.DIRECT_LOCAL,
+        process_binding=object(), accept_generation='a', reason='approved')
+    assert origin.validate_evidence(context, evidence)
+    for bad in (None, 'user', replace(evidence, accept_generation='b'),
+                replace(evidence, process_binding=None), replace(evidence, reason='x' * 65),
+                replace(evidence, origin='user'), replace(evidence, path='direct_local')):
+        assert not origin.validate_evidence(context, bad)
+    backend = WindowsOriginBackend()
+    assert backend.attest(context).origin == origin.OriginClass.UNDETERMINED
+    assert not backend.valid(context, evidence)
+    backend.release(context, evidence)
+
+
+def test_binding_rechecked_each_request_and_released_once(monkeypatch):
+    from types import SimpleNamespace
+    context = origin.ConnectionContext(object(), (), (), 'a')
+    evidence = origin.OriginEvidence(
+        origin=origin.OriginClass.USER, path=origin.PathClass.DIRECT_LOCAL,
+        process_binding=object(), accept_generation='a')
+    calls = []
+
+    class Backend:
+        def attest(self, ctx):
+            calls.append(('attest', ctx))
+            return evidence
+
+        def valid(self, ctx, ev):
+            calls.append(('valid', ev))
+            return len(calls) == 2
+
+        def release(self, ctx, ev):
+            calls.append(('release', ev))
+
+    handler = object.__new__(server.Handler)
+    handler.context, handler.evidence, handler.evidence_acquired = context, None, False
+    handler.api = SimpleNamespace(origin_backend=Backend())
+    handler.origin_backend = handler.api.origin_backend
+    handler.origin_registry = origin.UnapprovedRegistry()
+    assert handler.transport_evidence().origin == origin.OriginClass.UNDETERMINED
+    calls.clear()
+    handler.evidence_acquired = False
+    handler.origin_registry = SimpleNamespace(approved=lambda context, evidence: True)
+    assert handler.transport_evidence() is evidence
+    assert handler.transport_evidence().origin == origin.OriginClass.UNDETERMINED
+    assert [c[0] for c in calls] == ['attest', 'valid', 'valid']
+    monkeypatch.setattr(server.BaseHTTPRequestHandler, 'finish', lambda self: None)
+    handler.finish()
+    assert calls[-1] == ('release', evidence)
+    assert sum(c[0] == 'release' for c in calls) == 1
 
 
 # ── enforcement ──

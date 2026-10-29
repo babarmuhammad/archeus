@@ -169,8 +169,8 @@ in legacy (OmniRoute, A8).
 ### A7. Routing infrastructure (item 7)
 
 The pure, replayable router (ADR-0005; `archeus/core/routing/router.py`): STEPS installed →
-headless → capability → model → enforcement → provider_terms → restriction → health → allocation
-→ election, each elimination recorded with step and reason in an immutable RouteDecision
+headless → capability → model → enforcement → provider_terms → broker → restriction → breaker → health → allocation
+→ partition → election, each elimination recorded with step and reason in an immutable RouteDecision
 (`router.py:327`; `resources.py:361-378`); `fallback_or_block` with account `fallback`
 `allow|ask|deny` (default `ask`) and a `route` Approval (`resources.py:437-479`); `unblock_at` from
 the eliminated candidates' resets; `archeus route why`. Reconciliation §4, §13 and ADR-0033 give
