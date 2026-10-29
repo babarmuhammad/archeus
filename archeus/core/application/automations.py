@@ -327,7 +327,7 @@ def _claim(tx, actor, a, e, why):
     m = commands.create_mission(tx, actor=me, title=want['title'], objective=want['objective'],
                                 project_id=a.project_id, workspace_id=a.workspace_id,
                                 success_criteria=want['success_criteria'],
-                                origin='automation', origin_ref=run.id, cause=chain)
+                                origin='automation', origin_ref=run.id)
     return end('allowed', 'allowed', 'asked for mission %s' % m['id'], mission_id=m['id'])
 
 

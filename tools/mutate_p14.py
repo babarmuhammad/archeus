@@ -104,9 +104,9 @@ MUTATIONS = [
      "    trigger, code = SETTLES[e.payload['to']]",
      "    trigger, code = SETTLES.get(e.payload['to'], SETTLES['COMPLETED'])")],
      [I + '::test_E07_E08_automated_work_meets_the_plan_gate_and_cannot_approve_itself']),
-    ('A18', "the mission loses its cause", [(APP,
-     "                                origin='automation', origin_ref=run.id, cause=chain)",
-     "                                origin='automation', origin_ref=run.id, cause=())")],
+    ('A18', "the mission loses its cause", [(CON,
+     "ev.CAUSE.set(ev.caused_by(event))",
+     "ev.CAUSE.set(())")],
      [I + '::test_E09_E10_E15_E25_automated_work_is_routed_executed_verified_and_explained']),
     # ── faults (§6, §11) ──
     ('A10', 'a failed reaction is not held: the event is passed over', [(WRK,
