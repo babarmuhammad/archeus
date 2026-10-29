@@ -47,7 +47,7 @@ const IT = {
   'Project': 'Progetto', 'Mission': 'Missione', 'Execution': 'Esecuzione', 'Decision': 'Decisione', 'Centre: Core, ': 'Centro: Core, ', 'nothing running': 'niente in esecuzione',
   'Open decision': 'Apri la decisione', 'Open review': 'Apri la revisione', 'Open': 'Apri', 'Open Settings': 'Apri Impostazioni', 'Open Replay': 'Apri Replay', 'Open the terminal view': 'Apri la vista terminale',
   // Work
-  'g:Needs you': 'Ti serve', 'g:Failed or cancelled': 'Fallite o annullate', 'g:Active': 'Attive', 'g:Planning': 'In pianificazione', 'g:Blocked': 'Bloccate', 'g:Paused': 'In pausa', 'g:Done': 'Fatte', 'Ideas': 'Idee', 'Blocked': 'Bloccata', 'Needs you': 'Richiede te',
+  'g:Needs you': 'Richiede la tua attenzione', 'g:Failed or cancelled': 'Fallite o annullate', 'g:Active': 'Attive', 'g:Planning': 'In pianificazione', 'g:Blocked': 'Bloccate', 'g:Paused': 'In pausa', 'g:Done': 'Fatte', 'Ideas': 'Idee', 'Blocked': 'Bloccata', 'Needs you': 'Richiede la tua attenzione',
   // Attention
   'Decide': 'Decidi', 'Review': 'Rivedi', 'Unblock': 'Sblocca', ' \u00b7 asks you to decide': ' \u00b7 ti chiede di decidere', ' \u00b7 results to accept': ' \u00b7 risultati da accettare', ' \u00b7 work that needs a person': ' \u00b7 lavoro che richiede una persona',
   'asks you to decide': 'ti chiede di decidere', 'results to accept': 'risultati da accettare', 'work that needs a person': 'lavoro che richiede una persona',
@@ -96,10 +96,10 @@ const IT = {
 };
 
 const RULES = [
-  [/^(\d+) needs? you$/, (m) => m[1] + (m[1] === '1' ? ' ti serve' : ' ti servono')], [/^(\d+) running$/, (m) => m[1] + ' in corso'], [/^(\d+) stopped$/, (m) => m[1] + (m[1] === '1' ? ' fermo' : ' fermi')],
+  [/^(\d+) needs? you$/, (m) => m[1] + (m[1] === '1' ? ' richiede la tua attenzione' : ' richiedono la tua attenzione')], [/^(\d+) running$/, (m) => m[1] + ' in corso'], [/^(\d+) stopped$/, (m) => m[1] + (m[1] === '1' ? ' fermo' : ' fermi')],
   [/^Nothing needs you\.$/, () => 'Niente richiede la tua attenzione.'],
   [/^(\d+) more in Attention$/, (m) => m[1] + ' altri in Attenzione'],
-  [/^(\d+) need you$/, (m) => m[1] + (m[1] === '1' ? ' ti serve' : ' ti servono')],
+  [/^(\d+) need you$/, (m) => m[1] + (m[1] === '1' ? ' richiede la tua attenzione' : ' richiedono la tua attenzione')],
   [/^(.+), step (\d) of 6\.$/, (m) => tr(m[1]) + ', passo ' + m[2] + ' di 6.'],
   [/^(.+) at step (\d) of 6 \((\w+)\)\.$/, (m) => tr(m[1]) + ' al passo ' + m[2] + ' di 6 (' + tr(m[3]) + ').'],
   [/^(.+), (\d) of 6 steps passed\.$/, (m) => tr(m[1]) + ', ' + m[2] + ' passi su 6 superati.'],
@@ -110,9 +110,9 @@ const RULES = [
   [/^\(running, x([\d.]+)\)$/, (m) => '(in corso, x' + m[1] + ')'], [/^Expires (\d\d:\d\d)\. This is a simulated decision: nothing is run, sent or spent\.$/, (m) => 'Scade alle ' + m[1] + '. Decisione simulata: nulla viene eseguito, inviato o speso.'],
   [/^Decided: (.+)\.$/, (m) => 'Deciso: ' + tr(m[1]) + '.'], [/^Version (\d+)$/, (m) => 'Versione ' + m[1]],
   [/^(Approved|Rejected|Accepted|Changes requested|Unblocked|Resumed|Replanning|Cancelled|Pausing|Remembered|Not remembered|Enabled) \(simulated\)\.(.*)$/, (m) => ({ Approved: 'Approvata', Rejected: 'Rifiutata', Accepted: 'Accettata', 'Changes requested': 'Modifiche richieste', Unblocked: 'Sbloccata', Resumed: 'Ripresa', Replanning: 'Ripianificazione', Cancelled: 'Annullata', Pausing: 'In pausa', Remembered: 'Ricordato', 'Not remembered': 'Non ricordato', Enabled: 'Attivata' })[m[1]] + ' (simulato).' + (m[2] ? ' Nulla è stato eseguito.' : '')],
-  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*Tab through the projects in the order of the lanes.*$/, (m) => m[1] + ' nodi in ' + m[2] + ' progetti. ' + m[3] + (m[3] === '1' ? ' ti serve.' : ' ti servono.') + ' Usa Tab per scorrere i progetti nell’ordine delle corsie, le frecce per muoverti lungo una corsia e tra le corsie, Invio per scegliere. La tabella equivalente segue i controlli della mappa.'],
+  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*Tab through the projects in the order of the lanes.*$/, (m) => m[1] + (m[1] === '1' ? ' nodo in ' : ' nodi in ') + m[2] + (m[2] === '1' ? ' progetto. ' : ' progetti. ') + m[3] + (m[3] === '1' ? ' richiede la tua attenzione.' : ' richiedono la tua attenzione.') + ' Usa Tab per scorrere i progetti nell’ordine delle corsie, le frecce per muoverti lungo una corsia e tra le corsie, Invio per scegliere. La tabella equivalente segue i controlli della mappa.'],
   [/^lane (\d+) of (\d+) for (.+)$/, (m) => 'corsia ' + m[1] + ' di ' + m[2] + ' per ' + m[3]],
-  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*$/, (m) => m[1] + ' nodi in ' + m[2] + ' progetti. ' + m[3] + (m[3] === '1' ? ' ti serve.' : ' ti servono.') + ' Usa Tab per scorrere le stelle, Invio per scegliere, le frecce per spostarti. La tabella equivalente segue i controlli della mappa.'],
+  [/^(\d+) nodes across (\d+) projects\. (\d+) need you\. .*$/, (m) => m[1] + (m[1] === '1' ? ' nodo in ' : ' nodi in ') + m[2] + (m[2] === '1' ? ' progetto. ' : ' progetti. ') + m[3] + (m[3] === '1' ? ' richiede la tua attenzione.' : ' richiedono la tua attenzione.') + ' Usa Tab per scorrere le stelle, Invio per scegliere, le frecce per spostarti. La tabella equivalente segue i controlli della mappa.'],
   [/^(\d+) priority labels cannot fit\. .*$/, (m) => m[1] + ' etichette prioritarie non entrano. Le etichette complete sono nella tabella dei nodi.'],
   [/^(\d+) boxes$/, (m) => m[0]]
 ];
@@ -136,7 +136,8 @@ export function translate(root) {
   for (let n = w.currentNode; n; n = w.nextNode()) {
     if (n.nodeType === 3) {
       const p = n.parentElement; if (p && p.closest('pre')) continue; // the terminal view stays English
-      const v = tr(n.nodeValue, p && p.classList.contains('gt') ? 'g:' : ''); if (v !== n.nodeValue) n.nodeValue = v;
+      const ctx = p && p.classList.contains('gt') ? 'g:' : p && p.classList.contains('project-phase-word') ? 'phase:' : p && p.closest('[data-key="security-nav-policy"]') ? 'nav:' : '';
+      const v = tr(n.nodeValue, ctx); if (v !== n.nodeValue) n.nodeValue = v;
     } else {
       for (const a of ATTRS) { const v = n.getAttribute(a); if (v) { const t = tr(v); if (t !== v) n.setAttribute(a, t); } }
     }

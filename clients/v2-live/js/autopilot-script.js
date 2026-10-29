@@ -44,7 +44,7 @@ export const CHAPTERS = [
     steps: [N('#/now', 3500)] },
 
   { id: 'ov-state', group: 'overview', t: ['State at a glance', 'Lo stato a colpo d’occhio'], covers: ['E', 'O', 'R', 'WP', 'I'],
-    c: ['One sentence says what needs you, what runs and what stopped. Each project says what Archeus did there last.', 'Una frase dice cosa ti serve, cosa gira e cosa si è fermato. Ogni progetto dice cosa ha fatto Archeus per ultimo.'],
+    c: ['One sentence says what needs you, what runs and what stopped. Each project says what Archeus did there last.', 'Una frase dice cosa richiede la tua attenzione, cosa gira e cosa si è fermato. Ogni progetto dice cosa ha fatto Archeus per ultimo.'],
     steps: [N('#/now', 500), H('sentence', 1800), H('ledger', 1600, { optional: true }), H('att-chip-*', 1800, { optional: true, ...DESK }), U] },
 
   { id: 'ov-hover', group: 'overview', on: 'desktop', t: ['Hover cards and focus', 'Schede al passaggio e focus'], covers: ['R', 'Q'],
@@ -125,7 +125,7 @@ export const CHAPTERS = [
       C('rp-nav-evidence', 1400), C('rp-nav-recovery', 1600), C('rp-nav-reference', 1800), C('rp-nav-events', 800)] },
 
   { id: 'security', group: 'pages', t: ['Security', 'Sicurezza'], covers: ['M', 'N', 'H'],
-    c: ['A posture sentence, held actions you allow once or deny, project policy, boundaries and the emergency controls.', 'Una frase sulla postura, azioni trattenute da consentire una volta o negare, politica dei progetti, confini e controlli di emergenza.'],
+    c: ['A posture sentence, held actions you allow once or deny, project policy, boundaries and the emergency controls.', 'Una frase sulla postura, azioni trattenute da consentire una volta o negare, regole dei progetti, confini e controlli di emergenza.'],
     steps: [N('#/security', 800), H('sentence', 1200), U, C('security-nav-policy', 1300), C('security-nav-boundaries', 1300), C('security-nav-activity', 1300), C('security-nav-emergency', 1300), C('security-nav-overview', 700)] },
 
   { id: 'health', group: 'pages', t: ['Health', 'Stato di salute'], covers: ['M', 'N', 'H'],
@@ -137,7 +137,7 @@ export const CHAPTERS = [
     steps: [N('#/usage', 800), C('hf-codex', 1300), C('hf-all', 800), C('usage-nav-windows', 1300), C('usage-nav-history', 1300), C('usage-nav-accounts', 800)] },
 
   { id: 'accounts', group: 'pages', t: ['Accounts and harnesses', 'Account e harness'], covers: ['HX', 'H', 'N'],
-    c: ['Claude Code, Codex and pi side by side: accounts, models, the failover order per harness and what each one starts with.', 'Claude Code, Codex e pi affiancati: account, modelli, ordine di failover per harness e con cosa parte ciascuno.'],
+    c: ['Claude Code, Codex and pi side by side: accounts, models, the failover order per harness and what each one starts with.', 'Claude Code, Codex e pi affiancati: account, modelli, ordine di subentro per harness e con cosa parte ciascuno.'],
     steps: [N('#/accounts', 800), C('hf-claude_code', 1200), C('hf-codex', 1200), C('hf-all', 700), C('accounts-nav-models', 1300), C('accounts-nav-failover', 1300), C('accounts-nav-launch', 1300), C('accounts-nav-accounts', 700)] },
 
   { id: 'extensions', group: 'pages', t: ['Extensions', 'Estensioni'], covers: ['HX', 'H', 'N', 'M'],
@@ -175,7 +175,7 @@ export const CHAPTERS = [
     steps: [N('#/work?as=graph', 500), TOOL('theme', THEME, 1600, { nth: 1 }), TOOL('theme', THEME, 1500, { nth: 2 }), TOOL('theme', THEME, 1500, { nth: 3 }), TOOL('theme', THEME, 1500, { nth: 5 }), TOOL('theme', THEME, 1300, { nth: 4 }), TOOL('theme', THEME, 900, { nth: 0 }), K('Escape', 300), C('work-as-list', 300)] },
 
   { id: 'motion', group: 'look', t: ['Reduced motion', 'Movimento ridotto'], covers: ['C'],
-    c: ['Quiet mode stops every loop and every glide. The core mark stands still and says how many missions run.', 'La modalità Quieta ferma ogni ciclo e ogni scorrimento. Il simbolo del nucleo sta fermo e dice quante missioni girano.'],
+    c: ['Quiet mode stops every loop and every glide. The core mark stands still and says how many missions run.', 'La modalità Quieta ferma ogni ciclo e ogni scorrimento. Il simbolo del Core sta fermo e dice quante missioni girano.'],
     steps: [N('#/now', 500), TOOL('theme', TOGGLE, 2600, { nth: 0 }), TOOL('theme', TOGGLE, 1500, { nth: 0 }), K('Escape', 400)] },
 
   { id: 'scale', group: 'look', t: ['Ten, thirty, a hundred projects', 'Dieci, trenta, cento progetti'], covers: ['R', 'Q', 'QN', 'RG'],

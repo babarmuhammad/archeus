@@ -5,7 +5,7 @@ export const IT_SHELL = {
   'Not stopped': 'Non fermato', 'Stopped': 'Fermato', 'accepts new work': 'accetta nuovo lavoro', 'new work blocked': 'nuovo lavoro bloccato',
   'decision waiting': 'decisione in attesa', 'work running': 'lavoro in corso', 'all verified': 'tutto verificato', 'nothing running': 'niente in corso',
   'Decision notes on the Overview': 'Note sulle decisioni in Panoramica',
-  'Nothing needs you': 'Niente ti serve', 'Last seen': 'Visto l’ultima volta', 'Search extensions': 'Cerca estensioni', 'Search extensions…': 'Cerca estensioni…',
+  'Nothing needs you': 'Niente richiede la tua attenzione', 'Last seen': 'Visto l’ultima volta', 'Search extensions': 'Cerca estensioni', 'Search extensions…': 'Cerca estensioni…',
   'No extension matches.': 'Nessuna estensione corrisponde.', 'Nothing is listed here.': 'Qui non c’è ancora nulla.', 'Extension types': 'Tipi di estensione', 'Open review': 'Apri la revisione',
   'Undo': 'Annulla', 'Clear search': 'Cancella la ricerca',
   'Settings sections': 'Sezioni delle impostazioni', 'Safety': 'Sicurezza', 'Prototype': 'Prototipo', 'About': 'Informazioni',
@@ -24,7 +24,7 @@ export const IT_SHELL = {
 };
 export const RULES_SHELL = [
   [/^All (\d+) projects$/, (m) => 'Tutti i ' + m[1] + ' progetti'],
-  [/^(\d+) extensions$/, (m) => m[1] + ' estensioni'], [/^(\d+) off$/, (m) => m[1] + ' spente'], [/^1 needs you$/, () => '1 ti serve'], [/^(\d+) need you$/, (m) => m[1] + ' ti servono'],
+  [/^(\d+) extensions$/, (m) => m[1] + ' estensioni'], [/^(\d+) off$/, (m) => m[1] + ' spente'], [/^1 needs you$/, () => '1 richiede la tua attenzione'], [/^(\d+) need you$/, (m) => m[1] + (m[1] === '1' ? ' richiede la tua attenzione' : ' richiedono la tua attenzione')],
   [/^Today (\d\d:\d\d)$/, (m) => 'Oggi ' + m[1]], [/^Yesterday (\d\d:\d\d)$/, (m) => 'Ieri ' + m[1]], [/^Earlier (\d\d:\d\d)$/, (m) => 'Prima ' + m[1]],
   [/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) (\d\d:\d\d)$/, (m) => ({ Mon: 'Lun', Tue: 'Mar', Wed: 'Mer', Thu: 'Gio', Fri: 'Ven', Sat: 'Sab', Sun: 'Dom' })[m[1]] + ' ' + m[2]]
 ];

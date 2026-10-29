@@ -78,7 +78,7 @@ function scopeItems(ctx) {
   const st = ctx.sim.state, need = new Set(Object.values(st.approvals).filter((a) => a.state === 'PENDING').map((a) => a.project));
   const row = (p, group) => ({ value: 'work:' + p.id, label: p.name, group });
   return [{ value: 'general', label: L('General', 'Generale'), meta: L('Not project memory', 'Non è memoria di progetto') }].concat(
-    st.projects.filter((p) => need.has(p.id)).map((p) => row(p, L('Needs you', 'Richiede te'))), st.projects.filter((p) => !need.has(p.id)).map((p) => row(p, L('Projects', 'Progetti'))));
+    st.projects.filter((p) => need.has(p.id)).map((p) => row(p, L('Needs you', 'Richiede la tua attenzione'))), st.projects.filter((p) => !need.has(p.id)).map((p) => row(p, L('Projects', 'Progetti'))));
 }
 function scopePicker(ctx, key, o) {
   const s = S4(ctx);
@@ -278,7 +278,7 @@ const missionItems = (st, project, pending) => {
   const need = new Set(pending.map((a) => a.mission)), all = Object.values(st.missions).filter((m) => m.project === project);
   const row = (m, group) => ({ value: m.id, label: m.title, meta: present('mission', m.state).label, group });
   return [{ value: '', label: L('All missions', 'Tutte le missioni') }].concat(
-    all.filter((m) => need.has(m.id)).map((m) => row(m, L('Needs you', 'Richiede te'))),
+    all.filter((m) => need.has(m.id)).map((m) => row(m, L('Needs you', 'Richiede la tua attenzione'))),
     all.filter((m) => !need.has(m.id) && isOpenMission(m)).map((m) => row(m, L('Open', 'Aperte'))),
     all.filter((m) => !need.has(m.id) && !isOpenMission(m)).map((m) => row(m, L('Closed', 'Chiuse'))));
 };
@@ -334,7 +334,7 @@ export function viewChat(ctx) {
   const bar = h('header', { class: 'cb' }, h('h1', { class: 'vh' }, L('Chat', 'Chat')), scopeHead, missionPick,
     focused ? spineLine(focused) : summary ? h('span', { class: 'cb-sum' }, summary) : null,
     h('span', { class: 'cb-gap' }),
-    here.length ? h('a', { class: 'btn cb-need', href: '#/work/' + here[0].id, 'data-key': 'chat-needs', 'aria-label': L('Needs you · {n}', 'Richiede te · {n}', { n: here.length }) }, glyph('needs_you'), h('span', { class: 'cb-nw' }, L('Needs you · ', 'Richiede te · ')), here.length) : null, more);
+    here.length ? h('a', { class: 'btn cb-need', href: '#/work/' + here[0].id, 'data-key': 'chat-needs', 'aria-label': L('Needs you · {n}', 'Richiede la tua attenzione · {n}', { n: here.length }) }, glyph('needs_you'), h('span', { class: 'cb-nw' }, L('Needs you · ', 'Richiede la tua attenzione · ')), here.length) : null, more);
   const wide = P.wide = wideNow(), cur = wide && tab === 'chat' ? 'receipts' : tab;
   const tabStrip = (list) => h('div', { class: 'cb-tabs', role: 'tablist', 'aria-label': L('Chat sections', 'Sezioni della chat') }, ...list.map(([id, en, it]) => h('button', { class: 'cb-tab', type: 'button', role: 'tab', id: 'cbt-' + id, 'aria-selected': cur === id ? 'true' : 'false', 'aria-controls': 'cbp', tabindex: cur === id ? '0' : '-1', 'data-key': 'chat-tab-' + id,
     onclick: () => { P.tab = id; ctx.render(); },

@@ -168,7 +168,7 @@ Status: to review. 3 strings.
 |---|---|
 | Ideas | Idee |
 | Blocked | Bloccata |
-| Needs you | Richiede te |
+| Needs you | Richiede la tua attenzione |
 
 ## Main dictionary: Attention
 
@@ -412,7 +412,7 @@ Status: to review. 36 strings.
 | Propose cancelling a mission | Proponi di annullare una missione |
 | Open the decision; it decides nothing | Apri la decisione; non decide nulla |
 | Propose an emergency stop of every running mission | Proponi un arresto d’emergenza di ogni missione in corso |
-|  ti serve |  ti servono |
+|  richiede la tua attenzione |  richiedono la tua attenzione |
 |  fermo |  fermi |
 | Changes requested | Modifiche richieste |
 | Not remembered | Non ricordato |
@@ -1111,7 +1111,7 @@ Status: to review. 25 strings.
 | No Undo. | Non si annulla. |
 | Decision cannot be changed. | La decisione non si può cambiare. |
 | Counts | Conteggi |
-| needs you | ti servono |
+| needs you | richiede la tua attenzione |
 | running | in corso |
 | stopped | fermi |
 | verifying | in verifica |
@@ -1833,7 +1833,7 @@ File: `js/i18n-now.js`. Not checked by a native speaker.
 - Archeus completed N missions today: → Oggi Archeus ha completato N missioni:
 - +N more projects → +N altri progetti
 - N missions, N ideas captured → N missioni, N idee raccolte
-- N projects. M need you. → N progetti. Ne servono M a te.
+- N projects. M need you. → N progetti. M richiedono la tua attenzione (1 richiede; 0: Nessuno richiede la tua attenzione).
 - Action verbs after “Archeus”: completed → ha completato; is verifying → sta verificando; is reviewing → sta rivedendo; started → ha avviato; asks you to approve → ti chiede di approvare; is blocked on → è bloccato su; has stopped → ha fermato; paused → ha messo in pausa
 
 ## Security, Health, Usage and Accounts overhaul (2026-10-28): to review
@@ -1873,7 +1873,7 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 - Recent → Recenti
 - Missions of the other projects: search by title. → Le missioni degli altri progetti: cerca per titolo.
 - N projects → N progetti (1 progetto)
-- N need you / N needs you → N richiedono te (1 richiede te)
+- N need you / N needs you → N richiedono la tua attenzione (1 richiede la tua attenzione)
 - N running → N in corso
 - N ideas → N idee (1 idea)
 - Show all N → Mostra tutti (N)
@@ -1885,7 +1885,7 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 - All {N} projects (rail and Places sheet, when there are more projects than fit) → Tutti i {N} progetti
 - {N} extensions (Extensions summary) → {N} estensioni
 - {N} off (Extensions summary) → {N} spente
-- 1 needs you (Extensions summary and group headers; the plural form {N} need you already existed) → 1 ti serve
+- 1 needs you (Extensions summary and group headers; the plural form {N} need you already existed) → 1 richiede la tua attenzione
 - Back to the app (terminal view exit button, label App) → Torna all’app
 - Show / Hide (Decision notes choice in Settings) → Mostra / Nascondi
 - Live work moves the map slowly: nodes drift, markers travel along active links and the core mark breathes. Reduced motion stops all of it. (replaces the older "the core mark is the one thing that moves" note) → Il lavoro in corso muove piano la mappa: i nodi si spostano appena, i segnalini viaggiano lungo i collegamenti attivi e il simbolo del Core respira. Il movimento ridotto ferma tutto.
@@ -1897,8 +1897,8 @@ File: `js/i18n-insp.js` (exact strings and counting rules). Existing words (Need
 
 Extensions tabs and Settings sections (second pass, same day):
 
-- Nothing needs you (Extensions state sentence) → Niente ti serve
-- {N} need you (plural, sentence part) → {N} ti servono
+- Nothing needs you (Extensions state sentence) → Niente richiede la tua attenzione
+- {N} need you (plural, sentence part) → {N} richiedono la tua attenzione
 - Last seen (clients column) → Visto l’ultima volta
 - Search extensions / Search extensions… (label, placeholder) → Cerca estensioni / Cerca estensioni…
 - No extension matches. / Clear search → Nessuna estensione corrisponde. / Cancella la ricerca
@@ -1988,7 +1988,7 @@ Strings built inline with `L(en, it)` in `js/chat.js`, `js/chat-cards.js` and `j
 - General → Generale
 - Not project memory → Non è memoria di progetto
 - Projects → Progetti (group)
-- Needs you → Richiede te (group header)
+- Needs you → Richiede la tua attenzione (group header)
 - Search → Cerca (picker search field)
 - Nothing matches. → Nessun risultato.
 - Replies and records stay in {p}. → Risposte e record restano in {p}.
@@ -2000,7 +2000,7 @@ Strings built inline with `L(en, it)` in `js/chat.js`, `js/chat-cards.js` and `j
 - {n} open → {n} aperte
 - Nothing open → Niente di aperto
 - More (menu button) → Altro
-- Needs you · {n} → Richiede te · {n}
+- Needs you · {n} → Richiede la tua attenzione · {n}
 -  · step {n} of 6 → · passo {n} di 6
 - Chat sections → Sezioni della chat
 - Conversation / Receipts / Context (tabs) → Conversazione / Ricevute / Contesto
@@ -2035,15 +2035,15 @@ File: `js/i18n-areas.js`. Each of the four pages now has parts that are links; t
 - Overview / Policy / Boundaries / Activity / Emergency (Security parts) → Panoramica / Regole / Confini / Attività / Emergenza (Policy already read Regole)
 - All / Needs attention / Unknown / OK (Health filter) → Tutti / Richiede attenzione / Sconosciuto / OK
 - Accounts / Windows / History (Usage parts) → Account / Finestre / Cronologia
-- Accounts / Models / Failover / Launch settings (Accounts parts) → Account / Modelli / Failover / Impostazioni di avvio
+- Accounts / Models / Failover / Launch settings (Accounts parts) → Account / Modelli / Subentro / Impostazioni di avvio
 - Security sections, Health filter, Usage views, Account sections (navigation names) → Sezioni della sicurezza, Filtro della salute, Viste dell'uso, Sezioni degli account
-- needs you / engaged / low / needs attention (hidden words beside a dot) → ti serve / attivo / basso / richiede attenzione
+- needs you / engaged / low / needs attention (hidden words beside a dot) → richiede la tua attenzione / attivo / basso / richiede attenzione
 - N of M actions → N azioni su M
-- Held commands never auto-allow. Policy applies to every project. → I comandi trattenuti non si autorizzano mai da soli. Le regole valgono per ogni progetto.
-- Scope: every project. Source: Archeus policy. Read only here. → Ambito: ogni progetto. Origine: regole di Archeus. Qui sono in sola lettura.
+- Held commands never auto-allow. Policy applies to every project. → I comandi trattenuti non si autorizzano mai da soli. La policy vale per ogni progetto.
+- Scope: every project. Source: Archeus policy. Read only here. → Ambito: ogni progetto. Origine: policy di Archeus. Qui è in sola lettura.
 - The mode a new mission starts with. No per-project command overrides are recorded. → La modalità con cui parte una nuova missione. Nessuna deroga per progetto è registrata.
 - Change it in Launch settings / See every action / See all events / See all N boundaries / Review the policy → Cambiala in Impostazioni di avvio / Vedi ogni azione / Vedi tutti gli eventi / Vedi tutti i N confini / Rivedi le regole
-- Where policy ends and physical confinement would have to begin. → Dove finiscono le regole e dovrebbe iniziare il confinamento fisico.
+- Where policy ends and physical confinement would have to begin. → Dove finisce la policy e dovrebbe iniziare il confinamento fisico.
 - Security events; Every decision, hook and breaker change, newest first. → Eventi di sicurezza; Ogni decisione, hook e cambio di interruttore, dal più recente.
 - After three failed starts in ten minutes a harness stops starting new work until it recovers. → Dopo tre avvii falliti in dieci minuti un harness smette di avviare nuovo lavoro finché non si riprende.
 - just now / N min ago / N h ago (relative time; the exact time is in the tooltip, which stays numeric) → adesso / N min fa / N h fa
@@ -2118,7 +2118,7 @@ Status: **to review**. Inline `L(en, it)` strings in `js/replay.js`.
 - Nothing matches this filter. → Nessun risultato per questo filtro.
 - Clear filter → Azzera il filtro
 - Filter by state (legend group name) → Filtra per stato
-- Legend chips reuse the existing Needs you / Running / Blocked / Done words (Ti serve, In corso, Bloccate, Fatte).
+- Legend chips reuse the existing Needs you / Running / Blocked / Done words (Richiede la tua attenzione, In corso, Bloccate, Fatte).
 
 
 ## Harness as a facet of Accounts, Usage and Extensions (2026-10-28): to review
@@ -2126,13 +2126,13 @@ Status: **to review**. Inline `L(en, it)` strings in `js/replay.js`.
 File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word in the UI); the names Claude Code, Codex and pi are not translated. Exact strings are in the dictionary, the ones with a count or a name are patterns at the start of `RULES_AREAS`.
 
 - {n} harnesses / {n} accounts / {n} near the ceiling / {n} cannot take work (headline parts) → {n} harness / {n} account / {n} vicino al limite / {n} non può prendere lavoro
-- Each harness has its own accounts, models, failover order and launch settings. A subscription login belongs to you. → Ogni harness ha i propri account, modelli, ordine di failover e impostazioni di avvio. Un accesso in abbonamento è tuo.
+- Each harness has its own accounts, models, failover order and launch settings. A subscription login belongs to you. → Ogni harness ha i propri account, modelli, ordine di subentro e impostazioni di avvio. Un accesso in abbonamento è tuo.
 - Near its ceiling / Not verified / Ready / No account / Cannot start / No account can take work / Not installed (state words on a harness) → Vicino al limite / Non verificato / Pronto / Nessun account / Non può partire / Nessun account può prendere lavoro / Non installato
 - Not detected → Non rilevato (version note of a harness that is not installed)
 - {x} is not installed on this machine. → {x} non è installato su questa macchina.
 - Install its CLI and Archeus detects it. It would support {list}. → Installa la sua CLI e Archeus la rileva. Supporterebbe {list}. (new capability names: Agents, Skills, Slash commands, Plugins, Sandbox profiles → Agenti, Competenze, Comandi slash, Plugin, Profili sandbox)
 - Run Health after installing → Esegui Salute dopo l'installazione
-- In failover order within {x}. {a} takes the next {x} mission. → In ordine di failover dentro {x}. {a} prende la prossima missione di {x}.
+- In failover order within {x}. {a} takes the next {x} mission. → In ordine di subentro dentro {x}. {a} prende la prossima missione di {x}.
 - No account is signed in for {x}. Sign in with its own CLI; Archeus never reads the token. → Nessun account ha effettuato l'accesso a {x}. Accedi con la sua CLI; Archeus non legge mai il token.
 - The default is what a new {x} mission asks for. Saved as you choose. → Il predefinito è ciò che chiede una nuova missione di {x}. Si salva appena scegli.
 - Order within each harness / Rules for every harness / Change order → Ordine dentro ogni harness / Regole per ogni harness / Cambia ordine
@@ -2161,14 +2161,14 @@ File: `js/i18n-areas.js`. "Harness" is kept in English (it is the product word i
 - Show N more / N not shown → Mostra altre N / N non mostrate
 - No mission matches. / Clear filters → Nessuna missione corrisponde. / Azzera i filtri
 - N of M missions (spoken count) → N di M missioni
-- State chips reuse Needs you, Running, Blocked, Done (Ti serve, In corso, Bloccate, Fatte).
+- State chips reuse Needs you, Running, Blocked, Done (Richiede la tua attenzione, In corso, Bloccate, Fatte).
 
 
 ## Phone sheets and composer, slice C (2026-10-28): to review
 - Simulated keyboard / Hide keyboard (the drawn keyboard of a mouse window, a prototype aid) → Tastiera simulata / Nascondi la tastiera
 - Show (the group of views in the Chat page's More menu on a phone: Conversation, Receipts, Context) → Mostra (the three view names are the existing Conversazione, Ricevute, Contesto)
 - Expand / Collapse (the handle of every sheet, set again after each step) → Espandi / Comprimi (already in the phone dictionary; the label is now translated after each step)
-- The Chat page "Needs you · {n}" on a phone shows the glyph and the count; the full words stay as its accessible name → Richiede te · {n}
+- The Chat page "Needs you · {n}" on a phone shows the glyph and the count; the full words stay as its accessible name → Richiede la tua attenzione · {n}
 - Decision E03 and the other decision notes (now a one-line summary that opens) → unchanged wording, Decisione E03
 
 ## Phone shell: bar, top bar, Places, safety sheet (slice A) - 2026-10-28
@@ -2189,7 +2189,7 @@ Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsew
 | Stop all 1 mission? | Fermare la missione in corso? |
 | Stop all N missions? | Fermare tutte le N missioni? |
 | N running, M paused | N in corso, M in pausa |
-| Work, N need you (bar label for Work with a count) | Lavoro, N ti servono (N = 1: ti serve) |
+| Work, N need you (bar label for Work with a count) | Lavoro, N richiedono la tua attenzione (N = 1: richiede la tua attenzione) |
 
 ## Network semantic zoom and worktrees (2026-10-28): to review
 - Worktree → Worktree (kept in English: the Git word; the plural is the same)
@@ -2216,7 +2216,7 @@ Status: to review. Pairs in `js/i18n-phone.js`. Strings already translated elsew
 - Archeus made it for a task. Finish or abandon the mission and Archeus removes it. → Lo ha creato Archeus per un'attività. Concludi o abbandona la missione e Archeus lo rimuove.
 - The folder is gone. Restore it or drop the branch: Archeus does not reset or recreate a linked worktree. → La cartella non c'è più. Ripristinala o scarta il ramo: Archeus non reimposta né ricrea un worktree collegato.
 - The folder is gone. Abandon the mission, or restore the folder. → La cartella non c'è più. Abbandona la missione oppure ripristina la cartella.
-- Reused from the Overview rows: Worktrees, linked (collegato), task (attività), Stale, Missing, Merged, Abandoned, N worktrees. Active (state) reads Attiva, a feminine form; the word should be masculine for worktree: Attivo. Needs your call.
+- Reused from the Overview rows: Worktrees, linked (collegato), task (attività), Stale, Missing, Merged, Abandoned, N worktrees. Active reads Attivo for worktrees; phase:Active remains Attiva for a phase (owner decision, 2026-10-29).
 
 ## Phone pages (slice D) - 2026-10-28
 
@@ -2230,7 +2230,7 @@ Status: to review. New pairs in `js/i18n-s6.js` and `js/i18n-areas.js` for Repla
 | Back to Settings | Torna alle Impostazioni |
 | new work is blocked | il nuovo lavoro è bloccato |
 | English | Inglese |
-| Quiet motion | Movimento quieto |
+| Quiet motion | Movimento ridotto |
 | Full motion | Movimento pieno |
 | Motion follows the system | Il movimento segue il sistema |
 | simulation playing | simulazione in corso |
@@ -2326,7 +2326,7 @@ Chapter captions
 | English | Italian |
 |---|---|
 | A guided tour of the real app. The simulation keeps running underneath. Pause, skip or stop at any time; a click or a key stops it. | Un giro guidato dell’app vera. La simulazione continua a girare sotto. Pausa, salta o ferma quando vuoi; un clic o un tasto la ferma. |
-| One sentence says what needs you, what runs and what stopped. Each project says what Archeus did there last. | Una frase dice cosa ti serve, cosa gira e cosa si è fermato. Ogni progetto dice cosa ha fatto Archeus per ultimo. |
+| One sentence says what needs you, what runs and what stopped. Each project says what Archeus did there last. | Una frase dice cosa richiede la tua attenzione, cosa gira e cosa si è fermato. Ogni progetto dice cosa ha fatto Archeus per ultimo. |
 | Point at a project and the others step back; a card says what it holds. A click focuses the project and lists its missions. | Punta un progetto e gli altri si abbassano; una scheda dice cosa contiene. Un clic mette a fuoco il progetto e ne elenca le missioni. |
 | The switch beside the headline turns the territories into a network: every mission is a node around its project hub. | L’interruttore accanto al titolo trasforma i territori in una rete: ogni missione è un nodo attorno al suo progetto. |
 | Zoom in and the map shows more: names, then states, then the small marks of each attempt. Fit brings it all back. | Ingrandisci e la mappa mostra di più: nomi, stati, poi i segni di ogni tentativo. Adatta riporta tutto in vista. |
@@ -2344,10 +2344,10 @@ Chapter captions
 | A full conversation with a scope and a mission to talk about, receipts of what Archeus did, and the context it is using. | Una conversazione completa con un ambito e una missione di cui parlare, le ricevute di ciò che Archeus ha fatto e il contesto che usa. |
 | What Core recorded, in order, read-only. Pick a mission, step back and forward, and open the evidence behind any step. | Ciò che il Core ha registrato, in ordine, in sola lettura. Scegli una missione, vai avanti e indietro, apri le prove di ogni passo. |
 | Evidence is labelled by its real strength. Recovery only proposes cards you approve; Reference says what was never recorded. | Le prove sono etichettate per la loro forza reale. Il recupero propone solo schede da approvare; i Riferimenti dicono cosa non è mai stato registrato. |
-| A posture sentence, held actions you allow once or deny, project policy, boundaries and the emergency controls. | Una frase sulla postura, azioni trattenute da consentire una volta o negare, politica dei progetti, confini e controlli di emergenza. |
+| A posture sentence, held actions you allow once or deny, project policy, boundaries and the emergency controls. | Una frase sulla postura, azioni trattenute da consentire una volta o negare, regole dei progetti, confini e controlli di emergenza. |
 | Checks and readings, filtered by what needs attention. Run a check and see its answer; unknown is never shown as fine. | Controlli e letture, filtrati per ciò che richiede attenzione. Esegui un controllo e vedi la risposta; sconosciuto non è mai mostrato come a posto. |
 | Limits as numbers with their reset time, per account and per harness. A reading that is missing says unknown, never zero. | Limiti come numeri con l’ora di reset, per account e per harness. Una lettura mancante dice sconosciuto, mai zero. |
-| Claude Code, Codex and pi side by side: accounts, models, the failover order per harness and what each one starts with. | Claude Code, Codex e pi affiancati: account, modelli, ordine di failover per harness e con cosa parte ciascuno. |
+| Claude Code, Codex and pi side by side: accounts, models, the failover order per harness and what each one starts with. | Claude Code, Codex e pi affiancati: account, modelli, ordine di subentro per harness e con cosa parte ciascuno. |
 | Hooks, MCP servers, agents, automations and paired clients, each with a switch, a details sheet and the harnesses that support it. | Hook, server MCP, agenti, automazioni e client abbinati, ciascuno con un interruttore, una scheda e gli harness che lo supportano. |
 | Safety, Appearance, Prototype and About. Pause all, Resume all and the emergency stop live here too, and the key list opens from here. | Sicurezza, Aspetto, Prototipo e Informazioni. Qui ci sono anche Pausa, Riprendi e arresto d’emergenza, e da qui si apre l’elenco dei tasti. |
 | The same state as text. Number keys switch screens, j and k move, Enter opens, ? lists the keys; L, G and T change colours, glyphs and Read mode. | Lo stesso stato come testo. I numeri cambiano schermata, j e k si muovono, Invio apre, ? elenca i tasti; L, G e T cambiano colori, glifi e modo Lettura. |
@@ -2356,7 +2356,7 @@ Chapter captions
 | A dashed note under a choice names the owner decision behind it. They can be switched off for a clean view. | Una nota tratteggiata sotto una scelta nomina la decisione del proprietario che c’è dietro. Si possono spegnere per una vista pulita. |
 | The whole interface switches to Italian and back. Mission titles stay as Core wrote them. | Tutta l’interfaccia passa all’italiano e ritorna. I titoli delle missioni restano come li ha scritti il Core. |
 | Dark and Light, each in standard and high contrast, plus System and a forced colours simulation. The ground is flat; state never relies on colour alone. | Scuro e Chiaro, ciascuno standard e ad alto contrasto, più Sistema e una simulazione dei colori forzati. Lo sfondo è piatto; lo stato non dipende mai dal solo colore. |
-| Quiet mode stops every loop and every glide. The core mark stands still and says how many missions run. | La modalità Quieta ferma ogni ciclo e ogni scorrimento. Il simbolo del nucleo sta fermo e dice quante missioni girano. |
+| Quiet mode stops every loop and every glide. The core mark stands still and says how many missions run. | La modalità Quieta ferma ogni ciclo e ogni scorrimento. Il simbolo del Core sta fermo e dice quante missioni girano. |
 | The same pages at scale: 10, 30 and 100 simulated projects, a calm story with finished work, and your own projects when this PC has them. | Le stesse pagine in scala: 10, 30 e 100 progetti simulati, una storia calma con il lavoro finito e i tuoi progetti se questo PC li ha. |
 | Tablet, desktop and Terminal frames of the same app, and All devices: four panes driven by one simulation. | Cornici tablet, desktop e Terminale della stessa app, e Tutti i dispositivi: quattro riquadri guidati da una sola simulazione. |
 | On a phone the bar holds Overview, Work, Tell, Places and Stop. Places lists every destination and your projects. | Su un telefono la barra ha Panoramica, Lavoro, Dimmi, Luoghi e Ferma. I Luoghi elencano ogni destinazione e i tuoi progetti. |
@@ -2370,7 +2370,7 @@ File: `js/i18n.js`. Not checked by a native speaker. The rings carry colour only
 
 | English | Italian |
 |---|---|
-| N nodes across M projects. K need you. … Tab through the projects in the order of the lanes, arrow keys walk along a lane and between lanes, Enter to select. Equivalent node table follows map controls. | N nodi in M progetti. K ti servono. Usa Tab per scorrere i progetti nell’ordine delle corsie, le frecce per muoverti lungo una corsia e tra le corsie, Invio per scegliere. La tabella equivalente segue i controlli della mappa. |
+| N nodes across M projects. K need you. … Tab through the projects in the order of the lanes, arrow keys walk along a lane and between lanes, Enter to select. Equivalent node table follows map controls. | N nodo/nodi in M progetto/progetti. K richiede/richiedono la tua attenzione. Usa Tab per scorrere i progetti nell’ordine delle corsie, le frecce per muoverti lungo una corsia e tra le corsie, Invio per scegliere. La tabella equivalente segue i controlli della mappa. |
 | lane N of M for <state> (spoken after a project's name, state and mission count) | corsia N di M per <stato> |
 | 1 mission / N missions, 1 worktree / N worktrees (spoken on a ring mark) | 1 missione / N missioni, 1 worktree / N worktree (existing rules) |
 ## Phone lists (slice B) - 2026-10-29
@@ -2382,7 +2382,7 @@ Status: to review. New pairs in `js/i18n-phone.js` for the Overview, Work and Pr
 | Show everything | Mostra tutto |
 | Nothing here. | Niente qui. |
 | Tap a node to see the mission. | Tocca un nodo per vedere la missione. |
-| Work graph: missions and decisions as nodes round the core. The list has the same content. | Grafo del lavoro: missioni e decisioni come nodi attorno al nucleo. L’elenco ha lo stesso contenuto. |
+| Work graph: missions and decisions as nodes round the core. The list has the same content. | Grafo del lavoro: missioni e decisioni come nodi attorno al Core. L’elenco ha lo stesso contenuto. |
 | +{n} more in the list | +{n} altri nell’elenco |
 | All {n} in Work | Tutti i {n} in Lavoro |
 | Show {n} more | Mostra altri {n} |
@@ -2407,3 +2407,15 @@ Status: to review. New pairs in `js/i18n-now.js` and the Autopilot chapter in `j
 Phone Tell label: Dimmi (owner 2026-10-29). Sheet title “Tell Archeus” and field placeholder “Tell Archeus what to do…” both translate as “Dimmi cosa fare…”. English wording stays unchanged.
 
 Owner approved descriptive tooltips and accessible names on 2026-10-29 (pairs above). Icons remain unchanged; each name appears in the selected language only.
+
+
+## Owner wording decisions applied (2026-10-29)
+
+Status: owner-approved terminology; rendering remains to be checked by Claude.
+
+- Attention counts use "1 richiede la tua attenzione" / "N richiedono la tua attenzione", including zero counts. The projects headline uses "Nessuno richiede la tua attenzione" at zero. Nothing needs you uses "Niente richiede la tua attenzione".
+- These forms cover the state sentence, territory and ring captions, accessible project names, caption chips, Work bar, extension summaries and Chat inline labels. Node/project nouns also agree at one in map instructions.
+- Policy remains "Policy" in technical labels and "policy" in prose; the Security navigation section uses contextual "nav:Policy" -> "Regole". The tour says "regole dei progetti". The source-policy note now agrees with singular policy.
+- Italian failover text uses "subentro", including per-harness account sentences and the tour. Quiet motion is "Movimento ridotto"; project Quiet stays "Quieto".
+- Core stays "Core" in the Work graph description and tour. Active defaults to "Attivo" for worktrees; contextual "phase:Active" remains "Attiva" for phases. Existing feminine mission states stay unchanged.
+- English source keys and tour text stay unchanged. Other review FIX proposals were deliberately deferred; see .collab-codex-it-report.md.

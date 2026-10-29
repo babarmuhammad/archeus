@@ -104,9 +104,9 @@ test('project state follows mission lanes, including paused, planning and mixed 
 test('project descriptions translate whole attention phrases for accessible names and equivalent lists', async () => {
   globalThis.location = {search: '?lang=it'};
   const {tr} = await import('../i18n.js');
-  for (const [attention, phrase] of [[1, '1 ti serve'], [2, '2 ti servono']]) {
+  for (const [attention, phrase] of [[1, '1 richiede la tua attenzione'], [2, '2 richiedono la tua attenzione']]) {
     const project = {name: 'Alpha', code: 'AL', attention, missions: [], worktrees: [{}, {}]};
     assert.equal(describeProject(project), 'Alpha, AL, Needs you, ' + attention + ' need you, 2 worktrees');
-    assert.equal(describeProject(project, tr), 'Alpha, AL, Richiede te, ' + phrase + ', 2 worktree');
+    assert.equal(describeProject(project, tr), 'Alpha, AL, Richiede la tua attenzione, ' + phrase + ', 2 worktree');
   }
 });

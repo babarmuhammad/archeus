@@ -1,7 +1,7 @@
 // Italian for the finishing slice (keyboard help, phone counters, the Now control strip, No Undo, Dismiss). Written by the builder, not native-checked: see IT-REVIEW.md.
 export const IT_S6 = {
   'Enter': 'Invio', 'Space': 'Spazio', 'Dismiss': 'Chiudi', 'No Undo.': 'Non si annulla.', 'Decision cannot be changed.': 'La decisione non si può cambiare.',
-  'Counts': 'Conteggi', 'needs you': 'ti servono', 'running': 'in corso', 'stopped': 'fermi', 'verifying': 'in verifica',
+  'Counts': 'Conteggi', 'needs you': 'richiede la tua attenzione', 'running': 'in corso', 'stopped': 'fermi', 'verifying': 'in verifica',
   'Not stopped: accepts new work.': 'Non fermato: accetta nuovo lavoro.',
   'Stop every running mission and block new dispatch until you re-arm? Each mission then waits for you.': 'Fermare ogni missione in corso e bloccare i nuovi avvii finché non riarmi? Ogni missione poi aspetta te.',
   'Keyboard shortcuts': 'Scorciatoie da tastiera', 'Keyboard shortcuts (?)': 'Scorciatoie da tastiera (?)',
@@ -15,7 +15,7 @@ export const IT_S6 = {
   'Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet, which takes focus when it opens and gives it back when it closes.': 'Ordine del focus: barra degli strumenti, navigazione, pagina, barra della chat, barra in basso, poi il pannello dei dettagli, che prende il focus quando si apre e lo restituisce quando si chiude.',
   // Phone pages (Replay, the area pages, Settings, terminal keys), 2026-10-28. Italian wording to review.
   'Less': 'Meno', 'More actions': 'Altre azioni', 'Open the decision': 'Apri la decisione', 'Back to Settings': 'Torna alle Impostazioni',
-  'new work is blocked': 'il nuovo lavoro è bloccato', 'English': 'Inglese', 'Quiet motion': 'Movimento quieto', 'Full motion': 'Movimento pieno', 'Motion follows the system': 'Il movimento segue il sistema',
+  'new work is blocked': 'il nuovo lavoro è bloccato', 'English': 'Inglese', 'Quiet motion': 'Movimento ridotto', 'Full motion': 'Movimento pieno', 'Motion follows the system': 'Il movimento segue il sistema',
   'simulation playing': 'simulazione in corso', 'simulation paused': 'simulazione in pausa', 'Simulated': 'Simulato',
   'Places: leave the terminal and open Places': 'Luoghi: esci dal terminale e apri i Luoghi', 'Stop: leave the terminal and open the emergency stop': 'Stop: esci dal terminale e apri l’arresto d’emergenza',
   'The terminal view has its own keys; press ? there.': 'La vista terminale ha i suoi tasti; premi ? lì.'

@@ -10,7 +10,7 @@ export const IT_INSP = {
   'No projects yet.': 'Ancora nessun progetto.', 'No missions yet.': 'Ancora nessuna missione.',
   'No project ideas yet.': 'Ancora nessuna idea per questo progetto.', 'Project ideas': 'Idee del progetto',
   'Phases': 'Fasi', 'Recorded relation': 'Relazione registrata', 'Suggested relation': 'Relazione suggerita',
-  'Active': 'Attiva', 'Waiting': 'In attesa', 'Verified': 'Verificata', 'Completed': 'Completata',
+  'Active': 'Attivo', 'phase:Active': 'Attiva', 'Waiting': 'In attesa', 'Verified': 'Verificata', 'Completed': 'Completata',
   'Nothing running in this project.': 'Niente in esecuzione in questo progetto.',
   'Work needs you in this project.': 'Il lavoro in questo progetto richiede la tua attenzione.',
   'Work is active in this project.': 'Il lavoro in questo progetto è attivo.',
@@ -30,6 +30,6 @@ export const IT_INSP = {
   'Captured ideas': 'Idee catturate', 'Recent': 'Recenti', 'No missions to replay yet.': 'Ancora nessuna missione da rivedere.', 'Missions of the other projects: search by title.': 'Le missioni degli altri progetti: cerca per titolo.',
 };
 export const RULES_INSP = [[/^Branch: (.+)$/, (m) => 'Ramo: ' + m[1]], [/^(\d+) missions?$/, m => m[1] + (m[1] === '1' ? ' missione' : ' missioni')],
-  [/^(\d+) projects?$/, m => m[1] + (m[1] === '1' ? ' progetto' : ' progetti')], [/^(\d+) needs? you$/, m => m[1] + (m[1] === '1' ? ' richiede te' : ' richiedono te')],
+  [/^(\d+) projects?$/, m => m[1] + (m[1] === '1' ? ' progetto' : ' progetti')], [/^(\d+) needs? you$/, m => m[1] + (m[1] === '1' ? ' richiede la tua attenzione' : ' richiedono la tua attenzione')],
   [/^(\d+) running$/, m => m[1] + ' in corso'], [/^(\d+) ideas?$/, m => m[1] + (m[1] === '1' ? ' idea' : ' idee')], [/^Show all (\d+)$/, m => 'Mostra tutti (' + m[1] + ')'],
   [/^Graph shows the first (\d+) of (\d+) missions, the list has all$/, m => 'Il grafico mostra le prime ' + m[1] + ' missioni su ' + m[2]  + ', l’elenco le ha tutte']];

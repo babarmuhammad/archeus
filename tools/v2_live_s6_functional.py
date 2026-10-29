@@ -104,7 +104,7 @@ try:
         ctx.close()
         # 5 Italian
         ctx, pg, errs = page(390, 844, extra='&lang=it')
-        check('Italian counters', pg.evaluate("() => [...document.querySelectorAll('.counters .ctr span')].map((e) => e.textContent)") == ['ti servono', 'in corso', 'fermi', 'in verifica'])
+        check('Italian counters', pg.evaluate("() => [...document.querySelectorAll('.counters .ctr span')].map((e) => e.textContent)") == ['richiede la tua attenzione', 'in corso', 'fermi', 'in verifica'])
         pg.keyboard.press('?'); pg.wait_for_timeout(200)
         check('Italian help', pg.locator('.helpbox h2').inner_text() == 'Scorciatoie da tastiera' and 'Ordine del focus' in pg.locator('.helpbox').inner_text())
         pg.keyboard.press('Escape')
