@@ -407,7 +407,9 @@ def main():
             check(pg.evaluate("window.v2live.sim.state.events.length") == before, 'drafting changes nothing')
             pg.click('.ccard[data-kind="proposal"] .btn.primary')
             pg.wait_for_timeout(400)
-            check('Evidence unchanged' in pg.inner_text('.rp-reference') or 'invariate' in pg.inner_text('.rp-reference') or 'unchanged' in pg.inner_text('.rp-reference'), 'approval gives a receipt that says the evidence is unchanged')
+            receipt = pg.locator('#rp-recovery .receipt[role="status"]')
+            receipt_text = receipt.inner_text()
+            check(receipt.is_visible() and ('Approved:' in receipt_text or 'Approvata:' in receipt_text) and ('Evidence unchanged' in receipt_text or 'invariate' in receipt_text or 'unchanged' in receipt_text), 'approval gives a receipt that says the evidence is unchanged')
             check(not errs, 'no page errors in the Replay run: %s' % errs[:2])
             ctx.close()
 
