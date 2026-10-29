@@ -84,8 +84,8 @@ html[data-kb='open'] .bottombar { display: none; }
 .sf-state { font: 500 17px / 1.35 var(--font); }
 .sf-state[data-state='stopped'] { color: var(--stop-fg); }
 .sf-count { color: var(--text-2); font-size: 14px; }
-.sf-row { display: flex; gap: 8px; }
-.sf .sf-row > .btn.l { flex: 1 1 0; --bh: 48px; --hit: 48px; padding: 8px 10px; white-space: normal; overflow-wrap: anywhere; }
+.sf-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.sf .sf-row > .btn.l { flex: 1 0 auto; --bh: 48px; --hit: 48px; padding: 8px 10px; white-space: nowrap; }
 .sf-confirm { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--hair) solid var(--line); }
 .sf-q { font: 600 17px / 1.3 var(--font); }
 .sf-note { color: var(--text-2); font-size: 14px; }

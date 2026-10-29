@@ -203,6 +203,7 @@
 .wp-more { padding-inline: 14px; border-radius: 22px; } .wp-more .pk-v { display: none; }
 .wp-tools { display: flex; align-items: center; gap: 8px; }
 .wp-tools .wp-pick { flex: 1 1 auto; min-width: 0; font-size: 15px; }
+.wp-pick .pk-t { white-space: normal; overflow-wrap: anywhere; }
 .wp-seg { flex: none; }
 .wp-count { margin: 0; color: var(--text-2); font-size: var(--fs-floor); }
 .wr-secs { display: flex; flex-direction: column; gap: 4px; }
@@ -223,6 +224,8 @@
 .wr-time { flex: none; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
 .wr-meta .sp { flex: none; margin-left: auto; }
 .wr-act { flex: none; align-self: center; }
+.wr:has(.wr-act) { flex-wrap: wrap; padding-bottom: 8px; }
+.wr:has(.wr-act) .wr-main { flex-basis: 100%; }
 .ph-more { width: 100%; margin: 8px 0; }
 
 /* the graph view: the page does not scroll, the stage is what the bars leave */

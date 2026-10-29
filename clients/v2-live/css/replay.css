@@ -185,7 +185,8 @@ html[data-notes='off'] .rp-how { display: none; }
   .rp-phead > :first-child { flex: 1 1 auto; min-width: 0; } /* whatever missionPick returns */
   .rp-mission { flex: none; }
   .rp-state { display: flex; align-items: center; gap: 12px; min-height: 36px; margin: 0; padding-bottom: 4px; color: var(--text-2); font-size: 14px; }
-  .rp-state-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rp-state-t { min-width: 0; overflow-wrap: anywhere; }
+  .rp-page[data-phone] .mc-tm { white-space: normal; overflow-wrap: anywhere; }
   .rp-page[data-phone] .rp-nav { position: static; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 calc(var(--gut) * -1); padding-inline: var(--gut); overflow: visible; }
   .rp-page[data-phone] .rp-nav-a { justify-content: center; min-height: 44px; padding: 0 2px; font-size: 15px; text-align: center; }
   .rp-page[data-phone] .rp-nav-a[aria-current='page'] { color: var(--text); border-bottom-color: var(--thread); }
