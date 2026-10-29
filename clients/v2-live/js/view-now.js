@@ -67,7 +67,7 @@ function attentionStrip(ctx, ov) {
 
 function viewSwitch(ctx) {
   const cur = store.get('overview'), opt = (id, ic, label) => h('button', { class: 'vs-btn', type: 'button', 'aria-pressed': String(cur === id), 'aria-label': tr(label), title: tr(label), 'data-key': 'vs-' + id, onclick: () => { if (cur !== id) { store.set('overview', id); ctx.render(); } } }, icon(ic, 20));
-  return h('div', { class: 'view-switch', role: 'group', 'aria-label': tr('Overview view') }, opt('territories', 'viewgrid', 'Territories view'), opt('rings', 'viewrings', 'Rings view'), opt('network', 'viewnet', 'Network view'));
+  return h('div', { class: 'view-switch', role: 'group', 'aria-label': tr('Overview view') }, opt('territories', 'viewgrid', 'Territories: one cell per project'), opt('rings', 'viewrings', 'Rings: a lane per state'), opt('network', 'viewnet', 'Network: missions around each project'));
 }
 
 export function render(ctx) {

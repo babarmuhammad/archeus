@@ -11,7 +11,7 @@ export const IT_SHELL = {
   'Settings sections': 'Sezioni delle impostazioni', 'Safety': 'Sicurezza', 'Prototype': 'Prototipo', 'About': 'Informazioni',
   'Govern': 'Governa', 'Configure': 'Configura', 'Search or run a command': 'Cerca o esegui un comando', 'Search pages, actions and projects': 'Cerca pagine, azioni e progetti',
   'Command palette': 'Comandi rapidi', 'Results': 'Risultati', 'Pages': 'Pagine', 'Actions': 'Azioni', 'Nothing matches. Try a page, an action or a project name.': 'Nessun risultato. Prova il nome di una pagina, di un’azione o di un progetto.',
-  'move': 'muovi', 'run': 'esegui', 'close': 'chiudi', 'Stop all': 'Ferma tutto', 'Tell Archeus': 'Dì ad Archeus', 'Settings: Safety': 'Impostazioni: Sicurezza', 'Settings: Appearance': 'Impostazioni: Aspetto',
+  'move': 'muovi', 'run': 'esegui', 'close': 'chiudi', 'Stop all': 'Ferma tutto', 'Tell Archeus': 'Dimmi cosa fare…', 'Settings: Safety': 'Impostazioni: Sicurezza', 'Settings: Appearance': 'Impostazioni: Aspetto',
   'Settings: Prototype': 'Impostazioni: Prototipo', 'Language: Italiano': 'Lingua: Italiano', 'Language: English': 'Lingua: English', 'Stale': 'Non aggiornato',
   'Ctrl+K or Cmd+K': 'Ctrl+K o Cmd+K', 'Search pages, actions and projects, and run them': 'Cerca pagine, azioni e progetti ed eseguili',
   'Back to the app': 'Torna all’app', 'Show': 'Mostra', 'Hide': 'Nascondi',

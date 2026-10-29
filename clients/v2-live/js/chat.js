@@ -125,7 +125,7 @@ export function composer(ctx, where) {
     hint.textContent = [live ? L('Enter queue · {k}Enter steer', 'Invio accoda · {k}Invio guida', { k: mod }) : '', n ? L('{n} queued', '{n} in coda', { n }) : ''].filter(Boolean).join(' · ');
   }
   function refresh() {
-    input.placeholder = L('Tell Archeus what to do…', 'Dì ad Archeus cosa fare…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
+    input.placeholder = L('Tell Archeus what to do…', 'Dimmi cosa fare…'); input.setAttribute('aria-label', L('Message to Archeus', 'Messaggio ad Archeus'));
     slashBtn.setAttribute('aria-label', L('Commands', 'Comandi')); slashBtn.title = L('Commands (type /)', 'Comandi (scrivi /)'); send.title = L('Send (Enter)', 'Invia (Invio)');
     drawHint();
     send.textContent = L('Send', 'Invia'); stop.textContent = L('Stop', 'Ferma'); stop.setAttribute('aria-label', L('Stop: propose an emergency stop', 'Ferma: proponi un arresto d\'emergenza'));

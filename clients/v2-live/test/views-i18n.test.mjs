@@ -7,7 +7,11 @@ const { CHAPTERS } = await import('../js/autopilot-script.js');
 
 const EN_WORDS = /\b(Territories|Rings?|Network|Project|Needs you|missions?|Open work)\b/;
 const IT_WORDS = /\b(Territori|Anelli|Rete|Progetto|Ti serve|missione|missioni|Apri il lavoro)\b/;
-const names = { 'Territories view': 'Vista a territori', 'Rings view': 'Vista ad anelli', 'Network view': 'Vista a rete' };
+const names = {
+  'Territories: one cell per project': 'Territori: una cella per progetto',
+  'Rings: a lane per state': 'Anelli: una corsia per stato',
+  'Network: missions around each project': 'Rete: le missioni attorno a ogni progetto'
+};
 
 test('each view name renders in one language: the Italian name carries no English view word', () => {
   for (const [en, it] of Object.entries(names)) {
@@ -15,6 +19,11 @@ test('each view name renders in one language: the Italian name carries no Englis
     assert.doesNotMatch(tr(en), EN_WORDS);
     assert.doesNotMatch(en, IT_WORDS);
   }
+});
+
+test('Italian Tell title and placeholder use the owner wording', () => {
+  assert.equal(tr('Tell Archeus'), 'Dimmi cosa fare…');
+  assert.equal(tr('Tell Archeus what to do…'), 'Dimmi cosa fare…');
 });
 
 test('the focus caption strings translate whole: no English word is left beside the Italian', () => {

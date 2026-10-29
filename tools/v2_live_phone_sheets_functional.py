@@ -109,7 +109,7 @@ def tell_flows(br, base):
     # Italian
     ctx, pg, errs = new_page(br, base, q='&lang=it')
     tell(pg)
-    check(pg.evaluate("document.querySelector('.sheet h2').textContent") == 'Dì ad Archeus' and pg.evaluate("document.querySelector('.sheet-grip').getAttribute('aria-label')") == 'Espandi', 'Tell: the sheet speaks Italian (title and handle): %s' % pg.evaluate("[document.querySelector('.sheet h2').textContent, document.querySelector('.sheet-grip').getAttribute('aria-label')]"))
+    check(pg.evaluate("document.querySelector('.sheet h2').textContent") == 'Dimmi cosa fare…' and pg.evaluate("document.querySelector('.sheet-grip').getAttribute('aria-label')") == 'Espandi', 'Tell: the sheet speaks Italian (title and handle): %s' % pg.evaluate("[document.querySelector('.sheet h2').textContent, document.querySelector('.sheet-grip').getAttribute('aria-label')]"))
     ctx.close()
 
 

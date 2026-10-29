@@ -1396,7 +1396,7 @@ Status: to review. 56 strings.
 | Destination: Command · /{n} · {c} | Destinazione: Comando · /{n} · {c} |
 | Destination: General · not project memory. Nothing here is saved to a project. | Destinazione: Generale · non è memoria di progetto. Qui non si salva nulla in un progetto. |
 | Destination: Work · {p}. Replies and records stay in this project. | Destinazione: Lavoro · {p}. Risposte e record restano in questo progetto. |
-| Tell Archeus what to do… | Dì ad Archeus cosa fare… |
+| Tell Archeus what to do… | Dimmi cosa fare… |
 | Destination | Destinazione |
 | Stop: propose an emergency stop | Ferma: proponi un arresto d'emergenza |
 | mission | missione |
@@ -1730,7 +1730,7 @@ Status: to review. Builder-written, not checked by a native speaker.
 
 ## Overview rework (2026-10-27): to review
 
-- Tell Archeus what to do… → Dì ad Archeus cosa fare… (the field placeholder of the Tell dock and the Chat page; replaces Tell Archeus what you need… / Dimmi cosa ti serve…)
+- Tell Archeus what to do… → Dimmi cosa fare… (the field placeholder of the Tell dock and the Chat page; owner wording, 2026-10-29)
 - Decision notes on the Overview → Note sulle decisioni in Panoramica (the toolbar switch; replaces the string that named the Map as well)
 - Removed with the Map screen: Map → Mappa, Constellation → Costellazione.
 ## One Work page with its graph (2026-10-27, builder B): to review
@@ -1827,7 +1827,7 @@ File: `js/i18n-now.js`. Not checked by a native speaker.
 - Open work → Apri il lavoro
 - Show missions → Mostra le missioni
 - Open mission → Apri la missione
-- Projects view / Network view → Vista a progetti / Vista a rete
+- Projects view (historical) / Network: missions around each project → Vista a progetti (storico) / Rete: le missioni attorno a ogni progetto
 - No missions yet → Ancora nessuna missione
 - Archeus has not completed a mission today. → Oggi Archeus non ha ancora completato nessuna missione.
 - Archeus completed N missions today: → Oggi Archeus ha completato N missioni:
@@ -1917,7 +1917,7 @@ Shell round two (rail groups, command palette, relative time):
 - Command palette / Results / Pages / Actions → Comandi rapidi / Risultati / Pagine / Azioni
 - Nothing matches. Try a page, an action or a project name. → Nessun risultato. Prova il nome di una pagina, di un’azione o di un progetto.
 - move / run / close (palette footer, after the arrow and Enter and Esc keys) → muovi / esegui / chiudi
-- Stop all / Tell Archeus → Ferma tutto / Dì ad Archeus
+- Stop all / Tell Archeus → Ferma tutto / Dimmi cosa fare…
 - Settings: Safety / Appearance / Prototype → Impostazioni: Sicurezza / Aspetto / Prototipo
 - Language: Italiano / Language: English → Lingua: Italiano / Lingua: English
 - Stale (state vocabulary) → Non aggiornato
@@ -2398,12 +2398,12 @@ Status: to review. New pairs in `js/i18n-now.js` and the Autopilot chapter in `j
 
 | English | Italian |
 |---|---|
-| Territories view (tooltip and accessible name of the first switch button) | Vista a territori |
-| Rings view (tooltip and accessible name of the second switch button) | Vista ad anelli |
-| Network view (unchanged) | Vista a rete |
+| Territories: one cell per project | Territori: una cella per progetto |
+| Rings: a lane per state | Anelli: una corsia per stato |
+| Network: missions around each project | Rete: le missioni attorno a ogni progetto |
 | Territories, Rings or Network (Autopilot chapter title) | Territori, Anelli o Rete |
 | The switch beside the headline shows the same projects three ways: territories (one cell each), rings (one lane per state) and a network of missions round each project hub. (Autopilot caption) | L’interruttore accanto al titolo mostra gli stessi progetti in tre modi: territori (una cella ciascuno), anelli (una corsia per stato) e una rete di missioni attorno a ogni progetto. |
 
-Phone Tell label: Dimmi (owner 2026-10-29); the phrases "Dì ad Archeus ..." (sheet title, placeholder) are imperative sentences and still say Dì: reviewer to say if they should read "Dimmi" too.
+Phone Tell label: Dimmi (owner 2026-10-29). Sheet title “Tell Archeus” and field placeholder “Tell Archeus what to do…” both translate as “Dimmi cosa fare…”. English wording stays unchanged.
 
-Questions for the reviewer: the coordinator asked for the short names Territori / Anelli / Rete; the switch has no visible text, so only the Autopilot title uses them and the tooltips use the full "Vista a ..." form already used for Rete. Say if the tooltips should be the short names too.
+Owner approved descriptive tooltips and accessible names on 2026-10-29 (pairs above). Icons remain unchanged; each name appears in the selected language only.

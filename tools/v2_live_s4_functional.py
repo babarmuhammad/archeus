@@ -416,7 +416,7 @@ def main():
             # ---- language switch re-draws the chat in Italian ----
             ctx, pg, errs = new_page(br, base, q='&lang=it')
             check('Risposte e record' in pg.inner_text('.cdest'), 'the destination line is Italian')
-            check(pg.get_attribute('input[data-key="chat-in-page"]', 'placeholder').startswith('Dì ad Archeus cosa fare'), 'the placeholder is Italian')
+            check(pg.get_attribute('input[data-key="chat-in-page"]', 'placeholder').startswith('Dimmi cosa fare'), 'the placeholder is Italian')
             pg.goto('%s?theme=dark&sim=paused&motion=reduced&notes=off&lang=it#/replay/m-date' % base, wait_until='load')
             pg.wait_for_timeout(500)
             pg.evaluate("document.querySelector('.rp-reference').open = true"); pg.wait_for_timeout(150)
