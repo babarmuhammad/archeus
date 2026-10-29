@@ -262,7 +262,7 @@ export function createMap(container, options = {}) {
       for (const spot of reviewSpots.slice(1)) { if (best === 2 || (eligible && !eligible.has(reviewFor.id))) break; const trial = labelsFor(spot), g = grade(trial); if (g > best) { best = g; reviewBox = spot; boxes = trial; } }
     }
     const byId = new Map(nodes.map(n => [n.id, n]));
-    if (phoneOverview()) boxes = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you').slice(0, 1).map(n => {
+    if (phoneOverview()) boxes = nodes.filter(n => n.kind === 'Mission' && stateKey(n.state) === 'needs-you' && n.x >= 0 && n.x < width && n.y >= inset.top && n.y < height).slice(0, 1).map(n => {
       const full = String(n.label || n.id), x = n.x + n.radius + 10, available = width - x - 8;
       let text = full;
       while (text.length > 1 && (context ? context.measureText(text).width : text.length * 7.5) > available) text = text.slice(0, -2) + '…';
