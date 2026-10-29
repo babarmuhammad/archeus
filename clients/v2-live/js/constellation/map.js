@@ -210,7 +210,7 @@ export function createMap(container, options = {}) {
     const hold = Math.max(reach, 62 * u * k), coreBox = {x: cx - hold, y: cy - reach, width: hold * 2, height: reach + below};
     const ctl = {x: width - 68, y: height - controlsBottom - 156, width: 68, height: 160}, grouped = clustered();
     // A hub's label stands under it and scales with the camera's position, not its size; below 0.8x the labels give way to the hub marks.
-    const tagged = grouped && k >= .8 ? nodes.filter(n => n.hub && n.tag && !receded.has(n.cluster) && inScene(tagRect(n))) : [], tagBoxes = tagged.map(n => ({id: n.id, ...tagRect(n)}));
+    const tagged = grouped && k >= .8 ? nodes.filter(n => n.hub && n.tag && !receded.has(n.cluster) && inScene(tagRect(n)) && !overlaps(tagRect(n), ctl, 4)) : [], tagBoxes = tagged.map(n => ({id: n.id, ...tagRect(n)}));
     // The caption takes the first corner that no tag, label slot, mark, the core or the controls occupy; with none free it stays away (the name is then on the map itself).
     const CAP = {width: 300, height: 60};
     let capBox = null, capNode = null;
