@@ -208,7 +208,7 @@ html[data-notes='off'] .rp-how { display: none; }
   .rp-pane .rp-event { grid-template-columns: 3.6rem minmax(0, 1fr); gap: 12px; min-height: 64px; padding: 8px 0; align-items: center; scroll-margin: 64px 0 var(--toast-b, 16px); }
   .rp-pane .rp-time { font-size: 13px; line-height: 1.3; }
   .rp-pane .rp-event-copy { display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 2px; }
-  .rp-pane .rp-event-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; }
+  .rp-pane .rp-event-copy b { white-space: normal; font-size: 16px; }
   .rp-sub { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; color: var(--text-2); }
   .rp-sub .cat { flex: none; }
   .rp-page[data-phone] :is(.cat, .cat .g, .str, .rp-bh .gt, summary .gt, h2 .gt) { font-size: 12px; }
