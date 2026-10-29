@@ -1,7 +1,7 @@
 # PV-20 — Execution OS-isolation: design decisions
 
 **Status:** ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (§6 items 1–17, and the blocker decisions
-A1–A6 with the A7 correction, §6 items 18–24) — **not implementation authorization**; implementation: slice S0 only (§7.4 Gap A, the three-state sentinel determination, 2026-10-08), the isolation mechanism not started; empirical evidence outstanding · **Track:** V1.x
+A1–A6 with the A7 correction, §6 items 18–24) — **not implementation authorization**; implementation: slice S0 only (§7.4 Gap A, the three-state sentinel determination, 2026-10-08), the isolation mechanism backend selected 2026-10-29 (Microsoft MXC, ADR-0053 amended) but not implemented or authorised for native runs; empirical evidence outstanding · **Track:** V1.x
 security remediation · **Date:** 2026-10-07 · **Prerequisite:** [PV-13 study](pv13-windows-os-confinement-study.md)
 (delivered 2026-10-07) · **Source:** ADR-0051 §5; the P20 slice-G verification findings G1 and G2
 (both Critical, open — see [p20-design-gate.md](p20-design-gate.md) §12 items 92–97) · **ADR:**

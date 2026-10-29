@@ -1,0 +1,12 @@
+# MXC-D notes: disagreements between repository text and the ADR amendment file (not committed)
+
+Source: D:\codex-reviews\pv20-mxc-adr-last.md, section 1. Repository fact kept where it differs, or the replaced fact is recorded here.
+
+1. ADR-0053 status: repo said "implementation authorised for slice S0 only ... the isolation mechanism is not started and not authorised". Amendment status text omits it. Kept the S0 fact as a parenthetical after the replacement sentence (slice S0 remains the only implemented slice); the "mechanism not started and not authorised" clause is dropped as superseded by the owner decision, with authorisations limited to their recorded scope.
+2. ADR-0053 evidence paragraph: repo said "Nothing in this ADR claims that AppContainer works ... Every statement about exact grants, capabilities, Windows behaviour or CLI behaviour is DESIGN PROPOSAL - UNVERIFIED (PV-20 7.1, 7.3)". Amendment text omits that sentence. Replaced verbatim; the UNVERIFIED convention still stands in the design (7.1, 7.3) and in the rest of the ADR.
+3. ADR-0053 mechanism bullet: repo sentence "A Job is not an ACL boundary and never substitutes for the identity boundary" is not in the amendment text. Replaced verbatim; sentence now absent from the ADR (still implied by the identity-boundary language elsewhere).
+4. ADR-0053 R7: amendment drops the repo sentence "Whether the principal is a per-execution profile or a per-execution capability is a mechanism choice". The design 3.1 "Granularity (R7)" bullet was NOT in the edit list and still carries that sentence, so design 3.1 R7 and ADR R7 now differ in wording.
+5. Design section 7 status: amendment evidence text omits "no acceptance evidence has been produced, and the security boundary is not claimed to exist" and the "no isolation mechanism exists" clause. Kept the status headline and the S0-only and no-acceptance-evidence sentences; dropped "no isolation mechanism exists" (MXC adoption selects a backend; not asserted either way).
+6. Design header Status line (line 4) still says "the isolation mechanism not started"; not in the edit list, left unchanged. Stale-ish against the MXC decision.
+
+Other placement notes: ADR evidence paragraph kept as a blockquote (file convention); risk register section titled exactly "MXC backend risk register and evidence ledger (proposed, 2026-10-29)" without a section number, appended at end of the design file; gate addendum inserted as an unnumbered paragraph immediately before item 102 (the S1 entry) with no renumbering.
