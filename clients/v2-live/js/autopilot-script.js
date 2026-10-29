@@ -171,7 +171,7 @@ export const CHAPTERS = [
     c: ['Quiet mode stops every loop and every glide. The core mark stands still and says how many missions run.', 'La modalità Quieta ferma ogni ciclo e ogni scorrimento. Il simbolo del nucleo sta fermo e dice quante missioni girano.'],
     steps: [N('#/now', 500), TOOL('theme', TOGGLE, 2600, { nth: 0 }), TOOL('theme', TOGGLE, 1500, { nth: 0 }), K('Escape', 400)] },
 
-  { id: 'scale', group: 'look', t: ['Ten, thirty, a hundred projects', 'Dieci, trenta, cento progetti'], covers: ['R', 'Q', 'QN'],
+  { id: 'scale', group: 'look', t: ['Ten, thirty, a hundred projects', 'Dieci, trenta, cento progetti'], covers: ['R', 'Q', 'QN', 'RG'],
     c: ['The same pages at scale: 10, 30 and 100 simulated projects, a calm story with finished work, and your own projects when this PC has them.', 'Le stesse pagine in scala: 10, 30 e 100 progetti simulati, una storia calma con il lavoro finito e i tuoi progetti se questo PC li ha.'],
     steps: [N('#/now', 400), TOOL('projects', THEME, 3000, { nth: 1 }), TOOL('projects', THEME, 3000, { nth: 3 }), TOOL('projects', THEME, 3500, { nth: 5 }),
       { do: 'reload', arg: { story: 'calm' }, ms: 3500 }, TOOL('projects', THEME, 2500, { nth: 6, optional: true }), { do: 'reload', arg: 'baseline', ms: 2000 }] },
