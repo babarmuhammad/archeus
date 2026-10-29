@@ -8,7 +8,7 @@ export const DEVICES = [
   { id: 'tablet', label: 'Tablet', w: 820, note: '820 px' }, { id: 'desktop', label: 'Desktop', w: 1440, note: '1440 px' }, { id: 'terminal', label: 'Terminal', note: 'Text mode' }, { id: 'all', label: 'All devices', note: 'Side by side' }
 ];
 const KEY = 'archeus-v2-live';
-const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed', overview: 'projects', slashpins: [], slashrecent: [], projsort: 'attention', rpchooser: {}, rprecent: [] };
+const defaults = { theme: 'dark', motion: 'system', device: 'auto', lang: 'en', notes: 'on', heronotes: 'off', tools: 'closed', overview: 'rings', slashpins: [], slashrecent: [], projsort: 'attention', rpchooser: {}, rprecent: [] };
 
 function read() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
 function write(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch (e) { /* private window or blocked storage: the app still works */ } }
@@ -23,7 +23,7 @@ if (!['en', 'it'].includes(prefs.lang)) prefs.lang = defaults.lang;
 if (!['on', 'off'].includes(prefs.notes)) prefs.notes = defaults.notes;
 if (!['on', 'off'].includes(prefs.heronotes)) prefs.heronotes = defaults.heronotes;
 if (!['open', 'closed'].includes(prefs.tools)) prefs.tools = defaults.tools;
-if (!['projects', 'network'].includes(prefs.overview)) prefs.overview = defaults.overview;
+if (!['territories', 'rings', 'network'].includes(prefs.overview)) prefs.overview = defaults.overview;
 if (!['attention', 'recent', 'name'].includes(prefs.projsort)) prefs.projsort = defaults.projsort;
 for (const k of ['slashpins', 'slashrecent', 'rprecent']) if (!Array.isArray(prefs[k])) prefs[k] = [];
 

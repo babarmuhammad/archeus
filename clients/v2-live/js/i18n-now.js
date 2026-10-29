@@ -6,7 +6,7 @@ export const IT_NOW = {
   'Nothing running. Tell Archeus what to do.': 'Niente in corso. Dì ad Archeus cosa fare.',
   'Archeus is quiet. Tell it what to do next, or open a project.': 'Archeus è a riposo. Digli cosa fare, oppure apri un progetto.',
   'Live constellation of your work. Missions, projects and ideas in context, moving forward together.': 'Costellazione viva del tuo lavoro. Missioni, progetti e idee nel loro contesto, che avanzano insieme.',
-  'All projects': 'Tutti i progetti', 'Open work': 'Apri il lavoro', 'Show missions': 'Mostra le missioni', 'Open mission': 'Apri la missione', 'Overview view': 'Vista della panoramica', 'Projects view': 'Vista a progetti', 'Network view': 'Vista a rete',
+  'All projects': 'Tutti i progetti', 'Open work': 'Apri il lavoro', 'Show missions': 'Mostra le missioni', 'Open mission': 'Apri la missione', 'Overview view': 'Vista della panoramica', 'Territories view': 'Vista a territori', 'Rings view': 'Vista ad anelli', 'Network view': 'Vista a rete',
   'No missions yet': 'Ancora nessuna missione', 'Archeus': 'Archeus', 'Archeus has not completed a mission today.': 'Oggi Archeus non ha ancora completato nessuna missione.',
   'completed': 'ha completato', 'is verifying': 'sta verificando', 'is reviewing': 'sta rivedendo', 'started': 'ha avviato', 'asks you to approve': 'ti chiede di approvare', 'is blocked on': 'è bloccato su', 'has stopped': 'ha fermato', 'paused': 'ha messo in pausa'
 };

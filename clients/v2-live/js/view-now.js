@@ -57,7 +57,7 @@ function attentionStrip(ctx, ov) {
   if (!waiting.length) return null;
   const top = waiting.slice(0, 3), more = waiting.length - top.length;
   const focus = (p) => {
-    const b = store.get('overview') === 'projects' ? document.querySelector('.now-view .am-equivalent tr[data-node-id="' + p.id + '"] button') : null;
+    const b = store.get('overview') !== 'network' ? document.querySelector('.now-view .am-equivalent button[data-node-id="' + p.id + '"], .now-view .am-equivalent tr[data-node-id="' + p.id + '"] button') : null;
     if (b) b.click(); else { ctx.ui.workProject = p.id; ctx.nav(workHref({ view: 'needs', project: p.id })); }
   };
   return h('div', { class: 'att-strip', role: 'group', 'aria-label': tr('Projects that need you') },
@@ -67,7 +67,7 @@ function attentionStrip(ctx, ov) {
 
 function viewSwitch(ctx) {
   const cur = store.get('overview'), opt = (id, ic, label) => h('button', { class: 'vs-btn', type: 'button', 'aria-pressed': String(cur === id), 'aria-label': tr(label), title: tr(label), 'data-key': 'vs-' + id, onclick: () => { if (cur !== id) { store.set('overview', id); ctx.render(); } } }, icon(ic, 20));
-  return h('div', { class: 'view-switch', role: 'group', 'aria-label': tr('Overview view') }, opt('projects', 'viewgrid', 'Projects view'), opt('network', 'viewnet', 'Network view'));
+  return h('div', { class: 'view-switch', role: 'group', 'aria-label': tr('Overview view') }, opt('territories', 'viewgrid', 'Territories view'), opt('rings', 'viewrings', 'Rings view'), opt('network', 'viewnet', 'Network view'));
 }
 
 export function render(ctx) {

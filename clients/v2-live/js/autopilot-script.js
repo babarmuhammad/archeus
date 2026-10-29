@@ -51,14 +51,14 @@ export const CHAPTERS = [
     c: ['Point at a project and the others step back; a card says what it holds. A click focuses the project and lists its missions.', 'Punta un progetto e gli altri si abbassano; una scheda dice cosa contiene. Un clic mette a fuoco il progetto e ne elenca le missioni.'],
     steps: [N('#/now', 500), H('.am-cell', 2000, { on: 'desktop', optional: true }), H('.am-cell', 1800, { nth: 1, on: 'desktop', optional: true }), C('.am-cell', 2200, { on: 'desktop', optional: true }), U] },
 
-  { id: 'ov-network', group: 'overview', on: 'desktop', t: ['Projects or Network', 'Progetti o Rete'], covers: ['QN'],
-    c: ['The switch beside the headline turns the territories into a network: every mission is a node around its project hub.', 'L’interruttore accanto al titolo trasforma i territori in una rete: ogni missione è un nodo attorno al suo progetto.'],
-    steps: [N('#/now', 500), C('vs-network', 1800), H('.am-hit', 1600, { nth: 2, optional: true }), U] },
+  { id: 'ov-network', group: 'overview', on: 'desktop', t: ['Territories, Rings or Network', 'Territori, Anelli o Rete'], covers: ['QN', 'TV'],
+    c: ['The switch beside the headline shows the same projects three ways: territories (one cell each), rings (one lane per state) and a network of missions round each project hub.', 'L’interruttore accanto al titolo mostra gli stessi progetti in tre modi: territori (una cella ciascuno), anelli (una corsia per stato) e una rete di missioni attorno a ogni progetto.'],
+    steps: [N('#/now', 500), C('vs-territories', 1600), C('vs-network', 1800), H('.am-hit', 1600, { nth: 2, optional: true }), C('vs-rings', 1200), U] },
 
   { id: 'ov-zoom', group: 'overview', on: 'desktop', t: ['Semantic zoom', 'Zoom semantico'], covers: ['QN', 'Q'],
     c: ['Zoom in and the map shows more: names, then states, then the small marks of each attempt. Fit brings it all back.', 'Ingrandisci e la mappa mostra di più: nomi, stati, poi i segni di ogni tentativo. Adatta riporta tutto in vista.'],
     steps: [N('#/now', 500), C('vs-network', 900), C('[aria-label="Zoom in"]', 1000, { optional: true }), C('[aria-label="Zoom in"]', 1000, { optional: true }), C('[aria-label="Zoom in"]', 1200, { optional: true }),
-      C('[aria-label="Fit all nodes"]', 1200, { optional: true }), C('vs-projects', 800)] },
+      C('[aria-label="Fit all nodes"]', 1200, { optional: true }), C('vs-rings', 800)] },
 
   { id: 'ov-details', group: 'overview', on: 'desktop', t: ['Details drawer', 'Pannello dei dettagli'], covers: ['Q', 'N', 'P', 'E'],
     c: ['Details opens over the map, never squeezes it: counters, what is happening now and what changed since you last looked.', 'I dettagli si aprono sopra la mappa senza schiacciarla: contatori, cosa succede adesso e cosa è cambiato dall’ultima volta.'],

@@ -8,6 +8,7 @@ import { tr } from './i18n.js';
 import * as store from './store.js';
 import { isPhone } from './viewport.js';
 import { createMap } from './constellation/map.js';
+import { createTerritoryMap } from './constellation/territories.js';
 import { laneOf, stateCounts, activityByProject } from './constellation/rings.js';
 import { clockLabel } from '../sim.js';
 import { projectCodes } from './project-code.js';
@@ -105,21 +106,21 @@ export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
-  // The Projects view is the ring layout (lanes by state round the core); the Network view is the constellation of missions. Both are the same map, one with `rings`.
-  const rings = key === 'now' && !calm && store.get('overview') === 'projects' && !isPhone();
-  if (e.map && (e.lang !== lang || e.calm !== calm || e.rings !== rings)) { e.map.destroy(); e.map = null; e.sel = undefined; }
+  // Three Overview views: Territories (a grid of project cells round the core, its own map), Rings (lanes by state round the core) and Network (the constellation of missions); the last two are the same map, one with `rings`.
+  const view = key === 'now' && !calm && !isPhone() ? store.get('overview') : 'network', rings = view === 'rings', terr = view === 'territories';
+  if (e.map && (e.lang !== lang || e.calm !== calm || e.view !== view)) { e.map.destroy(); e.map = null; e.sel = undefined; }
   if (!e.map) {
-    e.lang = lang; e.calm = calm; e.rings = rings;
-    e.map = createMap(e.box, { seed: 'v2-live', overview: key === 'now', calm, rings, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, detail: (id) => buildDetail(sim, id), events: (id) => buildEvents(sim, id), inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
+    e.lang = lang; e.calm = calm; e.view = view;
+    e.map = (terr ? createTerritoryMap : createMap)(e.box, { seed: 'v2-live', overview: key === 'now', calm, rings, theme: THEME[store.get('theme')], reducedMotion: store.reducedMotion(), live: liveFresh(sim), t: tr, detail: (id) => buildDetail(sim, id), events: (id) => buildEvents(sim, id), inset: e.inset, label: tr('Live map of your projects and missions. The list beside it has the same content.') });
     e.map.on('review', (id) => { const a = Object.values(sim.state.approvals).find((x) => x.state === 'PENDING' && x.mission === id); ctx.nav(a ? '#/work/' + a.id : '#/' + ctx.route.name + '/' + id); });
     e.map.on('select', (id) => { if (!e.syncing && id && sim.state.projects.some((p) => p.id === id)) { ctx.ui.workProject = id; ctx.nav('#/work'); return; } if (!e.syncing && id && id !== ctx.route.id && (sim.state.missions[id] || sim.state.approvals[id] || sim.state.executions[id])) ctx.nav('#/' + ctx.route.name + '/' + (sim.state.executions[id] ? sim.state.executions[id].mission : id)); });
   }
-  const g = buildGraph(sim);
+  const g = terr ? buildOverview(sim) : buildGraph(sim);
   e.map.setTheme(THEME[store.get('theme')]);
   e.map.setReducedMotion(store.reducedMotion());
   e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged); e.map.setStopped(sim.state.estop.engaged);
   e.map.update(g);
-  const want = g.nodes.some((n) => n.id === ctx.route.id) ? ctx.route.id : null;
+  const want = (terr ? g.projects.some((p) => p.id === ctx.route.id || p.missions.some((m) => m.id === ctx.route.id)) : g.nodes.some((n) => n.id === ctx.route.id)) ? ctx.route.id : null;
   if (want !== e.sel) { e.sel = want; e.syncing = true; e.map.setSelection(want); e.syncing = false; }
   for (const id of pending.splice(0)) e.map.pulse(id);
 }
