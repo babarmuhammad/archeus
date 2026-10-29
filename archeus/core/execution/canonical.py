@@ -655,6 +655,113 @@ def _url_arg(prog, args):
     return urls[0][0] if len(urls) == 1 and not urls[0][1] else ''
 
 
+_POLICY_URL = re.compile(r'(?:[A-Za-z][A-Za-z0-9+.-]*:)?//\S+|[A-Za-z0-9][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+(?::\d{1,5})?(?:[/?#]\S*)?')
+_POLICY_PROXY = frozenset(('--proxy', '--proxy1.0', '-x', '--preproxy', '--socks4', '--socks4a',
+                           '--socks5', '--socks5-hostname'))
+
+
+def _policy_host(value):
+    """The destination host of a policy operand: its DNS root dot dropped (a rule on
+    `evil.example` must meet `evil.example.`), and None for a port that is not one."""
+    if not value or re.search(r'\s', value):
+        return None
+    try:
+        parsed = urlsplit(value if '//' in value else '//' + value)
+        parsed.port
+        return (parsed.hostname or '').rstrip('.') or None
+    except ValueError:
+        return None
+
+
+def _policy_urls(prog, args):
+    """Policy destinations only; never read config files or reuse chip parsing."""
+    values = _WGET_VALUE if prog == 'wget' else _CURL_VALUE
+    files = ('-i', '--input-file') if prog == 'wget' else ('-K', '--config')
+    proxies = _POLICY_PROXY if prog == 'curl' else ()
+    extra = ('--url', '--connect-to') if prog == 'curl' else ()
+    letters = {v[1] for v in values if len(v) == 2}
+    # wget -c continues a download; curl -c consumes a cookie filename.
+    switches = 'qvcrNnpkH' if prog == 'wget' else _NO_VALUE_LETTERS
+    found, mode, bare, unresolved = [], None, False, False
+    proxy_enabled, proxy_named = False, set()
+
+    def take(name, value):
+        nonlocal unresolved, proxy_enabled, proxy_named
+        if name in files:
+            unresolved = True
+        elif name in proxies:
+            host = _policy_host(value)
+            if host:
+                found.append(('', host))  # proxy credentials never become a label
+            else:
+                unresolved = True
+        elif prog == 'wget' and name in ('-e', '--execute'):
+            key, eq, val = value.partition('=')
+            key = key.strip().lower()
+            if eq and key in ('http_proxy', 'https_proxy', 'ftp_proxy'):
+                take_proxy = _policy_host(val.strip())
+                if take_proxy:
+                    found.append(('', take_proxy))
+                    proxy_named.add(key[:-6])
+                else:
+                    unresolved = True
+            elif eq and key == 'use_proxy' and val.strip().lower() in ('yes', 'no', 'on', 'off'):
+                proxy_enabled = val.strip().lower() in ('yes', 'on')
+            else:
+                unresolved = True
+        elif name == '--url':
+            positional(value)
+
+    def positional(value):
+        nonlocal unresolved
+        host = _policy_host(value) if _POLICY_URL.fullmatch(value) else None
+        if host:
+            found.append((value, host))
+        else:
+            unresolved = True
+
+    for a in args:
+        if mode:
+            take(mode, a)
+            mode = None
+        elif a == '--' and not bare:
+            bare = True
+        elif bare or not a.startswith('-') or a == '-':
+            positional(a)
+        elif a.startswith('--'):
+            name, eq, val = a.partition('=')
+            if name in values or name in proxies or name in extra:
+                if eq:
+                    take(name, val)
+                else:
+                    mode = name
+            elif eq or any(o.startswith(name) for o in (*values, *files, *extra, *proxies)):
+                unresolved = True       # an attached value or an abbreviated option may name a file or a proxy
+            # Unknown long options never consume the following destination.
+        else:
+            for i, ch in enumerate(a[1:], 1):
+                if ch in letters:
+                    name = '-' + ch
+                    if i < len(a) - 1:
+                        take(name, a[i + 1:])
+                    else:
+                        mode = name
+                    break
+                if ch not in switches:
+                    unresolved = True
+                    break
+    schemes = {u.partition('://')[0].lower() if '://' in u else 'http' for u, h in found if u}
+    unresolved = unresolved or mode is not None or (
+        proxy_enabled and (not proxy_named or bool(schemes - proxy_named)))
+    out = {}
+    for u, h in sorted(found, key=lambda p: '//' not in p[0]):
+        out.setdefault(h, u)
+    result = [(u, h) for h, u in out.items()]
+    if unresolved or not any(u for u, h in found):
+        result.append(('', None))
+    return result
+
+
 def clear_host(url):
     """The host of a URL that names its scheme, after its userinfo, port, path, query and
     fragment; None for any other text, and for a host that is not letters, digits, dots and
@@ -735,11 +842,10 @@ def command(cmd, ctx):
     if sub in INSTALL.get(prog, ()):
         return [Action(action_class='install', target=prog, argv=tv)], False
     if prog in ('curl', 'wget'):
-        # the policy host is the first build's pick (a dotted word counts), so no decision moves
-        # with the chip's host; the chip names only a URL that says its scheme
-        url = next((a for a in args if not a.startswith('-') and ('.' in a or '//' in a)), '')
-        return [Action(action_class='external_comm' if _sends(args) else 'web', target=url or prog,
-                       argv=tv, host=host_of(url), chip_host=clear_host(_url_arg(prog, args)))], False
+        cls, shown = 'external_comm' if _sends(args) else 'web', _url_arg(prog, args)
+        return [Action(action_class=cls, target=u or prog, argv=tv, host=h,
+                       chip_host=clear_host(u) if u and u == shown else None)
+                for u, h in _policy_urls(prog, args)], False
     if prog in REMOTE:
         # scp -S, rsync -e and ssh take a program or a shell as a value: a family name holds
         if any(_family(_norm(n)) for p in _pieces(cmd)[1:] for part in p.split('=')

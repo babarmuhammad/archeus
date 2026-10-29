@@ -248,12 +248,11 @@ def test_E09_the_record_the_get_returns_holds_no_hostile_input(x, tool, inp):
 
 
 @pytest.mark.parametrize('cmd, want_cls, want_host', [
-    # the policy's host and class as the first build gave them: a host rule decides on these,
-    # so they must not move with the chip's host (the chip names a clear URL's host only)
-    ('curl -H "X: a.b" https://good.example/x', 'web', 'x'),
-    ('curl -o out.tar.gz https://h.example/x', 'web', 'out.tar.gz'),
-    ('curl -u pass.word:x https://h.example/x', 'web', 'pass.word'),
-    ('curl --pass hunter2.x https://h.example/x', 'web', 'hunter2.x'),
+    # T-143: policy destinations stay separate from the chip's clear URL.
+    ('curl -H "X: a.b" https://good.example/x', 'web', 'good.example'),  # Header value is not a destination.
+    ('curl -o out.tar.gz https://h.example/x', 'web', 'h.example'),  # Output filename is not a destination.
+    ('curl -u pass.word:x https://h.example/x', 'web', 'h.example'),  # User credentials are not a destination.
+    ('curl --pass hunter2.x https://h.example/x', 'web', 'h.example'),  # Schemed URL first; unknown value judged additionally.
     ('curl https://user:pw@h.example:8443/x?q=1#f', 'web', 'h.example'),
     ('wget -c https://h.example/x', 'web', 'h.example'),
     ('wget -T 5 https://h.example/x', 'external_comm', 'h.example'),
@@ -273,6 +272,7 @@ def test_E10_the_policy_input_of_a_curl_or_wget_call_is_the_first_builds(cmd, wa
     acts, unclassified = canonical.canonicalise('Bash', cmd, {'workdir': '.'})
     assert not unclassified
     assert (acts[0].action_class, acts[0].host) == (want_cls, want_host)
+    assert [a.host for a in acts] == [want_host] + (['hunter2.x'] if '--pass ' in cmd else [])
 
 
 def test_E04_no_canonical_action_records_nothing():
