@@ -2240,3 +2240,22 @@ Status: to review. New pairs in `js/i18n-s6.js` and `js/i18n-areas.js` for Repla
 | {n} paused | {n} in pausa |
 | Places: leave the terminal and open Places | Luoghi: esci dal terminale e apri i Luoghi |
 | Stop: leave the terminal and open the emergency stop | Stop: esci dal terminale e apri l’arresto d’emergenza |
+
+## Phone lists (slice B) - 2026-10-29
+
+Status: to review. New pairs in `js/i18n-phone.js` for the Overview, Work and Projects on a phone. Words that already had a pair (Needs you, Running, Blocked, Quiet, Open work, Search projects, Captured ideas, Sort projects, Attention, Recent, Name, Pinned, Fit, task, linked, Stale, Missing) are reused, and so is "All N projects".
+
+| English | Italian |
+|---|---|
+| Show everything | Mostra tutto |
+| Nothing here. | Niente qui. |
+| Tap a node to see the mission. | Tocca un nodo per vedere la missione. |
+| Work graph: missions and decisions as nodes round the core. The list has the same content. | Grafo del lavoro: missioni e decisioni come nodi attorno al nucleo. L’elenco ha lo stesso contenuto. |
+| +{n} more in the list | +{n} altri nell’elenco |
+| All {n} in Work | Tutti i {n} in Lavoro |
+| Show {n} more | Mostra altri {n} |
+| More states: {state} (aria label of the More control) | Altri stati: {state} |
+| Project filter: {project} (aria label of the picker) | Filtro progetto: {project} |
+| One page for Work and Attention: missions and decisions grouped by what they wait on, as a list and as a graph. The spine shows where each mission is (A13); an obligation is a 12 % amber tint with its state in words (B09). | Una sola pagina per Lavoro e Attenzione: missioni e decisioni raggruppate per ciò che attendono, come elenco e come grafo. La spina mostra a che punto è ogni missione (A13); un obbligo è una tinta ambra al 12 % con lo stato a parole (B09). |
+
+Questions for the reviewer: "Show {n} more" reads "Mostra altri {n}" (the count is how many appear next, not the total). The project group "Quiet" reuses Quieto, which also names a motion setting; a word such as Inattivi may read better for projects.
