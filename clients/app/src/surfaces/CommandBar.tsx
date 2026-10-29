@@ -96,7 +96,7 @@ export function CommandBar({ open, onClose }: { open: boolean; onClose: () => vo
       ref={dlg}
       className="command"
       aria-label="Command bar"
-      onClose={onClose}
+      onClose={() => !dlg.current?.open && onClose()} // a close event left over from an earlier close must not shut a palette reopened since
       onClick={(e) => {
         // a touch exit (p20-design-gate D5): a tap on the backdrop closes the bar
         if (e.target === e.currentTarget && onBackdrop(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY)) onClose();

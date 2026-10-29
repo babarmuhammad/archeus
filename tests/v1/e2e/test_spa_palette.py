@@ -24,14 +24,7 @@ def _hits(page):
 
 def _open_palette(page):
     page.keyboard.press('Control+K')
-    try:
-        page.locator('#cmd').wait_for(timeout=4000)
-    except Exception:
-        print('DIAG', page.evaluate('''() => ({hash: location.hash, open: document.querySelector('dialog.command').open, active: document.activeElement && (document.activeElement.tagName + '.' + document.activeElement.className), modal: [...document.querySelectorAll('dialog[open]')].length, title: document.title})'''))
-        page.keyboard.press('Control+K')
-        page.wait_for_timeout(1000)
-        print('DIAG2', page.evaluate('() => document.querySelector("dialog.command").open'))
-        raise
+    page.locator('#cmd').wait_for()
 
 
 def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # noqa: F811
@@ -141,3 +134,12 @@ def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # 
     check(not [e for e in errors if 'ERR_FAILED' not in e and 'net::' not in e], errors)
     context.close()
     assert check.n >= 19
+
+
+def test_a_close_event_left_over_from_an_earlier_close_does_not_close_the_reopened_palette(browser, slow):  # noqa: F811
+    context, page, errors = _open(browser, slow)
+    _open_palette(page)
+    page.evaluate("() => { const d = document.querySelector('dialog.command'); d.close(); d.showModal(); }")
+    page.wait_for_timeout(300)
+    assert page.locator('#cmd').is_visible()
+    context.close()
