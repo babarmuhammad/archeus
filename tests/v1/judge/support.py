@@ -102,6 +102,14 @@ def wait_for(fn, timeout=30.0, interval=0.05):
         time.sleep(interval)
 
 
+def approve_kind(client, mission_id, kind):
+    """A mission made from a chat message asks to start (T-150 a), then to approve its plan, under standard: the user answers each."""
+    def asked():
+        return next((e for e in events_of(client, 'approval.requested')
+                     if e['payload']['mission_id'] == mission_id and e['payload']['kind'] == kind), None)
+    client.decide_approval(wait_for(asked)['subject']['id'], 'approve', idempotency_key=kind + '-' + mission_id)
+
+
 def wait_state(client, mission_id, state, timeout=30.0):
     def reached():
         m = client.get_mission(mission_id)

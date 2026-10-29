@@ -7,13 +7,15 @@ passes since P13, whose reviewer is the `review` own call routed away from the
 account that did the work (p13-design-gate §14.3), so its marker came off too.
 """
 
-from .support import events_of, mission_states, wait_for, wait_state
+from .support import approve_kind, events_of, mission_states, wait_for, wait_state
 
 
 def test_a_request_becomes_a_mission_with_a_proposed_plan(client):
     msg = client.submit_message('Add a --version flag to the CLI')
     mission = wait_for(lambda: client.list_missions())[0]
     assert msg['id'] and mission['objective']
+    approve_kind(client, mission['id'], 'start')
+    wait_state(client, mission['id'], 'APPROVAL_REQUIRED')
     assert 'PLANNING' in mission_states(client, mission['id']) or mission['state'] in (
         'PLANNING', 'APPROVAL_REQUIRED', 'APPROVED')
 
@@ -21,6 +23,8 @@ def test_a_request_becomes_a_mission_with_a_proposed_plan(client):
 def test_the_mission_completes_only_after_verification_and_review(client):
     client.submit_message('Add a --version flag to the CLI')
     mission = wait_for(lambda: client.list_missions())[0]
+    approve_kind(client, mission['id'], 'start')
+    approve_kind(client, mission['id'], 'plan')
     wait_state(client, mission['id'], 'COMPLETED', timeout=120)
     seen = mission_states(client, mission['id'])
     assert seen.index('VERIFYING') < seen.index('REVIEWING') < seen.index('COMPLETED')
@@ -33,6 +37,8 @@ def test_the_review_is_independent_of_the_work_it_reviews(client):
     review it requests."""
     client.submit_message('Add a --version flag to the CLI')
     mission = wait_for(lambda: client.list_missions())[0]
+    approve_kind(client, mission['id'], 'start')
+    approve_kind(client, mission['id'], 'plan')
     wait_state(client, mission['id'], 'COMPLETED', timeout=120)
     reviews = [e for e in events_of(client, 'review.requested')
                if e['payload']['mission_id'] == mission['id']]
