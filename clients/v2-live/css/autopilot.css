@@ -21,15 +21,18 @@ body[data-ap][data-fold] #framenote { grid-row: 2; } body[data-ap][data-fold] #s
 .ap-prog { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--fill-2); }
 .ap-prog > i { display: block; height: 100%; background: var(--text); }
 
-/* a phone sized window: the bar is two rows, text then a row of controls; labels fold into the icons */
-@media (max-width: 599px) {
+/* under 1100 px the six labelled buttons no longer fit beside the text: two rows, text then controls. Under 768 px the labels fold into the icons */
+@media (max-width: 1099px) {
   .apbar { flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px 12px; }
+  .ap-ctl { gap: 8px; }
+}
+@media (max-width: 767px) {
   .ap-cap { font-size: 13px; }
   .ap-ctl { justify-content: space-between; gap: 4px; }
   .ap-btn { flex: 1 1 0; min-width: 44px; padding: 0 6px; }
   .ap-btn .ap-bl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .ap-btn[data-key='ap-speed'] .ap-bl { position: static; width: auto; height: auto; clip-path: none; font-size: 13px; }
-  .ap-btn[data-key='ap-speed'] svg { display: none; }
+  .ap-btn[data-key='ap-speed'] svg, .ap-w { display: none; }
 }
 
 .ap-list { position: fixed; z-index: 60; right: 16px; top: 96px; width: min(380px, calc(100vw - 32px)); max-height: min(70vh, 640px); overflow-y: auto; padding: 8px; background: var(--s3); color: var(--text); border: var(--hair) solid var(--line-strong); border-radius: 12px; }

@@ -253,7 +253,7 @@ export function installAutopilot(ctx, { setPrefs }) {
     const label = (key, text) => { const b = bar.querySelector('[data-key="' + key + '"]'); b.setAttribute('aria-label', tr(text)); b.title = tr(text); b.querySelector('.ap-bl').textContent = tr(text); return b; };
     label('ap-prev', 'Previous chapter').disabled = at <= 1; label('ap-next', 'Next chapter'); label('ap-chapters', 'Chapters').setAttribute('aria-expanded', String(!!list)); label('ap-stop', 'Stop');
     const p = label('ap-pause', run.paused ? 'Resume' : 'Pause'); p.setAttribute('aria-pressed', String(run.paused)); p.replaceChildren(icon(run.paused ? 'resume' : 'pause', 18), h('span', { class: 'ap-bl' }, tr(run.paused ? 'Resume' : 'Pause')));
-    const sp = label('ap-speed', 'Speed'); sp.querySelector('.ap-bl').textContent = tr('Speed') + ' ' + run.speed + 'x';
+    const sp = label('ap-speed', 'Speed'); sp.querySelector('.ap-bl').replaceChildren(h('span', { class: 'ap-w' }, tr('Speed') + ' '), run.speed + 'x');
     const prog = bar.querySelector('.ap-prog'); prog.setAttribute('aria-valuemax', n); prog.setAttribute('aria-valuenow', at); prog.setAttribute('aria-label', tr('Chapter ' + at + ' of ' + n)); prog.firstChild.style.width = (at / n * 100) + '%';
     if (list) drawList();
   }
