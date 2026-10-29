@@ -15,7 +15,7 @@ import { inspectorArea } from './inspectors2.js';
 import { overview, pane, meta, position } from './inspector-mission.js';
 import {spineOf} from '../spine-model.js';
 import {projectState} from './view-projects.js';
-import {projectTab, PROJECT_TABS, relTime} from '../page-model.js';
+import {projectTab, PROJECT_TABS, relTime, workHref} from '../page-model.js';
 import {worktreesOf} from './map.js';
 
 const KIND_WORD = { mission: 'Mission', task: 'Task', route: 'Route decision', execution: 'Execution', approval: 'Decision', plan: 'Plan', verification: 'Verification', review: 'Review', idea: 'Idea', knowledge: 'Knowledge', project: 'Project' };
@@ -366,6 +366,7 @@ function project(ctx, A, S, id) {
   };
   return frame(ctx, A, {cls: 'project-inspector', kind: KIND_WORD.project, title: p.name, sub: p.note, pin: id,
     meta: h('p', {class: 'project-state-sentence'}, sentence),
+    foot: () => (isPhone() ? [h('a', {class: 'btn primary', href: workHref({project: pid}), 'data-key': 'project-open-work', onclick: () => { ctx.ui.workProject = pid; }}, 'Open work')] : null),
     tabs: PROJECT_TABS.map(([t, l]) => (t === 'missions' ? [t, l, ms.length] : t === 'ideas' ? [t, l, ideas.length] : [t, l])),
     body: raw => { const tab = projectTab(raw); return h('div', {class: 'ax-body'},
       tab === 'overview' ? [recent(), worktrees(), phases(), ideaSection()] : null,

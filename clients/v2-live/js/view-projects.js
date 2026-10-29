@@ -7,6 +7,8 @@ import {present} from '../core-words.js';
 import {buildOverview} from './map.js';
 import {leadMission} from './constellation/territories.js';
 import * as store from './store.js';
+import {isPhone} from './viewport.js';
+import {renderPhone} from './projects-phone.js';
 import {sortProjects, sortOf, PROJECT_SORTS, workHref, relTime} from '../page-model.js';
 
 export function projectState(missions) {
@@ -45,6 +47,7 @@ function group(ctx, key, label, count, fold, body) {
 }
 
 export function render(ctx) {
+  if (isPhone()) return renderPhone(ctx); // the phone has its own list (projects-phone.js)
   const S = areasOf(ctx.sim).S(), ov = buildOverview(ctx.sim), q = (ctx.ui.projQuery || '').trim().toLowerCase();
   const state = new Map(ov.projects.map(p => [p.id, projectState(Object.values(S.missions).filter(m => m.project === p.id))]));
   const sort = sortOf(store.get('projsort')), now = ctx.sim.state.clock;
