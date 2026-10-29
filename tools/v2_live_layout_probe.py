@@ -41,7 +41,9 @@ ROUTES = ['now', 'work', 'replay/m-date', 'chat', 'settings', 'security', 'healt
           'accounts/mdl-claude-sonnet', 'health/chk-accounts', 'security~confirm', 'now~offline', 'work~offline', 'work/m-date~offline', 'work~pinned', 'now~ask', 'now~help', 'now~details', 'now~toast', 'chat~toast',
           'security~adv', 'health~adv', 'usage~adv', 'security/bk-codex~adv', 'now~adv', 'extensions~adv', 'settings~estop', 'now~estop', 'security~estop', 'terminal/security~estop',
           # S1: the safety popover, its two-step Stop, the Tell overlay
-          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'now~estopsafety']
+          'now~safety', 'settings~safety', 'now~stopask', 'work~tell', 'now~estopsafety',
+          # Autopilot: the paused caption bar on chapter 1 over four pages (the bar takes a row of the page grid, so the page below it is measured whole)
+          'now~autopilot', 'work~autopilot', 'projects~autopilot', 'chat~autopilot']
 # terminal states that need keys or a look: (keys sent to the terminal's controller, preferences)
 TUI = {'tui:help': ('?', {}), 'tui:cmd': (':', {}), 'tui:confirm': ('a enter A', {}), 'tui:ansi': ('', {'look': 'ansi'}), 'tui:hc': ('', {'look': 'hc'}), 'tui:mono': ('', {'look': 'mono'}),
        'tui:ascii': ('', {'ascii': True}), 'tui:read': ('', {'linear': True})}
@@ -64,6 +66,7 @@ STATES = {
     'stopask': "document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'tell': "document.querySelector('[data-key=tell], [data-key=bb-tell]').click()",
     'details': "document.querySelector('.now-toggle').click()",
+    'autopilot': "window.v2live.autopilot.show()",
     'estopsafety': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop'); document.querySelector('[data-key=stop], [data-key=bb-stop]').click()",
     'ask': "window.v2live.ui.estopAsk = true",
     'help': "window.v2live.help()",
@@ -71,7 +74,7 @@ STATES = {
     'estop': "window.v2live.sim.advance(60000); window.v2live.sim.act('estop')",
     'confirm': "(() => { const b = document.querySelector('[data-key^=\"trip-\"], .decide.danger, .ax-sw[aria-checked=true]'); if (b) b.click(); })()",
 }
-RESET = "(() => { window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; window.v2live.ui.nowDrawer = false; window.v2live.ui.estopAsk = window.v2live.ui.rearmAsk = false; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); const tt = document.querySelector('.toast'); if (tt) tt.hidden = true; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
+RESET = "(() => { window.v2live.autopilot.hide(); window.v2live.areas.reconnect(); window.v2live.ui.tab = 'outcome'; window.v2live.ui.confirm = null; window.v2live.ui.nowDrawer = false; window.v2live.ui.estopAsk = window.v2live.ui.rearmAsk = false; document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); const tt = document.querySelector('.toast'); if (tt) tt.hidden = true; const A = window.v2live.areas; A.X.pins.slice().forEach((p) => A.togglePin(p)); })()"
 
 MEASURE = r"""
 (opts) => {
