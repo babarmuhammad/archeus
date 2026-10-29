@@ -624,7 +624,7 @@ Built by the owner's naming of 2026-10-21 under D0 ("Yes, all five (Recommended)
 `/v1/accounts`, and the `status` verb in words (R13-06). No migration.
 
 - **Own calls in live work (ADR-0043 §2, ADR-0048 D-25.4; orchestration G6).**
-  `archeus/core/application/live.py` `live_work(conn, project_id=None, now=None)` lists every
+  `archeus/core/application/live.py` `live_work(conn, project_id=None, homes=None, now=None)` lists every
   execution in a live state, then every own call in flight, each oldest first. An own call is in
   flight while `resources.own_call_live` holds: no `outcome` yet, a `selected` or `fallback`
   result, and within its `max_run_s`. Its item is `kind: own_call` with its `purpose`, `source`,
@@ -1122,17 +1122,17 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   A14/A15 without operands currently require no explicit cwd path evidence; review remains open.
 - **Production Bash auto-allows nothing until a node attests the POSIX profile.** Re-grounded on
   this tree: `canonical.py:311` dispatches `canonicalise_hook`, classification is at :319-:320, row
-  construction at :335-:343. `manager.py:519` handles hooks, checks cwd at :537, builds context
-  at :540-:543, asks node at :544-:545, canonicalises at :546-:547 and forwards eligibility at
-  :548-:552; exceptions halt at :553-:555. `local.py:151-:153` returns `None` because current
+  construction at :335-:343. `manager.py:525` handles hooks, checks cwd at :543, builds context
+  at :546-:549, asks node at :550-:551, canonicalises at :552-:553 and forwards eligibility at
+  :554-:558; exceptions halt at :559-:561. `local.py:151-:153` returns `None` because current
   isolation does not attest resolution/startup environment. No production profile is enabled.
-- **HELD caps automatic allow.** `executions.py:922` authenticates/state/sequence checks before
-  authorization; DENY at :969-:970 and ASK at :971-:974 remain in force. Bash cap at :975-:979
+- **HELD caps automatic allow.** `executions.py:928` authenticates/state/sequence checks before
+  authorization; DENY at :975-:976 and ASK at :977-:980 remain in force. Bash cap at :981-:985
   halts otherwise automatic ALLOW with fixed reason `command form needs review` and fixed
   exec/command label. A permissive policy cannot admit a table miss. Explicit approval-backed
-  ALLOW remains a separate, exact single-use path (:954, :960, :977), never table membership.
-  Structured tools do not enter this cap. `_current` (:1016), `_label` (:1024) and `_hook_answer`
-  (:1046-:1056) retain closed labels and same-transaction current_action/hook_seq/event writes.
+  ALLOW remains a separate, exact single-use path (:960, :966, :983), never table membership.
+  Structured tools do not enter this cap. `_current` (:1022), `_label` (:1030) and `_hook_answer`
+  (:1052-:1062) retain closed labels and same-transaction current_action/hook_seq/event writes.
   The old classifier is not an eligibility fallback: `canonicalise_hook` preserves risk classes
   through closed exact program/subcommand tables after strict scan, with no policy host. This path
   remains; it cannot open automatic allow. Offline proof imports baseline versions only in child
