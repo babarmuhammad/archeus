@@ -414,7 +414,7 @@ export function createMap(container, options = {}) {
     const ws = wordmarkSize(u, options.calm), base = R * reachOf() + ws * 1.9;
     wordmark.setAttribute('x', ws * .2); wordmark.setAttribute('y', base); wordmark.style.fontSize = `${ws}px`;
     tagline.style.display = phoneOverview() || width < 480 || !taglineOn(coreFactor()) ? 'none' : ''; tagline.setAttribute('y', base + ws * 1.9); tagline.style.fontSize = `${ws * (options.calm ? .6 : .95)}px`; if (options.calm) tagline.style.letterSpacing = '.22em';
-    runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`;
+    runningText.setAttribute('y', base + ws * 3.6); runningText.style.fontSize = `${ws * .9}px`; runningText.style.display = phoneOverview() ? 'none' : '';
   }
   // glide: a layout step (a level change, a new project, the Details sheet) moves the nodes that stay by transform; the edges, which are redrawn at once, fade in once the nodes are on the way.
   function render(previous = new Map(), arrivals = false, moved = true, glide = false) {
