@@ -551,7 +551,7 @@ RG01 to RG12: 12 rows (11 SIMULATED, 1 DESIGNED). R05 and R06 above are supersed
 | TV07 | Focus caption is not drawn on phone, where the Overview keeps its list-first scene (RG12) | owner 2026-10-29 | SIMULATED | NOW · P | `js/map.js` |
 | TV08 | Autopilot: the chapter Territories, Rings or Network picks each view in turn and restores the stored choice; Semantic zoom ends on Territories | owner 2026-10-29 | SIMULATED | NOW | `js/autopilot-script.js` |
 
-TV01 to TV08: 8 rows (8 SIMULATED). Conservative defaults taken without asking: the caption is hidden when no corner is free; the switch stays icon only (names in tooltip and accessible name); the Italian names are Vista a territori, Vista ad anelli, Vista a rete (existing "Vista a rete" kept). R01, R05 and R06 hold for Territories (superseded only for Rings).
+TV01 to TV08: 8 rows (8 SIMULATED). Conservative defaults taken without asking: the caption is hidden when no corner is free; the switch stays icon only (names in tooltip and accessible name); the Italian names are Vista a territori, Vista ad anelli, Vista a rete (existing "Vista a rete" kept). R01, R05 and R06 hold for Territories (superseded only for Rings). Known limit, open owner question: with the Details drawer open on a window of 1024 px or less, 30 or more projects do not fit the Territories grid at its 24 px minimum cell, so cells run past the scene edge (the layout probe reports it on `now~details` at `?projects=30` and `100`, 600 and 1024 px); Rings and Network have no such limit. The hit areas of Territories cells and the pointer-only marks of the deepest zoom are held to 24 px, not 44 px, like the dense rings.
 
 ## Phone lists (slice B, 2026-10-29)
 
