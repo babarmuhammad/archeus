@@ -24,7 +24,14 @@ def _hits(page):
 
 def _open_palette(page):
     page.keyboard.press('Control+K')
-    page.locator('#cmd').wait_for()
+    try:
+        page.locator('#cmd').wait_for(timeout=4000)
+    except Exception:
+        print('DIAG', page.evaluate('''() => ({hash: location.hash, open: document.querySelector('dialog.command').open, active: document.activeElement && (document.activeElement.tagName + '.' + document.activeElement.className), modal: [...document.querySelectorAll('dialog[open]')].length, title: document.title})'''))
+        page.keyboard.press('Control+K')
+        page.wait_for_timeout(1000)
+        print('DIAG2', page.evaluate('() => document.querySelector("dialog.command").open'))
+        raise
 
 
 def test_the_palette_moves_by_arrows_and_acts_by_cores_verbs(browser, slow):  # noqa: F811
