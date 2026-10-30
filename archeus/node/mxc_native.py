@@ -1,0 +1,215 @@
+import io
+import json
+import ntpath
+import subprocess
+import time
+from typing import Protocol
+
+from . import mxc
+from .mxc import MxcUnavailable
+
+
+CREATE_SUSPENDED = 0x4
+EXTENDED_STARTUPINFO_PRESENT = 0x80000
+CREATE_UNICODE_ENVIRONMENT = 0x400
+
+
+class Win32(Protocol):
+    # Each allocation returns ownership only on success; failed calls release partial allocations.
+    # Fresh protected, non-reparse file; retain deny-write/delete lease until removal.
+    def protected_policy(self, data: bytes) -> tuple[str, object]: ...
+    def remove_policy(self, path, handle): ...
+    # Parent ends noninheritable; child ends inheritable. No other handle is inherited.
+    def pipe(self, *, parent_reads: bool) -> tuple[object, object]: ...
+    def attribute_list(self, handles: tuple) -> object: ...
+    def delete_attribute_list(self, attributes): ...
+    def create_process_w(self, *, application, command_line, flags, attributes,
+                         inherit_handles, std_handles, cwd, env) -> tuple: ...
+    def creation_time(self, process) -> int: ...
+    def in_job(self, job, process) -> bool: ...
+    def resume_thread(self, thread) -> int: ...
+    def terminate_process(self, process): ...
+    def close_handle(self, handle): ...
+    def poll(self, process) -> int | None: ...
+    # None means pending, b'' means EOF. Calls must never block or exceed size.
+    def read(self, handle, size: int) -> bytes | None: ...
+    def write(self, handle, data: bytes) -> int: ...
+
+
+class Transport:
+    def __init__(self, api: Win32, boundary, *, clock=time.monotonic, pause=time.sleep,
+                 output_limit=256 * 1024):
+        if output_limit <= 0:
+            raise ValueError('positive output bound required')
+        self.api, self.boundary = api, boundary
+        self.clock, self.pause, self.output_limit = clock, pause, output_limit
+        self._policies = {}
+
+    def stage_policy(self, raw):
+        path, handle = self.api.protected_policy(
+            json.dumps(raw, ensure_ascii=False, allow_nan=False).encode('utf-8'))
+        if not ntpath.isabs(path) or not ntpath.splitdrive(path)[0]:
+            self.api.remove_policy(path, handle)
+            raise MxcUnavailable('absolute protected policy path required')
+        self._policies[path] = handle
+        return path
+
+    def create_suspended(self, argv, *, policy):
+        path = argv[-1]
+        lease = self._policies.pop(path)
+        handles, attributes, child = [], None, None
+        process = None
+        try:
+            if not ntpath.isabs(argv[0]) or not ntpath.splitdrive(argv[0])[0]:
+                raise MxcUnavailable('absolute Windows application path required')
+            if any('\0' in arg for arg in argv):
+                raise MxcUnavailable('NUL in launcher arguments')
+            pairs = []
+            for parent_reads in (False, True, True):
+                parent, inherited = self.api.pipe(parent_reads=parent_reads)
+                handles.extend((parent, inherited))
+                pairs.append((parent, inherited))
+            inherited = tuple(pair[1] for pair in pairs)
+            attributes = self.api.attribute_list(inherited)
+            process, thread, pid = self.api.create_process_w(
+                application=argv[0], command_line=subprocess.list2cmdline(argv),
+                flags=CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                attributes=attributes, inherit_handles=True, std_handles=inherited,
+                cwd=policy.raw['process']['cwd'], env={})
+            handles.extend((process, thread))
+            created = self.api.creation_time(process)
+            if type(created) is not int or created <= 0:
+                raise MxcUnavailable('invalid launcher creation time')
+            child = Process(self, process, thread, pid, created,
+                            tuple(pair[0] for pair in pairs), (path, lease),
+                            policy.raw['process']['timeout'] / 1000)
+            for handle in inherited:
+                self.api.close_handle(handle)
+                handles.remove(handle)
+            handles.clear()
+            return child
+        except BaseException:
+            if process is not None:
+                self.api.terminate_process(process)
+            raise
+        finally:
+            for handle in reversed(handles):
+                self.api.close_handle(handle)
+            if attributes is not None:
+                self.api.delete_attribute_list(attributes)
+            if child is None:
+                self.api.remove_policy(path, lease)
+
+    def assign_job(self, job, child):
+        self.boundary.assign_job(job, child.process_handle)
+
+    def in_job(self, job, child):
+        return self.api.in_job(job, child.process_handle)
+
+    def resume(self, child):
+        if child.resumed:
+            raise MxcUnavailable('launcher already resumed')
+        child.resumed = True
+        previous = self.api.resume_thread(child.thread_handle)
+        if previous != 1:
+            raise MxcUnavailable('launcher suspend count was not one')
+        return previous
+
+
+class Input(io.BytesIO):
+    def close(self):
+        if not self.closed:
+            self.data = self.getvalue()
+        super().close()
+
+    def payload(self):
+        return self.data if self.closed else self.getvalue()
+
+
+class Process:
+    def __init__(self, transport, process, thread, pid, created, pipes, policy_lease, timeout):
+        self.transport, self.api = transport, transport.api
+        self.process_handle, self.thread_handle = process, thread
+        self.pid, self.create_time, self.resumed = pid, created, False
+        self._pipes = list(pipes)
+        self._handles = [process, thread, *pipes]
+        self.stdin, self.stdout, self.stderr = Input(), io.BytesIO(), io.BytesIO()
+        self.launcher_exit = None
+        self._cancelled = False
+        self._policy_lease, self.timeout = policy_lease, timeout
+
+    def _close(self, handle):
+        if handle in self._handles:
+            self.api.close_handle(handle)
+            self._handles.remove(handle)
+
+    def close(self):
+        for handle in self._handles[:]:
+            self._close(handle)
+        self.stdin.close()
+        if self._policy_lease is not None:
+            self.api.remove_policy(*self._policy_lease)
+            self._policy_lease = None
+
+    def terminate(self):
+        if not self._cancelled and self._handles:
+            self._cancelled = True
+            try:
+                if self.launcher_exit is None:
+                    self.api.terminate_process(self.process_handle)
+            finally:
+                self.close()
+
+    def is_alive(self):
+        return bool(self._handles) and self.api.poll(self.process_handle) is None
+
+    def wait(self, timeout=None, *, cancelled=lambda: False):
+        if self._cancelled:
+            raise MxcUnavailable('launcher cancelled')
+        if self.launcher_exit is not None and not self._handles:
+            return self.launcher_exit
+        deadline = self.transport.clock() + max(0, self.timeout if timeout is None else timeout)
+        pending = self.stdin.payload()
+        offset, eof = 0, set()
+        try:
+            while True:
+                if cancelled():
+                    raise MxcUnavailable('launcher cancelled during drain')
+                if deadline is not None and self.transport.clock() >= deadline:
+                    raise TimeoutError('launcher I/O deadline')
+                for index, stream in ((1, self.stdout), (2, self.stderr)):
+                    if index in eof:
+                        continue
+                    data = self.api.read(self._pipes[index], 65536)
+                    if data == b'':
+                        eof.add(index)
+                        self._close(self._pipes[index])
+                    elif data:
+                        stream.seek(0, io.SEEK_END)
+                        if stream.tell() + len(data) > self.transport.output_limit:
+                            raise MxcUnavailable('launcher output bound exceeded')
+                        stream.write(data)
+                if self._pipes[0] in self._handles:
+                    if offset < len(pending):
+                        offset += self.api.write(self._pipes[0], pending[offset:offset + 65536])
+                    else:
+                        self._close(self._pipes[0])
+                        self.stdin.close()
+                self.launcher_exit = self.api.poll(self.process_handle)
+                if self.launcher_exit is not None and len(eof) == 2:
+                    self.close()
+                    self.stdout.seek(0)
+                    self.stderr.seek(0)
+                    return self.launcher_exit
+                self.transport.pause(0.001)
+        except BaseException:
+            self.terminate()
+            self.close()
+            raise
+
+
+class Backend(mxc.NativeMxc):
+    compile_policy = staticmethod(mxc.compile_policy)
+
+    def __init__(self, api, boundary, schema_validator, **options):
+        super().__init__(Transport(api, boundary, **options), schema_validator)
