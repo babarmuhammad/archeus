@@ -54,8 +54,22 @@ class Transport:
         self._policies[path] = handle
         return path
 
-    def create_suspended(self, argv, *, policy):
-        path = argv[-1]
+    def start(self, job, argv, *, policy, policy_path=None):
+        if job is None:
+            raise MxcUnavailable('Core-held Job required')
+        child = self.create_suspended(argv, policy=policy, policy_path=policy_path)
+        try:
+            self.assign_job(job, child)
+            if self.in_job(job, child) is not True:
+                raise MxcUnavailable('launcher Job membership unverified')
+            self.resume(child)
+        except BaseException:
+            child.terminate()
+            raise
+        return child
+
+    def create_suspended(self, argv, *, policy, policy_path=None):
+        path = argv[-1] if policy_path is None else policy_path
         lease = self._policies.pop(path)
         handles, attributes, child = [], None, None
         process = None

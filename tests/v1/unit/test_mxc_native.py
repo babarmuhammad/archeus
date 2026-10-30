@@ -269,3 +269,45 @@ def test_quoted_argument_and_trailing_backslash():
         'C:\\launcher.exe a\\"b "space \\\\" C:\\protected\\policy.json')
     child.terminate()
     assert api.handles == {}
+
+
+@pytest.mark.parametrize('failure', ['assign', 'query', 'membership', 'resume'])
+def test_start_fault_terminates_and_closes(failure):
+    api = FakeWin32(failure)
+    transport, policy, path = setup(api)
+    with pytest.raises((OSError, mxc.MxcUnavailable)):
+        transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
+    if failure != 'resume':
+        assert 'resume' not in api.events
+
+
+def test_start_orders_assignment_membership_and_single_resume():
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    try:
+        assert api.kwargs['flags'] & native.CREATE_SUSPENDED
+        assert api.events.index('create') < api.events.index('assign')
+        assert api.events.index('assign') < api.events.index('query')
+        assert api.events.index('query') < api.events.index('resume')
+        with pytest.raises(mxc.MxcUnavailable, match='already resumed'):
+            transport.resume(child)
+        with pytest.raises(KeyError):
+            transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+        assert api.events.count('create') == api.events.count('resume') == 1
+    finally:
+        child.terminate()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('count', [0, 2, 0xffffffff])
+def test_start_wrong_suspend_count_terminates(count):
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    api.resume_thread = lambda thread: count
+    with pytest.raises(mxc.MxcUnavailable, match='suspend count'):
+        transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
