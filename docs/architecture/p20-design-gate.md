@@ -1924,6 +1924,8 @@ and [pv20-execution-isolation-design.md](pv20-execution-isolation-design.md).
       never as not-found. **PV-20 is not verified overall. G stays PAUSED and NOT CLOSED; G1 and
       G2 stay Critical and open.** P11's O7, P23 and ADR-0021 stay unresolved; AppContainer and
       Job evidence stays outstanding. No later slice is authorised.
+**PV-20 MXC backend decision and bounded feasibility evidence — 2026-10-29.** The owner selected Microsoft MXC `processcontainer` as the implementation of ADR-0053’s unchanged AppContainer + Core-held Job mechanism. `.collab/PV20-mxc-feasibility.md` records the separately authorized eight-check smoke and Claude 2.1.312 version/help addendum. N1–N5 were not started. Read/write denial, blocked local network and short tree termination observations do not close acceptance rows 1–15. G1/G2 remain Critical and open; G remains PAUSED and NOT CLOSED. Production activation, UI policy, principal separation, hostile-object/handle exclusion, credential-authority denial, broker/origin proof and full lifecycle evidence remain gated. Historical hand-built implementation entries retain provenance but are not evidence for the MXC implementation.
+
 102. **PV-20 slice S1 — the isolated-execution path, accepted with recorded limitations
     (2026-10-09) and committed (2026-10-12, `77008db`).** The owner's acceptance record is
     `PV20-S1-ACCEPTANCE-2026-10-09.md`; it authorises neither S2 nor production enablement.
