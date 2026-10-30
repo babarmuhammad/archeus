@@ -15,6 +15,7 @@ removal (execution-architecture §2) is the guarantee.
 
 import fnmatch
 import hashlib
+import ipaddress
 import os
 import posixpath
 import re
@@ -437,7 +438,7 @@ _CURL_VALUE = frozenset((
     '--range', '-C', '--continue-at', '--connect-timeout', '--resolve', '--json', '-Y',
     '--speed-limit', '-y', '--speed-time', '--limit-rate', '--retry', '--retry-delay'))
 _WGET_VALUE = frozenset((
-    '--header', '--post-data', '--post-file', '--body-data', '--body-file', '--password',
+    '--config', '--header', '--post-data', '--post-file', '--body-data', '--body-file', '--password',
     '--http-password', '--user', '--http-user', '--proxy-user', '--proxy-password', '-U',
     '--user-agent', '--referer', '-e', '--execute', '--load-cookies', '--save-cookies', '-o',
     '-O', '--output-file', '--output-document', '-P', '--directory-prefix', '-t', '--tries',
@@ -448,6 +449,7 @@ _SENDS = ('-d', '-F', '-T', '--data', '--data-raw', '--data-binary', '--data-url
           '--data-ascii', '--upload-file', '--form', '--form-string', '--json', '--post-data',
           '--post-file', '--body-data', '--body-file')
 _HOST = re.compile(r'[a-z0-9.-]{1,253}')
+_LABEL = re.compile(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?')
 
 
 def _program(cmd):
@@ -674,8 +676,12 @@ def _policy_host(value):
         return None
     host = (parsed.hostname or '').rstrip('.')
     if ':' in host:
-        return host if re.fullmatch(r'[0-9a-f:.]+', host) else None
-    if not _HOST.fullmatch(host):
+        try:
+            addr = ipaddress.IPv6Address(host)
+        except ValueError:
+            return None
+        return None if addr.ipv4_mapped else addr.compressed
+    if len(host) > 253 or not all(_LABEL.fullmatch(part) for part in host.split('.')):
         return None
     # curl and wget read 2852039166, 0xa9fea9fe and 0251.0376.0251.0376 as addresses; a rule on the dotted form must not miss them
     if re.fullmatch(r'(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}', host) and not re.fullmatch(r'(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)', host):
@@ -686,7 +692,7 @@ def _policy_host(value):
 def _policy_urls(prog, args):
     """Policy destinations only; never read config files or reuse chip parsing."""
     values = _WGET_VALUE if prog == 'wget' else _CURL_VALUE
-    files = ('-i', '--input-file') if prog == 'wget' else ('-K', '--config')
+    files = ('-i', '--input-file', '--config') if prog == 'wget' else ('-K', '--config')
     proxies = _POLICY_PROXY if prog == 'curl' else ()
     extra = ('--url', '--connect-to') if prog == 'curl' else ()
     letters = {v[1] for v in values if len(v) == 2}

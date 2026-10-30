@@ -251,14 +251,43 @@ def test_a_port_that_is_not_one_leaves_the_destination_unresolved(cmd):
     assert not any(allowed(acts, p) for p in 'dab')
 
 
-@pytest.mark.parametrize('cmd', [
-    'wget --input=urls.txt ' + G, 'wget --input urls.txt ' + G, 'wget --input-fi=urls.txt ' + G,
-    'curl --conf=cfg.txt ' + G, 'curl --pass=hunter2.x ' + G,
+@pytest.mark.parametrize('cmd, hosts', [
+    ('wget --input=urls.txt ' + G, ['good.example', None]),
+    ('wget --input urls.txt ' + G, ['good.example', 'urls.txt', None]),
+    ('wget --input-fi=urls.txt ' + G, ['good.example', None]),
+    ('curl --conf=cfg.txt ' + G, ['good.example', None]),
+    ('curl --pass=hunter2.x ' + G, ['good.example', None]),
+    ('wget --config good.example ' + G, ['good.example', None]),
+    ('wget --conf=cfg.txt ' + G, ['good.example', None]),
 ])
-def test_an_attached_or_abbreviated_option_value_keeps_the_destination_unresolved(cmd):
+def test_an_attached_or_abbreviated_option_value_keeps_the_destination_unresolved(cmd, hosts):
     acts = actions(cmd)
-    assert None in [a.host for a in acts] or 'urls.txt' in [a.host for a in acts]
+    assert [a.host for a in acts] == hosts
     assert not any(allowed(acts, p) for p in 'dab')
+
+
+@pytest.mark.parametrize('cmd, hosts', [
+    ('curl http://[0:0:0:0:0:0:0:1]/x', ['::1']),
+    ('curl "http://[0000:0000:0000:0000:0000:0000:0000:0001]/x"', ['::1']),
+    ('curl "http://[::ffff:127.0.0.1]/x"', [None]),
+    ('curl https://bad..example/x ' + G, ['good.example', None]),
+    ('curl https://-bad.example/x', [None]),
+    ('curl https://bad-.example/x', [None]),
+    ('curl https://' + 'a' * 64 + '.example/x', [None]),
+])
+def test_an_address_has_one_spelling_and_a_name_must_be_a_valid_dns_name(cmd, hosts):
+    acts = actions(cmd)
+    assert [a.host for a in acts] == hosts
+    assert not any(allowed(acts, p) for p in 'dab' if hosts == [None] or None in hosts)
+
+
+def test_a_deny_on_the_loopback_address_meets_every_spelling():
+    for cmd in ('curl http://[0:0:0:0:0:0:0:1]/x', 'curl http://[::1]/x'):
+        rs = [rules.rule(id='b', scope_level='USER', scope_ref='u', action_class='web', decision='ALLOW'),
+              rules.rule(id='d', scope_level='MISSION', scope_ref='m', action_class='web', decision='DENY',
+                         match={'host_glob': '::1'})]
+        r = engine.evaluate_item(actions(cmd)[0], {'stage': 'action', 'chain': {'USER': 'u', 'MISSION': 'm'}, 'rules': rs, 'profiles': {'USER': None}})
+        assert r['decision'] == 'DENY'
 
 
 @pytest.mark.parametrize('cmd, held', [
@@ -277,7 +306,7 @@ def test_a_named_proxy_resolves_only_its_own_protocol(cmd, held):
     "curl 'https://{evil.example,good.example}/x'", 'curl https://evil%2eexample/x',
     'curl https://\uff45vil.example/x', 'curl http://2852039166/x', 'curl http://0xa9fea9fe/x',
     'curl http://0251.0376.0251.0376/x', "wget 'https://evil.example;@good.example/x'",
-    "curl 'https://evil.example\@good.example/x'",
+    "curl 'https://evil.example\\@good.example/x'",
 ])
 def test_a_host_spelled_so_the_fetcher_reads_it_differently_is_unresolved(cmd):
     acts = actions(cmd)
