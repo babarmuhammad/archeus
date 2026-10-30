@@ -84,8 +84,8 @@ MUTATIONS = [
            '        proxy_enabled and (not proxy_named or bool(schemes - proxy_named)))',
            '        False)', T + 'test_wget_unresolved_proxy_setting_holds'),
     mutant('Z657', 'a root dot makes a different host',
-           "host = (parsed.hostname or '').rstrip('.')",
-           "host = parsed.hostname or ''", T + 'test_a_root_dot_is_not_a_different_host'),
+           "host = host[:-1] if host.endswith('.') else host",
+           "host = host", T + 'test_a_root_dot_is_not_a_different_host'),
     mutant('Z658', 'a port that is not one is not checked',
            '        parsed.port\n    except ValueError',
            '    except ValueError', T + 'test_a_port_that_is_not_one_leaves_the_destination_unresolved'),
@@ -106,7 +106,7 @@ MUTATIONS = [
            r"if re.fullmatch(r'(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}', host) and not",
            'if False and not', T + 'test_a_host_spelled_so_the_fetcher_reads_it_differently_is_unresolved'),
     mutant('Z664', 'an IPv6 literal keeps the spelling it was written in',
-           "        return None if addr.ipv4_mapped else addr.compressed",
+           "        return None if addr.ipv4_mapped or addr.scope_id else addr.compressed",
            "        return host", T + 'test_an_address_has_one_spelling_and_a_name_must_be_a_valid_dns_name'),
     mutant('Z665', 'an invalid DNS label is still a host',
            "    if len(host) > 253 or not all(_LABEL.fullmatch(part) for part in host.split('.')):",
@@ -115,6 +115,12 @@ MUTATIONS = [
            "    files = ('-i', '--input-file', '--config') if prog == 'wget'",
            "    files = ('-i', '--input-file') if prog == 'wget'",
            T + 'test_an_attached_or_abbreviated_option_value_keeps_the_destination_unresolved'),
+    mutant('Z667', 'a scoped IPv6 literal is still a host',
+           "addr.ipv4_mapped or addr.scope_id else",
+           "addr.ipv4_mapped else", T + 'test_a_scoped_loopback_is_never_allowed_past_a_deny_on_the_address'),
+    mutant('Z668', 'every trailing dot is dropped, not one root dot',
+           "host = host[:-1] if host.endswith('.') else host",
+           "host = host.rstrip('.')", T + 'test_an_address_has_one_spelling_and_a_name_must_be_a_valid_dns_name'),
 ]
 
 if __name__ == '__main__':

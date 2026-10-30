@@ -271,6 +271,11 @@ def test_an_attached_or_abbreviated_option_value_keeps_the_destination_unresolve
     ('curl "http://[0000:0000:0000:0000:0000:0000:0000:0001]/x"', ['::1']),
     ('curl "http://[::ffff:127.0.0.1]/x"', [None]),
     ('curl https://bad..example/x ' + G, ['good.example', None]),
+    ('curl https://good.example../x', [None]),
+    ('curl https://good.example../x ' + G, ['good.example', None]),
+    ("curl 'http://[fe80::1%25eth0]/x'", [None]),
+    ("curl 'http://[fe80::1%eth0]/x'", [None]),
+    ("curl 'http://[::1%25lo]/x'", [None]),
     ('curl https://-bad.example/x', [None]),
     ('curl https://bad-.example/x', [None]),
     ('curl https://' + 'a' * 64 + '.example/x', [None]),
@@ -288,6 +293,16 @@ def test_a_deny_on_the_loopback_address_meets_every_spelling():
                          match={'host_glob': '::1'})]
         r = engine.evaluate_item(actions(cmd)[0], {'stage': 'action', 'chain': {'USER': 'u', 'MISSION': 'm'}, 'rules': rs, 'profiles': {'USER': None}})
         assert r['decision'] == 'DENY'
+
+
+@pytest.mark.parametrize('cmd', ["curl 'http://[::1%25lo]/x'", "curl 'http://[::1%lo]/x'"])
+def test_a_scoped_loopback_is_never_allowed_past_a_deny_on_the_address(cmd):
+    rs = [rules.rule(id='b', scope_level='USER', scope_ref='u', action_class='web', decision='ALLOW'),
+          rules.rule(id='d', scope_level='MISSION', scope_ref='m', action_class='web', decision='DENY',
+                     match={'host_glob': '::1'})]
+    for act in actions(cmd):
+        r = engine.evaluate_item(act, {'stage': 'action', 'chain': {'USER': 'u', 'MISSION': 'm'}, 'rules': rs, 'profiles': {'USER': None}})
+        assert r['decision'] != 'ALLOW'
 
 
 @pytest.mark.parametrize('cmd, held', [

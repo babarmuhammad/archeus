@@ -674,13 +674,14 @@ def _policy_host(value):
         return None
     if re.search(r'[;\\]', parsed.netloc):
         return None
-    host = (parsed.hostname or '').rstrip('.')
+    host = parsed.hostname or ''
+    host = host[:-1] if host.endswith('.') else host
     if ':' in host:
         try:
             addr = ipaddress.IPv6Address(host)
         except ValueError:
             return None
-        return None if addr.ipv4_mapped else addr.compressed
+        return None if addr.ipv4_mapped or addr.scope_id else addr.compressed
     if len(host) > 253 or not all(_LABEL.fullmatch(part) for part in host.split('.')):
         return None
     # curl and wget read 2852039166, 0xa9fea9fe and 0251.0376.0251.0376 as addresses; a rule on the dotted form must not miss them
