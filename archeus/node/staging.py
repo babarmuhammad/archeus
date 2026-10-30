@@ -251,3 +251,94 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
         if not _present(final):
             raise
     return verify(final)
+
+
+MXC_PACKAGE = '@microsoft/mxc-sdk'
+MXC_VERSION = '1.0.1'
+MXC_EXE = 'bin/x64/wxc-exec.exe'
+
+
+def _ancestors(path):
+    path = os.path.abspath(path)
+    parent = os.path.dirname(path)
+    if parent != path:
+        _ancestors(parent)
+    _entry(path)
+
+
+def scan_grants(grants):
+    """Refuse aliases and multiply named files in every granted path (F2).
+
+    UNVERIFIED: scans are not atomic against concurrent host writers.
+    """
+    def walk(path):
+        st = _entry(path)
+        if stat.S_ISREG(st.st_mode):
+            if st.st_nlink != 1:
+                raise StageError('a second name for %s' % path)
+        else:
+            for name in os.listdir(path):
+                walk(os.path.join(path, name))
+
+    for path in grants:
+        _ancestors(path)
+        walk(path)
+
+
+def _mxc_inventory(root):
+    scan_grants((root,))
+    found = {}
+    for folder, _, names in os.walk(root, followlinks=False):
+        for name in names:
+            path = os.path.join(folder, name)
+            found['/'.join(os.path.relpath(path, root).split(os.sep))] = _sha(path)
+    return found
+
+
+def verify_mxc(root, *, pins):
+    """Verify an expanded SDK against an independently reviewed full SHA-256 map.
+
+    UNVERIFIED: the protocol supplies no artifact hashes or complete DLL inventory.
+    Pins must come from Core's reviewed inventory, never from the staged package.
+    """
+    pins = dict(pins)
+    if not {'package.json', MXC_EXE} <= pins.keys() or any(
+            not isinstance(rel, str) or '\\' in rel or ':' in rel
+            or any(part in ('', '.', '..') for part in rel.split('/'))
+            for rel in pins) or any(
+            not isinstance(value, str) or len(value) != 64
+            or any(c not in '0123456789abcdef' for c in value)
+            for value in pins.values()):
+        raise StageError('missing or invalid reviewed MXC pins')
+    if _mxc_inventory(root) != pins:
+        raise StageError('MXC artifacts differ from reviewed hashes')
+    with open(os.path.join(root, 'package.json'), 'rb') as f:
+        try:
+            package = json.load(f)
+        except ValueError as err:
+            raise StageError('invalid MXC package metadata') from err
+    if not isinstance(package, dict) or package.get('name') != MXC_PACKAGE \
+            or package.get('version') != MXC_VERSION:
+        raise StageError('MXC package identity differs from the pinned version')
+    return os.path.join(os.fspath(root), *MXC_EXE.split('/'))
+
+
+def stage_mxc(source_root, destination, *, pins):
+    """Copy an offline expanded SDK into a fresh root; never install or execute it."""
+    pins = dict(pins)
+    verify_mxc(source_root, pins=pins)
+    destination = os.path.abspath(destination)
+    _ancestors(os.path.dirname(destination))
+    os.mkdir(destination)
+    for rel, digest in sorted(pins.items()):
+        src = os.path.join(source_root, *rel.split('/'))
+        dst = os.path.join(destination, *rel.split('/'))
+        scan_grants((src,))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        _ancestors(os.path.dirname(dst))
+        with open(src, 'rb') as f:
+            got = _write(dst, iter(lambda: f.read(1 << 20), b''))
+        if got != digest:
+            raise StageError('MXC artifact changed during copy: %s' % rel)
+    verify_mxc(destination, pins=pins)
+    return destination
