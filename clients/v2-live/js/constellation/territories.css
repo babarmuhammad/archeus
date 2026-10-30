@@ -20,6 +20,11 @@
 .am-territories .am-cell-code-big { font-size: 16px; }
 .am-territories .am-cell-name { fill: var(--am-text); font: 400 17px/1 var(--am-serif); }
 .am-territories .am-cell-state { fill: currentColor; font: 500 11px/1 var(--am-sans); letter-spacing: .12em; }
+@container dev (700px <= width < 900px) {
+  .am-territories:lang(it) .am-state-needs-you > .am-cell-state { transform: translateY(18px); letter-spacing: 0; }
+  .am-territories:lang(it) .am-focus-title { flex-wrap: wrap; }
+  .am-territories:lang(it) .am-focus-title > .am-state-needs-you { flex-basis: 100%; }
+}
 .am-territories .am-cell-lead { fill: var(--am-text); font: 400 15px/1 var(--am-serif); }
 .am-territories .am-cell-sub { fill: currentColor; font: 500 12px/1 var(--am-sans); }
 .am-territories .am-cell-last, .am-territories .am-cell-more, .am-territories .am-cell-quiet { fill: var(--am-muted); font: 400 12px/1 var(--am-sans); }
