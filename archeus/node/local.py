@@ -34,6 +34,7 @@ from ..infra.paths import (ExecPaths, VerifyPaths, archeus_home, processes_regis
 from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
+from . import linkscan
 
 if TYPE_CHECKING:
     from . import mxc
@@ -170,6 +171,7 @@ class MxcLaunch:
         self.outcome = outcome
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
+        linkscan.check_grants((workspace,) + readonly, staging.StageError)
         staging.scan_grants((workspace,) + readonly)
         self.policy: 'mxc.MxcPolicy' = backend.compile_policy(
             workspace=workspace, readonly=readonly, denied=denied, cwd=cwd,
@@ -186,6 +188,8 @@ class MxcLaunch:
             raise staging.StageError('MXC requires a Core-held Job')
         exe = staging.verify_mxc(self.sdk_root, pins=self.pins)
         fs = self.policy.raw['filesystem']
+        linkscan.check_grants(tuple(fs.get('readwritePaths', ()))
+                              + tuple(fs.get('readonlyPaths', ())), staging.StageError)
         staging.scan_grants(tuple(fs.get('readwritePaths', ()))
                             + tuple(fs.get('readonlyPaths', ())))
         self._started = True
