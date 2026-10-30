@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from . import linkscan
+
 
 NATIVE_RUN_ENABLED = False
 
@@ -62,6 +64,7 @@ def scan_grant(root):
         if parent == ancestor:
             break
         ancestor = parent
+    linkscan.check_grants((root,), MxcUnavailable)
     pending = [root]
     while pending:
         path = pending.pop()
@@ -71,13 +74,10 @@ def scan_grant(root):
                     or getattr(info, 'st_file_attributes', 0)
                     & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0x400)):
                 raise MxcUnavailable('alias in grant: %s' % path)
-            if stat.S_ISREG(info.st_mode):
-                if info.st_nlink != 1:
-                    raise MxcUnavailable('multiple links in grant: %s' % path)
-            elif stat.S_ISDIR(info.st_mode):
+            if stat.S_ISDIR(info.st_mode):
                 with os.scandir(path) as entries:
                     pending.extend(entry.path for entry in entries)
-            else:
+            elif not stat.S_ISREG(info.st_mode):
                 raise MxcUnavailable('unsupported grant object: %s' % path)
         except OSError as err:
             raise MxcUnavailable('unreadable grant: %s' % path) from err

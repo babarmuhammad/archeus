@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from archeus.node import local, staging
+from archeus.node import linkscan, local, staging
 
 
 @dataclass(frozen=True)
@@ -102,17 +102,52 @@ def test_every_grant_scanned_twice(launch_args, tmp_path, kind, when):
     outside.write_bytes(b'outside')
     grant = launch_args['workspace'] if kind == 'rw' else launch_args['readonly'][0]
     backend = FakeMxc()
+    def link():
+        try:
+            os.link(outside, os.path.join(grant, 'alias'))
+        except OSError as err:
+            pytest.skip('hardlinks unavailable: %s' % err)
+
     if when == 'prepare':
-        os.link(outside, os.path.join(grant, 'alias'))
+        link()
         with pytest.raises(staging.StageError, match='second name'):
             local.MxcLaunch(backend=backend, outcome=lambda p: 0, **launch_args)
         assert backend.calls == []
     else:
         launch = local.MxcLaunch(backend=backend, outcome=lambda p: 0, **launch_args)
-        os.link(outside, os.path.join(grant, 'alias'))
+        link()
         with pytest.raises(staging.StageError, match='second name'):
             launch.start(job=object())
         assert backend.calls == ['compile']
+
+
+@pytest.mark.parametrize('kind', ['rw', 'ro'])
+@pytest.mark.parametrize('when', ['grant', 'launch'])
+@pytest.mark.parametrize('failure', ['linked', 'unreadable'])
+def test_shared_hardlink_gate_refuses(launch_args, monkeypatch, kind, when, failure):
+    backend = FakeMxc()
+    launch = (local.MxcLaunch(backend=backend, outcome=lambda p: 0, **launch_args)
+              if when == 'launch' else None)
+    root = launch_args['workspace'] if kind == 'rw' else launch_args['readonly'][0]
+
+    def scan(path):
+        if path == root:
+            if failure == 'unreadable':
+                raise PermissionError('outside-sensitive-path')
+            return ['nested/alias']
+        return []
+
+    monkeypatch.setattr(linkscan, 'multi_linked_files', scan)
+    with pytest.raises(staging.StageError) as caught:
+        if when == 'grant':
+            local.MxcLaunch(backend=backend, outcome=lambda p: 0, **launch_args)
+        else:
+            launch.start(job=object())
+    message = str(caught.value)
+    assert ('nested/alias' if failure == 'linked' else 'hardlink scan failed') in message
+    assert 'outside-sensitive-path' not in message
+    assert root not in message
+    assert backend.calls == (['compile'] if when == 'launch' else [])
 
 
 def test_runtime_reverified_at_launch(launch_args):

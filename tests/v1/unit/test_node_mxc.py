@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import os
 import pytest
 
-from archeus.node import mxc
+from archeus.node import linkscan, mxc
 
 
 def policy(tmp_path, **changes):
@@ -17,6 +17,63 @@ def policy(tmp_path, **changes):
                 timeout_ms=1000)
     args.update(changes)
     return mxc.compile_policy(**args)
+
+
+@pytest.mark.parametrize('readonly', [False, True])
+def test_nested_hardlink_refuses_without_outside_path(tmp_path, readonly):
+    root = tmp_path / ('runtime' if readonly else 'work')
+    (root / 'nested').mkdir(parents=True)
+    outside = tmp_path / 'secret-outside'
+    outside.write_text('synthetic')
+    try:
+        os.link(outside, root / 'nested' / 'alias')
+    except OSError as err:
+        pytest.skip('hardlinks unavailable: %s' % err)
+    with pytest.raises(mxc.MxcUnavailable) as caught:
+        policy(tmp_path, readonly=(root,) if readonly else ())
+    assert 'nested/alias' in str(caught.value)
+    assert str(outside) not in str(caught.value)
+    assert 'secret-outside' not in str(caught.value)
+    assert str(root) not in str(caught.value)
+
+
+@pytest.mark.parametrize('when', ['grant', 'launch'])
+def test_hardlink_scan_failure_refuses(tmp_path, monkeypatch, when):
+    compiled = policy(tmp_path) if when == 'launch' else None
+
+    def fail(root):
+        raise PermissionError('outside-sensitive-path')
+
+    monkeypatch.setattr(linkscan, 'multi_linked_files', fail)
+    fake = mxc.FakeMxc([mxc.FakeOutcome()])
+    with pytest.raises(mxc.MxcUnavailable, match='hardlink scan failed') as caught:
+        if when == 'grant':
+            policy(tmp_path)
+        else:
+            mxc.spawn(compiled, exe='unused', job=object(), backend=fake)
+    assert 'outside-sensitive-path' not in str(caught.value)
+    assert fake.calls == []
+
+
+@pytest.mark.parametrize('readonly', [False, True])
+def test_launch_rechecks_before_backend_validation(tmp_path, readonly):
+    root = tmp_path / ('runtime' if readonly else 'work')
+    root.mkdir()
+    compiled = policy(tmp_path, readonly=(root,) if readonly else ())
+    outside = tmp_path / 'outside'
+    outside.write_text('synthetic')
+    try:
+        os.link(outside, root / 'late')
+    except OSError as err:
+        pytest.skip('hardlinks unavailable: %s' % err)
+
+    class Backend(mxc.FakeMxc):
+        def spawn(self, policy, *, exe, job):
+            pytest.fail('backend reached before hardlink refusal')
+
+    with pytest.raises(mxc.MxcUnavailable, match='late') as caught:
+        mxc.spawn(compiled, exe='unused', job=object(), backend=Backend())
+    assert str(outside) not in str(caught.value)
 
 
 def test_closed_default_policy(tmp_path):
@@ -68,7 +125,10 @@ def test_hardlinks_refuse_every_granted_path(tmp_path, readonly):
     outside.write_text('synthetic')
     root = tmp_path / 'runtime' if readonly else work
     root.mkdir(exist_ok=True)
-    os.link(outside, root / 'alias')
+    try:
+        os.link(outside, root / 'alias')
+    except OSError as err:
+        pytest.skip('hardlinks unavailable: %s' % err)
     with pytest.raises(mxc.MxcUnavailable, match='multiple links'):
         policy(tmp_path, readonly=(root,) if readonly else ())
 
@@ -80,7 +140,10 @@ def test_hardlink_added_after_compile_refuses_at_launch(tmp_path, readonly):
     compiled = policy(tmp_path, readonly=(root,) if readonly else ())
     outside = tmp_path / 'outside'
     outside.write_text('synthetic')
-    os.link(outside, root / 'late')
+    try:
+        os.link(outside, root / 'late')
+    except OSError as err:
+        pytest.skip('hardlinks unavailable: %s' % err)
     fake = mxc.FakeMxc([mxc.FakeOutcome()])
     with pytest.raises(mxc.MxcUnavailable, match='multiple links'):
         mxc.spawn(compiled, exe='unused', job=object(), backend=fake)
