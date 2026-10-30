@@ -28,6 +28,9 @@
 @container core-scene (width < 1100px) {
   .am-territories:lang(it) .am-state-needs-you > .am-cell-state { transform: translateY(18px); letter-spacing: 0; }
 }
+@media (width < 1600px) and (height < 900px) {
+  body[data-ap] .now-scene .am-territories:lang(it) .am-state-needs-you > .am-cell-state { transform: translateY(18px); letter-spacing: 0; }
+}
 .am-territories .am-cell-lead { fill: var(--am-text); font: 400 15px/1 var(--am-serif); }
 .am-territories .am-cell-sub { fill: currentColor; font: 500 12px/1 var(--am-sans); }
 .am-territories .am-cell-last, .am-territories .am-cell-more, .am-territories .am-cell-quiet { fill: var(--am-muted); font: 400 12px/1 var(--am-sans); }
