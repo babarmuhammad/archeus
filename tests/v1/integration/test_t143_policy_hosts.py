@@ -271,3 +271,20 @@ def test_a_named_proxy_resolves_only_its_own_protocol(cmd, held):
     acts = actions(cmd)
     assert ('None' in [str(a.host) for a in acts]) == held
     assert [allowed(acts, p) for p in 'dab'] == ([False] * 3 if held else [True] * 3)
+
+
+@pytest.mark.parametrize('cmd', [
+    "curl 'https://{evil.example,good.example}/x'", 'curl https://evil%2eexample/x',
+    'curl https://\uff45vil.example/x', 'curl http://2852039166/x', 'curl http://0xa9fea9fe/x',
+    'curl http://0251.0376.0251.0376/x', "wget 'https://evil.example;@good.example/x'",
+    "curl 'https://evil.example\@good.example/x'",
+])
+def test_a_host_spelled_so_the_fetcher_reads_it_differently_is_unresolved(cmd):
+    acts = actions(cmd)
+    assert [a.host for a in acts] == [None]
+    assert not any(allowed(acts, p) for p in 'dab')
+
+
+def test_a_plain_dotted_quad_and_an_ipv6_literal_are_still_judged():
+    assert [a.host for a in actions('curl http://169.254.169.254/x')] == ['169.254.169.254']
+    assert [a.host for a in actions('curl http://[::1]:8080/x')] == ['::1']

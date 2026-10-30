@@ -1140,7 +1140,12 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
 - **No URL or remote rows.** No curl/wget/ssh/scp/sftp/rsync or git remote forms. Later rows must
   satisfy T-143 (curl/wget) or await T-155 (ssh/scp/sftp/rsync/git remote forms), derive
   policy host from exact validated destination operands, and define redirects/proxies/multiple
-  destinations where applicable.
+  destinations where applicable. T-143 judges only hosts named on the command line, and only
+  those spelled as a DNS name, a canonical dotted IPv4 or an IPv6 literal; any other spelling
+  (braces, `%xx`, non-ASCII, decimal/hex/octal addresses, `;` or `\` in the netloc) leaves
+  the host `None`. Residual, not closed: redirects (`curl -L`, wget's default), recursive
+  crawls (`wget -r -H`), environment proxies and `~/.curlrc` can reach hosts the command line
+  does not name, so no live allow row may rest on a command-line host until that is defined.
   Header/value decoys and chip redaction must never supply policy host. The HELD hook path does
   not use first-build host extraction: policy host is `None`, including unclassified git pull
   and git remote add. `test_held_remote_commands_have_no_policy_host` pins eligibility and host;

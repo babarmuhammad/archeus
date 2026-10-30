@@ -668,9 +668,19 @@ def _policy_host(value):
     try:
         parsed = urlsplit(value if '//' in value else '//' + value)
         parsed.port
-        return (parsed.hostname or '').rstrip('.') or None
     except ValueError:
         return None
+    if re.search(r'[;\\]', parsed.netloc):
+        return None
+    host = (parsed.hostname or '').rstrip('.')
+    if ':' in host:
+        return host if re.fullmatch(r'[0-9a-f:.]+', host) else None
+    if not _HOST.fullmatch(host):
+        return None
+    # curl and wget read 2852039166, 0xa9fea9fe and 0251.0376.0251.0376 as addresses; a rule on the dotted form must not miss them
+    if re.fullmatch(r'(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}', host) and not re.fullmatch(r'(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)', host):
+        return None
+    return host or None
 
 
 def _policy_urls(prog, args):
