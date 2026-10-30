@@ -602,11 +602,6 @@ def test_a_rule_is_revised_never_edited(rig):
     assert rig.one(entities.PolicyRule, id=second['id']).retired_at is not None
 
 
-@pytest.mark.xfail(strict=True, reason='source defect (authorization.py:945 and :979): the '
-                                       '"already retired" refusal builds a lifecycle.Illegal'
-                                       'Trigger for the non-machine "policy_rule", whose edge '
-                                       'table does not exist — KeyError, not IllegalTrigger '
-                                       '(found by T-235; the source is not edited here)')
 def test_a_retired_rule_cannot_be_revised_or_retired_again(rig):
     first = rig.rule('USER', 'install', 'ASK')
     rig.do(rig.authz.create_rule, who=rig.user, scope_level='USER', action_class='install',

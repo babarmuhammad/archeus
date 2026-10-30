@@ -35,7 +35,7 @@ class IllegalTrigger(InvalidTransition):
     place; None when it leads nowhere or to several."""
 
     def __init__(self, machine, frm, trigger, why=None):
-        dests = {to for f, to, t, _g in states.edges(machine) if t == trigger}
+        dests = {to for f, to, t, _g in states.edges(machine) if t == trigger} if machine in states.MACHINES else set()
         to = next(iter(dests)) if len(dests) == 1 else None
         super().__init__(machine, frm, to, why or 'no %r edge from %s' % (trigger, frm))
         self.trigger = trigger
