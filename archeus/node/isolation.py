@@ -1,48 +1,11 @@
-"""PV-20 S1: the isolated execution path (pv20-execution-isolation-design §3.1–§3.4, §3.7–§3.8).
+"""PV-20 authority, quarantine, verifier and Core-held Job contracts.
 
-Nine things live here, and only nine:
-
-1. **Per-execution identity** (§3.1, R7) — one AppContainer profile per *execution*,
-   created before its first spawn, reused by its resumes, torn down when it ends.
-   No principal is ever shared between executions.
-2. **Core-held kill-on-close Job** (§3.7, R6-A) — unnamed, class-9 limits, held only
-   by the Core process that spawned the execution.
-3. **The process-registry entry** (§3.7, item 83) — an instrument, not a lifetime
-   authority; the Job is the lifetime authority. (`LocalNode` writes the line.)
-4. **Teardown** (§3.2 Cleanup) — the identity deleted on every end path. S1 applies no
-   ACE at all (grant application is outside S1, per its acceptance record), so there
-   is nothing to revoke, and no code in S1 changes an ACL.
-5. **Quarantine** (§3.7) — a profile that cannot be removed is quarantined, retried
-   on boot, and never re-granted to anybody else.
-6. **Restart reconciliation** (§3.7) — the records here decide what a restarted Core
-   may and may not adopt; nothing an execution could have written is authority.
-7. **The isolated spawn path** (§3.4) — the new mechanism behind the `base.spawn`
-   seam. The pre-spawn invariant governs it; any condition unmet → fail closed.
-   **There is no unisolated fallback and no setting that disables the invariant.**
-8. **A4 eligibility** (§3.8, H-1) — *built, not enforced*: `a4_eligibility` exists and
-   fails closed, and nothing on the dispatch path calls it until the owner authorizes
-   enforcement (slice E).
-9. **Zero network capability** (§4.9 of the S1 gate) — the identity is created with no
-   capability SIDs at all, so it holds no network capability; P23 is untouched.
-
-The two rules everything else follows from: an isolation-establishment failure means
-**no process starts** (§3.4, §6.3), and a spawn failure never puts the untrusted
-execution in the interactive user's security context. Production dispatch of isolated
-executions stays E's: `PRODUCTION_DISPATCH_ENABLED` is False, so while S1 stands no
-real harness is ever dispatched isolated (PV-20 §3.4, ADR-0053 §3.4).
-
-The OS mechanism is the one the owner-authorized go/no-go spike validated
-(`.spike/winapi.py`): pure ctypes, no admin, no C toolchain. Spike-derived constraints
-honoured here (S1 gate §5): the environment block is passed explicitly and never
-inherited-by-luck; Jobs are identified with `NtQueryObject`, not `GetFileType`; the
-identity's lifecycle is read from the package-directory state, not
-`GetAppContainerFolderPath`.
-
-**Persisted state is never authority over what gets mutated.** A record or ledger
-line names an execution; the profile and SID acted on are re-derived from that
-execution's validated id, and a record whose contents disagree with the derivation is
-reported and left exactly as found. The ad hoc probes of 2026-10-08 granted the real
-Python install through a path parameter and broke it; nothing here takes one.
+MXC replaces the bespoke AppContainer profile/token/spawn mechanism. F1 proves
+host-user tokens plus a process security environment, not AppContainer SIDs.
+UNVERIFIED: owned MXC resource enumeration, disposal and effective-policy read-back.
+The native authority path refuses admission until those contracts can be proven;
+existing synthetic boundaries continue to exercise authority and A4 invariants.
+Production dispatch and native MXC execution remain disabled.
 """
 
 import json
@@ -60,7 +23,7 @@ from ..harnesses import base
 from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
                            verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
-from . import staging
+from . import mxc, staging
 
 WINDOWS = sys.platform.startswith('win')
 
@@ -1791,7 +1754,6 @@ if WINDOWS:
 
     kernel32 = C.WinDLL('kernel32')
     advapi32 = C.WinDLL('advapi32')
-    userenv = C.WinDLL('userenv')
     ntdll = C.WinDLL('ntdll')
 
     def _f(lib, name, restype, argtypes):
@@ -1816,26 +1778,6 @@ if WINDOWS:
         if not ok:
             raise _WinFail(name, _err())
         return ok
-
-    class _SI(C.Structure):
-        _fields_ = [('cb', W.DWORD), ('lpReserved', W.PWSTR), ('lpDesktop', W.PWSTR),
-                    ('lpTitle', W.PWSTR), ('dwX', W.DWORD), ('dwY', W.DWORD),
-                    ('dwXSize', W.DWORD), ('dwYSize', W.DWORD), ('dwXCountChars', W.DWORD),
-                    ('dwYCountChars', W.DWORD), ('dwFillAttribute', W.DWORD),
-                    ('dwFlags', W.DWORD), ('wShowWindow', W.WORD), ('cbReserved2', W.WORD),
-                    ('lpReserved2', C.POINTER(C.c_ubyte)), ('hStdInput', W.HANDLE),
-                    ('hStdOutput', W.HANDLE), ('hStdError', W.HANDLE)]
-
-    class _SIEX(C.Structure):
-        _fields_ = [('StartupInfo', _SI), ('lpAttributeList', C.c_void_p)]
-
-    class _PI(C.Structure):
-        _fields_ = [('hProcess', W.HANDLE), ('hThread', W.HANDLE), ('dwProcessId', W.DWORD),
-                    ('dwThreadId', W.DWORD)]
-
-    class _CAPS(C.Structure):
-        _fields_ = [('AppContainerSid', C.c_void_p), ('Capabilities', C.c_void_p),
-                    ('CapabilityCount', W.DWORD), ('Reserved', W.DWORD)]
 
     class _BL(C.Structure):
         _fields_ = [('PerProcessUserTimeLimit', C.c_longlong),
@@ -1879,19 +1821,12 @@ if WINDOWS:
                                   [W.HANDLE, W.INT, C.c_void_p, W.DWORD])
     _AssignProcessToJobObject = _f(kernel32, 'AssignProcessToJobObject', W.BOOL,
                                    [W.HANDLE, W.HANDLE])
-    _CreateProcessW = _f(kernel32, 'CreateProcessW', W.BOOL,
-                         [W.PWSTR, W.PWSTR, C.c_void_p, C.c_void_p, W.BOOL, W.DWORD,
-                          C.c_void_p, W.PWSTR, C.c_void_p, C.POINTER(_PI)])
-    _ResumeThread = _f(kernel32, 'ResumeThread', W.DWORD, [W.HANDLE])
     _GetExitCodeProcess = _f(kernel32, 'GetExitCodeProcess', W.BOOL,
                              [W.HANDLE, C.POINTER(W.DWORD)])
     _GetProcessTimes = _f(kernel32, 'GetProcessTimes', W.BOOL,
                           [W.HANDLE] + [C.POINTER(W.FILETIME)] * 4)
-    _TerminateProcess = _f(kernel32, 'TerminateProcess', W.BOOL, [W.HANDLE, W.UINT])
-    _WaitForSingleObject = _f(kernel32, 'WaitForSingleObject', W.DWORD, [W.HANDLE, W.DWORD])
     _OpenProcess = _f(kernel32, 'OpenProcess', W.HANDLE, [W.DWORD, W.BOOL, W.DWORD])
     _GetCurrentProcess = _f(kernel32, 'GetCurrentProcess', W.HANDLE, [])
-    _GetCurrentProcessId = _f(kernel32, 'GetCurrentProcessId', W.DWORD, [])
     _DuplicateHandle = _f(kernel32, 'DuplicateHandle', W.BOOL,
                           [W.HANDLE, W.HANDLE, W.HANDLE, C.POINTER(W.HANDLE), W.DWORD,
                            W.BOOL, W.DWORD])
@@ -1900,14 +1835,6 @@ if WINDOWS:
     _GetHandleInformation = _f(kernel32, 'GetHandleInformation', W.BOOL,
                                [W.HANDLE, C.POINTER(W.DWORD)])
     _LocalFree = _f(kernel32, 'LocalFree', C.c_void_p, [C.c_void_p])
-    _InitializeProcThreadAttributeList = _f(kernel32, 'InitializeProcThreadAttributeList',
-                                            W.BOOL, [C.c_void_p, W.DWORD, W.DWORD,
-                                                     C.POINTER(C.c_size_t)])
-    _UpdateProcThreadAttribute = _f(kernel32, 'UpdateProcThreadAttribute', W.BOOL,
-                                    [C.c_void_p, W.DWORD, W.DWORD, C.c_void_p, C.c_size_t,
-                                     C.c_void_p, C.c_void_p])
-    _DeleteProcThreadAttributeList = _f(kernel32, 'DeleteProcThreadAttributeList', None,
-                                        [C.c_void_p])
     _QueryObject = _f(ntdll, 'NtQueryObject', W.LONG,
                       [W.HANDLE, W.INT, C.c_void_p, W.DWORD, C.POINTER(W.DWORD)])
     _NtQuerySystemInformation = _f(ntdll, 'NtQuerySystemInformation', W.LONG,
@@ -1925,20 +1852,7 @@ if WINDOWS:
     _GetAclInformation = _f(advapi32, 'GetAclInformation', W.BOOL,
                             [C.c_void_p, C.c_void_p, W.DWORD, W.INT])
     _GetAce = _f(advapi32, 'GetAce', W.BOOL, [C.c_void_p, W.DWORD, C.POINTER(C.c_void_p)])
-    _CreateAppContainerProfile = _f(userenv, 'CreateAppContainerProfile', C.c_int,
-                                    [W.PWSTR, W.PWSTR, W.PWSTR, C.c_void_p, W.DWORD,
-                                     C.POINTER(C.c_void_p)])
-    _DeriveAppContainerSidFromAppContainerName = _f(
-        userenv, 'DeriveAppContainerSidFromAppContainerName', C.c_int,
-        [W.PWSTR, C.POINTER(C.c_void_p)])
-    _DeleteAppContainerProfile = _f(userenv, 'DeleteAppContainerProfile', C.c_int, [W.PWSTR])
-
     STILL_ACTIVE = 259
-    #: `CreateAppContainerProfile`'s answer when the profile already exists, as userenv.h
-    #: states it: HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), with ERROR_ALREADY_EXISTS the
-    #: Win32 code 183 and the macro (winerror.h) giving 0x80070000 | code
-    ERROR_ALREADY_EXISTS = 183
-    E_PROFILE_EXISTS = 0x80070000 | ERROR_ALREADY_EXISTS
     ERROR_INVALID_PARAMETER = 87
     HANDLE_FLAG_INHERIT = 0x1
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
@@ -1947,17 +1861,11 @@ if WINDOWS:
     JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
     JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
     OBJECT_TYPE_INFORMATION, OBJECT_NAME_INFORMATION = 2, 1
-    PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION = 0x0800, 0x1000
-    PROCESS_QUERY_INFORMATION, PROCESS_TERMINATE, PROCESS_DUP_HANDLE = 0x0400, 0x1, 0x40
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    PROCESS_DUP_HANDLE = 0x40
     TOKEN_QUERY, TOKEN_USER, TOKEN_GROUPS = 0x8, 1, 2
     TOKEN_CAPABILITIES, TOKEN_APPCONTAINER_SID = 30, 31
     TOKEN_IS_APPCONTAINER, TOKEN_INTEGRITY_LEVEL = 29, 25
-    CREATE_SUSPENDED, DETACHED_PROCESS, EXTENDED_STARTUPINFO_PRESENT = 0x4, 0x8, 0x80000
-    CREATE_UNICODE_ENVIRONMENT = 0x400
-    STARTF_USESTDHANDLES = 0x100
-    ATTR_SECURITY_CAPABILITIES = 0x00020009
-    ATTR_HANDLE_LIST = 0x00020002               # WinBase.h: ProcThreadAttributeHandleList, input
-    FILE_GENERIC_RW = 0x40000000 | 0x80000000 | 0x10000000
     STATUS_INFO_LENGTH_MISMATCH = -1073741772
 
     def _sid_str(psid):
@@ -1969,99 +1877,40 @@ if WINDOWS:
         _LocalFree(s)
         return out
 
-    def _derive_name(name):
-        """The SID an identity's name derives to — pure, and the attestation §3.4's
-        first condition compares the created SID against."""
-        psid = C.c_void_p()
-        hr = _DeriveAppContainerSidFromAppContainerName(name, C.byref(psid))
-        if hr != 0:
-            raise IsolationUnavailable('profile_derive', 'hr=%s' % hex(hr & 0xFFFFFFFF))
-        try:
-            return _sid_str(psid)
-        finally:
-            if psid:
-                _LocalFree(psid)
-
     class WindowsBoundary(DaclReaders):
-        """The OS mechanism itself: the validated ctypes path of the go/no-go spike,
-        nothing else. Every failure is an `IsolationUnavailable`, so a caller can
-        never mistake a broken check for a passed one."""
+        """Core Job and native evidence readers around the closed MXC seam."""
         id = 'windows'
 
         def available(self):
-            return True
+            return False  # UNVERIFIED: owned MXC lifecycle and effective grants.
 
         # ── the identity (§3.1, R7) ──
 
+        def __init__(self, *, backend=None, native_run=False):
+            self.backend, self.native_run = backend, native_run
+
         def create_profile(self, execution_id):
-            """The identity, created (or confirmed already there) with **no capability
-            SIDs at all** (§4.9). Answers what the OS said, because §3.4's first
-            condition is about the answer, not about a hope. The name is derived here
-            from a validated execution id and never accepted from a caller."""
-            name = validated_profile(execution_id)
-            psid = C.c_void_p()
-            # an HRESULT is a signed LONG, so ctypes answers a failure as a negative int;
-            # compared unsigned, as the header writes it
-            hr = _CreateAppContainerProfile(name, name, name, None, len(CAPABILITIES),
-                                           C.byref(psid)) & 0xFFFFFFFF
-            if hr not in (0, E_PROFILE_EXISTS):
-                raise IsolationUnavailable('profile_create', 'hr=%s' % hex(hr))
-            try:
-                sid = _sid_str(psid) or _derive_name(name)
-                return {'profile': name, 'sid': sid, 'created': True,
-                        'existed': hr == E_PROFILE_EXISTS,
-                        'package_dir': self.package_dir_state(name)}
-            finally:
-                if psid:
-                    _LocalFree(psid)
+            validated_profile(execution_id)
+            raise IsolationUnavailable('mxc_lifecycle_unverified',
+                                       'UNVERIFIED: owned MXC resource creation/read-back')
 
         def delete_profile(self, execution_id):
-            """Only ever `archeus.exec.<validated execution id>`: no record, ledger or
-            caller can point this at another profile (`archeus.spike.*`, another
-            application's)."""
-            # signed LONG from ctypes, so compared unsigned, as create_profile does
-            hr = _DeleteAppContainerProfile(validated_profile(execution_id)) & 0xFFFFFFFF
-            if hr not in (0, 0x80070490):                  # not found: already gone
-                raise IsolationUnavailable('profile_delete', 'hr=%s' % hex(hr))
+            validated_profile(execution_id)
+            raise IsolationUnavailable('mxc_lifecycle_unverified',
+                                       'UNVERIFIED: owned MXC disposal and revocation')
 
         def derive(self, execution_id):
-            try:
-                return _derive_name(profile_name(execution_id))
-            except _WinFail as err:
-                raise IsolationUnavailable('profile_derive', str(err))
+            validated_profile(execution_id)
+            raise IsolationUnavailable('mxc_identity_unverified',
+                                       'PSEC identity cannot be derived as an AppContainer SID')
 
         def derive_sid(self, execution_id):
             return self.derive(execution_id)
 
         def profile_exists(self, execution_id):
-            # spike §5.4: the package directory's state is the lifecycle evidence. The
-            # spike's 0x80070539 from `GetAppContainerFolderPath` came from passing a
-            # profile name (build 26200, not retested); given the SID string on build
-            # 26300 (A2) it answered S_OK while the profile was present and 0x80070002
-            # before create and after delete. This predicate is unchanged pending a
-            # separate decision. It is evidence of a *run* identity; §3.4's first
-            # condition reads the create answer. A state that cannot be read raises:
-            # recovery never takes it for absent.
-            state = self.package_dir_state(profile_name(execution_id))
-            if state == 'unknown':
-                raise IsolationUnavailable('profile_state', 'the package directory of %s '
-                                           'could not be read' % profile_name(execution_id))
-            return state == 'materialized'
-
-        def package_dir_state(self, name):
-            base = os.environ.get('LOCALAPPDATA')
-            if not base:
-                return 'unknown'
-            root = os.path.join(base, 'Packages', str(name).lower())
-            try:
-                os.stat(root)
-            except FileNotFoundError:
-                return 'absent'
-            except OSError:
-                return 'unknown'
-            return 'materialized' if os.path.isdir(root) else 'unknown'
-
-        # ── the Job (§3.7, R6-A) ──
+            validated_profile(execution_id)
+            raise IsolationUnavailable('mxc_lifecycle_unverified',
+                                       'UNVERIFIED: MXC resource enumeration')
 
         def create_job(self, execution_id):
             h = _CreateJobObjectW(None, None)               # unnamed: no name to open by
@@ -2234,7 +2083,8 @@ if WINDOWS:
             tok = W.HANDLE()
             try:
                 _win(_OpenProcessToken(hproc, TOKEN_QUERY, C.byref(tok)), 'OpenProcessToken')
-                return {'is_appcontainer': self._token_flag(tok, TOKEN_IS_APPCONTAINER),
+                return {'user_sid': self._token_sid(tok, TOKEN_USER),
+                        'is_appcontainer': self._token_flag(tok, TOKEN_IS_APPCONTAINER),
                         'ac_sid': self._token_sid(tok, TOKEN_APPCONTAINER_SID),
                         'integrity': self._token_integrity(tok),
                         'capability_sids': self._token_groups(tok, TOKEN_CAPABILITIES)
@@ -2243,6 +2093,26 @@ if WINDOWS:
                 if tok:
                     _CloseHandle(tok)
                 _CloseHandle(hproc)
+
+        def read_identity(self, proc):
+            started = self.process_started(proc.pid)
+            if started is None or started != proc.create_time:
+                raise mxc.MxcUnavailable('dead or reused identity owner')
+            token = self.token(proc.pid)
+            if self.process_started(proc.pid) != started:
+                raise mxc.MxcUnavailable('identity owner changed during inspection')
+            if token['is_appcontainer'] not in (0, 1) or not token['integrity']:
+                raise mxc.MxcUnavailable('incomplete native token report')
+            # UNVERIFIED: effective backend/tier read-back must come from the
+            # injected transport; requested policy values are not observations.
+            backend = getattr(proc, 'observed_backend', None)
+            tier = getattr(proc, 'observed_tier', None)
+            if backend != 'processcontainer' or tier != 'base-container':
+                raise mxc.MxcUnavailable('UNVERIFIED: effective backend/tier')
+            return mxc.IdentityReport(proc.pid, started, token['user_sid'],
+                                      bool(token['is_appcontainer']), token['ac_sid'],
+                                      token['integrity'], backend, tier,
+                                      tuple(token['capability_sids']))
 
         def _token_groups(self, tok, cls):
             buf, got = self._token_buffer(tok, cls)
@@ -2360,10 +2230,7 @@ if WINDOWS:
         # ── the launch (§3.4) ──
 
         def open_inherited(self, path, mode):
-            """A handle Core opens and hands to the process as stdio (§3.3). It is opened
-            NOT inheritable: `launch` makes it inheritable for its own CreateProcessW call
-            alone and names it in that call's handle list, so it reaches that child and
-            no other process Core starts meanwhile."""
+            """Open Core stdio without inheritance; transport must whitelist it."""
             access = (0x80000000 | 0x80) if mode == 'read' else (
                 0x40000000 | 0x4 | 0x80)                  # GENERIC_WRITE | APPEND | ATTRIBUTES
             creation = 3 if mode == 'read' else 4         # OPEN_EXISTING | OPEN_ALWAYS
@@ -2373,137 +2240,15 @@ if WINDOWS:
             return h
 
         def launch(self, argv, *, cwd, env, profile, job, stdin, stdout):
-            """Create suspended inside the identity, assign to the Job, resume: there is
-            no instant between the process existing and being confined and supervised.
+            raise IsolationUnavailable('mxc_policy_required',
+                                       'compile and validate a closed MXC policy before launch')
 
-            The child inherits *stdin* and *stdout* and nothing else of Core's: they are
-            the whole PROC_THREAD_ATTRIBUTE_HANDLE_LIST, and inheritable only while
-            CreateProcessW runs. A process created and then not confined or not resumed
-            is terminated, and its handle rides on the error as `child`, so the end path
-            waits on that process and never on a PID that may name another by then."""
-            # an AppContainer CreateProcessW refuses a block without LOCALAPPDATA with
-            # ERROR_ENVVAR_NOT_FOUND (203); any value will do - Windows points the child
-            # at <value>\Packages\<moniker>\AC itself (T-088, measured)
-            if 'LOCALAPPDATA' not in env:
-                raise IsolationUnavailable('environment_block',
-                                           'an AppContainer block needs LOCALAPPDATA')
-            command = subprocess.list2cmdline([str(a) for a in argv])
-            stdio = list(dict.fromkeys((stdin, stdout)))  # stderr is stdout's own handle
-            listed = (W.HANDLE * len(stdio))(*stdio)       # read by CreateProcessW: kept alive
-            size = C.c_size_t(0)
-            _InitializeProcThreadAttributeList(None, 2, 0, C.byref(size))
-            keep = (C.c_byte * size.value)()
-            _win(_InitializeProcThreadAttributeList(keep, 2, 0, C.byref(size)),
-                 'InitializeProcThreadAttributeList')
-            psid = C.c_void_p()
-            hr = _DeriveAppContainerSidFromAppContainerName(profile, C.byref(psid))
-            caps = _CAPS()
+        def spawn(self, policy, *, exe, job):
             try:
-                if hr != 0:
-                    raise IsolationUnavailable('profile_derive', 'hr=%s' % hex(hr & 0xFFFFFFFF))
-                caps.AppContainerSid = psid
-                caps.Capabilities = None                   # §4.9: zero capabilities,
-                caps.CapabilityCount = len(CAPABILITIES)   # and none of them a network one
-                caps.Reserved = 0
-                _win(_UpdateProcThreadAttribute(keep, 0, ATTR_SECURITY_CAPABILITIES,
-                                                C.byref(caps), C.sizeof(caps), None, None),
-                     'UpdateProcThreadAttribute(SECURITY_CAPABILITIES)')
-                _win(_UpdateProcThreadAttribute(keep, 0, ATTR_HANDLE_LIST, C.byref(listed),
-                                                C.sizeof(listed), None, None),
-                     'UpdateProcThreadAttribute(HANDLE_LIST)')
-                sia = _SIEX()
-                sia.StartupInfo.cb = C.sizeof(_SIEX)
-                sia.StartupInfo.dwFlags = STARTF_USESTDHANDLES
-                sia.StartupInfo.hStdInput = stdin
-                sia.StartupInfo.hStdOutput = stdout
-                sia.StartupInfo.hStdError = stdout
-                sia.lpAttributeList = C.cast(keep, C.c_void_p)
-                flags = (EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | DETACHED_PROCESS
-                         | CREATE_UNICODE_ENVIRONMENT)
-                # the environment is the explicit block `base.spawn` merged (the
-                # capability removals of P11 are part of the boundary), never an
-                # inherited accident (§5.1). Each entry is null-terminated; the block
-                # is double-null-terminated by the buffer's own terminator (an extra
-                # trailing null is a malformed block: ERROR_ENVVAR_NOT_FOUND, 203)
-                block = ''.join('%s=%s\0' % kv for kv in sorted(env.items()))
-                ebuf = C.create_unicode_buffer(block)
-                pi = _PI()
-                # inheritable for this call alone, and each flag put back whatever it
-                # answers. bInheritHandles must be TRUE for the list to apply; the list
-                # is what limits it to these handles
-                prior = [self._handle_flags(h) & HANDLE_FLAG_INHERIT for h in stdio]
-                try:
-                    for h in stdio:
-                        _win(_SetHandleInformation(h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT),
-                             'SetHandleInformation(inherit)')
-                    created = _CreateProcessW(None, command, None, None, True, flags,
-                                              C.cast(ebuf, C.c_void_p), cwd, C.byref(sia),
-                                              C.byref(pi))
-                    code = None if created else _err()
-                finally:
-                    for h, was in zip(stdio, prior):
-                        _SetHandleInformation(h, HANDLE_FLAG_INHERIT, was)
-                if not created:
-                    if code == 203:                       # ERROR_ENVVAR_NOT_FOUND
-                        raise IsolationUnavailable(
-                            'environment_block',
-                            'the explicit environment block was refused (spike §5.1)')
-                    raise _WinFail('CreateProcessW(%s)' % command[:120], code)
-                try:
-                    _win(_AssignProcessToJobObject(job, pi.hProcess),
-                         'AssignProcessToJobObject')
-                    # the previous suspend count: (DWORD)-1 is a failure, 0 means the
-                    # thread was not suspended at all, and more than 1 means it still is.
-                    # Only 1 is CREATE_SUSPENDED's own suspension, lifted
-                    count = _ResumeThread(pi.hThread)
-                    if count == 0xFFFFFFFF:
-                        raise _WinFail('ResumeThread', _err())
-                    if count != 1:
-                        raise IsolationUnavailable('process_resume',
-                                                   'previous suspend count %d, not 1' % count)
-                except Exception as err:
-                    _TerminateProcess(pi.hProcess, 0xC0000142)
-                    err.child = IsolatedProcess(self, pi.dwProcessId, pi.hProcess, pi.hThread)
-                    raise
-                child = IsolatedProcess(self, pi.dwProcessId, pi.hProcess, pi.hThread)
-            finally:
-                _DeleteProcThreadAttributeList(keep)
-                if psid:
-                    _LocalFree(psid)
-            return child
+                return mxc.spawn(policy, exe=exe, job=job, backend=self.backend,
+                                 native_run=self.native_run)
+            except mxc.MxcUnavailable as err:
+                raise IsolationUnavailable('mxc', str(err)) from err
 
-    class IsolatedProcess:
-        """What the isolated launch returns in place of a `Popen`: the same few things
-        the adapters and the contract use (`pid`, `poll`, `wait`, `kill`,
-        `returncode`). The Job, not this handle, is the lifetime authority (§3.7)."""
-
-        def __init__(self, api, pid, hprocess, hthread):
-            self._api, self.pid = api, pid
-            self._p, self._t, self._rc = hprocess, hthread, None
-
-        def poll(self):
-            code = W.DWORD(0)
-            if not _GetExitCodeProcess(self._p, C.byref(code)):
-                return self._rc
-            if code.value == STILL_ACTIVE:
-                return None
-            self._rc = code.value
-            return self._rc
-
-        @property
-        def returncode(self):
-            return self.poll()
-
-        def wait(self, timeout=None):
-            ms = 0xFFFFFFFF if timeout is None else max(0, int(timeout * 1000))
-            _WaitForSingleObject(self._p, ms)
-            return self.poll()
-
-        def kill(self):
-            _TerminateProcess(self._p, 1)
-
-        def terminate(self):
-            self.kill()
 else:
     WindowsBoundary = None
-    IsolatedProcess = None

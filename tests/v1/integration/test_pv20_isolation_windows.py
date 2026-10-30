@@ -1,4 +1,10 @@
-"""PV-20 S1 — the real OS boundary (Windows only): the C6 acceptance properties.
+"""Historical S1 native acceptance obligations, awaiting the MXC lifecycle adapter.
+
+UNVERIFIED: MXC owned lifecycle and effective-grant read-back are not implemented.
+The boundary fixture now skips before any native mutation. The historical bodies
+below are not MXC evidence: F1 established host-user SID/PSEC, not AppContainer SID.
+
+PV-20 S1 — the real OS boundary (Windows only): the C6 acceptance properties.
 
 These run against the live Win32 mechanism the go/no-go spike validated (pure ctypes,
 no admin). They establish what a synthetic fake cannot — the §3.7 / R6-A **sole-holder**
@@ -69,6 +75,8 @@ def owned_home(tmp_path, monkeypatch):
 @pytest.fixture
 def boundary(owned_home):
     b = iso.WindowsBoundary()
+    if not b.available():
+        pytest.skip('UNVERIFIED: MXC owned lifecycle/effective grants; retain native acceptance intent')
     created = {'profiles': [], 'jobs': []}
     b._pv20_created = created
     yield b
