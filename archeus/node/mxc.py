@@ -96,7 +96,7 @@ def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=
                    timeout_ms, ui=False, egress='deny', proxy_url=None):
     """Compile only Core-owned inputs; never inherit the host environment."""
     writable = (workspace,) if isinstance(workspace, (str, os.PathLike)) else tuple(workspace)
-    if type(ui) is not bool or egress != 'deny':
+    if ui is not False or egress != 'deny':
         raise MxcUnavailable('unsupported UI or egress policy')
     if env is None:
         env = {}
@@ -117,7 +117,7 @@ def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=
                        'deniedPaths': [_path(p) for p in denied]},
         'network': {'egress': {'default': 'deny'},
                     'ingress': {'default': 'deny', 'hostLoopback': 'deny'}},
-        'ui': {'disable': not ui, 'clipboard': 'none', 'injection': False},
+        'ui': {'disable': True, 'clipboard': 'none', 'injection': False},
         'telemetry': {'enabled': False},
     }
     if proxy_url is not None:
@@ -200,7 +200,7 @@ def validate_policy(policy):
                     and url.path in ('', '/') and not url.query and not url.fragment):
                 raise ValueError('invalid proxy endpoint')
         if (set(raw['ui']) != {'disable', 'clipboard', 'injection'}
-                or type(raw['ui']['disable']) is not bool
+                or raw['ui']['disable'] is not True
                 or raw['ui']['clipboard'] != 'none' or raw['ui']['injection'] is not False
                 or set(raw['telemetry']) != {'enabled'}
                 or raw['telemetry']['enabled'] is not False):
@@ -244,7 +244,8 @@ def effective_identity(proc: MxcProcess) -> IdentityReport:
             or type(report.create_time) is not int or report.create_time <= 0
             or report.create_time != proc.create_time or proc.is_alive() is not True
             or not report.user_sid or not report.integrity
-            or report.backend != 'processcontainer' or report.tier != 'base-container'):
+            or report.backend != 'processcontainer' or report.tier != 'base-container'
+            or report.is_appcontainer or report.ac_sid or report.capability_sids):
         raise MxcUnavailable('dead, reused or unverified process identity')
     return report
 
