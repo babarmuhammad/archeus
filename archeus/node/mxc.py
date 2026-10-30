@@ -126,7 +126,7 @@ def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=
             valid = (url.scheme == 'http' and ipaddress.ip_address(url.hostname).is_loopback
                      and url.port and not url.username and not url.password
                      and url.path in ('', '/') and not url.query and not url.fragment)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
             valid = False
         if not valid:
             raise MxcUnavailable('proxy must be an explicit loopback HTTP endpoint')
