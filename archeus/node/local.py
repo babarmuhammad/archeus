@@ -23,6 +23,7 @@ import stat
 import subprocess
 import threading
 import time
+from typing import TYPE_CHECKING
 
 from claude_sessions import config, proc
 
@@ -32,6 +33,10 @@ from ..infra.paths import (ExecPaths, VerifyPaths, archeus_home, processes_regis
                            repo_store, repos_dir, run_dir, seed_staging, stop_sentinel)
 from . import isolation as isolation_mod
 from .staging import _entry, _present
+from . import staging
+
+if TYPE_CHECKING:
+    from . import mxc
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
 #: user's own config is never written, only this one command's (T-078)
@@ -143,6 +148,79 @@ _DEVICE = re.compile(r'(?i)(con|prn|aux|nul|conin\$|conout\$|(com|lpt)[0-9\u00b9
 
 class StoreError(OSError):
     """A store, its pin or a Git call cannot be trusted: refused, nothing kept back."""
+
+
+class MxcLaunch:
+    """An explicitly injected launch, shared by agent and verifier adapters.
+
+    The caller retains Job ownership, admission, identity validation and teardown.
+    UNVERIFIED: native workload-result framing is not frozen. The outcome reader
+    must be Core-owned and bound to this process, never an execution-written file.
+    Native streaming/cancellation, identity readback, suspended Job assignment and
+    disposal remain UNVERIFIED; this wrapper supplies none of those authorities.
+    """
+
+    def __init__(self, *, backend, sdk_root, pins, outcome, workspace, readonly=(),
+                 denied=(), cwd, command_line, env=None, timeout_ms):
+        if not callable(outcome):
+            raise staging.StageError('MXC requires a Core-owned outcome reader')
+        self.backend = backend
+        self.sdk_root = sdk_root
+        self.pins = dict(pins)
+        self.outcome = outcome
+        readonly, denied = tuple(readonly), tuple(denied)
+        staging.verify_mxc(sdk_root, pins=self.pins)
+        staging.scan_grants((workspace,) + readonly)
+        self.policy: 'mxc.MxcPolicy' = backend.compile_policy(
+            workspace=workspace, readonly=readonly, denied=denied, cwd=cwd,
+            command_line=command_line, env=dict(env or {}), timeout_ms=timeout_ms,
+            ui=False, egress='deny', proxy_url=None)
+        self.process = None
+        self._started = False
+        self.launcher_exit = None
+
+    def start(self, *, job):
+        if self._started:
+            raise staging.StageError('MXC launch already consumed')
+        if job is None:
+            raise staging.StageError('MXC requires a Core-held Job')
+        exe = staging.verify_mxc(self.sdk_root, pins=self.pins)
+        fs = self.policy.raw['filesystem']
+        staging.scan_grants(tuple(fs.get('readwritePaths', ()))
+                            + tuple(fs.get('readonlyPaths', ())))
+        self._started = True
+        self.process = self.backend.spawn(self.policy, exe=exe, job=job)
+        return self
+
+    @property
+    def pid(self):
+        return self.process.pid
+
+    @property
+    def stdin(self):
+        return self.process.stdin
+
+    @property
+    def stdout(self):
+        return self.process.stdout
+
+    @property
+    def stderr(self):
+        return self.process.stderr
+
+    def terminate(self):
+        self.process.terminate()
+
+    def wait(self, timeout=None):
+        if self.process is None:
+            raise staging.StageError('MXC launch has not started')
+        self.launcher_exit = self.process.wait(timeout)
+        if type(self.launcher_exit) is not int:
+            raise staging.StageError('MXC launcher has not exited')
+        code = self.outcome(self.process)
+        if type(code) is not int:
+            raise staging.StageError('MXC workload outcome is unavailable')
+        return code
 
 
 class LocalNode:
@@ -693,6 +771,7 @@ class LocalNode:
                 open(f, 'xb').close()
             _export_tree(project_id, revision, p.checkout, workdirs,
                          _Deadline('the export for %s' % verification_id))
+            staging.scan_grants((scratch,) + tuple(toolchain))
             return base._verifier_env(toolchain, scratch)
         grant = isolation_mod.Grant
         request = isolation_mod.IsolationRequest(
