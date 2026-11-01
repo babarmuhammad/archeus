@@ -1,8 +1,13 @@
 """Regressions for the loopback API audit of 2026-11-01 (audit-api): each test
 is one finding's request, asserting the refusal it should have drawn."""
 
+import threading
+
+import pytest
+
+from archeus.api import auth
 from archeus.core.domain import ids
-from v1.judge.http import request
+from v1.judge.http import TUNNEL, request
 
 SYNTHETIC = 'synthetic-audit-secret'
 
@@ -46,3 +51,27 @@ def test_f3_a_revoked_minters_launch_and_pair_codes_no_longer_redeem(tc):
     r = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
                 body={'code': pair, 'platform': 'web'})
     assert (r.status, r.json()['error']) == (401, 'invalid_pairing_code')
+
+
+# ── F8: the step-up attempt limit holds against concurrent requests ──
+
+@pytest.mark.core(remote_hosts=(TUNNEL,))
+def test_f8_a_burst_of_wrong_pins_runs_no_more_than_the_limit(tc):
+    pin = '482913'
+    code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe', 'control']})
+    r = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                body={'code': code.json()['code'], 'platform': 'android', 'pin': pin})
+    token = r.json()['token']
+    answers = [None] * 40
+
+    def guess(i):
+        r = request(tc.base_url, 'POST', '/v1/rearm', token=token, headers={'Host': TUNNEL},
+                    body=dict(_key(), step_up='%06d' % (100000 + i)))
+        answers[i] = r.json().get('error')
+
+    threads = [threading.Thread(target=guess, args=(i,)) for i in range(len(answers))]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert answers.count('guard_failed') <= auth.StepUpFailures.LIMIT
+    assert request(tc.base_url, 'GET', '/v1/health', token=token,
+                   headers={'Host': TUNNEL}).status == 401          # and the fifth revoked it

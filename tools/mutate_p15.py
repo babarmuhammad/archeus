@@ -157,7 +157,7 @@ MUTATIONS = [
      [U + '::test_P32_a_redemption_cannot_carry_a_selection_or_a_scope']),
     ('M21', "the route drops the client's step-up proof on its way to P9", [(RTS,
      "            'action_hash': b['action_hash'], 'note': b.get('note'), "
-     "'step_up': b.get('step_up'),",
+     "'step_up': proof,",
      "            'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': None,")],
      [I + '::test_P14_R1_a_paired_client_approves_through_p9_with_its_pin']),
     ('M24', "a pairing grants more scope than the minting device holds", [(RTS,
@@ -174,6 +174,10 @@ MUTATIONS = [
      "    if grant is None or not req.api.device_active(grant['device_id']):",
      "    if grant is None:")],
      [AF + '::test_f3_a_revoked_minters_launch_and_pair_codes_no_longer_redeem']),
+    ('M27', 'a step-up proof is not reserved against the lockout before it runs', [(AUTH,
+     "            if self._n.get(device_id, 0) + self._live.get(device_id, 0) >= self.LIMIT:",
+     "            if False:")],
+     [AF + '::test_f8_a_burst_of_wrong_pins_runs_no_more_than_the_limit']),
 ]
 
 

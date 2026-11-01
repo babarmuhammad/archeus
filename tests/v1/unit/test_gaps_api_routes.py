@@ -55,7 +55,7 @@ def _api(**over):
         pairing=SimpleNamespace(mint=_Rec(ret='CODE'), redeem=_Rec(ret=None)),
         resources=SimpleNamespace(registry=None, callers=None),
         sse=SimpleNamespace(serve=_Rec(ret=('stream', 'sent')), close_device=_Rec()),
-        step_up=SimpleNamespace(failed=lambda device: False, reset=_Rec()),
+        step_up=SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda device: False, reset=_Rec()),
         executions=SimpleNamespace(estop=_Rec(ret={}), rearm=_Rec(ret={'rearmed': True})),
         authorization=SimpleNamespace(decide=_Rec(ret={}),
                                       decide_by_message=_Rec(ret={'message_id': 'msg_1'})),
@@ -421,7 +421,7 @@ def test_a_step_up_failure_on_an_approval_counts_towards_revocation():
     req = _Req(params={'id': 'apr_1'},
                body={'decision': 'approve', 'action_hash': 'a' * 64, 'step_up': '999999'},
                principal=_principal(origin='paired'), raises=_guard_failed('step-up wrong'))
-    req.api.step_up = SimpleNamespace(failed=lambda device: True, reset=_Rec())
+    req.api.step_up = SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda device: True, reset=_Rec())
     with pytest.raises(errors.GuardFailed):
         routes.decide_approval(req)
     (_decide, revoke) = req.runs
@@ -450,7 +450,7 @@ def test_only_a_paired_client_with_a_counted_failure_is_revoked_and_its_streams_
         seen.append(device)
         return True
 
-    req.api.step_up = SimpleNamespace(failed=failed, reset=_Rec())
+    req.api.step_up = SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=failed, reset=_Rec())
     routes._step_up_failed(req)
     assert seen == ['dvc_u']
     (run,) = req.runs
@@ -460,12 +460,12 @@ def test_only_a_paired_client_with_a_counted_failure_is_revoked_and_its_streams_
     assert req.api.sse.close_device.calls == [(('dvc_u',), {})]
 
     req = _Req(principal=_principal(origin='local'))            # not paired: never revoked
-    req.api.step_up = SimpleNamespace(failed=lambda d: True, reset=_Rec())
+    req.api.step_up = SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: True, reset=_Rec())
     routes._step_up_failed(req)
     assert req.runs == [] and req.api.sse.close_device.calls == []
 
     req = _Req(principal=_principal(origin='paired'))           # failure below the limit
-    req.api.step_up = SimpleNamespace(failed=lambda d: False, reset=_Rec())
+    req.api.step_up = SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False, reset=_Rec())
     routes._step_up_failed(req)
     assert req.runs == [] and req.api.step_up.reset.calls == []
 
@@ -495,7 +495,7 @@ def test_a_replayed_rearm_answers_what_core_really_is_and_clears_nothing(monkeyp
 def test_a_rearm_with_a_wrong_proof_counts_and_reraises():
     req = _Req(body={'step_up': '000000'}, principal=_principal(origin='paired'),
                raises=_guard_failed('the step-up proof is wrong'))
-    req.api.step_up = SimpleNamespace(failed=lambda d: True, reset=_Rec())
+    req.api.step_up = SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: True, reset=_Rec())
     with pytest.raises(errors.GuardFailed):
         routes.rearm(req)
     assert [r.fn for r in req.runs] == [req.api.executions.rearm,

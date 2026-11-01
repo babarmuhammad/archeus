@@ -246,8 +246,8 @@ MUTATIONS = [
     ('P33', 'a chat decision needs no approve scope', [(ROUTES,
      "    if 'approve' not in req.principal['scopes']:\n"
      "        raise Refused(403, 'scope_required', {'scope': 'approve'})\n"
-     "    try:\n        out = req.run(req.api.authorization.decide_by_message",
-     "    try:\n        out = req.run(req.api.authorization.decide_by_message")],
+     "    out = _with_step_up(req, b.get('step_up'), lambda proof: req.run(\n        req.api.authorization.decide_by_message",
+     "    out = _with_step_up(req, b.get('step_up'), lambda proof: req.run(\n        req.api.authorization.decide_by_message")],
      [CA + 'test_a_wrong_hash_a_missing_scope_or_another_word_writes_nothing']),
     ('P34', "a chat decision ignores the hash the user saw", [(CONV,
      "decision=p.verb,\n                 action_hash=action_hash,",

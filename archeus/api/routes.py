@@ -699,17 +699,10 @@ def rearm(req):
     """From a paired client, its PIN (D10): a wrong one counts toward the same
     revocation as an approval's (`_step_up_failed`)."""
     from ..node.local import LocalNode
-    proof = req.body.get('step_up')
-    try:
-        out = req.run(req.api.executions.rearm, {'step_up': proof})
-    except errors.GuardFailed as e:
-        if proof is not None and 'step-up' in e.result.reason:
-            _step_up_failed(req)
-        raise
+    out = _with_step_up(req, req.body.get('step_up'),
+                        lambda proof: req.run(req.api.executions.rearm, {'step_up': proof}))
     if req.replayed:            # nothing re-armed, and the answer says what Core is (T-107)
         return 200, dict(out, armed=not LocalNode.disarmed())
-    if proof is not None:
-        req.api.step_up.reset(req.principal['device_id'])
     LocalNode.clear_estop()
     return 200, out
 
@@ -814,17 +807,11 @@ def post_message(req):
             'in_reply_to': b.get('in_reply_to')})
     if 'approve' not in req.principal['scopes']:
         raise Refused(403, 'scope_required', {'scope': 'approve'})
-    try:
-        out = req.run(req.api.authorization.decide_by_message, {
+    out = _with_step_up(req, b.get('step_up'), lambda proof: req.run(
+        req.api.authorization.decide_by_message, {
             'text': b['text'], 'conversation_id': req.params['id'],
             'approval_id': d['approval_id'], 'action_hash': d['action_hash'],
-            'expected_version': d.get('expected_version'), 'step_up': b.get('step_up')})
-    except errors.GuardFailed as e:
-        if b.get('step_up') is not None and 'step-up' in e.result.reason:
-            _step_up_failed(req)
-        raise
-    if b.get('step_up') is not None and not req.replayed:
-        req.api.step_up.reset(req.principal['device_id'])
+            'expected_version': d.get('expected_version'), 'step_up': proof}))
     decided = out.pop('decided')
     if decided.get('denied'):
         raise Refused(423, 'policy_denied', dict(decided['denied'],
@@ -924,26 +911,43 @@ def decide_approval(req):
     """The client echoes the `action_hash` it displayed (X02). A DENY found at
     approve time is recorded and answered `423 policy_denied`."""
     b = req.body
-    try:
-        out = req.run(req.api.authorization.decide, {
+    out = _with_step_up(req, b.get('step_up'), lambda proof: req.run(
+        req.api.authorization.decide, {
             'approval_id': req.params['id'], 'decision': b['decision'],
-            'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': b.get('step_up'),
-            'expected_version': b.get('expected_version')})
-    except errors.GuardFailed as e:
-        if b.get('step_up') is not None and 'step-up' in e.result.reason:
-            _step_up_failed(req)
-        raise
-    if b.get('step_up') is not None and not req.replayed:
-        req.api.step_up.reset(req.principal['device_id'])
+            'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': proof,
+            'expected_version': b.get('expected_version')}))
     if out.get('denied'):
         raise Refused(423, 'policy_denied', dict(out['denied'], approval_id=out['approval_id']))
     return 200, out
 
 
+def _with_step_up(req, proof, call):
+    """`call(proof)`, with a paired client's PIN proof counted: it is reserved
+    against the lockout before the command is queued, so a burst cannot run more
+    than `LIMIT` guesses before the revocation lands (p15-design-gate §6.6, D19).
+    Whether the approval needed the proof, and whether this one was valid, is
+    P9's guard; this is access control only."""
+    device = req.principal['device_id']
+    counted = proof is not None and req.principal['origin'] == 'paired'
+    if counted and not req.api.step_up.begin(device):
+        raise Refused(429, 'step_up_locked', headers={'Retry-After': '1'})
+    try:
+        try:
+            out = call(proof)
+        except errors.GuardFailed as e:
+            if counted and 'step-up' in e.result.reason:
+                _step_up_failed(req)
+            raise
+        if proof is not None and not req.replayed:
+            req.api.step_up.reset(device)
+        return out
+    finally:
+        if counted:
+            req.api.step_up.end(device)
+
+
 def _step_up_failed(req):
-    """A paired client's wrong PIN proof, counted; the 5th in a row revokes it
-    (p15-design-gate §6.6, D19). Whether the approval needed the proof, and
-    whether this one was valid, was P9's guard; this is access control only."""
+    """A paired client's wrong PIN proof, counted; the 5th in a row revokes it."""
     device = req.principal['device_id']
     if req.principal['origin'] == 'paired' and req.api.step_up.failed(device):
         req.run(commands.revoke_device, {'device_id': device, 'reason': 'step_up_failures'},

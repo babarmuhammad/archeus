@@ -92,7 +92,7 @@ def api(**over):
                                                                    get=lambda h: None),
                                          callers=(), probe=lambda *a: 'PROBE',
                                          usage_measures=lambda *a: ()),
-            'step_up': SimpleNamespace(failed=lambda d: False, reset=lambda d: None),
+            'step_up': SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False, reset=lambda d: None),
             'sse': SimpleNamespace(close_device=lambda d: None),
             'launch': SimpleNamespace(mint=lambda *a, **k: 'CODE', redeem=lambda c: None),
             'pairing': SimpleNamespace(mint=lambda g: 'PCODE', redeem=lambda c: None),
@@ -128,7 +128,7 @@ def grant(**over):
 
 
 def step_up(record, *, fails=False):
-    return SimpleNamespace(failed=lambda d: record.append(('failed', d)) or fails,
+    return SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: record.append(('failed', d)) or fails,
                            reset=lambda d: record.append(('reset', d)))
 
 
@@ -635,13 +635,13 @@ def test_a_right_proof_clears_the_count_and_lifts_the_sentinel(monkeypatch):
     calls, cleared = [], []
     monkeypatch.setattr(LocalNode, 'clear_estop', staticmethod(lambda: cleared.append(1)))
     req = Req(body={'step_up': '482913', 'idempotency_key': 'k'}, out={'ok': True},
-              api=api(step_up=SimpleNamespace(failed=lambda d: False,
+              api=api(step_up=SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False,
                                               reset=lambda d: calls.append(('reset', d)))))
     status, out = routes.rearm(req)
     assert status == 200 and out == {'ok': True} and calls == [('reset', 'dvc_1')]
     assert cleared == [1], 'Core was left disarmed after a real re-arm'
     plain = Req(body={'idempotency_key': 'k'}, out={'ok': True},
-                api=api(step_up=SimpleNamespace(failed=lambda d: False,
+                api=api(step_up=SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False,
                                                 reset=lambda d: calls.append(('reset', d)))))
     routes.rearm(plain)
     assert calls == [('reset', 'dvc_1')], 'a re-arm with no proof reset the wrong-PIN count'
@@ -656,7 +656,7 @@ def test_a_replayed_rearm_answers_what_core_is_and_lifts_nothing(monkeypatch):
     monkeypatch.setattr(LocalNode, 'disarmed', staticmethod(lambda: True))
     req = Req(body={'step_up': '482913', 'idempotency_key': 'k'}, out={'ok': True},
               replayed=True,
-              api=api(step_up=SimpleNamespace(failed=lambda d: False,
+              api=api(step_up=SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False,
                                               reset=lambda d: reset.append(('reset', d)))))
     status, out = routes.rearm(req)
     assert status == 200 and out == {'ok': True, 'armed': False}, out
@@ -773,7 +773,7 @@ def test_a_paired_clients_fifth_wrong_proof_revokes_resets_and_closes_its_stream
 def test_a_paired_client_below_the_limit_is_counted_and_kept():
     """The `and`'s right arm: `failed()` alone decides. Drop it and the first
     wrong PIN revokes the client."""
-    req = paired(api=api(step_up=SimpleNamespace(failed=lambda d: False,
+    req = paired(api=api(step_up=SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False,
                                                  reset=lambda d: pytest.fail(
                                                      'nothing to reset: nothing was revoked')),
                          sse=SimpleNamespace(close_device=lambda d: pytest.fail(

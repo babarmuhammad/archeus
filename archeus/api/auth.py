@@ -238,13 +238,30 @@ class PairingCodes(LaunchCodes):
 
 class StepUpFailures:
     """Consecutive wrong step-up PIN proofs per client, in memory (p15 D19):
-    the `LIMIT`th revokes the client. A correct proof resets the count."""
+    the `LIMIT`th revokes the client. A correct proof resets the count. A proof
+    in flight is reserved by `begin`, under the same lock as the count it is
+    checked against, so failures plus proofs under way never pass `LIMIT`."""
 
     LIMIT = 5
 
     def __init__(self):
         self._n = {}
+        self._live = {}
         self._lock = threading.Lock()
+
+    def begin(self, device_id):
+        """True when a proof may run now; it must be paired with `end`."""
+        with self._lock:
+            if self._n.get(device_id, 0) + self._live.get(device_id, 0) >= self.LIMIT:
+                return False
+            self._live[device_id] = self._live.get(device_id, 0) + 1
+            return True
+
+    def end(self, device_id):
+        with self._lock:
+            self._live[device_id] -= 1
+            if not self._live[device_id]:
+                del self._live[device_id]
 
     def failed(self, device_id):
         """True when this failure is the one that must revoke."""

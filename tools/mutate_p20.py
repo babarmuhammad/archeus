@@ -637,14 +637,14 @@ MUTATIONS = [
      [PRS + 'test_J01_a_paired_client_re_arms_only_with_its_pin',
       PRS + 'test_J02_a_paired_client_without_a_pin_cannot_re_arm_and_the_desktop_can']),
     ('Q116', "the re-arm route drops the client's proof", [(ROUTES,
-     "        out = req.run(req.api.executions.rearm, {'step_up': proof})",
-     "        out = req.run(req.api.executions.rearm, {'step_up': None})")],
+     "lambda proof: req.run(req.api.executions.rearm, {'step_up': proof}))",
+     "lambda proof: req.run(req.api.executions.rearm, {'step_up': None}))")],
      [PRS + 'test_J01_a_paired_client_re_arms_only_with_its_pin']),
     ('Q117', 'a wrong re-arm PIN is not counted toward the revocation', [(ROUTES,
-     "        if proof is not None and 'step-up' in e.result.reason:\n"
-     "            _step_up_failed(req)",
-     "        if proof is not None and 'step-up' in e.result.reason:\n"
-     "            pass")],
+     "            if counted and 'step-up' in e.result.reason:\n"
+     "                _step_up_failed(req)",
+     "            if counted and 'step-up' in e.result.reason:\n"
+     "                pass")],
      [PRS + 'test_J03_five_wrong_re_arm_pins_revoke_the_client_as_an_approvals_would']),
     # T-094's review: the gate tests and drills no Q mutant named, and its fixes
     ('Q118', 'the CLI draws a secret where it drew an idempotency key', [(MAIN,
@@ -710,8 +710,8 @@ MUTATIONS = [
      "report={(o) => { setSaid(estopSaid('rearm', o)); }}")],
      [AB + 'test_a_pin_client_re_arms_only_with_six_digits_and_the_pin_never_stays']),
     ('Q131', "a right re-arm PIN does not reset the count", [(ROUTES,
-     "        req.api.step_up.reset(req.principal['device_id'])\n    LocalNode.clear_estop()",
-     "        pass\n    LocalNode.clear_estop()")],
+     "            req.api.step_up.reset(device)\n        return out",
+     "            pass\n        return out")],
      [PRS + 'test_J03b_a_right_re_arm_pin_resets_the_count']),
     # T-094's re-review: a boundary value check_boundary cannot read
     ('Q132', "a rule's boundary values reach the engine unchecked", [(ENT,
