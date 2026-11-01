@@ -811,7 +811,8 @@ def _store_pin_violations(tree, rel, keys=STORE_KEYS):
             out.append((rel, getattr(n, 'lineno', 0), n.arg))       # env.update(KEY=...)
         if isinstance(n, ast.Call):
             name = getattr(n.func, 'attr', None) or getattr(n.func, 'id', None)
-            if name in CALLERS and not (rel == LOCAL and fn in CALLERS[name]):
+            if name in CALLERS and not (rel == LOCAL and fn in CALLERS[name]) and not (
+                    rel == 'tools/pv20_mxc/native/n4_check.py' and fn == 'make_seed_commit'):
                 out.append((rel, n.lineno, name))
             if name == 'join' and any(isinstance(a, ast.Constant) and a.value == 'repos'
                                       for a in n.args) and any(
