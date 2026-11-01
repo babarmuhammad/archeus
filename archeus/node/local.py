@@ -594,7 +594,7 @@ class LocalNode:
 
     @staticmethod
     def registry():
-        """Every registry line, oldest first (unreadable lines skipped)."""
+        """Every registry line, oldest first (lines that are not JSON objects skipped)."""
         try:
             with open(processes_registry(), encoding='utf-8') as f:
                 raw = f.read().splitlines()
@@ -603,18 +603,21 @@ class LocalNode:
         out = []
         for line in raw:
             try:
-                out.append(json.loads(line))
+                row = json.loads(line)
             except ValueError:
                 continue
+            if isinstance(row, dict):
+                out.append(row)
         return out
 
     @classmethod
     def unended(cls):
         """The registry's spawn lines with no end line: what may still run."""
         lines = cls.registry()
-        ended = {(x['execution_id'], x.get('process_seq')) for x in lines if x.get('op') == 'end'}
+        ended = {(x.get('execution_id'), x.get('process_seq')) for x in lines
+                 if x.get('op') == 'end'}
         return [x for x in lines if x.get('op') == 'spawn'
-                and (x['execution_id'], x.get('process_seq')) not in ended]
+                and (x.get('execution_id'), x.get('process_seq')) not in ended]
 
     def compact_registry(self):
         """Keep only processes with no end line (boot, §15.2)."""
