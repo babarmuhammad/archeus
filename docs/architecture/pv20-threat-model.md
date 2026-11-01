@@ -46,9 +46,11 @@ the control sits at that tip. Line numbers drift: re-check them, do not trust th
 | Isolated dispatch qualified | returns `False` unconditionally | `archeus/api/server.py:239-241` |
 | Router isolated dispatch | `None` | `archeus/core/application/resources.py:33` |
 | Isolated project workspace | built behind the closed switches above: the manager seeds a Core-built repository from the store (`resolve_base`, `store_fetch`, `seed_workspace`), refuses a root that is not a repository before any process, and a resume reuses the recorded base; the fetch itself stays closed by the row below | `archeus/core/execution/manager.py:496`, `:511` |
+| Heartbeat channel (Core's sender and the watchdog proxy) | `False`; both refuse to be built | `archeus/node/mxc_heartbeat.py` (`HEARTBEAT_ENABLED`) |
+| Watchdog host entry point | `False`; also refuses to start without native readers, which are not built | `archeus/node/mxc_watchdog_host.py` (`HOST_ENABLED`, `main`) |
 
 No production code constructs `MxcBoundary` (`archeus/node/mxc_boundary.py`), `MxcLaunch`, the ledger,
-the watchdog or the Win32 API. `MxcBoundary` is available only with the native api, SDK pins that verify
+the watchdog, the heartbeat channel, the watchdog host or the Win32 API. `MxcBoundary` is available only with the native api, SDK pins that verify
 against the staged copy, the ledger, the schema validator and an open `NATIVE_RUN_ENABLED`; given none
 of them, or with the switch above closed, it is not. Opening admission
 is one reviewed activation (completion plan C1, A1); it is not done.
@@ -76,9 +78,9 @@ is one reviewed activation (completion plan C1, A1); it is not done.
 | T04 | S-run floods stdout/stderr to exhaust Core memory | per-stream and total bounds, a deadline, a 64 KiB read, input read one chunk at a time, kill and close on every fault (`archeus/node/mxc_native.py:40-48`, `:223-285`) | unit: `tests/v1/unit/test_pv20_g_regressions.py` (B1 section), hand mutants MG01-MG08. Native: never streamed natively (N2 stand-in only) | defect: after a drain faulted on a bound, `Process.poll()` can read a clean exit 0 (`mxc_native.py:192`, `:214`), strict xfail in the same file; latent until a production child object exists |
 | T05 | Launcher or policy tampered; a changed SDK | reviewed-pin check (`staging.py:299`), policy validation of the exact compiler output (`mxc.py:139`), protected policy file with a deny-write lease (`mxc_native.py:52-60`) | unit; native partial: N2 not yet run | H8 |
 | T06 | A resume or a verifier key collides with another journal name, or an id escapes the ledger directory | one name per process generation (`archeus/node/mxc_ledger.py:17-31`) | unit: B2 section of `test_pv20_g_regressions.py`, mutants MG10-MG17. No native need | none |
-| T07 | The tree survives an end, or an end is recorded clean while it lives | revoke, terminate the Job without closing, read the member count through the open handle, read back resources, record; clean only with a Core-owned outcome and a verified disposal (`archeus/node/local.py:504-546`, `:549-580`, `:608-640`; `archeus/node/mxc_cancel.py:62-132`; `archeus/node/isolation.py:1967`) | unit and fake-only: B3 section, mutants MG20-MG27. Native partial: N1 outer-job-close PASS; real Core death and `terminate_job` through the production boundary only stand-in | Job is the sole Core-death authority unless the watchdog is built (OD-4b) |
+| T07 | The tree survives an end, or an end is recorded clean while it lives | revoke, terminate the Job without closing, read the member count through the open handle, read back resources, record; clean only with a Core-owned outcome and a verified disposal (`archeus/node/local.py:504-546`, `:549-580`, `:608-640`; `archeus/node/mxc_cancel.py:62-132`; `archeus/node/isolation.py:1967`) | unit and fake-only: B3 section, mutants MG20-MG27. Native partial: N1 outer-job-close PASS; real Core death and `terminate_job` through the production boundary only stand-in | the Job is the Core-death authority (decision below); the host is built behind fakes and unwired |
 | T08 | The launcher's exit or the stream is taken for the workload's result (A7) | Core-owned outcome reader or bound workload nonce (`local.py:481-496`); without one every end is DEAD_UNVERIFIED | unit; G6 row 15 over the fake boundary. MXC supplies no independent workload outcome | success needs an outcome source (OD-2, OD-3) |
-| T09 | Core crashes with an execution live | boot reclaim exists for the legacy isolation (`local.py:757`, `manager.py:1117`); the ledger `reconcile` (`mxc_ledger.py:109`, `:240`) is not called by the manager | unit and fake-only; real Core death NOT_RUN (N5) | wiring and watchdog host not built |
+| T09 | Core crashes or hangs with an execution live | boot reclaim exists for the legacy isolation (`local.py:757`, `manager.py:1117`); the ledger `reconcile` (`mxc_ledger.py:109`, `:240`) is not called by the manager. A watchdog host (`archeus/node/mxc_watchdog_host.py`) runs `Watchdog` over a heartbeat channel (`mxc_heartbeat.py`, one beat per manager sweep): a stale heartbeat engages the STOP sentinel and then ends only what the ledger's ownership record names, by pid and creation time; a dead Core is ended for without the sentinel | unit and fake-only: `tests/v1/unit/test_mxc_watchdog_host.py`, mutants WH01 to WH45. Real Core death and a real hung Core NOT_RUN (N5 `hung-core-sentinel-registry-kill`, `core-death`) | native readers (process identity by creation time, termination, sentinel), the launch of the host from Core's start-up and the deadline value are not built |
 | T10 | A condition of the establishment invariant is unmet and the execution starts anyway | `check_invariant` (`isolation.py:232`), `Isolation.requested` (`:648-661`) refuse; no switch disables it | unit; G6 row 10 scenarios (nine causes, no spawn, no fallback) | conditions 1 to 3 now have an MXC mapping (header of `mxc_boundary.py`: a reserved name and a `psec` marker, the policy's path lists plus the hardlink gate, a DACL read for broad writers and reachability of Core paths); every mapping is INFERRED, none has native evidence |
 
 ## Boundary 2: verifier
@@ -119,6 +121,41 @@ is one reviewed activation (completion plan C1, A1); it is not done.
 |---|---|---|---|---|
 | T23 | A forwarder running as the user launders origin | a forwarded request is never direct local; `direct_loopback` requires both ends to be loopback (`origin.py:158`); the tunnel carries paired credentials only | unit; G6 rows 4 and 5 | "no execution can reach a forwarding hop or user-identity proxy" is UNVERIFIED (design 7.1) |
 | T24 | Archeus code running as the user loads execution-influenced content (deputy) | git and model-call rules designed (A3, A5); `store_fetch_accepted` `False` (`local.py:1253`) | unit for the helpers | H6 |
+
+## Decision: the Job is the Core-death authority (OD-4b, recorded 2026-11-01)
+
+**Status: ASSUMED.** The owner has not answered OD-4b. The completion plan recommends option (a) and
+B13 takes it, so the assumption is written here where a reversal can find it.
+
+1. **Core dead.** The Core-held `KILL_ON_JOB_CLOSE` Job is the authority: the handle closes with
+   Core and the tree ends (design R6-A, section 3.7). Evidence is N1 outer-job-close PASS, where a
+   stand-in closed the handle; a real Core process dying under real executions was never observed
+   (N5).
+2. **Core hung or unreachable.** The authority stays item 83: the STOP sentinel and the registry
+   kill checked by creation time. The watchdog host adds no second mechanism and no authority. On a
+   stale heartbeat it engages that same sentinel and then asks for the same identity-checked kill,
+   from the ledger's ownership record instead of the registry line; on a dead Core it ends only what
+   outlived the Job, with no sentinel, as a belt. It is an automatic trigger of item 83. It never
+   adopts a process the ledger does not name, never kills by pid alone, and a lost reading is
+   UNCERTAIN with no kill. A sentinel that cannot be read back is recorded and does not withhold the
+   kill: stopping wins over the unverified halt flag.
+3. **What is built, and what is not.** The host, the channel, Core's sender (`LocalNode.heartbeat`,
+   beaten once per manager sweep) and the registration proxy for `MxcLaunch` exist behind fakes and
+   behind two closed flags. Nothing in production builds any of them, Core start-up does not launch
+   the host, and the host refuses to start because the native readers it needs (process identity by
+   creation time, termination, the sentinel) are not built. If the owner answers OD-4b with "build
+   it now", what remains is those readers, the launch of the host with Core's pid and creation
+   time, a measured deadline, and N5 `hung-core-sentinel-registry-kill` and `core-death` run
+   against it.
+4. **Consequences accepted under this decision.** An execution that escapes its Job (breakaway is
+   UNKNOWN natively) runs until the next boot reconcile, which quarantines and does not kill. A hung
+   Core is stopped only by a person (`archeus estop`) unless the host is deployed. With the host
+   deployed, a Core that is only slow past the deadline loses its executions; the deadline has no
+   measured value. The beat comes from the manager sweep, so a stuck sweep reads as hung while a
+   live sweep with a stuck API does not.
+5. **Limits of the host as built.** The channel is a file with no rotation. Core and the host share a
+   clock by injection; a clock both can read monotonically is UNVERIFIED. Once the watch has fired or
+   gone uncertain the host ends and re-adopts nothing.
 
 ## Residual risks (recorded, not solved)
 
