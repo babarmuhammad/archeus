@@ -30,10 +30,10 @@ A Session is bound to (harness, account). Moving work to another account is ther
 
 | Step | Source | Result |
 |---|---|---|
-| Harness discovery | node probes executables (today's `harnesses.HARNESSES` descriptors + `exe_setting`) | Harness rows with `capabilities`, `enforcement`, `installed_version` |
+| Harness discovery | node probes executables (today's `harnesses.HARNESSES` descriptors + `exe_setting`) | Harness rows with `capabilities`, `enforcement`, `installed_version` (as built, the Harness entity has only `id`, `enforcement` and `state`, no table is written, and the values live in the routing snapshot) |
 | Account registration | user in Control → Resources (import from legacy `settings['accounts']` / `settings['homes']` at migration) | Account rows (`node_id` = local), `auth_kind`, `home_ref` |
 | Auth probe | adapter `authenticate()` (cheap, no inference) | health UNVERIFIED → AVAILABLE / UNAUTHENTICATED |
-| Model offers | adapter `capabilities()` + `models.roster()` newest-per-family logic — **amended by ADR-0031:** offers come from the dated catalogue (`Model`/`ModelOffer` with provenance), a model is routable only in routing status APPROVED (EVALUATING for an evaluation subject), and a routed offer names an exact id where one is known; a newer model never becomes routable merely by existing | ModelOffer rows; stale offers marked unavailable after 24 h |
+| Model offers | adapter `capabilities()` + `models.roster()` newest-per-family logic — **amended by ADR-0031:** offers come from the dated catalogue (`Model`/`ModelOffer` with provenance), a model is routable only in routing status APPROVED (EVALUATING for an evaluation subject), and a routed offer names an exact id where one is known; a newer model never becomes routable merely by existing | ModelOffer rows; stale offers marked unavailable after 24 h (not built: nothing writes a ModelOffer row; the ADR-0031 catalogue, provenance and routing status do not exist in the code, and a Claude offer is the family alias of the newest catalogue entry, `harnesses/calls.py` `claude_models`) |
 | Resource policy | user sets priority, allocation, reserve, budgets, project rules, fallback | ResourcePolicy row; changes are events |
 
 Defaults at first run: every account `priority` in registration order, `allocation_pct` 80,
@@ -55,6 +55,7 @@ requirements:
   preferred: {accounts: [], harnesses: []}   # mission.resource_preferences
   forbidden: {accounts: [], harnesses: []}
   max_cost_band: medium
+  # as built (resources.py): no action_classes, interactive or max_cost_band key; min_context_window is always None; action classes arrive inside the policy items
 ```
 
 **Archeus's own calls** (ADR-0022) are subject `archeus_call` with a `purpose`
@@ -119,9 +120,9 @@ must_halt(execution)          = worst(account) ≥ allocation_pct        (checke
   hands off via checkpoint (to another account if policy allows fallback, else the task goes
   BLOCKED with "allocation reached, resets at …").
 - Usage freshness: before routing, if the account's newest snapshot is older than 120 s (5 h
-  window) the router asks for a refresh (`usage.fetch_usage` / rate-limit read) with a 3 s
+  window) the router asks for a refresh (as built it does not: a read is an in-memory lookup and the legacy poller refreshes its cache on its own thread, `core/routing/usage.py`) (`usage.fetch_usage` / rate-limit read) with a 3 s
   timeout; on timeout it uses the stale value **plus** a staleness penalty of 5 points and
-  records `usage_age_s` in the decision.
+  records `usage_age_s` in the decision (the field is `age_s`).
 - **Accounts with no readable window** (API keys without a usage endpoint, proxies):
   `allocation_known = false`. They are governed by **ledger budgets** (`tokens_per_day`,
   `cost_per_day`, `concurrency`). An account with `allocation_known = false` and no budgets is
@@ -191,7 +192,9 @@ def route(subject, now) -> RouteDecision:
     return record(subject, chosen, rejected, snap, cands[1:])      # RouteDecision + event
 ```
 
-**Amended by ADR-0033 (V1.x-O2), ADR-0031 and ADR-0035:** requirements gain `task_family` and
+**As built (`core/routing/router.py`):** candidates are (harness, account) pairs, and the model is filled in the `model` step. The elimination steps are `installed`, `headless`, `capability`, `model`, `enforcement`, `provider_terms`, `broker`, `restriction`, `breaker`, `health`, `allocation`, `partition`, `election`; there is no `policy` step (a P9 DENY is checked before routing, and project and consumption rules sit in `restriction`). The ordering keys are affinity, preference (accounts or harnesses), priority, tier rank, a near-ceiling flag (within 5 of the ceiling, not the CONSTRAINED health state), and the resource id; cost and latency are not keys because no V1 adapter reports them.
+
+**Amended by ADR-0033 (V1.x-O2), ADR-0031 and ADR-0035 (not built: the columns exist and are written empty; no `task_family`, `exact_provenance`, `provenance` step, `evidence` step or `evidence_fit` key exists, and `capability_snapshot` is `{}`):** requirements gain `task_family` and
 `exact_provenance`; elimination gains a `provenance` step (an offer that cannot guarantee a SERVED
 record fails an exact-provenance subject), the data-class provider rule inside `restriction`, and an
 `evidence` step that eliminates only under a user's `evidence_exclude` rule; ordering gains one
@@ -236,7 +239,7 @@ the router never goes *above* what is needed unless nothing smaller is eligible 
 ## 6. Effort and cost economics
 
 - Effort is a per-execution parameter (today's `config.MODEL_EFFORT_FRONTIER` / Power slider).
-  The planner sets it by task kind; the router may lower it when the account is CONSTRAINED.
+  The planner sets it by task kind; the router may lower it when the account is CONSTRAINED (not built: no code lowers effort, and both requirement builders set `effort` to `None`).
   Rationale from the Claude Platform cost guidance: *a stronger model at low effort can be cheaper
   than a weaker model working hard* — so tier and effort are chosen together, not maximised.
 - **Prompt-cache preservation:** brain calls and task prompts are assembled with a stable prefix
@@ -252,9 +255,9 @@ the router never goes *above* what is needed unless nothing smaller is eligible 
 |---|---|
 | No candidate survives | `fallback_or_block`: if any *rejected* candidate was rejected only by `allocation`/`health` and its account's `fallback` is `allow` → pick it (recorded as fallback). If `ask` → task AWAITING_APPROVAL with an Approval "Use Account C (P3) because A is limited until 14:30 and B is at its 80% ceiling?". If `deny`/none → task BLOCKED with the earliest `limited_until` as the unblock time. **Never silently violate policy to keep work moving** (spec §16). |
 | Execution fails with a limit error (`quota.is_limit_error`) | account → LIMITED (`limited_until` from the error or snapshot); execution hands off via checkpoint; task re-routes (affinity dropped because the failure is resource-attributable). |
-| Error storm (5 non-limit errors in 10 min) | breaker DEGRADED → OPEN (state-machines §9); tasks re-route. |
+| Error storm (5 non-limit errors in 10 min; as built, 5 executions ending in `resource` or `auth` failure within 600 s, counted per registered account; the router's harness gate is the separate spawn breaker, 3 failed starts in 10 min) | breaker DEGRADED → OPEN (state-machines §9); tasks re-route. |
 | Auth failure | UNAUTHENTICATED; Attention item "log in to Work account"; tasks re-route. |
-| Retry | Task retry re-enters routing; same inputs → same answer unless state changed; the decision records `retry_of`. |
+| Retry | Task retry re-enters routing; same inputs → same answer unless state changed; the decision records `retry_of` (not built: RouteDecision has no `retry_of`). |
 
 ## 8. Explainability
 
@@ -276,7 +279,7 @@ reason, input snapshot with ages).
 
 - Every call produces a RouteDecision row + `route.decided` event (including brain calls).
 - `input_snapshot` stores usage values *with their observed_at*, health, ledger totals, policy
-  version and the ResourcePolicy versions used → a decision can be **replayed** in tests and in
+  version and the ResourcePolicy versions used (as built, the effective policy is stored but no version of it) → a decision can be **replayed** in tests and in
   support ("would the router choose differently now?").
 - Policy interaction: the router asks the policy engine only *resource* questions (may this
   account/harness be used for this project/mission?). *Action* questions (may this task push?)
@@ -297,7 +300,7 @@ with the limit message → A LIMITED until 16:05 → checkpoint derived → task
 *Dashboard* on Account C (P3)?". Approve → routes to C; reject → task BLOCKED until 16:05.
 
 **D. "Use account A first, then account B if necessary."** Parsed by the brain into a
-mission-scoped `resource_preferences = {preferred: [A], fallback_chain: [B]}` and shown as a
+mission-scoped `resource_preferences = {preferred: [A], fallback_chain: [B]}` (as built the stored keys are `preferred_accounts`, `forbidden_accounts`, `preferred_harnesses`, `directives`, `max_cost_band`; there is no `fallback_chain`) and shown as a
 card for confirmation; it overrides global priority *for this mission only*.
 
 **E. "Why did you choose this model?"** Control-verb grammar recognises `route why` / "why …
