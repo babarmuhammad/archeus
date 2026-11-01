@@ -822,6 +822,29 @@ def test_an_unreadable_class_2_answer_is_never_accepted(tmp_path, monkeypatch):
         assert json.load(f)['seq'] == 1
 
 
+def test_the_hooks_identity_pattern_is_the_ulid_shape():
+    assert hook._ID.match(ids.new_id('execution'))
+    assert not hook._ID.match('exe_8' + '0' * 25)       # ids.is_ulid: the first char is <= 7
+
+
+def test_a_request_name_in_another_script_is_not_a_sequence_number(tmp_path):
+    """T-651#R9: '²'.isdigit() is True and int('²') raises, so the file made every
+    later request halt."""
+    box = str(tmp_path / 'req')
+    os.makedirs(box)
+    open(os.path.join(box, '\u00b2.req.json'), 'w').close()
+    assert hook._reserve(box, {}) == 1
+
+
+def test_a_halt_is_written_though_the_execution_took_the_name_of_a_neighbours_temp_file(
+        tmp_path):
+    """T-651#R7: one fixed halted.json.tmp let a directory of that name stop the report."""
+    box = str(tmp_path / 'req')
+    os.makedirs(os.path.join(box, 'halted.json.tmp'))
+    hook._halted(box, 1, 'because')
+    assert os.path.isfile(os.path.join(box, 'halted.json'))
+
+
 def test_an_answer_left_by_an_earlier_request_with_the_same_number_is_never_the_answer(
         tmp_path, monkeypatch):
     """The execution may empty req/ so the next call reuses a number, and Core never

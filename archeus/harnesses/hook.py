@@ -52,7 +52,7 @@ def wait_s(raw):
 
 WAIT_S = wait_s(os.environ.get('ARCHEUS_HOOK_WAIT', '60'))
 POLL_S = 0.05
-_ID = re.compile(r'exe_[0-9A-HJKMNP-TV-Z]{26}\Z')
+_ID = re.compile(r'exe_[0-7][0-9A-HJKMNP-TV-Z]{25}\Z')      # ids.is_ulid's shape
 #: archeus.infra.paths' class directories, mirrored: this file imports no package
 REQUEST_DIR, RESPONSE_DIR, SENTINEL_DIR = 'req', 'res', 'ctl'
 
@@ -98,7 +98,7 @@ def _mailbox(box):
 def _halted(box, seq, reason):
     try:
         _mailbox(box)
-        tmp = os.path.join(box, 'halted.json.tmp')
+        tmp = os.path.join(box, 'halted.json.%d.tmp' % os.getpid())
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump({'seq': seq, 'reason': reason, 'at': time.time()}, f)
         os.replace(tmp, os.path.join(box, 'halted.json'))
@@ -127,8 +127,8 @@ def _reserve(box, body):
     removed, so two hooks can never hold one number."""
     _mailbox(box)
     while True:
-        taken = [int(n.split('.')[0]) for n in os.listdir(box)
-                 if n.split('.')[0].isdigit()]
+        heads = (n.split('.')[0] for n in os.listdir(box))
+        taken = [int(h) for h in heads if h.isascii() and h.isdigit()]   # '²'.isdigit()
         seq = max(taken, default=0) + 1
         try:
             os.close(os.open(os.path.join(box, '%d.lock' % seq),
