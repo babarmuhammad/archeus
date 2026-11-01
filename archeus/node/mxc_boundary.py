@@ -94,8 +94,8 @@ class MxcBoundary:
         state. Nothing is read without a way to read a process."""
         if self.ledger is None or self.process_reader is None:
             return {}
-        return self.ledger.reconcile(self.process_reader, self.resource_reader or (
-            lambda execution_id, owner: None), skip=local.mxc_busy(self.ledger))
+        return local.mxc_reconcile(self.ledger, self.process_reader, self.resource_reader or (
+            lambda execution_id, owner: None))
 
     # ── the identity: a reserved name, no OS object ──
 

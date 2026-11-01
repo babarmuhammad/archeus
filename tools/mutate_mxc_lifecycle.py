@@ -27,6 +27,7 @@ E = 'tests/v1/integration/test_estop_drills.py::'
 P = 'tests/v1/unit/test_pins_core_execution_manager.py::'
 G = 'tests/v1/unit/test_gaps_core_execution_manager.py::'
 B = 'tests/v1/unit/test_mxc_boundary.py::'
+W = 'tests/v1/unit/test_mxc_wire_sweep.py::'
 
 PUMP = L + 'test_the_prompt_goes_in_and_both_outputs_are_appended_to_the_stream'
 LIMITS = L + 'test_the_task_limits_are_the_launchs_bounds'
@@ -96,9 +97,8 @@ MUTATIONS = [
     ('ML20', 'the fence closes the Job under a running child', [(LOCAL,
      "            child.cancel('fenced')", '            pass')],
      [L + 'test_the_fence_ends_a_child_that_is_still_running_before_it_closes_the_job']),
-    ('ML21', 'boot reads the journals of the launches this Core is running', [(BOUNDARY,
-     '            lambda execution_id, owner: None), skip=local.mxc_busy(self.ledger))',
-     '            lambda execution_id, owner: None), skip=())')], [NEVER]),
+    ('ML21', 'boot reads the journals of the launches this Core is running', [(LOCAL,
+     'resource_reader, skip=mxc_busy(ledger))', 'resource_reader, skip=())')], [NEVER]),
     ('ML22', 'a journal already noted is noted again on every sweep', [(ISO,
      '                   if self._reconciled.get(journal) != state}', '                   if True}')],
      [L + 'test_boot_quarantines_a_journal_no_core_ended_and_notes_it_once']),
@@ -121,6 +121,10 @@ MUTATIONS = [
      "        killed = result.exit_reason == 'killed' or cancelled",
      "        killed = result.exit_reason == 'killed'")],
      [G + 'test_a_stop_of_cores_that_ended_an_isolated_launch_is_a_kill_whatever_the_adapter_says']),
+    ('ML31', 'a sweep lets a launch claim its id while it reads the journals', [(LOCAL,
+     '    with _MXC_CLAIMS_LOCK:\n        return ledger.reconcile(',
+     '    if True:\n        return ledger.reconcile(')],
+     [W + 'test_a_start_that_begins_during_a_sweep_waits_for_it_and_is_not_quarantined']),
     ('ML29', 'the e-stop reason is lost on the way to the node', [(MGR,
      "                           reason='disarmed' if disarmed else e.stop_reason or 'stopped')",
      "                           reason='stopped')")], [REASONS]),

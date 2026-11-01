@@ -170,7 +170,7 @@ _MXC_LIVE_LOCK = threading.Lock()
 #: no exclusive create, so a second Core process on the same directory is not excluded
 #: (the ledger's own rule is one Core writer per directory)
 _MXC_CLAIMS = set()
-_MXC_CLAIMS_LOCK = threading.Lock()
+_MXC_CLAIMS_LOCK = threading.RLock()     # reentrant: a sweep holds it over `mxc_busy`
 
 
 def mxc_resource_id(path):
@@ -189,6 +189,14 @@ def mxc_busy(ledger):
         return ({journal for claimed, journal in _MXC_CLAIMS if claimed == key}
                 | {launch.journal for launch in _MXC_LIVE
                    if launch.end_state is None and launch._ledger_key() == key})
+
+
+def mxc_reconcile(ledger, process_reader, resource_reader):
+    """`Ledger.reconcile` over the journals no launch of this Core is starting or running.
+    No launch can claim an id while the sweep holds the claims lock, so a journal the sweep
+    reads without a claim is one nobody is writing."""
+    with _MXC_CLAIMS_LOCK:
+        return ledger.reconcile(process_reader, resource_reader, skip=mxc_busy(ledger))
 
 
 #: the variables of an isolated environment that name the execution's own folders
