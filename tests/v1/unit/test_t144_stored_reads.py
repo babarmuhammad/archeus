@@ -317,5 +317,6 @@ def test_attention_scrubs_error_and_preserves_authored_reasons(homes, monkeypatc
     monkeypatch.setattr(attention.rows, 'get', lambda *args: None)
     items = attention.attention(None, homes=homes)['items']
     assert next(i for i in items if i['kind'] == 'verification')['reason'] == 'failed at its home'
-    assert all(i['reason'] == HOME for i in items if i['kind'] != 'verification')
+    assert next(i for i in items if i['kind'] == 'mission')['reason'] == 'its home'
+    assert all(i['reason'] == HOME for i in items if i['kind'] not in ('verification', 'mission'))
     assert len(items) == 6

@@ -128,7 +128,8 @@ def version(req):
 def list_missions(req):
     with req.api.db.read() as conn:
         return 200, {'missions': queries.list_missions(conn, _one(req.query, 'state'),
-                                                       _one(req.query, 'project'))}
+                                                       _one(req.query, 'project'),
+                                                       homes=_read_homes(req, conn))}
 
 
 def get_mission(req):
@@ -786,7 +787,8 @@ def handoff_execution(req):
 def list_messages(req):
     with req.api.db.read() as conn:
         return 200, {'messages': queries.messages(conn, req.params['id'],
-                                                  _one(req.query, 'after'))}
+                                                  _one(req.query, 'after'),
+                                                  homes=_read_homes(req, conn))}
 
 
 def post_message(req):
@@ -828,7 +830,7 @@ def post_message(req):
 
 def get_intent(req):
     with req.api.db.read() as conn:
-        return 200, queries.get_intent(conn, req.params['id'])
+        return 200, queries.get_intent(conn, req.params['id'], homes=_read_homes(req, conn))
 
 
 def clarify_intent(req):

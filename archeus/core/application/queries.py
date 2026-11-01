@@ -8,6 +8,7 @@ from ...infra.db.writer import NotFound
 from ...infra.eventlog import outbox
 from ..domain import entities, ids, states
 from .commands import active_plan
+from ..homes import scrub_text
 from .public import PATH_KEYS, public_context, public_event, system_value
 
 
@@ -41,6 +42,12 @@ def view(row):
                 updated_at=row.updated_at)
 
 
+def _public_mission(conn, mission, homes):
+    """`planning_blocked` is the planning call's own words, so it is scrubbed (owner 2026-10-25)."""
+    pb = mission.get('planning_blocked')
+    return mission if pb is None else dict(mission, planning_blocked=system_value(pb, _homes(conn, homes)))
+
+
 def get_mission(conn, mission_id, *, homes=None):
     """One mission, with the context package its `context_ready` move
     recorded (None before it has one) and the plan in force (P8): its id and
@@ -52,7 +59,7 @@ def get_mission(conn, mission_id, *, homes=None):
     plan = active_plan(conn, mission_id)
     pending = [r.entity.id for r in rows.where(conn, entities.Approval, mission_id=mission_id)
                if r.entity.state == 'PENDING']
-    return dict(view(row), context_package=None if pid is None else get_context_package(conn, pid, homes=homes),
+    return dict(_public_mission(conn, view(row), homes), context_package=None if pid is None else get_context_package(conn, pid, homes=homes),
                 plan_id=None if plan is None else plan.entity.id,
                 plan_version=None if plan is None else plan.entity.plan_version,
                 pending_approval_id=pending[-1] if pending else None,
@@ -113,7 +120,7 @@ def get_context_package(conn, package_id, *, homes=None):
     return public_context(view(row), _homes(conn, homes))
 
 
-def list_missions(conn, state=None, project_id=None):
+def list_missions(conn, state=None, project_id=None, *, homes=None):
     """Every mission, oldest first; only those in *state*, and of *project_id*,
     when given (an unknown project is NotFound, not an empty list)."""
     if state is not None and state not in states.states('mission'):
@@ -123,7 +130,7 @@ def list_missions(conn, state=None, project_id=None):
         if rows.get(conn, entities.Project, project_id) is None:
             raise NotFound(project_id)
         eq['project_id'] = project_id
-    return [view(r) for r in rows.where(conn, entities.Mission, **eq)]
+    return [_public_mission(conn, view(r), homes) for r in rows.where(conn, entities.Mission, **eq)]
 
 
 def system_principal(conn):
@@ -320,7 +327,7 @@ def _conversation(conn, conversation_id):
     return conversation_id
 
 
-def messages(conn, conversation_id, after=None):
+def messages(conn, conversation_id, after=None, *, homes=None):
     """A conversation's messages, oldest first; those after message *after*. A
     mission's thread (named by the mission's id, P19 S1) is its own messages
     and every message of the primary conversation whose links name the
@@ -337,7 +344,10 @@ def messages(conn, conversation_id, after=None):
         if not idx:
             raise NotFound(after)
         got = got[idx[0] + 1:]
-    return got
+    if all(m['author'] == 'user' for m in got):
+        return got
+    homes = _homes(conn, homes)
+    return [m if m['author'] == 'user' else dict(m, text=scrub_text(m['text'], homes)) for m in got]
 
 
 def _thread(conn, mission_id):
@@ -364,17 +374,25 @@ def reply_to(conn, message_id):
     return view(got[0]) if got else None
 
 
-def get_intent(conn, intent_id):
+def _intent(conn, intent_id):
     row = rows.get(conn, entities.Intent, intent_id)
     if row is None:
         raise NotFound(intent_id)
     return view(row)
 
 
+def get_intent(conn, intent_id, *, homes=None):
+    """The model's reading is scrubbed; the user's `utterance` stays raw."""
+    it = _intent(conn, intent_id)
+    homes = _homes(conn, homes)
+    return dict(it, **{k: system_value(it[k], homes)
+                       for k in ('reason', 'ambiguities', 'conflicts', 'proposal')})
+
+
 def question_of(conn, intent_id):
     """The reply that asked the user about an intent (its clarification or
     challenge card), as a message view."""
-    it = get_intent(conn, intent_id)
+    it = _intent(conn, intent_id)
     reply = reply_to(conn, it['message_id'])
     if reply is None or it['resolution'] != 'clarification_requested':
         raise ValueError('intent %s is not waiting for an answer' % intent_id)

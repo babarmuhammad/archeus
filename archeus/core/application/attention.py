@@ -83,7 +83,7 @@ def attention(conn, now=None, *, homes=None):
         # a planning round that asked a question or was denied waits for the user,
         # in BLOCKED or in place in PLANNING/REPLANNING (P8 D6, P9)
         if pb and m.state not in ('COMPLETED', 'CANCELLED', 'FAILED'):
-            asked = '; '.join(pb.get('questions') or ()) or None
+            asked = system_value('; '.join(pb.get('questions') or ()), homes) or None
             items.append(_item('mission', 'mission', r, m.state, pb.get('kind') or 'blocked',
                                asked, m.id, m.project_id))
         elif m.state == 'BLOCKED' and m.held_from == 'EXECUTING':
