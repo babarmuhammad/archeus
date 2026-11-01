@@ -1124,7 +1124,7 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   this tree: `canonical.py:311` dispatches `canonicalise_hook`, classification is at :319-:320, row
   construction at :335-:343. `manager.py:525` handles hooks, checks cwd at :543, builds context
   at :546-:549, asks node at :550-:551, canonicalises at :552-:553 and forwards eligibility at
-  :554-:558; exceptions halt at :559-:561. `local.py:151-:153` returns `None` because current
+  :554-:558; exceptions halt at :559-:561. `local.py:742-744` (`command_context`; `:151-:153` when this was written) returns `None` because current
   isolation does not attest resolution/startup environment. No production profile is enabled.
 - **HELD caps automatic allow.** `executions.py:928` authenticates/state/sequence checks before
   authorization; DENY at :975-:976 and ASK at :977-:980 remain in force. Bash cap at :981-:985

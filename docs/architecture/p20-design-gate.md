@@ -2096,7 +2096,9 @@ credential store was read: this review covers Archeus's own files and code only.
      - **I-F1, Medium: on Windows the home check reads write, while the local token's threat is
        read.**
        - `token_protection` warns on Windows only when `broad_writer` finds a broad principal
-         with a write-like allow ACE (`isolation.py:1763`).
+         with a write-like allow ACE (`isolation.py:1756`, `broad_writer`; *2026-11-01: moved from `:1763`, and
+         `_home_warning` now also warns on a broad read-like ACE through `broad_reader`,
+         `archeus/infra/discovery.py:176-178`, so this finding is the 2026-10-15 record*).
        - `run/local-token` holds every scope. A home whose DACL lets a broad principal read but
          not write gives no warning, while that principal can read the token.
        - The default home, `%LOCALAPPDATA%\Archeus`, is under the user profile. The case needs a

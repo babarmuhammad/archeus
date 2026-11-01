@@ -442,6 +442,10 @@ not charged (binding)`.
 - `archeus/node/local.py:245-257` `add_worktree` checks only `isdir(path)` and always runs
   `git worktree add -b`; its sibling `mission_worktree` (`:336-346`) already handles an existing
   branch by omitting `-b`. Worktree creation is p11-design-gate §17; the base is P13 D12.
+  *Re-checked 2026-11-01: those lines moved and `add_worktree` changed since this was written. It is
+  now `local.py:1136-1158`: it calls `check_worktree_path`, and moves an existing branch with `-B`
+  only when `base` loses nothing (`:1145-1152`), else refuses; `mission_worktree` is `:1243-1257`.
+  The text above is the record of what the finding saw.*
 - `archeus/core/execution/manager.py:175-178` refuses the execution with `stop_reason='binding'`,
   which is in `UNCHARGED` (`application/executions.py:37-39`); `_respond` (`:320-323`) fires
   `execution_failed_retry` with no counter, cap or backoff. Charging rules are p11 D9; §28 note 7
