@@ -329,3 +329,24 @@ def test_redefined_missing_rows(command):
 def test_windows_reserved_paths_hold_despite_file_evidence(path):
     context = replace(CONTEXT, paths={path: PathEvidence('file', True)})
     assert isinstance(classify('cat "' + path + '"', context), Held)
+
+
+@pytest.mark.parametrize('command', (
+    'git --no-pager log --max-count=20 --show-signature',
+    'git --no-pager log --show-signature --max-count=20',
+    'git --no-pager log --max-count=20 --output=out.txt',
+    'git --no-pager log --max-count=20 -Oorderfile',
+    'git --no-pager log --max-count=20 --ext-diff',
+    'git --no-pager log --max-count=20 --textconv',
+    'git -c gpg.program=sh --no-pager log --max-count=20',
+    'git --config-env=gpg.program=X --no-pager log --max-count=20',
+    'git --no-pager -c log.showSignature=true log --max-count=20',
+    'git --no-pager show --no-ext-diff --no-textconv --show-signature HEAD',
+    'git --no-pager show --ext-diff HEAD',
+    'git --no-pager show --textconv HEAD',
+    'git --no-pager show --output=out.txt --no-ext-diff --no-textconv HEAD',
+    'git --no-pager show --no-ext-diff --no-textconv -Oorderfile HEAD',
+    'git -c diff.external=sh --no-pager show --no-ext-diff --no-textconv HEAD',
+))
+def test_git_options_that_run_a_program_or_write_a_file_stay_held(command):
+    assert isinstance(classify(command, CONTEXT), Held)
