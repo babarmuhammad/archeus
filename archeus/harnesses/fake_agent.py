@@ -135,6 +135,8 @@ def hook(cmd, event):
         if spec.get('permissionDecision') == 'deny':
             return 'halt', out.get('stopReason') or ''
         return 'halt_after', out.get('stopReason') or ''
+    if spec.get('permissionDecision') == 'deny':
+        return 'deny', spec.get('permissionDecisionReason') or ''
     if spec.get('permissionDecision') == 'allow':
         return 'allow', ''
     return 'proceed', 'the hook gave no decision'
