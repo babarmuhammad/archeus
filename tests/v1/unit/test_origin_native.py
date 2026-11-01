@@ -117,6 +117,10 @@ def test_a_row_that_is_not_the_direct_loopback_peer_names_no_owner(api, row):
     assert _owner(api).pid is None
 
 
+def test_another_port_has_no_owner(api):
+    assert _owner(api, PEER + 1).pid is None
+
+
 def test_the_servers_own_row_is_never_taken_for_the_peer(api):
     api.rows = [r for r in api.rows if r.local_port == CORE]
     assert _owner(api).pid is None
@@ -186,7 +190,7 @@ def test_a_missing_parent_ends_the_chain(api):
     assert readers(api).read_process(4124).ancestors == ()
 
 
-def test_a_parent_cycle_ends_at_the_repeat(api):
+def test_a_parent_cycle_ends_because_a_parent_is_never_newer_than_its_child(api):
     api.table[1] = _proc(1, 2, 30, 'a.exe')
     api.table[2] = _proc(2, 1, 20, 'b.exe')
     api.table[4124] = _proc(4124, 1, 100, 'c.exe')
@@ -327,6 +331,18 @@ def test_a_user_binding_expires_without_reattest_and_is_renewed_with_it_for_the_
     assert backend.valid(context, evidence) is True
     now[0] += attest.DEFAULT_MAX_AGE_S + 1
     api.user(ct=101)
+    assert backend.valid(context, evidence) is False
+
+
+def test_a_reattest_that_finds_another_kind_of_process_is_refused(api):
+    api.user()
+    now = [T0]
+    backend = WindowsOriginBackend(readers=native_readers(
+        api, core_port=CORE, jobs=lambda: [JOB], clock=lambda: now[0], reattest=True))
+    context = ctx()
+    evidence = backend.attest(context)
+    now[0] += attest.DEFAULT_MAX_AGE_S + 1
+    api.contained()
     assert backend.valid(context, evidence) is False
 
 

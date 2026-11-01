@@ -10,7 +10,7 @@ Liveness is a wait on the process handle that times out (not signalled): F9C saw
 OpenProcess succeed and IsProcessInJob answer TRUE for a dead PID, so neither is
 read as "alive". Ancestry follows the parent PID only while each parent is alive and
 was created before its child, so a recycled parent PID ends the chain instead of
-extending it.
+extending it (the same rule makes a parent cycle impossible).
 """
 import ctypes as c
 import sys
@@ -72,10 +72,9 @@ def native_readers(api, *, core_port, jobs, clock=time.monotonic, launcher=DEFAU
 
 
 def _ancestors(api, process):
-    names, seen = [], set()
+    names = []
     child, parent_pid = process, process.parent_pid
-    while parent_pid and parent_pid not in seen and len(names) < MAX_ANCESTORS:
-        seen.add(parent_pid)
+    while parent_pid and len(names) < MAX_ANCESTORS:
         parent = api.process(parent_pid, ())
         if (parent is None or not parent.alive or parent.creation_time is None
                 or child.creation_time is None or parent.creation_time >= child.creation_time):
