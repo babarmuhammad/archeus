@@ -149,6 +149,17 @@ def test_f5_a_lone_surrogate_is_a_400_and_stores_nothing(tc):
     assert r.status == 400 and b'codec' not in r.body
 
 
+def test_r11_a_lone_surrogate_in_a_free_form_object_is_a_400_and_stores_nothing(tc):
+    rule = dict(scope_level='USER', action_class='write_repo', decision='ASK')
+    for extra in ({'match': {'path_glob': '\ud800'}}, {'match': {'a': ['x', {'k': 'y\udfff'}]}},
+                  {'boundary': {'\ud800': 1}}):
+        r = tc.http('POST', '/v1/policies/rules', body=dict(_key(), **rule, **extra))
+        assert (r.status, r.json()['error']) == (400, 'invalid_request'), extra
+        assert r.json()['detail']['why'] == 'is not valid text'
+    ok = tc.http('POST', '/v1/policies/rules', body=dict(_key(), **rule, match={'path_glob': '*.py'}))
+    assert ok.status == 200
+
+
 # ── F7: a long stream is read as a bounded tail, not whole ──
 
 def test_f7_a_long_stream_is_read_from_a_window_of_whole_lines(monkeypatch):

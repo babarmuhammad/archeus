@@ -63,3 +63,21 @@ def validate(value, schema, field=None, types=None):
                     continue
                 raise Invalid(sub, 'is not a known field')
             validate(v, props[name], sub, types)
+    if t == 'object' and (schema.get('open') or 'properties' not in schema):
+        _text(value, field)             # content no property above checked
+
+
+def _text(value, field):
+    todo = [value]
+    while todo:
+        x = todo.pop()
+        if isinstance(x, str):
+            try:
+                x.encode('utf-8')
+            except UnicodeEncodeError:
+                raise Invalid(field, 'is not valid text') from None
+        elif isinstance(x, dict):
+            todo.extend(x)
+            todo.extend(x.values())
+        elif isinstance(x, list):
+            todo.extend(x)

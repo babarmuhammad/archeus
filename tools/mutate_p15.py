@@ -192,6 +192,10 @@ MUTATIONS = [
      "            req.api.step_up.undo(device)\n            raise",
      "            raise")],
      [AF + '::test_r5_a_revoke_that_fails_is_retried_by_the_next_wrong_pin']),
+    ('M31', 'a free-form object takes text that is not UTF-8', [('archeus/core/domain/shapes.py',
+     "    if t == 'object' and (schema.get('open') or 'properties' not in schema):",
+     "    if False:")],
+     [AF + '::test_r11_a_lone_surrogate_in_a_free_form_object_is_a_400_and_stores_nothing']),
 ]
 
 
