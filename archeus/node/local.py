@@ -726,7 +726,11 @@ class LocalNode:
                 'started_at': time.time()}
         if spec.isolation is not None:
             line.update(spec.isolation.facts())
-        self._registry(line)
+        try:
+            self._registry(line)
+        except OSError as err:
+            adapter.stop(handle, grace_s=0.0)
+            raise base.SpawnWriteFailed('process registry line not written: %s' % err) from err
         return handle
 
     def _isolate(self, spec):
