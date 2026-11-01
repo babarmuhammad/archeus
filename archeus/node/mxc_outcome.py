@@ -6,6 +6,7 @@ a clean exit is only ever a precondition. This module is pure — no archeus imp
 call, no clock, no digest function: the caller injects the reader and the identity this
 call issued, and every comparison happens here.
 """
+import math
 from dataclasses import dataclass
 
 SUCCEEDED = 'SUCCEEDED'
@@ -42,7 +43,7 @@ def _int(value):
 
 
 def _number(value):
-    return type(value) is int or type(value) is float
+    return type(value) is int or (type(value) is float and math.isfinite(value))
 
 
 def _text(value):
@@ -121,7 +122,7 @@ def bind_outcome(launcher_exit, read_workload_outcome, expected=None):
         return BoundOutcome(OUTCOME_FORGED, launcher_exit, None,
                             'outcome describes different content')
     age = expected['now'] - record['timestamp']
-    if age < 0 or age > expected['max_age']:
+    if not (0 <= age <= expected['max_age']):
         return BoundOutcome(OUTCOME_FORGED, launcher_exit, None,
                             'outcome timestamp is outside the accepted window')
     if record['status'] == 'succeeded':

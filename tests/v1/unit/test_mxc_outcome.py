@@ -134,7 +134,8 @@ def test_forgery_survives_a_clean_launcher_and_a_claim_of_success(which):
 @pytest.mark.parametrize('damage', [
     'string', 'bytes', 'int', 'list', 'empty-dict', 'zero',
     'missing-field', 'marker-field', 'identity-not-text', 'digest-not-hex', 'digest-length',
-    'timestamp-text', 'timestamp-bool', 'status-unknown', 'status-empty',
+    'timestamp-text', 'timestamp-bool', 'timestamp-nan', 'timestamp-inf', 'timestamp-neg-inf',
+    'status-unknown', 'status-empty',
     'exit-bool', 'exit-negative',
     'success-with-exit', 'failure-with-zero',
 ])
@@ -151,6 +152,9 @@ def test_a_malformed_report_is_unverified(damage):
                'digest-length': reported(payload_digest='a' * 63),
                'timestamp-text': reported(timestamp='1000'),
                'timestamp-bool': reported(timestamp=True),
+               'timestamp-nan': reported(timestamp=float('nan')),
+               'timestamp-inf': reported(timestamp=float('inf')),
+               'timestamp-neg-inf': reported(timestamp=float('-inf')),
                # neither of these is a verdict the workload is allowed to give, and
                # neither may fall through to the failed branch just because its exit
                # code is not zero.
@@ -194,6 +198,10 @@ def test_a_reader_that_is_not_callable_is_unverified(reader):
     {'execution_id': EXEC, 'nonce': NONCE, 'digest': DIGEST, 'now': NOW},
     {'execution_id': EXEC, 'nonce': NONCE, 'digest': DIGEST, 'now': NOW, 'max_age': -1},
     {'execution_id': EXEC, 'nonce': NONCE, 'digest': DIGEST, 'now': 'now', 'max_age': MAX_AGE},
+    *({'execution_id': EXEC, 'nonce': NONCE, 'digest': DIGEST, 'now': now, 'max_age': age}
+      for now, age in [(float('nan'), MAX_AGE), (float('inf'), MAX_AGE),
+                       (float('-inf'), MAX_AGE), (NOW, float('nan')),
+                       (NOW, float('inf')), (NOW, float('-inf'))]),
 ])
 def test_an_unavailable_identity_is_unverified_not_forged(broken):
     assert outcome.bind_outcome(0, once(reported()), broken).state == outcome.OUTCOME_UNVERIFIED
@@ -232,8 +240,8 @@ def test_module_stays_pure_logic():
     tree = ast.parse(source)
     imported = [node for node in ast.walk(tree)
                 if isinstance(node, (ast.Import, ast.ImportFrom))]
-    assert [alias.name for node in imported for alias in node.names] == ['dataclass']
-    assert [getattr(node, 'module', None) for node in imported] == ['dataclasses']
+    assert [alias.name for node in imported for alias in node.names] == ['math', 'dataclass']
+    assert [getattr(node, 'module', None) for node in imported] == [None, 'dataclasses']
     names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     names |= {node.value.id for node in ast.walk(tree)
               if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)}
