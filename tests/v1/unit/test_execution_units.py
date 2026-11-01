@@ -1103,6 +1103,19 @@ def _launch_spec(archeus_home, monkeypatch, isolated, launcher):
     return spec, paths.ExecPaths(spec.execution_id), calls
 
 
+def test_an_isolated_launch_refuses_a_private_directory_that_is_a_link(archeus_home, monkeypatch):
+    """T-647#8: a link planted by a dead process was followed when the execution resumed."""
+    spec, p, calls = _launch_spec(archeus_home, monkeypatch, True, lambda: (None, 'never'))
+    real = os.lstat
+    link = SimpleNamespace(st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+                           st_mode=stat.S_IFDIR)
+    monkeypatch.setattr(os, 'lstat', lambda path, *a, **kw: (
+        link if os.fspath(path) == p.config else real(path, *a, **kw)))
+    with pytest.raises(base.SpawnFailed, match='not a plain directory'):
+        base.spawn(spec, ['never-run'])
+    assert calls == []
+
+
 @pytest.mark.parametrize('tombstone', ['written', 'fails'])
 @pytest.mark.parametrize('isolated', [False, True])
 def test_a_launch_that_starts_nothing_is_spawnfailed_even_without_its_tombstone(

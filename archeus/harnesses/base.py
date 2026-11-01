@@ -26,7 +26,7 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, archeus_home, run_dir
+from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, _plain_dir, archeus_home, run_dir
 
 log = logging.getLogger('archeus.harnesses')
 
@@ -460,6 +460,7 @@ def _private_dirs(paths, seq):
                       % paths.execution_id)
     for d in (paths.config, paths.tmp) + _profile(paths.home)[1:]:
         os.makedirs(d, exist_ok=True)
+        _plain_dir(d)           # a link left by a dead process is not followed on a resume
 
 
 def _profile(home):
