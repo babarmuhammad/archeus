@@ -58,8 +58,8 @@ MUTATIONS = [
      "                and proc.process_create_time(handle.pid) is not None)")],
      [I + '::test_E10_a_pid_now_held_by_another_process_is_never_killed']),
     ('X07', 'a reused pid killed', [(NODE,
-     "        if handle is None or not self.alive(handle):\n            return 'gone'",
-     "        if handle is None:\n            return 'gone'")],
+     "        if not self.alive(handle):\n            return 'gone'",
+     "        if False:\n            return 'gone'")],
      [I + '::test_E10_a_pid_now_held_by_another_process_is_never_killed']),
     # ── the hook's guards (§10) ──
     ('X08', 'the hook token not checked', [(EX,
@@ -156,8 +156,8 @@ MUTATIONS = [
      [I + '::test_E71_progress_never_goes_backwards']),
     # ── recovery (§15.3) ──
     ('X27', 'an orphan left running on a disarmed boot', [(MGR,
-     "        if alive and disarmed:\n            self.node.kill(adapter, handle)",
-     "        if False:\n            self.node.kill(adapter, handle)")],
+     "        if alive and disarmed:\n            self.node.kill(adapter, handle, reason='disarmed')",
+     "        if False:\n            self.node.kill(adapter, handle, reason='disarmed')")],
      [I + '::test_E62_a_disarmed_core_kills_live_orphans_at_boot']),
     ('X28', 'restart reconciliation skipped', [(MGR,
      "            try:\n                self._reconcile_one(e, disarmed)\n",
