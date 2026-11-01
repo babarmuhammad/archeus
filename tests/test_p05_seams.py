@@ -148,6 +148,17 @@ def test_run_headless_timeout_and_spawn_failure(monkeypatch):
     assert r.returncode is None and not r.timed_out and r.error
 
 
+def test_run_headless_timeout_kills_what_the_cli_spawned(tmp_path):
+    pidfile = tmp_path / 'grandchild.pid'
+    code = ('import subprocess, sys, time; '
+            'c = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(20)"]); '
+            'open(%r, "w").write(str(c.pid)); time.sleep(20)' % str(pidfile))
+    r = llmcall.run_headless([sys.executable, '-c', code], timeout=3)
+    assert r.timed_out
+    grandchild = int(pidfile.read_text())
+    assert _wait_dead(grandchild), 'the timed-out call left its child running and spending'
+
+
 def test_run_headless_cancel_kills_the_process():
     cancel = threading.Event()
     spawned = []

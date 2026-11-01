@@ -146,16 +146,14 @@ def run_headless(cmd, input_text=None, *, cwd=None, env=None, timeout=600,
             return Result(p.returncode, stdout, reason, error, False)
         return Result(0, stdout, '', '', False)
     except subprocess.TimeoutExpired:
-        try: p.kill()
-        except Exception: pass
+        _proc.kill_tree(p)          # kill() leaves a cmd or node wrapper's child spending
         msg = ('timed out after %ss — upstream may be an unresponsive '
                'OmniRoute/failover endpoint' % timeout)
         from . import events
         events.record('subprocess', msg, detail=detail)
         return Result(None, '', '', msg, True)
     except Exception as e:
-        try: p.kill()
-        except Exception: pass
+        _proc.kill_tree(p)
         return Result(None, '', '', str(e), False)
     finally:
         done.set()
