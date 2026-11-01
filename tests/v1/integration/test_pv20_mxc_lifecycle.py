@@ -120,6 +120,15 @@ def test_the_task_limits_are_the_launchs_bounds(tmp_path, sdk, gate):
     assert journal(case)[0][-1] == 'quarantine'
 
 
+@pytest.mark.parametrize('bound', ['output_bytes', 'total_bytes'])
+def test_a_task_bound_that_is_not_a_positive_int_refuses_the_launch(tmp_path, sdk, gate, bound):
+    case = agent_case(tmp_path, sdk, outcomes=[RUNNING])
+    limits = {'output_bytes': 40, 'total_bytes': 60, bound: float('nan')}
+    with pytest.raises(base.SpawnFailed, match='positive output bound required'):
+        case.node.spawn(case.agent, dataclasses.replace(case.spec, limits=limits), isolated=True)
+    assert case.boundary.launches == [] and case.api.events == []
+
+
 def test_a_launch_that_cannot_read_its_prompt_is_ended_and_exits_nonzero(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk, outcomes=[RUNNING])
     first = case.boundary.launch

@@ -47,7 +47,7 @@ class Transport:
                  output_limit=256 * 1024, total_limit=None):
         if total_limit is None:
             total_limit = 2 * output_limit
-        if output_limit <= 0 or total_limit <= 0:
+        if not all(type(limit) is int and limit > 0 for limit in (output_limit, total_limit)):
             raise ValueError('positive output bound required')
         self.api, self.boundary = api, boundary
         self.clock, self.pause = clock, pause

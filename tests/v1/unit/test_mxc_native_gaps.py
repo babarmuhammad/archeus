@@ -142,8 +142,9 @@ def launched(**changes):
 # -- Transport: stage_policy and creation-time validation --------------------
 
 
-@pytest.mark.parametrize('limit', [0, -1], ids=['zero', 'negative'])
-def test_nonpositive_output_bound_is_refused(limit):
+@pytest.mark.parametrize('limit', [0, -1, float('nan'), float('inf'), 1e9, True],
+                         ids=['zero', 'negative', 'nan', 'inf', 'float', 'bool'])
+def test_a_bound_that_is_not_a_positive_int_is_refused(limit):
     api = FakeWin32()
     with pytest.raises(ValueError, match='positive output bound required'):
         native.Transport(api, api, output_limit=limit)

@@ -147,8 +147,9 @@ def test_the_total_bound_defaults_to_two_full_streams_and_counts_across_reads():
     assert sum(len(d) for _, d in sink.got) == 16
 
 
-@pytest.mark.parametrize('limits', [{'total_limit': 0}, {'total_limit': -1}])
-def test_a_nonpositive_total_bound_is_refused(limits):
+@pytest.mark.parametrize('limits', [{'total_limit': 0}, {'total_limit': -1},
+                                    {'total_limit': float('nan')}, {'total_limit': float('inf')}])
+def test_a_total_bound_that_is_not_a_positive_int_is_refused(limits):
     api = FakeWin32()
     with pytest.raises(ValueError, match='positive output bound'):
         native.Transport(api, api, **limits)

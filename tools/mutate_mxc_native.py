@@ -87,6 +87,11 @@ MUTATIONS = [
     ('N20', 'a deadline from the task limit never reaches the drain', [(NATIVE,
      "policy.raw['process']['timeout'] / 1000)", "policy.raw['process']['timeout'])")],
      [S + 'test_the_deadline_is_the_task_limit_the_policy_was_compiled_from']),
+    ('N21', 'a NaN or infinite output bound is accepted and never trips', [(NATIVE,
+     '        if not all(type(limit) is int and limit > 0 for limit in (output_limit, total_limit)):',
+     '        if output_limit <= 0 or total_limit <= 0:')],
+     ['tests/v1/unit/test_mxc_native_gaps.py::test_a_bound_that_is_not_a_positive_int_is_refused',
+      S + 'test_a_total_bound_that_is_not_a_positive_int_is_refused']),
 ]
 
 
