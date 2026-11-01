@@ -18,7 +18,8 @@ import pytest
 
 from archeus.core.domain import entities as E, ids
 from archeus.core.redact import redact
-from archeus.harnesses import base, hook, sources
+from archeus.harnesses import hook
+from archeus.harnesses import base, sources
 from archeus.harnesses.claude_code import adapter as cc
 
 HOOK = hook.__file__
@@ -279,7 +280,8 @@ def _answer_with(tmp_path, eid, res):
         while time.monotonic() < deadline:
             if os.path.exists(os.path.join(d, 'req', '1.req.json')):
                 with open(os.path.join(d, 'req', '1.req.json'), encoding='utf-8') as f:
-                    answer = dict(res, nonce=json.load(f)['nonce'])
+                    req = json.load(f)
+                answer = dict(res, nonce=req['nonce'], digest=hook.request_digest(req))
                 _write(os.path.join(d, 'res', '1.res.json'), answer)
                 return
             time.sleep(0.02)
