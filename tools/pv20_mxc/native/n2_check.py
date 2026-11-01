@@ -19,8 +19,9 @@ KILL_ON_JOB_CLOSE Job), mxc_ledger.Ledger and reconcile, mxc_cancel and local.Mx
 (the end: revoke, end Job, quiescence, read-back, record). The only script-side
 stand-ins are the ones the repository does not supply: the pinned schema validator
 (returns True), the reviewed hash pins (computed from the staged copy), the resource
-reader (launcher identity gone), the Job end callback (TerminateJobObject on the Job the
-script created) and the workload outcome (launcher exit code). Each is named in its row.
+reader (launcher identity gone) and the workload outcome (launcher exit code). Each is
+named in its row. The Job is ended by the boundary's own terminate_job, the production
+default of MxcLaunch.
 
 Safety posture: stdlib plus the production modules above; no network of any kind (every
 policy denies egress and ingress); no ACL tool or API and no profile API; no process is
@@ -256,8 +257,8 @@ def policy_problems(raw, rw, ro, env):
         bad.append('default environment is inherited')
     if p.get('env') != ['%s=%s' % kv for kv in sorted(env.items())]:
         bad.append('environment is not exactly the explicit entries')
-    if (list(fs.get('readwritePaths', ())) != [os.path.normpath(x) for x in rw]
-            or list(fs.get('readonlyPaths', ())) != [os.path.normpath(x) for x in ro]
+    if (sorted(fs.get('readwritePaths', ())) != sorted(os.path.normpath(x) for x in rw)
+            or sorted(fs.get('readonlyPaths', ())) != sorted(os.path.normpath(x) for x in ro)
             or fs.get('deniedPaths') != []):
         bad.append('grants are not exactly the requested folders')
     if 'runtimeConfig' in raw or 'processContainer' in raw:
@@ -287,9 +288,9 @@ def compare_reconcile(results, expected):
     return bad
 
 
-def journal_ops(read_records, ledger, execution_id):
-    data = ledger.journals().get(execution_id)
-    records, invalid = read_records(data, execution_id)
+def journal_ops(read_records, ledger, journal):
+    data = ledger.journals().get(journal)
+    records, invalid = read_records(data, journal)
     return [r['op'] for r in records], invalid
 
 
@@ -413,16 +414,6 @@ def live_ctime(pid):
     return common._process_creation_time(pid)
 
 
-def terminate_job(handle):
-    """End every member of the Job without closing it (the count is read afterwards)."""
-    import ctypes
-    k = ctypes.WinDLL('kernel32', use_last_error=True)
-    k.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
-    k.TerminateJobObject.restype = ctypes.c_int
-    if not k.TerminateJobObject(handle, 1):
-        raise OSError('TerminateJobObject failed err=%d' % ctypes.get_last_error())
-
-
 class JobRef:
     """The script's one handle to a Core Job; closing it twice is a no-op."""
 
@@ -506,7 +497,11 @@ class Harness:
 
     def eid(self, tag):
         self.seq += 1
-        return 'n2-%02d-%s' % (self.seq, tag)
+        return 'n2_%02d_%s' % (self.seq, tag.replace('-', '_'))
+
+    def name(self, eid):
+        """The ledger journal of an execution's one process generation."""
+        return self.m.mxc_ledger.journal_name(eid, 1)
 
     def make(self, tag, argv, rw, ro, *, reader=True, disposal=None, ledger=None,
              boundary=None, env=None, timeout_ms=60000, eid=None):
@@ -515,11 +510,11 @@ class Harness:
         launch = self.m.local.MxcLaunch(
             api=self.api, boundary=boundary or self.boundary, ledger=ledger or self.ledger,
             schema_validator=lambda raw: True, execution_id=eid, sdk_root=self.lay['sdk'],
-            pins=self.pins, outcome=lambda process: process.launcher_exit, workspace=tuple(rw),
-            readonly=tuple(ro), cwd=rw[-1], command_line=command_line(argv),
-            env=dict(self.env if env is None else env), timeout_ms=timeout_ms,
-            resource_reader=self.reader if reader else None, disposal=disposal,
-            quiescence_wait=QUIESCE_S, end_job=terminate_job)
+            pins=self.pins, outcome=lambda process: process.launcher_exit, workspace=rw[-1],
+            writable=tuple(rw[:-1]), readonly=tuple(ro), cwd=rw[-1],
+            command_line=command_line(argv), env=dict(self.env if env is None else env),
+            timeout_ms=timeout_ms, resource_reader=self.reader if reader else None,
+            disposal=disposal, quiescence_wait=QUIESCE_S)
         return eid, launch
 
     def job(self, eid, boundary=None):
@@ -535,12 +530,12 @@ class Harness:
         code = launch.wait()
         out = launch.stdout.read().decode('utf-8', 'replace')
         err = launch.stderr.read().decode('utf-8', 'replace')
-        self.ended[eid] = journal_ops(self.m.mxc_ledger.read_records, self.ledger, eid)[0]
+        self.ended[eid] = self.ops(eid)[0]
         return SimpleNamespace(eid=eid, launch=launch, job=job, code=code, out=out, err=err,
                                ops=self.ended[eid])
 
     def ops(self, eid):
-        return journal_ops(self.m.mxc_ledger.read_records, self.ledger, eid)
+        return journal_ops(self.m.mxc_ledger.read_records, self.ledger, self.name(eid))
 
     def job_count(self, job):
         return self.boundary.job_active_processes(job.handle)
@@ -884,7 +879,7 @@ def step_disposal(h, rec):
     except Exception as err:
         reuse = type(err).__name__
     try:
-        h.ledger.append(eid, 'disposal', verified_absent=True)
+        h.ledger.append(h.name(eid), 'disposal', verified_absent=True)
     except ValueError as err:
         move = type(err).__name__
     if reuse is None or move is None or h.api.creates:
@@ -949,21 +944,22 @@ def step_restart(h, rec):
     if not isinstance(own, int) or own <= 0:
         raise SetupError('cannot read this process creation time')
     digest = '0' * 64
-    h.ledger.append('n2-synth-intent', 'intent', requested_policy_digest=digest,
+    intent_only, reused = (h.name('n2_synth_intent'), h.name('n2_synth_reuse'))
+    h.ledger.append(intent_only, 'intent', requested_policy_digest=digest,
                     planned=[], applied=[], observed={})
-    h.ledger.append('n2-synth-reuse', 'intent', requested_policy_digest=digest,
+    h.ledger.append(reused, 'intent', requested_policy_digest=digest,
                     planned=[], applied=[], observed={})
-    h.ledger.append('n2-synth-reuse', 'ownership', pid=os.getpid(), create_time=own + 1,
+    h.ledger.append(reused, 'ownership', pid=os.getpid(), create_time=own + 1,
                     requested_policy_digest=digest, applied=[], observed={}, owned=[])
     expected = {}
     for eid, ops in h.ended.items():
-        expected[eid] = oracle_state(ops)
-    expected['n2-synth-intent'] = DEAD_UNVERIFIED
-    expected['n2-synth-reuse'] = UNKNOWN_OWNER
+        expected[h.name(eid)] = oracle_state(ops)
+    expected[intent_only] = DEAD_UNVERIFIED
+    expected[reused] = UNKNOWN_OWNER
 
     eid, launch, job, members = _start_loop(h, 'crash', (lay['rev'],), (lay['runtime'],))
     pid, ctime = launch.process.pid, launch.process.create_time
-    expected[eid] = STILL_RUNNING
+    expected[h.name(eid)] = STILL_RUNNING
     first = _reconcile(h)
     bad = compare_reconcile(first, expected)
     if bad or live_ctime(pid) != ctime or h.job_count(job) < 1:
@@ -973,8 +969,7 @@ def step_restart(h, rec):
     job.close()                           # the Core-death event: the last Job handle goes
     if not h.wait_dead(pid, ctime, 10.0):
         rec.record('restart-reconciliation', 'FAIL', 'launcher survived the close of the Core Job')
-    expected[eid] = DEAD_CLEAN
-    expected['n2-synth-intent'] = DEAD_UNVERIFIED
+    expected[h.name(eid)] = DEAD_CLEAN
     second = _reconcile(h)
     bad = compare_reconcile(second, expected)
     if bad:

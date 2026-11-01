@@ -907,7 +907,7 @@ def test_step_verifiers_fails_on_each_wrong_outcome(tmp_path, monkeypatch, kw, w
     assert word in rec.rows[-1][2]
 
 
-def test_step_verifiers_names_the_confined_poll_timeout_when_the_check_itself_raises(tmp_path, monkeypatch):
+def test_step_verifiers_reports_a_check_that_raises_without_a_stale_hint(tmp_path, monkeypatch):
     h = _verifier_harness(tmp_path, monkeypatch)
 
     def boom(*a, **k):
@@ -917,7 +917,7 @@ def test_step_verifiers_names_the_confined_poll_timeout_when_the_check_itself_ra
     rec = Rec()
     with pytest.raises(StopRun):
         n4.step_verifiers(h, rec)
-    assert 'TimeoutError' in rec.rows[-1][2] and 'child.wait(1.0)' in rec.rows[-1][2]
+    assert 'TimeoutError' in rec.rows[-1][2] and 'child.wait' not in rec.rows[-1][2]
 
 
 # ---------------------------------------------------------------- run order and the stub rows
@@ -1205,15 +1205,13 @@ def test_destructive_calls_are_confined_to_the_functions_that_own_them():
     where = {}
     for n in ast.walk(tree):
         if isinstance(n, ast.Attribute) and n.attr in ('rmdir', 'unlink', 'link', '_terminate_process', 'remove',
-                                                         'rename', 'replace', 'rmtree', '_unjunction', '_junction',
-                                                         'terminate_job'):
+                                                         'rename', 'replace', 'rmtree', '_unjunction', '_junction'):
             if n.attr == 'replace' and not (isinstance(n.value, ast.Name) and n.value.id == 'os'):
                 continue                                                 # str.replace
             where.setdefault(n.attr, set()).update(_function_of(tree, n))
     assert where['_terminate_process'] == {'wind_down', 'Harness'}
     assert where['unlink'] == {'step_seed'} and where['link'] <= {'step_seed', 'plant_then_recheck'}
     assert where['_unjunction'] == {'step_import'} and where['_junction'] == {'step_import'}
-    assert where['terminate_job'] == {'make'} | {'Harness'}
     for name in ('rmdir', 'remove', 'rename', 'replace', 'rmtree'):
         assert name not in where, name
 

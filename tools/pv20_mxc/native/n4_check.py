@@ -73,8 +73,8 @@ BODY_MAX = 1 << 20
 GIT_META = ('HEAD', 'config', 'shallow', 'index', 'objects', 'refs')
 PROD = ('archeus.core.domain.ids', 'archeus.infra.paths', 'archeus.harnesses.base',
         'archeus.node.mxc', 'archeus.node.staging', 'archeus.node.win32_mxc',
-        'archeus.node.mxc_ledger', 'archeus.node.mxc_boundary', 'archeus.node.isolation',
-        'archeus.node.local')
+        'archeus.node.mxc_ledger', 'archeus.node.mxc_boundary', 'archeus.node.mxc_context',
+        'archeus.node.isolation', 'archeus.node.local')
 CLEAN, QUARANTINED = n2.CLEAN, n2.QUARANTINED
 SetupError = n2.SetupError
 
@@ -673,7 +673,7 @@ class Harness:
         self.mxcb = m.mxc_boundary.MxcBoundary(
             win32=self.api, ledger=self.ledger, sdk_root=lay['sdk'], pins=self.pins,
             schema_validator=lambda raw: True, timeout_ms=60000, resource_reader=self.reader,
-            env_rows={'SYSTEMROOT': self.sr, 'LOCALAPPDATA': lay['localappdata']})
+            process_reader=n2.live_ctime, env_rows={'SYSTEMROOT': self.sr, 'LOCALAPPDATA': lay['localappdata']})
         self.node.isolation = m.isolation.Isolation(self.node, boundary=self.mxcb)
         self.token = 'brk_' + n2.new_token()
         self.up = Upstream(self.token)
@@ -704,7 +704,7 @@ class Harness:
         return 'n4_%02d_%s' % (self.seq, tag)
 
     def make(self, tag, argv, rw, ro, *, reader=True, ledger=None, boundary=None, env=None,
-             timeout_ms=60000, eid=None, seq=1, proxy=None, seed=None):
+             timeout_ms=60000, eid=None, seq=1, proxy=None, seed=None, transport=None):
         self.budget.check()
         eid = eid or self.eid(tag)
         text = n2.command_line(argv)
@@ -714,7 +714,7 @@ class Harness:
                   writable=tuple(rw[:-1]), readonly=tuple(ro), cwd=rw[-1], command_line=text,
                   env=dict(self.env if env is None else env), timeout_ms=timeout_ms,
                   resource_reader=self.reader if reader else None, quiescence_wait=QUIESCE_S,
-                  end_job=n2.terminate_job, process_seq=seq)
+                  process_seq=seq, transport=transport)
         if seed is not None:
             kw.update(seed_stage=seed[0], seed_recheck=seed[1])
         launch = self.m.local.MxcLaunch(**kw)
@@ -1004,16 +1004,18 @@ def step_stream(h, rec):
                          proxy=up.url, timeout_ms=150000, eid=ex2.eid)
     job = h.job(eid)
     launch.start(job=job.handle)
-    launch.process.attach(sink=Capture())
     pid, ctime = launch.process.pid, launch.process.create_time
-    try:
-        launch.wait(90, cancelled=up.stalled.is_set)
-    except Exception as err:
-        raised = type(err).__name__
-    else:
-        raised = None
+    open(ex2.paths.prompt, 'xb').close()
+    child = h.m.mxc_context.MxcChild(launch, ex2.paths)
+    child.start()
+    stalled = up.stalled.wait(60)
+    end = child.cancel('stopped')
+    raised = type(child.fault).__name__ if child.fault is not None else None
     members = h.wait_job(job, lambda c: c == 0, QUIESCE_S)
-    bad = stop_problems(raised, h.ops(eid), members, n2.live_ctime(pid) == ctime, up.stalled.is_set())
+    bad = stop_problems(raised, h.ops(eid), members, n2.live_ctime(pid) == ctime, stalled)
+    if (end or {}).get('reason') != 'stopped' or child.reason != 'stopped' or child.poll() != 1:
+        bad.append('the stop reason was not carried to the end: end=%r child=%r exit=%r'
+                   % ((end or {}).get('reason'), child.reason, child.poll()))
     up.release.set()
     if bad:
         fail(rec, case, 'stop: ' + '; '.join(bad))
@@ -1025,8 +1027,9 @@ def step_stream(h, rec):
         refused = None
     if refused != 'generation_unresolved':
         fail(rec, case, 'a resume after a stopped generation was not refused as unresolved (%r)' % (refused,))
-    rec.record(case, 'PASS', 'stop: the live request was ended by Core, Job empty, launcher gone, quarantined with '
-               'no completion; the production boundary then refuses a resume (%s)' % refused)
+    rec.record(case, 'PASS', 'stop: the live request was ended by Core own MxcChild.cancel, reason carried to the end, '
+               'Job empty, launcher gone, quarantined with no completion; the production boundary then refuses a '
+               'resume (%s)' % refused)
 
 
 def step_import(h, rec):
@@ -1224,7 +1227,7 @@ def step_limits(h, rec):
             raised = None
         return eid, job, raised, h.wait_job(job, lambda c: c == 0, QUIESCE_S), n2.live_ctime(pid) == ctime
 
-    eid, job, err, members, alive = attempt('flood', flood, 60)
+    eid, job, err, members, alive = attempt('flood', flood, 60, transport={'output_limit': 1 << 16})
     bad = limit_problems('bound', err, h.ops(eid), members, alive)
     if bad:
         fail(rec, case, 'output bound: ' + '; '.join(bad))
@@ -1268,16 +1271,16 @@ STUBS = (
      'proxy_url=None, so the script recompiles the policy with the production compiler; UI stays disabled (OD-1 not '
      'decided); identity-scoped allowedProxyPeer is not tested'),
     ('stream-edit-commit-stop-resume',
-     'stand-in: output is read through Process.attach by the script, not by the manager; the commit is the Core '
-     'import (K3); in-container git, the hook interpreter and the real STOP flag are N4a'),
+     'stand-in: output is read through Process.attach by the script, not by the manager; the stop is Core own '
+     'MxcChild.cancel, not the manager STOP flag; the commit is the Core import (K3); in-container git and the '
+     'hook interpreter are N4a'),
     ('data-only-import',
      'stand-in: the container wrote plain data; hostile creator descriptors, symlink creation and handle transfer '
      'are not driven (as in F2 and N1)'),
     ('hostile-git-inert-controls',
      'stand-in: the hostile Git state is planted by the script, a container never authors it here'),
     ('two-fresh-verifiers',
-     'missing contract: the verifier output handle is not wired (evidence is by files), and no toolchain stage '
-     'exists, so the toolchain is a script folder'),
+     'missing contract: no toolchain stage exists, so the toolchain is a script folder'),
     ('authority-peer-network-denials',
      'missing contract: IPv6, descendant network rows and the identity-scoped proxy peer are not made real here '
      '(still the N3 stubs)'),
@@ -1322,9 +1325,7 @@ def step_verifiers(h, rec):
                                                record=recorded.append, project_id=h.project,
                                                revision=h.seed_commit, workdirs=[])
         except Exception as err:
-            hint = (' (Isolation polls child.wait(1.0) and MxcLaunch.wait raises TimeoutError at its deadline)'
-                    if isinstance(err, TimeoutError) else '')
-            fail(rec, case, 'run_confined_check raised %s: %s%s' % (type(err).__name__, n2._snip(str(err)), hint))
+            fail(rec, case, 'run_confined_check raised %s: %s' % (type(err).__name__, n2._snip(str(err))))
         key = iso.Principal('verify', vid, attempt).key
         name = h.m.mxc_ledger.journal_name(key, 1)
         ops = n2.journal_ops(h.m.mxc_ledger.read_records, h.ledger, name)[0]
