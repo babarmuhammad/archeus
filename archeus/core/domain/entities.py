@@ -14,6 +14,7 @@ a new copy of the checks. `Event` lives in events.py beside its type registry.
 """
 
 import dataclasses
+import math
 import re
 from dataclasses import dataclass, fields
 from typing import ClassVar
@@ -1618,6 +1619,10 @@ class UsageLedger(Entity):
             v = getattr(self, f)
             if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and v >= 0):
                 raise ValueError('UsageLedger.%s must be an integer >= 0 or None: %r' % (f, v))
+        c = self.cost_usd
+        if c is not None and not (isinstance(c, (int, float)) and not isinstance(c, bool)
+                                  and math.isfinite(c) and c >= 0):
+            raise ValueError('UsageLedger.cost_usd must be a finite amount >= 0 or None: %r' % (c,))
 
 
 #: How a routing decision ended (resource-router §5, §7).

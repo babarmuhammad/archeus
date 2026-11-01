@@ -24,6 +24,7 @@ import contextlib
 import hashlib
 import hmac
 import json
+import math
 import re
 import time
 
@@ -464,7 +465,12 @@ def _usage(usage):
     out = {}
     for k, v in (usage or {}).items():
         k = alias.get(k, k)
-        if k in _USAGE_KEYS and isinstance(v, (int, float)) and not isinstance(v, bool):
+        if k not in _USAGE_KEYS or isinstance(v, bool):
+            continue
+        if k == 'cost_usd':
+            if isinstance(v, (int, float)) and math.isfinite(v) and v >= 0:
+                out[k] = v
+        elif isinstance(v, int) and v >= 0:
             out[k] = v
     return out
 

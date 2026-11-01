@@ -13,6 +13,7 @@ tool-using execution (`start()`) until P9. These adapters have no `start()`.
 """
 
 import json
+import math
 import re
 
 from claude_sessions import config, llmcall
@@ -41,7 +42,8 @@ def _usage(envelope):
              'cache_read_input_tokens': 'cache_read',
              'cache_creation_input_tokens': 'cache_write'}
     return {ours: u[theirs] for theirs, ours in names.items()
-            if isinstance(u.get(theirs), int) and not isinstance(u.get(theirs), bool)}
+            if isinstance(u.get(theirs), int) and not isinstance(u.get(theirs), bool)
+            and u[theirs] >= 0}
 
 
 def _failed(r):
@@ -121,7 +123,7 @@ class ClaudeCodeCaller:
         parsed = llmcall.unwrap_structured(r.stdout)[0] if spec.schema is not None else None
         usage = _usage(envelope)
         cost = envelope.get('total_cost_usd') if isinstance(envelope, dict) else None
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool):
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool)                 and math.isfinite(cost) and cost >= 0:
             usage['cost_usd'] = float(cost)
         return base.CallResult(text=r.stdout, parsed=parsed, usage=usage)
 
