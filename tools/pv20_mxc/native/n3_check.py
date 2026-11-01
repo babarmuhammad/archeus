@@ -865,7 +865,7 @@ class N3Check:
                        "REJECT/UNRESOLVED or the SAME client by (pid,creation-time) — "
                        "never another process (corrected criterion per feasibility:65; "
                        "forced PID reuse stays unproven and is NOT forced here); "
-                       "accept=%s late=%s" % (acc, late))
+                       "accept=%s late=%s" % (delay_ms, acc, late))
 
     def hits(self, port, needle):
         return [x for p, path, _kind, x in self.state["log"]
