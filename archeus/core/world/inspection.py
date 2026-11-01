@@ -160,7 +160,7 @@ def _pyproject(text):
     block = re.search(r'^dependencies\s*=\s*\[(.*?)\]', sect.group(1), re.M | re.S)
     if not block:
         return []
-    items = re.findall(r'"([^"]*)"|\'([^\']*)\'', block.group(1))
+    items = re.findall(r'#[^\n]*|"([^"]*)"|\'([^\']*)\'', block.group(1))
     return [d for d in (_requirement(a or b, 'pyproject.toml') for a, b in items) if d]
 
 
@@ -193,7 +193,7 @@ def _dependencies(root, notes):
                 for dep, ver in re.findall(r'^\s*(?:require\s+)?([\w./-]+\.[\w./-]+)\s+(v[\w.+-]+)',
                                            _read(p), re.M):
                     deps.append({'name': dep.lower(), 'spec': ver, 'manifest': 'go.mod'})
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, AttributeError) as e:
             notes.append('%s could not be read: %s' % (name, e))
     return deps
 
@@ -202,7 +202,7 @@ def _commands(root, deps):
     tests, builds = [], []
     try:
         scripts = json.loads(_read(os.path.join(root, 'package.json'))).get('scripts') or {}
-    except (OSError, ValueError):
+    except (OSError, ValueError, AttributeError):
         scripts = {}
     if 'test' in scripts:
         tests.append('npm test')
