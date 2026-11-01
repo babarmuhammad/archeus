@@ -10,6 +10,7 @@ launches a process, kills one, or touches a real profile.
 import os
 import re
 import stat
+import sys
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -507,7 +508,7 @@ def test_children_kill_own_mixed_ownership(procs):
 def test_children_default_creation_time_is_none_off_windows(monkeypatch):
     monkeypatch.setattr(common, '_IS_WINDOWS', False)
     kids = Children()
-    pid = kids.start(['true'])
+    pid = kids.start([sys.executable, '-c', 'pass'])
     assert kids._own[0] == (pid, None)
     assert kids.kill_own() == 0  # unverifiable identity is never killed
 
