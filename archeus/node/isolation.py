@@ -1323,13 +1323,13 @@ class Isolation:
                 error, child = 'accounting_failed: %s' % err, None
             else:
                 error, child = self._confined_launch(api, rec, request, argv, env,
-                                                     stdin_path, out_path)
+                                                     stdin_path, out_path, timeout)
             while error is None:
                 exited = child.wait(min(CONFINED_POLL_S,
                                         max(0.0, deadline - time.monotonic()))) is not None
                 # the deadline is read after the monitor and before the exit counts:
                 # an exit or an accounting pass that ends late is a timeout, not a pass
-                error = _over_limit(out_path, roots, start) or (
+                error = _over_limit(out_path, roots, start) or getattr(child, 'fault', None) or (
                     late if time.monotonic() >= deadline else None)
                 if exited:
                     break
@@ -1354,14 +1354,20 @@ class Isolation:
         code = None if error else child.wait(0)
         return _confined_result(out_path, keep, t0, error, code, facts), True
 
-    def _confined_launch(self, api, rec, request, argv, env, stdin_path, out_path):
+    def _confined_launch(self, api, rec, request, argv, env, stdin_path, out_path, timeout):
         handles = []
         try:
-            handles.append(api.open_inherited(stdin_path, 'read'))
-            handles.append(api.open_inherited(out_path, 'append'))
-            child = api.launch(list(argv), cwd=request.workspace, env=env,
-                               profile=rec.profile, job=self.held_job(rec.execution_id),
-                               stdin=handles[0], stdout=handles[1])
+            job = self.held_job(rec.execution_id)
+            if hasattr(api, 'launch_confined'):      # the MXC transport owns the child's stdio
+                child = api.launch_confined(list(argv), cwd=request.workspace, env=env,
+                                            profile=rec.profile, job=job, timeout=timeout,
+                                            stdin_path=stdin_path, out_path=out_path)
+            else:
+                handles.append(api.open_inherited(stdin_path, 'read'))
+                handles.append(api.open_inherited(out_path, 'append'))
+                child = api.launch(list(argv), cwd=request.workspace, env=env,
+                                   profile=rec.profile, job=job,
+                                   stdin=handles[0], stdout=handles[1])
         except Exception as err:                       # nothing half-started survives
             failed = getattr(err, 'child', None)
             if failed is not None:

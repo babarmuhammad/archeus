@@ -76,18 +76,24 @@ class Traced(MxcBoundary):
         return super().create_profile(execution_id)
 
     def launch(self, argv, *, cwd, env, profile, job, stdin, stdout):
+        return self._tap(super().launch, argv, cwd, env, profile, job, stdin=stdin,
+                         stdout=stdout)
+
+    def launch_confined(self, argv, *, cwd, env, profile, job, timeout, stdin_path, out_path):
+        return self._tap(super().launch_confined, argv, cwd, env, profile, job,
+                         timeout=timeout, stdin_path=stdin_path, out_path=out_path)
+
+    def _tap(self, launch, argv, cwd, env, profile, job, **handles):
         self.launch_calls.append({'argv': list(argv), 'cwd': cwd, 'env': dict(env),
-                                  'profile': profile, 'job': job, 'stdin': stdin,
-                                  'stdout': stdout})
+                                  'profile': profile, 'job': job, **handles})
         if not self.launch_ok:
             raise iso.IsolationUnavailable('launch', 'synthetic refusal')
         if self.before_launch is not None:
             self.before_launch()
-        launch = super().launch(argv, cwd=cwd, env=env, profile=profile, job=job,
-                                stdin=stdin, stdout=stdout)
-        self.launches.append(launch)
-        self.held.append((launch, job))
-        return launch
+        child = launch(argv, cwd=cwd, env=env, profile=profile, job=job, **handles)
+        self.launches.append(getattr(child, 'launch', child))
+        self.held.append((self.launches[-1], job))
+        return child
 
 
 class FakeWin32:
@@ -298,9 +304,8 @@ def test_the_verdict_is_the_workloads_exit_not_a_claim_the_process_printed(check
     result = checks.run(ids.new_id('verification'), 0)
     assert result['exit_code'] == 1 and result['error'] is None
     launch = checks.boundary.launches[0]
-    assert b'"verdict": "pass"' in launch.process.stdout.getvalue()   # the claim, unread
+    assert b'"verdict": "pass"' in result['output']                    # the claim, unread
     assert launch.launcher_exit == 0            # the launcher's own success, unused
-    assert launch.process.stdout.tell() == 0    # never read for the verdict
     assert checks.recorded == [result]
 
 

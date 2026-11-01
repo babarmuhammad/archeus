@@ -85,7 +85,7 @@ is one reviewed activation (completion plan C1, A1); it is not done.
 
 | # | Threat | Mitigation as built | Evidence | Open |
 |---|---|---|---|---|
-| T11 | S-vcmd runs a check command as the user and reads credentials, Core state or loopback | `run_confined_check` over `MxcLaunch` exists only through a test boundary (`local.py:1211-1247`); production check path is `run_check` as the user (`local.py:1168`) | fake-only (T-457 verifier tests). Native NOT_RUN | H5 |
+| T11 | S-vcmd runs a check command as the user and reads credentials, Core state or loopback | `run_confined_check` over `MxcLaunch` (`MxcBoundary.launch_confined`, output drained into the attempt's own log by `archeus/node/mxc_verifier.py`, one journal `verify_<vid>_<n>-p1` per attempt) is reached only by a test; production check path is `run_check` as the user (`local.py:1168`) | fake-only (T-457 verifier tests). Native NOT_RUN | H5 |
 | T12 | A missing confined verifier is recorded PASSED | Option 3: no confined identity means ERROR or AWAITING_HUMAN (ADR-0053 R4b); G6 row 14 shows no command runs and no exit code returns | unit and fake-only | none beyond H5 |
 
 ## Boundary 3: broker

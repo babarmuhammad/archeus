@@ -31,12 +31,13 @@ name is all `profile_exists` ever answers.
 
 import itertools
 import json
+import math
 import os
 import subprocess
 import time
 
 from . import isolation as iso
-from . import local, mxc, mxc_ledger, staging
+from . import local, mxc, mxc_ledger, mxc_verifier, staging
 from .isolation import IsolationUnavailable
 
 #: file in the ledger's directory, not a journal (the ledger reads only `.jsonl`)
@@ -193,25 +194,37 @@ class MxcBoundary:
     def launch(self, argv, *, cwd, env, profile, job, stdin, stdout):
         """`stdin` and `stdout` are the Core-opened handles the detached path hands a
         child. The MXC transport owns the child's stdio, so they are not used here."""
+        launch = self._launch(argv, cwd, env, profile, self.timeout_ms)
+        launch.start(job=job)
+        return launch
+
+    def launch_confined(self, argv, *, cwd, env, profile, job, timeout, stdin_path, out_path):
+        """A verifier check: the transport's own streams are drained into *out_path*, up
+        to the cap that file is held to, by the child this returns (`mxc_verifier`)."""
+        launch = self._launch(argv, cwd, env, profile, math.ceil(timeout * 1000),
+                              transport={'output_limit': iso.CONFINED_OUT_MAX,
+                                         'total_limit': iso.CONFINED_OUT_MAX})
+        launch.start(job=job)
+        return mxc_verifier.ConfinedChild(launch, timeout, stdin_path, out_path)
+
+    def _launch(self, argv, cwd, env, profile, timeout_ms, transport=None):
         key = next((k for k in self._reserved if iso.profile_name(k) == profile), None)
         if key is None:
             raise IsolationUnavailable('profile_unknown', '%s was not reserved' % profile)
-        if self.timeout_ms is None:
+        if timeout_ms is None:
             raise IsolationUnavailable('mxc_timeout', 'no process deadline was given')
         granted = self._reserved[key]
         writable = list(dict.fromkeys(p for p, access in granted if access == 'rw'))
         workspace = next((p for p in writable if _same(p, cwd)), None)
         if workspace is None:
             raise IsolationUnavailable('mxc_policy', 'the working directory is not a writable grant')
-        launch = local.MxcLaunch(
+        return local.MxcLaunch(
             sdk_root=self.sdk_root, pins=self.pins, outcome=self.outcome, workspace=workspace,
             writable=[p for p in writable if p != workspace],
             readonly=list(dict.fromkeys(p for p, access in granted if access == 'rx')),
             cwd=cwd, command_line=subprocess.list2cmdline(argv), env=self._environment(env),
-            timeout_ms=self.timeout_ms, api=self.win32, boundary=self, ledger=self.ledger,
+            timeout_ms=timeout_ms, api=self.win32, boundary=self, ledger=self.ledger,
             schema_validator=self.schema_validator, execution_id=key,
             process_seq=len(self._generations(key)) + 1, broker=self.broker,
             resource_reader=self.resource_reader, readback=self.readback,
-            watchdog=self.watchdog)
-        launch.start(job=job)
-        return launch
+            watchdog=self.watchdog, transport=transport)

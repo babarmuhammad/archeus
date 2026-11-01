@@ -89,7 +89,7 @@ MUTATIONS = [
      "        if False:\n            raise IsolationUnavailable('profile_unknown',")],
      [T + 'test_a_profile_that_was_never_reserved_is_refused']),
     ('MB18', 'a launch without a deadline goes ahead', [(BOUNDARY,
-     '        if self.timeout_ms is None:', '        if False:')],
+     '        if timeout_ms is None:', '        if False:')],
      [T + 'test_a_launch_without_a_deadline_is_refused']),
     ('MB19', 'ending the Job closes it', [(BOUNDARY,
      '        return self.jobs.terminate_job(job)', '        return self.jobs.close_job(job)')],

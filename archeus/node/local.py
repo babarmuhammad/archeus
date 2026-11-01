@@ -220,7 +220,7 @@ class MxcLaunch:
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
                  end_job=None, watchdog=None, seed_stage=None, seed_recheck=None,
-                 process_seq=1, writable=()):
+                 process_seq=1, writable=(), transport=None):
         if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
                 or quiescence_wait < 0):
             raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
@@ -252,7 +252,7 @@ class MxcLaunch:
                 raise staging.StageError('MXC launch needs an execution id and process '
                                          'generation the ledger can name') from None
             # one transport, built from the injected parts and nothing else
-            backend = mxc_native.Backend(api, boundary, schema_validator)
+            backend = mxc_native.Backend(api, boundary, schema_validator, **(transport or {}))
         elif backend is None:
             raise staging.StageError('MXC launch needs an explicitly injected backend')
         self.backend, self.boundary, self.ledger = backend, boundary, ledger
