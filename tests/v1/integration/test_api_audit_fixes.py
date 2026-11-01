@@ -108,7 +108,7 @@ def test_f8_a_burst_of_wrong_pins_runs_no_more_than_the_limit(tc):
 
 
 @pytest.mark.core(remote_hosts=(TUNNEL,))
-def test_r5_a_revoke_that_fails_is_retried_by_the_next_wrong_pin(tc, monkeypatch):
+def test_r5_a_revoke_that_fails_locks_the_device_and_the_next_request_retries_it(tc, monkeypatch):
     from archeus.api import routes
     pin = '482913'
     code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe', 'control']})
@@ -130,7 +130,8 @@ def test_r5_a_revoke_that_fails_is_retried_by_the_next_wrong_pin(tc, monkeypatch
                        body=dict(_key(), step_up='%06d' % (100000 + i))).status
 
     assert [wrong(i) for i in range(5)] == [422] * 4 + [500]
-    assert wrong(5) == 422 and len(calls) == 2                      # not a 429 with nothing revoked
+    # the sixth guess is not tried (review of fix batches 9 and 10, F4): it is refused, and retries
+    assert wrong(5) == 429 and len(calls) == 2
     states = {d['id']: d['state'] for d in tc.http('GET', '/v1/devices').json()['devices']}
     assert states[device] == 'REVOKED'
     assert request(tc.base_url, 'GET', '/v1/health', token=token,

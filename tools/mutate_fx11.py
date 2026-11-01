@@ -95,6 +95,12 @@ MUTATIONS = [
      r"""        return False, 'could not stop pid %s' % pid""",
      r"""        return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)""")],
      [B + 'test_f6_a_kill_that_fails_on_the_recorded_process_says_so']),
+    ('S01', 'a locked-out device does not retry its revoke', [(ROUTES,
+     r"""        if req.api.step_up.locked(device):""",
+     r"""        if False:""")], [F4]),
+    ('S02', 'the lockout is never reported', [(AUTH,
+     r"""            return self._n.get(device_id, 0) >= self.LIMIT""",
+     r"""            return False""")], [F4]),
 ]
 
 

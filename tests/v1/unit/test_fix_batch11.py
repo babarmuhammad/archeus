@@ -102,3 +102,35 @@ def test_f6_a_kill_that_fails_on_the_recorded_process_says_so(tmp_path, monkeypa
     finally:
         stranger.kill()
         stranger.wait()
+
+
+# ── F4: a failing revoke must not turn the lockout into unlimited PIN guesses ──
+
+def test_f4_no_guess_is_admitted_while_the_revoke_keeps_failing_and_the_retry_lands_it():
+    from archeus.api import auth, routes
+    su = auth.StepUpFailures()
+    revoked = []
+
+    def run(*a, **k):
+        if len(revoked) < 3:
+            revoked.append('failed')
+            raise RuntimeError('writer busy')
+        revoked.append('landed')
+
+    req = SimpleNamespace(principal={'device_id': 'dev1', 'origin': 'paired'}, replayed=False, run=run,
+                          api=SimpleNamespace(step_up=su, sse=SimpleNamespace(close_device=lambda d: None)))
+    tried = []
+
+    def wrong_pin(proof):
+        tried.append(proof)
+        raise routes.errors.GuardFailed('m', 'a', 'b', 't', SimpleNamespace(guard='g', reason='step-up proof wrong'))
+
+    for _ in range(200):
+        try:
+            routes._with_step_up(req, '000000', wrong_pin)
+        except (routes.errors.GuardFailed, routes.Refused, RuntimeError):
+            pass
+        if revoked[-1:] == ['landed']:
+            break
+    assert len(tried) == su.LIMIT and revoked == ['failed', 'failed', 'failed', 'landed']
+    assert not su.locked('dev1')

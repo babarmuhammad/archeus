@@ -937,6 +937,11 @@ def _with_step_up(req, proof, call):
     device = req.principal['device_id']
     counted = proof is not None and req.principal['origin'] == 'paired'
     if counted and not req.api.step_up.begin(device):
+        if req.api.step_up.locked(device):
+            try:
+                _revoke_locked_out(req)         # the revoke that did not land is retried, never a guess
+            except Exception:
+                pass
         raise Refused(429, 'step_up_locked', headers={'Retry-After': '1'})
     try:
         try:
@@ -955,16 +960,18 @@ def _with_step_up(req, proof, call):
 
 def _step_up_failed(req):
     """A paired client's wrong PIN proof, counted; the 5th in a row revokes it."""
+    if req.principal['origin'] == 'paired' and req.api.step_up.failed(req.principal['device_id']):
+        _revoke_locked_out(req)
+
+
+def _revoke_locked_out(req):
+    """The count stays at LIMIT until the revoke lands, so 'begin' admits no
+    guess while it keeps failing; the next request retries it."""
     device = req.principal['device_id']
-    if req.principal['origin'] == 'paired' and req.api.step_up.failed(device):
-        try:
-            req.run(commands.revoke_device, {'device_id': device, 'reason': 'step_up_failures'},
-                    keyed=False)
-        except Exception:
-            req.api.step_up.undo(device)
-            raise
-        req.api.step_up.reset(device)
-        req.api.sse.close_device(device)
+    req.run(commands.revoke_device, {'device_id': device, 'reason': 'step_up_failures'},
+            keyed=False)
+    req.api.step_up.reset(device)
+    req.api.sse.close_device(device)
 
 
 def list_verifications(req):
