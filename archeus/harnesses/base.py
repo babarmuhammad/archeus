@@ -631,8 +631,9 @@ def sweep_mcp_configs(keep):
 MAX_LINE = 8 << 20
 
 
-def read_stream(path, offset=0):
-    """Complete JSONL events from byte *offset* onward -> (events, new_offset).
+def read_stream(path, offset=0, max_events=None):
+    """Complete JSONL events from byte *offset* onward -> (events, new_offset), at
+    most *max_events* of them when given (a caller folding a long stream in batches).
 
     A trailing partial line is left for the next read. stderr shares the file,
     so a line that is not a JSON object is kept as `{"type": "stderr", "text"}`
@@ -646,7 +647,7 @@ def read_stream(path, offset=0):
         return events, offset
     with f:
         f.seek(offset)
-        while True:
+        while max_events is None or len(events) < max_events:
             raw = f.readline(MAX_LINE + 1)
             if len(raw) > MAX_LINE:
                 offset += len(raw)
@@ -669,3 +670,4 @@ def read_stream(path, offset=0):
             except ValueError:
                 ev = None
             events.append(ev if isinstance(ev, dict) else {'type': 'stderr', 'text': line})
+    return events, offset

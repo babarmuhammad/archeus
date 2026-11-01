@@ -56,6 +56,23 @@ def _list(value):
     return value if isinstance(value, list) else ()
 
 
+def _scan(handle):
+    """(last result event, whether a limit event came, newest session id) of the whole
+    stream, folded in batches: a long run's stream is never held whole (T-647#2)."""
+    path = os.path.join(handle.exec_dir, 'stream.jsonl')
+    last, limit, session, offset = None, False, None, 0
+    while True:
+        raw, end = base.read_stream(path, offset, 500)
+        for ev in (ev for r in raw for ev in normalise(r)):
+            if ev.get('type') == 'result':
+                last = ev
+            limit = limit or ev.get('type') == 'limit'
+            session = ev.get('session_id') or session
+        if end == offset:
+            return last, limit, session
+        offset = end
+
+
 def normalise(raw):
     """One stream-json object -> the normalised events it carries. The stream is the
     child's own stdout, so any field may be of any type."""
@@ -226,9 +243,9 @@ class ClaudeCodeAdapter:
         ended = base.read_json(os.path.join(handle.exec_dir, 'ended')) or {}
         code = ended.get('exit_code')
         if code is None:
-            res = [e for e in self.inspect(handle).events if e.get('type') == 'result']
+            res = _scan(handle)[0]
             if res:
-                code = 1 if res[-1].get('is_error') else 0
+                code = 1 if res.get('is_error') else 0
         return base.ProcStatus('exited', code)
 
     def inspect(self, handle, offset=0):
@@ -245,13 +262,11 @@ class ClaudeCodeAdapter:
 
     def collect_result(self, handle):
         st = self.status(handle)
-        events = self.inspect(handle).events
-        results = [e for e in events if e.get('type') == 'result']
-        last = results[-1] if results else {}
-        session = last.get('session_id') or next(
-            (e.get('session_id') for e in reversed(events) if e.get('session_id')), None)
+        last, limit, newest = _scan(handle)
+        last = last or {}
+        session = last.get('session_id') or newest
         failure = None
-        if any(e.get('type') == 'limit' for e in events):
+        if limit:
             failure = 'limit'
         elif last.get('is_error'):
             failure = _ERR.get(last.get('subtype'), 'task')
@@ -260,7 +275,7 @@ class ClaudeCodeAdapter:
             'ok' if st.exit_code == 0 and not last.get('is_error') else 'error')
         return base.ExecutionResult(
             exit_reason=reason, exit_code=st.exit_code, reported_summary=last.get('summary', ''),
-            usage=last.get('usage') or {}, usage_total=bool(results), session_ref=session,
+            usage=last.get('usage') or {}, usage_total=bool(last), session_ref=session,
             transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'), failure=failure,
             halted=halted, adapter_state={'session': session} if session else None)
 
