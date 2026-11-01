@@ -275,6 +275,31 @@ def test_non_finite_clock_fails_closed(now):
     assert result.failures == (EXPIRED,)
 
 
+def test_clock_error_at_accept_fails_closed():
+    table = FakeTable()
+    table.clock_error = RuntimeError('clock unreadable')
+    result = table.attest()
+    assert not result.ok and result.binding is None
+    assert result.failures == (READER_ERROR,)
+
+
+@pytest.mark.parametrize('now', [float('nan'), float('inf')])
+def test_non_finite_clock_at_accept_issues_no_binding(now):
+    table = FakeTable()
+    table.now = now
+    result = table.attest()
+    assert not result.ok and result.binding is None
+    assert result.failures == (READER_ERROR,)
+
+
+def test_nan_max_age_does_not_switch_expiry_off():
+    table = FakeTable()
+    binding = table.bind()
+    table.now = T0 + 10.0
+    result = table.recheck(binding, max_age_s=float('nan'))
+    assert not result.ok and result.failures == (EXPIRED,)
+
+
 def test_expired_binding_fails_closed():
     table = FakeTable()
     binding = table.bind()

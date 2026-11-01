@@ -107,11 +107,18 @@ def attest_owner(
     if failures:
         return AttestResult(False, None, tuple(failures))
 
+    try:
+        accepted_at = float(clock())
+    except Exception:
+        return AttestResult(False, None, (READER_ERROR,))
+    if not _finite(accepted_at):
+        return AttestResult(False, None, (READER_ERROR,))
+
     binding = ProcessBinding(
         remote_port=remote_port,
         pid=pid,
         creation_time=info.creation_time,
-        accepted_at=float(clock()),
+        accepted_at=accepted_at,
         core_job_at_accept=True,
     )
     return AttestResult(True, binding, ())
@@ -138,7 +145,7 @@ def binding_valid(
         now = float(clock())
     except Exception:
         return AttestResult(False, None, (READER_ERROR,))
-    if not _finite(now) or now - binding.accepted_at > max_age_s:
+    if not _finite(now) or not (now - binding.accepted_at <= max_age_s):
         return AttestResult(False, None, (EXPIRED,))
 
     try:
