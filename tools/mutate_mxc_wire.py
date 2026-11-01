@@ -41,8 +41,8 @@ MUTATIONS = [
       W + 'test_ownership_is_durable_before_the_resume']),
     ('W02', 'the transport never calls the ownership seam the launch handed it', [(SPAWN,
      "            if before_resume is not None:\n                before_resume(child)\n"
-     "            if self.transport.resume(child) != 1:",
-     "            if self.transport.resume(child) != 1:")],
+     "            resumed = self.transport.resume(child)",
+     "            resumed = self.transport.resume(child)")],
      [W + 'test_ownership_is_durable_before_the_resume',
       W + 'test_the_seven_steps_happen_in_that_order']),
     ('W03', 'membership is never verified before the seam', [(NATIVE,
