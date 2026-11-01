@@ -213,7 +213,7 @@ class Process:
             try:
                 if self.launcher_exit is None:
                     self.api.terminate_process(self.process_handle)
-                    self.launcher_exit = 1
+                self.launcher_exit = 1
             finally:
                 self.close()
 

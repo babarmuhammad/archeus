@@ -142,10 +142,6 @@ def test_whatever_ends_the_drain_the_launcher_is_killed_and_no_handle_is_left(ho
     assert 'kill' in api.events and api.handles == {}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'defect, archeus/node/mxc_native.py:214 Process.terminate (the `if self.launcher_exit is None` '
-    'guard) and :192 Process.poll: a launcher whose exit 0 was read before a later chunk broke the '
-    'bound keeps launcher_exit 0, so poll() reports a clean exit for a drain that was cut off'))
 def test_a_drain_that_dies_on_a_bound_never_reads_as_a_clean_launcher_exit_in_poll():
     api, child = launch(Child({1: [b'ab', b'cdefghijkl'], 2: []}, exit=0), output_limit=8)
     child.attach(Sink())

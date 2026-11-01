@@ -359,7 +359,7 @@ def test_an_already_exited_launcher_is_never_terminated():
     api, child = launched(exit=0, reads={1: [], 2: []})
     with pytest.raises(TimeoutError, match='launcher I/O deadline'):
         child.wait()
-    assert child.launcher_exit == 0
+    assert child.launcher_exit == 1
     assert api.events.count('kill') == 0
     assert api.released == [POLICY]
     assert api.handles == {}
