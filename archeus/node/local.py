@@ -1511,7 +1511,7 @@ class LocalNode:
         return _publish_once(ref, expect, store, workdirs)
 
     @staticmethod
-    def store_resolve_base(root, rev, *, workdirs):
+    def store_resolve_base(root, rev, *, workdirs, peel='^{commit}'):
         """The commit *rev* names in the project repository at *root*, read under
         the pin: global and system config, hooks and replace refs are not read;
         the repository's own local config still is. Reads only; no caller yet."""
@@ -1526,7 +1526,7 @@ class LocalNode:
         _pin_files(workdirs)
         _git_version(workdirs)
         return LocalNode.store_git('base', ['rev-parse', '--verify', '-q', '--end-of-options',
-                                            rev + '^{commit}'], workdirs=workdirs,
+                                            rev + peel], workdirs=workdirs,
                                    git_dir=git_dir).strip()
 
     # ── K2: the seed (T-049, C-1013-T049) ──
@@ -1542,7 +1542,11 @@ class LocalNode:
         try:
             return rev, LocalNode.store_resolve_base(root, rev, workdirs=workdirs)
         except NoSuchRevision:
-            return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)
+            try:        # a ref naming a missing object or a non-commit gives the same silent exit 1
+                LocalNode.store_resolve_base(root, rev, workdirs=workdirs, peel='')
+            except NoSuchRevision:
+                return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)
+            raise StoreError('the mission branch %s names no commit' % mission_branch)
 
     @staticmethod
     def store_seed_ref(project_id, execution_id, commit, *, workdirs):

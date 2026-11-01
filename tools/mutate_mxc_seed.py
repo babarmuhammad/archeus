@@ -130,9 +130,13 @@ MUTATIONS = [
      '        path, ancestor = ancestor, os.path.dirname(ancestor)', '        break')],
      [T + 'test_a_junction_above_the_destination_is_refused_before_anything_is_written']),
     ('MS29', 'any failure reading the mission branch falls back to the project HEAD', [(LOCAL,
-     "        except NoSuchRevision:\n            return 'HEAD', ",
-     "        except StoreError:\n            return 'HEAD', ")],
+     "        except NoSuchRevision:\n            try:        # a ref naming",
+     "        except StoreError:\n            try:        # a ref naming")],
      [R + 'test_only_an_absent_mission_branch_falls_back_to_head']),
+    ('MS30', 'a mission branch naming a missing object is read as absent', [(LOCAL,
+     "            raise StoreError('the mission branch %s names no commit' % mission_branch)",
+     "            return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)")],
+     [R + 'test_a_corrupt_mission_branch_is_refused_not_read_as_absent']),
 ]
 
 

@@ -881,6 +881,24 @@ def test_only_an_absent_mission_branch_falls_back_to_head(world, monkeypatch):
     assert LocalNode.resolve_base(str(proj), 'archeus/' + mid, workdirs=()) == ('HEAD', head)
 
 
+def test_a_corrupt_mission_branch_is_refused_not_read_as_absent(world):
+    """Git gives the same silent exit 1 under -q for a ref that names a missing object as for
+    no ref at all: falling back to HEAD would drop the mission's merged work without a word.
+    A ref that names a tree is refused by git itself, with its own message."""
+    proj, head, _files = _project(world)
+    refs = proj / '.git' / 'refs' / 'heads' / 'archeus'
+    refs.mkdir()
+    mid, tree_mid = ids.new_id('mission'), ids.new_id('mission')
+    (refs / mid).write_bytes(b'1' * 40 + b'\n')
+    tree = _bgit(proj, 'rev-parse', head + '^{tree}', env=world.clean)
+    (refs / tree_mid).write_bytes(tree.encode() + b'\n')
+    for branch, said in ((mid, 'names no commit'), (tree_mid, 'expected commit type')):
+        with pytest.raises(StoreError, match=said):
+            LocalNode.resolve_base(str(proj), 'archeus/' + branch, workdirs=())
+    assert LocalNode.resolve_base(str(proj), 'archeus/' + ids.new_id('mission'),
+                                  workdirs=()) == ('HEAD', head)
+
+
 def test_a_detached_head_is_the_commit_it_names(world):
     proj, head, _files = _project(world)
     other = _other(world, proj, head)
