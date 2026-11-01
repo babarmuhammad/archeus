@@ -266,6 +266,8 @@ def pytest_configure(config):
         'markers', 'real_editor: allow this test to spawn a real editor process')
     config.addinivalue_line(
         'markers', 'real_process: allow this test to spawn a real child process')
+    config.addinivalue_line(
+        'markers', 'os_isolation: a G6 PV-20 scenario (fakes only; native rows are drafted)')
 
 
 # ── nothing the USER owns may be written by a test ───────────
