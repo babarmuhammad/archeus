@@ -1308,7 +1308,7 @@ class Isolation:
                                     {}), False
         finally:
             self._admitted.discard(key)
-        facts = {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': rec.sid,
+        facts = {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': registry_sid(rec.sid),
                  'capabilities': list(rec.capabilities),
                  'job': 'core-held-unnamed-kill-on-close'}
         rows = [request.grant_for(r).path for r in ('checkout', 'scratch')]
@@ -1575,7 +1575,7 @@ class IsolationContext:
         rec = self.authority.record(self.execution_id)
         if rec is None:
             return {}
-        return {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': rec.sid,
+        return {'isolated': True, 'ac_profile': rec.profile, 'ac_sid': registry_sid(rec.sid),
                 'capabilities': list(rec.capabilities), 'isolation_state': rec.state,
                 'job': 'core-held-unnamed-kill-on-close'}
 
@@ -2260,3 +2260,10 @@ if WINDOWS:
 
 else:
     WindowsBoundary = None
+
+
+def registry_sid(sid):
+    """What the registry and a confinement answer say of an identity: a SID only when
+    it is one. An MXC identity is a marker Core derived (no principal exists on the
+    base container, F1a), and that is never written where a SID is claimed."""
+    return sid if str(sid).startswith('S-1-') else ''

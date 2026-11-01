@@ -220,7 +220,7 @@ class MxcLaunch:
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
                  end_job=None, watchdog=None, seed_stage=None, seed_recheck=None,
-                 process_seq=1):
+                 process_seq=1, writable=()):
         if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
                 or quiescence_wait < 0):
             raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
@@ -273,8 +273,12 @@ class MxcLaunch:
         staging.verify_mxc(sdk_root, pins=self.pins)
         linkscan.check_grants((workspace,) + readonly, staging.StageError)
         staging.scan_grants((workspace,) + readonly)
+        writable = tuple(writable)
+        linkscan.check_grants(writable, staging.StageError)
+        staging.scan_grants(writable)
         self.policy: 'mxc.MxcPolicy' = backend.compile_policy(
-            workspace=workspace, readonly=readonly, denied=denied, cwd=cwd,
+            workspace=(workspace,) + writable if writable else workspace,
+            readonly=readonly, denied=denied, cwd=cwd,
             command_line=command_line, env=dict(env or {}), timeout_ms=timeout_ms,
             ui=False, egress='deny', proxy_url=None)
         self.process, self.job = None, None
