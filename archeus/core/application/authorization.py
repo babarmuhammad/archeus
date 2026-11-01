@@ -27,7 +27,7 @@ import hashlib
 import json
 import os
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from ...infra import paths
 from ...infra.db import rows
@@ -43,6 +43,7 @@ from . import lifecycle
 TTL = {'plan': timedelta(hours=24), 'task': timedelta(hours=24),
        'action': timedelta(hours=2), 'start': timedelta(hours=24)}
 LIVE = ('PENDING', 'APPROVED')
+PLANNING_STATES = ('REASONING', 'PLANNING', 'REPLANNING')
 #: the pre-P15 reading of "paired", for clients registered before P15 recorded
 #: an `origin`; a local client satisfies step-up (D16, p15-design-gate §6.6)
 PAIRED_PLATFORMS = ('ios', 'android')
@@ -76,6 +77,19 @@ def _parse(ts):
 
 def _plus(now, delta):
     return _iso(_parse(now) + delta)
+
+
+def _expiry(ts):
+    """A rule's expiry in the form the engine compares as a string, or ValueError."""
+    if ts is None:
+        return None
+    try:
+        at = _parse(ts)
+    except (AttributeError, ValueError):
+        at = None
+    if at is None or at.tzinfo is None:
+        raise ValueError('expires_at is an ISO timestamp with a timezone: %r' % (ts,))
+    return _iso(at.astimezone(timezone.utc))
 
 
 def owner(conn):
@@ -211,10 +225,9 @@ def start_hash(mission):
 def judge_start(policy, conn, mission, *, now, actor=None, extra_rules=(), user_id=None):
     # the e-stop holds what runs, not what starts: a CREATED mission was always
     # started while disarmed (the engine's `_step`), and B6 asks only `careful`
-    ctx = dict(context(conn, mission, stage='start', now=now, actor=actor,
-                       extra_rules=extra_rules), estop=False)
+    ctx = context(conn, mission, stage='start', now=now, actor=actor, extra_rules=extra_rules)
     ctx['chain']['USER'] = ctx['chain']['USER'] or user_id
-    items = [dict(judge(policy, start_action(mission), ctx), task=None)]
+    items = [dict(judge(policy, start_action(mission), dict(ctx, estop=False)), task=None)]
     if items[0]['decision'] == 'ALLOW' and asks_before_start(conn, mission):
         items = [dict(items[0], decision='ASK',
                       reason='a mission from a chat message asks before it starts')]
@@ -440,6 +453,8 @@ def record_plan_denial(tx, *, actor, policy, missions, mission_id, specs, round_
     PLANNING / REPLANNING wait in place (P8 D6). If the policy no longer
     denies (it changed in between), nothing is recorded and the next round plans."""
     m = lifecycle.load(tx, entities.Mission, mission_id).entity
+    if m.state not in PLANNING_STATES:
+        return {'recorded': False, 'why': 'the mission is %s, not planning' % m.state}
     items, ctx = first_denial(policy, tx.conn, m, specs, now=tx.now, actor=actor)
     denied = [i for i in items if i['decision'] == 'DENY']
     if not denied:
@@ -914,6 +929,11 @@ def evaluate_action(tx, *, actor, policy, execution_id, action, unclassified=Fal
                        reason='allowed once by approval %s' % a.id, **kw)
             return {'decision': 'ALLOW', 'policy_decision_id': d.id, 'approval_id': a.id}
         d = record(tx, decision='ASK', outcome='ask', items=[item], reason=item['reason'], **kw)
+        live = live_approval(tx.conn, h)
+        if live is not None and live.entity.state == 'APPROVED' and (
+                live.entity.expires_at <= tx.now):
+            lifecycle.fire(tx, entities.Approval, live.entity.id, 'ttl_elapsed', actor=actor,
+                           reason='expired at %s' % live.entity.expires_at)
         a, _new = request(tx, actor=actor, kind='action', mission=mission, plan=plan,
                           task=task, execution_id=execution_id, items=[item], h=h,
                           decision_id=d.id, why=[item['reason']], ctx=ctx)
@@ -938,6 +958,9 @@ def create_rule(tx, *, actor, scope_level, action_class, decision, scope_ref=Non
     _principal(tx, actor, 'admin')
     if scope_level == 'USER' and scope_ref is None:
         scope_ref = _owner_id(tx, actor)            # V1 is single-user (domain-model §3.1)
+    expires_at = _expiry(expires_at)
+    if scope_ref is not None and not _scope_exists(tx, actor, scope_level, scope_ref):
+        raise ValueError('scope_ref %r names no %s' % (scope_ref, scope_level.lower()))
     revision, before = 1, None
     if supersedes_rule_id is not None:
         old = lifecycle.load(tx, entities.PolicyRule, supersedes_rule_id).entity
@@ -955,6 +978,16 @@ def create_rule(tx, *, actor, scope_level, action_class, decision, scope_ref=Non
     row = tx.insert(r, actor=actor)
     _rule_event(tx, 'policy_rule.created', actor, r, {'before': before, 'after': r.to_dict()})
     return {'id': r.id, 'version': row.version, 'revision': revision}
+
+
+def _scope_exists(tx, actor, level, ref):
+    if level == 'USER':
+        return ref == _owner_id(tx, actor)
+    if level == 'WORKSPACE':
+        return ref == ids.GLOBAL_WORKSPACE        # V1 has the one workspace, no table
+    cls = {'PROJECT': entities.Project, 'MISSION': entities.Mission,
+           'TASK': entities.Task}.get(level)
+    return cls is None or tx.get(cls, ref) is not None
 
 
 def _owner_id(tx, actor):
@@ -1072,6 +1105,7 @@ def _simulated_rule(conn, i, r, standin):
     if r.get('scope_level') == 'USER' and r.get('scope_ref') is None:
         u = owner(conn)
         r['scope_ref'] = u.id if u else standin
+    r['expires_at'] = _expiry(r.get('expires_at'))
     entities.PolicyRule(id=ids.new_id('policy_rule'), source='user',
                         outside=r.get('outside') or 'ASK',
                         **{k: r.get(k) for k in ('scope_level', 'scope_ref', 'action_class',
