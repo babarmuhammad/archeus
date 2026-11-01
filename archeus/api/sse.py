@@ -121,8 +121,9 @@ class Streams:
     def _unregister(self, s):
         """True when *s* was the client's last open stream."""
         with self._lock:
-            if s in self._open:
-                self._open.remove(s)
+            if s not in self._open:
+                return False            # superseded: its device's stream outlived it
+            self._open.remove(s)
             return not any(o.device_id == s.device_id for o in self._open)
 
     def _close(self, match, timeout):
@@ -131,8 +132,10 @@ class Streams:
         for s in targets:
             s.closing.set()
         self.db.writer.wake()
+        deadline = time.monotonic() + timeout
         for s in targets:
-            s.done.wait(timeout)
+            if not s.done.wait(max(0.0, deadline - time.monotonic())):
+                s.hangup()              # parked in a write to a client that stopped reading
 
     def close_device(self, device_id, timeout=5.0):
         """Close every stream of *device_id* and return once they are closed."""
