@@ -433,6 +433,17 @@ class Writer:
                     self.committed += 1
                     fut.set_result(result)
         finally:
+            # a command that raised SystemExit ends this thread: what is queued behind it
+            # would never be answered, and submit would go on accepting more
+            with self._lock:
+                self._closed = True
+            while True:
+                try:
+                    item = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                if item is not _STOP:
+                    item[0].set_exception(WriterClosed('the writer closed before this ran'))
             conn.close()
 
     def _one(self, conn, command, kwargs, key, name, rhash, cause):

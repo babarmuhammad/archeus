@@ -465,3 +465,18 @@ def test_an_update_by_a_non_principal_is_refused(db, new_mission, actor):
     with pytest.raises(ValueError, match='updated_by'):
         db.writer.execute(bump, {'actor': actor})
     assert _counts(db) == before
+
+
+@pytest.mark.filterwarnings('ignore::pytest.PytestUnhandledThreadExceptionWarning')
+def test_a_command_that_raises_system_exit_closes_the_writer_and_answers_the_queue(tmp_path):
+    """T-653#F7: the thread died, what was queued behind it never resolved and submit
+    went on accepting commands."""
+    w = _writer(str(tmp_path / 'w.db'))
+
+    def leave(tx):
+        raise SystemExit(1)
+    first = w.submit(leave)
+    with pytest.raises(SystemExit):
+        first.result(5)
+    with pytest.raises(WriterClosed):
+        w.execute(lambda tx: None, timeout=2)
