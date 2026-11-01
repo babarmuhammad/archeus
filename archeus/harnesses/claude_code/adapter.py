@@ -29,7 +29,6 @@ limit is recognised by the current product's `quota.is_limit_error`.
 """
 
 import os
-import shutil
 import uuid
 from dataclasses import replace
 
@@ -129,7 +128,7 @@ class ClaudeCodeAdapter:
         self._stopped = set()
 
     def _find(self):
-        return self._exe or shutil.which('claude')
+        return self._exe or proc.which('claude')
 
     def discover(self):
         exe = self._find()

@@ -15,7 +15,7 @@ import time
 
 __all__ = ['run', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
            'spawn_detached', 'wait_and_run', 'python_exe', 'new_console_flags',
-           'no_window_flags', 'WINDOWS', 'process_create_time', 'kill_pid_tree']
+           'no_window_flags', 'which', 'WINDOWS', 'process_create_time', 'kill_pid_tree']
 
 WINDOWS = os.name == 'nt'
 
@@ -538,6 +538,24 @@ _POSIX_TERMINALS = [
     ('kitty', []),
     ('xterm', ['-e']),
 ]
+
+
+def which(name):
+    """The first executable called *name* on PATH, absolute, or None.
+
+    Not `shutil.which`: on Windows (before Python 3.12) it searches the current
+    directory first, so a core or GUI started inside an untrusted checkout would
+    run that checkout's `claude.exe` or `pi.cmd`."""
+    exts = ['']
+    if WINDOWS:
+        pathext = os.environ.get('PATHEXT', '.COM;.EXE;.BAT;.CMD').lower().split(';')
+        exts = [''] if name.lower().endswith(tuple(pathext)) else pathext
+    for d in filter(None, os.environ.get('PATH', '').split(os.pathsep)):
+        for e in exts:
+            p = os.path.join(d, name + e)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return os.path.abspath(p)
+    return None
 
 
 def spawn_terminal(argv=None, *, cwd=None, env=None, title='', keep_open=False):

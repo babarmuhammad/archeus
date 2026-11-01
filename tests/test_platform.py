@@ -307,3 +307,32 @@ def test_windows_keep_open_and_shim_pass_clean_arguments_through_cmd_safely(monk
     assert seen == [['cmd', '/k', 'title', 't   u', '&&', r'C:\x\claude.exe', 'update']]
     (p, err), seen = _windows_spawn(monkeypatch, [r'C:\x\pi.cmd', '-n', 'ok'])
     assert seen == [[r'C:\x\pi.cmd', '-n', 'ok']]
+
+
+def test_which_ignores_the_current_directory_and_returns_an_absolute_path(monkeypatch, tmp_path):
+    """Python < 3.12 on Windows searches the cwd before PATH: a core started in an
+    untrusted checkout resolved `claude` to its `.\claude.exe` (audit H-09)."""
+    from claude_sessions import proc
+    name = 'claude.exe' if os.name == 'nt' else 'claude'
+    evil, good = tmp_path / 'evil', tmp_path / 'bin'
+    for d in (evil, good):
+        d.mkdir()
+        (d / name).write_text('')
+        (d / name).chmod(0o755)
+    monkeypatch.chdir(evil)
+    monkeypatch.setenv('PATH', str(tmp_path / 'empty'))
+    assert proc.which('claude') is None
+    monkeypatch.setenv('PATH', str(good))
+    hit = proc.which('claude')
+    assert os.path.isabs(hit) and os.path.dirname(hit) == str(good)
+
+
+def test_the_claude_adapter_does_not_resolve_claude_from_the_current_directory(
+        monkeypatch, tmp_path):
+    from archeus.harnesses.claude_code.adapter import ClaudeCodeAdapter
+    name = 'claude.exe' if os.name == 'nt' else 'claude'
+    (tmp_path / name).write_text('')
+    (tmp_path / name).chmod(0o755)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('PATH', str(tmp_path / 'empty'))
+    assert ClaudeCodeAdapter()._find() is None

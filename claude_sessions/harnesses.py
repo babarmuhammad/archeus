@@ -727,7 +727,7 @@ def exe(hid=None):
     that changes on every update, so a stored absolute path goes stale in
     silence."""
     import glob as _glob
-    import shutil
+    from . import proc as _proc
     d = descriptor(hid)
     override = (_c.load_settings().get(d.get('exe_setting') or '') or '')
     if override and os.path.exists(override):
@@ -743,7 +743,7 @@ def exe(hid=None):
             # `codex update` just wrote.
             return max(found, key=os.path.getmtime)
     for name in d['exe_names']:
-        found = shutil.which(name)
+        found = _proc.which(name)
         if found:
             return found
     return None
