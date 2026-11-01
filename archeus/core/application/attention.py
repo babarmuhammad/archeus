@@ -89,8 +89,10 @@ def attention(conn, now=None, *, homes=None):
         elif m.state == 'BLOCKED' and m.held_from == 'EXECUTING':
             route = _no_resource(conn, m.id)
             if route:
+                said = route.get('explanation')
                 items.append(_item('mission', 'mission', r, m.state, 'no_resource',
-                                   route.get('explanation') or None, m.id, m.project_id,
+                                   system_value(said, homes) if said else None, m.id,
+                                   m.project_id,
                                    unblock_at=route.get('unblock_at')))
     for r in rows.where(conn, entities.KnowledgeItem, **{'state': 'CANDIDATE'}):
         items.append(_item('knowledge', 'knowledge_item', r, 'CANDIDATE', r.entity.type,
