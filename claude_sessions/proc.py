@@ -568,6 +568,10 @@ def spawn_terminal(argv=None, *, cwd=None, env=None, title='', keep_open=False):
     closes on ANY exit code: ending a Claude session with Ctrl+C returns
     non-zero on Windows, and a `|| pause` left the window stuck on a keypress
     for every normal exit, not just crashes.
+
+    *title* names the window only where cmd opens it (a bare shell or *keep_open*
+    on Windows): a command started directly has no cmd to set one, and Popen
+    cannot set a console title.
     """
     if WINDOWS:
         return _spawn_windows(argv, cwd, env, title, keep_open)
