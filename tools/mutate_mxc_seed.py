@@ -118,6 +118,16 @@ MUTATIONS = [
      "        if refused_component(part):\n            raise SeedError('refused path segment: %s' % value)",
      "        if part in ('', '.'):\n            raise SeedError('refused path segment: %s' % value)")],
      [T + 'test_a_name_git_or_windows_treats_specially_is_never_seeded_or_imported']),
+    ('MS26', 'the ancestors of the destination are not checked for aliases', [(SEED,
+     '    root = _root(dest_root)\n    _ancestors(root)\n', '    root = _root(dest_root)\n')],
+     [T + 'test_a_junction_above_the_destination_is_refused_before_anything_is_written']),
+    ('MS27', 'the ancestors of a source are not checked for aliases', [(SEED,
+     '        _ancestors(src)\n', '')],
+     [T + 'test_a_junction_above_the_import_source_is_refused',
+      T + 'test_a_junction_between_the_source_root_and_the_file_is_refused']),
+    ('MS28', 'only the parent directory is checked for an alias', [(SEED,
+     '        path, ancestor = ancestor, os.path.dirname(ancestor)', '        break')],
+     [T + 'test_a_junction_above_the_destination_is_refused_before_anything_is_written']),
 ]
 
 

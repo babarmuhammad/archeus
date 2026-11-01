@@ -98,6 +98,15 @@ def _entry(path, rel, is_dir, missing_ok=False):
     return st
 
 
+def _ancestors(path):
+    """No directory above *path* up to the drive is an alias: a junction or link there
+    redirects every write below it, and the checks of the entries themselves never see it."""
+    ancestor = os.path.dirname(path)
+    while ancestor != path:
+        _entry(ancestor, 'an ancestor', True)
+        path, ancestor = ancestor, os.path.dirname(ancestor)
+
+
 def _list(directory, rel):
     try:
         return list(os.scandir(directory))
@@ -189,6 +198,7 @@ def _rows(pairs, source_root):
     for rel, src in pairs:
         _rel(rel)
         src = os.path.abspath(os.fspath(src))
+        _ancestors(src)
         if source_root is not None:
             prefix, marked = os.path.normcase(source_root), os.path.normcase(src)
             if not marked.startswith(prefix + os.sep):
@@ -208,6 +218,7 @@ def _fresh(dest_root, scan):
     if not callable(scan):
         raise SeedError('no scan given')
     root = _root(dest_root)
+    _ancestors(root)
     try:
         os.lstat(root)
     except FileNotFoundError:

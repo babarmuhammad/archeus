@@ -589,6 +589,40 @@ def test_the_control_names_that_only_look_like_those_are_seeded(tmp_path):
     assert (tmp_path / 'seed' / 'git' / 'config').read_bytes() == b'b'
 
 
+JUNCTION = SimpleNamespace(st_mode=stat.S_IFDIR, st_nlink=1, st_file_attributes=0x400)
+
+
+def test_a_junction_above_the_destination_is_refused_before_anything_is_written(
+        tmp_path, monkeypatch):
+    """`mkdir(root)` and `open(dst, 'xb')` follow a junction ancestor, so the tree landed in
+    the junction's target (review R8)."""
+    src = source_tree(tmp_path)
+    dest = tmp_path / 'link' / 'deep' / 'seed'
+    dest.parent.mkdir(parents=True)
+    fake_lstat(monkeypatch, tmp_path / 'link', JUNCTION)
+    scan, calls = scan_ok()
+    with pytest.raises(seed.SeedError, match='an alias appeared in the destination: an ancestor'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    assert os.listdir(dest.parent) == [] and calls == []
+
+
+def test_a_junction_above_the_import_source_is_refused(tmp_path, monkeypatch):
+    root = source_tree(tmp_path, {'one.txt': b'x'}, name='node')
+    fake_lstat(monkeypatch, tmp_path, JUNCTION)
+    scan, _ = scan_ok()
+    with pytest.raises(seed.SeedError, match='an ancestor'):
+        seed.import_back(root, ['one.txt'], tmp_path / 'imported', scan)
+    assert not (tmp_path / 'imported').exists()
+
+
+def test_a_junction_between_the_source_root_and_the_file_is_refused(tmp_path, monkeypatch):
+    root = source_tree(tmp_path, {'sub/one.txt': b'x'}, name='node')
+    fake_lstat(monkeypatch, root / 'sub', JUNCTION)
+    scan, _ = scan_ok()
+    with pytest.raises(seed.SeedError, match='an ancestor'):
+        seed.import_back(root, ['sub/one.txt'], tmp_path / 'imported', scan)
+
+
 @pytest.mark.parametrize('kind,token', [
     ('nothing', 'nothing to seed'),
     ('string', 'must be a mapping or a list of pairs'),
