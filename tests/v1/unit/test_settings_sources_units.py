@@ -342,6 +342,16 @@ def test_E19_a_core_that_never_answers_is_a_halt_before_claude_codes_own_timeout
     assert hook.WAIT_S < cc.HOOK_TIMEOUT_S
 
 
+@pytest.mark.parametrize('raw', ['auto', '', '60,5', 'inf', 'nan', '-1', '1e9'])
+def test_a_hostile_wait_never_disarms_the_hook(raw, tmp_path):
+    assert 0 <= hook.wait_s(raw) < cc.HOOK_TIMEOUT_S
+    _eid, env = _env(tmp_path, wait=raw)
+    env.pop('ARCHEUS_EXECUTION_ID')
+    r = _run_hook(env, json.dumps({'tool_name': 'Read'}))
+    # an import-time crash would exit 1, the status Claude Code lets the call through on
+    assert r.returncode == 0 and json.loads(r.stdout)['continue'] is False
+
+
 def test_the_spawn_configuration_is_core_authored_class_2(archeus_home):
     """PV-20 §7.5: the settings file that installs the hook sits where the execution
     may read and never write — not beside its own reports, not in Core's directory.

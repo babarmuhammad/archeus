@@ -35,7 +35,22 @@ import re
 import sys
 import time
 
-WAIT_S = float(os.environ.get('ARCHEUS_HOOK_WAIT', '60'))
+#: inside Claude Code's own 120 s limit on the hook: one it times out is not documented to
+#: block the call (harnesses/claude_code/adapter.py HOOK_TIMEOUT_S)
+MAX_WAIT_S = 100.0
+
+
+def wait_s(raw):
+    # runs at import, outside every handler: a value that will not parse must not
+    # exit with the status Claude Code lets the call through on
+    try:
+        v = float(raw)
+    except ValueError:
+        return 60.0
+    return min(v, MAX_WAIT_S) if v >= 0 else 60.0
+
+
+WAIT_S = wait_s(os.environ.get('ARCHEUS_HOOK_WAIT', '60'))
 POLL_S = 0.05
 _ID = re.compile(r'exe_[0-9A-HJKMNP-TV-Z]{26}\Z')
 #: archeus.infra.paths' class directories, mirrored: this file imports no package
