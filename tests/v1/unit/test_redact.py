@@ -112,8 +112,9 @@ def test_redact_json_keeps_every_other_value_and_redacts_keys_and_deep_strings()
         cur = cur[0]
     cur.append('brk_' + 'Ab3-_' * 8)
     out = redact_json(deep)
-    while out[0] != '[redacted]':
+    while isinstance(out, list):
         out = out[0]
+    assert out == '[redacted]'
 
 
 def test_redacting_any_payload_with_secrets_embedded_keeps_its_shape():
