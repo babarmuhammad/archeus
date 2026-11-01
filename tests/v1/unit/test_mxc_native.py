@@ -1,3 +1,4 @@
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -400,6 +401,54 @@ def test_one_handle_that_will_not_close_does_not_keep_the_others_open():
     assert set(api.handles) == {first}          # the rest, the policy lease included, are closed
     assert child._handles == [] and child._policy_lease is None
     child.close()                               # nothing is retried
+
+
+def test_a_drain_released_after_its_launch_was_closed_touches_no_closed_handle():
+    """A cancel that gives up waiting for a stuck callback closes the handles under the
+    drain; when the callback returns, the drain must stop, not read, write or poll a number
+    that is closed and may name another object by now."""
+    seen = []
+
+    class Strict(FakeWin32):
+        def read(self, handle, size):
+            seen.append(('read', handle))
+            return super().read(handle, size)
+
+        def poll(self, process):
+            seen.append(('poll', process))
+            assert process in self.handles, 'poll on a closed handle'
+            return None
+
+        def write(self, handle, data):
+            assert handle in self.handles, 'write to a closed handle'
+            return len(data)
+
+    api = Strict()
+    transport, policy, path = setup(api)
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    entered, release, outcome = threading.Event(), threading.Event(), []
+
+    def stuck(name, data):
+        entered.set()
+        release.wait(5)
+
+    child.attach(sink=stuck)
+
+    def drain():
+        try:
+            outcome.append(child.wait(5))
+        except BaseException as err:
+            outcome.append(err)
+
+    thread = threading.Thread(target=drain)
+    thread.start()
+    assert entered.wait(5)
+    child.close()
+    mark = len(seen)
+    release.set()
+    thread.join(5)
+    assert [type(x) for x in outcome] == [native.MxcUnavailable]
+    assert seen[mark:] == []
 
 
 def test_interrupt_during_spawn_still_kills_the_suspended_launcher(monkeypatch):

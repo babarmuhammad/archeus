@@ -2,6 +2,7 @@ import io
 import json
 import ntpath
 import subprocess
+import threading
 import time
 from typing import Protocol
 
@@ -174,6 +175,7 @@ class Process:
         self._sink, self._stdin_reader = self._buffer, None
         self._seen = {'stdout': 0, 'stderr': 0}
         self._draining = self._stop = False
+        self._lock = threading.Lock()       # the drain's use of a handle against its close
 
     def _buffer(self, name, data):
         getattr(self, name).write(data)
@@ -196,9 +198,19 @@ class Process:
         return None if self._handles else self.launcher_exit
 
     def _close(self, handle):
-        if handle in self._handles:
-            self._handles.remove(handle)        # a handle that fails to close is not retried
-            self.api.close_handle(handle)
+        with self._lock:
+            if handle in self._handles:
+                self._handles.remove(handle)    # a handle that fails to close is not retried
+                self.api.close_handle(handle)
+
+    def _use(self, call, handle, *args):
+        """*call* on a handle only while it is still open: a cancel that gave up waiting for
+        a stuck drain closes the handles under it, and a closed number may name another
+        object by the time the drain next looks."""
+        with self._lock:
+            if handle not in self._handles:
+                raise MxcUnavailable('launcher closed during drain')
+            return call(handle, *args)
 
     def close(self):
         failed = None
@@ -254,7 +266,7 @@ class Process:
                 for index, name in ((1, 'stdout'), (2, 'stderr')):
                     if index in eof:
                         continue
-                    data = self.api.read(self._pipes[index], 65536)
+                    data = self._use(self.api.read, self._pipes[index], 65536)
                     if data == b'':
                         eof.add(index)
                         self._close(self._pipes[index])
@@ -273,8 +285,9 @@ class Process:
                         else:
                             pending, offset = chunk or b'', 0
                     if offset < len(pending):
-                        offset += self.api.write(self._pipes[0], pending[offset:offset + 65536])
-                self.launcher_exit = self.api.poll(self.process_handle)
+                        offset += self._use(self.api.write, self._pipes[0],
+                                            pending[offset:offset + 65536])
+                self.launcher_exit = self._use(self.api.poll, self.process_handle)
                 if self.launcher_exit is not None and len(eof) == 2:
                     self.close()
                     self.stdout.seek(0)
