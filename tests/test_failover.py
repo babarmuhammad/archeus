@@ -10,6 +10,7 @@ not exercised: a subprocess test would be flaky and would leak console windows.
 import http.client
 import json
 import os
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -543,3 +544,46 @@ def test_a_failed_spawn_releases_the_claim(monkeypatch, tmp_path):
     ok, msg = failover.ensure_running(prof)
     assert not ok and 'could not start' in msg
     assert failover._daemon(prof).read_lock() is None
+
+
+def _sleeper():
+    import subprocess as _sp
+    return _sp.Popen([sys.executable, '-I', '-c', 'import time; time.sleep(60)'])
+
+
+def test_stop_never_kills_a_pid_that_is_not_the_process_that_wrote_the_lock():
+    """A crashed daemon's lock outlives it and the OS hands its pid to anything:
+    stop() terminated whatever owned it (audit H-07)."""
+    from claude_sessions import proc
+    stranger = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        for lock in ({'pid': stranger.pid, 'port': 20129, 'started': 0},
+                     {'pid': stranger.pid, 'port': 20129, 'started': 0, 'ctime': 12345}):
+            with open(d.lock_path(), 'w', encoding='utf-8') as f:
+                json.dump(lock, f)
+            ok, _msg = d.stop()
+            assert not ok and stranger.poll() is None
+        d.write_lock(20129)
+        assert d.read_lock()['ctime'] == proc.process_create_time(os.getpid())
+        d.clear_lock()
+    finally:
+        stranger.kill()
+        stranger.wait()
+
+
+def test_stop_ends_the_process_whose_creation_time_the_lock_recorded():
+    from claude_sessions import proc
+    child = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0,
+                       'ctime': proc.process_create_time(child.pid)}, f)
+        assert d.stop() == (True, 'stopped')
+        assert child.wait(timeout=10) is not None
+    finally:
+        child.kill()
+        child.wait()

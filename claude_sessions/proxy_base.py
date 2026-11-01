@@ -90,8 +90,8 @@ class Daemon:
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
             with open(p, 'w', encoding='utf-8') as f:
-                json.dump({'pid': os.getpid(), 'port': int(port),
-                           'started': time.time()}, f)
+                json.dump({'pid': os.getpid(), 'port': int(port), 'started': time.time(),
+                           'ctime': _own_ctime()}, f)
         except Exception:
             pass
 
@@ -110,8 +110,8 @@ class Daemon:
         fails to bind. The claim is written before the spawn, not by the child
         after it starts."""
         p = self.lock_path()
-        payload = json.dumps({'pid': os.getpid(), 'port': int(port),
-                              'started': time.time()}).encode('utf-8')
+        payload = json.dumps({'pid': os.getpid(), 'port': int(port), 'started': time.time(),
+                              'ctime': _own_ctime()}).encode('utf-8')
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
         except Exception:
@@ -241,26 +241,17 @@ class Daemon:
             return True, 'no %s recorded' % self.label
         if pid_alive(pid) is False:
             return True, '%s already gone' % self.label
-        if os.name == 'nt':
-            try:
-                import ctypes
-                k32 = ctypes.windll.kernel32
-                h = k32.OpenProcess(0x0001, False, int(pid))   # PROCESS_TERMINATE
-                if not h:
-                    return False, 'could not open pid %s' % pid
-                try:
-                    ok = bool(k32.TerminateProcess(h, 0))
-                finally:
-                    k32.CloseHandle(h)
-                return ok, 'stopped' if ok else 'could not stop pid %s' % pid
-            except Exception as e:
-                return False, str(e)
-        try:
-            import signal
-            os.kill(int(pid), signal.SIGTERM)
+        # a crashed daemon's pid may now belong to a stranger: only the process
+        # created when the lock was written is stopped
+        from . import proc
+        if proc.kill_pid_tree(pid, data.get('ctime')):
             return True, 'stopped'
-        except Exception as e:
-            return False, str(e)
+        return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)
+
+
+def _own_ctime():
+    from . import proc
+    return proc.process_create_time(os.getpid())
 
 
 def pid_alive(pid):
