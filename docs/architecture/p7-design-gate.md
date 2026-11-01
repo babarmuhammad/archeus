@@ -1,5 +1,7 @@
 # P7 design gate: brain, intent and mission engine
 
+*Later changes (checked against the code): this gate records the phase as it was built; mission threads, and the approve, reject and reprioritise verbs, exist (P19: `core/application/grammar.py`, `conversation.py`); the own-call path is no longer P6's `archeus_call` unchanged (`core/calls.py` has per-purpose tiers and router-driven choice); `messages` has two indexes, not three; scenario S1's later functions carry no phase marker; no P7 mutation suite remains in `tools/`.*
+
 Status: **IMPLEMENTED (P7).** Written 2026-09-26 against `349c3d4` (P6 closed). The decision
 pass accepted D1–D8 as recommended (§14); D9–D22 follow from the documents' own precedence rules
 and are recorded here rather than asked.

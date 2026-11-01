@@ -1,5 +1,7 @@
 # P8 design gate: plan engine
 
+*Later changes (checked against the code): this gate records the phase as it was built; `POST /v1/plans/{id}/edit` exists (P19 S2); a DENY is recorded by `Planning.deny` (four commands: `apply`, `hold`, `deny`, `note`); there is no `approval_points` field on Plan; handles are `p`, `n`, `y`, `k`, `g` (no mission handle, `planner.py` `LETTERS`); `touches` are plain globs; currency is `planner.currency(conn, mission, package_id)`; `recordings.json` holds six planner entries; S6 runs with a real verifier.*
+
 Status: **IMPLEMENTED (P8).** Written 2026-09-26 against `ec1118d` (P7 closed); the decision
 pass accepted D1–D16 with binding clarifications (§22); the as-built record and its deviations
 are §25. Every item is marked with where it comes from:

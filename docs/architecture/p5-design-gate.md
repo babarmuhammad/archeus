@@ -1,5 +1,7 @@
 # P5 design gate: the context engine
 
+*Later changes (checked against the code): this gate records the phase as it was built; `record_context_package` in `core/application/commands.py` is now called by five writers (mission, project, message, plan and knowledge passes), not only the mission's `context_ready` move; meetings, relations, people and lessons exist and meetings are gathered as L2 candidates; `subject_kind` also accepts `message`; the anchor, link, conf and useless weights are still 0; `lexical.idf` is now a proper BM25 IDF, not the moved formula; `engine.STUB_STEPS` no longer exists.*
+
 Status: **IMPLEMENTED (P5).** Written 2026-09-25 against `c611b70` (P4 closed; main 2.8.0 merged
 into V1 with the ADR-0022/0023 parity amendments). The decision pass accepted D1–D4 as
 recommended (§10); D5–D10 follow from the documents' own precedence rules and are recorded here

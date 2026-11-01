@@ -1,5 +1,7 @@
 # P6 design gate: knowledge and learning
 
+*Later changes (checked against the code): this gate records the phase as it was built; the pre-router election and `calls.elect` are gone: the router (`core/routing/router.py`, 13 elimination steps) picks the harness and records `decided_by = router`; `rotate.elect()` is not called from `archeus/`; the no-row `unknown` answer is the standing default; confirming an item may now reject a CANDIDATE predecessor (P7 D4); undated notes are an opt-in on the import path (P7 D2); no `decisions` table exists yet; the knowledge pass, decisions pass and lessons pass do not all record their own context package.*
+
 Status: **IMPLEMENTED (P6).** Written 2026-09-26 against `018bb6b` (P5 closed). The decision
 pass accepted D1–D7 as recommended (§14); D8–D18 follow from the documents' own precedence rules
 and are recorded here rather than asked.
