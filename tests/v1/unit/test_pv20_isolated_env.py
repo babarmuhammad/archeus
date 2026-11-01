@@ -168,6 +168,7 @@ def test_an_os_value_in_another_case_still_yields_one_canonical_name(world, monk
     ('GIT_CONFIG_VALUE_0', 'store'),
     ('CLAUDE_CONFIG_DIR', 'ACCOUNT'),
     ('ARCHEUS_HOOK_TOKEN', 'not-a-token'),
+    ('ARCHEUS_HOOK_TOKEN', 1),                    # T-647#4: not a str, was a TypeError out of spawn
     ('ARCHEUS_HOME', 'elsewhere'),
     ('ARCHEUS_HOOK_CMD', '["elsewhere"]'),
 ])

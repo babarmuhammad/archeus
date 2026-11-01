@@ -562,7 +562,7 @@ def _isolated_env(spec, paths):
         if name is None:
             raise ValueError('%s is not a variable an isolated execution may be given' % k)
         if name == 'ARCHEUS_HOOK_TOKEN':
-            if not _HOOK_TOKEN.fullmatch(v):
+            if not (isinstance(v, str) and _HOOK_TOKEN.fullmatch(v)):
                 raise ValueError('ARCHEUS_HOOK_TOKEN is not a hook token')
         elif name == 'CLAUDE_CONFIG_DIR':
             same = {os.path.normcase(os.path.realpath(x)) for x in (v, paths.config)}
