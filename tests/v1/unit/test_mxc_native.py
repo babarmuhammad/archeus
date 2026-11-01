@@ -311,3 +311,66 @@ def test_start_wrong_suspend_count_terminates(count):
         transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
     assert api.events.count('kill') == 1
     assert api.handles == {}
+
+
+# ── the ownership seam the ledger owes the resume (T-245) ──
+
+def test_the_ownership_seam_runs_between_membership_and_the_resume():
+    """The ledger's one permitted position: after membership is verified, before the
+    single resume, with the child still suspended and its identity readable."""
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    seen, hooked = [], []
+
+    def before_resume(child):
+        hooked.append(child)
+        seen.append((api.events.count('query'), 'resume' in api.events, child.resumed))
+        api.events.append('ownership')
+
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy,
+                            before_resume=before_resume)
+    try:
+        assert [event for event in api.events
+                if event in ('create', 'assign', 'query', 'ownership', 'resume')] == [
+                    'create', 'assign', 'query', 'ownership', 'resume']
+        assert seen == [(1, False, False)]      # verified once, not resumed, still suspended
+        assert hooked == [child]                # and it is the same child Core gets back
+        assert api.events.count('resume') == 1
+        assert child.resumed is True
+    finally:
+        child.terminate()
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize('fault', [OSError('disk failed'),
+                                   mxc.MxcUnavailable('ledger refused'),
+                                   ValueError('bad ownership fact')])
+def test_an_ownership_seam_that_fails_never_resumes(fault):
+    """A ledger that cannot take the ownership facts stops the launch: the suspended
+    child is terminated, the thread is never resumed, no handle is left open."""
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+
+    def before_resume(child):
+        raise fault
+
+    with pytest.raises(type(fault)):
+        transport.start('core-job', ['C:\\cmd.exe', path], policy=policy,
+                        before_resume=before_resume)
+    assert 'resume' not in api.events
+    assert api.events.count('kill') == 1
+    assert api.handles == {}
+
+
+def test_a_caller_with_no_seam_gets_the_same_order():
+    api = FakeWin32()
+    transport, policy, path = setup(api)
+    child = transport.start('core-job', ['C:\\cmd.exe', path], policy=policy)
+    try:
+        assert 'ownership' not in api.events
+        assert [event for event in api.events
+                if event in ('create', 'assign', 'query', 'resume')] == [
+                    'create', 'assign', 'query', 'resume']
+    finally:
+        child.terminate()
+    assert api.handles == {}

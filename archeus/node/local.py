@@ -23,7 +23,6 @@ import stat
 import subprocess
 import threading
 import time
-from typing import TYPE_CHECKING
 
 from claude_sessions import config, proc
 
@@ -35,9 +34,7 @@ from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
 from . import linkscan
-
-if TYPE_CHECKING:
-    from . import mxc
+from . import mxc, mxc_ledger, mxc_native
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
 #: user's own config is never written, only this one command's (T-078)
@@ -151,24 +148,71 @@ class StoreError(OSError):
     """A store, its pin or a Git call cannot be trusted: refused, nothing kept back."""
 
 
-class MxcLaunch:
-    """An explicitly injected launch, shared by agent and verifier adapters.
+#: how long an ended execution gets to empty its Job before the end is called
+#: unverified (audit §2 'Cancellation': an empty Job is a reading, never a proof)
+MXC_QUIESCENCE_WAIT_S = 5.0
+MXC_QUIESCENCE_POLL_S = 0.05
+#: the ledger's own rule for a journal name: an execution Core could not reconcile
+#: afterwards is not started at all
+_MXC_EXECUTION_ID = re.compile(r'[A-Za-z0-9_-]+')
 
-    The caller retains Job ownership, admission, identity validation and teardown.
-    UNVERIFIED: native workload-result framing is not frozen. The outcome reader
-    must be Core-owned and bound to this process, never an execution-written file.
-    Native streaming/cancellation, identity readback, suspended Job assignment and
-    disposal remain UNVERIFIED; this wrapper supplies none of those authorities.
+
+class MxcLaunch:
+    """One MXC execution, wired to the native transport and to Core's ledger.
+
+    Everything it can touch is injected: the Win32 api, Core's boundary, the ledger,
+    the pinned schema validator, the broker, the resource reader, the clock. With no
+    ledger it stays the thin wrapper it was (an injected backend plus an outcome
+    reader); with one, a launch is a journalled sequence and this is the only order it
+    may take (audit §2 'Lifecycle gaps', slices 5, 6, 8):
+
+        intent (flushed) -> create suspended -> PID and creation time read ->
+        assigned to the Job -> membership verified -> ownership (flushed) ->
+        resumed exactly once
+
+    The resume is reached only past a durable ownership record: a ledger write that
+    fails leaves the suspended child terminated, never resumed, every handle closed.
+    Ending follows the audit's cancellation order — revoke the broker admission, end
+    the whole Job, wait a bounded time for quiescence, then record the completion or
+    the quarantine.
+
+    The caller still retains Job creation, admission, identity validation, and the
+    teardown of anything this object never started.
+
+    UNVERIFIED: native workload-result framing is not frozen. The outcome reader must
+    be Core-owned and bound to this process, never an execution-written file, and a
+    missing or unverified outcome never reports success. The MXC contract supplies no
+    owned-resource disposal or read-back call, so none is invented: only an injected
+    reader can make an end clean, and without one the end is quarantined.
     """
 
-    def __init__(self, *, backend, sdk_root, pins, outcome, workspace, readonly=(),
-                 denied=(), cwd, command_line, env=None, timeout_ms):
+    def __init__(self, *, backend=None, sdk_root, pins, outcome, workspace, readonly=(),
+                 denied=(), cwd, command_line, env=None, timeout_ms, api=None,
+                 boundary=None, ledger=None, schema_validator=None, execution_id=None,
+                 broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
+                 pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S):
         if not callable(outcome):
             raise staging.StageError('MXC requires a Core-owned outcome reader')
-        self.backend = backend
-        self.sdk_root = sdk_root
+        native = any(part is not None for part in (api, boundary, ledger, schema_validator))
+        if native:
+            if backend is not None:
+                raise staging.StageError('MXC launch takes the native parts or a backend, '
+                                         'not both')
+            if api is None or boundary is None or ledger is None or schema_validator is None:
+                raise staging.StageError('a journalled MXC launch needs the api, the boundary, '
+                                         'the ledger and the pinned schema validator')
+            if not isinstance(execution_id, str) or not _MXC_EXECUTION_ID.fullmatch(execution_id):
+                raise staging.StageError('MXC launch needs an execution id the ledger can name')
+            # one transport, built from the injected parts and nothing else
+            backend = mxc_native.Backend(api, boundary, schema_validator)
+        elif backend is None:
+            raise staging.StageError('MXC launch needs an explicitly injected backend')
+        self.backend, self.boundary, self.ledger = backend, boundary, ledger
+        self.broker, self.resource_reader, self.disposal = broker, resource_reader, disposal
+        self.execution_id, self.clock, self.pause = execution_id, clock, pause
+        self.quiescence_wait = quiescence_wait
+        self.sdk_root, self.outcome = sdk_root, outcome
         self.pins = dict(pins)
-        self.outcome = outcome
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
         linkscan.check_grants((workspace,) + readonly, staging.StageError)
@@ -177,24 +221,76 @@ class MxcLaunch:
             workspace=workspace, readonly=readonly, denied=denied, cwd=cwd,
             command_line=command_line, env=dict(env or {}), timeout_ms=timeout_ms,
             ui=False, egress='deny', proxy_url=None)
-        self.process = None
-        self._started = False
-        self.launcher_exit = None
+        self.process, self.job = None, None
+        self.launcher_exit, self.completed, self.end_state = None, None, None
+        self._started = self._ended = self._job_closed = False
+        self._end_lock = threading.Lock()
+        self._digest = None
+
+    # ── the journalled start ──
 
     def start(self, *, job):
         if self._started:
             raise staging.StageError('MXC launch already consumed')
         if job is None:
             raise staging.StageError('MXC requires a Core-held Job')
+        if self.ledger is not None and self.execution_id in self.ledger.journals():
+            # a journal means this execution id already ran, or half-ran: reconciled at
+            # restart, never re-adopted by starting it a second time
+            raise staging.StageError('MXC execution id already has a ledger journal')
         exe = staging.verify_mxc(self.sdk_root, pins=self.pins)
         fs = self.policy.raw['filesystem']
-        linkscan.check_grants(tuple(fs.get('readwritePaths', ()))
-                              + tuple(fs.get('readonlyPaths', ())), staging.StageError)
-        staging.scan_grants(tuple(fs.get('readwritePaths', ()))
-                            + tuple(fs.get('readonlyPaths', ())))
-        self._started = True
-        self.process = self.backend.spawn(self.policy, exe=exe, job=job)
+        grants = tuple(fs.get('readwritePaths', ())) + tuple(fs.get('readonlyPaths', ()))
+        linkscan.check_grants(grants, staging.StageError)
+        staging.scan_grants(grants)
+        self._started, self.job = True, job
+        try:
+            self._record_intent()                     # (1) durable before anything is created
+            self.process = self.backend.spawn(self.policy, exe=exe, job=job, **self._seam())
+        except BaseException:
+            # whatever got created is ended here, and the fault is the caller's to report
+            self._end(reason='launch failed', outcome=None)
+            raise
         return self
+
+    def _seam(self):
+        """The one hook the transport owes the ledger, passed only when there is a ledger
+        to write: a backend with no journal has no ownership fact to make durable."""
+        return {} if self.ledger is None else {'before_resume': self._record_ownership}
+
+    def _requested_digest(self):
+        """The digest of the *requested* policy, in the ledger's own canonical form:
+        requested is what Core asked for, never what the backend answered."""
+        if self._digest is None:
+            self._digest = hashlib.sha256(mxc_ledger._json(self.policy.raw)).hexdigest()
+        return self._digest
+
+    def _record_intent(self):
+        """(1) The create intent is on disk before anything is created: a lost create
+        reply is then a restart reconciliation, never a process nobody saw."""
+        if self.ledger is None:
+            return
+        self.ledger.append(self.execution_id, 'intent',
+                           requested_policy_digest=self._requested_digest(),
+                           planned=[str(path) for key in ('readwritePaths', 'readonlyPaths',
+                                                           'deniedPaths')
+                                    for path in self.policy.raw['filesystem'].get(key, ())],
+                           applied=[], observed={})
+
+    def _record_ownership(self, child):
+        """(6) The transport calls this after membership was verified and before it
+        resumes: the launcher runs only once this write is flushed, and a ledger that
+        cannot take it means the child is terminated instead. UNVERIFIED: no owned MXC
+        resource can be read back, so applied, observed and owned stay empty rather
+        than reporting the requested inventory as an answer from the backend."""
+        if self.ledger is None:
+            return
+        self.ledger.append(self.execution_id, 'ownership', pid=child.pid,
+                           create_time=child.create_time,
+                           requested_policy_digest=self._requested_digest(),
+                           applied=[], observed={}, owned=[])
+
+    # ── the streams, and the two exits that are never mixed up ──
 
     @property
     def pid(self):
@@ -215,16 +311,147 @@ class MxcLaunch:
     def terminate(self):
         self.process.terminate()
 
-    def wait(self, timeout=None):
+    def wait(self, timeout=None, *, cancelled=None):
+        """The launcher exit and the workload outcome are two readings, kept apart: the
+        first is the transport's own, the second comes only from the Core-owned reader.
+        Anything that stops the drain first ends the execution instead."""
         if self.process is None:
             raise staging.StageError('MXC launch has not started')
-        self.launcher_exit = self.process.wait(timeout)
+        try:
+            self.launcher_exit = (self.process.wait(timeout, cancelled=cancelled)
+                                  if cancelled is not None else self.process.wait(timeout))
+        except BaseException:
+            self._end(reason='launcher ended during the drain', outcome=None)
+            raise
         if type(self.launcher_exit) is not int:
+            self._end(reason='launcher never exited', outcome=None)
             raise staging.StageError('MXC launcher has not exited')
         code = self.outcome(self.process)
         if type(code) is not int:
+            # launcher 0 is the launcher's own report, and says nothing about the workload
+            self._end(reason='launcher exited without a workload outcome', outcome=None)
             raise staging.StageError('MXC workload outcome is unavailable')
+        self.completed = code
+        self._end(reason='launcher exited', outcome=code)
         return code
+
+    def cancel(self, *, reason='cancelled', outcome=None):
+        """Stop an execution and say how far the stop was verified. Idempotent: a second
+        call reports the first ending instead of ending anything twice."""
+        return self._end(reason=reason, outcome=outcome)
+
+    # ── the ending, in the order the audit froze (audit §2 'Cancellation') ──
+
+    def _end(self, *, reason, outcome):
+        with self._end_lock:                                 # cancel and the drain race here
+            if self._ended:
+                return self.end_state
+            self._ended = True
+            faults = []
+            for step in (self._revoke, self._close_job, self._close_handles):
+                try:
+                    step()
+                except Exception as err:                     # a failed step never skips the next
+                    faults.append(type(err).__name__)
+            why = ('an ending step failed: %s' % ', '.join(faults) if faults
+                   else self._quiescent())                   # bounded; unknown is never clean
+            state = self._settle(why=why, reason=reason, outcome=outcome)
+            self.end_state = {'state': state, 'reason': reason, 'quiescence': why}
+            return self.end_state
+
+    def _revoke(self):
+        if self.broker is not None:                          # admission first: no new request
+            self.broker.revoke(self.execution_id)
+
+    def _close_job(self):
+        if self.job is not None and self.boundary is not None and not self._job_closed:
+            self._job_closed = True                          # kill-on-close: the tree ends here
+            self.boundary.close_job(self.job)
+
+    def _close_handles(self):
+        close = getattr(self.process, 'close', None)         # our handles, never the Job's
+        if close is not None:
+            close()
+
+    def _quiescent(self):
+        """None once the Job reports no member within the bound, else why it is not.
+        UNVERIFIED: the boundary contract for reading a count once Core has closed its
+        handle — a boundary that cannot answer leaves the end unverified, it never
+        proves cleanliness (the same rule the isolation fence follows)."""
+        if self.boundary is None or self.job is None:
+            return 'no boundary Job was held to read'
+        count = getattr(self.boundary, 'job_active_processes', None)
+        if count is None:
+            return 'the boundary supplies no Job process count'
+        deadline = self.clock() + self.quiescence_wait
+        while True:
+            try:
+                n = count(self.job)
+            except Exception as err:
+                return 'the Job count failed: %s' % type(err).__name__
+            if type(n) is int and n == 0:
+                return None
+            if self.clock() >= deadline:
+                return 'the Job answered %r, not zero members' % (n,)
+            self.pause(MXC_QUIESCENCE_POLL_S)
+
+    def _settle(self, *, why, reason, outcome):
+        """A completion is recorded only for an execution whose tree quiesced, whose
+        owned resources an injected reader verified absent, and whose workload outcome
+        was observed. Every other ending is quarantined (DEAD_UNVERIFIED)."""
+        if self.ledger is None:
+            return (mxc_ledger.DEAD_CLEAN if why is None and outcome is not None
+                    else mxc_ledger.DEAD_UNVERIFIED)
+        if why is not None:
+            self._quarantine(why)
+            return mxc_ledger.DEAD_UNVERIFIED
+        if outcome is None:
+            self._quarantine('no workload outcome was observed (%s)' % reason)
+            return mxc_ledger.DEAD_UNVERIFIED
+        try:
+            self.ledger.dispose(self.execution_id, self._dispose, self._absent)
+        except Exception as err:
+            self._quarantine('disposal unverified: %s' % type(err).__name__)
+            return mxc_ledger.DEAD_UNVERIFIED
+        try:
+            self.ledger.complete(self.execution_id, outcome)
+        except Exception as err:
+            self._quarantine('completion unrecorded: %s' % type(err).__name__)
+            return mxc_ledger.DEAD_UNVERIFIED
+        return mxc_ledger.DEAD_CLEAN
+
+    def _dispose(self, owner):
+        """The MXC contract names no owned-resource disposal call, so none is invented;
+        an injected disposal step is Core's to supply (slice 8 stays blocked)."""
+        if self.disposal is not None:
+            self.disposal(owner)
+
+    def _absent(self, owner):
+        """Absence is only ever what the injected reader verifies (it receives the
+        returned ownership, never the planned grants). An empty Job is not disposal
+        verified: with no reader, or any answer but True, this end is not clean."""
+        if self.resource_reader is None:
+            return False
+        return self.resource_reader(self.execution_id, owner) is True
+
+    def _quarantine(self, why):
+        """The evidence that an end was not verified. The quarantine is written once, and
+        a quarantine that cannot be written never turns an unverified end into a clean
+        one: the state stays DEAD_UNVERIFIED either way."""
+        if self.ledger is None or self._quarantined():
+            return
+        try:
+            self.ledger.append(self.execution_id, 'quarantine',
+                               reason=str(why)[:200] or 'end unverified')
+        except Exception:
+            pass                                       # the ledger keeps what it could
+
+    def _quarantined(self):
+        if self.ledger is None:
+            return True
+        rows, invalid = mxc_ledger.read_records(
+            self.ledger.journals().get(self.execution_id, b''), self.execution_id)
+        return invalid or any(row['op'] == 'quarantine' for row in rows)
 
 
 class LocalNode:

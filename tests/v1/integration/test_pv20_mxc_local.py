@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from archeus.node import linkscan, local, staging
+from archeus.node import linkscan, local, mxc_ledger, staging
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,7 @@ class FakeMxc:
     def __init__(self, launcher_exit=0):
         self.process = FakeProcess(launcher_exit)
         self.calls = []
+        self.events = []
 
     def compile_policy(self, *, workspace, readonly=(), denied=(), cwd,
                        command_line, env=None, timeout_ms, ui=False,
@@ -44,8 +45,14 @@ class FakeMxc:
         return MxcPolicy({'filesystem': {'readwritePaths': [workspace],
                                         'readonlyPaths': list(readonly)}})
 
-    def spawn(self, policy, *, exe, job):
+    def spawn(self, policy, *, exe, job, before_resume=None):
         self.calls.append(('spawn', exe, job))
+        # the ordering the transport owes the ledger: membership verified, the ownership
+        # seam, then the single resume (mxc.FakeMxc follows the same contract)
+        self.events.extend(('create_suspended', 'assign_job', 'verify_job'))
+        if before_resume is not None:
+            before_resume(self.process)
+        self.events.append('resume')
         return self.process
 
 
@@ -186,6 +193,43 @@ def test_spawn_failure_never_retries_or_falls_back(launch_args):
         launch.start(job=object())
     with pytest.raises(staging.StageError, match='consumed'):
         launch.start(job=object())
+
+
+def test_a_backend_without_a_ledger_is_asked_for_no_ownership_hook(launch_args):
+    """The wiring the ledger owes the transport is only owed when there is a ledger:
+    with an injected backend and no journal, no ownership fact is promised, nothing is
+    journalled, and an ending that cannot read a Job says so."""
+    backend = FakeMxc()
+    hooks = []
+    real = backend.spawn
+
+    def spawn(policy, *, exe, job, before_resume=None):
+        hooks.append(before_resume)
+        return real(policy, exe=exe, job=job)
+
+    backend.spawn = spawn
+    launch = local.MxcLaunch(backend=backend, outcome=lambda p: 0, **launch_args)
+    launch.start(job=object())
+    assert hooks == [None]
+    assert backend.events == ['create_suspended', 'assign_job', 'verify_job', 'resume']
+    assert launch.wait() == 0
+    assert launch.completed == 0 and launch.launcher_exit == 0
+    assert launch.end_state == {'state': mxc_ledger.DEAD_UNVERIFIED,
+                                'reason': 'launcher exited',
+                                'quiescence': 'no boundary Job was held to read'}
+
+
+def test_cancel_reports_what_it_could_not_verify(launch_args):
+    """A cancel is the same ending as a timeout, and with no boundary to end and no
+    reader to believe it is honest about being unverified rather than clean."""
+    launch = local.MxcLaunch(backend=FakeMxc(None), outcome=lambda p: 0, **launch_args)
+    launch.start(job=object())
+    state = launch.cancel(reason='host timeout')
+    assert state['state'] == mxc_ledger.DEAD_UNVERIFIED
+    assert state['reason'] == 'host timeout'
+    assert state['quiescence'] == 'no boundary Job was held to read'
+    assert launch.cancel() is state
+    assert launch.completed is None and launch.launcher_exit is None
 
 
 def test_outcome_reader_required_before_any_backend_call(launch_args):

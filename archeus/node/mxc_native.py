@@ -54,7 +54,16 @@ class Transport:
         self._policies[path] = handle
         return path
 
-    def start(self, job, argv, *, policy, policy_path=None):
+    def start(self, job, argv, *, policy, policy_path=None, before_resume=None):
+        """Create suspended, assign, verify membership, then resume exactly once.
+
+        `before_resume` is the ownership seam: the ledger builder must make the
+        ownership facts durable before the launcher can run, and it is the only thing
+        allowed between the membership verification and the resume. A hook that raises
+        takes the same path as any other fault here: the suspended child is terminated,
+        never resumed, and every handle is closed. It is a parameter and not a second
+        code path, so a caller with no ledger still gets this same ordering.
+        """
         if job is None:
             raise MxcUnavailable('Core-held Job required')
         child = self.create_suspended(argv, policy=policy, policy_path=policy_path)
@@ -62,6 +71,8 @@ class Transport:
             self.assign_job(job, child)
             if self.in_job(job, child) is not True:
                 raise MxcUnavailable('launcher Job membership unverified')
+            if before_resume is not None:
+                before_resume(child)
             self.resume(child)
         except BaseException:
             child.terminate()

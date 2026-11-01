@@ -269,7 +269,12 @@ class NativeMxc:
     def __init__(self, transport, schema_validator):
         self.transport, self.schema_validator = transport, schema_validator
 
-    def spawn(self, policy, *, exe, job):
+    def spawn(self, policy, *, exe, job, before_resume=None):
+        """The seam the ledger needs: `before_resume` runs after membership has been
+        verified and before the single resume, so the ownership facts are durable
+        before the launcher can run. A hook that raises never resumes: the suspended
+        child is terminated and retained for Core to quarantine, exactly as for any
+        other fault in this sequence."""
         if not NATIVE_RUN_ENABLED:
             raise MxcUnavailable('native MXC execution disabled')
         validate_policy(policy)
@@ -285,6 +290,8 @@ class NativeMxc:
             self.transport.assign_job(job, child)
             if self.transport.in_job(job, child) is not True:
                 raise MxcUnavailable('launcher Job membership unverified')
+            if before_resume is not None:
+                before_resume(child)
             if self.transport.resume(child) != 1:
                 raise MxcUnavailable('launcher did not resume exactly once')
         except Exception as err:
@@ -344,7 +351,7 @@ class FakeMxc:
         self.calls = []
         self.events = []
 
-    def spawn(self, policy, *, exe, job):
+    def spawn(self, policy, *, exe, job, before_resume=None):
         validate_policy(policy)
         if job is None:
             raise MxcUnavailable('Core-held Job required')
@@ -353,5 +360,9 @@ class FakeMxc:
             raise outcome
         proc = FakeProcess(outcome, 1000 + len(self.calls))
         self.calls.append((policy, exe, job))
-        self.events.extend(('create_suspended', 'assign_job', 'verify_job', 'resume'))
+        # the same ordering the transport owes: ownership is recorded before the resume
+        self.events.extend(('create_suspended', 'assign_job', 'verify_job'))
+        if before_resume is not None:
+            before_resume(proc)
+        self.events.append('resume')
         return proc
