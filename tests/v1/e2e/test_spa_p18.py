@@ -16,7 +16,7 @@ from claude_sessions import proc
 from v1.judge.http import TempCore
 from v1.judge.support import FixtureRepo
 
-from .conftest import wait
+from .conftest import need, wait
 from .test_spa_p16 import AXE, Checks, _go, _mission, _open, _settled
 
 SLOW = {'work': [{'emit': {'type': 'working'}}, {'emit': {'type': 'working'}},
@@ -294,8 +294,7 @@ def test_closing_the_inspector_returns_to_the_canvas_and_a_pin_is_never_stored(b
 
 def test_axe_and_no_sideways_scroll_on_the_graph(browser, core):
     """A18-27: axe-core finds nothing serious; nothing overflows at 768-1920."""
-    if not os.path.isfile(AXE):
-        pytest.skip('axe-core is not installed (npm ci in clients/app)')
+    need(os.path.isfile(AXE), 'axe-core is not installed (npm ci in clients/app)')
     mid = _mission(core, 'Accessible graph')
     _settled(core, mid, 'COMPLETED')
     for width in (768, 1280, 1920):

@@ -18,7 +18,7 @@ from archeus.harnesses.fake import FakeHarness
 from claude_sessions import proc
 from v1.judge.http import TempCore, request
 
-from .conftest import wait
+from .conftest import need, wait
 from .motion import watch
 
 APP = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'clients', 'app')
@@ -320,8 +320,7 @@ AXE = os.path.join(APP, 'node_modules', 'axe-core', 'axe.min.js')
 
 
 def test_axe_finds_no_serious_or_critical_violation(browser, deploy):
-    if not os.path.isfile(AXE):
-        pytest.skip('axe-core is not installed (npm ci in clients/app)')
+    need(os.path.isfile(AXE), 'axe-core is not installed (npm ci in clients/app)')
     mid = _mission(deploy, 'Accessible')
     _settled(deploy, mid, 'APPROVAL_REQUIRED')
     context, page, _errors = _open(browser, deploy, bypass_csp=True)
