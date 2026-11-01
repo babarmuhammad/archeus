@@ -327,6 +327,20 @@ def test_which_ignores_the_current_directory_and_returns_an_absolute_path(monkey
     assert os.path.isabs(hit) and os.path.dirname(hit) == str(good)
 
 
+@pytest.mark.parametrize('pathext', ['.COM;.EXE;.BAT;.CMD;', '', ';', '.EXE;;.CMD'])
+def test_which_finds_the_exe_whatever_the_pathext_ends_with(monkeypatch, tmp_path, pathext):
+    """An empty PATHEXT entry made every name end with an extension, so a bare
+    `claude` matched no file and the harness read as not installed (R8)."""
+    from claude_sessions import proc
+    (tmp_path / 'claude.exe').write_text('')
+    (tmp_path / 'claude.exe').chmod(0o755)
+    monkeypatch.setattr(proc, 'WINDOWS', True)
+    monkeypatch.setenv('PATH', str(tmp_path))
+    monkeypatch.setenv('PATHEXT', pathext)
+    hit = proc.which('claude')
+    assert hit and os.path.basename(hit).lower() == 'claude.exe'
+
+
 def test_the_claude_adapter_does_not_resolve_claude_from_the_current_directory(
         monkeypatch, tmp_path):
     from archeus.harnesses.claude_code.adapter import ClaudeCodeAdapter

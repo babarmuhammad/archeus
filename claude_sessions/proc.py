@@ -548,7 +548,9 @@ def which(name):
     run that checkout's `claude.exe` or `pi.cmd`."""
     exts = ['']
     if WINDOWS:
-        pathext = os.environ.get('PATHEXT', '.COM;.EXE;.BAT;.CMD').lower().split(';')
+        # an empty entry (a trailing ';') would match every name as already suffixed
+        pathext = ([e for e in os.environ.get('PATHEXT', '').lower().split(';') if e]
+                   or ['.com', '.exe', '.bat', '.cmd'])
         exts = [''] if name.lower().endswith(tuple(pathext)) else pathext
     for d in filter(None, os.environ.get('PATH', '').split(os.pathsep)):
         for e in exts:
