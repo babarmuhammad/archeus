@@ -100,6 +100,8 @@ def _attest(
     clock: "Callable[[], float]",
     launcher: str = DEFAULT_LAUNCHER,
 ) -> AttestResult:
+    if isinstance(remote_port, bool) or not isinstance(remote_port, int):
+        return AttestResult(False, None, (MALFORMED_OWNER,))
     try:
         owner = resolve_owner(remote_port)
     except Exception:
@@ -172,7 +174,7 @@ def binding_valid(
         now = float(clock())
     except Exception:
         return AttestResult(False, None, (READER_ERROR,))
-    if not _finite(now) or not (now - binding.accepted_at <= max_age_s):
+    if not _finite(now) or not (0 <= now - binding.accepted_at <= max_age_s):
         return AttestResult(False, None, (EXPIRED,))
 
     try:
@@ -222,7 +224,8 @@ def _user_failures(info: ProcessInfo, launcher: str) -> "list[str]":
 
 
 def _launcher_missing(ancestors: object, launcher: str) -> "str | None":
-    if not isinstance(ancestors, tuple) or not all(isinstance(a, str) for a in ancestors):
+    if (not isinstance(launcher, str) or not isinstance(ancestors, tuple)
+            or not all(isinstance(a, str) for a in ancestors)):
         return MALFORMED
     if launcher.lower() not in tuple(a.lower() for a in ancestors):
         return LAUNCHER_UNPROVEN
@@ -230,7 +233,5 @@ def _launcher_missing(ancestors: object, launcher: str) -> "str | None":
 
 
 def _finite(value: object) -> bool:
-    try:
-        return math.isfinite(float(value))  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return False
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value))

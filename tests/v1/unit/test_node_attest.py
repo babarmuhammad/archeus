@@ -409,3 +409,39 @@ def test_a_filetime_creation_time_is_compared_exactly():
     info = ProcessInfo(alive=True, creation_time=bound + 1, ancestors=(LAUNCHER,), in_core_job=True)
     result = binding_valid(binding, read_process=lambda pid: info, clock=lambda: 0.0)
     assert result.failures == (CREATION_TIME_MISMATCH,)
+
+
+def test_a_rewound_clock_expires_the_binding():
+    # T-656#3: a negative age passed the `<= max_age_s` check
+    table = FakeTable()
+    binding = table.bind()
+    table.now = T0 - 100.0
+    result = table.recheck(binding, max_age_s=2.0)
+    assert not result.ok and result.failures == (EXPIRED,)
+
+
+@pytest.mark.parametrize('creation_time', ['100.0', True, b'1'])
+def test_a_creation_time_that_is_not_a_number_is_unreadable(creation_time):
+    # T-656#4, #8: float() coerced a string and True attested; the binding then held it
+    table = FakeTable()
+    table.set_process(creation_time=creation_time)
+    result = table.attest()
+    assert not result.ok and result.binding is None
+    assert result.failures == (CREATION_TIME_UNREADABLE,)
+
+
+def test_a_launcher_that_is_not_text_is_malformed_not_an_attribute_error():
+    # T-656#5
+    table = FakeTable()
+    result = attest_owner(remote_port=PORT, resolve_owner=table.resolve_owner,
+                          read_process=table.read_process, clock=table.clock, launcher=None)
+    assert not result.ok and result.failures == (MALFORMED,)
+
+
+@pytest.mark.parametrize('port', [(PORT, 1), '54321', True, None])
+def test_a_remote_port_that_is_not_an_int_is_malformed(port):
+    # T-656#9: it reached the owner resolver and the binding unchecked
+    table = FakeTable()
+    result = table.attest(port)
+    assert not result.ok and result.failures == (MALFORMED_OWNER,)
+    assert table.ports_queried == []
