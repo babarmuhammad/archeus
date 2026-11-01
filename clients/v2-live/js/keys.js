@@ -3,21 +3,11 @@
 import { h } from './dom.js';
 import { translate } from './i18n.js';
 import * as motion from './motion.js';
+import { overviewKey, KEYS, FOCUS_ORDER } from './keys-model.js';
+import { isPhone } from './viewport.js';
 
 const ROWS = 'a.mrow, button.tl-row, article.card[data-key]';
 const typing = (t) => !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-
-export const KEYS = [
-  ['j / k', 'Next and previous row in a list'],
-  ['Enter', 'Open the focused row, or do the primary action of the focused card'],
-  ['Space', 'The same as Enter on a row'],
-  ['Esc', 'Close the open help, menu, question or details sheet'],
-  ['Ctrl+K or Cmd+K', 'Search pages, actions and projects, and run them'],
-  ['?', 'Show or hide this list'],
-  ['Tab and Shift+Tab', 'Move between controls'],
-  ['/ in the chat bar', 'Open the command list; Up, Down, Tab, Enter and Esc work inside it']
-];
-export const FOCUS_ORDER = 'Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet, which takes focus when it opens and gives it back when it closes.';
 
 export function installKeys(ctx, app, page) {
   let help = null, from = null;
@@ -41,6 +31,8 @@ export function installKeys(ctx, app, page) {
       if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); e.stopImmediatePropagation(); closeHelp(); } else if (e.key === 'Tab') { e.preventDefault(); help.querySelector('button').focus(); }
       return;
     }
+    const view = overviewKey(e), sw = view && ctx.route.name === 'now' && !isPhone() && !typing(e.target) ? document.querySelector('[data-key="vs-' + view + '"]') : null;
+    if (sw) { e.preventDefault(); sw.click(); const on = document.querySelector('[data-key="vs-' + view + '"]'); if (on) on.focus({ preventScroll: true }); return; }
     if (e.ctrlKey || e.metaKey || e.altKey || typing(e.target) || ctx.route.name === 'terminal' || (e.target.closest && e.target.closest('.tui'))) return;
     if (e.key === '?') { e.preventDefault(); openHelp(); return; }
     const cur = document.activeElement && document.activeElement.closest ? document.activeElement.closest(ROWS) : null;

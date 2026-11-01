@@ -10,6 +10,7 @@ export const IT_S6 = {
   'The same as Enter on a row': 'Come Invio su una riga',
   'Close the open help, menu, question or details sheet': 'Chiude la guida, il menu, la domanda o il pannello dei dettagli aperto',
   'Show or hide this list': 'Mostra o nasconde questo elenco',
+  'Alt+1, Alt+2, Alt+3': 'Alt+1, Alt+2, Alt+3', 'On the Overview: Territories, Rings, Network': 'Nella panoramica: Territori, Anelli, Rete',
   'Tab and Shift+Tab': 'Tab e Maiusc+Tab', 'Move between controls': 'Passa da un controllo all’altro',
   '/ in the chat bar': '/ nella barra della chat', 'Open the command list; Up, Down, Tab, Enter and Esc work inside it': 'Apre l’elenco dei comandi; dentro funzionano Su, Giù, Tab, Invio e Esc',
   'Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet, which takes focus when it opens and gives it back when it closes.': 'Ordine del focus: barra degli strumenti, navigazione, pagina, barra della chat, barra in basso, poi il pannello dei dettagli, che prende il focus quando si apre e lo restituisce quando si chiude.',
