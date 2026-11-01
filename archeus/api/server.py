@@ -268,6 +268,8 @@ class Handler(BaseHTTPRequestHandler):
         self.evidence_acquired = False
         self.origin_backend = self.server.api.origin_backend
         self.origin_registry = self.server.api.origin_registry
+        if self.server.api.origin_enforcement_enabled:
+            self.transport_evidence()          # bound at accept, before the peer sends a byte
         super().setup()
 
     def finish(self):

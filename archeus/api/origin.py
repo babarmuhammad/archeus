@@ -10,7 +10,7 @@ test_backend_calls_are_time_bounded (tests/v1/integration/test_api_origin_transp
 from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Protocol
+from typing import Callable, Protocol
 
 ORIGIN_ENFORCEMENT_ENABLED = False
 
@@ -46,6 +46,39 @@ class OriginEvidence:
     process_binding: object | None = None
     accept_generation: str = ''
     reason: str = 'unavailable'
+
+
+#: The attestor's outside facts, all injected (T-456). Core owns no probe: the
+#: caller supplies the port -> owner and PID -> process observations and the
+#: clock the attestor runs on, so the accept-time binding and the per-request
+#: re-check are decided by the pure attestor against a fake table in a test and
+#: against the native tables on Windows. `launcher` or `max_age_s` left as None
+#: keeps the attestor's own default. A backend built without readers answers
+#: exactly as it does today: nothing changes before the native readers exist.
+@dataclass(frozen=True)
+class AttestationReaders:
+    resolve_owner: Callable
+    read_process: Callable
+    clock: Callable
+    launcher: "str | None" = None
+    max_age_s: "float | None" = None
+
+    def attest_kwargs(self, remote_port):
+        """The keyword arguments of one accept-time attestation of *remote_port*."""
+        kwargs = {'remote_port': remote_port, 'resolve_owner': self.resolve_owner,
+                  'read_process': self.read_process, 'clock': self.clock}
+        if self.launcher is not None:
+            kwargs['launcher'] = self.launcher
+        return kwargs
+
+    def recheck_kwargs(self):
+        """The keyword arguments of one re-check of an accept-time binding."""
+        kwargs = {'read_process': self.read_process, 'clock': self.clock}
+        if self.launcher is not None:
+            kwargs['launcher'] = self.launcher
+        if self.max_age_s is not None:
+            kwargs['max_age_s'] = self.max_age_s
+        return kwargs
 
 
 class OriginBackend(Protocol):
