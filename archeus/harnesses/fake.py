@@ -243,11 +243,12 @@ class FakeCaller:
         recorded = [r for r in queue if 'when' in r]
         reply = next((r for r in recorded if r['when'] in spec.prompt), None)
         if reply is None:
-            if recorded:        # a recording file: only its queue-less entries are a queue
-                queue = [r for r in queue if 'when' not in r]
-            queue = queue or [
+            # a recording file: only its queue-less entries are a queue
+            plain = [r for r in queue if 'when' not in r] or [
                 {'error': 'failed', 'detail': 'no scripted reply for %s' % spec.purpose}]
-            reply = queue.pop(0) if len(queue) > 1 else queue[0]
+            reply = plain[0]
+            if len(plain) > 1:
+                queue.remove(reply)
         if 'error' in reply:
             return base.CallResult(error=reply['error'], detail=reply.get('detail', ''))
         usage = dict(reply.get('usage') or {'tokens_in': 10, 'tokens_out': 5})
