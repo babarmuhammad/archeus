@@ -112,6 +112,8 @@ SITES = {
         (1, NOT_SECRET, 'an idempotency key'),
     ('archeus/cli/tui/screens.py', 'session_insp', 'uuid.uuid4'):
         (2, NOT_SECRET, 'the request ids of the Resume and Hand off actions'),
+    ('archeus/node/win32_mxc.py', 'Win32Api.protected_policy', 'uuid.uuid4'):
+        (1, NOT_SECRET, 'the name of a policy file in the private directory'),
 }
 #: every source in archeus/cli/main.py is an `os.urandom` idempotency key or request id
 CLI_KEYS = 'archeus/cli/main.py'
