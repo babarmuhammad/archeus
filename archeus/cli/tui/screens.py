@@ -1170,7 +1170,7 @@ def outcome(app, doc, m, mp):
                     ('forbidden_harnesses', 'Forbidden harnesses (comma-separated ids)', False),
                     ('preferred_accounts', 'Preferred accounts (comma-separated ids)', False),
                     ('forbidden_accounts', 'Forbidden accounts (comma-separated ids)', False),
-                    ('max_cost_band', 'Cost ceiling: low, medium or high (empty: unchanged)',
+                    ('max_cost_band', 'Cost ceiling: low, medium or high (empty: none)',
                      False)],
             reread=[endpoints.get_mission(m['id'])], ident='prefs:' + m['id'])
 

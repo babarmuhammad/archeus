@@ -232,7 +232,7 @@ function Outcome({ m }: { m: Mission }) {
 function ResourcePreferences({ m }: { m: Mission }) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ preferred_harnesses: '', forbidden_harnesses: '', preferred_accounts: '', forbidden_accounts: '', max_cost_band: '' });
-  const list = (s: string) => (s.trim() ? s.split(',').map((x) => x.trim()).filter(Boolean) : null);
+  const list = (s: string) => (s.trim() ? s.split(',').map((x) => x.trim()).filter(Boolean) : []);
   if (!open)
     return (
       <button type="button" className="btn link" onClick={() => setOpen(true)}>
@@ -251,7 +251,7 @@ function ResourcePreferences({ m }: { m: Mission }) {
       <label>
         Cost ceiling
         <select value={f.max_cost_band} onChange={(e) => setF({ ...f, max_cost_band: e.target.value })}>
-          <option value="">unchanged</option>
+          <option value="">none</option>
           <option value="low">low</option>
           <option value="medium">medium</option>
           <option value="high">high</option>
