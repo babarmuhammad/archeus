@@ -45,10 +45,16 @@ def _path(value):
         raise MxcUnavailable('policy paths must be absolute') from None
     if not _text(value) or not os.path.isabs(value):
         raise MxcUnavailable('policy paths must be absolute')
-    # commonpath raises across \?\, UNC and rooted forms, which would skip the overlap gates
-    if os.name == 'nt' and len(os.path.splitdrive(value)[0]) != 2:
-        raise MxcUnavailable('policy paths must be plain drive paths')
-    return os.path.normpath(value)
+    value = os.path.normpath(value)
+    if os.name == 'nt':
+        # commonpath raises across \?\, UNC and rooted forms, which would skip the overlap
+        # gates; Windows also resolves `ws.`, `ws ` and `ws::$INDEX_ALLOCATION` to `ws`, which
+        # those string comparisons read as another path
+        drive, rest = os.path.splitdrive(value)
+        if (not (len(drive) == 2 and drive[0].isascii() and drive[0].isalpha() and drive[1] == ':')
+                or ':' in rest or any(s[-1] in '. ' for s in rest.split('\\') if s)):
+            raise MxcUnavailable('policy paths must be plain drive paths')
+    return value
 
 
 def _within(path, parent):

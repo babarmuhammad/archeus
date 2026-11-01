@@ -618,6 +618,34 @@ def test_a_path_form_commonpath_cannot_compare_is_refused_not_skipped(tmp_path, 
         policy(tmp_path, readonly=[BS * 2 + 'localhost' + BS + 'C$' + BS + 'x'])
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='Windows path forms')
+@pytest.mark.parametrize('suffix', ['.', ' ', '..', '::$INDEX_ALLOCATION', ':stream', '. ', ' .'])
+def test_a_path_windows_resolves_to_another_path_never_passes_an_overlap_gate(tmp_path, suffix):
+    """`ws.`, `ws ` and `ws::$INDEX_ALLOCATION` are the directory `ws`, but the overlap
+    gates compare strings: a denied path spelled that way was ACCEPTED beside a writable
+    grant on `ws` itself (review R9)."""
+    work = tmp_path / 'work'
+    work.mkdir()
+    with pytest.raises(mxc.MxcUnavailable, match='plain drive paths'):
+        policy(tmp_path, denied=[str(work) + suffix])
+    with pytest.raises(mxc.MxcUnavailable, match='plain drive paths'):
+        policy(tmp_path, readonly=[str(work / ('sub' + suffix)) + BS + 'leaf'])
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows path forms')
+@pytest.mark.parametrize('form', ['1:' + BS + 'x', 'C::' + BS + 'x', BS + 'x'])
+def test_only_a_letter_and_a_colon_make_a_drive(form):
+    with pytest.raises(mxc.MxcUnavailable):
+        mxc._path(form)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows path forms')
+@pytest.mark.parametrize('form', ['C:' + BS + 'ws', 'c:/ws/./sub', 'C:' + BS + 'ws' + BS + 'a..b',
+                                  'C:' + BS + 'a' + BS + '..' + BS + 'ws', 'C:' + BS])
+def test_the_control_an_ordinary_drive_path_is_still_a_policy_path(form):
+    assert mxc._path(form) == os.path.normpath(form)
+
+
 def _staging_transport(events, resume=1):
     child = SimpleNamespace(terminate=lambda: events.append('terminate'),
                             wait=lambda timeout: None)

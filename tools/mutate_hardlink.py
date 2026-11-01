@@ -9,6 +9,7 @@ LOCAL = 'archeus/node/local.py'
 SCAN = 'archeus/node/linkscan.py'
 UNIT = 'tests/v1/unit/test_node_mxc.py::'
 LIVE = 'tests/v1/integration/test_pv20_mxc_local.py::'
+GAPS = 'tests/v1/unit/test_node_mxc_gaps.py::'
 
 MUTATIONS = [
     ('HL01', 'grant hardlink gate removed', [(MXC,
@@ -34,6 +35,18 @@ MUTATIONS = [
      'def spawn(policy: MxcPolicy, *, exe, job, backend=None, native_run=False) -> MxcProcess:\n'
      '    pass')],
      [UNIT + 'test_launch_rechecks_before_backend_validation']),
+    ('HL07', 'a policy path segment ending in a dot or space passes', [(MXC,
+     "or ':' in rest or any(s[-1] in '. ' for s in rest.split('\\\\') if s)):",
+     "or ':' in rest):")],
+     [GAPS + 'test_a_path_windows_resolves_to_another_path_never_passes_an_overlap_gate']),
+    ('HL08', 'a policy path stream syntax passes', [(MXC,
+     "or ':' in rest or any(s[-1] in '. ' for s in rest.split('\\\\') if s)):",
+     "or any(s[-1] in '. ' for s in rest.split('\\\\') if s)):")],
+     [GAPS + 'test_a_path_windows_resolves_to_another_path_never_passes_an_overlap_gate',
+      GAPS + 'test_only_a_letter_and_a_colon_make_a_drive']),
+    ('HL09', 'a policy path drive need not be a letter', [(MXC,
+     "drive[0].isascii() and drive[0].isalpha() and drive[1] == ':'", 'True')],
+     [GAPS + 'test_only_a_letter_and_a_colon_make_a_drive']),
 ]
 
 
