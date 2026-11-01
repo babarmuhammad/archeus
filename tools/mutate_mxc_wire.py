@@ -29,6 +29,7 @@ C = 'tests/v1/unit/test_mxc_wire_cancel.py::'
 D = 'tests/v1/unit/test_mxc_wire_watchdog.py::'
 U = 'tests/v1/unit/test_mxc_wire_dupstart.py::'
 V = 'tests/v1/unit/test_mxc_wire_review.py::'
+S = 'tests/v1/unit/test_mxc_wire_seed.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -58,8 +59,10 @@ MUTATIONS = [
      [W + 'test_the_seven_steps_happen_in_that_order']),
     ('W04', 'the create intent is journalled after the create', [(LOCAL,
      "            self._record_intent()                     # (1) durable before anything is "
-     "created\n            self.process = self.backend.spawn(self.policy, exe=exe, job=job, "
+     "created\n            if self.seed_stage is not None:\n                self.seed_stage()\n"
+     "            self.process = self.backend.spawn(self.policy, exe=exe, job=job, "
      "**self._seam())",
+     "            if self.seed_stage is not None:\n                self.seed_stage()\n"
      "            self.process = self.backend.spawn(self.policy, exe=exe, job=job, "
      "**self._seam())\n            self._record_intent()")],
      [W + 'test_the_create_intent_is_durable_before_the_create']),
@@ -194,8 +197,8 @@ MUTATIONS = [
      [D + 'test_a_watchdog_that_fired_ends_the_launch_not_clean',
       D + 'test_a_shared_watchdog_that_fired_is_never_a_clean_end']),
     ('W33', 'the Job is never recorded with the watchdog before the resume', [(LOCAL,
-     "        if self.watchdog is not None:                 # last: a refusal here still ends "
-     "the child",
+     "        if self.watchdog is not None:                 # a refusal here still ends the "
+     "child",
      "        if False:")],
      [D + 'test_the_job_is_recorded_before_the_resume_and_after_the_ownership']),
     ('W34', "one launch's clean end disarms a watchdog shared with other jobs", [(LOCAL,
@@ -232,6 +235,36 @@ MUTATIONS = [
      "        except ZeroDivisionError:\n            pass                                       "
      "# the ledger keeps what it could")],
      [V + 'test_a_ledger_that_cannot_be_read_at_the_end_still_ends_the_launch']),
+    ('W42', 'the seed is never staged before the child is made', [(LOCAL,
+     "            if self.seed_stage is not None:\n                self.seed_stage()",
+     "            if False:\n                self.seed_stage()")],
+     [S + 'test_the_stager_runs_after_the_intent_and_before_the_child_is_made',
+      S + 'test_the_real_wrappers_stage_and_recheck_a_seed_and_the_launch_ends_clean']),
+    ('W43', 'a stager that refuses is forgotten and the child is made anyway', [(LOCAL,
+     "                self.seed_stage()\n",
+     "                try:\n                    self.seed_stage()\n"
+     "                except Exception:\n                    pass\n")],
+     [S + 'test_a_stager_that_refuses_never_makes_the_child']),
+    ('W44', 'the seed is never re-checked before the resume', [(LOCAL,
+     "        if self.seed_recheck is not None:             # the very last act: the resume "
+     "follows",
+     "        if False:")],
+     [S + 'test_the_recheck_runs_after_the_ownership_and_just_before_the_resume',
+      S + 'test_a_seed_that_gained_a_second_name_before_the_resume_ends_not_clean']),
+    ('W45', 'a re-check that finds drift is forgotten and the child resumes', [(LOCAL,
+     "            self.seed_recheck()\n",
+     "            try:\n                self.seed_recheck()\n"
+     "            except Exception:\n                pass\n")],
+     [S + 'test_a_recheck_that_refuses_terminates_the_child_and_never_resumes',
+      S + 'test_a_seed_that_vanished_before_the_resume_ends_not_clean']),
+    ('W46', 'a stager is accepted without its re-check', [(LOCAL,
+     "        if (seed_stage is None) != (seed_recheck is None) or not (",
+     "        if False or not (")],
+     [S + 'test_a_stager_and_its_recheck_come_together']),
+    ('W47', 'a seed seam is accepted on a launch with no journal', [(LOCAL,
+     "                seed_stage is None or ledger is not None and callable(seed_stage)",
+     "                seed_stage is None or callable(seed_stage)")],
+     [S + 'test_a_seed_seam_without_a_journalled_launch_is_refused']),
 ]
 
 

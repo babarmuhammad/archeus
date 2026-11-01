@@ -221,7 +221,7 @@ class MxcLaunch:
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
-                 end_job=None, watchdog=None):
+                 end_job=None, watchdog=None, seed_stage=None, seed_recheck=None):
         if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
                 or quiescence_wait < 0):
             raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
@@ -234,6 +234,11 @@ class MxcLaunch:
         if ledger is None and (readback is not None or watchdog is not None):
             # both run in the ownership seam, which only a journalled launch has
             raise staging.StageError('a read-back or a watchdog needs a journalled launch')
+        if (seed_stage is None) != (seed_recheck is None) or not (
+                seed_stage is None or ledger is not None and callable(seed_stage)
+                and callable(seed_recheck)):
+            raise staging.StageError('a seed stager and its re-check come together and need a '
+                                     'journalled launch')
         if native:
             if backend is not None:
                 raise staging.StageError('MXC launch takes the native parts or a backend, '
@@ -255,6 +260,7 @@ class MxcLaunch:
         self.workload_reader, self.workload_expected = workload_reader, workload_expected
         self.bound, self.readback, self._resource = None, readback, None
         self._end_job, self.watchdog = end_job, watchdog
+        self.seed_stage, self.seed_recheck = seed_stage, seed_recheck
         self.verdict = self.facts = self._quiet_why = None
         self.pins = dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
@@ -309,6 +315,8 @@ class MxcLaunch:
         self._started, self.job = True, job
         try:
             self._record_intent()                     # (1) durable before anything is created
+            if self.seed_stage is not None:
+                self.seed_stage()
             self.process = self.backend.spawn(self.policy, exe=exe, job=job, **self._seam())
             if self._ended:                           # cancel() ran while the child was made
                 self.process.terminate()
@@ -365,9 +373,11 @@ class MxcLaunch:
                                     for res, acc in record.applied_grants],
                            observed=(mxc_resources.effective_policy(record)
                                      if record.observed is not None else {}), owned=[])
-        if self.watchdog is not None:                 # last: a refusal here still ends the child
+        if self.watchdog is not None:                 # a refusal here still ends the child
             self.watchdog.record({'execution_id': self.execution_id, 'pid': child.pid,
                                   'create_time': child.create_time, 'job_ref': self.job})
+        if self.seed_recheck is not None:             # the very last act: the resume follows
+            self.seed_recheck()
 
     def _resource_record(self, child):
         fs = self.policy.raw['filesystem']
