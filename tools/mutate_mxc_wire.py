@@ -25,6 +25,7 @@ N = 'tests/v1/unit/test_mxc_native.py::'
 L = 'tests/v1/integration/test_pv20_mxc_local.py::'
 O = 'tests/v1/unit/test_mxc_wire_outcome.py::'
 R = 'tests/v1/unit/test_mxc_wire_resources.py::'
+C = 'tests/v1/unit/test_mxc_wire_cancel.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -69,9 +70,9 @@ MUTATIONS = [
      [W + 'test_ending_follows_the_audited_order',
       W + 'test_a_verified_end_records_the_workload_outcome']),
     ('W07', 'the Job is closed before its count is read', [(LOCAL,
-     "        deadline = self.clock() + self.quiescence_wait",
+     "        limit = self.clock() + self.quiescence_wait",
      "        self.boundary.close_job(self.job)\n"
-     "        deadline = self.clock() + self.quiescence_wait")],
+     "        limit = self.clock() + self.quiescence_wait")],
      [W + 'test_the_count_is_read_through_an_open_handle_and_a_clean_end_is_reachable',
       W + 'test_ending_follows_the_audited_order']),
     ('W08', 'a second cancel ends the execution twice', [(LOCAL,
@@ -79,22 +80,25 @@ MUTATIONS = [
      "            if False:\n                return self.end_state")],
      [W + 'test_cancel_reports_the_first_ending_and_ends_nothing_twice']),
     ('W09', 'a Job count that cannot be read is taken for an empty Job', [(LOCAL,
-     "                return 'the Job count failed: %s' % type(err).__name__",
-     "                return None")],
+     "                self._quiet_why = 'the Job count failed: %s' % type(err).__name__\n"
+     "                raise",
+     "                self._quiet_why = 'the Job count failed: %s' % type(err).__name__\n"
+     "                return True")],
      [W + 'test_a_boundary_that_cannot_answer_leaves_the_end_unverified']),
     ('W10', 'whatever the Job answers is read as no members', [(LOCAL,
-     "            if type(n) is int and n == 0:\n                return None",
-     "            if True:\n                return None")],
+     "            if type(n) is int and n == 0:\n                return True",
+     "            if True:\n                return True")],
      [W + 'test_the_quiescence_wait_is_bounded_and_honest']),
     ('W11', 'the owned-resource read-back is not required to be verified', [(LOCAL,
-     "        return self.resource_reader(self.execution_id, owner) is True",
-     "        return True")],
+     "        if answer is True or (isinstance(answer, (list, tuple)) and answer):\n"
+     "            return answer",
+     "        if True:\n            return True")],
      [W + 'test_readback_that_is_not_verification_quarantines']),
     ('W12', 'a tree that never quiesced is completed anyway', [(LOCAL,
-     "        if why is not None:\n            self._quarantine(why)\n"
-     "            return mxc_ledger.DEAD_UNVERIFIED",
-     "        if False:\n            self._quarantine(why)\n"
-     "            return mxc_ledger.DEAD_UNVERIFIED")],
+     "                self._quiet_why = 'the Job answered %r, not zero members' % (n,)\n"
+     "                return False",
+     "                self._quiet_why = 'the Job answered %r, not zero members' % (n,)\n"
+     "                return True")],
      [W + 'test_the_quiescence_wait_is_bounded_and_honest']),
     ('W13', 'an unobserved workload outcome is completed anyway', [(LOCAL,
      "        if outcome is None:\n            self._quarantine('no workload outcome was "
@@ -133,19 +137,19 @@ MUTATIONS = [
      "            pass")],
      [W + 'test_no_reader_at_all_is_never_a_clean_end',
       W + 'test_a_fault_at_any_step_never_leaves_a_running_child']),
-    ('W22', 'a failed ending step is read as a clean one', [(LOCAL,
-     "            why = ('an ending step failed: %s' % ', '.join(faults) if faults\n"
-     "                   else self._quiescent())",
-     "            why = self._quiescent()")],
+    ('W22', 'a quarantined verdict is read as a clean end', [(LOCAL,
+     "            clean = self.verdict == mxc_cancel.DISPOSED_VERIFIED",
+     "            clean = self.verdict in (mxc_cancel.DISPOSED_VERIFIED,\n"
+     "                                     mxc_cancel.QUARANTINE_UNVERIFIED)")],
      [W + 'test_a_failing_ending_step_never_skips_the_next_and_is_never_clean']),
-    ('W23', 'a failed ending step stops the ending', [(LOCAL,
-     "            for step in (self._revoke, self._close_handles):",
-     "            for step in (self._revoke,):")],
+    ('W23', "the ending never closes the launch's own handles", [(LOCAL,
+     "self._revoke, self._end_job_step, self._wait_step,",
+     "self._revoke, lambda execution: None, self._wait_step,")],
      [W + 'test_a_failing_ending_step_never_skips_the_next_and_is_never_clean']),
     ('W24', "the launch closes the caller's Job, which the caller closes again", [(LOCAL,
-     "            state = self._settle(why=why, reason=reason, outcome=outcome)",
+     "            clean = self.verdict == mxc_cancel.DISPOSED_VERIFIED",
      "            self.boundary.close_job(self.job)\n"
-     "            state = self._settle(why=why, reason=reason, outcome=outcome)")],
+     "            clean = self.verdict == mxc_cancel.DISPOSED_VERIFIED")],
      [W + 'test_the_owner_closes_the_job_exactly_once_after_the_end']),
     ('W25', 'a torn or corrupt journal is taken as already quarantined', [(LOCAL,
      "        rows, _ = mxc_ledger.read_records(",
@@ -175,6 +179,13 @@ MUTATIONS = [
      "                if (other is not self and other._ledger_key() == self._ledger_key()",
      "                if (False and other._ledger_key() == self._ledger_key()")],
      [R + 'test_two_live_launches_never_share_a_process']),
+    ('W30', "the caller's callback is never asked to end the Job", [(LOCAL,
+     "                self._end_job(self.job)", "                pass")],
+     [C + 'test_the_steps_run_in_the_cancel_modules_order_on_an_open_job']),
+    ('W31', 'an empty list of owned resources is read as a verified read-back', [(LOCAL,
+     "        if answer is True or (isinstance(answer, (list, tuple)) and answer):",
+     "        if answer is True or isinstance(answer, (list, tuple)):")],
+     [C + 'test_only_true_or_a_list_of_owned_ids_answers_the_read_back']),
 ]
 
 

@@ -35,7 +35,7 @@ from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
 from . import linkscan
-from . import mxc, mxc_ledger, mxc_native, mxc_outcome, mxc_resources
+from . import mxc, mxc_cancel, mxc_ledger, mxc_native, mxc_outcome, mxc_resources
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
 #: user's own config is never written, only this one command's (T-078)
@@ -153,6 +153,9 @@ class StoreError(OSError):
 #: unverified (audit §2 'Cancellation': an empty Job is a reading, never a proof)
 MXC_QUIESCENCE_WAIT_S = 5.0
 MXC_QUIESCENCE_POLL_S = 0.05
+#: how long past the quiescence bound the whole ending may take before its read-back
+#: is no longer trusted (mxc_cancel reports it timed out)
+MXC_READBACK_WAIT_S = 30.0
 #: the ledger's own rule for a journal name: an execution Core could not reconcile
 #: afterwards is not started at all
 _MXC_EXECUTION_ID = re.compile(r'[A-Za-z0-9_-]+')
@@ -187,9 +190,10 @@ class MxcLaunch:
 
     The resume is reached only past a durable ownership record: a ledger write that
     fails leaves the suspended child terminated, never resumed, every handle closed.
-    Ending follows the audit's cancellation order — revoke the broker admission, wait a
-    bounded time for the Job to report no member, then record the completion or the
-    quarantine.
+    Ending is mxc_cancel's order and verdict — revoke the broker admission, end the Job
+    through the caller's `end_job` callback (it terminates the Job, it must not close it),
+    wait a bounded time for the Job to report no member, read the owned resources back,
+    then record the completion or the quarantine.
 
     The caller owns the Job from its creation to its close: this object reads the
     member count through the handle it was handed and never closes it, so the caller's
@@ -209,7 +213,8 @@ class MxcLaunch:
                  boundary=None, ledger=None, schema_validator=None, execution_id=None,
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
-                 workload_reader=None, workload_expected=None, readback=None):
+                 workload_reader=None, workload_expected=None, readback=None,
+                 end_job=None):
         if workload_reader is not None and not (callable(workload_reader)
                                                 and callable(workload_expected)):
             raise staging.StageError('a workload reader needs the identity this launch issued')
@@ -236,6 +241,8 @@ class MxcLaunch:
         self.sdk_root, self.outcome = sdk_root, outcome
         self.workload_reader, self.workload_expected = workload_reader, workload_expected
         self.bound, self.readback, self._resource = None, readback, None
+        self._end_job = end_job
+        self.verdict = self.facts = self._quiet_why = None
         self.pins = dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
@@ -438,91 +445,136 @@ class MxcLaunch:
     # ── the ending, in the order the audit froze (audit §2 'Cancellation') ──
 
     def _end(self, *, reason, outcome):
+        """The order and the verdict are mxc_cancel's: revoke, end the Job through the
+        caller's own callback, wait for quiescence through the open handle, read the
+        owned resources back, record. Only a verified disposal of an execution whose
+        workload outcome was observed ends clean; every other verdict is quarantined."""
         with self._end_lock:                                 # cancel and the drain race here
             if self._ended:
                 return self.end_state
             self._ended = True
-            faults = []
-            for step in (self._revoke, self._close_handles):
-                try:
-                    step()
-                except Exception as err:                     # a failed step never skips the next
-                    faults.append(type(err).__name__)
-            why = ('an ending step failed: %s' % ', '.join(faults) if faults
-                   else self._quiescent())                   # bounded; unknown is never clean
-            state = self._settle(why=why, reason=reason, outcome=outcome)
-            self.end_state = {'state': state, 'reason': reason, 'quiescence': why}
+            self._quiet_why = self.verdict = self.facts = None
+            fatal = None
+            try:
+                self.verdict = mxc_cancel.cancel(
+                    self.execution_id, self._revoke, self._end_job_step, self._wait_step,
+                    self._read_back_step,
+                    lambda execution, verdict, facts: self._record(verdict, facts, reason,
+                                                                   outcome),
+                    clock=self.clock, wait_s=self.quiescence_wait + MXC_READBACK_WAIT_S)
+            except BaseException as err:
+                self._quarantine('the ending did not finish: %s' % type(err).__name__)
+                fatal = None if isinstance(err, Exception) else err
+            clean = self.verdict == mxc_cancel.DISPOSED_VERIFIED
+            self.end_state = {'state': mxc_ledger.DEAD_CLEAN if clean
+                              else mxc_ledger.DEAD_UNVERIFIED,
+                              'reason': reason, 'quiescence': self._quiescence_text()}
+            if fatal is not None:
+                raise fatal
             return self.end_state
 
-    def _revoke(self):
+    def _revoke(self, execution=None):
         if self.broker is not None:                          # admission first: no new request
             self.broker.revoke(self.execution_id)
 
-    def _close_handles(self):
-        close = getattr(self.process, 'close', None)         # our handles, never the Job's
-        if close is not None:
-            close()
+    def _end_job_step(self, execution):
+        """The caller's own callback ends the tree (it must terminate the Job, never
+        close it: the count is still to be read through the open handle). Our handles
+        go whether or not it worked."""
+        try:
+            if self._end_job is not None and self.job is not None:
+                self._end_job(self.job)
+        finally:
+            close = getattr(self.process, 'close', None)     # our handles, never the Job's
+            if close is not None:
+                close()
 
-    def _quiescent(self):
-        """None once the Job reports no member within the bound, else why it is not.
-        The count is read through the caller's still open handle, as the isolation fence
-        does; a boundary that cannot answer leaves the end unverified, it never proves
+    def _wait_step(self, execution, deadline):
+        """True once the Job reports no member within the bound, False when it still
+        has some at the bound, and a raise when it cannot be read at all. The count is
+        read through the caller's still open handle, as the isolation fence does; a
+        boundary that cannot answer leaves the end unverified, it never proves
         cleanliness."""
+        self._quiet_why = None
         if self.boundary is None or self.job is None:
-            return 'no boundary Job was held to read'
+            self._quiet_why = 'no boundary Job was held to read'
+            raise OSError(self._quiet_why)
         count = getattr(self.boundary, 'job_active_processes', None)
         if count is None:
-            return 'the boundary supplies no Job process count'
-        deadline = self.clock() + self.quiescence_wait
+            self._quiet_why = 'the boundary supplies no Job process count'
+            raise OSError(self._quiet_why)
+        limit = self.clock() + self.quiescence_wait
         while True:
             try:
                 n = count(self.job)
             except Exception as err:
-                return 'the Job count failed: %s' % type(err).__name__
+                self._quiet_why = 'the Job count failed: %s' % type(err).__name__
+                raise
             if type(n) is int and n == 0:
-                return None
-            if self.clock() >= deadline:
-                return 'the Job answered %r, not zero members' % (n,)
+                return True
+            if self.clock() >= limit:
+                self._quiet_why = 'the Job answered %r, not zero members' % (n,)
+                return False
             self.pause(MXC_QUIESCENCE_POLL_S)
 
-    def _settle(self, *, why, reason, outcome):
-        """A completion is recorded only for an execution whose tree quiesced, whose
-        owned resources an injected reader verified absent, and whose workload outcome
-        was observed. Every other ending is quarantined (DEAD_UNVERIFIED)."""
+    def _read_back_step(self, execution):
+        """True only when the injected reader verified every owned resource absent: it
+        receives the returned ownership, never the planned grants. An empty Job is not
+        disposal verified: with no reader, or any answer but True or a list of what is
+        still owned, this end is not clean."""
         if self.ledger is None:
-            return (mxc_ledger.DEAD_CLEAN if why is None and outcome is not None
-                    else mxc_ledger.DEAD_UNVERIFIED)
-        if why is not None:
-            self._quarantine(why)
-            return mxc_ledger.DEAD_UNVERIFIED
+            return None
+        owner = self._owner()
+        if self.disposal is not None:
+            self.disposal(owner)
+        if self.resource_reader is None:
+            return None
+        answer = self.resource_reader(self.execution_id, owner)
+        if answer is True or (isinstance(answer, (list, tuple)) and answer):
+            return answer
+        return None
+
+    def _owner(self):
+        rows, invalid = mxc_ledger.read_records(
+            self.ledger.journals().get(self.execution_id, b''), self.execution_id)
+        if invalid or [row['op'] for row in rows] != ['intent', 'ownership']:
+            raise ValueError('verified ownership required')
+        return rows[-1]
+
+    def _record(self, verdict, facts, reason, outcome):
+        """What mxc_cancel asks to be persisted, and the verdict that really was. A
+        verified disposal is journalled only for an observed workload outcome; every
+        other ending is a quarantine, and a journal that refuses either write is one
+        too."""
+        if verdict is None:                      # the read of what is already on record
+            if self.ledger is None or not self._quarantined():
+                return None
+            return mxc_cancel.QUARANTINE_UNVERIFIED
+        self.facts = facts
+        if verdict != mxc_cancel.DISPOSED_VERIFIED:
+            self._quarantine('%s: %s' % (verdict, self._quiescence_text() or
+                                         ', '.join('%s %s' % item
+                                                   for item in sorted(facts['faults'].items()))
+                                         or 'not verified'))
+            return verdict
         if outcome is None:
             self._quarantine('no workload outcome was observed (%s)' % reason)
-            return mxc_ledger.DEAD_UNVERIFIED
+            return mxc_cancel.QUARANTINE_UNVERIFIED
         try:
-            self.ledger.dispose(self.execution_id, self._dispose, self._absent)
-        except Exception as err:
-            self._quarantine('disposal unverified: %s' % type(err).__name__)
-            return mxc_ledger.DEAD_UNVERIFIED
-        try:
+            self.ledger.append(self.execution_id, 'disposal', verified_absent=True)
             self.ledger.complete(self.execution_id, outcome)
         except Exception as err:
             self._quarantine('completion unrecorded: %s' % type(err).__name__)
-            return mxc_ledger.DEAD_UNVERIFIED
-        return mxc_ledger.DEAD_CLEAN
+            return mxc_cancel.QUARANTINE_UNVERIFIED
+        return verdict
 
-    def _dispose(self, owner):
-        """The MXC contract names no owned-resource disposal call, so none is invented;
-        an injected disposal step is Core's to supply (slice 8 stays blocked)."""
-        if self.disposal is not None:
-            self.disposal(owner)
-
-    def _absent(self, owner):
-        """Absence is only ever what the injected reader verifies (it receives the
-        returned ownership, never the planned grants). An empty Job is not disposal
-        verified: with no reader, or any answer but True, this end is not clean."""
-        if self.resource_reader is None:
-            return False
-        return self.resource_reader(self.execution_id, owner) is True
+    def _quiescence_text(self):
+        faults = (self.facts or {}).get('faults', {})
+        steps = ['%s %s' % (name, faults[name]) for name in ('revoke_admission', 'end_job')
+                 if name in faults]
+        parts = (['an ending step failed: %s' % ', '.join(steps)] if steps else []) + (
+            [self._quiet_why] if self._quiet_why else [])
+        return '; '.join(parts) or None
 
     def _quarantine(self, why):
         """The evidence that an end was not verified. The quarantine is written once, and
