@@ -8,7 +8,7 @@ import time
 import pytest
 
 from archeus.core.domain import ids
-from archeus.core.redact import redact
+from archeus.core.redact import PEM_MAX, redact, redact_json
 
 KEY = 'a1B2c3D4' * 4
 
@@ -73,8 +73,8 @@ def _walk(x):
         yield x
 
 
-# a secret as the last thing in a string is where a `\S+` or `\Z` tail used to
-# take the closing quote of the JSON with it
+# redact() is for free text. A JSON document goes through redact_json, which matches
+# the parsed strings, so no secret can cut a quote or an escape of the JSON
 @pytest.mark.parametrize('text', [
     'run curl -u admin:SYNTHhunter2', 'aws_secret_access_key=SYNTH0123',
     'export AWS_SECRET_ACCESS_KEY=$SYNTH', 'a key -----BEGIN PRIVATE KEY----- then SYNTHbase64',
@@ -84,53 +84,124 @@ def _walk(x):
 @pytest.mark.parametrize('opts', [{}, {'ensure_ascii': False}, {'separators': (',', ':')}])
 def test_a_secret_ending_a_string_never_breaks_the_json(text, opts):
     payload = {'text': text, 'list': [text, 1], 'n': {text: text}}
-    out = json.loads(redact(json.dumps(payload, **opts)))
+    out = json.loads(json.dumps(redact_json(payload), **opts))
     assert set(out) == {'text', 'list', 'n'} and '[redacted]' in out['text']
-    assert 'SYNTH' not in out['text']
-    again = json.loads(redact(json.dumps(redact(json.dumps(payload)))))
-    assert isinstance(again, str)
+    assert 'SYNTH' not in json.dumps(out)
 
 
 def test_a_quoted_aws_key_keeps_its_name_and_loses_its_value():
-    out = json.loads(redact(json.dumps({'env': {'aws_secret_access_key': 'SYNTH0123'}})))
+    out = redact_json({'env': {'aws_secret_access_key': 'SYNTH0123'}})
     assert out == {'env': {'aws_secret_access_key': '[redacted]'}}
     out = redact('aws_secret_access_key="SYNTH0123" next')
     assert 'SYNTH' not in out and out.endswith('" next')
 
 
-def test_redacting_any_dumped_payload_with_secrets_embedded_still_parses():
+def test_a_secret_named_by_its_key_is_redacted_in_a_document():
+    out = redact_json({'Authorization': 'Basic dXNlcjpTWU5USEVUSUM=', 'headers': [{'user': 'bob'}]})
+    assert out == {'Authorization': '[redacted]', 'headers': [{'user': 'bob'}]}
+
+
+def test_redact_json_keeps_every_other_value_and_redacts_keys_and_deep_strings():
+    doc = {'a': [1, 2.5, None, True, {'k': 'brk_' + 'Ab3-_' * 8}], 'brk_' + 'Zq9-_' * 8: 'v'}
+    out = redact_json(doc)
+    assert out['a'][:4] == [1, 2.5, None, True] and out['a'][4] == {'k': '[redacted]'}
+    assert list(out)[1] == '[redacted]' and 'Zq9' not in json.dumps(out)
+    deep = cur = []
+    for _ in range(5000):
+        cur.append([])
+        cur = cur[0]
+    cur.append('brk_' + 'Ab3-_' * 8)
+    out = redact_json(deep)
+    while out[0] != '[redacted]':
+        out = out[0]
+
+
+def test_redacting_any_payload_with_secrets_embedded_keeps_its_shape():
     rng = random.Random(20)
     secrets = [t for t, _ in LEAKS.values()] + [
         'curl -u a:SYNTH', 'aws_secret_access_key=SYNTH', '-----BEGIN PRIVATE KEY-----']
-    bits = secrets + ['"', '\\', '\\"', '\n', '\t', '{', '}', '[', ']', ',', ':', ' ', '\xe9', '\u2028',
-                      '\x00', 'plain', '://', '@', '-u ', '=', "'", '\\n', '\\\\']
+    bits = secrets + ['"', '\\', '\\"', '\n', '\t', '{', '}', '[', ']', ',', ':', ' ', '\xe9', chr(0x2028),
+                      '\x00', 'plain', '://', '@', '-u ', '=', "'", '\\n', '\\\\', '\r', '\b']
 
     def text():
         return ''.join(rng.choice(bits) for _ in range(rng.randint(0, 12)))
 
+    def shape(x):
+        if isinstance(x, dict):
+            return [shape(v) for v in x.values()]
+        return [shape(v) for v in x] if isinstance(x, list) else type(x)
+
     for _ in range(400):
         payload = {text(): [text(), {text(): text()}, rng.randint(0, 9), None, True]}
         for opts in ({}, {'ensure_ascii': False}, {'separators': (',', ':'), 'sort_keys': True}):
-            dumped = json.dumps(payload, **opts)
-            back = json.loads(redact(dumped))
-            assert len(list(_walk(back))) == len(list(_walk(payload)))
-            assert isinstance(json.loads(redact(json.dumps(dumped))), str)
+            back = json.loads(json.dumps(redact_json(payload), **opts))
+            assert shape(back) == shape(payload)
+
+
+# the three leaks of the review of fix batches 9 and 10 (F1, F2), and the quoting
+# an escaped string used to hide from the patterns
+_KEY = ['-----BEGIN OPENSSH PRIVATE KEY-----', 'QyNTUxOQAAACDsecretsecretsecretsecret',
+        '-----END OPENSSH PRIVATE KEY-----']
+
+
+@pytest.mark.parametrize('prefix', ['%6d→', 'web-1  | ', '> ', '# ', '[12:00] ', ''])
+def test_a_key_is_redacted_whatever_prefixes_its_lines(prefix):
+    text = '\n'.join((prefix % i if '%' in prefix else prefix) + line for i, line in enumerate(_KEY))
+    out = redact('before\n' + text + '\nafter')
+    assert 'secretsecret' not in out and out.startswith('before\n') and out.endswith('\nafter')
+
+
+@pytest.mark.parametrize('dumps', [0, 1, 2, 3, 4])
+def test_a_key_is_redacted_however_often_its_text_was_escaped(dumps):
+    text = '\n'.join(_KEY)
+    for _ in range(dumps):
+        text = json.dumps(text)
+    out = redact('x ' + text + ' tail')
+    assert 'secretsecret' not in out and out.endswith(' tail')
+
+
+def test_a_key_without_an_end_line_is_cut_at_the_bound_not_at_the_first_odd_character():
+    out = redact('-----BEGIN PRIVATE KEY-----\n→' + 'A' * PEM_MAX + 'tail-after-the-bound')
+    assert out == '[redacted]AAtail-after-the-bound'
+
+
+@pytest.mark.parametrize('before', ['\\n', '\\t', '\\r\\n', ' '])
+def test_a_token_after_a_literal_escape_is_still_at_a_left_edge(before):
+    jwt = 'eyJhbGciOiJTWU5USCJ9.eyJzdWIiOiJzeW50aCJ9.c3ludGhzaWc'
+    assert 'c3ludGhzaWc' not in redact('token:' + before + jwt)
+    assert 'c3ludGhzaWc' not in redact(json.dumps({'text': 'token:\n' + jwt}))
+    assert redact('xeyJabcde.b.c') == 'xeyJabcde.b.c'                   # still not mid-word
+    assert 'SYNTHpw' not in redact(before + '-u bob:SYNTHpw')
+
+
+def test_a_doubly_escaped_aws_secret_and_a_quoted_userinfo_password_are_redacted():
+    out = redact(json.dumps(json.dumps({'aws_secret_access_key': 'SYNTH0123', 'n': 1})))
+    assert 'SYNTH' not in out and 'aws_secret_access_key' in out
+    assert 'pa"ss' not in redact('postgres://admin:pa"ss@db/x') and 'db/x' in redact('postgres://admin:pa"ss@db/x')
 
 
 # the longest an input can make each pattern work: a start at every position, a
 # long run that fails at its end, or a run that backtracks
 _N = 120_000
 _WORST = {
-    'jwt': ['eyJ' * (_N // 3), 'eyJabcde.' + 'b' * _N, 'eyJabcde.' + 'a.' * (_N // 2), 'eyJabcde.' * (_N // 9)],
+    'jwt': ['eyJ' * (_N // 3), 'eyJabcde.' + 'b' * _N, 'eyJabcde.' + 'a.' * (_N // 2), 'eyJabcde.' * (_N // 9),
+            '\\n' * (_N // 2) + 'eyJ', 'eyJabcde.b.' * (_N // 12)],
     'pem': ['-----BEGIN PRIVATE KEY-----' * (_N // 27), '-----BEGIN ' + 'A' * _N,
             '-----BEGIN A' * (_N // 12), '-----BEGIN PRIVATE KEY-----' + 'ab \\n' * (_N // 5) + '\\"',
-            '-----BEGIN PRIVATE KEY-----' + '-----END ' * (_N // 9)],
+            '-----BEGIN PRIVATE KEY-----' + '-----END ' * (_N // 9),
+            '-----BEGIN PRIVATE KEY-----' + ('-----END ' + 'A' * 32) * (_N // 41),
+            '-----BEGIN PRIVATE KEY-----' + ('-----END ' + 'A' * 32 + ' ') * (_N // 42) + '-----END PRIVATE KEY-----',
+            '-----BEGIN PRIVATE KEY-----' + '→A' * (_N // 2),
+            ('-----BEGIN PRIVATE KEY-----' + 'x' * 30000) * (_N // 30027)],
     'authorization': ['authorization:' + ' ' * _N, 'authorization: basic ' * (_N // 21)],
     'bearer': ['bearer' + ' ' * _N, 'bearer   ' * (_N // 9), 'bearer abcdefg ' * (_N // 15)],
     'userinfo': ['://a:' + 'b' * _N, '://a:b' * (_N // 6), '://a' + ':a' * (_N // 2), '://' * (_N // 3)],
-    'curl -u': ['-u ' + 'a' * _N, '-u a' * (_N // 4), '-u a' + ':' * _N, '-u' + ' ' * _N, '-u -u ' * (_N // 6)],
+    'curl -u': ['-u ' + 'a' * _N, '-u a' * (_N // 4), '-u a' + ':' * _N, '-u' + ' ' * _N, '-u -u ' * (_N // 6),
+                '\\n-u a' * (_N // 7), '-u a:' + '\\' * _N],
     'aws': ['aws_secret_access_key' + ' ' * _N, 'aws_secret_access_key ' * (_N // 22),
-            'aws_secret_access_key"' * (_N // 22), 'AWS_SECRET_ACCESS_KEY=' * (_N // 22)],
+            'aws_secret_access_key"' * (_N // 22), 'AWS_SECRET_ACCESS_KEY=' * (_N // 22),
+            'aws_secret_access_key' + '\\' * _N, 'aws_secret_access_key\\"' * (_N // 23),
+            'aws_secret_access_key\\"=\\"' * (_N // 26)],
     'prefixes': ['brk_' * (_N // 4), 'sk-' * (_N // 3), 'ghp_' * (_N // 4), 'AKIA' * (_N // 4),
                  'AIza' * (_N // 4), 'xoxb-' * (_N // 5), 'gsk_' + 'a' * _N, 'sk-' + 'a' * _N],
     'plain': ['x' * _N, '"' * _N, '\\' * _N],

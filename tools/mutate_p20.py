@@ -343,7 +343,7 @@ MUTATIONS = [
       SI + 'test_I08_the_stored_inventory_carries_no_secret']),
     # the record
     ('Q54', 'the inventory is stored unredacted', [(MGR,
-     "                data = redact(json.dumps(got, sort_keys=True)).encode('utf-8')",
+     "                data = json.dumps(redact_json(got), sort_keys=True).encode('utf-8')",
      "                data = json.dumps(got, sort_keys=True).encode('utf-8')")],
      [SI + 'test_I08_the_stored_inventory_carries_no_secret']),
     ('Q55', 'the spawn is not given the recorded flags', [(MGR,

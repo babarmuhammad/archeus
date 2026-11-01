@@ -6,15 +6,22 @@ import re
 
 from archeus.core.domain.ids import TOKEN_PREFIXES
 
-# redact() also runs over json.dumps output, so no match may reach a `"` or a
-# `\`: eating a closing quote, or the backslash of `\"`, breaks the JSON. Every
+# redact() is for free text. A JSON document goes through redact_json, which
+# redacts the parsed strings and so can never cut a quote or an escape. Every
 # pattern stays linear: a start is anchored or has a bounded prefix, and each
-# repeat has one way to match. A PEM body is base64 plus the `\n` escapes a
-# dumped newline leaves, and ends at its END line or at the first character that
-# cannot belong to it.
-_PEM_UNIT = r'(?:[A-Za-z0-9+/=:,.\s\-]|\\{1,2}[nrt])'
-_PEM = (r'-----BEGIN [A-Z ]{0,32}PRIVATE KEY-----' + _PEM_UNIT + r'*?'
-        r'(?:-----END [A-Z ]{0,32}PRIVATE KEY-----|(?!' + _PEM_UNIT + '))')
+# repeat has one way to match. A PEM runs to its END line or PEM_MAX characters,
+# whatever the key's lines carry (a Read tool's arrows, a docker prefix, `> `),
+# so no foreign character can end the match with the rest of the key still in
+# the text.
+PEM_MAX = 16384
+_PEM_END = r'-----END [A-Z ]{0,32}PRIVATE KEY-----'
+_PEM = (r'-----BEGIN [A-Z ]{0,32}PRIVATE KEY-----(?:(?!' + _PEM_END + r')[\s\S]){0,%d}(?:%s)?'
+        % (PEM_MAX, _PEM_END))
+# What may stand before a token: a character that cannot continue it, or the
+# `n` or `t` of a literal backslash-n or backslash-t, which a string escaped
+# twice has in place of a newline or a tab.
+_EDGE = r'(?:(?<![A-Za-z0-9_\-])|(?<=\\[nrt]))'
+_QUOTE = r'''(?:\\*["'])?'''
 
 # The minted token prefixes come from ids, so a new credential kind cannot be
 # left out. A bare 40-character AWS secret has no marker, so only the keyed form
@@ -27,14 +34,44 @@ _PARTS = (
     r'(?:AKIA|ASIA)[0-9A-Z]{12,}', r'AIza[0-9A-Za-z_\-]{30,}', r'xox[abprs]-[A-Za-z0-9\-]{8,}',
     r'(?i:bearer)\s+[A-Za-z0-9._~+/=\-]{8,}',
     r'(?i:authorization\s*[:=]\s*basic)\s+[A-Za-z0-9+/=]{8,}',
-    r'(?<![A-Za-z0-9_\-])eyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+',
+    _EDGE + r'eyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+',
     _PEM,
-    r'(?<=://)[^\s/:@"\\]+:[^\s/@"\\]+(?=@)',
-    r'(?<!\S)(?:-u|--user)[\s=]+[A-Za-z_][^\s:"\\]*:[^\s"\\]+',
-    r'(?P<keep>(?i:aws_secret_access_key)["\']?\s*[=:]\s*["\']?)[^\s"\'\\]+',
+    r'(?<=://)[^\s/:@]+:[^\s/@]+(?=@)',
+    r'(?:(?<!\S)|(?<=\\[nrt]))(?:-u|--user)[\s=]+[A-Za-z_][^\s:"\\]*:[^\s"\\]+',
+    r'(?P<keep>(?i:aws_secret_access_key)' + _QUOTE + r'\s*[=:]\s*' + _QUOTE + r')[^\s"\'\\]+',
 )
 SECRET = re.compile('(' + '|'.join(_PARTS) + ')')
 
 
 def redact(text):
     return SECRET.sub(lambda m: (m.group('keep') or '') + '[redacted]', text)
+
+
+def redact_json(obj):
+    """*obj* (parsed JSON) with every string and key redacted. The structure
+    cannot change: only strings are matched, never their JSON spelling. Iterative,
+    so a deep document costs no stack."""
+    root = [None]
+    todo = [(obj, root, 0)]
+    while todo:
+        v, dst, k = todo.pop()
+        if isinstance(v, str):
+            dst[k] = redact(v)
+        elif isinstance(v, list):
+            dst[k] = new = [None] * len(v)
+            todo.extend((x, new, i) for i, x in enumerate(v))
+        elif isinstance(v, dict):
+            dst[k] = new = {}
+            for key, x in v.items():
+                shown = redact(key) if isinstance(key, str) else key
+                if isinstance(key, str) and isinstance(x, str):
+                    # a secret named by its key (`aws_secret_access_key`, `Authorization: Basic`)
+                    # is matched on the pair, as it reads in text
+                    pair = redact('%s: %s' % (key, x))
+                    new[shown] = pair[len(shown) + 2:] if pair.startswith(shown + ': ') else '[redacted]'
+                else:
+                    new[shown] = None
+                    todo.append((x, new, shown))
+        else:
+            dst[k] = v
+    return root[0]

@@ -129,7 +129,7 @@ MUTATIONS = [
      "entities.Approval, **{'state': 'PENDING'})", 'entities.Approval)')],
      [SEAMS + '::test_attention_lists_exactly_what_waits_on_the_user']),
     ('M22', 'the output tail is not redacted', [(OUT,
-     '    events = [json.loads(redact(json.dumps(e, ensure_ascii=False))) for e in snap.events[-MAX_EVENTS:]]',
+     '    events = [redact_json(e) for e in snap.events[-MAX_EVENTS:]]',
      '    events = list(snap.events[-MAX_EVENTS:])')],
      [SEAMS + '::test_the_output_tail_is_redacted_resumable_and_empty_before_a_process']),
     ('M23', "a mission's timeline carries another mission's events", [(ATT,

@@ -197,7 +197,7 @@ def _exe():
 
 def test_r6_only_the_tail_is_redacted_not_every_event_before_it(monkeypatch):
     seen = []
-    monkeypatch.setattr(output, 'redact', lambda text: seen.append(text) or text)
+    monkeypatch.setattr(output, 'redact_json', lambda event: seen.append(event) or event)
     events = [{'type': 'text', 'n': i} for i in range(output.MAX_EVENTS + 50)]
     got = output.read(_exe(), _Adapter(events))
     assert len(seen) == output.MAX_EVENTS and got['truncated']
@@ -213,6 +213,42 @@ def test_r1_a_secret_ending_an_event_string_does_not_break_the_tail():
     got = output.read(_exe(), _Adapter(events))
     assert [e['type'] for e in got['events']] == ['assistant'] * 3
     assert 'SYNTH' not in json.dumps(got)
+
+
+JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abcDEFghi123'
+
+
+def test_a_jwt_after_a_newline_or_tab_is_redacted_in_the_tail():
+    # review of fix batches 9 and 10, F2: the dump spelt the newline as a backslash
+    # and an `n`, and the JWT's left edge saw that `n`
+    events = [{'type': 'stderr', 'text': 'token:\n' + JWT},
+              {'type': 'stderr', 'text': 'a\tb\r\n' + JWT}]
+    got = output.read(_exe(), _Adapter(events))
+    assert 'abcDEFghi123' not in json.dumps(got)
+    assert got['events'][0]['text'] == 'token:\n[redacted]'
+
+
+def test_a_newline_before_a_token_prefix_cannot_break_the_tail():
+    # F3: the match used to start at the `n` of the dumped newline and leave a lone
+    # backslash, which is not valid JSON, so one stderr line made every read of the
+    # execution fail. Nothing here is a secret: the strings come back as they went in.
+    events = [{'type': 'stderr', 'text': 'x\npm_AAAAAAAAAAAAAAAA'},
+              {'type': 'stderr', 'text': 'x\rk_live_AAAAAAAAAAAAAAAA\bearer abcdefgh'}]
+    got = output.read(_exe(), _Adapter(events))
+    assert [e['text'] for e in got['events']] == [e['text'] for e in events]
+
+
+def test_a_key_in_a_prefixed_or_escaped_dump_is_redacted_in_the_tail():
+    # F1: a Read tool's arrows, a docker prefix or a doubly escaped string ended the match early
+    body = ['-----BEGIN OPENSSH PRIVATE KEY-----', 'QyNTUxOQAAACDsecretsecretsecretsecret',
+            '-----END OPENSSH PRIVATE KEY-----']
+    forms = ['\n'.join('%6d→%s' % (i, line) for i, line in enumerate(body)),
+             '\n'.join('web-1  | ' + line for line in body),
+             '\n'.join('> ' + line for line in body),
+             json.dumps('\n'.join(body)), json.dumps(json.dumps('\n'.join(body)))]
+    got = output.read(_exe(), _Adapter([{'type': 'stderr', 'text': f + ' tail'} for f in forms]))
+    assert 'secretsecret' not in json.dumps(got)
+    assert all(e['text'].endswith(' tail') for e in got['events'])
 
 
 # ── F10, F11: an idempotency key is bounded; a cursor is ASCII digits ──

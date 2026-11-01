@@ -37,7 +37,7 @@ from ...node.local import LocalNode, PathTooLong, seed_ref
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
 from ..routing.router import ROUTABLE
-from ..redact import redact  # p11-design-gate §19; shared since P12, and P20's inventory
+from ..redact import redact, redact_json  # p11-design-gate §19; shared since P12, and P20's inventory
 from . import canonical, pressure as P
 
 log = logging.getLogger('archeus.execution')
@@ -329,7 +329,7 @@ class ExecutionManager:
             got = (adapter.inventory(spec, isolated=isolated) if hasattr(adapter, 'inventory')
                    else None)
             if got is not None:
-                data = redact(json.dumps(got, sort_keys=True)).encode('utf-8')
+                data = json.dumps(redact_json(got), sort_keys=True).encode('utf-8')
                 sha, size = store.put(data), len(data)
                 spec = replace(spec, inventory=json.loads(data))
         except Exception as err:
