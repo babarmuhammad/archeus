@@ -151,7 +151,7 @@ CLASS_ROWS = (('request', 'rw'), ('response', 'rx'), ('sentinel', 'rx'))
 #: principals that must never hold a write ACE inside the boundary. Every one of them
 #: is a *broad* principal: what it grants reaches users and containers this execution
 #: has no business reaching (§3.1, "what it explicitly cannot access").
-BROAD_PRINCIPALS = {'S-1-1-0': 'Everyone',
+BROAD_PRINCIPALS = {'S-1-1-0': 'Everyone', 'S-1-5-2': 'NETWORK', 'S-1-5-4': 'INTERACTIVE',
                     'S-1-5-11': 'Authenticated Users',
                     'S-1-5-32-545': 'Users',
                     'S-1-15-2-1': 'ALL APPLICATION PACKAGES',

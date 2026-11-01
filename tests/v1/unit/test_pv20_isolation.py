@@ -2423,6 +2423,8 @@ def _readers(acl):
     ((0x1, 'S-1-5-11', 0x1301BF, 0), None),                 # a deny ACE grants nothing
     ((0x0, 'S-1-5-32-544', 0x1F01FF, 0), None),             # Administrators are not broad
     ((0x0, 'S-1-5-32-545', 0x1301BF, 0x08), 'S-1-5-32-545'),   # inherit-only still counts
+    ((0x0, 'S-1-5-4', 0x1301BF, 0), 'S-1-5-4'),             # INTERACTIVE (T-659#10)
+    ((0x0, 'S-1-5-2', 0x1301BF, 0), 'S-1-5-2'),             # NETWORK (T-659#10)
 ])
 def test_the_broad_writer_of_a_path(ace, want):
     acl = {'h': [(0x0, ME, 0x1F01FF, 0), (0x0, 'S-1-5-18', 0x1F01FF, 0), ace]}
