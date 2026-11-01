@@ -66,11 +66,11 @@ the execution boundary is built on, read for this study.
 - **Child processes stay confined.** The agent spawns shells and tools (`Bash`, `PowerShell`, git,
   the hook itself); confinement that a child can shed is no confinement.
 - **The worktree is read-write.** A `code_change` task edits and commits inside its worktree
-  (`<ARCHEUS_HOME>/worktrees/<project>/<mission>/<task>`, `manager._workspace`). *(Under PV-20 the
+  (`<ARCHEUS_HOME>/worktrees/<mission>/<task>`, `manager._workspace`; the study's earlier `<project>/<mission>/<task>` layout is now only the fallback for a directory that already exists). *(Under PV-20 the
   workspace becomes a separate execution repository, R4a-B; the requirement — a writable workspace
   where a legitimate local commit works — is unchanged.)*
 - **The Core channel still works.** The hook talks to Core through a **file mailbox**
-  (`<ARCHEUS_HOME>/run/exec/<id>/hook/<seq>.req.json` → `<seq>.res.json`, `harnesses/hook.py`) and
+  (`<ARCHEUS_HOME>/run/exec/<id>/req/<seq>.req.json` → `res/<seq>.res.json`, `harnesses/hook.py`) and
   reads the **STOP sentinel** (`<ARCHEUS_HOME>/run/STOP`). It needs the mailbox and the sentinel
   reachable — and **only those** — never `run/local-token`.
 - **The e-stop still halts.** Two halves: the kill (today `proc.kill_pid_tree(pid, create_time)`,
@@ -163,7 +163,7 @@ Two sub-variants, materially different.
 For B2 against the ten criteria: Node/CLI run normally as the other user (1); children inherit the
 identity automatically (2); the workspace needs an exec-user ACE (3); the Core channel is granted
 the same way as AppContainer — PV-20's seven resource classes (4); **the e-stop is the complication (5)** — the live Core can kill
-via the handle it retained at creation, but the **Core-down** path (`archeus estop`) opens the
+via the handle it retained at creation (as built today the live kill is `proc.kill_pid_tree(pid, create_time)`, a `taskkill` by pid, not a retained handle), but the **Core-down** path (`archeus estop`) opens the
 process **by pid**, and a non-admin process cannot `TerminateProcess` another user's process, so
 the Core-less kill would be denied unless the process's security descriptor is set at creation to
 grant the launching user terminate rights; cleanup must also tear down the account's profile (6);
