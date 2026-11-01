@@ -119,11 +119,15 @@ class ClaudeCodeCaller:
         try:
             envelope = json.loads(r.stdout)
         except ValueError:
-            envelope = None
-        parsed = llmcall.unwrap_structured(r.stdout)[0] if spec.schema is not None else None
+            # stderr is merged into stdout (llmcall.run_headless): a warning line ahead of the
+            # envelope must not cost its usage and cost
+            envelope = llmcall.parse_json(r.stdout) if spec.schema is not None else None
+        raw = json.dumps(envelope) if isinstance(envelope, dict) else r.stdout
+        parsed = llmcall.unwrap_structured(raw)[0] if spec.schema is not None else None
         usage = _usage(envelope)
         cost = envelope.get('total_cost_usd') if isinstance(envelope, dict) else None
-        if isinstance(cost, (int, float)) and not isinstance(cost, bool)                 and math.isfinite(cost) and cost >= 0:
+        if isinstance(cost, (int, float)) and not isinstance(cost, bool) \
+                and math.isfinite(cost) and cost >= 0:
             usage['cost_usd'] = float(cost)
         return base.CallResult(text=r.stdout, parsed=parsed, usage=usage)
 
@@ -172,7 +176,7 @@ class PiCaller:
         if r.returncode != 0:
             return _failed(r)
         return base.CallResult(text=r.stdout,
-                               parsed=llmcall.parse_json(r.stdout) if spec.schema else None)
+                               parsed=llmcall.parse_json(r.stdout) if spec.schema is not None else None)
 
 
 #: Claude model families by tier (resource-router §5 tier fit: plan authoring

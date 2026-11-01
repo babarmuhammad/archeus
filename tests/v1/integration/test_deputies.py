@@ -8,6 +8,7 @@ stand-in runners and a fake process only: no CLI is spawned."""
 
 import ast
 import inspect
+import json
 import os
 import stat
 import subprocess
@@ -358,8 +359,9 @@ def _call(monkeypatch, tmp_path, caller, **kw):
     """The argv a real adapter would spawn, from a stand-in runner."""
     from claude_sessions import config, harnesses, llmcall
     seen = []
+    stdout, schema = kw.pop('stdout', '{}'), kw.pop('schema', {'type': 'object'})
     monkeypatch.setattr(llmcall, 'run_headless', lambda cmd, stdin=None, **k: (
-        seen.append(cmd), ENVS.append(k['env']), llmcall.Result(0, '{}', '', '', False))[2])
+        seen.append(cmd), ENVS.append(k['env']), llmcall.Result(0, stdout, '', '', False))[2])
     for k in NO_TOOLS_ENV:
         monkeypatch.delenv(k, raising=False)
     # a key in the environment shadows the account login; account_env must drop it
@@ -371,7 +373,7 @@ def _call(monkeypatch, tmp_path, caller, **kw):
     monkeypatch.setattr(harnesses, 'disabled', lambda: set())
     spec = base.CallSpec(route_decision_id='rte_x', purpose='knowledge_extraction',
                          prompt='P', workdir='.', account=base.AccountRef('a', str(tmp_path)),
-                         schema={'type': 'object'}, **kw)
+                         schema=schema, **kw)
     return seen, caller.call(spec)
 
 
@@ -449,6 +451,25 @@ def test_a_pi_call_runs_on_the_pi_home_of_its_account_even_when_unregistered(
     _call(monkeypatch, tmp_path, real.PiCaller())
     (env,) = ENVS
     assert env.get('PI_CODING_AGENT_DIR') == str(tmp_path)
+
+
+def test_a_warning_ahead_of_the_envelope_costs_neither_its_usage_nor_its_answer(
+        monkeypatch, tmp_path):
+    """T-648#R3: stderr is merged into stdout, so a warning line made json.loads fail,
+    dropped the usage and cost, and returned the whole envelope as the answer."""
+    envelope = {'result': 'x', 'structured_output': {'a': 1}, 'total_cost_usd': 0.5,
+                'usage': {'input_tokens': 7}}
+    _, res = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller(),
+                   stdout='warning: stale cache\n' + json.dumps(envelope))
+    assert res.parsed == {'a': 1}
+    assert res.usage == {'tokens_in': 7, 'cost_usd': 0.5}
+
+
+def test_a_pi_call_with_an_empty_schema_still_parses_its_answer(monkeypatch, tmp_path):
+    """T-648#R11: the prompt asks for the schema when it is not None, so the answer is
+    parsed when it is not None, and `{}` is a schema."""
+    _, res = _call(monkeypatch, tmp_path, real.PiCaller(), schema={}, stdout='{"a": 1}')
+    assert res.parsed == {'a': 1}
 
 
 class _Child:
