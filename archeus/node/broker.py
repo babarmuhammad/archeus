@@ -364,6 +364,11 @@ class Broker:
                'bytes_in': 0, 'bytes_out': 0, 'duration_ms': 0}
         t0 = self._clock()
         held = {}
+        written = []
+
+        def put(data):
+            written.append(1)
+            write(data)
 
         def admit(head):
             row['endpoint'] = ('%s %s' % (head.method, head.path))[:200]
@@ -397,11 +402,11 @@ class Broker:
                                    admit=admit)
             row['bytes_in'] = len(req.body)
             if held.get('hello'):
-                write(wire.local_reply(204, 'No Content'))
+                put(wire.local_reply(204, 'No Content'))
                 row['status'] = 204
                 return row
             _model_of(req.body, held['b'].model)
-            row['status'], row['bytes_out'] = self._forward(req, held['b'], held['d'], write,
+            row['status'], row['bytes_out'] = self._forward(req, held['b'], held['d'], put,
                                                             t0)
         except wire.BadRequest as r:
             row['status'] = r.status
@@ -411,7 +416,8 @@ class Broker:
             _reply(write, r.status, 'Refused')
         except Exception:
             row['status'] = 500
-            _reply(write, 500, 'Internal Error')
+            if not written:         # once a response is open, an error ends it, never starts another
+                _reply(write, 500, 'Internal Error')
         finally:
             if held.get('active'):
                 with self._lock:

@@ -411,6 +411,19 @@ def test_the_response_cap_ends_the_stream():
     assert out.endswith(b'12345') and row['bytes_out'] == 5
 
 
+def test_an_error_after_the_response_began_does_not_start_a_second_one():
+    class Stalls(Resp):
+        def read1(self, n):
+            if not self._c:
+                raise OSError('the upstream stalled')
+            return super().read1(n)
+
+    b, _ = broker(send=lambda *a: Stalls(chunks=[b'one']))
+    _, token, _ = issued(b)
+    out, row = serve(b, request(token=token))
+    assert out.count(b'HTTP/1.1') == 1 and out.endswith(b'one') and row['status'] == 500
+
+
 def _body(out):
     return out.split(b'\r\n\r\n', 1)[1]
 
