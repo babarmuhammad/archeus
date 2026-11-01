@@ -463,7 +463,7 @@ def test_a_re_check_that_hangs_is_a_refusal(monkeypatch):
     monkeypatch.setattr(origin, 'BACKEND_DEADLINE_S', 0.05)
     release = threading.Event()
     backend = Backend()
-    backend.valid = lambda ctx, ev: release.wait(3)
+    backend.valid = lambda ctx, ev: (release.wait(3), True)[1]
     rig = Rig(backend)
     g = rig.grant()
     conn = rig.get(g)
@@ -565,19 +565,35 @@ def test_a_listener_accepts_and_serves_through_its_accept_loop():
     rig.broker.revoke(g.bd.execution_id)
 
 
-def test_the_connection_cap_closes_the_next_unread(monkeypatch):
+def test_the_connection_cap_closes_the_next_unread():
     rig = Rig()
     g = rig.grant()
-    hold, blocked = threading.Event(), threading.Event()
-    rig.backend.attest = lambda ctx: (blocked.set(), hold.wait(3), execution_evidence(ctx))[2]
-    held = [Conn(g.port) for _ in range(L.MAX_CONNECTIONS)]
-    rig.socks[0].queue.extend(held)
-    blocked.wait(3)
+    hold, asked = threading.Event(), []
+
+    def attest(ctx):
+        asked.append(ctx)
+        hold.wait(3)
+        return execution_evidence(ctx)
+
+    rig.backend.attest = attest
+    rig.socks[0].queue.extend(Conn(g.port) for _ in range(L.MAX_CONNECTIONS))
+    wait(lambda: len(asked) == L.MAX_CONNECTIONS)
     extra = Conn(g.port, http(g.token))
     rig.socks[0].queue.append(extra)
     wait(lambda: extra.closed)
-    assert extra.opened == 0 and extra.sent == b''
+    assert len(asked) == L.MAX_CONNECTIONS and extra.opened == 0 and extra.sent == b''
     hold.set()
+    rig.broker.revoke(g.bd.execution_id)
+
+
+def test_a_served_connection_frees_its_slot():
+    rig = Rig()
+    g = rig.grant(limits=B.BrokerLimits(max_requests=100))
+    conns = [Conn(g.port, http(g.token)) for _ in range(L.MAX_CONNECTIONS * 2)]
+    for conn in conns:
+        rig.socks[0].queue.append(conn)
+        wait(lambda c=conn: c.closed)
+    assert [status(c) for c in conns] == [200] * len(conns)
     rig.broker.revoke(g.bd.execution_id)
 
 
