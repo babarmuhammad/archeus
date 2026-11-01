@@ -239,24 +239,90 @@ def test_the_digest_is_never_in_a_view():
         db.close()
 
 
-def test_the_recheck_follows_the_recorded_generation():
+def _live_rig(health='AVAILABLE', headless='permitted', account=True, terms=True):
+    """A paused isolated execution on an account, its terms and digest recorded: what
+    `broker_live` reads."""
+    from archeus.core.domain.events import new_event
     db, who, eid, _ = _seeded('PAUSED', isolated=True, process_seq=1)
+    aid = ids.new_id('account')
+
+    def run(tx, **_):
+        if account:
+            tx.insert(entities.Account(id=aid, harness_id='claude_code', label='A',
+                                       auth_kind='api_key', health=health), actor=who)
+        if terms:
+            tx.insert(entities.ProviderTerms(id='claude_code', headless=headless), actor=who)
+        tx.execute("UPDATE executions SET body = json_set(body, '$.hook_token_hash', ?, "
+                   "'$.broker_token_hash', ?, '$.account_id', ?) WHERE id = ?",
+                   ('h' * 64, 'b' * 64, aid, eid))
+        tx.append(new_event('mission.updated', Ref('mission', ids.new_id('mission')), who,
+                            payload={}, workspace=ids.GLOBAL_WORKSPACE))
+    db.writer.execute(run, {})
+    m = M.ExecutionManager.__new__(M.ExecutionManager)
+    m.db, m.registry = db, SimpleNamespace(get=lambda harness: SimpleNamespace(id=harness))
+    e = _row(db, entities.Execution, eid).entity
+    bd = B.BrokerBinding(core_instance='c', execution_id=eid, process_seq=1, principal='p',
+                         route_decision_id=e.route_decision_id, account_id=aid,
+                         harness_id='claude_code', model=e.model,
+                         upstream=B.Upstream('https://x'))
+    return db, who, m, bd, eid
+
+
+def test_the_recheck_follows_the_recorded_generation():
+    db, who, m, bd, eid = _live_rig()
     try:
-        _with_digests(db, eid)
-        m = M.ExecutionManager.__new__(M.ExecutionManager)
-        m.db = db
-        e = _row(db, entities.Execution, eid).entity
-        bd = B.BrokerBinding(core_instance='c', execution_id=eid, process_seq=1, principal='p',
-                             route_decision_id=e.route_decision_id, account_id=e.account_id,
-                             harness_id='claude_code', model=e.model,
-                             upstream=B.Upstream('https://x'))
         assert m.broker_live(bd, 'b' * 64)
         assert not m.broker_live(bd, 'c' * 64)                         # another digest
         assert not m.broker_live(B.BrokerBinding(**dict(bd.__dict__, process_seq=2)), 'b' * 64)
         assert not m.broker_live(B.BrokerBinding(**dict(bd.__dict__, model='other')), 'b' * 64)
+        assert not m.broker_live(B.BrokerBinding(**dict(bd.__dict__, account_id='acc_x')),
+                                 'b' * 64)
         db.writer.execute(X.refuse, {'actor': Ref('system', ids.new_id('principal')),
                                      'execution_id': eid, 'reason': 'x', 'stop_reason': 'binding'})
         assert not m.broker_live(bd, 'b' * 64)                         # ended
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('health,live', [
+    ('AVAILABLE', True), ('CONSTRAINED', True), ('LIMITED', False), ('DEGRADED', False),
+    ('OPEN', False), ('UNAUTHENTICATED', False), ('UNVERIFIED', False), (None, False)])
+def test_the_recheck_follows_the_accounts_health(health, live):
+    db, _, m, bd, _ = _live_rig(health=health)
+    try:
+        assert bool(m.broker_live(bd, 'b' * 64)) is live
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('headless,terms,live', [
+    ('permitted', True, True), ('unknown', True, False), ('refused', True, False),
+    ('permitted', False, False)])
+def test_the_recheck_follows_the_terms_every_request(headless, terms, live):
+    db, _, m, bd, _ = _live_rig(headless=headless, terms=terms)
+    try:
+        assert bool(m.broker_live(bd, 'b' * 64)) is live
+    finally:
+        db.close()
+
+
+def test_an_account_that_is_gone_is_not_live():
+    db, _, m, bd, _ = _live_rig(account=False)
+    try:
+        assert not m.broker_live(bd, 'b' * 64)
+    finally:
+        db.close()
+
+
+def test_terms_withdrawn_mid_run_end_the_next_request():
+    db, who, m, bd, _ = _live_rig()
+    try:
+        assert m.broker_live(bd, 'b' * 64)
+
+        def withdraw(tx, **_):
+            tx.execute("UPDATE provider_terms SET body = json_set(body, '$.headless', 'refused')")
+        db.writer.execute(withdraw, {})
+        assert not m.broker_live(bd, 'b' * 64)
     finally:
         db.close()
 

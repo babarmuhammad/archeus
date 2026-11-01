@@ -36,7 +36,7 @@ import os
 import subprocess
 import time
 
-from . import isolation as iso
+from . import broker_listener, isolation as iso
 from . import local, mxc, mxc_ledger, mxc_verifier, staging
 from .isolation import IsolationUnavailable
 from .mxc_context import MxcIsolationContext
@@ -241,6 +241,7 @@ class MxcBoundary:
         workspace = next((p for p in writable if _same(p, cwd)), None)
         if workspace is None:
             raise IsolationUnavailable('mxc_policy', 'the working directory is not a writable grant')
+        port = None if self.broker is None else self.broker.reach(key)
         return local.MxcLaunch(
             sdk_root=self.sdk_root, pins=self.pins, outcome=self.outcome, workspace=workspace,
             writable=[p for p in writable if p != workspace],
@@ -250,4 +251,5 @@ class MxcBoundary:
             schema_validator=self.schema_validator, execution_id=key,
             process_seq=len(self._generations(key)) + 1, broker=self.broker,
             resource_reader=self.resource_reader, readback=self.readback,
-            watchdog=self.watchdog, transport=transport)
+            watchdog=self.watchdog, transport=transport,
+            proxy_url=None if port is None else 'http://%s:%d' % (broker_listener.HOST, port))

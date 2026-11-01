@@ -625,7 +625,7 @@ def test_the_same_path_twice_is_one_grant(launched):
 def test_the_ending_parts_reach_the_launch(tmp_path, sdk, monkeypatch, name):
     Made.made = []
     monkeypatch.setattr(local, 'MxcLaunch', Made)
-    mark = object()
+    mark = SimpleNamespace(reach=lambda key: None)
     h = make(tmp_path, sdk, **{name: mark})
     req = request(tmp_path)
     identity = h.boundary.create_profile(req.execution_id)

@@ -15,12 +15,17 @@ execution's Job, observing a pipe client's principal - are the injected `transpo
 shipped `NativeTransport` refuses all of them, and there is no TCP fallback: until the
 native backend exists and N3 proves it, no grant can be issued (fail closed).
 
+The MXC transport (PV-20 B10, `broker_listener`) is the one deliberate loopback listener: the
+execution's MXC policy names it as its network proxy (the only reach N3 evidenced), one
+listener per grant, each connection attested at accept. It is a transport a composition root
+passes in, never a default, and nothing here switches it on.
+
 Off unless `BROKER_DISPATCH_ENABLED`, which only the composition root sets (PV20-17
 activates complete admission at once, never the broker alone).
 
 Known limits, recorded (PV20-09 review round 4):
-- S5, the terms and the account's health in `broker_live`, is deferred to PV20-17 by owner
-  decision.
+- S5 (PV20-09 review): the terms and the account's health are rechecked in the manager's
+  `broker_live`, on every request.
 - Owner decision (PV20-09 round 5): the per-token concurrency share is a cap, not a
   reservation. While other grants hold the pool, a grant gets 503.
 - The upstream credential is an allow-list: only an `sk-ant-api` key is sent, matched
@@ -314,7 +319,7 @@ class Broker:
             stale = [self._grants.pop(k) for k, g in list(self._grants.items())
                      if g['binding'].execution_id == binding.execution_id]
             self._grants[d] = {'binding': binding, 'endpoint': endpoint, 'requests': 0,
-                               'active': 0}
+                               'active': 0, 'port': port}
         for g in stale:
             self.transport.close(g['endpoint'])
         return token, d, endpoint, port
@@ -327,6 +332,12 @@ class Broker:
         for g in grants:
             self.transport.close(g['endpoint'])
         return len(grants)
+
+    def reach(self, execution_id):
+        """The port the live grant of *execution_id* is reached at, or None."""
+        with self._lock:
+            return next((g['port'] for g in self._grants.values()
+                         if g['binding'].execution_id == execution_id), None)
 
     def sweep(self, live_ids):
         """Revoke every grant whose execution is no longer live: every end path, without
@@ -342,8 +353,9 @@ class Broker:
 
     close = revoke_all
 
-    def authorize(self, token, principal):
-        """The grant *token* names, for a client the pipe observed as *principal*."""
+    def authorize(self, token, principal, endpoint=None):
+        """The grant *token* names, for a client the pipe observed as *principal*; with an
+        *endpoint*, only a grant issued at that endpoint."""
         if not (isinstance(token, str) and token.startswith(PREFIX + '_')):
             raise Refused(401, 'not a broker token')
         d = digest(token)
@@ -354,6 +366,8 @@ class Broker:
             raise Refused(401, 'the broker token is unknown or revoked')
         if not (isinstance(principal, str) and principal == g['binding'].principal):
             raise Refused(403, 'the pipe client is not the execution it was issued to')
+        if endpoint is not None and g['endpoint'] is not endpoint:
+            raise Refused(403, 'the token was issued at another endpoint')
         if not self._live(g['binding'], d):
             self.revoke(g['binding'].execution_id)
             raise Refused(401, 'the grant is no longer the live generation')
@@ -361,9 +375,10 @@ class Broker:
 
     # ── one pipe connection ──
 
-    def serve(self, rfile, write, principal):
+    def serve(self, rfile, write, principal, endpoint=None):
         """Serve one request read from *rfile*, writing the response with *write*;
-        *principal* is what the native backend observed for the pipe client. Never
+        *principal* is what the native backend observed for the pipe client, *endpoint*
+        the one it arrived at (a grant answers nowhere else). Never
         raises: every refusal is a local response, and any other error is a local 500
         that carries no text of it. The head is checked before the body is read. Each
         message request (POST /v1/messages) counts against the grant's ceiling whatever
@@ -381,7 +396,7 @@ class Broker:
 
         def admit(head):
             row['endpoint'] = ('%s %s' % (head.method, head.path))[:200]
-            g, d = self.authorize(_bearer(head), principal)
+            g, d = self.authorize(_bearer(head), principal, endpoint)
             b = g['binding']
             held.update(g=g, d=d, b=b)
             row['execution_id'], row['model'] = b.execution_id, b.model

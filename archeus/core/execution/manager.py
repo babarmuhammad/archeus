@@ -36,6 +36,7 @@ from ...node.isolation import profile_name
 from ...node.local import LocalNode, PathTooLong, seed_ref
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
+from ..routing.router import ROUTABLE
 from ..redact import redact  # p11-design-gate §19; shared since P12, and P20's inventory
 from . import canonical, pressure as P
 
@@ -419,15 +420,19 @@ class ExecutionManager:
     def broker_live(self, binding, digest):
         """The broker's recheck on every request (PV20-08 §1): the grant is still its
         execution's live process generation, under the recorded digest, route, account and
-        model. Ended, resumed, re-routed or restarted: no. Not yet: the terms and the
-        account's health (PV20-08 §1), deferred to PV20-17 (PV20-09 review S5)."""
+        model, and ADR-0021 still permits the harness and the account is still one the router
+        may use (PV20-08 §1; PV20-09 review S5)."""
         with self.db.read() as r:
             row = rows.get(r, entities.Execution, binding.execution_id)
+            account = rows.get(r, entities.Account, binding.account_id)
+            permitted = resources.terms_permit(r, self.registry.get(binding.harness_id))
         e = row.entity if row is not None else None
         return (e is not None and e.state not in _ENDED and e.isolated is True
                 and e.process_seq == binding.process_seq and e.broker_token_hash == digest
                 and e.route_decision_id == binding.route_decision_id
-                and e.account_id == binding.account_id and e.model == binding.model)
+                and e.account_id == binding.account_id and e.model == binding.model
+                and permitted and account is not None
+                and account.entity.health in ROUTABLE)
 
     @staticmethod
     def _offset(e):
