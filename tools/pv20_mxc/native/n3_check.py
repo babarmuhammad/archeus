@@ -49,8 +49,8 @@ except through ``Children.kill_own()`` over the processes this script started (n
 command-line sweep, no PowerShell at all, therefore also no -ErrorAction Stop concern). No
 elevation, no installs, no network except this script's own 127.0.0.1 listeners. No home,
 credential or account path is read, written or printed; the only environment reads are
-``SystemRoot`` (absolute curl path, form PINNED mxc_diag2.py:4) and ``USERNAME`` (one
-local icacls grant on a fixture file, never printed or sent; allowed by the review).
+``SystemRoot`` (absolute curl path, form PINNED mxc_diag2.py:4). The script runs no ACL
+tool: the repo's static gate forbids one anywhere under tools/.
 Nothing is printed that did not pass through ``Recorder.record`` or ``redact``; no SID,
 token, username or machine name is ever produced. Every case is reported through
 ``Recorder.record`` as PASS, FAIL or INCONCLUSIVE using the frozen case names from
@@ -321,9 +321,8 @@ class N3Check:
         self.F = safe_root(parent)
         self.RJ = os.path.join(self.F, "n3_results.json")
         sysroot = os.environ.get("SystemRoot")
-        user = os.environ.get("USERNAME")
-        if not sysroot or not user:
-            raise SetupError("SystemRoot/USERNAME unavailable (setup only; never printed)")
+        if not sysroot:
+            raise SetupError("SystemRoot unavailable (setup only; never printed)")
         src = os.path.join(parent, "sdk", "node_modules", "@microsoft", "mxc-sdk")
         if not os.path.isfile(os.path.join(src, "bin", "x64", "wxc-exec.exe")):
             raise SetupError("staged SDK missing under <parent>\\sdk "
@@ -354,7 +353,6 @@ class N3Check:
         self.SEC = os.path.join(self.O, "secret.txt")
         self.PROT = os.path.join(self.W, "prot.txt")
         self.JX = os.path.join(self.W, "jx")
-        self.user = user  # used once for one local icacls grant; never printed
         self.state = {"delay": 0, "wxc": 0, "job": None, "log": []}
         self.used = set()
 
@@ -383,13 +381,13 @@ class N3Check:
                      % (msg, self.F, self.RJ)), flush=True)
         sys.exit(EXIT_BREACH)
 
-    def setup_icacls(self, argv):
+    def setup_tool(self, argv):
         try:
             r = subprocess.run(argv, capture_output=True, text=True, timeout=60)
         except subprocess.TimeoutExpired as ex:
             raise SetupError("fixture staging tool timed out: %r" % (ex,)) from ex
         if r.returncode != 0:
-            raise SetupError("fixture staging icacls/mklink failed (rc %s)" % r.returncode)
+            raise SetupError("fixture staging mklink failed (rc %s)" % r.returncode)
 
     # ------------------------------------------------------------------ hardlink gate
     def gate_scan(self, folder):
@@ -494,7 +492,7 @@ class N3Check:
         return (rc, out), gate
 
     def run_argv(self, argv, timeout=30):
-        """Direct argv host run (host curl and icacls only). subprocess.run's timeout
+        """Direct argv host run (host curl only). subprocess.run's timeout
         kills only the script's own child (allowed by the review; the pinned F1/F3 fault
         — cmd-wrapped curl — never occurs: curl is always invoked by absolute path with
         argv lists)."""
@@ -632,11 +630,7 @@ class N3Check:
         before = self.acl(self.SEC)
         with open(self.PROT, "w", encoding="utf-8") as fh:
             fh.write("PROTECTED_IN")
-        # One local icacls on a fixture file; USERNAME is never printed or sent (review
-        # n3 safety re-check). Protected DACL keeps F2f semantics (feasibility:55).
-        self.setup_icacls(["icacls", self.PROT, "/inheritance:r",
-                           "/grant:r", "%s:F" % self.user])
-        self.setup_icacls(["cmd.exe", "/c", "mklink", "/J", self.JX, self.O])
+        self.setup_tool(["cmd.exe", "/c", "mklink", "/J", self.JX, self.O])
         if not os.path.exists(self.JX):
             raise SetupError("fixture junction staging failed")
 
@@ -655,7 +649,7 @@ class N3Check:
                    "type prot.txt printed PROTECTED_IN (rc=%s; feasibility:55 observed "
                    "readable)" % rc)
         self.check("host-controls", "INCONCLUSIVE",
-                   "A12 F2f info (no protocol assertion): protected-DACL file inside work "
+                   "A12 F2f info (no protocol assertion): inherited-DACL file inside work "
                    "observed %s from the container (feasibility:55 says readable; readable "
                    "means the container shares the host user SID, restricted only by the "
                    "MXC process security environment)"
@@ -669,7 +663,7 @@ class N3Check:
                            lambda out, s: os.path.exists(os.path.join(self.O, "w.txt")))
         # denial PINNED :52 (write through the junction)
 
-        self.setup_icacls(["cmd.exe", "/c", "mklink", "/H",
+        self.setup_tool(["cmd.exe", "/c", "mklink", "/H",
                            os.path.join(self.W, "hl.txt"), self.SEC])
         host_hl = (os.path.exists(os.path.join(self.W, "hl.txt"))
                    and self.read(self.SEC) == "SECRET_OUT")
@@ -715,8 +709,8 @@ class N3Check:
 
         drift = self.acl(self.SEC) != before
         self.check("host-controls", "FAIL" if drift else "PASS",
-                   "A11 outside file ACL unchanged after all storage runs "
-                   "(F2e, PINNED feasibility:52)%s" % (" ACL DRIFT" if drift else ""))
+                   "A11 outside file unchanged after all storage runs (mode, size, mtime, "
+                   "content; the DACL itself is not read)%s" % (" DRIFT" if drift else ""))
 
         try:
             os.rmdir(self.JX)  # junction first, before any tree deletion (feasibility:51)
@@ -726,8 +720,8 @@ class N3Check:
                    "A13 junction removed with rmdir before phase B/teardown")
 
     def acl(self, path):
-        _rc, out = self.run_argv(["icacls", path], timeout=60)
-        return out
+        st = os.stat(path)
+        return (st.st_mode, st.st_size, st.st_mtime_ns, self.read(path))
 
     def phase_b(self):
         print(redact("== Phase B: origin attestor + network boundary (F9/F3 rerun) =="),
