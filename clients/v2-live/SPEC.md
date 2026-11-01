@@ -304,11 +304,11 @@ S3 story additions (sim.js, additive): the Codex spawn breaker trips at +8 min a
 
 | ID | Item | Source | Status | Note |
 |---|---|---|---|---|
-| L01 | Compact density, the meta column | VL §12 | DESIGNED (open) | owner question |
-| L02 | Size and drawing of the core mark (place is decided) | VL §12 | DESIGNED (open) | placeholder mark in S1 |
-| L03 | Headings and wordmark in the display font | VL §12 | DESIGNED (open) | wordmark uses it today, a stand-in |
-| L04 | Flow strip against "spatial primary"; e-stop placement; state precedence for aggregates | UIA §T | DESIGNED (open) | not simulated |
-| L05 | Acknowledge and snooze Core records | UIA §H, PLAN G0-7 | DESIGNED (open) | not simulated |
+| L01 | Compact density, the meta column | VL §12 | DECIDED 2026-11-01 | no compact density; 44/48 px rows; the meta column only as a tertiary text line inside the row |
+| L02 | Size and drawing of the core mark (place is decided) | VL §12 | DECIDED 2026-11-01 | the eight-point star is approved as built; its size scales with the project count |
+| L03 | Headings and wordmark in the display font | VL §12 | DECIDED 2026-11-01 | serif only for the state sentence and the map node names; the wordmark and all titles stay sans (owner answer of 2026-10-26 confirmed) |
+| L04 | Flow strip against "spatial primary"; e-stop placement; state precedence for aggregates | UIA §T | DECIDED 2026-11-01 | the map is primary and the six-station spine the only flow strip; Emergency stop stays visible in the top bar and the safety popover; the aggregate precedence order is adopted after it is checked against ADR-0024 |
+| L05 | Acknowledge and snooze Core records | UIA §H, PLAN G0-7 | DECIDED 2026-11-01 | left out of the first real V2 build; decided again after P20 closes |
 | L06 | Voice, sound, OS-level presence, 3D and XR | UIA §S "Later" | DESIGNED (later) | not simulated |
 | L07 | Which Replay rows come from a broker (external effects) | T148 N7, PV-20 broker | DESIGNED (blocked on P20) | shown as NOT RECORDED |
 
