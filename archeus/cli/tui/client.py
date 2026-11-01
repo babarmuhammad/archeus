@@ -5,6 +5,7 @@ frame is handed on as it arrived. Loopback only: the address is 127.0.0.1 and
 the port the discovery file names, and the token goes nowhere else.
 """
 
+import http.client
 import json
 import socket
 import threading
@@ -32,10 +33,22 @@ class CoreError(Exception):
         return {'status': self.status, 'code': self.code, 'detail': self.detail}
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_a, **_k):
+        return None
+
+
+#: no proxy from the environment and no followed redirect: the token goes to this
+#: port and to nothing a header or a Location line names
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+
+
 def _error(e):
     try:
         body = json.loads(e.read() or b'{}')
     except ValueError:
+        body = {}
+    if not isinstance(body, dict):
         body = {}
     return CoreError(e.code, body.get('error') or 'http_%d' % e.code, body.get('detail'))
 
@@ -70,7 +83,7 @@ class Core:
         h.update(headers or {})
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=h)
         try:
-            return urllib.request.urlopen(req, timeout=timeout)
+            return _OPENER.open(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             raise _error(e) from None
         except (urllib.error.URLError, OSError) as e:
@@ -156,7 +169,7 @@ class Stream(threading.Thread):
                 if e.status == 410:
                     last = None
                     self.out.put(('signal', 'resync'))
-            except (OSError, socket.timeout, ValueError):
+            except (OSError, socket.timeout, ValueError, http.client.HTTPException):
                 pass
             if self._stop.is_set():
                 return
