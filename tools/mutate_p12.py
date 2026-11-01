@@ -96,8 +96,8 @@ MUTATIONS = [
      "    model = model or (")],
      [T + '::test_T23_an_unknown_model_is_refused_and_an_inherited_one_dropped']),
     ('Y24', 'a transcript artifact includes tool output', [(HAR,
-     "                if obj.get('role') in ('user', 'assistant') and obj.get('text'):",
-     "                if obj.get('text'):")],
+     "                if isinstance(obj, dict) and obj.get('role') in ('user', 'assistant') \\",
+     "                if isinstance(obj, dict) and True \\")],
      [T + '::test_T21_the_target_gets_the_rendered_artifact_and_none_of_the_source_s_own_state']),
     # ── model switch, interruption, restart ──
     ('Y16', 'a model switch drops the mission link', [(SES,
