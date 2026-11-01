@@ -970,7 +970,10 @@ class LocalNode:
                 child.wait(timeout)
             except subprocess.TimeoutExpired:
                 proc.kill_tree(child)
-                child.wait(30)
+                try:
+                    child.wait(30)
+                except subprocess.TimeoutExpired:
+                    pass            # unkillable: reported as the timeout, not a Core crash
                 error = 'timed out after %ds' % timeout
         size = os.path.getsize(out_path)
         with open(out_path, 'rb') as f:
