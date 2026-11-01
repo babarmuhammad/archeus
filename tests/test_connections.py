@@ -267,3 +267,20 @@ def test_build_output_is_not_indexed(monkeypatch, tmp_path):
     assert 'dir:site' not in ids and not [i for i in ids if i.startswith('file:site/')], \
         'generated build output was indexed'
     assert 'dir:src' in ids
+
+
+def test_a_directory_the_walk_cannot_list_makes_the_graph_truncated(monkeypatch, tmp_path):
+    _mkfile(str(tmp_path), 'ok/a.py', 'x = 1\n')
+    _mkfile(str(tmp_path), 'locked/b.py', 'y = 1\n')
+    real = os.scandir
+
+    def scandir(path='.'):
+        if os.path.basename(str(path)) == 'locked':
+            raise PermissionError(13, 'denied', str(path))
+        return real(path)
+
+    monkeypatch.setattr(os, 'scandir', scandir)
+    files, truncated = connections._walk_source_files(str(tmp_path), 100)
+    assert [os.path.basename(f) for f in files] == ['a.py'] and truncated is True
+    files, truncated = connections._walk_source_files(str(tmp_path / 'ok'), 100)
+    assert len(files) == 1 and truncated is False

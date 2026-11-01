@@ -80,11 +80,17 @@ def _read(f):
 
 def _walk_source_files(root, max_files):
     """Collect source-file paths (pruned, depth/count-capped). Pure — no graph
-    mutation. Returns (abs_paths, truncated)."""
+    mutation. Returns (abs_paths, truncated); a directory that cannot be listed
+    counts as truncated, its subtree is missing."""
     files = []
     truncated = False
     root = os.path.abspath(root)
-    for cur, dirs, names in os.walk(root):
+
+    def unreadable(_err):
+        nonlocal truncated
+        truncated = True
+
+    for cur, dirs, names in os.walk(root, onerror=unreadable):
         depth = _rel(root, cur).count('/') if cur != root else 0
         if depth >= MAX_DEPTH:
             dirs[:] = []
