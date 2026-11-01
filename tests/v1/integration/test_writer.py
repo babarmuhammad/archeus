@@ -452,3 +452,16 @@ def test_writer_throughput_is_at_least_500_commands_per_second(db, actor):
                        best=round(best, 1), floor=floor, census=ci_diag.census(),
                        probes=ci_diag.probes(os.path.dirname(db.path)))
     assert best >= floor, '%.0f commands/s (floor %d)' % (best, floor)
+
+
+def test_an_update_by_a_non_principal_is_refused(db, new_mission, actor):
+    """T-653#F3: update and transition wrote updated_by without the check insert makes."""
+    m = new_mission()
+
+    def bump(tx, *, actor):
+        tx.update(entities.Mission, m['id'], {'title': 'x'},
+                  actor=Ref('execution', ids.new_id('execution')))
+    before = _counts(db)
+    with pytest.raises(ValueError, match='updated_by'):
+        db.writer.execute(bump, {'actor': actor})
+    assert _counts(db) == before

@@ -111,6 +111,11 @@ def _refuse_frozen(cls, fields):
                          % (cls.__name__, sorted(frozen)))
 
 
+def _principal(actor, column):
+    if not ids.is_id(actor.id, 'principal'):
+        raise ValueError('%s must be a principal id, not %r' % (column, actor.id))
+
+
 def _commit(conn):
     conn.execute('COMMIT')
 
@@ -160,8 +165,7 @@ class Tx:
 
     def insert(self, entity, *, actor):
         """A new entity row at version 1. `actor` is the causing principal."""
-        if not ids.is_id(actor.id, 'principal'):
-            raise ValueError('created_by must be a principal id, not %r' % actor.id)
+        _principal(actor, 'created_by')
         name = rows.table(type(entity))
         promoted, body = rows.encode(entity, rows.columns(self.conn, name))
         values = dict(promoted, version=1, created_at=self.now, updated_at=self.now,
@@ -178,6 +182,7 @@ class Tx:
         entity's cursor, or a machine's own clock (P21 D9: `next_run_at` moves
         every period and must not stale a person's version). The caller
         appends the event that records it, as for every mutation."""
+        _principal(actor, 'updated_by')
         row = self.get(cls, entity_id)
         if row is None:
             raise NotFound(entity_id)
@@ -244,6 +249,7 @@ class Tx:
             raise TypeError('%s has no state machine' % cls.__name__)
         if not (isinstance(reason, str) and reason.strip()):
             raise ValueError('a transition needs a reason (the audit trail)')
+        _principal(actor, 'updated_by')
         field, machine = cls.machine_field(machine)
         etype = '%s.state_changed' % machine
         if etype not in ev.REGISTRY:
