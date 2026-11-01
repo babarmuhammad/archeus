@@ -348,8 +348,12 @@ def spawn(spec, argv):
         if os.path.exists(paths.spawning):
             raise AlreadySpawned(spec.execution_id)
     else:
-        last = read_json(paths.spawning) or {}
-        if last.get('process_seq', 1) != seq - 1 or not os.path.exists(paths.ended):
+        try:
+            last = read_json(paths.spawning) or {}
+        except (OSError, ValueError):       # a marker we cannot read is not proof the last one is gone
+            last = None
+        if not isinstance(last, dict) or last.get('process_seq', 1) != seq - 1 \
+                or not os.path.exists(paths.ended):
             raise AlreadySpawned('%s: process %d may still be running'
                                  % (spec.execution_id, seq - 1))
     try:
@@ -622,28 +626,46 @@ def sweep_mcp_configs(keep):
         drop_mcp_config(paths)
 
 
+#: a stream line longer than this is one stderr event naming its head, not an event: an
+#: unterminated or huge line must not be held whole in Core's memory (T-647#2)
+MAX_LINE = 8 << 20
+
+
 def read_stream(path, offset=0):
     """Complete JSONL events from byte *offset* onward -> (events, new_offset).
 
     A trailing partial line is left for the next read. stderr shares the file,
     so a line that is not a JSON object is kept as `{"type": "stderr", "text"}`
-    rather than dropped — a traceback is exactly what a crash leaves behind.
+    rather than dropped — a traceback is exactly what a crash leaves behind. A line
+    over MAX_LINE is skipped to its end and reported the same way.
     """
-    try:
-        with open(path, 'rb') as f:
-            f.seek(offset)
-            data = f.read()
-    except FileNotFoundError:
-        return [], offset
-    end = data.rfind(b'\n') + 1
     events = []
-    for raw in data[:end].splitlines():
-        line = raw.decode('utf-8', errors='replace').strip()
-        if not line:
-            continue
-        try:
-            ev = json.loads(line)
-        except ValueError:
-            ev = None
-        events.append(ev if isinstance(ev, dict) else {'type': 'stderr', 'text': line})
-    return events, offset + end
+    try:
+        f = open(path, 'rb')
+    except FileNotFoundError:
+        return events, offset
+    with f:
+        f.seek(offset)
+        while True:
+            raw = f.readline(MAX_LINE + 1)
+            if len(raw) > MAX_LINE:
+                offset += len(raw)
+                rest = raw
+                while rest and not rest.endswith(b'\n'):
+                    rest = f.readline(MAX_LINE)
+                    offset += len(rest)
+                head = raw[:200].decode('utf-8', errors='replace').strip()
+                events.append({'type': 'stderr', 'text': '%s [line over %d bytes dropped]'
+                                                         % (head, MAX_LINE)})
+                continue
+            if not raw.endswith(b'\n'):
+                return events, offset
+            offset += len(raw)
+            line = raw.decode('utf-8', errors='replace').strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                ev = None
+            events.append(ev if isinstance(ev, dict) else {'type': 'stderr', 'text': line})

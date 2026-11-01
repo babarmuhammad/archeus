@@ -183,6 +183,41 @@ def test_the_stream_reader_resumes_from_an_offset_and_keeps_partial_lines(tmp_pa
     assert base.read_stream(str(tmp_path / 'absent.jsonl'), 7) == ([], 7)
 
 
+@pytest.mark.parametrize('marker', ['{', '[1]', 'dir'])
+def test_a_resume_over_a_spawning_marker_it_cannot_read_is_refused_not_raised(tmp_path, marker):
+    """T-647#3: a corrupt marker escaped spawn as JSONDecodeError/OSError and killed the
+    runtime thread; the manager only handles the spawn contract's errors."""
+    from dataclasses import replace
+    fake = FakeHarness()
+    spec = _spec(tmp_path)
+    _wait_exit(fake, fake.start(spec))
+    paths = ExecPaths(spec.execution_id)
+    os.remove(paths.spawning)
+    if marker == 'dir':
+        os.mkdir(paths.spawning)
+    else:
+        with open(paths.spawning, 'w', encoding='utf-8') as f:
+            f.write(marker)
+    with pytest.raises(base.AlreadySpawned):
+        base.spawn(replace(spec, process_seq=2), [sys.executable, '-c', 'pass'])
+
+
+def test_the_stream_reader_does_not_hold_a_line_over_the_cap(tmp_path, monkeypatch):
+    """T-647#2: an unterminated or huge line was read whole into memory, on every inspect."""
+    monkeypatch.setattr(base, 'MAX_LINE', 64)
+    path = str(tmp_path / 'stream.jsonl')
+    with open(path, 'wb') as f:
+        f.write(b'{"type": "a"}\n' + b'x' * 1000 + b'\n{"type": "b"}\n')
+    events, offset = base.read_stream(path)
+    assert [e['type'] for e in events] == ['a', 'stderr', 'b']
+    assert events[1]['text'].endswith('[line over 64 bytes dropped]') and len(events[1]['text']) < 120
+    assert offset == os.path.getsize(path)
+    with open(path, 'ab') as f:                 # an unterminated line past the cap: skipped, bounded
+        f.write(b'y' * 1000)
+    events, offset = base.read_stream(path, offset)
+    assert [e['type'] for e in events] == ['stderr'] and offset == os.path.getsize(path)
+
+
 def test_the_fake_agent_is_stdlib_only():
     """It stands in for a foreign CLI: importing Archeus would let it cheat the
     contract it is meant to exercise."""
