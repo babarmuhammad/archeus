@@ -638,6 +638,18 @@ def test_cancel_reports_the_first_ending_and_ends_nothing_twice(wire):
     assert journal_ops(h.journal) == ['intent', 'ownership', 'disposal', 'completion']
 
 
+def test_a_torn_journal_still_gets_its_quarantine_line(wire):
+    h = wire(outcome=lambda process: None)
+    h.launch.start(job=h.job)
+    with open(h.journal.journal._path('e1'), 'ab') as stream:
+        stream.write(b'{"length": 9, "record": {"op": "compl')       # the write that tore
+    with pytest.raises(staging.StageError, match='outcome is unavailable'):
+        h.launch.wait()
+    rows, invalid = ledger_mod.read_records(h.journal.journals()['e1'], 'e1')
+    assert invalid and [row['op'] for row in rows] == ['intent', 'ownership', 'quarantine']
+    assert h.launch.end_state['state'] == ledger_mod.DEAD_UNVERIFIED
+
+
 def test_the_journal_alone_says_how_the_end_ended(wire):
     """Restart reads the journal, not this object, and the two endings have to be told
     apart from the records alone: a completed execution owes nothing, a quarantined one

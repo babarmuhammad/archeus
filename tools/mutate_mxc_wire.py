@@ -145,6 +145,13 @@ MUTATIONS = [
      "            self.boundary.close_job(self.job)\n"
      "            state = self._settle(why=why, reason=reason, outcome=outcome)")],
      [W + 'test_the_owner_closes_the_job_exactly_once_after_the_end']),
+    ('W25', 'a torn or corrupt journal is taken as already quarantined', [(LOCAL,
+     "        rows, _ = mxc_ledger.read_records(",
+     "        rows, invalid = mxc_ledger.read_records("),
+     (LOCAL,
+      "        return any(row['op'] == 'quarantine' for row in rows)",
+      "        return invalid or any(row['op'] == 'quarantine' for row in rows)")],
+     [W + 'test_a_torn_journal_still_gets_its_quarantine_line']),
 ]
 
 

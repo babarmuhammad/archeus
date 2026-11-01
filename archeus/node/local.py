@@ -447,9 +447,9 @@ class MxcLaunch:
     def _quarantined(self):
         if self.ledger is None:
             return True
-        rows, invalid = mxc_ledger.read_records(
+        rows, _ = mxc_ledger.read_records(
             self.ledger.journals().get(self.execution_id, b''), self.execution_id)
-        return invalid or any(row['op'] == 'quarantine' for row in rows)
+        return any(row['op'] == 'quarantine' for row in rows)
 
 
 class LocalNode:
