@@ -63,7 +63,8 @@ def validate_trigger(trigger, types):
     if t.startswith(FORBIDDEN_PREFIXES):
         raise Invalid("an automation cannot react to automation events (%s): that is a loop "
                       "by construction" % t)
-    where = trigger.get('where') or {}
+    where = trigger.get('where')
+    where = {} if where is None else where
     if not isinstance(where, dict):
         raise Invalid('where maps payload keys to values')
     for k, v in where.items():
@@ -123,8 +124,12 @@ def validate_template(template):
                 raise Invalid('{%s} is not a placeholder (event.type, event.seq, subject.kind, '
                               'subject.id, payload.<key>)' % name)
     crit = template.get('success_criteria') or []
-    if not (isinstance(crit, list) and all(isinstance(c, dict) for c in crit)):
-        raise Invalid('success_criteria is a list of {text, check}')
+    if not (isinstance(crit, list) and all(
+            isinstance(c, dict) and isinstance(c.get('text'), str) and c['text'].strip()
+            and c.get('check') in ('automatic', 'human')
+            and c.get('origin', 'explicit') in ('explicit', 'inferred')
+            and set(c) <= {'text', 'check', 'origin'} for c in crit)):
+        raise Invalid('success_criteria is a list of {text, check: automatic|human, origin?}')
     return {'title': template['title'], 'objective': template['objective'],
             'success_criteria': [dict(c) for c in crit]}
 
