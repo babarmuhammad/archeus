@@ -162,16 +162,19 @@ def run(payload, environ):
             pass
         return 'continue', ''
     estop = os.path.join(home, 'run', 'STOP')
-    why = _sentinel(estop, 'emergency stop', 'emergency stop')
+
+    def stopped():
+        why = _sentinel(estop, 'emergency stop', 'emergency stop')
+        for flag, reason in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus'),
+                             ('HANDOFF', 'handing off to a fresh session')):
+            why = why or _sentinel(os.path.join(exec_dir, SENTINEL_DIR, flag),
+                                   flag + ' flag', reason)
+        return why
+
+    why = stopped()
     if why:
         _halted(box, None, why)
         return 'halt', why
-    for flag, reason in (('STOP', 'stopped by Archeus'), ('PAUSE', 'paused by Archeus'),
-                         ('HANDOFF', 'handing off to a fresh session')):
-        why = _sentinel(os.path.join(exec_dir, SENTINEL_DIR, flag), flag + ' flag', reason)
-        if why:
-            _halted(box, None, why)
-            return 'halt', why
     # Core never deletes an answer and the execution can empty req/, so a number is reused:
     # an answer is this request's only when it echoes this nonce
     nonce = os.urandom(16).hex()
@@ -181,7 +184,7 @@ def run(payload, environ):
     res = os.path.join(exec_dir, RESPONSE_DIR, '%d.res.json' % seq)
     deadline = time.monotonic() + WAIT_S
     while time.monotonic() < deadline:
-        why = _sentinel(estop, 'emergency stop', 'emergency stop')
+        why = stopped()
         if why:
             _halted(box, seq, why)
             return 'halt', why

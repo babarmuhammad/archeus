@@ -613,6 +613,26 @@ def test_a_flag_or_the_sentinel_halts_before_asking(tmp_path):
     assert os.listdir(os.path.join(d, 'req')) == ['halted.json']     # reported, never asked
 
 
+@pytest.mark.parametrize('flag,reason', [('STOP', 'stopped by Archeus'),
+                                         ('PAUSE', 'paused by Archeus'),
+                                         ('HANDOFF', 'handing off to a fresh session')])
+def test_a_flag_set_while_the_hook_waits_halts_it_even_beside_an_allow(tmp_path, flag, reason):
+    """T-651#R6: the flags were read once, before the request; only the estop was read again."""
+    eid = ids.new_id('execution')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    box, answers, flags = (os.path.join(d, n) for n in ('req', 'res', 'ctl'))
+    os.makedirs(answers)
+    os.makedirs(flags)
+
+    def set_then_allow():
+        open(os.path.join(flags, flag), 'w').close()
+        _allow(answers)
+    with _core(box, set_then_allow):
+        assert hook.run({'tool_name': 'Read'}, _hook_env(tmp_path, eid)) == ('halt', reason)
+    with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
+        assert json.load(f)['seq'] == 1
+
+
 # ── PV-20 §7.4 Gap A: a sentinel is present, absent or indeterminate ────────
 
 PRESENT = {'estop': 'emergency stop', 'STOP': 'stopped by Archeus',
