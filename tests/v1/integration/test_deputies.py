@@ -472,6 +472,13 @@ def test_a_pi_call_with_an_empty_schema_still_parses_its_answer(monkeypatch, tmp
     assert res.parsed == {'a': 1}
 
 
+def test_a_malformed_model_cache_leaves_claude_its_family_aliases(monkeypatch):
+    """T-648#R10: a cached row that is not a model made capabilities raise out of routing."""
+    from claude_sessions import models
+    monkeypatch.setattr(models, 'catalogue', lambda: {'models': [5]})
+    assert {m.id for m in real.claude_models()} == set(real.CLAUDE_TIERS)
+
+
 class _Child:
     returncode = 0
 

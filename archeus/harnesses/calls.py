@@ -190,7 +190,11 @@ def claude_models():
     catalogue (a disk read, `models.roster`)."""
     from claude_sessions import models
     out = [base.ModelInfo(f, t) for f, t in CLAUDE_TIERS.items()]
-    for r in models.roster():
+    try:
+        roster = models.roster()
+    except Exception:           # a malformed cache offers the aliases only, never crashes routing
+        return tuple(out)
+    for r in roster:
         t = CLAUDE_TIERS.get(r.get('family'))
         if t is not None and r.get('id'):
             out.append(base.ModelInfo(models.alias(r['id']), t))
