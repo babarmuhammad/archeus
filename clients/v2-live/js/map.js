@@ -12,6 +12,8 @@ import { createTerritoryMap } from './constellation/territories.js';
 import { laneOf, stateCounts, activityByProject } from './constellation/rings.js';
 import { clockLabel } from '../sim.js';
 import { projectCodes } from './project-code.js';
+import { createBornLog } from './born-model.js';
+import { BORN_MS } from './constellation/born.js';
 
 // A worktree is never a project. A project lists its own (the 'main' tree is the project itself and is not listed); the map hangs them between the hub and the missions that work in them.
 const WT_TONE = { active: 'idle', stale: 'paused', missing: 'blocked', merged: 'done', abandoned: 'idle' };
@@ -25,6 +27,7 @@ export const themeOf = () => THEME[store.get('theme')];
 const maps = new Map();
 const pending = [];
 const lastPulse = new Map();
+const bornLog = createBornLog();
 
 export const liveFresh = (sim) => { const st = sim.state; return st.playing && sim.liveWork().some((x) => x.state === 'RUNNING' && !x.stuck && st.clock - x.last_output_at < 120000); };
 
@@ -48,8 +51,9 @@ export function buildGraph(sim) {
     nodes.push({ id: a.id, kind: 'Decision', label: tr(a.kind === 'plan' ? 'Approve plan' : 'Allow action'), project: a.project, weight: 1.5, state: 'needs-you' });
     edges.push({ from: a.mission, to: a.id, kind: 'asks' });
   }
+  // What the chat has just made carries a New tag and a dashed link for a few seconds (the map draws both).
   // Each project also carries what the Network view says about its hub: the neutral code, the counts and the last thing Archeus did (the same text as the Projects view).
-  return { nodes, edges, projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title), ideaList: st.ideas.filter(i => i.project === p.id).map(i => ({ id: i.id, title: i.title, word: cap(i.state.toLowerCase()) })) }; }) };
+  return { nodes, edges, born: bornLog.live(), projects: st.projects.map((p, i) => { const { missions: _own, name: _name, ...hub } = view[i]; return { ...hub, label: p.name, captured: st.ideas.filter(i => i.project === p.id && i.state === 'CAPTURED').map(i => i.title), ideaList: st.ideas.filter(i => i.project === p.id).map(i => ({ id: i.id, title: i.title, word: cap(i.state.toLowerCase()) })) }; }) };
 }
 
 // What a project says in detail when the Network view zooms into it: per mission its tasks, attempts, verifications and approvals (as small marks) and, for the focused mission, its last events.
@@ -93,7 +97,7 @@ export function buildOverview(sim) {
       missions: own.map((m) => ({ id: m.id, title: m.title, state: STATE[cls(m)] || 'idle', at: m.updated_at, time: clockLabel(m.updated_at) })) };
   });
   const byProject = [...done].map(([id, n]) => ({ name: st.projects.find((p) => p.id === id).name, n })).sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
-  return { projects, ledger: { done: byProject.reduce((t, x) => t + x.n, 0), byProject } };
+  return { projects, born: bornLog.live(), ledger: { done: byProject.reduce((t, x) => t + x.n, 0), byProject } };
 }
 
 export function mapBox(key, wide, inset) {
@@ -105,6 +109,7 @@ export function mapBox(key, wide, inset) {
 export function syncMap(ctx, key) {
   const e = maps.get(key), sim = ctx.sim, lang = store.get('lang');
   if (!e || !e.box.isConnected) return;
+  e.ctx = ctx;
   const calm = key === 'now' && sim.sentence() === 'Nothing needs you.';
   // Three Overview views: Territories (a grid of project cells round the core, its own map), Rings (lanes by state round the core) and Network (the constellation of missions); the last two are the same map, one with `rings`.
   const view = key === 'now' && !calm && !isPhone() ? store.get('overview') : 'network', rings = view === 'rings', terr = view === 'territories';
@@ -136,6 +141,7 @@ export function syncLive(sim) {
 
 // An execution starting draws a marker down its edge, one ending down the mission's edge (the execution node is gone by then); output pulses at most once per 2 s per execution.
 export function notePulse(sim, ev) {
+  if (bornLog.note(ev)) setTimeout(() => { for (const [key, e] of maps) if (e.ctx && e.map && e.box.isConnected) syncMap(e.ctx, key); }, BORN_MS + 60);
   const x = ev.subject && ev.subject.kind === 'execution' ? sim.state.executions[ev.subject.id] : null;
   if (!x || !maps.size) return;
   if (ev.type === 'execution.state_changed') pending.push(ev.payload.to === 'RUNNING' ? x.mission + '->' + x.id + ':runs' : x.project + '->' + x.mission + ':contains');

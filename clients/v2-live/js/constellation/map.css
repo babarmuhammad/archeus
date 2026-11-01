@@ -294,3 +294,12 @@
 .archeus-map .am-card-state { font-size: 12px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
 .archeus-map .am-card-last { color: var(--am-muted); }
 .archeus-map .am-card-act { margin-top: 8px; font-weight: 600; }
+
+/* Made from the chat a moment ago: a dashed link back (not animated, so the emergency stop has nothing to stop) and a small New tag at the mark. */
+.archeus-map .am-spoke.am-born, .archeus-map .am-edge.am-born .am-line { stroke-dasharray: 6 5; stroke-opacity: .8; }
+.archeus-map .am-new { pointer-events: none; }
+.archeus-map .am-new rect { fill: var(--am-bg); stroke: var(--am-text); stroke-opacity: .6; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.archeus-map .am-new text { fill: var(--am-text); font: 600 10px/1 var(--am-sans); letter-spacing: .08em; text-transform: uppercase; }
+@media (forced-colors: active) { .archeus-map .am-new rect { fill: Canvas; stroke: CanvasText; } .archeus-map .am-new text { fill: CanvasText; } }
+.archeus-map[data-theme='forced'] .am-new rect { fill: Canvas; stroke: CanvasText; }
+.archeus-map[data-theme='forced'] .am-new text { fill: CanvasText; }

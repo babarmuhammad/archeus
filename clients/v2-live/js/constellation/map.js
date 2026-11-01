@@ -4,6 +4,7 @@ import {layoutRings, ringStep, LANES} from './rings.js';
 import {expansion, expandCluster, sameLevels, pickFocus, receding, DRAW, MAX_K, MIN_K, OVERVIEW_MAX, REF, BUDGET} from './detail.js';
 import {orderProjects} from './order.js';
 import {panelMarkup, threadGrid, gridMarkup} from './scene.js';
+import {planBorn, cameraToward} from './born.js';
 
 export const MOTION = Object.freeze({appear: 160, relation: 240, label: 160, glide: 220, travel: 600, breath: 6000});
 const NS = 'http://www.w3.org/2000/svg';
@@ -69,14 +70,14 @@ export function createMap(container, options = {}) {
   const nodeLayer = svgElement('g', {class: 'am-nodes'}), ghostLayer = svgElement('g', {class: 'am-ghosts'}), pulseLayer = svgElement('g', {class: 'am-pulses'});
   world.append(spokeLayer, gridLayer, edgeLayer, core, nodeLayer, ghostLayer, pulseLayer);
   const tagLayer = svgElement('g', {class: 'am-tags', 'aria-hidden': 'true'}), leaders = svgElement('g', {class: 'am-leaders', 'aria-hidden': 'true'}), labels = svgElement('g', {class: 'am-labels', 'aria-hidden': 'true'});
-  const reviews = svgElement('g', {class: 'am-reviews'});
+  const reviews = svgElement('g', {class: 'am-reviews'}), bornLayer = svgElement('g', {class: 'am-born-tags', 'aria-hidden': 'true'});
   const hits = svgElement('g', {class: 'am-hits'}), selectRing = svgElement('circle', {class: 'am-select-ring'});
   const coreMark = svgElement('g', {'data-core': 'static'});
   const wordmark = svgElement('text', {class: 'am-wordmark', 'text-anchor': 'middle'}, String(options.coreLabel ?? 'Archeus').toUpperCase());
   const tagline = svgElement('text', {class: 'am-tagline', 'text-anchor': 'middle'}, options.calm ? T('Understand · Plan · Do').toUpperCase() : T('Your projects. In context.'));
   const runningText = svgElement('text', {class: 'am-running', 'text-anchor': 'middle'});
   core.append(coreMark, wordmark, tagline, runningText);
-  svg.append(title, summary, world, tagLayer, leaders, labels, hits, reviews);
+  svg.append(title, summary, world, tagLayer, leaders, labels, bornLayer, hits, reviews);
   const controls = element('div', 'am-controls');
   controls.setAttribute('aria-label', T('Map view'));
   const status = element('p', 'am-sr');
@@ -93,7 +94,8 @@ export function createMap(container, options = {}) {
   // The focus caption: once the camera is in close it names the project in view (hover is never needed to know which project this is); a click opens its work.
   const focusCap = element('button', 'am-focuscap'); focusCap.type = 'button'; focusCap.hidden = true;
   host.append(svg, card, focusCap, controls, status, equivalent); container.append(host);
-  let graph = {nodes: [], edges: [], projects: []}, positions = [], selected = null;
+  let graph = {nodes: [], edges: [], projects: []}, positions = [], selected = null, born = planBorn([], []);
+  const bornSeen = new Set(), bornEls = new Map();
   let focusCapId = null, focusCapSig = '', controlsBottom = 12, inset = INSET, width = 1, height = 1, camera = {x: 0, y: 0, k: 1}, destroyed = false, u = 1, centre = {x: 0, y: 0}, serif = 'serif', sans = 'sans-serif';
   let reducedOverride = options.reducedMotion;
   let slots = new Map(), memory = new Map(), level = 0, projectOf = new Map(), hotCluster = null, hotEls = new Set(), hoverId = null, cardTimer = 0, graceTimer = 0, cardHide = 0;
@@ -347,6 +349,7 @@ export function createMap(container, options = {}) {
       setAttr(rec.circle, 'r', hitR(n));
       setAttr(rec.el, 'aria-pressed', n.id === selected);
     }
+    paintBorn(nodes);
     syncHot();
     const star = starRecs.get(selected)?.el ?? null;
     if (selectedEl && selectedEl !== star) selectedEl.classList.remove('am-selected');
@@ -357,6 +360,19 @@ export function createMap(container, options = {}) {
     host.dataset.labelOverflow = String(missing.length);
     status.textContent = missing.length ? T(`${missing.length} priority labels cannot fit. Full labels available in node table.`) : '';
     paintFocusCap(capBox, capNode);
+  }
+  // The New tag stands at a mark's upper right in screen space, a pill the size of its word at any zoom; it only draws for marks that are on the scene.
+  function paintBorn(nodes) {
+    const word = T('New'), w = word.length * 7 + 14;
+    for (const [id, el] of bornEls) if (!born.tags.has(id)) { el.remove(); bornEls.delete(id); }
+    for (const id of born.tags) {
+      const n = nodes.find(m => m.id === id);
+      let el = bornEls.get(id);
+      if (!n || n.x < 0 || n.x > width || n.y < 0 || n.y > height) { el?.remove(); bornEls.delete(id); continue; }
+      if (!el) { el = svgElement('g', {class: 'am-new', 'data-node-id': id}); el.append(svgElement('rect', {height: 16, rx: 8}), svgElement('text', {y: 12, 'text-anchor': 'middle'}, word)); bornEls.set(id, el); bornLayer.append(el); }
+      el.firstChild.setAttribute('width', w); el.lastChild.setAttribute('x', w / 2);
+      el.setAttribute('transform', `translate(${f(clamp(n.x + n.rk * .6, 4, width - w - 4))} ${f(Math.max(inset.top, n.y - n.rk - 18))})`);
+    }
   }
   function paintFocusCap(box, n) {
     if (!box || !n) { focusCap.hidden = true; focusCapSig = ''; return; }
@@ -449,10 +465,13 @@ export function createMap(container, options = {}) {
   function render(previous = new Map(), arrivals = false, moved = true, glide = false) {
     glide = glide && !isReduced() && !document.hidden && typeof Element.prototype.animate === 'function';
     if (moved) { for (const marker of activePulses) marker.remove(); activePulses.clear(); }
+    born = planBorn(graph.born, positions);
     const projects = new Map((graph.projects || []).map(p => [p.id, p.label]));
     const graphHubs = positions.filter(n => n.hub).length;
     const hubs = options.calm || ringed() ? [] : phoneOverview() ? positions.map(n => ({project: n.id, mx: n.x, my: n.y})) : positions.filter(n => n.hub && (graphHubs <= 24 || ['needs-you', 'running'].includes(stateKey(n.state)))).map(n => ({project: n.cluster, mx: n.x, my: n.y}));
-    const patchSpoke = (rec, item) => setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`);
+    const patchSpoke = (rec, item) => { setAttr(rec.el, 'd', `M${centre.x},${centre.y}L${item.mx},${item.my}`); rec.el.classList.toggle('am-born', born.spokes.has(item.project)); };
+    // A project the chat has just made (or just given something) is linked to the core by a dashed spoke in every view, even where spokes are not drawn.
+    for (const n of positions) if (born.spokes.has(n.id) && !hubs.some(x => x.project === n.id)) hubs.push({project: n.id, mx: n.x, my: n.y});
     reconcile(spokeLayer, spokeRecs, hubs, item => item.project, item => { const rec = {el: svgElement('path', {class: 'am-spoke'})}; patchSpoke(rec, item); return rec; }, patchSpoke);
     // The lanes: thin dotted ellipses in the state colour, no text on or beside them (state is read from colour, dash, the marks' own labels and the list).
     const patchLane = (rec, l) => { for (const [k, v] of [['cx', centre.x], ['cy', centre.y], ['rx', f(l.rx)], ['ry', f(l.ry)]]) setAttr(rec.el, k, v); };
@@ -479,11 +498,12 @@ export function createMap(container, options = {}) {
         for (const [i, v] of [['--x0', p[0]], ['--y0', p[1]], ['--x1', p[2]], ['--y1', p[3]]]) rec.marker.style.setProperty(i, v + 'px');
         rec.ax = a.x; rec.ay = a.y; rec.bx = b.x; rec.by = b.y; rec.ar = a.radius; rec.br = b.radius;
       }
-      if (rec.sa !== a.state || rec.sb !== b.state || rec.kind !== kind) {
+      const isBorn = kind === 'contains' && born.edges.has(b.id);
+      if (rec.sa !== a.state || rec.sb !== b.state || rec.kind !== kind || rec.born !== isBorn) {
         const acc = b.detail && (a.hub || a.kind === 'Worktree') ? accent(b.state) : accent(a.state, b.state);
-        setAttr(rec.el, 'class', `am-edge am-edge-${kind} am-accent-${acc}`);
+        setAttr(rec.el, 'class', `am-edge am-edge-${kind} am-accent-${acc}${isBorn ? ' am-born' : ''}`);
         setAttr(rec.marker, 'display', acc === 'running' && !options.calm ? 'inline' : 'none');
-        rec.sa = a.state; rec.sb = b.state; rec.kind = kind; rec.aid = a.id; rec.bid = b.id;
+        rec.sa = a.state; rec.sb = b.state; rec.kind = kind; rec.born = isBorn; rec.aid = a.id; rec.bid = b.id;
         hotEdge(rec);
       }
     };
@@ -517,16 +537,16 @@ export function createMap(container, options = {}) {
     if (glide) for (const layer of [edgeLayer, spokeLayer]) layer.animate([{opacity: 0}, {opacity: 0, offset: .55}, {opacity: 1}], {duration: MOTION.glide, easing: 'linear'});
     const placeOf = n => projects.get(n.project) || n.project || T('Unassigned');
     const stateOf = n => { const state = stateKey(n.state); return words[state] ? nodeWord(n) : state; };
-    const same = (rec, n) => rec.stamped && rec.label === n.label && rec.kind === n.kind && rec.state === n.state && rec.place === placeOf(n);
-    const stamp = (rec, n) => { rec.stamped = true; rec.label = n.label; rec.kind = n.kind; rec.state = n.state; rec.place = placeOf(n); };
+    const same = (rec, n) => rec.stamped && rec.label === n.label && rec.kind === n.kind && rec.state === n.state && rec.place === placeOf(n) && rec.born === born.tags.has(n.id);
+    const stamp = (rec, n) => { rec.stamped = true; rec.born = born.tags.has(n.id); rec.label = n.label; rec.kind = n.kind; rec.state = n.state; rec.place = placeOf(n); };
     const ringAria = n => {
       const p = projectOf.get(n.id), ofState = ringsOut.lanes.filter(l => l.state === n.state).length, w = p?.worktrees?.length || 0;
-      return [n.label || n.id, kindWord(n), stateOf(n), T(`lane ${n.laneNo + 1} of ${ofState} for ${W(stateKey(n.state))}`), T(`${p?.total || 0} ${p?.total === 1 ? 'mission' : 'missions'}`), ...(w ? [T(`${w} ${w === 1 ? 'worktree' : 'worktrees'}`)] : [])].join(', ');
+      return [n.label || n.id, kindWord(n), stateOf(n), T(`lane ${n.laneNo + 1} of ${ofState} for ${W(stateKey(n.state))}`), T(`${p?.total || 0} ${p?.total === 1 ? 'mission' : 'missions'}`), ...(w ? [T(`${w} ${w === 1 ? 'worktree' : 'worktrees'}`)] : []), ...(born.tags.has(n.id) ? [T('New')] : [])].join(', ');
     };
     const patchHit = (rec, n) => {
       setAttr(rec.el, 'tabindex', !clustered() || n.hub || (!n.detail && ['needs-you', 'running'].includes(stateKey(n.state))) ? 0 : -1);
       if (ringed() && n.hub && n.lane) { const label = ringAria(n); if (rec.aria !== label) { setAttr(rec.el, 'aria-label', label); rec.aria = label; } return; }
-      if (same(rec, n)) return; setAttr(rec.el, 'aria-label', `${n.label || n.id}, ${kindWord(n)}, ${stateOf(n)}, ${placeOf(n)}`); stamp(rec, n);
+      if (same(rec, n)) return; setAttr(rec.el, 'aria-label', `${n.label || n.id}, ${kindWord(n)}, ${stateOf(n)}, ${placeOf(n)}${born.tags.has(n.id) ? ', ' + T('New') : ''}`); stamp(rec, n);
     };
     reconcile(hits, hitRecs, positions, n => n.id, n => {
       const circle = svgElement('circle', {r: 22}), rec = {el: svgElement('g', {tabindex: 0, role: 'button', class: 'am-hit', 'data-node-id': n.id}), circle};
@@ -790,7 +810,7 @@ export function createMap(container, options = {}) {
       const ids = new Set();
       for (const n of next.nodes) { if (ids.has(n.id)) throw new Error(`Duplicate node id: ${n.id}`); ids.add(n.id); }
       const previous = new Map(graph.nodes.map(n => [n.id, n]));
-      graph = {nodes: next.nodes.map(n => ({...n})), edges: (next.edges || []).map(e => ({...e})), projects: (next.projects || []).map(p => ({...p}))};
+      graph = {nodes: next.nodes.map(n => ({...n})), edges: (next.edges || []).map(e => ({...e})), projects: (next.projects || []).map(p => ({...p})), born: (next.born || []).map(b => ({...b}))};
       if (!ids.has(selected) && !positions.some(n => n.id === selected)) selected = null;
       // What the open projects say in detail is part of the picture: it is read again for every change and compared with the last.
       detailData = new Map(); eventData = new Map();
@@ -808,6 +828,13 @@ export function createMap(container, options = {}) {
       positions = placed;
       if (moved) drawCore();
       render(previous, true, moved, moved && previous.size > 0);
+      // A creation off the scene brings the camera to it, unless Quiet is on (the tag and the dashed link still show) or the map was only just built.
+      const fresh = (graph.born || []).filter(b => !bornSeen.has(b.id));
+      for (const b of fresh) bornSeen.add(b.id);
+      if (fresh.length && previous.size && !isReduced() && !document.hidden) {
+        const target = positions.find(n => n.id === planBorn(fresh, positions).focus), to = target && cameraToward(target, camera, width, height, inset);
+        if (to) { pointerAt = null; closeCard(); tween(to); }
+      }
       emit('update', {nodes: positions.length});
     },
     setSelection: id => { if (!destroyed) choose(id, true); },

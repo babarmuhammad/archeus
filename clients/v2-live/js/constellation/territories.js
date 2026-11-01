@@ -65,10 +65,10 @@ export function createTerritoryMap(container, options = {}) {
   host.dataset.theme = options.theme || 'dark'; host.dataset.calm = 'false';
   host.setAttribute('role', 'group'); host.setAttribute('aria-label', options.label || 'Projects and missions');
   const svg = svgEl('svg', {role: 'img'});
-  const world = svgEl('g', {class: 'am-world', 'aria-hidden': 'true'}), spokeLayer = svgEl('g', {class: 'am-spokes'}), cellLayer = svgEl('g', {class: 'am-cells'}), core = svgEl('g', {class: 'am-core am-state-core'}), pulseLayer = svgEl('g', {class: 'am-pulses'});
+  const world = svgEl('g', {class: 'am-world', 'aria-hidden': 'true'}), spokeLayer = svgEl('g', {class: 'am-spokes'}), cellLayer = svgEl('g', {class: 'am-cells'}), tagLayer = svgEl('g', {class: 'am-born-tags'}), core = svgEl('g', {class: 'am-core am-state-core'}), pulseLayer = svgEl('g', {class: 'am-pulses'});
   const coreMark = svgEl('g', {'data-core': 'static'}), wordmark = svgEl('text', {class: 'am-wordmark', 'text-anchor': 'middle'}, 'ARCHEUS'), runningText = svgEl('text', {class: 'am-running', 'text-anchor': 'middle'});
   core.append(coreMark, wordmark, runningText);
-  world.append(spokeLayer, cellLayer, core, pulseLayer);
+  world.append(spokeLayer, cellLayer, tagLayer, core, pulseLayer);
   const hits = svgEl('g', {class: 'am-hits'}), ring = svgEl('circle', {class: 'am-select-ring'});
   svg.append(world, hits);
   const card = htmlEl('div', 'am-card'); card.hidden = true; card.setAttribute('role', 'status');
@@ -114,6 +114,11 @@ export function createTerritoryMap(container, options = {}) {
     const outline = g.querySelector('.am-cell-outline'); if (!outline) return;
     const t = svgEl('path', {class: 'am-cell-tint', d: outline.getAttribute('d')}); g.prepend(t);
     const a = t.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-2', 160), easing: curve('--ease-out')}); a.onfinish = a.oncancel = () => t.remove();
+  };
+  const newTag = cell => {
+    const word = T('New'), w = word.length * 7 + 14, g = svgEl('g', {class: 'am-new', transform: `translate(${f(cell.x + Math.max(4, cell.w - w - 6))} ${f(cell.y - 8)})`});
+    g.append(svgEl('rect', {width: w, height: 16, rx: 8}), svgEl('text', {x: w / 2, y: 12, 'text-anchor': 'middle'}, word));
+    return g;
   };
   const lineOf = (p, state) => (p.last ? `${p.last.time} · ${p.last.text}` : state === 'idle' ? T('No missions yet') : '');
 
@@ -171,7 +176,9 @@ export function createTerritoryMap(container, options = {}) {
     }
     return {g, hitsOf};
   }
-  const describe = p => describeProject(p, T);
+  // What the chat has just made lands in a cell: that cell carries the New tag and a dashed spoke to the core (the tag is its own layer, so it comes and goes without redrawing the cell).
+  let bornIds = new Set();
+  const describe = p => describeProject(p, T) + (bornIds.has(p.id) ? ', ' + T('New') : '');
 
   let graceTimer = 0, hideTimer = 0, over = null;
   // The card fades out over 120 ms; the dim holds a 120 ms grace so moving from one cell to the next cross-fades instead of flashing back to full.
@@ -292,6 +299,7 @@ export function createTerritoryMap(container, options = {}) {
     equivalent.classList.toggle('am-sr', !layout.overflow);
     const cells = layout.overflow ? [] : ordered.map((p, i) => ({p, cell: layout.cells[i]}));
     const seen = new Set(), spokes = [], hitNodes = [];
+    tagLayer.replaceChildren();
     for (const {p, cell} of cells) {
       seen.add(p.id);
       let rec = cellRecs.get(p.id);
@@ -308,18 +316,19 @@ export function createTerritoryMap(container, options = {}) {
         }
       } else { rec.p = p; rec.cell = cell; }
       const state = stateOf(p), active = state === 'needs-you' || state === 'running';
-      if (active || cells.length <= 24) {
+      if (active || cells.length <= 24 || bornIds.has(p.id)) {
         const e = edgePoint(cell, layout.core), dx = e.x - layout.core.x, dy = e.y - layout.core.y, d = Math.hypot(dx, dy) || 1, r0 = layout.core.radius * 1.5;
         spokes.push({id: p.id, state, d: `M${f(layout.core.x + dx / d * r0)},${f(layout.core.y + dy / d * r0)}L${f(e.x)},${f(e.y)}`, x0: f(layout.core.x + dx / d * r0), y0: f(layout.core.y + dy / d * r0), x1: f(e.x), y1: f(e.y)});
       }
       hitNodes.push({p, cell, rec});
+      if (bornIds.has(p.id)) tagLayer.append(newTag(cell));
     }
     for (const [id, rec] of cellRecs) if (!seen.has(id)) { if (animated) fadeCell(rec.g); else rec.g.remove(); rec.spoke?.remove(); cellRecs.delete(id); }
     spokeLayer.replaceChildren();
     // the spokes are redrawn at once, so while cells travel they stay out and then fade in: no line ever points at an empty slot
     if (moved) spokeLayer.animate([{opacity: 0}, {opacity: 0, offset: .55}, {opacity: 1}], {duration: tok('--dur-3', 200), easing: 'linear'});
     for (const s of spokes) {
-      const path = svgEl('path', {class: `am-spoke am-spoke-${s.state}`, d: s.d}); spokeLayer.append(path); cellRecs.get(s.id).spoke = path; cellRecs.get(s.id).spokeD = s;
+      const path = svgEl('path', {class: `am-spoke am-spoke-${s.state}${bornIds.has(s.id) ? ' am-born' : ''}`, d: s.d}); spokeLayer.append(path); cellRecs.get(s.id).spoke = path; cellRecs.get(s.id).spokeD = s;
       if (s.state === 'running') { const m = svgEl('circle', {class: 'am-travel', r: 2.6}); const t = driftOf(options.seed, s.id); m.style.setProperty('--tp', Math.round(t.period / 2.4) + 'ms'); m.style.setProperty('--td', Math.round(t.delay / 2.4) + 'ms'); for (const [k, v] of [['--x0', s.x0], ['--y0', s.y0], ['--x1', s.x1], ['--y1', s.y1]]) m.style.setProperty(k, v + 'px'); spokeLayer.append(m); }
     }
     hits.replaceChildren();
@@ -399,7 +408,7 @@ export function createTerritoryMap(container, options = {}) {
   const api = {
     update(next) {
       if (destroyed) return;
-      model = next;
+      model = next; bornIds = new Set((next.born || []).map(b => b.project));
       readInset(width, height);
       const fresh = orderProjects(model.projects.filter(p => !slotOf.has(p.id)));
       for (const p of fresh) slotOf.set(p.id, slotOf.size);

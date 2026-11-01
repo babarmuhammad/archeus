@@ -2419,3 +2419,13 @@ Status: owner-approved terminology; rendering remains to be checked by Claude.
 - Italian failover text uses "subentro", including per-harness account sentences and the tour. Quiet motion is "Movimento ridotto"; project Quiet stays "Quieto".
 - Core stays "Core" in the Work graph description and tour. Active defaults to "Attivo" for worktrees; contextual "phase:Active" remains "Attiva" for phases. Existing feminine mission states stay unchanged.
 - English source keys and tour text stay unchanged. Other review FIX proposals were deliberately deferred; see .collab-codex-it-report.md.
+
+## New tag on an object made in chat (2026-11-01): to review
+
+Status: to review. One new pair in `js/i18n-now.js`, drawn as a small tag (in capitals) on the mark or cell of something the chat has just made, for six seconds.
+
+| English | Italian |
+|---|---|
+| New | Nuovo |
+
+Question for the reviewer: the tag stands for a project, a mission or an idea, so it has no gender; Nuovo is the neutral form.
