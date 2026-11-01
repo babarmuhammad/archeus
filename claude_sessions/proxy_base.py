@@ -236,19 +236,30 @@ class Daemon:
                        'another process' % (self.label, port))
 
     def stop(self):
-        """(ok, message). Terminates the daemon named in the lock file."""
+        """(ok, message). Terminates the daemon named in the lock file. The lock
+        goes only once the daemon is gone or its pid is another process's: a
+        refused stop leaves it, or the daemon would be orphaned."""
         data = self.read_lock()
-        self.clear_lock()
         pid = (data or {}).get('pid')
         if not pid:
+            self.clear_lock()
             return True, 'no %s recorded' % self.label
         if pid_alive(pid) is False:
+            self.clear_lock()
             return True, '%s already gone' % self.label
         # a crashed daemon's pid may now belong to a stranger: only the process
         # created when the lock was written is stopped
         from . import proc
-        if proc.kill_pid_tree(pid, data.get('ctime')):
+        ctime = data.get('ctime')
+        if proc.kill_pid_tree(pid, ctime):
+            self.clear_lock()
             return True, 'stopped'
+        if ctime is None:
+            return False, ('the %s lock has no creation time (written by an older '
+                           'version); stop pid %s by hand' % (self.label, pid))
+        now = proc.process_create_time(pid)
+        if now is not None and now != ctime:
+            self.clear_lock()
         return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)
 
 

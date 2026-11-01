@@ -573,6 +573,46 @@ def test_stop_never_kills_a_pid_that_is_not_the_process_that_wrote_the_lock():
         stranger.wait()
 
 
+def test_a_refused_stop_keeps_the_lock_of_a_daemon_it_cannot_identify():
+    """A daemon started before the lock carried a creation time is still ours:
+    deleting its lock on a refused stop orphaned it (R3)."""
+    from claude_sessions import proc
+    child = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0}, f)
+        ok, msg = d.stop()
+        assert not ok and 'no creation time' in msg and child.poll() is None
+        assert d.read_lock()['pid'] == child.pid
+        assert d.stop()[0] is False                       # and a second stop still finds it
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0,
+                       'ctime': proc.process_create_time(child.pid) + 1}, f)
+        assert d.stop()[0] is False
+        assert d.read_lock() is None and child.poll() is None   # another process's pid: lock goes
+    finally:
+        child.kill()
+        child.wait()
+
+
+def test_a_stop_that_fails_to_kill_the_daemon_keeps_the_lock(monkeypatch):
+    from claude_sessions import proc
+    child = _sleeper()
+    try:
+        d = failover._daemon(_P)
+        os.makedirs(os.path.dirname(d.lock_path()), exist_ok=True)
+        with open(d.lock_path(), 'w', encoding='utf-8') as f:
+            json.dump({'pid': child.pid, 'port': 20129, 'started': 0,
+                       'ctime': proc.process_create_time(child.pid)}, f)
+        monkeypatch.setattr(proc, 'kill_pid_tree', lambda pid, ctime: False)
+        assert d.stop()[0] is False and d.read_lock()['pid'] == child.pid
+    finally:
+        child.kill()
+        child.wait()
+
+
 def test_stop_ends_the_process_whose_creation_time_the_lock_recorded():
     from claude_sessions import proc
     child = _sleeper()
