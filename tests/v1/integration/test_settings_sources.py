@@ -446,7 +446,7 @@ def _halted_then_ended(x, monkeypatch):
     status, kill = p['adapter'].status, x.manager.node.kill
     monkeypatch.setattr(p['adapter'], 'status', lambda h: (
         status(h) if kills else type('S', (), {'state': 'running'})))
-    monkeypatch.setattr(x.manager.node, 'kill', lambda a, h: (kills.append(h), kill(a, h))[1])
+    monkeypatch.setattr(x.manager.node, 'kill', lambda a, h, **kw: (kills.append(h), kill(a, h, **kw))[1])
     return e, kills
 
 
