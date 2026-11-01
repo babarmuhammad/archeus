@@ -73,11 +73,13 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 | map probe | `py tools\v2_livemap_probe.py` |
 | design kit probe | `py tools\v2_live_design_probe.py` |
 | All devices hit-test | `py tools\v2_live_alldevices_probe.py` |
-| phone foundation: one threshold, PWA bits, safe areas, 44 px targets, no sideways scroll at 320 to 430 and 200 %, landscape flips to the phone shell; the bar, top bar, sheets and toasts under a faked keyboard and injected insets; one vertical scroll surface per route (known nested scrollers are listed as expected failures with their owner) | `py -I tools2_live_phone_probe.py` |
-| phone shell in a real browser: bar slots, Places, palette, Stop two step, safety and tools sheets, language, phone frame on desktop | `py -I tools2_live_phone_functional.py` |
-| Autopilot: the whole tour at 8x at 1440x900 and 390x844 (every chapter reached, no step skipped that is not optional, no console error, settings and story back, a key, a click, Escape and a mid chapter stop), `--shots DIR` for a picture per chapter, `--speed 1` for real time | `py tools2_live_autopilot_check.py` |
+| phone foundation: one threshold, PWA bits, safe areas, 44 px targets, no sideways scroll at 320 to 430 and 200 %, landscape flips to the phone shell; the bar, top bar, sheets and toasts under a faked keyboard and injected insets; one vertical scroll surface per route (known nested scrollers are listed as expected failures with their owner) | `py -I tools\v2_live_phone_probe.py` |
+| phone shell in a real browser: bar slots, Places, palette, Stop two step, safety and tools sheets, language, phone frame on desktop | `py -I tools\v2_live_phone_functional.py` |
+| Autopilot: the whole tour at 8x at 1440x900 and 390x844 (every chapter reached, no step skipped that is not optional, no console error, settings and story back, a key, a click, Escape and a mid chapter stop), `--shots DIR` for a picture per chapter, `--speed 1` for real time | `py tools\v2_live_autopilot_check.py` |
 | functional runs | `py tools\v2_live_s3_functional.py`, `v2_live_s4_functional.py`, `v2_live_tui_check.py`, `v2_live_s6_functional.py` |
 | package | `py tools\v2_live_package.py` writes `Archeus-V2-Live.zip` (this folder without tests, `start.cmd`, `README-FIRST.txt`) |
+
+The 44 px control size (48 px for primary controls from 1024 px wide, SPEC B16 to B22) is checked only by the layout probe, and nothing runs it for you: no CI does. It needs Chromium for Playwright (`py -m playwright install chromium` once). Run it from the repository root, once per language (`py -I tools\v2_live_layout_probe.py`, then the same with `--lang it`), whenever a control, a label, spacing or a route changes. The result must be 0 defects in every column; a target under the size is a `target` defect.
 
 ## Files
 
