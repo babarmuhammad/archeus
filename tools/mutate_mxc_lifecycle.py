@@ -139,6 +139,13 @@ MUTATIONS = [
      "                           reason='stopped')")], [REASONS]),
     ('ML30', 'a hand-off kill carries no reason', [(MGR,
      "reason=e.stop_reason or 'handoff')", "reason='handoff')")], [REASONS]),
+    ('ML34', 'a child whose thread never started stays in the live map', [(CTX,
+     '                authority._live.pop(rec.execution_id, None)\n', '')],
+     [L + 'test_a_child_whose_thread_cannot_start_is_forgotten_and_its_profile_is_not_busy']),
+    ('ML35', 'a child whose thread never started stays in the children', [(CTX,
+     '                authority.children.pop((rec.execution_id, request.process_seq), None)\n',
+     '')],
+     [L + 'test_a_child_whose_thread_cannot_start_is_forgotten_and_its_profile_is_not_busy']),
 ]
 
 

@@ -320,6 +320,20 @@ def test_an_isolated_launch_that_fails_after_the_launch_ends_it(long_agent, monk
     assert long_agent.jobs.terminated == [long_agent.boundary.launch_calls[0]['job']]
 
 
+def test_a_child_whose_thread_cannot_start_is_forgotten_and_its_profile_is_not_busy(
+        long_agent, monkeypatch):
+    def no_thread(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(mxc_context.MxcChild, 'start', no_thread)
+    eid = long_agent.spec.execution_id
+    with pytest.raises(base.SpawnFailed, match="launch_failed .*can't start new thread"):
+        long_agent.node.spawn(long_agent.agent, long_agent.spec, isolated=True)
+    assert long_agent.authority.children == {} and eid not in long_agent.authority._live
+    assert long_agent.boundary.launches[0].end_state['reason'] == 'launch failed'
+    assert long_agent.node.end_isolation(eid, reason='ended')['profile'] != 'busy'
+
+
 # ── boot: the ledger is read for ends nobody verified ─────────────────────────
 
 def noted(state=None):

@@ -102,7 +102,7 @@ class MxcIsolationContext(IsolationContext):
             rec = authority.establish(request, paths)
         except IsolationUnavailable as err:
             raise _refused(err)
-        launch = None
+        launch = child = None
         try:
             launch = authority.boundary.launch(
                 list(argv), cwd=cwd, env=env, profile=rec.profile,
@@ -118,6 +118,11 @@ class MxcIsolationContext(IsolationContext):
         except Exception as err:        # nothing half-started survives
             if launch is not None:
                 launch.cancel(reason='launch failed')
+            if child is not None:
+                # its pump never ran, so nothing would ever end it: left registered, the
+                # profile reads busy until Core restarts
+                authority._live.pop(rec.execution_id, None)
+                authority.children.pop((rec.execution_id, request.process_seq), None)
             if isinstance(err, IsolationUnavailable):
                 raise _refused(err)
             raise base.SpawnFailed('isolation: launch_failed (%s)' % err)
