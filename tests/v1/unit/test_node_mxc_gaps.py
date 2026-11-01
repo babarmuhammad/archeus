@@ -190,9 +190,10 @@ def test_ui_or_telemetry_widening_refuses(tmp_path, change):
     refuses(tmp_path, [change], 'unsafe UI or telemetry')
 
 
-def test_ui_enabled_policy_refuses_before_backend(tmp_path):
-    """mxc.py:207 the sealed subset keeps the desktop UI disabled, whatever the raw says."""
-    refuses(tmp_path, [(('ui', 'disable'), False)], 'unsafe UI or telemetry')
+@pytest.mark.parametrize('disable', ['false', 0, None, [], 'no'])
+def test_a_ui_disable_that_is_not_a_boolean_refuses_before_backend(tmp_path, disable):
+    """mxc.py: the sealed subset knows two desktop postures and spells each as a real boolean."""
+    refuses(tmp_path, [(('ui', 'disable'), disable)], 'unsafe UI or telemetry')
 
 
 def test_compiler_refuses_an_enabled_ui(tmp_path):

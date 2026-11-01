@@ -346,7 +346,7 @@ def test_undeclared_keyword_cannot_reach_the_policy(tmp_path):
     for field in ('containerId', 'phase', 'sandboxId', 'sessionId', 'correlationVector',
                   'defaultPolicy', 'enforcementMode', 'allowWindows', 'leastPrivilege',
                   'inheritDefaultEnv', 'clipboard', 'injection', 'destroyOnExit',
-                  'preservePolicy', 'telemetry', 'capabilities', 'enumeratePaths',
+                  'preservePolicy', 'telemetry', 'enumeratePaths',
                   'allowedProxyPeer', 'retainEtl', 'allowDaclMutation', 'containment',
                   'version', 'proxy', 'readwritePaths', 'readonlyPaths', 'deniedPaths',
                   'networkProxy'):

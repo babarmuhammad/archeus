@@ -190,6 +190,46 @@ def mxc_busy(ledger):
                    if launch.end_state is None and launch._ledger_key() == key})
 
 
+#: the variables of an isolated environment that name the execution's own folders
+_MXC_OWN_DIRS = frozenset(('TEMP', 'TMP', 'USERPROFILE', 'HOME', 'APPDATA', 'LOCALAPPDATA',
+                           'CLAUDE_CONFIG_DIR'))
+
+
+def mxc_env(env, *, writable, readonly, path):
+    """`base._isolated_env`'s map as the policy's explicit environment, built for the
+    container and not for the host: each folder variable must lie in a writable grant (a
+    host profile value would name a place the container cannot reach), SYSTEMROOT stays the
+    Windows directory Core derived, and PATH is replaced by *path*, entries that are staged
+    read-only or under SYSTEMROOT, never the host's PATH and never a writable place the
+    agent could plant a program in."""
+    def inside(value, roots):
+        try:
+            return any(mxc._within(mxc._path(value), root) for root in roots)
+        except mxc.MxcUnavailable:
+            return False
+
+    writable, readonly = [mxc._path(p) for p in writable], [mxc._path(p) for p in readonly]
+    out, system = {}, None
+    for key, value in env.items():
+        name = key.upper()
+        if name in _MXC_OWN_DIRS and not inside(value, writable):
+            raise staging.StageError('%s is not inside the execution folders' % key)
+        if name == 'SYSTEMROOT':
+            system = value
+        if name != 'PATH':
+            out[key] = value
+    try:
+        system = mxc._path(system)
+    except mxc.MxcUnavailable:
+        raise staging.StageError('SYSTEMROOT must be an absolute Windows directory') from None
+    path = list(path)
+    if not path or not all(inside(entry, readonly + [system])
+                           and not inside(entry, writable) for entry in path):
+        raise staging.StageError('PATH must name staged read-only folders or SYSTEMROOT')
+    out['PATH'] = os.pathsep.join(path)
+    return out
+
+
 class MxcLaunch:
     """One MXC execution, wired to the native transport and to Core's ledger.
 
@@ -224,14 +264,15 @@ class MxcLaunch:
     reader can make an end clean, and without one the end is quarantined.
     """
 
-    def __init__(self, *, backend=None, sdk_root, pins, outcome, workspace, readonly=(),
+    def __init__(self, *, backend=None, sdk_root, pins=None, outcome, workspace, readonly=(),
                  denied=(), cwd, command_line, env=None, timeout_ms, api=None,
                  boundary=None, ledger=None, schema_validator=None, execution_id=None,
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
                  end_job=None, watchdog=None, seed_stage=None, seed_recheck=None,
-                 process_seq=1, writable=(), transport=None):
+                 process_seq=1, writable=(), transport=None, ui=False, proxy_url=None,
+                 capabilities=None):
         if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
                 or quiescence_wait < 0):
             raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
@@ -281,7 +322,7 @@ class MxcLaunch:
         self.verdict = self.facts = self._quiet_why = None
         #: why the owner of the drain stopped it: the drain's own end records it
         self.stop_reason = None
-        self.pins = dict(pins)
+        self.pins = staging.mxc_sdk_pins() if pins is None else dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
         linkscan.check_grants((workspace,) + readonly, staging.StageError)
@@ -293,7 +334,7 @@ class MxcLaunch:
             workspace=(workspace,) + writable if writable else workspace,
             readonly=readonly, denied=denied, cwd=cwd,
             command_line=command_line, env=dict(env or {}), timeout_ms=timeout_ms,
-            ui=False, egress='deny', proxy_url=None)
+            ui=ui, egress='deny', proxy_url=proxy_url, capabilities=capabilities)
         self.process, self.job = None, None
         self.launcher_exit, self.completed, self.end_state = None, None, None
         self._started = self._ended = False

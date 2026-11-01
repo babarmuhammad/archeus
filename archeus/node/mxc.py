@@ -1,8 +1,9 @@
 """Closed MXC policy seam. Native execution requires an explicitly injected backend.
 
-UNVERIFIED: the pinned JSON-schema artifact, native identity/resource read-back,
-streaming and owned disposal contract are not supplied. Validation below covers
-the documented closed policy subset; it is not certification by that artifact.
+UNVERIFIED: no pin is recorded yet (mxc_pins.json holds UNSET), so no schema
+validator can be built, and native identity/resource read-back, streaming and owned
+disposal contract are not supplied. Validation below covers the documented closed
+policy subset; it is not certification by the pinned schema artifact.
 F1 establishes host-user tokens plus PSEC, not distinct AppContainer SIDs.
 """
 
@@ -20,6 +21,13 @@ from . import linkscan
 
 
 NATIVE_RUN_ENABLED = False
+#: the one desktop posture beyond blocked (OD-1 default a): node, git and powershell fail
+#: 0xC0000142 with the UI subsystem off (F4). Only the clipboard and injection stay closed;
+#: a caller names it for a code_change execution, never as a default or as a retry
+UI_CODE_CHANGE = 'code_change'
+#: the container capabilities a loopback proxy route may carry; F3 measured this one. Another
+#: needs a reviewed bump here and in the evidence, never a caller's choice
+CAPABILITIES = ('internetClient',)
 
 
 class MxcUnavailable(ValueError):
@@ -98,8 +106,22 @@ class MxcPolicy:
         validate_policy(self)
 
 
+def _capabilities(value, proxy):
+    """The capability list, sorted: a route needs its capability and nothing else may
+    carry one, so a named set is checked and an absent one is the route's own."""
+    if value is None:
+        return list(CAPABILITIES) if proxy else []
+    if isinstance(value, (str, bytes)) or not hasattr(value, '__iter__'):
+        raise MxcUnavailable('capabilities must be a list of names')
+    value = list(value)
+    if (bool(value) != bool(proxy) or len(set(map(str, value))) != len(value)
+            or any(c not in CAPABILITIES for c in value)):
+        raise MxcUnavailable('capabilities must be the reviewed set, and only with a proxy')
+    return sorted(value)
+
+
 def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=None,
-                   timeout_ms, ui=False, egress='deny', proxy_url=None):
+                   timeout_ms, ui=False, egress='deny', proxy_url=None, capabilities=None):
     """Compile only Core-owned inputs; never inherit the host environment."""
     if isinstance(workspace, (str, os.PathLike)):
         writable = (workspace,)
@@ -108,8 +130,9 @@ def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=
             writable = tuple(workspace)
         except TypeError:
             raise MxcUnavailable('workspace must be a path or paths') from None
-    if ui is not False or egress != 'deny':
+    if (ui is not False and ui != UI_CODE_CHANGE) or egress != 'deny':
         raise MxcUnavailable('unsupported UI or egress policy')
+    capabilities = _capabilities(capabilities, proxy_url is not None)
     if env is None:
         env = {}
     if not isinstance(env, dict) or any(not _text(k) or '=' in k or not isinstance(v, str)
@@ -129,7 +152,7 @@ def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=
                        'deniedPaths': [_path(p) for p in denied]},
         'network': {'egress': {'default': 'deny'},
                     'ingress': {'default': 'deny', 'hostLoopback': 'deny'}},
-        'ui': {'disable': True, 'clipboard': 'none', 'injection': False},
+        'ui': {'disable': ui is False, 'clipboard': 'none', 'injection': False},
         'telemetry': {'enabled': False},
     }
     if proxy_url is not None:
@@ -144,7 +167,7 @@ def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=
             raise MxcUnavailable('proxy must be an explicit loopback HTTP endpoint')
         raw['network']['ingress'] = {'default': 'allow', 'hostLoopback': 'allow'}
         raw['runtimeConfig'] = {'networkProxy': proxy_url}
-        raw['processContainer'] = {'capabilities': ['internetClient']}
+        raw['processContainer'] = {'capabilities': capabilities}
     return MxcPolicy(raw)
 
 
@@ -204,7 +227,14 @@ def validate_policy(policy):
             raise ValueError('unsafe network policy')
         if proxy:
             if (set(raw['runtimeConfig']) != {'networkProxy'}
-                    or raw['processContainer'] != {'capabilities': ['internetClient']}):
+                    or set(raw['processContainer']) != {'capabilities'}):
+                raise ValueError('invalid proxy policy')
+            caps = raw['processContainer']['capabilities']
+            try:
+                valid = caps == _capabilities(caps, True)
+            except MxcUnavailable:
+                valid = False
+            if not valid:
                 raise ValueError('invalid proxy policy')
             url = urlsplit(raw['runtimeConfig']['networkProxy'])
             if not (url.scheme == 'http' and ipaddress.ip_address(url.hostname).is_loopback
@@ -212,7 +242,7 @@ def validate_policy(policy):
                     and url.path in ('', '/') and not url.query and not url.fragment):
                 raise ValueError('invalid proxy endpoint')
         if (set(raw['ui']) != {'disable', 'clipboard', 'injection'}
-                or raw['ui']['disable'] is not True
+                or type(raw['ui']['disable']) is not bool
                 or raw['ui']['clipboard'] != 'none' or raw['ui']['injection'] is not False
                 or set(raw['telemetry']) != {'enabled'}
                 or raw['telemetry']['enabled'] is not False):

@@ -39,7 +39,7 @@ class FakeMxc:
 
     def compile_policy(self, *, workspace, readonly=(), denied=(), cwd,
                        command_line, env=None, timeout_ms, ui=False,
-                       egress='deny', proxy_url=None):
+                       egress='deny', proxy_url=None, capabilities=None):
         assert ui is False and egress == 'deny' and proxy_url is None
         self.calls.append('compile')
         return MxcPolicy({'filesystem': {'readwritePaths': [workspace],
