@@ -783,8 +783,8 @@ MUTATIONS = [
      "principal_id=actor.id if user else None,", "principal_id=None,")],
      [UNIFY]),
     ('P137', "a phone paired with a PIN keeps none", [(ROUTES,
-     "'pin_hash': commands.hash_pin(b['pin']) if b.get('pin') else None},",
-     "'pin_hash': None},")],
+     "'pin_hash': commands.hash_pin(b['pin']) if b.get('pin') else None,\n            'minted_by_device'",
+     "'pin_hash': None,\n            'minted_by_device'")],
      [UNIFY]),
 ]
 

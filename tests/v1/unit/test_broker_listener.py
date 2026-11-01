@@ -628,6 +628,9 @@ class Api:
     def core_session(self):
         return SESSION
 
+    def core_pid(self):
+        return 1
+
     def process(self, pid, jobs):
         found = self.table.get(pid)
         if found is None:
