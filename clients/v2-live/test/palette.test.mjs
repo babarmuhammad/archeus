@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { score, search, sections, remember } from '../js/palette-model.js';
+import { score, search, sections, remember, isPaletteKey } from '../js/palette-model.js';
 
 const item = (id, group, label, words = '', pin = false) => ({ id, group, label, words, pin });
 const ITEMS = [
@@ -47,4 +47,13 @@ test('sections: Recent only without a query, then the groups in order', () => {
 test('remember keeps the newest first, once, up to five', () => {
   assert.deepEqual(remember(['a', 'b', 'c'], 'b'), ['b', 'a', 'c']);
   assert.equal(remember(['1', '2', '3', '4', '5'], '6').length, 5);
+});
+
+test('Ctrl+K and Cmd+K open the palette, in either case, and Alt, or a bare K, do not', () => {
+  const e = (key, o = {}) => ({ key, ctrlKey: false, metaKey: false, altKey: false, ...o });
+  assert.ok(isPaletteKey(e('k', { ctrlKey: true })));
+  assert.ok(isPaletteKey(e('K', { metaKey: true })));
+  assert.ok(!isPaletteKey(e('k')));
+  assert.ok(!isPaletteKey(e('k', { ctrlKey: true, altKey: true })));
+  assert.ok(!isPaletteKey(e('j', { ctrlKey: true })));
 });

@@ -60,7 +60,7 @@ A guided tour of the real app: 39 chapters in 13 groups (35 on a phone), each a 
 
 ## Keyboard
 
-`?` lists the keys. On the Overview Alt+1, Alt+2 and Alt+3 pick Territories, Rings and Network (desktop only, not while typing). `j` and `k` move through list rows and cards, Enter acts on the focused row or card, Space opens a row, Esc closes the help, a menu, an ask-first question or the details sheet. Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet (it takes focus when it opens and gives it back). The terminal view has its own keys (`?` there). The chat bar takes `/` for the 34 slash commands (English names, Italian aliases).
+`?` lists the keys. Ctrl+K or Cmd+K opens the command palette (not in the terminal view). On the Overview Alt+1, Alt+2 and Alt+3 pick Territories, Rings and Network (desktop only, not while typing). `j` and `k` move through list rows and cards, Enter acts on the focused row or card, Space opens a row, Esc closes the help, a menu, an ask-first question or the details sheet. Focus order: toolbar, navigation, page, chat bar, bottom bar, then the details sheet (it takes focus when it opens and gives it back). The terminal view has its own keys (`?` there). The chat bar takes `/` for the 34 slash commands (English names, Italian aliases).
 
 ## Tests and probes
 
@@ -93,5 +93,5 @@ Run from the repository root; the repo's shared lock keeps heavy runs from overl
 - The Overview rings and the core (branch v2/live-net) are not drawn under 600 px: the phone keeps its own scene. Rings carry colour only; project names are drawn for a bounded set (SPEC RG05), the rest are reachable by Tab and in the node table.
 - The Overview has three views beside the headline: Territories (default), Rings and Network (SPEC section U; `?overview=territories|rings|network`). The icon buttons keep tooltips and accessible names in the selected language only: “Territories: one cell per project” / “Territori: una cella per progetto”, “Rings: a lane per state” / “Anelli: una corsia per stato”, “Network: missions around each project” / “Rete: le missioni attorno a ogni progetto”. From zoom 1.3 a caption chip in Rings and Network names the project nearest the centre, so a project is named without hover; it is not drawn on a phone or when no scene corner is free. Territories names every cell, so it has no caption.
 - Map performance (the Overview map) is measured in headless Chromium on a PC, not on a phone; above 60 nodes hulls are not separated.
-- Not built: Ctrl+Enter, the Ctrl+K shortcut, view transitions, a duration-class table, the font subset for production, the service worker.
+- Not built: Ctrl+Enter, view transitions, a duration-class table, the font subset for production, the service worker.
 - Pause all, Emergency stop and decisions act on the simulation only.

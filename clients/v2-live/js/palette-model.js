@@ -1,5 +1,8 @@
 // Ranking for the command palette: pure, so it can be tested. An item is { id, group, label, words, pin }.
 // A query scores a label by how it matches (start, word start, inside, scattered letters), then a keyword match; recent and pinned items win ties.
+// Ctrl+K or Cmd+K; Alt turns it into another chord.
+export const isPaletteKey = (e) => (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k';
+
 export const GROUPS = ['Pages', 'Actions', 'Projects'];
 
 export function score(item, q) {
