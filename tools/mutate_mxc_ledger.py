@@ -56,6 +56,10 @@ MUTATIONS = [
     ('L11', 'journal names that differ only by case are two names', [(LEDGER,
      "name[:-6].casefold() == execution_id.casefold()", "name[:-6] == execution_id")],
      [TEST + 'test_two_names_that_differ_only_by_case_are_one_journal']),
+    ('L12', 'the case collision refused only for an intent', [(LEDGER,
+     "        if any(\n                name[:-6] != execution_id",
+     "        if op == 'intent' and any(\n                name[:-6] != execution_id")],
+     [TEST + 'test_two_names_that_differ_only_by_case_are_one_journal']),
 ]
 
 

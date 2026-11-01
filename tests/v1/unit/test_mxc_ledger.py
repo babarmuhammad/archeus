@@ -357,3 +357,9 @@ def test_two_names_that_differ_only_by_case_are_one_journal(journal):
         journal.append('ab1-p1', 'intent', **intent)
     assert list(journal.journals()) == ['Ab1-p1']
     journal.append('Ab1-p2', 'intent', **intent)            # another generation is another name
+    for op, facts in (('quarantine', {'reason': 'restart_unverified'}),
+                      ('ownership', {})):               # no later op reaches the other's file
+        with pytest.raises(ValueError, match='collides'):
+            journal.append('ab1-p1', op, **facts)
+    got, invalid = ledger.read_records(journal.journals()['Ab1-p1'], 'Ab1-p1')
+    assert [r['op'] for r in got] == ['intent'] and not invalid
