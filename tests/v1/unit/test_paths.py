@@ -60,6 +60,12 @@ def test_a_legacy_archeus_directory_is_refused_even_when_named(bad):
         paths.archeus_home({'ARCHEUS_HOME': bad}, 'linux')
 
 
+@pytest.mark.parametrize('rel', ['rel', os.path.join('.', 'h'), os.path.join('..', 'h')])
+def test_a_relative_archeus_home_is_refused_not_bound_to_the_working_directory(rel):
+    with pytest.raises(ValueError, match='absolute'):
+        paths.archeus_home({'ARCHEUS_HOME': rel}, 'linux')
+
+
 def test_resolving_touches_no_disk(tmp_path):
     home = tmp_path / 'not-created'
     paths.archeus_home({'ARCHEUS_HOME': str(home)})

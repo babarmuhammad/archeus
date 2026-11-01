@@ -54,6 +54,8 @@ def archeus_home(environ=None, platform=None):
     explicit = env.get('ARCHEUS_HOME', '').strip()
     if explicit:
         path = os.path.expanduser(explicit)
+        if not os.path.isabs(path):     # abspath below would bind it to the working directory
+            raise ValueError('ARCHEUS_HOME must be an absolute path: %.80r' % (explicit,))
     elif plat.startswith('win'):
         base = env.get('LOCALAPPDATA', '').strip() or os.path.join(home, 'AppData', 'Local')
         path = os.path.join(base, 'Archeus')
