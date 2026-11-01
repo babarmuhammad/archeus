@@ -846,9 +846,8 @@ MUTATIONS = [
      [(EXE, "        if at <= now:\n            found.append((at, x))", "        if True:\n            found.append((at, x))")],
      [XU + 'test_O7_a_spawn_end_recorded_ahead_of_the_clock_is_not_counted']),
     ('Q161', 'a task waits for a spawn end recorded ahead of the clock', [(EXE,
-     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
-     "          if _epoch(_decided(r.entity, r.created_at)) <= now]",
-     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)]")],
+     "    xs = [x for at, x in sorted(decided, key=lambda p: p[0]) if at <= now]",
+     "    xs = [x for at, x in sorted(decided, key=lambda p: p[0])]")],
      [XU + 'test_O7_a_task_wait_ignores_a_spawn_end_recorded_ahead_of_the_clock']),
     ('Q162', 'a naive reset is read in local time by route_wait (the r3 divergence)', [
      (INST, "    return {'at': at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'), 'key': key}",
@@ -882,10 +881,9 @@ MUTATIONS = [
       EX + 'test_T106r6_a_legacy_naive_limit_releases_at_its_local_time_as_before_r5']),
     ('Q168', 'a task wait reads a success by its end, not its start (the breaker reads its start)',
      [(EXE,
-     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
-     "          if _epoch(_decided(r.entity, r.created_at)) <= now]",
-     "    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)\n"
-     "          if not r.entity.ended_at or _epoch(r.entity.ended_at) <= now]")],
+     "    xs = [x for at, x in sorted(decided, key=lambda p: p[0]) if at <= now]",
+     "    xs = [x for at, x in sorted(decided, key=lambda p: p[0])\n"
+     "          if not x.ended_at or _epoch(x.ended_at) <= now]")],
      [XU + 'test_T106r5_a_task_wait_reads_a_success_by_its_start_as_the_breaker_does']),
     # T-106 correction r6 (review of 5e8102d)
     ('Q169', 'a provider reset already past is stored as it came (released on the next tick, the loop)',
@@ -1191,15 +1189,17 @@ MUTATIONS = [
      '    return (k, *bases[1:], ')],
      ['tests/v1/unit/test_provider_broker.py::test_a_key_echoed_in_an_error_body_or_header_is_never_relayed']),
     ('Q237', 'an error body is read past the grant deadline', [(BRK,
-     '                if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):\n'
+     '                if (self._clock() - t0 > b.limits.deadline_s or d not in self._grants\n'
+     '                        or not self._live(b, d)):\n'
      '                    break\n'
      '                chunk = resp.read1',
-     '                if not self._live(b, d):\n'
+     '                if d not in self._grants or not self._live(b, d):\n'
      '                    break\n'
      '                chunk = resp.read1')],
      ['tests/v1/unit/test_provider_broker.py::test_an_error_body_that_trickles_past_the_deadline_or_the_grant_end_is_not_relayed']),
     ('Q238', 'an error body is read after its grant ended', [(BRK,
-     '                if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):\n'
+     '                if (self._clock() - t0 > b.limits.deadline_s or d not in self._grants\n'
+     '                        or not self._live(b, d)):\n'
      '                    break\n'
      '                chunk = resp.read1',
      '                if self._clock() - t0 > b.limits.deadline_s:\n'
