@@ -101,8 +101,11 @@ def _worktree(project_id, mission_id, leaf):
         raise ValueError('not a worktree directory name: %.80r' % (leaf,))
     root = os.path.join(archeus_home(), 'worktrees')
     legacy = os.path.join(root, project_id, mission_id, leaf)
-    if os.path.isdir(legacy):
+    try:
+        _plain_dir(legacy)              # a link planted there would be returned as the worktree
         return legacy
+    except OSError:
+        pass
     return os.path.join(root, mission_id.split('_', 1)[-1], leaf)
 
 

@@ -234,3 +234,19 @@ def test_the_home_directory_comes_from_the_environment_it_is_given():
     assert paths.archeus_home({'HOME': '/fake', 'XDG_DATA_HOME': ''}, 'linux') == want
     want = os.path.abspath(os.path.join('/fake', 'AppData', 'Local', 'Archeus'))
     assert paths.archeus_home({'USERPROFILE': '/fake'}, 'win32') == want
+
+
+def test_a_link_at_the_earlier_layouts_directory_is_not_a_worktree(archeus_home, monkeypatch):
+    """T-655#10: isdir follows links, so a link there was returned as the worktree."""
+    import stat
+    from types import SimpleNamespace
+    legacy = os.path.join(archeus_home, 'worktrees', PRJ, MSN, 't1')
+    os.makedirs(legacy)
+    assert paths.task_worktree(PRJ, MSN, 't1') == legacy
+    real = os.lstat
+    link = SimpleNamespace(st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT,
+                           st_mode=stat.S_IFLNK)
+    monkeypatch.setattr(os, 'lstat', lambda p, *a, **kw: (
+        link if os.fspath(p) == legacy else real(p, *a, **kw)))
+    assert paths.task_worktree(PRJ, MSN, 't1') == os.path.join(
+        archeus_home, 'worktrees', MSN.split('_', 1)[1], 't1')
