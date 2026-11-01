@@ -6,7 +6,7 @@
 .sheet-wrap:not([data-modal]) .sheet-scrim { display: none; }
 .sheet-scrim { position: absolute; inset: 0; background: var(--scrim); }
 .sheet { position: relative; display: flex; flex-direction: column; width: min(100%, 40rem); height: var(--sheet-h, 0px); max-height: 100%; margin-inline: auto; padding-bottom: var(--sa-b); overflow: hidden;
-  background: var(--s3); color: var(--text); border: var(--hair) solid var(--line-strong); border-bottom: 0; border-radius: var(--sheet-r) var(--sheet-r) 0 0; transition: height var(--dur-3) var(--ease-move); }
+  background: var(--s3); color: var(--text); border: var(--hair) solid var(--line-strong); border-bottom: 0; border-radius: var(--sheet-r) var(--sheet-r) 0 0; transition: height var(--dur-layer) var(--ease-move); }
 .sheet[data-drag] { transition: none; }
 .sheet-grip { flex: none; display: grid; place-items: center; width: 100%; height: var(--sheet-grip); padding: 0; border: 0; background: transparent; color: inherit; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .sheet-grip::before { content: ''; width: 36px; height: 4px; border-radius: 999px; background: var(--text-3); }
@@ -24,9 +24,9 @@ div.sheet-grip { cursor: default; }
 @keyframes sheet-down { to { transform: translateY(24px); opacity: 0; } }
 @keyframes sheet-fade { from { opacity: 0; } }
 @keyframes sheet-unfade { to { opacity: 0; } }
-.sheet-wrap[data-enter] .sheet { animation: sheet-up var(--dur-3) var(--ease-out); }
-.sheet-wrap[data-enter] .sheet-scrim { animation: sheet-fade var(--dur-2) var(--ease-out); }
+.sheet-wrap[data-enter] .sheet { animation: sheet-up var(--dur-layer) var(--ease-out); }
+.sheet-wrap[data-enter] .sheet-scrim { animation: sheet-fade var(--dur-quick) var(--ease-out); }
 .sheet-wrap[data-leaving] { pointer-events: none; }
-.sheet-wrap[data-leaving] .sheet { animation: sheet-down var(--dur-2) var(--ease-out) forwards; }
-.sheet-wrap[data-leaving] .sheet-scrim { animation: sheet-unfade var(--dur-2) var(--ease-out) forwards; }
+.sheet-wrap[data-leaving] .sheet { animation: sheet-down var(--dur-quick) var(--ease-out) forwards; }
+.sheet-wrap[data-leaving] .sheet-scrim { animation: sheet-unfade var(--dur-quick) var(--ease-out) forwards; }
 @media (forced-colors: active) { .sheet { border: 1px solid CanvasText; } .sheet-grip::before { background: CanvasText; } }

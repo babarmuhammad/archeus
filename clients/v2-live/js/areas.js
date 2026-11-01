@@ -2,6 +2,7 @@
 // (digest, pins, idea path) and the offline view. Everything is SIMULATED; each page says so in its header.
 import { h } from './dom.js';
 import { reducedMotion } from './store.js';
+import { CLASSES } from './motion-model.js';
 import { icon, glyph } from './icons.js';
 import { illustration } from './illustrations.js';
 import { present } from '../core-words.js';
@@ -189,13 +190,13 @@ export function viewSecurity(ctx) {
     if (!mounted && previous && motion) {
       if (previous.sentence !== text) {
         const old = h('span', { class: 'sec-old-sentence ax-sentence', 'aria-hidden': 'true' }, previous.sentence); posture.before(old);
-        old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, easing: 'ease-out' }).finished.then(() => old.remove());
-        posture.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' });
+        old.animate([{ opacity: 1 }, { opacity: 0 }], { duration: CLASSES.quick.ms, easing: 'ease-out' }).finished.then(() => old.remove());
+        posture.animate([{ opacity: 0 }, { opacity: 1 }], { duration: CLASSES.quick.ms, easing: 'ease-out' });
       }
       if (decisions.isConnected) previous.cards.forEach((c, id) => {
         if (cards.has(id) || !S.approvals[id] || S.approvals[id].state === 'PENDING') return;
         const ghost = c.node; ghost.setAttribute('aria-hidden', 'true'); ghost.inert = true; ghost.classList.add('sec-resolved'); decisions.append(ghost);
-        ghost.animate([{ height: c.height + 'px', opacity: .6 }, { height: '0px', opacity: 0 }], { duration: 180, easing: 'ease-out' }).finished.then(() => ghost.remove());
+        ghost.animate([{ height: c.height + 'px', opacity: .6 }, { height: '0px', opacity: 0 }], { duration: CLASSES.quick.ms, easing: 'ease-out' }).finished.then(() => ghost.remove());
       });
     }
     mounted = true;

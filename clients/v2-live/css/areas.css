@@ -144,7 +144,7 @@
   .ax-need .x-does { display: block; }
   .ax-xrow[data-nost] .x-last { grid-column: 1 / -1; }
 }
-.ax-sw .knob { transition: transform 100ms ease-out; }
+.ax-sw .knob { transition: transform var(--dur-out) ease-out; }
 :root[data-motion='reduced'] .ax-sw .knob { transition: none; }
 @media (prefers-reduced-motion: reduce) { :root[data-motion='system'] .ax-sw .knob { transition: none; } }
 
@@ -250,17 +250,17 @@ code { font-family: var(--mono); font-size: .92em; overflow-wrap: anywhere; }
 .ax-sub { margin: 0 0 10px; color: var(--text-2); font-size: var(--fs-body); line-height: 1.45; }
 
 /* Hover: the row under the pointer takes a tint in 100 ms and gives it back in 180 ms, so a button in another row never looks greyed. Only where there is a pointer. */
-.ax-dim > * { border-bottom: var(--hair) solid var(--line); transition: background-color 180ms ease-out; }
+.ax-dim > * { border-bottom: var(--hair) solid var(--line); transition: background-color var(--dur-quick) ease-out; }
 .ax-dim > .ax-row { border-top: 0; }
 @media (hover: hover) and (pointer: fine) {
-  .ax-dim > :hover { background: var(--fill-1); transition-duration: 100ms; }
+  .ax-dim > :hover { background: var(--fill-1); transition-duration: var(--dur-out); }
 }
-.ax-go { display: grid; place-items: center; color: var(--text-2); transition: transform 180ms ease-out; }
+.ax-go { display: grid; place-items: center; color: var(--text-2); transition: transform var(--dur-quick) ease-out; }
 [open] > summary .ax-go { transform: rotate(90deg); }
 :is(.hl-row, .ln-row) > summary { list-style: none; cursor: pointer; }
 :is(.hl-row, .ln-row) > summary::-webkit-details-marker { display: none; }
 @keyframes ax-in { from { opacity: 0; transform: translateY(-4px); } }
-:is(.hl-row, .ln-row)[open] > :not(summary) { animation: ax-in 180ms ease-out; }
+:is(.hl-row, .ln-row)[open] > :not(summary) { animation: ax-in var(--dur-quick) ease-out; }
 
 /* The parts of a page: underline tabs that are links (so each has its own URL), the same item as Settings */
 .ax-subnav { display: flex; gap: 2px; overflow-x: auto; border-bottom: var(--hair) solid var(--line); scrollbar-width: thin; }

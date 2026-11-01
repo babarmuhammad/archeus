@@ -8,10 +8,10 @@ html[data-kb='open'] .bottombar { display: none; }
 .bb-item { position: relative; flex: 1 1 0; min-width: 0; min-height: var(--bar-h); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 2px 2px 0; border: 0; background: transparent; color: var(--text-2); font: 500 var(--fs-floor) / 16px var(--font); cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .bb-item[aria-current='page'], .bb-item[data-current] { color: var(--text); }
 .bb-ic { position: relative; display: grid; place-items: center; width: 56px; height: 40px; }
-.bb-ic::before { content: ''; position: absolute; width: 56px; height: 32px; border-radius: 16px; background: transparent; transition: background-color var(--dur-1) var(--ease-out); }
+.bb-ic::before { content: ''; position: absolute; width: 56px; height: 32px; border-radius: 16px; background: transparent; transition: background-color var(--dur-out) var(--ease-out); }
 .bb-ic > svg { position: relative; }
 .bb-item[aria-current='page'] .bb-ic::before, .bb-item[data-current]:not(.bb-primary) .bb-ic::before { background: var(--fill-2); }
-.bb-item:active .bb-ic::before { background: var(--fill-3); transition-duration: 80ms; }
+.bb-item:active .bb-ic::before { background: var(--fill-3); transition-duration: var(--dur-out); }
 .bb-item[data-key='bb-overview'] { flex-grow: 1.4; }
 .bb-lab { max-width: 100%; letter-spacing: -.02em; white-space: nowrap; }
 .bb-ic .count { position: absolute; top: 0; right: 4px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: var(--decide-bg); color: var(--decide-fg); font-size: var(--fs-floor); font-weight: 700; line-height: 18px; text-align: center; }

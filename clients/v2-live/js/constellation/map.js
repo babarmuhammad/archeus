@@ -175,7 +175,7 @@ export function createMap(container, options = {}) {
   function motion() {
     host.dataset.reduced = String(isReduced());
     host.dataset.ambient = ambientOn() ? 'on' : 'off';
-    coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
+    coreMark.dataset.core = isLive() && !stopped && !document.hidden && !isReduced() ? 'breath' : 'static';
     // The static twin carries the core's working or stopped state as a word under the wordmark (the needs you thread is static and loses nothing) (the art itself is aria-hidden).
     const cf = coreFlags();
     runningText.textContent = !isReduced() ? '' : cf.stopped ? T('Stopped') : isLive() ? T(`${graph.nodes.filter(n => stateKey(n.state) === 'running').length} running`) : '';
@@ -619,7 +619,7 @@ export function createMap(container, options = {}) {
   }
   function closeCard() {
     clearTimeout(cardHide); card.classList.remove('am-on');
-    cardHide = setTimeout(() => { card.hidden = true; }, isReduced() ? 0 : 120);
+    cardHide = setTimeout(() => { card.hidden = true; }, isReduced() ? 0 : 100);
   }
   // Moving from one hub to the next keeps the dim in place (no flash back to full) until a 120 ms grace passes; the card fades out and the next dwells 180 ms.
   function hoverTo(id, now = false) {
@@ -818,7 +818,7 @@ export function createMap(container, options = {}) {
     setLive(live) { options.live = live === true; if (!destroyed) motion(); },
     setAmbient(on) { playing = on === true; if (!destroyed) motion(); },
     // The e-stop (or a lost Core): the core mark goes slack with a red cross.
-    setStopped(on) { if (stopped === (on === true)) return; stopped = on === true; if (!destroyed) { syncCore(); updateSummary(); } },
+    setStopped(on) { if (stopped === (on === true)) return; stopped = on === true; if (!destroyed) { syncCore(); updateSummary(); motion(); } },
     pulse(id) {
       const path = edgeRecs.get(id)?.line;
       if (destroyed || !path || isReduced() || document.hidden || activePulses.size >= 8) return false;

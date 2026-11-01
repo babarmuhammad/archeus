@@ -129,8 +129,8 @@
 .tell-x { position: absolute; top: 4px; right: 4px; min-width: 44px; min-height: 44px; }
 html[data-heronotes='off'] .app[data-hero='1'] .dnote { display: none; }
 
-.toast { position: absolute; z-index: 25; right: calc(var(--insp-w) + var(--gut)); top: 52px; max-width: min(32em, calc(100% - var(--insp-w) - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; transform-origin: 100% 0; animation: toast-in var(--dur-1) var(--ease-out); }
-.toast[data-leaving] { animation: toast-out var(--dur-2) var(--ease-out) forwards; pointer-events: none; }
+.toast { position: absolute; z-index: 25; right: calc(var(--insp-w) + var(--gut)); top: 52px; max-width: min(32em, calc(100% - var(--insp-w) - 2 * var(--gut))); padding: 10px 16px; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); font-size: var(--fs-cap); line-height: 1.35; transform-origin: 100% 0; animation: toast-in var(--dur-out) var(--ease-out); }
+.toast[data-leaving] { animation: toast-out var(--dur-quick) var(--ease-out) forwards; pointer-events: none; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
 @keyframes toast-out { to { opacity: 0; transform: translateY(-6px) scale(.98); } }
 @container dev (min-width: 1280px) { .app:not([data-insp='open']) .toast { top: 0; right: calc(var(--gut) + 424px); max-width: min(32em, calc(100% - 2 * var(--gut) - 424px - 240px)); } }
@@ -185,7 +185,7 @@ body[data-embed='1'] #stage { grid-row: 1; }
 
 /* ---------- S6: the keyboard help ---------- */
 .pal-scrim { position: absolute; inset: 0; z-index: 70; display: flex; align-items: flex-start; justify-content: center; padding: min(14dvh, 120px) var(--gut) var(--gut); background: var(--scrim); }
-.pal { width: min(38rem, 100%); max-height: min(30rem, 100%); display: flex; flex-direction: column; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); overflow: hidden; animation: pal-in 100ms ease-out; }
+.pal { width: min(38rem, 100%); max-height: min(30rem, 100%); display: flex; flex-direction: column; background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); overflow: hidden; animation: pal-in var(--dur-out) ease-out; }
 @keyframes pal-in { from { opacity: 0; transform: scale(.98); } }
 .pal-in { flex: none; display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 16px; border-bottom: var(--hair) solid var(--line); color: var(--text-2); }
 .pal-q { flex: 1; min-width: 0; min-height: 48px; border: 0; background: transparent; color: var(--text); font-size: var(--fs-t2); outline: none; }
@@ -215,9 +215,9 @@ body[data-embed='1'] #stage { grid-row: 1; }
   .toast { border: 1px solid CanvasText; }
 }
 
-/* ---------- motion and hover, one language (emil-design-eng): a tint that comes in over --dur-1 and leaves over --dur-2, a press of .97, no movement under Reduced motion
+/* ---------- motion and hover, one language (emil-design-eng): a tint that comes in over --dur-out and leaves over --dur-quick, a press of .97, no movement under Reduced motion
    (css/motion.css holds the switch). Colour and transform only; nothing that moves layout. ---------- */
-:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .tb-search, .pal-row, .pl-tile, .pl-proj, .pl-search, .bb-item, .tui-btn, .mrow, .ax-xrow) { transition: background-color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
-:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .tb-search, .pal-row, .pl-tile, .pl-proj, .pl-search, .bb-item, .tui-btn, .mrow, .ax-xrow):hover { transition-duration: var(--dur-1); }
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .tb-search, .pal-row, .pl-tile, .pl-proj, .pl-search, .bb-item, .tui-btn, .mrow, .ax-xrow) { transition: background-color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out); }
+:is(.btn, .chip, .tab, .tb-btn, .menu-item, .nav-item, .set-nav-item, .proj-item, .rail-toggle, .safety-btn, .tb-search, .pal-row, .pl-tile, .pl-proj, .pl-search, .bb-item, .tui-btn, .mrow, .ax-xrow):hover { transition-duration: var(--dur-out); }
 :is(.menu-item, .rail-toggle, .safety-btn):active { transform: scale(.97); }
 @media (hover: hover) and (pointer: fine) { .chip:hover { background: var(--s2); } .chip[aria-pressed='true']:hover { background: var(--s3); } }

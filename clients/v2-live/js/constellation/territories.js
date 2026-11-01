@@ -97,7 +97,7 @@ export function createTerritoryMap(container, options = {}) {
   const crystal = (m, r) => { const holder = svgEl('g'); const st = stateKey(m.state); holder.innerHTML = bodyMarkup({id: m.id, kind: 'Mission', state: st, radius: r}, ICON[st] || 'doc'); const star = holder.firstElementChild; driftVars(star, m.id); return star; };
   const motion = () => {
     host.dataset.reduced = String(isReduced()); host.dataset.ambient = ambientOn() ? 'on' : 'off';
-    coreMark.dataset.core = isLive() && !document.hidden && !isReduced() ? 'breath' : 'static';
+    coreMark.dataset.core = isLive() && !stopped && !document.hidden && !isReduced() ? 'breath' : 'static';
     const running = model.projects.reduce((t, p) => t + p.running, 0);
     runningText.textContent = isLive() && isReduced() ? T(`${running} running`) : '';
     if (isReduced() || document.hidden) { for (const a of host.getAnimations({subtree: true})) if (a.animationName !== 'core-breath') a.cancel(); for (const m of markers) m.remove(); markers.clear(); }
@@ -107,13 +107,13 @@ export function createTerritoryMap(container, options = {}) {
   const curve = name => getComputedStyle(host).getPropertyValue(name).trim() || 'cubic-bezier(.23, 1, .32, 1)';
   const canMove = () => !isReduced() && !document.hidden && typeof Element.prototype.animate === 'function';
   const at = (x, y, dy = 0) => `translate(${f(x)}px, ${f(y + dy)}px)`;
-  const glideCell = (g, was, now) => g.animate([{transform: at(was.x, was.y)}, {transform: at(now.x, now.y)}], {duration: tok('--dur-3', 200), easing: curve('--ease-move')});
-  const riseCell = (g, cell) => g.animate([{opacity: 0, transform: at(cell.x, cell.y, 6)}, {opacity: 1, transform: at(cell.x, cell.y)}], {duration: tok('--dur-2', 160), easing: curve('--ease-out'), fill: 'backwards'});
-  const fadeCell = g => { const a = g.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-1', 100), easing: curve('--ease-out'), fill: 'forwards'}); a.onfinish = a.oncancel = () => g.remove(); };
+  const glideCell = (g, was, now) => g.animate([{transform: at(was.x, was.y)}, {transform: at(now.x, now.y)}], {duration: tok('--dur-layer', 200), easing: curve('--ease-move')});
+  const riseCell = (g, cell) => g.animate([{opacity: 0, transform: at(cell.x, cell.y, 6)}, {opacity: 1, transform: at(cell.x, cell.y)}], {duration: tok('--dur-quick', 160), easing: curve('--ease-out'), fill: 'backwards'});
+  const fadeCell = g => { const a = g.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-out', 100), easing: curve('--ease-out'), fill: 'forwards'}); a.onfinish = a.oncancel = () => g.remove(); };
   const tintCell = g => {
     const outline = g.querySelector('.am-cell-outline'); if (!outline) return;
     const t = svgEl('path', {class: 'am-cell-tint', d: outline.getAttribute('d')}); g.prepend(t);
-    const a = t.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-2', 160), easing: curve('--ease-out')}); a.onfinish = a.oncancel = () => t.remove();
+    const a = t.animate([{opacity: 1}, {opacity: 0}], {duration: tok('--dur-quick', 160), easing: curve('--ease-out')}); a.onfinish = a.oncancel = () => t.remove();
   };
   const lineOf = (p, state) => (p.last ? `${p.last.time} · ${p.last.text}` : state === 'idle' ? T('No missions yet') : '');
 
@@ -175,7 +175,7 @@ export function createTerritoryMap(container, options = {}) {
 
   let graceTimer = 0, hideTimer = 0, over = null;
   // The card fades out over 120 ms; the dim holds a 120 ms grace so moving from one cell to the next cross-fades instead of flashing back to full.
-  const closeCard = () => { clearTimeout(hideTimer); card.classList.remove('am-on'); hideTimer = setTimeout(() => { card.hidden = true; }, isReduced() ? 0 : 120); };
+  const closeCard = () => { clearTimeout(hideTimer); card.classList.remove('am-on'); hideTimer = setTimeout(() => { card.hidden = true; }, isReduced() ? 0 : 100); };
   function showCard(info, at) {
     clearTimeout(cardTimer);
     if (!card.hidden) card.classList.remove('am-on');
@@ -225,14 +225,14 @@ export function createTerritoryMap(container, options = {}) {
     if (!rec) return;
     const b = {x: panel.offsetLeft, y: panel.offsetTop, w: panel.offsetWidth, h: panel.offsetHeight}; if (!b.w || !b.h) return;
     panel.style.transformOrigin = '0 0';
-    panel.animate([{opacity: 0, transform: boxFrom(rec.cell, b), offset: 0}, {opacity: 1, offset: .5}, {opacity: 1, transform: 'none', offset: 1}], {duration: tok('--dur-3', 200), easing: curve('--ease-move'), fill: 'backwards'});
+    panel.animate([{opacity: 0, transform: boxFrom(rec.cell, b), offset: 0}, {opacity: 1, offset: .5}, {opacity: 1, transform: 'none', offset: 1}], {duration: tok('--dur-layer', 200), easing: curve('--ease-move'), fill: 'backwards'});
   }
   function collapseTo({ghost, box, rec}) {
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.hidden = false;
     Object.assign(ghost.style, {inset: 'auto', left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', transformOrigin: '0 0', pointerEvents: 'none'});
     host.append(ghost);
     const to = rec ? boxFrom(rec.cell, box) : 'scale(.98)';
-    const a = ghost.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: to}], {duration: tok('--dur-2', 160), easing: curve('--ease-move'), fill: 'forwards'});
+    const a = ghost.animate([{opacity: 1, transform: 'none'}, {opacity: 0, transform: to}], {duration: tok('--dur-quick', 160), easing: curve('--ease-move'), fill: 'forwards'});
     a.onfinish = a.oncancel = () => ghost.remove();
   }
   let focusSig = '';
@@ -317,7 +317,7 @@ export function createTerritoryMap(container, options = {}) {
     for (const [id, rec] of cellRecs) if (!seen.has(id)) { if (animated) fadeCell(rec.g); else rec.g.remove(); rec.spoke?.remove(); cellRecs.delete(id); }
     spokeLayer.replaceChildren();
     // the spokes are redrawn at once, so while cells travel they stay out and then fade in: no line ever points at an empty slot
-    if (moved) spokeLayer.animate([{opacity: 0}, {opacity: 0, offset: .55}, {opacity: 1}], {duration: tok('--dur-3', 200), easing: 'linear'});
+    if (moved) spokeLayer.animate([{opacity: 0}, {opacity: 0, offset: .55}, {opacity: 1}], {duration: tok('--dur-layer', 200), easing: 'linear'});
     for (const s of spokes) {
       const path = svgEl('path', {class: `am-spoke am-spoke-${s.state}`, d: s.d}); spokeLayer.append(path); cellRecs.get(s.id).spoke = path; cellRecs.get(s.id).spokeD = s;
       if (s.state === 'running') { const m = svgEl('circle', {class: 'am-travel', r: 2.6}); const t = driftOf(options.seed, s.id); m.style.setProperty('--tp', Math.round(t.period / 2.4) + 'ms'); m.style.setProperty('--td', Math.round(t.delay / 2.4) + 'ms'); for (const [k, v] of [['--x0', s.x0], ['--y0', s.y0], ['--x1', s.x1], ['--y1', s.y1]]) m.style.setProperty(k, v + 'px'); spokeLayer.append(m); }
@@ -413,7 +413,7 @@ export function createTerritoryMap(container, options = {}) {
     element: host,
     setLive(b) { options.live = b === true; if (!destroyed) motion(); },
     setAmbient(on) { playing = on === true; if (!destroyed) motion(); },
-    setStopped(on) { if (stopped !== (on === true)) { stopped = on === true; if (!destroyed && layout) drawCore(); } },
+    setStopped(on) { if (stopped !== (on === true)) { stopped = on === true; if (!destroyed && layout) drawCore(); if (!destroyed) motion(); } },
     pulse(edge) {
       if (destroyed || isReduced() || document.hidden || markers.size >= 6) return false;
       const [a, b] = String(edge).split(':')[0].split('->'), pid = model.projects.find(p => p.id === a || p.missions.some(m => m.id === a || m.id === b))?.id, s = cellRecs.get(pid)?.spokeD;

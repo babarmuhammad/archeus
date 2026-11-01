@@ -3,6 +3,7 @@
 import { h } from './dom.js';
 import { translate } from './i18n.js';
 import * as store from './store.js';
+import { CLASSES, OUT } from './motion-model.js';
 import { picker } from './picker.js';
 import { missionChooser } from './mission-chooser.js';
 import { glyph, icon } from './icons.js';
@@ -77,13 +78,13 @@ export function viewReplay(ctx) {
     !shown.length ? empty(r.steps.length ? 'No events in this category.' : L('No recorded steps for this mission.', 'Nessun passo registrato per questa missione.')) : null);
   const evBtns = [...timeline.querySelectorAll('.rp-event')];
   timeline.addEventListener('scroll', () => { rp.tlTop = timeline.scrollTop; });
-  // Bring a row into view only when it is out of view; a step change glides there, a first paint does not.
-  const reveal = (el, glide) => {
+  // Bring a row into view only when it is out of view; it is instant (scrolling never animates).
+  const reveal = (el) => {
     if (!el) return;
-    if (phone) { el.scrollIntoView({ block: 'nearest', behavior: glide && !store.reducedMotion() ? 'smooth' : 'auto' }); return; }
+    if (phone) { el.scrollIntoView({ block: 'nearest' }); return; }
     const top = el.offsetTop, bottom = top + el.offsetHeight, at = timeline.scrollTop;
     const to = top < at ? top : bottom > at + timeline.clientHeight ? bottom - timeline.clientHeight : null;
-    if (to != null) timeline.scrollTo({ top: to, behavior: glide && !store.reducedMotion() ? 'smooth' : 'auto' });
+    if (to != null) timeline.scrollTo({ top: to });
   };
   ctx.mounts.push(() => {
     if (!phone) { timeline.scrollTop = rp.tlTop || 0; if (row && rp.lastSel !== row.n) reveal(document.getElementById('rs-' + row.n)); }
@@ -196,8 +197,8 @@ export function viewReplay(ctx) {
     if ((x ? x.n : null) === painted) return;
     const draw = () => { painted = target ? target.n : null; const next = stepBody(target); bodyEl.replaceWith(next); bodyEl = next; translate(next); return next; };
     if (!fade || store.reducedMotion() || !bodyEl.animate) { draw(); return; }
-    fading = bodyEl.animate({ opacity: [1, 0] }, { duration: 100, easing: 'ease-out' });
-    fading.onfinish = () => { fading = null; draw().animate({ opacity: [0, 1] }, { duration: 140, easing: 'ease-out' }); };
+    fading = bodyEl.animate({ opacity: [1, 0] }, { duration: OUT, easing: 'ease-out' });
+    fading.onfinish = () => { fading = null; draw().animate({ opacity: [0, 1] }, { duration: CLASSES.quick.ms, easing: 'ease-out' }); };
   }
 
   // ----- recovery: cards that propose, never run -----
@@ -285,7 +286,7 @@ export function viewReplay(ctx) {
     if (!want) return;
     if (evSheet) { evSheet.el.querySelector('.sheet-body').replaceChildren(stepPanel); return; }
     evSheet = openSheet({ id: 'rp-evidence', title: L('Selected step', 'Passo selezionato'), detents: ['peek', 'full'], initial: 'peek', modal: false, content: stepPanel, onClose: () => { if (evSheet) { evSheet = null; rp.evidenceOpen = false; } } });
-    requestAnimationFrame(() => reveal(document.getElementById('rs-' + row.n), true)); // the sheet now covers the foot of the list
+    requestAnimationFrame(() => reveal(document.getElementById('rs-' + row.n))); // the sheet now covers the foot of the list
   }
   ctx.mounts.push(syncSheet);
   // The step change, in place: selection state by attribute, the scrubber glides, the panel cross-fades. Nothing is rebuilt, so scroll, focus and hover survive.
@@ -296,7 +297,7 @@ export function viewReplay(ctx) {
     row = shown[i]; idx = i; rp.cursorIdx = i; rp.lastSel = n;
     const ri = rows.findIndex((g) => n >= g.first.n && n <= g.last.n);
     evBtns.forEach((b, k) => { const on = k === ri ? 'true' : 'false'; if (b.getAttribute('aria-pressed') !== on) b.setAttribute('aria-pressed', on); });
-    reveal(evBtns[ri], true);
+    reveal(evBtns[ri]);
     cancelAnimationFrame(frame); frame = 0;
     setIdx(i); scrub.value = String(i); scrub.setAttribute('aria-valuetext', row.time + ' ' + row.machine + ' ' + row.state);
     position.textContent = posText(row);

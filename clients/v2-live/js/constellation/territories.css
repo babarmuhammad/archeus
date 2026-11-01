@@ -8,9 +8,9 @@
 .am-territories[data-overflow='true'] > .am-equivalent button { width: 100%; min-height: 48px; padding: 8px; border: 1px solid var(--am-line); background: var(--am-bg); color: inherit; font: 400 14px/1.4 var(--am-sans); text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .am-territories[data-overflow='true'] > .am-equivalent button:focus-visible { outline: 2px solid var(--am-focus); outline-offset: 1px; }
 @media (forced-colors: active) { .am-territories[data-overflow='true'] > .am-equivalent button { border-color: ButtonText; } }
-.am-territories .am-cell { transition: opacity var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
-.am-territories[data-hot] .am-cell { transition-duration: var(--dur-1, 100ms); }
-.am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
+.am-territories .am-cell { transition: opacity var(--dur-quick, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
+.am-territories[data-hot] .am-cell { transition-duration: var(--dur-out, 100ms); }
+.am-territories .am-cell-outline { fill: var(--am-bg); stroke: var(--am-line); stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-quick, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories .am-cell.am-state-needs-you .am-cell-outline { stroke: var(--am-attention); stroke-width: 1.5; }
 .am-territories .am-cell.am-state-running .am-cell-outline { stroke: var(--am-running); stroke-opacity: .75; }
 .am-territories .am-cell.am-state-blocked .am-cell-outline { stroke: var(--am-blocked); stroke-opacity: .75; }
@@ -37,15 +37,15 @@
 .am-territories .am-cell-dot { fill: currentColor; stroke: none; }
 .am-territories .am-cell-dot.am-hollow { fill: none; stroke: currentColor; stroke-width: 1.5; }
 .am-territories .am-cross { fill: none; stroke: currentColor; stroke-width: 1.5; }
-.am-territories .am-spoke { fill: none; stroke: var(--am-line); stroke-opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)), stroke-opacity var(--dur-2, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
+.am-territories .am-spoke { fill: none; stroke: var(--am-line); stroke-opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke; transition: stroke var(--dur-quick, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)), stroke-opacity var(--dur-quick, 160ms) var(--ease-out, cubic-bezier(.23, 1, .32, 1)); }
 .am-territories .am-spoke-needs-you { stroke: var(--am-attention); stroke-opacity: .85; }
 .am-territories .am-spoke-running { stroke: var(--am-running); stroke-opacity: .85; }
 .am-territories .am-spoke-hot { stroke: var(--am-text); stroke-opacity: 1; }
 .am-territories[data-hot] .am-cell:not(.am-hot) { opacity: var(--am-dim-text, .92); }
-.am-territories .am-cell > :not(text) { transition: opacity 180ms var(--am-ease, cubic-bezier(.23, 1, .32, 1)); }
-.am-territories[data-hot] .am-cell > :not(text) { transition-duration: 100ms; }
+.am-territories .am-cell > :not(text) { transition: opacity var(--dur-quick, 160ms) var(--am-ease, cubic-bezier(.23, 1, .32, 1)); }
+.am-territories[data-hot] .am-cell > :not(text) { transition-duration: var(--dur-out, 100ms); }
 .am-territories[data-hot] .am-cell:not(.am-hot) > :not(text) { opacity: var(--am-dim, .38); }
-.am-territories[data-hot] .am-spoke { transition-duration: 100ms; }
+.am-territories[data-hot] .am-spoke { transition-duration: var(--dur-out, 100ms); }
 .am-territories[data-hot] .am-spoke:not(.am-spoke-hot) { stroke-opacity: .2; }
 .am-territories .am-cell.am-hot .am-cell-outline { stroke: var(--am-text); stroke-width: 2; }
 .am-territories .am-cell.am-selected-cell .am-cell-outline { stroke-width: 2; }
@@ -55,8 +55,8 @@
 .archeus-map .am-card { position: absolute; z-index: 5; width: 280px; max-width: calc(100% - 16px); box-sizing: border-box; padding: 12px; background: var(--am-surface); border: 1px solid var(--am-line); color: var(--am-text); font: 400 13px/1.4 var(--am-sans); pointer-events: none; }
 .archeus-map .am-card[hidden] { display: none; }
 /* The card fades in over 100 ms from 4 px towards its place (the script sets --tx/--ty) and out over 120 ms; opacity and transform only, instant under Reduced motion. */
-.archeus-map .am-card { opacity: 0; transform: translate(var(--tx, 0px), var(--ty, 4px)); transition: opacity 120ms var(--am-ease, ease-out), transform 120ms var(--am-ease, ease-out); }
-.archeus-map .am-card.am-on { opacity: 1; transform: none; transition-duration: 100ms; }
+.archeus-map .am-card { opacity: 0; transform: translate(var(--tx, 0px), var(--ty, 4px)); transition: opacity var(--dur-out, 100ms) var(--am-ease, ease-out), transform var(--dur-out, 100ms) var(--am-ease, ease-out); }
+.archeus-map .am-card.am-on { opacity: 1; transform: none; transition-duration: var(--dur-out, 100ms); }
 .archeus-map[data-reduced='true'] .am-card { transition: none; }
 @media (prefers-reduced-motion: reduce) { .archeus-map .am-card { transition: none; } }
 .archeus-map .am-card p { margin: 0; }

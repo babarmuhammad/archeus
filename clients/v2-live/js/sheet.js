@@ -4,6 +4,7 @@
 //   s.setDetent('full'); s.close(); s.el  (the dialog element)
 // modal (default true): scrim, the page behind inert, focus trapped, aria-modal. modal: false is modeless (page stays usable) until the sheet reaches full.
 import { h, trapTab } from './dom.js';
+import { CLASSES } from './motion-model.js';
 import { icon } from './icons.js';
 import { translate, tr } from './i18n.js';
 import { reducedMotion } from './store.js';
@@ -107,7 +108,7 @@ export function openSheet({ id, title, detents = ['half', 'full'], initial, cont
     wrap.inert = true;
     if (back) back.focus({ preventScroll: true });
     if (onClose) onClose(fromUi);
-    if (reducedMotion()) wrap.remove(); else { wrap.dataset.leaving = ''; setTimeout(() => wrap.remove(), 160); }
+    if (reducedMotion()) wrap.remove(); else { wrap.dataset.leaving = ''; setTimeout(() => wrap.remove(), CLASSES.quick.ms); }
   }
 
   const api = { el, setDetent, close, entry: own };
