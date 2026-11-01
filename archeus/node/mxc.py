@@ -34,6 +34,9 @@ def _path(value):
     value = os.fspath(value)
     if not _text(value) or not os.path.isabs(value):
         raise MxcUnavailable('policy paths must be absolute')
+    # commonpath raises across \?\, UNC and rooted forms, which would skip the overlap gates
+    if os.name == 'nt' and len(os.path.splitdrive(value)[0]) != 2:
+        raise MxcUnavailable('policy paths must be plain drive paths')
     return os.path.normpath(value)
 
 
@@ -282,10 +285,11 @@ class NativeMxc:
             raise MxcUnavailable('pinned schema validation failed')
         if job is None:
             raise MxcUnavailable('Core-held Job required')
+        launcher = _path(exe)
         # The transport stages a protected policy file and creates only suspended.
-        policy_path = _path(self.transport.stage_policy(policy.raw))
+        policy_path = self.transport.stage_policy(policy.raw)
         child = self.transport.create_suspended(
-            [_path(exe), '--debug', policy_path], policy=policy)
+            [launcher, '--debug', policy_path], policy=policy)
         try:
             self.transport.assign_job(job, child)
             if self.transport.in_job(job, child) is not True:

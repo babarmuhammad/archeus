@@ -599,3 +599,68 @@ def test_compile_rejects_any_proxy_that_is_not_a_loopback_http_endpoint(tmp_path
     """mxc.py:126 proxy must be an explicit loopback HTTP endpoint at compile time."""
     with pytest.raises(mxc.MxcUnavailable, match='loopback HTTP endpoint'):
         policy(tmp_path, proxy_url=proxy)
+
+
+BS = chr(92)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows path forms')
+@pytest.mark.parametrize('prefix', [BS * 2 + '?' + BS, BS * 2 + '.' + BS])
+def test_a_path_form_commonpath_cannot_compare_is_refused_not_skipped(tmp_path, prefix):
+    """T-661#5: commonpath raises across extended-length forms; that used to read as 'no
+    overlap', so a denied path inside the workspace slipped past the overlap gate."""
+    work = tmp_path / 'work'
+    work.mkdir()
+    with pytest.raises(mxc.MxcUnavailable, match='plain drive paths'):
+        policy(tmp_path, denied=[prefix + str(work / 'secrets')])
+    with pytest.raises(mxc.MxcUnavailable, match='plain drive paths'):
+        policy(tmp_path, readonly=[BS * 2 + 'localhost' + BS + 'C$' + BS + 'x'])
+
+
+def _staging_transport(events, resume=1):
+    child = SimpleNamespace(terminate=lambda: events.append('terminate'),
+                            wait=lambda timeout: None)
+
+    class Transport:
+        def stage_policy(self, raw):
+            events.append('stage')
+            return 'unused'
+
+        def create_suspended(self, argv, *, policy):
+            return child
+
+        def assign_job(self, job, proc):
+            pass
+
+        def in_job(self, job, proc):
+            return True
+
+        def resume(self, proc):
+            return resume
+
+    return Transport()
+
+
+def test_a_relative_launcher_is_refused_before_a_policy_is_staged(tmp_path, monkeypatch):
+    """T-661#8: the policy lease was staged first and leaked when the launcher path raised."""
+    events = []
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    backend = mxc.NativeMxc(_staging_transport(events), lambda raw: True)
+    with pytest.raises(mxc.MxcUnavailable, match='absolute'):
+        backend.spawn(policy(tmp_path), exe='wxc-exec.exe', job=object())
+    assert events == []
+
+
+def test_the_staged_policy_path_reaches_the_transport_untouched(tmp_path, monkeypatch):
+    """T-661#8: normalising the transport's own lease key would desync it from its table."""
+    staged = str(tmp_path / 'a' / '..' / 'policy.json')
+    seen = []
+    transport = _staging_transport([])
+    transport.stage_policy = lambda raw: staged
+    create = transport.create_suspended
+    transport.create_suspended = lambda argv, *, policy: seen.append(argv[-1]) or create(
+        argv, policy=policy)
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    mxc.NativeMxc(transport, lambda raw: True).spawn(
+        policy(tmp_path), exe=str(tmp_path / 'wxc-exec.exe'), job=object())
+    assert seen == [staged]
