@@ -30,38 +30,38 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | `config.write_atomic`, `write_json_atomic`, `_ensure_dir` (`.gitignore *`) | REUSE AS-IS | correct, tested, stdlib | `infra/*` imports it |
 | `jsonstore` (corrupt ≠ empty, quarantine) | REUSE AS-IS | same rule applies to V1's JSON side files | `infra/` |
 | `store`, `paths` (project/transcript paths, encoding) | REUSE AS-IS | needed to read harness transcripts and import legacy data | harness adapters, `legacy/importers` |
-| `proc` (`run`, `git`, `spawn_detached`, `kill_tree`, `spawn_terminal`, `remote_url_ok`) | REUSE WITH REFACTOR | add pid **create_time** capture and kill-by-(pid, create_time) for the process registry | `node/supervisor.py` |
+| `proc` (`run`, `git`, `spawn_detached`, `kill_tree`, `spawn_terminal`, `remote_url_ok`) | REUSE WITH REFACTOR | add pid **create_time** capture and kill-by-(pid, create_time) for the process registry | `node/supervisor.py` (as built: `node/local.py`) |
 | `transcripts.iter_json` (streaming JSONL) | REUSE AS-IS | adapters parse transcripts/stream files | harness adapters |
 | `events` (diagnostic JSONL log, dedupe) | REPLACE | V1 events are domain events in SQLite written in the same transaction as state; a diagnostic log cannot be a cursor, audit or trigger source. Kept for legacy diagnostics until retirement | `infra/eventlog` (NEW) |
-| `notify` (desktop toasts) | REUSE AS-IS | stdlib, cross-platform, fire-and-forget | `infra/notify/desktop.py` |
+| `notify` (desktop toasts) | REUSE AS-IS | stdlib, cross-platform, fire-and-forget | `infra/notify/desktop.py` (not built: no notify code in `archeus/`) |
 | `migrate` (old-name state move) | REUSE AS-IS (legacy only) | unrelated to V1 | — |
 | `health`, `diskgc` | REUSE WITH REFACTOR | become automations (scheduled maintenance) with policy | `automation` templates |
 | `versions` (self/Claude Code/plugin update) | REUSE AS-IS | update checks are infrastructure; exposed under Control → About | Control |
 | `cli.py`, `__main__.py` (statusline fast path) | REUSE AS-IS | statusline stays a harness integration | — |
-| SQLite DB, writer thread, outbox, migrations | NEW | no database exists today | `infra/db`, `infra/eventlog` |
-| Artifact store | NEW | blobs are scattered under `.archeus/` today | `infra/artifacts` |
+| SQLite DB, writer thread, outbox, migrations | NEW | no database exists today (built since: `infra/db`, `infra/eventlog`) | `infra/db`, `infra/eventlog` |
+| Artifact store | NEW | blobs are scattered under `.archeus/` today (built since: `infra/artifacts/store.py`) | `infra/artifacts` |
 
 ### 2.2 Harnesses, accounts, routing
 
 | Current | Class | Reason | V1 home |
 |---|---|---|---|
 | `harnesses.HARNESSES` registry, `impl()`, `homes()`, `instances()`, CAPS | EXTRACT | descriptors become Harness rows + adapter discovery; the late-bound dotted hooks map to the adapter contract | `harnesses/base.py`, adapters |
-| `codex.py`, `pi.py` (read-only transcript/index readers) | REUSE AS-IS | adapters need them for inspect/collect_result | `harnesses/codex`, `harnesses/pi` |
+| `codex.py`, `pi.py` (read-only transcript/index readers) | REUSE AS-IS | adapters need them for inspect/collect_result | `harnesses/codex`, `harnesses/pi` (not built: V1 has only the `claude_code` and `fake` adapters) |
 | `config.account_env`, `all_config_dirs`, `get_config_dir` (env > setting > default) | REUSE AS-IS | exact env construction for an account | `node` env builder |
 | `accounts.py` (TUI account manager) | REPLACE | UI-only module (menus); V1 account management is API + SPA | Control → Resources |
 | `rotate.elect`, `candidates`, `used_pct`, `continue_session`, `offer` | EXTRACT | sticky election → router *affinity*; `continue_session` → checkpoint hand-off; `offer` → approval card | `routing/`, `execution/handoff.py` |
-| `quota.is_limit_error`, `is_window_limit`, `note_failure`, `note_limit`, `reason` | REUSE AS-IS | detection and the shared latch are reused unchanged; `worst_window` is **not** used by the router (it reports unknown usage as 0); `preflight`'s prompting (`_ask_tui`, `_ask_gui`, `_job`) is not reused — V1 asks through Approvals | `routing/allocation.py`, `infra/llm` |
+| `quota.is_limit_error`, `is_window_limit`, `note_failure`, `note_limit`, `reason` | REUSE AS-IS | detection and the shared latch are reused unchanged; `worst_window` is **not** used by the router (it reports unknown usage as 0); `preflight`'s prompting (`_ask_tui`, `_ask_gui`, `_job`) is not reused — V1 asks through Approvals (as built, nothing in `archeus/` imports `quota`; the router and `core/application/executions.py` do their own limit handling) | `routing/allocation.py`, `infra/llm` (not built) |
 | `usage.fetch_usage` + background poller | REUSE WITH REFACTOR | fetch reused; P10 preparation adds a public helper returning `(windows, observed_at, status)` from the poller state and `_extract_windows`; the poller runs inside Core and feeds UsageSnapshots; rendering helpers stay legacy | `routing/usage.py` |
 | `models.roster`, `family`, `config.current_model`, `MODEL_EFFORT_FRONTIER`, presets, `advise` | REUSE AS-IS | newest-model-following and effort frontier feed ModelOffers and planner tiers | `routing/`, `planning/` |
-| `limit_hook.py` (StopFailure → rotation offer) | REPLACE | V1 detects limits from the execution stream/exit and re-routes in Core | `execution/manager.py` |
+| `limit_hook.py` (StopFailure → rotation offer) | REPLACE | V1 detects limits from the execution stream/exit and re-routes in Core (as built, an execution that ends with a `resource` failure moves the account in `core/application/executions.py`) | `execution/manager.py` |
 | `failover.py`, `gateway.py`, `proxy_base.py`, `omniroute.py` | REUSE AS-IS | provider proxies become *accounts* of kind `provider_proxy`; their guard layering (Host, fetch-metadata reject, bearer) is already right | Resources |
-| Router with priority/allocation/explanations | NEW | today: sticky threshold rotation only | `routing/router.py` |
+| Router with priority/allocation/explanations | NEW | today: sticky threshold rotation only (built since: `core/routing/router.py`) | `routing/router.py` |
 
 ### 2.3 Sessions, execution, planning
 
 | Current | Class | Reason | V1 home |
 |---|---|---|---|
-| `main.build_launch_command` (pure argv/env builder) | REUSE WITH REFACTOR | the function is reusable as-is, but `main` imports the whole TUI; P11 preparation moves it (and its helpers) into a UI-free module re-exported from `main` | claude_code adapter (interactive) |
+| `main.build_launch_command` (pure argv/env builder) | REUSE WITH REFACTOR | the function is reusable as-is, but `main` imports the whole TUI; P11 preparation moves it (and its helpers) into a UI-free module re-exported from `main` (done: `claude_sessions/launch.py`; `main` re-exports it) | claude_code adapter (interactive) |
 | `main.py` TUI loop, `ui.py`, `session_menu.py`, `render.py` | REMOVE (at retirement); `render.py` REUSE | legacy TUI; V1 TUI is a new API client; `render.py` ANSI helpers and `term.py` reused | `cli/tui` |
 | `term.py` (the one POSIX/Windows key seam) | REUSE AS-IS | exactly the seam the V1 TUI needs | `cli/tui` |
 | `sessions.py`, `stats.py` (scan, parse, cost cache) | REUSE WITH REFACTOR | needed for importing history and for manual-session tracking; the stats cache ladder stays | `legacy/importers`, claude_code adapter |
@@ -73,9 +73,9 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | `memory.headless_harness`, harness `headless_argv` (pi), `_claude_json`'s prompted-schema branch (2.8.0) | EXTRACT | the harness switch for Archeus's own calls becomes adapter `call()` + the pre-router election (ADR-0022); pi's argv is the pi adapter's `call()` | `harnesses/*`, `infra/llm/runner.py` |
 | `main.build_launch_command`'s drop of another harness's model/effort (2.8.0) | REUSE | the vocabulary rule (ADR-0022) the adapters' `resume` and launch keep | adapters |
 | `checkpoints.py` (read-only file-history view) | REUSE AS-IS | useful evidence in the inspector (what files the session touched) | inspector |
-| `worktrees.py` | REUSE WITH REFACTOR | node-computed paths outside the repo; board logic reused for manual sessions | `node/worktrees.py` |
+| `worktrees.py` | REUSE WITH REFACTOR | node-computed paths outside the repo; board logic reused for manual sessions | `node/worktrees.py` (as built: paths in `infra/paths.py`, worktree add and remove in `node/local.py`) |
 | `loops.py` (session loops, OS-scheduled loops) | REPLACE | a loop is an Automation (schedule trigger + mission template) with policy; OS schedulers are replaced by Core's scheduler (autostart keeps Core alive) | `automation` |
-| `review.py` (AI diff review) | EXTRACT | prompt and diff handling reused by the Review step | `verification/review.py` |
+| `review.py` (AI diff review) | EXTRACT | prompt and diff handling reused by the Review step (as built, `core/verification/reviewer.py` builds its own prompt from rows and does not import `claude_sessions.review`) | `verification/review.py` |
 | Mission/Plan/Task/Execution engine, state machines | NEW | no work objects today | `core/*` |
 | Verification providers | NEW | today "done" = the session ended | `verification/` |
 | Execution node + process registry + e-stop | NEW | | `node/` |
@@ -88,7 +88,7 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | memory `graph.json` store (entities, relations, provenance hashes) | REPLACE (store) + migrate data | JSON graph written to two places with implicit schema and no supersession links; V1 stores knowledge in SQLite with explicit lifecycle | `knowledge_items`, `relations` |
 | `recall.py` (BM25, tokenisation, relation expansion, token budget, hits log) | REUSE WITH REFACTOR | the scorer reused behind `infra/search/bm25.py` through the P5 `lexical` seam (§3); input becomes knowledge rows | `context/`, `infra/search` |
 | `recall_hook.py` (per-prompt injection into interactive sessions) | REUSE (legacy-owned until cutover), then REFACTOR | at cutover the hook asks Core for a context package | harness integration |
-| `lessons.py` (extraction, merge, decay, autoapprove) | EXTRACT | lesson extraction/merge/decay logic reused by the learning pass | `knowledge/promote.py` |
+| `lessons.py` (extraction, merge, decay, autoapprove) | EXTRACT | lesson extraction/merge/decay logic reused by the learning pass | `knowledge/promote.py` (as built: `knowledge/passes.py`, `knowledge/worker.py`) |
 | `worklog.py` + hook | REPLACE | V1 history is the event log; worklog entries are imported as history, not knowledge | events |
 | `memrules.py` (`.claude/rules` with globs), `conventions.py`, `claude_md.py` blocks | REUSE WITH REFACTOR | these are *harness integrations* writing Archeus knowledge into Claude Code's files; they read from Core after cutover | Resources → Claude Code |
 | `ctxaudit.py` (per-turn token floor audit) | REUSE AS-IS | Control → Resources → Claude Code diagnostics | Control |
@@ -113,7 +113,7 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | Current | Class | Reason | V1 home |
 |---|---|---|---|
 | `hooks`, `agents`, `skills`, `skillscan`, `plugins`, `mcp`, `outputstyles`, `ccsettings`, `automode`, `denygen`, `statusline`, `provision` | REUSE WITH REFACTOR | real, working capabilities; they configure *one harness*, so they move under Control → Resources → Claude Code. Refactor = remove module-level `ui` imports so the API can call them (today several import `ui` at module level) | harness detail pages |
-| `guard_hook.py` | EXTRACT | pattern for the V1 policy hook; V1 hook is fail-closed for Archeus executions and calls Core | `harnesses/claude_code/hooks/policy_hook.py` |
+| `guard_hook.py` | EXTRACT | pattern for the V1 policy hook; V1 hook is fail-closed for Archeus executions and calls Core | `harnesses/claude_code/hooks/policy_hook.py` (as built: `harnesses/hook.py`) |
 | `logbash_hook`, `concise_hook`, `minimalcode_hook`, `testfilter_*`, `agentnudge_hook`, `memdirty_hook` | REUSE AS-IS | user-facing harness conveniences; unaffected | — |
 
 ### 2.7 Interfaces
@@ -121,7 +121,7 @@ legacy module as is) · **REPLACE** (V1 has a different design; legacy stays unt
 | Current | Class | Reason | V1 home |
 |---|---|---|---|
 | `gui.py` server (`_guard`: Host allowlist, fetch-metadata allowlist, token; CSP) | EXTRACT | guard layering is correct and carries over; server itself is replaced (route table, SSE pools, device tokens, remote host allowlist) | `api/server.py`, `api/auth.py` |
-| `gui_api.py` 150 routes | REPLACE | routes are UI-shaped (per page) and polling-based; V1 API is resource-shaped with commands/queries/events. Handler bodies that call domain functions are the reuse path | `api/routes.py` |
+| `gui_api.py` 143 routes (`GET_ROUTES` 76, `POST_ROUTES` 67) | REPLACE | routes are UI-shaped (per page) and polling-based; V1 API is resource-shaped with commands/queries/events. Handler bodies that call domain functions are the reuse path | `api/routes.py` |
 | `web/app.js`, `app.css`, `motion.js`, `instruments.js`, `flow.js`, `tour.js` | REPLACE | the V1 IA and interaction model differ fundamentally; the legacy SPA keeps working until retirement. Principles (motion, container queries, one loop, dead-space audits) are carried over | `clients/app` |
 | `stage.js` (three.js background scenes) | REMOVE from V1 client | ambient background conflicts with "visualisation must mean something"; the flat graph-scene lineage is kept as a candidate for the optional 3D World view | later |
 | `themes.py` palettes | REUSE WITH REFACTOR | hex-first authoring + contrast tests + ANSI derivation reused; palettes become thread tints; skins/worlds not carried | `tokens.json` pipeline |
@@ -140,11 +140,11 @@ Verified before writing this table: `memory`, `quota`, `connections`, `proc`, `r
 | P0.5 | headless runner | new UI-free `claude_sessions/llmcall.py`: `build_headless_args(prompt, model, extra_args) -> (args, env, prompt)` (moved from `memory._claude_stdin`: `HEADLESS_MARK`, `--max-turns 20`, `--disallowedTools Write,Edit,NotebookEdit,Bash`, provider env, budget args) and `run_headless(args, prompt, *, cwd, env, timeout, cancel: threading.Event) -> (rc, stdout, error)` (moved from `gui_api._run_cancellable`: Popen with stdin, watcher that `proc.kill_tree`s on cancel/timeout, on non-zero exit `quota.note_failure` + `events.record`). `_run_cancellable` keeps `quota.preflight` and `_JOBCTX` and calls `run_headless`; `_claude_stdin` keeps its foreground progress UI, `_tls`, `last_call_error`, `last_call_cancelled` | the silent path imports `gui_api`, whose import runs `_install_bridge()` |
 | P0.5 | process control | `proc.process_create_time(pid)`; `proc.kill_pid_tree(pid, create_time)` (no-op returning False when the create time differs); `spawn_detached(..., stdin_path=None)` (default keeps `DEVNULL`) | registry, safe kill, prompt-on-stdin for detached processes |
 | P0.5 | hook environment guard | `recall_hook`, `worklog_hook`, `memdirty_hook`: return immediately when `ARCHEUS_EXECUTION_ID` is set; `limit_hook`: keep `quota.note_limit`, skip `rotate.offer` | account-level hooks fire in every session on that account, including V1 executions |
-| P3.5 | CLI dispatch | `claude_sessions/cli.py` routes the reserved verbs `core`, `status`, `approve`, `pause`, `route`, `estop`, `pair` to `archeus.cli.main` (lazy import after the statusline check); all other verbs unchanged. `core` and `status` work (P3.5b); the other five print `archeus <verb> is not available yet (arrives with P<n>); nothing was done` and exit 2 — `approve` P9, `route` P10 (*as built:* `archeus route why <id>`), `pause` and `estop` P11 (execution control), `pair` P15 | today unknown verbs fall through to `main.run` |
+| P3.5 | CLI dispatch | `claude_sessions/cli.py` routes the reserved verbs `core`, `status`, `approve`, `pause`, `route`, `estop`, `pair` to `archeus.cli.main` (lazy import after the statusline check); all other verbs unchanged. `core` and `status` work (P3.5b); the other five print `archeus <verb> is not available yet (arrives with P<n>); nothing was done` and exit 2 — `approve` P9, `route` P10 (*as built:* `archeus route why <id>`), `pause` and `estop` P11 (execution control), `pair` P15 (*as built:* only `approve` is still deferred; `pause`, `estop`, `pair` and `route why` work, and `V1_VERBS` lists 19 verbs) | today unknown verbs fall through to `main.run` |
 | P6 | own-call parsing | `parse_json`, `unwrap_structured` and `budget_args` moved unchanged from `memory.py` into `llmcall.py` (memory imports them back); `cli.V1_VERBS` gains `terms` | the V1 claude_code adapter parses its answer with the product's own code, without importing `memory` |
 | P5 | lexical scorer | new model-free `claude_sessions/lexical.py` (stdlib only): `tokens_estimate`, `tokenize`, `STOPWORDS`, `query_tokens`, `idf`, `bm25`, `BM25_K1`/`BM25_B`, moved unchanged out of `recall.py`, which imports every name back | `recall` imports `memory` (the headless call) at module level, so reusing it would put a model in the context engine's import closure |
 | P10 prep | usage snapshot | public `usage` helper `windows_snapshot(cfgdir) -> (windows, observed_at, status)` over the existing poller state and `_extract_windows` | the router must distinguish unknown from 0% |
-| P11 prep | launch builder | move `build_launch_command` and its helpers to a UI-free module re-exported from `main` (patch targets in tests checked first) | `main` imports the TUI |
+| P11 prep | launch builder | move `build_launch_command` and its helpers to a UI-free module re-exported from `main` (patch targets in tests checked first) | `main` imports the TUI (done: `claude_sessions/launch.py`) |
 
 Not done: splitting `connections` (unnecessary; risky under this repo's import-by-value bug
 class), a `quota.assess` refactor (wrong primitive), splitting `gui_api`, removing
@@ -253,4 +253,4 @@ repositories do not keep stale entries). Only V1's entries are ever removed, by 
 two shared files of §5 are not reset: they belong to the legacy functions that write them.
 After cutover,
 `archeus migrate --export-legacy` re-emits legacy formats (graph.json, lessons) from V1 knowledge
-for 90 days.
+for 90 days (not built: no `migrate` verb exists in `VERBS` or `V1_VERBS`).
