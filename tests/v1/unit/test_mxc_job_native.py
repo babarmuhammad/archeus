@@ -39,7 +39,6 @@ class ObservedApi(w.Win32Api):
     def __init__(self, directory):
         super().__init__(directory)
         self.open = set()
-        self.closed = []
         self.observers = []
         self.events = []
         kernel = c.WinDLL('kernel32', use_last_error=True)
@@ -88,8 +87,8 @@ class ObservedApi(w.Win32Api):
 
     def close_handle(self, handle):
         super().close_handle(handle)
+        assert_invalid(self, handle)    # at once: a later allocation may reuse the number
         self.open.discard(handle)
-        self.closed.append(handle)
 
     def pids(self, job):
         info = JobPids()
@@ -100,8 +99,6 @@ class ObservedApi(w.Win32Api):
 
     def assert_closed(self):
         assert not self.open
-        for handle in self.closed:
-            assert_invalid(self, handle)
 
 
 def setup(tmp_path):
