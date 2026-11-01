@@ -48,8 +48,17 @@ _ERR = {'error_during_execution': 'resource', 'error_max_turns': 'task'}
 HOOK_TIMEOUT_S = 120
 
 
+def _dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value):
+    return value if isinstance(value, list) else ()
+
+
 def normalise(raw):
-    """One stream-json object -> the normalised events it carries."""
+    """One stream-json object -> the normalised events it carries. The stream is the
+    child's own stdout, so any field may be of any type."""
     t = raw.get('type')
     if t == 'stderr':
         return [raw]
@@ -58,8 +67,8 @@ def normalise(raw):
     # (p21-design-gate D14); the main conversation has none
     lane = raw.get('parent_tool_use_id')
     if t == 'assistant':
-        msg = raw.get('message') or {}
-        for block in msg.get('content') or ():
+        msg = _dict(raw.get('message'))
+        for block in map(_dict, _list(msg.get('content'))):
             if block.get('type') == 'text':
                 out.append({'type': 'assistant', 'text': block.get('text', ''), 'lane': lane})
             elif block.get('type') == 'tool_use':
@@ -71,13 +80,13 @@ def normalise(raw):
             # the model that answered, as the transcript reports it (SERVED, ADR-0031 §6)
             out.append({'type': 'model', 'model': msg['model']})
     elif t == 'user':
-        for block in (raw.get('message') or {}).get('content') or ():
-            if isinstance(block, dict) and block.get('type') == 'tool_result':
+        for block in map(_dict, _list(_dict(raw.get('message')).get('content'))):
+            if block.get('type') == 'tool_result':
                 out.append({'type': 'tool_result', 'is_error': bool(block.get('is_error')),
                             'tool_use_id': block.get('tool_use_id'), 'lane': lane})
     elif t == 'result':
         text = str(raw.get('result') or '')
-        usage = dict(raw.get('usage') or {})
+        usage = dict(_dict(raw.get('usage')))
         if raw.get('total_cost_usd') is not None:
             usage['total_cost_usd'] = raw['total_cost_usd']
         if raw.get('is_error') and quota.is_limit_error(text):
