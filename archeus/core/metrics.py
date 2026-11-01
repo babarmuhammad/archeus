@@ -71,12 +71,15 @@ def compute(conn, day):
         bands.setdefault(band, []).append(sum(reported) if reported else None)
 
     tokens = {}
-    for (b,) in conn.execute('SELECT body FROM route_decisions WHERE created_at >= ? AND '
-                             'created_at < ? AND task_id IS NOT NULL', (lo, hi)):
+    for b, column_task in conn.execute(
+            'SELECT body, task_id FROM route_decisions WHERE created_at >= ? AND '
+            'created_at < ? AND task_id IS NOT NULL', (lo, hi)):
         rd = json.loads(b)
         if not rd.get('context_package_id'):
             continue
-        task = conn.execute('SELECT body FROM tasks WHERE id = ?', (rd['task_id'],)).fetchone()
+        # a stored row keeps task_id in its column, not in its body
+        task = conn.execute('SELECT body FROM tasks WHERE id = ?',
+                            (rd.get('task_id', column_task),)).fetchone()
         pkg = conn.execute('SELECT body FROM context_packages WHERE id = ?',
                            (rd['context_package_id'],)).fetchone()
         used = (json.loads(pkg[0]).get('budget') or {}).get('used_tokens') if pkg else None
