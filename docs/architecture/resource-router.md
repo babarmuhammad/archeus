@@ -60,7 +60,10 @@ requirements:
 
 **Archeus's own calls** (ADR-0022) are subject `archeus_call` with a `purpose`
 (knowledge_extraction, lesson, generation, brain, planner; the review judge is the same call
-class but keeps its own `review` subject and ceiling). Their requirement is
+class but keeps its own `review` subject and ceiling; *amended 2026-11-01 to match the code (owner
+ruling; the docs follow the code): the review judge is an `archeus_call` with purpose `review`,
+with no `review` subject and no ceiling of its own, so it is held to the brain ceiling, see §4*).
+Their requirement is
 `capabilities: [headless]` and, when a schema is asked, `structured_output: true`, which every
 `headless` harness satisfies — natively or in the prompt — because Core validates the result;
 it never eliminates a harness for lacking a schema flag. `preferred`/`forbidden` for this
@@ -106,7 +109,9 @@ observed window**, not a share of a pie:
 ```text
 effective_ceiling(account)    = allocation_pct − reserve_pct
 ceiling(account, kind)        = effective_ceiling(account)                       if kind = archeus_call (brain and every other own call)
-                              = effective_ceiling(account) − brain_reserve_pct   if kind ∈ {task, review}
+                              = effective_ceiling(account) − brain_reserve_pct   if kind = task
+                              (Amended 2026-11-01 to match the code (owner ruling): there is no `review` kind; a review is an archeus_call
+                               with purpose `review` and takes the first line. Was: kind ∈ {task, review})
 worst(account)                = max over windows of utilisation_pct, from the latest UsageSnapshot
                                 (unknown ≠ 0: see allocation_known below)
 can_start(account, kind, s)   = worst(account) + projected(s) < ceiling(account, kind)
@@ -139,7 +144,11 @@ must_halt(execution)          = worst(account) ≥ allocation_pct        (checke
   `concurrency` counts the account's live work — live executions **and own calls in flight**
   (ADR-0043 §1) — and at the cap refuses every subject.
 - `brain_reserve_pct` is what the two `ceiling` cases express: the brain may use up to
-  `effective_ceiling`, tasks and reviews up to `effective_ceiling − brain_reserve_pct`.
+  `effective_ceiling`, tasks up to `effective_ceiling − brain_reserve_pct`. *Amended 2026-11-01 to
+  match the code (owner ruling): `router.ceiling()` deducts the reserve for every subject except
+  `archeus_call`, and every review call is an `archeus_call`, so reviews are charged against the
+  brain ceiling, not the task ceiling; the router's only subjects are `archeus_call` and `task`.
+  Was: "tasks and reviews up to `effective_ceiling − brain_reserve_pct`".*
   Archeus can therefore always still *think* (and explain it is out of capacity) when task
   capacity is gone. `projected(s)` is 0 for a brain call.
 - The legacy `quota.worst_window` is **not** used: it returns 0 when usage is unknown ("not
