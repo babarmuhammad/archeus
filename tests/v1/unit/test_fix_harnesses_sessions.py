@@ -19,3 +19,14 @@ def test_locating_a_claude_session_reads_none_of_its_transcript(tmp_path, monkey
     monkeypatch.setattr(transcripts, 'iter_json', read)
     got = ClaudeCodeSessions().locate('abc', home, cwd)
     assert got.transcript_path == os.path.join(folder, 'abc.jsonl')
+
+
+def test_zero_turns_is_no_turns(tmp_path):
+    """T-652#F4: out[-0:] is the whole list."""
+    import json
+    from archeus.harnesses.sessions import FakeSessions
+    path = str(tmp_path / 't.jsonl')
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(json.dumps({'role': 'user', 'text': 'hi'}) + '\n')
+    assert FakeSessions().turns(path, 1) == [('user', 'hi')]
+    assert FakeSessions().turns(path, 0) == []

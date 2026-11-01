@@ -122,7 +122,7 @@ class FakeSessions:
                     continue
                 if obj.get('role') in ('user', 'assistant') and obj.get('text'):
                     out.append((obj['role'], str(obj['text'])))
-        return out[-limit:]
+        return out[-limit:] if limit > 0 else []
 
     def find(self, home, cwd, since):
         return None
@@ -177,8 +177,9 @@ class ClaudeCodeSessions:
 
     def turns(self, transcript_path, limit):
         from claude_sessions import transcript
-        return [(m['role'], m['text']) for m in transcript.iter_transcript(transcript_path)
-                if m.get('role') in ('user', 'assistant') and m.get('text')][-limit:]
+        out = [(m['role'], m['text']) for m in transcript.iter_transcript(transcript_path)
+               if m.get('role') in ('user', 'assistant') and m.get('text')]
+        return out[-limit:] if limit > 0 else []
 
     def find(self, home, cwd, since):
         return None             # a new Claude session's ref is chosen before launch
@@ -240,7 +241,7 @@ class PiSessions:
                 text = pi._text(m.get('content'))
                 if text:
                     out.append((m['role'], text))
-        return out[-limit:]
+        return out[-limit:] if limit > 0 else []
 
     def find(self, home, cwd, since):
         from claude_sessions import pi
