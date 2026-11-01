@@ -255,12 +255,22 @@ class Daemon:
             self.clear_lock()
             return True, 'stopped'
         if ctime is None:
-            return False, ('the %s lock has no creation time (written by an older '
-                           'version); stop pid %s by hand' % (self.label, pid))
+            # an old lock was written after its daemon started, so a pid that started
+            # after the lock is a stranger's, and waiting on it would wedge every spawn.
+            # A file's time can trail the clock by a tick, so a start within 2 s of the
+            # lock is not told apart.
+            started = proc.process_started_at(pid)
+            if started is not None and os.path.getmtime(self.lock_path()) < started - 2:
+                self.clear_lock()
+                return True, 'pid %s started after the %s lock was written: lock cleared' % (pid, self.label)
+            return False, ('the %s lock has no creation time (written by an older version) '
+                           'and pid %s cannot be told from it; if pid %s is not the %s, '
+                           'delete %s' % (self.label, pid, pid, self.label, self.lock_path()))
         now = proc.process_create_time(pid)
         if now is not None and now != ctime:
             self.clear_lock()
-        return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)
+            return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)
+        return False, 'could not stop pid %s' % pid
 
 
 def _own_ctime():

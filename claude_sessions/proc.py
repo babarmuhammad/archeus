@@ -201,6 +201,24 @@ def process_create_time(pid):
         return None
 
 
+def process_started_at(pid):
+    """Epoch seconds at which *pid* started, or None when it does not exist or the
+    platform's start time cannot be turned into one."""
+    ct = process_create_time(pid)
+    if not isinstance(ct, int):
+        return None
+    if WINDOWS:
+        return ct / 1e7 - 11644473600                 # 100 ns since 1601
+    if sys.platform == 'darwin':
+        return ct / 1e6
+    try:
+        with open('/proc/stat', encoding='utf-8') as f:
+            btime = next(int(line.split()[1]) for line in f if line.startswith('btime'))
+        return btime + ct / os.sysconf('SC_CLK_TCK')
+    except Exception:
+        return None
+
+
 _libproc = None
 
 

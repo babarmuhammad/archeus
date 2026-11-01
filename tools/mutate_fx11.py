@@ -83,6 +83,18 @@ MUTATIONS = [
      r"""    except (ValueError, RecursionError):""",
      r"""    except ValueError:""")],
      [B + 'test_f8_a_settings_file_nested_past_the_parser_depth_is_not_json']),
+    ('S05', 'a lock older than its pid is never cleared', [(PB,
+     r"""            if started is not None and os.path.getmtime(self.lock_path()) < started - 2:""",
+     r"""            if False:""")],
+     [B + 'test_f6_a_lock_older_than_its_pid_is_cleared_and_the_stranger_left_alone']),
+    ('S06', 'a lock the pid may have written is cleared', [(PB,
+     r"""os.path.getmtime(self.lock_path()) < started - 2:""",
+     r"""os.path.getmtime(self.lock_path()) < started + 3600:""")],
+     [B + 'test_f6_a_lock_the_pid_may_have_written_is_kept_and_the_refusal_names_the_way_out']),
+    ('S07', 'a failed kill blames the lock', [(PB,
+     r"""        return False, 'could not stop pid %s' % pid""",
+     r"""        return False, 'pid %s is not the %s that wrote the lock' % (pid, self.label)""")],
+     [B + 'test_f6_a_kill_that_fails_on_the_recorded_process_says_so']),
 ]
 
 
