@@ -702,12 +702,14 @@ class LocalNode:
         return None
 
     #: what the hook reads (P11 PAUSE/STOP; P12 HANDOFF) — see FLAGS below
-    def __init__(self, isolation=None):
+    def __init__(self, isolation=None, heartbeat=None):
         #: Core's isolation authority for this process (PV-20 §3.7): the per-execution
         #: identities, the Jobs only Core holds, the quarantine ledger. Injected by the
         #: synthetic fixtures; the production node gets the real boundary, which
         #: dispatches nothing isolated while production dispatch stays E's.
         self.isolation = isolation if isolation is not None else isolation_mod.Isolation(self)
+        #: the B13 heartbeat sender, or None: the manager's sweep is Core's one beat
+        self.heartbeat = heartbeat
 
     # ── processes ──
 
@@ -793,6 +795,8 @@ class LocalNode:
         """Boot and every pass: quarantine retried, stale identities reclaimed (§3.7),
         and the ledger's journals read for the ends no Core verified. Returns the
         executions it released."""
+        if self.heartbeat is not None:
+            self.heartbeat.beat()
         released = self.isolation.reclaim(live_execution_ids)
         self.isolation.reconcile_ledger()
         return released
