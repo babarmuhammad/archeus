@@ -129,7 +129,7 @@ class SessionService:
     def register(self, actor, key=None, **kw):
         self._checked_cwd(kw['cwd'], kw.get('project_id'))
         a, models, efforts = self.adapter(kw['harness_id'], need=())
-        return self._do(S.open_session, actor, key, mode='manual', **kw)
+        return self._do(S.open_session, actor, key, mode='manual', models=models, efforts=efforts, **kw)
 
     def launch(self, actor, key=None, **kw):
         """A new interactive session in a terminal."""

@@ -99,8 +99,8 @@ def open_session(tx, *, actor, harness_id, cwd, mode, workspace_id=ids.GLOBAL_WO
         id=ids.new_id('session'), harness_id=harness_id, workspace_id=workspace_id, cwd=cwd,
         mode=mode, account_id=account_id, project_id=project_id, mission_id=mission_id,
         provider_session_ref=provider_session_ref, transcript_path=transcript_path,
-        model=_vocabulary(model, models, 'model', harness_id) if launch else model,
-        effort=_vocabulary(effort, efforts, 'effort', harness_id) if launch else effort,
+        model=_vocabulary(model, models, 'model', harness_id),
+        effort=_vocabulary(effort, efforts, 'effort', harness_id),
         last_seen_seq=outbox.head(tx.conn), launch_seq=1 if launch else 0,
         started_at=_now(), last_active_at=_now())
     tx.insert(s, actor=actor)

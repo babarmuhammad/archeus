@@ -554,16 +554,27 @@ def spawn_terminal(argv=None, *, cwd=None, env=None, title='', keep_open=False):
     return _spawn_posix(argv, cwd, env, title, keep_open)
 
 
+#: cmd.exe does not honour list2cmdline's backslash-quote, so any of these in a
+#: word that reaches cmd's parser can end the quoting and start a second command.
+_CMD_META = _re.compile(r'[&|<>^%!"\x00-\x1f]')
+
+
 def _spawn_windows(argv, cwd, env, title, keep_open):
-    # argv-list form, never shell=True: list2cmdline quotes each argument, so a
-    # project or account name containing " & | cannot break out of the title
-    # and run something else.
+    # Text we did not write (a session title inside --append-system-prompt, a
+    # prompt, a branch) must never reach cmd.exe's parser: the program is
+    # started directly. cmd is used only for a bare shell or keep_open, and for a
+    # .cmd/.bat shim CreateProcess hands to cmd itself; there every word must be
+    # free of cmd metacharacters or the spawn is refused.
+    title = _CMD_META.sub(' ', title)
+    shim = bool(argv) and argv[0].lower().endswith(('.cmd', '.bat'))
+    if argv and (keep_open or shim) and any(_CMD_META.search(a) for a in argv):
+        return None, 'refused: an argument contains a cmd.exe metacharacter'
     if argv is None:
         cmd = ['cmd', '/k'] + (['title', title] if title else [])
     elif keep_open:
-        cmd = ['cmd', '/k'] + (['title', title, '&&'] if title else []) + list(argv)
+        cmd = ['cmd', '/k', 'title', title or 'archeus', '&&'] + list(argv)
     else:
-        cmd = ['cmd', '/c'] + (['title', title, '&&'] if title else []) + list(argv)
+        cmd = list(argv)
     try:
         return subprocess.Popen(cmd, cwd=cwd, env=env,
                                 creationflags=new_console_flags), ''

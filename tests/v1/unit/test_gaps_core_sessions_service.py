@@ -257,7 +257,7 @@ def test_a_registered_session_writes_one_row_and_launches_nothing(rig):
     assert out == {'id': s.id}                                # the command's own answer
     (call,) = rig.calls(S.open_session)
     assert call.data['mode'] == 'manual' and call.data['actor'] == USER
-    assert 'models' not in call.data                          # registration offers no launch
+    assert 'launch' not in call.data and 'models' in call.data   # no launch; the vocabulary checks model and effort
     assert rig.names() == ['open_session'] and rig.term.opened == []
 
 

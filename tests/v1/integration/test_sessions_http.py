@@ -113,3 +113,21 @@ def test_H06_the_session_verbs_without_core_say_so(archeus_home, capsys):
     from archeus.cli import main as cli
     assert cli.main(['sessions']) == 1
     assert 'not running' in capsys.readouterr().err
+
+
+def test_H07_a_model_or_effort_the_harness_does_not_offer_is_refused_on_register_and_resume(
+        core, tmp_path):
+    """A manual register used to keep the raw value, and a later resume put it on
+    the terminal command line (`cmd /c ... --model x" & ...`)."""
+    hostile = 'x" & echo INJECTED> marker.txt & "'
+    ref = 'ref-' + ids.new_ulid()
+    FakeSessions('fake_a').write(ref, [('user', 'hello')])
+    base = {'harness_id': 'fake_a', 'cwd': str(tmp_path), 'provider_session_ref': ref}
+    for field in ('model', 'effort'):
+        r = _post(core, '/v1/sessions', dict(base, **{field: hostile}))
+        assert r.status in (400, 409) and b'does not offer' in r.body, r.body
+    s = _register(core, tmp_path)
+    for field in ('model', 'effort'):
+        r = _post(core, '/v1/sessions/%s/resume' % s['id'], {'request_id': 'r1', field: hostile})
+        assert r.status in (400, 409) and b'does not offer' in r.body, r.body
+    assert JudgeTerminal(core.home).launches() == []

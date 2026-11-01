@@ -260,3 +260,50 @@ def test_no_module_references_a_windows_only_constant_outside_a_windows_branch()
                 bad.append('%s:%d subprocess.%s' % (name, node.lineno, node.attr))
     assert not bad, ('use getattr(subprocess, NAME, 0) or an os.name check — '
                      'these raise on POSIX: %s' % bad)
+
+
+def _windows_spawn(monkeypatch, argv, **kw):
+    from claude_sessions import proc
+    seen = []
+
+    class FakePopen:
+        def __init__(self, cmd, **k):
+            seen.append(cmd)
+
+    monkeypatch.setattr(proc.subprocess, 'Popen', FakePopen)
+    return proc._spawn_windows(argv, None, None, kw.get('title', ''), kw.get('keep_open', False)), seen
+
+
+HOSTILE = 'Fix "R&D" bug | echo X > f ^ %PATH% !V!'
+
+
+def test_windows_launch_runs_the_program_without_cmd(monkeypatch):
+    """A session title inside --append-system-prompt used to ride through
+    `cmd /c title ... && claude ...`, where list2cmdline's backslash-quote ends
+    the quoting and the `&` runs a second command."""
+    exe = r'C:\tools\claude.exe'
+    argv = [exe, '--append-system-prompt', "session '%s'" % HOSTILE]
+    (p, err), seen = _windows_spawn(monkeypatch, argv, title='claude - proj')
+    assert err == '' and seen == [argv]
+
+
+def test_windows_title_is_stripped_of_cmd_metacharacters(monkeypatch):
+    (p, err), seen = _windows_spawn(monkeypatch, None, title='proj "R&D" | ^ %X% !')
+    assert err == '' and seen[0][:3] == ['cmd', '/k', 'title']
+    assert not set('&|<>^%!"') & set(seen[0][3])
+
+
+def test_windows_keep_open_and_shims_refuse_hostile_arguments(monkeypatch):
+    for argv, kw in (([r'C:\x\claude.exe', HOSTILE], {'keep_open': True}),
+                     ([r'C:\x\pi.cmd', '-n', HOSTILE], {}),
+                     ([r'C:\x\pi.BAT', 'a\nb'], {})):
+        (p, err), seen = _windows_spawn(monkeypatch, argv, title=HOSTILE, **kw)
+        assert p is None and 'metacharacter' in err and seen == []
+
+
+def test_windows_keep_open_and_shim_pass_clean_arguments_through_cmd_safely(monkeypatch):
+    (p, err), seen = _windows_spawn(monkeypatch, [r'C:\x\claude.exe', 'update'],
+                                    title='t & u', keep_open=True)
+    assert seen == [['cmd', '/k', 'title', 't   u', '&&', r'C:\x\claude.exe', 'update']]
+    (p, err), seen = _windows_spawn(monkeypatch, [r'C:\x\pi.cmd', '-n', 'ok'])
+    assert seen == [[r'C:\x\pi.cmd', '-n', 'ok']]
