@@ -201,10 +201,9 @@ def _enforcement(c, req, snap):
         d = i['decision']
         if d == 'ALLOW':
             continue
-        if mode == 'sandbox' and d == 'ALLOW_WITHIN_BOUNDARY' and all(
-                set(b) <= set(SANDBOX_KEYS)
-                for b in (i['boundary'] if isinstance(i['boundary'], list) else [i['boundary']])
-                if b):
+        bs = i['boundary']
+        if mode == 'sandbox' and d == 'ALLOW_WITHIN_BOUNDARY' and (bs or isinstance(bs, list))                 and all(set(b) <= set(SANDBOX_KEYS) for b in (bs if isinstance(bs, list) else [bs])
+                        if b):
             continue
         return 'cannot enforce %s %s (enforcement: %s)' % (d, i['class'], mode)
     return None
@@ -299,7 +298,8 @@ def _health(c, req, snap):
     if not a.get('registered'):
         return a.get('why_not') or None
     if a['health'] not in ROUTABLE:
-        c['fallbackable'] = a['health'] == 'DEGRADED'
+        raw = worst(a.get('usage'), penalty=False)
+        c['fallbackable'] = a['health'] == 'DEGRADED' and not (raw is not None and raw >= 100)
         return 'account is %s' % a['health']
     raw = worst(a.get('usage'), penalty=False)
     if raw is not None and raw >= 100:
