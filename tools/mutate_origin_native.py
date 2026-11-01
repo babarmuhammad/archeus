@@ -123,6 +123,18 @@ MUTATIONS = [
      '    except BaseException:\n        _slots.release()\n        raise',
      '    except BaseException:\n        raise')],
      [T + 'test_a_worker_thread_that_cannot_start_gives_its_slot_back']),
+    ('B27', 'a process Core spawned may be the user', [(ATTEST,
+     'if info.outside_core is not True:', 'if False:')],
+     [T + 'test_a_reader_that_does_not_say_the_peer_is_outside_core_cannot_make_a_user']),
+    ('B28', 'every peer reads as outside Core', [(NATIVE,
+     'outside_core=pid != core_pid and not under_core,', 'outside_core=True,')],
+     [T + 'test_a_process_core_spawned_outside_every_job_is_not_the_user_t17']),
+    ('B29', 'Core among the ancestors is not noticed', [(NATIVE,
+     'if parent_pid == core_pid:', 'if False:')],
+     [T + 'test_a_process_core_spawned_outside_every_job_is_not_the_user_t17']),
+    ('B30', 'Core itself reads as outside Core', [(NATIVE,
+     'outside_core=pid != core_pid and not under_core,', 'outside_core=not under_core,')],
+     [T + 'test_core_itself_is_not_the_user']),
 ]
 
 

@@ -26,8 +26,11 @@ class ProcessInfo(NamedTuple):
     creation_time: "int | float | None"
     ancestors: "tuple[str, ...]"
     in_core_job: bool
-    # default False so a reader that does not say fails the user path closed
+    # defaults False so a reader that does not say fails the user path closed
     same_session: bool = False
+    # True only when the peer is not Core and no Core process is among its ancestors:
+    # Core's own children (check commands, helpers) sit in no Job and must not read as the user
+    outside_core: bool = False
 
 
 class ProcessBinding(NamedTuple):
@@ -58,6 +61,7 @@ OUTSIDE_CORE_JOB = 'outside_core_job'
 INSIDE_CORE_JOB = 'inside_core_job'
 LAUNCHER_PRESENT = 'launcher_present'
 OTHER_SESSION = 'other_session'
+CORE_DESCENDANT = 'core_descendant'
 EXPIRED = 'expired'
 NO_BINDING = 'no_binding'
 
@@ -82,9 +86,11 @@ def attest_peer(**kwargs) -> AttestResult:
     """`attest_owner`, and when the peer is no execution, the user's own process.
 
     A user is attested by exclusion: alive, a readable creation time, in no Core
-    Job, no launcher ancestor, the same session as Core. Nothing here proves the
-    peer is the user, only that it is not an execution Core contains; that holds
-    while every execution runs inside a Core Job. The caller adds the direct
+    Job, no launcher ancestor, not Core or a descendant of Core, the same session as
+    Core. Nothing here proves the peer is the user, only that it is not an execution
+    Core contains and not a process Core spawned; that holds while every execution
+    runs inside a Core Job. A Core child orphaned before the peer is attested leaves
+    no ancestry to read and is not caught. The caller adds the direct
     loopback path and the Core registry's approval. The binding's
     `core_job_at_accept` says which kind it is. One owner lookup, one process read.
     """
@@ -220,6 +226,8 @@ def _user_failures(info: ProcessInfo, launcher: str) -> "list[str]":
         failures.append(MALFORMED)
     if info.same_session is not True:
         failures.append(OTHER_SESSION)
+    if info.outside_core is not True:
+        failures.append(CORE_DESCENDANT)
     return failures
 
 

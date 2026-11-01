@@ -61,9 +61,12 @@ def native_readers(api, *, core_port, jobs, clock=time.monotonic, launcher=DEFAU
         if process is None:
             return ProcessInfo(alive=False, creation_time=None, ancestors=(),
                                in_core_job=False)
+        core_pid = api.core_pid()
+        ancestors, under_core = _ancestry(api, process, core_pid)
         return ProcessInfo(alive=process.alive, creation_time=process.creation_time,
-                           ancestors=_ancestors(api, process),
+                           ancestors=ancestors,
                            in_core_job=process.in_jobs,
+                           outside_core=pid != core_pid and not under_core,
                            same_session=process.session_id == api.core_session())
 
     return AttestationReaders(resolve_owner=resolve_owner, read_process=read_process,
@@ -71,7 +74,8 @@ def native_readers(api, *, core_port, jobs, clock=time.monotonic, launcher=DEFAU
                               reattest=reattest)
 
 
-def _ancestors(api, process):
+def _ancestry(api, process, core_pid):
+    """Ancestor names, and whether Core itself is among them (a process Core spawned)."""
     names = []
     child, parent_pid = process, process.parent_pid
     while parent_pid and len(names) < MAX_ANCESTORS:
@@ -79,9 +83,11 @@ def _ancestors(api, process):
         if (parent is None or not parent.alive or parent.creation_time is None
                 or child.creation_time is None or parent.creation_time >= child.creation_time):
             break
+        if parent_pid == core_pid:
+            return tuple(names), True
         names.append(parent.name.lower().removesuffix('.exe'))
         child, parent_pid = parent, parent.parent_pid
-    return tuple(names)
+    return tuple(names), False
 
 
 DWORD = c.c_uint32
@@ -156,8 +162,11 @@ class Win32OriginApi:
         return [TcpRow(_address(r.local_addr), _port(r.local_port), _address(r.remote_addr),
                        _port(r.remote_port), r.state, r.pid) for r in rows]
 
+    def core_pid(self):
+        return self.kernel.GetCurrentProcessId()
+
     def core_session(self):
-        return self._session(self.kernel.GetCurrentProcessId())
+        return self._session(self.core_pid())
 
     def _session(self, pid):
         session = DWORD()

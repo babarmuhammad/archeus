@@ -18,6 +18,7 @@ from archeus.node.origin_native import ESTABLISHED, RawProcess, TcpRow, native_r
 from archeus.node.origin_windows import WindowsOriginBackend
 
 CORE = 8731
+CORE_PID = 8000
 PEER = 54321
 JOB = 777
 T0 = 1000.0
@@ -44,6 +45,9 @@ class FakeApi:
     def core_session(self):
         return self.session
 
+    def core_pid(self):
+        return CORE_PID
+
     def process(self, pid, jobs):
         self.calls.append(('process', pid, jobs))
         found = self.table.get(pid)
@@ -61,6 +65,12 @@ class FakeApi:
         """The user's own process: explorer.exe (300) child, in no Job."""
         self.table[300] = _proc(300, 0, 10, 'explorer.exe')
         self.table[pid] = _proc(pid, 300, ct, 'curl.exe', **overrides)
+
+    def core_child(self, pid=4124, ct=100, **overrides):
+        """A check command Core spawned: Core (8000) -> cmd.exe (400) -> it, in no Job."""
+        self.table[CORE_PID] = _proc(CORE_PID, 0, 10, 'python.exe')
+        self.table[400] = _proc(400, CORE_PID, 20, 'cmd.exe')
+        self.table[pid] = _proc(pid, 400, ct, 'check.exe', **overrides)
 
 
 @pytest.fixture
@@ -285,13 +295,56 @@ def test_a_peer_that_is_not_positively_the_user_is_undetermined(api, what, chang
 
 def test_a_reader_that_does_not_report_the_session_cannot_make_a_user():
     def peer(**info):
-        base = dict(alive=True, creation_time=1, ancestors=('explorer',), in_core_job=False)
+        base = dict(alive=True, creation_time=1, ancestors=('explorer',), in_core_job=False,
+                    outside_core=True)
         return attest.attest_peer(remote_port=1, resolve_owner=lambda p: attest.PeerOwner(5),
                                   read_process=lambda p: attest.ProcessInfo(**{**base, **info}),
                                   clock=lambda: 0.0)
 
     assert peer().ok is False and peer().binding is None
     assert peer(same_session=True).binding.core_job_at_accept is False
+
+
+def test_a_reader_that_does_not_say_the_peer_is_outside_core_cannot_make_a_user():
+    def peer(**info):
+        base = dict(alive=True, creation_time=1, ancestors=('explorer',), in_core_job=False,
+                    same_session=True)
+        return attest.attest_peer(remote_port=1, resolve_owner=lambda p: attest.PeerOwner(5),
+                                  read_process=lambda p: attest.ProcessInfo(**{**base, **info}),
+                                  clock=lambda: 0.0)
+
+    assert peer().ok is False and peer().binding is None
+    assert peer(outside_core=True).ok is True
+
+
+def test_a_process_core_spawned_outside_every_job_is_not_the_user_t17(api):
+    api.core_child()
+    assert readers(api).read_process(4124).outside_core is False
+    backend, context, evidence = _attest(api)
+    assert evidence.origin == origin.OriginClass.UNDETERMINED and evidence.process_binding is None
+    assert REGISTRY.approved(context, evidence) is False
+
+
+def test_core_itself_is_not_the_user(api):
+    api.user()
+    api.table[CORE_PID] = _proc(CORE_PID, 300, 100, 'python.exe')
+    api.rows = [TcpRow('127.0.0.1', PEER, '127.0.0.1', CORE, ESTABLISHED, CORE_PID)]
+    assert readers(api).read_process(CORE_PID).outside_core is False
+    assert _attest(api)[2].origin == origin.OriginClass.UNDETERMINED
+
+
+def test_a_user_process_beside_core_is_outside_core(api):
+    api.core_child(pid=500)
+    api.user()
+    assert readers(api).read_process(4124).outside_core is True
+
+
+def test_a_user_binding_loses_validity_when_the_peer_turns_out_to_be_a_core_child(api):
+    api.user()
+    backend, context, evidence = _attest(api)
+    assert backend.valid(context, evidence)
+    api.core_child()
+    assert backend.valid(context, evidence) is False
 
 
 @pytest.mark.parametrize('context', [
@@ -559,3 +612,6 @@ class _Win32Rows:
 
     def core_session(self):
         return SESSION
+
+    def core_pid(self):
+        return CORE_PID
