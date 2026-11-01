@@ -919,7 +919,10 @@ class LocalNode:
         out = []
         for n in names:
             head, _, tail = n.partition('.')
-            if tail != 'req.json' or not head.isdigit():
+            # a name is the sequence number as respond() writes it: the execution picks
+            # these names, and '²' or '007' must not be read as, or answered as, another one
+            if tail != 'req.json' or not (head.isascii() and head.isdigit()
+                                          and head == str(int(head))):
                 continue
             if os.path.exists(os.path.join(paths.res, '%s.res.json' % head)):
                 continue

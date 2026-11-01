@@ -935,6 +935,16 @@ def test_only_cores_class_2_answer_answers_a_request():
     assert LocalNode.pending_requests(eid) == [(2, None)]
 
 
+def test_a_request_file_that_is_not_a_plain_sequence_number_is_not_a_request():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    for name in ('².req.json', '٣.req.json', '007.req.json', '1.req.json'):
+        with open(os.path.join(p.req, name), 'w', encoding='utf-8') as f:
+            f.write('{"tool": "Read"}')
+    assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Read'})]
+
+
 def test_core_sets_the_flags_in_class_3_only():
     eid = ids.new_id('execution')
     p = paths.ExecPaths(eid)
