@@ -404,7 +404,7 @@ def get_automation(conn, automation_id, *, runs=50, homes=None, schedule_faults=
         raise lifecycle.NotFound(automation_id)
     rs = rows.where(conn, entities.AutomationRun, automation_id=automation_id)
     get = _lazy(conn, homes)
-    return dict(_view(conn, row, schedule_faults), runs=[_run_view(r, get) for r in rs[-runs:]])
+    return dict(_view(conn, row, schedule_faults), runs=[_run_view(r, get) for r in (rs[-runs:] if runs > 0 else [])])
 
 
 def _mine(conn, cls, mission_id):
