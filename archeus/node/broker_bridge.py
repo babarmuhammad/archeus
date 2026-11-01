@@ -285,6 +285,7 @@ class Bridge:
                 req = read_request(sock.makefile('rb'), admit=_admit_bridge)
             except BadRequest as r:
                 _send(sock, local_reply(r.status, 'Refused'))
+                _drain(sock)
                 return
             except OSError:
                 _send(sock, local_reply(400, 'Bad Request'))

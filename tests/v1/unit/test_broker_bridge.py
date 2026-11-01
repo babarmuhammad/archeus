@@ -177,6 +177,26 @@ def _nope():
     raise OSError('no pipe')
 
 
+@pytest.mark.parametrize('data,status', [
+    (raw('POST /v1/messages HTTP/1.1', 'Host: x', 'Authorization: Bearer nope',
+         'Content-Length: 100', body=b'x' * 100), b'401'),
+    (raw('POST /v1/messages HTTP/1.1', 'Host: x', 'Authorization: Bearer brk_x',
+         'Content-Length: %d' % (W.MAX_BODY + 1), body=b'x' * 100), b'413'),
+    (raw('CONNECT x:443 HTTP/1.1', 'Host: x', body=b'x' * 100), b'400'),
+])
+def test_a_refusal_sent_before_the_body_is_read_drains_it_so_the_close_is_not_a_reset(
+        monkeypatch, data, status):
+    drained = []
+    real = W._drain
+    monkeypatch.setattr(W, '_drain', lambda sock: drained.append(1) or real(sock))
+    b = W.Bridge(_nope)
+    try:
+        b.start(lambda port: None)
+        assert _exchange(b, data).startswith(b'HTTP/1.1 ' + status) and drained == [1]
+    finally:
+        b.close()
+
+
 @pytest.mark.parametrize('data', [
     raw('POST /v1/messages HTTP/1.1', 'X-A: b\rc', 'Host: x'),
     raw('GET /v1/messages\rX HTTP/1.1', 'Host: x'),
