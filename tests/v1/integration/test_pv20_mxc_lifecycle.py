@@ -22,7 +22,7 @@ from archeus.harnesses import base
 from archeus.infra.paths import ExecPaths
 from archeus.node import isolation as iso
 from archeus.node import local, mxc_ledger
-from archeus.node import mxc_context
+from archeus.node import mxc_context, mxc_native
 from archeus.node.mxc_context import STREAM_BYTES
 
 from v1.integration.test_pv20_mxc_agent_path import (agent_case, child_of, no_process,  # noqa: F401
@@ -224,6 +224,17 @@ def test_two_stops_in_flight_agree_on_the_first_reason(long_agent):
     ops, records = journal(long_agent)
     assert ops[-1] == 'quarantine' and 'estop' in records[-1]['reason']
     assert 'limit' not in records[-1]['reason']
+
+
+def test_a_second_wait_on_a_draining_launch_ends_nothing(long_agent):
+    handle, child = spawn(long_agent)
+    launch = child.launch
+    with pytest.raises(mxc_native.AlreadyDraining, match='already draining'):
+        launch.wait()
+    assert launch.end_state is None and long_agent.jobs.terminated == []
+    assert child.poll() is None and child.fault is None
+    child.cancel('estop')
+    assert child.reason == 'estop' and launch.end_state['reason'] == 'estop'
 
 
 def test_a_handle_naming_another_pid_never_cancels_the_launch(long_agent):

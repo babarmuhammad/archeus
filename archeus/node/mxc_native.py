@@ -36,6 +36,10 @@ class Win32(Protocol):
     def write(self, handle, data: bytes) -> int: ...
 
 
+class AlreadyDraining(MxcUnavailable):
+    """A second wait on a launcher the drain thread already owns: nothing ended."""
+
+
 class Transport:
     # output_limit bounds each of stdout and stderr; total_limit bounds both together
     # and defaults to twice the per-stream bound, the most two full streams can reach.
@@ -228,7 +232,7 @@ class Process:
                 raise MxcUnavailable('launcher closed')
             return self.launcher_exit
         if self._draining:
-            raise MxcUnavailable('launcher already draining')
+            raise AlreadyDraining('launcher already draining')
         self._draining = True
         deadline = self.transport.clock() + max(0, self.timeout if timeout is None else timeout)
         read_input = self._stdin_reader or io.BytesIO(self.stdin.payload()).read

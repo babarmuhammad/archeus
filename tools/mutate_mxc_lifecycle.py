@@ -130,6 +130,10 @@ MUTATIONS = [
      '            if self.reason is None and not self._done.is_set():',
      '            if not self._done.is_set():')],
      [L + 'test_two_stops_in_flight_agree_on_the_first_reason']),
+    ('ML33', 'a second wait on a draining launch ends it', [(LOCAL,
+     '        except mxc_native.AlreadyDraining:        # the live drain is not this caller\'s to end\n'
+     '            raise\n', '')],
+     [L + 'test_a_second_wait_on_a_draining_launch_ends_nothing']),
     ('ML29', 'the e-stop reason is lost on the way to the node', [(MGR,
      "                           reason='disarmed' if disarmed else e.stop_reason or 'stopped')",
      "                           reason='stopped')")], [REASONS]),

@@ -524,6 +524,8 @@ class MxcLaunch:
         try:
             self.launcher_exit = (self.process.wait(timeout, cancelled=cancelled)
                                   if cancelled is not None else self.process.wait(timeout))
+        except mxc_native.AlreadyDraining:        # the live drain is not this caller's to end
+            raise
         except BaseException:
             self._end(reason=self.stop_reason or 'launcher ended during the drain', outcome=None)
             raise
