@@ -43,7 +43,7 @@ def hook(x, monkeypatch, request):
     manager = x.manager
     pending, answers, evidence = [], [], [CONTEXT]
     monkeypatch.setattr(manager.node, 'pending_requests', lambda eid: list(pending))
-    monkeypatch.setattr(manager.node, 'respond', lambda eid, seq, decision, reason:
+    monkeypatch.setattr(manager.node, 'respond', lambda eid, seq, request, decision, reason:
                         answers.append({'decision': decision, 'reason': reason}))
     monkeypatch.setattr(manager, '_tail', lambda *args: None)
 

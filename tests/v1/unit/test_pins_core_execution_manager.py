@@ -69,7 +69,7 @@ class FakeNode:
     def set_flag(self, execution_id, flag):
         self.flags.append((execution_id, flag))
 
-    def respond(self, execution_id, seq, decision, reason):
+    def respond(self, execution_id, seq, request, decision, reason):
         self.responded.append((seq, decision, reason))
 
     def pending_requests(self, execution_id):
@@ -313,7 +313,7 @@ def test_a_failure_to_judge_halts_and_never_allows(tmp_path, monkeypatch):
                                     {'decision': 'ask', 'reason': 'ask the owner'}],
                          ids=['deny', 'ask'])
 def test_what_the_writer_decided_is_what_the_hook_is_answered(tmp_path, monkeypatch, answer):
-    # manager.py:631 (`respond(..., out['decision'], out['reason'])`): the decision is
+    # manager.py:631 (`respond(..., req, out['decision'], out['reason'])`): the decision is
     # forwarded verbatim, so a deny cannot become an allow on the way.
     m, e, seen = _hook_rig(tmp_path, monkeypatch, [(1, {'tool': 'Read', 'input': {}})],
                            answer=answer)

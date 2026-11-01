@@ -53,7 +53,7 @@ class Node:
     def set_flag(self, execution_id, flag):
         self.flags.append((execution_id, flag))
 
-    def respond(self, execution_id, seq, decision, reason):
+    def respond(self, execution_id, seq, request, decision, reason):
         self.responded.append((execution_id, seq, decision, reason))
 
     def pending_requests(self, execution_id):

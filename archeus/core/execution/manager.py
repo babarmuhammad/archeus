@@ -630,7 +630,7 @@ class ExecutionManager:
         for seq, req in pending:
             did = True
             if req is None:
-                self.node.respond(e.id, seq, 'halt', 'the request could not be read')
+                self.node.respond(e.id, seq, None, 'halt', 'the request could not be read')
                 continue
             workdir = e.workdir or ExecPaths(e.id).work
             cwd = req.get('cwd')
@@ -655,7 +655,7 @@ class ExecutionManager:
             except Exception as err:        # never allow on a failure: fail closed
                 log.warning('hook request %d of %s: %s', seq, e.id, err)
                 out = {'decision': 'halt', 'reason': 'Archeus could not judge the request'}
-            self.node.respond(e.id, seq, out['decision'], out['reason'])
+            self.node.respond(e.id, seq, req, out['decision'], out['reason'])
         return did
 
     def _control(self, e, m, p, disarmed):

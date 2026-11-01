@@ -29,7 +29,7 @@ import weakref
 from claude_sessions import config, proc
 
 from ..core.domain import ids
-from ..harnesses import base
+from ..harnesses import base, hook
 from ..infra.paths import (ExecPaths, VerifyPaths, archeus_home, processes_registry,
                            repo_store, repos_dir, run_dir, seed_staging, stop_sentinel)
 from . import isolation as isolation_mod
@@ -1045,17 +1045,18 @@ class LocalNode:
         return sorted(out, key=lambda x: x[0])
 
     @staticmethod
-    def respond(execution_id, seq, decision, reason=''):
+    def respond(execution_id, seq, request, decision, reason=''):
+        """Answer *request*, the very dict `pending_requests` returned and Core judged
+        (None when it was unreadable). The answer echoes that request's nonce and digest,
+        never a second read of the file the execution can rewrite: a hook accepts an
+        answer only for the content it wrote."""
         paths = ExecPaths(execution_id)
-        try:
-            with open(os.path.join(paths.req, '%d.req.json' % seq), encoding='utf-8') as f:
-                nonce = json.load(f).get('nonce')
-        except (OSError, ValueError, AttributeError):
-            nonce = None            # an unreadable request: the hook will not match it
         os.makedirs(paths.res, exist_ok=True)
-        config.write_json_atomic(os.path.join(paths.res, '%d.res.json' % seq),
-                                 {'decision': decision, 'reason': reason, 'nonce': nonce},
-                                 indent=None)
+        config.write_json_atomic(
+            os.path.join(paths.res, '%d.res.json' % seq),
+            {'decision': decision, 'reason': reason,
+             'nonce': request and request.get('nonce'),
+             'digest': request and hook.request_digest(request)}, indent=None)
 
     # ── git reads the boundary checks need (outside any transaction) ──
 

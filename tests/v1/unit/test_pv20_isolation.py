@@ -1438,7 +1438,7 @@ class TestIsolatedFactsWithoutCoreGit:
         m, e, git = self._m(record, field, allow, branch=branch)
         m.node.pending_requests = lambda eid: [(1, {'tool': 'Read', 'input': {}})]
         answered, ctxs = [], []
-        m.node.respond = lambda eid, seq, decision, reason: answered.append(decision)
+        m.node.respond = lambda eid, seq, request, decision, reason: answered.append(decision)
         m._tail = lambda e, p: None
         m.policy = None
         monkeypatch.setattr(M.canonical, 'canonicalise',

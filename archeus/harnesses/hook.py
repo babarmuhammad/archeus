@@ -29,6 +29,7 @@ lets the call through, so a crash anywhere is a halt, or a deny when even the
 halt cannot be written.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -121,6 +122,13 @@ def _sentinel(path, name, why):
     return why
 
 
+def request_digest(request):
+    """A request's content as Core judged it; the answer echoes it, so a request the
+    execution rewrote after the hook wrote it is never answered as the hook's."""
+    return hashlib.sha256(json.dumps(request, sort_keys=True, separators=(',', ':'))
+                          .encode('utf-8')).hexdigest()
+
+
 def _reserve(box, body):
     """Write the request under the next free sequence number, atomically. The
     number is taken by creating `<seq>.lock` exclusively, and the lock is never
@@ -178,9 +186,10 @@ def run(payload, environ):
     # Core never deletes an answer and the execution can empty req/, so a number is reused:
     # an answer is this request's only when it echoes this nonce
     nonce = os.urandom(16).hex()
-    seq = _reserve(box, {'token': token, 'tool': payload.get('tool_name'),
-                         'input': payload.get('tool_input'), 'cwd': payload.get('cwd'),
-                         'nonce': nonce})
+    body = {'token': token, 'tool': payload.get('tool_name'),
+            'input': payload.get('tool_input'), 'cwd': payload.get('cwd'), 'nonce': nonce}
+    seq = _reserve(box, body)
+    digest = request_digest(dict(body, seq=seq))
     res = os.path.join(exec_dir, RESPONSE_DIR, '%d.res.json' % seq)
     deadline = time.monotonic() + WAIT_S
     while time.monotonic() < deadline:
@@ -197,6 +206,9 @@ def run(payload, environ):
         if isinstance(got, dict) and got.get('nonce') != nonce:
             time.sleep(POLL_S)
             continue
+        if isinstance(got, dict) and got.get('digest') != digest:
+            _halted(box, seq, 'the request changed before Archeus answered it')
+            return 'halt', 'the request was rewritten before Archeus answered it'
         kind = got.get('decision') if isinstance(got, dict) else None
         if kind not in ('allow', 'deny', 'halt'):
             break

@@ -53,6 +53,7 @@ from types import SimpleNamespace
 import pytest
 
 from archeus.core.domain import ids
+from archeus.harnesses import hook
 from archeus.infra import paths
 from archeus.node import local, staging
 from archeus.node.local import EMPTY_TREE, STORE_HEAD, LocalNode, StoreError
@@ -1351,14 +1352,16 @@ class TestRegistryMailbox:
             f.write(b'{"decision": "allow", "reason": "I answered myself"}')
         assert LocalNode.pending_requests(eid) == [(2, {'ask': 'go'}), (3, None), (10, None)]
         assert LocalNode.pending_requests(ids.new_id('execution')) == []   # no box, nothing due
-        LocalNode.respond(eid, 2, 'deny', 'not this one')
+        LocalNode.respond(eid, 2, {'ask': 'go'}, 'deny', 'not this one')
         assert LocalNode.pending_requests(eid) == [(3, None), (10, None)]  # Core's file decides
         assert json.load(open(os.path.join(p.res, '2.res.json'), encoding='utf-8')) == \
-            {'decision': 'deny', 'reason': 'not this one', 'nonce': None}
+            {'decision': 'deny', 'reason': 'not this one', 'nonce': None,
+                'digest': hook.request_digest({'ask': 'go'})}
         assert sorted(os.listdir(p.res)) == ['2.res.json']    # respond wrote it, alone
-        LocalNode.respond(eid, 2, 'allow', 'changed my mind')
+        LocalNode.respond(eid, 2, {'ask': 'go'}, 'allow', 'changed my mind')
         assert json.load(open(os.path.join(p.res, '2.res.json'), encoding='utf-8')) == \
-            {'decision': 'allow', 'reason': 'changed my mind', 'nonce': None}
+            {'decision': 'allow', 'reason': 'changed my mind', 'nonce': None,
+                'digest': hook.request_digest({'ask': 'go'})}
         assert sorted(os.listdir(p.res)) == ['2.res.json']    # the one writer, still one file
 
     def test_a_request_answered_in_class_two_stops_being_due(self, tmp_path):
@@ -1366,7 +1369,7 @@ class TestRegistryMailbox:
         p = self._box(eid)
         with open(os.path.join(p.req, '1.req.json'), 'wb') as f:
             f.write(b'{"ask": "handoff"}')
-        LocalNode.respond(eid, 1, 'allow')
+        LocalNode.respond(eid, 1, {'ask': 'handoff'}, 'allow')
         with open(os.path.join(p.req, '2.req.json'), 'wb') as f:
             f.write(b'{"ask": "again"}')
         os.remove(os.path.join(p.res, '1.res.json'))

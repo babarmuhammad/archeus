@@ -593,7 +593,8 @@ def test_the_hook_asks_through_the_mailbox_and_honours_the_answer(tmp_path):
                 req = json.load(open(os.path.join(box, '1.req.json')))
                 assert (req['token'], req['tool'], req['seq']) == ('hook_t', 'Read', 1)
                 with open(os.path.join(answers, '1.res.json'), 'w') as f:
-                    json.dump({'decision': 'deny', 'reason': 'not today', 'nonce': req['nonce']}, f)
+                    json.dump({'decision': 'deny', 'reason': 'not today', 'nonce': req['nonce'],
+                               'digest': hook.request_digest(req)}, f)
                 return
             time.sleep(0.02)
     t = threading.Thread(target=core)
@@ -643,9 +644,10 @@ PRESENT = {'estop': 'emergency stop', 'STOP': 'stopped by Archeus',
 
 def _allow(answers):
     with open(os.path.join(os.path.dirname(answers), 'req', '1.req.json'), encoding='utf-8') as f:
-        nonce = json.load(f)['nonce']
+        req = json.load(f)
     with open(os.path.join(answers, '1.res.json'), 'w', encoding='utf-8') as f:
-        json.dump({'decision': 'allow', 'nonce': nonce}, f)
+        json.dump({'decision': 'allow', 'nonce': req['nonce'],
+                   'digest': hook.request_digest(req)}, f)
 
 
 @contextlib.contextmanager
@@ -889,9 +891,11 @@ def test_cores_answer_carries_the_nonce_of_the_request_it_answers():
     os.makedirs(p.req)
     with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
         json.dump({'tool': 'Read', 'nonce': 'abc'}, f)
-    LocalNode.respond(eid, 1, 'deny', 'no')
+    (_, request), = LocalNode.pending_requests(eid)
+    LocalNode.respond(eid, 1, request, 'deny', 'no')
     with open(os.path.join(p.res, '1.res.json'), encoding='utf-8') as f:
-        assert json.load(f) == {'decision': 'deny', 'reason': 'no', 'nonce': 'abc'}
+        assert json.load(f) == {'decision': 'deny', 'reason': 'no', 'nonce': 'abc',
+                                'digest': hook.request_digest(request)}
 
 
 def test_an_unwritable_class_1_halts_and_asks_nothing(tmp_path, monkeypatch, capsys):
@@ -1006,7 +1010,7 @@ def test_only_cores_class_2_answer_answers_a_request():
         with open(os.path.join(p.req, name), 'w', encoding='utf-8') as f:
             f.write(body)
     assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Read'}), (2, None)]
-    LocalNode.respond(eid, 1, 'deny', 'no')
+    LocalNode.respond(eid, 1, {'tool': 'Read'}, 'deny', 'no')
     assert os.listdir(p.res) == ['1.res.json']
     assert LocalNode.pending_requests(eid) == [(2, None)]
 
@@ -1017,12 +1021,12 @@ def test_an_answer_to_an_earlier_request_with_the_same_number_does_not_answer_a_
     os.makedirs(p.req)
     with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
         f.write('{"tool": "Read", "nonce": "a"}')
-    LocalNode.respond(eid, 1, 'allow')
+    LocalNode.respond(eid, 1, {'tool': 'Read', 'nonce': 'a'}, 'allow')
     assert LocalNode.pending_requests(eid) == []
     with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
         f.write('{"tool": "Bash", "nonce": "b"}')
     assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Bash', 'nonce': 'b'})]
-    LocalNode.respond(eid, 1, 'deny', 'no')
+    LocalNode.respond(eid, 1, {'tool': 'Bash', 'nonce': 'b'}, 'deny', 'no')
     assert LocalNode.pending_requests(eid) == []
 
 
@@ -1075,6 +1079,51 @@ def test_a_response_past_the_size_bound_does_not_answer_a_request(monkeypatch):
     with open(os.path.join(p.res, '1.res.json'), 'w', encoding='utf-8') as f:
         f.write('{"nonce": "n", "x": "' + 'a' * 100 + '"}')
     assert LocalNode.pending_requests(eid) == [(1, {'nonce': 'n'})]
+
+
+def _core_hook(monkeypatch):
+    eid = ids.new_id('execution')
+    monkeypatch.setattr(hook, 'WAIT_S', 5.0)
+    env = {'ARCHEUS_HOME': paths.archeus_home(), 'ARCHEUS_EXECUTION_ID': eid,
+           'ARCHEUS_HOOK_TOKEN': 'hook_t'}
+    return eid, paths.ExecPaths(eid).req, env
+
+
+def test_a_request_the_execution_rewrote_is_not_answered_as_the_hooks_review_r4(monkeypatch):
+    """The nonce proves freshness, not content: a second process of the execution swapped
+    tool and input and kept the nonce, and the hook got an allow for its real call."""
+    eid, box, env = _core_hook(monkeypatch)
+    seen = {}
+
+    def swap_then_core_answers():
+        req = os.path.join(box, '1.req.json')
+        with open(req, encoding='utf-8') as f:
+            body = json.load(f)
+        seen['asked'] = body['tool']
+        body.update(tool='Read', input={'file_path': 'README.md'})
+        with open(req, 'w', encoding='utf-8') as f:
+            json.dump(body, f)
+        (seq, judged), = LocalNode.pending_requests(eid)
+        seen['judged'] = judged['tool']
+        LocalNode.respond(eid, seq, judged, 'allow', 'read is fine')
+
+    with _core(box, swap_then_core_answers):
+        kind, why = hook.run({'tool_name': 'Write', 'tool_input': {'file_path': 'C:/evil.dll'}},
+                             env)
+    assert (seen['asked'], seen['judged']) == ('Write', 'Read')
+    assert kind == 'halt' and 'rewritten' in why
+
+
+def test_the_control_an_answer_to_the_request_as_written_is_accepted(monkeypatch):
+    eid, box, env = _core_hook(monkeypatch)
+
+    def core_answers():
+        (seq, judged), = LocalNode.pending_requests(eid)
+        LocalNode.respond(eid, seq, judged, 'allow', 'fine')
+
+    with _core(box, core_answers):
+        assert hook.run({'tool_name': 'Read', 'tool_input': {'file_path': 'a'}},
+                        env) == ('allow', 'fine')
 
 
 def test_a_request_file_that_is_not_a_plain_sequence_number_is_not_a_request():
