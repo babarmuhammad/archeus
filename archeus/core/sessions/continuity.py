@@ -18,6 +18,10 @@ from ..domain import entities
 from ..world.digest import digest
 
 
+def _plan_order(key):
+    return (not key[1:].isdigit(), int(key[1:]) if key[1:].isdigit() else 0, key)
+
+
 def mission_state(conn, mission_id):
     """The mission as it is now, or None when the session names none; a
     dangling link is reported, never filled in."""
@@ -34,7 +38,7 @@ def mission_state(conn, mission_id):
         for r in rows.where(conn, entities.Execution, mission_id=m.id):
             runs[r.entity.task_id] = r.entity           # rows come oldest first
         for r in sorted(rows.where(conn, entities.Task, plan_id=prow.entity.id),
-                        key=lambda r: r.entity.key):
+                        key=lambda r: _plan_order(r.entity.key)):
             t, e = r.entity, runs.get(r.entity.id)
             tasks.append({'id': t.id, 'key': t.key, 'title': t.title, 'state': t.state,
                           'execution': {'id': e.id, 'state': e.state,
@@ -61,7 +65,7 @@ def open_problems(conn, mission_id, homes=None):
     for r in rows.where(conn, entities.Checkpoint, mission_id=mission_id):
         latest[r.entity.task_id] = r.entity
     out, shown = [], []
-    for tid, cp in sorted(latest.items(), key=lambda x: keys[x[0]].key if x[0] in keys else ''):
+    for tid, cp in sorted(latest.items(), key=lambda x: _plan_order(keys[x[0]].key if x[0] in keys else '')):
         t = keys.get(tid)
         if t is None or t.state in ('SUCCEEDED', 'SKIPPED', 'CANCELLED'):
             continue
