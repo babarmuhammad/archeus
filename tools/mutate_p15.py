@@ -178,6 +178,10 @@ MUTATIONS = [
      "            if self._n.get(device_id, 0) + self._live.get(device_id, 0) >= self.LIMIT:",
      "            if False:")],
      [AF + '::test_f8_a_burst_of_wrong_pins_runs_no_more_than_the_limit']),
+    ('M28', 'the execution stream is read whole whatever its size', [('archeus/core/execution/output.py',
+     "    if size - offset <= MAX_BYTES:",
+     "    if True:")],
+     [AF + '::test_f7_a_long_stream_is_read_from_a_window_of_whole_lines']),
 ]
 
 

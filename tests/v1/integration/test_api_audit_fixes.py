@@ -1,12 +1,17 @@
 """Regressions for the loopback API audit of 2026-11-01 (audit-api): each test
 is one finding's request, asserting the refusal it should have drawn."""
 
+import json
+import os
 import threading
 
 import pytest
 
 from archeus.api import auth
-from archeus.core.domain import ids
+from archeus.core.domain import entities, ids
+from archeus.core.execution import output
+from archeus.harnesses.fake import FakeHarness
+from archeus.infra.paths import ExecPaths
 from v1.judge.http import TUNNEL, request
 
 SYNTHETIC = 'synthetic-audit-secret'
@@ -88,3 +93,23 @@ def test_f5_a_lone_surrogate_is_a_400_and_stores_nothing(tc):
                 body={'code': '\ud800', 'platform': 'web'})
     assert r.status == 400 and b'codec' not in r.body
 
+
+# ── F7: a long stream is read as a bounded tail, not whole ──
+
+def test_f7_a_long_stream_is_read_from_a_window_of_whole_lines(monkeypatch):
+    exe = entities.Execution(id=ids.new_id('execution'), task_id=ids.new_id('task'),
+                             mission_id=ids.new_id('mission'), harness_id='fake',
+                             pid=os.getpid(), create_time=1.0)
+    paths = ExecPaths(exe.id)
+    os.makedirs(paths.dir)
+    with open(paths.stream, 'w', encoding='utf-8') as f:
+        for i in range(200):
+            f.write(json.dumps({'type': 'text', 'text': 'line %03d' % i + ' ' * 50}) + '\n')
+    monkeypatch.setattr(output, 'MAX_BYTES', 2000)
+    got = output.read(exe, FakeHarness())
+    texts = [e['text'].strip() for e in got['events']]
+    assert got['truncated'] and 5 <= len(texts) < 40
+    assert texts[-1] == 'line 199' and texts == sorted(texts)           # the newest, whole
+    assert got['next_offset'] == os.path.getsize(paths.stream)
+    short = output.read(exe, FakeHarness(), got['next_offset'] - 300)
+    assert not short['truncated'] and len(short['events']) >= 2         # a short read is not cut
