@@ -50,7 +50,8 @@ def archeus_home(environ=None, platform=None):
     """
     env = os.environ if environ is None else environ
     plat = sys.platform if platform is None else platform
-    home = os.path.expanduser('~')
+    home = (env.get('USERPROFILE') if plat.startswith('win') else env.get('HOME')) \
+        or os.path.expanduser('~')
     explicit = env.get('ARCHEUS_HOME', '').strip()
     if explicit:
         path = os.path.expanduser(explicit)

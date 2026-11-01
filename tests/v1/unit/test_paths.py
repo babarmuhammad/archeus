@@ -226,3 +226,11 @@ def test_an_id_error_does_not_echo_the_whole_value():
     with pytest.raises(ValueError) as err:
         paths.repo_store('x' * 10 ** 6)
     assert len(str(err.value)) < 200
+
+
+def test_the_home_directory_comes_from_the_environment_it_is_given():
+    """T-655#6: expanduser read the live process environment, not the injected one."""
+    want = os.path.abspath(os.path.join('/fake', '.local', 'share', 'archeus'))
+    assert paths.archeus_home({'HOME': '/fake', 'XDG_DATA_HOME': ''}, 'linux') == want
+    want = os.path.abspath(os.path.join('/fake', 'AppData', 'Local', 'Archeus'))
+    assert paths.archeus_home({'USERPROFILE': '/fake'}, 'win32') == want
