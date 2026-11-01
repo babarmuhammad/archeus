@@ -151,7 +151,7 @@ class ClaudeCodeSessions:
         return _caps(claude_models(), harnesses.descriptor(self._legacy)['efforts'])
 
     def locate(self, ref, home, cwd):
-        from claude_sessions import paths, store, transcripts
+        from claude_sessions import paths, store
         if not ref or os.path.basename(ref) != ref:
             return None
         try:
@@ -159,14 +159,7 @@ class ClaudeCodeSessions:
         except ValueError:
             return None
         p = os.path.join(folder, '%s.jsonl' % ref)
-        if not os.path.isfile(p):
-            return None
-        model = None
-        for obj in transcripts.iter_json(p, prefilter='"model"'):
-            m = (obj.get('message') or {}).get('model') if isinstance(obj, dict) else None
-            if isinstance(m, str) and m and not m.startswith('<'):
-                model = m
-        return Located(p, model)
+        return Located(p) if os.path.isfile(p) else None
 
     def launch_argv(self, spec):
         from claude_sessions import paths
