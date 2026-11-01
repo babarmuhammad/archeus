@@ -2034,7 +2034,7 @@ if WINDOWS:
             length = C.cast(buf, C.POINTER(W.USHORT))[0]
             if length == 0:
                 return ''
-            pbuf = C.cast(buf, C.POINTER(C.c_void_p))[2]
+            pbuf = C.cast(buf, C.POINTER(C.c_void_p))[1]
             return C.wstring_at(pbuf, length // 2) if pbuf else ''
 
         def _handle_flags(self, h):

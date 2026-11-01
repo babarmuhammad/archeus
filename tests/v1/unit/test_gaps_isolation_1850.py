@@ -491,6 +491,24 @@ def test_the_inheritable_fact_is_the_inherit_bit_alone(
                                         'inheritable': inheritable}
 
 
+@pytest.mark.skipif(iso.WindowsBoundary is None, reason='reads a real ctypes buffer')
+def test_a_named_object_is_read_through_the_pointer_in_the_first_field(boundary, win32):
+    import ctypes
+    name = r'\BaseNamedObjects\probe'
+
+    def query(handle, info_class, buf, size, got):
+        # NtQueryObject's layout: Length, MaximumLength, 4 bytes of padding, Buffer, then
+        # the characters Buffer points at (what the type query's reader already relies on)
+        base, text = ctypes.addressof(buf), name.encode('utf-16-le')
+        ctypes.memmove(base + 16, text, len(text))
+        ctypes.c_ushort.from_address(base).value = len(text)
+        ctypes.c_ushort.from_address(base + 2).value = len(text)
+        ctypes.c_void_p.from_address(base + 8).value = base + 16
+        return 0
+    win32.answer('_QueryObject', query)
+    assert boundary._obj_name(0x11) == name
+
+
 def test_no_handle_is_no_facts(boundary):
     # a Job handle Core does not have is reported as unknown, never as unnamed+free
     assert boundary.job_facts(None) is None
