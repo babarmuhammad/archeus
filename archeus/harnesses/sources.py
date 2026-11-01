@@ -256,15 +256,15 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=F
         """Plugin *name* and what it brings, at *st*: its skills and its hooks
         (hooks/hooks.json or its manifest's own), and its MCP servers, which
         --strict-mcp-config keeps out whatever *st* is (PV-19). `loads_as` is
-        the name the CLI reports it under (its manifest's). True when it
-        brings a skill."""
+        the name the CLI reports it under (its manifest's). Returns its
+        directory (None when absent) and whether it brings a skill."""
         p = plugin_dir(home, name)
         man = (_json(os.path.join(p, '.claude-plugin', 'plugin.json'))[0] or {}) if p else {}
         add(src, 'plugin', name, st if p or src != 'plugin' else 'not_found', **dict(
             extra, **({'loads_as': str(man['name'])[:NAME_MAX]} if isinstance(
                 man.get('name'), str) else {})))
         if not p:
-            return False
+            return None, False
         tag = 'plugin:' + name
         skills = _plugin_skills(p, man.get('skills'))
         for s in skills:
@@ -281,7 +281,7 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=F
             mcp += sorted(man['mcpServers'])
         for m in mcp:
             add(tag, 'mcp_server', m, 'excluded')
-        return bool(skills)
+        return p, bool(skills)
 
     # the three sources' settings files: hooks, enabled plugins, permissions
     for src in SOURCES:
@@ -307,9 +307,9 @@ def take(home, workdir, opt_ins, *, recorded_only=None, managed=None, isolated=F
     dirs = []
     dir_skills = False
     for name in opted_plugins:
-        brings_skill = plugin('plugin', name, 'opted_in', via='plugin_dir')
+        p, brings_skill = plugin('plugin', name, 'opted_in', via='plugin_dir')
         if not isolated:
-            dirs.append({'name': name, 'path': plugin_dir(home, name)})
+            dirs.append({'name': name, 'path': p})
             dir_skills = brings_skill or dir_skills
     # MCP servers: --strict-mcp-config loads only the ones passed [DOC]
     servers, seen = [], set()
