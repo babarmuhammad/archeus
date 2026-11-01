@@ -70,8 +70,9 @@ def head_revision(path):
         head = ''
     if _SHA.fullmatch(head):
         return head
-    if head.startswith('ref:'):
-        ref = head[4:].strip()
+    ref = head[4:].strip()
+    if head.startswith('ref:') and ref.startswith('refs/') and '\\' not in ref and not (
+            {'', '..'} & set(ref.split('/')[1:])):
         common = gd
         try:
             common = os.path.normpath(os.path.join(gd, _read(os.path.join(gd, 'commondir')).strip()))
