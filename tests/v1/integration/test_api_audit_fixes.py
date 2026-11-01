@@ -83,6 +83,36 @@ def test_f8_a_burst_of_wrong_pins_runs_no_more_than_the_limit(tc):
                    headers={'Host': TUNNEL}).status == 401          # and the fifth revoked it
 
 
+@pytest.mark.core(remote_hosts=(TUNNEL,))
+def test_r5_a_revoke_that_fails_is_retried_by_the_next_wrong_pin(tc, monkeypatch):
+    from archeus.api import routes
+    pin = '482913'
+    code = tc.http('POST', '/v1/devices/pair/start', body={'scopes': ['observe', 'control']})
+    r = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                body={'code': code.json()['code'], 'platform': 'android', 'pin': pin})
+    token, device = r.json()['token'], r.json()['device_id']
+    real, calls = routes.commands.revoke_device, []
+
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError('writer busy')
+        return real(*a, **k)
+
+    monkeypatch.setattr(routes.commands, 'revoke_device', flaky)
+
+    def wrong(i):
+        return request(tc.base_url, 'POST', '/v1/rearm', token=token, headers={'Host': TUNNEL},
+                       body=dict(_key(), step_up='%06d' % (100000 + i))).status
+
+    assert [wrong(i) for i in range(5)] == [422] * 4 + [500]
+    assert wrong(5) == 422 and len(calls) == 2                      # not a 429 with nothing revoked
+    states = {d['id']: d['state'] for d in tc.http('GET', '/v1/devices').json()['devices']}
+    assert states[device] == 'REVOKED'
+    assert request(tc.base_url, 'GET', '/v1/health', token=token,
+                   headers={'Host': TUNNEL}).status == 401
+
+
 # ── F5: a string that is not UTF-8 text is refused at the schema ──
 
 def test_f5_a_lone_surrogate_is_a_400_and_stores_nothing(tc):

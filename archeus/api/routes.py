@@ -950,8 +950,12 @@ def _step_up_failed(req):
     """A paired client's wrong PIN proof, counted; the 5th in a row revokes it."""
     device = req.principal['device_id']
     if req.principal['origin'] == 'paired' and req.api.step_up.failed(device):
-        req.run(commands.revoke_device, {'device_id': device, 'reason': 'step_up_failures'},
-                keyed=False)
+        try:
+            req.run(commands.revoke_device, {'device_id': device, 'reason': 'step_up_failures'},
+                    keyed=False)
+        except Exception:
+            req.api.step_up.undo(device)
+            raise
         req.api.step_up.reset(device)
         req.api.sse.close_device(device)
 

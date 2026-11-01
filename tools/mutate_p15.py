@@ -186,6 +186,10 @@ MUTATIONS = [
      "for e in snap.events[-MAX_EVENTS:]]\n    return dict(out, events=events, truncated=cut or len(snap.events) > MAX_EVENTS,",
      "for e in snap.events]\n    return dict(out, events=events[-MAX_EVENTS:], truncated=cut or len(snap.events) > MAX_EVENTS,")],
      [AF + '::test_r6_only_the_tail_is_redacted_not_every_event_before_it']),
+    ('M30', 'a revoke that fails leaves the device locked out and unrevoked', [(RTS,
+     "            req.api.step_up.undo(device)\n            raise",
+     "            raise")],
+     [AF + '::test_r5_a_revoke_that_fails_is_retried_by_the_next_wrong_pin']),
 ]
 
 

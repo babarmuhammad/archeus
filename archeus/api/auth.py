@@ -272,3 +272,11 @@ class StepUpFailures:
     def reset(self, device_id):
         with self._lock:
             self._n.pop(device_id, None)
+
+    def undo(self, device_id):
+        """Takes back the failure that was to revoke when the revoke did not land:
+        the next wrong proof is the LIMITth again and retries it, where the count
+        left at LIMIT would lock the device out with no revocation."""
+        with self._lock:
+            if self._n.get(device_id):
+                self._n[device_id] -= 1
