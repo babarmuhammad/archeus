@@ -253,7 +253,14 @@ def _read_pair(rec, label, reader_work, own_seed, own_evid, target, evid, secret
         return None
     rc1, out1 = _run_container('den-' + label, _probe_argv(target, evid), reader_work, ui)
     low = (out1 or '').lower()
-    if os.path.exists(evid) or secret.lower() in low:
+    leaked = ''
+    if os.path.exists(evid):
+        try:
+            with open(evid, encoding='utf-8', errors='replace') as fh:
+                leaked = fh.read()
+        except OSError:
+            leaked = secret
+    if secret.lower() in leaked.lower() or secret.lower() in low:
         rec.record('p-q-token-psec', 'FAIL',
                    'CONTAINMENT BREACH (%s): peer secret content reached the container' % label)
         return None
