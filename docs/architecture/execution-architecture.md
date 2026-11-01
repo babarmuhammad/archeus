@@ -14,9 +14,9 @@ Mission → Plan → Task DAG → Resource Router → Execution Manager → Node
 | Component | Lives in | Responsibility | Must never |
 |---|---|---|---|
 | Execution Manager | Core (`core/execution/manager.py`) | turn READY tasks into Executions, apply policy to the *execution environment*, track state, derive checkpoints, merge back | spawn a process inside a DB transaction |
-| Node (V1: local, in-process) | `node/local.py` | spawn/kill/adopt processes, maintain the process registry, compute worktree paths, relay adapter events | decide policy or routing |
-| Harness adapter | `harnesses/<id>/adapter.py` | translate the normalised contract into a CLI invocation and parse its output stream | leak provider concepts into Core (they go in `adapter_state`) |
-| Policy hook | `harnesses/claude_code/hooks/policy_hook.py` | per-tool-call ALLOW/DENY/halt, pause flag, STOP sentinel | fail open for Archeus-launched executions |
+| Node (V1: local, in-process) | `node/local.py` | spawn/kill/adopt processes, maintain the process registry, create and remove the worktrees Core hands it (Core computes the paths), relay adapter events | decide policy or routing |
+| Harness adapter | `harnesses/claude_code/adapter.py` (`fake` is `harnesses/fake.py`; Archeus's own calls are `harnesses/calls.py`) | translate the normalised contract into a CLI invocation and parse its output stream | leak provider concepts into Core (they go in `adapter_state`) |
+| Policy hook | `harnesses/hook.py` | per-tool-call ALLOW/DENY/halt, pause flag, STOP sentinel | fail open for Archeus-launched executions |
 
 ## 2. Execution environment (capability removal)
 
@@ -25,13 +25,13 @@ Before spawn, the manager builds the environment from the task's evaluated polic
 
 | Concern | Rule |
 |---|---|
-| Account env | `config.account_env(cfgdir)` sets the harness home var and pops API keys that would override the intended login (existing, reused). *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) §7 A2, PV-20; not implemented):* an isolated execution never receives the account home, a copy of it, or implicit access to its configuration. Its `CLAUDE_CONFIG_DIR` is a fresh, Core-created, per-execution directory in execution-private state, holding no provider login; provider access goes only through Core's broker (R3-B). Core-authored spawn configuration (hook settings, MCP configuration) is Core-write / execution-read; ADR-0049 opt-ins enter only as Core-materialised data carrying no credential authority, and **no MCP opt-in is admitted to an isolated execution** (confirmed by the owner, 2026-10-07; changing it needs a new owner decision) |
+| Account env | `config.account_env(cfgdir)` sets the harness home var and pops API keys that would override the intended login (existing, reused; *as built, the V1 execution path does not call it: the execution environment is `CAPABILITY_ENV` plus the tags below, and the Claude Code adapter sets `CLAUDE_CONFIG_DIR` itself and clears `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` unless set; `account_env` serves Archeus's own calls*). *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) §7 A2, PV-20; not implemented):* an isolated execution never receives the account home, a copy of it, or implicit access to its configuration. Its `CLAUDE_CONFIG_DIR` is a fresh, Core-created, per-execution directory in execution-private state, holding no provider login; provider access goes only through Core's broker (R3-B). Core-authored spawn configuration (hook settings, MCP configuration) is Core-write / execution-read; ADR-0049 opt-ins enter only as Core-materialised data carrying no credential authority, and **no MCP opt-in is admitted to an isolated execution** (confirmed by the owner, 2026-10-07; changing it needs a new owner decision) |
 | Push/publish credentials | removed: `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=` (empty), `SSH_AUTH_SOCK` unset, `GIT_CONFIG_COUNT` injects `credential.helper=` (empty) — the agent can commit locally but cannot push. `git_push`, `deploy`, `external_comm`, merge-back are **performed by Core** after policy + approval |
-| Filesystem | workdir = task worktree (code_change) or project root (read-only tasks). Claude Code gets `--add-dir` only for allowed extra paths; Codex gets `--sandbox workspace-write`. *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented):* under PV-20 the process runs under an execution identity that is not the user's, inside a Core-held Job; a code-change workdir is a separate execution repository whose result Core imports as data (the user's `.git` is never exposed); and the execution reaches its model provider only through Core's broker (conditional on production CLI feasibility). Capability removal stays; it was never an OS boundary (ADR-0051 §4). *Completed by ADR-0053 §7 A1 (not implemented):* "project root (read-only tasks)" is withdrawn for isolated executions — every isolated execution, of every task kind, gets a Core-established workspace distinct from the user's project root and `.git`: a seeded execution repository on a git root (detached HEAD: the recorded commit), an empty execution-private workspace with no project; a non-git project root is refused before dispatch, never run in place |
-| Network | Codex: network access off unless `web` is ALLOW. Claude Code: `WebFetch`/`WebSearch` removed from allowed tools unless `web` is ALLOW (*as built, P20 slice F: present exactly when the task holds `web`, and the hook judges each call; ADR-0052 derives removal from the classes held*); Bash network cannot be blocked by Archeus → tasks whose policy denies network are routed only to `sandbox` harnesses (router §3). *Under PV-20 (ADR-0053 §7 A4; not implemented):* a sandbox harness is eligible only if it launches inside the PV-20 execution identity and Job — its own sandbox is an inner layer, never a substitute; network egress is P23's |
+| Filesystem | workdir = task worktree (code_change) or project root (read-only tasks). Claude Code gets `--add-dir` only for allowed extra paths; Codex gets `--sandbox workspace-write` (*as built, neither exists: no `--add-dir` is passed and V1 has no Codex adapter*). *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented):* under PV-20 the process runs under an execution identity that is not the user's, inside a Core-held Job; a code-change workdir is a separate execution repository whose result Core imports as data (the user's `.git` is never exposed); and the execution reaches its model provider only through Core's broker (conditional on production CLI feasibility). Capability removal stays; it was never an OS boundary (ADR-0051 §4). *Completed by ADR-0053 §7 A1 (not implemented):* "project root (read-only tasks)" is withdrawn for isolated executions — every isolated execution, of every task kind, gets a Core-established workspace distinct from the user's project root and `.git`: a seeded execution repository on a git root (detached HEAD: the recorded commit), an empty execution-private workspace with no project; a non-git project root is refused before dispatch, never run in place |
+| Network | Codex: network access off unless `web` is ALLOW. Claude Code: `WebFetch`/`WebSearch` removed from allowed tools unless `web` is ALLOW (*as built, P20 slice F: present exactly when the task holds `web`, and the hook judges each call; ADR-0052 derives removal from the classes held*); Bash network cannot be blocked by Archeus → tasks whose policy denies network are routed only to `sandbox` harnesses (router §3; *as built, `_enforcement` in `core/routing/router.py` never refuses a `hook` harness, and screens only `sandbox` candidates, only for items that are not ALLOW*). *Under PV-20 (ADR-0053 §7 A4; not implemented):* a sandbox harness is eligible only if it launches inside the PV-20 execution identity and Job — its own sandbox is an inner layer, never a substitute; network egress is P23's |
 | Tools | Claude Code `--allowedTools` / `--disallowedTools` derived from action classes (e.g. no `Bash` for a pure `document` task) — *amended 2026-10-03 (ADR-0052): the removal is `--tools` (allow-form, from the action classes; unmapped tools excluded) plus `--disallowedTools "mcp__*"` except opted-in servers; `--allowedTools` is never passed, because it pre-approves rather than restricts.* *As built 2026-10-07 (P20 slice F; p20-design-gate §12 items 75–89): `archeus/harnesses/claude_code/tools.py`. `--tools` is passed on every spawn, empty when the task holds no mapped class. Its names are the mapping intersected with a checked-in, version-stamped snapshot of what the installed CLI offers, because Claude Code drops an unknown name without a word; `tools/claude_tool_drift.py` compares the snapshot with the installed CLI. `Skill` is added exactly when an opted-in source or plugin brings a skill. The MCP deny is `mcp__*` with nothing opted in; otherwise it is one `mcp__<name>` per excluded server, in Claude Code's normalised name. A name colliding with an opted-in server's, or a server the inventory cannot name, is left to `--strict-mcp-config`.* |
-| Limits | `--max-turns` from task size; `--max-budget-usd` where the harness supports it; wall-clock timeout per task kind |
-| Tagging | `ARCHEUS_EXECUTION_ID`, `ARCHEUS_HOME`, `ARCHEUS_CORE_URL`, `ARCHEUS_HOOK_TOKEN` (a `hook_…` token: execution-scoped, report/checkpoint/request_approval only) and the legacy `HEADLESS_MARK` so today's session lists and auto-memory skip these transcripts. `ARCHEUS_EXECUTION_ID` also makes the legacy account hooks stand down (P0.5 hook guard): `recall_hook`, `worklog_hook`, `memdirty_hook` skip; `limit_hook` records the shared latch but does not offer rotation |
+| Limits | `--max-turns` from task size; `--max-budget-usd` where the harness supports it; wall-clock timeout per task kind (*as built, neither exists for an execution: `--max-budget-usd` is deliberately not passed, and the only bounds are `--max-turns`, the router ceilings and breaker, and context pressure; a wall clock exists only for Archeus's own calls, `limits['timeout_s']`, default 600 s*) |
+| Tagging | `ARCHEUS_EXECUTION_ID`, `ARCHEUS_HOME`, `ARCHEUS_CORE_URL` (not set today), `ARCHEUS_HOOK_TOKEN` (a `hook_…` token: execution-scoped, report/checkpoint/request_approval only) and the legacy `HEADLESS_MARK` so today's session lists and auto-memory skip these transcripts. `ARCHEUS_EXECUTION_ID` also makes the legacy account hooks stand down (P0.5 hook guard): `recall_hook`, `worklog_hook`, `memdirty_hook` skip; `limit_hook` records the shared latch but does not offer rotation |
 
 ## 3. Harness adapter contract
 
@@ -62,7 +62,7 @@ schema?, limits}` and `CallResult` = `{text, parsed?, usage, error?}`. The adapt
 read-only and ephemeral in its own flags and requests the schema natively or in the prompt
 (`Capabilities.structured_output = native | prompted`); Core validates `parsed` against the
 schema either way (ADR-0006). A call has no Session and no Execution. **As built (P6):**
-`CallSpec = {route_decision_id, purpose, prompt, workdir, account, schema?, model?, limits}`,
+`CallSpec = {route_decision_id, purpose, prompt, workdir, account, schema?, model?, limits, no_tools}`,
 `CallResult = {text, parsed?, usage, error?, detail}` with `error` one of `unavailable`,
 `model_unavailable`, `timeout`, `failed`; the real `call()` adapters live in
 `archeus/harnesses/calls.py`, outside the P1 registry, and have no `start()`.
@@ -78,12 +78,12 @@ workdir, env, model, effort, limits, allowed_tools, resume_ref?, hook_settings}`
 `{exit_reason, reported_summary, usage, session_ref, transcript_path, files_changed?}` — the
 reported summary is **never** the completion signal (verification is).
 
-| Adapter | Headless invocation (verify exact flags in the P11 contract test) | Stream | Resume | Enforcement |
+| Adapter | Headless invocation (the flag assertions live in `tests/v1/integration/test_tool_removal.py`, `test_settings_sources.py` and `test_deputies.py`, not in `tests/v1/contract/test_adapter_contract.py`) | Stream | Resume | Enforcement |
 |---|---|---|---|---|
-| `fake` | Python script driven by a scenario file | JSON lines | yes | simulated hook |
-| `claude_code` | `claude -p --output-format stream-json --verbose --session-id <uuid> --model … --effort … --max-turns … --settings <per-execution settings file with the policy hook>` | stream-json (assistant/tool events, `usage`, `compact_boundary`) | `--resume <session uuid>` | hook (PreToolUse, PreCompact) |
+| `fake` | Python script (`fake_agent.py`) driven by a scenario passed as JSON in argv (`task_contract['fake_scenario']`) | JSON lines | yes | simulated hook |
+| `claude_code` | `claude -p --output-format stream-json --verbose --session-id <uuid> --model … --effort … --max-turns … --settings <per-execution settings file with the policy hook>` | stream-json (assistant/tool events, `usage`; `compact_boundary` is not interpreted today, only the PreCompact hook backstop exists) | `--resume <session uuid>` | hook (PreToolUse, PreCompact) |
 | `claude_code` interactive | existing `main.build_launch_command` + `proc.spawn_terminal` | transcript tail | n/a | hook in fail-open mode (user's own session) |
-| `codex` | `codex exec --json --sandbox workspace-write -m …` | JSON events | `codex exec resume <id>` | sandbox |
+| `codex` (not built: no `archeus/harnesses/codex/` in V1) | `codex exec --json --sandbox workspace-write -m …` | JSON events | `codex exec resume <id>` | sandbox |
 | `pi` | `call()`: `pi -p --no-session --tools read,grep,find,ls --model <provider/id>` (ADR-0022); user sessions: its launch argv; tool-using execution DEFERRED (RPC mode) | JSON | `--session` of the recorded session | none |
 
 Hooks are installed **per execution** through the settings file passed at start, not by editing
@@ -99,14 +99,14 @@ All files live in `<ARCHEUS_HOME>/run/exec/<execution_id>/`:
 | `spawning` | spawner, **before** the process is created | marker `{execution_id, attempt, at}`; its presence without `ended` means "a process may exist" |
 | `prompt.txt` | spawner | the prompt; the process reads it as **stdin** (`proc.spawn_detached(..., stdin_path=)`), which avoids command-line length limits and survives Core restarts |
 | `stream.jsonl` | the process (stdout and stderr redirected) | the normalised event stream Core **tails**; never a pipe, so a restarted Core can re-attach |
-| `pid.json` | spawner, immediately after creation | `{pid, create_time}`; the append to `run/processes.jsonl` is P11's supervisor (p3.5b-design-gate.md A36: no code before P11 writes it) |
-| `ended` | Core, when the exit is observed | `{exit_code, at}` tombstone |
+| `pid.json` | spawner, immediately after creation | `{pid, create_time, process_seq}`; the append to `run/processes.jsonl` is written by the node today (`node/local.py`; the P11 gate note in p3.5b-design-gate.md A36 is superseded) |
+| `ended` | Core, when the exit is observed (also written for a spawn that was refused before it started) | `{exit_code, at}` tombstone |
 
 Spawn rule (idempotent under outbox re-delivery): if `spawning` exists without `ended`, the
 spawner **does not spawn again**; it hands the execution to reconciliation, which adopts the
 process named by `pid.json` (pid and create time match and `stream.jsonl` is still growing) or,
-when `pid.json` is missing (crash between creation and recording), marks the execution LOST,
-kills any process that match the recorded argv in the execution's workdir if one can be
+when `pid.json` is missing (crash between creation and recording), marks the execution LOST (as built, that is all it does; no scan for a matching process exists),
+(planned, not built) kills any process that match the recorded argv in the execution's workdir if one can be
 identified, and never re-spawns into the same worktree without a new attempt number.
 
 *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md), PV-20; not implemented).* For an execution
@@ -136,7 +136,7 @@ Core's (class 4).
 
 *Qualified 2026-10-12 (p20-design-gate §12 item 107).* The `own/state` row is a path and a row of
 the isolation plan (`ExecPaths.state`, the `state` row of `default_plan`), not a relocation of the
-CLI's state: the Claude Code adapter still sets `CLAUDE_CONFIG_DIR` to the account's home
+CLI's state: for a non-isolated launch the Claude Code adapter still sets `CLAUDE_CONFIG_DIR` to the account's home
 (`ClaudeCodeAdapter._env`), so the CLI's own configuration and state resolve under that home. Moving the
 runtime's state into `own/state`, and the broker its provider access needs, is ADR-0053 §7 A2's
 open work. "Core creates" above describes the order of creation at spawn; the hook also creates
@@ -168,10 +168,10 @@ sequenceDiagram
     W-->>M: task → VERIFYING
 ```
 
-- **Registry.** `<ARCHEUS_HOME>/run/processes.jsonl` lines `{execution_id, pid, create_time, argv0,
+- **Registry.** `<ARCHEUS_HOME>/run/processes.jsonl` lines `{op, execution_id, process_seq, pid, create_time, argv0 (the adapter id),
   started_at}`; tombstoned on exit. It exists so `archeus estop` and boot reconciliation work
   without the database. Per-execution files (§3.1) carry the spawning marker and the stream.
-  **P11** — until then nothing writes it (p3.5b-design-gate.md §18.1).
+  **P11** — written by `node/local.py` today (p3.5b-design-gate.md §18.1 said nothing wrote it before P11).
 - **Boot reconciliation.** *P3.5b* runs the kill-and-retry half of this at every Core start
   (`Engine.reconcile_orphans()`, over the database and the per-execution files, whatever state
   the mission is in): a live orphan is killed by pid + `create_time`; a recycled pid is treated
@@ -211,7 +211,7 @@ sequenceDiagram
     participant U as User (phone)
     Ag->>H: tool call (Bash: git push …)
     H->>H: STOP sentinel? pause flag? → halt
-    H->>C: POST /v1/hook/evaluate {execution, tool, input}
+    H->>C: request file req/<seq>.req.json {execution, tool, input}
     C->>P: evaluate(canonical action)
     alt ALLOW / within boundary
         P-->>H: allow
@@ -223,14 +223,14 @@ sequenceDiagram
         P->>C: Approval(PENDING, action_hash)
         C-->>H: deny + halt ("waiting for approval")
         H-->>Ag: continue:false
-        C->>U: notify (SSE + ntfy)
-        U->>C: approve (idempotency key, step-up if destructive)
+        C->>U: notify (SSE; ntfy is not built)
+        U->>C: approve (idempotency key; as built, step-up is required for every decide)
         C->>C: task READY → resume execution with one-shot allow for action_hash
     end
 ```
 
-- **Fail-closed** for Archeus-launched executions: if Core is unreachable (timeout 5 s) the hook
-  denies write/exec/network actions and allows pure reads. For the user's own interactive
+- **Fail-closed** for Archeus-launched executions: if Core is unreachable (as built: no answer within `ARCHEUS_HOOK_WAIT`, default 60 s) the hook
+  denies write/exec/network actions and allows pure reads (as built, it denies and halts every call, reads included). For the user's own interactive
   sessions the same hook fails open (today's `guard_hook` behaviour), because blocking a human's
   terminal when Core is down is worse than the risk.
 - **Canonicalisation:** the hook sends raw tool input; Core canonicalises it into
@@ -258,7 +258,7 @@ pause-timeout stop, failure, user request "continue in a fresh session".
 adapter's declared models; an unknown model uses the smallest window that harness declares, so
 pressure is over- rather than under-estimated, and a harness declaring none has no pressure
 hand-off — recorded, not guessed; p12-design-gate §13.1, as built). Backstops: the PreCompact hook fires →
-treat as pressure 0.9; a `compact_boundary` event → record that compaction happened (the
+treat as pressure 0.9; a `compact_boundary` event → record that compaction happened (not built: no code interprets `compact_boundary`; the
 execution continues; the checkpoint is still derived at the next boundary). Bounded tasks and
 `--max-turns` keep pressure rare — hand-off is the exception path, not the design.
 *(ADR-0047, DECIDED and built in P21 — `execution/pressure.py`, `executions.no_progress`,
@@ -279,7 +279,7 @@ already full:
 | completed_steps | task graph + events |
 | files_changed | `git diff --stat` + diff artifact in the workdir |
 | verification | latest Verification rows |
-| decisions | V1: every line of the agent's output that begins with `DECISION:` (the task contract instructs the agent to state decisions that way), parsed from `stream.jsonl` by the adapter, plus DECISION items Core created in the mission. An execution-scoped decision API is not in V1 |
+| decisions | V1: every line of the agent's output that begins with `DECISION:` (the task contract instructs the agent to state decisions that way), collected from `stream.jsonl` by the manager as it reads the stream, plus DECISION items Core created in the mission. An execution-scoped decision API is not in V1 |
 | open_problems | failing checks, hook denials, last error |
 | next_action | planner's next step for the task; if unknown, "continue the task from the diff" |
 | relevant_context_refs | context package ids used, re-assembled for the next execution |
@@ -316,9 +316,9 @@ is the legacy delivery of this, not the contract.
 ## 7. Worktrees and merge-back
 
 - Code-change tasks run in a worktree at a **node-computed path**:
-  `<ARCHEUS_HOME>/worktrees/<project-slug>/<mission-id>/<task-key>` (outside the repository, as
-  Vicoa does), branch `archeus/<mission-id>/<task-key>`. Removal is allowed only for paths the
-  node created *and* `git worktree list` confirms (reuses `worktrees.py` helpers and the
+  `<ARCHEUS_HOME>/worktrees/<mission-id>/<task-key>` (as built; no project-slug segment; outside the repository, as
+  Vicoa does), branch `archeus/<mission-id>.<task-key>` (one segment, so P9's `archeus/*` commit bound holds). Removal is allowed only for paths the
+  node created *and* `git worktree list` confirms (as built the node has its own worktree add/remove and `check_worktree_path` in `node/local.py` and imports neither `worktrees.py` nor `repos.py`; the plan was to reuse `worktrees.py` helpers and the
   `.git`-is-a-file classifier from `repos.py`).
 - After the task verifies, the Integration machine (state-machines §13) merges into the mission
   branch; mission-level verification runs on the mission branch; final integration into the
@@ -351,12 +351,12 @@ is the legacy delivery of this, not the contract.
 
 | Verifier | Checks | Independence |
 |---|---|---|
-| CodeVerifier | `test_commands` and `build_commands` from the latest RepositoryInspection (fallback: detected by marker files — `pyproject.toml` → pytest, `package.json` → `npm test`, …), plus lint if configured, plus architecture consistency check (drift) on changed modules | deterministic; runs on the node. *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) R4b; not implemented):* execution-influenced verification runs under the **confined verification identity** — distinct from the user's and the execution's identity, no access to Core state, credentials or the local token, its own Job — against a checkout at the recorded revision, **never under the user's identity**; Core records the exit code and output itself; network per P23's policy. If that identity cannot be established, no command runs and the check is missing evidence (p13-design-gate §8.1, §8.4: ERROR or AWAITING_HUMAN, never PASSED). As built today the commands still run as the user in the worktree — PV-20's open remediation. *ADR-0053 §7 A6:* one fresh verifier principal per verification, never reused; a fresh checkout of the Core-recorded revision; no persistent or shared cache; no credential, Core state or Core route; authority a subset of the execution's runtime/tool grants plus its own checkout and scratch, network only if P23 permits |
-| ResearchVerifier | every claim in the report cites a source; sources fetched and quoted; contradictions flagged; confidence recorded | model call on a different account/model when possible |
-| DocumentVerifier | required sections present, links resolve, spelling/format checks | deterministic + optional model |
-| PresentationVerifier | export exists and opens, slide/scene count, requirement checklist; visual quality → human acceptance | mostly human |
-| AutomationVerifier | trigger fired, action executed, expected outcome observable | deterministic |
-| GenericVerifier | creates an Attention "accept this result?" item | human |
+| CodeVerifier | `test_commands` and `build_commands` from the latest RepositoryInspection (as built there is no fallback in the worker: marker-file detection (`pyproject.toml` → pytest, `package.json` → `npm test`, …) belongs to the inspection, `core/world/inspection.py`, and with no COMPLETED inspection there are no commands; the lint and architecture consistency (drift) checks are not built: the worker runs only test and build commands) | deterministic; runs on the node. *Amended 2026-10-07 ([ADR-0053](decisions/ADR-0053.md) R4b; not implemented):* execution-influenced verification runs under the **confined verification identity** — distinct from the user's and the execution's identity, no access to Core state, credentials or the local token, its own Job — against a checkout at the recorded revision, **never under the user's identity**; Core records the exit code and output itself; network per P23's policy. If that identity cannot be established, no command runs and the check is missing evidence (p13-design-gate §8.1, §8.4: ERROR or AWAITING_HUMAN, never PASSED). As built today the commands still run as the user in the worktree — PV-20's open remediation. *ADR-0053 §7 A6:* one fresh verifier principal per verification, never reused; a fresh checkout of the Core-recorded revision; no persistent or shared cache; no credential, Core state or Core route; authority a subset of the execution's runtime/tool grants plus its own checkout and scratch, network only if P23 permits |
+| ResearchVerifier (not built; vocabulary only) | every claim in the report cites a source; sources fetched and quoted; contradictions flagged; confidence recorded | model call on a different account/model when possible |
+| DocumentVerifier (not built; vocabulary only) | required sections present, links resolve, spelling/format checks | deterministic + optional model |
+| PresentationVerifier (not built; vocabulary only) | export exists and opens, slide/scene count, requirement checklist; visual quality → human acceptance | mostly human |
+| AutomationVerifier (not built; vocabulary only) | trigger fired, action executed, expected outcome observable | deterministic |
+| GenericVerifier (built as `generic_human`) | creates an Attention "accept this result?" item | human |
 
 Review is separate (verification-and-review in state-machines §6–7).
 
@@ -389,7 +389,7 @@ Semantics:
 - **Hook-enforced harnesses** (Claude Code): the policy hook checks the sentinel first, using
   the `ARCHEUS_HOME` the execution was started with, so it halts at the next tool call even with
   Core down.
-- **Sandbox harnesses** (Codex) have no per-call hook: the sentinel cannot reach them; they are
+- **Sandbox harnesses** (Codex; none exists in V1 today) have no per-call hook: the sentinel cannot reach them; they are
   stopped only by the registry kill.
 - **The sentinel persists.** Core starting with `STOP` present comes up **disarmed**: it
   reconciles and reports, but starts no execution, fires no automation and refuses routing until
