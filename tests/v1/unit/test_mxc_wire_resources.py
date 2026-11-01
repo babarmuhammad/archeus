@@ -121,7 +121,7 @@ def test_two_live_launches_never_share_a_process(wire):
     with pytest.raises(staging.StageError, match='shares'):
         second.launch.start(job=second.job)
     assert second.api.events.count('resume') == 0
-    assert journal_ops(second.journal, 'e2')[-1] == 'quarantine'
+    assert journal_ops(second.journal, 'e2-p1')[-1] == 'quarantine'
     first.launch.process.terminate()
 
 

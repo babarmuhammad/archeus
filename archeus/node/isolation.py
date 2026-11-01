@@ -1821,6 +1821,7 @@ if WINDOWS:
                                   [W.HANDLE, W.INT, C.c_void_p, W.DWORD])
     _AssignProcessToJobObject = _f(kernel32, 'AssignProcessToJobObject', W.BOOL,
                                    [W.HANDLE, W.HANDLE])
+    _TerminateJobObject = _f(kernel32, 'TerminateJobObject', W.BOOL, [W.HANDLE, W.UINT])
     _GetExitCodeProcess = _f(kernel32, 'GetExitCodeProcess', W.BOOL,
                              [W.HANDLE, C.POINTER(W.DWORD)])
     _GetProcessTimes = _f(kernel32, 'GetProcessTimes', W.BOOL,
@@ -1962,6 +1963,13 @@ if WINDOWS:
             if job is None:
                 raise IsolationUnavailable('job_missing', 'no Job to assign the process to')
             _win(_AssignProcessToJobObject(job, process_handle), 'AssignProcessToJobObject')
+
+        def terminate_job(self, job):
+            """Ends every member and leaves the handle open: the member count is still to
+            be read through it, and the one close stays the fence's."""
+            if job is None:
+                raise IsolationUnavailable('job_missing', 'no Job to terminate')
+            _win(_TerminateJobObject(job, 1), 'TerminateJobObject')
 
         def close_job(self, job):
             """Closing the last handle is what ends the tree (kill-on-close)."""

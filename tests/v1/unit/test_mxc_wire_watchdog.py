@@ -47,7 +47,7 @@ def test_the_job_is_recorded_before_the_resume_and_after_the_ownership(wire):
 
     h.api.resume_thread = resume_thread
     h.launch.start(job=h.job)
-    job = {'execution_id': 'e1', 'pid': PID, 'create_time': CREATION_TIME, 'job_ref': h.job}
+    job = {'execution_id': 'e1-p1', 'pid': PID, 'create_time': CREATION_TIME, 'job_ref': h.job}
     assert seen == [(['intent', 'ownership'], [job])]
     h.launch.process.terminate()
 
@@ -74,7 +74,7 @@ def test_a_watchdog_shared_with_another_job_stays_armed(wire):
     h = started(wire, dog)
     assert h.launch.wait() == 0
     assert h.launch.end_state['state'] == ledger_mod.DEAD_CLEAN
-    assert dog.state == wd_mod.ARMED and dog.report()['recorded'] == ['other', 'e1']
+    assert dog.state == wd_mod.ARMED and dog.report()['recorded'] == ['other', 'e1-p1']
 
 
 @pytest.mark.parametrize('failure', [wd_mod.WatchdogUnavailable('refused'), OSError('lost')])

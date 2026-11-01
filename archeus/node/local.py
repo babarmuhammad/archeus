@@ -157,9 +157,6 @@ MXC_QUIESCENCE_POLL_S = 0.05
 #: how long past the quiescence bound the whole ending may take before its read-back
 #: is no longer trusted (mxc_cancel reports it timed out)
 MXC_READBACK_WAIT_S = 30.0
-#: the ledger's own rule for a journal name: an execution Core could not reconcile
-#: afterwards is not started at all
-_MXC_EXECUTION_ID = re.compile(r'[A-Za-z0-9_-]+')
 #: the one tier the launcher is admitted at (mxc.effective_identity)
 _MXC_TIER = 'base-container'
 #: launches that have passed their resource record and not ended: two of them on one
@@ -198,7 +195,8 @@ class MxcLaunch:
     The resume is reached only past a durable ownership record: a ledger write that
     fails leaves the suspended child terminated, never resumed, every handle closed.
     Ending is mxc_cancel's order and verdict — revoke the broker admission, end the Job
-    through the caller's `end_job` callback (it terminates the Job, it must not close it),
+    through the caller's `end_job` callback, or the boundary's `terminate_job` when none is
+    given (it terminates the Job, it must not close it),
     wait a bounded time for the Job to report no member, read the owned resources back,
     then record the completion or the quarantine.
 
@@ -221,7 +219,8 @@ class MxcLaunch:
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
-                 end_job=None, watchdog=None, seed_stage=None, seed_recheck=None):
+                 end_job=None, watchdog=None, seed_stage=None, seed_recheck=None,
+                 process_seq=1):
         if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
                 or quiescence_wait < 0):
             raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
@@ -231,6 +230,7 @@ class MxcLaunch:
         if not callable(outcome) and workload_reader is None:
             raise staging.StageError('MXC requires a Core-owned outcome reader')
         native = any(part is not None for part in (api, boundary, ledger, schema_validator))
+        journal = None
         if ledger is None and (readback is not None or watchdog is not None):
             # both run in the ownership seam, which only a journalled launch has
             raise staging.StageError('a read-back or a watchdog needs a journalled launch')
@@ -246,20 +246,26 @@ class MxcLaunch:
             if api is None or boundary is None or ledger is None or schema_validator is None:
                 raise staging.StageError('a journalled MXC launch needs the api, the boundary, '
                                          'the ledger and the pinned schema validator')
-            if not isinstance(execution_id, str) or not _MXC_EXECUTION_ID.fullmatch(execution_id):
-                raise staging.StageError('MXC launch needs an execution id the ledger can name')
+            try:
+                journal = mxc_ledger.journal_name(execution_id, process_seq)
+            except ValueError:
+                raise staging.StageError('MXC launch needs an execution id and process '
+                                         'generation the ledger can name') from None
             # one transport, built from the injected parts and nothing else
             backend = mxc_native.Backend(api, boundary, schema_validator)
         elif backend is None:
             raise staging.StageError('MXC launch needs an explicitly injected backend')
         self.backend, self.boundary, self.ledger = backend, boundary, ledger
         self.broker, self.resource_reader, self.disposal = broker, resource_reader, disposal
-        self.execution_id, self.clock, self.pause = execution_id, clock, pause
+        self.execution_id, self.journal = execution_id, journal
+        self.clock, self.pause = clock, pause
         self.quiescence_wait = quiescence_wait
         self.sdk_root, self.outcome = sdk_root, outcome
         self.workload_reader, self.workload_expected = workload_reader, workload_expected
         self.bound, self.readback, self._resource = None, readback, None
-        self._end_job, self.watchdog = end_job, watchdog
+        self._end_job = end_job if end_job is not None else getattr(boundary, 'terminate_job',
+                                                                    None)
+        self.watchdog = watchdog
         self.seed_stage, self.seed_recheck = seed_stage, seed_recheck
         self.verdict = self.facts = self._quiet_why = None
         self.pins = dict(pins)
@@ -295,7 +301,7 @@ class MxcLaunch:
     def _claim(self):
         if self.ledger is None:
             return None
-        claim = (self._ledger_key(), self.execution_id)
+        claim = (self._ledger_key(), self.journal)
         with _MXC_CLAIMS_LOCK:
             if claim in _MXC_CLAIMS:
                 raise staging.StageError('MXC execution id is already being started')
@@ -303,7 +309,7 @@ class MxcLaunch:
         return claim
 
     def _start_claimed(self, job):
-        if self.ledger is not None and self.execution_id in self.ledger.journals():
+        if self.ledger is not None and self.journal in self.ledger.journals():
             # a journal means this execution id already ran, or half-ran: reconciled at
             # restart, never re-adopted by starting it a second time
             raise staging.StageError('MXC execution id already has a ledger journal')
@@ -344,7 +350,7 @@ class MxcLaunch:
         reply is then a restart reconciliation, never a process nobody saw."""
         if self.ledger is None:
             return
-        self.ledger.append(self.execution_id, 'intent',
+        self.ledger.append(self.journal, 'intent',
                            requested_policy_digest=self._requested_digest(),
                            planned=[str(path) for key in ('readwritePaths', 'readonlyPaths',
                                                            'deniedPaths')
@@ -366,7 +372,7 @@ class MxcLaunch:
             raise staging.StageError('MXC launch was ended before it resumed')
         record = self._resource_record(child)
         self._separate(record)
-        self.ledger.append(self.execution_id, 'ownership', pid=child.pid,
+        self.ledger.append(self.journal, 'ownership', pid=child.pid,
                            create_time=child.create_time,
                            requested_policy_digest=self._requested_digest(),
                            applied=[{'resource': res, 'access': acc}
@@ -374,7 +380,7 @@ class MxcLaunch:
                            observed=(mxc_resources.effective_policy(record)
                                      if record.observed is not None else {}), owned=[])
         if self.watchdog is not None:                 # a refusal here still ends the child
-            self.watchdog.record({'execution_id': self.execution_id, 'pid': child.pid,
+            self.watchdog.record({'execution_id': self.journal, 'pid': child.pid,
                                   'create_time': child.create_time, 'job_ref': self.job})
         if self.seed_recheck is not None:             # the very last act: the resume follows
             self.seed_recheck()
@@ -394,7 +400,7 @@ class MxcLaunch:
                 raise staging.StageError('the resource read-back is malformed')
             applied, observed = facts['applied'], facts['observed']
         record = mxc_resources.build_record(
-            execution_id=self.execution_id, pid=child.pid, create_time=child.create_time,
+            execution_id=self.journal, pid=child.pid, create_time=child.create_time,
             planned=planned, applied=applied, observed=observed)
         if self.readback is not None:
             differences = mxc_resources.observed_matches_requested(record)
@@ -587,14 +593,14 @@ class MxcLaunch:
             self.disposal(owner)
         if self.resource_reader is None:
             return None
-        answer = self.resource_reader(self.execution_id, owner)
+        answer = self.resource_reader(self.journal, owner)
         if answer is True or (isinstance(answer, (list, tuple)) and answer):
             return answer
         return None
 
     def _owner(self):
         rows, invalid = mxc_ledger.read_records(
-            self.ledger.journals().get(self.execution_id, b''), self.execution_id)
+            self.ledger.journals().get(self.journal, b''), self.journal)
         if invalid or [row['op'] for row in rows] != ['intent', 'ownership']:
             raise ValueError('verified ownership required')
         return rows[-1]
@@ -620,8 +626,8 @@ class MxcLaunch:
             return mxc_cancel.QUARANTINE_UNVERIFIED
         try:
             self._stand_down()
-            self.ledger.append(self.execution_id, 'disposal', verified_absent=True)
-            self.ledger.complete(self.execution_id, outcome)
+            self.ledger.append(self.journal, 'disposal', verified_absent=True)
+            self.ledger.complete(self.journal, outcome)
         except Exception as err:
             self._quarantine('completion unrecorded: %s' % type(err).__name__)
             return mxc_cancel.QUARANTINE_UNVERIFIED
@@ -637,7 +643,7 @@ class MxcLaunch:
         if report['state'] != mxc_watchdog.ARMED:
             raise staging.StageError('the watchdog is %s: %s' % (report['state'],
                                                                 report['reason']))
-        if report['recorded'] == [self.execution_id]:
+        if report['recorded'] == [self.journal]:
             self.watchdog.stand_down('launch ended')
 
     def _quiescence_text(self):
@@ -657,7 +663,7 @@ class MxcLaunch:
         try:
             if self._quarantined():
                 return
-            self.ledger.append(self.execution_id, 'quarantine',
+            self.ledger.append(self.journal, 'quarantine',
                                reason=str(why)[:200] or 'end unverified')
         except Exception:
             pass                                       # the ledger keeps what it could
@@ -666,7 +672,7 @@ class MxcLaunch:
         if self.ledger is None:
             return True
         rows, _ = mxc_ledger.read_records(
-            self.ledger.journals().get(self.execution_id, b''), self.execution_id)
+            self.ledger.journals().get(self.journal, b''), self.journal)
         return any(row['op'] == 'quarantine' for row in rows)
 
 

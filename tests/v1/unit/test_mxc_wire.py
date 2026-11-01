@@ -115,7 +115,7 @@ class FakeBoundary:
 
     def __init__(self, api, counts=()):
         self.api, self.counts = api, list(counts)
-        self.closed, self.assigned, self.open = [], [], set()
+        self.closed, self.assigned, self.terminated, self.open = [], [], [], set()
 
     def create_job(self, execution_id):
         job = 'core-job-%s' % execution_id
@@ -125,6 +125,12 @@ class FakeBoundary:
     def assign_job(self, job, process_handle):
         self.api.point('assign')
         self.assigned.append(process_handle)
+
+    def terminate_job(self, job):
+        if job not in self.open:
+            raise OSError('Job handle %r is not open' % (job,))
+        self.terminated.append(job)
+        self.api.events.append('end_job')
 
     def close_job(self, job):
         if job not in self.open:
@@ -170,7 +176,7 @@ class TracedLedger:
         return getattr(self.journal, name)
 
 
-def journal_ops(journal, execution_id='e1'):
+def journal_ops(journal, execution_id='e1-p1'):
     """What the journal holds, read back from disk."""
     rows, invalid = ledger_mod.read_records(journal.journals().get(execution_id, b''),
                                             execution_id)
@@ -178,7 +184,7 @@ def journal_ops(journal, execution_id='e1'):
     return [row['op'] for row in rows]
 
 
-def journal_records(journal, execution_id='e1'):
+def journal_records(journal, execution_id='e1-p1'):
     rows, invalid = ledger_mod.read_records(journal.journals().get(execution_id, b''),
                                             execution_id)
     assert not invalid
@@ -240,7 +246,7 @@ def native_parts(monkeypatch):
 def wire(tmp_path, args, native_parts):
     def build(*, failure=None, exit_code=0, reads=None, stalled=False, counts=(),
               reader=None, disposal=None, broker=True, outcome=None, execution_id='e1',
-              schema_validator=None, quiescence_wait=0.0):
+              schema_validator=None, quiescence_wait=0.0, process_seq=1, end_job=None):
         api = FakeApi(failure)
         boundary = FakeBoundary(api, counts)
         journal = TracedLedger(tmp_path / 'ledger', api)
@@ -251,7 +257,8 @@ def wire(tmp_path, args, native_parts):
         admission = FakeBroker(api) if broker else None
         launch = local.MxcLaunch(api=api, boundary=boundary, ledger=journal,
                                  schema_validator=schema_validator or (lambda raw: True),
-                                 execution_id=execution_id, broker=admission,
+                                 execution_id=execution_id, process_seq=process_seq,
+                                 broker=admission, end_job=end_job,
                                  resource_reader=reader, disposal=disposal,
                                  outcome=outcome or (lambda process: 0),
                                  quiescence_wait=quiescence_wait,
@@ -494,7 +501,7 @@ def test_readback_that_is_not_verification_quarantines(wire, answer):
     assert h.launch.end_state['state'] == ledger_mod.DEAD_UNVERIFIED
     ops = journal_ops(h.journal)
     assert ops[-1] == 'quarantine' and 'completion' not in ops and 'disposal' not in ops
-    assert [call[0] for call in seen] == ['e1']          # the reader is told whose it checks
+    assert [call[0] for call in seen] == ['e1-p1']          # the reader is told whose it checks
     assert [call[1]['op'] for call in seen] == ['ownership']   # and sees the returned owner
 
 
@@ -641,11 +648,11 @@ def test_cancel_reports_the_first_ending_and_ends_nothing_twice(wire):
 def test_a_torn_journal_still_gets_its_quarantine_line(wire):
     h = wire(outcome=lambda process: None)
     h.launch.start(job=h.job)
-    with open(h.journal.journal._path('e1'), 'ab') as stream:
+    with open(h.journal.journal._path('e1-p1'), 'ab') as stream:
         stream.write(b'{"length": 9, "record": {"op": "compl')       # the write that tore
     with pytest.raises(staging.StageError, match='outcome is unavailable'):
         h.launch.wait()
-    rows, invalid = ledger_mod.read_records(h.journal.journals()['e1'], 'e1')
+    rows, invalid = ledger_mod.read_records(h.journal.journals()['e1-p1'], 'e1-p1')
     assert invalid and [row['op'] for row in rows] == ['intent', 'ownership', 'quarantine']
     assert h.launch.end_state['state'] == ledger_mod.DEAD_UNVERIFIED
 
@@ -662,7 +669,7 @@ def test_the_journal_alone_says_how_the_end_ended(wire):
     dirty = wire(execution_id='e2', outcome=lambda process: 0)
     dirty.launch.start(job=dirty.job)
     assert dirty.launch.wait() == 0
-    assert dirty.journal.reconcile(*readers) == {'e2': ledger_mod.DEAD_UNVERIFIED}
+    assert dirty.journal.reconcile(*readers) == {'e2-p1': ledger_mod.DEAD_UNVERIFIED}
 
 
 # ── the gates the wire keeps ──

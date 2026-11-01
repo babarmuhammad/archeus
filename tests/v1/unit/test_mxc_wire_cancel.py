@@ -64,7 +64,7 @@ def test_a_verdict_that_is_not_a_verified_disposal_quarantines(wire):
     assert owned.launch.cancel(outcome=0)['state'] == ledger_mod.DEAD_UNVERIFIED
     assert owned.launch.facts['owned'] == ['res-1']
     for h, name in ((still, 'e2'), (unknown, 'e3'), (owned, 'e4')):
-        ops = journal_ops(h.journal, name)
+        ops = journal_ops(h.journal, name + '-p1')
         assert ops[-1] == 'quarantine' and 'completion' not in ops and 'disposal' not in ops
 
 
@@ -125,7 +125,7 @@ def test_a_read_back_past_the_bound_is_not_trusted(wire):
 
 def test_an_earlier_quarantine_is_never_lifted(wire):
     h = started(wire)
-    h.journal.append('e1', 'quarantine', reason='earlier')
+    h.journal.append('e1-p1', 'quarantine', reason='earlier')
     assert h.launch.cancel(outcome=0)['state'] == ledger_mod.DEAD_UNVERIFIED
     assert h.launch.facts['prior'] == mxc_cancel.QUARANTINE_UNVERIFIED
     assert journal_ops(h.journal) == ['intent', 'ownership', 'quarantine']

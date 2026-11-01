@@ -5,11 +5,30 @@ import re
 
 from claude_sessions import config
 
+from ..infra.paths import VERIFY_KEY, verify_key_parts
+
 
 DEAD_CLEAN = 'DEAD_CLEAN'
 DEAD_UNVERIFIED = 'DEAD_UNVERIFIED'
 STILL_RUNNING = 'STILL_RUNNING'
 UNKNOWN_OWNER = 'UNKNOWN_OWNER'
+
+
+def journal_name(key, process_seq):
+    """The one journal name of a process generation. A resume is another process of the
+    same execution and a verifier key holds `/` and `.`, so neither can be the name as it
+    is. An execution key holds no `-` and cannot start `verify_`, so the suffix and the
+    verifier form each name one thing."""
+    if type(process_seq) is not int or process_seq < 1:
+        raise ValueError('invalid process generation')
+    if isinstance(key, str) and key.startswith(VERIFY_KEY):
+        vid, attempt = verify_key_parts(key)
+        base = 'verify_%s_%d' % (vid, attempt)
+    elif isinstance(key, str) and re.fullmatch('[A-Za-z0-9_]+', key) and not key.startswith('verify_'):
+        base = key
+    else:
+        raise ValueError('invalid execution key')
+    return '%s-p%d' % (base, process_seq)
 
 
 def _json(value):

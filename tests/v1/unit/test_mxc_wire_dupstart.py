@@ -108,14 +108,14 @@ def test_a_start_that_cannot_read_the_ledger_frees_the_id(wire):
 @pytest.mark.parametrize('torn', [b'', b'{"length": 9, "sha256": "ab'])
 def test_a_half_written_intent_is_refused_and_reconciled_at_restart(wire, torn):
     h = wire(**OK)
-    with open(h.journal.journal._path('e1'), 'wb') as stream:
+    with open(h.journal.journal._path('e1-p1'), 'wb') as stream:
         stream.write(torn)
     with pytest.raises(staging.StageError, match='ledger journal'):
         h.launch.start(job=h.job)
     assert h.api.events == []
     results = h.journal.reconcile(lambda pid: None, lambda execution_id, owner: True)
-    assert results == {'e1': ledger_mod.DEAD_UNVERIFIED}
-    rows, _ = ledger_mod.read_records(h.journal.journals()['e1'], 'e1')
+    assert results == {'e1-p1': ledger_mod.DEAD_UNVERIFIED}
+    rows, _ = ledger_mod.read_records(h.journal.journals()['e1-p1'], 'e1-p1')
     assert [row['op'] for row in rows] == ['quarantine']
 
 
