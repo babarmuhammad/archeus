@@ -23,6 +23,7 @@ re-delivered message never makes a second mission. Missions move only through
 routes, authorises or executes.
 """
 
+import datetime
 import re
 
 from ..domain import entities, ids, states
@@ -588,6 +589,10 @@ class Conversations:
             it = _set(tx, actor, it, resolution='declined', reason='dropped after the '
                       'challenge')
             return _reply(tx, actor, msg, it, 'Dropped. Nothing was created.')
+        stale = _stale_target(tx, it.proposal)
+        if stale:
+            it = _set(tx, actor, it, resolution='declined', reason='stale after the challenge')
+            return _reply(tx, actor, msg, it, 'Nothing was done: %s' % stale[0])
         noted = tuple({'text': 'proceeding although it goes against %s (%s)'
                                % (c['ref']['id'], c['why']),
                        'origin': 'explicit', 'source_ref': msg.id} for c in it.conflicts)
@@ -601,6 +606,11 @@ class Conversations:
         it = _intent(tx, actor, msg, kind='control_verb', via='grammar',
                      target_refs=({'kind': 'meeting', 'id': meeting_id},), reason='held_at')
         d = _DATE.search(msg.text)
+        if d is not None:
+            try:
+                datetime.date(*map(int, d.groups()))
+            except ValueError:
+                d = None
         if d is None or mt.held_at is not None:
             it = _set(tx, actor, it, resolution='declined')
             why = ('it already has a date (%s)' % mt.held_at if mt.held_at
