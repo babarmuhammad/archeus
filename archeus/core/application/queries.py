@@ -166,7 +166,7 @@ def devices(conn):
     for r in sorted(rows.where(conn, entities.Device), key=lambda r: (r.created_at, r.entity.id)):
         d = r.entity
         t = conn.execute("SELECT scopes, expires_at FROM tokens WHERE principal_id = ? AND "
-                         "kind = 'device' ORDER BY created_at DESC LIMIT 1",
+                         "kind = 'device' AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1",
                          (d.principal_id,)).fetchone()
         step_up = ('local' if not is_paired(d) else 'pin' if d.pin_hash else 'none')
         out.append({'id': d.id, 'principal_id': d.principal_id, 'name': d.name,

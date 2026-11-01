@@ -122,6 +122,8 @@ class Tokens:
             return False
         if 'principal_id = ?' in sql and t['principal_id'] != params[0]:
             return False
+        if 'revoked_at IS NULL' in sql and t['revoked_at'] is not None:
+            return False
         return True
 
 
@@ -303,6 +305,20 @@ def test_a_device_without_a_credential_has_no_scopes_and_shows_no_pin(monkeypatc
     body = json.dumps([a, b, c])
     assert PIN not in body and 'a' * 64 not in body and 'd' * 64 not in body
     assert not {'pin_hash', 'token_hash'} & set(a)
+
+
+def test_a_revoked_token_shows_no_scopes_or_expiry(monkeypatch):
+    FakeRows(Device=[_device(DVC_A, 'paired', 'web')]).install(monkeypatch)
+    gone = Tokens(device_token('a' * 64, PRN, scopes='["observe","write"]', expires_at='E1',
+                               revoked_at='2026-02-01T00:00:00.000Z'))
+    (a,) = queries.devices(gone)
+    assert (a['scopes'], a['expires_at']) == ([], None)
+    live = Tokens(device_token('a' * 64, PRN, expires_at='E1', created_at='2026-01-01',
+                               revoked_at='2026-02-01T00:00:00.000Z'),
+                  device_token('b' * 64, PRN, scopes='["write"]', expires_at='E2',
+                               created_at='2026-01-02'))
+    (a,) = queries.devices(live)
+    assert (a['scopes'], a['expires_at']) == (['write'], 'E2')
 
 
 # ── the event read: paging, the caller's limit, and no homes for an empty page ─────
