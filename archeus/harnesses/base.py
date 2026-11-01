@@ -594,9 +594,9 @@ def mark_ended(paths, exit_code, **extra):
         drop_mcp_config(paths)
 
 
-# config.write_atomic's temp copy of the MCP config, `<path>.<pid>.tmp`: a Core that
+# config.write_atomic's temp copy of the MCP config, `<path>.<pid>.<thread>.<hex>.tmp`: a Core that
 # dies between writing it and os.replace leaves the keys there, not at `paths.mcp`
-_MCP_TMP = re.compile(re.escape(MCP_CONFIG) + r'\.\d+\.tmp')
+_MCP_TMP = re.compile(re.escape(MCP_CONFIG) + r'\.\d+(?:\.\d+\.[0-9a-f]+)?\.tmp')
 
 
 def drop_mcp_config(paths):

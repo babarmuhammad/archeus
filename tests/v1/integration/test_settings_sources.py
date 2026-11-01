@@ -346,7 +346,7 @@ def test_T099_the_boot_sweep_removes_leftovers_and_only_them(x):
 def _tmp_of(path):
     """config.write_atomic's temp copy of *path*, as a Core that died before
     os.replace leaves it."""
-    return '%s.%d.tmp' % (path, 4242)
+    return '%s.%d.%d.%s.tmp' % (path, 4242, 7, 'a1b2c3d4')
 
 
 def test_T102_an_end_removes_the_configs_temp_copy_too(x):

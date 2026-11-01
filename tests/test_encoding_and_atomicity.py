@@ -224,3 +224,40 @@ def test_a_test_cannot_write_a_real_file_outside_the_temp_area():
     real = os.path.join(os.path.expanduser('~'), '.claude', 'settings.json')
     with pytest.raises(AssertionError, match='outside the pytest temp area'):
         config.write_atomic(real, '{}')
+
+
+def test_concurrent_writers_of_one_path_all_succeed_and_never_tear(tmp_path):
+    """The temp name was `<path>.<pid>.tmp` for every thread, so 589 of 600
+    writes from six threads returned False and the data was silently lost."""
+    import threading
+    p = str(tmp_path / 'settings.json')
+    docs = [{'writer': i, 'pad': str(i) * 20000} for i in range(6)]
+    fails, torn = [], []
+
+    def run(i):
+        for _ in range(60):
+            if not _c.write_json_atomic(p, docs[i], indent=None):
+                fails.append(i)
+                continue
+            try:
+                with open(p, encoding='utf-8') as f:
+                    d = json.load(f)
+                if d != docs[d['writer']]:
+                    torn.append(i)
+            except Exception:
+                torn.append(i)
+
+    ts = [threading.Thread(target=run, args=(i,)) for i in range(6)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert (fails, torn) == ([], [])
+    assert [f.name for f in tmp_path.iterdir()] == ['settings.json']
+
+
+def test_a_secret_file_is_created_with_its_mode_not_chmodded_after(tmp_path, monkeypatch):
+    seen = []
+    real = os.open
+    monkeypatch.setattr(os, 'open', lambda path, flags, mode=0o777: (
+        seen.append(mode), real(path, flags, mode))[1])
+    assert _c.write_atomic(str(tmp_path / 'k.json'), '{}', mode=0o600)
+    assert seen == [0o600]

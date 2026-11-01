@@ -1,5 +1,8 @@
 import os
 import json
+import secrets
+import threading
+import time
 import shutil
 import logging
 
@@ -756,6 +759,10 @@ def _ensure_dir(d):
                 pass
 
 
+# ponytail: one lock for every path; a per-path lock if replaces ever queue
+_REPLACE_LOCK = threading.Lock()
+
+
 def write_atomic(path, text, mode=None):
     """Temp file in the same directory, then os.replace. Returns True on success.
 
@@ -766,24 +773,34 @@ def write_atomic(path, text, mode=None):
     os.replace is atomic on NTFS, so a reader sees either the old file or the new
     one — never half of either.
 
-    `mode` is applied to the TEMP file, before the rename, so the permissions are
-    never briefly wrong on the real path. It is opt-in rather than a default of
-    0600: most of what goes through here is a project file (CLAUDE.md, a skill,
-    a generated agent) that other tools and other users legitimately read. Only
-    the files carrying a secret ask for it."""
+    `mode` is the permission the TEMP file is CREATED with, so the content is
+    never readable beyond it, not even briefly, and the real path never has the
+    wrong ones. It is opt-in rather than a default of 0600: most of what goes
+    through here is a project file (CLAUDE.md, a skill, a generated agent) that
+    other tools and other users legitimately read. Only the files carrying a
+    secret ask for it.
+
+    The temp name is unique per call: two threads of one process writing the
+    same path (GUI request threads) used to share `<path>.<pid>.tmp`, and all but
+    one write failed."""
     try:
         d = os.path.dirname(path)
         if d:
             _ensure_dir(d)
-        tmp = f'{path}.{os.getpid()}.tmp'
-        with open(tmp, 'w', encoding='utf-8', newline='') as f:
+        tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.{secrets.token_hex(4)}.tmp'
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0),
+                     0o666 if mode is None else mode)
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
             f.write(text)
-        if mode is not None:
-            try:
-                os.chmod(tmp, mode)
-            except OSError:
-                pass          # a filesystem with no mode bits is not a failure
-        os.replace(tmp, path)
+        with _REPLACE_LOCK:
+            for wait in (0.01, 0.02, 0.05, 0.1, 0):
+                try:
+                    os.replace(tmp, path)
+                    break
+                except PermissionError:       # Windows: a reader holds the target open
+                    if not wait:
+                        raise
+                    time.sleep(wait)
         return True
     except Exception:
         try:
