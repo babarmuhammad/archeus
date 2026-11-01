@@ -250,3 +250,14 @@ def test_a_link_at_the_earlier_layouts_directory_is_not_a_worktree(archeus_home,
         link if os.fspath(p) == legacy else real(p, *a, **kw)))
     assert paths.task_worktree(PRJ, MSN, 't1') == os.path.join(
         archeus_home, 'worktrees', MSN.split('_', 1)[1], 't1')
+
+
+def test_the_run_directories_a_call_creates_are_private(archeus_home, monkeypatch):
+    """T-655#15: makedirs without a mode made run/ and run/calls with the umask's default."""
+    os.makedirs(archeus_home, exist_ok=True)
+    modes = []
+    real = os.makedirs
+    monkeypatch.setattr(os, 'makedirs', lambda d, mode=0o777, **kw: (
+        modes.append(mode), real(d, mode, **kw))[1])
+    paths.fresh_call_dir(ids.new_id('route_decision'))
+    assert modes and set(modes) == {0o700}

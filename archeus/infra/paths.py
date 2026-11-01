@@ -235,7 +235,7 @@ def fresh_call_dir(route_decision_id):
     chain = [archeus_home(), run_dir(), os.path.dirname(leaf)]
     _plain_dir(chain[0])
     for d in chain[1:]:
-        os.makedirs(d, exist_ok=True)
+        os.makedirs(d, mode=0o700, exist_ok=True)
         _plain_dir(d)
     os.mkdir(leaf)                      # fresh only: an existing one is refused
     for d in chain + [leaf]:
