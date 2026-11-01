@@ -76,6 +76,11 @@ AUDIT_MAX = 1024
 #: in-flight requests the broker holds across all grants; one grant may hold a quarter of
 #: them (a cap, not a reservation: owner decision, PV20-09 round 5)
 POOL = 8
+#: how long the agent's bridge may take to send one request, head and body together, and
+#: how long the upstream's name may take to resolve; checked between reads (a read blocked
+#: inside the native pipe is the transport's to bound)
+READ_DEADLINE_S = 30.0
+RESOLVE_TIMEOUT_S = 10.0
 #: an upstream error body is relayed at most this long, and only if it holds no key, or not at all
 ERROR_BODY_MAX = 64 * 1024
 #: the only upstream credential the broker sends: an API key (PV20-08b, owner allow-list,
@@ -167,10 +172,19 @@ def check_destination(up, resolve=None):
         raise Refused(403, 'the upstream is not https')
     resolve = resolve or (lambda host, port: [a[4][0] for a in socket.getaddrinfo(
         host, port, type=socket.SOCK_STREAM)])
-    try:
-        addrs = sorted(set(resolve(u.hostname, u.port or 443)))
-    except OSError:
-        raise Refused(502, 'the upstream does not resolve') from None
+    found = []
+
+    def look():
+        try:
+            found.append(resolve(u.hostname, u.port or 443))
+        except OSError:
+            pass
+    lookup = threading.Thread(target=look, daemon=True)
+    lookup.start()
+    lookup.join(RESOLVE_TIMEOUT_S)
+    if not found:
+        raise Refused(502, 'the upstream does not resolve')
+    addrs = sorted(set(found[0]))
     if not addrs or not all(ipaddress.ip_address(a).is_global for a in addrs):
         raise Refused(403, 'the upstream resolves to a non-public address')
     return addrs
@@ -213,6 +227,24 @@ class NativeTransport:
 
     def close(self, endpoint):
         pass
+
+
+class _Deadline:
+    """*f*, refusing the request once the clock passes *end*."""
+
+    def __init__(self, f, clock, end):
+        self._f, self._clock, self._end = f, clock, end
+
+    def _read(self, data):
+        if self._clock() > self._end:
+            raise Refused(408, 'the request took too long to arrive')
+        return data
+
+    def readline(self, n):
+        return self._read(self._f.readline(n))
+
+    def read(self, n):
+        return self._read(self._f.read(n))
 
 
 class Broker:
@@ -353,7 +385,8 @@ class Broker:
             return b.limits.max_body
 
         try:
-            req = wire.read_request(rfile, admit=admit)
+            req = wire.read_request(_Deadline(rfile, self._clock, t0 + READ_DEADLINE_S),
+                                   admit=admit)
             row['bytes_in'] = len(req.body)
             if held.get('hello'):
                 write(wire.local_reply(204, 'No Content'))
