@@ -34,7 +34,7 @@ from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
 from . import linkscan
-from . import mxc, mxc_ledger, mxc_native
+from . import mxc, mxc_ledger, mxc_native, mxc_outcome
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
 #: user's own config is never written, only this one command's (T-078)
@@ -193,8 +193,12 @@ class MxcLaunch:
                  denied=(), cwd, command_line, env=None, timeout_ms, api=None,
                  boundary=None, ledger=None, schema_validator=None, execution_id=None,
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
-                 pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S):
-        if not callable(outcome):
+                 pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
+                 workload_reader=None, workload_expected=None):
+        if workload_reader is not None and not (callable(workload_reader)
+                                                and callable(workload_expected)):
+            raise staging.StageError('a workload reader needs the identity this launch issued')
+        if not callable(outcome) and workload_reader is None:
             raise staging.StageError('MXC requires a Core-owned outcome reader')
         native = any(part is not None for part in (api, boundary, ledger, schema_validator))
         if native:
@@ -215,6 +219,8 @@ class MxcLaunch:
         self.execution_id, self.clock, self.pause = execution_id, clock, pause
         self.quiescence_wait = quiescence_wait
         self.sdk_root, self.outcome = sdk_root, outcome
+        self.workload_reader, self.workload_expected = workload_reader, workload_expected
+        self.bound = None
         self.pins = dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
@@ -329,14 +335,36 @@ class MxcLaunch:
         if type(self.launcher_exit) is not int:
             self._end(reason='launcher never exited', outcome=None)
             raise staging.StageError('MXC launcher has not exited')
-        code = self.outcome(self.process)
+        try:
+            code = self._workload_code()
+        except BaseException:
+            self._end(reason='the outcome reader failed', outcome=None)
+            raise
         if type(code) is not int:
             # launcher 0 is the launcher's own report, and says nothing about the workload
-            self._end(reason='launcher exited without a workload outcome', outcome=None)
-            raise staging.StageError('MXC workload outcome is unavailable')
+            state = self.bound.state if self.bound is not None else None
+            self._end(reason='launcher exited without a workload outcome'
+                      if state is None else 'workload outcome %s' % state, outcome=None)
+            raise staging.StageError('MXC workload outcome is unavailable'
+                                     + ('' if state is None else ': %s' % state))
         self.completed = code
         self._end(reason='launcher exited', outcome=code)
         return code
+
+    def _workload_code(self):
+        """The exit code the end may record, or None. With a workload reader the code
+        is the one bind_outcome binds to the identity this launch issued and only a
+        SUCCEEDED binding yields one; any other state is not an outcome. Without one,
+        the Core-owned outcome callable decides, as before."""
+        if self.workload_reader is None:
+            return self.outcome(self.process)
+        try:
+            expected = self.workload_expected()
+        except Exception:
+            expected = None
+        self.bound = mxc_outcome.bind_outcome(
+            self.launcher_exit, lambda: self.workload_reader(self.process), expected)
+        return self.bound.workload_exit if self.bound.succeeded else None
 
     def cancel(self, *, reason='cancelled', outcome=None):
         """Stop an execution and say how far the stop was verified. Idempotent: a second

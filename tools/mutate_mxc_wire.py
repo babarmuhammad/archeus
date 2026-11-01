@@ -23,6 +23,7 @@ NATIVE = 'archeus/node/mxc_native.py'
 W = 'tests/v1/unit/test_mxc_wire.py::'
 N = 'tests/v1/unit/test_mxc_native.py::'
 L = 'tests/v1/integration/test_pv20_mxc_local.py::'
+O = 'tests/v1/unit/test_mxc_wire_outcome.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -152,6 +153,16 @@ MUTATIONS = [
       "        return any(row['op'] == 'quarantine' for row in rows)",
       "        return invalid or any(row['op'] == 'quarantine' for row in rows)")],
      [W + 'test_a_torn_journal_still_gets_its_quarantine_line']),
+    ('W26', "the launcher's exit code is reported as the bound workload outcome", [(LOCAL,
+     "        return self.bound.workload_exit if self.bound.succeeded else None",
+     "        return self.launcher_exit")],
+     [O + 'test_a_launcher_zero_with_any_other_binding_is_never_success']),
+    ('W27', 'an interrupted outcome reader leaves the launch never ended', [(LOCAL,
+     "        except BaseException:\n            self._end(reason='the outcome "
+     "reader failed', outcome=None)",
+     "        except ZeroDivisionError:\n            self._end(reason='the outcome "
+     "reader failed', outcome=None)")],
+     [O + 'test_a_reader_that_is_interrupted_still_ends_the_launch']),
 ]
 
 
