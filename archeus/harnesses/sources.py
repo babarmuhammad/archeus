@@ -48,6 +48,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 
 from claude_sessions import config
@@ -69,6 +70,8 @@ MANAGED = {'win32': os.path.join(os.environ.get('ProgramFiles', r'C:\Program Fil
 #: make an unbounded record); a cut is said, never silent
 MAX_ITEMS = 500
 NAME_MAX = 200
+#: the largest file the inventory reads: what a project's own files may make it hold
+MAX_READ = 4 * 1024 * 1024
 #: the statuses that predict an item loaded (managed's `not_excludable` aside)
 LOADED = ('opted_in', 'recorded_only')
 #: why an item does not load for an isolated execution (ADR-0053 A2): no MCP server
@@ -86,8 +89,12 @@ DEFAULT_FLAGS = {'setting_sources': [], 'strict_mcp_config': True, 'mcp_servers'
 def _read(path):
     """(bytes or None, error or None): None/None when the file is absent."""
     try:
+        mode = os.stat(path).st_mode
+        if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
+            return None, 'not a regular file'
         with open(path, 'rb') as f:
-            return f.read(), None
+            data = f.read(MAX_READ + 1)
+        return (data, None) if len(data) <= MAX_READ else (None, 'too large')
     except FileNotFoundError:
         return None, None
     except OSError as e:
@@ -392,7 +399,7 @@ def flag_argv(flags, *, home, workdir, exec_dir):
         # child exists: one Core cannot write is the charged refusal the spawn's other
         # writes are (T-102), never an OSError out of the manager's tick
         if not config.write_atomic(path, json.dumps(
-                mcp_config(home, workdir, flags['mcp_servers']))):
+                mcp_config(home, workdir, flags['mcp_servers'])), mode=0o600):
             raise base.SpawnWriteFailed('could not write %s' % path)
         a += ['--mcp-config', path]
     if flags['disable_slash_commands']:
