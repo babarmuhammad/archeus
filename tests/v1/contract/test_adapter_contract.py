@@ -308,3 +308,13 @@ def test_a_pid_marker_that_cannot_be_written_kills_the_child_and_refuses(tmp_pat
     assert started[0].wait(timeout=20) is not None
     assert not os.path.exists(paths.pid)
     assert 'disk full' in base.read_json(paths.ended)['error']
+
+
+def test_a_stream_file_that_cannot_be_opened_refuses_the_spawn(tmp_path):
+    """T-647#15: the child ran with its output discarded and was recorded as a success."""
+    spec = _spec(tmp_path)
+    paths = ExecPaths(spec.execution_id)
+    os.makedirs(paths.stream)
+    with pytest.raises(base.SpawnWriteFailed):
+        base.spawn(spec, [sys.executable, '-c', 'pass'])
+    assert not os.path.exists(paths.pid)

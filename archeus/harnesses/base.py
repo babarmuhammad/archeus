@@ -400,6 +400,9 @@ def _start(spec, argv, paths, seq):
                         err, SpawnWriteFailed)
         if not config.write_atomic(paths.prompt, spec.prompt):
             raise OSError('could not write %s' % paths.prompt)
+        # spawn_detached falls back to no log when it cannot open one: a run with no transcript
+        with open(paths.stream, 'ab'):
+            pass
     except OSError as err:
         _refuse(paths, str(err), err, SpawnWriteFailed)
     if spec.isolation is not None:
