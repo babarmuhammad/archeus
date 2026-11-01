@@ -151,6 +151,11 @@ class StoreError(OSError):
     """A store, its pin or a Git call cannot be trusted: refused, nothing kept back."""
 
 
+class NoSuchRevision(StoreError):
+    """`rev-parse --verify -q` found nothing: exit 1 and no message, which is how Git says
+    a revision is absent. Every other failure of the call is a plain StoreError."""
+
+
 #: how long an ended execution gets to empty its Job before the end is called
 #: unverified (audit §2 'Cancellation': an empty Job is a reading, never a proof)
 MXC_QUIESCENCE_WAIT_S = 5.0
@@ -1388,8 +1393,11 @@ class LocalNode:
             return _stream(argv + list(args), cwd, env, stdin, sink, timeout)
         r = proc.run(argv + list(args), cwd=cwd, env=env, timeout=timeout, stdin=stdin)
         if r is None or r.returncode:
-            raise StoreError('git %s failed: %s' % (args[0], (r.stderr or r.stdout).strip()
-                                                     if r is not None else 'could not run'))
+            said = (r.stderr or r.stdout).strip() if r is not None else 'could not run'
+            if (r is not None and r.returncode == 1 and not said and '-q' in args
+                    and args[0] == 'rev-parse'):
+                raise NoSuchRevision('git rev-parse failed: no such revision')
+            raise StoreError('git %s failed: %s' % (args[0], said))
         return r.stdout
 
     @staticmethod
@@ -1516,7 +1524,7 @@ class LocalNode:
             raise StoreError('not a mission branch: %r' % (mission_branch,))
         try:
             return rev, LocalNode.store_resolve_base(root, rev, workdirs=workdirs)
-        except StoreError:
+        except NoSuchRevision:
             return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)
 
     @staticmethod

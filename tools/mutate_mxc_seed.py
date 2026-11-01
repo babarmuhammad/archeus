@@ -18,6 +18,7 @@ import mutate_p18  # noqa: E402
 
 SEED = 'archeus/node/seed.py'
 MGR = 'archeus/core/execution/manager.py'
+LOCAL = 'archeus/node/local.py'
 T = 'tests/v1/unit/test_seed.py::'
 G = 'tests/v1/unit/test_staging_seed.py::'
 W = 'tests/v1/unit/test_mxc_wire_seed.py::'
@@ -128,6 +129,10 @@ MUTATIONS = [
     ('MS28', 'only the parent directory is checked for an alias', [(SEED,
      '        path, ancestor = ancestor, os.path.dirname(ancestor)', '        break')],
      [T + 'test_a_junction_above_the_destination_is_refused_before_anything_is_written']),
+    ('MS29', 'any failure reading the mission branch falls back to the project HEAD', [(LOCAL,
+     "        except NoSuchRevision:\n            return 'HEAD', ",
+     "        except StoreError:\n            return 'HEAD', ")],
+     [R + 'test_only_an_absent_mission_branch_falls_back_to_head']),
 ]
 
 

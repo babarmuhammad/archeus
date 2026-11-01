@@ -859,6 +859,28 @@ def test_a_mission_branch_is_the_base_when_it_resolves(world):
                                   workdirs=()) == ('HEAD', head)
 
 
+def test_only_an_absent_mission_branch_falls_back_to_head(world, monkeypatch):
+    """Any other failure reading the mission ref (a refused lock, a damaged repository)
+    is not "no mission branch": falling back would seed the attempt, and every retry,
+    from the project HEAD instead of the mission tip."""
+    proj, head, _files = _project(world)
+    mid = ids.new_id('mission')
+    real_run = local.proc.run
+
+    def run(argv, **kw):
+        if 'refs/heads/archeus/%s^{commit}' % mid in argv:
+            return subprocess.CompletedProcess(argv, 128, '', 'fatal: Unable to create '
+                                               'packed-refs.lock: Permission denied')
+        return real_run(argv, **kw)
+
+    monkeypatch.setattr(local.proc, 'run', run)
+    with pytest.raises(StoreError, match='packed-refs.lock') as got:
+        LocalNode.resolve_base(str(proj), 'archeus/' + mid, workdirs=())
+    assert not isinstance(got.value, local.NoSuchRevision)
+    monkeypatch.setattr(local.proc, 'run', real_run)
+    assert LocalNode.resolve_base(str(proj), 'archeus/' + mid, workdirs=()) == ('HEAD', head)
+
+
 def test_a_detached_head_is_the_commit_it_names(world):
     proj, head, _files = _project(world)
     other = _other(world, proj, head)
