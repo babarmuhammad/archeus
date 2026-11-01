@@ -89,6 +89,8 @@ SITES = {
         (1, FLOW, 'the PV-20 broker token minted per grant; its callers are the new_token row'),
     ('archeus/node/broker.py', 'Broker.issue', 'secrets.token_hex'):
         (1, NOT_SECRET, "a broker pipe name's nonce; the pipe authenticates nothing by name"),
+    ('archeus/node/broker_listener.py', '_Listener.handle', 'secrets.token_hex'):
+        (1, NOT_SECRET, "a per-connection id for the attestor's evidence; it authenticates nothing"),
     ('archeus/core/application/commands.py', 'hash_pin', 'secrets.token_bytes'):
         (1, AT_REST, 'the salt of a step-up PIN record, pbkdf2_sha256 in devices.pin_hash'),
     ('archeus/infra/discovery.py', 'public_account_secret', 'secrets.token_bytes'):
