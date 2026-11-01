@@ -96,11 +96,11 @@ class FakeSessions:
 
     def locate(self, ref, home, cwd):
         p = self.path(ref) if ref else ''
-        return Located(p) if p and os.path.exists(p) else None
+        return Located(p) if p and os.path.isfile(p) else None
 
     def launch_argv(self, spec):
         ref = spec.resume_ref or str(uuid.uuid4())
-        if spec.resume_ref is None:
+        if not spec.resume_ref:
             self.write(ref, [])
         self.launched.append(spec)
         argv = ['fake-session', '--ref', ref]
@@ -120,7 +120,8 @@ class FakeSessions:
                     obj = json.loads(line)
                 except ValueError:
                     continue
-                if obj.get('role') in ('user', 'assistant') and obj.get('text'):
+                if isinstance(obj, dict) and obj.get('role') in ('user', 'assistant') \
+                        and obj.get('text'):
                     out.append((obj['role'], str(obj['text'])))
         return out[-limit:] if limit > 0 else []
 

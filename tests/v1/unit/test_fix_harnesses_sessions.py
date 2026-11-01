@@ -30,3 +30,17 @@ def test_zero_turns_is_no_turns(tmp_path):
         f.write(json.dumps({'role': 'user', 'text': 'hi'}) + '\n')
     assert FakeSessions().turns(path, 1) == [('user', 'hi')]
     assert FakeSessions().turns(path, 0) == []
+
+
+def test_the_fake_sessions_keep_to_what_the_real_readers_do(archeus_home):
+    """T-652#F6/F7/F8: an empty ref is a new session; a non-object line is skipped; a
+    directory named like a transcript is not one."""
+    from archeus.harnesses.sessions import FakeSessions, SessionSpec
+    fake = FakeSessions()
+    got = fake.launch_argv(SessionSpec('ses_1', '.', resume_ref=''))
+    assert fake.locate(got.ref, None, '.') is not None
+    with open(fake.path(got.ref), 'a', encoding='utf-8') as f:
+        f.write('123\n"hi"\n{"role": "user", "text": "ok"}\n')
+    assert fake.turns(fake.path(got.ref), 5) == [('user', 'ok')]
+    os.makedirs(fake.path('adir'))
+    assert fake.locate('adir', None, '.') is None
