@@ -14,6 +14,10 @@ from typing import Callable, Protocol
 
 ORIGIN_ENFORCEMENT_ENABLED = False
 
+#: seconds between two re-attestations of one long-lived connection, whatever
+#: the request rate: a peer cannot make Core probe the process table faster
+REATTEST_INTERVAL_S = 2.0
+
 
 class OriginClass(str, Enum):
     USER = 'user'
@@ -53,7 +57,9 @@ class OriginEvidence:
 #: clock the attestor runs on, so the accept-time binding and the per-request
 #: re-check are decided by the pure attestor against a fake table in a test and
 #: against the native tables on Windows. `launcher` or `max_age_s` left as None
-#: keeps the attestor's own default. A backend built without readers answers
+#: keeps the attestor's own default. `reattest` (T-806, off by default) lets a
+#: binding older than `max_age_s` be re-attested once per request, kept only for
+#: the same PID and creation time. A backend built without readers answers
 #: exactly as it does today: nothing changes before the native readers exist.
 @dataclass(frozen=True)
 class AttestationReaders:
@@ -62,6 +68,7 @@ class AttestationReaders:
     clock: Callable
     launcher: "str | None" = None
     max_age_s: "float | None" = None
+    reattest: bool = False
 
     def attest_kwargs(self, remote_port):
         """The keyword arguments of one accept-time attestation of *remote_port*."""
