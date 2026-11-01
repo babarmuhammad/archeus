@@ -290,6 +290,15 @@ class Broker:
             raise Refused(403, 'a binding from another Core instance')
         if not (isinstance(binding.limits.max_requests, int) and binding.limits.max_requests > 0):
             raise Refused(403, 'no request ceiling: the grant is refused')
+        limits = binding.limits
+        if not (all(type(v) is int and v > 0 for v in (limits.max_body, limits.concurrent))
+                and isinstance(limits.deadline_s, (int, float)) and limits.deadline_s > 0):
+            raise Refused(403, 'a non-positive body, concurrency or deadline limit')
+        if not all(isinstance(v, str) and v for v in (
+                binding.principal, binding.execution_id, binding.account_id,
+                binding.harness_id, binding.model)):
+            raise Refused(403, 'a binding with an empty principal, execution, account, '
+                               'harness or model')
         check_destination(binding.upstream, self._resolve)
         self.revoke(binding.execution_id)
         token = new_token()
@@ -445,7 +454,7 @@ class Broker:
         flat = ''.join(re.sub(r'[\s,;:"\']', '', v) for v in fwd)     # split across headers too
         if any(_foreign_credential(v) for v in fwd + [flat]):
             raise Refused(403, 'a forwarded header carries a credential that is not an API key')
-        headers = {k: v for k, v in req.headers if wire.forwarded(k)}
+        headers = {k.lower(): v for k, v in req.headers if wire.forwarded(k)}
         headers['x-api-key'] = key
         headers['Content-Length'] = str(len(req.body))
         try:

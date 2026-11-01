@@ -534,3 +534,39 @@ def test_a_client_that_goes_away_mid_response_never_crashes_the_broker_or_the_br
     s = socket.socket()
     s.close()
     W._send(s, b'anything')                                # silent against a closed client
+
+
+# ── a grant is refused at issue for limits and identity it could never serve ──
+
+@pytest.mark.parametrize('limits', [
+    dict(concurrent=0), dict(max_body=0), dict(deadline_s=0), dict(deadline_s=-1.0),
+    dict(concurrent=True), dict(max_body='9'), dict(deadline_s=None)])
+def test_a_grant_with_a_limit_that_can_never_be_met_is_refused_at_issue(limits):
+    # T-657#13: concurrent=0 was a permanent 429, max_body=0 a permanent 413
+    b, _ = broker()
+    with pytest.raises(B.Refused) as raised:
+        b.issue(binding(limits=B.BrokerLimits(max_requests=3, **limits)))
+    assert raised.value.status == 403
+    assert b.transport.created == [] and not b._grants
+
+
+@pytest.mark.parametrize('field', ['principal', 'execution_id', 'account_id', 'harness_id',
+                                   'model'])
+@pytest.mark.parametrize('value', ['', None])
+def test_a_binding_with_an_empty_identity_field_is_refused_at_issue(field, value):
+    # T-657#2: principal='' plus a transport reporting '' authorised the empty client
+    b, _ = broker()
+    with pytest.raises(B.Refused) as raised:
+        b.issue(binding(**{field: value}))
+    assert raised.value.status == 403 and not b._grants
+
+
+def test_case_variants_of_a_forwarded_header_reach_the_upstream_once():
+    # T-657#9: the dict was keyed on the raw name, so both spellings went upstream
+    b, calls = broker()
+    _, token, _ = issued(b, limits=B.BrokerLimits(max_requests=4))
+    _, row = serve(b, request(token=token, extra=('Anthropic-Beta: tools-1',
+                                                  'anthropic-beta: slow-wink')))
+    assert row['status'] == 200
+    (_, _, _, _, headers, _), = calls
+    assert [v for k, v in headers.items() if k.lower() == 'anthropic-beta'] == ['slow-wink']
