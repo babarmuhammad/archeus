@@ -177,10 +177,6 @@ def test_anything_else_is_refused_as_a_cursor(raw):
     assert (got.value.field, got.value.why) == ('cursor', 'is an integer >= 0')
 
 
-@pytest.mark.xfail(strict=True, reason='T-403 finding: `re.fullmatch(r"\\d{1,18}")` matches '
-                                       'NON-ASCII decimal digits too, and int() reads them, so '
-                                       'ARABIC-INDIC digits are a valid cursor. Pinning the '
-                                       'refusal an ASCII-only class ([0-9]) would give.')
 def test_a_cursor_written_in_another_scripts_digits_is_refused():
     with pytest.raises(Invalid):
         routes._cursor('\u0661\u0662\u0663', 'cursor')            # ١٢٣
