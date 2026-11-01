@@ -158,6 +158,10 @@ def check_destination(up, resolve=None):
     a provider proxy only at an exact loopback http endpoint. Resolved here, and the
     connection goes to these addresses, so a name cannot re-resolve somewhere else."""
     u = urlsplit(up.url)
+    try:
+        port = u.port
+    except ValueError:
+        raise Refused(403, 'the upstream is not a plain host URL') from None
     if u.username or u.password or u.fragment or u.query or not u.hostname:
         raise Refused(403, 'the upstream is not a plain host URL')
     if up.kind == 'provider_proxy':
@@ -165,7 +169,7 @@ def check_destination(up, resolve=None):
             ip = ipaddress.ip_address(u.hostname)
         except ValueError:
             raise Refused(403, 'a provider proxy is named by a loopback address') from None
-        if u.scheme != 'http' or not ip.is_loopback or u.port is None:
+        if u.scheme != 'http' or not ip.is_loopback or port is None:
             raise Refused(403, 'a provider proxy is an exact loopback http endpoint')
         return [str(ip)]
     if up.kind != 'https' or u.scheme != 'https':
@@ -176,7 +180,7 @@ def check_destination(up, resolve=None):
 
     def look():
         try:
-            found.append(resolve(u.hostname, u.port or 443))
+            found.append(resolve(u.hostname, port or 443))
         except OSError:
             pass
     lookup = threading.Thread(target=look, daemon=True)
@@ -185,7 +189,11 @@ def check_destination(up, resolve=None):
     if not found:
         raise Refused(502, 'the upstream does not resolve')
     addrs = sorted(set(found[0]))
-    if not addrs or not all(ipaddress.ip_address(a).is_global for a in addrs):
+    try:
+        public = bool(addrs) and all(ipaddress.ip_address(a).is_global for a in addrs)
+    except ValueError:
+        public = False
+    if not public:
         raise Refused(403, 'the upstream resolves to a non-public address')
     return addrs
 

@@ -397,6 +397,17 @@ def test_a_resolver_that_fails_or_names_nothing_issues_nothing(resolve, status):
     assert calls == [] and b.transport.created == [] and b._grants == {}    # nothing created
 
 
+@pytest.mark.parametrize('upstream,resolve', [
+    (B.Upstream('https://api.example.com:not-a-port'), lambda host, port: ['93.184.216.34']),
+    (B.Upstream('http://127.0.0.1:not-a-port', 'provider_proxy'), None),
+    (B.Upstream('https://api.example.com'), lambda host, port: ['not-an-ip']),
+])
+def test_an_upstream_that_cannot_be_read_is_refused_not_raised(upstream, resolve):
+    with pytest.raises(B.Refused) as raised:
+        B.check_destination(upstream, resolve)
+    assert raised.value.status == 403
+
+
 # ── 5. an upstream failure that is not an OSError is still a local 502 ──
 
 def test_an_upstream_failure_that_is_not_an_oserror_is_a_local_502_and_never_retried():
