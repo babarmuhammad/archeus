@@ -53,6 +53,9 @@ MUTATIONS = [
     ('L10', 'disposal readback ignored', [(LEDGER,
      '            if absent(owner) is not True:', '            if False:')],
      [TEST + 'test_disposal_uncertainty_quarantines']),
+    ('L11', 'journal names that differ only by case are two names', [(LEDGER,
+     "name[:-6].casefold() == execution_id.casefold()", "name[:-6] == execution_id")],
+     [TEST + 'test_two_names_that_differ_only_by_case_are_one_journal']),
 ]
 
 

@@ -173,6 +173,11 @@ class Ledger:
 
     def append(self, execution_id, op, **facts):
         path = self._path(execution_id)
+        # NTFS holds one file for two names that differ only by case, so they are one name
+        if op == 'intent' and any(
+                name[:-6] != execution_id and name[:-6].casefold() == execution_id.casefold()
+                for name in os.listdir(self.root) if name.endswith('.jsonl')):
+            raise ValueError('journal name collides with another by case')
         fresh = not os.path.exists(path)
         if fresh:
             if op != 'intent':

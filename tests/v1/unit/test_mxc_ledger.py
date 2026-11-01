@@ -348,3 +348,12 @@ def test_quarantine_write_failure_is_not_reported_as_persisted(journal, monkeypa
     monkeypatch.setattr(journal, 'append', failed)
     with pytest.raises(OSError, match='quarantine disk failed'):
         journal.reconcile(lambda pid: None, lambda *args: False)
+
+
+def test_two_names_that_differ_only_by_case_are_one_journal(journal):
+    intent = dict(requested_policy_digest='a' * 64, planned=[], applied=[], observed={})
+    journal.append('Ab1-p1', 'intent', **intent)
+    with pytest.raises(ValueError, match='collides'):
+        journal.append('ab1-p1', 'intent', **intent)
+    assert list(journal.journals()) == ['Ab1-p1']
+    journal.append('Ab1-p2', 'intent', **intent)            # another generation is another name
