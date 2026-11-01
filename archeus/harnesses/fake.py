@@ -34,6 +34,12 @@ AGENT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fake_agent.py'
 FAKE_MODEL = base.ModelInfo('fake-model', 'large', 200000)
 
 
+def _this_process(events):
+    """Everything after the last `started`: the stream is appended to by every process."""
+    last = max((i for i, e in enumerate(events) if e.get('type') == 'started'), default=0)
+    return events[last:]
+
+
 class FakeHarness:
     """`id`, `capabilities`, `models`, `enforcement` and `efforts` are
     constructor arguments, so a second fake harness for routing is an instance,
@@ -134,7 +140,7 @@ class FakeHarness:
         ended = base.read_json(os.path.join(handle.exec_dir, 'ended')) or {}
         code = ended.get('exit_code')
         if code is None:            # the agent's own last word (a Core that did not start it)
-            code = next((e.get('code') for e in reversed(self.inspect(handle).events)
+            code = next((e.get('code') for e in reversed(_this_process(self.inspect(handle).events))
                          if e.get('type') == 'exit'), None)
         return base.ProcStatus('exited', code)
 
@@ -162,10 +168,7 @@ class FakeHarness:
         st = self.status(handle)
         if st.state == 'running':
             raise RuntimeError('execution %s is still running' % handle.execution_id)
-        events = self.inspect(handle).events
-        # this process's events: everything after its own `started`
-        last = max((i for i, e in enumerate(events) if e.get('type') == 'started'), default=0)
-        events = events[last:]
+        events = _this_process(self.inspect(handle).events)
         results = [e for e in events if e.get('type') == 'result']
         usage = [e['usage'] for e in events if isinstance(e.get('usage'), dict)]
         failure = None
