@@ -265,9 +265,9 @@ the primary conversation; per-mission threads are P16's.
 | `title`, `objective`, `desired_outcome` | objective = what; desired_outcome = how we'll know |
 | `requirements[]`, `constraints[]` | each `{text, origin: explicit|inferred, source_ref}` |
 | `success_criteria[]` | each `{text, check: automatic|human, verifier?, origin: explicit|inferred}` — inferred when the plan supplied them because the mission had none |
-| `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded (P7: set by intent; not persisted before it) |
+| `context_scope` | levels allowed (L0–L4), extra refs pinned by the user, refs excluded (P7: set by intent; not persisted before it; as built, Mission has no `context_scope` field, only `context_package_id`) |
 | `context_package_id?` | the ContextPackage its `context_ready` move recorded (§5.3; P5) |
-| `dependencies[]` | other missions/decisions this waits on |
+| `dependencies[]` | other missions/decisions this waits on (not built: no such field on Mission) |
 | `priority` | integer; user-set; reprioritize = command. *P19.5:* default 0, higher first; it orders only dispatch across missions when capacity is contended (the engine pass) — never a routing, account or model input |
 | `max_replans` | default 2: replans allowed after the initial plan (0 = none); `replan_budget_exhausted` (state-machines §2) |
 | `held_from?` | the state the mission was in when it entered BLOCKED/PAUSED; `resume` and the `redispatch` guard read it (state-machines §2) |
@@ -275,14 +275,14 @@ the primary conversation; per-mission threads are P16's.
 | `decided_plan_version?` | the `plan_version` the mission last decided (auto-approved or sent for approval); both plan-decision guards refuse that plan again (state-machines §2) |
 | `autonomy_profile` | named policy overlay (e.g. `careful`, `standard`, `autonomous`) — see policy |
 | `resource_preferences` | optional per-mission routing overrides (preferred accounts, forbidden harnesses, cost ceiling) |
-| `verification_strategy`, `review_strategy` | chosen at planning; editable |
+| `verification_strategy`, `review_strategy` | chosen at planning; editable (not built: no such fields in the code) |
 | `state` | Mission machine (state-machines §2) |
-| `active_plan_id` | current Plan version |
-| `origin` | conversation (a chat message) / idea / automation / legacy_import / api (a route; the default) |
+| `active_plan_id` | current Plan version (not built: the plan in force is found through the plan rows) |
+| `origin` | conversation (a chat message) / idea / automation / legacy_import / api (a route); as built the entity default is `conversation` |
 | `origin_ref` | message id / idea id / automation_run id |
-| `progress` | 0–1, computed from task graph (weighted by task estimates), never typed by an agent |
-| `learned_at` | set when the learning pass has run; **learning is not a mission state** |
-| `blocked_reason?`, `paused_by?` | |
+| `progress` | 0–1, computed from task graph (weighted by task estimates), never typed by an agent (not a Mission field today) |
+| `learned_at` | set when the learning pass has run; **learning is not a mission state** (not built: no `learned_at` field on Mission) |
+| `blocked_reason?`, `paused_by?` | (not built: no such fields on Mission) |
 
 *As built (P19 B10, p19-design-gate §12 Slice 5b):* `Mission.resource_preferences` gains
 `directives`, the entries a user's message added (`{key, id, message_id, intent_id}`); a user
@@ -293,9 +293,9 @@ protected account. `intent.v1` gains `resource_directive` (accounts and harnesse
 Immutable once approved; a replan creates a new version (`plan_version` increments,
 `supersedes_plan_id`). Fields: `mission_id`, `plan_version` (the plan's number within its
 mission — distinct from the row's optimistic-concurrency `version`), `summary`, `assumptions[]` (origin-tagged),
-`risks[]`, `approval_points[]` (task ids / action classes that will need ASK), `rollback`,
+`risks[]`, `approval_points[]` (task ids / action classes that will need ASK; not a Plan field today), `rollback`,
 `estimated_cost` (bands, never precise — migration-kit rule), `state` (DRAFT → PROPOSED →
-APPROVED → SUPERSEDED / REJECTED), `authored_by` (brain principal + model used).
+APPROVED → SUPERSEDED / REJECTED), `authored_by` (brain principal + model used; not a Plan field today).
 *As built (P3.5):* the plan lifecycle has no declared edges, so a plan stays DRAFT and is the
 versioned strategy attached to its mission; the mission's states carry approval and
 supersession. *As built (P8, p8-design-gate D1-D3, D9, D12):* one row is one immutable
@@ -353,13 +353,13 @@ configured under Resources, not a row.)
 | `harness_id`, `account_id`, `model_id` | denormalised for queries |
 | `session_id` | the Session row (provider session identity lives in its `adapter_state`) |
 | `node_id` | where it runs (V1: always the local node) |
-| `mode` | headless / interactive_attached (user launched it themselves) / manual (user session tracked, not driven) |
+| `mode` | headless / interactive_attached (user launched it themselves) / manual (user session tracked, not driven) (as built, `mode` is a field of Session, not of Execution) |
 | `workdir` | real path or worktree path |
 | `process` | `{pid, create_time, registry_path}` — pid **plus creation time** guards against PID reuse |
 | `state` | Execution machine |
-| `started_at`, `ended_at`, `exit_reason` | `exit_reason`: ok / error / killed / lost / abandoned, with `exit_code` and the harness's reported summary (never the completion signal) |
+| `started_at`, `ended_at`, `exit_reason` | `exit_reason`: ok / error / killed / lost / abandoned (as built also rejected and handoff), with `exit_code` and the harness's reported summary (never the completion signal) |
 | `usage` | tokens in/out/cache, cost where known |
-| `context_pressure` | last computed ratio (continuity §) |
+| `context_pressure` | last computed ratio (continuity §); as built the field is named `pressure` |
 | `adapter_state` | opaque JSON owned by the harness adapter |
 | `inventory_sha256` | *P20, ADR-0049:* the artifact recording what its settings sources load and what became of each item (excluded, opted in, not excludable, recorded only), taken before the process exists; the spawn's flags are read from it |
 
@@ -408,7 +408,7 @@ structured_output, resume, headless, interactive), `structured_output` mechanism
 **prompted** — ADR-0022), `efforts` (the effort/thinking levels it accepts, its own scale),
 `enforcement` (**hook** | **sandbox** | **none** — how policy can be enforced inside it;
 resource-router §3), `state` (AVAILABLE / MISSING / MISCONFIGURED). Mirrors today's
-`harnesses.HARNESSES` descriptors. A new harness is a new adapter declaring these; no domain
+`harnesses.HARNESSES` descriptors (as built there is no `HARNESSES` symbol; each adapter class declares `capabilities()`). A new harness is a new adapter declaring these; no domain
 entity changes.
 
 ### 8.2 Account
@@ -427,7 +427,7 @@ An authenticated instance of a harness: one Claude config dir, one Codex home, o
 ### 8.3 Model and ModelOffer
 `Model` is a capability definition independent of accounts: `id` (e.g. `claude-opus-5-5`),
 `family`, `context_window`, `strengths` tags, `tier` (large / mid / small). `ModelOffer` says an
-account can use a model: `(account_id, model_id, available, discovered_at)`. The newest-model-
+account can use a model: `(account_id, model_id, available, discovered_at)` (as built, without `discovered_at`). The newest-model-
 following logic of `config.current_model()` / `models.roster()` produces offers for Claude Code;
 every other adapter reports its own (`Capabilities.models`). A model id is **that harness's
 vocabulary** (`claude-opus-5-5`; pi's `provider/id`, locally hosted models included) and is valid
@@ -443,7 +443,7 @@ user (or a standing rule the user created) approves it. `strengths` tags are not
 evidence: performance claims are ADR-0032's (DECLARED / OBSERVED / INFERRED / UNKNOWN, task-family
 scoped, no score). Execution gains `model_revision` and `served_model` with its level (REQUESTED /
 ROUTED / SERVED / BILLED); RouteDecision gains `task_family`, `capability_snapshot` and
-`escalated_from` (ADR-0033); Artifact gains its producer (ADR-0034); projects gain `data_class`
+`escalated_from` (ADR-0033; not in the code today); Artifact gains its producer (ADR-0034); projects gain `data_class`
 (ADR-0035).
 
 ### 8.4 ResourcePolicy (priority + allocation)
@@ -453,7 +453,7 @@ ROUTED / SERVED / BILLED); RouteDecision gains `task_family`, `capability_snapsh
 | `priority` | integer, 1 = most preferred. Ordering only. |
 | `allocation_pct` | ceiling on the provider's reported window utilisation that Archeus may drive the account to (resource-router §4) |
 | `reserve_pct` | headroom kept for the user's own interactive use |
-| `budgets` | optional `{tokens_per_day, cost_per_day, cost_per_month, concurrency, hours}` enforced from the usage ledger |
+| `budgets` | optional `{tokens_per_day, cost_per_day, cost_per_month, concurrency, hours}` (as built, only `tokens_per_day`, `cost_per_day` and `concurrency` are accepted) enforced from the usage ledger |
 | `project_allow[]`, `project_deny[]` | project restrictions |
 | `fallback` | allow / ask / deny — may the router fall back *to* this account without asking |
 | `brain_reserve_pct` | share reserved for Archeus's own reasoning calls |
@@ -527,9 +527,9 @@ row per owner, kind and name. An execution reads exactly its own account's and p
 | `scope_level` | GLOBAL / USER / WORKSPACE / PROJECT / MISSION / TASK |
 | `scope_ref` | id at that level |
 | `action_class` | read, web, write_repo, exec, git_commit, git_push, deploy, external_comm, destructive, spend, personal_data, install, credential (closed list; extended by migration) |
-| `match` | optional predicate: `{environment: prod, path_glob, command_glob, host_glob, max_cost_usd}` |
+| `match` | optional predicate: `{environment: prod, path_glob, command_glob, host_glob, max_cost_usd}` (as built, `MATCH_KEYS` has `branch_glob` and `min_cost_band`, and no `max_cost_usd`) |
 | `decision` | ALLOW / ASK / ALLOW_WITHIN_BOUNDARY / DENY |
-| `boundary` | for ALLOW_WITHIN_BOUNDARY: `{paths[], branches[], max_files, max_cost_usd, hosts[], time_window}` |
+| `boundary` | for ALLOW_WITHIN_BOUNDARY: `{paths[], branches[], max_files, max_cost_usd, hosts[], time_window}` (as built, `BOUNDARY_KEYS` is paths, branches, hosts, environments, `max_cost_band`) |
 | `locked` | when true, lower scopes cannot loosen it (DENY is always locked) |
 | `version`, `author_principal_id`, `note` | policies are versioned; every change is an event |
 
