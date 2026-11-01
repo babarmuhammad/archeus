@@ -156,6 +156,11 @@ def credential(conn, token_hash):
             'revoked_at': t['revoked_at']}
 
 
+def device_active(conn, device_id):
+    row = rows.get(conn, entities.Device, device_id)
+    return row is not None and row.entity.state == 'ACTIVE'
+
+
 def devices(conn):
     """Every client registration (entity `Device`, p15-design-gate §4), oldest
     first, with its credential's scopes and expiry and its derived step-up

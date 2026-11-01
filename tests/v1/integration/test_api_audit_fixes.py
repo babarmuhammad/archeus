@@ -29,3 +29,20 @@ def test_f2_a_device_cannot_pair_a_client_with_scopes_it_lacks(tc):
     assert r.json()['detail'] == {'scope': 'control'}
     ok = tc.http('POST', '/v1/devices/pair/start', token=token, body={'scopes': ['observe', 'admin']})
     assert ok.status == 200 and ok.json()['scopes'] == ['observe', 'admin']
+
+
+# ── F3: revoking a device cancels the codes it minted ──
+
+def test_f3_a_revoked_minters_launch_and_pair_codes_no_longer_redeem(tc):
+    device, token = _launch_device(tc, ['observe', 'admin'])
+    launch = tc.http('POST', '/v1/devices/launch/code', token=token,
+                     body={'scopes': ['observe', 'admin']}).json()['code']
+    pair = tc.http('POST', '/v1/devices/pair/start', token=token,
+                   body={'scopes': ['observe']}).json()['code']
+    assert tc.http('POST', '/v1/devices/%s/revoke' % device, body=_key()).status == 200
+    r = request(tc.base_url, 'POST', '/v1/devices/launch/redeem',
+                body={'code': launch, 'platform': 'web'})
+    assert (r.status, r.json()['error']) == (401, 'invalid_launch_code')
+    r = request(tc.base_url, 'POST', '/v1/devices/pair/redeem',
+                body={'code': pair, 'platform': 'web'})
+    assert (r.status, r.json()['error']) == (401, 'invalid_pairing_code')

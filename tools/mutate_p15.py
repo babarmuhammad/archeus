@@ -166,6 +166,14 @@ MUTATIONS = [
      "    for s in scopes:\n        if False:\n            raise Refused(403, 'scope_required', "
      "{'scope': s})")],
      [AF + '::test_f2_a_device_cannot_pair_a_client_with_scopes_it_lacks']),
+    ('M25', "a revoked minter's launch code still redeems", [(RTS,
+     "    if minter is None or not req.api.device_active(minter[1]):",
+     "    if minter is None:")],
+     [AF + '::test_f3_a_revoked_minters_launch_and_pair_codes_no_longer_redeem']),
+    ('M26', "a revoked starter's pairing code still redeems", [(RTS,
+     "    if grant is None or not req.api.device_active(grant['device_id']):",
+     "    if grant is None:")],
+     [AF + '::test_f3_a_revoked_minters_launch_and_pair_codes_no_longer_redeem']),
 ]
 
 

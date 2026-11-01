@@ -232,7 +232,7 @@ def launch_code(req):
 def launch_redeem(req):
     _loopback(req)
     minter = req.api.launch.redeem(req.body['code'])
-    if minter is None:
+    if minter is None or not req.api.device_active(minter[1]):      # a revoked minter's grant dies with it
         raise Refused(401, 'invalid_launch_code')
     # the token is made here and only its hash enters the command, which runs
     # with no idempotency key: nothing stores the response that carries it (A4)
@@ -263,7 +263,8 @@ def pair_start(req):
     for f in ('name', 'host_label'):
         if b.get(f) is not None and not b[f].strip():
             raise Invalid(f, 'is a non-empty string')
-    code = req.api.pairing.mint({'starter': req.principal['principal_id'], 'scopes': scopes,
+    code = req.api.pairing.mint({'starter': req.principal['principal_id'],
+                                 'device_id': req.principal['device_id'], 'scopes': scopes,
                                  'name': b.get('name'), 'host_label': b.get('host_label')})
     remote = req.api.origin.remote
     return 200, {'code': code, 'expires_in': int(auth.PAIR_TTL_S), 'scopes': scopes,
@@ -285,7 +286,7 @@ def pair_redeem(req):
     except auth.PairingLocked:
         raise Refused(429, 'pairing_locked', headers={
             'Retry-After': str(int(auth.PairingCodes.FAIL_WINDOW_S))}) from None
-    if grant is None:
+    if grant is None or not req.api.device_active(grant['device_id']):
         raise Refused(401, 'invalid_pairing_code')
     token = auth.new_token()
     expires = auth.iso(datetime.now(timezone.utc) + timedelta(days=auth.PAIRED_TOKEN_DAYS))

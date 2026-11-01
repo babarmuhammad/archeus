@@ -49,7 +49,7 @@ class _Rec:
 
 def _api(**over):
     api = SimpleNamespace(
-        db=None,
+        db=None, device_active=lambda device: True,
         origin=SimpleNamespace(local_host=lambda h: h == LOCAL_HOST, remote=None),
         launch=SimpleNamespace(mint=_Rec(ret='code-minted'), redeem=_Rec(ret=None)),
         pairing=SimpleNamespace(mint=_Rec(ret='CODE'), redeem=_Rec(ret=None)),
@@ -273,7 +273,8 @@ def test_a_launch_redeem_carries_only_the_token_hash_and_no_idempotency_key():
 
 def _pairing_with_code():
     pairing = auth.PairingCodes()
-    grant = {'starter': 'prn_s', 'scopes': ['observe'], 'name': None, 'host_label': None}
+    grant = {'starter': 'prn_s', 'device_id': 'dvc_s', 'scopes': ['observe'], 'name': None,
+             'host_label': None}
     return pairing, pairing.mint(grant)
 
 
