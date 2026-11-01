@@ -178,7 +178,11 @@ class Win32OriginApi:
             in_jobs = False
             for job in jobs:
                 inside = c.c_int32()
-                if self.kernel.IsProcessInJob(handle, job, c.byref(inside)) and inside.value:
+                # a failed probe is no evidence: reading it as "not in the Job" would let an
+                # orphaned execution attest as the user; a NULL handle means "any Job"
+                if not job or not self.kernel.IsProcessInJob(handle, job, c.byref(inside)):
+                    raise OSError('IsProcessInJob failed')
+                if inside.value:
                     in_jobs = True
             parent, name = self._entry(pid)
             return RawProcess(alive, created, parent, name, self._session(pid), in_jobs)

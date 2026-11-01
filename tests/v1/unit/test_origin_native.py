@@ -473,3 +473,89 @@ def test_a_worker_thread_that_cannot_start_gives_its_slot_back(monkeypatch):
             origin.bounded(lambda: 1)
     monkeypatch.setattr(threading.Thread, 'start', start)
     assert origin.bounded(lambda: 1) == 1
+
+
+# ── a failed Job probe is no evidence ──
+
+class Kernel:
+    """Win32 calls the real api makes for one process, answered by a script."""
+
+    def __init__(self, in_job=lambda job, inside: 0):
+        self.in_job = in_job
+
+    def OpenProcess(self, *a):
+        return 77
+
+    def CloseHandle(self, *a):
+        pass
+
+    def WaitForSingleObject(self, *a):
+        return origin_native.WAIT_TIMEOUT
+
+    def GetProcessTimes(self, handle, created, *rest):
+        created._obj.low, created._obj.high = 1, 2
+        return 1
+
+    def IsProcessInJob(self, handle, job, inside):
+        return self.in_job(job, inside._obj)
+
+    def CreateToolhelp32Snapshot(self, *a):
+        return 5
+
+    def Process32FirstW(self, *a):
+        return 0
+
+    def ProcessIdToSessionId(self, pid, session):
+        session._obj.value = SESSION
+        return 1
+
+
+def _win32(kernel):
+    api = object.__new__(origin_native.Win32OriginApi)
+    api.kernel = kernel
+    return api
+
+
+def _answers(value):
+    def in_job(job, inside):
+        inside.value = value
+        return 1
+    return in_job
+
+
+def test_a_job_probe_that_fails_is_a_reader_error_not_outside_the_job():
+    api = _win32(Kernel())
+    with pytest.raises(OSError, match='IsProcessInJob'):
+        api.process(1234, (0xdead,))
+
+
+def test_a_null_job_handle_is_refused_because_the_kernel_reads_it_as_any_job():
+    api = _win32(Kernel(_answers(0)))
+    with pytest.raises(OSError):
+        api.process(1234, (0,))
+
+
+@pytest.mark.parametrize('inside, expected', [(0, False), (1, True)])
+def test_a_probe_that_succeeds_says_whether_the_process_is_in_a_job(inside, expected):
+    assert _win32(Kernel(_answers(inside))).process(1234, (0xdead,)).in_jobs is expected
+
+
+def test_an_orphan_whose_job_probe_fails_is_not_attested_as_the_user():
+    api = _win32(Kernel())
+    r = native_readers(_Win32Rows(api), core_port=CORE, jobs=lambda: [JOB], clock=lambda: T0)
+    result = attest.attest_peer(**r.attest_kwargs(PEER))
+    assert not result.ok and result.failures == (attest.READER_ERROR,)
+
+
+class _Win32Rows:
+    def __init__(self, api):
+        self.api = api
+
+    def tcp_rows(self):
+        return [TcpRow('127.0.0.1', PEER, '127.0.0.1', CORE, ESTABLISHED, 1234)]
+
+    def process(self, pid, jobs):
+        return self.api.process(pid, jobs)
+
+    def core_session(self):
+        return SESSION
