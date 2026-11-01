@@ -17,7 +17,7 @@ from archeus.core.domain import ids
 from archeus.core.verification import evidence
 from archeus.infra.paths import VerifyPaths
 from archeus.node import isolation as iso
-from archeus.node import local, mxc_ledger
+from archeus.node import local, mxc_ledger, mxc_verifier
 
 from v1.integration.test_pv20_mxc_agent_path import (SEED, Traced, checks,  # noqa: F401
                                                      no_process)
@@ -92,12 +92,42 @@ def test_a_launcher_that_never_exits_is_a_timeout_and_is_ended(checks):
     assert result['output'] == b'hang\n'
     assert len(checks.jobs.closed) == 1
     launch = checks.boundary.launches[0]
-    for _ in range(500):                  # the drain meets its own deadline just after
-        if launch.end_state is not None:
-            break
-        time.sleep(0.01)
     assert launch.end_state is not None and checks.api.exited[1000] == 1
     assert evidence.check_of('test', 'runner check', ['runner'], result)['result'] == 'error'
+
+
+def used_after_close(checks):
+    late = []
+    for name in ('terminate_job', 'job_active_processes'):
+        real = getattr(checks.jobs, name)
+
+        def after_close(job, _real=real, _name=name):
+            if job in checks.jobs.closed:
+                late.append(_name)
+            return _real(job)
+        setattr(checks.jobs, name, after_close)
+    return late
+
+
+def test_a_run_that_stops_early_ends_the_launch_before_the_job_is_closed(checks):
+    late = used_after_close(checks)
+    checks.api.outcomes = script([outcome(launcher_exit=None, stdout=b'hang\n')])
+    run_one(checks, timeout=1)
+    launch = checks.boundary.launches[0]
+    assert launch.end_state is not None and late == []
+    assert checks.jobs.terminated == [launch.job]
+
+
+def test_a_run_that_fails_ends_the_launch_before_the_job_is_closed(checks, monkeypatch):
+    late = used_after_close(checks)
+
+    def broken(self, timeout=None):
+        raise RuntimeError('the wait failed')
+    monkeypatch.setattr(mxc_verifier.ConfinedChild, 'wait', broken)
+    checks.api.outcomes = script([outcome(launcher_exit=None)])
+    with pytest.raises(RuntimeError, match='the wait failed'):
+        run_one(checks)
+    assert len(checks.jobs.closed) == 1 and len(checks.jobs.terminated) == 1 and late == []
 
 
 def test_an_attempt_is_journalled_under_its_own_name_and_ends_with_a_completion(checks):

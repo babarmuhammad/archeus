@@ -82,6 +82,16 @@ MUTATIONS = [
     ('MV17', 'the transport options never reach the transport', [(LOCAL,
      'schema_validator, **(transport or {}))', 'schema_validator)')],
      [I + 'test_the_transport_is_bounded_by_the_cap_the_log_is_held_to', CAP]),
+    ('MV18', 'a run that stops early closes the Job under the drain', [(ISO,
+     "                _end_child(child, error or 'the verifier run ended')\n", '                pass\n')],
+     [I + 'test_a_run_that_stops_early_ends_the_launch_before_the_job_is_closed']),
+    ('MV19', 'a run that fails closes the Job under the drain', [(ISO,
+     "                    _end_child(child, 'the verifier run failed')\n", '                    pass\n')],
+     [I + 'test_a_run_that_fails_ends_the_launch_before_the_job_is_closed']),
+    ('MV21', 'a cancelled child does not stop its drain', [(CHILD,
+     '        self._stop.set()\n        self._thread.join(PUMP_JOIN_S)\n',
+     '        self._thread.join(0)\n')],
+     [U + 'test_cancel_stops_the_drain_and_ends_the_launch_with_the_first_reason']),
 ]
 
 

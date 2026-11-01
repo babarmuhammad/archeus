@@ -15,14 +15,22 @@ from archeus.node.mxc_verifier import ConfinedChild
 class Launch:
     def __init__(self, result=7, gate=None):
         self.result, self.gate, self.attached = result, gate, None
-        self.process = self
+        self.process, self.stop_reason, self.cancelled = self, None, None
 
     def attach(self, sink, stdin_reader):
         self.attached = (sink, stdin_reader)
 
-    def wait(self):
+    def cancel(self, *, reason):
+        self.cancelled = reason
+        return {'reason': reason}
+
+    def wait(self, cancelled=lambda: False):
         if self.gate is not None:
-            assert self.gate.wait(10)
+            while not cancelled():
+                if self.gate.wait(0.01):
+                    break
+            else:
+                raise mxc_native.MxcUnavailable('launcher cancelled during drain')
         if isinstance(self.result, BaseException):
             raise self.result
         return self.result
@@ -122,3 +130,13 @@ def test_a_launch_that_cannot_be_attached_leaves_no_file_open(files, monkeypatch
     with pytest.raises(mxc_native.MxcUnavailable, match='not attachable'):
         child(launch, files)
     assert len(opened) == 2 and all(f.closed for f in opened)
+
+
+def test_cancel_stops_the_drain_and_ends_the_launch_with_the_first_reason(files):
+    launch = Launch(gate=threading.Event())
+    c = child(launch, files)
+    assert c.wait(0) is None
+    assert c.cancel('over the cap') == {'reason': 'over the cap'}
+    assert c.wait(0) == 1 and c.fault == 'launcher_failed: launcher cancelled during drain'
+    c.cancel('second')
+    assert launch.stop_reason == 'over the cap' and launch.cancelled == 'second'

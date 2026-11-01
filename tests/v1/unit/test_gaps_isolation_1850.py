@@ -789,12 +789,12 @@ def test_spawn_hands_the_backend_it_was_built_with(monkeypatch, win32):
 # ── the line numbers this file and the report quote ───────────────────────────
 
 @pytest.mark.parametrize('method,line', [
-    ('_sid_str', 1898), ('available', 1911), ('create_profile', 1919),
-    ('create_job', 1942), ('job_facts', 1969), ('job_active_processes', 1978),
-    ('assign_job', 1988), ('close_job', 2000), ('close_handle', 2005),
-    ('job_handles_of', 2037), ('_handle_flags', 2074), ('token', 2113),
-    ('read_identity', 2131), ('_token_buffer', 2192), ('capability_grants', 2204),
-    ('open_inherited', 2266), ('launch', 2276), ('spawn', 2280),
+    ('_sid_str', 1912), ('available', 1925), ('create_profile', 1933),
+    ('create_job', 1956), ('job_facts', 1983), ('job_active_processes', 1992),
+    ('assign_job', 2002), ('close_job', 2014), ('close_handle', 2019),
+    ('job_handles_of', 2051), ('_handle_flags', 2088), ('token', 2127),
+    ('read_identity', 2145), ('_token_buffer', 2206), ('capability_grants', 2218),
+    ('open_inherited', 2280), ('launch', 2290), ('spawn', 2294),
 ])
 def test_the_branches_quoted_here_are_where_this_file_says_they_are(method, line):
     assert _definition_line(method) == line

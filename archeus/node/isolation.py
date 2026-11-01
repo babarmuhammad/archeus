@@ -1336,6 +1336,7 @@ class Isolation:
                                             for q in rows)]
         deadline = t0 + timeout
         late = 'timed out after %ds' % timeout
+        child = None
         try:
             try:
                 start = _tree_bytes(roots)
@@ -1363,12 +1364,18 @@ class Isolation:
             # the Job never outlives a failure here: closed, and the failure raised as it
             # was. No result is recorded and the profile is left for reclaim
             try:
-                self._close_job(key)
+                try:
+                    _end_child(child, 'the verifier run failed')
+                finally:
+                    self._close_job(key)
             except Exception:
                 pass
             raise
         try:
-            self._close_job(key)
+            try:
+                _end_child(child, error or 'the verifier run ended')
+            finally:
+                self._close_job(key)
         except (IsolationUnavailable, OSError) as err:
             error = error or 'shutdown_failed: %s' % err
         code = None if error else child.wait(0)
@@ -1420,6 +1427,13 @@ class Isolation:
             if time.monotonic() >= deadline:
                 return 'quiescence_unknown: %r still in the Job' % (n,)
             time.sleep(0.05)
+
+
+def _end_child(child, reason):
+    # a child that drains on a thread ends its own launch, which needs the Job still open
+    end = getattr(child, 'cancel', None)
+    if end is not None:
+        end(reason)
 
 
 def _tree_bytes(roots):

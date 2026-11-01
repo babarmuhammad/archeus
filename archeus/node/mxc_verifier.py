@@ -16,12 +16,14 @@ that refuses) is raised from `wait`, as it was before there was a thread.
 import threading
 
 from . import mxc_native, staging
+from .mxc_context import PUMP_JOIN_S
 
 
 class ConfinedChild:
     def __init__(self, launch, timeout, stdin_path, out_path):
         self.launch, self.fault, self.code, self._raised = launch, None, None, None
         self._late = 'timed out after %ds' % timeout
+        self._stop = threading.Event()
         self._stdin = open(stdin_path, 'rb')
         try:
             self._out = open(out_path, 'ab')
@@ -43,7 +45,7 @@ class ConfinedChild:
 
     def _drain(self):
         try:
-            self.code = self.launch.wait()
+            self.code = self.launch.wait(cancelled=self._stop.is_set)
         except TimeoutError:
             self.fault = self._late
         except staging.StageError as err:
@@ -54,6 +56,16 @@ class ConfinedChild:
             self._raised = err
         finally:
             self._close()
+
+    def cancel(self, reason):
+        """End the launch while the caller still holds its Job: the drain is told to stop and
+        ends the launch itself, so the Job is never closed under a drain that still ends
+        against it. The first reason is the one the launch records."""
+        if self.launch.stop_reason is None:
+            self.launch.stop_reason = reason
+        self._stop.set()
+        self._thread.join(PUMP_JOIN_S)
+        return self.launch.cancel(reason=reason)
 
     def wait(self, timeout=None):
         """The workload's exit code once the drain and the launch's end are over, 1 for
