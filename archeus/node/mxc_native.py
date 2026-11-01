@@ -233,17 +233,26 @@ class Process:
         if self._draining:
             self._stop = True       # the drain owns the handles: it ends the launch
             return
-        if not self._cancelled and self._handles:
+        failure = None
+        with self._lock:                # check and call are one step: a close between them leaves the call on a closed number
+            if self._cancelled or not self._handles:
+                return
             self._cancelled = True
             try:
                 if self.launcher_exit is None:
                     self.api.terminate_process(self.process_handle)
                 self.launcher_exit = 1
-            finally:
-                self.close()
+            except BaseException as err:
+                failure = err
+        try:
+            self.close()
+        finally:
+            if failure is not None:
+                raise failure
 
     def is_alive(self):
-        return bool(self._handles) and self.api.poll(self.process_handle) is None
+        with self._lock:
+            return bool(self._handles) and self.api.poll(self.process_handle) is None
 
     def wait(self, timeout=None, *, cancelled=lambda: False):
         if self._cancelled:

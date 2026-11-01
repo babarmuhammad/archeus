@@ -477,6 +477,29 @@ def test_two_closers_release_the_policy_lease_once():
     assert len(removed) == 1
 
 
+@pytest.mark.parametrize('call', ['terminate', 'is_alive'])
+def test_a_closer_cannot_close_the_launcher_handle_under_a_call_that_uses_it(call):
+    """terminate and is_alive checked the handle list and then called the kernel, outside
+    the lock: a canceller's close in between left TerminateProcess or the poll on a closed
+    number, which may name another process by then."""
+    api = FakeWin32()
+    _, child = create(api)
+    process, seen, closer = child.process_handle, [], []
+
+    def in_call(handle):
+        closer.append(threading.Thread(target=child.close))
+        closer[0].start()
+        closer[0].join(0.3)             # blocked on the lock, or it closes the handle here
+        seen.append(handle in api.handles)
+        return None
+
+    api.terminate_process = in_call
+    api.poll = in_call
+    getattr(child, call)()
+    closer[0].join(5)
+    assert seen == [True] and process not in api.handles
+
+
 def test_interrupt_during_spawn_still_kills_the_suspended_launcher(monkeypatch):
     api = FakeWin32()
     transport, policy, _ = setup(api)

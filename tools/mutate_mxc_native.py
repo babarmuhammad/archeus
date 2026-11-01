@@ -68,7 +68,8 @@ MUTATIONS = [
      'return None if self._handles else self.launcher_exit', 'return self.launcher_exit')],
      [S + 'test_poll_is_none_until_the_drain_has_returned_whatever_the_kernel_says']),
     ('N16', 'a terminated launcher never gets an exit code', [(NATIVE,
-     '                self.launcher_exit = 1\n            finally:', '                pass\n            finally:')],
+     '                self.launcher_exit = 1\n            except BaseException as err:',
+     '                pass\n            except BaseException as err:')],
      [S + 'test_a_sink_that_raises_ends_the_launch_with_its_own_error',
       S + 'test_deadline_expiry_keeps_the_output_so_far_and_kills_the_running_launcher']),
     ('N17', 'the Core can re-route output while the drain runs', [(NATIVE,
@@ -120,6 +121,14 @@ MUTATIONS = [
      "                self.api.remove_policy(*lease)\n"
      "                self._policy_lease = None\n")],
      [TEST + 'test_two_closers_release_the_policy_lease_once']),
+    ('N26', 'terminate calls the kernel on a launcher handle outside the lock', [(NATIVE,
+     "        with self._lock:                # check and call are one step: a close between them leaves the call on a closed number\n",
+     "        if True:\n")],
+     [TEST + 'test_a_closer_cannot_close_the_launcher_handle_under_a_call_that_uses_it[terminate]']),
+    ('N27', 'is_alive polls a launcher handle outside the lock', [(NATIVE,
+     "    def is_alive(self):\n        with self._lock:\n",
+     "    def is_alive(self):\n        if True:\n")],
+     [TEST + 'test_a_closer_cannot_close_the_launcher_handle_under_a_call_that_uses_it[is_alive]']),
 ]
 
 
