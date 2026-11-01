@@ -21,6 +21,7 @@ import stat
 import sys
 
 from ..infra import paths
+from . import linkscan, seed
 
 #: copied when present; `python.exe`, the versioned DLL and `Lib` are required
 FILES = ('python.exe', 'python3.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
@@ -342,3 +343,26 @@ def stage_mxc(source_root, destination, *, pins):
             raise StageError('MXC artifact changed during copy: %s' % rel)
     verify_mxc(destination, pins=pins)
     return destination
+
+
+def _seeded(act, *args):
+    try:
+        return act(*args, linkscan.multi_linked_files)
+    except seed.SeedError as err:
+        raise StageError(str(err)) from err
+
+
+def seed_execution(files, destination):
+    """The execution folder: *files* (relative path -> source file) copied, never linked,
+    into a fresh tree at *destination*, then hardlink and alias scanned."""
+    return _seeded(seed.seed_copy, files, destination)
+
+
+def import_results(source_root, files, destination):
+    """The data-only way back out of an execution folder, into a fresh tree."""
+    return _seeded(seed.import_back, source_root, files, destination)
+
+
+def recheck_execution(destination):
+    """Scans the folder again; the launcher calls it immediately before it launches."""
+    return _seeded(seed.recheck, destination)
