@@ -24,6 +24,7 @@ from ...infra.db import rows
 from ..application import sessions as S
 from ..application.world import Conflict
 from ..domain import entities
+from ..world.inspection import path_key
 
 log = logging.getLogger('archeus.sessions')
 
@@ -108,12 +109,31 @@ class SessionService:
 
     # ── operations ──
 
+    def _checked_cwd(self, cwd, project_id):
+        """The cwd is an existing absolute directory, inside a root of the
+        project when the session names one; a session resumed later launches there."""
+        if not (isinstance(cwd, str) and os.path.isabs(cwd)):
+            raise ValueError('cwd %r is not absolute' % (cwd,))
+        if not os.path.isdir(cwd):
+            raise ValueError('cwd %r is not a directory' % cwd)
+        if project_id is None:
+            return
+        with self.db.read() as r:
+            p = rows.get(r, entities.Project, project_id)
+        here = path_key(cwd)
+        if p is not None and not any(
+                here == k or here.startswith(k.rstrip(os.sep) + os.sep)
+                for k in map(path_key, p.entity.root_paths)):
+            raise ValueError('cwd %r is outside the project' % cwd)
+
     def register(self, actor, key=None, **kw):
+        self._checked_cwd(kw['cwd'], kw.get('project_id'))
         a, models, efforts = self.adapter(kw['harness_id'], need=())
         return self._do(S.open_session, actor, key, mode='manual', **kw)
 
     def launch(self, actor, key=None, **kw):
         """A new interactive session in a terminal."""
+        self._checked_cwd(kw['cwd'], kw.get('project_id'))
         a, models, efforts = self.adapter(kw['harness_id'], account_id=kw.get('account_id'))
         out = self._do(S.open_session, actor, key, mode='interactive_attached', launch=True,
                        models=models, efforts=efforts, **kw)
