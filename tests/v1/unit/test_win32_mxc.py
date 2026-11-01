@@ -352,3 +352,15 @@ def test_policy_lease_keeps_directory_holds_inside_an_exception_handler(monkeypa
     except RuntimeError:
         _, lease = api.protected_policy(b'{}')
     assert closed == [] and lease.directories
+
+
+@pytest.mark.parametrize('flags', [0x80404 | 0x01000000, 0x80404 | 1, 0x80404 | 0x10, 0x80004])
+def test_creation_flags_are_exactly_suspended_extended_unicode(monkeypatch, flags):
+    """T-665#1: only the required bits were checked, so BREAKAWAY_FROM_JOB or DEBUG passed."""
+    api, _ = fake_api(monkeypatch)
+    attributes = w.Attributes(c.create_string_buffer(128), (w.HANDLE * 3)(101, 102, 103))
+    api.functions['CreateProcessW'].callback = lambda *args: pytest.fail('created')
+    with pytest.raises(ValueError, match='suspended extended Unicode'):
+        api.create_process_w(application='cmd.exe', command_line='cmd', flags=flags,
+                             attributes=attributes, inherit_handles=True,
+                             std_handles=(101, 102, 103), cwd='C:/private', env={})

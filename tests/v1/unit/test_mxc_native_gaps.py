@@ -377,8 +377,14 @@ class Function:
 
 
 def test_environment_block_sorts_by_uppercased_key_and_double_terminates():
-    block = w.environment_block({'b': '1', 'B': '2', 'A': '3', 'a': '4'})
-    assert block[:17] == 'A=3\0a=4\0b=1\0B=2\0\0'
+    block = w.environment_block({'b': '1', 'C': '2', 'A': '3'})
+    assert block[:13] == 'A=3\0b=1\0C=2\0\0'
+
+
+def test_environment_block_refuses_names_that_differ_only_in_case():
+    # T-665#8: Windows folds names, so two spellings would be one ambiguous variable
+    with pytest.raises(ValueError, match='duplicate environment entry'):
+        w.environment_block({'PATH': 'a', 'Path': 'b'})
 
 
 def test_environment_block_of_no_variables_is_only_the_terminators():

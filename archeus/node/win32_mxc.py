@@ -101,6 +101,8 @@ def bind(kernel):
 
 
 def environment_block(env):
+    if len({key.upper() for key in env}) != len(env):
+        raise ValueError('duplicate environment entry')
     entries = []
     for key, value in sorted(env.items(), key=lambda item: item[0].upper()):
         if not key or '=' in key or '\0' in key or '\0' in value:
@@ -222,7 +224,7 @@ class Win32Api:
                          inherit_handles, std_handles, cwd, env) -> tuple:
         if not inherit_handles or tuple(attributes.handles) != tuple(std_handles):
             raise ValueError('standard handles must equal inheritance list')
-        if flags & 0x80404 != 0x80404:
+        if flags != 0x80404:
             raise ValueError('suspended extended Unicode creation required')
         startup = StartupInfoEx()
         startup.startup.cb = c.sizeof(startup)
