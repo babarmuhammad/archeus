@@ -53,7 +53,7 @@ def test_build_headless_args_is_the_argv_memory_always_sent():
     args, stdin = llmcall.build_headless_args(
         'claude', 'do it', 'm1', ['--max-budget-usd', '2'], ('--output-format', 'json'))
     assert args == ['claude', '-p', '--max-turns', '20', '--disallowedTools',
-                    'Write,Edit,NotebookEdit,Bash', '--model', 'm1',
+                    'Write,Edit,MultiEdit,NotebookEdit,Bash,PowerShell,WebFetch,WebSearch,Task', '--model', 'm1',
                     '--max-budget-usd', '2', '--output-format', 'json']
     assert stdin == 'do it\n\n' + HEADLESS_MARK
     args, _ = llmcall.build_headless_args('claude', None)
@@ -84,7 +84,7 @@ def test_memory_headless_call_routes_through_the_seam(monkeypatch):
     assert memory._claude_stdin('P', '/cwd', model='mx', extra_args=('--x',)) == 'ok'
     assert calls, 'memory must build its argv through llmcall'
     assert seen['args'] == ['claude.exe', '-p', '--max-turns', '20', '--disallowedTools',
-                            'Write,Edit,NotebookEdit,Bash', '--model', 'mx',
+                            'Write,Edit,MultiEdit,NotebookEdit,Bash,PowerShell,WebFetch,WebSearch,Task', '--model', 'mx',
                             '--max-budget-usd', '1', '--x']
     assert seen['kw']['input_text'] == 'P\n\n' + HEADLESS_MARK
 
@@ -431,3 +431,13 @@ def test_every_guard_names_the_same_variable():
     for name in GUARDED + ('limit_hook',):
         with open(os.path.join(PKG, name + '.py'), encoding='utf-8') as f:
             assert "os.environ.get('ARCHEUS_EXECUTION_ID')" in f.read(), name
+
+
+def test_the_read_only_own_call_denies_every_write_exec_and_network_tool():
+    """PowerShell, MultiEdit, WebFetch, WebSearch and Task were left open on a
+    call whose prompt carries repo and transcript text (audit H-08)."""
+    from claude_sessions import plan_execute
+    denied = set(llmcall.DISALLOWED_TOOLS.split(','))
+    assert {'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash', 'PowerShell', 'WebFetch',
+            'WebSearch', 'Task'} <= denied
+    assert plan_execute._llmcall.DISALLOWED_TOOLS == llmcall.DISALLOWED_TOOLS

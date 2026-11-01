@@ -417,7 +417,7 @@ def test_pi_with_no_tools_gets_no_tools_and_no_extensions(monkeypatch, tmp_path)
 def test_every_other_own_call_keeps_its_argv(monkeypatch, tmp_path):
     (cmd,), _ = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller())
     assert cmd[:6] == ['C:/x/claude.exe', '-p', '--max-turns', '20', '--disallowedTools',
-                       'Write,Edit,NotebookEdit,Bash']
+                       'Write,Edit,MultiEdit,NotebookEdit,Bash,PowerShell,WebFetch,WebSearch,Task']
     assert '--tools' not in cmd
     (cmd,), _ = _call(monkeypatch, tmp_path, real.PiCaller())
     assert cmd == ['C:/x/pi.exe', '-p', '--no-session', '--tools', 'read,grep,find,ls']

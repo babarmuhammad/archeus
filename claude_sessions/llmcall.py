@@ -26,7 +26,7 @@ from collections import namedtuple
 
 #: every archeus-owned headless call: read-only tools, bounded turns
 MAX_TURNS = '20'
-DISALLOWED_TOOLS = 'Write,Edit,NotebookEdit,Bash'
+DISALLOWED_TOOLS = 'Write,Edit,MultiEdit,NotebookEdit,Bash,PowerShell,WebFetch,WebSearch,Task'
 
 #: returncode is None when no exit code exists (spawn failure, timeout, crash);
 #: `reason` is what claude said, `error` the one-line record written to the log

@@ -16,6 +16,7 @@ import re
 import subprocess
 
 from . import config as _c
+from . import llmcall as _llmcall
 from . import store
 
 PLAN_FILE = os.path.join(store.WORKDIR, 'plan-latest.md')
@@ -203,7 +204,7 @@ def _plan(task, plan_model, cwd, effort='', cfgdir=''):
         "plan as markdown.\n\n" + WEAK_MODEL_PLAN_INSTRUCTIONS +
         "\n\nTASK:\n" + task
     )
-    args = [exe, '-p', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
+    args = [exe, '-p', '--disallowedTools', _llmcall.DISALLOWED_TOOLS]
     if plan_model:
         args += ['--model', plan_model]
     if effort:
@@ -255,7 +256,7 @@ def _headless(model, prompt, cwd, prov_env=None, cfgdir='', prof=None):
     exe = get_claude_exe()
     if not exe:
         return ''
-    args = [exe, '-p', '--disallowedTools', 'Write,Edit,NotebookEdit,Bash']
+    args = [exe, '-p', '--disallowedTools', _llmcall.DISALLOWED_TOOLS]
     if model:
         args += ['--model', model]
     # a council is N extra calls per plan — exactly where an uncapped spend adds up
