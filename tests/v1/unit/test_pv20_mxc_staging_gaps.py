@@ -297,3 +297,9 @@ def test_start_rescans_the_grants_of_the_compiled_policy(launch_args, tmp_path):
     assert backend.calls == ['compile']               # spawn never reached
     assert launch.process is None
 
+
+
+def test_a_missing_grant_is_a_stage_error_not_a_bare_file_not_found(tmp_path):
+    # T-664#3: scan_grants((missing,)) raised FileNotFoundError, outside the StageError contract
+    with pytest.raises(staging.StageError, match='unreadable entry'):
+        staging.scan_grants((str(tmp_path / 'no' / 'such' / 'path'),))

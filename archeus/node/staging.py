@@ -37,7 +37,10 @@ class StageError(OSError):
 
 
 def _entry(path, is_dir=None):
-    st = os.lstat(path)
+    try:
+        st = os.lstat(path)
+    except OSError as err:
+        raise StageError('unreadable entry: %s' % path) from err
     if stat.S_ISLNK(st.st_mode) or \
             getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
         raise StageError('an alias, never followed: %s' % path)
