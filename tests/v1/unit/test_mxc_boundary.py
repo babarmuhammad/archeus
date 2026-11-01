@@ -164,7 +164,7 @@ def gate(monkeypatch):
     monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
 
 
-def make(tmp_path, sdk, *, outcomes=(), **over):
+def make(tmp_path, sdk, *, cls=MxcBoundary, outcomes=(), **over):
     events = []
     jobs, api = Jobs(events), LauncherApi(outcomes, events)
     ledger = mxc_ledger.Ledger(tmp_path / 'ledger')
@@ -174,7 +174,7 @@ def make(tmp_path, sdk, *, outcomes=(), **over):
               outcome=lambda process: api.agent[process.pid],
               resource_reader=lambda execution_id, owner: True)
     kw.update(over)
-    return SimpleNamespace(boundary=MxcBoundary(**kw), jobs=jobs, api=api, ledger=ledger,
+    return SimpleNamespace(boundary=cls(**kw), jobs=jobs, api=api, ledger=ledger,
                            events=events)
 
 
@@ -261,7 +261,7 @@ def test_a_name_that_is_not_a_principal_is_refused_before_it_is_reserved(tmp_pat
     assert h.boundary._reserved == {}
 
 
-def _journal(h, name, *ops):
+def seed_journal(h, name, *ops):
     digest = '0' * 64
     facts = {'intent': dict(requested_policy_digest=digest, planned=[], applied=[],
                             observed={}),
@@ -279,7 +279,7 @@ def test_a_generation_that_never_ended_with_a_completion_refuses_the_next_identi
         tmp_path, sdk, ops):
     h = make(tmp_path, sdk)
     eid = new_execution_id()
-    _journal(h, mxc_ledger.journal_name(eid, 1), *ops)
+    seed_journal(h, mxc_ledger.journal_name(eid, 1), *ops)
     with pytest.raises(iso.IsolationUnavailable, match='generation_unresolved') as err:
         h.boundary.create_profile(eid)
     assert mxc_ledger.journal_name(eid, 1) in str(err.value)
@@ -299,17 +299,17 @@ def test_a_damaged_generation_refuses_the_next_identity(tmp_path, sdk):
 def test_only_a_later_generation_that_is_open_counts_after_a_completed_one(tmp_path, sdk):
     h = make(tmp_path, sdk)
     eid = new_execution_id()
-    _journal(h, mxc_ledger.journal_name(eid, 1), 'intent', 'ownership', 'disposal',
+    seed_journal(h, mxc_ledger.journal_name(eid, 1), 'intent', 'ownership', 'disposal',
              'completion')
     assert h.boundary.create_profile(eid)['created'] is True
-    _journal(h, mxc_ledger.journal_name(eid, 2), 'intent')
+    seed_journal(h, mxc_ledger.journal_name(eid, 2), 'intent')
     with pytest.raises(iso.IsolationUnavailable, match='-p2'):
         h.boundary.create_profile(eid)
 
 
 def test_another_executions_open_generation_is_not_this_ones(tmp_path, sdk):
     h = make(tmp_path, sdk)
-    _journal(h, mxc_ledger.journal_name(new_execution_id(), 1), 'intent')
+    seed_journal(h, mxc_ledger.journal_name(new_execution_id(), 1), 'intent')
     assert h.boundary.create_profile(new_execution_id())['created'] is True
 
 
@@ -580,7 +580,7 @@ def test_the_launch_is_built_from_the_native_parts_and_nothing_else(launched):
 
 def test_a_resume_is_the_next_process_generation(launched):
     assert launched.go().kw['process_seq'] == 1
-    _journal(launched.h, mxc_ledger.journal_name(launched.req.execution_id, 1), 'intent',
+    seed_journal(launched.h, mxc_ledger.journal_name(launched.req.execution_id, 1), 'intent',
              'ownership', 'disposal', 'completion')
     assert launched.go().kw['process_seq'] == 2
 

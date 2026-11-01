@@ -1,18 +1,20 @@
+# ruff: noqa: F811  (the imported fixtures are taken as arguments)
 """T-457: the agent path and the verifier path over the closed MXC seam.
 
 Both paths run through production code — `base.spawn` → `IsolationContext.launch` for
 an agent, `LocalNode.run_confined_check` → `Isolation.run_confined` for a verifier —
-down to the boundary seam. What stands in for the Windows MXC boundary is
-`MxcBoundary` below: it does what such a boundary does, which is compile the policy of
-the process it is asked to launch with Core's own compiler (`mxc.compile_policy`) and
-spawn it through `mxc.spawn`, by way of the one production MXC launch,
-`local.MxcLaunch`, into the Job Core already holds. `mxc.FakeMxc` scripts the launcher
-and the workload outcome separately, which is what `mxc.FakeOutcome` is for.
+into the production `MxcBoundary`, which compiles the policy of the process it is asked to
+launch with Core's own compiler (`mxc.compile_policy`) and spawns it through `local.MxcLaunch`
+over the native transport, into the Job Core already holds. What stands in for Windows
+are the injected fakes of `test_mxc_boundary`: `LauncherApi` scripts the launcher and the
+workload outcome separately, and `Jobs` is the Job and process half. `Traced` adds only a
+tap on what the boundary launches.
 
 Nothing here starts a process, opens a socket or calls a Windows API: `no_process`
 fails the test if `subprocess.Popen`, `proc.run`, `proc.spawn_detached` or
 `local._stream` is reached, and `os_tripwire` (imported from the unit file, the way
 tests here share fixtures) fails it again at teardown for the native primitives.
+Native admission is closed in the shipped code; `gate` opens it for a test over those fakes.
 """
 
 import dataclasses
@@ -32,10 +34,12 @@ from archeus.harnesses import base
 from archeus.infra.paths import (ExecPaths, VerifyPaths, isolation_state,
                                  processes_registry, verify_consumed)
 from archeus.node import isolation as iso
-from archeus.node import local, mxc, mxc_native, staging
+from archeus.node import local, mxc, mxc_ledger, mxc_native, staging
+from archeus.node.mxc_boundary import MxcBoundary
 
-from v1.unit.test_pv20_isolation import (FakeBoundary, make_satisfying_request,
-                                         os_tripwire)
+from v1.unit.test_mxc_boundary import (Jobs, gate, make, outcome, script,  # noqa: F401
+                                       seed_journal, sdk)
+from v1.unit.test_pv20_isolation import make_satisfying_request, os_tripwire  # noqa: F401
 
 #: the commit a verifier's checkout is exported from, and an import sits on
 SEED = 'b' * 40
@@ -53,111 +57,37 @@ def record(mode, oid, size, path):
                                       path.encode())
 
 
-# ── the fakes: an MXC boundary, and the launcher behind it ────────────────────
+# ── the boundary under test, and the fakes behind it ──────────────────────────
 
-def outcome(launcher_exit=0, agent_outcome=3, stdout=b'', stderr=b''):
-    """The launcher's own exit, kept apart from what the workload reports."""
-    return mxc.FakeOutcome(launcher_exit=launcher_exit, agent_outcome=agent_outcome,
-                           stdout=stdout, stderr=stderr)
+class Traced(MxcBoundary):
+    """The production boundary with a tap on what it is asked to launch, and the knobs
+    these tests turn: a refusal, a change made between the grants and the launch, and
+    what Core's Job close does to a tree it holds."""
 
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.launch_calls, self.launches, self.held = [], [], []
+        self.launch_ok = True
+        self.before_grant = self.before_launch = None
 
-def script(specs):
-    """One scripted answer per launch; the last repeats."""
-    specs = list(specs) or [outcome()]
-    while True:
-        for spec in specs:
-            yield spec
+    def create_profile(self, execution_id):
+        if self.before_grant is not None:
+            self.before_grant()
+        return super().create_profile(execution_id)
 
-
-class Transport:
-    """What an MXC boundary holds behind its seam: Core's policy compiler in front of
-    `mxc.spawn`, which admits nothing of its own while `NATIVE_RUN_ENABLED` is False."""
-
-    compile_policy = staticmethod(mxc.compile_policy)
-
-    def __init__(self, outcomes=()):
-        self.launcher = mxc.FakeMxc(script(outcomes))
-        self.spawned = []
-
-    def spawn(self, policy, *, exe, job):
-        self.spawned.append((policy, exe, job))
-        return mxc.spawn(policy, exe=exe, job=job, backend=self.launcher)
-
-
-class MxcBoundary(FakeBoundary):
-    """A boundary that launches: it hands `local.MxcLaunch` the policy of the one
-    process it is asked to start, and returns that launch as the child.
-
-    `env_rows` is what the boundary's own side of the host adds to the environment
-    block — a Windows boundary's `SYSTEMROOT`, which the caller's built-from-nothing
-    environment has no business naming — and `kill_on_close` is what Core's Job close
-    does to a tree it holds.
-    """
-
-    def __init__(self, *, sdk, readonly=(), denied=(), outcomes=(), agent=None):
-        super().__init__()
-        self.sdk_root, self.pins = sdk
-        self.readonly, self.denied = tuple(readonly), tuple(denied)
-        self.backend = Transport(outcomes)
-        self.launches = []
-        self.serial = 0
-        self.outcome_reader = agent if agent is not None else (lambda p: p.agent_outcome)
-        self.env_rows = {'SYSTEMROOT': 'C:\\Windows'}
-        self.timeout_ms = 5000
-        self.kill_on_close = False
-        self.before_construct = None
-        self.before_start = None
-        self.held = []
-
-    def host_env(self, env):
-        """The environment block with this boundary's rows added for the names it does
-        not already carry: on Windows Core builds `SystemRoot` itself, and the same name
-        twice, whatever its case, is a policy error."""
-        have = {name.upper() for name in env}
-        return {**env, **{k: v for k, v in self.env_rows.items() if k.upper() not in have}}
-
-    def launch(self, argv, *, cwd, env, profile, job, stdin, stdout, **extra):
-        call = {'argv': list(argv), 'cwd': cwd, 'env': dict(env), 'profile': profile,
-                'job': job, 'stdin': stdin, 'stdout': stdout}
-        call.update({k: v for k, v in extra.items()})
-        self.launch_calls.append(call)
+    def launch(self, argv, *, cwd, env, profile, job, stdin, stdout):
+        self.launch_calls.append({'argv': list(argv), 'cwd': cwd, 'env': dict(env),
+                                  'profile': profile, 'job': job, 'stdin': stdin,
+                                  'stdout': stdout})
         if not self.launch_ok:
             raise iso.IsolationUnavailable('launch', 'synthetic refusal')
-        if self.before_construct is not None:
-            self.before_construct()
-        launch = local.MxcLaunch(backend=self.backend, sdk_root=self.sdk_root,
-                                 pins=self.pins, outcome=self.outcome_reader,
-                                 workspace=cwd, readonly=self.readonly,
-                                 denied=self.denied, cwd=cwd,
-                                 command_line=' '.join(argv),
-                                 env=self.host_env(env),
-                                 timeout_ms=self.timeout_ms)
+        if self.before_launch is not None:
+            self.before_launch()
+        launch = super().launch(argv, cwd=cwd, env=env, profile=profile, job=job,
+                                stdin=stdin, stdout=stdout)
         self.launches.append(launch)
         self.held.append((launch, job))
-        if self.before_start is not None:
-            self.before_start()
-        launch.start(job=job)
-        # what the boundary owes the caller: the inherited handles are the files Core
-        # opened, and the workload's answer is the bytes it printed into them
-        path = stdout.get('stdio') if isinstance(stdout, dict) else stdout
-        if isinstance(path, str) and launch.process is not None:
-            with open(path, 'ab' if stdout.get('mode') == 'append' else 'wb') as f:
-                f.write(launch.process.stdout.getvalue())
         return launch
-
-    def create_job(self, execution_id):
-        # an unnamed, non-inheritable Job of its own, as a real one is: distinct
-        # handles, so a resume can never be handed the closed Job of the process before
-        return dict(super().create_job(execution_id),
-                    handle='synthetic-job-%d' % (self.serial + 1,))
-
-    def close_job(self, job):
-        self.serial += 1
-        super().close_job(job)
-        if self.kill_on_close:
-            for launch, held in self.held:
-                if held is job and launch.process is not None:
-                    launch.process.terminate()
 
 
 class FakeWin32:
@@ -179,20 +109,6 @@ class FakeWin32:
                 raise AssertionError('the native transport reached %s' % name)
             return reached
         raise AttributeError(name)
-
-
-@pytest.fixture
-def sdk(tmp_path):
-    """An expanded MXC SDK: the two artifacts the reviewed pin names, and no other."""
-    root = tmp_path / 'mxc-sdk'
-    (root / 'bin' / 'x64').mkdir(parents=True)
-    (root / 'package.json').write_text(
-        json.dumps({'name': staging.MXC_PACKAGE, 'version': staging.MXC_VERSION}),
-        encoding='utf-8')
-    (root / staging.MXC_EXE).write_bytes(b'the fake launcher')
-    pins = {rel: hashlib.sha256((root / rel).read_bytes()).hexdigest()
-            for rel in ('package.json', staging.MXC_EXE)}
-    return str(root), pins
 
 
 @pytest.fixture(autouse=True)
@@ -237,10 +153,17 @@ class Agent:
         self.stops.append(handle)
 
 
+def kill_on_close(case):
+    """What Core's Job close does to a tree it holds."""
+    case.jobs.on_close.append(lambda job: [launch.process.terminate() for launch, held in
+                                           case.boundary.held if held is job
+                                           and launch.process is not None])
+
+
 def agent_case(tmp_path, sdk, **kw):
     """A node whose isolated launches reach the MXC transport, under a plan that
-    satisfies §3.4: the execution's own work dir as its one writable grant (the shape
-    `Isolation.default_plan` gives it), everything else read and execute only."""
+    satisfies §3.4: the execution's own work dir as its workspace and the mailbox and
+    state rows writable, everything else read and execute only."""
     eid = ids.new_id('execution')
     planned = make_satisfying_request(eid, str(tmp_path / 'layout'))
     work = ExecPaths(eid).work
@@ -250,25 +173,26 @@ def agent_case(tmp_path, sdk, **kw):
     grants = tuple(iso.Grant(work, g.access, g.row) if g.row == 'workspace' else g
                    for g in planned.grants)
     request = dataclasses.replace(planned, workspace=work, grants=grants)
-    boundary = MxcBoundary(sdk=sdk, readonly=(request.grant_for('runtime').path,), **kw)
+    h = make(tmp_path, sdk, cls=Traced, **kw)
     node = local.LocalNode()
     # the node is the authority's instrument, as it is in production: the registry the
     # §3.7 evidence lands in is the one reconciliation reads
-    authority = iso.Isolation(node, boundary=boundary, plan=lambda spec: request)
+    authority = iso.Isolation(node, boundary=h.boundary, plan=lambda spec: request)
     node.isolation = authority
     spec = base.ExecutionSpec(execution_id=eid, prompt='go', workdir=work)
-    return SimpleNamespace(node=node, authority=authority, boundary=boundary,
+    return SimpleNamespace(node=node, authority=authority, boundary=h.boundary, jobs=h.jobs,
+                           api=h.api, ledger=h.ledger, events=h.events,
                            request=request, spec=spec, agent=Agent(),
                            runtime=request.grant_for('runtime').path, work=work)
 
 
 @pytest.fixture
-def checks(tmp_path, sdk, monkeypatch):
+def checks(tmp_path, sdk, gate, monkeypatch):
     """Confined verifier checks, driven by the real `run_confined_check`."""
     tool = tmp_path / 'staged' / 'toolchain'
     tool.mkdir(parents=True)
     (tool / 'runner.exe').write_bytes(b'the staged runner')
-    boundary = MxcBoundary(sdk=sdk, readonly=(str(tool),))
+    h = make(tmp_path, sdk, cls=Traced)
     recorded = []
 
     def export(project_id, revision, dest, workdirs, deadline):
@@ -279,7 +203,7 @@ def checks(tmp_path, sdk, monkeypatch):
 
     monkeypatch.setattr(local, '_export_tree', export)
     node = local.LocalNode()
-    node.isolation = iso.Isolation(node, boundary=boundary)
+    node.isolation = iso.Isolation(node, boundary=h.boundary)
 
     def run(verification_id, attempt, argv=('runner', 'check'), timeout=30):
         return node.run_confined_check(verification_id, attempt, list(argv),
@@ -287,8 +211,8 @@ def checks(tmp_path, sdk, monkeypatch):
                                        record=recorded.append, project_id='proj',
                                        revision=SEED, workdirs=[])
 
-    return SimpleNamespace(node=node, boundary=boundary, run=run, recorded=recorded,
-                           tool=str(tool))
+    return SimpleNamespace(node=node, boundary=h.boundary, jobs=h.jobs, api=h.api,
+                           events=h.events, run=run, recorded=recorded, tool=str(tool))
 
 
 def registry_lines():
@@ -324,8 +248,8 @@ def test_two_fresh_verifiers_get_two_executions_of_their_own(checks):
     assert [r['confinement']['ac_profile'] for r in results] == [c['profile']
                                                                  for c in calls]
     assert len({c['profile'] for c in calls}) == 3
-    assert len({r['confinement']['ac_sid'] for r in results}) == 3
-    assert [c['job'] for c in calls] == [s[2] for s in checks.boundary.backend.spawned]
+    assert {r['confinement']['ac_sid'] for r in results} == {''}      # no SID exists to claim
+    assert [a[0] for a in checks.jobs.assigned] == [c['job'] for c in calls]
     assert len({tuple(sorted(c['job'].items())) for c in calls}) == 3
     assert [c['cwd'] for c in calls] == [VerifyPaths(v, n).checkout for v, n in attempts]
     for (vid, n), call in zip(attempts, calls):
@@ -335,21 +259,20 @@ def test_two_fresh_verifiers_get_two_executions_of_their_own(checks):
         assert call['env']['USERPROFILE'] == os.path.dirname(p.checkout)
         assert not [k for k in call['env']
                     if k.startswith(('ARCHEUS_', 'CLAUDE_', 'GIT_', 'HTTP', 'SSH_'))]
-    for (vid, n), (policy, exe, _job) in zip(attempts,
-                                             checks.boundary.backend.spawned):
-        fs = policy.raw['filesystem']
+    for (vid, n), launch, made in zip(attempts, checks.boundary.launches,
+                                      checks.api.created):
+        fs = launch.policy.raw['filesystem']
         checkout = os.path.normpath(VerifyPaths(vid, n).checkout)
-        assert fs['readwritePaths'] == [checkout]
+        assert fs['readwritePaths'] == [checkout, os.path.dirname(checkout)]
         assert fs['readonlyPaths'] == [os.path.normpath(checks.tool)]
         assert fs['deniedPaths'] == []
-        assert policy.raw['process']['cwd'] == checkout
-        assert policy.raw['ui']['disable'] is True
-        assert os.path.basename(exe) == os.path.basename(staging.MXC_EXE)
-    assert checks.boundary.backend.launcher.events[:4] == ['create_suspended',
-                                                           'assign_job', 'verify_job',
-                                                           'resume']
-    assert checks.boundary.closed == [c['job'] for c in calls]
-    assert checks.boundary.profiles == set()          # every identity released
+        assert launch.policy.raw['process']['cwd'] == checkout
+        assert launch.policy.raw['ui']['disable'] is True
+        assert os.path.basename(made['application']) == os.path.basename(staging.MXC_EXE)
+    assert checks.events[:4] == ['create_suspended', 'assign_job', 'verify_job', 'resume']
+    assert checks.jobs.closed == [c['job'] for c in calls]
+    for vid, n in attempts:                            # every identity released
+        assert not checks.boundary.profile_exists(iso.Principal('verify', vid, n).key)
 
 
 def test_an_attempt_is_admitted_once_and_a_second_reading_of_it_is_refused(checks):
@@ -369,13 +292,13 @@ def test_an_attempt_is_admitted_once_and_a_second_reading_of_it_is_refused(check
 
 
 def test_the_verdict_is_the_workloads_exit_not_a_claim_the_process_printed(checks):
-    checks.boundary.backend.launcher.outcomes = script(
+    checks.api.outcomes = script(
         [outcome(launcher_exit=0, agent_outcome=1,
                  stdout=b'{"ok": true, "exit_code": 0, "verdict": "pass"}\n')])
     result = checks.run(ids.new_id('verification'), 0)
     assert result['exit_code'] == 1 and result['error'] is None
-    assert b'"verdict": "pass"' in result['output']
     launch = checks.boundary.launches[0]
+    assert b'"verdict": "pass"' in launch.process.stdout.getvalue()   # the claim, unread
     assert launch.launcher_exit == 0            # the launcher's own success, unused
     assert launch.process.stdout.tell() == 0    # never read for the verdict
     assert checks.recorded == [result]
@@ -385,13 +308,16 @@ def test_the_verdict_is_the_workloads_exit_not_a_claim_the_process_printed(check
 def test_a_workload_outcome_that_is_not_an_exit_code_is_refused(checks, forged):
     """The outcome reader is Core's and bound to this process: a launcher answering
     anything else is no verdict, and the Job goes before the answer can be retried."""
-    checks.boundary.backend.launcher.outcomes = script(
-        [outcome(launcher_exit=0, agent_outcome=forged)])
+    checks.api.outcomes = script([outcome(launcher_exit=0, agent_outcome=forged)])
+    verification_id = ids.new_id('verification')
     with pytest.raises(staging.StageError, match='outcome is unavailable'):
-        checks.run(ids.new_id('verification'), 0)
+        checks.run(verification_id, 0)
     assert checks.recorded == []
-    assert len(checks.boundary.closed) == 1
-    assert checks.boundary.deleted == []        # the profile is left for reclaim
+    assert len(checks.jobs.closed) == 1
+    # the profile is left for reclaim: its name is still held and no residue was written
+    assert checks.boundary.profile_exists(iso.Principal('verify', verification_id, 0).key)
+    assert not os.path.exists(os.path.join(checks.boundary.ledger.root,
+                                           'registration-residue.log'))
 
 
 @pytest.mark.parametrize('when', ['prepare', 'grant', 'launch'])
@@ -403,18 +329,21 @@ def test_a_grant_with_a_second_name_for_one_file_is_refused_at_every_scan(checks
     if when == 'prepare':
         link_second_name(checks.tool, 'second.txt')
     elif when == 'grant':
-        checks.boundary.before_construct = lambda: link_second_name(checkout,
-                                                                     'second.txt')
+        checks.boundary.before_grant = lambda: link_second_name(checkout, 'second.txt')
     else:
-        checks.boundary.before_start = lambda: link_second_name(checkout, 'second.txt')
+        checks.boundary.before_launch = lambda: link_second_name(checkout, 'second.txt')
     result = checks.run(verification_id, 0)
-    assert result['exit_code'] is None and 'a second name' in result['error']
-    expected = 'prepare_failed' if when == 'prepare' else 'launch_failed'
+    assert result['exit_code'] is None
+    expected = {'prepare': 'prepare_failed', 'grant': 'isolation: condition_unmet:grants',
+                'launch': 'launch_failed'}[when]
     assert result['error'].startswith(expected)
+    if when != 'grant':                  # the grant read says only that the row is not held
+        assert 'a second name' in result['error']
     # the gate refused it, not the policy compiler's own scan, and before a spawn
     assert 'invalid MXC policy' not in result['error']
-    assert checks.boundary.backend.spawned == []
-    assert len(checks.boundary.launches) == (0 if when in ('prepare', 'grant') else 1)
+    assert checks.api.created == [] and checks.api.policies == []
+    assert checks.boundary.launches == []
+    assert len(checks.boundary.launch_calls) == (1 if when == 'launch' else 0)
     assert len(checks.recorded) == 1
 
 
@@ -426,13 +355,13 @@ def test_a_confined_check_answers_with_the_identity_and_job_it_ran_under(checks)
     assert result['output'] == b''
     assert result['confinement'] == {
         'isolated': True, 'ac_profile': iso.profile_name(key),
-        'ac_sid': checks.boundary.derive_sid(key), 'capabilities': [],
+        'ac_sid': '', 'capabilities': [],
         'job': 'core-held-unnamed-kill-on-close'}
 
 
 # ── the agent path ───────────────────────────────────────────────────────────
 
-def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, sdk):
+def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, sdk, gate):
     """One policy, one spawn, into the Job Core holds, with the environment Core built
     and no UI for the launcher to put up: a launch that fails has no interface to
     retry through, because there is none."""
@@ -443,11 +372,13 @@ def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, 
     call, launch = calls[0], case.boundary.launches[0]
     raw = launch.policy.raw
     workspace = os.path.normpath(case.request.workspace)
-    assert raw['filesystem']['readwritePaths'] == [workspace]
-    assert raw['filesystem']['readonlyPaths'] == [os.path.normpath(case.runtime)]
+    rows = {g.row: os.path.normpath(g.path) for g in case.request.grants}
+    assert raw['filesystem']['readwritePaths'] == [workspace, rows['request'], rows['state']]
+    assert raw['filesystem']['readonlyPaths'] == [rows['runtime'], rows['hook'],
+                                                  rows['response'], rows['sentinel']]
     assert raw['filesystem']['deniedPaths'] == []
     assert raw['process']['cwd'] == workspace == os.path.normpath(call['cwd'])
-    assert raw['process']['commandLine'] == ' '.join(call['argv'])
+    assert raw['process']['commandLine'] == subprocess.list2cmdline(call['argv'])
     assert raw['process']['inheritDefaultEnv'] is False
     assert raw['process']['timeout'] == case.boundary.timeout_ms
     assert raw['ui'] == {'disable': True, 'clipboard': 'none', 'injection': False}
@@ -455,7 +386,9 @@ def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, 
                               'ingress': {'default': 'deny', 'hostLoopback': 'deny'}}
     assert raw['telemetry'] == {'enabled': False}
     assert raw['lifecycle'] == {'destroyOnExit': True, 'preservePolicy': False}
-    env = case.boundary.host_env(call['env'])
+    env = dict(call['env'])
+    if 'SYSTEMROOT' not in {name.upper() for name in env}:
+        env['SYSTEMROOT'] = 'C:\\Windows'
     assert set(raw['process']['env']) == {'%s=%s' % kv for kv in env.items()}
     assert call['env']['ARCHEUS_EXECUTION_ID'] == case.spec.execution_id
     # an edit and a local commit are inside the one writable grant; a push is not
@@ -463,21 +396,23 @@ def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, 
     assert call['env']['GIT_CONFIG_KEY_0'] == 'credential.helper'
     assert call['env']['GIT_CONFIG_VALUE_0'] == ''
     assert 'SSH_AUTH_SOCK' not in call['env']
-    assert case.boundary.backend.spawned == [(launch.policy, os.path.join(
-        case.boundary.sdk_root, *staging.MXC_EXE.split('/')), call['job'])]
-    assert case.boundary.backend.launcher.events == ['create_suspended', 'assign_job',
-                                                     'verify_job', 'resume']
+    assert [os.path.normcase(c['application']) for c in case.api.created] == [os.path.normcase(
+        os.path.join(case.boundary.sdk_root, *staging.MXC_EXE.split('/')))]
+    assert [a[0] for a in case.jobs.assigned] == [call['job']]
+    assert case.events == ['create_suspended', 'assign_job', 'verify_job', 'resume']
     assert (handle.pid, launch.pid) == (1000, 1000)
     line = next(x for x in registry_lines() if x.get('op') == 'spawn'
                 and x['execution_id'] == case.spec.execution_id)
     assert line['isolated'] is True and line['ac_profile'] == call['profile']
-    assert line['ac_sid'] == case.authority.record(case.spec.execution_id).sid
+    # the record holds the marker Core derived, and the registry claims no SID for it
+    assert case.authority.record(case.spec.execution_id).sid.startswith('psec:')
+    assert line['ac_sid'] == ''
 
 
 @pytest.mark.parametrize('ask', [('ui', 'enable'), ('ui', 1), ('ui', None),
                                  ('egress', 'allow'), ('proxy_url',
                                   'http://proxy.example/')])
-def test_a_policy_that_asks_for_a_ui_or_an_egress_is_never_compiled(tmp_path, sdk, ask):
+def test_a_policy_that_asks_for_a_ui_or_an_egress_is_never_compiled(tmp_path, sdk, ask, gate):
     """Only the one shape Core itself compiles exists: an interface the launcher can
     put up, or a way out of the network, is refused where the policy is made."""
     case = agent_case(tmp_path, sdk)
@@ -497,7 +432,7 @@ def test_a_policy_that_asks_for_a_ui_or_an_egress_is_never_compiled(tmp_path, sd
                                     ('network.egress.default', 'allow',
                                      'unsafe network')])
 def test_a_policy_mutated_towards_a_ui_or_an_egress_is_refused_at_the_gate(tmp_path,
-                                                                          sdk, mutate):
+                                                                          sdk, mutate, gate):
     case = agent_case(tmp_path, sdk)
     policy = mxc.compile_policy(workspace=case.work, cwd=case.work,
                                 command_line='agent.exe', readonly=(case.runtime,),
@@ -515,7 +450,7 @@ def test_a_policy_mutated_towards_a_ui_or_an_egress_is_refused_at_the_gate(tmp_p
 
 
 def test_an_edit_inside_the_one_grant_is_imported_as_data_and_locally_committed(
-        tmp_path, sdk, monkeypatch):
+        tmp_path, sdk, monkeypatch, gate):
     """The agent's edit sits in its workspace and nowhere else; the import is Core's
     own walk plus one `fast-import` that writes the ref, whose parent is the seed."""
     case = agent_case(tmp_path, sdk)
@@ -531,7 +466,7 @@ def test_an_edit_inside_the_one_grant_is_imported_as_data_and_locally_committed(
     with open(os.path.join(work, 'notes', 'added.md'), 'xb') as f:
         f.write(added)
     launch = case.boundary.launches[0]
-    assert launch.policy.raw['filesystem']['readwritePaths'] == [os.path.normpath(work)]
+    assert launch.policy.raw['filesystem']['readwritePaths'][0] == os.path.normpath(work)
 
     store = tmp_path / 'store'
     os.mkdir(store)
@@ -588,7 +523,7 @@ def test_an_edit_inside_the_one_grant_is_imported_as_data_and_locally_committed(
 
 
 def test_an_import_whose_tree_is_not_what_core_sent_is_refused(tmp_path, sdk,
-                                                              monkeypatch):
+                                                              monkeypatch, gate):
     case = agent_case(tmp_path, sdk)
     content = b'print("one")\n'
     with open(os.path.join(case.work, 'src', 'main.py'), 'wb') as f:
@@ -621,11 +556,11 @@ def test_an_import_whose_tree_is_not_what_core_sent_is_refused(tmp_path, sdk,
     with pytest.raises(local.StoreError, match='is not what Core sent'):
         case.node.import_workspace('proj', case.spec.execution_id, SEED, workdirs=[])
     assert seen[-1][0] == 'ls-tree'
-    assert case.boundary.backend.spawned == []
+    assert case.api.created == []
 
 
 def test_an_import_ref_that_exists_already_is_never_written_again(tmp_path, sdk,
-                                                                 monkeypatch):
+                                                                 monkeypatch, gate):
     case = agent_case(tmp_path, sdk)
     store = tmp_path / 'store'
     os.mkdir(store)
@@ -651,37 +586,34 @@ def test_an_import_ref_that_exists_already_is_never_written_again(tmp_path, sdk,
 
 @pytest.mark.parametrize('cause', ['boundary', 'admission', 'establish'])
 def test_an_isolated_launch_that_fails_retries_nothing_and_falls_back_to_nothing(
-        tmp_path, sdk, no_process, cause):
+        tmp_path, sdk, no_process, monkeypatch, cause):
+    assert mxc.NATIVE_RUN_ENABLED is False
+    if cause != 'admission':
+        monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
     case = agent_case(tmp_path, sdk)
-    api = FakeWin32()
     if cause == 'boundary':
         case.boundary.launch_ok = False
-    elif cause == 'admission':
-        assert mxc.NATIVE_RUN_ENABLED is False
-        case.boundary.backend = mxc_native.Backend(api, case.boundary, lambda raw: True)
-    else:
-        case.boundary.create_fail = 'profile_create'
+    elif cause == 'establish':
+        seed_journal(case, mxc_ledger.journal_name(case.spec.execution_id, 1), 'intent')
     with pytest.raises(base.SpawnFailed, match='isolation:'):
         case.node.spawn(case.agent, case.spec, isolated=True)
-    assert len(case.boundary.launch_calls) == (0 if cause == 'establish' else 1)
-    assert api.calls == []                                   # the transport is dark
-    if cause != 'admission':
-        assert case.boundary.backend.launcher.calls == []
+    assert len(case.boundary.launch_calls) == (1 if cause == 'boundary' else 0)
+    assert case.api.created == [] and case.api.events == []  # the transport is dark
     # no retry: the marker stays, and a second spawn is reconciliation's, not Core's
     with pytest.raises(base.AlreadySpawned):
         case.node.spawn(case.agent, case.spec, isolated=True)
-    assert len(case.boundary.launch_calls) == (0 if cause == 'establish' else 1)
+    assert len(case.boundary.launch_calls) == (1 if cause == 'boundary' else 0)
     assert no_process == []                       # never a detached shell
     lines = [x for x in registry_lines() if x['execution_id'] == case.spec.execution_id]
     assert [x for x in lines if x.get('op') == 'spawn'] == []
-    if cause == 'establish':
+    if cause != 'boundary':
         assert [x['op'] for x in lines] == ['isolation_failed']
 
 
 def test_native_mxc_admission_is_closed_and_the_transport_is_never_touched(tmp_path):
     assert mxc.NATIVE_RUN_ENABLED is False
     api = FakeWin32()
-    native = mxc_native.Backend(api, FakeBoundary(), lambda raw: True)
+    native = mxc_native.Backend(api, Jobs(), lambda raw: True)
     work = tmp_path / 'work'
     work.mkdir()
     policy = mxc.compile_policy(workspace=str(work), cwd=str(work),
@@ -702,16 +634,20 @@ def test_native_mxc_admission_is_closed_and_the_transport_is_never_touched(tmp_p
 # ── stop and resume ──────────────────────────────────────────────────────────
 
 def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
-        tmp_path, sdk, no_process):
+        tmp_path, sdk, no_process, gate):
     case = agent_case(tmp_path, sdk)
-    case.boundary.kill_on_close = True
+    kill_on_close(case)
     first = case.node.spawn(case.agent, case.spec, isolated=True)
     job_one = case.boundary.launch_calls[0]['job']
     assert case.authority.held_job(case.spec.execution_id) == job_one
+    # the stop ends through the launch, which is what completes its journal (routing a
+    # kill to it is the execution context's, B7): the next process may only follow that
+    ended = case.boundary.launches[0].cancel(reason='stopped', outcome=0)
+    assert ended['state'] == mxc_ledger.DEAD_CLEAN and case.jobs.terminated == [job_one]
     assert case.node.kill(case.agent, first) == 'killed'
     assert case.agent.stops == [first]
     assert case.node.fence_isolation(case.spec.execution_id) is None
-    assert case.boundary.closed == [job_one]
+    assert case.jobs.closed == [job_one]
     assert case.boundary.launches[0].process.is_alive() is False
     assert case.authority.held_job(case.spec.execution_id) is None
     case.node.ended(first, 0, 1)
@@ -725,21 +661,41 @@ def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
     assert (first.pid, second.pid) == (1000, 1001)
     assert case.boundary.launches[1] is not case.boundary.launches[0]
     assert case.boundary.launches[1].policy.raw == case.boundary.launches[0].policy.raw
-    # one identity for both processes: the resume was never a new principal
-    assert case.boundary.created == [calls[0]['profile']] * 2
-    assert case.authority.record(case.spec.execution_id).state == 'established'
+    # one identity for both processes, and one journal for each: never a new principal
+    eid = case.spec.execution_id
+    assert sorted(case.ledger.journals()) == [mxc_ledger.journal_name(eid, 1),
+                                              mxc_ledger.journal_name(eid, 2)]
+    assert case.authority.record(eid).state == 'established'
     spawns = [x for x in registry_lines() if x.get('op') == 'spawn'
               and x['execution_id'] == case.spec.execution_id]
     assert [x['process_seq'] for x in spawns] == [1, 2]
     assert {x['ac_profile'] for x in spawns} == {calls[0]['profile']}
-    assert case.boundary.backend.launcher.events == [
+    assert [e for e in case.events if e != 'end_job'] == [
         'create_suspended', 'assign_job', 'verify_job', 'resume'] * 2
+
+
+def test_a_resume_is_refused_while_the_process_before_it_never_ended_with_a_completion(
+        tmp_path, sdk, gate):
+    case = agent_case(tmp_path, sdk)
+    first = case.node.spawn(case.agent, case.spec, isolated=True)
+    assert case.node.kill(case.agent, first) == 'killed'
+    assert case.node.fence_isolation(case.spec.execution_id) is None
+    case.node.ended(first, 0, 1)
+    with pytest.raises(base.SpawnFailed, match='generation_unresolved'):
+        case.node.spawn(case.agent, dataclasses.replace(case.spec, process_seq=2),
+                        isolated=True, resume_state={'session': 'one'})
+    assert len(case.boundary.launch_calls) == 1 and len(case.api.created) == 1
+
+
+class Compiler:
+    """A backend that only compiles: the launch under test is never started."""
+    compile_policy = staticmethod(mxc.compile_policy)
 
 
 def fresh_launch(case, **over):
     """An `MxcLaunch` of the case's own workspace, as the boundary would build one."""
     work = case.request.workspace
-    args = dict(backend=case.boundary.backend, sdk_root=case.boundary.sdk_root,
+    args = dict(backend=Compiler(), sdk_root=case.boundary.sdk_root,
                 pins=case.boundary.pins, outcome=lambda p: p.agent_outcome,
                 workspace=work, cwd=work, command_line='agent.exe',
                 env={'SYSTEMROOT': 'C:\\Windows', 'LOCALAPPDATA': work},
@@ -748,21 +704,21 @@ def fresh_launch(case, **over):
     return local.MxcLaunch(**args)
 
 
-def test_an_mxc_launch_is_consumed_once_however_the_caller_asks(tmp_path, sdk):
+def test_an_mxc_launch_is_consumed_once_however_the_caller_asks(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     case.node.spawn(case.agent, case.spec, isolated=True)
     launch = case.boundary.launches[0]
     with pytest.raises(staging.StageError, match='already consumed'):
         launch.start(job={'job': 'a second one'})
-    assert len(case.boundary.backend.spawned) == 1
+    assert len(case.api.created) == 1
     with pytest.raises(staging.StageError, match='has not started'):
         fresh_launch(case).wait()
 
 
-def test_a_launch_without_a_core_held_job_or_outcome_reader_is_refused(tmp_path, sdk):
+def test_a_launch_without_a_core_held_job_or_outcome_reader_is_refused(tmp_path, sdk, gate):
     case = agent_case(tmp_path, sdk)
     with pytest.raises(staging.StageError, match='Core-owned outcome reader'):
         fresh_launch(case, outcome='the workspace can write this')
     with pytest.raises(staging.StageError, match='Core-held Job'):
         fresh_launch(case).start(job=None)
-    assert case.boundary.backend.spawned == []
+    assert len(case.api.created) == 0
