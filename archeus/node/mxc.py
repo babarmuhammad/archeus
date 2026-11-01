@@ -294,7 +294,7 @@ class NativeMxc:
                 before_resume(child)
             if self.transport.resume(child) != 1:
                 raise MxcUnavailable('launcher did not resume exactly once')
-        except Exception as err:
+        except BaseException as err:
             # Retain the child even when termination fails; Core must quarantine it.
             err.child = child
             try:

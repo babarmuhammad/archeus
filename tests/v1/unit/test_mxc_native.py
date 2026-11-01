@@ -382,3 +382,24 @@ def test_wait_after_close_refuses_without_touching_closed_handles():
     child.close()
     with pytest.raises(mxc.MxcUnavailable, match='closed'):
         child.wait()
+
+
+def test_interrupt_during_spawn_still_kills_the_suspended_launcher(monkeypatch):
+    api = FakeWin32()
+    transport, policy, _ = setup(api)
+    for path, handle in list(transport._policies.items()):
+        api.remove_policy(path, handle)
+    transport._policies.clear()
+
+    def interrupted(job, process):
+        raise KeyboardInterrupt
+
+    api.assign_job = interrupted
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    monkeypatch.setattr(mxc, 'validate_policy', lambda policy: None)
+    monkeypatch.setattr(mxc, '_path', lambda path: path)
+    backend = mxc.NativeMxc(transport, lambda raw: True)
+    with pytest.raises(KeyboardInterrupt):
+        backend.spawn(policy, exe='C:\\launcher.exe', job='core-job')
+    assert 'kill' in api.events
+    assert api.handles == {}
