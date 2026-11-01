@@ -680,7 +680,8 @@ class ExecutionManager:
         self._tail(e, p)
         result = adapter.collect_result(handle)
         self.node.ended(handle, st.exit_code, p['seq'])
-        self._progress(e, p)
+        if e.state not in _ENDED:
+            self._progress(e, p)                            # core refuses progress after the end
         e = self._reload(e)
         self._procs.pop(e.id, None)
         if e.state in _ENDED:
