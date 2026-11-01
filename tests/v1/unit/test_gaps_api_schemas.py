@@ -626,6 +626,13 @@ def test_a_declared_bound_is_enforced_where_a_schema_declares_one():
     _refuses(bounded, {'title': 'ok', 'tags': ['a', 'b', 3]}, 'tags[2]', 'must be a string')
 
 
+def test_a_string_that_is_not_utf8_text_is_refused_wherever_the_validator_runs():
+    """A lone surrogate survives JSON decoding, then breaks every later file write."""
+    shape = {'type': 'object', 'properties': {'t': {'type': 'string'}}, 'required': ['t']}
+    schemas.validate({'t': 'caf\u00e9 \U0001f600'}, shape)               # a real pair is text
+    _refuses(shape, {'t': '\ud83dbroken'}, 't', 'is not valid text')
+
+
 # ══ the enums are still the domain's own ══════════════════════════════════════════════════════
 
 STATE_ENUMS = [

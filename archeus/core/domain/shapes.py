@@ -39,8 +39,13 @@ def validate(value, schema, field=None, types=None):
         raise Invalid(field, 'must be %s %s' % ('an' if t[0] in 'aeiou' else 'a', t))
     if 'enum' in schema and value not in schema['enum']:
         raise Invalid(field, 'must be one of %s' % ', '.join(map(str, schema['enum'])))
-    if t == 'string' and 'maxLength' in schema and len(value) > schema['maxLength']:
-        raise Invalid(field, 'is longer than %d characters' % schema['maxLength'])
+    if t == 'string':
+        try:
+            value.encode('utf-8')          # a lone surrogate is not text any file or process takes
+        except UnicodeEncodeError:
+            raise Invalid(field, 'is not valid text') from None
+        if 'maxLength' in schema and len(value) > schema['maxLength']:
+            raise Invalid(field, 'is longer than %d characters' % schema['maxLength'])
     if t == 'array':
         if 'maxItems' in schema and len(value) > schema['maxItems']:
             raise Invalid(field, 'has more than %d items' % schema['maxItems'])

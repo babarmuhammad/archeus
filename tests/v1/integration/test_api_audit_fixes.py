@@ -75,3 +75,16 @@ def test_f8_a_burst_of_wrong_pins_runs_no_more_than_the_limit(tc):
     assert answers.count('guard_failed') <= auth.StepUpFailures.LIMIT
     assert request(tc.base_url, 'GET', '/v1/health', token=token,
                    headers={'Host': TUNNEL}).status == 401          # and the fifth revoked it
+
+
+# ── F5: a string that is not UTF-8 text is refused at the schema ──
+
+def test_f5_a_lone_surrogate_is_a_400_and_stores_nothing(tc):
+    r = tc.http('POST', '/v1/missions', body=dict(_key(), title='t', objective='\ud83dbroken'))
+    assert (r.status, r.json()['error']) == (400, 'invalid_request')
+    assert r.json()['detail'] == {'field': 'objective', 'why': 'is not valid text'}
+    assert tc.http('GET', '/v1/missions').json()['missions'] == []
+    r = request(tc.base_url, 'POST', '/v1/devices/launch/redeem',
+                body={'code': '\ud800', 'platform': 'web'})
+    assert r.status == 400 and b'codec' not in r.body
+
