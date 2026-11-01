@@ -31,6 +31,8 @@ import os
 import re
 import time
 
+from archeus.core.redact import redact
+
 from . import config as _c
 
 __all__ = ['path', 'record', 'read', 'MAX_BYTES']
@@ -95,7 +97,7 @@ def record(src, msg, *, level='error', detail='', proj=''):
     failure should not also have to remember the budget.
     """
     try:
-        msg = str(msg or '').strip()
+        msg = redact(str(msg or '')).strip()
         if not msg:
             return False
         level = level if level in LEVELS else 'error'
@@ -111,7 +113,7 @@ def record(src, msg, *, level='error', detail='', proj=''):
         line = json.dumps({'ts': round(now), 'lvl': level,
                            'src': str(src or '')[:40],
                            'msg': msg[:200],
-                           'detail': str(detail or '')[:1000],
+                           'detail': redact(str(detail or ''))[:1000],
                            'proj': str(proj or '')[:80]}, ensure_ascii=False)
         p = path()
         os.makedirs(os.path.dirname(p), exist_ok=True)

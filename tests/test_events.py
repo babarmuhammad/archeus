@@ -229,3 +229,12 @@ def test_rotation_thins_and_stays_readable(monkeypatch, tmp_path):
     got = events.read(limit=5000)
     assert any('the one that matters' in r['msg'] for r in got)
     assert os.path.getsize(p) <= events.MAX_BYTES
+
+
+def test_a_credential_in_an_error_message_or_detail_is_never_written(_log_in_tmp):
+    """`claude exited 1: <first 300 chars of its output>` echoed whatever the CLI
+    or an upstream error body printed (audit H-11)."""
+    events.record('llm', 'claude exited 1: Bearer gsk_' + 'a1B2c3D4' * 4,
+                  detail='sk-ant-api03-' + 'A' * 40)
+    raw = _log_in_tmp.read_text(encoding='utf-8')
+    assert 'a1B2c3D4' not in raw and 'AAAAAAAA' not in raw and '[redacted]' in raw
