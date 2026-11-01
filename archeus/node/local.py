@@ -912,6 +912,7 @@ class LocalNode:
         child = self.isolation.children.pop((handle.execution_id, process_seq), None)
         if child is not None:
             child.cancel('ended')       # its launch has ended by now; this makes it certain
+        _ANSWERED.pop(handle.execution_id, None)
         paths = ExecPaths(handle.execution_id)
         if not os.path.exists(paths.ended):
             base.mark_ended(paths, exit_code)
@@ -1073,6 +1074,8 @@ class LocalNode:
                 continue
             out.append((int(head), body))
         _ANSWERED[execution_id] = kept
+        while len(_ANSWERED) > _ANSWERED_MAX:       # an eviction costs one re-read, never a wrong answer
+            del _ANSWERED[next(iter(_ANSWERED))]
         return sorted(out, key=lambda x: x[0])
 
     @staticmethod
@@ -1674,8 +1677,10 @@ class LocalNode:
 
 
 #: execution id -> {sequence: (request stamp, answer stamp)} of the pairs `pending_requests`
-#: last found answered; rebuilt on every call, so it holds only what is on disk now
+#: last found answered; rebuilt on every call, dropped when the execution's process ends,
+#: and at most _ANSWERED_MAX executions long
 _ANSWERED = {}
+_ANSWERED_MAX = 256
 
 
 def _stamp(path):

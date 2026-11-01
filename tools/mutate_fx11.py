@@ -70,6 +70,15 @@ MUTATIONS = [
      r"""r'(?:(?<!\S)|(?<=\\[nrt]))(?:-u|--user)""",
      r"""r'(?<!\S)(?:-u|--user)""")],
      [T + 'test_a_token_after_a_literal_escape_is_still_at_a_left_edge']),
+    ('S03', 'the answered memo outlives the process', [(LOCAL,
+     r"""        _ANSWERED.pop(handle.execution_id, None)
+        paths = ExecPaths(handle.execution_id)""",
+     r"""        paths = ExecPaths(handle.execution_id)""")],
+     [B + 'test_f5_the_answered_memo_is_dropped_when_the_process_ends']),
+    ('S04', 'the answered memo is unbounded', [(LOCAL,
+     r"""        while len(_ANSWERED) > _ANSWERED_MAX:""",
+     r"""        while False:""")],
+     [B + 'test_f5_the_answered_memo_holds_at_most_a_bounded_number_of_executions']),
 ]
 
 
