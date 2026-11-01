@@ -29,7 +29,7 @@ package therefore labels every item with its store, and the renderer orders them
 | L3 Historical | relevant prior evidence | previous attempts of this task/mission, failures, LESSON items, worklog-derived history | 10% |
 | L4 Global | durable user/workspace knowledge | PREFERENCE and global STANDARD items, policies that shape behaviour | 5% |
 
-Unused budget flows down to the next level. The mission's `context_scope` can disable levels
+Unused budget flows down to the next level. The mission's `context_scope` (not a stored Mission field today; `select()` takes a `levels` argument) can disable levels
 (e.g. a quick fix with L0–L1 only) or pin/exclude specific refs.
 
 ### 2.2 Pipeline
@@ -47,7 +47,7 @@ flowchart LR
 
 **Candidate retrieval (no model calls):**
 - Lexical: BM25 over `title + body + anchors` of knowledge items and entity summaries. V1 reuses
-  the scorer in `claude_sessions/recall.py` (`_bm25`, camelCase/snake_case tokenisation, path
+  the scorer in `claude_sessions/lexical.py` (`bm25`, camelCase/snake_case tokenisation; `recall.py` imports it, and its path
   hints) behind `infra/search/bm25.py`. FTS5 is DEFERRED (it is an index optimisation, not a
   capability change).
 - Structural: items anchored to the files/modules the task touches (glob match on `anchors`,
@@ -56,9 +56,9 @@ flowchart LR
 - Explicit: refs the user pinned in the conversation ("use the notes from Monday's meeting" →
   the brain resolves the Meeting and pins it; the resolution is shown as a card).
 
-**Relationship expansion:** recursive CTE over `relations` from the seed set, max 2 hops,
+**Relationship expansion (not built: the context engine does no graph traversal, no recursive CTE exists, and the `link` weight is 0):** recursive CTE over `relations` from the seed set, max 2 hops,
 EXTRACTED edges first, INFERRED edges only if confidence tier allows, AMBIGUOUS never. This is
-today's `recall.expand_relations` generalised from the memory graph to the whole world graph.
+today's `recall.expand_relations` generalised from the memory graph to the whole world graph (it is not generalised: `expand_relations` still works only on the legacy memory graph).
 
 **Relevance score** (deterministic, tunable weights in one table):
 
@@ -203,7 +203,7 @@ discipline).
 - Why no vector store in V1: the current product already retrieves well with BM25 + path anchors
   + relation expansion; semantic embeddings need either a model dependency or a network call per
   item. Interface `infra/search` keeps it swappable (ADR-0012). Cognee's 20 search types are
-  rejected; V1 has three retrieval modes: lexical, graph neighbourhood, hybrid (the score above).
+  rejected; V1 has three retrieval modes: lexical, graph neighbourhood, hybrid (the score above; as built only lexical exists).
 
 ## 5. Session vs permanent memory
 
@@ -254,7 +254,7 @@ architecture_constraint:
    architecture / accept change / create fix mission). Unverifiable constraints (prose-only) are
    listed as "cannot check automatically" rather than assumed satisfied.
 
-**When:** on project open (throttled), on `PROJECT_CHANGED` (a post-commit hook or file watcher
+**When:** on project open (throttled), on `PROJECT_CHANGED` (event `project.changed` exists in the registry; no post-commit hook or file watcher produces it today) (a post-commit hook or file watcher
 event, debounced), on a schedule automation (default daily for active projects), and after a
 mission's merge-back.
 
@@ -284,7 +284,7 @@ for the date in the primary conversation; the reply to that question dates it.
 
 `world/digest.py` builds the digest from events with `seq > user.last_ack_event_seq`,
 `visibility = user`, grouped by mission/project: completed, progressed (progress delta),
-blocked/needs-you, automations run, knowledge proposals, drift found, resource incidents
+blocked/needs-you, automations run, knowledge proposals, drift found, resource incidents (as built, `core/world/digest.py` `ORDER` is needs_you, drift_found, failed, completed, drift_cleared, progressed, new_messages; automation, knowledge and resource events fall under `progressed`)
 (limits, fallbacks). Deterministic grouping and ranking; an optional brain call may phrase the
 top line, but every bullet links to its event/object. Acknowledging on any device advances the
 per-user cursor.

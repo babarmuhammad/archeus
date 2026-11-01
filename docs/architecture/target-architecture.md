@@ -28,11 +28,11 @@ flowchart TB
             BRN[Brain<br/>structured-output calls]
         end
         W["Single writer thread<br/>(SQLite WAL + outbox)"]
-        OUT["Outbox consumers<br/>spawner · notifier · matcher<br/>learner · inspector · SSE fan-out"]
+        OUT["Outbox consumers<br/>spawner · matcher · learner<br/>inspector · SSE fan-out<br/>(no notifier is built)"]
     end
     subgraph Node["Execution node (V1: in-process local node)"]
         SUP[Process supervisor + registry]
-        HAD["Harness adapters<br/>claude_code · codex · fake<br/>(pi · generic later)"]
+        HAD["Harness adapters<br/>claude_code · fake<br/>(codex · pi · generic later)"]
         WT[Worktrees]
     end
     subgraph Stores
@@ -59,8 +59,8 @@ flowchart TB
    explicit interfaces (`archeus/core/<area>/api.py`), so any of them could be extracted later,
    but nothing is split in V1.
 2. **Stdlib only at runtime** (ADR-0003): `sqlite3`, `http.server`, `threading`, `subprocess`,
-   `json`, `hashlib`, `secrets`, `ssl` (only for optional outbound calls), `ctypes` (DPAPI on
-   Windows). Optional extras: `gui` (PyQt6 shell, existing), `push` (Web Push, DEFERRED).
+   `json`, `hashlib`, `secrets`, `ssl` (only for optional outbound calls), `ctypes` (planned for DPAPI on
+   Windows; no DPAPI code exists, ctypes is used elsewhere). Optional extras: `gui` (PyQt6 shell, existing), `push` (Web Push, DEFERRED).
 3. **Single writer** (ADR-0002). Exactly one thread holds the SQLite write connection. Every
    state change is a *command* executed on that thread; the command writes rows and events in
    one transaction. Readers use separate `query_only` connections. Only the Core process writes
@@ -154,6 +154,8 @@ tests/v1/
 ├── unit/  integration/  contract/  e2e/  judge/ (acceptance scenarios, written first)
 ```
 
+*As built, the tree above is the plan and the code differs in these places.* No `core/<area>/api.py` exists: callers import the area modules. `core/application/` is flat files (`work.py`, `executions.py`, `authorization.py` and others) with no `handlers/` directory; approvals live in `application/authorization.py`. `core/missions/` holds only `intent.py`; `core/planning/` has `planner.py`, `validate.py`, `worker.py`; `core/knowledge/` has `ingest.py`, `passes.py`, `worker.py`; `core/world/` has `inspection.py`, `drift.py`, `digest.py`, `status.py`, `worker.py`; `core/policy/` has `engine.py`, `rules.py`, `worker.py`; `core/routing/` has `router.py`, `usage.py`; `core/execution/` has `manager.py`, `checkpoint.py`, `handoff.py` and others but no `integration.py`; `core/verification/` has `evidence.py`, `reviewer.py`, `worker.py` (no `verifiers/` package); `core/automation/` has `matcher.py`, `worker.py`; `core/brain/` has only `intent.py`, and the structured-output runner is `harnesses/calls.py` with `core/calls.py`. Under `infra/` there is no `llm/`, `notify/` or `secrets/` (no desktop or ntfy notification and no DPAPI code exists). The hook is the single file `harnesses/hook.py`, stream parsing is in `claude_code/adapter.py`, and there is no `codex/`, `pi/` or `generic_cli/` adapter. The node is `node/local.py` (spawn, registry, kill, adopt, `estop_without_core`) with the isolation and MXC modules; worktree paths are computed by Core in `infra/paths.py`. There is no `legacy/` package: legacy code is reached by seam imports. `archeus approve` prints that it is not available yet (arrives with P9) and exits 2.
+
 Reuse of `claude_sessions` code happens by **import from the new package into a thin seam**
 (`archeus/infra/...` or an adapter), never by copying. The P0.5 seam work extracts the few
 functions whose current form reaches into UI modules (see [migration-plan.md §3](migration-plan.md)).
@@ -171,7 +173,7 @@ functions whose current form reaches into UI modules (see [migration-plan.md §3
 **Autostart** (Windows: Startup-folder shortcut or `schtasks /sc onlogon`; macOS: LaunchAgent;
 Linux: systemd user unit) is opt-in in onboarding because Scenario 11 (mobile control while
 away) requires Core to be running. **Sleep/hibernate:** Core notices a clock jump > 2× the
-heartbeat interval; the local node goes GRACE → executions become LOST → reconciled on wake
+heartbeat interval (not built: no clock jump detector exists; the heartbeat states do); the local node goes GRACE → executions become LOST → reconciled on wake
 (adopt if still alive, else checkpoint-derived restart per policy).
 
 ## 5. Data architecture
