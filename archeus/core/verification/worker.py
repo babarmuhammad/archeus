@@ -419,7 +419,7 @@ class VerifyWorker:
         if m.integration_base is not None:
             ws = paths.mission_worktree_path(m.project_id, m.id)
             disk = self.node.git_head(ws)
-            if disk != m.integration_head:
+            if disk is not None and disk != m.integration_head:
                 # moved on disk since Core recorded it: what was verified is stale
                 self._do(V.note_integration_head, mission_id=m.id, head=disk)
                 return True

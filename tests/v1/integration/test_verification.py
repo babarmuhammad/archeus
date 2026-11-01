@@ -1379,3 +1379,17 @@ def test_A6_4_only_the_code_verifier_runs_confined(core, monkeypatch, toolchain,
             verifier=verifier, execution_id=e.id, revision=IMP)
     with core._core().read() as r:
         assert len(list(rows.where(r, entities.Verification))) == before
+
+
+def test_a_mission_worktree_that_cannot_be_read_does_not_erase_the_recorded_head(
+        core, monkeypatch):
+    _repo, mid = _mission(core, Rig(core), steps=[_write(FIX), {'emit': {'type': 'result',
+                                                                         'summary': 'done'}}])
+    pump(core, lambda: _state(core, mid) == 'VERIFYING')
+    head = _get(core, entities.Mission, mid).integration_head
+    assert head
+    _node(core, monkeypatch, fake={'git_head': lambda *a: None})
+    monkeypatch.setattr(evidence, 'run_commands', lambda *a, **k: [
+        {'name': 'test', 'kind': 'command', 'result': 'error', 'detail': 'no worktree'}])
+    core._verify._verify_mission(mid)
+    assert _get(core, entities.Mission, mid).integration_head == head
