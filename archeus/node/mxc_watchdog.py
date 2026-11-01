@@ -58,14 +58,14 @@ def _job_problem(record):
     return None
 
 
-def _heartbeat_problem(record, last_seq, now):
+def _heartbeat_problem(record, last_seq, armed_at, now):
     if not isinstance(record, dict) or set(record) != HEARTBEAT_FIELDS:
         return 'malformed heartbeat record'
     if type(record['seq']) is not int or not _number(record['sent_at']):
         return 'malformed heartbeat record'
     if record['seq'] <= last_seq:
         return 'replayed heartbeat sequence'
-    if not 0 <= record['sent_at'] <= now:
+    if not armed_at <= record['sent_at'] <= now:
         return 'heartbeat outside the armed clock window'
     return None
 
@@ -131,7 +131,7 @@ class Watchdog:
             return self._set(UNCERTAIN, 'heartbeat channel read failed')
         problem = None
         for beat in heartbeats:
-            problem = _heartbeat_problem(beat, self.last_seq, now)
+            problem = _heartbeat_problem(beat, self.last_seq, self.armed_at, now)
             if problem is not None:
                 break
         if problem is not None:

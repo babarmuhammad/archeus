@@ -115,6 +115,14 @@ def test_fresh_heartbeat_defers_the_deadline():
     assert world.killer.killed == []
 
 
+def test_a_stale_heartbeat_never_moves_the_quiet_clock_back():
+    world = make(batches=([beat(1, 60)], []), table={41: 900})
+    record(world.watchdog)
+    world.clock.advance(10)
+    assert world.watchdog.tick() == watchdog.UNCERTAIN
+    assert world.killer.killed == [] and world.watchdog.report()['last_beat'] is None
+
+
 def test_heartbeat_then_silence_fires_from_the_last_beat():
     world = make(batches=([beat(1, 100)], []), table={41: 900})
     ref = record(world.watchdog)
@@ -287,6 +295,8 @@ MALFORMED = {
     'beat_seq_replayed': ('beat', {'seq': 0, 'sent_at': 100}, 'replayed heartbeat sequence'),
     'beat_from_the_future': ('beat', {'seq': 1, 'sent_at': 1000},
                              'heartbeat outside the armed clock window'),
+    'beat_before_arming': ('beat', {'seq': 1, 'sent_at': 99.5},
+                           'heartbeat outside the armed clock window'),
     'beat_negative': ('beat', {'seq': 1, 'sent_at': -1},
                       'heartbeat outside the armed clock window'),
     'beat_nan': ('beat', {'seq': 1, 'sent_at': float('nan')}, 'malformed heartbeat record'),
