@@ -935,14 +935,13 @@ class LocalNode:
             if tail != 'req.json' or not (head.isascii() and head.isdigit()
                                           and head == str(int(head))):
                 continue
-            if os.path.exists(os.path.join(paths.res, '%s.res.json' % head)):
+            body = _read_object(os.path.join(box, n))
+            # a number is reused once the execution empties req/, so an answer counts
+            # only when it echoes this request's nonce
+            res = _read_object(os.path.join(paths.res, '%s.res.json' % head))
+            if res is not None and res.get('nonce') == (body or {}).get('nonce'):
                 continue
-            try:
-                with open(os.path.join(box, n), encoding='utf-8') as f:
-                    body = json.load(f)
-            except (OSError, ValueError):
-                body = None
-            out.append((int(head), body if isinstance(body, dict) else None))
+            out.append((int(head), body))
         return sorted(out, key=lambda x: x[0])
 
     @staticmethod
@@ -1532,6 +1531,15 @@ class LocalNode:
         deadline.left()                 # immediately before publication
         os.rename(stage, work)
         return work
+
+
+def _read_object(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            body = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return body if isinstance(body, dict) else None
 
 
 def _publish_once(ref, commit, store, workdirs):

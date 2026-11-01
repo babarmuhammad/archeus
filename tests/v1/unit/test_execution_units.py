@@ -990,6 +990,21 @@ def test_only_cores_class_2_answer_answers_a_request():
     assert LocalNode.pending_requests(eid) == [(2, None)]
 
 
+def test_an_answer_to_an_earlier_request_with_the_same_number_does_not_answer_a_new_one():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        f.write('{"tool": "Read", "nonce": "a"}')
+    LocalNode.respond(eid, 1, 'allow')
+    assert LocalNode.pending_requests(eid) == []
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        f.write('{"tool": "Bash", "nonce": "b"}')
+    assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Bash', 'nonce': 'b'})]
+    LocalNode.respond(eid, 1, 'deny', 'no')
+    assert LocalNode.pending_requests(eid) == []
+
+
 def test_a_request_file_that_is_not_a_plain_sequence_number_is_not_a_request():
     eid = ids.new_id('execution')
     p = paths.ExecPaths(eid)
