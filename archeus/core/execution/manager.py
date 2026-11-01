@@ -1012,7 +1012,11 @@ class ExecutionManager:
                          create_time=handle.create_time, process_seq=e.process_seq or 1)
                 self._adopt(self._reload(e), adapter, handle)
                 return True
-            return self._collect_gone(e, adapter, handle)
+            # spawned, never recorded, and gone: it is recorded as started before its end
+            # is, because record_end takes no INTENT (the end of a process nobody knew)
+            self._do(X.record_process, execution_id=e.id, pid=handle.pid,
+                     create_time=handle.create_time, process_seq=e.process_seq)
+            return self._collect_gone(self._reload(e), adapter, handle)
         if e.state in ('PAUSED', 'AWAITING_APPROVAL'):
             if marker is not None and marker.get('process_seq', 1) == e.process_seq \
                     and not ended and alive and e.pid is None:

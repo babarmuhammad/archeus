@@ -27,6 +27,7 @@ I = 'tests/v1/integration/test_execution.py'
 S = 'tests/v1/integration/test_execution_security.py'
 U = 'tests/v1/unit/test_execution_units.py'
 VER = 'tests/v1/integration/test_verification.py'
+B6 = 'tests/v1/unit/test_fix_batch6.py'
 TIMEOUT_S = 900
 
 MUTATIONS = [
@@ -215,6 +216,15 @@ MUTATIONS = [
     ('X39', 'a request file is read whole', [(NODE,
      'data = f.read(MAX_REQUEST_BYTES + 1)', 'data = f.read()')],
      [U + '::test_a_request_past_the_size_bound_is_unreadable_and_never_parsed']),
+    # -- a restart's reconciliation never raises (fix batch 6) --
+    ('X40', 'a spawned, unrecorded, exited INTENT ended without being recorded started',
+     [(MGR,
+       "            self._do(X.record_process, execution_id=e.id, pid=handle.pid,\n"
+       "                     create_time=handle.create_time, process_seq=e.process_seq)\n"
+       "            return self._collect_gone(self._reload(e), adapter, handle)",
+       "            return self._collect_gone(e, adapter, handle)")],
+     [B6 + '::test_an_intent_spawned_and_never_recorded_that_exited_ends_through_the_state_'
+           'machine']),
 ]
 
 
