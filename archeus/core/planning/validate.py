@@ -82,6 +82,10 @@ def order(tasks):
     return out
 
 
+def _plain(glob):
+    return '/'.join(p for p in glob.replace('\\', '/').split('/') if p not in ('', '.'))
+
+
 def _prefix(glob):
     cut = [i for i, ch in enumerate(glob) if ch in '*?[']
     return glob[:cut[0]] if cut else glob
@@ -91,12 +95,13 @@ def overlap(a, b):
     """May two path globs name a common file? Conservative (ponytail: literal
     prefixes and fnmatch both ways; a false yes costs parallelism, never
     correctness — upgrade to a real glob intersection if that ever matters)."""
-    a, b = a.replace('\\', '/'), b.replace('\\', '/')
+    a, b = _plain(a), _plain(b)
     if a == b or fnmatch.fnmatchcase(a, b) or fnmatch.fnmatchcase(b, a):
         return True
     pa, pb = _prefix(a), _prefix(b)
-    wild = (pa != a) or (pb != b)
-    return wild and (pa.startswith(pb) or pb.startswith(pa))
+    if (pa != a) or (pb != b):
+        return pa.startswith(pb) or pb.startswith(pa)
+    return a.startswith(b + '/') or b.startswith(a + '/')
 
 
 def _reaches(deps, frm, to):

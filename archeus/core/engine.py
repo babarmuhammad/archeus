@@ -88,7 +88,7 @@ def _conflict(t, other):
 
 def _overlap(a, b):
     def base(g):
-        g = g.replace('\\', '/')
+        g = '/'.join(p for p in g.replace('\\', '/').split('/') if p not in ('', '.'))
         cut = min([g.index(c) for c in '*?[' if c in g] or [len(g)])
         return g[:cut].rstrip('/')
     x, y = base(a), base(b)
