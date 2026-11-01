@@ -225,6 +225,19 @@ MUTATIONS = [
        "            return self._collect_gone(e, adapter, handle)")],
      [B6 + '::test_an_intent_spawned_and_never_recorded_that_exited_ends_through_the_state_'
            'machine']),
+    ('X41', 'a harness that is not registered raises out of the pass and the boot',
+     [(MGR, "        except (KeyError, PolicyStubError) as err:\n"
+             "            reason =",
+       "        except () as err:\n"
+       "            reason =")],
+     [B6 + '::test_a_live_row_with_an_unregistered_harness_ends_with_a_reason_and_never_raises',
+      B6 + '::test_a_stubbed_policy_refusal_is_treated_as_an_unserved_harness']),
+    ('X42', 'the process of an unregistered harness left running',
+     [(MGR, "        if handle is not None and self.node.alive(handle):\n"
+             "            self.node.kill_identity(handle)",
+       "        if False:\n"
+       "            self.node.kill_identity(handle)")],
+     [B6 + '::test_a_live_row_with_an_unregistered_harness_ends_with_a_reason_and_never_raises']),
 ]
 
 

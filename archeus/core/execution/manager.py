@@ -222,7 +222,9 @@ class ExecutionManager:
         return self._spawn(e, m)
 
     def _spawn(self, e, m, resume_state=None):
-        adapter = self.registry.get(e.harness_id)
+        adapter = self._adapter(e)
+        if adapter is None:
+            return True
         with self.db.read() as r:           # ADR-0021, immediately before the adapter runs
             permitted = resources.terms_permit(r, adapter)
             t = rows.get(r, entities.Task, e.task_id).entity
@@ -832,7 +834,9 @@ class ExecutionManager:
         return self._resume(e, m)
 
     def _resume(self, e, m):
-        adapter = self.registry.get(e.harness_id)
+        adapter = self._adapter(e)
+        if adapter is None:
+            return True
         caps = adapter.capabilities(None) if adapter.discover().installed else None
         if caps is None or 'resume' not in caps.capabilities:
             self._do(X.refuse, execution_id=e.id, reason='%s cannot resume a halted process'
@@ -989,7 +993,9 @@ class ExecutionManager:
         handle = None
         if pid is not None and (seq == e.process_seq or e.state == 'INTENT'):
             handle = base.ProcessHandle(e.id, pid['pid'], pid['create_time'], ExecPaths(e.id).dir)
-        adapter = self.registry.get(e.harness_id)
+        adapter = self._adapter(e, handle)
+        if adapter is None:
+            return True
         alive = handle is not None and self.node.alive(handle)
         if alive and disarmed:
             self.node.kill(adapter, handle, reason='disarmed')
@@ -1034,6 +1040,29 @@ class ExecutionManager:
             self._do(X.lost, execution_id=e.id, reason='Core restarted; no process was recorded')
             return True
         return self._collect_gone(e, adapter, handle)
+
+    def _adapter(self, e, handle=None):
+        """The execution's harness, or None once the execution is ended for want of it
+        (removed, disabled, a row from another build): a lookup that raised would stop
+        every boot and every pass. Its process, if one is still ours, is killed by
+        identity, as `_adopt_orphan` does; nothing is left live that nothing can watch."""
+        try:
+            return self.registry.get(e.harness_id)
+        except (KeyError, PolicyStubError) as err:
+            reason = 'its harness %r is not served by this Core (%s)' % (
+                e.harness_id, type(err).__name__)
+        if handle is not None and self.node.alive(handle):
+            self.node.kill_identity(handle)
+        if e.state in ('PAUSED', 'AWAITING_APPROVAL') or e.state == 'INTENT'                 and e.process_seq == 0:
+            self._do(X.refuse, execution_id=e.id, reason=reason, stop_reason='spawn')
+            return None
+        self._tombstone(e)
+        if e.state in ('PAUSING', 'STOPPING', 'HANDING_OFF'):
+            self._do(X.record_end, execution_id=e.id, exit_code=None, killed=True,
+                     usage=e.usage, final_offset=e.stream_offset, facts=_unmeasured({}))
+        else:
+            self._do(X.lost, execution_id=e.id, reason=reason)
+        return None
 
     def _isolation_record(self, execution_id):
         """Core's own isolation record (PV-20 §3.7), or None. It is the only thing that
