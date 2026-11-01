@@ -203,7 +203,11 @@ def pair(opts):
         return 1
     body = {'name': opts.get('name'), 'host_label': opts.get('host-label')}
     if 'scopes' in opts:
-        body['scopes'] = [s for s in opts['scopes'].split(',') if s]
+        body['scopes'] = [s.strip() for s in opts['scopes'].split(',') if s.strip()]
+        if not body['scopes']:
+            print('--scopes names no scope: leave it out for the default, or name at least '
+                  'observe', file=sys.stderr)
+            return 2
     out = _get(info, 'POST', endpoints.pair_start(), body)
     if out is None:
         print('Core refused to start a pairing (the scopes must include observe)',
@@ -360,14 +364,17 @@ def estop():
         try:
             out = client.Core(info['port'], token).post(
                 endpoints.estop(), {'idempotency_key': os.urandom(16).hex()})
+            stopped = len(out['stopped'])
         except client.CoreError as e:
             if e.code != 'network':
                 print('Core did not accept the e-stop: %s' % sync.explain(e.refusal()),
                       file=sys.stderr)
                 return 2
+        except Exception:       # an answer that is not Core's is no stop: do it here
+            pass
         else:
             print('emergency stop: %d execution(s) stopped; Core is disarmed until re-armed'
-                  % len(out['stopped']))
+                  % stopped)
             return 0
     try:
         killed, _ = LocalNode.estop_without_core()
