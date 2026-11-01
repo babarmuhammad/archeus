@@ -229,6 +229,8 @@ class Bridge:
 
     def __init__(self, connect, *, host='127.0.0.1', concurrent=CONCURRENT, idle_s=IDLE_S,
                  deadline_s=DEADLINE_S, timer=threading.Timer):
+        if concurrent < 1 or idle_s <= 0 or deadline_s <= 0:
+            raise ValueError('a bridge needs a positive slot count, idle bound and deadline')
         self._connect = connect
         self._slots = threading.BoundedSemaphore(concurrent)
         self._idle, self._deadline, self._timer = idle_s, deadline_s, timer
@@ -256,7 +258,8 @@ class Bridge:
         ready(self.port)
 
     def close(self):
-        self._server.shutdown()
+        if self._thread is not None:    # shutdown() waits for a serve_forever that never ran
+            self._server.shutdown()
         self._server.server_close()
 
     def serve(self, sock):

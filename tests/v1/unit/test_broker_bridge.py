@@ -372,3 +372,21 @@ def test_the_pipe_carries_only_the_broker_token_and_the_forwardable_headers():
         assert names == {'authorization', 'anthropic-version', 'content-length'}
     finally:
         b.close()
+
+
+def test_closing_a_bridge_that_never_started_returns():
+    # T-658#F3: shutdown() waits for a serve_forever that never ran, so close() hung
+    import threading
+    b = W.Bridge(_nope)
+    closer = threading.Thread(target=b.close, daemon=True)
+    closer.start()
+    closer.join(5)
+    assert not closer.is_alive()
+
+
+@pytest.mark.parametrize('bounds', [dict(concurrent=0), dict(idle_s=0), dict(deadline_s=0),
+                                    dict(deadline_s=-1)])
+def test_a_bridge_with_a_bound_that_refuses_every_request_is_not_made(bounds):
+    # T-658#F7: BoundedSemaphore(0) answered 503 forever, deadline<=0 cut every request
+    with pytest.raises(ValueError, match='positive'):
+        W.Bridge(_nope, **bounds)
