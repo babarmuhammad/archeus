@@ -262,8 +262,12 @@ class Broker:
             self.transport.close(endpoint)
             raise
         with self._lock:
+            stale = [self._grants.pop(k) for k, g in list(self._grants.items())
+                     if g['binding'].execution_id == binding.execution_id]
             self._grants[d] = {'binding': binding, 'endpoint': endpoint, 'requests': 0,
                                'active': 0}
+        for g in stale:
+            self.transport.close(g['endpoint'])
         return token, d, endpoint, port
 
     def revoke(self, execution_id):
@@ -419,7 +423,8 @@ class Broker:
             # it is relayed whole and without the key, or not at all
             buf, whole = bytearray(), False
             while True:
-                if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):
+                if (self._clock() - t0 > b.limits.deadline_s or d not in self._grants
+                        or not self._live(b, d)):
                     break
                 chunk = resp.read1(65536) if hasattr(resp, 'read1') else resp.read(65536)
                 if not chunk:
@@ -438,7 +443,8 @@ class Broker:
         forms = tuple(f.lower() for f in _forms(key))
         held, sent, got = b'', 0, 0
         while True:
-            if self._clock() - t0 > b.limits.deadline_s or not self._live(b, d):
+            if (self._clock() - t0 > b.limits.deadline_s or d not in self._grants
+                    or not self._live(b, d)):
                 break                   # the grant ended mid-stream: the stream ends
             chunk = resp.read1(65536) if hasattr(resp, 'read1') else resp.read(65536)
             if not chunk:
