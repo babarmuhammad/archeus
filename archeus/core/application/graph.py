@@ -62,8 +62,8 @@ TERMINAL = {k: _terminal(m) for k, (_c, m) in KINDS.items()}
 
 def clean_label(text):
     """One inert line of at most LABEL_MAX characters, secrets redacted."""
-    s = redact(' '.join(str(text or '').split()))
-    s = ''.join(c for c in s if c.isprintable())
+    s = ''.join(c for c in ' '.join(str(text or '').split()) if c.isprintable())
+    s = redact(s)
     return s if len(s) <= LABEL_MAX else s[:LABEL_MAX - 1] + '…'
 
 
@@ -373,8 +373,7 @@ def world_graph(conn, focus=None, depth=None, limit=LIMIT_DEFAULT):
 
 
 def _edge_key(x):
-    a, b = _key(x['from']), _key(x['to'])
-    return (x['field'],) + ((a, b) if a <= b else (b, a))
+    return (x['field'], _key(x['from']), _key(x['to']))
 
 
 def _assemble(seq, focus, depth, limit, loaded, cut, edges):
@@ -533,13 +532,13 @@ def _tree(payload, focus, depth, limit):
             return f
         if f.startswith(prefix) or f == focus:
             v = visible(f)
-            return v if v in kept_set else None
+            return v if v in kept_set else False
         return None
 
     agg, outside = {}, set()
     for a, b in payload.get('edges') or []:
         la, lb = lift(a), lift(b)
-        if la is None and lb is None:
+        if la is False or lb is False or (la is None and lb is None):
             continue
         if la is None:
             la = 'outside:' + a.split('/')[0]
