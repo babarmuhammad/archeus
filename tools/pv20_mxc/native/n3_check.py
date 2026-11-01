@@ -338,7 +338,7 @@ class N3Check:
         # N3-R1: the SDK is staged OUTSIDE the created root and copied IN; the root is
         # always fresh (safe_root created it), so emptiness and pre-stage cannot conflict.
         try:
-            shutil.copytree(src, os.path.join(self.F, "sdk"))
+            shutil.copytree(src, os.path.join(self.F, "sdk", "node_modules", "@microsoft", "mxc-sdk"))
         except OSError as ex:
             raise SetupError("cannot copy staged SDK into the fixture: %r" % (ex,)) from ex
         self.EXE = os.path.join(self.F, "sdk", "node_modules", "@microsoft", "mxc-sdk",
