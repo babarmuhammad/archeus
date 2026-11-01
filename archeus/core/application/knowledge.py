@@ -156,7 +156,7 @@ def _selected(tx, selector):
             raise ValueError("a selector's ids are a list of strings")
         return [_load(tx, i) for i in selector['ids']]
     eq = {k: selector[k] for k in ('project_id', 'type') if selector.get(k) is not None}
-    if not eq:
+    if 'project_id' not in eq:
         raise ValueError('a selector without ids needs a project_id')
     got = tx.where(entities.KnowledgeItem, **eq)
     if selector.get('source_id'):
