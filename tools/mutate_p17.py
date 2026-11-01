@@ -75,7 +75,7 @@ MUTATIONS = [
      "                    e['data']['state'] = 'APPROVED'")],
      [ACC + '::test_T03_a_plan_is_approved_from_attention_confirmed_in_prose_and_read_back']),
     ('M10', 'a retry sent with a new idempotency key', [(APP,
-     "        key = self.keys.get(act['ident']) or S.new_key()",
+     "        last = self.keys.get(act['ident'])\n        key = last[1] if last and last[0] == values else S.new_key()",
      "        key = S.new_key()")],
      [ACC + '::test_T03_the_same_action_keeps_its_key_across_a_network_retry']),
     ('M11', 'an approval frame no longer makes Attention stale', [(TAB,
