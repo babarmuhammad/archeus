@@ -110,6 +110,10 @@ MUTATIONS = [
      'and origin.bounded(backend.valid, self.context, self.evidence) is True',
      'and backend.valid(self.context, self.evidence) is True')],
      [H + 'test_a_hung_valid_or_release_cannot_hold_the_request']),
+    ('B26', 'a worker thread that cannot start keeps its slot', [(ORIGIN,
+     '    except BaseException:\n        _slots.release()\n        raise',
+     '    except BaseException:\n        raise')],
+     [T + 'test_a_worker_thread_that_cannot_start_gives_its_slot_back']),
 ]
 
 

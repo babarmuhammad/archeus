@@ -36,7 +36,11 @@ def bounded(call, *args):
             done.set()
             _slots.release()
 
-    threading.Thread(target=run, daemon=True).start()
+    try:
+        threading.Thread(target=run, daemon=True).start()
+    except BaseException:
+        _slots.release()
+        raise
     if not done.wait(BACKEND_DEADLINE_S):
         raise TimeoutError('origin backend call timed out')
     ok, value = box[0]

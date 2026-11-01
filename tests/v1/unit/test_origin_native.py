@@ -458,3 +458,18 @@ def test_a_native_reader_that_hangs_makes_the_attest_a_timeout_not_a_hang(api, f
     with pytest.raises(TimeoutError):
         origin.bounded(backend.attest, ctx())
     gate.set()
+
+
+def test_a_worker_thread_that_cannot_start_gives_its_slot_back(monkeypatch):
+    monkeypatch.setattr(origin, '_slots', threading.BoundedSemaphore(2))
+    start = threading.Thread.start
+
+    def refuse(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(threading.Thread, 'start', refuse)
+    for _ in range(5):
+        with pytest.raises(RuntimeError, match='start'):
+            origin.bounded(lambda: 1)
+    monkeypatch.setattr(threading.Thread, 'start', start)
+    assert origin.bounded(lambda: 1) == 1
