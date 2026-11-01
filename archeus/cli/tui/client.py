@@ -139,17 +139,17 @@ class Stream(threading.Thread):
     def __init__(self, core, out):
         super().__init__(daemon=True, name='archeus-tui-stream')
         self.core, self.out = core, out
-        self._stop = threading.Event()
+        self._halt = threading.Event()
 
     def stop(self):
-        self._stop.set()
+        self._halt.set()
 
     def run(self):
         last, delay = None, 0.25
-        while not self._stop.is_set():
+        while not self._halt.is_set():
             try:
                 for f in self.core.events(last):
-                    if self._stop.is_set():
+                    if self._halt.is_set():
                         return
                     if f['event'] == OPENED:
                         delay = 0.25
@@ -171,8 +171,8 @@ class Stream(threading.Thread):
                     self.out.put(('signal', 'resync'))
             except (OSError, socket.timeout, ValueError, http.client.HTTPException):
                 pass
-            if self._stop.is_set():
+            if self._halt.is_set():
                 return
             self.out.put(('signal', 'stream_lost'))
-            self._stop.wait(delay)
+            self._halt.wait(delay)
             delay = min(delay * 2, 8.0)

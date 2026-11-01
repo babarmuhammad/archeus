@@ -95,3 +95,16 @@ def test_a_stream_that_breaks_in_the_http_layer_is_reported_as_lost():
         assert out.get(timeout=3) == ('signal', 'stream_lost')
     finally:
         s.stop()
+
+
+def test_a_stopped_stream_can_be_joined():
+    class Quiet:
+        def events(self, last):
+            raise OSError
+            yield
+
+    s = C.Stream(Quiet(), queue.Queue())
+    s.start()
+    s.stop()
+    s.join(timeout=3)
+    assert not s.is_alive()
