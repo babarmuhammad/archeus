@@ -1,6 +1,8 @@
 """The one redactor (archeus/core/redact.py) against every credential shape the
 audit found leaking. Every value here is synthetic."""
 
+import json
+import random
 import time
 
 import pytest
@@ -57,6 +59,62 @@ def test_every_minted_token_prefix_is_redacted():
 ])
 def test_ordinary_text_is_left_alone(text):
     assert redact(text) == text
+
+
+def _walk(x):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield from _walk(k)
+            yield from _walk(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _walk(v)
+    else:
+        yield x
+
+
+# a secret as the last thing in a string is where a `\S+` or `\Z` tail used to
+# take the closing quote of the JSON with it
+@pytest.mark.parametrize('text', [
+    'run curl -u admin:SYNTHhunter2', 'aws_secret_access_key=SYNTH0123',
+    'export AWS_SECRET_ACCESS_KEY=$SYNTH', 'a key -----BEGIN PRIVATE KEY----- then SYNTHbase64',
+    'a key -----BEGIN PRIVATE KEY-----\nSYNTHBODY0123\n', 'https://u:SYNTHpass@',
+    '-----BEGIN PRIVATE KEY-----\\"', 'Authorization: Basic dXNlcjpTWU5USEVUSUM=',
+])
+@pytest.mark.parametrize('opts', [{}, {'ensure_ascii': False}, {'separators': (',', ':')}])
+def test_a_secret_ending_a_string_never_breaks_the_json(text, opts):
+    payload = {'text': text, 'list': [text, 1], 'n': {text: text}}
+    out = json.loads(redact(json.dumps(payload, **opts)))
+    assert set(out) == {'text', 'list', 'n'} and '[redacted]' in out['text']
+    assert 'SYNTH' not in out['text']
+    again = json.loads(redact(json.dumps(redact(json.dumps(payload)))))
+    assert isinstance(again, str)
+
+
+def test_a_quoted_aws_key_keeps_its_name_and_loses_its_value():
+    out = json.loads(redact(json.dumps({'env': {'aws_secret_access_key': 'SYNTH0123'}})))
+    assert out == {'env': {'aws_secret_access_key': '[redacted]'}}
+    out = redact('aws_secret_access_key="SYNTH0123" next')
+    assert 'SYNTH' not in out and out.endswith('" next')
+
+
+def test_redacting_any_dumped_payload_with_secrets_embedded_still_parses():
+    rng = random.Random(20)
+    secrets = [t for t, _ in LEAKS.values()] + [
+        'curl -u a:SYNTH', 'aws_secret_access_key=SYNTH', '-----BEGIN PRIVATE KEY-----']
+    bits = secrets + ['"', '\\', '\\"', '\n', '\t', '{', '}', '[', ']', ',', ':', ' ', '\xe9', '\u2028',
+                      '\x00', 'plain', '://', '@', '-u ', '=', "'", '\\n', '\\\\']
+
+    def text():
+        return ''.join(rng.choice(bits) for _ in range(rng.randint(0, 12)))
+
+    for _ in range(400):
+        payload = {text(): [text(), {text(): text()}, rng.randint(0, 9), None, True]}
+        for opts in ({}, {'ensure_ascii': False}, {'separators': (',', ':'), 'sort_keys': True}):
+            dumped = json.dumps(payload, **opts)
+            back = json.loads(redact(dumped))
+            assert len(list(_walk(back))) == len(list(_walk(payload)))
+            assert isinstance(json.loads(redact(json.dumps(dumped))), str)
 
 
 # the longest an input can make each pattern work: a start at every position, a
