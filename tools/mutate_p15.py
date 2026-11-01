@@ -27,6 +27,7 @@ AZN = 'archeus/core/application/authorization.py'
 I = 'tests/v1/integration/test_presence.py'
 U = 'tests/v1/unit/test_presence_units.py'
 G6 = 'tests/v1/judge/test_g06_security.py'
+AF = 'tests/v1/integration/test_api_audit_fixes.py'
 
 #: A disconnect taken as authoritative: the client's work is paused (M14), or
 #: its sessions closed (M13), when its last stream goes.
@@ -159,6 +160,12 @@ MUTATIONS = [
      "'step_up': b.get('step_up'),",
      "            'action_hash': b['action_hash'], 'note': b.get('note'), 'step_up': None,")],
      [I + '::test_P14_R1_a_paired_client_approves_through_p9_with_its_pin']),
+    ('M24', "a pairing grants more scope than the minting device holds", [(RTS,
+     "    for s in scopes:\n        if s not in req.principal['scopes']:\n            raise Refused(403, "
+     "'scope_required', {'scope': s})",
+     "    for s in scopes:\n        if False:\n            raise Refused(403, 'scope_required', "
+     "{'scope': s})")],
+     [AF + '::test_f2_a_device_cannot_pair_a_client_with_scopes_it_lacks']),
 ]
 
 

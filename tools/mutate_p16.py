@@ -137,9 +137,9 @@ MUTATIONS = [
      '        subjects[kind] = [r.entity.id for r in rows.where(conn, cls)]')],
      [SEAMS + '::test_the_timeline_holds_the_missions_own_events_and_no_other']),
     ('M24', "a launch grant exceeds its minter's scopes", [(RTS,
-     "        if s not in req.principal['scopes']:\n            raise Refused(403, 'scope_required', "
+     "    for s in asked:\n        if s not in req.principal['scopes']:\n            raise Refused(403, 'scope_required', "
      "{'scope': s})",
-     "        if False:\n            raise Refused(403, 'scope_required', {'scope': s})")],
+     "    for s in asked:\n        if False:\n            raise Refused(403, 'scope_required', {'scope': s})")],
      [SEAMS + '::test_a_launch_grant_never_exceeds_the_minters_own_scopes']),
     ('M25', 'the default launch grant is widened', [(AUTH,
      "LAUNCH_SCOPES = ('observe',)", "LAUNCH_SCOPES = ('observe', 'control')")],

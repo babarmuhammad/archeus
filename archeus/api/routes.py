@@ -257,6 +257,9 @@ def pair_start(req):
     scopes = [s for s in auth.SCOPES if s in (b.get('scopes') or auth.PAIR_SCOPES)]
     if 'observe' not in scopes:
         raise Invalid('scopes', 'always includes observe')
+    for s in scopes:
+        if s not in req.principal['scopes']:
+            raise Refused(403, 'scope_required', {'scope': s})
     for f in ('name', 'host_label'):
         if b.get(f) is not None and not b[f].strip():
             raise Invalid(f, 'is a non-empty string')
