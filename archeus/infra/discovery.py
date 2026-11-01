@@ -146,7 +146,9 @@ def discover():
     if not lock_is_held():
         return 'not_running', None
     info = read_core_json()
-    if info is None or proc.process_create_time(info['pid']) != info['create_time']:
+    # a creation time that cannot be read on either side identifies nothing: None == None
+    if info is None or info['create_time'] is None \
+            or proc.process_create_time(info['pid']) != info['create_time']:
         return 'unreadable', info
     return 'running', info
 

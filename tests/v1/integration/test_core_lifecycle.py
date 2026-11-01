@@ -99,6 +99,17 @@ def test_status_finds_a_running_core_and_reports_not_running_without_a_socket(
     assert code == 1                    # the stale core.json of the killed Core is not trusted
 
 
+def test_a_discovery_record_with_no_creation_time_is_never_trusted(archeus_home):
+    """T-654#1: a dead pid reads as None and the record said None, so the two matched."""
+    lock = discovery.acquire()
+    try:
+        discovery.write_core_json({'pid': 2 ** 22 + 7, 'create_time': None, 'port': 7,
+                                   'started_at': 'x', 'version': 'x', 'schema': 2})
+        assert discovery.discover()[0] == 'unreadable'
+    finally:
+        lock.release()
+
+
 def test_a_held_lock_with_garbage_discovery_sends_nothing(archeus_home, capsys, monkeypatch):
     lock = discovery.acquire()
     try:
