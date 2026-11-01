@@ -320,6 +320,16 @@ def test_change_card_fresh_sends_core_own_body():
                               {'preferred_harnesses': ['fast'], 'idempotency_key': 'key-1'})
 
 
+def test_preferences_form_always_sends_all_four_lists_so_a_blank_one_clears_it():
+    # G39: the route replaces every list; a blank field must be an explicit [], not a gap
+    app, core = make_app()
+    doc = render(app, SC.outcome, {'id': 'm1', 'objective': 'o'}, None)
+    act(doc, 'F')['run']('k', {'preferred_accounts': 'a, b'})
+    assert core.posts[-1] == (endpoints.set_mission_resources('m1'), {
+        'idempotency_key': 'k', 'preferred_accounts': ['a', 'b'], 'forbidden_accounts': [],
+        'preferred_harnesses': [], 'forbidden_harnesses': [], 'max_cost_band': None})
+
+
 def test_change_card_policy_branch_posts_the_policy_route():
     # screens.py:384-387: any other command name goes to set_resource_policy
     # (cmd's own id) and is never stale-checked (stale is mission-scope only).

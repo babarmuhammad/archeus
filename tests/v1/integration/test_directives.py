@@ -94,6 +94,33 @@ def test_use_prefers_a_normal_account_and_proposes_a_protected_one(make):  # noq
     assert rp['preferred_accounts'] == [acc['B'], acc['Shared']] and 'directives' not in rp
 
 
+def test_a_change_card_carries_every_list_so_confirming_it_keeps_the_forbidden_account(make):  # noqa: F811
+    """G39: setting a mission's resources replaces the lists, `forbidden_accounts` included,
+    so Core's card sends all four, and the one the card did not touch survives."""
+    rg, acc = _rig(make)
+    mid = _mission(rg)
+    rg.say("don't use A for M")
+    reply, _it = rg.say('use account Shared for M')
+    (card,) = [c for c in reply['cards'] if c['type'] == 'change']
+    body = card['command']['body']
+    assert {'preferred_accounts', 'forbidden_accounts', 'preferred_harnesses',
+            'forbidden_harnesses'} <= set(body)
+    assert body['forbidden_accounts'] == [acc['A']] and body['forbidden_harnesses'] == []
+    rg.run(resources.set_mission_resources, mission_id=mid, preferences=body)
+    rp = _prefs(rg, mid)
+    assert rp['forbidden_accounts'] == [acc['A']] and rp['preferred_accounts'] == [acc['Shared']]
+
+
+def test_a_send_without_forbidden_accounts_replaces_it_with_nothing(make):  # noqa: F811
+    rg, acc = _rig(make)
+    mid = _mission(rg)
+    rg.say("don't use A for M")
+    assert _prefs(rg, mid)['forbidden_accounts'] == [acc['A']]
+    rg.run(resources.set_mission_resources, mission_id=mid,
+           preferences={'preferred_accounts': [acc['B']]})
+    assert 'forbidden_accounts' not in _prefs(rg, mid)
+
+
 def test_lifting_a_forbid_is_widening_and_only_proposed(make):  # noqa: F811
     rg, acc = _rig(make)
     mid = _mission(rg)

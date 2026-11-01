@@ -1157,7 +1157,7 @@ def outcome(app, doc, m, mp):
 
     def lst(s):
         s = (s or '').strip()
-        return [x.strip() for x in s.split(',') if x.strip()] if s else None
+        return [x.strip() for x in s.split(',') if x.strip()]
     doc.act('F', 'Set routing preferences', 'admin',
             lambda k, v: app.core.post(endpoints.set_mission_resources(m['id']), {
                 'idempotency_key': k,
