@@ -193,14 +193,14 @@ class Shell:
     def notices(self, after):
         """(the event head read, what the tray says) for what happened after
         *after*; with *after* None only the head, so nothing older is said. Core
-        unreadable: (*after*, [])."""
+        unreadable: (*after*, []); a cursor Core no longer honours (410): the head, said nothing."""
         from .tui import client
         try:
             if after is None:
                 return self._own.get(endpoints.events(limit=1))[1], []
             events = self._own.get(endpoints.events(after=after, limit=500))[0]['events']
-        except client.CoreError:
-            return after, []
+        except client.CoreError as e:
+            return self.notices(None) if e.status == 410 else (after, [])
         said = [s for s in map(notice, events) if s]
         return (events[-1]['seq'] if events else after), said
 
