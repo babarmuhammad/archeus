@@ -242,6 +242,11 @@ MUTATIONS = [
      [(NODE, "'nonce': None if request is None else request.get('nonce'),",
        "'nonce': request and request.get('nonce'),")],
      [B6 + '::test_a_falsy_request_is_answered_once_not_on_every_pass']),
+    # -- review fixes 1-6 (fix batch 10) --
+    ('X44', 'a deeply nested request file raises out of the parse and the exec loop', [(NODE,
+     "    except (OSError, ValueError, RecursionError):   # a deep `[[[...` is a file, not a crash",
+     "    except (OSError, ValueError):")],
+     [U + '::test_a_deeply_nested_request_or_answer_is_unreadable_not_a_crash_of_core']),
 ]
 
 

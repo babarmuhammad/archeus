@@ -1081,6 +1081,23 @@ def test_a_response_past_the_size_bound_does_not_answer_a_request(monkeypatch):
     assert LocalNode.pending_requests(eid) == [(1, {'nonce': 'n'})]
 
 
+def test_a_deeply_nested_request_or_answer_is_unreadable_not_a_crash_of_core():
+    """`[[[...` 100k deep is 200 KB, far under the size bound, and json.loads raises
+    RecursionError on it, which left the exec loop and exited Core on every restart."""
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    os.makedirs(p.res)
+    deep = '[' * 100000 + ']' * 100000
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        f.write(deep)
+    with open(os.path.join(p.req, '2.req.json'), 'w', encoding='utf-8') as f:
+        f.write('{"nonce": "n"}')
+    with open(os.path.join(p.res, '2.res.json'), 'w', encoding='utf-8') as f:
+        f.write(deep)
+    assert LocalNode.pending_requests(eid) == [(1, None), (2, {'nonce': 'n'})]
+
+
 def _core_hook(monkeypatch):
     eid = ids.new_id('execution')
     monkeypatch.setattr(hook, 'WAIT_S', 5.0)

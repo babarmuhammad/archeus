@@ -1659,7 +1659,7 @@ def _read_object(path):
         with open(path, 'rb') as f:
             data = f.read(MAX_REQUEST_BYTES + 1)
         body = json.loads(data.decode('utf-8')) if len(data) <= MAX_REQUEST_BYTES else None
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):   # a deep `[[[...` is a file, not a crash
         return None
     return body if isinstance(body, dict) else None
 
