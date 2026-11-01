@@ -102,7 +102,7 @@ class Doc:
     def kv(self, rows, indent=2):
         w = max((len(k) for k, _ in rows), default=0)
         for k, v in rows:
-            self.add(' ' * indent + self.st.paint(k.ljust(w), 'text-2') + '  ' + v)
+            self.add(' ' * indent + self.st.t(k.ljust(w), 'text-2') + '  ' + v)
 
     def load(self, path, what):
         """Core's answer for *path*, or None after saying why there is none."""
@@ -197,9 +197,12 @@ def relations(app, doc, kind, id_):
     if g is None:
         return
     edges = P.edge_rows(g['edges'], {'kind': kind, 'id': id_})
+    cut = 'The list is cut: not all relationships are shown.'
     if not edges:
-        doc.empty('No recorded relationships.')
+        doc.empty(cut if g.get('truncated') else 'No recorded relationships.')
         return
+    if g.get('truncated'):
+        doc.hint(cut)
     groups = {}
     for e in edges:
         groups.setdefault(e['rel'], []).append(e)
@@ -358,8 +361,9 @@ def card(app, doc, m, i, c, cid='primary'):
                     reread=reread + [endpoints.get_mission(id_), endpoints.list_missions()],
                     disabled=None if live else 'This mission is %s.' % str(
                         mi.get('state') or 'unknown').lower(), ident=ident + ':s')]
-        doc.add('    ' + T(app, '[stop] ', 'state.attention') + app.st.paint(
-            'Stop "%s": it is paused, then cancelled.' % (mi.get('title') or id_)), acts=acts)
+        doc.add('    ' + T(app, '[stop] ', 'state.attention') + T(
+            app, 'Stop "%s": it is paused, then cancelled.' % (mi.get('title') or id_)),
+            acts=acts)
         return
     if type_ == 'change':
         # Core's proposal (P19 B10, ADR-0042 §3): confirming runs the existing
@@ -431,8 +435,8 @@ def chat_approval(app, doc, aid, ident, cid):
             Act('R', 'Reject', 'approve', decide('reject'), reread=reread, disabled=closed,
                 ident=ident + ':r',
                 confirm='Reject what this approval asks. A decided approval cannot be changed.')]
-    doc.add('    ' + T(app, '[approval] ', 'state.attention') + app.st.paint('Approve %s?' % scope)
-            + ('  ' + app.st.paint(closed, 'text-2') if closed else ''), acts=acts)
+    doc.add('    ' + T(app, '[approval] ', 'state.attention') + T(app, 'Approve %s?' % scope)
+            + ('  ' + T(app, closed, 'text-2') if closed else ''), acts=acts)
 
 
 # ── Work ─────────────────────────────────────────────────────────────────────
@@ -912,7 +916,7 @@ def resources_section(app, doc):
             doc.empty('Nothing is opted in: every settings source is excluded.')
         for o in ol['opt_ins']:
             doc.add('  ' + T(app, o['kind'], bold=True) + '  ' + T(app, o['name'])
-                    + app.st.paint(' · %s %s · %s · version %d' % (
+                    + T(app, ' · %s %s · %s · version %s' % (
                         o['owner'], o['owner_id'], 'opted in' if o['opted_in'] else 'opted out',
                         o['version']), 'text-2'))
     doc.h('Recent routing decisions')
@@ -1220,7 +1224,7 @@ def plan_tab(app, doc, m, mp):
                     if x['id'] == v.get('supersedes_plan_id')), '?')
         doc.add('  ' + T(app, 'v%s' % v['plan_version'], 'text-2' if inactive else 'text')
                 + '  ' + app.st.badge('plan', v['state'])
-                + (app.st.paint('  replaces v%s' % old, 'text-2') if v.get('supersedes_plan_id')
+                + (T(app, '  replaces v%s' % old, 'text-2') if v.get('supersedes_plan_id')
                    else '')
                 + (app.st.paint('  in force', 'text-2') if v['id'] == p['id'] and p.get('in_force')
                    else ''), target=open_('plan', v['id']))
