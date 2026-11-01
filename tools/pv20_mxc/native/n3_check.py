@@ -926,7 +926,7 @@ def main(argv):
         except OSError:
             pass
     code = rec.exit_code()
-    passed = (not stopped) and code in (0, 2)
+    passed = (not stopped) and code == 0
     if passed and not keep:
         try:
             remove_fixture(n3.F)
