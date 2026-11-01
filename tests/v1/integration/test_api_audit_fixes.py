@@ -113,3 +113,12 @@ def test_f7_a_long_stream_is_read_from_a_window_of_whole_lines(monkeypatch):
     assert got['next_offset'] == os.path.getsize(paths.stream)
     short = output.read(exe, FakeHarness(), got['next_offset'] - 300)
     assert not short['truncated'] and len(short['events']) >= 2         # a short read is not cut
+
+
+# ── F11: a cursor is ASCII digits ──
+
+def test_f11_a_cursor_in_non_ascii_digits_is_a_400(tc):
+    for digits in ('%D9%A3', '%EF%BC%91'):                    # Arabic-Indic three, fullwidth one
+        r = tc.http('GET', '/v1/events?after=%s&limit=1' % digits)
+        assert (r.status, r.json()['detail']['field']) == (400, 'cursor')
+    assert tc.http('GET', '/v1/events?after=0&limit=1').status == 200

@@ -94,7 +94,7 @@ def _one(query, name):
 
 
 def _cursor(raw, field):
-    if raw is None or not re.fullmatch(r'\d{1,18}', raw):
+    if raw is None or not re.fullmatch(r'[0-9]{1,18}', raw):
         raise Invalid(field, 'is an integer >= 0')
     return int(raw)
 
