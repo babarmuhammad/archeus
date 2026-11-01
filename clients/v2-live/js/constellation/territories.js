@@ -18,7 +18,9 @@ export function pickGrid(count, aw, ah, gap, gutter) {
   let best = null;
   for (const rows of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) for (const cols of [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]) {
     if (cols * rows < count) continue;
-    const cw = (aw - gutter - gap * (cols - 2)) / cols, ch = (ah - gap * (rows - 1)) / rows, score = Math.min(Math.min(cw, CELL_MAX.w) / 1.5, Math.min(ch, CELL_MAX.h));
+    const cw = (aw - gutter - gap * (cols - 2)) / cols, ch = (ah - gap * (rows - 1)) / rows;
+    if (cw < 24 || ch < 24) continue;
+    const score = Math.min(Math.min(cw, CELL_MAX.w) / 1.5, Math.min(ch, CELL_MAX.h));
     if (!best || score > best.score + .5 || (Math.abs(score - best.score) <= .5 && cols * rows < best.cols * best.rows)) best = {cols, rows, cw, ch, score};
   }
   return best || {cols: 20, rows: 13, cw: (aw - gutter - gap * 18) / 20, ch: (ah - gap * 12) / 13, score: 0};

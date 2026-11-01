@@ -110,3 +110,10 @@ test('project descriptions translate whole attention phrases for accessible name
     assert.equal(describeProject(project, tr), 'Alpha, AL, Richiede la tua attenzione, ' + phrase + ', 2 worktree');
   }
 });
+
+test('a short wide scene (the Details sheet open under the headline) still gets a grid when one fits at the 24 px minimum', () => {
+  const layout = layoutTerritories(30, 832, 287, {top: 179, right: 24, bottom: 16, left: 24});
+  assert.equal(layout.overflow, undefined);
+  assert.equal(layout.cells.length >= 30, true);
+  for (const cell of layout.cells) assert.ok(cell.w >= 24 && cell.h >= 24);
+});

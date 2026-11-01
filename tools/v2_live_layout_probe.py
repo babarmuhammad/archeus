@@ -204,6 +204,8 @@ MEASURE = r"""
   document.querySelectorAll('.now-panels > .panel, .now-panels .mrow .t, .now-panels .mrow .m').forEach((e) => { const w = e.getBoundingClientRect().width; if (inLayer(e) && vis(e) && w < 120) add('narrow', name(e) + ' ' + Math.round(w) + ' px wide'); });
   const sc = document.querySelector('.now-scene'), nv = document.querySelector('.now-view');
   if (sc && nv && vis(sc) && sc.getBoundingClientRect().height < Math.min(240, nv.getBoundingClientRect().height * 0.5)) add('narrow', 'scene squeezed to ' + Math.round(sc.getBoundingClientRect().height) + ' px');
+  // the Territories project list that stands in for a grid that cannot fit must stay tall enough to scroll (two 48 px rows)
+  document.querySelectorAll('.am-territories[data-overflow="true"] > .am-equivalent').forEach((e) => { const hh = e.getBoundingClientRect().height; if (inLayer(e) && vis(e) && hh < 96) add('narrow', 'Territories project list squeezed to ' + Math.round(hh) + ' px'); });
   out.push({ kind: 'stat', msg: boxes.length + ' boxes, ' + ctl.length + ' controls' });
   return out;
 }
