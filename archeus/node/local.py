@@ -172,11 +172,14 @@ class MxcLaunch:
 
     The resume is reached only past a durable ownership record: a ledger write that
     fails leaves the suspended child terminated, never resumed, every handle closed.
-    Ending follows the audit's cancellation order — revoke the broker admission, end
-    the whole Job, wait a bounded time for quiescence, then record the completion or
-    the quarantine.
+    Ending follows the audit's cancellation order — revoke the broker admission, wait a
+    bounded time for the Job to report no member, then record the completion or the
+    quarantine.
 
-    The caller still retains Job creation, admission, identity validation, and the
+    The caller owns the Job from its creation to its close: this object reads the
+    member count through the handle it was handed and never closes it, so the caller's
+    own fence or teardown closes it exactly once, and that close is what ends a tree
+    that is still running. It also retains admission, identity validation, and the
     teardown of anything this object never started.
 
     UNVERIFIED: native workload-result framing is not frozen. The outcome reader must
@@ -223,7 +226,7 @@ class MxcLaunch:
             ui=False, egress='deny', proxy_url=None)
         self.process, self.job = None, None
         self.launcher_exit, self.completed, self.end_state = None, None, None
-        self._started = self._ended = self._job_closed = False
+        self._started = self._ended = False
         self._end_lock = threading.Lock()
         self._digest = None
 
@@ -348,7 +351,7 @@ class MxcLaunch:
                 return self.end_state
             self._ended = True
             faults = []
-            for step in (self._revoke, self._close_job, self._close_handles):
+            for step in (self._revoke, self._close_handles):
                 try:
                     step()
                 except Exception as err:                     # a failed step never skips the next
@@ -363,11 +366,6 @@ class MxcLaunch:
         if self.broker is not None:                          # admission first: no new request
             self.broker.revoke(self.execution_id)
 
-    def _close_job(self):
-        if self.job is not None and self.boundary is not None and not self._job_closed:
-            self._job_closed = True                          # kill-on-close: the tree ends here
-            self.boundary.close_job(self.job)
-
     def _close_handles(self):
         close = getattr(self.process, 'close', None)         # our handles, never the Job's
         if close is not None:
@@ -375,9 +373,9 @@ class MxcLaunch:
 
     def _quiescent(self):
         """None once the Job reports no member within the bound, else why it is not.
-        UNVERIFIED: the boundary contract for reading a count once Core has closed its
-        handle — a boundary that cannot answer leaves the end unverified, it never
-        proves cleanliness (the same rule the isolation fence follows)."""
+        The count is read through the caller's still open handle, as the isolation fence
+        does; a boundary that cannot answer leaves the end unverified, it never proves
+        cleanliness."""
         if self.boundary is None or self.job is None:
             return 'no boundary Job was held to read'
         count = getattr(self.boundary, 'job_active_processes', None)

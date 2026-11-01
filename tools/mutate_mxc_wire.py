@@ -66,9 +66,11 @@ MUTATIONS = [
      "            self.broker.revoke(self.execution_id)", "            pass")],
      [W + 'test_ending_follows_the_audited_order',
       W + 'test_a_verified_end_records_the_workload_outcome']),
-    ('W07', 'the Core Job is left holding the tree', [(LOCAL,
-     "            self.boundary.close_job(self.job)", "            pass")],
-     [W + 'test_a_cancel_ending_a_drain_ends_the_job_and_quarantines',
+    ('W07', 'the Job is closed before its count is read', [(LOCAL,
+     "        deadline = self.clock() + self.quiescence_wait",
+     "        self.boundary.close_job(self.job)\n"
+     "        deadline = self.clock() + self.quiescence_wait")],
+     [W + 'test_the_count_is_read_through_an_open_handle_and_a_clean_end_is_reachable',
       W + 'test_ending_follows_the_audited_order']),
     ('W08', 'a second cancel ends the execution twice', [(LOCAL,
      "            if self._ended:\n                return self.end_state",
@@ -135,9 +137,14 @@ MUTATIONS = [
      "            why = self._quiescent()")],
      [W + 'test_a_failing_ending_step_never_skips_the_next_and_is_never_clean']),
     ('W23', 'a failed ending step stops the ending', [(LOCAL,
-     "            for step in (self._revoke, self._close_job, self._close_handles):",
+     "            for step in (self._revoke, self._close_handles):",
      "            for step in (self._revoke,):")],
      [W + 'test_a_failing_ending_step_never_skips_the_next_and_is_never_clean']),
+    ('W24', "the launch closes the caller's Job, which the caller closes again", [(LOCAL,
+     "            state = self._settle(why=why, reason=reason, outcome=outcome)",
+     "            self.boundary.close_job(self.job)\n"
+     "            state = self._settle(why=why, reason=reason, outcome=outcome)")],
+     [W + 'test_the_owner_closes_the_job_exactly_once_after_the_end']),
 ]
 
 

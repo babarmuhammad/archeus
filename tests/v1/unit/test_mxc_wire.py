@@ -109,22 +109,34 @@ class FakeApi:
 
 class FakeBoundary:
     """Core's Job: the one thing that ends the whole tree, and the only source of a
-    quiescence count. It never kills a process by pid and never invents a count."""
+    quiescence count. It never kills a process by pid and never invents a count. Like
+    the real handle it is open until its one close: a count read or a second close on a
+    closed handle fails."""
 
     def __init__(self, api, counts=()):
         self.api, self.counts = api, list(counts)
-        self.closed, self.assigned = [], []
+        self.closed, self.assigned, self.open = [], [], set()
+
+    def create_job(self, execution_id):
+        job = 'core-job-%s' % execution_id
+        self.open.add(job)
+        return job
 
     def assign_job(self, job, process_handle):
         self.api.point('assign')
         self.assigned.append(process_handle)
 
     def close_job(self, job):
+        if job not in self.open:
+            raise OSError('Job handle %r is not open' % (job,))
+        self.open.remove(job)
         self.closed.append(job)
         self.api.events.append('close_job')
 
     def job_active_processes(self, job):
         self.api.events.append('quiesce')
+        if job not in self.open:
+            raise OSError('Job handle %r is not open' % (job,))
         return self.counts.pop(0) if self.counts else 0
 
 
@@ -246,7 +258,8 @@ def wire(tmp_path, args, native_parts):
                                  clock=lambda: float(next(tick)),
                                  pause=lambda seconds: None, **args)
         return SimpleNamespace(api=api, boundary=boundary, journal=journal,
-                               broker=admission, launch=launch, job='core-job')
+                               broker=admission, launch=launch,
+                               job=boundary.create_job(execution_id))
     return build
 
 
@@ -351,7 +364,7 @@ def test_a_fault_at_any_step_never_leaves_a_running_child(wire, step):
     assert h.api.events.count('resume') == (1 if step == 'resume' else 0)
     assert h.api.events.count('kill') == (0 if step in ('intent', 'create') else 1)
     assert h.api.handles == {}
-    assert h.boundary.closed == [h.job]                   # the Job ended, whatever got through
+    assert h.boundary.closed == [] and h.job in h.boundary.open    # the Job stays the caller's
     ops = journal_ops(h.journal)
     assert ops[-1] == 'quarantine'                        # the fault is on the record
     assert 'completion' not in ops and 'disposal' not in ops
@@ -421,7 +434,7 @@ def test_launcher_zero_is_never_the_workload_outcome(wire):
         h.launch.wait()
     assert h.launch.launcher_exit == 0            # the launcher's own report, kept apart
     assert h.launch.completed is None
-    assert h.boundary.closed == [h.job]
+    assert h.boundary.closed == []
     ops = journal_ops(h.journal)
     assert 'completion' not in ops and ops[-1] == 'quarantine'
     assert h.launch.end_state['state'] == ledger_mod.DEAD_UNVERIFIED
@@ -466,7 +479,7 @@ def test_a_verified_end_records_the_workload_outcome(wire):
     rows = journal_records(h.journal)
     assert rows[-1]['outcome'] == 7 and rows[-2]['verified_absent'] is True
     assert h.launch.end_state['state'] == ledger_mod.DEAD_CLEAN
-    assert h.boundary.closed == [h.job] and h.broker.revoked == ['e1']
+    assert h.boundary.closed == [] and h.broker.revoked == ['e1']
 
 
 @pytest.mark.parametrize('answer', [None, False, 'absent', 1])
@@ -545,8 +558,7 @@ def test_the_quiescence_wait_is_bounded_and_honest(wire, counts, wait, polls, wh
 
 
 def test_a_boundary_that_cannot_answer_leaves_the_end_unverified(wire):
-    """The boundary contract for reading a count after Core closed its handle is
-    UNVERIFIED; not answering is not answering cleanly."""
+    """Not answering is not answering cleanly."""
     def job_active_processes(job):
         raise OSError('count unavailable')
 
@@ -561,12 +573,12 @@ def test_a_boundary_that_cannot_answer_leaves_the_end_unverified(wire):
 
 # ── cancel and timeout: the same ending, in the audit's order ──
 
-def test_a_cancel_ending_a_drain_ends_the_job_and_quarantines(wire):
+def test_a_cancel_ending_a_drain_quarantines_and_leaves_the_job_to_its_owner(wire):
     h = wire(exit_code=None, reads={1: [], 2: []}, outcome=lambda process: 0)
     h.launch.start(job=h.job)
     with pytest.raises(mxc.MxcUnavailable, match='cancelled'):
         h.launch.wait(cancelled=lambda: True)
-    assert h.broker.revoked == ['e1'] and h.boundary.closed == [h.job]
+    assert h.broker.revoked == ['e1'] and h.boundary.closed == []
     assert h.api.handles == {}
     ops = journal_ops(h.journal)
     assert ops[-1] == 'quarantine' and 'completion' not in ops and 'disposal' not in ops
@@ -580,7 +592,39 @@ def test_ending_follows_the_audited_order(wire):
         h.launch.wait()
     events = [event for event in h.api.events
               if event in ('revoke', 'close_job', 'quiesce')]
-    assert events == ['revoke', 'close_job', 'quiesce']
+    assert events == ['revoke', 'quiesce']
+
+
+def test_the_count_is_read_through_an_open_handle_and_a_clean_end_is_reachable(wire):
+    h = wire(counts=[2, 1, 0], quiescence_wait=100.0, outcome=lambda process: 0,
+             reader=lambda execution_id, owner: True)
+    h.launch.start(job=h.job)
+    assert h.launch.wait() == 0
+    assert h.launch.end_state == {'state': ledger_mod.DEAD_CLEAN, 'reason': 'launcher exited',
+                                  'quiescence': None}
+    assert h.api.events.count('quiesce') == 3 and 'close_job' not in h.api.events
+    assert journal_ops(h.journal) == ['intent', 'ownership', 'disposal', 'completion']
+
+
+def test_the_owner_closes_the_job_exactly_once_after_the_end(wire):
+    h = wire(outcome=lambda process: 0, reader=lambda execution_id, owner: True)
+    h.launch.start(job=h.job)
+    h.launch.wait()
+    assert h.boundary.closed == [] and h.job in h.boundary.open
+    h.boundary.close_job(h.job)
+    assert h.boundary.closed == [h.job] and not h.boundary.open
+    with pytest.raises(OSError):
+        h.boundary.close_job(h.job)
+
+
+def test_a_job_already_closed_is_never_read_as_empty(wire):
+    h = wire(outcome=lambda process: 0, reader=lambda execution_id, owner: True)
+    h.launch.start(job=h.job)
+    h.boundary.close_job(h.job)
+    h.launch.wait()
+    assert h.launch.end_state['state'] == ledger_mod.DEAD_UNVERIFIED
+    assert 'count failed' in h.launch.end_state['quiescence']
+    assert h.boundary.closed == [h.job]
 
 
 def test_cancel_reports_the_first_ending_and_ends_nothing_twice(wire):
@@ -589,7 +633,7 @@ def test_cancel_reports_the_first_ending_and_ends_nothing_twice(wire):
     assert h.launch.cancel(reason='host asked', outcome=1) == h.launch.end_state
     first = h.launch.end_state
     assert h.launch.cancel(reason='again') is first
-    assert h.api.events.count('close_job') == 1 and h.api.events.count('revoke') == 1
+    assert h.api.events.count('close_job') == 0 and h.api.events.count('revoke') == 1
     assert h.api.events.count('quiesce') == 1
     assert journal_ops(h.journal) == ['intent', 'ownership', 'disposal', 'completion']
 
@@ -638,19 +682,22 @@ def test_a_boundary_with_no_count_leaves_the_end_unverified(wire):
     assert 'no Job process count' in h.launch.end_state['quiescence']
 
 
-@pytest.mark.parametrize('broken', ['revoke', 'close_job'])
+@pytest.mark.parametrize('broken', ['revoke', 'close'])
 def test_a_failing_ending_step_never_skips_the_next_and_is_never_clean(wire, broken):
     h = wire(outcome=lambda process: 0, reader=lambda execution_id, owner: True)
     h.launch.start(job=h.job)
-    target = h.broker if broken == 'revoke' else h.boundary
+    target = h.broker if broken == 'revoke' else h.launch.process
+    real = getattr(target, broken)
 
-    def fail(*_):
+    def fail(*args):
+        if broken == 'close':
+            real(*args)                       # the handles still go, the step still reports
         raise OSError('step failed')
 
     setattr(target, broken, fail)
     state = h.launch.cancel(reason='host asked', outcome=0)
     assert state['state'] == ledger_mod.DEAD_UNVERIFIED and 'OSError' in state['quiescence']
     assert h.api.handles == {}
-    assert (h.boundary.closed == [h.job]) == (broken == 'revoke')
+    assert h.boundary.closed == []
     ops = journal_ops(h.journal)
     assert ops[-1] == 'quarantine' and 'completion' not in ops and 'disposal' not in ops
