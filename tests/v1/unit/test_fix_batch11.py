@@ -41,3 +41,9 @@ def test_f5_the_answered_memo_holds_at_most_a_bounded_number_of_executions(monke
         _answered_pair(eid)
         assert LocalNode.pending_requests(eid) == []
     assert list(local._ANSWERED) == eids[-3:]
+
+
+def test_f8_a_settings_file_nested_past_the_parser_depth_is_not_json(tmp_path):
+    f = tmp_path / 'deep.json'
+    f.write_text('{"mcpServers": ' + '[' * 100000 + ']' * 100000 + '}', encoding='utf-8')
+    assert sources._json(str(f)) == (None, 'not JSON')

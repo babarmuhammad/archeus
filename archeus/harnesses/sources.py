@@ -107,7 +107,7 @@ def _json(path):
         return None, err
     try:
         got = json.loads(data.decode('utf-8-sig'))
-    except ValueError:
+    except (ValueError, RecursionError):
         return None, 'not JSON'
     return (got, None) if isinstance(got, dict) else (None, 'not a JSON object')
 

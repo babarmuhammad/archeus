@@ -79,6 +79,10 @@ MUTATIONS = [
      r"""        while len(_ANSWERED) > _ANSWERED_MAX:""",
      r"""        while False:""")],
      [B + 'test_f5_the_answered_memo_holds_at_most_a_bounded_number_of_executions']),
+    ('S11', 'a deeply nested settings file raises', [(SRC,
+     r"""    except (ValueError, RecursionError):""",
+     r"""    except ValueError:""")],
+     [B + 'test_f8_a_settings_file_nested_past_the_parser_depth_is_not_json']),
 ]
 
 
