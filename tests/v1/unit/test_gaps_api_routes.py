@@ -49,7 +49,7 @@ class _Rec:
 
 def _api(**over):
     api = SimpleNamespace(
-        db=None, device_active=lambda device: True,
+        db=None,
         origin=SimpleNamespace(local_host=lambda h: h == LOCAL_HOST, remote=None),
         launch=SimpleNamespace(mint=_Rec(ret='code-minted'), redeem=_Rec(ret=None)),
         pairing=SimpleNamespace(mint=_Rec(ret='CODE'), redeem=_Rec(ret=None)),

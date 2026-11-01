@@ -85,7 +85,6 @@ def api(**over):
     """The `Api` a handler reads: the DB read, the origin, the two code stores and
     one attribute per application service a route may run through `req.run`."""
     base = {'db': SimpleNamespace(read=lambda: contextlib.nullcontext(CONN)),
-            'device_active': lambda d: True,
             'origin': SimpleNamespace(local_host=lambda h: h == '127.0.0.1:7337', remote=()),
             'version': 'v1', 'instance': 'core-1', 'started_at': '2026-10-30T09:00:00+00:00',
             'resources': SimpleNamespace(registry=SimpleNamespace(ids=lambda: [],

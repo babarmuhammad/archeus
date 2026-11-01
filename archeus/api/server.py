@@ -250,10 +250,6 @@ class Api:
             return auth.UNDETERMINED
         return origin if origin in auth.ORIGINS else auth.UNDETERMINED
 
-    def device_active(self, device_id):
-        with self.db.read() as conn:
-            return queries.device_active(conn, device_id)
-
     def authenticate(self, header):
         token = auth.bearer(header)
         if token is None:

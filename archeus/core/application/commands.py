@@ -116,7 +116,7 @@ def pin_matches(record, pin):
 
 def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at=None,
                     origin='local', client_type=None, host_label=None, pin_hash=None,
-                    supersede=None):
+                    supersede=None, minted_by_device=None):
     """A client with its first credential, in one transaction: a `user_device`
     principal holding *scopes*, its client row (entity `Device`, PAIRING ->
     ACTIVE by `code_redeemed`) and the `tokens` row. Only the token's sha256
@@ -129,7 +129,15 @@ def register_device(tx, *, actor, name, platform, token_hash, scopes, expires_at
     *supersede* (p20-design-gate D1): the slot this client takes alone. Every
     ACTIVE client holding the same slot is revoked in this transaction, so a
     crashed shell's credential dies at the next launch; a client redeemed
-    without a slot is never touched."""
+    without a slot is never touched.
+
+    *minted_by_device* is the client whose launch or pairing code this redeems: it
+    must still be ACTIVE in this transaction, so a revoke that lands after the
+    route looked cannot be outrun by a redeem already on its way."""
+    if minted_by_device is not None:
+        minter = tx.get(entities.Device, minted_by_device)
+        if minter is None or minter.entity.state != 'ACTIVE':
+            raise lifecycle.NotFound(minted_by_device)
     if not (isinstance(token_hash, str) and entities._HEX64.fullmatch(token_hash)):
         raise ValueError('token_hash is a sha256 hex digest')
     if supersede is not None:

@@ -232,16 +232,19 @@ def launch_code(req):
 def launch_redeem(req):
     _loopback(req)
     minter = req.api.launch.redeem(req.body['code'])
-    if minter is None or not req.api.device_active(minter[1]):      # a revoked minter's grant dies with it
+    if minter is None:
         raise Refused(401, 'invalid_launch_code')
     # the token is made here and only its hash enters the command, which runs
     # with no idempotency key: nothing stores the response that carries it (A4)
     token = auth.new_token()
-    out = req.run(commands.register_device, {
-        'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],
-        'platform': req.body['platform'],
-        'token_hash': auth.token_hash(token), 'scopes': list(minter[2]),
-        'supersede': minter[3]}, actor_id=minter[0], keyed=False)
+    try:                                # a revoked minter's grant dies with it, checked in the commit
+        out = req.run(commands.register_device, {
+            'name': (req.body.get('name') or '').strip() or 'browser (%s)' % req.body['platform'],
+            'platform': req.body['platform'],
+            'token_hash': auth.token_hash(token), 'scopes': list(minter[2]),
+            'supersede': minter[3], 'minted_by_device': minter[1]}, actor_id=minter[0], keyed=False)
+    except errors.NotFound:
+        raise Refused(401, 'invalid_launch_code') from None
     # a superseded client's streams end at this commit's wake (sse `_still_valid`)
     return 200, {'device_id': out['device_id'], 'token': token, 'scopes': list(minter[2])}
 
@@ -286,17 +289,21 @@ def pair_redeem(req):
     except auth.PairingLocked:
         raise Refused(429, 'pairing_locked', headers={
             'Retry-After': str(int(auth.PairingCodes.FAIL_WINDOW_S))}) from None
-    if grant is None or not req.api.device_active(grant['device_id']):
+    if grant is None:
         raise Refused(401, 'invalid_pairing_code')
     token = auth.new_token()
     expires = auth.iso(datetime.now(timezone.utc) + timedelta(days=auth.PAIRED_TOKEN_DAYS))
-    out = req.run(commands.register_device, {
-        'name': grant['name'] or b.get('name') or 'paired %s' % b['platform'],
-        'platform': b['platform'], 'token_hash': auth.token_hash(token),
-        'scopes': grant['scopes'], 'expires_at': expires, 'origin': 'paired',
-        'client_type': 'spa', 'host_label': grant['host_label'],
-        'pin_hash': commands.hash_pin(b['pin']) if b.get('pin') else None},
-        actor_id=grant['starter'], keyed=False)
+    try:
+        out = req.run(commands.register_device, {
+            'name': grant['name'] or b.get('name') or 'paired %s' % b['platform'],
+            'platform': b['platform'], 'token_hash': auth.token_hash(token),
+            'scopes': grant['scopes'], 'expires_at': expires, 'origin': 'paired',
+            'client_type': 'spa', 'host_label': grant['host_label'],
+            'pin_hash': commands.hash_pin(b['pin']) if b.get('pin') else None,
+            'minted_by_device': grant['device_id']},
+            actor_id=grant['starter'], keyed=False)
+    except errors.NotFound:
+        raise Refused(401, 'invalid_pairing_code') from None
     return 200, {'device_id': out['device_id'], 'token': token, 'scopes': grant['scopes'],
                  'expires_at': expires}
 

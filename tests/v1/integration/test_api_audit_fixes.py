@@ -59,6 +59,30 @@ def test_f3_a_revoked_minters_launch_and_pair_codes_no_longer_redeem(tc):
     assert (r.status, r.json()['error']) == (401, 'invalid_pairing_code')
 
 
+@pytest.mark.parametrize('kind', ['launch', 'pair'])
+def test_r7_a_revoke_landing_just_before_the_commit_still_refuses_the_redeem(tc, monkeypatch, kind):
+    """The minter is revoked after the code was spent and before register_device
+    commits (the token is made in between): the command checks the minter."""
+    from archeus.api import routes
+    device, token = _launch_device(tc, ['observe', 'admin'])
+    path, err = (('/v1/devices/launch', 'invalid_launch_code') if kind == 'launch'
+                 else ('/v1/devices/pair', 'invalid_pairing_code'))
+    code = tc.http('POST', path + ('/code' if kind == 'launch' else '/start'), token=token,
+                   body={'scopes': ['observe']}).json()['code']
+    before = len(tc.http('GET', '/v1/devices').json()['devices'])
+    real = routes.auth.new_token
+
+    def revoking():
+        monkeypatch.setattr(routes.auth, 'new_token', real)
+        assert tc.http('POST', '/v1/devices/%s/revoke' % device, body=_key()).status == 200
+        return real()
+
+    monkeypatch.setattr(routes.auth, 'new_token', revoking)
+    r = request(tc.base_url, 'POST', path + '/redeem', body={'code': code, 'platform': 'web'})
+    assert (r.status, r.json()['error']) == (401, err)
+    assert len(tc.http('GET', '/v1/devices').json()['devices']) == before
+
+
 # ── F8: the step-up attempt limit holds against concurrent requests ──
 
 @pytest.mark.core(remote_hosts=(TUNNEL,))
