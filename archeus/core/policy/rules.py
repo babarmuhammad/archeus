@@ -7,6 +7,7 @@ profile rule and a user's `PolicyRule` row (`from_entity`) — so a decision can
 snapshot every rule it read and replay from the snapshot alone.
 """
 
+import copy
 import re
 
 from ..domain.actions import RULE_CLASSES
@@ -58,7 +59,7 @@ def rule(*, id, scope_level, action_class, decision, scope_ref=None, locked=None
     return {'id': id, 'scope_level': scope_level, 'scope_ref': scope_ref,
             'action_class': action_class, 'decision': decision,
             'locked': bool(decision == 'DENY' if locked is None else locked or decision == 'DENY'),
-            'match': dict(match or {}), 'boundary': dict(boundary) if boundary else None,
+            'match': copy.deepcopy(match or {}), 'boundary': copy.deepcopy(boundary) if boundary else None,
             'outside': outside or 'ASK', 'source': source, 'expires_at': expires_at}
 
 
