@@ -9,7 +9,7 @@ Status: **DECIDED**. Entities are defined in [domain-model.md](domain-model.md).
   documentation of that table; `tests/v1/unit/test_state_tables.py` parses the Mermaid blocks
   below and fails if a diagram edge is missing from the table or vice versa (the repo's
   "one declaration, everything derived" rule).
-- **One mutator.** `transition(entity, to, *, actor, reason, cause)` validates the edge, runs the
+- **One mutator.** `Tx.transition(cls, entity_id, to, *, actor, reason, cause=(), expected_version=None, proof=None, fields=None, machine=None)` (`infra/db/writer.py`) validates the edge, runs the
   guard, bumps `version`, writes the row and appends the event in one transaction. Nothing else
   assigns `state`. Two layers: the **persistence primitive** (`Tx.transition`, P2) checks
   `expected_version` and the edge against the table, assigns the state, bumps `version` and
@@ -140,14 +140,14 @@ stateDiagram-v2
 
 | Guard / rule | Definition |
 |---|---|
-| `plan_auto_approved` | the policy engine evaluates every task's `action_classes` under the mission's scope chain and all are ALLOW or ALLOW_WITHIN_BOUNDARY, **and** the plan's estimated cost band is under the mission's auto-approve ceiling, **and** the plan in force is newer than `mission.decided_plan_version` |
+| `plan_auto_approved` | the policy engine evaluates every task's `action_classes` under the mission's scope chain and all are ALLOW or ALLOW_WITHIN_BOUNDARY, **and** the plan's estimated cost band is under the mission's auto-approve ceiling, **and** the plan in force is newer than `mission.decided_plan_version`, **and** (as built) the mission does not need its plan approved explicitly (`explicit_plan_approval`, a chat mission) |
 | `all_tasks_done` | every non-`human` task is SUCCEEDED or SKIPPED |
 | `verified` | every mission-level success criterion with `check: automatic` has a PASSED verification (at least one such criterion exists), and no `check: human` criterion is still open — an open one is `awaiting_human_acceptance`, which must not be skipped |
-| `awaiting_human_acceptance` | a criterion with `check: human` (GenericVerifier) is open; an Attention item is created. Mission shows `blocked_reason = "waiting for your acceptance"`, which the UI renders as *needs you*, not as failure |
+| `awaiting_human_acceptance` | a criterion with `check: human` (GenericVerifier) is open, or (as built since P13) any criterion sits at AWAITING_HUMAN; an Attention item is created. Mission shows `blocked_reason = "waiting for your acceptance"`, which the UI renders as *needs you*, not as failure |
 | `replan_budget_exhausted` | `plan_version - 1 >= mission.max_replans` (default 2), judged on the plan **in force** — the one being replaced — before a new plan is proposed. `max_replans` is the number of replans allowed after the initial plan: 0 refuses the first replan, 2 allows two and refuses the third |
 | `task_failed_retryable` | a task FAILED after `max_attempts` and the failure class is not policy/credential/human |
 | `unrecoverable` | policy DENY on a required action, missing capability with no resource, or user-declared failure |
-| `verification_failed` | an automatic criterion has a FAILED verification of the plan in force (guarded since the P3.5 adversarial review: fired by name with nothing failed it was a free replan) |
+| `verification_failed` | a criterion, automatic or human (as built since P13), has a FAILED verification of the plan in force (guarded since the P3.5 adversarial review: fired by name with nothing failed it was a free replan) |
 | `redispatch` | `mission.held_from` is EXECUTING or VERIFYING — an approved plan is in force. Held from anywhere else the mission starts over with `redispatch_before_plan` (guarded since the P3.5 adversarial review: `unblock` + `redispatch` by name reached EXECUTING with no plan) |
 | `accepted` | the latest Review of the plan in force is ACCEPTED. A human overrides a verdict by recording their own review, never by firing the edge (guarded since the P3.5 adversarial review: REVIEWING completed with no review at all) |
 | `plan_needs_approval` | a guarded edge since P3.5: the plan in force is newer than `mission.decided_plan_version`, no action class is DENY (a denial is not a question for a human), and there is something to ask — an ASK, or a cost band not known to be under the ceiling. With nothing to ask it refuses, so the two plan decisions never both pass |
@@ -194,7 +194,7 @@ changes in `states.py` and `guards.py`.
   row, no approval request, the mission's state and version unchanged. No approval overrides a
   DENY: one that appears after approval is refused at dispatch, and in EXECUTING the existing
   `unrecoverable` edge ends the mission.
-- **Plan** has no declared edges: it stays DRAFT and is the versioned strategy attached to the
+- **Plan** (as built, it has edges: DRAFT → PROPOSED → APPROVED / REJECTED / SUPERSEDED, see §2.1; the P3 wording follows) has no declared edges: it stays DRAFT and is the versioned strategy attached to the
   mission; the mission owns lifecycle progression (approval and supersession are its states).
 - **Review REJECTED** is a review result, not a mission move: the mission stays in REVIEWING until
   an explicit `request_changes`, or a human's own accepting review (`work.record_review`), which
@@ -307,13 +307,13 @@ stateDiagram-v2
   the "allow" is not something the execution holds — as built, the covering Approval is consumed
   Core-side, single-use, when the resumed execution's request for that action hash is evaluated
   (p11-design-gate §10.4 step 6); authoring approval state is never the execution's (PV-20 §3.6).
-- `execution_failed_retry`: attempt < `max_attempts`. A retry re-enters ROUTING, which may pick
+- `execution_failed_retry`: charged attempts < `max_attempts` (as built, uncharged ends such as hand-offs do not consume the budget, `executions.charged_failure`). A retry re-enters ROUTING, which may pick
   a different resource (affinity is kept unless the failure was resource-attributable).
-- **The three-strikes rule (migration kit):** if the same failure signature (normalised error
+- **The three-strikes rule (migration kit; not built, nothing in `archeus/` counts failure signatures or sets `rule_bug`):** if the same failure signature (normalised error
   class + task kind) is seen three times across a mission, the task goes FAILED with
   `reason = rule_bug` and Attention gets a "this looks like a process problem" item instead of a
   fourth retry.
-- `human` tasks skip ROUTING: READY → AWAITING_APPROVAL (the Attention item *is* the task).
+- `human` tasks skip ROUTING: READY → AWAITING_APPROVAL (the Attention item *is* the task) (not built: a `human` task takes READY → ROUTING like any other, and `action_needs_approval` is never fired).
 - *As built (P10, p10-design-gate §9):* `no_eligible_resource` also blocks the mission with the
   decision's explanation; resuming the mission unblocks the task and it routes again.
   `route_needs_approval` requests a PENDING `route` approval (consent to run on a fallback
@@ -569,7 +569,7 @@ stateDiagram-v2
   → **escalate, never silently drop** (Munder Difflin's hop cap dropped messages; its docs said
   it escalated; we take the documented behaviour).
 - `loop_guard_tripped`: the same automation escalated 3 times in 1 hour, or its rate limit was
-  hit 3 windows in a row → SUSPENDED with an Attention item.
+  hit 3 windows in a row → SUSPENDED with an Attention item (as built, one rule: runs in the last hour, `matcher.WINDOW_S`, counted by state, `SUSPEND_AFTER = 3`; there is no count of consecutive windows).
 - Claiming uses the single writer: select-due + insert run + advance `next_run_at` happen in one
   transaction, so a schedule cannot fire twice (Vicoa's claim-and-advance, without needing
   `SKIP LOCKED` because only one writer exists).
@@ -611,9 +611,9 @@ stateDiagram-v2
   by discovery.
 - *As built (P10):* only `auth_ok` / `auth_failed` (the adapter's probe, made before the
   registering command) and `user_disables` / `user_enables` are fired. `near_ceiling`,
-  `window_exhausted` and `reset_time_passed` are computed by the router from each decision's own
+  `window_exhausted` and `reset_time_passed` are also computed by the router from each decision's own
   snapshot (so a decision replays); the limit-error and breaker moves come with execution
-  failures in P11 (p10-design-gate §21.1).
+  failures in P11 (p10-design-gate §21.1). *As built since P11:* `window_exhausted`, `reset_time_passed`, `error_storm`, `errors_persist`, `probe_ok` and `cooldown_elapsed` are fired from `core/application/executions.py` (`accounts_tick`).
 
 ---
 
@@ -678,7 +678,7 @@ stateDiagram-v2
     RETRACTED --> [*]
 ```
 
-- `confirm`: explicit user action, or automatic when `origin = explicit`, or when
+- `confirm`: explicit user action, or automatic when `origin = explicit`, or for a LESSON corroborated by two distinct missions (as built, `CORROBORATION = 2` in `core/application/knowledge.py`; the `autoconfirm_threshold` rule below is not built), or when
   `confidence ≥ autoconfirm_threshold` and the type is FACT/ENTITY from an EXTRACTED source
   (today's `memory_lessons_autoapprove` generalised). PREFERENCE and STANDARD never
   auto-confirm from inferred sources.
@@ -733,7 +733,7 @@ stateDiagram-v2
 
 The machine is held on `Task.integration_state` (domain-model §7.3), not on an entity of its
 own. Only Core merges (executions have no rights to the main branch). CONFLICT sets the owning task
-BLOCKED and creates a follow-up `code_change` task "resolve conflict" in the same plan.
+BLOCKED and creates a follow-up `code_change` task "resolve conflict" in the same plan (as built, neither: `record_merge` fires `conflict` on the task's integration machine and blocks the **mission**; the mission resumes through `retry_merge` / `conflict_task_done` when the user resolves it on the mission branch; no task is created).
 `git_commit` on the main branch and `git_push` are separate action classes evaluated by policy
 at MERGING time.
 
