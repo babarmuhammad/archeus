@@ -26,3 +26,10 @@ def test_a_restarted_core_does_not_read_an_earlier_process_exit_as_the_later_one
     handle = _stream(tmp_path, {'type': 'started'}, {'type': 'exit', 'code': 0},
                      {'type': 'started'})
     assert FakeHarness().status(handle).exit_code is None
+
+
+def test_a_scripted_halt_without_a_step_leaves_no_adapter_state(tmp_path):
+    """T-650#F3: halt['at'] raised KeyError out of collect_result."""
+    from archeus.harnesses.fake import FakeHarness
+    handle = _stream(tmp_path, {'type': 'started'}, {'type': 'halted'})
+    assert FakeHarness().collect_result(handle).adapter_state is None

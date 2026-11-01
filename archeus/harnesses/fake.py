@@ -191,7 +191,7 @@ class FakeHarness:
             usage=usage[-1] if usage else {}, usage_total=bool(results),
             transcript_path=os.path.join(handle.exec_dir, 'stream.jsonl'),
             failure=failure, halted=halted,
-            adapter_state={'step': halt['at']} if halt is not None else None)
+            adapter_state={'step': halt['at']} if halt is not None and 'at' in halt else None)
 
 
 class FakeCaller:
