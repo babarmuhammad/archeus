@@ -394,9 +394,7 @@ def test_beats_from_before_the_watch_began_are_dropped_not_taken_for_a_fault(env
     env.sender.beat()
     own(env, 'e1-p1')
     register(env, 'e1-p1')
-    env.clock.now -= 5
-    env.sender.beat()
-    env.clock.now += 5
+    env.core.append({'kind': 'beat', 'seq': 2, 'sent_at': env.clock.now - 5})
     assert env.host.tick() == wd.ARMED
 
 
@@ -484,6 +482,7 @@ def test_nothing_is_adopted_after_the_watch_fired(env):
     own(env, 'late-p1', PID + 1, CREATION_TIME + 1)
     register(env, 'late-p1', PID + 1, CREATION_TIME + 1)
     env.host.tick()
+    assert env.host.rejected == {}
     assert 'late-p1' not in env.host.report()['recorded']
 
 

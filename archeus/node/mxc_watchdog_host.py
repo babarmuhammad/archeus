@@ -92,9 +92,6 @@ class WatchdogHost:
     def _register(self, message):
         name = message['execution_id']
         why = self._ownership_problem(name, message['pid'], message['create_time'])
-        if why is None and self.dog is not None and self.dog.state not in (
-                mxc_watchdog.ARMED, mxc_watchdog.STOOD_DOWN):
-            why = 'the host is %s' % self.dog.state
         if why is None:
             if self.dog is None or self.dog.state is mxc_watchdog.STOOD_DOWN:
                 self.dog, self.pending = self._arm(), []
