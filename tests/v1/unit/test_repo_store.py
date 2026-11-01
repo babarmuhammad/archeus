@@ -1324,7 +1324,8 @@ def test_a_first_attempt_takes_the_mission_branch_else_head(spawns, monkeypatch,
                                else '', stderr='')
     monkeypatch.setattr(local.proc, 'run', run)
     assert LocalNode.resolve_base(root, 'archeus/m', workdirs=()) == ('HEAD', '1' * 40)
-    assert calls == ['version', 'refs/heads/archeus/m^{commit}', 'HEAD^{commit}']
+    assert calls == ['version', 'refs/heads/archeus/m^{commit}', 'refs/heads/archeus/m',
+                     'HEAD^{commit}']
     calls.clear()
     with pytest.raises(StoreError, match='not a mission branch'):
         LocalNode.resolve_base(root, 'a..b', workdirs=())

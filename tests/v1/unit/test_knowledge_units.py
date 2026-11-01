@@ -213,7 +213,7 @@ def test_l13_claude_code_calls_read_only_ephemeral_and_native(monkeypatch, tmp_p
     got = real.ClaudeCodeCaller().call(spec)
     (cmd, stdin, kw), = run.seen
     assert cmd[:6] == ['C:/x/claude.exe', '-p', '--max-turns', '20', '--disallowedTools',
-                       'Write,Edit,NotebookEdit,Bash']
+                       'Write,Edit,MultiEdit,NotebookEdit,Bash,PowerShell,WebFetch,WebSearch,Task']
     assert cmd[cmd.index('--model') + 1] == 'claude-haiku-4-5'
     assert cmd[cmd.index('--output-format') + 1] == 'json' and '--json-schema' in cmd
     assert stdin.endswith(HEADLESS_MARK)

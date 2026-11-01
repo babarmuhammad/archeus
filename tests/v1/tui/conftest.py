@@ -55,7 +55,7 @@ def slow(archeus_home):
 
 def mission(tc, title='Fix the flaky date test', objective='Tests pass'):
     r = tc.http('POST', '/v1/missions', body={'title': title, 'objective': objective,
-                                              'idempotency_key': 'k-%s-%f' % (title,
+                                              'idempotency_key': 'k-%x-%f' % (hash(title) & 0xffffffff,
                                                                               time.time())})
     assert r.status == 200, r.body
     return r.json()['id']
