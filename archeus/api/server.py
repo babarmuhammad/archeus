@@ -495,7 +495,7 @@ class Handler(BaseHTTPRequestHandler):
             # a command timing out, not the client: an OSError since 3.11
             if self._status is None:
                 self._refuse(*translate(e))
-        except OSError:
+        except ConnectionError:
             pass                                # a stream's client went away
         except Exception as e:
             if self._status is None:
