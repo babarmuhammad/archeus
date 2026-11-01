@@ -179,7 +179,7 @@ dl.kv dd { overflow-wrap: anywhere; }
 /* ---------- terminal: see tui.css ---------- */
 .term-wrap { position: absolute; inset: 0; }
 
-@font-face { font-family: "Libre Caslon Text"; src: url('../fonts/LibreCaslonText-VF.ttf') format('truetype'); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: "Libre Caslon Text"; src: url('../fonts/LibreCaslonText-VF-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
 
 @media (forced-colors: active) {
   .panel, .btn, .chip, .msg { border: 1px solid CanvasText; }
