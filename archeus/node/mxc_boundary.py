@@ -224,7 +224,11 @@ class MxcBoundary:
                               transport={'output_limit': iso.CONFINED_OUT_MAX,
                                          'total_limit': iso.CONFINED_OUT_MAX})
         launch.start(job=job)
-        return mxc_verifier.ConfinedChild(launch, timeout, stdin_path, out_path)
+        try:
+            return mxc_verifier.ConfinedChild(launch, timeout, stdin_path, out_path)
+        except BaseException:               # a started launcher nobody drains is ended here
+            launch.cancel(reason='the confined child failed to start')
+            raise
 
     def _launch(self, argv, cwd, env, profile, timeout_ms, transport=None):
         key = next((k for k in self._reserved if iso.profile_name(k) == profile), None)

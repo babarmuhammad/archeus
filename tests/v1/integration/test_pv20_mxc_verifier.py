@@ -130,6 +130,21 @@ def test_a_run_that_fails_ends_the_launch_before_the_job_is_closed(checks, monke
     assert len(checks.jobs.closed) == 1 and len(checks.jobs.terminated) == 1 and late == []
 
 
+def test_a_started_launch_whose_child_cannot_be_built_is_ended(checks, monkeypatch):
+    def unreadable(path, mode='r', *args, **kw):
+        raise PermissionError('stdin file unreadable')
+    monkeypatch.setattr(mxc_verifier, 'open', unreadable, raising=False)
+    checks.api.outcomes = script([outcome(launcher_exit=None)])
+    vid, result = run_one(checks)
+    assert result['error'] == 'launch_failed: stdin file unreadable'
+    assert len(checks.jobs.terminated) == 1
+    assert not [h for h in checks.api.handles.values() if h[0] in ('process', 'thread', 'policy')]
+    (name, data), = journals(checks).items()
+    records, _ = mxc_ledger.read_records(data, name)
+    assert [r['op'] for r in records] == ['intent', 'ownership', 'quarantine']
+    assert local.mxc_busy(checks.boundary.ledger) == set()
+
+
 def test_an_attempt_is_journalled_under_its_own_name_and_ends_with_a_completion(checks):
     vid, _ = run_one(checks, attempt=2)
     name = 'verify_%s_2-p1' % vid
