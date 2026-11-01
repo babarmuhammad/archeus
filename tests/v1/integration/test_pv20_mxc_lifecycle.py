@@ -20,6 +20,7 @@ from archeus.harnesses import base
 from archeus.infra.paths import ExecPaths
 from archeus.node import isolation as iso
 from archeus.node import local, mxc_ledger
+from archeus.node import mxc_context
 from archeus.node.mxc_context import STREAM_BYTES
 
 from v1.integration.test_pv20_mxc_agent_path import (agent_case, child_of, no_process,  # noqa: F401
@@ -35,6 +36,7 @@ def long_agent(tmp_path, sdk, gate, monkeypatch):
     """A case whose launcher runs until Core ends it; the pump is stopped at teardown."""
     case = agent_case(tmp_path, sdk, outcomes=[RUNNING])
     killed = []
+    monkeypatch.setattr(mxc_context, 'PUMP_JOIN_S', 2.0)
     monkeypatch.setattr(proc, 'kill_pid_tree', lambda pid, created: killed.append(pid))
     case.pid_kills = killed
     yield case
@@ -78,6 +80,18 @@ def test_the_prompt_goes_in_and_both_outputs_are_appended_to_the_stream(tmp_path
     assert stream_of(case) == b'{"type":"a"}\nwarning\n'
     assert child.poll() == 3 and child.fault is None
     assert os.path.getsize(ExecPaths(case.spec.execution_id).prompt) == 2
+
+
+def test_the_stream_of_a_resume_is_appended_to_the_one_before_it(tmp_path, sdk, gate):
+    case = agent_case(tmp_path, sdk, outcomes=[outcome(stdout=b'one\n'),
+                                               outcome(stdout=b'two\n')])
+    first = case.node.spawn(case.agent, case.spec, isolated=True)
+    child_of(case)
+    case.node.ended(first, 3, 1)
+    case.node.spawn(case.agent, dataclasses.replace(case.spec, process_seq=2),
+                    isolated=True, resume_state={'session': 'one'})
+    child_of(case, 2)
+    assert stream_of(case) == b'one\ntwo\n'
 
 
 def test_a_stream_past_the_transports_default_bound_is_not_cut_off(tmp_path, sdk, gate):
@@ -136,6 +150,8 @@ def test_a_normal_exit_is_the_workload_outcome_and_was_not_cancelled(tmp_path, s
     handle = case.node.spawn(case.agent, case.spec, isolated=True)
     child = child_of(case)
     assert child.poll() == 3 and child.reason is None
+    child.cancel('late')                                  # too late to be why it ended
+    assert child.reason is None
     assert journal(case)[0] == ['intent', 'ownership', 'disposal', 'completion']
     assert case.node.cancelled(handle, 1) is False
     case.node.ended(handle, 3, 1)
@@ -150,6 +166,7 @@ def test_a_stop_ends_through_the_launch_and_never_through_the_pid_kill(long_agen
     job = long_agent.boundary.launch_calls[0]['job']
     assert long_agent.node.kill(long_agent.agent, handle, reason=reason) == 'killed'
     assert child.poll() == 1 and child.reason == reason
+    assert 'cancelled during drain' in str(child.fault)       # the pump stopped itself
     assert long_agent.agent.stops == [] and long_agent.pid_kills == []
     assert long_agent.jobs.terminated == [job]                  # the Job ended, never closed
     assert long_agent.jobs.closed == []
@@ -334,3 +351,12 @@ def test_a_restart_after_a_cancelled_run_finds_it_already_quarantined_and_refuse
 def test_a_boundary_with_no_ledger_reconciles_nothing(tmp_path):
     authority = iso.Isolation(local.LocalNode(), boundary=iso.UnavailableBoundary())
     assert authority.reconcile_ledger() == {}
+
+
+def test_the_ledger_reads_every_journal_but_the_ones_it_is_told_to_skip(tmp_path, sdk, gate):
+    case = agent_case(tmp_path, sdk)
+    seed_journal(case, 'a-p1', 'intent', 'ownership')
+    seed_journal(case, 'b-p1', 'intent', 'ownership')
+    read = case.ledger.reconcile(lambda pid: None, lambda eid, owner: None, skip={'a-p1'})
+    assert read == {'b-p1': mxc_ledger.DEAD_UNVERIFIED}
+    assert journal_ops(case, 'a-p1') == ['intent', 'ownership']       # not even quarantined

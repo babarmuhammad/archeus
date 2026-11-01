@@ -34,6 +34,7 @@ class FakeNode:
         self.answers = answers
         self.log = []
         self.kills = []
+        self.reasons = []
         self.flags = []
         self.responded = []
         self.registry = []
@@ -58,6 +59,7 @@ class FakeNode:
 
     def kill(self, adapter, handle, reason=None):
         self.kills.append((adapter, handle))
+        self.reasons.append(reason)
         return 'killed'
 
     def kill_identity(self, handle):
@@ -528,6 +530,26 @@ def test_the_estop_stops_running_work_and_kills_at_once():
     assert _kw(m, 'stop')[0]['stop_reason'] == 'estop'
     assert m.node.flags == [(e.id, 'STOP')]
     assert m.node.kills == [(p['adapter'], p['handle'])]
+
+
+def test_every_kill_carries_the_reason_the_stop_was_for():
+    # manager.py `_control`: an isolated process ends through its launch, which records
+    # why; the e-stop wins over the stored reason, and a stop with none is `stopped`
+    for state, reason, disarmed, want in (
+            ('RUNNING', 'cancel', True, 'disarmed'), ('STOPPING', 'cancel', True, 'disarmed'),
+            ('STOPPING', 'limit', False, 'limit'), ('STOPPING', 'estop', False, 'estop'),
+            ('STOPPING', None, True, 'disarmed'), ('HANDING_OFF', 'limit', False, 'limit'),
+            ('HANDING_OFF', 'breaker', False, 'breaker')):
+        m = _mgr()
+        e = _e(state=state, stop_reason=reason)
+        assert m._control(e, _mission(), _proc(m, e), disarmed=disarmed) is True
+        assert m.node.reasons == [want], (state, reason, disarmed)
+    m = _mgr()
+    e = _e(state='STOPPING', stop_reason=None)
+    p = _proc(m, e)
+    p['since'] = time.monotonic() - m.grace_s
+    m._control(e, _mission(), p, disarmed=False)
+    assert m.node.reasons == ['stopped']
 
 
 def test_a_mission_that_ended_stops_the_work_and_still_waits_the_grace():

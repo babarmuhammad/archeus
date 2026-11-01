@@ -42,6 +42,7 @@ class Node:
         self.disarmed_flag, self.pending = disarmed, []
         self.kills, self.flags, self.responded = [], [], []
         self.ended_calls, self.released, self.registry, self.world = [], [], [], []
+        self.cancelled_handles = set()
 
     def disarmed(self):
         return self.disarmed_flag
@@ -60,6 +61,9 @@ class Node:
 
     def ended(self, handle, exit_code, process_seq):
         self.ended_calls.append((handle, exit_code, process_seq))
+
+    def cancelled(self, handle, process_seq):
+        return handle in self.cancelled_handles
 
     def end_isolation(self, execution_id, reason=None):
         self.released.append((execution_id, reason))
@@ -656,6 +660,26 @@ def test_a_worker_that_crashed_ends_its_execution_and_leaves_nothing_behind():
         m._collect(_live(rig)[0], p, base.ProcStatus('exited', 1))
         assert m.writes == []
         assert node.ended_calls == [('h', 1, 1)] * 2
+    finally:
+        rig.db.close()
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_a_stop_of_cores_that_ended_an_isolated_launch_is_a_kill_whatever_the_adapter_says(
+        cancelled):
+    """manager.py `_collect`: an isolated launch ends through the node, and the adapter
+    never sees that stop, so the node's word that Core cancelled it is what makes the end
+    a kill (and so never a clean hand-off)."""
+    rig = _seed('RUNNING', process_seq=1, max_attempts=1)
+    try:
+        m, node = rig.manager, rig.manager.node
+        if cancelled:
+            node.cancelled_handles.add('h')
+        p = _proc(m, Adapter(result=base.ExecutionResult('ok', 0)), handle='h', seq=1,
+                  key=rig.eid)
+        m._collect(_live(rig)[0], p, base.ProcStatus('exited', 0))
+        (_name, kw), = [w for w in m.writes if w[0] == 'record_end']
+        assert kw['killed'] is cancelled
     finally:
         rig.db.close()
 
