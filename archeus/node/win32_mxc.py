@@ -126,7 +126,7 @@ class Win32Api:
         return result
 
     def protected_policy(self, data: bytes) -> tuple[str, object]:
-        directories, handle = [], None
+        directories, handle, leased = [], None, False
         path = ntpath.join(self.private_directory, uuid.uuid4().hex + '.json')
         try:
             parts = []
@@ -160,6 +160,7 @@ class Win32Api:
                 if not written.value:
                     raise Win32Error('WriteFile', 29)
                 offset += written.value
+            leased = True
             return path, PolicyLease(handle, directories)
         except BaseException:
             if handle is not None:
@@ -167,7 +168,7 @@ class Win32Api:
                 self._call('DeleteFileW', path)
             raise
         finally:
-            if sys.exc_info()[0] is not None:
+            if not leased:
                 for held in reversed(directories):
                     self.close_handle(held)
 

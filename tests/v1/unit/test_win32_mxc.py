@@ -328,3 +328,27 @@ def test_policy_lease_and_nonblocking_capacity(tmp_path):
     finally:
         api.close_handle(parent)
         api.close_handle(child)
+
+
+def test_policy_lease_keeps_directory_holds_inside_an_exception_handler(monkeypatch, tmp_path):
+    api, _ = fake_api(monkeypatch)
+    api.private_directory = str(tmp_path)
+    closed, handles = [], iter(range(100, 200))
+
+    def tag(handle, level, info, size):
+        info._obj.attributes = 0x10
+        return 1
+
+    def write(handle, data, size, written, overlapped):
+        written._obj.value = size
+        return 1
+
+    api.functions['CreateFileW'].callback = lambda *args: next(handles)
+    api.functions['GetFileInformationByHandleEx'].callback = tag
+    api.functions['WriteFile'].callback = write
+    api.functions['CloseHandle'].callback = lambda handle: closed.append(handle) or 1
+    try:
+        raise RuntimeError('a caller that is already handling something else')
+    except RuntimeError:
+        _, lease = api.protected_policy(b'{}')
+    assert closed == [] and lease.directories
