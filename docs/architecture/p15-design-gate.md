@@ -240,7 +240,7 @@ A scope list must be a non-empty subset of the four coarse scopes, and `observe`
 - **Lockout**: 5 consecutive wrong PIN proofs from one client revoke that client (reason
   `step_up_failures`). The counter is per Core process (a restart needs local access); any correct
   proof resets it.
-- *Consequence recorded 2026-10-07 (PV-20, ADR-0053 R1-A and §7 A3; not implemented).* For a PV-20
+- *Consequence recorded 2026-10-07 (PV-20, ADR-0053 R1-A and §7 A3; not admitted to production dispatch (PV-20 status 2026-11-01)).* For a PV-20
   §3.6 effect, `origin != 'paired'` stays **necessary but is no longer sufficient**. A trusted local
   request also needs (1) an OS-attested connection origin that satisfies the approved user-origin
   condition **and** (2) arrival through an approved trusted path that is neither a forwarding hop

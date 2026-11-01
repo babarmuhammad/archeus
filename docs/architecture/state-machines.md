@@ -366,7 +366,7 @@ stateDiagram-v2
     ENDED_REJECTED --> [*]
 ```
 
-*Correction recorded 2026-10-07 (PV-20, ADR-0053 R5 / H2, R6-A and §7 A7; not implemented). For an
+*Correction recorded 2026-10-07 (PV-20, ADR-0053 R5 / H2, R6-A and §7 A7; not admitted to production dispatch (PV-20 status 2026-11-01)). For an
 execution launched under PV-20 isolation, the diagram is read with these guards:*
 - **`exited_success` is Core's own observation, not a report.** It fires only on an exit 0 Core
   observed through the process handle it holds (or its own `ended` tombstone). An

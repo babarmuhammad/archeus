@@ -350,7 +350,7 @@ Decisions are `allow`, `deny` (with the reason, the agent may adapt) and `halt` 
 The response file is written only after the transaction commits; a Core that dies between leaves
 the hook to time out, which denies (fail closed).
 
-*Consequence recorded 2026-10-07 (PV-20, ADR-0053 §7 A5; not implemented):* for an isolated
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 §7 A5; not admitted to production dispatch (PV-20 status 2026-11-01)):* for an isolated
 execution, **step 4 is withdrawn**. Core never runs git, or any program that reads git
 configuration, against an execution repository under the user's identity, and that repository's
 HEAD and branch are execution-controlled claims, not facts Core can rely on. What binds an
@@ -552,7 +552,7 @@ reconciler, so reconciliation cannot race another Core. A crash inside a transit
 the old or the new row (one transaction); a crash between a transaction and its side effect is
 covered by the marker/`pid.json`/tombstone rules above.
 
-*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R6-A; not implemented):* for executions launched
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R6-A; not admitted to production dispatch (PV-20 status 2026-11-01)):* for executions launched
 under PV-20 isolation, the **adopt** rows of this table are withdrawn. Core is the sole holder of an
 isolated execution's Job and Core's death terminates its process tree, so a restarted Core finds no
 live isolated process to adopt: it reconciles its records and resolves every remaining non-terminal
@@ -560,7 +560,7 @@ isolated execution through terminate / reap / fail. A live isolated process is n
 and no lifecycle decision reads an execution-writable `pid.json` as authority. See §28 "PV-20
 consequences".
 
-*A7 correction recorded 2026-10-07 (ADR-0053 §7 A7; not implemented):* for isolated executions the
+*A7 correction recorded 2026-10-07 (ADR-0053 §7 A7; not admitted to production dispatch (PV-20 status 2026-11-01)):* for isolated executions the
 other rows read as follows.
 - **"process gone, `ended` tombstone or exit known"** — collected only from what Core itself
   observed: an `ended` tombstone Core wrote (`manager._tombstone`, class 4) or an exit Core
@@ -579,7 +579,7 @@ collected (the adapter reads `ended` / the stream's `result`); nothing collectab
 `lost_after` (90 s) → `heartbeat_missing` → LOST → `reconciled_kill`. **A vanished process is
 never success**: without an observed exit code 0 there is no ENDED_OK.
 
-*A7 correction recorded 2026-10-07 (ADR-0053 §7 A7; not implemented):* for an isolated execution
+*A7 correction recorded 2026-10-07 (ADR-0053 §7 A7; not admitted to production dispatch (PV-20 status 2026-11-01)):* for an isolated execution
 the stream's `result` is execution-authored content and **never a process exit**. The exit is what
 Core observes through the process handle it holds for the Job's root process (or the `ended`
 tombstone Core itself wrote). ENDED_OK is an execution-level fact, not success: Core records it only
@@ -596,8 +596,7 @@ against the database:
 - the mission has fewer than `MISSION_PARALLEL` (3) live executions;
 - **workspace conflicts**: an `in_place` task never runs beside another live execution in the same
   project; two tasks whose `touches` overlap (glob prefix overlap, conservative) never run at once;
-  a task with no `touches` is exclusive within its project; *(PV-20, ADR-0053 §7 A1; not
-  implemented: `in_place` is withdrawn for isolated executions, so its clause does not apply to
+  a task with no `touches` is exclusive within its project; *(PV-20, ADR-0053 §7 A1; not admitted to production dispatch (PV-20 status 2026-11-01): `in_place` is withdrawn for isolated executions, so its clause does not apply to
   them; the `touches` clauses are unchanged)*;
 - the account's own `concurrency` budget is P10's (the ledger's `running`).
 
@@ -619,13 +618,13 @@ removed only by the node that created it and only when `git worktree list` confi
 (execution-architecture §7); P11 removes one only for an execution that ended ABANDONED; merge-back
 and the removal of verified worktrees are P13's.
 
-*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R4a-B; not implemented):* for an isolated
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R4a-B; not admitted to production dispatch (PV-20 status 2026-11-01)):* for an isolated
 execution, the `worktree` row's linked worktree is replaced by a **separate execution repository**
 that Core seeds and whose result Core imports as data; the user's `.git` is never exposed to the
 execution. The `in_place` row is not a PV-20 fallback: an execution that would need it does not
 start under PV-20 (PV-20 §3.2, §6.3). See §28 "PV-20 consequences".
 
-*Superseding table for isolated executions (PV-20, ADR-0053 §7 A1 and A5; not implemented):*
+*Superseding table for isolated executions (PV-20, ADR-0053 §7 A1 and A5; not admitted to production dispatch (PV-20 status 2026-11-01)):*
 
 | Task | Workspace | Branch / revision |
 |---|---|---|
@@ -657,7 +656,7 @@ which is the documented V1 posture (Core-performed push is P13's merge-back). Cl
 - A tool the task does not hold cannot be called, so the hook never sees it.
 - Details: execution-architecture §2 "Tools" and p20-design-gate §12 items 75–89.
 
-*Consequence recorded 2026-10-07 (PV-20, ADR-0053 §7 A2; not implemented):* for an isolated
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 §7 A2; not admitted to production dispatch (PV-20 status 2026-11-01)):* for an isolated
 execution, `config.account_env(home)` no longer points the harness at the account home. Its
 `CLAUDE_CONFIG_DIR` is a fresh, Core-created, per-execution directory in execution-private state,
 holding no provider login; provider access goes only through Core's R3-B broker. Archeus's hook
@@ -998,7 +997,7 @@ what those mutants measure is that the command refuses instead of answering as i
 worked. P9's suite (36) and P10's (36) still kill everything; P10's R30, R33 and R36 were
 retargeted to where P11 moved the code they guard.
 
-**PV-20 consequences (recorded 2026-10-07; [ADR-0053](decisions/ADR-0053.md); not implemented).**
+**PV-20 consequences (recorded 2026-10-07; [ADR-0053](decisions/ADR-0053.md); not admitted to production dispatch (PV-20 status 2026-11-01)).**
 PV-20 is a V1.x security remediation; its approved architecture changes four P11 contracts. They
 are recorded here because P11 owns them; nothing in P11's code has changed, and P11 is not
 redesigned beyond these points.
@@ -1021,7 +1020,7 @@ redesigned beyond these points.
   uncharged with a backoff or breaker, or routed away from the harness is **P11's open decision**,
   required before PV-20 is implemented (PV-20 §3.4). It is not decided here.
 
-*Added 2026-10-07 after the PV-20 blocker decisions (ADR-0053 §7; not implemented).* Five more P11
+*Added 2026-10-07 after the PV-20 blocker decisions (ADR-0053 §7; not admitted to production dispatch (PV-20 status 2026-11-01)).* Five more P11
 contracts change:
 
 - **Every execution's workspace (A1, §16, §17).** Every isolated execution, of every task kind,

@@ -216,7 +216,7 @@ other human decision surface.
 | a check or Verification at a revision that is no longer the one being judged | **stale** | ignored by the guards (§11) |
 | no check could run | **missing** | ERROR (the verifier broke) or AWAITING_HUMAN (nothing to run) — never PASSED |
 
-*Amended 2026-10-07 (PV-20, [ADR-0053](decisions/ADR-0053.md) R4b; not implemented).* A check's
+*Amended 2026-10-07 (PV-20, [ADR-0053](decisions/ADR-0053.md) R4b; not admitted to production dispatch (PV-20 status 2026-11-01)).* A check's
 test and build commands are content the execution could write, so running them is running
 execution-influenced code. **R4b-2 is the required verification architecture:**
 
@@ -234,7 +234,7 @@ execution-influenced code. **R4b-2 is the required verification architecture:**
 - As built today, `node.run_check` still runs these commands as the user. That is PV-20's open
   remediation (G stays paused; p20-design-gate §12 items 92–98), not a closed property.
 
-*Amended 2026-10-07 (PV-20, ADR-0053 §7 A5 and A6; not implemented).*
+*Amended 2026-10-07 (PV-20, ADR-0053 §7 A5 and A6; not admitted to production dispatch (PV-20 status 2026-11-01)).*
 - **The git-facts row (A5).** "Git facts Core reads itself" are read **only from Core-owned
   repositories**, never from the execution's workspace: Core never runs git against an execution
   repository under the user's identity. The revision is **Core's pinned import commit** — the
@@ -400,13 +400,13 @@ the user's working branch, and any push, are not built (D14).
   cannot see t1's change, and their merges conflict whenever they touch the same file.
 - A task worktree is removed after its merge (the removal P11 deferred); its branch is kept.
   The mission worktree is kept after COMPLETED (the user inspects and merges from it; §25).
-- *Consequence recorded 2026-10-07 (PV-20, ADR-0053 R4a-B; not implemented):* for an isolated
+- *Consequence recorded 2026-10-07 (PV-20, ADR-0053 R4a-B; not admitted to production dispatch (PV-20 status 2026-11-01)):* for an isolated
   execution the task's workspace is a separate execution repository rather than a linked worktree
   of the user's repository. D12's rule stands — the task starts from the mission branch when it
   exists — but its mechanism changes: Core seeds the execution repository and brings the task's
   result back by a data-only import that honours none of its configuration, hooks or refs. The
   mission worktree remains Core-owned and is never exposed to an execution.
-- *Completed 2026-10-07 by ADR-0053 §7 A1 and A5 (not implemented):*
+- *Completed 2026-10-07 by ADR-0053 §7 A1 and A5 (not admitted to production dispatch (PV-20 status 2026-11-01)):*
   - Seeding is a **copy** of the base revision only — never a linked worktree, shared objects,
     alternates or hardlinks — for every isolated execution of every task kind on a git root
     (detached HEAD: the recorded commit).
@@ -432,7 +432,7 @@ and attempt), so the revision verified is a commit and the thing merged is exact
 verified. This is Core's own git write on its own branch (P9 profiles bound agent commits to
 `archeus/*`; Core writes nothing else). An in-place task is never committed.
 
-*Superseded for isolated executions, 2026-10-07 (PV-20, ADR-0053 §7 A5; not implemented).* Running
+*Superseded for isolated executions, 2026-10-07 (PV-20, ADR-0053 §7 A5; not admitted to production dispatch (PV-20 status 2026-11-01)).* Running
 `git add -A` and a commit inside the execution's workspace is Core running git against an
 execution repository under the user's identity, which honours that repository's configuration and
 the hooks a commit still fires — a boundary violation. Under PV-20 the snapshot **is** Core's import
@@ -454,7 +454,7 @@ stateDiagram-v2
 ```
 
 Unchanged; held on `Task.integration_state` (domain-model §7.3). NULL for an in-place task. *Under
-PV-20 (ADR-0053 §7 A1; not implemented):* `in_place` is withdrawn for isolated executions, so every
+PV-20 (ADR-0053 §7 A1; not admitted to production dispatch (PV-20 status 2026-11-01)):* `in_place` is withdrawn for isolated executions, so every
 isolated task on a git root, of any kind, integrates through this machine.
 
 - PENDING is set with `checks_passed` (the task is SUCCEEDED; the merge follows).
@@ -471,8 +471,7 @@ still gets a merge commit so every task is one identifiable merge. Identity: Cor
 ("Archeus <archeus@localhost>"), set per command (`-c user.name`, `-c user.email`), never the
 user's config. Idempotent across a restart: before merging, `git merge-base --is-ancestor
 <revision> <mission head>` — already an ancestor means the merge happened and only its record was
-lost, so MERGED is recorded with the current head. *Under PV-20 (ADR-0053 §7 A5; not
-implemented):* `<revision SHA>` is Core's pinned import commit, and the merge runs under the
+lost, so MERGED is recorded with the current head. *Under PV-20 (ADR-0053 §7 A5; not admitted to production dispatch (PV-20 status 2026-11-01)):* `<revision SHA>` is Core's pinned import commit, and the merge runs under the
 Core-pinned configuration (§12.1).
 
 ### 12.5 Conflict [new, D13 — a documented deviation]
@@ -922,7 +921,7 @@ Each breaks one safety property; each must be caught.
 - **Running project test commands** runs the user's code as the user, in a worktree (as Claude
   Code itself does); commands come from P4's marker heuristics, not from the agent, and have a
   timeout. `python -m pytest` needs a Python with pytest on PATH; a missing runner is ERROR, never
-  FAILED. *Corrected 2026-10-07 (PV-20, ADR-0053 R4b and §7 A6; not implemented):* this is
+  FAILED. *Corrected 2026-10-07 (PV-20, ADR-0053 R4b and §7 A6; not admitted to production dispatch (PV-20 status 2026-11-01)):* this is
   **finding G1's and G2's reach, not a contained risk.** The argv comes from P4's heuristics, but
   the code it runs — tests, build scripts, configuration — is content the execution could write,
   so the mitigation stated above does not hold. The required architecture is §8.1's: a fresh
@@ -939,7 +938,7 @@ Each breaks one safety property; each must be caught.
 |---|---|
 | D1 | The architecture's Verification/Review/Integration machines and names are kept; the prompt's vocabulary maps onto them (§6) |
 | D2 | Hierarchy: checks → task Verification → task outcome → integration → mission criterion Verification → Review → COMPLETED; actions and executions are not verified subjects (§5) |
-| D3 | Evidence classes (authoritative, corroborating, derived, untrusted, stale, missing); only Core's own observations are check results (§8.1). *Amended 2026-10-07 (ADR-0053 R4b; not implemented):* Core's command observations are made under a confined verification identity, never the user's; an unavailable verification identity is missing evidence — ERROR or AWAITING_HUMAN, never PASSED. *ADR-0053 §7 A6, A5:* one fresh verifier principal per verification, never reused; git facts only from Core-owned repositories, the revision being Core's pinned import commit (§8.1) |
+| D3 | Evidence classes (authoritative, corroborating, derived, untrusted, stale, missing); only Core's own observations are check results (§8.1). *Amended 2026-10-07 (ADR-0053 R4b; not admitted to production dispatch (PV-20 status 2026-11-01)):* Core's command observations are made under a confined verification identity, never the user's; an unavailable verification identity is missing evidence — ERROR or AWAITING_HUMAN, never PASSED. *ADR-0053 §7 A6, A5:* one fresh verifier principal per verification, never reused; git facts only from Core-owned repositories, the revision being Core's pinned import commit (§8.1) |
 | D4 | Checks and their output artifacts (sha256, bounded 256 KiB tail, streamed) are the evidence; integrity is tamper-evidence, not a signature (§8.2) |
 | D5 | Aggregation: fail > error > pass-with-outcome > AWAITING_HUMAN; missing evidence never passes; a human criterion keeps a passing battery awaiting (§8.4, §13) |
 | D6 | Lineage ids set by Core from rows; no mutable latest-result field; two world pointers with their own events (§9) |

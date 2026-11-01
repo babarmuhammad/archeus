@@ -484,7 +484,7 @@ guard's `step_up_valid` is *"the deciding device is local, or presented a valid 
 paired devices and the PIN. The requirement is never dropped, so an approval granted without it
 does not cover an item that needs it (§8.4.4).
 
-*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R1-A and §7 A3; not implemented).* "Local"
+*Consequence recorded 2026-10-07 (PV-20, ADR-0053 R1-A and §7 A3; not admitted to production dispatch (PV-20 status 2026-11-01)).* "Local"
 satisfies step-up only for a request Core can treat as **direct user origin**: an OS-attested
 connection origin meeting the approved user-origin condition, arriving through an approved trusted
 path that is neither a forwarding hop nor an execution-influenced deputy. An execution, the

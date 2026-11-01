@@ -1,7 +1,7 @@
 # PV-20 — Execution OS-isolation: design decisions
 
 **Status:** ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (§6 items 1–17, and the blocker decisions
-A1–A6 with the A7 correction, §6 items 18–24) — **not implementation authorization**; implementation: slice S0 only (§7.4 Gap A, the three-state sentinel determination, 2026-10-08), the isolation mechanism backend selected 2026-10-29 (Microsoft MXC, ADR-0053 amended) but not implemented or authorised for native runs; empirical evidence outstanding · **Track:** V1.x
+A1–A6 with the A7 correction, §6 items 18–24) — **not implementation authorization**; implementation: slice S0 only (§7.4 Gap A, the three-state sentinel determination, 2026-10-08), the isolation mechanism backend selected 2026-10-29 (Microsoft MXC, ADR-0053 amended) but not admitted to production dispatch or authorised for native runs (code exists in parts; see "As built, 2026-11-01" below); empirical evidence outstanding · **Track:** V1.x
 security remediation · **Date:** 2026-10-07 · **Prerequisite:** [PV-13 study](pv13-windows-os-confinement-study.md)
 (delivered 2026-10-07) · **Source:** ADR-0051 §5; the P20 slice-G verification findings G1 and G2
 (both Critical, open — see [p20-design-gate.md](p20-design-gate.md) §12 items 92–97) · **ADR:**
@@ -19,6 +19,35 @@ security remediation · **Date:** 2026-10-07 · **Prerequisite:** [PV-13 study](
 > statement below about the exact grants, capabilities or Windows behaviour an isolated execution
 > needs is marked **DESIGN PROPOSAL — UNVERIFIED** and stays so until evidence exists. Reasoning in
 > this document is not a substitute for that evidence.
+
+> **As built, 2026-11-01.** *Amended 2026-11-01 to match the code (owner ruling; the docs follow the
+> code): the "not implemented" labels written on 2026-10-07 and 2026-10-30, here and in every
+> document that cites this one, predate code that now exists. They are replaced by "not admitted to
+> production dispatch" and this section is what that means.* Checked against the code on the
+> integration branch `pv20-mxc` and the project board.
+>
+> **Exists in the code (built, tested against injected backends, not admitted):**
+> - an isolated `CLAUDE_CONFIG_DIR`: when the launch spec carries isolation, the `claude_code`
+>   adapter sets it to the execution's own private config directory (`ExecPaths.config`,
+>   `harnesses/base.py`), and the derived environment refuses any other value;
+> - the router's `broker` step and `ISOLATED_DISPATCH` (`core/application/resources.py`), which
+>   feeds it and is `None`: nothing in `archeus/` sets it;
+> - Core's isolation authority (`node/isolation.py`): per-execution identity names, the Core-held
+>   Job table, the quarantine ledger, boot reclaim, and the A4 eligibility check;
+> - `MxcLaunch` (`node/local.py`) with its internals wired: a Core-owned outcome binding, the
+>   resource record and read-back, the cancel order, the watchdog, the atomic claim of an execution
+>   id, and the seed stage and re-check seam; fixture-only native runs N1 and N3 (board, 2026-11-01)
+>   had no FAIL and declared INCONCLUSIVE rows.
+>
+> **Does not exist (closed):**
+> - production dispatch: `PRODUCTION_DISPATCH_ENABLED` is `False` (`node/isolation.py`),
+>   `Isolation.requested()` never isolates a real harness while it is, no production code constructs
+>   `MxcLaunch` (admission stays closed), and `A4_ENFORCED` is `False`, so A4 gates nothing;
+> - origin enforcement: `ORIGIN_ENFORCEMENT_ENABLED` is `False` (`api/origin.py`) and
+>   `isolated_dispatch_qualified` is `False` (`api/server.py`), so no request is bounded by
+>   attested origin yet;
+> - therefore no real execution runs inside PV-20, the boundary is not claimed to exist, and G1
+>   and G2 stay open. *Was:* "not implemented".
 
 ## 1. What PV-20 is remediating
 
@@ -915,6 +944,11 @@ behind.
 
 **Not implemented, therefore not testable**
 
+*Amended 2026-11-01 to match the code (owner ruling): the heading and the sentence "The tree contains
+no PV-20 implementation" below are the 2026-10-07 and 2026-10-30 record. Code for the isolation
+identity, the Job, the isolated config directory and the MXC launch now exists but is not admitted
+to production dispatch; see "As built, 2026-11-01" at the top.*
+
 **Note (2026-10-30).** "AppContainer" in the items below is the 2026-10-29 name for the isolation
 identity; on the MXC `base-container` backend that identity is the process security environment under the
 host user's own SID (**F1a**), so each item is about **the isolation identity, whatever it is named**, and
@@ -1039,7 +1073,7 @@ Every §4 row is **implementation-blocked**: none can be executed until PV-20 ex
 passed, and no row is passed by the design existing.** Labels:
 
 - **design-complete** — settled by §3/§6 and buildable as written;
-- **implementation-blocked** — cannot run, because the mechanism is not implemented;
+- **implementation-blocked** — cannot run, because the mechanism is not admitted to production dispatch (it exists in parts; see "As built, 2026-11-01");
 - **evidence-blocked** — cannot yet be proven even once built, because a named dependency has no
   evidence yet;
 - **design-open** — a question the row depends on is still undecided, **or** the approved design

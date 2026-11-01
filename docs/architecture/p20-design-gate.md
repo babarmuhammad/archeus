@@ -116,7 +116,7 @@ screen reader has no exit (item 114).
   and `--settings <exec dir>/settings.json` (Archeus's `PreToolUse` and `PreCompact` hook only).
   It passes no `--setting-sources`, `--strict-mcp-config`, `--disable-slash-commands`, `--tools`
   or `--disallowedTools`, and no `--add-dir`. *(Verified state at `59281ac`. Under PV-20, ADR-0053
-  §7 A2 — not implemented — an isolated execution never receives the account home: its
+  §7 A2 — not admitted to production dispatch (PV-20 status 2026-11-01) — an isolated execution never receives the account home: its
   `CLAUDE_CONFIG_DIR` is a fresh per-execution directory with no provider login, and the settings
   file is Core-write / execution-read; §12 item 99.)*
 - `archeus/harnesses/hook.py` denies with a JSON `permissionDecision` and exit 0; it checks
@@ -493,7 +493,7 @@ already mints launch codes.
    - a mission created while disarmed starts nothing;
    - `POST /v1/rearm` restores starting work, and a new mission's execution starts.
 
-   *Under PV-20 (ADR-0053 R6-A; not implemented; §12 item 99):* for an isolated execution the
+   *Under PV-20 (ADR-0053 R6-A; not admitted to production dispatch (PV-20 status 2026-11-01); §12 item 99):* for an isolated execution the
    drill's first step inverts — Core's death ends the isolated tree, so no process lives on for
    the e-stop to kill. `test_A06` and A-M1 stay valid for executions that are not isolated and gain
    an isolated variant when PV-20 is built.
@@ -1048,7 +1048,7 @@ ADR-0021, the D13 breaker drills or the D10 / V2-3 mismatch (§14.F) was used or
     - `run/exec/<id>/mcp.json` holds the **full definitions** of the opted-in servers (command,
       arguments, URL, environment), which may carry tokens. It is written only when a server is
       opted in and never enters the record. **Slice I's secrets review (D7) should list it.**
-      *Under PV-20 (ADR-0053 §7 A2; not implemented): no MCP opt-in is admitted to an isolated
+      *Under PV-20 (ADR-0053 §7 A2; not admitted to production dispatch (PV-20 status 2026-11-01)): no MCP opt-in is admitted to an isolated
       execution, so this file is not written for one; §12 item 99.*
     - Local-scope MCP servers (`.claude.json` `projects[<path>].mcpServers`) are not inventoried.
     - An execution references its **latest** process's inventory; earlier processes' inventories
@@ -1267,7 +1267,7 @@ a decision. **No code was changed.** Slice F was not started. ADR-0021 was not a
       names only (E11, I08).
     - It belongs to **slice I's secrets review (D7)**: §14.B lists it there. It was not
       redesigned in E.
-    - *Under PV-20 (ADR-0053 §7 A2; not implemented):* **no MCP opt-in is admitted to an isolated
+    - *Under PV-20 (ADR-0053 §7 A2; not admitted to production dispatch (PV-20 status 2026-11-01)):* **no MCP opt-in is admitted to an isolated
       execution** (confirmed by the owner, 2026-10-07; §12 item 100), so the file is not written for
       one; it stays a secrets-review item for executions that are not isolated (§12 item 99).
 66. **Tests after the closeout.** No code changed, so only slice E's focused suites were re-run

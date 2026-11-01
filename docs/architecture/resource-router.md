@@ -88,8 +88,7 @@ in the requirement evaluates to ALLOW (not ASK, not ALLOW_WITHIN_BOUNDARY) under
 policy scope. A `sandbox` harness is eligible for ALLOW_WITHIN_BOUNDARY only when the boundary
 is expressible in its sandbox (paths yes; per-command globs no).
 
-*Consequence recorded 2026-10-07 (PV-20, [ADR-0053](decisions/ADR-0053.md) §7 A4; not
-implemented):* under PV-20 a further condition precedes every rule above, whatever the enforcement
+*Consequence recorded 2026-10-07 (PV-20, [ADR-0053](decisions/ADR-0053.md) §7 A4; not admitted to production dispatch (PV-20 status 2026-11-01)):* under PV-20 a further condition precedes every rule above, whatever the enforcement
 class — a harness is eligible for production dispatch only if its executions launch inside the
 PV-20 execution identity and Core-held Job. A harness sandbox is an inner layer, never a substitute,
 and no harness has an exception. Fake and test harnesses are not production-dispatchable.

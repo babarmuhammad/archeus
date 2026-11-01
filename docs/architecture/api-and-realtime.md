@@ -278,8 +278,7 @@ because a tunnel's requests also arrive from loopback. A local credential (the C
 launch-code browser) is honoured on the loopback Host only: through a tunnel a client is a paired
 one. Tunnel choice (Q2) stays PROPOSED.
 
-*Consequence recorded 2026-10-07 (PV-20, [ADR-0053](decisions/ADR-0053.md) R1-A and §7 A3; not
-implemented):* for a PV-20 §3.6 effect, a local credential on the loopback Host is necessary, not
+*Consequence recorded 2026-10-07 (PV-20, [ADR-0053](decisions/ADR-0053.md) R1-A and §7 A3; not admitted to production dispatch (PV-20 status 2026-11-01)):* for a PV-20 §3.6 effect, a local credential on the loopback Host is necessary, not
 sufficient. A trusted local request also needs an OS-attested connection origin meeting the
 approved user-origin condition, arriving through an approved trusted path that is neither a
 forwarding hop nor an execution-influenced deputy. A tunnel-forwarded or proxied request is never

@@ -330,7 +330,7 @@ An executable unit in the plan's DAG.
 | `kind` | code_change / research / document / presentation / inspection / verification / human |
 | `capabilities_required` | e.g. `{code_edit, shell, web, long_context, vision}` |
 | `action_classes[]` | policy classes it will exercise (write_repo, exec, web, …) |
-| `workspace_mode` | in_place / worktree (default for code_change). *Under PV-20 (ADR-0053 §7 A1; not implemented):* `in_place` is withdrawn for isolated executions — whatever this field says, an isolated execution of any kind runs in a Core-established workspace (a seeded execution repository on a git root; an empty execution-private workspace with no project), never in the user's project root; a task on a non-git project root is refused before dispatch |
+| `workspace_mode` | in_place / worktree (default for code_change). *Under PV-20 (ADR-0053 §7 A1; not admitted to production dispatch (PV-20 status 2026-11-01)):* `in_place` is withdrawn for isolated executions — whatever this field says, an isolated execution of any kind runs in a Core-established workspace (a seeded execution repository on a git root; an empty execution-private workspace with no project), never in the user's project root; a task on a non-git project root is refused before dispatch |
 | `max_attempts` | default 2 |
 | `failure_class` | why the task FAILED (`execution`, `verification`, …; policy / credential / human are not retryable); written with the move to FAILED, read by `task_failed_retryable` |
 | `estimate` | relative weight for progress |
