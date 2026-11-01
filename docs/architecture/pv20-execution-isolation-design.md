@@ -23,28 +23,53 @@ security remediation · **Date:** 2026-10-07 · **Prerequisite:** [PV-13 study](
 > **As built, 2026-11-01.** *Amended 2026-11-01 to match the code (owner ruling; the docs follow the
 > code): the "not implemented" labels written on 2026-10-07 and 2026-10-30, here and in every
 > document that cites this one, predate code that now exists. They are replaced by "not admitted to
-> production dispatch" and this section is what that means.* Checked against the code on the
-> integration branch `pv20-mxc` and the project board.
+> production dispatch" and this section is what that means. Refreshed the same day against the
+> integration tip `pv20-int2` (`pv20-mxc` `9115445f` plus B0, B4 and the fx5 fixes); the component
+> labels B0 to B13 are the work items of `.collab/PV20-completion-plan-2026-11-01.md`.*
 >
-> **Exists in the code (built, tested against injected backends, not admitted):**
-> - an isolated `CLAUDE_CONFIG_DIR`: when the launch spec carries isolation, the `claude_code`
->   adapter sets it to the execution's own private config directory (`ExecPaths.config`,
->   `harnesses/base.py`), and the derived environment refuses any other value;
-> - the router's `broker` step and `ISOLATED_DISPATCH` (`core/application/resources.py`), which
->   feeds it and is `None`: nothing in `archeus/` sets it;
-> - Core's isolation authority (`node/isolation.py`): per-execution identity names, the Core-held
->   Job table, the quarantine ledger, boot reclaim, and the A4 eligibility check;
-> - `MxcLaunch` (`node/local.py`) with its internals wired: a Core-owned outcome binding, the
->   resource record and read-back, the cancel order, the watchdog, the atomic claim of an execution
->   id, and the seed stage and re-check seam; fixture-only native runs N1 and N3 (board, 2026-11-01)
->   had no FAIL and declared INCONCLUSIVE rows.
+> **What "built" means here.** Every component below is code with tests that run against injected
+> fakes. No production code constructs `MxcLaunch`, `MxcBoundary`, the ledger, the watchdog, the
+> heartbeat channel, the watchdog host or the Win32 APIs, so nothing here governs a real process, no
+> native script has run against it, and V1 is not OS-confined. Status words: **built-behind-fakes**
+> (code and fake-backed tests; nothing native needed to say so), **native-unrun** (the code that would
+> touch Windows exists, for example ctypes bindings, and has never been run), **not built**.
+>
+> | Component | File (test) | Status | What keeps it closed |
+> |---|---|---|---|
+> | Isolation authority: identity names, Core-held Job table, quarantine ledger, boot reclaim, A4 eligibility | `archeus/node/isolation.py` (`tests/v1/unit/test_pv20_isolation.py`) | built-behind-fakes | `PRODUCTION_DISPATCH_ENABLED` and `A4_ENFORCED` are `False` |
+> | `MxcLaunch`: Core-owned outcome, resource record and read-back, cancel order, atomic claim, seed stage and re-check seam | `archeus/node/local.py`, `mxc_cancel.py`, `mxc_resources.py`, `mxc_outcome.py` (`test_mxc_wire*.py`) | built-behind-fakes | no production caller; `mxc.NATIVE_RUN_ENABLED` is `False` |
+> | B0 reviewed pins, pinned-schema validator, agent staging | `archeus/node/mxc_pins.py`, `mxc_pins.json`, `mxc_schema.py`, `staging.py` (`test_pv20_mxc_pins.py`) | built-behind-fakes; every pin is `UNSET` and every use refuses it | no pin recorded (OD-14) and `NATIVE_RUN_ENABLED` |
+> | B1 streaming transport: sink, stdin reader, per-stream and total bounds, deadline, a `poll()` that never reads a cut-off drain as clean | `archeus/node/mxc_native.py` (`test_mxc_native_stream.py`, `test_pv20_g_regressions.py`) | built-behind-fakes, native-unrun | `NATIVE_RUN_ENABLED` |
+> | B2 journal name per process generation (`<key>-p<n>`, verifier `verify_<vid>_<n>-p<n>`) | `archeus/node/mxc_ledger.py` (`test_mxc_wire_generation.py`) | built-behind-fakes | no production caller of `MxcLaunch` |
+> | B3 terminate the Job without closing it, as the default `end_job` | `archeus/node/isolation.py` `WindowsBoundary.terminate_job`, `local.py` (`test_mxc_wire.py`) | built-behind-fakes, native-unrun | `WindowsBoundary.available()` returns `False`; no production caller |
+> | B4 policy shape: UI posture `UI_CODE_CHANGE`, loopback `proxy_url`, reviewed capability set, explicit environment | `archeus/node/mxc.py`, `local.py` `mxc_env` (`test_pv20_mxc_policy_b4.py`) | built-behind-fakes | `NATIVE_RUN_ENABLED`; `MxcBoundary` passes no `ui` and no `proxy_url`, so no launch uses either |
+> | B5 seed into an existing empty directory; B8 seed dispatch from the store (resolve base, fetch, seed, resume reuses the record) | `archeus/node/seed.py`, `archeus/core/execution/manager.py` `_seeded`, `local.py` (`test_seed.py`, `test_mxc_wire_seed.py`) | built-behind-fakes | `LocalNode.store_fetch_accepted` is `False`; the manager takes the path only for an execution `Isolation.requested` isolates |
+> | B6 `MxcBoundary`: the OS facts `Isolation` reads, and `launch` | `archeus/node/mxc_boundary.py` (`test_mxc_boundary.py`) | built-behind-fakes | `available()` needs `NATIVE_RUN_ENABLED`, verified pins (all `UNSET`), the ledger and a validator; no production caller |
+> | B7 child object, output pump, stop routing, boot reconcile | `archeus/node/mxc_context.py`, `local.py`, `isolation.py` (`test_pv20_mxc_lifecycle.py`, `test_estop_drills.py` A01 to A06) | built-behind-fakes | as B6; the production process reader and the manager's task limits are not built |
+> | B9 native origin readers, the USER attestor, the Core path registry, per-call deadlines | `archeus/node/origin_native.py`, `attest.py`, `origin_windows.py`, `archeus/api/origin.py` (`test_origin_native.py`, `test_api_origin_transport.py`) | built-behind-fakes, native-unrun (`Win32OriginApi` never built) | `ORIGIN_ENFORCEMENT_ENABLED` is `False`; `isolated_dispatch_qualified` returns `False`; no verifier origin |
+> | B10 broker transport for MXC | `archeus/node/broker.py` (`NativeTransport` refuses) | not built at this tip | `BROKER_DISPATCH_ENABLED` is `False` |
+> | B11 confined verifier on MXC | `archeus/node/mxc_verifier.py`, `mxc_boundary.py` `launch_confined` (`test_pv20_mxc_verifier.py`, `test_mxc_verifier_child.py`) | built-behind-fakes | `CONFINED_VERIFICATION_ENABLED` is `False` |
+> | B12 composition root: one reviewed activation of every switch | none; no `activate_pv20` exists | not built | every switch above |
+> | B13 watchdog host and heartbeat channel | `archeus/node/mxc_heartbeat.py`, `mxc_watchdog_host.py`, `local.py` (`test_mxc_watchdog_host.py`) | built-behind-fakes; the native readers it needs are not built | `HEARTBEAT_ENABLED` and `HOST_ENABLED` are `False` |
+> | Isolated `CLAUDE_CONFIG_DIR` and derived environment | `archeus/harnesses/base.py` (`test_pv20_isolated_env.py`) | built-behind-fakes | taken only when the launch carries isolation |
+> | Router `broker` step and `ISOLATED_DISPATCH` | `archeus/core/application/resources.py` | built; `ISOLATED_DISPATCH` is `None` | nothing sets it |
+> | Slice G: G1 and G2 regressions, G6 scenarios, threat model | `tests/v1/unit/test_pv20_g_regressions.py`, `tests/v1/integration/test_g06_os_isolation.py`, `pv20-threat-model.md` | built; rows 1, 2, 3, 6, 7, 9, 11, 12, 13 skip unless `ARCHEUS_REAL_BOUNDARY=1` | G1 and G2 stay open |
+> | N1 to N4 native scripts and the drift guard | `tools/pv20_mxc/native/n1_check.py` to `n4_check.py`, `tests/v1/unit/test_pv20_native_drift.py` | N1 and N3 run (fixtures only, no FAIL, INCONCLUSIVE rows declared); N2 and N4 written, not run; N4a, N5, F5, F6, F8 not written or not run | each native run needs its own owner authorisation |
+> | Hook request integrity (nonce, content digest, size bound) and the task-key path-name rule (`paths.refused_component`) | `archeus/harnesses/hook.py`, `archeus/node/local.py`, `archeus/infra/paths.py` | built and live on the ordinary path, with no isolation switch; application layer, not an OS boundary | none |
+>
+> Open defects in this code, and the decisions the builders assumed, are listed in
+> [pv20-threat-model.md](pv20-threat-model.md) ("Review findings of 2026-11-01 and their state at this
+> tip"; "Open owner decisions OD-1 to OD-14"). None of OD-1 to OD-14 is answered.
 >
 > **Does not exist (closed):**
-> - production dispatch: `PRODUCTION_DISPATCH_ENABLED` is `False` (`node/isolation.py`),
+> - production dispatch: `PRODUCTION_DISPATCH_ENABLED` is `False` (`archeus/node/isolation.py:49`),
 >   `Isolation.requested()` never isolates a real harness while it is, no production code constructs
->   `MxcLaunch` (admission stays closed), and `A4_ENFORCED` is `False`, so A4 gates nothing;
-> - origin enforcement: `ORIGIN_ENFORCEMENT_ENABLED` is `False` (`api/origin.py`) and
->   `isolated_dispatch_qualified` is `False` (`api/server.py`), so no request is bounded by
+>   `MxcLaunch` or `MxcBoundary` (admission stays closed), `NATIVE_RUN_ENABLED` is `False`
+>   (`archeus/node/mxc.py:23`) and `A4_ENFORCED` is `False`, so A4 gates nothing;
+> - a reviewed pin: `archeus/node/mxc_pins.json` holds only `UNSET`, so no SDK or agent binary
+>   verifies and `MxcBoundary.available()` cannot be true;
+> - origin enforcement: `ORIGIN_ENFORCEMENT_ENABLED` is `False` (`archeus/api/origin.py:15`) and
+>   `isolated_dispatch_qualified` is `False` (`archeus/api/server.py:239`), so no request is bounded by
 >   attested origin yet;
 > - therefore no real execution runs inside PV-20, the boundary is not claimed to exist, and G1
 >   and G2 stay open. *Was:* "not implemented".
