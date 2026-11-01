@@ -34,6 +34,7 @@ class MxcChild:
         self.fault = None
         self._exit = self._in = self._out = None
         self._done, self._stop = threading.Event(), threading.Event()
+        self._lock = threading.Lock()
         self._thread = threading.Thread(target=self._pump, daemon=True)
         launch.process.attach(self._write, self._read)
 
@@ -69,14 +70,15 @@ class MxcChild:
     def cancel(self, reason='cancelled'):
         """End the launch through `MxcLaunch.cancel`: the pump is told to stop and records
         the reason as it ends the launch, so the handles it holds are never closed under it.
-        Idempotent; returns the launch's end state."""
-        if not self._done.is_set():
-            self.reason = reason
-        self.launch.stop_reason = reason
+        Idempotent, and the first reason is the only one: the ledger and `reason` agree.
+        Returns the launch's end state."""
+        with self._lock:
+            if self.reason is None and not self._done.is_set():
+                self.reason = self.launch.stop_reason = reason
         self._stop.set()
         if self._thread.is_alive():
             self._thread.join(PUMP_JOIN_S)
-        return self.launch.cancel(reason=reason)
+        return self.launch.cancel(reason=self.reason or reason)
 
 
 class MxcIsolationContext(IsolationContext):

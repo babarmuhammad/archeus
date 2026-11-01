@@ -11,6 +11,8 @@ only when Core stops it.
 import dataclasses
 import json
 import os
+import threading
+import time
 
 import pytest
 
@@ -196,6 +198,32 @@ def test_a_second_stop_ends_nothing_twice(long_agent):
     assert child.reason == 'estop' and len(long_agent.jobs.terminated) == 1
     long_agent.node.kill(long_agent.agent, handle, reason='limit')
     assert child.reason == 'estop' and len(long_agent.jobs.terminated) == 1
+
+
+def test_two_stops_in_flight_agree_on_the_first_reason(long_agent):
+    handle, child = spawn(long_agent)
+    api, held, entered = long_agent.api, threading.Event(), threading.Event()
+    real = api.poll
+
+    def poll_when_released(process):
+        entered.set()
+        held.wait(5)                # the pump cannot see the stop until both have been made
+        return real(process)
+    api.poll = poll_when_released
+    assert entered.wait(5)
+    first = threading.Thread(target=child.cancel, args=('estop',))
+    first.start()
+    while child.reason is None:
+        time.sleep(0.01)
+    second = threading.Thread(target=child.cancel, args=('limit',))
+    second.start()
+    held.set()
+    first.join(10)
+    second.join(10)
+    assert child.reason == 'estop'
+    ops, records = journal(long_agent)
+    assert ops[-1] == 'quarantine' and 'estop' in records[-1]['reason']
+    assert 'limit' not in records[-1]['reason']
 
 
 def test_a_handle_naming_another_pid_never_cancels_the_launch(long_agent):
