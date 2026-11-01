@@ -30,6 +30,8 @@ from archeus.harnesses import base, hook
 from archeus.infra import paths
 from archeus.node.local import LocalNode
 
+PRJ, MSN = ids.new_id('project'), ids.new_id('mission')
+
 WD = os.path.abspath('workspace-root')
 CTX = {'workdir': WD, 'branch': 'archeus/m/t', 'remotes': {'origin': 'github.com'}}
 
@@ -1395,8 +1397,8 @@ def _spawn_rig(monkeypatch, tmp_path, decide=False, authority='present', opt_ins
                         account_id=None, route_decision_id=None, process_seq=0,
                         handoff_from=None, attempt=1, model=None, effort=None,
                         adapter_state={'session': 's1'}, isolated=None)
-    mission = SimpleNamespace(objective='o', id='mission-1',
-                              project_id='project-1' if project else None)
+    mission = SimpleNamespace(objective='o', id=MSN,
+                              project_id=PRJ if project else None)
     return m, e, mission, adapter, log
 
 
@@ -1559,9 +1561,9 @@ def test_an_unisolated_worktree_execution_still_gets_its_linked_worktree(
                            'add_worktree', 'inventory', 'prepare_process', 'spawn',
                            'record_process']
     (add,) = [x for x in log if x[0] == 'add_worktree']
-    assert add[1:] == (root, 'archeus/mission-1.t1', 'archeus/mission-1' if exists else 'HEAD')
+    assert add[1:] == (root, 'archeus/%s.t1' % MSN, 'archeus/%s' % MSN if exists else 'HEAD')
     (prep,) = [x[1] for x in log if x[0] == 'prepare_process']
-    assert prep['branch'] == 'archeus/mission-1.t1' and prep['workdir'] != root
+    assert prep['branch'] == 'archeus/%s.t1' % MSN and prep['workdir'] != root
 
 
 # ── T-032 (T-031 E2): an isolated execution's hook runs in isolated mode ──

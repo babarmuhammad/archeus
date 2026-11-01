@@ -197,3 +197,19 @@ def test_only_a_directory_counts_as_an_earlier_worktree(archeus_home, leaf):
     legacy.write_text('')
     assert WORKTREE[leaf]() == os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
 
+
+@pytest.mark.parametrize('leaf', ['..', '.', '../x', '../../../evil', 'C:/evil', '/evil', 'a/b',
+                                  'a\\b', '', 'a b'])
+def test_a_task_key_that_is_not_a_plain_name_cannot_leave_the_mission_directory(archeus_home, leaf):
+    with pytest.raises(ValueError):
+        paths.task_worktree(PRJ, MSN, leaf)
+
+
+@pytest.mark.parametrize('prj, msn', [('prj_x', MSN), (PRJ, 'msn_'), (PRJ, 'msn_x/y'),
+                                      (PRJ, 'exe_' + MSN[4:]), (None, MSN)])
+def test_a_worktree_is_named_only_by_a_project_and_a_mission_id(archeus_home, prj, msn):
+    for fn in (lambda: paths.task_worktree(prj, msn, 't1'),
+               lambda: paths.mission_worktree_path(prj, msn)):
+        with pytest.raises(ValueError):
+            fn()
+

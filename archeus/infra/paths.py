@@ -14,6 +14,7 @@ and the two worktree resolvers read whether an earlier-layout directory exists.
 """
 
 import os
+import re
 import stat
 import sys
 
@@ -72,6 +73,9 @@ def archeus_home(environ=None, platform=None):
     return path
 
 
+_LEAF = re.compile(r'[A-Za-z0-9_.-]+')
+
+
 def task_worktree(project_id, mission_id, key):
     """`<ARCHEUS_HOME>/worktrees/<mission ULID>/<task key>` (target-architecture
     §5.1, amendment 2026-10-14), or the earlier layout's directory when it exists."""
@@ -88,6 +92,10 @@ def _worktree(project_id, mission_id, leaf):
     # The one resolver that reads the disk (it writes nothing). The earlier
     # `<project-id>/<mission-id>/` layout is kept and used where a worktree already
     # exists: its branch is checked out there, so Git would refuse a second path.
+    if not ids.is_id(project_id, 'project') or not ids.is_id(mission_id, 'mission'):
+        raise ValueError('not a project and mission id: %.80r, %.80r' % (project_id, mission_id))
+    if not _LEAF.fullmatch(leaf) or leaf in ('.', '..'):
+        raise ValueError('not a worktree directory name: %.80r' % (leaf,))
     root = os.path.join(archeus_home(), 'worktrees')
     legacy = os.path.join(root, project_id, mission_id, leaf)
     if os.path.isdir(legacy):

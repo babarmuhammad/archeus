@@ -21,6 +21,8 @@ from archeus.core.execution import manager as M
 from archeus.core.execution import pressure as PR
 from archeus.harnesses import base
 
+PRJ, MSN = ids.new_id('project'), ids.new_id('mission')
+
 # ── the fakes ────────────────────────────────────────────────────────────────
 
 
@@ -171,7 +173,7 @@ def _proc(m, e, **over):
 
 
 def _mission(state='EXECUTING', **over):
-    d = {'id': 'mission-1', 'state': state, 'project_id': None, 'objective': 'the aim'}
+    d = {'id': MSN, 'state': state, 'project_id': None, 'objective': 'the aim'}
     d.update(over)
     return SimpleNamespace(**d)
 
@@ -551,7 +553,7 @@ def test_a_paused_mission_pauses_running_work_with_the_pause_flag():
     p = _proc(m, e)
     assert m._control(e, _mission('PAUSED'), p, disarmed=False) is True
     assert _names(m) == ['pause_work']
-    assert _kw(m, 'pause_work')[0]['mission_id'] == 'mission-1'
+    assert _kw(m, 'pause_work')[0]['mission_id'] == MSN
     assert m.node.flags == [(e.id, 'PAUSE')] and m.node.kills == []
 
 
@@ -874,15 +876,15 @@ def test_a_project_with_no_root_and_a_branch_that_cannot_be_read_are_safe(monkey
     _rows(monkeypatch)                                            # no project row at all
     m = _mgr()
     with pytest.raises(OSError):
-        m._workspace(_e(), _mission(project_id='project-1'), _task(), isolated=False)
+        m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=False)
     m = _mgr()
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[]))
     with pytest.raises(OSError):                                  # an empty root list too
-        m._workspace(_e(), _mission(project_id='project-1'), _task(), isolated=False)
+        m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=False)
     root = str(tmp_path / 'root')
     m = _mgr(git_branch=None)
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
-    assert m._workspace(_e(), _mission(project_id='project-1'), _task(), isolated=False) \
+    assert m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=False) \
         == (root, None)
     assert [x for x in m.node.log if x[0] == 'add_worktree'] == []
 
@@ -894,7 +896,7 @@ def test_an_isolated_execution_is_refused_a_project_workspace(monkeypatch, tmp_p
     m = _mgr(git_branch=lambda p: (_ for _ in ()).throw(AssertionError('no git probe')))
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
     with pytest.raises(OSError):
-        m._workspace(_e(), _mission(project_id='project-1'), _task(), isolated=True)
+        m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=True)
     assert [x for x in m.node.log if x[0] == 'git_branch'] == []
 
 
@@ -905,14 +907,14 @@ def test_a_worktree_starts_from_the_mission_branch_once_it_exists(monkeypatch, t
     root = str(tmp_path / 'root')
     m = _mgr(git_branch='main', branch_exists=False)
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
-    e, mission, task = _e(), _mission(project_id='project-1'), _task('worktree')
-    assert m._workspace(e, mission, task, isolated=False)[1] == 'archeus/mission-1.t1'
+    e, mission, task = _e(), _mission(project_id=PRJ), _task('worktree')
+    assert m._workspace(e, mission, task, isolated=False)[1] == 'archeus/%s.t1' % MSN
     line = [x for x in m.node.log if x[0] == 'add_worktree'][0]
     assert line[4] == 'HEAD', line
     m.node.answers['branch_exists'] = True
     m._workspace(e, mission, task, isolated=False)
     line = [x for x in m.node.log if x[0] == 'add_worktree'][-1]
-    assert line[4] == M.mission_branch('mission-1') == 'archeus/mission-1', line
+    assert line[4] == M.mission_branch(MSN) == 'archeus/%s' % MSN, line
     # an in-place task takes the root and the branch that is checked out
     m2 = _mgr(git_branch='main')
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
