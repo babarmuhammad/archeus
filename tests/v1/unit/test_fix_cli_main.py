@@ -46,3 +46,14 @@ def test_a_registry_line_that_is_valid_json_but_not_an_object_does_not_stop_the_
     with open(processes_registry(), 'w', encoding='utf-8') as f:
         f.write('null\n5\n"x"\n{"op": "end"}\n' + json.dumps(spawn) + '\n')
     assert LocalNode.unended() == [spawn]
+
+
+@pytest.mark.parametrize('text', ['[1]', '5', 'null', '"x"', '[' * 100000 + ']' * 100000],
+                         ids=['list', 'number', 'null', 'string', 'deeply_nested'])
+def test_an_automation_body_that_is_not_an_object_is_a_clean_error_not_a_traceback(
+        text, tmp_path, monkeypatch, capsys):
+    f = tmp_path / 'a.json'
+    f.write_text(text, encoding='utf-8')
+    monkeypatch.setattr(main, '_running', lambda: pytest.fail('Core must not be asked'))
+    assert main.main(['automation', 'create', str(f)]) == 2
+    assert capsys.readouterr().err

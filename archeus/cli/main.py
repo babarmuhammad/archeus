@@ -487,8 +487,11 @@ def automation(what, arg):
         try:
             with open(arg, encoding='utf-8') as f:
                 body = json.load(f)
-        except (OSError, ValueError) as e:
+        except (OSError, ValueError, RecursionError) as e:
             print('cannot read %s: %s' % (arg, e), file=sys.stderr)
+            return 2
+        if not isinstance(body, dict):
+            print('%s must hold one JSON object' % arg, file=sys.stderr)
             return 2
     info = _running()
     if info is None:
