@@ -434,10 +434,21 @@ def test_an_own_call_gets_none_of_cores_own_environment(monkeypatch, tmp_path, c
     (env,) = ENVS
     assert not [k for k in env if k.upper().startswith(('ARCHEUS_', 'PYTEST_'))]
     from claude_sessions import harnesses
-    home = harnesses.of(str(tmp_path))['home_env']     # the account's own home variable
+    home = harnesses.descriptor(caller.id)['home_env']     # the account's own home variable
+    # pi's login is its auth.json and its descriptor pops no key (harnesses.py); Claude Code pops it
+    key = None if caller is real.ClaudeCodeCaller else 'not-a-key'
     assert (env.get(home), env.get('KEEP_ME'), env.get('ANTHROPIC_API_KEY')) == (
-        str(tmp_path), 'yes', None)
+        str(tmp_path), 'yes', key)
     assert env.get('PATH') == os.environ['PATH']
+
+
+def test_a_pi_call_runs_on_the_pi_home_of_its_account_even_when_unregistered(
+        monkeypatch, tmp_path):
+    """T-648#R6: `harnesses.of` places a home it does not know as Claude Code's, so a pi
+    call never got PI_CODING_AGENT_DIR and spent the default pi home."""
+    _call(monkeypatch, tmp_path, real.PiCaller())
+    (env,) = ENVS
+    assert env.get('PI_CODING_AGENT_DIR') == str(tmp_path)
 
 
 class _Child:

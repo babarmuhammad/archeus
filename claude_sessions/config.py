@@ -888,7 +888,7 @@ def all_config_dirs():
                       load_settings().get('accounts'))
 
 
-def account_env(cfgdir=None):
+def account_env(cfgdir=None, harness=None):
     """Environment for a `claude` invocation that must act on ONE account.
 
     `CLAUDE_CONFIG_DIR` is Claude Code's own account selector and it is honoured
@@ -899,10 +899,13 @@ def account_env(cfgdir=None):
     Popping `ANTHROPIC_API_KEY` is the non-obvious half: a key set in the
     environment shadows the account login, so the CLI would authenticate as the
     key's owner no matter which config dir it read.
+
+    `harness` names the account's harness when the caller knows it: a registered
+    home that `of` cannot place is otherwise taken for Claude Code's (T-648#R6).
     """
-    from .harnesses import of
+    from .harnesses import descriptor, of
     env = os.environ.copy()
-    d = of(cfgdir)
+    d = descriptor(harness) if harness else of(cfgdir)
     env[d['home_env']] = resolve_config_dir(cfgdir)
     for k in d.get('env_pops', ()):
         env.pop(k, None)
