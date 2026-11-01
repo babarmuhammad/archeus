@@ -54,7 +54,9 @@ def test_refuses_artifact_drift(sdk, tmp_path, change):
         (root / 'package.json').write_bytes(data)
         pins['package.json'] = hashlib.sha256(data).hexdigest()
     dest = tmp_path / 'stage'
-    with pytest.raises(staging.StageError):
+    message = ('pinned version' if change in ('version', 'name')
+               else 'differ from reviewed hashes')
+    with pytest.raises(staging.StageError, match=message):
         staging.stage_mxc(root, dest, pins=pins)
     assert not dest.exists()
 
@@ -62,7 +64,7 @@ def test_refuses_artifact_drift(sdk, tmp_path, change):
 def test_refuses_unreviewed_inventory(sdk):
     root, pins = sdk
     for bad in ({}, {**pins, staging.MXC_EXE: 'not a hash'}):
-        with pytest.raises(staging.StageError):
+        with pytest.raises(staging.StageError, match='missing or invalid reviewed MXC pins'):
             staging.verify_mxc(root, pins=bad)
 
 

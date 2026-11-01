@@ -89,16 +89,24 @@ def test_closed_default_policy(tmp_path):
     assert raw['telemetry'] == {'enabled': False}
 
 
-@pytest.mark.parametrize('changes', [
-    {'env': None}, {'env': {'SYSTEMROOT': 'C:\\Windows'}},
-    {'env': {'SYSTEMROOT': 'C:\\Windows', 'LOCALAPPDATA': 'x', 'systemroot': 'x'}},
-    {'timeout_ms': True}, {'timeout_ms': 0}, {'command_line': ''},
-    {'egress': 'allow'}, {'ui': 1}, {'cwd': 'relative'},
-    {'proxy_url': 'http://example.invalid:80'}, {'proxy_url': 'http://127.0.0.1'},
-    {'proxy_url': 'http://user@127.0.0.1:80'},
+ENV_NEEDED = 'explicit SYSTEMROOT and LOCALAPPDATA required'
+BAD_POLICY, BAD_PROXY = 'invalid MXC policy', 'explicit loopback HTTP endpoint'
+
+
+@pytest.mark.parametrize('changes,message', [
+    ({'env': None}, ENV_NEEDED), ({'env': {'SYSTEMROOT': 'C:\\Windows'}}, ENV_NEEDED),
+    ({'env': {'SYSTEMROOT': 'C:\\Windows', 'LOCALAPPDATA': 'x', 'systemroot': 'x'}}, ENV_NEEDED),
+    ({'timeout_ms': True}, BAD_POLICY), ({'timeout_ms': 0}, BAD_POLICY),
+    ({'command_line': ''}, BAD_POLICY),
+    ({'egress': 'allow'}, 'unsupported UI or egress policy'),
+    ({'ui': 1}, 'unsupported UI or egress policy'),
+    ({'cwd': 'relative'}, 'policy paths must be absolute'),
+    ({'proxy_url': 'http://example.invalid:80'}, BAD_PROXY),
+    ({'proxy_url': 'http://127.0.0.1'}, BAD_PROXY),
+    ({'proxy_url': 'http://user@127.0.0.1:80'}, BAD_PROXY),
 ])
-def test_invalid_policy_never_spawns(tmp_path, changes):
-    with pytest.raises(mxc.MxcUnavailable):
+def test_invalid_policy_never_spawns(tmp_path, changes, message):
+    with pytest.raises(mxc.MxcUnavailable, match=message):
         policy(tmp_path, **changes)
 
 
@@ -154,7 +162,7 @@ def test_mutated_policy_refuses_before_backend(tmp_path):
     compiled = policy(tmp_path)
     compiled.raw['process']['inheritDefaultEnv'] = True
     fake = mxc.FakeMxc([mxc.FakeOutcome()])
-    with pytest.raises(mxc.MxcUnavailable):
+    with pytest.raises(mxc.MxcUnavailable, match=BAD_POLICY):
         mxc.spawn(compiled, exe='unused', job=object(), backend=fake)
     assert fake.calls == []
 
@@ -185,11 +193,11 @@ def test_effective_identity_accepts_host_user_psec_and_refuses_dead_or_reused_pi
     report = mxc.effective_identity(proc)
     assert not report.is_appcontainer and report.ac_sid is None and report.user_sid
     proc.identity_reader = lambda p: replace(report, create_time=report.create_time + 1)
-    with pytest.raises(mxc.MxcUnavailable):
+    with pytest.raises(mxc.MxcUnavailable, match='dead, reused or unverified'):
         mxc.effective_identity(proc)
     proc.identity_reader = lambda p: report
     proc.wait()
-    with pytest.raises(mxc.MxcUnavailable):
+    with pytest.raises(mxc.MxcUnavailable, match='dead, reused or unverified'):
         mxc.effective_identity(proc)
 
 
