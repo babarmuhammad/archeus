@@ -125,7 +125,7 @@ MUTATIONS = [
      "    if CREATION_TIME_UNREADABLE not in failures and info.creation_time != "
      "binding.creation_time:", "    if False:")], [LATER]),
     ('MG31', 'a binding never expires', [(ATTEST,
-     "    if not _finite(now) or not (now - binding.accepted_at <= max_age_s):",
+     "    if not _finite(now) or not (0 <= now - binding.accepted_at <= max_age_s):",
      "    if not _finite(now):")],
      [T + 'test_a_binding_older_than_its_age_is_refused_without_a_reattest']),
     ('MG32', 'a dead owner passes the liveness check', [(ATTEST,
