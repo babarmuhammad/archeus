@@ -21,12 +21,14 @@ import pytest
 from archeus.api import origin, routes
 from archeus.core.domain import ids
 from archeus.harnesses import base
+from archeus.node import isolation as iso
 from archeus.node import local, mxc_ledger
 from archeus.node.origin_native import ESTABLISHED, TcpRow, native_readers
 from archeus.node.origin_windows import WindowsOriginBackend
 
 from v1.integration.test_pv20_mxc_agent_path import (  # noqa: F401  (fixtures used by name)
-    agent_case, checks, no_process, registry_lines, sdk)
+    agent_case, checks, kill_on_close, link_second_name, no_process, registry_lines, sdk)
+from v1.unit.test_mxc_boundary import gate  # noqa: F401  (fixture used by name)
 from v1.unit.test_origin_native import JOB, T0, FakeApi
 
 pytestmark = pytest.mark.os_isolation
@@ -109,60 +111,70 @@ def test_row_05_an_execution_origin_cannot_re_arm_after_an_estop_even_with_the_t
     assert _refused(r)
 
 
+def _refuse(why):
+    def refuse():
+        raise iso.IsolationUnavailable(why, 'synthetic')
+    return refuse
+
+
 CONDITIONS = {
-    'identity unavailable': lambda b: setattr(b, 'create_fail', 'profile_create'),
-    'boundary unavailable': lambda b: setattr(b, 'available_ok', False),
-    'a grant not established': lambda b: setattr(b, 'grant_ok', False),
-    'a broad principal holds write': lambda b: setattr(b, 'broad', 'S-1-1-0'),
-    "Core's own state is granted": lambda b: setattr(b, 'core_state_granted', True),
-    'a network capability is present': lambda b: setattr(b, 'caps', ('S-1-15-3-1',)),
-    'the Job is inheritable': lambda b: setattr(b, 'job_inheritable', True),
-    'the Job is named': lambda b: setattr(b, 'job_named', True),
-    "the Job's name cannot be read": lambda b: setattr(b, 'job_name_unknown', True),
+    'identity unavailable': lambda c: setattr(c.boundary, 'before_grant',
+                                              _refuse('profile_create')),
+    'boundary unavailable': lambda c: setattr(c.boundary, 'pins', None),
+    'a grant not established': lambda c: link_second_name(c.work, 'second-name.txt'),
+    'a broad principal holds write': lambda c: setattr(c.jobs, 'broad', 'S-1-1-0'),
+    "Core's own state is granted": lambda c: setattr(c.boundary, 'granted_to',
+                                                    lambda path, sid: True),
+    'a network capability is present': lambda c: setattr(c.boundary, 'capability_grants',
+                                                         lambda: ('S-1-15-3-1',)),
+    'the Job is inheritable': lambda c: setattr(c.jobs, 'job_inheritable', True),
+    'the Job is named': lambda c: setattr(c.jobs, 'job_named', True),
+    "the Job's name cannot be read": lambda c: setattr(c.jobs, 'job_name_unknown', True),
 }
 
 
 @pytest.mark.parametrize('unmet', CONDITIONS)
 def test_row_10_with_a_condition_unmet_nothing_is_launched_and_nothing_falls_back(
-        tmp_path, sdk, no_process, unmet):
+        tmp_path, sdk, gate, no_process, unmet):
     """Row 10: no configuration disables the invariant; an unmet condition is no spawn,
     no registry spawn line, no detached process, and no retry by Core."""
     case = agent_case(tmp_path, sdk)
-    CONDITIONS[unmet](case.boundary)
+    CONDITIONS[unmet](case)
     with pytest.raises(base.SpawnFailed, match='isolation'):
         case.node.spawn(case.agent, case.spec, isolated=True)
-    assert case.boundary.launch_calls == [] and case.boundary.backend.spawned == []
+    assert case.boundary.launch_calls == [] and case.api.created == []
     assert not [x for x in registry_lines() if x.get('op') == 'spawn']
     assert no_process == []
 
 
-def test_row_08_an_estop_with_core_up_ends_the_tree_through_the_job(tmp_path, sdk, no_process):
+def test_row_08_an_estop_with_core_up_ends_the_tree_through_the_job(tmp_path, sdk, gate,
+                                                                    no_process):
     """Row 8, Core up: ending the Job reaps the launcher tree; nothing is left running
     and the Job is closed exactly once."""
     case = agent_case(tmp_path, sdk)
-    case.boundary.kill_on_close = True
+    kill_on_close(case)
     handle = case.node.spawn(case.agent, case.spec, isolated=True)
     job = case.boundary.launch_calls[0]['job']
     case.node.kill(case.agent, handle)
     case.node.fence_isolation(case.spec.execution_id)
     assert case.boundary.launches[0].process.is_alive() is False
-    assert case.boundary.closed == [job]
+    assert case.jobs.closed == [job]
     assert case.authority.held_job(case.spec.execution_id) is None
 
 
 def test_row_14_with_no_confined_identity_no_check_command_runs(checks):
     """Row 14: with the verification identity unavailable nothing is launched, and the
     answer is an error, never an exit code a verification could read as a pass."""
-    checks.boundary.create_fail = 'profile_create'
+    checks.boundary.before_grant = _refuse('profile_create')
     result = checks.run(ids.new_id('verification'), 0)
     assert checks.boundary.launch_calls == []
     assert result['exit_code'] is None and result['error']
 
 
-def test_row_15_a_workload_that_reports_no_exit_is_never_a_clean_end(tmp_path, sdk):
+def test_row_15_a_workload_that_reports_no_exit_is_never_a_clean_end(tmp_path, sdk, gate):
     """Row 15 / A7: only the Core-owned outcome reader gives an exit; a process that
     prints a result and gives none ends unverified, with nothing completed."""
-    case = agent_case(tmp_path, sdk, agent=lambda process: None)
+    case = agent_case(tmp_path, sdk, outcome=lambda process: None)
     case.node.spawn(case.agent, case.spec, isolated=True)
     launch = case.boundary.launches[0]
     with pytest.raises(local.staging.StageError, match='outcome'):

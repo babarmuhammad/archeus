@@ -24,8 +24,9 @@ the control sits at that tip. Line numbers drift: re-check them, do not trust th
   governing a real process. A control behind a closed switch protects nothing today.
 - **Evidence**, one of:
   - **unit**: tests against fakes pass; the logic is as described. Not a statement about Windows.
-  - **fake-only**: built and tested, but only a test class builds the caller (for example the T-457
-    `MxcBoundary` in `tests/v1/integration/test_pv20_mxc_agent_path.py`); no production code does.
+  - **fake-only**: built and tested, but only a test builds the caller (for example the T-457 agent
+    and verifier paths, which drive the production `MxcBoundary` over a scripted Win32 transport in
+    `tests/v1/integration/test_pv20_mxc_agent_path.py`); no production code does.
   - **native partial**: a fixture-only native run (N1, N3 of 2026-11-01) showed the narrow fact named.
   - **native NOT_RUN**: nothing was run against the real boundary; the row is unevidenced, never safe.
 - **Open**: what keeps the row from being closed. **High** means it blocks slice G (gate section 10).
@@ -46,7 +47,10 @@ the control sits at that tip. Line numbers drift: re-check them, do not trust th
 | Router isolated dispatch | `None` | `archeus/core/application/resources.py:33` |
 | Isolated project workspace | refused ("no project workspace yet (PV-20 A1)") | `archeus/core/execution/manager.py:491` |
 
-No production code constructs `MxcLaunch`, the ledger, the watchdog or the Win32 API. Opening admission
+No production code constructs `MxcBoundary` (`archeus/node/mxc_boundary.py`), `MxcLaunch`, the ledger,
+the watchdog or the Win32 API. `MxcBoundary` is available only with the native api, SDK pins that verify
+against the staged copy, the ledger, the schema validator and an open `NATIVE_RUN_ENABLED`; given none
+of them, or with the switch above closed, it is not. Opening admission
 is one reviewed activation (completion plan C1, A1); it is not done.
 
 ## Open High items (these block closing slice G)
@@ -75,7 +79,7 @@ is one reviewed activation (completion plan C1, A1); it is not done.
 | T07 | The tree survives an end, or an end is recorded clean while it lives | revoke, terminate the Job without closing, read the member count through the open handle, read back resources, record; clean only with a Core-owned outcome and a verified disposal (`archeus/node/local.py:504-546`, `:549-580`, `:608-640`; `archeus/node/mxc_cancel.py:62-132`; `archeus/node/isolation.py:1967`) | unit and fake-only: B3 section, mutants MG20-MG27. Native partial: N1 outer-job-close PASS; real Core death and `terminate_job` through the production boundary only stand-in | Job is the sole Core-death authority unless the watchdog is built (OD-4b) |
 | T08 | The launcher's exit or the stream is taken for the workload's result (A7) | Core-owned outcome reader or bound workload nonce (`local.py:481-496`); without one every end is DEAD_UNVERIFIED | unit; G6 row 15 over the fake boundary. MXC supplies no independent workload outcome | success needs an outcome source (OD-2, OD-3) |
 | T09 | Core crashes with an execution live | boot reclaim exists for the legacy isolation (`local.py:757`, `manager.py:1117`); the ledger `reconcile` (`mxc_ledger.py:109`, `:240`) is not called by the manager | unit and fake-only; real Core death NOT_RUN (N5) | wiring and watchdog host not built |
-| T10 | A condition of the establishment invariant is unmet and the execution starts anyway | `check_invariant` (`isolation.py:232`), `Isolation.requested` (`:648-661`) refuse; no switch disables it | unit; G6 row 10 scenarios (nine causes, no spawn, no fallback) | invariant conditions 1 to 3 still speak AppContainer, MXC mapping unwritten |
+| T10 | A condition of the establishment invariant is unmet and the execution starts anyway | `check_invariant` (`isolation.py:232`), `Isolation.requested` (`:648-661`) refuse; no switch disables it | unit; G6 row 10 scenarios (nine causes, no spawn, no fallback) | conditions 1 to 3 now have an MXC mapping (header of `mxc_boundary.py`: a reserved name and a `psec` marker, the policy's path lists plus the hardlink gate, a DACL read for broad writers and reachability of Core paths); every mapping is INFERRED, none has native evidence |
 
 ## Boundary 2: verifier
 

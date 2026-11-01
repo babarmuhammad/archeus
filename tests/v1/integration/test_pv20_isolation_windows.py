@@ -719,12 +719,12 @@ def test_t090_the_verifier_job_limits_a_contained_process_tree(boundary, monkeyp
 # ── the MXC boundary's Job half, on the real Win32 Job code ──
 # Same opt-in as everything above: nothing here runs without ARCHEUS_REAL_BOUNDARY=1.
 
-def test_the_mxc_boundary_is_unavailable_without_its_native_parts(owned_home):
+def test_the_mxc_boundary_is_unavailable_without_its_native_parts(boundary):
     from archeus.node.mxc_boundary import MxcBoundary
     assert MxcBoundary().available() is False
 
 
-def test_the_mxc_boundary_hands_out_the_unnamed_kill_on_close_job(owned_home):
+def test_the_mxc_boundary_hands_out_the_unnamed_kill_on_close_job(boundary):
     from archeus.node.mxc_boundary import MxcBoundary
     b = MxcBoundary()
     job = b.create_job(ids.new_id('execution'))

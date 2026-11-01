@@ -637,3 +637,46 @@ def test_the_ending_parts_reach_the_launch(tmp_path, sdk, monkeypatch, name):
 def test_the_default_outcome_is_the_launchers_exit_and_nothing_a_stream_said():
     assert mxc_boundary.launcher_exit(SimpleNamespace(launcher_exit=7, stdout=b'0')) == 7
     assert MxcBoundary().outcome is mxc_boundary.launcher_exit
+
+
+# ── MxcLaunch takes more writable grants than the workspace ──
+
+class Compiler:
+    """A backend that only compiles: the launch under test is never started."""
+    compile_policy = staticmethod(mxc.compile_policy)
+
+
+def a_launch(tmp_path, sdk, **over):
+    work = tmp_path / 'work'
+    work.mkdir(exist_ok=True)
+    args = dict(backend=Compiler(), sdk_root=sdk[0], pins=sdk[1], outcome=lambda p: 0,
+                workspace=str(work), cwd=str(work), command_line='agent.exe', timeout_ms=1000,
+                env={'SYSTEMROOT': 'C:\\Windows', 'LOCALAPPDATA': str(work)})
+    args.update(over)
+    return local.MxcLaunch(**args)
+
+
+def test_extra_writable_grants_join_the_workspace_in_the_policy(tmp_path, sdk):
+    extra = tmp_path / 'mailbox'
+    extra.mkdir()
+    fs = a_launch(tmp_path, sdk, writable=[str(extra)]).policy.raw['filesystem']
+    assert fs['readwritePaths'] == [os.path.normpath(tmp_path / 'work'), os.path.normpath(extra)]
+
+
+def test_with_no_extra_grant_the_workspace_is_the_one_writable_path(tmp_path, sdk):
+    fs = a_launch(tmp_path, sdk).policy.raw['filesystem']
+    assert fs['readwritePaths'] == [os.path.normpath(tmp_path / 'work')]
+
+
+def test_a_second_name_in_an_extra_writable_grant_is_refused_at_construction(tmp_path, sdk):
+    extra = tmp_path / 'mailbox'
+    extra.mkdir()
+    (extra / 'one.txt').write_bytes(b'x')
+    os.link(extra / 'one.txt', extra / 'two.txt')
+    with pytest.raises(staging.StageError, match='multiple links in grant'):
+        a_launch(tmp_path, sdk, writable=[str(extra)])
+
+
+def test_an_extra_writable_grant_that_is_not_there_is_refused(tmp_path, sdk):
+    with pytest.raises(staging.StageError, match='hardlink scan failed'):
+        a_launch(tmp_path, sdk, writable=[str(tmp_path / 'absent')])
