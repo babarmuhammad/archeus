@@ -4,6 +4,7 @@ is one finding's request, asserting the refusal it should have drawn."""
 import json
 import os
 import threading
+import types
 
 import pytest
 
@@ -113,6 +114,40 @@ def test_f7_a_long_stream_is_read_from_a_window_of_whole_lines(monkeypatch):
     assert got['next_offset'] == os.path.getsize(paths.stream)
     short = output.read(exe, FakeHarness(), got['next_offset'] - 300)
     assert not short['truncated'] and len(short['events']) >= 2         # a short read is not cut
+
+
+class _Adapter:
+    def __init__(self, events):
+        self.events = events
+
+    def inspect(self, handle, offset):
+        return types.SimpleNamespace(events=self.events, offset=offset + 1)
+
+
+def _exe():
+    return entities.Execution(id=ids.new_id('execution'), task_id=ids.new_id('task'),
+                              mission_id=ids.new_id('mission'), harness_id='fake',
+                              pid=os.getpid(), create_time=1.0)
+
+
+def test_r6_only_the_tail_is_redacted_not_every_event_before_it(monkeypatch):
+    seen = []
+    monkeypatch.setattr(output, 'redact', lambda text: seen.append(text) or text)
+    events = [{'type': 'text', 'n': i} for i in range(output.MAX_EVENTS + 50)]
+    got = output.read(_exe(), _Adapter(events))
+    assert len(seen) == output.MAX_EVENTS and got['truncated']
+    assert [e['n'] for e in got['events']] == list(range(50, output.MAX_EVENTS + 50))
+    short = output.read(_exe(), _Adapter(events[:3]))
+    assert not short['truncated'] and len(short['events']) == 3
+
+
+def test_r1_a_secret_ending_an_event_string_does_not_break_the_tail():
+    events = [{'type': 'assistant', 'text': 'run curl -u admin:SYNTHhunter2'},
+              {'type': 'assistant', 'text': 'aws_secret_access_key=SYNTH0123'},
+              {'type': 'assistant', 'text': 'key -----BEGIN PRIVATE KEY----- SYNTHbody'}]
+    got = output.read(_exe(), _Adapter(events))
+    assert [e['type'] for e in got['events']] == ['assistant'] * 3
+    assert 'SYNTH' not in json.dumps(got)
 
 
 # ── F10, F11: an idempotency key is bounded; a cursor is ASCII digits ──

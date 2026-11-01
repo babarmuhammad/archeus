@@ -182,6 +182,10 @@ MUTATIONS = [
      "    if size - offset <= MAX_BYTES:",
      "    if True:")],
      [AF + '::test_f7_a_long_stream_is_read_from_a_window_of_whole_lines']),
+    ('M29', 'every event is redacted before the tail is taken', [('archeus/core/execution/output.py',
+     "for e in snap.events[-MAX_EVENTS:]]\n    return dict(out, events=events, truncated=cut or len(snap.events) > MAX_EVENTS,",
+     "for e in snap.events]\n    return dict(out, events=events[-MAX_EVENTS:], truncated=cut or len(snap.events) > MAX_EVENTS,")],
+     [AF + '::test_r6_only_the_tail_is_redacted_not_every_event_before_it']),
 ]
 
 

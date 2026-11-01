@@ -45,6 +45,6 @@ def read(execution, adapter, offset=0):
                                 ExecPaths(execution.id).dir)
     start, cut = _window(ExecPaths(execution.id).stream, offset)
     snap = adapter.inspect(handle, start)
-    events = [json.loads(redact(json.dumps(e, ensure_ascii=False))) for e in snap.events]
-    return dict(out, events=events[-MAX_EVENTS:], truncated=cut or len(events) > MAX_EVENTS,
+    events = [json.loads(redact(json.dumps(e, ensure_ascii=False))) for e in snap.events[-MAX_EVENTS:]]
+    return dict(out, events=events, truncated=cut or len(snap.events) > MAX_EVENTS,
                 next_offset=snap.offset, available=True)
