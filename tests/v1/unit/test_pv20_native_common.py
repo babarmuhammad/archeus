@@ -9,6 +9,7 @@ launches a process, kills one, or touches a real profile.
 
 import os
 import re
+import stat
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -312,6 +313,26 @@ def test_remove_fixture_does_not_follow_inner_links(parent, tmp_path):
     remove_fixture(root)
     assert not os.path.exists(root)
     assert (victim / 'keep.txt').read_text() == 'keep'
+
+
+def test_remove_fixture_removes_nested_dirs_and_read_only_files(parent):
+    root = safe_root(parent)
+    deep = os.path.join(root, 'a', 'b')
+    os.makedirs(deep)
+    os.makedirs(os.path.join(root, 'c'))
+    locked = os.path.join(deep, 'ro.txt')
+    with open(locked, 'w') as handle:
+        handle.write('x')
+    os.chmod(locked, stat.S_IREAD)
+    remove_fixture(root)
+    assert not os.path.exists(root)
+    assert os.path.isdir(parent)
+
+
+def test_children_hold_the_process_handle(procs):
+    kids = Children()
+    kids.start(['cmd.exe', '/c', 'a'])
+    assert len(kids._procs) == 1
 
 
 def test_safe_root_refuses_device_prefix_and_driveless_windows_paths(monkeypatch):

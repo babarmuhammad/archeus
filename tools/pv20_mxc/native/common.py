@@ -260,9 +260,12 @@ def _delete_no_follow(path):
                 os.rmdir(entry.path)  # junction: removes the link, not the target
         elif entry.is_dir(follow_symlinks=False):
             _delete_no_follow(entry.path)
-            os.rmdir(entry.path)
         else:
-            os.unlink(entry.path)
+            try:
+                os.unlink(entry.path)
+            except PermissionError:
+                os.chmod(entry.path, stat.S_IWRITE)  # Windows refuses to unlink read-only files
+                os.unlink(entry.path)
     os.rmdir(path)
 
 
@@ -344,6 +347,7 @@ class Children:
 
     def __init__(self):
         self._own = []
+        self._procs = []  # open handles keep each pid from being recycled while we hold it
 
     def start(self, argv, **popen_kwargs):
         if isinstance(argv, str):
@@ -353,6 +357,7 @@ class Children:
             raise ValueError('argv must be an argument list of strings')
         proc = _popen(argv, **popen_kwargs)
         pid = int(proc.pid)
+        self._procs.append(proc)
         self._own.append((pid, _process_creation_time(pid)))
         return pid
 
