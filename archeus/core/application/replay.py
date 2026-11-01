@@ -85,7 +85,7 @@ _CATEGORY = {(machine, state): answer for machine, names, answer in CATEGORIES
              for state in names.split()}
 _OWN = (entities.Plan, entities.Task, entities.Execution, entities.Session,
         entities.Approval, entities.Review)
-_SETTLEMENT = {'execution': ('reconciled_kill', 'adopted'),
+_SETTLEMENT = {'execution': ('reconciled_kill',),
                'integration': ('user_abandons',), 'execution_node': ('retire',),
                'knowledge_item': ('confirm', 'reject', 'retract')}
 

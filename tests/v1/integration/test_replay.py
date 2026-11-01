@@ -218,6 +218,28 @@ def test_boot_sweep_settlement_is_core(db, actor):
     assert result['executions'][0]['charged'] is True
 
 
+def test_adopted_running_execution_is_not_reconciled(db, actor):
+    mid = _mission(db, actor)
+    tid = _task(db, actor, mid, _plan(db, actor, mid))
+    eid = _execution(db, actor, mid, tid, state='RUNNING')
+    core = Ref('system', ids.new_id('principal'))
+    _edge(db, core, eid, 'execution', 'LOST', 'RUNNING', 'adopted')
+    record = _record(_read(db, mid), eid)
+    assert (record['answer'], record['settled_by'], record['settlement_seq']) == (
+        'MAY-HAVE-TAKEN-EFFECT', 'unknown', None)
+    assert record['settlement_reason'] == 'transition_does_not_reconcile'
+
+
+def test_adopted_then_ended_execution_settles_by_its_end_edge(db, actor):
+    mid = _mission(db, actor)
+    tid = _task(db, actor, mid, _plan(db, actor, mid))
+    eid = _execution(db, actor, mid, tid, state='ENDED_OK')
+    core = Ref('system', ids.new_id('principal'))
+    _edge(db, core, eid, 'execution', 'LOST', 'RUNNING', 'adopted')
+    _edge(db, core, eid, 'execution', 'RUNNING', 'ENDED_OK', 'exited_success')
+    assert _record(_read(db, mid), eid)['answer'] == 'RECORDED'
+
+
 def test_integration_abandonment_is_device(db, actor):
     mid = _mission(db, actor)
     tid = ids.new_id('task')
