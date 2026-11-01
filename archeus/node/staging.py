@@ -21,7 +21,7 @@ import stat
 import sys
 
 from ..infra import paths
-from . import linkscan, seed
+from . import linkscan, mxc_pins, mxc_schema, seed
 
 #: copied when present; `python.exe`, the versioned DLL and `Lib` are required
 FILES = ('python.exe', 'python3.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
@@ -260,6 +260,7 @@ def stage(source_root, hook_path, version=sys.version_info[:2]):
 MXC_PACKAGE = '@microsoft/mxc-sdk'
 MXC_VERSION = '1.0.1'
 MXC_EXE = 'bin/x64/wxc-exec.exe'
+AGENT_EXE = 'claude.exe'
 
 
 def _ancestors(path):
@@ -299,38 +300,95 @@ def _mxc_inventory(root):
     return found
 
 
-def verify_mxc(root, *, pins):
-    """Verify an expanded SDK against an independently reviewed full SHA-256 map.
+def _committed(name, **wanted):
+    try:
+        return mxc_pins.artifact(name, **wanted)
+    except mxc_pins.PinError as err:
+        raise StageError(str(err)) from err
+
+
+def mxc_sdk_pins():
+    """The SDK pins Core's reviewed file holds; refused while any is UNSET."""
+    return _committed('mxc_sdk', version=MXC_VERSION, required=('package.json', MXC_EXE))
+
+
+def agent_pins():
+    """The pins of the staged agent binary; refused while any is UNSET."""
+    return _committed('claude_code', required=(AGENT_EXE,))
+
+
+def _pinned_tree(root, pins, required, what):
+    pins = dict(pins)
+    try:
+        mxc_pins.check_files(pins, required)
+    except mxc_pins.PinError:
+        raise StageError('missing or invalid reviewed %s pins' % what) from None
+    if _mxc_inventory(root) != pins:
+        raise StageError('%s artifacts differ from reviewed hashes' % what)
+    return pins
+
+
+def verify_mxc(root, *, pins=None):
+    """Verify an expanded SDK against an independently reviewed full SHA-256 map: by
+    default the committed one (`mxc_pins`), which no runtime input can change.
 
     UNVERIFIED: the protocol supplies no artifact hashes or complete DLL inventory.
     Pins must come from Core's reviewed inventory, never from the staged package.
     """
-    pins = dict(pins)
-    if not {'package.json', MXC_EXE} <= pins.keys() or any(
-            not isinstance(rel, str) or '\\' in rel or ':' in rel
-            or any(part in ('', '.', '..') for part in rel.split('/'))
-            for rel in pins) or any(
-            not isinstance(value, str) or len(value) != 64
-            or any(c not in '0123456789abcdef' for c in value)
-            for value in pins.values()):
-        raise StageError('missing or invalid reviewed MXC pins')
-    if _mxc_inventory(root) != pins:
-        raise StageError('MXC artifacts differ from reviewed hashes')
+    pins = _pinned_tree(root, mxc_sdk_pins() if pins is None else pins,
+                        ('package.json', MXC_EXE), 'MXC')
     with open(os.path.join(root, 'package.json'), 'rb') as f:
         try:
             package = json.load(f)
         except ValueError as err:
             raise StageError('invalid MXC package metadata') from err
-    if not isinstance(package, dict) or package.get('name') != MXC_PACKAGE \
-            or package.get('version') != MXC_VERSION:
+    if not isinstance(package, dict) or package.get('name') != MXC_PACKAGE             or package.get('version') != MXC_VERSION:
         raise StageError('MXC package identity differs from the pinned version')
     return os.path.join(os.fspath(root), *MXC_EXE.split('/'))
 
 
-def stage_mxc(source_root, destination, *, pins):
-    """Copy an offline expanded SDK into a fresh root; never install or execute it."""
-    pins = dict(pins)
-    verify_mxc(source_root, pins=pins)
+def verify_agent(root, *, pins=None):
+    """The staged agent binary's folder, against its reviewed hashes; returns the exe."""
+    _pinned_tree(root, agent_pins() if pins is None else pins, (AGENT_EXE,), 'agent')
+    return os.path.join(os.fspath(root), *AGENT_EXE.split('/'))
+
+
+def mxc_schema_validator(root):
+    """The pinned-schema validator for a verified SDK: it reads the policy schema from the
+    reviewed inventory, refuses unless that file is the pinned bytes, and refuses a schema
+    it cannot apply in full. UNSET pins refuse here, never pass."""
+    pins = mxc_sdk_pins()
+    try:
+        rel = mxc_pins.schema_path()
+    except mxc_pins.PinError as err:
+        raise StageError(str(err)) from err
+    if rel not in pins:
+        raise StageError('the policy schema is not in the reviewed SDK inventory')
+    path = os.path.join(root, *rel.split('/'))
+    _ancestors(path)
+    _entry(path, False)
+    with open(path, 'rb') as f:
+        data = f.read()
+    if hashlib.sha256(data).hexdigest() != pins[rel]:
+        raise StageError('the policy schema differs from the reviewed hash')
+    try:
+        return mxc_schema.validator(json.loads(data.decode('utf-8')))
+    except (ValueError, mxc_schema.SchemaError) as err:
+        raise StageError('the policy schema cannot be applied: %s' % err) from err
+
+
+def agent_grants(agent_root, hook_stage, *, pins=None):
+    """What the agent may run from, read-only: the verified agent binary folder and the
+    verified hook runtime stage, both link scanned. Returns (exe, grants)."""
+    exe = verify_agent(agent_root, pins=pins)
+    verify(hook_stage)
+    grants = (os.path.abspath(agent_root), os.path.abspath(hook_stage))
+    scan_grants(grants)
+    return exe, grants
+
+
+def _stage_pinned(source_root, destination, pins, verify_tree):
+    verify_tree(source_root, pins=pins)
     destination = os.path.abspath(destination)
     _ancestors(os.path.dirname(destination))
     os.mkdir(destination)
@@ -343,9 +401,21 @@ def stage_mxc(source_root, destination, *, pins):
         with open(src, 'rb') as f:
             got = _write(dst, iter(lambda: f.read(1 << 20), b''))
         if got != digest:
-            raise StageError('MXC artifact changed during copy: %s' % rel)
-    verify_mxc(destination, pins=pins)
+            raise StageError('artifact changed during copy: %s' % rel)
+    verify_tree(destination, pins=pins)
     return destination
+
+
+def stage_mxc(source_root, destination, *, pins=None):
+    """Copy an offline expanded SDK into a fresh root; never install or execute it."""
+    return _stage_pinned(source_root, destination,
+                         dict(mxc_sdk_pins() if pins is None else pins), verify_mxc)
+
+
+def stage_agent(source_root, destination, *, pins=None):
+    """Copy the agent binary folder into a fresh root under its pins; never executes it."""
+    return _stage_pinned(source_root, destination,
+                         dict(agent_pins() if pins is None else pins), verify_agent)
 
 
 def _seeded(act, *args):
