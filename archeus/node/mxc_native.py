@@ -191,7 +191,9 @@ class Process:
     def wait(self, timeout=None, *, cancelled=lambda: False):
         if self._cancelled:
             raise MxcUnavailable('launcher cancelled')
-        if self.launcher_exit is not None and not self._handles:
+        if not self._handles:
+            if self.launcher_exit is None:
+                raise MxcUnavailable('launcher closed')
             return self.launcher_exit
         deadline = self.transport.clock() + max(0, self.timeout if timeout is None else timeout)
         pending = self.stdin.payload()

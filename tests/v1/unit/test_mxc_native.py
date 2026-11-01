@@ -374,3 +374,11 @@ def test_a_caller_with_no_seam_gets_the_same_order():
     finally:
         child.terminate()
     assert api.handles == {}
+
+
+def test_wait_after_close_refuses_without_touching_closed_handles():
+    api = FakeWin32()
+    _, child = create(api)
+    child.close()
+    with pytest.raises(mxc.MxcUnavailable, match='closed'):
+        child.wait()
