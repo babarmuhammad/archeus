@@ -1284,3 +1284,75 @@ def test_an_export_core_cannot_make_is_refused(world, monkeypatch, case):
         local._export_tree(pid, rev, str(top), (), local._Deadline('test'))
     if case == 'no-store':
         assert not os.path.exists(paths.repo_store(pid))     # nothing created to read it
+
+
+# ── PV20 B8: the manager's seed chain on a real store ──
+
+def _manager_over(pid, monkeypatch):
+    import contextlib
+    from types import SimpleNamespace
+
+    from archeus.core.application import executions as X
+    from archeus.core.execution.manager import ExecutionManager
+    m = ExecutionManager.__new__(ExecutionManager)
+    m.node = LocalNode()
+    m.db = SimpleNamespace(read=contextlib.nullcontext)
+    m._store_inputs = lambda e: (pid, [])
+    monkeypatch.setattr(X, 'seed_base', lambda r, e: None)
+    return m
+
+
+def test_the_managers_chain_gives_a_workspace_the_launch_can_grant_and_a_resume_reuses_it(
+        world, monkeypatch):
+    from types import SimpleNamespace
+
+    from archeus.node import linkscan, staging
+    proj, head, files = _project(world)
+    _hostile(monkeypatch, world)
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    pid, eid, mid = ids.new_id('project'), ids.new_id('execution'), ids.new_id('mission')
+    m = _manager_over(pid, monkeypatch)
+    e = SimpleNamespace(id=eid, process_seq=0, seed_revision=None, workdir=None, branch=None)
+    work, branch, base = m._seeded(e, SimpleNamespace(id=mid), SimpleNamespace(key='t1'),
+                                   str(proj))
+    assert (work, branch, base) == (paths.ExecPaths(eid).work, 'archeus/%s.t1' % mid, head)
+    assert os.path.normcase(work) != os.path.normcase(str(proj))
+    assert LocalNode.store_read(pid, ['rev-parse', local.seed_ref(eid)],
+                                workdirs=[]).strip() == head
+    # the tree the launch will be granted passes both scans it makes, at construction and
+    # at start; a second name for one file in it is refused by both
+    linkscan.check_grants((work,), staging.StageError)
+    staging.scan_grants((work,))
+    try:
+        os.link(os.path.join(work, 'run.sh'), world.tmp / 'outside.sh')
+    except OSError:
+        pytest.skip('no hardlinks on this volume')
+    with pytest.raises(staging.StageError):
+        staging.scan_grants((work,))
+    # a resume reads the record and touches neither Git nor the store again
+    monkeypatch.setattr(LocalNode, 'store_git', staticmethod(
+        lambda *a, **k: pytest.fail('a resume ran Git')))
+    again = SimpleNamespace(id=eid, process_seq=1, seed_revision=base, workdir=work,
+                            branch=branch)
+    assert m._seeded(again, SimpleNamespace(id=mid), SimpleNamespace(key='t1'),
+                     str(proj)) == (work, branch, base)
+    assert world.fired() == []
+
+
+def test_a_project_root_that_is_not_a_repository_is_refused_before_any_store_or_workspace(
+        world, monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    _hostile(monkeypatch, world)
+    monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
+    plain = tmp_path / 'not-a-repo'
+    plain.mkdir()
+    pid, eid = ids.new_id('project'), ids.new_id('execution')
+    m = _manager_over(pid, monkeypatch)
+    e = SimpleNamespace(id=eid, process_seq=0, seed_revision=None, workdir=None, branch=None)
+    with pytest.raises(OSError):        # a StageError or a StoreError: the manager refuses both
+        m._seeded(e, SimpleNamespace(id=ids.new_id('mission')), SimpleNamespace(key='t1'),
+                  str(plain))
+    assert not os.path.exists(paths.repo_store(pid))
+    assert not os.path.exists(paths.ExecPaths(eid).work)
+    assert not os.path.exists(paths.seed_staging(eid))
+    assert world.fired() == []

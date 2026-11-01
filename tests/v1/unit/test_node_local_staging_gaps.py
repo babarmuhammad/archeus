@@ -408,7 +408,7 @@ class TestStoreFetch:
         monkeypatch.setattr(LocalNode, 'store_fetch_accepted', False)
         with pytest.raises(StoreError, match='until its source side is accepted'):
             LocalNode.store_fetch(ids.new_id('project'), '/tmp/source', self.FETCH[0],
-                                  self.FETCH[1], local._seed_ref(ids.new_id('execution')),
+                                  self.FETCH[1], local.seed_ref(ids.new_id('execution')),
                                   workdirs=())
         assert started == [] and not os.path.exists(paths.repos_dir())
 
@@ -417,7 +417,7 @@ class TestStoreFetch:
         monkeypatch.setattr(LocalNode, 'store_fetch_accepted', accepted)
         with pytest.raises(StoreError, match='until its source side is accepted'):
             LocalNode.store_fetch(ids.new_id('project'), '/tmp/source', self.FETCH[0],
-                                  self.FETCH[1], local._seed_ref(ids.new_id('execution')),
+                                  self.FETCH[1], local.seed_ref(ids.new_id('execution')),
                                   workdirs=())
         assert not os.path.exists(paths.repos_dir())
 
@@ -595,7 +595,7 @@ class TestImportPlan:
         monkeypatch.setattr(LocalNode, 'store_fetch_accepted', True)
         pid, eid = ids.new_id('project'), ids.new_id('execution')
         assert LocalNode.store_fetch(pid, str(root), 'refs/heads/main', tip,
-                                     local._seed_ref(eid), workdirs=()) == tip
+                                     local.seed_ref(eid), workdirs=()) == tip
         _tree(paths.ExecPaths(eid).work, files=[('a.txt', b'two\n'), ('new.txt', b'new\n')],
               dirs=['emptyd'])
         got = LocalNode.import_workspace(pid, eid, tip, workdirs=())
@@ -644,7 +644,7 @@ class TestSeed:
 
     def test_a_second_id_for_the_same_seed_ref_is_refused(self):
         with pytest.raises(StoreError, match='not an execution id'):
-            local._seed_ref('exe_' + 'x' * 12)
+            local.seed_ref('exe_' + 'x' * 12)
         with pytest.raises(ValueError, match='execution'):
             paths.ExecPaths('nope')
 
@@ -758,7 +758,7 @@ class TestSeed:
         pid, eid = ids.new_id('project'), ids.new_id('execution')
         branch = 'archeus/mission.key'
         assert LocalNode.store_fetch(pid, str(root), 'refs/heads/main', tip,
-                                     local._seed_ref(eid), workdirs=()) == tip
+                                     local.seed_ref(eid), workdirs=()) == tip
         work = LocalNode.seed_workspace(pid, eid, tip, branch, workdirs=())
         assert work == paths.ExecPaths(eid).work
         assert not os.path.exists(paths.seed_staging(eid))        # renamed in, never copied

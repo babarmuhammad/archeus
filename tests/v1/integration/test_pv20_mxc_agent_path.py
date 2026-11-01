@@ -595,6 +595,60 @@ def test_an_import_ref_that_exists_already_is_never_written_again(tmp_path, sdk,
     assert seen == [['rev-parse', '--verify', '-q', ref]]
 
 
+def _importable(tmp_path, monkeypatch, seen):
+    """A store that would take an import, recording every Git call it is asked for."""
+    store = tmp_path / 'store'
+    os.mkdir(store)
+    ref_of = []
+
+    def store_git(mode, args, *, workdirs, git_dir=None, stdin=None, timeout=120, sink=None):
+        seen.append(list(args))
+        if args[:3] == ['rev-parse', '--verify', '-q'] and args[-1] in ref_of:
+            raise local.StoreError('unknown revision')
+        sink.feed(record('100644', digest(SEED_CONTENT), len(SEED_CONTENT), 'src/main.py'))
+        sink.end()
+        return ''
+
+    monkeypatch.setattr(local.LocalNode, 'store_open',
+                        staticmethod(lambda project_id, *, workdirs: str(store)))
+    monkeypatch.setattr(local.LocalNode, 'store_git', staticmethod(store_git))
+    return ref_of
+
+
+def test_a_second_name_the_agent_made_in_its_workspace_is_never_imported(
+        tmp_path, sdk, monkeypatch, gate):
+    case = agent_case(tmp_path, sdk)
+    case.node.spawn(case.agent, case.spec, isolated=True)
+    child_of(case)
+    assert case.node.fence_isolation(case.spec.execution_id) is None
+    try:
+        os.link(os.path.join(case.work, 'src', 'main.py'), tmp_path / 'outside.py')
+    except OSError:
+        pytest.skip('no hardlinks on this volume')
+    seen = []
+    _importable(tmp_path, monkeypatch, seen).append(local._import_ref(case.spec.execution_id))
+    with pytest.raises(local.StoreError):
+        case.node.import_workspace('proj', case.spec.execution_id, SEED, workdirs=[])
+    assert [a[0] for a in seen if a[0] in ('fast-import', 'update-ref')] == []
+
+
+def test_a_repository_the_agent_planted_inside_its_workspace_is_never_imported(
+        tmp_path, sdk, monkeypatch, gate):
+    case = agent_case(tmp_path, sdk)
+    case.node.spawn(case.agent, case.spec, isolated=True)
+    child_of(case)
+    assert case.node.fence_isolation(case.spec.execution_id) is None
+    nested = os.path.join(case.work, 'src', '.git')
+    os.mkdir(nested)
+    with open(os.path.join(nested, 'config'), 'xb') as f:
+        f.write(b'[core]' + bytes([10, 9]) + b'fsmonitor = planted' + bytes([10]))
+    seen = []
+    _importable(tmp_path, monkeypatch, seen).append(local._import_ref(case.spec.execution_id))
+    with pytest.raises(local.StoreError):
+        case.node.import_workspace('proj', case.spec.execution_id, SEED, workdirs=[])
+    assert [a[0] for a in seen if a[0] in ('fast-import', 'update-ref')] == []
+
+
 # ── no retry, no fallback, no native run ─────────────────────────────────────
 
 @pytest.mark.parametrize('cause', ['boundary', 'admission', 'establish'])

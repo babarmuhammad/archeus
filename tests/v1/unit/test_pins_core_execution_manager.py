@@ -907,19 +907,21 @@ def test_a_project_with_no_root_and_a_branch_that_cannot_be_read_are_safe(monkey
     m = _mgr(git_branch=None)
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
     assert m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=False) \
-        == (root, None)
+        == (root, None, None)
     assert [x for x in m.node.log if x[0] == 'add_worktree'] == []
 
 
-def test_an_isolated_execution_is_refused_a_project_workspace(monkeypatch, tmp_path):
-    # manager.py:487-492 (`if isolated: raise`): never the user's root, never a
-    # worktree linked to its .git, and no git probe of the root first.
+def test_an_isolated_execution_is_seeded_never_given_the_root_or_a_worktree(monkeypatch,
+                                                                         tmp_path):
+    # `if isolated: return self._seeded(...)`: never the user's root, never a worktree
+    # linked to its .git, and no git probe of the root first.
     root = str(tmp_path / 'root')
     m = _mgr(git_branch=lambda p: (_ for _ in ()).throw(AssertionError('no git probe')))
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
-    with pytest.raises(OSError):
-        m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=True)
-    assert [x for x in m.node.log if x[0] == 'git_branch'] == []
+    m._seeded = lambda e, mm, t, r: ('seeded', r)
+    got = m._workspace(_e(), _mission(project_id=PRJ), _task(), isolated=True)
+    assert got == ('seeded', root)
+    assert [x for x in m.node.log if x[0] in ('git_branch', 'add_worktree')] == []
 
 
 def test_a_worktree_starts_from_the_mission_branch_once_it_exists(monkeypatch, tmp_path):
@@ -940,7 +942,7 @@ def test_a_worktree_starts_from_the_mission_branch_once_it_exists(monkeypatch, t
     # an in-place task takes the root and the branch that is checked out
     m2 = _mgr(git_branch='main')
     _rows(monkeypatch, Project=SimpleNamespace(root_paths=[root]))
-    assert m2._workspace(e, mission, _task('in_place'), isolated=False) == (root, 'main')
+    assert m2._workspace(e, mission, _task('in_place'), isolated=False) == (root, 'main', None)
 
 
 # ── recovery (_collect_gone / _orphans / _sweep_isolation) ──────────────────
@@ -1220,7 +1222,7 @@ def _spawn_rig(monkeypatch, permitted=True, disarms=(False, False), prepare_refu
 
     def _workspace(e, mm, t, isolated=None):
         order.append(('workspace',))
-        return '/work', 'archeus/mission-1.t1'
+        return '/work', 'archeus/mission-1.t1', None
 
     def _offset(e):
         order.append(('offset',))

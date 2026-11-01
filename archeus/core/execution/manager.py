@@ -33,7 +33,7 @@ from ...infra.db import rows
 from ...infra.paths import ExecPaths, task_worktree
 from ...node import broker as broker_mod, staging
 from ...node.isolation import profile_name
-from ...node.local import LocalNode, PathTooLong
+from ...node.local import LocalNode, PathTooLong, seed_ref
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
 from ..redact import redact  # p11-design-gate §19; shared since P12, and P20's inventory
@@ -267,10 +267,14 @@ class ExecutionManager:
                 return True
             hook = (os.path.join(stage, 'python.exe'), '-I', os.path.join(stage, staging.HOOK))
         try:
-            workdir, branch = self._workspace(e, m, t, isolated=isolated)
+            workdir, branch, seed = self._workspace(e, m, t, isolated=isolated)
         except PathTooLong as err:
             self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
                      stop_reason='path_too_long', missions=self.missions)
+            return True
+        except X.SeedRefused as err:
+            self._do(X.refuse, execution_id=e.id, reason='no seed: %s' % err,
+                     stop_reason='workspace', failure_class=err.failure_class)
             return True
         except OSError as err:
             self._do(X.refuse, execution_id=e.id, reason='no workspace: %s' % err,
@@ -333,7 +337,7 @@ class ExecutionManager:
             return True
         out = self._do(X.prepare_process, execution_id=e.id, token_digest=X.token_hash(token),
                        workdir=workdir, branch=branch, process_seq=seq, isolated=isolated,
-                       inventory_sha256=sha, inventory_size=size,
+                       seed_revision=seed, inventory_sha256=sha, inventory_size=size,
                        broker_digest=brk and brk[2])
         if out['refused']:
             self._revoke_broker(e, brk)
@@ -475,27 +479,22 @@ class ExecutionManager:
         return (min(known.values()), 'harness_smallest') if known else (None, 'none')
 
     def _workspace(self, e, m, t, *, isolated):
-        """(workdir, branch) — §17. Recorded before the process starts."""
+        """(workdir, branch, seed commit) — §17. Recorded before the process starts. The
+        commit is an isolated project execution's base, and None for every other."""
         if m.project_id is None:
             # the execution's own (class 7), never the Core-owned directory around it
             # (PV-20 §7.5)
             d = ExecPaths(e.id).work
             os.makedirs(d, exist_ok=True)
-            return d, None
-        if isolated:
-            # A1 (PV-20 §3.2): an isolated execution never works in the user's project
-            # root or in a worktree linked to its .git, and `in_place` is withdrawn for
-            # it. Until a Core-seeded repository exists (T-016 W3 with W6) there is no
-            # other place, so it is refused here, before any git probe of the root. This
-            # is the interim refusal, charged and bounded by the task's attempts, not
-            # the refusal before dispatch that A1 asks for (W5).
-            raise OSError('an isolated execution has no project workspace yet (PV-20 A1)')
+            return d, None, None
         with self.db.read() as r:
             p = rows.get(r, entities.Project, m.project_id)
         roots = list(p.entity.root_paths) if p is not None else []
         if not roots:
             raise OSError('project %s has no root' % m.project_id)
         root = roots[0]
+        if isolated:
+            return self._seeded(e, m, t, root)
         branch = self.node.git_branch(root)
         if t.workspace_mode == 'worktree' and branch is not None:
             # one segment under archeus/: P9's profiles bound commits to `archeus/*`,
@@ -506,8 +505,33 @@ class ExecutionManager:
             # result, a later task starts from it, so it sees what it depends on
             mission = mission_branch(m.id)
             base = mission if self.node.branch_exists(root, mission) else 'HEAD'
-            return self.node.add_worktree(root, path, want, base=base), want
-        return root, branch
+            return self.node.add_worktree(root, path, want, base=base), want, None
+        return root, branch, None
+
+    def _seeded(self, e, m, t, root):
+        """(workdir, branch, base commit) of an isolated project execution (A1, A5): a
+        repository Core builds from the base in its own store, never the project root, a
+        worktree of it or anything under its `.git`. The root is read only under the
+        store's pins, so a root that is not a repository is refused here, before a git
+        probe of it and before any process. A resume keeps the workspace and the base its
+        first process recorded and resolves nothing again (T-049 §2, §4 rule c)."""
+        work = ExecPaths(e.id).work
+        if e.process_seq:
+            if e.seed_revision is None or e.workdir != work or not os.path.isdir(work):
+                raise OSError('the seeded workspace it recorded is gone')
+            return work, e.branch, e.seed_revision
+        project_id, workdirs = self._store_inputs(e)
+        with self.db.read() as r:
+            base = X.seed_base(r, e)
+        if base is None:
+            name, base = self.node.resolve_base(root, mission_branch(m.id), workdirs=workdirs)
+            self.node.store_fetch(project_id, root, name, base, seed_ref(e.id),
+                                  workdirs=workdirs)
+        else:
+            self.node.store_seed_ref(project_id, e.id, base, workdirs=workdirs)
+        branch = 'archeus/%s.%s' % (m.id, t.key)
+        return (self.node.seed_workspace(project_id, e.id, base, branch, workdirs=workdirs),
+                branch, base)
 
     # ── watching a live process ──
 

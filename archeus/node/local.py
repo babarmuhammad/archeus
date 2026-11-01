@@ -1466,7 +1466,7 @@ class LocalNode:
         """The execution's own seed ref pointed at *commit*, already in the store (a
         retry's base, T-049 §3): written once, never moved; refused if it names
         anything else."""
-        ref = _seed_ref(execution_id)
+        ref = seed_ref(execution_id)
         if not re.fullmatch(r'[0-9a-f]{40}', commit):
             raise StoreError('not a commit Core seeds from: %r' % (commit,))
         return _publish_once(ref, commit, LocalNode.store_open(project_id, workdirs=workdirs),
@@ -1539,7 +1539,7 @@ class LocalNode:
             if _present(p):
                 raise StoreError('a seed target that already exists: %s' % p)
         store = LocalNode.store_open(project_id, workdirs=workdirs)
-        ref = _seed_ref(execution_id)
+        ref = seed_ref(execution_id)
         if git('trusted', ['rev-parse', '--verify', '-q', ref + '^{commit}'],
                store).strip() != seed_revision:
             raise StoreError('%s does not name %s' % (ref, seed_revision))
@@ -2183,7 +2183,7 @@ class _Blobs:
             f.close()
 
 
-def _seed_ref(execution_id):
+def seed_ref(execution_id):
     if not ids.is_id(execution_id, 'execution'):
         raise StoreError('not an execution id: %r' % (execution_id,))
     return 'refs/archeus/exec/%s/seed' % execution_id
@@ -2316,7 +2316,7 @@ class _Silent:
 
 
 def _import_ref(execution_id):
-    return _seed_ref(execution_id)[:-len('seed')] + 'import'
+    return seed_ref(execution_id)[:-len('seed')] + 'import'
 
 
 def _import_plan(work, seed, deadline):

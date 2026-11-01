@@ -1172,10 +1172,10 @@ def test_a_launch_that_starts_a_child_still_records_it(archeus_home, monkeypatch
 def test_a_project_less_workspace_is_the_executions_own_never_its_core_directory():
     eid = ids.new_id('execution')
     p = paths.ExecPaths(eid)
-    workdir, branch = ExecutionManager._workspace(None, SimpleNamespace(id=eid),
-                                                  SimpleNamespace(project_id=None), None,
-                                                  isolated=False)
-    assert (workdir, branch) == (p.work, None) and os.path.isdir(workdir)
+    workdir, branch, seed = ExecutionManager._workspace(None, SimpleNamespace(id=eid),
+                                                        SimpleNamespace(project_id=None), None,
+                                                        isolated=False)
+    assert (workdir, branch, seed) == (p.work, None, None) and os.path.isdir(workdir)
     assert workdir != p.dir
     assert not any(workdir == c or workdir.startswith(c + os.sep) for c in (p.req, p.res, p.ctl))
 
@@ -1609,19 +1609,137 @@ def _run(m, e, mission, resume, log):
     return done
 
 
-@pytest.mark.parametrize('resume', [False, True])
+BASE, OTHER = 'a' * 40, 'b' * 40
+PROBES = ('git_branch', 'branch_exists', 'add_worktree')
+
+
+def _seed_rig(monkeypatch, tmp_path, mode='worktree', git=None, base=None, store=None):
+    """An isolated project execution on the real `_workspace` and `_seeded`, with the
+    node's store seams faked into the same ordered log. *base* is what Core's own records
+    give a retry (None: a first attempt); *store* is {seam: the message it refuses with}."""
+    from archeus.node.local import StoreError
+    repo = str(tmp_path / 'repo')
+    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True, project=repo,
+                                             mode=mode, git=git)
+    work, refuse = paths.ExecPaths(e.id).work, dict(store or {})
+
+    def seam(name, result=None):
+        def call(*args, **kw):
+            log.append((name,) + args + (kw,))
+            if name in refuse:
+                raise StoreError(refuse[name])
+            return result
+        return call
+    m.node.resolve_base = seam('resolve_base', ('refs/heads/main', BASE))
+    m.node.store_fetch = seam('store_fetch', BASE)
+    m.node.store_seed_ref = seam('store_seed_ref', base)
+    m.node.seed_workspace = seam('seed_workspace', work)
+    m._store_inputs = lambda e: (PRJ, ['recorded'])
+    monkeypatch.setattr(X, 'seed_base', lambda r, e: base)
+    return m, e, mission, repo, work, log
+
+
 @pytest.mark.parametrize('git', list(GIT))
 @pytest.mark.parametrize('mode', ['in_place', 'worktree'])
-def test_an_isolated_project_execution_is_refused_before_its_root_is_touched(
-        monkeypatch, tmp_path, mode, git, resume):
-    m, e, mission, adapter, log = _spawn_rig(monkeypatch, tmp_path, True,
-                                             project=str(tmp_path / 'repo'), mode=mode,
-                                             git=GIT[git])
-    assert _run(m, e, mission, resume, log) is True
+def test_an_isolated_first_process_is_seeded_from_the_store_and_never_runs_in_the_root(
+        monkeypatch, tmp_path, mode, git):
+    m, e, mission, repo, work, log = _seed_rig(monkeypatch, tmp_path, mode, GIT[git])
+    assert m._spawn(e, mission) is True
+    branch = 'archeus/%s.t1' % MSN
+    assert _steps(log) == ['requested', 'stage', 'workspace', 'resolve_base', 'store_fetch',
+                           'seed_workspace', 'inventory', 'prepare_process', 'spawn',
+                           'record_process']
+    by = {x[0]: x for x in log}
+    assert by['resolve_base'][1:] == (repo, 'archeus/%s' % MSN, {'workdirs': ['recorded']})
+    assert by['store_fetch'][1:] == (PRJ, repo, 'refs/heads/main', BASE,
+                                     'refs/archeus/exec/%s/seed' % e.id,
+                                     {'workdirs': ['recorded']})
+    assert by['seed_workspace'][1:] == (PRJ, e.id, BASE, branch, {'workdirs': ['recorded']})
+    assert not [x for x in log if x[0] in PROBES]       # the root is never probed or linked
+    prep = by['prepare_process'][1]
+    assert (prep['workdir'], prep['branch'], prep['seed_revision'], prep['isolated']) == (
+        work, branch, BASE, True)
+    (_, spec, kw), = [x for x in log if x[0] == 'spawn']
+    assert spec.workdir == work != repo and kw['isolated'] is True
+
+
+def test_a_retry_or_continuation_is_seeded_from_the_base_core_recorded(monkeypatch, tmp_path):
+    m, e, mission, repo, work, log = _seed_rig(monkeypatch, tmp_path, base=OTHER)
+    assert m._spawn(e, mission) is True
+    assert _steps(log)[3:6] == ['store_seed_ref', 'seed_workspace', 'inventory']
+    assert [x for x in log if x[0] == 'store_seed_ref'][0][1:] == (PRJ, e.id, OTHER,
+                                                                  {'workdirs': ['recorded']})
+    assert [x for x in log if x[0] == 'seed_workspace'][0][3] == OTHER
+    assert not [x for x in log if x[0] in ('resolve_base', 'store_fetch')]   # refs not re-read
+    assert [x for x in log if x[0] == 'prepare_process'][0][1]['seed_revision'] == OTHER
+
+
+def test_a_continuation_with_nothing_to_continue_is_a_charged_import_failure_with_no_spawn(
+        monkeypatch, tmp_path):
+    m, e, mission, repo, work, log = _seed_rig(monkeypatch, tmp_path)
+
+    def refused(r, e):
+        raise X.SeedRefused('%s continues x, which has no import' % e.id, 'import')
+    monkeypatch.setattr(X, 'seed_base', refused)
+    assert m._spawn(e, mission) is True
     assert _steps(log) == ['requested', 'stage', 'workspace', 'refuse']
-    assert log[2][1] == {'isolated': True}
-    assert log[3][1]['stop_reason'] == 'workspace'
-    assert 'isolated execution has no project workspace' in log[3][1]['reason']
+    kw = log[-1][1]
+    assert (kw['stop_reason'], kw['failure_class']) == ('workspace', 'import')
+    assert kw['reason'].startswith('no seed: ')
+
+
+@pytest.mark.parametrize('seam', ['resolve_base', 'store_fetch', 'seed_workspace'])
+def test_a_root_that_is_not_a_repository_or_a_store_that_refuses_starts_nothing(
+        monkeypatch, tmp_path, seam):
+    m, e, mission, repo, work, log = _seed_rig(monkeypatch, tmp_path,
+                                               store={seam: 'not a repository Core may read'})
+    assert m._spawn(e, mission) is True
+    assert _steps(log)[-1] == 'refuse' and log[-1][1]['stop_reason'] == 'workspace'
+    assert log[-1][1]['reason'].startswith('no workspace: not a repository')
+    assert not {'inventory', 'prepare_process', 'spawn', 'record_process'} & set(_steps(log))
+    assert not [x for x in log if x[0] in PROBES]
+
+
+def test_a_node_whose_fetch_is_not_accepted_starts_nothing(monkeypatch, tmp_path):
+    m, e, mission, repo, work, log = _seed_rig(monkeypatch, tmp_path)
+    assert LocalNode.store_fetch_accepted is False
+    m.node.store_fetch = LocalNode.store_fetch          # the real gate, in front of the real call
+    assert m._spawn(e, mission) is True
+    assert _steps(log) == ['requested', 'stage', 'workspace', 'resolve_base', 'refuse']
+    assert 'no fetch into a store' in log[-1][1]['reason']
+
+
+def _resumed(monkeypatch, tmp_path, **recorded):
+    m, e, mission, repo, work, log = _seed_rig(monkeypatch, tmp_path)
+    os.makedirs(work, exist_ok=True)
+    e.seed_revision, e.workdir, e.branch = BASE, work, 'archeus/%s.t1' % MSN
+    for k, v in recorded.items():
+        setattr(e, k, v)
+    return m, e, mission, work, log
+
+
+def test_a_resume_keeps_the_recorded_workspace_and_base_and_resolves_nothing(
+        monkeypatch, tmp_path):
+    m, e, mission, work, log = _resumed(monkeypatch, tmp_path)
+    assert _run(m, e, mission, True, log) is True
+    assert _steps(log) == ['requested', 'stage', 'workspace', 'inventory', 'prepare_process',
+                           'spawn', 'record_process']
+    prep = [x for x in log if x[0] == 'prepare_process'][0][1]
+    assert (prep['workdir'], prep['seed_revision']) == (work, BASE)
+    assert prep['branch'] == 'archeus/%s.t1' % MSN
+
+
+@pytest.mark.parametrize('lost', [{'seed_revision': None}, {'workdir': 'elsewhere'}, 'gone'])
+def test_a_resume_without_its_recorded_seed_or_workspace_is_refused_with_no_spawn(
+        monkeypatch, tmp_path, lost):
+    m, e, mission, work, log = _resumed(monkeypatch, tmp_path, **(lost if isinstance(
+        lost, dict) else {}))
+    if lost == 'gone':
+        os.rmdir(work)
+    assert _run(m, e, mission, True, log) is True
+    assert _steps(log)[-1] == 'refuse' and log[-1][1]['stop_reason'] == 'workspace'
+    assert 'seeded workspace it recorded is gone' in log[-1][1]['reason']
+    assert not {'resolve_base', 'store_fetch', 'seed_workspace', 'spawn'} & set(_steps(log))
 
 
 @pytest.mark.parametrize('decide', [False, True])
