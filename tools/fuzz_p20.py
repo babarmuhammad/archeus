@@ -38,6 +38,7 @@ import shutil
 import socket
 import sys
 import tempfile
+from http.client import HTTPMessage
 from types import SimpleNamespace
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -196,8 +197,11 @@ class _Request(server.Handler):
         self.server = SimpleNamespace(api=api)
         self.command, self.path, self.request_version = method, path, 'HTTP/1.1'
         self.requestline, self.close_connection = '%s %s HTTP/1.1' % (method, path), True
-        self.headers = {'Host': api.origin.host, 'Content-Length': str(len(raw)),
-                        'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
+        self.headers = HTTPMessage()
+        for k, v in (('Host', api.origin.host), ('Content-Length', str(len(raw))),
+                     ('Authorization', 'Bearer ' + token),
+                     ('Content-Type', 'application/json')):
+            self.headers[k] = v
         self.rfile, self.wfile = io.BytesIO(raw), io.BytesIO()
         self.client_address = ('127.0.0.1', 0)
         self._serve()
