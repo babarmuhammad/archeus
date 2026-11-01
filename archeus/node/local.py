@@ -23,6 +23,7 @@ import stat
 import subprocess
 import threading
 import time
+import weakref
 
 from claude_sessions import config, proc
 
@@ -34,7 +35,7 @@ from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
 from . import linkscan
-from . import mxc, mxc_ledger, mxc_native, mxc_outcome
+from . import mxc, mxc_ledger, mxc_native, mxc_outcome, mxc_resources
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
 #: user's own config is never written, only this one command's (T-078)
@@ -155,6 +156,20 @@ MXC_QUIESCENCE_POLL_S = 0.05
 #: the ledger's own rule for a journal name: an execution Core could not reconcile
 #: afterwards is not started at all
 _MXC_EXECUTION_ID = re.compile(r'[A-Za-z0-9_-]+')
+#: the one tier the launcher is admitted at (mxc.effective_identity)
+_MXC_TIER = 'base-container'
+#: launches that have passed their resource record and not ended: two of them on one
+#: ledger never share an execution id or a process. Weak, so a launch nobody ends
+#: cannot hold a process hostage
+_MXC_LIVE = weakref.WeakSet()
+_MXC_LIVE_LOCK = threading.Lock()
+
+
+def mxc_resource_id(path):
+    """The form a grant's path takes in a resource record, which refuses whitespace
+    and control characters; a read-back reports its effective grants in this form."""
+    return ''.join('%%%04X' % ord(ch) if ch.isspace() or ch == '%' or ord(ch) < 32
+                   or ord(ch) == 127 else ch for ch in path)
 
 
 class MxcLaunch:
@@ -194,7 +209,7 @@ class MxcLaunch:
                  boundary=None, ledger=None, schema_validator=None, execution_id=None,
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
-                 workload_reader=None, workload_expected=None):
+                 workload_reader=None, workload_expected=None, readback=None):
         if workload_reader is not None and not (callable(workload_reader)
                                                 and callable(workload_expected)):
             raise staging.StageError('a workload reader needs the identity this launch issued')
@@ -220,7 +235,7 @@ class MxcLaunch:
         self.quiescence_wait = quiescence_wait
         self.sdk_root, self.outcome = sdk_root, outcome
         self.workload_reader, self.workload_expected = workload_reader, workload_expected
-        self.bound = None
+        self.bound, self.readback, self._resource = None, readback, None
         self.pins = dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
@@ -290,14 +305,63 @@ class MxcLaunch:
         """(6) The transport calls this after membership was verified and before it
         resumes: the launcher runs only once this write is flushed, and a ledger that
         cannot take it means the child is terminated instead. UNVERIFIED: no owned MXC
-        resource can be read back, so applied, observed and owned stay empty rather
-        than reporting the requested inventory as an answer from the backend."""
+        resource can be read back, so without an injected read-back applied, observed
+        and owned stay empty rather than reporting the requested inventory as an answer
+        from the backend. With one, the launcher is resumed only if what it read back
+        is what was requested, and no other live launch on this ledger shares the id
+        or the process."""
         if self.ledger is None:
             return
+        record = self._resource_record(child)
+        self._separate(record)
         self.ledger.append(self.execution_id, 'ownership', pid=child.pid,
                            create_time=child.create_time,
                            requested_policy_digest=self._requested_digest(),
-                           applied=[], observed={}, owned=[])
+                           applied=[{'resource': res, 'access': acc}
+                                    for res, acc in record.applied_grants],
+                           observed=(mxc_resources.effective_policy(record)
+                                     if record.observed is not None else {}), owned=[])
+
+    def _resource_record(self, child):
+        fs = self.policy.raw['filesystem']
+        planned = {'backend': self.policy.raw['containment'], 'tier': _MXC_TIER,
+                   'grants': [{'resource': mxc_resource_id(path), 'access': access}
+                              for key, access in (('readwritePaths', 'rw'),
+                                                  ('readonlyPaths', 'ro'),
+                                                  ('deniedPaths', 'deny'))
+                              for path in fs.get(key, ())]}
+        applied, observed = [], None
+        if self.readback is not None:
+            facts = self.readback(child)
+            if type(facts) is not dict or set(facts) != {'applied', 'observed'}:
+                raise staging.StageError('the resource read-back is malformed')
+            applied, observed = facts['applied'], facts['observed']
+        record = mxc_resources.build_record(
+            execution_id=self.execution_id, pid=child.pid, create_time=child.create_time,
+            planned=planned, applied=applied, observed=observed)
+        if self.readback is not None:
+            differences = mxc_resources.observed_matches_requested(record)
+            if differences:
+                raise staging.StageError('the resources read back differ from the request: %s'
+                                         % '; '.join(differences))
+        return record
+
+    def _separate(self, record):
+        with _MXC_LIVE_LOCK:
+            for other in list(_MXC_LIVE):
+                held = other._resource
+                if (other is not self and other._ledger_key() == self._ledger_key()
+                        and other.end_state is None and held is not None
+                        and (held.execution_id == record.execution_id
+                             or (held.pid, held.create_time)
+                             == (record.pid, record.create_time))):
+                    raise staging.StageError('another live execution shares this execution '
+                                             'id or process')
+            self._resource = record
+            _MXC_LIVE.add(self)
+
+    def _ledger_key(self):
+        return os.path.normcase(os.path.abspath(self.ledger.root))
 
     # ── the streams, and the two exits that are never mixed up ──
 

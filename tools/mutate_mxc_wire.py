@@ -24,6 +24,7 @@ W = 'tests/v1/unit/test_mxc_wire.py::'
 N = 'tests/v1/unit/test_mxc_native.py::'
 L = 'tests/v1/integration/test_pv20_mxc_local.py::'
 O = 'tests/v1/unit/test_mxc_wire_outcome.py::'
+R = 'tests/v1/unit/test_mxc_wire_resources.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -163,6 +164,17 @@ MUTATIONS = [
      "        except ZeroDivisionError:\n            self._end(reason='the outcome "
      "reader failed', outcome=None)")],
      [O + 'test_a_reader_that_is_interrupted_still_ends_the_launch']),
+    ('W28', 'a read-back that differs from the request still resumes the launcher', [(LOCAL,
+     "            if differences:\n                raise staging.StageError('the resources read "
+     "back differ",
+     "            if False:\n                raise staging.StageError('the resources read "
+     "back differ")],
+     [R + 'test_a_read_back_that_differs_never_resumes',
+      R + 'test_a_read_back_that_answers_nothing_usable_never_resumes']),
+    ('W29', 'two live launches may share an execution id or a process', [(LOCAL,
+     "                if (other is not self and other._ledger_key() == self._ledger_key()",
+     "                if (False and other._ledger_key() == self._ledger_key()")],
+     [R + 'test_two_live_launches_never_share_a_process']),
 ]
 
 
