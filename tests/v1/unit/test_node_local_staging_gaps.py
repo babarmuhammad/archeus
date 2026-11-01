@@ -1354,11 +1354,11 @@ class TestRegistryMailbox:
         LocalNode.respond(eid, 2, 'deny', 'not this one')
         assert LocalNode.pending_requests(eid) == [(3, None), (10, None)]  # Core's file decides
         assert json.load(open(os.path.join(p.res, '2.res.json'), encoding='utf-8')) == \
-            {'decision': 'deny', 'reason': 'not this one'}
+            {'decision': 'deny', 'reason': 'not this one', 'nonce': None}
         assert sorted(os.listdir(p.res)) == ['2.res.json']    # respond wrote it, alone
         LocalNode.respond(eid, 2, 'allow', 'changed my mind')
         assert json.load(open(os.path.join(p.res, '2.res.json'), encoding='utf-8')) == \
-            {'decision': 'allow', 'reason': 'changed my mind'}
+            {'decision': 'allow', 'reason': 'changed my mind', 'nonce': None}
         assert sorted(os.listdir(p.res)) == ['2.res.json']    # the one writer, still one file
 
     def test_a_request_answered_in_class_two_stops_being_due(self, tmp_path):

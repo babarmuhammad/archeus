@@ -947,10 +947,16 @@ class LocalNode:
 
     @staticmethod
     def respond(execution_id, seq, decision, reason=''):
-        box = ExecPaths(execution_id).res
-        os.makedirs(box, exist_ok=True)
-        config.write_json_atomic(os.path.join(box, '%d.res.json' % seq),
-                                 {'decision': decision, 'reason': reason}, indent=None)
+        paths = ExecPaths(execution_id)
+        try:
+            with open(os.path.join(paths.req, '%d.req.json' % seq), encoding='utf-8') as f:
+                nonce = json.load(f).get('nonce')
+        except (OSError, ValueError, AttributeError):
+            nonce = None            # an unreadable request: the hook will not match it
+        os.makedirs(paths.res, exist_ok=True)
+        config.write_json_atomic(os.path.join(paths.res, '%d.res.json' % seq),
+                                 {'decision': decision, 'reason': reason, 'nonce': nonce},
+                                 indent=None)
 
     # ── git reads the boundary checks need (outside any transaction) ──
 

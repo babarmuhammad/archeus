@@ -172,8 +172,12 @@ def run(payload, environ):
         if why:
             _halted(box, None, why)
             return 'halt', why
+    # Core never deletes an answer and the execution can empty req/, so a number is reused:
+    # an answer is this request's only when it echoes this nonce
+    nonce = os.urandom(16).hex()
     seq = _reserve(box, {'token': token, 'tool': payload.get('tool_name'),
-                         'input': payload.get('tool_input'), 'cwd': payload.get('cwd')})
+                         'input': payload.get('tool_input'), 'cwd': payload.get('cwd'),
+                         'nonce': nonce})
     res = os.path.join(exec_dir, RESPONSE_DIR, '%d.res.json' % seq)
     deadline = time.monotonic() + WAIT_S
     while time.monotonic() < deadline:
@@ -185,6 +189,9 @@ def run(payload, environ):
             with open(res, encoding='utf-8') as f:
                 got = json.load(f)
         except (OSError, ValueError):
+            time.sleep(POLL_S)
+            continue
+        if isinstance(got, dict) and got.get('nonce') != nonce:
             time.sleep(POLL_S)
             continue
         kind = got.get('decision') if isinstance(got, dict) else None

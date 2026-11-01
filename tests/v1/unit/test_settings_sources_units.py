@@ -278,7 +278,9 @@ def _answer_with(tmp_path, eid, res):
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
             if os.path.exists(os.path.join(d, 'req', '1.req.json')):
-                _write(os.path.join(d, 'res', '1.res.json'), res)
+                with open(os.path.join(d, 'req', '1.req.json'), encoding='utf-8') as f:
+                    answer = dict(res, nonce=json.load(f)['nonce'])
+                _write(os.path.join(d, 'res', '1.res.json'), answer)
                 return
             time.sleep(0.02)
     t = threading.Thread(target=core)

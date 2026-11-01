@@ -592,7 +592,7 @@ def test_the_hook_asks_through_the_mailbox_and_honours_the_answer(tmp_path):
                 req = json.load(open(os.path.join(box, '1.req.json')))
                 assert (req['token'], req['tool'], req['seq']) == ('hook_t', 'Read', 1)
                 with open(os.path.join(answers, '1.res.json'), 'w') as f:
-                    json.dump({'decision': 'deny', 'reason': 'not today'}, f)
+                    json.dump({'decision': 'deny', 'reason': 'not today', 'nonce': req['nonce']}, f)
                 return
             time.sleep(0.02)
     t = threading.Thread(target=core)
@@ -621,8 +621,10 @@ PRESENT = {'estop': 'emergency stop', 'STOP': 'stopped by Archeus',
 
 
 def _allow(answers):
+    with open(os.path.join(os.path.dirname(answers), 'req', '1.req.json'), encoding='utf-8') as f:
+        nonce = json.load(f)['nonce']
     with open(os.path.join(answers, '1.res.json'), 'w', encoding='utf-8') as f:
-        json.dump({'decision': 'allow'}, f)
+        json.dump({'decision': 'allow', 'nonce': nonce}, f)
 
 
 @contextlib.contextmanager
@@ -818,6 +820,34 @@ def test_an_unreadable_class_2_answer_is_never_accepted(tmp_path, monkeypatch):
     assert os.path.exists(os.path.join(box, '1.req.json'))      # class 1 took the request
     with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
         assert json.load(f)['seq'] == 1
+
+
+def test_an_answer_left_by_an_earlier_request_with_the_same_number_is_never_the_answer(
+        tmp_path, monkeypatch):
+    """The execution may empty req/ so the next call reuses a number, and Core never
+    deletes an answer: the stale allow of seq 1 must not answer this call (T-651#R1)."""
+    eid = ids.new_id('execution')
+    d = os.path.join(str(tmp_path), 'run', 'exec', eid)
+    box, answers = os.path.join(d, 'req'), os.path.join(d, 'res')
+    os.makedirs(answers)
+    for stale in ({'decision': 'allow'}, {'decision': 'allow', 'nonce': 'not-this-call'}):
+        with open(os.path.join(answers, '1.res.json'), 'w', encoding='utf-8') as f:
+            json.dump(stale, f)
+        monkeypatch.setattr(hook, 'WAIT_S', 0.3)
+        assert hook.run({'tool_name': 'Read'}, _hook_env(tmp_path, eid))[0] == 'halt'
+        for n in os.listdir(box):
+            os.remove(os.path.join(box, n))
+
+
+def test_cores_answer_carries_the_nonce_of_the_request_it_answers():
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        json.dump({'tool': 'Read', 'nonce': 'abc'}, f)
+    LocalNode.respond(eid, 1, 'deny', 'no')
+    with open(os.path.join(p.res, '1.res.json'), encoding='utf-8') as f:
+        assert json.load(f) == {'decision': 'deny', 'reason': 'no', 'nonce': 'abc'}
 
 
 def test_an_unwritable_class_1_halts_and_asks_nothing(tmp_path, monkeypatch, capsys):

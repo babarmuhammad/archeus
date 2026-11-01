@@ -100,6 +100,8 @@ SITES = {
         (1, NOT_SECRET, "the Core process's instance id"),
     ('archeus/core/domain/ids.py', 'new_ulid', 'secrets.randbits'):
         (3, NOT_SECRET, 'ULID entropy'),
+    ('archeus/harnesses/hook.py', 'run', 'os.urandom'):
+        (1, NOT_SECRET, 'the nonce that binds an answer to its request'),
     ('archeus/node/staging.py', 'stage', 'os.urandom'):
         (1, NOT_SECRET, 'a temporary directory name'),
     ('archeus/cli/gui.py', 'Shell.pause_all', 'os.urandom'):
