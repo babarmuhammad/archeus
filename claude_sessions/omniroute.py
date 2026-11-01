@@ -39,6 +39,10 @@ import time
 import urllib.request
 import urllib.error
 
+from . import netsafe
+
+netsafe.install()
+
 # OmniRoute's own dynamic per-request router (docs/routing/AUTO-COMBO.md) —
 # passing this as the model id makes OmniRoute pick the best currently-
 # healthy free model by a 12-factor score (health/quota/cost/latency/task

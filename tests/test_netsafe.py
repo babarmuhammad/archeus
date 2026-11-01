@@ -100,6 +100,6 @@ def test_same_origin_redirects_keep_the_credential_and_scheme_or_host_changes_do
     assert _redirect('https://a.example:8443/x', 'https://a.example/y', h) is None
 
 
-def test_the_package_installs_the_handler_for_every_urlopen_in_it():
+def test_importing_a_module_that_calls_urlopen_installs_the_handler():
     assert any(isinstance(x, netsafe.SameOriginRedirect)
                for x in urllib.request._opener.handlers)

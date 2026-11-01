@@ -27,6 +27,9 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from . import config as _c
+from . import netsafe
+
+netsafe.install()
 
 READY_TIMEOUT = 15
 

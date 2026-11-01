@@ -14,6 +14,9 @@ import urllib.error
 from datetime import datetime, timezone
 
 from . import config as _c
+from . import netsafe
+
+netsafe.install()
 
 USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 

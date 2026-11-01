@@ -50,6 +50,8 @@ def check_endpoint(base, label='OmniRoute/failover endpoint'):
         return
     import urllib.request
     import urllib.error
+    from . import netsafe
+    netsafe.install()
     try:
         urllib.request.urlopen(base + '/v1/models', timeout=5)
     except urllib.error.HTTPError:

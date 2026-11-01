@@ -212,6 +212,37 @@ def test_statusline_via_the_console_script_path_stays_light():
     assert r.stdout.strip() == 'False False', r.stdout
 
 
+def test_the_statusline_module_loads_neither_urllib_nor_the_redirect_guard():
+    """The redirect guard is installed by the modules that call urlopen, not by
+    the package, so the statusline never pays for urllib or ssl."""
+    probe = (
+        "import sys;"
+        "import claude_sessions.statusline;"
+        "print('ssl' in sys.modules, 'urllib.request' in sys.modules,"
+        " 'claude_sessions.netsafe' in sys.modules)"
+    )
+    r = subprocess.run([sys.executable, '-c', probe], capture_output=True,
+                       text=True, encoding='utf-8', errors='ignore', timeout=60,
+                       cwd=ROOT)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == 'False False False', r.stdout
+
+
+def test_every_module_that_calls_urlopen_installs_the_redirect_guard():
+    probe = (
+        "import sys, urllib.request;"
+        "from claude_sessions import netsafe;"
+        "mod = __import__('claude_sessions.' + sys.argv[1], fromlist=['x']);"
+        "print(any(isinstance(h, netsafe.SameOriginRedirect)"
+        " for h in urllib.request._opener.handlers))"
+    )
+    for name in ('gateway', 'models', 'omniroute', 'usage', 'proxy_base'):
+        r = subprocess.run([sys.executable, '-c', probe, name], capture_output=True,
+                           text=True, encoding='utf-8', errors='ignore', timeout=60,
+                           cwd=ROOT)
+        assert r.returncode == 0 and r.stdout.strip() == 'True', (name, r.stdout, r.stderr)
+
+
 def test_help_does_not_pay_for_the_tui():
     """`--help` is the first thing a fresh install types. It answers out of
     `cli.py`, which imports the standard library and nothing else — so the whole

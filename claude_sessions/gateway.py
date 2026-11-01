@@ -42,7 +42,10 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler
 
 from . import config as _c
+from . import netsafe
 from . import proxy_base as _proxy
+
+netsafe.install()
 
 _CONNECT_TIMEOUT = 15
 _READ_TIMEOUT = 600        # a local model can be slow; the ping keeps the client alive

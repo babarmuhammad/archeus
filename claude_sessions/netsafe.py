@@ -19,5 +19,11 @@ class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+_installed = False
+
+
 def install():
-    urllib.request.install_opener(urllib.request.build_opener(SameOriginRedirect))
+    global _installed
+    if not _installed:
+        urllib.request.install_opener(urllib.request.build_opener(SameOriginRedirect))
+        _installed = True

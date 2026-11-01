@@ -157,6 +157,8 @@ def released(refresh=False):
     # this module is on the path of `archeus --version` and of the version
     # banner — neither of which fetches anything.
     import urllib.error, urllib.request
+    from . import netsafe
+    netsafe.install()
     try:
         req = urllib.request.Request(NPM_URL, headers={'Accept': NPM_ACCEPT})
         with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
