@@ -29,7 +29,7 @@ import { railProjects, RAIL_GROUPS } from './rail-model.js';
 import { parseHash } from '../page-model.js';
 import * as motion from './motion.js';
 import { isPhone, onPhoneChange } from './viewport.js';
-import { direction } from './motion-model.js';
+import { direction, CLASSES } from './motion-model.js';
 import { installAutopilot } from './autopilot.js';
 
 store.apply();

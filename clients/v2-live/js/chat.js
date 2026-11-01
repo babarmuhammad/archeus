@@ -2,6 +2,7 @@
 // typing, focus and the caret survive a redraw. The slash menu is a combobox: focus stays in the field, the menu never takes it.
 import { h, clear } from './dom.js';
 import { picker, popButton, closePopup } from './picker.js';
+import { CLASSES } from './motion-model.js';
 import { openSheet } from './sheet.js';
 import { icon, glyph } from './icons.js';
 import * as store from './store.js';
@@ -416,13 +417,13 @@ export function viewChat(ctx) {
   ctx.mounts.push(() => {
     if (!store.reducedMotion()) log.querySelectorAll('.msg').forEach((el) => {
       const before = oldCards.get(el.dataset.key), card = el.querySelector('.ccard'), after = card?.getBoundingClientRect().height;
-      if (before && after && Math.abs(before - after) > 1) card.animate([{ height: before + 'px', overflow: 'hidden' }, { height: after + 'px', overflow: 'hidden' }], { duration: 180, easing: 'ease-out' });
+      if (before && after && Math.abs(before - after) > 1) card.animate([{ height: before + 'px', overflow: 'hidden' }, { height: after + 'px', overflow: 'hidden' }], { duration: CLASSES.quick.ms, easing: 'ease-out' });
     });
     oldCards.clear();
     if (wideNow() !== wide) return ctx.render();
     if (wide || tab === 'chat') log.scrollTop = P.bottom ? log.scrollHeight : P.scroll;
     visible.forEach((e) => P.seen.add(e.m.id));
-    if (P.switched) { P.switched = false; if (!store.reducedMotion()) log.animate([{ opacity: .35 }, { opacity: 1 }], { duration: 140, easing: 'ease-out' }); }
+    if (P.switched) { P.switched = false; if (!store.reducedMotion()) log.animate([{ opacity: .35 }, { opacity: 1 }], { duration: CLASSES.quick.ms, easing: 'ease-out' }); }
   });
   return page;
 }

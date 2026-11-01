@@ -91,7 +91,7 @@
 .msn-box { min-width: 0; border: 0; border-top: var(--hair) solid var(--line); border-radius: 0; }
 .msn-box > summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0; cursor: pointer; list-style: none; color: var(--text-2); font-size: 13px; line-height: 20px; font-weight: 600; }
 .msn-box > summary::-webkit-details-marker { display: none; }
-.msn-box > summary svg { transition: transform var(--dur-state); }
+.msn-box > summary svg { transition: transform var(--dur-quick); }
 .msn-box[open] > summary svg { transform: rotate(90deg); }
 .msn-box > .ax-note { padding: 0 0 8px; }
 .msn-box.why { display: none; }

@@ -125,8 +125,8 @@
 .np-sec { border-top: var(--hair) solid var(--line); }
 .np-sec > summary { display: flex; align-items: center; gap: 8px; min-height: 48px; list-style: none; cursor: pointer; font: 600 var(--fs-eyebrow) / 1.2 var(--font); letter-spacing: var(--ls-eyebrow); text-transform: uppercase; color: var(--text-2); }
 .np-sec > summary::-webkit-details-marker { display: none; }
-.np-sec > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform var(--dur-2) var(--ease-out); }
-.np-sec[open] > summary::before { transform: rotate(90deg); transition-duration: var(--dur-1); }
+.np-sec > summary::before { content: '\25B8'; display: inline-block; font-size: 12px; transition: transform var(--dur-quick) var(--ease-out); }
+.np-sec[open] > summary::before { transform: rotate(90deg); transition-duration: var(--dur-out); }
 .np-sec > summary .n { letter-spacing: .08em; color: var(--text-3); text-transform: none; }
 .np-sec > summary .n::before { content: '\00b7\00a0'; }
 .np-sec > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
@@ -146,9 +146,9 @@
 .tell-dock .dockin .composer2 { flex: none; padding: 0; gap: 6px; border: 0; background: transparent; }
 /* The pill is the composer's row. Its fill is a layer of its own so it fades with opacity alone: nearly clear at rest, 45 % under the pointer, 85 % while typing. In 100 ms, out 180 ms. */
 .tell-dock .crow2 { flex-wrap: nowrap; gap: 0; padding: 1px; border-color: var(--line); border-radius: 26px; }
-.tell-dock .crow2::before { background: var(--bg); opacity: .16; transition: opacity 180ms ease-out; }
-.tell-dock .crow2:hover::before { opacity: .45; transition-duration: 100ms; }
-.tell-dock .crow2:focus-within::before { opacity: .85; transition-duration: 100ms; }
+.tell-dock .crow2::before { background: var(--bg); opacity: .16; transition: opacity var(--dur-quick) ease-out; }
+.tell-dock .crow2:hover::before { opacity: .45; transition-duration: var(--dur-out); }
+.tell-dock .crow2:focus-within::before { opacity: .85; transition-duration: var(--dur-out); }
 .tell-dock .cscope { flex: 0 1 15em; min-height: var(--target-primary); border: 0; border-right: var(--hair) solid var(--line); border-radius: 25px 0 0 25px; padding-inline: 16px 10px; }
 .tell-dock .cinput { flex: 1 1 8em; min-height: var(--target-primary); padding-inline: 14px; }
 .tell-dock .cslash { color: var(--text-3); }

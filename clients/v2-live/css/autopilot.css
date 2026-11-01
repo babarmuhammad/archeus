@@ -45,7 +45,7 @@ body[data-fold] .ap-list { top: auto; bottom: 120px; right: 8px; left: 8px; widt
 
 /* what the tour points at: a ring on the target and a small arrow that glides to it; both ignore the pointer */
 .ap-ring { position: fixed; z-index: 70; box-sizing: border-box; border: 2px solid var(--focus); border-radius: 10px; pointer-events: none; }
-.ap-cursor { position: fixed; z-index: 71; left: 0; top: 0; width: 20px; height: 20px; pointer-events: none; transition: transform var(--dur-4) var(--ease-move); }
+.ap-cursor { position: fixed; z-index: 71; left: 0; top: 0; width: 20px; height: 20px; pointer-events: none; transition: transform var(--dur-standard) var(--ease-move); }
 .ap-cursor svg { display: block; fill: var(--text); stroke: var(--bg); stroke-width: 1.2; stroke-linejoin: round; }
 .ap-ring[hidden], .ap-cursor[hidden], .ap-list[hidden] { display: none; }
 @media (forced-colors: active) {

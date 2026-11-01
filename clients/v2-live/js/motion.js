@@ -1,27 +1,27 @@
 // The one motion layer (spec: .collab/v2live-motion-spec.md). Every animation that is not a plain css hover or press transition goes through here:
 // Web Animations on transform and opacity (tint: a background colour, paint only), finite, interruptible, nothing on layout, nothing under Reduced motion.
-// Durations and curves are the css tokens (--dur-1..4, --ease-out, --ease-move); the pure decisions (what moved, which way a route travels) live in motion-model.js.
+// Durations and curves are the css tokens (--dur-<class>, --ease-out, --ease-move; fallbacks are the class table in motion-model.js); the pure decisions (what moved, which way a route travels) live in motion-model.js.
 //
 // The shell re-renders the whole page on every simulation event, so rows are matched by key across renders: capture(roots) before, play(snap, roots) after.
 // A page opts a row in with one attribute: data-mk="<stable key>" (or it already carries data-key or matches ROWS). Chat and Usage rows do that after their merge.
 import { reducedMotion } from './store.js';
 import { isPhone } from './viewport.js';
-import { plan, direction, staggerDelay, keyOf, ticks } from './motion-model.js';
+import { plan, direction, staggerDelay, keyOf, ticks, CLASSES, OUT } from './motion-model.js';
 
 const root = document.documentElement;
 const ROWS = '.mrow, .card.band, .rp-event, .pcell, .pidea, .ax-xrow, .us-row, .hl-row, .ln-row, .sec-row, .ax-acct, .ax-model, .ax-idea, .msg, .proj-item[data-proj], .safety, .stop-btn, [data-mk]';
 const NUMS = [['.n', (el) => (el.parentElement.querySelector(':scope > .gt') || {}).textContent], ['.ctr b', (el) => (el.nextElementSibling || {}).textContent]];
 // A popover, a sheet or a dialog that the shell draws and removes. in: how it arrives (css owns the ones with a keyframe of their own); out: how its last copy leaves.
 const OVERLAYS = [
-  { sel: '.safety-pop', into: '.app', enter: { s: .98, origin: '0 0', dur: 1 }, exit: null },
-  { sel: '.chatdock.tell:not([hidden])', into: '.app', clone: true, enter: { y: 8, s: .98, origin: '50% 100%', dur: 1 }, exit: { y: 8, s: .98, dur: 1 } }
+  { sel: '.safety-pop', into: '.app', enter: { s: .98, origin: '0 0', dur: 'out' }, exit: null },
+  { sel: '.chatdock.tell:not([hidden])', into: '.app', clone: true, enter: { y: 8, s: .98, origin: '50% 100%', dur: 'out' }, exit: { y: 8, s: .98, dur: 'out' } }
 ];
 
 let tok = null;
 const T = () => {
   if (tok) return tok;
   const cs = getComputedStyle(root), n = (v, d) => parseFloat(cs.getPropertyValue(v)) || d, e = (v, d) => cs.getPropertyValue(v).trim() || d;
-  return (tok = { 1: n('--dur-1', 100), 2: n('--dur-2', 160), 3: n('--dur-3', 200), 4: n('--dur-4', 240), out: e('--ease-out', 'cubic-bezier(.23, 1, .32, 1)'), move: e('--ease-move', 'cubic-bezier(.65, 0, .35, 1)') });
+  return (tok = { d: { out: n('--dur-out', OUT), quick: n('--dur-quick', CLASSES.quick.ms), layer: n('--dur-layer', CLASSES.layer.ms), standard: n('--dur-standard', CLASSES.standard.ms) }, out: e('--ease-out', 'cubic-bezier(.23, 1, .32, 1)'), move: e('--ease-move', 'cubic-bezier(.65, 0, .35, 1)') });
 };
 export const on = () => !reducedMotion() && typeof Element.prototype.animate === 'function';
 
@@ -43,20 +43,20 @@ const from = ({ x = 0, y = 0, s = 1 }) => ({ opacity: 0, translate: `${x}px ${y}
 const REST = { translate: 'none', scale: 'none' };
 
 // Something new on screen: opacity and a short move (6 px for rows), from its origin when it has one.
-export function enter(el, { x = 0, y = 6, s = 1, origin, dur = 2, delay = 0, ease } = {}) {
+export function enter(el, { x = 0, y = 6, s = 1, origin, dur = 'quick', delay = 0, ease } = {}) {
   if (origin) el.style.transformOrigin = origin;
-  return run(el, 'enter', [from({ x, y, s }), { opacity: 1, ...REST }], { duration: T()[dur] || dur, delay, easing: ease || T().out });
+  return run(el, 'enter', [from({ x, y, s }), { opacity: 1, ...REST }], { duration: T().d[dur], delay, easing: ease || T().out });
 }
 
-// A single 180 ms tint on a changed cell: a flat translucent fill that fades to the cell's own background. Paint only, never on a full redraw.
+// A single quick tint on a changed cell: a flat translucent fill that fades to the cell's own background. Paint only, never on a full redraw.
 export function tint(el, color) {
   const edge = getComputedStyle(el).getPropertyValue('--edge').trim();
   const c = color || `color-mix(in srgb, ${edge || 'var(--text)'} 16%, transparent)`;
-  return run(el, 'tint', [{ backgroundColor: c }], { duration: T()[2], easing: T().out });
+  return run(el, 'tint', [{ backgroundColor: c }], { duration: T().d.quick, easing: T().out });
 }
 
 // A number that changed: the new one rises into place instead of swapping.
-export function tick(el) { return run(el, 'tick', [{ opacity: 0, translate: '0 40%' }, { opacity: 1, translate: 'none' }], { duration: T()[2] }); }
+export function tick(el) { return run(el, 'tick', [{ opacity: 0, translate: '0 40%' }, { opacity: 1, translate: 'none' }], { duration: T().d.quick }); }
 
 // ---------- ghosts: a leaving thing stays for one short exit ----------
 const COPY = ['display', 'flexDirection', 'backgroundColor', 'color', 'borderTop', 'borderRight', 'borderBottom', 'borderLeft', 'borderRadius', 'overflow', 'zIndex'];
@@ -69,14 +69,14 @@ function hush(node) {
   for (const e of [node, ...node.querySelectorAll('[data-key], [id], [data-mk]')]) { e.removeAttribute('data-key'); e.removeAttribute('data-mk'); e.removeAttribute('id'); }
 }
 // `node` (the old element, or a clone) is put back inside `into` at the box it had, then fades and leaves. exit: { x, y, s, dur }.
-function ghost(node, box, into, { x = 0, y = 0, s = 1, dur = 2 } = {}) {
+function ghost(node, box, into, { x = 0, y = 0, s = 1, dur = 'quick' } = {}) {
   if (!on()) return;
   hush(node);
   node.classList.add('m-ghost');
   Object.assign(node.style, { position: 'absolute', left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px', margin: '0', transform: 'none', pointerEvents: 'none' });
   for (const [p, v] of box.css) node.style[p] = v;
   into.append(node);
-  const a = node.animate([{ opacity: 1, ...REST }, { opacity: 0, translate: `${x}px ${y}px`, scale: s }], { duration: T()[dur], easing: T().out, fill: 'forwards' });
+  const a = node.animate([{ opacity: 1, ...REST }, { opacity: 0, translate: `${x}px ${y}px`, scale: s }], { duration: T().d[dur], easing: T().out, fill: 'forwards' });
   a.onfinish = a.oncancel = () => node.remove();
 }
 // A box the user closes (the Details sheet): clone it before it is hidden, leave the clone beside it.
@@ -133,7 +133,7 @@ export function play(prev, roots) {
     (before ? anchor.before(g) : anchor.after(g));
     const now = g.getBoundingClientRect();
     const dx = (r.left - now.left) / k, dy = (r.top - now.top) / k;
-    const a = g.animate([{ opacity: 1, translate: `${dx}px ${dy}px` }, { opacity: 0, translate: `${dx}px ${dy - 6}px` }], { duration: T()[1], easing: T().out, fill: 'forwards' });
+    const a = g.animate([{ opacity: 1, translate: `${dx}px ${dy}px` }, { opacity: 0, translate: `${dx}px ${dy - 6}px` }], { duration: T().d.out, easing: T().out, fill: 'forwards' });
     a.onfinish = a.oncancel = () => g.remove();
   }
   for (const o of ops) {
@@ -141,8 +141,8 @@ export function play(prev, roots) {
     if (!el) continue;
     if (o.op === 'move') {
       const k = (el.getBoundingClientRect().width / (el.offsetWidth || 1)) || 1;
-      run(el, 'move', [{ translate: `${o.dx / k}px ${o.dy / k}px` }, { translate: 'none' }], { duration: T()[3], easing: T().move });
-    } else if (o.op === 'enter') enter(el, { dur: 2 });
+      run(el, 'move', [{ translate: `${o.dx / k}px ${o.dy / k}px` }, { translate: 'none' }], { duration: T().d.layer, easing: T().move });
+    } else if (o.op === 'enter') enter(el, { dur: 'quick' });
     else if (o.op === 'tint') tint(el);
   }
   for (const [k, n] of numsOf(roots)) { const p = prev.nums.get(k); if (p && ticks(p.text, n.text)) tick(n.el); }
@@ -158,14 +158,14 @@ export function flip(container, mutate) { const s = capture([container]); mutate
 
 // ---------- the inspector: a column on a wide window, a sheet on a narrow one ----------
 export function inspectorIn(el, width) {
-  if (isPhone()) return enter(el, { y: 24, dur: 3 });
-  return enter(el, { x: width < 1024 ? 32 : 12, y: 0, dur: 3 });
+  if (isPhone()) return enter(el, { y: 24, dur: 'layer' });
+  return enter(el, { x: width < 1024 ? 32 : 12, y: 0, dur: 'layer' });
 }
 export function inspectorOut(oldContent, box, width) {
   if (!on() || !oldContent) return;
   const app = document.getElementById('app'), g = document.createElement('div');
   g.className = 'inspector'; g.append(oldContent);
-  ghost(g, box, app, isPhone() ? { y: 24, dur: 2 } : { x: width < 1024 ? 32 : 12, dur: 2 });
+  ghost(g, box, app, isPhone() ? { y: 24, dur: 'quick' } : { x: width < 1024 ? 32 : 12, dur: 'quick' });
 }
 export const boxOfInspector = (el) => (on() && el.offsetParent ? boxOf(el, document.getElementById('app')) : null);
 
@@ -194,8 +194,8 @@ export function arrive(page, dir) {
   let kids = view ? [...view.children] : [];
   if (kids.length === 1) kids = [...kids[0].children];
   const items = [head, ...kids.filter((k) => k !== head && !k.matches('.now-scene, .dnote, dialog') && stage(k))].filter(Boolean).slice(0, 4);
-  items.forEach((el, i) => enter(el, { y: 6, dur: 2, delay: staggerDelay(i) }));
-  if (!viaVT && page.firstElementChild) run(page.firstElementChild, 'route', [{ translate: `${dir * 12}px 0` }, { translate: 'none' }], { duration: T()[3], easing: T().out });
+  items.forEach((el, i) => enter(el, { y: 6, dur: 'quick', delay: staggerDelay(i) }));
+  if (!viaVT && page.firstElementChild) run(page.firstElementChild, 'route', [{ translate: `${dir * 12}px 0` }, { translate: 'none' }], { duration: T().d.layer, easing: T().out });
   viaVT = false;
 }
 

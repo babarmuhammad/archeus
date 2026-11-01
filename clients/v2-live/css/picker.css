@@ -1,18 +1,18 @@
 /* The shared picker and popup. Flat: an opaque surface token, a hairline border, no shadow, no blur. The active row has a 2 px focus outline, so the
    keyboard position is never colour alone. Motion: the panel fades in 100 ms; the chevron turns 180 ms; nothing moves under Reduced motion. */
 .pk { position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: var(--target); padding: 0 8px 0 12px; border: var(--hair) solid var(--line-strong); border-radius: var(--r-m); background: transparent; color: var(--text); font: 600 var(--fs-cap)/1.2 var(--font); text-align: left; cursor: pointer; }
-.pk::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--text); opacity: 0; transition: opacity 180ms ease-out; pointer-events: none; }
+.pk::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--text); opacity: 0; transition: opacity var(--dur-quick) ease-out; pointer-events: none; }
 .pk[aria-expanded='true']::before { opacity: .08; }
-@media (hover: hover) { .pk:hover::before { opacity: .06; transition-duration: 100ms; } }
+@media (hover: hover) { .pk:hover::before { opacity: .06; transition-duration: var(--dur-out); } }
 .pk:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .pk-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pk-p { flex: none; color: var(--text-2); font-weight: 400; }
 .pk-v { flex: none; display: grid; place-items: center; color: var(--text-2); }
-.pk-v svg { transform: rotate(90deg); transition: transform 180ms ease-out; }
+.pk-v svg { transform: rotate(90deg); transition: transform var(--dur-quick) ease-out; }
 .pk[aria-expanded='true'] .pk-v svg { transform: rotate(-90deg); }
 
 .pkpop { position: fixed; inset: auto; margin: 0; padding: 0; min-width: 0; color: var(--text); background: var(--s3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-l); overflow: hidden; font: 400 var(--fs-body)/1.4 var(--font); flex-direction: column; }
-.pkpop:popover-open { display: flex; animation: pk-in 100ms ease-out; }
+.pkpop:popover-open { display: flex; animation: pk-in var(--dur-out) ease-out; }
 .pkpop[data-up='0']:popover-open { --pk-from: -4px; }
 .pkpop[data-up='1']:popover-open { --pk-from: 4px; }
 @keyframes pk-in { from { opacity: 0; transform: translateY(var(--pk-from, 4px)); } to { opacity: 1; transform: none; } }

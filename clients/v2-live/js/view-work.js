@@ -10,7 +10,7 @@ import { clockLabel } from '../sim.js';
 import { panel, dnote, empty, badge, attentionItem, projName, word } from './views.js';
 import { spineRow, spineCard } from './spine.js';
 import { icon } from './icons.js';
-import { STATE, themeOf } from './map.js';
+import { STATE, themeOf, ambientOf } from './map.js';
 import { createWorkGraph } from './constellation/workgraph.js';
 import { isPhone } from './viewport.js';
 import { renderPhone, leavePhone } from './work-phone.js';
@@ -182,10 +182,10 @@ export function render(ctx) {
       graph.element.addEventListener('wg-hover', (e) => {
         clearTimeout(dwell);
         document.querySelectorAll('[data-link]').forEach((x) => x.classList.toggle('is-linked', !!e.detail && x.dataset.link.split(' ').includes(e.detail)));
-        if (e.detail) dwell = setTimeout(() => document.querySelector('.is-linked')?.scrollIntoView({ block: 'nearest', behavior: store.reducedMotion() ? 'auto' : 'smooth' }), 120);
+        if (e.detail) dwell = setTimeout(() => document.querySelector('.is-linked')?.scrollIntoView({ block: 'nearest' }), 120);
       });
     }
-    graph.setTheme(themeOf()); graph.setReduced(store.reducedMotion()); graph.update(model); graph.setSelection(gids.has(sel) ? sel : null); graph.setHighlight(litIds);
+    graph.setTheme(themeOf()); graph.setReduced(store.reducedMotion()); graph.setAmbient(ambientOf(sim).ring); graph.update(model); graph.setSelection(gids.has(sel) ? sel : null); graph.setHighlight(litIds);
   } else leave();
 
   const split = asGraph

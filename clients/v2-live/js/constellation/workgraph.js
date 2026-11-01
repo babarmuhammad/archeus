@@ -124,6 +124,7 @@ export function createWorkGraph(container, {t = x => x, theme = 'dark', reduced 
     get lit() { return lit; },
     setTheme(name) { theme = name; host.dataset.theme = name; },
     setReduced(bool) { reduced = bool === true; host.dataset.reduced = String(reduced); },
+    setAmbient(on) { host.dataset.ambient = on === true ? 'on' : 'off'; },
     get size() { return size; },
     destroy() { destroyed = true; observer.disconnect(); host.remove(); }
   };

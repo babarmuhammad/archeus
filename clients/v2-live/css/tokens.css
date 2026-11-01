@@ -81,11 +81,13 @@
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
   --mono: "Cascadia Mono", Consolas, ui-monospace, "SF Mono", monospace;
   --serif: "Libre Caslon Text", Georgia, serif;
-  /* motion tokens (css/motion.css and js/motion.js read these; nothing else carries a duration or a curve): 100 hover in and popover, 160 state, exit and route in,
-     200 move and sheet in, 240 the longest travel (layout glide, panel expand). Owner: subtle and fast, nothing above 240. ease-out for what enters or answers, ease-move for what travels on screen. */
-  --dur-1: 100ms; --dur-2: 160ms; --dur-3: 200ms; --dur-4: 240ms;
+  /* Duration classes (SPEC C02, A55 section 1; js/motion-model.js CLASSES holds the same numbers and test/motion-classes.test.mjs checks both). Every transition, animation and
+     Web Animation names one of these; nothing else carries a duration. instant 0 (selection, focus, scroll, all of Reduced), out 100 (hover in, exits, popovers, the route out: the one
+     documented value that is no class, a quick beat cut short), quick 160 (state, exit, route in, toast), layer 200 (rows, moves, sheet in; the class runs to 280), standard 240 (the longest
+     layout glide, panel expand), travel 600 (a marker down a relation), orbit 900 (a marker round a hub), breath 6000 (the core, and only it). Owner: subtle and fast, nothing above 240 for a UI beat.
+     Ambient loops are not classes (Q03): ring 3600 here, drift 9 to 17 s and travel 3.7 to 7 s are set per element by the map (--dp, --tp). ease-out for what enters or answers, ease-move for what travels on screen. */
+  --dur-instant: 0ms; --dur-out: 100ms; --dur-quick: 160ms; --dur-layer: 200ms; --dur-standard: 240ms; --dur-travel: 600ms; --dur-orbit: 900ms; --dur-breath: 6000ms; --dur-ring: 3600ms;
   --ease-out: cubic-bezier(.23, 1, .32, 1); --ease-move: cubic-bezier(.65, 0, .35, 1); --ease: var(--ease-out);
-  --dur-state: var(--dur-2); --dur-sheet: var(--dur-3); --dur-breath: 6000ms;
   --tb: 48px;
   --r-s: 4px; --r-m: 6px; --r-l: 16px;
   --edge: var(--line-strong);
