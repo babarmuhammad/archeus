@@ -1152,7 +1152,7 @@ class LocalNode:
             raise OSError('git merge could not run')
         if r.returncode == 0:
             return 'merged', LocalNode.git_head(workdir)
-        paths = (proc.git(['diff', '--name-only', '--diff-filter=U'], workdir) or '').split()
+        paths = (proc.git(['diff', '--name-only', '--diff-filter=U'], workdir) or '').splitlines()
         proc.run(['git', 'merge', '--abort'], cwd=workdir, timeout=60)
         if not paths:
             raise OSError('git merge failed: %s' % (r.stderr or r.stdout or '').strip())

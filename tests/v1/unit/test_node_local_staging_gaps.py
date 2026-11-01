@@ -1528,3 +1528,21 @@ class TestWorktreesAndMerge:
             assert open(root / 'a.txt', 'rb').read() == b'ours\n'
             assert LocalNode.git_dirty(str(root), tracked_only=True) is False
             assert _git(root, 'log', '-1', '--format=%s', env=env) == 'our side'
+
+    @needs_git
+    def test_a_conflicted_file_with_a_space_in_its_name_is_reported_whole(self, tmp_path,
+                                                                         real_git):
+        root, _base, _tip, env = _repo(tmp_path)
+        name = 'q4 report.txt'
+
+        def commit(content, message):
+            (root / name).write_bytes(content)
+            _git(root, 'add', '-A', env=env)
+            _git(root, 'commit', '-q', '-m', message, env=env)
+        commit(b'base\n', 'the file')
+        _git(root, 'checkout', '-q', '-b', 'other', env=env)
+        commit(b'theirs\n', 'their side')
+        theirs = _git(root, 'rev-parse', 'HEAD', env=env)
+        _git(root, 'checkout', '-q', 'main', env=env)
+        commit(b'ours\n', 'our side')
+        assert LocalNode.git_merge(str(root), theirs, 'Merge the task back') == ('conflict', [name])
