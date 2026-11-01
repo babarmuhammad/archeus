@@ -625,6 +625,8 @@ class ExecutionManager:
                                branch_ok=e.branch is None or (not known
                                                               and branch_now == e.branch),
                                disarmed=disarmed, command_eligibility=command_eligibility)
+            except errors.WriterClosed:
+                raise
             except Exception as err:        # never allow on a failure: fail closed
                 log.warning('hook request %d of %s: %s', seq, e.id, err)
                 out = {'decision': 'halt', 'reason': 'Archeus could not judge the request'}
@@ -871,6 +873,7 @@ class ExecutionManager:
                 done.append(e.id)
             except Exception as err:
                 failed = failed or err
+        live, _m = self._read()
         failed = self._adopt_orphans(live) or failed
         self.node.compact_registry()
         base.sweep_mcp_configs(set(self._procs))
