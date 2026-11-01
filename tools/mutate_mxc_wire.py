@@ -27,6 +27,7 @@ O = 'tests/v1/unit/test_mxc_wire_outcome.py::'
 R = 'tests/v1/unit/test_mxc_wire_resources.py::'
 C = 'tests/v1/unit/test_mxc_wire_cancel.py::'
 D = 'tests/v1/unit/test_mxc_wire_watchdog.py::'
+U = 'tests/v1/unit/test_mxc_wire_dupstart.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -199,6 +200,14 @@ MUTATIONS = [
     ('W34', "one launch's clean end disarms a watchdog shared with other jobs", [(LOCAL,
      "        if report['recorded'] == [self.execution_id]:", "        if True:")],
      [D + 'test_a_watchdog_shared_with_another_job_stays_armed']),
+    ('W35', 'a start never claims its execution id before the journal check', [(LOCAL,
+     "            _MXC_CLAIMS.add(claim)", "            pass")],
+     [U + 'test_two_threads_starting_one_id_let_exactly_one_proceed',
+      U + 'test_a_start_is_refused_while_another_is_still_writing_its_intent']),
+    ('W36', 'a claimed execution id is never released after a failed start', [(LOCAL,
+     "                    _MXC_CLAIMS.discard(claim)", "                    pass")],
+     [U + 'test_a_failing_intent_write_leaves_no_journal_and_frees_the_id',
+      U + 'test_a_start_that_cannot_read_the_ledger_frees_the_id']),
 ]
 
 

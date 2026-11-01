@@ -166,6 +166,12 @@ _MXC_TIER = 'base-container'
 #: cannot hold a process hostage
 _MXC_LIVE = weakref.WeakSet()
 _MXC_LIVE_LOCK = threading.Lock()
+#: execution ids being started right now, per ledger: the journal check and the intent
+#: write are two steps, and this closes the gap between them. UNVERIFIED: the ledger has
+#: no exclusive create, so a second Core process on the same directory is not excluded
+#: (the ledger's own rule is one Core writer per directory)
+_MXC_CLAIMS = set()
+_MXC_CLAIMS_LOCK = threading.Lock()
 
 
 def mxc_resource_id(path):
@@ -268,6 +274,25 @@ class MxcLaunch:
             raise staging.StageError('MXC launch already consumed')
         if job is None:
             raise staging.StageError('MXC requires a Core-held Job')
+        claim = self._claim()
+        try:
+            return self._start_claimed(job)
+        finally:
+            if claim is not None:
+                with _MXC_CLAIMS_LOCK:
+                    _MXC_CLAIMS.discard(claim)
+
+    def _claim(self):
+        if self.ledger is None:
+            return None
+        claim = (self._ledger_key(), self.execution_id)
+        with _MXC_CLAIMS_LOCK:
+            if claim in _MXC_CLAIMS:
+                raise staging.StageError('MXC execution id is already being started')
+            _MXC_CLAIMS.add(claim)
+        return claim
+
+    def _start_claimed(self, job):
         if self.ledger is not None and self.execution_id in self.ledger.journals():
             # a journal means this execution id already ran, or half-ran: reconciled at
             # restart, never re-adopted by starting it a second time
