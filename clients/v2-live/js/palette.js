@@ -6,7 +6,7 @@ import { icon } from './icons.js';
 import { translate, tr } from './i18n.js';
 import * as store from './store.js';
 import { ROUTES } from './views.js';
-import { search, sections, remember } from './palette-model.js';
+import { search, sections, remember, isPaletteKey } from './palette-model.js';
 import { isPhone } from './viewport.js';
 import { openSheet } from './sheet.js';
 import { closeThen } from './phone.js';
@@ -86,7 +86,7 @@ export function installPalette(ctx, app, { projHint }) {
     app.append(root); paint(input, list); translate(root); input.focus();
   }
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k' && ctx.route.name !== 'terminal') { e.preventDefault(); e.stopImmediatePropagation(); if (root) close(); else open(); return; }
+    if (isPaletteKey(e) && ctx.route.name !== 'terminal') { e.preventDefault(); e.stopImmediatePropagation(); if (root) close(); else open(); return; }
     if (root && e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); close(); }
   }, true);
   return { open, close, isOpen: () => !!root };
