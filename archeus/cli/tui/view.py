@@ -28,8 +28,8 @@ _SEQ = re.compile(r'''
   | [\x90\x98\x9d\x9e\x9f][^\x07\x9c]*(?:\x07|\x9c)?   # 8-bit DCS/SOS/OSC/PM/APC
 ''', re.X)
 _BREAK = re.compile('[\r\n  \x0b\x0c\x85]+')
-# the rest of C0 and C1, DEL, and the bidirectional overrides that reorder text
-_CTRL = re.compile('[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩]')
+# the rest of C0 and C1, DEL, and the bidirectional marks and overrides that reorder text
+_CTRL = re.compile('[\x00-\x1f\x7f-\x9f؜‎‏‪-‮⁦-⁩]')
 
 
 def clean(s):
@@ -109,7 +109,7 @@ class Style:
         """The last step of every line: exactly *width* columns, and ASCII for an
         ASCII terminal (the truncation mark too, at the same width)."""
         if self.ascii:
-            text = text.translate(_ASCII)
+            text = text.translate(_ASCII).encode('ascii', 'replace').decode('ascii')
         out = render.fit(text, width)
         return out.replace('…', '.') if self.ascii else out
 
@@ -118,10 +118,26 @@ def width_of(s):
     return render.disp_width(s)
 
 
+def _columns(line, limit):
+    """*line* in pieces no wider than *limit* terminal columns."""
+    out, cur, used = [], '', 0
+    for ch in line:
+        w = render.disp_width(ch)
+        if cur and used + w > limit:
+            out.append(cur)
+            cur, used = '', 0
+        cur, used = cur + ch, used + w
+    return out + [cur]
+
+
 def wrap(text, width, indent=0):
-    """Core prose wrapped to the width, already cleaned."""
+    """Core prose wrapped to the width, already cleaned. `textwrap` counts
+    characters, so a line of wide ones is cut again by columns: a line wider than
+    the frame would be truncated, and the text after the cut lost."""
+    limit = max(10, width - indent)
     out = []
     for para in clean_lines(text):
-        out.extend(textwrap.wrap(para, max(10, width - indent), break_long_words=True,
-                                 break_on_hyphens=False) or [''])
+        for line in textwrap.wrap(para, limit, break_long_words=True,
+                                  break_on_hyphens=False) or ['']:
+            out.extend(_columns(line, limit))
     return [' ' * indent + x for x in out]
