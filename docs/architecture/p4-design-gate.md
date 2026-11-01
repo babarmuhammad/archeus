@@ -172,7 +172,7 @@ VERIFY (P13), LEARN (P6/P13) are not P4.
 | Contract | Purpose | Owner (module) | Input → output | Persistence | Lifecycle / events | Errors | Idempotency / concurrency | Recovery | Later owner |
 |---|---|---|---|---|---|---|---|---|---|
 | `create_project` (command, `admin` scope, D7) | register a project and its repositories | `core/application/world.py` | `{name, root_paths[], workspace_id?}` → `{project, repositories[]}` | `projects`, `repositories` | `project.created`, `repository.registered` (one per repo); repositories start `architecture_state=UNKNOWN` | 400 path not absolute / not a directory / no git repository under it; 409 `conflict` when a repo is already registered (detail: its project id) | key required; replay returns the stored result; repo uniqueness is a UNIQUE index on `(workspace_id, path_key)`, so two racing creates cannot both register a repo | none needed (one transaction) | P16 UI, P22 importer (creates the same rows from legacy projects) |
-| `declare_constraint` (command, `control`) | declare a checkable architecture constraint for a project | `core/application/world.py` | `{project_id, kind, spec, statement}` → `{knowledge_item}` | `knowledge_items` (type ARCHITECTURE, origin explicit, `constraint={kind, spec}`) | `knowledge.created` + `knowledge.state_changed` (CANDIDATE → CONFIRMED, one transaction); the project's repositories go `constraints_changed` → STALE | 400 unknown kind, spec invalid for its kind, glob absolute or containing `..`; 404 project | key required; an identical `(project, kind, canonical spec)` already CONFIRMED returns the existing item with `changed:false` (a duplicate would double-report drift) | n/a | P6: retract, supersede, proposals, the three-way drift resolution |
+| `declare_constraint` (command, `control`) | declare a checkable architecture constraint for a project | `core/application/world.py` | `{project_id, kind, spec, statement}` → `{knowledge_item}` | `knowledge_items` (type ARCHITECTURE, origin explicit, `constraint={kind, spec}`) | `knowledge_item.created` + `knowledge_item.state_changed` (CANDIDATE → CONFIRMED, one transaction); the project's repositories go `constraints_changed` → STALE | 400 unknown kind, spec invalid for its kind, glob absolute or containing `..`; 404 project | key required; an identical `(project, kind, canonical spec)` already CONFIRMED returns the existing item with `changed:false` (a duplicate would double-report drift) | n/a | P6: retract, supersede, proposals, the three-way drift resolution |
 | inspection commands `begin_inspection`, `complete_inspection`, `fail_inspection`, `record_assessment`, `sweep_inspections` (system principal only) | record one inspection of one repository at one revision | `core/application/world.py` | worker-computed `InspectionResult` + the constraint-set token it was evaluated against → inspection row + transitions | `repository_inspections`; payload as an **artifact** (content-addressed; the row keeps `payload_sha256`) | inspection machine SCHEDULED → RUNNING → COMPLETED \| FAILED; on completion the repository's architecture transition (§5); events in §4.3 | `VersionConflict` when the repository or its project's constraint set changed after evaluation (the worker re-evaluates: a lost race, as the engine treats one) | unique `(repository_id, revision, extractor_version)` among COMPLETED rows: a second completion for the same key is a no-op returning the first | boot sweep: RUNNING → FAILED (`core_restarted`) → SCHEDULED | P5/P6/P13 read the payload; P14 adds schedule triggers |
 | `ack_digest` (command, `control`, D4) | advance the per-user "seen up to" cursor | `core/application/world.py` | `{up_to_seq}` → `{up_to_seq}` (the cursor after) | `users.last_ack_event_seq` | `user.digest_acked` (visibility **system**, so it never appears in a digest) | 400 `up_to_seq` negative or ahead of the head | monotone `max(current, up_to_seq)`, so a replay or a stale device cannot move it back; key **not** required — the operation is naturally idempotent | n/a | P15: the multi-device test; P16: the SPA dismissal (and the observe-scope question, §17) |
 | `status(project_id?)` (query, `observe`) | S13 deterministic cross-project status | `core/application/queries.py` + `core/world/status.py` | → `{source:'deterministic', as_of_seq, projects[], missions[], drift[], unchecked[], inspections{…}, unknown_project[]}` (§8) | read only | none | 404 unknown `project_id` | one read transaction (a consistent snapshot) | n/a | P7 adds the brain summary beside it (S13's second function), never replacing it |
@@ -234,7 +234,7 @@ Backup before migration is the existing P2 mechanism. `rows.TABLES` gains the fi
 | `project.created` | project | user | "project added" |
 | `repository.registered` | repository | system | — |
 | `repository_inspection.state_changed` | repository_inspection | system | — |
-| `architecture.state_changed` | repository | user | "drift found" when `to = DRIFTED`, "drift cleared" when DRIFTED → CONSISTENT; STALE edges are system-noise and are **not** emitted as user-visible (the payload carries `from`, `to`, `trigger`) |
+| `architecture.state_changed` | repository | user | "drift found" when `to = DRIFTED`, "drift cleared" when DRIFTED → CONSISTENT; STALE edges are system-noise; as built every move, STALE included, is emitted as user-visible and only the digest drops the moves into STALE (the payload carries `from`, `to`, `trigger`) |
 | `knowledge_item.created`, `knowledge_item.state_changed` | knowledge_item | user | "constraint declared" |
 | `user.digest_acked` | user | system | — |
 
@@ -319,7 +319,7 @@ is **not** enough: it returns the branch name, not the revision.
 A pure function `inspect(path) -> InspectionResult` in `core/world/inspection.py`:
 
 - languages (extension breakdown — `connections` meta already computes it), manifests →
-  dependencies and frameworks (`pyproject.toml`, `requirements*.txt`, `package.json`, `*.csproj`,
+  dependencies and frameworks (`pyproject.toml`, `requirements*.txt`, `package.json`, `*.csproj` (not read, see the front matter),
   `Cargo.toml`, `go.mod`), docs (`README*`, `docs/`), agent config (`CLAUDE.md`, `AGENTS.md`,
   `.claude/`), test/build commands (manifest scripts; the marker-file fallback execution-
   architecture already specifies for CodeVerifier), the module graph from
@@ -404,11 +404,11 @@ listed with `stale: true`, so "no drift" is never claimed for a revision nobody 
 ## 9. `digest()` and `ack` (S14, one device)
 
 - Events with `seq > users.last_ack_event_seq` and `visibility = user`, grouped by subject
-  (mission, project, repository), each group `{ref, headline_kind, count, first_seq, last_seq}`,
+  (mission, project, repository), each group `{ref, headline, count, first_seq, last_seq, project_id, types}` (as built),
   with headline kinds derived deterministically: `completed`, `failed`, `needs_you` (a mission in
-  APPROVAL_REQUIRED, REVIEW or BLOCKED at the head), `drift_found`, `drift_cleared`,
+  APPROVAL_REQUIRED, REVIEWING or BLOCKED at the head), `drift_found`, `drift_cleared`,
   `progressed` (anything else). Ordered `needs_you`, `drift_found`, `failed`, `completed`,
-  `progressed`, then by `last_seq` descending. `count` is the number of groups.
+  `progressed`, then by `last_seq` descending (as built, `ORDER` also holds `drift_cleared` and `new_messages`). `count` is the number of groups.
 - `up_to_seq` is the head seq **of the read**, so `ack(up_to_seq)` acknowledges exactly what was
   shown, never an event committed after it.
 - If retention pruned events after the cursor, `truncated: true` and `from_seq` is the oldest
@@ -428,7 +428,7 @@ exactly"):
 | GET | `/v1/projects` | observe | — | → `ProjectList` |
 | GET | `/v1/projects/{id}` | observe | — | → `Project` (with repositories) |
 | POST | `/v1/projects` | **admin** (D7) | required | `CreateProject` → `ProjectCreated` |
-| POST | `/v1/projects/{id}/constraints` | control | required | `DeclareConstraint` → `KnowledgeItem` |
+| POST | `/v1/projects/{id}/constraints` | control | required | `DeclareConstraint` → `ConstraintDeclared` (as built) |
 | GET | `/v1/repositories/{id}/inspections` | observe | — | `?limit=` → `InspectionList` (rows, not payloads) |
 | GET | `/v1/digest` | observe | — | → `Digest` |
 | POST | `/v1/digest/ack` | control | not required (monotone) | `{up_to_seq}` → `{up_to_seq}` |
@@ -615,7 +615,7 @@ row names its owner.
 | idempotency / concurrency (P2) | — | §12 | W02, W19, W20, W23 | `application/world.py` | — |
 | ids-only realtime (ADR-0009) | — | §4.3 event types | W30 | `domain/events.py` | P16 |
 | route table single source + scopes (P3.5b §4–§5) | D7 | §10 | W27, W28 | `api/routes.py`, `schemas.py` | P9 finer scopes |
-| no real model call before ADR-0021 (ADR-0021, §31.4) | D2 | structural guard | W27 | `tests/v1/unit/test_world_structure.py` | P6/P7 gate |
+| no real model call before ADR-0021 (ADR-0021, §31.4) | D2 | structural guard | W27 | `tests/v1/integration/test_world_http.py` (`test_w27_the_world_imports_no_model_runner_router_or_brain`) | P6/P7 gate |
 
 Every P4 requirement has a scenario; every W/J scenario traces to a requirement row. The P4
 judge rows keep their phase ranges (S7 P4; S13 P4, P7; S14 P4, P15), so `test_traceability.py`
