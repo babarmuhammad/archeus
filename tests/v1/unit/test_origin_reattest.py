@@ -223,3 +223,10 @@ def test_a_binding_of_another_port_is_refused(table):
                                      ('127.0.0.1', PORT + 1), context.accept_generation)
     age(table)
     assert backend.valid(moved, evidence) is False
+
+
+def test_only_a_true_flag_enables_reattestation(table):
+    backend, context, evidence = connect(table, reattest='yes')
+    age(table)
+    assert backend.valid(context, evidence) is False
+    assert table.owner_calls == 1

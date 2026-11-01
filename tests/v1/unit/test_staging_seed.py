@@ -165,3 +165,15 @@ def test_sdk_staging_never_goes_through_the_seed(tmp_path, monkeypatch):
     dest = staging.stage_mxc(root, tmp_path / 'stage', pins=pins)
     assert (tmp_path / 'stage' / 'package.json').read_bytes() == data['package.json']
     assert dest == str(tmp_path / 'stage')
+
+
+def test_a_raw_os_error_is_a_stage_error_without_the_os_text(src, tmp_path, monkeypatch):
+    def broken(*args):
+        raise PermissionError('fixture text with ' + str(tmp_path))
+
+    monkeypatch.setattr(seed, 'seed_copy', broken)
+    with pytest.raises(staging.StageError) as caught:
+        staging.seed_execution(src, tmp_path / 'exec')
+    assert type(caught.value) is staging.StageError
+    assert str(tmp_path) not in str(caught.value)
+    assert isinstance(caught.value.__cause__, PermissionError)

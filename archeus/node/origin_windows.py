@@ -55,7 +55,7 @@ class WindowsOriginBackend:
         result = _attest.binding_valid(state[1], **self.readers.recheck_kwargs())
         if result.ok:
             return True
-        if not self.readers.reattest or result.failures != (_attest.EXPIRED,):
+        if self.readers.reattest is not True or result.failures != (_attest.EXPIRED,):
             return False
         return self._reattest(key, binding, state[2])
 

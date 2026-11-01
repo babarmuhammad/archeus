@@ -350,6 +350,9 @@ def _seeded(act, *args):
         return act(*args, linkscan.multi_linked_files)
     except seed.SeedError as err:
         raise StageError(str(err)) from err
+    except OSError as err:
+        # the OS error text names absolute paths; the cause stays chained for the log
+        raise StageError('the execution folder could not be staged') from err
 
 
 def seed_execution(files, destination):
