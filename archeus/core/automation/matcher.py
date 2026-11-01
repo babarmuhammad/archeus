@@ -74,6 +74,8 @@ def validate_trigger(trigger, types):
             if len(v) != 1 or next(iter(v)) not in ('glob', 'not_glob') \
                     or not isinstance(next(iter(v.values())), str):
                 raise Invalid("a where test is a value, {glob: p} or {not_glob: p}: %r" % (v,))
+            if len(next(iter(v.values()))) > MAX_VALUE:
+                raise Invalid('a glob pattern is at most %d characters' % MAX_VALUE)
         elif not isinstance(v, _SCALARS):
             raise Invalid('a where value is a string, number, boolean or null: %r' % (v,))
     return {'kind': 'event', 'type': t, 'where': dict(where)}

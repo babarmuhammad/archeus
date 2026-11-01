@@ -130,6 +130,14 @@ def test_a_glob_test_that_is_not_exactly_one_string_pattern_is_refused(test):
         M.validate_trigger({'type': MODEL_ADDED, 'where': {'path': test}}, TYPES)
 
 
+@pytest.mark.parametrize('op', ['glob', 'not_glob'])
+def test_a_glob_pattern_is_bounded(op):
+    ok = {'path': {op: 'a' * M.MAX_VALUE}}
+    assert M.validate_trigger({'type': MODEL_ADDED, 'where': ok}, TYPES)['where'] == ok
+    with pytest.raises(M.Invalid, match='at most 200 characters'):
+        M.validate_trigger({'type': MODEL_ADDED, 'where': {'path': {op: 'a' * 201}}}, TYPES)
+
+
 @pytest.mark.parametrize('key', ['a.b', 'a b', '', 'a-b', 'a\nb', 'payload.a', '\u00e9!x',
                                  1, None, ('a',)],
                          ids=['dotted', 'space', 'empty', 'dash', 'newline', 'payload-prefixed',
