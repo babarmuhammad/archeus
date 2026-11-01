@@ -270,7 +270,7 @@ class FakeNode:
     def alive(self, handle):
         return True
 
-    def kill(self, adapter, handle):
+    def kill(self, adapter, handle, reason=None):
         self.kills.append((adapter, handle))
         return 'killed'
 

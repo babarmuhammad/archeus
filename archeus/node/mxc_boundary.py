@@ -39,6 +39,7 @@ import time
 from . import isolation as iso
 from . import local, mxc, mxc_ledger, mxc_verifier, staging
 from .isolation import IsolationUnavailable
+from .mxc_context import MxcIsolationContext
 
 #: file in the ledger's directory, not a journal (the ledger reads only `.jsonl`)
 RESIDUE = 'registration-residue.log'
@@ -57,13 +58,18 @@ def _same(a, b):
 
 class MxcBoundary:
     id = 'mxc'
+    #: what `Isolation.request` hands `base.spawn`: the MXC transport owns the child's stdio
+    context = MxcIsolationContext
 
     def __init__(self, *, win32=None, ledger=None, sdk_root=None, pins=None,
                  schema_validator=None, jobs=None, outcome=launcher_exit, timeout_ms=None,
                  env_rows=None, broker=None, resource_reader=None, readback=None,
-                 watchdog=None, clock=time.time):
+                 watchdog=None, clock=time.time, process_reader=None):
         self.win32, self.ledger, self.sdk_root, self.pins = win32, ledger, sdk_root, pins
         self.schema_validator, self.outcome, self.timeout_ms = schema_validator, outcome, timeout_ms
+        #: pid -> the creation time of the process now running under it, in the encoding
+        #: of the ledger's ownership record, or None: what a restart reads a journal by
+        self.process_reader = process_reader
         self.env_rows = dict(env_rows or {})
         self.broker, self.resource_reader = broker, resource_reader
         self.readback, self.watchdog, self.clock = readback, watchdog, clock
@@ -74,13 +80,22 @@ class MxcBoundary:
     def available(self):
         if (mxc.NATIVE_RUN_ENABLED is not True or not callable(self.schema_validator)
                 or any(part is None for part in (self.win32, self.ledger, self.sdk_root,
-                                                 self.pins))):
+                                                 self.pins, self.process_reader))):
             return False
         try:
             staging.verify_mxc(self.sdk_root, pins=self.pins)
         except staging.StageError:
             return False
         return True
+
+    def reconcile(self):
+        """Every journal this Core is not running read for an end nobody verified: the
+        ledger quarantines the ones it cannot prove dead, and answers each journal's
+        state. Nothing is read without a way to read a process."""
+        if self.ledger is None or self.process_reader is None:
+            return {}
+        return self.ledger.reconcile(self.process_reader, self.resource_reader or (
+            lambda execution_id, owner: None), skip=local.mxc_busy(self.ledger))
 
     # ── the identity: a reserved name, no OS object ──
 
@@ -191,10 +206,14 @@ class MxcBoundary:
         have = {name.upper() for name in env}
         return {**env, **{k: v for k, v in self.env_rows.items() if k.upper() not in have}}
 
-    def launch(self, argv, *, cwd, env, profile, job, stdin, stdout):
+    def launch(self, argv, *, cwd, env, profile, job, stdin, stdout, timeout_ms=None,
+               transport=None):
         """`stdin` and `stdout` are the Core-opened handles the detached path hands a
-        child. The MXC transport owns the child's stdio, so they are not used here."""
-        launch = self._launch(argv, cwd, env, profile, self.timeout_ms)
+        child. The MXC transport owns the child's stdio, so they are not used here. The
+        deadline and the transport's bounds are the launch's own, or the boundary's."""
+        launch = self._launch(argv, cwd, env, profile,
+                              self.timeout_ms if timeout_ms is None else timeout_ms,
+                              transport)
         launch.start(job=job)
         return launch
 

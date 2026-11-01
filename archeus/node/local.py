@@ -179,6 +179,17 @@ def mxc_resource_id(path):
                    or ord(ch) == 127 else ch for ch in path)
 
 
+def mxc_busy(ledger):
+    """The journals of *ledger* a launch of this Core is starting or running: a restart
+    reconciliation reads a journal that has no completion yet as an end nobody verified,
+    which is what those are not."""
+    key = os.path.normcase(os.path.abspath(ledger.root))
+    with _MXC_CLAIMS_LOCK, _MXC_LIVE_LOCK:
+        return ({journal for claimed, journal in _MXC_CLAIMS if claimed == key}
+                | {launch.journal for launch in _MXC_LIVE
+                   if launch.end_state is None and launch._ledger_key() == key})
+
+
 class MxcLaunch:
     """One MXC execution, wired to the native transport and to Core's ledger.
 
@@ -268,6 +279,8 @@ class MxcLaunch:
         self.watchdog = watchdog
         self.seed_stage, self.seed_recheck = seed_stage, seed_recheck
         self.verdict = self.facts = self._quiet_why = None
+        #: why the owner of the drain stopped it: the drain's own end records it
+        self.stop_reason = None
         self.pins = dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
         staging.verify_mxc(sdk_root, pins=self.pins)
@@ -462,7 +475,7 @@ class MxcLaunch:
             self.launcher_exit = (self.process.wait(timeout, cancelled=cancelled)
                                   if cancelled is not None else self.process.wait(timeout))
         except BaseException:
-            self._end(reason='launcher ended during the drain', outcome=None)
+            self._end(reason=self.stop_reason or 'launcher ended during the drain', outcome=None)
             raise
         if type(self.launcher_exit) is not int:
             self._end(reason='launcher never exited', outcome=None)
@@ -752,21 +765,37 @@ class LocalNode:
         could have written (§3.3)."""
         return self.isolation.record(execution_id)
 
+    def _running(self, execution_id, pid=None):
+        """The isolated children Core still holds for an execution (those of *pid* alone
+        when given: a stale handle never names the process that came after it)."""
+        return [child for (eid, _), child in list(self.isolation.children.items())
+                if eid == execution_id and child.poll() is None
+                and (pid is None or child.pid == pid)]
+
     def fence_isolation(self, execution_id):
         """Quiescence before an import (K3): None, or why there is none. The
         execution's Job is closed either way."""
+        for child in self._running(execution_id):
+            child.cancel('fenced')
         return self.isolation.fence(execution_id)
 
     def end_isolation(self, execution_id, *, reason=''):
         """The execution is over: identity torn down, whatever will not go quarantined
         (§3.2 Cleanup). S1 applies no access, so nothing is revoked. Safe on an
         execution that was never isolated."""
+        for child in self._running(execution_id):
+            child.cancel(reason or 'ended')
+        for key in [k for k in self.isolation.children if k[0] == execution_id]:
+            del self.isolation.children[key]
         return self.isolation.teardown(execution_id, reason=reason)
 
     def reclaim_isolation(self, live_execution_ids=()):
-        """Boot and every pass: quarantine retried, stale identities reclaimed (§3.7).
-        Returns the executions it released."""
-        return self.isolation.reclaim(live_execution_ids)
+        """Boot and every pass: quarantine retried, stale identities reclaimed (§3.7),
+        and the ledger's journals read for the ends no Core verified. Returns the
+        executions it released."""
+        released = self.isolation.reclaim(live_execution_ids)
+        self.isolation.reconcile_ledger()
+        return released
 
     @staticmethod
     def handle(execution):
@@ -782,10 +811,19 @@ class LocalNode:
         return (handle is not None and handle.create_time is not None
                 and proc.process_create_time(handle.pid) == handle.create_time)
 
-    def kill(self, adapter, handle):
+    def kill(self, adapter, handle, reason='stopped'):
         """'killed' (a kill was issued), 'gone' (nothing of ours is running) —
-        a pid now held by another process is never touched."""
-        if handle is None or not self.alive(handle):
+        a pid now held by another process is never touched. An isolated process Core
+        holds ends through its launch, which records *reason*; only one it does not
+        hold (every end after a restart) is killed by its identity."""
+        if handle is None:
+            return 'gone'
+        running = self._running(handle.execution_id, handle.pid)
+        for child in running:
+            child.cancel(reason)
+        if running:
+            return 'killed'
+        if not self.alive(handle):
             return 'gone'
         try:
             adapter.stop(handle, grace_s=0.0)
@@ -793,15 +831,26 @@ class LocalNode:
             return 'gone'           # the pid was recycled: ours has exited
         return 'killed'
 
-    @staticmethod
-    def kill_identity(handle):
+    def kill_identity(self, handle, reason='stopped'):
         """Kill a process of ours known only by its recorded identity, no adapter to
         ask: True when a kill was issued; a pid now held by another process is never
         touched."""
-        return proc.kill_pid_tree(handle.pid, handle.create_time)
+        running = self._running(handle.execution_id, handle.pid)
+        for child in running:
+            child.cancel(reason)
+        return bool(running) or proc.kill_pid_tree(handle.pid, handle.create_time)
+
+    def cancelled(self, handle, process_seq):
+        """Did a stop of Core's end this isolated process, as opposed to the process
+        ending on its own? Read before `ended` lets go of it."""
+        child = self.isolation.children.get((handle.execution_id, process_seq))
+        return child is not None and child.reason is not None
 
     def ended(self, handle, exit_code, process_seq):
         """The exit was observed: the `ended` tombstone and the registry's end."""
+        child = self.isolation.children.pop((handle.execution_id, process_seq), None)
+        if child is not None:
+            child.cancel('ended')       # its launch has ended by now; this makes it certain
         paths = ExecPaths(handle.execution_id)
         if not os.path.exists(paths.ended):
             base.mark_ended(paths, exit_code)

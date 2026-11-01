@@ -237,8 +237,8 @@ class Ledger:
     def complete(self, execution_id, outcome):
         self.append(execution_id, 'completion', outcome=outcome)
 
-    def reconcile(self, process_reader, resource_reader):
-        journals = self.journals()
+    def reconcile(self, process_reader, resource_reader, *, skip=()):
+        journals = {name: data for name, data in self.journals().items() if name not in skip}
         results = reconcile(journals, process_reader, resource_reader)
         for execution_id, state in results.items():
             records, _ = read_records(journals[execution_id], execution_id)

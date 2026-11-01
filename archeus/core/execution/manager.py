@@ -173,7 +173,8 @@ class ExecutionManager:
                 if p['since'] is None:
                     p['since'] = time.monotonic()
                 if disarmed or time.monotonic() - p['since'] >= self.grace_s:
-                    self.node.kill(p['adapter'], p['handle'])
+                    self.node.kill(p['adapter'], p['handle'],
+                                   reason='disarmed' if disarmed else 'orphaned')
                     did += 1
                 continue
             with self.db.read() as r:
@@ -660,7 +661,7 @@ class ExecutionManager:
             # the checkpoint is Core's: a hand-off that meets no tool boundary,
             # or one for an account change, needs nothing more from the process
             if e.stop_reason in _NOW or waited >= self.pause_timeout:
-                self.node.kill(p['adapter'], p['handle'])
+                self.node.kill(p['adapter'], p['handle'], reason=e.stop_reason or 'handoff')
             return True
         if state == 'PAUSING' and waited >= self.pause_timeout:
             self._do(X.pause_timed_out, execution_id=e.id)
@@ -668,7 +669,8 @@ class ExecutionManager:
             return True
         if state == 'STOPPING' and (disarmed or e.stop_reason in _NOW
                                     or waited >= self.grace_s):
-            self.node.kill(p['adapter'], p['handle'])
+            self.node.kill(p['adapter'], p['handle'],
+                           reason='disarmed' if disarmed else e.stop_reason or 'stopped')
         return True
 
     def _reload(self, e):
@@ -679,6 +681,7 @@ class ExecutionManager:
         adapter, handle = p['adapter'], p['handle']
         self._tail(e, p)
         result = adapter.collect_result(handle)
+        cancelled = getattr(self.node, 'cancelled', lambda handle, seq: False)(handle, p['seq'])
         self.node.ended(handle, st.exit_code, p['seq'])
         if e.state not in _ENDED:
             self._progress(e, p)                            # core refuses progress after the end
@@ -701,7 +704,7 @@ class ExecutionManager:
             self._do(X.request_handoff, execution_id=e.id, stop_reason='limit',
                      reason='the provider refused for a limit')
             e = self._reload(e)
-        killed = result.exit_reason == 'killed'
+        killed = result.exit_reason == 'killed' or cancelled
         if isolated:
             # PV-20 §3.3 H2 / A7: Core's own state and observed exit decide; the halt
             # report never does. Any other end of an isolated hand-off is ENDED_ERROR.
@@ -965,7 +968,7 @@ class ExecutionManager:
         adapter = self.registry.get(e.harness_id)
         alive = handle is not None and self.node.alive(handle)
         if alive and disarmed:
-            self.node.kill(adapter, handle)
+            self.node.kill(adapter, handle, reason='disarmed')
             alive = False
         iso = self._isolation_record(e.id)
         if self._isolated(e, iso):
@@ -1063,7 +1066,7 @@ class ExecutionManager:
             # R6-A: a live isolated process after a Core restart is a contradiction —
             # its sole Job holder died, so kill-on-close should have ended it. It is
             # killed by identity here and never adopted.
-            self.node.kill(adapter, handle)
+            self.node.kill(adapter, handle, reason='orphaned')
         if iso is not None and (iso.state == 'failed' or iso.failure):
             # `failure` outlives the cleanup that quarantines the profile afterwards
             self._tombstone(e)

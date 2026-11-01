@@ -75,9 +75,9 @@ class Traced(MxcBoundary):
             self.before_grant()
         return super().create_profile(execution_id)
 
-    def launch(self, argv, *, cwd, env, profile, job, stdin, stdout):
+    def launch(self, argv, *, cwd, env, profile, job, stdin, stdout, **limits):
         return self._tap(super().launch, argv, cwd, env, profile, job, stdin=stdin,
-                         stdout=stdout)
+                         stdout=stdout, **limits)
 
     def launch_confined(self, argv, *, cwd, env, profile, job, timeout, stdin_path, out_path):
         return self._tap(super().launch_confined, argv, cwd, env, profile, job,
@@ -219,6 +219,13 @@ def checks(tmp_path, sdk, gate, monkeypatch):
 
     return SimpleNamespace(node=node, boundary=h.boundary, jobs=h.jobs, api=h.api,
                            events=h.events, run=run, recorded=recorded, tool=str(tool))
+
+
+def child_of(case, process_seq=1):
+    """The child Core holds for the process, once the pump has returned the launch."""
+    child = case.authority.children[(case.spec.execution_id, process_seq)]
+    assert child.wait(10) is not None, 'the pump never returned'
+    return child
 
 
 def registry_lines():
@@ -404,7 +411,8 @@ def test_an_isolated_agent_launch_compiles_one_policy_and_spawns_once(tmp_path, 
     assert [os.path.normcase(c['application']) for c in case.api.created] == [os.path.normcase(
         os.path.join(case.boundary.sdk_root, *staging.MXC_EXE.split('/')))]
     assert [a[0] for a in case.jobs.assigned] == [call['job']]
-    assert case.events == ['create_suspended', 'assign_job', 'verify_job', 'resume']
+    child_of(case)       # the fake launcher exits at once; its end is the Job's termination
+    assert case.events == ['create_suspended', 'assign_job', 'verify_job', 'resume', 'end_job']
     assert (handle.pid, launch.pid) == (1000, 1000)
     line = next(x for x in registry_lines() if x.get('op') == 'spawn'
                 and x['execution_id'] == case.spec.execution_id)
@@ -641,16 +649,11 @@ def test_native_mxc_admission_is_closed_and_the_transport_is_never_touched(tmp_p
 def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
         tmp_path, sdk, no_process, gate):
     case = agent_case(tmp_path, sdk)
-    kill_on_close(case)
     first = case.node.spawn(case.agent, case.spec, isolated=True)
     job_one = case.boundary.launch_calls[0]['job']
     assert case.authority.held_job(case.spec.execution_id) == job_one
-    # the stop ends through the launch, which is what completes its journal (routing a
-    # kill to it is the execution context's, B7): the next process may only follow that
-    ended = case.boundary.launches[0].cancel(reason='stopped', outcome=0)
-    assert ended['state'] == mxc_ledger.DEAD_CLEAN and case.jobs.terminated == [job_one]
-    assert case.node.kill(case.agent, first) == 'killed'
-    assert case.agent.stops == [first]
+    # the launch ended itself and completed its journal: the next process may follow
+    assert child_of(case).poll() == 3 and case.jobs.terminated == [job_one]
     assert case.node.fence_isolation(case.spec.execution_id) is None
     assert case.jobs.closed == [job_one]
     assert case.boundary.launches[0].process.is_alive() is False
@@ -658,6 +661,7 @@ def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
     case.node.ended(first, 0, 1)
     second = case.node.spawn(case.agent, dataclasses.replace(case.spec, process_seq=2),
                              isolated=True, resume_state={'session': 'one'})
+    child_of(case, 2)
     calls = case.boundary.launch_calls
     assert len(calls) == 2
     assert calls[0]['profile'] == calls[1]['profile']
@@ -675,15 +679,16 @@ def test_a_stopped_execution_resumes_as_the_same_identity_with_a_new_process(
               and x['execution_id'] == case.spec.execution_id]
     assert [x['process_seq'] for x in spawns] == [1, 2]
     assert {x['ac_profile'] for x in spawns} == {calls[0]['profile']}
-    assert [e for e in case.events if e != 'end_job'] == [
-        'create_suspended', 'assign_job', 'verify_job', 'resume'] * 2
+    assert case.events == ['create_suspended', 'assign_job', 'verify_job', 'resume',
+                           'end_job'] * 2
 
 
 def test_a_resume_is_refused_while_the_process_before_it_never_ended_with_a_completion(
         tmp_path, sdk, gate):
-    case = agent_case(tmp_path, sdk)
+    # no resource reader: the end cannot be verified, so it is quarantined, not completed
+    case = agent_case(tmp_path, sdk, resource_reader=None)
     first = case.node.spawn(case.agent, case.spec, isolated=True)
-    assert case.node.kill(case.agent, first) == 'killed'
+    child_of(case)
     assert case.node.fence_isolation(case.spec.execution_id) is None
     case.node.ended(first, 0, 1)
     with pytest.raises(base.SpawnFailed, match='generation_unresolved'):

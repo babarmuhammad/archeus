@@ -185,6 +185,8 @@ class IsolationRequest:
     core_only: tuple = ()                # further class 4–6 paths, likewise
     broker: str = ''                     # R3-B: who brokers provider access
     isolated_path: bool = True
+    process_seq: int = 1                 # which process of the execution this is
+    limits: tuple = ()                   # the task's limits as (name, value) pairs
 
     def grant_for(self, row):
         return next((g for g in self.grants if g.row == row), None)
@@ -620,6 +622,9 @@ class Isolation:
         self._plan = plan
         self._jobs = {}                     # execution_id -> job handle (Core's only reference)
         self._live = {}                     # execution_id -> the process launched into the Job
+        #: (execution_id, process_seq) -> the MXC child Core holds, until its end is observed
+        self.children = {}
+        self._reconciled = {}               # ledger journal -> the state last noted for it
         #: persisted records and ledger lines this Core found untrustworthy: key -> why.
         #: Each is noted in the registry once and otherwise left exactly as found.
         self.invalid = {}
@@ -722,16 +727,17 @@ class Isolation:
 
     def request(self, execution_id, *, workspace, grants, mailbox='', response='',
                 sentinel='', spawn_config='', state_dir='', core_state='', core_only=(),
-                broker=''):
+                broker='', process_seq=1, limits=None):
         """The opaque object `base.spawn` uses instead of the detached launcher
         (§3.4: "a new spawn mechanism behind the existing seam")."""
-        return IsolationContext(
+        return getattr(type(self.boundary), 'context', IsolationContext)(
             self, IsolationRequest(execution_id=execution_id, workspace=workspace,
                                    grants=tuple(grants), mailbox=mailbox,
                                    response=response, sentinel=sentinel,
                                    spawn_config=spawn_config, state_dir=state_dir,
                                    core_state=core_state, core_only=tuple(core_only),
-                                   broker=broker))
+                                   broker=broker, process_seq=process_seq,
+                                   limits=tuple((limits or {}).items())))
 
     def request_for(self, spec):
         """The isolated launch of one execution's process, planned from the spec. The
@@ -741,7 +747,8 @@ class Isolation:
                             mailbox=r.mailbox, response=r.response, sentinel=r.sentinel,
                             spawn_config=r.spawn_config, state_dir=r.state_dir,
                             core_state=r.core_state, core_only=r.core_only,
-                            broker=r.broker)
+                            broker=r.broker, process_seq=spec.process_seq,
+                            limits=spec.limits)
 
     def note_failure(self, spec, err):
         """The registry's word for a spawn that never happened (§3.7, O7's
@@ -1147,6 +1154,19 @@ class Isolation:
         with open(quarantine_log(), 'a', encoding='utf-8') as f:
             f.write(json.dumps({'op': 'released', 'execution_id': execution_id,
                                 'at': time.time()}, sort_keys=True) + '\n')
+
+    def reconcile_ledger(self):
+        """The MXC ledger's journals read for ends no Core verified, those of launches
+        this Core is running left alone. Returns the journals whose state is new since
+        the last pass, each noted in the registry once; a boundary with no ledger has none."""
+        if getattr(type(self.boundary), 'reconcile', None) is None:
+            return {}
+        changed = {journal: state for journal, state in self.boundary.reconcile().items()
+                   if self._reconciled.get(journal) != state}
+        for journal, state in changed.items():
+            self._note({'op': 'mxc_reconcile', 'journal': journal, 'state': state})
+        self._reconciled.update(changed)
+        return changed
 
     def reclaim(self, live_execution_ids=()):
         """Boot and every pass (§3.2 Cleanup, §3.7): quarantine retried, and every

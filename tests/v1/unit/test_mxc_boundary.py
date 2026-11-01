@@ -172,7 +172,8 @@ def make(tmp_path, sdk, *, cls=MxcBoundary, outcomes=(), **over):
               schema_validator=lambda raw: True, jobs=jobs, timeout_ms=5000,
               env_rows={'SYSTEMROOT': 'C:\\Windows'},
               outcome=lambda process: api.agent[process.pid],
-              resource_reader=lambda execution_id, owner: True)
+              resource_reader=lambda execution_id, owner: True,
+              process_reader=lambda pid: None)
     kw.update(over)
     return SimpleNamespace(boundary=cls(**kw), jobs=jobs, api=api, ledger=ledger,
                            events=events)
@@ -208,7 +209,7 @@ def test_a_complete_boundary_is_available_once_admission_is_open(tmp_path, sdk, 
 
 
 @pytest.mark.parametrize('missing', ['win32', 'ledger', 'sdk_root', 'pins',
-                                     'schema_validator'])
+                                     'schema_validator', 'process_reader'])
 def test_every_part_is_needed_for_it_to_be_available(tmp_path, sdk, gate, missing):
     assert make(tmp_path, sdk, **{missing: None}).boundary.available() is False
 
