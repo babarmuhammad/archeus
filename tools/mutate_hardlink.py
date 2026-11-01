@@ -18,8 +18,7 @@ MUTATIONS = [
      '        linkscan.check_grants((workspace,) + readonly, staging.StageError)\n', '')],
      [LIVE + 'test_shared_hardlink_gate_refuses']),
     ('HL03', 'launch recheck removed', [(LOCAL,
-     "        linkscan.check_grants(tuple(fs.get('readwritePaths', ()))\n"
-     "                              + tuple(fs.get('readonlyPaths', ())), staging.StageError)\n", '')],
+     "        linkscan.check_grants(grants, staging.StageError)\n", '')],
      [LIVE + 'test_shared_hardlink_gate_refuses']),
     ('HL04', 'scan failure accepted', [(SCAN,
      "            raise error('hardlink scan failed; grant refused') from err",

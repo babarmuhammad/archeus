@@ -19,7 +19,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.a
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import mutate_p11  # noqa: E402
 
-SUITES = ['mutate_p%d' % n for n in range(8, 22)] + ['mutate_p19_5', 'mutate_ap1', 'mutate_t144']
+SUITES = ['mutate_p%d' % n for n in range(8, 22)] + ['mutate_p19_5', 'mutate_ap1', 'mutate_t144'] + [
+    'mutate_hardlink', 'mutate_mxc_job', 'mutate_mxc_ledger', 'mutate_mxc_native', 'mutate_mxc_w32', 'mutate_mxc_wire']
 TS_OK = bool(shutil.which('node')) and os.path.isdir(
     os.path.join(ROOT, 'clients', 'app', 'node_modules', 'typescript'))
 
