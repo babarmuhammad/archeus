@@ -13,6 +13,7 @@ are settled as expired, never replayed (D21), and every OPEN session's
 provider session is looked for.
 """
 
+import calendar
 import logging
 import os
 import time
@@ -178,20 +179,18 @@ class SessionService:
                         launch_seq=s.launch_seq)['won']:
             return {'launched': False, 'reason': 'nothing to launch'}
         a = self.adapters[s.harness_id]
-        first = None
-        if artifact_sha:
-            path = delivery_path(s.cwd, s.id)
-            if not os.path.exists(path):
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, 'wb') as f:
-                    f.write(artifacts.get(artifact_sha))
-            first = opening(s.id, path, what)
-        # a session is launched new exactly once, when it is created; every later
-        # launch follows a resume, which is what `last_request` records
-        spec = SA.SessionSpec(session_id=s.id, cwd=s.cwd, home=home, model=s.model,
-                              effort=s.effort, resume_ref=s.provider_session_ref
-                              if s.last_request else None, opening=first)
         try:
+            first = None
+            if artifact_sha:
+                path = delivery_path(s.cwd, s.id)
+                if not os.path.exists(path):
+                    _deliver(path, artifacts.get(artifact_sha))
+                first = opening(s.id, path, what)
+            # a session is launched new exactly once, when it is created; every later
+            # launch follows a resume, which is what `last_request` records
+            spec = SA.SessionSpec(session_id=s.id, cwd=s.cwd, home=home, model=s.model,
+                                  effort=s.effort, resume_ref=s.provider_session_ref
+                                  if s.last_request else None, opening=first)
             got = a.launch_argv(spec)
             _proc, err = self.node.open_terminal(got.argv, cwd=s.cwd, env=got.env,
                                                  title='Archeus session %s' % s.id)
@@ -213,24 +212,35 @@ class SessionService:
                     and x.entity.provider_session_ref]
         moved = []
         for s in live:
-            a = self.adapters.get(s.harness_id)
-            if a is None or not a.discover().installed:
-                continue                # a harness we cannot ask is not evidence
-            got = a.locate(s.provider_session_ref, self._home(s.account_id), s.cwd)
-            if got is None and s.state == 'OPEN':
-                self._vanish(s, 'the provider session is gone')
-                moved.append((s.id, 'LOST'))
-            elif got is not None and s.state == 'LOST':
-                self._do(S.reappeared, self.system, session_id=s.id,
-                         transcript_path=got.transcript_path)
-                moved.append((s.id, 'OPEN'))
+            try:
+                a = self.adapters.get(s.harness_id)
+                if a is None or not a.discover().installed:
+                    continue                # a harness we cannot ask is not evidence
+                got = a.locate(s.provider_session_ref, self._home(s.account_id), s.cwd)
+                if got is None and s.state == 'OPEN':
+                    self._vanish(s, 'the provider session is gone')
+                    moved.append((s.id, 'LOST'))
+                elif got is not None and s.state == 'LOST':
+                    self._do(S.reappeared, self.system, session_id=s.id,
+                             transcript_path=got.transcript_path)
+                    moved.append((s.id, 'OPEN'))
+            except Exception as err:        # one session that cannot be asked ends nothing
+                log.warning('session %s: %s', s.id, err)
         return {'expired': expired, 'moved': moved}
+
+
+def _deliver(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(data)
+    os.replace(tmp, path)
 
 
 def _epoch(iso):
     if not iso:
         return 0.0
     try:
-        return time.mktime(time.strptime(iso, '%Y-%m-%dT%H:%M:%SZ')) - time.timezone
+        return float(calendar.timegm(time.strptime(iso, '%Y-%m-%dT%H:%M:%SZ')))
     except ValueError:
         return 0.0

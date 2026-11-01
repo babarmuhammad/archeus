@@ -152,7 +152,7 @@ class ClaudeCodeSessions:
 
     def locate(self, ref, home, cwd):
         from claude_sessions import paths, store, transcripts
-        if not ref:
+        if not ref or os.path.basename(ref) != ref:
             return None
         try:
             folder = store.project_folder(self._home(home), paths.encode_component(cwd))
