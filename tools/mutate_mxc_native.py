@@ -107,6 +107,19 @@ MUTATIONS = [
      "            if False:\n"
      "                raise MxcUnavailable('launcher closed during drain')")],
      [TEST + 'test_a_drain_released_after_its_launch_was_closed_touches_no_closed_handle']),
+    # review fixes 1-6 (fix batch 10)
+    ('N25', 'two closers each release the policy lease', [(NATIVE,
+     "        with self._lock:                # two closers must not release one lease twice\n"
+     "            lease, self._policy_lease = self._policy_lease, None\n"
+     "        try:\n"
+     "            if lease is not None:\n"
+     "                self.api.remove_policy(*lease)\n",
+     "        lease = self._policy_lease\n"
+     "        try:\n"
+     "            if lease is not None:\n"
+     "                self.api.remove_policy(*lease)\n"
+     "                self._policy_lease = None\n")],
+     [TEST + 'test_two_closers_release_the_policy_lease_once']),
 ]
 
 

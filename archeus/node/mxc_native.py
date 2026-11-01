@@ -220,10 +220,11 @@ class Process:
             except Exception as err:
                 failed = failed or err
         self.stdin.close()
+        with self._lock:                # two closers must not release one lease twice
+            lease, self._policy_lease = self._policy_lease, None
         try:
-            if self._policy_lease is not None:
-                self.api.remove_policy(*self._policy_lease)
-                self._policy_lease = None
+            if lease is not None:
+                self.api.remove_policy(*lease)
         finally:
             if failed is not None:
                 raise failed

@@ -451,6 +451,32 @@ def test_a_drain_released_after_its_launch_was_closed_touches_no_closed_handle()
     assert seen[mark:] == []
 
 
+def test_two_closers_release_the_policy_lease_once():
+    """The drain's failure path and a canceller close one launcher together: the lease
+    handle is released by exactly one of them, a closed number may name another object."""
+    api = FakeWin32()
+    _, child = create(api)
+    removed, inside, release = [], threading.Event(), threading.Event()
+    real = api.remove_policy
+
+    def slow(path, handle):
+        removed.append(handle)
+        inside.set()
+        release.wait(5)
+        real(path, handle)
+
+    api.remove_policy = slow
+    first = threading.Thread(target=child.close)
+    first.start()
+    assert inside.wait(5)
+    second = threading.Thread(target=child.close)
+    second.start()
+    second.join(5)                      # the second finds no lease left and returns
+    release.set()
+    first.join(5)
+    assert len(removed) == 1
+
+
 def test_interrupt_during_spawn_still_kills_the_suspended_launcher(monkeypatch):
     api = FakeWin32()
     transport, policy, _ = setup(api)
