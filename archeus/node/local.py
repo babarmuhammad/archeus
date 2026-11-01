@@ -16,6 +16,7 @@ time through the P0.5 seam `proc.process_create_time`.
 import functools
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -221,6 +222,9 @@ class MxcLaunch:
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
                  end_job=None, watchdog=None):
+        if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
+                or quiescence_wait < 0):
+            raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
         if workload_reader is not None and not (callable(workload_reader)
                                                 and callable(workload_expected)):
             raise staging.StageError('a workload reader needs the identity this launch issued')
@@ -264,13 +268,13 @@ class MxcLaunch:
         self.process, self.job = None, None
         self.launcher_exit, self.completed, self.end_state = None, None, None
         self._started = self._ended = False
-        self._end_lock = threading.Lock()
+        self._end_lock = threading.RLock()   # a callback that cancels again is told nothing new
         self._digest = None
 
     # ── the journalled start ──
 
     def start(self, *, job):
-        if self._started:
+        if self._started or self._ended:
             raise staging.StageError('MXC launch already consumed')
         if job is None:
             raise staging.StageError('MXC requires a Core-held Job')
@@ -306,6 +310,9 @@ class MxcLaunch:
         try:
             self._record_intent()                     # (1) durable before anything is created
             self.process = self.backend.spawn(self.policy, exe=exe, job=job, **self._seam())
+            if self._ended:                           # cancel() ran while the child was made
+                self.process.terminate()
+                raise staging.StageError('MXC launch was ended while it started')
         except BaseException:
             # whatever got created is ended here, and the fault is the caller's to report
             self._end(reason='launch failed', outcome=None)
@@ -347,6 +354,8 @@ class MxcLaunch:
         or the process."""
         if self.ledger is None:
             return
+        if self._ended:
+            raise staging.StageError('MXC launch was ended before it resumed')
         record = self._resource_record(child)
         self._separate(record)
         self.ledger.append(self.execution_id, 'ownership', pid=child.pid,
@@ -470,7 +479,8 @@ class MxcLaunch:
 
     def cancel(self, *, reason='cancelled', outcome=None):
         """Stop an execution and say how far the stop was verified. Idempotent: a second
-        call reports the first ending instead of ending anything twice."""
+        call reports the first ending instead of ending anything twice (from another
+        thread, once that ending is over; from one of its own callbacks, None)."""
         return self._end(reason=reason, outcome=outcome)
 
     # ── the ending, in the order the audit froze (audit §2 'Cancellation') ──
@@ -534,7 +544,7 @@ class MxcLaunch:
         if count is None:
             self._quiet_why = 'the boundary supplies no Job process count'
             raise OSError(self._quiet_why)
-        limit = self.clock() + self.quiescence_wait
+        limit = self._now() + self.quiescence_wait
         while True:
             try:
                 n = count(self.job)
@@ -543,10 +553,17 @@ class MxcLaunch:
                 raise
             if type(n) is int and n == 0:
                 return True
-            if self.clock() >= limit:
+            if self._now() >= limit:
                 self._quiet_why = 'the Job answered %r, not zero members' % (n,)
                 return False
             self.pause(MXC_QUIESCENCE_POLL_S)
+
+    def _now(self):
+        now = self.clock()
+        if type(now) not in (int, float) or not math.isfinite(now):
+            self._quiet_why = 'the clock gave no usable reading'
+            raise OSError(self._quiet_why)
+        return now
 
     def _read_back_step(self, execution):
         """True only when the injected reader verified every owned resource absent: it
@@ -625,9 +642,11 @@ class MxcLaunch:
         """The evidence that an end was not verified. The quarantine is written once, and
         a quarantine that cannot be written never turns an unverified end into a clean
         one: the state stays DEAD_UNVERIFIED either way."""
-        if self.ledger is None or self._quarantined():
+        if self.ledger is None:
             return
         try:
+            if self._quarantined():
+                return
             self.ledger.append(self.execution_id, 'quarantine',
                                reason=str(why)[:200] or 'end unverified')
         except Exception:

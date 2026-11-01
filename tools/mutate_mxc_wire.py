@@ -28,6 +28,7 @@ R = 'tests/v1/unit/test_mxc_wire_resources.py::'
 C = 'tests/v1/unit/test_mxc_wire_cancel.py::'
 D = 'tests/v1/unit/test_mxc_wire_watchdog.py::'
 U = 'tests/v1/unit/test_mxc_wire_dupstart.py::'
+V = 'tests/v1/unit/test_mxc_wire_review.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -72,9 +73,9 @@ MUTATIONS = [
      [W + 'test_ending_follows_the_audited_order',
       W + 'test_a_verified_end_records_the_workload_outcome']),
     ('W07', 'the Job is closed before its count is read', [(LOCAL,
-     "        limit = self.clock() + self.quiescence_wait",
+     "        limit = self._now() + self.quiescence_wait",
      "        self.boundary.close_job(self.job)\n"
-     "        limit = self.clock() + self.quiescence_wait")],
+     "        limit = self._now() + self.quiescence_wait")],
      [W + 'test_the_count_is_read_through_an_open_handle_and_a_clean_end_is_reachable',
       W + 'test_ending_follows_the_audited_order']),
     ('W08', 'a second cancel ends the execution twice', [(LOCAL,
@@ -208,6 +209,29 @@ MUTATIONS = [
      "                    _MXC_CLAIMS.discard(claim)", "                    pass")],
      [U + 'test_a_failing_intent_write_leaves_no_journal_and_frees_the_id',
       U + 'test_a_start_that_cannot_read_the_ledger_frees_the_id']),
+    ('W37', 'a clock reading that is not finite is believed', [(LOCAL,
+     "        if type(now) not in (int, float) or not math.isfinite(now):", "        if False:")],
+     [V + 'test_a_clock_with_no_usable_reading_never_proves_quiescence']),
+    ('W38', 'a cancelled launch is still resumed', [(LOCAL,
+     "        if self._ended:\n            raise staging.StageError('MXC launch was ended before "
+     "it resumed')",
+     "        if False:\n            raise staging.StageError('MXC launch was ended before "
+     "it resumed')")],
+     [V + 'test_a_cancel_that_lands_before_the_resume_stops_the_resume']),
+    ('W39', 'a child that outlived a cancel during its start keeps running', [(LOCAL,
+     "            if self._ended:                           # cancel() ran while the child "
+     "was made",
+     "            if False:")],
+     [V + 'test_a_cancel_that_lands_after_the_resume_terminates_the_child']),
+    ('W40', 'a callback that cancels again deadlocks the ending', [(LOCAL,
+     "self._end_lock = threading.RLock()", "self._end_lock = threading.Lock()")],
+     [V + 'test_a_callback_that_cancels_again_does_not_deadlock_the_ending']),
+    ('W41', 'a ledger that cannot be read at the end leaves the launch never ended', [(LOCAL,
+     "        except Exception:\n            pass                                       # the "
+     "ledger keeps what it could",
+     "        except ZeroDivisionError:\n            pass                                       "
+     "# the ledger keeps what it could")],
+     [V + 'test_a_ledger_that_cannot_be_read_at_the_end_still_ends_the_launch']),
 ]
 
 
