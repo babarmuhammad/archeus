@@ -94,12 +94,12 @@ class Transport:
             created = self.api.creation_time(process)
             if type(created) is not int or created <= 0:
                 raise MxcUnavailable('invalid launcher creation time')
-            child = Process(self, process, thread, pid, created,
-                            tuple(pair[0] for pair in pairs), (path, lease),
-                            policy.raw['process']['timeout'] / 1000)
             for handle in inherited:
                 self.api.close_handle(handle)
                 handles.remove(handle)
+            child = Process(self, process, thread, pid, created,
+                            tuple(pair[0] for pair in pairs), (path, lease),
+                            policy.raw['process']['timeout'] / 1000)
             handles.clear()
             return child
         except BaseException:
