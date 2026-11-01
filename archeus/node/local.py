@@ -1040,8 +1040,10 @@ class LocalNode:
         try:
             names = os.listdir(box)
         except FileNotFoundError:
+            _ANSWERED.pop(execution_id, None)
             return []
-        out = []
+        out, seen, kept = [], _ANSWERED.get(execution_id, {}), {}
+        settled = time.time_ns() - 2 * 10**9
         for n in names:
             head, _, tail = n.partition('.')
             # a name is the sequence number as respond() writes it: the execution picks
@@ -1049,13 +1051,28 @@ class LocalNode:
             if tail != 'req.json' or not (head.isascii() and head.isdigit()
                                           and head == str(int(head))):
                 continue
-            body = _read_object(os.path.join(box, n))
+            req_path = os.path.join(box, n)
+            res_path = os.path.join(paths.res, '%s.res.json' % head)
+            # Core never deletes an answer, so every tick would re-read every pair it ever
+            # answered: a pair whose two files are as they were when it was seen answered
+            # is skipped on a stat. The stat comes before the read, so a file rewritten
+            # between them is read again on the next tick; and a pair is remembered only
+            # once its files are older than the clock's resolution, as git does for the
+            # index, so a rewrite within one tick of the stamp cannot keep the old one.
+            stamp = (_stamp(req_path), _stamp(res_path))
+            if None not in stamp and seen.get(head) == stamp:
+                kept[head] = stamp
+                continue
+            body = _read_object(req_path)
             # a number is reused once the execution empties req/, so an answer counts
             # only when it echoes this request's nonce
-            res = _read_object(os.path.join(paths.res, '%s.res.json' % head))
+            res = _read_object(res_path)
             if res is not None and res.get('nonce') == (body or {}).get('nonce'):
+                if all(x is not None and x[0] < settled for x in stamp):
+                    kept[head] = stamp
                 continue
             out.append((int(head), body))
+        _ANSWERED[execution_id] = kept
         return sorted(out, key=lambda x: x[0])
 
     @staticmethod
@@ -1652,12 +1669,27 @@ class LocalNode:
         return work
 
 
+#: execution id -> {sequence: (request stamp, answer stamp)} of the pairs `pending_requests`
+#: last found answered; rebuilt on every call, so it holds only what is on disk now
+_ANSWERED = {}
+
+
+def _stamp(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size, st.st_ino
+
+
 def _read_object(path):
     """The JSON object at *path*, or None. The file is execution-writable and Core
-    re-reads it every tick: more than MAX_REQUEST_BYTES is refused before it is parsed."""
+    re-reads it every tick: more than MAX_REQUEST_BYTES is refused before it is parsed,
+    and the read is never asked for more than the file holds."""
     try:
+        size = os.stat(path).st_size
         with open(path, 'rb') as f:
-            data = f.read(MAX_REQUEST_BYTES + 1)
+            data = f.read(min(size, MAX_REQUEST_BYTES) + 1)
         body = json.loads(data.decode('utf-8')) if len(data) <= MAX_REQUEST_BYTES else None
     except (OSError, ValueError, RecursionError):   # a deep `[[[...` is a file, not a crash
         return None

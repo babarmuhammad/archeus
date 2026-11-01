@@ -1081,6 +1081,73 @@ def test_a_response_past_the_size_bound_does_not_answer_a_request(monkeypatch):
     assert LocalNode.pending_requests(eid) == [(1, {'nonce': 'n'})]
 
 
+def _answered_pairs(n):
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    for seq in range(1, n + 1):
+        body = {'tool': 'Read', 'nonce': 'n%d' % seq}
+        with open(os.path.join(p.req, '%d.req.json' % seq), 'w', encoding='utf-8') as f:
+            json.dump(body, f)
+        LocalNode.respond(eid, seq, body, 'allow')
+    old = time.time() - 60          # a pair is remembered only once it is older than the clock tick
+    for box in (p.req, p.res):
+        for n in os.listdir(box):
+            os.utime(os.path.join(box, n), (old, old))
+    return eid, p
+
+
+def test_an_answered_pair_is_not_read_again_on_every_tick(monkeypatch):
+    """Core never deletes an answer, so re-reading each answered pair made a tick cost
+    the execution's whole history: 2 s a tick at 100 answered requests."""
+    eid, p = _answered_pairs(30)
+    assert LocalNode.pending_requests(eid) == []
+    monkeypatch.setattr(local, '_read_object', lambda path: pytest.fail('read %s' % path))
+    assert LocalNode.pending_requests(eid) == []
+
+
+def test_an_answered_pair_that_changed_on_disk_is_judged_again():
+    eid, p = _answered_pairs(2)
+    assert LocalNode.pending_requests(eid) == []
+    req = os.path.join(p.req, '1.req.json')
+    before = os.stat(req)
+    with open(req, 'r+', encoding='utf-8') as f:       # same size, same file: only the time moves
+        text = f.read().replace('n1', 'x1')
+        f.seek(0)
+        f.write(text)
+    os.utime(req, ns=(before.st_atime_ns, before.st_mtime_ns + 10**9))
+    assert os.stat(req).st_size == before.st_size
+    assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Read', 'nonce': 'x1'})]
+    os.remove(os.path.join(p.res, '2.res.json'))
+    assert [s for s, _ in LocalNode.pending_requests(eid)] == [1, 2]
+
+
+def test_a_file_is_read_for_the_bytes_it_holds_not_for_the_bound(monkeypatch):
+    """`read(MAX_REQUEST_BYTES + 1)` allocates the whole bound for every file read."""
+    eid, p = _answered_pairs(1)
+    reads, real_open = [], open
+
+    class Counted:
+        def __init__(self, f):
+            self.f = f
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+        def read(self, n=-1):
+            reads.append(n)
+            return self.f.read(n)
+
+    monkeypatch.setattr(local, 'open', lambda *a, **k: Counted(real_open(*a, **k)), raising=False)
+    assert LocalNode.pending_requests(eid) == []
+    size = max(os.path.getsize(os.path.join(d, n)) for d, n in ((p.req, '1.req.json'),
+                                                                (p.res, '1.res.json')))
+    assert reads and all(n <= size + 1 for n in reads)
+
+
 def test_a_deeply_nested_request_or_answer_is_unreadable_not_a_crash_of_core():
     """`[[[...` 100k deep is 200 KB, far under the size bound, and json.loads raises
     RecursionError on it, which left the exec loop and exited Core on every restart."""

@@ -215,7 +215,7 @@ MUTATIONS = [
      [U + '::test_a_request_past_the_size_bound_is_unreadable_and_never_parsed',
       U + '::test_a_response_past_the_size_bound_does_not_answer_a_request']),
     ('X39', 'a request file is read whole', [(NODE,
-     'data = f.read(MAX_REQUEST_BYTES + 1)', 'data = f.read()')],
+     'data = f.read(min(size, MAX_REQUEST_BYTES) + 1)', 'data = f.read()')],
      [U + '::test_a_request_past_the_size_bound_is_unreadable_and_never_parsed']),
     # -- a restart's reconciliation never raises (fix batch 6) --
     ('X40', 'a spawned, unrecorded, exited INTENT ended without being recorded started',
@@ -253,6 +253,21 @@ MUTATIONS = [
      "            except (ValueError, RecursionError):    # `[[[...` 100k deep is a stderr line, not a crash",
      "            except ValueError:")],
      [AC + '::test_a_deeply_nested_stream_line_is_a_stderr_event_not_a_crash_of_core']),
+    ('X46', 'every answered pair is read again on every tick', [(NODE,
+     "            if None not in stamp and seen.get(head) == stamp:",
+     "            if False:")],
+     [U + '::test_an_answered_pair_is_not_read_again_on_every_tick']),
+    ('X47', 'an answered pair is skipped though its request changed in place', [(NODE,
+     "    return st.st_mtime_ns, st.st_size, st.st_ino", "    return st.st_size, st.st_ino")],
+     [U + '::test_an_answered_pair_that_changed_on_disk_is_judged_again']),
+    ('X48', 'a pair answered within the clock tick is remembered', [(NODE,
+     "                if all(x is not None and x[0] < settled for x in stamp):",
+     "                if all(x is not None for x in stamp):")],
+     [U + '::test_an_answer_to_an_earlier_request_with_the_same_number_does_not_answer_a_new_one']),
+    ('X49', 'a file is read for the whole bound, not the bytes it holds', [(NODE,
+     "            data = f.read(min(size, MAX_REQUEST_BYTES) + 1)",
+     "            data = f.read(MAX_REQUEST_BYTES + 1)")],
+     [U + '::test_a_file_is_read_for_the_bytes_it_holds_not_for_the_bound']),
 ]
 
 
