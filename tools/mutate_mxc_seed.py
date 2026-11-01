@@ -114,6 +114,10 @@ MUTATIONS = [
      '        return (self.node.seed_workspace(project_id, e.id, base, branch, workdirs=workdirs),\n'
      '                branch, base)',
      '        return (root, branch, base)')], [CHAIN, FIRST]),
+    ('MS25', 'a seeded name is checked only for its shape, not for git or device names', [(SEED,
+     "        if refused_component(part):\n            raise SeedError('refused path segment: %s' % value)",
+     "        if part in ('', '.'):\n            raise SeedError('refused path segment: %s' % value)")],
+     [T + 'test_a_name_git_or_windows_treats_specially_is_never_seeded_or_imported']),
 ]
 
 

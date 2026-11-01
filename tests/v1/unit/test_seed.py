@@ -28,12 +28,12 @@ ESCAPES = [
     ('./x', 'refused path segment'),
     ('a//b', 'refused path segment'),
     ('a/', 'refused path segment'),
-    ('file.', 'trailing dot or space'),
-    ('file ', 'trailing dot or space'),
-    ('dir./x', 'trailing dot or space'),
+    ('file.', 'refused path segment'),
+    ('file ', 'refused path segment'),
+    ('dir./x', 'refused path segment'),
     ('x/./y', 'refused path segment'),
-    ('...', 'trailing dot or space'),
-    (' ', 'trailing dot or space'),
+    ('...', 'refused path segment'),
+    (' ', 'refused path segment'),
 ]
 REMOVALS = ('remove', 'unlink', 'rmdir', 'removedirs', 'replace', 'rename')
 
@@ -561,6 +561,32 @@ def test_import_back_alias_source_refused(tmp_path, monkeypatch):
         seed.import_back(root, ['one.txt'], dest, scan)
     assert 'an alias, never followed: one.txt' in str(err.value)
     assert not dest.exists()
+
+
+REFUSED_NAMES = ['.git/config', '.GIT/hooks/post-checkout', 'GIT~1/config', 'a/.git/x', 'CONIN$',
+                 'COM1', 'LPT1', 'aux.txt', 'x/NUL', 'nul', 'con.log', 'a/b.', 'a ']
+
+
+@pytest.mark.parametrize('rel', REFUSED_NAMES)
+def test_a_name_git_or_windows_treats_specially_is_never_seeded_or_imported(tmp_path, rel):
+    """`.git/config` and `GIT~1/hooks/...` would carry hostile git config into a workspace
+    Core's git later runs in; device names reach a device, not a file (review R7)."""
+    src = source_tree(tmp_path, {'one.txt': b'x'}, name='src')
+    scan, _ = scan_ok()
+    with pytest.raises(seed.SeedError, match='refused path segment'):
+        seed.seed_copy({rel: src / 'one.txt'}, tmp_path / 'seed', scan)
+    with pytest.raises(seed.SeedError, match='refused path segment'):
+        seed.import_back(src, [rel], tmp_path / 'imported', scan)
+    assert not (tmp_path / 'seed').exists() and not (tmp_path / 'imported').exists()
+
+
+def test_the_control_names_that_only_look_like_those_are_seeded(tmp_path):
+    names = {'gitignore': b'a', 'git/config': b'b', 'console.txt': b'c', 'com10': b'd',
+             '.gitignore': b'e', 'dot.git/x': b'f'}
+    src = source_tree(tmp_path, names, name='src')
+    scan, _ = scan_ok()
+    seed.seed_copy({rel: src / rel for rel in names}, tmp_path / 'seed', scan)
+    assert (tmp_path / 'seed' / 'git' / 'config').read_bytes() == b'b'
 
 
 @pytest.mark.parametrize('kind,token', [

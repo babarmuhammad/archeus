@@ -16,6 +16,8 @@ import hashlib
 import os
 import stat
 
+from ..infra.paths import refused_component
+
 _CHUNK = 1 << 20
 _REPARSE = 0x400
 _KINDS = {True: ('directory', (stat.S_IFDIR,)), False: ('file', (stat.S_IFREG,)),
@@ -36,10 +38,8 @@ def _rel(value):
     for part in value.split('/'):
         if part == '..':
             raise SeedError('parent segment: %s' % value)
-        if part == '' or part == '.':
+        if refused_component(part):
             raise SeedError('refused path segment: %s' % value)
-        if part != part.rstrip(' .'):
-            raise SeedError('trailing dot or space: %s' % value)
     return value
 
 
