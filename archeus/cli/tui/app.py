@@ -37,7 +37,7 @@ class App:
         self.status = None                  # (text, until_ms, error)
         self.mode = None                    # prompt / confirm / help / picker
         self.ui = {}                        # per-screen view state (never Core's state)
-        self.keys = {}                      # action ident -> the idempotency key to use next
+        self.keys = {}                      # action ident -> (its values, the key to use next)
         self.settle_at = None
         self.quit = False
         self.dirty = True
@@ -231,7 +231,7 @@ class App:
         elif m['kind'] == 'help':
             box = self.help_lines()
         elif m['kind'] == 'picker':
-            box = [self.st.paint('Go to, or tell Archeus', 'text', bold=True), ': ' + m['q']]
+            box = [self.st.paint('Go to, or tell Archeus', 'text', bold=True), ': ' + clean(m['q'])]
             for i, (label, _t) in enumerate(m['hits'][:max(1, height - 6)]):
                 box.append((self.st.paint('› ', 'focus') if i == m['i'] else '  ')
                            + self.st.paint(clean(label)))
@@ -444,7 +444,11 @@ class App:
     def execute(self, act, values):
         """Send once; retry once with the same key only when Core asks; never
         assume the result — every read the command may have changed is read again."""
-        key = self.keys.get(act['ident']) or S.new_key()
+        why = self.why_not(act)         # the connection may have changed since it was pressed
+        if why:
+            return self.say(why, error=True)
+        last = self.keys.get(act['ident'])
+        key = last[1] if last and last[0] == values else S.new_key()
         outcome = 'ok'
         try:
             try:
@@ -460,7 +464,7 @@ class App:
             outcome = 'network' if e.code == 'network' else 'refused'
             self.say(S.explain(e.refusal()), error=True)
         finally:
-            self.keys[act['ident']] = S.key_after(key, outcome)
+            self.keys[act['ident']] = (values, S.key_after(key, outcome))
             for p in act['reread']:
                 self.invalidate(lambda x, p=p: x == p or x.startswith(p + '/')
                                 or x.startswith(p + '?'))
