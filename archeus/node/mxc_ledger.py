@@ -162,7 +162,8 @@ class Ledger:
                 raise OSError('ledger initialization failed')
         with open(path, 'rb') as stream:
             data = stream.read()
-        records, invalid = read_records(data, execution_id)
+        torn = op == 'quarantine' and bool(data) and not data.endswith(b'\n')
+        records, invalid = read_records(data + b'\n' if torn else data, execution_id)
         if invalid and op != 'quarantine':
             raise ValueError('corrupt ledger requires quarantine')
         ops = [r['op'] for r in records]
@@ -176,7 +177,7 @@ class Ledger:
         _validate(record, records)
         encoded = _line(record)
         with open(path, 'ab') as stream:
-            if data and not data.endswith(b'\n'):
+            if torn:
                 stream.write(b'\n')
             stream.write(encoded)
             stream.flush()
