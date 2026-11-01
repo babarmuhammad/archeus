@@ -1064,8 +1064,9 @@ class LocalNode:
         config.write_json_atomic(
             os.path.join(paths.res, '%d.res.json' % seq),
             {'decision': decision, 'reason': reason,
-             'nonce': request and request.get('nonce'),
-             'digest': request and hook.request_digest(request)}, indent=None)
+             'nonce': None if request is None else request.get('nonce'),
+             'digest': None if request is None else hook.request_digest(request)},
+            indent=None)
 
     # ── git reads the boundary checks need (outside any transaction) ──
 

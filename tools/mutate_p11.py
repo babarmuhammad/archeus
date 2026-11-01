@@ -238,6 +238,10 @@ MUTATIONS = [
        "        if False:\n"
        "            self.node.kill_identity(handle)")],
      [B6 + '::test_a_live_row_with_an_unregistered_harness_ends_with_a_reason_and_never_raises']),
+    ('X43', 'an empty request answered with an answer that never matches it',
+     [(NODE, "'nonce': None if request is None else request.get('nonce'),",
+       "'nonce': request and request.get('nonce'),")],
+     [B6 + '::test_a_falsy_request_is_answered_once_not_on_every_pass']),
 ]
 
 

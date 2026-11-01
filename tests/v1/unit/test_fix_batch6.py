@@ -3,12 +3,15 @@ through the state machine, never raise out of a pass or a boot (F-A); a live row
 harness is not registered is ended with a recorded reason, never a KeyError (F-B).
 Real database, fake node and adapter, as test_gaps_core_execution_manager.py builds them."""
 
+import os
 from types import SimpleNamespace
 
 import pytest
 
-from archeus.core.domain import entities
+from archeus.core.domain import entities, ids
 from archeus.harnesses.registry import PolicyStubError
+from archeus.infra import paths
+from archeus.node.local import LocalNode
 from v1.unit.test_gaps_core_execution_manager import Adapter, _row, _seed
 
 _PID = {'pid': 4242, 'create_time': 7.5, 'process_seq': 1}
@@ -118,3 +121,15 @@ def test_a_stubbed_policy_refusal_is_treated_as_an_unserved_harness():
         rig.db.close()
 
 
+
+
+@pytest.mark.parametrize('body', ['{}', '{"nonce": 0}', '{"nonce": ""}'])
+def test_a_falsy_request_is_answered_once_not_on_every_pass(body):
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        f.write(body)
+    ((seq, request),) = LocalNode.pending_requests(eid)
+    LocalNode.respond(eid, seq, request, 'halt', 'x')
+    assert LocalNode.pending_requests(eid) == []        # was [(1, {})]: re-answered forever
