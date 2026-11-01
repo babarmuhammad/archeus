@@ -479,6 +479,20 @@ def test_a_malformed_model_cache_leaves_claude_its_family_aliases(monkeypatch):
     assert {m.id for m in real.claude_models()} == set(real.CLAUDE_TIERS)
 
 
+@pytest.mark.parametrize('caller', [real.ClaudeCodeCaller, real.PiCaller])
+def test_an_exit_zero_with_no_output_is_a_failed_call(monkeypatch, tmp_path, caller):
+    """T-648#R8: Core took it as an answer and later ended it invalid, dropping the reason."""
+    _, res = _call(monkeypatch, tmp_path, caller(), stdout='   ')
+    assert (res.error, res.detail) == ('failed', 'the call produced no output')
+
+
+def test_an_error_envelope_with_exit_zero_is_a_failed_call(monkeypatch, tmp_path):
+    """T-648#R8: an envelope that says is_error is not the answer, whatever the exit code."""
+    _, res = _call(monkeypatch, tmp_path, real.ClaudeCodeCaller(),
+                   stdout=json.dumps({'is_error': True, 'result': 'credit balance is too low'}))
+    assert (res.error, res.detail) == ('failed', 'credit balance is too low')
+
+
 class _Child:
     returncode = 0
 

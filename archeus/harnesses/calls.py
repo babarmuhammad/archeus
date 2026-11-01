@@ -52,7 +52,7 @@ def _failed(r):
         return base.CallResult(error='timeout', detail=r.error)
     if r.returncode is None:
         return base.CallResult(error='unavailable', detail=r.error)
-    why = r.reason or r.error
+    why = r.reason or r.error or ('' if r.returncode else 'the call produced no output')
     if _MODEL_REFUSED.search(why or '') and _MODEL_WHY.search(why or ''):
         return base.CallResult(error='model_unavailable', detail=why)
     return base.CallResult(error='failed', detail=why)
@@ -114,7 +114,7 @@ class ClaudeCodeCaller:
                                                   llmcall.budget_args(), extra)
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir, env=env,
                                  timeout=spec.limits.get('timeout_s', 600))
-        if r.returncode != 0:
+        if r.returncode != 0 or not r.stdout.strip():
             return _failed(r)
         try:
             envelope = json.loads(r.stdout)
@@ -122,6 +122,9 @@ class ClaudeCodeCaller:
             # stderr is merged into stdout (llmcall.run_headless): a warning line ahead of the
             # envelope must not cost its usage and cost
             envelope = llmcall.parse_json(r.stdout) if spec.schema is not None else None
+        if isinstance(envelope, dict) and envelope.get('is_error') is True:
+            return base.CallResult(error='failed', detail=str(envelope.get('result') or
+                                                              'the call reported an error')[:500])
         raw = json.dumps(envelope) if isinstance(envelope, dict) else r.stdout
         parsed = llmcall.unwrap_structured(raw)[0] if spec.schema is not None else None
         usage = _usage(envelope)
@@ -173,7 +176,7 @@ class PiCaller:
         r = llmcall.run_headless(args, stdin, cwd=spec.workdir,
                                  env=_env(spec.account.home_ref, self.id),
                                  timeout=spec.limits.get('timeout_s', 600))
-        if r.returncode != 0:
+        if r.returncode != 0 or not r.stdout.strip():
             return _failed(r)
         return base.CallResult(text=r.stdout,
                                parsed=llmcall.parse_json(r.stdout) if spec.schema is not None else None)
