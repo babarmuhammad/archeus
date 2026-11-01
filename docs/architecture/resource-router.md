@@ -93,6 +93,18 @@ implemented):* under PV-20 a further condition precedes every rule above, whatev
 class — a harness is eligible for production dispatch only if its executions launch inside the
 PV-20 execution identity and Core-held Job. A harness sandbox is an inner layer, never a substitute,
 and no harness has an exception. Fake and test harnesses are not production-dispatchable.
+*Amended 2026-11-01 to match the code (owner ruling; the docs follow the code): the router and the
+registry do not enforce that sentence, they exempt the fake harness.* What the code does: the
+fake harness is recognised by class identity (`type(adapter) is FakeHarness`, scripted callers by
+`is_fake_caller`), and that one class skips the P9 stub-policy gate in `harnesses/registry.py`,
+the `provider_terms` router step (the `exempt` flag set in `core/application/resources.py`) and
+`terms_permit`. The router has no production-dispatch condition of its own. The only enforcement
+of "fake and test harnesses are not production-dispatchable" is on the PV-20 isolation side, in
+`node/isolation.py`: `Isolation.requested()` never isolates a real harness while
+`PRODUCTION_DISPATCH_ENABLED` is False, and a harness whose id starts `fake` or `test`, or that sets
+`test_harness`, is the only kind it isolates. `a4_eligibility()` lists such a harness as unmet on
+`production_dispatch`, but it is built and not enforced (`A4_ENFORCED` is False), and nothing on
+the dispatch path calls it.
 `archeus_call` is not an execution; it stays outside dispatch only while it takes
 execution-influenced content as prompt data alone (ADR-0053 §7 A3, deputy rule).
 
