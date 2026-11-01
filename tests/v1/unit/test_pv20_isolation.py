@@ -362,7 +362,8 @@ class TestZeroCapability:
     def test_no_network_capability_sid_present(self, tmp_path):
         a, b, req, _ = authority(tmp_path)
         rec = a.establish(req)
-        assert not (set(rec.capabilities) & set(iso.NETWORK_CAPABILITY_SIDS))
+        assert iso.NETWORK_CAPABILITY_SIDS            # a gate over nothing passes
+        assert set(rec.capabilities) & set(iso.NETWORK_CAPABILITY_SIDS) == set()
 
 
 # ── item 7 + the §3.4 invariant: each condition fails closed on its own ───────
@@ -835,18 +836,21 @@ class TestVerifierPrincipal:
         ('job', _EID, 0)])
     def test_a_cross_kind_or_malformed_principal_is_refused_at_construction(
             self, kind, owner, attempt):
-        with pytest.raises(iso.IsolationUnavailable):
+        with pytest.raises(iso.IsolationUnavailable) as err:
             iso.Principal(kind, owner, attempt)
+        assert err.value.reason == 'profile_name'
 
     @pytest.mark.parametrize('key', [
         'verify/%s.01' % _VID, 'verify/%s.' % _VID, 'verify/%s' % _VID,
         'verify/%s.\u00b2' % _VID, 'verify/%s.0' % _EID, 'verify/../%s.0' % _VID,
         'verify/%s.%d' % (_VID, iso.MAX_ATTEMPT), 'exe_not-an-id'])
     def test_a_malformed_key_names_no_principal_profile_or_record(self, key):
-        with pytest.raises(iso.IsolationUnavailable):
+        with pytest.raises(iso.IsolationUnavailable) as err:
             iso.principal(key)
-        with pytest.raises(iso.IsolationUnavailable):
+        assert err.value.reason == 'profile_name'
+        with pytest.raises(iso.IsolationUnavailable) as err:
             iso.validated_profile(key)
+        assert err.value.reason == 'profile_name'
         with pytest.raises(ValueError):
             isolation_state(key)
 
@@ -1609,7 +1613,6 @@ class TestLostIsolationRecord:
 class TestA4:
     def test_a4_is_built_but_not_enforced(self):
         assert iso.a4_enforced() is False
-        assert callable(iso.a4_eligibility)
         assert iso.A4_CONDITIONS == ('production_dispatch', 'pv20_identity', 'core_held_job',
                                      'sandbox_inner_layer', 'no_harness_exception',
                                      'evidence_from_path')
@@ -1617,7 +1620,7 @@ class TestA4:
     def test_a4_fails_closed_on_missing_facts(self):
         ok, unmet = iso.a4_eligibility(harness_id='real-agent')
         assert ok is False
-        assert unmet                                     # every unknown fact is unmet
+        assert unmet == iso.A4_CONDITIONS[1:]            # every unknown fact is unmet
 
     def test_a4_fails_for_test_harness(self):
         ok, unmet = iso.a4_eligibility(harness_id='fake-x', isolated_launch=True,
@@ -2861,8 +2864,9 @@ class TestOwnershipRecovery:
     def test_a_create_that_failed_deletes_nothing(self, tmp_path):
         a, b, req, _ = authority(tmp_path)
         b.create_fail = 'profile_create'
-        with pytest.raises(iso.IsolationUnavailable):
+        with pytest.raises(iso.IsolationUnavailable) as err:
             a.establish(req)
+        assert err.value.reason == 'profile_create'
         rec = a.record(req.execution_id)
         assert rec.state == 'failed' and rec.reason == 'profile_create' and not rec.owned
         assert b.deleted == []                       # the failure cleanup asks the OS nothing
@@ -3730,7 +3734,11 @@ class TestFence:
     def test_a_query_that_fails_or_is_no_count_is_no_import(self, tmp_path, fence_clock,
                                                             answer):
         a, b, eid = self._held(tmp_path, answer)
-        assert a.fence(eid) is not None
+        if isinstance(answer, Exception):
+            want = 'its Job could not be queried: %s' % type(answer).__name__
+        else:
+            want = 'its Job answered %r, not a process count' % (answer,)
+        assert a.fence(eid) == want
         assert b.order == ['query', 'close']
 
     def test_no_held_job_is_no_import_and_nothing_is_asked(self, tmp_path, fence_clock):
