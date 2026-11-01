@@ -677,7 +677,7 @@ def read_stream(path, offset=0, max_events=None):
                 continue
             try:
                 ev = json.loads(line)
-            except ValueError:
+            except (ValueError, RecursionError):    # `[[[...` 100k deep is a stderr line, not a crash
                 ev = None
             events.append(ev if isinstance(ev, dict) else {'type': 'stderr', 'text': line})
     return events, offset

@@ -218,6 +218,19 @@ def test_the_stream_reader_does_not_hold_a_line_over_the_cap(tmp_path, monkeypat
     assert [e['type'] for e in events] == ['stderr'] and offset == os.path.getsize(path)
 
 
+def test_a_deeply_nested_stream_line_is_a_stderr_event_not_a_crash_of_core(tmp_path):
+    """The agent writes the stream: 100k brackets is 200 KB, under the line cap, and
+    json.loads raises RecursionError on it, which left read_stream and exited Core at
+    every boot that re-read it."""
+    path = str(tmp_path / 'stream.jsonl')
+    deep = '[' * 100000 + ']' * 100000
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(['{"type": "a"}', deep, '{"type": "b"}', '']))
+    events, offset = base.read_stream(path)
+    assert [e['type'] for e in events] == ['a', 'stderr', 'b']
+    assert events[1]['text'] == deep and offset == os.path.getsize(path)
+
+
 def test_the_fake_agent_is_stdlib_only():
     """It stands in for a foreign CLI: importing Archeus would let it cheat the
     contract it is meant to exercise."""

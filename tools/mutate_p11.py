@@ -28,6 +28,7 @@ S = 'tests/v1/integration/test_execution_security.py'
 U = 'tests/v1/unit/test_execution_units.py'
 VER = 'tests/v1/integration/test_verification.py'
 B6 = 'tests/v1/unit/test_fix_batch6.py'
+AC = 'tests/v1/contract/test_adapter_contract.py'
 TIMEOUT_S = 900
 
 MUTATIONS = [
@@ -247,6 +248,11 @@ MUTATIONS = [
      "    except (OSError, ValueError, RecursionError):   # a deep `[[[...` is a file, not a crash",
      "    except (OSError, ValueError):")],
      [U + '::test_a_deeply_nested_request_or_answer_is_unreadable_not_a_crash_of_core']),
+    ('X45', 'a deeply nested stream line raises out of read_stream and Core', [(
+     'archeus/harnesses/base.py',
+     "            except (ValueError, RecursionError):    # `[[[...` 100k deep is a stderr line, not a crash",
+     "            except ValueError:")],
+     [AC + '::test_a_deeply_nested_stream_line_is_a_stderr_event_not_a_crash_of_core']),
 ]
 
 
