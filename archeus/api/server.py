@@ -403,6 +403,8 @@ class Handler(BaseHTTPRequestHandler):
             # reaches a client that is still sending: answering with the body
             # unread resets the socket. The refusals keep §4's order below.
             raw = self.rfile.read(length) if length is not None and 0 < length <= MAX_BODY else b''
+            if length is None or length > MAX_BODY:
+                self.close_connection = self._unread = True
             if not self.api.origin.host_ok(self.headers.get('Host')):
                 raise Refused(403, 'host_not_allowed',
                               {'why': 'open Archeus at %s' % self.api.origin.origin})
@@ -413,10 +415,8 @@ class Handler(BaseHTTPRequestHandler):
             if 'token' in self.query or 'access_token' in self.query:
                 raise Refused(401, 'token_in_url')
             if length is None:
-                self.close_connection = self._unread = True
                 raise Invalid('Content-Length', 'is not a number')
             if length > MAX_BODY:
-                self.close_connection = self._unread = True
                 raise Refused(413, 'payload_too_large')
             route, self.params = routes.match(self.command, url.path)
             template = route.path
