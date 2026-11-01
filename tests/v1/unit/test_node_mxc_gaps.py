@@ -664,3 +664,33 @@ def test_the_staged_policy_path_reaches_the_transport_untouched(tmp_path, monkey
     mxc.NativeMxc(transport, lambda raw: True).spawn(
         policy(tmp_path), exe=str(tmp_path / 'wxc-exec.exe'), job=object())
     assert seen == [staged]
+
+
+@pytest.mark.parametrize('answer', [True, 1.0])
+def test_a_resume_answer_must_be_the_integer_one(tmp_path, monkeypatch, answer):
+    """T-661#16: `!= 1` accepted True and 1.0 from a transport that is not the native one."""
+    events = []
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    backend = mxc.NativeMxc(_staging_transport(events, resume=answer), lambda raw: True)
+    with pytest.raises(mxc.MxcUnavailable, match='exactly once'):
+        backend.spawn(policy(tmp_path), exe=str(tmp_path / 'wxc-exec.exe'), job=object())
+    assert events[-1] == 'terminate'
+
+
+def test_a_missing_workspace_is_a_refusal_not_a_type_error(tmp_path):
+    """T-661#17: tuple(None) escaped as TypeError, past callers that catch MxcUnavailable."""
+    with pytest.raises(mxc.MxcUnavailable):
+        policy(tmp_path, workspace=None)
+    with pytest.raises(mxc.MxcUnavailable):
+        policy(tmp_path, cwd=None)
+
+
+def test_a_schema_validator_that_raises_is_a_refusal(tmp_path, monkeypatch):
+    """T-661#17: a raising validator escaped isolation's `except MxcUnavailable`."""
+    def broken(raw):
+        raise RuntimeError('schema artifact unreadable')
+
+    monkeypatch.setattr(mxc, 'NATIVE_RUN_ENABLED', True)
+    with pytest.raises(mxc.MxcUnavailable, match='schema validation'):
+        mxc.NativeMxc(_staging_transport([]), broken).spawn(
+            policy(tmp_path), exe=str(tmp_path / 'wxc-exec.exe'), job=object())

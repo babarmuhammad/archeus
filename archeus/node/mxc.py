@@ -31,7 +31,10 @@ def _text(value):
 
 
 def _path(value):
-    value = os.fspath(value)
+    try:
+        value = os.fspath(value)
+    except TypeError:
+        raise MxcUnavailable('policy paths must be absolute') from None
     if not _text(value) or not os.path.isabs(value):
         raise MxcUnavailable('policy paths must be absolute')
     # commonpath raises across \?\, UNC and rooted forms, which would skip the overlap gates
@@ -98,7 +101,13 @@ class MxcPolicy:
 def compile_policy(*, workspace, readonly=(), denied=(), cwd, command_line, env=None,
                    timeout_ms, ui=False, egress='deny', proxy_url=None):
     """Compile only Core-owned inputs; never inherit the host environment."""
-    writable = (workspace,) if isinstance(workspace, (str, os.PathLike)) else tuple(workspace)
+    if isinstance(workspace, (str, os.PathLike)):
+        writable = (workspace,)
+    else:
+        try:
+            writable = tuple(workspace)
+        except TypeError:
+            raise MxcUnavailable('workspace must be a path or paths') from None
     if ui is not False or egress != 'deny':
         raise MxcUnavailable('unsupported UI or egress policy')
     if env is None:
@@ -281,7 +290,11 @@ class NativeMxc:
         if not NATIVE_RUN_ENABLED:
             raise MxcUnavailable('native MXC execution disabled')
         validate_policy(policy)
-        if self.schema_validator(policy.raw) is not True:
+        try:
+            accepted = self.schema_validator(policy.raw) is True
+        except Exception:
+            accepted = False
+        if not accepted:
             raise MxcUnavailable('pinned schema validation failed')
         if job is None:
             raise MxcUnavailable('Core-held Job required')
@@ -296,7 +309,8 @@ class NativeMxc:
                 raise MxcUnavailable('launcher Job membership unverified')
             if before_resume is not None:
                 before_resume(child)
-            if self.transport.resume(child) != 1:
+            resumed = self.transport.resume(child)
+            if type(resumed) is not int or resumed != 1:
                 raise MxcUnavailable('launcher did not resume exactly once')
         except BaseException as err:
             # Retain the child even when termination fails; Core must quarantine it.
