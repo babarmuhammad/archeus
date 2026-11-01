@@ -121,3 +121,18 @@ def test_a_request_with_only_plain_headers_follows_a_redirect_and_ports_are_norm
 def test_importing_a_module_that_calls_urlopen_installs_the_handler():
     assert any(isinstance(x, netsafe.SameOriginRedirect)
                for x in urllib.request._opener.handlers)
+
+
+def test_f7_a_same_host_upgrade_to_https_keeps_the_credential_and_a_downgrade_or_host_change_does_not():
+    h = {'Authorization': 'Bearer SYNTH'}
+    assert _redirect('http://a.example/x', 'https://a.example/y', h) is not None
+    assert _redirect('http://a.example:80/x', 'https://A.example:443/y', h) is not None
+    assert _redirect('http://a.example/x', 'https://b.example/y', h) is None
+    assert _redirect('http://a.example/x', 'https://a.example:8443/y', h) is None
+    assert _redirect('http://a.example:8080/x', 'https://a.example/y', h) is None
+    assert _redirect('https://a.example/x', 'http://a.example/y', h) is None
+
+
+@pytest.mark.parametrize('new', ['http://a.example:99999/x', 'http://a.example:abc/x'])
+def test_f9_a_location_with_a_bad_port_is_a_refusal_not_an_exception(new):
+    assert _redirect('http://a.example/x', new, {'api-key': 'SYNTH'}) is None
