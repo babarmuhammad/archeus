@@ -29,6 +29,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import secrets
 import socket
 import socketserver
@@ -367,6 +368,17 @@ class Handler(BaseHTTPRequestHandler):
             pass                                # the client went away
         self._status = status
 
+    def _length(self):
+        """The body length, or None when the framing is not one the server reads: a
+        Content-Length that is not a run of ASCII digits (a negative one stays a
+        no-body length), repeated, or beside a Transfer-Encoding (never decoded here)."""
+        values = self.headers.get_all('Content-Length') or ['0']
+        text = values[0].strip() or '0'
+        if (len(values) > 1 or self.headers.get('Transfer-Encoding') is not None
+                or not re.fullmatch(r'-?[0-9]+', text)):
+            return None
+        return int(text)
+
     def _refuse(self, status, code, detail=None, headers=None):
         self._respond(status, {'error': code, 'detail': detail or {}}, headers)
 
@@ -375,7 +387,7 @@ class Handler(BaseHTTPRequestHandler):
             return {}
         try:
             body = json.loads(raw.decode('utf-8')) if raw else {}
-        except (UnicodeDecodeError, ValueError):
+        except (UnicodeDecodeError, ValueError, RecursionError):
             raise Invalid(None, 'the body is not JSON') from None
         if not isinstance(body, dict):
             raise Invalid(None, 'the body is a JSON object')
@@ -395,10 +407,7 @@ class Handler(BaseHTTPRequestHandler):
         self.peer = self.client_address
         template, slot = '-', None
         try:
-            try:
-                length = int(self.headers.get('Content-Length') or 0)
-            except ValueError:
-                length = None
+            length = self._length()
             # read first, bounded, so every refusal (the Host check included)
             # reaches a client that is still sending: answering with the body
             # unread resets the socket. The refusals keep §4's order below.
