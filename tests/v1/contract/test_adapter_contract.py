@@ -267,6 +267,19 @@ def test_the_claude_code_adapter_normalises_a_recorded_stream(tmp_path):
     assert [e['type'] for e in adapter.normalise(refused)] == ['limit', 'result']
 
 
+def test_a_killed_resume_reports_the_newest_session_not_the_first(tmp_path):
+    """T-649#F-10: the stream is appended to across processes; the fallback for a run
+    with no result line took the first session id in it, the earlier process's."""
+    from archeus.harnesses.claude_code import adapter
+    d = tmp_path / 'exec'
+    d.mkdir()
+    with open(d / 'stream.jsonl', 'w', encoding='utf-8') as f:
+        for sid in ('first', 'second'):
+            f.write(json.dumps({'type': 'system', 'subtype': 'init', 'session_id': sid}) + '\n')
+    handle = base.ProcessHandle('exe_01J00000000000000000000000', 2 ** 22 + 7, 'gone', str(d))
+    assert adapter.ClaudeCodeAdapter().collect_result(handle).adapter_state == {'session': 'second'}
+
+
 @pytest.mark.xfail(strict=True, reason="phase:P23")
 def test_the_codex_adapter_normalises_a_recorded_stream():
     """Deferred (p11-design-gate D30; moved to P23 by p20-design-gate D9): no

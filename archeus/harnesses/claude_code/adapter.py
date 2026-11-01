@@ -249,7 +249,7 @@ class ClaudeCodeAdapter:
         results = [e for e in events if e.get('type') == 'result']
         last = results[-1] if results else {}
         session = last.get('session_id') or next(
-            (e.get('session_id') for e in events if e.get('session_id')), None)
+            (e.get('session_id') for e in reversed(events) if e.get('session_id')), None)
         failure = None
         if any(e.get('type') == 'limit' for e in events):
             failure = 'limit'
