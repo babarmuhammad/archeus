@@ -1213,6 +1213,33 @@ def test_a_request_the_execution_rewrote_is_not_answered_as_the_hooks_review_r4(
     assert kind == 'halt' and 'rewritten' in why
 
 
+def test_a_tool_call_over_the_request_bound_halts_at_once_not_after_the_wait(monkeypatch):
+    """Core cannot read a request past the bound and answers it with a nonce the hook does
+    not know, so the hook waited out WAIT_S for an answer it would ignore."""
+    eid, box, env = _core_hook(monkeypatch)
+    monkeypatch.setattr(hook, 'WAIT_S', 0.5)
+    monkeypatch.setattr(hook, 'MAX_REQUEST_BYTES', 1000)
+    kind, why = hook.run({'tool_name': 'Write', 'tool_input': {'content': 'a' * 2000}}, env)
+    assert kind == 'halt' and 'too large' in why
+    assert os.listdir(box) == ['halted.json']                       # nothing was asked
+    with open(os.path.join(box, 'halted.json'), encoding='utf-8') as f:
+        assert json.load(f)['reason'] == why
+
+
+def test_a_tool_call_just_inside_the_request_bound_is_still_asked(monkeypatch):
+    eid, box, env = _core_hook(monkeypatch)
+    monkeypatch.setattr(hook, 'MAX_REQUEST_BYTES', 1000)
+
+    def core_answers():
+        (seq, judged), = LocalNode.pending_requests(eid)
+        LocalNode.respond(eid, seq, judged, 'allow', 'fine')
+
+    with _core(box, core_answers):
+        assert hook.run({'tool_name': 'Write', 'tool_input': {'content': 'a' * 500}},
+                        env) == ('allow', 'fine')
+    assert os.path.getsize(os.path.join(box, '1.req.json')) < 1000
+
+
 def test_the_control_an_answer_to_the_request_as_written_is_accepted(monkeypatch):
     eid, box, env = _core_hook(monkeypatch)
 

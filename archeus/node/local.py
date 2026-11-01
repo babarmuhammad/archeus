@@ -120,7 +120,7 @@ _PROMISOR_PACK = '.promisor'
 #: read_gitfile_gently); no path Core resolves is anywhere near it
 _GITFILE_MAX = 64 * 1024
 #: a hook request or answer is a tool call's JSON; a file past this is not parsed
-MAX_REQUEST_BYTES = 8 * 1024 * 1024
+MAX_REQUEST_BYTES = hook.MAX_REQUEST_BYTES
 
 # PV-20 K2 (T-049 and its correction C-1013-T049): an isolated execution's seed,
 # built by Core outside the execution area and renamed in. Every bound below is

@@ -272,6 +272,14 @@ MUTATIONS = [
      "if res is not None and _same(res.get('nonce'), (body or {}).get('nonce')):",
      "if res is not None and res.get('nonce') == (body or {}).get('nonce'):")],
      [U + '::test_a_request_whose_nonce_is_not_equal_to_itself_is_answered_once']),
+    ('X51', 'the hook waits out WAIT_S on a request Core cannot read', [(HOOK,
+     "    if len(json.dumps(body)) > MAX_REQUEST_BYTES - 64:",
+     "    if False:")],
+     [U + '::test_a_tool_call_over_the_request_bound_halts_at_once_not_after_the_wait']),
+    ('X52', 'the hook halts a tool call that fits the request bound', [(HOOK,
+     "    if len(json.dumps(body)) > MAX_REQUEST_BYTES - 64:",
+     "    if len(json.dumps(body)) > 0:")],
+     [U + '::test_a_tool_call_just_inside_the_request_bound_is_still_asked']),
 ]
 
 

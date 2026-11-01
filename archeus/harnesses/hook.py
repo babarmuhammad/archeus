@@ -53,6 +53,9 @@ def wait_s(raw):
 
 WAIT_S = wait_s(os.environ.get('ARCHEUS_HOOK_WAIT', '60'))
 POLL_S = 0.05
+#: a request file past this is not parsed by Core, which then answers it with a nonce the hook
+#: does not recognise: the hook halts at once instead of waiting out WAIT_S for that answer
+MAX_REQUEST_BYTES = 8 * 1024 * 1024
 _ID = re.compile(r'exe_[0-7][0-9A-HJKMNP-TV-Z]{25}\Z')      # ids.is_ulid's shape
 #: archeus.infra.paths' class directories, mirrored: this file imports no package
 REQUEST_DIR, RESPONSE_DIR, SENTINEL_DIR = 'req', 'res', 'ctl'
@@ -188,6 +191,10 @@ def run(payload, environ):
     nonce = os.urandom(16).hex()
     body = {'token': token, 'tool': payload.get('tool_name'),
             'input': payload.get('tool_input'), 'cwd': payload.get('cwd'), 'nonce': nonce}
+    if len(json.dumps(body)) > MAX_REQUEST_BYTES - 64:      # 64: the `seq` key _reserve adds
+        why = 'the tool call is too large for Archeus to judge; halted (fail closed)'
+        _halted(box, None, why)
+        return 'halt', why
     seq = _reserve(box, body)
     digest = request_digest(dict(body, seq=seq))
     res = os.path.join(exec_dir, RESPONSE_DIR, '%d.res.json' % seq)
