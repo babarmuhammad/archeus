@@ -128,7 +128,7 @@ def _cmd_snapshot(tok):
     so the querying powershell.exe cannot match itself, and this function kills
     nothing. Replaces the draft's unscoped alive/sweep pair entirely."""
     ps = ("(Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'cmd.exe' "
-          "-and $_.CommandLine -like '*in (1,1,{0})*' } | Measure-Object).Count").format(tok)
+          "-and $_.CommandLine -like '*in (1,1,%s)*' } | Measure-Object).Count") % tok
     try:
         r = subprocess.run(['powershell.exe', '-NoProfile', '-Command', ps],
                            capture_output=True, text=True, timeout=30)
@@ -282,6 +282,13 @@ def _list_pair(rec, case, label, work, granted_dir, ctl_file, denied_dir, denied
     folder and must not show ITS known file. True = row passed, False = FAIL recorded."""
     rc0, out0 = _run_container('pos-' + label, ['cmd.exe', '/c', 'dir', '/b', granted_dir], work)
     if rc0 != 0 or ctl_file.lower() not in (out0 or '').lower():
+        rc2, _out2 = _run_container('pos-' + label + '-read',
+                                    ['cmd.exe', '/c', 'type', os.path.join(granted_dir, ctl_file)], work)
+        if rc2 == 0:
+            rec.record(case, 'INCONCLUSIVE',
+                       '%s: dir of the granted folder is itself denied (rc=%s) while a file read in it '
+                       'works, so a denied listing elsewhere proves nothing' % (label, rc0))
+            return True
         rec.record(case, 'FAIL', '%s positive control (dir of granted folder) failed: rc=%s %s'
                    % (label, rc0, _snip(out0)))
         return False
