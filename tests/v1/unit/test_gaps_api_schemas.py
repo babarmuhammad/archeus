@@ -153,7 +153,7 @@ def test_a_launch_code_grants_only_the_scopes_the_table_names(scopes):
     ([{'scope': 'admin'}], 'scopes[0]'),
 ], ids=['invented', 'blank', 'null', 'flag', 'not-a-list', 'nested-list', 'object-item'])
 def test_a_launch_code_cannot_grant_a_scope_it_does_not_know(scopes, field):
-    """shapes.py:35-39, 40 and 48 on the one array whose items are privilege names."""
+    """shapes.py:35-39, 40 and 53 on the one array whose items are privilege names."""
     _refuses(schemas.LAUNCH_CODE, {'scopes': scopes}, field)
 
 
@@ -275,7 +275,7 @@ def test_a_body_names_a_choice_field_only_where_that_route_is_allowed_to(name, f
 
 @pytest.mark.parametrize('name', BODY_NAMES, ids=BODY_NAMES)
 def test_a_closed_request_body_refuses_a_field_it_does_not_declare(name):
-    """shapes.py:56-59's `raise` (not the `continue` two lines above): every one of the
+    """shapes.py:61-64's `raise` (not the `continue` two lines above): every one of the
     41 bodies is closed, which is what keeps any of them from growing a way to smuggle
     an argument past the boundary."""
     body = BODIES[name]
@@ -286,7 +286,7 @@ def test_a_closed_request_body_refuses_a_field_it_does_not_declare(name):
 
 def test_an_empty_body_takes_no_field_at_all():
     """EMPTY (schemas.py:1035): `properties: {}` means the route that declares it takes
-    a body of nothing; both refusals come from shapes.py:59."""
+    a body of nothing; both refusals come from shapes.py:64."""
     _refuses(schemas.EMPTY, {'idempotency_key': 'k'}, 'idempotency_key', 'is not a known field')
     _refuses(schemas.EMPTY, {'any': None}, 'any', 'is not a known field')
     schemas.validate({}, schemas.EMPTY)
@@ -322,7 +322,7 @@ PASS_THROUGH = {'CREATE_RULE.boundary', 'CREATE_RULE.match', 'CREATE_AUTOMATION.
 
 def test_the_unvalidated_object_fields_of_a_request_body_are_exactly_the_declared_nine():
     """`{'type': 'object'}` with no properties is the widest door in the subset: what
-    comes through becomes the handler's problem, not the boundary's (shapes.py:49 skips
+    comes through becomes the handler's problem, not the boundary's (shapes.py:54 skips
     the whole object branch). Adding one is a design decision, so it is named here."""
     found = set()
 
@@ -443,7 +443,7 @@ def test_a_nullable_enum_takes_null_and_only_the_words_it_lists():
 ], ids=['mission', 'attention', 'opt-in', 'repo-graph'])
 def test_an_open_type_takes_an_undeclared_field_but_still_checks_a_declared_one(which, field,
                                                                                 value, why):
-    """shapes.py:56-58: the `continue` is for an unknown name only. If it ever widened to
+    """shapes.py:61-63: the `continue` is for an unknown name only. If it ever widened to
     the whole object, an open type's own declared fields would stop being validated —
     `Mission` is open precisely because clients carry extra keys on it."""
     open_type = schemas.TYPES[which]
@@ -465,7 +465,7 @@ def test_a_closed_named_type_refuses_a_field_of_its_own_making(which):
 
 @pytest.mark.parametrize('name', BODY_NAMES, ids=BODY_NAMES)
 def test_the_smallest_legal_body_is_exactly_the_required_fields(name):
-    """shapes.py:51-53 names the missing required field by its bare name at the top
+    """shapes.py:56-58 names the missing required field by its bare name at the top
     level; and because the payloads are built from the declaration, a body that requires
     a name it never declared — one that 400s on every request — fails here as well."""
     body = BODIES[name]
@@ -498,13 +498,13 @@ def test_the_smallest_legal_body_is_exactly_the_required_fields(name):
 ], ids=['decision-hash', 'decision-extra', 'subject-id', 'subject-extra', 'signal-enum',
         'stage-enum', 'levels-item', 'opted-in-flag'])
 def test_a_nested_object_refusal_names_the_dotted_path_the_client_sent(body, owner, field):
-    """shapes.py:55 and 60: the name a 400 carries is the whole path, not the leaf, so
+    """shapes.py:60 and 65: the name a 400 carries is the whole path, not the leaf, so
     the client can find the box to fix. `sub` is built once, at the parent."""
     _refuses(_body_of(owner), body, field)
 
 
 def test_a_list_refusal_names_the_index_of_the_bad_item():
-    """shapes.py:48: `field[i]` — and for a list of lists the path is built twice, so
+    """shapes.py:53: `field[i]` — and for a list of lists the path is built twice, so
     `waves[0][1]` is the only way Core can point at one broken wave edge."""
     _refuses(schemas.CREATE_MISSION,
              {'title': 't', 'objective': 'o', 'idempotency_key': 'k',
@@ -529,7 +529,7 @@ def test_a_top_level_refusal_names_no_field_and_calls_it_the_body():
 
 
 def test_a_missing_required_field_at_the_top_level_is_named_bare():
-    """shapes.py:53 `name if field is None`: at the top the field is the name alone, so
+    """shapes.py:58 `name if field is None`: at the top the field is the name alone, so
     the detail says 'title', not '.title' and not 'body.title'."""
     _refuses(schemas.CREATE_MISSION, _without(_sample(schemas.CREATE_MISSION), 'title'), 'title',
              'is required')
@@ -565,9 +565,9 @@ def test_a_named_type_that_is_not_in_types_is_a_programmer_error_not_a_refusal()
 
 def test_the_whole_declared_table_is_something_the_validator_can_check():
     """Every way `validate` can raise anything other than Invalid on a real payload: an
-    unknown `type` (shapes.py:35), a missing `items` (47-48), an unresolvable `ref` (30),
-    an unsatisfiable `required` (51-53), an empty enum or one whose members are not of
-    its own declared type (40), and a key the validator reads as something else (49)."""
+    unknown `type` (shapes.py:35), a missing `items` (52-53), an unresolvable `ref` (30),
+    an unsatisfiable `required` (56-58), an empty enum or one whose members are not of
+    its own declared type (40), and a key the validator reads as something else (54)."""
     allowed = {'type', 'enum', 'nullable', 'items', 'properties', 'required', 'open',
                'maxLength', 'maxItems', 'ref', 'description'}
     py = {'string': str, 'integer': int, 'number': (int, float), 'boolean': bool,
@@ -586,7 +586,7 @@ def test_the_whole_declared_table_is_something_the_validator_can_check():
         t = node['type']
         assert t in py, (where, t)
         if t == 'array':
-            assert 'items' in node, where                       # shapes.py:48 KeyError
+            assert 'items' in node, where                       # shapes.py:53 KeyError
             walk(node['items'], '%s[]' % where)
         if 'properties' in node:
             assert t == 'object', where
@@ -610,8 +610,8 @@ def test_the_whole_declared_table_is_something_the_validator_can_check():
 
 
 def test_a_declared_bound_is_enforced_where_a_schema_declares_one():
-    """shapes.py:42-43 and 45-46. Nothing in api/schemas declares `maxLength`/`maxItems`
-    today — they are the only size bound a shape can carry, and the model-output schemas
+    """shapes.py:47-48 and 50-51. Only the idempotency `KEY` declares `maxLength` and
+    nothing declares `maxItems` today — they are the only size bound a shape can carry, and the model-output schemas
     that share this validator (archeus/core/planning/planner.py) depend on both branches,
     so they are pinned through this module's own entry point."""
     bounded = {'type': 'object', 'properties': {
@@ -750,7 +750,7 @@ def test_the_request_bodies_that_take_an_enum_use_the_same_words_as_their_types(
 
 def test_an_open_object_with_no_properties_takes_any_dict():
     """The documented leniency the module docstring names (`{'type': 'object'}` with no
-    properties: any JSON object) — shapes.py:49 never enters the object branch. Pinned on
+    properties: any JSON object) — shapes.py:54 never enters the object branch. Pinned on
     the two that guard a write: FORGET's selector and SIMULATE's action."""
     schemas.validate({'selector': {'anything': [1, {'x': None}]}, 'idempotency_key': 'k'},
                      schemas.FORGET)
