@@ -42,7 +42,7 @@ of this document.
 | A4 eligibility enforced | `False` | `archeus/node/isolation.py:393` |
 | Windows boundary available | returns `False`; profile create/delete raise `mxc_lifecycle_unverified`; launch raises `mxc_policy_required` | `archeus/node/isolation.py:1911-1912`, `:1919-1941`, `:2276-2278` |
 | Native MXC run | `False` | `archeus/node/mxc.py:23` (guards `:304-305`, `:326-327`) |
-| Broker dispatch | `False`; the native broker pipe refuses | `archeus/node/broker.py:62`, `:226-234` |
+| Broker dispatch | `False`; the native broker pipe refuses | `archeus/node/broker.py:67`, `:231-244` |
 | Confined verification | `False` | `archeus/core/application/verification.py:36` |
 | Store fetch accepted | `False` | `archeus/node/local.py:1363` |
 | Origin enforcement | `False` | `archeus/api/origin.py:15` |
@@ -98,8 +98,8 @@ is one reviewed activation (completion plan C1, A1); it is not done.
 
 | # | Threat | Mitigation as built | Evidence | Open |
 |---|---|---|---|---|
-| T13 | A provider credential lives inside the boundary | the broker issues execution-scoped grants with zero Core scopes, scrubs, revokes at every end (`archeus/node/broker.py`, `broker_bridge.py`); `BROKER_ELIGIBLE` limits harnesses (`base.py:46`) | unit; fake-only. The native pipe transport refuses (`broker.py:226-234`); only the loopback proxy was reached in N3 B1/B2/B5 | H4 (a CLI that cannot use the broker cannot run isolated); the MXC transport for the broker (completion plan B10) is not in this tip |
-| T14 | The broker becomes a Core route (an R1 path) | no Core route, no local-token acceptance, no TCP fallback by design | unit | native reach rows N3b not written |
+| T13 | A provider credential lives inside the boundary | the broker issues execution-scoped grants with zero Core scopes, scrubs, revokes at every end (`archeus/node/broker.py`, `broker_bridge.py`); `BROKER_ELIGIBLE` limits harnesses (`base.py:46`) | unit; fake-only. The native pipe transport refuses (`broker.py:231-244`); only the loopback proxy was reached in N3 B1/B2/B5 | H4 (a CLI that cannot use the broker cannot run isolated); the MXC transport (B10, `broker_listener.py`) is built behind fakes and never run natively: the real CLI's proxy dialect (absolute-form or CONNECT) is untested, and the principal an attested process maps to (`principal_of`, a Job-table lookup) has no production implementation |
+| T14 | The broker becomes a Core route (an R1 path) | no Core route, no local-token acceptance, no TCP fallback by design. The B10 listener is one loopback listener per grant, attested at accept (only an EXECUTION origin on the direct loopback path whose process maps to the grant's principal is served; user, verifier and undetermined peers are closed unread), re-checked when the request arrives, answering only the grant issued at it, closed on revoke; it only ever calls `Broker.serve`, and `CorePathRegistry` never approves an execution origin | unit and fake-only (`test_broker_listener.py`, 35 mutants) | native reach rows N3b not written |
 
 ## Boundary 4: Core effect boundary and origin
 

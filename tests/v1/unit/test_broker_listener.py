@@ -60,7 +60,7 @@ class Listening:
             raise OSError('closed')
         if self.queue:
             return self.queue.pop(0), ('127.0.0.1', PEER)
-        time.sleep(0.001)
+        time.sleep(0.01)
         raise TimeoutError
 
     def shutdown(self, how):
@@ -149,6 +149,16 @@ class Resp:
         return self._c.pop(0) if self._c else b''
 
 
+RIGS = []
+
+
+@pytest.fixture(autouse=True)
+def _no_listener_outlives_its_test():
+    yield
+    while RIGS:
+        RIGS.pop().broker.revoke_all()
+
+
 class Rig:
     def __init__(self, backend=None, principal=PRINCIPAL, bind=None, live=True, **kw):
         self.backend, self.sent, self.socks = backend or Backend(), [], []
@@ -174,6 +184,7 @@ class Rig:
             credentials=lambda bd: {'x-api-key': KEY},
             upstream_of=lambda a: B.Upstream('https://api.example.com'),
             resolve=lambda host, port: ['93.184.216.34'], send=send, **kw)
+        RIGS.append(self)
 
     def grant(self, **kw):
         bd = B.BrokerBinding(**dict(dict(

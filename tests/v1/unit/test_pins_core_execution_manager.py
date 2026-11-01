@@ -1110,6 +1110,13 @@ def _binding(**over):
     return B.BrokerBinding(**d)
 
 
+def _grant_rows(monkeypatch, m, e, health='AVAILABLE', headless='permitted'):
+    """The execution, its account and the harness's terms, as `broker_live` reads them."""
+    m.registry = SimpleNamespace(get=lambda hid: SimpleNamespace(id=hid))
+    _rows(monkeypatch, Execution=e, Account=SimpleNamespace(health=health),
+          ProviderTerms=SimpleNamespace(headless=headless))
+
+
 def _live():
     return _e(state='RUNNING', isolated=True, process_seq=2, route_decision_id='route-1',
               account_id='account-1', model='m1', broker_token_hash='b' * 64)
@@ -1132,7 +1139,7 @@ def test_a_grant_follows_exactly_its_own_recorded_generation(monkeypatch, field,
     e = _live()
     setattr(e, field, value)
     m = _mgr()
-    _rows(monkeypatch, Execution=e)
+    _grant_rows(monkeypatch, m, e)
     binding = _binding(execution_id=e.id)
     assert m.broker_live(binding, 'b' * 64) is False, (field, value)
 
@@ -1140,13 +1147,15 @@ def test_a_grant_follows_exactly_its_own_recorded_generation(monkeypatch, field,
 def test_a_live_recorded_generation_holds_its_grant(monkeypatch):
     m = _mgr()
     e = _live()
-    _rows(monkeypatch, Execution=e)
+    _grant_rows(monkeypatch, m, e)
     assert m.broker_live(_binding(execution_id=e.id), 'b' * 64) is True
 
 
 def test_a_row_that_is_gone_holds_no_grant(monkeypatch):
     m = _mgr()
-    _rows(monkeypatch)                                            # no execution at all
+    m.registry = SimpleNamespace(get=lambda hid: SimpleNamespace(id=hid))
+    _rows(monkeypatch, ProviderTerms=SimpleNamespace(headless='permitted'),
+          Account=SimpleNamespace(health='AVAILABLE'))             # no execution at all
     assert m.broker_live(_binding(execution_id=ids.new_id('execution')), 'b' * 64) is False
 
 
