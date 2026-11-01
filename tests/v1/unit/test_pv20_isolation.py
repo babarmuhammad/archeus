@@ -2348,6 +2348,22 @@ class TestCorrectivePass:
         assert tests and all('boundary' in [x.arg for x in f.args.args] for f in tests)
         assert 'exe_' not in ast.unparse(tree)   # every execution id is freshly minted
 
+    @pytest.mark.skipif(iso.WindowsBoundary is None, reason='the Windows boundary')
+    def test_the_native_acceptance_skip_stays_tied_to_the_declared_unverified_state(self):
+        # the module's fixture skips while the boundary is unavailable; this counted test
+        # fails when that stops being the declared state, so the skip cannot go on hiding
+        with open(WINDOWS_MODULE, encoding='utf-8') as f:
+            src = f.read()
+        assert 'UNVERIFIED' in src.split('PV-20 S1')[0]
+        tests = [n for n in ast.walk(ast.parse(src))
+                 if isinstance(n, ast.FunctionDef) and n.name.startswith('test_')]
+        assert len(tests) >= 13                  # the obligations are not silently deleted
+        b = iso.WindowsBoundary()
+        assert b.available() is False
+        with pytest.raises(iso.IsolationUnavailable) as err:
+            b.create_profile(ids.new_id('execution'))
+        assert err.value.reason == 'mxc_lifecycle_unverified'
+
 
 # ── A4: the grant readers fail closed (pure: synthetic descriptors, any platform) ─
 # The masks and ACE layouts below are written from the Windows contract (winnt.h,
