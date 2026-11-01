@@ -162,6 +162,8 @@ export const GAPS = [
   tp('Intermediate file snapshots', 'Copie intermedie dei file'), tp('Actual cost, or served and billed provenance', 'Costo reale, o provenienza servita e fatturata'), tp('Confinement proof', 'Prova di confinamento')
 ];
 
+export const EFFECT_NOTE = tp('Not every external effect can be reversed.', 'Non ogni effetto esterno si può annullare.');
+
 // Recovery: what Archeus would do and what it will not do. Every option only creates an approval card; none re-runs anything.
 export const NEVER = [
   tp('Spawn the same execution again. A retry is a new execution id.', 'Riavviare la stessa esecuzione. Un nuovo tentativo è una nuova esecuzione.'),

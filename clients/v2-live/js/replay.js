@@ -18,7 +18,7 @@ import { isPhone } from './viewport.js';
 import { edgeRow } from './phone-pages.js';
 import { closeThen } from './phone.js';
 import { eventLine } from './phone-pages-model.js';
-import { CATS, CAT_DEF, STRENGTH, VOCAB, buildReplay, recovery, FIVE_ROWS, GAPS, NEVER, vocabCounts, whyOf } from '../replay-model.js';
+import { CATS, CAT_DEF, STRENGTH, VOCAB, buildReplay, recovery, FIVE_ROWS, GAPS, NEVER, EFFECT_NOTE, vocabCounts, whyOf } from '../replay-model.js';
 
 const GLYPH = { INTENDED: '○', AUTHORIZED: '◇', RECORDED: '●', 'MAY-HAVE-TAKEN-EFFECT': '◐', UNCERTAIN: '?', SUSPENDED: '‖', RECONCILED: '✓', NONE: '–', UNKNOWN: '?' };
 const catChip = (c) => h('span', { class: 'cat rc', 'data-cat': c }, h('span', { class: 'g', 'aria-hidden': 'true' }, GLYPH[c]), c);
@@ -263,7 +263,7 @@ export function viewReplay(ctx) {
       h('div', { class: 'sel-wrap', style: 'padding:0 0 8px' }, h('label', null, L('Machine', 'Macchina')), vsel),
       h('div', { class: 'vlist' }, ...VOCAB[rp.machine].map(([s, c]) => h('div', { class: 'row-line' }, h('span', { class: 'a' }, h('span', { class: 'mono' }, s), h('span', { class: 'sp-text', style: 'display:block;padding:2px 0 0' }, whyOf(rp.machine, s).slice(0, 160))), catChip(c)))),
       h('p', { class: 'sp-text' }, Object.entries(vc.n).map(([k, v]) => k + ' ' + v).join(' · '))));
-  const gaps = block(L('Not recorded', 'Non registrato'), GAPS.length, h('div', { class: 'rp-lines' }, h('ul', { class: 'gaps' }, ...GAPS.map((g) => h('li', null, h('span', null, C(g)), strChip('NOT_RECORDED'))))), h('p', { class: 'note' }, L('Not every external effect can be reversed.', 'Non ogni effetto esterno si può annullare.')));
+  const gaps = block(L('Not recorded', 'Non registrato'), GAPS.length, h('div', { class: 'rp-lines' }, h('ul', { class: 'gaps' }, ...GAPS.map((g) => h('li', null, h('span', null, C(g)), strChip('NOT_RECORDED'))))), h('p', { class: 'note' }, C(EFFECT_NOTE)));
   const fwd = h('button', { class: 'btn', type: 'button', onclick: () => { sim.advance(10 * 60 * 1000); ctx.toast(L('The simulation moved 10 minutes forward. Replay shows its new steps.', 'La simulazione è avanzata di 10 minuti. Il Replay mostra i suoi nuovi passi.')); ctx.render(); } }, L('Advance the simulation 10 minutes', 'Avanza la simulazione di 10 minuti'));
 
   // The two Decision notes, merged and folded: they explain the page, they do not belong in the way of it.

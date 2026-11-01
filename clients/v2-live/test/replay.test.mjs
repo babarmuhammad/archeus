@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSim, CATEGORY } from '../sim.js';
-import { VOCAB, CATS, vocabCounts, category, classify, buildReplay, FIVE_ROWS, GAPS, NEVER, recovery } from '../replay-model.js';
+import { VOCAB, CATS, vocabCounts, category, classify, buildReplay, FIVE_ROWS, GAPS, NEVER, EFFECT_NOTE, recovery } from '../replay-model.js';
 import { fmt } from '../chat-engine.js';
 
 test('vocabulary: 130 states over 19 machines, the pinned totals, ENDED_REJECTED is RECORDED', () => {
@@ -71,6 +71,13 @@ test('the five example rows and the gaps are complete; both languages exist', ()
   assert.equal(FIVE_ROWS.length, 5); assert.equal(GAPS.length, 8); assert.equal(NEVER.length, 5);
   FIVE_ROWS.forEach((r) => { assert.ok(r.parts.length >= 2); r.parts.forEach(([s, c]) => { assert.ok(['RECORDED', 'UNKNOWN', 'SUMMARY', 'NOT_RECORDED'].includes(s)); assert.ok(c.it && c.en); }); });
   assert.ok(FIVE_ROWS.some((r) => r.parts.some((p) => p[0] === 'NOT_RECORDED')));
+});
+
+test('the sentence that external effects cannot all be reversed is pinned in both languages and drawn from the model', async () => {
+  const { readFileSync } = await import('node:fs');
+  assert.equal(fmt(EFFECT_NOTE, 'en'), 'Not every external effect can be reversed.');
+  assert.equal(fmt(EFFECT_NOTE, 'it'), 'Non ogni effetto esterno si può annullare.');
+  assert.match(readFileSync(new URL('../js/replay.js', import.meta.url), 'utf8'), /C\(EFFECT_NOTE\)/);
 });
 
 test('recovery: options follow the mission state, a LOST execution cannot be forced, nothing is offered as a re-run', () => {
