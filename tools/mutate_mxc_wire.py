@@ -26,6 +26,7 @@ L = 'tests/v1/integration/test_pv20_mxc_local.py::'
 O = 'tests/v1/unit/test_mxc_wire_outcome.py::'
 R = 'tests/v1/unit/test_mxc_wire_resources.py::'
 C = 'tests/v1/unit/test_mxc_wire_cancel.py::'
+D = 'tests/v1/unit/test_mxc_wire_watchdog.py::'
 
 MUTATIONS = [
     ('W01', 'the thread is resumed before the ownership facts are written', [(NATIVE,
@@ -186,6 +187,18 @@ MUTATIONS = [
      "        if answer is True or (isinstance(answer, (list, tuple)) and answer):",
      "        if answer is True or isinstance(answer, (list, tuple)):")],
      [C + 'test_only_true_or_a_list_of_owned_ids_answers_the_read_back']),
+    ('W32', 'a watchdog that fired or lost its reading is still a clean end', [(LOCAL,
+     "        if report['state'] != mxc_watchdog.ARMED:", "        if False:")],
+     [D + 'test_a_watchdog_that_fired_ends_the_launch_not_clean',
+      D + 'test_a_shared_watchdog_that_fired_is_never_a_clean_end']),
+    ('W33', 'the Job is never recorded with the watchdog before the resume', [(LOCAL,
+     "        if self.watchdog is not None:                 # last: a refusal here still ends "
+     "the child",
+     "        if False:")],
+     [D + 'test_the_job_is_recorded_before_the_resume_and_after_the_ownership']),
+    ('W34', "one launch's clean end disarms a watchdog shared with other jobs", [(LOCAL,
+     "        if report['recorded'] == [self.execution_id]:", "        if True:")],
+     [D + 'test_a_watchdog_shared_with_another_job_stays_armed']),
 ]
 
 

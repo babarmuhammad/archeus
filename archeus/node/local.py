@@ -35,7 +35,7 @@ from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
 from . import linkscan
-from . import mxc, mxc_cancel, mxc_ledger, mxc_native, mxc_outcome, mxc_resources
+from . import mxc, mxc_cancel, mxc_ledger, mxc_native, mxc_outcome, mxc_resources, mxc_watchdog
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
 #: user's own config is never written, only this one command's (T-078)
@@ -214,13 +214,16 @@ class MxcLaunch:
                  broker=None, resource_reader=None, disposal=None, clock=time.monotonic,
                  pause=time.sleep, quiescence_wait=MXC_QUIESCENCE_WAIT_S,
                  workload_reader=None, workload_expected=None, readback=None,
-                 end_job=None):
+                 end_job=None, watchdog=None):
         if workload_reader is not None and not (callable(workload_reader)
                                                 and callable(workload_expected)):
             raise staging.StageError('a workload reader needs the identity this launch issued')
         if not callable(outcome) and workload_reader is None:
             raise staging.StageError('MXC requires a Core-owned outcome reader')
         native = any(part is not None for part in (api, boundary, ledger, schema_validator))
+        if ledger is None and (readback is not None or watchdog is not None):
+            # both run in the ownership seam, which only a journalled launch has
+            raise staging.StageError('a read-back or a watchdog needs a journalled launch')
         if native:
             if backend is not None:
                 raise staging.StageError('MXC launch takes the native parts or a backend, '
@@ -241,7 +244,7 @@ class MxcLaunch:
         self.sdk_root, self.outcome = sdk_root, outcome
         self.workload_reader, self.workload_expected = workload_reader, workload_expected
         self.bound, self.readback, self._resource = None, readback, None
-        self._end_job = end_job
+        self._end_job, self.watchdog = end_job, watchdog
         self.verdict = self.facts = self._quiet_why = None
         self.pins = dict(pins)
         readonly, denied = tuple(readonly), tuple(denied)
@@ -328,6 +331,9 @@ class MxcLaunch:
                                     for res, acc in record.applied_grants],
                            observed=(mxc_resources.effective_policy(record)
                                      if record.observed is not None else {}), owned=[])
+        if self.watchdog is not None:                 # last: a refusal here still ends the child
+            self.watchdog.record({'execution_id': self.execution_id, 'pid': child.pid,
+                                  'create_time': child.create_time, 'job_ref': self.job})
 
     def _resource_record(self, child):
         fs = self.policy.raw['filesystem']
@@ -561,12 +567,26 @@ class MxcLaunch:
             self._quarantine('no workload outcome was observed (%s)' % reason)
             return mxc_cancel.QUARANTINE_UNVERIFIED
         try:
+            self._stand_down()
             self.ledger.append(self.execution_id, 'disposal', verified_absent=True)
             self.ledger.complete(self.execution_id, outcome)
         except Exception as err:
             self._quarantine('completion unrecorded: %s' % type(err).__name__)
             return mxc_cancel.QUARANTINE_UNVERIFIED
         return verdict
+
+    def _stand_down(self):
+        """A clean end retires the watchdog only if it is still armed, so it never fired
+        or lost its reading while this launch ran, and only if this launch is the one job
+        it holds: a watchdog shared with other jobs stays armed for them."""
+        if self.watchdog is None:
+            return
+        report = self.watchdog.report()
+        if report['state'] != mxc_watchdog.ARMED:
+            raise staging.StageError('the watchdog is %s: %s' % (report['state'],
+                                                                report['reason']))
+        if report['recorded'] == [self.execution_id]:
+            self.watchdog.stand_down('launch ended')
 
     def _quiescence_text(self):
         faults = (self.facts or {}).get('faults', {})
