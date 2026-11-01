@@ -115,7 +115,14 @@ def test_f7_a_long_stream_is_read_from_a_window_of_whole_lines(monkeypatch):
     assert not short['truncated'] and len(short['events']) >= 2         # a short read is not cut
 
 
-# ── F11: a cursor is ASCII digits ──
+# ── F10, F11: an idempotency key is bounded; a cursor is ASCII digits ──
+
+def test_f10_an_idempotency_key_longer_than_128_characters_is_a_400(tc):
+    body = {'title': 't', 'objective': 'o'}
+    r = tc.http('POST', '/v1/missions', body=dict(body, idempotency_key='k' * 129))
+    assert (r.status, r.json()['detail']['field']) == (400, 'idempotency_key')
+    assert tc.http('POST', '/v1/missions', body=dict(body, idempotency_key='k' * 128)).status == 200
+
 
 def test_f11_a_cursor_in_non_ascii_digits_is_a_400(tc):
     for digits in ('%D9%A3', '%EF%BC%91'):                    # Arabic-Indic three, fullwidth one

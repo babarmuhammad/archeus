@@ -18,7 +18,7 @@ from ..core.domain import entities, shapes, states
 from ..core.domain.shapes import Invalid  # noqa: F401 (re-exported)
 from ..core.domain.values import ORIGINS
 
-KEY = {'type': 'string'}
+KEY = {'type': 'string', 'maxLength': 128}
 
 #: Named types, emitted as TypeScript interfaces.
 TYPES = {
