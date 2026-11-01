@@ -1,21 +1,30 @@
 """urllib re-sends every request header, Authorization included, to whatever a
 3xx `Location` names. A provider target or a stale base URL that answers with a
 redirect to another host would be handed the user's key, so a redirect that
-leaves the origin of a request carrying a credential is refused: the caller sees
-the 3xx as an HTTPError, like every other non-2xx."""
+leaves the origin of a request with any header beyond a plain set is refused:
+the caller sees the 3xx as an HTTPError, like every other non-2xx."""
 
 import urllib.parse
 import urllib.request
 
-_CREDENTIAL_HEADERS = {'authorization', 'x-api-key', 'proxy-authorization', 'cookie'}
+# Only these names may follow a redirect to another origin; any other header
+# (api-key, x-goog-api-key, a custom token) is taken to hold a credential.
+# Content-Length and Host are added by urllib itself.
+_PLAIN_HEADERS = {'accept', 'accept-encoding', 'user-agent', 'content-type', 'content-length',
+                  'host', 'anthropic-version', 'anthropic-beta'}
+_DEFAULT_PORT = {'http': 80, 'https': 443}
+
+
+def _origin(url):
+    u = urllib.parse.urlsplit(url)
+    return u.scheme, (u.hostname or '').lower(), u.port or _DEFAULT_PORT.get(u.scheme)
 
 
 class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if _CREDENTIAL_HEADERS & {k.lower() for k, _ in req.header_items()}:
-            a, b = urllib.parse.urlsplit(req.full_url), urllib.parse.urlsplit(newurl)
-            if (a.scheme, a.netloc.lower()) != (b.scheme, b.netloc.lower()):
-                return None
+        if ({k.lower() for k, _ in req.header_items()} - _PLAIN_HEADERS
+                and _origin(req.full_url) != _origin(newurl)):
+            return None
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 

@@ -100,6 +100,24 @@ def test_same_origin_redirects_keep_the_credential_and_scheme_or_host_changes_do
     assert _redirect('https://a.example:8443/x', 'https://a.example/y', h) is None
 
 
+@pytest.mark.parametrize('name', ['api-key', 'x-goog-api-key', 'x-auth-token',
+                                  'anthropic-auth-token', 'X-Custom-Secret', 'Proxy-Authorization'])
+def test_any_header_outside_the_plain_set_is_held_back_from_another_origin(name):
+    h = {name: 'SYNTH'}
+    assert _redirect('https://a.example/x', 'https://evil.example/y', h) is None
+    assert _redirect('https://a.example/x', 'https://a.example/y', h) is not None
+
+
+def test_a_request_with_only_plain_headers_follows_a_redirect_and_ports_are_normalised():
+    plain = {'Accept': 'application/json', 'User-Agent': 'x/1', 'Content-Type': 'application/json',
+             'anthropic-version': '2023-06-01', 'anthropic-beta': 'b'}
+    assert _redirect('https://a.example/x', 'https://evil.example/y', plain) is not None
+    h = {'Authorization': 'Bearer SYNTH'}
+    assert _redirect('https://a.example/x', 'https://a.example:443/y', h) is not None
+    assert _redirect('http://a.example/x', 'http://A.example:80/y', h) is not None
+    assert _redirect('https://a.example/x', 'https://a.example:444/y', h) is None
+
+
 def test_importing_a_module_that_calls_urlopen_installs_the_handler():
     assert any(isinstance(x, netsafe.SameOriginRedirect)
                for x in urllib.request._opener.handlers)
