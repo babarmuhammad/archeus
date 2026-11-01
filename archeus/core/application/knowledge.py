@@ -10,6 +10,8 @@ distinct missions. Nothing is deleted: supersession keeps the old item as
 history, retraction keeps the row, and purge keeps a tombstone.
 """
 
+from datetime import datetime
+
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
@@ -257,6 +259,11 @@ def import_meeting(tx, *, actor, name, held_at, notes_sha256, notes_size, import
     `held_at` None is notes that carry no date, imported only when the import
     path opted in (P7 D2): the meeting stays undated and Archeus asks for the
     date in the primary conversation, in this transaction."""
+    if held_at is not None:
+        try:
+            datetime.fromisoformat(held_at.replace('Z', '+00:00'))
+        except (TypeError, ValueError):
+            raise ValueError('held_at is an ISO date or time: %r' % (held_at,)) from None
     workspace = ids.GLOBAL_WORKSPACE
     if project_id is not None:
         workspace = lifecycle.load(tx, entities.Project, project_id).entity.workspace_id
