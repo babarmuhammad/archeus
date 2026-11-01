@@ -17,7 +17,7 @@ _PARTS = (
     r'(?:AKIA|ASIA)[0-9A-Z]{12,}', r'AIza[0-9A-Za-z_\-]{30,}', r'xox[abprs]-[A-Za-z0-9\-]{8,}',
     r'(?i:bearer)\s+[A-Za-z0-9._~+/=\-]{8,}',
     r'(?i:authorization\s*[:=]\s*basic)\s+[A-Za-z0-9+/=]{8,}',
-    r'eyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+',
+    r'(?<![A-Za-z0-9_\-])eyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+',
     r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)',
     r'(?<=://)[^\s/:@]+:[^\s/@]+(?=@)',
     r'(?<!\S)(?:-u|--user)[\s=]+[A-Za-z_][^\s:]*:\S+',

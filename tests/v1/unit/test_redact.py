@@ -1,6 +1,8 @@
 """The one redactor (archeus/core/redact.py) against every credential shape the
 audit found leaking. Every value here is synthetic."""
 
+import time
+
 import pytest
 
 from archeus.core.domain import ids
@@ -55,3 +57,32 @@ def test_every_minted_token_prefix_is_redacted():
 ])
 def test_ordinary_text_is_left_alone(text):
     assert redact(text) == text
+
+
+# the longest an input can make each pattern work: a start at every position, a
+# long run that fails at its end, or a run that backtracks
+_N = 120_000
+_WORST = {
+    'jwt': ['eyJ' * (_N // 3), 'eyJabcde.' + 'b' * _N, 'eyJabcde.' + 'a.' * (_N // 2), 'eyJabcde.' * (_N // 9)],
+    'pem': ['-----BEGIN PRIVATE KEY-----' * (_N // 27), '-----BEGIN ' + 'A' * _N,
+            '-----BEGIN A' * (_N // 12), '-----BEGIN PRIVATE KEY-----' + 'ab \\n' * (_N // 5) + '\\"',
+            '-----BEGIN PRIVATE KEY-----' + '-----END ' * (_N // 9)],
+    'authorization': ['authorization:' + ' ' * _N, 'authorization: basic ' * (_N // 21)],
+    'bearer': ['bearer' + ' ' * _N, 'bearer   ' * (_N // 9), 'bearer abcdefg ' * (_N // 15)],
+    'userinfo': ['://a:' + 'b' * _N, '://a:b' * (_N // 6), '://a' + ':a' * (_N // 2), '://' * (_N // 3)],
+    'curl -u': ['-u ' + 'a' * _N, '-u a' * (_N // 4), '-u a' + ':' * _N, '-u' + ' ' * _N, '-u -u ' * (_N // 6)],
+    'aws': ['aws_secret_access_key' + ' ' * _N, 'aws_secret_access_key ' * (_N // 22),
+            'aws_secret_access_key"' * (_N // 22), 'AWS_SECRET_ACCESS_KEY=' * (_N // 22)],
+    'prefixes': ['brk_' * (_N // 4), 'sk-' * (_N // 3), 'ghp_' * (_N // 4), 'AKIA' * (_N // 4),
+                 'AIza' * (_N // 4), 'xoxb-' * (_N // 5), 'gsk_' + 'a' * _N, 'sk-' + 'a' * _N],
+    'plain': ['x' * _N, '"' * _N, '\\' * _N],
+}
+
+
+@pytest.mark.parametrize('name', sorted(_WORST))
+def test_every_pattern_is_linear_on_its_worst_input(name):
+    for text in _WORST[name]:
+        t = time.perf_counter()
+        redact(text)
+        # a quadratic pattern needs seconds here (the JWT one took 3.8 s at 120 KB)
+        assert time.perf_counter() - t < 0.5, text[:40]
