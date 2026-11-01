@@ -193,7 +193,7 @@ def spawn_breaker(conn, harness_id, now):
     """The harness's breaker with the latest failure's reason, or None."""
     fails, trial = spawn_streak(_newest(conn, harness_id, now))
     b = breaker_state([_epoch(x.ended_at) for x in fails], trial, now)
-    return b and dict(b, error=max(fails, key=lambda x: x.ended_at).summary)
+    return b and dict(b, error=max(fails, key=lambda x: _epoch(x.ended_at)).summary)
 
 
 def spawn_wait_s(n):
@@ -203,8 +203,9 @@ def spawn_wait_s(n):
 def spawn_wait(conn, task_id, now):
     """Until when (epoch) the task waits after its failed starts in a row, or None."""
     # a row decided after now is a backward clock step's, not history yet (as _newest)
-    xs = [r.entity for r in rows.where(conn, entities.Execution, task_id=task_id)
-          if _epoch(_decided(r.entity, r.created_at)) <= now]
+    decided = [(_epoch(_decided(r.entity, r.created_at)), r.entity)
+               for r in rows.where(conn, entities.Execution, task_id=task_id)]
+    xs = [x for at, x in sorted(decided, key=lambda p: p[0]) if at <= now]
     n = next((i for i, x in enumerate(reversed(xs)) if x.stop_reason != 'spawn'), len(xs))
     if not n:
         return None
@@ -360,6 +361,7 @@ def refuse(tx, *, actor, execution_id, reason, stop_reason, facts=None,
                   dict(fields, exit_reason='abandoned'))
     else:
         e = _fire(tx, e.id, 'discarded', actor, reason, dict(fields, exit_reason='killed'))
+        _ledger(tx, actor, e, None)
         # the session is Core's record of what ran, whoever ends the execution: a user's
         # stop or e-stop of a halted one ends it from their own command (T-101). Only
         # here: every other end is Core recording what it observed, and keeps its guard
@@ -404,6 +406,9 @@ def record_progress(tx, *, actor, execution_id, offset, events=0, lines=(), usag
     model at its provenance level (ADR-0031 §6), `first_output`, and
     `execution.progress`."""
     e = lifecycle.load(tx, entities.Execution, execution_id).entity
+    if e.state not in LIVE:
+        raise lifecycle.IllegalTrigger('execution', e.state, 'record_progress',
+                                       'the execution has already ended')
     if offset < e.stream_offset:
         raise ValueError('progress for %s went backwards (%d < %d)'
                          % (e.id, offset, e.stream_offset))
@@ -444,9 +449,9 @@ def _served(e, served):
     a level is never lowered; at the same level a later report of another model
     wins (the harness changed model mid-run). SERVED and BILLED name the exact
     revision; REQUESTED and ROUTED never claim one."""
-    if not served or not served.get('model'):
-        return {}
     levels = entities.PROVENANCE_LEVELS
+    if not served or not served.get('model') or served.get('level') not in levels:
+        return {}
     level, model = served['level'], str(served['model'])[:200]
     old = levels.index(e.served_level) if e.served_level else -1
     if levels.index(level) < old or (levels.index(level) == old and model == e.served_model):
@@ -920,6 +925,7 @@ def approval_answered(tx, *, actor, execution_id):
     e = _fire(tx, e.id, 'rejected', actor, 'approval %s %s' % (a.id, a.state.lower()),
               {'exit_reason': 'rejected', 'charged': True, 'ended_at': _now_iso(),
                'hook_token_hash': None, 'broker_token_hash': None})
+    _ledger(tx, actor, e, None)
     e = _finish(tx, actor, e, None)         # its session; no checkpoint (P9's decision is it)
     ended = _event(tx, 'execution.ended', e, actor, _end_payload(e))
     with _after(tx, ended):
