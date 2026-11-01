@@ -21,7 +21,7 @@ language: [../design/ARCHEUS_V1_DESIGN_SYSTEM.md](../design/ARCHEUS_V1_DESIGN_SY
 | Navigation | concepts ✓ | sidebar (desktop) / bottom tabs (mobile) / number keys (TUI) | |
 | Inspector | sections ✓ | column (desktop) / sheet (mobile) / pager (TUI) | |
 | Density | | comfortable/compact desktop; comfortable mobile; dense TUI | |
-| Notifications | events ✓ | | desktop toast, ntfy push, TUI status line |
+| Notifications | events ✓ | | desktop toast, ntfy push (not built: no ntfy code exists), TUI status line |
 | Tray / e-stop | | | desktop only |
 | Step-up | | | PIN pad on mobile; re-auth prompt on desktop |
 
@@ -36,8 +36,8 @@ clients/app/
 │   ├── api/stream.ts          SSE via fetch stream, leader tab (Web Locks) + BroadcastChannel
 │   ├── data/                  query cache: key = resource path; invalidated by event subject
 │   ├── state/presentation.ts  generated domain-state → glyph/colour/label table
-│   ├── nav/destinations.ts    ONE table: [id, label, icon, route, mobileTab?, shortcut]
-│   ├── surfaces/              now/ work/ world/ control/ attention/ inspector/ command/
+│   ├── nav/destinations.ts    ONE table (as built: `tokens/navigation.json`, rows {id, mod, label, key, tui, phone, blurb}; this file adds the routes)
+│   ├── surfaces/              now/ work/ world/ control/ attention/ inspector/ command/ (as built: files Now.tsx, Work.tsx, World.tsx, Control.tsx, Attention.tsx, Inspector.tsx, CommandBar.tsx, Mission.tsx)
 │   ├── components/            product components (design system §11)
 │   ├── graph/                 2D fine-line graph (canvas 2D; WebGL later)
 │   └── a11y/                  live-region announcer, focus management
@@ -63,7 +63,7 @@ clients/app/
   generated and gitignored; a fresh clone runs `npm ci && npm run build` in `clients/app/` once
   before opening the V1 UI, and Core serves a plain "SPA not built" page (not an error) when the
   directory is empty. CI: a `v1-client` job (from P3.5) runs `npm ci`, `npm run build`, the
-  generated-client freshness check and the Playwright skeleton test; the Python `test` job stays
+  Playwright skeleton test (as built also `npm audit`, `npm test` and the e2e run; the generated-client freshness check runs in the Python `test` job, `tests/v1/contract/test_api_generated.py`); the Python `test` job stays
   Node-free.
 - Authentication: the SPA obtains its device token through the local launch-code bootstrap
   ([api-and-realtime.md §5.1](api-and-realtime.md)) or, on a phone, through pairing.
@@ -79,13 +79,13 @@ clients/app/
 | `world` | World | sidebar | tab 3 | `3` | Ctrl/⌘+3 |
 | `attention` | Attention | sidebar badge + tray popover | tab 4 | `a` | Ctrl/⌘+J |
 | `control` | Control | sidebar | avatar menu | `4` | Ctrl/⌘+, |
-| `command` | Command bar | overlay | top search field on Now | `:` | Ctrl/⌘+K |
+| `command` | Command bar | overlay | top search field on Now | `:` | Ctrl/⌘+K (as built, not a destination row: `navigation.json` has five destinations; Ctrl/⌘+K opens the overlay) |
 
 *As built (P16 table, P17 column):* `clients/app/tokens/navigation.json` holds these rows; `key`
-is the SPA's Ctrl/⌘ shortcut and `tui` the TUI key, and both clients read the one file (A1).
+is the SPA's shortcut (as built, `mod` names the modifier: Alt for the digits and Attention, because the browser owns Ctrl+1–3 and Ctrl+J; Ctrl for Control's `,`) and `tui` the TUI key, and both clients read the one file (A1).
 
 Control sub-sections (the only second level): Autonomy · Automations · Resources · Devices ·
-Notifications · Appearance · About. Resources → harness detail pages hold harness-specific
+Notifications (not built) · Appearance · About; as built the sections are Autonomy, Automations, Resources, Sessions, Devices (labelled Clients), Appearance and About. Resources → harness detail pages hold harness-specific
 configuration (Claude Code: hooks, plugins, skills, agents, MCP, output styles — today's pages,
 relocated, not redesigned in V1).
 
@@ -103,8 +103,8 @@ mobile · TUI.
   happening now (active missions with specific progress text); top 3 attention items; primary
   conversation; activity timeline (filterable, system events hidden by default).
 - **Actions:** type intent/control verb; act on cards; dismiss digest; open any object.
-- **Core:** `GET /v1/now`, conversation queries, `POST /v1/conversations/{id}/messages`,
-  `/v1/now/ack`; events `mission.*`, `message.created`, `approval.*`.
+- **Core:** `GET /v1/now` (not built: the client composes it from four reads, status, digest, attention items and missions), conversation queries, `POST /v1/conversations/{id}/messages`,
+  `/v1/now/ack` (as built, `POST /v1/digest/ack`); events `mission.*`, `message.created`, `approval.*`.
 - **Interaction:** composer always focused on arrival (desktop); while Archeus works the
   message area shows specific progress text, and the reply arrives as a **whole message** row
   with cards when `message.created` fires (events are ids-only, so V1 does not stream reply
@@ -114,17 +114,17 @@ mobile · TUI.
 
 ### 4.2 Work
 - **Need:** "What is Archeus doing for me, and in what order?"
-- **Information:** missions grouped Active · Needs you · Blocked · Planning · Done (7 days);
+- **Information:** missions grouped Active · Needs you · Blocked · Planning · Done (7 days) (as built, `Work.tsx` groups are Needs you, Active, Planning, Blocked, Paused, Done, Failed or cancelled, with no seven-day window);
   ideas lane; automation runs; manual sessions (user-launched sessions tracked as manual
   executions, with launch/attach actions from today's Sessions tab).
 - **Actions:** open, pause/resume, reprioritise (drag / menu), cancel, capture idea, promote idea,
   launch or attach a manual session.
-- **Core:** `/v1/missions`, `/v1/ideas`, `/v1/automations/*/runs`, execution commands.
+- **Core:** `/v1/missions`, `/v1/ideas`, `/v1/automations/*/runs` (as built: `/v1/automations`, `/v1/automations/{id}`, `/v1/automations/{id}/simulate`, `/v1/automation-runs/{id}`), execution commands.
 - **Desktop:** list + inspector. **Mobile:** grouped list, sheets. **TUI:** screen `2`
   (wireframe A.4).
 
 ### 4.3 Mission inspector (any mission, from anywhere)
-- Tabs: Outcome · Plan · Now · Evidence · Thread · Why · Timeline (research §19, wireframe A.2).
+- Tabs: Outcome · Plan · Now · Evidence · Thread · Why · Timeline (research §19, wireframe A.2). As built (`navigation.json`): outcome, plan, now, evidence, why, timeline, trace, relations; there is no Thread tab.
 - Plan edit creates a new plan version (and supersedes approvals), never edits in place.
 - Execution detail opens *within* the Now tab (live tail subscribed only while open), showing
   harness/account/model as metadata, not headline. *As built (P21, ADR-0047 §9):* it also shows
@@ -142,7 +142,7 @@ mobile · TUI.
   retract / supersede knowledge, link objects, forget (dry-run).
 - **Core:** `/v1/projects`, `/v1/world/graph`, `/v1/knowledge`, `/v1/repositories/*`.
 - **Project page:** tabs Overview · Missions · Knowledge · Architecture · Repositories ·
-  Sessions · Settings (research §20).
+  Sessions · Settings (research §20). As built, a project has one `detail` tab (`navigation.json`), and World has two tabs, Projects and Knowledge.
 - **Mobile:** list and inspector only; graph view hidden below 600 px width (list equivalent is
   the default anyway). **TUI:** screen `3`, tree + inspector pager.
 
@@ -168,7 +168,7 @@ mobile · TUI.
   defaults; offers and the catalogue stay separate lists (ADR-0036, PROPOSED).
 - **Devices:** paired devices, pair a phone (local only), revoke, remote access setup guide
   (Tailscale Serve), emergency stop / re-arm.
-- **Notifications:** channels (desktop, ntfy), which events notify.
+- **Notifications:** channels (desktop, ntfy), which events notify (not built: there is no Notifications section and no ntfy code).
 - **Appearance:** theme (System · Dark · Light) and contrast (System · Standard · High), System
   by default and stored per client (ADR-0044, P19); thread tint, density, motion. `forced-colors`
   always wins.
@@ -188,7 +188,7 @@ query; it is not a top-level destination.
 
 ### 4.9 Notifications
 In-app via Attention and toasts; desktop toasts via the Core notifier; mobile via ntfy deep links
-into `/o/approval/<id>`. Notification settings per event class in Control.
+into `/o/approval/<id>`. Notification settings per event class in Control. Not built: no ntfy code and no per-event-class settings exist.
 
 ### 4.10 Approval UX (cross-surface contract)
 1. The item shows **what exactly** will happen (canonical action in mono), **why it needs
@@ -336,7 +336,7 @@ spatial view against what this section decides.
 platform seam for keys, POSIX + Windows) and `render.py` (ANSI rendering). Screens mirror
 destinations; the event stream drives re-queries exactly like the SPA. The legacy TUI
 (`claude_sessions/main.py`) remains until the retirement gate. The thin CLI (`archeus status |
-approve | pause | route why | estop | pair`) ships first (V1 slice) because it is also the
+approve | pause | route why | estop | pair`; as built `approve` prints that it is not available yet and exits 2) ships first (V1 slice) because it is also the
 scripting and emergency interface.
 
 *As built (P17, [p17-design-gate.md](p17-design-gate.md) §20):* `archeus tui [--open KIND/ID]
@@ -352,13 +352,13 @@ Relationships are Core-supplied edge lists; nothing spatial is drawn (P18).
 
 | Gate | Carried from |
 |---|---|
-| keyframes may animate only transform/opacity; no `steps()` | `test_gui_flicker.py` |
+| keyframes may animate only transform/opacity; no `steps()` | `test_gui_flicker.py` (legacy page); the SPA's rule is `tests/v1/design/test_design_gates.py` |
 | no `backdrop-filter`, `filter: blur`, `mix-blend-mode` | Qt GPU tear lesson |
-| component layout rules use container queries | `test_a_container_shaped_rule_is_never_a_media_query` |
-| overflow + dead-space audit over every surface at 390, 768, 1280, 1920 px | `tools/shot_gui.py` `SPACE_JS` |
-| smoke run: every destination and inspector tab renders against the fake Core; animation loop parks | `tools/smoke_gui.py`, with a floor on checks run |
-| contrast gate over tokens × themes | `tests/test_themes.py` floors |
-| no inline handlers / inline script | `test_inline_handlers.py` (stricter: CSP forbids them) |
+| component layout rules use container queries | `test_a_container_shaped_rule_is_never_a_media_query` (legacy grid); the SPA's rule is in `tests/v1/design/test_design_gates.py` |
+| overflow + dead-space audit over every surface at 390, 768, 1280, 1920 px | `tools/shot_gui.py` `SPACE_JS` (legacy page, widths 1280, 1920, 2560); the SPA's four-width audit is `tests/v1/e2e/test_spa_p16.py` |
+| smoke run: every destination and inspector tab renders against the fake Core; animation loop parks | `tools/smoke_gui.py` (legacy page), with a floor on checks run; the SPA's browser runs are `tests/v1/e2e/test_spa_*.py` |
+| contrast gate over tokens × themes | `tests/test_themes.py` floors (legacy ANSI palettes); the SPA's token × theme floor is in `tests/v1/design/test_design_gates.py` |
+| no inline handlers / inline script | `test_inline_handlers.py` (legacy settings editor; stricter: CSP forbids them); the SPA's rule is in `tests/v1/design/test_design_gates.py` |
 | nav table ↔ routes ↔ TUI screens parity | `test_parity_gate.py` idea, now trivially true because both read one table |
 | screenshots for docs regenerated after UI changes | existing `--docs` pipeline |
 
