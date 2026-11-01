@@ -158,9 +158,9 @@ exist or if a judge test is not listed — the table cannot drift from the suite
 
 ## 5. CI
 
-- Existing `test` job unchanged (legacy suite; installs only pytest).
+- Existing `test` job unchanged (legacy suite; installs only pytest). *As built, the `test` job runs `python -m pytest tests/` on a matrix, which collects `tests/v1` too, so there is no separate `v1` job.*
 - New `v1` job: `py -m pytest tests/v1 -q` (stdlib + pytest only), then `npm ci && npm run build
-  && npx playwright test` for the SPA (Node only in CI and release, never at runtime).
+  && npx playwright test` for the SPA (Node only in CI and release, never at runtime). *As built, the `v1-client` job runs `npm ci`, `npm run build`, `npm audit`, `npm test`, then the Python Playwright e2e suite (`pytest tests/v1/e2e tests/v1/judge/test_g03_one_model.py`) with a passed-count floor; there is no Node Playwright config and `npx playwright test` is not run.*
 - Contract tests against real harnesses: manual/weekly workflow with sandbox accounts; never on
   pull requests (quota and secrets).
 - Known runner limitation: `test_writer_throughput_is_at_least_500_commands_per_second`. 500/s
