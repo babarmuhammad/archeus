@@ -6,7 +6,8 @@
 // A page opts a row in with one attribute: data-mk="<stable key>" (or it already carries data-key or matches ROWS). Chat and Usage rows do that after their merge.
 import { reducedMotion } from './store.js';
 import { isPhone } from './viewport.js';
-import { plan, direction, staggerDelay, keyOf, ticks } from './motion-model.js';
+import { plan, staggerDelay, keyOf, ticks } from './motion-model.js';
+import { decide, start } from './view-transition.js';
 
 const root = document.documentElement;
 const ROWS = '.mrow, .card.band, .rp-event, .pcell, .pidea, .ax-xrow, .us-row, .hl-row, .ln-row, .sec-row, .ax-acct, .ax-model, .ax-idea, .msg, .proj-item[data-proj], .safety, .stop-btn, [data-mk]';
@@ -177,13 +178,7 @@ const stage = (el) => el && el.getClientRects().length;
 
 // A directional cross-fade between pages: View Transitions where the browser has them (css/motion.css names the page snapshot), otherwise just the arrival.
 export function route(from, to, update) {
-  const dir = direction(from, to);
-  if (typeof document.startViewTransition !== 'function' || from === 'terminal' || to === 'terminal') { viaVT = false; update(dir); return; }
-  root.dataset.vt = dir > 0 ? 'fwd' : 'back'; viaVT = true;
-  const t = document.startViewTransition(() => update(dir));
-  const clearVt = () => { delete root.dataset.vt; };
-  t.finished.then(clearVt, clearVt);
-  t.ready.catch(() => {}); // a route change inside a running transition skips it, which rejects ready
+  viaVT = start(document, decide({ from, to, api: typeof document.startViewTransition === 'function', quiet: !on() }), update);
 }
 
 // The page head and the first blocks of content come in one after the other (4 steps at most, 40 ms apart). Only after a route change, never on a live update.
