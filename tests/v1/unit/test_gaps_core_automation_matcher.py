@@ -94,13 +94,19 @@ def test_a_where_that_is_not_a_mapping_is_refused(where):
         M.validate_trigger({'type': MODEL_ADDED, 'where': where}, TYPES)
 
 
-@pytest.mark.parametrize('empty', [None, {}, [], 0, '', False],
-                         ids=['none', 'dict', 'list', 'zero', 'string', 'false'])
-def test_an_empty_where_is_stored_as_no_test_and_fires_on_every_payload(empty):
-    # matcher.py:66 `where = trigger.get('where') or {}` and the empty loop at
-    # matcher.py:145: a falsy where means "no test", so the rule fires for every
-    # event of its type — the widest-reaching rule the module can store, and the
-    # one an accidental `where: 0` silently becomes.
+@pytest.mark.parametrize('where', [[], 0, '', False],
+                         ids=['list', 'zero', 'string', 'false'])
+def test_a_falsy_where_that_is_not_a_mapping_is_refused_not_stored_as_no_test(where):
+    # matcher.py:66-68 `where = {} if where is None else where`: only an absent
+    # where means "no test". A falsy non-mapping (an accidental `where: 0`) used to
+    # become the widest-reaching rule the module can store, firing on every event of
+    # its type; it is refused like any other non-mapping.
+    with pytest.raises(M.Invalid, match='where maps payload keys'):
+        M.validate_trigger({'type': MODEL_ADDED, 'where': where}, TYPES)
+
+
+@pytest.mark.parametrize('empty', [None, {}], ids=['none', 'dict'])
+def test_an_absent_or_empty_where_is_stored_as_no_test_and_fires_on_every_payload(empty):
     stored = M.validate_trigger({'type': MODEL_ADDED, 'where': empty}, TYPES)
     assert stored == {'kind': 'event', 'type': MODEL_ADDED, 'where': {}}
     assert M.matches(stored, MODEL_ADDED, {'anything': 1}) == (
@@ -185,17 +191,32 @@ def test_a_scalar_where_value_is_stored_by_value_not_by_identity(value):
     ({'title': 't', 'objective': 'o', 'success_criteria': ({'text': 'c'},)}, 'list of'),
     ({'title': 't', 'objective': 'o', 'success_criteria': ['c']}, 'list of'),
     ({'title': 't', 'objective': 'o', 'success_criteria': [{'text': 'c'}, 'c']}, 'list of'),
+    ({'title': 't', 'objective': 'o', 'success_criteria': [{'text': 'c'}]}, 'list of'),
+    ({'title': 't', 'objective': 'o',
+      'success_criteria': [{'text': 'c', 'check': 'maybe'}]}, 'list of'),
+    ({'title': 't', 'objective': 'o',
+      'success_criteria': [{'text': ' ', 'check': 'human'}]}, 'list of'),
+    ({'title': 't', 'objective': 'o',
+      'success_criteria': [{'text': 5, 'check': 'human'}]}, 'list of'),
+    ({'title': 't', 'objective': 'o',
+      'success_criteria': [{'text': 'c', 'check': 'human', 'origin': 'guess'}]}, 'list of'),
+    ({'title': 't', 'objective': 'o',
+      'success_criteria': [{'text': 'c', 'check': 'human', 'met': True}]}, 'list of'),
     ({'title': 't', 'objective': 'o', 'model': 'cheap'}, 'cannot carry'),
-    ({'title': 't', 'objective': 'o', 'success_criteria': [{'text': 'c'}]}, None),
+    ({'title': 't', 'objective': 'o',
+      'success_criteria': [{'text': 'c', 'check': 'automatic'}]}, None),
 ], ids=['none', 'string', 'int', 'list', 'no-objective', 'no-title', 'int-title',
         'list-title', 'blank-objective', 'zero-objective', 'str-criteria', 'int-criteria',
-        'dict-criteria', 'tuple-criteria', 'str-item', 'mixed-item', 'carries-model',
-        'ok-criteria'])
+        'dict-criteria', 'tuple-criteria', 'str-item', 'mixed-item',
+        'no-check', 'bad-check', 'blank-text', 'int-text', 'bad-origin', 'extra-key',
+        'carries-model', 'ok-criteria'])
 def test_a_template_that_is_not_a_mission_request_is_refused(template, why):
-    # matcher.py:111 / 119-120 / 126-127 — the three refusals of the template gate.
+    # matcher.py:111 / 119-120 / 126-133 — the refusals of the template gate; each
+    # criterion is {text, check: automatic|human, origin?: explicit|inferred}.
     if why is None:
-        assert M.validate_template(template) == {'title': 't', 'objective': 'o',
-                                                 'success_criteria': [{'text': 'c'}]}
+        assert M.validate_template(template) == {
+            'title': 't', 'objective': 'o',
+            'success_criteria': [{'text': 'c', 'check': 'automatic'}]}
     else:
         with pytest.raises(M.Invalid, match=why):
             M.validate_template(template)
@@ -211,16 +232,24 @@ def test_a_falsy_success_criteria_is_stored_as_no_criteria(falsy):
 
 
 def test_the_criteria_a_template_carries_are_copies_of_the_ones_it_was_given():
-    # matcher.py:129 `[dict(c) for c in crit]` — a stored template cannot be
+    # matcher.py:133 `[dict(c) for c in crit]` — a stored template cannot be
     # rewritten through the dict its caller still holds, nor the other way round.
-    crit = [{'text': 'c'}]
+    crit = [{'text': 'c', 'check': 'human'}]
     src = {'title': 't', 'objective': 'o', 'success_criteria': crit}
     stored = M.validate_template(src)
     crit[0]['text'] = 'changed'
-    crit.append({'text': 'late'})
-    assert stored['success_criteria'] == [{'text': 'c'}]
+    crit.append({'text': 'late', 'check': 'human'})
+    assert stored['success_criteria'] == [{'text': 'c', 'check': 'human'}]
     stored['success_criteria'][0]['text'] = 'mutated'
-    assert src['success_criteria'] == [{'text': 'changed'}, {'text': 'late'}]
+    assert src['success_criteria'] == [{'text': 'changed', 'check': 'human'},
+                                       {'text': 'late', 'check': 'human'}]
+
+
+@pytest.mark.parametrize('origin', ['explicit', 'inferred'])
+def test_a_criterion_may_name_its_origin_and_keeps_it(origin):
+    crit = {'text': 'c', 'check': 'automatic', 'origin': origin}
+    assert M.validate_template({'title': 't', 'objective': 'o', 'success_criteria': [crit]}
+                               )['success_criteria'] == [crit]
 
 
 # ── 3. placeholders: the only way an event reaches a mission (matcher.py:121-124, 163-166) ──
