@@ -2081,7 +2081,8 @@ credential store was read: this review covers Archeus's own files and code only.
      - `Account` has no secret field (`core/domain/entities.py:1363`): `home_ref` is a path,
        and the `accounts` table holds that entity's body.
      - No draw or writer above produces an API key.
-     - The Claude Code adapter removes `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN` from an
+     - The Claude Code adapter removes `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and
+       `CLAUDE_CODE_OAUTH_TOKEN` from an
        execution's environment rather than supplying them (`harnesses/claude_code/adapter.py:168`).
      - An account's login, API key or OAuth, lives in the harness's own home, which Archeus does
        not write.

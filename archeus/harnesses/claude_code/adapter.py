@@ -206,7 +206,7 @@ class ClaudeCodeAdapter:
             env['CLAUDE_CONFIG_DIR'] = base.ExecPaths(spec.execution_id).config
         elif home:
             env['CLAUDE_CONFIG_DIR'] = os.path.expanduser(home)
-        for k in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
+        for k in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'):
             env.setdefault(k, None)
         return env
 

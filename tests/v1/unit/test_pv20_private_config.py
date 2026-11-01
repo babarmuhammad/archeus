@@ -131,6 +131,17 @@ def test_an_isolated_launch_drops_the_provider_keys(tmp_path, monkeypatch):
     assert 'ANTHROPIC_API_KEY' not in env and 'ANTHROPIC_AUTH_TOKEN' not in env
 
 
+def test_an_unisolated_launch_drops_an_inherited_oauth_token(tmp_path, monkeypatch):
+    """An OAuth token in Core's environment beats the elected account's login, so
+    the execution would be billed to and limited by another account."""
+    seen = {}
+    monkeypatch.setattr(base.proc, 'spawn_detached', lambda argv, *, cwd, env, **kw: (
+        seen.update(env=dict(env)), (SimpleNamespace(pid=424242), None))[1])
+    monkeypatch.setenv('CLAUDE_CODE_OAUTH_TOKEN', 'synthetic-oauth')
+    cc.ClaudeCodeAdapter(exe='claude').start(_spec(tmp_path))
+    assert 'CLAUDE_CODE_OAUTH_TOKEN' not in seen['env']
+
+
 def test_an_unisolated_launch_is_unchanged(tmp_path, monkeypatch):
     seen = {}
 
