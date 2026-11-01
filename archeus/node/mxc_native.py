@@ -37,12 +37,17 @@ class Win32(Protocol):
 
 
 class Transport:
+    # output_limit bounds each of stdout and stderr; total_limit bounds both together
+    # and defaults to twice the per-stream bound, the most two full streams can reach.
     def __init__(self, api: Win32, boundary, *, clock=time.monotonic, pause=time.sleep,
-                 output_limit=256 * 1024):
-        if output_limit <= 0:
+                 output_limit=256 * 1024, total_limit=None):
+        if total_limit is None:
+            total_limit = 2 * output_limit
+        if output_limit <= 0 or total_limit <= 0:
             raise ValueError('positive output bound required')
         self.api, self.boundary = api, boundary
-        self.clock, self.pause, self.output_limit = clock, pause, output_limit
+        self.clock, self.pause = clock, pause
+        self.output_limit, self.total_limit = output_limit, total_limit
         self._policies = {}
 
     def stage_policy(self, raw):
@@ -162,6 +167,29 @@ class Process:
         self.launcher_exit = None
         self._cancelled = False
         self._policy_lease, self.timeout = policy_lease, timeout
+        self._sink, self._stdin_reader = self._buffer, None
+        self._seen = {'stdout': 0, 'stderr': 0}
+        self._draining = self._stop = False
+
+    def _buffer(self, name, data):
+        getattr(self, name).write(data)
+
+    def attach(self, sink=None, stdin_reader=None):
+        """Route output to `sink(name, data)` (name is 'stdout' or 'stderr') and feed
+        stdin from `stdin_reader(size)`: bytes, None for nothing yet, b'' for EOF.
+        Both are called only on the drain thread, never concurrently, and a callback
+        that raises ends the launch like any other fault. Unset ones keep the
+        in-memory streams and the buffered `stdin` payload."""
+        if self._draining or not self._handles:
+            raise MxcUnavailable('launcher is not attachable')
+        if sink is not None:
+            self._sink = sink
+        self._stdin_reader = stdin_reader
+
+    def poll(self):
+        """The launcher exit once the drain returned or the launcher was terminated, else
+        None. It never asks the kernel, so every output byte has reached the sink first."""
+        return None if self._handles else self.launcher_exit
 
     def _close(self, handle):
         if handle in self._handles:
@@ -177,11 +205,15 @@ class Process:
             self._policy_lease = None
 
     def terminate(self):
+        if self._draining:
+            self._stop = True       # the drain owns the handles: it ends the launch
+            return
         if not self._cancelled and self._handles:
             self._cancelled = True
             try:
                 if self.launcher_exit is None:
                     self.api.terminate_process(self.process_handle)
+                    self.launcher_exit = 1
             finally:
                 self.close()
 
@@ -195,16 +227,19 @@ class Process:
             if self.launcher_exit is None:
                 raise MxcUnavailable('launcher closed')
             return self.launcher_exit
+        if self._draining:
+            raise MxcUnavailable('launcher already draining')
+        self._draining = True
         deadline = self.transport.clock() + max(0, self.timeout if timeout is None else timeout)
-        pending = self.stdin.payload()
-        offset, eof = 0, set()
+        read_input = self._stdin_reader or io.BytesIO(self.stdin.payload()).read
+        pending, offset, eof = b'', 0, set()
         try:
             while True:
-                if cancelled():
+                if self._stop or cancelled():
                     raise MxcUnavailable('launcher cancelled during drain')
-                if deadline is not None and self.transport.clock() >= deadline:
+                if self.transport.clock() >= deadline:
                     raise TimeoutError('launcher I/O deadline')
-                for index, stream in ((1, self.stdout), (2, self.stderr)):
+                for index, name in ((1, 'stdout'), (2, 'stderr')):
                     if index in eof:
                         continue
                     data = self.api.read(self._pipes[index], 65536)
@@ -212,16 +247,21 @@ class Process:
                         eof.add(index)
                         self._close(self._pipes[index])
                     elif data:
-                        stream.seek(0, io.SEEK_END)
-                        if stream.tell() + len(data) > self.transport.output_limit:
+                        self._seen[name] += len(data)
+                        if (self._seen[name] > self.transport.output_limit
+                                or sum(self._seen.values()) > self.transport.total_limit):
                             raise MxcUnavailable('launcher output bound exceeded')
-                        stream.write(data)
+                        self._sink(name, data)
                 if self._pipes[0] in self._handles:
+                    if offset >= len(pending):
+                        chunk = read_input(65536)
+                        if chunk == b'':
+                            self._close(self._pipes[0])
+                            self.stdin.close()
+                        else:
+                            pending, offset = chunk or b'', 0
                     if offset < len(pending):
                         offset += self.api.write(self._pipes[0], pending[offset:offset + 65536])
-                    else:
-                        self._close(self._pipes[0])
-                        self.stdin.close()
                 self.launcher_exit = self.api.poll(self.process_handle)
                 if self.launcher_exit is not None and len(eof) == 2:
                     self.close()
@@ -230,9 +270,12 @@ class Process:
                     return self.launcher_exit
                 self.transport.pause(0.001)
         except BaseException:
+            self._draining = False
             self.terminate()
             self.close()
             raise
+        finally:
+            self._draining = False
 
 
 class Backend(mxc.NativeMxc):
