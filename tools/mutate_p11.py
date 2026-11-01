@@ -204,6 +204,14 @@ MUTATIONS = [
      "reason='no workspace: %s' % err,\n                     stop_reason='workspace')",
      "reason='no workspace: %s' % err,\n                     stop_reason='binding')")],
      [VER + '::test_a_workspace_that_cannot_be_made_spends_the_tasks_attempts']),
+    ('X38', 'a request of any size is parsed', [(NODE,
+     "body = json.loads(data.decode('utf-8')) if len(data) <= MAX_REQUEST_BYTES else None",
+     "body = json.loads(data.decode('utf-8'))")],
+     [U + '::test_a_request_past_the_size_bound_is_unreadable_and_never_parsed',
+      U + '::test_a_response_past_the_size_bound_does_not_answer_a_request']),
+    ('X39', 'a request file is read whole', [(NODE,
+     'data = f.read(MAX_REQUEST_BYTES + 1)', 'data = f.read()')],
+     [U + '::test_a_request_past_the_size_bound_is_unreadable_and_never_parsed']),
 ]
 
 

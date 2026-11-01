@@ -28,6 +28,7 @@ from archeus.core.execution.manager import ExecutionManager, redact
 from archeus.core.policy import rules
 from archeus.harnesses import base, hook
 from archeus.infra import paths
+from archeus.node import local
 from archeus.node.local import LocalNode
 
 PRJ, MSN = ids.new_id('project'), ids.new_id('mission')
@@ -1023,6 +1024,57 @@ def test_an_answer_to_an_earlier_request_with_the_same_number_does_not_answer_a_
     assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Bash', 'nonce': 'b'})]
     LocalNode.respond(eid, 1, 'deny', 'no')
     assert LocalNode.pending_requests(eid) == []
+
+
+def test_a_request_past_the_size_bound_is_unreadable_and_never_parsed(monkeypatch):
+    """The execution writes req/ and Core re-reads it every tick: an unbounded json.load
+    of a huge file exhausted Core's memory (review R2)."""
+    monkeypatch.setattr(local, 'MAX_REQUEST_BYTES', 64)
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    os.makedirs(p.res)
+    fits = b'{"nonce": "' + b'a' * 51 + b'"}'
+    assert len(fits) == 64
+    for name, body in (('1.req.json', fits), ('2.req.json', fits.replace(b'}', b' }')),
+                       ('3.req.json', b'{"nonce": "' + b'a' * 10000 + b'"}')):
+        with open(os.path.join(p.req, name), 'wb') as f:
+            f.write(body)
+    parsed, reads = [], []
+    real, real_open = json.loads, open
+
+    class Counted:
+        def __init__(self, f):
+            self.f = f
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.f.close()
+
+        def read(self, n=-1):
+            reads.append(n)
+            return self.f.read(n)
+
+    monkeypatch.setattr(local, 'open', lambda *a, **k: Counted(real_open(*a, **k)), raising=False)
+    monkeypatch.setattr(local.json, 'loads', lambda s, *a, **k: parsed.append(len(s)) or real(s))
+    assert LocalNode.pending_requests(eid) == [(1, json.loads(fits)), (2, None), (3, None)]
+    assert parsed and max(parsed) <= 64
+    assert reads and all(0 < n <= 65 for n in reads)
+
+
+def test_a_response_past_the_size_bound_does_not_answer_a_request(monkeypatch):
+    monkeypatch.setattr(local, 'MAX_REQUEST_BYTES', 64)
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    os.makedirs(p.res)
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        f.write('{"nonce": "n"}')
+    with open(os.path.join(p.res, '1.res.json'), 'w', encoding='utf-8') as f:
+        f.write('{"nonce": "n", "x": "' + 'a' * 100 + '"}')
+    assert LocalNode.pending_requests(eid) == [(1, {'nonce': 'n'})]
 
 
 def test_a_request_file_that_is_not_a_plain_sequence_number_is_not_a_request():

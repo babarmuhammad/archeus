@@ -118,6 +118,8 @@ _PROMISOR_PACK = '.promisor'
 #: a `.git` file larger than this is refused (Git reads up to 1 MiB: setup.c
 #: read_gitfile_gently); no path Core resolves is anywhere near it
 _GITFILE_MAX = 64 * 1024
+#: a hook request or answer is a tool call's JSON; a file past this is not parsed
+MAX_REQUEST_BYTES = 8 * 1024 * 1024
 
 # PV-20 K2 (T-049 and its correction C-1013-T049): an isolated execution's seed,
 # built by Core outside the execution area and renamed in. Every bound below is
@@ -1632,9 +1634,12 @@ class LocalNode:
 
 
 def _read_object(path):
+    """The JSON object at *path*, or None. The file is execution-writable and Core
+    re-reads it every tick: more than MAX_REQUEST_BYTES is refused before it is parsed."""
     try:
-        with open(path, encoding='utf-8') as f:
-            body = json.load(f)
+        with open(path, 'rb') as f:
+            data = f.read(MAX_REQUEST_BYTES + 1)
+        body = json.loads(data.decode('utf-8')) if len(data) <= MAX_REQUEST_BYTES else None
     except (OSError, ValueError):
         return None
     return body if isinstance(body, dict) else None
