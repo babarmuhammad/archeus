@@ -12,6 +12,8 @@ import { createTerritoryMap } from './constellation/territories.js';
 import { laneOf, stateCounts, activityByProject } from './constellation/rings.js';
 import { clockLabel } from '../sim.js';
 import { projectCodes } from './project-code.js';
+import { ambient } from './motion-model.js';
+import { areasOf } from './areas-model.js';
 
 // A worktree is never a project. A project lists its own (the 'main' tree is the project itself and is not listed); the map hangs them between the hub and the missions that work in them.
 const WT_TONE = { active: 'idle', stale: 'paused', missing: 'blocked', merged: 'done', abandoned: 'idle' };
@@ -27,6 +29,8 @@ const pending = [];
 const lastPulse = new Map();
 
 export const liveFresh = (sim) => { const st = sim.state; return st.playing && sim.liveWork().some((x) => x.state === 'RUNNING' && !x.stuck && st.clock - x.last_output_at < 120000); };
+// One map flag drives drift, ring and travel; the rules (Quiet, hidden tab, emergency stop, a reconnecting client) are ambient() in motion-model.js.
+export const ambientOf = (sim) => ambient({ full: !store.reducedMotion(), visible: !document.hidden, playing: sim.state.playing, stopped: sim.state.estop.engaged, moments: areasOf(sim).isOffline() ? ['reconnecting'] : [] });
 
 export function buildGraph(sim) {
   const st = sim.state, nodes = [], edges = [];
@@ -118,7 +122,7 @@ export function syncMap(ctx, key) {
   const g = terr ? buildOverview(sim) : buildGraph(sim);
   e.map.setTheme(THEME[store.get('theme')]);
   e.map.setReducedMotion(store.reducedMotion());
-  e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged); e.map.setStopped(sim.state.estop.engaged);
+  e.map.setLive(liveFresh(sim)); e.map.setAmbient(ambientOf(sim).drift); e.map.setStopped(sim.state.estop.engaged);
   e.map.update(g);
   const want = (terr ? g.projects.some((p) => p.id === ctx.route.id || p.missions.some((m) => m.id === ctx.route.id)) : g.nodes.some((n) => n.id === ctx.route.id)) ? ctx.route.id : null;
   if (want !== e.sel) { e.sel = want; e.syncing = true; e.map.setSelection(want); e.syncing = false; }
@@ -131,7 +135,7 @@ export function pruneMaps(keep) {
 }
 
 export function syncLive(sim) {
-  for (const e of maps.values()) if (e.map) { e.map.setLive(liveFresh(sim)); e.map.setAmbient(sim.state.playing && !sim.state.estop.engaged); e.map.setStopped(sim.state.estop.engaged); e.map.setReducedMotion(store.reducedMotion()); }
+  for (const e of maps.values()) if (e.map) { e.map.setLive(liveFresh(sim)); e.map.setAmbient(ambientOf(sim).drift); e.map.setStopped(sim.state.estop.engaged); e.map.setReducedMotion(store.reducedMotion()); }
 }
 
 // An execution starting draws a marker down its edge, one ending down the mission's edge (the execution node is gone by then); output pulses at most once per 2 s per execution.
