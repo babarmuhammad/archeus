@@ -82,7 +82,8 @@ MUTATIONS = [
      [I + '::test_an_execution_that_ran_always_leaves_a_row_with_its_basis']),
     ('A11', 'an absent figure reported as 0 by the adapter', [(HC,
      "    return {ours: u[theirs] for theirs, ours in names.items()\n"
-     "            if isinstance(u.get(theirs), int) and not isinstance(u.get(theirs), bool)}",
+     "            if isinstance(u.get(theirs), int) and not isinstance(u.get(theirs), bool)\n"
+     "            and u[theirs] >= 0}",
      "    return {ours: u.get(theirs) or 0 for theirs, ours in names.items()}")],
      [KU + '::test_l13_claude_code_calls_read_only_ephemeral_and_native']),
     ('A12', 'an execution that reported nothing leaves no row', [(EX,
