@@ -219,3 +219,10 @@ def test_a_worktree_is_named_only_by_a_project_and_a_mission_id(archeus_home, pr
         with pytest.raises(ValueError):
             fn()
 
+
+
+def test_an_id_error_does_not_echo_the_whole_value():
+    """T-655#18: the message carried the caller's object whole."""
+    with pytest.raises(ValueError) as err:
+        paths.repo_store('x' * 10 ** 6)
+    assert len(str(err.value)) < 200

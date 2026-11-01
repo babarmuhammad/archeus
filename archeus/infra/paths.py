@@ -125,7 +125,7 @@ def repos_dir():
 def repo_store(project_id):
     """`<ARCHEUS_HOME>/repos/<project_id>.git` — one project's Core-owned store."""
     if not ids.is_id(project_id, 'project'):
-        raise ValueError('not a project id: %r' % (project_id,))
+        raise ValueError('not a project id: %.80r' % (project_id,))
     return os.path.join(repos_dir(), '%s.git' % project_id)
 
 
@@ -134,7 +134,7 @@ def seed_staging(execution_id):
     execution's seeded repository before renaming it into the execution's
     workspace (PV-20 K2, T-049 §4): Core's, never an execution's; kept."""
     if not ids.is_id(execution_id, 'execution'):
-        raise ValueError('not an execution id: %r' % (execution_id,))
+        raise ValueError('not an execution id: %.80r' % (execution_id,))
     return os.path.join(repos_dir(), '.seed', execution_id)
 
 
@@ -177,7 +177,7 @@ def verify_key_parts(key):
     vid, _, n = rest.rpartition('.')
     if not (ids.is_id(vid, 'verification') and n.isascii() and n.isdigit()
             and n == str(int(n)) and int(n) < MAX_ATTEMPT):
-        raise ValueError('not a verifier key: %r' % (key,))
+        raise ValueError('not a verifier key: %.80r' % (key,))
     return vid, int(n)
 
 
@@ -189,7 +189,7 @@ def isolation_state(key):
         vid, n = verify_key_parts(key)
         return os.path.join(isolation_dir(), 'verify', '%s.%d.json' % (vid, n))
     if not ids.is_id(key, 'execution'):
-        raise ValueError('not an execution id: %r' % (key,))
+        raise ValueError('not an execution id: %.80r' % (key,))
     return os.path.join(isolation_dir(), '%s.json' % key)
 
 
@@ -212,7 +212,7 @@ def call_dir(route_decision_id):
     """`<ARCHEUS_HOME>/run/calls/<route_decision_id>` — the working directory of
     one own call (K-O2), named after the RouteDecision that made it."""
     if not ids.is_id(route_decision_id, 'route_decision'):
-        raise ValueError('not a route decision id: %r' % (route_decision_id,))
+        raise ValueError('not a route decision id: %.80r' % (route_decision_id,))
     return os.path.join(run_dir(), 'calls', route_decision_id)
 
 
@@ -264,7 +264,7 @@ class ExecPaths:
         # the id becomes a directory name: only a well-formed id may, so no
         # caller can walk out of run/exec with `..` or a separator
         if not ids.is_id(execution_id, 'execution'):
-            raise ValueError('not an execution id: %r' % (execution_id,))
+            raise ValueError('not an execution id: %.80r' % (execution_id,))
         self.execution_id = execution_id
         self.dir = os.path.join(run or run_dir(), 'exec', execution_id)
         self.spawning = os.path.join(self.dir, 'spawning')     # marker, before spawn
