@@ -31,6 +31,7 @@ import * as motion from './motion.js';
 import { isPhone, onPhoneChange } from './viewport.js';
 import { direction, CLASSES } from './motion-model.js';
 import { installAutopilot } from './autopilot.js';
+import { installAnnouncer } from './announcer.js';
 
 store.apply();
 const q = new URLSearchParams(location.search);
@@ -470,6 +471,7 @@ const unsub = sim.subscribe((e) => {
 });
 const boot = { t: 0 };
 window.addEventListener('pagehide', unsub);
+if (!embed) installAnnouncer(sim, app); // the All devices panes share one simulation: one region speaks for all
 onPhoneChange((phone) => { if (!phone) closePhoneSheets(); render(); });
 window.addEventListener('hashchange', () => { closeMenu(); render(); });
 window.addEventListener('resize', () => { if (store.get('device') === 'all' || (store.get('device') !== 'auto' && store.get('device') !== 'terminal')) fit(); else if (ctx.redrawTerm && ctx.route.name === 'terminal') ctx.redrawTerm(); else document.dispatchEvent(new Event('v2live:resize')); });
