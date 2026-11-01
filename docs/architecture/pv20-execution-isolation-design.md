@@ -45,16 +45,25 @@ identity can physically reach. This framing is load-bearing and must not be rewr
 
 ## 2. Mechanism (confirmed, §6.1)
 
-**Mechanism replacement:** The PV-20 baseline remains AppContainer + Core-held Job object. Following the owner’s 2026-10-29 decision, Microsoft MXC’s `processcontainer` backend supplies AppContainer establishment and launch. Core supplies and exclusively holds the outer kill-on-close Job. MXC replaces the hand-built profile/token/AppContainer-spawn implementation, not the identity, authority, resource or lifecycle contracts. ADR-0053 §1 governs policy, network, UI and dependency constraints.
+**Mechanism replacement:** The PV-20 baseline remains the owner's 2026-10-07 mechanism decision: an
+  isolated execution identity plus a Core-held Job object (the 2026-10-29 wording named it "AppContainer +
+  Core-held Job object"; on the selected backend there is no AppContainer principal to point at, as the
+  amendment immediately below records). Following the owner’s 2026-10-29 decision, Microsoft MXC’s `processcontainer` backend, on the **`base-container`** tier, supplies the isolated boundary and the isolated launch. **Amended 2026-10-30 on F1a:** on that tier the boundary a workload runs inside is a Windows **process security environment** (PSEC, `processmodel.dll`) whose token User is still the **host user's own SID**, with Groups identical across instances and no S-1-15-2 package SID — there is **no AppContainer identity and no AppContainer SID** to point at. Executions are therefore separated **by observed behaviour** (instance B could not read instance A's folder), not by a token-level principal, and the from-inside token read that would name that principal is **OPEN**. The boundary is named **"isolated by the MXC process security environment"** and never "an AppContainer SID"; the 2026-10-29 name "AppContainer" is retained only where it records that earlier ruling. Core supplies and exclusively holds the outer kill-on-close Job. MXC replaces the hand-built profile/token/AppContainer-spawn implementation, not the identity, authority, resource or lifecycle contracts. ADR-0053 §1 governs policy, network, UI and dependency constraints.
 
 - **A separate standard user** remains the later escalation/fallback design path, used only if
-  AppContainer evidence later proves insufficient and only by a **new owner decision** (ADR-0053
-  §1); every boundary below is expressed so it can be substituted without re-deciding the
-  contracts.
+  evidence about the identity boundary later proves insufficient — on the MXC backend that means
+  evidence about the process security environment and Core's grants over it (F1a, F2c/F2d), **not**
+  evidence about an AppContainer SID, which the 2026-10-30 probes found the backend does not provide
+  (wording corrected 2026-10-30) — and only by a **new owner decision** (ADR-0053 §1); every boundary
+  below is expressed so it can be substituted without re-deciding the contracts.
 - **Windows Sandbox** remains an optional maximum-isolation tier, not the V1.x baseline.
 
 Whether AppContainer can run a legitimate code-change turn under deny-by-default is the open
-empirical question of §3.1: **DESIGN PROPOSAL — UNVERIFIED.**
+empirical question of §3.1: **DESIGN PROPOSAL — UNVERIFIED.** **Added 2026-10-30:** on the MXC backend
+this question asks whether the process security environment, Core's grants and the hardlink gate
+(§3.4) can do it; the 2026-10-30 probes made it harder, not easier, because F2c/F2d shows the grant is
+enforced **by path** and a second name for the same file object defeats it, and F1a shows the token is
+the host user's own.
 
 OS isolation and Core effect-bounding (§3.6) are **complementary layers**; neither substitutes for
 the other, and both are required.
@@ -63,10 +72,18 @@ the other, and both are required.
 
 ### 3.1 Identity boundary
 
-- **What executes untrusted agent work.** An **execution identity that is not the user's OS
-  identity**: under the baseline, an AppContainer identity; under the escalation path, a dedicated
-  standard user.
-- **Creation / lifecycle replacement:** MXC establishes and disposes the AppContainer resources for each execution-specific principal. Archeus records the observed principal, generation and owned resources, proves separation and admission invariants, and refuses uncertain or reused authority. Fresh verifier principals remain mandatory. No standing OS account, stored OS credential or elevation is introduced by this backend decision. Windows-managed registrations and storage effects require an explicit run inventory; no account-home access is implicitly authorized.
+- **What executes untrusted agent work.** An **execution identity that is not the user's ordinary OS
+  security context**: under the baseline, the MXC base-container **process security environment
+  (PSEC)**; under the escalation path, a dedicated standard user. **Amended 2026-10-30 (F1a):** the PSEC is neither a separate OS logon nor an
+  AppContainer — the workload token's User is the host user's own SID, with Groups identical across
+  instances and no package SID — so what separates one execution from another is the **observed
+  behaviour** of the PSEC plus Core's grants, not a token-level principal. The from-inside token read
+  that would name that principal is **OPEN**, and no token-level separation may be claimed before it
+  exists. Acceptance row 1 (§8) is where that observation has to be produced per run. The statement
+  that survives unchanged is the one PV-13 could not produce either (§7.3): the identity boundary is
+  what bounds reach, and it remains **unevidenced** — the probe showed a file a protected DACL grants
+  only to the host user is still readable from inside (F2f).
+- **Creation / lifecycle replacement:** MXC establishes and disposes the process-security-environment, profile and token resources for each execution-specific principal (F1a; the 2026-10-29 text called these the "AppContainer resources"). Archeus records the observed principal, generation and owned resources, proves separation and admission invariants, and refuses uncertain or reused authority. Fresh verifier principals remain mandatory. No standing OS account, stored OS credential or elevation is introduced by this backend decision. Windows-managed registrations and storage effects require an explicit run inventory; no account-home access is implicitly authorized.
 - **Granularity (R7 — implementation constraint, not an owner decision; §6).** One
   execution-specific identity/principal, created before spawn and torn down after the execution;
   other executions' state is inaccessible to it; grants on shared runtime material (install paths)
@@ -101,16 +118,20 @@ the other, and both are required.
   directory holding the provider login), a copy of it, or any configuration from it except as
   Core-materialised data (A2); the user's project root and the user's repository metadata (§3.2,
   A1); `run/local-token` and all Core-private and lifecycle state (§7.5 classes 4–6); other
-  executions' state; the rest of `ARCHEUS_HOME`.
+  executions' state; the rest of `ARCHEUS_HOME`. **Added 2026-10-30 (F2c/F2d):** nor any object
+  reached through a **hardlink alias** planted inside a granted tree — the base-container grant is
+  enforced by path, and such an alias was readable *and* writable from inside the container while
+  the outside object's ACL was unchanged, which is why the hardlink gate of §3.4 is a precondition
+  to every grant, seed and import.
 - **Opt-ins inside the boundary (A2, §6 item 22).** ADR-0049 opt-ins enter only as Core-materialised
   data, and only when they carry no credential authority. **No MCP opt-in is admitted to an
   isolated execution** (confirmed by the owner, 2026-10-07; changing it needs a new owner
   decision): Core cannot establish from a server definition that it carries no credential. A settings item or plugin that would bring an MCP
   server, an environment block or a credential helper is excluded and recorded. The account-level
   CLAUDE.md loads only if opted in. No legacy account-home behaviour is preserved silently.
-- **Network containment.** MXC implements the selected backend’s network restrictions; Archeus does not maintain a parallel hand-built firewall mechanism for this path. P23 retains network-policy ownership. Default egress, ingress and host-loopback access are denied. Any broker transport exception is explicit, narrowly scoped and tested for both intended reachability and forbidden destinations, including descendants and alternate connection APIs. Proxy environment variables are routing hints, not containment. No machine-wide firewall rule or loopback exemption is silently installed. Broker routing never grants execution-origin requests privileged Core authority.
+- **Network containment.** MXC implements the selected backend’s network restrictions; Archeus does not maintain a parallel hand-built firewall mechanism for this path. P23 retains network-policy ownership. Default egress, ingress and host-loopback access are denied. Any broker transport exception is explicit, narrowly scoped and tested for both intended reachability and forbidden destinations, including descendants and alternate connection APIs. Proxy environment variables are routing hints, not containment. No machine-wide firewall rule or loopback exemption is silently installed. Broker routing never grants execution-origin requests privileged Core authority. **Added 2026-10-30 (F3):** under the identity-less proxy policy a contained client reached the fake upstream only through the proxy and a direct connect to a different loopback listener was blocked (the host-side control reached it), while the proxy port itself stayed directly reachable and a deny-all policy blocked both. MXC documents Windows proxy support as best-effort on the WinHTTP stack, so **the broker must not rely on the proxy for a non-WinHTTP client: the WFP restriction to the single proxy endpoint is what holds the boundary.** An identity-scoped `allowedProxyPeer` was not tested, because it needs a packaged proxy: **OPEN**, and R3-B's broker may not assume it.
 
-- **UI policy — proposal pending evidence and owner decision.** The proposed default blocks the UI subsystem. Exact `ui.disable` and `ui.allowWindows` values and their interaction must be verified against the pinned SDK schema; neither may be inferred from a tool’s failure. Tools requiring a window station or UI subsystem remain unsupported under that default until separately tested and explicitly admitted. No automatic UI enablement or retry occurs after an initialization failure. Enabling UI does not imply permission for desktop input, screen capture, clipboard, microphone, interactive login or other user-session authority.
+- **UI policy — proposal pending evidence and owner decision.** The proposed default blocks the UI subsystem. Exact `ui.disable` and `ui.allowWindows` values and their interaction must be verified against the pinned SDK schema; neither may be inferred from a tool’s failure. Tools requiring a window station or UI subsystem remain unsupported under that default until separately tested and explicitly admitted. No automatic UI enablement or retry occurs after an initialization failure. Enabling UI does not imply permission for desktop input, screen capture, clipboard, microphone, interactive login or other user-session authority. **Added 2026-10-30 (F4, F7):** the fixture measured the blocked default — `cmd`, `curl` and a staged `claude.exe --version` ran, while `powershell`, `node -e` and `git --version` failed with `0xC0000142` until `ui.disable=false`; `where.exe` and `choice.exe` outcomes stayed unresolved (a PATH and a console-input fault, not UI faults), and Git Bash failed **both** ways, matching `microsoft/mxc#1061`, cause not isolated. The per-tool `ui.disable=false` allowance therefore remains a **proposal, not adopted**, to be measured again in the N-runs; no global UI enablement is approved here, and Git-Bash-dependent routes stay excluded (MXC-R03).
 
 - **Dependency and update policy.** The implementation uses an exact reviewed MXC SDK/runtime version, locked transitive dependencies and recorded artifact hashes. Package installation uses `--ignore-scripts`; required artifacts must be verified without silently re-enabling lifecycle scripts. License notices, dependency inventory, package integrity, provenance where available, vulnerability findings and runtime DLL inventory are reviewed before admission. Updates require a reviewed change, compatibility and security evidence, and explicit activation of the new pinned version; no runtime auto-update, floating version or automatic weaker fallback is permitted.
 
@@ -145,7 +166,10 @@ the other, and both are required.
   the seeded revision — not the user's uncommitted, untracked or ignored files.
 - **Seeding, import and the canonical revision (A5, §6 item 20).**
   - **Seed:** a copy of the base revision only. Never a linked worktree, shared objects,
-    alternates, hardlinks, or any other mechanism that exposes the user's `.git`.
+    alternates, hardlinks, or any other mechanism that exposes the user's `.git`; and, **added
+    2026-10-30 under F2c/F2d**, never a regular file with a link count above 1. The hardlink gate (§3.4) is a precondition to seeding, importing or granting any tree,
+    because the probe showed such a file naming an outside object is readable *and* writable from
+    inside the container whatever its ACL says.
   - **Untrusted:** everything in the execution repository — its `.git/config`, hooks, refs, objects
     and index, and the attribute and configuration files that affect git behaviour (in-tree
     `.gitattributes`, `.gitmodules`, `.lfsconfig`). No Core git operation honours any of it.
@@ -155,7 +179,10 @@ the other, and both are required.
   - **Import:** after the execution, Core copies its working tree **as data** into a Core-owned
     import repository. **Core's pinned import commit is the canonical revision**, recorded in Core
     state; the execution's own commits and HEAD are claims. Core's snapshot is that import commit,
-    taken after the copy.
+    taken after the copy. **Added 2026-10-30 under F2c/F2d:** the import walk reads each entry's link
+    count and refuses, never copies, a regular file whose link count exceeds 1 — a file that arrived
+    with a second name appeared inside the workspace during the execution, and copying it would carry
+    that alias out. A walk that cannot complete (an entry that cannot be classified) is a refusal, not a partial pass.
   - **Core-pinned configuration:** every Core git operation over execution-derived content — the
     import commit, diffs and other git facts, the merge into the mission branch, materialising a
     verification checkout, push — runs under a Core-pinned configuration that prevents
@@ -163,8 +190,10 @@ the other, and both are required.
   - **Verification:** R4b verifies a fresh checkout of the Core-recorded revision, materialised by
     Core (§3.9).
   - That the copy seed, the working-tree import and the pinned configuration can be built as stated
-    is **DESIGN PROPOSAL — UNVERIFIED**; the exact mechanics (including link and reparse-point
-    handling) are implementation details.
+    is **DESIGN PROPOSAL — UNVERIFIED**; the exact mechanics of the link and reparse-point **scan**
+    are implementation details — **not** the gate itself, which since 2026-10-30 is a required
+    invariant under F2c/F2d (§3.4, §6 item 25, §8 row 16): refuse or copy any regular
+    file with a link count above 1, scanned at grant and again at launch, fail closed.
 - **"Workspace writable" does not mean "repository fully writable."** Four categories, kept apart:
   1. **Task content the execution may modify:** the files of its own workspace, as its authorised
      work.
@@ -280,13 +309,30 @@ the other, and both are required.
        configuration, execution-influenced content; Archeus's own model calls (planner, review,
        knowledge passes) take it only as prompt data, and clients render it only as data.
      - The verifier has no Core route and cannot become a privileged deputy (§3.9).
+     - **The attestor rule (added 2026-10-30; F9A/F9B/F9C).** Whatever mechanism the empirical phase
+       chooses — the choice itself stays with that phase — origin attribution resolves the peer socket
+       to an owning PID, and must satisfy all three of these: (1) bind the resolved PID **together
+       with its process creation time at the moment the connection is accepted**; (2) treat an owner
+       PID that is **not alive**, or whose creation time differs from that binding, as **fail closed**
+       — no §3.6 authority, and never treated as a live peer; (3) **attest at accept, never after the
+       response**. The need is measured, not hypothetical: a dead owner PID stayed resolvable in the
+       TCP table for at least 1.5 s after the client exited, while `OpenProcess` still succeeded and
+       `IsProcessInJob` still reported the Core Job (F9C) — neither check says "alive", and a
+       creation-time match alone would not either. The positive controls did hold: F9A attributed a
+       live contained client to the launcher's tree and the Core Job, and F9B rejected a host-side
+       forwarder whose ancestry never reached the launcher. **PID reuse** itself is **UNKNOWN** — seen
+       in no run, and not forceable from the fixture — so it is required as
+       a **unit test against a fake process table**, never asserted as a native boundary result.
 
      R1-A is sound only because every path by which execution-influenced code could run under the
      user's identity is closed: verification (R4b, A6), the import and Core's repository operations
      (R4a, A5), every harness (A4), Archeus's own calls and clients (A3), and forwarding hops (P23).
      Attestation on Core's local transport is **DESIGN PROPOSAL — UNVERIFIED** and its mechanism is
-     not chosen here; if it cannot be established, nothing is substituted silently — a transport
-     change, or step-up / presence for the whole closed set (R1-B), is a new owner decision.
+     not chosen here; **whatever is chosen must satisfy the attestor rule above (added 2026-10-30,
+     F9C: bind the PID with its process creation time at accept, fail closed on a dead owner PID or a
+     creation-time mismatch, attest at accept and never after the response).** If it cannot be
+     established, nothing is substituted silently — a transport change, or step-up / presence for the
+     whole closed set (R1-B), is a new owner decision.
 
 ### 3.4 Process boundary and isolation establishment (§6.11)
 
@@ -294,7 +340,8 @@ the other, and both are required.
   (`proc.spawn_detached`). Under isolation it launches the child **into the execution identity,
   inside its Job object**. This is a new spawn mechanism behind the existing seam.
 - **How confinement is inherited.** The design requires every descendant to stay inside the
-  execution identity and the Job. That AppContainer and the Job provide this for the real CLI and
+  execution identity and the Job. That the MXC process security environment (F1a; the 2026-10-29
+  text said "AppContainer") and the Job provide this for the real CLI and
   its child shells is **DESIGN PROPOSAL — UNVERIFIED**.
 - **"Isolation established" is an explicit pre-spawn invariant.** Before untrusted execution
   starts, all of the following must hold:
@@ -304,7 +351,30 @@ the other, and both are required.
   3. prohibited broad grants are absent;
   4. the Job object exists;
   5. the required Core/mailbox boundary (§3.3) exists;
-  6. the isolated spawn path is selected.
+  6. the isolated spawn path is selected;
+  7. **no granted tree holds a regular file with a link count above 1 — the
+     hardlink gate (added 2026-10-30, F2c/F2d).**
+
+- **The hardlink gate is a required security invariant, not an implementation detail (added
+  2026-10-30; F2c/F2d).** Because the base-container grant is enforced **by path** under the host
+  user's own SID (F1a), a hardlink naming an object outside a granted folder is a read **and** write
+  escape from inside that container (F2c/F2d), while a junction to an outside folder is denied (F2).
+  Core therefore reads the link counts of every granted tree **at grant** — seed, import and each
+  runtime grant — **and again at launch**, and **refuses the grant, fail closed**, when it holds any
+  regular file with a link count above 1; such a file is refused, or
+  replaced by an independent copy at link count 1, never granted in place. There is no
+  warn-and-continue, no setting that disables the scan, and no partial pass for a tree that could not
+  be walked completely. The host-side creators are ordinary tools (git local clones, package managers,
+  backup tools), and, inferred and not probed, the container cannot create such a link to a file it cannot open. In the
+  N-protocol the hardlink row is a **hard gate**: a batch that finds such a file stops as FAIL/BLOCKED,
+  never as a warning, and cannot be waived. **Residual, stated and not closed:** a host writer running
+  as the same user can create a hardlink *after* the scan and before the container opens the file; no
+  probe attempted that ordering (**UNKNOWN**), so the launch re-scan narrows the window without closing
+  it. What becomes of the residual — a post-launch re-scan with a kill trigger, an oplock/USN
+  invalidation subscription, or acceptance of the narrowed window as V1's posture — is an **owner
+  decision** (recorded with the §6 decisions as outstanding). Whether MXC treats hardlink aliasing as
+  a known gap is **UNKNOWN** until the question is asked upstream, and this design **claims no boundary
+  against hardlink aliasing** until MXC fixes it or Core mitigates it.
 - **If any condition does not hold: fail closed — the untrusted execution does not start.** No
   silent fallback to the interactive user's security context (§6.3), and no configuration setting
   disables the invariant. The invariant governs every execution a production Core dispatches,
@@ -330,8 +400,9 @@ Covered at the boundary/capability level, no store named with a procedure and no
   ungranted.
 - **Windows credential stores** — the user's vault is per-user and outside the granted set.
 - **Other user-owned secret stores** — excluded by deny-by-default; any that proves reachable under
-  AppContainer is the trigger to consider escalating to the separate-user path, which is a new
-  owner decision (§2).
+  the isolation identity (2026-10-30 wording: the MXC process security environment, F1a; "AppContainer" was the 2026-10-29
+  name) is the trigger to consider escalating to the separate-user path, which is a new owner decision
+  (§2).
 - **Model-provider credentials** — the execution holds none: Core brokers provider access (R3-B,
   §6.15), conditional on production Claude CLI feasibility (§3.3).
 
@@ -422,9 +493,11 @@ tested.
 
 - **The real Claude Code execution path is the production security target.** Every PV-20 property
   is claimed for it, and only on evidence from it.
-- **Fake-agent and test harnesses** need not reproduce AppContainer mechanics. A harness that
+- **Fake-agent and test harnesses** need not reproduce the isolation mechanics. A harness that
   claims to test a PV-20 property must model the corresponding authority restriction. **Passing a
-  fake-harness test is never proof that Windows AppContainer confinement works.**
+  fake-harness test is never proof that the real confinement of the PV-20 execution identity works**
+  (2026-10-30 wording: on the MXC backend that identity is the process security environment, F1a;
+  "AppContainer" was the 2026-10-29 name for it).
 - **Sandbox harnesses** (Codex `--sandbox`) remain separate security mechanisms; PV-20 does not
   claim their properties or substitute for them.
 - **Every harness runs under PV-20 (A4, §6 item 18).** Every execution a production Core
@@ -437,7 +510,7 @@ tested.
   |---|---|---|
   | Production Claude Code | every PV-20 property, on evidence from this path | — |
   | A sandbox harness (Codex) | a PV-20 property, only on evidence from its own real path once it launches inside PV-20 | anything from its own sandbox's evidence alone |
-  | Fake / test harness | that a modelled authority restriction behaves as modelled | AppContainer confinement, or any production property |
+  | Fake / test harness | that a modelled authority restriction behaves as modelled | confinement of the PV-20 execution identity (2026-10-30 wording: the MXC process security environment, F1a), or any production property |
 
   Codex is not installed (p20-design-gate §1.5), so today no harness loses eligibility.
 
@@ -536,7 +609,12 @@ inverts is the **expected result** under isolation.
   as ENDED_OK; a live isolated process re-adopted at boot; Core's import honouring the execution
   repository's configuration or hooks; *(added with A1–A7)* an isolated execution started in the
   user's project root or in the bare `run/exec/<id>/`; a non-git project task dispatched; a seed that
-  links, shares or hardlinks the user's `.git`; Core running git in an execution repository; a Core
+  links, shares or hardlinks the user's `.git`; *(added 2026-10-30, F2c/F2d)* a granted tree accepted
+  with a regular file whose link count exceeds 1; an import that copied such a file out
+  of the workspace; a launch that skipped the re-scan, or treated an unclassifiable entry or a
+  truncated walk as a pass; a hardlink row recorded as a warning instead of FAIL/BLOCKED; *(F9C)* an
+  origin attestor that trusted a dead owner PID, or one whose creation time differs from the accept-time
+  binding, as a live peer; a Core
   git operation over execution-derived content without the pinned configuration; the execution's
   claimed HEAD recorded as the canonical revision; a verifier principal reused or sharing writable
   state with another verification; a verifier reaching Core's listener; an isolated execution
@@ -544,6 +622,13 @@ inverts is the **expected result** under isolation.
   execution; Core-authored spawn configuration writable by the execution; a forwarded or
   verifier-origin request granted a §3.6 effect; a harness dispatched outside the PV-20 identity; a
   stream `result` collected as an exit.
+- **The hardlink gate is a gate, not a note (added 2026-10-30; F2c/F2d).** The isolation suite carries
+  one case per grant point (seed, import, each runtime grant) that plants a regular file
+  with a link count above 1 naming an object outside the granted tree and asserts the grant is refused
+  fail closed with no spawn; one case that proves the launch re-scan refuses a tree that was clean at
+  grant time; and one case that proves the container cannot read or write the outside object once the
+  gate has refused or replaced the file. In the N-protocol the hardlink row is a **hard gate**: the
+  batch stops as FAIL/BLOCKED, never as a warning, and cannot be waived.
 - **Unchanged and still valid** (orthogonal to the OS gap): E's ADR-0049 exclusion/inventory and
   the O4 fail-closed hook, F's tool removal, and A's registry kill (which stays the only Core-less
   stop mechanism, §3.7). **A's sentinel is valid under PV-20 only with the explicit three-state
@@ -555,7 +640,9 @@ inverts is the **expected result** under isolation.
 
 None of these rulings authorises implementation. Each records a design decision only.
 
-1. **Mechanism: CONFIRMED.** AppContainer + Job object is the baseline (§2). Separate standard
+1. **Mechanism: CONFIRMED.** AppContainer + Job object is the baseline (§2; amended there
+   2026-10-30: on the MXC `base-container` backend the identity is the process security environment
+   under the host user's own SID, F1a, and separation is evidenced by behaviour). Separate standard
    user: later escalation path. Windows Sandbox: optional maximum-isolation tier, not the V1.x
    baseline.
 2. **Effect boundary: CONFIRMED AS A HARD REQUIREMENT.** OS isolation alone is insufficient. Core
@@ -591,10 +678,19 @@ implementation.
     Option 3 as the fail-closed degraded mode; Option 1 rejected. Execution-influenced code never
     runs under the user's identity (§3.9).
 13. **R4a — repository topology: APPROVED, R4a-B** (a separate execution repository, imported as
-    data). The user's `.git` is not exposed through a linked worktree (§3.2).
+    data). The user's `.git` is not exposed through a linked worktree (§3.2). *(Amended 2026-10-30: the
+    import that keeps the user's `.git` out is **no-hardlink** as well, and that is now load-bearing rather
+    than hygienic — **F2c/F2d** showed a host-made hardlink inside a granted folder reading and writing an
+    object outside it, so a second name for one file object crosses this boundary in both directions. The
+    import is a gate point of item 25. The ruling itself is unchanged.)*
 14. **R1 — execution origin: APPROVED, R1-A** (OS-attested origin at the connecting peer). No
     silent substitution: if attestation cannot be established, a transport change or R1-B is a new
-    owner decision (§3.3).
+    owner decision (§3.3). *(Amended 2026-10-30 with the **attestor rule** as an invariant of R1-A's
+    implementation, **F9C**: bind the owning PID with its process creation time at accept; a dead owner
+    PID, or one whose creation time differs, fails closed to no origin; attest at accept, never after the
+    response. This narrows how R1-A may be built and states the no-silent-substitution rule against a
+    concrete failure; it does not reopen R1-A, which stays the owner's decision, and a transport change or
+    R1-B remains a new owner decision.)*
 15. **R3 — provider access: APPROVED, R3-B as the target** (Core-brokered; no provider credential
     inside the boundary). If the production Claude CLI cannot support it, R3-A needs a separate,
     explicit owner security decision; until one is viable, isolated execution fails closed (§3.3,
@@ -613,16 +709,22 @@ decision matrix recommended. None authorises implementation.
 18. **A4 — harness identity: APPROVED, H-1.** Every production-dispatched execution, whatever its
     harness, runs under the PV-20 identity inside its Core-held Job; a harness sandbox is an inner
     layer only; a harness that cannot launch inside PV-20 is not eligible; fake/test harnesses are
-    not production-dispatchable (§3.8).
+    not production-dispatchable (§3.8). *(Amended 2026-10-30: this ruling is **conditional on the
+    isolation identity's viability**, which **F1a** did not establish; if the MXC base-container identity
+    proves insufficient, the escalation of §2 and §3.1 is a **new owner decision**, and "cannot launch
+    inside PV-20" is then re-read against the escalated identity. The refusal and the no-fallback rule are
+    unchanged.)*
 19. **A1 — workspace: APPROVED, A1-1.** A Core-established workspace for every isolated execution of
     every task kind; a seeded execution repository for git roots (detached HEAD from the recorded
     commit); an empty class-7 workspace with no project; non-git roots structurally refused before
     dispatch; `workspace_mode: in_place` withdrawn; never the user's project root (§3.2).
-20. **A5 — repository and git boundary: APPROVED, G-4.** Copy seed of the base revision only; Core
-    never runs git against an execution repository as the user; the working tree is imported as data
-    into a Core-owned repository whose pinned import commit is the canonical revision; Core-pinned
-    configuration for every Core git operation over execution-derived content; R4b verifies a fresh
-    checkout of that revision (§3.2, §3.9). *Confirmed by the owner, 2026-10-07:* no
+20. **A5 — repository and git boundary: APPROVED, G-4.** Copy seed of the base revision only, with
+    **no hardlink, symlink, junction or reparse point reaching outside the seeded tree** (the alias clause
+    added 2026-10-30 on **F2c/F2d**; junctions were denied and symlinks stay **UNKNOWN**, so the wording
+    keeps them); Core never runs git against an execution repository as the user; the working tree is
+    imported as data into a Core-owned repository whose pinned import commit is the canonical revision;
+    Core-pinned configuration for every Core git operation over execution-derived content; R4b verifies a
+    fresh checkout of that revision (§3.2, §3.9). *Confirmed by the owner, 2026-10-07:* no
     repository-controlled hook (the user's own included), filter, fsmonitor, diff/merge driver,
     submodule, LFS transfer mechanism or other execution-derived git extension executes in those
     operations, and Core pushes no content whose publication requires one (a separate owner
@@ -637,13 +739,28 @@ decision matrix recommended. None authorises implementation.
     owner, 2026-10-07; changing it needs a new owner decision) (§3.1, §3.3).
 23. **A3 — R1 origin scope: APPROVED** — allowlist + hop rule + deputy rule, with the owner's
     clarification that a trusted local §3.6 request needs both the attested user-origin condition
-    and an approved trusted path (§3.3). The attestation mechanism is left to the empirical phase.
+    and an approved trusted path (§3.3). The attestation mechanism is left to the empirical phase,
+    bounded by the attestor rule of §3.3 (added 2026-10-30, F9C): bind the resolved PID with its
+    process creation time at accept, fail closed on a dead owner PID or a creation-time mismatch, and
+    attest at accept rather than after the response.
 24. **A7 — lifecycle authority: DOCUMENTATION CORRECTION** of R5 and R6-A (§3.3, §3.7): ENDED_OK is an
     execution-level fact Core records only from its own observed exit 0; a stream result is never an
     exit; PAUSING / HANDING_OFF never reach ENDED_OK on an execution's report; ambiguous termination
     is non-advancing; no adoption after restart; a Core-written `ended` tombstone is a Core
     observation; PASSED needs authoritative verification evidence. ERROR versus AWAITING_HUMAN, and
     PAUSED versus failed at restart, stay **non-security policy details**.
+25. **The hardlink gate: REQUIRED INVARIANT — proposed 2026-10-30 on F2c/F2d; owner confirmation
+    outstanding; not a deferrable implementation detail.** Core reads the link counts of every granted tree at grant (seed, import, each runtime
+    grant) and again at launch, and refuses the grant, fail closed, on any regular file with a link count
+    above 1; such a file is
+    refused or replaced by an independent copy at link count 1, never granted in place; the
+    N-protocol's hardlink row is a hard gate (FAIL/BLOCKED, never a warning, never waivable). Its
+    trigger is measured, not proposed: a host-made hardlink inside a granted folder naming an outside
+    file was readable and writable from inside the container while that file's ACL was unchanged
+    (F2c/F2d). The post-scan planting residual, the mitigation options and the MXC upstream disposition
+    are recorded in §3.4: the residual's disposition is an **owner decision** (outstanding, listed at the
+    end of §6), and whether MXC treats aliasing as a known gap is **UNKNOWN** until asked. (§8 row 16 is
+    the acceptance row for this invariant.)
 
 **Not owner decisions.**
 
@@ -656,6 +773,17 @@ decision matrix recommended. None authorises implementation.
   (§3.1).
 - **R8 — O7: EXTERNAL DEPENDENCY,** owned by P11 (§3.4).
 
+**Outstanding owner decision (added 2026-10-30, F2c/F2d; not decided by this card).** The hardlink gate
+itself is a required invariant (§3.4, §6 item 25, §8 row 16) and is not in question. What is outstanding
+is the **post-scan planting residual**: a host writer running as the same user can create a hardlink
+inside a granted tree after Core's scan and before the container opens it; no probe attempted that
+ordering, so it is **UNKNOWN**, and the launch re-scan narrows the window without closing it. The
+owner decides among (a) a post-launch re-scan with a kill trigger, (b) an oplock / USN-change
+invalidation subscription that tears the grant down, or (c) accepting the narrowed window as V1's
+posture with the residual recorded as a known limitation. Until it is decided, no boundary against
+hardlink aliasing is claimed, and the ask to MXC on whether it treats aliasing as a known gap is
+separately outstanding (**UNKNOWN**, not asked).
+
 ## 7. Status
 
 **`PV-20 ARCHITECTURE DECISIONS APPROVED AND DOCUMENTED (ADR-0053); IMPLEMENTATION: SLICE S0 ONLY;
@@ -665,12 +793,22 @@ implementation authorization.
 
 **Evidence status, 2026-10-29:** `.collab/PV20-mxc-feasibility.md` records eight successful smoke checks and a separately authorized `claude.exe` 2.1.312 `--version`/`--help` addendum on Windows 11 Home build 26300.9711, using `@microsoft/mxc-sdk@1.0.1`, `wxc-exec.exe` x64 and the `processcontainer` backend. These establish bounded startup, filesystem/network-denial and short process-tree cleanup observations only. They do not establish any N1–N5 acceptance result, a real agent session, strict peer exclusion, credential-authority denial, broker reach, origin attestation, or production lifecycle correctness. G1 and G2 remain Critical and open; slice G remains PAUSED and NOT CLOSED.
 
+**Evidence status, 2026-10-30:** the same file records the owner-authorized native fixture probes F1–F4, F7 and F9, run as fixtures only. Three of their results bind what this design may claim.
+
+- **F1a (identity).** Two concurrent base-container instances were functionally separate — instance B could not read a file inside instance A's folder (`PermissionDenied`) — while both tokens carried the **host user's own SID** with **identical Groups** and no S-1-15-2 package SID. The mechanism on the `base-container` tier is MXC's *process security environment* (PSEC, `processmodel.dll`). The from-inside token read (`TokenRestrictedSids` / AppContainer fields) that would name the principal was not performed: **OPEN**.
+- **F2c/F2d (hardlinks).** A hardlink created by the host inside a granted work folder, naming a file outside it, was **readable and writable from inside the container**; the outside object's ACL was unchanged and direct-path access to it stayed denied, while junction aliases inside the work folder were denied (F2 PASS). Corollary **F2f:** inside the granted folder a file with a DACL granting only the host user was still readable. F2's **symlink** case (needs privilege here) and the **handle-transfer** case were not exercised: **OPEN / UNKNOWN**.
+- **F9C (origin).** A dead owner PID stayed resolvable through the TCP table for at least 1.5 s after the client exited, while `OpenProcess` still succeeded and `IsProcessInJob` still reported the Core Job; F9A attributed a live contained client to the launcher's tree and the Core Job, and F9B rejected a host-side forwarder. PID reuse was never observed and cannot be forced from the fixture: **UNKNOWN**.
+
+What this changes here: the identity claim of §2 and §3.1, the hardlink gate as a **required invariant** (§3.2, §3.4, §6 item 25, §8 row 16), and the **attestor rule** on the origin attestation of §3.3, whose refusals are §3.6's effect set. What it changes nowhere else: G1 and G2 stay Critical and open, slice G stays PAUSED and NOT CLOSED, N1–N5 stay NOT_RUN, and credential-authority denial, symlink aliasing, handle transfer and a real agent session were never probed — **UNKNOWN**, never to be read as safe.
+
 ### 7.1 Unverified (DESIGN PROPOSAL — UNVERIFIED)
 
 The PV-13 capability/ACE spike was attempted on 2026-10-07 and did not complete (§7.3). All of the
 following remain unverified:
 
-- the **minimum AppContainer capability/ACE set** (§3.1 inventory);
+- the **minimum AppContainer capability/ACE set** (§3.1 inventory; 2026-10-30 wording: on the MXC
+  backend this is the grant set over its process security environment, F1a, and the outstanding
+  from-inside token read that would name the per-execution principal);
 - normal Node / Claude CLI / child-shell execution under that set;
 - child and grandchild confinement (§3.4);
 - Job lifetime and Core-restart behaviour in implementation (§3.7);
@@ -703,6 +841,20 @@ following remain unverified:
   toolchains granted and dependencies provisioned inside it (A6, §3.9);
 - that no execution or verification identity can reach a forwarding hop or user-identity proxy, and
   that Core can tell a forwarded request from a direct one (A3, §3.3).
+- *(added 2026-10-30, **F1a**)* that the MXC base-container identity is what this design needs it to
+  be: the from-inside token read (`TokenRestrictedSids` / AppContainer fields) that would name the
+  per-execution principal was never performed, and the two instances probed carried the host user's own
+  SID with identical Groups and no package SID (§2, §3.1);
+- *(added 2026-10-30, **F2c/F2d**)* that the hardlink gate of §3.4 can be built and enforced as stated
+  — refused at seed, at import, at each runtime grant and at the launch re-scan — and that after the
+  gate a host-made hardlink into a granted tree is unreachable from inside; the ordering in which a
+  host writer plants a link **after** the scan was never probed: **UNKNOWN**;
+- *(added 2026-10-30, **F2**)* symlink aliasing (symlink creation needs privilege on this host) and
+  handle transfer, neither of which was exercised: **OPEN**;
+- *(added 2026-10-30, **F9C**)* the attestor rule's unevidenced parts: that a dead owner PID, or one
+  whose creation time differs from the accept-time binding, is refused every §3.6 effect, and the
+  PID-reuse case, which the fixture cannot produce and which therefore belongs to a
+  **fake-process-table unit test**, never to a native boundary claim.
 
 ### 7.2 Design questions — resolved 2026-10-07
 
@@ -763,6 +915,12 @@ behind.
 
 **Not implemented, therefore not testable**
 
+**Note (2026-10-30).** "AppContainer" in the items below is the 2026-10-29 name for the isolation
+identity; on the MXC `base-container` backend that identity is the process security environment under the
+host user's own SID (**F1a**), so each item is about **the isolation identity, whatever it is named**, and
+what stays unverified is the identity's separation — never an AppContainer SID, which the probes did not
+find. This note amends the labels; it does not soften the finding that none of this is implemented.
+
 The tree contains no PV-20 implementation: no AppContainer launch path, no alternate execution
 identity, no Job-object integration, no grant/ACE establishment, and no execution-origin mechanism at
 Core. `base.spawn` still launches through the ordinary detached-spawn path with the user environment.
@@ -778,6 +936,12 @@ This means these are **not yet implemented — not that the architecture has fai
 - Job-based restart reconciliation (§3.7).
 
 **Unverified**
+
+**Note (2026-10-30).** "AppContainer" in the items below is the 2026-10-29 name for the isolation
+identity; on the MXC `base-container` backend that identity is the process security environment under the
+host user's own SID (**F1a**), so each item is about **the isolation identity, whatever it is named**, and
+what stays unverified is the identity's separation — never an AppContainer SID, which the probes did not
+find. This note amends the labels; it does not soften the finding that none of this is implemented.
 
 - the exact AppContainer capability/ACE set (§3.1);
 - production-path AppContainer confinement (§3.8);
@@ -885,31 +1049,36 @@ passed, and no row is passed by the design existing.** Labels:
 *Reclassified 2026-10-07 after the six approvals (§6 items 12–17), and again after the blocker
 decisions (§6 items 18–24): row 1 moves to design-open under this section's own definition, because
 it rests on R3-B, whose failure needs a separate R3-A decision.* **Every row also rests on
-AppContainer viability, whose failure would need the escalation owner decision (§2).** That shared
+the isolation identity's viability — the 2026-10-29 name for it was AppContainer viability — whose
+failure would need the escalation owner decision (§2).** That shared
 dependency is stated once here rather than on each row; no row may be scheduled as though
-AppContainer were evidenced.
+the identity were evidenced. **Added 2026-10-30 on the native findings:** row 16 is added for the hardlink gate (§6 item 25),
+and the evidence notes of rows 2, 3, 6, 8, 9, 12 and 14 record what F1a, F1b, F2c/F2d and F2f
+changed. No existing row changes classification.
 
 | Row | Property | Classification | Blocked by / note |
 |---|---|---|---|
 | 1 | legitimate code change works | **design-open** · implementation-blocked · evidence-blocked | needs the isolated identity (§7.3); provider access through Core's broker, with a fresh per-execution `CLAUDE_CONFIG_DIR` (A2), is unverified on the production CLI, and if infeasible R3-A is a separate owner decision (§6.15) |
-| 2 | credential authorities unreachable | design-complete · implementation-blocked · evidence-blocked | AppContainer viability unverified; the baseline side is measured |
-| 3 | local Core token unreachable | design-complete · implementation-blocked | shown unenforced today (§7.3), synthetic fixture only |
+| 2 | credential authorities unreachable | design-complete · implementation-blocked · evidence-blocked | the isolation identity's reach-denial is unverified, and **F2f** showed a file whose DACL grants only the host user is readable from inside the base container, so an ACL argument alone does not close this row; no credential-authority probe has been run at all (**UNKNOWN**, never safe by omission); failure needs the escalation owner decision (§2) |
+| 3 | local Core token unreachable | design-complete · implementation-blocked | shown unenforced today (§7.3), synthetic fixture only; *(added 2026-10-30)* the token lives outside every granted path and F2 denied direct-path access there, but the same probe showed a hardlink **inside** a grant defeats that path denial (**F2c/F2d**), so this row's evidence now depends on the §3.4 gate (row 16), and the real-material probe has still never been run |
 | 4 | Core effect boundary | **design-open** · implementation-blocked · evidence-blocked | origin is decided (R1-A, §6.14), but attestation on Core's transport has no evidence, and its failure would need a new owner decision (R1-B or a transport change); §3.6's closed set cannot be enforced against an origin Core cannot identify |
 | 5 | no re-arm after a halt | **design-open** · implementation-blocked · evidence-blocked | re-arm is a §3.6 member, refused to an execution through R1-A — the same open point as row 4. D10's paired-device step-up is not the mechanism (§3.6) |
-| 6 | mailbox authority | design-complete · implementation-blocked · evidence-blocked | authority model ruled (§6.6), halt reports decided (H2), layout an implementation constraint (R2, §7.5); ACE enforcement unverified |
+| 6 | mailbox authority | design-complete · implementation-blocked · evidence-blocked | authority model ruled (§6.6), halt reports decided (H2), layout an implementation constraint (R2, §7.5); ACE enforcement unverified, and the grant is enforced **by path** (F1a/F2c), so a mailbox tree holding a hardlink would carry an alias to a Core-private object — the §3.4 hardlink gate is a precondition, unverified as an enforcement |
 | 7 | sentinel three states | design-complete · implementation-blocked · evidence-blocked | Gap A's determination is built (S0, §7.4; injected-error tests only); still blocked on the §7.5 separation, and on evidence that a denied lookup under the isolated identity is reported as an error, never as not-found |
-| 8 | e-stop still works | design-complete · implementation-blocked · evidence-blocked | no Job object exists; R6-A and item 83 settle the design; Job behaviour and the registry kill's reach to an isolated process are unverified |
-| 9 | children remain confined | design-complete · implementation-blocked · evidence-blocked | confinement inheritance unverified |
+| 8 | e-stop still works | design-complete · implementation-blocked · evidence-blocked | no Job object exists; R6-A and item 83 settle the design; Job behaviour and the registry kill's reach to an isolated process are unverified; *(added 2026-10-30, F1b)* nested-Job compatibility and cleanup-by-Job-handle-close were observed for the MXC launcher trees under one Core-held `KILL_ON_JOB_CLOSE` Job — corroboration for MXC-R11 (nested Jobs), **not** this row, and Core's own death was not separately exercised |
+| 9 | children remain confined | design-complete · implementation-blocked · evidence-blocked | confinement inheritance unverified, and "confined" now has a named hole: a descendant reached through a hardlink alias inside a granted tree read and wrote an object outside it (**F2c/F2d**), so this row is not passable without the §3.4 gate's evidence; the junction case was denied (F2) and the symlink and handle-transfer cases stay **UNKNOWN** |
 | 10 | establishment invariant | design-complete · implementation-blocked | O7 still open (P11's, R8; §3.4) |
 | 11 | Core restart | design-complete · implementation-blocked · evidence-blocked | R6-A decided (§6.17); kill-on-close and sole holding unverified |
-| 12 | repository boundary | design-complete · implementation-blocked · evidence-blocked | R4a-B decided (§6.13), completed by A1 and A5 (§6 items 19–20); the copy seed, the working-tree import and the Core-pinned configuration unverified |
+| 12 | repository boundary | design-complete · implementation-blocked · evidence-blocked | R4a-B decided (§6.13), completed by A1 and A5 (§6 items 19–20); the copy seed, the working-tree import and the Core-pinned configuration unverified, and the seed/import that forbids hardlinks is now load-bearing rather than hygienic: **F2c/F2d** showed a second name for one file object crossing the boundary in both directions, so this row depends on the §3.4 gate (row 16) and on the owner's decision about the post-scan residual |
 | 13 | cleanup | design-complete · implementation-blocked | no grants or profiles are created today |
-| 14 | verification identity | design-complete · implementation-blocked · evidence-blocked | R4b decided (§6.12), completed by A6 (§6 item 21); per-verification principals, grants and toolchain unverified; today verification runs as the user (§3.9) |
+| 14 | verification identity | design-complete · implementation-blocked · evidence-blocked | R4b decided (§6.12), completed by A6 (§6 item 21); per-verification principals, grants and toolchain unverified; today verification runs as the user (§3.9); the verifier's own workspace is a granted tree, so the §3.4 hardlink gate and the N-protocol's hardlink **hard gate** apply to it (added 2026-10-30, F2c/F2d) |
 | 15 | halt classification | design-complete · implementation-blocked | H2 decided (§6.16), contracts corrected by A7 (§6 item 24); `record_end` still classifies as before |
+| 16 | hardlink gate on every granted tree | **design-open** · implementation-blocked · evidence-blocked *(added 2026-10-30, F2c/F2d)* | §6 item 25. The gate is a required invariant (scan link counts at grant and at launch; refuse or copy any regular file with a link count above 1; fail closed; no disabling setting); what is design-open is what becomes of the post-scan planting residual — an **owner decision** among a post-launch re-scan with a kill trigger, an oplock/USN invalidation subscription, or accepting the narrowed window — and whether MXC treats aliasing as a known gap is **UNKNOWN** (the ask upstream has not been made). A batch finding such a file is FAIL/BLOCKED, never a warning |
 
-Rows 4 and 5 stay **design-open** until R1-A's attestation exists and is evidenced; row 1 until the
-production CLI is shown to work through R3-B. Every row is implementation-blocked, and none is
-passed.
+Rows 4 and 5 stay **design-open** until R1-A's attestation exists and is evidenced — and that
+attestation must satisfy the attestor rule of §3.3, since a dead owner PID stayed resolvable for at
+least 1.5 s (F9C); row 1 until the production CLI is shown to work through R3-B; row 16 until the gate exists and the owner has decided the post-scan residual. Every
+row is implementation-blocked, and none is passed.
 
 **Acceptance evidence the blocker decisions add (to be produced; none exists).** Synthetic fixtures
 and booleans only, like §4:
@@ -925,6 +1094,23 @@ and booleans only, like §4:
   access-denied, and Core-authored configuration is not writable from inside.
 - *A3:* a forwarded request and a verifier-origin request are refused every §3.6 effect.
 - *A4:* the router refuses a harness that cannot launch inside the PV-20 identity.
+
+**Acceptance evidence the 2026-10-30 findings add (to be produced; none exists).** Synthetic fixtures
+and booleans only, like §4:
+
+- *Hardlink gate (F2c/F2d):* for each grant point — seed, import, each runtime grant — a planted
+  regular file with a link count above 1 naming an object outside the granted tree
+  produces a refused grant and **zero spawn attempts**; the launch re-scan refuses a tree that was
+  clean at grant time; a tree that cannot be walked completely is refused, never partially passed; and
+  with the gate in force the container can neither read nor write the outside object it was aliased to.
+- *Identity observation (F1a):* two concurrent executions behave as separated (neither reads the
+  other's state) **and** the from-inside token read is recorded for both, so the principal is named by
+  evidence rather than by assumption; identical Groups and a host-user User SID are recorded as what
+  was seen, not smoothed into a pass.
+- *Attestor rule (F9C):* a connection whose resolved owner PID is dead at accept, or whose creation
+  time differs from the accept-time binding, receives no §3.6 effect; a response path that tries to
+  attest after the response is refused; PID reuse is exercised against a **fake process table**, and no
+  native run is claimed for it.
 
 ## MXC backend risk register and evidence ledger (proposed, 2026-10-29)
 
@@ -943,6 +1129,9 @@ Proposed register entries for the MXC backend decision (ADR-0053 amendment, 2026
 | MXC-R09 | Vendor update changes policy semantics, principals, Jobs or cleanup. | No auto-update. Reviewed version change; rerun affected N stages before activation. |
 | MXC-R10 | MXC profile residue/opaque cleanup. Smoke notes 173 mappings, attribution unknown. | Do not attribute or delete existing registrations. Owned-resource disposal evidence and quarantine required; storage absence remains unverified without authorized proof. |
 | MXC-R11 | Nested Jobs, shared principal or broker deputy defeats contract. | Prove outer Job sole ownership, actual principal separation and origin preservation. Wrapper success insufficient. |
+| MXC-R12 | **Hardlink aliasing across a granted path (F2c/F2d, measured 2026-10-30):** a host-created hardlink inside a granted folder naming an outside file was readable **and** writable from inside the base container; the outside object's ACL was unchanged and direct-path access stayed denied; junctions were denied (F2). Corollary **F2f:** a protected DACL inside the granted folder did not stop a read. | The §3.4 hardlink gate is a required invariant (link-count scan at grant and at launch, refuse or copy any regular file with a link count above 1, fail closed, no disabling setting), with the N-protocol hardlink row as a hard gate (FAIL/BLOCKED, never a warning). Post-scan planting is **UNKNOWN** and untried; its disposition is an **owner decision** (§3.4). Whether MXC treats aliasing as a known gap is **UNKNOWN** until asked upstream. No boundary is claimed against aliasing until MXC fixes it or Core mitigates it. |
+| MXC-R13 | **The base-container identity is not an AppContainer principal (F1a, measured 2026-10-30):** workload token User is the host user's own SID, Groups identical across instances, no S-1-15-2 package SID; separation was observed only as behaviour, and the from-inside token read that would name the principal was never done. | Name the boundary "isolated by the MXC process security environment" and never "an AppContainer SID". Require the per-run separation observation **plus** the from-inside token read as evidence before any token-level claim; keep the escalation path (§2) available as a new owner decision. |
+| MXC-R14 | **A dead owner PID is still attributed as an origin (F9C, measured 2026-10-30):** resolvable in the TCP table for at least 1.5 s after the client exited, with `OpenProcess` succeeding and `IsProcessInJob` still reporting the Core Job. PID reuse **UNKNOWN** (never seen, not forceable from the fixture). | The §3.3 attestor rule: bind PID with its process creation time at accept, fail closed on a dead PID or a creation-time mismatch, attest at accept and never after the response. Require the reuse case as a fake-process-table unit test; never assert it as a native result. |
 
 Proposed initial evidence-ledger rows (the ledger file `.collab/PV20-mxc-evidence-ledger.md` does not exist yet):
 
@@ -954,5 +1143,16 @@ Proposed initial evidence-ledger rows (the ledger file `.collab/PV20-mxc-evidenc
 | MXC-SMOKE-T4 | Two-process tree gone within 5 s, launcher kill and Core-owned Job close | Partial lifetime corroboration |
 | MXC-CLAUDE-INFO | Version/help exit 0, under 2.5 s | CLI startup only |
 | MXC-N1…N5 | No runs recorded | NOT_RUN |
+| MXC-F1A (2026-10-30) | Two concurrent base-container instances; cross-instance folder read denied; token User and Groups read from inside both (whoami.exe itself was denied in the container); Core-held Job membership check | Feasibility/behaviour only — separation observed, principal **not** named from inside; promotes nothing |
+| MXC-F1B (2026-10-30) | Two concurrent instances' launchers assigned to one Core-held `KILL_ON_JOB_CLOSE` Job; trees 2 and 2 before, 0 and 0 after the Job handle closes; nested-Job compatibility (the MXC launcher inside the outer Job); Core's own death not exercised separately | Partial lifetime corroboration; **not** rows 8, 10 or 11 — the suspend/assign/resume launch contract is still unevidenced |
+| MXC-F2 (2026-10-30) | Strict-storage probe, reduced scope (no admin, no packaged proxy): junction read/write into an outside folder denied, ancestor and outside listing denied, outside ACL unchanged, containment canary clean; hostile creator ACEs and fixture-only handle transfer **not done**; symlink needs privilege here | Partial filesystem corroboration; **OPEN / UNKNOWN** on symlink, hostile creator ACE and handle transfer |
+| MXC-F2C/F2D (2026-10-30) | Host-created hardlink inside granted folder → outside file read **and** written from inside; outside ACL unchanged | **Escape observed.** Not an acceptance row; drives §6 item 25 / row 16 and MXC-R12 |
+| MXC-F2F (2026-10-30) | Protected DACL granting only the host user on a file inside the granted folder; read succeeded from inside | Corroborates F1a; no ACL-level guarantee may be claimed |
+| MXC-F3 (2026-10-30) | Identity-less proxy policy: contained curl reached the fake upstream only via the proxy; direct connect to another loopback listener blocked (host control reached it); proxy port itself reachable; deny-all blocked both; WinHTTP best-effort warning; `allowedProxyPeer` untested | Partial network corroboration; **no** broker, R3-B or attestation row promoted |
+| MXC-F4 (2026-10-30) | UI matrix under the blocked default: cmd/curl/claude OK; powershell, node and git FAIL `0xC0000142` until `ui.disable=false`; where/choice unresolved | Corroboration only; per-tool UI admission stays a **proposal, not adopted** |
+| MXC-F7 (2026-10-30) | Git Bash (`bash.exe -c`) FAIL `0xC0000142` with UI off **and** on; cause not isolated | Corroboration only; MXC-R03 exclusion stands |
+| MXC-F9A/9B (2026-10-30) | Live contained client attributed to launcher tree + Core Job; host forwarder rejected | Positive controls; **not** row 4 or 5 |
+| MXC-F9C (2026-10-30) | Dead owner PID still resolvable ≥ 1.5 s after exit; `OpenProcess` ok; `IsProcessInJob` true | **Failure-mode observation.** Drives the §3.3 attestor rule and MXC-R14; PID reuse NOT_RUN (unit test required) |
+| MXC-CRED | Credential-authority denial (DPAPI, vault, SSH agent, provider login, other user-owned stores) | NOT_RUN — never probed; **UNKNOWN**, and never to be read as safe |
 
 Never equate eight checks with eight acceptance rows.
