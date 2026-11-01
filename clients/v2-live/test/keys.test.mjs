@@ -19,6 +19,12 @@ test('other digits and any other modifier do nothing', () => {
   assert.equal(overviewKey(ev('Digit1', { shiftKey: true })), null);
   assert.equal(overviewKey({ altKey: true, key: '1' }), null);
 });
+test('the help lists Ctrl+Enter, the chat bar key that steers a running mission, in both languages', () => {
+  const row = KEYS.find(([k]) => k === 'Ctrl+Enter or Cmd+Enter');
+  assert.ok(row);
+  assert.equal(tr(row[0]), 'Ctrl+Invio o Cmd+Invio');
+  assert.match(tr(row[1]), /guida la missione/);
+});
 test('the help lists Alt+1, Alt+2, Alt+3 and the Italian row names the views in Italian only', () => {
   const row = KEYS.find(([k]) => k === 'Alt+1, Alt+2, Alt+3');
   assert.ok(row);

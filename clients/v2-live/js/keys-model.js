@@ -13,6 +13,7 @@ export const KEYS = [
   ['Esc', 'Close the open help, menu, question or details sheet'],
   ['Ctrl+K or Cmd+K', 'Search pages, actions and projects, and run them'],
   ['Alt+1, Alt+2, Alt+3', 'On the Overview: Territories, Rings, Network'],
+  ['Ctrl+Enter or Cmd+Enter', 'In the chat bar: steer the running mission (Enter queues a message)'],
   ['?', 'Show or hide this list'],
   ['Tab and Shift+Tab', 'Move between controls'],
   ['/ in the chat bar', 'Open the command list; Up, Down, Tab, Enter and Esc work inside it']

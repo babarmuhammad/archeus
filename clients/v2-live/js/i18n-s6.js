@@ -9,6 +9,7 @@ export const IT_S6 = {
   'Open the focused row, or do the primary action of the focused card': 'Apre la riga selezionata, o fa l’azione principale della scheda selezionata',
   'The same as Enter on a row': 'Come Invio su una riga',
   'Close the open help, menu, question or details sheet': 'Chiude la guida, il menu, la domanda o il pannello dei dettagli aperto',
+  'Ctrl+Enter or Cmd+Enter': 'Ctrl+Invio o Cmd+Invio', 'In the chat bar: steer the running mission (Enter queues a message)': 'Nella barra della chat: guida la missione in corso (Invio mette il messaggio in coda)',
   'Show or hide this list': 'Mostra o nasconde questo elenco',
   'Alt+1, Alt+2, Alt+3': 'Alt+1, Alt+2, Alt+3', 'On the Overview: Territories, Rings, Network': 'Nella panoramica: Territori, Anelli, Rete',
   'Tab and Shift+Tab': 'Tab e Maiusc+Tab', 'Move between controls': 'Passa da un controllo all’altro',
