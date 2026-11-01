@@ -445,7 +445,8 @@ class MxcLaunch:
         return self.process.stderr
 
     def terminate(self):
-        self.process.terminate()
+        if self.process is not None:
+            self.process.terminate()
 
     def wait(self, timeout=None, *, cancelled=None):
         """The launcher exit and the workload outcome are two readings, kept apart: the

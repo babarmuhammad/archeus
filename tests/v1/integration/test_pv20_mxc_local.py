@@ -280,3 +280,9 @@ def test_verifier_preparation_checks_its_own_grants(tmp_path, monkeypatch):
         node.run_confined_check(verification_id, 1, ['fixture'], toolchain=[str(tool)],
                                 timeout=1, record=records.append, project_id='fixture',
                                 revision='fixture', workdirs=[])
+
+
+def test_terminate_before_start_is_a_no_op(launch_args):
+    # T-660#18: wait() already guarded the unstarted launch; terminate() raised AttributeError
+    launch = local.MxcLaunch(backend=FakeMxc(), outcome=lambda p: 0, **launch_args)
+    launch.terminate()
