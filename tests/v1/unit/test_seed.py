@@ -520,11 +520,12 @@ def test_import_back_destination_that_exists_refused(tmp_path):
     root = source_tree(tmp_path, {'data/in.json': b'{"a":1}'}, name='node')
     dest = tmp_path / 'imported'
     dest.mkdir()
+    (dest / 'old.json').write_bytes(b'kept')
     scan, calls = scan_ok()
     with pytest.raises(seed.SeedError) as err:
         seed.import_back(root, ['data/in.json'], dest, scan)
     assert 'the destination already exists' in str(err.value)
-    assert calls == []
+    assert (dest / 'old.json').read_bytes() == b'kept' and calls == []
 
 
 @pytest.mark.parametrize('rel,token', ESCAPES)
@@ -669,3 +670,123 @@ def test_copy_that_differs_from_its_source_refused(tmp_path, monkeypatch):
         seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
     assert 'copy differs from its source: one.txt' in str(err.value)
     assert calls == []
+
+
+# ── B5: the destination may be a directory Core made and nothing has been put in ──
+
+def made_dest(tmp_path):
+    dest = tmp_path / 'workspace'
+    dest.mkdir()
+    return dest
+
+
+def test_an_existing_empty_directory_is_seeded_in_place_and_scanned(tmp_path):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    before = os.stat(dest).st_ino
+    scan, calls = scan_ok()
+    assert seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan) is dest
+    assert os.stat(dest).st_ino == before and calls == [dest]
+    for rel, data in CLEAN.items():
+        assert (dest / rel).read_bytes() == data
+
+
+def test_an_existing_empty_directory_takes_an_import_too(tmp_path):
+    root = source_tree(tmp_path, {'data/in.json': b'{"a":1}'}, name='node')
+    dest = made_dest(tmp_path)
+    scan, calls = scan_ok()
+    assert seed.import_back(root, ['data/in.json'], dest, scan) is dest
+    assert (dest / 'data' / 'in.json').read_bytes() == b'{"a":1}' and calls == [dest]
+
+
+@pytest.mark.parametrize('present', ['file', 'directory'])
+def test_an_existing_directory_with_anything_in_it_is_refused_untouched(tmp_path, present):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    (dest / 'x').mkdir() if present == 'directory' else (dest / 'x').write_bytes(b'user')
+    scan, calls = scan_ok()
+    with pytest.raises(seed.SeedError, match='already exists and is not empty'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    assert os.listdir(dest) == ['x'] and calls == []
+
+
+def test_an_existing_destination_that_is_a_file_is_refused(tmp_path):
+    src = source_tree(tmp_path)
+    scan, calls = scan_ok()
+    (tmp_path / 'workspace').write_bytes(b'in the way')
+    with pytest.raises(seed.SeedError, match='not the directory expected: .'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, tmp_path / 'workspace', scan)
+    assert (tmp_path / 'workspace').read_bytes() == b'in the way' and calls == []
+
+
+@pytest.mark.parametrize('kind', ['symlink', 'reparse'])
+def test_an_existing_destination_that_is_an_alias_is_refused_before_anything_is_written(
+        tmp_path, monkeypatch, kind):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    fields = (dict(st_mode=stat.S_IFLNK | 0o777, st_nlink=1, st_file_attributes=0)
+              if kind == 'symlink' else
+              dict(st_mode=stat.S_IFDIR, st_nlink=1, st_file_attributes=0x400))
+    fake_lstat(monkeypatch, dest, SimpleNamespace(**fields))
+    scan, calls = scan_ok()
+    with pytest.raises(seed.SeedError, match='an alias appeared in the destination: .'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    assert os.listdir(dest) == [] and calls == []
+
+
+def test_an_existing_destination_that_cannot_be_listed_is_refused(tmp_path, monkeypatch):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    real = os.scandir
+
+    def scandir(path, *args):
+        if _same(path, dest):
+            raise PermissionError('denied')
+        return real(path, *args)
+
+    monkeypatch.setattr(seed.os, 'scandir', scandir)
+    scan, calls = scan_ok()
+    with pytest.raises(seed.SeedError, match='the destination cannot be listed: .'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    assert os.listdir(dest) == [] and calls == []
+
+
+def test_a_source_that_changed_leaves_an_existing_empty_destination_empty(tmp_path, monkeypatch):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    real = os.lstat
+    seen = {'looks': 0}
+
+    def lstat(path, *args):
+        st = real(path, *args)
+        if _same(path, src / 'one.txt'):
+            seen['looks'] += 1
+            if seen['looks'] > 1:
+                return SimpleNamespace(st_mode=st.st_mode, st_nlink=1, st_ino=st.st_ino,
+                                       st_dev=st.st_dev, st_size=st.st_size + 1,
+                                       st_mtime_ns=st.st_mtime_ns, st_file_attributes=0)
+        return st
+
+    monkeypatch.setattr(seed.os, 'lstat', lstat)
+    scan, calls = scan_ok()
+    with pytest.raises(seed.SeedError, match='changed while it was seeded: one.txt'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    assert os.listdir(dest) == [] and calls == []
+
+
+def test_a_scan_finding_in_an_existing_destination_keeps_what_was_written(tmp_path):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    scan, calls = scan_returns(['one.txt'])
+    with pytest.raises(seed.SeedError, match='the scan refused: one.txt'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    assert (dest / 'one.txt').read_bytes() == CLEAN['one.txt'] and calls == [dest]
+
+
+def test_a_second_seed_into_the_filled_directory_is_refused(tmp_path):
+    src = source_tree(tmp_path)
+    dest = made_dest(tmp_path)
+    scan, _ = scan_ok()
+    seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
+    with pytest.raises(seed.SeedError, match='already exists and is not empty'):
+        seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)

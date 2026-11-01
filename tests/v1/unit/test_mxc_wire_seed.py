@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from archeus.node import local, mxc_ledger as ledger_mod, staging
+from archeus.node import local, mxc, mxc_ledger as ledger_mod, staging
 
 from .test_mxc_wire import args, journal_ops, native_parts, wire  # noqa: F401
 
@@ -181,3 +181,80 @@ def test_a_seed_seam_without_a_journalled_launch_is_refused(args):
     with pytest.raises(staging.StageError, match='seed stager'):
         local.MxcLaunch(backend=object(), outcome=lambda process: 0,
                         seed_stage=lambda: None, seed_recheck=lambda: None, **args)
+
+
+# ── B5: the seed fills the workspace the launch was already granted ──
+
+def source_files(tmp_path):
+    source = tmp_path / 'source'
+    source.mkdir()
+    (source / 'a.txt').write_bytes(b'one')
+    return {'a.txt': str(source / 'a.txt')}
+
+
+def seeded_launch(args, wire, files):
+    """The launch is built over the empty workspace Core made, so its grants name a
+    directory that exists; the seed then fills that same directory."""
+    workspace = args['workspace']
+    h = wire(**OK)
+    h.launch.seed_stage = lambda: staging.seed_execution(files, workspace)
+    h.launch.seed_recheck = lambda: staging.recheck_execution(workspace)
+    return h, workspace
+
+
+def test_the_empty_workspace_is_granted_then_seeded_in_place_then_the_launch_ends_clean(
+        tmp_path, args, wire):
+    files = source_files(tmp_path)
+    h, workspace = seeded_launch(args, wire, files)
+    assert os.listdir(workspace) == []
+    assert h.launch.policy.raw['filesystem']['readwritePaths'] == [workspace]
+    seam = Seam(h, stage=h.launch.seed_stage, recheck=h.launch.seed_recheck)
+    h.launch.start(job=h.job)
+    assert [row[:2] for row in seam.seen] == [('stage', ['intent']),
+                                              ('recheck', ['intent', 'ownership'])]
+    assert open(os.path.join(workspace, 'a.txt'), 'rb').read() == b'one'
+    assert os.stat(os.path.join(workspace, 'a.txt')).st_nlink == 1
+    assert h.launch.wait() == 0
+    assert h.launch.end_state['state'] == ledger_mod.DEAD_CLEAN
+
+
+def test_a_workspace_that_already_holds_something_is_never_seeded_and_never_runs(
+        tmp_path, args, wire):
+    files = source_files(tmp_path)
+    h, workspace = seeded_launch(args, wire, files)
+    open(os.path.join(workspace, 'planted.txt'), 'wb').write(b'x')
+    with pytest.raises(staging.StageError, match='already exists and is not empty'):
+        h.launch.start(job=h.job)
+    assert os.listdir(workspace) == ['planted.txt']
+    assert h.api.events.count('create') == 0 and h.launch.process is None
+    assert journal_ops(h.journal) == ['intent', 'quarantine']
+    refused_not_clean(h)
+
+
+def test_a_second_name_planted_in_the_seeded_workspace_never_gets_a_child(
+        tmp_path, args, wire):
+    # the workspace is a grant, so the policy gate's own scan sees the second name
+    # before the child is made, ahead of the re-check that would catch it at the resume
+    files = source_files(tmp_path)
+    h, workspace = seeded_launch(args, wire, files)
+    stage = h.launch.seed_stage
+
+    def plant():
+        stage()
+        try:
+            os.link(os.path.join(workspace, 'a.txt'), tmp_path / 'outside.txt')
+        except OSError:
+            pytest.skip('no hardlinks on this volume')
+
+    h.launch.seed_stage = plant
+    with pytest.raises(mxc.MxcUnavailable, match='a second name.: a.txt'):
+        h.launch.start(job=h.job)
+    assert h.api.events.count('create') == 0 and h.launch.process is None
+    refused_not_clean(h)
+
+
+def test_the_launch_is_refused_a_workspace_that_does_not_exist_before_anything_is_seeded(
+        tmp_path, args, wire):
+    args['workspace'] = args['cwd'] = str(tmp_path / 'never-made')
+    with pytest.raises(OSError):
+        wire(**OK)

@@ -58,10 +58,58 @@ def test_seed_copies_bytes_to_new_inodes(src, tmp_path):
         assert os.stat(dest / rel).st_nlink == 1
 
 
-def test_seed_into_an_existing_folder_refused(src, tmp_path):
+def test_seed_into_an_existing_folder_with_anything_in_it_refused(src, tmp_path):
     (tmp_path / 'exec').mkdir()
+    (tmp_path / 'exec' / 'user.txt').write_bytes(b'user')
     with pytest.raises(staging.StageError, match='already exists'):
         staging.seed_execution(src, tmp_path / 'exec')
+    assert os.listdir(tmp_path / 'exec') == ['user.txt']
+
+
+def test_seed_fills_an_existing_empty_folder_and_scans_it_with_the_real_scan(src, tmp_path):
+    dest = tmp_path / 'exec'
+    dest.mkdir()
+    assert staging.seed_execution(src, dest) == dest
+    for rel, data in FILES.items():
+        assert (dest / rel).read_bytes() == data
+        assert os.stat(dest / rel).st_nlink == 1
+    assert staging.recheck_execution(dest) == dest
+
+
+def test_a_hardlink_in_the_folder_after_an_empty_folder_was_seeded_is_caught(
+        src, tmp_path):
+    dest = tmp_path / 'exec'
+    dest.mkdir()
+    staging.seed_execution(src, dest)
+    try:
+        os.link(dest / 'one.txt', tmp_path / 'outside.txt')
+    except OSError:
+        pytest.skip('no hardlinks on this volume')
+    with pytest.raises(staging.StageError, match='scan refused: one.txt'):
+        staging.recheck_execution(dest)
+
+
+def test_seed_refuses_an_existing_folder_that_is_an_alias_and_writes_nothing(
+        src, tmp_path, monkeypatch):
+    dest = tmp_path / 'exec'
+    dest.mkdir()
+    lie_about(monkeypatch, 'exec', st_file_attributes=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    with pytest.raises(staging.StageError, match='alias'):
+        staging.seed_execution(src, dest)
+    assert os.listdir(dest) == []
+
+
+def test_seed_refuses_an_existing_folder_that_is_a_file(src, tmp_path):
+    (tmp_path / 'exec').write_bytes(b'in the way')
+    with pytest.raises(staging.StageError, match='not the directory expected'):
+        staging.seed_execution(src, tmp_path / 'exec')
+
+
+def test_import_back_fills_an_existing_empty_folder(seeded, tmp_path):
+    back = tmp_path / 'back'
+    back.mkdir()
+    assert staging.import_results(seeded, ['one.txt'], back) == back
+    assert (back / 'one.txt').read_bytes() == FILES['one.txt']
 
 
 def test_seed_refuses_a_hardlinked_entry(src, tmp_path, monkeypatch):

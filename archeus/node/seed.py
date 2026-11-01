@@ -1,7 +1,8 @@
 """T-453: copy-only seeding and data import with a hardlink/reparse scan (audit slice 7).
 
 Every destination is a fresh private tree written once (`xb`, no overwrite, no alias
-followed), and the injected *scan* — the shape of `linkscan.multi_linked_files`, one
+followed): a path that does not exist, or a plain directory Core made and nothing has
+been put in, because a launch needs its workspace to exist before it is seeded. And the injected *scan* — the shape of `linkscan.multi_linked_files`, one
 root in, the relative paths it refuses out — runs on that tree after the copy and again
 through `recheck`. A finding or a scan exception raises `SeedError` naming only the
 relative path and removes nothing: this module holds no deletion primitive, so a
@@ -203,24 +204,29 @@ def _rows(pairs, source_root):
 
 
 def _fresh(dest_root, scan):
+    """(root, whether it exists): an absent path, or a plain directory with nothing in it."""
     if not callable(scan):
         raise SeedError('no scan given')
     root = _root(dest_root)
     try:
         os.lstat(root)
     except FileNotFoundError:
-        return root
+        return root, False
     except OSError as err:
         raise SeedError('the destination cannot be looked at') from err
-    raise SeedError('the destination already exists')
+    _entry(root, '.', True)
+    if _list(root, '.'):
+        raise SeedError('the destination already exists and is not empty')
+    return root, True
 
 
 def _seed(rows, dest_root, scan):
-    root = _fresh(dest_root, scan)
+    root, exists = _fresh(dest_root, scan)
     for rel, src, sig in rows:
         if _sig(_source(src, rel)) != sig:
             raise SeedError('changed while it was seeded: %s' % rel)
-    os.mkdir(root)
+    if not exists:
+        os.mkdir(root)
     _entry(root, '.', True)
     made = {os.path.normcase(root)}
     for rel, src, sig in rows:
