@@ -67,7 +67,7 @@ MUTATIONS = [
      "**self._seam())\n            self._record_intent()")],
      [W + 'test_the_create_intent_is_durable_before_the_create']),
     ('W05', 'an execution id that already has a journal starts again', [(LOCAL,
-     "        if self.ledger is not None and self.execution_id in self.ledger.journals():",
+     "        if self.ledger is not None and self.journal in self.ledger.journals():",
      "        if False:")],
      [W + 'test_a_second_launch_of_the_same_execution_id_is_refused',
       W + 'test_a_launch_that_failed_to_journal_is_not_started_again']),
@@ -138,7 +138,7 @@ MUTATIONS = [
      "        return {'before_resume': self._record_ownership}")],
      [L + 'test_a_backend_without_a_ledger_is_asked_for_no_ownership_hook']),
     ('W20', 'an unverified ending goes unrecorded', [(LOCAL,
-     "            self.ledger.append(self.execution_id, 'quarantine',\n"
+     "            self.ledger.append(self.journal, 'quarantine',\n"
      "                               reason=str(why)[:200] or 'end unverified')",
      "            pass")],
      [W + 'test_no_reader_at_all_is_never_a_clean_end',
@@ -202,7 +202,7 @@ MUTATIONS = [
      "        if False:")],
      [D + 'test_the_job_is_recorded_before_the_resume_and_after_the_ownership']),
     ('W34', "one launch's clean end disarms a watchdog shared with other jobs", [(LOCAL,
-     "        if report['recorded'] == [self.execution_id]:", "        if True:")],
+     "        if report['recorded'] == [self.journal]:", "        if True:")],
      [D + 'test_a_watchdog_shared_with_another_job_stays_armed']),
     ('W35', 'a start never claims its execution id before the journal check', [(LOCAL,
      "            _MXC_CLAIMS.add(claim)", "            pass")],
