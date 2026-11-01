@@ -1067,7 +1067,7 @@ class LocalNode:
             # a number is reused once the execution empties req/, so an answer counts
             # only when it echoes this request's nonce
             res = _read_object(res_path)
-            if res is not None and res.get('nonce') == (body or {}).get('nonce'):
+            if res is not None and _same(res.get('nonce'), (body or {}).get('nonce')):
                 if all(x is not None and x[0] < settled for x in stamp):
                     kept[head] = stamp
                 continue
@@ -1680,6 +1680,12 @@ def _stamp(path):
     except OSError:
         return None
     return st.st_mtime_ns, st.st_size, st.st_ino
+
+
+def _same(a, b):
+    # NaN is not equal to itself, nor is a list or dict holding one: an execution that
+    # wrote `"nonce": NaN` kept its request pending, and judged, on every tick
+    return json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
 
 
 def _read_object(path):

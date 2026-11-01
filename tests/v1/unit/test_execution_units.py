@@ -1148,6 +1148,21 @@ def test_a_file_is_read_for_the_bytes_it_holds_not_for_the_bound(monkeypatch):
     assert reads and all(n <= size + 1 for n in reads)
 
 
+@pytest.mark.parametrize('nonce', ['NaN', '[NaN]', '{"a": NaN}', 'Infinity'])
+def test_a_request_whose_nonce_is_not_equal_to_itself_is_answered_once(nonce):
+    """The execution writes the request by hand: `"nonce": NaN` never equals its own echo,
+    so the request stayed pending and was judged, with an event each time, every tick."""
+    eid = ids.new_id('execution')
+    p = paths.ExecPaths(eid)
+    os.makedirs(p.req)
+    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
+        f.write('{"tool": "Read", "nonce": %s}' % nonce)
+    ((seq, request),) = LocalNode.pending_requests(eid)
+    LocalNode.respond(eid, seq, request, 'halt', 'x')
+    assert LocalNode.pending_requests(eid) == []
+    assert LocalNode.pending_requests(eid) == []
+
+
 def test_a_deeply_nested_request_or_answer_is_unreadable_not_a_crash_of_core():
     """`[[[...` 100k deep is 200 KB, far under the size bound, and json.loads raises
     RecursionError on it, which left the exec loop and exited Core on every restart."""

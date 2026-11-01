@@ -268,6 +268,10 @@ MUTATIONS = [
      "            data = f.read(min(size, MAX_REQUEST_BYTES) + 1)",
      "            data = f.read(MAX_REQUEST_BYTES + 1)")],
      [U + '::test_a_file_is_read_for_the_bytes_it_holds_not_for_the_bound']),
+    ('X50', 'a nonce that is not equal to itself keeps a request pending forever', [(NODE,
+     "if res is not None and _same(res.get('nonce'), (body or {}).get('nonce')):",
+     "if res is not None and res.get('nonce') == (body or {}).get('nonce'):")],
+     [U + '::test_a_request_whose_nonce_is_not_equal_to_itself_is_answered_once']),
 ]
 
 
