@@ -384,6 +384,24 @@ def test_wait_after_close_refuses_without_touching_closed_handles():
         child.wait()
 
 
+def test_one_handle_that_will_not_close_does_not_keep_the_others_open():
+    api = FakeWin32()
+    _, child = create(api)
+    first, real = child._handles[0], api.close_handle
+
+    def close_handle(handle):
+        if handle == first:
+            raise OSError('close_handle failed')
+        real(handle)
+
+    api.close_handle = close_handle
+    with pytest.raises(OSError, match='close_handle failed'):
+        child.close()
+    assert set(api.handles) == {first}          # the rest, the policy lease included, are closed
+    assert child._handles == [] and child._policy_lease is None
+    child.close()                               # nothing is retried
+
+
 def test_interrupt_during_spawn_still_kills_the_suspended_launcher(monkeypatch):
     api = FakeWin32()
     transport, policy, _ = setup(api)

@@ -197,16 +197,24 @@ class Process:
 
     def _close(self, handle):
         if handle in self._handles:
+            self._handles.remove(handle)        # a handle that fails to close is not retried
             self.api.close_handle(handle)
-            self._handles.remove(handle)
 
     def close(self):
+        failed = None
         for handle in self._handles[:]:
-            self._close(handle)
+            try:
+                self._close(handle)
+            except Exception as err:
+                failed = failed or err
         self.stdin.close()
-        if self._policy_lease is not None:
-            self.api.remove_policy(*self._policy_lease)
-            self._policy_lease = None
+        try:
+            if self._policy_lease is not None:
+                self.api.remove_policy(*self._policy_lease)
+                self._policy_lease = None
+        finally:
+            if failed is not None:
+                raise failed
 
     def terminate(self):
         if self._draining:

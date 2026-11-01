@@ -92,6 +92,15 @@ MUTATIONS = [
      '        if output_limit <= 0 or total_limit <= 0:')],
      ['tests/v1/unit/test_mxc_native_gaps.py::test_a_bound_that_is_not_a_positive_int_is_refused',
       S + 'test_a_total_bound_that_is_not_a_positive_int_is_refused']),
+    ('N22', 'a handle that fails to close stays on the list to be retried', [(NATIVE,
+     "            self._handles.remove(handle)        # a handle that fails to close is not retried"
+     "\n            self.api.close_handle(handle)",
+     "            self.api.close_handle(handle)\n            self._handles.remove(handle)")],
+     [TEST + 'test_one_handle_that_will_not_close_does_not_keep_the_others_open']),
+    ('N23', 'the first handle that fails to close stops the close', [(NATIVE,
+     "            except Exception as err:\n                failed = failed or err",
+     "            except ZeroDivisionError as err:\n                failed = failed or err")],
+     [TEST + 'test_one_handle_that_will_not_close_does_not_keep_the_others_open']),
 ]
 
 
