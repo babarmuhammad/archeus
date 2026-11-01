@@ -77,11 +77,25 @@ def archeus_home(environ=None, platform=None):
 
 
 _LEAF = re.compile(r'[A-Za-z0-9_.-]+')
+_UNSAFE = re.compile(r'[\\:<>"|?*\x00-\x1f\x7f]')
+_DEVICE = re.compile(r'(?i)(con|prn|aux|nul|conin\$|conout\$|(com|lpt)[0-9¹²³])')
+
+
+def refused_component(name):
+    """True when *name* is not a plain Windows file name: Windows resolves it to another
+    entry (a trailing dot or space, a `:` stream) or to a device, or git keeps it for
+    itself (`.git`, its 8.3 alias). The one rule every path Core builds from outside
+    text goes through."""
+    return (name in ('', '.', '..') or bool(_UNSAFE.search(name)) or name[-1] in '. '
+            or bool(_DEVICE.fullmatch(name.split('.')[0].rstrip(' ')))
+            or name.casefold() in ('.git', 'git~1'))
 
 
 def task_worktree(project_id, mission_id, key):
     """`<ARCHEUS_HOME>/worktrees/<mission ULID>/<task key>` (target-architecture
     §5.1, amendment 2026-10-14), or the earlier layout's directory when it exists."""
+    if key.casefold() == '_mission':
+        raise ValueError('a task key may not name the mission worktree')
     return _worktree(project_id, mission_id, key)
 
 
@@ -97,7 +111,7 @@ def _worktree(project_id, mission_id, leaf):
     # exists: its branch is checked out there, so Git would refuse a second path.
     if not ids.is_id(project_id, 'project') or not ids.is_id(mission_id, 'mission'):
         raise ValueError('not a project and mission id: %.80r, %.80r' % (project_id, mission_id))
-    if not _LEAF.fullmatch(leaf) or leaf in ('.', '..'):
+    if not _LEAF.fullmatch(leaf) or refused_component(leaf):
         raise ValueError('not a worktree directory name: %.80r' % (leaf,))
     root = os.path.join(archeus_home(), 'worktrees')
     legacy = os.path.join(root, project_id, mission_id, leaf)

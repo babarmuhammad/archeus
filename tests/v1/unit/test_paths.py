@@ -211,6 +211,30 @@ def test_a_task_key_that_is_not_a_plain_name_cannot_leave_the_mission_directory(
         paths.task_worktree(PRJ, MSN, leaf)
 
 
+ALIASES = ['...', 'real.', 'a..', 'x.', '.git', '.GIT', 'NUL', 'nul.txt', 'CON', 'aux.log',
+           'com1', 'LPT9.x', '_mission', '_MISSION']
+
+
+@pytest.mark.parametrize('leaf', ALIASES)
+def test_a_task_key_windows_resolves_to_another_directory_names_no_worktree(archeus_home, leaf):
+    """`...` is the mission directory and `real.` the worktree of task `real`: a task got
+    another task's worktree, or the directory holding all of them (review R3)."""
+    with pytest.raises(ValueError):
+        paths.task_worktree(PRJ, MSN, leaf)
+
+
+@pytest.mark.parametrize('leaf', ['t1', 'real', 'a.b', 'task-1_x', 'v1.2', '.hidden', 'console',
+                                  'com10', 'T-7', 'git', 'mission'])
+def test_the_control_an_ordinary_task_key_keeps_its_worktree(archeus_home, leaf):
+    want = os.path.join(str(archeus_home), 'worktrees', MSN[len('msn_'):], leaf)
+    assert paths.task_worktree(PRJ, MSN, leaf) == want
+
+
+def test_the_mission_worktree_is_still_named_by_its_own_resolver(archeus_home):
+    assert paths.mission_worktree_path(PRJ, MSN) == os.path.join(
+        str(archeus_home), 'worktrees', MSN[len('msn_'):], '_mission')
+
+
 @pytest.mark.parametrize('prj, msn', [('prj_x', MSN), (PRJ, 'msn_'), (PRJ, 'msn_x/y'),
                                       (PRJ, 'exe_' + MSN[4:]), (None, MSN)])
 def test_a_worktree_is_named_only_by_a_project_and_a_mission_id(archeus_home, prj, msn):

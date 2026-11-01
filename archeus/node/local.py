@@ -31,7 +31,8 @@ from claude_sessions import config, proc
 from ..core.domain import ids
 from ..harnesses import base, hook
 from ..infra.paths import (ExecPaths, VerifyPaths, archeus_home, processes_registry,
-                           repo_store, repos_dir, run_dir, seed_staging, stop_sentinel)
+                           refused_component, repo_store, repos_dir, run_dir, seed_staging,
+                           stop_sentinel)
 from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
@@ -144,8 +145,6 @@ SEED_CONFIG = (b'[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n'
 _SEED_META = frozenset(('HEAD', 'config', 'shallow', 'index', 'objects', 'refs'))
 #: a task branch, one segment under archeus/ (manager: archeus/<mission>.<key>)
 _SEED_BRANCH = re.compile(r'archeus/[A-Za-z0-9_][A-Za-z0-9_.-]*')
-_UNSAFE = re.compile(r'[\\:<>"|?*\x00-\x1f\x7f]')
-_DEVICE = re.compile(r'(?i)(con|prn|aux|nul|conin\$|conout\$|(com|lpt)[0-9\u00b9\u00b2\u00b3])')
 
 
 class StoreError(OSError):
@@ -2246,9 +2245,7 @@ def _seed_path(path, prefix):
     if len(parts) > SEED_MAX_DEPTH or prefix + 1 + len(path) > SEED_MAX_PATH:
         raise StoreError('a path too deep or too long to seed: %r' % path)
     for c in parts:
-        if (c in ('', '.', '..') or _UNSAFE.search(c) or c[-1] in '. '
-                or _DEVICE.fullmatch(c.split('.')[0].rstrip(' '))
-                or c.casefold() in ('.git', 'git~1')):
+        if refused_component(c):
             raise StoreError('a path Core does not seed: %r' % path)
 
 
