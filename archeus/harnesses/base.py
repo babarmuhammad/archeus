@@ -369,7 +369,13 @@ def spawn(spec, argv):
             _refuse(paths, str(err), err)
         raise
     create_time = proc.process_create_time(child.pid)
-    _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time, 'process_seq': seq})
+    try:
+        _write_json(paths.pid, {'pid': child.pid, 'create_time': create_time,
+                                'process_seq': seq})
+    except OSError as err:
+        # a live process nobody recorded cannot be stopped or reconciled
+        proc.kill_tree(child)
+        _refuse(paths, 'could not record the process: %s' % err, err, SpawnWriteFailed)
     return ProcessHandle(spec.execution_id, child.pid, create_time, paths.dir), child
 
 

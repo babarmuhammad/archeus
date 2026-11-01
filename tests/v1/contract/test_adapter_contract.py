@@ -287,3 +287,24 @@ def test_the_codex_adapter_normalises_a_recorded_stream():
     from archeus.harnesses.codex import adapter                # noqa: F401  (P11)
     fixture = os.path.join(os.path.dirname(__file__), 'fixtures', 'codex_stream.jsonl')
     assert json.loads(open(fixture, encoding='utf-8').readline())
+
+
+def test_a_pid_marker_that_cannot_be_written_kills_the_child_and_refuses(tmp_path, monkeypatch):
+    """T-647#5: the OSError escaped spawn with a live process nobody had recorded."""
+    spec = _spec(tmp_path)
+    paths = ExecPaths(spec.execution_id)
+    real = base._write_json
+
+    def write(path, obj):
+        if path == paths.pid:
+            raise OSError('disk full')
+        return real(path, obj)
+    monkeypatch.setattr(base, '_write_json', write)
+    started = []
+    real_start = base._start
+    monkeypatch.setattr(base, '_start', lambda *a: started.append(real_start(*a)) or started[-1])
+    with pytest.raises(base.SpawnWriteFailed, match='disk full'):
+        base.spawn(spec, [sys.executable, '-c', 'import time; time.sleep(60)'])
+    assert started[0].wait(timeout=20) is not None
+    assert not os.path.exists(paths.pid)
+    assert 'disk full' in base.read_json(paths.ended)['error']
