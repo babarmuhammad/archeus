@@ -37,6 +37,8 @@ def get_diff(project_path, staged=False, base=None):
     """The changes to review. base → `git diff base...HEAD`; staged → index vs
     HEAD; default → working tree vs HEAD (staged + unstaged). Truncated."""
     if base:
+        if base.startswith('-'):            # `--output=<path>` would make git write a file
+            return ''
         d = _git(project_path, ['diff', f'{base}...HEAD'])
     elif staged:
         d = _git(project_path, ['diff', '--staged'])
