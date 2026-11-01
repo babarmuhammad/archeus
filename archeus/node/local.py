@@ -1675,7 +1675,7 @@ def _outside_executions(paths_, workdirs):
     class 1-7 directory), the task worktrees, or a workdir Core recorded
     (*workdirs*, read from its database by the caller), as written or once its
     links are resolved."""
-    if isinstance(workdirs, (str, bytes)):
+    if isinstance(workdirs, (str, bytes)) or iter(workdirs) is workdirs:
         raise StoreError('workdirs is a collection of paths, not one path')
     areas = {os.path.normcase(f(a)) for a in [run_dir(), os.path.join(archeus_home(), 'worktrees')]
              + [w for w in workdirs if w] for f in (os.path.abspath, os.path.realpath)}
@@ -2005,6 +2005,7 @@ class _Manifest(_Records):
     def __init__(self, prefix):
         super().__init__()
         self.prefix, self.entries, self.dirs, self.size, self.folded = prefix, [], set(), 0, {}
+        self.leaves = set()
 
     def take(self, rec):
         head, tab, raw = rec.partition(b'\t')
@@ -2027,7 +2028,11 @@ class _Manifest(_Records):
             if self.folded.setdefault(p.casefold(), p) != p:
                 raise StoreError('two paths one case-insensitive name: %r, %r'
                                  % (self.folded[p.casefold()], p))
-        self.dirs.update('/'.join(parts[:i]) for i in range(1, len(parts)))
+        ancestors = {'/'.join(parts[:i]) for i in range(1, len(parts))}
+        if path in self.dirs or ancestors & self.leaves:
+            raise StoreError('a path both a file and a directory: %r' % path)
+        self.leaves.add(path)
+        self.dirs.update(ancestors)
         if gitlink:
             self.dirs.add(path)
         self.entries.append((mode, oid, None if gitlink else int(size), path))

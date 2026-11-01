@@ -1828,3 +1828,23 @@ def test_an_import_onto_anything_but_a_commit_id_starts_nothing(spawns, child, r
         LocalNode.import_workspace(ids.new_id('project'), ids.new_id('execution'), rev,
                                    workdirs=())
     assert spawns.calls == [] and child.made == []
+
+
+def test_a_one_shot_iterator_of_workdirs_is_refused_not_drained(spawns, tmp_path):
+    # T-660#11: the first area build consumed a generator, so every later call saw no
+    # recorded workdir and a store call inside one was no longer refused
+    wd = str(tmp_path / 'recorded-wd')
+    with pytest.raises(StoreError, match='a collection'):
+        LocalNode.store_git('base', ['rev-parse', 'HEAD'], workdirs=(w for w in [wd]),
+                            git_dir=wd)
+    assert spawns.calls == []
+
+
+def test_a_path_that_is_both_a_file_and_a_directory_is_not_seeded():
+    # T-660#13: a crafted tree with a/b and a/b/c passed take(), then the write failed
+    # with OSError instead of StoreError
+    for rows in ([_rec('100644', 'a/b'), _rec('100644', 'a/b/c')],
+                 [_rec('100644', 'a/b/c'), _rec('100644', 'a/b')],
+                 [_rec('160000', 'a/b'), _rec('100644', 'a/b/c')]):
+        with pytest.raises(StoreError, match='both a file and a directory'):
+            _manifest(rows)
