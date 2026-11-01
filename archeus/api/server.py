@@ -57,6 +57,9 @@ REQUEST_SLOTS = 32
 #: pairs itself before it has one (the code is the credential)
 TUNNEL_BOOTSTRAP = ('POST', '/v1/devices/pair/redeem')
 COMMAND_TIMEOUT_S = 30.0
+#: How long a connection may stall while sending its request head or body before it
+#: is dropped; a stream lifts it once the head is read (`start_stream`).
+REQUEST_TIMEOUT_S = 30.0
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 
 log = logging.getLogger('archeus.core')
@@ -261,6 +264,8 @@ class Api:
 
 
 class Handler(BaseHTTPRequestHandler):
+    timeout = REQUEST_TIMEOUT_S
+
     def setup(self):
         self.context = origin.ConnectionContext(
             self.request, self.request.getsockname(), self.client_address,
@@ -326,6 +331,7 @@ class Handler(BaseHTTPRequestHandler):
         return out
 
     def start_stream(self):
+        self.connection.settimeout(None)
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
         for k, v in auth.security_headers().items():
@@ -411,7 +417,12 @@ class Handler(BaseHTTPRequestHandler):
             # read first, bounded, so every refusal (the Host check included)
             # reaches a client that is still sending: answering with the body
             # unread resets the socket. The refusals keep §4's order below.
-            raw = self.rfile.read(length) if length is not None and 0 < length <= MAX_BODY else b''
+            try:
+                raw = (self.rfile.read(length)
+                       if length is not None and 0 < length <= MAX_BODY else b'')
+            except socket.timeout:
+                self.close_connection = True
+                return                          # a stalled client is dropped, not answered
             if length is None or length > MAX_BODY:
                 self.close_connection = self._unread = True
             if not self.api.origin.host_ok(self.headers.get('Host')):
