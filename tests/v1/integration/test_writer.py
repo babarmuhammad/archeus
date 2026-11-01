@@ -480,3 +480,21 @@ def test_a_command_that_raises_system_exit_closes_the_writer_and_answers_the_que
         first.result(5)
     with pytest.raises(WriterClosed):
         w.execute(lambda tx: None, timeout=2)
+
+
+def test_close_with_a_timeout_does_not_wait_for_a_full_queue(tmp_path):
+    """T-653#F6: the stop marker was put without a deadline, so a running command and a
+    full queue held close() until the command ended."""
+    w = _writer(str(tmp_path / 'w.db'), max_pending=1)
+    gate, started = threading.Event(), threading.Event()
+    running = w.submit(lambda tx: (started.set(), gate.wait(30)))
+    assert started.wait(5)
+    queued = w.submit(lambda tx: None)
+    t0 = time.monotonic()
+    w.close(timeout=0.5)
+    try:
+        assert time.monotonic() - t0 < 5
+    finally:
+        gate.set()
+        running.result(5)
+        queued.result(5)

@@ -30,6 +30,7 @@ import hashlib
 import json
 import queue
 import threading
+import time
 from concurrent.futures import Future
 from datetime import datetime, timedelta, timezone
 
@@ -398,8 +399,12 @@ class Writer:
                     except queue.Empty:
                         break
                     item[0].set_exception(WriterClosed('the writer closed before this ran'))
-        self._q.put(_STOP)
-        self._thread.join(timeout)
+        deadline = time.monotonic() + timeout
+        try:
+            self._q.put(_STOP, timeout=timeout)
+        except queue.Full:
+            return
+        self._thread.join(max(0, deadline - time.monotonic()))
 
     # ── the writer thread ──
 
