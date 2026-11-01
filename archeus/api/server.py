@@ -284,7 +284,7 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             if self.evidence_acquired:
                 try:
-                    self.origin_backend.release(self.context, self.evidence)
+                    origin.bounded(self.origin_backend.release, self.context, self.evidence)
                 except Exception:
                     log.warning('origin release failed')
 
@@ -293,9 +293,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if not self.evidence_acquired:
                 self.evidence_acquired = True
-                self.evidence = backend.attest(self.context)
+                self.evidence = origin.bounded(backend.attest, self.context)
             if (origin.validate_evidence(self.context, self.evidence)
-                    and backend.valid(self.context, self.evidence) is True
+                    and origin.bounded(backend.valid, self.context, self.evidence) is True
                     and self.origin_registry.approved(self.context, self.evidence) is True):
                 return self.evidence
         except Exception:

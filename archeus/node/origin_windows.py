@@ -6,17 +6,19 @@ pure attestor (`archeus/node/attest.py`). `attest` answers once per accepted
 connection and keeps the returned `ProcessBinding` on the evidence the connection
 holds; `valid` re-checks that binding before any privileged effect, and a missing,
 expired, dead, recycled or unreadable binding is refused. Built with no readers
-this shipped backend authorizes nothing, exactly as before: activation waits for
-the native readers and the separately evidenced Core-owned path registry.
+this shipped backend authorizes nothing. A peer in no Core Job, with no launcher
+ancestor, in Core's session, on the direct loopback path, is attested USER by
+exclusion; the Core path registry (`origin.CorePathRegistry`) still has to approve it.
 """
 import math
 
 from ..api import origin
-from ..api.origin import OriginClass, OriginEvidence
+from ..api.origin import OriginClass, OriginEvidence, PathClass
 from . import attest as _attest
 
 ATTESTED = 'attested'
 NO_EVIDENCE = 'no_evidence'
+NOT_DIRECT = 'not_direct_loopback'
 
 
 class WindowsOriginBackend:
@@ -29,18 +31,26 @@ class WindowsOriginBackend:
     def attest(self, context):
         if self.readers is None:
             return OriginEvidence(accept_generation=context.accept_generation)
-        result = _attest.attest_owner(**self.readers.attest_kwargs(_remote_port(context)))
+        result = _attest.attest_peer(**self.readers.attest_kwargs(_remote_port(context)))
         if not result.ok or result.binding is None:
             return OriginEvidence(accept_generation=context.accept_generation,
                                   reason=_reason(result))
-        binding = result.binding
-        # a peer proven to sit under the launcher inside Core's Job is an execution's
-        # process, never the user's; the path stays unapproved until Core's registry says
-        return OriginEvidence(origin=OriginClass.EXECUTION,
+        if result.binding.core_job_at_accept:
+            # a peer proven to sit under the launcher inside Core's Job is an execution's
+            # process, never the user's; the path stays unapproved until Core's registry says
+            return self._evidence(context, OriginClass.EXECUTION, PathClass.UNAPPROVED,
+                                  result.binding)
+        if not origin.direct_loopback(context):
+            return OriginEvidence(accept_generation=context.accept_generation,
+                                  reason=NOT_DIRECT)
+        return self._evidence(context, OriginClass.USER, PathClass.DIRECT_LOCAL, result.binding)
+
+    @staticmethod
+    def _evidence(context, kind, path, binding):
+        return OriginEvidence(origin=kind, path=path,
                               identity='process:%d:%s' % (binding.pid, binding.creation_time),
                               process_binding=binding,
-                              accept_generation=context.accept_generation,
-                              reason=ATTESTED)
+                              accept_generation=context.accept_generation, reason=ATTESTED)
 
     def valid(self, context, evidence):
         if self.readers is None:
@@ -70,12 +80,13 @@ class WindowsOriginBackend:
             return False
         self._rebound[key] = None
         try:
-            result = _attest.attest_owner(**kwargs)
+            result = _attest.attest_peer(**kwargs)
         except Exception:
             return False
         bound = result.binding
-        if not result.ok or bound is None or (bound.pid, bound.creation_time) != (
-                first.pid, first.creation_time):
+        if not result.ok or bound is None or (
+                bound.pid, bound.creation_time, bound.core_job_at_accept) != (
+                first.pid, first.creation_time, first.core_job_at_accept):
             return False
         self._rebound[key] = (first, bound, now)
         return True

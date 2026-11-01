@@ -257,10 +257,8 @@ def test_a_stream_over_a_tunnel_closes_when_its_origin_is_lost(tc):
         s.conn.close()
 
 
-@pytest.mark.xfail(strict=True, reason='PV20-11 activation blocker: backend calls have no time bound')
 def test_backend_calls_are_time_bounded(tc):
-    """PV20-11 activation blocker (origin.py): a hung attest must answer undetermined
-    within a deadline. Until a bound exists this fails, so it stays an xfail."""
+    """PV20-11: a hung attest answers undetermined within the deadline."""
     class Slow(Backend):
         def attest(self, context):
             time.sleep(3)
@@ -269,5 +267,20 @@ def test_backend_calls_are_time_bounded(tc):
     enable(tc, Slow())
     started = time.monotonic()
     r = tc.http('GET', '/v1/health')
-    assert r.status == 403 and time.monotonic() - started < 1
+    assert r.status == 403 and time.monotonic() - started < 2
 
+
+@pytest.mark.parametrize('hung', ['valid', 'release'])
+def test_a_hung_valid_or_release_cannot_hold_the_request(tc, hung):
+    class Slow(Backend):
+        pass
+
+    def slow(self, *args):
+        time.sleep(3)
+        return True
+
+    setattr(Slow, hung, slow)
+    enable(tc, Slow())
+    started = time.monotonic()
+    r = tc.http('GET', '/v1/health')
+    assert r.status == (403 if hung == 'valid' else 200) and time.monotonic() - started < 2

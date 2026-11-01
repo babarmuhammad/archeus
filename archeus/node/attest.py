@@ -26,6 +26,8 @@ class ProcessInfo(NamedTuple):
     creation_time: "int | float | None"
     ancestors: "tuple[str, ...]"
     in_core_job: bool
+    # default False so a reader that does not say fails the user path closed
+    same_session: bool = False
 
 
 class ProcessBinding(NamedTuple):
@@ -33,6 +35,8 @@ class ProcessBinding(NamedTuple):
     pid: int
     creation_time: "int | float"
     accepted_at: float
+    # True: an execution process (launcher ancestry inside a Core Job). False: a user
+    # process attested by exclusion; re-checks hold the binding to the same kind.
     core_job_at_accept: bool
 
 
@@ -51,6 +55,9 @@ CREATION_TIME_UNREADABLE = 'creation_time_unreadable'
 CREATION_TIME_MISMATCH = 'creation_time_mismatch'   # PID-recycle signature
 LAUNCHER_UNPROVEN = 'launcher_unproven'
 OUTSIDE_CORE_JOB = 'outside_core_job'
+INSIDE_CORE_JOB = 'inside_core_job'
+LAUNCHER_PRESENT = 'launcher_present'
+OTHER_SESSION = 'other_session'
 EXPIRED = 'expired'
 NO_BINDING = 'no_binding'
 
@@ -61,20 +68,38 @@ DEFAULT_MAX_AGE_S = 2.0
 DEFAULT_LAUNCHER = 'wxc-exec'
 
 
-def attest_owner(
+def attest_owner(**kwargs) -> AttestResult:
+    """Map the peer port to an execution's process instance, or fail closed.
+
+    Called by the server exactly once, at accept, before request handling.
+    All OS facts arrive through the injected readers and clock; a binding is
+    issued only when every check passes, never a partial pass.
+    """
+    return _attest(user_allowed=False, **kwargs)
+
+
+def attest_peer(**kwargs) -> AttestResult:
+    """`attest_owner`, and when the peer is no execution, the user's own process.
+
+    A user is attested by exclusion: alive, a readable creation time, in no Core
+    Job, no launcher ancestor, the same session as Core. Nothing here proves the
+    peer is the user, only that it is not an execution Core contains; that holds
+    while every execution runs inside a Core Job. The caller adds the direct
+    loopback path and the Core registry's approval. The binding's
+    `core_job_at_accept` says which kind it is. One owner lookup, one process read.
+    """
+    return _attest(user_allowed=True, **kwargs)
+
+
+def _attest(
     *,
+    user_allowed: bool,
     remote_port: int,
     resolve_owner: "Callable[[int], PeerOwner]",
     read_process: "Callable[[int], ProcessInfo]",
     clock: "Callable[[], float]",
     launcher: str = DEFAULT_LAUNCHER,
 ) -> AttestResult:
-    """Map the peer port to a process instance and attest it, or fail closed.
-
-    Called by the server exactly once, at accept, before request handling.
-    All OS facts arrive through the injected readers and clock; a binding is
-    issued only when every check passes, never a partial pass.
-    """
     try:
         owner = resolve_owner(remote_port)
     except Exception:
@@ -104,7 +129,9 @@ def attest_owner(
         failures.append(reason)
     if info.in_core_job is not True:
         failures.append(OUTSIDE_CORE_JOB)
-    if failures:
+    execution = not failures
+    if failures and not (user_allowed and not _alive_failures(info)
+                         and not _user_failures(info, launcher)):
         return AttestResult(False, None, tuple(failures))
 
     try:
@@ -119,7 +146,7 @@ def attest_owner(
         pid=pid,
         creation_time=info.creation_time,
         accepted_at=accepted_at,
-        core_job_at_accept=True,
+        core_job_at_accept=execution,
     )
     return AttestResult(True, binding, ())
 
@@ -155,21 +182,43 @@ def binding_valid(
     if not isinstance(info, ProcessInfo):
         return AttestResult(False, None, (MALFORMED,))
 
+    failures = _alive_failures(info)
+    if CREATION_TIME_UNREADABLE not in failures and info.creation_time != binding.creation_time:
+        failures.append(CREATION_TIME_MISMATCH)
+    if binding.core_job_at_accept:
+        reason = _launcher_missing(info.ancestors, launcher)
+        if reason is not None:
+            failures.append(reason)
+        if info.in_core_job is not True:
+            failures.append(OUTSIDE_CORE_JOB)
+    else:
+        failures += _user_failures(info, launcher)
+    if failures:
+        return AttestResult(False, None, tuple(failures))
+    return AttestResult(True, binding, ())
+
+
+def _alive_failures(info: ProcessInfo) -> "list[str]":
     failures: list[str] = []
     if info.alive is not True:
         failures.append(DEAD)
     if info.creation_time is None or not _finite(info.creation_time):
         failures.append(CREATION_TIME_UNREADABLE)
-    elif info.creation_time != binding.creation_time:
-        failures.append(CREATION_TIME_MISMATCH)
+    return failures
+
+
+def _user_failures(info: ProcessInfo, launcher: str) -> "list[str]":
+    failures: list[str] = []
+    if info.in_core_job is not False:
+        failures.append(INSIDE_CORE_JOB)
     reason = _launcher_missing(info.ancestors, launcher)
-    if reason is not None:
-        failures.append(reason)
-    if info.in_core_job is not True:
-        failures.append(OUTSIDE_CORE_JOB)
-    if failures:
-        return AttestResult(False, None, tuple(failures))
-    return AttestResult(True, binding, ())
+    if reason is None:
+        failures.append(LAUNCHER_PRESENT)
+    elif reason == MALFORMED:
+        failures.append(MALFORMED)
+    if info.same_session is not True:
+        failures.append(OTHER_SESSION)
+    return failures
 
 
 def _launcher_missing(ancestors: object, launcher: str) -> "str | None":

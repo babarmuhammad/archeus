@@ -1,18 +1,48 @@
 """Socket-bound origin contract; no OS probes or credential authority.
 
-ACTIVATION BLOCKER (PV20-11, before ORIGIN_ENFORCEMENT_ENABLED goes on): nothing
-bounds backend attest, valid or release in time. A hung call holds a request
-slot (32 slots, then 503 busy) and a stream thread, and never reaches the
-undetermined answer. Each native call must have a deadline that maps to
-undetermined, or the server must impose one. Recorded by the xfail test
-test_backend_calls_are_time_bounded (tests/v1/integration/test_api_origin_transport.py).
+Every backend call the server makes runs under `bounded`: a call that does not
+answer within BACKEND_DEADLINE_S is a timeout, which the server reads as
+undetermined origin. A call that hangs keeps one of MAX_HUNG_CALLS slots until it
+really returns, so a stuck native probe cannot take more than that many threads.
 """
 from dataclasses import dataclass
 from enum import Enum
+import ipaddress
 import re
+import threading
 from typing import Callable, Protocol
 
 ORIGIN_ENFORCEMENT_ENABLED = False
+
+#: seconds one backend call may take before it counts as a timeout (undetermined)
+BACKEND_DEADLINE_S = 0.5
+#: calls that may be hung in the background at once; the next one fails at once
+MAX_HUNG_CALLS = 16
+_slots = threading.BoundedSemaphore(MAX_HUNG_CALLS)
+
+
+def bounded(call, *args):
+    """call(*args) in a daemon thread, or TimeoutError once the deadline passes."""
+    if not _slots.acquire(blocking=False):
+        raise TimeoutError('origin backend saturated')
+    done, box = threading.Event(), []
+
+    def run():
+        try:
+            box.append((True, call(*args)))
+        except BaseException as error:
+            box.append((False, error))
+        finally:
+            done.set()
+            _slots.release()
+
+    threading.Thread(target=run, daemon=True).start()
+    if not done.wait(BACKEND_DEADLINE_S):
+        raise TimeoutError('origin backend call timed out')
+    ok, value = box[0]
+    if not ok:
+        raise value
+    return value
 
 #: seconds between two re-attestations of one long-lived connection, whatever
 #: the request rate: a peer cannot make Core probe the process table faster
@@ -115,6 +145,42 @@ class OriginRegistry(Protocol):
 class UnapprovedRegistry:
     def approved(self, context, evidence):
         return False
+
+
+def _loopback(endpoint):
+    try:
+        return ipaddress.ip_address(endpoint[0]) in (ipaddress.ip_address('127.0.0.1'),
+                                                     ipaddress.ip_address('::1'))
+    except (TypeError, ValueError, IndexError):
+        return False
+
+
+def direct_loopback(context):
+    """Both ends of the accepted connection are the loopback address itself."""
+    return _loopback(context.local_endpoint) and _loopback(context.remote_endpoint)
+
+
+class CorePathRegistry:
+    """Core's own list of listener ports whose direct loopback path it approves.
+
+    Approves one thing: a USER origin on the direct local path, to a registered
+    listener port, loopback to loopback. An execution or verifier origin, a tunnel,
+    a hop and a deputy are never approved here; neither is anything inferred from a
+    Host header, a SID or an executable name.
+    """
+
+    def __init__(self, direct_local_ports):
+        ports = frozenset(direct_local_ports)
+        if not all(type(p) is int and 0 < p < 65536 for p in ports):
+            raise ValueError('ports must be integers in 1..65535')
+        self._ports = ports
+
+    def approved(self, context, evidence):
+        return (isinstance(context, ConnectionContext) and isinstance(evidence, OriginEvidence)
+                and evidence.origin == OriginClass.USER
+                and evidence.path == PathClass.DIRECT_LOCAL
+                and direct_loopback(context)
+                and context.local_endpoint[1] in self._ports)
 
 
 def validate_evidence(context, evidence):
