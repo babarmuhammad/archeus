@@ -576,18 +576,27 @@ def test_evidence_of_the_wrong_shape_holds_for_each_row_family():
 
 @pytest.mark.parametrize('command,row_id', (
     ('pwd', 'A01'), ('git --no-pager status', 'A08'),
-    ('git --no-pager rev-parse --show-toplevel', 'A13'),
-    ('python -m pytest', 'A15'), ('pytest', 'A14'), ('node --version', 'A16'),
+    ('git --no-pager rev-parse --show-toplevel', 'A13'), ('node --version', 'A16'),
 ))
-def test_rows_that_take_no_paths_need_no_evidence_but_ls_does(command, row_id):
-    """classify():221 `paths or (('.',) if row.program == 'ls' else ())` — the implicit
-    '.' evidence is an ls-only rule; if it spread to every row these all deny, and if it
-    dropped from ls then `ls` would list an unverified directory."""
-    empty = replace(CONTEXT, paths={})
-    allowed(command, empty, row_id, ())
+def test_rows_that_take_no_paths_need_no_evidence(command, row_id):
+    """Rows with no operand grammar read no directory: no evidence is asked of them."""
+    allowed(command, replace(CONTEXT, paths={}), row_id, ())
     allowed(command, replace(CONTEXT, paths=None), row_id, ())
-    held('ls', empty, Reason.PATH)
-    held('ls', replace(CONTEXT, paths=None), Reason.PATH)
+
+
+@pytest.mark.parametrize('command', ('ls', 'pytest', 'pytest -q', 'python -m pytest',
+                                     'python -m pytest -q'))
+def test_an_operand_free_P_star_row_needs_evidence_for_its_implicit_root(command):
+    """classify():221 `paths or (('.',) if row.operands == 'P*' else ())` — `ls` lists and
+    pytest discovers beneath cwd, so the implicit '.' needs the same contained-directory
+    and descendant evidence an explicit `.` does."""
+    held(command, replace(CONTEXT, paths={}), Reason.PATH)
+    held(command, replace(CONTEXT, paths=None), Reason.PATH)
+    held(command, replace(CONTEXT, paths={'.': PathEvidence('directory', True, False)}),
+         Reason.PATH)
+    held(command, replace(CONTEXT, paths={'.': PathEvidence('directory', False, True)}),
+         Reason.PATH)
+    held(command + ' .', replace(CONTEXT, paths={}), Reason.PATH)
 
 
 def test_ls_implicit_directory_needs_a_contained_directory():

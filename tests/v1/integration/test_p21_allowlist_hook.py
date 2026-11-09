@@ -150,6 +150,16 @@ def test_missing_trusted_evidence_holds(hook, context, command):
     assert serve(command)['decision'] == 'halt'
 
 
+@pytest.mark.parametrize('command', ('pytest', 'pytest -q', 'python -m pytest',
+                                     'python -m pytest -q', 'ls'))
+@pytest.mark.parametrize('paths', ({}, None))
+def test_operand_free_discovery_without_directory_evidence_holds(hook, command, paths):
+    x, e, serve, evidence = hook
+    evidence[0] = replace(CONTEXT, paths=paths)
+    assert serve(command) == {'decision': 'halt', 'reason': 'command form needs review'}
+    assert isinstance(classify(command, evidence[0]), Held)
+
+
 def test_request_cannot_attest_its_own_profile(hook):
     x, e, serve, evidence = hook
     evidence[0] = None

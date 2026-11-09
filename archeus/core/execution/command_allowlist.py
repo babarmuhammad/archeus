@@ -218,7 +218,7 @@ def classify(command: object, context: TrustedContext | None = None) -> Allowed 
             if (context is None or not context.posix_shell or row.program not in context.programs
                     or row.program == 'git' and not context.git_profile):
                 return Held(Reason.CONTEXT)
-            evidence_paths = paths or (('.',) if row.program == 'ls' else ())
+            evidence_paths = paths or (('.',) if row.operands == 'P*' else ())
             for path in evidence_paths:
                 evidence = context.paths.get(path) if context.paths is not None else None
                 if (evidence is None or not evidence.contained
