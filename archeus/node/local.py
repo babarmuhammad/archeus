@@ -762,7 +762,6 @@ class LocalNode:
     #: what the hook reads (P11 PAUSE/STOP; P12 HANDOFF) — see FLAGS below
     def __init__(self, isolation=None, heartbeat=None, *, boundary=None, authorize=None,
                  plan=None, switches=None):
-        self.switches = switches
         #: Core's isolation authority for this process (PV-20 §3.7): the per-execution
         #: identities, the Jobs only Core holds, the quarantine ledger. Injected by the
         #: synthetic fixtures; the production node gets the real boundary, which

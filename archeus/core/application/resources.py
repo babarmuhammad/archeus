@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from ...infra.db import rows
+from ...node.pv20_switches import checked
 from ..domain import actions, entities, ids, instants, states
 from ..domain.events import new_event
 from ..domain.values import Ref
@@ -639,7 +640,7 @@ class ResourceRouter:
     decision in the dispatching transaction. Returns the RouteDecision."""
 
     def __init__(self, registry, feed, *, switches=None):
-        self.registry, self.feed, self.switches = registry, feed, switches
+        self.registry, self.feed, self.switches = registry, feed, checked(switches)
 
     def adapters(self):
         return [self.registry.get(i) for i in self.registry.ids()]
@@ -650,9 +651,12 @@ class ResourceRouter:
         req, snap, readings = task_snapshot(tx.conn, adapters=self.adapters(), feed=self.feed,
                                             mission=mission, plan=plan, task=task,
                                             decision=decision, now=now)
-        if self.switches is not None and self.switches.isolated_dispatch:
-            from ...harnesses.base import BROKER_ELIGIBLE
-            snap['isolated_dispatch'] = {'broker': {h: list(k) for h, k in BROKER_ELIGIBLE.items()}}
+        if self.switches is not None:
+            snap.pop('isolated_dispatch', None)
+            if self.switches.isolated_dispatch:
+                from ...harnesses.base import BROKER_ELIGIBLE
+                snap['isolated_dispatch'] = {
+                    'broker': {h: list(k) for h, k in BROKER_ELIGIBLE.items()}}
         d = R.route(req, snap)
         return record_route(tx, actor=actor, subject=subject, requirements=req, snapshot=snap,
                             decision=d, readings=readings, source=Ref('mission', mission.id),

@@ -34,11 +34,10 @@ OWNED_OPS = ['intent', 'ownership']
 
 class WatchdogHost:
     def __init__(self, *, channel, clock, deadline_s, core, identity_reader, terminate,
-                 engage_sentinel, journals, switches=None):
+                 engage_sentinel, journals):
         """*core* is Core's (pid, creation time); *journals* returns the ledger's journals
         by name; *terminate* ends a process by (pid, creation time) and answers whether it
         did; *engage_sentinel* writes the STOP sentinel and answers whether it reads back."""
-        self.switches = switches
         self.channel, self.clock, self.deadline_s = channel, clock, deadline_s
         self.core_pid, self.core_create_time = core
         self.identity_reader, self.terminate = identity_reader, terminate
@@ -168,9 +167,10 @@ def main(argv=None, *, bindings=None):
     if bindings is None or enabled(bindings.get('switches'), 'host', HOST_ENABLED) is not True:
         print('the watchdog host is closed', file=sys.stderr)
         return 2
+    parts = {name: part for name, part in bindings.items() if name != 'switches'}
     host = WatchdogHost(channel=mxc_heartbeat.Channel(args.root), deadline_s=args.deadline_s,
                         core=(args.core_pid, args.core_create_time),
-                        journals=mxc_ledger.Ledger(args.ledger).journals, **bindings)
+                        journals=mxc_ledger.Ledger(args.ledger).journals, **parts)
     report = host.run(args.poll_s)
     return 0 if report['state'] in (mxc_watchdog.FIRED, mxc_watchdog.STOOD_DOWN, IDLE) else 3
 

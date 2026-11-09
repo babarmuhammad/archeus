@@ -18,6 +18,7 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 from . import linkscan
+from .pv20_switches import checked
 
 
 NATIVE_RUN_ENABLED = False
@@ -315,7 +316,7 @@ class NativeMxc:
     admitted here. The transport owns retained handles and explicit stdio only.
     """
     def __init__(self, transport, schema_validator, *, switches=None):
-        self.switches = switches
+        self.switches = checked(switches)
         self.transport, self.schema_validator = transport, schema_validator
 
     def spawn(self, policy, *, exe, job, before_resume=None):

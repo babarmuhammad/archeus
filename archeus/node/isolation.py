@@ -24,6 +24,7 @@ from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, is
                            verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
 from . import mxc, staging
+from .pv20_switches import checked
 
 WINDOWS = sys.platform.startswith('win')
 
@@ -612,7 +613,7 @@ class Isolation:
 
     def __init__(self, node=None, *, boundary=None, authorize=None, plan=None, switches=None):
         self.node = node
-        self.switches = switches
+        self.switches = checked(switches)
         self._dispatch = set()
         self._boundary = boundary
         #: who Core authorized to run isolated. Production is E's, so this only ever

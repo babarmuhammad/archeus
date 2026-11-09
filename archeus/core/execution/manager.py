@@ -34,6 +34,7 @@ from ...infra.paths import ExecPaths, task_worktree
 from ...node import broker as broker_mod, staging
 from ...node.isolation import profile_name
 from ...node.local import LocalNode, PathTooLong, seed_ref
+from ...node.pv20_switches import checked
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
 from ..routing.router import ROUTABLE
@@ -112,7 +113,7 @@ class ExecutionManager:
         # PV-20 (PV20-08 §1): the provider broker, used only while BROKER_DISPATCH_ENABLED;
         # its grants live in this process, so a restarted Core holds none
         self.broker = broker
-        self.switches = switches
+        self.switches = checked(switches)
         self.booted = False
 
     def _do(self, command, **kw):

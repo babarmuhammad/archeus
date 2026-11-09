@@ -1,4 +1,5 @@
 import errno
+import logging
 import os
 import sys
 import tempfile
@@ -13,6 +14,8 @@ from ..node import mxc_ledger, mxc_watchdog_host, origin_native, staging
 from ..node.origin_windows import WindowsOriginBackend
 from ..node.pv20_switches import Pv20Switches
 from ..node.win32_mxc import Win32Api
+
+log = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _claimed = set()
@@ -50,6 +53,13 @@ class Activation:
         self.resources.close()
 
 
+def _rollback(resources):
+    try:
+        resources.close()
+    except Exception:
+        log.exception('PV-20 rollback could not close a part')
+
+
 def _remove_empty(root):
     try:
         os.rmdir(root)
@@ -83,7 +93,8 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
     except (TypeError, ValueError, OSError) as error:
         raise ActivationRefused('invalid_parameters') from error
     with _lock:
-        if root in _claimed:
+        claims = {('ledger', root), ('port', core_port)}
+        if claims & _claimed:
             raise ActivationRefused('already_activated')
         resources = ExitStack()
         try:
@@ -123,8 +134,7 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
                 channel=mxc_heartbeat.Channel(channel.root), clock=clock,
                 deadline_s=deadline_s, core=core_identity,
                 identity_reader=bindings.identity_reader, terminate=bindings.terminate,
-                engage_sentinel=bindings.engage_sentinel, journals=ledger.journals,
-                switches=switches)
+                engage_sentinel=bindings.engage_sentinel, journals=ledger.journals)
             running = bindings.start_host(host, poll_s=poll_s)
             resources.callback(running.close)
             if running.ready() is not True:
@@ -148,14 +158,14 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
                                     resources=resources)
             from .runtime import Core
             core = Core(port=core_port, ports=ports, pv20=activation)
-            _claimed.add(root)
+            _claimed.update(claims)
             return core
         except ActivationRefused:
-            resources.close()
+            _rollback(resources)
             raise
         except Exception as error:
-            resources.close()
+            _rollback(resources)
             raise ActivationRefused('build_failed') from error
         except BaseException:
-            resources.close()
+            _rollback(resources)
             raise

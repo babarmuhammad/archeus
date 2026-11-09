@@ -12,7 +12,7 @@ from archeus.api import origin
 from archeus.core import pv20, runtime
 from archeus.core.application import resources, verification
 from archeus.node import broker, isolation, local, mxc, mxc_heartbeat, mxc_watchdog_host
-from archeus.node import mxc_native, mxc_watchdog, origin_native
+from archeus.node import mxc_boundary, mxc_native, mxc_watchdog, origin_native
 from archeus.core.domain import entities, ids
 from archeus.core.execution import manager as manager_mod
 from archeus.core.domain.values import Ref
@@ -75,6 +75,7 @@ class RunningHost:
 @pytest.fixture
 def candidate(tmp_path, monkeypatch, reviewed):
     monkeypatch.setattr(pv20, 'sys', SimpleNamespace(platform='win32'))
+    monkeypatch.setattr(pv20, '_claimed', set())
     events, cores = [], []
     close = broker.Broker.close
 
@@ -148,7 +149,6 @@ def test_production_core_binds_every_switch(candidate, quiet_core):
     boundary = activation.node.isolation.boundary
     assert boundary.switches is switches and boundary.available() is True
     assert boundary.watchdog._status()['state'] == 'IDLE'
-    assert activation.host.switches is switches
     assert activation.node.isolation.node is activation.node
     eid = new_execution_id()
     assert activation.node.isolation.requested(eid, SimpleNamespace(id='claude_code')) is True
@@ -176,6 +176,8 @@ def test_uncalled_core_starts_closed(quiet_core):
         assert core.api.origin_backend.readers is None
         assert core.manager.broker is None
         assert core.manager.node.isolation._authorize is None
+        assert core.manager.switches is None and core.manager.router.switches is None
+        assert core.verify.world.switches is None
     finally:
         core.stop()
 
@@ -421,14 +423,29 @@ def test_unsupported_harness_refuses(candidate):
         core.pv20.node.isolation.requested(new_execution_id(), SimpleNamespace(id='codex'))
 
 
-def test_production_never_calls_activation():
+def test_production_never_reaches_activation():
     root = Path(runtime.__file__).resolve().parents[1]
     for path in root.rglob('*.py'):
-        parsed = ast.parse(path.read_text(encoding='utf-8'))
-        calls = [node for node in ast.walk(parsed) if isinstance(node, ast.Call)]
-        assert not any((isinstance(node.func, ast.Name) and node.func.id == 'activate_pv20')
-                       or (isinstance(node.func, ast.Attribute)
-                           and node.func.attr == 'activate_pv20') for node in calls), path
+        if path == Path(pv20.__file__).resolve():
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+            imported, used = [], []
+            if isinstance(node, ast.ImportFrom):
+                imported = [node.module or ''] + [alias.name for alias in node.names]
+            elif isinstance(node, ast.Import):
+                imported = [alias.name for alias in node.names]
+            elif isinstance(node, ast.Name):
+                used = [node.id]
+            elif isinstance(node, ast.Attribute):
+                used = [node.attr]
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                used = [node.value]
+            assert not [name for name in imported
+                        if name in ('pv20', 'activate_pv20') or name.endswith('.pv20')], (
+                path, node.lineno)
+            assert not [name for name in used
+                        if name == 'activate_pv20' or name.endswith('core.pv20')], (
+                path, node.lineno)
 
 
 def test_host_entry_point_follows_the_switch_object(candidate, tmp_path, monkeypatch):
@@ -483,6 +500,7 @@ def test_a_closed_activation_cannot_start_a_core(candidate, quiet_core):
     core.pv20.close()
     with pytest.raises(runtime.RefuseStart, match='PV-20 activation is closed'):
         core.start()
+    assert core.db is None and core.loop is None and core.lock is None
 
 
 def test_the_bundle_takes_only_booleans():
@@ -509,7 +527,8 @@ def test_heartbeat_follows_the_switch_object(tmp_path, opened):
 def test_the_router_gate_follows_the_switch_object(monkeypatch, opened):
     seen = {}
     monkeypatch.setattr(resources, 'current_authorization', lambda *args: None)
-    monkeypatch.setattr(resources, 'task_snapshot', lambda conn, **kw: ({}, {}, {}))
+    monkeypatch.setattr(resources, 'task_snapshot', lambda conn, **kw: (
+        {}, {'isolated_dispatch': {'broker': {'claude_code': ['subscription_oauth']}}}, {}))
     monkeypatch.setattr(resources.R, 'route', lambda req, snap: seen.update(snap=snap))
     monkeypatch.setattr(resources, 'record_route',
                         lambda *args, **kw: SimpleNamespace(entity=None))
@@ -518,7 +537,6 @@ def test_the_router_gate_follows_the_switch_object(monkeypatch, opened):
     router.route('subject', 'now', tx=SimpleNamespace(conn=None), actor=None,
                  authorization=None, plan=None, task=None,
                  mission=SimpleNamespace(id='m', workspace_id=None, project_id=None))
-    assert resources.ISOLATED_DISPATCH is None
     gate = seen['snap'].get('isolated_dispatch')
     assert gate == ({'broker': {h: list(k) for h, k in broker_eligible.items()}}
                     if opened else None)
@@ -629,3 +647,88 @@ def test_a_resume_after_a_restart_is_still_a_harness_dispatch(candidate, tmp_pat
     assert restarted.requested(request.execution_id, adapter) is True
     assert restarted.establish(request).state == 'established'
     restarted.teardown(request.execution_id, reason='test ended')
+
+
+def test_a_lock_failure_in_start_tears_the_activation_down(candidate, monkeypatch):
+    core = candidate.activate()
+
+    def held(*args):
+        raise RuntimeError('lock held')
+
+    monkeypatch.setattr(runtime.discovery, 'acquire', held)
+    with pytest.raises(RuntimeError, match='lock held'):
+        core.start()
+    assert core.pv20.closed is True
+    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+
+
+def test_stop_finishes_the_core_when_a_part_will_not_close(candidate, quiet_core, monkeypatch):
+    def stuck(self):
+        raise OSError('host will not close')
+
+    monkeypatch.setattr(RunningHost, 'close', stuck)
+    core = candidate.activate()
+    core.start()
+    with pytest.raises(OSError, match='host will not close'):
+        core.stop()
+    assert core.db is None and core.lock is None and core.pv20.closed is True
+    assert candidate.events[-1] == 'broker_closed'
+
+
+@pytest.mark.parametrize('refusal', [False, True])
+def test_a_close_error_does_not_replace_the_rollback_reason(candidate, monkeypatch, refusal):
+    def stuck(self):
+        raise OSError('host will not close')
+
+    monkeypatch.setattr(RunningHost, 'close', stuck)
+    if refusal:
+        monkeypatch.setattr(pv20.mxc_boundary.MxcBoundary, 'available', lambda self: False)
+        reason = 'boundary_unavailable'
+    else:
+        monkeypatch.setattr(pv20.mxc_boundary, 'MxcBoundary', lambda **kw: 1 / 0)
+        reason = 'build_failed'
+    with pytest.raises(pv20.ActivationRefused, match=reason):
+        candidate.activate()
+    assert candidate.events == ['host_started', 'broker_closed']
+
+
+def test_the_same_port_cannot_be_activated_from_another_ledger_dir(candidate, tmp_path):
+    candidate.activate()
+    with pytest.raises(pv20.ActivationRefused, match='already_activated'):
+        candidate.activate(ledger_dir=tmp_path / 'other-ledger')
+    assert not (tmp_path / 'other-ledger').exists()
+    assert candidate.events == ['host_started']
+
+
+def test_the_same_ledger_dir_cannot_be_activated_on_another_port(candidate):
+    candidate.activate()
+    with pytest.raises(pv20.ActivationRefused, match='already_activated'):
+        candidate.activate(core_port=7338)
+
+
+@pytest.mark.parametrize('build', [
+    lambda s: mxc_heartbeat.HeartbeatSender(None, None, switches=s),
+    lambda s: mxc_heartbeat.WatchdogProxy(None, None, max_age_s=1.0, switches=s),
+    lambda s: mxc.NativeMxc(None, None, switches=s),
+    lambda s: resources.ResourceRouter(None, None, switches=s),
+    lambda s: VerifyWorker(None, actor=None, missions=None, switches=s),
+    lambda s: isolation.Isolation(switches=s),
+    lambda s: mxc_boundary.MxcBoundary(switches=s),
+    lambda s: manager_mod.ExecutionManager(
+        None, actor=None, registry=None, node=SimpleNamespace(),
+        work=SimpleNamespace(policy=None, missions=None, router=None), switches=s),
+    lambda s: local.LocalNode(switches=s),
+], ids=['sender', 'proxy', 'native', 'router', 'worker', 'isolation', 'boundary', 'manager',
+         'node'])
+def test_a_constructor_takes_only_the_real_bundle(build):
+    duck = SimpleNamespace(**{name: True for name in vars(Pv20Switches())})
+    with pytest.raises(TypeError, match='Pv20Switches'):
+        build(duck)
+
+
+def test_closing_keeps_a_ledger_dir_that_holds_journals(candidate):
+    core = candidate.activate()
+    root = candidate.args['ledger_dir']
+    (root / 'journal.jsonl').write_bytes(b'{}')
+    core.stop()
+    assert [p.name for p in root.iterdir()] == ['journal.jsonl']

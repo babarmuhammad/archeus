@@ -26,6 +26,7 @@ from ...infra import paths
 from ...infra.db import rows
 from ...node import staging
 from ...node.local import LocalNode, PathTooLong
+from ...node.pv20_switches import checked
 from ..application import calls as C
 from ..application import errors, resources, verification as V
 from ..application.commands import active_plan
@@ -56,7 +57,7 @@ class VerifyWorker:
         self.db, self.actor, self.missions, self.calls = db, actor, missions, calls
         self.node = node or LocalNode()
         self.verify = verify
-        self.switches = switches
+        self.switches = checked(switches)
         self.timeout_s = timeout_s or evidence.CHECK_TIMEOUT_S
         self.on_wake = None
         self.stopping = lambda: False

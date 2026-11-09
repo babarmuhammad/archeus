@@ -20,5 +20,11 @@ class Pv20Switches:
             raise ValueError('PV-20 switches must all be closed or all be open')
 
 
+def checked(switches):
+    if switches is not None and type(switches) is not Pv20Switches:
+        raise TypeError('switches must be a Pv20Switches or None')
+    return switches
+
+
 def enabled(switches, name, default=False):
-    return default if switches is None else getattr(switches, name)
+    return default if checked(switches) is None else getattr(switches, name)

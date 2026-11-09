@@ -410,8 +410,10 @@ class Core:
     # ── start ──
 
     def start(self):
-        self.lock = discovery.acquire(self.lock_retry_s)
+        if self.pv20 is not None and self.pv20.closed:
+            raise RefuseStart('PV-20 activation is closed')
         try:
+            self.lock = discovery.acquire(self.lock_retry_s)
             self._start()
         except BaseException:
             self.stop()
@@ -448,7 +450,7 @@ class Core:
             self.db, actor=self.system,
             work=work.Work(missions=self.missions,
                            router=ResourceRouter(registry, self.ports.usage,
-                                                 switches=self.pv20_switches)),
+                                                 switches=self.pv20_bundle)),
             brain=self.ports.brain, registry=registry, verifier=self.ports.verifier,
             reviewer=self.ports.reviewer, scenarios=self.ports.scenarios,
             usage=self.ports.usage, pv20=self.pv20)
@@ -489,7 +491,7 @@ class Core:
                              calls=own if self.ports.reviewer is None else None,
                              verify=self.ports.verifier is None,
                              node=self.pv20.node if self.pv20 is not None else None,
-                             switches=self.pv20_switches),
+                             switches=self.pv20_bundle),
                 self.db, poll_s=self.world_poll_s, on_fail=self._engine_failed,
                 name='archeus-verify')
             self.verify.start()
@@ -548,11 +550,13 @@ class Core:
             return Pv20Switches()
         return self.pv20.switches
 
+    @property
+    def pv20_bundle(self):
+        return None if self.pv20 is None else self.pv20.switches
+
     def pv20_api_options(self):
         if self.pv20 is None:
             return {}
-        if self.pv20.closed:
-            raise RefuseStart('PV-20 activation is closed')
         return {'origin_enforcement_enabled': self.pv20.switches.origin_enforcement,
                 'origin_backend': self.pv20.backend, 'origin_registry': self.pv20.registry}
 
@@ -656,8 +660,12 @@ class Core:
             self.exec.stop()
         if self.loop is not None:
             self.loop.stop()
+        closing = None
         if self.pv20 is not None:
-            self.pv20.close()
+            try:
+                self.pv20.close()
+            except Exception as error:
+                closing = error
         if self.db is not None:
             self.db.close(drain=drain)
             self.db = None
@@ -671,6 +679,8 @@ class Core:
             self._log_handler = None
         self.api = None
         self._done.set()
+        if closing is not None:
+            raise closing
 
 
 def run(*, port=DEFAULT_PORT, ports=None, open_browser=False, out=None, err=None,

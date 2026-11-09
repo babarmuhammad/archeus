@@ -17,6 +17,7 @@ import threading
 from claude_sessions import config
 
 from . import mxc_watchdog
+from .pv20_switches import checked
 
 HEARTBEAT_ENABLED = False
 
@@ -82,6 +83,7 @@ class Channel:
 
 
 def _open(switches=None):
+    checked(switches)
     if (switches.heartbeat if switches is not None else HEARTBEAT_ENABLED) is not True:
         raise mxc_watchdog.WatchdogUnavailable('the heartbeat channel is closed')
 
