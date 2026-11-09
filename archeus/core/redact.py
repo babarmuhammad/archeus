@@ -69,8 +69,9 @@ def redact(text):
 # by the first rule only, and never ends a key: a short one is a word of the
 # event's own structure. A lowercase word is no short fragment either: it is an
 # event's `type` or `subtype`, which every reader of the stream must still see. A
-# body line followed by a few other characters (a quote, a comma) still counts.
-_BODY = re.compile(r'[A-Za-z0-9+/=]{16}[^A-Za-z0-9+/=\n]{0,4}[ \t\r]*$', re.M)
+# body line followed by a few other characters (a quote, a comma, a literal `\n`)
+# still counts.
+_BODY = re.compile(r'[A-Za-z0-9+/=]{16}(?:\\[nrt]|[^A-Za-z0-9+/=\n]){0,4}[ \t\r]*$', re.M)
 _LINE = re.compile(r'[A-Za-z0-9+/=]+')
 _PROSE = re.compile(r'^(?![ \t]*[A-Za-z][A-Za-z0-9-]*:)[ \t]*\S+[ \t]+\S+[ \t]+\S', re.M)
 

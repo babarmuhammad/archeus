@@ -394,8 +394,8 @@ def test_redact_json_deep_nesting_is_iterative():
 
 
 def test_a_plain_field_name_stays_while_a_key_is_open():
-    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'type': 'X'}])
-    assert list(out[1]) == ['type'] and out[1]['type'] == '[redacted]'
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'modelUsage': 'X'}])
+    assert list(out[1]) == ['modelUsage'] and out[1]['modelUsage'] == '[redacted]'
 
 
 def test_a_string_of_a_base64_line_and_prose_is_not_a_short_fragment():
@@ -442,7 +442,7 @@ def test_prose_in_a_value_still_ends_the_key_after_a_prose_field_name():
 
 
 @pytest.mark.parametrize('line', [KEY + '!', "'%s'," % KEY, KEY[:40] + ' ' + BS, KEY + '",',
-                                  KEY + '\n', KEY + '!   '])
+                                  KEY + BS + 'n', KEY + '!   '])
 def test_a_body_line_with_a_few_trailing_characters_is_held(line):
     gone(json.dumps(redact_json({'t': '-----BEGIN PRIVATE KEY-----', 'u': line})), KEY[:30])
 

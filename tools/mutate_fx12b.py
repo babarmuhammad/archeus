@@ -36,7 +36,7 @@ MUTATIONS = [
      r"""        points.append((pos, None))""")],
      [A + 'test_a_key_too_long_to_see_its_start_is_still_redacted']),
     ('K04', 'an oversized line does not carry a key on', [(BASE,
-     r"""        return ev, n, redact.after(state, 'stderr', mark)""",
+     r"""        return ev, n, redact.after(state, channel, mark)""",
      r"""        return ev, n, state""")],
      [A + 'test_a_key_that_begins_inside_an_oversized_line_is_redacted_after_it']),
     ('K05', 'a marker cut by the end of an oversized read is missed', [(BASE,
