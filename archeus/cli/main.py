@@ -23,7 +23,7 @@ from ._api import endpoints
 #: Verbs whose behaviour belongs to a later phase: they do nothing, say so,
 #: and exit 2, so no script ever sees a verb change from "opened the TUI" to
 #: something else.
-DEFERRED = {'approve': 'P9'}
+DEFERRED = {}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
          'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
          'tui', 'gui', 'executions', 'doctor')
@@ -58,6 +58,14 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 this harness's accounts (and rotate across several)?
        archeus route why <id>   why a resource was chosen: a route decision, or the latest
                                 one about a task, mission or other subject (P10)
+       archeus approve          the approvals waiting on you: id, kind, what it would do,
+                                mission
+       archeus approve <approval-id>
+                                one approval, with the action hash to echo back when you
+                                decide it
+       archeus approve <approval-id> allow|deny --hash H [--note N]
+                                decide it: the hash must be the one `archeus approve
+                                <approval-id>` showed you; Core refuses without it
        archeus pause <mission-id>
                                 pause a mission: its executions halt at their next tool call
        archeus pause all --now  the emergency stop (as `archeus estop`)
@@ -142,6 +150,14 @@ def main(argv):
         return verify(args[0])
     if verb == 'decide' and len(args) in (2, 4) and (len(args) == 2 or args[2] == '--note'):
         return decide(args[0], args[1], args[3] if len(args) == 4 else '')
+    if verb == 'approve' and not args:
+        return approve_list()
+    if verb == 'approve' and len(args) == 1:
+        return approve_show(args[0])
+    if (verb == 'approve' and len(args) in (4, 6) and args[1] in _APPROVE_DECISION
+            and args[2] == '--hash' and not args[3].startswith('--')
+            and (len(args) == 4 or (args[4] == '--note' and not args[5].startswith('--')))):
+        return approve_decide(args[0], args[1], args[3], args[5] if len(args) == 6 else '')
     if verb == 'automation' and args and (args == ['list'] or len(args) == 2):
         return automation(args[0], args[1] if len(args) == 2 else None)
     if verb == 'executions' and (args == ['opt-ins'] or (
@@ -248,9 +264,11 @@ def devices(revoke_id=None):
     return 0
 
 
-def _get(info, method, path, body=None):
+def _get(info, method, path, body=None, refusal=None):
     """Core's answer, or None after saying on stderr why, in Core's own code and
-    detail (p19-design-gate B11): over the transport the TUI uses."""
+    detail (p19-design-gate B11): over the transport the TUI uses. With *refusal*
+    (a dict) it also holds the code and detail, for a caller that must branch on
+    one rather than only repeat it."""
     from ..infra import discovery
     from .tui import client, sync
     token = discovery.read_local_token()
@@ -260,6 +278,8 @@ def _get(info, method, path, body=None):
     try:
         return core.get(path)[0] if method == 'GET' else core.post(path, body or {})
     except client.CoreError as e:
+        if refusal is not None:
+            refusal.update(e.refusal())
         print(sync.explain(e.refusal()), file=sys.stderr)
         return None
 
@@ -470,6 +490,67 @@ def decide(target, verdict, note=''):
         print('Core refused: %s is not waiting for that decision' % target, file=sys.stderr)
         return 2
     print('%s: %s' % (target, out.get('state') or out.get('verdict')))
+    return 0
+
+
+_APPROVE_DECISION = {'allow': 'approve', 'deny': 'reject'}
+
+
+def _approval_what(a):
+    p = a.get('presented') or {}
+    what = ', '.join(' '.join(x for x in (w.get('class'), w.get('target')) if x)
+                     for w in p.get('what') or [])
+    return what or p.get('why') or ''
+
+
+def approve_list():
+    info = _running()
+    if info is None:
+        return 1
+    out = _get(info, 'GET', endpoints.list_approvals(state='PENDING'))
+    if out is None:
+        print('Core did not answer', file=sys.stderr)
+        return 2
+    for a in out['approvals']:
+        print('%s  %-6s  %s  %s' % (a['id'], a['kind'], a['mission_id'], _approval_what(a)))
+    if not out['approvals']:
+        print('nothing waits on you')
+    return 0
+
+
+def approve_show(approval_id):
+    info = _running()
+    if info is None:
+        return 1
+    a = _get(info, 'GET', endpoints.get_approval(approval_id))
+    if a is None:
+        return 2
+    print('%s: %s (%s): %s' % (a['id'], a['kind'], a['state'], _approval_what(a)))
+    print('mission: %s' % a['mission_id'])
+    print('action hash: %s' % a['action_hash'])
+    return 0
+
+
+def approve_decide(approval_id, verdict, action_hash, note=''):
+    """The decision carries the hash the human was shown (X02): the CLI never
+    reads it from Core and posts it in one invocation, so deciding something
+    that was not displayed is impossible. A step-up answer is Core's: this CLI
+    does not carry PINs, the app does."""
+    import os
+    info = _running()
+    if info is None:
+        return 1
+    body = {'decision': _APPROVE_DECISION[verdict], 'action_hash': action_hash,
+            'note': note or None, 'idempotency_key': os.urandom(16).hex()}
+    refusal = {}
+    out = _get(info, 'POST', endpoints.decide_approval(approval_id), body, refusal=refusal)
+    if out is None:
+        reason = str((refusal.get('detail') or {}).get('reason') or '')
+        if refusal.get('code') == 'guard_failed' and 'step-up' in reason:
+            print('%s needs the Archeus app: it asks for its step-up PIN there'
+                  % approval_id, file=sys.stderr)
+        return 1
+    print('%s: %s' % (approval_id, out.get('state')))
     return 0
 
 

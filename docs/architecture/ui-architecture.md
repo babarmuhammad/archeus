@@ -336,7 +336,7 @@ spatial view against what this section decides.
 platform seam for keys, POSIX + Windows) and `render.py` (ANSI rendering). Screens mirror
 destinations; the event stream drives re-queries exactly like the SPA. The legacy TUI
 (`claude_sessions/main.py`) remains until the retirement gate. The thin CLI (`archeus status |
-approve | pause | route why | estop | pair`; as built `approve` prints that it is not available yet and exits 2) ships first (V1 slice) because it is also the
+approve | pause | route why | estop | pair`) ships first (V1 slice) because it is also the
 scripting and emergency interface.
 
 *As built (P17, [p17-design-gate.md](p17-design-gate.md) §20):* `archeus tui [--open KIND/ID]
