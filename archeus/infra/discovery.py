@@ -122,7 +122,7 @@ def read_core_json():
     try:
         with open(core_json_path(), encoding='utf-8') as f:
             info = json.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return None
     if not (isinstance(info, dict) and isinstance(info.get('pid'), int)
             and isinstance(info.get('port'), int) and 'create_time' in info):

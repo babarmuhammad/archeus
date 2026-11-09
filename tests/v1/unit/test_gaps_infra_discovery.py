@@ -23,11 +23,6 @@ POSIX_ONLY = pytest.mark.skipif(
     sys.platform == 'win32',
     reason='chmod/st_mode and the POSIX branch of token_protection do not exist on Windows')
 
-XFAIL_DEEP_JSON = (
-    'read_core_json guards only (OSError, ValueError), but json.load raises '
-    'RecursionError on a deeply nested document: a hostile core.json crashes '
-    'the discovery probe instead of being refused (discovery.py:125)')
-
 VALID = b'{"pid": 4242, "create_time": 1.5, "port": 8123, "extra": [1, 2]}'
 
 
@@ -230,10 +225,11 @@ def test_read_core_json_refuses_a_record_a_core_could_not_have_written(data):
     assert discovery.read_core_json() is None
 
 
-@pytest.mark.xfail(strict=True, reason=XFAIL_DEEP_JSON)
-def test_a_deeply_nested_core_json_is_refused_not_a_crash():
+def test_a_deeply_nested_core_json_is_refused_not_a_crash(monkeypatch):
     _write_core_json(b'[' * 100000 + b']' * 100000)
     assert discovery.read_core_json() is None
+    monkeypatch.setattr(discovery, 'lock_is_held', lambda: True)
+    assert discovery.discover() == ('unreadable', None)
 
 
 def test_read_core_json_returns_a_record_that_names_a_process_by_pid_and_creation_time():
