@@ -114,7 +114,7 @@ class Daemon:
         after it starts."""
         p = self.lock_path()
         payload = json.dumps({'pid': os.getpid(), 'port': int(port), 'started': time.time(),
-                              'ctime': _own_ctime()}).encode('utf-8')
+                              'ctime': _own_ctime(), 'claim': True}).encode('utf-8')
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
         except Exception:
@@ -242,6 +242,11 @@ class Daemon:
         data = self.read_lock()
         pid = (data or {}).get('pid')
         if not pid:
+            self.clear_lock()
+            return True, 'no %s recorded' % self.label
+        if data.get('claim'):       # the pid is the caller spawning the daemon, never the daemon
+            if time.time() - (data.get('started') or 0) < READY_TIMEOUT:
+                return False, '%s is still starting' % self.label
             self.clear_lock()
             return True, 'no %s recorded' % self.label
         if pid_alive(pid) is False:

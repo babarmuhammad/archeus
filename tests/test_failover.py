@@ -627,3 +627,21 @@ def test_stop_ends_the_process_whose_creation_time_the_lock_recorded():
     finally:
         child.kill()
         child.wait()
+
+
+def test_a_spawn_claim_is_never_a_daemon_to_kill(monkeypatch):
+    """The claim records the spawning caller's pid and creation time, which match
+    a live process: stop() ended the GUI or TUI that was starting the daemon."""
+    from claude_sessions import proc
+    killed = []
+    monkeypatch.setattr(proc, 'kill_pid_tree', lambda pid, ctime: killed.append(pid) or True)
+    d = failover._daemon(_P)
+    assert d.claim_spawn(20129) is True
+    ok, msg = d.stop()
+    assert killed == [] and not ok and 'starting' in msg
+    assert d.read_lock()['claim'] is True                     # the claimer still holds it
+    claim = dict(d.read_lock(), started=0)
+    with open(d.lock_path(), 'w', encoding='utf-8') as f:
+        json.dump(claim, f)
+    assert d.stop() == (True, 'no %s recorded' % d.label) and killed == []
+    assert d.read_lock() is None

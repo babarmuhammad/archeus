@@ -950,7 +950,7 @@ def _with_step_up(req, proof, call):
             if counted and 'step-up' in e.result.reason:
                 _step_up_failed(req)
             raise
-        if proof is not None and not req.replayed:
+        if req.proven:
             req.api.step_up.reset(device)
         return out
     finally:

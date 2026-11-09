@@ -1073,6 +1073,8 @@ class LocalNode:
                     kept[head] = stamp
                 continue
             out.append((int(head), body))
+        while len(kept) > _ANSWERED_PAIRS_MAX:      # the execution picks how many it writes
+            del kept[next(iter(kept))]
         _ANSWERED[execution_id] = kept
         while len(_ANSWERED) > _ANSWERED_MAX:       # an eviction costs one re-read, never a wrong answer
             del _ANSWERED[next(iter(_ANSWERED))]
@@ -1678,9 +1680,10 @@ class LocalNode:
 
 #: execution id -> {sequence: (request stamp, answer stamp)} of the pairs `pending_requests`
 #: last found answered; rebuilt on every call, dropped when the execution's process ends,
-#: and at most _ANSWERED_MAX executions long
+#: and at most _ANSWERED_MAX executions long, each at most _ANSWERED_PAIRS_MAX pairs
 _ANSWERED = {}
 _ANSWERED_MAX = 256
+_ANSWERED_PAIRS_MAX = 1024
 
 
 def _stamp(path):

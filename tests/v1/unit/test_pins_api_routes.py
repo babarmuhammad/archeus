@@ -67,7 +67,7 @@ class Runs:
 def Req(**over):
     """What a handler sees (api/server.py, "the request object handlers see")."""
     req = SimpleNamespace(body={}, params={}, query={}, headers={'Host': '127.0.0.1:7337'},
-                          peer='127.0.0.1', replayed=False,
+                          peer='127.0.0.1', replayed=False, proven=False,
                           principal={'principal_id': 'prn_1', 'device_id': 'dvc_1',
                                      'origin': 'local', 'scopes': list(auth.SCOPES)})
     req.api = api()
@@ -629,7 +629,7 @@ def test_a_right_proof_clears_the_count_and_lifts_the_sentinel(monkeypatch):
     is four strikes deep: the breaker is worth nothing."""
     calls, cleared = [], []
     monkeypatch.setattr(LocalNode, 'clear_estop', staticmethod(lambda: cleared.append(1)))
-    req = Req(body={'step_up': '482913', 'idempotency_key': 'k'}, out={'ok': True},
+    req = Req(body={'step_up': '482913', 'idempotency_key': 'k'}, out={'ok': True}, proven=True,
               api=api(step_up=SimpleNamespace(begin=lambda d: True, end=lambda d: None, failed=lambda d: False,
                                               reset=lambda d: calls.append(('reset', d)))))
     status, out = routes.rearm(req)

@@ -592,7 +592,8 @@ def _step_up_valid(tx, actor, proof):
               if is_paired(d.entity)]
     if not paired:
         return proof is None
-    return all(pin_matches(d.pin_hash, proof) for d in paired)
+    tx.proven = all(pin_matches(d.pin_hash, proof) for d in paired)
+    return tx.proven
 
 
 def _awaiting(conn, a, mission):
