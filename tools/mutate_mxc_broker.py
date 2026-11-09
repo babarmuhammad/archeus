@@ -6,7 +6,7 @@ require it to fail.
     py tools/mutate_mxc_broker.py               every mutation
     py tools/mutate_mxc_broker.py L01 L05       only these
 
-It edits archeus/node/broker_listener.py, broker.py, mxc_boundary.py and
+It edits archeus/node/broker_listener.py, broker_bridge.py, broker.py, mxc_boundary.py and
 archeus/core/execution/manager.py and restores them whatever happens: run it with nothing
 else against the tree.
 """
@@ -23,6 +23,8 @@ BND = 'archeus/node/mxc_boundary.py'
 MGR = 'archeus/core/execution/manager.py'
 T = 'tests/v1/unit/test_broker_listener.py::'
 E = 'tests/v1/unit/test_broker_execution.py::'
+R = 'tests/v1/unit/test_broker_reader_red_team.py::'
+WIRE = 'archeus/node/broker_bridge.py'
 
 MUTATIONS = [
     ('L01', 'a listener that is not on loopback is kept', [(LST,
@@ -69,8 +71,8 @@ MUTATIONS = [
      '        if False:')],
      [T + 'test_an_execution_process_that_maps_to_no_principal_is_refused']),
     ('L11', 'the grant names the principal, not the backend', [(LST,
-     '                conn.sendall, principal, self)',
-     '                conn.sendall, self.binding.principal, self)')],
+     'conn.sendall,\n                         principal, self)',
+     'conn.sendall,\n                         self.binding.principal, self)')],
      [T + 'test_the_principal_the_backend_observed_is_what_the_broker_checks']),
     ('L12', 'a grant answers at any listener', [(LST,
      '                         principal, self)',
@@ -130,7 +132,8 @@ MUTATIONS = [
     ('L25', 'a silent peer is never timed out', [(LST,
      '        self._conn.settimeout(min(wire.IDLE_S, left))',
      '        pass')],
-     [T + 'test_a_request_dripped_a_byte_at_a_time_ends_at_the_read_deadline']),
+     [T + 'test_a_request_dripped_a_byte_at_a_time_ends_at_the_read_deadline',
+      R + 'test_each_receive_waits_at_most_the_time_left_of_the_deadline']),
     ('L26', 'two connections share an accept generation', [(LST,
      '                accept_generation=secrets.token_hex(16))',
      "                accept_generation='g')")],
@@ -143,6 +146,19 @@ MUTATIONS = [
      '            except RuntimeError:\n                self._slots.release()\n                _close(conn)',
      '            except RuntimeError:\n                raise')],
      [T + 'test_a_worker_that_cannot_start_closes_its_connection_frees_its_slot_and_keeps_accepting']),
+    ('L29', 'a declared body is allocated before its bytes arrive', [(WIRE,
+     '        chunk = f.read(min(n - len(body), BODY_CHUNK))',
+     '        chunk = f.read(n - len(body))')],
+     [R + 'test_a_declared_body_length_is_not_allocated_before_its_bytes_arrive']),
+    ('L30', "a receive's own timeout escapes as itself", [(LST,
+     '        except TimeoutError:\n            raise B.Refused(408',
+     '        except ZeroDivisionError:\n            raise B.Refused(408')],
+     [R + 'test_real_socket_drip_is_cut_at_the_deadline']),
+    ('L31', 'the response is sent under what was left of the deadline', [(LST,
+     '            self._conn.settimeout(wire.IDLE_S)',
+     '            pass')],
+     [R + 'test_socket_timeout_left_for_the_response_is_not_the_leftover_of_the_read_deadline',
+      R + 'test_each_receive_waits_at_most_the_time_left_of_the_deadline']),
     ('B01', 'a grant forgets its port', [(BRK,
      "                               'active': 0, 'port': port}",
      "                               'active': 0, 'port': 0}")],

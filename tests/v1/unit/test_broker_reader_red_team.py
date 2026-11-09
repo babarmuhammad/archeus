@@ -1,25 +1,18 @@
-"""Red-team probes of the broker's request reader (node/broker_listener.py `_Raw`, `_Gate`, the
-deadline; node/broker_bridge.py `read_request`; node/broker.py `serve`). Built on the fakes of
-tests/v1/unit/test_broker_listener.py: in-memory connections and a fake clock, no socket, no
-network.
-
-A FAILING test is a confirmed defect."""
+"""The red-team probes of the broker's request reader, kept as regressions
+(node/broker_listener.py `_Raw`, `_Gate`, the deadline; node/broker_bridge.py `read_request`;
+node/broker.py `serve`). Built on the fakes of test_broker_listener.py: in-memory connections
+and a fake clock, no network."""
 
 import io
-import os
-import sys
 import tracemalloc
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'v1', 'unit'))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'v1'))
+from archeus.node import broker as B
+from archeus.node import broker_bridge as wire
+from archeus.node import broker_listener as L
 
-from unit.test_broker_listener import (BODY, RIGS, Conn, Drip, Rig, dripped, http,  # noqa: E402
-                                       status)
-from archeus.node import broker as B  # noqa: E402
-from archeus.node import broker_bridge as wire  # noqa: E402
-from archeus.node import broker_listener as L  # noqa: E402
+from .test_broker_listener import BODY, RIGS, Conn, Drip, Rig, status
 
 
 @pytest.fixture(autouse=True)
@@ -280,10 +273,7 @@ def test_headers_end_after_the_deadline_with_the_body_already_buffered():
 
 
 def test_socket_timeout_left_for_the_response_is_not_the_leftover_of_the_read_deadline():
-    """LOW: _Raw.readinto sets conn.settimeout(min(IDLE_S, left)) and never restores it, so the
-    timeout the response is written under (conn.sendall) is whatever was left of the 30 s request
-    deadline at the last recv: a request that took 29.95 s sends its upstream response under a
-    50 ms timeout (broker_listener.py:70-73)."""
+    """A request that took 29.95 s still has its response written under the idle time."""
     rig = Rig(clock=lambda: rig.now[0])
     g = rig.grant()
     full = raw_request(g)
@@ -299,25 +289,35 @@ def test_socket_timeout_left_for_the_response_is_not_the_leftover_of_the_read_de
     assert min(seen) >= 1.0, 'responses are written under a %.2f s socket timeout' % min(seen)
 
 
-def test_declared_body_length_allocates_up_front():
-    """LOW: io.BufferedReader.read(n) allocates n bytes at once; the reader asks for the declared
-    Content-Length (up to max_body, 16 MiB) before a single body byte has arrived, so each of the
-    8 connections a grant holds pins up to 16 MiB for up to 30 s while sending nothing."""
-    class Empty(io.RawIOBase):
+def test_each_receive_waits_at_most_the_time_left_of_the_deadline():
+    conn, seen = Conn(1), []
+
+    class One(io.RawIOBase):
         def readable(self):
             return True
 
         def readinto(self, b):
-            return 0
+            seen.append(conn.timeout)
+            b[:1] = b'x'
+            return 1
 
-    f = io.BufferedReader(L._Raw(Conn(1), Empty(), lambda: 0.0, 1e9))
+    L._Raw(conn, One(), lambda: 0.0, 2.5).readinto(bytearray(1))
+    assert seen == [2.5] and conn.timeout == wire.IDLE_S
+
+
+def test_a_declared_body_length_is_not_allocated_before_its_bytes_arrive():
+    """io.BufferedReader.read(n) allocates n bytes at once: a peer that declares the 16 MiB
+    max_body and sends nothing must not pin it for the deadline."""
+    head = b'POST /v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n' % wire.MAX_BODY
+    f = io.BufferedReader(io.BytesIO(head + b'x' * 10))
     tracemalloc.start()
     try:
-        f.read(wire.MAX_BODY)
+        with pytest.raises(wire.BadRequest, match='ended early'):
+            wire.read_request(f)
         peak = tracemalloc.get_traced_memory()[1]
     finally:
         tracemalloc.stop()
-    assert peak < (1 << 20), 'read(%d) with no data held %.1f MiB' % (wire.MAX_BODY, peak / (1 << 20))
+    assert peak < (1 << 20), 'a declared body held %.1f MiB' % (peak / (1 << 20))
 
 
 def test_attest_time_is_not_part_of_the_request_deadline_but_the_read_clock_starts_after_it():
@@ -330,7 +330,8 @@ def test_attest_time_is_not_part_of_the_request_deadline_but_the_read_clock_star
 
 
 def test_real_socket_drip_is_cut_at_the_deadline():
-    """_Raw over a real socketpair and a real clock: one byte every 0.3 s against a 1 s deadline."""
+    """_Raw over a real socketpair and a real clock: one byte every 0.3 s against a 1 s deadline
+    ends a 408, never the socket's own TimeoutError (a 500 and its audit row)."""
     import socket
     import threading
     import time

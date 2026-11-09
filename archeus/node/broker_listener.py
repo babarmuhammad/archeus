@@ -70,7 +70,12 @@ class _Raw(io.RawIOBase):
         if left <= 0:
             raise B.Refused(408, 'the request took too long to arrive')
         self._conn.settimeout(min(wire.IDLE_S, left))
-        return self._f.readinto(b)
+        try:
+            return self._f.readinto(b)
+        except TimeoutError:
+            raise B.Refused(408, 'the request took too long to arrive') from None
+        finally:
+            self._conn.settimeout(wire.IDLE_S)      # the response is not sent under what was left
 
 
 class _Gate:
