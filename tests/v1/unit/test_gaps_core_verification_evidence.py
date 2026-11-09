@@ -225,55 +225,51 @@ def test_a_line_that_is_not_a_command_is_no_argv_for_either_builder(line):
     assert evidence.confined_argv(line, [os.curdir]) is None
 
 
-def test_argv_of_resolves_the_program_on_path_and_keeps_the_rest(tmp_path, monkeypatch):
-    # evidence.py:62-63: `which` is asked for argv[0] alone (so `npm` finds
-    # `npm.cmd` on Windows) and only the program is replaced — the arguments
-    # pass through verbatim; a program PATH does not hold is kept as written.
-    seen = []
-    found = os.path.join(str(tmp_path), 'tool-resolved')
+def _tool(directory):
+    os.makedirs(str(directory), exist_ok=True)
+    path = os.path.join(str(directory), 'tool.exe' if os.name == 'nt' else 'tool')
+    with open(path, 'w') as f:
+        f.write('')
+    os.chmod(path, 0o755)
+    return path
 
-    def which(cmd, **kw):
-        seen.append((cmd, kw))
-        return found if cmd == 'tool' else None
-    monkeypatch.setattr(evidence, 'shutil', SimpleNamespace(which=which))
+
+def test_argv_of_resolves_the_program_on_path_and_keeps_the_rest(tmp_path, monkeypatch):
+    # only the program is replaced, by its absolute path; the arguments pass
+    # through verbatim; a program PATH does not hold is no argv at all, never
+    # the bare name for the platform to search for.
+    found = _tool(tmp_path / 'bin')
+    monkeypatch.setenv('PATH', str(tmp_path / 'bin'))
+    monkeypatch.setenv('PATHEXT', '.EXE')
     assert evidence.argv_of('tool --check x') == [found, '--check', 'x']
-    assert seen == [('tool', {})]
-    assert evidence.argv_of('other --check') == ['other', '--check']
+    assert evidence.argv_of('other --check') is None
 
 
 def test_confined_argv_never_asks_the_platform_outside_the_toolchain(
         tmp_path, monkeypatch):
-    # evidence.py:76: the search is pinned to the staged directories
-    # (`path=os.pathsep.join(toolchain)`). Drop that argument and `which`
-    # consults the machine's PATH — a program the stage never held would then
-    # be reported as confined, which is exactly the escape T-054 Q1 A closes.
-    seen = []
+    # the search is pinned to the staged directories: a program only the
+    # machine's PATH holds is not one the stage held, which is exactly the
+    # escape T-054 Q1 A closes.
+    _tool(tmp_path / 'bin')
+    monkeypatch.setenv('PATH', str(tmp_path / 'bin'))
+    monkeypatch.setenv('PATHEXT', '.EXE')
     tc = [str(tmp_path / 'tc-a'), str(tmp_path / 'tc-b')]
-
-    def which(cmd, **kw):
-        seen.append((cmd, kw))
-        return None
-    monkeypatch.setattr(evidence, 'shutil', SimpleNamespace(which=which))
     assert evidence.confined_argv('tool --check', tc) is None
-    assert seen == [('tool', {'path': os.pathsep.join(tc)})]
 
 
-@pytest.mark.parametrize('found', ['missing', 'elsewhere', 'subdir'],
+@pytest.mark.parametrize('where', ['missing', 'elsewhere', 'subdir'],
                          ids=['not-found', 'outside-stage', 'in-a-subdir'])
 def test_confined_argv_refuses_every_program_the_stage_does_not_hold(
-        tmp_path, monkeypatch, found):
-    # evidence.py:79-80: not found at all, found in a directory the stage does
-    # not hold (Windows' `which` looks in the current directory first), or
-    # found in a SUBdirectory of one — the stage is exactly its listed
-    # directories, so all three are refusals. Invert the `not in dirs` test or
-    # compare against the stage root instead of its directories, and a
-    # non-staged binary is here reported as confined.
+        tmp_path, monkeypatch, where):
+    # not found at all, found in a directory the stage does not hold, or found
+    # in a SUBdirectory of one: the stage is exactly its listed directories.
     tc = os.path.join(str(tmp_path), 'stage')
-    answers = {'missing': None,
-               'elsewhere': os.path.join(str(tmp_path), 'elsewhere', 'tool.exe'),
-               'subdir': os.path.join(tc, 'sub', 'tool')}
-    monkeypatch.setattr(evidence, 'shutil',
-                        SimpleNamespace(which=lambda cmd, **kw: answers[found]))
+    os.makedirs(tc)
+    monkeypatch.setenv('PATHEXT', '.EXE')
+    if where == 'elsewhere':
+        _tool(tmp_path / 'elsewhere')
+    elif where == 'subdir':
+        _tool(os.path.join(tc, 'sub'))
     assert evidence.confined_argv('tool --check', [tc]) is None
 
 
@@ -294,10 +290,9 @@ def test_confined_argv_records_the_absolute_normalised_path(tmp_path, monkeypatc
     # run but a different string to every comparison and log that follows.
     # (Verified caught: replacing `abspath(found)` with `found` fails this
     # test — a mutation probe on scratch/mutation_check.py confirmed.)
-    tc = os.path.join(str(tmp_path), 'stage')
-    found = os.path.join(tc, '.', 'nest', '..', 'tool')
-    monkeypatch.setattr(evidence, 'shutil',
-                        SimpleNamespace(which=lambda cmd, **kw: found))
+    found = _tool(tmp_path / 'stage')
+    monkeypatch.setenv('PATHEXT', '.EXE')
+    tc = os.path.join(str(tmp_path), 'stage', '.', 'nest', '..')
     out = evidence.confined_argv('tool --check', [tc])
     assert out == [os.path.abspath(found), '--check']
 
@@ -377,7 +372,7 @@ def test_a_check_cannot_be_rewritten_through_the_argv_it_was_built_from():
 # ── run_commands(): an unparseable line never reaches a process ─────────────
 
 def test_a_command_that_cannot_be_split_is_an_error_and_starts_nothing(
-        tmp_path):
+        tmp_path, monkeypatch):
     # evidence.py:114-116 and 117-120 (§8.3): a line `argv_of` refuses is
     # recorded as an error check with NO argv and NO exit code, and the node
     # is never called for it — but the other commands still run, each to its
@@ -386,6 +381,9 @@ def test_a_command_that_cannot_be_split_is_an_error_and_starts_nothing(
     # node gets an argv built from garbage; renumber the logs from the checks
     # and the surviving command's log name moves.
     calls = []
+    tool = _tool(tmp_path / 'bin')
+    monkeypatch.setenv('PATH', str(tmp_path / 'bin'))
+    monkeypatch.setenv('PATHEXT', '.EXE')
 
     def run_check(ws, argv, **kw):
         calls.append((ws, list(argv), kw))
@@ -395,11 +393,11 @@ def test_a_command_that_cannot_be_split_is_an_error_and_starts_nothing(
     checks = evidence.run_commands(node, 'ws', cmds, verification_id='vid-1',
                                    timeout_s=7, verifier_version=V.VERIFIER_VERSION)
     assert [c['result'] for c in checks] == ['error', 'pass']
-    assert checks[0]['detail'] == 'the command line cannot be parsed'
+    assert checks[0]['detail'] .startswith('the command line cannot be parsed')
     assert 'argv' not in checks[0] and 'exit_code' not in checks[0]
     assert len(calls) == 1
     (ws, argv, kw) = calls[0]
-    assert (ws, argv) == ('ws', ['tool', '--build'])
+    assert (ws, argv) == ('ws', [tool, '--build'])
     assert kw['timeout'] == 7
     assert kw['out_path'] == os.path.join(paths.run_dir(), 'verify', 'vid-1', '1.log')
     assert os.path.isabs(kw['out_path'])

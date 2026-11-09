@@ -382,9 +382,10 @@ def test_cli_strips_ansi_log_preamble_before_json(monkeypatch):
         stdout = raw
         stderr = ''
         returncode = 0
+    import os
     import shutil
     import subprocess
-    monkeypatch.setattr(shutil, 'which', lambda name: 'omniroute')
+    monkeypatch.setattr(shutil, 'which', lambda name: os.path.abspath('omniroute'))
     # `_cli` goes through proc.run, which is the only place a subprocess starts.
     # This used to patch `omniroute.subprocess` and worked only because that name
     # was the shared module object — i.e. it was patching this same attribute by

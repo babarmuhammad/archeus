@@ -288,7 +288,7 @@ def test_V12_a_runner_that_cannot_run_is_an_error_retried_once_then_yours(core, 
     rig = Rig(core)
     _repo, mid = _mission(core, rig, steps=[_write(FIX), {'emit': {'type': 'result',
                                                                    'summary': 'done'}}])
-    monkeypatch.setattr(evidence, 'argv_of', lambda cmd: ['archeus-no-such-runner-xyz'])
+    monkeypatch.setattr(evidence, 'argv_of', lambda cmd, workspace=None: ['archeus-no-such-runner-xyz'])
     pump(core, lambda: _state(core, mid) == 'BLOCKED')
     (v,) = _vs(core, mid, 'task')
     assert v['state'] == 'ERROR' and v['errors'] == 2          # tried, retried once

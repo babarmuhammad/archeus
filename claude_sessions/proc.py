@@ -46,7 +46,8 @@ hidden_console_flags = no_window_flags | getattr(subprocess, 'CREATE_NEW_PROCESS
 
 def run(args, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
     """`subprocess.run` with the decoding pinned and the console suppressed.
-    Returns the CompletedProcess, or None if it could not be run at all.
+    Returns the CompletedProcess, or None if it could not be run at all, which
+    includes a bare program name that PATH does not hold outside *cwd*.
 
     `text=True` alone decodes with the locale codepage — cp1252 on Windows —
     so one non-ASCII path or branch name raises *inside* subprocess and the
@@ -60,6 +61,13 @@ def run(args, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
     that decides to ask a question would otherwise block forever on a terminal
     nobody is watching — and inside a captured run there is no prompt to see.
     """
+    if args and not os.path.dirname(args[0]):
+        # a bare program name is never left to CreateProcess, which searches the
+        # current directory first; one PATH does not hold outside *cwd* is not run
+        exe = which(args[0], avoid=[cwd])
+        if exe is None:
+            return None
+        args = [exe, *args[1:]]
     try:
         r = subprocess.run(args, cwd=cwd, env=env, capture_output=True,
                            text=True, encoding='utf-8', errors='ignore',
@@ -558,19 +566,34 @@ _POSIX_TERMINALS = [
 ]
 
 
-def which(name):
-    """The first executable called *name* on PATH, absolute, or None.
+def which(name, path=None, avoid=()):
+    """The first executable called *name* in *path* (default PATH), absolute, or None.
 
     Not `shutil.which`: on Windows (before Python 3.12) it searches the current
     directory first, so a core or GUI started inside an untrusted checkout would
-    run that checkout's `claude.exe` or `pi.cmd`."""
+    run that checkout's `claude.exe` or `pi.cmd`. Here a relative entry, the
+    current directory and any directory inside one of *avoid* (a workspace) are
+    never searched, and a *name* with a directory part is never found. With the
+    default *path* the running interpreter's directory is searched last."""
+    if os.path.dirname(name):
+        return None
     exts = ['']
     if WINDOWS:
         # an empty entry (a trailing ';') would match every name as already suffixed
         pathext = ([e for e in os.environ.get('PATHEXT', '').lower().split(';') if e]
                    or ['.com', '.exe', '.bat', '.cmd'])
         exts = [''] if name.lower().endswith(tuple(pathext)) else pathext
-    for d in filter(None, os.environ.get('PATH', '').split(os.pathsep)):
+    norm = lambda d: os.path.normcase(os.path.abspath(d))
+    barred = [norm(d) for d in avoid if d]
+    cwd = norm(os.getcwd())
+    dirs = (os.environ.get('PATH', '') if path is None else path).split(os.pathsep)
+    if path is None:        # where CreateProcess also looks: the interpreter's own directory
+        dirs.append(os.path.dirname(sys.executable))
+    for d in filter(None, dirs):
+        a = norm(d)
+        if (not os.path.isabs(d) or a == cwd
+                or any(a == b or a.startswith(b.rstrip(os.sep) + os.sep) for b in barred)):
+            continue
         for e in exts:
             p = os.path.join(d, name + e)
             if os.path.isfile(p) and os.access(p, os.X_OK):
