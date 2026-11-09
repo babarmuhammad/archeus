@@ -590,7 +590,7 @@ function Evidence({ id, m }: { id: string; m: Mission }) {
                     <ul className="checks">
                       {x.checks.map((c, i) => (
                         <li key={i} data-result={c.result}>
-                          <span aria-hidden="true">{c.result === 'pass' ? '✓' : c.result === 'fail' ? '✕' : '!'}</span> {c.name} — {c.result}
+                          <span aria-hidden="true">{c.result === 'pass' ? '✓' : c.result === 'fail' ? '✕' : c.result === 'skip' ? '-' : '!'}</span> {c.name} — {c.result}
                           {c.exit_code != null ? ` (exit ${c.exit_code})` : ''}
                         </li>
                       ))}

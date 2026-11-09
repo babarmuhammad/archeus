@@ -1165,8 +1165,8 @@ class Checkpoint(Entity):
 
 
 #: P13 evidence vocabulary (p13-design-gate §8)
-CHECK_KINDS = ('command', 'git')
-CHECK_RESULTS = ('pass', 'fail', 'error')
+CHECK_KINDS = ('command', 'git', 'state')
+CHECK_RESULTS = ('pass', 'fail', 'error', 'skip')
 CRITERION_RESULTS = ('satisfied', 'failed', 'unknown')
 REVIEW_LISTS = ('requirements_met', 'requirements_missing', 'risks', 'regressions', 'follow_up')
 

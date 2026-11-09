@@ -128,3 +128,56 @@ def by_pass(conn):
         for f in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd'):
             g[f] = _add(g[f], getattr(u, f))
     return [out[k] for k in sorted(out)]
+
+
+def _band(tokens):
+    if tokens is None:
+        return None
+    if tokens == 0:
+        return 'none'
+    return 'under 1k' if tokens < 1000 else '1k to 4k' if tokens <= 4000 else 'over 4k'
+
+
+def by_context(conn):
+    """`by_model`'s counts, split once more by the size band of the context package
+    the execution's mission points at (`none`, `under 1k`, `1k to 4k`, `over 4k` tokens
+    of `budget.used_tokens`; band None: the mission has no package or the package
+    reports no figure). One dict per (kind, model, effort, band), sorted by it, with the
+    `executions` sample count always present, `passed`, `failed`, `unverified`, and
+    `tokens` and `cost_usd` summed over what was reported (None: nothing was).
+
+    The band is what was ASSEMBLED, not what the agent saw: today the execution prompt
+    is the objective and the task title (`execution/manager.py`), the package is only
+    recorded, so no execution has had context injected and nothing here measures
+    injection. The band becomes a real injection size when a prompt starts carrying the
+    package; until then it is the package's size and nothing more. A difference between
+    bands without an A/B on the same work is a correlation, not a result."""
+    kinds = {r.entity.id: r.entity.kind for r in rows.where(conn, entities.Task)}
+    verdict = {r.entity.execution_id: r.entity.state for r in rows.where(conn, entities.Verification)
+               if r.entity.execution_id and r.entity.state in ('PASSED', 'FAILED')}
+    used = {}
+    for r in rows.where(conn, entities.Mission):
+        pid = r.entity.context_package_id
+        budget = rows.get(conn, entities.ContextPackage, pid).entity.budget if pid else None
+        used[r.entity.id] = (budget or {}).get('used_tokens')
+    ledger = {}
+    for r in rows.where(conn, entities.UsageLedger):
+        if r.entity.execution_id:
+            ledger.setdefault(r.entity.execution_id, []).append(r.entity)
+    out = {}
+    for r in rows.where(conn, entities.Execution):
+        e = r.entity
+        if e.state not in ('ENDED_OK', 'ENDED_ERROR') or e.charged is False:
+            continue
+        band = _band(used.get(e.mission_id))
+        g = out.setdefault((kinds[e.task_id], e.model, e.effort, band), {
+            'kind': kinds[e.task_id], 'model': e.model, 'effort': e.effort, 'context': band,
+            'executions': 0, 'passed': 0, 'failed': 0, 'unverified': 0, 'tokens': None,
+            'cost_usd': None})
+        g['executions'] += 1
+        g[{'PASSED': 'passed', 'FAILED': 'failed'}.get(verdict.get(e.id), 'unverified')] += 1
+        for u in ledger.get(e.id, ()):
+            if u.tokens_in is not None or u.tokens_out is not None:
+                g['tokens'] = (g['tokens'] or 0) + (u.tokens_in or 0) + (u.tokens_out or 0)
+            g['cost_usd'] = _add(g['cost_usd'], u.cost_usd)
+    return [out[k] for k in sorted(out, key=lambda k: tuple(x or '' for x in k))]

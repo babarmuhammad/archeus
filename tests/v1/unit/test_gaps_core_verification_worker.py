@@ -754,7 +754,8 @@ def test_only_the_last_record_of_a_mission_criterion_carries_the_head(rig):
     # mission that had "moved" while its own checks ran
     r = rig(mission_state='VERIFYING', base=BASE, head=REV, task_state='SUCCEEDED',
             success=(AUTO, AUTO),
-            node=_Node(git_head=_script(REV, REV2), run_check=_script(_result())))
+            node=_Node(git_head=_script(REV, REV2), run_check=_script(_result()),
+                       git_numstat=_script([])))
     seen = r.spy()
     assert r.worker._verify_mission(r.mid) is True
     assert [kw['head'] for (name, kw) in seen if name == 'record'] == [None, REV2]

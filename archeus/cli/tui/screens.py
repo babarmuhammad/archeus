@@ -1280,7 +1280,7 @@ def evidence(app, doc, m, mp):
                     + (T(app, ' at ' + str(x['revision'])[:10], 'text-2') if x.get('revision')
                        else ''), target=open_('verification', x['id']))
             for c in x['checks']:
-                mark = {'pass': '✓', 'fail': '✕'}.get(c['result'], '!')
+                mark = {'pass': '✓', 'fail': '✕', 'skip': '-'}.get(c['result'], '!')
                 doc.add('      ' + app.st.paint(mark) + ' ' + T(app, c['name']) + ' — '
                         + T(app, c['result'])
                         + (T(app, ' (exit %s)' % c['exit_code']) if c.get('exit_code') is not None

@@ -141,7 +141,7 @@ def explain_state(x):
                         'source': 'execution'})
     v = x.get('verification')
     if v and v['state'] != 'PASSED':
-        failed = [c['name'] for c in v.get('checks') or [] if c['result'] != 'pass']
+        failed = [c['name'] for c in v.get('checks') or [] if c['result'] not in ('pass', 'skip')]
         out.append({'text': 'Verification: %s%s.' % (present('verification', v['state'])['label'],
                                                      ' (%s)' % ', '.join(failed) if failed
                                                      else ''),
