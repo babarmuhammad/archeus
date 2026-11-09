@@ -391,9 +391,12 @@ def test_the_board_does_not_parse_transcripts_to_list(monkeypatch):
 
 # ── two worktrees changing the same files ─────────────────────
 
+FULL = 'a' * 40
+
+
 def _two_trees_git(monkeypatch, diffs, status, calls=None, extra_trees=()):
-    """git as three canned answers: the porcelain list, `diff base...HEAD` per
-    worktree path and `status --porcelain` per worktree path."""
+    """git as canned answers: the porcelain list, the main tree's full HEAD,
+    `diff base...HEAD` per worktree path and `status --porcelain` per worktree path."""
     listing = ('worktree /repo\nHEAD aaaaaaaa11\nbranch refs/heads/main\n\n'
                'worktree /wt-a\nHEAD bbbbbbbb22\nbranch refs/heads/a\n\n'
                'worktree /wt-b\nHEAD cccccccc33\nbranch refs/heads/b\n\n'
@@ -405,14 +408,19 @@ def _two_trees_git(monkeypatch, diffs, status, calls=None, extra_trees=()):
 
     def git(args, cwd, **k):
         cwd = os.path.normpath(cwd)
+        plain = args[:2] == ['-c', 'core.quotepath=off']
+        args = args[2:] if plain else args
         if calls is not None:
             calls.append((args[0], cwd))
         if args[:2] == ['worktree', 'list']:
             return listing
+        if args[:2] == ['rev-parse', 'HEAD']:
+            return FULL + '\n' if cwd == os.path.normpath('/repo') else None
         if args[0] == 'diff':
-            assert args[-1] == 'aaaaaaaa...HEAD', args
+            assert plain and '--no-renames' in args and args[-1] == FULL + '...HEAD', args
             return diffs.get(cwd, '')
         if args[0] == 'status':
+            assert plain and '-uall' in args, args
             return status.get(cwd, '')
         return ''
     monkeypatch.setattr(worktrees, '_git', git)
@@ -447,10 +455,35 @@ def test_the_main_trees_own_dirty_files_count_but_it_has_no_base(monkeypatch):
     assert ('diff', os.path.normpath('/repo')) not in calls
 
 
-def test_a_rename_counts_as_its_new_path(monkeypatch):
+def test_a_rename_counts_as_both_its_paths(monkeypatch):
     _two_trees_git(monkeypatch, diffs={'/wt-a': 'new.py\n'},
                    status={'/wt-b': 'R  old.py -> new.py\n'})
     assert worktrees.board('/repo')['overlaps'][0]['files'] == ['new.py']
+    _two_trees_git(monkeypatch, diffs={'/wt-a': 'old.py\n'},
+                   status={'/wt-b': 'R  old.py -> new.py\n'})
+    assert worktrees.board('/repo')['overlaps'][0]['files'] == ['old.py']
+
+
+def test_the_diff_base_is_the_full_sha_not_the_listings_abbreviation(monkeypatch):
+    """An 8 character prefix can be ambiguous in a big repo, and git then fails."""
+    _two_trees_git(monkeypatch, diffs={'/wt-a': 'x.py\n'}, status={'/wt-b': ' M x.py\n'})
+    real = worktrees._git
+    monkeypatch.setattr(worktrees, '_git', lambda args, cwd, **k:
+                        None if args[-1].endswith('...HEAD') and len(args[-1]) < 47
+                        else real(args, cwd))
+    assert len(worktrees.board('/repo')['overlaps']) == 1
+
+
+def test_a_main_tree_git_cannot_name_leaves_the_committed_diff_out_not_the_board(monkeypatch):
+    calls = []
+    _two_trees_git(monkeypatch, diffs={}, calls=calls,
+                   status={'/wt-a': ' M x.py\n', '/wt-b': ' M x.py\n'})
+    real = worktrees._git
+    monkeypatch.setattr(worktrees, '_git', lambda args, cwd, **k:
+                        None if 'rev-parse' in args else real(args, cwd))
+    b = worktrees.board('/repo')
+    assert len(b['worktrees']) == 3 and len(b['overlaps']) == 1
+    assert not [c for c in calls if c[0] == 'diff']
 
 
 def test_only_five_shared_paths_are_listed_but_all_are_counted(monkeypatch):
@@ -480,6 +513,92 @@ def test_too_many_worktrees_skips_the_check_and_says_so(monkeypatch):
     b = worktrees.board('/repo')
     assert b['overlaps'] == [] and b['overlaps_skipped'] is True
     assert not [c for c in calls if c[0] == 'diff']
+
+
+def test_exactly_the_limit_of_worktrees_is_still_checked(monkeypatch):
+    calls = []
+    extra = [f'/x{i}' for i in range(worktrees.OVERLAP_MAX_TREES - 3)]
+    _two_trees_git(monkeypatch, diffs={'/wt-a': 'x.py\n', '/wt-b': 'x.py\n'}, status={},
+                   calls=calls, extra_trees=extra)
+    b = worktrees.board('/repo')
+    assert len(b['worktrees']) == worktrees.OVERLAP_MAX_TREES
+    assert len(b['overlaps']) == 1 and 'overlaps_skipped' not in b
+    assert [c for c in calls if c[0] == 'diff']
+
+
+def test_a_status_git_cannot_read_leaves_the_tree_out_without_raising(monkeypatch):
+    _two_trees_git(monkeypatch, diffs={'/wt-a': 'x.py\n', '/wt-b': 'x.py\n'},
+                   status={'/wt-b': None})
+    b = worktrees.board('/repo')
+    assert b['overlaps'] == [] and 'overlaps_skipped' not in b
+    assert next(w for w in b['worktrees'] if w['name'] == 'wt-b')['dirty'] == 0
+
+
+def _repo_with_two_trees(tmp_path, bare=False):
+    """A real repo (or a bare one) with a committed `old.py` and linked worktrees
+    wt-a and wt-b: (git, repo, [wt-a, wt-b])."""
+    import subprocess
+
+    def git(cwd, *a):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                       cwd=cwd, check=True, capture_output=True)
+    src = tmp_path / 'src'
+    src.mkdir()
+    git(src, 'init', '-q', '-b', 'main')
+    (src / 'old.py').write_text('x')
+    git(src, 'add', '.')
+    git(src, 'commit', '-q', '-m', 'base')
+    repo = src
+    if bare:
+        repo = tmp_path / 'repo.git'
+        git(tmp_path, 'clone', '-q', '--bare', str(src), str(repo))
+    wts = [tmp_path / 'wt-a', tmp_path / 'wt-b']
+    for wt in wts:
+        git(repo, 'worktree', 'add', '-q', '-b', wt.name, str(wt))
+    return git, repo, wts
+
+
+def _shared(b):
+    return {f.replace('\\', '/') for o in b['overlaps'] for f in o['files']}
+
+
+def test_a_bare_main_repo_still_gets_the_committed_overlaps(tmp_path):
+    git, repo, (a, b) = _repo_with_two_trees(tmp_path, bare=True)
+    for wt in (a, b):
+        (wt / 'x.py').write_text(wt.name)
+        git(wt, 'add', '.')
+        git(wt, 'commit', '-q', '-m', 'x')
+    got = worktrees.board(str(repo))
+    assert {w['name'] for w in got['worktrees']} == {'wt-a', 'wt-b'}
+    assert _shared(got) == {'x.py'} and 'overlaps_skipped' not in got
+
+
+def test_an_untracked_directory_overlaps_the_file_another_tree_committed_in_it(tmp_path):
+    git, repo, (a, b) = _repo_with_two_trees(tmp_path)
+    (b / 'newdir').mkdir()
+    (b / 'newdir' / 'x.py').write_text('b')
+    git(b, 'add', '.')
+    git(b, 'commit', '-q', '-m', 'x')
+    (a / 'newdir').mkdir()
+    (a / 'newdir' / 'x.py').write_text('a')
+    assert _shared(worktrees.board(str(repo))) == {'newdir/x.py'}
+
+
+def test_a_non_ascii_path_matches_between_status_and_diff(tmp_path):
+    git, repo, (a, b) = _repo_with_two_trees(tmp_path)
+    (a / 'café.py').write_text('a')
+    git(a, 'add', '.')
+    git(a, 'commit', '-q', '-m', 'x')
+    (b / 'café.py').write_text('b')
+    assert _shared(worktrees.board(str(repo))) == {'café.py'}
+
+
+def test_a_rename_in_one_tree_overlaps_a_delete_in_another(tmp_path):
+    git, repo, (a, b) = _repo_with_two_trees(tmp_path)
+    git(a, 'mv', 'old.py', 'new.py')
+    git(a, 'commit', '-q', '-m', 'rename')
+    git(b, 'rm', '-q', 'old.py')
+    assert _shared(worktrees.board(str(repo))) == {'old.py'}
 
 
 def test_the_overlaps_reach_the_project_board(monkeypatch):

@@ -50,6 +50,11 @@ OVERLAP_MAX_TREES = 12
 OVERLAP_SHOW = 5
 
 
+#: git prints a non-ASCII path as an escaped, quoted string unless told not to, and
+#: `status` and `diff` would then spell the same file two ways
+_PLAIN = ['-c', 'core.quotepath=off']
+
+
 def list_worktrees(project_path):
     """[{path, branch, head, bare, detached, main}] for a repo, or []."""
     out = _git(['worktree', 'list', '--porcelain'], project_path)
@@ -83,11 +88,12 @@ def list_worktrees(project_path):
 
 
 def _dirty_files(path):
-    """Paths with uncommitted work (a rename counts as its new path), or None."""
-    out = _git(['status', '--porcelain'], path)
+    """Paths with uncommitted work, or None. Untracked directories are listed file by
+    file and a rename counts as both its paths."""
+    out = _git(_PLAIN + ['status', '--porcelain', '-uall'], path)
     if out is None:
         return None
-    return [l[3:].split(' -> ')[-1].strip('"') for l in out.splitlines() if l.strip()]
+    return [p.strip('"') for l in out.splitlines() if l.strip() for p in l[3:].split(' -> ')]
 
 
 def dirty(path):
@@ -97,9 +103,11 @@ def dirty(path):
 
 
 def _changed_files(path, main_head, dirty_files):
-    """Every file a worktree changed against its merge-base with main, plus its
-    dirty ones; `None` when git could not say. The main tree has no base of its own."""
-    out = _git(['diff', '--name-only', f'{main_head}...HEAD'], path) if main_head else ''
+    """Every file a worktree changed against its merge-base with `main_head` (a full
+    sha), plus its dirty ones; `None` when git could not say. Renames are not
+    detected, so both sides of one are listed. The main tree has no base of its own."""
+    out = _git(_PLAIN + ['diff', '--name-only', '--no-renames', f'{main_head}...HEAD'],
+               path) if main_head else ''
     if out is None or dirty_files is None:
         return None
     return {f for f in out.splitlines() if f.strip()} | set(dirty_files)
@@ -181,9 +189,10 @@ def board(project_path, proj_folder=None, by_cwd=None):
     {worktrees: [{path, name, branch, head, main, dirty, ahead, behind,
     session}], overlaps: [{a, b, count, files}], repo} where `session` is the
     newest session running in that worktree, or None. `overlaps` is advisory:
-    each pair of worktrees whose changes since the merge-base with main (plus
-    dirty files) share files; `overlaps_skipped` is set instead when there are
-    more than OVERLAP_MAX_TREES worktrees.
+    each pair of worktrees whose changes since the merge-base with the main worktree's
+    HEAD (a bare main repo's default branch), plus dirty files, share files;
+    `overlaps_skipped` is set instead when there are more than OVERLAP_MAX_TREES
+    worktrees.
 
     `by_cwd` lets a multi-repo caller scan sessions ONCE and share the result;
     left alone it scans for itself, which is what the single-repo path does.
@@ -197,6 +206,8 @@ def board(project_path, proj_folder=None, by_cwd=None):
     rows = []
     changed = {}
     check = sum(not t.get('bare') for t in trees) <= OVERLAP_MAX_TREES
+    base = ((_git(['rev-parse', 'HEAD'], trees[0]['path']) or '').strip()
+            if check else '')
     for t in trees:
         if t.get('bare'):
             continue
@@ -206,7 +217,7 @@ def board(project_path, proj_folder=None, by_cwd=None):
         n_dirty = len(files or ())
         if check:
             changed[t['path']] = _changed_files(
-                t['path'], '' if t['main'] else trees[0]['head'], files)
+                t['path'], '' if t['main'] else base, files)
         ahead, behind = ahead_behind(t['path'])
         if s:
             age = now - s['mtime']
