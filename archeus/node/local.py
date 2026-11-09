@@ -1277,6 +1277,13 @@ class LocalNode:
         return rows
 
     @staticmethod
+    def git_diff(root, base, rev):
+        """The unified diff of base..rev, no context lines and no configured diff
+        program (nothing is spawned but git); None when git cannot tell."""
+        return proc.git(['diff', '-U0', '--no-color', '--no-ext-diff', '--no-textconv',
+                         base, rev, '--'], root, timeout=60)
+
+    @staticmethod
     def branch_exists(root, branch):
         return LocalNode.git_resolve(root, 'refs/heads/' + branch) is not None
 

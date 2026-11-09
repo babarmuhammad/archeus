@@ -344,6 +344,20 @@ def test_a_task_line_quotes_the_verifier_and_every_check_it_ran(rig):
         '    acceptance [automatic]: the checks pass']
 
 
+def test_the_weakening_findings_of_a_verification_are_listed_for_the_reviewer(rig):
+    # T-1067: the advisory check's findings reach the prompt, labelled as read from
+    # the diff and 20 to a verification
+    r = rig()
+    s = r.scene()
+    weak = {'name': 'test weakening (advisory)', 'kind': 'git', 'result': 'pass',
+            'findings': ['test file deleted: tests/a.py']
+                        + ['assertions removed: t%d' % i for i in range(25)]}
+    r.verification(Ref('task', s['tid']), s['pid'], checks=(dict(CHECK), weak))
+    block = _block(r.prompt(s['mid']), TASK_LINE, 'advisory, read')
+    assert block[0] == '    advisory, read from the diff: test file deleted: tests/a.py'
+    assert len(block) == 20 and block[-1].endswith('assertions removed: t18')
+
+
 def test_a_verification_that_ran_no_checks_says_so_instead_of_nothing(rig):
     # reviewer.py:66 (`or 'no checks'`): with the fallback gone the line ends in
     # a colon and a space, which a reviewer reads as an empty detail, not as
