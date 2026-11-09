@@ -295,6 +295,9 @@ class VerifyWorker:
         checks = []
         if t.kind == 'code_change' and base is not None:
             checks.append(evidence.changes_check(self.node, root, base, revision))
+            advisory = evidence.weakening_check(self.node, root, base, revision)
+            if advisory:
+                checks.append(advisory)
         checks += evidence.run_commands(self.node, ws, cmds, verification_id=vid,
                                         timeout_s=self.timeout_s, verifier_version=version)
         now = self.node.git_head(ws)

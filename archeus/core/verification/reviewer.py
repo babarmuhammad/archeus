@@ -64,6 +64,8 @@ def prompt(conn, m, diff, homes):
             lines.append('    verification %s by %s at %s: %s' % (
                 v.state, v.verifier, (v.revision or 'no repository')[:12], '; '.join(
                     '%s %s' % (c['name'], c['result']) for c in v.checks) or 'no checks'))
+            lines += ['    advisory, read from the diff: %s' % scrub_text(f, homes)
+                      for c in v.checks for f in c.get('findings', ())[:20]]
         for e in (r.entity for r in rows.where(conn, entities.Execution, task_id=t.id)):
             if e.summary:
                 lines.append('    CLAIM by the agent (attempt %d): %s' % (

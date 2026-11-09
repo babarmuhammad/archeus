@@ -26,6 +26,10 @@ J = 'tests/v1/judge/test_v01_outcome_verification.py'
 I = 'tests/v1/integration/test_verification.py'
 U = 'tests/v1/unit/test_verification_units.py'
 P = 'tests/v1/integration/test_provenance.py'
+EVD = 'archeus/core/verification/evidence.py'
+LOC = 'archeus/node/local.py'
+W = 'tests/v1/unit/test_verification_weakening.py'
+R = 'tests/v1/unit/test_gaps_core_verification_reviewer.py'
 IP = '[inprocess]'
 
 MUTATIONS = [
@@ -120,6 +124,44 @@ MUTATIONS = [
      "            performed_by(tx.conn, e),\n"
      "            model=(provenance or {}).get('reported_model') or e.model)")],
      [P + '::test_M06_a_reported_model_other_than_the_routed_one_is_recorded_not_failed']),
+    # ── the advisory test-weakening check (T-1067) ──
+    ('Z17', 'a test moved to another file is reported as removed', [(EVD,
+     "            if m and m.group('name') not in added_names:",
+     "            if m:")],
+     [W + '::test_a_removed_test_function_is_named_and_a_moved_one_is_not']),
+    ('Z18', 'a file with as many assertions as before is reported', [(EVD,
+     "        if net > 0:", "        if net >= 0:")],
+     [W + '::test_assertions_removed_are_counted_net_per_file']),
+    ('Z19', 'a skip marker that was already there is reported as added', [(EVD,
+     "            if s['marker'].search(a) and a.strip() not in gone:",
+     "            if s['marker'].search(a):")],
+     [W + '::test_a_marker_that_was_already_there_is_not_added']),
+    ('Z20', 'a lowered timeout is reported as raised', [(EVD,
+     "if k in old and new[k] > old[k]]", "if k in old and new[k] != old[k]]")],
+     [W + '::test_a_raised_timeout_or_threshold_is_a_finding_and_a_lowered_one_is_not']),
+    ('Z21', 'the advisory check fails the verification', [(EVD,
+     "    return {'name': WEAKENING, 'kind': 'git', 'result': 'pass',\n"
+     "            'detail': '%d finding(s), advisory'",
+     "    return {'name': WEAKENING, 'kind': 'git', 'result': 'fail',\n"
+     "            'detail': '%d finding(s), advisory'")],
+     [W + '::test_a_finding_is_a_passing_git_check_with_its_findings']),
+    ('Z22', 'a deleted test file is also reported test by test', [(EVD,
+     "            found.append('test file deleted: %s' % f['path'])\n            continue\n",
+     "            found.append('test file deleted: %s' % f['path'])\n")],
+     [W + '::test_a_deleted_test_file_is_one_finding_not_one_per_test']),
+    ('Z23', 'the worker never records the advisory check', [(WRK,
+     "            if advisory:\n                checks.append(advisory)\n", "")],
+     [W + '::test_the_worker_records_the_check_after_changes_and_only_for_a_code_change']),
+    ('Z24', 'a file that is not a test is read as one', [(EVD,
+     "        if s is None:\n            continue\n        if f['deleted']:",
+     "        s = s or _SHAPES['py']\n        if f['deleted']:")],
+     [W + '::test_a_file_that_is_not_a_test_is_never_read']),
+    ('Z25', 'the diff may run a configured diff program', [(LOC,
+     "'--no-color', '--no-ext-diff', '--no-textconv',", "'--no-color',")],
+     [W + '::test_git_diff_runs_no_configured_diff_or_textconv_program']),
+    ('Z26', 'the review prompt lists every finding, uncapped', [(REV,
+     "c.get('findings', ())[:20]]", "c.get('findings', ())]")],
+     [R + '::test_the_weakening_findings_of_a_verification_are_listed_for_the_reviewer']),
 ]
 
 

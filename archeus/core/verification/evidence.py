@@ -5,6 +5,7 @@ found, run by Core in the workspace. The agent's own report is never read here.
 
 import json
 import os
+import re
 import shlex
 import shutil
 
@@ -136,6 +137,119 @@ def changes_check(node, root, base, revision):
                 'detail': 'the task changed nothing (%s..%s)' % (base[:12], revision[:12])}
     return {'name': 'changes', 'kind': 'git', 'result': 'pass',
             'detail': '%d file(s) changed' % len(stat), 'files': [p for _a, _d, p in stat][:50]}
+
+
+#: name of the advisory check `weakening_check` records
+WEAKENING = 'test weakening (advisory)'
+
+#: how a test file of each language is told, and its tests, assertions and the
+#: markers that switch a test off; the language is the file's own extension
+_SHAPES = {
+    'py': {
+        'file': re.compile(r'(^|/)(test_[^/]*|[^/]*_test|conftest)\.py$|(^|/)tests?/.+\.py$'),
+        'test': re.compile(r'^\s*(?:async\s+)?def\s+(?P<name>test\w*)\s*\('),
+        'assertion': re.compile(r'^\s*assert\b|\bself\.assert\w+\(|\bpytest\.raises\('),
+        'marker': re.compile(r'@pytest\.mark\.(?:skip|skipif|xfail)\b|\bpytest\.(?:skip|xfail)\('
+                             r'|@unittest\.(?:skip\w*|expectedFailure)\b')},
+    'ts': {
+        'file': re.compile(r'\.(?:test|spec)\.[cm]?[jt]sx?$|(^|/)__tests__/.+\.[cm]?[jt]sx?$'),
+        'test': re.compile(r'^\s*(?:it|test)(?:\.\w+)*\s*\(\s*(?P<q>[\'"`])(?P<name>.+?)(?P=q)'),
+        'assertion': re.compile(r'\bexpect\s*\(|\bassert(?:\.\w+)?\s*\('),
+        'marker': re.compile(r'\b(?:it|test|describe)(?:\.\w+)*\.(?:only|skip|todo|fixme)\b'
+                             r'|\b(?:xit|xtest|xdescribe|fit|fdescribe)\s*\(')}}
+#: a bound a test file states as `name = 12`, `name: 12` or `name(12)`
+_BOUND = re.compile(r'(timeout|threshold|tolerance|deadline)\w*["\']?\s*[=:(]\s*(\d[\d_]*(?:\.\d+)?)',
+                    re.I)
+_FINDINGS_KEPT = 50
+
+
+def _shape_of(path):
+    return next((s for s in _SHAPES.values() if path and s['file'].search(path)), None)
+
+
+def _parse_diff(diff):
+    """[{path, deleted, hunks: [(removed, added)]}] of a `git diff -U0`: the lines of
+    each hunk, never the headers (a removed `-- x` line reads like one)."""
+    files, cur, in_hunk = [], None, False
+    for line in diff.splitlines():
+        if line.startswith('diff --git '):
+            cur, in_hunk = {'path': None, 'deleted': False, 'hunks': []}, False
+            files.append(cur)
+        elif cur is None:
+            continue
+        elif line.startswith('@@ '):
+            cur['hunks'].append(([], []))
+            in_hunk = True
+        elif in_hunk:
+            if line[:1] in ('-', '+'):
+                cur['hunks'][-1][line[0] == '+'].append(line[1:])
+        elif line.startswith('deleted file mode'):
+            cur['deleted'] = True
+        elif line.startswith(('--- a/', '+++ b/')):
+            cur['path'] = line[6:].split('\t')[0]
+    return files
+
+
+def _bounds(line):
+    return {m.group(1).lower(): float(m.group(2).replace('_', '')) for m in _BOUND.finditer(line)}
+
+
+def _clip(text, n=80):
+    text = text.strip()
+    return text if len(text) <= n else text[:n - 3] + '...'
+
+
+def weakening(diff):
+    """What a `git diff -U0` does to the tests it touches, as a list of findings:
+    test files deleted, test functions removed (and named nowhere in what was
+    added), assertions removed (net per file), skip/xfail/`.only` markers added
+    and timeouts or thresholds raised. Pure; a finding is a claim to check, not a
+    verdict."""
+    kept = [(f, _shape_of(f['path'])) for f in _parse_diff(diff)]
+    added_names = {m.group('name') for f, s in kept if s and not f['deleted']
+                   for _r, adds in f['hunks'] for a in adds if (m := s['test'].match(a))}
+    found = []
+    for f, s in kept:
+        if s is None:
+            continue
+        if f['deleted']:
+            found.append('test file deleted: %s' % f['path'])
+            continue
+        removed = [r for rs, _a in f['hunks'] for r in rs]
+        added = [a for _r, adds in f['hunks'] for a in adds]
+        for r in removed:
+            m = s['test'].match(r)
+            if m and m.group('name') not in added_names:
+                found.append('test removed: %s::%s' % (f['path'], _clip(m.group('name'))))
+        net = (sum(bool(s['assertion'].search(r)) for r in removed)
+               - sum(bool(s['assertion'].search(a)) for a in added))
+        if net > 0:
+            found.append('assertions removed: %s (%d net)' % (f['path'], net))
+        gone = {r.strip() for r in removed}
+        for a in added:
+            if s['marker'].search(a) and a.strip() not in gone:
+                found.append('skip/xfail/only marker added: %s: %s' % (f['path'], _clip(a)))
+        for rs, adds in f['hunks']:
+            for r, a in zip(rs, adds):
+                old, new = _bounds(r), _bounds(a)
+                found += ['%s raised: %s (%g -> %g)' % (k, f['path'], old[k], new[k])
+                          for k in new if k in old and new[k] > old[k]]
+    return found
+
+
+def weakening_check(node, root, base, revision):
+    """The advisory `git` check of what the change did to the tests, or None when
+    it did nothing to them. Always `pass`: it informs the review and the trace and
+    never decides the verdict. Reads Git facts only."""
+    diff = node.git_diff(root, base, revision)
+    if diff is None:
+        return {'name': WEAKENING, 'kind': 'git', 'result': 'pass',
+                'detail': 'git could not read the diff of %s..%s' % (base[:12], revision[:12])}
+    found = weakening(diff)
+    if not found:
+        return None
+    return {'name': WEAKENING, 'kind': 'git', 'result': 'pass',
+            'detail': '%d finding(s), advisory' % len(found), 'findings': found[:_FINDINGS_KEPT]}
 
 
 def reported_model(execution_id):
