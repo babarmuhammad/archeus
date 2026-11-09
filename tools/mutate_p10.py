@@ -24,7 +24,9 @@ MGR = 'archeus/core/execution/manager.py'
 EXE = 'archeus/core/application/executions.py'
 CALLS = 'archeus/core/calls.py'
 ENT = 'archeus/core/domain/entities.py'
+OUT = 'archeus/core/application/outcomes.py'
 U = 'tests/v1/unit/test_routing_units.py'
+OC = 'tests/v1/unit/test_outcomes_cache.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -206,6 +208,14 @@ MUTATIONS = [
      "           and r.created_at > since and r.entity.id not in dropped]",
      "           and r.entity.id not in dropped]",
      [I + '::test_I_R3_a_mission_stays_where_it_runs_until_its_resources_are_set']),
+    ('R38', 'a cache figure nobody reported read as 0', OUT,
+     "    return total if n is None else (total or 0) + n\n",
+     "    return (total or 0) + (n or 0)\n",
+     [OC + '::test_nothing_reported_stays_none_never_zero']),
+    ('R39', 'cache totals not split by account', OUT,
+     "(d.harness_id, d.account_ref, d.model), {",
+     "(d.harness_id, d.model), {",
+     [OC + '::test_cache_totals_sum_what_was_reported_and_split_by_route']),
 ]
 
 
