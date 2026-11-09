@@ -85,7 +85,7 @@ class Conn:
     def getpeername(self):
         return self.remote
 
-    def makefile(self, mode):
+    def makefile(self, mode, buffering=-1):
         self.opened += 1
         if self.on_open:
             self.on_open()
@@ -162,6 +162,7 @@ def _no_listener_outlives_its_test():
 class Rig:
     def __init__(self, backend=None, principal=PRINCIPAL, bind=None, live=True, **kw):
         self.backend, self.sent, self.socks = backend or Backend(), [], []
+        self.now = [T0]
         self.principals = []
 
         def principal_of(evidence):
@@ -802,3 +803,65 @@ def test_without_a_grant_the_boundary_names_no_proxy(tmp_path, sdk, gate, monkey
     h.boundary.launch(['a.exe'], cwd=req.workspace, env={}, profile=identity['profile'],
                       job=None, stdin=None, stdout=None)
     assert Made.made[-1].kw['proxy_url'] is None
+
+
+# ── a request is bounded by the clock, not by how often a byte arrives ──
+
+class Drip(io.RawIOBase):
+    """*head* at once, then one byte a time, each costing *step* seconds of the clock."""
+
+    def __init__(self, now, head=b'', step=9.0):
+        self.now, self.head, self.step, self.reads = now, head, step, 0
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        self.reads += 1
+        if self.head:
+            n = min(len(b), len(self.head))
+            b[:n], self.head = self.head[:n], self.head[n:]
+            return n
+        self.now[0] += self.step
+        b[0:1] = b'A'
+        return 1
+
+
+def dripped(rig, g, head=b''):
+    drip = Drip(rig.now, head)
+    conn = Conn(g.port)
+    conn.makefile = lambda mode, buffering=-1: drip if buffering == 0 else io.BufferedReader(drip)
+    g.ep.handle(conn)
+    return conn, drip
+
+
+@pytest.mark.parametrize('what', ['the request line', 'the body'])
+def test_a_request_dripped_a_byte_at_a_time_ends_at_the_read_deadline(what):
+    rig = Rig(clock=lambda: rig.now[0])
+    g = rig.grant()
+    head = b'' if what == 'the request line' else http(g.token, body=b'x' * 64)[:-64]
+    conn, drip = dripped(rig, g, head)
+    assert status(conn) == 408 and rig.sent == []
+    assert drip.reads <= B.READ_DEADLINE_S // 9 + 3 and conn.closed
+    assert conn.timeout <= 10
+
+
+def test_a_worker_that_cannot_start_closes_its_connection_frees_its_slot_and_keeps_accepting(monkeypatch):
+    class Flaky(threading.Thread):
+        def start(self):
+            if self._target.__name__ == '_one':
+                raise RuntimeError("can't start new thread")
+            super().start()
+
+    monkeypatch.setattr(L, 'threading', SimpleNamespace(
+        Thread=Flaky, BoundedSemaphore=threading.BoundedSemaphore, Lock=threading.Lock))
+    rig = Rig()
+    g = rig.grant()
+    first, second = Conn(g.port, http(g.token)), Conn(g.port, http(g.token))
+    rig.socks[0].queue.append(first)
+    wait(lambda: first.closed)
+    rig.socks[0].queue.append(second)
+    wait(lambda: second.closed)
+    assert first.sent == second.sent == b'' and first.opened == second.opened == 0
+    assert g.ep._slots._value == L.MAX_CONNECTIONS
+    rig.broker.revoke(g.bd.execution_id)

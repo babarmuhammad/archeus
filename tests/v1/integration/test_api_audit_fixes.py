@@ -11,6 +11,8 @@ import pytest
 from archeus.api import auth
 from archeus.core.domain import entities, ids
 from archeus.core.execution import output
+from archeus.core.redact import redact_json
+from archeus.harnesses import base
 from archeus.harnesses.fake import FakeHarness
 from archeus.infra.paths import ExecPaths
 from v1.judge.http import TUNNEL, request
@@ -266,3 +268,74 @@ def test_f11_a_cursor_in_non_ascii_digits_is_a_400(tc):
         r = tc.http('GET', '/v1/events?after=%s&limit=1' % digits)
         assert (r.status, r.json()['detail']['field']) == (400, 'cursor')
     assert tc.http('GET', '/v1/events?after=0&limit=1').status == 200
+
+
+# ── a private key split over the lines of a stream is still one key ──
+
+_KEY_LINES = ['-----BEGIN PRIVATE KEY-----', 'U1lOVEhfUFJJVkFURV9CT0RZ', 'U1lOVEhfU0VDT05E',
+              '-----END PRIVATE KEY-----', 'after the key']
+
+
+def _stream(lines):
+    exe = _exe()
+    paths = ExecPaths(exe.id)
+    os.makedirs(paths.dir)
+    with open(paths.stream, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(''.join(line + '\n' for line in lines))
+    return exe, paths
+
+
+def _texts(got):
+    return [e['text'] for e in got['events']]
+
+
+def test_a_key_on_separate_stderr_lines_is_redacted_in_every_line():
+    exe, _ = _stream(['before'] + _KEY_LINES)
+    got = output.read(exe, FakeHarness())
+    assert 'U1lOVEhf' not in json.dumps(got) and _texts(got)[0] == 'before'
+    assert _texts(got)[-1] == 'after the key'
+
+
+@pytest.mark.parametrize('cut', [2, 3, 4])
+def test_a_read_that_starts_inside_a_key_redacts_the_rest_of_it(cut):
+    exe, paths = _stream(['before'] + _KEY_LINES)
+    start = sum(len(line) + 1 for line in (['before'] + _KEY_LINES)[:cut])
+    got = output.read(exe, FakeHarness(), start)
+    assert 'U1lOVEhf' not in json.dumps(got) and _texts(got)[-1] == 'after the key'
+
+
+def test_a_window_cut_inside_a_key_redacts_the_rest_of_it(monkeypatch):
+    exe, _ = _stream(['x'] * 40 + _KEY_LINES[:3] + ['SYNTHMORE'] * 40 + _KEY_LINES[3:])
+    monkeypatch.setattr(output, 'MAX_BYTES', 200)
+    got = output.read(exe, FakeHarness())
+    assert got['truncated'] and 'SYNTHMORE' not in json.dumps(got) and _texts(got)[-1] == 'after the key'
+
+
+def test_a_key_over_the_batches_of_a_long_read_is_redacted():
+    exe, paths = _stream(_KEY_LINES)
+    seen, offset = [], 0
+    while True:
+        events, end = base.read_stream(paths.stream, offset, 1)
+        if end == offset:
+            break
+        seen += [redact_json(e)['text'] for e in events]
+        offset = end
+    assert 'U1lOVEhf' not in ''.join(seen) and seen[-1] == 'after the key'
+
+
+def test_a_key_too_long_to_see_its_start_is_still_redacted(monkeypatch):
+    body = ['U1lOVEhfQk9EWV9MSU5F%04d' % i for i in range(30)]
+    exe, _ = _stream(['-----BEGIN PRIVATE KEY-----'] + body + ['-----END PRIVATE KEY-----', 'after'])
+    monkeypatch.setattr(base, 'KEY_PROBE', 100)
+    start = sum(len(line) + 1 for line in body[:20]) + 28
+    got = output.read(exe, FakeHarness(), start)
+    assert 'U1lOVEhf' not in json.dumps(got) and _texts(got)[-1] == 'after'
+
+
+@pytest.mark.parametrize('pad', [95, 150])
+def test_a_key_that_begins_inside_an_oversized_line_is_redacted_after_it(monkeypatch, pad):
+    monkeypatch.setattr(base, 'MAX_LINE', 100)
+    exe, _ = _stream(['y' * pad + '-----BEGIN PRIVATE KEY-----' + 'z' * 400, 'SYNTHBODYLINE',
+                      '-----END PRIVATE KEY-----', 'after'])
+    got = output.read(exe, FakeHarness())
+    assert 'SYNTHBODYLINE' not in json.dumps(got) and _texts(got)[-1] == 'after'

@@ -9,14 +9,15 @@ from archeus.core.domain.ids import TOKEN_PREFIXES
 # redact() is for free text. A JSON document goes through redact_json, which
 # redacts the parsed strings and so can never cut a quote or an escape. Every
 # pattern stays linear: a start is anchored or has a bounded prefix, and each
-# repeat has one way to match. A PEM runs to its END line or PEM_MAX characters,
-# whatever the key's lines carry (a Read tool's arrows, a docker prefix, `> `),
-# so no foreign character can end the match with the rest of the key still in
-# the text.
-PEM_MAX = 16384
+# repeat has one way to match. A PEM runs to its END line, or to the end of the
+# text when it has none, whatever the key's lines carry (a Read tool's arrows, a
+# docker prefix, `> `) and however long it is: a bound would leave the rest of an
+# oversized key in the text, so the scan fails closed instead. A key cut over the
+# lines of a stream is followed by pem_open and close_pem.
 _PEM_END = r'-----END [A-Z ]{0,32}PRIVATE KEY-----'
-_PEM = (r'-----BEGIN [A-Z ]{0,32}PRIVATE KEY-----(?:(?!' + _PEM_END + r')[\s\S]){0,%d}(?:%s)?'
-        % (PEM_MAX, _PEM_END))
+_PEM_END_AT = re.compile(_PEM_END)
+_PEM_MARK = re.compile(r'-----(BEGIN|END) [A-Z ]{0,32}PRIVATE KEY-----')
+_PEM = r'-----BEGIN [A-Z ]{0,32}PRIVATE KEY-----[\s\S]*?(?:%s|\Z)' % _PEM_END
 # What may stand before a token: a character that cannot continue it, or the
 # `n` or `t` of a literal backslash-n or backslash-t, which a string escaped
 # twice has in place of a newline or a tab.
@@ -47,6 +48,25 @@ def redact(text):
     return SECRET.sub(lambda m: (m.group('keep') or '') + '[redacted]', text)
 
 
+def pem_open(text, inside=False):
+    """Whether *text*, a fragment of a stream that starts *inside* a private key
+    or not, ends inside one."""
+    for m in _PEM_MARK.finditer(text):
+        inside = m.group(1) == 'BEGIN'
+    return inside
+
+
+def close_pem(text, inside):
+    """(*text* with the tail of a key it starts inside of redacted, whether it ends
+    inside one). A fragment with no END line is redacted whole."""
+    if not inside:
+        return text, pem_open(text)
+    m = _PEM_END_AT.search(text)
+    if m is None:
+        return '[redacted]', True
+    return '[redacted]' + text[m.end():], pem_open(text[m.end():])
+
+
 def redact_json(obj):
     """*obj* (parsed JSON) with every string and key redacted. The structure
     cannot change: only strings are matched, never their JSON spelling. Iterative,
@@ -62,13 +82,19 @@ def redact_json(obj):
             todo.extend((x, new, i) for i, x in enumerate(v))
         elif isinstance(v, dict):
             dst[k] = new = {}
-            for key, x in v.items():
-                shown = redact(key) if isinstance(key, str) else key
+            names = [redact(k) if isinstance(k, str) else k for k in v]
+            # two keys that redact to one name must stay two fields: when that happens, every
+            # key that is or holds `[redacted` takes its position, so no name can repeat
+            clash = len(set(names)) < len(names)
+            for i, (key, x) in enumerate(v.items()):
+                name = shown = names[i]
+                if clash and isinstance(key, str) and (name != key or '[redacted' in key):
+                    shown = '%s #%d' % (name, i)
                 if isinstance(key, str) and isinstance(x, str):
                     # a secret named by its key (`aws_secret_access_key`, `Authorization: Basic`)
                     # is matched on the pair, as it reads in text
                     pair = redact('%s: %s' % (key, x))
-                    new[shown] = pair[len(shown) + 2:] if pair.startswith(shown + ': ') else '[redacted]'
+                    new[shown] = pair[len(name) + 2:] if pair.startswith(name + ': ') else '[redacted]'
                 else:
                     new[shown] = None
                     todo.append((x, new, shown))
