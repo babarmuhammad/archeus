@@ -7,7 +7,7 @@ from archeus.core.domain import entities
 from archeus.core.domain.actions import ACTION_CLASSES
 from archeus.core.execution.command_allowlist import ROWS, Allowed, Held, classify
 from v1.integration.test_execution import DONE, TOOL, _running, ended
-from v1.integration.test_p21_activity import _current, x  # noqa: F401
+from v1.integration.test_p21_activity import _BRACE_WORDS, _current, x  # noqa: F401
 from v1.integration.test_policy import task
 from v1.unit.test_command_allowlist import CONTEXT, VECTORS
 
@@ -136,6 +136,13 @@ def test_six_review_bypass_families_hold_through_manager(hook, command):
     assert isinstance(classify(command, evidence[0]), Held)
     assert serve(command)['decision'] in ('halt', 'deny')
     assert not {'/', '@'} & set(_current(x, e.id)['label'])
+
+
+@pytest.mark.parametrize('command', [*_BRACE_WORDS, "grep '{a,b}' f", 'grep "{x}" f'])
+def test_a_brace_word_is_held_through_manager_under_allow_all_policy(hook, command):
+    x, e, serve, evidence = hook
+    assert serve(command)['decision'] in ('halt', 'deny')
+    assert _current(x, e.id)['decision'] != 'allow'
 
 
 @pytest.mark.parametrize('context,command', (

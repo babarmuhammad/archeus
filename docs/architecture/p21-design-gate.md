@@ -1117,22 +1117,23 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   environment-selected config/executables. `--no-pager` alone proves none of these. PATH,
   NODE_OPTIONS, Python startup/import controls, RIPGREP_CONFIG_PATH and shell startup files must
   be controlled. Typed paths require contained regular-file/directory evidence; directories need
-  descendant containment, including implicit `.` for operand-free `ls`. Lexical checks cannot
+  descendant containment, including the implicit `.` of operand-free `ls`, `pytest` and `python -m pytest`. Lexical checks cannot
   solve symlink/junction escapes, mounts, races or TOCTOU. Missing/unknown evidence means HELD.
-  A14/A15 without operands currently require no explicit cwd path evidence; review remains open.
+  A14/A15 without operands discover tests beneath cwd, so they ask the same evidence for the
+  implicit `.` as an explicit `pytest .`; none means HELD (review R1 of T-128).
 - **Production Bash auto-allows nothing until a node attests the POSIX profile.** Re-grounded on
   this tree: `canonical.py:311` dispatches `canonicalise_hook`, classification is at :319-:320, row
-  construction at :335-:343. `manager.py:525` handles hooks, checks cwd at :543, builds context
-  at :546-:549, asks node at :550-:551, canonicalises at :552-:553 and forwards eligibility at
-  :554-:558; exceptions halt at :559-:561. `local.py:742-744` (`command_context`; `:151-:153` when this was written) returns `None` because current
+  construction at :335-:343. `manager.py:626` handles hooks, checks cwd at :644, builds context
+  at :647-:650, asks node at :651-:652, canonicalises at :653-:654 and forwards eligibility at
+  :655-:659; exceptions halt at :662-:664. `local.py:757-759` (`command_context`) returns `None` because current
   isolation does not attest resolution/startup environment. No production profile is enabled.
-- **HELD caps automatic allow.** `executions.py:928` authenticates/state/sequence checks before
-  authorization; DENY at :975-:976 and ASK at :977-:980 remain in force. Bash cap at :981-:985
+- **HELD caps automatic allow.** `executions.py:948` (`serve_hook`) authenticates/state/sequence checks before
+  authorization; DENY at :987-:990 (answered at :995-:996) and ASK at :991-:994 (answered at :997-:1000) remain in force. Bash cap at :1001-:1005
   halts otherwise automatic ALLOW with fixed reason `command form needs review` and fixed
   exec/command label. A permissive policy cannot admit a table miss. Explicit approval-backed
-  ALLOW remains a separate, exact single-use path (:960, :966, :983), never table membership.
-  Structured tools do not enter this cap. `_current` (:1022), `_label` (:1030) and `_hook_answer`
-  (:1052-:1062) retain closed labels and same-transaction current_action/hook_seq/event writes.
+  ALLOW remains a separate, exact single-use path (`approved`, :980, :986, :1001-:1003), never table membership.
+  Structured tools do not enter this cap. `_current` (:1042), `_label` (:1050) and `_hook_answer`
+  (:1072-:1082) retain closed labels and same-transaction current_action/hook_seq/event writes.
   The old classifier is not an eligibility fallback: `canonicalise_hook` preserves risk classes
   through closed exact program/subcommand tables after strict scan, with no policy host. This path
   remains; it cannot open automatic allow. Offline proof imports baseline versions only in child
