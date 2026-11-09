@@ -114,7 +114,7 @@ class FakeSessions:
 
     def turns(self, transcript_path, limit):
         out = []
-        with open(transcript_path, encoding='utf-8') as f:
+        with open(transcript_path, encoding='utf-8', errors='replace') as f:
             for line in f:
                 try:
                     obj = json.loads(line)

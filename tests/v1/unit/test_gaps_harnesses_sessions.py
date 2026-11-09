@@ -7,9 +7,6 @@ tests/v1/unit/test_session_units.py and tests/v1/unit/test_pi_discovery.py:
 every OS call goes through those seams (`claude_sessions.config.get_claude_exe`,
 `harnesses.exe/disabled`, `launch.build_launch_command`), every byte on disk is
 written through tmp_path with explicit newlines, and nothing spawns a process.
-The test marked xfail(strict=True) documents a parsed-hostile-input path where
-THE SOURCE is wrong (the real Claude/pi readers survive what FakeSessions
-crashes on).
 """
 
 import json
@@ -93,16 +90,12 @@ def test_the_fake_turns_drop_a_json_line_that_is_not_an_object(archeus_home):
     assert a.turns(p, 5) == [('assistant', 'kept')]
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='sessions.py:117 — FakeSessions.turns opens the transcript '
-                          'without errors="replace", so a byte string that is not valid '
-                          'UTF-8 raises UnicodeDecodeError; the real reader '
-                          '(transcripts.iter_json) replaces and never raises')
 def test_the_fake_turns_survive_invalid_utf8(archeus_home):
     a = FakeSessions('f_utf')
     p = a.path('r1')
-    _write_bytes(p, b'{"role": "assistant", "text": "kept"}\n\xff\xfe not utf-8\n')
-    assert a.turns(p, 5) == [('assistant', 'kept')]
+    _write_bytes(p, b'{"role": "assistant", "text": "kept"}\n\xff\xfe not utf-8\n'
+                    b'{"role": "user", "text": "bad \xff byte"}\n')
+    assert a.turns(p, 5) == [('assistant', 'kept'), ('user', 'bad � byte')]
 
 
 def test_an_empty_effort_level_is_never_offered():
