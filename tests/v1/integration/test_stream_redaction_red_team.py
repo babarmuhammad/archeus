@@ -1,8 +1,8 @@
-"""Red-team probes of the stream path: base.read_stream, execution/output.read, the Claude Code
-adapter's normalise, and the redactor they share. Driven the way the API drives them: a stream
-file, `output.read(execution, adapter, offset)`, then `public_output`.
-
-A FAILING test is a confirmed leak or blowup. Every secret is synthetic."""
+"""The red-team probes of the stream path, kept as regressions: base.read_stream,
+execution/output.read, the Claude Code adapter's normalise, and the redactor they share. Driven
+the way the API drives them: a stream file, `output.read(execution, adapter, offset)`, then
+`public_output`. Every shape here leaked or blew up once, or held when it was tried. Every
+secret is synthetic."""
 
 import json
 import os
@@ -124,11 +124,10 @@ def test_key_across_a_read_window_that_starts_at_each_line_held(rig):
         assert 'SYNTH' not in rig.text(start), start
 
 
-# ── LEAK: a client-chosen offset (routes.py execution_stream `from=`, any integer) ──
+# ── a client-chosen offset (routes.py execution_stream `from=`, any integer) ──
 
-def test_offset_inside_the_begin_marker(rig):
-    """LEAK: from=N with N inside the BEGIN line leaves nothing in the 64 KiB look-back that
-    reads as a marker, so every body line comes out as plain stderr text (base.py _inside_key)."""
+def test_an_offset_inside_the_begin_line_still_reads_the_key_as_open(rig):
+    """from=N inside the BEGIN line: the rest of that line is skipped, the key is still open."""
     rig.write([B, S, S, E])
     for n in (1, 5, 10, 20, 25):
         assert 'SYNTH' not in rig.text(n), n
@@ -140,25 +139,19 @@ def test_offset_inside_a_line_in_the_middle_of_the_body_held(rig):
         assert 'SYNTH' not in rig.text(n), n
 
 
-# ── LEAK: state that does not travel ──
+# ── a key over several strings: the state travels through every kind of event ──
 
 def test_key_begin_in_one_event_body_in_the_next(rig):
-    """LEAK: redaction state crosses stderr lines only. Two assistant events (or two text blocks)
-    are redacted separately, so the body of a key opened in the first is plain."""
     rig.write([ev(B), ev(S)])
     assert 'SYNTH' not in rig.text()
 
 
 def test_key_begin_in_a_json_event_body_in_stderr_lines(rig):
-    """LEAK: a JSON event line never sets `inside`, so stderr lines after one that opens a key
-    are not redacted."""
     rig.write([ev(B), S, S, E])
     assert 'SYNTH' not in rig.text()
 
 
 def test_key_begin_in_stderr_body_in_a_json_event(rig):
-    """The body arrives as an event: the BEGIN line opened state but state is only used on stderr
-    lines."""
     rig.write([B, ev(S), E])
     assert 'SYNTH' not in rig.text()
 
@@ -175,31 +168,31 @@ def test_key_as_lines_of_a_tool_input_array(rig):
     assert 'SYNTH' not in rig.text()
 
 
-def test_stream_json_stderr_event_does_not_carry_state(rig):
-    """A child's own {"type":"stderr"} JSON lines are passed through whole (adapter.normalise)."""
+def test_stream_json_stderr_events_carry_the_key_state(rig):
     rig.write([{'type': 'stderr', 'text': B}, {'type': 'stderr', 'text': S}])
     assert 'SYNTH' not in rig.text()
 
 
-def test_json_line_between_begin_and_body_changes_the_paged_answer(rig):
-    """LEAK: the look-back reads raw bytes, JSON lines included: an assistant event that merely
-    mentions the END marker between the BEGIN line and a body line makes a read that starts
-    after it think the key is closed (a sequential read ignores JSON lines)."""
-    rig.write([B, ev('rotate by deleting ' + E), S, S, S])
-    assert 'SYNTH' not in rig.text(rig.starts[3])
-    assert 'SYNTH' not in rig.text(rig.starts[4])
+def test_an_end_mentioned_in_a_json_event_does_not_close_a_stderr_key(rig):
+    """An assistant event that merely mentions the END marker between the BEGIN line and a
+    body line does not close a key printed on stderr, from any offset."""
+    for got in every_start(rig, [B, ev('rotate by deleting ' + E), S, S, S]):
+        assert 'SYNTH' not in got
 
 
-def test_json_line_mentioning_begin_masks_later_stderr(rig):
-    """Availability: an assistant event that mentions the BEGIN marker makes every read that
-    starts after it redact all stderr to `[redacted]` until an END line (look-back vs sequential
-    disagree)."""
-    rig.write([ev('grep for ' + B), 'real error one', 'real error two'])
-    got = rig.text(rig.starts[1])
-    assert 'real error one' in got, got
+def test_prose_in_an_event_does_not_end_a_key_printed_on_stderr(rig):
+    for got in every_start(rig, [B, ev('working on the deploy now'), S, E]):
+        assert 'SYNTH' not in got
 
 
-# ── the 64 KiB look-back: keys longer than it ──
+def test_a_begin_mentioned_in_a_json_event_leaves_later_stderr_prose(rig):
+    """Availability: an assistant event that mentions the BEGIN marker does not mask the
+    stderr prose after it, from any offset."""
+    for got in every_start(rig, [ev('grep for ' + B), 'real error one', 'real error two']):
+        assert 'real error two' in got, got
+
+
+# ── keys longer than a checkpoint apart: no look-back decides ──
 
 def long_key(fmt, n=2200, w=63):
     ls = [B] + [fmt % ('A' * w + '%03d' % (i % 1000)) for i in range(n)] + [E]
@@ -209,48 +202,37 @@ def long_key(fmt, n=2200, w=63):
 @pytest.mark.parametrize('name,fmt', [
     ('plain', '%s'), ('arrow', '   12→%s'), ('docker', '2026-01-01T00:00:00Z %s'),
     ('gt', '> %s'), ('crlf', '%s\r')])
-def test_key_longer_than_the_lookback_paged(rig, name, fmt):
-    """The look-back fails closed only on a line that is pure base64 (base.py _KEY_BODY). LEAK for
-    the arrow (Read tool), docker timestamp and `> ` prefixes the redact.py comment promises to
-    cover."""
+def test_key_longer_than_a_checkpoint_paged(rig, name, fmt):
     ls = long_key(fmt)
     ls[2100] = ls[2100].replace('AAA', S, 1)
     rig.write(ls)
-    assert rig.starts[1500] > base.KEY_PROBE
+    assert rig.starts[1500] > base.CHECKPOINT
     assert 'SYNTH' not in rig.text(rig.starts[1500])
     assert 'SYNTH' not in rig.text(rig.starts[2050])
 
 
-def test_key_longer_than_the_lookback_with_short_lines(rig):
-    """LEAK: body lines under 16 characters never match _KEY_BODY, so a key past the look-back
-    is not seen as one."""
+def test_key_longer_than_a_checkpoint_with_short_lines(rig):
     ls = [B] + ['a%04d' % i for i in range(19500)] + [E]
     ls[19000] = S
     rig.write(ls)
     assert 'SYNTH' not in rig.text(rig.starts[18990])
 
 
-def test_key_longer_than_the_lookback_with_a_dash_line_inside_it(rig):
-    """LEAK: any `-----` in the look-back (a divider an interleaved stderr line printed) turns
-    the fail-closed branch off."""
+def test_key_longer_than_a_checkpoint_with_a_dash_line_inside_it(rig):
     ls = [B] + [B64] * 600 + ['-----'] + [B64] * 600 + ['SYNTH' + B64] + [E]
     rig.write(ls)
-    assert rig.starts[1100] - rig.starts[1] > base.KEY_PROBE
+    assert rig.starts[1100] - rig.starts[1] > base.CHECKPOINT
     assert 'SYNTH' not in rig.text(rig.starts[1190])
 
 
-def test_key_longer_than_the_lookback_interleaved_json_line_before_the_offset(rig):
-    """LEAK: the last line before the offset is a stdout JSON event: not base64, so fail-closed
-    does not apply."""
+def test_key_longer_than_a_checkpoint_interleaved_json_line_before_the_offset(rig):
     ls = [B] + [B64] * 1500 + [{'type': 'system', 'subtype': 'x'}, 'SYNTH' + B64, E]
     rig.write(ls)
     assert 'SYNTH' not in rig.text(rig.starts[1502])
 
 
-def test_unrelated_hash_line_masks_following_stderr(rig):
-    """Availability / false positive: a pure-base64 or hex line (a sha256) as the last line
-    before a read start past 64 KiB, with no `-----` in the look-back, turns the read into a
-    private key: all stderr after it is `[redacted]` until the page ends."""
+def test_a_hash_line_far_into_the_stream_is_not_a_key(rig):
+    """Availability: a hash line before a read start far into the stream is not a key."""
     ls = ['z' * 80] * 1000 + ['e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
                               'Traceback: boom', 'ValueError: boom']
     rig.write(ls)
@@ -289,10 +271,9 @@ def test_huge_line_head_is_cut_at_200_bytes_after_a_secret_start(rig):
 
 # ── the 4 MiB window: a key that began before it ──
 
-def test_window_start_inside_a_key_longer_than_the_lookback(rig):
-    """LEAK without any hostile offset: read from 0 on a stream over MAX_BYTES starts at a line
-    inside the key (output._window), BEGIN is more than 64 KiB back, and the lines carry a
-    prefix. A key this long is unusual; the module says it fails closed."""
+def test_window_start_inside_a_key_begun_megabytes_before(rig):
+    """A read from 0 of a stream over MAX_BYTES starts at a line inside a key that began
+    megabytes before, and the lines carry a prefix."""
     line = '   12→' + B64
     n = (output.MAX_BYTES + (1 << 20)) // (len(line.encode()) + 1)
     ls = [B] + [line] * n + [E, 'tail']
@@ -303,12 +284,83 @@ def test_window_start_inside_a_key_longer_than_the_lookback(rig):
     assert got['truncated'] and not leaked
 
 
+# ── the key state's own rules (redact.scrub, and the fold of base.read_stream) ──
+
+def every_start(rig, lines):
+    """What a read from 0 and a read from each line start answer."""
+    rig.write(lines)
+    return [rig.text(s) for s in rig.starts]
+
+
+def test_a_stderr_key_runs_to_its_end_line_whatever_its_lines_say(rig):
+    for got in every_start(rig, [B, 'Proc-Type: 4,ENCRYPTED', 'this line is prose now', 'SYNTHpw1', E, 'after']):
+        assert 'SYNTH' not in got and 'prose' not in got and 'after' in got
+
+
+def test_the_text_after_an_end_line_that_closes_a_key_is_kept(rig):
+    rig.write([B, S, S[:5] + E + ' tail', 'after'])
+    assert [e['text'] for e in rig.read(0)['events']] == ['[redacted]', '[redacted]', '[redacted] tail', 'after']
+
+
+def test_prose_ends_a_key_of_the_json_channel_from_any_offset(rig):
+    lines = [ev('grep for ' + B), ev('nothing like that is in the tree'), ev('run 0123456789abcdefABCDEF'),
+             'hash 0123456789abcdefABCDEF']
+    for got in every_start(rig, lines):
+        assert '0123456789abcdefABCDEF' in got
+
+
+def test_a_key_over_json_strings_keeps_its_armor_headers_inside_it(rig):
+    rig.write([{'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Write', 'id': 't', 'input': {
+        'lines': ['-----BEGIN PGP PRIVATE KEY BLOCK-----', 'Comment: made by some tool here', '', S, '=abcd',
+                  '-----END PGP PRIVATE KEY BLOCK-----']}}]}}])
+    assert 'SYNTH' not in rig.text()
+
+
+def test_a_key_over_two_real_shaped_assistant_events(rig):
+    def turn(text):
+        return {'type': 'assistant', 'message': {
+            'id': 'msg_01', 'type': 'message', 'role': 'assistant', 'model': 'claude-x-1',
+            'content': [{'type': 'text', 'text': text}], 'stop_reason': None,
+            'usage': {'input_tokens': 3, 'output_tokens': 9, 'service_tier': 'standard'}},
+            'parent_tool_use_id': None, 'session_id': '5f1c0a8e-0000-4000-8000-000000000001'}
+    for got in every_start(rig, [turn('the key: ' + B), turn(S), turn(E), turn('done with it')]):
+        assert 'SYNTH' not in got
+    assert 'done with it' in rig.text()
+
+
+def test_an_escaped_marker_in_a_json_line_opens_the_key_for_a_paged_read(rig):
+    line = json.dumps({'type': 'stderr', 'text': B}).replace('-', '\\u002d')
+    for got in every_start(rig, [line, S, E]):
+        assert 'SYNTH' not in got
+
+
+def test_a_read_from_inside_a_line_starts_at_the_next_one(rig):
+    rig.write(['first line', 'second line'])
+    assert [e['text'] for e in rig.read(3)['events']] == ['second line']
+
+
+def test_a_stream_written_anew_is_folded_anew(rig, monkeypatch):
+    monkeypatch.setattr(base, 'CHECKPOINT', 64)
+    rig.write([B] + [B64] * 20)
+    rig.text(rig.starts[15])
+    rig.write(['plain line %03d ' % i + 'x' * 50 for i in range(30)])
+    got = rig.read(rig.starts[15])
+    assert got['events'] and all(e['text'].startswith('plain line') for e in got['events'])
+
+
+def test_the_fold_remembers_a_bounded_number_of_streams(tmp_path, monkeypatch):
+    monkeypatch.setattr(base, '_SEEN_MAX', 2)
+    for i in range(4):
+        p = tmp_path / ('s%d.jsonl' % i)
+        p.write_bytes(b'line\n')
+        base.read_stream(str(p))
+        assert len(base._SEEN) <= 2
+
+
 # ── blowups ──
 
-def test_a_window_of_tiny_lines_costs_seconds_and_hundreds_of_mb(rig):
-    """read_stream is called with no max_events by adapter.inspect, so the whole 4 MiB window
-    becomes events and MAX_EVENTS is applied afterwards (output.py:47-48). This writes
-    the full window (MAX_BYTES): about 2M events, roughly 0.5 GB while it runs."""
+def test_a_window_of_tiny_lines_reads_only_the_newest_lines(rig):
+    """The window is the newest MAX_EVENTS lines too, not the whole 4 MiB of 2M lines."""
     with open(rig.paths.stream, 'wb') as f:
         f.write(b'a\n' * (output.MAX_BYTES // 2))
     t = time.perf_counter()
@@ -318,16 +370,17 @@ def test_a_window_of_tiny_lines_costs_seconds_and_hundreds_of_mb(rig):
     assert dt < 2, '%.1fs for one 4 MiB window of 2-byte lines' % dt
 
 
-def test_deeply_nested_tool_input_breaks_the_read(rig):
-    """LEAK of availability: json.loads accepts ~990 levels, redact_json is iterative, then
-    public.system_value recurses (two frames a level) and raises RecursionError: the output
-    endpoint of that execution answers 500 on every read, from any offset before the line."""
+def test_an_event_nested_past_the_depth_cap_is_a_stderr_line(rig):
+    """Availability: an event nested past base.MAX_DEPTH is a stderr line, so no reader of it
+    (public.system_value, a JSON encoder) recurses that deep."""
     inner = 'x'
     for _ in range(700):
         inner = {'a': inner}
     rig.write([{'type': 'assistant', 'message': {'content': [
         {'type': 'tool_use', 'name': 'x', 'id': 't', 'input': inner}]}}])
-    json.dumps(rig.read(0))
+    got = rig.read(0)
+    json.dumps(got)
+    assert [e['type'] for e in got['events']] == ['stderr']
 
 
 def test_one_hundred_thousand_deep_array_is_a_stderr_line(rig):
@@ -353,10 +406,8 @@ def test_one_mb_line_with_a_key_in_it(rig):
 
 # ── the adapter's own fields ──
 
-def test_result_summary_is_stored_unredacted(rig):
-    """LEAK: normalise() puts `text[:2000]` of the result into `summary`; collect_result hands it
-    to X.record_end(summary=...) which stores it as Execution.summary (executions.py:545) with no
-    redact on that path. output.read redacts events, but this field never goes through it."""
+def test_the_result_summary_is_redacted(rig):
+    """The summary collect_result hands record_end is cut from a result already redacted."""
     rig.write([{'type': 'result', 'subtype': 'success', 'is_error': False, 'session_id': 's',
                 'result': 'done. token was Bearer ' + S}])
     handle = base.ProcessHandle(rig.exe.id, 4242, None, rig.paths.dir)

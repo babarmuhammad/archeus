@@ -19,18 +19,24 @@ MAX_BYTES = 4 << 20
 
 
 def _window(path, offset):
-    """(start, cut): *offset*, or the first line start within MAX_BYTES of the end."""
+    """(start, cut): from *offset*, at most the last MAX_BYTES (a read starting inside
+    a line skips to the next one) and the newest MAX_EVENTS + 1 lines: a window of
+    tiny lines costs a tail too."""
     try:
-        size = os.path.getsize(path)
+        f = open(path, 'rb')
     except FileNotFoundError:
         return offset, False
-    if size - offset <= MAX_BYTES:
-        return offset, False
-    start = size - MAX_BYTES
-    with open(path, 'rb') as f:
-        f.seek(start - 1)
-        f.readline(base.MAX_LINE)       # the rest of a line cut in two (or just the newline before start)
-        return f.tell(), True
+    with f:
+        size = os.fstat(f.fileno()).st_size
+        start = max(offset, size - MAX_BYTES)
+        f.seek(start)
+        tail = f.read(size - start)
+    end = len(tail)
+    for _ in range(MAX_EVENTS + 2):
+        end = tail.rfind(b'\n', 0, end)
+        if end < 0:
+            return start, start > offset
+    return start + end + 1, True
 
 
 def read(execution, adapter, offset=0):

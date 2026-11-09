@@ -1,7 +1,6 @@
-"""Red-team probes of archeus/core/redact.py (text and structural paths).
-
-A FAILING test here is a confirmed leak or blowup. A passing one is something that held.
-Every secret is synthetic."""
+"""The red-team probes of archeus/core/redact.py (text and structural paths), kept as
+regressions: every shape here leaked or blew up once, or held when it was tried. The
+deliberate obfuscations no pattern can see are listed as xfail. Every secret is synthetic."""
 
 import json
 import random
@@ -9,7 +8,7 @@ import time
 
 import pytest
 
-from archeus.core.redact import close_pem, pem_open, redact, redact_json
+from archeus.core.redact import last_mark, redact, redact_json, scrub
 
 BS = chr(92)
 S = 'SYNTHBODYabcdef0123456789'
@@ -48,11 +47,10 @@ def test_pem_body_without_end_held():
 
 
 def test_pem_pgp_private_key_block():
-    """LEAK: `gpg --export-secret-keys --armor` says PRIVATE KEY BLOCK, which neither the BEGIN
-    nor the END pattern allows (redact.py _PEM / _PEM_MARK)."""
+    """`gpg --export-secret-keys --armor` says PRIVATE KEY BLOCK."""
     t = '-----BEGIN PGP PRIVATE KEY BLOCK-----\n\n%s\n=abcd\n-----END PGP PRIVATE KEY BLOCK-----' % S
     gone(redact(t))
-    assert pem_open('-----BEGIN PGP PRIVATE KEY BLOCK-----\n' + S)
+    assert last_mark('-----BEGIN PGP PRIVATE KEY BLOCK-----\n' + S) == 'BEGIN'
 
 
 @pytest.mark.parametrize('marker', [
@@ -64,10 +62,13 @@ def test_pem_pgp_private_key_block():
     '-----BEGIN PRIVATE' + '\n' + 'KEY-----',
 ], ids=['tab', 'two-spaces', 'nbsp', 'lowercase', 'four-dashes', 'split-over-two-lines'])
 def test_pem_marker_variants(marker):
-    """LEAK for each: the BEGIN pattern is one exact spelling."""
+    """A marker is not one exact spelling: any blank, any case, four dashes or more."""
     gone(redact(marker + '\n' + S))
 
 
+@pytest.mark.xfail(strict=True, reason='deliberate obfuscation: no regex sees a zero-width '
+                   'character, a Unicode hyphen or a spelled-out escape (an agent that wants a key '
+                   'out can also base64 it)')
 @pytest.mark.parametrize('marker', [
     '-----BEGIN​ PRIVATE KEY-----',
     '-----BEGIN PRIVATE​ KEY-----',
@@ -75,13 +76,12 @@ def test_pem_marker_variants(marker):
     BS + 'u002d' * 5 + 'BEGIN PRIVATE KEY-----',
 ], ids=['zwsp-1', 'zwsp-2', 'unicode-hyphen', 'escaped-u002d'])
 def test_pem_marker_obfuscation_unfixable_by_regex(marker):
-    """Deliberate obfuscation (an agent that wants the key out can also base64 it); listed so
-    the caller sees it was tried."""
     gone(redact(marker + '\n' + S))
 
 
+@pytest.mark.xfail(strict=True, reason='not claimed: a key body that lost its marker is base64 '
+                   'like any other')
 def test_pem_body_without_any_marker():
-    """Not claimed: an OpenSSH or PKCS8 body that lost its header line."""
     b = 'b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW'
     assert b not in redact('id_ed25519:\n' + b)
 
@@ -122,12 +122,11 @@ def test_jwt_held(before):
 
 @pytest.mark.parametrize('before', ['access_token_', 'jwt-', 'x', 'token0'])
 def test_jwt_glued_to_a_word_character(before):
-    """LEAK: _EDGE (redact.py:20) refuses a JWT that follows [A-Za-z0-9_-]."""
+    """The left edge refuses a JWT glued to a word; its payload still starts at a dot."""
     gone(redact(before + JWT), 'SYNTHSIGabcdef')
 
 
 def test_jwt_empty_signature_alg_none():
-    """LEAK (low): the signature class needs 1+ chars, so `h.p.` is left whole."""
     gone(redact('eyJhbGciOiJub25lIn0.eyJzdWIiOiJTWU5USCJ9.'), 'eyJzdWIiOiJTWU5USCJ9')
 
 
@@ -139,9 +138,8 @@ def test_jwt_empty_signature_alg_none():
     BS.join(['{', '"Authorization', '": ', '"Basic dXNlcjpTWU5USEVUSUM="}']),
 ], ids=['header', 'equals', 'json-text', 'python-repr', 'escaped-json'])
 def test_basic_auth_forms(t):
-    """LEAK for json-text, python-repr and escaped-json: the pattern allows no quote between the
-    name and its colon (redact.py: `authorization\\s*[:=]\\s*basic`). A traceback prints headers
-    as a dict repr."""
+    """A quote may stand between the name and its colon: a traceback prints headers as a dict
+    repr."""
     gone(redact(t), 'dXNlcjpTWU5USEVUSUM')
 
 
@@ -151,8 +149,6 @@ def test_basic_auth_forms(t):
     'curl --user "admin:SYNTHpass1" https://x', 'curl --user=admin:SYNTHpass1 https://x',
 ], ids=['plain', 'single-quoted', 'double-quoted', 'attached', 'long-quoted', 'long-equals'])
 def test_curl_user_forms(t):
-    """LEAK for the quoted and attached spellings (redact.py -u/--user alternative needs the
-    user name to start the word)."""
     gone(redact(t), 'SYNTHpass1')
 
 
@@ -160,7 +156,6 @@ def test_curl_user_forms(t):
     'https://user:SYNTHpass1@host/x', 'https://SYNTHtoken12345@host/x',
 ])
 def test_url_userinfo(t):
-    """LEAK for a userinfo with no colon (a bare token before the @)."""
     gone(redact(t), 'SYNTHpass1' if 'pass' in t else 'SYNTHtoken12345')
 
 
@@ -183,8 +178,7 @@ def test_dict_key_is_a_secret():
 
 
 def test_pem_split_over_two_strings_of_a_list():
-    """LEAK: strings are redacted one by one (redact_json), so a key that a tool prints as
-    lines in a JSON array keeps every line after the BEGIN one."""
+    """A key a tool prints as the lines of a JSON array is one key over its strings."""
     gone(json.dumps(redact_json({'lines': ['-----BEGIN PRIVATE KEY-----', S, '-----END PRIVATE KEY-----']})))
 
 
@@ -207,8 +201,7 @@ def test_nested_json_inside_a_json_string_held_when_plain():
 
 
 def test_nested_json_in_a_string_with_basic_auth():
-    """LEAK: the same quote gap as test_basic_auth_forms, reached through a JSON document held
-    in a string (every tool_result / tool input that carries a JSON body)."""
+    """The quoted Basic form, reached through a JSON document held in a string."""
     inner = json.dumps({'Authorization': 'Basic dXNlcjpTWU5USEVUSUM='})
     gone(json.dumps(redact_json({'out': inner})), 'dXNlcjpTWU5USEVUSUM')
 
@@ -244,10 +237,8 @@ def test_non_str_keys_and_values():
     gone(str(out), 'CCCCCCCCCC')
 
 
-def test_tuple_set_bytes_are_not_traversed():
-    """LEAK (generic callers only, a JSON parse never yields these): redact_json recurses into
-    list and dict alone; tuple, set and bytes values and bytes/tuple keys pass through. Its
-    other caller, manager.py:332, hands it an adapter's inventory dict."""
+def test_tuple_set_and_bytes_are_redacted():
+    """Generic callers only (manager.py hands redact_json an adapter's inventory dict)."""
     out = redact_json({'t': ('sk-AAAAAAAAAA',), 'b': b'sk-BBBBBBBBBB', 's': {'sk-CCCCCCCCCC'},
                        ('sk-DDDDDDDDDD',): 1, b'sk-EEEEEEEEEE': 2})
     for s in 'ABCDE':
@@ -262,9 +253,8 @@ def test_lone_surrogates_and_pairs_do_not_crash():
     json.dumps(redact_json({'k\udc80': t}))
 
 
-def test_cyclic_structure_hangs_or_grows():
-    """Generic callers only. redact_json has no visited set: a self-referencing list never ends.
-    Run in a child with a hard timeout, so the suite cannot hang or grow."""
+def test_a_cyclic_structure_returns():
+    """Generic callers only. Run in a child with a hard timeout, so the suite cannot hang."""
     import subprocess
     import sys
     code = 'from archeus.core.redact import redact_json\na=[]\na.append(a)\nredact_json(a)'
@@ -277,8 +267,8 @@ def test_cyclic_structure_hangs_or_grows():
         pytest.fail('redact_json did not return on a cyclic list in 3 s (infinite loop, memory grows)')
 
 
-def test_shared_substructure_is_expanded_exponentially():
-    """Generic callers only: a DAG that shares sub-lists is redacted once per path."""
+def test_shared_substructure_is_walked_once():
+    """Generic callers only: a DAG that shares sub-lists is walked once per container."""
     o = ['sk-AAAAAAAAAAA']
     for _ in range(18):
         o = [o, o]
@@ -287,7 +277,7 @@ def test_shared_substructure_is_expanded_exponentially():
     assert time.perf_counter() - t < 2, 'depth 18 sharing takes 2^18 visits; depth 22 would take ~16x'
 
 
-# ── time: every probe, over 2 s for 1 MB is a finding ──
+# ── time: over 2 s for 1 MB is a finding ──
 
 def _timed(fn, limit=2.0):
     t = time.perf_counter()
@@ -318,9 +308,10 @@ def test_redact_is_linear_on_1mb(name):
 
 def test_pem_state_helpers_on_1mb():
     big = '-----BEGIN PRIVATE KEY-----\n' + ('A' * 64 + '\n') * (MB // 65)
-    _timed(lambda: pem_open(big))
-    _timed(lambda: close_pem(big, True))
-    _timed(lambda: pem_open('-----END ' * (MB // 9)))
+    _timed(lambda: scrub(big))
+    _timed(lambda: scrub(big, 'stderr', 'stderr'))
+    _timed(lambda: scrub(big, 'json', 'stderr'))
+    _timed(lambda: last_mark('-----END ' * (MB // 9)))
 
 
 def test_redact_json_one_mb_pairs_and_many_keys():
