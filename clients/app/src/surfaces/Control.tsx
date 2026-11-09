@@ -31,6 +31,7 @@ import { motionMode, type MotionPref } from '../data/commands';
 import { send } from '../data/core';
 import { CONTROL_SECTIONS, INSPECTOR_TABS, TAB_LABEL, href, objectHref } from '../nav/destinations';
 import { scheduleRows } from '../state/now';
+import { browserStorage, notifyState, notifyWanted, setNotifyWanted, type NotifyState } from '../state/notify';
 import { ago, armedText, attentionLabel, consumersText, consumptionText, estopSaid, known, pct, presenceLabel, spanText, stepUpBlocked, templateText, triggerText, usageText } from '../state/present';
 import { BUDGETS, draftBudgets, policyProblem, type PolicyDraft } from '../state/policy';
 import { LINK, MACHINE } from './Attention';
@@ -866,7 +867,40 @@ function Appearance() {
           </select>
         </label>
       </Section>
+      <Notifications />
     </>
+  );
+}
+
+const NOTIFY_SAYS: Record<NotifyState, string> = {
+  unsupported: 'This browser has no notifications.',
+  blocked: 'The browser blocks notifications for this page: allow them in its site settings.',
+  on: 'Shown only while this tab is hidden, once per item. Nothing leaves this browser.',
+  off: 'Off. Turning it on asks the browser for permission.',
+};
+
+function Notifications() {
+  const [wanted, setWanted] = useState(() => notifyWanted(browserStorage()));
+  const [permission, setPermission] = useState(typeof Notification === 'undefined' ? undefined : Notification.permission);
+  const state = notifyState(wanted, permission);
+  const choose = (on: boolean) => {
+    if (!on) {
+      setNotifyWanted(browserStorage(), false);
+      return setWanted(false);
+    }
+    void Notification.requestPermission().then((p) => {
+      setPermission(p);
+      setNotifyWanted(browserStorage(), p === 'granted');
+      setWanted(p === 'granted');
+    });
+  };
+  return (
+    <Section title="Notifications">
+      <label>
+        <input type="checkbox" checked={state === 'on'} disabled={state === 'unsupported' || state === 'blocked'} onChange={(e) => choose(e.target.checked)} /> Tell me when something needs me and this tab is hidden
+      </label>
+      <p className="hint">{NOTIFY_SAYS[state]}</p>
+    </Section>
   );
 }
 

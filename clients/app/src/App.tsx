@@ -25,6 +25,7 @@ import { reducedMotion } from './graph/loop';
 import { ActionButton, Fresh, useMe } from './components/ui';
 import { NOW_READS, clearSnapshot, keep, loadSnapshot, mayKeep, type Kept } from './data/snapshot';
 import { Arrival, needsYou, tabTitle } from './state/arrival';
+import { Notifier, browserStorage, mayNotify, notifyWanted } from './state/notify';
 import { MARK, Orbit, favicon, presence, runningMissions, type Presence } from './state/orbit';
 import { timeline } from './state/timeline';
 import { TOAST_TTL_MS, Toasts, type Ended } from './state/toast';
@@ -177,6 +178,7 @@ function Shell({ token }: { token: string }) {
   const count = att.data?.count ?? 0;
   useEffect(() => {
     if (att.data) arrival.read(att.data.count, att.seq);
+    if (att.data) notifier.read(att.data.items, att.seq);
     document.title = tabTitle(count);
   }, [att.data, att.seq, count]);
   const arrived = useSyncExternalStore(
@@ -508,6 +510,24 @@ function ToastRegion() {
 
 // the page's one attention arrival (A-08): whatever page is open
 const arrival = new Arrival(timeline, { now: () => performance.now(), reduced: reducedMotion, announce });
+
+// T-1076: the same read, as a browser notification while the tab is hidden
+const notifier = new Notifier({
+  enabled: () => mayNotify(notifyWanted(browserStorage()), typeof Notification === 'undefined' ? undefined : Notification.permission),
+  hidden: () => document.visibilityState === 'hidden',
+  show: (n) => {
+    try {
+      const x = new Notification(n.title, { body: n.body, tag: n.key });
+      x.onclick = () => {
+        window.focus();
+        location.hash = '#/attention';
+        x.close();
+      };
+    } catch {
+      /* some browsers refuse the constructor (they want a service worker): no notification */
+    }
+  },
+});
 
 // ── the mark, its orbit and the operations strip (ADR-0027, rulebook §6 O-1, §8) ──
 
