@@ -1657,7 +1657,19 @@ REPLAY_MUTATIONS = [
      [RPI + 'test_all_replay_strings_use_trace_public_projection']),
 ]
 
-MUTATIONS += REDEFINED + NEW_MUTATIONS + REPLAY_MUTATIONS
+IMPLICIT_ROOT = "evidence_paths = paths or (('.',) if row.operands == 'P*' else ())"
+GAP = 'tests/v1/unit/test_gaps_core_execution_command_allowlist.py::'
+IMPLICIT_ROOT_MUTATIONS = [
+    ('Z638', 'implicit discovery root needs evidence only for ls', [(CA, IMPLICIT_ROOT,
+     "evidence_paths = paths or (('.',) if row.program == 'ls' else ())")],
+     [GAP + 'test_an_operand_free_P_star_row_needs_evidence_for_its_implicit_root',
+      AH + 'test_operand_free_discovery_without_directory_evidence_holds']),
+    ('Z639', 'implicit discovery root needs no evidence', [(CA, IMPLICIT_ROOT,
+     'evidence_paths = paths')],
+     [GAP + 'test_an_operand_free_P_star_row_needs_evidence_for_its_implicit_root']),
+]
+
+MUTATIONS += REDEFINED + NEW_MUTATIONS + REPLAY_MUTATIONS + IMPLICIT_ROOT_MUTATIONS
 
 if __name__ == '__main__':
     selected = [MERGED_REDEFINE.get(mid, mid) for mid in sys.argv[1:]]

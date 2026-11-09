@@ -1117,22 +1117,23 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   environment-selected config/executables. `--no-pager` alone proves none of these. PATH,
   NODE_OPTIONS, Python startup/import controls, RIPGREP_CONFIG_PATH and shell startup files must
   be controlled. Typed paths require contained regular-file/directory evidence; directories need
-  descendant containment, including implicit `.` for operand-free `ls`. Lexical checks cannot
+  descendant containment, including the implicit `.` of operand-free `ls`, `pytest` and `python -m pytest`. Lexical checks cannot
   solve symlink/junction escapes, mounts, races or TOCTOU. Missing/unknown evidence means HELD.
-  A14/A15 without operands currently require no explicit cwd path evidence; review remains open.
+  A14/A15 without operands discover tests beneath cwd, so they ask the same evidence for the
+  implicit `.` as an explicit `pytest .`; none means HELD (review R1 of T-128).
 - **Production Bash auto-allows nothing until a node attests the POSIX profile.** Re-grounded on
   this tree: `canonical.py:311` dispatches `canonicalise_hook`, classification is at :319-:320, row
-  construction at :335-:343. `manager.py:525` handles hooks, checks cwd at :543, builds context
-  at :546-:549, asks node at :550-:551, canonicalises at :552-:553 and forwards eligibility at
-  :554-:558; exceptions halt at :559-:561. `local.py:742-744` (`command_context`; `:151-:153` when this was written) returns `None` because current
+  construction at :335-:343. `manager.py:626` handles hooks, checks cwd at :644, builds context
+  at :647-:650, asks node at :651-:652, canonicalises at :653-:654 and forwards eligibility at
+  :655-:659; exceptions halt at :662-:664. `local.py:757-759` (`command_context`) returns `None` because current
   isolation does not attest resolution/startup environment. No production profile is enabled.
-- **HELD caps automatic allow.** `executions.py:928` authenticates/state/sequence checks before
-  authorization; DENY at :975-:976 and ASK at :977-:980 remain in force. Bash cap at :981-:985
+- **HELD caps automatic allow.** `executions.py:948` (`serve_hook`) authenticates/state/sequence checks before
+  authorization; DENY at :987-:990 (answered at :995-:996) and ASK at :991-:994 (answered at :997-:1000) remain in force. Bash cap at :1001-:1005
   halts otherwise automatic ALLOW with fixed reason `command form needs review` and fixed
   exec/command label. A permissive policy cannot admit a table miss. Explicit approval-backed
-  ALLOW remains a separate, exact single-use path (:960, :966, :983), never table membership.
-  Structured tools do not enter this cap. `_current` (:1022), `_label` (:1030) and `_hook_answer`
-  (:1052-:1062) retain closed labels and same-transaction current_action/hook_seq/event writes.
+  ALLOW remains a separate, exact single-use path (`approved`, :980, :986, :1001-:1003), never table membership.
+  Structured tools do not enter this cap. `_current` (:1042), `_label` (:1050) and `_hook_answer`
+  (:1072-:1082) retain closed labels and same-transaction current_action/hook_seq/event writes.
   The old classifier is not an eligibility fallback: `canonicalise_hook` preserves risk classes
   through closed exact program/subcommand tables after strict scan, with no policy host. This path
   remains; it cannot open automatic allow. Offline proof imports baseline versions only in child
@@ -1153,17 +1154,27 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   workspace tests/conftest/plugins/imports and write caches; `exec` policy and isolation remain
   mandatory. Exact argv proves neither harmlessness nor restricted network use. Descendant
   traversal, trusted-profile limits, code/config effects and TOCTOU remain acknowledged.
-- **Both-baseline proof: NOT RUN, gate pending.** `tools/p21_classifier_moves.py` requires archives
-  of **f483f87 and 61dc68f**, including tests. It freezes one corpus/context, enumerates every
-  option vector and operand cardinality, adds old test literals/static string expressions,
-  review snippets and new near-misses, and supplies contained path fixtures plus synthetic
-  trusted profile. Legacy classifiers run only in offline child processes. Exceptions, unavailable
-  archives, timeouts and missing results fail proof. Reports include class sets, row IDs, HELD cap,
-  all-allow/restrictive read+exec/locked-floor/task-contract policies. Both comparisons must exit
-  zero with **held-to-allowed = 0**, no DENY/ASK-to-auto-allow and no miss-to-auto-allow.
-  No zero count is claimed. Dynamically constructed old test inputs still need corpus audit;
-  literal extraction alone does not prove every parametrized/generated input is included.
-  See `.pv20-out/E-slice3-final.md` for exact locked commands and outstanding validation.
+- **Both-baseline proof: run on the final tree, both comparisons zero.** `tools/p21_classifier_moves.py`
+  takes archives of **f483f87 and 61dc68f**, including tests. It freezes one corpus/context,
+  enumerates every option vector and operand cardinality, adds old test literals/static string
+  expressions, review snippets and new near-misses, and supplies contained path fixtures plus a
+  synthetic trusted profile. Legacy classifiers run only in offline child processes. Exceptions,
+  unavailable archives, timeouts and missing results fail proof. Reports include class sets, row
+  IDs, HELD cap, all-allow/restrictive read+exec/locked-floor/task-contract policies. Both
+  comparisons must exit zero with **held-to-allowed = 0**, no DENY/ASK-to-auto-allow and no
+  miss-to-auto-allow.
+  **Observed** (2026-11-09, tree at `e330545a` on `pv20-p21e-fix`, `git archive` of each baseline,
+  run through the test lock, review file `T-128-2c77cb32.codex.md`, `--timeout 3000`): frozen corpus
+  354983 rows, sha256 `1c9dd76eae01b7e9a5a251a35a5947b6d62f536a28dc24ceb78793a196a014f9` (the
+  digest embeds the fixture directory, so a rerun elsewhere differs); `f483f87 held-to-allowed 0
+  violations 0`; `61dc68f held-to-allowed 0 violations 0`; 94 corpus rows reach an allowed row.
+  The acceptance cases `python -m pytest -q`, `PowerShell Remove-Item -Recurse x`, `bash` with
+  a recursive force remove of `x` and `git branch -{},D} x` are in the corpus; the first is allowed row A15 under the
+  fixture's `.` evidence, the other three keep the HELD cap. The default 180 s child timeout is too
+  short for this corpus (a first run at the default failed on the 61dc68f child): pass a larger
+  `--timeout`. Not proven: dynamically constructed old test inputs (parametrize/generated) are
+  covered only where a literal or static string expression yields them; no audit of the generated
+  ones was done, and the reports are not retained in the repo.
 
 - **The read.** `GET /v1/executions/{id}` carries it (schema `CurrentAction`, `observe`).
 - **The chip (A-17).** `clients/app/src/state/chips.ts`: an `execution.hook` frame re-reads the

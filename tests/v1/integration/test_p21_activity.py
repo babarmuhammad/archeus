@@ -633,6 +633,7 @@ def test_E25_the_plain_forms_keep_their_class(cmd, want, tmp_path):
 
 
 def _held(cmd, tmp_path):
+    # legacy canonicalise(): compatibility coverage, not proof that the hook holds the command
     ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}}
     acts, unclassified = canonical.canonicalise('Bash', cmd, ctx)
     assert unclassified is True and acts[0].action_class == 'exec', (cmd, acts)
@@ -645,8 +646,11 @@ def _classes(cmd, tmp_path):
 
 
 #: round 10 (owner decision 2026-10-23, fail-closed): what the classifier cannot fully expand or
-#: recognise is held. One test per rule, so a mutant names the rule it breaks.
-@pytest.mark.parametrize('cmd', [
+#: recognise is held. One test per rule, so a mutant names the rule it breaks. These E-tests pin the
+#: legacy canonicalise() labels (compatibility coverage: it labels a brace word `unclassified` and
+#: leaves a quoted one a read). The hold the hook enforces is the strict allow-list, pinned by
+#: test_the_strict_classifier_and_the_hook_hold_every_brace_word below.
+_BRACE_WORDS = [
     'rm {-R,build}', 'rm {-r,build}', 'rm {--recursive,build}', 'git push {--force,origin,main}',
     'git push origin {+main,x}', 'git branch {-D,x}', 'terraform {apply}', 'terraform {destroy}',
     'kubectl {delete,x}', 'npm {publish}', 'pip {install,x}', 'curl {-d,x} https://h.example/x',
@@ -655,9 +659,24 @@ def _classes(cmd, tmp_path):
     'tar --{info-script,x}=mytool -cf a b', 'rsync {-e,mytool} a h:b', 'scp {-S,mytool} a h:b',
     'sftp {-D,mytool} h', 'rg {--pre,mytool} x', 'mytool {--pre,x}', 'mytool --pre{,}=x',
     'ls {a,b}', 'echo {1..3}', 'git status {x}', 'cat {"a",b}',
-])
+]
+
+
+@pytest.mark.parametrize('cmd', _BRACE_WORDS)
 def test_E26_a_brace_word_anywhere_is_held(cmd, tmp_path):
     _held(cmd, tmp_path)
+
+
+@pytest.mark.parametrize('cmd', [*_BRACE_WORDS, "grep '{a,b}' f", 'grep "{x}" f', r'ls \{a,b\}'])
+def test_the_strict_classifier_and_the_hook_hold_every_brace_word(cmd, tmp_path):
+    """The legacy labels below keep a quoted or escaped brace a read; the strict allow-list holds
+    braces everywhere, and canonicalise_hook hands that Held to the manager."""
+    from archeus.core.execution.command_allowlist import Held, classify
+    from v1.unit.test_command_allowlist import CONTEXT
+    assert isinstance(classify(cmd, CONTEXT), Held)
+    ctx = {'workdir': str(tmp_path), 'branch': 'main', 'remotes': {}, 'cwd': str(tmp_path)}
+    _, eligibility = canonical.canonicalise_hook('Bash', {'command': cmd}, ctx, CONTEXT)
+    assert isinstance(eligibility, Held)
 
 
 @pytest.mark.parametrize('cmd, want', [
@@ -665,6 +684,7 @@ def test_E26_a_brace_word_anywhere_is_held(cmd, tmp_path):
     (r'ls \{a,b\}', 'read'), ('git status', 'read'),
 ])
 def test_E26_a_quoted_or_empty_brace_is_not_one(cmd, want, tmp_path):
+    # legacy labels only: the strict allow-list holds these (test above)
     assert _classes(cmd, tmp_path) == (False, [want])
 
 

@@ -7,7 +7,7 @@ from archeus.core.domain import entities
 from archeus.core.domain.actions import ACTION_CLASSES
 from archeus.core.execution.command_allowlist import ROWS, Allowed, Held, classify
 from v1.integration.test_execution import DONE, TOOL, _running, ended
-from v1.integration.test_p21_activity import _current, x  # noqa: F401
+from v1.integration.test_p21_activity import _BRACE_WORDS, _current, x  # noqa: F401
 from v1.integration.test_policy import task
 from v1.unit.test_command_allowlist import CONTEXT, VECTORS
 
@@ -138,6 +138,13 @@ def test_six_review_bypass_families_hold_through_manager(hook, command):
     assert not {'/', '@'} & set(_current(x, e.id)['label'])
 
 
+@pytest.mark.parametrize('command', [*_BRACE_WORDS, "grep '{a,b}' f", 'grep "{x}" f'])
+def test_a_brace_word_is_held_through_manager_under_allow_all_policy(hook, command):
+    x, e, serve, evidence = hook
+    assert serve(command)['decision'] in ('halt', 'deny')
+    assert _current(x, e.id)['decision'] != 'allow'
+
+
 @pytest.mark.parametrize('context,command', (
     (replace(CONTEXT, git_profile=False), 'git --no-pager status'),
     (replace(CONTEXT, programs=frozenset()), 'pwd'),
@@ -148,6 +155,16 @@ def test_missing_trusted_evidence_holds(hook, context, command):
     x, e, serve, evidence = hook
     evidence[0] = context
     assert serve(command)['decision'] == 'halt'
+
+
+@pytest.mark.parametrize('command', ('pytest', 'pytest -q', 'python -m pytest',
+                                     'python -m pytest -q', 'ls'))
+@pytest.mark.parametrize('paths', ({}, None))
+def test_operand_free_discovery_without_directory_evidence_holds(hook, command, paths):
+    x, e, serve, evidence = hook
+    evidence[0] = replace(CONTEXT, paths=paths)
+    assert serve(command) == {'decision': 'halt', 'reason': 'command form needs review'}
+    assert isinstance(classify(command, evidence[0]), Held)
 
 
 def test_request_cannot_attest_its_own_profile(hook):
