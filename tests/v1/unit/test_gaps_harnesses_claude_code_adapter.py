@@ -553,11 +553,6 @@ def test_g17_an_isolated_execution_never_gets_the_account_home_as_its_config_dir
     assert launch.last['env'].get('CLAUDE_CONFIG_DIR') == other
 
 
-@pytest.mark.xfail(strict=True, reason="adapter.py:192-193 clears the provider keys with "
-                                       "setdefault, so one that arrives in spec.env "
-                                       "survives into the child's environment and shadows "
-                                       "the account login the header (adapter.py:16-20) and "
-                                       "config.account_env both say to pop")
 def test_g18_a_key_the_spec_carries_never_reaches_the_child(tmp_path, launch):
     """adapter.py:192-193 (`for k in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
     env.setdefault(k, None)`). The module's own header (adapter.py:16-20, the
@@ -567,9 +562,10 @@ def test_g18_a_key_the_spec_carries_never_reaches_the_child(tmp_path, launch):
     execution authenticates as the key's owner while the ledger, the hook and the
     rate accounting all name the account in `home_ref`."""
     spec = _spec(tmp_path, env={'ANTHROPIC_API_KEY': 'sk-from-the-spec',
-                                'ANTHROPIC_AUTH_TOKEN': 'tok-from-the-spec'})
+                                'ANTHROPIC_AUTH_TOKEN': 'tok-from-the-spec',
+                                'CLAUDE_CODE_OAUTH_TOKEN': 'oauth-from-the-spec'})
     _adapter().start(spec)
-    for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
+    for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'):
         assert key not in launch.last['env'], key
 
 
