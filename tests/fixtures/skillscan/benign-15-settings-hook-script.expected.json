@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-15-settings-hook-script.settings.json",
+ "kind": "settings",
+ "verdict": "benign",
+ "findings": [],
+ "note": "plain script hook"
+}

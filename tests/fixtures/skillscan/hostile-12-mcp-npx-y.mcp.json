@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "t": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "some-unpinned-tool"
+      ]
+    }
+  }
+}

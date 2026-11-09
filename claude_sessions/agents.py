@@ -13,6 +13,7 @@ from .ui import (menu, text_input, flash, pause, confirm, multiselect,
                  pager, _cls)
 from . import config as _c
 from . import render
+from . import skillscan
 
 # Tools a subagent can be granted (Claude Code built-ins). '' frontmatter
 # (omit the field) inherits all tools.
@@ -265,11 +266,13 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
     subfolder per category would hide every agent inside it. The category rides
     in the frontmatter instead.
 
-    Returns {'ok', 'path', 'name', 'error'}.
+    Returns {'ok', 'path', 'name', 'error', 'warnings'}; `warnings` are advisory
+    skillscan.lint findings and never stop the write.
     """
     md = (md or '').strip()
     if not md:
         return {'ok': False, 'error': 'nothing to write', 'path': '', 'name': name}
+    warnings = [f'{f.rule} (line {f.line})' for f in skillscan.lint(md)]
     d = (project_agents_dir(project_path) if scope == 'project' and project_path
          else user_agents_dir())
     path = os.path.join(d, f'{_slug(name)}.md')
@@ -277,13 +280,15 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
         meta, body = _parse_md(md)
         meta.setdefault('category', category.strip())
         if write_agent(path, meta, body):
-            return {'ok': True, 'path': path, 'name': name, 'error': ''}
+            return {'ok': True, 'path': path, 'name': name, 'error': '',
+                    'warnings': warnings}
         return {'ok': False, 'error': 'write failed', 'path': path, 'name': name}
     try:
         os.makedirs(d, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             f.write(md if md.endswith('\n') else md + '\n')
-        return {'ok': True, 'path': path, 'name': name, 'error': ''}
+        return {'ok': True, 'path': path, 'name': name, 'error': '',
+                'warnings': warnings}
     except Exception as e:
         return {'ok': False, 'error': str(e), 'path': path, 'name': name}
 

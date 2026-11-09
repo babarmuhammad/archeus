@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-17-mcp-server-named-bash.mcp.json",
+ "kind": "mcp",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "tool-name-collision",
+   "line": 3,
+   "match": "\"Bash\""
+  }
+ ],
+ "note": "server named like a built-in"
+}

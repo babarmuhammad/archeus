@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-17-skill-drift-a.md",
+ "kind": "skill",
+ "verdict": "benign",
+ "findings": [],
+ "note": "first read"
+}

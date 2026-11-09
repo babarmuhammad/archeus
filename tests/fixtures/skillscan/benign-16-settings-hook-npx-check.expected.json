@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-16-settings-hook-npx-check.settings.json",
+ "kind": "settings",
+ "verdict": "benign",
+ "findings": [],
+ "note": "plain tool hook"
+}

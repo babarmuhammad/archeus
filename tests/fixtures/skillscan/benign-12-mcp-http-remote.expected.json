@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-12-mcp-http-remote.mcp.json",
+ "kind": "mcp",
+ "verdict": "benign",
+ "findings": [],
+ "note": "remote http server"
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "s": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "echo hi"
+      ]
+    }
+  }
+}

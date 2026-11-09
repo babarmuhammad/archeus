@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-04-skill-icon-datauri.md",
+ "kind": "skill",
+ "verdict": "benign",
+ "findings": [],
+ "note": "image data URIs are not long-base64"
+}

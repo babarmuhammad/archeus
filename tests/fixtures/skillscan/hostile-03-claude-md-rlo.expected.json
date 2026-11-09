@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-03-claude-md-rlo.md",
+ "kind": "claude_md",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "bidi-control",
+   "line": 3,
+   "match": "U+202E"
+  }
+ ],
+ "note": "right-to-left override"
+}

@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-11-skill-base64-blob.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "long-base64",
+   "line": 7,
+   "match": "AAECAwQFBgcICQoLDA0O"
+  }
+ ],
+ "note": "bare long base64"
+}

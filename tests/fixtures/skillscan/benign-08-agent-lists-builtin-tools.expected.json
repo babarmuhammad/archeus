@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-08-agent-lists-builtin-tools.md",
+ "kind": "agent",
+ "verdict": "benign",
+ "findings": [],
+ "note": "built-in names in tools: are not a collision"
+}

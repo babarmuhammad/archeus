@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-13-mcp-npx-pinned.mcp.json",
+ "kind": "mcp",
+ "verdict": "benign",
+ "findings": [],
+ "note": "pinned npx without -y"
+}

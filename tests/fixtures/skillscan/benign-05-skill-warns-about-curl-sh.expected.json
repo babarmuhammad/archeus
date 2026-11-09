@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-05-skill-warns-about-curl-sh.md",
+ "kind": "skill",
+ "verdict": "benign",
+ "findings": [],
+ "note": "a warning sentence is not a command"
+}
