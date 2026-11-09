@@ -464,6 +464,10 @@ class VerifyWorker:
                                            verification_id=started[0]['verification_id'],
                                            timeout_s=self.timeout_s,
                                            verifier_version=started[0]['verifier_version'])
+            if m.integration_base and m.integration_head and self.node.git_numstat(
+                    root, m.integration_base, m.integration_head):
+                with self.db.read() as conn:
+                    checks.append(evidence.memory_check(conn, m.id))
             started = [out['verification_id'] for out in started]
             # the branch may have moved while the commands ran: the last record notes it
             head = self.node.git_head(ws) if m.integration_base is not None else None

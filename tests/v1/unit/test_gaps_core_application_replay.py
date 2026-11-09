@@ -332,18 +332,21 @@ def test_a_failed_check_or_an_unmet_criterion_never_reads_as_passed(db):
             ('check-fails', 'PASSED', 'fail', 'satisfied', False),
             ('criterion-unknown', 'PASSED', 'pass', 'unknown', False),
             ('failed-green', 'FAILED', 'pass', 'satisfied', False),
-            ('all-green', 'PASSED', 'pass', 'satisfied', True)):
+            ('all-green', 'PASSED', 'pass', 'satisfied', True),
+            ('skip-is-green', 'PASSED', 'pass', 'satisfied', True)):
         vid = ids.new_id('verification')
         made[name] = vid
         _seed(db, user, entities.Verification(
             id=vid, subject=Ref('task', k['task']), verifier='code', plan_id=k['plan'],
             state=state, base_revision='e' * 40,
-            checks=({'name': 'tests', 'kind': 'command', 'result': check},),
+            checks=({'name': 'tests', 'kind': 'command', 'result': check},)
+            + (({'name': 'memory', 'kind': 'state', 'result': 'skip'},)
+               if name == 'skip-is-green' else ()),
             criteria=({'index': 0, 'text': 'works', 'check': 'automatic',
                        'result': criterion},)))
     result = {v['id']: v for v in _read(db, k['mission'])['verifications']}
-    assert [result[made[n]]['validation_recorded'] for n in made] == [True] * 4
-    assert [result[made[n]]['passed'] for n in made] == [False, False, False, True]
+    assert [result[made[n]]['validation_recorded'] for n in made] == [True] * 5
+    assert [result[made[n]]['passed'] for n in made] == [False, False, False, True, True]
 
 
 def test_history_is_recorded_when_the_whole_range_is_retained(db):

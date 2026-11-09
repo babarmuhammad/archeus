@@ -138,6 +138,17 @@ def changes_check(node, root, base, revision):
             'detail': '%d file(s) changed' % len(stat), 'files': [p for _a, _d, p in stat][:50]}
 
 
+def memory_check(conn, mission_id):
+    """`memory`: advisory, never `fail`. `pass` when a knowledge row cites the mission
+    (a lesson learned from it), `skip` when none does yet; the verdict ignores both."""
+    n = len(rows.where(conn, entities.Relation, dst_kind='mission', dst_id=mission_id))
+    if n:
+        return {'name': 'memory', 'kind': 'state', 'result': 'pass',
+                'detail': '%d knowledge relation(s) cite this mission' % n}
+    return {'name': 'memory', 'kind': 'state', 'result': 'skip',
+            'detail': 'no knowledge, decision or lesson row cites this mission yet'}
+
+
 def reported_model(execution_id):
     """The last model the execution's own stream names, or None (§22):
     corroborating evidence, compared with the routed model, never trusted."""

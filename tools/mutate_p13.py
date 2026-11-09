@@ -26,6 +26,8 @@ J = 'tests/v1/judge/test_v01_outcome_verification.py'
 I = 'tests/v1/integration/test_verification.py'
 U = 'tests/v1/unit/test_verification_units.py'
 P = 'tests/v1/integration/test_provenance.py'
+MC = 'tests/v1/unit/test_verification_memory_check.py'
+EVD = 'archeus/core/verification/evidence.py'
 IP = '[inprocess]'
 
 MUTATIONS = [
@@ -120,6 +122,38 @@ MUTATIONS = [
      "            performed_by(tx.conn, e),\n"
      "            model=(provenance or {}).get('reported_model') or e.model)")],
      [P + '::test_M06_a_reported_model_other_than_the_routed_one_is_recorded_not_failed']),
+    # ── memory: advisory, never a verdict (T-1096) ──
+    ('Z17', 'the memory check recorded for a mission that changed nothing', [(WRK,
+     "self.node.git_numstat(\n                    root, m.integration_base, m.integration_head):",
+     "not self.node.git_numstat(\n                    root, m.integration_base, m.integration_head):")],
+     [MC + '::test_no_changed_files_or_no_branch_records_no_memory_check',
+      MC + '::test_a_mission_that_changed_files_and_cites_a_lesson_passes_the_memory_check']),
+    ('Z18', 'a missing memory row is a fail', [(EVD,
+     "    return {'name': 'memory', 'kind': 'state', 'result': 'skip',",
+     "    return {'name': 'memory', 'kind': 'state', 'result': 'fail',")],
+     [MC + '::test_without_a_row_it_is_a_skip_with_a_detail_and_the_verdict_stays_passed']),
+    ('Z19', 'the memory check passes with nothing cited', [(EVD,
+     "    if n:\n        return {'name': 'memory'",
+     "    if True:\n        return {'name': 'memory'")],
+     [MC + '::test_memory_check_is_a_read_of_relations_to_the_mission']),
+    ('Z20', "another mission's lesson counted for this one", [(EVD,
+     "dst_kind='mission', dst_id=mission_id))",
+     "dst_kind='mission'))")],
+     [MC + '::test_without_a_row_it_is_a_skip_with_a_detail_and_the_verdict_stays_passed']),
+    ('Z21', 'a skipped check weighed as an error', [(VER,
+     "    results = [c['result'] for c in checks]\n    if 'fail' in results:",
+     "    results = [c['result'] if c['result'] != 'skip' else 'error' for c in checks]\n"
+     "    if 'fail' in results:")],
+     [MC + '::test_a_memory_check_never_flips_the_verdict[skip]']),
+    ('Z22', 'the review prompt leaves the memory check out', [(REV,
+     "        if memory:\n",
+     "        if False:\n")],
+     [MC + '::test_the_review_prompt_says_the_memory_check_is_advisory']),
+    ('Z23', 'a skipped check stops a replayed verification reading as passed', [(
+     'archeus/core/application/replay.py',
+     "c.get('result') in ('pass', 'skip')", "c.get('result') == 'pass'")],
+     ['tests/v1/unit/test_gaps_core_application_replay.py'
+      '::test_a_failed_check_or_an_unmet_criterion_never_reads_as_passed']),
 ]
 
 

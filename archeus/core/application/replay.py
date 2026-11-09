@@ -176,7 +176,7 @@ def replay(conn, mission_id, *, homes=None):
                  if r.entity.mission_id in (None, mission_id)]
     validation = [{**v, 'validation_recorded': v['state'] in ('PASSED', 'FAILED'),
                    'passed': v['state'] == 'PASSED'
-                   and all(c.get('result') == 'pass' for c in v['checks'])
+                   and all(c.get('result') in ('pass', 'skip') for c in v['checks'])
                    and all(c.get('result') == 'satisfied' for c in v['criteria']),
                    'starting_state': _binding('Verification.base_revision', v['base_revision'])}
                   for v in verifications]

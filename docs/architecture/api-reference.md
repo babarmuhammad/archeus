@@ -328,8 +328,8 @@ interface Card {
 ```ts
 interface Check {
   name: string;
-  kind: 'command' | 'git';
-  result: 'pass' | 'fail' | 'error';
+  kind: 'command' | 'git' | 'state';
+  result: 'pass' | 'fail' | 'error' | 'skip';
   exit_code?: number | null;
   output_sha256?: string | null;
   detail?: string | null;
