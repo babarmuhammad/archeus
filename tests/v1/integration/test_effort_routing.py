@@ -20,8 +20,7 @@ EFFORTS = ('low', 'medium', 'high')
 def _rig(db, *models):
     rig = Rig(db, adapters=[FakeHarness(models=models or (ModelInfo('m-mid', 'mid'),),
                                         efforts=EFFORTS)])
-    rig.acct = rig.account('A')
-    return rig
+    return rig, rig.account('A')
 
 
 def _run(rig, mid, key):
@@ -31,7 +30,7 @@ def _run(rig, mid, key):
 
 
 def test_a_tasks_effort_is_requested_routed_and_recorded_beside_the_model(db):
-    rig = _rig(db)
+    rig, _ = _rig(db)
     mid = rig.ready(task('t1', 'write_repo', min_model_tier='mid', effort='high'))
     out, e = _run(rig, mid, 't1')
     (rd,) = rig.rds()
@@ -42,20 +41,20 @@ def test_a_tasks_effort_is_requested_routed_and_recorded_beside_the_model(db):
 
 
 def test_a_task_without_an_effort_routes_with_none(db):
-    rig = _rig(db)
+    rig, _ = _rig(db)
     _, e = _run(rig, rig.ready(task('t1', 'write_repo', min_model_tier='mid')), 't1')
     (rd,) = rig.rds()
     assert (e.effort, rd.effort, rd.requirements['effort']) == (None, None, None)
 
 
 def test_the_effort_is_clamped_to_what_the_chosen_model_accepts(db):
-    rig = _rig(db, ModelInfo('m-mid', 'mid', efforts=('low', 'medium')))
+    rig, _ = _rig(db, ModelInfo('m-mid', 'mid', efforts=('low', 'medium')))
     _, e = _run(rig, rig.ready(task('t1', 'write_repo', min_model_tier='mid', effort='high')), 't1')
     assert (e.model, e.effort) == ('m-mid', 'medium')
 
 
 def test_the_plan_refuses_an_effort_off_the_scale(db):
-    rig = _rig(db)
+    rig, _ = _rig(db)
     mid = rig.mission('M')
     try:
         rig.propose(mid, task('t1', 'write_repo', effort='turbo'))
@@ -78,7 +77,7 @@ def _finish(rig, effort, verdict, usage=None):
 
 
 def test_finished_executions_group_by_kind_model_and_effort_with_verdict_and_usage(db):
-    rig = _rig(db)
+    rig, acct = _rig(db)
     _finish(rig, 'low', 'pass', {'input_tokens': 10, 'output_tokens': 5, 'total_cost_usd': 0.25})
     _finish(rig, 'low', 'fail')
     _finish(rig, 'high', None)
@@ -90,14 +89,14 @@ def test_finished_executions_group_by_kind_model_and_effort_with_verdict_and_usa
         {'kind': 'code_change', 'model': 'm-mid', 'effort': 'high', 'executions': 1,
          'passed': 0, 'failed': 0, 'unverified': 1, 'tokens': None, 'cost_usd': None,
          'cache_read': None, 'cache_write': None, 'by_route': [
-             {'harness': 'fake', 'account_ref': rig.acct, 'model': 'm-mid', 'cache_read': None,
+             {'harness': 'fake', 'account_ref': acct, 'model': 'm-mid', 'cache_read': None,
               'cache_write': None}],
          'verification_attempts': None, 'changes_requested': None, 'reworked': 0,
          'complete': False},
         {'kind': 'code_change', 'model': 'm-mid', 'effort': 'low', 'executions': 2,
          'passed': 1, 'failed': 1, 'unverified': 0, 'tokens': 15, 'cost_usd': 0.25,
          'cache_read': None, 'cache_write': None, 'by_route': [
-             {'harness': 'fake', 'account_ref': rig.acct, 'model': 'm-mid', 'cache_read': None,
+             {'harness': 'fake', 'account_ref': acct, 'model': 'm-mid', 'cache_read': None,
               'cache_write': None}],
          'verification_attempts': 0, 'changes_requested': None, 'reworked': 0,
          'complete': False}]
