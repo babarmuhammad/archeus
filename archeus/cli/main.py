@@ -57,7 +57,8 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 2 s; prints the `archeus status` line. Default --until:
                                 COMPLETED, CANCELLED, FAILED, BLOCKED, PAUSED,
                                 APPROVAL_REQUIRED; default --timeout 60. Exit 0 reached,
-                                1 Core not running, 2 usage or unknown mission, 4 timed
+                                1 Core not running or not answering until the timeout,
+                                2 usage or unknown mission, 4 timed
                                 out, 5 it ended in a state you did not ask for (with
                                 the default, FAILED, BLOCKED or CANCELLED). A final state
                                 always ends the wait. FAILED is not final: it may replan
@@ -123,6 +124,9 @@ _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
 def main(argv):
+    for s in (sys.stdout, sys.stderr):
+        if hasattr(s, 'reconfigure'):
+            s.reconfigure(encoding='utf-8', errors='replace')
     verb, args = (argv[0] if argv else ''), list(argv[1:])
     if verb in DEFERRED:
         print('archeus %s is not available yet (arrives with %s); nothing was done'
@@ -453,8 +457,13 @@ def mission_status(mission_id):
     m = _get(info, 'GET', endpoints.get_mission(mission_id))
     if m is None:
         return 2
-    print('%s: %s (%s)' % (m['id'], m['state'], m['title']))
+    _say_mission(m)
     return 0
+
+
+def _say_mission(m):
+    from .tui.view import clean
+    print('%s: %s (%s)' % (m['id'], m['state'], clean(m['title'])))
 
 
 #: States a mission waits in for a person, and FAILED, which is not final (it may replan)
@@ -468,7 +477,7 @@ def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.m
     when the state was asked for, 5 when it was not or is one of the default bad ones."""
     from ..core.domain import states
     known = states.states('mission')
-    want = tuple(x.strip().upper() for x in until.split(',')) if until else _WAIT_DEFAULT
+    want = _WAIT_DEFAULT if until is None else tuple(x.strip().upper() for x in until.split(','))
     try:
         seconds = float(timeout)
     except ValueError:
@@ -477,26 +486,36 @@ def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.m
         print('--until names mission states (%s) and --timeout is seconds > 0' % ', '.join(known),
               file=sys.stderr)
         return 2
-    info = _core_or_say()
+    info = _running()
     if info is None:
-        print('Core is not running: start it with `archeus core`', file=sys.stderr)
         return 1
     stop = set(want) | states.terminal('mission')
     deadline = clock() + seconds
-    while True:
-        refusal = {}
-        m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal)
-        if m is None:
-            return 1 if refusal.get('code') == 'network' else 2
-        if m['state'] in stop:
-            print('%s: %s (%s)' % (m['id'], m['state'], m['title']))
-            bad = m['state'] not in want or (until is None and m['state'] in _WAIT_BAD)
-            return 5 if bad else 0
-        if clock() >= deadline:
-            print('timed out after %gs: %s is still %s' % (seconds, m['id'], m['state']),
-                  file=sys.stderr)
-            return 4
-        sleep(2)
+    try:
+        while True:
+            refusal = {}
+            try:
+                m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal)
+            except (ValueError, OSError) as e:
+                print('Core gave no readable answer (%s)' % type(e).__name__, file=sys.stderr)
+                m = None
+            if m is None and refusal.get('code') == 'not_found':
+                return 2
+            if m is not None and m['state'] in stop:
+                _say_mission(m)
+                bad = m['state'] not in want or (until is None and m['state'] in _WAIT_BAD)
+                return 5 if bad else 0
+            if clock() >= deadline:
+                if m is None:
+                    print('Core did not answer for %s before the timeout' % mission_id,
+                          file=sys.stderr)
+                    return 1
+                print('timed out after %gs: %s is still %s' % (seconds, m['id'], m['state']),
+                      file=sys.stderr)
+                return 4
+            sleep(min(2, max(0, deadline - clock())))
+    except KeyboardInterrupt:
+        return 130
 
 
 def top(by):
@@ -511,7 +530,8 @@ def top(by):
     cols = ('calls', 'tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
     print('%-40s %6s %11s %11s %11s %11s %9s  complete' % ((by,) + cols))
     for r in out['rows']:
-        fig = ['-' if r[c] is None else str(r[c]) for c in cols]
+        fig = ['-' if r[c] is None else '%.4f' % r[c] if c == 'cost_usd' else str(r[c])
+               for c in cols]
         print('%-40s %6s %11s %11s %11s %11s %9s  %s' % (
             r[by] or '(none)', *fig, 'yes' if r['complete'] else 'no'))
     if not out['rows']:
