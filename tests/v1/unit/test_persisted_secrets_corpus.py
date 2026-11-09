@@ -5,9 +5,12 @@ land in `.claude/settings.local.json` allow rules, `.archeus/bash-log.txt` and
 `.archeus/denied.jsonl` (the apiiro finding, HN 50407882). Each case records what
 `archeus.core.redact.redact` returns TODAY and a bucket:
   caught               a secret is masked
-  missed               a secret stays in clear (listed, not fixed here; T-1089 may flip these)
+  missed               a secret stays in clear
   benign_ok            nothing to hide and nothing changed
   benign_overredacted  nothing to hide but something is masked (a false positive)
+T-1089 (owner item 100) flipped the 17 rows missed by T-1088 to caught and the two -u
+over-redactions to benign_ok; the rows from p38 measure what the keyed rules cost: the
+look-alikes they leave alone, the false positives the owner accepted, and what they still miss.
 `redact` is pure, so this file runs no process and no I/O beyond reading the JSON.
 """
 

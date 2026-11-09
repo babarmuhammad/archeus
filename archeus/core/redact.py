@@ -47,14 +47,73 @@ _PARTS = (
     _PEM,
     r'(?<=://)[^\s/:@]+:[^\s/@]+(?=@)',
     r'(?<=://)[^\s/:@]{8,}(?=@)',
-    r'(?:(?<!\S)|(?<=\\[nrt]))(?:-u|--user)[\s=]*' + _QUOTE + r'''[A-Za-z_][^\s:"'\\]*:[^\s"'\\]+''',
+    # T-1089: `-u app:app` (a docker uid:gid) and `-u host:/path` (rsync) are not a password
+    r'(?:(?<!\S)|(?<=\\[nrt]))(?:-u|--user)[\s=]*' + _QUOTE + r'''(?P<user>[A-Za-z_][^\s:"'\\]*):'''
+    r'''(?![/~])(?!(?P=user)(?![^\s"'\\]))[^\s"'\\]+''',
     r'(?P<keep>(?i:aws_secret_access_key)' + _QUOTE + r'\s*[=:]\s*' + _QUOTE + r')[^\s"\'\\]+',
 )
-SECRET = re.compile('(' + '|'.join(_PARTS) + ')')
+# T-1089 (owner item 100): a value named as a secret, by an assignment, a header or a long
+# flag; the name stays. Only the name is anchored, so `PGPASSWORD`, `MYSQL_PWD` and
+# `X-Auth-Token` keep their prefix as text; a bare `pass` or `pwd` needs a separator (not
+# `bypass`, `OLDPWD`). A value that starts with `-` is left to the PEM rule; one already
+# `[redacted]` is not matched again. Every rule is tried behind one class of first
+# characters and then a class of second ones, so most positions cost two set tests: as
+# alternatives of their own the rules took the time per MB up by half.
+_SEP = _QUOTE + r'[ \t]*[=:][ \t]*' + _QUOTE
+_VALUE = r'''(?!\[redacted)(?![\-=:<>|&;])[^\s"'\\]+'''
+_HEADER = _QUOTE + r'[ \t]*[:=][ \t]*' + _QUOTE
+_HEADER_VALUE = r'''[A-Za-z][\w.\-]*(?:[ \t]+|=)[^\r\n"'\\]+'''
+# (first character, second character, the rest of the name, the value)
+_KEYED = (
+    ('[Pp]', '[Aa]', r'(?i:ss(?:word|wd))' + _SEP, _VALUE),
+    ('[Pp]', '[Rr]', r'(?i:ivate)[_\-]?(?i:key)' + _SEP, _VALUE),
+    ('[Tt]', '[Oo]', r'(?i:ken)' + _SEP, _VALUE),
+    ('[Ss]', '[Ee]', r'(?i:cret)(?:[_\-]?(?i:key))?' + _SEP, _VALUE),
+    ('[Aa]', '[Pp]', r'(?i:i)[_\-]?(?i:key)' + _SEP, _VALUE),
+    ('[Aa]', '[Cc]', r'(?i:cess)[_\-]?(?i:key)' + _SEP, _VALUE),
+    ('[_.\\-]', '[Pp]', r'(?i:ass|wd)' + _SEP, _VALUE),
+    ('-', '-', r'(?<!\S--)[A-Za-z0-9\-]*?(?i:pass(?:word|wd)?|token|secret|api-?key)[ \t]+', _VALUE),
+    ('[Aa]', '[Uu]', r'(?i:thorization)' + _HEADER, _HEADER_VALUE),
+    ('[Cc]', '[Oo]', r'(?i:okie)' + _HEADER, _HEADER_VALUE),
+)
+_PARTS += ('[PpTtSsAaCc_.\\-](?:%s)' % '|'.join(
+    '%s(?<=%s.)%s(?P<v%d>%s)' % (second, first, rest, i, value)
+    for i, (first, second, rest, value) in enumerate(_KEYED)),)
+SECRET = re.compile('|'.join(_PARTS))
+
+# A short flag is a password only for the command it belongs to (`-p` is a port for
+# docker run, a parent dir for mkdir), so these rules read back to the command word, at
+# most 200 characters on the same line. They run before SECRET, which still scans the
+# command and the flags they keep.
+_SCOPED = re.compile(
+    r'(?:(?:sshpass|(?:az|docker|podman|nerdctl)[ \t]+login)(?=\s)[^\n;&|]{0,200}?[ \t]-p[ \t]+'
+    r'|redis-cli(?=\s)[^\n;&|]{0,200}?[ \t]-a[ \t]+'
+    r'|(?:mysql|mysqldump|mysqladmin|mariadb)(?=\s)[^\n;&|]{0,200}?[ \t]-p' + _QUOTE
+    + r'|aws[ \t]+configure[ \t]+set[ \t]+[\w.\-]{0,64}?(?i:secret|token|password)[\w.\-]{0,64}[ \t]+)'
+    r'''(?P<v0>(?![\-\s])[^\s"'\\]+)'''
+    r'|echo[ \t]+(?:-[A-Za-z]+[ \t]+)?' + _QUOTE + r'''(?P<v1>[^\s"'\\|]+)'''
+    r'(?=' + _QUOTE + r'[ \t]*\|[^\n|]{0,200}--password-stdin)')
+_WORD = re.compile(r'[\w.\-]')
+
+
+def _mask(m):
+    g = m.lastgroup
+    if g is not None and g[0] == 'v':
+        return m.string[m.start():m.start(g)] + '[redacted]'
+    return (g == 'keep' and m[g] or '') + '[redacted]'
+
+
+def _scoped(m):
+    if m.start() and _WORD.match(m.string, m.start() - 1):
+        return m[0]
+    return _mask(m)
 
 
 def redact(text):
-    return SECRET.sub(lambda m: (m.group('keep') or '') + '[redacted]', text)
+    # every scoped rule needs one of these, and a scan per string is a fifth of the time per MB
+    if ' -p' in text or ' -a' in text or '\t-' in text or 'configure' in text or '-stdin' in text:
+        text = _SCOPED.sub(_scoped, text)
+    return SECRET.sub(_mask, text)
 
 
 # A key's lines may come as several strings: stream lines, or JSON values. The
