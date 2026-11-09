@@ -20,12 +20,15 @@ import mutate_p11  # noqa: E402  (one runner)
 VER = 'archeus/core/application/verification.py'
 WRK = 'archeus/core/verification/worker.py'
 REV = 'archeus/core/verification/reviewer.py'
+EVD = 'archeus/core/verification/evidence.py'
+LOC = 'archeus/node/local.py'
 CMD = 'archeus/core/application/commands.py'
 GRD = 'archeus/core/domain/guards.py'
 J = 'tests/v1/judge/test_v01_outcome_verification.py'
 I = 'tests/v1/integration/test_verification.py'
 U = 'tests/v1/unit/test_verification_units.py'
 P = 'tests/v1/integration/test_provenance.py'
+B = 'tests/v1/unit/test_verification_baseline.py'
 IP = '[inprocess]'
 
 MUTATIONS = [
@@ -120,6 +123,48 @@ MUTATIONS = [
      "            performed_by(tx.conn, e),\n"
      "            model=(provenance or {}).get('reported_model') or e.model)")],
      [P + '::test_M06_a_reported_model_other_than_the_routed_one_is_recorded_not_failed']),
+    # ── the base-revision regression check: opt-in, advisory, bounded (T-1068) ──
+    ('Z17', 'every failed test runs at the base without the opt-in', [(WRK,
+     "        if base is None or root is None or not self.baseline & {m.id, m.project_id}:",
+     "        if base is None or root is None:")],
+     [B + '::test_without_the_opt_in_nothing_runs_at_the_base']),
+    ('Z18', 'a test failing at the base too is taken as passed', [(EVD,
+     "    out = dict(check, baseline=base)\n",
+     "    out = dict(check, baseline=base, result='pass' if base['label'] == 'failing at base'\n"
+     "               else check['result'])\n")],
+     [B + '::test_a_test_failing_at_the_base_too_is_failing_at_base']),
+    ('Z19', 'the labels are swapped', [(EVD,
+     "BASE_LABELS = {'pass': 'regressed', 'fail': 'failing at base'}",
+     "BASE_LABELS = {'pass': 'failing at base', 'fail': 'regressed'}")],
+     [B + '::test_a_failed_check_names_what_its_command_did_at_the_base']),
+    ('Z20', 'a kept base run of another base revision is reused', [(WRK,
+     "                     for c in v.checks if (c.get('baseline') or {}).get('revision') == base}",
+     "                     for c in v.checks if c.get('baseline')}")],
+     [B + '::test_one_base_run_per_plan_base_and_command']),
+    ('Z21', 'the base runs again for every row of the plan', [(WRK,
+     "        todo = [x for x in mine if '%s: %s' % x not in known]",
+     "        todo = mine")],
+     [B + '::test_one_base_run_per_plan_base_and_command']),
+    ('Z22', 'a passing test also runs at the base', [(WRK,
+     "        failed = {c['name'] for c in checks if c['kind'] == 'command' and c['result'] == 'fail'}",
+     "        failed = {c['name'] for c in checks if c['kind'] == 'command'}")],
+     [B + '::test_a_passing_test_or_a_failing_build_costs_no_base_run']),
+    ('Z23', 'a failing build also runs at the base', [(WRK,
+     "        mine = [(k, c) for k, c in cmds if k == 'test' and '%s: %s' % (k, c) in failed]",
+     "        mine = [(k, c) for k, c in cmds if '%s: %s' % (k, c) in failed]")],
+     [B + '::test_a_passing_test_or_a_failing_build_costs_no_base_run']),
+    ('Z24', 'the base checkout is left behind', [(WRK,
+     "                finally:\n                    self.node.drop_checkout(root, tree)",
+     "                finally:\n                    pass")],
+     [B + '::test_a_test_that_passed_at_the_base_and_fails_now_is_regressed_and_still_failed']),
+    ('Z25', 'the base checkout launches git by its bare name', [(LOC,
+     "        git = _git_exe()\n        proc.run([git, *_WORKTREE, 'remove'",
+     "        git = 'git'\n        proc.run([git, *_WORKTREE, 'remove'")],
+     [B + '::test_the_base_checkout_is_a_detached_tree_of_the_base_from_an_absolute_git']),
+    ('Z26', "a mission criterion is not compared with the branch's base", [(WRK,
+     "                                     m.integration_base, cmds, checks,",
+     "                                     None, cmds, checks,")],
+     [B + '::test_a_mission_criterion_is_compared_with_the_integration_base']),
 ]
 
 
