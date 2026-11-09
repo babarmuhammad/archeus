@@ -866,6 +866,8 @@ TASK_KINDS = ('code_change', 'research', 'document', 'presentation', 'inspection
 #: what a task may need of a resource (resource-router §3)
 CAPABILITIES = ('code_edit', 'shell', 'web', 'long_context', 'vision')
 MODEL_TIERS = ('small', 'mid', 'large')
+#: the scale a task's effort is on, lowest first; a model accepts a subset of it
+EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 WORKSPACE_MODES = ('in_place', 'worktree')
 #: Why an execution was stopped (P11, p11-design-gate §20.1).
 STOP_REASONS = ('user', 'estop', 'ceiling', 'limit', 'breaker', 'pause_timeout', 'cancel',
@@ -894,15 +896,15 @@ class Task(Entity):
     _STATE = ('state', 'task')
     _MACHINES = {'integration': 'integration_state'}
     _TEXT = ('key', 'title')
-    _CHOICES = {'kind': TASK_KINDS, 'min_model_tier': MODEL_TIERS,
+    _CHOICES = {'kind': TASK_KINDS, 'min_model_tier': MODEL_TIERS, 'effort': EFFORTS,
                 'workspace_mode': WORKSPACE_MODES}
     _REFS = {'plan_id': 'plan', 'mission_id': 'mission'}
     _MIN1 = ('max_attempts', 'estimate')
     # the dispatch contract is part of the plan version it belongs to (D12)
     _FROZEN = ('plan_id', 'mission_id', 'key', 'title', 'kind', 'depends_on',
                'action_classes', 'max_attempts', 'objective', 'expected_output',
-               'boundaries', 'capabilities_required', 'min_model_tier', 'workspace_mode',
-               'touches', 'inputs', 'refs', 'serves', 'acceptance', 'estimate')
+               'boundaries', 'capabilities_required', 'min_model_tier', 'effort',
+               'workspace_mode', 'touches', 'inputs', 'refs', 'serves', 'acceptance', 'estimate')
     id: str
     plan_id: str
     mission_id: str
@@ -919,6 +921,7 @@ class Task(Entity):
     boundaries: tuple = ()
     capabilities_required: tuple = ()
     min_model_tier: str = None
+    effort: str = None
     workspace_mode: str = None
     touches: tuple = ()
     # {from_task: key, what} or {ref: {kind, id}, what}

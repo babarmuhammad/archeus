@@ -456,7 +456,7 @@ def _mission():
 
 def _task():
     return _ns(id='tsk_x', capabilities_required=('code_edit',), min_model_tier=None,
-               estimate=2)
+               effort=None, estimate=2)
 
 
 def steps_of(d):

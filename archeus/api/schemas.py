@@ -940,6 +940,7 @@ TYPES = {
             'type': 'string', 'enum': list(entities.CAPABILITIES)}},
         'min_model_tier': {'type': 'string', 'nullable': True,
                            'enum': list(entities.MODEL_TIERS)},
+        'effort': {'type': 'string', 'nullable': True, 'enum': list(entities.EFFORTS)},
         'workspace_mode': {'type': 'string', 'nullable': True,
                            'enum': list(entities.WORKSPACE_MODES)},
         'touches': {'type': 'array', 'items': {'type': 'string'}},

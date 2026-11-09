@@ -336,7 +336,7 @@ function PlanTab({ snap, mission }: { snap: ReturnType<typeof useRead<MissionPla
 }
 
 /** The task fields a plan edit carries: the planner's own task shape (P19 S2). */
-const SPEC = ['key', 'title', 'kind', 'objective', 'expected_output', 'boundaries', 'depends_on', 'action_classes', 'capabilities_required', 'min_model_tier', 'workspace_mode', 'touches', 'refs', 'serves', 'inputs', 'acceptance', 'estimate'] as const;
+const SPEC = ['key', 'title', 'kind', 'objective', 'expected_output', 'boundaries', 'depends_on', 'action_classes', 'capabilities_required', 'min_model_tier', 'effort', 'workspace_mode', 'touches', 'refs', 'serves', 'inputs', 'acceptance', 'estimate'] as const;
 type Crit = { text: string; check: 'automatic' | 'human' };
 
 /** Edit the plan awaiting approval (P19 S2; p19-design-gate B4): rename,

@@ -1304,6 +1304,7 @@ interface PlanTaskSpec {
   action_classes?: Array<'read' | 'web' | 'write_repo' | 'exec' | 'git_commit' | 'git_push' | 'deploy' | 'external_comm' | 'destructive' | 'spend' | 'personal_data' | 'install' | 'credential'>;
   capabilities_required?: Array<'code_edit' | 'shell' | 'web' | 'long_context' | 'vision'>;
   min_model_tier?: 'small' | 'mid' | 'large' | null;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null;
   workspace_mode?: 'in_place' | 'worktree' | null;
   touches?: string[];
   refs?: Record<string, unknown>[];

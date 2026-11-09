@@ -36,7 +36,8 @@ command that recorded it asks P9's approval machinery.
 
 `snap` (the decision's `input_snapshot`): harnesses [{id, installed,
 capabilities, enforcement, structured_output, efforts, models [{id, tier,
-context_window}], exempt, breaker {state, until, error} when not closed (T-106)}],
+context_window, efforts when the model accepts a narrower set}], exempt, breaker
+{state, until, error} when not closed (T-106)}],
 isolated_dispatch {broker {harness: [auth_kind]}} (only while PV-20 isolated dispatch
 is on), accounts [{id, ref, harness, label, auth_kind,
 registered, health, why_not, policy, usage {windows {5h: pct}, resets_at,
@@ -51,6 +52,8 @@ builder writes. The router orders and compares by `key` and writes `at`; without
 """
 
 TIERS = ('small', 'mid', 'large')
+#: effort, lowest first (entities.EFFORTS: the router imports nothing)
+EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 STEPS = ('installed', 'headless', 'capability', 'model', 'enforcement', 'provider_terms',
          'broker', 'restriction', 'breaker', 'health', 'allocation', 'partition', 'election')
 #: health states the router may use (state-machines §9); DEGRADED only by fallback
@@ -93,6 +96,17 @@ def worst(usage, penalty=True):
 def _rank(tier):
     """An unknown tier counts as the smallest (ADR-0022)."""
     return TIERS.index(tier) if tier in TIERS else 0
+
+
+def fit(effort, allowed, lower=False):
+    """The highest effort of *allowed* at or below *effort* (`lower`: below it),
+    or the lowest allowed when none is: effort is relative to the model, so a
+    task's is clamped to what the model accepts. `lower` is the one-step lowering
+    resource-router §6 gives a CONSTRAINED account; nothing calls it yet."""
+    ok = [e for e in EFFORTS if e in allowed]
+    top = EFFORTS.index(effort) - lower
+    below = [e for e in ok if EFFORTS.index(e) <= top]
+    return below[-1] if below else ok[0]
 
 
 def _ids(d, k):
@@ -185,6 +199,12 @@ def _model(c, req, snap):
     effort = req.get('effort')
     if effort and effort in (h.get('efforts') or ()):
         c['effort'] = effort
+        # the chosen model may accept fewer levels than its harness does
+        allowed = set((offers.get(c['model']) or {}).get('efforts') or ()) & set(h['efforts'])
+        if allowed and effort in EFFORTS:
+            c['effort'] = fit(effort, allowed)
+            if c['effort'] != effort and req.get('effort_required'):
+                return 'model %s does not accept effort %s' % (c['model'], effort)
     elif effort and req.get('effort_required'):
         return 'does not accept effort %s' % effort
     return None

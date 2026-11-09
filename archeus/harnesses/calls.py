@@ -190,17 +190,19 @@ CLAUDE_TIERS = {'haiku': 'small', 'sonnet': 'mid', 'opus': 'large', 'fable': 'la
 def claude_models():
     """Claude Code's offers, in its own vocabulary: the family aliases it
     accepts as `--model`, and the newest id of each family from the cached
-    catalogue (a disk read, `models.roster`)."""
+    catalogue (a disk read, `models.roster`), each with the efforts the
+    catalogue says it accepts (an alias is its family's newest)."""
     from claude_sessions import models
-    out = [base.ModelInfo(f, t) for f, t in CLAUDE_TIERS.items()]
     try:
         roster = models.roster()
     except Exception:           # a malformed cache offers the aliases only, never crashes routing
-        return tuple(out)
+        return tuple(base.ModelInfo(f, t) for f, t in CLAUDE_TIERS.items())
+    efforts = {r.get('family'): tuple(r.get('efforts') or ()) for r in roster}
+    out = [base.ModelInfo(f, t, efforts=efforts.get(f, ())) for f, t in CLAUDE_TIERS.items()]
     for r in roster:
         t = CLAUDE_TIERS.get(r.get('family'))
         if t is not None and r.get('id'):
-            out.append(base.ModelInfo(models.alias(r['id']), t))
+            out.append(base.ModelInfo(models.alias(r['id']), t, efforts=efforts[r['family']]))
     return tuple(out)
 
 
