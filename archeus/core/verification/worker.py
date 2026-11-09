@@ -20,6 +20,7 @@ moves a mission: it writes rows and the engine's `advance` judges them.
 """
 
 import logging
+import os
 import sys
 
 from ...infra import paths
@@ -53,12 +54,14 @@ class VerifyWorker:
     verification to the engine's injected stub verifier."""
 
     def __init__(self, db, *, actor, missions, calls=None, node=None, verify=True,
-                 timeout_s=None, switches=None):
+                 timeout_s=None, switches=None, baseline=()):
         self.db, self.actor, self.missions, self.calls = db, actor, missions, calls
         self.node = node or LocalNode()
         self.verify = verify
         self.switches = checked(switches)
         self.timeout_s = timeout_s or evidence.CHECK_TIMEOUT_S
+        # the project and mission ids whose failed tests also run at the base (T-1068)
+        self.baseline = frozenset(baseline)
         self.on_wake = None
         self.stopping = lambda: False
         # mission -> the state it was left in when its worktree path was too long
@@ -235,7 +238,7 @@ class VerifyWorker:
                        verifier=_CODE, execution_id=e.id, revision=revision,
                        base_revision=base, workspace=ws, provenance=prov,
                        criteria=[dict(c, result='unknown') for c in auto])
-        self._run_and_record(out['verification_id'], t, root, ws, revision, base, cmds,
+        self._run_and_record(out['verification_id'], m, t, root, ws, revision, base, cmds,
                              out['verifier_version'])
         return True
 
@@ -291,12 +294,47 @@ class VerifyWorker:
                                      project_id=project_id, revision=revision,
                                      workdirs=workdirs)
 
-    def _run_and_record(self, vid, t, root, ws, revision, base, cmds, version):
+    def _with_base(self, vid, m, plan_id, root, base, cmds, checks, version):
+        """Opt-in and advisory (T-1068): each failed test check also says what its
+        command did at *base*. Run only for a failure, through `run_commands` in a
+        detached checkout of *base*, once per (plan, base, command): the plan's
+        earlier rows keep it on their checks."""
+        if base is None or root is None or not self.baseline & {m.id, m.project_id}:
+            return checks
+        failed = {c['name'] for c in checks if c['kind'] == 'command' and c['result'] == 'fail'}
+        mine = [(k, c) for k, c in cmds if k == 'test' and '%s: %s' % (k, c) in failed]
+        if not mine:
+            return checks
+        with self.db.read() as conn:
+            known = {c['name']: c['baseline']
+                     for v in _rows(conn, entities.Verification, plan_id=plan_id)
+                     for c in v.checks if (c.get('baseline') or {}).get('revision') == base}
+        todo = [x for x in mine if '%s: %s' % x not in known]
+        if todo:
+            tree = os.path.join(paths.run_dir(), 'verify', vid, 'base', 'tree')
+            try:
+                self.node.base_checkout(root, tree, base)
+            except OSError as err:
+                ran = [{'name': '%s: %s' % x, 'kind': 'command', 'result': 'error',
+                        'detail': 'no checkout of the base: %s' % err} for x in todo]
+            else:
+                try:
+                    ran = evidence.run_commands(self.node, tree, todo,
+                                                verification_id=os.path.join(vid, 'base'),
+                                                timeout_s=self.timeout_s,
+                                                verifier_version=version)
+                finally:
+                    self.node.drop_checkout(root, tree)
+            known.update((c['name'], evidence.base_of(c, base)) for c in ran)
+        return [evidence.with_base(c, known.get(c['name'])) for c in checks]
+
+    def _run_and_record(self, vid, m, t, root, ws, revision, base, cmds, version):
         checks = []
         if t.kind == 'code_change' and base is not None:
             checks.append(evidence.changes_check(self.node, root, base, revision))
         checks += evidence.run_commands(self.node, ws, cmds, verification_id=vid,
                                         timeout_s=self.timeout_s, verifier_version=version)
+        checks = self._with_base(vid, m, t.plan_id, root, base, cmds, checks, version)
         now = self.node.git_head(ws)
         if now != revision or self.node.git_dirty(ws, tracked_only=True):
             checks.append({'name': 'workspace', 'kind': 'git', 'result': 'error',
@@ -333,8 +371,8 @@ class VerifyWorker:
                 root = evidence.project_root(conn, m.project_id)
                 tests, builds = evidence.commands(conn, m.project_id, root)
             cmds = [('test', c) for c in tests] + [('build', c) for c in builds]
-            self._run_and_record(v.id, t, root, v.workspace, v.revision, v.base_revision, cmds,
-                                 v.verifier_version)
+            self._run_and_record(v.id, m, t, root, v.workspace, v.revision, v.base_revision,
+                                 cmds, v.verifier_version)
         else:
             with self.db.read() as conn:
                 m = rows.get(conn, entities.Mission, v.subject.id).entity
@@ -344,6 +382,8 @@ class VerifyWorker:
             checks = evidence.run_commands(self.node, v.workspace, cmds, verification_id=v.id,
                                            timeout_s=self.timeout_s,
                                            verifier_version=v.verifier_version)
+            checks = self._with_base(v.id, m, v.plan_id, root, v.base_revision, cmds, checks,
+                                     v.verifier_version)
             head = self.node.git_head(v.workspace) if m.integration_base is not None else None
             self._do(V.record, missions=self.missions, verification_id=v.id, checks=checks,
                      head=head)
@@ -464,6 +504,9 @@ class VerifyWorker:
                                            verification_id=started[0]['verification_id'],
                                            timeout_s=self.timeout_s,
                                            verifier_version=started[0]['verifier_version'])
+            checks = self._with_base(started[0]['verification_id'], m, plan.entity.id, root,
+                                     m.integration_base, cmds, checks,
+                                     started[0]['verifier_version'])
             started = [out['verification_id'] for out in started]
             # the branch may have moved while the commands ran: the last record notes it
             head = self.node.git_head(ws) if m.integration_base is not None else None

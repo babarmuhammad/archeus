@@ -121,6 +121,30 @@ def run_commands(node, workspace, cmds, *, verification_id, timeout_s, verifier_
     return checks
 
 
+#: what a failed test check is called by the same command's result at the base (T-1068)
+BASE_LABELS = {'pass': 'regressed', 'fail': 'failing at base'}
+
+
+def base_of(check, base):
+    """What one run of a command at revision *base* showed, as kept on the
+    failed check it explains (T-1068): the command's result, never a verdict."""
+    return {'revision': base, 'result': check['result'], 'exit_code': check.get('exit_code'),
+            'output_sha256': check.get('output_sha256'), 'detail': check.get('detail'),
+            'label': BASE_LABELS.get(check['result'])}
+
+
+def with_base(check, base):
+    """*check* with what its command showed at the base, when it failed and a
+    base run is known. Advisory: its result stays as it is, so no verdict moves;
+    the label names the whole command, not which of its tests regressed."""
+    if base is None or check.get('result') != 'fail':
+        return check
+    out = dict(check, baseline=base)
+    if base['label'] is not None:
+        out['detail'] = '%s; %s (%s)' % (check.get('detail'), base['label'], base['revision'][:12])
+    return out
+
+
 def changes_check(node, root, base, revision):
     """`changes`: a code change changed something (§8.3). A diff proves only
     that something was written; it is never an outcome check."""
