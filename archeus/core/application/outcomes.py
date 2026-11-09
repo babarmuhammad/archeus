@@ -139,12 +139,14 @@ def by_pass(conn):
 USAGE_BY = ('account', 'mission', 'pass')
 
 
-def usage(conn, by):
+def usage(conn, by, public=lambda key: key):
     """The usage ledger summed by `account`, `mission` or `pass`, as `by_pass` does for
     each learning pass (same figures, `None` when nothing was reported, `complete` only
     while every row is the harness's own total). An account is the registered one, else
     the harness's own `account_ref`; a mission is the execution's, else the mission an own
-    call is about. A row that names none is kept under the key None, never dropped."""
+    call is about. A row that names none is kept under the key None, never dropped.
+    *public* maps an account key to what the caller shows, before rows are grouped,
+    so two keys shown alike are one row."""
     if by == 'pass':
         return by_pass(conn)
     if by not in USAGE_BY:
@@ -156,7 +158,8 @@ def usage(conn, by):
         s = sources[u.route_decision_id]
         return missions.get(u.execution_id) or (s.id if s and s.kind == 'mission' else None)
 
-    return _sum(conn, by, (lambda u: u.account_id or u.account_ref) if by == 'account' else mission)
+    key = (lambda u: u.account_id or u.account_ref) if by == 'account' else mission
+    return _sum(conn, by, (lambda u: public(key(u))) if by == 'account' else key)
 
 
 def _band(tokens):
@@ -172,8 +175,9 @@ def by_context(conn):
     the execution's mission points at (`none`, `under 1k`, `1k to 4k`, `over 4k` tokens
     of `budget.used_tokens`; band None: the mission has no package or the package
     reports no figure). One dict per (kind, model, effort, band), sorted by it, with the
-    `executions` sample count always present, `passed`, `failed`, `unverified`, and
-    `tokens` and `cost_usd` summed over what was reported (None: nothing was).
+    `executions` sample count always present, `passed`, `failed`, `unverified`,
+    `tokens` and `cost_usd` summed over what was reported (None: nothing was), and
+    `complete` as in `by_model`. No caller yet: a library for threshold tuning.
 
     The band is what was ASSEMBLED, not what the agent saw: today the execution prompt
     is the objective and the task title (`execution/manager.py`), the package is only
@@ -201,11 +205,14 @@ def by_context(conn):
         band = _band(used.get(e.mission_id))
         g = out.setdefault((kinds[e.task_id], e.model, e.effort, band), {
             'kind': kinds[e.task_id], 'model': e.model, 'effort': e.effort, 'context': band,
+            'complete': True,
             'executions': 0, 'passed': 0, 'failed': 0, 'unverified': 0, 'tokens': None,
             'cost_usd': None})
         g['executions'] += 1
         g[{'PASSED': 'passed', 'FAILED': 'failed'}.get(verdict.get(e.id), 'unverified')] += 1
-        for u in ledger.get(e.id, ()):
+        spent = ledger.get(e.id, ())
+        g['complete'] &= bool(spent) and all(u.basis == 'reported_total' for u in spent)
+        for u in spent:
             if u.tokens_in is not None or u.tokens_out is not None:
                 g['tokens'] = (g['tokens'] or 0) + (u.tokens_in or 0) + (u.tokens_out or 0)
             g['cost_usd'] = _add(g['cost_usd'], u.cost_usd)
