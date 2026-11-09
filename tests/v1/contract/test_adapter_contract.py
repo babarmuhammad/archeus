@@ -229,6 +229,11 @@ def test_a_deeply_nested_stream_line_is_a_stderr_event_not_a_crash_of_core(tmp_p
     events, offset = base.read_stream(path)
     assert [e['type'] for e in events] == ['a', 'stderr', 'b']
     assert events[1]['text'] == deep and offset == os.path.getsize(path)
+    deep = '{"a":' * 100000 + '1' + '}' * 100000     # an object line is the one json.loads parses
+    with open(path, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('\n'.join(['{"type": "a"}', deep, '{"type": "b"}', '']))
+    events, _ = base.read_stream(path)
+    assert [e['type'] for e in events] == ['a', 'stderr', 'b']
 
 
 def test_the_fake_agent_is_stdlib_only():

@@ -250,8 +250,8 @@ MUTATIONS = [
      [U + '::test_a_deeply_nested_request_or_answer_is_unreadable_not_a_crash_of_core']),
     ('X45', 'a deeply nested stream line raises out of read_stream and Core', [(
      'archeus/harnesses/base.py',
-     "            except (ValueError, RecursionError):    # `[[[...` 100k deep is a stderr line, not a crash",
-     "            except ValueError:")],
+     "        except (ValueError, RecursionError):    # `{{{...` 100k deep is a stderr line, not a crash",
+     "        except ValueError:")],
      [AC + '::test_a_deeply_nested_stream_line_is_a_stderr_event_not_a_crash_of_core']),
     ('X46', 'every answered pair is read again on every tick', [(NODE,
      "            if None not in stamp and seen.get(head) == stamp:",

@@ -182,7 +182,7 @@ MUTATIONS = [
      [E + 'test_the_recheck_follows_the_terms_every_request',
       E + 'test_terms_withdrawn_mid_run_end_the_next_request']),
     ('M02', 'the account health is not rechecked', [(MGR,
-     '                and account.entity.health in ROUTABLE)',
+     "                and account.entity.health in ('AVAILABLE', 'CONSTRAINED'))",
      '                and True)')],
      [E + 'test_the_recheck_follows_the_accounts_health']),
     ('M03', 'a missing account is live', [(MGR,

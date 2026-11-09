@@ -1022,11 +1022,14 @@ def test_an_answer_to_an_earlier_request_with_the_same_number_does_not_answer_a_
     with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
         f.write('{"tool": "Read", "nonce": "a"}')
     LocalNode.respond(eid, 1, {'tool': 'Read', 'nonce': 'a'}, 'allow')
+    req = os.path.join(p.req, '1.req.json')
+    pinned = os.stat(req).st_mtime_ns
     assert LocalNode.pending_requests(eid) == []
-    with open(os.path.join(p.req, '1.req.json'), 'w', encoding='utf-8') as f:
-        f.write('{"tool": "Bash", "nonce": "b"}')
-    assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Bash', 'nonce': 'b'})]
-    LocalNode.respond(eid, 1, {'tool': 'Bash', 'nonce': 'b'}, 'deny', 'no')
+    with open(req, 'w', encoding='utf-8') as f:       # same size, file and clock tick as the answered one
+        f.write('{"tool": "Read", "nonce": "b"}')
+    os.utime(req, ns=(pinned, pinned))
+    assert LocalNode.pending_requests(eid) == [(1, {'tool': 'Read', 'nonce': 'b'})]
+    LocalNode.respond(eid, 1, {'tool': 'Read', 'nonce': 'b'}, 'deny', 'no')
     assert LocalNode.pending_requests(eid) == []
 
 
