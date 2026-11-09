@@ -1209,6 +1209,27 @@ class LocalNode:
             proc.git([*_WORKTREE, 'remove', '--force', '--', path], root, timeout=60)
         return listed
 
+    @staticmethod
+    def base_checkout(root, path, rev):
+        """A detached worktree of *rev* at *path* for a base-revision run (T-1068),
+        replacing one a crash left there. Returns the path or raises OSError."""
+        # the absolute Git the store pin resolves, never a bare name (T-1064, item 109)
+        git = _git_exe()
+        proc.run([git, *_WORKTREE, 'remove', '--force', '--', path], cwd=root, timeout=60)
+        check_worktree_path(path)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        r = proc.run([git, *_WORKTREE, 'add', '--detach', '--', path, rev], cwd=root,
+                     timeout=60)
+        if r is None or r.returncode != 0:
+            raise OSError('git worktree add failed: %s'
+                          % ((r.stderr or r.stdout or '').strip() if r else 'no git'))
+        return path
+
+    @staticmethod
+    def drop_checkout(root, path):
+        proc.run([_git_exe(), *_WORKTREE, 'remove', '--force', '--', path], cwd=root,
+                 timeout=60)
+
     # ── verification and merge-back (P13, p13-design-gate §8, §12) ──
 
     @staticmethod
