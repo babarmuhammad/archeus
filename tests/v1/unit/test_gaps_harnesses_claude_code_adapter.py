@@ -330,12 +330,6 @@ def test_g07_a_billed_models_object_that_is_not_an_object_bills_nothing():
         'claude-x', 'claude-y']
 
 
-@pytest.mark.xfail(strict=True, reason="adapter.py:99 sorts the modelUsage keys without "
-                                       "reading them: the stream is the child's own stdout "
-                                       "(adapter.py:60-61, any field may be of any type), so "
-                                       "a modelUsage with keys of two kinds raises TypeError "
-                                       "out of normalise and the whole execution reads as a "
-                                       "crash instead of an unattributed result")
 def test_g08_billed_models_with_keys_of_two_kinds_are_never_a_crash_nor_a_name():
     """adapter.py:99: `sorted(billed)` over a dict the child wrote. `{1: ...,
     'claude-x': ...}` is a dict, so g07's `isinstance` guard passes and `sorted`
@@ -347,7 +341,7 @@ def test_g08_billed_models_with_keys_of_two_kinds_are_never_a_crash_nor_a_name()
     keep the string keys — turns this red as XPASS; a fix that sorted the keys
     with `key=str` would keep the integer in the ledger and still be wrong."""
     billed = _events(_result(modelUsage={1: {}, 'claude-x': {}}))[0]['billed']
-    assert all(isinstance(b, str) for b in billed) and list(billed) == sorted(billed)
+    assert billed == ['claude-x']
 
 
 @pytest.mark.parametrize('is_error', ['yes', 1, [0], {'a': 1}, 'false'],

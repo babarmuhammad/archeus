@@ -112,7 +112,8 @@ def normalise(raw):
                     'subtype': raw.get('subtype'), 'session_id': raw.get('session_id'),
                     'usage': usage,
                     # the models the usage is attributed to (BILLED, ADR-0031 §6)
-                    'billed': sorted(billed) if isinstance(billed, dict) else []})
+                    'billed': sorted(k for k in billed if isinstance(k, str))
+                    if isinstance(billed, dict) else []})
     elif t == 'system':
         out.append({'type': 'system', 'subtype': raw.get('subtype'),
                     'session_id': raw.get('session_id')})
