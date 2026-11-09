@@ -172,7 +172,7 @@ def test_a_key_of_any_size_is_redacted_to_its_end_line_or_to_the_end_of_the_text
 @pytest.mark.parametrize('before', ['\\n', '\\t', '\\r\\n', ' '])
 def test_a_token_after_a_literal_escape_is_still_at_a_left_edge(before):
     jwt = 'eyJhbGciOiJTWU5USCJ9.eyJzdWIiOiJzeW50aCJ9.c3ludGhzaWc'
-    assert 'c3ludGhzaWc' not in redact('token:' + before + jwt)
+    assert 'eyJhbGciOiJTWU5USCJ9' not in redact('token:' + before + jwt)    # the whole token, header too
     assert 'c3ludGhzaWc' not in redact(json.dumps({'text': 'token:\n' + jwt}))
     assert redact('xeyJabcde.b.c') == 'xeyJabcde.b.c'                   # still not mid-word
     assert 'SYNTHpw' not in redact(before + '-u bob:SYNTHpw')

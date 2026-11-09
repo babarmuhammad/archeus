@@ -326,10 +326,11 @@ def test_a_key_over_the_batches_of_a_long_read_is_redacted():
 def test_a_key_too_long_to_see_its_start_is_still_redacted(monkeypatch):
     body = ['U1lOVEhfQk9EWV9MSU5F%04d' % i for i in range(30)]
     exe, _ = _stream(['-----BEGIN PRIVATE KEY-----'] + body + ['-----END PRIVATE KEY-----', 'after'])
-    monkeypatch.setattr(base, 'KEY_PROBE', 100)
+    monkeypatch.setattr(base, 'CHECKPOINT', 100)
     start = sum(len(line) + 1 for line in body[:20]) + 28
-    got = output.read(exe, FakeHarness(), start)
-    assert 'U1lOVEhf' not in json.dumps(got) and _texts(got)[-1] == 'after'
+    for _ in range(2):              # folded from 0, then from the checkpoints the first read kept
+        got = output.read(exe, FakeHarness(), start)
+        assert 'U1lOVEhf' not in json.dumps(got) and _texts(got)[-1] == 'after'
 
 
 @pytest.mark.parametrize('pad', [95, 150])

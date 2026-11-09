@@ -32,14 +32,14 @@ F4 = B + 'test_f4_no_guess_is_admitted_while_the_revoke_keeps_failing_and_the_re
 
 MUTATIONS = [
     ('R01', 'redact_json leaves a string as it is', [(RED,
-     r"""            dst[k] = redact(v)
+     r"""            dst[k], state = scrub(v, state, 'json', plain)
 """,
      r"""            dst[k] = v
 """)],
      [T + 'test_redact_json_keeps_every_other_value_and_redacts_keys_and_deep_strings']),
     ('R02', 'redact_json does not match a value with its key', [(RED,
-     r"""                    new[shown] = pair[len(name) + 2:] if pair.startswith(name + ': ') else '[redacted]'""",
-     r"""                    new[shown] = redact(x)""")],
+     r"""                plain = pair[len(name) + 2:] if pair.startswith(name + ': ') else '[redacted]'""",
+     r"""                plain = None""")],
      [T + 'test_a_secret_named_by_its_key_is_redacted_in_a_document',
       T + 'test_a_quoted_aws_key_keeps_its_name_and_loses_its_value']),
     ('R03', 'a PEM runs past its END line', [(RED,

@@ -16,17 +16,20 @@ spawning marker exists is NEVER spawned again — a retry is a new execution id
 (a new attempt), and a marker without `ended` belongs to reconciliation.
 """
 
+import bisect
+import collections
 import json
 import logging
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
-from ..core.redact import close_pem, pem_open
+from ..core import redact
 from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, _plain_dir, archeus_home, run_dir
 
 log = logging.getLogger('archeus.harnesses')
@@ -642,34 +645,144 @@ def sweep_mcp_configs(keep):
 MAX_LINE = 8 << 20
 
 
-#: how far before a read's offset the stream is looked at to know whether the read starts
-#: inside a private key
-KEY_PROBE = 1 << 16
-_KEY_BODY = re.compile(r'[A-Za-z0-9+/=]{16,}')
+#: deeper JSON is a stderr line: whatever reads an event may recurse into it
+MAX_DEPTH = 100
+
+# Whether a line is inside a private key depends on every line before it, so the
+# state is folded over the stream from its start, never guessed from a look-back,
+# and a read from any offset gets the answer a read from 0 would. The fold keeps a
+# checkpoint (line start, state) every CHECKPOINT bytes per stream, so a read folds
+# at most that far, and the stream before a new offset is folded once.
+CHECKPOINT = 1 << 16
+_SEEN = collections.OrderedDict()   # stream path -> {'head', 'tail', 'points'}
+_SEEN_LOCK = threading.Lock()
+_SEEN_MAX = 256
 
 
-def _inside_key(f, offset):
-    """Whether *offset* falls inside a private key block: the last key line of the
-    KEY_PROBE bytes before it is a BEGIN. A full probe with no key line that ends on
-    a base64 line is a key too long to see its start: it fails closed."""
-    start = max(0, offset - KEY_PROBE)
-    f.seek(start)
-    text = f.read(offset - start).decode('utf-8', errors='replace')
-    if pem_open(text):
-        return True
-    return start > 0 and '-----' not in text and _KEY_BODY.fullmatch(text.rstrip().rpartition('\n')[2]) is not None
+def _quiet(raw):
+    # nothing that could be a key marker: such lines leave a stderr key or no key as it is
+    return b'----' not in raw and b'\\u' not in raw
+
+
+def _long(f, raw):
+    """(size, last key marker) of a line over MAX_LINE whose first bytes are *raw*,
+    read to its end."""
+    n, seam, mark, rest = len(raw), b'', None, raw
+    while True:
+        mark = redact.last_mark((seam + rest).decode('utf-8', errors='replace')) or mark
+        if not rest or rest.endswith(b'\n'):
+            return n, mark
+        seam = rest[-80:]               # a marker the read's end cut in two
+        rest = f.readline(MAX_LINE)
+        n += len(rest)
+
+
+def _event(raw, state):
+    line = raw.decode('utf-8', errors='replace').strip()
+    if not line:
+        return None, state
+    if line[0] == '{':
+        try:
+            return redact.scrub_json(json.loads(line), state, MAX_DEPTH)
+        except (ValueError, RecursionError):    # `{{{...` 100k deep is a stderr line, not a crash
+            pass
+    text, state = redact.scrub(line, state, 'stderr')
+    return {'type': 'stderr', 'text': text}, state
+
+
+def _step(f, state, emit=True):
+    """(the event of the line at *f*'s position or None, its size, the key state
+    after it); None for a line not yet complete."""
+    raw = f.readline(MAX_LINE + 1)
+    if len(raw) > MAX_LINE:
+        n, mark = _long(f, raw)
+        ev = None
+        if emit:
+            head = redact.scrub(raw[:200].decode('utf-8', errors='replace').strip(), state, 'stderr')[0]
+            ev = {'type': 'stderr', 'text': '%s [line over %d bytes dropped]' % (head, MAX_LINE)}
+        return ev, n, redact.after(state, 'stderr', mark)
+    if not raw.endswith(b'\n'):
+        return None
+    if not emit and state != 'json' and _quiet(raw):
+        return None, len(raw), state
+    ev, state = _event(raw, state)
+    return ev, len(raw), state
+
+
+def _add(points, pos, state):
+    """Keep (pos, state) as the furthest point, the others CHECKPOINT apart."""
+    if pos <= points[-1][0]:
+        return
+    if len(points) > 1 and pos - points[-2][0] < CHECKPOINT:
+        points[-1] = (pos, state)
+    else:
+        points.append((pos, state))
+
+
+def _known(path, f):
+    """(the stream's checkpoints, its first bytes); none past 0 when it is new to
+    this process or was written anew."""
+    f.seek(0)
+    head = f.read(64)
+    with _SEEN_LOCK:
+        seen = _SEEN.get(path)
+        points = list(seen['points']) if seen else [(0, None)]
+    if seen:
+        last = points[-1][0]
+        f.seek(max(0, last - 32))
+        # ponytail: a stream is append-only, so its first bytes and those before the
+        # furthest point tell a rewrite; an inode check if streams are ever rewritten
+        if not head.startswith(seen['head']) or f.read(min(32, last)) != seen['tail']:
+            points = [(0, None)]
+    return points, head
+
+
+def _keep(path, f, head, points):
+    last = points[-1][0]
+    f.seek(max(0, last - 32))
+    tail = f.read(min(32, last))
+    with _SEEN_LOCK:
+        _SEEN.pop(path, None)       # the newest at the end: the oldest is dropped first
+        _SEEN[path] = {'head': head, 'tail': tail, 'points': points}
+        while len(_SEEN) > _SEEN_MAX:
+            _SEEN.popitem(last=False)
+
+
+def _state_at(f, points, offset):
+    """(the first line start at or after *offset*, the key state there), folded
+    from the nearest checkpoint before it; *offset* itself when that line is not
+    yet complete. Every point passed is added to *points*."""
+    pos, state = points[bisect.bisect_right(points, offset, key=lambda p: p[0]) - 1]
+    f.seek(pos)
+    while pos < offset:
+        if state != 'json':
+            block = f.read(CHECKPOINT)
+            nl = block.find(b'\n', offset - pos - 1)
+            cut = nl + 1 if nl >= 0 else block.rfind(b'\n') + 1
+            if cut and _quiet(block[:cut]):
+                pos += cut
+                _add(points, pos, state)
+                f.seek(pos)
+                continue
+            f.seek(pos)
+        got = _step(f, state, emit=False)
+        if got is None:
+            return offset, state
+        pos, state = pos + got[1], got[2]
+        _add(points, pos, state)
+    return pos, state
 
 
 def read_stream(path, offset=0, max_events=None):
     """Complete JSONL events from byte *offset* onward -> (events, new_offset), at
     most *max_events* of them when given (a caller folding a long stream in batches).
 
-    A trailing partial line is left for the next read. A private key over several
-    stderr lines is redacted from its BEGIN line on, and so is the rest of one a read
-    starts inside of. stderr shares the file,
-    so a line that is not a JSON object is kept as `{"type": "stderr", "text"}`
-    rather than dropped — a traceback is exactly what a crash leaves behind. A line
-    over MAX_LINE is skipped to its end and reported the same way.
+    A trailing partial line is left for the next read, and the rest of a line a read
+    starts inside of is skipped. stderr shares the file, so a line that is not a JSON
+    object is kept as `{"type": "stderr", "text"}` rather than dropped — a traceback
+    is exactly what a crash leaves behind. A line over MAX_LINE is skipped to its end
+    and reported the same way. Every string is redacted, a private key cut over lines
+    or JSON values included, whatever the offset (the fold above).
     """
     events = []
     try:
@@ -677,35 +790,19 @@ def read_stream(path, offset=0, max_events=None):
     except FileNotFoundError:
         return events, offset
     with f:
-        inside = offset > 0 and _inside_key(f, offset)
+        if offset >= os.fstat(f.fileno()).st_size:
+            return events, offset
+        points, head = _known(path, f)
+        offset, state = _state_at(f, points, offset)
         f.seek(offset)
         while max_events is None or len(events) < max_events:
-            raw = f.readline(MAX_LINE + 1)
-            if len(raw) > MAX_LINE:
-                offset += len(raw)
-                head = close_pem(raw[:200].decode('utf-8', errors='replace').strip(), inside)[0]
-                rest, seam = raw, b''
-                while rest and not rest.endswith(b'\n'):
-                    inside = pem_open((seam + rest).decode('utf-8', errors='replace'), inside)
-                    seam = rest[-80:]       # a marker the read's end cut in two
-                    rest = f.readline(MAX_LINE)
-                    offset += len(rest)
-                inside = pem_open((seam + rest).decode('utf-8', errors='replace'), inside)
-                events.append({'type': 'stderr', 'text': '%s [line over %d bytes dropped]'
-                                                         % (head, MAX_LINE)})
-                continue
-            if not raw.endswith(b'\n'):
-                return events, offset
-            offset += len(raw)
-            line = raw.decode('utf-8', errors='replace').strip()
-            if not line:
-                continue
-            try:
-                ev = json.loads(line)
-            except (ValueError, RecursionError):    # `[[[...` 100k deep is a stderr line, not a crash
-                ev = None
-            if not isinstance(ev, dict):
-                line, inside = close_pem(line, inside)
-                ev = {'type': 'stderr', 'text': line}
-            events.append(ev)
+            got = _step(f, state)
+            if got is None:
+                break
+            ev, n, state = got
+            offset += n
+            _add(points, offset, state)
+            if ev is not None:
+                events.append(ev)
+        _keep(path, f, head, points)
     return events, offset

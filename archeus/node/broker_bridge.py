@@ -19,6 +19,7 @@ from dataclasses import dataclass, field, replace
 MAX_HEADERS = 64
 MAX_HEADER_BYTES = 32 * 1024
 MAX_BODY = 16 * 1024 * 1024
+BODY_CHUNK = 64 * 1024
 CONCURRENT = 2
 #: a connection that goes quiet for this long, or takes this long to send one request,
 #: is cut, so an idle client cannot hold a slot (PV20-08 §1; round 2 review S1)
@@ -164,10 +165,16 @@ def read_request(f, *, max_headers=MAX_HEADERS, max_header_bytes=MAX_HEADER_BYTE
     n = int(length)
     if n > cap:
         raise TooLarge('the body is over %d bytes' % cap)
-    body = f.read(n)
+    body = bytearray()
+    while len(body) < n:
+        # as it arrives: a declared length is not memory until its bytes come
+        chunk = f.read(min(n - len(body), BODY_CHUNK))
+        if not chunk:
+            break
+        body += chunk
     if len(body) != n:
         raise BadRequest('the body ended early')
-    return Request(method, target, req.headers, body)
+    return Request(method, target, req.headers, bytes(body))
 
 
 def frame(req):
