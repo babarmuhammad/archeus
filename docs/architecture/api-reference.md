@@ -24,6 +24,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | GET | `/manifest.webmanifest` | none | — | — | — | the built SPA |
 | GET | `/v1/health` | observe | — | — | — | `Health` |
 | GET | `/v1/metrics` | observe | — | `days` | — | `MetricsDaily` |
+| GET | `/v1/usage` | observe | — | `by` | — | `Usage` |
 | GET | `/v1/version` | observe | — | — | — | `Version` |
 | GET | `/v1/missions` | observe | — | `state`, `project` | — | `MissionList` |
 | GET | `/v1/missions/{id}` | observe | — | — | — | `Mission` |
@@ -2021,6 +2022,24 @@ interface Transition {
   to: string;
   trigger: string;
   seq: number;
+}
+```
+
+### `Usage`
+
+```ts
+interface Usage {
+  by: 'account' | 'mission' | 'pass';
+  rows: Array<{
+    calls: number;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    cache_read: number | null;
+    cache_write: number | null;
+    cost_usd: number | null;
+    complete: boolean;
+    [field: string]: unknown;
+  }>;
 }
 ```
 

@@ -103,6 +103,24 @@ PASSES = {('knowledge_extraction', 'repository_inspection'): 'knowledge',
           ('knowledge_extraction', 'meeting'): 'decisions', ('lesson', 'mission'): 'lessons'}
 
 
+def _sum(conn, name, key_of):
+    """The usage ledger summed by `key_of(row)`: one dict per key, the key kept under *name*,
+    sorted with the key None last."""
+    out = {}
+    for r in rows.where(conn, entities.UsageLedger):
+        u = r.entity
+        key = key_of(u)
+        g = out.setdefault(key, {
+            name: key, 'calls': 0, 'tokens_in': None,
+            'tokens_out': None, 'cache_read': None, 'cache_write': None, 'cost_usd': None,
+            'complete': True})
+        g['calls'] += 1
+        g['complete'] &= u.basis == 'reported_total'
+        for f in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd'):
+            g[f] = _add(g[f], getattr(u, f))
+    return [out[k] for k in sorted(out, key=lambda k: (k is None, k or ''))]
+
+
 def by_pass(conn):
     """One dict per learning pass that made a model call, sorted by name: `calls`
     that reached a model (a gated or unavailable call has no usage row, so is not
@@ -114,20 +132,31 @@ def by_pass(conn):
               for r in rows.where(conn, entities.RouteDecision)
               if r.entity.subject.kind == 'archeus_call' and r.entity.source
               and (r.entity.purpose, r.entity.source.kind) in PASSES}
-    out = {}
-    for r in rows.where(conn, entities.UsageLedger):
-        u = r.entity
-        if u.route_decision_id not in passes:
-            continue
-        g = out.setdefault(passes[u.route_decision_id], {
-            'pass': passes[u.route_decision_id], 'calls': 0, 'tokens_in': None,
-            'tokens_out': None, 'cache_read': None, 'cache_write': None, 'cost_usd': None,
-            'complete': True})
-        g['calls'] += 1
-        g['complete'] &= u.basis == 'reported_total'
-        for f in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd'):
-            g[f] = _add(g[f], getattr(u, f))
-    return [out[k] for k in sorted(out)]
+    return [g for g in _sum(conn, 'pass', lambda u: passes.get(u.route_decision_id))
+            if g['pass'] is not None]
+
+
+USAGE_BY = ('account', 'mission', 'pass')
+
+
+def usage(conn, by):
+    """The usage ledger summed by `account`, `mission` or `pass`, as `by_pass` does for
+    each learning pass (same figures, `None` when nothing was reported, `complete` only
+    while every row is the harness's own total). An account is the registered one, else
+    the harness's own `account_ref`; a mission is the execution's, else the mission an own
+    call is about. A row that names none is kept under the key None, never dropped."""
+    if by == 'pass':
+        return by_pass(conn)
+    if by not in USAGE_BY:
+        raise ValueError('by is one of %s: %r' % (', '.join(USAGE_BY), by))
+    missions = {r.entity.id: r.entity.mission_id for r in rows.where(conn, entities.Execution)}
+    sources = {r.entity.id: r.entity.source for r in rows.where(conn, entities.RouteDecision)}
+
+    def mission(u):
+        s = sources[u.route_decision_id]
+        return missions.get(u.execution_id) or (s.id if s and s.kind == 'mission' else None)
+
+    return _sum(conn, by, (lambda u: u.account_id or u.account_ref) if by == 'account' else mission)
 
 
 def _band(tokens):

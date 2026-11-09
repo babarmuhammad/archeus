@@ -63,7 +63,7 @@ from ..core.application import calls as own_calls
 from ..core.application import conversation, executions, knowledge, resources
 from ..core.application import automations, live, optins, sessions
 from ..core.application import verification
-from ..core.application.public import public_context, public_output
+from ..core.application.public import public_context, public_output, system_value
 from ..core.context import assemble as context
 from ..core.knowledge import ingest
 from ..harnesses.calls import real_callers
@@ -642,6 +642,19 @@ def metrics_days(req):
         return 200, metrics.daily(conn, days)
 
 
+def usage_by(req):
+    """T-1098: what the usage ledger came to, by account, mission or learning pass. An
+    account is shown as its public id, as everywhere else."""
+    from ..core.application import outcomes
+    by = _one(req.query, 'by') or 'account'
+    if by not in outcomes.USAGE_BY:
+        raise Invalid('by', 'is one of %s' % ', '.join(outcomes.USAGE_BY))
+    with req.api.db.read() as conn:
+        out = outcomes.usage(conn, by)
+        return 200, {'by': by, 'rows': system_value(out, _read_homes(req, conn),
+                                                    path_keys=('account',))}
+
+
 def mission_timeline(req):
     """P16 (D5): the events of the mission's own rows, newest first."""
     from ..core.application import attention
@@ -1070,6 +1083,7 @@ ROUTES = (
     Route('GET', '/manifest.webmanifest', manifest, None, None, None, None),
     Route('GET', '/v1/health', health, 'observe', None, None, 'Health'),
     Route('GET', '/v1/metrics', metrics_days, 'observe', None, None, 'MetricsDaily'),
+    Route('GET', '/v1/usage', usage_by, 'observe', None, None, 'Usage'),
     Route('GET', '/v1/version', version, 'observe', None, None, 'Version'),
     Route('GET', '/v1/missions', list_missions, 'observe', None, None, 'MissionList'),
     Route('GET', '/v1/missions/{id}', get_mission, 'observe', None, None, 'Mission'),
@@ -1313,6 +1327,7 @@ QUERY = {'/v1/missions': ('state', 'project'), '/v1/events': ('after', 'limit'),
          '/v1/repositories/{id}/inspections': ('limit',),
          '/v1/knowledge': ('project', 'state', 'type'), '/v1/search': ('q',),
          '/v1/metrics': ('days',),
+         '/v1/usage': ('by',),
          '/v1/route-decisions': ('source', 'purpose'),
          '/v1/conversations/{id}/messages': ('after',), '/v1/ideas': ('state',),
          '/v1/policy-decisions': ('mission', 'stage'), '/v1/approvals': ('state', 'mission'),

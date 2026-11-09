@@ -47,7 +47,7 @@ WALKED = {
     '/v1/missions/{id}/trace': 'mission', '/v1/automations': None,
     '/v1/automations/{id}': 'automation', '/v1/automations/{id}/simulate': 'automation',
     '/v1/automation-runs/{id}': 'run',
-    '/v1/metrics': None, '/v1/missions/{id}/replay': 'mission',
+    '/v1/metrics': None, '/v1/usage': None, '/v1/missions/{id}/replay': 'mission',
 }
 
 

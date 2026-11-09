@@ -311,6 +311,7 @@ P21 = {
     ('GET', '/v1/missions/{id}/trace', 'observe', None),
     ('GET', '/v1/missions/{id}/replay', 'observe', None),
     ('GET', '/v1/metrics', 'observe', None),
+    ('GET', '/v1/usage', 'observe', None),
 }
 
 
