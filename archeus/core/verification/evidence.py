@@ -3,6 +3,7 @@ only — git facts read at verification time and the commands P4's inspection
 found, run by Core in the workspace. The agent's own report is never read here.
 """
 
+import codecs
 import json
 import os
 import re
@@ -123,7 +124,7 @@ def run_commands(node, workspace, cmds, *, verification_id, timeout_s, verifier_
 
 
 #: what a failed test check is called by the same command's result at the base (T-1068)
-BASE_LABELS = {'pass': 'regressed', 'fail': 'failing at base'}
+BASE_LABELS = {'pass': 'regressed', 'fail': 'also fails in a clean base checkout'}
 
 
 def base_of(check, base):
@@ -185,17 +186,28 @@ _SHAPES = {
 _BOUND = re.compile(r'(timeout|threshold|tolerance|deadline)\w*["\']?\s*[=:(]\s*(\d[\d_]*(?:\.\d+)?)',
                     re.I)
 _FINDINGS_KEPT = 50
+_LINE_MAX = 2000
 
 
 def _shape_of(path):
     return next((s for s in _SHAPES.values() if path and s['file'].search(path)), None)
 
 
+def _path(header):
+    """The path of a `--- a/x` or `+++ b/x` line, unquoted; None for /dev/null."""
+    p = header[4:].split('\t')[0]
+    if p.startswith('"') and p.endswith('"'):
+        p = codecs.escape_decode(p[1:-1].encode('utf-8'))[0].decode('utf-8', 'replace')
+    return p[2:] if p[:2] in ('a/', 'b/') else None
+
+
 def _parse_diff(diff):
     """[{path, deleted, hunks: [(removed, added)]}] of a `git diff -U0`: the lines of
-    each hunk, never the headers (a removed `-- x` line reads like one)."""
-    files, cur, in_hunk = [], None, False
-    for line in diff.splitlines():
+    each hunk, never the headers (a removed `-- x` line reads like one). Only a
+    test file's hunks are kept, and no line longer than _LINE_MAX (the patterns
+    are not linear in it: a minified line would stall the verifier)."""
+    files, cur, in_hunk, keep = [], None, False, False
+    for line in diff.split('\n'):
         if line.startswith('diff --git '):
             cur, in_hunk = {'path': None, 'deleted': False, 'hunks': []}, False
             files.append(cur)
@@ -203,14 +215,14 @@ def _parse_diff(diff):
             continue
         elif line.startswith('@@ '):
             cur['hunks'].append(([], []))
-            in_hunk = True
+            in_hunk, keep = True, _shape_of(cur['path']) is not None
         elif in_hunk:
-            if line[:1] in ('-', '+'):
+            if keep and line[:1] in ('-', '+') and len(line) <= _LINE_MAX:
                 cur['hunks'][-1][line[0] == '+'].append(line[1:])
         elif line.startswith('deleted file mode'):
             cur['deleted'] = True
-        elif line.startswith(('--- a/', '+++ b/')):
-            cur['path'] = line[6:].split('\t')[0]
+        elif line.startswith(('--- ', '+++ ')):
+            cur['path'] = _path(line) or cur['path']
     return files
 
 

@@ -1,11 +1,12 @@
 """T-1068: the base-revision regression check (coarse pass-to-pass). A failed
 test command is run again at the base the task (or the mission branch) started
 from, opt-in per project or mission, and its check then says `regressed` or
-`failing at base`. Advisory: no result and no verdict moves. Per-test
+`also fails in a clean base checkout`. Advisory: no result and no verdict moves. Per-test
 granularity is out of scope: the label is of the whole command."""
 
 import os
 import subprocess
+import sys
 
 import pytest
 
@@ -19,6 +20,7 @@ from .test_gaps_core_verification_worker import AUTO, BASE, REV, _Node, _result,
 rig = W.rig
 
 OTHER = 'e' * 40
+ALSO = 'also fails in a clean base checkout'
 
 
 def _fail(**extra):
@@ -26,7 +28,7 @@ def _fail(**extra):
                  'detail': 'exit 1'}, **extra)
 
 
-@pytest.mark.parametrize('at_base,label', [('pass', 'regressed'), ('fail', 'failing at base'),
+@pytest.mark.parametrize('at_base,label', [('pass', 'regressed'), ('fail', ALSO),
                                            ('error', None)])
 def test_a_failed_check_names_what_its_command_did_at_the_base(at_base, label):
     base = evidence.base_of(dict(_fail(), result=at_base), BASE)
@@ -65,12 +67,12 @@ class _Base:
         return path
 
     def node(self, **more):
-        return _Node(git_head=_script(REV), git_dirty=_script(False),
-                     branch_exists=_script(False), git_merge_base=_script(BASE),
-                     git_numstat=_script([('1', '0', 'a.py')]), git_diff=_script(''),
-                     run_check=self.run_check,
-                     base_checkout=self.base_checkout,
-                     drop_checkout=lambda root, path: self.dropped.append(path), **more)
+        return _Node(**dict(git_head=_script(REV), git_dirty=_script(False),
+                            branch_exists=_script(False), git_merge_base=_script(BASE),
+                            git_numstat=_script([('1', '0', 'a.py')]), git_diff=_script(''),
+                            run_check=self.run_check, base_checkout=self.base_checkout,
+                            drop_checkout=lambda root, path: self.dropped.append(path) or True)
+                     | more)
 
 
 def _task(rig, fake, opt='project', **kw):
@@ -98,7 +100,7 @@ def test_a_test_that_passed_at_the_base_and_fails_now_is_regressed_and_still_fai
 def test_a_test_failing_at_the_base_too_is_failing_at_base(rig):
     r = _task(rig, _Base(at_base=1))
     test = r.one().checks[-1]
-    assert test['baseline']['label'] == 'failing at base' and test['result'] == 'fail'
+    assert test['baseline']['label'] == ALSO and test['result'] == 'fail'
 
 
 def test_without_the_opt_in_nothing_runs_at_the_base(rig):
@@ -123,7 +125,18 @@ def test_a_base_that_cannot_be_checked_out_is_said_and_changes_nothing(rig):
     assert r.one().state == 'FAILED' and test['result'] == 'fail'
     assert test['baseline']['result'] == 'error' and test['baseline']['label'] is None
     assert 'path too long' in test['baseline']['detail'] and test['detail'] == 'exit 1'
-    assert fake.dropped == []
+    assert fake.dropped == [fake.made[0][1]]       # what a failed add left is removed too
+
+
+def test_an_errored_base_run_is_tried_again_and_a_failed_removal_is_logged(rig, caplog):
+    fake = _Base(at_base=1)
+    r = rig(workdir='ws', branch='task', node=fake.node(drop_checkout=lambda root, path: False))
+    kept = evidence.base_of(dict(_fail(), result='error'), BASE)
+    r.vrow(state='FAILED', execution_id=r.erow(),
+           checks=(_fail(name='test: tool --check', baseline=kept),))
+    r.worker.baseline = frozenset({r.proj})
+    assert r.worker.pass_once() == {'changed': True, 'did': 'verify_task'}
+    assert len(fake.made) == 1 and 'was not removed' in caplog.text
 
 
 @pytest.mark.parametrize('kept_at,runs', [(BASE, 0), (OTHER, 1)])
@@ -139,7 +152,7 @@ def test_one_base_run_per_plan_base_and_command(rig, kept_at, runs):
     assert len(fake.made) == runs
     v = next(v for v in r.rows() if v.execution_id == r.eid)
     assert v.state == 'FAILED' and v.checks[-1]['baseline']['revision'] == BASE
-    assert v.checks[-1]['baseline']['label'] == ('regressed' if runs == 0 else 'failing at base')
+    assert v.checks[-1]['baseline']['label'] == ('regressed' if runs == 0 else ALSO)
 
 
 def test_a_mission_criterion_is_compared_with_the_integration_base(rig):
@@ -172,14 +185,42 @@ def test_the_base_checkout_is_a_detached_tree_of_the_base_from_an_absolute_git(
         _git(root, 'commit', '-q', '-m', text)
     base = subprocess.run(['git', 'rev-parse', 'HEAD~1'], cwd=root, capture_output=True,
                           text=True, check=True).stdout.strip()
-    seen, real = [], local.proc.run
-    monkeypatch.setattr(local.proc, 'run', lambda argv, **kw: seen.append(argv[0])
+    seen, real = [], local.subprocess.run
+    monkeypatch.setattr(local.subprocess, 'run', lambda argv, **kw: seen.append(argv[0])
                         or real(argv, **kw))
     tree = str(tmp_path / 'b' / 'tree')
     os.makedirs(tree)                       # what a crash left: replaced, not refused
     assert LocalNode.base_checkout(root, tree, base) == tree
     with open(os.path.join(tree, 'f.txt')) as f:
         assert f.read() == 'old'
-    LocalNode.drop_checkout(root, tree)
-    assert not os.path.exists(tree)
+    assert LocalNode.drop_checkout(root, tree) is True and not os.path.exists(tree)
     assert len(seen) == 3 and all(os.path.isabs(a) and a == local._git_exe() for a in seen)
+
+
+def test_the_base_checkout_runs_no_hook_or_filter_of_the_repository(tmp_path, monkeypatch):
+    root = tmp_path / 'repo'
+    root.mkdir()
+    _git(str(root), 'init', '-q')
+    marker = tmp_path / 'ran'
+    script = tmp_path / 'mark.py'
+    script.write_text('import sys\nopen(%r, "a").write(sys.argv[1] + "\\n")\n'
+                      'sys.stdout.write(sys.stdin.read())\n' % str(marker))
+    run = '"%s" "%s"' % (sys.executable.replace('\\', '/'), str(script).replace('\\', '/'))
+    hook = root / '.git' / 'hooks' / 'post-checkout'
+    hook.write_text('#!/bin/sh\n%s hook </dev/null\n' % run)
+    hook.chmod(0o755)
+    _git(str(root), 'config', 'filter.mark.smudge', run + ' smudge')
+    (root / '.gitattributes').write_text('*.txt filter=mark\n')
+    (root / 'f.txt').write_text('old')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'base')
+    base = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    _git(str(root), 'worktree', 'add', '-q', '--detach', str(tmp_path / 'probe'), base)
+    assert marker.exists()                  # the rig is live: plain git runs both
+    marker.unlink()
+    tree = str(tmp_path / 'b' / 'tree')
+    assert LocalNode.base_checkout(str(root), tree, base) == tree
+    assert (tmp_path / 'b' / 'tree' / 'f.txt').read_text() == 'old'
+    assert LocalNode.drop_checkout(str(root), tree) is True
+    assert not marker.exists()

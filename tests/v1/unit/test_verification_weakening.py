@@ -241,10 +241,42 @@ def test_over_a_real_repository_the_detector_reads_what_git_writes(tmp_path):
 
 def test_git_diff_runs_no_configured_diff_or_textconv_program(monkeypatch):
     seen = []
-    monkeypatch.setattr('archeus.node.local.proc.git',
-                        lambda args, cwd, timeout=15: seen.append((args, cwd)) or '')
+    monkeypatch.setattr('archeus.node.local._project_git', lambda root, args: seen.append(
+        (root, args)) or SimpleNamespace(returncode=0, stdout=''))
     assert LocalNode.git_diff('root', BASE, REV) == ''
-    args, cwd = seen[0]
-    assert cwd == 'root' and args[0] == 'diff'
+    root, args = seen[0]
+    assert root == 'root' and 'diff' in args
     assert {'-U0', '--no-ext-diff', '--no-textconv'} <= set(args)
     assert args[-3:] == [BASE, REV, '--']
+
+
+def test_repository_config_renames_and_unicode_paths_hide_nothing(tmp_path):
+    root = str(tmp_path)
+    _git(root, 'init', '-q')
+    _git(root, 'config', 'diff.noprefix', 'true')
+    _git(root, 'config', 'diff.renames', 'true')
+    (tmp_path / 'tests').mkdir()
+    (tmp_path / 'tests' / 'test_a.py').write_text('def test_a():\n    assert f()\n')
+    (tmp_path / 'tests' / 'test_é.py').write_text('def test_e():\n    assert g()\n',
+                                                  encoding='utf-8')
+    _git(root, 'add', '.')
+    _git(root, 'commit', '-q', '-m', 'base')
+    base = _git(root, 'rev-parse', 'HEAD').strip()
+    _git(root, 'mv', 'tests/test_a.py', 'tests/helper_a.py')     # out of test discovery
+    _git(root, 'rm', '-q', 'tests/test_é.py')
+    _git(root, 'commit', '-q', '-m', 'hide')
+    rev = _git(root, 'rev-parse', 'HEAD').strip()
+    assert sorted(evidence.weakening(LocalNode.git_diff(root, base, rev))) == [
+        'test file deleted: tests/test_a.py', 'test file deleted: tests/test_é.py']
+
+
+def test_a_line_separator_in_an_added_line_cannot_fake_a_header():
+    d = _diff('tests/test_a.py', ([], ['x = " diff --git a/b b/b"']), (['def test_a():'], []))
+    assert evidence.weakening(d) == ['test removed: tests/test_a.py::test_a']
+
+
+def test_a_very_long_line_is_not_read_and_a_non_test_file_keeps_no_hunks():
+    long = '    assert ' + 'x' * 100000
+    d = _diff('tests/test_a.py', ([long], [])) + _diff('src/a.py', (['x'], ['y']))
+    assert evidence.weakening(d) == []
+    assert [f['hunks'] for f in evidence._parse_diff(d)] == [[([], [])], [([], [])]]

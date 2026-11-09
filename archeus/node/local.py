@@ -22,6 +22,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 import threading
 import time
 import weakref
@@ -1212,23 +1213,24 @@ class LocalNode:
     @staticmethod
     def base_checkout(root, path, rev):
         """A detached worktree of *rev* at *path* for a base-revision run (T-1068),
-        replacing one a crash left there. Returns the path or raises OSError."""
-        # the absolute Git the store pin resolves, never a bare name (T-1064, item 109)
-        git = _git_exe()
-        proc.run([git, *_WORKTREE, 'remove', '--force', '--', path], cwd=root, timeout=60)
+        replacing one a crash left there, written by a Git that runs none of the
+        repository's code. Returns the path or raises OSError."""
+        LocalNode.drop_checkout(root, path)
         check_worktree_path(path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        r = proc.run([git, *_WORKTREE, 'add', '--detach', '--', path, rev], cwd=root,
-                     timeout=60)
+        # -f: a registered worktree whose directory is gone is replaced too
+        r = _project_git(root, ['worktree', 'add', '-f', '--detach', '--', path, rev])
         if r is None or r.returncode != 0:
             raise OSError('git worktree add failed: %s'
-                          % ((r.stderr or r.stdout or '').strip() if r else 'no git'))
+                          % ((r.stderr or r.stdout).strip() if r else 'no git'))
         return path
 
     @staticmethod
     def drop_checkout(root, path):
-        proc.run([_git_exe(), *_WORKTREE, 'remove', '--force', '--', path], cwd=root,
-                 timeout=60)
+        """True when no worktree is left at *path*. `-f -f` also removes one a
+        killed add left locked (`initializing`)."""
+        _project_git(root, ['worktree', 'remove', '-f', '-f', '--', path])
+        return not os.path.exists(path)
 
     # ── verification and merge-back (P13, p13-design-gate §8, §12) ──
 
@@ -1300,9 +1302,13 @@ class LocalNode:
     @staticmethod
     def git_diff(root, base, rev):
         """The unified diff of base..rev, no context lines and no configured diff
-        program (nothing is spawned but git); None when git cannot tell."""
-        return proc.git(['diff', '-U0', '--no-color', '--no-ext-diff', '--no-textconv',
-                         base, rev, '--'], root, timeout=60)
+        program (nothing is spawned but git), its paths unquoted, prefixed `a/` and
+        `b/` and never paired as renames whatever the repository configures; None
+        when git cannot tell."""
+        r = _project_git(root, ['-c', 'core.quotePath=false', 'diff', '-U0', '--no-color',
+                                '--no-ext-diff', '--no-textconv', '--no-renames',
+                                '--src-prefix=a/', '--dst-prefix=b/', base, rev, '--'])
+        return None if r is None or r.returncode else r.stdout
 
     @staticmethod
     def branch_exists(root, branch):
@@ -1805,6 +1811,34 @@ def _git_exe():
     if not exe or not os.path.isabs(exe):
         raise StoreError('no absolute git on PATH: %r' % (exe,))
     return exe
+
+
+def _project_git(root, args, timeout=60):
+    """A Git call in a project's own repository that runs none of its code: no
+    hook, fsmonitor, filter selected by an attribute, replace ref or lazy fetch,
+    and no configuration but the repository's own. The CompletedProcess with
+    text decoded as written (no newline translation), or None."""
+    exe = _git_exe()
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as empty:
+        none = os.path.join(empty, 'none')
+        env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
+        env.update(PATH=os.path.dirname(exe), HOME=empty, XDG_CONFIG_HOME=empty,
+                   GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=none, GIT_ATTR_NOSYSTEM='1',
+                   GIT_ATTR_SOURCE=EMPTY_TREE, GIT_TERMINAL_PROMPT='0',
+                   GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1')
+        argv = [exe, '--no-replace-objects']
+        for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + none,
+                  'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false',
+                  'core.longpaths=true'):
+            argv += ['-c', c]
+        try:
+            r = subprocess.run(argv + list(args), cwd=root, env=env, capture_output=True,
+                               timeout=timeout, stdin=subprocess.DEVNULL,
+                               creationflags=proc.no_window_flags)
+        except Exception:
+            return None
+    r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))
+    return r
 
 
 #: `git version` of each absolute executable, read once per process

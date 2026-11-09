@@ -308,23 +308,25 @@ class VerifyWorker:
         with self.db.read() as conn:
             known = {c['name']: c['baseline']
                      for v in _rows(conn, entities.Verification, plan_id=plan_id)
-                     for c in v.checks if (c.get('baseline') or {}).get('revision') == base}
+                     for c in v.checks if (c.get('baseline') or {}).get('revision') == base
+                     and c['baseline'].get('result') != 'error'}
         todo = [x for x in mine if '%s: %s' % x not in known]
         if todo:
             tree = os.path.join(paths.run_dir(), 'verify', vid, 'base', 'tree')
             try:
-                self.node.base_checkout(root, tree, base)
-            except OSError as err:
-                ran = [{'name': '%s: %s' % x, 'kind': 'command', 'result': 'error',
-                        'detail': 'no checkout of the base: %s' % err} for x in todo]
-            else:
                 try:
+                    self.node.base_checkout(root, tree, base)
+                except OSError as err:
+                    ran = [{'name': '%s: %s' % x, 'kind': 'command', 'result': 'error',
+                            'detail': 'no checkout of the base: %s' % err} for x in todo]
+                else:
                     ran = evidence.run_commands(self.node, tree, todo,
                                                 verification_id=os.path.join(vid, 'base'),
                                                 timeout_s=self.timeout_s,
                                                 verifier_version=version)
-                finally:
-                    self.node.drop_checkout(root, tree)
+            finally:
+                if not self.node.drop_checkout(root, tree):
+                    log.warning('verification: the base checkout %s was not removed', tree)
             known.update((c['name'], evidence.base_of(c, base)) for c in ran)
         return [evidence.with_base(c, known.get(c['name'])) for c in checks]
 
