@@ -1154,17 +1154,27 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   workspace tests/conftest/plugins/imports and write caches; `exec` policy and isolation remain
   mandatory. Exact argv proves neither harmlessness nor restricted network use. Descendant
   traversal, trusted-profile limits, code/config effects and TOCTOU remain acknowledged.
-- **Both-baseline proof: NOT RUN, gate pending.** `tools/p21_classifier_moves.py` requires archives
-  of **f483f87 and 61dc68f**, including tests. It freezes one corpus/context, enumerates every
-  option vector and operand cardinality, adds old test literals/static string expressions,
-  review snippets and new near-misses, and supplies contained path fixtures plus synthetic
-  trusted profile. Legacy classifiers run only in offline child processes. Exceptions, unavailable
-  archives, timeouts and missing results fail proof. Reports include class sets, row IDs, HELD cap,
-  all-allow/restrictive read+exec/locked-floor/task-contract policies. Both comparisons must exit
-  zero with **held-to-allowed = 0**, no DENY/ASK-to-auto-allow and no miss-to-auto-allow.
-  No zero count is claimed. Dynamically constructed old test inputs still need corpus audit;
-  literal extraction alone does not prove every parametrized/generated input is included.
-  See `.pv20-out/E-slice3-final.md` for exact locked commands and outstanding validation.
+- **Both-baseline proof: run on the final tree, both comparisons zero.** `tools/p21_classifier_moves.py`
+  takes archives of **f483f87 and 61dc68f**, including tests. It freezes one corpus/context,
+  enumerates every option vector and operand cardinality, adds old test literals/static string
+  expressions, review snippets and new near-misses, and supplies contained path fixtures plus a
+  synthetic trusted profile. Legacy classifiers run only in offline child processes. Exceptions,
+  unavailable archives, timeouts and missing results fail proof. Reports include class sets, row
+  IDs, HELD cap, all-allow/restrictive read+exec/locked-floor/task-contract policies. Both
+  comparisons must exit zero with **held-to-allowed = 0**, no DENY/ASK-to-auto-allow and no
+  miss-to-auto-allow.
+  **Observed** (2026-11-09, tree at `e330545a` on `pv20-p21e-fix`, `git archive` of each baseline,
+  run through the test lock, review file `T-128-2c77cb32.codex.md`, `--timeout 3000`): frozen corpus
+  354983 rows, sha256 `1c9dd76eae01b7e9a5a251a35a5947b6d62f536a28dc24ceb78793a196a014f9` (the
+  digest embeds the fixture directory, so a rerun elsewhere differs); `f483f87 held-to-allowed 0
+  violations 0`; `61dc68f held-to-allowed 0 violations 0`; 94 corpus rows reach an allowed row.
+  The acceptance cases `python -m pytest -q`, `PowerShell Remove-Item -Recurse x`, `bash` with
+  a recursive force remove of `x` and `git branch -{},D} x` are in the corpus; the first is allowed row A15 under the
+  fixture's `.` evidence, the other three keep the HELD cap. The default 180 s child timeout is too
+  short for this corpus (a first run at the default failed on the 61dc68f child): pass a larger
+  `--timeout`. Not proven: dynamically constructed old test inputs (parametrize/generated) are
+  covered only where a literal or static string expression yields them; no audit of the generated
+  ones was done, and the reports are not retained in the repo.
 
 - **The read.** `GET /v1/executions/{id}` carries it (schema `CurrentAction`, `observe`).
 - **The chip (A-17).** `clients/app/src/state/chips.ts`: an `execution.hook` frame re-reads the
