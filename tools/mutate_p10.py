@@ -31,7 +31,7 @@ OR = 'tests/v1/unit/test_outcomes_rework.py'
 OP = 'tests/v1/unit/test_outcomes_by_pass.py'
 BC = 'tests/v1/unit/test_outcomes_by_context.py'
 OU = 'tests/v1/unit/test_outcomes_usage.py'
- = 'tests/v1/integration/test_routing.py'
+I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
 S4 = 'tests/v1/judge/test_s04_limit_and_fallback.py'
@@ -321,7 +321,7 @@ MUTATIONS = [
      "sorted(out, key=lambda k: (k is None, k or ''))]",
      "sorted(out, key=lambda k: (k is None, k or '')) if k is not None]",
      [OU + '::test_an_own_call_about_no_mission_is_kept_under_none_not_dropped']),
-
+]
 
 
 #: Mutant runs write no bytecode, and a restored file's cached bytecode is

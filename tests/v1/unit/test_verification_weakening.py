@@ -196,12 +196,13 @@ def test_the_worker_records_the_check_after_changes_and_only_for_a_code_change(m
         git_dirty=lambda ws, tracked_only=False: False,
         git_diff=lambda *a: _diff('tests/test_a.py', (['def test_a():'], [])))
     me = SimpleNamespace(node=node, timeout_s=1, missions=None,
-                         _do=lambda fn, **kw: recorded.append(kw['checks']))
-    task = SimpleNamespace(kind='code_change')
-    VerifyWorker._run_and_record(me, 'vid', task, 'root', 'ws', REV, BASE, [], 'v1')
+                         _do=lambda fn, **kw: recorded.append(kw['checks']),
+                         _with_base=lambda *a: a[6])      # the T-1068 base check is its own tests'
+    task = SimpleNamespace(kind='code_change', plan_id='p')
+    VerifyWorker._run_and_record(me, 'vid', None, task, 'root', 'ws', REV, BASE, [], 'v1')
     assert [c['name'] for c in recorded[0]] == ['changes', evidence.WEAKENING]
-    VerifyWorker._run_and_record(me, 'vid', SimpleNamespace(kind='inspection'), 'root', 'ws',
-                                 REV, BASE, [], 'v1')
+    VerifyWorker._run_and_record(me, 'vid', None, SimpleNamespace(kind='inspection', plan_id='p'),
+                                 'root', 'ws', REV, BASE, [], 'v1')
     assert recorded[1] == []
 
 

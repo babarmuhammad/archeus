@@ -67,7 +67,8 @@ class _Base:
     def node(self, **more):
         return _Node(git_head=_script(REV), git_dirty=_script(False),
                      branch_exists=_script(False), git_merge_base=_script(BASE),
-                     git_numstat=_script([('1', '0', 'a.py')]), run_check=self.run_check,
+                     git_numstat=_script([('1', '0', 'a.py')]), git_diff=_script(''),
+                     run_check=self.run_check,
                      base_checkout=self.base_checkout,
                      drop_checkout=lambda root, path: self.dropped.append(path), **more)
 
@@ -149,7 +150,8 @@ def test_a_mission_criterion_is_compared_with_the_integration_base(rig):
     r.worker.baseline = frozenset({r.mid})
     assert r.worker._verify_mission(r.mid) is True
     v = r.one('mission')
-    assert v.state == 'FAILED' and v.checks[-1]['baseline']['label'] == 'regressed'
+    test = next(c for c in v.checks if 'baseline' in c)   # the advisory memory check follows it
+    assert v.state == 'FAILED' and test['baseline']['label'] == 'regressed'
     assert fake.made[0][2] == BASE and fake.dropped
 
 
