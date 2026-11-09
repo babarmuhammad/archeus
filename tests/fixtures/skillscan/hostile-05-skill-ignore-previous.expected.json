@@ -1,13 +1,13 @@
 {
- "fixture": "hostile-05-skill-ignore-previous.md",
- "kind": "skill",
- "verdict": "hostile",
- "findings": [
-  {
-   "rule": "instruction-override",
-   "line": 6,
-   "match": "ignore all previous instructions"
-  }
- ],
- "note": "visible override"
+  "fixture": "hostile-05-skill-ignore-previous.md",
+  "kind": "skill",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "instruction-override",
+      "line": 9,
+      "match": "disregard every earlier rule"
+    }
+  ],
+  "note": "A visible step tells the model to discard earlier rules and stay quiet."
 }

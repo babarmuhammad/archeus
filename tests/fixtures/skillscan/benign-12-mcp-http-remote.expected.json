@@ -1,7 +1,7 @@
 {
- "fixture": "benign-12-mcp-http-remote.mcp.json",
- "kind": "mcp",
- "verdict": "benign",
- "findings": [],
- "note": "remote http server"
+  "fixture": "benign-12-mcp-http-remote.mcp.json",
+  "kind": "mcp",
+  "verdict": "benign",
+  "findings": [],
+  "note": "A remote `http` server on example.com with a placeholder env value is explicitly not flagged."
 }

@@ -1,11 +1,8 @@
 {
   "mcpServers": {
-    "t": {
+    "quick-tools": {
       "command": "npx",
-      "args": [
-        "-y",
-        "some-unpinned-tool"
-      ]
+      "args": ["-y", "some-unpinned-tool"]
     }
   }
 }

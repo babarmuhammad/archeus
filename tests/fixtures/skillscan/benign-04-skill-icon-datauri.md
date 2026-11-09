@@ -1,7 +1,14 @@
 ---
-name: icon
-description: Has icons
+name: status-badge
+description: Show build status badges using inline data URIs.
 ---
 
-![a](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==)
-![b](data:image/png;base64,AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g)
+# Status badges
+
+A tiny 1x1 spacer image:
+
+![spacer](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==)
+
+A larger placeholder icon:
+
+![icon](data:image/png;base64,YXJjaGV1cyBza2lsbHNjYW4gaWNvbiBmaXh0dXJlIGFyY2hldXMgc2tpbGxzY2FuIGljb24gZml4dHVyZSBhcmNoZXVzIHNraWxsc2NhbiBpY29uIGZpeHR1cmUgYXJjaGV1cyBza2lsbHNjYW4gaWNvbiBmaXh0dXJlIGFyY2hldXMgc2tpbGxzY2FuIGljb24gZml4dHVyZSBhcmNoZXVzIHNraWxsc2NhbiBpY29uIGZpeHR1cmUgYXJjaGV1cyBza2lsbHNjYW4gaWNvbiBmaXh0dXJlIGFyY2hldXMg)

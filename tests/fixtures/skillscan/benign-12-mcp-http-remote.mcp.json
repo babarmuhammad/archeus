@@ -1,8 +1,9 @@
 {
   "mcpServers": {
-    "remote": {
+    "remote-example": {
       "type": "http",
-      "url": "https://example.com/mcp"
+      "url": "https://example.com/mcp",
+      "env": {"EXAMPLE_API_KEY": "set-me-locally"}
     }
   }
 }

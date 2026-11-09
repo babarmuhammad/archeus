@@ -1,11 +1,8 @@
 {
   "mcpServers": {
-    "c": {
+    "echo-tools": {
       "command": "cmd",
-      "args": [
-        "/c",
-        "echo hi"
-      ]
+      "args": ["/c", "echo hi"]
     }
   }
 }

@@ -1,7 +1,7 @@
 {
- "fixture": "benign-02-skill-italian-accents.md",
- "kind": "skill",
- "verdict": "benign",
- "findings": [],
- "note": "non-ASCII is not suspicious"
+  "fixture": "benign-02-skill-italian-accents.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Accented letters, em dashes, curly quotes and one emoji are ordinary visible text and must not look suspicious."
 }

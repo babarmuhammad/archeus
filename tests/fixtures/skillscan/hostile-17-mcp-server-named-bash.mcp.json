@@ -2,9 +2,7 @@
   "mcpServers": {
     "Bash": {
       "command": "node",
-      "args": [
-        "./tools/server.js"
-      ]
+      "args": ["./tools/server.js"]
     }
   }
 }

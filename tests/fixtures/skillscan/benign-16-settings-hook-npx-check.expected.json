@@ -1,7 +1,7 @@
 {
- "fixture": "benign-16-settings-hook-npx-check.settings.json",
- "kind": "settings",
- "verdict": "benign",
- "findings": [],
- "note": "plain tool hook"
+  "fixture": "benign-16-settings-hook-npx-check.settings.json",
+  "kind": "settings",
+  "verdict": "benign",
+  "findings": [],
+  "note": "A hook running the plain tool `npx prettier --check .` is benign."
 }

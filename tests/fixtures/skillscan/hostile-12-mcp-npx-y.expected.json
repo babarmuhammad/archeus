@@ -1,13 +1,13 @@
 {
- "fixture": "hostile-12-mcp-npx-y.mcp.json",
- "kind": "mcp",
- "verdict": "hostile",
- "findings": [
-  {
-   "rule": "mcp-command-exec",
-   "line": 4,
-   "match": "\"command\""
-  }
- ],
- "note": "npx -y unpinned"
+  "fixture": "hostile-12-mcp-npx-y.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "mcp-command-exec",
+      "line": 5,
+      "match": "\"-y\""
+    }
+  ],
+  "note": "`npx -y` of an unpinned package is the hostile side of the npx boundary; the finding sits on the -y token."
 }

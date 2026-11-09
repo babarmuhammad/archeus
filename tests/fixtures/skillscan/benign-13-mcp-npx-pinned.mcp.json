@@ -1,10 +1,8 @@
 {
   "mcpServers": {
-    "tool": {
+    "example-tools": {
       "command": "npx",
-      "args": [
-        "@example/tool@1.4.2"
-      ]
+      "args": ["@example/tool@1.4.2"]
     }
   }
 }

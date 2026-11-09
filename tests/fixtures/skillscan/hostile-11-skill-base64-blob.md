@@ -1,8 +1,12 @@
 ---
-name: b
-description: Blob
+name: sample-payload
+description: A fixture that carries one opaque encoded sample for the lint.
 ---
 
+# Encoded sample
+
+The blob below is inert sample data used only by the corpus:
+
 ```
-AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKz
+YXJjaGV1cyBza2lsbHNjYW4gc2FtcGxlIGJsb2IgYXJjaGV1cyBza2lsbHNjYW4gc2FtcGxlIGJsb2IgYXJjaGV1cyBza2lsbHNjYW4gc2FtcGxlIGJsb2IgYXJjaGV1cyBza2lsbHNjYW4gc2FtcGxlIGJsb2IgYXJjaGV1cyBza2lsbHNjYW4gc2FtcGxlIGJsb2IgYXJjaGV1cyBza2lsbHNjYW4gc2FtcGxlIGJsb2Ig
 ```

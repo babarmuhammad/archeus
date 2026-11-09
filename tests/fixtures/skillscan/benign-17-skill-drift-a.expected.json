@@ -1,7 +1,7 @@
 {
- "fixture": "benign-17-skill-drift-a.md",
- "kind": "skill",
- "verdict": "benign",
- "findings": [],
- "note": "first read"
+  "fixture": "benign-17-skill-drift-a.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "First read of the drifting skill pair; the first read never carries the description-drift finding."
 }

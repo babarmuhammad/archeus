@@ -1,13 +1,13 @@
 {
- "fixture": "hostile-16-settings-hook-powershell.settings.json",
- "kind": "settings",
- "verdict": "hostile",
- "findings": [
-  {
-   "rule": "hook-command-exec",
-   "line": 9,
-   "match": "powershell"
-  }
- ],
- "note": "powershell -Command hook"
+  "fixture": "hostile-16-settings-hook-powershell.settings.json",
+  "kind": "settings",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "hook-command-exec",
+      "line": 9,
+      "match": "powershell -NoProfile -Command"
+    }
+  ],
+  "note": "A hook wrapping its command in powershell -NoProfile -Command is a shell wrapper."
 }

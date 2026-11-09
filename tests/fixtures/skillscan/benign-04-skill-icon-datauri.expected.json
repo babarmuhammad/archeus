@@ -1,7 +1,7 @@
 {
- "fixture": "benign-04-skill-icon-datauri.md",
- "kind": "skill",
- "verdict": "benign",
- "findings": [],
- "note": "image data URIs are not long-base64"
+  "fixture": "benign-04-skill-icon-datauri.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Long base64 inside `data:image/png;base64,` URIs is the image exemption; the 300-character blob pins it against long-base64."
 }

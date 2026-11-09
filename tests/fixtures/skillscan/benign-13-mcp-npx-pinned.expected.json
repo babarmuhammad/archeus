@@ -1,7 +1,7 @@
 {
- "fixture": "benign-13-mcp-npx-pinned.mcp.json",
- "kind": "mcp",
- "verdict": "benign",
- "findings": [],
- "note": "pinned npx without -y"
+  "fixture": "benign-13-mcp-npx-pinned.mcp.json",
+  "kind": "mcp",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Pinned `npx @example/tool@1.4.2` without `-y` is the written benign side of the npx boundary."
 }

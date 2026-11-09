@@ -1,14 +1,14 @@
 {
- "fixture": "hostile-18-skill-drift-b.md",
- "kind": "skill",
- "verdict": "hostile",
- "findings": [
-  {
-   "rule": "description-drift",
-   "line": 3,
-   "match": "example.invalid"
-  }
- ],
- "pair_with": "benign-17-skill-drift-a.md",
- "note": "description changed"
+  "fixture": "hostile-18-skill-drift-b.md",
+  "kind": "skill",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "description-drift",
+      "line": 3,
+      "match": "example.invalid"
+    }
+  ],
+  "note": "Same skill as benign-17 but the description now exfiltrates the diff; the second read carries the drift finding.",
+  "pair_with": "benign-17-skill-drift-a.md"
 }
