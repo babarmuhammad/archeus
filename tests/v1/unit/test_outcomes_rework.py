@@ -1,6 +1,6 @@
-"""`outcomes.by_model` counts rework next to pass and fail: verification rows beyond an
-execution's first, reviews that asked for changes, and executions whose task ran again.
-An absent source is None, never 0."""
+"""`outcomes.by_model` counts rework next to pass and fail: verifier retries of an
+execution's verifications, reviews that asked for changes, and executions whose task
+ran again. An absent source is None, never 0."""
 
 import pytest
 
@@ -9,7 +9,7 @@ from archeus.core.domain.values import Ref
 
 from archeus.infra.db import Database
 
-from .test_outcomes_cache import plan_of, put, read, run, task
+from .test_outcomes_cache import ACTOR, plan_of, put, read, run, task
 
 
 @pytest.fixture
@@ -19,11 +19,19 @@ def db(archeus_home):
     d.close()
 
 
-def verify(db, mid, x, tid, n=1):
-    put(db, *(entities.Verification(id=ids.new_id('verification'), subject=Ref('task', tid),
-                                    verifier='code', execution_id=x, state='PASSED',
-                                    plan_id=plan_of(db, mid))
-              for _ in range(n)))
+def verify(db, mid, x, tid, rows=1, retries=0):
+    """*rows* verifications of execution *x*; the first crashed and was retried *retries* times."""
+    ids_ = [ids.new_id('verification') for _ in range(rows)]
+    put(db, *(entities.Verification(id=v, subject=Ref('task', tid), verifier='code',
+                                    execution_id=x, plan_id=plan_of(db, mid),
+                                    state='ERROR' if retries and v == ids_[0] else 'PASSED')
+              for v in ids_))
+
+    def move(tx, **_):
+        for i in range(retries):
+            for to in ('PENDING', 'RUNNING', 'ERROR' if i < retries - 1 else 'PASSED'):
+                tx.transition(entities.Verification, ids_[0], to, actor=ACTOR, reason='test')
+    db.writer.execute(move, {})
 
 
 def review(db, mid, verdict):
@@ -38,20 +46,33 @@ def test_nothing_to_count_is_none_but_for_the_executions_themselves(db):
     assert (g['verification_attempts'], g['changes_requested'], g['reworked']) == (None, None, 0)
 
 
-def test_verification_attempts_are_the_rows_beyond_the_first_per_execution(db):
+def test_verification_attempts_are_the_verifier_retries_of_each_execution(db):
     mid, tid = task(db)
-    verify(db, mid, run(db, mid, tid), tid, 3)
-    verify(db, mid, run(db, mid, tid), tid, 1)
+    verify(db, mid, run(db, mid, tid), tid, retries=3)
+    verify(db, mid, run(db, mid, tid), tid, retries=1)
+    verify(db, mid, run(db, mid, tid), tid)
     run(db, mid, tid)
     (g,) = read(db)
-    assert g['verification_attempts'] == 2
-    assert g['reworked'] == 3
+    assert g['verification_attempts'] == 4
+    assert g['reworked'] == 4
 
 
 def test_a_verified_once_execution_made_no_extra_attempt_but_is_not_absent(db):
     mid, tid = task(db)
     verify(db, mid, run(db, mid, tid), tid)
     assert read(db)[0]['verification_attempts'] == 0
+
+
+def test_a_human_row_beside_the_automatic_one_is_not_a_retry(db):
+    mid, tid = task(db)
+    verify(db, mid, run(db, mid, tid), tid, rows=2)
+    assert read(db)[0]['verification_attempts'] == 0
+
+
+def test_a_crashed_verifier_retried_on_its_one_row_counts_each_retry(db):
+    mid, tid = task(db)
+    verify(db, mid, run(db, mid, tid), tid, retries=3)
+    assert read(db)[0]['verification_attempts'] == 3
 
 
 def test_changes_requested_counts_that_verdict_on_the_groups_missions(db):
@@ -83,7 +104,7 @@ def test_reworked_counts_executions_of_a_task_that_ran_more_than_once(db):
     assert (g['executions'], g['reworked']) == (3, 2)
 
 
-def test_an_execution_that_never_started_is_not_a_second_run(db):
+def test_a_stop_that_spent_no_attempt_is_not_a_second_run(db):
     mid, tid = task(db)
     run(db, mid, tid)
     run(db, mid, tid, charged=False)

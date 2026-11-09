@@ -98,3 +98,11 @@ def test_a_reported_zero_is_kept(db):
     mid, tid = task(db)
     run(db, mid, tid, cache_read=0)
     assert read(db)[0]['cache_read'] == 0
+
+
+def test_by_route_is_sorted_whatever_the_order_the_rows_arrived_in(db):
+    mid, tid = task(db)
+    run(db, mid, tid, account='B', harness='fake', cache_read=1)
+    run(db, mid, tid, account='A', harness='fake', cache_read=1)
+    (g,) = read(db)
+    assert [b['account_ref'] for b in g['by_route']] == ['A', 'B']

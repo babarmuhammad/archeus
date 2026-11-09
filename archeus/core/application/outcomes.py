@@ -27,15 +27,24 @@ def by_model(conn):
     `cache_read` and `cache_write` sum the same way, and `by_route` splits them by
     the (harness, account_ref, model) of the route decision each ledger row names.
     Rework is counted over the group's own rows: `verification_attempts` is the
-    verification rows beyond each execution's first (None when none was verified),
+    verifier retries (ERROR -> PENDING transitions) of its executions' verifications,
+    i.e. the runs beyond each one's first (None when none was verified),
     `changes_requested` the reviews with that verdict on its missions (None when
     they have no review) and `reworked` the executions whose task ran more than once
-    (one still pending, not yet spawned, is not a run)."""
+    (one still pending, not yet spawned, is not a run). A task that touches several
+    groups (an escalation to another model or effort) is counted `reworked` in each,
+    and `changes_requested` repeats across the groups of a mission."""
     # ponytail: reads every row of six tables; window it by date when history grows
     kinds = {r.entity.id: r.entity.kind for r in rows.where(conn, entities.Task)}
     verdict = {r.entity.execution_id: r.entity.state for r in rows.where(conn, entities.Verification)
                if r.entity.execution_id and r.entity.state in ('PASSED', 'FAILED')}
-    checks = _count(conn, entities.Verification, lambda v: v.execution_id)
+    of_check = {r.entity.id: r.entity.execution_id for r in rows.where(conn, entities.Verification)}
+    retries = {}
+    for (v,) in conn.execute(
+            "SELECT subject_id FROM events WHERE type = 'verification.state_changed' "
+            "AND json_extract(payload, '$.trigger') = 'retry'"):
+        retries[of_check.get(v)] = retries.get(of_check.get(v), 0) + 1
+    checked = set(of_check.values())
     reviews = _count(conn, entities.Review, lambda v: v.mission_id,
                      lambda v: v.verdict == 'changes_requested')
     runs = _count(conn, entities.Execution, lambda e: e.task_id,
@@ -60,8 +69,8 @@ def by_model(conn):
         g['executions'] += 1
         g[{'PASSED': 'passed', 'FAILED': 'failed'}.get(verdict.get(e.id), 'unverified')] += 1
         g['reworked'] += runs[e.task_id] > 1
-        if e.id in checks:
-            g['verification_attempts'] = (g['verification_attempts'] or 0) + checks[e.id] - 1
+        if e.id in checked:
+            g['verification_attempts'] = (g['verification_attempts'] or 0) + retries.get(e.id, 0)
         missions.setdefault(k, set()).add(e.mission_id)
         used = ledger.get(e.id, ())
         g['complete'] &= bool(used) and all(u.basis == 'reported_total' for u in used)
