@@ -93,6 +93,10 @@ def _knowledge(conn, workspace_id, project_id, out, excluded, message=False):
             excluded.append({'ref': ref, 'level': level, 'freshness': 'current',
                              'reason': _NOT_CONFIRMED[k.state]})
             continue
+        if k.source_kind == 'review':
+            excluded.append({'ref': ref, 'level': level, 'freshness': 'current',
+                             'reason': 'reviewer only (a lesson from review findings)'})
+            continue
         authority = ('explicit' if k.origin == 'explicit'
                      else 'confirmed' if k.type in _DECIDING else 'inferred')
         text = ' '.join([k.title, k.text] + ([json.dumps(k.constraint, sort_keys=True)]

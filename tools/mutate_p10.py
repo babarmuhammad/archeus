@@ -30,6 +30,7 @@ OC = 'tests/v1/unit/test_outcomes_cache.py'
 OR = 'tests/v1/unit/test_outcomes_rework.py'
 OP = 'tests/v1/unit/test_outcomes_by_pass.py'
 MC = 'tests/v1/unit/test_memory_consolidation.py'
+RR = 'tests/v1/unit/test_review_rules.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -272,6 +273,23 @@ MUTATIONS = [
      "            g[1] += len((k.title + k.text).encode('utf-8'))",
      "            g[1] += len(k.title + k.text)",
      [MC + '::test_the_ratio_is_live_item_bytes_over_the_latest_inspection_payload']),
+    # ── T-1106: the deterministic recurrence read ──
+    ('R53', 'findings compared without normalising', OUT,
+     "                k = _finding_key(text)",
+     "                k = text",
+     [RR + '::test_a_finding_in_three_missions_recurs_after_normalising_and_two_do_not']),
+    ('R54', 'every review counted, not the last window', OUT,
+     "               if r.entity.mission_id in missions][-RECUR_WINDOW:]",
+     "               if r.entity.mission_id in missions]",
+     [RR + '::test_only_the_last_window_of_reviews_counts_and_another_project_never']),
+    ('R55', 'another project\'s reviews counted', OUT,
+     "               if r.entity.mission_id in missions][-RECUR_WINDOW:]",
+     "               ][-RECUR_WINDOW:]",
+     [RR + '::test_only_the_last_window_of_reviews_counts_and_another_project_never']),
+    ('R56', 'one mission repeating a finding counted as many', OUT,
+     "for k, g in seen.items() if len(g['missions']) >= RECUR_MISSIONS]",
+     "for k, g in seen.items() if len(g['missions']) >= RECUR_MISSIONS - 1]",
+     [RR + '::test_a_finding_in_three_missions_recurs_after_normalising_and_two_do_not']),
 ]
 
 

@@ -1516,8 +1516,9 @@ class ResourcePolicy(Entity):
 #: What an execution may be let load from its settings sources (ADR-0049; P20 D6),
 #: and, kind `context`, what Archeus may add to a project's agents' prompts (T-1093)
 OPT_IN_KINDS = ('source', 'plugin', 'mcp', 'context')
-#: `injection`: the mission's context package rendered into each execution's prompt
-CONTEXT_OPT_INS = ('injection',)
+#: `injection`: the mission's context package rendered into each execution's prompt;
+#: `review_rules`: the project's REVIEW.md and review lessons in its reviews (T-1106)
+CONTEXT_OPT_INS = ('injection', 'review_rules')
 #: The settings source each owner holds (D6): the account home is the account's;
 #: a project's committed `.claude/` and its local settings are the project's
 SOURCE_OWNERS = {'account': ('user',), 'project': ('project', 'local')}

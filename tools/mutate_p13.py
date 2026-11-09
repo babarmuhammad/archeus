@@ -30,6 +30,8 @@ EVD = 'archeus/core/verification/evidence.py'
 LOC = 'archeus/node/local.py'
 W = 'tests/v1/unit/test_verification_weakening.py'
 R = 'tests/v1/unit/test_gaps_core_verification_reviewer.py'
+RR = 'tests/v1/unit/test_review_rules.py'
+RMD = 'tests/v1/integration/test_review_md.py'
 IP = '[inprocess]'
 
 MUTATIONS = [
@@ -162,6 +164,40 @@ MUTATIONS = [
     ('Z26', 'the review prompt lists every finding, uncapped', [(REV,
      "c.get('findings', ())[:20]]", "c.get('findings', ())]")],
      [R + '::test_the_weakening_findings_of_a_verification_are_listed_for_the_reviewer']),
+    # ── T-1106: REVIEW.md and review lessons, for an opted-in project only ──
+    ('Z27', 'REVIEW.md read at the mission head', [(WRK,
+     "        review_md = (self.node.git_file(root, m.integration_base, reviewer.RULES_FILE)",
+     "        review_md = (self.node.git_file(root, m.integration_head, reviewer.RULES_FILE)")],
+     [RMD + '::test_an_opted_in_project_reviews_against_review_md_at_the_base']),
+    ('Z28', 'the rules reach every review, opted in or not', [(WRK,
+     "            ruled = reviewer.RULES_OPT_IN in optins.effective(conn, account_id=None,\n"
+     "                                                               project_id=m.project_id)",
+     "            ruled = True")],
+     [RMD + '::test_without_the_opt_in_the_review_prompt_is_todays']),
+    ('Z29', 'REVIEW.md uncapped', [(REV,
+     "                data[:RULES_BYTES].decode('utf-8', 'ignore')]",
+     "                data.decode('utf-8', 'ignore')]")],
+     [RR + '::test_the_rules_section_is_capped_marked_and_redacted_and_empty_without_rules']),
+    ('Z30', 'REVIEW.md not redacted', [(REV,
+     "        data = scrub_text(redact(review_md), homes).encode('utf-8')",
+     "        data = scrub_text(review_md, homes).encode('utf-8')")],
+     [RR + '::test_the_rules_section_is_capped_marked_and_redacted_and_empty_without_rules']),
+    ('Z31', 'a work lesson read as a review rule', [(REV,
+     "               if r.entity.state == 'CONFIRMED' and r.entity.source_kind == 'review']",
+     "               if r.entity.state == 'CONFIRMED']")],
+     [RR + '::test_the_rules_section_carries_the_last_ten_review_lessons_cut']),
+    ('Z32', 'every review lesson listed', [(REV,
+     "            for k in lessons[-RULES_LESSONS:]]",
+     "            for k in lessons]")],
+     [RR + '::test_the_rules_section_carries_the_last_ten_review_lessons_cut']),
+    ('Z33', 'git_file reads the worktree instead of the commit', [(LOC,
+     "        return proc.git(['cat-file', 'blob', '%s:%s' % (rev, path)], root)",
+     "        try:\n"
+     "            with open(os.path.join(root, path), encoding='utf-8') as f:\n"
+     "                return f.read()\n"
+     "        except OSError:\n"
+     "            return None")],
+     [RR + '::test_review_md_is_read_from_the_commit_named_never_the_worktree']),
 ]
 
 

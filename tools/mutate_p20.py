@@ -99,6 +99,8 @@ KWK = 'archeus/core/knowledge/worker.py'
 MCU = 'tests/v1/unit/test_memory_consolidation.py::'
 MCI = 'tests/v1/integration/test_consolidation_and_injection.py::'
 ENTB = 'tests/v1/unit/test_gaps_core_domain_entities_b.py::'
+PAS = 'archeus/core/knowledge/passes.py'
+RRU = 'tests/v1/unit/test_review_rules.py::'
 MATCH = 'archeus/core/automation/matcher.py'
 AE = 'tests/v1/integration/test_api_errors.py::'
 FREE = AE + 'test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500'
@@ -1426,6 +1428,35 @@ MUTATIONS += [
      "'meeting': self.passes.decisions, 'mission': self.passes.lessons,\n"
      "                'project': lambda p: self.passes.consolidate(p, 20)}")],
      [MCU + 'test_a_gated_consolidation_is_never_run_again_when_headless_use_is_permitted']),
+    # ── T-1106 step 1: review findings into lessons, review lessons out of a worker's context ──
+    ('Q282', 'the findings never reach the lessons prompt', [(PAS,
+     "        lines += ['Review: %s' % r.state for r in reviews] + found",
+     "        lines += ['Review: %s' % r.state for r in reviews]")],
+     [RRU + 'test_a_reviews_findings_reach_the_lessons_prompt_redacted_capped_and_labelled']),
+    ('Q283', 'a finding reaches the lessons prompt unredacted', [(PAS,
+     "        found = ['Review finding (%s): %s' % (f, scrub_text(redact(x), homes)[:FINDING_CHARS])",
+     "        found = ['Review finding (%s): %s' % (f, scrub_text(x, homes)[:FINDING_CHARS])")],
+     [RRU + 'test_a_reviews_findings_reach_the_lessons_prompt_redacted_capped_and_labelled']),
+    ('Q284', 'the findings uncapped', [(PAS,
+     "                 for r in reviews for f in FINDING_LISTS for x in getattr(r, f)][:FINDINGS_MAX]",
+     "                 for r in reviews for f in FINDING_LISTS for x in getattr(r, f)]")],
+     [RRU + 'test_at_most_findings_max_findings_reach_the_prompt']),
+    ('Q285', 'a lesson sourced review without being shown any finding', [(KNOW,
+     "        kind = 'review' if reviewed and les.get('from_review') is True else 'execution'",
+     "        kind = 'review' if les.get('from_review') is True else 'execution'")],
+     [RRU + 'test_only_a_lesson_marked_from_shown_findings_is_sourced_review']),
+    ('Q286', 'every lesson of a reviewed mission sourced review', [(KNOW,
+     "        kind = 'review' if reviewed and les.get('from_review') is True else 'execution'",
+     "        kind = 'review' if reviewed else 'execution'")],
+     [RRU + 'test_only_a_lesson_marked_from_shown_findings_is_sourced_review']),
+    ('Q287', 'a review lesson reaches a worker\'s context', [(CX,
+     "        if k.source_kind == 'review':\n",
+     "        if False:\n")],
+     [RRU + 'test_a_confirmed_review_lesson_is_excluded_from_a_workers_context']),
+    ('Q288', 'the pass never says it showed findings', [(PAS,
+     "                            mission_id=m.id, result=c.parsed, reviewed=bool(found))",
+     "                            mission_id=m.id, result=c.parsed)")],
+     [RRU + 'test_a_reviews_findings_reach_the_lessons_prompt_redacted_capped_and_labelled']),
 ]
 
 if __name__ == '__main__':

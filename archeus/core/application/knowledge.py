@@ -367,11 +367,13 @@ def record_decisions(tx, *, actor, called, meeting_id, result):
     return {'items': created, 'duplicates': dup}
 
 
-def record_lessons(tx, *, actor, called, mission_id, result):
+def record_lessons(tx, *, actor, called, mission_id, result, reviewed=False):
     """LESSON candidates from a mission that ended. The same lesson (same key,
     same scope) from another mission is not a second item: it is a second
     `learned_from`, and at CORROBORATION distinct missions the lesson confirms
-    itself. Model confidence plays no part (p6-design-gate D4)."""
+    itself. Model confidence plays no part (p6-design-gate D4). A new lesson the
+    model drew from review findings, when the call was shown some (`reviewed`), is
+    sourced `review` (T-1106): kept for the reviewer, out of a worker's context."""
     m = lifecycle.load(tx, entities.Mission, mission_id).entity
     src = Ref('mission', mission_id)
     created, corroborated, confirmed = 0, 0, 0
@@ -379,16 +381,17 @@ def record_lessons(tx, *, actor, called, mission_id, result):
         k = key(les['title'])
         live = _live(tx, type_='LESSON', project_id=m.project_id, workspace_id=m.workspace_id,
                      k=k)
+        kind = 'review' if reviewed and les.get('from_review') is True else 'execution'
         if live is None:
             item = new_item(tx, actor=actor, workspace_id=m.workspace_id,
                             project_id=m.project_id, type='LESSON', title=les['title'].strip(),
-                            text=les.get('text') or '', **_provenance(called, 'execution', src))
+                            text=les.get('text') or '', **_provenance(called, kind, src))
             lid, created = item.id, created + 1
         else:
             lid = live.entity.id
         if relate(tx, actor=actor, src=('knowledge_item', lid), rel='learned_from',
                   dst=('mission', mission_id), tier='EXTRACTED', project_id=m.project_id,
-                  source_kind='execution', source_ref=src,
+                  source_kind=kind, source_ref=src,
                   route_decision_id=called['route_decision_id'])[1] and live is not None:
             corroborated += 1
         missions = {r.entity.dst_id for r in tx.where(

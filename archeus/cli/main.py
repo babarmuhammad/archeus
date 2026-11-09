@@ -106,8 +106,9 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 settings source (an account: user; a project: project,
                                 local), a plugin or an MCP server again, or stop it;
                                 a project's context injection puts its mission's
-                                context package in each execution's prompt (off unless
-                                opted in)"""
+                                context package in each execution's prompt, and its
+                                context review_rules puts REVIEW.md (read at the
+                                mission's base) in its reviews (both off unless opted in)"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 

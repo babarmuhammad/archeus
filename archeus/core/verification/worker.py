@@ -28,7 +28,7 @@ from ...node import staging
 from ...node.local import LocalNode, PathTooLong
 from ...node.pv20_switches import checked
 from ..application import calls as C
-from ..application import errors, resources, verification as V
+from ..application import errors, optins, resources, verification as V
 from ..application.commands import active_plan
 from ..domain import entities
 from ..domain.values import Ref
@@ -483,11 +483,18 @@ class VerifyWorker:
             root = evidence.project_root(conn, m.project_id)
             executed = reviewer.executions_of(conn, m)
             guarded = not V.unconfined(conn, m.id)
+            ruled = reviewer.RULES_OPT_IN in optins.effective(conn, account_id=None,
+                                                               project_id=m.project_id)
         diff = (self.node.git_numstat(root, m.integration_base, m.integration_head)
                 if m.integration_base and m.integration_head and not guarded else None)
+        # T-1106: the rules are read at the commit the mission branched from, never
+        # from its head or a workspace, so no agent writes its own rules
+        review_md = (self.node.git_file(root, m.integration_base, reviewer.RULES_FILE)
+                     if ruled and root and m.integration_base else None)
         with self.db.read() as conn:
-            text = reviewer.prompt(conn, m, diff,
-                                   resources.bound_homes(conn, self.db.writer.live))
+            homes = resources.bound_homes(conn, self.db.writer.live)
+            text = reviewer.prompt(conn, m, diff, homes, reviewer.rules(
+                conn, m, review_md, homes) if ruled else ())
         if guarded:
             text += ('\nChanges on the mission branch: withheld, not empty (the mission has '
                      'isolated or unknown provenance).')
