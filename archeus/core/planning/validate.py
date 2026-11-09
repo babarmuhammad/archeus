@@ -21,6 +21,7 @@ A task here is a dict with `key` (a model label or a task key), `depends_on`,
 import fnmatch
 import hashlib
 import json
+import posixpath
 from dataclasses import replace
 
 from ..domain import entities
@@ -93,7 +94,11 @@ def order(tasks):
 
 
 def _plain(glob):
-    return '/'.join(p for p in glob.replace('\\', '/').split('/') if p not in ('', '.'))
+    # case is folded on every platform: NTFS names one file for both spellings and
+    # a false yes only costs parallelism
+    parts = [p for p in glob.replace('\\', '/').split('/') if p not in ('', '.')]
+    out = posixpath.normpath('/'.join(parts)).casefold()
+    return '' if out == '.' else out
 
 
 def _prefix(glob):
@@ -106,7 +111,7 @@ def overlap(a, b):
     prefixes and fnmatch both ways; a false yes costs parallelism, never
     correctness — upgrade to a real glob intersection if that ever matters)."""
     a, b = _plain(a), _plain(b)
-    if a == b or fnmatch.fnmatchcase(a, b) or fnmatch.fnmatchcase(b, a):
+    if not a or not b or a == b or fnmatch.fnmatchcase(a, b) or fnmatch.fnmatchcase(b, a):
         return True
     pa, pb = _prefix(a), _prefix(b)
     if (pa != a) or (pb != b):

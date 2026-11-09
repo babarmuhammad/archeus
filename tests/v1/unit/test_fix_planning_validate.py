@@ -11,6 +11,11 @@ from archeus.core.planning import validate
     ('src/app.py', 'src//app.py'),
     ('src', 'src/x.py'),
     ('src/', 'src/x.py'),
+    ('C:\\Repo\\a.py', 'c:\\repo\\a.py'),
+    ('SRC/*.py', 'src/a.py'),
+    ('src/x/../a.py', 'src/a.py'),
+    ('src/../docs/a.md', 'docs/a.md'),
+    ('.', 'src/a.py'),
 ])
 def test_two_spellings_of_one_path_overlap(a, b):
     assert validate.overlap(a, b) and validate.overlap(b, a)
