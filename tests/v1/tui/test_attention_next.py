@@ -70,5 +70,19 @@ def test_g_is_documented_and_collides_with_no_other_key():
     app = _app()
     press(app, '?')
     assert 'g next item that needs you' in plain(app)
-    taken = {d['tui'] for d in DESTINATIONS} | {t['key'] for t in TABS.values()} | set(A.RESERVED)
-    assert 'g' not in taken and 'f' != 'g'
+    taken = {d['tui'] for d in DESTINATIONS} | {t['key'] for t in TABS.values()}
+    assert 'g' not in taken
+    assert {'g', 'j', 'k', '[', ']'} <= set(A.RESERVED)
+
+
+def test_g_when_core_cannot_be_read_says_so_not_that_nothing_waits():
+    class Down(_Core):
+        def get(self, path):
+            if path == '/v1/attention':
+                raise C.CoreError(503, 'unavailable')
+            return super().get(path)
+    app = A.App(Down([]), Style(), size=lambda: (100, 9), stream=False)
+    app.signal('stream_open')
+    app.go({'view': 'work'})
+    press(app, 'g')
+    assert 'Nothing waits on you.' not in plain(app) and app.status[2]

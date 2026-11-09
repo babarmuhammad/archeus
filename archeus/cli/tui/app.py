@@ -17,7 +17,7 @@ from . import sync as S
 from ._tables import DESTINATIONS, INSPECTOR_TABS, TABS
 from .view import Style, clean
 
-RESERVED = ('q', '?', ':')
+RESERVED = ('q', '?', ':', 'g', 'j', 'k', '[', ']')
 STATUS_S = 4                    # a status-line message lasts 4 s (design system §15)
 SETTLE_MS = 4000                # "Back — read again" stays up this long (as the SPA)
 MIN_WIDTH = 60
@@ -319,7 +319,10 @@ class App:
         """Attention's own order (kind, then oldest) walked one item per press: the
         first item this client has not jumped to yet, and from the start again when
         it has been to all of them."""
-        items = (self.read(endpoints.attention_items())['data'] or {}).get('items') or []
+        e = self.read(endpoints.attention_items())
+        if e['data'] is None and e['error'] is not None:
+            return self.say(S.explain(e['error'].refusal()), error=True)
+        items = (e['data'] or {}).get('items') or []
         ids = [i['ref']['id'] for i in items]
         if not ids:
             return self.say('Nothing waits on you.')
