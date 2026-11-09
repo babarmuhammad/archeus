@@ -37,7 +37,6 @@ from ...node.local import LocalNode, PathTooLong, seed_ref
 from ...node.pv20_switches import checked
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
-from ..routing.router import ROUTABLE
 from ..redact import redact, redact_json  # p11-design-gate §19; shared since P12, and P20's inventory
 from . import canonical, pressure as P
 
@@ -438,7 +437,7 @@ class ExecutionManager:
                 and e.route_decision_id == binding.route_decision_id
                 and e.account_id == binding.account_id and e.model == binding.model
                 and permitted and account is not None
-                and account.entity.health in ROUTABLE)
+                and account.entity.health in ('AVAILABLE', 'CONSTRAINED'))
 
     @staticmethod
     def _offset(e):

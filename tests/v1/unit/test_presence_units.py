@@ -156,7 +156,8 @@ def test_P31_p15_routes_register_clients_and_nothing_else():
     assert set().union(*(_run_targets(f) for f in P15_HANDLERS)) == {'commands.register_device'}
     # the stream writes only its presence trace; the step-up lockout only revokes
     assert _run_targets(sse.Streams._trace) == {'commands.record_connection'}
-    assert _run_targets(routes._step_up_failed) == {'commands.revoke_device'}
+    assert _run_targets(routes._step_up_failed) | _run_targets(routes._revoke_locked_out) == {
+        'commands.revoke_device'}
 
 
 def test_P31_a_presence_trace_moves_no_entity():
