@@ -742,6 +742,7 @@ def test_stop_runs_start_backwards_and_drops_the_queue_on_demand(monkeypatch):
         setattr(core, name, Spy(log, name))
     core.db = Spy(log, 'db')
     core.lock = Spy(log, 'lock')
+    core.pv20 = None
     monkeypatch.setattr(runtime.discovery, 'remove_core_json',
                         lambda: log.append(('remove_core_json', (), {})))
     core.stop(drain=False)
