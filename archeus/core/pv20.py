@@ -42,6 +42,11 @@ class NativeBindings:
 
 
 class Activation:
+    """close() ends it in the order its parts were registered, last first: the broker
+    (every grant revoked, no new one issued), the workloads Core still holds, then the
+    watchdog host and the private directory. Core.stop joins the workers that admit
+    work before it calls it."""
+
     def __init__(self, *, switches, node, broker, host, backend, registry, resources):
         self.switches, self.node, self.broker = switches, node, broker
         self.host, self.backend, self.registry = host, backend, registry
@@ -51,6 +56,22 @@ class Activation:
     def close(self):
         self.closed = True
         self.resources.close()
+
+
+def _dispose(node):
+    """Every workload Core still holds, ended by Core and not left to the watchdog that
+    goes next; one that will not go does not keep the others."""
+    if node is None:
+        return
+    first = None
+    for execution_id in node.isolation.held_jobs():
+        try:
+            node.isolation.teardown(execution_id, reason='core stopping')
+        except Exception as error:
+            log.exception('PV-20 close could not tear %s down', execution_id)
+            first = first or error
+    if first is not None:
+        raise first
 
 
 def _rollback(resources):
@@ -92,6 +113,7 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
         root = os.path.normcase(os.path.realpath(ledger_dir))
     except (TypeError, ValueError, OSError) as error:
         raise ActivationRefused('invalid_parameters') from error
+    node = None
     with _lock:
         claims = {('ledger', root), ('port', core_port)}
         if claims & _claimed:
@@ -128,7 +150,6 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
             registry = origin.CorePathRegistry((core_port,))
             broker = broker_listener.loopback_broker(
                 backend_of=backend_of, principal_of=principal_of, **broker_options)
-            resources.callback(broker.close)
             channel = mxc_heartbeat.Channel(os.path.join(private, 'heartbeat'))
             host = mxc_watchdog_host.WatchdogHost(
                 channel=mxc_heartbeat.Channel(channel.root), clock=clock,
@@ -137,6 +158,8 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
                 engage_sentinel=bindings.engage_sentinel, journals=ledger.journals)
             running = bindings.start_host(host, poll_s=poll_s)
             resources.callback(running.close)
+            resources.callback(lambda: _dispose(node))
+            resources.callback(broker.close)
             if running.ready() is not True:
                 raise ActivationRefused('watchdog_unavailable')
             sender = mxc_heartbeat.HeartbeatSender(channel, clock, switches=switches)

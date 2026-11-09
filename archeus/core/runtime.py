@@ -73,6 +73,7 @@ from .policy.worker import Expiry
 DEFAULT_PORT = 7337
 IDLE_S = 1.0
 WORLD_POLL_S = 10.0         # D6
+QUIESCE_S = 10.0            # how long a stop waits for the workers that admit work, when PV-20 is on
 LOG_BYTES, LOG_BACKUPS = 5 * 1024 * 1024, 3     # core.log: 5 MB, three old files (P21 D8)
 
 log = logging.getLogger('archeus.core')
@@ -150,7 +151,8 @@ class EngineLoop:
         self.db.writer.wake()
 
     def join(self, timeout):
-        self._thread.join(timeout)
+        if self._thread.is_alive():
+            self._thread.join(timeout)
 
     def status(self):
         return {'state': self.state, 'observed_seq': self.observed_seq,
@@ -282,7 +284,8 @@ class ExecLoop:
         self._stop.set()
 
     def join(self, timeout):
-        self._thread.join(timeout)
+        if self._thread.is_alive():
+            self._thread.join(timeout)
 
     def status(self):
         """`live`: processes being watched — work that advances on its own."""
@@ -344,7 +347,8 @@ class WorldLoop:
         self.db.writer.wake()
 
     def join(self, timeout):
-        self._thread.join(timeout)
+        if self._thread.is_alive():
+            self._thread.join(timeout)
 
     def status(self):
         pending = self.world.pending() if self.state in ('idle', 'running') else 0
@@ -662,6 +666,12 @@ class Core:
             self.loop.stop()
         closing = None
         if self.pv20 is not None:
+            # a dispatch in flight may still reach the broker: it ends before the
+            # activation revokes grants and closes the watchdog, and the broker, once
+            # closed, binds no listener for a worker that is too slow
+            for worker in (self.exec, self.verify, self.loop):
+                if worker is not None:
+                    worker.join(QUIESCE_S)
             try:
                 self.pv20.close()
             except Exception as error:

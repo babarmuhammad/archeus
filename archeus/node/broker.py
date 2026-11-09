@@ -283,6 +283,7 @@ class Broker:
         self._in_flight = 0         # across all grants, against the pool
         self.busy_refused = 0       # 503s for the pool or a grant's share, counted
         self._grants = {}           # digest -> grant
+        self._closed = False
         self._lock = threading.Lock()
 
     # ── grants ──
@@ -295,6 +296,8 @@ class Broker:
             raise Refused(403, 'a binding from another Core instance')
         if not (isinstance(binding.limits.max_requests, int) and binding.limits.max_requests > 0):
             raise Refused(403, 'no request ceiling: the grant is refused')
+        if self._closed:
+            raise BrokerUnavailable('the broker is closed')
         limits = binding.limits
         if not (all(type(v) is int and v > 0 for v in (limits.max_body, limits.concurrent))
                 and isinstance(limits.deadline_s, (int, float)) and limits.deadline_s > 0):
@@ -316,10 +319,16 @@ class Broker:
             self.transport.close(endpoint)
             raise
         with self._lock:
-            stale = [self._grants.pop(k) for k, g in list(self._grants.items())
-                     if g['binding'].execution_id == binding.execution_id]
-            self._grants[d] = {'binding': binding, 'endpoint': endpoint, 'requests': 0,
-                               'active': 0, 'port': port}
+            closed = self._closed
+            stale = [] if closed else [
+                self._grants.pop(k) for k, g in list(self._grants.items())
+                if g['binding'].execution_id == binding.execution_id]
+            if not closed:
+                self._grants[d] = {'binding': binding, 'endpoint': endpoint, 'requests': 0,
+                                   'active': 0, 'port': port}
+        if closed:
+            self.transport.close(endpoint)
+            raise BrokerUnavailable('the broker is closed')
         for g in stale:
             self.transport.close(g['endpoint'])
         return token, d, endpoint, port
@@ -351,7 +360,12 @@ class Broker:
             ids = {g['binding'].execution_id for g in self._grants.values()}
         return sum(self.revoke(x) for x in ids)
 
-    close = revoke_all
+    def close(self):
+        """Revoke every grant and issue no more: a worker still inside `issue` finds the
+        broker closed before its listener is kept."""
+        with self._lock:
+            self._closed = True
+        return self.revoke_all()
 
     def authorize(self, token, principal, endpoint=None):
         """The grant *token* names, for a client the pipe observed as *principal*; with an

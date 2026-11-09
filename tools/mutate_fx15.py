@@ -22,6 +22,11 @@ ROUTER = 'archeus/core/routing/router.py'
 E = 'tests/v1/unit/test_effort_selection.py::'
 OUT = 'archeus/core/application/outcomes.py'
 W = 'tests/v1/unit/test_outcomes_rework.py::'
+RUN = 'archeus/core/runtime.py'
+PV = 'archeus/core/pv20.py'
+BRK = 'archeus/node/broker.py'
+A = 'tests/v1/unit/test_pv20_activate.py::'
+N = 'tests/v1/unit/test_fix_node_broker.py::'
 
 MUTATIONS = [
     ('G01', 'a field name does not carry the key state to the fields after it', [(RED,
@@ -84,6 +89,67 @@ MUTATIONS = [
      r""" and e.state != 'INTENT')""",
      r""" and e.state in ('ENDED_OK', 'ENDED_ERROR'))""")],
      [W + 'test_a_started_execution_still_running_is_a_second_run']),
+    ('G14', 'a stop does not wait for the workers that admit work', [(RUN,
+     r"""                    worker.join(QUIESCE_S)""",
+     r"""                    pass""")],
+     [A + 'test_stop_joins_the_dispatch_workers_before_the_activation_closes']),
+    ('G15', 'a core with no activation waits for its workers', [(RUN,
+     r"""        if self.pv20 is not None:
+            # a dispatch in flight""",
+     r"""        if True:
+            # a dispatch in flight""")],
+     [A + 'test_a_core_without_an_activation_does_not_wait_for_its_workers']),
+    ('G16', 'a worker that was never started cannot be joined', [(RUN,
+     r"""        self._stop.set()
+
+    def join(self, timeout):
+        if self._thread.is_alive():
+            self._thread.join(timeout)""",
+     r"""        self._stop.set()
+
+    def join(self, timeout):
+        self._thread.join(timeout)""")],
+     [A + 'test_production_core_binds_every_switch']),
+    ('G17', 'a closed broker still issues', [(BRK,
+     r"""        with self._lock:
+            self._closed = True
+        return self.revoke_all()""",
+     r"""        return self.revoke_all()""")],
+     [N + 'test_a_closed_broker_revokes_its_grants_and_issues_no_more_listeners',
+      A + 'test_no_listener_is_bound_after_the_activation_closed']),
+    ('G18', 'an issue in flight when the broker closes keeps its listener', [(BRK,
+     r"""            closed = self._closed
+""",
+     r"""            closed = False
+""")],
+     [N + 'test_an_issue_in_flight_when_the_broker_closes_leaves_no_listener']),
+    ('G19', 'revoke_all closes the broker', [(BRK,
+     r"""    def revoke_all(self):
+        with self._lock:""",
+     r"""    def revoke_all(self):
+        self._closed = True
+        with self._lock:""")],
+     [N + 'test_revoke_all_alone_leaves_the_broker_open']),
+    ('G20', 'held workloads are not disposed', [(PV,
+     r"""            resources.callback(lambda: _dispose(node))
+""",
+     r"""""")],
+     [A + 'test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog']),
+    ('G21', 'the watchdog closes before the broker and the workloads', [(PV,
+     r"""            resources.callback(running.close)
+            resources.callback(lambda: _dispose(node))
+            resources.callback(broker.close)
+""",
+     r"""            resources.callback(lambda: _dispose(node))
+            resources.callback(broker.close)
+            resources.callback(running.close)
+""")],
+     [A + 'test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog',
+      A + 'test_production_core_binds_every_switch']),
+    ('G22', 'a workload that will not go keeps the rest', [(PV,
+     r"""            first = first or error""",
+     r"""            raise""")],
+     [A + 'test_a_workload_that_will_not_go_does_not_keep_the_rest_or_the_watchdog_open']),
 ]
 
 

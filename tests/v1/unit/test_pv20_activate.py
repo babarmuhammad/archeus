@@ -3,6 +3,8 @@ from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
 import ast
 import os
+import threading
+import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -23,6 +25,7 @@ from archeus.harnesses.base import BROKER_ELIGIBLE as broker_eligible
 from archeus.node.pv20_switches import Pv20Switches
 
 from .test_broker_execution import Spy
+from .test_provider_broker import binding
 from .test_execution_units import _spawn_rig
 from .test_gaps_core_application_verification import IMP, Missions, _do, _errored, _seed, db, who
 from .test_mxc_boundary import Jobs, LauncherApi
@@ -164,7 +167,7 @@ def test_production_core_binds_every_switch(candidate, quiet_core):
     assert_closed()
     core.stop()
     assert_closed(core)
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
 
 
 def test_uncalled_core_starts_closed(quiet_core):
@@ -248,7 +251,7 @@ def test_each_build_failure_rolls_back(candidate, monkeypatch, module, name, exi
     assert candidate.cores == []
     if 'host_started' in candidate.events:
         assert candidate.events.count('host_closed') == 1
-        assert candidate.events[-2:] == ['host_closed', 'broker_closed']
+        assert candidate.events[-2:] == ['broker_closed', 'host_closed']
     if existing:
         assert [p.name for p in root.iterdir()] == ['keep']
         assert (root / 'keep').read_bytes() == b'previous ledger state'
@@ -277,7 +280,7 @@ def test_watchdog_must_be_ready(candidate, monkeypatch, ready):
     monkeypatch.setattr(RunningHost, 'ready', lambda self: ready)
     with pytest.raises(pv20.ActivationRefused, match='watchdog_unavailable'):
         candidate.activate()
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
     assert not candidate.args['ledger_dir'].exists()
     assert_closed(runtime.Core())
 
@@ -286,7 +289,7 @@ def test_boundary_must_be_available(candidate, monkeypatch):
     monkeypatch.setattr(pv20.mxc_boundary.MxcBoundary, 'available', lambda self: False)
     with pytest.raises(pv20.ActivationRefused, match='boundary_unavailable'):
         candidate.activate()
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
     assert not candidate.args['ledger_dir'].exists()
 
 
@@ -298,7 +301,7 @@ def test_twice_refused_even_after_close(candidate):
     core.stop()
     with pytest.raises(pv20.ActivationRefused, match='already_activated'):
         candidate.activate()
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
 
 
 def test_switch_bundle_cannot_be_partial_or_mutated():
@@ -391,7 +394,7 @@ def test_watchdog_initial_state_must_be_idle(candidate, monkeypatch, state):
     monkeypatch.setattr(mxc_watchdog_host.WatchdogHost, 'tick', changed)
     with pytest.raises(pv20.ActivationRefused, match='watchdog_unavailable'):
         candidate.activate()
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
     assert not candidate.args['ledger_dir'].exists()
 
 
@@ -399,7 +402,7 @@ def test_unreadable_status_rolls_back(candidate, monkeypatch):
     monkeypatch.setattr(mxc_heartbeat.Channel, 'read_status', lambda self: None)
     with pytest.raises(pv20.ActivationRefused, match='build_failed'):
         candidate.activate()
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
     assert not candidate.args['ledger_dir'].exists()
 
 
@@ -477,7 +480,7 @@ def test_an_interrupt_during_the_build_tears_everything_down(candidate, monkeypa
         patch.setattr(pv20.mxc_boundary, 'MxcBoundary', interrupted)
         with pytest.raises(Stop):
             candidate.activate()
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
     assert not candidate.args['ledger_dir'].exists()
     assert all(vars(candidate.activate().pv20_switches).values())
 
@@ -659,7 +662,7 @@ def test_a_lock_failure_in_start_tears_the_activation_down(candidate, monkeypatc
     with pytest.raises(RuntimeError, match='lock held'):
         core.start()
     assert core.pv20.closed is True
-    assert candidate.events == ['host_started', 'host_closed', 'broker_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'host_closed']
 
 
 def test_stop_finishes_the_core_when_a_part_will_not_close(candidate, quiet_core, monkeypatch):
@@ -732,3 +735,90 @@ def test_closing_keeps_a_ledger_dir_that_holds_journals(candidate):
     (root / 'journal.jsonl').write_bytes(b'{}')
     core.stop()
     assert [p.name for p in root.iterdir()] == ['journal.jsonl']
+
+
+def _dispatcher(events, broker_, then=None):
+    """A stand-in dispatch worker: signalled to stop, it finishes the step in flight."""
+    class Dispatch:
+        def __init__(self):
+            self._stop = threading.Event()
+            self._thread = threading.Thread(target=self.run)
+            self._thread.start()
+
+        def run(self):
+            self._stop.wait()
+            time.sleep(0.3)
+            events.append('dispatch_done')
+            if then:
+                then(broker_)
+
+        def stop(self):
+            self._stop.set()
+
+        def join(self, timeout):
+            self._thread.join(timeout)
+
+    return Dispatch()
+
+
+def test_stop_joins_the_dispatch_workers_before_the_activation_closes(candidate, quiet_core):
+    core = candidate.activate()
+    core.start()
+    core.exec = _dispatcher(candidate.events, core.pv20.broker)
+    core.verify = _dispatcher(candidate.events, core.pv20.broker)
+    core.stop()
+    assert candidate.events == ['host_started', 'dispatch_done', 'dispatch_done',
+                                'broker_closed', 'host_closed']
+
+
+def test_a_core_without_an_activation_does_not_wait_for_its_workers(quiet_core, monkeypatch):
+    monkeypatch.setattr(runtime.discovery, 'acquire', lambda s: SimpleNamespace(release=lambda: None))
+    monkeypatch.setattr(runtime.discovery, 'remove_core_json', lambda: None)
+    core = runtime.Core()
+    core.exec = SimpleNamespace(stop=lambda: None, join=lambda t: pytest.fail('joined'))
+    core.stop()
+
+
+def test_no_listener_is_bound_after_the_activation_closed(candidate, quiet_core):
+    core = candidate.activate()
+    core.start()
+    held = core.pv20.broker
+    created = []
+    held.transport.create = lambda *a: created.append(a)
+    core.stop()
+    with pytest.raises(broker.BrokerUnavailable, match='closed'):
+        held.issue(binding(core_instance='fixture'))
+    assert created == []
+
+
+def test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog(
+        candidate, quiet_core, monkeypatch):
+    core = candidate.activate()
+    core.start()
+    isolation_ = core.pv20.node.isolation
+    monkeypatch.setattr(isolation_, 'held_jobs', lambda: {'exe_a': object(), 'exe_b': object()})
+    monkeypatch.setattr(isolation_, 'teardown',
+                        lambda eid, reason='': candidate.events.append('teardown ' + eid))
+    core.stop()
+    assert candidate.events == ['host_started', 'broker_closed', 'teardown exe_a',
+                                'teardown exe_b', 'host_closed']
+
+
+def test_a_workload_that_will_not_go_does_not_keep_the_rest_or_the_watchdog_open(
+        candidate, quiet_core, monkeypatch):
+    core = candidate.activate()
+    core.start()
+    isolation_ = core.pv20.node.isolation
+    monkeypatch.setattr(isolation_, 'held_jobs', lambda: {'exe_a': object(), 'exe_b': object()})
+
+    def teardown(eid, reason=''):
+        candidate.events.append('teardown ' + eid)
+        if eid == 'exe_a':
+            raise OSError('job will not close')
+
+    monkeypatch.setattr(isolation_, 'teardown', teardown)
+    with pytest.raises(OSError, match='job will not close'):
+        core.stop()
+    assert core.db is None and core.lock is None
+    assert candidate.events[1:] == ['broker_closed', 'teardown exe_a', 'teardown exe_b',
+                                    'host_closed']

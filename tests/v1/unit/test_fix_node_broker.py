@@ -92,3 +92,33 @@ def test_a_resolver_that_never_answers_is_refused_as_not_resolving(monkeypatch):
     finally:
         release.set()
     assert r.value.status == 502
+
+
+def test_a_closed_broker_revokes_its_grants_and_issues_no_more_listeners():
+    b, _ = broker()
+    issued(b)
+    assert b.close() == 1 and b.transport.closed == ['ep1']
+    with pytest.raises(B.BrokerUnavailable, match='closed'):
+        b.issue(binding())
+    assert len(b.transport.created) == 1 and b._grants == {}
+
+
+def test_an_issue_in_flight_when_the_broker_closes_leaves_no_listener():
+    class Closing(Transport):
+        def create(self, name, principal):
+            got = super().create(name, principal)
+            b.close()
+            return got
+
+    b, _ = broker(transport=Closing())
+    with pytest.raises(B.BrokerUnavailable, match='closed'):
+        b.issue(binding())
+    assert b.transport.closed == ['ep1'] and b._grants == {}
+
+
+def test_revoke_all_alone_leaves_the_broker_open():
+    b, _ = broker()
+    issued(b)
+    assert b.revoke_all() == 1
+    issued(b)
+    assert len(b._grants) == 1
