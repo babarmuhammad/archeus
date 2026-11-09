@@ -1,4 +1,4 @@
-"""T-337 — the uncovered fail-closed branches of `archeus/node/isolation.py` 1850-2254.
+"""T-337 — the uncovered fail-closed branches of `archeus/node/isolation.py` 1851-2255.
 
 The block under test is `WindowsBoundary` and its Win32 readers, which live under the
 module-level `if WINDOWS:`. Nothing here needs Windows or the Windows API:
@@ -354,7 +354,7 @@ def token_report(**changes):
     return t
 
 
-# ── 1. the MXC seams stay shut (1884-1912) ────────────────────────────────────
+# ── 1. the MXC seams stay shut (1885-1913) ────────────────────────────────────
 
 @pytest.mark.parametrize('op,reason', [
     ('create_profile', 'mxc_lifecycle_unverified'),
@@ -402,7 +402,7 @@ def test_a_real_key_passes_the_real_guard_and_reaches_the_seam(boundary):
     assert err.value.reason == 'mxc_lifecycle_unverified'
 
 
-# ── 2. create_job: fail closed, and never leak the handle (1915-1940) ─────────
+# ── 2. create_job: fail closed, and never leak the handle (1916-1941) ─────────
 
 def _job_answers(win32):
     """The happy call set of `create_job`, up to the `job_facts` read-back."""
@@ -476,7 +476,7 @@ def test_a_verifier_job_without_the_facts_is_closed_like_any_other(boundary, win
     assert err.value.reason == 'job_limits' and win32.closed == [0x77]
 
 
-# ── 3. the Job facts and its accounting (1942-1965) ───────────────────────────
+# ── 3. the Job facts and its accounting (1943-1966) ───────────────────────────
 
 @pytest.mark.parametrize('label,flags,inheritable', [
     ('plain', 0x0, False), ('inherit', 0x1, True), ('both', 0x3, True),
@@ -540,7 +540,7 @@ def test_active_processes_that_cannot_be_read_are_not_zero(boundary, win32):
     assert err.value.reason == 'winapi' and 'QueryInformationJobObject' in str(err.value)
 
 
-# ── 4. assignment and the two closings (1961-1973) ────────────────────────────
+# ── 4. assignment and the two closings (1962-1974) ────────────────────────────
 
 def test_assigning_without_a_job_is_refused_before_the_call(boundary, win32):
     with pytest.raises(iso.IsolationUnavailable) as err:
@@ -587,7 +587,7 @@ def test_a_job_handle_report_keeps_only_jobs_and_closes_everything(
     assert win32.closed == [1, 2, 3]
 
 
-# ── 5. the token read (2079-2096) and its buffers (2117-2157) ─────────────────
+# ── 5. the token read (2080-2097) and its buffers (2118-2158) ─────────────────
 
 def test_a_process_whose_token_cannot_be_opened_is_never_reported(boundary, win32):
     win32.answer('_OpenProcess', 0)
@@ -664,7 +664,7 @@ def test_a_null_sid_pointer_is_answered_without_calling_the_api(boundary, win32)
     assert win32.reached() == {}
 
 
-# ── 6. the identity read is an observation or nothing (2097-2115) ─────────────
+# ── 6. the identity read is an observation or nothing (2098-2116) ─────────────
 
 CREATE = 0x01DB123489ABCDEF
 
@@ -726,7 +726,7 @@ def test_read_identity_reports_only_what_it_observed(monkeypatch):
     assert report.capability_sids == ('S-1-15-3-1',) and left == []
 
 
-# ── 7. the launch seam (2231-2251) ───────────────────────────────────────────
+# ── 7. the launch seam (2232-2252) ───────────────────────────────────────────
 
 def test_nothing_launches_before_a_closed_mxc_policy_exists(boundary, win32):
     # the one path that would start a process is closed to every caller
@@ -789,12 +789,12 @@ def test_spawn_hands_the_backend_it_was_built_with(monkeypatch, win32):
 # ── the line numbers this file and the report quote ───────────────────────────
 
 @pytest.mark.parametrize('method,line', [
-    ('_sid_str', 1931), ('available', 1944), ('create_profile', 1952),
-    ('create_job', 1975), ('job_facts', 2002), ('job_active_processes', 2011),
-    ('assign_job', 2021), ('close_job', 2033), ('close_handle', 2038),
-    ('job_handles_of', 2070), ('_handle_flags', 2107), ('token', 2146),
-    ('read_identity', 2164), ('_token_buffer', 2225), ('capability_grants', 2237),
-    ('open_inherited', 2299), ('launch', 2309), ('spawn', 2313),
+    ('_sid_str', 1932), ('available', 1945), ('create_profile', 1953),
+    ('create_job', 1976), ('job_facts', 2003), ('job_active_processes', 2012),
+    ('assign_job', 2022), ('close_job', 2034), ('close_handle', 2039),
+    ('job_handles_of', 2071), ('_handle_flags', 2108), ('token', 2147),
+    ('read_identity', 2165), ('_token_buffer', 2226), ('capability_grants', 2238),
+    ('open_inherited', 2300), ('launch', 2310), ('spawn', 2314),
 ])
 def test_the_branches_quoted_here_are_where_this_file_says_they_are(method, line):
     assert _definition_line(method) == line
