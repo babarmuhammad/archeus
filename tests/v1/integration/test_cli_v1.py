@@ -78,3 +78,29 @@ def test_status_of_a_mission_prints_what_core_reports_and_a_refusal_in_its_words
         assert 'It no longer exists.' in capsys.readouterr().err     # Core's not_found, in words
     finally:
         tc.stop(kill=True)
+
+
+def test_wait_and_top_against_a_running_core(archeus_home, capsys):
+    """`wait` blocks on a mission that rests at APPROVAL_REQUIRED (a state that needs a
+    person, so the default wait ends there), times out on one it was told to wait out, and
+    `top --once` reads the ledger Core holds, in each grouping Core serves."""
+    import time
+    from archeus.core import engine, ports, runtime
+    from v1.judge.http import TempCore
+    deploy = dict(engine.SKELETON_PLAN, tasks=[dict(engine.SKELETON_PLAN['tasks'][0],
+                                                    action_classes=['deploy'])])
+    tc = TempCore(archeus_home, ports=runtime.Ports(brain=ports.FixedPlanBrain(deploy))).start()
+    try:
+        mid = tc.http('POST', '/v1/missions', body={
+            'title': 'Awaited', 'objective': 'o', 'idempotency_key': 'wait-%f' % time.time()
+        }).json()['id']
+        assert cli.main(['wait', mid, '--timeout', '30']) == 0
+        assert capsys.readouterr().out == '%s: APPROVAL_REQUIRED (Awaited)\n' % mid
+        assert cli.main(['wait', mid, '--until', 'COMPLETED', '--timeout', '1']) == 4
+        assert 'is still APPROVAL_REQUIRED' in capsys.readouterr().err
+        for by in ('account', 'mission', 'pass'):
+            assert cli.main(['top', '--once', '--by', by]) == 0
+            assert capsys.readouterr().out.split()[0] == by
+        assert tc.http('GET', '/v1/usage?by=model').status == 400
+    finally:
+        tc.stop(kill=True)

@@ -1319,6 +1319,20 @@ export interface Transition {
   seq: number;
 }
 
+export interface Usage {
+  by: 'account' | 'mission' | 'pass';
+  rows: Array<{
+    calls: number;
+    tokens_in: number | null;
+    tokens_out: number | null;
+    cache_read: number | null;
+    cache_write: number | null;
+    cost_usd: number | null;
+    complete: boolean;
+    [field: string]: unknown;
+  }>;
+}
+
 export interface Verification {
   id: string;
   state: 'AWAITING_HUMAN' | 'ERROR' | 'FAILED' | 'PASSED' | 'PENDING' | 'RUNNING';
@@ -1747,6 +1761,7 @@ function qs(q: Record<string, string | number | undefined>): string {
 export const paths = {
   health: () => '/v1/health',
   metricsDays: (query: { days?: number } = {}) => '/v1/metrics' + qs(query),
+  usageBy: (query: { by?: 'account' | 'mission' | 'pass' } = {}) => '/v1/usage' + qs(query),
   version: () => '/v1/version',
   listMissions: (query: { state?: Mission['state']; project?: string } = {}) => '/v1/missions' + qs(query),
   getMission: (id: string) => '/v1/missions/' + encodeURIComponent(id),
@@ -1806,6 +1821,8 @@ export const api = {
     send<Health>('GET', paths.health()),
   metricsDays: (send: Send, query: { days?: number } = {}) =>
     send<MetricsDaily>('GET', paths.metricsDays(query)),
+  usageBy: (send: Send, query: { by?: 'account' | 'mission' | 'pass' } = {}) =>
+    send<Usage>('GET', paths.usageBy(query)),
   version: (send: Send) =>
     send<Version>('GET', paths.version()),
   listMissions: (send: Send, query: { state?: Mission['state']; project?: string } = {}) =>

@@ -31,6 +31,10 @@ class endpoints:
         return _path('/v1/metrics') + _q((('days', days),))
 
     @staticmethod
+    def usage_by(*, by=None):
+        return _path('/v1/usage') + _q((('by', by),))
+
+    @staticmethod
     def version():
         return _path('/v1/version')
 

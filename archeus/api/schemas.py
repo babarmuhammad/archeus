@@ -129,6 +129,21 @@ TYPES = {
                              'cost_per_mission_band', 'context_tokens_per_task_kind']}},
             'required': ['day', 'metrics', 'computed_at']}}},
         'required': ['days']},
+    # T-1098: the usage ledger summed by account, mission or learning pass; a figure nothing
+    # reported is null, never 0, and `complete` is false while any row is a partial figure
+    'Usage': {'type': 'object', 'properties': {
+        'by': {'type': 'string', 'enum': ['account', 'mission', 'pass']},
+        'rows': {'type': 'array', 'items': {'type': 'object', 'open': True, 'properties': {
+            'calls': {'type': 'integer'},
+            'tokens_in': {'type': 'integer', 'nullable': True},
+            'tokens_out': {'type': 'integer', 'nullable': True},
+            'cache_read': {'type': 'integer', 'nullable': True},
+            'cache_write': {'type': 'integer', 'nullable': True},
+            'cost_usd': {'type': 'number', 'nullable': True},
+            'complete': {'type': 'boolean'}},
+            'required': ['calls', 'tokens_in', 'tokens_out', 'cache_read', 'cache_write',
+                         'cost_usd', 'complete']}}},
+        'required': ['by', 'rows']},
     'Worker': {'type': 'object', 'properties': {
         'state': {'type': 'string', 'enum': ['starting', 'reconciling', 'running', 'idle',
                                              'failed', 'stopped']},

@@ -26,7 +26,7 @@ from ._api import endpoints
 DEFERRED = {}
 VERBS = ('core', 'status', 'terms', 'approve', 'pause', 'route', 'estop', 'pair',
          'sessions', 'resume', 'handoff', 'verify', 'decide', 'automation', 'devices',
-         'tui', 'gui', 'executions', 'doctor')
+         'tui', 'gui', 'executions', 'doctor', 'wait', 'top')
 
 USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 run Archeus Core in the foreground (Ctrl+C stops it);
@@ -52,6 +52,20 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
                                 when nothing is found, else the sum of the findings' codes
        archeus status <mission-id>
                                 a mission's state, as Core reports it (P19)
+       archeus wait <mission-id> [--until STATE[,STATE]] [--timeout SECONDS]
+                                block until the mission reaches a state, polling Core every
+                                2 s; prints the `archeus status` line. Default --until:
+                                COMPLETED, CANCELLED, FAILED, BLOCKED, PAUSED,
+                                APPROVAL_REQUIRED; default --timeout 60. Exit 0 reached,
+                                1 Core not running, 2 usage or unknown mission, 4 timed
+                                out, 5 it ended in a state you did not ask for (with
+                                the default, FAILED, BLOCKED or CANCELLED). A final state
+                                always ends the wait. FAILED is not final: it may replan
+       archeus top --once [--by account|mission|pass]
+                                the tokens and cost the usage ledger holds, per account
+                                (default), mission or learning pass: one table, read once
+                                (a figure nobody reported is `-`; `complete` is `no` while
+                                any row is a partial figure)
        archeus terms            the provider-terms answers (ADR-0021)
        archeus terms <harness> permit|refuse [--rotation permit|refuse]
                                 answer it: may Archeus make automated headless calls on
@@ -135,6 +149,11 @@ def main(argv):
         return doctor()
     if verb == 'status' and len(args) == 1:
         return mission_status(args[0])
+    if verb == 'top' and '--once' in args:
+        rest = [a for a in args if a != '--once']
+        by = _flags(rest)
+        if by is not None and set(by) <= {'by'}:
+            return top(by.get('by', 'account'))
     if verb == 'terms' and not args:
         return terms()
     if (verb == 'terms' and len(args) in (2, 4) and args[1] in _TERMS
@@ -163,7 +182,9 @@ def main(argv):
     if verb == 'executions' and (args == ['opt-ins'] or (
             len(args) == 4 and args[0] in _OPT and args[2] in ('source', 'plugin', 'mcp'))):
         return opt_ins(*args)
-    opts = _flags(args[1:] if verb in ('resume', 'handoff') else args)
+    opts = _flags(args[1:] if verb in ('resume', 'handoff', 'wait') else args)
+    if verb == 'wait' and args and opts is not None and set(opts) <= {'until', 'timeout'}:
+        return wait(args[0], opts.get('until'), opts.get('timeout', '60'))
     if verb == 'sessions' and opts is not None and set(opts) <= {'project', 'mission'}:
         return sessions(opts)
     if verb == 'resume' and args and opts is not None and set(opts) <= {'model', 'effort'}:
@@ -433,6 +454,68 @@ def mission_status(mission_id):
     if m is None:
         return 2
     print('%s: %s (%s)' % (m['id'], m['state'], m['title']))
+    return 0
+
+
+#: States a mission waits in for a person, and FAILED, which is not final (it may replan)
+_WAIT_DEFAULT = ('COMPLETED', 'CANCELLED', 'FAILED', 'BLOCKED', 'PAUSED', 'APPROVAL_REQUIRED')
+_WAIT_BAD = ('FAILED', 'BLOCKED', 'CANCELLED')
+
+
+def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.monotonic):
+    """Poll `GET /v1/missions/{id}` until the mission is in a state of *until*. A final
+    state ends the wait whatever was asked, since the mission can never leave it. Exit 0
+    when the state was asked for, 5 when it was not or is one of the default bad ones."""
+    from ..core.domain import states
+    known = states.states('mission')
+    want = tuple(x.strip().upper() for x in until.split(',')) if until else _WAIT_DEFAULT
+    try:
+        seconds = float(timeout)
+    except ValueError:
+        seconds = 0
+    if not seconds > 0 or not all(x in known for x in want):
+        print('--until names mission states (%s) and --timeout is seconds > 0' % ', '.join(known),
+              file=sys.stderr)
+        return 2
+    info = _core_or_say()
+    if info is None:
+        print('Core is not running: start it with `archeus core`', file=sys.stderr)
+        return 1
+    stop = set(want) | states.terminal('mission')
+    deadline = clock() + seconds
+    while True:
+        refusal = {}
+        m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal)
+        if m is None:
+            return 1 if refusal.get('code') == 'network' else 2
+        if m['state'] in stop:
+            print('%s: %s (%s)' % (m['id'], m['state'], m['title']))
+            bad = m['state'] not in want or (until is None and m['state'] in _WAIT_BAD)
+            return 5 if bad else 0
+        if clock() >= deadline:
+            print('timed out after %gs: %s is still %s' % (seconds, m['id'], m['state']),
+                  file=sys.stderr)
+            return 4
+        sleep(2)
+
+
+def top(by):
+    """The usage ledger as one table, from Core's `/v1/usage`: read only, and a
+    figure nobody reported is `-`, never 0."""
+    info = _running()
+    if info is None:
+        return 1
+    out = _get(info, 'GET', endpoints.usage_by(by=by))
+    if out is None:
+        return 2
+    cols = ('calls', 'tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
+    print('%-40s %6s %11s %11s %11s %11s %9s  complete' % ((by,) + cols))
+    for r in out['rows']:
+        fig = ['-' if r[c] is None else str(r[c]) for c in cols]
+        print('%-40s %6s %11s %11s %11s %11s %9s  %s' % (
+            r[by] or '(none)', *fig, 'yes' if r['complete'] else 'no'))
+    if not out['rows']:
+        print('no usage recorded')
     return 0
 
 

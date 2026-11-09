@@ -29,6 +29,7 @@ U = 'tests/v1/unit/test_routing_units.py'
 OC = 'tests/v1/unit/test_outcomes_cache.py'
 OR = 'tests/v1/unit/test_outcomes_rework.py'
 OP = 'tests/v1/unit/test_outcomes_by_pass.py'
+OU = 'tests/v1/unit/test_outcomes_usage.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -254,6 +255,22 @@ MUTATIONS = [
      "and (r.entity.purpose, r.entity.source.kind) in PASSES}",
      "and r.entity.purpose in {p for p, _ in PASSES}}",
      [OP + '::test_calls_that_are_not_learning_passes_are_left_out']),
+    ('R49', 'the harness account read before the registered one', OUT,
+     "(lambda u: u.account_id or u.account_ref)",
+     "(lambda u: u.account_ref or u.account_id)",
+     [OU + '::test_the_registered_account_wins_over_the_harness_account_and_none_sorts_last']),
+    ('R50', 'an own call not attributed to the mission it is about', OUT,
+     " or (s.id if s and s.kind == 'mission' else None)",
+     "",
+     [OU + '::test_a_mission_sums_its_executions_and_the_own_calls_about_it']),
+    ('R51', 'a usage figure nobody reported read as 0', OUT,
+     "name: key, 'calls': 0, 'tokens_in': None,",
+     "name: key, 'calls': 0, 'tokens_in': 0,",
+     [OU + '::test_an_account_sums_its_rows_and_an_unreported_figure_stays_none']),
+    ('R52', 'a row that names no mission dropped', OUT,
+     "sorted(out, key=lambda k: (k is None, k or ''))]",
+     "sorted(out, key=lambda k: (k is None, k or '')) if k is not None]",
+     [OU + '::test_an_own_call_about_no_mission_is_kept_under_none_not_dropped']),
 ]
 
 
