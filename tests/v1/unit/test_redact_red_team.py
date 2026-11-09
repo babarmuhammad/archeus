@@ -59,8 +59,9 @@ def test_pem_pgp_private_key_block():
     '-----BEGIN PRIVATE KEY-----',
     '-----begin private key-----',
     '-----BEGIN PRIVATE KEY----',
+    '----BEGIN PRIVATE KEY-----',
     '-----BEGIN PRIVATE' + '\n' + 'KEY-----',
-], ids=['tab', 'two-spaces', 'nbsp', 'lowercase', 'four-dashes', 'split-over-two-lines'])
+], ids=['tab', 'two-spaces', 'nbsp', 'lowercase', 'four-dashes', 'four-dashes-before', 'split-over-two-lines'])
 def test_pem_marker_variants(marker):
     """A marker is not one exact spelling: any blank, any case, four dashes or more."""
     gone(redact(marker + '\n' + S))
@@ -258,13 +259,14 @@ def test_a_cyclic_structure_returns():
     import subprocess
     import sys
     code = 'from archeus.core.redact import redact_json\na=[]\na.append(a)\nredact_json(a)'
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     try:
-        import os
-        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        subprocess.run([sys.executable, '-c', code], timeout=3, capture_output=True, cwd=root,
-                       env=dict(os.environ, PYTHONPATH=root))
+        r = subprocess.run([sys.executable, '-c', code], timeout=3, capture_output=True, cwd=root,
+                           env=dict(os.environ, PYTHONPATH=root))
     except subprocess.TimeoutExpired:
         pytest.fail('redact_json did not return on a cyclic list in 3 s (infinite loop, memory grows)')
+    assert r.returncode == 0, r.stderr[-500:]
 
 
 def test_shared_substructure_is_walked_once():
