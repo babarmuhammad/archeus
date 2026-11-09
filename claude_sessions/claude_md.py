@@ -8,6 +8,8 @@ import subprocess
 import shutil
 from itertools import islice
 
+from archeus.core.redact import redact
+
 from .config import (W, _AUTOGEN_START, _AUTOGEN_END, _SESSIONS_START, _SESSIONS_END,
                      _AI_MARKER, _MEMORY_START, _MEMORY_END,
                      _AGENTS_START, _AGENTS_END, _LOOP_START, _LOOP_END)
@@ -102,7 +104,7 @@ def write_memory_block(project_path, digest):
                              "the project's Memory tab -> Build with Claude")
     section = (f"{_MEMORY_START}\n## Project memory (archeus — auto-maintained)\n"
                f"{note}\n\n"
-               f"{digest}\n{_MEMORY_END}\n")
+               f"{redact(digest)}\n{_MEMORY_END}\n")
     first, ok = None, True
     for name in _harnesses.instructions_files():
         got = upsert_block(project_path, _MEMORY_START, _MEMORY_END, section,
