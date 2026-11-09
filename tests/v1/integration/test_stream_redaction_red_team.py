@@ -25,6 +25,10 @@ B64 = 'A' * 63
 HOMES = Homes([], [], shorts=lambda _: None)
 
 
+def esc(text):
+    return ''.join('%su%04x' % (chr(92), ord(c)) for c in text)
+
+
 class Rig:
     def __init__(self, tmp_path, monkeypatch):
         monkeypatch.setenv('ARCHEUS_HOME', str(tmp_path))
@@ -254,6 +258,51 @@ def test_begin_marker_cut_by_the_max_line_boundary(rig):
         head = b'x' * (base.MAX_LINE + 1 - cut)
         rig.write([head + B.encode() + b' ' + b'y' * 100, S.encode(), E.encode()])
         assert 'SYNTH' not in rig.text(), cut
+
+
+@pytest.mark.parametrize('spelled', [
+    esc('-----') + 'BEGIN PRIVATE KEY-----',
+    '-----BEGIN' + esc(' ') + 'PRIVATE' + esc(' ') + 'KEY-----',
+    esc('-----B').upper().replace('U', 'u') + 'EGIN PRIVATE KEY-----',
+], ids=['hyphens', 'spaces', 'letter'])
+@pytest.mark.parametrize('lead', [0, 37])
+def test_an_oversized_json_line_with_an_escaped_marker_opens_the_key(rig, monkeypatch, spelled, lead):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    line = '{"text":"' + 'x' * lead + spelled + '","pad":"' + 'p' * 5000 + '"}'
+    assert len(line) > base.MAX_LINE
+    rig.write([line, S, E])
+    assert 'SYNTH' not in rig.text()
+
+
+def test_an_escape_cut_by_the_read_boundary_still_opens_the_key(rig, monkeypatch):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    for cut in range(1, 7):
+        head = b'x' * (base.MAX_LINE + 1 - cut)
+        rig.write([head + esc('-----').encode() + b'BEGIN PRIVATE KEY-----' + b'y' * 100, S])
+        assert 'SYNTH' not in rig.text(), cut
+
+
+@pytest.mark.parametrize('gap', [100, 5000, 9000])
+@pytest.mark.parametrize('blank', [b' ', b'\t'])
+def test_a_marker_whose_blanks_span_a_read_boundary_opens_the_key(rig, monkeypatch, gap, blank):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    head = b'x' * (base.MAX_LINE + 1 - 100) + b'-----BEGIN' + blank * gap
+    rig.write([head + b'PRIVATE' + blank * gap + b'KEY-----' + b'y' * 100, S])
+    assert 'SYNTH' not in rig.text()
+
+
+def test_a_marker_whose_blanks_end_at_the_first_read_boundary(rig, monkeypatch):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    head = b'x' * (base.MAX_LINE + 1 - 110) + b'-----BEGIN' + b' ' * 100
+    assert len(head) == base.MAX_LINE + 1
+    rig.write([head + b'PRIVATE KEY-----' + b'y' * 100, S])
+    assert 'SYNTH' not in rig.text()
+
+
+def test_an_oversized_line_with_no_marker_leaves_later_lines_alone(rig, monkeypatch):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    rig.write([b'x' * 5000 + esc('\xe9\xe9\xe9 ' + 'A' * 100).encode(), 'later line of text'])
+    assert 'later line of text' in rig.text()
 
 
 def test_key_whose_body_has_a_huge_line_in_the_middle(rig):

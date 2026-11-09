@@ -191,6 +191,65 @@ def test_key_holding_pem_marker_redacts_its_value():
     gone(json.dumps(redact_json({'-----BEGIN PRIVATE KEY-----': S})))
 
 
+def test_a_key_line_used_as_a_json_field_name_is_held():
+    gone(json.dumps(redact_json({'lines': ['-----BEGIN PRIVATE KEY-----', {S: None}]})))
+
+
+def test_a_marker_used_as_a_json_field_name_opens_the_key_for_later_fields():
+    gone(json.dumps(redact_json({'-----BEGIN PRIVATE KEY-----': None, 'body': S})))
+
+
+def test_a_field_name_after_a_value_is_scrubbed_in_document_order():
+    gone(json.dumps(redact_json({'a': '-----BEGIN PRIVATE KEY-----', S: 'v'})))
+    gone(json.dumps(redact_json([{'a': '-----BEGIN PRIVATE KEY-----'}, {S: 'v'}])))
+
+
+def test_field_names_stay_when_no_key_is_open():
+    assert redact_json({'type': 'assistant', 'n': {'x': 1}}) == {'type': 'assistant', 'n': {'x': 1}}
+
+
+def test_names_of_an_open_key_do_not_lose_a_field():
+    got = redact_json({'a': '-----BEGIN PRIVATE KEY-----', S: 1, S + 'x': 2})
+    assert len(got) == 3 and list(got.values()) == ['[redacted]', 1, 2]
+
+
+@pytest.mark.parametrize('frag', ['AQID', 'a', 'AQID==', 'AQID\nBAUG', ' AQID \r\n'])
+def test_a_short_key_fragment_in_an_open_key_is_held(frag):
+    out = redact_json({'lines': ['-----BEGIN PRIVATE KEY-----', frag, '-----END PRIVATE KEY-----']})
+    assert out['lines'][1] == '[redacted]', out
+
+
+def test_a_short_fragment_after_the_end_line_is_kept():
+    out = redact_json({'lines': ['-----BEGIN PRIVATE KEY-----', S, '-----END PRIVATE KEY-----', 'AQID']})
+    assert out['lines'][-1] == 'AQID'
+
+
+def test_prose_still_ends_an_open_key_and_a_short_word_is_masked_before_it():
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', 'AQID', 'three plain words', 'AQID'])
+    assert out[1] == '[redacted]' and out[3] == 'AQID'
+
+
+def test_a_short_fragment_is_held_in_the_stderr_channel_too():
+    state = scrub('-----BEGIN PRIVATE KEY-----', None, 'json')[1]
+    assert scrub('AQID', state, 'stderr')[0] == '[redacted]'
+
+
+@pytest.mark.xfail(strict=True, reason='accepted residue (owner decisions item 110): a token or a '
+                   'marker cut over two JSON strings or events is not carried; the pieces are '
+                   'separate strings, and a carry would need its own state in every checkpoint')
+@pytest.mark.parametrize('parts', [('sk-ABCD', 'EFGHIJKL'), ('ghp_ABCD', 'EFGHIJKL'),
+                                   ('Bearer ', 'ABCDEFGHIJKL')])
+def test_a_token_cut_over_two_strings(parts):
+    out = redact_json({'content': [{'text': p} for p in parts]})
+    assert ''.join(b['text'] for b in out['content']) != ''.join(parts)
+
+
+@pytest.mark.xfail(strict=True, reason='accepted residue (owner decisions item 110): see '
+                   'test_a_token_cut_over_two_strings')
+def test_a_marker_cut_over_two_strings():
+    gone(json.dumps(redact_json({'lines': ['-----BEGIN PRIVATE ', 'KEY-----', S]})))
+
+
 def test_bearer_split_over_name_and_value():
     gone(json.dumps(redact_json({'Authorization': 'Bearer ' + S})))
     gone(json.dumps(redact_json({'Authorization': 'Basic dXNlcjpTWU5USEVUSUM='})), 'dXNlcjpTWU5USEVUSUM')
@@ -332,3 +391,21 @@ def test_redact_json_deep_nesting_is_iterative():
     for _ in range(100000):
         o = {'k': o}
     assert redact_json(o) is not None
+
+
+def test_a_plain_field_name_stays_while_a_key_is_open():
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'type': 'x'}])
+    assert list(out[1]) == ['type'] and out[1]['type'] == '[redacted]'
+
+
+def test_a_string_of_a_base64_line_and_prose_is_not_a_short_fragment():
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', 'AQID\nthree plain words'])
+    assert out[1] == 'AQID\nthree plain words'
+
+
+def test_a_field_name_is_read_before_its_own_value():
+    assert S in redact_json({S: '-----BEGIN PRIVATE KEY-----'})
+
+
+def test_an_empty_string_is_not_masked_while_a_key_is_open():
+    assert redact_json(['-----BEGIN PRIVATE KEY-----', '', ' '])[1:] == ['', ' ']

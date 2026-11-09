@@ -665,15 +665,26 @@ def _quiet(raw):
     return b'----' not in raw and b'\\u' not in raw
 
 
+# What a JSON string may spell a marker with: an ASCII character as an escape, and
+# any blanks.
+_ASCII = re.compile(r'\\u00([0-7][0-9a-fA-F])')
+_BLANKS = re.compile(r'\s+')
+
+
 def _long(f, raw):
     """(size, last key marker) of a line over MAX_LINE whose first bytes are *raw*,
-    read to its end."""
-    n, seam, mark, rest = len(raw), b'', None, raw
+    read to its end. The marker is looked for as the JSON string would read, so an
+    escaped one counts, and with every run of blanks one blank, so the 80 characters
+    kept across a read hold however many blanks the marker has; an escape the end of
+    a read cut stays raw in them and is read whole with the next read."""
+    n, seam, mark, rest = len(raw), '', None, raw
     while True:
-        mark = redact.last_mark((seam + rest).decode('utf-8', errors='replace')) or mark
+        flat = _BLANKS.sub(' ', _ASCII.sub(lambda m: chr(int(m[1], 16)),
+                                           seam + rest.decode('utf-8', errors='replace')))
+        mark = redact.last_mark(flat) or mark
         if not rest or rest.endswith(b'\n'):
             return n, mark
-        seam = rest[-80:]               # a marker the read's end cut in two
+        seam = flat[-80:]
         rest = f.readline(MAX_LINE)
         n += len(rest)
 
