@@ -774,6 +774,10 @@
        {
         "name": "lint",
         "result": "pass"
+       },
+       {
+        "name": "memory",
+        "result": "skip"
        }
       ]
      },

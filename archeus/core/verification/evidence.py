@@ -291,7 +291,9 @@ def weakening_check(node, root, base, revision):
 def memory_check(conn, mission_id):
     """`memory`: advisory, never `fail`. `pass` when a knowledge row cites the mission
     (a lesson learned from it), `skip` when none does yet; the verdict ignores both."""
-    n = len(rows.where(conn, entities.Relation, dst_kind='mission', dst_id=mission_id))
+    n = sum(r.entity.valid_until is None for r in rows.where(
+        conn, entities.Relation, src_kind='knowledge_item', rel='learned_from',
+        dst_kind='mission', dst_id=mission_id))
     if n:
         return {'name': 'memory', 'kind': 'state', 'result': 'pass',
                 'detail': '%d knowledge relation(s) cite this mission' % n}

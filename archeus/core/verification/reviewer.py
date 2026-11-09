@@ -6,6 +6,8 @@ The prompt is built from rows at call time: nothing from a transcript, nothing
 provider-private, and what the agent said about itself is labelled a claim.
 """
 
+import json
+
 from ...infra.db import rows
 from ..application.commands import active_plan
 from ..domain import entities
@@ -64,7 +66,9 @@ def prompt(conn, m, diff, homes):
             lines.append('    verification %s by %s at %s: %s' % (
                 v.state, v.verifier, (v.revision or 'no repository')[:12], '; '.join(
                     '%s %s' % (c['name'], c['result']) for c in v.checks) or 'no checks'))
-            lines += ['    advisory, read from the diff: %s' % scrub_text(f, homes)
+            # a finding quotes the agent's own lines: quoted so none reads as Core's
+            lines += ['    advisory, read from the diff, QUOTING the change: %s'
+                      % json.dumps(scrub_text(f, homes), ensure_ascii=False)
                       for c in v.checks for f in c.get('findings', ())[:20]]
         for e in (r.entity for r in rows.where(conn, entities.Execution, task_id=t.id)):
             if e.summary:

@@ -794,7 +794,8 @@ def test_a_mission_row_names_the_head_only_where_its_branch_is_the_base(rig, bas
     # the head of *its own* worktree is what the record is given
     r = rig(mission_state='VERIFYING', base=base, head=REV if base else None,
             success=(AUTO,), task_state='SUCCEEDED',
-            node=_Node(git_head=_script(REV), run_check=_script(_result())))
+            node=_Node(git_head=_script(REV), run_check=_script(_result()),
+                       git_numstat=_script([])))
     vid = r.vrow(subject='mission', criterion=0, state='ERROR', errors=1,
                  holds_mission=False, revision=REV if base else None,
                  workspace='wt' if base else r.root)

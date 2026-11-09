@@ -354,8 +354,9 @@ def test_the_weakening_findings_of_a_verification_are_listed_for_the_reviewer(ri
                         + ['assertions removed: t%d' % i for i in range(25)]}
     r.verification(Ref('task', s['tid']), s['pid'], checks=(dict(CHECK), weak))
     block = _block(r.prompt(s['mid']), TASK_LINE, 'advisory, read')
-    assert block[0] == '    advisory, read from the diff: test file deleted: tests/a.py'
-    assert len(block) == 20 and block[-1].endswith('assertions removed: t18')
+    assert block[0] == ('    advisory, read from the diff, QUOTING the change: '
+                        '"test file deleted: tests/a.py"')
+    assert len(block) == 20 and block[-1].endswith('assertions removed: t18"')
 
 
 def test_a_verification_that_ran_no_checks_says_so_instead_of_nothing(rig):

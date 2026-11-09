@@ -93,3 +93,24 @@ def test_memory_check_is_a_read_of_relations_to_the_mission(rig):  # noqa: F811
     with r.db.read() as conn:
         c = evidence.memory_check(conn, r.mid)
     assert c['result'] == 'pass' and c['detail'].startswith('2 ')
+
+
+def test_a_retried_mission_verification_records_the_memory_check_too(rig):  # noqa: F811
+    r = rig(mission_state='VERIFYING', base=BASE, head=REV, task_state='SUCCEEDED',
+            success=(AUTO,), node=node([(1, 0, 'a.py')]))
+    vid = r.vrow(subject='mission', criterion=0, state='ERROR', errors=1,
+                 holds_mission=False, revision=REV, workspace='wt')
+    assert r.worker._retry(vid) is True
+    assert [c['result'] for c in r.verification(vid).checks if c['name'] == 'memory'] == ['skip']
+
+
+def test_only_a_live_lesson_learned_from_the_mission_counts(rig):  # noqa: F811
+    r = rig()
+    for extra in ({'rel': 'relates_to'}, {'valid_until': '2026-01-01T00:00:00Z'},
+                  {'src_kind': 'meeting'}):
+        r._place(entities.Relation(**dict(
+            id=ids.new_id('relation'), src_kind='knowledge_item',
+            src_id=ids.new_id('knowledge_item'), rel='learned_from', dst_kind='mission',
+            dst_id=r.mid) | extra))
+    with r.db.read() as conn:
+        assert evidence.memory_check(conn, r.mid)['result'] == 'skip'

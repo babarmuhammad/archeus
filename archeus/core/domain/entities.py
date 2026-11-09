@@ -1198,8 +1198,8 @@ class Verification(Entity):
     # the verified execution's routed identity, copied from its rows (§22)
     performed_by: dict = None
     verifier_version: str = None
-    # each {name, kind: command|git, argv?, result: pass|fail|error, exit_code?,
-    # duration_ms?, output_sha256?, output_bytes?, truncated?, detail}
+    # each {name, kind: command|git|state, argv?, result: pass|fail|error|skip, exit_code?,
+    # duration_ms?, output_sha256?, output_bytes?, truncated?, detail, findings?, baseline?}
     checks: tuple = ()
     # each {index, text, check: automatic|human, result: satisfied|failed|unknown}
     criteria: tuple = ()

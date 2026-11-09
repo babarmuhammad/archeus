@@ -203,7 +203,7 @@ export function explainState(x: {
     if (r) out.push({ text: `The last execution ${present('execution', x.execution.state).label.toLowerCase()}: ${r}.`, source: 'execution' });
   }
   if (x.verification && x.verification.state !== 'PASSED') {
-    const failed = (x.verification.checks ?? []).filter((c) => c.result !== 'pass').map((c) => c.name);
+    const failed = (x.verification.checks ?? []).filter((c) => !['pass', 'skip'].includes(c.result)).map((c) => c.name);
     out.push({
       text: `Verification: ${present('verification', x.verification.state).label}${failed.length ? ` (${failed.join(', ')})` : ''}.`,
       source: 'verification',
