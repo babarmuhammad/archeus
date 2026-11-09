@@ -1,0 +1,126 @@
+{
+  "metric": "recall@k",
+  "k": 3,
+  "cases": [
+    {
+      "id": "recall-single",
+      "kind": "recall",
+      "k": 3,
+      "items": [
+        {"ref": "G1", "title": "Zeppelin envelope care", "text": "The envelope of the zeppelin is checked before every flight.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "C1", "title": "Zeppelin envelope note", "text": "A draft note about the zeppelin envelope stitching.", "state": "CANDIDATE", "supersedes": null},
+        {"ref": "D1", "title": "Harbor crane chart", "text": "The crane at the north harbor lifts two tons.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "D2", "title": "Lighthouse lamp parts", "text": "Spare glass for the lighthouse lamp is in the cabinet.", "state": "CONFIRMED", "supersedes": null}
+      ],
+      "queries": [
+        {"q": "when is the zeppelin envelope checked", "gold": ["G1"], "absent": ["C1"]}
+      ]
+    },
+    {
+      "id": "recall-two-gold",
+      "kind": "recall",
+      "k": 3,
+      "items": [
+        {"ref": "T1", "title": "Turbine bearing stock", "text": "Turbine bearings are stocked in drawer nine.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "T2", "title": "Gearbox bearing stock", "text": "Gearbox bearings are counted each spring.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "T3", "title": "Pantry supplies", "text": "Coffee and cups are kept in the pantry.", "state": "CONFIRMED", "supersedes": null}
+      ],
+      "queries": [
+        {"q": "turbine gearbox bearings stock", "gold": ["T1", "T2"], "absent": []}
+      ]
+    },
+    {
+      "id": "recall-stopword-miss",
+      "kind": "recall",
+      "k": 3,
+      "items": [
+        {"ref": "G2", "title": "Gasket resting place", "text": "the gasket sits under the lid", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "Z1", "title": "Zeppelin ledger cover", "text": "the cover of the ledger for the zeppelin fleet", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "Z2", "title": "Ledger dust sleeve", "text": "a sleeve that keeps the zeppelin ledger dry", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "Z3", "title": "Zeppelin parking slip", "text": "a parking slip filed with the ledger of the zeppelin yard", "state": "CONFIRMED", "supersedes": null}
+      ],
+      "queries": [
+        {"q": "the zeppelin ledger", "gold": ["G2"], "absent": [], "expect_miss": true}
+      ]
+    },
+    {
+      "id": "supersede-pair",
+      "kind": "supersede",
+      "k": 3,
+      "items": [
+        {"ref": "A", "title": "Ferry route east dock", "text": "Vehicles board the ferry at the east dock.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "B", "title": "Ferry route west dock", "text": "Vehicles now board the ferry at the west dock.", "state": "CONFIRMED", "supersedes": "A"}
+      ],
+      "queries": [
+        {"q": "which dock do vehicles board the ferry", "gold": ["B"], "absent": ["A"]}
+      ]
+    },
+    {
+      "id": "supersede-chain",
+      "kind": "supersede",
+      "k": 3,
+      "items": [
+        {"ref": "A", "title": "Signal lamp fuel oil", "text": "The signal lamp burns oil every week.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "B", "title": "Signal lamp fuel gas", "text": "The signal lamp burns gas every week.", "state": "CONFIRMED", "supersedes": "A"},
+        {"ref": "C", "title": "Signal lamp electric bulbs", "text": "The signal lamp runs on electric bulbs.", "state": "CONFIRMED", "supersedes": "B"}
+      ],
+      "queries": [
+        {"q": "signal lamp burns weekly", "gold": ["C"], "absent": ["A", "B"]}
+      ]
+    },
+    {
+      "id": "contradiction-recorded",
+      "kind": "contradiction",
+      "k": 3,
+      "items": [
+        {"ref": "E", "title": "Orbit bridge steel beams", "text": "The orbit bridge is built of steel beams.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "F", "title": "Orbit bridge carbon beams", "text": "Carbon beams hold up the orbit bridge.", "state": "CANDIDATE", "supersedes": "E"}
+      ],
+      "queries": [
+        {"q": "steel beams on the orbit bridge", "gold": ["E"], "absent": ["F"]}
+      ]
+    },
+    {
+      "id": "contradiction-unshown",
+      "kind": "contradiction",
+      "k": 3,
+      "items": [
+        {"ref": "E", "title": "Tunnel lamps sodium", "text": "Tunnel lamps glow sodium orange at dusk.", "state": "CONFIRMED", "supersedes": null},
+        {"ref": "F2", "title": "Tunnel lamps plasma", "text": "Plasma tubes light the tunnel lamps now.", "state": "CANDIDATE", "supersedes": null}
+      ],
+      "queries": [
+        {"q": "tunnel lamps sodium glow at dusk", "gold": ["E"], "absent": ["F2"]}
+      ]
+    },
+    {
+      "id": "verbatim-ranked",
+      "kind": "verbatim",
+      "k": 3,
+      "items": [],
+      "raw": [
+        {"ref": "S1", "text": "Wagon wheel spokes need grease after rain."},
+        {"ref": "S2", "text": "The stable roof leaks each spring."},
+        {"ref": "S3", "text": "Feed sacks are stacked in the loft."},
+        {"ref": "S4", "text": "Lantern oil waits by the door."}
+      ],
+      "queries": [
+        {"q": "wagon wheel spokes grease in the rain", "gold": ["S1"], "absent": []}
+      ]
+    },
+    {
+      "id": "verbatim-paraphrase-miss",
+      "kind": "verbatim",
+      "k": 3,
+      "items": [],
+      "raw": [
+        {"ref": "P1", "text": "The dairy keeps a brass pan for scalding."},
+        {"ref": "P2", "text": "A copper vessel sits in the workshop."},
+        {"ref": "P3", "text": "A vessel used for boiling sap in the shed."},
+        {"ref": "P4", "text": "Milk crates are washed every Friday."}
+      ],
+      "queries": [
+        {"q": "copper vessel for boiling milk", "gold": ["P1"], "absent": [], "expect_miss": true}
+      ]
+    }
+  ]
+}
