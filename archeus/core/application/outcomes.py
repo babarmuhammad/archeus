@@ -91,7 +91,8 @@ def by_model(conn):
 
 #: (purpose, source kind) of the own call each learning pass makes (`knowledge.passes`)
 PASSES = {('knowledge_extraction', 'repository_inspection'): 'knowledge',
-          ('knowledge_extraction', 'meeting'): 'decisions', ('lesson', 'mission'): 'lessons'}
+          ('knowledge_extraction', 'meeting'): 'decisions', ('lesson', 'mission'): 'lessons',
+          ('knowledge_extraction', 'project'): 'consolidate'}
 
 
 def by_pass(conn):
@@ -119,3 +120,34 @@ def by_pass(conn):
         for f in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd'):
             g[f] = _add(g[f], getattr(u, f))
     return [out[k] for k in sorted(out)]
+
+
+def graph_size(conn):
+    """One dict per project holding live knowledge (CANDIDATE or CONFIRMED), sorted by
+    id: its `items`, `graph_bytes` (their title and text, UTF-8), `source_bytes` (the
+    payload of each repository's latest COMPLETED inspection; None when there is none)
+    and `ratio`, graph over source (None without a source). Reported, never judged:
+    nothing refuses an item on it (T-1093 step 1). Items read from meetings or missions
+    count in the graph and have no source here, so for them the ratio reads high."""
+    graph = {}
+    for r in rows.where(conn, entities.KnowledgeItem):
+        k = r.entity
+        if k.project_id is not None and k.state in ('CANDIDATE', 'CONFIRMED'):
+            g = graph.setdefault(k.project_id, [0, 0])
+            g[0] += 1
+            g[1] += len((k.title + k.text).encode('utf-8'))
+    out = []
+    for pid in sorted(graph):
+        source = None
+        for repo in rows.where(conn, entities.Repository, project_id=pid):
+            done = [i.entity for i in rows.where(conn, entities.RepositoryInspection,
+                                                 repository_id=repo.entity.id)
+                    if i.entity.state == 'COMPLETED']
+            art = (rows.get(conn, entities.Artifact, done[-1].payload_sha256)
+                   if done and done[-1].payload_sha256 else None)
+            if art is not None:
+                source = (source or 0) + art.entity.size
+        n, size = graph[pid]
+        out.append({'project_id': pid, 'items': n, 'graph_bytes': size, 'source_bytes': source,
+                    'ratio': round(size / source, 2) if source else None})
+    return out

@@ -310,7 +310,7 @@ def test_a_command_body_requires_the_key_the_route_replays_on():
                      'is required')
         else:
             assert not declares, ('%s is not idempotent but takes a key' % r.path)
-    assert len(BODIES) == 41, len(BODIES)      # every body the walked tests below cover
+    assert len(BODIES) == 42, len(BODIES)      # every body the walked tests below cover
 
 
 #: every unvalidated pass-through object reachable from a client body — a

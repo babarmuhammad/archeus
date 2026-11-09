@@ -89,6 +89,11 @@ def test_a_call_that_never_ran_is_not_counted(db):
 
 def test_calls_that_are_not_learning_passes_are_left_out(db):
     call(db, purpose='planner', source_kind='mission', tokens_in=9)
-    call(db, purpose='knowledge_extraction', source_kind='project', tokens_in=9)
+    call(db, purpose='review', source_kind='mission', tokens_in=9)
     call(db, purpose='lesson', source_kind='meeting', tokens_in=9)
     assert read(db) == []
+
+
+def test_a_consolidation_the_user_asked_for_is_a_pass_of_its_own(db):
+    call(db, purpose='knowledge_extraction', source_kind='project', tokens_in=9)
+    assert [(g['pass'], g['calls'], g['tokens_in']) for g in read(db)] == [('consolidate', 1, 9)]

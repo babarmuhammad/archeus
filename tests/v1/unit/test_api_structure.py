@@ -76,7 +76,8 @@ def test_the_only_mutation_is_one_writer_submit_of_an_application_command():
                        'executions.handoff_execution',
                        'knowledge.confirm', 'knowledge.forget',
                        'knowledge.import_meeting', 'knowledge.record_feedback',
-                       'knowledge.reject', 'knowledge.retract', 'knowledge.supersede',
+                       'knowledge.reject', 'knowledge.request_consolidation', 'knowledge.retract',
+                       'knowledge.supersede',
                        'optins.set_opt_in', 'own_calls.decide_provider_terms',
                        'req.api.authorization.create_rule', 'req.api.authorization.decide',
                        'req.api.authorization.decide_by_message',
@@ -159,6 +160,8 @@ P6 = {
     ('POST', '/v1/knowledge/{id}/retract', 'control', 'required'),
     ('POST', '/v1/knowledge/{id}/supersede', 'control', 'required'),
     ('POST', '/v1/knowledge/forget', 'control', 'required'),
+    # T-1093: the user's ask for one consolidation pass (CANDIDATEs only)
+    ('POST', '/v1/knowledge/consolidate', 'control', 'required'),
     ('POST', '/v1/feedback', 'control', 'required'),
     ('POST', '/v1/meetings/import', 'admin', 'required'),
     ('GET', '/v1/route-decisions', 'observe', None),

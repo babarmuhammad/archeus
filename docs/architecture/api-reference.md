@@ -66,6 +66,7 @@ given trigger on a given subject is decided in the application layer (P9), never
 | POST | `/v1/knowledge/{id}/retract` | control | required | — | `RetractKnowledgeRequest` | `KnowledgeChanged` |
 | POST | `/v1/knowledge/{id}/supersede` | control | required | — | `SupersedeKnowledgeRequest` | `KnowledgeChanged` |
 | POST | `/v1/knowledge/forget` | control | required | — | `ForgetKnowledgeRequest` | `Forgotten` |
+| POST | `/v1/knowledge/consolidate` | control | required | — | `ConsolidateKnowledgeRequest` | `ConsolidationRequested` |
 | POST | `/v1/feedback` | control | required | — | `RecordFeedbackRequest` | `FeedbackRecorded` |
 | POST | `/v1/meetings/import` | admin | required | — | `ImportMeetingRequest` | `MeetingImported` |
 | GET | `/v1/route-decisions` | observe | — | `source`, `purpose` | — | `RouteDecisionList` |
@@ -391,6 +392,16 @@ interface CommandResult {
   changed: boolean;
   seq: number | null;
   transitions: Transition[];
+}
+```
+
+### `ConsolidationRequested`
+
+```ts
+interface ConsolidationRequested {
+  project_id: string;
+  max_items: number;
+  seq: number;
 }
 ```
 
@@ -1193,7 +1204,7 @@ interface MissionStopped {
 ```ts
 interface OptIn {
   id: string;
-  kind: 'source' | 'plugin' | 'mcp';
+  kind: 'source' | 'plugin' | 'mcp' | 'context';
   name: string;
   opted_in: boolean;
   owner?: 'account' | 'project';
@@ -2312,6 +2323,16 @@ interface ForgetKnowledgeRequest {
 }
 ```
 
+### `ConsolidateKnowledgeRequest`
+
+```ts
+interface ConsolidateKnowledgeRequest {
+  project_id: string;
+  max_items?: number | null;
+  idempotency_key: string;
+}
+```
+
 ### `RecordFeedbackRequest`
 
 ```ts
@@ -2412,7 +2433,7 @@ interface SetMissionResourcesRequest {
 ```ts
 interface SetOptInRequest {
   owner_id: string;
-  kind: 'source' | 'plugin' | 'mcp';
+  kind: 'source' | 'plugin' | 'mcp' | 'context';
   name: string;
   opted_in: boolean;
   expected_version?: number | null;

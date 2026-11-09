@@ -190,6 +190,12 @@ export interface CommandResult {
   transitions: Transition[];
 }
 
+export interface ConsolidationRequested {
+  project_id: string;
+  max_items: number;
+  seq: number;
+}
+
 export interface ConstraintDeclared {
   knowledge_item: KnowledgeItem;
   changed: boolean;
@@ -741,7 +747,7 @@ export interface MissionStopped {
 
 export interface OptIn {
   id: string;
-  kind: 'source' | 'plugin' | 'mcp';
+  kind: 'source' | 'plugin' | 'mcp' | 'context';
   name: string;
   opted_in: boolean;
   owner?: 'account' | 'project';
@@ -1495,6 +1501,12 @@ export interface ForgetKnowledgeRequest {
   idempotency_key: string;
 }
 
+export interface ConsolidateKnowledgeRequest {
+  project_id: string;
+  max_items?: number | null;
+  idempotency_key: string;
+}
+
 export interface RecordFeedbackRequest {
   subject: {
     kind: string;
@@ -1564,7 +1576,7 @@ export interface SetMissionResourcesRequest {
 
 export interface SetOptInRequest {
   owner_id: string;
-  kind: 'source' | 'plugin' | 'mcp';
+  kind: 'source' | 'plugin' | 'mcp' | 'context';
   name: string;
   opted_in: boolean;
   expected_version?: number | null;
@@ -1888,6 +1900,8 @@ export const api = {
     send<KnowledgeChanged>('POST', '/v1/knowledge/' + encodeURIComponent(id) + '/supersede', body),
   forgetKnowledge: (send: Send, body: ForgetKnowledgeRequest) =>
     send<Forgotten>('POST', '/v1/knowledge/forget', body),
+  consolidateKnowledge: (send: Send, body: ConsolidateKnowledgeRequest) =>
+    send<ConsolidationRequested>('POST', '/v1/knowledge/consolidate', body),
   recordFeedback: (send: Send, body: RecordFeedbackRequest) =>
     send<FeedbackRecorded>('POST', '/v1/feedback', body),
   importMeeting: (send: Send, body: ImportMeetingRequest) =>

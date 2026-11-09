@@ -15,6 +15,7 @@ from datetime import datetime
 from ..domain import entities, ids
 from ..domain.events import new_event
 from ..domain.values import Ref
+from . import authorization as A
 from . import calls as C
 from . import lifecycle
 from .queries import view
@@ -400,3 +401,64 @@ def record_lessons(tx, *, actor, called, mission_id, result):
             confirmed += 1
     _end(tx, actor, called, items=created, corroborated=corroborated, confirmed=confirmed)
     return {'items': created, 'corroborated': corroborated, 'confirmed': confirmed}
+
+
+# ── consolidation, asked for by the user (T-1093) ──────────────────────────
+
+#: the most items one consolidation call may re-check
+CONSOLIDATE_MAX = 50
+
+
+def request_consolidation(tx, *, actor, project_id, max_items=20):
+    """The user's explicit ask for one consolidation pass over a project's
+    knowledge: an event the knowledge worker answers (one call, capped per day).
+    Nothing else ever starts one."""
+    if actor.kind != 'user_device':
+        raise A.NotPermitted('only the user asks for a consolidation (T-1093)')
+    if isinstance(max_items, bool) or not isinstance(max_items, int) or not (
+            1 <= max_items <= CONSOLIDATE_MAX):
+        raise ValueError('max_items is an integer from 1 to %d' % CONSOLIDATE_MAX)
+    p = lifecycle.load(tx, entities.Project, project_id).entity
+    e = tx.append(new_event('project.consolidation_requested', Ref('project', p.id), actor,
+                            payload={'max_items': max_items}, workspace=p.workspace_id,
+                            project=p.id))
+    return {'project_id': p.id, 'max_items': max_items, 'seq': e.seq}
+
+
+def record_consolidation(tx, *, actor, called, project_id, shown, sources, result):
+    """What a consolidation call answered, with its call's end. It only adds: a
+    `supersede` becomes a CANDIDATE naming the item it would replace
+    (`supersedes_id`), which takes effect only when the user confirms it; the old
+    item is not touched. An id the call was not shown is dropped; a supersede whose
+    quote is not in the facts it was given, or for an item that already has a
+    replacement waiting, is flagged instead, as is every `flag`. Nothing is deleted
+    and nothing is confirmed."""
+    created, kept, flagged, dropped = 0, 0, [], 0
+    waiting = {r.entity.supersedes_id for r in tx.where(entities.KnowledgeItem,
+                                                         project_id=project_id)
+               if r.entity.state == 'CANDIDATE' and r.entity.supersedes_id}
+    for a in result['items']:
+        if a['id'] not in shown:
+            dropped += 1
+            continue
+        if a['verdict'] == 'keep':
+            kept += 1
+            continue
+        old = tx.get(entities.KnowledgeItem, a['id']).entity
+        quote = (a.get('quote') or '').strip()
+        if (a['verdict'] == 'flag' or not quote or old.id in waiting
+                or quote not in sources.get(old.source_ref.id, '')):
+            flagged.append(old.id)
+            continue
+        k = new_item(tx, actor=actor, workspace_id=old.workspace_id, project_id=old.project_id,
+                     type=old.type, title=a['title'].strip(), text=a.get('text') or '',
+                     anchors=old.anchors, supersedes_id=old.id,
+                     **_provenance(called, 'inspection', old.source_ref))
+        relate(tx, actor=actor, src=('knowledge_item', k.id), rel='supersedes',
+               dst=('knowledge_item', old.id), tier='INFERRED', project_id=old.project_id,
+               source_kind='inspection', source_ref=old.source_ref,
+               route_decision_id=called['route_decision_id'])
+        waiting.add(old.id)
+        created += 1
+    _end(tx, actor, called, items=created, kept=kept, flagged=flagged, dropped=dropped)
+    return {'items': created, 'kept': kept, 'flagged': flagged, 'dropped': dropped}

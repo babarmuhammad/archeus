@@ -574,6 +574,9 @@ TYPES = {
         'dry_run': {'type': 'boolean'}, 'mode': {'type': 'string', 'enum': ['retract', 'purge']},
         'changes': {'type': 'array', 'items': {'type': 'object'}},
         'changed': {'type': 'boolean'}}, 'required': ['dry_run', 'mode', 'changes', 'changed']},
+    'ConsolidationRequested': {'type': 'object', 'properties': {
+        'project_id': {'type': 'string'}, 'max_items': {'type': 'integer'},
+        'seq': {'type': 'integer'}}, 'required': ['project_id', 'max_items', 'seq']},
     'FeedbackRecorded': {'type': 'object', 'properties': {
         'feedback_id': {'type': 'string'},
         'promoted': {'ref': 'KnowledgeItem', 'nullable': True}, 'seq': {'type': 'integer'}},
@@ -1072,6 +1075,10 @@ FORGET = {'type': 'object', 'properties': {
     'mode': {'type': 'string', 'nullable': True, 'enum': ['retract', 'purge']},
     'dry_run': {'type': 'boolean', 'nullable': True}, 'idempotency_key': KEY},
     'required': ['selector', 'idempotency_key']}
+CONSOLIDATE = {'type': 'object', 'properties': {
+    'project_id': {'type': 'string'}, 'max_items': {'type': 'integer', 'nullable': True},
+    'idempotency_key': KEY},
+    'required': ['project_id', 'idempotency_key']}
 FEEDBACK = {'type': 'object', 'properties': {
     'subject': {'type': 'object', 'properties': {'kind': {'type': 'string'},
                                                  'id': {'type': 'string'}},

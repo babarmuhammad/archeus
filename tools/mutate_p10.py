@@ -29,6 +29,7 @@ U = 'tests/v1/unit/test_routing_units.py'
 OC = 'tests/v1/unit/test_outcomes_cache.py'
 OR = 'tests/v1/unit/test_outcomes_rework.py'
 OP = 'tests/v1/unit/test_outcomes_by_pass.py'
+MC = 'tests/v1/unit/test_memory_consolidation.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -254,6 +255,23 @@ MUTATIONS = [
      "and (r.entity.purpose, r.entity.source.kind) in PASSES}",
      "and r.entity.purpose in {p for p, _ in PASSES}}",
      [OP + '::test_calls_that_are_not_learning_passes_are_left_out']),
+    # ── T-1093: a consolidation is a pass; the graph size ratio ──
+    ('R49', 'a consolidation call not a pass of its own', OUT,
+     "          ('knowledge_extraction', 'project'): 'consolidate'}",
+     "          }",
+     [OP + '::test_a_consolidation_the_user_asked_for_is_a_pass_of_its_own']),
+    ('R50', 'a retracted item counted in the graph', OUT,
+     "        if k.project_id is not None and k.state in ('CANDIDATE', 'CONFIRMED'):",
+     "        if k.project_id is not None:",
+     [MC + '::test_the_ratio_is_live_item_bytes_over_the_latest_inspection_payload']),
+    ('R51', 'no source read as a zero source', OUT,
+     "        source = None\n        for repo in",
+     "        source = 0\n        for repo in",
+     [MC + '::test_a_project_with_no_inspected_source_has_no_ratio_never_zero']),
+    ('R52', 'graph bytes counted as characters', OUT,
+     "            g[1] += len((k.title + k.text).encode('utf-8'))",
+     "            g[1] += len(k.title + k.text)",
+     [MC + '::test_the_ratio_is_live_item_bytes_over_the_latest_inspection_payload']),
 ]
 
 

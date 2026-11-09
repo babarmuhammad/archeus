@@ -195,6 +195,10 @@ class endpoints:
         return _path('/v1/knowledge/forget')
 
     @staticmethod
+    def consolidate_knowledge():
+        return _path('/v1/knowledge/consolidate')
+
+    @staticmethod
     def record_feedback():
         return _path('/v1/feedback')
 
