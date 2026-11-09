@@ -84,6 +84,8 @@ PNG_FILES = [
     os.path.join('docs', 'assets', 'logo-256.png'),
     os.path.join('docs', 'assets', 'og-card.png'),
     os.path.join('www', 'public', 'og-card.png'),
+    os.path.join('clients', 'app', 'public', 'assets', 'icon-512.png'),
+    os.path.join('clients', 'app', 'public', 'assets', 'icon-192.png'),
 ]
 
 #: Files published on both sites from one source, `(source, copy)`. The

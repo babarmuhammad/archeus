@@ -84,6 +84,10 @@ PNG_TARGETS = [
     (os.path.join('www', 'public', 'icon-192.png'), 192),
     (os.path.join('www', 'public', 'icon-512.png'), 512),
     (os.path.join('docs', 'assets', 'logo-256.png'), 256),
+    # the V1 app's PWA icons and boot favicon (ADR-0027 §1): the tile mark,
+    # replacing a diamond that was the Attention symbol
+    (os.path.join('clients', 'app', 'public', 'assets', 'icon-192.png'), 192),
+    (os.path.join('clients', 'app', 'public', 'assets', 'icon-512.png'), 512),
 ]
 
 #: alpha at or above this is the tile; below it is the drop shadow. Measured on

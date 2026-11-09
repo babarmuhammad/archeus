@@ -27,6 +27,20 @@ python -m pip install pytest ruff        # tests and lint
 python -m pip install -r requirements-docs.txt   # the docs site
 ```
 
+## Local Archeus Environment
+
+Developer tooling for manually testing the V1 rearchitecture, not part of Archeus itself: it
+orchestrates the real Core and changes nothing it does. Build the app once
+(`npm ci && npm run build` in `clients/app`), then:
+
+```bash
+python tools/v1_env.py                     # start Core, open the app once healthy; Ctrl+C stops it
+python tools/v1_env.py --install-shortcut  # Windows: an "Archeus V1" desktop shortcut
+```
+
+The runbook (logs, restarts, resetting the database, the CLI and TUI alongside, and the manual
+acceptance checks) is `notes/v1-local-environment.md`.
+
 ## Before you open a pull request
 
 ```bash

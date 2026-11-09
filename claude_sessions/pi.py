@@ -299,12 +299,17 @@ def launch_argv(exe, choice, opts, cwd):
     return args
 
 
-def headless_argv(exe, model=''):
+def headless_argv(exe, model='', no_tools=False):
     """One of archeus's own calls: print mode, prompt on stdin (pi reads piped
     stdin), read-only tools — the same fence Claude Code's `--disallowedTools
     Write,Edit,NotebookEdit,Bash` puts up — and `--no-session`, so memory
-    extraction is not listed back to the user as a session they had."""
-    args = [exe, '-p', '--no-session', '--tools', 'read,grep,find,ls']
+    extraction is not listed back to the user as a session they had.
+
+    *no_tools*: no tool at all. `--no-tools` alone only changes pi's default,
+    so `--no-extensions` keeps an extension from bringing one back; verified on
+    pi 0.85.1 with a real call that answered without a tool event (T-085)."""
+    tools = ['--no-tools', '--no-extensions'] if no_tools else ['--tools', 'read,grep,find,ls']
+    args = [exe, '-p', '--no-session'] + tools
     return args + (['--model', model] if model else [])
 
 
@@ -322,13 +327,12 @@ _MODEL_SCAN = 25
 
 def models(home):
     """Every model this pi install has been pointed at, newest first, plus the
-    ids declared in its own `models.json`.
+    ids declared in its own `models.json` — a picker SUGGESTION list, read for
+    free from what pi recorded.
 
-    `pi --list-models` is the real catalogue and it is deliberately not called:
-    it needs the provider to be logged in, and spawning a node CLI to fill a
-    picker is a second of latency on every modal open. What archeus has for
-    free is what pi recorded — and a custom provider the user configured, which
-    is the case `--list-models` would not cover either until they log in.
+    It is not an answer to "what can this home run": a model that was run once
+    may have lost its login since, and a declared one may have no key. That
+    answer is pi's own, `configured()` below.
     """
     seen = []
     files = sorted((f for d in _dirs(home) for f in _files(d)), reverse=True)
@@ -363,6 +367,144 @@ def _declared_models(home):
     return out
 
 
+def _declared_contexts(home):
+    """{'provider/id': contextWindow} for every model `<home>/models.json`
+    declares with an integer window — the exact figure, where `--list-models`
+    prints it rounded ("262.1K")."""
+    import json
+    try:
+        with open(os.path.join(home or '', 'models.json'),
+                  encoding='utf-8', errors='ignore') as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for name, prov in ((data.get('providers') or {}) if isinstance(data, dict) else {}).items():
+        for m in ((prov or {}).get('models') or []):
+            m = m or {}
+            if m.get('id') and isinstance(m.get('contextWindow'), int):
+                out['%s/%s' % (name, m['id'])] = m['contextWindow']
+    return out
+
+
+# ── what ONE pi home can run, in pi's own words (C-22) ───────────────────────
+#
+# pi keeps two lists: every model it knows (`ModelRegistry.getAll()`, which is
+# the shipped catalogue below plus `models.json`) and the ones whose provider's
+# auth resolves for this home (`getAvailable()`). `pi --list-models` prints
+# exactly the second (`dist/cli/list-models.js`), as a padded table under the
+# header `provider  model  context  max-out  thinking  images`, or the single
+# line `No models available. …` when there are none. That answer is the only
+# one that says a model is usable HERE, so it is asked per home and never
+# re-derived from auth.json / models.json, whose rules are pi's to change.
+
+#: the files under a pi home that can change its answer
+_CONFIG_FILES = ('models.json', 'auth.json', 'settings.json')
+#: {normalised home: (key, result)} — one entry per home, so a home that is
+#: re-keyed replaces its own entry and can never read another home's
+_CONFIGURED = {}
+_NO_MODELS = 'No models available'
+#: a FAILED answer is retried after this long even with nothing changed: a
+#: timeout or a server that was down must not hide a home's models for the
+#: life of the process. A successful one lives until its key changes.
+_FAIL_TTL_S = 60
+
+
+def _now():
+    import time
+    return time.monotonic()
+
+
+def _version(exe):
+    """The installed pi's version, read from its package.json beside the npm
+    shim; '' when it cannot be found (the shim's own mtime then keys the
+    cache, so an upgrade still invalidates it)."""
+    import json
+    pkg = os.path.join(os.path.dirname(os.path.abspath(exe)), 'node_modules',
+                       '@earendil-works', 'pi-coding-agent', 'package.json')
+    try:
+        with open(pkg, encoding='utf-8') as f:
+            return str(json.load(f).get('version') or '')
+    except (OSError, ValueError, AttributeError):
+        return ''
+
+
+def _stamp(path):
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _list_models(exe, home):
+    """(ok, [row], why) from `pi --list-models` run on *home*. A failure or an
+    answer this parser does not recognise is (False, [], why): an unknown
+    capability is never an available one."""
+    from . import proc
+    env = dict(os.environ)
+    env['PI_CODING_AGENT_DIR'] = home
+    r = proc.run([exe, '--list-models'], env=env, timeout=30)
+    if r is None:
+        return False, [], 'pi --list-models could not be run'
+    if r.returncode:
+        err = ((r.stderr or r.stdout or '').strip().splitlines() or [''])[0]
+        return False, [], 'pi --list-models exited %s%s' % (r.returncode,
+                                                             ': ' + err if err else '')
+    lines = [ln.strip() for ln in (r.stdout or '').splitlines() if ln.strip()]
+    if not lines:
+        return False, [], 'pi --list-models printed nothing'
+    if lines[0].startswith(_NO_MODELS):
+        return True, [], ''
+    if lines[0].split()[:2] != ['provider', 'model']:
+        return False, [], 'pi --list-models printed an unrecognised table'
+    rows = []
+    for ln in lines[1:]:
+        cells = ln.split()
+        if len(cells) < 2:
+            return False, [], 'pi --list-models printed an unrecognised row'
+        rows.append((cells[0], cells[1]))
+    return True, rows, ''
+
+
+def configured(home=None):
+    """{'ok', 'models': [{'id', 'provider', 'model', 'context'}], 'why'} — the
+    models *home* can run, as pi itself lists them.
+
+    `id` is `provider/model`, the form `--model` takes. `context` is the
+    window `models.json` declares for it, else the one the shipped catalogue
+    states for the same id (a fact about the model, not a claim that it runs
+    here), else None. `ok` False means discovery failed and `models` is empty:
+    the caller offers nothing rather than falling back to the catalogue.
+
+    Cached per home on (pi executable, version, the shim's stamp, the stamps of
+    `_CONFIG_FILES`), so the node spawn is paid once per change, not per read.
+    """
+    from . import harnesses as _h
+    home = home or _h.home_dir('pi')
+    exe = _h.exe('pi')
+    if not exe:
+        return {'ok': False, 'models': [], 'why': 'pi is not installed'}
+    if not home or not os.path.isdir(home):
+        return {'ok': False, 'models': [], 'why': 'no pi home at %s' % home}
+    where = os.path.normcase(os.path.abspath(home))
+    key = (exe, _version(exe), _stamp(exe)) + tuple(
+        _stamp(os.path.join(home, f)) for f in _CONFIG_FILES)
+    held = _CONFIGURED.get(where)
+    if (held is None or held[0] != key
+            or (not held[1]['ok'] and _now() - held[2] >= _FAIL_TTL_S)):
+        ok, rows, why = _list_models(exe, home)
+        ctx = _declared_contexts(home)
+        if ok and rows and any('%s/%s' % r not in ctx for r in rows):
+            ctx = {c['id']: c['context'] for c in catalogue() if c.get('context')} | ctx
+        found = [{'id': '%s/%s' % (p, m), 'provider': p, 'model': m,
+                  'context': ctx.get('%s/%s' % (p, m))} for p, m in rows]
+        held = (key, {'ok': ok, 'models': found, 'why': why}, _now())
+        _CONFIGURED[where] = held
+    got = held[1]
+    return {'ok': got['ok'], 'models': [dict(m) for m in got['models']], 'why': got['why']}
+
+
 # ── the catalogue pi ships, which is the one thing it did not have to run ────
 #
 # `models()` above answers what this install has USED. On a machine where pi was
@@ -378,10 +520,10 @@ def _declared_models(home):
 # which is the same posture `codex.models` takes toward the threads index and
 # `checkpoints.py` takes toward Claude Code's file-history store.
 #
-# It is deliberately preferred over `pi --list-models`, which is the obvious
-# move and the wrong one: that command needs the provider to be LOGGED IN (it
-# answers `No models available` otherwise, measured), and spawning a node CLI to
-# fill a modal is a second of latency every time it opens.
+# It answers a different question from `pi --list-models`: this is what pi
+# SHIPS WITH, every provider whether or not it is logged in; `configured()`
+# above is what one home can RUN. The catalogue is suggestion and fact (a
+# model's context window, its price) — never a claim that a model is available.
 
 #: where the package keeps them, relative to whichever node_modules root has it.
 #: npm may hoist `pi-ai` to the top level or nest it under the agent package, so
@@ -488,15 +630,29 @@ def auth_state(home=None):
 
     An empty object is the freshly-installed state, which is a different answer
     from "no file" only to an installer.
+
+    A `models.json` provider that carries its own `apiKey` is a login too — it
+    is how a self-hosted server is configured, with `auth.json` left `{}` — so
+    it answers 'ok' as well. Which of its models actually run stays
+    `configured()`'s answer, not this one.
     """
     import json
     from . import harnesses as _h
+    home = home or _h.home_dir('pi')
     try:
-        with open(os.path.join(home or _h.home_dir('pi'), 'auth.json'),
-                  encoding='utf-8') as f:
-            return 'ok' if json.load(f) else 'missing'
+        with open(os.path.join(home, 'auth.json'), encoding='utf-8') as f:
+            if json.load(f):
+                return 'ok'
     except (OSError, ValueError):
+        pass
+    try:
+        with open(os.path.join(home, 'models.json'), encoding='utf-8') as f:
+            provs = (json.load(f) or {}).get('providers') or {}
+    except (OSError, ValueError, AttributeError):
         return 'missing'
+    keyed = any(isinstance(p, dict) and p.get('apiKey') and p.get('models')
+                for p in (provs.values() if isinstance(provs, dict) else ()))
+    return 'ok' if keyed else 'missing'
 
 
 def doctor(home=None):

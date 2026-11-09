@@ -41,39 +41,9 @@ class JobCancelled(Exception):
     """Raised inside a job thread when the user cancels."""
 
 
-def _claude_failure_reason(stdout):
-    """The sentence a human needs, out of what `claude -p` printed before it
-    exited non-zero.
-
-    `--output-format json` (which `memory._claude_json` asks for) puts the
-    refusal in `result`, behind ~200 characters of `duration_api_ms`,
-    `stop_reason`, `session_id`, `total_cost_usd` and `usage`. Everything that
-    reports a failure truncates, so what actually reached the user — the job
-    banner, the Logs page, the event log — was a clipped JSON blob with the
-    reason cut off. Twenty of those are sitting in this machine's event log, and
-    every one of them means "You've hit your session limit · resets 2:30am".
-
-    Falls through to the raw text unchanged when stdout is not that envelope
-    (`--print`, a crash, a stack trace), so nothing is hidden.
-    """
-    raw = (stdout or '').strip()
-    if not raw.startswith('{'):
-        return raw
-    try:
-        env = json.loads(raw)
-    except Exception:
-        return raw
-    if not isinstance(env, dict):
-        return raw
-    for key in ('result', 'error', 'message'):
-        v = env.get(key)
-        if isinstance(v, str) and v.strip():
-            return v.strip()
-        if isinstance(v, dict):                     # {"error": {"message": ...}}
-            m = v.get('message')
-            if isinstance(m, str) and m.strip():
-                return m.strip()
-    return raw
+# Moved to the UI-free `llmcall` (P0.5 seam); re-exported under the name
+# `ui.py` and the tests import.
+from .llmcall import failure_reason as _claude_failure_reason  # noqa: E402
 
 
 def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
@@ -82,7 +52,11 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
     """subprocess.run replacement that honours the current job's cancel_event.
 
     Returns stdout string (or '' on cancel/failure). Raises JobCancelled if
-    the user cancels while the subprocess is running."""
+    the user cancels while the subprocess is running.
+
+    The process itself runs in `llmcall.run_headless`; this wrapper adds what
+    belongs to the legacy job runtime: the quota preflight, the job's process
+    list and cancel event, and the failure records its callers read."""
     job = getattr(_JOBCTX, 'job', None)
     if job and job.get('cancel_event', threading.Event()).is_set():
         raise JobCancelled
@@ -92,80 +66,38 @@ def _run_cancellable(cmd, input_text=None, capture_output=True, text=True,
     env, _blocked = quota.preflight(cmd, env)
     if _blocked:
         return ''
-    try:
-        # CREATE_NO_WINDOW: a captured child shows nothing in its console,
-        # so the window is pure flicker. See proc.no_window_flags.
-        from .proc import no_window_flags
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE if capture_output else None,
-                                stderr=subprocess.STDOUT if capture_output else None,
-                                text=text, encoding=encoding, errors=errors,
-                                cwd=cwd, env=env, creationflags=no_window_flags)
-    except Exception:
-        return ''
-    if job is not None:
-        job.setdefault('procs', []).append(proc)
-    killed = threading.Event()
+    from . import llmcall
+    spawned = []
 
-    def _watch():
-        if job is None:
-            return
-        while not killed.is_set():
-            if job['cancel_event'].wait(timeout=1.0):
-                break
-        if not killed.is_set() and proc.poll() is None:
-            _proc.kill_tree(proc)
+    def _track(proc):
+        spawned.append(proc)
+        if job is not None:
+            job.setdefault('procs', []).append(proc)
 
-    t = threading.Thread(target=_watch, daemon=True)
-    t.start()
     try:
-        stdout, _ = proc.communicate(input=input_text, timeout=timeout)
-        stdout = (stdout or '').strip() if capture_output else ''
-        # stderr is merged into stdout above, so a failed CLI run looks exactly
-        # like a successful one to every caller unless the exit code is checked.
-        if proc.returncode:
-            reason = _claude_failure_reason(stdout)
+        r = llmcall.run_headless(
+            cmd, input_text, cwd=cwd, env=env, timeout=timeout,
+            cancel=job['cancel_event'] if job is not None else None,
+            on_spawn=_track, capture_output=capture_output, text=text,
+            encoding=encoding, errors=errors)
+        if r.returncode:
             if job is not None:
-                job['last_subprocess_error'] = {'code': proc.returncode, 'output': reason}
+                job['last_subprocess_error'] = {'code': r.returncode, 'output': r.reason}
             # The scheduler and the detached memory worker have NO job context,
             # so `if job is not None` dropped the reason on the floor for
             # precisely the two callers that run unattended — a rate-limited
             # account produced six silent failures an hour, reported as
             # "queued". Record it where any caller can read it.
             from . import memory as _mem
-            _mem.last_call_error = 'claude exited %s: %s' % (
-                proc.returncode, (reason or '(no output)')[:300])
-            from . import events, quota
-            # the ENVELOPE, not the extracted sentence: a marker could live in a
-            # field the sentence does not carry, and this test is a cheap
-            # substring scan over text we already have in memory
-            quota.note_failure(cmd, env, stdout)
-            events.record('subprocess', _mem.last_call_error,
-                          detail=' '.join(str(c) for c in cmd[:2]))
+            _mem.last_call_error = r.error
             return ''
-        return stdout
-    except subprocess.TimeoutExpired:
-        try: proc.kill()
-        except Exception: pass
-        msg = ('timed out after %ss — upstream may be an unresponsive '
-               'OmniRoute/failover endpoint' % timeout)
-        if job is not None:
-            job.setdefault('messages', []).append({'ok': False, 'text': msg})
-        # a job's message list is not a record, and the two unattended callers
-        # have no job at all — so the timeout was reaching nothing
-        from . import events
-        events.record('subprocess', msg,
-                      detail=' '.join(str(c) for c in cmd[:2]))
-        return ''
-    except Exception:
-        try: proc.kill()
-        except Exception: pass
-        return ''
+        if r.timed_out and job is not None:
+            job.setdefault('messages', []).append({'ok': False, 'text': r.error})
+        return r.stdout if r.returncode == 0 else ''
     finally:
-        killed.set()
-        t.join(timeout=2)
-        if job is not None and proc in job.get('procs', []):
-            job['procs'].remove(proc)
+        for proc in spawned:
+            if job is not None and proc in job.get('procs', []):
+                job['procs'].remove(proc)
         if job is not None and job['cancel_event'].is_set():
             raise JobCancelled
 
@@ -3254,6 +3186,23 @@ def api_open_path(q, body):
             'name': os.path.basename(cand) or cand}
 
 
+def api_open_v1(q, body):
+    """The sidebar foot's "Open Archeus V1" (p19-design-gate B8): asks the
+    running Core for a launch code, as `archeus core --open` does, and opens
+    the app in the system browser. It never starts Core."""
+    import webbrowser
+    from archeus.cli import main as v1
+    from archeus.infra import discovery
+    state, info = discovery.discover()
+    if state != 'running':
+        return {'ok': False, 'error': 'Archeus Core is not running: start it with `archeus core`'}
+    url = v1.launch_url(info)
+    if url is None:
+        return {'ok': False, 'error': 'Archeus Core did not give a launch code'}
+    webbrowser.open(url)
+    return {'ok': True}
+
+
 # ── hand-off (context injection) & plan-execute ──────────────
 #
 # `/api/inject/sessions` used to live here: it listed every session of the
@@ -3275,7 +3224,6 @@ def api_inject_launch(q, body):
     `/api/inject/sessions`, which is not a check. `cfgdir` goes through
     `PARAM_CHECKS` -> `_cfgdir_ok`, so it must name an account archeus knows.
     """
-    import subprocess
     from .context_inject import _write_context_file, CTX_FILE
     from .config import get_claude_exe, launch_defaults
     from .sessions import load_add_dirs, read_extra_paths
@@ -4518,6 +4466,18 @@ def api_harness_models(q, body):
     # one consumer of `cost` is the pricing table in `stats`, which reads the
     # catalogue directly and server-side.
     cards = [{'id': c['id'], 'label': c['label']} for c in cards]
+    # `configured` is what THIS home can run, in the CLI's own words (C-22) —
+    # a third list, because "ships with this CLI" says nothing about a login
+    # and "run here" says nothing about whether it still runs. A failed answer
+    # is an empty list and its reason, never the catalogue in its place.
+    configured, configured_why = [], ''
+    if d.get('configured'):
+        try:
+            got_c = _h.impl('configured', d['id'])(_h.home_dir(d['id']))
+            configured = [m['id'] for m in got_c['models']]
+            configured_why = got_c['why']
+        except Exception as e:
+            configured_why = '%s: %s' % (type(e).__name__, e)
     # a preset naming a model no catalogue publishes is dropped rather than
     # offered: the whole point of a quick start is that clicking it works, and
     # an id that 404s on the first turn is worse than no button. With no
@@ -4528,7 +4488,8 @@ def api_harness_models(q, body):
                for n, b, f in (d.get('presets') or ())
                if not known or (f.get('model') or '') in known]
     return dict(_launch_vocab(d), models=got, catalogue=False,
-                cards=cards, presets=presets)
+                cards=cards, presets=presets, configured=configured,
+                configured_why=configured_why)
 
 
 def _launch_vocab(d):
@@ -4800,6 +4761,7 @@ POST_ROUTES = {
     '/api/extra-paths': api_extra_paths_set,
     '/api/add-dirs': api_add_dirs_set,
     '/api/open-path': api_open_path,
+    '/api/v1/open': api_open_v1,
     '/api/quit': api_quit,
     '/api/health/allowlist': api_health_allowlist,
     '/api/conventions/sync': api_conventions_sync,
