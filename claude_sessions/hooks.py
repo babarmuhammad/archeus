@@ -521,6 +521,74 @@ def worklog_hook_installed(cfgdir=None):
     return False
 
 
+# ── session status: working / needs input / idle ─────────────
+#
+# Opt-in from the hooks menu, never installed on its own. It writes to the same
+# user-level settings.json the other hooks here do and nowhere else; the hook
+# script touches no credentials, only a per-session state file.
+_STATUS_EVENTS = ('UserPromptSubmit', 'Notification', 'Stop')
+
+
+def _status_hook_command():
+    import sys
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'status_hook.py')
+    return f'"{sys.executable}" "{script}"'
+
+
+def _is_status(h):
+    return 'status_hook.py' in str(h.get('command', ''))
+
+
+def install_status_hook(cfgdir=None):
+    """Idempotently install (or repair) the status hook on its three events."""
+    s = _load(cfgdir)
+    hooks = s.setdefault('hooks', {})
+    cmd = _status_hook_command()
+    changed = False
+    for event in _STATUS_EVENTS:
+        entries = hooks.setdefault(event, [])
+        if not isinstance(entries, list):
+            continue
+        ours = [h for e in entries for h in (e.get('hooks') or []) if _is_status(h)]
+        for h in ours:
+            if h.get('command') != cmd:
+                h['command'] = cmd
+                changed = True
+        if not ours:
+            entries.append({'hooks': [{'type': 'command', 'command': cmd, 'timeout': 5}]})
+            changed = True
+    return _save(s, cfgdir) if changed else True
+
+
+def uninstall_status_hook(cfgdir=None):
+    """Remove only our entries; a foreign hook sharing an entry stays."""
+    s = _load(cfgdir)
+    changed = False
+    for event in _STATUS_EVENTS:
+        entries = (s.get('hooks') or {}).get(event)
+        if not isinstance(entries, list):
+            continue
+        for entry in list(entries):
+            hs = entry.get('hooks') or []
+            kept = [h for h in hs if not _is_status(h)]
+            if len(kept) != len(hs):
+                changed = True
+                if kept:
+                    entry['hooks'] = kept
+                else:
+                    entries.remove(entry)
+        if not entries:
+            s['hooks'].pop(event, None)
+    return _save(s, cfgdir) if changed else True
+
+
+def status_hook_installed(cfgdir=None):
+    hooks = _load(cfgdir).get('hooks') or {}
+    return all(any(isinstance(e, dict) and any(_is_status(h) for h in (e.get('hooks') or []))
+                   for e in hooks.get(event) or [])
+               for event in _STATUS_EVENTS)
+
+
 # ── account rotation: StopFailure on a rate limit ────────────
 #
 # The one archeus hook that is not about memory. Every other place rotation
@@ -662,6 +730,7 @@ _SCRIPT_LABELS = {
     'agentnudge_hook.py': 'suggest-subagent',
     'memdirty_hook.py': 'memory stale-on-edit',
     'limit_hook.py': 'account rotation on limit',
+    'status_hook.py': 'session status',
 }
 
 
@@ -859,7 +928,9 @@ def hooks_menu(scope=None, cfgdir=None):
                   ('✍  Write one yourself', '__new__'),
                   ('✨  AI-generate a hook (Claude)', '__ai__'),
                   ('🧹  Remove broken/legacy hooks', '__purge__'),
-                  ('📝  Edit settings.json', '__edit__')]
+                  ('📝  Edit settings.json', '__edit__'),
+                  (f"{'■' if status_hook_installed(cfgdir) else '□'}  Session status in the list "
+                   f"(working / needs input / idle)", '__status__')]
         if len(account_dirs()) > 1:
             items.append(('👤  Show another account', '__acct__'))
 
@@ -876,6 +947,11 @@ def hooks_menu(scope=None, cfgdir=None):
             pick = menu([(n, d) for n, d in account_dirs()], "SHOW ACCOUNT")
             if pick:
                 cfgdir = pick
+        elif sel == '__status__':
+            on = status_hook_installed(cfgdir)
+            ok = (uninstall_status_hook if on else install_status_hook)(cfgdir)
+            flash(f"Session status {'removed' if on else 'installed'}" if ok else "Write failed",
+                  ok=ok, secs=1.4)
         elif sel == '__tpl__':
             _add_template(cfgdir)
         elif sel == '__new__':
