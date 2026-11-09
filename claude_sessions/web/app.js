@@ -5328,7 +5328,14 @@ function provTag(kind,name){
    cwd, a worktree is a path, so archeus — which owns both — can say which
    SESSION is in which tree. And every one of them reads the same semantic
    memory, so they are not each rediscovering the codebase. */
-function wtRow(w,repoPath,indent){
+/* Advisory only: two worktrees that changed the same files will conflict at merge. */
+function wtClash(w,overlaps){
+  return (overlaps||[]).filter(o=>o.a===w.path||o.b===w.path).map(o=>{
+    const other=(o.a===w.path?o.b:o.a).split(/[\\/]/).pop();
+    return `<span class="tag warn" title="${esc(o.files.join('\n')+(o.count>o.files.length?'\n…':''))}">${o.count} shared with ${esc(other)}</span>`;
+  }).join('');
+}
+function wtRow(w,repoPath,indent,overlaps){
   const s=w.session,live=s&&s.live;
   return `<div class="hrow" style="padding-left:${indent}px">
       <span class="dot${live?' pip':''}" style="background:${live?'var(--ok)':'var(--dim2)'};color:var(--ok)"></span>
@@ -5337,6 +5344,7 @@ function wtRow(w,repoPath,indent){
       ${w.dirty?`<span class="tag warn">${w.dirty} uncommitted</span>`:'<span class="tag ok">clean</span>'}
       ${w.ahead?`<span class="tag">+${w.ahead}</span>`:''}
       ${w.behind?`<span class="tag warn">-${w.behind}</span>`:''}
+      ${wtClash(w,overlaps)}
       <span style="flex:1;color:var(--dim);font-size:12px">${
         s?`${esc(s.title||s.sid.slice(0,8))} · ${esc(s.account)} · ${s.msgs} msgs · ${live?'live now':fmtAgo(s.age)}`
          :'<span style="color:var(--dim2)">no session here</span>'}</span>
@@ -5370,7 +5378,8 @@ function wtSel(i){
     <div class="kv"><span class="k">Branch</span><span><code>${esc(r.branch||'')}</code></span>
       <span class="k">Path</span><span><code>${esc(r.path||'')}</code></span>
       ${(r.children||[]).length?`<span class="k">Contains</span><span>${r.children.length} ${esc(r.sublabel||'')}</span>`:''}</div>
-    ${wts.length?wts.map(w=>wtRow(w,r.path,0)).join('')
+    ${r.overlaps_skipped?`<div class="empty">More than a handful of worktrees: shared-file check skipped.</div>`:''}
+    ${wts.length?wts.map(w=>wtRow(w,r.path,0,r.overlaps)).join('')
       :'<div class="empty">One checkout, no linked worktrees.</div>'}`;
 }
 async function drawWorktrees(){
