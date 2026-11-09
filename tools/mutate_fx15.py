@@ -18,6 +18,8 @@ RED = 'archeus/core/redact.py'
 BASE = 'archeus/harnesses/base.py'
 R = 'tests/v1/unit/test_redact_red_team.py::'
 S = 'tests/v1/integration/test_stream_redaction_red_team.py::'
+ROUTER = 'archeus/core/routing/router.py'
+E = 'tests/v1/unit/test_effort_selection.py::'
 
 MUTATIONS = [
     ('G01', 'a field name does not carry the key state to the fields after it', [(RED,
@@ -58,6 +60,20 @@ MUTATIONS = [
      r"""        flat = _ASCII.sub(lambda m: chr(int(m[1], 16)), seam + rest.decode('utf-8', errors='replace'))""")],
      [S + 'test_a_marker_whose_blanks_span_a_read_boundary_opens_the_key',
       S + 'test_a_marker_whose_blanks_end_at_the_first_read_boundary']),
+    ('G09', 'a model whose efforts its harness lacks keeps the requested effort', [(ROUTER,
+     r"""            c['effort'] = None""",
+     r"""            pass""")],
+     [E + 'test_a_model_that_states_efforts_its_harness_lacks_takes_no_effort']),
+    ('G10', 'a required effort no common level can take is not refused', [(ROUTER,
+     r"""            if req.get('effort_required'):
+                return 'model %s accepts none""",
+     r"""            if False:
+                return 'model %s accepts none""")],
+     [E + 'test_a_required_effort_a_model_with_no_common_level_cannot_take_eliminates_it']),
+    ('G11', 'a model that states no efforts is held to none', [(ROUTER,
+     r"""        if stated and not allowed:""",
+     r"""        if not allowed:""")],
+     [E + 'test_the_router_clamps_effort_to_the_chosen_model_and_records_it']),
 ]
 
 

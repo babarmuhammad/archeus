@@ -98,3 +98,16 @@ def test_claude_models_carry_the_efforts_the_catalogue_gives_and_an_alias_its_fa
     assert by['sonnet'] == by['claude-sonnet-5'] == ('low', 'medium', 'high')
     assert by['haiku'] == by['claude-haiku-4-5'] == () and by['opus'] == ()
 
+
+
+def test_a_model_that_states_efforts_its_harness_lacks_takes_no_effort():
+    s, _ = _model(('max',))
+    got = R.route(call(effort='high', min_model_tier='mid'), s)
+    assert got['selected'] == 'h' and got['effort'] is None
+
+
+def test_a_required_effort_a_model_with_no_common_level_cannot_take_eliminates_it():
+    s, _ = _model(('max',))
+    d = R.route(call(effort='high', effort_required=True, min_model_tier='mid'), s)
+    assert d['selected'] is None
+    assert 'accepts none of the efforts of its harness' in d['candidates'][0]['reason']

@@ -200,8 +200,14 @@ def _model(c, req, snap):
     if effort and effort in (h.get('efforts') or ()):
         c['effort'] = effort
         # the chosen model may accept fewer levels than its harness does
-        allowed = set((offers.get(c['model']) or {}).get('efforts') or ()) & set(h['efforts'])
-        if allowed and effort in EFFORTS:
+        stated = set((offers.get(c['model']) or {}).get('efforts') or ())
+        allowed = stated & set(h['efforts'])
+        if stated and not allowed:
+            # it states levels, and none is one its harness takes: there is nothing to clamp to
+            c['effort'] = None
+            if req.get('effort_required'):
+                return 'model %s accepts none of the efforts of its harness' % c['model']
+        elif allowed and effort in EFFORTS:
             c['effort'] = fit(effort, allowed)
             if c['effort'] != effort and req.get('effort_required'):
                 return 'model %s does not accept effort %s' % (c['model'], effort)
