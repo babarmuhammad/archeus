@@ -34,6 +34,7 @@ from ...infra.paths import ExecPaths, task_worktree
 from ...node import broker as broker_mod, staging
 from ...node.isolation import profile_name
 from ...node.local import LocalNode, PathTooLong, seed_ref
+from ...node.pv20_switches import checked
 from ..application import errors, executions as X, optins, resources
 from ..domain import entities, states
 from ..routing.router import ROUTABLE
@@ -91,9 +92,11 @@ def line_of(ev):
 
 
 class ExecutionManager:
+    switches = None
+
     def __init__(self, db, *, actor, registry, work, node=None, usage=None, scenarios=None,
                  grace_s=10.0, pause_timeout=None, start_timeout=60.0, lost_after=90.0,
-                 broker=None):
+                 broker=None, switches=None):
         self.db, self.actor, self.registry, self.work = db, actor, registry, work
         self.policy, self.missions, self.router = work.policy, work.missions, work.router
         self.node = node or LocalNode()
@@ -110,6 +113,7 @@ class ExecutionManager:
         # PV-20 (PV20-08 §1): the provider broker, used only while BROKER_DISPATCH_ENABLED;
         # its grants live in this process, so a restarted Core holds none
         self.broker = broker
+        self.switches = checked(switches)
         self.booted = False
 
     def _do(self, command, **kw):
@@ -286,7 +290,9 @@ class ExecutionManager:
         token = 'hook_' + secrets.token_urlsafe(32)
         seq = e.process_seq + 1
         brk = None
-        if isolated and broker_mod.BROKER_DISPATCH_ENABLED and self.broker is not None:
+        broker_enabled = (self.switches.broker_dispatch if self.switches is not None
+                          else broker_mod.BROKER_DISPATCH_ENABLED)
+        if isolated and broker_enabled and self.broker is not None:
             brk = self._broker_grant(e, account, seq)
             if brk is None:
                 return True
@@ -532,8 +538,9 @@ class ExecutionManager:
             base = X.seed_base(r, e)
         if base is None:
             name, base = self.node.resolve_base(root, mission_branch(m.id), workdirs=workdirs)
+            fetch_options = {} if self.switches is None else {'switches': self.switches}
             self.node.store_fetch(project_id, root, name, base, seed_ref(e.id),
-                                  workdirs=workdirs)
+                                  workdirs=workdirs, **fetch_options)
         else:
             self.node.store_seed_ref(project_id, e.id, base, workdirs=workdirs)
         branch = 'archeus/%s.%s' % (m.id, t.key)

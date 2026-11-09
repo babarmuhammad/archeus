@@ -26,6 +26,7 @@ from ...infra import paths
 from ...infra.db import rows
 from ...node import staging
 from ...node.local import LocalNode, PathTooLong
+from ...node.pv20_switches import checked
 from ..application import calls as C
 from ..application import errors, resources, verification as V
 from ..application.commands import active_plan
@@ -52,10 +53,11 @@ class VerifyWorker:
     verification to the engine's injected stub verifier."""
 
     def __init__(self, db, *, actor, missions, calls=None, node=None, verify=True,
-                 timeout_s=None):
+                 timeout_s=None, switches=None):
         self.db, self.actor, self.missions, self.calls = db, actor, missions, calls
         self.node = node or LocalNode()
         self.verify = verify
+        self.switches = checked(switches)
         self.timeout_s = timeout_s or evidence.CHECK_TIMEOUT_S
         self.on_wake = None
         self.stopping = lambda: False
@@ -65,6 +67,10 @@ class VerifyWorker:
 
     def _do(self, command, **kw):
         return self.db.writer.execute(command, dict(kw, actor=self.actor))
+
+    @property
+    def _switch(self):
+        return {} if self.switches is None else {'switches': self.switches}
 
     # ── the worker contract (WorldLoop) ──
 
@@ -212,7 +218,8 @@ class VerifyWorker:
         if route is not None:
             out = self._do(V.start, missions=self.missions, subject=Ref('task', t.id),
                            verifier=_CODE, execution_id=e.id, revision=e.import_revision,
-                           provenance=prov, criteria=[dict(c, result='unknown') for c in auto])
+                           provenance=prov, criteria=[dict(c, result='unknown') for c in auto],
+                           **self._switch)
             self._run_confined(out['verification_id'], 0, *route)
             return True
         # A6: a guarded mission's commands never run unconfined; a person decides instead
@@ -242,7 +249,9 @@ class VerifyWorker:
     def _confined_route(self, m, t, e):
         """((kind, command), argv, toolchain) of a confined run of *e*'s checks,
         decided before any row starts (owner T-054 Q2 A), or None: a person decides."""
-        if not (V.CONFINED_VERIFICATION_ENABLED and e.import_revision is not None
+        active = (self.switches.confined_verification if self.switches is not None
+                  else V.CONFINED_VERIFICATION_ENABLED)
+        if not (active and e.import_revision is not None
                 and t.kind in evidence.CODE_KINDS
                 and any(c['check'] == 'automatic' for c in t.acceptance)):
             return None
@@ -315,7 +324,7 @@ class VerifyWorker:
             v = rows.get(conn, entities.Verification, verification_id).entity
         if v.verifier_version == V.CONFINED_VERIFIER:
             return self._retry_confined(v)
-        if self._do(V.retry, verification_id=v.id)['state'] != 'RUNNING':
+        if self._do(V.retry, verification_id=v.id, **self._switch)['state'] != 'RUNNING':
             return True
         if v.subject.kind == 'task':
             with self.db.read() as conn:
@@ -350,7 +359,7 @@ class VerifyWorker:
         route = self._confined_route(m, t, e)
         if route is None:
             return self._hold(v.id)
-        if self._do(V.retry, verification_id=v.id)['state'] != 'RUNNING':
+        if self._do(V.retry, verification_id=v.id, **self._switch)['state'] != 'RUNNING':
             return True
         self._run_confined(v.id, v.errors, *route)
         return True

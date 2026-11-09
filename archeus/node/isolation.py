@@ -24,6 +24,7 @@ from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, is
                            verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
 from . import mxc, staging
+from .pv20_switches import checked
 
 WINDOWS = sys.platform.startswith('win')
 
@@ -610,8 +611,10 @@ class Isolation:
     inheritable and never handed to another process, which is what makes Core its sole
     holder (R6-A) and the Job the execution's lifetime authority (§3.7)."""
 
-    def __init__(self, node=None, *, boundary=None, authorize=None, plan=None):
+    def __init__(self, node=None, *, boundary=None, authorize=None, plan=None, switches=None):
         self.node = node
+        self.switches = checked(switches)
+        self._dispatch = set()
         self._boundary = boundary
         #: who Core authorized to run isolated. Production is E's, so this only ever
         #: reaches a test harness while `PRODUCTION_DISPATCH_ENABLED` is False.
@@ -655,12 +658,22 @@ class Isolation:
         isolated — its resumes reuse its identity (R7). Otherwise it is isolated only
         where Core authorized it, and never for a real harness while production
         dispatch is E's (§3.8, ADR-0053 §3.4)."""
+        enforcing = self.switches is not None and self.switches.a4
+        if enforcing and getattr(adapter, 'id', None) != 'claude_code':
+            raise IsolationUnavailable('unsupported_harness')
         if self.record(execution_id) is not None:
+            if enforcing:
+                self._dispatch.add(execution_id)
             return True
         if self._authorize is None or not self._authorize(execution_id, adapter):
+            if enforcing:
+                raise IsolationUnavailable('authorization_refused')
             return False
-        if not production_dispatch_enabled() and not is_test_harness(adapter):
+        if not (self.switches.production_dispatch if self.switches is not None
+                else production_dispatch_enabled()) and not is_test_harness(adapter):
             return False
+        if enforcing:
+            self._dispatch.add(execution_id)
         return True
 
     # ── the record ──
@@ -857,6 +870,13 @@ class Isolation:
         if unmet:
             return self._fail(rec, 'condition_unmet:' + ','.join(unmet),
                               '; '.join('%s: %s' % (n, conditions[n][1]) for n in unmet), paths)
+        if self.switches is not None and self.switches.a4 and request.kind != 'verify':
+            ok, unmet = a4_eligibility(
+                harness_id='claude_code' if request.execution_id in self._dispatch else None,
+                isolated_launch=True, job_held=request.execution_id in self._jobs,
+                sandbox=False, exception_claimed=False, evidence=conditions)
+            if not ok:
+                return self._fail(rec, 'a4_unmet', ','.join(unmet), paths)
         rec.state = 'established'
         rec.reason = ''
         rec.capabilities = CAPABILITIES

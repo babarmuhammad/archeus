@@ -316,5 +316,5 @@ class Process:
 class Backend(mxc.NativeMxc):
     compile_policy = staticmethod(mxc.compile_policy)
 
-    def __init__(self, api, boundary, schema_validator, **options):
-        super().__init__(Transport(api, boundary, **options), schema_validator)
+    def __init__(self, api, boundary, schema_validator, *, switches=None, **options):
+        super().__init__(Transport(api, boundary, **options), schema_validator, switches=switches)

@@ -116,11 +116,13 @@ def unconfined(conn, mission_id):
                if r.entity.process_seq >= 1)
 
 
-def confined(e, revision, workspace):
+def confined(e, revision, workspace, *, switches=None):
     """May a guarded code row of execution *e* run (A6-4)? Only confined, while
     activation's switch is on, over the import Core recorded for *e* and no
     workdir. Read in the sink's own transaction; nothing a caller passes decides it."""
-    return (CONFINED_VERIFICATION_ENABLED and workspace is None
+    active = (switches.confined_verification if switches is not None
+              else CONFINED_VERIFICATION_ENABLED)
+    return (active and workspace is None
             and e.import_revision is not None and revision == e.import_revision)
 
 
@@ -183,7 +185,8 @@ def _fire(tx, cls, eid, trigger, actor, reason, fields=None, machine=None, facts
 # ── start (§6) ──────────────────────────────────────────────────────────────
 
 def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterion=None,
-          revision=None, base_revision=None, workspace=None, provenance=None, criteria=()):
+          revision=None, base_revision=None, workspace=None, provenance=None, criteria=(),
+          switches=None):
     """A Verification PENDING -> RUNNING (a CodeVerifier about to run its
     checks) or PENDING -> AWAITING_HUMAN (the GenericVerifier), bound to the
     lineage re-derived here."""
@@ -207,7 +210,7 @@ def start(tx, *, actor, missions, subject, verifier, execution_id=None, criterio
     version = VERIFIER_VERSION
     if guarded and verifier != 'generic_human':
         if not (subject.kind == 'task' and verifier == 'code'
-                and confined(e, revision, workspace)):
+                and confined(e, revision, workspace, switches=switches)):
             raise Refused('mission %s: %s' % (m.id, WITHHELD))
         version = CONFINED_VERIFIER
     v = entities.Verification(
@@ -333,7 +336,7 @@ def task_branch(t):
 
 # ── ERROR: retry once, then the user (§6) ───────────────────────────────────
 
-def retry(tx, *, actor, verification_id):
+def retry(tx, *, actor, verification_id, switches=None):
     """ERROR -> PENDING -> RUNNING on the same row (its lineage unchanged).
     A guarded mission's row is refused before anything is written (A6): it is
     held, or a mission criterion gets a fresh human row, never re-run - unless
@@ -347,7 +350,7 @@ def retry(tx, *, actor, verification_id):
         mission_id = v.subject.id
     if not unconfined(tx.conn, mission_id) and not (
             v.verifier_version == CONFINED_VERIFIER and e is not None
-            and confined(e, v.revision, v.workspace)):
+            and confined(e, v.revision, v.workspace, switches=switches)):
         raise Refused('verification %s is not retried: %s' % (v.id, WITHHELD))
     _fire(tx, entities.Verification, v.id, 'retry', actor,
           'retrying after: %s' % (v.error or 'an error'), fields={'holds_mission': False})

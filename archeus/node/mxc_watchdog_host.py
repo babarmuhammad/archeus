@@ -24,6 +24,7 @@ import sys
 import time
 
 from . import mxc_heartbeat, mxc_ledger, mxc_watchdog
+from .pv20_switches import enabled
 
 HOST_ENABLED = False
 
@@ -163,12 +164,13 @@ def main(argv=None, *, bindings=None):
     parser.add_argument('--deadline-s', type=float, required=True)
     parser.add_argument('--poll-s', type=float, required=True)
     args = parser.parse_args(argv)
-    if HOST_ENABLED is not True or bindings is None:
+    if bindings is None or enabled(bindings.get('switches'), 'host', HOST_ENABLED) is not True:
         print('the watchdog host is closed', file=sys.stderr)
         return 2
+    parts = {name: part for name, part in bindings.items() if name != 'switches'}
     host = WatchdogHost(channel=mxc_heartbeat.Channel(args.root), deadline_s=args.deadline_s,
                         core=(args.core_pid, args.core_create_time),
-                        journals=mxc_ledger.Ledger(args.ledger).journals, **bindings)
+                        journals=mxc_ledger.Ledger(args.ledger).journals, **parts)
     report = host.run(args.poll_s)
     return 0 if report['state'] in (mxc_watchdog.FIRED, mxc_watchdog.STOOD_DOWN, IDLE) else 3
 

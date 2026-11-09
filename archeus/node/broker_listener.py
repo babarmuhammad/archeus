@@ -208,9 +208,9 @@ class LoopbackTransport:
     that port (its readers name the listener's port as Core's); *principal_of(evidence)*
     is the principal an attested execution process runs as, or None."""
 
-    def __init__(self, *, backend_of, principal_of, bind=bind_loopback):
+    def __init__(self, *, backend_of, principal_of, bind=bind_loopback, broker_options=None):
         self._backend_of, self._principal_of, self._bind = backend_of, principal_of, bind
-        self.broker = None
+        self.broker = None if broker_options is None else B.Broker(transport=self, **broker_options)
 
     def create(self, name, principal):
         sock = self._bind()
@@ -235,6 +235,5 @@ class LoopbackTransport:
 
 def loopback_broker(*, backend_of, principal_of, bind=bind_loopback, **kw):
     """A `Broker` whose grants are served at attested loopback listeners."""
-    transport = LoopbackTransport(backend_of=backend_of, principal_of=principal_of, bind=bind)
-    transport.broker = B.Broker(transport=transport, **kw)
-    return transport.broker
+    return LoopbackTransport(backend_of=backend_of, principal_of=principal_of,
+                             bind=bind, broker_options=kw).broker

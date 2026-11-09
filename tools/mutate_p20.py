@@ -1000,7 +1000,7 @@ MUTATIONS = [
      '')],
      ['tests/v1/unit/test_broker_execution.py::test_the_digest_is_never_in_a_view']),
     ('Q194', 'the manager brokers with the switch off', [('archeus/core/execution/manager.py',
-     '        if isolated and broker_mod.BROKER_DISPATCH_ENABLED and self.broker is not None:',
+     '        if isolated and broker_enabled and self.broker is not None:',
      '        if isolated and self.broker is not None:')],
      ['tests/v1/unit/test_broker_execution.py::test_with_the_switch_off_the_spawn_is_untouched_even_with_a_broker_held']),
     ('Q195', 'an account the broker cannot serve is brokered', [('archeus/core/execution/manager.py',

@@ -17,6 +17,7 @@ import threading
 from claude_sessions import config
 
 from . import mxc_watchdog
+from .pv20_switches import checked
 
 HEARTBEAT_ENABLED = False
 
@@ -81,8 +82,9 @@ class Channel:
         return status if isinstance(status, dict) else None
 
 
-def _open():
-    if HEARTBEAT_ENABLED is not True:
+def _open(switches=None):
+    checked(switches)
+    if (switches.heartbeat if switches is not None else HEARTBEAT_ENABLED) is not True:
         raise mxc_watchdog.WatchdogUnavailable('the heartbeat channel is closed')
 
 
@@ -90,8 +92,8 @@ class HeartbeatSender:
     """Core's heartbeats: one per manager pass, strictly increasing in sequence and never
     older than the one before, so a stepped clock cannot make Core look newer or older."""
 
-    def __init__(self, channel, clock):
-        _open()
+    def __init__(self, channel, clock, *, switches=None):
+        _open(switches)
         self.channel, self.clock = channel, clock
         self.seq, self.sent_at = 0, None
 
@@ -111,8 +113,8 @@ class WatchdogProxy:
     A host that is absent, stale or unreadable is never read as armed: the launch is
     refused at record time, and a clean end is refused at the end."""
 
-    def __init__(self, channel, clock, *, max_age_s):
-        _open()
+    def __init__(self, channel, clock, *, max_age_s, switches=None):
+        _open(switches)
         if type(max_age_s) not in (int, float) or not math.isfinite(max_age_s) or max_age_s <= 0:
             raise mxc_watchdog.WatchdogUnavailable('the status age bound must be positive')
         self.channel, self.clock, self.max_age_s = channel, clock, max_age_s

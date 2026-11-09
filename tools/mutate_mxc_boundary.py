@@ -32,7 +32,8 @@ EXTRA = T + 'test_extra_writable_grants_join_the_workspace_in_the_policy'
 
 MUTATIONS = [
     ('MB01', 'open native admission is no condition of availability', [(BOUNDARY,
-     '        if (mxc.NATIVE_RUN_ENABLED is not True or not callable(self.schema_validator)',
+     "        if (enabled(self.switches, 'native_run', mxc.NATIVE_RUN_ENABLED) is not True\n"
+     '                or not callable(self.schema_validator)',
      '        if (not callable(self.schema_validator)')],
      [CLOSED, T + 'test_the_isolated_path_condition_is_the_boundarys_availability']),
     ('MB02', 'the pins are never checked against the staged SDK', [(BOUNDARY,
