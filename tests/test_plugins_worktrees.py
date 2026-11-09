@@ -207,9 +207,29 @@ def test_porcelain_parsing_handles_every_worktree_shape(monkeypatch):
     ts = worktrees.list_worktrees('/repo')
     assert len(ts) == 3
     assert ts[0]['main'] is True and ts[1]['main'] is False
-    # a slashed branch keeps only its leaf, and detached is not a branch
-    assert ts[1]['branch'] == 'x'
+    assert ts[1]['branch'] == 'feature/x'
     assert ts[2]['detached'] is True and ts[2]['branch'] == ''
+
+
+def test_a_slash_branch_in_a_real_worktree_merges_by_its_whole_name(tmp_path):
+    import subprocess
+
+    def git(cwd, *a):
+        subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *a],
+                       cwd=cwd, check=True, capture_output=True)
+    repo, wt = tmp_path / 'repo', tmp_path / 'wt'
+    repo.mkdir()
+    git(repo, 'init', '-q')
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'base')
+    git(repo, 'worktree', 'add', '-q', '-b', 'feature/x', str(wt))
+    (wt / 'f.txt').write_text('x')
+    git(wt, 'add', 'f.txt')
+    git(wt, 'commit', '-q', '-m', 'work')
+    side = [t for t in worktrees.list_worktrees(str(repo)) if not t['main']][0]
+    assert side['branch'] == 'feature/x'
+    ok, msg = worktrees.merge_into_main(str(repo), side['branch'])
+    assert ok, msg
+    assert (repo / 'f.txt').exists()
 
 
 def test_not_a_repo_is_an_empty_board_not_an_error(monkeypatch):

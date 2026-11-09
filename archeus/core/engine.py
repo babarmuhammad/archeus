@@ -48,6 +48,7 @@ from .application.work import PolicyDenied
 from .domain import entities, states
 from .domain.values import Ref
 from .execution.manager import ExecutionManager
+from .planning.validate import overlap
 
 #: at most this many live executions per mission (p11-design-gate §16)
 MISSION_PARALLEL = 3
@@ -83,16 +84,7 @@ def _conflict(t, other):
     if 'in_place' in (t.workspace_mode, other.workspace_mode) or not t.touches \
             or not other.touches:
         return True
-    return any(_overlap(a, b) for a in t.touches for b in other.touches)
-
-
-def _overlap(a, b):
-    def base(g):
-        g = '/'.join(p for p in g.replace('\\', '/').split('/') if p not in ('', '.'))
-        cut = min([g.index(c) for c in '*?[' if c in g] or [len(g)])
-        return g[:cut].rstrip('/')
-    x, y = base(a), base(b)
-    return not x or not y or x == y or x.startswith(y + '/') or y.startswith(x + '/')
+    return any(overlap(a, b) for a in t.touches for b in other.touches)
 
 
 class Engine:

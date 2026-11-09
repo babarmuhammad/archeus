@@ -907,11 +907,11 @@ def test_work_of_another_project_never_blocks_a_dispatch():
 
 
 def test_a_task_that_declares_no_workspace_conflicts_with_everything():
-    """engine.py:83-86 (`_conflict`) and engine.py:89-95 (`_overlap`), the
+    """engine.py:83-86 (`_conflict`) and validate.overlap, the
     fail-closed forms: either side with no `touches` conflicts, and two patterns with
     an empty `base` (a glob in their first component) overlap whatever the other
     names. Drop `not t.touches or not other.touches` and an unbounded task runs
-    beside anything; drop `not x or not y` from `_overlap` and a `*/*.py` task and a
+    beside anything; drop the empty-prefix case from `overlap` and a `*/*.py` task and a
     `docs/x.md` task write the same files at once, because no prefix survives to
     compare."""
     T, base = entities.Task, dict(id=ids.new_id('task'), plan_id=ids.new_id('plan'),
@@ -922,9 +922,9 @@ def test_a_task_that_declares_no_workspace_conflicts_with_everything():
     assert engine._conflict(T(**dict(base, touches=('src/a/**',))),
                             T(**dict(base, touches=('docs/x/**',), workspace_mode='in_place')
                               )) is True
-    assert engine._overlap('*/*.py', 'docs/x.md') is True
-    assert engine._overlap('src/a/**', 'src/a/x.py') is True
-    assert engine._overlap('src/a/**', 'docs/x.md') is False
+    assert engine.overlap('*/*.py', 'docs/x.md') is True
+    assert engine.overlap('src/a/**', 'src/a/x.py') is True
+    assert engine.overlap('src/a/**', 'docs/x.md') is False
     rig = Rig(router=Router(**SELECTED))
     try:
         project = rig.project()

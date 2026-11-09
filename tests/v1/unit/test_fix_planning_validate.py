@@ -1,5 +1,7 @@
 """Regression tests for hostile-audit findings on archeus/core/planning/validate.py."""
 
+from types import SimpleNamespace
+
 import pytest
 
 from archeus.core import engine
@@ -25,6 +27,9 @@ def test_siblings_with_a_shared_name_prefix_do_not_overlap():
     assert not validate.overlap('src', 'srcfoo/x.py')
 
 
-@pytest.mark.parametrize('a,b', [('src/app.py', './src/app.py'), ('src/app.py', 'src//app.py')])
-def test_the_engine_conflicts_two_spellings_of_one_path(a, b):
-    assert engine._overlap(a, b)
+@pytest.mark.parametrize('a,b', [('src/app.py', './src/app.py'), ('src/app.py', 'src//app.py'),
+                                 ('SRC/a.py', 'src/a.py'), ('src/x/../a.py', 'src/a.py'),
+                                 ('.', 'src/a.py')])
+def test_the_engine_conflicts_the_spellings_validate_overlaps(a, b):
+    task = lambda g: SimpleNamespace(workspace_mode='worktree', touches=[g])
+    assert engine._conflict(task(a), task(b))

@@ -69,7 +69,7 @@ def list_worktrees(project_path):
         elif key == 'HEAD':
             cur['head'] = val[:8]
         elif key == 'branch':
-            cur['branch'] = val.rsplit('/', 1)[-1]
+            cur['branch'] = val.removeprefix('refs/heads/')
         elif key == 'detached':
             cur['detached'] = True
         elif key == 'bare':
