@@ -66,8 +66,11 @@ def redact(text):
 # prose (three words, not a `Name: value` header) ends a key of the json channel
 # and is let through in the other one. An END in the other channel leaves the key
 # open: a mention there is not where the key was printed. A field name is masked
-# by the first rule only: a short one is a word of the event's own structure.
-_BODY = re.compile(r'[A-Za-z0-9+/=]{16}[ \t\r]*$', re.M)
+# by the first rule only, and never ends a key: a short one is a word of the
+# event's own structure. A lowercase word is no short fragment either: it is an
+# event's `type` or `subtype`, which every reader of the stream must still see. A
+# body line followed by a few other characters (a quote, a comma) still counts.
+_BODY = re.compile(r'[A-Za-z0-9+/=]{16}[^A-Za-z0-9+/=\n]{0,4}[ \t\r]*$', re.M)
 _LINE = re.compile(r'[A-Za-z0-9+/=]+')
 _PROSE = re.compile(r'^(?![ \t]*[A-Za-z][A-Za-z0-9-]*:)[ \t]*\S+[ \t]+\S+[ \t]+\S', re.M)
 
@@ -82,7 +85,8 @@ def last_mark(text):
 
 def _short(text):
     lines = [x.strip() for x in text.splitlines() if x.strip()]
-    return bool(lines) and all(_LINE.fullmatch(x) for x in lines)
+    return bool(lines) and all(_LINE.fullmatch(x) and not (x.isalpha() and x.islower())
+                               for x in lines)
 
 
 def after(state, channel, mark, text=None):
@@ -108,7 +112,7 @@ def scrub(text, state=None, channel='json', plain=None, name=False):
             plain = '[redacted]' + redact(text[m.end():])
         elif state == channel == 'stderr' or _BODY.search(text) or not name and _short(text):
             plain = '[redacted]'
-    return plain, after(state, channel, last_mark(text), text)
+    return plain, after(state, channel, last_mark(text), None if name else text)
 
 
 _CONTAINERS = (list, tuple, set, frozenset, dict)

@@ -494,3 +494,26 @@ def test_odd_shapes_neither_raise_nor_leak(raw):
 ])
 def test_odd_types_do_not_raise(raw):
     normalise(raw)
+
+
+# ── fx16: the review of fx15 ──
+
+KEY = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7'
+RESULT = {'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
+          'result': 'the run stopped early', 'session_id': '7f0c3a52-0d4e-4f55-9a5e-1b2c3d4e5f60',
+          'total_cost_usd': 1.5, 'usage': {'input_tokens': 9, 'output_tokens': 4,
+                                           'service_tier': 'standard'}}
+
+
+@pytest.mark.parametrize('opener', [B, ev(B), b'{"t":"' + B.encode() + b'","pad":"' + b'p' * 5000 + b'"}'],
+                         ids=['stderr', 'json', 'oversized-json'])
+def test_a_result_after_an_open_key_keeps_its_usage_summary_and_error(rig, monkeypatch, opener):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    rig.write([opener, RESULT])
+    res = rig.adapter.collect_result(base.ProcessHandle(rig.exe.id, 4242, None, rig.paths.dir))
+    assert res.usage_total is True
+    assert res.usage == {'input_tokens': 9, 'output_tokens': 4, 'service_tier': 'standard',
+                         'total_cost_usd': 1.5}
+    assert res.reported_summary == 'the run stopped early'
+    assert res.failure == 'resource' and res.exit_reason == 'error'
+    assert res.session_ref == RESULT['session_id']
