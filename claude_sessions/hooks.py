@@ -394,6 +394,23 @@ TEMPLATES = {
 HOOK_STATE_KEYS = ('hooks', 'hooks_disabled')
 
 
+#: the shape every command below writes: quoted interpreter, quoted script
+_OUR_CMD = re.compile(r'"[^"]+" "([^"]+)"(?: \|\| exit 0)?')
+
+
+def _is_ours(h, script):
+    """Is hook *h* Archeus's *script*: the shape we write, naming this
+    installation's copy or a former one whose path no longer resolves (a moved
+    checkout or venv). `python /company/status_hook.py` is someone else's, and so
+    is a live script of the same name anywhere else."""
+    m = _OUR_CMD.fullmatch(str(h.get('command', '')).strip()) if isinstance(h, dict) else None
+    if not m or os.path.basename(m.group(1)) != script:
+        return False
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), script)
+    return (os.path.normcase(os.path.abspath(m.group(1))) == os.path.normcase(here)
+            or not os.path.exists(m.group(1)))
+
+
 def _memory_hook_command():
     import sys
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'recall_hook.py')
@@ -411,7 +428,7 @@ def install_memory_hook(cfgdir=None):
     cmd = _memory_hook_command()
     for entry in entries:
         for h in (entry.get('hooks') or []):
-            if 'recall_hook.py' in str(h.get('command', '')):
+            if _is_ours(h, 'recall_hook.py'):
                 if h.get('command') != cmd:      # stale python/repo path → repair
                     h['command'] = cmd
                     h['timeout'] = 5
@@ -430,7 +447,7 @@ def uninstall_memory_hook(cfgdir=None):
     changed = False
     for entry in list(entries):
         hs = entry.get('hooks') or []
-        kept = [h for h in hs if 'recall_hook.py' not in str(h.get('command', ''))]
+        kept = [h for h in hs if not _is_ours(h, 'recall_hook.py')]
         if len(kept) != len(hs):
             changed = True
             if kept:
@@ -444,7 +461,7 @@ def uninstall_memory_hook(cfgdir=None):
 
 def memory_hook_installed(cfgdir=None):
     entries = (_load(cfgdir).get('hooks') or {}).get('UserPromptSubmit') or []
-    return any('recall_hook.py' in str(h.get('command', ''))
+    return any(_is_ours(h, 'recall_hook.py')
                for e in entries if isinstance(e, dict)
                for h in (e.get('hooks') or []))
 
@@ -478,7 +495,7 @@ def install_worklog_hook(cfgdir=None):
         found = False
         for entry in entries:
             for h in (entry.get('hooks') or []):
-                if 'worklog_hook.py' in str(h.get('command', '')):
+                if _is_ours(h, 'worklog_hook.py'):
                     found = True
                     if h.get('command') != cmd:
                         h['command'] = cmd
@@ -499,7 +516,7 @@ def uninstall_worklog_hook(cfgdir=None):
             continue
         for entry in list(entries):
             hs = entry.get('hooks') or []
-            kept = [h for h in hs if 'worklog_hook.py' not in str(h.get('command', ''))]
+            kept = [h for h in hs if not _is_ours(h, 'worklog_hook.py')]
             if len(kept) != len(hs):
                 changed = True
                 if kept:
@@ -515,7 +532,7 @@ def worklog_hook_installed(cfgdir=None):
     hooks = _load(cfgdir).get('hooks') or {}
     for event in _WORKLOG_EVENTS:
         for e in hooks.get(event) or []:
-            if isinstance(e, dict) and any('worklog_hook.py' in str(h.get('command', ''))
+            if isinstance(e, dict) and any(_is_ours(h, 'worklog_hook.py')
                                            for h in (e.get('hooks') or [])):
                 return True
     return False
@@ -537,7 +554,7 @@ def _status_hook_command():
 
 
 def _is_status(h):
-    return 'status_hook.py' in str(h.get('command', ''))
+    return _is_ours(h, 'status_hook.py')
 
 
 def _status_hooks(s, event):
@@ -636,7 +653,7 @@ def install_limit_hook(cfgdir=None):
     cmd = _limit_hook_command()
     for entry in entries:
         for h in (entry.get('hooks') or []):
-            if 'limit_hook.py' in str(h.get('command', '')):
+            if _is_ours(h, 'limit_hook.py'):
                 # a stale interpreter or checkout path is a repair, not a second
                 # entry — the same rule `install_memory_hook` follows, and the
                 # matcher is repaired with it so a hand-edit cannot silence the
@@ -663,7 +680,7 @@ def uninstall_limit_hook(cfgdir=None):
     changed = False
     for entry in list(entries):
         hs = entry.get('hooks') or []
-        kept = [h for h in hs if 'limit_hook.py' not in str(h.get('command', ''))]
+        kept = [h for h in hs if not _is_ours(h, 'limit_hook.py')]
         if len(kept) != len(hs):
             changed = True
             if kept:
@@ -677,7 +694,7 @@ def uninstall_limit_hook(cfgdir=None):
 
 def limit_hook_installed(cfgdir=None):
     entries = (_load(cfgdir).get('hooks') or {}).get('StopFailure') or []
-    return any('limit_hook.py' in str(h.get('command', ''))
+    return any(_is_ours(h, 'limit_hook.py')
                for e in entries if isinstance(e, dict)
                for h in (e.get('hooks') or []))
 

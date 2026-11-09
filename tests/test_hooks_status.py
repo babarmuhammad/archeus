@@ -176,3 +176,19 @@ def test_the_temp_file_name_is_unique_per_process(tmp_path, monkeypatch):
     monkeypatch.setattr(os, 'replace', lambda a, b: (seen.append(os.path.basename(a)), real(a, b)))
     status_hook.handle(_payload(tmp_path, 'Stop'))
     assert seen == ['abc-123.%d.tmp' % os.getpid()]
+
+
+def test_a_foreign_hook_of_the_same_script_name_is_never_ours(tmp_path, monkeypatch):
+    sp = tmp_path / 'settings.json'
+    monkeypatch.setattr(hooks, 'settings_path', str(sp))
+    live = tmp_path / 'company' / 'status_hook.py'
+    live.parent.mkdir()
+    live.write_text('# theirs')
+    theirs = [{'type': 'command', 'command': 'python /company/status_hook.py'},
+              {'type': 'command', 'command': '"python" "%s"' % live}]
+    sp.write_text(json.dumps({'hooks': {'Stop': [{'hooks': theirs}]}}))
+    assert not hooks.status_hook_installed()
+    assert hooks.install_status_hook()
+    assert json.loads(sp.read_text())['hooks']['Stop'][0]['hooks'] == theirs
+    assert hooks.uninstall_status_hook()
+    assert json.loads(sp.read_text())['hooks'] == {'Stop': [{'hooks': theirs}]}
