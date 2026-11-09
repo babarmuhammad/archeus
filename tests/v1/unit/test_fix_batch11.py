@@ -117,7 +117,7 @@ def test_f4_no_guess_is_admitted_while_the_revoke_keeps_failing_and_the_retry_la
             raise RuntimeError('writer busy')
         revoked.append('landed')
 
-    req = SimpleNamespace(principal={'device_id': 'dev1', 'origin': 'paired'}, replayed=False, run=run,
+    req = SimpleNamespace(principal={'device_id': 'dev1', 'origin': 'paired'}, replayed=False, proven=False, run=run,
                           api=SimpleNamespace(step_up=su, sse=SimpleNamespace(close_device=lambda d: None)))
     tried = []
 

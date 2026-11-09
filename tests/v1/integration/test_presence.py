@@ -620,6 +620,24 @@ def test_D13_the_pin_breaker_resets_on_a_right_pin_and_a_new_pairing_recovers(de
     assert _get(deploy, '/v1/approvals/%s' % second['id']).json()['state'] == 'APPROVED'
 
 
+def test_fx12a_R1_a_command_that_checks_no_pin_does_not_reset_the_wrong_pin_count(deploy):
+    """A reject never weighs the proof it carries: with any `step_up` it must
+    not clear the failures a PIN gate counted (p15-design-gate §6.6)."""
+    pin = '482913'
+    _d, phone = pair(deploy, pin=pin)
+    first, second = (_pending(deploy, _mission(deploy)) for _ in range(2))
+
+    def decide(a, decision, step_up):
+        return _phone(deploy, '/v1/approvals/%s/decide' % a['id'],
+                      {'decision': decision, 'action_hash': a['action_hash'],
+                       'step_up': step_up}, token=phone)
+    for _ in range(4):
+        assert decide(first, 'approve', '000000').json()['error'] == 'guard_failed'
+    assert decide(second, 'reject', '000000').status == 200
+    assert decide(first, 'approve', '000000').json()['error'] == 'guard_failed'
+    assert _get(deploy, '/v1/version', phone).status == 401               # still the fifth in a row
+
+
 def test_P24_reconnecting_during_an_approval_decides_it_once(deploy):
     _d, phone = pair(deploy, pin='482913')
     mid = _mission(deploy)

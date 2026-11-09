@@ -71,7 +71,7 @@ class _Req:
     principal/peer plus the writer seam `run`, recorded."""
 
     def __init__(self, api=None, body=None, query=None, headers=None, params=None,
-                 principal=None, peer=LOOPBACK, replayed=False, run_ret=None,
+                 principal=None, peer=LOOPBACK, replayed=False, proven=False, run_ret=None,
                  raises=None, order=None):
         self.api = _api() if api is None else api
         self.body = {} if body is None else body
@@ -80,7 +80,7 @@ class _Req:
         self.params = {} if params is None else params
         self.principal = _principal() if principal is None else principal
         self.peer = peer
-        self.replayed = replayed
+        self.replayed, self.proven = replayed, proven
         self.runs = []
         self.ret = {'device_id': 'dvc_new'} if run_ret is None else run_ret
         self.raises = raises
@@ -440,6 +440,14 @@ def test_a_replayed_decision_resets_nothing():
     assert req.api.step_up.reset.calls == []                    # the replay decided nothing
 
 
+def test_a_decision_that_weighed_no_proof_resets_nothing():
+    req = _Req(params={'id': 'apr_1'},
+               body={'decision': 'reject', 'action_hash': 'a' * 64, 'step_up': '000000'},
+               principal=_principal(origin='paired'), run_ret={'approval_id': 'apr_1'})
+    routes.decide_approval(req)
+    assert req.api.step_up.reset.calls == []
+
+
 # ── _step_up_failed: access control only, and only for paired clients ──
 
 def test_only_a_paired_client_with_a_counted_failure_is_revoked_and_its_streams_closed():
@@ -504,7 +512,7 @@ def test_a_rearm_with_a_wrong_proof_counts_and_reraises():
 
 def test_a_rearm_with_a_good_proof_resets_the_count_and_clears_the_sentinel(monkeypatch):
     req = _Req(body={'step_up': '482913'}, principal=_principal(origin='paired'),
-               run_ret={'rearmed': True})
+               run_ret={'rearmed': True}, proven=True)
     cleared = []
     monkeypatch.setattr(local.LocalNode, 'clear_estop', staticmethod(lambda: cleared.append(1)))
     status, out = routes.rearm(req)

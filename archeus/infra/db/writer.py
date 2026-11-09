@@ -128,7 +128,9 @@ class Tx:
     one of its own: the consumer's event the command was submitted under
     (`ev.CAUSE`), or an approval's event once `authorization.decide` set it.
     `live` is the (registry, callers) the owner bound to the writer, for a write
-    path that needs the registered homes."""
+    path that needs the registered homes. `proven` is set by the step-up check
+    when a paired client's PIN was weighed and right: the one thing that may
+    clear its wrong-PIN count."""
 
     def __init__(self, conn, live=(None, ()), cause=()):
         self.conn = conn
@@ -136,6 +138,7 @@ class Tx:
         self.now = ev.now_iso()
         self.events = []
         self.mutated = False
+        self.proven = False
         self.cause = cause
 
     def execute(self, sql, params=()):
@@ -427,8 +430,8 @@ class Writer:
                 try:
                     # `replayed` tells a caller with effects outside the writer
                     # (a sentinel, a counter) that nothing ran this time
-                    result, fut.replayed = self._one(conn, command, kwargs, key, name, rhash,
-                                                     cause)
+                    result, fut.replayed, fut.proven = self._one(conn, command, kwargs, key,
+                                                                 name, rhash, cause)
                 except BaseException as e:
                     self.failed += 1
                     fut.set_exception(e)
@@ -458,7 +461,7 @@ class Writer:
                 replay = self._recall(conn, key, name, rhash)
                 if replay is not None:
                     conn.execute('ROLLBACK')
-                    return json.loads(replay), True
+                    return json.loads(replay), True, False
             tx = Tx(conn, self.live, cause)
             result = command(tx, **kwargs)
             if tx.mutated and not tx.events:
@@ -482,7 +485,7 @@ class Writer:
             with self._commits:
                 self.commit_count += 1
                 self._commits.notify_all()
-        return json.loads(response), False
+        return json.loads(response), False, tx.proven
 
     @staticmethod
     def _recall(conn, key, name, rhash):
