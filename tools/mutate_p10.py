@@ -28,6 +28,7 @@ OUT = 'archeus/core/application/outcomes.py'
 U = 'tests/v1/unit/test_routing_units.py'
 OC = 'tests/v1/unit/test_outcomes_cache.py'
 OR = 'tests/v1/unit/test_outcomes_rework.py'
+OP = 'tests/v1/unit/test_outcomes_by_pass.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -233,6 +234,26 @@ MUTATIONS = [
      "'verification_attempts': None, 'changes_requested': None, 'reworked': 0,",
      "'verification_attempts': 0, 'changes_requested': 0, 'reworked': 0,",
      [OR + '::test_nothing_to_count_is_none_but_for_the_executions_themselves']),
+    ('R44', 'a meeting call read as the knowledge pass', OUT,
+     "('knowledge_extraction', 'meeting'): 'decisions'",
+     "('knowledge_extraction', 'meeting'): 'knowledge'",
+     [OP + '::test_each_pass_sums_its_own_calls_and_figures']),
+    ('R45', 'a pass figure nobody reported read as 0', OUT,
+     "g[f] = _add(g[f], getattr(u, f))",
+     "g[f] = (g[f] or 0) + (getattr(u, f) or 0)",
+     [OP + '::test_nothing_reported_stays_none_never_zero_and_a_reported_zero_is_kept']),
+    ('R46', 'a partial pass call still complete', OUT,
+     "g['complete'] &= u.basis == 'reported_total'",
+     "g['complete'] &= True",
+     [OP + '::test_one_partial_call_makes_the_pass_incomplete']),
+    ('R47', 'a pass call not counted', OUT,
+     "g['calls'] += 1",
+     "g['calls'] += 0",
+     [OP + '::test_each_pass_sums_its_own_calls_and_figures']),
+    ('R48', 'every own call read as a pass', OUT,
+     "and (r.entity.purpose, r.entity.source.kind) in PASSES}",
+     "and r.entity.purpose in {p for p, _ in PASSES}}",
+     [OP + '::test_calls_that_are_not_learning_passes_are_left_out']),
 ]
 
 

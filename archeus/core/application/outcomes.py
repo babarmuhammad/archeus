@@ -85,3 +85,35 @@ def by_model(conn):
         if any(m in reviews for m in missions[k]):
             g['changes_requested'] = sum(reviews.get(m, 0) for m in missions[k])
     return [out[k] for k in sorted(out, key=lambda k: tuple(x or '' for x in k))]
+
+
+#: (purpose, source kind) of the own call each learning pass makes (`knowledge.passes`)
+PASSES = {('knowledge_extraction', 'repository_inspection'): 'knowledge',
+          ('knowledge_extraction', 'meeting'): 'decisions', ('lesson', 'mission'): 'lessons'}
+
+
+def by_pass(conn):
+    """One dict per learning pass that made a model call, sorted by name: `calls`
+    that reached a model (a gated or unavailable call has no usage row, so is not
+    counted) and the `tokens_in`, `tokens_out`, `cache_read`, `cache_write` and
+    `cost_usd` they reported. Each sums only what was reported (None: nothing was),
+    and `complete` says every call's figures are the harness's own total, as in
+    `by_model`. Other own calls (planner, review, ...) are not passes and are left out."""
+    passes = {r.entity.id: PASSES[r.entity.purpose, r.entity.source.kind]
+              for r in rows.where(conn, entities.RouteDecision)
+              if r.entity.subject.kind == 'archeus_call' and r.entity.source
+              and (r.entity.purpose, r.entity.source.kind) in PASSES}
+    out = {}
+    for r in rows.where(conn, entities.UsageLedger):
+        u = r.entity
+        if u.route_decision_id not in passes:
+            continue
+        g = out.setdefault(passes[u.route_decision_id], {
+            'pass': passes[u.route_decision_id], 'calls': 0, 'tokens_in': None,
+            'tokens_out': None, 'cache_read': None, 'cache_write': None, 'cost_usd': None,
+            'complete': True})
+        g['calls'] += 1
+        g['complete'] &= u.basis == 'reported_total'
+        for f in ('tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd'):
+            g[f] = _add(g[f], getattr(u, f))
+    return [out[k] for k in sorted(out)]
