@@ -20,6 +20,8 @@ R = 'tests/v1/unit/test_redact_red_team.py::'
 S = 'tests/v1/integration/test_stream_redaction_red_team.py::'
 ROUTER = 'archeus/core/routing/router.py'
 E = 'tests/v1/unit/test_effort_selection.py::'
+OUT = 'archeus/core/application/outcomes.py'
+W = 'tests/v1/unit/test_outcomes_rework.py::'
 
 MUTATIONS = [
     ('G01', 'a field name does not carry the key state to the fields after it', [(RED,
@@ -74,6 +76,14 @@ MUTATIONS = [
      r"""        if stated and not allowed:""",
      r"""        if not allowed:""")],
      [E + 'test_the_router_clamps_effort_to_the_chosen_model_and_records_it']),
+    ('G12', 'an execution not yet spawned is counted as a run', [(OUT,
+     r""" and e.state != 'INTENT')""",
+     r""")""")],
+     [W + 'test_an_execution_still_pending_is_not_a_second_run']),
+    ('G13', 'only a pending execution is not a run: a started one that is not finished is not either', [(OUT,
+     r""" and e.state != 'INTENT')""",
+     r""" and e.state in ('ENDED_OK', 'ENDED_ERROR'))""")],
+     [W + 'test_a_started_execution_still_running_is_a_second_run']),
 ]
 
 

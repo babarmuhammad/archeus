@@ -29,7 +29,8 @@ def by_model(conn):
     Rework is counted over the group's own rows: `verification_attempts` is the
     verification rows beyond each execution's first (None when none was verified),
     `changes_requested` the reviews with that verdict on its missions (None when
-    they have no review) and `reworked` the executions whose task ran more than once."""
+    they have no review) and `reworked` the executions whose task ran more than once
+    (one still pending, not yet spawned, is not a run)."""
     # ponytail: reads every row of six tables; window it by date when history grows
     kinds = {r.entity.id: r.entity.kind for r in rows.where(conn, entities.Task)}
     verdict = {r.entity.execution_id: r.entity.state for r in rows.where(conn, entities.Verification)
@@ -37,7 +38,8 @@ def by_model(conn):
     checks = _count(conn, entities.Verification, lambda v: v.execution_id)
     reviews = _count(conn, entities.Review, lambda v: v.mission_id,
                      lambda v: v.verdict == 'changes_requested')
-    runs = _count(conn, entities.Execution, lambda e: e.task_id, lambda e: e.charged is not False)
+    runs = _count(conn, entities.Execution, lambda e: e.task_id,
+                 lambda e: e.charged is not False and e.state != 'INTENT')
     routes = {}
     ledger = {}
     for r in rows.where(conn, entities.UsageLedger):

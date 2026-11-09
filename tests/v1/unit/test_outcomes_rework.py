@@ -89,3 +89,18 @@ def test_an_execution_that_never_started_is_not_a_second_run(db):
     run(db, mid, tid, charged=False)
     (g,) = read(db)
     assert (g['executions'], g['reworked']) == (1, 0)
+
+
+def test_an_execution_still_pending_is_not_a_second_run(db):
+    mid, tid = task(db)
+    run(db, mid, tid)
+    run(db, mid, tid, state='INTENT')
+    (g,) = read(db)
+    assert (g['executions'], g['reworked']) == (1, 0)
+
+
+def test_a_started_execution_still_running_is_a_second_run(db):
+    mid, tid = task(db)
+    run(db, mid, tid)
+    run(db, mid, tid, state='RUNNING')
+    assert read(db)[0]['reworked'] == 1
