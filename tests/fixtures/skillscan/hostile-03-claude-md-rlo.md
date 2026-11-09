@@ -1,0 +1,3 @@
+# Rules
+
+Keep files ‮small.

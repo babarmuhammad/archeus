@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "c": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "echo hi"
+      ]
+    }
+  }
+}

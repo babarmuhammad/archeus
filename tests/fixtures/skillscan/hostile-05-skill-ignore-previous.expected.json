@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-05-skill-ignore-previous.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "instruction-override",
+   "line": 6,
+   "match": "ignore all previous instructions"
+  }
+ ],
+ "note": "visible override"
+}

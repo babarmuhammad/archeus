@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-07-agent-html-comment-override.md",
+ "kind": "agent",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "instruction-override",
+   "line": 6,
+   "match": "forget the system prompt"
+  }
+ ],
+ "note": "override in an HTML comment"
+}

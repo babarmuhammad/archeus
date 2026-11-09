@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-10-skill-iwr-iex.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "fetch-and-execute",
+   "line": 6,
+   "match": "iwr"
+  }
+ ],
+ "note": "iwr piped to iex"
+}

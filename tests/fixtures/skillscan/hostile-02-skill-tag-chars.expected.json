@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-02-skill-tag-chars.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "hidden-unicode",
+   "line": 6,
+   "match": "U+E0049"
+  }
+ ],
+ "note": "line holding only tag characters"
+}

@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-06-claude-md-disregard-hide.md",
+ "kind": "claude_md",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "instruction-override",
+   "line": 3,
+   "match": "disregard every earlier rule"
+  }
+ ],
+ "note": "override and hide"
+}

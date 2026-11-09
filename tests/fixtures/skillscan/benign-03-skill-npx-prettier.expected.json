@@ -1,0 +1,7 @@
+{
+ "fixture": "benign-03-skill-npx-prettier.md",
+ "kind": "skill",
+ "verdict": "benign",
+ "findings": [],
+ "note": "legitimate npx in prose"
+}

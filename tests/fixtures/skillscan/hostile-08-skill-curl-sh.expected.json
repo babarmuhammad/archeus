@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-08-skill-curl-sh.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "fetch-and-execute",
+   "line": 6,
+   "match": "curl -fsSL"
+  }
+ ],
+ "note": "curl piped to sh"
+}

@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-01-skill-zero-width.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "hidden-unicode",
+   "line": 6,
+   "match": "U+200B"
+  }
+ ],
+ "note": "zero width space inside a word"
+}

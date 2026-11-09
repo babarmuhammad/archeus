@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-04-agent-isolate-bidi.md",
+ "kind": "agent",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "bidi-control",
+   "line": 6,
+   "match": "U+2066"
+  }
+ ],
+ "note": "bidi isolate pair"
+}

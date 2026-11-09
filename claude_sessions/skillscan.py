@@ -40,8 +40,11 @@ manifest — every file, and exactly where it lands — is the part that always
 works, and it is the part that matters most.
 """
 
+import json
 import os
 import re
+import unicodedata
+from collections import namedtuple
 
 #: file bodies larger than this are truncated before matching. A skill that
 #: needs a megabyte of prose is already worth a second look.
@@ -50,7 +53,7 @@ _MAX_BYTES = 400_000
 #: zero-width / bidi-override characters. ONE definition: the rule that FLAGS
 #: them and the sanitiser that strips them from the excerpt must never drift,
 #: or the report re-emits the character it just warned about.
-_HIDDEN_CHARS = '[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]'
+_HIDDEN_CHARS = '[\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\U000e0000-\U000e007f]'
 
 #: (severity, label, compiled pattern, why it matters)
 #: Ordered most-alarming first; the report keeps this order.
@@ -112,6 +115,161 @@ _TEXTY = {'.md', '.txt', '.py', '.js', '.ts', '.mjs', '.cjs', '.sh', '.bash',
           '.rb', '.pl', '.lua', '.go', '.rs', ''}
 
 
+#: one advisory finding of `lint`. Never blocks anything (owner item 96).
+Finding = namedtuple('Finding', 'rule severity line reason match')
+
+_INVISIBLE = re.compile('[\u200b\u200d\u2060\ufeff\U000e0000-\U000e007f]')
+_BIDI = re.compile('[\u202a-\u202e\u2066-\u2069]')
+_OVERRIDE = re.compile(
+    r"(?i)\b(?:ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}?"
+    r"\b(?:previous|prior|earlier|above|preceding|system)\b[^.\n]{0,30}?"
+    r"\b(?:instructions?|rules?|prompts?|directives?|guidelines?)\b"
+    r"|\b(?:do not|don't|never)\s+(?:mention|tell|reveal|disclose|inform|show)\b"
+    r"[^.\n]{0,60}?\buser\b(?!['’]s)"
+    r"|\bhide\b[^.\n]{0,40}\bfrom the user\b")
+_FETCH = re.compile(
+    r"(?i)\b(?:curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod)\b[^\n|]*\|\s*"
+    r"(?:sudo\s+)?(?:sh|bash|zsh|dash|python3?|node|perl|ruby|iex|invoke-expression|powershell|pwsh)\b"
+    r"|\b(?:sh|bash|zsh)\s+<\(\s*(?:curl|wget)\b"
+    r"|\b(?:iex|invoke-expression)\b\s*\(?\s*(?:iwr|irm|invoke-webrequest|invoke-restmethod)\b")
+_LINE_RULES = (
+    ('instruction-override', 'med', _OVERRIDE,
+     'tells the model to discard its instructions or to hide something from the user'),
+    ('fetch-and-execute', 'high', _FETCH, 'downloads and runs code in one step'),
+)
+#: an image data URI may continue on following lines of pure base64
+_DATA_URI = re.compile(r'data:image/[\w.+-]+;base64,[A-Za-z0-9+/=]*(?:\n[A-Za-z0-9+/=]+)*')
+_B64 = re.compile(r'(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{200,}={0,2}')
+_SHELLS = {'sh', 'bash', 'zsh', 'dash', 'cmd', 'powershell', 'pwsh'}
+#: names an MCP server must not take: the model would read its tools as built-ins
+_BUILTIN_TOOLS = {'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebFetch',
+                  'WebSearch', 'Task', 'TodoWrite', 'NotebookEdit'}
+#: lint rules the older rules above already report; the lint adds nothing there
+_COVERED = {'hidden-unicode': 'hidden characters', 'bidi-control': 'hidden characters',
+            'instruction-override': 'overrides instructions', 'long-base64': 'encoded blob'}
+
+
+def _exe(tokens):
+    return re.sub(r'\.(exe|cmd|bat)$', '', re.split(r'[\\/]', tokens[0])[-1].lower())
+
+
+def _wraps_shell(tokens):
+    return bool(tokens) and _exe(tokens) in _SHELLS and any(
+        a.lower() in ('/c', '/k', '-command', '-encodedcommand')
+        or re.fullmatch(r'-[a-zA-Z]*c', a) for a in tokens[1:])
+
+
+def _npx_yes_unpinned(tokens):
+    if not tokens or _exe(tokens) != 'npx' or not {'-y', '--yes'} & set(tokens[1:]):
+        return False
+    pkgs = [a for a in tokens[1:] if not a.startswith('-')]
+    return bool(pkgs) and not re.search(r'@\d', pkgs[0].lstrip('@'))
+
+
+def _locate(lines, needle, start):
+    return next((i for i in range(start, len(lines)) if needle in lines[i]), start)
+
+
+def _hook_commands(node):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == 'command' and isinstance(v, str):
+                yield v
+            else:
+                yield from _hook_commands(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _hook_commands(v)
+
+
+def _json_findings(text, lines):
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    if not isinstance(data, dict):
+        return []
+    out = []
+    servers = data.get('mcpServers')
+    at = _locate(lines, '"mcpServers"', 0)
+    for name, ent in (servers.items() if isinstance(servers, dict) else ()):
+        at = _locate(lines, json.dumps(name, ensure_ascii=False), at)
+        if name in _BUILTIN_TOOLS:
+            out.append(Finding('tool-name-collision', 'high', at + 1,
+                               'a server named like a built-in tool', name))
+        if isinstance(ent, dict) and isinstance(ent.get('command'), str):
+            args = ent.get('args')
+            toks = ent['command'].split() + [a for a in args if isinstance(a, str)] \
+                if isinstance(args, list) else ent['command'].split()
+            if _wraps_shell(toks) or _npx_yes_unpinned(toks):
+                at = _locate(lines, '"command"', at)
+                out.append(Finding('mcp-command-exec', 'med', at + 1,
+                                   'an MCP server that runs a shell wrapper or an unpinned npx -y package',
+                                   ' '.join(toks)[:60]))
+    at = _locate(lines, '"hooks"', 0)
+    for cmd in _hook_commands(data.get('hooks')):
+        at = _locate(lines, json.dumps(cmd, ensure_ascii=False), at)
+        if _wraps_shell(cmd.split()):
+            out.append(Finding('hook-command-exec', 'med', at + 1,
+                               'a hook that runs through a shell wrapper', cmd[:60]))
+    return out
+
+
+def lint(text):
+    """Advisory static findings for one skill, agent, CLAUDE.md, MCP-config or
+    settings text. Pure: no I/O, no network, no model. A rule list is not a
+    security boundary."""
+    lines = text.split('\n')
+    out = []
+    for i, line in enumerate(lines, 1):
+        for m in _INVISIBLE.finditer(line):
+            prev = line[m.start() - 1] if m.start() else ''
+            if (i == 1 and m.start() == 0) or (
+                    m.group() == '‍' and (unicodedata.category(prev) == 'So' or prev == '️')):
+                continue
+            out.append(Finding('hidden-unicode', 'high', i,
+                               'an invisible character in text meant to be read by a model',
+                               'U+%04X' % ord(m.group())))
+            break
+        m = _BIDI.search(line)
+        if m:
+            out.append(Finding('bidi-control', 'high', i,
+                               'a bidirectional control that makes text read differently from how it is stored',
+                               'U+%04X' % ord(m.group())))
+        for rule, sev, pat, why in _LINE_RULES:
+            m = pat.search(line)
+            if m:
+                out.append(Finding(rule, sev, i, why, m.group()[:80]))
+    uris = [m.span() for m in _DATA_URI.finditer(text)]
+    for m in _B64.finditer(text):
+        if not any(a <= m.start() < b for a, b in uris):
+            out.append(Finding('long-base64', 'med', text.count('\n', 0, m.start()) + 1,
+                               'a long base64 run that is not an image data URI', m.group()[:20]))
+    if text.lstrip().startswith('{'):
+        out += _json_findings(text, lines)
+    return sorted(out, key=lambda f: f.line)
+
+
+def _description(text):
+    lines = text.split('\n')
+    if lines[0].strip() != '---':
+        return None
+    for i, line in enumerate(lines[1:], 2):
+        if line.strip() == '---':
+            return None
+        if line.startswith('description:'):
+            return i, line[len('description:'):].strip()
+
+
+def lint_drift(first, second):
+    """A skill whose `description:` differs between two reads of it."""
+    a, b = _description(first), _description(second)
+    if a and b and a[1] != b[1]:
+        return [Finding('description-drift', 'med', b[0],
+                        'the description changed between two reads of the same skill', b[1])]
+    return []
+
+
 def _read(path):
     try:
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
@@ -156,8 +314,14 @@ def scan_bundle(root, plan):
         if os.path.splitext(src)[1].lower() not in _TEXTY:
             continue
         n_scanned += 1
-        for sev, label, why, line, excerpt in scan_file(src, _read(full)):
+        text = _read(full)
+        old = scan_file(src, text)
+        for sev, label, why, line, excerpt in old:
             findings.append((sev, src, label, why, line, excerpt))
+        seen = {f[1] for f in old}
+        for f in lint(text):
+            if _COVERED.get(f.rule) not in seen:
+                findings.append((f.severity, src, f.rule, f.reason, f.line, f.match))
     findings.sort(key=lambda f: (_SEV_ORDER.get(f[0], 9), f[1], f[4]))
     return findings, {'files': n_files, 'scanned': n_scanned}
 

@@ -1,0 +1,13 @@
+{
+ "fixture": "hostile-09-skill-wget-bash.md",
+ "kind": "skill",
+ "verdict": "hostile",
+ "findings": [
+  {
+   "rule": "fetch-and-execute",
+   "line": 6,
+   "match": "wget -qO-"
+  }
+ ],
+ "note": "wget piped to bash"
+}
