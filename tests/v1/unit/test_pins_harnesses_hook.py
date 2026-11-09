@@ -330,7 +330,7 @@ def test_the_missing_answer_is_the_named_fail_closed_halt(tmp_path, monkeypatch)
 # ── main: a broken hook never allows ──────────────────────────────────────────
 
 def _main(tmp_path, monkeypatch, capsys, stdin_text):
-    monkeypatch.delenv('ARCHEUS_HOOK_ACTIVE', raising=False)
+    monkeypatch.setenv('ARCHEUS_HOOK_ACTIVE', '')     # main() sets it; restored after
     monkeypatch.setattr(hook.sys, 'stdin', io.StringIO(stdin_text))
     code = hook.main()
     return code, capsys.readouterr()
