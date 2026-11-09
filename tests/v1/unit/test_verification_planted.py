@@ -50,6 +50,7 @@ def world(tmp_path, monkeypatch):
     core.mkdir()
     monkeypatch.setenv('PATH', str(tools))
     monkeypatch.setenv('PATHEXT', '.COM;.EXE;.BAT;.CMD')
+    monkeypatch.delenv('NoDefaultCurrentDirectoryInExePath', raising=False)
     local._git_exe.cache_clear()
     yield SimpleNamespace(ws=ws, tools=tools, core=core)
     local._git_exe.cache_clear()
@@ -66,22 +67,22 @@ def test_argv_of_finds_a_program_on_path_not_in_the_workspace(world, monkeypatch
 
 
 @windows_only
-@pytest.mark.xfail(strict=True, reason='H5: Python 3.10 which() searches the current directory first, '
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason='H5: Python 3.10 which() searches the current directory first, '
                    'so with Core started in the workspace a planted program wins over PATH')
 @pytest.mark.parametrize('name', NAMES)
 def test_argv_of_ignores_a_planted_program_when_core_runs_in_the_workspace(world, monkeypatch, name):
     monkeypatch.chdir(world.ws)
     found = evidence.argv_of('%s --version' % name)
-    assert not _inside(found[0], world.ws)
+    assert found is None or (os.path.isabs(found[0]) and not _inside(found[0], world.ws))
 
 
 @windows_only
-@pytest.mark.xfail(strict=True, reason='H5: a program PATH does not hold is still taken from the current directory')
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason='H5: a program PATH does not hold is still taken from the current directory')
 def test_argv_of_does_not_take_a_planted_program_PATH_lacks(world, monkeypatch):
     monkeypatch.setenv('PATH', str(world.core))
     monkeypatch.chdir(world.ws)
     found = evidence.argv_of('git status')
-    assert not _inside(found[0], world.ws)
+    assert found is None or (os.path.isabs(found[0]) and not _inside(found[0], world.ws))
 
 
 @pytest.mark.parametrize('toolchain', ['absent', 'present'])
@@ -181,10 +182,10 @@ def test_a_bare_git_call_of_core_resolves_to_path_when_core_is_elsewhere(world, 
 
 
 @windows_only
-@pytest.mark.xfail(strict=True, reason='H6: Core runs a bare `git` over the workspace, and with Core '
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason='H6: Core runs a bare `git` over the workspace, and with Core '
                    'started inside it the platform picks a planted git.exe before PATH')
 def test_a_bare_git_call_of_core_ignores_a_planted_git_when_core_runs_in_the_workspace(world, monkeypatch):
     monkeypatch.chdir(world.ws)
     for c in _bare_git_calls(monkeypatch, world.ws):
         exe = local.shutil.which(c.argv[0])
-        assert exe is not None and not _inside(exe, world.ws), c.argv
+        assert exe is None or (os.path.isabs(exe) and not _inside(exe, world.ws)), c.argv
