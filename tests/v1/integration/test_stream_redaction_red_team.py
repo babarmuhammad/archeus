@@ -545,7 +545,27 @@ CASES = {
                                  + b'"}\n' + KEY.encode() + b'\n',
     'escaped tab in marker': b'{"text":"-----BEGIN' + J + b'tPRIVATE' + J + b'r' + J + b'nKEY-----","pad":"'
                              + big() + b'"}\n' + KEY.encode() + b'\n',
+    'duplicate field names': b'{"a":"' + B.encode() + b'","a":"x"}\n{"t":"' + KEY.encode() + b'"}\n',
+    'json array line': b'["' + ESC_B + b'"]\n' + KEY.encode() + b'\n',
+    'bom before an object': b'\xef\xbb\xbf{"t":"' + ESC_B + b'"}\n' + KEY.encode() + b'\n',
 }
+
+
+@pytest.mark.parametrize('case', ['duplicate field names', 'json array line', 'bom before an object'])
+def test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key(rig, case):
+    raw_stream(rig, CASES[case])
+    assert KEY[:30] not in events_text(base.read_stream(rig.paths.stream, 0)[0])
+
+
+def test_a_bom_before_an_event_does_not_make_it_a_stderr_line(rig):
+    raw_stream(rig, b'\xef\xbb\xbf{"type":"system","subtype":"init"}\n')
+    assert base.read_stream(rig.paths.stream, 0)[0] == [{'type': 'system', 'subtype': 'init'}]
+
+
+def test_a_json_line_that_is_no_object_is_a_stderr_event(rig):
+    raw_stream(rig, b'["a", 1]\n')
+    evs = base.read_stream(rig.paths.stream, 0)[0]
+    assert evs == [{'type': 'stderr', 'text': '["a", 1]'}] and normalise(evs[0]) == evs
 
 
 def test_an_oversized_line_caught_mid_write_is_read_whole_once_it_ends(rig, monkeypatch):

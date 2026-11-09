@@ -694,15 +694,29 @@ def _long(f, raw):
         n += len(rest)
 
 
+def _unique(pairs):
+    # a repeated field name would drop a value before redaction reads it, a key
+    # marker among them: such a line is read as raw text instead
+    obj = dict(pairs)
+    if len(obj) != len(pairs):
+        raise ValueError('a field name repeats')
+    return obj
+
+
 def _event(raw, state):
-    line = raw.decode('utf-8', errors='replace').strip()
+    line = raw.decode('utf-8', errors='replace').strip().lstrip('﻿')
     if not line:
         return None, state
-    if line[0] == '{':
+    if line[0] in '{[':
         try:
-            return redact.scrub_json(json.loads(line), state, MAX_DEPTH)
+            obj, after = redact.scrub_json(json.loads(line, object_pairs_hook=_unique), state,
+                                           MAX_DEPTH)
         except (ValueError, RecursionError):    # `{{{...` 100k deep is a stderr line, not a crash
             pass
+        else:
+            if isinstance(obj, dict):
+                return obj, after
+            return {'type': 'stderr', 'text': json.dumps(obj, ensure_ascii=False)}, after
     text, state = redact.scrub(line, state, 'stderr')
     return {'type': 'stderr', 'text': text}, state
 

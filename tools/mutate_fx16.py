@@ -68,6 +68,19 @@ MUTATIONS = [
      r"""        channel = 'json' if raw.lstrip""",
      r"""        channel = 'stderr' if raw.lstrip""")],
      [S + 'test_an_oversized_json_line_opens_a_key_that_json_prose_ends']),
+    ('H12', 'a repeated field name drops a marker before redaction reads it', [(BASE,
+     r"""    if len(obj) != len(pairs):""",
+     r"""    if False:""")],
+     [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key']),
+    ('H13', 'a byte order mark makes a JSON line a stderr line', [(BASE,
+     r"""    line = raw.decode('utf-8', errors='replace').strip().lstrip('﻿')""",
+     r"""    line = raw.decode('utf-8', errors='replace').strip()""")],
+     [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key',
+      S + 'test_a_bom_before_an_event_does_not_make_it_a_stderr_line']),
+    ('H14', 'a JSON array line is not decoded', [(BASE,
+     r"""    if line[0] in '{[':""",
+     r"""    if line[0] == '{':""")],
+     [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key']),
 ]
 
 
