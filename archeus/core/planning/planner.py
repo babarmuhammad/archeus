@@ -276,6 +276,7 @@ def resolve(parsed, facts):
             'action_classes': list(t.get('action_classes') or ()),
             'capabilities_required': list(t.get('capabilities_required') or ()),
             'min_model_tier': t.get('min_model_tier'),
+            'effort': validate.effort_for(t['kind'], t['estimate']),
             'workspace_mode': t.get('workspace_mode') or (
                 'worktree' if t['kind'] == 'code_change' else 'in_place'),
             'touches': list(t.get('touches') or ()),

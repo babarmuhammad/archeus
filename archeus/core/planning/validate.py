@@ -33,6 +33,16 @@ TIER_WEIGHT = {'small': 1, 'mid': 2, 'large': 4}
 DEFAULT_TIER = 'mid'        # a task that names no tier is costed as well-specified work
 BAND_CEILINGS = (('low', 6), ('medium', 20))
 BAND_ABOVE = 'high'
+#: effort by task kind: (a task estimated 1-3, one estimated 4-5). A kind that is
+#: not here (a human task) runs no model, so it asks for no effort.
+EFFORT_BY_KIND = {'code_change': ('medium', 'high'), 'research': ('medium', 'high'),
+                  'document': ('low', 'medium'), 'presentation': ('low', 'medium'),
+                  'inspection': ('low', 'low'), 'verification': ('low', 'low')}
+
+
+def effort_for(kind, estimate):
+    pair = EFFORT_BY_KIND.get(kind)
+    return pair and pair[estimate >= 4]
 
 
 def find_cycle(tasks):
@@ -193,6 +203,9 @@ def problems(tasks, *, criteria=(), explicit=(), asked=()):
         tier = t.get('min_model_tier')
         if tier is not None and tier not in entities.MODEL_TIERS:
             out.append('task %s has an unknown model tier %r' % (k, tier))
+        effort = t.get('effort')
+        if effort is not None and effort not in entities.EFFORTS:
+            out.append('task %s has an unknown effort %r' % (k, effort))
         est = t.get('estimate', 1)
         if isinstance(est, bool) or not isinstance(est, int) or not 1 <= est <= 5:
             out.append('task %s has an estimate outside 1-5' % k)
@@ -234,11 +247,12 @@ _TASK_RUNTIME = {'integration_state': None, 'merged_revision': None, 'conflicts'
 def digest(plan, tasks):
     """sha256 of a version's canonical content: the Plan entity's fields but its
     id, state and digest, and every task's contract (by key)."""
-    # `edited_by` came with P19 B4: a digest stored before it never had the key
+    # `edited_by` came with P19 B4, a task's `effort` after it: a digest stored
+    # before either never had the key
     body = {'plan': {k: v for k, v in plan.to_dict().items() if k not in _PLAN_SKIP
                      and not (k == 'edited_by' and v is None)},
             'tasks': sorted(({k: v for k, v in replace(t, **_TASK_RUNTIME).to_dict().items()
-                              if k not in _TASK_SKIP}
+                              if k not in _TASK_SKIP and not (k == 'effort' and v is None)}
                              for t in tasks), key=lambda t: t['key'])}
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(',', ':'))
                           .encode('utf-8')).hexdigest()

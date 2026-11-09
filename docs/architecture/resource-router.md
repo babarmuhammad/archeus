@@ -259,7 +259,7 @@ the router never goes *above* what is needed unless nothing smaller is eligible 
 ## 6. Effort and cost economics
 
 - Effort is a per-execution parameter (today's `config.MODEL_EFFORT_FRONTIER` / Power slider).
-  The planner sets it by task kind; the router may lower it when the account is CONSTRAINED (not built: no code lowers effort, and both requirement builders set `effort` to `None`).
+  The planner sets it by task kind; the router may lower it when the account is CONSTRAINED (not built: `router.fit(..., lower=True)` exists and is tested, but nothing calls it; see the addendum below).
   Rationale from the Claude Platform cost guidance: *a stronger model at low effort can be cheaper
   than a weaker model working hard* — so tier and effort are chosen together, not maximised.
 - **Prompt-cache preservation:** brain calls and task prompts are assembled with a stable prefix
@@ -268,6 +268,23 @@ the router never goes *above* what is needed unless nothing smaller is eligible 
 - **Prompt hygiene on model upgrade:** when a new model family member becomes current
   (`models.roster`), an automation proposes a review of Archeus's own prompt templates (remove
   emphasis boosters / verification rituals that newer models do not need). Proposal only.
+
+### Addendum: effort and tier per task, rules first (built)
+
+Owner's choice: an effort and a tier per task, chosen by rules, no LLM judge, with the outcome of each model logged so a threshold can be tuned later.
+
+Built:
+
+- **Planner.** `validate.EFFORT_BY_KIND` maps task kind and size (estimate 1-3 or 4-5) to `low`, `medium` or `high`; `planner.resolve` writes it to `Task.effort` beside `min_model_tier`. The planner's own answer never sets it, and a human task gets none. `Task.effort` is part of the frozen contract: `validate.problems` refuses a value off `entities.EFFORTS`, the plan digest carries it when set (a stored digest without it still holds), and `PlanTaskSpec` and the plan editor carry it.
+- **Router.** `resources.task_snapshot` reads `task.effort` into the requirement (source `plan_contract`). `_model` still picks the smallest tier that fits; the effort is kept only if the harness accepts it (as before), then clamped by `router.fit` to the levels the chosen model accepts. `ModelInfo.efforts` carries them (for Claude, from the model catalogue `roster`, an alias taking its family's); a model that states none takes its harness's. The result is `RouteDecision.effort` and, through `work.new_execution`, `Execution.effort`, next to the model. A required effort the model cannot take eliminates the candidate.
+- **Adapter.** Unchanged: the Claude Code adapter already passes `Execution.effort` as `--effort <level>` and declares `low`, `medium`, `high`. Codex and pi take no effort, so a task effort is dropped for them.
+- **Outcome log.** `outcomes.by_model(conn)` groups finished executions (ended OK, or by their own fault) by task kind, model and effort: how many passed or failed their latest verification, and the tokens and cost their ledger rows report, with `complete` false while any figure is a lower bound. Read-only, no new table. It is the data to tune `EFFORT_BY_KIND` and tier choice on, not a tuner.
+
+Not built:
+
+- Lowering effort on a CONSTRAINED account: `router.fit(effort, allowed, lower=True)` is the pure one-step function, tested, unwired. Wiring it needs the owner's answer on whether a constrained account may lower the planner's effort or only the tier.
+- Choosing the tier by rule: `min_model_tier` is still the planner model's guess; a task that names none runs the CLI's default model.
+- Any use of the outcome log by the router, an escalation on a failed verification, and a route for an own call's effort (`call_snapshot` still sets `effort` to `None`).
 
 ## 7. Fallback, failure and retry
 

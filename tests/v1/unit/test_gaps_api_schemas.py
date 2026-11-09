@@ -671,6 +671,7 @@ VOCAB_ENUMS = [
     ('PlanTaskSpec', 'action_classes[]', entities.ACTION_CLASSES),
     ('PlanTaskSpec', 'capabilities_required[]', entities.CAPABILITIES),
     ('PlanTaskSpec', 'min_model_tier', entities.MODEL_TIERS),
+    ('PlanTaskSpec', 'effort', entities.EFFORTS),
     ('PlanTaskSpec', 'workspace_mode', entities.WORKSPACE_MODES),
     ('OptIn', 'kind', entities.OPT_IN_KINDS),
     ('Account', 'auth_kind', entities.AUTH_KINDS),

@@ -286,7 +286,8 @@ def _models(caps):
         if isinstance(m, str):
             out.append({'id': m, 'tier': None, 'context_window': None})
         else:
-            out.append({'id': m.id, 'tier': m.tier, 'context_window': m.context_window})
+            out.append({'id': m.id, 'tier': m.tier, 'context_window': m.context_window,
+                        **({'efforts': list(m.efforts)} if m.efforts else {})})
     return out
 
 
@@ -529,7 +530,7 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
            'project_id': mission.project_id,
            'capabilities': sorted(task.capabilities_required), 'structured_output': False,
            'min_model_tier': task.min_model_tier, 'min_context_window': None, 'models': {},
-           'model_required': False, 'effort': None, 'effort_required': False,
+           'model_required': False, 'effort': task.effort, 'effort_required': False,
            'preferred': {'accounts': list(rp.get('preferred_accounts') or ()),
                          'harnesses': list(rp.get('preferred_harnesses') or ())},
            'forbidden': {'accounts': list(rp.get('forbidden_accounts') or ()),
@@ -542,7 +543,7 @@ def task_snapshot(conn, *, adapters, feed, mission, plan, task, decision, now):
                                  'boundary': i.get('boundary')} for i in decision.items]}}
     req['_source'] = dict.fromkeys(set(req) - set(REQ_IDENTITY), 'core')
     req['_source'].update(capabilities='plan_contract', min_model_tier='plan_contract',
-                          size='plan_contract', preferred='user_override',
+                          effort='plan_contract', size='plan_contract', preferred='user_override',
                           forbidden='user_override', conversational='conversation',
                           policy='policy')
     snap = {'now': _iso(now), 'harnesses': hs, 'accounts': accounts, 'terms': _terms(conn),

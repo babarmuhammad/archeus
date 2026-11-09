@@ -759,13 +759,13 @@ worktree is kept for inspection. What cannot be reconstructed: a check's output 
 | Model chosen by tier (smallest offer meeting it) | **partial** — the tier is the planner's enum guess | `router.py` model step |
 | Task `kind` in routing | **missing** (the resource-router doc names it; the code does not read it) | `resources.task_snapshot` |
 | Context-window requirement for tasks | **seam only** (the router supports it; tasks pass none) | `router.py`, `resources.py` |
-| Effort chosen per task | **seam only** (always None) | `resources.py` |
+| Effort chosen per task | **implemented** for tasks (a kind/size table, clamped to the model; resource-router §6 addendum); still None for own calls | `validate.effort_for`, `router.py` |
 | Latency, cost, criticality, quality targets | **missing** (no adapter reports cost or latency; P10 D15) | — |
 | Different models/harnesses per task in one mission | **partial**: per-task routing is real; production executes only on Claude Code | `runtime.real_executors` |
 | Separate identities for planner / executor / reviewer calls | **implemented** for planner (own call, `Plan.route_decision_id`); **P13** adds the reviewer (own call `review`, `Review.route_decision_id`) | `calls.py` |
 | Fallback governed by resource policy (allow / ask / deny), P9 re-checked | **implemented** | `router.py` fallback, `resources.request_route`, `work.dispatch_task` |
 | Provenance of harness/account/model/effort per execution, session, route decision | **implemented** | `work.new_execution`, `sessions`, `resources.record_route` |
-| Learning from verified outcomes per model | **missing** | — |
+| Learning from verified outcomes per model | **partial** — the log exists (`outcomes.by_model`), nothing reads it | `outcomes.py` |
 | Autonomous selection over model × harness × account from task requirements | **missing** as a whole | — |
 
 ### 26.2 Abstractions

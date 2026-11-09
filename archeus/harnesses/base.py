@@ -89,6 +89,7 @@ class ModelInfo:
     id: str
     tier: Optional[str] = None          # small | mid | large
     context_window: Optional[int] = None
+    efforts: tuple = ()                 # the levels this model accepts; () unknown
 
 
 @dataclass(frozen=True)

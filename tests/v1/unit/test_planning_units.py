@@ -266,7 +266,8 @@ def test_a_planners_version_keeps_the_digest_it_was_stored_with():
     """P19 B4 added `Plan.edited_by`: a digest stored before it never had the
     key, so a planner's version (no editor) must hash exactly as it did then,
     or every stored plan would fail its integrity check. An edited version's
-    author is part of its content."""
+    author is part of its content. `Task.effort` came after it, the same way:
+    a task with none hashes as it did, one with an effort carries it."""
     import hashlib
     import json
     p = entities.Plan(id='pln_01J0000000000000000000000A',
@@ -277,7 +278,7 @@ def test_a_planners_version_keeps_the_digest_it_was_stored_with():
     before = {k: v for k, v in p.to_dict().items()
               if k not in ('id', 'state', 'digest', 'edited_by')}
     tk = {k: v for k, v in task.to_dict().items()
-          if k not in ('id', 'state', 'failure_class', 'plan_id')}
+          if k not in ('id', 'state', 'failure_class', 'plan_id', 'effort')}
     old = hashlib.sha256(json.dumps({'plan': before, 'tasks': [tk]}, sort_keys=True,
                                     separators=(',', ':')).encode('utf-8')).hexdigest()
     assert validate.digest(p, [task]) == old
@@ -288,6 +289,7 @@ def test_a_planners_version_keeps_the_digest_it_was_stored_with():
     merged = replace(task, integration_state='MERGED', merged_revision='a' * 40,
                      conflicts=('calc.py',))
     assert validate.digest(p, [merged]) == old
+    assert validate.digest(p, [replace(task, effort='high')]) != old
     assert validate.digest(p, [replace(merged, objective='another')]) != old
     # every field outside the dispatch contract is skipped or reset, so a new
     # runtime field cannot break the digest again
