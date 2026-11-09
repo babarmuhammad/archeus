@@ -330,12 +330,6 @@ def test_g07_a_billed_models_object_that_is_not_an_object_bills_nothing():
         'claude-x', 'claude-y']
 
 
-@pytest.mark.xfail(strict=True, reason="adapter.py:99 sorts the modelUsage keys without "
-                                       "reading them: the stream is the child's own stdout "
-                                       "(adapter.py:60-61, any field may be of any type), so "
-                                       "a modelUsage with keys of two kinds raises TypeError "
-                                       "out of normalise and the whole execution reads as a "
-                                       "crash instead of an unattributed result")
 def test_g08_billed_models_with_keys_of_two_kinds_are_never_a_crash_nor_a_name():
     """adapter.py:99: `sorted(billed)` over a dict the child wrote. `{1: ...,
     'claude-x': ...}` is a dict, so g07's `isinstance` guard passes and `sorted`
@@ -347,7 +341,7 @@ def test_g08_billed_models_with_keys_of_two_kinds_are_never_a_crash_nor_a_name()
     keep the string keys — turns this red as XPASS; a fix that sorted the keys
     with `key=str` would keep the integer in the ledger and still be wrong."""
     billed = _events(_result(modelUsage={1: {}, 'claude-x': {}}))[0]['billed']
-    assert all(isinstance(b, str) for b in billed) and list(billed) == sorted(billed)
+    assert billed == ['claude-x']
 
 
 @pytest.mark.parametrize('is_error', ['yes', 1, [0], {'a': 1}, 'false'],
@@ -559,11 +553,6 @@ def test_g17_an_isolated_execution_never_gets_the_account_home_as_its_config_dir
     assert launch.last['env'].get('CLAUDE_CONFIG_DIR') == other
 
 
-@pytest.mark.xfail(strict=True, reason="adapter.py:192-193 clears the provider keys with "
-                                       "setdefault, so one that arrives in spec.env "
-                                       "survives into the child's environment and shadows "
-                                       "the account login the header (adapter.py:16-20) and "
-                                       "config.account_env both say to pop")
 def test_g18_a_key_the_spec_carries_never_reaches_the_child(tmp_path, launch):
     """adapter.py:192-193 (`for k in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
     env.setdefault(k, None)`). The module's own header (adapter.py:16-20, the
@@ -573,9 +562,10 @@ def test_g18_a_key_the_spec_carries_never_reaches_the_child(tmp_path, launch):
     execution authenticates as the key's owner while the ledger, the hook and the
     rate accounting all name the account in `home_ref`."""
     spec = _spec(tmp_path, env={'ANTHROPIC_API_KEY': 'sk-from-the-spec',
-                                'ANTHROPIC_AUTH_TOKEN': 'tok-from-the-spec'})
+                                'ANTHROPIC_AUTH_TOKEN': 'tok-from-the-spec',
+                                'CLAUDE_CODE_OAUTH_TOKEN': 'oauth-from-the-spec'})
     _adapter().start(spec)
-    for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'):
+    for key in ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN'):
         assert key not in launch.last['env'], key
 
 
