@@ -526,67 +526,88 @@ def worklog_hook_installed(cfgdir=None):
 # Opt-in from the hooks menu, never installed on its own. It writes to the same
 # user-level settings.json the other hooks here do and nowhere else; the hook
 # script touches no credentials, only a per-session state file.
-_STATUS_EVENTS = ('UserPromptSubmit', 'Notification', 'Stop')
+_STATUS_EVENTS = ('UserPromptSubmit', 'Notification', 'Stop', 'SessionEnd')
 
 
 def _status_hook_command():
     import sys
     script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'status_hook.py')
-    return f'"{sys.executable}" "{script}"'
+    # a moved or deleted checkout makes python exit 2, which blocks the prompt or the stop
+    return f'"{sys.executable}" "{script}" || exit 0'
 
 
 def _is_status(h):
     return 'status_hook.py' in str(h.get('command', ''))
 
 
+def _status_hooks(s, event):
+    """Our hook dicts for *event*, enabled or disabled, skipping foreign junk."""
+    for key in HOOK_STATE_KEYS:
+        block = s.get(key)
+        entries = block.get(event) if isinstance(block, dict) else None
+        for e in entries if isinstance(entries, list) else []:
+            hs = e.get('hooks') if isinstance(e, dict) else None
+            for h in hs if isinstance(hs, list) else []:
+                if isinstance(h, dict) and _is_status(h):
+                    yield h
+
+
 def install_status_hook(cfgdir=None):
-    """Idempotently install (or repair) the status hook on its three events."""
+    """Idempotently install (or repair) the status hook on its events. A disabled
+    copy counts as installed. False when settings.json has a shape it cannot add to."""
     s = _load(cfgdir)
     hooks = s.setdefault('hooks', {})
+    if not isinstance(hooks, dict):
+        return False
     cmd = _status_hook_command()
     changed = False
     for event in _STATUS_EVENTS:
-        entries = hooks.setdefault(event, [])
-        if not isinstance(entries, list):
-            continue
-        ours = [h for e in entries for h in (e.get('hooks') or []) if _is_status(h)]
+        ours = list(_status_hooks(s, event))
         for h in ours:
             if h.get('command') != cmd:
                 h['command'] = cmd
                 changed = True
         if not ours:
+            entries = hooks.setdefault(event, [])
+            if not isinstance(entries, list):
+                return False
             entries.append({'hooks': [{'type': 'command', 'command': cmd, 'timeout': 5}]})
             changed = True
     return _save(s, cfgdir) if changed else True
 
 
 def uninstall_status_hook(cfgdir=None):
-    """Remove only our entries; a foreign hook sharing an entry stays."""
+    """Remove only our entries, enabled or disabled; a foreign hook sharing an entry stays."""
     s = _load(cfgdir)
     changed = False
-    for event in _STATUS_EVENTS:
-        entries = (s.get('hooks') or {}).get(event)
-        if not isinstance(entries, list):
+    for key in HOOK_STATE_KEYS:
+        block = s.get(key)
+        if not isinstance(block, dict):
             continue
-        for entry in list(entries):
-            hs = entry.get('hooks') or []
-            kept = [h for h in hs if not _is_status(h)]
-            if len(kept) != len(hs):
-                changed = True
-                if kept:
-                    entry['hooks'] = kept
-                else:
-                    entries.remove(entry)
-        if not entries:
-            s['hooks'].pop(event, None)
+        for event in _STATUS_EVENTS:
+            entries = block.get(event)
+            if not isinstance(entries, list):
+                continue
+            touched = False
+            for entry in list(entries):
+                hs = entry.get('hooks') if isinstance(entry, dict) else None
+                if not isinstance(hs, list):
+                    continue
+                kept = [h for h in hs if not (isinstance(h, dict) and _is_status(h))]
+                if len(kept) != len(hs):
+                    changed = touched = True
+                    if kept:
+                        entry['hooks'] = kept
+                    else:
+                        entries.remove(entry)
+            if touched and not entries:
+                block.pop(event)
     return _save(s, cfgdir) if changed else True
 
 
 def status_hook_installed(cfgdir=None):
-    hooks = _load(cfgdir).get('hooks') or {}
-    return all(any(isinstance(e, dict) and any(_is_status(h) for h in (e.get('hooks') or []))
-                   for e in hooks.get(event) or [])
-               for event in _STATUS_EVENTS)
+    s = _load(cfgdir)
+    return all(any(True for _ in _status_hooks(s, event)) for event in _STATUS_EVENTS)
 
 
 # ── account rotation: StopFailure on a rate limit ────────────

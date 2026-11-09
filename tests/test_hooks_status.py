@@ -86,7 +86,7 @@ def test_hooks_menu_row_toggles_it_and_nothing_installs_unasked(monkeypatch, tmp
     on = DOWN * 5 + ENTER + ESC          # past the five template/edit rows
     run_flow(monkeypatch, on, hooks.hooks_menu)
     assert hooks.status_hook_installed()
-    run_flow(monkeypatch, DOWN * 3 + on, hooks.hooks_menu)   # three hook rows now sit above
+    run_flow(monkeypatch, DOWN * 4 + on, hooks.hooks_menu)   # four hook rows now sit above
     assert not hooks.status_hook_installed()
 
 
@@ -98,3 +98,81 @@ def test_session_list_shows_the_state(monkeypatch, tmp_path):
     _, cap, _ = run_flow(monkeypatch, ESC, sessions_menu,
                          scan_sessions(folder), folder, 'proj', str(sb.root / 'work' / 'proj'))
     assert 'needs input' in cap.plain and 'working' in cap.plain
+
+
+def test_the_command_exits_zero_when_the_script_is_gone(tmp_path):
+    gone = tmp_path / 'moved' / 'status_hook.py'
+    cmd = hooks._status_hook_command().replace(SCRIPT, str(gone))
+    assert str(gone) in cmd and 'status_hook.py' in cmd
+    r = subprocess.run(cmd, shell=True, capture_output=True, timeout=30)
+    assert r.returncode == 0
+
+
+def test_a_disabled_status_hook_is_seen_and_not_installed_twice_and_is_removed(monkeypatch, tmp_path):
+    sp = tmp_path / 'settings.json'
+    monkeypatch.setattr(hooks, 'settings_path', str(sp))
+    assert hooks.install_status_hook()
+    d = json.loads(sp.read_text())
+    d['hooks_disabled'], d['hooks'] = d['hooks'], {}
+    sp.write_text(json.dumps(d))
+    assert hooks.status_hook_installed()
+    assert hooks.install_status_hook()
+    d = json.loads(sp.read_text())
+    assert not d.get('hooks')
+    assert sum(len(v) for v in d['hooks_disabled'].values()) == 4
+    assert hooks.uninstall_status_hook()
+    d = json.loads(sp.read_text())
+    assert not d.get('hooks') and not d.get('hooks_disabled')
+    assert not hooks.status_hook_installed()
+
+
+def test_install_survives_foreign_junk_in_settings(monkeypatch, tmp_path):
+    sp = tmp_path / 'settings.json'
+    monkeypatch.setattr(hooks, 'settings_path', str(sp))
+    sp.write_text(json.dumps({'hooks': {'Stop': ['junk', {'hooks': ['junk']}]}}))
+    assert hooks.install_status_hook() and hooks.status_hook_installed()
+    sp.write_text(json.dumps({'hooks': {'Stop': 'junk'}}))
+    assert not hooks.install_status_hook()
+    sp.write_text(json.dumps({'hooks': []}))
+    assert not hooks.install_status_hook()
+
+
+def test_session_end_deletes_the_state_file(tmp_path):
+    status_hook.handle(_payload(tmp_path, 'Stop'))
+    assert status_hook.read_all(str(tmp_path)) == {'abc-123': 'idle'}
+    status_hook.handle(_payload(tmp_path, 'SessionEnd'))
+    assert status_hook.read_all(str(tmp_path)) == {}
+    assert not (tmp_path / status_hook.DIRNAME / 'abc-123.json').exists()
+    status_hook.handle(_payload(tmp_path, 'SessionEnd', sid='never-seen'))
+
+
+def test_read_all_deletes_a_ghost_file(tmp_path):
+    status_hook.handle(_payload(tmp_path, 'UserPromptSubmit'))
+    p = tmp_path / status_hook.DIRNAME / 'abc-123.json'
+    v = json.loads(p.read_text())
+    v['ts'] -= status_hook.TTL + 1
+    p.write_text(json.dumps(v))
+    assert status_hook.read_all(str(tmp_path)) == {}
+    assert not p.exists()
+
+
+def test_a_session_id_with_a_trailing_newline_writes_nothing(tmp_path):
+    status_hook.handle(_payload(tmp_path, 'Stop', sid='abc\n'))
+    assert not os.path.exists(tmp_path / status_hook.DIRNAME)
+
+
+def test_a_relative_transcript_path_does_not_write_into_the_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('CLAUDE_CONFIG_DIR', str(tmp_path / 'cfg'))
+    status_hook.handle({'hook_event_name': 'Stop', 'session_id': 'abc-123',
+                        'transcript_path': 'projects/x/y.jsonl'})
+    assert not (tmp_path / 'archeus-status').exists()
+    assert status_hook.read_all(str(tmp_path / 'cfg')) == {'abc-123': 'idle'}
+
+
+def test_the_temp_file_name_is_unique_per_process(tmp_path, monkeypatch):
+    seen = []
+    real = os.replace
+    monkeypatch.setattr(os, 'replace', lambda a, b: (seen.append(os.path.basename(a)), real(a, b)))
+    status_hook.handle(_payload(tmp_path, 'Stop'))
+    assert seen == ['abc-123.%d.tmp' % os.getpid()]
