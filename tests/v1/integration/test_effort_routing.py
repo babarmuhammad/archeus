@@ -20,7 +20,7 @@ EFFORTS = ('low', 'medium', 'high')
 def _rig(db, *models):
     rig = Rig(db, adapters=[FakeHarness(models=models or (ModelInfo('m-mid', 'mid'),),
                                         efforts=EFFORTS)])
-    rig.account('A')
+    rig.acct = rig.account('A')
     return rig
 
 
@@ -89,7 +89,15 @@ def test_finished_executions_group_by_kind_model_and_effort_with_verdict_and_usa
     assert got == [
         {'kind': 'code_change', 'model': 'm-mid', 'effort': 'high', 'executions': 1,
          'passed': 0, 'failed': 0, 'unverified': 1, 'tokens': None, 'cost_usd': None,
+         'cache_read': None, 'cache_write': None, 'by_route': [
+             {'harness': 'fake', 'account_ref': rig.acct, 'model': 'm-mid', 'cache_read': None,
+              'cache_write': None}],
+         'verification_attempts': None, 'changes_requested': None, 'reworked': 0,
          'complete': False},
         {'kind': 'code_change', 'model': 'm-mid', 'effort': 'low', 'executions': 2,
          'passed': 1, 'failed': 1, 'unverified': 0, 'tokens': 15, 'cost_usd': 0.25,
+         'cache_read': None, 'cache_write': None, 'by_route': [
+             {'harness': 'fake', 'account_ref': rig.acct, 'model': 'm-mid', 'cache_read': None,
+              'cache_write': None}],
+         'verification_attempts': 0, 'changes_requested': None, 'reworked': 0,
          'complete': False}]

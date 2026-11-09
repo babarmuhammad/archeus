@@ -24,7 +24,10 @@ MGR = 'archeus/core/execution/manager.py'
 EXE = 'archeus/core/application/executions.py'
 CALLS = 'archeus/core/calls.py'
 ENT = 'archeus/core/domain/entities.py'
+OUT = 'archeus/core/application/outcomes.py'
 U = 'tests/v1/unit/test_routing_units.py'
+OC = 'tests/v1/unit/test_outcomes_cache.py'
+OR = 'tests/v1/unit/test_outcomes_rework.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -206,6 +209,30 @@ MUTATIONS = [
      "           and r.created_at > since and r.entity.id not in dropped]",
      "           and r.entity.id not in dropped]",
      [I + '::test_I_R3_a_mission_stays_where_it_runs_until_its_resources_are_set']),
+    ('R38', 'a cache figure nobody reported read as 0', OUT,
+     "    return total if n is None else (total or 0) + n\n",
+     "    return (total or 0) + (n or 0)\n",
+     [OC + '::test_nothing_reported_stays_none_never_zero']),
+    ('R39', 'cache totals not split by account', OUT,
+     "(d.harness_id, d.account_ref, d.model), {",
+     "(d.harness_id, d.model), {",
+     [OC + '::test_cache_totals_sum_what_was_reported_and_split_by_route']),
+    ('R40', 'a first verification counted as a retry', OUT,
+     "(g['verification_attempts'] or 0) + checks[e.id] - 1",
+     "(g['verification_attempts'] or 0) + checks[e.id]",
+     [OR + '::test_a_verified_once_execution_made_no_extra_attempt_but_is_not_absent']),
+    ('R41', 'every review verdict counted as changes requested', OUT,
+     "lambda v: v.verdict == 'changes_requested')",
+     "lambda v: True)",
+     [OR + '::test_changes_requested_counts_that_verdict_on_the_groups_missions']),
+    ('R42', 'an execution that never started counted as a rerun', OUT,
+     "lambda e: e.charged is not False)",
+     "lambda e: True)",
+     [OR + '::test_an_execution_that_never_started_is_not_a_second_run']),
+    ('R43', 'rework nobody could count read as 0', OUT,
+     "'verification_attempts': None, 'changes_requested': None, 'reworked': 0,",
+     "'verification_attempts': 0, 'changes_requested': 0, 'reworked': 0,",
+     [OR + '::test_nothing_to_count_is_none_but_for_the_executions_themselves']),
 ]
 
 
