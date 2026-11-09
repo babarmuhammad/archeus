@@ -16,6 +16,7 @@ Native facts - the socket owner, the process read, the Job table - are the backe
 and the broker stays behind `BROKER_DISPATCH_ENABLED` and the origin switch: never alone.
 """
 
+import io
 import ipaddress
 import secrets
 import socket
@@ -51,6 +52,25 @@ def _close(sock):
             op()
         except OSError:
             pass
+
+
+class _Raw(io.RawIOBase):
+    """*f*'s receives, each allowed only the time left to *end* and refused once it is
+    gone. A buffered reader above this asks again for every byte it is short of, so a
+    peer that drips one byte inside each socket timeout cannot outlast the deadline."""
+
+    def __init__(self, conn, f, clock, end):
+        self._conn, self._f, self._clock, self._end = conn, f, clock, end
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        left = self._end - self._clock()
+        if left <= 0:
+            raise B.Refused(408, 'the request took too long to arrive')
+        self._conn.settimeout(min(wire.IDLE_S, left))
+        return self._f.readinto(b)
 
 
 class _Gate:
@@ -96,7 +116,11 @@ class _Listener:
             if not self._slots.acquire(blocking=False):
                 _close(conn)
                 continue
-            threading.Thread(target=self._one, args=(conn,), daemon=True).start()
+            try:
+                threading.Thread(target=self._one, args=(conn,), daemon=True).start()
+            except RuntimeError:
+                self._slots.release()
+                _close(conn)
 
     def _one(self, conn):
         try:
@@ -112,7 +136,6 @@ class _Listener:
             self._conns.add(conn)
         ctx = evidence = None
         try:
-            conn.settimeout(wire.IDLE_S)
             ctx = ConnectionContext(
                 socket=conn, local_endpoint=tuple(conn.getsockname()[:2]),
                 remote_endpoint=tuple(conn.getpeername()[:2]),
@@ -122,9 +145,11 @@ class _Listener:
             if why is not None:
                 self._refused(why)
                 return
-            self._transport.broker.serve(
-                _Gate(conn.makefile('rb'), lambda: self._still(ctx, evidence)),
-                conn.sendall, principal, self)
+            broker = self._transport.broker
+            rfile = io.BufferedReader(_Raw(conn, conn.makefile('rb', buffering=0), broker._clock,
+                                           broker._clock() + B.READ_DEADLINE_S))
+            broker.serve(_Gate(rfile, lambda: self._still(ctx, evidence)), conn.sendall,
+                         principal, self)
         except Exception:
             self._refused('error')
         finally:

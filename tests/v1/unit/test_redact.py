@@ -8,7 +8,7 @@ import time
 import pytest
 
 from archeus.core.domain import ids
-from archeus.core.redact import PEM_MAX, redact, redact_json
+from archeus.core.redact import redact, redact_json
 
 KEY = 'a1B2c3D4' * 4
 
@@ -161,9 +161,12 @@ def test_a_key_is_redacted_however_often_its_text_was_escaped(dumps):
     assert 'secretsecret' not in out and out.endswith(' tail')
 
 
-def test_a_key_without_an_end_line_is_cut_at_the_bound_not_at_the_first_odd_character():
-    out = redact('-----BEGIN PRIVATE KEY-----\n→' + 'A' * PEM_MAX + 'tail-after-the-bound')
-    assert out == '[redacted]AAtail-after-the-bound'
+@pytest.mark.parametrize('end', ['-----END PRIVATE KEY-----', ''])
+@pytest.mark.parametrize('size', [100, 16384, 200_000])
+def test_a_key_of_any_size_is_redacted_to_its_end_line_or_to_the_end_of_the_text(size, end):
+    out = redact('before\n-----BEGIN PRIVATE KEY-----\n' + 'A' * size + 'SYNTH_PRIVATE_TAIL' + end + ' after')
+    assert 'SYNTH_PRIVATE_TAIL' not in out and out.startswith('before\n')
+    assert out.endswith(' after') == bool(end)
 
 
 @pytest.mark.parametrize('before', ['\\n', '\\t', '\\r\\n', ' '])
@@ -216,3 +219,11 @@ def test_every_pattern_is_linear_on_its_worst_input(name):
         redact(text)
         # a quadratic pattern needs seconds here (the JWT one took 3.8 s at 120 KB)
         assert time.perf_counter() - t < 0.5, text[:40]
+
+
+def test_keys_that_redact_to_one_name_stay_distinct_fields():
+    a, b = 'brk_' + 'Aa1-_' * 8, 'brk_' + 'Bb2-_' * 8
+    out = redact_json({a: {'first': 1}, b: {'second': 2}, '[redacted]': 3, '[redacted] #0': 5, 'plain': [4]})
+    assert sorted(map(json.dumps, out.values())) == sorted(['{"first": 1}', '{"second": 2}', '3', '5', '[4]'])
+    assert out['plain'] == [4] and 'Aa1' not in json.dumps(out) and 'Bb2' not in json.dumps(out)
+    assert sorted(redact_json({a: 'x', b: 'y'}).values()) == ['x', 'y']

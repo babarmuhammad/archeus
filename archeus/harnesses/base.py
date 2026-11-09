@@ -26,6 +26,7 @@ from typing import Mapping, Optional, Protocol, runtime_checkable
 
 from claude_sessions import config, proc
 
+from ..core.redact import close_pem, pem_open
 from ..infra.paths import MCP_CONFIG, REQUEST_DIR, ExecPaths, _plain_dir, archeus_home, run_dir
 
 log = logging.getLogger('archeus.harnesses')
@@ -641,11 +642,31 @@ def sweep_mcp_configs(keep):
 MAX_LINE = 8 << 20
 
 
+#: how far before a read's offset the stream is looked at to know whether the read starts
+#: inside a private key
+KEY_PROBE = 1 << 16
+_KEY_BODY = re.compile(r'[A-Za-z0-9+/=]{16,}')
+
+
+def _inside_key(f, offset):
+    """Whether *offset* falls inside a private key block: the last key line of the
+    KEY_PROBE bytes before it is a BEGIN. A full probe with no key line that ends on
+    a base64 line is a key too long to see its start: it fails closed."""
+    start = max(0, offset - KEY_PROBE)
+    f.seek(start)
+    text = f.read(offset - start).decode('utf-8', errors='replace')
+    if pem_open(text):
+        return True
+    return start > 0 and '-----' not in text and _KEY_BODY.fullmatch(text.rstrip().rpartition('\n')[2]) is not None
+
+
 def read_stream(path, offset=0, max_events=None):
     """Complete JSONL events from byte *offset* onward -> (events, new_offset), at
     most *max_events* of them when given (a caller folding a long stream in batches).
 
-    A trailing partial line is left for the next read. stderr shares the file,
+    A trailing partial line is left for the next read. A private key over several
+    stderr lines is redacted from its BEGIN line on, and so is the rest of one a read
+    starts inside of. stderr shares the file,
     so a line that is not a JSON object is kept as `{"type": "stderr", "text"}`
     rather than dropped — a traceback is exactly what a crash leaves behind. A line
     over MAX_LINE is skipped to its end and reported the same way.
@@ -656,16 +677,20 @@ def read_stream(path, offset=0, max_events=None):
     except FileNotFoundError:
         return events, offset
     with f:
+        inside = offset > 0 and _inside_key(f, offset)
         f.seek(offset)
         while max_events is None or len(events) < max_events:
             raw = f.readline(MAX_LINE + 1)
             if len(raw) > MAX_LINE:
                 offset += len(raw)
-                rest = raw
+                head = close_pem(raw[:200].decode('utf-8', errors='replace').strip(), inside)[0]
+                rest, seam = raw, b''
                 while rest and not rest.endswith(b'\n'):
+                    inside = pem_open((seam + rest).decode('utf-8', errors='replace'), inside)
+                    seam = rest[-80:]       # a marker the read's end cut in two
                     rest = f.readline(MAX_LINE)
                     offset += len(rest)
-                head = raw[:200].decode('utf-8', errors='replace').strip()
+                inside = pem_open((seam + rest).decode('utf-8', errors='replace'), inside)
                 events.append({'type': 'stderr', 'text': '%s [line over %d bytes dropped]'
                                                          % (head, MAX_LINE)})
                 continue
@@ -679,5 +704,8 @@ def read_stream(path, offset=0, max_events=None):
                 ev = json.loads(line)
             except (ValueError, RecursionError):    # `[[[...` 100k deep is a stderr line, not a crash
                 ev = None
-            events.append(ev if isinstance(ev, dict) else {'type': 'stderr', 'text': line})
+            if not isinstance(ev, dict):
+                line, inside = close_pem(line, inside)
+                ev = {'type': 'stderr', 'text': line}
+            events.append(ev)
     return events, offset
