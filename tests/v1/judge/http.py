@@ -35,6 +35,7 @@ from archeus.core.application import lifecycle
 from archeus.core.domain import entities, ids
 from archeus.core.domain.values import PRINCIPAL_SCOPES, Ref
 from archeus.infra import discovery
+from claude_sessions import netsafe
 
 from .client import IMPLEMENTED, OPERATIONS, CoreClient, CoreClientError, _pending
 
@@ -86,7 +87,7 @@ class _HardCloseHandler(urllib.request.HTTPHandler):
         return self.do_open(_HardClose if len(req.data or b'') < 1 << 16 else http.client.HTTPConnection, req)
 
 
-urllib.request.install_opener(urllib.request.build_opener(_HardCloseHandler))
+urllib.request.install_opener(urllib.request.build_opener(_HardCloseHandler, netsafe.SameOriginRedirect))
 _RETRY_S = (0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2)
 
 
