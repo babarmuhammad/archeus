@@ -26,6 +26,7 @@ T = 'tests/v1/tui/'
 ACC, SEC, BND, PAR, CLT = (T + n for n in ('test_acceptance.py', 'test_security.py',
                                            'test_boundaries.py', 'test_parity.py',
                                            'test_client.py'))
+NXT = T + 'test_attention_next.py'
 G3 = 'tests/v1/judge/test_g03_one_model.py::test_the_tui_shows_the_mission_the_api_reports'
 DESIGN = 'tests/v1/design/test_design_gates.py::test_the_generated_ui_files_are_current'
 
@@ -158,6 +159,14 @@ MUTATIONS = [
      "        if live:\n            render.screen_restore()\n        term.restore()",
      "        if live:\n            render.screen_restore()")],
      [BND + '::test_the_terminal_is_given_back_on_every_way_out']),
+    ('M29', 'the next-item key forgets which item it opened', [(APP,
+     "        seen = self.ui.get('attention_seen', set()) & set(ids)",
+     "        seen = set()")],
+     [NXT + '::test_g_opens_the_first_item_then_each_press_moves_on_then_wraps']),
+    ('M30', 'the next-item key leaves the cursor on the first row', [(APP,
+     "            self.cursor = next((n for n, r in enumerate(rows) if r >= at), self.cursor)",
+     "            self.cursor = self.cursor")],
+     [NXT + '::test_g_scrolls_to_a_card_below_the_fold']),
 ]
 
 

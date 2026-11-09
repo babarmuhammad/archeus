@@ -117,6 +117,7 @@ class App:
             if self.route.get('view') != 'object':
                 self.under = self.route
         self.route, self.cursor, self.dirty = dict(route), 0, True
+        self.ui.pop('focus_ref', None)
 
     def open(self, kind, id_, tab=None):
         self.go({'view': 'object', 'kind': kind, 'id': id_, 'tab': tab})
@@ -155,6 +156,10 @@ class App:
         width = max(width, MIN_WIDTH)
         doc = self.build(width - 2)
         rows = self.rows()
+        at = doc.item_rows.get(self.ui.get('focus_ref'))
+        if at is not None:
+            self.ui.pop('focus_ref')
+            self.cursor = next((n for n, r in enumerate(rows) if r >= at), self.cursor)
         self.cursor = min(self.cursor, max(0, len(rows) - 1))
         focus = rows[self.cursor] if rows else None
         top = [self.top_line(width)]
@@ -245,7 +250,7 @@ class App:
         out = [self.st.paint('Keys', 'text', bold=True)]
         out.append('  ' + '   '.join('%s %s' % (d['tui'], d['label']) for d in DESTINATIONS))
         out.append('  ↑↓ or j k move   ⏎ open   [ ] page   Tab next section   Esc back')
-        out.append('  : go to or tell Archeus   ? help   q quit')
+        out.append('  g next item that needs you   : go to or tell Archeus   ? help   q quit')
         if self.route['view'] == 'object':
             tabs = INSPECTOR_TABS.get(self.route['kind'], ['detail'])
             out.append('  Tabs: ' + '   '.join('%s %s' % (TABS[t]['key'], TABS[t]['label'])
@@ -286,6 +291,8 @@ class App:
             self.mode = {'kind': 'picker', 'q': '', 'hits': self.hits(''), 'i': 0}
         elif c in ('j', 'k'):
             self.move(1 if c == 'j' else -1, rows)
+        elif c == 'g':
+            self.next_attention()
         elif c in ('[', ']'):
             self.move((-1 if c == '[' else 1) * max(1, self.size()[1] - 8), rows)
         elif c.isupper():
@@ -307,6 +314,24 @@ class App:
                 if t:
                     self.route = dict(self.route, tab=t)
                     self.cursor = 0
+
+    def next_attention(self):
+        """Attention's own order (kind, then oldest) walked one item per press: the
+        first item this client has not jumped to yet, and from the start again when
+        it has been to all of them."""
+        items = (self.read(endpoints.attention_items())['data'] or {}).get('items') or []
+        ids = [i['ref']['id'] for i in items]
+        if not ids:
+            return self.say('Nothing waits on you.')
+        seen = self.ui.get('attention_seen', set()) & set(ids)
+        todo = [i for i in ids if i not in seen]
+        if not todo:
+            seen, todo = set(), ids
+        self.ui['attention_seen'] = seen | {todo[0]}
+        self.go({'view': 'attention'})
+        self.ui['focus_ref'] = todo[0]
+        self.say('Attention item %d of %d.' % (ids.index(todo[0]) + 1, len(ids)))
+        return None
 
     def move(self, n, rows):
         if rows:

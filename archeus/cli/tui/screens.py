@@ -63,6 +63,7 @@ class Doc:
     def __init__(self, app, width):
         self.app, self.st, self.width = app, app.st, width
         self.lines, self.acts, self.title = [], [], ''
+        self.item_rows = {}                 # attention ref id -> the line its card starts on
         self._changed = None
 
     def add(self, text='', target=None, acts=None):
@@ -600,6 +601,7 @@ def attention_items(app, doc, limit=None):
 
 
 def entry(app, doc, item):
+    doc.item_rows[item['ref']['id']] = len(doc.lines)
     title = (ATTENTION_REASON.get('%s.%s' % (item['kind'], item.get('reason_code')))
              or ATTENTION_KIND.get(item['kind'], item['kind']))
     head = ('  ' + app.st.badge(ATTENTION_MACHINE.get(item['kind'], item['kind']), item['state'])
