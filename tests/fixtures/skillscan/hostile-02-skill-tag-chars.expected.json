@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-02-skill-tag-chars.md",
+  "kind": "skill",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "hidden-unicode",
+      "line": 9,
+      "match": "U+E0049"
+    }
+  ],
+  "note": "A visually empty line carries three Unicode tag characters (U+E0049 U+E0067 U+E006E); the finding sits on the first offending token."
+}

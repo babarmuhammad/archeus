@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-07-agent-readonly.md",
+  "kind": "agent",
+  "verdict": "benign",
+  "findings": [],
+  "note": "A read-only agent with built-in tool names in `tools:` is ordinary."
+}

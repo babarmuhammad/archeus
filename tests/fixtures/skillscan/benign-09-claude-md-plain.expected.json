@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-09-claude-md-plain.md",
+  "kind": "claude_md",
+  "verdict": "benign",
+  "findings": [],
+  "note": "Ten plain project-rule lines."
+}

@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-05-skill-warns-about-curl-sh.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "False-positive trap: the words curl and sh appear only in a warning sentence, with no fetch-and-execute command line."
+}

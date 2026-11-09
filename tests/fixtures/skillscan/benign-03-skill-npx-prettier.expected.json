@@ -1,0 +1,7 @@
+{
+  "fixture": "benign-03-skill-npx-prettier.md",
+  "kind": "skill",
+  "verdict": "benign",
+  "findings": [],
+  "note": "A plain `npx prettier --write .` step is legitimate tooling, not a pinned-package or shell-wrapper finding."
+}
