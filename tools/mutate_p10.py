@@ -28,6 +28,7 @@ OUT = 'archeus/core/application/outcomes.py'
 U = 'tests/v1/unit/test_routing_units.py'
 OC = 'tests/v1/unit/test_outcomes_cache.py'
 OR = 'tests/v1/unit/test_outcomes_rework.py'
+BC = 'tests/v1/unit/test_outcomes_by_context.py'
 I = 'tests/v1/integration/test_routing.py'
 B = 'tests/v1/unit/test_routing_boundaries.py'
 K1 = 'tests/v1/judge/test_k01_knowledge_without_claude.py'
@@ -233,6 +234,34 @@ MUTATIONS = [
      "'verification_attempts': None, 'changes_requested': None, 'reworked': 0,",
      "'verification_attempts': 0, 'changes_requested': 0, 'reworked': 0,",
      [OR + '::test_nothing_to_count_is_none_but_for_the_executions_themselves']),
+    ('R44', 'the under 1k band reaching 1000 tokens', OUT,
+     "return 'under 1k' if tokens < 1000 else",
+     "return 'under 1k' if tokens <= 1000 else",
+     [BC + '::test_a_package_size_lands_in_its_band_at_the_edges']),
+    ('R45', 'the 1k to 4k band stopping short of 4000', OUT,
+     "'1k to 4k' if tokens <= 4000 else",
+     "'1k to 4k' if tokens < 4000 else",
+     [BC + '::test_a_package_size_lands_in_its_band_at_the_edges']),
+    ('R46', 'a package that reports no figure read as the none band', OUT,
+     "(budget or {}).get('used_tokens')",
+     "(budget or {}).get('used_tokens', 0)",
+     [BC + '::test_a_mission_without_a_package_or_a_figure_has_band_none_not_the_none_band']),
+    ('R47', 'the context band left out of the group', OUT,
+     "(kinds[e.task_id], e.model, e.effort, band)",
+     "(kinds[e.task_id], e.model, e.effort)",
+     [BC + '::test_counts_and_sample_size_per_band']),
+    ('R48', 'an execution that never started counted per band', OUT,
+     "or e.charged is False:\n            continue\n        band =",
+     "or False:\n            continue\n        band =",
+     [BC + '::test_counts_and_sample_size_per_band']),
+    ('R49', 'a cost nobody reported read as 0 per band', OUT,
+     "g['cost_usd'] = _add(g['cost_usd'], u.cost_usd)",
+     "g['cost_usd'] = (g['cost_usd'] or 0) + (u.cost_usd or 0)",
+     [BC + '::test_tokens_and_cost_sum_what_was_reported_and_stay_none_otherwise']),
+    ('R50', 'the token total of a band nobody reported read as 0', OUT,
+     "'unverified': 0, 'tokens': None,\n            'cost_usd': None})",
+     "'unverified': 0, 'tokens': 0,\n            'cost_usd': None})",
+     [BC + '::test_tokens_and_cost_sum_what_was_reported_and_stay_none_otherwise']),
 ]
 
 
