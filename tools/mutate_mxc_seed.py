@@ -86,7 +86,7 @@ MUTATIONS = [
      "self.node.resolve_base(root, 'HEAD', workdirs=workdirs)")], [FIRST]),
     ('MS16', 'the base is never fetched into the store', [(MGR,
      '            self.node.store_fetch(project_id, root, name, base, seed_ref(e.id),\n'
-     '                                  workdirs=workdirs)\n',
+     '                                  workdirs=workdirs, **fetch_options)\n',
      '            pass\n')], [FIRST]),
     ('MS17', 'the base is fetched into a ref that is not the execution seed ref', [(MGR,
      'self.node.store_fetch(project_id, root, name, base, seed_ref(e.id),',

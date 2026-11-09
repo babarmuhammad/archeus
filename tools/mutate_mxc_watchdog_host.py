@@ -66,14 +66,15 @@ OWNED = "        if invalid or [r['op'] for r in records[:2]] != OWNED_OPS:"
 
 MUTATIONS = [
     ('WH01', 'the sender and the proxy open without the flag', [(HB,
-     '    if HEARTBEAT_ENABLED is not True:', '    if False:')], [CLOSED]),
+     '    if (switches.heartbeat if switches is not None else HEARTBEAT_ENABLED) is not True:',
+     '    if False:')], [CLOSED]),
     ('WH02', 'the heartbeat flag ships open', [(HB,
      'HEARTBEAT_ENABLED = False', 'HEARTBEAT_ENABLED = True')], [CLOSED]),
     ('WH03', 'the host flag ships open', [(HOST,
      'HOST_ENABLED = False', 'HOST_ENABLED = True')], [HOST_CLOSED]),
     ('WH04', 'an open host starts with no native readers', [(HOST,
-     '    if HOST_ENABLED is not True or bindings is None:',
-     '    if HOST_ENABLED is not True:')], [NO_READERS]),
+     "    if bindings is None or enabled(bindings.get('switches'), 'host', HOST_ENABLED) is not True:",
+     "    if enabled((bindings or {}).get('switches'), 'host', HOST_ENABLED) is not True:")], [NO_READERS]),
     ('WH05', 'a line still being written is read as a message', [(HB,
      "        data = data[:data.rfind(b'\\n') + 1]", '        data = data')], [TORN]),
     ('WH06', 'the reader forgets where it was', [(HB,

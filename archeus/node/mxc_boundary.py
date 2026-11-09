@@ -40,6 +40,7 @@ from . import broker_listener, isolation as iso
 from . import local, mxc, mxc_ledger, mxc_verifier, staging
 from .isolation import IsolationUnavailable
 from .mxc_context import MxcIsolationContext
+from .pv20_switches import enabled
 
 #: file in the ledger's directory, not a journal (the ledger reads only `.jsonl`)
 RESIDUE = 'registration-residue.log'
@@ -64,7 +65,8 @@ class MxcBoundary:
     def __init__(self, *, win32=None, ledger=None, sdk_root=None, pins=None,
                  schema_validator=None, jobs=None, outcome=launcher_exit, timeout_ms=None,
                  env_rows=None, broker=None, resource_reader=None, readback=None,
-                 watchdog=None, clock=time.time, process_reader=None):
+                 watchdog=None, clock=time.time, process_reader=None, switches=None):
+        self.switches = switches
         self.win32, self.ledger, self.sdk_root, self.pins = win32, ledger, sdk_root, pins
         self.schema_validator, self.outcome, self.timeout_ms = schema_validator, outcome, timeout_ms
         #: pid -> the creation time of the process now running under it, in the encoding
@@ -78,7 +80,8 @@ class MxcBoundary:
         self._reserved = {}                 # key -> [(path, access)] verified for the launch
 
     def available(self):
-        if (mxc.NATIVE_RUN_ENABLED is not True or not callable(self.schema_validator)
+        if (enabled(self.switches, 'native_run', mxc.NATIVE_RUN_ENABLED) is not True
+                or not callable(self.schema_validator)
                 or any(part is None for part in (self.win32, self.ledger, self.sdk_root,
                                                  self.pins, self.process_reader))):
             return False
@@ -251,5 +254,5 @@ class MxcBoundary:
             schema_validator=self.schema_validator, execution_id=key,
             process_seq=len(self._generations(key)) + 1, broker=self.broker,
             resource_reader=self.resource_reader, readback=self.readback,
-            watchdog=self.watchdog, transport=transport,
+            watchdog=self.watchdog, transport=transport, switches=self.switches,
             proxy_url=None if port is None else 'http://%s:%d' % (broker_listener.HOST, port))

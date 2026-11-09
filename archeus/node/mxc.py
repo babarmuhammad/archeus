@@ -314,7 +314,8 @@ class NativeMxc:
     UNVERIFIED: no concrete Win32/CLI transport or resource disposal adapter is
     admitted here. The transport owns retained handles and explicit stdio only.
     """
-    def __init__(self, transport, schema_validator):
+    def __init__(self, transport, schema_validator, *, switches=None):
+        self.switches = switches
         self.transport, self.schema_validator = transport, schema_validator
 
     def spawn(self, policy, *, exe, job, before_resume=None):
@@ -323,7 +324,7 @@ class NativeMxc:
         before the launcher can run. A hook that raises never resumes: the suspended
         child is terminated and retained for Core to quarantine, exactly as for any
         other fault in this sequence."""
-        if not NATIVE_RUN_ENABLED:
+        if not (self.switches.native_run if self.switches is not None else NATIVE_RUN_ENABLED):
             raise MxcUnavailable('native MXC execution disabled')
         validate_policy(policy)
         try:

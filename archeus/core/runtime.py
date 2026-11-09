@@ -390,7 +390,8 @@ class WorldLoop:
 class Core:
     def __init__(self, *, port=DEFAULT_PORT, ports=None, heartbeat_s=15.0, idle_s=IDLE_S,
                  launch_clock=time.monotonic, lock_retry_s=2.0, static_dir=server.STATIC_DIR,
-                 world_poll_s=WORLD_POLL_S, remote_hosts=()):
+                 world_poll_s=WORLD_POLL_S, remote_hosts=(), pv20=None):
+        self.pv20 = pv20
         self.port, self.ports = port, ports or Ports()
         # P15: the tunnel hosts the user enabled (p15-design-gate §8.2); none by default
         self.remote_hosts = tuple(auth.remote_host(h) for h in remote_hosts)
@@ -446,10 +447,11 @@ class Core:
         eng = engine.Engine(
             self.db, actor=self.system,
             work=work.Work(missions=self.missions,
-                           router=ResourceRouter(registry, self.ports.usage)),
+                           router=ResourceRouter(registry, self.ports.usage,
+                                                 switches=self.pv20_switches)),
             brain=self.ports.brain, registry=registry, verifier=self.ports.verifier,
             reviewer=self.ports.reviewer, scenarios=self.ports.scenarios,
-            usage=self.ports.usage)
+            usage=self.ports.usage, pv20=self.pv20)
         self.manager = eng.manager
         self.loop = EngineLoop(eng, self.db, idle_s=self.idle_s, on_fail=self._engine_failed)
         self.loop.start()
@@ -485,7 +487,9 @@ class Core:
             self.verify = WorldLoop(
                 VerifyWorker(self.db, actor=self.system, missions=self.missions,
                              calls=own if self.ports.reviewer is None else None,
-                             verify=self.ports.verifier is None),
+                             verify=self.ports.verifier is None,
+                             node=self.pv20.node if self.pv20 is not None else None,
+                             switches=self.pv20_switches),
                 self.db, poll_s=self.world_poll_s, on_fail=self._engine_failed,
                 name='archeus-verify')
             self.verify.start()
@@ -523,7 +527,8 @@ class Core:
                               health=self.health, version=VERSION,
                               schedule_faults=self.automation.world.quarantined_schedules,
                               heartbeat_s=self.heartbeat_s, launch_clock=self.launch_clock,
-                              static_dir=self.static_dir, remote_hosts=self.remote_hosts)
+                              static_dir=self.static_dir, remote_hosts=self.remote_hosts,
+                              **self.pv20_api_options())
         try:
             self.server = server.Server(self.api, self.port)
         except OSError as e:
@@ -535,6 +540,21 @@ class Core:
             'port': self.port, 'started_at': self.started_at, 'version': VERSION,
             'schema': self.schema})
         log.info('Core started on 127.0.0.1:%d (pid %d)', self.port, os.getpid())
+
+    @property
+    def pv20_switches(self):
+        from ..node.pv20_switches import Pv20Switches
+        if self.pv20 is None or self.pv20.closed:
+            return Pv20Switches()
+        return self.pv20.switches
+
+    def pv20_api_options(self):
+        if self.pv20 is None:
+            return {}
+        if self.pv20.closed:
+            raise RefuseStart('PV-20 activation is closed')
+        return {'origin_enforcement_enabled': self.pv20.switches.origin_enforcement,
+                'origin_backend': self.pv20.backend, 'origin_registry': self.pv20.registry}
 
     def _open_log(self):
         logs = os.path.join(paths.archeus_home(), 'logs')
@@ -636,6 +656,8 @@ class Core:
             self.exec.stop()
         if self.loop is not None:
             self.loop.stop()
+        if self.pv20 is not None:
+            self.pv20.close()
         if self.db is not None:
             self.db.close(drain=drain)
             self.db = None

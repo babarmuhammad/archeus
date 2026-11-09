@@ -105,7 +105,7 @@ class Engine:
     `scenarios` maps a task key to the fake agent's steps."""
 
     def __init__(self, db, *, actor, work, brain, registry, verifier, reviewer,
-                 scenarios=None, poll=0.02, usage=None, manager=None):
+                 scenarios=None, poll=0.02, usage=None, manager=None, pv20=None):
         self.db, self.actor, self.work = db, actor, work
         self.missions = work.missions
         self.brain, self.registry = brain, registry
@@ -115,7 +115,10 @@ class Engine:
         # every process is the execution manager's (P11): this engine dispatches
         self.manager = manager or ExecutionManager(db, actor=actor, registry=registry,
                                                    work=work, usage=usage,
-                                                   scenarios=self.scenarios)
+                                                   scenarios=self.scenarios,
+                                                   node=pv20.node if pv20 is not None else None,
+                                                   broker=pv20.broker if pv20 is not None else None,
+                                                   switches=pv20.switches if pv20 is not None else None)
 
     def _do(self, command, **kwargs):
         return self.db.writer.execute(command, dict(kwargs, actor=self.actor))

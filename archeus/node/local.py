@@ -286,7 +286,7 @@ class MxcLaunch:
                  workload_reader=None, workload_expected=None, readback=None,
                  end_job=None, watchdog=None, seed_stage=None, seed_recheck=None,
                  process_seq=1, writable=(), transport=None, ui=False, proxy_url=None,
-                 capabilities=None):
+                 capabilities=None, switches=None):
         if (type(quiescence_wait) not in (int, float) or not math.isfinite(quiescence_wait)
                 or quiescence_wait < 0):
             raise staging.StageError('MXC needs a finite, non-negative quiescence bound')
@@ -318,7 +318,8 @@ class MxcLaunch:
                 raise staging.StageError('MXC launch needs an execution id and process '
                                          'generation the ledger can name') from None
             # one transport, built from the injected parts and nothing else
-            backend = mxc_native.Backend(api, boundary, schema_validator, **(transport or {}))
+            backend = mxc_native.Backend(api, boundary, schema_validator,
+                                         switches=switches, **(transport or {}))
         elif backend is None:
             raise staging.StageError('MXC launch needs an explicitly injected backend')
         self.backend, self.boundary, self.ledger = backend, boundary, ledger
@@ -759,12 +760,15 @@ class LocalNode:
         return None
 
     #: what the hook reads (P11 PAUSE/STOP; P12 HANDOFF) — see FLAGS below
-    def __init__(self, isolation=None, heartbeat=None):
+    def __init__(self, isolation=None, heartbeat=None, *, boundary=None, authorize=None,
+                 plan=None, switches=None):
+        self.switches = switches
         #: Core's isolation authority for this process (PV-20 §3.7): the per-execution
         #: identities, the Jobs only Core holds, the quarantine ledger. Injected by the
         #: synthetic fixtures; the production node gets the real boundary, which
         #: dispatches nothing isolated while production dispatch stays E's.
-        self.isolation = isolation if isolation is not None else isolation_mod.Isolation(self)
+        self.isolation = isolation if isolation is not None else isolation_mod.Isolation(
+            self, boundary=boundary, authorize=authorize, plan=plan, switches=switches)
         #: the B13 heartbeat sender, or None: the manager's sweep is Core's one beat
         self.heartbeat = heartbeat
 
@@ -1485,11 +1489,12 @@ class LocalNode:
         return LocalNode.store_git('trusted', args, workdirs=workdirs, git_dir=store)
 
     @staticmethod
-    def store_fetch(project_id, root, rev_name, expect, ref, *, workdirs):
+    def store_fetch(project_id, root, rev_name, expect, ref, *, workdirs, switches=None):
         """*rev_name* of the repository at *root* into the store as *ref*, only if
         it still names *expect*, the commit Core resolved (T-046 §4.2); the
         incoming ref is kept. Unavailable until `store_fetch_accepted`."""
-        if LocalNode.store_fetch_accepted is not True:
+        if (switches.store_fetch if switches is not None
+                else LocalNode.store_fetch_accepted) is not True:
             raise StoreError('no fetch into a store until its source side is accepted '
                              '(T-046 C1)')
         if not ((_REF.fullmatch(rev_name) or rev_name == 'HEAD') and _REF.fullmatch(ref)
