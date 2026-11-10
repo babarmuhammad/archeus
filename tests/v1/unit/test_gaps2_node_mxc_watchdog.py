@@ -17,8 +17,8 @@ error paths. Selected branches, in risk order:
     confirmation, and is never retried.
  7. 128-131: a channel that yields one beat and then raises mid-read applies NOTHING (no last_seq,
     no last_beat) and kills nothing.
- 8. 141/145: a clock rewound below the last accepted beat (still >= armed_at) must not silently
-    disarm the silence backstop forever (kept as a strict xfail: the source stays ARMED).
+ 8. 120: a clock rewound below the last accepted beat (still >= armed_at) must not silently
+    disarm the silence backstop: it is a malformed clock observation, UNCERTAIN.
  9. 114-115: a repeated sweep from UNCERTAIN after a failed observation reads and kills nothing.
 10. 167-183 vs 190-199: every recorded job is read to the end before the FIRST kill is requested.
 
@@ -219,24 +219,17 @@ def test_a_channel_that_raises_after_one_beat_applies_nothing():
     assert world.kill.killed == [] and ref not in world.kill.killed
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='archeus/node/mxc_watchdog.py:145 (with 141-142 and 155-156) compares '
-                          'now - _quiet_since() against deadline_s with no lower bound while 120 '
-                          'only checks now >= armed_at: after the clock is rewound below an already '
-                          'accepted last_beat the difference is negative, so tick() answers ARMED '
-                          'for ever instead of the fail-closed UNCERTAIN and the silence backstop '
-                          'can be disarmed by any clock rewind')
 def test_a_clock_rewound_below_the_last_beat_is_not_a_quiet_forever():
     # 8. Line 68 refuses a beat with sent_at > now, so the module's own invariant is
-    # last_beat <= now. Once the clock goes backwards under an accepted last_beat, line 145
-    # subtracts to a negative number and the silence backstop can never fire again while the Core
-    # says it is alive: fail-closed demands UNCERTAIN, the source stays ARMED and never fires.
+    # last_beat <= now. A clock that goes backwards under an accepted last_beat would make line
+    # 145 subtract to a negative number, and the silence backstop could not fire until the clock
+    # caught up again: line 120 reads that as a malformed observation, UNCERTAIN and no kill.
     world = rig(table={41: 900}, batches=([beat(1, 129)], []))
     ref = record(world.watchdog)
     world.clock.now = 130.0
     assert world.watchdog.tick() == watchdog.ARMED          # beat accepted, last_beat = 129
     world.clock.now = 110.0                                 # >= armed_at (100), < last_beat
-    assert world.watchdog.tick() == watchdog.UNCERTAIN      # fail-closed expectation
+    assert world.watchdog.tick() == watchdog.UNCERTAIN
     assert world.watchdog.report()['reason'] == 'malformed clock observation'
     assert world.kill.killed == [] and ref not in world.kill.killed
 
