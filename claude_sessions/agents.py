@@ -390,7 +390,7 @@ def view_agent_file(path):
         return
     w = render.content_width()
     lines = []
-    for raw in text.replace('\t', '    ').split('\n'):
+    for raw in skillscan._inert(text.replace('\t', '    ')).split('\n'):
         if not raw:
             lines.append('')
             continue

@@ -469,3 +469,35 @@ def test_delete_agent(monkeypatch, tmp_path):
                 ESC, ESC)
     run_flow(monkeypatch, keys, agents.agents_menu, None)
     assert not (sb.agents_lib / '01-core' / 'gone.md').exists()
+
+
+# ── content from a model or a file is shown inert, and kept as it is ──
+
+OSC = '\x1b]52;c;SGk=\x07'
+
+
+def test_a_generated_agent_is_previewed_inert_and_written_as_generated(monkeypatch, tmp_path):
+    Sandbox(monkeypatch, tmp_path)
+    md = '---\nname: x\n---\nhi %s there\x9b2J\tend' % OSC
+    written = []
+    monkeypatch.setattr(agents, 'get_claude_exe', lambda: 'claude')
+    monkeypatch.setattr(agents, 'text_input', lambda prompt: 'x')
+    monkeypatch.setattr(agents, 'open_in_editor', lambda p: None)
+    monkeypatch.setattr(memory, '_claude_stdin', lambda *a, **k: md)
+    monkeypatch.setattr(agents, 'write_agent_raw', lambda content, *a: written.append(content)
+                        or {'ok': True, 'path': 'x.md'})
+    _, cap, _ = run_flow(monkeypatch, flat(ENTER), agents._new_agent_ai, None)
+    assert 'hi \u2423]52;c;SGk=\u2423 there\u24232J' in cap.plain
+    assert not any(c in cap.text for c in ('\x1b]', '\x07', '\x9b'))
+    assert written == [md]
+
+
+def test_an_agent_file_is_viewed_inert_and_left_as_it_is(monkeypatch, tmp_path):
+    Sandbox(monkeypatch, tmp_path)
+    p = tmp_path / 'a.md'
+    p.write_text('---\nname: a\n---\nhi %s there\n\tindented\n' % OSC, encoding='utf-8')
+    before = p.read_bytes()
+    _, cap, _ = run_flow(monkeypatch, flat(ESC), agents.view_agent_file, str(p))
+    assert 'hi \u2423]52;c;SGk=\u2423 there' in cap.plain and '    indented' in cap.plain
+    assert not any(c in cap.text for c in ('\x1b]', '\x07'))
+    assert p.read_bytes() == before
