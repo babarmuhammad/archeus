@@ -202,17 +202,28 @@ def _pinned(pkg):
     return bool(re.search(r'.@\d+\.\d+\.\d+$', pkg))
 
 
-def _npx_yes_unpinned(tokens):
-    if not tokens or _exe(tokens) != 'npx' or not {'-y', '--yes'} & set(tokens[1:]):
+def _local(pkg):
+    """A path on this machine, which npx runs without asking the registry. A share
+    (two leading separators) is the network, not this machine."""
+    return bool(re.match(r'\.{1,2}$|\.{1,2}[\\/]|[\\/](?![\\/])|~[\\/]|[A-Za-z]:[\\/]', pkg))
+
+
+def _npx_unpinned(tokens):
+    """npx of a package whose version can move. `-y` is not needed for it to be
+    fetched: started with no terminal, as an MCP server is, npx installs a missing
+    package unasked. Only `--no` or `--no-install` (and no `-y`) stops that."""
+    if not tokens or _exe(tokens) != 'npx':
         return False
     rest = tokens[1:]
+    if {'--no', '--no-install'} & set(rest) and not {'-y', '--yes'} & set(rest):
+        return False
     named = [v for i, a in enumerate(rest) for v in (
         [a.split('=', 1)[1]] if a.startswith('--package=') else
         rest[i + 1:i + 2] if a in ('-p', '--package') else [])]
     if named:
-        return not all(_pinned(p) for p in named)
+        return not all(_pinned(p) or _local(p) for p in named)
     pkgs = [a for a in rest if not a.startswith('-')]
-    return bool(pkgs) and not _pinned(pkgs[0])
+    return bool(pkgs) and not (_pinned(pkgs[0]) or _local(pkgs[0]))
 
 
 def _locate(lines, needle, start):
@@ -254,9 +265,9 @@ def _json_findings(text, lines):
                 if isinstance(args, list) else ent['command'].split()
             at = _locate(lines, '"command"', at)
             out += _line_findings(' '.join(toks), at + 1)
-            if _wraps_shell(toks) or _npx_yes_unpinned(toks):
+            if _wraps_shell(toks) or _npx_unpinned(toks):
                 out.append(Finding('mcp-command-exec', 'med', at + 1,
-                                   'an MCP server that runs a shell wrapper or an unpinned npx -y package',
+                                   'an MCP server that runs a shell wrapper or npx of an unpinned package',
                                    ' '.join(toks)))
     at = _locate(lines, '"hooks"', 0)
     for cmd in _hook_commands(data.get('hooks')):

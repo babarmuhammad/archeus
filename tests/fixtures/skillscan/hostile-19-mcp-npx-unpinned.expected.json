@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-19-mcp-npx-unpinned.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {
+      "rule": "mcp-command-exec",
+      "line": 4,
+      "match": "\"npx\""
+    }
+  ],
+  "note": "`npx` of an unpinned package is hostile without `-y` too (owner decision 114): started with no terminal, npx installs it unasked."
+}

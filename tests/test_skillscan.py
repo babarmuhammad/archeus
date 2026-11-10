@@ -265,12 +265,13 @@ def test_an_image_data_uri_may_wrap_onto_base64_lines_but_a_bare_run_may_not():
     assert [f.rule for f in skillscan.lint('see\n' + blob + '\n')] == ['long-base64']
 
 
-def test_npx_y_is_flagged_only_when_the_package_is_unpinned():
+def test_npx_is_flagged_only_when_the_package_is_unpinned_with_or_without_y():
     def run(args):
         return skillscan.lint('{"mcpServers": {"s": {"command": "npx", "args": %s}}}' % args)
     assert [f.rule for f in run('["-y", "tool"]')] == ['mcp-command-exec']
+    assert [f.rule for f in run('["tool"]')] == ['mcp-command-exec']
     assert run('["-y", "@example/tool@1.4.2"]') == []
-    assert run('["tool"]') == []
+    assert run('["@example/tool@1.4.2"]') == []
 
 
 def test_a_shell_wrapper_is_found_through_a_path_and_a_combined_flag():
@@ -428,6 +429,31 @@ def test_an_escaped_command_is_linted_as_it_decodes():
     (['-y', '--package=evil', 'cmd@1.0.0'], True), (['-y', '-p', 'evil@2.0.0', 'cmd'], False),
     (['-y', 'evil@1.2.3'], False), (['-y', '@scope/evil@1.2.3'], False)])
 def test_npx_y_is_pinned_only_by_a_full_version_of_the_package_it_installs(args, flagged):
+    assert bool(_mcp('npx', args)) is flagged
+
+
+@pytest.mark.parametrize('args,flagged', [
+    (['evil'], True), (['evil@latest'], True), (['--package=evil', 'cmd@1.0.0'], True),
+    (['user/repo'], True), (['https://example.invalid/x.tgz'], True),
+    (['evil@1.2.3'], False), (['-p', 'evil@2.0.0', 'cmd'], False), ([], False)])
+def test_npx_without_y_is_flagged_for_an_unpinned_package_too(args, flagged):
+    assert bool(_mcp('npx', args)) is flagged
+
+
+@pytest.mark.parametrize('spec', ['./x', '../x/y.js', '.', '/opt/x', '~/x', 'C:\\tools\\x', '.\\x'])
+def test_npx_of_a_path_on_this_machine_is_a_local_program_not_a_package(spec):
+    assert _mcp('npx', [spec]) == [] and _mcp('npx', ['-y', '-p', spec, 'cmd']) == []
+
+
+@pytest.mark.parametrize('spec', ['\\\\host\\share\\x', '//host/share/x', '.evil', '~evil'])
+def test_a_network_share_or_a_dotted_name_is_not_a_local_path(spec):
+    assert [f.rule for f in _mcp('npx', [spec])] == ['mcp-command-exec']
+
+
+@pytest.mark.parametrize('args,flagged', [
+    (['--no-install', 'tool'], False), (['--no', 'tool'], False),
+    (['--no', '-y', 'tool'], True), (['--yes', '--no-install', 'tool'], True)])
+def test_npx_told_never_to_install_only_runs_what_is_there(args, flagged):
     assert bool(_mcp('npx', args)) is flagged
 
 
