@@ -9,7 +9,7 @@ from archeus.core.domain import entities, ids
 from archeus.core.verification import evidence, reviewer
 
 from .test_gaps_core_verification_worker import (
-    AUTO, BASE, REV, _Node, _result, _script, rig)  # noqa: F401
+    AUTO, BASE, REV, _Node, _result, _script, _tool_on_path, rig)  # noqa: F401
 
 
 def lesson(r, mid=None):

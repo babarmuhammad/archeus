@@ -17,7 +17,7 @@ from archeus.node.local import LocalNode
 from . import test_gaps_core_verification_worker as W
 from .test_gaps_core_verification_worker import AUTO, BASE, REV, _Node, _result, _script
 
-rig = W.rig
+rig, _tool_on_path = W.rig, W._tool_on_path
 
 OTHER = 'e' * 40
 ALSO = 'also fails in a clean base checkout'
