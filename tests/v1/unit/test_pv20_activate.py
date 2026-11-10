@@ -798,11 +798,12 @@ def test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog(
     core.start()
     isolation_ = core.pv20.node.isolation
     monkeypatch.setattr(isolation_, 'held_jobs', lambda: {'exe_a': object(), 'exe_b': object()})
-    monkeypatch.setattr(isolation_, 'teardown',
-                        lambda eid, reason='': candidate.events.append('teardown ' + eid))
+    monkeypatch.setattr(isolation_, 'teardown', lambda *a, **k: pytest.fail('torn down'))
+    monkeypatch.setattr(isolation_, 'fence', lambda eid, wait=None: candidate.events.append(
+        'fence %s %s' % (eid, wait)))
     core.stop()
-    assert candidate.events == ['host_started', 'broker_closed', 'teardown exe_a',
-                                'teardown exe_b', 'host_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'fence exe_a 0',
+                                'fence exe_b 0', 'host_closed']
 
 
 def test_a_workload_that_will_not_go_does_not_keep_the_rest_or_the_watchdog_open(
@@ -812,20 +813,19 @@ def test_a_workload_that_will_not_go_does_not_keep_the_rest_or_the_watchdog_open
     isolation_ = core.pv20.node.isolation
     monkeypatch.setattr(isolation_, 'held_jobs', lambda: {'exe_a': object(), 'exe_b': object()})
 
-    def teardown(eid, reason=''):
-        candidate.events.append('teardown ' + eid)
+    def fence(eid, wait):
+        candidate.events.append('fence ' + eid)
         if eid == 'exe_a':
             raise OSError('job will not close')
 
-    monkeypatch.setattr(isolation_, 'teardown', teardown)
+    monkeypatch.setattr(isolation_, 'fence', fence)
     with pytest.raises(OSError, match='job will not close'):
         core.stop()
     assert core.db is None and core.lock is None
-    assert candidate.events[1:] == ['broker_closed', 'teardown exe_a', 'teardown exe_b',
-                                    'host_closed']
+    assert candidate.events[1:] == ['broker_closed', 'fence exe_a', 'fence exe_b', 'host_closed']
 
 
-# ── fx16: the review of fx15 (S2, S3) and Codex #2 ──
+# ── fx16: the review of fx15 (S2-S4) and Codex #2 ──
 
 class _Stuck:
     """A worker whose step in flight outlives any join."""
@@ -861,15 +861,15 @@ def test_stop_closes_admission_before_it_joins_and_the_workloads_after(
     core.start()
     isolation_ = core.pv20.node.isolation
     monkeypatch.setattr(isolation_, 'held_jobs', lambda: {'exe_a': object()})
-    monkeypatch.setattr(isolation_, 'teardown',
-                        lambda eid, reason='': candidate.events.append('teardown ' + eid))
+    monkeypatch.setattr(isolation_, 'fence',
+                        lambda eid, wait: candidate.events.append('fence ' + eid))
     seen = []
     core.exec = _dispatcher(candidate.events, core.pv20.broker,
                             then=lambda b: seen.append(isolation_.closed))
     core.stop()
     assert seen == [True]
     assert candidate.events == ['host_started', 'broker_closed', 'dispatch_done',
-                                'teardown exe_a', 'host_closed']
+                                'fence exe_a', 'host_closed']
 
 
 def test_a_broker_that_will_not_close_does_not_stop_the_stop_short(
@@ -898,3 +898,25 @@ def test_a_late_worker_can_create_no_job_once_core_is_stopping(candidate, quiet_
     with pytest.raises(isolation.IsolationClosed):
         authority._ensure_job(request.execution_id)
     assert authority.record(request.execution_id) is None and authority.held_jobs() == {}
+
+
+def test_a_stop_closes_the_job_of_a_live_execution_and_keeps_the_record_it_resumes_from(
+        candidate, quiet_core, tmp_path):
+    core = candidate.activate()
+    core.start()
+    first = core.pv20.node.isolation
+    request = make_satisfying_request(new_execution_id(), str(tmp_path / 'layout'))
+    adapter = SimpleNamespace(id='claude_code')
+    assert first.requested(request.execution_id, adapter) is True
+    sid = first.establish(request).sid
+    job = first.held_job(request.execution_id)
+    core.stop()
+    assert first.held_jobs() == {} and first.boundary.jobs.closed == [job]
+    # the next Core: the manager resumes an isolated execution only while its record
+    # exists, and the authority only under the identity that record names
+    pv20._claimed.clear()                       # a restart is another process
+    after = candidate.activate().pv20.node.isolation
+    rec = after.record(request.execution_id)
+    assert (rec.state, rec.failure, rec.owned, rec.sid) == ('established', '', True, sid)
+    assert after.requested(request.execution_id, adapter) is True
+    assert after.establish(request).sid == sid

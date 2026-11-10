@@ -173,6 +173,14 @@ MUTATIONS = [
      r"""                pass
             end = time.monotonic() + QUIESCE_S""")],
      [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+    ('H29', 'a stop deletes the identity and the record of an execution it holds', [(PV,
+     r"""            node.isolation.fence(execution_id, wait=0)""",
+     r"""            node.isolation.teardown(execution_id, reason='core stopping')""")],
+     [A + 'test_a_stop_closes_the_job_of_a_live_execution_and_keeps_the_record_it_resumes_from']),
+    ('H30', 'a stop waits for each Job to empty before it closes it', [(PV,
+     r"""            node.isolation.fence(execution_id, wait=0)""",
+     r"""            node.isolation.fence(execution_id)""")],
+     [A + 'test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog']),
 ]
 
 

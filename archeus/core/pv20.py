@@ -44,8 +44,8 @@ class NativeBindings:
 class Activation:
     """Core.stop calls quiesce(), joins the workers that admit work, then close(). close()
     ends it in the order its parts were registered, last first: the broker (every grant
-    revoked, no new one issued), the workloads Core still holds, then the watchdog host
-    and the private directory."""
+    revoked, no new one issued), the Jobs Core still holds, then the watchdog host and
+    the private directory."""
 
     def __init__(self, *, switches, node, broker, host, backend, registry, resources):
         self.switches, self.node, self.broker = switches, node, broker
@@ -67,16 +67,19 @@ class Activation:
 
 
 def _dispose(node):
-    """Every workload Core still holds, ended by Core and not left to the watchdog that
-    goes next; one that will not go does not keep the others."""
+    """Every Job Core still holds, closed by Core (kill-on-close) and not left to the
+    watchdog that goes next; one that will not close does not keep the others. The
+    identity and its record stay (owner decision 117): an execution paused when Core
+    stops resumes under them after a restart, and the next Core's sweep reclaims those
+    of an execution that is no longer live."""
     if node is None:
         return
     first = None
     for execution_id in node.isolation.held_jobs():
         try:
-            node.isolation.teardown(execution_id, reason='core stopping')
+            node.isolation.fence(execution_id, wait=0)
         except Exception as error:
-            log.exception('PV-20 close could not tear %s down', execution_id)
+            log.exception('PV-20 close could not close the Job of %s', execution_id)
             first = first or error
     if first is not None:
         raise first
