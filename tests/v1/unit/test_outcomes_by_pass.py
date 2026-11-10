@@ -85,6 +85,8 @@ def test_one_partial_call_makes_the_pass_incomplete(db):
 def test_a_call_that_never_ran_is_not_counted(db):
     call(db, 'knowledge', usage=False)
     assert read(db) == []
+    call(db, 'knowledge', tokens_in=3)
+    assert [(g['pass'], g['calls']) for g in read(db)] == [('knowledge', 1)]
 
 
 def test_calls_that_are_not_learning_passes_are_left_out(db):

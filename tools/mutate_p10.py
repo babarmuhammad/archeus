@@ -321,6 +321,15 @@ MUTATIONS = [
      "sorted(out, key=lambda k: (k is None, k or ''))]",
      "sorted(out, key=lambda k: (k is None, k or '')) if k is not None]",
      [OU + '::test_an_own_call_about_no_mission_is_kept_under_none_not_dropped']),
+    # opus review of T-1095/T-1098 (fx18); R65-R149 left free
+    ('R150', 'a band with a partial or missing figure still complete', OUT,
+     "g['complete'] &= bool(spent) and all(u.basis == 'reported_total' for u in spent)",
+     "g['complete'] &= True",
+     [BC + '::test_a_band_is_complete_only_while_every_execution_reported_its_total']),
+    ('R151', 'accounts shown alike kept as two rows', OUT,
+     "(lambda u: public(key(u))) if by == 'account' else key",
+     "key",
+     [OU + '::test_accounts_shown_alike_are_one_row']),
 ]
 
 

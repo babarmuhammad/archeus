@@ -92,3 +92,29 @@ def test_a_group_is_per_kind_model_and_effort_as_well(db):
     run(db, mid, tid, model='a')
     run(db, mid, tid, model='b')
     assert [g['model'] for g in read(db)] == ['a', 'b']
+
+
+def test_passed_and_failed_are_split_per_band(db):
+    from archeus.core.domain.values import Ref
+    from .test_outcomes_cache import plan_of
+    small, st = mission(db, 500)
+    big, bt = mission(db, 6000)
+    for mid, tid, state in ((small, st, 'PASSED'), (big, bt, 'FAILED')):
+        x = run(db, mid, tid, tokens_in=1)
+        put(db, entities.Verification(id=ids.new_id('verification'), subject=Ref('task', tid),
+                                      verifier='code', execution_id=x, plan_id=plan_of(db, mid),
+                                      state=state))
+    run(db, small, st, tokens_in=1)
+    g = bands(db)
+    assert [g['under 1k'][k] for k in ('passed', 'failed', 'unverified')] == [1, 0, 1]
+    assert [g['over 4k'][k] for k in ('passed', 'failed', 'unverified')] == [0, 1, 0]
+
+
+def test_a_band_is_complete_only_while_every_execution_reported_its_total(db):
+    small, st = mission(db, 500)
+    big, bt = mission(db, 6000)
+    run(db, small, st, tokens_in=1)
+    run(db, big, bt, tokens_in=1)
+    run(db, big, bt)
+    g = bands(db)
+    assert (g['under 1k']['complete'], g['over 4k']['complete']) == (True, False)

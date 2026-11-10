@@ -257,6 +257,10 @@ def build_ai_prompt(name, role, project_path=None):
     )
 
 
+def lint_warnings(md):
+    return [f'{f.rule} (line {f.line})' for f in skillscan.lint(md[:skillscan._MAX_BYTES])]
+
+
 def write_agent_raw(md, name, scope='user', project_path=None, category=''):
     """Write generated agent markdown where Claude Code actually reads it.
 
@@ -271,8 +275,9 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
     """
     md = (md or '').strip()
     if not md:
-        return {'ok': False, 'error': 'nothing to write', 'path': '', 'name': name}
-    warnings = [f'{f.rule} (line {f.line})' for f in skillscan.lint(md)]
+        return {'ok': False, 'error': 'nothing to write', 'path': '', 'name': name,
+                'warnings': []}
+    warnings = lint_warnings(md)
     d = (project_agents_dir(project_path) if scope == 'project' and project_path
          else user_agents_dir())
     path = os.path.join(d, f'{_slug(name)}.md')
@@ -282,7 +287,8 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
         if write_agent(path, meta, body):
             return {'ok': True, 'path': path, 'name': name, 'error': '',
                     'warnings': warnings}
-        return {'ok': False, 'error': 'write failed', 'path': path, 'name': name}
+        return {'ok': False, 'error': 'write failed', 'path': path, 'name': name,
+                'warnings': warnings}
     try:
         os.makedirs(d, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
@@ -290,7 +296,8 @@ def write_agent_raw(md, name, scope='user', project_path=None, category=''):
         return {'ok': True, 'path': path, 'name': name, 'error': '',
                 'warnings': warnings}
     except Exception as e:
-        return {'ok': False, 'error': str(e), 'path': path, 'name': name}
+        return {'ok': False, 'error': str(e), 'path': path, 'name': name,
+                'warnings': warnings}
 
 
 def _parse_md(text):
@@ -357,7 +364,10 @@ def _new_agent_ai(project_path):
     content = (md or '').strip()
     if not content:
         flash(memory.why_failed(), ok=False, secs=2.4); return
-    if not _pager_confirm(f"AGENT  /  {name}  — approve to write", content):
+    warnings = lint_warnings(content)
+    title = f"AGENT  /  {name}" + (f"  — {len(warnings)} lint finding(s)" if warnings else '')
+    shown = '\n'.join(['LINT (advisory):'] + warnings + ['', content]) if warnings else content
+    if not _pager_confirm(f"{title}  — approve to write", shown):
         _cls(); print("\n  Rejected — not written.\n"); pause("  Press Enter..."); return
     r = write_agent_raw(content, name, scope, project_path, category)
     if r['ok']:

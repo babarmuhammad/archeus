@@ -101,3 +101,12 @@ def test_a_pass_is_by_pass_and_anything_else_is_refused(db):
         assert outcomes.usage(conn, 'pass') == outcomes.by_pass(conn) == []
         with pytest.raises(ValueError):
             outcomes.usage(conn, 'model')
+
+
+def test_accounts_shown_alike_are_one_row(db):
+    row(db, account_ref='C:/home/a', tokens_in=1)
+    row(db, tokens_in=2)
+    row(db, account_ref='B', tokens_in=4)
+    with db.read() as conn:
+        got = outcomes.usage(conn, 'account', lambda k: None if k and k.startswith('C:') else k)
+    assert [(r['account'], r['calls'], r['tokens_in']) for r in got] == [('B', 1, 4), (None, 2, 3)]

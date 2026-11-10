@@ -650,9 +650,10 @@ def usage_by(req):
     if by not in outcomes.USAGE_BY:
         raise Invalid('by', 'is one of %s' % ', '.join(outcomes.USAGE_BY))
     with req.api.db.read() as conn:
-        out = outcomes.usage(conn, by)
-        return 200, {'by': by, 'rows': system_value(out, _read_homes(req, conn),
-                                                    path_keys=('account',))}
+        shown = _read_homes(req, conn)
+        out = outcomes.usage(conn, by, lambda key: system_value(
+            {'account': key}, shown, path_keys=('account',))['account'])
+        return 200, {'by': by, 'rows': system_value(out, shown, path_keys=('account',))}
 
 
 def mission_timeline(req):

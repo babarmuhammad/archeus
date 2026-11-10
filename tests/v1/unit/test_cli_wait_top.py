@@ -25,7 +25,6 @@ def _core(monkeypatch, *answers, up=True):
         return a
 
     monkeypatch.setattr(cli, '_core_or_say', lambda: {'port': 9001} if up else None)
-    monkeypatch.setattr(cli, '_running', lambda: {'port': 9001} if up else None)
     monkeypatch.setattr(cli, '_get', fake)
     return got
 
@@ -82,12 +81,63 @@ def test_core_going_away_mid_wait_is_exit_1(monkeypatch):
     assert _wait(['msn_1'])[0] == 1
 
 
+@pytest.mark.parametrize('refusal', [{'code': 'unauthorized', 'status': 401, 'detail': {}},
+                                     {'code': 'http_502', 'status': 502, 'detail': {}},
+                                     {'code': 'network', 'status': 0, 'detail': {}},
+                                     {'code': None}])
+def test_a_core_that_refuses_or_drops_a_poll_is_asked_again_until_it_answers(refusal, monkeypatch):
+    got = _core(monkeypatch, _m('EXECUTING'), refusal, _m('COMPLETED'))
+    assert _wait(['msn_1'])[0] == 0 and len(got) == 3
+
+
+@pytest.mark.parametrize('error', [ValueError('bad json'), TimeoutError('read')])
+def test_an_unreadable_answer_is_asked_again(error, monkeypatch):
+    answers = iter([error, _m('COMPLETED')])
+
+    def fake(*a, **k):
+        x = next(answers)
+        if isinstance(x, Exception):
+            raise x
+        return x
+    _core(monkeypatch)
+    monkeypatch.setattr(cli, '_get', fake)
+    assert _wait(['msn_1'])[0] == 0
+
+
+def test_ctrl_c_ends_the_wait_with_130(monkeypatch):
+    _core(monkeypatch, _m('EXECUTING'))
+
+    def interrupt(_s):
+        raise KeyboardInterrupt
+    assert cli.wait('msn_1', sleep=interrupt, clock=lambda: 0.0) == 130
+
+
+def test_the_last_sleep_stops_at_the_deadline(monkeypatch):
+    _core(monkeypatch, _m('EXECUTING'))
+    code, c = _wait(['msn_1', '--timeout', '3'])
+    assert code == 4 and c.sleeps == [2, 1] and c.now == 3
+
+
+def test_a_title_cannot_drive_the_terminal_and_any_title_survives_a_cp1252_pipe(monkeypatch):
+    import io
+    import sys
+    out = io.TextIOWrapper(io.BytesIO(), encoding='cp1252', newline='')
+    monkeypatch.setattr(sys, 'stdout', out)
+    _core(monkeypatch, dict(_m('COMPLETED'),
+                            title='Fix caf\u00e9 \u2713 \u4e2d\x1b]52;c;SGk=\x07\u202e'))
+    assert cli.main(['wait', 'msn_1']) == 0
+    out.flush()
+    text = out.buffer.getvalue().decode('utf-8')
+    assert text == 'msn_1: COMPLETED (Fix caf\u00e9 \u2713 \u4e2d)\n'
+
+
 def test_an_unknown_mission_is_exit_2(monkeypatch):
     _core(monkeypatch, {'code': 'not_found', 'status': 404, 'detail': {}})
     assert _wait(['msn_gone'])[0] == 2
 
 
 @pytest.mark.parametrize('argv', [['msn_1', '--until', 'DONE'], ['msn_1', '--until', 'COMPLETED,x'],
+                                  ['msn_1', '--until', ''],
                                   ['msn_1', '--timeout', '0'], ['msn_1', '--timeout', 'soon']])
 def test_a_bad_state_or_timeout_is_refused_before_any_request(argv, monkeypatch, capsys):
     got = _core(monkeypatch, _m('COMPLETED'))
@@ -152,7 +202,7 @@ def test_top_prints_one_table_with_dashes_for_what_nobody_reported(monkeypatch, 
     assert head.split() == ['account', 'calls', 'tokens_in', 'tokens_out', 'cache_read',
                             'cache_write', 'cost_usd', 'complete']
     assert a.split() == ['account:abc', '2', '150', '10', '-', '4', '-', 'yes']
-    assert none.split() == ['(none)', '1', '-', '-', '-', '-', '0.25', 'no']
+    assert none.split() == ['(none)', '1', '-', '-', '-', '-', '0.2500', 'no']
 
 
 def test_top_by_mission_asks_for_missions_and_an_empty_ledger_says_so(monkeypatch, capsys):
