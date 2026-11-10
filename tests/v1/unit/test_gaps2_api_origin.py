@@ -16,15 +16,15 @@ with the closest existing test and why that test's assertion misses the case:
    peer that never came from the loopback address the direct local path. ->
    `test_only_the_loopback_address_itself_is_a_direct_local_path`
 2. origin.py:156 - the element is handed to `ipaddress.ip_address` unchecked, and that
-   accepts an int (2130706433 is 127.0.0.1) and an address object. Closest: nothing, no
-   origin test ever passes a non-string host element. -> xfail
-   `test_a_non_string_endpoint_host_is_never_the_direct_loopback_path`
+   accepts an int (2130706433 is 127.0.0.1) and an address object. Not pinned: every
+   ConnectionContext is built from a socket's own getsockname/getpeername (server.py:270,
+   broker_listener.py:144), whose host is always a string, and such a value does name
+   the loopback address.
 3. origin.py:164 and :187 - an endpoint with no port still reads as direct local
    (`_loopback` only looks at `[0]`), and `approved` then indexes `[1]` outside the
-   try/except, so IndexError escapes the fail-closed gate. Closest:
-   test_origin_native.py:445, which uses `local=None` and therefore dies inside
-   `_loopback` and never reaches :187. -> xfail
-   `test_an_endpoint_with_no_port_is_refused_by_the_path_gate_instead_of_raising`
+   try/except, so IndexError leaves `approved`. Not pinned: a socket endpoint always
+   carries its port, and the one caller (server.py:299) reads any exception from the
+   gate as undetermined origin, which is a denial.
 4. origin.py:187 - the registered listener port must be the LOCAL end. Closest:
    test_origin_native.py:438 refuses one unregistered local port, but never with the
    registered port on the peer side, so reading the peer's port instead answers from
@@ -86,7 +86,6 @@ binding.accepted_at <= max_age_s`) and in `WindowsOriginBackend._reattest`, both
 is why entry 10 takes the `BaseException` half of it.
 """
 
-import ipaddress
 import threading
 import time
 
@@ -187,37 +186,6 @@ def test_only_the_loopback_address_itself_is_a_direct_local_path(host):
     assert REGISTRY.approved(both, _user_evidence()) is False
     assert REGISTRY.approved(_context(local=(host, CORE_PORT)), _user_evidence()) is False
     assert REGISTRY.approved(_context(), _user_evidence()) is True          # the control
-
-
-# ── 2. only a string element is ever a socket address ──
-
-@pytest.mark.xfail(strict=True, reason=(
-    'origin.py:156 validates nothing about the element before handing it to '
-    'ipaddress.ip_address, which accepts an int (2130706433 == 127.0.0.1) and an '
-    'IPv4Address/IPv6Address object, so the branch origin.py:156-157 answers True for a '
-    'host that is not an address string and origin.py:186 approves the direct local path '
-    'for it; Handler.setup (server.py:270) is the only thing that keeps real endpoints '
-    'strings'))
-def test_a_non_string_endpoint_host_is_never_the_direct_loopback_path():
-    packed = int(ipaddress.IPv4Address('127.0.0.1'))
-    for host in (packed, ipaddress.IPv4Address('127.0.0.1'), ipaddress.IPv6Address('::1')):
-        context = _context(local=(host, CORE_PORT), remote=(host, PEER_PORT))
-        assert origin.direct_loopback(context) is False, host
-        assert REGISTRY.approved(context, _user_evidence()) is False, host
-
-
-# ── 3. an endpoint that carries no port is a refusal, never an exception ──
-
-@pytest.mark.xfail(strict=True, reason=(
-    'origin.py:164 only ever reads element [0] of an endpoint, so (127.0.0.1,) with no '
-    'port still reads as the direct local path, and origin.py:187 then indexes [1] '
-    'outside the try/except that origin.py:158 applies: CorePathRegistry.approved raises '
-    'IndexError instead of answering False, so the Core gate escapes as an exception that '
-    'server.py:301 hides as a log line'))
-def test_an_endpoint_with_no_port_is_refused_by_the_path_gate_instead_of_raising():
-    for endpoint in (('127.0.0.1',), ['127.0.0.1']):
-        assert origin.direct_loopback(_context(local=endpoint)) is False, endpoint
-        assert REGISTRY.approved(_context(local=endpoint), _user_evidence()) is False
 
 
 # ── 4. the registered port is the local end of the connection ──
