@@ -27,8 +27,8 @@ MUTATIONS = [
      [T + 'test_git_exe_refuses_what_which_gives_that_is_not_absolute',
       T + 'test_git_exe_never_runs_a_git_planted_in_the_current_directory']),
     ('PL02', 'the store pin hands Git the inherited PATH', [(LOCAL,
-     "    env.update(PATH=os.path.dirname(exe), HOME=empty,",
-     "    env.update(PATH=os.environ.get('PATH', ''), HOME=empty,")],
+     "}\n    env.update(PATH=os.path.dirname(exe), HOME=empty,",
+     "}\n    env.update(PATH=os.environ.get('PATH', ''), HOME=empty,")],
      [T + 'test_the_store_pin_keeps_path_to_gits_own_directory_whatever_core_inherited']),
     ('PL03', 'a confined program found outside the staged toolchain is accepted', [(EVD,
      "    found = proc.which(argv[0], path=os.pathsep.join(toolchain))",
@@ -67,6 +67,11 @@ MUTATIONS = [
      "        if exe is None:\n            return None\n        args = [exe, *args[1:]]",
      "        args = [exe or args[0], *args[1:]]")],
      [T + 'test_a_bare_git_call_fails_closed_when_only_the_workspace_holds_git']),
+    ('PL12', 'a project Git call runs a Git that lies inside the repository', [(LOCAL,
+     "    if proc.which(os.path.basename(exe), path=os.path.dirname(exe), avoid=[root]) is None:\n"
+     "        return None\n",
+     "")],
+     [T + 'test_a_project_git_call_fails_closed_when_the_git_on_path_is_inside_the_repository']),
 ]
 
 

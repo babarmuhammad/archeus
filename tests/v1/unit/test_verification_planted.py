@@ -208,3 +208,11 @@ def test_a_bare_git_call_fails_closed_when_only_the_workspace_holds_git(world, m
     started = []
     monkeypatch.setattr(local.proc.subprocess, 'run', lambda *a, **k: started.append(a))
     assert LocalNode.git_head(str(world.ws)) is None and not started
+
+
+def test_a_project_git_call_fails_closed_when_the_git_on_path_is_inside_the_repository(world, monkeypatch):
+    monkeypatch.chdir(world.core)
+    monkeypatch.setenv('PATH', str(world.ws))
+    started = []
+    monkeypatch.setattr(local.subprocess, 'run', lambda *a, **k: started.append(a))
+    assert LocalNode.git_diff(str(world.ws), 'a', 'b') is None and not started

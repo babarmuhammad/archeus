@@ -1817,8 +1817,11 @@ def _project_git(root, args, timeout=60):
     """A Git call in a project's own repository that runs none of its code: no
     hook, fsmonitor, filter selected by an attribute, replace ref or lazy fetch,
     and no configuration but the repository's own. The CompletedProcess with
-    text decoded as written (no newline translation), or None."""
+    text decoded as written (no newline translation), or None, which includes a
+    Git that lies inside *root* (the rule of `proc.run` for a bare program)."""
     exe = _git_exe()
+    if proc.which(os.path.basename(exe), path=os.path.dirname(exe), avoid=[root]) is None:
+        return None
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as empty:
         none = os.path.join(empty, 'none')
         env = {k: os.environ[k] for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
