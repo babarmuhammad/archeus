@@ -108,6 +108,10 @@ class BrokerUnavailable(Exception):
     """A native operation the broker needs does not exist (yet): nothing starts."""
 
 
+class BrokerClosed(BrokerUnavailable):
+    """Core is stopping: nothing starts now, and the next Core may start it."""
+
+
 @dataclass(frozen=True)
 class BrokerLimits:
     """Core-authored policy, never the execution's to choose. `max_requests` has no
@@ -285,6 +289,8 @@ class Broker:
         self._grants = {}           # digest -> grant
         self._closed = False
         self._lock = threading.Lock()
+        self._issuing = []          # the threads inside `issue`, which close waits for
+        self._drained = threading.Condition(self._lock)
 
     # ── grants ──
 
@@ -296,8 +302,6 @@ class Broker:
             raise Refused(403, 'a binding from another Core instance')
         if not (isinstance(binding.limits.max_requests, int) and binding.limits.max_requests > 0):
             raise Refused(403, 'no request ceiling: the grant is refused')
-        if self._closed:
-            raise BrokerUnavailable('the broker is closed')
         limits = binding.limits
         if not (all(type(v) is int and v > 0 for v in (limits.max_body, limits.concurrent))
                 and isinstance(limits.deadline_s, (int, float)) and limits.deadline_s > 0):
@@ -307,6 +311,19 @@ class Broker:
                 binding.harness_id, binding.model)):
             raise Refused(403, 'a binding with an empty principal, execution, account, '
                                'harness or model')
+        me = threading.get_ident()
+        with self._lock:
+            if self._closed:
+                raise BrokerClosed('the broker is closed')
+            self._issuing.append(me)
+        try:
+            return self._issue(binding)
+        finally:
+            with self._lock:
+                self._issuing.remove(me)
+                self._drained.notify_all()
+
+    def _issue(self, binding):
         check_destination(binding.upstream, self._resolve)
         self.revoke(binding.execution_id)
         token = new_token()
@@ -328,7 +345,7 @@ class Broker:
                                    'active': 0, 'port': port}
         if closed:
             self.transport.close(endpoint)
-            raise BrokerUnavailable('the broker is closed')
+            raise BrokerClosed('the broker is closed')
         for g in stale:
             self.transport.close(g['endpoint'])
         return token, d, endpoint, port
@@ -361,10 +378,12 @@ class Broker:
         return sum(self.revoke(x) for x in ids)
 
     def close(self):
-        """Revoke every grant and issue no more: a worker still inside `issue` finds the
-        broker closed before its listener is kept."""
-        with self._lock:
+        """Revoke every grant and issue no more. Returns once no other thread is inside
+        `issue`: one that is finds the broker closed and drops its listener first."""
+        me = threading.get_ident()
+        with self._drained:
             self._closed = True
+            self._drained.wait_for(lambda: all(t == me for t in self._issuing))
         return self.revoke_all()
 
     def authorize(self, token, principal, endpoint=None):

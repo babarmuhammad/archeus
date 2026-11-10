@@ -665,39 +665,58 @@ def _quiet(raw):
     return b'----' not in raw and b'\\u' not in raw
 
 
-# What a JSON string may spell a marker with: an ASCII character as an escape, and
-# any blanks.
-_ASCII = re.compile(r'\\u00([0-7][0-9a-fA-F])')
+# What a JSON string may spell a marker with: an ASCII character or a blank as an
+# escape, and any blanks.
+_ASCII = re.compile(r'\\u00([0-7][0-9a-fA-F])|\\[nrtbf]')
 _BLANKS = re.compile(r'\s+')
+# The end of a dropped line's head that a token may run on in: cut, as the rest of
+# the token is not there to be matched.
+_CUT = re.compile(r'''[^\s"'`,;:(){}\[\]<>]*\Z''')
 
 
 def _long(f, raw):
     """(size, last key marker) of a line over MAX_LINE whose first bytes are *raw*,
-    read to its end. The marker is looked for as the JSON string would read, so an
+    read to its end; None while it has no end yet. The marker is looked for as the JSON string would read, so an
     escaped one counts, and with every run of blanks one blank, so the 80 characters
     kept across a read hold however many blanks the marker has; an escape the end of
     a read cut stays raw in them and is read whole with the next read."""
     n, seam, mark, rest = len(raw), '', None, raw
     while True:
-        flat = _BLANKS.sub(' ', _ASCII.sub(lambda m: chr(int(m[1], 16)),
+        flat = _BLANKS.sub(' ', _ASCII.sub(lambda m: chr(int(m[1], 16)) if m[1] else ' ',
                                            seam + rest.decode('utf-8', errors='replace')))
         mark = redact.last_mark(flat) or mark
-        if not rest or rest.endswith(b'\n'):
+        if not rest:
+            return None
+        if rest.endswith(b'\n'):
             return n, mark
         seam = flat[-80:]
         rest = f.readline(MAX_LINE)
         n += len(rest)
 
 
+def _unique(pairs):
+    # a repeated field name would drop a value before redaction reads it, a key
+    # marker among them: such a line is read as raw text instead
+    obj = dict(pairs)
+    if len(obj) != len(pairs):
+        raise ValueError('a field name repeats')
+    return obj
+
+
 def _event(raw, state):
-    line = raw.decode('utf-8', errors='replace').strip()
+    line = raw.decode('utf-8', errors='replace').strip().lstrip('﻿')
     if not line:
         return None, state
-    if line[0] == '{':
+    if line[0] in '{[':
         try:
-            return redact.scrub_json(json.loads(line), state, MAX_DEPTH)
+            obj, after = redact.scrub_json(json.loads(line, object_pairs_hook=_unique), state,
+                                           MAX_DEPTH)
         except (ValueError, RecursionError):    # `{{{...` 100k deep is a stderr line, not a crash
             pass
+        else:
+            if isinstance(obj, dict):
+                return obj, after
+            return {'type': 'stderr', 'text': json.dumps(obj, ensure_ascii=False)}, after
     text, state = redact.scrub(line, state, 'stderr')
     return {'type': 'stderr', 'text': text}, state
 
@@ -707,12 +726,20 @@ def _step(f, state, emit=True):
     after it); None for a line not yet complete."""
     raw = f.readline(MAX_LINE + 1)
     if len(raw) > MAX_LINE:
-        n, mark = _long(f, raw)
+        got = _long(f, raw)
+        if got is None:
+            return None
+        n, mark = got
+        # a marker in a JSON line is in one of its strings: a key of the json channel
+        channel = 'json' if raw.lstrip(b' \t\xef\xbb\xbf')[:1] in (b'{', b'[') else 'stderr'
         ev = None
         if emit:
-            head = redact.scrub(raw[:200].decode('utf-8', errors='replace').strip(), state, 'stderr')[0]
+            # the head is not read as JSON: inside a key, or with a marker of its own
+            # (escaped, perhaps), it may hold the key's lines
+            head = '[redacted]' if state is not None or mark is not None else redact.redact(
+                _CUT.sub('', raw[:200].decode('utf-8', errors='replace')).strip())
             ev = {'type': 'stderr', 'text': '%s [line over %d bytes dropped]' % (head, MAX_LINE)}
-        return ev, n, redact.after(state, 'stderr', mark)
+        return ev, n, redact.after(state, channel, mark)
     if not raw.endswith(b'\n'):
         return None
     if not emit and state != 'json' and _quiet(raw):

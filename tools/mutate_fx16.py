@@ -1,0 +1,189 @@
+"""The fix batch 16 mutation suite (the review of pv20-fx15): break each rule the batch
+added, run the test that guards it, and require it to fail.
+
+    py tools/mutate_fx16.py            every mutation
+    py tools/mutate_fx16.py H01 H05    only these
+
+Same runner as tools/mutate_p11.py. It edits sources: run it with nothing else running
+against the tree.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mutate_p11  # noqa: E402  (its runner)
+
+RED = 'archeus/core/redact.py'
+BASE = 'archeus/harnesses/base.py'
+BRK = 'archeus/node/broker.py'
+ISO = 'archeus/node/isolation.py'
+PV = 'archeus/core/pv20.py'
+RUN = 'archeus/core/runtime.py'
+MGR = 'archeus/core/execution/manager.py'
+R = 'tests/v1/unit/test_redact_red_team.py::'
+S = 'tests/v1/integration/test_stream_redaction_red_team.py::'
+N = 'tests/v1/unit/test_fix_node_broker.py::'
+A = 'tests/v1/unit/test_pv20_activate.py::'
+C = 'tests/v1/unit/test_confined_run.py::'
+X = 'tests/v1/unit/test_broker_execution.py::'
+
+MUTATIONS = [
+    ('H01', 'a lowercase word of an event is masked as a short fragment', [(RED,
+     r"""_LINE.fullmatch(x) and not (x.isalpha() and x.islower())""",
+     r"""_LINE.fullmatch(x)""")],
+     [R + 'test_the_structural_words_of_an_event_stay_while_a_key_is_open',
+      S + 'test_a_result_after_an_open_key_keeps_its_usage_summary_and_error']),
+    ('H02', 'any alphabetic word is let through an open key', [(RED,
+     r"""not (x.isalpha() and x.islower())""",
+     r"""not x.isalpha()""")],
+     [R + 'test_a_short_fragment_that_is_not_a_lowercase_word_is_still_held']),
+    ('H03', 'a field name that reads as prose ends the key', [(RED,
+     r"""last_mark(text), None if name else text)""",
+     r"""last_mark(text), text)""")],
+     [R + 'test_a_field_name_that_reads_as_prose_does_not_end_the_key']),
+    ('H04', 'a body line followed by a few characters is not key material', [(RED,
+     r"""{16}(?:\\[nrt]|[^A-Za-z0-9+/=\n]){0,4}[ \t\r]*$'""",
+     r"""{16}[ \t\r]*$'""")],
+     [R + 'test_a_body_line_with_a_few_trailing_characters_is_held',
+      R + 'test_a_body_line_used_as_a_field_name_with_a_colon_is_held']),
+    ('H05', 'a body line followed by a literal backslash-n is not key material', [(RED,
+     r"""(?:\\[nrt]|[^A-Za-z0-9+/=\n]){0,4}""",
+     r"""(?:[^A-Za-z0-9+/=\n]){0,4}""")],
+     [R + 'test_a_body_line_with_a_few_trailing_characters_is_held']),
+    ('H06', 'an oversized line caught mid-write is cut where the read ended', [(BASE,
+     r"""        if not rest:
+            return None
+        if rest.endswith(b'\n'):""",
+     r"""        if not rest or rest.endswith(b'\n'):""")],
+     [S + 'test_an_oversized_line_caught_mid_write_is_read_whole_once_it_ends']),
+    ('H07', 'the head of an oversized line inside a key is shown', [(BASE,
+     r"""'[redacted]' if state is not None or mark is not None else""",
+     r"""'[redacted]' if mark is not None else""")],
+     [S + 'test_the_head_of_an_oversized_line_inside_or_opening_a_key_is_masked']),
+    ('H08', 'the head of an oversized line with its own marker is shown', [(BASE,
+     r"""'[redacted]' if state is not None or mark is not None else""",
+     r"""'[redacted]' if state is not None else""")],
+     [S + 'test_the_head_of_an_oversized_line_inside_or_opening_a_key_is_masked']),
+    ('H09', 'a blank escape is not read in an oversized line', [(BASE,
+     r"""_ASCII = re.compile(r'\\u00([0-7][0-9a-fA-F])|\\[nrtbf]')""",
+     r"""_ASCII = re.compile(r'\\u00([0-7][0-9a-fA-F])')""")],
+     [S + 'test_an_oversized_line_whose_marker_has_escaped_blanks_opens_the_key']),
+    ('H10', 'the head of a dropped line keeps the token cut at its end', [(BASE,
+     r"""                _CUT.sub('', raw[:200].decode('utf-8', errors='replace')).strip())""",
+     r"""                raw[:200].decode('utf-8', errors='replace').strip())""")],
+     [S + 'test_the_head_cut_of_an_oversized_line_keeps_no_token_prefix']),
+    ('H11', 'a marker in an oversized JSON line opens a stderr key', [(BASE,
+     r"""        channel = 'json' if raw.lstrip""",
+     r"""        channel = 'stderr' if raw.lstrip""")],
+     [S + 'test_an_oversized_json_line_opens_a_key_that_json_prose_ends']),
+    ('H12', 'a repeated field name drops a marker before redaction reads it', [(BASE,
+     r"""    if len(obj) != len(pairs):""",
+     r"""    if False:""")],
+     [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key']),
+    ('H13', 'a byte order mark makes a JSON line a stderr line', [(BASE,
+     r"""    line = raw.decode('utf-8', errors='replace').strip().lstrip('﻿')""",
+     r"""    line = raw.decode('utf-8', errors='replace').strip()""")],
+     [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key',
+      S + 'test_a_bom_before_an_event_does_not_make_it_a_stderr_line']),
+    ('H14', 'a JSON array line is not decoded', [(BASE,
+     r"""    if line[0] in '{[':""",
+     r"""    if line[0] == '{':""")],
+     [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key']),
+    ('H15', 'close returns while an issue is still in flight', [(BRK,
+     r"""            self._drained.wait_for(lambda: all(t == me for t in self._issuing))""",
+     r"""            pass""")],
+     [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
+    ('H16', 'an issue in flight is not counted', [(BRK,
+     r"""            self._issuing.append(me)
+        try:""",
+     r"""            self._issuing.append(me)
+            self._issuing.remove(me)
+        try:""")],
+     [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
+    ('H17', 'a Job is created after Core began to stop', [(ISO,
+     r"""        with self._lock:
+            if self.closed:
+                raise IsolationClosed()
+            job = self._jobs.get(execution_id)""",
+     r"""        with self._lock:
+            job = self._jobs.get(execution_id)""")],
+     [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+    ('H18', 'an identity is established after Core began to stop', [(ISO,
+     r"""        if self.closed:
+            raise IsolationClosed()
+        if request.kind == 'verify':""",
+     r"""        if request.kind == 'verify':""")],
+     [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+    ('H19', 'a confined check runs on after Core began to stop', [(ISO,
+     r"""                if self.closed:
+                    raise IsolationClosed()
+                exited = child.wait(""",
+     r"""                exited = child.wait(""")],
+     [C + 'test_a_confined_check_running_when_core_stops_ends_at_its_next_poll']),
+    ('H20', 'the workers are joined before admission closes', [(RUN,
+     r"""                self.pv20.quiesce()""",
+     r"""                pass""")],
+     [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after']),
+    ('H21', 'the isolation authority stays open while the workers finish', [(PV,
+     r"""        finally:
+            self.node.isolation.close_admission()""",
+     r"""        finally:
+            pass""")],
+     [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after',
+      A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+    ('H22', 'the workloads end before the workers are joined', [(PV,
+     r"""            self.node.isolation.close_admission()""",
+     r"""            self.node.isolation.close_admission()
+            _dispose(self.node)""")],
+     [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after']),
+    ('H23', 'each worker gets the whole quiesce time', [(RUN,
+     r"""worker.join(max(0.0, end - time.monotonic()))""",
+     r"""worker.join(QUIESCE_S)""")],
+     [A + 'test_the_workers_share_one_quiesce_deadline_and_a_late_one_is_reported']),
+    ('H24', 'a worker still alive after the deadline is not reported', [(RUN,
+     r"""                    log.warning('%s did not stop within %gs; it can admit nothing new',
+                                type(worker).__name__, QUIESCE_S)""",
+     r"""                    pass""")],
+     [A + 'test_the_workers_share_one_quiesce_deadline_and_a_late_one_is_reported']),
+    ('H25', 'a grant refused by a closing broker refuses the binding', [(MGR,
+     r"""stop_reason='spawn' if isinstance(err, broker_mod.BrokerClosed)""",
+     r"""stop_reason='binding' if isinstance(err, broker_mod.BrokerClosed)""")],
+     [X + 'test_a_grant_refused_by_a_closing_broker_is_an_uncharged_failed_start']),
+    ('H26', 'a broker that will not close leaves the isolation authority open', [(PV,
+     r"""        try:
+            self.broker.close()
+        finally:
+            self.node.isolation.close_admission()""",
+     r"""        self.broker.close()
+        self.node.isolation.close_admission()""")],
+     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+    ('H27', 'an admission that will not close stops stop() short', [(RUN,
+     r"""            try:
+                self.pv20.quiesce()
+            except Exception as error:
+                closing = error
+""",
+     r"""            self.pv20.quiesce()
+""")],
+     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+    ('H28', 'an admission error is swallowed by stop()', [(RUN,
+     r"""                closing = error
+            end = time.monotonic() + QUIESCE_S""",
+     r"""                pass
+            end = time.monotonic() + QUIESCE_S""")],
+     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+    ('H29', 'a stop deletes the identity and the record of an execution it holds', [(PV,
+     r"""            node.isolation.fence(execution_id, wait=0)""",
+     r"""            node.isolation.teardown(execution_id, reason='core stopping')""")],
+     [A + 'test_a_stop_closes_the_job_of_a_live_execution_and_keeps_the_record_it_resumes_from']),
+    ('H30', 'a stop waits for each Job to empty before it closes it', [(PV,
+     r"""            node.isolation.fence(execution_id, wait=0)""",
+     r"""            node.isolation.fence(execution_id)""")],
+     [A + 'test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog']),
+]
+
+
+if __name__ == '__main__':
+    mutate_p11.MUTATIONS = MUTATIONS
+    sys.exit(mutate_p11.run(sys.argv[1:]))

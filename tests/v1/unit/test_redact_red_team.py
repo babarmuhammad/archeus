@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from archeus.core.redact import last_mark, redact, redact_json, scrub
+from archeus.core.redact import last_mark, redact, redact_json, scrub, scrub_json
 
 BS = chr(92)
 S = 'SYNTHBODYabcdef0123456789'
@@ -213,7 +213,7 @@ def test_names_of_an_open_key_do_not_lose_a_field():
     assert len(got) == 3 and list(got.values()) == ['[redacted]', 1, 2]
 
 
-@pytest.mark.parametrize('frag', ['AQID', 'a', 'AQID==', 'AQID\nBAUG', ' AQID \r\n'])
+@pytest.mark.parametrize('frag', ['AQID', 'Q', 'AQID==', 'AQID\nBAUG', ' AQID \r\n'])
 def test_a_short_key_fragment_in_an_open_key_is_held(frag):
     out = redact_json({'lines': ['-----BEGIN PRIVATE KEY-----', frag, '-----END PRIVATE KEY-----']})
     assert out['lines'][1] == '[redacted]', out
@@ -394,8 +394,8 @@ def test_redact_json_deep_nesting_is_iterative():
 
 
 def test_a_plain_field_name_stays_while_a_key_is_open():
-    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'type': 'x'}])
-    assert list(out[1]) == ['type'] and out[1]['type'] == '[redacted]'
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'modelUsage': 'X'}])
+    assert list(out[1]) == ['modelUsage'] and out[1]['modelUsage'] == '[redacted]'
 
 
 def test_a_string_of_a_base64_line_and_prose_is_not_a_short_fragment():
@@ -409,3 +409,43 @@ def test_a_field_name_is_read_before_its_own_value():
 
 def test_an_empty_string_is_not_masked_while_a_key_is_open():
     assert redact_json(['-----BEGIN PRIVATE KEY-----', '', ' '])[1:] == ['', ' ']
+
+
+# ── fx16: the review of fx15 ──
+
+KEY = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7'
+
+
+@pytest.mark.parametrize('channel', ['json', 'stderr'])
+def test_the_structural_words_of_an_event_stay_while_a_key_is_open(channel):
+    state = scrub('-----BEGIN PRIVATE KEY-----', None, channel)[1]
+    doc = {'type': 'result', 'subtype': 'success', 'result': 'done', 'role': 'assistant',
+           'content': [{'type': 'text'}]}
+    assert scrub_json(doc, state)[0] == doc
+
+
+@pytest.mark.parametrize('frag', ['AQID', 'Zm9v', 'z9', 'AQIDbaug'])
+def test_a_short_fragment_that_is_not_a_lowercase_word_is_still_held(frag):
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', frag])
+    assert out[1] == '[redacted]', out
+
+
+def test_a_field_name_that_reads_as_prose_does_not_end_the_key():
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'three plain words': 'AQID'}])
+    assert out[1] == {'three plain words': '[redacted]'}
+
+
+def test_prose_in_a_value_still_ends_the_key_after_a_prose_field_name():
+    out = redact_json(['-----BEGIN PRIVATE KEY-----', {'three plain words': 'four more plain words'},
+                       'AQID'])
+    assert out[2] == 'AQID'
+
+
+@pytest.mark.parametrize('line', [KEY + '!', "'%s'," % KEY, KEY[:40] + ' ' + BS, KEY + '",',
+                                  KEY + BS + 'n', KEY + '!   '])
+def test_a_body_line_with_a_few_trailing_characters_is_held(line):
+    gone(json.dumps(redact_json({'t': '-----BEGIN PRIVATE KEY-----', 'u': line})), KEY[:30])
+
+
+def test_a_body_line_used_as_a_field_name_with_a_colon_is_held():
+    gone(json.dumps(redact_json([{'t': '-----BEGIN PRIVATE KEY-----'}, {KEY + ':': 1}])), KEY[:30])

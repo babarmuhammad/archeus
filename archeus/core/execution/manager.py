@@ -421,8 +421,11 @@ class ExecutionManager:
             token, digest, _endpoint, port = b.issue(binding)
         except (broker_mod.Refused, broker_mod.BrokerUnavailable) as err:
             b.revoke(e.id)
-            self._do(X.refuse, execution_id=e.id, stop_reason='binding',
-                     reason='no broker grant: %s' % err)
+            # a broker closed by Core's stop is a failed start the next Core retries,
+            # not a refusal of the binding
+            self._do(X.refuse, execution_id=e.id,
+                     stop_reason='spawn' if isinstance(err, broker_mod.BrokerClosed)
+                     else 'binding', reason='no broker grant: %s' % err)
             return None
         return token, port, digest
 

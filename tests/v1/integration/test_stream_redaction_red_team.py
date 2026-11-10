@@ -6,6 +6,7 @@ secret is synthetic."""
 
 import json
 import os
+import random
 import time
 
 import pytest
@@ -494,3 +495,135 @@ def test_odd_shapes_neither_raise_nor_leak(raw):
 ])
 def test_odd_types_do_not_raise(raw):
     normalise(raw)
+
+
+# ── fx16: the review of fx15 ──
+
+KEY = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7'
+RESULT = {'type': 'result', 'subtype': 'error_during_execution', 'is_error': True,
+          'result': 'the run stopped early', 'session_id': '7f0c3a52-0d4e-4f55-9a5e-1b2c3d4e5f60',
+          'total_cost_usd': 1.5, 'usage': {'input_tokens': 9, 'output_tokens': 4,
+                                           'service_tier': 'standard'}}
+
+
+@pytest.mark.parametrize('opener', [B, ev(B), b'{"t":"' + B.encode() + b'","pad":"' + b'p' * 5000 + b'"}'],
+                         ids=['stderr', 'json', 'oversized-json'])
+def test_a_result_after_an_open_key_keeps_its_usage_summary_and_error(rig, monkeypatch, opener):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    rig.write([opener, RESULT])
+    res = rig.adapter.collect_result(base.ProcessHandle(rig.exe.id, 4242, None, rig.paths.dir))
+    assert res.usage_total is True
+    assert res.usage == {'input_tokens': 9, 'output_tokens': 4, 'service_tier': 'standard',
+                         'total_cost_usd': 1.5}
+    assert res.reported_summary == 'the run stopped early'
+    assert res.failure == 'resource' and res.exit_reason == 'error'
+    assert res.session_ref == RESULT['session_id']
+
+
+def raw_stream(rig, data):
+    with open(rig.paths.stream, 'wb') as f:
+        f.write(data)
+
+
+def events_text(events):
+    return json.dumps(events)
+
+
+def big(n=5000):
+    return b'p' * n
+
+
+J = bytes([92])         # a backslash: a JSON escape in the raw line
+OPEN = b'{"t":"' + B.encode() + b'"}\n'
+ESC_B = (esc('-----') + 'BEGIN PRIVATE KEY' + esc('-----')).encode()
+CASES = {
+    'mid-write tail': OPEN + b'{"t":"' + b' ' * 5000 + J + b'n' + KEY.encode() + b'","x":1}\n',
+    'head while open': OPEN + b'{"text":"' + KEY.encode() + b'","pad":"' + b' ' * 5000 + b'"}\n',
+    'head with escaped marker': b'{"text":"' + ESC_B + J + b'n' + KEY.encode() + b'","pad":"'
+                                + big() + b'"}\n',
+    'escaped newline in marker': b'{"text":"-----BEGIN' + J + b'nPRIVATE KEY-----","pad":"' + big()
+                                 + b'"}\n' + KEY.encode() + b'\n',
+    'escaped tab in marker': b'{"text":"-----BEGIN' + J + b'tPRIVATE' + J + b'r' + J + b'nKEY-----","pad":"'
+                             + big() + b'"}\n' + KEY.encode() + b'\n',
+    'duplicate field names': b'{"a":"' + B.encode() + b'","a":"x"}\n{"t":"' + KEY.encode() + b'"}\n',
+    'json array line': b'["' + ESC_B + b'"]\n' + KEY.encode() + b'\n',
+    'bom before an object': b'\xef\xbb\xbf{"t":"' + ESC_B + b'"}\n' + KEY.encode() + b'\n',
+}
+
+
+@pytest.mark.parametrize('case', ['duplicate field names', 'json array line', 'bom before an object'])
+def test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key(rig, case):
+    raw_stream(rig, CASES[case])
+    assert KEY[:30] not in events_text(base.read_stream(rig.paths.stream, 0)[0])
+
+
+def test_a_bom_before_an_event_does_not_make_it_a_stderr_line(rig):
+    raw_stream(rig, b'\xef\xbb\xbf{"type":"system","subtype":"init"}\n')
+    assert base.read_stream(rig.paths.stream, 0)[0] == [{'type': 'system', 'subtype': 'init'}]
+
+
+def test_a_json_line_that_is_no_object_is_a_stderr_event(rig):
+    raw_stream(rig, b'["a", 1]\n')
+    evs = base.read_stream(rig.paths.stream, 0)[0]
+    assert evs == [{'type': 'stderr', 'text': '["a", 1]'}] and normalise(evs[0]) == evs
+
+
+def test_an_oversized_line_caught_mid_write_is_read_whole_once_it_ends(rig, monkeypatch):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    data = CASES['mid-write tail']
+    cut = data.index(J + b'n' + KEY.encode())
+    raw_stream(rig, data[:cut])
+    first, offset = base.read_stream(rig.paths.stream, 0)
+    with open(rig.paths.stream, 'ab') as f:
+        f.write(data[cut:])
+    later = base.read_stream(rig.paths.stream, offset)[0]
+    assert KEY not in events_text(first + later)
+    base._SEEN.clear()
+    assert first + later == base.read_stream(rig.paths.stream, 0)[0]
+
+
+@pytest.mark.parametrize('case', ['head while open', 'head with escaped marker'])
+def test_the_head_of_an_oversized_line_inside_or_opening_a_key_is_masked(rig, monkeypatch, case):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    raw_stream(rig, CASES[case])
+    assert KEY[:30] not in events_text(base.read_stream(rig.paths.stream, 0)[0])
+
+
+@pytest.mark.parametrize('case', ['escaped newline in marker', 'escaped tab in marker'])
+def test_an_oversized_line_whose_marker_has_escaped_blanks_opens_the_key(rig, monkeypatch, case):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    raw_stream(rig, CASES[case])
+    assert KEY[:30] not in events_text(base.read_stream(rig.paths.stream, 0)[0])
+
+
+@pytest.mark.parametrize('token', ['ghp_' + 'Zq9' * 10, 'sk-' + 'Zq9' * 10])
+def test_the_head_cut_of_an_oversized_line_keeps_no_token_prefix(rig, monkeypatch, token):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    raw_stream(rig, b'{"t":"' + b'p' * 188 + token.encode() + big() + b'"}\n')
+    got = events_text(base.read_stream(rig.paths.stream, 0)[0])
+    assert token[:3] not in got and 'dropped' in got, got[:300]
+
+
+def test_an_oversized_json_line_opens_a_key_that_json_prose_ends(rig, monkeypatch):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    rig.write([b'{"t":"' + B.encode() + b'","pad":"' + big() + b'"}', ev('three plain words here'),
+               'Traceback (most recent call last):'])
+    assert 'Traceback' in rig.text()
+
+
+@pytest.mark.parametrize('case', sorted(CASES))
+def test_a_read_split_anywhere_answers_what_a_cold_read_does(rig, monkeypatch, case):
+    monkeypatch.setattr(base, 'MAX_LINE', 4096)
+    data = CASES[case]
+    raw_stream(rig, data)
+    base._SEEN.clear()
+    cold = base.read_stream(rig.paths.stream, 0)[0]
+    assert KEY[:30] not in events_text(cold)
+    rnd = random.Random(case)
+    for k in sorted({0, 1, len(data) - 1, len(data)} | {rnd.randrange(len(data)) for _ in range(60)}):
+        base._SEEN.clear()
+        raw_stream(rig, data[:k])
+        first, offset = base.read_stream(rig.paths.stream, 0)
+        with open(rig.paths.stream, 'ab') as f:
+            f.write(data[k:])
+        assert first + base.read_stream(rig.paths.stream, offset)[0] == cold, k

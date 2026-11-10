@@ -122,3 +122,37 @@ def test_revoke_all_alone_leaves_the_broker_open():
     assert b.revoke_all() == 1
     issued(b)
     assert len(b._grants) == 1
+
+
+def test_close_waits_for_an_issue_in_flight_and_leaves_no_listener():
+    resolving, release = threading.Event(), threading.Event()
+
+    def resolve(host, port):
+        resolving.set()
+        release.wait(5)
+        return ['93.184.216.34']
+
+    b, _ = broker()
+    b._resolve = resolve
+    errors = []
+    issuer = threading.Thread(target=lambda: errors.append(_issue_error(b)))
+    issuer.start()
+    assert resolving.wait(5)
+    closer = threading.Thread(target=b.close)
+    closer.start()
+    closer.join(0.3)
+    returned_early = not closer.is_alive()
+    release.set()
+    issuer.join(5)
+    closer.join(5)
+    assert not returned_early, 'close returned while an issue was still resolving'
+    assert isinstance(errors[0], B.BrokerClosed) and b._grants == {}
+    assert b.transport.closed == ['ep1']
+
+
+def _issue_error(b):
+    try:
+        b.issue(binding())
+    except Exception as error:
+        return error
+    return None

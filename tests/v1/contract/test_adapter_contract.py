@@ -212,8 +212,13 @@ def test_the_stream_reader_does_not_hold_a_line_over_the_cap(tmp_path, monkeypat
     assert [e['type'] for e in events] == ['a', 'stderr', 'b']
     assert events[1]['text'].endswith('[line over 64 bytes dropped]') and len(events[1]['text']) < 120
     assert offset == os.path.getsize(path)
-    with open(path, 'ab') as f:                 # an unterminated line past the cap: skipped, bounded
+    # an unterminated line past the cap is scanned in bounded reads and left for the read
+    # after its end, like any partial line: a read taken mid-write never splits it (fx16 R2)
+    with open(path, 'ab') as f:
         f.write(b'y' * 1000)
+    assert base.read_stream(path, offset) == ([], offset)
+    with open(path, 'ab') as f:
+        f.write(b'\n')
     events, offset = base.read_stream(path, offset)
     assert [e['type'] for e in events] == ['stderr'] and offset == os.path.getsize(path)
 

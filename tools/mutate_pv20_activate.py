@@ -254,7 +254,7 @@ MUTATIONS += [
      [T + 'test_a_lock_failure_in_start_tears_the_activation_down']),
     ('PR02', 'a part that will not close stops stop() short', [(RT,
      "            try:\n                self.pv20.close()\n            except Exception as error:\n"
-     "                closing = error",
+     "                closing = closing or error",
      "            self.pv20.close()")], [STOP_STUCK]),
     ('PR03', 'a close error is swallowed by stop()', [(RT,
      "        if closing is not None:\n            raise closing", "        pass")], [STOP_STUCK]),

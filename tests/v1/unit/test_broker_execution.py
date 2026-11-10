@@ -426,3 +426,8 @@ def test_the_task_snapshot_carries_the_gate_only_when_set(monkeypatch):
     assert src.count("snap['isolated_dispatch'] = ISOLATED_DISPATCH") == 1
     assert "    if ISOLATED_DISPATCH:\n        snap['isolated_dispatch']" in src
 
+
+def test_a_grant_refused_by_a_closing_broker_is_an_uncharged_failed_start(monkeypatch, tmp_path):
+    m, e, mission, log = _on(monkeypatch, tmp_path, fail=B.BrokerClosed('the broker is closed'))
+    assert m._spawn(e, mission) is True
+    assert log[-1][1]['stop_reason'] == 'spawn' and 'spawn' in X.UNCHARGED

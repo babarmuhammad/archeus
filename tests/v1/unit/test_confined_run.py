@@ -644,3 +644,16 @@ def test_a_tree_core_cannot_export_launches_nothing_and_is_recorded(tmp_path, mo
     assert result['error'] == 'prepare_failed: synthetic export failure'
     assert result['exit_code'] is None and recorded == [result]
     assert b.created == [] and b.launch_calls == []
+
+
+def test_a_confined_check_running_when_core_stops_ends_at_its_next_poll(run):
+    box = {}
+
+    def stopping(child):
+        box['a'].close_admission()          # Core.stop, from another thread
+    b = Boundary(child=Child(step=stopping))
+    a = box['a'] = iso.Isolation(FakeNode(), boundary=b)
+    with pytest.raises(iso.IsolationClosed):
+        run(b, authority=a)
+    assert 'close' in b.events and a.held_job(_verify_key()) is None
+    assert 'record' not in b.events and 'delete' not in b.events
