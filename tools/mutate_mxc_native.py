@@ -18,8 +18,9 @@ MUTATIONS = [
      '        if child.resumed:\n', '        if False:\n')],
      [TEST + 'test_suspended_allowlist_and_resume_once']),
     ('N03', 'fault handle cleanup removed', [(NATIVE,
-     '            for handle in reversed(handles):\n                self.api.close_handle(handle)',
-     '            for handle in reversed(handles):\n                pass')],
+     '                for handle in handles:\n'
+     '                    cleanup.callback(self.api.close_handle, handle)',
+     '                for handle in handles:\n                    pass')],
      [TEST + 'test_allocation_fault_closes_every_handle']),
     ('N04', 'inheritance allowlist removed', [(NATIVE,
      'attributes = self.api.attribute_list(inherited)',
@@ -129,6 +130,11 @@ MUTATIONS = [
      "    def is_alive(self):\n        with self._lock:\n",
      "    def is_alive(self):\n        if True:\n")],
      [TEST + 'test_a_closer_cannot_close_the_launcher_handle_under_a_call_that_uses_it[is_alive]']),
+    ('N28', 'a handle that fails to close ends the creation cleanup', [(NATIVE,
+     '                    cleanup.callback(self.api.close_handle, handle)',
+     '                    self.api.close_handle(handle)')],
+     ['tests/v1/unit/test_gaps2_node_mxc_native.py::'
+      'test_a_close_fault_during_creation_cleanup_still_releases_every_handle']),
 ]
 
 

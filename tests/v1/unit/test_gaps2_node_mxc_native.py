@@ -14,8 +14,8 @@ Selected branches (file: archeus/node/mxc_native.py):
  7. :274  the I/O deadline fires on the exact tick (``>=``, not ``>``).
  8. :260-263  a cached exit code of 0 replays as 0, never as 'launcher closed'.
  9. :213-214  Process.close keeps the FIRST close fault across several failures.
-10. :130-135  (justified xfail) a close fault in the create_suspended finally
-    loop must not skip the remaining closes, attribute-list delete or lease.
+10. :131-138  a close fault in the create_suspended finally must not skip the
+    remaining closes, attribute-list delete or lease.
 
 Every OS call is faked through the injected Win32 seam (same ledger discipline
 as test_mxc_native_gaps.py): no real DLL, handle, pipe, process or file exists,
@@ -384,18 +384,10 @@ def test_the_first_close_fault_is_the_one_reraised_after_the_lease_is_gone():
                           'process', 'parent0', 'parent2', 'policy']
 
 
-# -- 10. (justified xfail) a close fault must not abort creation cleanup -----------
+# -- 10. a close fault must not abort creation cleanup -----------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    'mxc_native.py:130-135: an close_handle fault raised inside the '
-    'create_suspended finally loop skips the remaining close_handle calls, '
-    'delete_attribute_list and remove_policy, stranding the policy lease and '
-    'the other handles; that contradicts the Win32 protocol contract at '
-    'mxc_native.py:19 (failed calls release partial allocations), the '
-    'fail-closed premise the sibling try-loop cleanup already satisfies in '
-    'test_fault_while_releasing_inherited_handles_still_empties_the_ledger'))
 def test_a_close_fault_during_creation_cleanup_still_releases_every_handle():
-    """Branch: finally loop of create_suspended (:130-135) with a raising
+    """Branch: the cleanup of create_suspended's finally with a raising
     close_handle.  Closest existing tests, test_allocation_fault_closes_every_
     handle and test_fault_while_releasing_inherited_handles_still_empties_the_
     ledger, only inject faults while close_handle still succeeds (the gaps fake

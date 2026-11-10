@@ -4,6 +4,7 @@ import ntpath
 import subprocess
 import threading
 import time
+from contextlib import ExitStack
 from typing import Protocol
 
 from . import mxc
@@ -128,12 +129,13 @@ class Transport:
                 self.api.terminate_process(process)
             raise
         finally:
-            for handle in reversed(handles):
-                self.api.close_handle(handle)
-            if attributes is not None:
-                self.api.delete_attribute_list(attributes)
-            if child is None:
-                self.api.remove_policy(path, lease)
+            with ExitStack() as cleanup:    # unwound last first; one failed release skips none
+                if child is None:
+                    cleanup.callback(self.api.remove_policy, path, lease)
+                if attributes is not None:
+                    cleanup.callback(self.api.delete_attribute_list, attributes)
+                for handle in handles:
+                    cleanup.callback(self.api.close_handle, handle)
 
     def assign_job(self, job, child):
         self.boundary.assign_job(job, child.process_handle)
