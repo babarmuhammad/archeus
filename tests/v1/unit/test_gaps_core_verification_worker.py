@@ -301,6 +301,17 @@ class _Rig:
         self.db.close()
 
 
+@pytest.fixture(autouse=True)
+def _tool_on_path(tmp_path, monkeypatch):
+    # the commands name a bare `tool`, which Core resolves on PATH or not at all
+    os.makedirs(str(tmp_path / 'bin'))
+    with open(str(tmp_path / 'bin' / ('tool.exe' if os.name == 'nt' else 'tool')), 'w'):
+        pass
+    os.chmod(str(tmp_path / 'bin' / ('tool.exe' if os.name == 'nt' else 'tool')), 0o755)
+    monkeypatch.setenv('PATH', str(tmp_path / 'bin') + os.pathsep + os.environ.get('PATH', ''))
+    monkeypatch.setenv('PATHEXT', os.environ.get('PATHEXT', '') + ';.EXE')
+
+
 @pytest.fixture
 def rig(tmp_path):
     """Make the test's one rig, and close it afterwards. Exactly one: a second
@@ -644,7 +655,7 @@ def test_a_command_that_never_finished_or_failed_is_never_a_pass(rig, case):
     assert v.checks[0]['name'].startswith('test: ')
     if case == 'unparsable':
         assert 'run_check' not in r.node.calls          # no process was ever started
-        assert v.checks[0]['detail'] == 'the command line cannot be parsed'
+        assert v.checks[0]['detail'] .startswith('the command line cannot be parsed')
     if case == 'failing':
         assert (v.state, v.checks[0]['result'], v.checks[0]['exit_code']) == (
             'FAILED', 'fail', 1)

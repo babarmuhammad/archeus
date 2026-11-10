@@ -8,8 +8,8 @@ import json
 import os
 import re
 import shlex
-import shutil
 
+from claude_sessions import proc
 from ...infra.artifacts import store
 from ...infra.db import rows
 from ...infra.paths import ExecPaths, run_dir
@@ -52,17 +52,21 @@ def project_root(conn, project_id):
     return roots[0] if roots else None
 
 
-def argv_of(command):
-    """A command line as argv, its program resolved on PATH (so `npm` finds
-    `npm.cmd` on Windows); None when it cannot be parsed."""
+def argv_of(command, workspace=None):
+    """A command line as argv, a bare program resolved on PATH (so `npm` finds
+    `npm.cmd` on Windows) outside the current directory and *workspace*; None
+    when it cannot be parsed or the program is not found there. A program named
+    with a directory is the project's own script and is kept as written."""
     try:
         argv = shlex.split(command, posix=True)
     except ValueError:
         return None
     if not argv:
         return None
-    found = shutil.which(argv[0])
-    return [found or argv[0]] + argv[1:]
+    if os.path.dirname(argv[0]):
+        return argv
+    found = proc.which(argv[0], avoid=[workspace])
+    return [found] + argv[1:] if found else None
 
 
 def confined_argv(command, toolchain):
@@ -74,13 +78,8 @@ def confined_argv(command, toolchain):
         return None
     if not argv:
         return None
-    found = shutil.which(argv[0], path=os.pathsep.join(toolchain))
-    # which takes a program named with a directory as it is, and on Windows looks in
-    # the current directory first: only a program inside the toolchain is one
-    dirs = {os.path.normcase(os.path.abspath(d)) for d in toolchain}
-    if found is None or os.path.normcase(os.path.dirname(os.path.abspath(found))) not in dirs:
-        return None
-    return [os.path.abspath(found)] + argv[1:]
+    found = proc.which(argv[0], path=os.pathsep.join(toolchain))
+    return [found] + argv[1:] if found else None
 
 
 def check_of(kind, command, argv, r):
@@ -112,10 +111,11 @@ def run_commands(node, workspace, cmds, *, verification_id, timeout_s, verifier_
     base = os.path.join(run_dir(), 'verify', verification_id)
     for i, (kind, command) in enumerate(cmds):
         name = '%s: %s' % (kind, command)
-        argv = argv_of(command)
+        argv = argv_of(command, workspace)
         if argv is None:
             checks.append({'name': name, 'kind': 'command', 'result': 'error',
-                           'detail': 'the command line cannot be parsed'})
+                           'detail': 'the command line cannot be parsed or its program is '
+                                     'not on PATH outside the workspace'})
             continue
         r = node.run_check(workspace, argv, timeout=timeout_s,
                            out_path=os.path.join(base, '%d.log' % i))

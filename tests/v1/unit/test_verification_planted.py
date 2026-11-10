@@ -67,33 +67,48 @@ def test_argv_of_finds_a_program_on_path_not_in_the_workspace(world, monkeypatch
 
 
 @windows_only
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='H5: Python 3.10 which() searches the current directory first, '
-                   'so with Core started in the workspace a planted program wins over PATH')
 @pytest.mark.parametrize('name', NAMES)
 def test_argv_of_ignores_a_planted_program_when_core_runs_in_the_workspace(world, monkeypatch, name):
     monkeypatch.chdir(world.ws)
     found = evidence.argv_of('%s --version' % name)
     assert found is None or (os.path.isabs(found[0]) and not _inside(found[0], world.ws))
+    assert found is not None and _inside(found[0], world.tools)
 
 
 @windows_only
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='H5: a program PATH does not hold is still taken from the current directory')
 def test_argv_of_does_not_take_a_planted_program_PATH_lacks(world, monkeypatch):
     monkeypatch.setenv('PATH', str(world.core))
     monkeypatch.chdir(world.ws)
     found = evidence.argv_of('git status')
     assert found is None or (os.path.isabs(found[0]) and not _inside(found[0], world.ws))
+    assert found is None
+
+
+def test_argv_of_skips_a_workspace_directory_on_path_and_fails_closed(world, monkeypatch):
+    monkeypatch.chdir(world.core)
+    monkeypatch.setenv('PATH', os.pathsep.join([str(world.ws), str(world.tools)]))
+    found = evidence.argv_of('git status', str(world.ws))
+    assert os.path.isabs(found[0]) and _inside(found[0], world.tools)
+    monkeypatch.setenv('PATH', str(world.ws))
+    assert evidence.argv_of('git status', str(world.ws)) is None
+
+
+@pytest.mark.parametrize('entry', ['.', 'sub', 'workspace'])
+def test_which_never_searches_the_current_directory_or_a_relative_entry(world, monkeypatch, entry):
+    _plant(world.ws / 'sub')
+    monkeypatch.chdir(world.ws)
+    monkeypatch.setenv('PATH', str(world.ws) if entry == 'workspace' else entry)
+    assert evidence.argv_of('git status') is None
 
 
 @pytest.mark.parametrize('toolchain', ['absent', 'present'])
 def test_confined_argv_never_returns_a_workspace_program(world, monkeypatch, toolchain):
-    # on Windows a planted program shadows the staged one, so the confined builder
-    # refuses (None) rather than run either: it fails closed
+    # a planted program in the current directory never shadows the staged one
     monkeypatch.chdir(world.ws)
     tc = [str(world.tools if toolchain == 'present' else world.core)]
     found = evidence.confined_argv('git status', tc)
     assert found is None or (found[1:] == ['status'] and _inside(found[0], world.tools))
-    assert toolchain == 'present' or found is None
+    assert (found is None) == (toolchain == 'absent')
 
 
 def test_run_check_hands_the_program_and_path_on_unchanged(world, monkeypatch):
@@ -154,13 +169,13 @@ def test_the_store_pin_keeps_path_to_gits_own_directory_whatever_core_inherited(
 
 
 def _bare_git_calls(monkeypatch, ws):
-    """Every `proc.run` the Git helpers make against *ws*, recorded and never started."""
+    """Every program the Git helpers hand the spawner against *ws*, recorded and never started."""
     calls = []
 
-    def run(argv, *, cwd=None, env=None, timeout=30, stdin=None, check=False):
+    def run(argv, *, cwd=None, **kw):
         calls.append(SimpleNamespace(argv=list(argv), cwd=cwd))
         return SimpleNamespace(returncode=0, stdout='a' * 40 + '\n', stderr='')
-    monkeypatch.setattr(local.proc, 'run', run)
+    monkeypatch.setattr(local.proc.subprocess, 'run', run)
     w = str(ws)
     LocalNode.git_head(w)
     LocalNode.git_dirty(w)
@@ -177,15 +192,19 @@ def _bare_git_calls(monkeypatch, ws):
 def test_a_bare_git_call_of_core_resolves_to_path_when_core_is_elsewhere(world, monkeypatch):
     monkeypatch.chdir(world.core)
     for c in _bare_git_calls(monkeypatch, world.ws):
-        exe = local.shutil.which(c.argv[0])
-        assert exe is not None and not _inside(exe, world.ws), c.argv
+        assert os.path.isabs(c.argv[0]) and not _inside(c.argv[0], world.ws), c.argv
 
 
 @windows_only
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='H6: Core runs a bare `git` over the workspace, and with Core '
-                   'started inside it the platform picks a planted git.exe before PATH')
 def test_a_bare_git_call_of_core_ignores_a_planted_git_when_core_runs_in_the_workspace(world, monkeypatch):
     monkeypatch.chdir(world.ws)
     for c in _bare_git_calls(monkeypatch, world.ws):
-        exe = local.shutil.which(c.argv[0])
-        assert exe is None or (os.path.isabs(exe) and not _inside(exe, world.ws)), c.argv
+        assert os.path.isabs(c.argv[0]) and not _inside(c.argv[0], world.ws), c.argv
+
+
+def test_a_bare_git_call_fails_closed_when_only_the_workspace_holds_git(world, monkeypatch):
+    monkeypatch.chdir(world.core)
+    monkeypatch.setenv('PATH', str(world.ws))
+    started = []
+    monkeypatch.setattr(local.proc.subprocess, 'run', lambda *a, **k: started.append(a))
+    assert LocalNode.git_head(str(world.ws)) is None and not started
