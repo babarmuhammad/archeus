@@ -13,6 +13,7 @@ import os
 import stat
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -77,6 +78,14 @@ class IsolationUnavailable(Exception):
         self.reason, self.detail = reason, str(detail or '')
         super().__init__('isolation unavailable (%s)%s'
                          % (reason, ': %s' % detail if detail else ''))
+
+
+class IsolationClosed(base.SpawnFailed):
+    """Core is stopping: nothing is established and no Job created. Not an
+    establishment failure: no record is marked failed for it."""
+
+    def __init__(self):
+        super().__init__('isolation: core_stopping')
 
 
 #: the confined verifier's Job budgets (T-054 section 5; owner values 2026-10-14, T-090):
@@ -639,6 +648,8 @@ class Isolation:
         #: verifier attempts this Core is running now: live whatever a caller says (A6-3)
         self._confined = set()
         self._admitted = set()        # verifier keys this Core admitted, not yet established
+        self.closed = False             # Core is stopping: nothing new is established
+        self._lock = threading.Lock()   # a Job is created and held, or refused, whole
 
     # ── the boundary ──
 
@@ -788,6 +799,8 @@ class Isolation:
         quarantine line, a registry note) is an establishment failure like any other:
         nothing starts, and what is on disk decides what cleanup may do."""
         api = self.boundary
+        if self.closed:
+            raise IsolationClosed()
         if request.kind == 'verify':
             if request.execution_id in self._admitted:
                 self._admitted.discard(request.execution_id)     # admitted by run_confined
@@ -917,12 +930,14 @@ class Isolation:
 
     def _ensure_job(self, execution_id):
         """The execution's Job, created once and held only here (§3.7, R6-A)."""
-        api = self.boundary
-        job = self._jobs.get(execution_id)
-        if job is None:
-            job = api.create_job(execution_id)
-            self._jobs[execution_id] = job
-        return job
+        with self._lock:
+            if self.closed:
+                raise IsolationClosed()
+            job = self._jobs.get(execution_id)
+            if job is None:
+                job = self.boundary.create_job(execution_id)
+                self._jobs[execution_id] = job
+            return job
 
     def held_job(self, execution_id):
         """The Job handle Core holds for an execution, or None. Used by the verifier
@@ -931,6 +946,12 @@ class Isolation:
 
     def held_jobs(self):
         return dict(self._jobs)
+
+    def close_admission(self):
+        """Core is stopping: no identity is established and no Job created from now on,
+        and a confined check running ends at its next poll."""
+        with self._lock:
+            self.closed = True
 
     def fence(self, execution_id, *, wait=EXIT_WAIT_S):
         """Quiescence before an import (C-1012-T030-2 §1): the Job's active-process
@@ -1366,6 +1387,8 @@ class Isolation:
                 error, child = self._confined_launch(api, rec, request, argv, env,
                                                      stdin_path, out_path, timeout)
             while error is None:
+                if self.closed:
+                    raise IsolationClosed()
                 exited = child.wait(min(CONFINED_POLL_S,
                                         max(0.0, deadline - time.monotonic()))) is not None
                 # the deadline is read after the monitor and before the exit counts:

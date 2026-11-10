@@ -90,14 +90,14 @@ MUTATIONS = [
      r""" and e.state in ('ENDED_OK', 'ENDED_ERROR'))""")],
      [W + 'test_a_started_execution_still_running_is_a_second_run']),
     ('G14', 'a stop does not wait for the workers that admit work', [(RUN,
-     r"""                    worker.join(QUIESCE_S)""",
-     r"""                    pass""")],
+     r"""                if worker is not None and worker.join(max(0.0, end - time.monotonic())):""",
+     r"""                if worker is not None and False:""")],
      [A + 'test_stop_joins_the_dispatch_workers_before_the_activation_closes']),
     ('G15', 'a core with no activation waits for its workers', [(RUN,
      r"""        if self.pv20 is not None:
-            # a dispatch in flight""",
+            # nothing new is admitted""",
      r"""        if True:
-            # a dispatch in flight""")],
+            # nothing new is admitted""")],
      [A + 'test_a_core_without_an_activation_does_not_wait_for_its_workers']),
     ('G16', 'a worker that was never started cannot be joined', [(RUN,
      r"""        self._stop.set()

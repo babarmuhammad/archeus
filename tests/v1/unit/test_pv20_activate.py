@@ -83,7 +83,8 @@ def candidate(tmp_path, monkeypatch, reviewed):
     close = broker.Broker.close
 
     def broker_close(self):
-        events.append('broker_closed')
+        if not self._closed:
+            events.append('broker_closed')
         close(self)
 
     monkeypatch.setattr(broker.Broker, 'close', broker_close)
@@ -767,8 +768,8 @@ def test_stop_joins_the_dispatch_workers_before_the_activation_closes(candidate,
     core.exec = _dispatcher(candidate.events, core.pv20.broker)
     core.verify = _dispatcher(candidate.events, core.pv20.broker)
     core.stop()
-    assert candidate.events == ['host_started', 'dispatch_done', 'dispatch_done',
-                                'broker_closed', 'host_closed']
+    assert candidate.events == ['host_started', 'broker_closed', 'dispatch_done',
+                                'dispatch_done', 'host_closed']
 
 
 def test_a_core_without_an_activation_does_not_wait_for_its_workers(quiet_core, monkeypatch):
@@ -822,3 +823,78 @@ def test_a_workload_that_will_not_go_does_not_keep_the_rest_or_the_watchdog_open
     assert core.db is None and core.lock is None
     assert candidate.events[1:] == ['broker_closed', 'teardown exe_a', 'teardown exe_b',
                                     'host_closed']
+
+
+# ── fx16: the review of fx15 (S2, S3) and Codex #2 ──
+
+class _Stuck:
+    """A worker whose step in flight outlives any join."""
+
+    def __init__(self):
+        self.waited = []
+
+    def stop(self):
+        pass
+
+    def join(self, timeout):
+        self.waited.append(timeout)
+        time.sleep(timeout)
+        return True
+
+
+def test_the_workers_share_one_quiesce_deadline_and_a_late_one_is_reported(
+        candidate, quiet_core, monkeypatch, caplog):
+    monkeypatch.setattr(runtime, 'QUIESCE_S', 0.4)
+    core = candidate.activate()
+    core.start()
+    core.exec, core.verify, core.loop = _Stuck(), _Stuck(), _Stuck()
+    started = time.monotonic()
+    core.stop()
+    assert time.monotonic() - started < 0.9
+    assert sum(w.waited[0] for w in (core.exec, core.verify, core.loop)) < 0.6
+    assert caplog.text.count('did not stop') == 3
+
+
+def test_stop_closes_admission_before_it_joins_and_the_workloads_after(
+        candidate, quiet_core, monkeypatch):
+    core = candidate.activate()
+    core.start()
+    isolation_ = core.pv20.node.isolation
+    monkeypatch.setattr(isolation_, 'held_jobs', lambda: {'exe_a': object()})
+    monkeypatch.setattr(isolation_, 'teardown',
+                        lambda eid, reason='': candidate.events.append('teardown ' + eid))
+    seen = []
+    core.exec = _dispatcher(candidate.events, core.pv20.broker,
+                            then=lambda b: seen.append(isolation_.closed))
+    core.stop()
+    assert seen == [True]
+    assert candidate.events == ['host_started', 'broker_closed', 'dispatch_done',
+                                'teardown exe_a', 'host_closed']
+
+
+def test_a_broker_that_will_not_close_does_not_stop_the_stop_short(
+        candidate, quiet_core, monkeypatch):
+    def stuck(self):
+        raise OSError('broker will not close')
+
+    core = candidate.activate()
+    core.start()
+    with monkeypatch.context() as patch:
+        patch.setattr(broker.Broker, 'close', stuck)
+        with pytest.raises(OSError, match='broker will not close'):
+            core.stop()
+    assert core.pv20.node.isolation.closed is True and core.db is None
+    assert candidate.events[-1] == 'host_closed'
+
+
+def test_a_late_worker_can_create_no_job_once_core_is_stopping(candidate, quiet_core, tmp_path):
+    core = candidate.activate()
+    authority = core.pv20.node.isolation
+    request = make_satisfying_request(new_execution_id(), str(tmp_path / 'layout'))
+    assert authority.requested(request.execution_id, SimpleNamespace(id='claude_code')) is True
+    core.pv20.quiesce()
+    with pytest.raises(isolation.IsolationClosed):
+        authority.establish(request)
+    with pytest.raises(isolation.IsolationClosed):
+        authority._ensure_job(request.execution_id)
+    assert authority.record(request.execution_id) is None and authority.held_jobs() == {}

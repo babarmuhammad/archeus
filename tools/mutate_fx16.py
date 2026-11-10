@@ -17,9 +17,16 @@ import mutate_p11  # noqa: E402  (its runner)
 RED = 'archeus/core/redact.py'
 BASE = 'archeus/harnesses/base.py'
 BRK = 'archeus/node/broker.py'
+ISO = 'archeus/node/isolation.py'
+PV = 'archeus/core/pv20.py'
+RUN = 'archeus/core/runtime.py'
+MGR = 'archeus/core/execution/manager.py'
 R = 'tests/v1/unit/test_redact_red_team.py::'
 S = 'tests/v1/integration/test_stream_redaction_red_team.py::'
 N = 'tests/v1/unit/test_fix_node_broker.py::'
+A = 'tests/v1/unit/test_pv20_activate.py::'
+C = 'tests/v1/unit/test_confined_run.py::'
+X = 'tests/v1/unit/test_broker_execution.py::'
 
 MUTATIONS = [
     ('H01', 'a lowercase word of an event is masked as a short fragment', [(RED,
@@ -94,6 +101,78 @@ MUTATIONS = [
             self._issuing.remove(me)
         try:""")],
      [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
+    ('H17', 'a Job is created after Core began to stop', [(ISO,
+     r"""        with self._lock:
+            if self.closed:
+                raise IsolationClosed()
+            job = self._jobs.get(execution_id)""",
+     r"""        with self._lock:
+            job = self._jobs.get(execution_id)""")],
+     [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+    ('H18', 'an identity is established after Core began to stop', [(ISO,
+     r"""        if self.closed:
+            raise IsolationClosed()
+        if request.kind == 'verify':""",
+     r"""        if request.kind == 'verify':""")],
+     [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+    ('H19', 'a confined check runs on after Core began to stop', [(ISO,
+     r"""                if self.closed:
+                    raise IsolationClosed()
+                exited = child.wait(""",
+     r"""                exited = child.wait(""")],
+     [C + 'test_a_confined_check_running_when_core_stops_ends_at_its_next_poll']),
+    ('H20', 'the workers are joined before admission closes', [(RUN,
+     r"""                self.pv20.quiesce()""",
+     r"""                pass""")],
+     [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after']),
+    ('H21', 'the isolation authority stays open while the workers finish', [(PV,
+     r"""        finally:
+            self.node.isolation.close_admission()""",
+     r"""        finally:
+            pass""")],
+     [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after',
+      A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+    ('H22', 'the workloads end before the workers are joined', [(PV,
+     r"""            self.node.isolation.close_admission()""",
+     r"""            self.node.isolation.close_admission()
+            _dispose(self.node)""")],
+     [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after']),
+    ('H23', 'each worker gets the whole quiesce time', [(RUN,
+     r"""worker.join(max(0.0, end - time.monotonic()))""",
+     r"""worker.join(QUIESCE_S)""")],
+     [A + 'test_the_workers_share_one_quiesce_deadline_and_a_late_one_is_reported']),
+    ('H24', 'a worker still alive after the deadline is not reported', [(RUN,
+     r"""                    log.warning('%s did not stop within %gs; it can admit nothing new',
+                                type(worker).__name__, QUIESCE_S)""",
+     r"""                    pass""")],
+     [A + 'test_the_workers_share_one_quiesce_deadline_and_a_late_one_is_reported']),
+    ('H25', 'a grant refused by a closing broker refuses the binding', [(MGR,
+     r"""stop_reason='spawn' if isinstance(err, broker_mod.BrokerClosed)""",
+     r"""stop_reason='binding' if isinstance(err, broker_mod.BrokerClosed)""")],
+     [X + 'test_a_grant_refused_by_a_closing_broker_is_an_uncharged_failed_start']),
+    ('H26', 'a broker that will not close leaves the isolation authority open', [(PV,
+     r"""        try:
+            self.broker.close()
+        finally:
+            self.node.isolation.close_admission()""",
+     r"""        self.broker.close()
+        self.node.isolation.close_admission()""")],
+     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+    ('H27', 'an admission that will not close stops stop() short', [(RUN,
+     r"""            try:
+                self.pv20.quiesce()
+            except Exception as error:
+                closing = error
+""",
+     r"""            self.pv20.quiesce()
+""")],
+     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+    ('H28', 'an admission error is swallowed by stop()', [(RUN,
+     r"""                closing = error
+            end = time.monotonic() + QUIESCE_S""",
+     r"""                pass
+            end = time.monotonic() + QUIESCE_S""")],
+     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
 ]
 
 

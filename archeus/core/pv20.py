@@ -42,16 +42,24 @@ class NativeBindings:
 
 
 class Activation:
-    """close() ends it in the order its parts were registered, last first: the broker
-    (every grant revoked, no new one issued), the workloads Core still holds, then the
-    watchdog host and the private directory. Core.stop joins the workers that admit
-    work before it calls it."""
+    """Core.stop calls quiesce(), joins the workers that admit work, then close(). close()
+    ends it in the order its parts were registered, last first: the broker (every grant
+    revoked, no new one issued), the workloads Core still holds, then the watchdog host
+    and the private directory."""
 
     def __init__(self, *, switches, node, broker, host, backend, registry, resources):
         self.switches, self.node, self.broker = switches, node, broker
         self.host, self.backend, self.registry = host, backend, registry
         self.resources = resources
         self.closed = False
+
+    def quiesce(self):
+        """Admit nothing new while the workers finish: no grant is issued (one being
+        issued is dropped before this returns), no identity established, no Job created."""
+        try:
+            self.broker.close()
+        finally:
+            self.node.isolation.close_admission()
 
     def close(self):
         self.closed = True

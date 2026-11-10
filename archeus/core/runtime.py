@@ -73,7 +73,7 @@ from .policy.worker import Expiry
 DEFAULT_PORT = 7337
 IDLE_S = 1.0
 WORLD_POLL_S = 10.0         # D6
-QUIESCE_S = 10.0            # how long a stop waits for the workers that admit work, when PV-20 is on
+QUIESCE_S = 10.0            # how long a stop waits, in all, for the workers that admit work (PV-20 on)
 LOG_BYTES, LOG_BACKUPS = 5 * 1024 * 1024, 3     # core.log: 5 MB, three old files (P21 D8)
 
 log = logging.getLogger('archeus.core')
@@ -153,6 +153,7 @@ class EngineLoop:
     def join(self, timeout):
         if self._thread.is_alive():
             self._thread.join(timeout)
+        return self._thread.is_alive()
 
     def status(self):
         return {'state': self.state, 'observed_seq': self.observed_seq,
@@ -286,6 +287,7 @@ class ExecLoop:
     def join(self, timeout):
         if self._thread.is_alive():
             self._thread.join(timeout)
+        return self._thread.is_alive()
 
     def status(self):
         """`live`: processes being watched — work that advances on its own."""
@@ -349,6 +351,7 @@ class WorldLoop:
     def join(self, timeout):
         if self._thread.is_alive():
             self._thread.join(timeout)
+        return self._thread.is_alive()
 
     def status(self):
         pending = self.world.pending() if self.state in ('idle', 'running') else 0
@@ -666,16 +669,23 @@ class Core:
             self.loop.stop()
         closing = None
         if self.pv20 is not None:
-            # a dispatch in flight may still reach the broker: it ends before the
-            # activation revokes grants and closes the watchdog, and the broker, once
-            # closed, binds no listener for a worker that is too slow
+            # nothing new is admitted while the workers finish: a dispatch in flight is
+            # refused at the broker or the isolation authority, and a confined check
+            # ends at its next poll. The workloads Core holds end only once the workers
+            # are joined, so the execution worker never reads that kill as a process ending
+            try:
+                self.pv20.quiesce()
+            except Exception as error:
+                closing = error
+            end = time.monotonic() + QUIESCE_S
             for worker in (self.exec, self.verify, self.loop):
-                if worker is not None:
-                    worker.join(QUIESCE_S)
+                if worker is not None and worker.join(max(0.0, end - time.monotonic())):
+                    log.warning('%s did not stop within %gs; it can admit nothing new',
+                                type(worker).__name__, QUIESCE_S)
             try:
                 self.pv20.close()
             except Exception as error:
-                closing = error
+                closing = closing or error
         if self.db is not None:
             self.db.close(drain=drain)
             self.db = None
