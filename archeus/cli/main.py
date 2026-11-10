@@ -116,10 +116,13 @@ USAGE = """usage: archeus core [--open] [--remote-host H]...
        archeus executions opt-ins
                                 what executions may load from their settings sources
                                 (ADR-0049): every opt-in, in and out
-       archeus executions opt-in|opt-out <account|project> <source|plugin|mcp> <name>
+       archeus executions opt-in|opt-out <account|project> <source|plugin|mcp|verify> <name>
                                 let an account's or a project's executions load a
                                 settings source (an account: user; a project: project,
-                                local), a plugin or an MCP server again, or stop it"""
+                                local), a plugin or an MCP server again, or stop it;
+                                a project's verify baseline runs a failed test again
+                                at the revision the work started from, one more
+                                checkout per verification (off unless opted in)"""
 _TERMS = {'permit': 'permitted', 'refuse': 'refused'}
 
 
@@ -184,7 +187,7 @@ def main(argv):
     if verb == 'automation' and args and (args == ['list'] or len(args) == 2):
         return automation(args[0], args[1] if len(args) == 2 else None)
     if verb == 'executions' and (args == ['opt-ins'] or (
-            len(args) == 4 and args[0] in _OPT and args[2] in ('source', 'plugin', 'mcp'))):
+            len(args) == 4 and args[0] in _OPT and args[2] in ('source', 'plugin', 'mcp', 'verify'))):
         return opt_ins(*args)
     opts = _flags(args[1:] if verb in ('resume', 'handoff', 'wait') else args)
     if verb == 'wait' and args and opts is not None and set(opts) <= {'until', 'timeout'}:

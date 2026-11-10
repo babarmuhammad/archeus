@@ -1175,10 +1175,10 @@ def test_an_opt_in_name_is_never_a_path(name):
 
 
 @pytest.mark.parametrize('kind', list(E.OPT_IN_KINDS), ids=list(E.OPT_IN_KINDS))
-def test_an_opt_in_is_a_source_a_plugin_or_an_mcp(kind):
+def test_an_opt_in_is_a_source_a_plugin_an_mcp_or_a_verify(kind):
     """entities.py:1531 `_CHOICES = {'kind': OPT_IN_KINDS}`."""
-    kw = _owner_for('account')
-    name = 'user' if kind == 'source' else 'caveman@caveman'
+    kw = _owner_for('project' if kind == 'verify' else 'account')
+    name = {'source': 'user', 'verify': 'baseline'}.get(kind, 'caveman@caveman')
     assert _opt_in(kind=kind, name=name, **kw).kind == kind
 
 

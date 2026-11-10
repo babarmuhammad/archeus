@@ -1513,8 +1513,12 @@ class ResourcePolicy(Entity):
                 raise ValueError('a project restriction names a project id: %r' % (p,))
 
 
-#: What an execution may be let load from its settings sources (ADR-0049; P20 D6).
-OPT_IN_KINDS = ('source', 'plugin', 'mcp')
+#: What an execution may be let load from its settings sources (ADR-0049; P20 D6),
+#: and, kind `verify`, what Core may also run when it verifies a project's work
+OPT_IN_KINDS = ('source', 'plugin', 'mcp', 'verify')
+#: `baseline`: a failed test command is run again in a checkout of the base revision,
+#: one more checkout per verification (T-1068, owner decision 113)
+VERIFY_OPT_INS = ('baseline',)
 #: The settings source each owner holds (D6): the account home is the account's;
 #: a project's committed `.claude/` and its local settings are the project's
 SOURCE_OWNERS = {'account': ('user',), 'project': ('project', 'local')}
@@ -1556,6 +1560,10 @@ class OptIn(Entity):
         if self.kind == 'source' and self.name not in SOURCE_OWNERS[self.owner]:
             raise ValueError('a %s holds the %s settings source(s), not %r' % (
                 self.owner, ' and '.join(SOURCE_OWNERS[self.owner]), self.name))
+        if self.kind == 'verify' and (self.owner != 'project'
+                                      or self.name not in VERIFY_OPT_INS):
+            raise ValueError("a verify opt-in is a project's, one of %s: not %s %r" % (
+                ', '.join(VERIFY_OPT_INS), self.owner, self.name))
 
 
 @entity

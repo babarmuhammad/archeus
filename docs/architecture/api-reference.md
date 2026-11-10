@@ -1194,7 +1194,7 @@ interface MissionStopped {
 ```ts
 interface OptIn {
   id: string;
-  kind: 'source' | 'plugin' | 'mcp';
+  kind: 'source' | 'plugin' | 'mcp' | 'verify';
   name: string;
   opted_in: boolean;
   owner?: 'account' | 'project';
@@ -2432,7 +2432,7 @@ interface SetMissionResourcesRequest {
 ```ts
 interface SetOptInRequest {
   owner_id: string;
-  kind: 'source' | 'plugin' | 'mcp';
+  kind: 'source' | 'plugin' | 'mcp' | 'verify';
   name: string;
   opted_in: boolean;
   expected_version?: number | null;

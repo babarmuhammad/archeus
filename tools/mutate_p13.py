@@ -179,9 +179,25 @@ MUTATIONS = [
       '::test_a_failed_check_or_an_unmet_criterion_never_reads_as_passed']),
     # ── the base-revision regression check: opt-in, advisory, bounded (T-1068) ──
     ('Z34', 'every failed test runs at the base without the opt-in', [(WRK,
-     "        if base is None or root is None or not self.baseline & {m.id, m.project_id}:",
-     "        if base is None or root is None:")],
+     "            if BASELINE not in optins.effective(conn, account_id=None,",
+     "            if False and BASELINE not in optins.effective(conn, account_id=None,")],
      [B + '::test_without_the_opt_in_nothing_runs_at_the_base']),
+    # owner decision 113: the opt-in is the project's own `verify baseline` row
+    ('Z710', 'an opted-in project runs nothing at the base', [(WRK,
+     "            if BASELINE not in optins.effective(conn, account_id=None,",
+     "            if True or BASELINE not in optins.effective(conn, account_id=None,")],
+     [B + '::test_a_test_that_passed_at_the_base_and_fails_now_is_regressed_and_still_failed']),
+    ('Z711', "another project's opt-in runs this project's tests at the base", [(WRK,
+     "            if BASELINE not in optins.effective(conn, account_id=None,\n"
+     "                                                project_id=m.project_id):",
+     "            if BASELINE not in {(o['owner'], o['kind'], o['name'])\n"
+     "                                for o in optins.listing(conn) if o['opted_in']}:")],
+     [B + '::test_an_opt_out_or_another_projects_opt_in_runs_nothing_at_the_base']),
+    ('Z712', "a verify opt-in may be an account's or name anything", [(
+     'archeus/core/domain/entities.py',
+     "        if self.kind == 'verify' and (self.owner != 'project'",
+     "        if False and (self.owner != 'project'")],
+     [B + '::test_a_verify_opt_in_is_only_a_projects_and_only_a_named_one']),
     ('Z35', 'a test failing at the base too is taken as passed', [(EVD,
      "    out = dict(check, baseline=base)\n",
      "    out = dict(check, baseline=base, result='pass' if base['result'] == 'fail'\n"
