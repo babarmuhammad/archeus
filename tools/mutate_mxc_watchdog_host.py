@@ -5,8 +5,8 @@ holds, run the test written for it, and require it to fail.
     py tools/mutate_mxc_watchdog_host.py                 every mutation
     py tools/mutate_mxc_watchdog_host.py WH01 WH10       only these
 
-It edits archeus/node/mxc_heartbeat.py, mxc_watchdog_host.py and local.py, and restores them
-whatever happens: run it with nothing else against the tree.
+It edits archeus/node/mxc_heartbeat.py, mxc_watchdog_host.py, mxc_watchdog.py and local.py, and
+restores them whatever happens: run it with nothing else against the tree.
 """
 
 import os
@@ -17,6 +17,7 @@ import mutate_p18  # noqa: E402
 
 HB = 'archeus/node/mxc_heartbeat.py'
 HOST = 'archeus/node/mxc_watchdog_host.py'
+WATCHDOG = 'archeus/node/mxc_watchdog.py'
 LOCAL = 'archeus/node/local.py'
 T = 'tests/v1/unit/test_mxc_watchdog_host.py::'
 
@@ -177,6 +178,11 @@ MUTATIONS = [
      '            self.heartbeat.beat()', '            self.heartbeat and None')], [BEAT_FAULT]),
     ('WH45', 'a job whose journal moved on loses its kill', [(HOST,
      OWNED, "        if invalid or [r['op'] for r in records] != OWNED_OPS:")], [ENDED]),
+    ('WH46', 'a clock stepped back under the last beat leaves the watch armed', [(WATCHDOG,
+     '        if not _number(now) or now < self._quiet_since():',
+     '        if not _number(now) or now < self.armed_at:')],
+     ['tests/v1/unit/test_gaps2_node_mxc_watchdog.py::'
+      'test_a_clock_rewound_below_the_last_beat_is_not_a_quiet_forever']),
 ]
 
 

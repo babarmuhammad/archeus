@@ -117,7 +117,7 @@ class Watchdog:
             now = self.clock()
         except Exception:
             return self._set(UNCERTAIN, 'clock read failed')
-        if not _number(now) or now < self.armed_at:
+        if not _number(now) or now < self._quiet_since():
             return self._set(UNCERTAIN, 'malformed clock observation')
         try:
             alive = self.core_alive()

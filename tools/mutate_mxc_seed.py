@@ -137,6 +137,10 @@ MUTATIONS = [
      "            raise StoreError('the mission branch %s names no commit' % mission_branch)",
      "            return 'HEAD', LocalNode.store_resolve_base(root, 'HEAD', workdirs=workdirs)")],
      [R + 'test_a_corrupt_mission_branch_is_refused_not_read_as_absent']),
+    ('MS31', 'a copy shorter than the row was planned with is taken as faithful', [(SEED,
+     '        if _entry(dst, rel, False).st_size != sig[2]:',
+     '        if _entry(dst, rel, False) is None:')],
+     ['tests/v1/unit/test_gaps2_node_seed.py::test_a_copy_shorter_than_its_source_is_refused']),
 ]
 
 
