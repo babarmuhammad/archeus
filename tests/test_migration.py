@@ -343,6 +343,22 @@ def test_the_repair_runs_after_the_migration_flag_is_set(old_home, monkeypatch):
     assert 'gone' not in cmd
 
 
+def test_the_repair_takes_only_what_hooks_calls_a_former_install(tmp_path, monkeypatch):
+    """One rule, `hooks.former_script`, for the repair and for install/uninstall: a
+    relative path resolves where the hook runs, and a dead absolute one outside a
+    package directory of ours was written by someone else."""
+    from claude_sessions import hooks
+    pkg = os.path.dirname(os.path.abspath(migrate.__file__))
+    monkeypatch.chdir(tmp_path)
+    for theirs in ('"python" "./company/recall_hook.py"', 'python company/recall_hook.py',
+                   '"python" "%s"' % (tmp_path / 'gone' / 'recall_hook.py')):
+        assert migrate._repoint(theirs, pkg) == theirs
+        assert not hooks._is_ours({'command': theirs}, 'recall_hook.py')
+    ours = '"python" "%s"' % (tmp_path / 'gone' / 'claude_sessions' / 'recall_hook.py')
+    assert migrate._repoint(ours, pkg) == hooks._memory_hook_command()
+    assert hooks._is_ours({'command': ours}, 'recall_hook.py')
+
+
 def test_a_repair_does_not_stamp_the_install_as_having_come_from_the_old_name(
         old_home):
     """`_mark_done` reads the list of things that moved to decide whether to
@@ -375,7 +391,7 @@ def test_the_statusline_keeps_the_windowless_interpreter(old_home, monkeypatch):
     _write(str(home / 'settings.json'), json.dumps({
         'statusLine': {'type': 'command',
                        'command': '"C:\\gone\\pythonw.exe" "%s"'
-                                  % str(home / 'gone' / 'statusline_cli.py')}}))
+                                  % str(home / 'gone' / 'claude_sessions' / 'statusline_cli.py')}}))
     migrate.repair_commands([str(home)])
     sl = json.load(io.open(str(home / 'settings.json'),
                            encoding='utf-8'))['statusLine']['command']

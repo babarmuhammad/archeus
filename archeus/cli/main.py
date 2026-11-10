@@ -294,11 +294,11 @@ def devices(revoke_id=None):
     return 0
 
 
-def _get(info, method, path, body=None, refusal=None):
+def _get(info, method, path, body=None, refusal=None, within=None):
     """Core's answer, or None after saying on stderr why, in Core's own code and
     detail (p19-design-gate B11): over the transport the TUI uses. With *refusal*
     (a dict) it also holds the code and detail, for a caller that must branch on
-    one rather than only repeat it."""
+    one rather than only repeat it. *within* caps a GET at that many seconds."""
     from ..infra import discovery
     from .tui import client, sync
     token = discovery.read_local_token()
@@ -306,7 +306,11 @@ def _get(info, method, path, body=None, refusal=None):
         return None
     core = client.Core(info['port'], token)
     try:
-        return core.get(path)[0] if method == 'GET' else core.post(path, body or {})
+        if method == 'GET' and within is None:
+            return core.get(path)[0]
+        if method == 'GET':
+            return core.get(path, min(client.TIMEOUT_S, within))[0]
+        return core.post(path, body or {})
     except client.CoreError as e:
         if refusal is not None:
             refusal.update(e.refusal())
@@ -468,7 +472,12 @@ def mission_status(mission_id):
 
 def _say_mission(m):
     from .tui.view import clean
-    print('%s: %s (%s)' % (m['id'], m['state'], clean(m['title'])))
+    print('%s: %s (%s)' % (clean(m['id']), clean(m['state']), clean(m['title'])))
+
+
+def _is_mission(m):
+    return (isinstance(m, dict) and isinstance(m.get('id'), str)
+            and isinstance(m.get('state'), str) and 'title' in m)
 
 
 #: States a mission waits in for a person, and FAILED, which is not final (it may replan)
@@ -480,7 +489,9 @@ def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.m
     """Poll `GET /v1/missions/{id}` until the mission is in a state of *until*. A final
     state ends the wait whatever was asked, since the mission can never leave it. Exit 0
     when the state was asked for, 5 when it was not or is one of the default bad ones."""
+    import http.client
     from ..core.domain import states
+    from .tui.view import clean
     known = states.states('mission')
     want = _WAIT_DEFAULT if until is None else tuple(x.strip().upper() for x in until.split(','))
     try:
@@ -500,13 +511,16 @@ def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.m
         while True:
             refusal = {}
             try:
-                m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal)
-            except (ValueError, OSError) as e:
+                m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal,
+                         within=max(1, deadline - clock()))
+                if m is not None and not _is_mission(m):
+                    raise ValueError('not a mission')
+            except (http.client.HTTPException, ValueError, OSError) as e:
                 print('Core gave no readable answer (%s)' % type(e).__name__, file=sys.stderr)
                 m = None
             if m is None and refusal.get('code') == 'not_found':
                 return 2
-            if m is not None and m['state'] in stop:
+            if m is not None and m['state'] in stop and clock() <= deadline:
                 _say_mission(m)
                 bad = m['state'] not in want or (until is None and m['state'] in _WAIT_BAD)
                 return 5 if bad else 0
@@ -515,8 +529,8 @@ def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.m
                     print('Core did not answer for %s before the timeout' % mission_id,
                           file=sys.stderr)
                     return 1
-                print('timed out after %gs: %s is still %s' % (seconds, m['id'], m['state']),
-                      file=sys.stderr)
+                print('timed out after %gs: %s is still %s' % (
+                    seconds, clean(m['id']), clean(m['state'])), file=sys.stderr)
                 return 4
             sleep(min(2, max(0, deadline - clock())))
     except KeyboardInterrupt:
@@ -532,13 +546,14 @@ def top(by):
     out = _get(info, 'GET', endpoints.usage_by(by=by))
     if out is None:
         return 2
+    from .tui.view import clean
     cols = ('calls', 'tokens_in', 'tokens_out', 'cache_read', 'cache_write', 'cost_usd')
     print('%-40s %6s %11s %11s %11s %11s %9s  complete' % ((by,) + cols))
     for r in out['rows']:
-        fig = ['-' if r[c] is None else '%.4f' % r[c] if c == 'cost_usd' else str(r[c])
+        fig = ['-' if r[c] is None else '%.4f' % r[c] if c == 'cost_usd' else clean(r[c])
                for c in cols]
         print('%-40s %6s %11s %11s %11s %11s %9s  %s' % (
-            r[by] or '(none)', *fig, 'yes' if r['complete'] else 'no'))
+            clean(r[by]) or '(none)', *fig, 'yes' if r['complete'] else 'no'))
     if not out['rows']:
         print('no usage recorded')
     return 0
@@ -851,9 +866,11 @@ def status():
         uptime = '%ds' % max(0, up)
     except (KeyError, ValueError):
         uptime = '?'
+    from .tui.view import clean
     print('Core: running (pid %d, port %d, up %s, version %s)'
-          % (c['pid'], info['port'], uptime, c['version']))
-    print('schema %s, engine %s, ports %s' % (c['schema'], e['state'], c['ports']))
+          % (c['pid'], info['port'], uptime, clean(c['version'])))
+    print('schema %s, engine %s, ports %s' % (clean(c['schema']), clean(e['state']),
+                                               clean(c['ports'])))
     if c['ports'] == 'stub':
         print('walking skeleton: fake harness, stub policy — missions here do no real work')
     _ok, warning = discovery.token_protection()

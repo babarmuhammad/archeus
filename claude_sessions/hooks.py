@@ -398,17 +398,29 @@ HOOK_STATE_KEYS = ('hooks', 'hooks_disabled')
 _OUR_CMD = re.compile(r'"[^"]+" "([^"]+)"(?: \|\| exit 0)?')
 
 
+_PKG = os.path.dirname(os.path.abspath(__file__))
+
+
+def former_script(path):
+    """Is *path* a script a former installation of this package left behind (a
+    moved checkout or venv): absolute, in a directory named like the package, and
+    gone. A relative path resolves where the hook runs, never here, so its absence
+    says nothing; `migrate._repoint` repairs by this rule too."""
+    return (os.path.isabs(path) and not os.path.exists(path)
+            and os.path.normcase(os.path.basename(os.path.dirname(path)))
+            == os.path.normcase(os.path.basename(_PKG)))
+
+
 def _is_ours(h, script):
     """Is hook *h* Archeus's *script*: the shape we write, naming this
-    installation's copy or a former one whose path no longer resolves (a moved
-    checkout or venv). `python /company/status_hook.py` is someone else's, and so
-    is a live script of the same name anywhere else."""
+    installation's copy or a former one's. `python /company/status_hook.py` is
+    someone else's, and so is a script of the same name anywhere else."""
     m = _OUR_CMD.fullmatch(str(h.get('command', '')).strip()) if isinstance(h, dict) else None
-    if not m or os.path.basename(m.group(1)) != script:
+    if not m:
         return False
-    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), script)
-    return (os.path.normcase(os.path.abspath(m.group(1))) == os.path.normcase(here)
-            or not os.path.exists(m.group(1)))
+    path = os.path.normcase(os.path.normpath(m.group(1)))
+    return (path == os.path.normcase(os.path.join(_PKG, script))
+            or (os.path.basename(path) == os.path.normcase(script) and former_script(m.group(1))))
 
 
 def _memory_hook_command():

@@ -1221,16 +1221,24 @@ class LocalNode:
         # -f: a registered worktree whose directory is gone is replaced too
         r = _project_git(root, ['worktree', 'add', '-f', '--detach', '--', path, rev])
         if r is None or r.returncode != 0:
-            raise OSError('git worktree add failed: %s'
-                          % ((r.stderr or r.stdout).strip() if r else 'no git'))
+            raise OSError('git worktree add failed: %s' % (
+                (r.stderr or r.stdout).strip() if r
+                else 'no git %s or newer ran' % '.'.join(map(str, STORE_GIT_FLOOR))))
         return path
 
     @staticmethod
     def drop_checkout(root, path):
-        """True when no worktree is left at *path*. `-f -f` also removes one a
-        killed add left locked (`initializing`)."""
+        """True when no worktree is left at *path*, on disk or in the repository's
+        list. `-f -f` also removes one a killed add left locked (`initializing`)."""
         _project_git(root, ['worktree', 'remove', '-f', '-f', '--', path])
-        return not os.path.exists(path)
+        if os.path.exists(path):
+            return False
+        r = _project_git(root, ['worktree', 'list', '--porcelain'])
+        if r is None or r.returncode:
+            return False
+        at = os.path.normcase(os.path.realpath(path))
+        return not any(os.path.normcase(os.path.realpath(line[len('worktree '):])) == at
+                       for line in r.stdout.splitlines() if line.startswith('worktree '))
 
     # ── verification and merge-back (P13, p13-design-gate §8, §12) ──
 
@@ -1308,11 +1316,11 @@ class LocalNode:
     @staticmethod
     def git_diff(root, base, rev):
         """The unified diff of base..rev, no context lines and no configured diff
-        program (nothing is spawned but git), its paths unquoted, prefixed `a/` and
-        `b/` and never paired as renames whatever the repository configures; None
-        when git cannot tell."""
+        program (nothing is spawned but git), every file as text, its paths
+        unquoted, prefixed `a/` and `b/` and never paired as renames whatever the
+        repository configures; None when git cannot tell."""
         r = _project_git(root, ['-c', 'core.quotePath=false', 'diff', '-U0', '--no-color',
-                                '--no-ext-diff', '--no-textconv', '--no-renames',
+                                '--text', '--no-ext-diff', '--no-textconv', '--no-renames',
                                 '--src-prefix=a/', '--dst-prefix=b/', base, rev, '--'])
         return None if r is None or r.returncode else r.stdout
 
@@ -1823,8 +1831,10 @@ def _project_git(root, args, timeout=60):
     """A Git call in a project's own repository that runs none of its code: no
     hook, fsmonitor, filter selected by an attribute, replace ref or lazy fetch,
     and no configuration but the repository's own. The CompletedProcess with
-    text decoded as written (no newline translation), or None, which includes a
-    Git that lies inside *root* (the rule of `proc.run` for a bare program)."""
+    text decoded as written (no newline translation), or None. None includes a
+    Git that lies inside *root* (the rule of `proc.run` for a bare program) and a
+    Git below the floor, which ignores some of these pins: it is asked its version
+    and nothing else."""
     exe = _git_exe()
     if proc.which(os.path.basename(exe), path=os.path.dirname(exe), avoid=[root]) is None:
         return None
@@ -1840,18 +1850,29 @@ def _project_git(root, args, timeout=60):
                   'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false',
                   'core.longpaths=true'):
             argv += ['-c', c]
+        def run(argv, cwd):
+            return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, timeout=timeout,
+                                  stdin=subprocess.DEVNULL, creationflags=proc.no_window_flags)
         try:
-            r = subprocess.run(argv + list(args), cwd=root, env=env, capture_output=True,
-                               timeout=timeout, stdin=subprocess.DEVNULL,
-                               creationflags=proc.no_window_flags)
+            if exe not in _VERSION:
+                out = run([exe, 'version'], empty).stdout.decode('utf-8', 'replace').strip()
+                if not _at_floor(out):
+                    return None
+                _VERSION[exe] = out
+            r = run(argv + list(args), root)
         except Exception:
             return None
     r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))
     return r
 
 
-#: `git version` of each absolute executable, read once per process
+#: `git version` of each absolute executable at or above the floor, read once per process
 _VERSION = {}
+
+
+def _at_floor(out):
+    m = re.match(r'git version (\d+)\.(\d+)\.(\d+)', out)
+    return bool(m) and tuple(int(x) for x in m.groups()) >= STORE_GIT_FLOOR
 
 
 def _git_version(workdirs):
@@ -1863,8 +1884,7 @@ def _git_version(workdirs):
         _outside_executions(_pin_area(), workdirs)
         return _VERSION[exe]
     out = LocalNode.store_git('version', ['version'], workdirs=workdirs).strip()
-    m = re.match(r'git version (\d+)\.(\d+)\.(\d+)', out)
-    if not m or tuple(int(x) for x in m.groups()) < STORE_GIT_FLOOR:
+    if not _at_floor(out):
         raise StoreError('git %r is older than %s or unreadable'
                          % (out, '.'.join(map(str, STORE_GIT_FLOOR))))
     _VERSION[exe] = out

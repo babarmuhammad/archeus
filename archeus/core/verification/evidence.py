@@ -202,14 +202,19 @@ def _path(header):
 
 
 def _parse_diff(diff):
-    """[{path, deleted, hunks: [(removed, added)]}] of a `git diff -U0`: the lines of
-    each hunk, never the headers (a removed `-- x` line reads like one). Only a
-    test file's hunks are kept, and no line longer than _LINE_MAX (the patterns
-    are not linear in it: a minified line would stall the verifier)."""
+    """[{path, deleted, skipped, hunks: [(removed, added)]}] of a `git diff -U0`: the
+    lines of each hunk, never the headers (a removed `-- x` line reads like one).
+    Only a test file's hunks are kept, and a line longer than _LINE_MAX is counted
+    as skipped instead (the patterns are not linear in it: a minified line would
+    stall the verifier)."""
     files, cur, in_hunk, keep = [], None, False, False
     for line in diff.split('\n'):
         if line.startswith('diff --git '):
-            cur, in_hunk = {'path': None, 'deleted': False, 'hunks': []}, False
+            # both names are the same one (no renames), so the first half is `a/<path>`:
+            # a file Git shows as binary has no `---` line to read it from
+            names = line[len('diff --git '):]
+            cur, in_hunk = {'path': _path('--- ' + names[:len(names) // 2]), 'deleted': False,
+                            'skipped': 0, 'hunks': []}, False
             files.append(cur)
         elif cur is None:
             continue
@@ -217,8 +222,11 @@ def _parse_diff(diff):
             cur['hunks'].append(([], []))
             in_hunk, keep = True, _shape_of(cur['path']) is not None
         elif in_hunk:
-            if keep and line[:1] in ('-', '+') and len(line) <= _LINE_MAX:
-                cur['hunks'][-1][line[0] == '+'].append(line[1:])
+            if keep and line[:1] in ('-', '+'):
+                if len(line) <= _LINE_MAX:
+                    cur['hunks'][-1][line[0] == '+'].append(line[1:])
+                else:
+                    cur['skipped'] += 1
         elif line.startswith('deleted file mode'):
             cur['deleted'] = True
         elif line.startswith(('--- ', '+++ ')):
@@ -239,8 +247,8 @@ def weakening(diff):
     """What a `git diff -U0` does to the tests it touches, as a list of findings:
     test files deleted, test functions removed (and named nowhere in what was
     added), assertions removed (net per file), skip/xfail/`.only` markers added
-    and timeouts or thresholds raised. Pure; a finding is a claim to check, not a
-    verdict."""
+    and timeouts or thresholds raised, and how many changed lines were too long to
+    inspect. Pure; a finding is a claim to check, not a verdict."""
     kept = [(f, _shape_of(f['path'])) for f in _parse_diff(diff)]
     added_names = {m.group('name') for f, s in kept if s and not f['deleted']
                    for _r, adds in f['hunks'] for a in adds if (m := s['test'].match(a))}
@@ -251,6 +259,8 @@ def weakening(diff):
         if f['deleted']:
             found.append('test file deleted: %s' % f['path'])
             continue
+        if f['skipped']:
+            found.append('%d changed line(s) too long to inspect: %s' % (f['skipped'], f['path']))
         removed = [r for rs, _a in f['hunks'] for r in rs]
         added = [a for _r, adds in f['hunks'] for a in adds]
         for r in removed:

@@ -89,9 +89,9 @@ class Core:
         except (urllib.error.URLError, OSError) as e:
             raise CoreError(0, 'network', {'why': type(e).__name__}) from None
 
-    def get(self, path):
+    def get(self, path, timeout=TIMEOUT_S):
         """(Core's answer, the event head it was read at)."""
-        with self._open('GET', path) as r:
+        with self._open('GET', path, timeout=timeout) as r:
             seq = r.headers.get('X-Archeus-Seq')
             return json.loads(r.read() or b'null'), int(seq) if seq else None
 

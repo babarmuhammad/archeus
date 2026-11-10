@@ -5,6 +5,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pytest
+
 from harness import Sandbox, run_flow, DOWN, ENTER, ESC
 
 from claude_sessions import hooks, status_hook
@@ -69,7 +71,8 @@ def test_install_is_idempotent_repairs_and_uninstall_leaves_foreign_hooks(tmp_pa
     for event in ('UserPromptSubmit', 'Notification', 'Stop'):
         ours = [h for e in d['hooks'][event] for h in e['hooks'] if 'status_hook.py' in h['command']]
         assert len(ours) == 1
-    d['hooks']['Stop'][1]['hooks'][0]['command'] = '"old-python" "/gone/status_hook.py"'
+    d['hooks']['Stop'][1]['hooks'][0]['command'] = '"old-python" "%s"' % (
+        tmp_path / 'gone' / 'claude_sessions' / 'status_hook.py')
     sp.write_text(json.dumps(d))
     assert hooks.install_status_hook()
     assert json.loads(sp.read_text())['hooks']['Stop'][1]['hooks'][0]['command'] == hooks._status_hook_command()
@@ -192,3 +195,49 @@ def test_a_foreign_hook_of_the_same_script_name_is_never_ours(tmp_path, monkeypa
     assert json.loads(sp.read_text())['hooks']['Stop'][0]['hooks'] == theirs
     assert hooks.uninstall_status_hook()
     assert json.loads(sp.read_text())['hooks'] == {'Stop': [{'hooks': theirs}]}
+
+
+def _stop_hooks(sp, monkeypatch, *commands):
+    monkeypatch.setattr(hooks, 'settings_path', str(sp))
+    theirs = [{'type': 'command', 'command': c} for c in commands]
+    sp.write_text(json.dumps({'hooks': {'Stop': [{'hooks': theirs}]}}))
+    return theirs
+
+
+def test_a_path_that_does_not_resolve_here_is_not_a_former_install(tmp_path, monkeypatch):
+    # relative: it resolves where the hook runs, not where the manager does; and a
+    # dead absolute one outside a package directory of ours was never written by us
+    theirs = _stop_hooks(tmp_path / 'settings.json', monkeypatch,
+                         '"python" "./company/status_hook.py"',
+                         '"python" "claude_sessions/status_hook.py"',
+                         '"python" "%s"' % (tmp_path / 'gone' / 'status_hook.py'))
+    monkeypatch.chdir(tmp_path)
+    assert not hooks.status_hook_installed()
+    assert hooks.install_status_hook()
+    assert json.loads((tmp_path / 'settings.json').read_text())['hooks']['Stop'][0]['hooks'] == theirs
+    assert hooks.uninstall_status_hook()
+    assert json.loads((tmp_path / 'settings.json').read_text())['hooks'] == {'Stop': [{'hooks': theirs}]}
+
+
+def test_a_former_install_whose_checkout_is_gone_is_ours_and_is_repaired(tmp_path, monkeypatch):
+    sp = tmp_path / 'settings.json'
+    _stop_hooks(sp, monkeypatch, '"C:\\gone\\python.exe" "%s" || exit 0'
+                % (tmp_path / 'old' / 'claude_sessions' / 'status_hook.py'))
+    assert hooks.install_status_hook()
+    assert json.loads(sp.read_text())['hooks']['Stop'] == [
+        {'hooks': [{'type': 'command', 'command': hooks._status_hook_command()}]}]
+
+
+@pytest.mark.skipif(os.path.normcase('A') == 'A', reason='file names are case-sensitive here')
+def test_our_hook_is_ours_however_its_path_is_cased(tmp_path, monkeypatch):
+    sp = tmp_path / 'settings.json'
+    monkeypatch.setattr(hooks, 'settings_path', str(sp))
+    assert hooks.install_status_hook()
+    sp.write_text(sp.read_text().replace('status_hook.py', 'STATUS_HOOK.PY')
+                  .replace('claude_sessions', 'Claude_Sessions'))
+    assert hooks.status_hook_installed()
+    assert hooks.install_status_hook()
+    stop = json.loads(sp.read_text())['hooks']['Stop']
+    assert stop == [{'hooks': [{'type': 'command', 'command': hooks._status_hook_command(),
+                                'timeout': 5}]}]
+    assert hooks.uninstall_status_hook() and not json.loads(sp.read_text()).get('hooks')

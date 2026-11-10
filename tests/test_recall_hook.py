@@ -95,7 +95,8 @@ def test_install_and_uninstall_memory_hook(monkeypatch, tmp_path):
     assert hooks.install_memory_hook()
     assert len(d['hooks']['UserPromptSubmit']) == 1
     # stale path repaired
-    d['hooks']['UserPromptSubmit'][0]['hooks'][0]['command'] = '"old.exe" "x/recall_hook.py"'
+    d['hooks']['UserPromptSubmit'][0]['hooks'][0]['command'] = '"old.exe" "%s"' % (
+        tmp_path / 'gone' / 'claude_sessions' / 'recall_hook.py')
     json.dump(d, open(sp, 'w', encoding='utf-8'))
     assert hooks.install_memory_hook()
     d2 = json.load(open(sp, encoding='utf-8'))

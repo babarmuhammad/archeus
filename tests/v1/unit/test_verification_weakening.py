@@ -277,6 +277,45 @@ def test_a_line_separator_in_an_added_line_cannot_fake_a_header():
 
 def test_a_very_long_line_is_not_read_and_a_non_test_file_keeps_no_hunks():
     long = '    assert ' + 'x' * 100000
-    d = _diff('tests/test_a.py', ([long], [])) + _diff('src/a.py', (['x'], ['y']))
-    assert evidence.weakening(d) == []
+    d = _diff('tests/test_a.py', ([long], [])) + _diff('src/a.py', ([long], ['y']))
+    assert evidence.weakening(d) == ['1 changed line(s) too long to inspect: tests/test_a.py']
     assert [f['hunks'] for f in evidence._parse_diff(d)] == [[([], [])], [([], [])]]
+
+
+@pytest.mark.parametrize('removed,added', [
+    ([], ['@pytest.mark.skip(reason="' + 'x' * 2000 + '")']),
+    (['    assert f() == 1  # ' + 'x' * 2000], [])])
+def test_a_changed_test_line_too_long_to_read_is_said_never_dropped(removed, added):
+    d = _diff('tests/test_a.py', (removed, added), ([], ['    assert g()', '    assert h()']))
+    assert evidence.weakening(d) == ['1 changed line(s) too long to inspect: tests/test_a.py']
+    c = evidence.weakening_check(_Node(d), 'root', BASE, REV)
+    assert c['result'] == 'pass' and c['findings'] == evidence.weakening(d)
+
+
+@pytest.mark.parametrize('header,path', [
+    ('a/tests/test_a.py b/tests/test_a.py', 'tests/test_a.py'),
+    ('a/tests/a b/test_x.py b/tests/a b/test_x.py', 'tests/a b/test_x.py'),
+    ('"a/tests/test_\\"q\\".py" "b/tests/test_\\"q\\".py"', 'tests/test_"q".py')])
+def test_a_deletion_git_shows_as_binary_is_still_a_deleted_test_file(header, path):
+    d = ('diff --git %s\ndeleted file mode 100644\nindex 1111111..0000000\n'
+         'Binary files a/x and /dev/null differ\n' % header)
+    assert evidence.weakening(d) == ['test file deleted: ' + path]
+
+
+def test_repository_config_that_calls_a_test_binary_hides_nothing(tmp_path):
+    root = str(tmp_path)
+    _git(root, 'init', '-q')
+    _git(root, 'config', 'core.bigFileThreshold', '1')
+    (tmp_path / 'tests').mkdir()
+    (tmp_path / 'tests' / 'test_a.py').write_text('def test_a():\n    assert f()\n    assert g()\n')
+    (tmp_path / 'tests' / 'test_gone.py').write_text('def test_gone():\n    assert 1\n')
+    _git(root, 'add', '.')
+    _git(root, 'commit', '-q', '-m', 'base')
+    base = _git(root, 'rev-parse', 'HEAD').strip()
+    (tmp_path / 'tests' / 'test_a.py').write_text('def test_a():\n    assert f()\n')
+    _git(root, 'rm', '-q', 'tests/test_gone.py')
+    _git(root, 'commit', '-q', '-a', '-m', 'weaken')
+    rev = _git(root, 'rev-parse', 'HEAD').strip()
+    assert 'Binary files' in _git(root, 'diff', base, rev)      # the rig is live
+    assert evidence.weakening(LocalNode.git_diff(root, base, rev)) == [
+        'assertions removed: tests/test_a.py (1 net)', 'test file deleted: tests/test_gone.py']

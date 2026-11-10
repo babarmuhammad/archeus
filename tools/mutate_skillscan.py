@@ -6,9 +6,16 @@ import mutate_p18  # noqa: E402
 
 SCAN = 'claude_sessions/skillscan.py'
 AGENTS = 'claude_sessions/agents.py'
+MD = 'claude_sessions/claude_md.py'
+HOOKS = 'claude_sessions/hooks.py'
+MIGRATE = 'claude_sessions/migrate.py'
 T = 'tests/test_skillscan.py::'
+TA = 'tests/test_tui_agents.py::'
+TH = 'tests/test_hooks_status.py::'
 CORPUS = T + 'test_the_lint_reports_exactly_what_each_fixture_sidecar_says'
 NEVER = "re.compile('(?!)'),"
+#: the end of skillscan._UNSAFE, spelled as the source spells it
+UNSAFE_TAIL = '\\u061c\\ufe00-\\ufe0f' + "]')"
 
 MUTATIONS = [
     ('SK01', 'an invisible character is never looked for', [(SCAN,
@@ -118,7 +125,43 @@ MUTATIONS = [
     ('SK66', 'a generated agent is linted past the byte cap', [(AGENTS,
      'skillscan.lint(md[:skillscan._MAX_BYTES])', 'skillscan.lint(md)')],
      [T + 'test_a_generated_agent_is_linted_only_up_to_the_byte_cap']),
+    # codex review of fx17/fx18 (fx19); SK67-SK79 left free
+    ('SK80', 'a shell behind env options or assignments is not fetch-and-execute', [(SCAN,
+     r'r"(?:env\s+(?:(?:-\S+|\w+=\S*)\s+){0,8}(?:\S*/)?)?"', r'r"(?:env\s+)?"')],
+     [T + 'test_fetch_and_execute_is_found_behind_env_options_and_assignments']),
+    ('SK81', 'a decoded MCP server name is not linted', [(SCAN,
+     "        out += _line_findings(name, at + 1)\n", '')],
+     [T + 'test_a_server_name_is_linted_as_it_decodes']),
+    ('SK82', 'a variation selector and the Arabic letter mark are quoted as they are', [(SCAN,
+     UNSAFE_TAIL, "]')")],
+     [T + 'test_the_sanitiser_shows_a_variation_selector_and_the_arabic_letter_mark']),
+    ('SK83', 'a generated draft reaches the terminal as it was generated', [(MD,
+     '    lines = [_inert(ln.expandtabs(4)) for ln in content.splitlines()]',
+     '    lines = content.splitlines()')],
+     [TA + 'test_a_generated_agent_is_previewed_inert_and_written_as_generated']),
+    ('SK84', 'an agent file reaches the terminal as it is stored', [(AGENTS,
+     "skillscan._inert(text.replace('\\t', '    '))", "text.replace('\\t', '    ')")],
+     [TA + 'test_an_agent_file_is_viewed_inert_and_left_as_it_is']),
+    # hook ownership: no suite of its own
+    ('SK85', 'a relative script that does not resolve here is a former install', [(HOOKS,
+     '    return (os.path.isabs(path) and not os.path.exists(path)',
+     '    return (not os.path.exists(path)')],
+     [TH + 'test_a_path_that_does_not_resolve_here_is_not_a_former_install']),
+    ('SK86', 'a dead script outside a package directory of ours is a former install', [(HOOKS,
+     "            and os.path.normcase(os.path.basename(os.path.dirname(path)))\n"
+     "            == os.path.normcase(os.path.basename(_PKG)))",
+     "            )")],
+     [TH + 'test_a_path_that_does_not_resolve_here_is_not_a_former_install']),
+    ('SK87', 'the repair re-points any dead script of our name', [(MIGRATE,
+     '        if not hooks.former_script(raw):', '        if os.path.isfile(raw):')],
+     ['tests/test_migration.py::test_the_repair_takes_only_what_hooks_calls_a_former_install']),
 ]
+if os.path.normcase('A') != 'A':        # only where file names fold case does a test see it
+    MUTATIONS.append(
+        ('SK88', 'our own hook under another case of its path is foreign', [(HOOKS,
+         '    path = os.path.normcase(os.path.normpath(m.group(1)))',
+         '    path = os.path.normpath(m.group(1))')],
+         [TH + 'test_our_hook_is_ours_however_its_path_is_cased']))
 
 
 if __name__ == '__main__':

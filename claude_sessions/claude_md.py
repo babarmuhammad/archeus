@@ -798,9 +798,11 @@ def _pager_confirm(title, content):
     Returns True=approve, False=reject."""
     from .ui import flush_input, wait_event, poll_event
     from . import render
+    from .skillscan import _inert
 
     flush_input()   # discard keys buffered during generation
-    lines = content.splitlines()
+    # what is reviewed here came from a model: shown inert, written as it is
+    lines = [_inert(ln.expandtabs(4)) for ln in content.splitlines()]
     top = 0
     pending = None
     while True:

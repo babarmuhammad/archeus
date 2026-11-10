@@ -2,6 +2,7 @@
 Core is a fake: `_core_or_say` and `_get` answer, and every request is recorded."""
 
 import ast
+import http.client
 import inspect
 
 import pytest
@@ -15,7 +16,7 @@ def _core(monkeypatch, *answers, up=True):
     the last one repeats."""
     got = []
 
-    def fake(info, method, path, body=None, refusal=None):
+    def fake(info, method, path, body=None, refusal=None, within=None):
         a = answers[min(len(got), len(answers) - 1)]
         got.append((method, path))
         if 'code' in a:
@@ -104,6 +105,84 @@ def test_an_unreadable_answer_is_asked_again(error, monkeypatch):
     assert _wait(['msn_1'])[0] == 0
 
 
+@pytest.mark.parametrize('answer', [
+    http.client.IncompleteRead(b'{"id": "msn_1", "sta'), {}, [], 'COMPLETED',
+    {'id': 'msn_1', 'state': None, 'title': 't'}, {'id': 'msn_1', 'state': ['COMPLETED']},
+    {'state': 'COMPLETED', 'title': 't'}])
+def test_a_truncated_or_malformed_answer_is_asked_again(answer, monkeypatch, capsys):
+    answers = iter([answer, _m('COMPLETED')])
+
+    def fake(*a, **k):
+        x = next(answers)
+        if isinstance(x, Exception):
+            raise x
+        return x
+    _core(monkeypatch)
+    monkeypatch.setattr(cli, '_get', fake)
+    assert _wait(['msn_1'])[0] == 0
+    assert 'Core gave no readable answer' in capsys.readouterr().err
+
+
+def test_answers_that_never_read_as_a_mission_end_at_the_deadline_with_1(monkeypatch, capsys):
+    _core(monkeypatch, {})
+    code, c = _wait(['msn_1', '--timeout', '3'])
+    assert code == 1 and c.now == 3
+    assert 'Core did not answer for msn_1 before the timeout' in capsys.readouterr().err
+
+
+def test_a_body_cut_short_on_the_wire_is_asked_again(monkeypatch):
+    """The real transport against a socket that sends less than it announced."""
+    import json
+    import socket
+    import threading
+    from archeus.infra import discovery
+    body = json.dumps(_m('COMPLETED')).encode()
+    srv = socket.create_server(('127.0.0.1', 0))
+
+    def serve():
+        for sent in (body[:5], body):
+            conn, _ = srv.accept()
+            conn.recv(65536)
+            conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n'
+                         b'Content-Length: %d\r\nConnection: close\r\n\r\n' % len(body) + sent)
+            conn.close()
+    threading.Thread(target=serve, daemon=True).start()
+    monkeypatch.setattr(cli, '_core_or_say', lambda: {'port': srv.getsockname()[1]})
+    monkeypatch.setattr(discovery, 'read_local_token', lambda: 'tok')
+    c = Clock()
+    try:
+        assert cli.wait('msn_1', sleep=c.sleep, clock=lambda: c.now) == 0 and c.sleeps == [2]
+    finally:
+        srv.close()
+
+
+def test_the_deadline_bounds_each_request_and_a_late_answer_is_not_success(monkeypatch, capsys):
+    c, left = Clock(), []
+
+    def slow(info, method, path, body=None, refusal=None, within=None):
+        left.append(within)
+        c.now += 4 if len(left) == 2 else 0.5       # the second answer takes 4 s
+        return _m('COMPLETED' if len(left) == 2 else 'EXECUTING')
+    _core(monkeypatch)
+    monkeypatch.setattr(cli, '_get', slow)
+    assert cli.wait('msn_1', timeout='5', sleep=c.sleep, clock=lambda: c.now) == 4
+    assert left == [5, 2.5]                         # what is left of the wait, each time
+    assert capsys.readouterr().out == ''
+
+
+def test_a_request_gives_up_when_the_wait_does_or_at_the_transport_limit(monkeypatch):
+    from archeus.cli.tui import client
+    from archeus.infra import discovery
+    seen = []
+    monkeypatch.setattr(discovery, 'read_local_token', lambda: 'tok')
+    monkeypatch.setattr(client.Core, '_open', lambda self, method, path, body=None, headers=None,
+                        timeout=client.TIMEOUT_S: seen.append(timeout) or pytest.fail('opened'))
+    for within in (None, 0.25, 99):
+        with pytest.raises(pytest.fail.Exception):
+            cli._get({'port': 9001}, 'GET', '/x', within=within)
+    assert seen == [client.TIMEOUT_S, 0.25, client.TIMEOUT_S]
+
+
 def test_ctrl_c_ends_the_wait_with_130(monkeypatch):
     _core(monkeypatch, _m('EXECUTING'))
 
@@ -129,6 +208,38 @@ def test_a_title_cannot_drive_the_terminal_and_any_title_survives_a_cp1252_pipe(
     out.flush()
     text = out.buffer.getvalue().decode('utf-8')
     assert text == 'msn_1: COMPLETED (Fix caf\u00e9 \u2713 \u4e2d)\n'
+
+
+OSC = '\x1b]52;c;SGk=\x07'
+
+
+def test_no_string_of_a_mission_or_a_usage_row_can_drive_the_terminal(monkeypatch, capsys):
+    hostile = {'id': 'msn_1' + OSC, 'state': 'EXECUTING' + OSC, 'title': 'Add retry' + OSC}
+    _core(monkeypatch, hostile)
+    assert cli.main(['status', 'msn_1']) == 0
+    assert _wait(['msn_1', '--timeout', '1'])[0] == 4
+    _core(monkeypatch, {'by': 'account', 'rows': [dict(
+        ROWS['rows'][0], account='shared' + OSC, calls='2' + OSC)]})
+    assert cli.main(['top', '--once']) == 0
+    out, err = capsys.readouterr()
+    assert out.splitlines()[0] == 'msn_1: EXECUTING (Add retry)'
+    assert out.splitlines()[-1].split() == ['shared', '2', '150', '10', '-', '4', '-', 'yes']
+    assert err == 'timed out after 1s: msn_1 is still EXECUTING\n'
+    assert not any(c in out + err for c in '\x1b\x07')
+
+
+def test_status_prints_core_health_without_its_escapes(monkeypatch, capsys):
+    from archeus.infra import discovery
+    health = {'core': {'pid': 1, 'started_at': '2020-01-01T00:00:00Z', 'version': '1' + OSC,
+                       'schema': 's' + OSC, 'ports': 'p' + OSC},
+              'engine': {'state': 'ok' + OSC}}
+    monkeypatch.setattr(discovery, 'discover', lambda: ('running', {'port': 9001, 'pid': 1}))
+    monkeypatch.setattr(discovery, 'token_protection', lambda: (True, None))
+    _core(monkeypatch, health)
+    assert cli.main(['status']) == 0
+    out = capsys.readouterr().out
+    assert 'version 1)' in out and 'schema s, engine ok, ports p\n' in out
+    assert not any(c in out for c in '\x1b\x07')
 
 
 def test_an_unknown_mission_is_exit_2(monkeypatch):

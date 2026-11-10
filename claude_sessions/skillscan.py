@@ -59,7 +59,9 @@ _PER_RULE = 20
 #: or the report re-emits the character it just warned about.
 _HIDDEN_CHARS = ('[\u00ad\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff'
                  '\U000e0000-\U000e007f\U000e0100-\U000e01ef]')
-_UNSAFE = re.compile(_HIDDEN_CHARS + '|[\x00-\x09\x0b-\x1f\x7f-\x9f]')
+#: what `_inert` shows: those, the controls, the variation selectors `_INVISIBLE`
+#: adds below and the Arabic letter mark, which no rule flags and still reorders text
+_UNSAFE = re.compile(_HIDDEN_CHARS + '|[\x00-\x09\x0b-\x1f\x7f-\x9f\u061c\ufe00-\ufe0f]')
 
 
 def _inert(s):
@@ -148,7 +150,8 @@ _OVERRIDE = re.compile(
 _DL = r"(?:curl|wget|iwr|irm|invoke-webrequest|invoke-restmethod|downloadstring)"
 # every gap is bounded: an unbounded one is quadratic on a line of repeated `curl `
 _FETCH = re.compile(
-    r"(?i)\b" + _DL + r"\b[^\n]{0,300}?\|\s*(?:sudo(?:\s+-\S+)*\s+)?(?:\S*/)?(?:env\s+)?"
+    r"(?i)\b" + _DL + r"\b[^\n]{0,300}?\|\s*(?:sudo(?:\s+-\S+)*\s+)?(?:\S*/)?"
+    r"(?:env\s+(?:(?:-\S+|\w+=\S*)\s+){0,8}(?:\S*/)?)?"
     r"(?:sh|bash|zsh|dash|ksh|python[23]?|node|perl|ruby|iex|invoke-expression|powershell|pwsh)\b"
     r"|\b(?:sh|bash|zsh|source)\s+<\(\s*" + _DL + r"\b"
     r"|(?:\b(?:sh|bash|zsh|dash)\s+-\w*c\s+|\beval\s+)[\"']?\$\(\s*" + _DL + r"\b"
@@ -245,6 +248,7 @@ def _json_findings(text, lines):
     builtin = {t.casefold() for t in _BUILTIN_TOOLS}
     for name, ent in (servers.items() if isinstance(servers, dict) else ()):
         at = _locate(lines, json.dumps(name, ensure_ascii=False), at)
+        out += _line_findings(name, at + 1)
         if name.casefold() in builtin:
             out.append(Finding('tool-name-collision', 'high', at + 1,
                                'a server named like a built-in tool', name))
