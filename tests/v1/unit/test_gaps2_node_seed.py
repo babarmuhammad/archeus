@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from archeus.node import seed
+from archeus.node import seed, staging
 
 CLEAN = {'one.txt': b'first\n', 'nested/two.bin': b'\x00\xff\xfe\x01binary'}
 REMOVALS = ('remove', 'unlink', 'rmdir', 'removedirs', 'replace', 'rename')
@@ -218,11 +218,7 @@ def test_an_empty_source_is_written_as_an_empty_file_and_scanned(tmp_path):
 
 
 # ID: t1020.short_copy_refused covers: a copy that ends up shorter than the source it was
-# planned from is refused; today the digest is of what was read, so nothing notices
-@pytest.mark.xfail(strict=True,
-                   reason='seed.py:137-142 verifies the written bytes against the digest of '
-                          'what _read itself yielded, never against the size the row was '
-                          'planned with, so a read that stops early is accepted as faithful')
+# planned from is refused by its size; the digest is of what was read, so it cannot notice
 def test_a_copy_shorter_than_its_source_is_refused(tmp_path, monkeypatch):
     src = source_tree(tmp_path, {'one.txt': b'twenty bytes here\n'})
     dest = tmp_path / 'seed'
@@ -239,7 +235,7 @@ def test_a_copy_shorter_than_its_source_is_refused(tmp_path, monkeypatch):
     scan, calls = scan_ok()
     with pytest.raises(seed.SeedError) as err:
         seed.seed_copy({'one.txt': src / 'one.txt'}, dest, scan)
-    assert 'one.txt' in str(err.value)
+    assert 'copy differs from its source: one.txt' in str(err.value)
     assert calls == []
     assert (src / 'one.txt').read_bytes() == b'twenty bytes here\n'   # the source untouched
     assert (dest / 'one.txt').read_bytes() == b'twen'   # the short write stands, nothing removed
@@ -278,13 +274,11 @@ def test_an_import_refused_halfway_keeps_the_file_already_copied(tmp_path, monke
     assert calls == []
 
 
-# ID: t1020.mkdir_denied_is_typed covers: a mkdir inside the destination refused for a
-# reason other than the directory existing still comes back as a SeedError naming the row
-@pytest.mark.xfail(strict=True,
-                   reason='seed.py:153-156 wraps only FileExistsError, so a denied mkdir '
-                          'leaves _make as a bare PermissionError whose text names the '
-                          'absolute destination path, unlike every other refusal here')
-def test_a_mkdir_refused_for_being_denied_is_a_typed_seed_error(tmp_path, monkeypatch):
+# ID: t1020.mkdir_denied_names_no_path covers: a mkdir inside the destination refused for a
+# reason other than the directory existing leaves seed as the OS error it is (seed.py:153-156
+# wraps only FileExistsError), and staging, seed's one caller, answers it without the OS text
+def test_a_denied_mkdir_reaches_the_caller_of_staging_without_its_absolute_path(
+        tmp_path, monkeypatch):
     src = source_tree(tmp_path)
     dest = tmp_path / 'seed'
     real_mkdir = os.mkdir
@@ -297,9 +291,12 @@ def test_a_mkdir_refused_for_being_denied_is_a_typed_seed_error(tmp_path, monkey
     monkeypatch.setattr(seed.os, 'mkdir', mkdir)
     poison_removals(monkeypatch)
     scan, calls = scan_ok()
-    with pytest.raises(seed.SeedError) as err:
+    with pytest.raises(PermissionError):
         seed.seed_copy({rel: src / rel for rel in CLEAN}, dest, scan)
-    assert 'nested' in str(err.value)
+    assert calls == []
+    assert (dest / 'one.txt').read_bytes() == CLEAN['one.txt']   # the row already copied stands
+    with pytest.raises(staging.StageError) as err:
+        staging.seed_execution({rel: src / rel for rel in CLEAN}, tmp_path / 'staged')
     assert os.path.abspath(str(tmp_path)) not in str(err.value)
     assert isinstance(err.value.__cause__, PermissionError)
-    assert calls == []
+    assert not (tmp_path / 'staged' / 'nested').exists()

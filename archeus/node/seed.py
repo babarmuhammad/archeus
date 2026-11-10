@@ -246,7 +246,9 @@ def _seed(rows, dest_root, scan):
         if _sig(_source(src, rel)) != sig:
             raise SeedError('changed while it was copied: %s' % rel)
         _copy(src, dst, rel)
-        _entry(dst, rel, False)
+        # _copy's digest is of the bytes it read: a read that ended early matches itself
+        if _entry(dst, rel, False).st_size != sig[2]:
+            raise SeedError('copy differs from its source: %s' % rel)
     _verify_tree(root)
     _scan(dest_root, scan)
     return dest_root
