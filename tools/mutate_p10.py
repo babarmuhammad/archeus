@@ -25,6 +25,8 @@ EXE = 'archeus/core/application/executions.py'
 CALLS = 'archeus/core/calls.py'
 ENT = 'archeus/core/domain/entities.py'
 OUT = 'archeus/core/application/outcomes.py'
+CLI = 'archeus/cli/main.py'
+CLIT = 'tests/v1/unit/test_cli_wait_top.py'
 U = 'tests/v1/unit/test_routing_units.py'
 OC = 'tests/v1/unit/test_outcomes_cache.py'
 OR = 'tests/v1/unit/test_outcomes_rework.py'
@@ -330,6 +332,39 @@ MUTATIONS = [
      "(lambda u: public(key(u))) if by == 'account' else key",
      "key",
      [OU + '::test_accounts_shown_alike_are_one_row']),
+    # the CLI wait/top/status guards (fx19 findings 6, 7, 8)
+    ('R160', 'a mission id or state printed raw by wait and status', CLI,
+     "print('%s: %s (%s)' % (clean(m['id']), clean(m['state']), clean(m['title'])))",
+     "print('%s: %s (%s)' % (m['id'], clean(m['state']), clean(m['title'])))",
+     [CLIT + '::test_no_string_of_a_mission_or_a_usage_row_can_drive_the_terminal']),
+    ('R161', 'a usage account printed raw by top', CLI,
+     "clean(r[by]) or '(none)', *fig",
+     "r[by] or '(none)', *fig",
+     [CLIT + '::test_no_string_of_a_mission_or_a_usage_row_can_drive_the_terminal']),
+    ('R162', 'a Core health string printed raw by status', CLI,
+     "clean(c['version'])))",
+     "c['version']))",
+     [CLIT + '::test_status_prints_core_health_without_its_escapes']),
+    ('R163', 'a truncated body ends the wait instead of being asked again', CLI,
+     "except (http.client.HTTPException, ValueError, OSError) as e:",
+     "except (ValueError, OSError) as e:",
+     [CLIT + '::test_a_body_cut_short_on_the_wire_is_asked_again']),
+    ('R164', 'an answer that is not a mission is accepted', CLI,
+     "if m is not None and not _is_mission(m):",
+     "if m is not None and not False:",
+     [CLIT + '::test_a_truncated_or_malformed_answer_is_asked_again']),
+    ('R165', 'a poll is not bounded by what is left of the wait', CLI,
+     "within=max(1, deadline - clock()))",
+     "within=None)",
+     [CLIT + '::test_the_deadline_bounds_each_request_and_a_late_answer_is_not_success']),
+    ('R166', 'a terminal answer after the deadline is still success', CLI,
+     "and m['state'] in stop and clock() <= deadline:",
+     "and m['state'] in stop:",
+     [CLIT + '::test_the_deadline_bounds_each_request_and_a_late_answer_is_not_success']),
+    ('R167', 'a GET uses the transport timeout whatever the wait has left', CLI,
+     "return core.get(path, min(client.TIMEOUT_S, within))[0]",
+     "return core.get(path)[0]",
+     [CLIT + '::test_a_request_gives_up_when_the_wait_does_or_at_the_transport_limit']),
 ]
 
 
