@@ -388,7 +388,7 @@ class VerifyWorker:
                                            timeout_s=self.timeout_s,
                                            verifier_version=v.verifier_version)
             checks = self._with_base(v.id, m, v.plan_id, root, v.base_revision, cmds, checks,
-                                     v.verifier_version) + self._memory(m, root)
+                                     v.verifier_version)
             head = self.node.git_head(v.workspace) if m.integration_base is not None else None
             self._do(V.record, missions=self.missions, verification_id=v.id, checks=checks,
                      head=head)
@@ -511,7 +511,7 @@ class VerifyWorker:
                                            verifier_version=started[0]['verifier_version'])
             checks = self._with_base(started[0]['verification_id'], m, plan.entity.id, root,
                                      m.integration_base, cmds, checks,
-                                     started[0]['verifier_version']) + self._memory(m, root)
+                                     started[0]['verifier_version'])
             started = [out['verification_id'] for out in started]
             # the branch may have moved while the commands ran: the last record notes it
             head = self.node.git_head(ws) if m.integration_base is not None else None
@@ -519,14 +519,6 @@ class VerifyWorker:
                 self._do(V.record, missions=self.missions, verification_id=vid, checks=checks,
                          head=head if n == len(started) else None)
         return bool(auto or human)
-
-    def _memory(self, m, root):
-        """The advisory `memory` check, only for a mission branch that changed files."""
-        if m.integration_base and m.integration_head and self.node.git_numstat(
-                root, m.integration_base, m.integration_head):
-            with self.db.read() as conn:
-                return [evidence.memory_check(conn, m.id)]
-        return []
 
     # ── review (§14) ──
 

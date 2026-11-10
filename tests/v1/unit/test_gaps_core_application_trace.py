@@ -462,7 +462,7 @@ def test_a_mission_with_nothing_under_it_is_still_a_full_empty_trace(db_world):
     t = _read(db, k['mid'], _Registry())
     assert t == {'mission_id': k['mid'], 'events': [], 'truncated': False,
                  'policy_decisions': [], 'route_decisions': [], 'executions': [],
-                 'executions_truncated': False}
+                 'executions_truncated': False, 'lessons': []}
     schemas.validate(t, schemas.TYPES['Trace'])
 
 

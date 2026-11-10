@@ -1970,6 +1970,7 @@ interface Trace {
   route_decisions: RouteDecision[];
   executions: TraceExecution[];
   executions_truncated: boolean;
+  lessons: string[];
 }
 ```
 

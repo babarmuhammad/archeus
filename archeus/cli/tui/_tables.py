@@ -496,7 +496,7 @@ RULES = {'mission': ['/v1/world/graph**', '/v1/missions**', '/v1/attention', '/v
             '/v1/digest',
             '/v1/missions/*/trace'],
  'knowledge_item': ['/v1/world/graph**', '/v1/knowledge**', '/v1/attention'],
- 'relation': ['/v1/world/graph**', '/v1/knowledge/**'],
+ 'relation': ['/v1/world/graph**', '/v1/knowledge/**', '/v1/missions/*/trace'],
  'feedback': ['/v1/knowledge**'],
  'meeting': ['/v1/world/graph**', '/v1/knowledge**'],
  'decision': ['/v1/knowledge**'],

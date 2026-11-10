@@ -6,7 +6,8 @@ checkpoints and its output folded into lanes. A lane is a transcript sidechain
 and each tool call is paired with its result inside its lane. A read: nothing
 here writes, and the output is the same redacted read the execution's own tab
 serves. A call's input is not carried: the trace names the tool, never what was
-typed into it."""
+typed into it. `lessons` is read now, never recorded at verification: a mission's
+lessons are only written after it has ended."""
 
 from ...infra.db import rows
 from ..domain import entities
@@ -50,6 +51,13 @@ def lanes(events):
              'steps': v} for k, v in out.items()]
 
 
+def lessons(conn, mission_id):
+    """The knowledge items a live `learned_from` relation ties to the mission."""
+    return sorted({r.entity.src_id for r in rows.where(
+        conn, entities.Relation, src_kind='knowledge_item', rel='learned_from',
+        dst_kind='mission', dst_id=mission_id) if r.entity.valid_until is None})
+
+
 def trace(conn, mission_id, registry, *, homes=None):
     """The trace of *mission_id* (NotFound when there is no such mission)."""
     homes = _homes(conn, homes)
@@ -70,4 +78,5 @@ def trace(conn, mission_id, registry, *, homes=None):
             'truncated': t['next_before'] is not None,
             'policy_decisions': list_policy_decisions(conn, mission_id, homes=homes),
             'route_decisions': route_decisions(conn, mission_id, homes=homes),
-            'executions': execs, 'executions_truncated': len(rs) > MAX_EXECUTIONS}
+            'executions': execs, 'executions_truncated': len(rs) > MAX_EXECUTIONS,
+            'lessons': lessons(conn, mission_id)}

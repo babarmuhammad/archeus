@@ -1388,7 +1388,7 @@ def test_a_mission_worktree_that_cannot_be_read_does_not_erase_the_recorded_head
     pump(core, lambda: _state(core, mid) == 'VERIFYING')
     head = _get(core, entities.Mission, mid).integration_head
     assert head
-    _node(core, monkeypatch, fake={'git_head': lambda *a: None, 'git_numstat': lambda *a: []})
+    _node(core, monkeypatch, fake={'git_head': lambda *a: None})
     monkeypatch.setattr(evidence, 'run_commands', lambda *a, **k: [
         {'name': 'test', 'kind': 'command', 'result': 'error', 'detail': 'no worktree'}])
     core._verify._verify_mission(mid)

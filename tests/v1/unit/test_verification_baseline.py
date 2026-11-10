@@ -163,7 +163,7 @@ def test_a_mission_criterion_is_compared_with_the_integration_base(rig):
     r.worker.baseline = frozenset({r.mid})
     assert r.worker._verify_mission(r.mid) is True
     v = r.one('mission')
-    test = next(c for c in v.checks if 'baseline' in c)   # the advisory memory check follows it
+    test = next(c for c in v.checks if 'baseline' in c)
     assert v.state == 'FAILED' and test['baseline']['label'] == 'regressed'
     assert fake.made[0][2] == BASE and fake.dropped
 

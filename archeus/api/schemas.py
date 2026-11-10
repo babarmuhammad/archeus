@@ -252,9 +252,10 @@ TYPES = {
         'policy_decisions': {'type': 'array', 'items': {'ref': 'PolicyDecision'}},
         'route_decisions': {'type': 'array', 'items': {'ref': 'RouteDecision'}},
         'executions': {'type': 'array', 'items': {'ref': 'TraceExecution'}},
-        'executions_truncated': {'type': 'boolean'}},
+        'executions_truncated': {'type': 'boolean'},
+        'lessons': {'type': 'array', 'items': {'type': 'string'}}},
         'required': ['mission_id', 'events', 'truncated', 'policy_decisions',
-                     'route_decisions', 'executions', 'executions_truncated']},
+                     'route_decisions', 'executions', 'executions_truncated', 'lessons']},
     'ReplayRef': {'type': 'object', 'properties': {
         'kind': {'type': 'string'}, 'id': {'type': 'string'}}, 'required': ['kind', 'id']},
     'ReplayApproval': {'type': 'object', 'open': True, 'properties': {
