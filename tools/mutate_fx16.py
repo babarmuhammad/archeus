@@ -16,8 +16,10 @@ import mutate_p11  # noqa: E402  (its runner)
 
 RED = 'archeus/core/redact.py'
 BASE = 'archeus/harnesses/base.py'
+BRK = 'archeus/node/broker.py'
 R = 'tests/v1/unit/test_redact_red_team.py::'
 S = 'tests/v1/integration/test_stream_redaction_red_team.py::'
+N = 'tests/v1/unit/test_fix_node_broker.py::'
 
 MUTATIONS = [
     ('H01', 'a lowercase word of an event is masked as a short fragment', [(RED,
@@ -81,6 +83,17 @@ MUTATIONS = [
      r"""    if line[0] in '{[':""",
      r"""    if line[0] == '{':""")],
      [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key']),
+    ('H15', 'close returns while an issue is still in flight', [(BRK,
+     r"""            self._drained.wait_for(lambda: all(t == me for t in self._issuing))""",
+     r"""            pass""")],
+     [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
+    ('H16', 'an issue in flight is not counted', [(BRK,
+     r"""            self._issuing.append(me)
+        try:""",
+     r"""            self._issuing.append(me)
+            self._issuing.remove(me)
+        try:""")],
+     [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
 ]
 
 

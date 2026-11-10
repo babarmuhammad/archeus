@@ -111,10 +111,9 @@ MUTATIONS = [
         self._thread.join(timeout)""")],
      [A + 'test_production_core_binds_every_switch']),
     ('G17', 'a closed broker still issues', [(BRK,
-     r"""        with self._lock:
-            self._closed = True
-        return self.revoke_all()""",
-     r"""        return self.revoke_all()""")],
+     r"""            self._closed = True
+            self._drained.wait_for(""",
+     r"""            self._drained.wait_for(""")],
      [N + 'test_a_closed_broker_revokes_its_grants_and_issues_no_more_listeners',
       A + 'test_no_listener_is_bound_after_the_activation_closed']),
     ('G18', 'an issue in flight when the broker closes keeps its listener', [(BRK,
