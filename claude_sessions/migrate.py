@@ -175,15 +175,17 @@ def _repoint(cmd, pkg_dir):
     name, so a dead statusline still reports itself as installed and prints
     nothing at all, on every turn, forever.
 
-    Identity is the script FILENAME — the same rule `hooks.install_memory_hook`
-    already uses to repair a stale path. Only a path that is BOTH dead and one
-    of ours is rewritten; anything the user wrote by hand is left alone.
+    Identity is the script FILENAME inside a former installation's package
+    directory — `hooks.former_script`, the one rule `hooks.install_memory_hook`
+    and its siblings repair a stale path by. Only a path that is BOTH dead and
+    one of ours is rewritten; anything the user wrote by hand is left alone.
     """
+    from . import hooks
     out = cmd
     for m in _PY_ARG.finditer(cmd):
         raw = m.group(1) or m.group(2)
-        if os.path.isfile(raw):
-            continue                       # still resolves — not ours to touch
+        if not hooks.former_script(raw):
+            continue                       # resolves, or was never ours to touch
         ours = os.path.join(pkg_dir, os.path.basename(raw))
         if os.path.isfile(ours):
             out = out.replace(raw, ours)
@@ -195,7 +197,6 @@ def _repoint(cmd, pkg_dir):
     # already the "strip the interpreter, keep the rest" rule, so the arguments
     # a template appended (`--denied`) survive.
     import sys
-    from . import hooks
     tail = hooks._PYEXE.sub('', out.strip())
     return f'"{sys.executable}" {tail}' if tail != out.strip() else out
 
