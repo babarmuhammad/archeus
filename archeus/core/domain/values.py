@@ -25,5 +25,6 @@ PRINCIPAL_SCOPES = {
     'system': ('system',),
 }
 
-SOURCE_KINDS = ('user', 'brain', 'execution', 'inspection', 'import', 'automation', 'legacy')
+SOURCE_KINDS = ('user', 'brain', 'execution', 'inspection', 'import', 'automation', 'legacy',
+                'review')
 ORIGINS = ('explicit', 'inferred')

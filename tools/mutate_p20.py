@@ -94,6 +94,13 @@ AU = 'tests/v1/integration/test_automation.py::'
 FZ = 'tests/v1/integration/test_p20_fuzz.py::'
 WRT = 'archeus/infra/db/writer.py'
 KNOW = 'archeus/core/application/knowledge.py'
+CX = 'archeus/core/context/assemble.py'
+KWK = 'archeus/core/knowledge/worker.py'
+MCU = 'tests/v1/unit/test_memory_consolidation.py::'
+MCI = 'tests/v1/integration/test_consolidation_and_injection.py::'
+ENTB = 'tests/v1/unit/test_gaps_core_domain_entities_b.py::'
+PAS = 'archeus/core/knowledge/passes.py'
+RRU = 'tests/v1/unit/test_review_rules.py::'
 MATCH = 'archeus/core/automation/matcher.py'
 AE = 'tests/v1/integration/test_api_errors.py::'
 FREE = AE + 'test_a_bad_value_inside_a_free_form_field_is_a_400_not_a_500'
@@ -1361,6 +1368,95 @@ MUTATIONS += [
      "                if (False\n"
      "                        and not self.origin_allows(self.principal['origin'], tunnel_route)):")],
      [ORIGIN_HTTP + 'test_a_paired_device_is_refused_on_the_direct_local_path_and_kept_on_the_tunnel']),
+    # ── T-1093 step 1: the per-project injection switch and the user's consolidation ──
+    ('Q269', 'a context opt-in taken for an account or any name', [(ENT,
+     "        if self.kind == 'context' and (self.owner != 'project'\n"
+     "                                       or self.name not in CONTEXT_OPT_INS):",
+     "        if False:")],
+     [ENTB + 'test_a_context_opt_in_is_only_a_projects_and_only_a_named_one',
+      MCI + 'test_an_injection_opt_in_belongs_to_a_project_only']),
+    ('Q270', 'memory injected without the opt-in', [(MGR,
+     "                if INJECTION in opt_ins and m.context_package_id else '')",
+     "                if m.context_package_id else '')")],
+     [MCI + 'test_injection_is_off_by_default_and_the_prompt_is_todays']),
+    ('Q271', 'an unconfirmed item injected', [(CX,
+     "        if k is not None and k.entity.state == 'CONFIRMED':",
+     "        if k is not None:")],
+     [MCU + 'test_memory_text_is_the_packages_confirmed_items_in_its_order_secrets_redacted']),
+    ('Q272', 'injected memory not redacted', [(CX,
+     "    return scrub_text(redact('\\n'.join([MEMORY_HEADER % package_id] + lines)), homes)",
+     "    return scrub_text('\\n'.join([MEMORY_HEADER % package_id] + lines), homes)")],
+     [MCU + 'test_memory_text_is_the_packages_confirmed_items_in_its_order_secrets_redacted']),
+    ('Q273', 'anyone may ask for a consolidation', [(KNOW,
+     "    if actor.kind != 'user_device':\n"
+     "        raise A.NotPermitted('only the user asks for a consolidation (T-1093)')",
+     "    if False:\n"
+     "        raise A.NotPermitted('only the user asks for a consolidation (T-1093)')")],
+     [MCU + 'test_only_a_user_device_asks_for_a_consolidation_within_the_item_bound']),
+    ('Q274', 'a consolidation confirms its own replacement', [(KNOW,
+     "        waiting.add(old.id)\n        created += 1",
+     "        waiting.add(old.id)\n        confirm(tx, actor=actor, knowledge_item_id=k.id)\n"
+     "        created += 1")],
+     [MCI + 'test_a_consolidation_only_adds_candidates_and_runs_once_a_day']),
+    ('Q275', 'a supersede whose quote is not in the facts recorded', [(KNOW,
+     "                or quote not in sources.get(old.source_ref.id, '')):",
+     "                or False):")],
+     [MCI + 'test_a_consolidation_only_adds_candidates_and_runs_once_a_day']),
+    ('Q276', 'a second replacement for an item already waiting recorded', [(KNOW,
+     "        if (a['verdict'] == 'flag' or not quote or old.id in waiting",
+     "        if (a['verdict'] == 'flag' or not quote")],
+     [MCI + 'test_a_flag_a_keep_and_a_second_replacement_for_the_same_item_change_nothing']),
+    ('Q277', 'a consolidation supersedes nothing by name', [(KNOW,
+     "                     anchors=old.anchors, supersedes_id=old.id,",
+     "                     anchors=old.anchors,")],
+     [MCI + 'test_a_consolidation_only_adds_candidates_and_runs_once_a_day']),
+    ('Q278', 'the daily cap ignored', [(KWK,
+     "        if len(today) >= CONSOLIDATIONS_PER_DAY:",
+     "        if False:")],
+     [MCU + 'test_the_first_ask_of_the_day_runs_and_one_already_made_that_day_does_not',
+      MCI + 'test_a_consolidation_only_adds_candidates_and_runs_once_a_day']),
+    ('Q279', 'a call that reached no model counted against the cap', [(KWK,
+     "                     and (r.entity.outcome or {}).get('state') not in ('gated', 'unavailable')]",
+     "                     ]")],
+     [MCU + 'test_a_call_that_reached_no_model_does_not_count_against_the_cap']),
+    ('Q280', 'the cap counted across days', [(KWK,
+     "                     and r.created_at[:10] == at[:10]\n",
+     "")],
+     [MCU + 'test_the_first_ask_of_the_day_runs_and_one_already_made_that_day_does_not']),
+    ('Q281', 'a gated consolidation run again when headless use is permitted', [(KWK,
+     "'meeting': self.passes.decisions, 'mission': self.passes.lessons}",
+     "'meeting': self.passes.decisions, 'mission': self.passes.lessons,\n"
+     "                'project': lambda p: self.passes.consolidate(p, 20)}")],
+     [MCU + 'test_a_gated_consolidation_is_never_run_again_when_headless_use_is_permitted']),
+    # ── T-1106 step 1: review findings into lessons, review lessons out of a worker's context ──
+    ('Q282', 'the findings never reach the lessons prompt', [(PAS,
+     "        lines += ['Review: %s' % r.state for r in reviews] + found",
+     "        lines += ['Review: %s' % r.state for r in reviews]")],
+     [RRU + 'test_a_reviews_findings_reach_the_lessons_prompt_redacted_capped_and_labelled']),
+    ('Q283', 'a finding reaches the lessons prompt unredacted', [(PAS,
+     "        found = ['Review finding (%s): %s' % (f, scrub_text(redact(x), homes)[:FINDING_CHARS])",
+     "        found = ['Review finding (%s): %s' % (f, scrub_text(x, homes)[:FINDING_CHARS])")],
+     [RRU + 'test_a_reviews_findings_reach_the_lessons_prompt_redacted_capped_and_labelled']),
+    ('Q284', 'the findings uncapped', [(PAS,
+     "                 for r in reviews for f in FINDING_LISTS for x in getattr(r, f)][:FINDINGS_MAX]",
+     "                 for r in reviews for f in FINDING_LISTS for x in getattr(r, f)]")],
+     [RRU + 'test_at_most_findings_max_findings_reach_the_prompt']),
+    ('Q285', 'a lesson sourced review without being shown any finding', [(KNOW,
+     "        kind = 'review' if reviewed and les.get('from_review') is True else 'execution'",
+     "        kind = 'review' if les.get('from_review') is True else 'execution'")],
+     [RRU + 'test_only_a_lesson_marked_from_shown_findings_is_sourced_review']),
+    ('Q286', 'every lesson of a reviewed mission sourced review', [(KNOW,
+     "        kind = 'review' if reviewed and les.get('from_review') is True else 'execution'",
+     "        kind = 'review' if reviewed else 'execution'")],
+     [RRU + 'test_only_a_lesson_marked_from_shown_findings_is_sourced_review']),
+    ('Q287', 'a review lesson reaches a worker\'s context', [(CX,
+     "        if k.source_kind == 'review':\n",
+     "        if False:\n")],
+     [RRU + 'test_a_confirmed_review_lesson_is_excluded_from_a_workers_context']),
+    ('Q288', 'the pass never says it showed findings', [(PAS,
+     "                            mission_id=m.id, result=c.parsed, reviewed=bool(found))",
+     "                            mission_id=m.id, result=c.parsed)")],
+     [RRU + 'test_a_reviews_findings_reach_the_lessons_prompt_redacted_capped_and_labelled']),
 ]
 
 if __name__ == '__main__':

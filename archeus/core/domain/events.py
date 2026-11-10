@@ -102,6 +102,9 @@ TYPES = (
     ('message.created', 'message', 'user', False, 'a conversation message was written'),
     ('project.changed', 'project', 'user', False, 'repo HEAD moved or files changed (debounced)'),
     ('project.created', 'project', 'user', False, 'a project and its repositories were registered'),
+    ('project.consolidation_requested', 'project', 'user', False,
+     "the user asked for one consolidation pass over the project's knowledge (payload: "
+     'max_items) — T-1093'),
     ('repository.registered', 'repository', 'system', False, 'a repository joined a project'),
     ('repository_inspection.state_changed', 'repository_inspection', 'system', False,
      'an inspection moved state (scheduled, running, completed, failed)'),

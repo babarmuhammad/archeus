@@ -36,6 +36,7 @@ from ...node.isolation import profile_name
 from ...node.local import LocalNode, PathTooLong, seed_ref
 from ...node.pv20_switches import checked
 from ..application import errors, executions as X, optins, resources
+from ..context import assemble
 from ..domain import entities, states
 from ..redact import redact, redact_json  # p11-design-gate §19; shared since P12, and P20's inventory
 from . import canonical, pressure as P
@@ -68,6 +69,8 @@ ISOLATION_SWEEP_S = 5.0
 CAPABILITY_ENV = base.CAPABILITY_ENV
 #: a known-isolated execution's diff: Core runs no Git in its workdir (T-044)
 UNMEASURED = '(not measured: an isolated execution; Core runs no Git in its workdir)'
+#: the project opt-in that puts its mission's context package in each prompt (T-1093)
+INJECTION = ('project', 'context', 'injection')
 
 
 #: what a stream line or fact keeps; the writer cuts it to its own cap (cut_bound,
@@ -301,13 +304,18 @@ class ExecutionManager:
         home = account.entity.home_ref if account is not None else next(
             (a.get('home_ref') for a in accts if a.get('id') is None
              and a['harness'] == e.harness_id and a.get('ref') == rd.entity.account_ref), None)
+        with self.db.read() as r:
+            opt_ins = optins.effective(r, account_id=e.account_id, project_id=m.project_id)
+            memory = (assemble.memory_text(r, m.context_package_id, resources.homes(
+                r, self.registry, self.db.writer.live[1]))
+                if INJECTION in opt_ins and m.context_package_id else '')
         prompt, continuation = '%s\n\n%s\n' % (m.objective, t.title), 0
+        if memory:
+            prompt += '\n%s\n' % memory
         if e.handoff_from is not None:
             # a continuation (p12-design-gate §10.1): the checkpoint of the
             # execution it continues is the variable suffix of its prompt
             prompt, continuation = self._continuation(e, prompt)
-        with self.db.read() as r:
-            opt_ins = optins.effective(r, account_id=e.account_id, project_id=m.project_id)
         spec = base.ExecutionSpec(
             execution_id=e.id, prompt=prompt, workdir=workdir,
             attempt=e.attempt, model=e.model, effort=e.effort, process_seq=seq,

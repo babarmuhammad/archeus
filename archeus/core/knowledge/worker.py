@@ -1,5 +1,5 @@
 """The knowledge worker (P6): an outbox consumer (`consumers.deliver`, at-least-
-once, handler outside any transaction) that turns four facts into passes.
+once, handler outside any transaction) that turns five facts into passes.
 
 | event | pass |
 |---|---|
@@ -7,6 +7,7 @@ once, handler outside any transaction) that turns four facts into passes.
 | `meeting.imported` | decision candidates from the notes |
 | `mission.state_changed` to COMPLETED or FAILED | lessons, once per mission |
 | `provider_terms.decided` permitting headless use | every pass still gated by ADR-0021, again |
+| `project.consolidation_requested` (the user's ask) | one consolidation, CONSOLIDATIONS_PER_DAY per project |
 
 "Once" is read from the RouteDecisions themselves: a source whose pass ended
 `ok` or `invalid` is not passed again, so a re-delivered event (a crash between
@@ -27,6 +28,10 @@ log = logging.getLogger('archeus.core')
 CONSUMER = 'knowledge'
 #: outcomes after which a source is never passed again by its own trigger
 SETTLED = ('ok', 'invalid')
+#: consolidation calls one project may make per UTC day (T-1093); one that
+#: reached no model (gated, unavailable) does not count. Never rerun when
+#: headless use is permitted later: a new call needs a new ask.
+CONSOLIDATIONS_PER_DAY = 1
 
 
 class Knowledge:
@@ -77,6 +82,8 @@ class Knowledge:
                               self.passes.decisions)
         if e.type == 'mission.state_changed' and to in ('COMPLETED', 'FAILED'):
             return self._once('lesson', 'mission', e.subject.id, self.passes.lessons)
+        if e.type == 'project.consolidation_requested':
+            return self._consolidate(e.subject.id, e.payload['max_items'], e.at)
         if e.type == 'provider_terms.decided' and e.payload.get('headless') == 'permitted':
             return self._rerun_gated()
         return ''
@@ -111,6 +118,17 @@ class Knowledge:
                                         for d in passes):
             return 'already passed'
         return 'knowledge:%s' % self.passes.knowledge(inspection_id)
+
+    def _consolidate(self, project_id, max_items, at):
+        with self.db.read() as conn:
+            today = [r for r in rows.where(conn, entities.RouteDecision,
+                                           purpose='knowledge_extraction', project_id=project_id)
+                     if r.entity.source is not None and r.entity.source.kind == 'project'
+                     and r.created_at[:10] == at[:10]
+                     and (r.entity.outcome or {}).get('state') not in ('gated', 'unavailable')]
+        if len(today) >= CONSOLIDATIONS_PER_DAY:
+            return 'consolidate: the daily cap of %d is reached' % CONSOLIDATIONS_PER_DAY
+        return 'consolidate:%s' % self.passes.consolidate(project_id, max_items)
 
     def _rerun_gated(self):
         """Every source whose latest pass was gated, passed again now that

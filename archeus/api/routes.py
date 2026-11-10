@@ -491,6 +491,14 @@ def forget_knowledge(req):
         'dry_run': True if b.get('dry_run') is None else b['dry_run']})
 
 
+def consolidate_knowledge(req):
+    """T-1093: the user's ask for one consolidation pass over a project's knowledge;
+    the knowledge worker answers it, capped per day, with CANDIDATEs only."""
+    b = req.body
+    return 200, req.run(knowledge.request_consolidation, {
+        'project_id': b['project_id'], 'max_items': b.get('max_items') or 20})
+
+
 def record_feedback(req):
     b = req.body
     return 200, req.run(knowledge.record_feedback, {
@@ -1162,6 +1170,8 @@ ROUTES = (
           schemas.SUPERSEDE, 'KnowledgeChanged'),
     Route('POST', '/v1/knowledge/forget', forget_knowledge, 'control', 'required',
           schemas.FORGET, 'Forgotten'),
+    Route('POST', '/v1/knowledge/consolidate', consolidate_knowledge, 'control', 'required',
+          schemas.CONSOLIDATE, 'ConsolidationRequested'),
     Route('POST', '/v1/feedback', record_feedback, 'control', 'required', schemas.FEEDBACK,
           'FeedbackRecorded'),
     Route('POST', '/v1/meetings/import', import_meeting, 'admin', 'required',
@@ -1315,7 +1325,8 @@ _NAMED = {
         'POST /v1/projects/{id}/constraints', 'POST /v1/conversations/{id}/messages',
         'POST /v1/intents/{id}/clarify', 'POST /v1/knowledge/{id}/confirm',
         'POST /v1/knowledge/{id}/reject', 'POST /v1/knowledge/{id}/retract',
-        'POST /v1/knowledge/{id}/supersede', 'POST /v1/knowledge/forget', 'POST /v1/feedback'),
+        'POST /v1/knowledge/{id}/supersede', 'POST /v1/knowledge/forget',
+        'POST /v1/knowledge/consolidate', 'POST /v1/feedback'),
 }
 CLASS = {**{(r.method, r.path): 'observe' for r in ROUTES if r.scope == 'observe'},
          **{tuple(k.split(' ', 1)): c for c, keys in _NAMED.items() for k in keys}}

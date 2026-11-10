@@ -1513,8 +1513,12 @@ class ResourcePolicy(Entity):
                 raise ValueError('a project restriction names a project id: %r' % (p,))
 
 
-#: What an execution may be let load from its settings sources (ADR-0049; P20 D6).
-OPT_IN_KINDS = ('source', 'plugin', 'mcp')
+#: What an execution may be let load from its settings sources (ADR-0049; P20 D6),
+#: and, kind `context`, what Archeus may add to a project's agents' prompts (T-1093)
+OPT_IN_KINDS = ('source', 'plugin', 'mcp', 'context')
+#: `injection`: the mission's context package rendered into each execution's prompt;
+#: `review_rules`: the project's REVIEW.md and review lessons in its reviews (T-1106)
+CONTEXT_OPT_INS = ('injection', 'review_rules')
 #: The settings source each owner holds (D6): the account home is the account's;
 #: a project's committed `.claude/` and its local settings are the project's
 SOURCE_OWNERS = {'account': ('user',), 'project': ('project', 'local')}
@@ -1556,6 +1560,10 @@ class OptIn(Entity):
         if self.kind == 'source' and self.name not in SOURCE_OWNERS[self.owner]:
             raise ValueError('a %s holds the %s settings source(s), not %r' % (
                 self.owner, ' and '.join(SOURCE_OWNERS[self.owner]), self.name))
+        if self.kind == 'context' and (self.owner != 'project'
+                                       or self.name not in CONTEXT_OPT_INS):
+            raise ValueError("a context opt-in is a project's, one of %s: not %s %r" % (
+                ', '.join(CONTEXT_OPT_INS), self.owner, self.name))
 
 
 @entity

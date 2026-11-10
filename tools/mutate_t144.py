@@ -734,8 +734,10 @@ MUTATIONS = [
      "                    e.attempt, scrub_text(e.summary[:500], homes)))")],
      [I7 + 'test_the_review_prompt_cap_never_leaves_a_prefix_of_a_home']),
     ('Z631', 'the review worker builds the prompt without the live homes', [(VW,
-     "                                   resources.bound_homes(conn, self.db.writer.live))",
-     "                                   resources.homes(conn, None, ()))")],
+     "            homes = resources.bound_homes(conn, self.db.writer.live)\n"
+     "            text = reviewer.prompt(",
+     "            homes = resources.homes(conn, None, ())\n"
+     "            text = reviewer.prompt(")],
      [I7 + 'test_the_review_prompt_projects_the_agent_claim_and_caps_it_after']),
     ('Z632', 'the brain context lists project root paths raw', [(BR,
      "                scrub_text(x, homes) for x in p.root_paths))",

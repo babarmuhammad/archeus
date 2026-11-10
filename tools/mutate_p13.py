@@ -32,6 +32,8 @@ W = 'tests/v1/unit/test_verification_weakening.py'
 R = 'tests/v1/unit/test_gaps_core_verification_reviewer.py'
 MC = 'tests/v1/unit/test_verification_memory_check.py'
 B = 'tests/v1/unit/test_verification_baseline.py'
+RR = 'tests/v1/unit/test_review_rules.py'
+RMD = 'tests/v1/integration/test_review_md.py'
 IP = '[inprocess]'
 
 MUTATIONS = [
@@ -273,6 +275,40 @@ MUTATIONS = [
      "                                     m.integration_base, cmds, checks,",
      "                                     None, cmds, checks,")],
      [B + '::test_a_mission_criterion_is_compared_with_the_integration_base']),
+    # ── T-1106: REVIEW.md and review lessons, for an opted-in project only ──
+    ('Z52', 'REVIEW.md read at the mission head', [(WRK,
+     "        review_md = (self.node.git_file(root, m.integration_base, reviewer.RULES_FILE)",
+     "        review_md = (self.node.git_file(root, m.integration_head, reviewer.RULES_FILE)")],
+     [RMD + '::test_an_opted_in_project_reviews_against_review_md_at_the_base']),
+    ('Z53', 'the rules reach every review, opted in or not', [(WRK,
+     "            ruled = reviewer.RULES_OPT_IN in optins.effective(conn, account_id=None,\n"
+     "                                                               project_id=m.project_id)",
+     "            ruled = True")],
+     [RMD + '::test_without_the_opt_in_the_review_prompt_is_todays']),
+    ('Z54', 'REVIEW.md uncapped', [(REV,
+     "                data[:RULES_BYTES].decode('utf-8', 'ignore')]",
+     "                data.decode('utf-8', 'ignore')]")],
+     [RR + '::test_the_rules_section_is_capped_marked_and_redacted_and_empty_without_rules']),
+    ('Z55', 'REVIEW.md not redacted', [(REV,
+     "        data = scrub_text(redact(review_md), homes).encode('utf-8')",
+     "        data = scrub_text(review_md, homes).encode('utf-8')")],
+     [RR + '::test_the_rules_section_is_capped_marked_and_redacted_and_empty_without_rules']),
+    ('Z56', 'a work lesson read as a review rule', [(REV,
+     "               if r.entity.state == 'CONFIRMED' and r.entity.source_kind == 'review']",
+     "               if r.entity.state == 'CONFIRMED']")],
+     [RR + '::test_the_rules_section_carries_the_last_ten_review_lessons_cut']),
+    ('Z57', 'every review lesson listed', [(REV,
+     "            for k in lessons[-RULES_LESSONS:]]",
+     "            for k in lessons]")],
+     [RR + '::test_the_rules_section_carries_the_last_ten_review_lessons_cut']),
+    ('Z58', 'git_file reads the worktree instead of the commit', [(LOC,
+     "        return proc.git(['cat-file', 'blob', '%s:%s' % (rev, path)], root)",
+     "        try:\n"
+     "            with open(os.path.join(root, path), encoding='utf-8') as f:\n"
+     "                return f.read()\n"
+     "        except OSError:\n"
+     "            return None")],
+     [RR + '::test_review_md_is_read_from_the_commit_named_never_the_worktree']),
 ]
 
 

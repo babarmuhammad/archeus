@@ -1300,6 +1300,12 @@ class LocalNode:
         return rows
 
     @staticmethod
+    def git_file(root, rev, path):
+        """The bytes of *path* as committed at *rev*, read from the object store
+        (no checkout, no worktree, no filter); None when it is not there."""
+        return proc.git(['cat-file', 'blob', '%s:%s' % (rev, path)], root)
+
+    @staticmethod
     def git_diff(root, base, rev):
         """The unified diff of base..rev, no context lines and no configured diff
         program (nothing is spawned but git), its paths unquoted, prefixed `a/` and

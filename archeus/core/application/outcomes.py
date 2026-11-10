@@ -3,6 +3,8 @@ model or effort threshold is tuned on. Read-only, from rows Core already keeps
 (executions, their verifications, their usage ledger rows); it decides nothing.
 """
 
+import re
+
 from ...infra.db import rows
 from ..domain import entities
 
@@ -100,7 +102,8 @@ def by_model(conn):
 
 #: (purpose, source kind) of the own call each learning pass makes (`knowledge.passes`)
 PASSES = {('knowledge_extraction', 'repository_inspection'): 'knowledge',
-          ('knowledge_extraction', 'meeting'): 'decisions', ('lesson', 'mission'): 'lessons'}
+          ('knowledge_extraction', 'meeting'): 'decisions', ('lesson', 'mission'): 'lessons',
+          ('knowledge_extraction', 'project'): 'consolidate'}
 
 
 def _sum(conn, name, key_of):
@@ -217,3 +220,67 @@ def by_context(conn):
                 g['tokens'] = (g['tokens'] or 0) + (u.tokens_in or 0) + (u.tokens_out or 0)
             g['cost_usd'] = _add(g['cost_usd'], u.cost_usd)
     return [out[k] for k in sorted(out, key=lambda k: tuple(x or '' for x in k))]
+
+
+def graph_size(conn):
+    """One dict per project holding live knowledge (CANDIDATE or CONFIRMED), sorted by
+    id: its `items`, `graph_bytes` (their title and text, UTF-8), `source_bytes` (the
+    payload of each repository's latest COMPLETED inspection; None when there is none)
+    and `ratio`, graph over source (None without a source). Reported, never judged:
+    nothing refuses an item on it (T-1093 step 1). Items read from meetings or missions
+    count in the graph and have no source here, so for them the ratio reads high."""
+    graph = {}
+    for r in rows.where(conn, entities.KnowledgeItem):
+        k = r.entity
+        if k.project_id is not None and k.state in ('CANDIDATE', 'CONFIRMED'):
+            g = graph.setdefault(k.project_id, [0, 0])
+            g[0] += 1
+            g[1] += len((k.title + k.text).encode('utf-8'))
+    out = []
+    for pid in sorted(graph):
+        source = None
+        for repo in rows.where(conn, entities.Repository, project_id=pid):
+            done = [i.entity for i in rows.where(conn, entities.RepositoryInspection,
+                                                 repository_id=repo.entity.id)
+                    if i.entity.state == 'COMPLETED']
+            art = (rows.get(conn, entities.Artifact, done[-1].payload_sha256)
+                   if done and done[-1].payload_sha256 else None)
+            if art is not None:
+                source = (source or 0) + art.entity.size
+        n, size = graph[pid]
+        out.append({'project_id': pid, 'items': n, 'graph_bytes': size, 'source_bytes': source,
+                    'ratio': round(size / source, 2) if source else None})
+    return out
+
+
+#: the window and threshold of the recurrence read (T-1106): the project's last
+#: RECUR_WINDOW reviews, a finding in at least RECUR_MISSIONS distinct missions
+RECUR_WINDOW, RECUR_MISSIONS = 10, 3
+_NOISE = re.compile(r'[\d/\\]+')
+
+
+def _finding_key(text):
+    return ' '.join(_NOISE.sub(' ', text).casefold().split())
+
+
+def recurring_findings(conn, project_id):
+    """The review findings (requirements missing, regressions, risks) that recur in
+    the project's last RECUR_WINDOW reviews, by a normalised string (casefolded,
+    whitespace collapsed, digits and path separators dropped): one dict per key seen
+    in at least RECUR_MISSIONS distinct missions, most missions first, with the
+    first wording seen. No model and no state change: the baseline the
+    model-phrased review lessons are judged against (T-1106 step 1)."""
+    missions = {r.entity.id for r in rows.where(conn, entities.Mission, project_id=project_id)}
+    reviews = [r.entity for r in rows.where(conn, entities.Review)
+               if r.entity.mission_id in missions][-RECUR_WINDOW:]
+    seen = {}
+    for r in reviews:
+        for f in ('requirements_missing', 'regressions', 'risks'):
+            for text in getattr(r, f):
+                k = _finding_key(text)
+                if k:
+                    g = seen.setdefault(k, {'finding': text, 'missions': set()})
+                    g['missions'].add(r.mission_id)
+    out = [{'finding': g['finding'], 'key': k, 'missions': sorted(g['missions'])}
+           for k, g in seen.items() if len(g['missions']) >= RECUR_MISSIONS]
+    return sorted(out, key=lambda g: (-len(g['missions']), g['key']))
