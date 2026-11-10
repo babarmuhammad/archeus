@@ -5,6 +5,7 @@ from, opt-in per project or mission, and its check then says `regressed` or
 granularity is out of scope: the label is of the whole command."""
 
 import os
+import shutil
 import subprocess
 import sys
 
@@ -194,7 +195,61 @@ def test_the_base_checkout_is_a_detached_tree_of_the_base_from_an_absolute_git(
     with open(os.path.join(tree, 'f.txt')) as f:
         assert f.read() == 'old'
     assert LocalNode.drop_checkout(root, tree) is True and not os.path.exists(tree)
-    assert len(seen) == 3 and all(os.path.isabs(a) and a == local._git_exe() for a in seen)
+    assert len(seen) >= 3 and all(os.path.isabs(a) and a == local._git_exe() for a in seen)
+
+
+@pytest.mark.parametrize('version', [b'git version 2.44.9.windows.1\n', b'git 2.49.0\n', b''])
+def test_a_git_below_the_floor_is_asked_its_version_and_nothing_else(version, tmp_path, monkeypatch):
+    asked = []
+
+    def old(argv, **kw):
+        asked.append((argv[1:], kw['cwd']))
+        return subprocess.CompletedProcess(argv, 0, version, b'')
+    monkeypatch.setattr(local, '_VERSION', {})
+    monkeypatch.setattr(local.subprocess, 'run', old)
+    root, tree = str(tmp_path), str(tmp_path / 'b' / 'tree')
+    with pytest.raises(OSError, match='2.45.0'):
+        LocalNode.base_checkout(root, tree, BASE)
+    assert LocalNode.git_diff(root, BASE, REV) is None
+    assert LocalNode.drop_checkout(root, tree) is False     # nothing says it is gone
+    assert asked and all(args == ['version'] and cwd != root for args, cwd in asked)
+    assert local._VERSION == {}
+
+
+def test_a_git_at_the_floor_is_asked_its_version_once(tmp_path, monkeypatch):
+    asked = []
+
+    def new(argv, **kw):
+        asked.append(argv[-1])
+        return subprocess.CompletedProcess(argv, 0, b'git version 2.45.0\n', b'')
+    monkeypatch.setattr(local, '_VERSION', {})
+    monkeypatch.setattr(local.subprocess, 'run', new)
+    assert LocalNode.git_diff(str(tmp_path), BASE, REV) == 'git version 2.45.0\n'
+    assert LocalNode.git_diff(str(tmp_path), BASE, REV) is not None
+    assert asked == ['version', '--', '--']
+
+
+def test_a_checkout_whose_registration_outlives_its_directory_is_not_dropped(tmp_path, monkeypatch):
+    root = str(tmp_path / 'repo')
+    os.makedirs(root)
+    _git(root, 'init', '-q')
+    _git(root, 'commit', '-q', '--allow-empty', '-m', 'base')
+    base = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True,
+                          text=True, check=True).stdout.strip()
+    tree = str(tmp_path / 'b' / 'tree')
+    LocalNode.base_checkout(root, tree, base)
+    real = local._project_git
+
+    def locked(root, args, **kw):       # the directory goes, the administrative files stay
+        if args[:2] == ['worktree', 'remove']:
+            return shutil.rmtree(tree)
+        return real(root, args, **kw)
+    monkeypatch.setattr(local, '_project_git', locked)
+    assert LocalNode.drop_checkout(root, tree) is False and not os.path.exists(tree)
+    monkeypatch.setattr(local, '_project_git', real)
+    assert LocalNode.drop_checkout(root, tree) is True
+    assert 'b/tree' not in subprocess.run(['git', 'worktree', 'list'], cwd=root,
+                                          capture_output=True, text=True).stdout
 
 
 def test_the_base_checkout_runs_no_hook_or_filter_of_the_repository(tmp_path, monkeypatch):
