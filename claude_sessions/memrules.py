@@ -10,6 +10,8 @@ touched.
 import os
 import re
 
+from archeus.core.redact import redact
+
 from .memory import tokens_estimate
 
 RULE_PREFIX = 'archeus-mem-'
@@ -106,7 +108,8 @@ def render_rule(repo, module, summary, entities, relations):
     while tokens_estimate(text) > RULE_MAX_TOKENS and len(lines) > 6:
         lines.pop(-2 if rels else -1)
         text = '\n'.join(lines)
-    return text + '\n'
+    # the rule files sit in the project tree, where they can be committed
+    return redact(text) + '\n'
 
 
 def sync_rules(project_path, proj_folder, mem):

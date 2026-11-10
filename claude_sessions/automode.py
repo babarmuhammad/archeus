@@ -201,11 +201,13 @@ def record(project_path, tool, command, reason):
     """Append one denial. Called by the hook; kept here so the format has one
     writer and one reader."""
     try:
+        from archeus.core.redact import redact
         from . import store
         d = store.workdir(project_path)
+        # redacted before the cut, which could leave a token too short to recognise
         line = json.dumps({'ts': round(time.time()), 'tool': tool or '',
-                           'command': (command or '')[:500],
-                           'reason': (reason or '')[:300]}, ensure_ascii=False)
+                           'command': redact(command or '')[:500],
+                           'reason': redact(reason or '')[:300]}, ensure_ascii=False)
         p = os.path.join(d, 'denied.jsonl')
         with open(p, 'a', encoding='utf-8') as f:
             f.write(line + '\n')
