@@ -16,8 +16,8 @@ Selected branches (each test names its own in its docstring):
   5. `_ensure_job` 938 raises: no phantom held Job at 939, and the lock is
      released.
   6. `_ensure_job`'s `with self._lock` (933) around the create (938) vs
-     `close_admission` (950-954): an in-flight create makes close wait — the
-     Job is created whole or not at all.
+     `close_admission` (950-954): an in-flight create makes close wait, and a
+     create that finishes after the stop began is closed, never held.
   7. the same lock, the other order: a close that wins the lock refuses the
      create queued behind it (933-935).
   8. a closure landing between establish's entry check (802) and `_ensure_job`
@@ -480,21 +480,22 @@ class TestClosedJobAdmission:
             assert inside.wait(JOIN_S), 'the create never entered the boundary'
             stop = _start(threads, lambda: (a.close_admission(),
                                             seq.append('closed')))  # queues behind the held lock
-            assert a.closed is False                     # close cannot pass an in-flight
-            assert list(seq) == ['create-start']         # admission: not started, not done
+            assert a.closed is True                      # published before the wait
+            assert list(seq) == ['create-start']         # close waits: not started, not done
             assert 'closed' not in seq                   # it has not returned either
             release.set()
             for t in threads:
                 t.join(JOIN_S)
                 assert not t.is_alive()
-            assert 'error' not in job and 'error' not in stop
-            assert job['result'] == {'job': eid}         # the in-flight Job was admitted
+            assert isinstance(job.get('error'), iso.IsolationClosed)   # refused after the create
+            assert 'error' not in stop
+            assert b.closed == [{'job': eid}]            # the refused Job was closed, not held
         finally:
             release.set()
             for t in threads:
                 t.join(JOIN_S)
         assert list(seq) == ['create-start', 'create-end', 'closed']  # whole, then stop
-        assert a.closed is True and a.held_job(eid) == {'job': eid}
+        assert a.closed is True and a.held_job(eid) is None
         assert b.job_creates == 1
 
 
@@ -549,13 +550,13 @@ class TestTheCloseWinsTheLock:
             release.set()
             for t in threads:
                 t.join(JOIN_S)
-        assert 'error' not in job1 and 'error' not in stop
+        assert isinstance(job1.get('error'), iso.IsolationClosed)     # refused after its create
+        assert 'error' not in stop
         assert isinstance(late.get('error'), iso.IsolationClosed)     # refused at 935
         assert 'second-create' not in seq                             # never reached 938
         assert b.job_creates == 1                                     # only the in-flight one
-        assert list(a.held_jobs()) == [eid1]          # the won close admitted nothing new
-        assert a.held_job(eid1) == {'job': eid1}      # and emptied nothing on the way
-        assert b.closed == []
+        assert a.held_jobs() == {}                    # the won close admitted nothing new
+        assert b.closed == [{'job': eid1}]            # and the refused in-flight Job is closed
 
 
 # ── 8. §3.7/O7: a stop mid-flight fails the record nothing ────────────────────
