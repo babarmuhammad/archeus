@@ -126,6 +126,39 @@ def _witness(who):
                      payload={})
 
 
+def test_lessons_reads_only_the_sql_window_without_decoding_relations(db_world, monkeypatch):
+    db, who = db_world
+    mid = _mission(db, who)['mid']
+    kept = sorted(ids.new_id('knowledge_item') for _ in range(205))
+
+    def seed(tx, **_):
+        for kid in reversed(kept):
+            tx.insert(entities.Relation(
+                id=ids.new_id('relation'), src_kind='knowledge_item', src_id=kid,
+                rel='learned_from', dst_kind='mission', dst_id=mid), actor=who)
+        tx.append(_witness(who))
+
+    db.writer.execute(seed, {})
+    fetched = []
+
+    class Read:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def execute(self, sql, params):
+            records = list(self.conn.execute(sql, params))
+            fetched.append(len(records))
+            assert params == (mid, 201)
+            return records
+
+    monkeypatch.setattr(trace.rows, 'decode', lambda *a: pytest.fail('lesson relation decoded'))
+    with db.read() as conn:
+        lessons, more = trace.lessons(Read(conn), mid)
+    assert fetched == [201]
+    assert lessons == kept[:200]
+    assert more is True
+
+
 # ── lanes: the type filter, the text cap, the pairing guards ────────────────
 
 def test_events_that_are_neither_call_nor_result_never_reach_a_lane():
@@ -462,7 +495,7 @@ def test_a_mission_with_nothing_under_it_is_still_a_full_empty_trace(db_world):
     t = _read(db, k['mid'], _Registry())
     assert t == {'mission_id': k['mid'], 'events': [], 'truncated': False,
                  'policy_decisions': [], 'route_decisions': [], 'executions': [],
-                 'executions_truncated': False, 'lessons': []}
+                 'executions_truncated': False, 'lessons': [], 'lessons_more': False}
     schemas.validate(t, schemas.TYPES['Trace'])
 
 

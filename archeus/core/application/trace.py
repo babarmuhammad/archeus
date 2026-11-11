@@ -20,6 +20,7 @@ MAX_EVENTS = 1000
 #: the newest executions read per trace: each costs an output read (and a live
 #: inspect while it runs), so a mission with many retries stays one bounded read
 MAX_EXECUTIONS = 50
+LESSONS_MAX = 200
 MAIN = 'main'
 _TEXT = 500
 
@@ -52,10 +53,12 @@ def lanes(events):
 
 
 def lessons(conn, mission_id):
-    """The knowledge items a live `learned_from` relation ties to the mission."""
-    return sorted({r.entity.src_id for r in rows.where(
-        conn, entities.Relation, src_kind='knowledge_item', rel='learned_from',
-        dst_kind='mission', dst_id=mission_id) if r.entity.valid_until is None})
+    found = [r['src_id'] for r in conn.execute(
+        "SELECT DISTINCT src_id FROM relations WHERE src_kind = 'knowledge_item' "
+        "AND rel = 'learned_from' AND dst_kind = 'mission' AND dst_id = ? "
+        "AND json_extract(body, '$.valid_until') IS NULL ORDER BY src_id LIMIT ?",
+        (mission_id, LESSONS_MAX + 1))]
+    return found[:LESSONS_MAX], len(found) > LESSONS_MAX
 
 
 def trace(conn, mission_id, registry, *, homes=None):
@@ -74,9 +77,10 @@ def trace(conn, mission_id, registry, *, homes=None):
                       'checkpoints': [c['id'] for c in executions.checkpoints(conn, e.id, homes=homes)],
                       'available': o['available'], 'truncated': o['truncated'],
                       'lanes': lanes(o['events'])})
+    learned, lessons_more = lessons(conn, mission_id)
     return {'mission_id': mission_id, 'events': t['events'][::-1],
             'truncated': t['next_before'] is not None,
             'policy_decisions': list_policy_decisions(conn, mission_id, homes=homes),
             'route_decisions': route_decisions(conn, mission_id, homes=homes),
             'executions': execs, 'executions_truncated': len(rs) > MAX_EXECUTIONS,
-            'lessons': lessons(conn, mission_id)}
+            'lessons': learned, 'lessons_more': lessons_more}
