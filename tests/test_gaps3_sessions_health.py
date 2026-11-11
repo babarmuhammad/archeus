@@ -404,14 +404,6 @@ def test_git_is_only_asked_about_the_files_that_were_inspected(tmp_path, git):
     assert _tree(root) == before
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='health.py:77-80 turns every row of the `_git` answer into a '
-                          '"tracked by git" / "not ignored by git" finding with no check '
-                          'that the path is one of the files this pass inspected, while '
-                          'health.py:75-76 asks about them behind `--` and the docstring '
-                          '(health.py:39-44) promises "which of those files git would '
-                          'commit"; a stand-in git (a shim on PATH, a wrapper printed by '
-                          'an alias) that answers other paths fabricates the finding')
 def test_a_git_row_for_an_unrelated_path_is_not_a_finding(tmp_path, git):
     """health.py:77-80: rows must stay inside the inspected set."""
     root = _project(tmp_path, {('settings.json',): _allow('Bash(PGPASSWORD=%s psql)' % S)})

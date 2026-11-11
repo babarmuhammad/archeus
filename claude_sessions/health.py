@@ -77,8 +77,9 @@ def settings_hygiene(project_path):
                   + [r.replace(os.sep, '/') for r in sorted(exposed)], project_path) if exposed else None
     for row in (listed or '').splitlines():
         tag, _, rel = row.partition(' ')
-        out.append({'path': os.path.normpath(rel), 'line': 0,
-                    'rule': 'not ignored by git' if tag == '?' else 'tracked by git', 'sample': ''})
+        if os.path.normpath(rel) in exposed:
+            out.append({'path': os.path.normpath(rel), 'line': 0,
+                        'rule': 'not ignored by git' if tag == '?' else 'tracked by git', 'sample': ''})
     return out
 
 
