@@ -12,12 +12,12 @@ import re
 import json
 from collections import Counter
 
-from archeus.cli.tui.view import clean
 from archeus.core.redact import redact
 
 from . import config as _c
 from . import store
 from .memory import tokens_estimate
+from .render import clean
 
 CLAUDEMD_TOKEN_WARN = 1500
 BURN_WARN_PCT = 70
