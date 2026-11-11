@@ -91,6 +91,7 @@ class Watchdog:
         if not _number(armed_at) or armed_at < 0:
             raise WatchdogUnavailable('clock malformed at arm time')
         self.armed_at = armed_at
+        self.last_clock = armed_at
 
     def record(self, job):
         self._refuse_if_terminal('record a job')
@@ -117,8 +118,9 @@ class Watchdog:
             now = self.clock()
         except Exception:
             return self._set(UNCERTAIN, 'clock read failed')
-        if not _number(now) or now < self._quiet_since():
+        if not _number(now) or now < self.last_clock:
             return self._set(UNCERTAIN, 'malformed clock observation')
+        self.last_clock = now
         try:
             alive = self.core_alive()
         except Exception:
