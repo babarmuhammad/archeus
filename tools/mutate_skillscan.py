@@ -185,13 +185,25 @@ MUTATIONS = [
     ('SK87', 'the repair re-points any dead script of our name', [(MIGRATE,
      '        if not hooks.former_script(raw):', '        if os.path.isfile(raw):')],
      ['tests/test_migration.py::test_the_repair_takes_only_what_hooks_calls_a_former_install']),
+    ('SK89', 'live aliases use lexical ownership', [(HOOKS,
+     '            return os.path.samefile(m.group(1), os.path.join(_PKG, script))',
+     '            return m.group(1) == os.path.join(_PKG, script)')],
+     [TH + 'test_live_hook_ownership_uses_identity_even_with_unrelated_spelling']),
+    ('SK90', 'a live identity lookup error claims ownership', [(HOOKS,
+     '        except OSError:\n            return False\n    path =',
+     '        except OSError:\n            return True\n    path =')],
+     [TH + 'test_live_hook_identity_error_fails_closed_even_for_current_spelling']),
+    ('SK91', 'live hooks skip identity checks', [(HOOKS,
+     '    if os.path.exists(m.group(1)):', '    if False:')],
+     [TH + 'test_live_hook_ownership_uses_identity_even_with_unrelated_spelling']),
 ]
 if os.path.normcase('A') != 'A':        # only where file names fold case does a test see it
     MUTATIONS.append(
         ('SK88', 'our own hook under another case of its path is foreign', [(HOOKS,
          '    path = os.path.normcase(os.path.normpath(m.group(1)))',
          '    path = os.path.normpath(m.group(1))')],
-         [TH + 'test_our_hook_is_ours_however_its_path_is_cased']))
+         [TH + 'test_our_hook_is_ours_however_its_path_is_cased',
+          TH + 'test_a_missing_script_is_ours_under_another_case_of_its_path']))
 
 
 if __name__ == '__main__':

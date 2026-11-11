@@ -418,6 +418,11 @@ def _is_ours(h, script):
     m = _OUR_CMD.fullmatch(str(h.get('command', '')).strip()) if isinstance(h, dict) else None
     if not m:
         return False
+    if os.path.exists(m.group(1)):
+        try:
+            return os.path.samefile(m.group(1), os.path.join(_PKG, script))
+        except OSError:
+            return False
     path = os.path.normcase(os.path.normpath(m.group(1)))
     return (path == os.path.normcase(os.path.join(_PKG, script))
             or (os.path.basename(path) == os.path.normcase(script) and former_script(m.group(1))))
