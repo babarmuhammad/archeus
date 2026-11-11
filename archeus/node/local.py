@@ -1854,7 +1854,7 @@ def _project_git(root, args, timeout=60, max_bytes=None):
     hook, fsmonitor, filter or merge driver selected by an attribute, replace ref
     or lazy fetch, and no configuration but the repository's own. A repository
     whose info/attributes sets attributes is refused (None), as is the default
-    merge driver it could name. The CompletedProcess with text decoded as written
+    merge driver it could name, and no signing program. The CompletedProcess with text decoded as written
     (no newline translation), or None. None includes a Git that lies inside *root*
     (the rule of `proc.run` for a bare program) and a Git below the floor, which
     ignores some of these pins: it is asked its version and nothing else. With
@@ -1872,8 +1872,9 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                    GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1')
         argv = [exe, '--no-replace-objects']
         for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + none,
-                  'merge.default=text', 'submodule.recurse=false', 'gc.auto=0',
-                  'maintenance.auto=false', 'core.longpaths=true'):
+                  'merge.default=text', 'merge.verifySignatures=false', 'commit.gpgsign=false',
+                  'tag.gpgSign=false', 'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false',
+                  'core.longpaths=true'):
             argv += ['-c', c]
         def run(argv, cwd, cap=None):
             if cap is not None:
