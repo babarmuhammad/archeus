@@ -267,7 +267,7 @@ MUTATIONS = [
      "lambda e: e.charged is not False)",
      [OR + '::test_an_execution_still_pending_is_not_a_second_run']),
     ('R50', 'every verification transition counted as a retry', OUT,
-     "if json.loads(payload).get('trigger') == 'retry':",
+     "if isinstance(value, dict) and value.get('trigger') == 'retry':",
      "if True:",
      [OR + '::test_a_crashed_verifier_retried_on_its_one_row_counts_each_retry']),
     ('R51', 'a verification row beyond the first counted as a retry', OUT,
@@ -458,6 +458,10 @@ MUTATIONS = [
      '    deadline = clock() + seconds\n    info = _running()',
      '    info = _running()\n    deadline = clock() + seconds',
      [CLIT + '::test_core_discovery_cannot_restart_the_wait_budget']),
+    ('R183', 'a stored payload that is not an object read as a retry', OUT,
+     "if isinstance(value, dict) and value.get('trigger') == 'retry':",
+     "if value.get('trigger') == 'retry':",
+     [OR + '::test_a_stored_payload_that_is_not_an_object_is_no_retry']),
 ]
 
 

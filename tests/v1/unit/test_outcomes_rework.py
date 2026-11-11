@@ -125,3 +125,22 @@ def test_a_started_execution_still_running_is_a_second_run(db):
     run(db, mid, tid)
     run(db, mid, tid, state='RUNNING')
     assert read(db)[0]['reworked'] == 1
+
+
+def test_a_stored_payload_that_is_not_an_object_is_no_retry(db):
+    """A history row whose payload decodes to a list, null or a scalar is skipped;
+    the valid retries beside it still count."""
+    mid, tid = task(db)
+    verify(db, mid, run(db, mid, tid), tid, retries=2)
+    assert read(db)[0]['verification_attempts'] == 2
+
+    def junk(tx, **_):
+        for i, payload in enumerate(('[]', 'null', '"x"')):
+            tx.execute("INSERT INTO events (id, type, at, actor_kind, actor_id, cause_chain, "
+                       "subject_kind, subject_id, workspace_id, project_id, visibility, payload) "
+                       "SELECT ?, type, at, actor_kind, actor_id, cause_chain, subject_kind, "
+                       "subject_id, workspace_id, project_id, visibility, ? FROM events "
+                       "WHERE json_extract(payload, '$.trigger') = 'retry' LIMIT 1",
+                       ('junk-%d' % i, payload))
+    db.writer.execute(junk, {})
+    assert read(db)[0]['verification_attempts'] == 2

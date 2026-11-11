@@ -32,7 +32,8 @@ Branches, in the order the report ranks them (file:line at HEAD 56d53504):
   seed.py:126,138  a source whose read is denied never reports success and never
                    reaches the walk or the scan
   seed.py:119,141  a denied re-read of the destination under the fidelity check must
-                   be a SeedError with the partial write standing (strict xfail)
+                   be a SeedError with the partial write standing (regression
+                   coverage: the fixed refusal)
   seed.py:92       a denied lstat of the copied leaf is refused by its relative path,
                    cause attached, the written bytes standing
   seed.py:246-251  a source that grew after its pre-copy signature check is never
