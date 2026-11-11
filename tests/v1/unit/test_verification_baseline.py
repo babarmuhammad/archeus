@@ -264,7 +264,7 @@ def test_a_git_at_the_floor_is_asked_its_version_once(tmp_path, monkeypatch):
     monkeypatch.setattr(local.subprocess, 'run', new)
     assert LocalNode.git_diff(str(tmp_path), BASE, REV) == 'git version 2.45.0\n'
     assert LocalNode.git_diff(str(tmp_path), BASE, REV) is not None
-    assert asked == ['version', '--', '--']
+    assert asked == ['version', 'info/attributes', '--', 'info/attributes', '--']
 
 
 def test_a_checkout_whose_registration_outlives_its_directory_is_not_dropped(tmp_path, monkeypatch):
@@ -351,6 +351,188 @@ def test_dirty_and_snapshot_run_no_repository_filter_or_hook(tmp_path, tracked_o
     assert head and LocalNode.git_dirty(str(root)) is False
     assert not marker.exists()
     assert LocalNode.git_file(str(root), head, 'f.txt') == 'changed again'
+
+
+def _marker_exe(tmp_path, marker, exit_code=0):
+    script = tmp_path / 'mark.sh'
+    script.write_text('#!/bin/sh\necho ran >> "%s"\nexit %d\n' % (str(marker).replace('\\', '/'), exit_code))
+    script.chmod(0o755)
+    return str(script).replace('\\', '/')
+
+
+def _marker_program(tmp_path, marker, exit_code=0):
+    script = tmp_path / 'mark.py'
+    script.write_text('import sys\nopen(%r, "a").write("ran\\n")\n'
+                      'sys.stdin.read()\nsys.exit(%d)\n' % (str(marker), exit_code))
+    return '"%s" "%s"' % (sys.executable.replace('\\', '/'), str(script).replace('\\', '/'))
+
+
+@pytest.mark.parametrize('where,expect', [
+    ('info', None), ('worktree', None), ('include', None), ('process', None),
+    ('comments', True), ('plain', True)])
+def test_a_repository_filter_no_attribute_selects_runs_nothing(tmp_path, where, expect):
+    root = tmp_path / 'repo'
+    root.mkdir()
+    _git(str(root), 'init', '-q')
+    (root / 'f.txt').write_text('old')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'base')
+    marker = tmp_path / 'ran'
+    program = _marker_program(tmp_path, marker)
+    attributes = root / '.git' / 'info' / 'attributes'
+    if where == 'include':
+        included = tmp_path / 'included.cfg'
+        _git(str(root), 'config', '-f', str(included), 'filter.mark.clean', program)
+        _git(str(root), 'config', 'include.path', str(included).replace('\\', '/'))
+    elif where != 'plain':
+        key = 'process' if where == 'process' else 'clean'
+        _git(str(root), 'config', 'filter.mark.' + key, program)
+    if where == 'comments':
+        attributes.write_text('# *.txt filter=mark\n\n')
+    elif where != 'plain':
+        attributes.write_text('*.txt filter=mark\n')
+    work = root
+    if where == 'worktree':
+        work = tmp_path / 'wt'
+        _git(str(root), 'worktree', 'add', '-q', '--detach', str(work))
+    (work / 'f.txt').write_text('changed')
+    assert LocalNode.git_dirty(str(work)) is expect
+    if expect is None:
+        with pytest.raises(OSError, match='git add failed'):
+            LocalNode.git_snapshot(str(work), 'guarded')
+    else:
+        head = LocalNode.git_snapshot(str(work), 'guarded')
+        assert head and LocalNode.git_file(str(work), head, 'f.txt') == 'changed'
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('where', ['default', 'attribute'])
+def test_a_conflicting_merge_runs_no_repository_merge_driver(tmp_path, where):
+    root = tmp_path / 'repo'
+    root.mkdir()
+    _git(str(root), 'init', '-q', '-b', 'main')
+    _git(str(root), 'config', 'core.autocrlf', 'false')
+    (root / 'f.txt').write_text('base\n')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'base')
+    _git(str(root), 'checkout', '-q', '-b', 'topic')
+    (root / 'f.txt').write_text('topic\n')
+    _git(str(root), 'commit', '-q', '-am', 'topic')
+    _git(str(root), 'checkout', '-q', 'main')
+    (root / 'f.txt').write_text('main\n')
+    _git(str(root), 'commit', '-q', '-am', 'main')
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'merge.evil.driver', _marker_program(tmp_path, marker, exit_code=1))
+    if where == 'default':
+        _git(str(root), 'config', 'merge.default', 'evil')
+        assert LocalNode.git_merge(str(root), 'topic', 'guarded') == ('conflict', ['f.txt'])
+    else:
+        (root / '.git' / 'info' / 'attributes').write_text('f.txt merge=evil\n')
+        with pytest.raises(OSError, match='could not run'):
+            LocalNode.git_merge(str(root), 'topic', 'guarded')
+    assert not marker.exists()
+
+
+def _signed_looking_commit(root, rev, scratch):
+    raw = subprocess.run(['git', 'cat-file', 'commit', rev], cwd=root, capture_output=True,
+                         check=True).stdout
+    head, _, body = raw.partition(b'\n\n')
+    scratch.write_bytes(head + b'\ngpgsig -----BEGIN PGP SIGNATURE-----\n x\n'
+                        b' -----END PGP SIGNATURE-----\n\n' + body)
+    return subprocess.run(['git', 'hash-object', '-t', 'commit', '-w', str(scratch)], cwd=root,
+                          capture_output=True, check=True, text=True).stdout.strip()
+
+
+def _repo_with_branches(tmp_path):
+    root = tmp_path / 'repo'
+    root.mkdir()
+    _git(str(root), 'init', '-q', '-b', 'main')
+    _git(str(root), 'config', 'user.name', 't')
+    _git(str(root), 'config', 'user.email', 't@t')
+    _git(str(root), 'config', 'core.autocrlf', 'false')
+    (root / 'f.txt').write_text('base\n')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'base')
+    _git(str(root), 'checkout', '-q', '-b', 'topic')
+    (root / 'g.txt').write_text('topic\n')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'topic')
+    _git(str(root), 'checkout', '-q', 'main')
+    (root / 'h.txt').write_text('main\n')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'main')
+    return root
+
+
+def test_a_commit_run_through_the_guard_is_not_signed_by_the_repository(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'commit.gpgSign', 'true')
+    _git(str(root), 'config', 'gpg.program', _marker_exe(tmp_path, marker, exit_code=1))
+    local._project_git(str(root), ['commit', '-q', '--allow-empty', '-m', 'guarded'])
+    assert not marker.exists()
+
+
+def test_a_snapshot_commit_is_not_signed_by_the_repository(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'commit.gpgSign', 'true')
+    _git(str(root), 'config', 'gpg.program', _marker_exe(tmp_path, marker, exit_code=1))
+    (root / 'f.txt').write_text('changed\n')
+    head = LocalNode.git_snapshot(str(root), 'guarded')
+    assert head and LocalNode.git_file(str(root), head, 'f.txt').splitlines() == ['changed']
+    assert not marker.exists()
+
+
+def test_a_merge_commit_run_through_the_guard_is_not_signed(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'commit.gpgSign', 'true')
+    _git(str(root), 'config', 'gpg.program', _marker_exe(tmp_path, marker, exit_code=1))
+    local._project_git(str(root), ['merge', '--no-ff', '--no-edit', '-m', 'guarded', 'topic'])
+    assert not marker.exists()
+
+
+def test_a_tag_run_through_the_guard_is_not_signed_by_the_repository(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'tag.gpgSign', 'true')
+    _git(str(root), 'config', 'gpg.program', _marker_exe(tmp_path, marker, exit_code=1))
+    local._project_git(str(root), ['tag', '-a', '-m', 'guarded', 'guarded-tag'])
+    assert not marker.exists()
+
+
+def test_a_merge_does_not_verify_the_signatures_the_repository_asks_for(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    signed = _signed_looking_commit(str(root), 'topic', tmp_path / 'signed.txt')
+    _git(str(root), 'update-ref', 'refs/heads/topic', signed)
+    _git(str(root), 'config', 'gpg.program', _marker_exe(tmp_path, marker, exit_code=1))
+    _git(str(root), 'config', 'merge.verifySignatures', 'true')
+    assert LocalNode.git_merge(str(root), 'topic', 'guarded')[0] == 'merged'
+    assert not marker.exists()
+
+
+def test_a_merge_commit_runs_no_repository_pre_merge_commit_hook(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    hook = root / '.git' / 'hooks' / 'pre-merge-commit'
+    hook.write_text('#!/bin/sh\n%s </dev/null\n' % _marker_program(tmp_path, marker))
+    hook.chmod(0o755)
+    assert LocalNode.git_merge(str(root), 'topic', 'guarded')[0] == 'merged'
+    assert not marker.exists()
+
+
+def test_patch_less_diffs_run_no_repository_external_diff(tmp_path):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'diff.external', _marker_exe(tmp_path, marker))
+    base = LocalNode.git_head(str(root))
+    (root / 'f.txt').write_text('changed\n')
+    assert LocalNode.git_dirty(str(root)) is True
+    head = LocalNode.git_snapshot(str(root), 'guarded')
+    assert LocalNode.git_numstat(str(root), base, head) == [('1', '1', 'f.txt')]
+    assert not marker.exists()
 
 
 def test_guarded_status_and_snapshot_fail_closed(tmp_path, monkeypatch):
