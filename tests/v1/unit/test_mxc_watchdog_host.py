@@ -36,12 +36,15 @@ class World:
         self.events = []
         self.sentinel = True
         self.terminated = True
+        self.survivors = set()
 
     def identity(self, pid):
         return self.table.get(pid)
 
     def terminate(self, pid, create_time):
         self.events.append(('terminate', pid, create_time))
+        if self.terminated:
+            self.table = {p: t for p, t in self.table.items() if p in self.survivors}
         return self.terminated
 
     def engage(self):
@@ -264,11 +267,12 @@ def test_a_beating_core_is_never_killed_for(env):
     assert events(env) == []
 
 
-def test_a_malformed_core_reading_is_uncertain_and_kills_nothing(env):
+def test_a_malformed_core_reading_is_uncertain_and_stops_core(env):
     armed(env)
     env.world.table[CORE_PID] = 'x'
     assert env.host.tick() == wd.UNCERTAIN
-    assert events(env) == [] and env.host.done()
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
+    assert env.host.done()
 
 
 def test_a_process_that_is_already_gone_or_reused_is_not_killed(env):
@@ -376,7 +380,7 @@ def test_the_kill_asks_the_ledger_again(env):
     env.host.journals = lambda: forged
     env.clock.now += DEADLINE
     assert env.host.tick() == wd.UNCERTAIN
-    assert events(env) == []
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
     assert env.host.report()['verdicts'][0]['verdict'] == wd.KILL_FAILED
 
 
@@ -403,7 +407,7 @@ def test_a_beat_ahead_of_the_hosts_clock_is_uncertain(env):
     env.clock.now += 1
     env.core.append({'kind': 'beat', 'seq': 1, 'sent_at': env.clock.now + 50})
     assert env.host.tick() == wd.UNCERTAIN
-    assert events(env) == []
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
 
 
 def test_a_replayed_sequence_is_uncertain(env):
@@ -415,13 +419,14 @@ def test_a_replayed_sequence_is_uncertain(env):
     assert env.host.tick() == wd.UNCERTAIN
 
 
-def test_a_damaged_channel_is_uncertain_and_kills_nothing(env):
+def test_a_damaged_channel_is_uncertain_and_stops_core(env):
     armed(env)
     with open(env.core.path, 'ab') as stream:
         stream.write(b'oops\n')
     env.clock.now += DEADLINE * 2
     assert env.host.tick() == wd.UNCERTAIN
-    assert events(env) == [] and env.host.done()
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
+    assert env.host.done()
     assert env.core.read_status()['state'] == wd.UNCERTAIN
 
 
@@ -429,6 +434,116 @@ def test_a_damaged_channel_with_nothing_watched_ends_the_host(env):
     with open(env.core.path, 'ab') as stream:
         stream.write(b'oops\n')
     assert env.host.tick() == wd.UNCERTAIN and env.host.done()
+
+
+def roll_back(env, by=1.0):
+    env.clock.now -= by
+    return env.host.tick()
+
+
+def test_a_rollback_engages_the_sentinel_then_stops_core_by_identity_then_verifies(env):
+    armed(env)
+    env.clock.now += 5
+    assert env.host.tick() == wd.ARMED
+    real = env.host.identity_reader
+    env.host.identity_reader = lambda pid: (events(env).append(('identity', pid)), real(pid))[1]
+    assert roll_back(env, 3) == wd.UNCERTAIN
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME),
+                           ('identity', CORE_PID), ('identity', PID)]
+    report = env.host.report()
+    assert report['reason'] == 'malformed clock observation'
+    assert report['sentinel'] == 'engaged' and report['core_stop'] == host_mod.STOPPED
+    assert env.host.done()
+
+
+def test_a_failed_stop_keeps_supervision_active_and_reports_it(env):
+    armed(env)
+    env.world.terminated = False
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == 'Core still running after its stop'
+    assert not env.host.done()
+
+
+def test_a_stop_that_leaves_core_running_is_reported_not_claimed(env):
+    armed(env)
+    env.world.survivors = {CORE_PID}
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == 'Core still running after its stop'
+    assert not env.host.done()
+
+
+def test_a_stop_that_leaves_an_owned_workload_running_is_reported_not_claimed(env):
+    armed(env)
+    env.world.survivors = {PID}
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'].startswith('owned workload e1-p1 still running')
+    assert not env.host.done()
+
+
+def test_a_second_rollback_during_a_failed_stop_stops_nothing_more(env):
+    armed(env)
+    env.world.terminated = False
+    roll_back(env)
+    seen = list(events(env))
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.tick() == wd.UNCERTAIN
+    assert events(env) == seen and not env.host.done()
+
+
+def test_a_clock_that_only_moves_forward_stops_nothing(env):
+    armed(env)
+    for _ in range(5):
+        env.clock.now += DEADLINE * 3
+        env.sender.beat()
+        assert env.host.tick() == wd.ARMED
+    assert events(env) == [] and env.host.report()['core_stop'] is None
+
+
+def test_a_damaged_channel_with_nothing_watched_ends_the_host_after_its_stop(env):
+    with open(env.core.path, 'ab') as stream:
+        stream.write(b'oops\n')
+    env.host.tick()
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+
+
+def test_a_core_already_gone_with_nothing_owned_is_stopped_whatever_terminate_says(env):
+    armed(env)
+    env.world.table.clear()
+    env.world.terminated = False
+    assert roll_back(env) == wd.UNCERTAIN
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+
+
+def test_a_core_already_gone_with_a_workload_still_running_is_not_stopped(env):
+    armed(env)
+    env.world.table = {PID: CREATION_TIME}
+    env.world.survivors = {PID}
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'].startswith('owned workload e1-p1 still running')
+    assert not env.host.done()
+
+
+def test_a_terminate_that_raises_is_decided_by_the_verification_alone(env):
+    armed(env)
+    env.world.table.clear()
+
+    def raising(pid, create_time):
+        raise OSError('denied')
+    env.host.terminate = raising
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+
+
+def test_a_stop_that_cannot_read_identities_back_is_not_reported_stopped(env):
+    armed(env)
+
+    def unreadable(pid):
+        raise OSError('table gone')
+    env.host.identity_reader = unreadable
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == 'stop not verified: OSError'
+    assert not env.host.done()
 
 
 def test_an_idle_host_ends_when_core_is_gone_and_not_before(env):

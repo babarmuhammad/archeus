@@ -47,11 +47,11 @@ ONE_SENTINEL = T + 'test_the_sentinel_is_engaged_once_for_every_job'
 UNVERIFIED = T + 'test_a_sentinel_that_cannot_be_verified_never_withholds_the_kill'
 UNCONFIRMED = T + 'test_a_kill_that_does_not_confirm_is_uncertain'
 REUSED_CORE = T + 'test_a_core_pid_reused_by_another_process_is_a_dead_core'
-MALFORMED_CORE = T + 'test_a_malformed_core_reading_is_uncertain_and_kills_nothing'
+MALFORMED_CORE = T + 'test_a_malformed_core_reading_is_uncertain_and_stops_core'
 BEFORE = T + 'test_beats_from_before_the_watch_began_are_dropped_not_taken_for_a_fault'
 REARM = T + 'test_a_stand_down_of_the_sole_job_retires_the_watch_and_the_next_job_rearms'
 SHARED = T + 'test_a_stand_down_for_a_shared_or_other_job_is_ignored'
-CHANNEL_FAULT = T + 'test_a_damaged_channel_is_uncertain_and_kills_nothing'
+CHANNEL_FAULT = T + 'test_a_damaged_channel_is_uncertain_and_stops_core'
 IDLE = T + 'test_an_idle_host_ends_when_core_is_gone_and_not_before'
 STATUS = T + 'test_every_tick_publishes_the_status_the_proxy_reads'
 RUN = T + 'test_run_ticks_until_the_watch_ends_and_never_after'
@@ -61,7 +61,21 @@ NODE = T + 'test_the_node_beats_once_per_sweep_and_only_with_a_sender'
 ENDED = T + 'test_a_job_that_ended_still_has_its_ownership_record_for_the_kill'
 BEAT_FAULT = T + 'test_a_failed_beat_is_the_sweeps_fault_not_a_silent_skip'
 
-SENTINEL_GATE = '        if self._core_seen is True and self.sentinel is None:'
+SENTINEL_GATE = '        if self._core_seen is True:'
+ENGAGE_ONCE = '        if self.sentinel is None:'
+CORE_STOP = '        self.core_stop = self._unstopped() or STOPPED'
+STOP_CALL = '            self.terminate(self.core_pid, self.core_create_time)'
+UNREAD = "            return 'stop not verified: %s' % type(err).__name__"
+UNCERTAIN_GATE = '        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop is None:'
+DONE = '        return self.core_stop == STOPPED or (self.core_stop is None and self.core_gone) or ('
+ROLLBACK_ORDER = T + 'test_a_rollback_engages_the_sentinel_then_stops_core_by_identity_then_verifies'
+FAILED_STOP = T + 'test_a_failed_stop_keeps_supervision_active_and_reports_it'
+LEFT_CORE = T + 'test_a_stop_that_leaves_core_running_is_reported_not_claimed'
+LEFT_WORKLOAD = T + 'test_a_stop_that_leaves_an_owned_workload_running_is_reported_not_claimed'
+SECOND_ROLLBACK = T + 'test_a_second_rollback_during_a_failed_stop_stops_nothing_more'
+ABSENT_NOTHING = T + 'test_a_core_already_gone_with_nothing_owned_is_stopped_whatever_terminate_says'
+ABSENT_WORKLOAD = T + 'test_a_core_already_gone_with_a_workload_still_running_is_not_stopped'
+UNREADABLE_BACK = T + 'test_a_stop_that_cannot_read_identities_back_is_not_reported_stopped'
 KILL = "        return self.terminate(job['pid'], job['create_time']) is True"
 OWNED = "        if invalid or [r['op'] for r in records[:2]] != OWNED_OPS:"
 
@@ -124,9 +138,9 @@ MUTATIONS = [
     ('WH23', 'a hung Core is killed for with no sentinel', [(HOST,
      SENTINEL_GATE, '        if False:')], [HUNG]),
     ('WH24', 'a dead Core gets the sentinel too', [(HOST,
-     SENTINEL_GATE, '        if self.sentinel is None:')], [DEAD]),
+     SENTINEL_GATE, '        if True:')], [DEAD]),
     ('WH25', 'the sentinel is engaged again for every job', [(HOST,
-     SENTINEL_GATE, '        if self._core_seen is True:')], [ONE_SENTINEL]),
+     ENGAGE_ONCE, '        if True:')], [ONE_SENTINEL]),
     ('WH26', 'a sentinel that fails stops the kill', [(HOST,
      '                engaged = False', '                raise')], [UNVERIFIED]),
     ('WH27', 'a sentinel that reads back false is recorded engaged', [(HOST,
@@ -138,8 +152,8 @@ MUTATIONS = [
     ('WH29', 'the kill names the pid alone', [(HOST,
      KILL, "        return self.terminate(job['pid'], None) is True")], [HUNG]),
     ('WH30', 'a reused Core pid is the Core', [(HOST,
-     '        self._core_seen = current == self.core_create_time',
-     '        self._core_seen = current is not None')], [REUSED_CORE]),
+     '        return current == create_time',
+     '        return current is not None')], [REUSED_CORE]),
     ('WH31', 'an unreadable Core identity is read as a dead Core', [(HOST,
      '        if current is not None and (type(current) is not int or current <= 0):',
      '        if False:')], [MALFORMED_CORE]),
@@ -159,10 +173,9 @@ MUTATIONS = [
      '            raise ValueError(self.fault)', '            pass')], [CHANNEL_FAULT]),
     ('WH37', 'an idle host outlives Core', [(HOST,
      '        self.core_gone = alive is False', '        self.core_gone = False')], [IDLE]),
-    ('WH38', 'an uncertain watch is not the end of the host', [(HOST,
-     '            self.dog is not None and self.dog.state in (mxc_watchdog.FIRED, mxc_watchdog.UNCERTAIN))',
-     '            self.dog is not None and self.dog.state in (mxc_watchdog.FIRED,))')],
-     [MALFORMED_CORE]),
+    ('WH38', 'a failed stop of Core ends the host', [(HOST,
+     DONE, '        return True or (')],
+     [FAILED_STOP, MALFORMED_CORE]),
     ('WH39', 'the status is never published', [(HOST,
      '        self.channel.write_status(self.report())', '        pass')], [STATUS]),
     ('WH40', 'the loop does not wait between ticks', [(HOST,
@@ -179,10 +192,29 @@ MUTATIONS = [
     ('WH45', 'a job whose journal moved on loses its kill', [(HOST,
      OWNED, "        if invalid or [r['op'] for r in records] != OWNED_OPS:")], [ENDED]),
     ('WH46', 'a clock stepped back under the last beat leaves the watch armed', [(WATCHDOG,
-     '        if not _number(now) or now < self._quiet_since():',
+     '        if not _number(now) or now < self.last_clock:',
      '        if not _number(now) or now < self.armed_at:')],
      ['tests/v1/unit/test_gaps2_node_mxc_watchdog.py::'
       'test_a_clock_rewound_below_the_last_beat_is_not_a_quiet_forever']),
+    ('WH47', 'the stop engages the sentinel after terminating Core', [(HOST,
+     "        self._engage_sentinel()\n        try:\n" + STOP_CALL + "\n"
+     "        except Exception:\n            pass\n",
+     "        try:\n" + STOP_CALL + "\n"
+     "        except Exception:\n            pass\n        self._engage_sentinel()\n")],
+     [ROLLBACK_ORDER]),
+    ('WH48', 'the stop does not terminate Core', [(HOST,
+     STOP_CALL, '            None')], [ROLLBACK_ORDER, FAILED_STOP]),
+    ('WH49', 'the stop is not verified', [(HOST,
+     CORE_STOP, '        self.core_stop = STOPPED')],
+     [LEFT_CORE, LEFT_WORKLOAD, ABSENT_WORKLOAD]),
+    ('WH50', 'a stop that cannot read identities back is reported as stopped', [(HOST,
+     UNREAD, '            return None')], [UNREADABLE_BACK]),
+    ('WH51', 'a second rollback stops Core again', [(HOST,
+     UNCERTAIN_GATE, '        if self.state() == mxc_watchdog.UNCERTAIN:')], [SECOND_ROLLBACK]),
+    ('WH52', 'terminate answering False decides the stop without verification', [(HOST,
+     STOP_CALL, "            if self.terminate(self.core_pid, self.core_create_time) is not True:\n"
+                "                self.core_stop = 'Core did not stop'\n                return")],
+     [ABSENT_NOTHING]),
 ]
 
 

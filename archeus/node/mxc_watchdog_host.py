@@ -13,7 +13,9 @@ asked again against that record, and the process table is read by creation time 
 never by pid alone. A hung Core (alive, silent) gets the STOP sentinel first, as the
 Core-less e-stop does (design 3.7, item 83), then the same identity-checked kill; a dead
 Core needs no sentinel, its Job is already closed. The sentinel not being verifiable
-never withholds the kill, it is recorded.
+never withholds the kill, it is recorded. On UNCERTAIN the host engages the sentinel, ends
+Core by its recorded identity and verifies that Core and every recorded workload are gone;
+a stop it cannot verify keeps it supervising and reports why.
 
 The Job Core holds stays the Core-death authority (threat model, "Decision: Core death").
 This host is the belt for what outlived it.
@@ -29,6 +31,7 @@ from .pv20_switches import enabled
 HOST_ENABLED = False
 
 IDLE = 'IDLE'
+STOPPED = 'STOPPED'
 OWNED_OPS = ['intent', 'ownership']
 
 
@@ -45,17 +48,20 @@ class WatchdogHost:
         self.dog, self.pending = None, []
         self.rejected, self.sentinel, self.fault = {}, None, None
         self.core_gone = False
+        self.core_stop = None
         self._core_seen = None
 
     def tick(self):
         if not self.done():
             self._advance()
+        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop is None:
+            self._stop_core()
         self.channel.write_status(self.report())
         return self.state()
 
     def done(self):
-        return self.fault is not None or self.core_gone or (
-            self.dog is not None and self.dog.state in (mxc_watchdog.FIRED, mxc_watchdog.UNCERTAIN))
+        return self.core_stop == STOPPED or (self.core_stop is None and self.core_gone) or (
+            self.dog is not None and self.dog.state is mxc_watchdog.FIRED)
 
     def state(self):
         if self.fault is not None:
@@ -68,7 +74,8 @@ class WatchdogHost:
                 'reason': self.fault or (self.dog.reason if self.dog is not None else (
                     'core gone with nothing watched' if self.core_gone else 'idle')),
                 'recorded': held['recorded'], 'verdicts': held['verdicts'],
-                'rejected': dict(self.rejected), 'sentinel': self.sentinel}
+                'rejected': dict(self.rejected), 'sentinel': self.sentinel,
+                'core_stop': self.core_stop}
 
     def _advance(self):
         try:
@@ -120,12 +127,42 @@ class WatchdogHost:
         beats, self.pending = self.pending, []
         return beats
 
-    def _core_alive(self):
-        current = self.identity_reader(self.core_pid)
+    def _running_as(self, pid, create_time):
+        current = self.identity_reader(pid)
         if current is not None and (type(current) is not int or current <= 0):
             raise ValueError('malformed identity observation')
-        self._core_seen = current == self.core_create_time
+        return current == create_time
+
+    def _core_alive(self):
+        self._core_seen = self._running_as(self.core_pid, self.core_create_time)
         return self._core_seen
+
+    def _stop_core(self):
+        self._engage_sentinel()
+        try:
+            self.terminate(self.core_pid, self.core_create_time)
+        except Exception:
+            pass
+        self.core_stop = self._unstopped() or STOPPED
+
+    def _unstopped(self):
+        try:
+            if self._running_as(self.core_pid, self.core_create_time):
+                return 'Core still running after its stop'
+            for job in (self.dog.jobs if self.dog is not None else []):
+                if self._running_as(job['pid'], job['create_time']):
+                    return 'owned workload %s still running after the stop' % job['execution_id']
+        except Exception as err:
+            return 'stop not verified: %s' % type(err).__name__
+        return None
+
+    def _engage_sentinel(self):
+        if self.sentinel is None:
+            try:
+                engaged = self.engage_sentinel() is True
+            except Exception:
+                engaged = False
+            self.sentinel = 'engaged' if engaged else 'unverified'
 
     def _ownership_problem(self, name, pid, create_time):
         records, invalid = mxc_ledger.read_records(self.journals().get(name), name)
@@ -140,12 +177,8 @@ class WatchdogHost:
         problem = self._ownership_problem(name, job['pid'], job['create_time'])
         if problem is not None:
             raise ValueError(problem)
-        if self._core_seen is True and self.sentinel is None:
-            try:
-                engaged = self.engage_sentinel() is True
-            except Exception:
-                engaged = False
-            self.sentinel = 'engaged' if engaged else 'unverified'
+        if self._core_seen is True:
+            self._engage_sentinel()
         return self.terminate(job['pid'], job['create_time']) is True
 
     def run(self, poll_s, sleep=time.sleep, stop=lambda: False):
