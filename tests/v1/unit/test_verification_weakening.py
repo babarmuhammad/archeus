@@ -145,6 +145,14 @@ def test_a_long_test_name_or_marker_line_is_clipped():
     assert len(g) < 150 and g.endswith('...')
 
 
+def test_a_quoted_header_with_an_invalid_escape_is_read_as_its_text_and_still_reported():
+    head = ('diff --git "a/tests/evil\\xz.py" "b/tests/evil\\xz.py"\n'
+            'index 1111111..2222222 100644\n'
+            '--- "a/tests/evil\\xz.py"\n+++ "b/tests/evil\\xz.py"\n'
+            '@@ -1,1 +0,0 @@\n-    assert one()\n')
+    assert evidence.weakening(head) == ['assertions removed: tests/evil\\xz.py (1 net)']
+
+
 # ── the check ──
 
 class _Node:

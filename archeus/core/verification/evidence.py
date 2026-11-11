@@ -197,7 +197,10 @@ def _path(header):
     """The path of a `--- a/x` or `+++ b/x` line, unquoted; None for /dev/null."""
     p = header[4:].split('\t')[0]
     if p.startswith('"') and p.endswith('"'):
-        p = codecs.escape_decode(p[1:-1].encode('utf-8'))[0].decode('utf-8', 'replace')
+        try:
+            p = codecs.escape_decode(p[1:-1].encode('utf-8'))[0].decode('utf-8', 'replace')
+        except ValueError:
+            p = p[1:-1]
     return p[2:] if p[:2] in ('a/', 'b/') else None
 
 
