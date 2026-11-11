@@ -85,9 +85,9 @@ SITES = {
     ('archeus/node/broker.py', 'new_token', 'secrets.token_urlsafe'):
         (1, FLOW, 'the PV-20 broker token: launch input of the bridge and the CLI only; sha256 '
                   'in executions.broker_token_hash, cleared on every end path'),
-    ('archeus/node/broker.py', 'Broker.issue', 'auth.new_token'):
+    ('archeus/node/broker.py', 'Broker._issue', 'auth.new_token'):
         (1, FLOW, 'the PV-20 broker token minted per grant; its callers are the new_token row'),
-    ('archeus/node/broker.py', 'Broker.issue', 'secrets.token_hex'):
+    ('archeus/node/broker.py', 'Broker._issue', 'secrets.token_hex'):
         (1, NOT_SECRET, "a broker pipe name's nonce; the pipe authenticates nothing by name"),
     ('archeus/node/broker_listener.py', '_Listener.handle', 'secrets.token_hex'):
         (1, NOT_SECRET, "a per-connection id for the attestor's evidence; it authenticates nothing"),

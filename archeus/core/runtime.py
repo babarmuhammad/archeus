@@ -673,11 +673,11 @@ class Core:
             # refused at the broker or the isolation authority, and a confined check
             # ends at its next poll. The workloads Core holds end only once the workers
             # are joined, so the execution worker never reads that kill as a process ending
+            end = time.monotonic() + QUIESCE_S
             try:
-                self.pv20.quiesce()
+                self.pv20.quiesce(deadline=end)
             except Exception as error:
                 closing = error
-            end = time.monotonic() + QUIESCE_S
             for worker in (self.exec, self.verify, self.loop):
                 if worker is not None and worker.join(max(0.0, end - time.monotonic())):
                     log.warning('%s did not stop within %gs; it can admit nothing new',

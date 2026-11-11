@@ -53,13 +53,12 @@ class Activation:
         self.resources = resources
         self.closed = False
 
-    def quiesce(self):
-        """Admit nothing new while the workers finish: no grant is issued (one being
-        issued is dropped before this returns), no identity established, no Job created."""
+    def quiesce(self, *, deadline=None):
+        """Close isolation admission before draining the broker and workers."""
         try:
-            self.broker.close()
+            self.node.isolation.close_admission(deadline=deadline)
         finally:
-            self.node.isolation.close_admission()
+            self.broker.close(deadline=deadline)
 
     def close(self):
         self.closed = True
@@ -170,7 +169,7 @@ def activate_pv20(*, ledger_dir, sdk_root, authorize, plan, bindings=None,
             running = bindings.start_host(host, poll_s=poll_s)
             resources.callback(running.close)
             resources.callback(lambda: _dispose(node))
-            resources.callback(broker.close)
+            resources.callback(broker.close, deadline=0.0)
             if running.ready() is not True:
                 raise ActivationRefused('watchdog_unavailable')
             sender = mxc_heartbeat.HeartbeatSender(channel, clock, switches=switches)

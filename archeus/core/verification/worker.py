@@ -193,7 +193,10 @@ class VerifyWorker:
         head = self.node.git_head(workspace) if workspace else None
         if head is None:
             return root, workspace, None, None, ((), ())
-        if e.branch == V.task_branch(t) and self.node.git_dirty(workspace):
+        dirty = self.node.git_dirty(workspace) if e.branch == V.task_branch(t) else False
+        if dirty is None:
+            raise OSError('git status could not read the task workspace')
+        if dirty:
             head = self.node.git_snapshot(
                 workspace, 'archeus: result of task %s (attempt %d)' % (t.key, e.attempt))
         mb = mission_branch(m.id)
@@ -344,7 +347,7 @@ class VerifyWorker:
                                         timeout_s=self.timeout_s, verifier_version=version)
         checks = self._with_base(vid, m, t.plan_id, root, base, cmds, checks, version)
         now = self.node.git_head(ws)
-        if now != revision or self.node.git_dirty(ws, tracked_only=True):
+        if now != revision or self.node.git_dirty(ws, tracked_only=True) is not False:
             checks.append({'name': 'workspace', 'kind': 'git', 'result': 'error',
                            'detail': 'the workspace moved during verification (%s -> %s)'
                                      % ((revision or '')[:12], (now or '')[:12])})

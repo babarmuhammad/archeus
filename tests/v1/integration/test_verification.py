@@ -548,14 +548,14 @@ def test_a_snapshot_whose_staged_check_fails_still_commits_what_is_staged(tmp_pa
     head = _git(root, 'rev-parse', 'HEAD')
     with open(os.path.join(root, 'notes.txt'), 'w', encoding='utf-8') as f:
         f.write('new\n')
-    real = local.proc.run
+    real = local._project_git
 
-    def run(args, **kw):
-        if args[1:3] == ['diff', '--cached']:
+    def run(root, args, **kw):
+        if args[:2] == ['diff', '--cached']:
             return subprocess.CompletedProcess(args, 128, '', 'fatal: synthetic')
-        return real(args, **kw)
+        return real(root, args, **kw)
 
-    monkeypatch.setattr(local.proc, 'run', run)
+    monkeypatch.setattr(local, '_project_git', run)
     new = LocalNode.git_snapshot(root, 'staged')
     assert new != head
     assert _git(root, 'show', '--name-only', '--format=', new) == 'notes.txt'

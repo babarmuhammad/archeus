@@ -173,9 +173,17 @@ def _bare_git_calls(monkeypatch, ws):
     calls = []
 
     def run(argv, *, cwd=None, **kw):
-        calls.append(SimpleNamespace(argv=list(argv), cwd=cwd))
-        return SimpleNamespace(returncode=0, stdout='a' * 40 + '\n', stderr='')
+        # the guarded runner reads bytes and probes `git version` itself; proc.run reads text
+        text = bool(kw.get('text'))
+        if argv[1:] == ['version']:
+            out = 'git version 2.50.0\n'
+        else:
+            calls.append(SimpleNamespace(argv=list(argv), cwd=cwd))
+            out = 'a' * 40 + '\n'
+        return SimpleNamespace(returncode=0, stdout=out if text else out.encode(),
+                               stderr='' if text else b'')
     monkeypatch.setattr(local.proc.subprocess, 'run', run)
+    monkeypatch.setattr(local, '_VERSION', {})
     w = str(ws)
     LocalNode.git_head(w)
     LocalNode.git_dirty(w)
