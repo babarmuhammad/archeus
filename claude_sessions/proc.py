@@ -11,9 +11,10 @@ import os
 import re as _re
 import subprocess
 import sys
+import threading
 import time
 
-__all__ = ['run', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
+__all__ = ['run', 'run_capped', 'git', 'pid_alive', 'kill_tree', 'spawn_terminal',
            'spawn_detached', 'wait_and_run', 'python_exe', 'new_console_flags',
            'no_window_flags', 'which', 'WINDOWS', 'process_create_time', 'kill_pid_tree']
 
@@ -88,6 +89,45 @@ def git(args, cwd, timeout=15):
         return None
     return r.stdout
 
+
+def run_capped(args, *, cwd=None, env=None, timeout=30, max_bytes):
+    """`run` for a child whose stdout may be large: at most *max_bytes* of it are
+    read, in chunks while the child runs. The CompletedProcess has `cut` True when
+    the child had more, and then the child was stopped (terminated, killed after
+    a short wait) and reaped, so it is never left writing into a pipe nobody reads.
+    stderr is discarded, not piped, for the same reason. It raises what Popen
+    raises when the child cannot start; a timeout kills the child and its return
+    code says so."""
+    p = subprocess.Popen(args, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                         creationflags=no_window_flags)
+    timer = threading.Timer(timeout, p.kill)
+    timer.start()
+    buf = b''
+    try:
+        # one byte past the cap says the child had more than the cap
+        while len(buf) <= max_bytes:
+            chunk = p.stdout.read1(max_bytes + 1 - len(buf))
+            if not chunk:
+                break
+            buf += chunk
+        cut = len(buf) > max_bytes
+        if cut:
+            p.terminate()
+            try:
+                p.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        p.wait()
+    finally:
+        timer.cancel()
+        if p.poll() is None:
+            p.kill()
+            p.wait()
+        p.stdout.close()
+    r = subprocess.CompletedProcess(args, p.returncode, buf[:max_bytes], b'')
+    r.cut = cut
+    return r
 
 #: schemes a remote may use. Deliberately an allowlist, not a denylist of the
 #: dangerous ones — git keeps adding transports.
