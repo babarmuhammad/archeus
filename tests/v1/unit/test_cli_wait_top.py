@@ -16,7 +16,7 @@ def _core(monkeypatch, *answers, up=True):
     the last one repeats."""
     got = []
 
-    def fake(info, method, path, body=None, refusal=None, within=None):
+    def fake(info, method, path, body=None, refusal=None, within=None, deadline=None, clock=None):
         a = answers[min(len(got), len(answers) - 1)]
         got.append((method, path))
         if 'code' in a:
@@ -159,7 +159,7 @@ def test_a_body_cut_short_on_the_wire_is_asked_again(monkeypatch):
 def test_the_deadline_bounds_each_request_and_a_late_answer_is_not_success(monkeypatch, capsys):
     c, left = Clock(), []
 
-    def slow(info, method, path, body=None, refusal=None, within=None):
+    def slow(info, method, path, body=None, refusal=None, within=None, deadline=None, clock=None):
         left.append(within)
         c.now += 4 if len(left) == 2 else 0.5       # the second answer takes 4 s
         return _m('COMPLETED' if len(left) == 2 else 'EXECUTING')
@@ -176,7 +176,8 @@ def test_a_request_gives_up_when_the_wait_does_or_at_the_transport_limit(monkeyp
     seen = []
     monkeypatch.setattr(discovery, 'read_local_token', lambda: 'tok')
     monkeypatch.setattr(client.Core, '_open', lambda self, method, path, body=None, headers=None,
-                        timeout=client.TIMEOUT_S: seen.append(timeout) or pytest.fail('opened'))
+                        timeout=client.TIMEOUT_S, deadline=None, clock=None:
+                        seen.append(timeout) or pytest.fail('opened'))
     for within in (None, 0.25, 99):
         with pytest.raises(pytest.fail.Exception):
             cli._get({'port': 9001}, 'GET', '/x', within=within)
@@ -195,6 +196,58 @@ def test_the_last_sleep_stops_at_the_deadline(monkeypatch):
     _core(monkeypatch, _m('EXECUTING'))
     code, c = _wait(['msn_1', '--timeout', '3'])
     assert code == 4 and c.sleeps == [2, 1] and c.now == 3
+
+
+def test_a_subsecond_wait_makes_no_request_after_its_last_sleep(monkeypatch):
+    c, left = Clock(), []
+    _core(monkeypatch)
+
+    def poll(*args, within=None, **kwargs):
+        left.append(within)
+        return _m('EXECUTING')
+    monkeypatch.setattr(cli, '_get', poll)
+    assert cli.wait('msn_1', timeout='0.1', sleep=c.sleep, clock=lambda: c.now) == 4
+    assert left == [0.1] and c.sleeps == [0.1]
+
+
+def test_a_wait_expired_before_its_first_poll_makes_no_request(monkeypatch):
+    _core(monkeypatch)
+    monkeypatch.setattr(cli, '_get', lambda *a, **k: pytest.fail('expired request'))
+    times = iter([0, 0.1, 0.1])
+    assert cli.wait('msn_1', timeout='0.1', clock=lambda: next(times)) == 1
+
+
+def test_core_discovery_cannot_restart_the_wait_budget(monkeypatch):
+    c = Clock()
+
+    def discover():
+        c.now = 0.1
+        return {'port': 9001}
+    monkeypatch.setattr(cli, '_core_or_say', discover)
+    monkeypatch.setattr(cli, '_get', lambda *a, **k: pytest.fail('expired request'))
+    assert cli.wait('msn_1', timeout='0.1', sleep=c.sleep, clock=lambda: c.now) == 1
+
+
+@pytest.mark.parametrize('within', [0, -0.1])
+def test_get_with_no_remaining_time_never_opens_transport(monkeypatch, within):
+    from archeus.cli.tui import client
+    from archeus.infra import discovery
+    monkeypatch.setattr(discovery, 'read_local_token', lambda: 'tok')
+    monkeypatch.setattr(client.Core, 'get', lambda *a, **k: pytest.fail('expired request'))
+    assert cli._get({'port': 9001}, 'GET', '/x', within=within) is None
+
+
+def test_get_keeps_original_deadline_across_token_read(monkeypatch):
+    from archeus.cli.tui import client
+    from archeus.infra import discovery
+    c = Clock()
+
+    def token():
+        c.now = 0.1
+        return 'tok'
+    monkeypatch.setattr(discovery, 'read_local_token', token)
+    monkeypatch.setattr(client.Core, '_open', lambda *a, **k: pytest.fail('expired request'))
+    assert cli._get({'port': 9001}, 'GET', '/x', within=0.1, clock=lambda: c.now) is None
 
 
 def test_a_title_cannot_drive_the_terminal_and_any_title_survives_a_cp1252_pipe(monkeypatch):

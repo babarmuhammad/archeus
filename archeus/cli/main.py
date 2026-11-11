@@ -297,13 +297,18 @@ def devices(revoke_id=None):
     return 0
 
 
-def _get(info, method, path, body=None, refusal=None, within=None):
+def _get(info, method, path, body=None, refusal=None, within=None, deadline=None, clock=None):
     """Core's answer, or None after saying on stderr why, in Core's own code and
     detail (p19-design-gate B11): over the transport the TUI uses. With *refusal*
     (a dict) it also holds the code and detail, for a caller that must branch on
     one rather than only repeat it. *within* caps a GET at that many seconds."""
     from ..infra import discovery
     from .tui import client, sync
+    clock = clock or time.monotonic
+    if method == 'GET' and within is not None and within <= 0:
+        return None
+    if method == 'GET' and within is not None and deadline is None:
+        deadline = clock() + within
     token = discovery.read_local_token()
     if token is None:
         return None
@@ -312,7 +317,7 @@ def _get(info, method, path, body=None, refusal=None, within=None):
         if method == 'GET' and within is None:
             return core.get(path)[0]
         if method == 'GET':
-            return core.get(path, min(client.TIMEOUT_S, within))[0]
+            return core.get(path, min(client.TIMEOUT_S, within), deadline=deadline, clock=clock)[0]
         return core.post(path, body or {})
     except client.CoreError as e:
         if refusal is not None:
@@ -505,24 +510,27 @@ def wait(mission_id, until=None, timeout='60', *, sleep=time.sleep, clock=time.m
         print('--until names mission states (%s) and --timeout is seconds > 0' % ', '.join(known),
               file=sys.stderr)
         return 2
+    deadline = clock() + seconds
     info = _running()
     if info is None:
         return 1
     stop = set(want) | states.terminal('mission')
-    deadline = clock() + seconds
+    m = None
     try:
         while True:
-            refusal = {}
-            try:
-                m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal,
-                         within=max(1, deadline - clock()))
-                if m is not None and not _is_mission(m):
-                    raise ValueError('not a mission')
-            except (http.client.HTTPException, ValueError, OSError) as e:
-                print('Core gave no readable answer (%s)' % type(e).__name__, file=sys.stderr)
-                m = None
-            if m is None and refusal.get('code') == 'not_found':
-                return 2
+            remaining = deadline - clock()
+            if remaining > 0:
+                refusal = {}
+                try:
+                    m = _get(info, 'GET', endpoints.get_mission(mission_id), refusal=refusal,
+                             within=remaining, deadline=deadline, clock=clock)
+                    if m is not None and not _is_mission(m):
+                        raise ValueError('not a mission')
+                except (http.client.HTTPException, ValueError, OSError) as e:
+                    print('Core gave no readable answer (%s)' % type(e).__name__, file=sys.stderr)
+                    m = None
+                if m is None and refusal.get('code') == 'not_found':
+                    return 2
             if m is not None and m['state'] in stop and clock() <= deadline:
                 _say_mission(m)
                 bad = m['state'] not in want or (until is None and m['state'] in _WAIT_BAD)
