@@ -100,7 +100,7 @@ def test_mutant_ledger_does_not_count_unfinished_or_retired_rows():
         REDEFINED, REPLAY_MUTATIONS, RETIRED_REDEFINE,
     )
     ids = [entry[0] for entry in MUTATIONS]
-    assert len(ids) == len(set(ids)) == 233 + 106 + 42 + 15 + 2
+    assert len(ids) == len(set(ids)) == 245 + 106 + 42 + 15 + 2
     assert [entry[0] for entry in REPLAY_MUTATIONS] == ['Z%d' % n for n in range(500, 515)]
     assert [entry[0] for entry in IMPLICIT_ROOT_MUTATIONS] == ['Z638', 'Z639']
     assert len(REDEFINED) == 106
