@@ -12,6 +12,7 @@ import re
 import json
 from collections import Counter
 
+from archeus.cli.tui.view import clean
 from archeus.core.redact import redact
 
 from . import config as _c
@@ -47,8 +48,11 @@ def settings_hygiene(project_path):
     rules = os.path.join(project_path or '', '.claude', 'rules')
     files = [os.path.join('.claude', n) for n in ('settings.json', 'settings.local.json')]
     if os.path.isdir(rules):
-        files += [os.path.join('.claude', 'rules', n) for n in sorted(os.listdir(rules))
-                  if n.startswith(RULE_PREFIX)]
+        try:
+            files += [os.path.join('.claude', 'rules', n) for n in sorted(os.listdir(rules))
+                      if n.startswith(RULE_PREFIX)]
+        except OSError:
+            pass
     out, present = [], []
     for rel in files:
         try:
@@ -76,8 +80,9 @@ def settings_hygiene(project_path):
                   + [r.replace(os.sep, '/') for r in sorted(exposed)], project_path) if exposed else None
     for row in (listed or '').splitlines():
         tag, _, rel = row.partition(' ')
-        out.append({'path': os.path.normpath(rel), 'line': 0,
-                    'rule': 'not ignored by git' if tag == '?' else 'tracked by git', 'sample': ''})
+        if os.path.normpath(rel) in exposed:
+            out.append({'path': os.path.normpath(rel), 'line': 0,
+                        'rule': 'not ignored by git' if tag == '?' else 'tracked by git', 'sample': ''})
     return out
 
 
@@ -86,9 +91,9 @@ def _check_settings_hygiene(project_path):
         found = settings_hygiene(project_path)
     except Exception:
         return []
-    return [('warn', '%s:%d: a secret in %s: %s' % (f['path'], f['line'], f['rule'], f['sample']),
+    return [('warn', clean('%s:%d: a secret in %s: %s' % (f['path'], f['line'], f['rule'], f['sample'])),
              'take it out by hand and rotate it; Archeus never edits this file') if f['line'] else
-            ('warn', '%s is %s' % (f['path'], f['rule']),
+            ('warn', clean('%s is %s' % (f['path'], f['rule'])),
              'gitignore it or `git rm --cached` it by hand; Archeus never changes it')
             for f in found]
 

@@ -316,6 +316,11 @@ MUTATIONS = [
      "        if r is None or r.returncode:\n            return False\n        at = ",
      "        if r is None or r.returncode:\n            return True\n        at = ")],
      [B + '::test_a_git_below_the_floor_is_asked_its_version_and_nothing_else']),
+    ('Z76', 'an invalid escape in a quoted diff header crashes the verifier', [(EVD,
+     "        try:\n            p = codecs.escape_decode(p[1:-1].encode('utf-8'))[0].decode('utf-8', 'replace')\n"
+     "        except ValueError:\n            p = p[1:-1]\n",
+     "        p = codecs.escape_decode(p[1:-1].encode('utf-8'))[0].decode('utf-8', 'replace')\n")],
+     [W + '::test_a_quoted_header_with_an_invalid_escape_is_read_as_its_text_and_still_reported']),
 ]
 
 
