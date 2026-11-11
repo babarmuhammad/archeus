@@ -55,6 +55,7 @@ def _name(fn):
 FRESH = {('archeus/core/knowledge/passes.py', 'knowledge'),
          ('archeus/core/knowledge/passes.py', 'decisions'),
          ('archeus/core/knowledge/passes.py', 'lessons'),
+         ('archeus/core/knowledge/passes.py', 'consolidate'),
          ('archeus/core/missions/intent.py', '_brain'),
          ('archeus/core/planning/worker.py', 'plan'),
          ('archeus/core/verification/worker.py', '_review')}

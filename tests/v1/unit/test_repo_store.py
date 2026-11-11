@@ -784,6 +784,10 @@ STORE_KEYS = ('--git-dir', '--attr-source', '--no-replace-objects', 'GIT_CONFIG_
 STORE_C = ('core.hooksPath=', 'core.fsmonitor=', 'core.attributesFile=', 'gc.auto=',
            'maintenance.auto=', 'submodule.recurse=', 'core.logAllRefUpdates=')
 LOCAL = 'archeus/node/local.py'
+#: the two reviewed runners that may spell these literals: Core's store, and a
+#: project's own repository (pinned by tests/v1/unit/test_gaps_node_local_b.py).
+#: Different repositories, different pins; a third copy still fails this gate
+PINNED = ('_store_pin', '_project_git')
 #: who may call the spawner and the builder (later cards add theirs by name)
 CALLERS = {'store_git': ('store_open', 'store_read', 'store_fetch', 'store_resolve_base',
                          '_git_version', 'store_seed_ref', 'seed_workspace',
@@ -804,10 +808,10 @@ def _store_pin_violations(tree, rel, keys=STORE_KEYS):
         fn = owner.get(id(n))
         if isinstance(n, ast.Constant) and isinstance(n.value, str) and id(n) not in prose:
             v = n.value
-            if (v in keys or v.startswith(STORE_C)) and not (rel == LOCAL and fn == '_store_pin'):
+            if (v in keys or v.startswith(STORE_C)) and not (rel == LOCAL and fn in PINNED):
                 out.append((rel, getattr(n, 'lineno', 0), v))
         if isinstance(n, ast.keyword) and n.arg in keys and not (rel == LOCAL
-                                                                 and fn == '_store_pin'):
+                                                                 and fn in PINNED):
             out.append((rel, getattr(n, 'lineno', 0), n.arg))       # env.update(KEY=...)
         if isinstance(n, ast.Call):
             name = getattr(n.func, 'attr', None) or getattr(n.func, 'id', None)
