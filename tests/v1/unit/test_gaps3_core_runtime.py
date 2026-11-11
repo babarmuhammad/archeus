@@ -133,7 +133,7 @@ class FakeActivation:
         self.grants = 0
         self.resume = threading.Event()
 
-    def quiesce(self):
+    def quiesce(self, *, deadline=None):
         self.log.append('quiesce')
         self.quiesced = True
         if self._qe is not None:
