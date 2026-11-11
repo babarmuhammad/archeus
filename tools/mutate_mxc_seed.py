@@ -141,6 +141,11 @@ MUTATIONS = [
      '        if _entry(dst, rel, False).st_size != sig[2]:',
      '        if _entry(dst, rel, False) is None:')],
      ['tests/v1/unit/test_gaps2_node_seed.py::test_a_copy_shorter_than_its_source_is_refused']),
+    ('MS32', 'a denied re-read of the copy escapes as a raw OS error', [(SEED,
+     "    try:\n        written = _sha(dst)\n    except OSError as err:\n"
+     "        raise SeedError('the copy cannot be read back: %s' % rel) from err\n",
+     '    written = _sha(dst)\n')],
+     ['tests/v1/unit/test_gaps3_node_seed.py::test_a_denied_re_read_of_the_destination_is_a_seederror_with_the_partial_write_standing']),
 ]
 
 

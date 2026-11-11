@@ -337,11 +337,6 @@ def test_a_source_that_cannot_be_read_never_reports_success_or_reaches_the_scan(
 # ID: t1129.destination_rehash_denied covers: seed.py:119/141, a denied re-read of the
 # destination UNDER the fidelity check must be the typed refusal, with the partial
 # write standing and the relative path named
-@pytest.mark.xfail(strict=True, reason=(
-    'specific defect: seed.py:141 calls _sha(dst), whose open at seed.py:119 is not '
-    'wrapped, so a denied re-read escapes as the raw PermissionError instead of a '
-    'SeedError, unlike _source/_entry/_list which wrap their OS failures; the fidelity '
-    'check cannot observe the bytes and must fail closed as a typed refusal'))
 def test_a_denied_re_read_of_the_destination_is_a_seederror_with_the_partial_write_standing(
         tmp_path, monkeypatch):
     src = source_tree(tmp_path, {'one.txt': b'first\n'})
@@ -367,7 +362,7 @@ def test_a_denied_re_read_of_the_destination_is_a_seederror_with_the_partial_wri
     assert calls == [] and walked == []
     assert isinstance(raised, seed.SeedError), 'a denied fidelity re-read must fail closed typed'
     assert isinstance(raised.__cause__, PermissionError)
-    assert 'one.txt' in str(raised.value) and str(dest) not in str(raised.value)
+    assert 'one.txt' in str(raised) and str(dest) not in str(raised)
 
 
 # ID: t1129.leaf_stat_denied covers: seed.py:92, a denied lstat of the copied leaf at

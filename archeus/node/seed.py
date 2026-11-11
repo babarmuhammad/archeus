@@ -138,7 +138,11 @@ def _copy(src, dst, rel):
         for chunk in _read(src):
             h.update(chunk)
             out.write(chunk)
-    if _sha(dst) != h.hexdigest():
+    try:
+        written = _sha(dst)
+    except OSError as err:
+        raise SeedError('the copy cannot be read back: %s' % rel) from err
+    if written != h.hexdigest():
         raise SeedError('copy differs from its source: %s' % rel)
 
 
