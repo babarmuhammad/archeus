@@ -402,6 +402,22 @@ MUTATIONS = [
      "        if r is None or (r.returncode and not getattr(r, 'cut', False)):",
      "        if r is None or r.returncode:")],
      [W + '::test_a_capped_read_of_a_real_diff_stops_git_and_keeps_the_weakening_in_the_prefix']),
+    ('Z98', 'the default merge driver is not pinned to the built-in text merge', [(LOC,
+     "                  'merge.default=text', 'submodule.recurse=false', 'gc.auto=0',",
+     "                  'submodule.recurse=false', 'gc.auto=0',")],
+     [B + '::test_a_conflicting_merge_runs_no_repository_merge_driver[default]']),
+    ('Z99', 'a repository info/attributes that sets attributes does not refuse the guarded call', [(LOC,
+     "                        return None\n            r = run(argv + list(args), root, max_bytes)",
+     "                        pass\n            r = run(argv + list(args), root, max_bytes)")],
+     [B + '::test_a_repository_filter_no_attribute_selects_runs_nothing[info-None]',
+      B + '::test_a_repository_filter_no_attribute_selects_runs_nothing[worktree-None]',
+      B + '::test_a_repository_filter_no_attribute_selects_runs_nothing[include-None]',
+      B + '::test_a_repository_filter_no_attribute_selects_runs_nothing[process-None]',
+      B + '::test_a_conflicting_merge_runs_no_repository_merge_driver[attribute]']),
+    ('Z100', 'a comment-only or blank info/attributes refuses the guarded call', [(LOC,
+     "                    if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):",
+     "                    if any(line.strip() for line in f):")],
+     [B + '::test_a_repository_filter_no_attribute_selects_runs_nothing[comments-True]']),
 ]
 
 

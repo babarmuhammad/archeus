@@ -1316,7 +1316,7 @@ class LocalNode:
 
     @staticmethod
     def git_file(root, rev, path):
-        """The bytes of *path* as committed at *rev*, read from the object store
+        """The text of *path* as committed at *rev*, read from the object store
         (no checkout, no worktree, no filter); None when it is not there."""
         return _project_git_text(root, ['cat-file', 'blob', '%s:%s' % (rev, path)])
 
@@ -1844,19 +1844,22 @@ def _git_exe():
 
 
 def _project_git_text(root, args, timeout=60):
+    """The stdout of `_project_git` as text, or None when git fails or cannot run."""
     r = _project_git(root, args, timeout=timeout)
     return None if r is None or r.returncode else r.stdout
 
 
 def _project_git(root, args, timeout=60, max_bytes=None):
     """A Git call in a project's own repository that runs none of its code: no
-    hook, fsmonitor, filter selected by an attribute, replace ref or lazy fetch,
-    and no configuration but the repository's own. The CompletedProcess with
-    text decoded as written (no newline translation), or None. None includes a
-    Git that lies inside *root* (the rule of `proc.run` for a bare program) and a
-    Git below the floor, which ignores some of these pins: it is asked its version
-    and nothing else. With *max_bytes* stdout is read only up to that many bytes
-    (`proc.run_capped`) and the result's `cut` says whether there was more."""
+    hook, fsmonitor, filter or merge driver selected by an attribute, replace ref
+    or lazy fetch, and no configuration but the repository's own. A repository
+    whose info/attributes sets attributes is refused (None), as is the default
+    merge driver it could name. The CompletedProcess with text decoded as written
+    (no newline translation), or None. None includes a Git that lies inside *root*
+    (the rule of `proc.run` for a bare program) and a Git below the floor, which
+    ignores some of these pins: it is asked its version and nothing else. With
+    *max_bytes* stdout is read only up to that many bytes (`proc.run_capped`) and
+    the result's `cut` says whether there was more."""
     exe = proc.which('git', avoid=[root])
     if exe is None:
         return None
@@ -1869,8 +1872,8 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                    GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1')
         argv = [exe, '--no-replace-objects']
         for c in ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + none,
-                  'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false',
-                  'core.longpaths=true'):
+                  'merge.default=text', 'submodule.recurse=false', 'gc.auto=0',
+                  'maintenance.auto=false', 'core.longpaths=true'):
             argv += ['-c', c]
         def run(argv, cwd, cap=None):
             if cap is not None:
@@ -1883,6 +1886,15 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                 if not _at_floor(out):
                     return None
                 _VERSION[exe] = out
+            # Git reads the repository's info/attributes whatever attribute source is pinned,
+            # so a filter or merge driver it names cannot be turned off: refuse instead
+            where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
+            attrs = (os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
+                     if where.returncode == 0 else None)
+            if attrs and os.path.isfile(attrs):
+                with open(attrs, 'rb') as f:
+                    if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):
+                        return None
             r = run(argv + list(args), root, max_bytes)
         except Exception:
             return None
