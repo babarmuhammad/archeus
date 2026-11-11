@@ -126,10 +126,10 @@ def _witness(who):
                      payload={})
 
 
-def test_lessons_reads_only_the_sql_window_without_decoding_relations(db_world, monkeypatch):
+def test_lessons_stops_reading_once_the_cap_is_passed(db_world):
     db, who = db_world
     mid = _mission(db, who)['mid']
-    kept = sorted(ids.new_id('knowledge_item') for _ in range(205))
+    kept = sorted(ids.new_id('knowledge_item') for _ in range(10000))
 
     def seed(tx, **_):
         for kid in reversed(kept):
@@ -139,22 +139,30 @@ def test_lessons_reads_only_the_sql_window_without_decoding_relations(db_world, 
         tx.append(_witness(who))
 
     db.writer.execute(seed, {})
-    fetched = []
+    yielded = []
+
+    class Cursor:
+        def __init__(self, cursor):
+            self.cursor = cursor
+
+        def __iter__(self):
+            for row in self.cursor:
+                yielded.append(row)
+                yield row
+
+        def fetchall(self):
+            pytest.fail('lessons read every row at once')
 
     class Read:
         def __init__(self, conn):
             self.conn = conn
 
         def execute(self, sql, params):
-            records = list(self.conn.execute(sql, params))
-            fetched.append(len(records))
-            assert params == (mid, 201)
-            return records
+            return Cursor(self.conn.execute(sql, params))
 
-    monkeypatch.setattr(trace.rows, 'decode', lambda *a: pytest.fail('lesson relation decoded'))
     with db.read() as conn:
         lessons, more = trace.lessons(Read(conn), mid)
-    assert fetched == [201]
+    assert len(yielded) == 201
     assert lessons == kept[:200]
     assert more is True
 

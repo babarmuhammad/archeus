@@ -9,6 +9,8 @@ serves. A call's input is not carried: the trace names the tool, never what was
 typed into it. `lessons` is read now, never recorded at verification: a mission's
 lessons are only written after it has ended."""
 
+import json
+
 from ...infra.db import rows
 from ..domain import entities
 from ..execution import output
@@ -53,11 +55,18 @@ def lanes(events):
 
 
 def lessons(conn, mission_id):
-    found = [r['src_id'] for r in conn.execute(
-        "SELECT DISTINCT src_id FROM relations WHERE src_kind = 'knowledge_item' "
-        "AND rel = 'learned_from' AND dst_kind = 'mission' AND dst_id = ? "
-        "AND json_extract(body, '$.valid_until') IS NULL ORDER BY src_id LIMIT ?",
-        (mission_id, LESSONS_MAX + 1))]
+    found, last = [], None
+    for r in conn.execute(
+            "SELECT src_id, body FROM relations WHERE src_kind = 'knowledge_item' "
+            "AND rel = 'learned_from' AND dst_kind = 'mission' AND dst_id = ? ORDER BY src_id",
+            (mission_id,)):
+        # ponytail: scans a mission's expired relations too; a valid_until column if that ever costs
+        if json.loads(r['body']).get('valid_until') is not None or r['src_id'] == last:
+            continue
+        last = r['src_id']
+        found.append(last)
+        if len(found) > LESSONS_MAX:
+            break
     return found[:LESSONS_MAX], len(found) > LESSONS_MAX
 
 
