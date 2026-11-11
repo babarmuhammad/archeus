@@ -32,11 +32,8 @@ boundaries, then error paths, then a forced ordering):
                         runs after the content scan (ordering forced with
                         threading.Events, never a sleep).
 
-Three of these ten premises are contradicted by the source; those tests are
-kept as `@pytest.mark.xfail(strict=True, ...)` with the defect line quoted in
-the reason (B8 output hygiene, B9 row validation, B10 suppression by an
-unlistable rules directory). Nothing is weakened to make them pass, and no
-source file is edited.
+B8, B9 and B10 were strict xfails while their defects stood; they are now
+regression coverage for the fixed behaviour.
 
 Synthetic secrets only (`SYNTH…`); no real credential appears anywhere.
 """
