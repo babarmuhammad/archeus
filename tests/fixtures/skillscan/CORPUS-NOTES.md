@@ -65,6 +65,17 @@ native evidence, not a security boundary.
 | hostile-17-mcp-server-named-bash.mcp.json | hostile | tool-name-collision (plain node command) |
 | hostile-18-skill-drift-b.md | hostile | description-drift (pair_with benign-17-skill-drift-a.md) |
 | hostile-19-mcp-npx-unpinned.mcp.json | hostile | mcp-command-exec (npx, unpinned, no -y) |
+| hostile-20-mcp-env-npx.mcp.json | hostile | mcp-command-exec (env assignments before npx) |
+| hostile-21-mcp-npx-cache.mcp.json | hostile | mcp-command-exec (option value consumed before package) |
+| hostile-22-mcp-npx-late-no-install.mcp.json | hostile | mcp-command-exec (late installation flag belongs to program) |
+| hostile-23-mcp-github-version-suffix.mcp.json | hostile | mcp-command-exec (mutable Git reference) |
+| hostile-24-mcp-fetch-launchers.mcp.json | hostile | mcp-command-exec (npm exec separator, npm x, pnpm dlx, yarn dlx, bunx) |
+| benign-25-mcp-semver.mcp.json | benign | exact registry SemVer prerelease and build |
+
+The corpus now contains 43 paired fixtures. Unit tests also cover bare assignments,
+env options, option-value forms, command boundaries, and registry version syntax.
+Git, GitHub, HTTP(S), tarball and file URL specs remain flagged, including full
+Git commit hashes. Only registry specs receive the exact-version exemption.
 
 ## Decisions T-1079 / the owner (item 96) still have to take
 

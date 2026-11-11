@@ -235,7 +235,7 @@ def _read_fixture(name):
 def test_the_lint_reports_exactly_what_each_fixture_sidecar_says():
     import json
     names = _fixture_names()
-    assert len(names) >= 24
+    assert len(names) == 43
     for side in names:
         exp = json.loads(_read_fixture(side))
         got = sorted((f.rule, f.line) for f in skillscan.lint(_read_fixture(exp['fixture'])))
@@ -477,6 +477,92 @@ def test_a_network_share_or_a_dotted_name_is_not_a_local_path(spec):
     (['--no', '-y', 'tool'], True), (['--yes', '--no-install', 'tool'], True)])
 def test_npx_told_never_to_install_only_runs_what_is_there(args, flagged):
     assert bool(_mcp('npx', args)) is flagged
+
+
+@pytest.mark.parametrize('command,args', [
+    ('env', ['FOO=1', 'npx', 'evil']),
+    ('/usr/bin/env', ['-i', '-u', 'OLD', '--chdir=/tmp', 'FOO=1', 'npx', 'evil']),
+    ('env', ['--unset=OLD', '-C', '/tmp', '--', 'FOO=1', 'npx', 'evil']),
+    ('env', ['-S', 'npx evil']), ('env', ['--split-string=npx evil']),
+    ('env', ['-S', '"npx" evil']),
+    ('FOO=1', ['BAR=2', 'npx', 'evil']),
+    ('npm', ['exec', '--', 'evil']), ('npm', ['x', 'evil']),
+    ('pnpm', ['dlx', 'evil']), ('yarn', ['dlx', 'evil']), ('bunx', ['evil']),
+])
+def test_package_launchers_and_env_prefixes_are_flagged(command, args):
+    assert [f.rule for f in _mcp(command, args)] == ['mcp-command-exec']
+
+
+@pytest.mark.parametrize('option', [
+    '--cache', '--registry', '--userconfig', '--prefix', '-w', '--workspace', '--node-options',
+])
+@pytest.mark.parametrize('attached', [False, True])
+def test_package_option_values_are_consumed(option, attached):
+    args = [option + '=/tmp/value'] if attached else [option, '/tmp/value']
+    assert [f.rule for f in _mcp('npx', [*args, 'evil'])] == ['mcp-command-exec']
+    assert _mcp('npx', [*args, 'pkg@1.2.3']) == []
+
+
+@pytest.mark.parametrize('args,flagged', [
+    (['evil', '--no-install'], True), (['evil', '--no'], True),
+    (['evil', '--package=safe@1.2.3'], True),
+    (['--unknown', 'evil'], True), (['--', 'evil', '--no-install'], True),
+    (['--', '--no-install', 'evil'], True),
+    (['--no-install', 'evil', '-y'], False),
+    (['-p', 'safe@1.2.3', '-p', 'evil', 'cmd'], True),
+    (['-p', 'evil', '--package=safe@1.2.3', 'cmd'], True),
+    (['--package=safe@1.2.3', 'cmd', '--package=evil'], False),
+    (['-p', 'evil', '-c', './cmd'], True),
+    (['--package', 'evil', 'cmd@1.2.3'], True),
+    (['-p=evil', 'cmd@1.2.3'], True),
+    (['--package', 'safe@1.2.3', '--call', 'cmd'], False),
+    (['--package=safe@1.2.3', '--call=cmd --no-install'], False),
+    (['-c', 'evil --no-install'], True), (['--call=evil'], True), (['-c=evil'], True),
+    (['--no-install', '-c', 'evil'], False),
+])
+def test_package_flags_stop_at_the_command_boundary(args, flagged):
+    assert bool(_mcp('npx', args)) is flagged
+
+
+@pytest.mark.parametrize('spec', [
+    'github:owner/repo#release@1.2.3', 'git+https://example.invalid/repo#tag@1.2.3',
+    'https://example.invalid/pkg@1.2.3', 'http://example.invalid/pkg@1.2.3',
+    'file:pkg@1.2.3', 'owner/repo#tag@1.2.3', 'pkg-1.2.3.tgz',
+    'github:owner/repo#' + 'a' * 40, 'pkg@^1', 'pkg@1', 'pkg@1.x',
+    'pkg@latest', 'pkg@next', 'pkg@01.2.3', 'pkg@1.2.3-01',
+])
+def test_only_exact_registry_versions_are_pinned(spec):
+    assert [f.rule for f in _mcp('npx', [spec])] == ['mcp-command-exec']
+
+
+@pytest.mark.parametrize('spec', [
+    'pkg@1.2.3-beta.1', 'pkg@1.2.3+build.5', '@scope/pkg@1.2.3-beta.1+build.5',
+    'pkg@0.0.0-0', 'pkg@1.2.3-0a',
+])
+def test_exact_semver_prereleases_and_builds_are_pinned(spec):
+    assert _mcp('npx', [spec]) == []
+
+
+@pytest.mark.parametrize('command,prefix', [
+    ('npm', ['exec']), ('npm', ['x']), ('pnpm', ['dlx']), ('yarn', ['dlx']), ('bunx', []),
+])
+def test_equivalent_launchers_keep_package_boundaries(command, prefix):
+    assert _mcp(command, [*prefix, 'pkg@1.2.3-beta.1']) == []
+    assert _mcp(command, [*prefix, './tool']) == []
+    assert _mcp(command, [*prefix, '--no-install', 'evil']) == []
+    assert bool(_mcp(command, [*prefix, 'evil', '--no-install']))
+    assert bool(_mcp(command, [*prefix, '--', 'evil', '--no-install']))
+    assert bool(_mcp(command, [*prefix, '//host/share/tool']))
+
+
+def test_ordinary_package_manager_commands_are_outside_the_fetch_rule():
+    for command, args in [('npm', ['install', 'evil']), ('pnpm', ['exec', 'evil']),
+                          ('yarn', ['run', 'evil']), ('node', ['evil'])]:
+        assert _mcp(command, args) == []
+    assert _mcp('env', ['-S', '"unterminated']) == []
+    assert _mcp('env', ['-i', 'FOO=1']) == []
+    assert _mcp('env', ['--', '-i', 'npx', 'evil']) == []
+    assert skillscan.lint('{"mcpServers":{"s":{"command":""}}}') == []
 
 
 @pytest.mark.parametrize('command,args,flagged', [

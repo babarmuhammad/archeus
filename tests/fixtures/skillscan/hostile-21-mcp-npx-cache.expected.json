@@ -1,0 +1,9 @@
+{
+  "fixture": "hostile-21-mcp-npx-cache.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {"rule": "mcp-command-exec", "line": 4, "match": "\"npx\""}
+  ],
+  "note": "The cache value is not the package."
+}

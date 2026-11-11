@@ -43,10 +43,10 @@ works, and it is the part that matters most.
 import json
 import os
 import re
+import shlex
 import unicodedata
 from bisect import bisect_right
 from collections import namedtuple
-from itertools import dropwhile
 
 #: file bodies larger than this are truncated before matching. A skill that
 #: needs a megabyte of prose is already worth a second look.
@@ -181,10 +181,29 @@ def _exe(tokens):
 
 
 def _no_env(tokens):
-    """`env [-i] [NAME=value]... prog args` read as `prog args`."""
-    if tokens and _exe(tokens) == 'env':
-        return list(dropwhile(lambda a: a.startswith('-') or '=' in a, tokens[1:]))
-    return tokens
+    i = 0
+    while i < len(tokens):
+        a = tokens[i]
+        if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', a):
+            i += 1
+        elif _exe(tokens[i:]) == 'env':
+            i += 1
+            while i < len(tokens) and tokens[i].startswith('-'):
+                option, sep, value = tokens[i].partition('=')
+                if option in ('-S', '--split-string'):
+                    end = i + (1 if sep else 2)
+                    value = value if sep else next(iter(tokens[i + 1:end]), '')
+                    try:
+                        tokens = tokens[:i] + shlex.split(value) + tokens[end:]
+                    except ValueError:
+                        return []
+                    continue
+                i += 2 if option in ('-u', '--unset', '-C', '--chdir') and not sep else 1
+                if option == '--':
+                    break
+        else:
+            break
+    return tokens[i:]
 
 
 def _shell_flag(exe, a):
@@ -202,7 +221,11 @@ def _wraps_shell(tokens):
 
 
 def _pinned(pkg):
-    return bool(re.search(r'.@\d+\.\d+\.\d+$', pkg))
+    number = r'(?:0|[1-9][0-9]*)'
+    pre = r'(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+    return bool(re.fullmatch(
+        r'(?:@[\w.-]+/)?[\w.-]+@' + number + r'\.' + number + r'\.' + number
+        + r'(?:-' + pre + r'(?:\.' + pre + r')*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?', pkg))
 
 
 def _local(pkg):
@@ -211,22 +234,54 @@ def _local(pkg):
     return bool(re.match(r'\.{1,2}$|\.{1,2}[\\/]|[\\/](?![\\/])|~[\\/]|[A-Za-z]:[\\/]', pkg))
 
 
-def _npx_unpinned(tokens):
-    """npx of a package whose version can move. `-y` is not needed for it to be
-    fetched: started with no terminal, as an MCP server is, npx installs a missing
-    package unasked. Only `--no` or `--no-install` (and no `-y`) stops that."""
-    if not tokens or _exe(tokens) != 'npx':
-        return False
-    rest = tokens[1:]
-    if {'--no', '--no-install'} & set(rest) and not {'-y', '--yes'} & set(rest):
-        return False
-    named = [v for i, a in enumerate(rest) for v in (
-        [a.split('=', 1)[1]] if a.startswith('--package=') else
-        rest[i + 1:i + 2] if a in ('-p', '--package') else [])]
+def _package_command(command, args):
+    tokens = _no_env([command, *args])
+    if not tokens:
+        return None, None, False
+    launcher, rest = _exe(tokens), tokens[1:]
+    if launcher in ('npm', 'pnpm', 'yarn'):
+        verbs = ('exec', 'x') if launcher == 'npm' else ('dlx',)
+        if not rest or rest[0] not in verbs:
+            return None, None, False
+        rest = rest[1:]
+    elif launcher not in ('npx', 'bunx'):
+        return None, None, False
+    named, package, no_install, yes = [], None, False, False
+    values = {'--cache', '--registry', '--userconfig', '--prefix', '-w', '--workspace', '--node-options'}
+    i = 0
+    while i < len(rest):
+        a = rest[i]
+        option, sep, value = a.partition('=')
+        if a == '--':
+            package = next(iter(rest[i + 1:]), None)
+            break
+        if not a.startswith('-'):
+            package = a
+            break
+        if option in ('--no', '--no-install'):
+            no_install = True
+        elif option in ('-y', '--yes'):
+            yes = True
+        elif option in values or option in ('-p', '--package', '-c', '--call'):
+            if not sep:
+                i += 1
+                value = next(iter(rest[i:i + 1]), '')
+            if option in ('-p', '--package'):
+                named.append(value)
+            elif option in ('-c', '--call'):
+                package = value
+                break
+        i += 1
     if named:
-        return not all(_pinned(p) or _local(p) for p in named)
-    pkgs = [a for a in rest if not a.startswith('-')]
-    return bool(pkgs) and not (_pinned(pkgs[0]) or _local(pkgs[0]))
+        package = next((p for p in named if not (_pinned(p) or _local(p))), named[0])
+    return launcher, package, no_install and not yes
+
+
+def _npx_unpinned(tokens):
+    if not tokens:
+        return False
+    launcher, package, no_install = _package_command(tokens[0], tokens[1:])
+    return bool(launcher and package and not no_install and not (_pinned(package) or _local(package)))
 
 
 def _locate(lines, needle, start):
@@ -271,7 +326,7 @@ def _json_findings(text, lines):
             out += _line_findings(' '.join(toks), at + 1)
             if _wraps_shell(toks) or _npx_unpinned(toks):
                 out.append(Finding('mcp-command-exec', 'med', at + 1,
-                                   'an MCP server that runs a shell wrapper or npx of an unpinned package',
+                                   'an MCP server that runs a shell wrapper or fetches an unpinned package',
                                    ' '.join(toks)))
     at = _locate(lines, '"hooks"', 0)
     for cmd in _hook_commands(data.get('hooks')):
