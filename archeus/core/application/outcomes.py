@@ -3,6 +3,7 @@ model or effort threshold is tuned on. Read-only, from rows Core already keeps
 (executions, their verifications, their usage ledger rows); it decides nothing.
 """
 
+import json
 import re
 
 from ...infra.db import rows
@@ -42,10 +43,10 @@ def by_model(conn):
                if r.entity.execution_id and r.entity.state in ('PASSED', 'FAILED')}
     of_check = {r.entity.id: r.entity.execution_id for r in rows.where(conn, entities.Verification)}
     retries = {}
-    for (v,) in conn.execute(
-            "SELECT subject_id FROM events WHERE type = 'verification.state_changed' "
-            "AND json_extract(payload, '$.trigger') = 'retry'"):
-        retries[of_check.get(v)] = retries.get(of_check.get(v), 0) + 1
+    for v, payload in conn.execute(
+            "SELECT subject_id, payload FROM events WHERE type = 'verification.state_changed'"):
+        if json.loads(payload).get('trigger') == 'retry':
+            retries[of_check.get(v)] = retries.get(of_check.get(v), 0) + 1
     checked = set(of_check.values())
     reviews = _count(conn, entities.Review, lambda v: v.mission_id,
                      lambda v: v.verdict == 'changes_requested')
