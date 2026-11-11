@@ -460,7 +460,7 @@ def test_a_failed_stop_keeps_supervision_active_and_reports_it(env):
     armed(env)
     env.world.terminated = False
     assert roll_back(env) == wd.UNCERTAIN
-    assert env.host.report()['core_stop'] == 'Core did not stop'
+    assert env.host.report()['core_stop'] == 'Core still running after its stop'
     assert not env.host.done()
 
 
@@ -504,6 +504,46 @@ def test_a_damaged_channel_with_nothing_watched_ends_the_host_after_its_stop(env
         stream.write(b'oops\n')
     env.host.tick()
     assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+
+
+def test_a_core_already_gone_with_nothing_owned_is_stopped_whatever_terminate_says(env):
+    armed(env)
+    env.world.table.clear()
+    env.world.terminated = False
+    assert roll_back(env) == wd.UNCERTAIN
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+
+
+def test_a_core_already_gone_with_a_workload_still_running_is_not_stopped(env):
+    armed(env)
+    env.world.table = {PID: CREATION_TIME}
+    env.world.survivors = {PID}
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'].startswith('owned workload e1-p1 still running')
+    assert not env.host.done()
+
+
+def test_a_terminate_that_raises_is_decided_by_the_verification_alone(env):
+    armed(env)
+    env.world.table.clear()
+
+    def raising(pid, create_time):
+        raise OSError('denied')
+    env.host.terminate = raising
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+
+
+def test_a_stop_that_cannot_read_identities_back_is_not_reported_stopped(env):
+    armed(env)
+
+    def unreadable(pid):
+        raise OSError('table gone')
+    env.host.identity_reader = unreadable
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == 'stop not verified: OSError'
+    assert not env.host.done()
 
 
 def test_an_idle_host_ends_when_core_is_gone_and_not_before(env):

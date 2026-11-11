@@ -63,8 +63,9 @@ BEAT_FAULT = T + 'test_a_failed_beat_is_the_sweeps_fault_not_a_silent_skip'
 
 SENTINEL_GATE = '        if self._core_seen is True:'
 ENGAGE_ONCE = '        if self.sentinel is None:'
-CORE_STOP = "        self.core_stop = (self._unstopped() if stopped else 'Core did not stop') or STOPPED"
-STOP_CALL = '            stopped = self.terminate(self.core_pid, self.core_create_time) is True'
+CORE_STOP = '        self.core_stop = self._unstopped() or STOPPED'
+STOP_CALL = '            self.terminate(self.core_pid, self.core_create_time)'
+UNREAD = "            return 'stop not verified: %s' % type(err).__name__"
 UNCERTAIN_GATE = '        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop is None:'
 DONE = '        return self.core_stop == STOPPED or (self.core_stop is None and self.core_gone) or ('
 ROLLBACK_ORDER = T + 'test_a_rollback_engages_the_sentinel_then_stops_core_by_identity_then_verifies'
@@ -72,6 +73,9 @@ FAILED_STOP = T + 'test_a_failed_stop_keeps_supervision_active_and_reports_it'
 LEFT_CORE = T + 'test_a_stop_that_leaves_core_running_is_reported_not_claimed'
 LEFT_WORKLOAD = T + 'test_a_stop_that_leaves_an_owned_workload_running_is_reported_not_claimed'
 SECOND_ROLLBACK = T + 'test_a_second_rollback_during_a_failed_stop_stops_nothing_more'
+ABSENT_NOTHING = T + 'test_a_core_already_gone_with_nothing_owned_is_stopped_whatever_terminate_says'
+ABSENT_WORKLOAD = T + 'test_a_core_already_gone_with_a_workload_still_running_is_not_stopped'
+UNREADABLE_BACK = T + 'test_a_stop_that_cannot_read_identities_back_is_not_reported_stopped'
 KILL = "        return self.terminate(job['pid'], job['create_time']) is True"
 OWNED = "        if invalid or [r['op'] for r in records[:2]] != OWNED_OPS:"
 
@@ -194,19 +198,23 @@ MUTATIONS = [
       'test_a_clock_rewound_below_the_last_beat_is_not_a_quiet_forever']),
     ('WH47', 'the stop engages the sentinel after terminating Core', [(HOST,
      "        self._engage_sentinel()\n        try:\n" + STOP_CALL + "\n"
-     "        except Exception:\n            stopped = False\n",
+     "        except Exception:\n            pass\n",
      "        try:\n" + STOP_CALL + "\n"
-     "        except Exception:\n            stopped = False\n        self._engage_sentinel()\n")],
+     "        except Exception:\n            pass\n        self._engage_sentinel()\n")],
      [ROLLBACK_ORDER]),
     ('WH48', 'the stop does not terminate Core', [(HOST,
-     STOP_CALL, '            stopped = True')], [ROLLBACK_ORDER, FAILED_STOP]),
+     STOP_CALL, '            None')], [ROLLBACK_ORDER, FAILED_STOP]),
     ('WH49', 'the stop is not verified', [(HOST,
-     CORE_STOP, "        self.core_stop = STOPPED if stopped else 'Core did not stop'")],
-     [LEFT_CORE, LEFT_WORKLOAD]),
-    ('WH50', 'a failed stop is reported as stopped', [(HOST,
-     CORE_STOP, '        self.core_stop = STOPPED')], [FAILED_STOP, LEFT_CORE]),
+     CORE_STOP, '        self.core_stop = STOPPED')],
+     [LEFT_CORE, LEFT_WORKLOAD, ABSENT_WORKLOAD]),
+    ('WH50', 'a stop that cannot read identities back is reported as stopped', [(HOST,
+     UNREAD, '            return None')], [UNREADABLE_BACK]),
     ('WH51', 'a second rollback stops Core again', [(HOST,
      UNCERTAIN_GATE, '        if self.state() == mxc_watchdog.UNCERTAIN:')], [SECOND_ROLLBACK]),
+    ('WH52', 'terminate answering False decides the stop without verification', [(HOST,
+     STOP_CALL, "            if self.terminate(self.core_pid, self.core_create_time) is not True:\n"
+                "                self.core_stop = 'Core did not stop'\n                return")],
+     [ABSENT_NOTHING]),
 ]
 
 

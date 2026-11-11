@@ -13,7 +13,9 @@ asked again against that record, and the process table is read by creation time 
 never by pid alone. A hung Core (alive, silent) gets the STOP sentinel first, as the
 Core-less e-stop does (design 3.7, item 83), then the same identity-checked kill; a dead
 Core needs no sentinel, its Job is already closed. The sentinel not being verifiable
-never withholds the kill, it is recorded.
+never withholds the kill, it is recorded. On UNCERTAIN the host engages the sentinel, ends
+Core by its recorded identity and verifies that Core and every recorded workload are gone;
+a stop it cannot verify keeps it supervising and reports why.
 
 The Job Core holds stays the Core-death authority (threat model, "Decision: Core death").
 This host is the belt for what outlived it.
@@ -138,10 +140,10 @@ class WatchdogHost:
     def _stop_core(self):
         self._engage_sentinel()
         try:
-            stopped = self.terminate(self.core_pid, self.core_create_time) is True
+            self.terminate(self.core_pid, self.core_create_time)
         except Exception:
-            stopped = False
-        self.core_stop = (self._unstopped() if stopped else 'Core did not stop') or STOPPED
+            pass
+        self.core_stop = self._unstopped() or STOPPED
 
     def _unstopped(self):
         try:
