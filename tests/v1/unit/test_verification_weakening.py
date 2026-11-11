@@ -182,7 +182,50 @@ def test_the_recorded_findings_are_capped_but_the_detail_counts_them_all():
     d = ''.join(_diff('tests/test_%d.py' % i, (['def test_x():'], []), deleted=True)
                 for i in range(60))
     c = evidence.weakening_check(_Node(d), 'root', BASE, REV)
-    assert c['detail'] == '60 finding(s), advisory' and len(c['findings']) == 50
+    assert c['detail'] == '60 finding(s), advisory\nReport cut: 10 finding(s) omitted.'
+    assert len(c['findings']) == 50
+
+
+def test_rendered_paths_have_a_utf8_byte_cap_and_count_omitted_bytes():
+    path = 'tests/' + '\u00e9' * 1000 + '/test_a.py'
+    finding, = evidence.weakening(_diff(path, (['def test_a():'], [])))
+    rendered = finding.removeprefix('test removed: ').removesuffix('::test_a')
+    assert len(rendered.encode('utf-8')) <= evidence._PATH_BYTES
+    assert 'path cut:' in rendered and 'bytes omitted]' in rendered
+    prefix, omitted = rendered.split('... [path cut: ')
+    assert int(omitted.split()[0]) == len(path.encode('utf-8')) - len(prefix.encode('utf-8'))
+
+
+def test_rendered_report_has_a_total_byte_cap_and_counts_dropped_findings():
+    import json
+    d = ''.join(_diff('tests/' + '\u00e9' * 200 + '/test_%d.py' % i,
+                     (['def test_' + 'x' * 100 + '():'], [])) for i in range(50))
+    c = evidence.weakening_check(_Node(d), 'root', BASE, REV)
+    assert len(json.dumps(c, ensure_ascii=False).encode('utf-8')) <= evidence._REPORT_BYTES
+    omitted = 50 - len(c['findings'])
+    assert omitted > 0
+    assert c['detail'].endswith('\nReport cut: %d finding(s) omitted.' % omitted)
+
+
+def test_cut_diff_never_reads_past_cap_or_silently_reports_nothing(monkeypatch):
+    prefix = _diff('src/a.py', (['x'], ['y']))
+    suffix = _diff('tests/test_a.py', (['def test_a():'], []))
+    monkeypatch.setattr(evidence, '_DIFF_BYTES', len(prefix.encode('utf-8')))
+    c = evidence.weakening_check(_Node(prefix + suffix), 'root', BASE, REV)
+    assert c['result'] == 'pass' and c['detail'] == '1 finding(s), advisory'
+    assert c['findings'] == [('Diff cut: %d bytes omitted; '
+                              'remaining test changes were not inspected.' % len(suffix.encode('utf-8')))]
+
+
+def test_cut_diff_keeps_weakening_already_seen_and_discards_partial_line(monkeypatch):
+    prefix = _diff('tests/test_a.py', (['def test_a():'], []))
+    partial = '+@pytest.mark.skip'
+    suffix = partial + '(reason="later")\n'
+    monkeypatch.setattr(evidence, '_DIFF_BYTES', len((prefix + partial).encode('utf-8')))
+    c = evidence.weakening_check(_Node(prefix + suffix), 'root', BASE, REV)
+    assert c['findings'][1:] == ['test removed: tests/test_a.py::test_a']
+    assert c['findings'][0] == ('Diff cut: %d bytes omitted; remaining test changes were not inspected.'
+                               % len(suffix.encode('utf-8')))
 
 
 def test_a_diff_git_cannot_read_is_noted_and_never_an_error():

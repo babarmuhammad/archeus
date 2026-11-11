@@ -241,3 +241,56 @@ def test_our_hook_is_ours_however_its_path_is_cased(tmp_path, monkeypatch):
     assert stop == [{'hooks': [{'type': 'command', 'command': hooks._status_hook_command(),
                                 'timeout': 5}]}]
     assert hooks.uninstall_status_hook() and not json.loads(sp.read_text()).get('hooks')
+
+
+@pytest.mark.parametrize('disabled', [False, True])
+def test_live_directory_alias_is_repaired_once_and_uninstalled(tmp_path, monkeypatch, disabled):
+    alias = tmp_path / 'package-alias'
+    try:
+        alias.symlink_to(hooks._PKG, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        try:
+            subprocess.run(['cmd', '/c', 'mklink', '/J', str(alias), hooks._PKG], check=True,
+                           capture_output=True)
+        except (OSError, subprocess.CalledProcessError):
+            pytest.skip('directory links unavailable')
+    sp = tmp_path / 'settings.json'
+    command = '"python" "%s" || exit 0' % (alias / 'status_hook.py')
+    _stop_hooks(sp, monkeypatch, command)
+    if disabled:
+        sp.write_text(sp.read_text().replace('"hooks": {"Stop"', '"hooks_disabled": {"Stop"'))
+    assert hooks.install_status_hook()
+    state = 'hooks_disabled' if disabled else 'hooks'
+    data = json.loads(sp.read_text())
+    assert len(data[state]['Stop']) == 1
+    assert data[state]['Stop'][0]['hooks'][0]['command'] == hooks._status_hook_command()
+    data[state]['Stop'][0]['hooks'][0]['command'] = command
+    sp.write_text(json.dumps(data))
+    assert hooks.uninstall_status_hook()
+    assert not json.loads(sp.read_text()).get(state)
+
+
+def test_live_hook_identity_error_fails_closed_even_for_current_spelling(monkeypatch):
+    path = os.path.join(hooks._PKG, 'status_hook.py')
+
+    def denied(*args):
+        raise OSError('identity unavailable')
+    monkeypatch.setattr(os.path, 'samefile', denied)
+    assert not hooks._is_ours({'command': '"python" "%s"' % path}, 'status_hook.py')
+
+
+def test_live_hook_ownership_uses_identity_even_with_unrelated_spelling(tmp_path, monkeypatch):
+    path = tmp_path / 'alias.py'
+    path.write_text('')
+    seen = []
+    monkeypatch.setattr(os.path, 'samefile', lambda a, b: seen.append((a, b)) or True)
+    assert hooks._is_ours({'command': '"python" "%s"' % path}, 'status_hook.py')
+    assert seen == [(str(path), os.path.join(hooks._PKG, 'status_hook.py'))]
+
+
+def test_a_missing_script_is_ours_under_another_case_of_its_path(tmp_path, monkeypatch):
+    if os.path.normcase('A') == 'A':
+        pytest.skip('file names are case-sensitive here')
+    monkeypatch.setattr(hooks, '_PKG', str(tmp_path / 'Pkg'))
+    cmd = '"python" "%s"' % str(tmp_path / 'Pkg' / 'status_hook.py').upper()
+    assert hooks._is_ours({'command': cmd}, 'status_hook.py')

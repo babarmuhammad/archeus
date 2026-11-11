@@ -6,9 +6,11 @@ the port the discovery file names, and the token goes nowhere else.
 """
 
 import http.client
+import io
 import json
 import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -38,18 +40,88 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+class _DeadlineReader(io.RawIOBase):
+    def __init__(self, raw, sock, deadline, clock=None):
+        self.raw, self.sock, self.deadline = raw, sock, deadline
+        self.clock = clock or time.monotonic
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        left = self.deadline - self.clock()
+        if left <= 0:
+            raise TimeoutError('Core request deadline')
+        self.sock.settimeout(left)
+        size = self.raw.readinto(buffer)
+        if self.clock() >= self.deadline:
+            raise TimeoutError('Core request deadline')
+        return size
+
+    def close(self):
+        try:
+            self.raw.close()
+        finally:
+            super().close()
+
+
+class _DeadlineSocket:
+    def __init__(self, sock, deadline, clock):
+        self.sock, self.deadline, self.clock = sock, deadline, clock
+
+    def __getattr__(self, name):
+        return getattr(self.sock, name)
+
+    def sendall(self, data):
+        left = self.deadline - self.clock()
+        if left <= 0:
+            raise TimeoutError('Core request deadline')
+        self.sock.settimeout(left)
+        self.sock.sendall(data)
+
+    def makefile(self, mode):
+        # One raw read is one recv, so headers and chunk framing share the deadline too.
+        raw = self.sock.makefile(mode, buffering=0)
+        return io.BufferedReader(_DeadlineReader(raw, self.sock, self.deadline, self.clock))
+
+
+class _DeadlineConnection(http.client.HTTPConnection):
+    def __init__(self, *args, deadline, clock=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.deadline = deadline
+        self.clock = clock or time.monotonic
+
+    def connect(self):
+        self.timeout = self.deadline - self.clock()
+        if self.timeout <= 0:
+            raise TimeoutError('Core request deadline')
+        super().connect()
+        self.sock = _DeadlineSocket(self.sock, self.deadline, self.clock)
+
+
+class _DeadlineHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        def connection(host, **kwargs):
+            return _DeadlineConnection(host, deadline=req.deadline, clock=req.clock, **kwargs)
+        return self.do_open(connection, req)
+
+
 #: no proxy from the environment and no followed redirect: the token goes to this
 #: port and to nothing a header or a Location line names
 _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect)
+_DEADLINE_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect,
+                                              _DeadlineHTTPHandler)
 
 
-def _error(e):
+def _error(e, deadline=None, clock=None):
     try:
         body = json.loads(e.read() or b'{}')
     except ValueError:
         body = {}
     if not isinstance(body, dict):
         body = {}
+    if deadline is not None and (clock or time.monotonic)() >= deadline:
+        raise TimeoutError('Core request deadline')
     return CoreError(e.code, body.get('error') or 'http_%d' % e.code, body.get('detail'))
 
 
@@ -75,25 +147,37 @@ class Core:
             return None, 'no_token'
         return cls(info['port'], token), None
 
-    def _open(self, method, path, body=None, headers=None, timeout=TIMEOUT_S):
+    def _open(self, method, path, body=None, headers=None, timeout=TIMEOUT_S, deadline=None,
+              clock=None):
         data = json.dumps(body).encode('utf-8') if method == 'POST' else None
         h = {'Authorization': 'Bearer ' + self._token, 'Accept': 'application/json'}
         if data is not None:
             h['Content-Type'] = 'application/json'
         h.update(headers or {})
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=h)
+        req.deadline = deadline
+        req.clock = clock
         try:
-            return _OPENER.open(req, timeout=timeout)
+            opener = _OPENER if deadline is None else _DEADLINE_OPENER
+            return opener.open(req, timeout=timeout)
         except urllib.error.HTTPError as e:
-            raise _error(e) from None
+            raise _error(e, deadline, clock) from None
         except (urllib.error.URLError, OSError) as e:
             raise CoreError(0, 'network', {'why': type(e).__name__}) from None
 
-    def get(self, path, timeout=TIMEOUT_S):
+    def get(self, path, timeout=TIMEOUT_S, *, deadline=None, clock=None):
         """(Core's answer, the event head it was read at)."""
-        with self._open('GET', path, timeout=timeout) as r:
+        clock = clock or time.monotonic
+        if deadline is not None:
+            deadline = min(deadline, clock() + timeout)
+            if clock() >= deadline:
+                raise CoreError(0, 'network', {'why': 'TimeoutError'})
+        with self._open('GET', path, timeout=timeout, deadline=deadline, clock=clock) as r:
             seq = r.headers.get('X-Archeus-Seq')
-            return json.loads(r.read() or b'null'), int(seq) if seq else None
+            body = json.loads(r.read() or b'null')
+            if deadline is not None and clock() >= deadline:
+                raise TimeoutError('Core request deadline')
+            return body, int(seq) if seq else None
 
     def post(self, path, body):
         with self._open('POST', path, body) as r:

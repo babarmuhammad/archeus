@@ -13,6 +13,154 @@ from archeus.infra import paths
 from v1.judge.http import TempCore, free_port
 
 
+class _DripSocket:
+    def __init__(self, chunks, clock):
+        self.chunks, self.clock, self.timeouts = iter(chunks), clock, []
+
+    def settimeout(self, timeout):
+        self.timeouts.append(timeout)
+
+    def setsockopt(self, *args):
+        pass
+
+    def sendall(self, data):
+        pass
+
+    def close(self):
+        pass
+
+    def makefile(self, mode, buffering=-1):
+        import io
+        sock = self
+
+        class Raw(io.RawIOBase):
+            pending = b''
+
+            def readable(self):
+                return True
+
+            def readinto(self, buffer):
+                if not self.pending:
+                    delay, self.pending = next(sock.chunks, (0, b''))
+                    sock.clock[0] += delay
+                size = min(len(self.pending), len(buffer))
+                buffer[:size], self.pending = self.pending[:size], self.pending[size:]
+                return size
+        raw = Raw()
+        return raw if buffering == 0 else io.BufferedReader(raw)
+
+
+@pytest.mark.parametrize('part', ['headers', 'body', 'error', 'chunked'])
+def test_get_deadline_bounds_dripping_headers_body_and_error_body(monkeypatch, part):
+    clock = [0.0]
+    if part == 'headers':
+        chunks = [(0.04, bytes([b])) for b in b'HTTP/1.1 200 OK\r\n']
+    else:
+        status = b'404 Not Found' if part == 'error' else b'200 OK'
+        framing = b'Transfer-Encoding: chunked' if part == 'chunked' else b'Content-Length: 4'
+        chunks = [(0, b'HTTP/1.1 ' + status + b'\r\n' + framing + b'\r\n\r\n')]
+        body = b'1\r\nn\r\n1\r\nu\r\n0\r\n\r\n' if part == 'chunked' else b'null'
+        chunks += [(0.04, bytes([b])) for b in body]
+    sock = _DripSocket(chunks, clock)
+    monkeypatch.setattr(C.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(C.socket, 'create_connection', lambda *a, **k: sock)
+    with pytest.raises((C.CoreError, TimeoutError)):
+        C.Core(9001, 'tok').get('/x', timeout=0.1, deadline=0.1, clock=lambda: clock[0])
+    assert clock[0] == pytest.approx(0.12)
+    assert sock.timeouts == pytest.approx([0.1, 0.1, 0.06, 0.02] if part == 'headers'
+                                         else [0.1, 0.1, 0.1, 0.06, 0.02])
+
+
+def test_a_complete_body_received_at_deadline_is_rejected(monkeypatch):
+    import io
+    clock = [0.0]
+
+    class Response(io.BytesIO):
+        headers = {}
+
+        def read(self):
+            clock[0] = 0.1
+            return b'null'
+    monkeypatch.setattr(C.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(C.Core, '_open', lambda *a, **k: Response())
+    with pytest.raises(TimeoutError, match='Core request deadline'):
+        C.Core(9001, 'tok').get('/x', timeout=0.1, deadline=0.1, clock=lambda: clock[0])
+
+
+@pytest.mark.parametrize('timeout', [0, -0.1])
+def test_expired_get_never_connects(monkeypatch, timeout):
+    monkeypatch.setattr(C.socket, 'create_connection', lambda *a, **k: pytest.fail('connected'))
+    with pytest.raises(C.CoreError):
+        C.Core(9001, 'tok').get('/x', timeout=timeout, deadline=timeout)
+
+
+def test_expired_raw_read_never_touches_socket(monkeypatch):
+    import io
+    monkeypatch.setattr(C.time, 'monotonic', lambda: 1)
+    raw = io.BytesIO(b'null')
+    sock = _DripSocket([], [1])
+    reader = C._DeadlineReader(raw, sock, 1)
+    with pytest.raises(TimeoutError):
+        reader.readinto(bytearray(4))
+    assert raw.tell() == 0 and sock.timeouts == []
+
+
+def test_a_raw_read_completing_after_deadline_is_rejected():
+    clock = [0.0]
+    sock = _DripSocket([(0.11, b'null')], clock)
+    reader = C._DeadlineReader(sock.makefile('rb', buffering=0), sock, 0.1,
+                               clock=lambda: clock[0])
+    with pytest.raises(TimeoutError):
+        reader.readinto(bytearray(4))
+    assert sock.timeouts == [0.1]
+
+
+def test_expired_connection_never_opens_socket(monkeypatch):
+    monkeypatch.setattr(C.time, 'monotonic', lambda: 1)
+    monkeypatch.setattr(C.socket, 'create_connection', lambda *a, **k: pytest.fail('connected'))
+    with pytest.raises(TimeoutError):
+        C._DeadlineConnection('127.0.0.1', deadline=1).connect()
+
+
+def test_expired_socket_never_sends_request():
+    sock = _DripSocket([], [1])
+    wrapped = C._DeadlineSocket(sock, 1, lambda: 1)
+    sock.sendall = lambda data: pytest.fail('sent expired request')
+    with pytest.raises(TimeoutError):
+        wrapped.sendall(b'GET /x HTTP/1.1\r\n\r\n')
+    assert sock.timeouts == []
+
+
+def test_a_get_without_a_deadline_keeps_the_per_read_timeout(monkeypatch):
+    clock = [0.0]
+    chunks = [(0, b'HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n')]
+    sock = _DripSocket(chunks + [(0.04, bytes([b])) for b in b'null'], clock)
+    monkeypatch.setattr(C.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(C.socket, 'create_connection', lambda *a, **k: sock)
+    assert C.Core(9001, 'tok').get('/x', timeout=0.1)[0] is None
+    assert clock[0] == pytest.approx(0.16)
+
+
+def test_get_preserves_supplied_absolute_deadline(monkeypatch):
+    monkeypatch.setattr(C.Core, '_open', lambda *a, **k: pytest.fail('deadline was extended'))
+    with pytest.raises(C.CoreError):
+        C.Core(9001, 'tok').get('/x', timeout=10, deadline=1, clock=lambda: 1)
+
+
+def test_a_complete_error_body_received_at_deadline_is_rejected():
+    import io
+    import urllib.error
+    clock = [0.0]
+
+    class Body(io.BytesIO):
+        def read(self):
+            clock[0] = 0.1
+            return b'{"error":"not_found"}'
+    error = urllib.error.HTTPError('http://127.0.0.1/x', 404, 'missing', {}, Body())
+    with pytest.raises(TimeoutError):
+        C._error(error, deadline=0.1, clock=lambda: clock[0])
+
+
 @pytest.fixture
 def core(archeus_home):
     tc = TempCore(archeus_home).start()

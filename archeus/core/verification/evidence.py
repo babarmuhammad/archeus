@@ -187,6 +187,9 @@ _BOUND = re.compile(r'(timeout|threshold|tolerance|deadline)\w*["\']?\s*[=:(]\s*
                     re.I)
 _FINDINGS_KEPT = 50
 _LINE_MAX = 2000
+_PATH_BYTES = 384
+_REPORT_BYTES = 16 * 1024
+_DIFF_BYTES = 4 * 1024 * 1024
 
 
 def _shape_of(path):
@@ -246,6 +249,14 @@ def _clip(text, n=80):
     return text if len(text) <= n else text[:n - 3] + '...'
 
 
+def _render_path(path):
+    raw = path.encode('utf-8')
+    if len(raw) <= _PATH_BYTES:
+        return path
+    prefix = raw[:_PATH_BYTES - 64].decode('utf-8', 'ignore')
+    return '%s... [path cut: %d bytes omitted]' % (prefix, len(raw) - len(prefix.encode('utf-8')))
+
+
 def weakening(diff):
     """What a `git diff -U0` does to the tests it touches, as a list of findings:
     test files deleted, test functions removed (and named nowhere in what was
@@ -259,6 +270,7 @@ def weakening(diff):
     for f, s in kept:
         if s is None:
             continue
+        f['path'] = _render_path(f['path'])
         if f['deleted']:
             found.append('test file deleted: %s' % f['path'])
             continue
@@ -294,11 +306,29 @@ def weakening_check(node, root, base, revision):
     if diff is None:
         return {'name': WEAKENING, 'kind': 'git', 'result': 'pass',
                 'detail': 'git could not read the diff of %s..%s' % (base[:12], revision[:12])}
+    raw = diff.encode('utf-8')
+    omitted_bytes = max(0, len(raw) - _DIFF_BYTES)
+    if omitted_bytes:
+        prefix = raw[:_DIFF_BYTES].decode('utf-8', 'ignore')
+        diff = prefix[:prefix.rfind('\n') + 1]
+        omitted_bytes = len(raw) - len(diff.encode('utf-8'))
     found = weakening(diff)
+    if omitted_bytes:
+        found.insert(0, 'Diff cut: %d bytes omitted; remaining test changes were not inspected.'
+                     % omitted_bytes)
     if not found:
         return None
-    return {'name': WEAKENING, 'kind': 'git', 'result': 'pass',
-            'detail': '%d finding(s), advisory' % len(found), 'findings': found[:_FINDINGS_KEPT]}
+    report = {'name': WEAKENING, 'kind': 'git', 'result': 'pass',
+              'detail': '%d finding(s), advisory' % len(found), 'findings': []}
+    for finding in found[:_FINDINGS_KEPT]:
+        report['findings'].append(finding)
+        if len(json.dumps(report, ensure_ascii=False).encode('utf-8')) > _REPORT_BYTES - 128:
+            report['findings'].pop()
+            break
+    omitted = len(found) - len(report['findings'])
+    if omitted:
+        report['detail'] += '\nReport cut: %d finding(s) omitted.' % omitted
+    return report
 
 
 def reported_model(execution_id):
