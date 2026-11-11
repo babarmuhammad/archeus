@@ -44,6 +44,7 @@ Synthetic secrets only (`SYNTH…`); no real credential appears anywhere.
 import builtins
 import json
 import os
+import subprocess
 import sys
 import threading
 
@@ -57,7 +58,7 @@ S = 'SYNTHhunter2'
 PEM_B1 = 'b3BlbnNzaC1rZXktdjEAAAAABG52aWUBAAA'
 PEM_B2 = 'AAAAlwAAAAtzc2gtZWQyNTUxOAAAQkFsd2F5cwAAA'
 PEM_B3 = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-GIT_ARGV = ['ls-files', '-t', '--cached', '--others', '--exclude-standard', '--']
+GIT_ARGV = ['ls-files', '-t', '-z', '--cached', '--others', '--exclude-standard', '--']
 
 
 def _write(root, parts, text):
@@ -172,7 +173,7 @@ def test_a_pem_in_a_memory_rule_and_the_secret_after_it_are_both_masked(tmp_path
            '-----END OPENSSH PRIVATE KEY-----\nconnect with db password=%s now\n' \
            % (PEM_B1, PEM_B2, PEM_B3, S)
     root = _project(tmp_path, {('rules', 'archeus-mem-db.md'): text})
-    git['out'] = '? .claude/rules/archeus-mem-db.md\n'
+    git['out'] = '? .claude/rules/archeus-mem-db.md\0'
     before = _tree(root)
     found = health.settings_hygiene(root)
     rel = os.path.join('.claude', 'rules', 'archeus-mem-db.md')
@@ -254,7 +255,7 @@ def test_an_unreadable_settings_file_is_never_reported_as_inspected(tmp_path, mo
     root = _project(tmp_path, {('settings.json',): secret,
                                ('settings.local.json',): secret})
     locked = os.path.join(root, '.claude', 'settings.local.json')
-    git['out'] = 'H .claude/settings.json\n'
+    git['out'] = 'H .claude/settings.json\0'
     real_open = builtins.open
     before = _tree(root)
 
@@ -393,7 +394,7 @@ def test_git_is_only_asked_about_the_files_that_were_inspected(tmp_path, git):
                                _allow('Bash(PGPASSWORD=%s psql)' % S),
                                ('settings.local.json',): _allow('Bash(ls:*)'),
                                (('rules', 'archeus-mem-x.md')): 'plain text\n'})
-    git['out'] = 'H .claude/settings.json\n? .claude/settings.local.json\n'
+    git['out'] = 'H .claude/settings.json\0? .claude/settings.local.json\0'
     before = _tree(root)
     found = health.settings_hygiene(root)
     assert git['calls'][0][0] == GIT_ARGV + ['.claude/settings.json',
@@ -407,8 +408,8 @@ def test_git_is_only_asked_about_the_files_that_were_inspected(tmp_path, git):
 def test_a_git_row_for_an_unrelated_path_is_not_a_finding(tmp_path, git):
     """health.py:77-80: rows must stay inside the inspected set."""
     root = _project(tmp_path, {('settings.json',): _allow('Bash(PGPASSWORD=%s psql)' % S)})
-    git['out'] = ('H .claude/settings.json\nH .env\n? ../../outside/secret.txt\n'
-                  'H src/settings.local.json\n')
+    git['out'] = ('H .claude/settings.json\0H .env\0? ../../outside/secret.txt\0'
+                  'H src/settings.local.json\0')
     found = health.settings_hygiene(root)
     inspected = {os.path.join('.claude', 'settings.json')}
     rows = [f for f in found if not f['line']]
@@ -509,7 +510,7 @@ def test_check_project_surfaces_the_secret_after_every_other_check(tmp_path, git
     card while every other check still passes."""
     root = _project(tmp_path, {('settings.local.json',):
                                _allow('Bash(PGPASSWORD=%s psql -h db.example.com)' % S)})
-    git['out'] = '? .claude/settings.local.json\n'
+    git['out'] = '? .claude/settings.local.json\0'
     before = _tree(root)
     issues = health.check_project(root, root)
     secret_rows = [i for i in issues if 'a secret in' in i[1]]
@@ -520,3 +521,23 @@ def test_check_project_surfaces_the_secret_after_every_other_check(tmp_path, git
     assert issues[-1] in secret_rows + git_rows, issues      # hygiene rows come last
     assert S not in repr(issues)
     assert _tree(root) == before
+
+
+@pytest.mark.parametrize('tracked', [True, False], ids=['tracked', 'untracked'])
+def test_a_rule_file_with_a_non_ascii_name_keeps_its_git_finding(tmp_path, tracked):
+    """health.py:83: git's default output quotes `café` as octal escapes, so the
+    row never matched the inspected path. Real git, no fake: the record must come
+    back raw (`-z`) and match the file that was read."""
+    root = str(tmp_path)
+    rules = os.path.join(root, '.claude', 'rules')
+    os.makedirs(rules)
+    rel = os.path.join('.claude', 'rules', 'archeus-mem-café.md')
+    with open(os.path.join(root, rel), 'w', encoding='utf-8', newline='\n') as f:
+        f.write('token=%s renew it\n' % S)
+    subprocess.run(['git', 'init', '-q'], cwd=root, check=True)
+    if tracked:
+        subprocess.run(['git', 'add', '--', rel], cwd=root, check=True)
+    found = [f for f in health.settings_hygiene(root) if not f['line']]
+    assert found == [{'path': rel, 'line': 0,
+                      'rule': 'tracked by git' if tracked else 'not ignored by git',
+                      'sample': ''}], found

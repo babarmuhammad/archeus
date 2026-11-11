@@ -76,9 +76,9 @@ def settings_hygiene(project_path):
                 out.append({'path': rel, 'line': i, 'rule': kind_of.get(line.strip().rstrip(','), default),
                             'sample': masked.strip()[:160]})
     exposed = {f['path'] for f in out} | {r for r in present if r.endswith('settings.local.json')}
-    listed = _git(['ls-files', '-t', '--cached', '--others', '--exclude-standard', '--']
+    listed = _git(['ls-files', '-t', '-z', '--cached', '--others', '--exclude-standard', '--']
                   + [r.replace(os.sep, '/') for r in sorted(exposed)], project_path) if exposed else None
-    for row in (listed or '').splitlines():
+    for row in (listed or '').split('\0'):
         tag, _, rel = row.partition(' ')
         if os.path.normpath(rel) in exposed:
             out.append({'path': os.path.normpath(rel), 'line': 0,
