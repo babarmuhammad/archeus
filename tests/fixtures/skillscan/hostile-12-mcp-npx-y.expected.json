@@ -6,7 +6,7 @@
     {
       "rule": "mcp-command-exec",
       "line": 4,
-      "match": "\"-y\""
+      "match": "\"npx\""
     }
   ],
   "note": "`npx -y` of an unpinned package is the hostile side of the npx boundary; the finding is reported at the command line."
