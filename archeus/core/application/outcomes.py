@@ -45,7 +45,8 @@ def by_model(conn):
     retries = {}
     for v, payload in conn.execute(
             "SELECT subject_id, payload FROM events WHERE type = 'verification.state_changed'"):
-        if json.loads(payload).get('trigger') == 'retry':
+        value = json.loads(payload)
+        if isinstance(value, dict) and value.get('trigger') == 'retry':
             retries[of_check.get(v)] = retries.get(of_check.get(v), 0) + 1
     checked = set(of_check.values())
     reviews = _count(conn, entities.Review, lambda v: v.mission_id,
