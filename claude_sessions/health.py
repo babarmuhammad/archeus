@@ -48,8 +48,11 @@ def settings_hygiene(project_path):
     rules = os.path.join(project_path or '', '.claude', 'rules')
     files = [os.path.join('.claude', n) for n in ('settings.json', 'settings.local.json')]
     if os.path.isdir(rules):
-        files += [os.path.join('.claude', 'rules', n) for n in sorted(os.listdir(rules))
-                  if n.startswith(RULE_PREFIX)]
+        try:
+            files += [os.path.join('.claude', 'rules', n) for n in sorted(os.listdir(rules))
+                      if n.startswith(RULE_PREFIX)]
+        except OSError:
+            pass
     out, present = [], []
     for rel in files:
         try:

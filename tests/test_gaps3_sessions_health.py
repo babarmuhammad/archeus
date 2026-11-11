@@ -475,12 +475,6 @@ def test_the_git_query_runs_after_the_content_scan_so_a_late_file_is_not_claimed
     assert S not in json.dumps(box['found'])
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='health.py:50-51 lists the rules directory outside any handler, '
-                          'so an OSError there reaches health.py:87-88 and _check_settings '
-                          '_hygiene answers [] for the WHOLE pass: the masked secret '
-                          'already collected from settings.local.json is dropped instead '
-                          'of reported with the rules half missing')
 def test_an_unlistable_rules_directory_does_not_suppress_the_reports_it_already_has(
         tmp_path, monkeypatch, git):
     """health.py:49-51 + 84-88: a directory that goes away or denies the listing
