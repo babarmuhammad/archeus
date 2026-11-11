@@ -5,6 +5,8 @@ a bare `why` in a mission's thread answered about that mission."""
 import json
 import os
 
+import pytest
+
 from archeus.api import schemas
 from archeus.core.application import trace
 from archeus.core.domain import entities, ids
@@ -141,6 +143,53 @@ def test_the_trace_lists_the_lessons_learned_from_the_mission_as_they_stand_now(
     assert read() == []
     kept = sorted([relation(), relation()])     # written after the mission ended: read now
     assert read() == kept
+
+
+@pytest.mark.parametrize('count,more', [(200, False), (201, True)])
+def test_trace_lessons_are_capped_after_excluding_expired_and_foreign_relations(db, actor, count, more):
+    mine, other = _mission(db, actor, 'mine'), _mission(db, actor, 'other')
+    kept = sorted(ids.new_id('knowledge_item') for _ in range(count))
+
+    def seed(tx):
+        for kid in reversed(kept):
+            tx.insert(entities.Relation(
+                id=ids.new_id('relation'), src_kind='knowledge_item', src_id=kid,
+                rel='learned_from', dst_kind='mission', dst_id=mine), actor=actor)
+        for extra in ({'dst_id': other}, {'valid_until': '2026-01-01T00:00:00Z'},
+                      {'dst_kind': 'project'}, {'rel': 'relates_to'}, {'src_kind': 'meeting'},
+                      {'src_id': kept[0]}):
+            tx.insert(entities.Relation(**dict(
+                id=ids.new_id('relation'), src_kind='knowledge_item',
+                src_id=ids.new_id('knowledge_item'), rel='learned_from', dst_kind='mission',
+                dst_id=mine) | extra), actor=actor)
+
+    _tx(db, seed)
+    with db.read() as conn:
+        result = trace.trace(conn, mine, _Registry())
+        again = trace.trace(conn, mine, _Registry())
+    schemas.validate(result, schemas.TYPES['Trace'])
+    assert trace.LESSONS_MAX == 200
+    assert result['lessons'] == again['lessons'] == kept[:200]
+    assert result['lessons_more'] is again['lessons_more'] is more
+
+
+def test_expired_lessons_do_not_use_up_the_cap(db, actor):
+    mine = _mission(db, actor, 'mine')
+    kept = sorted(ids.new_id('knowledge_item') for _ in range(250))
+
+    def seed(tx):
+        for n, kid in enumerate(kept):
+            tx.insert(entities.Relation(
+                id=ids.new_id('relation'), src_kind='knowledge_item', src_id=kid,
+                rel='learned_from', dst_kind='mission', dst_id=mine,
+                valid_until='2026-01-01T00:00:00Z' if n < 100 else None), actor=actor)
+
+    _tx(db, seed)
+    with db.read() as conn:
+        result = trace.trace(conn, mine, _Registry())
+    schemas.validate(result, schemas.TYPES['Trace'])
+    assert result['lessons'] == kept[100:]
+    assert result['lessons_more'] is False
 
 
 def test_the_trace_route_answers_and_refuses_an_unknown_mission(tc):

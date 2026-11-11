@@ -1982,6 +1982,7 @@ interface Trace {
   executions: TraceExecution[];
   executions_truncated: boolean;
   lessons: string[];
+  lessons_more: boolean;
 }
 ```
 

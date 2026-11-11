@@ -841,6 +841,7 @@ function TraceTab({ id }: { id: string }) {
                     <a href={objectHref('knowledge_item', k)}><RefLabel kind="knowledge_item" id={k} /></a>
                   </li>
                 ))}
+                {x.lessons_more ? <li>and more</li> : null}
               </ul>
             ) : (
               <Empty>None recorded. Lessons are written after a mission ends.</Empty>

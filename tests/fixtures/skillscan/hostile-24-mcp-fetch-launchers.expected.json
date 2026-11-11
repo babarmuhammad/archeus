@@ -1,0 +1,13 @@
+{
+  "fixture": "hostile-24-mcp-fetch-launchers.mcp.json",
+  "kind": "mcp",
+  "verdict": "hostile",
+  "findings": [
+    {"rule": "mcp-command-exec", "line": 4, "match": "\"npm\""},
+    {"rule": "mcp-command-exec", "line": 8, "match": "\"npm\""},
+    {"rule": "mcp-command-exec", "line": 12, "match": "\"pnpm\""},
+    {"rule": "mcp-command-exec", "line": 16, "match": "\"yarn\""},
+    {"rule": "mcp-command-exec", "line": 20, "match": "\"bunx\""}
+  ],
+  "note": "Equivalent package-fetch launchers share the unpinned-package rule."
+}
