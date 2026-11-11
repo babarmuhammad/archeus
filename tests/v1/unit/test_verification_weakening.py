@@ -8,6 +8,8 @@ the text the parser reads is the text Git writes.
 """
 
 import subprocess
+import sys
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +18,7 @@ from archeus.core.application import verification as V
 from archeus.core.verification import evidence
 from archeus.core.verification.worker import VerifyWorker
 from archeus.node.local import LocalNode
+from claude_sessions import proc
 
 BASE, REV = 'a' * 40, 'b' * 40
 
@@ -167,7 +170,7 @@ class _Node:
 def test_a_change_that_leaves_the_tests_alone_records_nothing():
     node = _Node(_diff('archeus/a.py', (['x'], ['y'])))
     assert evidence.weakening_check(node, 'root', BASE, REV) is None
-    assert node.asked == [('root', BASE, REV)]
+    assert node.asked == [('root', BASE, REV, evidence._DIFF_BYTES)]
 
 
 def test_a_finding_is_a_passing_git_check_with_its_findings():
@@ -292,7 +295,7 @@ def test_over_a_real_repository_the_detector_reads_what_git_writes(tmp_path):
 
 def test_git_diff_runs_no_configured_diff_or_textconv_program(monkeypatch):
     seen = []
-    monkeypatch.setattr('archeus.node.local._project_git', lambda root, args: seen.append(
+    monkeypatch.setattr('archeus.node.local._project_git', lambda root, args, **kw: seen.append(
         (root, args)) or SimpleNamespace(returncode=0, stdout=''))
     assert LocalNode.git_diff('root', BASE, REV) == ''
     root, args = seen[0]
@@ -370,3 +373,57 @@ def test_repository_config_that_calls_a_test_binary_hides_nothing(tmp_path):
     assert 'Binary files' in _git(root, 'diff', base, rev)      # the rig is live
     assert evidence.weakening(LocalNode.git_diff(root, base, rev)) == [
         'assertions removed: tests/test_a.py (1 net)', 'test file deleted: tests/test_gone.py']
+
+
+def test_a_cut_capture_keeps_the_weakening_before_the_cut_and_drops_the_partial_line():
+    class _Cut(str):
+        cut = True
+    prefix = _diff('tests/test_a.py', (['def test_a():'], []))
+    text = _Cut(prefix + '+@pytest.mark.skip')
+    c = evidence.weakening_check(_Node(text), 'root', BASE, REV)
+    assert c['findings'] == ['Diff cut: %d bytes kept; remaining test changes were not inspected.'
+                             % len(prefix.encode('utf-8')),
+                             'test removed: tests/test_a.py::test_a']
+
+
+def test_a_capped_read_of_a_real_diff_stops_git_and_keeps_the_weakening_in_the_prefix(
+        tmp_path, monkeypatch):
+    root = str(tmp_path)
+    _git(root, 'init', '-q')
+    (tmp_path / 'README').write_text('base\n')
+    _git(root, 'add', '.')
+    _git(root, 'commit', '-q', '-m', 'base')
+    base = _git(root, 'rev-parse', 'HEAD').strip()
+    (tmp_path / 'tests').mkdir()
+    (tmp_path / 'tests' / 'test_a.py').write_text(
+        'import pytest\n\n@pytest.mark.skip\ndef test_a():\n    assert 1\n')
+    (tmp_path / 'zzz_big.txt').write_text('x = 1\n' * 20000)
+    _git(root, 'add', '-A')
+    _git(root, 'commit', '-q', '-m', 'add the skip and a large file')
+    rev = _git(root, 'rev-parse', 'HEAD').strip()
+    got = LocalNode.git_diff(root, base, rev, max_bytes=4096)
+    assert got.cut and len(got.encode('utf-8')) <= 4096
+    monkeypatch.setattr(evidence, '_DIFF_BYTES', 4096)
+    c = evidence.weakening_check(LocalNode, root, base, rev)
+    assert c['findings'][0].startswith('Diff cut: ') and c['findings'][0].endswith(
+        'remaining test changes were not inspected.')
+    assert 'skip/xfail/only marker added: tests/test_a.py: @pytest.mark.skip' in c['findings']
+
+
+def test_a_child_that_keeps_writing_is_stopped_at_the_cap_and_reaped(monkeypatch):
+    started = []
+    real = subprocess.Popen
+
+    def recording(*a, **kw):
+        started.append(real(*a, **kw))
+        return started[-1]
+    monkeypatch.setattr(proc.subprocess, 'Popen', recording)
+    small = proc.run_capped([sys.executable, '-c', "print('hi')"], timeout=5, max_bytes=4096)
+    assert small.stdout.split() == [b'hi'] and small.cut is False and small.returncode == 0
+    writer = "import sys\nfor _ in range(1024): sys.stdout.buffer.write(b'x' * 65536)\n"
+    t0 = time.monotonic()
+    r = proc.run_capped([sys.executable, '-c', writer], timeout=5, max_bytes=4096)
+    assert r.cut is True and len(r.stdout) == 4096
+    assert time.monotonic() - t0 < 2.5
+    child = started[-1]
+    assert child.poll() is not None and child.returncode != 0

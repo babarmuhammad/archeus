@@ -22,6 +22,7 @@ WRK = 'archeus/core/verification/worker.py'
 REV = 'archeus/core/verification/reviewer.py'
 EVD = 'archeus/core/verification/evidence.py'
 LOC = 'archeus/node/local.py'
+PRC = 'claude_sessions/proc.py'
 CMD = 'archeus/core/application/commands.py'
 GRD = 'archeus/core/domain/guards.py'
 J = 'tests/v1/judge/test_v01_outcome_verification.py'
@@ -380,6 +381,27 @@ MUTATIONS = [
     ('Z92', 'discarded partial-line bytes are omitted from the cut count', [(EVD,
      "        omitted_bytes = len(raw) - len(diff.encode('utf-8'))", '')],
      [W + '::test_cut_diff_keeps_weakening_already_seen_and_discards_partial_line']),
+    ('Z93', 'a capped read is not capped while reading: the whole stream is read, then sliced', [(PRC,
+     "        while len(buf) <= max_bytes:\n            chunk = p.stdout.read1(max_bytes + 1 - len(buf))\n"
+     "            if not chunk:\n                break\n            buf += chunk\n",
+     "        buf = p.stdout.read()\n")],
+     [W + '::test_a_child_that_keeps_writing_is_stopped_at_the_cap_and_reaped']),
+    ('Z94', 'a child past the cap is not stopped', [(PRC,
+     "            p.terminate()\n            try:\n                p.wait(timeout=0.5)\n"
+     "            except subprocess.TimeoutExpired:\n                p.kill()\n        p.wait()",
+     "            pass\n        p.wait()")],
+     [W + '::test_a_child_that_keeps_writing_is_stopped_at_the_cap_and_reaped']),
+    ('Z95', 'the cut of a capture is dropped: the advisory is not produced', [(EVD,
+     "    cut = getattr(diff, 'cut', False)", "    cut = False")],
+     [W + '::test_a_capped_read_of_a_real_diff_stops_git_and_keeps_the_weakening_in_the_prefix',
+      W + '::test_a_cut_capture_keeps_the_weakening_before_the_cut_and_drops_the_partial_line']),
+    ('Z96', 'the partial last line of a cut capture is parsed', [(EVD,
+     "    if cut:\n        diff = diff[:diff.rfind('\\n') + 1]", "    if cut:\n        diff = diff")],
+     [W + '::test_a_cut_capture_keeps_the_weakening_before_the_cut_and_drops_the_partial_line']),
+    ('Z97', 'a git that was stopped at the cap reads as a failed diff', [(LOC,
+     "        if r is None or (r.returncode and not getattr(r, 'cut', False)):",
+     "        if r is None or r.returncode:")],
+     [W + '::test_a_capped_read_of_a_real_diff_stops_git_and_keeps_the_weakening_in_the_prefix']),
 ]
 
 

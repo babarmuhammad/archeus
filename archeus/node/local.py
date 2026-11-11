@@ -753,6 +753,11 @@ class MxcLaunch:
         return any(row['op'] == 'quarantine' for row in rows)
 
 
+class CutText(str):
+    """Text read up to a byte cap; `cut` is True when the source had more."""
+    cut = False
+
+
 class LocalNode:
     id = None       # the local node (ADR-0008): no ExecutionNode row in V1
 
@@ -1316,15 +1321,24 @@ class LocalNode:
         return _project_git_text(root, ['cat-file', 'blob', '%s:%s' % (rev, path)])
 
     @staticmethod
-    def git_diff(root, base, rev):
+    def git_diff(root, base, rev, max_bytes=None):
         """The unified diff of base..rev, no context lines and no configured diff
         program (nothing is spawned but git), every file as text, its paths
         unquoted, prefixed `a/` and `b/` and never paired as renames whatever the
-        repository configures; None when git cannot tell."""
+        repository configures; None when git cannot tell. With *max_bytes* at most
+        that many bytes are read and the text is a CutText whose `cut` says whether
+        the diff was longer. A cut is not a failure: git was stopped on purpose."""
         r = _project_git(root, ['-c', 'core.quotePath=false', 'diff', '-U0', '--no-color',
                                 '--text', '--no-ext-diff', '--no-textconv', '--no-renames',
-                                '--src-prefix=a/', '--dst-prefix=b/', base, rev, '--'])
-        return None if r is None or r.returncode else r.stdout
+                                '--src-prefix=a/', '--dst-prefix=b/', base, rev, '--'],
+                         max_bytes=max_bytes)
+        if r is None or (r.returncode and not getattr(r, 'cut', False)):
+            return None
+        if max_bytes is None:
+            return r.stdout
+        text = CutText(r.stdout)
+        text.cut = r.cut
+        return text
 
     @staticmethod
     def branch_exists(root, branch):
@@ -1834,14 +1848,15 @@ def _project_git_text(root, args, timeout=60):
     return None if r is None or r.returncode else r.stdout
 
 
-def _project_git(root, args, timeout=60):
+def _project_git(root, args, timeout=60, max_bytes=None):
     """A Git call in a project's own repository that runs none of its code: no
     hook, fsmonitor, filter selected by an attribute, replace ref or lazy fetch,
     and no configuration but the repository's own. The CompletedProcess with
     text decoded as written (no newline translation), or None. None includes a
     Git that lies inside *root* (the rule of `proc.run` for a bare program) and a
     Git below the floor, which ignores some of these pins: it is asked its version
-    and nothing else."""
+    and nothing else. With *max_bytes* stdout is read only up to that many bytes
+    (`proc.run_capped`) and the result's `cut` says whether there was more."""
     exe = proc.which('git', avoid=[root])
     if exe is None:
         return None
@@ -1857,7 +1872,9 @@ def _project_git(root, args, timeout=60):
                   'submodule.recurse=false', 'gc.auto=0', 'maintenance.auto=false',
                   'core.longpaths=true'):
             argv += ['-c', c]
-        def run(argv, cwd):
+        def run(argv, cwd, cap=None):
+            if cap is not None:
+                return proc.run_capped(argv, cwd=cwd, env=env, timeout=timeout, max_bytes=cap)
             return subprocess.run(argv, cwd=cwd, env=env, capture_output=True, timeout=timeout,
                                   stdin=subprocess.DEVNULL, creationflags=proc.no_window_flags)
         try:
@@ -1866,7 +1883,7 @@ def _project_git(root, args, timeout=60):
                 if not _at_floor(out):
                     return None
                 _VERSION[exe] = out
-            r = run(argv + list(args), root)
+            r = run(argv + list(args), root, max_bytes)
         except Exception:
             return None
     r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))

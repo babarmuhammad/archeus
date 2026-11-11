@@ -302,17 +302,23 @@ def weakening_check(node, root, base, revision):
     """The advisory `git` check of what the change did to the tests, or None when
     it did nothing to them. Always `pass`: it informs the review and the trace and
     never decides the verdict. Reads Git facts only."""
-    diff = node.git_diff(root, base, revision)
+    diff = node.git_diff(root, base, revision, _DIFF_BYTES)
     if diff is None:
         return {'name': WEAKENING, 'kind': 'git', 'result': 'pass',
                 'detail': 'git could not read the diff of %s..%s' % (base[:12], revision[:12])}
+    cut = getattr(diff, 'cut', False)
     raw = diff.encode('utf-8')
     omitted_bytes = max(0, len(raw) - _DIFF_BYTES)
     if omitted_bytes:
         prefix = raw[:_DIFF_BYTES].decode('utf-8', 'ignore')
         diff = prefix[:prefix.rfind('\n') + 1]
         omitted_bytes = len(raw) - len(diff.encode('utf-8'))
+    if cut:
+        diff = diff[:diff.rfind('\n') + 1]
     found = weakening(diff)
+    if cut:
+        found.insert(0, 'Diff cut: %d bytes kept; remaining test changes were not inspected.'
+                     % len(diff.encode('utf-8')))
     if omitted_bytes:
         found.insert(0, 'Diff cut: %d bytes omitted; remaining test changes were not inspected.'
                      % omitted_bytes)
