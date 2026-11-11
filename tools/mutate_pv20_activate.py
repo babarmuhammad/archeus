@@ -84,7 +84,7 @@ MUTATIONS = [
      "            private = resources.enter_context(tempfile.TemporaryDirectory(dir=root))",
      "            private = tempfile.mkdtemp(dir=root)")], [ROLLBACK]),
     ('PA13', 'the broker is not closed on rollback', [(PV,
-     "            resources.callback(broker.close)", "            pass")], [READY]),
+     "            resources.callback(broker.close, deadline=0.0)", "            pass")], [READY]),
     ('PA14', 'the watchdog host is not closed on rollback', [(PV,
      "            resources.callback(running.close)", "            pass")], [READY]),
     ('PA15', 'a host that is not ready is accepted', [(PV,

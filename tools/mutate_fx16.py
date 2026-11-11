@@ -91,8 +91,10 @@ MUTATIONS = [
      r"""    if line[0] == '{':""")],
      [S + 'test_a_marker_in_a_json_line_of_an_odd_shape_opens_the_key']),
     ('H15', 'close returns while an issue is still in flight', [(BRK,
-     r"""            self._drained.wait_for(lambda: all(t == me for t in self._issuing))""",
-     r"""            pass""")],
+     r"""            drained = self._drained.wait_for(
+                lambda: all(t == me for t in self._issuing),
+                timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))""",
+     r"""            drained = True""")],
      [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
     ('H16', 'an issue in flight is not counted', [(BRK,
      r"""            self._issuing.append(me)
@@ -110,10 +112,11 @@ MUTATIONS = [
             job = self._jobs.get(execution_id)""")],
      [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
     ('H18', 'an identity is established after Core began to stop', [(ISO,
-     r"""        if self.closed:
-            raise IsolationClosed()
-        if request.kind == 'verify':""",
-     r"""        if request.kind == 'verify':""")],
+     r"""        with self._lock:
+            self._check_establishment()
+            return self._admit_establishment(request, paths)""",
+     r"""        with self._lock:
+            return self._admit_establishment(request, paths)""")],
      [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
     ('H19', 'a confined check runs on after Core began to stop', [(ISO,
      r"""                if self.closed:
@@ -122,18 +125,18 @@ MUTATIONS = [
      r"""                exited = child.wait(""")],
      [C + 'test_a_confined_check_running_when_core_stops_ends_at_its_next_poll']),
     ('H20', 'the workers are joined before admission closes', [(RUN,
-     r"""                self.pv20.quiesce()""",
+     r"""                self.pv20.quiesce(deadline=end)""",
      r"""                pass""")],
      [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after']),
     ('H21', 'the isolation authority stays open while the workers finish', [(PV,
-     r"""        finally:
-            self.node.isolation.close_admission()""",
-     r"""        finally:
+     r"""        try:
+            self.node.isolation.close_admission(deadline=deadline)""",
+     r"""        try:
             pass""")],
      [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after',
       A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
     ('H22', 'the workloads end before the workers are joined', [(PV,
-     r"""            self.node.isolation.close_admission()""",
+     r"""            self.node.isolation.close_admission(deadline=deadline)""",
      r"""            self.node.isolation.close_admission()
             _dispose(self.node)""")],
      [A + 'test_stop_closes_admission_before_it_joins_and_the_workloads_after']),
@@ -150,28 +153,30 @@ MUTATIONS = [
      r"""stop_reason='spawn' if isinstance(err, broker_mod.BrokerClosed)""",
      r"""stop_reason='binding' if isinstance(err, broker_mod.BrokerClosed)""")],
      [X + 'test_a_grant_refused_by_a_closing_broker_is_an_uncharged_failed_start']),
-    ('H26', 'a broker that will not close leaves the isolation authority open', [(PV,
+    ('H26', 'broker drains before isolation admission closes', [(PV,
      r"""        try:
-            self.broker.close()
+            self.node.isolation.close_admission(deadline=deadline)
         finally:
-            self.node.isolation.close_admission()""",
-     r"""        self.broker.close()
-        self.node.isolation.close_admission()""")],
-     [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
+            self.broker.close(deadline=deadline)""",
+     r"""        try:
+            self.broker.close(deadline=deadline)
+        finally:
+            self.node.isolation.close_admission(deadline=deadline)""")],
+     [A + 'test_broker_drain_uses_worker_deadline_after_isolation_closes']),
     ('H27', 'an admission that will not close stops stop() short', [(RUN,
      r"""            try:
-                self.pv20.quiesce()
+                self.pv20.quiesce(deadline=end)
             except Exception as error:
                 closing = error
 """,
-     r"""            self.pv20.quiesce()
+     r"""            self.pv20.quiesce(deadline=end)
 """)],
      [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
     ('H28', 'an admission error is swallowed by stop()', [(RUN,
      r"""                closing = error
-            end = time.monotonic() + QUIESCE_S""",
+            for worker in (self.exec, self.verify, self.loop):""",
      r"""                pass
-            end = time.monotonic() + QUIESCE_S""")],
+            for worker in (self.exec, self.verify, self.loop):""")],
      [A + 'test_a_broker_that_will_not_close_does_not_stop_the_stop_short']),
     ('H29', 'a stop deletes the identity and the record of an execution it holds', [(PV,
      r"""            node.isolation.fence(execution_id, wait=0)""",
@@ -181,6 +186,64 @@ MUTATIONS = [
      r"""            node.isolation.fence(execution_id, wait=0)""",
      r"""            node.isolation.fence(execution_id)""")],
      [A + 'test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog']),
+    ('H40', 'broker drain ignores stop deadline', [(BRK,
+     "timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))",
+     "timeout=None)")], [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H41', 'broker drain timeout is silent', [(BRK,
+     "        if not drained:", "        if False:")],
+     [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H42', 'pending listeners survive drain timeout', [(BRK,
+     "            pending = list(self._pending.values())", "            pending = []")],
+     [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H43', 'isolation cancellation waits until after drain', [(ISO,
+     "        self.closed = True\n        acquired =", "        self.closed = False\n        acquired =")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H44', 'record writes resume after admission timeout', [(ISO,
+     "    def _save_establishment(self, rec):\n        self._check_establishment()",
+     "    def _save_establishment(self, rec):\n        pass")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H45', 'isolation drain ignores stop deadline', [(ISO,
+     "        acquired = self._lock.acquire(timeout=-1 if deadline is None else\n"
+     "                                      max(0.0, deadline - time.monotonic()))",
+     "        acquired = self._lock.acquire()")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H46', 'a profile starts after admission drain timed out', [(ISO,
+     "        try:\n            self._check_establishment()\n            identity =",
+     "        try:\n            identity =")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H47', 'a Job returning after admission timeout is retained', [(ISO,
+     "                if self.closed:\n                    self.boundary.close_job(job)\n"
+     "                    raise IsolationClosed()\n", "")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H48', 'failure cleanup is aborted by the admission close', [(ISO,
+     "            try:\n                step(*args, **kw)",
+     "            try:\n                self._check_establishment()\n                step(*args, **kw)")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H49', 'a late resolver starts a listener after stop returned', [(BRK,
+     "        with self._lock:\n            if self._closed:\n"
+     "                raise BrokerClosed('the broker is closed')\n        endpoint =",
+     "        endpoint =")], [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H50', 'a late launch leaves its listener alive', [(BRK,
+     "            # A launch already in flight may finish after close drained its endpoint.\n"
+     "            self.transport.close(endpoint)", "            pass")],
+     [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H51', 'a late launch error masks broker closure', [(BRK,
+     "            if closed:\n                raise BrokerClosed('the broker is closed') from None\n",
+     "")], [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H52', 'an endpoint returned after close starts serving', [(BRK,
+     "        if closed:\n            self.transport.close(endpoint)\n"
+     "            raise BrokerClosed('the broker is closed')\n        try:",
+     "        try:")], [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H53', 'an endpoint returned after close stays pending', [(BRK,
+     "            if not closed:\n                self._pending[id(endpoint)] = endpoint",
+     "            self._pending[id(endpoint)] = endpoint")],
+     [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
+    ('H54', 'the ownership save of a created profile is refused after close', [(ISO,
+     "        # never refused for closing: the profile exists now, and only this record can name it\n"
+     "        try:\n            self._save(rec)",
+     "        # never refused for closing: the profile exists now, and only this record can name it\n"
+     "        try:\n            self._save_establishment(rec)")],
+     [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
 ]
 
 

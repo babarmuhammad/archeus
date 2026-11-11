@@ -82,10 +82,10 @@ def candidate(tmp_path, monkeypatch, reviewed):
     events, cores = [], []
     close = broker.Broker.close
 
-    def broker_close(self):
+    def broker_close(self, **kw):
         if not self._closed:
             events.append('broker_closed')
-        close(self)
+        close(self, **kw)
 
     monkeypatch.setattr(broker.Broker, 'close', broker_close)
     bindings = pv20.NativeBindings(
@@ -874,7 +874,7 @@ def test_stop_closes_admission_before_it_joins_and_the_workloads_after(
 
 def test_a_broker_that_will_not_close_does_not_stop_the_stop_short(
         candidate, quiet_core, monkeypatch):
-    def stuck(self):
+    def stuck(self, **kw):
         raise OSError('broker will not close')
 
     core = candidate.activate()
@@ -887,12 +887,15 @@ def test_a_broker_that_will_not_close_does_not_stop_the_stop_short(
     assert candidate.events[-1] == 'host_closed'
 
 
-def test_a_late_worker_can_create_no_job_once_core_is_stopping(candidate, quiet_core, tmp_path):
+def test_a_late_worker_can_create_no_job_once_core_is_stopping(
+        candidate, quiet_core, tmp_path, monkeypatch):
     core = candidate.activate()
     authority = core.pv20.node.isolation
     request = make_satisfying_request(new_execution_id(), str(tmp_path / 'layout'))
     assert authority.requested(request.execution_id, SimpleNamespace(id='claude_code')) is True
     core.pv20.quiesce()
+    monkeypatch.setattr(authority.boundary, 'available',
+                        lambda: pytest.fail('a closed establishment reached the boundary'))
     with pytest.raises(isolation.IsolationClosed):
         authority.establish(request)
     with pytest.raises(isolation.IsolationClosed):
@@ -920,3 +923,120 @@ def test_a_stop_closes_the_job_of_a_live_execution_and_keeps_the_record_it_resum
     assert (rec.state, rec.failure, rec.owned, rec.sid) == ('established', '', True, sid)
     assert after.requested(request.execution_id, adapter) is True
     assert after.establish(request).sid == sid
+
+
+def test_broker_drain_uses_worker_deadline_after_isolation_closes(
+        candidate, quiet_core, monkeypatch, caplog):
+    core = candidate.activate()
+    core.start()
+    now = [100.0]
+    monkeypatch.setattr(runtime.time, 'monotonic', lambda: now[0])
+    monkeypatch.setattr(runtime, 'QUIESCE_S', 7.0)
+    authority = core.pv20.node.isolation
+    deadlines = []
+    admission = authority.close_admission
+    def close_admission(*, deadline):
+        deadlines.append(('isolation', deadline))
+        admission(deadline=deadline)
+        now[0] += 2.0
+    monkeypatch.setattr(authority, 'close_admission', close_admission)
+    def drain(*, deadline):
+        assert authority.closed
+        deadlines.append(('broker', deadline))
+        now[0] = deadline
+    monkeypatch.setattr(core.pv20.broker, 'close', drain)
+    class Worker:
+        def stop(self):
+            pass
+        def join(self, timeout):
+            assert timeout == 0.0
+            return True
+    core.exec = core.verify = core.loop = Worker()
+    core.stop()
+    assert deadlines == [('isolation', 107.0), ('broker', 107.0)] and core.db is None
+    assert caplog.text.count('did not stop') == 3
+
+
+@pytest.mark.parametrize('phase', ['available', 'unavailable', 'pending', 'create_profile',
+                                   'profile_error', 'create_job'])
+def test_establishment_cannot_resume_writes_after_admission_drain_timeout(
+        candidate, tmp_path, monkeypatch, phase, caplog):
+    authority = candidate.activate().pv20.node.isolation
+    request = make_satisfying_request(new_execution_id(), str(tmp_path / 'layout'))
+    entered, release = threading.Event(), threading.Event()
+    api = authority.boundary
+    operation = {'unavailable': 'available', 'pending': 'available',
+                 'profile_error': 'create_profile'}.get(phase, phase)
+    original = getattr(api, operation)
+    def stalled(*args):
+        entered.set()
+        assert release.wait(5)
+        if phase == 'unavailable':
+            return False
+        if phase == 'profile_error':
+            raise isolation.IsolationUnavailable('synthetic')
+        return original(*args)
+    if phase != 'pending':
+        monkeypatch.setattr(api, operation, stalled)
+    profiles = []
+    create_profile = api.create_profile
+    def creating(execution_id):
+        profiles.append(execution_id)
+        return create_profile(execution_id)
+    monkeypatch.setattr(api, 'create_profile', creating)
+    writes = []
+    save = authority._save
+    def saving(rec):
+        writes.append((rec.state, rec.owned))
+        result = save(rec)
+        if phase == 'pending' and len(writes) == 1:
+            entered.set()
+            assert release.wait(5)
+        return result
+    monkeypatch.setattr(authority, '_save', saving)
+    errors = []
+    def establish():
+        try:
+            authority.establish(request)
+        except BaseException as error:
+            errors.append(error)
+    worker = threading.Thread(target=establish, daemon=True)
+    worker.start()
+    try:
+        assert entered.wait(5)
+        closer = threading.Thread(target=authority.close_admission, kwargs={'deadline': 0.0},
+                                  daemon=True)
+        closer.start()
+        closer.join(5)
+        assert not closer.is_alive(), 'close_admission waited past its deadline'
+        before = list(writes)
+        profiles_before = list(profiles)
+        assert authority.closed and 'establishment drain timed out' in caplog.text
+        expected = [] if phase in ('available', 'unavailable') else [('pending', False)]
+        if phase == 'create_job':
+            expected.append(('pending', True))
+        assert before == expected
+    finally:
+        release.set()
+        worker.join(5)
+    # a failure after close still cleans up (its failed record is written); it is
+    # the failure that is raised, never IsolationClosed from the cleanup
+    failed = phase in ('unavailable', 'profile_error')
+    # a profile the OS created before close is recorded as owned, exactly once, and no more
+    owned_now = phase in ('create_profile', 'create_job')
+    extra = [('failed', False)] if failed else [('pending', True)] if phase == 'create_profile' else []
+    assert not worker.is_alive()
+    assert isinstance(errors[0], isolation.IsolationUnavailable if failed
+                      else isolation.IsolationClosed)
+    assert writes == before + extra
+    assert authority.held_jobs() == {} and profiles == profiles_before
+    rec = authority.record(request.execution_id)
+    if failed:
+        assert rec.state == 'failed' and rec.failure
+    else:
+        assert rec is None or (rec.state == 'pending' and not rec.failure
+                               and rec.owned == owned_now)
+        assert rec is None or not owned_now or rec.sid
+    with pytest.raises(isolation.IsolationClosed):
+        authority.establish(request)
+    assert writes == before + extra

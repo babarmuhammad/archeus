@@ -112,16 +112,19 @@ MUTATIONS = [
      [A + 'test_production_core_binds_every_switch']),
     ('G17', 'a closed broker still issues', [(BRK,
      r"""            self._closed = True
-            self._drained.wait_for(""",
-     r"""            self._drained.wait_for(""")],
+            drained = self._drained.wait_for(""",
+     r"""            drained = self._drained.wait_for(""")],
      [N + 'test_a_closed_broker_revokes_its_grants_and_issues_no_more_listeners',
       A + 'test_no_listener_is_bound_after_the_activation_closed']),
     ('G18', 'an issue in flight when the broker closes keeps its listener', [(BRK,
-     r"""            closed = self._closed
+     r"""            self._pending.pop(id(endpoint), None)
+            closed = self._closed
 """,
-     r"""            closed = False
+     r"""            self._pending.pop(id(endpoint), None)
+            closed = False
 """)],
-     [N + 'test_an_issue_in_flight_when_the_broker_closes_leaves_no_listener']),
+     [N + 'test_an_issue_in_flight_when_the_broker_closes_leaves_no_listener',
+      N + 'test_close_deadline_revokes_even_a_stalled_issue']),
     ('G19', 'revoke_all closes the broker', [(BRK,
      r"""    def revoke_all(self):
         with self._lock:""",
@@ -137,10 +140,10 @@ MUTATIONS = [
     ('G21', 'the watchdog closes before the broker and the workloads', [(PV,
      r"""            resources.callback(running.close)
             resources.callback(lambda: _dispose(node))
-            resources.callback(broker.close)
+            resources.callback(broker.close, deadline=0.0)
 """,
      r"""            resources.callback(lambda: _dispose(node))
-            resources.callback(broker.close)
+            resources.callback(broker.close, deadline=0.0)
             resources.callback(running.close)
 """)],
      [A + 'test_a_held_workload_is_disposed_after_the_grants_and_before_the_watchdog',

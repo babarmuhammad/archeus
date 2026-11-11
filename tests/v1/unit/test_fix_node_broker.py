@@ -147,7 +147,7 @@ def test_close_waits_for_an_issue_in_flight_and_leaves_no_listener():
     closer.join(5)
     assert not returned_early, 'close returned while an issue was still resolving'
     assert isinstance(errors[0], B.BrokerClosed) and b._grants == {}
-    assert b.transport.closed == ['ep1']
+    assert b.transport.closed == []
 
 
 def _issue_error(b):
@@ -156,3 +156,74 @@ def _issue_error(b):
     except Exception as error:
         return error
     return None
+
+
+@pytest.mark.parametrize('phase', ['resolve', 'create', 'launch', 'launch_error'])
+def test_close_deadline_revokes_even_a_stalled_issue(phase, caplog):
+    entered, release = threading.Event(), threading.Event()
+    b, _ = broker()
+    issued(b)
+    launched = set()
+    launch_calls = []
+    close = b.transport.close
+    def closing(endpoint):
+        launched.discard(endpoint)
+        close(endpoint)
+    b.transport.close = closing
+    if phase == 'resolve':
+        def resolve(host, port):
+            entered.set()
+            assert release.wait(5)
+            return ['93.184.216.34']
+        b._resolve = resolve
+    elif phase == 'create':
+        create = b.transport.create
+        def stalled_create(name, principal):
+            entered.set()
+            assert release.wait(5)
+            return create(name, principal)
+        b.transport.create = stalled_create
+        launch = b.transport.launch_bridge
+        def recording_launch(*args):
+            launch_calls.append(args)
+            return launch(*args)
+        b.transport.launch_bridge = recording_launch
+    else:
+        launch = b.transport.launch_bridge
+        def stalled(endpoint, binding):
+            entered.set()
+            assert release.wait(5)
+            if phase == 'launch_error':
+                raise OSError('listener closed during launch')
+            launched.add(endpoint)
+            return launch(endpoint, binding)
+        b.transport.launch_bridge = stalled
+    errors = []
+    issuer = threading.Thread(target=lambda: errors.append(_issue_error(b)), daemon=True)
+    issuer.start()
+    try:
+        assert entered.wait(5)
+        closer = threading.Thread(target=b.close, kwargs={'deadline': 0.0}, daemon=True)
+        closer.start()
+        closer.join(5)
+        assert not closer.is_alive(), 'close waited past its deadline'
+        assert b._closed and not b._grants and not b._pending
+        created_before = list(b.transport.created)
+        assert 'ep1' in b.transport.closed
+        if phase in ('launch', 'launch_error'):
+            assert 'ep2' in b.transport.closed
+        assert 'broker drain timed out' in caplog.text
+        with pytest.raises(B.BrokerClosed):
+            b.issue(binding())
+    finally:
+        release.set()
+        issuer.join(5)
+    assert not issuer.is_alive() and isinstance(errors[0], B.BrokerClosed)
+    assert not launched
+    assert b._grants == {} and b._pending == {}
+    if phase == 'create':
+        assert launch_calls == []
+    if phase == 'resolve':
+        assert b.transport.created == created_before
+    assert set(b.transport.closed) == set('ep%d' % (n + 1)
+                                         for n in range(len(b.transport.created)))

@@ -1192,8 +1192,7 @@ class LocalNode:
                 raise OSError('branch %s holds commits %s does not; it is left as it is'
                               % (branch, base))
             flag = '-B'
-        r = proc.run(['git', *_WORKTREE, 'add', flag, branch, '--', path, base], cwd=root,
-                     timeout=60)
+        r = _project_git(root, [*_WORKTREE, 'add', flag, branch, '--', path, base])
         if r is None or r.returncode != 0:
             raise OSError('git worktree add failed: %s' % ((r.stderr or r.stdout or '').strip()
                                                           if r is not None else 'no git'))
@@ -1204,10 +1203,10 @@ class LocalNode:
         """Remove a worktree this node created, only when git lists it."""
         listed = any(os.path.normcase(os.path.abspath(line[len('worktree '):])) ==
                      os.path.normcase(os.path.abspath(path))
-                     for line in (proc.git(['worktree', 'list', '--porcelain'], root)
+                     for line in (_project_git_text(root, ['worktree', 'list', '--porcelain'])
                                   or '').splitlines() if line.startswith('worktree '))
         if listed:
-            proc.git([*_WORKTREE, 'remove', '--force', '--', path], root, timeout=60)
+            _project_git_text(root, [*_WORKTREE, 'remove', '--force', '--', path], timeout=60)
         return listed
 
     @staticmethod
@@ -1247,12 +1246,12 @@ class LocalNode:
         """The commit HEAD names in *workdir*, or None (not a repository)."""
         if not workdir or not os.path.isdir(workdir):
             return None
-        out = (proc.git(['rev-parse', '--verify', '-q', 'HEAD'], workdir) or '').strip()
+        out = (_project_git_text(workdir, ['rev-parse', '--verify', '-q', 'HEAD']) or '').strip()
         return out or None
 
     @staticmethod
     def git_resolve(root, rev):
-        out = (proc.git(['rev-parse', '--verify', '-q', rev + '^{commit}'], root) or '').strip()
+        out = (_project_git_text(root, ['rev-parse', '--verify', '-q', rev + '^{commit}']) or '').strip()
         return out or None
 
     @staticmethod
@@ -1260,7 +1259,7 @@ class LocalNode:
         """Uncommitted changes in *workdir* (untracked files too, unless
         *tracked_only*); None when git cannot tell."""
         args = ['status', '--porcelain=v1'] + (['--untracked-files=no'] if tracked_only else [])
-        out = proc.git(args, workdir)
+        out = _project_git_text(workdir, args)
         return None if out is None else bool(out.strip())
 
     @staticmethod
@@ -1271,7 +1270,7 @@ class LocalNode:
                  '-c', 'commit.gpgsign=false']
 
         def run(what, args):
-            r = proc.run(['git'] + args, cwd=workdir, timeout=60)
+            r = _project_git(workdir, args)
             if r is None or r.returncode != 0:
                 raise OSError('git %s failed: %s' % (what, (r.stderr or r.stdout or '').strip()
                                                      if r is not None else 'no git'))
@@ -1279,25 +1278,28 @@ class LocalNode:
         run('add', ['add', '-A'])
         # `status` can call a file modified that `add` then stages nothing for: a
         # rewrite with the same content changes its size under core.autocrlf
-        staged = proc.run(['git', 'diff', '--cached', '--quiet'], cwd=workdir, timeout=60)
+        staged = _project_git(workdir, ['diff', '--cached', '--quiet'])
         if staged is None or staged.returncode != 0:
             run('commit', ident + ['commit', '-q', '--no-verify', '-m', message])
-        return LocalNode.git_head(workdir)
+        head = LocalNode.git_head(workdir)
+        if head is None:
+            raise OSError('git snapshot could not read HEAD')
+        return head
 
     @staticmethod
     def git_merge_base(root, a, b):
-        out = (proc.git(['merge-base', a, b], root) or '').strip()
+        out = (_project_git_text(root, ['merge-base', a, b]) or '').strip()
         return out or None
 
     @staticmethod
     def git_is_ancestor(root, a, b):
-        r = proc.run(['git', 'merge-base', '--is-ancestor', a, b], cwd=root, timeout=15)
+        r = _project_git(root, ['merge-base', '--is-ancestor', a, b], timeout=15)
         return r is not None and r.returncode == 0
 
     @staticmethod
     def git_numstat(root, base, rev):
         """[(added, deleted, path)] of base..rev; None when git cannot tell."""
-        out = proc.git(['diff', '--numstat', base, rev, '--'], root, timeout=60)
+        out = _project_git_text(root, ['diff', '--numstat', base, rev, '--'], timeout=60)
         if out is None:
             return None
         rows = []
@@ -1311,7 +1313,7 @@ class LocalNode:
     def git_file(root, rev, path):
         """The bytes of *path* as committed at *rev*, read from the object store
         (no checkout, no worktree, no filter); None when it is not there."""
-        return proc.git(['cat-file', 'blob', '%s:%s' % (rev, path)], root)
+        return _project_git_text(root, ['cat-file', 'blob', '%s:%s' % (rev, path)])
 
     @staticmethod
     def git_diff(root, base, rev):
@@ -1337,7 +1339,7 @@ class LocalNode:
         check_worktree_path(path)
         if LocalNode.branch_exists(root, branch):
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            r = proc.run(['git', *_WORKTREE, 'add', '--', path, branch], cwd=root, timeout=60)
+            r = _project_git(root, [*_WORKTREE, 'add', '--', path, branch])
             if r is None or r.returncode != 0:
                 raise OSError('git worktree add failed: %s'
                               % ((r.stderr or r.stdout or '').strip() if r else 'no git'))
@@ -1351,14 +1353,14 @@ class LocalNode:
         and the branch left as it was. Raises OSError when git cannot run."""
         ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
                  '-c', 'commit.gpgsign=false']
-        r = proc.run(['git'] + ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],
-                     cwd=workdir, timeout=120)
+        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],
+                         timeout=120)
         if r is None:
             raise OSError('git merge could not run')
         if r.returncode == 0:
             return 'merged', LocalNode.git_head(workdir)
-        paths = (proc.git(['diff', '--name-only', '--diff-filter=U'], workdir) or '').splitlines()
-        proc.run(['git', 'merge', '--abort'], cwd=workdir, timeout=60)
+        paths = (_project_git_text(workdir, ['diff', '--name-only', '--diff-filter=U']) or '').splitlines()
+        _project_git(workdir, ['merge', '--abort'])
         if not paths:
             raise OSError('git merge failed: %s' % (r.stderr or r.stdout or '').strip())
         return 'conflict', paths
@@ -1827,6 +1829,11 @@ def _git_exe():
     return exe
 
 
+def _project_git_text(root, args, timeout=60):
+    r = _project_git(root, args, timeout=timeout)
+    return None if r is None or r.returncode else r.stdout
+
+
 def _project_git(root, args, timeout=60):
     """A Git call in a project's own repository that runs none of its code: no
     hook, fsmonitor, filter selected by an attribute, replace ref or lazy fetch,
@@ -1835,8 +1842,8 @@ def _project_git(root, args, timeout=60):
     Git that lies inside *root* (the rule of `proc.run` for a bare program) and a
     Git below the floor, which ignores some of these pins: it is asked its version
     and nothing else."""
-    exe = _git_exe()
-    if proc.which(os.path.basename(exe), path=os.path.dirname(exe), avoid=[root]) is None:
+    exe = proc.which('git', avoid=[root])
+    if exe is None:
         return None
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as empty:
         none = os.path.join(empty, 'none')

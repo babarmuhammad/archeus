@@ -9,6 +9,7 @@ Production dispatch and native MXC execution remain disabled.
 """
 
 import json
+import logging
 import os
 import stat
 import subprocess
@@ -649,7 +650,7 @@ class Isolation:
         self._confined = set()
         self._admitted = set()        # verifier keys this Core admitted, not yet established
         self.closed = False             # Core is stopping: nothing new is established
-        self._lock = threading.Lock()   # a Job is created and held, or refused, whole
+        self._lock = threading.RLock()   # ponytail: one establishment at a time; per-execution gates if establishment throughput ever matters
 
     # ── the boundary ──
 
@@ -798,9 +799,20 @@ class Isolation:
         records which ones did not. A write that fails (`OSError`: the record, a
         quarantine line, a registry note) is an establishment failure like any other:
         nothing starts, and what is on disk decides what cleanup may do."""
-        api = self.boundary
+        with self._lock:
+            self._check_establishment()
+            return self._admit_establishment(request, paths)
+
+    def _check_establishment(self):
         if self.closed:
             raise IsolationClosed()
+
+    def _save_establishment(self, rec):
+        self._check_establishment()
+        self._save(rec)
+
+    def _admit_establishment(self, request, paths):
+        api = self.boundary
         if request.kind == 'verify':
             if request.execution_id in self._admitted:
                 self._admitted.discard(request.execution_id)     # admitted by run_confined
@@ -846,8 +858,9 @@ class Isolation:
         rec.state, rec.planned = 'pending', ()
         if not rec.owned:
             rec.sid = ''
-        self._save(rec)
+        self._save_establishment(rec)
         try:
+            self._check_establishment()
             identity = api.create_profile(rec.execution_id)
         except IsolationUnavailable as err:
             return self._fail(rec, err.reason, err.detail, paths)
@@ -862,11 +875,13 @@ class Isolation:
                               'no record that Core created %s' % rec.profile, paths)
         # the OS's answer, on disk before the Job, the invariant or anything else can fail
         rec.sid, rec.owned = sid, True
+        # never refused for closing: the profile exists now, and only this record can name it
         try:
             self._save(rec)
         except OSError:
             rec.owned = False     # not on disk, so not evidence: nothing deletes on it
             raise
+        self._check_establishment()
         try:
             job = self._ensure_job(request.execution_id)
             facts = api.job_facts(job)
@@ -893,7 +908,7 @@ class Isolation:
         rec.state = 'established'
         rec.reason = ''
         rec.capabilities = CAPABILITIES
-        self._save(rec)
+        self._save_establishment(rec)
         return rec
 
     def _fail(self, rec, reason, detail, paths=None):
@@ -936,6 +951,9 @@ class Isolation:
             job = self._jobs.get(execution_id)
             if job is None:
                 job = self.boundary.create_job(execution_id)
+                if self.closed:
+                    self.boundary.close_job(job)
+                    raise IsolationClosed()
                 self._jobs[execution_id] = job
             return job
 
@@ -947,11 +965,17 @@ class Isolation:
     def held_jobs(self):
         return dict(self._jobs)
 
-    def close_admission(self):
+    def close_admission(self, *, deadline=None):
         """Core is stopping: no identity is established and no Job created from now on,
         and a confined check running ends at its next poll."""
-        with self._lock:
-            self.closed = True
+        # Publish cancellation before waiting: an OS call may outlive the deadline.
+        self.closed = True
+        acquired = self._lock.acquire(timeout=-1 if deadline is None else
+                                      max(0.0, deadline - time.monotonic()))
+        if acquired:
+            self._lock.release()
+        else:
+            logging.getLogger(__name__).warning("isolation establishment drain timed out")
 
     def fence(self, execution_id, *, wait=EXIT_WAIT_S):
         """Quiescence before an import (C-1012-T030-2 §1): the Job's active-process

@@ -68,9 +68,8 @@ MUTATIONS = [
      "        args = [exe or args[0], *args[1:]]")],
      [T + 'test_a_bare_git_call_fails_closed_when_only_the_workspace_holds_git']),
     ('PL12', 'a project Git call runs a Git that lies inside the repository', [(LOCAL,
-     "    if proc.which(os.path.basename(exe), path=os.path.dirname(exe), avoid=[root]) is None:\n"
-     "        return None\n",
-     "")],
+     "    exe = proc.which('git', avoid=[root])\n",
+     "    exe = proc.which('git')\n")],
      [T + 'test_a_project_git_call_fails_closed_when_the_git_on_path_is_inside_the_repository']),
 ]
 

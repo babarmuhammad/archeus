@@ -48,6 +48,8 @@ def _fake_git(monkeypatch, answer):
         asked.append(list(args))
         return answer(list(args)) if callable(answer) else answer
     monkeypatch.setattr(local.proc, 'git', git)
+    monkeypatch.setattr(local, '_project_git_text', lambda root, args, timeout=60:
+                        git(args, root, timeout))
     return asked
 
 
@@ -58,6 +60,8 @@ def _fake_run(monkeypatch, results):
         asked.append(list(args))
         return results.pop(0) if isinstance(results, list) else results
     monkeypatch.setattr(local.proc, 'run', run)
+    monkeypatch.setattr(local, '_project_git', lambda root, args, timeout=60:
+                        run(['git'] + list(args), cwd=root, timeout=timeout))
     return asked
 
 
@@ -161,6 +165,8 @@ def test_remove_worktree_only_touches_what_git_lists(monkeypatch, tmp_path):
         return ''
     asked = []
     monkeypatch.setattr(local.proc, 'git', git)
+    monkeypatch.setattr(local, '_project_git_text', lambda root, args, timeout=60:
+                        git(args, root, timeout))
     assert LocalNode.remove_worktree(str(tmp_path / 'root'), mine) is True
     assert asked[-1] == [*local._WORKTREE, 'remove', '--force', '--', mine]
     assert LocalNode.remove_worktree(str(tmp_path / 'root'), other) is False
@@ -236,6 +242,10 @@ class _Merge:
         self.runs, self.merge, self.unmerged = [], merge, unmerged
         monkeypatch.setattr(local.proc, 'run', self._run)
         monkeypatch.setattr(local.proc, 'git', self._git)
+        monkeypatch.setattr(local, '_project_git_text', lambda root, args, timeout=60:
+                            self._git(args, root, timeout))
+        monkeypatch.setattr(local, '_project_git', lambda root, args, timeout=60:
+                            self._run(['git'] + list(args), cwd=root, timeout=timeout))
 
     def _run(self, args, **kw):
         self.runs.append(list(args))

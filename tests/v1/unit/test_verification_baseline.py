@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -195,7 +196,8 @@ def test_the_base_checkout_is_a_detached_tree_of_the_base_from_an_absolute_git(
     with open(os.path.join(tree, 'f.txt')) as f:
         assert f.read() == 'old'
     assert LocalNode.drop_checkout(root, tree) is True and not os.path.exists(tree)
-    assert len(seen) >= 3 and all(os.path.isabs(a) and a == local._git_exe() for a in seen)
+    assert len(seen) >= 3 and all(os.path.isabs(a) and os.path.normcase(a) == os.path.normcase(
+        local._git_exe()) for a in seen)
 
 
 @pytest.mark.parametrize('version', [b'git version 2.44.9.windows.1\n', b'git 2.49.0\n', b''])
@@ -211,6 +213,9 @@ def test_a_git_below_the_floor_is_asked_its_version_and_nothing_else(version, tm
     with pytest.raises(OSError, match='2.45.0'):
         LocalNode.base_checkout(root, tree, BASE)
     assert LocalNode.git_diff(root, BASE, REV) is None
+    assert LocalNode.git_dirty(root) is None
+    with pytest.raises(OSError, match='git add failed'):
+        LocalNode.git_snapshot(root, 'refused')
     assert LocalNode.drop_checkout(root, tree) is False     # nothing says it is gone
     assert asked and all(args == ['version'] and cwd != root for args, cwd in asked)
     assert local._VERSION == {}
@@ -279,3 +284,98 @@ def test_the_base_checkout_runs_no_hook_or_filter_of_the_repository(tmp_path, mo
     assert (tmp_path / 'b' / 'tree' / 'f.txt').read_text() == 'old'
     assert LocalNode.drop_checkout(str(root), tree) is True
     assert not marker.exists()
+
+
+@pytest.mark.parametrize('tracked_only', [False, True])
+def test_dirty_and_snapshot_run_no_repository_filter_or_hook(tmp_path, tracked_only):
+    root = tmp_path / 'repo'
+    root.mkdir()
+    _git(str(root), 'init', '-q')
+    (root / 'f.txt').write_text('old')
+    _git(str(root), 'add', '.')
+    _git(str(root), 'commit', '-q', '-m', 'base')
+    marker = tmp_path / 'ran'
+    script = tmp_path / 'mark.py'
+    script.write_text('import sys\nopen(%r, "a").write("ran\\n")\n'
+                      'sys.stdout.write(sys.stdin.read())\n' % str(marker))
+    run = '"%s" "%s"' % (sys.executable.replace('\\', '/'), str(script).replace('\\', '/'))
+    _git(str(root), 'config', 'filter.mark.clean', run)
+    (root / '.gitattributes').write_text('*.txt filter=mark\n')
+    hook = root / '.git' / 'hooks' / 'pre-commit'
+    hook.write_text('#!/bin/sh\n%s </dev/null\n' % run)
+    hook.chmod(0o755)
+    monitor = root / '.git' / 'hooks' / 'query-fsmonitor'
+    monitor.write_text('#!/bin/sh\n%s </dev/null\n' % run)
+    monitor.chmod(0o755)
+    _git(str(root), 'config', 'core.fsmonitor', str(monitor).replace('\\', '/'))
+    (root / 'f.txt').write_text('changed')
+    _git(str(root), 'add', '.')
+    assert marker.exists()
+    marker.unlink()
+    (root / 'f.txt').write_text('changed again')
+    assert LocalNode.git_dirty(str(root), tracked_only=tracked_only) is True
+    head = LocalNode.git_snapshot(str(root), 'guarded')
+    assert head and LocalNode.git_dirty(str(root)) is False
+    assert not marker.exists()
+    assert LocalNode.git_file(str(root), head, 'f.txt') == 'changed again'
+
+
+def test_guarded_status_and_snapshot_fail_closed(tmp_path, monkeypatch):
+    from archeus.node import local
+    monkeypatch.setattr(local.proc, 'run', lambda *a, **kw: pytest.fail('unguarded snapshot'))
+    monkeypatch.setattr(local, '_project_git', lambda *a, **kw: None)
+    assert LocalNode.git_dirty(str(tmp_path)) is None
+    with pytest.raises(OSError, match='git add failed'):
+        LocalNode.git_snapshot(str(tmp_path), 'refused')
+    for result in (None, SimpleNamespace(returncode=2, stdout='', stderr='bad')):
+        def run(root, args, **kw):
+            return SimpleNamespace(returncode=0, stdout='', stderr='') if args == ['add', '-A'] else result
+        monkeypatch.setattr(local, '_project_git', run)
+        with pytest.raises(OSError, match='git commit failed'):
+            LocalNode.git_snapshot(str(tmp_path), 'refused')
+
+
+def test_snapshot_without_a_readable_head_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(local, '_project_git', lambda *a, **kw:
+                        SimpleNamespace(returncode=0, stdout='', stderr=''))
+    with pytest.raises(OSError, match='could not read HEAD'):
+        LocalNode.git_snapshot(str(tmp_path), 'refused')
+
+
+@pytest.mark.parametrize('when', ['before', 'after'])
+def test_verification_refuses_an_unknown_dirty_status(rig, when):
+    fake = _Base(at_base=0)
+    node = fake.node(git_dirty=_script(None) if when == 'before' else _script(False, None))
+    r = rig(workdir='ws', branch='task', node=node)
+    if when == 'before':
+        with pytest.raises(OSError, match='git status'):
+            r.worker._verify_task(r.tid, r.eid)
+        assert 'git_snapshot' not in node.calls and fake.runs == []
+    else:
+        assert r.worker._verify_task(r.tid, r.eid) is True
+        assert any(c['name'] == 'workspace' and c['result'] == 'error'
+                   for c in r.one().checks)
+
+
+@pytest.mark.parametrize('method,args', [
+    ('git_head', ()), ('git_resolve', ('HEAD',)),
+    ('git_merge_base', ('HEAD', 'main')), ('git_is_ancestor', ('HEAD', 'main')),
+    ('git_numstat', ('HEAD', 'main')), ('git_file', ('HEAD', 'f.txt')),
+    ('git_diff', ('HEAD', 'main')), ('branch_exists', ('main',)),
+    ('add_worktree', ('tree', 'main')), ('mission_worktree', ('tree', 'main', 'HEAD')),
+    ('remove_worktree', ('tree',)), ('git_merge', ('main', 'merge')),
+    ('base_checkout', ('tree', 'HEAD')), ('drop_checkout', ('tree',)),
+])
+def test_verification_project_git_methods_use_the_guard(tmp_path, monkeypatch, method, args):
+    calls = []
+    tree = str(tmp_path / 'tree')
+    def guarded(root, argv, **kw):
+        calls.append((root, argv))
+        out = ('worktree %s\n' % tree if argv == ['worktree', 'list', '--porcelain']
+               else 'a' * 40 + '\n')
+        return SimpleNamespace(returncode=0, stdout=out, stderr='')
+    monkeypatch.setattr(local, '_project_git', guarded)
+    monkeypatch.setattr(local.proc, 'git', lambda *a, **kw: pytest.fail('unguarded proc.git'))
+    monkeypatch.setattr(local.proc, 'run', lambda *a, **kw: pytest.fail('unguarded proc.run'))
+    getattr(LocalNode, method)(str(tmp_path), *(tree if a == 'tree' else a for a in args))
+    assert calls and all(root == str(tmp_path) for root, _ in calls)

@@ -51,6 +51,7 @@ import hmac
 import http.client
 import ipaddress
 import json
+import logging
 import re
 import secrets
 import socket
@@ -286,6 +287,7 @@ class Broker:
         self._pool, self._share = pool, max(1, pool // 4)
         self._in_flight = 0         # across all grants, against the pool
         self.busy_refused = 0       # 503s for the pool or a grant's share, counted
+        self._pending = {}
         self._grants = {}           # digest -> grant
         self._closed = False
         self._lock = threading.Lock()
@@ -328,14 +330,30 @@ class Broker:
         self.revoke(binding.execution_id)
         token = new_token()
         d = digest(token)
+        with self._lock:
+            if self._closed:
+                raise BrokerClosed('the broker is closed')
         endpoint = self.transport.create(pipe_name(binding, secrets.token_hex(8)),
                                          binding.principal)
+        with self._lock:
+            closed = self._closed
+            if not closed:
+                self._pending[id(endpoint)] = endpoint
+        if closed:
+            self.transport.close(endpoint)
+            raise BrokerClosed('the broker is closed')
         try:
             port = self.transport.launch_bridge(endpoint, binding)
         except BaseException:
+            with self._lock:
+                self._pending.pop(id(endpoint), None)
+                closed = self._closed
             self.transport.close(endpoint)
+            if closed:
+                raise BrokerClosed('the broker is closed') from None
             raise
         with self._lock:
+            self._pending.pop(id(endpoint), None)
             closed = self._closed
             stale = [] if closed else [
                 self._grants.pop(k) for k, g in list(self._grants.items())
@@ -344,6 +362,7 @@ class Broker:
                 self._grants[d] = {'binding': binding, 'endpoint': endpoint, 'requests': 0,
                                    'active': 0, 'port': port}
         if closed:
+            # A launch already in flight may finish after close drained its endpoint.
             self.transport.close(endpoint)
             raise BrokerClosed('the broker is closed')
         for g in stale:
@@ -377,14 +396,23 @@ class Broker:
             ids = {g['binding'].execution_id for g in self._grants.values()}
         return sum(self.revoke(x) for x in ids)
 
-    def close(self):
-        """Revoke every grant and issue no more. Returns once no other thread is inside
-        `issue`: one that is finds the broker closed and drops its listener first."""
+    def close(self, *, deadline=None):
+        """Revoke grants and drain issues until the shared stop deadline."""
         me = threading.get_ident()
         with self._drained:
             self._closed = True
-            self._drained.wait_for(lambda: all(t == me for t in self._issuing))
-        return self.revoke_all()
+            drained = self._drained.wait_for(
+                lambda: all(t == me for t in self._issuing),
+                timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))
+        with self._lock:
+            pending = list(self._pending.values())
+            self._pending.clear()
+        for endpoint in pending:
+            self.transport.close(endpoint)
+        revoked = self.revoke_all()
+        if not drained:
+            logging.getLogger(__name__).warning("broker drain timed out; admission is closed")
+        return revoked
 
     def authorize(self, token, principal, endpoint=None):
         """The grant *token* names, for a client the pipe observed as *principal*; with an

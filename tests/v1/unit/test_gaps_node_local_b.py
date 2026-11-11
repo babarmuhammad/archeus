@@ -122,6 +122,10 @@ class Seam:
         self._git, self._run = git, run
         monkeypatch.setattr(local.proc, 'git', self.git)
         monkeypatch.setattr(local.proc, 'run', self.run)
+        monkeypatch.setattr(local, '_project_git_text', lambda root, args, timeout=60:
+                            self.git(args, root, timeout))
+        monkeypatch.setattr(local, '_project_git', lambda root, args, timeout=60:
+                            self.run(['git'] + list(args), cwd=root, timeout=timeout))
 
     def git(self, args, cwd, timeout=15):
         self.git_calls.append(SimpleNamespace(argv=list(args), cwd=cwd, timeout=timeout))
