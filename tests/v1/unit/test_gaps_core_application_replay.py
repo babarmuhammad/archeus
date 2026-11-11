@@ -340,7 +340,7 @@ def test_a_failed_check_or_an_unmet_criterion_never_reads_as_passed(db):
             id=vid, subject=Ref('task', k['task']), verifier='code', plan_id=k['plan'],
             state=state, base_revision='e' * 40,
             checks=({'name': 'tests', 'kind': 'command', 'result': check},)
-            + (({'name': 'memory', 'kind': 'state', 'result': 'skip'},)
+            + (({'name': 'advisory', 'kind': 'state', 'result': 'skip'},)
                if name == 'skip-is-green' else ()),
             criteria=({'index': 0, 'text': 'works', 'check': 'automatic',
                        'result': criterion},)))

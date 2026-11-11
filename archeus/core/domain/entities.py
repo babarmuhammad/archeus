@@ -1514,11 +1514,15 @@ class ResourcePolicy(Entity):
 
 
 #: What an execution may be let load from its settings sources (ADR-0049; P20 D6),
-#: and, kind `context`, what Archeus may add to a project's agents' prompts (T-1093)
-OPT_IN_KINDS = ('source', 'plugin', 'mcp', 'context')
+#: and, kind `context`, what Archeus may add to a project's agents' prompts (T-1093),
+#: and, kind `verify`, what Core may also run when it verifies a project's work
+OPT_IN_KINDS = ('source', 'plugin', 'mcp', 'context', 'verify')
 #: `injection`: the mission's context package rendered into each execution's prompt;
 #: `review_rules`: the project's REVIEW.md and review lessons in its reviews (T-1106)
 CONTEXT_OPT_INS = ('injection', 'review_rules')
+#: `baseline`: a failed test command is run again in a checkout of the base revision,
+#: one more checkout per verification (T-1068, owner decision 113)
+VERIFY_OPT_INS = ('baseline',)
 #: The settings source each owner holds (D6): the account home is the account's;
 #: a project's committed `.claude/` and its local settings are the project's
 SOURCE_OWNERS = {'account': ('user',), 'project': ('project', 'local')}
@@ -1564,6 +1568,10 @@ class OptIn(Entity):
                                        or self.name not in CONTEXT_OPT_INS):
             raise ValueError("a context opt-in is a project's, one of %s: not %s %r" % (
                 ', '.join(CONTEXT_OPT_INS), self.owner, self.name))
+        if self.kind == 'verify' and (self.owner != 'project'
+                                      or self.name not in VERIFY_OPT_INS):
+            raise ValueError("a verify opt-in is a project's, one of %s: not %s %r" % (
+                ', '.join(VERIFY_OPT_INS), self.owner, self.name))
 
 
 @entity

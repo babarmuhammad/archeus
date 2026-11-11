@@ -110,10 +110,6 @@ def prompt(conn, m, diff, homes, rules_lines=()):
         lines.append('Mission checks at %s:' % (m.integration_head or 'no repository')[:12])
         for v in mission_vs:
             lines.append('- criterion %d: %s' % (v.criterion, v.state))
-        memory = next((c for v in mission_vs for c in v.checks if c['name'] == 'memory'), None)
-        if memory:
-            lines.append('Memory (advisory, not part of the verdict): %s, %s' % (
-                memory['result'], memory['detail']))
     if diff:
         lines.append('Changes on the mission branch (added, deleted, path):')
         lines += ['- %s %s %s' % row for row in diff[:80]]

@@ -38,6 +38,8 @@ from ..execution.manager import HOOK, mission_branch
 from . import evidence, reviewer
 
 log = logging.getLogger('archeus.core')
+#: the project opt-in that runs a failed test again at the base revision (T-1068)
+BASELINE = ('project', 'verify', 'baseline')
 
 _CODE = 'code'
 _HUMAN = 'generic_human'
@@ -54,14 +56,12 @@ class VerifyWorker:
     verification to the engine's injected stub verifier."""
 
     def __init__(self, db, *, actor, missions, calls=None, node=None, verify=True,
-                 timeout_s=None, switches=None, baseline=()):
+                 timeout_s=None, switches=None):
         self.db, self.actor, self.missions, self.calls = db, actor, missions, calls
         self.node = node or LocalNode()
         self.verify = verify
         self.switches = checked(switches)
         self.timeout_s = timeout_s or evidence.CHECK_TIMEOUT_S
-        # the project and mission ids whose failed tests also run at the base (T-1068)
-        self.baseline = frozenset(baseline)
         self.on_wake = None
         self.stopping = lambda: False
         # mission -> the state it was left in when its worktree path was too long
@@ -295,17 +295,20 @@ class VerifyWorker:
                                      workdirs=workdirs)
 
     def _with_base(self, vid, m, plan_id, root, base, cmds, checks, version):
-        """Opt-in and advisory (T-1068): each failed test check also says what its
-        command did at *base*. Run only for a failure, through `run_commands` in a
-        detached checkout of *base*, once per (plan, base, command): the plan's
-        earlier rows keep it on their checks."""
-        if base is None or root is None or not self.baseline & {m.id, m.project_id}:
+        """Advisory, and only for a project opted in (T-1068, `BASELINE`): each failed
+        test check also says what its command did at *base*. Run only for a failure,
+        through `run_commands` in a detached checkout of *base*, once per (plan, base,
+        command): the plan's earlier rows keep it on their checks."""
+        if base is None or root is None:
             return checks
         failed = {c['name'] for c in checks if c['kind'] == 'command' and c['result'] == 'fail'}
         mine = [(k, c) for k, c in cmds if k == 'test' and '%s: %s' % (k, c) in failed]
         if not mine:
             return checks
         with self.db.read() as conn:
+            if BASELINE not in optins.effective(conn, account_id=None,
+                                                project_id=m.project_id):
+                return checks
             known = {c['name']: c['baseline']
                      for v in _rows(conn, entities.Verification, plan_id=plan_id)
                      for c in v.checks if (c.get('baseline') or {}).get('revision') == base
@@ -388,7 +391,7 @@ class VerifyWorker:
                                            timeout_s=self.timeout_s,
                                            verifier_version=v.verifier_version)
             checks = self._with_base(v.id, m, v.plan_id, root, v.base_revision, cmds, checks,
-                                     v.verifier_version) + self._memory(m, root)
+                                     v.verifier_version)
             head = self.node.git_head(v.workspace) if m.integration_base is not None else None
             self._do(V.record, missions=self.missions, verification_id=v.id, checks=checks,
                      head=head)
@@ -511,7 +514,7 @@ class VerifyWorker:
                                            verifier_version=started[0]['verifier_version'])
             checks = self._with_base(started[0]['verification_id'], m, plan.entity.id, root,
                                      m.integration_base, cmds, checks,
-                                     started[0]['verifier_version']) + self._memory(m, root)
+                                     started[0]['verifier_version'])
             started = [out['verification_id'] for out in started]
             # the branch may have moved while the commands ran: the last record notes it
             head = self.node.git_head(ws) if m.integration_base is not None else None
@@ -519,14 +522,6 @@ class VerifyWorker:
                 self._do(V.record, missions=self.missions, verification_id=vid, checks=checks,
                          head=head if n == len(started) else None)
         return bool(auto or human)
-
-    def _memory(self, m, root):
-        """The advisory `memory` check, only for a mission branch that changed files."""
-        if m.integration_base and m.integration_head and self.node.git_numstat(
-                root, m.integration_base, m.integration_head):
-            with self.db.read() as conn:
-                return [evidence.memory_check(conn, m.id)]
-        return []
 
     # ── review (§14) ──
 

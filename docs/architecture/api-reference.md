@@ -1205,7 +1205,7 @@ interface MissionStopped {
 ```ts
 interface OptIn {
   id: string;
-  kind: 'source' | 'plugin' | 'mcp' | 'context';
+  kind: 'source' | 'plugin' | 'mcp' | 'context' | 'verify';
   name: string;
   opted_in: boolean;
   owner?: 'account' | 'project';
@@ -1981,6 +1981,7 @@ interface Trace {
   route_decisions: RouteDecision[];
   executions: TraceExecution[];
   executions_truncated: boolean;
+  lessons: string[];
 }
 ```
 
@@ -2452,7 +2453,7 @@ interface SetMissionResourcesRequest {
 ```ts
 interface SetOptInRequest {
   owner_id: string;
-  kind: 'source' | 'plugin' | 'mcp' | 'context';
+  kind: 'source' | 'plugin' | 'mcp' | 'context' | 'verify';
   name: string;
   opted_in: boolean;
   expected_version?: number | null;

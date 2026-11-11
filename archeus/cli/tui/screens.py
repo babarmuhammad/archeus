@@ -1452,6 +1452,11 @@ def trace(app, doc, m, mp):
                 else:
                     doc.add(n + app.st.paint('failed' if st.get('is_error') else 'returned',
                                              'state.blocked' if st.get('is_error') else 'text-2'))
+    doc.h('Lessons learned')
+    if not t['lessons']:
+        doc.empty('None recorded. Lessons are written after a mission ends.')
+    for k in t['lessons']:
+        doc.add('  ' + ref_label(app, 'knowledge_item', k), target=open_('knowledge_item', k))
     doc.hint('%d policy and %d route decisions: the Why tab explains them.'
              % (len(t['policy_decisions']), len(t['route_decisions'])))
 

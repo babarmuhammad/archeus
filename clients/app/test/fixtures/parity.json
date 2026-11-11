@@ -776,7 +776,7 @@
         "result": "pass"
        },
        {
-        "name": "memory",
+        "name": "advisory",
         "result": "skip"
        }
       ]
@@ -1965,6 +1965,22 @@
      }
     },
     "/v1/missions/msn_1?x=1"
+   ],
+   "out": true
+  },
+  {
+   "fn": "staleBy",
+   "args": [
+    {
+     "event": "relation.created",
+     "data": {
+      "subject": {
+       "kind": "relation",
+       "id": "rel_1"
+      }
+     }
+    },
+    "/v1/missions/msn_1/trace"
    ],
    "out": true
   },

@@ -1,8 +1,9 @@
 """T-1068: the base-revision regression check (coarse pass-to-pass). A failed
 test command is run again at the base the task (or the mission branch) started
-from, opt-in per project or mission, and its check then says `regressed` or
-`also fails in a clean base checkout`. Advisory: no result and no verdict moves. Per-test
-granularity is out of scope: the label is of the whole command."""
+from, for a project opted in (`verify baseline`, off by default: owner decision
+113), and its check then says `regressed` or `also fails in a clean base checkout`.
+Advisory: no result and no verdict moves. Per-test granularity is out of scope: the
+label is of the whole command."""
 
 import os
 import shutil
@@ -11,6 +12,9 @@ import sys
 
 import pytest
 
+from archeus.core.application import optins
+from archeus.core.domain import entities, ids
+from archeus.core.domain.values import Ref
 from archeus.core.verification import evidence
 from archeus.node import local
 from archeus.node.local import LocalNode
@@ -76,17 +80,24 @@ class _Base:
                      | more)
 
 
-def _task(rig, fake, opt='project', **kw):
+def _opt(r, opted_in=True):
+    """The user's own command, as the opt-in route runs it."""
+    return r.db.writer.execute(optins.set_opt_in, dict(
+        actor=Ref('user_device', ids.new_id('principal')), owner_id=r.proj, kind='verify',
+        name='baseline', opted_in=opted_in))
+
+
+def _task(rig, fake, opt=True, **kw):
     r = rig(workdir='ws', branch='task', node=fake.node(), **kw)
-    r.worker.baseline = frozenset({r.proj if opt == 'project' else r.mid} if opt else ())
+    if opt:
+        _opt(r)
     assert r.worker.pass_once() == {'changed': True, 'did': 'verify_task'}
     return r
 
 
-@pytest.mark.parametrize('opt', ['project', 'mission'])
-def test_a_test_that_passed_at_the_base_and_fails_now_is_regressed_and_still_failed(rig, opt):
+def test_a_test_that_passed_at_the_base_and_fails_now_is_regressed_and_still_failed(rig):
     fake = _Base(at_base=0)
-    r = _task(rig, fake, opt=opt)
+    r = _task(rig, fake)
     v = r.one()
     test = next(c for c in v.checks if c['name'] == 'test: tool --check')
     assert v.state == 'FAILED' and test['result'] == 'fail'
@@ -106,9 +117,31 @@ def test_a_test_failing_at_the_base_too_is_failing_at_base(rig):
 
 def test_without_the_opt_in_nothing_runs_at_the_base(rig):
     fake = _Base()
-    r = _task(rig, fake, opt=None)
+    r = _task(rig, fake, opt=False)
     assert fake.made == [] and 'baseline' not in r.one().checks[-1]
     assert r.one().state == 'FAILED'
+
+
+def test_an_opt_out_or_another_projects_opt_in_runs_nothing_at_the_base(rig):
+    fake = _Base()
+    r = rig(workdir='ws', branch='task', node=fake.node())
+    _opt(r)
+    _opt(r, opted_in=False)
+    other = entities.Project(id=ids.new_id('project'), workspace_id=ids.GLOBAL_WORKSPACE,
+                             name='other')
+    r._place(other, entities.OptIn(id=ids.new_id('opt_in'), kind='verify', name='baseline',
+                                   project_id=other.id),
+             entities.OptIn(id=ids.new_id('opt_in'), kind='source', name='project',
+                            project_id=r.proj))
+    assert r.worker.pass_once() == {'changed': True, 'did': 'verify_task'}
+    assert fake.made == [] and r.one().state == 'FAILED'
+
+
+@pytest.mark.parametrize('owner,name', [('account', 'baseline'), ('project', 'anything')])
+def test_a_verify_opt_in_is_only_a_projects_and_only_a_named_one(owner, name):
+    with pytest.raises(ValueError, match='verify opt-in'):
+        entities.OptIn(id=ids.new_id('opt_in'), kind='verify', name=name,
+                       **{owner + '_id': ids.new_id(owner)})
 
 
 def test_a_passing_test_or_a_failing_build_costs_no_base_run(rig):
@@ -135,7 +168,7 @@ def test_an_errored_base_run_is_tried_again_and_a_failed_removal_is_logged(rig, 
     kept = evidence.base_of(dict(_fail(), result='error'), BASE)
     r.vrow(state='FAILED', execution_id=r.erow(),
            checks=(_fail(name='test: tool --check', baseline=kept),))
-    r.worker.baseline = frozenset({r.proj})
+    _opt(r)
     assert r.worker.pass_once() == {'changed': True, 'did': 'verify_task'}
     assert len(fake.made) == 1 and 'was not removed' in caplog.text
 
@@ -148,7 +181,7 @@ def test_one_base_run_per_plan_base_and_command(rig, kept_at, runs):
     # an earlier attempt's row of the same plan, its command already run at *kept_at*
     r.vrow(state='FAILED', execution_id=r.erow(),
            checks=(_fail(name='test: tool --check', baseline=kept),))
-    r.worker.baseline = frozenset({r.proj})
+    _opt(r)
     assert r.worker.pass_once() == {'changed': True, 'did': 'verify_task'}
     assert len(fake.made) == runs
     v = next(v for v in r.rows() if v.execution_id == r.eid)
@@ -161,10 +194,10 @@ def test_a_mission_criterion_is_compared_with_the_integration_base(rig):
     fake.run_check = lambda ws, argv, **kw: _result(exit_code=0 if ws.endswith('tree') else 1)
     r = rig(mission_state='VERIFYING', base=BASE, head=REV, task_state='SUCCEEDED',
             success=(AUTO,), node=fake.node())
-    r.worker.baseline = frozenset({r.mid})
+    _opt(r)
     assert r.worker._verify_mission(r.mid) is True
     v = r.one('mission')
-    test = next(c for c in v.checks if 'baseline' in c)   # the advisory memory check follows it
+    test = next(c for c in v.checks if 'baseline' in c)
     assert v.state == 'FAILED' and test['baseline']['label'] == 'regressed'
     assert fake.made[0][2] == BASE and fake.dropped
 

@@ -69,7 +69,8 @@ export const RULES: Record<string, string[]> = {
   ],
   "relation": [
     "/v1/world/graph**",
-    "/v1/knowledge/**"
+    "/v1/knowledge/**",
+    "/v1/missions/*/trace"
   ],
   "feedback": [
     "/v1/knowledge**"

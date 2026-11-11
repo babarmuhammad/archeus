@@ -833,6 +833,19 @@ function TraceTab({ id }: { id: string }) {
           {x.executions.map((e) => (
             <ExecutionLanes key={e.id} e={e} />
           ))}
+          <Section title="Lessons learned">
+            {x.lessons.length ? (
+              <ul>
+                {x.lessons.map((k) => (
+                  <li key={k}>
+                    <a href={objectHref('knowledge_item', k)}><RefLabel kind="knowledge_item" id={k} /></a>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty>None recorded. Lessons are written after a mission ends.</Empty>
+            )}
+          </Section>
           <p className="hint">
             {x.policy_decisions.length} policy {x.policy_decisions.length === 1 ? 'decision' : 'decisions'},{' '}
             {x.route_decisions.length} route {x.route_decisions.length === 1 ? 'decision' : 'decisions'}: the Why tab explains them.

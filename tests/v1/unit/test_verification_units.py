@@ -22,6 +22,10 @@ def test_an_error_is_never_a_pass():
     assert V.verdict_of([_c('pass'), _c('error')]) == 'ERROR'
 
 
+def test_a_skipped_check_is_neither_a_failure_nor_an_error():
+    assert V.verdict_of([_c('pass'), _c('skip', 'state')]) == 'PASSED'
+
+
 def test_no_outcome_check_is_never_a_pass():
     assert V.verdict_of([]) == 'ERROR'
     assert V.verdict_of([_c('pass', 'git')]) == 'ERROR'      # a diff is not an outcome

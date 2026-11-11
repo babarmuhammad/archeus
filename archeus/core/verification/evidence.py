@@ -298,19 +298,6 @@ def weakening_check(node, root, base, revision):
             'detail': '%d finding(s), advisory' % len(found), 'findings': found[:_FINDINGS_KEPT]}
 
 
-def memory_check(conn, mission_id):
-    """`memory`: advisory, never `fail`. `pass` when a knowledge row cites the mission
-    (a lesson learned from it), `skip` when none does yet; the verdict ignores both."""
-    n = sum(r.entity.valid_until is None for r in rows.where(
-        conn, entities.Relation, src_kind='knowledge_item', rel='learned_from',
-        dst_kind='mission', dst_id=mission_id))
-    if n:
-        return {'name': 'memory', 'kind': 'state', 'result': 'pass',
-                'detail': '%d knowledge relation(s) cite this mission' % n}
-    return {'name': 'memory', 'kind': 'state', 'result': 'skip',
-            'detail': 'no knowledge, decision or lesson row cites this mission yet'}
-
-
 def reported_model(execution_id):
     """The last model the execution's own stream names, or None (§22):
     corroborating evidence, compared with the routed model, never trusted."""

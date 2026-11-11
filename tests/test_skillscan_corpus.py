@@ -17,7 +17,7 @@ RULES = {
 
 def test_skillscan_corpus_sidecars():
     sidecars = sorted(ROOT.glob("*.expected.json"))
-    assert len(sidecars) == 36, len(sidecars)
+    assert len(sidecars) == 37, len(sidecars)
     benign = hostile = 0
     covered = set()
     for side in sidecars:

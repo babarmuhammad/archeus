@@ -747,7 +747,7 @@ export interface MissionStopped {
 
 export interface OptIn {
   id: string;
-  kind: 'source' | 'plugin' | 'mcp' | 'context';
+  kind: 'source' | 'plugin' | 'mcp' | 'context' | 'verify';
   name: string;
   opted_in: boolean;
   owner?: 'account' | 'project';
@@ -1287,6 +1287,7 @@ export interface Trace {
   route_decisions: RouteDecision[];
   executions: TraceExecution[];
   executions_truncated: boolean;
+  lessons: string[];
 }
 
 export interface TraceExecution {
@@ -1590,7 +1591,7 @@ export interface SetMissionResourcesRequest {
 
 export interface SetOptInRequest {
   owner_id: string;
-  kind: 'source' | 'plugin' | 'mcp' | 'context';
+  kind: 'source' | 'plugin' | 'mcp' | 'context' | 'verify';
   name: string;
   opted_in: boolean;
   expected_version?: number | null;

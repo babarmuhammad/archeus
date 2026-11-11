@@ -30,7 +30,6 @@ U = 'tests/v1/unit/test_verification_units.py'
 P = 'tests/v1/integration/test_provenance.py'
 W = 'tests/v1/unit/test_verification_weakening.py'
 R = 'tests/v1/unit/test_gaps_core_verification_reviewer.py'
-MC = 'tests/v1/unit/test_verification_memory_check.py'
 B = 'tests/v1/unit/test_verification_baseline.py'
 RR = 'tests/v1/unit/test_review_rules.py'
 RMD = 'tests/v1/integration/test_review_md.py'
@@ -169,42 +168,12 @@ MUTATIONS = [
     ('Z26', 'the review prompt lists every finding, uncapped', [(REV,
      "c.get('findings', ())[:20]]", "c.get('findings', ())]")],
      [R + '::test_the_weakening_findings_of_a_verification_are_listed_for_the_reviewer']),
-    # ── memory: advisory, never a verdict (T-1096) ──
-    ('Z27', 'the memory check recorded for a mission that changed nothing', [(WRK,
-     "self.node.git_numstat(\n                root, m.integration_base, m.integration_head):",
-     "not self.node.git_numstat(\n                root, m.integration_base, m.integration_head):")],
-     [MC + '::test_no_changed_files_or_no_branch_records_no_memory_check',
-      MC + '::test_a_mission_that_changed_files_and_cites_a_lesson_passes_the_memory_check']),
-    ('Z50', 'a retried mission verification drops the memory check', [(WRK,
-     "                                     v.verifier_version) + self._memory(m, root)",
-     "                                     v.verifier_version)")],
-     [MC + '::test_a_retried_mission_verification_records_the_memory_check_too']),
-    ('Z51', 'an expired or unrelated relation counts as a lesson', [(EVD,
-     "    n = sum(r.entity.valid_until is None for r in rows.where(\n"
-     "        conn, entities.Relation, src_kind='knowledge_item', rel='learned_from',\n",
-     "    n = sum(True for r in rows.where(\n        conn, entities.Relation,\n")],
-     [MC + '::test_only_a_live_lesson_learned_from_the_mission_counts']),
-    ('Z28', 'a missing memory row is a fail', [(EVD,
-     "    return {'name': 'memory', 'kind': 'state', 'result': 'skip',",
-     "    return {'name': 'memory', 'kind': 'state', 'result': 'fail',")],
-     [MC + '::test_without_a_row_it_is_a_skip_with_a_detail_and_the_verdict_stays_passed']),
-    ('Z29', 'the memory check passes with nothing cited', [(EVD,
-     "    if n:\n        return {'name': 'memory'",
-     "    if True:\n        return {'name': 'memory'")],
-     [MC + '::test_memory_check_is_a_read_of_relations_to_the_mission']),
-    ('Z30', "another mission's lesson counted for this one", [(EVD,
-     "dst_kind='mission', dst_id=mission_id))",
-     "dst_kind='mission'))")],
-     [MC + '::test_without_a_row_it_is_a_skip_with_a_detail_and_the_verdict_stays_passed']),
+    # ── a skipped check is advisory, never a verdict ──
     ('Z31', 'a skipped check weighed as an error', [(VER,
      "    results = [c['result'] for c in checks]\n    if 'fail' in results:",
      "    results = [c['result'] if c['result'] != 'skip' else 'error' for c in checks]\n"
      "    if 'fail' in results:")],
-     [MC + '::test_a_memory_check_never_flips_the_verdict[skip]']),
-    ('Z32', 'the review prompt leaves the memory check out', [(REV,
-     "        if memory:\n",
-     "        if False:\n")],
-     [MC + '::test_the_review_prompt_says_the_memory_check_is_advisory']),
+     [U + '::test_a_skipped_check_is_neither_a_failure_nor_an_error']),
     ('Z33', 'a skipped check stops a replayed verification reading as passed', [(
      'archeus/core/application/replay.py',
      "c.get('result') in ('pass', 'skip')", "c.get('result') == 'pass'")],
@@ -212,9 +181,25 @@ MUTATIONS = [
       '::test_a_failed_check_or_an_unmet_criterion_never_reads_as_passed']),
     # ── the base-revision regression check: opt-in, advisory, bounded (T-1068) ──
     ('Z34', 'every failed test runs at the base without the opt-in', [(WRK,
-     "        if base is None or root is None or not self.baseline & {m.id, m.project_id}:",
-     "        if base is None or root is None:")],
+     "            if BASELINE not in optins.effective(conn, account_id=None,",
+     "            if False and BASELINE not in optins.effective(conn, account_id=None,")],
      [B + '::test_without_the_opt_in_nothing_runs_at_the_base']),
+    # owner decision 113: the opt-in is the project's own `verify baseline` row
+    ('Z710', 'an opted-in project runs nothing at the base', [(WRK,
+     "            if BASELINE not in optins.effective(conn, account_id=None,",
+     "            if True or BASELINE not in optins.effective(conn, account_id=None,")],
+     [B + '::test_a_test_that_passed_at_the_base_and_fails_now_is_regressed_and_still_failed']),
+    ('Z711', "another project's opt-in runs this project's tests at the base", [(WRK,
+     "            if BASELINE not in optins.effective(conn, account_id=None,\n"
+     "                                                project_id=m.project_id):",
+     "            if BASELINE not in {(o['owner'], o['kind'], o['name'])\n"
+     "                                for o in optins.listing(conn) if o['opted_in']}:")],
+     [B + '::test_an_opt_out_or_another_projects_opt_in_runs_nothing_at_the_base']),
+    ('Z712', "a verify opt-in may be an account's or name anything", [(
+     'archeus/core/domain/entities.py',
+     "        if self.kind == 'verify' and (self.owner != 'project'",
+     "        if False and (self.owner != 'project'")],
+     [B + '::test_a_verify_opt_in_is_only_a_projects_and_only_a_named_one']),
     ('Z35', 'a test failing at the base too is taken as passed', [(EVD,
      "    out = dict(check, baseline=base)\n",
      "    out = dict(check, baseline=base, result='pass' if base['result'] == 'fail'\n"

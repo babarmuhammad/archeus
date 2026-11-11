@@ -3,5 +3,5 @@
   "kind": "mcp",
   "verdict": "benign",
   "findings": [],
-  "note": "Pinned `npx @example/tool@1.4.2` without `-y` is the written benign side of the npx boundary."
+  "note": "`npx` of a package pinned to a full version (`@example/tool@1.4.2`) is the benign side of the npx boundary, with or without `-y`."
 }

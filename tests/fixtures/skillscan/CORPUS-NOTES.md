@@ -19,7 +19,7 @@ native evidence, not a security boundary.
 | instruction-override | tells the model to discard earlier/system instructions or hide from the user; prose or HTML comment | — |
 | fetch-and-execute | download piped straight into a shell/interpreter (curl&#124;sh, wget -qO-&#124;bash, iwr&#124;iex) | — |
 | long-base64 | run of >= 200 consecutive base64 chars that is NOT a `data:image/...;base64,` URI | [PROPOSED threshold] |
-| mcp-command-exec | MCP command is a shell wrapper (sh -c, bash -c, cmd /c, powershell -Command) or `npx -y` of an unpinned package; plain local programs, pinned npx without -y, remote http are NOT flagged | [PROPOSED boundary, owner item 96] |
+| mcp-command-exec | MCP command is a shell wrapper (sh -c, bash -c, cmd /c, powershell -Command) or `npx` of an unpinned package, with or without `-y`; plain local programs, npx of a package pinned to a full version, npx of a path on this machine (never a network share), npx with `--no` or `--no-install` and no `-y`, remote http are NOT flagged | owner item 96, widened by decision 114 |
 | hook-command-exec | settings hook command is a shell wrapper; plain script or plain `npx prettier --check .` is NOT flagged | — |
 | tool-name-collision | MCP server key equals a built-in tool name (Bash, Read, Write, Edit); agent `tools:` lists may name built-ins | [I: narrow reading, card author's] |
 | description-drift | same skill read twice, `description:` differs; second read's sidecar carries the finding and `pair_with` | [I: board marks this as inference] |
@@ -40,7 +40,7 @@ native evidence, not a security boundary.
 | benign-10-claude-md-table.md | benign | — |
 | benign-11-mcp-local-node.mcp.json | benign | — |
 | benign-12-mcp-http-remote.mcp.json | benign | — (remote http exempt) |
-| benign-13-mcp-npx-pinned.mcp.json | benign | — (pinned, no -y) |
+| benign-13-mcp-npx-pinned.mcp.json | benign | — (pinned) |
 | benign-14-mcp-python-module.mcp.json | benign | — |
 | benign-15-settings-hook-script.settings.json | benign | — |
 | benign-16-settings-hook-npx-check.settings.json | benign | — (probe) |
@@ -64,14 +64,15 @@ native evidence, not a security boundary.
 | hostile-16-settings-hook-powershell.settings.json | hostile | hook-command-exec |
 | hostile-17-mcp-server-named-bash.mcp.json | hostile | tool-name-collision (plain node command) |
 | hostile-18-skill-drift-b.md | hostile | description-drift (pair_with benign-17-skill-drift-a.md) |
+| hostile-19-mcp-npx-unpinned.mcp.json | hostile | mcp-command-exec (npx, unpinned, no -y) |
 
 ## Decisions T-1079 / the owner (item 96) still have to take
 
 1. long-base64 threshold: 200 is [PROPOSED]; hostile-11 (240) and benign-04
    (300 inside a data URI) pin both sides as far as they are pinned today.
-2. Whether `npx -y` of a *pinned* package is flagged: undecided; the corpus
-   only fixes `npx -y` unpinned as hostile (hostile-12) and pinned-without-y
-   as benign (benign-13).
+2. DECIDED (owner decision 114): `npx` of an unpinned package is flagged with
+   or without `-y` (hostile-12, hostile-19); a package pinned to a full
+   version is not, with or without `-y` (benign-13).
 3. Whether a mere *mention* of `curl | sh` in warning prose is flagged: this
    corpus says NO (benign-05), but the lint may overrule and would then have
    to move benign-05 or update its sidecar.

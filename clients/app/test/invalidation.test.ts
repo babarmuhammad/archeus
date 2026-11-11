@@ -30,7 +30,7 @@ test('execution progress re-reads only that execution', () => {
 });
 
 test('every kind the trace reads makes an open trace stale (P21 C)', () => {
-  for (const k of ['mission', 'plan', 'task', 'execution', 'checkpoint', 'approval', 'verification', 'review', 'route_decision', 'policy_decision'])
+  for (const k of ['mission', 'plan', 'task', 'execution', 'checkpoint', 'approval', 'verification', 'review', 'route_decision', 'policy_decision', 'relation'])
     assert.ok(staleBy(frame(k, 'x_1'))('/v1/missions/msn_1/trace'), k);
   assert.ok(!staleBy(frame('device', 'dvc_1'))('/v1/missions/msn_1/trace'));
 });

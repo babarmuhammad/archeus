@@ -899,3 +899,19 @@ def test_H02_the_cli_opts_in_and_out_and_lists(core, capsys):
     assert cli.main(['executions', 'opt-in', acc, 'source', 'project']) == 2   # Core refuses
     assert cli.main(['executions', 'opt-in', acc, 'skill', 'x']) == 2          # usage
     capsys.readouterr()
+
+
+def test_the_cli_opts_a_project_into_the_baseline_run_and_an_account_never(core, capsys, tmp_path):
+    root = str(tmp_path / 'repo')
+    subprocess.run(['git', 'init', '-q', root], check=True)
+    proj = core.http('POST', '/v1/projects', body=_key({
+        'name': 'P', 'root_paths': [root]})).json()['project']['id']
+    acc = core.http('POST', '/v1/accounts', body=_key({
+        'harness_id': 'fake', 'label': 'W', 'auth_kind': 'api_key'})).json()['id']
+    assert cli.main(['executions', 'opt-in', proj, 'verify', 'baseline']) == 0
+    assert capsys.readouterr().out.strip() == '%s verify baseline: opted in (version 1)' % proj
+    with core.core.db.read() as conn:
+        assert optins.effective(conn, account_id=None, project_id=proj) == (
+            ('project', 'verify', 'baseline'),)
+    assert cli.main(['executions', 'opt-in', acc, 'verify', 'baseline']) == 2   # Core refuses
+    assert cli.main(['executions', 'opt-in', proj, 'verify', 'other']) == 2

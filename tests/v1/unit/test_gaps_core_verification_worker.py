@@ -765,8 +765,7 @@ def test_only_the_last_record_of_a_mission_criterion_carries_the_head(rig):
     # mission that had "moved" while its own checks ran
     r = rig(mission_state='VERIFYING', base=BASE, head=REV, task_state='SUCCEEDED',
             success=(AUTO, AUTO),
-            node=_Node(git_head=_script(REV, REV2), run_check=_script(_result()),
-                       git_numstat=_script([])))
+            node=_Node(git_head=_script(REV, REV2), run_check=_script(_result())))
     seen = r.spy()
     assert r.worker._verify_mission(r.mid) is True
     assert [kw['head'] for (name, kw) in seen if name == 'record'] == [None, REV2]
@@ -805,8 +804,7 @@ def test_a_mission_row_names_the_head_only_where_its_branch_is_the_base(rig, bas
     # the head of *its own* worktree is what the record is given
     r = rig(mission_state='VERIFYING', base=base, head=REV if base else None,
             success=(AUTO,), task_state='SUCCEEDED',
-            node=_Node(git_head=_script(REV), run_check=_script(_result()),
-                       git_numstat=_script([])))
+            node=_Node(git_head=_script(REV), run_check=_script(_result())))
     vid = r.vrow(subject='mission', criterion=0, state='ERROR', errors=1,
                  holds_mission=False, revision=REV if base else None,
                  workspace='wt' if base else r.root)

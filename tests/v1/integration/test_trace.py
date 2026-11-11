@@ -117,6 +117,32 @@ def test_the_trace_reads_only_the_newest_executions_and_says_so(db, actor, monke
         assert trace.trace(conn, mine, _Registry(fake=FakeHarness()))['executions_truncated'] is False
 
 
+def test_the_trace_lists_the_lessons_learned_from_the_mission_as_they_stand_now(db, actor):
+    mine, other = _mission(db, actor, 'mine'), _mission(db, actor, 'other')
+
+    def relation(**kw):
+        r = entities.Relation(**dict(
+            id=ids.new_id('relation'), src_kind='knowledge_item',
+            src_id=ids.new_id('knowledge_item'), rel='learned_from', dst_kind='mission',
+            dst_id=mine) | kw)
+        _tx(db, lambda tx: tx.insert(r, actor=actor))
+        return r.src_id
+
+    def read():
+        with db.read() as conn:
+            t = trace.trace(conn, mine, _Registry())
+        schemas.validate(t, schemas.TYPES['Trace'])
+        return t['lessons']
+
+    assert read() == []
+    for extra in ({'dst_id': other}, {'rel': 'relates_to'}, {'src_kind': 'meeting'},
+                  {'valid_until': '2026-01-01T00:00:00Z'}):
+        relation(**extra)
+    assert read() == []
+    kept = sorted([relation(), relation()])     # written after the mission ended: read now
+    assert read() == kept
+
+
 def test_the_trace_route_answers_and_refuses_an_unknown_mission(tc):
     mid = tc.http('POST', '/v1/missions', body={'title': 't', 'objective': 'o',
                                                 'idempotency_key': 'k-trace'}).json()['id']
