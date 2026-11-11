@@ -644,7 +644,9 @@ def class_items(h, who, peer):
     for cls in ('request', 'response', 'sentinel', 'state'):
         items += [r_no('peer-%s-read' % cls, j(other[cls], 'seed.txt'), ev('peer_' + cls),
                        s['%s.%s' % (peer, cls)]),
-                  w_no('peer-%s-write' % cls, j(other[cls], 'w.txt'))]
+                  # not w.txt: the peer's own run leaves that file in its writable folders,
+                  # and a denial row is judged by the file being absent
+                  w_no('peer-%s-write' % cls, j(other[cls], 'peer_w.txt'))]
     return items
 
 

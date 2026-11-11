@@ -273,6 +273,17 @@ def test_class_items_cover_all_seven_classes_and_both_peers_in_one_direction(tmp
             assert i.secret.startswith('S_') and i.secret in h.seeds.values()
 
 
+def test_no_denial_row_names_a_file_the_other_direction_writes(tmp_path):
+    """Both directions run in one fixture, and a denial row fails when its file exists:
+    a row aimed at a file the peer's own run wrote reads as a breach that never happened."""
+    h = _harness(tmp_path)
+    written = {i.path for who, peer in (('p', 'q'), ('q', 'p'))
+               for i in n2.class_items(h, who, peer) if i.kind == 'write_ok'}
+    denied = {i.path for who, peer in (('p', 'q'), ('q', 'p'))
+              for i in n2.class_items(h, who, peer) if i.kind == 'write_no'}
+    assert written and denied and not written & denied
+
+
 def test_class_items_chain_fits_one_command_line(tmp_path):
     h = _harness(tmp_path)
     for who, peer in (('p', 'q'), ('q', 'p')):
