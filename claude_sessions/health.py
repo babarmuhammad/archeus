@@ -12,6 +12,7 @@ import re
 import json
 from collections import Counter
 
+from archeus.cli.tui.view import clean
 from archeus.core.redact import redact
 
 from . import config as _c
@@ -86,9 +87,9 @@ def _check_settings_hygiene(project_path):
         found = settings_hygiene(project_path)
     except Exception:
         return []
-    return [('warn', '%s:%d: a secret in %s: %s' % (f['path'], f['line'], f['rule'], f['sample']),
+    return [('warn', clean('%s:%d: a secret in %s: %s' % (f['path'], f['line'], f['rule'], f['sample'])),
              'take it out by hand and rotate it; Archeus never edits this file') if f['line'] else
-            ('warn', '%s is %s' % (f['path'], f['rule']),
+            ('warn', clean('%s is %s' % (f['path'], f['rule'])),
              'gitignore it or `git rm --cached` it by hand; Archeus never changes it')
             for f in found]
 

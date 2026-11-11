@@ -374,13 +374,6 @@ def test_a_rule_file_named_with_a_terminal_control_is_still_reported_masked(
         git['calls']
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='health.py:72 and health.py:89 put the raw rule FILENAME '
-                          'into the report and into the health card message with no '
-                          'control-character filter, so a name carried by a cloned '
-                          'repository emits active controls (workspace.py:814 draws '
-                          'that message verbatim); the sample field is masked, the '
-                          'path field is not')
 def test_health_output_carries_no_active_terminal_control(control_named_rule, git):
     """health.py:49-51,72,89: the card text a cloned repository can name."""
     root = control_named_rule['root']
