@@ -445,6 +445,10 @@ MUTATIONS = [
      "            r = run(argv + pins + list(args), root, max_bytes)",
      "            r = run(argv + list(args), root, max_bytes)")],
      [B + '::test_a_file_created_after_the_check_selects_no_filter_for_the_command']),
+    ('Z107', 'a refused final git check is reported as the workspace moving', [(WRK,
+     "        moved = now is not None and now != revision\n",
+     "        moved = now != revision\n")],
+     ['tests/v1/unit/test_gaps_core_verification_worker.py::test_a_refused_final_git_check_is_not_reported_as_a_moved_workspace']),
 ]
 
 

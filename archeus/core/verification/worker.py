@@ -347,10 +347,17 @@ class VerifyWorker:
                                         timeout_s=self.timeout_s, verifier_version=version)
         checks = self._with_base(vid, m, t.plan_id, root, base, cmds, checks, version)
         now = self.node.git_head(ws)
-        if now != revision or self.node.git_dirty(ws, tracked_only=True) is not False:
+        moved = now is not None and now != revision
+        dirty = None if moved else self.node.git_dirty(ws, tracked_only=True)
+        if moved or dirty:
             checks.append({'name': 'workspace', 'kind': 'git', 'result': 'error',
                            'detail': 'the workspace moved during verification (%s -> %s)'
                                      % ((revision or '')[:12], (now or '')[:12])})
+        elif now is None or dirty is None:      # refused, not observed to move
+            unknown = ' and '.join(n for n, v in (('HEAD', now), ('git status', dirty)) if v is None)
+            checks.append({'name': 'workspace', 'kind': 'git', 'result': 'error',
+                           'detail': 'the workspace could not be checked after verification: '
+                                     '%s refused or unavailable' % unknown})
         self._do(V.record, missions=self.missions, verification_id=vid, checks=checks)
 
     def _verify_human(self, task_id, execution_id):

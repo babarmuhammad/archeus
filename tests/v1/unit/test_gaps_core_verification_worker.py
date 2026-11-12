@@ -631,6 +631,25 @@ def test_a_workspace_that_moved_or_dirtied_while_the_checks_ran_is_no_verdict(ri
         assert r.task().state == 'VERIFYING' and r.missions.fired == []
 
 
+@pytest.mark.parametrize('refused', ['git_dirty', 'git_head'])
+def test_a_refused_final_git_check_is_not_reported_as_a_moved_workspace(rig, refused):
+    # S6: git_head and git_dirty answer None when git is refused. Where the revision
+    # still matches nothing moved, so the row says the check was refused, not that the
+    # workspace moved.
+    head = _script(REV, None) if refused == 'git_head' else _script(REV)
+    dirty = _script(None) if refused == 'git_dirty' else _script(False)
+    r = rig(workdir='ws', node=_Node(git_head=head, git_dirty=dirty, branch_exists=_script(False),
+                                     run_check=_script(_result())))
+    assert r.worker.pass_once() == {'changed': True, 'did': 'verify_task'}
+    v = r.one()
+    check = v.checks[-1]
+    assert check['name'] == 'workspace' and check['result'] == 'error'
+    assert 'moved' not in check['detail']
+    named = 'HEAD' if refused == 'git_head' else 'git status'
+    assert named + ' refused or unavailable' in check['detail']
+    assert v.state == 'ERROR' and r.task().state == 'VERIFYING' and r.missions.fired == []
+
+
 @pytest.mark.parametrize('case', ['timeout', 'failing', 'unparsable'],
                         ids=['timed-out', 'nonzero-exit', 'unparsable-command'])
 def test_a_command_that_never_finished_or_failed_is_never_a_pass(rig, case):
