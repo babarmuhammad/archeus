@@ -560,7 +560,7 @@ def test_exact_semver_prereleases_and_builds_are_pinned(spec):
 
 
 @pytest.mark.parametrize('command,prefix', [
-    ('npm', ['exec']), ('npm', ['x']), ('pnpm', ['dlx']), ('yarn', ['dlx']), ('bunx', []),
+    ('pnpm', ['dlx']), ('yarn', ['dlx']), ('bunx', []), ('bun', ['x']),
 ])
 def test_equivalent_launchers_keep_package_boundaries(command, prefix):
     assert _mcp(command, [*prefix, 'pkg@1.2.3-beta.1']) == []
@@ -569,6 +569,43 @@ def test_equivalent_launchers_keep_package_boundaries(command, prefix):
     assert bool(_mcp(command, [*prefix, 'evil', '--no-install']))
     assert bool(_mcp(command, [*prefix, '--', 'evil', '--no-install']))
     assert bool(_mcp(command, [*prefix, '//host/share/tool']))
+
+
+@pytest.mark.parametrize('prefix', [['exec'], ['x']])
+def test_npm_exec_reads_its_own_options_on_both_sides_of_the_package(prefix):
+    """npm parses its own flags wherever they sit before `--`, so `--package`, `-c`,
+    `--no-install` and `--yes` after the positional still apply. npx stops options at
+    the first positional (that boundary is npx's, see
+    test_package_flags_stop_at_the_command_boundary); generalising it to npm exec made
+    `npm exec safe@1.2.3 --package=evil` look pinned while npm fetches evil."""
+    assert [f.rule for f in _mcp('npm', [*prefix, 'safe@1.2.3', '--package=evil'])] == ['mcp-command-exec']
+    assert [f.rule for f in _mcp('npm', [*prefix, '--package=safe@1.2.3', 'cmd', '--package=evil'])] \
+        == ['mcp-command-exec']
+    assert [f.rule for f in _mcp('npm', [*prefix, 'safe@1.2.3', '-c', 'evil'])] == ['mcp-command-exec']
+    assert [f.rule for f in _mcp('npm', [*prefix, 'evil', '-y', '--no-install'])] == ['mcp-command-exec']
+    assert _mcp('npm', [*prefix, 'pkg@1.2.3-beta.1']) == []
+    assert _mcp('npm', [*prefix, '--no-install', 'evil']) == []
+    assert _mcp('npm', [*prefix, 'evil', '--no-install']) == []
+    assert _mcp('npm', [*prefix, 'safe@1.2.3', '--', '--package=evil']) == []
+    assert bool(_mcp('npm', [*prefix, '--', 'evil', '--no-install']))
+
+
+@pytest.mark.parametrize('args', [
+    ['--cache=/tmp', 'exec', 'evil'], ['--cache', '/tmp', 'exec', 'evil'],
+    ['-g', 'x', 'evil'], ['--loglevel', 'silent', 'exec', 'evil'],
+])
+def test_npm_global_options_before_the_subcommand_do_not_hide_it(args):
+    assert [f.rule for f in _mcp('npm', args)] == ['mcp-command-exec']
+    assert _mcp('npm', [*args[:-2], 'install', 'evil']) == []
+
+
+@pytest.mark.parametrize('command,args', [
+    ('bun', ['x', 'evil']), ('bun', ['--silent', 'x', 'evil']),
+    ('pnpm', ['--silent', 'dlx', 'evil']), ('pnpm', ['-w', 'dlx', 'evil']),
+])
+def test_bun_x_and_global_flags_before_dlx_are_launchers(command, args):
+    assert [f.rule for f in _mcp(command, args)] == ['mcp-command-exec']
+    assert _mcp('bun', ['x', 'safe@1.2.3']) == [] and _mcp('bun', ['x', '--no-install', 'evil']) == []
 
 
 def test_ordinary_package_manager_commands_are_outside_the_fetch_rule():
