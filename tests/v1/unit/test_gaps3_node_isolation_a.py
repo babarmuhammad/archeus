@@ -607,7 +607,9 @@ class TestAStopMidEstablishmentFailsNothing:
         assert on_disk['sid'] == b.derive_sid(req.execution_id)
         assert [l['op'] for l in node.registry] == []          # no isolation_failed line
         assert b.job_creates == 0 and b.closed == []           # no Job, nothing closed
-        assert b.deleted == [] and _ledger_ops() == []         # nothing released or quarantined
+        assert b.deleted == [iso.profile_name(req.execution_id)]   # the late profile is deleted here
+        assert iso.profile_name(req.execution_id) not in b.profiles
+        assert _ledger_ops() == []                              # and not quarantined
         # and the record is exactly what a restarted Core resumes from (a retry of one
         # that stopped, Finding 1): the same authority, still stopping, refuses it again
         with pytest.raises(iso.IsolationClosed):
