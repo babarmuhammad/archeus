@@ -449,7 +449,7 @@ def diag_result(row, look, pair_ran):
 def diag_interpret(labels):
     """The spec's Interpretation bullets over the rows that ran. Rows whose control failed or
     left no evidence are named and count for nothing."""
-    void = sorted(r for r, v in labels.items() if v in ('control failed', 'no evidence'))
+    void = sorted(r for r, v in labels.items() if v in ('control failed', 'no evidence', 'launch refused'))
     ok = {r: v for r, v in labels.items() if r not in void}
     ran = lambda r: ok.get(r) == 'child ran'
     exits = [r for r in ('A1', 'B1', 'C1') if r in ok]
@@ -1153,7 +1153,14 @@ def diagnose(h, flags):
         _say('pv20 N2-diag staged %s sha256=%s source and copy equal' % (dst, digest))
     labels = {}
     for r in runnable:
-        labels[r.id] = diag_row(h, r, labels)
+        try:
+            labels[r.id] = diag_row(h, r, labels)
+        except SetupError:
+            raise
+        except Exception as ex:
+            # A refused grant (System32 read-only, say) is a finding; the other rows still run.
+            labels[r.id] = 'launch refused'
+            _say('pv20 N2-diag %s launch refused: %s %s' % (r.id, type(ex).__name__, _snip(str(ex))))
     _say('DIAGNOSTIC %s' % diag_interpret(labels))
     return 2
 

@@ -1007,6 +1007,31 @@ def test_diagnose_with_image_flag_stages_once_and_adds_only_the_toolchain_grant(
     assert b1[-1] == k and not any('System32' in p for _, ro, _ in h.launches for p in ro)
 
 
+def test_a_refused_launch_is_recorded_and_the_remaining_rows_still_run(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    go = h.go
+
+    def refuse_a1(tag, *a, **kw):
+        if tag == 'diag-a1':
+            raise ValueError('grant refused')
+        return go(tag, *a, **kw)
+    h.go = refuse_a1
+    assert n2.diagnose(h, {n2.DIAG}) == 2
+    assert [t for t, _, _ in h.launches] == ['diag-a2']
+    out = capsys.readouterr().out
+    assert 'A1 launch refused: ValueError grant refused' in out and 'rows not usable (A1' in out
+
+
+def test_a_budget_overrun_still_stops_the_matrix(tmp_path):
+    h = DiagHarness(tmp_path)
+
+    def over(*a, **kw):
+        raise n2.SetupError('time budget exceeded')
+    h.go = over
+    with pytest.raises(n2.SetupError):
+        n2.diagnose(h, {n2.DIAG})
+
+
 @pytest.mark.parametrize('extra', [['--allow-image-copy'], ['--diag-descendants', '--bogus']])
 def test_main_refuses_unknown_or_unpaired_flags_before_creating_anything(tmp_path, monkeypatch, extra):
     parent, root, calls = _main_world(tmp_path, monkeypatch, _all)
