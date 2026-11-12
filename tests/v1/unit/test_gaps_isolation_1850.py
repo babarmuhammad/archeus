@@ -1,4 +1,4 @@
-"""T-337 — the uncovered fail-closed branches of `archeus/node/isolation.py` 1851-2255.
+"""T-337 — the uncovered fail-closed branches of `archeus/node/isolation.py` 1856-2260.
 
 The block under test is `WindowsBoundary` and its Win32 readers, which live under the
 module-level `if WINDOWS:`. Nothing here needs Windows or the Windows API:
@@ -789,12 +789,12 @@ def test_spawn_hands_the_backend_it_was_built_with(monkeypatch, win32):
 # ── the line numbers this file and the report quote ───────────────────────────
 
 @pytest.mark.parametrize('method,line', [
-    ('_sid_str', 2121), ('available', 2134), ('create_profile', 2142),
-    ('create_job', 2165), ('job_facts', 2192), ('job_active_processes', 2201),
-    ('assign_job', 2211), ('close_job', 2223), ('close_handle', 2228),
-    ('job_handles_of', 2260), ('_handle_flags', 2297), ('token', 2336),
-    ('read_identity', 2354), ('_token_buffer', 2415), ('capability_grants', 2427),
-    ('open_inherited', 2489), ('launch', 2499), ('spawn', 2503),
+    ('_sid_str', 2126), ('available', 2139), ('create_profile', 2147),
+    ('create_job', 2170), ('job_facts', 2197), ('job_active_processes', 2206),
+    ('assign_job', 2216), ('close_job', 2228), ('close_handle', 2233),
+    ('job_handles_of', 2265), ('_handle_flags', 2302), ('token', 2341),
+    ('read_identity', 2359), ('_token_buffer', 2420), ('capability_grants', 2432),
+    ('open_inherited', 2494), ('launch', 2504), ('spawn', 2508),
 ])
 def test_the_branches_quoted_here_are_where_this_file_says_they_are(method, line):
     assert _definition_line(method) == line

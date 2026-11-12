@@ -276,24 +276,21 @@ MUTATIONS = [
      r"""            _admit(key)""")],
      [F + 'test_a_stopped_core_consumes_no_verifier_attempt_through_run_confined']),
     ('H63', 'a profile created after the stop is left standing (no late cleanup)', [(ISO,
-     r"""        try:
-            self._release_best_effort(rec)
-        except OSError:
-            pass
-        raise IsolationClosed()""",
-     r"""        raise IsolationClosed()""")],
+     r"""            self._release_best_effort(rec)
+        except OSError as err:
+            cleanup =""",
+     r"""            pass
+        except OSError as err:
+            cleanup =""")],
      [F + 'test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment',
       F + 'test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim']),
     ('H64', 'a late cleanup settles the record as failed', [(ISO,
-     r"""        try:
-            self._release_best_effort(rec)
-        except OSError:
-            pass
-        raise IsolationClosed()""",
-     r"""        rec.state, rec.failure = 'failed', 'core_stopping'
+     r"""        cleanup = ''
+        try:""",
+     r"""        cleanup = ''
+        rec.state, rec.failure = 'failed', 'core_stopping'
         self._save(rec)
-        self._release_best_effort(rec)
-        raise IsolationClosed()""")],
+        try:""")],
      [F + 'test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment']),
     ('H65', 'a late cleanup is skipped when the stop lands in _ensure_job or the final check', [(ISO,
      r"""            return self._settle(api, rec, request, identity, paths)
@@ -303,6 +300,38 @@ MUTATIONS = [
         except IsolationClosed:
             raise""")],
      [F + 'test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment']),
+    ('H66', 'the record lock is never taken', [(ISO,
+     r"""            discovery._try_lock(fd)
+            break""",
+     r"""            break""")],
+     [F + 'test_a_writer_stalled_after_its_generation_check_keeps_the_record_lock']),
+    ('H67', 'the generation check is made before the record lock is taken', [(ISO,
+     r"""        with _record_lock(path):
+            stored = _stored_record(path, rec.execution_id, self.boundary)
+            # a write from a read that predates the stored write is refused, ownership included
+            if stored.get('gen', 0) != rec.gen:
+                raise RecordChanged('the isolation record of %s changed' % rec.execution_id)""",
+     r"""        stored = _stored_record(path, rec.execution_id, self.boundary)
+        if stored.get('gen', 0) != rec.gen:
+            raise RecordChanged('the isolation record of %s changed' % rec.execution_id)
+        with _record_lock(path):""")],
+     [F + 'test_a_stale_read_is_refused_when_a_newer_write_lands_before_the_lock']),
+    ('H68', 'record deletion ignores the generation it was decided from', [(ISO,
+     r"""            if stored.get('gen') != gen:""",
+     r"""            if False:""")],
+     [F + 'test_a_stale_cleanup_cannot_delete_a_record_a_newer_ownership_write_replaced']),
+    ('H69', 'an invalid stored dict with a matching generation is accepted', [(ISO,
+     r"""    if isinstance(d, dict) and not _record_problem(d, execution_id, api):""",
+     r"""    if isinstance(d, dict):""")],
+     [F + 'test_an_invalid_stored_record_with_a_matching_gen_refuses_the_write']),
+    ('H70', 'a late cleanup fault is dropped from the raised IsolationClosed', [(ISO,
+     r"""        raise IsolationClosed(cleanup)""",
+     r"""        raise IsolationClosed()""")],
+     [F + 'test_a_late_cleanup_failure_keeps_the_cancellation_and_reports_the_fault']),
+    ('H71', 'a late cleanup fault is not noted in the registry', [(ISO,
+     r"""                self._note({'op': 'isolation_cleanup_failed'""",
+     r"""                (lambda _line: None)({'op': 'isolation_cleanup_failed'""")],
+     [F + 'test_a_late_cleanup_failure_keeps_the_cancellation_and_reports_the_fault']),
 ]
 
 

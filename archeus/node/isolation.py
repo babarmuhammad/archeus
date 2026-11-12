@@ -23,6 +23,7 @@ from claude_sessions import config
 
 from ..core.domain import ids
 from ..harnesses import base
+from ..infra import discovery
 from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
                            verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
@@ -86,8 +87,9 @@ class IsolationClosed(base.SpawnFailed):
     """Core is stopping: nothing is established and no Job created. Not an
     establishment failure: no record is marked failed for it."""
 
-    def __init__(self):
-        super().__init__('isolation: core_stopping')
+    def __init__(self, cleanup=''):
+        super().__init__('isolation: core_stopping' + ('; cleanup failed: %s' % cleanup
+                                                       if cleanup else ''))
 
 
 class RecordChanged(OSError):
@@ -99,45 +101,28 @@ class RecordChanged(OSError):
 RECORD_RETRIES = 3
 #: how long a record write waits for its record's lock file, then fails and leaves the record
 RECORD_LOCK_WAIT_S = 2.0
-#: a lock file this old belonged to a Core that died holding it, and is taken over
-RECORD_LOCK_STALE_S = 30.0
 
 
 @contextlib.contextmanager
 def _record_lock(path):
-    lock = path + '.lock'
+    fd = os.open(path + '.lock', os.O_RDWR | os.O_CREAT, 0o600)
     end = time.monotonic() + RECORD_LOCK_WAIT_S
     while True:
         try:
-            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            discovery._try_lock(fd)
             break
-        except FileExistsError:
-            if _stale(lock):
-                _forget(lock)
+        except OSError:
             if time.monotonic() >= end:
+                os.close(fd)
                 raise OSError('the isolation record %s is busy' % path) from None
             time.sleep(0.02)
     try:
         yield
     finally:
-        _forget(lock)
+        discovery.CoreLock(fd).release()
 
 
-def _stale(path):
-    try:
-        return time.time() - os.path.getmtime(path) > RECORD_LOCK_STALE_S
-    except OSError:
-        return False
-
-
-def _forget(path):
-    try:
-        os.remove(path)
-    except OSError:
-        pass
-
-
-def _stored_record(path):
+def _stored_record(path, execution_id, api):
     try:
         with open(path, encoding='utf-8') as f:
             d = json.load(f)
@@ -145,7 +130,9 @@ def _stored_record(path):
         return {}
     except (OSError, ValueError, RecursionError):
         return {'gen': None}
-    return d if isinstance(d, dict) else {'gen': None}
+    if isinstance(d, dict) and not _record_problem(d, execution_id, api):
+        return d
+    return {'gen': None}
 
 
 #: the confined verifier's Job budgets (T-054 section 5; owner values 2026-10-14, T-090):
@@ -801,7 +788,7 @@ class Isolation:
         path = isolation_state(rec.execution_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with _record_lock(path):
-            stored = _stored_record(path)
+            stored = _stored_record(path, rec.execution_id, self.boundary)
             # a write from a read that predates the stored write is refused, ownership included
             if stored.get('gen', 0) != rec.gen:
                 raise RecordChanged('the isolation record of %s changed' % rec.execution_id)
@@ -1035,12 +1022,19 @@ class Isolation:
         verified there. A failed or unverified delete quarantines the record (SID and
         ownership kept) for reclaim to retry. A write that fails during this cleanup is
         not an establishment failure, so nothing is charged to the execution; the record
-        stays owned and pending, and reclaim settles it. The stop is what is reported."""
+        stays owned and pending, and reclaim settles it. The stop is what is raised, with
+        the cleanup fault in its detail and in a registry note."""
+        cleanup = ''
         try:
             self._release_best_effort(rec)
-        except OSError:
-            pass
-        raise IsolationClosed()
+        except OSError as err:
+            cleanup = '%s: %s' % (type(err).__name__, err)
+            try:
+                self._note({'op': 'isolation_cleanup_failed', 'execution_id': rec.execution_id,
+                            'error': type(err).__name__, 'detail': str(err)})
+            except OSError:
+                pass
+        raise IsolationClosed(cleanup)
 
     def _fail(self, rec, reason, detail, paths=None):
         """No process starts, and the state says so deterministically: the record, the
@@ -1203,7 +1197,7 @@ class Isolation:
         rec.state, rec.reason = 'torn_down', reason
         rec.sid = ''
         self._save(rec)
-        self._remove_record(rec.execution_id)
+        self._remove_record(rec.execution_id, rec.gen)
         return 'torn_down'
 
     def _remove_profile(self, rec, wait):
@@ -1274,7 +1268,7 @@ class Isolation:
         that cannot be read, it is kept as evidence with the SID its name derives,
         failed as `provenance_unknown`, and every later pass leaves it as it is."""
         if self._presence(rec.execution_id) == 'absent':
-            self._remove_record(rec.execution_id)
+            self._remove_record(rec.execution_id, rec.gen)
             return 'torn_down'
         if rec.state != 'failed' or rec.reason != 'provenance_unknown':
             rec.state, rec.reason = 'failed', 'provenance_unknown'
@@ -1284,11 +1278,22 @@ class Isolation:
                         'profile': rec.profile})
         return 'provenance_unknown'
 
-    def _remove_record(self, execution_id):
-        try:
-            os.remove(isolation_state(execution_id))
-        except OSError:
-            pass
+    def _remove_record(self, execution_id, gen):
+        """The record goes only if it is still the one the caller decided from: a newer
+        write (ownership included) is evidence the stale decision must not erase."""
+        path = isolation_state(execution_id)
+        if not os.path.lexists(path):
+            return
+        with _record_lock(path):
+            stored = _stored_record(path, execution_id, self.boundary)
+            if not stored:
+                return
+            if stored.get('gen') != gen:
+                raise RecordChanged('the isolation record of %s changed' % execution_id)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     def _release_best_effort(self, rec):
         """An establishment failure must not leave the identity standing: its profile
