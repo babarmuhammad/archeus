@@ -599,6 +599,23 @@ def test_npm_global_options_before_the_subcommand_do_not_hide_it(args):
     assert _mcp('npm', [*args[:-2], 'install', 'evil']) == []
 
 
+@pytest.mark.parametrize('command,args,flagged', [
+    ('npm', ['exec', 'evil', '--no=false'], True), ('npm', ['exec', '--no=false', 'evil'], True),
+    ('npx', ['--no-install=false', 'evil'], True), ('npm', ['exec', 'evil', '-y=false'], True),
+    ('npm', ['exec', 'evil', '--no'], False), ('npm', ['exec', 'evil', '--no=true'], False),
+    ('npm', ['exec', 'evil', '--no=0'], True), ('npm', ['exec', 'evil', '--no=maybe'], True),
+    ('npm', ['exec', 'evil', '--no='], True), ('npm', ['exec', 'evil', '--no', '--no=0'], True),
+    ('npm', ['exec', 'evil', '--yes=false'], True), ('npm', ['exec', 'evil', '--no', '--yes=false'], False),
+    ('npm', ['exec', 'evil', '--no', '-y=0'], True),
+    ('npm', ['exec', '--no', 'false', 'evil'], True), ('npm', ['exec', 'evil', '--no', 'false'], True),
+    ('npx', ['--no', 'false', 'evil'], True), ('npm', ['exec', '--no', 'true', 'evil'], False),
+    ('npm', ['exec', 'evil', '--no', 'true'], False), ('npm', ['--no', 'false', 'exec', 'evil'], True),
+    ('npm', ['--no', 'true', 'exec', 'evil'], True),
+])
+def test_npm_boolean_flag_values_decide_whether_it_installs(command, args, flagged):
+    assert bool(_mcp(command, args)) is flagged
+
+
 @pytest.mark.parametrize('command,args', [
     ('bun', ['x', 'evil']), ('bun', ['--silent', 'x', 'evil']),
     ('pnpm', ['--silent', 'dlx', 'evil']), ('pnpm', ['-w', 'dlx', 'evil']),

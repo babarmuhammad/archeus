@@ -240,6 +240,8 @@ _VALUE_OPTS = {'--cache', '--registry', '--userconfig', '--globalconfig', '--pre
                '-w', '--workspace', '--node-options', '--loglevel', '--script-shell'}
 #: launcher -> the verbs that run a package; the others are not fetches
 _VERBS = {'npm': ('exec', 'x'), 'pnpm': ('dlx',), 'yarn': ('dlx',), 'bun': ('x',)}
+#: npm's boolean flags: `--no` is `--no-yes`, and nopt takes a bare `true`/`false` after them as the value
+_BOOL_OPTS = {'--no', '--no-install', '-y', '--yes'}
 
 
 def _verb_index(rest, verbs):
@@ -254,7 +256,8 @@ def _verb_index(rest, verbs):
             return None
         if rest[i] in _VALUE_OPTS and i + 1 < len(rest) and rest[i + 1] in verbs:
             return i + 1
-        i += 2 if rest[i] in _VALUE_OPTS else 1
+        bool_value = rest[i] in _BOOL_OPTS and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
+        i += 2 if rest[i] in _VALUE_OPTS or bool_value else 1
     return None
 
 
@@ -288,10 +291,17 @@ def _package_command(command, args):
                 break
             i += 1
             continue
+        if option in _BOOL_OPTS and not sep and i + 1 < len(rest) and rest[i + 1] in ('true', 'false'):
+            i += 1
+            sep, value = '=', rest[i]
         if option in ('--no', '--no-install'):
-            no_install = True
+            if value == 'false':
+                yes = True
+            else:
+                no_install = not sep or value == 'true'
         elif option in ('-y', '--yes'):
-            yes = True
+            if value != 'false':
+                yes = True
         elif option in _VALUE_OPTS or option in ('-p', '--package', '-c', '--call'):
             if not sep:
                 i += 1
