@@ -66,13 +66,23 @@ ENGAGE_ONCE = '        if self.sentinel is None:'
 CORE_STOP = '        self.core_stop = self._unstopped() or STOPPED'
 STOP_CALL = '            self.terminate(self.core_pid, self.core_create_time)'
 UNREAD = "            return 'stop not verified: %s' % type(err).__name__"
-UNCERTAIN_GATE = '        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop is None:'
+UNCERTAIN_GATE = '        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop != STOPPED:'
+RETRY_GATE = '        if self.stop_attempts:\n            self.core_stop = self._unstopped()'
+RETRY_CAP = '        if self.stop_attempts == MAX_STOP_ATTEMPTS:'
+RETRY_CALL = ('        self.stop_attempts += 1\n        try:\n'
+              '            self.terminate(self.core_pid, self.core_create_time)\n')
+VERIFY_LAST = '        self.core_stop = self._unstopped() or STOPPED\n'
+SENTINEL_FIRST = '        self._engage_sentinel()\n        if self.stop_attempts:'
 DONE = '        return self.core_stop == STOPPED or (self.core_stop is None and self.core_gone) or ('
 ROLLBACK_ORDER = T + 'test_a_rollback_engages_the_sentinel_then_stops_core_by_identity_then_verifies'
 FAILED_STOP = T + 'test_a_failed_stop_keeps_supervision_active_and_reports_it'
 LEFT_CORE = T + 'test_a_stop_that_leaves_core_running_is_reported_not_claimed'
 LEFT_WORKLOAD = T + 'test_a_stop_that_leaves_an_owned_workload_running_is_reported_not_claimed'
-SECOND_ROLLBACK = T + 'test_a_second_rollback_during_a_failed_stop_stops_nothing_more'
+RETRY_EXIT = T + 'test_core_that_exits_after_a_failed_first_attempt_is_verified_stopped_on_the_next_tick'
+RETRY_FLAKY = T + 'test_a_verification_that_briefly_fails_is_read_again_on_the_next_tick'
+RETRY_CAP_TEST = T + 'test_a_survivor_gets_two_more_identity_bound_attempts_then_a_persistent_failure'
+RETRY_REUSE = T + 'test_a_pid_reused_between_the_retries_is_never_terminated'
+CLAIMED = T + 'test_a_terminate_that_claims_success_does_not_make_the_stop_stopped'
 ABSENT_NOTHING = T + 'test_a_core_already_gone_with_nothing_owned_is_stopped_whatever_terminate_says'
 ABSENT_WORKLOAD = T + 'test_a_core_already_gone_with_a_workload_still_running_is_not_stopped'
 UNREADABLE_BACK = T + 'test_a_stop_that_cannot_read_identities_back_is_not_reported_stopped'
@@ -197,10 +207,9 @@ MUTATIONS = [
      ['tests/v1/unit/test_gaps2_node_mxc_watchdog.py::'
       'test_a_clock_rewound_below_the_last_beat_is_not_a_quiet_forever']),
     ('WH47', 'the stop engages the sentinel after terminating Core', [(HOST,
-     "        self._engage_sentinel()\n        try:\n" + STOP_CALL + "\n"
-     "        except Exception:\n            pass\n",
-     "        try:\n" + STOP_CALL + "\n"
-     "        except Exception:\n            pass\n        self._engage_sentinel()\n")],
+     SENTINEL_FIRST, '        if self.stop_attempts:'),
+     (HOST, RETRY_CALL + "        except Exception:\n            pass\n",
+      RETRY_CALL + "        except Exception:\n            pass\n        self._engage_sentinel()\n")],
      [ROLLBACK_ORDER]),
     ('WH48', 'the stop does not terminate Core', [(HOST,
      STOP_CALL, '            None')], [ROLLBACK_ORDER, FAILED_STOP]),
@@ -209,12 +218,23 @@ MUTATIONS = [
      [LEFT_CORE, LEFT_WORKLOAD, ABSENT_WORKLOAD]),
     ('WH50', 'a stop that cannot read identities back is reported as stopped', [(HOST,
      UNREAD, '            return None')], [UNREADABLE_BACK]),
-    ('WH51', 'a second rollback stops Core again', [(HOST,
-     UNCERTAIN_GATE, '        if self.state() == mxc_watchdog.UNCERTAIN:')], [SECOND_ROLLBACK]),
+    ('WH51', 'a failed stop is never tried again', [(HOST,
+     UNCERTAIN_GATE, '        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop is None:')],
+     [RETRY_EXIT, RETRY_FLAKY, RETRY_CAP_TEST]),
     ('WH52', 'terminate answering False decides the stop without verification', [(HOST,
      STOP_CALL, "            if self.terminate(self.core_pid, self.core_create_time) is not True:\n"
                 "                self.core_stop = 'Core did not stop'\n                return")],
      [ABSENT_NOTHING]),
+    ('WH53', 'a fourth identity-bound stop attempt is made', [(HOST,
+     RETRY_CAP, '        if False:')], [RETRY_CAP_TEST]),
+    ('WH54', 'a retried stop terminates by pid alone', [(HOST,
+     RETRY_CALL, RETRY_CALL.replace('self.core_create_time', 'None'))], [RETRY_CAP_TEST]),
+    ('WH55', 'a retry skips the re-verification and calls terminate again', [(HOST,
+     RETRY_GATE, '        if False:\n            self.core_stop = self._unstopped()')], [RETRY_REUSE]),
+    ('WH56', 'a stop is decided by what terminate answered', [(HOST,
+     STOP_CALL, '            self._answer = self.terminate(self.core_pid, self.core_create_time) is True'),
+     (HOST, VERIFY_LAST, "        self.core_stop = STOPPED if getattr(self, '_answer', False) "
+                         "else (self._unstopped() or STOPPED)\n")], [CLAIMED]),
 ]
 
 
