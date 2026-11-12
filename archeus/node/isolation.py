@@ -859,6 +859,8 @@ class Isolation:
             return
         try:
             rec = self.record(spec.execution_id)
+            if isinstance(err, IsolationClosed):
+                return                          # a stop is cancellation, not a failure
             if rec is None or rec.state not in ('failed', 'quarantined'):
                 self._note({'op': 'isolation_failed', 'execution_id': spec.execution_id,
                             'state': 'isolation_failed',

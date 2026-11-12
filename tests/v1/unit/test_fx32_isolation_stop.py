@@ -33,6 +33,13 @@ def _record(a, eid):
     return a.record(eid)
 
 
+def test_a_stop_is_not_recorded_as_an_isolation_failure(tmp_path):
+    a, _b, req, node = authority(tmp_path)
+    spec = types.SimpleNamespace(execution_id=req.execution_id, isolation=object())
+    a.note_failure(spec, iso.IsolationClosed())
+    assert node.registry == []
+
+
 def test_a_job_that_finishes_after_the_stop_began_is_never_published(tmp_path):
     a, _b, req, _node = authority(tmp_path)
     eid = req.execution_id
