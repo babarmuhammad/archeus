@@ -243,6 +243,9 @@ class NativeTransport:
     def launch_bridge(self, endpoint, binding):
         raise BrokerUnavailable('the bridge cannot be launched inside the Job yet')
 
+    def cancel(self):
+        pass
+
     def close(self, endpoint):
         pass
 
@@ -401,6 +404,8 @@ class Broker:
         me = threading.get_ident()
         with self._drained:
             self._closed = True
+        self.transport.cancel()
+        with self._drained:
             drained = self._drained.wait_for(
                 lambda: all(t == me for t in self._issuing),
                 timeout=None if deadline is None else max(0.0, deadline - time.monotonic()))

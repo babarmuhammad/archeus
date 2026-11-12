@@ -38,6 +38,9 @@ class Transport:
         self.created.append((name, principal))
         return 'ep%d' % len(self.created)
 
+    def cancel(self):
+        pass
+
     def launch_bridge(self, endpoint, binding):
         if self.fail_launch:
             raise B.BrokerUnavailable('no Job')

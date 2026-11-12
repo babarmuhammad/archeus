@@ -22,6 +22,7 @@ BRK = 'archeus/node/broker.py'
 BND = 'archeus/node/mxc_boundary.py'
 MGR = 'archeus/core/execution/manager.py'
 T = 'tests/v1/unit/test_broker_listener.py::'
+F = 'tests/v1/unit/test_fix_node_broker.py::'
 E = 'tests/v1/unit/test_broker_execution.py::'
 R = 'tests/v1/unit/test_broker_reader_red_team.py::'
 WIRE = 'archeus/node/broker_bridge.py'
@@ -36,10 +37,10 @@ MUTATIONS = [
      "        sock.bind(('0.0.0.0', 0))")],
      [T + 'test_a_real_loopback_socket_is_attested_served_and_closed_on_revoke']),
     ('L03', 'a listener that failed to build stays open', [(LST,
-     '        except BaseException:\n            sock.close()\n            raise\n\n'
-     '    def launch_bridge',
+     '        except BaseException:\n            self._drop(sock)\n            raise\n\n'
+     '    def _drop',
      '        except BaseException:\n            pass\n            raise\n\n'
-     '    def launch_bridge')],
+     '    def _drop')],
      [T + 'test_a_backend_that_cannot_be_built_leaves_no_listener_and_no_grant']),
     ('L04', 'a transport with no broker still starts', [(LST,
      '        if self.broker is None:',
@@ -197,6 +198,23 @@ MUTATIONS = [
      '        port = None if self.broker is None else self.broker.reach(key)',
      '        port = None if self.broker is None else self.broker.reach(profile)')],
      [T + 'test_the_boundary_proxy_is_its_own_executions_listener']),
+    ('L32', 'a socket bound during creation is not tracked for the stop', [(LST,
+     "            if not cancelled:\n                self._socks.add(sock)",
+     "            if not cancelled:\n                pass")],
+     [F + 'test_a_socket_bound_inside_a_stalled_creation_is_closed_by_a_deadline_close']),
+    ('L33', 'a creation that finishes after the stop returns its endpoint', [(LST,
+     "            with self._lock:\n                if self._cancelled:\n"
+     "                    raise B.BrokerClosed('the broker is closed')\n            return endpoint",
+     "            return endpoint")],
+     [F + 'test_a_creation_stalled_past_cancel_raises_instead_of_returning_an_endpoint']),
+    ('L34', 'a creation that fails after binding keeps its socket open', [(LST,
+     "        except BaseException:\n            self._drop(sock)\n            raise",
+     "        except BaseException:\n            raise")],
+     [F + 'test_a_creation_that_fails_after_binding_closes_its_socket']),
+    ('L35', 'the transport cancel leaves a tracked socket open', [(LST,
+     "        for sock in socks:\n            _close(sock)",
+     "        for sock in socks:\n            pass")],
+     [F + 'test_a_socket_bound_inside_a_stalled_creation_is_closed_by_a_deadline_close']),
 ]
 
 

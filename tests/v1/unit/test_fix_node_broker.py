@@ -6,6 +6,7 @@ import threading
 import pytest
 
 from archeus.node import broker as B
+from archeus.node import broker_listener as L
 
 from .test_provider_broker import Resp, Transport, binding, broker, issued, request, serve
 
@@ -227,3 +228,115 @@ def test_close_deadline_revokes_even_a_stalled_issue(phase, caplog):
         assert b.transport.created == created_before
     assert set(b.transport.closed) == set('ep%d' % (n + 1)
                                          for n in range(len(b.transport.created)))
+
+
+class _Sock:
+    """A listening socket that is only counted: its closes are what a test reads."""
+
+    def __init__(self):
+        self.closed = 0
+
+    def getsockname(self):
+        return ('127.0.0.1', 41234)
+
+    def shutdown(self, how):
+        raise OSError('not connected')
+
+    def close(self):
+        self.closed += 1
+
+
+def _loopback(backend_of, bind):
+    t = L.LoopbackTransport(
+        backend_of=backend_of, principal_of=lambda evidence: 'archeus.x', bind=bind,
+        broker_options=dict(core_instance='core1', live=lambda bd, d: True,
+                            credentials=lambda bd: {},
+                            upstream_of=lambda a: B.Upstream('https://api.example.com'),
+                            resolve=lambda host, port: ['93.184.216.34']))
+    return t, t.broker
+
+
+def test_a_socket_bound_inside_a_stalled_creation_is_closed_by_a_deadline_close():
+    sock = _Sock()
+    entered, release = threading.Event(), threading.Event()
+
+    def stalled_backend(port):
+        entered.set()
+        assert release.wait(5)
+        return object()
+
+    t, b = _loopback(stalled_backend, lambda: sock)
+    errors = []
+    issuer = threading.Thread(target=lambda: errors.append(_issue_error(b)), daemon=True)
+    issuer.start()
+    try:
+        assert entered.wait(5)
+        b.close(deadline=0.0)
+        assert sock.closed, 'a socket bound inside a stalled creation survived the stop'
+    finally:
+        release.set()
+        issuer.join(5)
+    assert isinstance(errors[0], B.BrokerClosed) and sock.closed
+
+
+def test_a_creation_that_finishes_after_cancel_closes_its_socket_and_raises():
+    socks = []
+
+    def bind():
+        socks.append(_Sock())
+        return socks[-1]
+
+    t, _b = _loopback(lambda port: object(), bind)
+    t.cancel()
+    with pytest.raises(B.BrokerClosed):
+        t.create('pipe', 'archeus.x')
+    assert [s.closed for s in socks] == [1]
+
+
+def test_closing_a_real_listener_twice_is_harmless():
+    sock = L.bind_loopback()
+    L._close(sock)
+    L._close(sock)
+
+
+def _outcome(f, *args):
+    try:
+        return f(*args)
+    except Exception as error:
+        return error
+
+
+def test_a_creation_stalled_past_cancel_raises_instead_of_returning_an_endpoint():
+    sock = _Sock()
+    entered, release = threading.Event(), threading.Event()
+
+    def stalled_backend(port):
+        entered.set()
+        assert release.wait(5)
+        return object()
+
+    t, _b = _loopback(stalled_backend, lambda: sock)
+    errors = []
+    creator = threading.Thread(target=lambda: errors.append(_outcome(t.create, 'pipe', 'p')),
+                               daemon=True)
+    creator.start()
+    try:
+        assert entered.wait(5)
+        t.cancel()
+        assert sock.closed
+    finally:
+        release.set()
+        creator.join(5)
+    assert isinstance(errors[0], B.BrokerClosed)
+
+
+def test_a_creation_that_fails_after_binding_closes_its_socket():
+    sock = _Sock()
+
+    def failing_backend(port):
+        raise OSError('no backend')
+
+    t, _b = _loopback(failing_backend, lambda: sock)
+    with pytest.raises(OSError):
+        t.create('pipe', 'p')
+    assert sock.closed

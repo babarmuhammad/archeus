@@ -58,6 +58,9 @@ class Transport:
         self.created.append((name, principal))
         return 'ep%d' % len(self.created)
 
+    def cancel(self):
+        pass
+
     def launch_bridge(self, endpoint, binding):
         self.launched.append(endpoint)
         return 4321

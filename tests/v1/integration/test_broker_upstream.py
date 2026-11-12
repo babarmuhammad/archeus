@@ -83,6 +83,9 @@ class Transport:
     def create(self, name, principal):
         return name
 
+    def cancel(self):
+        pass
+
     def launch_bridge(self, endpoint, binding):
         return 1
 
