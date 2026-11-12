@@ -4,7 +4,10 @@ Two Cores share one record store and one boundary (the OS) here; every interleav
 threading.Event seam in the fake boundary. Nothing sleeps, nothing reaches Win32."""
 
 import os
+import subprocess
+import sys
 import threading
+import time
 import types
 
 import pytest
@@ -98,9 +101,9 @@ def test_a_record_write_that_cannot_take_its_lock_fails_and_leaves_the_record(tm
     a._save(iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid)))
     before = open(isolation_state(eid), 'rb').read()
     monkeypatch.setattr(iso, 'RECORD_LOCK_WAIT_S', 0.05)
-    open(isolation_state(eid) + '.lock', 'w').close()
-    with pytest.raises(OSError):
-        a._save(_record(a, eid))
+    with iso._record_lock(isolation_state(eid)):
+        with pytest.raises(OSError):
+            a._save(_record(a, eid))
     assert open(isolation_state(eid), 'rb').read() == before
 
 
@@ -253,3 +256,58 @@ def test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establi
     assert rec.state == 'pending' and rec.owned is True and rec.sid != ''
     assert rec.failure == '' and b.job_creates == 0 and a.held_jobs() == {}
     assert 'isolation_failed' not in [line['op'] for line in node.registry]
+
+
+def test_a_writer_stalled_after_its_generation_check_keeps_the_record_lock(tmp_path,
+                                                                           monkeypatch):
+    a, _b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    a._save(iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid)))
+    stale_a, stale_b = _record(a, eid), _record(a, eid)
+    stale_a.reason, stale_b.reason = 'writer-a', 'writer-b'
+    monkeypatch.setattr(iso, 'RECORD_LOCK_WAIT_S', 0.2)
+    stalled, release, errors = threading.Event(), threading.Event(), []
+    real_write = iso.config.write_json_atomic
+
+    def stall_writer_a(path, data, **kw):
+        if threading.current_thread() is writer:
+            stalled.set()
+            assert release.wait(JOIN_S)
+        return real_write(path, data, **kw)
+
+    def write_a():
+        try:
+            a._save(stale_a)
+        except BaseException as err:
+            errors.append(err)
+
+    monkeypatch.setattr(iso.config, 'write_json_atomic', stall_writer_a)
+    writer = threading.Thread(target=write_a, daemon=True)
+    writer.start()
+    assert stalled.wait(JOIN_S)
+    lock = isolation_state(eid) + '.lock'
+    if os.path.exists(lock):
+        old_time = time.time() - 3600
+        os.utime(lock, (old_time, old_time))
+    with pytest.raises(OSError):
+        a._save(stale_b)
+    release.set()
+    writer.join(JOIN_S)
+    assert errors == []
+    assert _record(a, eid).reason == 'writer-a'
+
+
+def test_a_record_lock_is_released_when_its_holder_process_dies(tmp_path, monkeypatch):
+    path = str(tmp_path / 'record.json')
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(iso.__file__))))
+    code = ('import os, sys\n'
+            'from archeus.node import isolation as iso\n'
+            'iso._record_lock(sys.argv[1]).__enter__()\n'
+            'print("held", flush=True)\n'
+            'os._exit(0)\n')
+    child = subprocess.run([sys.executable, '-c', code, path], cwd=root, capture_output=True,
+                           text=True, timeout=JOIN_S)
+    assert child.stdout.strip() == 'held', child.stderr
+    monkeypatch.setattr(iso, 'RECORD_LOCK_WAIT_S', 0.05)
+    with iso._record_lock(path):
+        pass

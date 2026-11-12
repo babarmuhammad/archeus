@@ -23,6 +23,7 @@ from claude_sessions import config
 
 from ..core.domain import ids
 from ..harnesses import base
+from ..infra import discovery
 from ..infra.paths import (MAX_ATTEMPT, VERIFY_KEY, ExecPaths, isolation_dir, isolation_state,
                            verify_consumed,
                            quarantine_log, run_dir, verify_key_parts)
@@ -99,42 +100,25 @@ class RecordChanged(OSError):
 RECORD_RETRIES = 3
 #: how long a record write waits for its record's lock file, then fails and leaves the record
 RECORD_LOCK_WAIT_S = 2.0
-#: a lock file this old belonged to a Core that died holding it, and is taken over
-RECORD_LOCK_STALE_S = 30.0
 
 
 @contextlib.contextmanager
 def _record_lock(path):
-    lock = path + '.lock'
+    fd = os.open(path + '.lock', os.O_RDWR | os.O_CREAT, 0o600)
     end = time.monotonic() + RECORD_LOCK_WAIT_S
     while True:
         try:
-            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            discovery._try_lock(fd)
             break
-        except FileExistsError:
-            if _stale(lock):
-                _forget(lock)
+        except OSError:
             if time.monotonic() >= end:
+                os.close(fd)
                 raise OSError('the isolation record %s is busy' % path) from None
             time.sleep(0.02)
     try:
         yield
     finally:
-        _forget(lock)
-
-
-def _stale(path):
-    try:
-        return time.time() - os.path.getmtime(path) > RECORD_LOCK_STALE_S
-    except OSError:
-        return False
-
-
-def _forget(path):
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+        discovery.CoreLock(fd).release()
 
 
 def _stored_record(path):
