@@ -5,6 +5,7 @@ Git call runs, so a key written after the driver enumeration cannot be read by G
 """
 import os
 import subprocess
+import sys
 
 import pytest
 
@@ -189,3 +190,23 @@ def test_worktree_add_on_head_keeps_the_config(tmp_path):
     local.LocalNode.add_worktree(root, path, 'archeus/m.t1', base='HEAD')
     assert open(config_path(root), 'rb').read() == before
     assert local.LocalNode.remove_worktree(root, path)
+
+
+@WINDOWS
+def test_another_process_holding_the_config_for_writing_refuses_without_hanging(tmp_path, monkeypatch):
+    root = make_repo(tmp_path)
+    holder = subprocess.Popen(
+        [sys.executable, '-c',
+         'import sys\nf = open(sys.argv[1], "r+b")\nprint("held", flush=True)\nsys.stdin.readline()',
+         config_path(root)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == 'held'
+        ran = []
+        recording(monkeypatch, ran)
+        assert local._project_git(root, ['status', '--porcelain']) is None
+        assert not any('status' in argv for argv in ran)
+    finally:
+        holder.communicate('\n', timeout=30)
+    assert holder.returncode == 0
+    with open(config_path(root), 'a') as f:
+        f.write('[x]\n\ty = 1\n')

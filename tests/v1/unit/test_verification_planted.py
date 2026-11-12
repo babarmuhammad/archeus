@@ -172,19 +172,28 @@ def _bare_git_calls(monkeypatch, ws):
     """Every program the Git helpers hand the spawner against *ws*, recorded and never started."""
     calls = []
 
+    w = str(ws)
+    os.makedirs(os.path.join(w, '.git'), exist_ok=True)
+    open(os.path.join(w, '.git', 'config'), 'w').close()
+
     def run(argv, *, cwd=None, **kw):
         # the guarded runner reads bytes and probes `git version` itself; proc.run reads text
         text = bool(kw.get('text'))
+        code = 0
         if argv[1:] == ['version']:
             out = 'git version 2.50.0\n'
         else:
             calls.append(SimpleNamespace(argv=list(argv), cwd=cwd))
             out = 'a' * 40 + '\n'
-        return SimpleNamespace(returncode=0, stdout=out if text else out.encode(),
+            # the frozen configuration reads the repository's own paths and finds no include
+            if argv[-1] in ('--git-dir', '--git-common-dir'):
+                out = os.path.join(w, '.git') + '\n'
+            elif 'config' in argv:
+                code = 1
+        return SimpleNamespace(returncode=code, stdout=out if text else out.encode(),
                                stderr='' if text else b'')
     monkeypatch.setattr(local.proc.subprocess, 'run', run)
     monkeypatch.setattr(local, '_VERSION', {})
-    w = str(ws)
     LocalNode.git_head(w)
     LocalNode.git_dirty(w)
     LocalNode.git_branch(w)
