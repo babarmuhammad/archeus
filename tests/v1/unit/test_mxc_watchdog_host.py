@@ -519,10 +519,11 @@ def test_a_survivor_gets_two_more_identity_bound_attempts_then_a_persistent_fail
     assert roll_back(env) == wd.UNCERTAIN
     assert env.host.tick() == wd.UNCERTAIN
     assert env.host.tick() == wd.UNCERTAIN
-    assert calls == [(CORE_PID, CORE_TIME)] * 3
+    core, kill = (CORE_PID, CORE_TIME), (PID, CREATION_TIME)
+    assert calls == [core, core, kill, core, kill]
     for _ in range(3):
         assert env.host.tick() == wd.UNCERTAIN
-    assert calls == [(CORE_PID, CORE_TIME)] * 3
+    assert calls == [core, core, kill, core, kill]
     assert env.host.report()['core_stop'] == ('persistent stop failure after 3 attempts: '
                                               'Core still running after its stop')
     assert not env.host.done()
@@ -544,6 +545,77 @@ def test_a_pid_reused_between_the_retries_is_never_terminated(env):
     assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
     assert calls == [(CORE_PID, CORE_TIME)]
     assert env.world.table[CORE_PID] == CORE_TIME + 1
+
+
+def test_a_workload_whose_first_kill_failed_is_killed_again_on_the_next_attempt(env):
+    armed(env)
+    env.world.table.pop(CORE_PID)
+    kills = []
+
+    def terminate(pid, create_time):
+        kills.append(pid)
+        if pid == PID and len(kills) == 1:
+            return False
+        if pid == PID:
+            env.world.table.pop(PID)
+        return True
+    env.host.terminate = terminate
+    assert env.host.tick() == wd.UNCERTAIN
+    assert env.host.report()['core_stop'].startswith('owned workload e1-p1 still running')
+    assert env.host.tick() == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+    assert kills == [PID, CORE_PID, CORE_PID, PID]
+
+
+def test_a_survivor_whose_pid_was_reused_is_never_killed(env):
+    armed(env)
+    calls = []
+
+    def stubborn(pid, create_time):
+        calls.append((pid, create_time))
+        return False
+    env.host.terminate = stubborn
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.tick() == wd.UNCERTAIN
+    assert (PID, CREATION_TIME) in calls
+    env.world.table[PID] = CREATION_TIME + 1
+    calls.clear()
+    assert env.host.tick() == wd.UNCERTAIN
+    assert [c for c in calls if c[0] == PID] == []
+
+
+def test_a_workload_that_never_dies_gets_three_attempts_then_a_persistent_report_naming_it(env):
+    armed(env)
+    env.world.survivors = {PID}
+    assert roll_back(env) == wd.UNCERTAIN
+    for _ in range(3):
+        assert env.host.tick() == wd.UNCERTAIN
+    assert len([e for e in events(env) if e[:2] == ('terminate', PID)]) == 2
+    assert env.host.report()['core_stop'] == ('persistent stop failure after 3 attempts: '
+                                              'owned workload e1-p1 still running after the stop')
+    assert env.host.tick() == wd.UNCERTAIN
+    assert len([e for e in events(env) if e[:2] == ('terminate', PID)]) == 2
+    assert not env.host.done()
+
+
+def test_one_survivor_whose_kill_raises_does_not_stop_the_kill_of_the_next(env):
+    armed(env)
+    own(env, 'e1-p2', pid=PID + 1, create_time=CREATION_TIME + 1)
+    register(env, 'e1-p2', pid=PID + 1, create_time=CREATION_TIME + 1)
+    assert env.host.tick() == wd.ARMED
+    env.world.survivors = {PID, PID + 1}
+    calls = []
+
+    def raising_first(pid, create_time):
+        calls.append(pid)
+        if pid == PID:
+            raise OSError('denied')
+        return env.world.terminate(pid, create_time)
+    env.host.terminate = raising_first
+    assert roll_back(env) == wd.UNCERTAIN
+    calls.clear()
+    assert env.host.tick() == wd.UNCERTAIN
+    assert calls == [CORE_PID, PID, PID + 1]
 
 
 def test_a_terminate_that_claims_success_does_not_make_the_stop_stopped(env):

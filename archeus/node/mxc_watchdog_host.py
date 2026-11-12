@@ -16,8 +16,9 @@ Core needs no sentinel, its Job is already closed. The sentinel not being verifi
 never withholds the kill, it is recorded. On UNCERTAIN the host engages the sentinel, ends
 Core by its recorded identity and verifies that Core and every recorded workload are gone;
 a stop it cannot verify keeps it supervising and reports why. Each later tick verifies
-the stop again; a Core still alive then gets at most MAX_STOP_ATTEMPTS identity-bound
-terminations in all, after which the failure is reported as persistent.
+the stop again; a Core still alive, or a recorded workload still running, then gets at most
+MAX_STOP_ATTEMPTS identity-bound terminations in all, after which the failure is reported as
+persistent.
 
 The Job Core holds stays the Core-death authority (threat model, "Decision: Core death").
 This host is the belt for what outlived it.
@@ -157,13 +158,26 @@ class WatchdogHost:
             self.terminate(self.core_pid, self.core_create_time)
         except Exception:
             pass
+        if self.stop_attempts > 1:
+            self._retry_survivors()
         self.core_stop = self._unstopped() or STOPPED
+
+    def _workloads(self):
+        return self.dog.jobs if self.dog is not None else []
+
+    def _retry_survivors(self):
+        for job in self._workloads():
+            try:
+                if self._running_as(job['pid'], job['create_time']):
+                    self._kill(job['job_ref'])
+            except Exception:
+                pass
 
     def _unstopped(self):
         try:
             if self._running_as(self.core_pid, self.core_create_time):
                 return 'Core still running after its stop'
-            for job in (self.dog.jobs if self.dog is not None else []):
+            for job in self._workloads():
                 if self._running_as(job['pid'], job['create_time']):
                     return 'owned workload %s still running after the stop' % job['execution_id']
         except Exception as err:
