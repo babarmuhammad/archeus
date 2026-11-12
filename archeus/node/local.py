@@ -13,6 +13,7 @@ A process is identified by (pid, create_time), never by a pid alone
 time through the P0.5 seam `proc.process_create_time`.
 """
 
+import contextlib
 import functools
 import hashlib
 import json
@@ -22,6 +23,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -38,6 +40,7 @@ from . import isolation as isolation_mod
 from .staging import _entry, _present
 from . import staging
 from . import linkscan
+from .win32_mxc import INVALID_HANDLE, Win32Api
 from . import mxc, mxc_cancel, mxc_ledger, mxc_native, mxc_outcome, mxc_resources, mxc_watchdog
 
 #: every worktree Core makes or removes checks out paths past MAX_PATH; the
@@ -1895,28 +1898,97 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                 _VERSION[exe] = out
             # Git reads the repository's info/attributes whatever attribute source is pinned.
             # A failed lookup is refused: it is not evidence that the file is absent.
-            where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
-            if where.returncode != 0 or not where.stdout.strip():
-                return None
-            attrs = os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
-            if os.path.isfile(attrs):
-                with open(attrs, 'rb') as f:
-                    if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):
-                        return None
-            # Another writer can create that file after this check, so the command is pinned
-            # as well: a filter, merge or diff driver runs only if the repository configuration
-            # defines it, and each such driver is emptied on the command line.
-            drivers = run(argv + ['config', '--name-only', '--get-regexp', _DRIVER_KEYS], root)
-            if drivers.returncode not in (0, 1):
-                return None
-            pins = []
-            for name in drivers.stdout.decode('utf-8', 'replace').splitlines():
-                pins += ['-c', name.strip() + '=']
-            r = run(argv + pins + list(args), root, max_bytes)
+            # Windows: the configuration stays frozen from here until the Git call has exited
+            guard = (_frozen_config(root, argv, env, run, empty) if sys.platform == 'win32'
+                     else contextlib.nullcontext(argv))
+            with guard as argv:
+                where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
+                if where.returncode != 0 or not where.stdout.strip():
+                    return None
+                attrs = os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
+                if os.path.isfile(attrs):
+                    with open(attrs, 'rb') as f:
+                        if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):
+                            return None
+                # Another writer can create that file after this check, so the command is pinned
+                # as well: a filter, merge or diff driver runs only if the repository configuration
+                # defines it, and each such driver is emptied on the command line.
+                drivers = run(argv + ['config', '--name-only', '--get-regexp', _DRIVER_KEYS], root)
+                if drivers.returncode not in (0, 1):
+                    return None
+                pins = []
+                for name in drivers.stdout.decode('utf-8', 'replace').splitlines():
+                    pins += ['-c', name.strip() + '=']
+                r = run(argv + pins + list(args), root, max_bytes)
         except Exception:
             return None
     r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))
     return r
+
+
+_GENERIC_READ, _FILE_SHARE_READ, _OPEN_EXISTING, _FILE_ATTRIBUTE_NORMAL = 0x80000000, 1, 3, 0x80
+#: keys whose files Git would read in addition to the repository's own configuration
+_INCLUDE_KEYS = r'^include(if\..+)?\.path$'
+
+
+def _reparse_free(path):
+    while True:
+        st = os.lstat(path)
+        if stat.S_ISLNK(st.st_mode) or getattr(st, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+            raise OSError('a link or reparse point in the repository path: %s' % path)
+        parent = os.path.dirname(path)
+        if parent == path:
+            return
+        path = parent
+
+
+@contextlib.contextmanager
+def _frozen_config(root, argv, env, run, empty):
+    """Windows (R2): the repository configuration is held open for reading with no
+    write or delete sharing until the guarded Git call has exited, so no key can be
+    added between the driver enumeration and Git reading it. The metadata paths are
+    pinned on the command line, and GIT_COMMON_DIR is set. Yields the pinned argv;
+    any failure raises, and the caller refuses."""
+    api = Win32Api(empty)
+    held = []
+
+    def hold(path):
+        h = api.functions['CreateFileW'](path, _GENERIC_READ, _FILE_SHARE_READ, None,
+                                         _OPEN_EXISTING, _FILE_ATTRIBUTE_NORMAL, None)
+        if h == INVALID_HANDLE:
+            raise api._error('CreateFileW')
+        held.append(h)
+        _reparse_free(path)
+
+    def config(path, *args):
+        return run(argv + ['config', '--no-includes', '--file', path, *args], root)
+
+    def no_includes(path):
+        r = config(path, '--name-only', '--get-regexp', _INCLUDE_KEYS)
+        if r.returncode != 1:
+            raise OSError('include in the repository configuration: %s' % path)
+
+    try:
+        def rev_parse(flag):
+            r = run(argv + ['rev-parse', '--path-format=absolute', flag], root)
+            if r.returncode or not r.stdout.strip():
+                raise OSError('not a repository: %s' % root)
+            return r.stdout.decode('utf-8', 'replace').strip()
+        gitdir, common = rev_parse('--git-dir'), rev_parse('--git-common-dir')
+        main = os.path.join(common, 'config')
+        hold(main)
+        no_includes(main)
+        if config(main, '--bool', '--get', 'extensions.worktreeconfig').stdout.strip() == b'true':
+            worktree = os.path.join(gitdir, 'config.worktree')
+            hold(worktree)
+            no_includes(worktree)
+        _reparse_free(root)
+        _reparse_free(gitdir)
+        env['GIT_COMMON_DIR'] = common
+        yield argv + ['--git-dir=' + gitdir, '--work-tree=' + root]
+    finally:
+        for h in held:
+            api.close_handle(h)
 
 
 #: the configuration keys of the filter, merge and diff drivers an attribute can name

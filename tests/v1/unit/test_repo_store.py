@@ -9,6 +9,7 @@ import ast
 import hashlib
 import os
 import subprocess
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -788,7 +789,7 @@ LOCAL = 'archeus/node/local.py'
 #: the two reviewed runners that may spell these literals: Core's store, and a
 #: project's own repository (pinned by tests/v1/unit/test_gaps_node_local_b.py).
 #: Different repositories, different pins; a third copy still fails this gate
-PINNED = ('_store_pin', '_project_git')
+PINNED = ('_store_pin', '_project_git', '_frozen_config')
 #: who may call the spawner and the builder (later cards add theirs by name)
 CALLERS = {'store_git': ('store_open', 'store_read', 'store_fetch', 'store_resolve_base',
                          '_git_version', 'store_seed_ref', 'seed_workspace',
@@ -878,14 +879,23 @@ def test_no_second_store_pin_exists_and_the_reviewed_env_pins_are_untouched():
 def test_the_guarded_project_git_call_carries_the_whole_pin(tmp_path, monkeypatch):
     # S4: one assertion on the complete argv and environment of a guarded call, so
     # removing any pin (lazy fetch, protocol, attribute system, submodule, maintenance,
-    # config) fails it
+    # config) fails it. On Windows the frozen configuration adds its metadata pins.
     root = str(tmp_path)
+    gitdir = os.path.join(root, '.git')
+    os.makedirs(gitdir)
+    open(os.path.join(gitdir, 'config'), 'w').close()
     calls = []
 
     def fake(argv, **kw):
         calls.append((list(argv), kw))
-        out = (b'git version 2.49.0\n' if 'version' in argv
-               else b'.git/info/attributes\n' if 'rev-parse' in argv else b'')
+        if 'version' in argv:
+            out = b'git version 2.49.0\n'
+        elif argv[-1] in ('--git-dir', '--git-common-dir'):
+            out = gitdir.encode() + b'\n'
+        elif argv[-1] == 'info/attributes':
+            out = b'.git/info/attributes\n'
+        else:
+            out = b''
         return subprocess.CompletedProcess(argv, 1 if 'config' in argv else 0, out, b'')
     monkeypatch.setattr(local.subprocess, 'run', fake)
     assert local._project_git(root, ['status', '--porcelain']) is not None
@@ -896,15 +906,20 @@ def test_the_guarded_project_git_call_carries_the_whole_pin(tmp_path, monkeypatc
             'merge.default=text', 'merge.verifySignatures=false', 'commit.gpgsign=false',
             'tag.gpgSign=false', 'submodule.recurse=false', 'gc.auto=0',
             'maintenance.auto=false', 'core.longpaths=true')
-    assert argv == [exe, '--no-replace-objects'] + [x for c in pins for x in ('-c', c)] + [
-        'status', '--porcelain']
+    frozen = sys.platform == 'win32'
+    metadata = ['--git-dir=' + gitdir, '--work-tree=' + root] if frozen else []
+    assert argv == [exe, '--no-replace-objects'] + [x for c in pins for x in ('-c', c)] + (
+        metadata + ['status', '--porcelain'])
     platform = {k for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
     assert {k: env[k] for k in platform} == {k: os.environ[k] for k in platform}
-    assert {k: v for k, v in env.items() if k not in platform} == {
+    expected = {
         'PATH': os.path.dirname(exe), 'HOME': empty, 'XDG_CONFIG_HOME': empty,
         'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': none, 'GIT_ATTR_NOSYSTEM': '1',
         'GIT_ATTR_SOURCE': EMPTY_TREE, 'GIT_TERMINAL_PROMPT': '0',
         'GIT_ALLOW_PROTOCOL': 'file', 'GIT_PROTOCOL_FROM_USER': '0', 'GIT_NO_LAZY_FETCH': '1'}
+    if frozen:
+        expected['GIT_COMMON_DIR'] = gitdir
+    assert {k: v for k, v in env.items() if k not in platform} == expected
     assert kw['cwd'] == root
 
 
