@@ -24,6 +24,7 @@ MGR = 'archeus/core/execution/manager.py'
 R = 'tests/v1/unit/test_redact_red_team.py::'
 S = 'tests/v1/integration/test_stream_redaction_red_team.py::'
 N = 'tests/v1/unit/test_fix_node_broker.py::'
+F = 'tests/v1/unit/test_fx32_isolation_stop.py::'
 A = 'tests/v1/unit/test_pv20_activate.py::'
 C = 'tests/v1/unit/test_confined_run.py::'
 X = 'tests/v1/unit/test_broker_execution.py::'
@@ -104,19 +105,18 @@ MUTATIONS = [
         try:""")],
      [N + 'test_close_waits_for_an_issue_in_flight_and_leaves_no_listener']),
     ('H17', 'a Job is created after Core began to stop', [(ISO,
-     r"""        with self._lock:
-            if self.closed:
-                raise IsolationClosed()
-            job = self._jobs.get(execution_id)""",
-     r"""        with self._lock:
-            job = self._jobs.get(execution_id)""")],
-     [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
+     r"""            with self._state:
+                if self.closed:
+                    raise IsolationClosed()
+                job = self._jobs.get(execution_id)""",
+     r"""            with self._state:
+                job = self._jobs.get(execution_id)""")],
+     [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping',
+      F + 'test_a_closed_authority_never_creates_a_job_for_an_unseen_execution']),
     ('H18', 'an identity is established after Core began to stop', [(ISO,
-     r"""        with self._lock:
-            self._check_establishment()
-            return self._admit_establishment(request, paths)""",
-     r"""        with self._lock:
-            return self._admit_establishment(request, paths)""")],
+     r"""            self._check_establishment()
+            for _ in range(RECORD_RETRIES):""",
+     r"""            for _ in range(RECORD_RETRIES):""")],
      [A + 'test_a_late_worker_can_create_no_job_once_core_is_stopping']),
     ('H19', 'a confined check runs on after Core began to stop', [(ISO,
      r"""                if self.closed:
@@ -212,7 +212,7 @@ MUTATIONS = [
      "        try:\n            identity =")],
      [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
     ('H47', 'a Job returning after admission timeout is retained', [(ISO,
-     "                if self.closed:\n                    self.boundary.close_job(job)\n"
+     "                if not held:\n                    self.boundary.close_job(job)\n"
      "                    raise IsolationClosed()\n", "")],
      [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
     ('H48', 'failure cleanup is aborted by the admission close', [(ISO,
@@ -227,9 +227,6 @@ MUTATIONS = [
      "            # A launch already in flight may finish after close drained its endpoint.\n"
      "            self.transport.close(endpoint)", "            pass")],
      [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
-    ('H51', 'a late launch error masks broker closure', [(BRK,
-     "            if closed:\n                raise BrokerClosed('the broker is closed') from None\n",
-     "")], [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
     ('H52', 'an endpoint returned after close starts serving', [(BRK,
      "        if closed:\n            self.transport.close(endpoint)\n"
      "            raise BrokerClosed('the broker is closed')\n        try:",
@@ -239,11 +236,45 @@ MUTATIONS = [
      "            self._pending[id(endpoint)] = endpoint")],
      [N + 'test_close_deadline_revokes_even_a_stalled_issue']),
     ('H54', 'the ownership save of a created profile is refused after close', [(ISO,
-     "        # never refused for closing: the profile exists now, and only this record can name it\n"
-     "        try:\n            self._save(rec)",
-     "        # never refused for closing: the profile exists now, and only this record can name it\n"
-     "        try:\n            self._save_establishment(rec)")],
+     "            try:\n                return self._save(rec)",
+     "            try:\n                return self._save_establishment(rec)")],
      [A + 'test_establishment_cannot_resume_writes_after_admission_drain_timeout']),
+    ('H55', 'a Job created after the stop began is published anyway', [(ISO,
+     "                    held = not self.closed",
+     "                    held = True")],
+     [F + 'test_a_job_created_after_the_stop_began_is_closed_and_never_held']),
+    ('H56', 'the held-Job snapshot is taken outside the state lock', [(ISO,
+     "    def held_jobs(self):\n        with self._state:\n            return dict(self._jobs)",
+     "    def held_jobs(self):\n        return dict(self._jobs)")],
+     [F + 'test_the_held_jobs_snapshot_is_taken_under_the_state_lock']),
+    ('H57', 'a record write from an older read may overwrite an owned record', [(ISO,
+     "            if stored.get('gen', 0) != rec.gen:",
+     "            if stored.get('gen', 0) != rec.gen and not stored.get('owned'):")],
+     [F + 'test_ownership_is_never_turned_back_to_unowned_by_a_write_from_an_older_read',
+      F + 'test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim']),
+    ('H58', 'a record write is not checked against the stored record', [(ISO,
+     "            if stored.get('gen', 0) != rec.gen:",
+     "            if False:")],
+     [F + 'test_a_record_saved_on_a_stale_read_is_refused_and_the_stored_one_stays',
+      F + 'test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim']),
+    ('H59', 'a stop is recorded as an isolation failure', [(ISO,
+     "            if isinstance(err, IsolationClosed):\n                return",
+     "            if False:\n                return")],
+     [F + 'test_a_stop_is_not_recorded_as_an_isolation_failure']),
+    ('H60', 'a failure after close escapes as a plain refusal, not BrokerClosed', [(BRK,
+     "            if closed and not isinstance(err, BrokerClosed):",
+     "            if False:")],
+     [N + 'test_a_resolver_failure_after_close_is_reported_as_closed',
+      N + 'test_a_creation_failure_after_close_is_reported_as_closed']),
+    ('H61', 'the broker does not cancel its transport when it closes', [(BRK,
+     "        self.transport.cancel()\n",
+     "")],
+     [N + 'test_a_socket_bound_inside_a_stalled_creation_is_closed_by_a_deadline_close']),
+    ('H62', 'a stopped Core consumes a verifier attempt before refusing it', [(ISO,
+     r"""            self._check_establishment()
+            _admit(key)""",
+     r"""            _admit(key)""")],
+     [F + 'test_a_stopped_core_consumes_no_verifier_attempt_through_run_confined']),
 ]
 
 

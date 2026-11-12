@@ -211,17 +211,44 @@ class LoopbackTransport:
     def __init__(self, *, backend_of, principal_of, bind=bind_loopback, broker_options=None):
         self._backend_of, self._principal_of, self._bind = backend_of, principal_of, bind
         self.broker = None if broker_options is None else B.Broker(transport=self, **broker_options)
+        # lock order: the broker's lock, then this one; nothing here waits or calls out under it
+        self._lock = threading.Lock()
+        self._socks, self._cancelled = set(), False
 
     def create(self, name, principal):
         sock = self._bind()
+        with self._lock:
+            cancelled = self._cancelled
+            if not cancelled:
+                self._socks.add(sock)
+        if cancelled:
+            _close(sock)
+            raise B.BrokerClosed('the broker is closed')
         try:
             host, port = sock.getsockname()[:2]
             if not ipaddress.ip_address(host).is_loopback:
                 raise B.BrokerUnavailable('the broker listener is not on a loopback address')
-            return _Listener(sock, port, self._backend_of(port), self._principal_of, self)
+            endpoint = _Listener(sock, port, self._backend_of(port), self._principal_of, self)
+            with self._lock:
+                if self._cancelled:
+                    raise B.BrokerClosed('the broker is closed')
+            return endpoint
         except BaseException:
-            sock.close()
+            self._drop(sock)
             raise
+
+    def _drop(self, sock):
+        with self._lock:
+            self._socks.discard(sock)
+        _close(sock)
+
+    def cancel(self):
+        """Close every socket this transport bound and refuse any `create` still running."""
+        with self._lock:
+            self._cancelled = True
+            socks, self._socks = list(self._socks), set()
+        for sock in socks:
+            _close(sock)
 
     def launch_bridge(self, endpoint, binding):
         if self.broker is None:
@@ -230,6 +257,8 @@ class LoopbackTransport:
         return endpoint.port
 
     def close(self, endpoint):
+        with self._lock:
+            self._socks.discard(endpoint.sock)
         endpoint.close()
 
 

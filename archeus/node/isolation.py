@@ -8,6 +8,7 @@ existing synthetic boundaries continue to exercise authority and A4 invariants.
 Production dispatch and native MXC execution remain disabled.
 """
 
+import contextlib
 import json
 import logging
 import os
@@ -87,6 +88,64 @@ class IsolationClosed(base.SpawnFailed):
 
     def __init__(self):
         super().__init__('isolation: core_stopping')
+
+
+class RecordChanged(OSError):
+    """A record write from a read that is no longer the stored record (or that would turn
+    ownership back to unowned). Nothing was written: the reader decides again."""
+
+
+#: how many times one establishment re-decides from a record another writer changed
+RECORD_RETRIES = 3
+#: how long a record write waits for its record's lock file, then fails and leaves the record
+RECORD_LOCK_WAIT_S = 2.0
+#: a lock file this old belonged to a Core that died holding it, and is taken over
+RECORD_LOCK_STALE_S = 30.0
+
+
+@contextlib.contextmanager
+def _record_lock(path):
+    lock = path + '.lock'
+    end = time.monotonic() + RECORD_LOCK_WAIT_S
+    while True:
+        try:
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            break
+        except FileExistsError:
+            if _stale(lock):
+                _forget(lock)
+            if time.monotonic() >= end:
+                raise OSError('the isolation record %s is busy' % path) from None
+            time.sleep(0.02)
+    try:
+        yield
+    finally:
+        _forget(lock)
+
+
+def _stale(path):
+    try:
+        return time.time() - os.path.getmtime(path) > RECORD_LOCK_STALE_S
+    except OSError:
+        return False
+
+
+def _forget(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _stored_record(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, RecursionError):
+        return {'gen': None}
+    return d if isinstance(d, dict) else {'gen': None}
 
 
 #: the confined verifier's Job budgets (T-054 section 5; owner values 2026-10-14, T-090):
@@ -494,6 +553,7 @@ class IsolationRecord:
     attempts: int = 0
     at: float = 0.0
     updated: float = 0.0
+    gen: int = 0              # the write this record is: a save from any other read is refused
 
     def as_dict(self):
         return {'execution_id': self.execution_id, 'profile': self.profile, 'sid': self.sid,
@@ -503,7 +563,7 @@ class IsolationRecord:
                 'pid': self.pid, 'create_time': self.create_time,
                 'capabilities': list(self.capabilities), 'owned': self.owned,
                 'preexisting': self.preexisting, 'attempts': self.attempts, 'at': self.at,
-                'updated': self.updated}
+                'updated': self.updated, 'gen': self.gen}
 
 
 def _row_dicts(rows):
@@ -526,7 +586,7 @@ _RECORD_TYPES = {'execution_id': str, 'profile': str, 'sid': str, 'state': str,
                  'applied': list,
                  'pid': (int, type(None)), 'create_time': (int, float, type(None)),
                  'capabilities': list, 'owned': bool, 'preexisting': bool, 'attempts': int,
-                 'at': (int, float), 'updated': (int, float)}
+                 'at': (int, float), 'updated': (int, float), 'gen': int}
 _LEDGER_TYPES = {'op': str, 'execution_id': str, 'profile': str, 'sid': str,
                  'planned': list, 'reason': str, 'at': (int, float)}
 
@@ -650,7 +710,10 @@ class Isolation:
         self._confined = set()
         self._admitted = set()        # verifier keys this Core admitted, not yet established
         self.closed = False             # Core is stopping: nothing new is established
+        # Lock order: `_lock` (the whole establishment, held across OS calls) before `_state`
+        # (the Job table and the closed flag, never held across an OS call or a wait).
         self._lock = threading.RLock()   # ponytail: one establishment at a time; per-execution gates if establishment throughput ever matters
+        self._state = threading.Lock()
 
     # ── the boundary ──
 
@@ -718,7 +781,8 @@ class Isolation:
             planned=_rows(d.get('planned')), pid=d.get('pid'),
             create_time=d.get('create_time'), owned=d.get('owned', False),
             preexisting=d.get('preexisting', False),
-            attempts=d.get('attempts', 0), at=d.get('at', 0.0), updated=d.get('updated', 0.0))
+            attempts=d.get('attempts', 0), at=d.get('at', 0.0), updated=d.get('updated', 0.0),
+            gen=d.get('gen', 0))
 
     def _report_invalid(self, key, problem):
         if self.invalid.get(key) == problem:
@@ -736,9 +800,20 @@ class Isolation:
         rec.at = rec.at or rec.updated
         path = isolation_state(rec.execution_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        if not config.write_json_atomic(path, rec.as_dict(),
-                                        indent=None):
-            raise OSError('could not write the isolation record of %s' % rec.execution_id)
+        with _record_lock(path):
+            stored = _stored_record(path)
+            # a write from a read that predates the stored write is refused, ownership included
+            if stored.get('gen', 0) != rec.gen:
+                raise RecordChanged('the isolation record of %s changed' % rec.execution_id)
+            prior, rec.gen = rec.gen, rec.gen + 1
+            try:
+                written = config.write_json_atomic(path, rec.as_dict(), indent=None)
+            except BaseException:
+                rec.gen = prior
+                raise
+            if not written:
+                rec.gen = prior
+                raise OSError('could not write the isolation record of %s' % rec.execution_id)
         return rec
 
     def _note(self, line):
@@ -784,6 +859,8 @@ class Isolation:
             return
         try:
             rec = self.record(spec.execution_id)
+            if isinstance(err, IsolationClosed):
+                return                          # a stop is cancellation, not a failure
             if rec is None or rec.state not in ('failed', 'quarantined'):
                 self._note({'op': 'isolation_failed', 'execution_id': spec.execution_id,
                             'state': 'isolation_failed',
@@ -801,11 +878,41 @@ class Isolation:
         nothing starts, and what is on disk decides what cleanup may do."""
         with self._lock:
             self._check_establishment()
-            return self._admit_establishment(request, paths)
+            for _ in range(RECORD_RETRIES):
+                try:
+                    return self._admit_establishment(request, paths)
+                except RecordChanged:
+                    pass                        # decide again from the record as it now is
+            raise IsolationUnavailable('record_changed', request.execution_id)
 
     def _check_establishment(self):
-        if self.closed:
+        with self._state:
+            closed = self.closed
+        if closed:
             raise IsolationClosed()
+
+    def _own(self, rec, sid):
+        """The profile Core just created is recorded as owned, on whatever the record is
+        now: a concurrent Core may have decided from an earlier read that nothing owns it.
+        The write is repeated on the fresh record, so the evidence is never lost."""
+        rec.sid = sid
+        for _ in range(RECORD_RETRIES):
+            rec.owned = True
+            try:
+                return self._save(rec)
+            except RecordChanged:
+                fresh = self.record(rec.execution_id)
+                if fresh is not None and fresh.state == 'invalid':
+                    break
+                rec = fresh or IsolationRecord(execution_id=rec.execution_id,
+                                               profile=rec.profile)
+                rec.sid = sid
+            except OSError:
+                rec.owned = False
+                raise
+        rec.owned = False
+        raise OSError('the isolation record of %s changed under its ownership' %
+                      rec.execution_id)
 
     def _save_establishment(self, rec):
         self._check_establishment()
@@ -840,6 +947,8 @@ class Isolation:
                                        profile=profile_name(request.execution_id))
         try:
             return self._establish(api, rec, request, paths)
+        except RecordChanged:
+            raise
         except OSError as err:
             return self._fail(rec, 'os_error', str(err), paths)
 
@@ -874,14 +983,12 @@ class Isolation:
             return self._fail(rec, 'profile_preexisting',
                               'no record that Core created %s' % rec.profile, paths)
         # the OS's answer, on disk before the Job, the invariant or anything else can fail
-        rec.sid, rec.owned = sid, True
         # never refused for closing: the profile exists now, and only this record can name it
-        try:
-            self._save(rec)
-        except OSError:
-            rec.owned = False     # not on disk, so not evidence: nothing deletes on it
-            raise
+        rec = self._own(rec, sid)
         self._check_establishment()
+        if rec.state != 'pending':
+            return self._fail(rec, 'record_unsettled', 'a concurrent Core settled it as %s'
+                              % rec.state, paths)
         try:
             job = self._ensure_job(request.execution_id)
             facts = api.job_facts(job)
@@ -946,30 +1053,37 @@ class Isolation:
     def _ensure_job(self, execution_id):
         """The execution's Job, created once and held only here (§3.7, R6-A)."""
         with self._lock:
-            if self.closed:
-                raise IsolationClosed()
-            job = self._jobs.get(execution_id)
+            with self._state:
+                if self.closed:
+                    raise IsolationClosed()
+                job = self._jobs.get(execution_id)
             if job is None:
                 job = self.boundary.create_job(execution_id)
-                if self.closed:
+                with self._state:
+                    held = not self.closed
+                    if held:
+                        self._jobs[execution_id] = job
+                if not held:
                     self.boundary.close_job(job)
                     raise IsolationClosed()
-                self._jobs[execution_id] = job
             return job
 
     def held_job(self, execution_id):
         """The Job handle Core holds for an execution, or None. Used by the verifier
         and by the sole-holder evidence; never handed to another process."""
-        return self._jobs.get(execution_id)
+        with self._state:
+            return self._jobs.get(execution_id)
 
     def held_jobs(self):
-        return dict(self._jobs)
+        with self._state:
+            return dict(self._jobs)
 
     def close_admission(self, *, deadline=None):
         """Core is stopping: no identity is established and no Job created from now on,
         and a confined check running ends at its next poll."""
         # Publish cancellation before waiting: an OS call may outlive the deadline.
-        self.closed = True
+        with self._state:
+            self.closed = True
         acquired = self._lock.acquire(timeout=-1 if deadline is None else
                                       max(0.0, deadline - time.monotonic()))
         if acquired:
@@ -984,7 +1098,7 @@ class Isolation:
         zero; otherwise why not: no Job held (every end after a restart), a query that
         fails or answers anything but a count, or members left at the bound. Zero shows
         only that the Job is empty, never that no writer outside it exists (T-008)."""
-        job = self._jobs.get(execution_id)
+        job = self.held_job(execution_id)
         if job is None:
             return 'no Job is held for it'
         end, why = _clock() + wait, None
@@ -1045,7 +1159,8 @@ class Isolation:
         return out
 
     def _close_job(self, execution_id):
-        job = self._jobs.pop(execution_id, None)
+        with self._state:
+            job = self._jobs.pop(execution_id, None)
         if job is None:
             return False
         self.boundary.close_job(job)             # kill-on-close: the tree dies here
@@ -1290,8 +1405,8 @@ class Isolation:
             # kept as written and reported, and the profile — nothing here says Core made
             # it — is kept as evidence like any other it cannot account for
             self._report_invalid('quarantine.jsonl:%d' % n, 'released_but_' + presence)
-            self._unowned(IsolationRecord(execution_id=execution_id,
-                                          profile=profile_name(execution_id)))
+            self._unowned(self.record(execution_id) or IsolationRecord(
+                execution_id=execution_id, profile=profile_name(execution_id)))
             return False
         closed = self._close_job(execution_id)  # what teardown would have done first
         rec = self.record(execution_id) or IsolationRecord(
@@ -1371,7 +1486,10 @@ class Isolation:
         key, api = request.execution_id, self.boundary
         t0 = time.monotonic()
         try:
+            self._check_establishment()
             _admit(key)
+        except IsolationClosed:
+            return _unread(t0, 'isolation: core_stopping'), False
         except IsolationUnavailable as err:
             # refused before any file of the attempt is touched, so nothing is read
             return _unread(t0, 'isolation: %s' % err.reason), False
