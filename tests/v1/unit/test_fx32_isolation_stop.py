@@ -58,6 +58,86 @@ def test_a_job_that_finishes_after_the_stop_began_is_never_published(tmp_path):
     assert set(a.held_jobs()) <= set(snapshot[0]), 'a Job was inserted after the stop snapshot'
 
 
+def test_a_record_saved_on_a_stale_read_is_refused_and_the_stored_one_stays(tmp_path):
+    a, _b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    first = iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid))
+    a._save(first)
+    stale = _record(a, eid)
+    a._save(_record(a, eid))
+    with pytest.raises(OSError):
+        a._save(stale)
+    assert _record(a, eid).gen == first.gen + 1
+
+
+def test_ownership_is_never_turned_back_to_unowned_by_a_write_from_an_older_read(tmp_path):
+    a, _b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    unowned = iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid))
+    a._save(unowned)
+    stale = _record(a, eid)
+    owned = _record(a, eid)
+    owned.owned = True
+    a._save(owned)
+    with pytest.raises(OSError):
+        a._save(stale)
+    assert _record(a, eid).owned is True
+
+
+def test_a_record_write_that_cannot_take_its_lock_fails_and_leaves_the_record(tmp_path,
+                                                                              monkeypatch):
+    a, _b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    a._save(iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid)))
+    before = open(isolation_state(eid), 'rb').read()
+    monkeypatch.setattr(iso, 'RECORD_LOCK_WAIT_S', 0.05)
+    open(isolation_state(eid) + '.lock', 'w').close()
+    with pytest.raises(OSError):
+        a._save(_record(a, eid))
+    assert open(isolation_state(eid), 'rb').read() == before
+
+
+def test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim(tmp_path):
+    """Core 1 creates the profile and stalls before saving its ownership; the stop
+    returns; Core 2 reads the still-unowned record and stalls inside its decision; Core 1
+    saves ownership; Core 2 resumes from its stale read. The record must stay owned, and
+    the next pass must delete the profile."""
+    a1, b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    a2 = iso.Isolation(FakeNode(), boundary=b)
+    created, release_create = threading.Event(), threading.Event()
+    read, release_read = threading.Event(), threading.Event()
+    real_create, real_exists = b.create_profile, b.profile_exists
+
+    def stalled_create(execution_id):
+        got = real_create(execution_id)
+        created.set()
+        assert release_create.wait(JOIN_S)
+        return got
+
+    def stalled_exists(execution_id):
+        if threading.current_thread().name == 'reclaimer':
+            read.set()
+            assert release_read.wait(JOIN_S)
+        return real_exists(execution_id)
+
+    b.create_profile, b.profile_exists = stalled_create, stalled_exists
+    establisher, errors = _run(a1.establish, req)
+    assert created.wait(JOIN_S)
+    a1.close_admission(deadline=0.0)
+    reclaimer, passes = _run(a2.reclaim)
+    reclaimer.name = 'reclaimer'
+    assert read.wait(JOIN_S)
+    release_create.set()
+    establisher.join(JOIN_S)
+    release_read.set()
+    reclaimer.join(JOIN_S)
+    assert isinstance(errors[0], iso.IsolationClosed)
+    assert _record(a2, eid).owned is True, 'a stale reclaim turned ownership back to unowned'
+    assert a2.reclaim() == [eid] and iso.profile_name(eid) not in b.profiles
+    assert not os.path.lexists(isolation_state(eid))
+
+
 def test_a_job_created_after_the_stop_began_is_closed_and_never_held(tmp_path):
     a, b, req, _node = authority(tmp_path)
     eid = req.execution_id

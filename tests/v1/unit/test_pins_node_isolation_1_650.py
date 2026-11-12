@@ -434,7 +434,8 @@ def test_a_flagged_test_harness_is_isolated_and_a_real_one_is_not(tmp_path):
 
 RECORD_FIELDS = {'execution_id', 'profile', 'sid', 'state', 'reason', 'failure',
                  'conditions', 'planned', 'applied', 'pid', 'create_time',
-                 'capabilities', 'owned', 'preexisting', 'attempts', 'at', 'updated'}
+                 'capabilities', 'owned', 'preexisting', 'attempts', 'at', 'updated',
+                 'gen'}
 
 
 def test_a_record_survives_the_dict_it_is_written_as(tmp_path):
