@@ -82,6 +82,10 @@ RETRY_EXIT = T + 'test_core_that_exits_after_a_failed_first_attempt_is_verified_
 RETRY_FLAKY = T + 'test_a_verification_that_briefly_fails_is_read_again_on_the_next_tick'
 RETRY_CAP_TEST = T + 'test_a_survivor_gets_two_more_identity_bound_attempts_then_a_persistent_failure'
 RETRY_REUSE = T + 'test_a_pid_reused_between_the_retries_is_never_terminated'
+FIRST_KILL_RETRY = T + 'test_a_workload_whose_first_kill_failed_is_killed_again_on_the_next_attempt'
+REUSED_SURVIVOR = T + 'test_a_survivor_whose_pid_was_reused_is_never_killed'
+NEVER_DIES = T + 'test_a_workload_that_never_dies_gets_three_attempts_then_a_persistent_report_naming_it'
+KILL_RAISES = T + 'test_one_survivor_whose_kill_raises_does_not_stop_the_kill_of_the_next'
 CLAIMED = T + 'test_a_terminate_that_claims_success_does_not_make_the_stop_stopped'
 ABSENT_NOTHING = T + 'test_a_core_already_gone_with_nothing_owned_is_stopped_whatever_terminate_says'
 ABSENT_WORKLOAD = T + 'test_a_core_already_gone_with_a_workload_still_running_is_not_stopped'
@@ -235,6 +239,23 @@ MUTATIONS = [
      STOP_CALL, '            self._answer = self.terminate(self.core_pid, self.core_create_time) is True'),
      (HOST, VERIFY_LAST, "        self.core_stop = STOPPED if getattr(self, '_answer', False) "
                          "else (self._unstopped() or STOPPED)\n")], [CLAIMED]),
+    ('WH57', 'a survivor of a later attempt is never killed again', [(HOST,
+     '        if self.stop_attempts > 1:\n            self._retry_survivors()\n', '')],
+     [FIRST_KILL_RETRY, NEVER_DIES]),
+    ('WH58', 'a survivor is killed again without checking its identity', [(HOST,
+     "                if self._running_as(job['pid'], job['create_time']):\n"
+     "                    self._kill(job['job_ref'])",
+     "                if True:\n                    self._kill(job['job_ref'])")],
+     [REUSED_SURVIVOR]),
+    ('WH59', 'survivors are retried past the attempt cap', [(HOST,
+     "            self.core_stop = 'persistent stop failure after %d attempts: %s' % (",
+     "            self._retry_survivors()\n"
+     "            self.core_stop = 'persistent stop failure after %d attempts: %s' % (")],
+     [NEVER_DIES]),
+    ('WH60', 'a survivor whose kill raises stops the retry of the others', [(HOST,
+     "                    self._kill(job['job_ref'])\n            except Exception:\n                pass",
+     "                    self._kill(job['job_ref'])\n            except ValueError:\n                pass")],
+     [KILL_RAISES]),
 ]
 
 
