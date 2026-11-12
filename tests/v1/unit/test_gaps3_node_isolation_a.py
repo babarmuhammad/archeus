@@ -39,6 +39,7 @@ fails any test that reaches a real Win32 primitive.
 import json
 import os
 import threading
+import time
 import zlib
 
 import pytest
@@ -49,7 +50,8 @@ from archeus.infra.paths import isolation_dir, isolation_state, quarantine_log, 
     verify_consumed
 from archeus.node import isolation as iso
 
-#: bounded ceiling for every event wait and thread join in this file (no sleeps)
+#: bounded ceiling for every event wait and thread join in this file (the only sleep is
+#: the 1 ms poll of `_published`, which waits on a flag, not on the clock)
 JOIN_S = 5.0
 
 
@@ -299,6 +301,18 @@ def _drain(threads, release):
         assert not t.is_alive(), 'a test thread outlived its bounded join'
 
 
+def _published(a):
+    """Block until Core has published its stop (`closed`), the first thing close_admission
+    does before it touches the lock. `Thread.start` returns long before that, so a test
+    must wait for the publication, not assume it. This polls the flag under the same
+    JOIN_S bound every other wait here uses; it never assumes how the scheduler orders
+    the threads."""
+    end = time.monotonic() + JOIN_S
+    while not a.closed:
+        assert time.monotonic() < end, 'the stop was never published'
+        time.sleep(0.001)
+
+
 # ── 1. §3.4/A6: stopping never consumes a verifier attempt ────────────────────
 #
 # isolation.py:802-803 `establish`: `if self.closed: raise IsolationClosed()`
@@ -480,7 +494,7 @@ class TestClosedJobAdmission:
             assert inside.wait(JOIN_S), 'the create never entered the boundary'
             stop = _start(threads, lambda: (a.close_admission(),
                                             seq.append('closed')))  # queues behind the held lock
-            assert a.closed is True                      # published before the wait
+            _published(a)                                # the stop is public before it waits
             assert list(seq) == ['create-start']         # close waits: not started, not done
             assert 'closed' not in seq                   # it has not returned either
             release.set()
@@ -500,12 +514,13 @@ class TestClosedJobAdmission:
 
 
 def _start_two_racing(a, b):
-    """Force the ordering of probe 7 deterministically: one create holds the authority
-    lock inside the boundary (blocked on `release`); the close thread and a second
-    create (different id) both queue behind it, started in that order while the lock
-    is provably held. Releasing lets the queued close — first waiter in, CPython's
-    lock wakes its waiters in arrival order — win the lock before the second create
-    ever reaches line 936."""
+    """One create holds the authority lock inside the boundary (blocked on `release`).
+    The close thread starts first and the test waits until it has published `closed`;
+    only then does a second create (different id) start. Once closed is published, the
+    second create is refused under the lock whichever waiter the lock wakes first, so
+    nothing here depends on CPython's wake-up order (it is not FIFO by contract). The
+    earlier version started both threads without waiting, and a create could take the
+    lock before the stop was published and admit a second Job."""
     eid1, eid2 = new_execution_id(), new_execution_id()
     inside, release = threading.Event(), threading.Event()
     seq = []
@@ -523,8 +538,9 @@ def _start_two_racing(a, b):
     threads = []
     job1 = _start(threads, lambda: a._ensure_job(eid1))
     assert inside.wait(JOIN_S), 'the first create never entered the boundary'
-    stop = _start(threads, a.close_admission)         # queued first
-    late = _start(threads, lambda: a._ensure_job(eid2))   # queued second
+    stop = _start(threads, a.close_admission)
+    _published(a)                                     # the stop is public before the late create
+    late = _start(threads, lambda: a._ensure_job(eid2))
     return threads, (job1, stop, late), release, seq, eid1, eid2
 
 
@@ -534,11 +550,11 @@ class TestTheCloseWinsTheLock:
         `closed` only once it holds the lock, so a close that wins the lock refuses it
         (935) without ever reaching the boundary (938). test_pv20_activate.py's
         late-worker test closes first and then calls, which proves the flag, not the
-        lock ordering; here the attempt is already queued inside `_ensure_job` when
-        the stop lands. If lines 934-935 sat outside the lock of 933, the queued
-        create could pass the check, leave, and be minted after Core stopped — a
-        kill-on-close Job created past the stop. The queued second create publishes
-        nothing here: no second boundary call, no second hold."""
+        lock ordering; here the attempt starts after the stop is published, while the
+        first create still holds the lock. If lines 934-935 sat outside the lock of
+        933, the second create could pass the check, leave, and be minted after Core
+        stopped — a kill-on-close Job created past the stop. The second create
+        publishes nothing here: no second boundary call, no second hold."""
         a, b, _req, _ = authority(tmp_path)
         threads, (job1, stop, late), release, seq, eid1, eid2 = _start_two_racing(a, b)
         try:
