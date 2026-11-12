@@ -1367,7 +1367,11 @@ class LocalNode:
         and the branch left as it was. Raises OSError when git cannot run."""
         ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
                  '-c', 'commit.gpgsign=false']
-        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],
+        # Explicit on the command line: git applies branch.<name>.mergeOptions after the -c
+        # configuration, so a repository's --gpg-sign or --verify-signatures would win over
+        # the pinned config alone.
+        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '--no-gpg-sign',
+                                           '--no-verify-signatures', '-m', message, rev],
                          timeout=120)
         if r is None:
             raise OSError('git merge could not run')
@@ -1853,9 +1857,11 @@ def _project_git(root, args, timeout=60, max_bytes=None):
     """A Git call in a project's own repository that runs none of its code: no
     hook, fsmonitor, filter or merge driver selected by an attribute, replace ref
     or lazy fetch, and no configuration but the repository's own. A repository
-    whose info/attributes sets attributes is refused (None), as is the default
-    merge driver it could name, and no signing program. The CompletedProcess with text decoded as written
-    (no newline translation), or None. None includes a Git that lies inside *root*
+    whose info/attributes sets attributes is refused (None), and so is one whose
+    attribute lookup fails. The default merge driver is pinned to text, and no
+    signing program runs: the signing and verification pins are set on the command
+    line, so a repository option cannot turn them back on. The CompletedProcess has
+    its text decoded as written (no newline translation), or None. None includes a Git that lies inside *root*
     (the rule of `proc.run` for a bare program) and a Git below the floor, which
     ignores some of these pins: it is asked its version and nothing else. With
     *max_bytes* stdout is read only up to that many bytes (`proc.run_capped`) and
@@ -1887,21 +1893,34 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                 if not _at_floor(out):
                     return None
                 _VERSION[exe] = out
-            # Git reads the repository's info/attributes whatever attribute source is pinned,
-            # so a filter or merge driver it names cannot be turned off: refuse instead
+            # Git reads the repository's info/attributes whatever attribute source is pinned.
+            # A failed lookup is refused: it is not evidence that the file is absent.
             where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
-            attrs = (os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
-                     if where.returncode == 0 else None)
-            if attrs and os.path.isfile(attrs):
+            if where.returncode != 0 or not where.stdout.strip():
+                return None
+            attrs = os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
+            if os.path.isfile(attrs):
                 with open(attrs, 'rb') as f:
                     if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):
                         return None
-            r = run(argv + list(args), root, max_bytes)
+            # Another writer can create that file after this check, so the command is pinned
+            # as well: a filter, merge or diff driver runs only if the repository configuration
+            # defines it, and each such driver is emptied on the command line.
+            drivers = run(argv + ['config', '--name-only', '--get-regexp', _DRIVER_KEYS], root)
+            if drivers.returncode not in (0, 1):
+                return None
+            pins = []
+            for name in drivers.stdout.decode('utf-8', 'replace').splitlines():
+                pins += ['-c', name.strip() + '=']
+            r = run(argv + pins + list(args), root, max_bytes)
         except Exception:
             return None
     r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))
     return r
 
+
+#: the configuration keys of the filter, merge and diff drivers an attribute can name
+_DRIVER_KEYS = r'^(filter|merge|diff)\..+\.(clean|smudge|process|driver|command|textconv)$'
 
 #: `git version` of each absolute executable at or above the floor, read once per process
 _VERSION = {}

@@ -8,6 +8,7 @@ tests/v1/integration/test_repo_store.py."""
 import ast
 import hashlib
 import os
+import subprocess
 import threading
 import time
 from types import SimpleNamespace
@@ -872,6 +873,39 @@ def test_no_second_store_pin_exists_and_the_reviewed_env_pins_are_untouched():
             ('archeus/harnesses/base.py', 'GIT_CONFIG_COUNT'),
             ('archeus/harnesses/base.py', 'GIT_TERMINAL_PROMPT'),
             ('archeus/node/local.py', 'GIT_TERMINAL_PROMPT')} <= seen
+
+
+def test_the_guarded_project_git_call_carries_the_whole_pin(tmp_path, monkeypatch):
+    # S4: one assertion on the complete argv and environment of a guarded call, so
+    # removing any pin (lazy fetch, protocol, attribute system, submodule, maintenance,
+    # config) fails it
+    root = str(tmp_path)
+    calls = []
+
+    def fake(argv, **kw):
+        calls.append((list(argv), kw))
+        out = (b'git version 2.49.0\n' if 'version' in argv
+               else b'.git/info/attributes\n' if 'rev-parse' in argv else b'')
+        return subprocess.CompletedProcess(argv, 1 if 'config' in argv else 0, out, b'')
+    monkeypatch.setattr(local.subprocess, 'run', fake)
+    assert local._project_git(root, ['status', '--porcelain']) is not None
+    argv, kw = calls[-1]
+    exe, env = argv[0], kw['env']
+    empty, none = env['HOME'], env['GIT_CONFIG_GLOBAL']
+    pins = ('core.hooksPath=' + empty, 'core.fsmonitor=false', 'core.attributesFile=' + none,
+            'merge.default=text', 'merge.verifySignatures=false', 'commit.gpgsign=false',
+            'tag.gpgSign=false', 'submodule.recurse=false', 'gc.auto=0',
+            'maintenance.auto=false', 'core.longpaths=true')
+    assert argv == [exe, '--no-replace-objects'] + [x for c in pins for x in ('-c', c)] + [
+        'status', '--porcelain']
+    platform = {k for k in ('SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP') if k in os.environ}
+    assert {k: env[k] for k in platform} == {k: os.environ[k] for k in platform}
+    assert {k: v for k, v in env.items() if k not in platform} == {
+        'PATH': os.path.dirname(exe), 'HOME': empty, 'XDG_CONFIG_HOME': empty,
+        'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': none, 'GIT_ATTR_NOSYSTEM': '1',
+        'GIT_ATTR_SOURCE': EMPTY_TREE, 'GIT_TERMINAL_PROMPT': '0',
+        'GIT_ALLOW_PROTOCOL': 'file', 'GIT_PROTOCOL_FROM_USER': '0', 'GIT_NO_LAZY_FETCH': '1'}
+    assert kw['cwd'] == root
 
 
 

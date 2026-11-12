@@ -262,7 +262,8 @@ class TestMergeBack:
         argv = s.run_calls[0].argv
         assert 'user.name=Archeus' in argv and 'user.email=archeus@localhost' in argv
         assert 'commit.gpgsign=false' in argv       # never the user's identity, and no hook
-        assert argv[-6:] == ['merge', '--no-ff', '--no-edit', '-m', 'Merge it', COMMIT]
+        assert argv[-8:] == ['merge', '--no-ff', '--no-edit', '--no-gpg-sign',
+                             '--no-verify-signatures', '-m', 'Merge it', COMMIT]
         assert s.run_calls[0].cwd == str(tmp_path) and s.run_calls[0].timeout == 120
         assert s.git_argvs == [['rev-parse', '--verify', '-q', 'HEAD']]
         assert len(s.run_calls) == 1

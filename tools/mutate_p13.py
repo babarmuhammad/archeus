@@ -431,6 +431,32 @@ MUTATIONS = [
      "'tag.gpgSign=false', 'submodule.recurse=false',",
      "'submodule.recurse=false',")],
      [B + '::test_a_tag_run_through_the_guard_is_not_signed_by_the_repository']),
+    ('Z104', 'a merge leaves the signing and verification flags to the repository merge options', [(LOC,
+     "        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '--no-gpg-sign',\n"
+     "                                           '--no-verify-signatures', '-m', message, rev],",
+     "        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],")],
+     [B + '::test_a_branch_merge_option_does_not_sign_or_verify_through_the_repository']),
+    ('Z105', 'a failed info/attributes lookup is read as no attributes, so the command runs', [(LOC,
+     "            if where.returncode != 0 or not where.stdout.strip():\n                return None\n"
+     "            attrs = os.path.join(",
+     "            attrs = os.path.join(")],
+     [B + '::test_a_failed_attributes_lookup_refuses_the_guarded_call']),
+    ('Z106', 'a filter named by info/attributes runs because the drivers are not emptied', [(LOC,
+     "            r = run(argv + pins + list(args), root, max_bytes)",
+     "            r = run(argv + list(args), root, max_bytes)")],
+     [B + '::test_a_file_created_after_the_check_selects_no_filter_for_the_command']),
+    ('Z107', 'a refused final git check is reported as the workspace moving', [(WRK,
+     "        moved = now is not None and now != revision\n",
+     "        moved = now != revision\n")],
+     ['tests/v1/unit/test_gaps_core_verification_worker.py::test_a_refused_final_git_check_is_not_reported_as_a_moved_workspace']),
+    ('Z108', 'a guarded project git call does not pin lazy fetch off', [(LOC,
+     "GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1')",
+     "GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0')")],
+     ['tests/v1/unit/test_repo_store.py::test_the_guarded_project_git_call_carries_the_whole_pin']),
+    ('Z109', 'a guarded project git call does not pin maintenance off', [(LOC,
+     "'gc.auto=0', 'maintenance.auto=false',\n                  'core.longpaths=true'):",
+     "'gc.auto=0',\n                  'core.longpaths=true'):")],
+     ['tests/v1/unit/test_repo_store.py::test_the_guarded_project_git_call_carries_the_whole_pin']),
 ]
 
 
