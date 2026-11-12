@@ -234,46 +234,79 @@ def _local(pkg):
     return bool(re.match(r'\.{1,2}$|\.{1,2}[\\/]|[\\/](?![\\/])|~[\\/]|[A-Za-z]:[\\/]', pkg))
 
 
+#: options that take a value in the next token (or after `=`), npm's global ones
+#: included: `npm --cache /tmp exec evil` must not read `exec` as the cache path
+_VALUE_OPTS = {'--cache', '--registry', '--userconfig', '--globalconfig', '--prefix',
+               '-w', '--workspace', '--node-options', '--loglevel', '--script-shell'}
+#: launcher -> the verbs that run a package; the others are not fetches
+_VERBS = {'npm': ('exec', 'x'), 'pnpm': ('dlx',), 'yarn': ('dlx',), 'bun': ('x',)}
+
+
+def _verb_index(rest, verbs):
+    """Index of the subcommand in *rest* (npm's global flags come before it), or None.
+    A value-taking flag followed by a verb is read as a boolean flag before the verb:
+    `pnpm -w dlx` is a fetch even though npm's `-w` takes a value."""
+    i = 0
+    while i < len(rest):
+        if rest[i] in verbs:
+            return i
+        if not rest[i].startswith('-'):
+            return None
+        if rest[i] in _VALUE_OPTS and i + 1 < len(rest) and rest[i + 1] in verbs:
+            return i + 1
+        i += 2 if rest[i] in _VALUE_OPTS else 1
+    return None
+
+
 def _package_command(command, args):
     tokens = _no_env([command, *args])
     if not tokens:
         return None, None, False
     launcher, rest = _exe(tokens), tokens[1:]
-    if launcher in ('npm', 'pnpm', 'yarn'):
-        verbs = ('exec', 'x') if launcher == 'npm' else ('dlx',)
-        if not rest or rest[0] not in verbs:
+    if launcher in _VERBS:
+        at = _verb_index(rest, _VERBS[launcher])
+        if at is None:
             return None, None, False
-        rest = rest[1:]
+        rest = rest[at + 1:]
     elif launcher not in ('npx', 'bunx'):
         return None, None, False
-    named, package, no_install, yes = [], None, False, False
-    values = {'--cache', '--registry', '--userconfig', '--prefix', '-w', '--workspace', '--node-options'}
+    # npm reads its own flags on both sides of the package (nopt, up to `--`); npx,
+    # bunx, bun x, pnpm dlx and yarn dlx stop options at the first positional
+    anywhere = launcher == 'npm'
+    named, positional, call, no_install, yes = [], None, None, False, False
     i = 0
     while i < len(rest):
         a = rest[i]
         option, sep, value = a.partition('=')
         if a == '--':
-            package = next(iter(rest[i + 1:]), None)
+            if positional is None:
+                positional = next(iter(rest[i + 1:]), None)
             break
         if not a.startswith('-'):
-            package = a
-            break
+            positional = positional or a
+            if not anywhere:
+                break
+            i += 1
+            continue
         if option in ('--no', '--no-install'):
             no_install = True
         elif option in ('-y', '--yes'):
             yes = True
-        elif option in values or option in ('-p', '--package', '-c', '--call'):
+        elif option in _VALUE_OPTS or option in ('-p', '--package', '-c', '--call'):
             if not sep:
                 i += 1
                 value = next(iter(rest[i:i + 1]), '')
             if option in ('-p', '--package'):
                 named.append(value)
             elif option in ('-c', '--call'):
-                package = value
-                break
+                call = value
+                if not anywhere:
+                    break
         i += 1
     if named:
         package = next((p for p in named if not (_pinned(p) or _local(p))), named[0])
+    else:
+        package = call if call is not None else positional
     return launcher, package, no_install and not yes
 
 
@@ -289,21 +322,24 @@ def _locate(lines, needle, start):
 
 
 def _hook_commands(node):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if k == 'command' and isinstance(v, str):
-                yield v
-            else:
-                yield from _hook_commands(v)
-    elif isinstance(node, list):
-        for v in node:
-            yield from _hook_commands(v)
+    # iterative: a recursive walk overflows the stack on nesting that json.loads
+    # itself still accepts. Reversed pushes keep the depth-first order of the file.
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if isinstance(n, tuple):          # a queued `command` value, yielded in file order
+            yield n[0]
+        elif isinstance(n, dict):
+            for k, v in reversed(list(n.items())):
+                stack.append((v,) if k == 'command' and isinstance(v, str) else v)
+        elif isinstance(n, list):
+            stack.extend(reversed(n))
 
 
 def _json_findings(text, lines):
     try:
         data = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):   # nesting past the parser's depth is unparsable too
         return [Finding('json-unparsed', 'note', 1,
                         'JSON that does not parse (comments?): its servers and hooks were not read', '')]
     if not isinstance(data, dict):

@@ -61,7 +61,11 @@ def lessons(conn, mission_id):
             "AND rel = 'learned_from' AND dst_kind = 'mission' AND dst_id = ? ORDER BY src_id",
             (mission_id,)):
         # ponytail: scans a mission's expired relations too; a valid_until column if that ever costs
-        if json.loads(r['body']).get('valid_until') is not None or r['src_id'] == last:
+        try:
+            body = json.loads(r['body'])
+        except ValueError:          # the schema admits any TEXT: a bad body is skipped, not fatal
+            continue
+        if not isinstance(body, dict) or body.get('valid_until') is not None or r['src_id'] == last:
             continue
         last = r['src_id']
         found.append(last)

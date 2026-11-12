@@ -167,6 +167,31 @@ def test_lessons_stops_reading_once_the_cap_is_passed(db_world):
     assert more is True
 
 
+@pytest.mark.parametrize('body', ['[]', 'null', '{"valid_until": '])
+def test_a_malformed_relation_body_is_skipped_and_the_trace_still_reads(db_world, body):
+    """The schema allows any TEXT body. A list, null or unparsable body must not
+    crash the whole trace: the relation is skipped and the good one still counts."""
+    db, who = db_world
+    mid = _mission(db, who)['mid']
+    good, bad = ids.new_id('knowledge_item'), ids.new_id('knowledge_item')
+
+    def seed(tx, **_):
+        for kid, text in ((bad, body), (good, '{"valid_until": null}')):
+            rid = ids.new_id('relation')
+            tx.insert(entities.Relation(
+                id=rid, src_kind='knowledge_item', src_id=kid,
+                rel='learned_from', dst_kind='mission', dst_id=mid), actor=who)
+            tx.execute('UPDATE relations SET body = ? WHERE id = ?', (text, rid))
+        tx.append(_witness(who))
+
+    db.writer.execute(seed, {})
+    with db.read() as conn:
+        learned, more = trace.lessons(conn, mid)
+    assert learned == [good]
+    assert more is False
+    assert _read(db, mid, _NoRegistry())['lessons'] == [good]
+
+
 # ── lanes: the type filter, the text cap, the pairing guards ────────────────
 
 def test_events_that_are_neither_call_nor_result_never_reach_a_lane():
