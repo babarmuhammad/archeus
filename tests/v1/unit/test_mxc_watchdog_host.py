@@ -480,14 +480,79 @@ def test_a_stop_that_leaves_an_owned_workload_running_is_reported_not_claimed(en
     assert not env.host.done()
 
 
-def test_a_second_rollback_during_a_failed_stop_stops_nothing_more(env):
+def test_core_that_exits_after_a_failed_first_attempt_is_verified_stopped_on_the_next_tick(env):
     armed(env)
     env.world.terminated = False
-    roll_back(env)
-    seen = list(events(env))
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == 'Core still running after its stop'
+    del env.world.table[CORE_PID], env.world.table[PID]
+    assert env.host.tick() == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+    assert events(env) == [('sentinel',), ('terminate', CORE_PID, CORE_TIME)]
+
+
+def test_a_verification_that_briefly_fails_is_read_again_on_the_next_tick(env):
+    armed(env)
+    real, failed = env.world.identity, []
+
+    def flaky(pid):
+        if ('terminate', CORE_PID, CORE_TIME) in events(env) and not failed:
+            failed.append(pid)
+            raise OSError('table busy')
+        return real(pid)
+    env.host.identity_reader = flaky
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == 'stop not verified: OSError'
+    assert env.host.tick() == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+    assert [e for e in events(env) if e[0] == 'terminate'] == [('terminate', CORE_PID, CORE_TIME)]
+
+
+def test_a_survivor_gets_two_more_identity_bound_attempts_then_a_persistent_failure(env):
+    armed(env)
+    calls = []
+
+    def stubborn(pid, create_time):
+        calls.append((pid, create_time))
+        return False
+    env.host.terminate = stubborn
     assert roll_back(env) == wd.UNCERTAIN
     assert env.host.tick() == wd.UNCERTAIN
-    assert events(env) == seen and not env.host.done()
+    assert env.host.tick() == wd.UNCERTAIN
+    assert calls == [(CORE_PID, CORE_TIME)] * 3
+    for _ in range(3):
+        assert env.host.tick() == wd.UNCERTAIN
+    assert calls == [(CORE_PID, CORE_TIME)] * 3
+    assert env.host.report()['core_stop'] == ('persistent stop failure after 3 attempts: '
+                                              'Core still running after its stop')
+    assert not env.host.done()
+    assert events(env).count(('sentinel',)) == 1
+
+
+def test_a_pid_reused_between_the_retries_is_never_terminated(env):
+    armed(env)
+    calls = []
+
+    def stubborn(pid, create_time):
+        calls.append((pid, create_time))
+        return False
+    env.host.terminate = stubborn
+    assert roll_back(env) == wd.UNCERTAIN
+    env.world.table[CORE_PID] = CORE_TIME + 1
+    del env.world.table[PID]
+    assert env.host.tick() == wd.UNCERTAIN
+    assert env.host.report()['core_stop'] == host_mod.STOPPED and env.host.done()
+    assert calls == [(CORE_PID, CORE_TIME)]
+    assert env.world.table[CORE_PID] == CORE_TIME + 1
+
+
+def test_a_terminate_that_claims_success_does_not_make_the_stop_stopped(env):
+    armed(env)
+    env.world.survivors = {CORE_PID}
+    assert roll_back(env) == wd.UNCERTAIN
+    assert env.world.terminated is True
+    assert env.host.report()['core_stop'] == 'Core still running after its stop'
+    assert not env.host.done()
 
 
 def test_a_clock_that_only_moves_forward_stops_nothing(env):

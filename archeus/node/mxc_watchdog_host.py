@@ -15,7 +15,9 @@ Core-less e-stop does (design 3.7, item 83), then the same identity-checked kill
 Core needs no sentinel, its Job is already closed. The sentinel not being verifiable
 never withholds the kill, it is recorded. On UNCERTAIN the host engages the sentinel, ends
 Core by its recorded identity and verifies that Core and every recorded workload are gone;
-a stop it cannot verify keeps it supervising and reports why.
+a stop it cannot verify keeps it supervising and reports why. Each later tick verifies
+the stop again; a Core still alive then gets at most MAX_STOP_ATTEMPTS identity-bound
+terminations in all, after which the failure is reported as persistent.
 
 The Job Core holds stays the Core-death authority (threat model, "Decision: Core death").
 This host is the belt for what outlived it.
@@ -32,6 +34,7 @@ HOST_ENABLED = False
 
 IDLE = 'IDLE'
 STOPPED = 'STOPPED'
+MAX_STOP_ATTEMPTS = 3
 OWNED_OPS = ['intent', 'ownership']
 
 
@@ -49,12 +52,13 @@ class WatchdogHost:
         self.rejected, self.sentinel, self.fault = {}, None, None
         self.core_gone = False
         self.core_stop = None
+        self.stop_attempts = 0
         self._core_seen = None
 
     def tick(self):
         if not self.done():
             self._advance()
-        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop is None:
+        if self.state() == mxc_watchdog.UNCERTAIN and self.core_stop != STOPPED:
             self._stop_core()
         self.channel.write_status(self.report())
         return self.state()
@@ -139,6 +143,16 @@ class WatchdogHost:
 
     def _stop_core(self):
         self._engage_sentinel()
+        if self.stop_attempts:
+            self.core_stop = self._unstopped()
+            if self.core_stop is None:
+                self.core_stop = STOPPED
+                return
+        if self.stop_attempts == MAX_STOP_ATTEMPTS:
+            self.core_stop = 'persistent stop failure after %d attempts: %s' % (
+                MAX_STOP_ATTEMPTS, self.core_stop)
+            return
+        self.stop_attempts += 1
         try:
             self.terminate(self.core_pid, self.core_create_time)
         except Exception:
