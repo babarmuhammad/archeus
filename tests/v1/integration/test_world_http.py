@@ -3,6 +3,7 @@ W18, W26–W30, and the worker-failure row of §11). The in-process scenarios
 are test_world.py."""
 
 import ast
+import hashlib
 import json
 import os
 import time
@@ -31,7 +32,8 @@ def _wait(fn, timeout=30, what='a condition'):
 
 def _register(core, repo, constraints=()):
     r = core.http('POST', '/v1/projects', body={'name': 'p', 'root_paths': [repo.path],
-                                                'idempotency_key': 'reg-' + repo.path})
+                                                'idempotency_key': 'reg-' + hashlib.sha1(
+                                                    repo.path.encode('utf-8')).hexdigest()})
     assert r.status == 200, r.body
     out = r.json()
     for i, c in enumerate(constraints):
