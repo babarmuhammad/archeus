@@ -1053,7 +1053,7 @@ class TestVerifierPrincipal:
         assert rec.profile in b.deleted and iso.profile_name(req.execution_id) in b.deleted
         # the junk is left as found, and the reclaimed attempt keeps only its marker
         assert sorted(os.listdir(junk)) == sorted(
-            ['junk.json', _EID + '.0.json', _VID + '.01.json',
+            ['junk.json', _EID + '.0.json', _VID + '.01.json', _VID + '.2.json.lock',
              os.path.basename(verify_consumed(key))])
         assert {v for k, v in a.invalid.items() if k.startswith('verify/')} == {
             'not_a_verifier_key'}
