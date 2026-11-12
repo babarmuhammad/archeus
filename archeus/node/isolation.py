@@ -650,7 +650,10 @@ class Isolation:
         self._confined = set()
         self._admitted = set()        # verifier keys this Core admitted, not yet established
         self.closed = False             # Core is stopping: nothing new is established
+        # Lock order: `_lock` (the whole establishment, held across OS calls) before `_state`
+        # (the Job table and the closed flag, never held across an OS call or a wait).
         self._lock = threading.RLock()   # ponytail: one establishment at a time; per-execution gates if establishment throughput ever matters
+        self._state = threading.Lock()
 
     # ── the boundary ──
 
@@ -804,7 +807,9 @@ class Isolation:
             return self._admit_establishment(request, paths)
 
     def _check_establishment(self):
-        if self.closed:
+        with self._state:
+            closed = self.closed
+        if closed:
             raise IsolationClosed()
 
     def _save_establishment(self, rec):
@@ -946,30 +951,37 @@ class Isolation:
     def _ensure_job(self, execution_id):
         """The execution's Job, created once and held only here (§3.7, R6-A)."""
         with self._lock:
-            if self.closed:
-                raise IsolationClosed()
-            job = self._jobs.get(execution_id)
+            with self._state:
+                if self.closed:
+                    raise IsolationClosed()
+                job = self._jobs.get(execution_id)
             if job is None:
                 job = self.boundary.create_job(execution_id)
-                if self.closed:
+                with self._state:
+                    held = not self.closed
+                    if held:
+                        self._jobs[execution_id] = job
+                if not held:
                     self.boundary.close_job(job)
                     raise IsolationClosed()
-                self._jobs[execution_id] = job
             return job
 
     def held_job(self, execution_id):
         """The Job handle Core holds for an execution, or None. Used by the verifier
         and by the sole-holder evidence; never handed to another process."""
-        return self._jobs.get(execution_id)
+        with self._state:
+            return self._jobs.get(execution_id)
 
     def held_jobs(self):
-        return dict(self._jobs)
+        with self._state:
+            return dict(self._jobs)
 
     def close_admission(self, *, deadline=None):
         """Core is stopping: no identity is established and no Job created from now on,
         and a confined check running ends at its next poll."""
         # Publish cancellation before waiting: an OS call may outlive the deadline.
-        self.closed = True
+        with self._state:
+            self.closed = True
         acquired = self._lock.acquire(timeout=-1 if deadline is None else
                                       max(0.0, deadline - time.monotonic()))
         if acquired:
@@ -984,7 +996,7 @@ class Isolation:
         zero; otherwise why not: no Job held (every end after a restart), a query that
         fails or answers anything but a count, or members left at the bound. Zero shows
         only that the Job is empty, never that no writer outside it exists (T-008)."""
-        job = self._jobs.get(execution_id)
+        job = self.held_job(execution_id)
         if job is None:
             return 'no Job is held for it'
         end, why = _clock() + wait, None
@@ -1045,7 +1057,8 @@ class Isolation:
         return out
 
     def _close_job(self, execution_id):
-        job = self._jobs.pop(execution_id, None)
+        with self._state:
+            job = self._jobs.pop(execution_id, None)
         if job is None:
             return False
         self.boundary.close_job(job)             # kill-on-close: the tree dies here
@@ -1371,7 +1384,10 @@ class Isolation:
         key, api = request.execution_id, self.boundary
         t0 = time.monotonic()
         try:
+            self._check_establishment()
             _admit(key)
+        except IsolationClosed:
+            return _unread(t0, 'isolation: core_stopping'), False
         except IsolationUnavailable as err:
             # refused before any file of the attempt is touched, so nothing is read
             return _unread(t0, 'isolation: %s' % err.reason), False

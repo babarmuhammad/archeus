@@ -386,8 +386,11 @@ def test_a_check_refused_because_core_is_stopping_records_nothing_and_is_spent(r
     assert a.held_jobs() == {} and a.record(key) is None
     assert b.events == []                            # no count, no close, no delete
     assert a._admitted == set() and a._confined == set()
-    # and the half-attempt can never be started again: its marker survived the stop, so
-    # the restarted attempt is refused before a file of it is written, with no output
+    # the admitted half-attempt stays spent: its marker survived the stop
+    assert os.path.lexists(iso.verify_consumed(key))
+    # and a restarted attempt on this Core is refused as the stop before a file of it is
+    # written, with no output. It is checked before admission, so it consumes no marker
+    # (the stopped-Core refusal replaced `attempt_consumed` here, see isolation._run_confined)
     root = str(tmp_path / 'late')
     os.makedirs(root, exist_ok=True)
     out, stdin = os.path.join(root, 'late.log'), os.path.join(root, 'late.stdin')
@@ -397,7 +400,7 @@ def test_a_check_refused_because_core_is_stopping_records_nothing_and_is_spent(r
     again = a.run_confined(make_verifier_request(key, root), ['tool'], env={'PATH': 'x'},
                            timeout=5, out_path=out, stdin_path=stdin, record=seen.append,
                            keep=1024)
-    assert again['error'] == 'isolation: attempt_consumed' and seen == [again]
+    assert again['error'] == 'isolation: core_stopping' and seen == [again]
     assert again['output'] == b'' and again['confinement'] == {}
     assert b.created == [] and b.launch_calls == []
 
