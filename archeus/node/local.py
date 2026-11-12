@@ -1367,7 +1367,11 @@ class LocalNode:
         and the branch left as it was. Raises OSError when git cannot run."""
         ident = ['-c', 'user.name=' + CORE_GIT_NAME, '-c', 'user.email=' + CORE_GIT_EMAIL,
                  '-c', 'commit.gpgsign=false']
-        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],
+        # Explicit on the command line: git applies branch.<name>.mergeOptions after the -c
+        # configuration, so a repository's --gpg-sign or --verify-signatures would win over
+        # the pinned config alone.
+        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '--no-gpg-sign',
+                                           '--no-verify-signatures', '-m', message, rev],
                          timeout=120)
         if r is None:
             raise OSError('git merge could not run')

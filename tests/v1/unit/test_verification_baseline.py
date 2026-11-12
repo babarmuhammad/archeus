@@ -513,6 +513,20 @@ def test_a_merge_does_not_verify_the_signatures_the_repository_asks_for(tmp_path
     assert not marker.exists()
 
 
+@pytest.mark.parametrize('option,signed', [('--gpg-sign', False), ('--verify-signatures', True)])
+def test_a_branch_merge_option_does_not_sign_or_verify_through_the_repository(tmp_path, option,
+                                                                             signed):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    if signed:
+        _git(str(root), 'update-ref', 'refs/heads/topic',
+             _signed_looking_commit(str(root), 'topic', tmp_path / 'signed.txt'))
+    _git(str(root), 'config', 'branch.main.mergeOptions', option)
+    _git(str(root), 'config', 'gpg.program', _marker_exe(tmp_path, marker, exit_code=1))
+    assert LocalNode.git_merge(str(root), 'topic', 'guarded')[0] == 'merged'
+    assert not marker.exists()
+
+
 def test_a_merge_commit_runs_no_repository_pre_merge_commit_hook(tmp_path):
     root = _repo_with_branches(tmp_path)
     marker = tmp_path / 'ran'

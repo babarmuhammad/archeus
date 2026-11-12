@@ -431,6 +431,11 @@ MUTATIONS = [
      "'tag.gpgSign=false', 'submodule.recurse=false',",
      "'submodule.recurse=false',")],
      [B + '::test_a_tag_run_through_the_guard_is_not_signed_by_the_repository']),
+    ('Z104', 'a merge leaves the signing and verification flags to the repository merge options', [(LOC,
+     "        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '--no-gpg-sign',\n"
+     "                                           '--no-verify-signatures', '-m', message, rev],",
+     "        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],")],
+     [B + '::test_a_branch_merge_option_does_not_sign_or_verify_through_the_repository']),
 ]
 
 
