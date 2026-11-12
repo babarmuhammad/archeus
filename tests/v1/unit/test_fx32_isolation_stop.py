@@ -106,9 +106,11 @@ def test_a_record_write_that_cannot_take_its_lock_fails_and_leaves_the_record(tm
 
 def test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim(tmp_path):
     """Core 1 creates the profile and stalls before saving its ownership; the stop
-    returns; Core 2 reads the still-unowned record and stalls inside its decision; Core 1
-    saves ownership; Core 2 resumes from its stale read. The record must stay owned, and
-    the next pass must delete the profile."""
+    returns; Core 2 reads the profile and the record, and stalls inside its decision
+    holding what it read (the profile was there). Core 1 then saves ownership, and the
+    stop deletes the profile. Core 2 resumes from its stale read: its save must conflict,
+    so the record stays owned with its SID. The next pass removes that record, with no
+    second deletion, since the profile is already absent."""
     a1, b, req, _node = authority(tmp_path)
     eid = req.execution_id
     a2 = iso.Isolation(FakeNode(), boundary=b)
@@ -124,24 +126,32 @@ def test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim(tmp_path):
 
     def stalled_exists(execution_id):
         if threading.current_thread().name == 'reclaimer':
+            seen = real_exists(execution_id)     # the read Core 2 decides from: profile present
             read.set()
             assert release_read.wait(JOIN_S)
+            return seen
         return real_exists(execution_id)
 
     b.create_profile, b.profile_exists = stalled_create, stalled_exists
     establisher, errors = _run(a1.establish, req)
     assert created.wait(JOIN_S)
     a1.close_admission(deadline=0.0)
-    reclaimer, passes = _run(a2.reclaim)
-    reclaimer.name = 'reclaimer'
+    passes = []
+    reclaimer = threading.Thread(target=lambda: passes.append(a2.reclaim()),
+                                 name='reclaimer', daemon=True)
+    reclaimer.start()
     assert read.wait(JOIN_S)
     release_create.set()
     establisher.join(JOIN_S)
     release_read.set()
     reclaimer.join(JOIN_S)
     assert isinstance(errors[0], iso.IsolationClosed)
-    assert _record(a2, eid).owned is True, 'a stale reclaim turned ownership back to unowned'
-    assert a2.reclaim() == [eid] and iso.profile_name(eid) not in b.profiles
+    rec = _record(a2, eid)
+    assert rec is not None and rec.owned is True, 'a stale reclaim turned ownership back'
+    assert rec.state == 'pending' and rec.sid != '' and rec.failure == ''
+    assert iso.profile_name(eid) not in b.profiles
+    assert b.deleted == [iso.profile_name(eid)], 'the profile was deleted more than once'
+    assert a2.reclaim() == [eid]
     assert not os.path.lexists(isolation_state(eid))
 
 
@@ -198,3 +208,48 @@ def test_a_stopped_core_consumes_no_verifier_attempt_through_run_confined(tmp_pa
                             stdin_path=str(tmp_path / 'in'), record=lambda r: None, keep=False)
     assert 'core_stopping' in repr(result)
     assert not os.path.lexists(verify_consumed(key))
+
+
+def test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment(tmp_path):
+    """The establishment is blocked before the profile is created. The stop's deadline
+    passes and close_admission returns without waiting for it. Only then is the creation
+    allowed to run. The establishment then saves its ownership, sees the stop, and deletes
+    the profile itself: the record stays owned and pending with its SID and no failure, the
+    profile is absent, no Job is created, and nothing is recorded as an isolation failure."""
+    a, b, req, node = authority(tmp_path)
+    eid = req.execution_id
+    create_entered, allow_create = threading.Event(), threading.Event()
+    stop_returned, worker_done = threading.Event(), threading.Event()
+    real_create = b.create_profile
+    errors = []
+
+    def gated_create(execution_id):
+        create_entered.set()
+        assert allow_create.wait(JOIN_S)
+        return real_create(execution_id)
+
+    def work():
+        try:
+            a.establish(req)
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            worker_done.set()
+
+    b.create_profile = gated_create
+    worker = threading.Thread(target=work, name='establisher', daemon=True)
+    worker.start()
+    assert create_entered.wait(JOIN_S)
+    a.close_admission(deadline=0.0)              # the deadline passes; the creation is blocked
+    stop_returned.set()
+    assert worker.is_alive() and not worker_done.is_set()
+    allow_create.set()                           # the creation runs only after the stop returned
+    worker.join(JOIN_S)
+    assert not worker.is_alive() and worker_done.is_set() and stop_returned.is_set()
+    assert len(errors) == 1 and isinstance(errors[0], iso.IsolationClosed)
+    assert b.created == [iso.profile_name(eid)]
+    assert iso.profile_name(eid) not in b.profiles and b.deleted == [iso.profile_name(eid)]
+    rec = _record(a, eid)
+    assert rec.state == 'pending' and rec.owned is True and rec.sid != ''
+    assert rec.failure == '' and b.job_creates == 0 and a.held_jobs() == {}
+    assert 'isolation_failed' not in [line['op'] for line in node.registry]

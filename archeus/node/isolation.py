@@ -985,6 +985,15 @@ class Isolation:
         # the OS's answer, on disk before the Job, the invariant or anything else can fail
         # never refused for closing: the profile exists now, and only this record can name it
         rec = self._own(rec, sid)
+        try:
+            return self._settle(api, rec, request, identity, paths)
+        except IsolationClosed:
+            self._abandon_late(rec)              # the stop began after the profile was made
+
+    def _settle(self, api, rec, request, identity, paths):
+        """What follows the ownership save: the stop is checked again, then the Job, the
+        invariant and the established record. Any of these may find the stop begun, and
+        the caller then releases the profile it owns."""
         self._check_establishment()
         if rec.state != 'pending':
             return self._fail(rec, 'record_unsettled', 'a concurrent Core settled it as %s'
@@ -1017,6 +1026,21 @@ class Isolation:
         rec.capabilities = CAPABILITIES
         self._save_establishment(rec)
         return rec
+
+    def _abandon_late(self, rec):
+        """A profile whose creation finished after the stop began is Core's, and nothing
+        else reaches it inside the stop. The record stays owned, pending and with its SID,
+        as the ownership save left it: nothing is failed and no tombstone is written. The
+        profile is deleted now by the same path every release takes, and its absence is
+        verified there. A failed or unverified delete quarantines the record (SID and
+        ownership kept) for reclaim to retry. A write that fails during this cleanup is
+        not an establishment failure, so nothing is charged to the execution; the record
+        stays owned and pending, and reclaim settles it. The stop is what is reported."""
+        try:
+            self._release_best_effort(rec)
+        except OSError:
+            pass
+        raise IsolationClosed()
 
     def _fail(self, rec, reason, detail, paths=None):
         """No process starts, and the state says so deterministically: the record, the

@@ -275,6 +275,34 @@ MUTATIONS = [
             _admit(key)""",
      r"""            _admit(key)""")],
      [F + 'test_a_stopped_core_consumes_no_verifier_attempt_through_run_confined']),
+    ('H63', 'a profile created after the stop is left standing (no late cleanup)', [(ISO,
+     r"""        try:
+            self._release_best_effort(rec)
+        except OSError:
+            pass
+        raise IsolationClosed()""",
+     r"""        raise IsolationClosed()""")],
+     [F + 'test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment',
+      F + 'test_a_late_ownership_write_is_not_undone_by_a_stale_reclaim']),
+    ('H64', 'a late cleanup settles the record as failed', [(ISO,
+     r"""        try:
+            self._release_best_effort(rec)
+        except OSError:
+            pass
+        raise IsolationClosed()""",
+     r"""        rec.state, rec.failure = 'failed', 'core_stopping'
+        self._save(rec)
+        self._release_best_effort(rec)
+        raise IsolationClosed()""")],
+     [F + 'test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment']),
+    ('H65', 'a late cleanup is skipped when the stop lands in _ensure_job or the final check', [(ISO,
+     r"""            return self._settle(api, rec, request, identity, paths)
+        except IsolationClosed:
+            self._abandon_late(rec)""",
+     r"""            return self._settle(api, rec, request, identity, paths)
+        except IsolationClosed:
+            raise""")],
+     [F + 'test_a_profile_created_after_the_stop_returned_is_deleted_by_its_own_establishment']),
 ]
 
 
