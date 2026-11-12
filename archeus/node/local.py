@@ -1891,21 +1891,34 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                 if not _at_floor(out):
                     return None
                 _VERSION[exe] = out
-            # Git reads the repository's info/attributes whatever attribute source is pinned,
-            # so a filter or merge driver it names cannot be turned off: refuse instead
+            # Git reads the repository's info/attributes whatever attribute source is pinned.
+            # A failed lookup is refused: it is not evidence that the file is absent.
             where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
-            attrs = (os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
-                     if where.returncode == 0 else None)
-            if attrs and os.path.isfile(attrs):
+            if where.returncode != 0 or not where.stdout.strip():
+                return None
+            attrs = os.path.join(root, where.stdout.decode('utf-8', 'replace').strip())
+            if os.path.isfile(attrs):
                 with open(attrs, 'rb') as f:
                     if any(line.strip() and not line.lstrip().startswith(b'#') for line in f):
                         return None
-            r = run(argv + list(args), root, max_bytes)
+            # Another writer can create that file after this check, so the command is pinned
+            # as well: a filter, merge or diff driver runs only if the repository configuration
+            # defines it, and each such driver is emptied on the command line.
+            drivers = run(argv + ['config', '--name-only', '--get-regexp', _DRIVER_KEYS], root)
+            if drivers.returncode not in (0, 1):
+                return None
+            pins = []
+            for name in drivers.stdout.decode('utf-8', 'replace').splitlines():
+                pins += ['-c', name.strip() + '=']
+            r = run(argv + pins + list(args), root, max_bytes)
         except Exception:
             return None
     r.stdout, r.stderr = (b.decode('utf-8', 'replace') for b in (r.stdout, r.stderr))
     return r
 
+
+#: the configuration keys of the filter, merge and diff drivers an attribute can name
+_DRIVER_KEYS = r'^(filter|merge|diff)\..+\.(clean|smudge|process|driver|command|textconv)$'
 
 #: `git version` of each absolute executable at or above the floor, read once per process
 _VERSION = {}

@@ -264,7 +264,8 @@ def test_a_git_at_the_floor_is_asked_its_version_once(tmp_path, monkeypatch):
     monkeypatch.setattr(local.subprocess, 'run', new)
     assert LocalNode.git_diff(str(tmp_path), BASE, REV) == 'git version 2.45.0\n'
     assert LocalNode.git_diff(str(tmp_path), BASE, REV) is not None
-    assert asked == ['version', 'info/attributes', '--', 'info/attributes', '--']
+    keys = local._DRIVER_KEYS
+    assert asked == ['version', 'info/attributes', keys, '--', 'info/attributes', keys, '--']
 
 
 def test_a_checkout_whose_registration_outlives_its_directory_is_not_dropped(tmp_path, monkeypatch):
@@ -430,6 +431,44 @@ def test_a_conflicting_merge_runs_no_repository_merge_driver(tmp_path, where):
         (root / '.git' / 'info' / 'attributes').write_text('f.txt merge=evil\n')
         with pytest.raises(OSError, match='could not run'):
             LocalNode.git_merge(str(root), 'topic', 'guarded')
+    assert not marker.exists()
+
+
+def _fake_git_run(monkeypatch, before):
+    """Route every subprocess.run through the real one; *before(argv)* runs first and
+    may answer a call itself by returning a CompletedProcess."""
+    import subprocess as sp
+    real = sp.run
+    calls = []
+    def fake(argv, *a, **kw):
+        calls.append(list(argv))
+        answer = before(list(argv))
+        return answer if answer is not None else real(argv, *a, **kw)
+    monkeypatch.setattr(local.subprocess, 'run', fake)
+    return calls
+
+
+def test_a_failed_attributes_lookup_refuses_the_guarded_call(tmp_path, monkeypatch):
+    root = _repo_with_branches(tmp_path)
+    def before(argv):
+        if 'rev-parse' in argv:
+            return subprocess.CompletedProcess(argv, 128, b'', b'fatal: not a repository')
+    calls = _fake_git_run(monkeypatch, before)
+    assert local._project_git(str(root), ['status', '--porcelain']) is None
+    assert not any('status' in argv for argv in calls)
+
+
+def test_a_file_created_after_the_check_selects_no_filter_for_the_command(tmp_path, monkeypatch):
+    root = _repo_with_branches(tmp_path)
+    marker = tmp_path / 'ran'
+    _git(str(root), 'config', 'filter.mark.clean', _marker_exe(tmp_path, marker))
+    (root / 'f.txt').write_text('changed\n')
+    attributes = root / '.git' / 'info' / 'attributes'
+    def before(argv):
+        if 'add' in argv:                   # another writer, after the check has passed
+            attributes.write_text('*.txt filter=mark\n')
+    _fake_git_run(monkeypatch, before)
+    local._project_git(str(root), ['add', '--', 'f.txt'])
     assert not marker.exists()
 
 

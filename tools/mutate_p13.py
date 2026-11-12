@@ -436,6 +436,15 @@ MUTATIONS = [
      "                                           '--no-verify-signatures', '-m', message, rev],",
      "        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],")],
      [B + '::test_a_branch_merge_option_does_not_sign_or_verify_through_the_repository']),
+    ('Z105', 'a failed info/attributes lookup is read as no attributes, so the command runs', [(LOC,
+     "            if where.returncode != 0 or not where.stdout.strip():\n                return None\n"
+     "            attrs = os.path.join(",
+     "            attrs = os.path.join(")],
+     [B + '::test_a_failed_attributes_lookup_refuses_the_guarded_call']),
+    ('Z106', 'a filter named by info/attributes runs because the drivers are not emptied', [(LOC,
+     "            r = run(argv + pins + list(args), root, max_bytes)",
+     "            r = run(argv + list(args), root, max_bytes)")],
+     [B + '::test_a_file_created_after_the_check_selects_no_filter_for_the_command']),
 ]
 
 
