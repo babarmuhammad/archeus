@@ -449,6 +449,14 @@ MUTATIONS = [
      "        moved = now is not None and now != revision\n",
      "        moved = now != revision\n")],
      ['tests/v1/unit/test_gaps_core_verification_worker.py::test_a_refused_final_git_check_is_not_reported_as_a_moved_workspace']),
+    ('Z108', 'a guarded project git call does not pin lazy fetch off', [(LOC,
+     "GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0', GIT_NO_LAZY_FETCH='1')",
+     "GIT_ALLOW_PROTOCOL='file', GIT_PROTOCOL_FROM_USER='0')")],
+     ['tests/v1/unit/test_repo_store.py::test_the_guarded_project_git_call_carries_the_whole_pin']),
+    ('Z109', 'a guarded project git call does not pin maintenance off', [(LOC,
+     "'gc.auto=0', 'maintenance.auto=false',\n                  'core.longpaths=true'):",
+     "'gc.auto=0',\n                  'core.longpaths=true'):")],
+     ['tests/v1/unit/test_repo_store.py::test_the_guarded_project_git_call_carries_the_whole_pin']),
 ]
 
 
