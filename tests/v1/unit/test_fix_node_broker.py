@@ -299,6 +299,50 @@ def test_closing_a_real_listener_twice_is_harmless():
     L._close(sock)
 
 
+def test_a_resolver_failure_after_close_is_reported_as_closed():
+    entered, release = threading.Event(), threading.Event()
+    b, _ = broker()
+
+    def resolve(host, port):
+        entered.set()
+        assert release.wait(5)
+        return []
+
+    b._resolve = resolve
+    errors = []
+    issuer = threading.Thread(target=lambda: errors.append(_issue_error(b)), daemon=True)
+    issuer.start()
+    try:
+        assert entered.wait(5)
+        b.close(deadline=0.0)
+    finally:
+        release.set()
+        issuer.join(5)
+    assert type(errors[0]) is B.BrokerClosed
+
+
+def test_a_creation_failure_after_close_is_reported_as_closed():
+    entered, release = threading.Event(), threading.Event()
+
+    class Failing(Transport):
+        def create(self, name, principal):
+            entered.set()
+            assert release.wait(5)
+            raise B.BrokerUnavailable('no socket')
+
+    b, _ = broker(transport=Failing())
+    errors = []
+    issuer = threading.Thread(target=lambda: errors.append(_issue_error(b)), daemon=True)
+    issuer.start()
+    try:
+        assert entered.wait(5)
+        b.close(deadline=0.0)
+    finally:
+        release.set()
+        issuer.join(5)
+    assert type(errors[0]) is B.BrokerClosed and b.transport.closed == []
+
+
 def _outcome(f, *args):
     try:
         return f(*args)

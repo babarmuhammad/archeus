@@ -323,6 +323,12 @@ class Broker:
             self._issuing.append(me)
         try:
             return self._issue(binding)
+        except Exception as err:
+            with self._lock:
+                closed = self._closed
+            if closed and not isinstance(err, BrokerClosed):
+                raise BrokerClosed('the broker is closed') from err
+            raise
         finally:
             with self._lock:
                 self._issuing.remove(me)
@@ -350,10 +356,7 @@ class Broker:
         except BaseException:
             with self._lock:
                 self._pending.pop(id(endpoint), None)
-                closed = self._closed
             self.transport.close(endpoint)
-            if closed:
-                raise BrokerClosed('the broker is closed') from None
             raise
         with self._lock:
             self._pending.pop(id(endpoint), None)
