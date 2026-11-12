@@ -234,8 +234,12 @@ def step_forgery(h, rec):
     channel.append(beat)
     require(rec, case, host.tick() == wd.ARMED, 'valid heartbeat control failed')
     channel.append(beat)
-    require(rec, case, host.tick() == wd.UNCERTAIN and events == [],
-            'replayed heartbeat accepted or killed a process')
+    # UNCERTAIN is the rejection: the host then engages the sentinel and asks Core to stop
+    # (events: 'sentinel', 'terminate', as in step_hung). Core is this process, which the
+    # fixture terminate refuses, so the registered workload is the thing that must survive.
+    require(rec, case, host.tick() == wd.UNCERTAIN
+            and h.observe(launch.process.pid) == launch.process.create_time,
+            'replayed heartbeat accepted or killed the registered workload')
     outcome = h.lifecycle['mxc_outcome']
     expected = {'execution_id': eid, 'nonce': 'fresh', 'digest': 'a' * 64,
                 'now': 100, 'max_age': 10}
