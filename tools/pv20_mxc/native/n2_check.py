@@ -38,6 +38,7 @@ from the environment, once, to name cmd.exe.
 Exit codes: 0 all cases PASS / 1 first FAIL / 2 no FAIL but an INCONCLUSIVE is present /
 3 setup error, budget overrun or a surviving launcher.
 """
+import hashlib
 import importlib
 import json
 import ntpath
@@ -66,6 +67,10 @@ QUIESCE_S = 5.0
 CHAIN_MAX = 6000             # well under the 8191 character cmd.exe limit
 EVIDENCE_MAX = 65536
 STILL_ACTIVE = 259
+DIAG = '--diag-descendants'
+IMAGE_FLAG, SYSTEM_FLAG = '--allow-image-copy', '--allow-system32-ro'
+DIAG_FLAGS = (DIAG, IMAGE_FLAG, SYSTEM_FLAG)
+REPARSE = 0x400
 HOME_VARS = ('USERPROFILE', 'HOME', 'HOMEPATH', 'TEMP', 'TMP', 'CLAUDE_CONFIG_DIR',
              'ARCHEUS_HOME', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME')
 PROD = ('archeus.node.mxc', 'archeus.node.staging', 'archeus.node.win32_mxc',
@@ -362,6 +367,117 @@ def look_at(path):
         return '<link>'
 
 
+Row = namedtuple('Row', 'id kind exe flag extra pair chain ev child tok controls done')
+
+
+def exit_chain(exe, tok, ev):
+    return ('%s /d /c exit /b 37 & (if errorlevel 38 (echo OTHER) else (if errorlevel 37 (echo %s) '
+            'else (echo OTHER)))>%s' % (exe, tok, ev))
+
+
+def write_chain(exe, tok, child, ev):
+    return '%s /d /c "echo %s>%s" & echo OBSERVED>%s' % (exe, tok, child, ev)
+
+
+def diag_line(cmd_exe, chain):
+    # The WRITE chain has inner quotes. list2cmdline would send them as \" and cmd.exe would
+    # not read them as quotes, so the raw line is built here instead (/s strips only the wrap).
+    if len(chain) > CHAIN_MAX:
+        raise ValueError('command line too long')
+    return '%s /d /s /c "%s"' % (cmd_exe, chain)
+
+
+def plain(info, kind):
+    return (kind(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+            and not getattr(info, 'st_file_attributes', 0) & REPARSE)
+
+
+def diag_rows(lay, systemroot, seed):
+    j = os.path.join
+    s = ntpath.join(systemroot, 'System32')
+    c = ntpath.join(s, 'cmd.exe')
+    k = j(lay['root'], 'toolchain')
+    kc = j(k, 'cmd.exe')
+    w = lay['p']['state']
+    specs = (('A1', 'exit', c, None, None, None), ('A2', 'write', c, None, None, 'A1'),
+             ('B1', 'exit', kc, IMAGE_FLAG, k, None), ('B2', 'write', kc, IMAGE_FLAG, k, 'B1'),
+             ('C1', 'exit', c, SYSTEM_FLAG, s, None), ('C2', 'write', c, SYSTEM_FLAG, s, 'C1'))
+    rows = []
+    for rid, kind, exe, flag, extra, pair in specs:
+        low, tok = rid.lower(), new_token()
+        ev = j(w, '%s.txt' % low)
+        child = j(w, '%s-child.txt' % low) if kind == 'write' else None
+        chain = exit_chain(exe, tok, ev) if kind == 'exit' else write_chain(exe, tok, child, ev)
+        controls = [w_ok('control-write', j(w, 'ctl_w_%s.txt' % low)),
+                    r_ok('control-read', j(w, 'seed.txt'), j(w, 'ctl_r_%s.txt' % low), seed)]
+        rows.append(Row(rid, kind, exe, flag, extra, pair, chain, ev, child, tok, controls,
+                        w_ok('done', j(w, 'done_%s.txt' % low))))
+    return rows
+
+
+def diag_gate(rows, flags):
+    """(runnable, skipped): a row whose grant flag was not passed is skipped, never run."""
+    runnable = [r for r in rows if r.flag is None or r.flag in flags]
+    return runnable, [r for r in rows if r not in runnable]
+
+
+def _text(seen):
+    return seen.strip() if isinstance(seen, str) and seen not in ('<dir>', '<link>') else None
+
+
+def diag_result(row, look, pair_ran):
+    """One row's label from what the host read. A failed control or a missing done marker
+    overrides any child evidence: the row proves nothing."""
+    if judge(row.controls, look) is not None:
+        return 'control failed'
+    if judge([row.done], look) is not None:
+        return 'no evidence'
+    if row.kind == 'exit':
+        seen = _text(look(row.ev))
+        if seen == row.tok:
+            return 'child ran'
+        if seen == 'OTHER':
+            return 'child did not run'
+        return 'no evidence'
+    if judge([Item('write_ok', row.id, None, row.child, row.tok)], look) is None:
+        return 'child ran'
+    if _text(look(row.ev)) != 'OBSERVED':
+        return 'no evidence'
+    return 'child ran but write failed' if pair_ran else 'child did not run'
+
+
+def diag_interpret(labels):
+    """The spec's Interpretation bullets over the rows that ran. Rows whose control failed or
+    left no evidence are named and count for nothing."""
+    void = sorted(r for r, v in labels.items() if v in ('control failed', 'no evidence'))
+    ok = {r: v for r, v in labels.items() if r not in void}
+    ran = lambda r: ok.get(r) == 'child ran'
+    exits = [r for r in ('A1', 'B1', 'C1') if r in ok]
+    if ran('A1') and ok.get('A2') == 'child ran':
+        text = 'baseline exit and write both succeed: child creation and usable workspace access proved'
+    elif ran('A1') and ok.get('A2') == 'child ran but write failed':
+        text = ('baseline exit succeeds, write fails with its control passing: investigate (3), '
+                'inherited cwd and environment versus grants')
+    elif exits and not any(ran(r) for r in exits):
+        text = ('all exit rows failed: inconclusive for blanket denial (2); six rows cannot prove it. '
+                'Image dependencies, UI initialization and environment remain alternatives')
+    elif not ran('A1') and (ran('B1') or ran('C1')):
+        parts = []
+        if ran('B1'):
+            parts.append('granted image runs: image location or access, cause (1), strongly supported; '
+                         'loader dependency access still possible')
+        if ran('C1'):
+            parts.append('granted System32 runs: missing System32 access or dependency grant, cause (1), '
+                         'strongly supported')
+        text = '; '.join(parts)
+    else:
+        text = 'no interpretation bullet matches: %s' % ', '.join(
+            '%s=%s' % kv for kv in sorted(ok.items()))
+    if void:
+        text = 'rows not usable (%s): %s' % (', '.join(void), text)
+    return text
+
+
 class _Rec(Recorder):
     """Recorder that also appends every verdict, redacted, to the journal in the root."""
     journal = None
@@ -504,7 +620,7 @@ class Harness:
         return self.m.mxc_ledger.journal_name(eid, 1)
 
     def make(self, tag, argv, rw, ro, *, reader=True, disposal=None, ledger=None,
-             boundary=None, env=None, timeout_ms=60000, eid=None):
+             boundary=None, env=None, timeout_ms=60000, eid=None, line=None):
         self.budget.check()
         eid = eid or self.eid(tag)
         launch = self.m.local.MxcLaunch(
@@ -512,7 +628,7 @@ class Harness:
             schema_validator=lambda raw: True, execution_id=eid, sdk_root=self.lay['sdk'],
             pins=self.pins, outcome=lambda process: process.launcher_exit, workspace=rw[-1],
             writable=tuple(rw[:-1]), readonly=tuple(ro), cwd=rw[-1],
-            command_line=command_line(argv), env=dict(self.env if env is None else env),
+            command_line=line or command_line(argv), env=dict(self.env if env is None else env),
             timeout_ms=timeout_ms, resource_reader=self.reader if reader else None,
             disposal=disposal, quiescence_wait=QUIESCE_S)
         return eid, launch
@@ -984,6 +1100,64 @@ def step_restart(h, rec):
                % (STILL_RUNNING, stale))
 
 
+def stage_toolchain(src, folder, lstat=os.lstat):
+    """Byte-copy the host cmd.exe into the fixture; links and reparse points are refused
+    before anything is written."""
+    if not plain(lstat(src), stat.S_ISREG) or not plain(lstat(folder), stat.S_ISDIR):
+        raise SetupError('image copy refused: source or toolchain folder is a link, reparse point or not plain')
+    with open(src, 'rb') as fh:
+        data = fh.read()
+    dst = os.path.join(folder, 'cmd.exe')
+    with open(dst, 'xb') as fh:
+        fh.write(data)
+    if not plain(lstat(dst), stat.S_ISREG):
+        raise SetupError('image copy refused: the copy is not a plain file')
+    with open(dst, 'rb') as fh:
+        return verify_copy(data, fh.read()), dst
+
+
+def verify_copy(src, dst):
+    a, b = hashlib.sha256(src).hexdigest(), hashlib.sha256(dst).hexdigest()
+    if a != b:
+        raise SetupError('image copy hash mismatch: source %s, copy %s' % (a, b))
+    return a
+
+
+def _say(text):
+    print(redact(text), flush=True)
+
+
+def diag_row(h, row, labels):
+    rw, ro = grants(h.lay, 'p')
+    readonly = ro + ((row.extra,) if row.extra else ())
+    chain = ' & '.join([row.chain] + [i.cmd for i in row.controls + [row.done]])
+    run = h.go('diag-' + row.id.lower(), None, rw, readonly, line=diag_line(h.cmd, chain))
+    label = diag_result(row, look_at, labels.get(row.pair) == 'child ran')
+    digest = hashlib.sha256(json.dumps(run.launch.policy.raw, sort_keys=True).encode()).hexdigest()
+    _say('pv20 N2-diag %s %s policy=%s ledger=%s job_members=%d launcher_rc=%s %s'
+         % (row.id, label, digest[:16], '>'.join(run.ops), h.job_count(run.job), run.code,
+            _tail(run.out + run.err)))
+    return label
+
+
+def diagnose(h, flags):
+    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran."""
+    h.prepare()
+    toolchain = os.path.join(h.lay['root'], 'toolchain')
+    runnable, skipped = diag_gate(diag_rows(h.lay, h.env['SYSTEMROOT'], h.seeds['p.state']), flags)
+    for r in skipped:
+        _say('pv20 N2-diag %s SKIPPED not authorized (%s)' % (r.id, r.flag))
+    if any(r.flag == IMAGE_FLAG for r in runnable):
+        os.makedirs(toolchain, exist_ok=True)
+        digest, dst = stage_toolchain(h.cmd, toolchain)
+        _say('pv20 N2-diag staged %s sha256=%s source and copy equal' % (dst, digest))
+    labels = {}
+    for r in runnable:
+        labels[r.id] = diag_row(h, r, labels)
+    _say('DIAGNOSTIC %s' % diag_interpret(labels))
+    return 2
+
+
 STUBS = (
     ('production-adapter',
      'missing contract: the reviewed hash inventory and the pinned JSON-schema validator are not supplied; '
@@ -1033,7 +1207,9 @@ def run(h, rec):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
-    if len(argv) != 1 or not parent_ok(argv[0]):
+    flags = {a for a in argv if a.startswith('--')}
+    argv = [a for a in argv if a not in flags]
+    if len(argv) != 1 or not parent_ok(argv[0]) or not flags <= set(DIAG_FLAGS) or (flags and DIAG not in flags):
         print('usage: python -m tools.pv20_mxc.native.n2_check <fixture-parent at or below %s; letters, '
               'digits, dot, underscore, hyphen>' % FIXTURE_BASE, flush=True)
         return 3
@@ -1054,8 +1230,11 @@ def main(argv=None):
         root = safe_root(parent)
         rec.journal = os.path.join(root, JOURNAL)
         h = Harness(root, src, root_env, Budget(BUDGET_S))
-        run(h, rec)
-        code = rec.exit_code()
+        if flags:
+            code = diagnose(h, flags)
+        else:
+            run(h, rec)
+            code = rec.exit_code()
     except StopRun:
         code = rec.exit_code() or 1
         print(redact('STOP at first FAIL; root preserved at %s' % root), flush=True)

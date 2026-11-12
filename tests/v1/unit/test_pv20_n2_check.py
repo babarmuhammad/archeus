@@ -839,3 +839,204 @@ def test_no_stat_bit_of_the_fixture_is_changed_by_the_pure_helpers(tmp_path):
     n2.look_at(lay['outside'])
     assert before == {p: os.lstat(p).st_mode for p in before}
     assert stat.S_ISDIR(before[lay['outside']])
+
+
+# ---------------------------------------------------------------- the descendant diagnostic
+
+CMD = r'C:\Windows\System32\cmd.exe'
+
+
+def test_exit_and_write_templates_are_exact():
+    w = r'C:\fx\p\state'
+    assert n2.exit_chain(CMD, 'T1Z', w + r'\a1.txt') == (
+        r'C:\Windows\System32\cmd.exe /d /c exit /b 37 & (if errorlevel 38 (echo OTHER) else '
+        r'(if errorlevel 37 (echo T1Z) else (echo OTHER)))>C:\fx\p\state\a1.txt')
+    assert n2.write_chain(CMD, 'T1Z', w + r'\a2-child.txt', w + r'\a2.txt') == (
+        r'C:\Windows\System32\cmd.exe /d /c "echo T1Z>C:\fx\p\state\a2-child.txt" & echo OBSERVED>C:\fx\p\state\a2.txt')
+
+
+def test_final_command_lines_are_pinned_and_only_the_write_needs_the_raw_line():
+    w = r'C:\fx\p\state'
+    exit_chain = n2.exit_chain(CMD, 'T1Z', w + r'\a1.txt')
+    write_chain = n2.write_chain(CMD, 'T1Z', w + r'\a2-child.txt', w + r'\a2.txt')
+    assert n2.diag_line(CMD, exit_chain) == (
+        r'C:\Windows\System32\cmd.exe /d /s /c "C:\Windows\System32\cmd.exe /d /c exit /b 37 & '
+        r'(if errorlevel 38 (echo OTHER) else (if errorlevel 37 (echo T1Z) else (echo OTHER)))>C:\fx\p\state\a1.txt"')
+    assert n2.diag_line(CMD, write_chain) == (
+        r'C:\Windows\System32\cmd.exe /d /s /c "C:\Windows\System32\cmd.exe /d /c "echo T1Z>C:\fx\p\state\a2-child.txt" '
+        r'& echo OBSERVED>C:\fx\p\state\a2.txt"')
+    # EXIT has no inner quotes, so list2cmdline gives the same line; WRITE gets escaped \" that cmd.exe does not read
+    assert n2.command_line(n2.cmd_argv(CMD, exit_chain)) == n2.diag_line(CMD, exit_chain)
+    assert n2.command_line(n2.cmd_argv(CMD, write_chain)) != n2.diag_line(CMD, write_chain)
+    assert '\\"echo T1Z' in n2.command_line(n2.cmd_argv(CMD, write_chain))
+
+
+def test_diag_line_refuses_an_overlong_chain():
+    with pytest.raises(ValueError):
+        n2.diag_line(CMD, 'x' * (n2.CHAIN_MAX + 1))
+
+
+def test_row_table_grants_pairs_and_fresh_tokens(tmp_path):
+    lay = _lay(tmp_path)
+    rows = {r.id: r for r in n2.diag_rows(lay, r'C:\Windows', 'SEED')}
+    assert list(rows) == ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+    state = lay['p']['state']
+    k = os.path.join(lay['root'], 'toolchain')
+    assert rows['A1'].exe == CMD and rows['A1'].flag is None and rows['A1'].extra is None
+    assert rows['A2'].pair == 'A1' and rows['A2'].child == os.path.join(state, 'a2-child.txt')
+    assert rows['A2'].ev == os.path.join(state, 'a2.txt') and rows['A1'].child is None
+    assert rows['B1'].exe == os.path.join(k, 'cmd.exe') and rows['B1'].extra == k
+    assert rows['B1'].flag == n2.IMAGE_FLAG and rows['B2'].pair == 'B1'
+    assert rows['C1'].exe == CMD and rows['C1'].extra == r'C:\Windows\System32'
+    assert rows['C1'].flag == n2.SYSTEM_FLAG and rows['C2'].pair == 'C1'
+    assert len({r.tok for r in rows.values()}) == 6
+    assert rows['A1'].done.path == os.path.join(state, 'done_a1.txt')
+    assert [i.label for i in rows['A1'].controls] == ['control-write', 'control-read']
+    assert rows['A1'].controls[1].secret == 'SEED'
+
+
+def test_gate_runs_only_the_a_rows_unless_a_flag_is_passed(tmp_path):
+    rows = n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED')
+    ids = lambda rs: [r.id for r in rs]
+    run, skipped = n2.diag_gate(rows, set())
+    assert ids(run) == ['A1', 'A2'] and ids(skipped) == ['B1', 'B2', 'C1', 'C2']
+    run, skipped = n2.diag_gate(rows, {n2.IMAGE_FLAG})
+    assert ids(run) == ['A1', 'A2', 'B1', 'B2'] and ids(skipped) == ['C1', 'C2']
+    run, skipped = n2.diag_gate(rows, {n2.IMAGE_FLAG, n2.SYSTEM_FLAG})
+    assert ids(run) == ids(rows) and skipped == []
+
+
+def _ok_files(row):
+    return {i.path: i.secret for i in row.controls + [row.done]}
+
+
+def _look(files):
+    return lambda p: files.get(p)
+
+
+def test_exit_row_labels_follow_the_parent_written_evidence(tmp_path):
+    row = n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED')[0]
+    ok = _ok_files(row)
+    assert n2.diag_result(row, _look({**ok, row.ev: row.tok + '\r\n'}), False) == 'child ran'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OTHER'}), False) == 'child did not run'
+    assert n2.diag_result(row, _look(ok), False) == 'no evidence'
+    assert n2.diag_result(row, _look({row.ev: row.tok}), False) == 'control failed'
+    assert n2.diag_result(row, _look({**ok, row.ev: row.tok, row.done.path: 'x'}), False) == 'no evidence'
+
+
+def test_write_row_separates_child_write_from_child_launch_using_the_paired_exit(tmp_path):
+    row = [r for r in n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED') if r.id == 'A2'][0]
+    ok = _ok_files(row)
+    wrote = {**ok, row.child: row.tok, row.ev: 'OBSERVED'}
+    assert n2.diag_result(row, _look(wrote), False) == 'child ran'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'}), True) == 'child ran but write failed'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'}), False) == 'child did not run'
+    assert n2.diag_result(row, _look(ok), True) == 'no evidence'
+    assert n2.diag_result(row, _look({row.child: row.tok, row.ev: 'OBSERVED'}), True) == 'control failed'
+
+
+def test_a_failed_control_is_never_a_pass_even_when_the_child_ran(tmp_path):
+    row = n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED')[0]
+    files = {k: v for k, v in _ok_files(row).items() if k != row.controls[1].path}
+    files[row.ev] = row.tok
+    assert n2.diag_result(row, _look(files), False) == 'control failed'
+    assert 'PASS' not in n2.diag_interpret({'A1': 'control failed'})
+
+
+@pytest.mark.parametrize('labels, wants', [
+    ({'A1': 'child ran', 'A2': 'child ran'}, 'child creation and usable workspace access proved'),
+    ({'A1': 'child ran', 'A2': 'child ran but write failed'}, 'investigate (3)'),
+    ({'A1': 'child did not run'}, 'inconclusive for blanket denial (2)'),
+    ({'A1': 'child did not run', 'A2': 'child did not run', 'B1': 'child did not run', 'C1': 'child did not run'},
+     'inconclusive for blanket denial (2)'),
+    ({'A1': 'child did not run', 'B1': 'child ran', 'B2': 'child ran'}, 'cause (1), strongly supported'),
+    ({'A1': 'child did not run', 'C1': 'child ran'}, 'missing System32 access or dependency grant'),
+])
+def test_interpretation_branches(labels, wants):
+    assert wants in n2.diag_interpret(labels)
+
+
+def test_a_failed_control_row_is_named_and_counts_for_nothing():
+    text = n2.diag_interpret({'A1': 'child ran', 'A2': 'child ran', 'B1': 'control failed'})
+    assert 'rows not usable (B1)' in text and 'usable workspace access proved' in text
+    text = n2.diag_interpret({'A1': 'child did not run', 'B1': 'control failed'})
+    assert 'not usable (B1)' in text and 'inconclusive for blanket denial (2)' in text
+    assert 'cause (1)' not in text
+
+
+class DiagHarness:
+    def __init__(self, tmp_path):
+        self.lay = _lay(tmp_path)
+        self.cmd = CMD
+        self.env = {'SYSTEMROOT': r'C:\Windows'}
+        self.seeds = {'p.state': 'SEED'}
+        self.launches = []
+
+    def prepare(self):
+        pass
+
+    def go(self, tag, argv, rw, ro, **kw):
+        self.launches.append((tag, ro, kw['line']))
+        policy = SimpleNamespace(raw={})
+        return SimpleNamespace(ops=['intent', 'ownership', 'disposal', 'completion'],
+                               launch=SimpleNamespace(policy=policy), job=None, code=0, out='', err='')
+
+    def job_count(self, job):
+        return 0
+
+
+def test_diagnose_without_flags_launches_only_a_rows_and_never_stages(tmp_path, monkeypatch, capsys):
+    h = DiagHarness(tmp_path)
+    monkeypatch.setattr(n2, 'stage_toolchain', lambda *a: pytest.fail('staged without the flag'))
+    assert n2.diagnose(h, {n2.DIAG}) == 2
+    assert [t for t, _, _ in h.launches] == ['diag-a1', 'diag-a2']
+    assert all(not any('toolchain' in p or 'System32' in p for p in ro) for _, ro, _ in h.launches)
+    out = capsys.readouterr().out
+    assert 'B1 SKIPPED not authorized (--allow-image-copy)' in out and 'C2 SKIPPED not authorized' in out
+
+
+def test_diagnose_with_image_flag_stages_once_and_adds_only_the_toolchain_grant(tmp_path, monkeypatch):
+    h = DiagHarness(tmp_path)
+    staged = []
+    monkeypatch.setattr(n2, 'stage_toolchain', lambda src, folder: staged.append((src, folder)) or ('ab', 'x'))
+    n2.diagnose(h, {n2.DIAG, n2.IMAGE_FLAG})
+    k = os.path.join(h.lay['root'], 'toolchain')
+    assert staged == [(CMD, k)]
+    assert [t for t, _, _ in h.launches] == ['diag-a1', 'diag-a2', 'diag-b1', 'diag-b2']
+    b1 = [ro for t, ro, _ in h.launches if t == 'diag-b1'][0]
+    assert b1[-1] == k and not any('System32' in p for _, ro, _ in h.launches for p in ro)
+
+
+@pytest.mark.parametrize('extra', [['--allow-image-copy'], ['--diag-descendants', '--bogus']])
+def test_main_refuses_unknown_or_unpaired_flags_before_creating_anything(tmp_path, monkeypatch, extra):
+    parent, root, calls = _main_world(tmp_path, monkeypatch, _all)
+    assert n2.main([parent] + extra) == 3
+    assert calls.safe_root == 0 and calls.removed == []
+
+
+def _plain_info(mode, attrs=0):
+    return SimpleNamespace(st_mode=mode, st_file_attributes=attrs)
+
+
+def test_stage_copies_the_bytes_and_refuses_links_and_reparse_points(tmp_path):
+    src, folder = tmp_path / 'cmd.exe', tmp_path / 'toolchain'
+    src.write_bytes(b'MZ-fake-cmd')
+    folder.mkdir()
+    digest, dst = n2.stage_toolchain(str(src), str(folder))
+    assert open(dst, 'rb').read() == b'MZ-fake-cmd' and len(digest) == 64
+    (folder / 'cmd.exe').unlink()
+
+    real = {str(src): os.lstat(str(src)), str(folder): os.lstat(str(folder))}
+    fakes = ({str(src): _plain_info(stat.S_IFREG, 0x400)}, {str(src): _plain_info(stat.S_IFLNK)},
+             {str(folder): _plain_info(stat.S_IFLNK)}, {str(folder): _plain_info(stat.S_IFREG)})
+    for fake in fakes:
+        lstat = lambda p, fake=fake: fake.get(p, real[p])
+        with pytest.raises(n2.SetupError):
+            n2.stage_toolchain(str(src), str(folder), lstat=lstat)
+        assert not (folder / 'cmd.exe').exists()
+
+
+def test_stage_refuses_a_copy_whose_hash_differs():
+    assert n2.verify_copy(b'abc', b'abc') == n2.verify_copy(b'abc', b'abc')
+    with pytest.raises(n2.SetupError):
+        n2.verify_copy(b'abc', b'abd')
