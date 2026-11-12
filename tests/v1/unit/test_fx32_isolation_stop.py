@@ -376,3 +376,23 @@ def test_a_record_lock_is_released_when_its_holder_process_dies(tmp_path, monkey
     monkeypatch.setattr(iso, 'RECORD_LOCK_WAIT_S', 0.05)
     with iso._record_lock(path):
         pass
+
+
+def test_a_stale_read_is_refused_when_a_newer_write_lands_before_the_lock(tmp_path,
+                                                                         monkeypatch):
+    a, _b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    a._save(iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid)))
+    stale, newer = _record(a, eid), _record(a, eid)
+    real_lock, landed = iso._record_lock, []
+
+    def lock_after_a_newer_write(path):
+        if not landed:
+            landed.append(True)
+            a._save(newer)
+        return real_lock(path)
+
+    monkeypatch.setattr(iso, '_record_lock', lock_after_a_newer_write)
+    with pytest.raises(iso.RecordChanged):
+        a._save(stale)
+    assert _record(a, eid).gen == newer.gen
