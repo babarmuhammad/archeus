@@ -3,6 +3,7 @@
 Two Cores share one record store and one boundary (the OS) here; every interleaving is a
 threading.Event seam in the fake boundary. Nothing sleeps, nothing reaches Win32."""
 
+import json
 import os
 import subprocess
 import sys
@@ -295,6 +296,32 @@ def test_a_writer_stalled_after_its_generation_check_keeps_the_record_lock(tmp_p
     writer.join(JOIN_S)
     assert errors == []
     assert _record(a, eid).reason == 'writer-a'
+
+
+def test_an_invalid_stored_record_with_a_matching_gen_refuses_the_write(tmp_path):
+    a, _b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    path = isolation_state(eid)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump({'gen': 0, 'junk': True}, f)
+    before = open(path, 'rb').read()
+    with pytest.raises(iso.RecordChanged):
+        a._save(iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid)))
+    assert open(path, 'rb').read() == before
+
+
+def test_a_stale_cleanup_cannot_delete_a_record_a_newer_ownership_write_replaced(tmp_path):
+    a, b, req, _node = authority(tmp_path)
+    eid = req.execution_id
+    a._save(iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid)))
+    stale = _record(a, eid)
+    newer = _record(a, eid)
+    newer.owned, newer.state, newer.sid = True, 'pending', b.derive_sid(eid)
+    a._save(newer)
+    with pytest.raises(iso.RecordChanged):
+        a._unowned(stale)
+    assert _record(a, eid).owned is True
 
 
 def test_a_record_lock_is_released_when_its_holder_process_dies(tmp_path, monkeypatch):

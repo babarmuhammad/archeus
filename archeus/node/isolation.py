@@ -121,7 +121,7 @@ def _record_lock(path):
         discovery.CoreLock(fd).release()
 
 
-def _stored_record(path):
+def _stored_record(path, execution_id, api):
     try:
         with open(path, encoding='utf-8') as f:
             d = json.load(f)
@@ -129,7 +129,9 @@ def _stored_record(path):
         return {}
     except (OSError, ValueError, RecursionError):
         return {'gen': None}
-    return d if isinstance(d, dict) else {'gen': None}
+    if isinstance(d, dict) and not _record_problem(d, execution_id, api):
+        return d
+    return {'gen': None}
 
 
 #: the confined verifier's Job budgets (T-054 section 5; owner values 2026-10-14, T-090):
@@ -785,7 +787,7 @@ class Isolation:
         path = isolation_state(rec.execution_id)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with _record_lock(path):
-            stored = _stored_record(path)
+            stored = _stored_record(path, rec.execution_id, self.boundary)
             # a write from a read that predates the stored write is refused, ownership included
             if stored.get('gen', 0) != rec.gen:
                 raise RecordChanged('the isolation record of %s changed' % rec.execution_id)
@@ -1187,7 +1189,7 @@ class Isolation:
         rec.state, rec.reason = 'torn_down', reason
         rec.sid = ''
         self._save(rec)
-        self._remove_record(rec.execution_id)
+        self._remove_record(rec.execution_id, rec.gen)
         return 'torn_down'
 
     def _remove_profile(self, rec, wait):
@@ -1258,7 +1260,7 @@ class Isolation:
         that cannot be read, it is kept as evidence with the SID its name derives,
         failed as `provenance_unknown`, and every later pass leaves it as it is."""
         if self._presence(rec.execution_id) == 'absent':
-            self._remove_record(rec.execution_id)
+            self._remove_record(rec.execution_id, rec.gen)
             return 'torn_down'
         if rec.state != 'failed' or rec.reason != 'provenance_unknown':
             rec.state, rec.reason = 'failed', 'provenance_unknown'
@@ -1268,11 +1270,22 @@ class Isolation:
                         'profile': rec.profile})
         return 'provenance_unknown'
 
-    def _remove_record(self, execution_id):
-        try:
-            os.remove(isolation_state(execution_id))
-        except OSError:
-            pass
+    def _remove_record(self, execution_id, gen):
+        """The record goes only if it is still the one the caller decided from: a newer
+        write (ownership included) is evidence the stale decision must not erase."""
+        path = isolation_state(execution_id)
+        if not os.path.lexists(path):
+            return
+        with _record_lock(path):
+            stored = _stored_record(path, execution_id, self.boundary)
+            if not stored:
+                return
+            if stored.get('gen') != gen:
+                raise RecordChanged('the isolation record of %s changed' % execution_id)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
     def _release_best_effort(self, rec):
         """An establishment failure must not leave the identity standing: its profile
