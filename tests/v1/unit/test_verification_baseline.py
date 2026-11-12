@@ -255,17 +255,31 @@ def test_a_git_below_the_floor_is_asked_its_version_and_nothing_else(version, tm
 
 
 def test_a_git_at_the_floor_is_asked_its_version_once(tmp_path, monkeypatch):
+    # On Windows the guarded call first reads the repository's metadata paths and
+    # configuration (the freeze), so the repository must exist and those calls are listed
+    gitdir = str(tmp_path / '.git')
+    os.makedirs(gitdir)
+    open(os.path.join(gitdir, 'config'), 'w').close()
     asked = []
 
     def new(argv, **kw):
         asked.append(argv[-1])
+        if argv[-1] in ('--git-dir', '--git-common-dir'):
+            return subprocess.CompletedProcess(argv, 0, (gitdir + '\n').encode(), b'')
+        if argv[-1] == 'info/attributes':
+            return subprocess.CompletedProcess(argv, 0, b'.git/info/attributes\n', b'')
+        if 'config' in argv:
+            return subprocess.CompletedProcess(argv, 1, b'', b'')
         return subprocess.CompletedProcess(argv, 0, b'git version 2.45.0\n', b'')
     monkeypatch.setattr(local, '_VERSION', {})
     monkeypatch.setattr(local.subprocess, 'run', new)
     assert LocalNode.git_diff(str(tmp_path), BASE, REV) == 'git version 2.45.0\n'
     assert LocalNode.git_diff(str(tmp_path), BASE, REV) is not None
     keys = local._DRIVER_KEYS
-    assert asked == ['version', 'info/attributes', keys, '--', 'info/attributes', keys, '--']
+    one = ['info/attributes', keys, '--']
+    freeze = (['--git-dir', '--git-common-dir', local._INCLUDE_KEYS, 'extensions.worktreeconfig']
+              if sys.platform == 'win32' else [])
+    assert asked == ['version'] + freeze + one + freeze + one
 
 
 def test_a_checkout_whose_registration_outlives_its_directory_is_not_dropped(tmp_path, monkeypatch):
@@ -451,7 +465,9 @@ def _fake_git_run(monkeypatch, before):
 def test_a_failed_attributes_lookup_refuses_the_guarded_call(tmp_path, monkeypatch):
     root = _repo_with_branches(tmp_path)
     def before(argv):
-        if 'rev-parse' in argv:
+        # only the attribute lookup fails; on Windows the freeze's own rev-parse calls must
+        # succeed, or the refusal would come from the freeze and not from this lookup
+        if argv[-1] == 'info/attributes':
             return subprocess.CompletedProcess(argv, 128, b'', b'fatal: not a repository')
     calls = _fake_git_run(monkeypatch, before)
     assert local._project_git(str(root), ['status', '--porcelain']) is None

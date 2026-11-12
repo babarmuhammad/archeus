@@ -32,6 +32,7 @@ P = 'tests/v1/integration/test_provenance.py'
 W = 'tests/v1/unit/test_verification_weakening.py'
 R = 'tests/v1/unit/test_gaps_core_verification_reviewer.py'
 B = 'tests/v1/unit/test_verification_baseline.py'
+F = 'tests/v1/unit/test_repo_config_freeze.py'
 RR = 'tests/v1/unit/test_review_rules.py'
 RMD = 'tests/v1/integration/test_review_md.py'
 IP = '[inprocess]'
@@ -437,13 +438,13 @@ MUTATIONS = [
      "        r = _project_git(workdir, ident + ['merge', '--no-ff', '--no-edit', '-m', message, rev],")],
      [B + '::test_a_branch_merge_option_does_not_sign_or_verify_through_the_repository']),
     ('Z105', 'a failed info/attributes lookup is read as no attributes, so the command runs', [(LOC,
-     "            if where.returncode != 0 or not where.stdout.strip():\n                return None\n"
-     "            attrs = os.path.join(",
-     "            attrs = os.path.join(")],
+     "                if where.returncode != 0 or not where.stdout.strip():\n                    return None\n"
+     "                attrs = os.path.join(",
+     "                attrs = os.path.join(")],
      [B + '::test_a_failed_attributes_lookup_refuses_the_guarded_call']),
     ('Z106', 'a filter named by info/attributes runs because the drivers are not emptied', [(LOC,
-     "            r = run(argv + pins + list(args), root, max_bytes)",
-     "            r = run(argv + list(args), root, max_bytes)")],
+     "                r = run(argv + pins + list(args), root, max_bytes)",
+     "                r = run(argv + list(args), root, max_bytes)")],
      [B + '::test_a_file_created_after_the_check_selects_no_filter_for_the_command']),
     ('Z107', 'a refused final git check is reported as the workspace moving', [(WRK,
      "        moved = now is not None and now != revision\n",
@@ -457,6 +458,40 @@ MUTATIONS = [
      "'gc.auto=0', 'maintenance.auto=false',\n                  'core.longpaths=true'):",
      "'gc.auto=0',\n                  'core.longpaths=true'):")],
      ['tests/v1/unit/test_repo_store.py::test_the_guarded_project_git_call_carries_the_whole_pin']),
+    # ── R2: the frozen configuration (test_repo_config_freeze.py) ──
+    ('Z110', 'the guarded call runs without the configuration freeze', [(LOC,
+     "            guard = (_frozen_config(root, argv, env, run, empty) if sys.platform == 'win32'",
+     "            guard = (contextlib.nullcontext(argv) if sys.platform == 'win32'")],
+     [F + '::test_a_key_written_after_enumeration_is_denied_and_never_runs',
+      F + '::test_the_handles_are_released_after_every_outcome']),
+    ('Z111', 'the freeze is released before the Git call starts', [(LOC,
+     "        yield argv + ['--git-dir=' + gitdir, '--work-tree=' + root]\n    finally:\n"
+     "        for h in held:\n            api.close_handle(h)",
+     "        for h in held:\n            api.close_handle(h)\n"
+     "        yield argv + ['--git-dir=' + gitdir, '--work-tree=' + root]\n    finally:\n"
+     "        held.clear()")],
+     [F + '::test_a_key_written_after_enumeration_is_denied_and_never_runs']),
+    ('Z112', 'the freeze allows a write-sharing open of the configuration', [(LOC,
+     "_GENERIC_READ, _FILE_SHARE_READ, None,",
+     "_GENERIC_READ, _FILE_SHARE_READ | 2, None,")],
+     [F + '::test_a_key_written_after_enumeration_is_denied_and_never_runs']),
+    ('Z113', 'the freeze allows a delete-sharing open, so an atomic replace goes through', [(LOC,
+     "_GENERIC_READ, _FILE_SHARE_READ, None,",
+     "_GENERIC_READ, _FILE_SHARE_READ | 4, None,")],
+     [F + '::test_a_key_written_after_enumeration_is_denied_and_never_runs']),
+    ('Z114', 'an enabled worktree configuration is not frozen or checked', [(LOC,
+     "        if config(main, '--bool', '--get', 'extensions.worktreeconfig').stdout.strip() == b'true':",
+     "        if False:")],
+     [F + '::test_worktree_config_enabled_but_absent_is_refused']),
+    ('Z115', 'an include in the frozen configuration is accepted', [(LOC,
+     "        if r.returncode != 1:\n            raise OSError('include in the repository configuration: %s' % path)",
+     "        if False:\n            raise OSError('include in the repository configuration: %s' % path)")],
+     [F + '::test_an_include_is_refused_and_no_guarded_command_runs',
+      F + '::test_a_conditional_include_is_refused']),
+    ('Z116', 'a failed handle acquisition is ignored and the Git call runs unlocked', [(LOC,
+     "        if h == INVALID_HANDLE:\n            raise api._error('CreateFileW')",
+     "        if h == INVALID_HANDLE:\n            return")],
+     [F + '::test_a_failed_handle_acquisition_is_refused_and_launches_nothing']),
 ]
 
 
