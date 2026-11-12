@@ -87,8 +87,9 @@ class IsolationClosed(base.SpawnFailed):
     """Core is stopping: nothing is established and no Job created. Not an
     establishment failure: no record is marked failed for it."""
 
-    def __init__(self):
-        super().__init__('isolation: core_stopping')
+    def __init__(self, cleanup=''):
+        super().__init__('isolation: core_stopping' + ('; cleanup failed: %s' % cleanup
+                                                       if cleanup else ''))
 
 
 class RecordChanged(OSError):
@@ -1021,12 +1022,19 @@ class Isolation:
         verified there. A failed or unverified delete quarantines the record (SID and
         ownership kept) for reclaim to retry. A write that fails during this cleanup is
         not an establishment failure, so nothing is charged to the execution; the record
-        stays owned and pending, and reclaim settles it. The stop is what is reported."""
+        stays owned and pending, and reclaim settles it. The stop is what is raised, with
+        the cleanup fault in its detail and in a registry note."""
+        cleanup = ''
         try:
             self._release_best_effort(rec)
-        except OSError:
-            pass
-        raise IsolationClosed()
+        except OSError as err:
+            cleanup = '%s: %s' % (type(err).__name__, err)
+            try:
+                self._note({'op': 'isolation_cleanup_failed', 'execution_id': rec.execution_id,
+                            'error': type(err).__name__, 'detail': str(err)})
+            except OSError:
+                pass
+        raise IsolationClosed(cleanup)
 
     def _fail(self, rec, reason, detail, paths=None):
         """No process starts, and the state says so deterministically: the record, the

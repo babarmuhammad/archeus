@@ -324,6 +324,44 @@ def test_a_stale_cleanup_cannot_delete_a_record_a_newer_ownership_write_replaced
     assert _record(a, eid).owned is True
 
 
+def test_a_late_cleanup_failure_keeps_the_cancellation_and_reports_the_fault(tmp_path,
+                                                                             monkeypatch):
+    a, b, req, node = authority(tmp_path)
+    eid = req.execution_id
+    rec = iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid), owned=True,
+                              state='pending', sid=b.derive_sid(eid))
+    a._save(rec)
+
+    def broken_release(_rec):
+        raise OSError('the quarantine line cannot be written')
+
+    monkeypatch.setattr(a, '_release_best_effort', broken_release)
+    with pytest.raises(iso.IsolationClosed) as got:
+        a._abandon_late(rec)
+    assert 'the quarantine line cannot be written' in str(got.value)
+    assert {'op': 'isolation_cleanup_failed', 'execution_id': eid,
+            'error': 'OSError'}.items() <= node.registry[-1].items()
+
+
+def test_a_failed_cleanup_note_does_not_change_the_cancellation(tmp_path, monkeypatch):
+    a, b, req, node = authority(tmp_path)
+    eid = req.execution_id
+    rec = iso.IsolationRecord(execution_id=eid, profile=iso.profile_name(eid), owned=True,
+                              state='pending', sid=b.derive_sid(eid))
+    a._save(rec)
+
+    def broken_release(_rec):
+        raise OSError('disk full')
+
+    def refused(_line):
+        raise OSError('the registry is full')
+
+    monkeypatch.setattr(a, '_release_best_effort', broken_release)
+    monkeypatch.setattr(node, '_registry', refused)
+    with pytest.raises(iso.IsolationClosed):
+        a._abandon_late(rec)
+
+
 def test_a_record_lock_is_released_when_its_holder_process_dies(tmp_path, monkeypatch):
     path = str(tmp_path / 'record.json')
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(iso.__file__))))
