@@ -1857,9 +1857,11 @@ def _project_git(root, args, timeout=60, max_bytes=None):
     """A Git call in a project's own repository that runs none of its code: no
     hook, fsmonitor, filter or merge driver selected by an attribute, replace ref
     or lazy fetch, and no configuration but the repository's own. A repository
-    whose info/attributes sets attributes is refused (None), as is the default
-    merge driver it could name, and no signing program. The CompletedProcess with text decoded as written
-    (no newline translation), or None. None includes a Git that lies inside *root*
+    whose info/attributes sets attributes is refused (None), and so is one whose
+    attribute lookup fails. The default merge driver is pinned to text, and no
+    signing program runs: the signing and verification pins are set on the command
+    line, so a repository option cannot turn them back on. The CompletedProcess has
+    its text decoded as written (no newline translation), or None. None includes a Git that lies inside *root*
     (the rule of `proc.run` for a bare program) and a Git below the floor, which
     ignores some of these pins: it is asked its version and nothing else. With
     *max_bytes* stdout is read only up to that many bytes (`proc.run_capped`) and
