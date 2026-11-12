@@ -289,21 +289,24 @@ def _locate(lines, needle, start):
 
 
 def _hook_commands(node):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if k == 'command' and isinstance(v, str):
-                yield v
-            else:
-                yield from _hook_commands(v)
-    elif isinstance(node, list):
-        for v in node:
-            yield from _hook_commands(v)
+    # iterative: a recursive walk overflows the stack on nesting that json.loads
+    # itself still accepts. Reversed pushes keep the depth-first order of the file.
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if isinstance(n, tuple):          # a queued `command` value, yielded in file order
+            yield n[0]
+        elif isinstance(n, dict):
+            for k, v in reversed(list(n.items())):
+                stack.append((v,) if k == 'command' and isinstance(v, str) else v)
+        elif isinstance(n, list):
+            stack.extend(reversed(n))
 
 
 def _json_findings(text, lines):
     try:
         data = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):   # nesting past the parser's depth is unparsable too
         return [Finding('json-unparsed', 'note', 1,
                         'JSON that does not parse (comments?): its servers and hooks were not read', '')]
     if not isinstance(data, dict):
