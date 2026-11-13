@@ -111,10 +111,6 @@ def test_session_id_and_provider_record_follow_choice(seams, monkeypatch):
     assert seams.saved == []
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/launch.py:155-156 discards save_session_provider's False "
-    "(sessions.py:420-421 returns False when the record is unreadable) and returns an "
-    "argv that claims a recorded provider binding"))
 def test_failed_provider_record_write_is_not_silent(seams, monkeypatch):
     seams.profiles = {'p1': {'id': 'p1', 'model': 'm'}}
     seams.save_result = False
@@ -132,9 +128,6 @@ def test_permission_and_routed_marker_come_from_the_actual_model(seams):
     assert seams.perm_calls[-1] == ('auto', 'claude-opus-5', '')
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/launch.py:109 and :150 put a resume id that begins with '-' "
-    "straight after -r; no refusal exists, so the CLI reads it as an option"))
 def test_resume_id_beginning_with_dash_is_refused(seams):
     with pytest.raises((ValueError, RuntimeError)):
         build(seams, 'resume:-x')
@@ -154,10 +147,6 @@ def test_add_dir_values_stay_separate_argv_elements(seams):
     assert tail(args, '--add-dir') == ['--add-dir', 'C:/a b/x', '-evil']
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/launch.py:197-198 appends an opening prompt beginning with '--' "
-    "as a bare argv element: no '--' delimiter and no refusal, so the CLI reads "
-    "--dangerously-skip-permissions as a flag"))
 def test_opening_prompt_that_looks_like_a_flag_is_not_an_option(seams):
     prompt = '--dangerously-skip-permissions'
     try:

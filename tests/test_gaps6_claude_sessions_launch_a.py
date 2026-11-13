@@ -144,6 +144,7 @@ def test_add_dirs_keep_existing_derived_dirs_and_explicit_ones_survive(seams, mo
     gone = str(tmp_path / 'gone')
     monkeypatch.setattr(sessions, 'load_add_dirs', lambda p: [good, gone])
     monkeypatch.setattr(launch.os.path, 'isdir', lambda p: p == good)
+    monkeypatch.setattr(sessions, 'save_session_provider', lambda *a: True)
     acct = str(tmp_path / 'acct')
     args, _env, _ = launch.build_launch_command('p-x', 'p-x', 'new', opts(cfgdir=acct))
     assert args[args.index('--add-dir') + 1:] == [good]

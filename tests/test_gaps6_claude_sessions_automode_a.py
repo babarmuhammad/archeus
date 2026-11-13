@@ -75,9 +75,6 @@ def test_clearing_entries_removes_only_environment(settings):
     assert 'autoMode' not in settings.store['acct']
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/automode.py:117 calls dict() on a non-dict autoMode, which raises "
-    "ValueError instead of refusing; nothing is saved, but the caller gets an exception"))
 def test_non_dict_auto_mode_refuses_without_saving(settings):
     settings.store['acct'] = {'autoMode': 'oops'}
     ok, _msg = automode.set_environment(['a'], 'acct')

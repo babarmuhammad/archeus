@@ -98,6 +98,17 @@ def build_launch_command(path, encoded_name, choice, opts):
     if opts.get('subagent_model'):
         env['CLAUDE_CODE_SUBAGENT_MODEL'] = opts['subagent_model']
 
+    from .checkpoints import _PLAIN_SID
+    rid = None
+    if choice.startswith('resume:'):
+        rid = choice[7:]
+    elif choice.startswith('resume-named::'):
+        rid = choice[14:].split('::', 1)[0]
+    elif choice.startswith('fork:'):
+        rid = choice[5:]
+    if rid is not None and not _PLAIN_SID.match(rid):
+        raise ValueError(f'not a plain session id: {rid!r}')
+
     claude = get_claude_exe()
     if not claude:
         raise RuntimeError('claude.exe not found')
@@ -152,8 +163,10 @@ def build_launch_command(path, encoded_name, choice, opts):
         launched_sid = choice[14:].split('::', 1)[0]
     if launched_sid and proj_folder:
         from .sessions import save_session_provider
-        save_session_provider(proj_folder, launched_sid,
-                              prof['id'] if prof else '')
+        if not save_session_provider(proj_folder, launched_sid,
+                                     prof['id'] if prof else ''):
+            raise RuntimeError('could not record which provider this session '
+                               'runs on; session not started')
     # `auto` is dropped where the classifier cannot run — with a provider in
     # play the model is whatever that backend served, and the classifier is a
     # SEPARATE request that would go to the same base URL. The model check reads
@@ -195,5 +208,5 @@ def build_launch_command(path, encoded_name, choice, opts):
     # starting a `/loop` from archeus: a loop is session-scoped, so there is
     # nothing to start except a session that begins by typing it.
     if opts.get('prompt'):
-        args += [str(opts['prompt'])]
+        args += ['--', str(opts['prompt'])]
     return args, env, proj_folder
