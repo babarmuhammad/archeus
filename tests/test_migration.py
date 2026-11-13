@@ -490,6 +490,23 @@ def test_a_half_written_block_is_left_exactly_as_it_is(swept):
     assert _md(str(proj / 'CLAUDE.md')) == text, 'a half pair was touched'
 
 
+def test_a_fenced_example_of_the_new_name_is_not_a_replacement(swept):
+    """A closed code fence that quotes the new MEMORY START marker is prose, not a
+    block (`_markers` skips fences). The replacement gate must ask for a real
+    well-formed block, so the legacy block beside it is renamed, not deleted."""
+    home, proj = swept
+    text = ('# p\n\n```\n<!-- ARCHEUS:MEMORY:START -->\nexample\n```\n\n%s\n'
+            % OLD_MEM)
+    _write(str(proj / 'CLAUDE.md'), text)
+    fixed, failed = migrate.sweep([str(home)])
+    assert not failed, failed
+
+    out = _md(str(proj / 'CLAUDE.md'))
+    assert 'stale digest' in out, 'the legacy block was deleted'
+    assert '<!-- ARCHEUS:MEMORY:START -->\nstale digest\n<!-- ARCHEUS:MEMORY:END -->' in out, \
+        'the legacy block was not renamed in place'
+
+
 def test_the_keep_fence_is_renamed_and_never_removed(swept):
     """KEEP is the user's own fence, not a generated block: it may appear many
     times, and what is inside it is prose nothing may delete. Until it is

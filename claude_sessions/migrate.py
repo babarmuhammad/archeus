@@ -511,7 +511,8 @@ def _sweep_claude_md(base, fixed, failed):
         return
     for name in _UNIQUE_BLOCKS:
         start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
-        while ((_NEW_TAG + name + ':START -->') in text
+        new_start, new_end = _NEW_TAG + name + ':START -->', _NEW_TAG + name + ':END -->'
+        while (claude_md.block_span(text, new_start, new_end)
                and claude_md.block_span(text, start, end)):
             ok, _before, after = claude_md.upsert_block(base, start, end, '')
             if not ok:
