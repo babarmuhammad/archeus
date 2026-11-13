@@ -495,3 +495,57 @@ def test_manual_prose_keeps_text_after_a_stray_start_marker(monkeypatch, tmp_pat
     assert 'KEEP THIS' in out and 'Tail' in out, 'user prose was deleted'
     assert out.count(_MEMORY_END) == 1 and out.count('REAL DIGEST') == 1, \
         'the MEMORY block is not carried exactly once'
+
+
+# ── 12. a marker in an example or in a sentence is not a block ───
+
+def test_fenced_marker_example_survives_prune_and_real_block_is_replaced(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _actual, _enc, folder, _sids = sb.add_project('alpha', n_sessions=0)
+    proj = str(tmp_path / 'work' / 'alpha')
+    example = ('```md\n' + _AUTOGEN_START + '\nKEEP EXAMPLE\n' + _AUTOGEN_END
+               + '\n```\n')
+    seeded = ('# alpha\n\n' + example + '\n'
+              + _AUTOGEN_START + '\nold body\n' + _AUTOGEN_END + '\n')
+    md_path = _seed(tmp_path, proj, seeded)
+    _quiet_world(monkeypatch, tmp_path, folder)
+
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    out = _read(md_path)
+    assert example in out, 'the fenced example was rewritten'
+    assert 'old body' not in out, 'the real block after the example was not replaced'
+    assert out.count(_AUTOGEN_START) == 2
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    assert _read(md_path) == out, 'a second prune changed the bytes'
+
+
+def test_inline_quoted_marker_pair_is_not_a_block(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _actual, _enc, folder, _sids = sb.add_project('alpha', n_sessions=0)
+    proj = str(tmp_path / 'work' / 'alpha')
+    sentence = ('Wrap text in `' + _AUTOGEN_START + '` and `' + _AUTOGEN_END
+                + '` to mark it.\n')
+    seeded = ('# alpha\n\n' + sentence
+              + _AUTOGEN_START + '\nold body\n' + _AUTOGEN_END + '\n')
+    md_path = _seed(tmp_path, proj, seeded)
+    _quiet_world(monkeypatch, tmp_path, folder)
+
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    out = _read(md_path)
+    assert sentence in out, 'the quoted pair was taken for a block'
+    assert 'old body' not in out
+
+
+def test_unclosed_fence_at_end_does_not_hide_block_before_it(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _actual, _enc, folder, _sids = sb.add_project('alpha', n_sessions=0)
+    proj = str(tmp_path / 'work' / 'alpha')
+    seeded = ('# alpha\n\n' + _AUTOGEN_START + '\nold body\n' + _AUTOGEN_END
+              + '\n\n```md\ntrailing example without a closing fence\n')
+    md_path = _seed(tmp_path, proj, seeded)
+    _quiet_world(monkeypatch, tmp_path, folder)
+
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    out = _read(md_path)
+    assert 'old body' not in out, 'the real block before the open fence was not found'
+    assert 'trailing example without a closing fence' in out

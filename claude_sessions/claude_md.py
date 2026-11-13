@@ -37,24 +37,45 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
+_FENCE_OPEN = re.compile(r'[ \t]*(`{3,}|~{3,})')
+
+
+def _markers(text, start, end):
+    """(begin, stop, is_start) of each marker that stands alone on its line and is
+    outside a fenced code block. A marker quoted in a sentence, or documented in an
+    example fence, is prose and never a block."""
+    out, fence, pos = [], None, 0
+    for line in text.split('\n'):
+        t = line.strip()
+        m = _FENCE_OPEN.match(line)
+        if fence is None:
+            if m:
+                fence = m.group(1)
+            elif t in (start, end):
+                out.append((pos, pos + len(line), t == start))
+        elif t and set(t) == {fence[0]} and len(t) >= len(fence):
+            fence = None
+        pos += len(line) + 1
+    return out
+
+
 def block_span(text, start, end):
     """(begin, stop) of the first well-formed block: a START whose next marker is
     its END. A START followed by another START, or an END with no open START, is
     stray text and never a block. None when there is no such block."""
     open_at = None
-    for m in re.finditer(f'{re.escape(start)}|{re.escape(end)}', text):
-        if m.group() == start:
-            open_at = m.start()
+    for begin, stop, is_start in _markers(text, start, end):
+        if is_start:
+            open_at = begin
         elif open_at is not None:
-            return open_at, m.end()
+            return open_at, stop
     return None
 
 
 def well_formed(text, start, end):
     """True when the markers in `text` are exactly START, END, START, END, ... with
     nothing stray: the only state in which rewriting them is safe."""
-    kinds = [m.group() == start
-             for m in re.finditer(f'{re.escape(start)}|{re.escape(end)}', text)]
+    kinds = [is_start for _, _, is_start in _markers(text, start, end)]
     return len(kinds) % 2 == 0 and all(k == (i % 2 == 0) for i, k in enumerate(kinds))
 
 
