@@ -135,7 +135,7 @@ def root_of(frozen):
     ('authorization_id', ''),      # owner label missing
     ('stage', 'N1'),               # token minted for another stage
     ('fixture_uuid', 'not-the-fixture-uuid'),
-    ('fixture_parent', 'D:\\pv20-fixtures-other'),
+    ('fixture_parent', 'D:\\archeus-worktrees\\pv20-fixtures-other'),
 ])
 def test_authorization_marker_fields_refuse_before_backend(frozen, field, poison):
     manifest, token_file = frozen
@@ -172,7 +172,7 @@ def test_oversized_token_refused_unparsed_before_backend(frozen):
 
 # Branch 3 -- controller.py:58-61 (verify_manifest): every executed artifact
 # must be staged under the approved fixture parent; a path that escapes the
-# D:\pv20-fixtures-style parent (sibling directory or a home/credential path)
+# D:\archeus-worktrees\pv20-fixtures-style parent (sibling directory or a home/credential path)
 # is a refusal, not a hash check.
 @pytest.mark.parametrize('escapee', ['outside-dir', 'fakehome-credentials'])
 def test_artifact_outside_fixture_parent_refuses_before_backend(frozen, tmp_path, escapee):

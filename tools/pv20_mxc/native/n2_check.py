@@ -4,7 +4,7 @@ Not run by its author. It runs only after the owner has read the review sheet
 (.collab/N2-review-sheet-2026-11-01.md) and authorised the run.
 
 Usage:  python -m tools.pv20_mxc.native.n2_check <fixture-parent>
-  Exactly one argument: a directory at or below D:\\pv20-fixtures (letters, digits, dot,
+  Exactly one argument: a directory at or below D:\\archeus-worktrees\\pv20-fixtures (letters, digits, dot,
   underscore, hyphen). The fixture root is safe_root(parent), a fresh uuid child with a
   marker, and remove_fixture(root) deletes it only when the whole run exits 0. The
   declared INCONCLUSIVE rows keep a clean run at exit 2, so the root is normally kept.
@@ -57,7 +57,7 @@ from tools.pv20_mxc.native.common import Recorder, StopRun, redact, remove_fixtu
 from tools.pv20_mxc.protocol import STAGES
 
 STAGE = 'N2'
-FIXTURE_BASE = 'D:\\pv20-fixtures'
+FIXTURE_BASE = 'D:\\archeus-worktrees\\pv20-fixtures'
 SDK_TAIL = ('sdk', 'node_modules', '@microsoft', 'mxc-sdk')
 SAFE_PARENT = re.compile(r'\A[A-Za-z]:\\[A-Za-z0-9_.\\-]+\Z')
 SYSTEMROOT = re.compile(r'(?i)\A[A-Za-z]:\\windows\Z')

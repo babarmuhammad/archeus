@@ -38,18 +38,21 @@ class Rec:
 # ---------------------------------------------------------------- parent and system
 
 @pytest.mark.parametrize('parent', [
-    'D:\\pv20-fixtures', 'D:\\pv20-fixtures\\run', 'd:\\PV20-Fixtures\\run\\x_y.z-1'])
+    'D:\\archeus-worktrees\\pv20-fixtures', 'D:\\archeus-worktrees\\pv20-fixtures\\run', 'd:\\Archeus-Worktrees\\PV20-Fixtures\\run\\x_y.z-1'])
 def test_parent_ok_accepts_the_fixture_base_and_below(parent):
     assert n2.parent_ok(parent)
 
 
 @pytest.mark.parametrize('parent', [
-    '', None, 5, 'D:\\', 'D:\\pv20-fixtures-evil', 'D:\\pv20-fixturesX\\run', 'D:\\other',
+    '', None, 5, 'D:\\', 'D:\\pv20-fixtures', 'D:\\pv20-fixtures\\run',
+    'D:\\archeus-worktrees', 'D:\\archeus-worktrees\\archeus-int14',
+    'D:\\archeus-worktrees\\_scratch\\pv20-fixtures',
+    'D:\\archeus-worktrees\\pv20-fixtures-evil', 'D:\\archeus-worktrees\\pv20-fixturesX\\run', 'D:\\other',
     'C:\\pv20-fixtures', 'pv20-fixtures', 'D:pv20-fixtures', '\\\\host\\share\\pv20-fixtures',
-    'D:\\pv20-fixtures\\', 'D:\\pv20-fixtures\\\\run', 'D:\\pv20-fixtures\\..', 'D:\\pv20-fixtures\\.\\run',
-    'D:\\pv20-fixtures\\..\\other', 'D:\\pv20-fixtures\\run.', 'D:\\pv20-fixtures\\run ',
-    'D:\\pv20-fixtures\\a b', 'D:\\pv20-fixtures\\a&b', 'D:\\pv20-fixtures\\a^b', 'D:/pv20-fixtures/run',
-    'D:\\pv20-fixtures\\r\u00fcn', '\\\\?\\D:\\pv20-fixtures'])
+    'D:\\archeus-worktrees\\pv20-fixtures\\', 'D:\\archeus-worktrees\\pv20-fixtures\\\\run', 'D:\\archeus-worktrees\\pv20-fixtures\\..', 'D:\\archeus-worktrees\\pv20-fixtures\\.\\run',
+    'D:\\archeus-worktrees\\pv20-fixtures\\..\\other', 'D:\\archeus-worktrees\\pv20-fixtures\\run.', 'D:\\archeus-worktrees\\pv20-fixtures\\run ',
+    'D:\\archeus-worktrees\\pv20-fixtures\\a b', 'D:\\archeus-worktrees\\pv20-fixtures\\a&b', 'D:\\archeus-worktrees\\pv20-fixtures\\a^b', 'D:/pv20-fixtures/run',
+    'D:\\archeus-worktrees\\pv20-fixtures\\r\u00fcn', '\\\\?\\D:\\archeus-worktrees\\pv20-fixtures'])
 def test_parent_ok_refuses_everything_else(parent):
     assert not n2.parent_ok(parent)
 
@@ -384,7 +387,7 @@ def test_budget_raises_only_after_the_limit():
 @pytest.mark.parametrize('code,removed', [(0, True), (1, False), (2, False), (3, False)])
 def test_finish_deletes_the_fixture_only_on_exit_zero(code, removed):
     gone, said = [], []
-    assert n2.finish(code, 'D:\\pv20-fixtures\\run\\x', gone.append, said.append) == code
+    assert n2.finish(code, 'D:\\archeus-worktrees\\pv20-fixtures\\run\\x', gone.append, said.append) == code
     assert bool(gone) is removed and said
 
 
