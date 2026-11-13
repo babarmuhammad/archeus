@@ -1124,6 +1124,49 @@ def test_the_c_rows_carry_the_precheck_result_in_the_record(tmp_path, monkeypatc
     assert c1['label'] == 'not admissible' and c1['precheck'] == REFUSED and c1['launcher_rc'] is None
 
 
+def test_a_failed_results_write_is_reported_and_never_replaces_the_setup_error_in_flight(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    open(os.path.join(h.lay['root'], n2.RESULTS), 'wb').close()
+
+    def over(*a, **kw):
+        raise n2.SetupError('time budget exceeded')
+    h.go = over
+    with pytest.raises(n2.SetupError, match='time budget exceeded'):
+        n2.diagnose(h, {n2.DIAG}, ADMITTED)
+    assert any(line.startswith('pv20 N2 results not written: FileExistsError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_failed_results_write_after_a_clean_run_makes_diagnose_return_three(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    open(os.path.join(h.lay['root'], n2.RESULTS), 'wb').close()
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 3
+    assert any(line.startswith('pv20 N2 results not written: FileExistsError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_an_existing_results_file_is_refused_and_its_bytes_are_kept(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    path = os.path.join(h.lay['root'], n2.RESULTS)
+    with open(path, 'wb') as fh:
+        fh.write(b'OLD')
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 3
+    with open(path, 'rb') as fh:
+        assert fh.read() == b'OLD'
+    assert any(line.startswith('pv20 N2 results not written: FileExistsError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_non_ascii_user_name_is_redacted_before_json_escapes_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(common, '_username', lambda: 'Zo\u00eb')
+    n2.write_results(str(tmp_path), {'interpretation': 'run by Zo\u00eb',
+                                     'rows': [{'error': 'C:\\Users\\Zo\u00eb\\x'}]})
+    with open(os.path.join(str(tmp_path), n2.RESULTS), encoding='utf-8') as fh:
+        text = fh.read()
+    assert 'Zo\u00eb' not in text and 'Zo\\u00eb' not in text
+    assert text.count('[REDACTED-USER]') == 2
+
+
 def _plain_tree(tmp_path):
     tree = tmp_path / 'System32'
     tree.mkdir()

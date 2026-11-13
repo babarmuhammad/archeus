@@ -1250,14 +1250,30 @@ def _row_record(row, admission, label, **extra):
     return base
 
 
+def _redact_strings(value):
+    if isinstance(value, dict):
+        return {k: _redact_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_strings(v) for v in value]
+    return redact(value) if isinstance(value, str) else value
+
+
 def write_results(root, doc):
-    with open(os.path.join(root, RESULTS), 'w', encoding='utf-8') as fh:
-        fh.write(redact(json.dumps(doc, indent=2, sort_keys=True)) + '\n')
+    """Create the results file exclusively and never overwrite one. False when it was not written."""
+    text = json.dumps(_redact_strings(doc), indent=2, sort_keys=True) + '\n'
+    try:
+        with open(os.path.join(root, RESULTS), 'x', encoding='utf-8') as fh:
+            fh.write(text)
+    except OSError as ex:
+        _say('pv20 N2 results not written: %s %s' % (type(ex).__name__, _snip(str(ex))))
+        return False
+    return True
 
 
 def diagnose(h, flags, admission):
-    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran. A System32
-    row is launched only when the pre-check admitted the System32 grant."""
+    """Diagnostic only: the exit code is 2 whenever the matrix ran and its results were written,
+    3 when they were not. A System32 row is launched only when the pre-check admitted the System32
+    grant."""
     h.prepare()
     toolchain = os.path.join(h.lay['root'], 'toolchain')
     rows = diag_rows(h.lay, h.env['SYSTEMROOT'], h.seeds['p.state'])
@@ -1287,9 +1303,9 @@ def diagnose(h, flags, admission):
         interpretation = diag_interpret({k: v['label'] for k, v in recs.items()})
         _say('DIAGNOSTIC %s' % interpretation)
     finally:
-        write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
-                                      'rows': [recs[r.id] for r in rows if r.id in recs]})
-    return 2
+        written = write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
+                                                'rows': [recs[r.id] for r in rows if r.id in recs]})
+    return 2 if written else 3
 
 
 STUBS = (
