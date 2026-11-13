@@ -54,7 +54,6 @@ def test_unknown_member_excluded_from_casefolded_overlap(monkeypatch):
     assert result == [{'a': 'a', 'b': 'b', 'count': 1, 'files': [first]}]
 
 
-@pytest.mark.xfail(strict=True, reason='Arrow inside quoted filename parsed as rename: claude_sessions/worktrees.py:96')
 def test_quoted_arrow_filename_stays_one_dirty_path(monkeypatch):
     monkeypatch.setattr(w, '_git', lambda *a, **kw: ' M "literal -> file.txt"\n')
     assert w._dirty_files('tree') == ['literal -> file.txt']
@@ -94,7 +93,6 @@ def test_unterminated_last_porcelain_record_retained_once(monkeypatch, tmp_path)
     assert [r['main'] for r in rows] == [True, False]
 
 
-@pytest.mark.xfail(strict=True, reason='HEAD without worktree creates invalid main row: claude_sessions/worktrees.py:74-75')
 def test_orphan_head_cannot_synthesize_worktree(monkeypatch):
     monkeypatch.setattr(w, '_git', lambda *a, **kw: 'HEAD abcdef1234\n\n')
     assert w.list_worktrees('project') == []

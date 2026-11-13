@@ -63,7 +63,7 @@ def list_worktrees(project_path):
     trees, cur = [], {}
     for line in out.splitlines():
         if not line.strip():
-            if cur:
+            if cur.get('path'):
                 trees.append(cur)
                 cur = {}
             continue
@@ -79,7 +79,7 @@ def list_worktrees(project_path):
             cur['detached'] = True
         elif key == 'bare':
             cur['bare'] = True
-    if cur:
+    if cur.get('path'):
         trees.append(cur)
     # the first entry is always the main working tree
     for i, t in enumerate(trees):
@@ -93,13 +93,21 @@ def _dirty_files(path):
     out = _git(_PLAIN + ['status', '--porcelain', '-uall'], path)
     if out is None:
         return None
-    return [p.strip('"') for l in out.splitlines() if l.strip() for p in l[3:].split(' -> ')]
+    paths = []
+    for l in out.splitlines():
+        if not l.strip():
+            continue
+        # only an index rename/copy carries ' -> '; a literal arrow in a name does not
+        names = l[3:].split(' -> ') if l[0] in 'RC' else [l[3:]]
+        paths.extend(p.strip('"') for p in names)
+    return paths
 
 
 def dirty(path):
-    """(changed_files, insertions_estimate) for uncommitted work, or (0, 0)."""
+    """(changed_files, insertions_estimate) for uncommitted work, or (None, 0) when
+    git could not say."""
     files = _dirty_files(path)
-    return (len(files), 0) if files is not None else (0, 0)
+    return (len(files), 0) if files is not None else (None, 0)
 
 
 def _changed_files(path, main_head, dirty_files):
@@ -356,7 +364,13 @@ def merge_into_main(project_path, branch):
 
 def remove(path, force=False):
     """Drop a worktree. Refuses to discard uncommitted work unless forced."""
+    # an absolute path cannot be read as an option (`--force`) or resolve to a sibling
+    # of the caller's cwd; git's usage line for `worktree remove` shows no `--`
+    if not os.path.isabs(path):
+        return False, 'worktree path must be absolute — nothing removed'
     n_dirty, _ = dirty(path)
+    if n_dirty is None:
+        return False, 'could not read the worktree state — nothing removed'
     if n_dirty and not force:
         return False, f'{n_dirty} uncommitted change(s) — nothing removed'
     args = ['worktree', 'remove']

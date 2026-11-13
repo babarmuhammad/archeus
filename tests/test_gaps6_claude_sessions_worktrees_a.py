@@ -71,7 +71,6 @@ def test_dirty_refusal_has_no_removal_side_effect(git, monkeypatch, tmp_path):
     assert len(calls) == 1 and calls[0][0].count('--force') == 1
 
 
-@pytest.mark.xfail(strict=True, reason='Unknown dirty status collapses to clean before removal: claude_sessions/worktrees.py:359 (dirty:102)')
 def test_unknown_dirty_observation_refuses_remove(monkeypatch, tmp_path):
     calls = []
 
@@ -84,7 +83,6 @@ def test_unknown_dirty_observation_refuses_remove(monkeypatch, tmp_path):
     assert len(calls) == 1 and 'status' in calls[0]
 
 
-@pytest.mark.xfail(strict=True, reason='Worktree path appended without option delimiter: claude_sessions/worktrees.py:365')
 def test_dash_path_is_refused_or_delimited(git, monkeypatch):
     calls, _ = git
     monkeypatch.setattr(w, 'dirty', lambda p: (0, 0))
@@ -123,7 +121,6 @@ def test_diff_staged_flag_and_none_have_no_fallback(git, tmp_path):
                       (['diff', '--cached', '--stat=200', '--patch'], str(tmp_path), {})]
 
 
-@pytest.mark.xfail(strict=True, reason='Relative sibling removal has no containment gate: claude_sessions/worktrees.py:365')
 def test_relative_sibling_path_cannot_remove_other_tree(git, monkeypatch):
     calls, _ = git
     monkeypatch.setattr(w, 'dirty', lambda p: (0, 0))
