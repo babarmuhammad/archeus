@@ -220,6 +220,7 @@ def test_an_unsupported_platform_refuses_before_any_repository_git_call(tmp_path
     recording(monkeypatch, ran)
     assert local._project_git(root, ['status', '--porcelain']) is None
     assert all(argv[-1] == 'version' for argv in ran)
+    assert local._VERSION, 'Git is below the floor, so the freeze was never reached'
 
 
 @pytest.mark.real_config_freeze
@@ -230,6 +231,7 @@ def test_off_windows_the_real_guard_refuses_the_repository_call(tmp_path, monkey
     recording(monkeypatch, ran)
     assert local._project_git(root, ['status', '--porcelain']) is None
     assert all(argv[-1] == 'version' for argv in ran)
+    assert local._VERSION, 'Git is below the floor, so the freeze was never reached'
 
 
 @WINDOWS
