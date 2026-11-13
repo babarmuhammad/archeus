@@ -147,7 +147,7 @@ def run(project_path, proj_folder, project_name):
             args, env, _pf = build_launch_command(
                 project_path, encoded, 'new', {'cfgdir': target_dir, 'prompt': pointer})
         except RuntimeError as e:
-            flash(f"Cannot read the base system prompt: {e}", ok=False, secs=3)
+            flash(str(e), ok=False, secs=1.8)
             return False
         _cls()
         print(f"  Context: {ctx_path}")

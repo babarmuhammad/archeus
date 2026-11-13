@@ -230,3 +230,32 @@ def test_unreadable_base_prompt_refuses_the_inject_launch(monkeypatch, tmp_path)
     assert launched is False
     assert calls == []
     assert flashes and flashes[0].startswith('Cannot ')
+
+
+def test_missing_executable_on_a_non_claude_target_names_the_real_failure(monkeypatch, tmp_path):
+    import subprocess
+    from claude_sessions import harnesses, main, store, ui
+    sb = Sandbox(monkeypatch, tmp_path)
+    other = _two_accounts(sb, tmp_path, monkeypatch)
+    actual = str(tmp_path / 'work' / 'alpha')
+    os.makedirs(actual, exist_ok=True)
+    enc = encode_component(actual)
+    folder = os.path.join(str(sb.projects), enc)
+    os.makedirs(folder, exist_ok=True)
+    make_jsonl(os.path.join(folder, 'aaaa0000-0000-0000-0000-000000000000.jsonl'),
+               title='Fix the bug')
+    os.makedirs(store.project_folder(other, enc), exist_ok=True)
+    monkeypatch.setattr(harnesses, 'of', lambda d: {'id': 'codex'})
+
+    def no_exe(*a, **k):
+        raise RuntimeError('codex executable not found')
+    monkeypatch.setattr(main, 'build_launch_command', no_exe)
+
+    calls = []
+    flashes = []
+    monkeypatch.setattr(subprocess, 'call', lambda *a, **k: calls.append((a, k)) or 0)
+    monkeypatch.setattr(ui, 'flash', lambda msg, **k: flashes.append(msg))
+    launched, _cap, _ = run_flow(monkeypatch, [*ENTER, *DOWN, *ENTER],
+                                 ci.run, actual, folder, 'alpha')
+    assert launched is False and calls == []
+    assert flashes == ['codex executable not found'], flashes
