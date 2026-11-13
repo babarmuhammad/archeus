@@ -316,11 +316,11 @@ def guard(handler, key, marker_path, label):
         got = (handler.headers.get('x-api-key')
                or (handler.headers.get('Authorization') or '').removeprefix('Bearer ')
                or '').strip()
-        # latin-1 bytes, not str: that is how the header was decoded, and a
-        # non-ASCII byte makes compare_digest raise TypeError — which lands in
-        # socketserver.handle_error as a traceback, unauthenticated.
-        if not hmac.compare_digest(got.encode('latin-1', 'replace'),
-                                   key.encode('latin-1', 'replace')):
+        # bytes, not str: compare_digest raises TypeError on non-ASCII str. Both
+        # sides are encoded the same injective way, so distinct credentials stay
+        # distinct; 'surrogatepass' keeps a stray surrogate from raising.
+        if not hmac.compare_digest(got.encode('utf-8', 'surrogatepass'),
+                                   key.encode('utf-8', 'surrogatepass')):
             return deny(handler, label, 'bad credentials')
     return True
 

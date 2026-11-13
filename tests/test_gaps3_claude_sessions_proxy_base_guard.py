@@ -17,7 +17,7 @@ evidence in /work/QWEN-DONE-T-1160.md):
  2. missing / blank Host denies, and host runs before browser+bearer :306-313
  3. fetch-metadata headers deny on the MARKER endpoint                :311-315
  4. x-api-key takes precedence over Authorization                     :316-318
- 5. non-ASCII bearer denies without raising; + strict-xfail collision :322-323
+ 5. non-ASCII bearer denies without raising; + non-latin-1 key collision :322-323
  6. Host compared case-insensitively and stripped of padding          :306
  7. empty fetch-metadata header is absent, a blank one is not         :312
  8. configured key is stripped; keyless mode skips only the bearer    :314-315
@@ -207,19 +207,14 @@ def test_guard_gives_x_api_key_precedence_over_authorization():
     assert ok is True                        # an EMPTY x-api-key is absent, not a credential
 
 
-@pytest.mark.xfail(strict=True, reason=
-    "source defect claude_sessions/proxy_base.py:322-323: both sides reach "
-    "hmac.compare_digest after .encode('latin-1', 'replace'), which folds every "
-    "non-latin-1 character to a literal '?' — the unguessable bearer "
-    "'pa\\u0100\\u0100ss' authenticates against the configured key 'pa??ss'")
-def test_guard_refuses_to_let_a_non_ascii_bearer_collide_with_question_marks():
+def test_guard_refuses_a_question_mark_bearer_for_a_non_latin1_key():
     """Contract: only a bearer equal to the configured credential authenticates.
-    Branch: proxy_base.py:322-323. A str header is not necessarily latin-1 (any
-    front end that decoded UTF-8 hands guard str > U+00FF), and 'replace'
-    collapses all of them onto '?' — so '?' in a key is a four-bit-per-character
-    guess."""
-    ok, h = _run({'Host': GOOD_HOST, 'Authorization': 'Bearer pa\u0100\u0100ss'},
-                 key='pa??ss')
+    Branch: proxy_base.py:322-323. The configured key with U+0100 was folded
+    to '?' by the 'replace' encoding, so a client sending a literal '?' pair
+    authenticated. A header is decoded as latin-1, so no client can send U+0100
+    and the exact key cannot match either: refusal is the reachable behaviour."""
+    ok, h = _run({'Host': GOOD_HOST, 'Authorization': 'Bearer pa??ss'},
+                 key='pa\u0100\u0100ss')
     assert ok is False
     _assert_denied(h, 'bad credentials')
 
