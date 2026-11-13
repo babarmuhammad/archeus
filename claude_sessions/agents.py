@@ -631,10 +631,31 @@ def sync_project_agents(project_path, refs, routed=None):
         src = find_library_agent(ref)
         if src:
             desired[os.path.basename(src)] = src
+    # a name on disk that the previous manifest does not list is the user's own file
+    managed = {fn for fn in prev if _managed_name(fn)}
+    for fn in list(desired):
+        if fn not in managed and os.path.lexists(os.path.join(dest, fn)):
+            del desired[fn]
 
     if not desired and not prev:
         return 0
     os.makedirs(dest, exist_ok=True)
+
+    def _record(names):
+        if names:
+            return _c.write_json_atomic(manifest_path, names, indent=None)
+        if os.path.isfile(manifest_path):
+            os.remove(manifest_path)
+        return True
+
+    # The record goes down first, and it is refused as a whole: a refused record
+    # changes nothing on disk. No file is removed or copied that no manifest names.
+    try:
+        recorded = _record(list(desired))
+    except Exception:
+        recorded = False
+    if not recorded:
+        return 0
 
     # remove managed files no longer selected
     for fn in prev:
@@ -645,21 +666,6 @@ def sync_project_agents(project_path, refs, routed=None):
                     os.remove(fp)
                 except Exception:
                     pass
-
-    def _record(names):
-        if names:
-            with open(manifest_path, 'w', encoding='utf-8') as f:
-                json.dump(names, f)
-        elif os.path.isfile(manifest_path):
-            os.remove(manifest_path)
-
-    # The record goes down before any copy, so a file is never placed that no
-    # manifest names. A refused record copies nothing: a file already in the
-    # folder under the same name keeps its bytes.
-    try:
-        _record(list(desired))
-    except Exception:
-        desired = {}
 
     # copy selected (strip model: frontmatter when routing via OmniRoute
     # so agents inherit CLAUDE_CODE_SUBAGENT_MODEL instead of trying to

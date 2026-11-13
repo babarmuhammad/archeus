@@ -141,7 +141,8 @@ def _seed(sb, category, name, text=None):
 
 
 def _fail_writes(monkeypatch, path, note='simulated disk failure'):
-    """Seam-fake the file layer: opening `path` for writing raises OSError."""
+    """Seam-fake the file layer: opening `path` for writing raises OSError, and
+    the atomic writer refuses it (write_atomic returns False, as on a real failure)."""
     real_open = builtins.open
     target = os.path.normcase(os.path.abspath(path))
 
@@ -151,7 +152,66 @@ def _fail_writes(monkeypatch, path, note='simulated disk failure'):
                 raise OSError(note + ': ' + os.path.basename(target))
         return real_open(file, mode, *a, **kw)
 
+    real_write_atomic = cfg.write_atomic
+
+    def refuse_atomic(p, text, mode=None):
+        if os.path.normcase(os.path.abspath(str(p))) == target:
+            return False
+        return real_write_atomic(p, text, mode=mode)
+
     monkeypatch.setattr(builtins, 'open', fake_open)
+    monkeypatch.setattr(cfg, 'write_atomic', refuse_atomic)
+
+
+def _tear_manifest_write(monkeypatch, proj):
+    """Seam-fake a disk-full part-way through the manifest write: half the text
+    lands, then OSError. Covers a direct open(manifest, 'w') and the temp file
+    of an atomic write, so it bites whichever way the record is written."""
+    manifest = os.path.normcase(os.path.abspath(_manifest_path(proj)))
+    real_open, real_os_open, real_fdopen = builtins.open, os.open, os.fdopen
+    torn_fds = set()
+
+    class Torn:
+        def __init__(self, f):
+            self._f = f
+
+        def write(self, s):
+            self._f.write(s[:len(s) // 2])
+            raise OSError('simulated disk full')
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self._f.close()
+            return False
+
+        def __getattr__(self, name):
+            return getattr(self._f, name)
+
+    def is_manifest_tmp(p):
+        b = os.path.basename(str(p))
+        return b.startswith(agents._MANIFEST + '.') and b.endswith('.tmp')
+
+    def fake_os_open(path, flags, *a, **kw):
+        fd = real_os_open(path, flags, *a, **kw)
+        if is_manifest_tmp(path):
+            torn_fds.add(fd)
+        return fd
+
+    def fake_fdopen(fd, *a, **kw):
+        f = real_fdopen(fd, *a, **kw)
+        return Torn(f) if fd in torn_fds else f
+
+    def fake_open(file, mode='r', *a, **kw):
+        if not isinstance(file, int) and 'w' in mode \
+                and os.path.normcase(os.path.abspath(str(file))) == manifest:
+            return Torn(real_open(file, mode, *a, **kw))
+        return real_open(file, mode, *a, **kw)
+
+    monkeypatch.setattr(builtins, 'open', fake_open)
+    monkeypatch.setattr(os, 'open', fake_os_open)
+    monkeypatch.setattr(os, 'fdopen', fake_fdopen)
 
 
 def _fail_reads(monkeypatch, path, note='simulated read failure'):
@@ -564,3 +624,108 @@ def test_failed_manifest_write_leaves_a_preexisting_agent_file_alone(env, tmp_pa
 
     assert n == 0
     assert _read(own) == 'USER OWN AGENT\n', 'the pre-existing file was overwritten or deleted'
+
+
+# ── 11-15 · a user's own file is not archeus's; the record comes first ──────
+
+def test_user_file_with_a_library_name_is_not_overwritten_or_claimed(env, tmp_path):
+    """sync_project_agents: rev.md is the user's own file (in no manifest) and the
+    selected library agent is also rev.md. The docstring says the user's own
+    project agents are never touched: the bytes stay, the manifest does not name
+    rev.md, and a later empty selection keeps the file.
+    Red today: the copy overwrites the user's file and the record names it.
+    """
+    _seed(env, '01-core', 'rev')
+    proj = _proj(tmp_path)
+    own = _write(os.path.join(_dest(proj), 'rev.md'), 'USER OWN AGENT\n')
+
+    n = agents.sync_project_agents(proj, ['01-core/rev'])
+
+    assert n == 0, n
+    assert _read(own) == 'USER OWN AGENT\n', 'the user file was overwritten'
+    assert 'rev.md' not in (_read_manifest(proj) or []), 'the user file was claimed'
+    assert agents.sync_project_agents(proj, []) == 0
+    assert _read(own) == 'USER OWN AGENT\n', 'a later empty selection deleted the user file'
+
+
+def test_user_file_survives_a_failed_copy_and_a_failed_re_record(env, tmp_path, monkeypatch):
+    """Same input, with the copy failing and the re-record failing.
+    Red today: the first record already names rev.md, so the next empty selection
+    removes the user's file. The user's file is excluded before any record, so
+    nothing names it and no later sync removes it.
+    """
+    _seed(env, '01-core', 'rev')
+    proj = _proj(tmp_path)
+    own = _write(os.path.join(_dest(proj), 'rev.md'), 'USER OWN AGENT\n')
+    real_copyfile = shutil.copyfile
+    real_remove = os.remove
+
+    def failing_copy(src, dst, *a, **kw):
+        if str(dst).endswith('rev.md'):
+            raise OSError('simulated copy failure')
+        return real_copyfile(src, dst, *a, **kw)
+
+    def failing_remove(p, *a, **kw):
+        if str(p).endswith(agents._MANIFEST):
+            raise OSError('simulated re-record failure')
+        return real_remove(p, *a, **kw)
+
+    monkeypatch.setattr(shutil, 'copyfile', failing_copy)
+    monkeypatch.setattr(os, 'remove', failing_remove)
+
+    agents.sync_project_agents(proj, ['01-core/rev'])
+    assert agents.sync_project_agents(proj, []) == 0
+    assert os.path.isfile(own), 'the user file was removed by a later sync'
+    assert _read(own) == 'USER OWN AGENT\n'
+
+
+def test_torn_manifest_write_keeps_the_managed_record(env, tmp_path, monkeypatch):
+    """Managed a.md stays selected and the manifest write dies half-way (disk
+    full). Red today: open(manifest, 'w') truncates the record, so the next sync
+    reads it as empty and can never remove a.md. An atomic write leaves the old
+    manifest whole: it still parses and still names a.md.
+    """
+    _seed(env, '01-core', 'a')
+    proj = _proj(tmp_path)
+    _write(os.path.join(_dest(proj), 'a.md'), 'managed\n')
+    _write(_manifest_path(proj), json.dumps(['a.md']))
+    _tear_manifest_write(monkeypatch, proj)
+
+    agents.sync_project_agents(proj, ['01-core/a'])
+
+    try:
+        recorded = json.loads(_read(_manifest_path(proj)))
+    except ValueError as e:
+        raise AssertionError('the manifest no longer parses: %s' % e)
+    assert 'a.md' in recorded, recorded
+
+
+def test_refused_record_does_not_remove_a_deselected_managed_file(env, tmp_path, monkeypatch):
+    """Managed old.md is deselected and the record is refused. Red today: old.md
+    is removed before the record is attempted, so a refused record changes the
+    folder and leaves the manifest naming a file that is gone.
+    """
+    _seed(env, '01-core', 'rev')
+    proj = _proj(tmp_path)
+    gone = _write(os.path.join(_dest(proj), 'old.md'), 'managed, now deselected\n')
+    _write(_manifest_path(proj), json.dumps(['old.md']))
+    _tear_manifest_write(monkeypatch, proj)
+
+    n = agents.sync_project_agents(proj, ['01-core/rev'])
+
+    assert n == 0, n
+    assert os.path.isfile(gone), 'a refused record still removed the deselected file'
+    assert _read_manifest(proj) == ['old.md']
+
+
+def test_selected_managed_file_is_still_refreshed(env, tmp_path):
+    """Control: a file archeus placed earlier and selected again is overwritten
+    with the library copy and stays recorded. Passes before and after the fix."""
+    _seed(env, '01-core', 'a', text='---\nname: a\ndescription: Use when a.\n---\n\nNEW BODY\n')
+    proj = _proj(tmp_path)
+    fp = _write(os.path.join(_dest(proj), 'a.md'), 'OLD BODY\n')
+    _write(_manifest_path(proj), json.dumps(['a.md']))
+
+    assert agents.sync_project_agents(proj, ['01-core/a']) == 1
+    assert 'NEW BODY' in _read(fp)
+    assert _read_manifest(proj) == ['a.md']
