@@ -63,7 +63,7 @@ def lessons(conn, mission_id):
         # ponytail: scans a mission's expired relations too; a valid_until column if that ever costs
         try:
             body = json.loads(r['body'])
-        except ValueError:          # the schema admits any TEXT: a bad body is skipped, not fatal
+        except (ValueError, RecursionError):  # the schema admits any TEXT: a bad body is skipped, not fatal
             continue
         if not isinstance(body, dict) or body.get('valid_until') is not None or r['src_id'] == last:
             continue
