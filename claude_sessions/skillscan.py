@@ -241,7 +241,7 @@ _VALUE_OPTS = {'--cache', '--registry', '--userconfig', '--globalconfig', '--pre
 #: launcher -> the verbs that run a package; the others are not fetches
 _VERBS = {'npm': ('exec', 'x'), 'pnpm': ('dlx',), 'yarn': ('dlx',), 'bun': ('x',)}
 #: npm's boolean flags: `--no` is `--no-yes`, and nopt takes a bare `true`/`false` after them as the value
-_BOOL_OPTS = {'--no', '--no-install', '-y', '--yes'}
+_BOOL_OPTS = {'--no', '--no-yes', '--no-install', '-y', '--yes'}
 
 
 def _verb_index(rest, verbs):
@@ -297,14 +297,14 @@ def _package_command(command, args):
             i += 2      # npx-cli.js removes these with the token after them
             continue
         bare = option in _BOOL_OPTS and not sep and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
-        if bare and (anywhere or launcher == 'npx' and option == '--no'):
+        if bare and (anywhere or launcher == 'npx' and option in ('--no', '--no-yes')):
             i += 1
             sep, value = '=', rest[i]
         elif bare and launcher not in ('npm', 'npx'):
             yes = True      # unknown tool: the bare token is a package, so the fetch is not silenced
         if launcher == 'npx' and option == '--no-install':
             no_install = True       # npx-cli.js rewrites it to --yes=false whatever its value
-        elif option in ('--no', '--no-install'):
+        elif option in ('--no', '--no-yes', '--no-install'):
             if value == 'false':
                 yes = True
             else:

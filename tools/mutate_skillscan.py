@@ -284,7 +284,7 @@ MUTATIONS += [
      "            if value != 'false':", '            if True:')],
      [T + 'test_npm_boolean_flag_values_decide_whether_it_installs']),
     ('SK145', 'npm separate true/false token after a boolean flag is not consumed', [(SCAN,
-     "        if bare and (anywhere or launcher == 'npx' and option == '--no'):",
+     "        if bare and (anywhere or launcher == 'npx' and option in ('--no', '--no-yes')):",
      '        if False:')],
      [T + 'test_npm_boolean_flag_values_decide_whether_it_installs']),
     ('SK146', 'a boolean flag before the npm verb keeps its following value as a token', [(SCAN,
@@ -292,7 +292,7 @@ MUTATIONS += [
      '        i += 2 if rest[i] in _VALUE_OPTS else 1')],
      [T + 'test_npm_boolean_flag_values_decide_whether_it_installs']),
     ('SK147', 'npx consumes a bare true/false after --yes or -y', [(SCAN,
-     "        if bare and (anywhere or launcher == 'npx' and option == '--no'):",
+     "        if bare and (anywhere or launcher == 'npx' and option in ('--no', '--no-yes')):",
      "        if bare and (anywhere or launcher == 'npx'):")],
      [T + 'test_a_bare_false_after_a_flag_is_the_package_outside_npm',
       T + 'test_npx_rewrites_its_flags_before_npm_reads_them']),
@@ -305,6 +305,11 @@ MUTATIONS += [
      "        if launcher == 'npx' and option.lstrip('-') in ('npm', 'node-arg', 'n') and not sep:",
      '        if False:')],
      [T + 'test_npx_rewrites_its_flags_before_npm_reads_them']),
+    ('SK150', '--no-yes is not read as a form of --no', [(SCAN,
+     "        elif option in ('--no', '--no-yes', '--no-install'):",
+     "        elif option in ('--no', '--no-install'):")],
+     [T + 'test_npx_rewrites_its_flags_before_npm_reads_them',
+      T + 'test_npm_boolean_flag_values_decide_whether_it_installs']),
 ]
 if os.path.normcase('A') != 'A':        # only where file names fold case does a test see it
     MUTATIONS.append(

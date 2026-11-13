@@ -611,6 +611,7 @@ def test_npm_global_options_before_the_subcommand_do_not_hide_it(args):
     ('npx', ['--no', 'false', 'evil'], True), ('npm', ['exec', '--no', 'true', 'evil'], False),
     ('npm', ['exec', 'evil', '--no', 'true'], False), ('npm', ['--no', 'false', 'exec', 'evil'], True),
     ('npm', ['--no', 'true', 'exec', 'evil'], True),
+    ('npm', ['exec', 'evil', '--no', '--no-yes=false'], True), ('npm', ['exec', 'evil', '--no-yes'], False),
 ])
 def test_npm_boolean_flag_values_decide_whether_it_installs(command, args, flagged):
     assert bool(_mcp(command, args)) is flagged
@@ -626,6 +627,9 @@ def test_npm_boolean_flag_values_decide_whether_it_installs(command, args, flagg
     (['--yes=false', 'evil'], True),
     # npx-cli.js: `npm`/`-n` are removed opts that drop the next token, so the `--no-install` after is dropped
     (['--npm', '--no-install', 'evil'], True),
+    # nopt: the last form of `yes` wins, and `--no-yes=false` is yes=true
+    (['--no-install=false', '--no-yes=false', 'evil'], True), (['--no-install', '--no-yes', 'false', 'evil'], True),
+    (['--no-yes', 'evil'], False), (['--no-yes=true', 'evil'], False),
 ])
 def test_npx_rewrites_its_flags_before_npm_reads_them(args, flagged):
     assert bool(_mcp('npx', args)) is flagged
