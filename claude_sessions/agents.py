@@ -56,7 +56,8 @@ def write_agent(path, meta, body):
     """Write an agent .md with frontmatter. Returns True on success."""
     order = ['name', 'description', 'tools', 'model']
     keys = order + [k for k in meta if k not in order]
-    fm = '\n'.join(f"{k}: {meta[k]}" for k in keys if meta.get(k))
+    fm = '\n'.join(f"{k}: {' '.join(str(meta[k]).splitlines())}"
+                   for k in keys if meta.get(k))
     out = f"---\n{fm}\n---\n\n{body.rstrip()}\n"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
