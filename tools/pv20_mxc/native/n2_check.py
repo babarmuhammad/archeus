@@ -41,6 +41,8 @@ anything is copied, the System32 grant is pre-checked read-only with the product
 refused grant leaves the C rows unlaunched ("not admissible"). The result is printed and written,
 with every row's label, evidence and launcher exit code, to diag_results.json in the fixture root.
 --diag-precheck alone runs only the argument checks and that pre-check: nothing is created.
+Both are meant to be started with `python -B`: without it, importing the production modules may
+write bytecode caches outside the fixture.
 
 Exit codes: 0 all cases PASS / 1 first FAIL / 2 no FAIL but an INCONCLUSIVE is present
 (a diagnostic run is always 2; --diag-precheck exits 2 when System32 is not admissible) /
@@ -1271,9 +1273,9 @@ def write_results(root, doc):
 
 
 def diagnose(h, flags, admission):
-    """Diagnostic only: the exit code is 2 whenever the matrix ran and its results were written,
-    3 when they were not. A System32 row is launched only when the pre-check admitted the System32
-    grant."""
+    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran and its results
+    were written, 3 when they were not. A System32 row is launched only when the pre-check admitted
+    the System32 grant."""
     h.prepare()
     toolchain = os.path.join(h.lay['root'], 'toolchain')
     rows = diag_rows(h.lay, h.env['SYSTEMROOT'], h.seeds['p.state'])
