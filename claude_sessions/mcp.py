@@ -359,6 +359,8 @@ def _mcp_add_with_extras(args, transport, name):
     extra = []
     if transport == 'stdio':
         env = text_input("Env vars KEY=VAL (space-separated, blank = none):")
+        if env is None:
+            return None, True
         for kv in env.split():
             extra += ['-e', kv]
     else:
