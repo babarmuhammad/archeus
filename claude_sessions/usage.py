@@ -7,6 +7,7 @@ on a background thread; absent/expired credentials degrade to no line.
 
 import os
 import json
+import math
 import time
 import threading
 import urllib.request
@@ -319,9 +320,10 @@ def _extract_windows(data):
 
     def norm(v):
         try:
-            return max(0.0, min(float(v), 100.0))
+            f = float(v)
         except (TypeError, ValueError):
             return None
+        return None if math.isnan(f) else max(0.0, min(f, 100.0))
 
     out = []
     # Prefer the authoritative `limits` array (explicit percent + group).

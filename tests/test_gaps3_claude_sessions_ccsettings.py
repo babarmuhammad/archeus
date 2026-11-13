@@ -204,10 +204,6 @@ def test_int_key_refuses_fractions_and_non_numbers(acct):
     assert ccsettings.read(str(acct))['autoCompactWindow'] == 4500
 
 
-@pytest.mark.xfail(strict=True, reason='source defect: ccsettings.py:242 '
-               'int(value) silently truncates a float — autoCompactWindow 4.5 '
-               'is accepted and stored as 4, while the contract message '
-               '"expected a whole number" is ccsettings.py:244')
 def test_int_key_refuses_a_real_float(acct):
     """Same branch as above from the float input: a fractional value must be
     refused, not truncated. Inverts only against the known defect at :242."""

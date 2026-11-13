@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -332,6 +333,19 @@ def test_concurrent_writers_of_one_path_all_succeed_and_never_tear(tmp_path):
     docs = [{'writer': i, 'pad': str(i) * 20000} for i in range(6)]
     fails, torn, errors, started = [], [], [], []
 
+    def read_json():
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                f = open(p, encoding='utf-8')
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
+                continue
+            with f:
+                return json.load(f)
+
     def run(i):
         try:
             for _ in range(60):
@@ -340,8 +354,7 @@ def test_concurrent_writers_of_one_path_all_succeed_and_never_tear(tmp_path):
                     fails.append(f'{i}: write_json_atomic returned False')
                     continue
                 try:
-                    with open(p, encoding='utf-8') as f:
-                        d = json.load(f)
+                    d = read_json()
                     if d != docs[d['writer']]:
                         torn.append(f'{i}: content mismatch, writer={d.get("writer")!r}')
                 except Exception as e:

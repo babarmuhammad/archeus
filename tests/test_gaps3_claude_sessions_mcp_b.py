@@ -375,12 +375,6 @@ def test_add_stdio_keeps_argv_boundaries_and_extras_before_the_double_dash(monke
     assert '-e' not in argv2 and '' not in argv2
 
 
-@pytest.mark.xfail(strict=True,
-                   reason='source defect mcp.py:362 — `for kv in env.split()` raises '
-                          'AttributeError when ui.text_input returns None on ESC '
-                          '(ui.py:445-446 returns None on esc); every other prompt of this '
-                          'flow (mcp.py:326, 335, 338, 366) treats a cancel as an inert '
-                          'exit, so the stdio env prompt must too')
 def test_add_stdio_cancel_at_the_env_prompt_is_inert_not_a_crash(monkeypatch, tmp_path):
     """mcp.py:360-363 — ESC at "Env vars KEY=VAL" must exit the add the way the
     name/target/scope cancels do, not raise out of the manager."""

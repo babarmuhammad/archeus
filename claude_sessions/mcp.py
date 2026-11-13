@@ -186,7 +186,7 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
         try:
             existing = open(path, encoding='utf-8', errors='ignore').read()
         except Exception:
-            pass
+            return False   # its text is unknown: not ours to replace
 
     if start_tag in existing and end_tag in existing:
         pre  = existing[:existing.index(start_tag)]
@@ -359,6 +359,8 @@ def _mcp_add_with_extras(args, transport, name):
     extra = []
     if transport == 'stdio':
         env = text_input("Env vars KEY=VAL (space-separated, blank = none):")
+        if env is None:
+            return None, True
         for kv in env.split():
             extra += ['-e', kv]
     else:
