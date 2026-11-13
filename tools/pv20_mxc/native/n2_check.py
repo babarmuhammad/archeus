@@ -1174,7 +1174,14 @@ def verify_copy(src, dst):
 
 
 def _say(text):
-    print(redact(text), flush=True)
+    """Best-effort report: a closed or broken stdout must never stop cleanup or replace an error."""
+    try:
+        print(redact(text), flush=True)
+    except (OSError, ValueError):
+        try:
+            print(redact(text), file=sys.stderr, flush=True)
+        except (OSError, ValueError):
+            pass
 
 
 def diag_row(h, row):
@@ -1262,11 +1269,11 @@ def _redact_strings(value):
 
 def write_results(root, doc):
     """Create the results file exclusively and never overwrite one. False when it was not written."""
-    text = json.dumps(_redact_strings(doc), indent=2, sort_keys=True) + '\n'
     try:
+        text = json.dumps(_redact_strings(doc), indent=2, sort_keys=True) + '\n'
         with open(os.path.join(root, RESULTS), 'x', encoding='utf-8') as fh:
             fh.write(text)
-    except OSError as ex:
+    except Exception as ex:
         _say('pv20 N2 results not written: %s %s' % (type(ex).__name__, _snip(str(ex))))
         return False
     return True
@@ -1402,25 +1409,25 @@ def main(argv=None):
             code = rec.exit_code()
     except StopRun:
         code = rec.exit_code() or 1
-        print(redact('STOP at first FAIL; root preserved at %s' % root), flush=True)
+        _say('STOP at first FAIL; root preserved at %s' % root)
     except SetupError as ex:
-        print(redact('SETUP ERROR: %s; root preserved at %s' % (ex, root)), flush=True)
+        _say('SETUP ERROR: %s; root preserved at %s' % (ex, root))
     except KeyboardInterrupt:
-        print(redact('INTERRUPTED; Jobs closed, root preserved at %s' % root), flush=True)
+        _say('INTERRUPTED; Jobs closed, root preserved at %s' % root)
     except Exception as ex:
-        print(redact('UNEXPECTED ERROR: %s %s; root preserved at %s'
-                     % (type(ex).__name__, _snip(str(ex)), root)), flush=True)
+        _say('UNEXPECTED ERROR: %s %s; root preserved at %s'
+             % (type(ex).__name__, _snip(str(ex)), root))
     finally:
         left = h.wind_down() if h is not None else 0
     if left:
-        print(redact('%d Job close(s) or launcher check(s) failed; root preserved' % left), flush=True)
+        _say('%d Job close(s) or launcher check(s) failed; root preserved' % left)
         code = 3
     if root is None or code == 3:
         return code
     try:
-        return finish(code, root, remove_fixture)
-    except ValueError as ex:
-        print(redact('SETUP ERROR: fixture not removed: %s' % _snip(str(ex))), flush=True)
+        return finish(code, root, remove_fixture, _say)
+    except (OSError, ValueError) as ex:
+        _say('SETUP ERROR: fixture not removed: %s' % _snip(str(ex)))
         return 3
 
 
