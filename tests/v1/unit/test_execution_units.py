@@ -396,12 +396,14 @@ def _streak_db(*rows_):
     c = sqlite3.connect(':memory:')
     c.row_factory = sqlite3.Row
     c.execute('CREATE TABLE executions (id TEXT PRIMARY KEY, state TEXT, created_at TEXT,'
-              ' body TEXT)')
+              ' body TEXT, mission_id TEXT)')
+    c.execute('CREATE TABLE missions (id TEXT PRIMARY KEY, state TEXT)')
+    c.execute("INSERT INTO missions VALUES ('m', 'EXECUTING')")
     for i, (state, created, body) in enumerate(rows_):
-        c.execute('INSERT INTO executions VALUES (?,?,?,?)', (
+        c.execute('INSERT INTO executions VALUES (?,?,?,?,?)', (
             'x%d' % i, state, created, json.dumps(dict(
                 {'harness_id': 'fake', 'mission_id': 'm', 'stop_reason': None,
-                 'started_at': None, 'ended_at': None, 'summary': ''}, **body))))
+                 'started_at': None, 'ended_at': None, 'summary': ''}, **body)), 'm'))
     return c
 
 
