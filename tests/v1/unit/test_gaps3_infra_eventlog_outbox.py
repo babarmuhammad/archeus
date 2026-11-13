@@ -351,12 +351,6 @@ def test_t9_a_null_or_missing_column_fails_the_read_rather_than_fabricates(damag
     assert all(s.lstrip().upper().startswith('SELECT') for s, _ in conn.calls)
 
 
-@pytest.mark.xfail(strict=True, reason='justified premise refused by the source: a stored '
-                                       'payload of `null` is not a JSON object, but '
-                                       'outbox.py:50 hands json.loads("null") == None to '
-                                       'Event and events.py:201-202 turns None into the '
-                                       'empty dict, so the reader is fabricated an event '
-                                       'with an empty payload instead of a refusal (T-1150)')
 def test_t10_a_stored_null_payload_is_refused_not_fabricated_as_an_empty_object(db):
     # The probe "malformed event JSON cannot invent data", pushed to the one case the
     # current source lets through: payload text `null` is valid JSON, decodes to None,

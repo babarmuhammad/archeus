@@ -42,12 +42,15 @@ def floor(conn):
 
 
 def decode(r):
+    payload = json.loads(r['payload'])
+    if not isinstance(payload, dict):
+        raise ValueError('stored event payload must be an object')
     return Event(seq=r['seq'], id=r['id'], type=r['type'], at=r['at'],
                  actor={'kind': r['actor_kind'], 'id': r['actor_id']},
                  subject={'kind': r['subject_kind'], 'id': r['subject_id']},
                  workspace=r['workspace_id'], project=r['project_id'],
                  cause_chain=json.loads(r['cause_chain']), visibility=r['visibility'],
-                 payload=json.loads(r['payload']))
+                 payload=payload)
 
 
 def events_after(conn, cursor, *, limit=DEFAULT_LIMIT):
