@@ -396,7 +396,7 @@ def note_failure(args, env, text):
         return
     from .harnesses import of_argv, DEFAULT
     d = of_argv(args)
-    if d is not None and d['id'] != DEFAULT:
+    if d is None or d['id'] != DEFAULT:
         return
     note_limit(_cfgdir_of(args, env), window=is_window_limit(text))
 

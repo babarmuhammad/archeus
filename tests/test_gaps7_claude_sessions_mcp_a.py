@@ -143,10 +143,6 @@ def test_end_before_start_is_refused_and_the_manual_text_is_preserved(md, monkey
     assert _read(md) == original
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "mcp.py:192-196 update_global_claude_md_mcp: block_span takes the first "
-    "pair only, so a second complete pair with the same name keeps its stale "
-    "doc after a successful update"))
 def test_two_complete_same_name_pairs_never_leave_a_stale_duplicate(md):
     """Branch: mcp.py:192-196. Two complete pairs with the same name are
     ambiguous. Either the update is refused and the file is unchanged, or it

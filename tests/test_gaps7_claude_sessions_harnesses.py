@@ -176,11 +176,6 @@ def test_a_prefix_only_launcher_is_never_gated_as_claude(quota_gate):
     assert 'rot' not in quota_gate and quota_gate['note'] == []
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "quota.py:386-396 note_failure: of_argv() None (unknown launcher) falls "
-    "through to note_limit(), so a prefix-only launcher's limit text charges "
-    "the default Claude account; preflight at quota.py:457-460 treats the same "
-    "argv as not a Claude call"))
 def test_a_prefix_only_limit_text_charges_no_claude_account(quota_gate, monkeypatch):
     """Branch: harnesses.py:812 (no match) read by quota.py:398-400 through
     note_failure. A limit text from `claude-helper` must not latch the account
