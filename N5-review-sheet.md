@@ -38,14 +38,14 @@ Evidence: `n5_journal.jsonl`, redacted `{case,status,detail}` JSON lines matchin
 Do not run now. A separate owner act must authorize N5; N1-N4 permission does not apply. After review, the coordinator must use its approved test lock at below-normal priority. The module invocation inside that wrapper would be:
 
 ```text
-py -m tools.pv20_mxc.native.n5_check D:\pv20-fixtures\run --owner-authorized-n5-2026-11-09
+py -m tools.pv20_mxc.native.n5_check D:\archeus-worktrees\pv20-fixtures\run --owner-authorized-n5-2026-11-09
 ```
 
 The flag alone does not authorize anything. Before root creation or native module setup, the script requires operator-supplied `n5-manifest.json` and `n5-authorization.json` directly under that parent. It creates neither file. It uses existing `controller.authorize`, `verify_manifest` and no-follow readers. The older N2/N4 native entry points have no owner-token check; the shared controller does, so this script uses that existing token format plus an explicit N5 command marker.
 
 Manifest must name stage N5, exact ordered frozen cases, exact fixture parent, canonical fresh UUID, N4 PASS prerequisite, and `n5_script_hash` (SHA-256 of reviewed script bytes). Supply all `controller.verify_manifest` metadata: candidate SHA, protocol hash, batch/OS/architecture/command/runtime/capability/fixture inventories and staged executed-artifact hashes. Token must bind manifest digest, stage, UUID, parent, nonempty owner authorization ID and `fixture_only: true`. Changed artifacts, wrong scope, missing token, stale script hash or incomplete prerequisites refuse. Owner must verify the metadata corresponds to the reviewed candidate: the helper validates shape and staged artifact hashes, not the truth of an asserted N4 PASS or candidate SHA.
 
-Root uses shared `fixtures.create_root` and its `.pv20-created` marker, with the owner-token UUID. Parent first passes N2/common canonical, no-link, outside-repo/profile restrictions and must be under `D:\pv20-fixtures`. Existing UUID root refuses. This script never creates a token, manufactures prerequisite acceptance, or changes a prerequisite result.
+Root uses shared `fixtures.create_root` and its `.pv20-created` marker, with the owner-token UUID. Parent first passes N2/common canonical, no-link, outside-repo/profile restrictions and must be under `D:\archeus-worktrees\pv20-fixtures`. Existing UUID root refuses. This script never creates a token, manufactures prerequisite acceptance, or changes a prerequisite result.
 
 Budget: 1700 s checked between cases and launches, below frozen 1800 s. Each loop policy timeout is 120 s; host waits and teardown are bounded observations. Native calls themselves are synchronous and cannot be forcibly bounded by this process. About eleven short-lived fixture trees are launched. No live provider case exists.
 

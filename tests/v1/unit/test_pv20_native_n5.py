@@ -21,10 +21,10 @@ def test_frozen_cases_have_explicit_limits():
     assert all(n5.LIMITATIONS.values())
 
 
-@pytest.mark.parametrize('argv', [[], ['D:\\pv20-fixtures\\run'],
-                                  ['D:\\pv20-fixtures\\run', '--yes'],
+@pytest.mark.parametrize('argv', [[], ['D:\\archeus-worktrees\\pv20-fixtures\\run'],
+                                  ['D:\\archeus-worktrees\\pv20-fixtures\\run', '--yes'],
                                   ['C:\\elsewhere', n5.AUTHORIZATION],
-                                  ['D:\\pv20-fixtures\\run', n5.AUTHORIZATION, 'extra']])
+                                  ['D:\\archeus-worktrees\\pv20-fixtures\\run', n5.AUTHORIZATION, 'extra']])
 def test_no_authorization_means_no_fixture_or_process(monkeypatch, argv):
     def forbidden(*args, **kwargs):
         pytest.fail('authorization refusal performed an effect')

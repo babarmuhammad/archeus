@@ -25,7 +25,7 @@ Rows are redacted JSONL with stage/script F8, authorization ID, timestamp, case,
 
 ## 3. Entry and preflight
 
-Future entry takes one canonical fixture parent at or below `D:\pv20-fixtures`. Current state forbids execution. No native execution command is supplied here.
+Future entry takes one canonical fixture parent at or below `D:\archeus-worktrees\pv20-fixtures`. Current state forbids execution. No native execution command is supplied here.
 
 Before creating a root, entry requires `F8-owner-authorization.json` directly under fixture parent. Marker must be regular, single-link, no reparse point and at most 8192 bytes. Parent ancestry must be alias-free. Exact keys are `authorization_id`, `script`, `scopes`, `approved`. `script` must equal `F8`, `approved` must be true, ID must contain 1–64 ASCII letters, digits, underscores or hyphens. Marker is an administrative assertion and has no cryptographic authentication. Agent must never fabricate it.
 
