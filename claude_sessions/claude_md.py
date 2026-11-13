@@ -47,19 +47,22 @@ def _markers(text, start, end):
     nothing: a forgotten closing line above a real block must not make every
     refresh append another copy of it."""
     out, held, fence, pos = [], [], None, 0
-    for line in text.split('\n'):
+    for n, line in enumerate(text.split('\n')):
+        bom = 1 if n == 0 and line.startswith('﻿') else 0
+        line = line[bom:]
         t = line.strip()
         m = _FENCE_OPEN.match(line)
         if fence is None:
             if m:
                 fence = m.group(1)
             elif t in (start, end):
-                out.append((pos, pos + len(line), t == start))
+                out.append((pos + bom, pos + bom + len(line), t == start))
         elif t and set(t) == {fence[0]} and len(t) >= len(fence):
             fence, held = None, []
         elif t in (start, end):
-            held.append((pos, pos + len(line), t == start))
-        pos += len(line) + 1
+            held.append((pos + bom, pos + bom + len(line), t == start))
+        pos += len(line) + bom + 1
+    return out + held
     return out + held
 
 

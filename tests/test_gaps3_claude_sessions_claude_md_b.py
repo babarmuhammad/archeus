@@ -633,3 +633,23 @@ def test_closed_fenced_memory_example_survives_the_stray_clean_up():
     assert 'stray echo' not in out, 'a recognised stray START was kept'
     assert 'KEEP ME' in out
 
+
+# ── 15. a UTF-8 BOM before the first marker is not a barrier ───
+
+def test_a_block_on_the_first_line_after_a_bom_is_found(tmp_path):
+    """The BOM is not whitespace to str.strip(), so the first-line marker was never
+    recognised and a rewrite appended a second block. The span starts after the
+    BOM, so a rewrite keeps the BOM and replaces the one block."""
+    text = '﻿' + _MEMORY_START + '\nold body\n' + _MEMORY_END + '\n'
+    span = claude_md.block_span(text, _MEMORY_START, _MEMORY_END)
+    assert span is not None and text[:span[0]] == '﻿'
+
+    md = tmp_path / 'CLAUDE.md'
+    md.write_bytes(text.encode('utf-8'))
+    ok, _old, new = claude_md.upsert_block(
+        str(tmp_path), _MEMORY_START, _MEMORY_END,
+        _MEMORY_START + '\nnew body\n' + _MEMORY_END + '\n')
+    assert ok
+    assert new.startswith('﻿'), 'the BOM was lost'
+    assert new.count(_MEMORY_START) == 1, 'a second block was appended'
+    assert 'old body' not in new and 'new body' in new
