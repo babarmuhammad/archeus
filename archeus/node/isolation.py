@@ -882,24 +882,29 @@ class Isolation:
         """The profile Core just created is recorded as owned, on whatever the record is
         now: a concurrent Core may have decided from an earlier read that nothing owns it.
         The write is repeated on the fresh record, so the evidence is never lost."""
+        caller_rec = rec
         rec.sid = sid
-        for _ in range(RECORD_RETRIES):
-            rec.owned = True
-            try:
-                return self._save(rec)
-            except RecordChanged:
-                fresh = self.record(rec.execution_id)
-                if fresh is not None and fresh.state == 'invalid':
-                    break
-                rec = fresh or IsolationRecord(execution_id=rec.execution_id,
-                                               profile=rec.profile)
-                rec.sid = sid
-            except OSError:
-                rec.owned = False
-                raise
-        rec.owned = False
-        raise OSError('the isolation record of %s changed under its ownership' %
-                      rec.execution_id)
+        try:
+            for _ in range(RECORD_RETRIES):
+                rec.owned = True
+                try:
+                    return self._save(rec)
+                except RecordChanged:
+                    fresh = self.record(rec.execution_id)
+                    if fresh is not None and fresh.state == 'invalid':
+                        break
+                    rec = fresh or IsolationRecord(execution_id=rec.execution_id,
+                                                   profile=rec.profile)
+                    rec.sid = sid
+                except OSError:
+                    rec.owned = False
+                    raise
+            rec.owned = False
+            raise OSError('the isolation record of %s changed under its ownership' %
+                          rec.execution_id)
+        except OSError:
+            caller_rec.owned = False
+            raise
 
     def _save_establishment(self, rec):
         self._check_establishment()
