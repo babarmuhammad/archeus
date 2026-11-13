@@ -5,7 +5,8 @@ Not run by its author. It runs only after the owner has read the review sheet
 (.collab/N4-review-sheet-2026-11-01.md) and authorised the run.
 
 Usage:  python -m tools.pv20_mxc.native.n4_check <fixture-parent>
-  Exactly one argument: a directory at or below D:\\archeus-worktrees\\pv20-fixtures (letters, digits, dot,
+  Exactly one argument: a directory at or below the fixture base (n2_check.fixture_base(): the
+  ARCHEUS_FIXTURE_BASE variable, else pv20-fixtures next to the repository; letters, digits, dot,
   underscore, hyphen). The operator pre-stages two things under it: the MXC SDK at
   <parent>\\sdk\\node_modules\\@microsoft\\mxc-sdk (as N1 to N3 did) and the agent CLI, a
   folder holding claude.exe, at <parent>\\cli. The fixture root is safe_root(parent), a fresh
@@ -1361,7 +1362,7 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     if len(argv) != 1 or not n2.parent_ok(argv[0]):
         print('usage: python -m tools.pv20_mxc.native.n4_check <fixture-parent at or below %s; letters, '
-              'digits, dot, underscore, hyphen>' % n2.FIXTURE_BASE, flush=True)
+              'digits, dot, underscore, hyphen>' % n2.fixture_base(), flush=True)
         return 3
     parent = argv[0]
     if not n2._on_windows() or not os.path.isdir(parent):

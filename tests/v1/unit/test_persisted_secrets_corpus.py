@@ -23,7 +23,9 @@ from archeus.core.redact import redact
 
 PATH = (pathlib.Path(__file__).resolve().parents[2] / 'fixtures' / 'persisted_secrets'
         / 'commands.json')
-CASES = json.loads(PATH.read_text(encoding='utf-8'))['cases']
+GHP_TOKEN = 'ghp_' + 'x' * 36  # built here so no token-shaped literal lives in the repo
+CASES = [dict(c, cmd=c['cmd'].replace('__GHP_TOKEN__', GHP_TOKEN))
+         for c in json.loads(PATH.read_text(encoding='utf-8'))['cases']]
 BUCKETS = {'caught', 'missed', 'benign_ok', 'benign_overredacted'}
 
 
