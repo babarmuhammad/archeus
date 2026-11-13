@@ -60,6 +60,8 @@ def protect_section(md_path, needle):
     end = start + 1
     while end < len(lines) and not lines[end].lstrip().startswith('#'):
         end += 1
+    if not lines[end - 1].endswith('\n'):
+        lines[end - 1] += '\n'
     out = (lines[:start] + [_c._KEEP_START + '\n'] + lines[start:end]
            + [_c._KEEP_END + '\n'] + lines[end:])
     return bool(_c.write_atomic(md_path, ''.join(out)))
