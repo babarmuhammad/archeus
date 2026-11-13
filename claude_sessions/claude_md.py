@@ -148,31 +148,35 @@ def _valid_claude_md(text):
     return len(re.findall(r'^#{1,3} ', text, re.M)) >= 2
 
 
-def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END):
+def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END,
+                    from_user=False):
     """Carry a sentinel block from `existing` into `final` verbatim. AI analyze
     rewrites the whole CLAUDE.md and would otherwise drop the machine-maintained
     ARCHEUS:MEMORY block (it lives after AUTOGEN/SESSIONS, so Claude never
-    sees it). Always keep it."""
+    sees it). Always keep it. `from_user` marks `final` as the user's own prose,
+    whose stray markers are kept as prose."""
     span = block_span(existing, start, end)
     if span is None:
         return final
     block = existing[span[0]:span[1]]
-    final = _drop_blocks(final, start, end)
+    final = _drop_blocks(final, start, end, strays=not from_user)
     return final.rstrip('\n') + '\n\n' + block.rstrip('\n') + '\n'
 
 
 _STRAY_STOP = re.compile(r'\n\n|\n(?=<!--)')
 
 
-def _drop_blocks(text, start, end):
-    """`text` without its archeus blocks. A START that never reaches its END is
-    model output echoing a sentinel: it goes with the paragraph under it, which
-    ends at the next blank line or the next `<!--` marker, so the AUTOGEN and
-    SESSIONS blocks that follow it are not swallowed."""
+def _drop_blocks(text, start, end, strays=True):
+    """`text` without its archeus blocks. With `strays`, a START that never reaches
+    its END is model output echoing a sentinel: it goes with the paragraph under
+    it, which ends at the next blank line or the next `<!--` marker, so the AUTOGEN
+    and SESSIONS blocks that follow it are not swallowed. User prose keeps it."""
     span = block_span(text, start, end)
     while span:
         text = text[:span[0]] + text[span[1]:]
         span = block_span(text, start, end)
+    if not strays:
+        return text
     while start in text:
         i = text.index(start)
         m = _STRAY_STOP.search(text, i + len(start))
@@ -180,7 +184,7 @@ def _drop_blocks(text, start, end):
     return text
 
 
-def _preserve_machine_blocks(final, existing):
+def _preserve_machine_blocks(final, existing, from_user=False):
     """Carry EVERY block archeus maintains across a rewrite.
 
     Only MEMORY was carried, because only MEMORY was known here. The subagent
@@ -192,7 +196,7 @@ def _preserve_machine_blocks(final, existing):
     instead, which is why the two changes are one change.
     """
     for start, end in _MACHINE_BLOCKS:
-        final = _preserve_block(final, existing, start, end)
+        final = _preserve_block(final, existing, start, end, from_user)
     return final
 
 
@@ -617,7 +621,8 @@ def _valid_compressed(text):
         r"(?i)^\W*(i'll|i will|i've|here(?: is|'s)|sure|okay|certainly|edit pending)", t)
 
 
-def assemble_with_manual(manual, existing, project_path, proj_folder=None):
+def assemble_with_manual(manual, existing, project_path, proj_folder=None,
+                         from_user=False):
     """Put `manual` back into a CLAUDE.md, rebuilding what archeus owns.
 
     The manual half is the only thing a caller may replace. AUTOGEN and SESSIONS
@@ -631,7 +636,7 @@ def assemble_with_manual(manual, existing, project_path, proj_folder=None):
                     if sessions_content else '')
     final = replace_machine_blocks((manual or '').rstrip('\n') + '\n',
                                    new_autogen, new_sessions)
-    final = _preserve_machine_blocks(final, existing)
+    final = _preserve_machine_blocks(final, existing, from_user)
     if _AI_MARKER in existing and _AI_MARKER not in final:
         lines = final.split('\n')
         insert_at = 1
@@ -681,7 +686,8 @@ def set_manual_prose(project_path, proj_folder=None, text=''):
         existing = ''
     if not existing.strip():
         return False, 'no CLAUDE.md yet — scaffold one first'
-    final = assemble_with_manual(text, existing, project_path, proj_folder)
+    final = assemble_with_manual(text, existing, project_path, proj_folder,
+                                 from_user=True)
     if final == existing:
         return True, ''
     if not write_claude_md(md_path, existing, final, project_path, proj_folder,

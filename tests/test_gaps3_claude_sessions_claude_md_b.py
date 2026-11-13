@@ -470,3 +470,28 @@ def test_keep_placeholder_collision_cannot_overwrite_manual_text(monkeypatch, tm
     assert 'trailing sentence' in out
     assert claude_md._fence_in(model_side, kept, claude_md._keep_stem(manual)) == manual, \
         'with the stem the manual was fenced under, the round trip is byte-exact'
+
+
+# ── 11. user prose keeps a stray marker; model output does not ───
+
+def test_manual_prose_keeps_text_after_a_stray_start_marker(monkeypatch, tmp_path):
+    """claude_md.py `_drop_blocks` removes a START that never reaches its END with
+    the paragraph under it. That is for model echoes. Manual prose saved from the
+    GUI is the user's own text: `KEEP THIS` lies outside any paired block and must
+    survive, and the real MEMORY block is still carried exactly once."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    _actual, _enc, folder, _sids = sb.add_project('alpha', n_sessions=0)
+    proj = str(tmp_path / 'work' / 'alpha')
+    seeded = ('# alpha\n\n' + _AUTOGEN_START + '\nold body\n' + _AUTOGEN_END + '\n'
+              + _MEMORY_START + '\nREAL DIGEST\n' + _MEMORY_END + '\n')
+    md_path = _seed(tmp_path, proj, seeded)
+    _quiet_world(monkeypatch, tmp_path, folder)
+
+    typed = '# Notes\n' + _MEMORY_START + '\nKEEP THIS\n\nTail\n'
+    ok, err = claude_md.set_manual_prose(proj, folder, typed)
+
+    assert ok, err
+    out = _read(md_path)
+    assert 'KEEP THIS' in out and 'Tail' in out, 'user prose was deleted'
+    assert out.count(_MEMORY_END) == 1 and out.count('REAL DIGEST') == 1, \
+        'the MEMORY block is not carried exactly once'
