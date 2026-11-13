@@ -1334,6 +1334,68 @@ def test_wind_down_closes_every_job_and_checks_every_launcher_when_the_report_st
     assert closed == ['a', 'b'] and checked == [1, 2]
 
 
+def _uninterrupted(call, *args):
+    try:
+        return call(*args)
+    except KeyboardInterrupt:
+        pytest.fail('a KeyboardInterrupt escaped the cleanup step')
+
+
+def test_wind_down_keeps_closing_and_checking_when_the_report_print_is_interrupted(tmp_path, monkeypatch):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    closed = []
+    h.jobs = [_fake_ref(closed, 'a', RuntimeError('x')), _fake_ref(closed, 'b'), _fake_ref(closed, 'c')]
+    h.api = SimpleNamespace(created=[(1, 'c1'), (2, 'c2')])
+    checked = []
+
+    def wait_dead(pid, ctime, seconds):
+        checked.append(pid)
+        return True
+    monkeypatch.setattr(h, 'wait_dead', wait_dead)
+
+    def interrupted_print(*a, **kw):
+        raise KeyboardInterrupt()
+    monkeypatch.setattr(n2, 'print', interrupted_print, raising=False)
+    assert _uninterrupted(h.wind_down) == 1
+    assert closed == ['a', 'b', 'c'] and checked == [1, 2]
+
+
+def test_wind_down_keeps_closing_when_the_failure_text_is_interrupted_while_formatted(tmp_path, monkeypatch):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    closed = []
+    h.jobs = [_fake_ref(closed, 'a', RuntimeError('x')), _fake_ref(closed, 'b')]
+
+    def interrupted(text):
+        raise KeyboardInterrupt()
+    monkeypatch.setattr(n2, '_snip', interrupted)
+    assert _uninterrupted(h.wind_down) == 1
+    assert closed == ['a', 'b']
+
+
+def test_an_interrupt_during_the_results_write_never_replaces_the_setup_error_in_flight(tmp_path, monkeypatch):
+    h = DiagHarness(tmp_path)
+
+    def over(*a, **kw):
+        raise n2.SetupError('time budget exceeded')
+
+    def interrupted(value):
+        raise KeyboardInterrupt()
+    h.go = over
+    monkeypatch.setattr(n2, '_redact_strings', interrupted)
+    with pytest.raises(n2.SetupError, match='time budget exceeded'):
+        _uninterrupted(n2.diagnose, h, {n2.DIAG}, ADMITTED)
+
+
+def test_an_interrupt_during_the_results_write_after_a_clean_run_makes_diagnose_return_three(tmp_path, monkeypatch):
+    h = DiagHarness(tmp_path)
+
+    def interrupted(value):
+        raise KeyboardInterrupt()
+    monkeypatch.setattr(n2, '_redact_strings', interrupted)
+    assert _uninterrupted(n2.diagnose, h, {n2.DIAG}, ADMITTED) == 3
+    assert not os.path.exists(os.path.join(h.lay['root'], n2.RESULTS))
+
+
 def test_an_exception_in_flight_is_not_replaced_when_the_results_write_cannot_report(tmp_path, monkeypatch):
     h = DiagHarness(tmp_path)
     open(os.path.join(h.lay['root'], n2.RESULTS), 'wb').close()
