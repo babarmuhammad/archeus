@@ -205,10 +205,6 @@ def test_one_well_ordered_pair_is_replaced_and_the_neighbour_section_survives(md
     assert text.count(_start('svc')) == 1 and text.count(_end('svc')) == 1
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "mcp.py:196 with claude_md.py:59 span stop: the pair's END span excludes "
-    "its line break, so every update adds one blank line before the text that "
-    "follows the block (the update is not byte-stable)"))
 def test_one_well_ordered_pair_replacement_is_byte_exact_outside_the_pair(md):
     """Branch: mcp.py:196 `existing[span[1]:]`. Everything outside the pair must
     be byte-identical after the replacement."""
