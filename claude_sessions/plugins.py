@@ -146,13 +146,14 @@ def known_marketplaces(cfg_dir=None):
     raw = _read_json(os.path.join(plugins_dir(cfg_dir), 'known_marketplaces.json'), {})
     out = []
     for name, v in (raw.items() if isinstance(raw, dict) else []):
-        src = (v or {}).get('source') or {}
+        v = v if isinstance(v, dict) else {}
+        src = v.get('source') if isinstance(v.get('source'), dict) else {}
         out.append({
             'name': name,
             'source': src.get('source', ''),
             'repo': src.get('repo') or src.get('url') or '',
-            'path': (v or {}).get('installLocation', ''),
-            'updated': (v or {}).get('lastUpdated', ''),
+            'path': v.get('installLocation', ''),
+            'updated': v.get('lastUpdated', ''),
         })
     out.sort(key=lambda r: r['name'].lower())
     return out
@@ -392,6 +393,8 @@ def add_marketplace(source, cfgdir=None):
     source = (source or '').strip()
     if not source:
         return False, 'No source given'
+    if source.startswith('-'):
+        return False, 'a source cannot start with -'
     if not (re.match(r'^[\w.-]+/[\w.-]+$', source)         # owner/repo
             or proc.remote_url_ok(source)                  # a git remote URL
             or os.path.isdir(source)):                     # a local marketplace
@@ -465,10 +468,13 @@ def review_plugin(name, marketplace, cfg_dir=None):
     mkt = next((m for m in known_marketplaces(cfg_dir)
                 if m['name'] == marketplace), None)
     root = ''
-    for cand in ([os.path.join(mkt['path'], 'plugins', name)] if mkt and mkt['path'] else []):
+    if mkt and mkt['path']:
+        base = os.path.realpath(os.path.join(mkt['path'], 'plugins'))
+        cand = os.path.realpath(os.path.join(base, name))
+        if cand == base or os.path.commonpath([base, cand]) != base:
+            return False
         if os.path.isdir(cand):
             root = cand
-            break
     if not root:
         # nothing local to inspect — say so rather than implying it was checked
         from . import diffview

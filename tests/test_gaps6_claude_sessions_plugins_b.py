@@ -68,9 +68,6 @@ def test_uncloned_plugin_needs_consent_and_is_never_scanned(review):
     assert review.gate == []
 
 
-@pytest.mark.xfail(strict=True, reason="claude_sessions/plugins.py:468-470: the plugin name is "
-                   "joined to the marketplace root unchecked, so a '../' name reaches a "
-                   "directory outside the registered marketplace and inspects it")
 def test_traversal_name_cannot_inspect_outside_the_marketplace(review, tmp_path):
     outside = tmp_path / 'outside'
     outside.mkdir()
@@ -154,10 +151,6 @@ def test_null_marketplace_entry_is_an_empty_row(tmp_path):
     assert rows['ok']['repo'] == '' and rows['ok']['source'] == ''
 
 
-@pytest.mark.xfail(strict=True, raises=AttributeError,
-               reason="claude_sessions/plugins.py:149-153: a marketplace whose source is a "
-               "string, not an object, raises AttributeError from .get, so one malformed entry "
-               "breaks the whole list")
 def test_malformed_source_shape_is_not_trusted_metadata(tmp_path):
     cfg = tmp_path / 'acct' / 'plugins'
     cfg.mkdir(parents=True)

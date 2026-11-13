@@ -74,9 +74,6 @@ def test_local_marketplace_directory_is_accepted(cli, monkeypatch):
     assert cli.runs[0].argv[-1] == 'local-market'
 
 
-@pytest.mark.xfail(strict=True, reason="claude_sessions/plugins.py:397-399: a directory whose "
-                   "name starts with '-' passes the local-directory branch and reaches the "
-                   "CLI option position")
 def test_dash_named_existing_directory_is_refused(cli, monkeypatch):
     real_isdir = os.path.isdir
     monkeypatch.setattr(os.path, 'isdir', lambda p: p == '-dash-dir' or real_isdir(p))

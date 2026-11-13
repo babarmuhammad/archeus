@@ -153,10 +153,6 @@ def test_agent_source_is_the_fresh_reread_not_the_diff(world, tmp_path):
     assert done == [('acct', 'agents', 'a.md', True)]
 
 
-@pytest.mark.xfail(strict=True, raises=KeyError,
-                   reason="claude_sessions/provision.py:271: an agent whose source vanished "
-                   "between diff and apply raises KeyError from u_agents[fn] instead of "
-                   "recording a per-item failure")
 def test_vanished_agent_source_is_a_recorded_failure(world, tmp_path):
     acct = str(tmp_path / 'acct')
     world.state('acct', acct)
@@ -239,10 +235,6 @@ def test_missing_claude_md_is_copied_from_the_union_into_the_selected_account(wo
     assert done == [('acct', 'claude_md', 'CLAUDE.md', True)]
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="claude_sessions/provision.py:281-283: a stale missing flag in the "
-                   "diff makes apply overwrite an existing account CLAUDE.md with no re-check, "
-                   "against the only-adds contract in the module docstring")
 def test_stale_missing_flag_does_not_overwrite_an_existing_claude_md(world, tmp_path):
     acct = tmp_path / 'acct'
     acct.mkdir()
