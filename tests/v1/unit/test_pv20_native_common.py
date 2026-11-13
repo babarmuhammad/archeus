@@ -565,3 +565,30 @@ def test_redact_plain_text_unchanged(monkeypatch):
     monkeypatch.setattr(common, '_machine_name', lambda: 'DESKTOP-ZYX42')
     assert redact('pv20 N1 positive-controls PASS ok') == \
         'pv20 N1 positive-controls PASS ok'
+
+
+def test_redact_profile_path_and_basename_when_the_basename_differs_from_the_login(monkeypatch):
+    monkeypatch.setattr(common, '_IS_WINDOWS', True)
+    monkeypatch.setattr(common, '_username', lambda: 'octavia')
+    monkeypatch.setattr(common, '_machine_name', lambda: '')
+    monkeypatch.setenv('USERPROFILE', 'C:\\Users\\Zed')
+    monkeypatch.setenv('HOME', 'C:\\Users\\Zed')
+    out = redact('C:\\Users\\Zed\\AppData x C:/Users/Zed/y c:\\users\\zed\\z owner Zed user octavia')
+    assert 'Zed' not in out and 'zed' not in out and 'octavia' not in out
+    assert out.count('[REDACTED-USER]') == 5
+
+
+def test_redact_escaped_accent_spelling_of_the_login_name(monkeypatch):
+    monkeypatch.setattr(common, '_username', lambda: 'Jos\u00e9')
+    monkeypatch.setattr(common, '_machine_name', lambda: '')
+    out = redact('run by Jos\\u00e9 and Jos\u00e9 at C:\\Users\\Jos\\u00e9\\x')
+    assert 'Jos\\u00e9' not in out and 'Jos\u00e9' not in out
+    assert out.count('[REDACTED-USER]') == 3
+
+
+def test_redact_short_login_only_as_a_whole_path_component(monkeypatch):
+    monkeypatch.setattr(common, '_IS_WINDOWS', True)
+    monkeypatch.setattr(common, '_username', lambda: 'Q')
+    monkeypatch.setattr(common, '_machine_name', lambda: '')
+    assert redact('C:\\Users\\Q\\x Quick Q question') == \
+        'C:\\Users\\[REDACTED-USER]\\x Quick Q question'

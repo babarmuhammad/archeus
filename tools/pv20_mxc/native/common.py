@@ -14,6 +14,7 @@ error messages quote no caller path.
 """
 
 import ctypes
+import json
 import ntpath
 import os
 import platform
@@ -377,14 +378,30 @@ class Children:
 # Redaction
 # --------------------------------------------------------------------------
 
-def redact(text):
-    """Remove SIDs, the current username and the machine name from text."""
-    out = _SID.sub('[REDACTED-SID]', text)
-    tokens = [(_username(), '[REDACTED-USER]'), (_machine_name(), '[REDACTED-HOST]')]
-    for token, label in sorted(tokens, key=lambda pair: -len(pair[0] or '')):
+def _identities():
+    """Login, machine and profile spellings to remove, longest first. Each also appears in its
+    JSON-escaped form, because a string that already went through json.dumps holds that one."""
+    home = os.path.expanduser('~').replace('\\', '/').rstrip('/')
+    pairs = [(_username(), '[REDACTED-USER]'), (_machine_name(), '[REDACTED-HOST]'),
+             (home.rsplit('/', 1)[-1], '[REDACTED-USER]'),
+             (home, '[REDACTED-USER]'), (home.replace('/', '\\'), '[REDACTED-USER]')]
+    found = []
+    for token, label in pairs:
         token = (token or '').strip()
+        if token:
+            found += [(token, label), (json.dumps(token)[1:-1], label)]
+    return sorted(set(found), key=lambda pair: -len(pair[0]))
+
+
+def redact(text):
+    """Remove SIDs, the login name, the profile path and the machine name from text."""
+    out = _SID.sub('[REDACTED-SID]', text)
+    flags = re.IGNORECASE if _IS_WINDOWS else 0
+    for token, label in _identities():
         if len(token) < 2:
-            continue  # too short to substitute safely; never rewrite everything
-        flags = re.IGNORECASE if _IS_WINDOWS else 0
-        out = re.sub(re.escape(token), label, out, flags=flags)
+            # a one-character name only as a whole path component, never inside other text
+            pattern = r'(?<![^\\/])%s(?![^\\/])' % re.escape(token)
+        else:
+            pattern = re.escape(token)
+        out = re.sub(pattern, label, out, flags=flags)
     return out
