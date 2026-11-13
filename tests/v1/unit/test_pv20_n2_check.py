@@ -11,6 +11,7 @@ import ntpath
 import os
 import re
 import stat
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -768,6 +769,16 @@ def test_main_does_not_delete_when_the_removal_itself_refuses(tmp_path, monkeypa
     assert n2.main([parent]) == 3
 
 
+def test_main_does_not_delete_when_the_removal_hits_an_os_error_and_returns_three(tmp_path, monkeypatch):
+    parent, root, calls = _main_world(tmp_path, monkeypatch, _all)
+
+    def busy(r):
+        raise OSError('fixture file in use')
+
+    monkeypatch.setattr(n2, 'remove_fixture', busy)
+    assert n2.main([parent]) == 3
+
+
 # ---------------------------------------------------------------- the script's own source
 
 def _tree():
@@ -1293,6 +1304,64 @@ def test_wind_down_checks_every_launcher_even_when_one_check_raises(tmp_path, mo
     assert h.wind_down() == 1
     assert checked == [1, 2]
     assert 'launcher 1 could not be checked: OSError query failed' in capsys.readouterr().out
+
+
+class ClosedStream:
+    def write(self, text):
+        raise BrokenPipeError(32, 'Broken pipe')
+
+    def flush(self):
+        raise BrokenPipeError(32, 'Broken pipe')
+
+
+def test_wind_down_closes_every_job_and_checks_every_launcher_when_the_report_stream_is_closed(
+        tmp_path, monkeypatch):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    closed = []
+    h.jobs = [_fake_ref(closed, 'a', OSError('x')), _fake_ref(closed, 'b')]
+    h.api = SimpleNamespace(created=[(1, 'c1'), (2, 'c2')])
+    checked = []
+
+    def wait_dead(pid, ctime, seconds):
+        checked.append(pid)
+        if pid == 1:
+            raise OSError('query failed')
+        return True
+    monkeypatch.setattr(h, 'wait_dead', wait_dead)
+    monkeypatch.setattr(sys, 'stdout', ClosedStream())
+    monkeypatch.setattr(sys, 'stderr', ClosedStream())
+    assert h.wind_down() == 2
+    assert closed == ['a', 'b'] and checked == [1, 2]
+
+
+def test_an_exception_in_flight_is_not_replaced_when_the_results_write_cannot_report(tmp_path, monkeypatch):
+    h = DiagHarness(tmp_path)
+    open(os.path.join(h.lay['root'], n2.RESULTS), 'wb').close()
+
+    def over(*a, **kw):
+        monkeypatch.setattr(sys, 'stdout', ClosedStream())
+        raise n2.SetupError('time budget exceeded')
+    h.go = over
+    with pytest.raises(n2.SetupError, match='time budget exceeded'):
+        n2.diagnose(h, {n2.DIAG}, ADMITTED)
+
+
+def test_a_serialization_failure_is_a_write_failure_that_returns_three_and_writes_nothing(
+        tmp_path, monkeypatch, capsys):
+    h = DiagHarness(tmp_path)
+
+    def boom(value):
+        raise ValueError('Circular reference detected')
+    monkeypatch.setattr(n2, '_redact_strings', boom)
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 3
+    assert not os.path.exists(os.path.join(h.lay['root'], n2.RESULTS))
+    assert any(line.startswith('pv20 N2 results not written: ValueError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_write_results_refuses_a_document_json_cannot_encode_and_writes_nothing(tmp_path, capsys):
+    assert n2.write_results(str(tmp_path), {'rows': [object()]}) is False
+    assert not os.path.exists(os.path.join(str(tmp_path), n2.RESULTS))
 
 
 @pytest.mark.parametrize('admission, code', [(ADMITTED, 0), (REFUSED, 2)])
