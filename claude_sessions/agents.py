@@ -651,8 +651,10 @@ def sync_project_agents(project_path, refs, routed=None):
 
     # The record goes down first, and it is refused as a whole: a refused record
     # changes nothing on disk. No file is removed or copied that no manifest names.
+    # Previously managed names stay in it until their file is confirmed gone.
+    first = list(desired) + sorted(managed - set(desired))
     try:
-        recorded = _record(list(desired))
+        recorded = _record(first)
     except Exception:
         recorded = False
     if not recorded:
@@ -693,10 +695,10 @@ def sync_project_agents(project_path, refs, routed=None):
             written.append(fn)
         except Exception:
             pass
-    if len(written) != len(desired):
-        # a copy that failed must not stay in the record: it may be the user's own file
+    kept = [fn for fn in first if os.path.lexists(os.path.join(dest, fn))]
+    if kept != first:
         try:
-            _record(written)
+            _record(kept)
         except Exception:
             pass
     # Installing an agent is only half of getting it used — see the note above
