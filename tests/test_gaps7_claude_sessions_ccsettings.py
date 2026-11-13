@@ -105,11 +105,6 @@ def test_integer_valued_float_is_stored_as_int_and_string_float_is_refused(acct)
     assert _raw(acct) == before
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="ccsettings.py:244 int(True) == 1 stores a JSON boolean as the number "
-           "1 for an int key; the schema comment at ccsettings.py:35-37 says a "
-           "wrongly-typed value is refused, not stored")
 def test_bool_for_an_int_key_is_refused(acct):
     """Branch :244, probe 3. The int kind only checks the float case at :241,
     so `True` and `False` fall through to int() and are accepted as 1 and 0.
