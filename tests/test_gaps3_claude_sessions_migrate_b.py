@@ -501,13 +501,6 @@ def test_a_stale_block_after_the_live_one_is_dropped_not_renamed(fake_home):
     assert 'CLAUDECTL' not in out
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='source defect: migrate.py:513-519 drops only the FIRST old block '
-           '(`upsert_block` indexes the first occurrence, claude_md.py:59-60) and '
-           'migrate.py:523 then renames the surviving duplicate, leaving two blocks '
-           'with identical ARCHEUS sentinels — the state migrate.py:485-488 says '
-           'the delete-first order exists to prevent')
 def test_two_stale_duplicates_cannot_both_own_the_new_sentinel(fake_home):
     """migrate.py:511-525 — the double-append the docstring was measured on.
 
@@ -517,9 +510,7 @@ def test_two_stale_duplicates_cannot_both_own_the_new_sentinel(fake_home):
     round then promotes the second, so the file ends with two blocks under one
     sentinel and the renderer keeps whichever is first. The contract in the
     docstring (migrate.py:485-488) is one block per unique name; this asserts
-    that and fails on the source as written — verified by running it against a
-    copy of the module whose delete loop removes every duplicate, where it
-    XPASSes (which the strict marker then reports as an error).
+    that: the drop loop removes every stale copy before the rename round runs.
     """
     _tmp, home, _other = fake_home
     _sweep_gate_open()
@@ -537,6 +528,8 @@ def test_two_stale_duplicates_cannot_both_own_the_new_sentinel(fake_home):
         'a duplicate stale block survived the sweep'
     assert out.count(_tag('MEMORY', 'START', old=False)) == 1, \
         'two blocks now share one sentinel; the renderer picks the first blindly'
+    _fixed2, failed2 = migrate.sweep([str(home)])
+    assert not failed2 and _read(md) == out, 'a second sweep changed the bytes'
 
 
 # ── 10. fail-closed: a crash in the rederive (probe 10) ─────

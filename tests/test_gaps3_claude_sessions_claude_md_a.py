@@ -107,11 +107,6 @@ def _rows(block):
 
 # ── 1 · denial: an unreadable file is never overwritten ─────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_md.py:53-57 turns an unreadable CLAUDE.md into old='' and :73-75 "
-    "then writes a header-only file over prose it never read; the contract at "
-    "claude_md.py:41-43 ('leaving everything else ... intact') requires a "
-    "refusal, not a guess"))
 def test_an_instructions_file_that_cannot_be_read_is_never_overwritten(tmp_path,
                                                                         monkeypatch):
     """`except Exception: old = ''` (claude_md.py:56-57) is the one place in this
@@ -150,12 +145,6 @@ def test_an_instructions_file_that_cannot_be_read_is_never_overwritten(tmp_path,
 
 # ── 2 · fail-closed: sentinels that disagree are not a block ────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_md.py:58-60 splices on the FIRST index of each sentinel with no "
-    "order check, so a file whose ARCHEUS:MEMORY:END precedes its START gets a "
-    "new block written and the text between the two sentinels duplicated "
-    "(claude_md.py:67-68 builds new from pre+section+post); the contract at "
-    "claude_md.py:41-43 promises everything outside the block is left intact"))
 def test_sentinels_out_of_order_are_never_spliced(tmp_path, monkeypatch):
     """A torn pre-atomic write, a hand edit or a model that echoed one sentinel
     leaves `END ... START` in the file — a state tests/test_migration.py already
@@ -186,16 +175,13 @@ def test_sentinels_out_of_order_are_never_spliced(tmp_path, monkeypatch):
     assert (new == before) or (calls and _read(path) == new), \
         'the returned text is not what the file holds'
     assert _read(path).count('SHARED PROSE LINE') == 1
+    _ok2, _old2, again = claude_md.upsert_block(str(tmp_path), _MEMORY_START, _MEMORY_END,
+                                                _MEMORY_START + '\nMEMO line\n' + _MEMORY_END + '\n')
+    assert again == new, 'applying the same update twice changed the bytes'
 
 
 # ── 3 · fail-closed: a forged block cannot outlive the real one ─────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_md.py:137-138 only drops the model's stray block when BOTH "
-    "_MEMORY_START and _MEMORY_END are present in `final`, so a forged "
-    "unterminated START survives; the docstring at :129-133 says the real block "
-    "is 'Always keep[ed]' and upsert_block (:58-60) indexes the FIRST start, so "
-    "the surviving forgery captures every later write"))
 def test_a_forged_unterminated_block_does_not_take_over_the_preserved_one():
     """Nearest existing coverage: `tests/test_tui_memory.py:93
     (test_preserve_block_keeps_memory)` and `:108 (test_preserve_block_noop_
@@ -226,6 +212,7 @@ def test_a_forged_unterminated_block_does_not_take_over_the_preserved_one():
     assert out.count(_MEMORY_START) == 1, 'the forgery still opens a memory block'
     assert 'REAL DIGEST LINE' in out, 'the machine block was not carried'
     assert out.index(_MEMORY_START) > out.index('model commentary')
+    assert claude_md._preserve_block(out, existing) == out, 'preserving twice changed the bytes'
 
 
 # ── 4 · fail-closed: a refused write reports the OLD text ───────────────────

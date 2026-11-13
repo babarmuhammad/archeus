@@ -317,13 +317,6 @@ def test_duplicate_machine_blocks_keep_the_text_outside_them(monkeypatch, tmp_pa
 
 # ── 5. unmatched marker: the second pass must not eat prose ───
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect, claude_sessions/claude_md.py:428-430 — replace_machine_blocks '
-    'splits on the FIRST AUTOGEN:START and the FIRST AUTOGEN:END without checking '
-    'that they are ordered, so pass 1 appends a balanced block after a user-typed '
-    'stray START and pass 2 treats everything between the two as machine-owned and '
-    'deletes the manual prose there. Contract: prune_claude_md (claude_md.py:474) '
-    'rebuilds archeus-owned blocks only, so no pass of it may remove manual text.'))
 def test_unmatched_autogen_marker_does_not_erase_prose(monkeypatch, tmp_path):
     """claude_md.py:428-430 across two passes. One stray marker in the user's
     file must never become a pair that swallows their prose."""
@@ -341,19 +334,13 @@ def test_unmatched_autogen_marker_does_not_erase_prose(monkeypatch, tmp_path):
     assert claude_md.prune_claude_md(proj, folder) is not None
     assert 'TAIL PROSE MUST SURVIVE' in _read(md_path), \
         'the second pass erased the manual half between the stray START and the END'
+    once = _read(md_path)
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    assert _read(md_path) == once, 'a further prune changed the bytes'
 
 
 # ── 6. SESSIONS written before AUTOGEN still gets capped ──────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect, claude_sessions/claude_md.py:434-438 — the SESSIONS swap is '
-    'searched only inside `post`, the text after the AUTOGEN END sentinel, so a '
-    'SESSIONS block that sits BEFORE the AUTOGEN block is never replaced: the '
-    '`elif new_sessions:` arm appends a second block instead, the cap is never '
-    'applied to the block that is already there, and prune_preview (claude_md.py:468) '
-    'has already named those entries as dropped. Contract: prune_claude_md '
-    '(claude_md.py:474-478) "Rebuild[s] the AUTOGEN + SESSIONS blocks with the '
-    'configured caps", whatever order the file is in.'))
 def test_sessions_block_before_autogen_is_still_capped(monkeypatch, tmp_path):
     """claude_md.py:434-438. Block order is user-editable; the cap is not
     allowed to depend on it."""
@@ -381,18 +368,12 @@ def test_sessions_block_before_autogen_is_still_capped(monkeypatch, tmp_path):
         'the entries the preview promised to drop are still in the file'
     assert 'MY HAND WRITTEN NOTES' in out
     assert calls['manifest'] == [('prune',)]
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    assert _read(md_path) == out, 'a second prune changed the bytes'
 
 
 # ── 7. reversed AUTOGEN sentinels ─────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect, claude_sessions/claude_md.py:428-430 — `if _AUTOGEN_START in '
-    'existing and _AUTOGEN_END in existing` proves both sentinels exist but never '
-    'checks their order; with END before START, `pre` keeps the whole crossed '
-    'block and `post` starts before it, so every prune pass duplicates the manual '
-    'half (measured: 1 copy in, 2 after pass 1, 3 after pass 2) and keeps the '
-    'stale AUTOGEN body. Contract: replace_machine_blocks (claude_md.py:424-426) '
-    'swaps archeus-owned blocks and returns the rest of the file unchanged.'))
 def test_reversed_autogen_markers_do_not_duplicate_manual_text(monkeypatch, tmp_path):
     """claude_md.py:428-430. END written before START is corruption the user can
     cause by editing; it may not be paid for in duplicated prose."""
@@ -410,17 +391,12 @@ def test_reversed_autogen_markers_do_not_duplicate_manual_text(monkeypatch, tmp_
     assert out.count('HEAD PROSE') == 1
     assert out.count('invented commit one') == 1, 'one rebuilt AUTOGEN block'
     assert _AUTOGEN_START in out
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    assert _read(md_path) == out, 'a second prune changed the bytes'
 
 
 # ── 8. reversed SESSIONS sentinels ────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect, claude_sessions/claude_md.py:434-437 — the same '
-    '`x in post and y in post` test without an ordering check on the SESSIONS '
-    'pair: `post[:index(START)]` and `post[index(END) + len(END):]` overlap when '
-    'END precedes START, so the manual text between them is emitted twice per '
-    'pass (measured: 1 copy in, 2 after pass 1, 4 after pass 2) and the stale '
-    'session line is never capped away.'))
 def test_reversed_sessions_markers_do_not_duplicate_manual_text(monkeypatch, tmp_path):
     """claude_md.py:434-437. Same class as the AUTOGEN pair, on the session
     half — where the duplication is multiplied on every pass."""
@@ -438,20 +414,12 @@ def test_reversed_sessions_markers_do_not_duplicate_manual_text(monkeypatch, tmp
     assert out.count('MID PROSE MUST SURVIVE') == 1, 'manual half, exactly once'
     assert out.count('TAIL PROSE') == 1
     assert out.count('invented commit one') == 1, 'one rebuilt AUTOGEN block'
+    assert claude_md.prune_claude_md(proj, folder) is not None
+    assert _read(md_path) == out, 'a second prune changed the bytes'
 
 
 # ── 9. prune is a fixed point ─────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect, claude_sessions/claude_md.py:434-437 — replace_machine_blocks '
-    're-emits the blank lines that preceded the old SESSIONS:START (`post[: '
-    'post.index(_SESSIONS_START)]`) while `new_sessions` itself already ends with '
-    'a newline, so every prune pass grows CLAUDE.md by one blank line between '
-    'AUTOGEN:END and SESSIONS:START (measured: +2 bytes, +1 token per pass). '
-    '`changed` therefore never goes False (claude_md.py:485-486), so the audit '
-    'screen rewrites the file, records a diffview version and re-stamps the '
-    'freshness baseline on every keypress — the exact leak upsert_block documents '
-    'having fixed at claude_md.py:61-64 for the machine blocks.'))
 def test_repeated_prune_is_a_fixed_point(monkeypatch, tmp_path):
     """claude_md.py:424-440 and 485-486. A rebuild that is not idempotent is a
     file that grows while the user watches the token count go up."""
@@ -484,15 +452,6 @@ def test_repeated_prune_is_a_fixed_point(monkeypatch, tmp_path):
 
 # ── 10. KEEP placeholder collision ────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect, claude_sessions/claude_md.py:512-522 and 536 — _fence_out '
-    'hands out _KEEP_MARK numbers it never reserved, and _fence_in restores with '
-    '`out.replace(mark, region)`, which replaces EVERY occurrence. Manual prose '
-    'that already contains the literal @@ARCHEUS_KEEP_0@@ therefore gets its own '
-    'sentence replaced by the fenced region, which is then emitted twice. '
-    'Contract: assemble_with_manual (claude_md.py:552-556) — "the manual half is '
-    'the only thing a caller may replace" — and _fence_in (claude_md.py:526-539), '
-    'whose only promise is that the region comes back where its marker was.'))
 def test_keep_placeholder_collision_cannot_overwrite_manual_text(monkeypatch, tmp_path):
     """claude_md.py:512-522 + 526-539. The fence must round-trip the manual half
     verbatim, including a marker string the user typed themselves."""
@@ -509,3 +468,5 @@ def test_keep_placeholder_collision_cannot_overwrite_manual_text(monkeypatch, tm
     assert 'literal @@ARCHEUS_KEEP_0@@ inside it' in out, \
         'the user own sentence was overwritten by the fenced region'
     assert 'trailing sentence' in out
+    assert claude_md._fence_in(model_side, kept, claude_md._keep_stem(manual)) == manual, \
+        'with the stem the manual was fenced under, the round trip is byte-exact'
