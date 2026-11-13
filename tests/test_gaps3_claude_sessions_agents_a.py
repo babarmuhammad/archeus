@@ -583,17 +583,6 @@ def test_listing_an_absent_scope_is_empty_not_an_exception(monkeypatch, tmp_path
 
 # ── companion: a justified premise the source does not honour ──
 
-@pytest.mark.xfail(strict=True,
-                   reason='write_agent interpolates frontmatter values raw '
-                          '(claude_sessions/agents.py:59), so a value carrying '
-                          'a newline forges extra frontmatter keys - here the '
-                          'category field (GUI body / AI flow input) rewrites '
-                          'name and grants model. Contract: write_agent_raw '
-                          'promises to file only the fields the caller owns '
-                          '(claude_sessions/agents.py:264-275) and '
-                          'gui_api.api_agent_create '
-                          '(claude_sessions/gui_api.py:1835-1841) passes those '
-                          'fields straight in from a request body.')
 def test_a_frontmatter_value_cannot_forge_a_second_key(monkeypatch, tmp_path):
     sb = Sandbox(monkeypatch, tmp_path)
     _pin_model_seam(monkeypatch)
@@ -605,3 +594,13 @@ def test_a_frontmatter_value_cannot_forge_a_second_key(monkeypatch, tmp_path):
     meta, _body = agents.parse_agent(r['path'])
     assert set(meta) == {'name', 'description', 'category'}, meta
     assert meta['name'] == 'ok' and 'model' not in meta, meta
+
+
+def test_write_agent_flattens_a_crlf_value_onto_one_frontmatter_line(tmp_path):
+    path = str(tmp_path / 'crlf.md')
+
+    assert agents.write_agent(path, {'name': 'a', 'description': 'x\r\ny'}, 'body')
+
+    head = open(path, encoding='utf-8').read().split('---')[1]
+    assert head.split('\n') == ['', 'name: a', 'description: x y', ''], head
+    assert agents.parse_agent(path)[0] == {'name': 'a', 'description': 'x y'}
