@@ -59,6 +59,9 @@ SKIP = {
     'packaging/legacy-name/pyproject.toml',
     'packaging/legacy-name/README.md',
     'tests/test_migration.py',
+    # the migration's gap tests: they build old-name fixtures to prove they are moved
+    'tests/test_gaps3_claude_sessions_migrate_a.py',
+    'tests/test_gaps3_claude_sessions_migrate_b.py',
     'tests/test_no_old_brand_string.py',
     'tools/_rename_brand.py',
     'tools/_mut_migration.py',
