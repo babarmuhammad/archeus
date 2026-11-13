@@ -41,6 +41,8 @@ anything is copied, the System32 grant is pre-checked read-only with the product
 refused grant leaves the C rows unlaunched ("not admissible"). The result is printed and written,
 with every row's label, evidence and launcher exit code, to diag_results.json in the fixture root.
 --diag-precheck alone runs only the argument checks and that pre-check: nothing is created.
+Both are meant to be started with `python -B`: without it, importing the production modules may
+write bytecode caches outside the fixture.
 
 Exit codes: 0 all cases PASS / 1 first FAIL / 2 no FAIL but an INCONCLUSIVE is present
 (a diagnostic run is always 2; --diag-precheck exits 2 when System32 is not admissible) /
@@ -82,7 +84,7 @@ DIAG_FLAGS = (DIAG, IMAGE_FLAG, SYSTEM_FLAG)
 DIAG_PRECHECK = '--diag-precheck'
 RESULTS = 'diag_results.json'
 RET_37, NOT_37 = 'returned 37', 'did not return 37'
-W_OK, W_DENIED, W_NOT = 'started, write ok', 'started, write denied', 'did not return code'
+W_OK, W_UNPROVED, W_NOT = 'started, write ok', 'started, write not proved', 'did not return code'
 VOID_LABELS = frozenset({'control failed', 'no evidence', 'launch refused', 'not admissible',
                          'diagnostic error', 'not authorized'})
 REPARSE = 0x400
@@ -462,7 +464,7 @@ def diag_result(row, look):
     if seen != 'OBSERVED':
         return 'no evidence'
     wrote = judge([Item('write_ok', row.id, None, row.child, row.tok)], look) is None
-    return W_OK if wrote else W_DENIED
+    return W_OK if wrote else W_UNPROVED
 
 
 def diag_interpret(labels):
@@ -470,14 +472,14 @@ def diag_interpret(labels):
     and "not returned" is NOT_37. Void rows (VOID_LABELS) are named and count for nothing.
 
     1. A1 returned, A2 started and wrote        -> baseline creation and workspace write proved
-    2. A1 returned, A2 started, write denied    -> investigate cwd and environment versus grants (3)
+    2. A1 returned, A2 started, write not proved -> investigate cwd and environment versus grants (3)
     3. A1 returned, A2 otherwise                -> baseline exit proved; no workspace conclusion
     4. A1 not returned, B1 and/or C1 returned   -> image or System32 access strongly supported (1)
     5. A1 absent or void, B1 and/or C1 returned -> no conclusion about image or System32 access
     6. some usable EXIT row, none returned      -> all exit rows did not return 37: inconclusive (2)
     7. otherwise                                -> no interpretation bullet matches
 
-    After the line that matched, every started WRITE row (A2, B2, C2 with W_OK or W_DENIED)
+    After the line that matched, every started WRITE row (A2, B2, C2 with W_OK or W_UNPROVED)
     adds "child start proved by <row> (<label>)": a WRITE row proves its child ran from its own
     evidence, whatever the EXIT rows did.
     """
@@ -488,8 +490,8 @@ def diag_interpret(labels):
     returned = [r for r in ('B1', 'C1') if ok.get(r) == RET_37]
     if a1 == RET_37 and ok.get('A2') == W_OK:
         text = 'baseline creation and workspace write proved'
-    elif a1 == RET_37 and ok.get('A2') == W_DENIED:
-        text = ('baseline child started, write denied with its control passing: investigate (3), '
+    elif a1 == RET_37 and ok.get('A2') == W_UNPROVED:
+        text = ('baseline child started, write not proved with its control passing: investigate (3), '
                 'inherited cwd and environment versus grants')
     elif a1 == RET_37:
         text = 'baseline exit proved; the write row gives no workspace conclusion'
@@ -507,7 +509,7 @@ def diag_interpret(labels):
         text = 'no interpretation bullet matches: %s' % ', '.join(
             '%s=%s' % kv for kv in sorted(ok.items()))
     for r in ('A2', 'B2', 'C2'):
-        if ok.get(r) in (W_OK, W_DENIED):
+        if ok.get(r) in (W_OK, W_UNPROVED):
             text += '; child start proved by %s (%s)' % (r, ok[r])
     if void:
         text = 'rows not usable (%s): %s' % (', '.join(void), text)
@@ -723,11 +725,16 @@ class Harness:
                      % (n, type(ex).__name__, _snip(str(ex))))
         if self.m is not None:
             self.m.mxc.NATIVE_RUN_ENABLED = False
-        for pid, ctime in list(getattr(getattr(self, 'api', None), 'created', None) or ()):
-            if not self.wait_dead(pid, ctime, 5.0):
+        for n, (pid, ctime) in enumerate(list(getattr(getattr(self, 'api', None), 'created', None) or ()), 1):
+            try:
+                if not self.wait_dead(pid, ctime, 5.0):
+                    failed += 1
+                    if live_ctime(pid) == ctime:      # ours, same creation time: the one kill allowed
+                        common._terminate_process(pid)
+            except BaseException as ex:
                 failed += 1
-                if live_ctime(pid) == ctime:      # ours, same creation time: the one kill allowed
-                    common._terminate_process(pid)
+                _say('pv20 N2 wind-down: launcher %d could not be checked: %s %s'
+                     % (n, type(ex).__name__, _snip(str(ex))))
         return failed
 
 
@@ -1245,14 +1252,30 @@ def _row_record(row, admission, label, **extra):
     return base
 
 
+def _redact_strings(value):
+    if isinstance(value, dict):
+        return {k: _redact_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_strings(v) for v in value]
+    return redact(value) if isinstance(value, str) else value
+
+
 def write_results(root, doc):
-    with open(os.path.join(root, RESULTS), 'w', encoding='utf-8') as fh:
-        fh.write(redact(json.dumps(doc, indent=2, sort_keys=True)) + '\n')
+    """Create the results file exclusively and never overwrite one. False when it was not written."""
+    text = json.dumps(_redact_strings(doc), indent=2, sort_keys=True) + '\n'
+    try:
+        with open(os.path.join(root, RESULTS), 'x', encoding='utf-8') as fh:
+            fh.write(text)
+    except OSError as ex:
+        _say('pv20 N2 results not written: %s %s' % (type(ex).__name__, _snip(str(ex))))
+        return False
+    return True
 
 
 def diagnose(h, flags, admission):
-    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran. A System32
-    row is launched only when the pre-check admitted the System32 grant."""
+    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran and its results
+    were written, 3 when they were not. A System32 row is launched only when the pre-check admitted
+    the System32 grant."""
     h.prepare()
     toolchain = os.path.join(h.lay['root'], 'toolchain')
     rows = diag_rows(h.lay, h.env['SYSTEMROOT'], h.seeds['p.state'])
@@ -1282,9 +1305,9 @@ def diagnose(h, flags, admission):
         interpretation = diag_interpret({k: v['label'] for k, v in recs.items()})
         _say('DIAGNOSTIC %s' % interpretation)
     finally:
-        write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
-                                      'rows': [recs[r.id] for r in rows if r.id in recs]})
-    return 2
+        written = write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
+                                                'rows': [recs[r.id] for r in rows if r.id in recs]})
+    return 2 if written else 3
 
 
 STUBS = (

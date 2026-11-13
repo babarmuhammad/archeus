@@ -851,7 +851,7 @@ def test_no_stat_bit_of_the_fixture_is_changed_by_the_pure_helpers(tmp_path):
 
 CMD = r'C:\Windows\System32\cmd.exe'
 RET, NOT = n2.RET_37, n2.NOT_37
-WOK, WDEN, WNOT = n2.W_OK, n2.W_DENIED, n2.W_NOT
+WOK, WDEN, WNOT = n2.W_OK, n2.W_UNPROVED, n2.W_NOT
 ADMITTED = {'path': r'C:\Windows\System32', 'admitted': True, 'reason': None}
 REFUSED = {'path': r'C:\Windows\System32', 'admitted': False,
            'reason': 'multiple links in grant (a second name): a.dll'}
@@ -945,7 +945,7 @@ def test_write_row_labels_come_from_its_own_evidence_only(tmp_path):
     row = [r for r in n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED') if r.id == 'A2'][0]
     ok = _ok_files(row)
     assert n2.diag_result(row, _look({**ok, row.child: row.tok, row.ev: 'OBSERVED'})) == 'started, write ok'
-    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'})) == 'started, write denied'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'})) == 'started, write not proved'
     assert n2.diag_result(row, _look({**ok, row.ev: 'OTHER'})) == 'did not return code'
     assert n2.diag_result(row, _look({**ok, row.child: row.tok, row.ev: 'OTHER'})) == 'did not return code'
     assert n2.diag_result(row, _look(ok)) == 'no evidence'
@@ -962,11 +962,11 @@ def test_a_failed_control_is_never_a_pass_even_when_the_child_ran(tmp_path):
 
 @pytest.mark.parametrize('labels, wants', [
     ({'A1': RET, 'A2': WOK}, 'baseline creation and workspace write proved'),
-    ({'A1': RET, 'A2': WDEN}, 'investigate (3), inherited cwd and environment versus grants'),
+    ({'A1': RET, 'A2': WDEN}, 'write not proved with its control passing: investigate (3), inherited cwd and environment versus grants'),
     ({'A1': RET, 'A2': WNOT}, 'baseline exit proved; the write row gives no workspace conclusion'),
     ({'A1': RET}, 'baseline exit proved; the write row gives no workspace conclusion'),
     ({'A1': NOT}, 'all exit rows did not return 37: inconclusive for blanket denial (2)'),
-    ({'A1': NOT, 'A2': WDEN}, 'child start proved by A2 (started, write denied)'),
+    ({'A1': NOT, 'A2': WDEN}, 'child start proved by A2 (started, write not proved)'),
     ({'A1': NOT, 'B1': RET, 'B2': WOK}, 'image location or access, cause (1), strongly supported'),
     ({'A1': NOT, 'C1': RET}, 'missing System32 access or dependency grant, cause (1), strongly supported'),
     ({'B1': RET}, 'A1 baseline not usable: no conclusion about image or System32 access'),
@@ -975,6 +975,12 @@ def test_a_failed_control_is_never_a_pass_even_when_the_child_ran(tmp_path):
 ])
 def test_every_interpretation_line(labels, wants):
     assert wants in n2.diag_interpret(labels)
+
+
+def test_a_write_row_without_its_token_file_is_not_called_a_denial():
+    text = n2.diag_interpret({'A1': RET, 'A2': WDEN})
+    assert 'denied' not in text and 'write not proved' in text
+    assert 'denied' not in n2.diag_interpret({'A1': NOT, 'A2': WDEN})
 
 
 def test_a_write_row_that_did_not_return_its_code_is_not_called_a_write_failure():
@@ -1118,6 +1124,49 @@ def test_the_c_rows_carry_the_precheck_result_in_the_record(tmp_path, monkeypatc
     assert c1['label'] == 'not admissible' and c1['precheck'] == REFUSED and c1['launcher_rc'] is None
 
 
+def test_a_failed_results_write_is_reported_and_never_replaces_the_setup_error_in_flight(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    open(os.path.join(h.lay['root'], n2.RESULTS), 'wb').close()
+
+    def over(*a, **kw):
+        raise n2.SetupError('time budget exceeded')
+    h.go = over
+    with pytest.raises(n2.SetupError, match='time budget exceeded'):
+        n2.diagnose(h, {n2.DIAG}, ADMITTED)
+    assert any(line.startswith('pv20 N2 results not written: FileExistsError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_failed_results_write_after_a_clean_run_makes_diagnose_return_three(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    open(os.path.join(h.lay['root'], n2.RESULTS), 'wb').close()
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 3
+    assert any(line.startswith('pv20 N2 results not written: FileExistsError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_an_existing_results_file_is_refused_and_its_bytes_are_kept(tmp_path, capsys):
+    h = DiagHarness(tmp_path)
+    path = os.path.join(h.lay['root'], n2.RESULTS)
+    with open(path, 'wb') as fh:
+        fh.write(b'OLD')
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 3
+    with open(path, 'rb') as fh:
+        assert fh.read() == b'OLD'
+    assert any(line.startswith('pv20 N2 results not written: FileExistsError')
+               for line in capsys.readouterr().out.splitlines())
+
+
+def test_a_non_ascii_user_name_is_redacted_before_json_escapes_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(common, '_username', lambda: 'Zo\u00eb')
+    n2.write_results(str(tmp_path), {'interpretation': 'run by Zo\u00eb',
+                                     'rows': [{'error': 'C:\\Users\\Zo\u00eb\\x'}]})
+    with open(os.path.join(str(tmp_path), n2.RESULTS), encoding='utf-8') as fh:
+        text = fh.read()
+    assert 'Zo\u00eb' not in text and 'Zo\\u00eb' not in text
+    assert text.count('[REDACTED-USER]') == 2
+
+
 def _plain_tree(tmp_path):
     tree = tmp_path / 'System32'
     tree.mkdir()
@@ -1228,6 +1277,22 @@ def test_wind_down_still_closes_the_rest_when_interrupted(tmp_path):
     h.jobs = [_fake_ref(closed, 'a', KeyboardInterrupt()), _fake_ref(closed, 'b')]
     assert h.wind_down() == 1
     assert closed == ['a', 'b']
+
+
+def test_wind_down_checks_every_launcher_even_when_one_check_raises(tmp_path, monkeypatch, capsys):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    h.api = SimpleNamespace(created=[(1, 'c1'), (2, 'c2')])
+    checked = []
+
+    def wait_dead(pid, ctime, seconds):
+        checked.append(pid)
+        if pid == 1:
+            raise OSError('query failed')
+        return True
+    monkeypatch.setattr(h, 'wait_dead', wait_dead)
+    assert h.wind_down() == 1
+    assert checked == [1, 2]
+    assert 'launcher 1 could not be checked: OSError query failed' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('admission, code', [(ADMITTED, 0), (REFUSED, 2)])
