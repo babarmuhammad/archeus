@@ -614,3 +614,42 @@ def test_ai_scaffold_refuses_to_overwrite_an_unreadable_claude_md(monkeypatch, t
     assert calls['write'] == [], 'an unreadable file was written over'
     with builtins.open(md_path, 'rb') as f:
         assert f.read() == seeded.encode('utf-8')
+
+
+# ── 14. a closed example of a marker pair in model output is prose ───
+
+def test_closed_fenced_memory_example_survives_the_stray_clean_up():
+    """_drop_blocks walked every START substring when it cleaned strays, so a
+    closed fenced example of the MEMORY pair in model output lost its body. Only
+    a START that _markers recognises is a stray; a recognised one still goes with
+    the paragraph under it."""
+    existing = '# alpha\n\n' + _MEMORY_START + '\nREAL DIGEST\n' + _MEMORY_END + '\n'
+    example = '```md\n' + _MEMORY_START + '\nEXAMPLE BODY\n' + _MEMORY_END + '\n```\n'
+    final = ('# alpha\n\n' + example + '\n' + _MEMORY_START
+             + '\nstray echo\n\nKEEP ME\n')
+    out = claude_md._preserve_block(final, existing, _MEMORY_START, _MEMORY_END)
+    assert example in out, 'the fenced example lost its body'
+    assert 'REAL DIGEST' in out and out.count(_MEMORY_START) == 2
+    assert 'stray echo' not in out, 'a recognised stray START was kept'
+    assert 'KEEP ME' in out
+
+
+# ── 15. a UTF-8 BOM before the first marker is not a barrier ───
+
+def test_a_block_on_the_first_line_after_a_bom_is_found(tmp_path):
+    """The BOM is not whitespace to str.strip(), so the first-line marker was never
+    recognised and a rewrite appended a second block. The span starts after the
+    BOM, so a rewrite keeps the BOM and replaces the one block."""
+    text = '﻿' + _MEMORY_START + '\nold body\n' + _MEMORY_END + '\n'
+    span = claude_md.block_span(text, _MEMORY_START, _MEMORY_END)
+    assert span is not None and text[:span[0]] == '﻿'
+
+    md = tmp_path / 'CLAUDE.md'
+    md.write_bytes(text.encode('utf-8'))
+    ok, _old, new = claude_md.upsert_block(
+        str(tmp_path), _MEMORY_START, _MEMORY_END,
+        _MEMORY_START + '\nnew body\n' + _MEMORY_END + '\n')
+    assert ok
+    assert new.startswith('﻿'), 'the BOM was lost'
+    assert new.count(_MEMORY_START) == 1, 'a second block was appended'
+    assert 'old body' not in new and 'new body' in new

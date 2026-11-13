@@ -522,9 +522,13 @@ def _sweep_claude_md(base, fixed, failed):
     new = text
     for name in _SENTINEL_BLOCKS:
         start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
-        if new.count(start) and claude_md.well_formed(new, start, end):
-            new = (new.replace(start, _NEW_TAG + name + ':START -->')
-                      .replace(end, _NEW_TAG + name + ':END -->'))
+        marks = claude_md._markers(new, start, end)
+        if marks and claude_md.well_formed(new, start, end):
+            for begin, _stop, is_start in reversed(marks):
+                old_tag = start if is_start else end
+                at = new.index(old_tag, begin)
+                new = (new[:at] + _NEW_TAG + name + old_tag[len(_OLD_TAG) + len(name):]
+                       + new[at + len(old_tag):])
     if new == text:
         return
     if _c.write_atomic(path, new):

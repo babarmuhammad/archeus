@@ -674,3 +674,29 @@ def test_the_run_repoints_the_process_at_the_moved_account(fake_home, monkeypatc
     assert _c.global_claude_md == os.path.join(_c.config_dir, 'CLAUDE.md')
     assert not migrate.pending()
     assert _c.load_settings()['migrated_from'] == migrate.OLD
+
+
+def test_a_legacy_start_inside_a_closed_fence_is_prose_not_renamed(fake_home):
+    """migrate.py rename gate: a closed code fence holding only a legacy START is
+    an example, not a half pair to rename. The contract says examples are prose."""
+    _tmp, home, _other = fake_home
+    _sweep_gate_open()
+    md = str(home / 'CLAUDE.md')
+    text = '# p\n\n```md\n' + _tag('MEMORY', 'START') + '\nexample\n```\n'
+    _write(md, text)
+    migrate.sweep([str(home)])
+    assert _read(md) == text, 'a marker inside a closed fence was renamed'
+
+
+def test_only_recognised_legacy_markers_are_renamed(fake_home):
+    """migrate.py rename: a legacy START quoted inside a sentence is prose. The
+    real pair beside it is renamed, and the quoted text is not."""
+    _tmp, home, _other = fake_home
+    _sweep_gate_open()
+    md = str(home / 'CLAUDE.md')
+    sentence = 'Write `' + _tag('MEMORY', 'START') + '` to open it.\n\n'
+    real = _block('MEMORY', 'real body')
+    _write(md, '# p\n\n' + sentence + real + '\n')
+    migrate.sweep([str(home)])
+    assert _read(md) == ('# p\n\n' + sentence
+                         + _block('MEMORY', 'real body', old=False) + '\n')
