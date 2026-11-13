@@ -186,7 +186,7 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
         try:
             existing = open(path, encoding='utf-8', errors='ignore').read()
         except Exception:
-            pass
+            return False   # its text is unknown: not ours to replace
 
     if start_tag in existing and end_tag in existing:
         pre  = existing[:existing.index(start_tag)]

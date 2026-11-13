@@ -446,14 +446,6 @@ def test_rewriting_an_mcp_block_keeps_the_users_own_prose(tmp_path, monkeypatch)
     assert os.listdir(home) == ['CLAUDE.md'], 'a stray temp file was left behind'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'SOURCE DEFECT: claude_sessions/mcp.py:184-189 treats a FAILED READ as an '
-    'EMPTY FILE. `except Exception: pass` leaves existing=\'\', so the writer '
-    'falls to mcp.py:197-198 and replaces a CLAUDE.md it could not read with a '
-    'generated header plus one MCP block. The contract in this module\'s own '
-    'docstring (mcp.py:172-178, "Claude Code reads this file every session") is '
-    'that archeus may never leave the user with less than it found; a file '
-    'locked by the editor that is open on it is the ordinary way to hit this.'))
 def test_an_unreadable_claude_md_is_not_treated_as_an_empty_one(tmp_path,
                                                                 monkeypatch):
     """Branch: mcp.py:184-189 — `except Exception: pass` around the read.
