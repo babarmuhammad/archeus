@@ -516,7 +516,8 @@ def update_manifest(project_path, proj_folder, op, **data):
         m['freshness_score'] = score
         m['safe_to_launch'] = safe
         m['generated_at'] = _now_iso()
-        save_manifest(project_path, m, proj_folder)
+        if not save_manifest(project_path, m, proj_folder):
+            return None
         return m
     except Exception:
         _c.log.exception('workspace manifest update failed')

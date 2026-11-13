@@ -214,7 +214,9 @@ def _fold_claude(obj, s):
     if obj.get('isApiErrorMessage'):
         s['api_errors'] += 1
 
-    msg  = obj.get('message') or {}
+    msg  = obj.get('message')
+    if not isinstance(msg, dict):
+        msg = {}
     role = obj.get('role') or msg.get('role', '')
     if role in ('user', 'assistant'):
         s['count'] += 1
@@ -301,6 +303,8 @@ def load_name(proj_folder, sid):
 
 
 def save_name(proj_folder, sid, name):
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', sid):
+        raise ValueError(f'not a plain session id: {sid!r}')
     path = os.path.join(proj_folder, f"{sid}.name")
     if name:
         with open(path, 'w', encoding='utf-8') as f:
@@ -369,8 +373,23 @@ def load_session_agents(proj_folder):
         return {}
 
 
+def _load_record(path):
+    """The JSON object at path, {} when absent, None when present but unreadable:
+    a writer must refuse rather than overwrite what it could not parse."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return None
+    return d if isinstance(d, dict) else None
+
+
 def save_session_agents(proj_folder, key, refs):
-    data = load_session_agents(proj_folder)
+    data = _load_record(os.path.join(proj_folder, 'session-agents.json'))
+    if data is None:
+        return False
     if refs:
         data[key] = refs
     else:
@@ -393,10 +412,12 @@ def load_session_providers(proj_folder):
 
 def save_session_provider(proj_folder, sid, pid):
     """Write down which backend a session was launched on."""
-    data = load_session_providers(proj_folder)
+    path = os.path.join(proj_folder, 'session-providers.json')
+    data = _load_record(path)
+    if data is None:
+        return False
     data[sid] = pid or ''
-    return _c.write_json_atomic(
-        os.path.join(proj_folder, 'session-providers.json'), data)
+    return _c.write_json_atomic(path, data)
 
 
 def resolve_provider(rec, sid, stats):

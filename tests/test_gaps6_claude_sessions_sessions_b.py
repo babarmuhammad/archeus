@@ -25,7 +25,6 @@ import pytest
 from claude_sessions import sessions as s
 
 
-@pytest.mark.xfail(strict=True, reason='Unchecked sid escapes project: claude_sessions/sessions.py:304-306')
 def test_name_traversal_refused_before_open(monkeypatch, tmp_path):
     opened = []
     monkeypatch.setattr(s, 'open', lambda p, *a, **k: opened.append(p) or io.StringIO(),
@@ -37,7 +36,6 @@ def test_name_traversal_refused_before_open(monkeypatch, tmp_path):
     assert opened == []
 
 
-@pytest.mark.xfail(strict=True, reason='Corrupt metadata replaced with singleton: claude_sessions/sessions.py:390-398')
 def test_corrupt_provider_update_refuses_sibling_loss(monkeypatch, tmp_path):
     p = tmp_path / 'session-providers.json'
     old = b'{"sibling": "remote", "broken":'
