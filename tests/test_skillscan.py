@@ -601,7 +601,7 @@ def test_npm_global_options_before_the_subcommand_do_not_hide_it(args):
 
 @pytest.mark.parametrize('command,args,flagged', [
     ('npm', ['exec', 'evil', '--no=false'], True), ('npm', ['exec', '--no=false', 'evil'], True),
-    ('npx', ['--no-install=false', 'evil'], True), ('npm', ['exec', 'evil', '-y=false'], True),
+    ('npx', ['--no-install=false', 'evil'], False), ('npm', ['exec', 'evil', '-y=false'], True),
     ('npm', ['exec', 'evil', '--no'], False), ('npm', ['exec', 'evil', '--no=true'], False),
     ('npm', ['exec', 'evil', '--no=0'], True), ('npm', ['exec', 'evil', '--no=maybe'], True),
     ('npm', ['exec', 'evil', '--no='], True), ('npm', ['exec', 'evil', '--no', '--no=0'], True),
@@ -614,6 +614,32 @@ def test_npm_global_options_before_the_subcommand_do_not_hide_it(args):
 ])
 def test_npm_boolean_flag_values_decide_whether_it_installs(command, args, flagged):
     assert bool(_mcp(command, args)) is flagged
+
+
+@pytest.mark.parametrize('args,flagged', [
+    # npx-cli.js: `--no-install` with any value -> `--yes=false`, so nothing is installed without asking
+    (['--no-install', 'evil'], False), (['--no-install=true', 'evil'], False),
+    # npx-cli.js: `no` -> `--no-yes`, not a switch, so `evil` is its value; npm then reads yes=false
+    (['--no', 'evil'], False), (['--no=false', 'evil'], True),
+    # npx-cli.js: `yes` is a switch (no value skip) and `--` goes before the bare `false`: `false` is the package
+    (['--yes', 'false'], True), (['-y', 'false'], True), (['-y', 'evil'], True),
+    (['--yes=false', 'evil'], True),
+    # npx-cli.js: `npm`/`-n` are removed opts that drop the next token, so the `--no-install` after is dropped
+    (['--npm', '--no-install', 'evil'], True),
+])
+def test_npx_rewrites_its_flags_before_npm_reads_them(args, flagged):
+    assert bool(_mcp('npx', args)) is flagged
+
+
+@pytest.mark.parametrize('command,args', [
+    ('npx', ['--yes', 'false', 'evil']), ('npx', ['-y', 'false', 'evil']),
+    ('bunx', ['--yes', 'false', 'evil']), ('bun', ['x', '--yes', 'false', 'evil']),
+    ('pnpm', ['dlx', '--yes', 'false', 'evil']), ('yarn', ['dlx', '--no', 'false', 'evil']),
+])
+def test_a_bare_false_after_a_flag_is_the_package_outside_npm(command, args):
+    # only npm's own nopt parser reads a bare true/false as the flag's value; the npx wrapper
+    # keeps `--yes` a switch; bunx, bun x, pnpm dlx and yarn dlx are not shown to do it: fail closed
+    assert skillscan._package_command(command, args)[1:] == ('false', False)
 
 
 @pytest.mark.parametrize('command,args', [
