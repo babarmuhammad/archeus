@@ -1,4 +1,4 @@
-﻿"""T-1296: claude_sessions/guard_hook.py:28-58; candidate gaps, not coverage.
+"""T-1296: claude_sessions/guard_hook.py:28-58; candidate gaps, not coverage.
 
 Ranked final probes; closest test_hook_encoding.test_a_block_still_blocks_when_its_message_is_non_ascii
 only tests healthy pipe/non-ASCII subprocess, not any failure seam below.

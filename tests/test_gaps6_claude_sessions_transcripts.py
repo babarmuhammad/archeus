@@ -1,4 +1,4 @@
-﻿"""T-1298: claude_sessions/transcripts.py:21-87; candidate gaps, not coverage.
+"""T-1298: claude_sessions/transcripts.py:21-87; candidate gaps, not coverage.
 
 Ranked final probes and closest tests in test_primitives:
 1 :53/:56 test_prefix_survives_torn_tail; test_iter_json_pages_over_objects_not_lines lacks scalar JSON/torn tail.

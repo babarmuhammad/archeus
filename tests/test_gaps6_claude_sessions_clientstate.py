@@ -1,4 +1,4 @@
-﻿"""T-1299: claude_sessions/clientstate.py:36-173; candidate gaps, not coverage.
+"""T-1299: claude_sessions/clientstate.py:36-173; candidate gaps, not coverage.
 
 Ranked final probes and closest assertions:
 1 :50 test_live_reads_never_request_quarantine; test_clientstate.test_a_corrupt_client_json_does_not_crash_the_page checks result, not load contract.
