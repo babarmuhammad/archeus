@@ -110,10 +110,6 @@ def _jsonl(path, *objs):
 
 # ── 1 · fail closed on a home that is not a home ───────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="source defect: db_path() globs `home or ''` "
-                                       "(claude_sessions/codex.py:45), so an empty or None "
-                                       "home reads state_*.sqlite from the PROCESS WORKING "
-                                       "DIRECTORY instead of answering 'no sessions'")
 def test_an_empty_home_never_falls_back_to_the_working_directory(tmp_path, monkeypatch):
     sibling = str(tmp_path / 'sibling-home')
     empty_home = str(tmp_path / 'empty-home')
@@ -266,14 +262,6 @@ def test_a_transcript_lookup_is_bound_to_the_home_the_folder_is_in(tmp_path):
 
 # ── 7 · an unreadable rollout is zero, never a crash and never a guess ─────
 
-@pytest.mark.xfail(strict=True, reason="source defect: a threads row with rollout_path "
-                                       "stored NULL reaches _count and transcripts.iter_json's "
-                                       "open guard catches OSError only, so scan() raises "
-                                       "TypeError where its docstring promises 0 "
-                                       "(claude_sessions/codex.py:126-128,143-144,168; "
-                                       "claude_sessions/transcripts.py:34-36); a payload that "
-                                       "is not a dict likewise crashes _count "
-                                       "(claude_sessions/codex.py:171)")
 def test_a_rollout_that_cannot_be_read_counts_zero_rather_than_crashing(tmp_path):
     cwd = 'C:/work/alpha'
     home = str(tmp_path / 'home')
