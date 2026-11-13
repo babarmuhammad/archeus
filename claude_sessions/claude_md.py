@@ -37,24 +37,49 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
+_FENCE_OPEN = re.compile(r'[ \t]*(`{3,}(?=[^`]*$)|~{3,})')
+
+
+def _markers(text, start, end):
+    """(begin, stop, is_start) of each marker that stands alone on its line and is
+    outside a fenced code block. A marker quoted in a sentence, or documented in an
+    example fence, is prose and never a block. A fence that never closes hides
+    nothing: a forgotten closing line above a real block must not make every
+    refresh append another copy of it."""
+    out, held, fence, pos = [], [], None, 0
+    for line in text.split('\n'):
+        t = line.strip()
+        m = _FENCE_OPEN.match(line)
+        if fence is None:
+            if m:
+                fence = m.group(1)
+            elif t in (start, end):
+                out.append((pos, pos + len(line), t == start))
+        elif t and set(t) == {fence[0]} and len(t) >= len(fence):
+            fence, held = None, []
+        elif t in (start, end):
+            held.append((pos, pos + len(line), t == start))
+        pos += len(line) + 1
+    return out + held
+
+
 def block_span(text, start, end):
     """(begin, stop) of the first well-formed block: a START whose next marker is
     its END. A START followed by another START, or an END with no open START, is
     stray text and never a block. None when there is no such block."""
     open_at = None
-    for m in re.finditer(f'{re.escape(start)}|{re.escape(end)}', text):
-        if m.group() == start:
-            open_at = m.start()
+    for begin, stop, is_start in _markers(text, start, end):
+        if is_start:
+            open_at = begin
         elif open_at is not None:
-            return open_at, m.end()
+            return open_at, stop
     return None
 
 
 def well_formed(text, start, end):
     """True when the markers in `text` are exactly START, END, START, END, ... with
     nothing stray: the only state in which rewriting them is safe."""
-    kinds = [m.group() == start
-             for m in re.finditer(f'{re.escape(start)}|{re.escape(end)}', text)]
+    kinds = [is_start for _, _, is_start in _markers(text, start, end)]
     return len(kinds) % 2 == 0 and all(k == (i % 2 == 0) for i, k in enumerate(kinds))
 
 
@@ -148,31 +173,35 @@ def _valid_claude_md(text):
     return len(re.findall(r'^#{1,3} ', text, re.M)) >= 2
 
 
-def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END):
+def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END,
+                    from_user=False):
     """Carry a sentinel block from `existing` into `final` verbatim. AI analyze
     rewrites the whole CLAUDE.md and would otherwise drop the machine-maintained
     ARCHEUS:MEMORY block (it lives after AUTOGEN/SESSIONS, so Claude never
-    sees it). Always keep it."""
+    sees it). Always keep it. `from_user` marks `final` as the user's own prose,
+    whose stray markers are kept as prose."""
     span = block_span(existing, start, end)
     if span is None:
         return final
     block = existing[span[0]:span[1]]
-    final = _drop_blocks(final, start, end)
+    final = _drop_blocks(final, start, end, strays=not from_user)
     return final.rstrip('\n') + '\n\n' + block.rstrip('\n') + '\n'
 
 
 _STRAY_STOP = re.compile(r'\n\n|\n(?=<!--)')
 
 
-def _drop_blocks(text, start, end):
-    """`text` without its archeus blocks. A START that never reaches its END is
-    model output echoing a sentinel: it goes with the paragraph under it, which
-    ends at the next blank line or the next `<!--` marker, so the AUTOGEN and
-    SESSIONS blocks that follow it are not swallowed."""
+def _drop_blocks(text, start, end, strays=True):
+    """`text` without its archeus blocks. With `strays`, a START that never reaches
+    its END is model output echoing a sentinel: it goes with the paragraph under
+    it, which ends at the next blank line or the next `<!--` marker, so the AUTOGEN
+    and SESSIONS blocks that follow it are not swallowed. User prose keeps it."""
     span = block_span(text, start, end)
     while span:
         text = text[:span[0]] + text[span[1]:]
         span = block_span(text, start, end)
+    if not strays:
+        return text
     while start in text:
         i = text.index(start)
         m = _STRAY_STOP.search(text, i + len(start))
@@ -180,7 +209,7 @@ def _drop_blocks(text, start, end):
     return text
 
 
-def _preserve_machine_blocks(final, existing):
+def _preserve_machine_blocks(final, existing, from_user=False):
     """Carry EVERY block archeus maintains across a rewrite.
 
     Only MEMORY was carried, because only MEMORY was known here. The subagent
@@ -192,7 +221,7 @@ def _preserve_machine_blocks(final, existing):
     instead, which is why the two changes are one change.
     """
     for start, end in _MACHINE_BLOCKS:
-        final = _preserve_block(final, existing, start, end)
+        final = _preserve_block(final, existing, start, end, from_user)
     return final
 
 
@@ -617,7 +646,8 @@ def _valid_compressed(text):
         r"(?i)^\W*(i'll|i will|i've|here(?: is|'s)|sure|okay|certainly|edit pending)", t)
 
 
-def assemble_with_manual(manual, existing, project_path, proj_folder=None):
+def assemble_with_manual(manual, existing, project_path, proj_folder=None,
+                         from_user=False):
     """Put `manual` back into a CLAUDE.md, rebuilding what archeus owns.
 
     The manual half is the only thing a caller may replace. AUTOGEN and SESSIONS
@@ -631,7 +661,7 @@ def assemble_with_manual(manual, existing, project_path, proj_folder=None):
                     if sessions_content else '')
     final = replace_machine_blocks((manual or '').rstrip('\n') + '\n',
                                    new_autogen, new_sessions)
-    final = _preserve_machine_blocks(final, existing)
+    final = _preserve_machine_blocks(final, existing, from_user)
     if _AI_MARKER in existing and _AI_MARKER not in final:
         lines = final.split('\n')
         insert_at = 1
@@ -681,7 +711,8 @@ def set_manual_prose(project_path, proj_folder=None, text=''):
         existing = ''
     if not existing.strip():
         return False, 'no CLAUDE.md yet — scaffold one first'
-    final = assemble_with_manual(text, existing, project_path, proj_folder)
+    final = assemble_with_manual(text, existing, project_path, proj_folder,
+                                 from_user=True)
     if final == existing:
         return True, ''
     if not write_claude_md(md_path, existing, final, project_path, proj_folder,
@@ -980,8 +1011,10 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
                                         .replace(_AI_MARKER + '\n', '')
                                         .replace(_AI_MARKER, '')
                                         .strip())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"\n  Cannot read CLAUDE.md: {e}\n  Left untouched.")
+            time.sleep(2)
+            return
 
     # ── Confirmation screen + optional extra prompt ──────────────
     # Skipped entirely on a job thread. `wait_event()` is a `time.sleep(0.03)`
@@ -1371,7 +1404,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
         try:
             existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
         except Exception:
-            pass
+            return False   # its text is unknown: not ours to replace
 
     # Build fresh repos/commits/READMEs block
     autogen_content = _build_autogen_block(project_path, proj_folder)
@@ -1397,7 +1430,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
                  + ('\n' + new_sessions if new_sessions else ''))
 
     if not _c.write_atomic(md_path, final):
-        return
+        return False
     try:
         from . import workspace
         workspace.update_manifest(project_path, proj_folder, 'scaffold')
@@ -1409,5 +1442,6 @@ def scaffold_claude_md(project_path, proj_folder=None):
     except Exception:
         pass
     open_in_editor(md_path)
+    return True
 
 
