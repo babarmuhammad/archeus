@@ -8,6 +8,8 @@ back in binary, so no text-mode translation can hide a lost byte.
 """
 import os
 
+import pytest
+
 from claude_sessions import claude_md as cm
 from claude_sessions import config as _cfg
 
@@ -155,3 +157,21 @@ def test_scaffold_keeps_crlf_prose_before_appended_autogen(tmp_path):
     _write(md, original)
     assert cm.scaffold_claude_md(str(tmp_path), None) is True
     assert _read(md).startswith(original)
+
+
+@pytest.mark.parametrize('original', [b" \r\n\t\r\n", b" \t"])
+def test_whitespace_only_file_keeps_its_bytes_on_append(tmp_path, original):
+    out = _refresh(tmp_path, original)
+    sep = b'\n' if original.endswith(b'\n') else b'\n\n'
+    assert out == original + sep + _block()
+
+
+def test_whitespace_only_block_append_in_swap_keeps_its_bytes():
+    text = " \r\n\t\r\n"
+    block = f"{AS}\nb\n{AE}\n"
+    assert cm._swap_block(text, AS, AE, block) == text + "\n" + block
+
+
+def test_swap_block_on_empty_text_is_the_block_alone():
+    assert cm._swap_block('', AS, AE, f"{AS}\nb\n{AE}\n") == f"{AS}\nb\n{AE}\n"
+

@@ -114,8 +114,8 @@ def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
         new = head + (section.rstrip('\n') + closing if section else '') + rest
     elif not section:
         return True, old, old               # nothing to remove
-    elif old.strip():
-        new = old + ('\n' if old.endswith('\n') else '\n\n') + section
+    elif old:
+        new = old +('\n' if old.endswith('\n') else '\n\n') + section
     else:
         name = os.path.basename(project_path) or project_path
         new = f"# {name}\n\n{section}"
@@ -523,7 +523,7 @@ def _swap_block(text, start, end, block):
         if not block:
             return text
         return (text + ('\n' if text.endswith('\n') else '\n\n') + block) \
-            if text.strip() else block
+            if text else block
     head, rest = _cut(text, span)
     span = block_span(rest, start, end)
     while span:
