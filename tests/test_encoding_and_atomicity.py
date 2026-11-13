@@ -226,31 +226,134 @@ def test_a_test_cannot_write_a_real_file_outside_the_temp_area():
         config.write_atomic(real, '{}')
 
 
+class _FakeClock:
+    """Stands in for config's `time` module: sleep advances monotonic, so a retry
+    loop runs to its deadline without any real waiting."""
+
+    def __init__(self):
+        self.now = 1000.0
+        self.slept = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.now += s
+
+
+def test_replace_that_clears_after_seven_refusals_still_saves(tmp_path, monkeypatch):
+    """A reader holding the target open can outlast five quick tries; a time budget
+    rides it out."""
+    p = tmp_path / 'settings.json'
+    p.write_text('{"old": true}', encoding='utf-8')
+    clock = _FakeClock()
+    monkeypatch.setattr(_c, 'time', clock)
+    real_replace = os.replace
+    calls = []
+
+    def flaky(src, dst):
+        calls.append(src)
+        if len(calls) <= 7:
+            raise PermissionError(13, 'Access is denied', dst)
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, 'replace', flaky)
+    assert _c.write_json_atomic(str(p), {'new': True}) is True
+    assert json.loads(p.read_text(encoding='utf-8')) == {'new': True}
+    assert [f.name for f in tmp_path.iterdir()] == ['settings.json']
+    assert len(calls) == 8
+
+
+def test_replace_refused_for_ever_gives_up_at_the_budget(tmp_path, monkeypatch):
+    p = tmp_path / 'settings.json'
+    p.write_text('{"old": true}', encoding='utf-8')
+    clock = _FakeClock()
+    monkeypatch.setattr(_c, 'time', clock)
+    start = clock.now
+    calls = []
+
+    def refused(src, dst):
+        calls.append(src)
+        raise PermissionError(13, 'Access is denied', dst)
+
+    monkeypatch.setattr(os, 'replace', refused)
+    assert _c.write_json_atomic(str(p), {'new': True}) is False
+    assert json.loads(p.read_text(encoding='utf-8')) == {'old': True}
+    assert [f.name for f in tmp_path.iterdir()] == ['settings.json']
+    assert clock.now - start >= _c._REPLACE_BUDGET
+    assert 5 < len(calls) < 100
+
+
+def test_a_failed_fdopen_closes_the_raw_descriptor(tmp_path, monkeypatch):
+    """An open descriptor blocks deleting the temp file on Windows."""
+    p = tmp_path / 'settings.json'
+    opened, closed = [], []
+    real_open, real_close = os.open, os.close
+
+    def record_open(*a, **k):
+        fd = real_open(*a, **k)
+        opened.append(fd)
+        return fd
+
+    def record_close(fd):
+        closed.append(fd)
+        return real_close(fd)
+
+    def broken_fdopen(*a, **k):
+        raise OSError('no buffer for you')
+
+    monkeypatch.setattr(os, 'open', record_open)
+    monkeypatch.setattr(os, 'close', record_close)
+    monkeypatch.setattr(os, 'fdopen', broken_fdopen)
+    assert _c.write_json_atomic(str(p), {'a': 1}) is False
+    assert len(opened) == 1 and opened[0] in closed
+    assert [f.name for f in tmp_path.iterdir()] == []
+
+
+def test_a_name_collision_does_not_delete_the_existing_file(tmp_path, monkeypatch):
+    """The cleanup used to unlink the temp name even when this call never
+    created it, so a token collision destroyed another writer's file."""
+    import threading
+    p = tmp_path / 'settings.json'
+    monkeypatch.setattr(_c.secrets, 'token_hex', lambda n: 'abcd1234')
+    taken = tmp_path / ('settings.json.%d.%d.abcd1234.tmp' % (os.getpid(), threading.get_ident()))
+    taken.write_bytes(b'someone else')
+    assert _c.write_json_atomic(str(p), {'a': 1}) is False
+    assert taken.read_bytes() == b'someone else'
+
+
 def test_concurrent_writers_of_one_path_all_succeed_and_never_tear(tmp_path):
     """The temp name was `<path>.<pid>.tmp` for every thread, so 589 of 600
     writes from six threads returned False and the data was silently lost."""
     import threading
+    import traceback
     p = str(tmp_path / 'settings.json')
     docs = [{'writer': i, 'pad': str(i) * 20000} for i in range(6)]
-    fails, torn = [], []
+    fails, torn, errors, started = [], [], [], []
 
     def run(i):
-        for _ in range(60):
-            if not _c.write_json_atomic(p, docs[i], indent=None):
-                fails.append(i)
-                continue
-            try:
-                with open(p, encoding='utf-8') as f:
-                    d = json.load(f)
-                if d != docs[d['writer']]:
-                    torn.append(i)
-            except Exception:
-                torn.append(i)
+        try:
+            for _ in range(60):
+                started.append(i)
+                if not _c.write_json_atomic(p, docs[i], indent=None):
+                    fails.append(f'{i}: write_json_atomic returned False')
+                    continue
+                try:
+                    with open(p, encoding='utf-8') as f:
+                        d = json.load(f)
+                    if d != docs[d['writer']]:
+                        torn.append(f'{i}: content mismatch, writer={d.get("writer")!r}')
+                except Exception as e:
+                    torn.append(f'{i}: read failed {e!r}')
+        except BaseException:
+            errors.append(f'thread {i}:\n{traceback.format_exc()}')
 
     ts = [threading.Thread(target=run, args=(i,)) for i in range(6)]
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert (fails, torn) == ([], [])
+    assert (errors, len(started)) == ([], 6 * 60)
     assert [f.name for f in tmp_path.iterdir()] == ['settings.json']
 
 
