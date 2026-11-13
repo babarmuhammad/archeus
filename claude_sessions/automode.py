@@ -234,7 +234,9 @@ def _rotate(path):
             f.seek(-_KEEP_BYTES, os.SEEK_END)
             tail = f.read()
         tail = tail.split(b'\n', 1)[1] if b'\n' in tail else tail
-        with open(path, 'wb') as f:
+        tmp = path + '.tmp'
+        with open(tmp, 'wb') as f:
             f.write(tail)
+        os.replace(tmp, path)
     except Exception:
         pass

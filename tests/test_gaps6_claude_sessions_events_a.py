@@ -43,7 +43,6 @@ def test_cut_crossing_secrets_redacted_before_clipping(audit):
     assert 'sk-ant-' not in p.read_text(encoding='utf-8')
 
 
-@pytest.mark.xfail(strict=True, reason='src/proj persist credentials without redaction: claude_sessions/events.py:114-117')
 def test_source_and_project_cannot_persist_credentials(audit):
     p, _ = audit
     token = 'sk-' + 'A' * 20
@@ -54,7 +53,6 @@ def test_source_and_project_cannot_persist_credentials(audit):
     assert row['src'] == row['proj'] == '[redacted]'
 
 
-@pytest.mark.xfail(strict=True, reason='Memo updated before failed append suppresses retry: claude_sessions/events.py:109-121')
 def test_failed_append_does_not_suppress_same_event_retry(audit, monkeypatch):
     p, _ = audit
     attempts = []
@@ -72,7 +70,6 @@ def test_failed_append_does_not_suppress_same_event_retry(audit, monkeypatch):
     assert len(p.read_text(encoding='utf-8').splitlines()) == 1
 
 
-@pytest.mark.xfail(strict=True, reason='Backward clock keeps future memo and suppresses recovery: claude_sessions/events.py:107-109')
 def test_dedupe_exact_boundary_and_backward_clock_recovery(audit):
     p, clock = audit
     assert e.record('source', 'failure')

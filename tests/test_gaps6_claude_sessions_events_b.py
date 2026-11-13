@@ -104,7 +104,6 @@ def test_rotation_normalizes_mixed_newlines_and_unicode(monkeypatch, tmp_path):
     assert p.read_bytes() == '{"msg":"é"}\n{"msg":"中"}\n'.encode()
 
 
-@pytest.mark.xfail(strict=True, reason='wb truncates audit evidence before write succeeds: claude_sessions/events.py:195-196')
 def test_interrupted_rotation_preserves_old_complete_audit(monkeypatch, tmp_path):
     p = tmp_path / 'events.jsonl'
     old = b'old\n{"msg":"new"}\n'
@@ -113,8 +112,11 @@ def test_interrupted_rotation_preserves_old_complete_audit(monkeypatch, tmp_path
     monkeypatch.setattr(e, '_KEEP_BYTES', len(old) - 1)
 
     class Interrupted:
+        def __init__(self, path):
+            self.path = path
+
         def __enter__(self):
-            self.fh = builtins.open(p, 'wb')
+            self.fh = builtins.open(self.path, 'wb')
             return self
 
         def write(self, data):
@@ -123,13 +125,12 @@ def test_interrupted_rotation_preserves_old_complete_audit(monkeypatch, tmp_path
         def __exit__(self, *args):
             self.fh.close()
 
-    monkeypatch.setattr(e, 'open', lambda path, mode: Interrupted() if mode == 'wb'
+    monkeypatch.setattr(e, 'open', lambda path, mode: Interrupted(path) if mode == 'wb'
                         else builtins.open(path, mode), raising=False)
     e._rotate(str(p))
     assert p.read_bytes() == old
 
 
-@pytest.mark.xfail(strict=True, reason='No-newline tail published as a complete record: claude_sessions/events.py:188-196')
 def test_tail_without_newline_does_not_publish_torn_fragment(monkeypatch, tmp_path):
     p = tmp_path / 'events.jsonl'
     old = b'x' * 40
