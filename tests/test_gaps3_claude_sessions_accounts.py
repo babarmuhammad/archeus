@@ -406,3 +406,38 @@ def test_accounts_rows_tolerate_malformed_entries(monkeypatch, tmp_path):
         'every malformed entry is dropped (accounts.py:26) and a nameless '\
         'entry falls back to its dir (accounts.py:27) — never fatal, never '\
         'rendered as a spendable row'
+
+
+# ── 11. (review int14f) an empty active setting marks only the default ─────
+
+def test_empty_active_setting_never_matches_dot_row(monkeypatch, tmp_path):
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('USERPROFILE', str(tmp_path))
+
+    rows = accounts._accounts({'claude_config_dir': '',
+                               'accounts': [{'name': 'cwd', 'dir': '.'}]})
+
+    assert rows == [('default', '', True), ('cwd', '.', False)], \
+        'normpath("") is "." — an empty setting means the default account only'
+
+
+# ── 12. (review int14f) GUI removal clears a selection spelled differently ──
+
+def test_gui_remove_clears_selection_spelled_differently(monkeypatch, tmp_path):
+    import copy
+    from claude_sessions import gui_api
+    Sandbox(monkeypatch, tmp_path)
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('USERPROFILE', str(tmp_path))
+    s = {'claude_config_dir': os.path.join(str(tmp_path), '.acc-w'),
+         'accounts': [{'name': 'work', 'dir': '~/.acc-w'},
+                      {'name': 'other', 'dir': str(tmp_path / 'acc-other')}]}
+    saved = []
+    monkeypatch.setattr(config, 'load_settings', lambda: copy.deepcopy(s))
+    monkeypatch.setattr(config, 'save_settings', lambda x: saved.append(x))
+
+    assert gui_api.api_accounts_post({}, {'action': 'remove', 'name': 'work'}) == {'ok': True}
+
+    assert saved and saved[-1]['claude_config_dir'] == '', \
+        'GUI removal left the active selection pointing at the removed row'
+    assert [a['name'] for a in saved[-1]['accounts']] == ['other']
