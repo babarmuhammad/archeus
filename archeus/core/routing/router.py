@@ -197,7 +197,7 @@ def _model(c, req, snap):
                 need or 'any', ' with a %d-token context' % ctx if ctx else '')
         c['model'] = ok[0]['id']
     effort = req.get('effort')
-    if effort and effort in (h.get('efforts') or ()):
+    if effort and effort in EFFORTS and effort in (h.get('efforts') or ()):
         c['effort'] = effort
         # the chosen model may accept fewer levels than its harness does
         stated = set((offers.get(c['model']) or {}).get('efforts') or ())

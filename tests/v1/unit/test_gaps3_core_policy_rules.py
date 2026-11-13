@@ -62,14 +62,6 @@ def rule(**kw):
 
 # ── 1. the empty-environment dodge of the prod floor (rules.py:172-173) ─────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "source defect archeus/core/policy/rules.py:172-173: _values tests `action.environment "
-    "is None`, so an action claiming the empty string 'says' an environment named '' and "
-    "leaves the D3 fail-closed side (rules.py:18-19, 190-192): the locked destructive-prod "
-    "floor DENY (rules.py:67-68) then matches nothing and the denial disappears, while the "
-    "argv/paths arms (rules.py:174-177) read an empty claim as 'says nothing'. Contract: "
-    "p9-design-gate §6.1 D3 — an attribute the action does not name matches the "
-    "restrictive side; no name is an empty string."))
 def test_an_action_claiming_an_empty_environment_still_meets_the_prod_floor():
     """Kills: `is None` -> falsy in the environment arm of _values inverting
     who the floor answers (nearest: test_gaps_core_policy_rules.py's host-

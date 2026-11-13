@@ -53,25 +53,8 @@ import pytest
 from archeus.core.routing import router as R
 from v1.unit.test_routing_units import acct, call, harness, snap, steps, task
 
-# xfail (not a fixture problem): router.py:201 writes `c['effort'] = effort`
-# before any scale check, and the only guard that reads the scale —
-# `elif allowed and effort in EFFORTS` at router.py:210 — skips the clamp
-# (and its `effort_required` refusal at router.py:212-213) instead of refusing
-# the level. A task whose effort is off entities.EFFORTS, on a harness that
-# (mis)states it, is therefore elected with that effort carried into the
-# decision: the closed scale the module itself declares at router.py:56 is
-# enforced for clamping but not for eligibility, and nothing refuses it.
-EFFORT_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason='router.py:210-213: an effort outside EFFORTS skips the clamp leg '
-           'without the effort_required refusal; router.py:201 has already '
-           'carried it into the decision',
-)
-
-
 # ── fail-closed and denials ─────────────────────────────────────────────────
 
-@EFFORT_XFAIL
 def test_a_required_effort_off_the_routers_own_scale_is_never_satisfied():
     """router.py:200-216: `if effort and effort in (h.get('efforts') or ())`,
     the `elif allowed and effort in EFFORTS` scale guard and the
