@@ -612,7 +612,7 @@ def test_guarded_status_and_snapshot_fail_closed(tmp_path, monkeypatch):
     with pytest.raises(OSError, match='git add failed'):
         LocalNode.git_snapshot(str(tmp_path), 'refused')
     for result in (None, SimpleNamespace(returncode=2, stdout='', stderr='bad')):
-        def run(root, args, **kw):
+        def run(root, args, result=result, **kw):
             return SimpleNamespace(returncode=0, stdout='', stderr='') if args == ['add', '-A'] else result
         monkeypatch.setattr(local, '_project_git', run)
         with pytest.raises(OSError, match='git commit failed'):
