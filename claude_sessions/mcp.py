@@ -3,6 +3,7 @@ import threading
 import time
 
 from .config import W, get_claude_exe, open_in_editor
+from .claude_md import block_span, well_formed
 from .sessions import get_session_info
 from .ui import (menu, _cls, pause, run_with_progress, text_input,
                  confirm, flash, paths_menu, pager)
@@ -188,10 +189,11 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
         except Exception:
             return False   # its text is unknown: not ours to replace
 
-    if start_tag in existing and end_tag in existing:
-        pre  = existing[:existing.index(start_tag)]
-        post = existing[existing.index(end_tag) + len(end_tag):]
-        final = pre + section + post
+    if not well_formed(existing, start_tag, end_tag):
+        return False   # stray markers: not ours to rewrite, same as unreadable
+    span = block_span(existing, start_tag, end_tag)
+    if span:
+        final = existing[:span[0]] + section + existing[span[1]:]
     elif existing:
         final = existing.rstrip('\n') + '\n\n' + section
     else:

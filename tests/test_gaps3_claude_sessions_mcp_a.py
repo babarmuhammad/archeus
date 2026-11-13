@@ -476,3 +476,77 @@ def test_an_unreadable_claude_md_is_not_treated_as_an_empty_one(tmp_path,
         'an unreadable CLAUDE.md was overwritten, not left alone'
     assert 'GENERATED DOC' not in text, \
         'the refused write still landed its own block'
+
+
+def test_a_fenced_example_of_the_pair_is_never_the_block_replaced(tmp_path, monkeypatch):
+    """Branch: mcp.py update_global_claude_md_mcp — the markers were found with a
+    plain substring search, so a closed fenced example of the pair above the real
+    block was taken for the block: its body was replaced and the real block went
+    untouched. The real block must be the one replaced, and the example kept."""
+    home = _home(tmp_path, 'acct')
+    _wire(monkeypatch, tmp_path, results=[])
+    md = os.path.join(home, 'CLAUDE.md')
+    example = ('```md\n<!-- MCP:svc:START -->\nEXAMPLE BODY\n'
+               '<!-- MCP:svc:END -->\n```\n')
+    with open(md, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('# My global context\n\n' + example + '\n'
+                '<!-- MCP:svc:START -->\n## MCP: svc\nOLD DOC\n<!-- MCP:svc:END -->\n')
+
+    assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', home) is True
+    text = _read(md)
+    assert example in text, 'the fenced example was rewritten'
+    assert 'NEW DOC' in text and 'OLD DOC' not in text
+    assert text.count('<!-- MCP:svc:START -->') == 2
+
+
+def test_a_fenced_example_alone_gets_the_real_block_appended(tmp_path, monkeypatch):
+    home = _home(tmp_path, 'acct')
+    _wire(monkeypatch, tmp_path, results=[])
+    md = os.path.join(home, 'CLAUDE.md')
+    example = ('```md\n<!-- MCP:svc:START -->\nEXAMPLE BODY\n'
+               '<!-- MCP:svc:END -->\n```\n')
+    with open(md, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('# My global context\n\n' + example)
+
+    assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', home) is True
+    text = _read(md)
+    assert text.startswith('# My global context\n\n' + example)
+    assert text.count('<!-- MCP:svc:START -->') == 2
+    assert text.endswith('## MCP: svc\nNEW DOC\n<!-- MCP:svc:END -->\n')
+
+
+def test_reversed_mcp_markers_are_refused_not_spliced(tmp_path, monkeypatch):
+    """Branch: mcp.py update_global_claude_md_mcp — END before START made the
+    splice `pre + section + post` overlap the user's prose. Stray markers are not
+    ours to rewrite: the write is refused, as an unreadable file is."""
+    home = _home(tmp_path, 'acct')
+    _wire(monkeypatch, tmp_path, results=[])
+    md = os.path.join(home, 'CLAUDE.md')
+    before = ('# My global context\nPROSE ONE\n<!-- MCP:svc:END -->\nPROSE TWO\n'
+              '<!-- MCP:svc:START -->\nPROSE THREE\n')
+    with open(md, 'w', encoding='utf-8', newline='\n') as f:
+        f.write(before)
+
+    assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', home) is False
+    assert _read(md) == before
+
+
+def test_ordinary_mcp_replace_keeps_its_bytes_and_a_missing_file_is_created(
+        tmp_path, monkeypatch):
+    """Guard: the ordinary replace must write the same bytes it always did
+    (the text after END keeps its newline, as before), and a missing file is
+    still created."""
+    home = _home(tmp_path, 'acct')
+    _wire(monkeypatch, tmp_path, results=[])
+    md = os.path.join(home, 'CLAUDE.md')
+    with open(md, 'w', encoding='utf-8', newline='\n') as f:
+        f.write('# My global context\nPROSE-BEFORE\n<!-- MCP:svc:START -->\n'
+                '## MCP: svc\nOLD DOC\n<!-- MCP:svc:END -->\nPROSE-AFTER\n')
+    assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', home) is True
+    assert _read(md) == ('# My global context\nPROSE-BEFORE\n<!-- MCP:svc:START -->\n'
+                         '## MCP: svc\nNEW DOC\n<!-- MCP:svc:END -->\n'
+                         '\nPROSE-AFTER\n')
+
+    fresh = _home(tmp_path, 'fresh')
+    assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', fresh) is True
+    assert 'NEW DOC' in _read(os.path.join(fresh, 'CLAUDE.md'))
