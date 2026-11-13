@@ -511,17 +511,18 @@ def _sweep_claude_md(base, fixed, failed):
         return
     for name in _UNIQUE_BLOCKS:
         start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
-        if (text.count(start) == text.count(end) > 0
-                and (_NEW_TAG + name + ':START -->') in text):
-            ok, _before, text = claude_md.upsert_block(base, start, end, '')
+        while ((_NEW_TAG + name + ':START -->') in text
+               and claude_md.block_span(text, start, end)):
+            ok, _before, after = claude_md.upsert_block(base, start, end, '')
             if not ok:
                 failed.append((path, 'could not drop the superseded %s block' % name))
                 return
+            text = after
             fixed.append((path, 'dropped the superseded %s block' % name))
     new = text
     for name in _SENTINEL_BLOCKS:
         start, end = _OLD_TAG + name + ':START -->', _OLD_TAG + name + ':END -->'
-        if new.count(start) == new.count(end) > 0:
+        if new.count(start) and claude_md.well_formed(new, start, end):
             new = (new.replace(start, _NEW_TAG + name + ':START -->')
                       .replace(end, _NEW_TAG + name + ':END -->'))
     if new == text:

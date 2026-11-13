@@ -50,6 +50,14 @@ def block_span(text, start, end):
     return None
 
 
+def well_formed(text, start, end):
+    """True when the markers in `text` are exactly START, END, START, END, ... with
+    nothing stray: the only state in which rewriting them is safe."""
+    kinds = [m.group() == start
+             for m in re.finditer(f'{re.escape(start)}|{re.escape(end)}', text)]
+    return len(kinds) % 2 == 0 and all(k == (i % 2 == 0) for i, k in enumerate(kinds))
+
+
 def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
     """Insert, replace or REMOVE one sentinel block in <project>/<filename>,
     leaving everything else (user prose, AUTOGEN, SESSIONS, other blocks)
