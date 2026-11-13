@@ -105,7 +105,7 @@ def run(project_path, proj_folder, project_name):
     session — under an account of the user's choosing — seeded with its
     transcript. Returns True if a session was launched, False if cancelled."""
     from .ui import menu, flash, _cls
-    from .config import get_claude_exe, launch_defaults
+    from .config import get_claude_exe, launch_defaults, account_env
     from .sessions import load_add_dirs, read_extra_paths
 
     candidates = find_sessions_across_accounts(project_path)
@@ -156,6 +156,7 @@ def run(project_path, proj_folder, project_name):
             subprocess.call(args, cwd=project_path, env=env)
         except Exception as e:
             print(f"\n  Launch failed: {e}")
+            return False
         return True
 
     exe = get_claude_exe()
@@ -163,8 +164,7 @@ def run(project_path, proj_folder, project_name):
         flash("claude.exe not found", ok=False, secs=1.8)
         return False
 
-    env = os.environ.copy()
-    env['CLAUDE_CONFIG_DIR'] = target_dir
+    env = account_env(target_dir)
     extra = read_extra_paths(target_folder)
     if extra:
         env['PATH'] = ';'.join(extra) + ';' + env.get('PATH', '')
@@ -187,7 +187,7 @@ def run(project_path, proj_folder, project_name):
         args += ['--model', model]
     if perm:
         args += ['--permission-mode', perm]
-    add_dirs = [d for d in load_add_dirs(target_folder) if os.path.isdir(d)]
+    add_dirs = [os.path.abspath(d) for d in load_add_dirs(target_folder) if os.path.isdir(d)]
     if add_dirs:
         args += ['--add-dir', *add_dirs]
 
@@ -198,4 +198,5 @@ def run(project_path, proj_folder, project_name):
         subprocess.call(args, cwd=project_path, env=env)
     except Exception as e:
         print(f"\n  Launch failed: {e}")
+        return False
     return True

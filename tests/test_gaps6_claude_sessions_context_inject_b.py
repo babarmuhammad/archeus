@@ -68,7 +68,8 @@ def _world(monkeypatch, tmp_path, target_harness='claude'):
     monkeypatch.setattr(harnesses, 'instances',
                         lambda: [('src', cfg['src'], 'claude'), ('tgt', cfg['tgt'], 'claude')])
     monkeypatch.setattr(harnesses, 'of',
-                        lambda cfgdir=None: {'id': target_harness if cfgdir == cfg['tgt'] else 'claude'})
+                        lambda cfgdir=None: {**harnesses.descriptor('claude'),
+                                             'id': target_harness if cfgdir == cfg['tgt'] else 'claude'})
     monkeypatch.setattr(sessions_mod, 'account_folders_for',
                         lambda e: [(n, folders[n]) for n in cfg])
     monkeypatch.setattr(sessions_mod, 'scan_sessions', lambda folder: [(100, SID, 'p', 1)])
@@ -189,9 +190,6 @@ def test_alternate_builder_runtime_error_is_a_refusal_without_spawn(monkeypatch,
     assert w.flashes and w.flashes[0][0] == 'no codex binary'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/context_inject.py:157-159 catches the spawn error and returns '
-    'True, so a failed alternate launch reports success'))
 def test_alternate_spawn_failure_is_not_a_launch(monkeypatch, tmp_path):
     w = _world(monkeypatch, tmp_path, target_harness='codex')
 
@@ -212,10 +210,6 @@ def test_claude_branch_pins_the_target_home(monkeypatch, tmp_path):
     assert kw['cwd'] == w.proj and '--system-prompt-file' in args
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/context_inject.py:166 copies os.environ unchanged for the claude '
-    'branch, so ANTHROPIC_API_KEY shadows the target login; config.account_env pops it '
-    '(harnesses.py:125 env_pops)'))
 def test_claude_branch_scrubs_the_api_key_shadow(monkeypatch, tmp_path):
     w = _world(monkeypatch, tmp_path)
     monkeypatch.setenv('ANTHROPIC_API_KEY', 'synthetic-key-value')
@@ -255,9 +249,6 @@ def test_system_prompt_merge_failure_refuses_the_launch(monkeypatch, tmp_path):
     assert len(w.flashes) == 1 and w.flashes[0][1].get('ok') is False
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/context_inject.py:197-201 catches the spawn error and returns '
-    'True, so a failed claude launch reports launched'))
 def test_claude_branch_spawn_failure_is_not_a_launch(monkeypatch, tmp_path):
     w = _world(monkeypatch, tmp_path)
 
@@ -277,9 +268,6 @@ def test_model_and_permission_come_from_project_policy(monkeypatch, tmp_path):
     assert args[0] == EXE
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/context_inject.py:190-192 passes add-dirs.txt entries after '
-    '--add-dir unchecked, so a dash-led value can be read as an option by claude'))
 def test_dash_led_add_dir_is_refused(monkeypatch, tmp_path):
     w = _world(monkeypatch, tmp_path)
     monkeypatch.chdir(tmp_path)
