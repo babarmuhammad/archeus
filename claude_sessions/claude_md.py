@@ -100,7 +100,7 @@ def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
     old = ''
     if os.path.exists(md_path):
         try:
-            old = open(md_path, encoding='utf-8', errors='ignore').read()
+            old = open(md_path, encoding='utf-8', newline='').read()
         except Exception:
             return False, '', ''   # its text is unknown: not ours to replace
     span = block_span(old, start, end)
@@ -541,7 +541,7 @@ def prune_preview(project_path, proj_folder=None):
     if not os.path.isfile(md_path):
         return None
     try:
-        existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, 'r', encoding='utf-8', newline='').read()
     except Exception:
         return None
     before = _parse_existing_sessions(existing)
@@ -710,7 +710,7 @@ def set_manual_prose(project_path, proj_folder=None, text=''):
     moving them is a legitimate edit. Returns (ok, error)."""
     md_path = os.path.join(project_path, 'CLAUDE.md')
     try:
-        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, encoding='utf-8', newline='').read()
     except Exception:
         existing = ''
     if not existing.strip():
@@ -737,7 +737,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
     md_path = os.path.join(project_path, 'CLAUDE.md')
     name = os.path.basename(project_path) or project_path
     try:
-        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, encoding='utf-8', newline='').read()
     except Exception:
         existing = ''
     if not existing.strip():
@@ -1004,7 +1004,7 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
     existing_ai_sections = ''
     if os.path.exists(md_path):
         try:
-            existing_for_sessions = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+            existing_for_sessions = open(md_path, 'r', encoding='utf-8', newline='').read()
             if existing_for_sessions.strip():
                 is_update = True
                 # Extract content before AUTOGEN block to pass to Claude for updating
@@ -1406,7 +1406,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
     existing = ''
     if os.path.exists(md_path):
         try:
-            existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+            existing = open(md_path, 'r', encoding='utf-8', newline='').read()
         except Exception:
             return False   # its text is unknown: not ours to replace
 
