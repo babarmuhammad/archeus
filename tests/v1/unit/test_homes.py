@@ -52,7 +52,7 @@ NO_MATCH = [
     r'C:\Users\user1\.claude-work.bak',
     r'C:\Users\user1\.claude-work-old',
     r'D:\Users\user1\.claude-work',
-    r'C:\Users\mab2\.claude-work',
+    r'C:\Users\user12\.claude-work',
     r'C:\Users\user1',
     r'xC:\Users\user1\.claude-work',
     '/x/c/Users/user1/.claude-work',

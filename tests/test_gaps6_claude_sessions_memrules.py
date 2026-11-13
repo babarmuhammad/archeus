@@ -1,4 +1,4 @@
-﻿"""T-1295: claude_sessions/memrules.py:21-160; ranked candidate gaps, not coverage.
+"""T-1295: claude_sessions/memrules.py:21-160; ranked candidate gaps, not coverage.
 
 1 :152 test_foreign_directory_survives; closest test_memrules: test_sync_prunes_only_own_files checks files only.
 3 :119 test_disabled_has_no_work; test_setting_disables checks mkdir only.

@@ -1,4 +1,4 @@
-﻿"""T-1297: claude_sessions/limit_hook.py:50-87; candidate gaps, not coverage.
+"""T-1297: claude_sessions/limit_hook.py:50-87; candidate gaps, not coverage.
 
 Ranked final probes, closest assertions and missing compositions:
 1 :61/:69 test_execution_latches_before_env_check; test_p05_seams.test_limit_hook_keeps_the_latch_and_skips_rotation_in_an_execution counts calls, not order.
