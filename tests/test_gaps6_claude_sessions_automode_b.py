@@ -120,7 +120,6 @@ def test_rotation_drops_mid_multibyte_record_preserves_complete_bytes(audit, mon
     assert audit.read_bytes() == complete
 
 
-@pytest.mark.xfail(strict=True, reason='wb truncates prior denials before write succeeds: claude_sessions/automode.py:237-238')
 def test_interrupted_rotation_preserves_previous_denials(audit, monkeypatch):
     old = b'old\n{"tool":"Read"}\n'
     audit.write_bytes(old)
@@ -128,8 +127,11 @@ def test_interrupted_rotation_preserves_previous_denials(audit, monkeypatch):
     monkeypatch.setattr(a, '_KEEP_BYTES', len(old) - 1)
 
     class Interrupted:
+        def __init__(self, path):
+            self.path = path
+
         def __enter__(self):
-            self.fh = builtins.open(audit, 'wb')
+            self.fh = builtins.open(self.path, 'wb')
             return self
 
         def write(self, data):
@@ -138,7 +140,7 @@ def test_interrupted_rotation_preserves_previous_denials(audit, monkeypatch):
         def __exit__(self, *args):
             self.fh.close()
 
-    monkeypatch.setattr(a, 'open', lambda path, mode: Interrupted() if mode == 'wb'
+    monkeypatch.setattr(a, 'open', lambda path, mode: Interrupted(path) if mode == 'wb'
                         else builtins.open(path, mode), raising=False)
     a._rotate(str(audit))
     assert audit.read_bytes() == old
