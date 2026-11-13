@@ -4176,7 +4176,7 @@ function ccName(k){
 /* The account is passed by INDEX into CCACCTS, never as a path. A Windows
    config dir is full of backslashes, and interpolating one into a JS string
    literal inside an HTML attribute makes the browser read `\U` and `\.` as
-   escapes: `C:\Users\mab\.claude` arrives as `C:Usersmab.claude`, which then
+   escapes: `C:\Users\<user>\.claude` arrives as `C:Users<user>.claude`, which then
    fails the account allowlist as "invalid cfgdir". */
 function ccInput(k,s,a,ai){
   const v=a.values[k],id=ccId(k,a.dir);

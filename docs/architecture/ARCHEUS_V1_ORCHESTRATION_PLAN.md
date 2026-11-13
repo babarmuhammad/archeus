@@ -139,7 +139,7 @@ elect it for a given subject — computed by the router, never stored.
 
 ### A5. The local-model path (item 5)
 
-`~/.pi/agent/models.json` declares provider `spark` (`baseUrl http://192.168.1.113:8888/v1`,
+`~/.pi/agent/models.json` declares provider `spark` (`baseUrl http://<lan-host>:8888/v1`,
 `api: openai-completions`, an `apiKey`), model `qwen3.8-flash-next` (context 262,144, max 32,768).
 The endpoint is on the user's **LAN**, not on this machine. In V1 it can serve:
 
@@ -677,7 +677,7 @@ Stop after the architecture: nothing above starts without the user's approval of
 |---|---|---|---|---|
 | C-22 | **pi offers its whole shipped catalogue as available** (1,356 offers; pi says 1 is runnable) | `calls.py:161-172`; `pi.py:323-343,424-479`; `Control.tsx:247`; `pi --list-models` | offers = pi's `getAvailable()`; catalogue rows stay catalogue (ADR-0036) | **FIXED** (C-22 slice, 2026-10-01; see "C-22 as built" below) |
 | C-23 | Local-only operation is impossible: the planner needs `large`, pi offers are `tier: None`; pi cannot execute | `core/calls.py:44`; `router.py:82-84`; execution-architecture §3 | user-declared tier (D-4); pi execution adapter (D-3) | PROPOSED |
-| C-24 | "local" conflates this machine with the user's LAN server | `models.json` `baseUrl 192.168.1.113` | `this_node | self_hosted | remote` (D-5) | PROPOSED |
+| C-24 | "local" conflates this machine with the user's LAN server | `models.json` `baseUrl <lan-host>` | `this_node | self_hosted | remote` (D-5) | PROPOSED |
 | C-25 | Harness version is never recorded, yet evidence is keyed on it (ADR-0032 §4) | `calls.py:57`; `claude_code/adapter.py:84` | `installed_version` populated (ADR-0037, P22) | PROPOSED |
 | C-26 | Account auth is probed only at registration; availability goes stale silently | `resources.py:74,88` | periodic auth probe (ADR-0036, D-7) | PROPOSED |
 | C-27 | `fallback: allow` can substitute a different provider/location/tier silently once a second provider exists | resource-router §7 | material substitution asks (ADR-0038, D-8) | PROPOSED |

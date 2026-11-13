@@ -91,7 +91,7 @@ def find_actual_path(encoded, max_depth=8, folder=None):
 def _walk_for(encoded, max_depth=8):
     # Fallback only — the transcript's own `cwd` above is exact, and this walk
     # is guesswork against a lossy encoding. Where it STARTS is the only
-    # platform-specific part: 'D--Claude' names a drive, '-home-mab-proj' names
+    # platform-specific part: 'D--Claude' names a drive, '-home-<user>-proj' names
     # the root.
     if os.name == 'nt':
         if '--' not in encoded:

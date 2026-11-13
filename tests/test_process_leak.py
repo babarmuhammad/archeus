@@ -76,14 +76,14 @@ def test_the_guard_tells_a_claude_spawn_from_every_other_spawn(argv, blocked):
 #: character to '-', so a path keeps its shape and a pytest basetemp is
 #: unmistakable inside one.
 LEAKED = [
-    'C--Users-mab-AppData-Local-Temp-pytest-of-mab-pytest-1794-test-export-writes-markdown1-work-proj',
-    'C--Users-mab-AppData-Local-Temp-pytest-of-mab-pytest-1-t0-work-proj',
+    'C--Users-user1-AppData-Local-Temp-pytest-of-user1-pytest-1794-test-export-writes-markdown1-work-proj',
+    'C--Users-user1-AppData-Local-Temp-pytest-of-user1-pytest-1-t0-work-proj',
     '-tmp-pytest-of-runner-pytest-12-test-thing0-work-proj',      # POSIX shape
 ]
 REAL = [
     'D--Claude',
     'D--repos',
-    'C--Users-mab',
+    'C--Users-user1',
     'D--Lavoro-python-Scripts-Documentation',
     'D--work-pytest-of-plugins',        # names the words, not the shape
     'D--src-pytest-runner',

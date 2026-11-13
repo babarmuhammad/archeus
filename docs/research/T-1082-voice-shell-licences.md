@@ -99,7 +99,7 @@ window, else the browser (`gui_shell` setting: auto / qt / edge / browser)."* (a
 `docs/desktop.md:12-13` — *"No Python dependencies; the browser bundle vendors three.js and
 anime.js (both MIT, served from `/vendor/`, never a CDN)"*).
 
-`docs/installation.md:152-159` — *"### GUI setup / The [desktop app](desktop.md) needs no
+`docs/installation.md:152-159` — *"### GUI setup / The desktop app needs no
 extra dependencies for the Edge/browser shells. For the native window install PyQt6
 (optional): `pip install PyQt6 PyQt6-WebEngine`"* → the toolkit arrives through the **user's
 own pip install**, which is the easy LGPL case (F23).

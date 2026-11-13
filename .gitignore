@@ -91,3 +91,9 @@ notes/reference/
 
 # Architecture
 docs/architecture/reference
+.collab/
+*.log
+*.sqlite
+*.sqlite3
+.pytest_cache/
+time-log.jsonl

@@ -1,7 +1,7 @@
 """Verify model routing: OmniRoute for main execution, Sonnet 5 for agents/skills."""
 import json, glob, os, sys
 
-CONFIG_PROJECTS = r"C:\Users\mab\.claude\projects\D--Claude"
+CONFIG_PROJECTS = os.path.join(os.path.expanduser("~"), ".claude", "projects", "D--Claude")
 SYNTHETIC = ("", "<synthetic>")
 
 

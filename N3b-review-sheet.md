@@ -34,7 +34,7 @@ Unreadable native state never establishes a PASS. Native production readers fail
 
 ## 3. Entry and preflight
 
-Future entry accepts exactly one canonical fixture parent at or below `D:\archeus-worktrees\pv20-fixtures`. Execution is forbidden under current authorization state. No native command is provided for execution here.
+Future entry accepts exactly one canonical fixture parent at or below `<fixture-parent>`. Execution is forbidden under current authorization state. No native command is provided for execution here.
 
 Before creating a root, the entry requires an existing, regular, single-link, at most 8192-byte `N3b-owner-authorization.json` directly under that parent. Parent ancestry and marker must be free of aliases. Required keys are exactly `authorization_id`, `script`, `scopes`, `approved`. `script` must equal `N3b`, `approved` must be boolean true, and authorization ID must contain 1–64 ASCII letters, digits, underscores or hyphens. The marker records an owner's approval and has no cryptographic authentication. It must never be fabricated by an agent.
 

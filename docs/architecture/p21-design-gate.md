@@ -1059,8 +1059,8 @@ board note 9, 2026-10-21). The host bug is a separate card, T-143 (board note 9:
   parsing or inferred paths/hosts. Their approval identity binds the raw command. Unknown names
   remain unclassified `exec`. Remote-capable commands are HELD with policy host `None`.
   No MATCHED row bears a URL. Owner decision 2026-10-25: "Defer, doc and pin only (Recommended)".
-  [T-143-proposal.md](../../../Archeus/.collab/T-143-proposal.md) (curl/wget) and
-  [T-155-proposal.md](../../../Archeus/.collab/T-155-proposal.md)
+  T-143-proposal.md (curl/wget) and
+  T-155-proposal.md
   (ssh/scp/sftp/rsync/git remote forms) are deferred as preconditions of any future URL or remote
   allow row; no host-derivation code is built now.
 - **Strict command allow-list (owner 2026-10-23).** Only the following literal data is eligible.

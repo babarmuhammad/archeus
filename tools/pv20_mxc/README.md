@@ -26,7 +26,7 @@ The owner creates the token separately; no tooling here creates authorization:
   "authorization_id": "owner-assigned-label",
   "fixture_only": true,
   "stage": "F1",
-  "fixture_parent": "D:\\archeus-worktrees\\pv20-fixtures",
+  "fixture_parent": "<fixture-parent>",
   "fixture_uuid": "owner-selected-canonical-uuid",
   "manifest_hash": "sha256-of-controller.digest(manifest)"
 }
