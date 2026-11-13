@@ -37,7 +37,9 @@ _WRAP = '--'
 
 def _dirs(home):
     """Every session directory under *home*."""
-    root = os.path.join(home or '', 'sessions')
+    if not home:
+        return []
+    root = os.path.join(home, 'sessions')
     out = []
     try:
         names = os.listdir(root)
@@ -250,7 +252,12 @@ def fold(obj, s):
     # That is real spend on this session's behalf, so it is banked — under the
     # message's own model where it names one, and the session's otherwise.
     u = m.get('usage') or {}
-    if not u:
+    if not isinstance(u, dict) or not u:
+        return
+    # all four or none: a bad field must not leave the good ones banked
+    counts = [u.get(k) for k in ('input', 'output', 'cacheRead', 'cacheWrite')]
+    if any(c is not None and (isinstance(c, bool) or not isinstance(c, int)
+                              or c < 0) for c in counts):
         return
     key = model or (s['models'][-1] if s['models'] else 'pi')
     agg = s['usage_by_model'].setdefault(

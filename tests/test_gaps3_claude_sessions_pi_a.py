@@ -204,10 +204,6 @@ def _stats():
 
 # ── 1. an unnamed home must read NOTHING, not the working directory ─────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect: _dirs joins `home or \'\'` (claude_sessions/pi.py:40), so '
-    'an unnamed home becomes the RELATIVE path `sessions` and is listed off the '
-    'process working directory — pi.projects("") answers a foreign home'))
 def test_an_unnamed_home_reads_no_store_from_the_working_directory(world, monkeypatch):
     """A folder that names no home is a DENIAL, not a fallback to `.`.
 
@@ -310,13 +306,8 @@ def test_no_tools_without_no_extensions_is_not_a_fence(world):
 
 # ── 4. accounting must survive a hostile number ─────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect: fold adds the raw usage fields with no numeric check '
-    '(claude_sessions/pi.py:258-261), so a transcript whose usage.input is a '
-    'string raises TypeError out of fold and takes the whole corpus walk down '
-    'with it — every other session in the usage table disappears'))
 def test_a_hostile_token_count_must_not_take_the_walk_down(world):
-    """One bad record may not hide every other project's spend.
+    """One bad record may not stop the walk: fold must not raise on it.
 
     `fold` runs inside the corpus walk (`sessions.get_session_stats` ->
     `stats.iter_all_sessions`), and a transcript pi wrote after a provider
