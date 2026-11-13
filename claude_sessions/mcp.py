@@ -193,7 +193,10 @@ def update_global_claude_md_mcp(mcp_name, tools_doc, cfgdir=None):
         return False   # stray markers: not ours to rewrite, same as unreadable
     span = block_span(existing, start_tag, end_tag)
     if span:
-        final = existing[:span[0]] + section + existing[span[1]:]
+        if block_span(existing[span[1]:], start_tag, end_tag):
+            return False   # a second pair under this name: which one is ours?
+        # the span stops before END's own line break, which existing[span[1]:] keeps
+        final = existing[:span[0]] + section.rstrip('\n') + existing[span[1]:]
     elif existing:
         final = existing.rstrip('\n') + '\n\n' + section
     else:

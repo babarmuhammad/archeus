@@ -533,9 +533,9 @@ def test_reversed_mcp_markers_are_refused_not_spliced(tmp_path, monkeypatch):
 
 def test_ordinary_mcp_replace_keeps_its_bytes_and_a_missing_file_is_created(
         tmp_path, monkeypatch):
-    """Guard: the ordinary replace must write the same bytes it always did
-    (the text after END keeps its newline, as before), and a missing file is
-    still created."""
+    """Guard: the ordinary replace changes nothing outside the pair (the text
+    after END keeps exactly its own newline, so repeated syncs never grow the
+    file), and a missing file is still created."""
     home = _home(tmp_path, 'acct')
     _wire(monkeypatch, tmp_path, results=[])
     md = os.path.join(home, 'CLAUDE.md')
@@ -545,7 +545,7 @@ def test_ordinary_mcp_replace_keeps_its_bytes_and_a_missing_file_is_created(
     assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', home) is True
     assert _read(md) == ('# My global context\nPROSE-BEFORE\n<!-- MCP:svc:START -->\n'
                          '## MCP: svc\nNEW DOC\n<!-- MCP:svc:END -->\n'
-                         '\nPROSE-AFTER\n')
+                         'PROSE-AFTER\n')
 
     fresh = _home(tmp_path, 'fresh')
     assert mcp_mod.update_global_claude_md_mcp('svc', 'NEW DOC', fresh) is True
