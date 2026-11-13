@@ -2281,7 +2281,7 @@ def _harness_homes_post(s, hid, act, name, body):
 
 def api_accounts_post(q, body):
     from .config import load_settings, save_settings
-    from .accounts import _resolved
+    from .accounts import _resolved, same_account_dir
     s = load_settings()
     act, name = body.get('action'), body.get('name', '')
     hid = _hid_of(q, body)
@@ -2311,7 +2311,7 @@ def api_accounts_post(q, body):
     elif act == 'remove':
         d = next((a['dir'] for a in s.get('accounts', []) if a.get('name') == name), '')
         s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
-        if os.path.expanduser(s.get('claude_config_dir', '')) == os.path.expanduser(d):
+        if same_account_dir(d, s.get('claude_config_dir', '')):
             s['claude_config_dir'] = ''
     else:
         return {'ok': False, 'error': 'unknown action'}
