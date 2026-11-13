@@ -311,28 +311,8 @@ def test_01_no_falsy_ask_that_is_not_false_creates_an_opt_in(db):
     assert len(changes(db)) == 1
 
 
-# ───────────────────────────────────────── 02. a truthy ask that is not a boolean (xfail)
+# ───────────────────────────────────────── 02. a truthy ask that is not a boolean
 
-@pytest.mark.xfail(strict=True, reason=(
-    'DEFECT against docs/architecture/domain-model.md 8.9 (an OptIn row\'s '
-    '`opted_in` false is an opt-out; the field is declared `opted_in: bool`, '
-    'entities.py 1546, and `OptIn._check` at entities.py 1552-1556 raises '
-    '"OptIn.opted_in is a boolean"): optins.py 50-51, the create path, hardcodes '
-    '`opted_in=True` for *any* truthy ask, so that check is never reached there, '
-    'while the very same values are refused on the flip path (57-59, which passes '
-    '`opted_in=opted_in` to `tx.update`) and by the route schema '
-    '(schemas.py 1217, opted_in is of type boolean). Measured behaviour today: '
-    'asking for an absent entry with opted_in set to the string false answers '
-    'changed True and inserts a live row at version 1 holding opted_in True, and '
-    'the opt_in.changed event then records the string - an audit trail describing '
-    'a decision whose value the row does not hold. The CLI cannot send it '
-    '(main.py 719 and 742 map the subcommand through the _OPT table onto a real '
-    'bool), the route cannot (that schema refuses it) and neither can any in-tree '
-    'caller, so it is unreachable from the shipped interfaces and not an ARCH-010 '
-    'bypass: a public command argument is a contract surface, and the sibling path '
-    'of the same argument refuses the same input. Fix it by passing '
-    '`opted_in=opted_in` at 51, or by checking the type beside the actor check at '
-    '42-44, and this test turns into a pass - at which point remove the mark.'))
 def test_02_a_truthy_ask_that_is_not_a_boolean_is_refused_before_anything_is_written(db):
     """optins.py 50-52 (`tx.insert(entities.OptIn(..., opted_in=True ...))`) and
     63-65 (`payload = {..., 'opted_in': opted_in ...}`).

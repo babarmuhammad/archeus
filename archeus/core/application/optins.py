@@ -42,6 +42,8 @@ def set_opt_in(tx, *, actor, owner_id, kind, name, opted_in, expected_version=No
     if actor.kind != 'user_device':
         raise A.NotPermitted('only a user device opts a settings source, plugin or MCP '
                              'server in or out (ADR-0049)')
+    if opted_in and not isinstance(opted_in, bool):
+        raise ValueError('OptIn.opted_in is a boolean')
     owner, orow = _owner(tx, owner_id)
     row = _find(tx, owner, owner_id, kind, name)
     if row is None:
