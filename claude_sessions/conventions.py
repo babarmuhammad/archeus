@@ -187,18 +187,18 @@ def pin_convention(text):
         return 0
     n = 0
     for _key, g, ppath, folder in _iter_project_graphs():
-        touched = False
+        touched = 0
         for e in g.get('entities', []):
             if e.get('type') != 'lesson' or e.get('kind') not in _KINDS:
                 continue
             tk = _tokens(e.get('summary') or '')
             if _same_rule(tk, want) and e.get('status') != 'pinned':
                 e['status'] = 'pinned'
-                touched = True
-                n += 1
+                touched += 1
         if touched:
             from .memory import save_memory
-            save_memory(ppath, folder, g)
+            if save_memory(ppath, folder, g):
+                n += touched
     return n
 
 
@@ -222,15 +222,18 @@ def sync_to_global(cfgdir=None):
     global_claude_md = global_claude_md_for(cfgdir)
     if not load_settings().get('conventions_to_global', True):
         return False
+    from .claude_md import well_formed
     block_body = build_block()
     old = ''
     if os.path.isfile(global_claude_md):
         try:
             old = open(global_claude_md, encoding='utf-8', errors='ignore').read()
         except Exception:
-            old = ''
+            return False   # its text is unknown: not ours to replace
     start, end = old.find(_CONV_START), old.find(_CONV_END)
     has_block = start >= 0 and end >= 0
+    if has_block and not well_formed(old, _CONV_START, _CONV_END):
+        return False   # reversed or stray markers: not ours to rewrite
     if not block_body:
         # nothing to promote — strip any existing block, leave the rest
         if not has_block:
@@ -240,13 +243,13 @@ def sync_to_global(cfgdir=None):
         from .config import generated_note
         note = generated_note('conventions that recur across your projects',
                               "archeus's Global CLAUDE.md page")
-        section = f"{_CONV_START}\n{note}\n{block_body}\n{_CONV_END}\n"
+        section = f"{_CONV_START}\n{note}\n{block_body}\n{_CONV_END}"
         if has_block:
             new = old[:start] + section + old[end + len(_CONV_END):]
         elif old.strip():
-            new = old.rstrip('\n') + '\n\n' + section
+            new = old.rstrip('\n') + '\n\n' + section + '\n'
         else:
-            new = section
+            new = section + '\n'
     if new == old:
         return True
     os.makedirs(os.path.dirname(global_claude_md), exist_ok=True)

@@ -89,6 +89,8 @@ def transcript_path(folder, sid):
 
 
 def _transcript_claude(folder, sid):
+    if not is_encoded(sid):
+        raise ValueError('not a session id: %r' % (sid,))
     return os.path.join(folder, sid + '.jsonl')
 
 

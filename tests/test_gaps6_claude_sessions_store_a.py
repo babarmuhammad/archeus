@@ -87,15 +87,12 @@ def test_transcript_path_dispatches_on_folder_harness_not_active_account(monkeyp
     assert seen == {'of': folder, 'key': ('transcript_path', 'codex')}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "store.py:92 _transcript_claude joins the wire sid unchecked, while "
-    "store.py:183 session_file validates the same wire value before joining it"))
 def test_direct_claude_transcript_sid_cannot_escape_folder(monkeypatch, tmp_path):
     folder = os.path.abspath(str(tmp_path / 'acct' / 'projects' / 'C-work-a'))
     monkeypatch.setattr(store._harnesses, 'of_path', lambda p: {'id': 'claude'})
     monkeypatch.setattr(store._harnesses, 'impl', lambda key, hid=None: store._transcript_claude)
-    out = os.path.abspath(store.transcript_path(folder, '../../secret'))
-    assert os.path.commonpath([out, folder]) == folder
+    with pytest.raises(ValueError):
+        store.transcript_path(folder, '../../secret')
 
 
 def test_missing_projects_root_returns_empty_without_listing(monkeypatch, tmp_path):

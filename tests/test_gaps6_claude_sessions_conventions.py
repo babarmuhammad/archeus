@@ -73,10 +73,6 @@ def test_sync_disabled_touches_no_file(monkeypatch, tmp_path):
     assert not os.path.exists(target)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "conventions.py:232-245 splices on START/END order without checking it; with END "
-    "before START the text between them is copied twice (same defect class the "
-    "mcp.py reversed-marker refusal already fixed)"))
 def test_reversed_markers_do_not_duplicate_manual_text(monkeypatch, tmp_path):
     old = 'HEAD\n' + END + '\nMIDDLE MUST SURVIVE\n' + START + '\nstale\n'
     target, _writes = _arrange(monkeypatch, tmp_path, old=old, body='- rule')
@@ -86,9 +82,6 @@ def test_reversed_markers_do_not_duplicate_manual_text(monkeypatch, tmp_path):
     assert out.count('HEAD') == 1
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "conventions.py:229-231 substitutes '' when the existing file cannot be read, then "
-    "conventions.py:245-249 writes the section over it (mcp.py refuses an unreadable file)"))
 def test_unreadable_file_is_not_overwritten(monkeypatch, tmp_path):
     real_open = open
     target, writes = _arrange(monkeypatch, tmp_path, old='MANUAL TEXT MUST SURVIVE\n')
@@ -119,10 +112,6 @@ def test_valid_block_replaced_around_manual_text(monkeypatch, tmp_path):
     assert OTHER_BLOCK in out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "conventions.py:243 section ends with a newline that conventions.py:245 adds on top of "
-    "the newline already after END: every sync grows the file, so a second sync is not a "
-    "fixed point"))
 def test_resync_of_block_followed_by_text_is_a_fixed_point(monkeypatch, tmp_path):
     old = 'PRE PROSE\n' + START + '\nold rule\n' + END + '\nPOST PROSE\n'
     target, _writes = _arrange(monkeypatch, tmp_path, old=old, body='- new rule')
@@ -165,10 +154,6 @@ def test_duplicate_owned_blocks_keep_surrounding_prose(monkeypatch, tmp_path):
     assert 'stale1' not in out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "conventions.py:243 section ends with a newline that conventions.py:245 adds on top of "
-    "the newline already after END, so a canonical block always grows by one byte and the "
-    "'already identical' return at conventions.py:250 cannot be reached"))
 def test_identical_block_returns_true_without_write(monkeypatch, tmp_path):
     old = 'PRE\n' + _section('- rule')
     target, writes = _arrange(monkeypatch, tmp_path, old=old, body='- rule')
@@ -228,9 +213,6 @@ def test_pin_touches_only_eligible_lessons_and_saves_touched_graphs(monkeypatch)
     assert g3['entities'][0]['status'] == 'pending'
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "conventions.py:200-202 ignores save_memory's Boolean (memory.py:130 returns False "
-    "when no mirror lands) and still returns the pinned count"))
 def test_pin_does_not_count_when_save_fails(monkeypatch):
     g = {'entities': [_lesson(TEXT)]}
     monkeypatch.setattr(conventions, '_iter_project_graphs',
