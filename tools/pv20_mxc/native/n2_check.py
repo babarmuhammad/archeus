@@ -35,7 +35,15 @@ reads the real profile at import; the host files the containers write are read b
 only after an lstat (regular, single link, no reparse point). Only SystemRoot is read
 from the environment, once, to name cmd.exe.
 
-Exit codes: 0 all cases PASS / 1 first FAIL / 2 no FAIL but an INCONCLUSIVE is present /
+Diagnostic (--diag-descendants, optional --allow-image-copy and --allow-system32-ro): six rows
+that tell a child's failure to start from its failure to write. Before any row is launched or
+anything is copied, the System32 grant is pre-checked read-only with the production scans; a
+refused grant leaves the C rows unlaunched ("not admissible"). The result is printed and written,
+with every row's label, evidence and launcher exit code, to diag_results.json in the fixture root.
+--diag-precheck alone runs only the argument checks and that pre-check: nothing is created.
+
+Exit codes: 0 all cases PASS / 1 first FAIL / 2 no FAIL but an INCONCLUSIVE is present
+(a diagnostic run is always 2; --diag-precheck exits 2 when System32 is not admissible) /
 3 setup error, budget overrun or a surviving launcher.
 """
 import hashlib
@@ -49,6 +57,7 @@ import stat
 import subprocess
 import sys
 import time
+import traceback
 from collections import namedtuple
 from types import SimpleNamespace
 
@@ -70,6 +79,12 @@ STILL_ACTIVE = 259
 DIAG = '--diag-descendants'
 IMAGE_FLAG, SYSTEM_FLAG = '--allow-image-copy', '--allow-system32-ro'
 DIAG_FLAGS = (DIAG, IMAGE_FLAG, SYSTEM_FLAG)
+DIAG_PRECHECK = '--diag-precheck'
+RESULTS = 'diag_results.json'
+RET_37, NOT_37 = 'returned 37', 'did not return 37'
+W_OK, W_DENIED, W_NOT = 'started, write ok', 'started, write denied', 'did not return code'
+VOID_LABELS = frozenset({'control failed', 'no evidence', 'launch refused', 'not admissible',
+                         'diagnostic error', 'not authorized'})
 REPARSE = 0x400
 HOME_VARS = ('USERPROFILE', 'HOME', 'HOMEPATH', 'TEMP', 'TMP', 'CLAUDE_CONFIG_DIR',
              'ARCHEUS_HOME', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME')
@@ -376,7 +391,8 @@ def exit_chain(exe, tok, ev):
 
 
 def write_chain(exe, tok, child, ev):
-    return '%s /d /c "echo %s>%s" & echo OBSERVED>%s' % (exe, tok, child, ev)
+    return ('%s /d /c "echo %s>%s & exit /b 41" & (if errorlevel 42 (echo OTHER) else '
+            '(if errorlevel 41 (echo OBSERVED) else (echo OTHER)))>%s' % (exe, tok, child, ev))
 
 
 def diag_line(cmd_exe, chain):
@@ -425,54 +441,74 @@ def _text(seen):
     return seen.strip() if isinstance(seen, str) and seen not in ('<dir>', '<link>') else None
 
 
-def diag_result(row, look, pair_ran):
-    """One row's label from what the host read. A failed control or a missing done marker
-    overrides any child evidence: the row proves nothing."""
+def diag_result(row, look):
+    """One row's label from the host's own reads. A failed control or a missing done marker
+    overrides any child evidence. An EXIT row says only whether the child returned 37. A WRITE
+    row says whether the child returned its own code (the parent's OBSERVED line) and then
+    whether the child's token file holds the token."""
     if judge(row.controls, look) is not None:
         return 'control failed'
     if judge([row.done], look) is not None:
         return 'no evidence'
+    seen = _text(look(row.ev))
     if row.kind == 'exit':
-        seen = _text(look(row.ev))
         if seen == row.tok:
-            return 'child ran'
+            return RET_37
         if seen == 'OTHER':
-            return 'child did not run'
+            return NOT_37
         return 'no evidence'
-    if judge([Item('write_ok', row.id, None, row.child, row.tok)], look) is None:
-        return 'child ran'
-    if _text(look(row.ev)) != 'OBSERVED':
+    if seen == 'OTHER':
+        return W_NOT
+    if seen != 'OBSERVED':
         return 'no evidence'
-    return 'child ran but write failed' if pair_ran else 'child did not run'
+    wrote = judge([Item('write_ok', row.id, None, row.child, row.tok)], look) is None
+    return W_OK if wrote else W_DENIED
 
 
 def diag_interpret(labels):
-    """The spec's Interpretation bullets over the rows that ran. Rows whose control failed or
-    left no evidence are named and count for nothing."""
-    void = sorted(r for r, v in labels.items() if v in ('control failed', 'no evidence', 'launch refused'))
-    ok = {r: v for r, v in labels.items() if r not in void}
-    ran = lambda r: ok.get(r) == 'child ran'
+    """The conclusions the evidence supports. First matching line wins; "returned" is RET_37
+    and "not returned" is NOT_37. Void rows (VOID_LABELS) are named and count for nothing.
+
+    1. A1 returned, A2 started and wrote        -> baseline creation and workspace write proved
+    2. A1 returned, A2 started, write denied    -> investigate cwd and environment versus grants (3)
+    3. A1 returned, A2 otherwise                -> baseline exit proved; no workspace conclusion
+    4. A1 not returned, B1 and/or C1 returned   -> image or System32 access strongly supported (1)
+    5. A1 absent or void, B1 and/or C1 returned -> no conclusion about image or System32 access
+    6. some usable EXIT row, none returned      -> all exit rows did not return 37: inconclusive (2)
+    7. otherwise                                -> no interpretation bullet matches
+
+    After the line that matched, every started WRITE row (A2, B2, C2 with W_OK or W_DENIED)
+    adds "child start proved by <row> (<label>)": a WRITE row proves its child ran from its own
+    evidence, whatever the EXIT rows did.
+    """
+    void = sorted(r for r, v in labels.items() if v in VOID_LABELS)
+    ok = {r: v for r, v in labels.items() if v not in VOID_LABELS}
+    a1 = ok.get('A1')
     exits = [r for r in ('A1', 'B1', 'C1') if r in ok]
-    if ran('A1') and ok.get('A2') == 'child ran':
-        text = 'baseline exit and write both succeed: child creation and usable workspace access proved'
-    elif ran('A1') and ok.get('A2') == 'child ran but write failed':
-        text = ('baseline exit succeeds, write fails with its control passing: investigate (3), '
+    returned = [r for r in ('B1', 'C1') if ok.get(r) == RET_37]
+    if a1 == RET_37 and ok.get('A2') == W_OK:
+        text = 'baseline creation and workspace write proved'
+    elif a1 == RET_37 and ok.get('A2') == W_DENIED:
+        text = ('baseline child started, write denied with its control passing: investigate (3), '
                 'inherited cwd and environment versus grants')
-    elif exits and not any(ran(r) for r in exits):
-        text = ('all exit rows failed: inconclusive for blanket denial (2); six rows cannot prove it. '
-                'Image dependencies, UI initialization and environment remain alternatives')
-    elif not ran('A1') and (ran('B1') or ran('C1')):
-        parts = []
-        if ran('B1'):
-            parts.append('granted image runs: image location or access, cause (1), strongly supported; '
-                         'loader dependency access still possible')
-        if ran('C1'):
-            parts.append('granted System32 runs: missing System32 access or dependency grant, cause (1), '
-                         'strongly supported')
-        text = '; '.join(parts)
+    elif a1 == RET_37:
+        text = 'baseline exit proved; the write row gives no workspace conclusion'
+    elif a1 == NOT_37 and returned:
+        strong = {'B1': 'image location or access, cause (1), strongly supported; '
+                        'loader dependency access still possible',
+                  'C1': 'missing System32 access or dependency grant, cause (1), strongly supported'}
+        text = '; '.join(strong[r] for r in returned)
+    elif a1 is None and returned:
+        text = 'A1 baseline not usable: no conclusion about image or System32 access'
+    elif exits:
+        text = ('all exit rows did not return 37: inconclusive for blanket denial (2); six rows cannot '
+                'prove it. Image dependencies, UI initialization and environment remain alternatives')
     else:
         text = 'no interpretation bullet matches: %s' % ', '.join(
             '%s=%s' % kv for kv in sorted(ok.items()))
+    for r in ('A2', 'B2', 'C2'):
+        if ok.get(r) in (W_OK, W_DENIED):
+            text += '; child start proved by %s (%s)' % (r, ok[r])
     if void:
         text = 'rows not usable (%s): %s' % (', '.join(void), text)
     return text
@@ -578,7 +614,7 @@ class Harness:
         self.cmd = ntpath.join(systemroot, 'System32', 'cmd.exe')
         self.env = {'SYSTEMROOT': systemroot, 'LOCALAPPDATA': self.lay['localappdata']}
         self.sdk_src, self.jobs, self.seq, self.ended, self.seeds = sdk_src, [], 0, {}, {}
-        self.m = None
+        self.m, self.phase = None, 'setup'
 
     # ---- setup ----
 
@@ -642,6 +678,7 @@ class Harness:
         """Compile, start in a fresh Core Job, wait, return what the production end left."""
         eid, launch = self.make(tag, argv, rw, ro, **kw)
         job = self.job(eid, kw.get('boundary'))
+        self.phase = 'launch'
         launch.start(job=job.handle)
         code = launch.wait()
         out = launch.stdout.read().decode('utf-8', 'replace')
@@ -674,18 +711,24 @@ class Harness:
         return True
 
     def wind_down(self):
-        """Close every Job (the kill), then check no launcher this script made is alive."""
-        for ref in self.jobs:
-            ref.close()
+        """Close every Job (the kill), then check no launcher this script made is alive. One
+        failed close, or Ctrl+C, does not skip the other Jobs. Returns the number of failures."""
+        failed = 0
+        for n, ref in enumerate(self.jobs, 1):
+            try:
+                ref.close()
+            except BaseException as ex:
+                failed += 1
+                _say('pv20 N2 wind-down: Job %d could not be closed: %s %s'
+                     % (n, type(ex).__name__, _snip(str(ex))))
         if self.m is not None:
             self.m.mxc.NATIVE_RUN_ENABLED = False
-        left = 0
         for pid, ctime in list(getattr(getattr(self, 'api', None), 'created', None) or ()):
             if not self.wait_dead(pid, ctime, 5.0):
-                left += 1
+                failed += 1
                 if live_ctime(pid) == ctime:      # ours, same creation time: the one kill allowed
                     common._terminate_process(pid)
-        return left
+        return failed
 
 
 def read_text(path):
@@ -1127,41 +1170,120 @@ def _say(text):
     print(redact(text), flush=True)
 
 
-def diag_row(h, row, labels):
+def diag_row(h, row):
     rw, ro = grants(h.lay, 'p')
     readonly = ro + ((row.extra,) if row.extra else ())
     chain = ' & '.join([row.chain] + [i.cmd for i in row.controls + [row.done]])
+    h.phase = 'setup'
     run = h.go('diag-' + row.id.lower(), None, rw, readonly, line=diag_line(h.cmd, chain))
-    label = diag_result(row, look_at, labels.get(row.pair) == 'child ran')
+    h.phase = 'evidence'
+    label = diag_result(row, look_at)
+    evidence = {'ev': look_at(row.ev), 'child': look_at(row.child) if row.child else None}
     digest = hashlib.sha256(json.dumps(run.launch.policy.raw, sort_keys=True).encode()).hexdigest()
     _say('pv20 N2-diag %s %s policy=%s ledger=%s job_members=%d launcher_rc=%s %s'
          % (row.id, label, digest[:16], '>'.join(run.ops), h.job_count(run.job), run.code,
             _tail(run.out + run.err)))
-    return label
+    return {'label': label, 'evidence': evidence, 'launcher_rc': run.code, 'policy_sha256': digest}
 
 
-def diagnose(h, flags):
-    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran."""
+def refusal_types(h):
+    """The admission refusals the production launch raises: a refused grant (StageError from
+    the link and reparse scans) and a refused policy (MxcUnavailable from compile_policy)."""
+    m = getattr(h, 'm', None)
+    return () if m is None else (m.staging.StageError, m.mxc.MxcUnavailable)
+
+
+def failed_row(h, row, ex):
+    """A known admission refusal in setup or launch is a finding. Anything else is a defect of
+    the diagnostic: the row is void, its type, phase and traceback tail are printed."""
+    phase = getattr(h, 'phase', 'setup')
+    if phase in ('setup', 'launch') and isinstance(ex, refusal_types(h)):
+        _say('pv20 N2-diag %s launch refused: %s %s' % (row.id, type(ex).__name__, _snip(str(ex))))
+        return {'label': 'launch refused', 'phase': phase}
+    tail = ''.join(traceback.format_exception(type(ex), ex, ex.__traceback__)).splitlines()[-4:]
+    _say('pv20 N2-diag %s diagnostic error: %s in phase %s: %s'
+         % (row.id, type(ex).__name__, phase, _snip(str(ex))))
+    _say('pv20 N2-diag %s traceback tail: %s' % (row.id, ' | '.join(tail)))
+    return {'label': 'diagnostic error', 'phase': phase, 'error': _snip(str(ex))}
+
+
+def grant_admission(path, check_grants, scan_grants, error):
+    """The two scans a launch runs on one granted path, read-only. None when admitted, else the
+    refusal text, which names the first refusing path. A folder the second scan cannot list is
+    not admitted either: the launch would fail on it the same way."""
+    try:
+        check_grants((path,), error)
+        scan_grants((path,))
+    except error as ex:
+        return str(ex)
+    except OSError as ex:
+        return 'grant scan failed: %s' % type(ex).__name__
+    return None
+
+
+def system32_admission(systemroot, parent):
+    """The production grant scans on System32 (the C rows' grant), run before anything is copied
+    or granted. Only lstat and listdir: no handle, no ACL, no grant."""
+    path = ntpath.join(systemroot, 'System32')
+    mods = import_isolated(('archeus.node.linkscan', 'archeus.node.staging'), parent)
+    linkscan_mod, staging_mod = mods['archeus.node.linkscan'], mods['archeus.node.staging']
+    reason = grant_admission(path, linkscan_mod.check_grants, staging_mod.scan_grants,
+                             staging_mod.StageError)
+    return {'path': path, 'admitted': reason is None, 'reason': reason}
+
+
+def admission_line(result):
+    if result['admitted']:
+        return 'pv20 N2-diag pre-check %s admitted' % result['path']
+    return 'pv20 N2-diag pre-check %s not admissible: %s' % (result['path'], result['reason'])
+
+
+def _row_record(row, admission, label, **extra):
+    base = {'row': row.id, 'label': label, 'evidence': None, 'launcher_rc': None,
+            'precheck': admission if row.flag == SYSTEM_FLAG else None}
+    base.update(extra)
+    return base
+
+
+def write_results(root, doc):
+    with open(os.path.join(root, RESULTS), 'w', encoding='utf-8') as fh:
+        fh.write(redact(json.dumps(doc, indent=2, sort_keys=True)) + '\n')
+
+
+def diagnose(h, flags, admission):
+    """Diagnostic only: never a PASS, so the exit code is 2 whenever the matrix ran. A System32
+    row is launched only when the pre-check admitted the System32 grant."""
     h.prepare()
     toolchain = os.path.join(h.lay['root'], 'toolchain')
-    runnable, skipped = diag_gate(diag_rows(h.lay, h.env['SYSTEMROOT'], h.seeds['p.state']), flags)
+    rows = diag_rows(h.lay, h.env['SYSTEMROOT'], h.seeds['p.state'])
+    runnable, skipped = diag_gate(rows, flags)
+    recs = {}
     for r in skipped:
         _say('pv20 N2-diag %s SKIPPED not authorized (%s)' % (r.id, r.flag))
-    if any(r.flag == IMAGE_FLAG for r in runnable):
-        os.makedirs(toolchain, exist_ok=True)
-        digest, dst = stage_toolchain(h.cmd, toolchain)
-        _say('pv20 N2-diag staged %s sha256=%s source and copy equal' % (dst, digest))
-    labels = {}
-    for r in runnable:
-        try:
-            labels[r.id] = diag_row(h, r, labels)
-        except SetupError:
-            raise
-        except Exception as ex:
-            # A refused grant (System32 read-only, say) is a finding; the other rows still run.
-            labels[r.id] = 'launch refused'
-            _say('pv20 N2-diag %s launch refused: %s %s' % (r.id, type(ex).__name__, _snip(str(ex))))
-    _say('DIAGNOSTIC %s' % diag_interpret(labels))
+        recs[r.id] = _row_record(r, admission, 'not authorized')
+    interpretation = None
+    try:
+        if any(r.flag == IMAGE_FLAG for r in runnable):
+            os.makedirs(toolchain, exist_ok=True)
+            digest, dst = stage_toolchain(h.cmd, toolchain)
+            _say('pv20 N2-diag staged %s sha256=%s source and copy equal' % (dst, digest))
+        for r in runnable:
+            if r.flag == SYSTEM_FLAG and not admission['admitted']:
+                _say('pv20 N2-diag %s not admissible: %s' % (r.id, admission['reason']))
+                recs[r.id] = _row_record(r, admission, 'not admissible')
+                continue
+            try:
+                out = diag_row(h, r)
+            except SetupError:
+                raise
+            except Exception as ex:
+                out = failed_row(h, r, ex)
+            recs[r.id] = _row_record(r, admission, out.pop('label'), **out)
+        interpretation = diag_interpret({k: v['label'] for k, v in recs.items()})
+        _say('DIAGNOSTIC %s' % interpretation)
+    finally:
+        write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
+                                      'rows': [recs[r.id] for r in rows if r.id in recs]})
     return 2
 
 
@@ -1212,33 +1334,46 @@ def run(h, rec):
     stubs(rec)
 
 
+def precheck_only(parent, systemroot):
+    result = system32_admission(systemroot, parent)
+    _say(admission_line(result))
+    return 0 if result['admitted'] else 2
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     flags = {a for a in argv if a.startswith('--')}
     argv = [a for a in argv if a not in flags]
-    if len(argv) != 1 or not parent_ok(argv[0]) or not flags <= set(DIAG_FLAGS) or (flags and DIAG not in flags):
+    valid = flags == {DIAG_PRECHECK} or (flags <= set(DIAG_FLAGS) and (not flags or DIAG in flags))
+    if len(argv) != 1 or not parent_ok(argv[0]) or not valid:
         print('usage: python -m tools.pv20_mxc.native.n2_check <fixture-parent at or below %s; letters, '
-              'digits, dot, underscore, hyphen>' % FIXTURE_BASE, flush=True)
+              'digits, dot, underscore, hyphen> [--diag-precheck | --diag-descendants [--allow-image-copy] '
+              '[--allow-system32-ro]]' % FIXTURE_BASE, flush=True)
         return 3
     parent = argv[0]
     if not _on_windows() or not os.path.isdir(parent):
         print('SETUP ERROR: Windows only and the parent must exist', flush=True)
         return 3
-    src = os.path.join(parent, *SDK_TAIL)
     root_env = os.environ.get('SystemRoot', '')
     if not _system_ok(root_env):
         print('SETUP ERROR: SystemRoot is not a plain drive\\Windows folder with cmd.exe', flush=True)
         return 3
+    if flags == {DIAG_PRECHECK}:
+        return precheck_only(parent, root_env)
+    src = os.path.join(parent, *SDK_TAIL)
     if not os.path.isfile(os.path.join(src, 'package.json')):
         print(redact('SETUP ERROR: staged SDK missing under the parent (operator stages it)'), flush=True)
         return 3
-    rec, root, h, code = _Rec(STAGE), None, None, 3
+    admission = system32_admission(root_env, parent) if flags else None
+    if admission is not None:
+        _say(admission_line(admission))
+    rec, root, h, code, left = _Rec(STAGE), None, None, 3, 0
     try:
         root = safe_root(parent)
         rec.journal = os.path.join(root, JOURNAL)
         h = Harness(root, src, root_env, Budget(BUDGET_S))
         if flags:
-            code = diagnose(h, flags)
+            code = diagnose(h, flags, admission)
         else:
             run(h, rec)
             code = rec.exit_code()
@@ -1252,9 +1387,10 @@ def main(argv=None):
     except Exception as ex:
         print(redact('UNEXPECTED ERROR: %s %s; root preserved at %s'
                      % (type(ex).__name__, _snip(str(ex)), root)), flush=True)
-    left = h.wind_down() if h is not None else 0
+    finally:
+        left = h.wind_down() if h is not None else 0
     if left:
-        print(redact('%d launcher(s) outlived the Job close; root preserved' % left), flush=True)
+        print(redact('%d Job close(s) or launcher check(s) failed; root preserved' % left), flush=True)
         code = 3
     if root is None or code == 3:
         return code

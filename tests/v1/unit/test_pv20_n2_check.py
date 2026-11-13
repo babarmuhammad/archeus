@@ -6,6 +6,8 @@ and the production modules are imported only where they are pure (mxc, win32_mxc
 """
 
 import ast
+import json
+import ntpath
 import os
 import re
 import stat
@@ -15,6 +17,7 @@ import pytest
 
 from tools.pv20_mxc.native import common, n2_check as n2
 from tools.pv20_mxc.native.common import StopRun
+from archeus.node import linkscan, mxc, staging
 from tools.pv20_mxc.protocol import STAGES
 
 REAL_PARENT_OK = n2.parent_ok
@@ -847,6 +850,11 @@ def test_no_stat_bit_of_the_fixture_is_changed_by_the_pure_helpers(tmp_path):
 # ---------------------------------------------------------------- the descendant diagnostic
 
 CMD = r'C:\Windows\System32\cmd.exe'
+RET, NOT = n2.RET_37, n2.NOT_37
+WOK, WDEN, WNOT = n2.W_OK, n2.W_DENIED, n2.W_NOT
+ADMITTED = {'path': r'C:\Windows\System32', 'admitted': True, 'reason': None}
+REFUSED = {'path': r'C:\Windows\System32', 'admitted': False,
+           'reason': 'multiple links in grant (a second name): a.dll'}
 
 
 def test_exit_and_write_templates_are_exact():
@@ -855,7 +863,14 @@ def test_exit_and_write_templates_are_exact():
         r'C:\Windows\System32\cmd.exe /d /c exit /b 37 & (if errorlevel 38 (echo OTHER) else '
         r'(if errorlevel 37 (echo T1Z) else (echo OTHER)))>C:\fx\p\state\a1.txt')
     assert n2.write_chain(CMD, 'T1Z', w + r'\a2-child.txt', w + r'\a2.txt') == (
-        r'C:\Windows\System32\cmd.exe /d /c "echo T1Z>C:\fx\p\state\a2-child.txt" & echo OBSERVED>C:\fx\p\state\a2.txt')
+        r'C:\Windows\System32\cmd.exe /d /c "echo T1Z>C:\fx\p\state\a2-child.txt & exit /b 41" & '
+        r'(if errorlevel 42 (echo OTHER) else (if errorlevel 41 (echo OBSERVED) else (echo OTHER)))'
+        r'>C:\fx\p\state\a2.txt')
+
+
+def test_write_chain_returns_its_own_code_and_never_the_exit_code_or_a_conditional_and():
+    chain = n2.write_chain(CMD, 'T1Z', r'C:\fx\c.txt', r'C:\fx\e.txt')
+    assert '41' in chain and '37' not in chain and '&&' not in chain and '^' not in chain
 
 
 def test_final_command_lines_are_pinned_and_only_the_write_needs_the_raw_line():
@@ -866,9 +881,8 @@ def test_final_command_lines_are_pinned_and_only_the_write_needs_the_raw_line():
         r'C:\Windows\System32\cmd.exe /d /s /c "C:\Windows\System32\cmd.exe /d /c exit /b 37 & '
         r'(if errorlevel 38 (echo OTHER) else (if errorlevel 37 (echo T1Z) else (echo OTHER)))>C:\fx\p\state\a1.txt"')
     assert n2.diag_line(CMD, write_chain) == (
-        r'C:\Windows\System32\cmd.exe /d /s /c "C:\Windows\System32\cmd.exe /d /c "echo T1Z>C:\fx\p\state\a2-child.txt" '
-        r'& echo OBSERVED>C:\fx\p\state\a2.txt"')
-    # EXIT has no inner quotes, so list2cmdline gives the same line; WRITE gets escaped \" that cmd.exe does not read
+        r'C:\Windows\System32\cmd.exe /d /s /c "C:\Windows\System32\cmd.exe /d /c "echo T1Z>C:\fx\p\state\a2-child.txt & exit /b 41" & '
+        r'(if errorlevel 42 (echo OTHER) else (if errorlevel 41 (echo OBSERVED) else (echo OTHER)))>C:\fx\p\state\a2.txt"')
     assert n2.command_line(n2.cmd_argv(CMD, exit_chain)) == n2.diag_line(CMD, exit_chain)
     assert n2.command_line(n2.cmd_argv(CMD, write_chain)) != n2.diag_line(CMD, write_chain)
     assert '\\"echo T1Z' in n2.command_line(n2.cmd_argv(CMD, write_chain))
@@ -917,54 +931,68 @@ def _look(files):
     return lambda p: files.get(p)
 
 
-def test_exit_row_labels_follow_the_parent_written_evidence(tmp_path):
+def test_exit_row_labels_say_only_whether_the_child_returned_37(tmp_path):
     row = n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED')[0]
     ok = _ok_files(row)
-    assert n2.diag_result(row, _look({**ok, row.ev: row.tok + '\r\n'}), False) == 'child ran'
-    assert n2.diag_result(row, _look({**ok, row.ev: 'OTHER'}), False) == 'child did not run'
-    assert n2.diag_result(row, _look(ok), False) == 'no evidence'
-    assert n2.diag_result(row, _look({row.ev: row.tok}), False) == 'control failed'
-    assert n2.diag_result(row, _look({**ok, row.ev: row.tok, row.done.path: 'x'}), False) == 'no evidence'
+    assert n2.diag_result(row, _look({**ok, row.ev: row.tok + '\r\n'})) == 'returned 37'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OTHER'})) == 'did not return 37'
+    assert n2.diag_result(row, _look(ok)) == 'no evidence'
+    assert n2.diag_result(row, _look({row.ev: row.tok})) == 'control failed'
+    assert n2.diag_result(row, _look({**ok, row.ev: row.tok, row.done.path: 'x'})) == 'no evidence'
 
 
-def test_write_row_separates_child_write_from_child_launch_using_the_paired_exit(tmp_path):
+def test_write_row_labels_come_from_its_own_evidence_only(tmp_path):
     row = [r for r in n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED') if r.id == 'A2'][0]
     ok = _ok_files(row)
-    wrote = {**ok, row.child: row.tok, row.ev: 'OBSERVED'}
-    assert n2.diag_result(row, _look(wrote), False) == 'child ran'
-    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'}), True) == 'child ran but write failed'
-    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'}), False) == 'child did not run'
-    assert n2.diag_result(row, _look(ok), True) == 'no evidence'
-    assert n2.diag_result(row, _look({row.child: row.tok, row.ev: 'OBSERVED'}), True) == 'control failed'
+    assert n2.diag_result(row, _look({**ok, row.child: row.tok, row.ev: 'OBSERVED'})) == 'started, write ok'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'})) == 'started, write denied'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OTHER'})) == 'did not return code'
+    assert n2.diag_result(row, _look({**ok, row.child: row.tok, row.ev: 'OTHER'})) == 'did not return code'
+    assert n2.diag_result(row, _look(ok)) == 'no evidence'
+    assert n2.diag_result(row, _look({row.child: row.tok, row.ev: 'OBSERVED'})) == 'control failed'
 
 
 def test_a_failed_control_is_never_a_pass_even_when_the_child_ran(tmp_path):
     row = n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED')[0]
     files = {k: v for k, v in _ok_files(row).items() if k != row.controls[1].path}
     files[row.ev] = row.tok
-    assert n2.diag_result(row, _look(files), False) == 'control failed'
+    assert n2.diag_result(row, _look(files)) == 'control failed'
     assert 'PASS' not in n2.diag_interpret({'A1': 'control failed'})
 
 
 @pytest.mark.parametrize('labels, wants', [
-    ({'A1': 'child ran', 'A2': 'child ran'}, 'child creation and usable workspace access proved'),
-    ({'A1': 'child ran', 'A2': 'child ran but write failed'}, 'investigate (3)'),
-    ({'A1': 'child did not run'}, 'inconclusive for blanket denial (2)'),
-    ({'A1': 'child did not run', 'A2': 'child did not run', 'B1': 'child did not run', 'C1': 'child did not run'},
-     'inconclusive for blanket denial (2)'),
-    ({'A1': 'child did not run', 'B1': 'child ran', 'B2': 'child ran'}, 'cause (1), strongly supported'),
-    ({'A1': 'child did not run', 'C1': 'child ran'}, 'missing System32 access or dependency grant'),
+    ({'A1': RET, 'A2': WOK}, 'baseline creation and workspace write proved'),
+    ({'A1': RET, 'A2': WDEN}, 'investigate (3), inherited cwd and environment versus grants'),
+    ({'A1': RET, 'A2': WNOT}, 'baseline exit proved; the write row gives no workspace conclusion'),
+    ({'A1': RET}, 'baseline exit proved; the write row gives no workspace conclusion'),
+    ({'A1': NOT}, 'all exit rows did not return 37: inconclusive for blanket denial (2)'),
+    ({'A1': NOT, 'A2': WDEN}, 'child start proved by A2 (started, write denied)'),
+    ({'A1': NOT, 'B1': RET, 'B2': WOK}, 'image location or access, cause (1), strongly supported'),
+    ({'A1': NOT, 'C1': RET}, 'missing System32 access or dependency grant, cause (1), strongly supported'),
+    ({'B1': RET}, 'A1 baseline not usable: no conclusion about image or System32 access'),
+    ({'A1': 'launch refused', 'C1': RET}, 'A1 baseline not usable: no conclusion about image or System32 access'),
+    ({}, 'no interpretation bullet matches'),
 ])
-def test_interpretation_branches(labels, wants):
+def test_every_interpretation_line(labels, wants):
     assert wants in n2.diag_interpret(labels)
 
 
-def test_a_failed_control_row_is_named_and_counts_for_nothing():
-    text = n2.diag_interpret({'A1': 'child ran', 'A2': 'child ran', 'B1': 'control failed'})
-    assert 'rows not usable (B1)' in text and 'usable workspace access proved' in text
-    text = n2.diag_interpret({'A1': 'child did not run', 'B1': 'control failed'})
-    assert 'not usable (B1)' in text and 'inconclusive for blanket denial (2)' in text
-    assert 'cause (1)' not in text
+def test_a_write_row_that_did_not_return_its_code_is_not_called_a_write_failure():
+    text = n2.diag_interpret({'A1': RET, 'A2': WNOT})
+    assert 'investigate' not in text and 'write failed' not in text
+
+
+def test_void_rows_are_named_and_count_for_nothing():
+    text = n2.diag_interpret({'A1': RET, 'A2': WOK, 'B1': 'control failed'})
+    assert 'rows not usable (B1): baseline creation and workspace write proved' in text
+    text = n2.diag_interpret({'A1': NOT, 'B1': 'control failed'})
+    assert 'rows not usable (B1)' in text and 'inconclusive' in text and 'strongly supported' not in text
+    text = n2.diag_interpret({'A1': NOT, 'C1': 'not admissible', 'C2': 'not admissible'})
+    assert 'rows not usable (C1, C2)' in text
+    text = n2.diag_interpret({'A1': RET, 'A2': 'diagnostic error'})
+    assert 'rows not usable (A2)' in text and 'baseline exit proved' in text
+    text = n2.diag_interpret({'A1': 'control failed', 'C1': RET})
+    assert 'rows not usable (A1)' in text and 'no conclusion about image or System32 access' in text
 
 
 class DiagHarness:
@@ -974,6 +1002,7 @@ class DiagHarness:
         self.env = {'SYSTEMROOT': r'C:\Windows'}
         self.seeds = {'p.state': 'SEED'}
         self.launches = []
+        self.m = SimpleNamespace(staging=staging, mxc=mxc)
 
     def prepare(self):
         pass
@@ -991,7 +1020,7 @@ class DiagHarness:
 def test_diagnose_without_flags_launches_only_a_rows_and_never_stages(tmp_path, monkeypatch, capsys):
     h = DiagHarness(tmp_path)
     monkeypatch.setattr(n2, 'stage_toolchain', lambda *a: pytest.fail('staged without the flag'))
-    assert n2.diagnose(h, {n2.DIAG}) == 2
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 2
     assert [t for t, _, _ in h.launches] == ['diag-a1', 'diag-a2']
     assert all(not any('toolchain' in p or 'System32' in p for p in ro) for _, ro, _ in h.launches)
     out = capsys.readouterr().out
@@ -1002,7 +1031,7 @@ def test_diagnose_with_image_flag_stages_once_and_adds_only_the_toolchain_grant(
     h = DiagHarness(tmp_path)
     staged = []
     monkeypatch.setattr(n2, 'stage_toolchain', lambda src, folder: staged.append((src, folder)) or ('ab', 'x'))
-    n2.diagnose(h, {n2.DIAG, n2.IMAGE_FLAG})
+    n2.diagnose(h, {n2.DIAG, n2.IMAGE_FLAG}, ADMITTED)
     k = os.path.join(h.lay['root'], 'toolchain')
     assert staged == [(CMD, k)]
     assert [t for t, _, _ in h.launches] == ['diag-a1', 'diag-a2', 'diag-b1', 'diag-b2']
@@ -1010,36 +1039,222 @@ def test_diagnose_with_image_flag_stages_once_and_adds_only_the_toolchain_grant(
     assert b1[-1] == k and not any('System32' in p for _, ro, _ in h.launches for p in ro)
 
 
-def test_a_refused_launch_is_recorded_and_the_remaining_rows_still_run(tmp_path, capsys):
+def test_a_refused_grant_leaves_the_c_rows_unlaunched_and_the_a_and_b_rows_run(tmp_path, monkeypatch, capsys):
+    h = DiagHarness(tmp_path)
+    monkeypatch.setattr(n2, 'stage_toolchain', lambda *a: ('ab', 'x'))
+    assert n2.diagnose(h, {n2.DIAG, n2.IMAGE_FLAG, n2.SYSTEM_FLAG}, REFUSED) == 2
+    assert [t for t, _, _ in h.launches] == ['diag-a1', 'diag-a2', 'diag-b1', 'diag-b2']
+    out = capsys.readouterr().out
+    assert 'C1 not admissible' in out and 'C2 not admissible' in out and 'a second name' in out
+    assert 'rows not usable (A1, A2, B1, B2, C1, C2)' in out
+
+
+@pytest.mark.parametrize('exc, label', [
+    (staging.StageError('a second name for x'), 'launch refused'),
+    (mxc.MxcUnavailable('alias in grant: x'), 'launch refused'),
+    (ValueError('bug in the diagnostic'), 'diagnostic error'),
+    (TimeoutError('launcher I/O deadline'), 'diagnostic error'),
+])
+def test_only_admission_refusals_are_refusals_every_other_exception_is_a_diagnostic_error(
+        tmp_path, capsys, exc, label):
     h = DiagHarness(tmp_path)
     go = h.go
 
-    def refuse_a1(tag, *a, **kw):
+    def fail_a1(tag, *a, **kw):
         if tag == 'diag-a1':
-            raise ValueError('grant refused')
+            raise exc
         return go(tag, *a, **kw)
-    h.go = refuse_a1
-    assert n2.diagnose(h, {n2.DIAG}) == 2
+    h.go = fail_a1
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 2
     assert [t for t, _, _ in h.launches] == ['diag-a2']
     out = capsys.readouterr().out
-    assert 'A1 launch refused: ValueError grant refused' in out and 'rows not usable (A1' in out
+    assert 'A1 %s' % label in out and 'rows not usable (A1' in out
+    assert type(exc).__name__ in out and str(exc) in out
+    if label == 'diagnostic error':
+        assert 'in phase setup' in out
 
 
-def test_a_budget_overrun_still_stops_the_matrix(tmp_path):
+def test_a_failure_while_reading_evidence_is_a_diagnostic_error_in_the_evidence_phase(tmp_path, monkeypatch, capsys):
+    h = DiagHarness(tmp_path)
+
+    def boom(path):
+        raise staging.StageError('unreadable entry: x')
+    monkeypatch.setattr(n2, 'look_at', boom)
+    assert n2.diagnose(h, {n2.DIAG}, ADMITTED) == 2
+    out = capsys.readouterr().out
+    assert 'A1 diagnostic error' in out and 'in phase evidence' in out and 'launch refused' not in out
+
+
+def test_a_budget_overrun_still_stops_the_matrix_and_keeps_what_was_recorded(tmp_path):
     h = DiagHarness(tmp_path)
 
     def over(*a, **kw):
         raise n2.SetupError('time budget exceeded')
     h.go = over
     with pytest.raises(n2.SetupError):
-        n2.diagnose(h, {n2.DIAG})
+        n2.diagnose(h, {n2.DIAG}, ADMITTED)
+    assert os.path.isfile(os.path.join(h.lay['root'], n2.RESULTS))
 
 
-@pytest.mark.parametrize('extra', [['--allow-image-copy'], ['--diag-descendants', '--bogus']])
-def test_main_refuses_unknown_or_unpaired_flags_before_creating_anything(tmp_path, monkeypatch, extra):
+def test_the_run_leaves_one_json_record_of_every_row(tmp_path):
+    h = DiagHarness(tmp_path)
+    n2.diagnose(h, {n2.DIAG}, ADMITTED)
+    doc = json.load(open(os.path.join(h.lay['root'], n2.RESULTS), encoding='utf-8'))
+    assert doc['system32'] == ADMITTED
+    assert [r['row'] for r in doc['rows']] == ['A1', 'A2', 'B1', 'B2', 'C1', 'C2']
+    first = doc['rows'][0]
+    assert first['label'] == 'control failed' and first['launcher_rc'] == 0
+    assert set(first['evidence']) == {'ev', 'child'} and first['precheck'] is None
+    assert doc['rows'][1]['label'] == 'control failed' and doc['rows'][2]['label'] == 'not authorized'
+    assert 'interpretation' in doc
+
+
+def test_the_c_rows_carry_the_precheck_result_in_the_record(tmp_path, monkeypatch):
+    h = DiagHarness(tmp_path)
+    monkeypatch.setattr(n2, 'stage_toolchain', lambda *a: ('ab', 'x'))
+    n2.diagnose(h, {n2.DIAG, n2.IMAGE_FLAG, n2.SYSTEM_FLAG}, REFUSED)
+    doc = json.load(open(os.path.join(h.lay['root'], n2.RESULTS), encoding='utf-8'))
+    c1 = [r for r in doc['rows'] if r['row'] == 'C1'][0]
+    assert c1['label'] == 'not admissible' and c1['precheck'] == REFUSED and c1['launcher_rc'] is None
+
+
+def _plain_tree(tmp_path):
+    tree = tmp_path / 'System32'
+    tree.mkdir()
+    (tree / 'a.dll').write_bytes(b'x')
+    return tree
+
+
+def _scans():
+    return linkscan.check_grants, staging.scan_grants, staging.StageError
+
+
+def test_grant_admission_refuses_a_second_name_and_names_the_file(tmp_path):
+    tree = _plain_tree(tmp_path)
+    os.link(str(tree / 'a.dll'), str(tree / 'b.dll'))
+    reason = n2.grant_admission(str(tree), *_scans())
+    assert reason is not None and 'second name' in reason and 'a.dll' in reason
+
+
+def test_grant_admission_refuses_a_reparse_entry_through_the_lstat_seam(tmp_path, monkeypatch):
+    tree = _plain_tree(tmp_path)
+    (tree / 'sub').mkdir()
+    (tree / 'sub' / 'f.dll').write_bytes(b'x')
+    real, marked = os.lstat, os.path.normcase(str(tree / 'sub'))
+
+    def lstat(p, *a, **k):
+        st = real(p, *a, **k)
+        if os.path.normcase(os.fspath(p)) == marked:
+            return SimpleNamespace(st_mode=st.st_mode, st_nlink=st.st_nlink, st_file_attributes=0x400)
+        return st
+    monkeypatch.setattr(os, 'lstat', lstat)
+    reason = n2.grant_admission(str(tree), *_scans())
+    assert reason is not None and 'alias' in reason and 'sub' in reason
+
+
+def test_grant_admission_admits_a_plain_tree(tmp_path):
+    assert n2.grant_admission(str(_plain_tree(tmp_path)), *_scans()) is None
+
+
+def test_grant_admission_runs_the_two_production_scans_in_launch_order_and_stops_at_the_first_refusal():
+    calls = []
+
+    def check(roots, error):
+        calls.append(('check', roots))
+
+    def scan(grants):
+        calls.append(('scan', grants))
+    assert n2.grant_admission(r'C:\Windows\System32', check, scan, ValueError) is None
+    assert calls == [('check', (r'C:\Windows\System32',)), ('scan', (r'C:\Windows\System32',))]
+
+    calls.clear()
+
+    def refuse(roots, error):
+        raise error('multiple links in grant (a second name): a.dll')
+    assert 'a.dll' in n2.grant_admission(r'C:\Windows\System32', refuse, scan, ValueError)
+    assert calls == []
+
+    def unreadable(grants):
+        raise PermissionError(13, 'Access is denied', r'C:\Windows\System32\config')
+    reason = n2.grant_admission(r'C:\Windows\System32', check, unreadable, ValueError)
+    assert reason == 'grant scan failed: PermissionError'
+
+
+def _fresh_isolation(monkeypatch):
+    real = n2.import_isolated
+    monkeypatch.setattr(n2, 'import_isolated', lambda modules, home: real(modules, home, loaded={}))
+
+
+def test_system32_admission_reports_the_production_refusal_for_a_linked_tree(tmp_path, monkeypatch):
+    _fresh_isolation(monkeypatch)
+    windows = tmp_path
+    _plain_tree(windows)
+    os.link(str(windows / 'System32' / 'a.dll'), str(windows / 'System32' / 'b.dll'))
+    result = n2.system32_admission(str(windows), str(tmp_path))
+    assert result['admitted'] is False and 'a.dll' in result['reason']
+    assert result['path'] == ntpath.join(str(windows), 'System32')
+
+
+def test_system32_admission_admits_a_plain_tree(tmp_path, monkeypatch):
+    _fresh_isolation(monkeypatch)
+    windows = tmp_path
+    _plain_tree(windows)
+    assert n2.system32_admission(str(windows), str(tmp_path)) == {
+        'path': ntpath.join(str(windows), 'System32'), 'admitted': True, 'reason': None}
+
+
+def _fake_ref(closed, name, exc=None):
+    class Ref:
+        def close(self):
+            closed.append(name)
+            if exc is not None:
+                raise exc
+    return Ref()
+
+
+def test_wind_down_closes_every_job_even_when_one_close_raises(tmp_path, capsys):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    closed = []
+    h.jobs = [_fake_ref(closed, 'a', OSError('x')), _fake_ref(closed, 'b'),
+              _fake_ref(closed, 'c', RuntimeError('y'))]
+    assert h.wind_down() == 2
+    assert closed == ['a', 'b', 'c']
+    assert 'Job 1 could not be closed' in capsys.readouterr().out
+
+
+def test_wind_down_still_closes_the_rest_when_interrupted(tmp_path):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    closed = []
+    h.jobs = [_fake_ref(closed, 'a', KeyboardInterrupt()), _fake_ref(closed, 'b')]
+    assert h.wind_down() == 1
+    assert closed == ['a', 'b']
+
+
+@pytest.mark.parametrize('admission, code', [(ADMITTED, 0), (REFUSED, 2)])
+def test_diag_precheck_runs_only_the_precheck_and_creates_nothing(tmp_path, monkeypatch, admission, code):
+    parent = tmp_path / 'fx'
+    parent.mkdir()
+    monkeypatch.setattr(n2, 'parent_ok', lambda p: True)
+    monkeypatch.setattr(n2, '_on_windows', lambda: True)
+    monkeypatch.setattr(n2, '_system_ok', lambda v: True)
+    monkeypatch.setenv('SystemRoot', 'C:\\Windows')
+    seen = []
+    monkeypatch.setattr(n2, 'system32_admission', lambda root, p: seen.append((root, p)) or admission)
+    for name in ('safe_root', 'Harness', 'diagnose', 'run'):
+        monkeypatch.setattr(n2, name, lambda *a, _n=name, **k: pytest.fail(_n + ' called'))
+    assert n2.main([str(parent), n2.DIAG_PRECHECK]) == code
+    assert seen == [('C:\\Windows', str(parent))]
+    assert not os.path.exists(os.path.join(str(parent), 'run'))
+
+
+def test_a_diagnostic_run_takes_the_system32_admission_before_any_root_and_before_any_row(tmp_path, monkeypatch):
     parent, root, calls = _main_world(tmp_path, monkeypatch, _all)
-    assert n2.main([parent] + extra) == 3
-    assert calls.safe_root == 0 and calls.removed == []
+    events = []
+    monkeypatch.setattr(n2, 'system32_admission', lambda r, p: events.append('admission') or ADMITTED)
+    monkeypatch.setattr(n2, 'safe_root', lambda p: events.append('root') or root)
+    monkeypatch.setattr(n2, 'diagnose', lambda h, flags, adm: events.append('diagnose') or 2)
+    assert n2.main([parent, n2.DIAG]) == 2
+    assert events == ['admission', 'root', 'diagnose']
 
 
 def _plain_info(mode, attrs=0):
