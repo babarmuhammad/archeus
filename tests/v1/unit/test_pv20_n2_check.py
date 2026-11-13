@@ -945,7 +945,7 @@ def test_write_row_labels_come_from_its_own_evidence_only(tmp_path):
     row = [r for r in n2.diag_rows(_lay(tmp_path), r'C:\Windows', 'SEED') if r.id == 'A2'][0]
     ok = _ok_files(row)
     assert n2.diag_result(row, _look({**ok, row.child: row.tok, row.ev: 'OBSERVED'})) == 'started, write ok'
-    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'})) == 'started, write denied'
+    assert n2.diag_result(row, _look({**ok, row.ev: 'OBSERVED'})) == 'started, write not proved'
     assert n2.diag_result(row, _look({**ok, row.ev: 'OTHER'})) == 'did not return code'
     assert n2.diag_result(row, _look({**ok, row.child: row.tok, row.ev: 'OTHER'})) == 'did not return code'
     assert n2.diag_result(row, _look(ok)) == 'no evidence'
@@ -962,11 +962,11 @@ def test_a_failed_control_is_never_a_pass_even_when_the_child_ran(tmp_path):
 
 @pytest.mark.parametrize('labels, wants', [
     ({'A1': RET, 'A2': WOK}, 'baseline creation and workspace write proved'),
-    ({'A1': RET, 'A2': WDEN}, 'investigate (3), inherited cwd and environment versus grants'),
+    ({'A1': RET, 'A2': WDEN}, 'write not proved with its control passing: investigate (3), inherited cwd and environment versus grants'),
     ({'A1': RET, 'A2': WNOT}, 'baseline exit proved; the write row gives no workspace conclusion'),
     ({'A1': RET}, 'baseline exit proved; the write row gives no workspace conclusion'),
     ({'A1': NOT}, 'all exit rows did not return 37: inconclusive for blanket denial (2)'),
-    ({'A1': NOT, 'A2': WDEN}, 'child start proved by A2 (started, write denied)'),
+    ({'A1': NOT, 'A2': WDEN}, 'child start proved by A2 (started, write not proved)'),
     ({'A1': NOT, 'B1': RET, 'B2': WOK}, 'image location or access, cause (1), strongly supported'),
     ({'A1': NOT, 'C1': RET}, 'missing System32 access or dependency grant, cause (1), strongly supported'),
     ({'B1': RET}, 'A1 baseline not usable: no conclusion about image or System32 access'),
@@ -975,6 +975,12 @@ def test_a_failed_control_is_never_a_pass_even_when_the_child_ran(tmp_path):
 ])
 def test_every_interpretation_line(labels, wants):
     assert wants in n2.diag_interpret(labels)
+
+
+def test_a_write_row_without_its_token_file_is_not_called_a_denial():
+    text = n2.diag_interpret({'A1': RET, 'A2': WDEN})
+    assert 'denied' not in text and 'write not proved' in text
+    assert 'denied' not in n2.diag_interpret({'A1': NOT, 'A2': WDEN})
 
 
 def test_a_write_row_that_did_not_return_its_code_is_not_called_a_write_failure():

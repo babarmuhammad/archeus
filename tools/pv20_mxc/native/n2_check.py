@@ -82,7 +82,7 @@ DIAG_FLAGS = (DIAG, IMAGE_FLAG, SYSTEM_FLAG)
 DIAG_PRECHECK = '--diag-precheck'
 RESULTS = 'diag_results.json'
 RET_37, NOT_37 = 'returned 37', 'did not return 37'
-W_OK, W_DENIED, W_NOT = 'started, write ok', 'started, write denied', 'did not return code'
+W_OK, W_DENIED, W_NOT = 'started, write ok', 'started, write not proved', 'did not return code'
 VOID_LABELS = frozenset({'control failed', 'no evidence', 'launch refused', 'not admissible',
                          'diagnostic error', 'not authorized'})
 REPARSE = 0x400
@@ -470,7 +470,7 @@ def diag_interpret(labels):
     and "not returned" is NOT_37. Void rows (VOID_LABELS) are named and count for nothing.
 
     1. A1 returned, A2 started and wrote        -> baseline creation and workspace write proved
-    2. A1 returned, A2 started, write denied    -> investigate cwd and environment versus grants (3)
+    2. A1 returned, A2 started, write not proved -> investigate cwd and environment versus grants (3)
     3. A1 returned, A2 otherwise                -> baseline exit proved; no workspace conclusion
     4. A1 not returned, B1 and/or C1 returned   -> image or System32 access strongly supported (1)
     5. A1 absent or void, B1 and/or C1 returned -> no conclusion about image or System32 access
@@ -489,7 +489,7 @@ def diag_interpret(labels):
     if a1 == RET_37 and ok.get('A2') == W_OK:
         text = 'baseline creation and workspace write proved'
     elif a1 == RET_37 and ok.get('A2') == W_DENIED:
-        text = ('baseline child started, write denied with its control passing: investigate (3), '
+        text = ('baseline child started, write not proved with its control passing: investigate (3), '
                 'inherited cwd and environment versus grants')
     elif a1 == RET_37:
         text = 'baseline exit proved; the write row gives no workspace conclusion'
