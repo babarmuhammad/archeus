@@ -324,15 +324,6 @@ def test_a_posix_unc_name_never_walks_below_the_root(monkeypatch):
 
 # ── 3 · denial: a transcript is user data, not a path to trust ───────────────
 
-@pytest.mark.xfail(strict=True,
-                   reason='paths.py:42-44 returns obj["cwd"] after only os.path.isdir, '
-                          'and os.path.isdir is true for a RELATIVE value resolved '
-                          'against wherever the server happens to run; store.py:111 '
-                          'publishes that value as the project path and gui.py:506, '
-                          'gui_api.py:3298 and main.py:1061 hand it to spawn_terminal and '
-                          "subprocess.call as cwd=. The contract is paths.py:20-22 "
-                          """("Absolute existing directory, or ''") applied to the """
-                          'resolver that feeds those same callers')
 def test_a_relative_recorded_cwd_is_not_returned(tmp_path, monkeypatch):
     folder = tmp_path / 'proj-folder'
     folder.mkdir()
@@ -365,14 +356,6 @@ def test_a_credential_shaped_cwd_string_is_still_only_a_string(tmp_path):
 
 # ── 4 · stale cache: a hit whose target has vanished is not an answer ────────
 
-@pytest.mark.xfail(strict=True,
-                   reason='paths.py:80-82 returns the cached value whenever the folder '
-                          'mtime stands still, and the comment at paths.py:64-67 says the '
-                          'mtime key "cannot see the *target* directory" changing - but '
-                          'applies that only to misses, so a cached SUCCESS is reused as a '
-                          'subprocess cwd after the project directory is gone (deleted, '
-                          'unmounted, laptop moved). store.py:111 publishes it and '
-                          'gui.py:506 spawns a terminal in it')
 def test_a_cached_path_is_not_reused_once_it_has_vanished(tmp_path):
     folder = tmp_path / 'Z--gone-tomorrow'
     folder.mkdir()
@@ -549,17 +532,6 @@ def test_an_ambiguous_hyphen_falls_back_to_the_matching_sibling(monkeypatch):
 
 # ── 11 (extra) · the last boundary must not resolve to the parent ─────────────
 
-@pytest.mark.xfail(strict=True,
-                   reason='paths.py:111-113: consuming the final "-" of a run calls '
-                          'match() with an empty remaining, which answers the PARENT '
-                          'directory. A project folder whose name ends in a non-alnum '
-                          'character ends in "-" (/home/m/proj. encodes to '
-                          '-home-m-proj-), so that name is answered with /home/m/proj - '
-                          'a different project, or none at all - and published by '
-                          'store.py:111 as the project path. The contract is the same '
-                          'one the walk already honours two lines up at paths.py:126: a '
-                          'component is only ever consumed on a "-" boundary, so a run '
-                          'with nothing left after the boundary names no project')
 def test_a_trailing_dash_run_is_not_answered_with_its_parent(monkeypatch):
     fake = FakeOS(name='posix')
     fake.add_tree('/', 'home/m/proj')        # '/home/m/proj.' is the real project

@@ -40,7 +40,7 @@ def path_from_transcripts(folder, max_files=3, max_lines=40):
     for n in transcripts.session_files(folder, limit=max_files):
         for obj in transcripts.iter_json(os.path.join(folder, n), limit=max_lines):
             cwd = obj.get('cwd')
-            if cwd and os.path.isdir(cwd):
+            if isinstance(cwd, str) and os.path.isabs(cwd) and os.path.isdir(cwd):
                 return cwd
     return None
 
@@ -78,7 +78,8 @@ def find_actual_path(encoded, max_depth=8, folder=None):
             mtime = None
         hit = _path_cache.get(folder)
         if hit and mtime is not None and hit[0] == mtime \
-                and (hit[1] is not None or time.time() - hit[2] < _MISS_TTL):
+                and (os.path.isdir(hit[1]) if hit[1] is not None
+                     else time.time() - hit[2] < _MISS_TTL):
             return hit[1]
         got = path_from_transcripts(folder) or _walk_for(encoded, max_depth)
         if mtime is not None:
@@ -123,7 +124,7 @@ def _walk_for(encoded, max_depth=8):
             enc = fold(encode_component(subdir))
             if enc == rem_l:
                 return os.path.join(current, subdir)
-            if rem_l.startswith(enc + '-'):
+            if rem_l.startswith(enc + '-') and len(remaining) > len(enc) + 1:
                 r = match(os.path.join(current, subdir), remaining[len(enc)+1:], depth+1)
                 if r:
                     return r
