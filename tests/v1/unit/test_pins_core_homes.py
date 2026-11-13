@@ -65,8 +65,8 @@ def test_public_value_maps_a_key_value_with_surrounding_space():
 
 
 def test_public_value_nulls_only_real_homes_under_path_keys():
-    h = H.Homes(['/home/mab/.claude'], shorts=_no_shorts)
+    h = H.Homes(['/home/user1/.claude'], shorts=_no_shorts)
     assert H.public_value({'ref': 'D:/elsewhere/file.txt'}, h, path_keys=('ref',)) \
         == {'ref': 'D:/elsewhere/file.txt'}
-    assert H.public_value({'ref': '/home/mab/.claude'}, h, path_keys=('ref',)) \
+    assert H.public_value({'ref': '/home/user1/.claude'}, h, path_keys=('ref',)) \
         == {'ref': None}

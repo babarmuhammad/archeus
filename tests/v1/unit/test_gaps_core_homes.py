@@ -25,11 +25,11 @@ import pytest
 
 from archeus.core import homes as H
 
-HOME = r'C:\Users\mab\.claude-work'
-KEY = r'claude_code:c:\users\mab\.claude'
-DEFAULT = ('claude_code', KEY, r'C:\Users\mab\.claude')
+HOME = r'C:\Users\user1\.claude-work'
+KEY = r'claude_code:c:\users\user1\.claude'
+DEFAULT = ('claude_code', KEY, r'C:\Users\user1\.claude')
 UNC = r'\\srv\share\u\c'
-WIN_HOME = {'USERPROFILE': r'C:\Users\mab', 'HOME': r'C:\Users\mab'}
+WIN_HOME = {'USERPROFILE': r'C:\Users\user1', 'HOME': r'C:\Users\user1'}
 
 
 def _homes(*registered, defaults=(), shorts=lambda p: None, **kw):
@@ -50,10 +50,10 @@ def test_a_junk_registered_home_never_becomes_a_matcher_or_a_norm():
     # through abspath to the runner's cwd, which would then null any cwd spelling
     # under a path key.
     junk = _homes()  # reference: exactly one registered home, one pattern
-    assert len(junk.patterns) == 1 and junk.norms == {'c:/users/mab/.claude-work'}
+    assert len(junk.patterns) == 1 and junk.norms == {'c:/users/user1/.claude-work'}
     h = H.Homes([None, 5, '', '   ', HOME], shorts=lambda p: None, path_flavour='windows')
     assert len(h.patterns) == 1
-    assert h.norms == {'c:/users/mab/.claude-work'}
+    assert h.norms == {'c:/users/user1/.claude-work'}
     assert H.scrub_text('x ' + HOME + ' y', h) == 'x its home y'
 
 
@@ -68,7 +68,7 @@ def test_a_default_account_with_an_unusable_home_ref_keeps_its_key(bad):
     h = H.Homes([], [row_bad, row_good], shorts=lambda p: probes.append(p) or None,
                 path_flavour='windows')
     assert set(h.keys) == {'h:/a/bad', KEY}
-    assert h.norms == {'c:/users/mab/.claude-work'}
+    assert h.norms == {'c:/users/user1/.claude-work'}
     assert probes == []                                  # default homes are never probed
     assert H.scrub_text('h:/a/bad', h) == h.keys['h:/a/bad']
     assert H.scrub_text(HOME, h) == 'its home'
@@ -100,7 +100,7 @@ def test_a_tuple_projects_its_elements_exactly_like_a_list():
     ('relative/thing', 'relative/thing'),      # not absolute: kept byte-identical
     (r'C:\Other\place', r'C:\Other\place'),    # an absolute non-home: kept
     ('its home', 'its home'),                  # already-projected text: kept
-    ('c:/USERS/mab/.CLAUDE-WORK/', None),      # the home, other case/separators
+    ('c:/USERS/user1/.CLAUDE-WORK/', None),      # the home, other case/separators
     (HOME, None),
 ])
 def test_only_an_actual_home_is_nulled_under_a_path_key(value, want):
@@ -119,10 +119,10 @@ def test_a_home_with_a_non_canonical_spelling_never_adds_none_to_norms(monkeypat
     # it and be nulled — the projection would eat relative values wholesale.
     _pin_win_env(monkeypatch)
     h = _homes('~/.work')
-    assert None not in h.norms and h.norms == {'c:/users/mab/.work'}
+    assert None not in h.norms and h.norms == {'c:/users/user1/.work'}
     assert H.public_value({'ref': 'relative/thing'}, h, path_keys=('ref',)) \
         == {'ref': 'relative/thing'}
-    assert H.public_value({'ref': 'C:\\Users\\mab\\.work'}, h, path_keys=('ref',)) == {'ref': None}
+    assert H.public_value({'ref': 'C:\\Users\\user1\\.work'}, h, path_keys=('ref',)) == {'ref': None}
 
 
 def test_cut_safe_at_the_exact_home_boundaries_keeps_what_is_visible():
@@ -155,7 +155,7 @@ def test_a_list_under_a_path_key_is_projected_element_by_element():
     # of a list sitting under a path key is path-checked on its own; drop `_key`
     # from the recursion and a home stored as a list element leaks through.
     h = _homes(HOME)
-    assert H.public_value({'ref': [HOME, 'keepme', 'c:/users/mab/.claude-work']}, h,
+    assert H.public_value({'ref': [HOME, 'keepme', 'c:/users/user1/.claude-work']}, h,
                           path_keys=('ref',)) == {'ref': [None, 'keepme', None]}
 
 
@@ -165,8 +165,8 @@ def test_a_dot_segment_collapse_to_a_drive_is_the_drive_root():
     # home or path-keyed value spelled with dot segments silently never matches.
     assert H.norm_path(r'C:\a\..', path_flavour='windows') == 'c:/'
     assert H.norm_path('file:///D:/x/../y/..', path_flavour='windows') == 'd:/'
-    assert H.norm_path(r'C:\a\..\Users\mab\.claude-work', path_flavour='windows') \
-        == 'c:/users/mab/.claude-work'
+    assert H.norm_path(r'C:\a\..\Users\user1\.claude-work', path_flavour='windows') \
+        == 'c:/users/user1/.claude-work'
 
 
 def test_a_bare_tilde_home_adds_no_literal_tilde_matcher(monkeypatch):
@@ -179,7 +179,7 @@ def test_a_bare_tilde_home_adds_no_literal_tilde_matcher(monkeypatch):
     h = _homes('~')
     assert H.scrub_text('hi ~! there', h) == 'hi ~! there'
     assert H.scrub_text('~ ~/ ~/x ~x ~.', h) == '~ ~/ ~/x ~x ~.'
-    assert H.scrub_text(r'cd C:\Users\mab\x', h) == r'cd its home\x'
+    assert H.scrub_text(r'cd C:\Users\user1\x', h) == r'cd its home\x'
 
 
 def test_only_a_registered_drive_home_is_probed_for_short_names():
@@ -193,7 +193,7 @@ def test_only_a_registered_drive_home_is_probed_for_short_names():
     assert unc_calls == []
     h = H.Homes([], [DEFAULT], shorts=lambda p: def_calls.append(p) or None,
                 path_flavour='windows')
-    assert H.scrub_text(r'C:\Users\mab\.claude\x', h) == 'its home\\x'
+    assert H.scrub_text(r'C:\Users\user1\.claude\x', h) == 'its home\\x'
     assert def_calls == []
     drive_calls = []
     H.Homes([HOME], shorts=lambda p: drive_calls.append(p) or None, path_flavour='windows')
@@ -204,8 +204,8 @@ def test_the_file_url_localhost_host_is_localhost_whatever_its_case():
     # homes.py:46 compares host.lower() against 'localhost': compare case
     # sensitively and 'file://LOCALHOST/C:/x' becomes a UNC to host LOCALHOST, so
     # its home spelling no longer canonicalizes to the home.
-    url = 'file://LOCALHOST/C:/Users/mab/.claude-work/x'
-    assert H.norm_path(url, path_flavour='windows') == 'c:/users/mab/.claude-work/x'
+    url = 'file://LOCALHOST/C:/Users/user1/.claude-work/x'
+    assert H.norm_path(url, path_flavour='windows') == 'c:/users/user1/.claude-work/x'
     assert H.scrub_text('read ' + url + ' now', _homes(HOME)) == 'read its home/x now'
 
 
@@ -230,4 +230,4 @@ def test_the_short_name_probe_is_a_no_op_off_windows(monkeypatch):
     # `None` in sys.modules makes any `import ctypes` raise, so the assert below
     # passes only while the guard short-circuits before the import.
     monkeypatch.setitem(sys.modules, 'ctypes', None)
-    assert H._win_short(r'C:\Users\mab\.claude-work') is None
+    assert H._win_short(r'C:\Users\user1\.claude-work') is None
