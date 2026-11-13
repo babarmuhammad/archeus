@@ -249,11 +249,6 @@ def test_add_account_mkdir_failure_does_not_persist(monkeypatch, tmp_path):
 
 # ── 6. (probe 4) removing a Claude account clears only its own selection ──
 
-@pytest.mark.xfail(strict=True, reason=(
-    "possible source defect, claude_sessions/accounts.py:321: on Windows os.path.expanduser('~/.acc-w') "
-    "returns a mixed-separator path, which never equals the stored os.path.join form, so removing "
-    "the active account leaves claude_config_dir pointing at it. Reach is limited: switch stores "
-    "the same spelling it compares against."))
 def test_remove_claude_account_clears_only_own_selection(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     w = str(tmp_path / 'acc-w')
@@ -358,11 +353,6 @@ def test_parallel_env_uses_selected_home_not_active(monkeypatch, tmp_path):
 
 # ── 9. (probe 10) switch aliases normalize consistently ────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "possible source defect, claude_sessions/accounts.py:21-30 (_accounts): ACTIVE compares "
-    "os.path.expanduser of both sides with no normpath; on Windows an alias '~/.claude-work' "
-    "expands with a forward slash, so a hand-edited absolute active path to the same home is "
-    "not marked ACTIVE. Same root as the remove case (accounts.py:321)."))
 def test_switch_alias_round_trips_normalized(monkeypatch, tmp_path):
     Sandbox(monkeypatch, tmp_path)
     home = str(tmp_path / 'u')

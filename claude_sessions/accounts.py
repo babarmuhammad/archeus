@@ -25,7 +25,8 @@ def _accounts(s):
     for a in s.get('accounts', []):
         if isinstance(a, dict) and a.get('dir'):
             out.append((a.get('name', a['dir']), a['dir'],
-                        os.path.expanduser(a['dir']) == os.path.expanduser(active)))
+                        os.path.normcase(os.path.normpath(os.path.expanduser(a['dir'])))
+                        == os.path.normcase(os.path.normpath(os.path.expanduser(active)))))
     return out
 
 
@@ -318,7 +319,8 @@ def _account_actions(s, name, hid=None, built_in=''):
     elif act == 'remove':
         if claude:
             s['accounts'] = [a for a in s.get('accounts', []) if a.get('name') != name]
-            if os.path.expanduser(s.get('claude_config_dir', '')) == os.path.expanduser(d):
+            if os.path.normcase(os.path.normpath(os.path.expanduser(s.get('claude_config_dir', '')))) \
+                    == os.path.normcase(os.path.normpath(os.path.expanduser(d))):
                 s['claude_config_dir'] = ''
         else:
             homes = dict(s.get('homes') or {})
