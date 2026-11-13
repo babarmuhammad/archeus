@@ -344,14 +344,6 @@ def test_one_shared_column_zero_only_columns_drop_and_silent_accounts_are_named(
 
 # ── 4. error paths: extreme percents and broken reset stamps ─────────────────
 
-@pytest.mark.xfail(strict=True, reason="source defect: norm() at claude_sessions/usage.py:320-324 "
-                                       "accepts float('nan') — min(nan, 100.0) stays nan and max(0.0, nan) "
-                                       "returns 0.0 — so a corrupt 'NaN' percent is published as an OBSERVED "
-                                       "0% window instead of returning None like 'abc'/None; the try/except at "
-                                       "323-324 exists precisely to drop values that are not numbers, and the "
-                                       "windows_snapshot docstring (claude_sessions/usage.py:248-249) forbids "
-                                       "reporting the unread as 0% — a hostile NaN answer would read to the V1 "
-                                       "router as a perfectly empty window")
 def test_nan_inf_and_garbage_percents_cannot_fabricate_a_window():
     """usage.py:320-324 (norm's float()/clamp legs) + 333-335.
 
