@@ -416,6 +416,20 @@ def test_add_http_header_is_one_argv_element_and_blank_adds_nothing(monkeypatch,
     assert '-H' not in argv2 and '' not in argv2
 
 
+def test_add_http_cancel_at_the_header_prompt_is_inert_not_a_blank_add(monkeypatch,
+                                                                       tmp_path):
+    """mcp.py:367-368 — ESC at "Header 'Name: value'" returns None. It must cancel
+    the whole add the way the env-prompt cancel does, not run the add without a
+    header as a blank answer would."""
+    Sandbox(monkeypatch, tmp_path)
+    ui = _Ui(monkeypatch, inputs=['hdr-srv', 'https://mcp.invalid/x', None],
+             menus=['http', 'user'], runs=[('added', False)])
+    mcp_mod._mcp_add_flow()
+    assert ui.mcp_run.calls == []
+    assert ('Cancelled', False) in ui.flashes()
+    assert not any('Added' in m for m, _ok in ui.flashes())
+
+
 # ── 8. _mcp_run with no executable (mcp.py:272-274) ─────────
 
 def test_mcp_run_without_a_binary_denies_without_spawning_or_cancelling(monkeypatch,

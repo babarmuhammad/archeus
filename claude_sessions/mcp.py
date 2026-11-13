@@ -367,6 +367,8 @@ def _mcp_add_with_extras(args, transport, name):
             extra += ['-e', kv]
     else:
         hdr = text_input("Header 'Name: value' (blank = none):")
+        if hdr is None:
+            return None, True
         if hdr:
             extra += ['-H', hdr]
     # insert extras before the trailing target/command
