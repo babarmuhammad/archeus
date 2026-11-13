@@ -265,6 +265,9 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
             step(name, 'statusline', msg, ok)
 
         for fn in (m['agents'] if 'agents' in want else []):
+            if fn not in u_agents:
+                step(name, 'agents', '%s (source no longer exists)' % fn, False)
+                continue
             dest_dir = os.path.join(cfgdir or _c.config_dir, 'agents')
             os.makedirs(dest_dir, exist_ok=True)
             try:
@@ -279,8 +282,12 @@ def apply(d=None, kinds=KINDS, review=None, progress=None):
             step(name, 'skills', sk if dest else '%s: copy failed' % sk, bool(dest))
 
         if 'claude_md' in want and m['claude_md'] and union_md:
+            target = _c.global_claude_md_for(cfgdir)
+            if os.path.exists(target):
+                step(name, 'claude_md', '%s (already exists, left as is)' % os.path.basename(union_md), False)
+                continue
             text = open(union_md, encoding='utf-8', errors='ignore').read()
-            ok = _c.write_atomic(_c.global_claude_md_for(cfgdir), text)
+            ok = _c.write_atomic(target, text)
             step(name, 'claude_md', os.path.basename(union_md), ok)
 
     return done
