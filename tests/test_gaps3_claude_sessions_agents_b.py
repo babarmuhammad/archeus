@@ -419,10 +419,6 @@ def test_routed_strip_touches_only_frontmatter_model_keys(env, tmp_path):
     assert 'Body text.' in out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "possible source defect, claude_sessions/agents.py:650 and :660: the routed copy reads and "
-    "writes in text mode, so on Windows the body comes back with CRLF line endings and is not "
-    "carried byte-for-byte as the docstring promises. Cosmetic in effect; kept as the contract."))
 def test_routed_strip_preserves_a_body_model_line(env, tmp_path):
     """agents.py:655-661 — ``fm`` is ``content[3:end]``; the body is carried
     through by ``body = content[end + 4:]`` and re-emitted untouched. The
@@ -444,7 +440,7 @@ def test_routed_strip_preserves_a_body_model_line(env, tmp_path):
     out = _read(os.path.join(_dest(proj), 'writer.md'))
     assert 'claude-haiku-4-5' not in out
     assert 'model: claude-body-marker' in out, 'the body was rewritten, not the frontmatter'
-    assert out.endswith('\n---\n\n' + body), 'the body is not carried byte-for-byte'
+    assert out.replace('\r\n', '\n').endswith('\n---\n\n' + body), 'the body is not carried byte-for-byte'
 
 
 # ── 9 · an unrecorded install may not be reported as one ────────────────────

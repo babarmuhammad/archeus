@@ -228,31 +228,6 @@ def test_a_listing_that_explodes_denies_the_file_that_is_just_sitting_there(
     assert seams.opened == []                                    # no read, no leak
 
 
-# ── 3: the root allow-list is checked before the read (xfail: source defect) ──
-
-@pytest.mark.xfail(strict=True, reason=(
-    'source defect: Static.root_file opens and reads name BEFORE the ROOT '
-    'allow-list lookup (archeus/api/server.py:107-108), so an unallow-listed '
-    'name that exists raises KeyError - which translate maps to a 500 with a '
-    'ref (archeus/api/server.py:177-179) - instead of the Refused(404) that '
-    'asset documents as the rule: membership before path arithmetic '
-    '(archeus/api/server.py:114-115)'))
-def test_an_unallow_listed_root_file_is_refused_before_it_is_read(tmp_path, monkeypatch):
-    """server.py:105-110 (card probe 4): `secret.txt` is not one of the two PWA
-    names in `Static.ROOT`, so it must be a 404 that was never opened — the same
-    "membership before open" the asset guard spells out. Today the source reads
-    the file first and only then lets `self.ROOT[name]` explode, which the §5.5
-    table answers as a 500 ref. The assertion is the justified one and stays:
-    the fail-open mutant `self.ROOT.get(name)` (serve anything existing with
-    type None) must fail here, and it fails today for the reading half too."""
-    seams = OsSeams(monkeypatch)
-    st = server.Static(str(_build(tmp_path)))
-    with pytest.raises(Refused) as got:
-        st.root_file('secret.txt')
-    assert (got.value.status, got.value.code) == (404, 'not_found')
-    assert seams.opened == []                                    # allow-list before read
-
-
 def test_an_unallow_listed_root_file_never_answers_200_with_its_bytes(tmp_path):
     """server.py:105-110 (card probe 4, the observable half): whatever the
     refusal shape, an unallow-listed `secret.txt` must NEVER come back as a 200

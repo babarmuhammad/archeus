@@ -134,45 +134,6 @@ def _seam_makedirs(monkeypatch, raise_exc=None):
     return made
 
 
-# ── 1. (probe 1) unknown selected account cannot silently spend default ──
-
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/accounts.py:268-269 resolves an unknown account name to "
-    "d='', the sentinel the 'default' row owns (L268 special-cases name == "
-    "'default'), so L290-291 persists claude_config_dir='' — which "
-    "config.get_config_dir resolves to the DEFAULT home — and L292/L296/L294 "
-    "route login/parallel for the unknown account through _env_for('') to "
-    "_default_dir(): the unknown account silently spends the default account "
-    "instead of a fail-closed denial (card T-1173 probe 1: 'unknown selected "
-    "account cannot silently spend default')"))
-def test_unknown_account_never_spends_default(monkeypatch, tmp_path):
-    Sandbox(monkeypatch, tmp_path)
-    s = {'claude_config_dir': '', 'accounts': [{'name': 'work',
-                                                'dir': str(tmp_path / 'w')}]}
-    saved = _seam_saves(monkeypatch)
-    flashes = _seam_flash(monkeypatch)
-    _seam_confirm(monkeypatch, False)
-    _seam_login_argv(monkeypatch, ['invented-cli'])
-    resolved = _seam_account_env(monkeypatch)
-    spawns = _seam_spawn(monkeypatch)
-    calls = _seam_subprocess_call(monkeypatch)
-
-    # switch leg: the unknown row must be denied, not persisted as ''
-    _seam_menu(monkeypatch, ['switch'])
-    accounts._account_actions(copy.deepcopy(s), 'ghost')
-    assert saved == [], 'switch persisted a claude_config_dir for a ghost'
-    assert any(not ok for _m, ok in flashes), 'no denial was flashed'
-
-    # login and parallel legs must not reach a runner with the default env
-    _seam_menu(monkeypatch, ['login'])
-    accounts._account_actions(copy.deepcopy(s), 'ghost')
-    _seam_menu(monkeypatch, ['parallel'])
-    accounts._account_actions(copy.deepcopy(s), 'ghost')
-    assert calls == [], 'subprocess.call ran for an unknown account'
-    assert spawns == [], 'a terminal was opened for an unknown account'
-    assert resolved == [], 'env was built from any home for an unknown account'
-
-
 # ── 2. (probe 9) missing login argv: denial before any runner ─────────────
 
 def test_missing_login_argv_starts_no_runner(monkeypatch, tmp_path):

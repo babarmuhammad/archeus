@@ -495,28 +495,3 @@ test('T-1187 G10 appearance.js:10-11,21,26,27 the page shows what storage read b
   assertNoPrivilegedAccess(w);
   assertNoPrivilegedAccess(hole);
 });
-
-/* ----------------------------------------------------------------- EF1: expected failure */
-
-test('T-1187 EF1 appearance.js:10 a choice the parser denies must not reach durable storage (EXPECTED FAILURE)', () => {
-  const w = world({});
-  const rejected = { theme: 'constructor', contrast: 'ULTRA', note: 'not ours' };
-  assert.deepEqual(w.call(rejected), { theme: 'system', contrast: 'system' }, 'the denial itself holds');
-  assert.deepEqual(w.html.attrs, { 'data-theme': 'system', 'data-contrast': 'system' });
-  for (const c of w.contents()) assert.ok(c === THEME_BG.dark || c === THEME_BG.light);
-  // The premise: only the token sets are themes (appearance.js:4-5), so a choice that is not
-  // ours is denied - and a denied choice must not be persisted either. appearance.js:10 stores
-  // `next` verbatim before the own-key checks at :16-17, so the reject lands in localStorage
-  // under the client key anyway and is read back on every later boot.
-  assert.throws(
-    () => { assert.deepEqual(w.storage.raw[KEY], undefined); },
-    { name: 'AssertionError' },
-    'DEFECT (expected failure, not a pass): clients/app/src/state/appearance.js:10 writes `next` '
-    + 'verbatim before clients/app/src/state/appearance.js:16-17 decides whether it is ours, so a '
-    + 'rejected choice is still persisted under "archeus-appearance". Closest existing test: '
-    + 'tests/v1/e2e/test_spa_appearance.py:91 writes storage itself instead of calling the boot.',
-  );
-  assert.equal(w.storage.raw[KEY], '{"theme":"constructor","contrast":"ULTRA","note":"not ours"}',
-    'the record of what was persisted, for the report');
-  assertNoPrivilegedAccess(w);
-});

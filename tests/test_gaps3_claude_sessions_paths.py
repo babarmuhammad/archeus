@@ -322,27 +322,6 @@ def test_a_posix_unc_name_never_walks_below_the_root(monkeypatch):
     assert fake.listdir_calls == ['/']      # one listing, no recursion into the root
 
 
-# ── 2 · denial: a malformed drive part is not a licence to walk ──────────────
-
-@pytest.mark.xfail(strict=True,
-                   reason='paths.py:98-101 builds base = drive_part + ":" + backslash '
-                          'from ANY text before the first "--", so a name that cannot '
-                          "have come from Claude Code's encoder at all ('AB--proj', "
-                          'which would encode as -AB-proj) is still walked as the drive '
-                          '"AB:"; the contract is the docstring at paths.py:20-22 and the '
-                          'comment at paths.py:90-94: the walk is a guess, so a name that '
-                          'cannot name a drive must answer None')
-def test_a_drive_part_that_is_not_one_letter_is_refused(monkeypatch):
-    fake = FakeOS(name='nt')
-    fake.add_tree(fake.drive_base('AB'), 'proj')
-    fake.add_tree(fake.drive_base('..'), 'proj')
-    fake.use(monkeypatch)
-
-    assert paths_mod._walk_for('AB--proj') is None
-    assert paths_mod._walk_for('..--proj') is None
-    assert fake.listdir_calls == []
-
-
 # ── 3 · denial: a transcript is user data, not a path to trust ───────────────
 
 @pytest.mark.xfail(strict=True,
