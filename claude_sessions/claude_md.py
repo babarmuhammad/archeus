@@ -48,7 +48,7 @@ def _markers(text, start, end):
     refresh append another copy of it."""
     out, held, fence, pos = [], [], None, 0
     for n, line in enumerate(text.split('\n')):
-        bom = 1 if n == 0 and line.startswith('﻿') else 0
+        bom = 1 if n == 0 and line.startswith('Feff') else 0
         line = line[bom:]
         t = line.strip()
         m = _FENCE_OPEN.match(line)
@@ -62,7 +62,6 @@ def _markers(text, start, end):
         elif t in (start, end):
             held.append((pos + bom, pos + bom + len(line), t == start))
         pos += len(line) + bom + 1
-    return out + held
     return out + held
 
 
