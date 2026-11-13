@@ -394,12 +394,6 @@ def test_the_open_and_makedirs_faults_actually_fire(rig):
 
 # ── the ten selected branches: denial / fail-closed first ────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'fail-open source defect: system_prompt.py:20-21 swallows the read error of '
-    'an EXISTING base prompt (`except Exception: pass`), merges the pointer alone '
-    'and returns out_path as a success, so the instructions the docstring at '
-    'system_prompt.py:11-15 promises to keep vanish from the file that '
-    '--system-prompt-file feeds every session'))
 def test_merged_unreadable_base_must_not_silently_vanish(rig):
     """:17-22 fail-closed. A base that exists but cannot be read is the dangerous
     case: today the merge reports success while producing a pointer-only file.
