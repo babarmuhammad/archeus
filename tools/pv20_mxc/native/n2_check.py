@@ -723,11 +723,16 @@ class Harness:
                      % (n, type(ex).__name__, _snip(str(ex))))
         if self.m is not None:
             self.m.mxc.NATIVE_RUN_ENABLED = False
-        for pid, ctime in list(getattr(getattr(self, 'api', None), 'created', None) or ()):
-            if not self.wait_dead(pid, ctime, 5.0):
+        for n, (pid, ctime) in enumerate(list(getattr(getattr(self, 'api', None), 'created', None) or ()), 1):
+            try:
+                if not self.wait_dead(pid, ctime, 5.0):
+                    failed += 1
+                    if live_ctime(pid) == ctime:      # ours, same creation time: the one kill allowed
+                        common._terminate_process(pid)
+            except BaseException as ex:
                 failed += 1
-                if live_ctime(pid) == ctime:      # ours, same creation time: the one kill allowed
-                    common._terminate_process(pid)
+                _say('pv20 N2 wind-down: launcher %d could not be checked: %s %s'
+                     % (n, type(ex).__name__, _snip(str(ex))))
         return failed
 
 

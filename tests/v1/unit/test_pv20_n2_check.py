@@ -1236,6 +1236,22 @@ def test_wind_down_still_closes_the_rest_when_interrupted(tmp_path):
     assert closed == ['a', 'b']
 
 
+def test_wind_down_checks_every_launcher_even_when_one_check_raises(tmp_path, monkeypatch, capsys):
+    h = n2.Harness(str(tmp_path), 'src', r'C:\Windows', n2.Budget(10))
+    h.api = SimpleNamespace(created=[(1, 'c1'), (2, 'c2')])
+    checked = []
+
+    def wait_dead(pid, ctime, seconds):
+        checked.append(pid)
+        if pid == 1:
+            raise OSError('query failed')
+        return True
+    monkeypatch.setattr(h, 'wait_dead', wait_dead)
+    assert h.wind_down() == 1
+    assert checked == [1, 2]
+    assert 'launcher 1 could not be checked: OSError query failed' in capsys.readouterr().out
+
+
 @pytest.mark.parametrize('admission, code', [(ADMITTED, 0), (REFUSED, 2)])
 def test_diag_precheck_runs_only_the_precheck_and_creates_nothing(tmp_path, monkeypatch, admission, code):
     parent = tmp_path / 'fx'
