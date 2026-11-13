@@ -851,7 +851,7 @@ def test_no_stat_bit_of_the_fixture_is_changed_by_the_pure_helpers(tmp_path):
 
 CMD = r'C:\Windows\System32\cmd.exe'
 RET, NOT = n2.RET_37, n2.NOT_37
-WOK, WDEN, WNOT = n2.W_OK, n2.W_DENIED, n2.W_NOT
+WOK, WDEN, WNOT = n2.W_OK, n2.W_UNPROVED, n2.W_NOT
 ADMITTED = {'path': r'C:\Windows\System32', 'admitted': True, 'reason': None}
 REFUSED = {'path': r'C:\Windows\System32', 'admitted': False,
            'reason': 'multiple links in grant (a second name): a.dll'}

@@ -84,7 +84,7 @@ DIAG_FLAGS = (DIAG, IMAGE_FLAG, SYSTEM_FLAG)
 DIAG_PRECHECK = '--diag-precheck'
 RESULTS = 'diag_results.json'
 RET_37, NOT_37 = 'returned 37', 'did not return 37'
-W_OK, W_DENIED, W_NOT = 'started, write ok', 'started, write not proved', 'did not return code'
+W_OK, W_UNPROVED, W_NOT = 'started, write ok', 'started, write not proved', 'did not return code'
 VOID_LABELS = frozenset({'control failed', 'no evidence', 'launch refused', 'not admissible',
                          'diagnostic error', 'not authorized'})
 REPARSE = 0x400
@@ -464,7 +464,7 @@ def diag_result(row, look):
     if seen != 'OBSERVED':
         return 'no evidence'
     wrote = judge([Item('write_ok', row.id, None, row.child, row.tok)], look) is None
-    return W_OK if wrote else W_DENIED
+    return W_OK if wrote else W_UNPROVED
 
 
 def diag_interpret(labels):
@@ -479,7 +479,7 @@ def diag_interpret(labels):
     6. some usable EXIT row, none returned      -> all exit rows did not return 37: inconclusive (2)
     7. otherwise                                -> no interpretation bullet matches
 
-    After the line that matched, every started WRITE row (A2, B2, C2 with W_OK or W_DENIED)
+    After the line that matched, every started WRITE row (A2, B2, C2 with W_OK or W_UNPROVED)
     adds "child start proved by <row> (<label>)": a WRITE row proves its child ran from its own
     evidence, whatever the EXIT rows did.
     """
@@ -490,7 +490,7 @@ def diag_interpret(labels):
     returned = [r for r in ('B1', 'C1') if ok.get(r) == RET_37]
     if a1 == RET_37 and ok.get('A2') == W_OK:
         text = 'baseline creation and workspace write proved'
-    elif a1 == RET_37 and ok.get('A2') == W_DENIED:
+    elif a1 == RET_37 and ok.get('A2') == W_UNPROVED:
         text = ('baseline child started, write not proved with its control passing: investigate (3), '
                 'inherited cwd and environment versus grants')
     elif a1 == RET_37:
@@ -509,7 +509,7 @@ def diag_interpret(labels):
         text = 'no interpretation bullet matches: %s' % ', '.join(
             '%s=%s' % kv for kv in sorted(ok.items()))
     for r in ('A2', 'B2', 'C2'):
-        if ok.get(r) in (W_OK, W_DENIED):
+        if ok.get(r) in (W_OK, W_UNPROVED):
             text += '; child start proved by %s (%s)' % (r, ok[r])
     if void:
         text = 'rows not usable (%s): %s' % (', '.join(void), text)
