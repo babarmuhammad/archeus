@@ -74,7 +74,7 @@ def test_agent_delete_refuses_a_file_outside_a_managed_root(server, tmp_path):
 
 def test_skill_remove_refuses_a_directory_outside_a_managed_root(server, tmp_path):
     """`shutil.rmtree(body['dir'])` took any path at all, so
-    `{"dir": "C:\\\\Users\\\\mab"}` was a recursive delete of the home
+    `{"dir": "C:\\\\Users\\\\user1"}` was a recursive delete of the home
     directory."""
     _sb, base = server
     victim = tmp_path / 'home'
