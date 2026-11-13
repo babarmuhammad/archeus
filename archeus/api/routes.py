@@ -1359,11 +1359,11 @@ REPLAYABLE = frozenset({('POST', '/v1/digest/ack')})
 
 def _compile(path):
     if path.endswith('/*'):
-        return re.compile('^%s/(?P<path>.+)$' % re.escape(path[:-2]))
+        return re.compile(r'^%s/(?P<path>.+)\Z' % re.escape(path[:-2]))
     parts = re.split(r'\{(\w+)\}', path)
     rx = ''.join(re.escape(p) if i % 2 == 0 else '(?P<%s>[^/]+)' % p
                  for i, p in enumerate(parts))
-    return re.compile('^%s$' % rx)
+    return re.compile(r'^%s\Z' % rx)
 
 
 _COMPILED = [(r, _compile(r.path)) for r in ROUTES]

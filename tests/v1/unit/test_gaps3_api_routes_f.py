@@ -279,11 +279,6 @@ def test_a_literal_in_a_path_is_matched_literally_and_never_as_a_regex():
 
 # ── 4. the end anchor is an end ──
 
-@pytest.mark.xfail(strict=True, reason='source defect: the patterns are anchored with '
-                     '`$`, which also matches just before a trailing newline, so '
-                     '`/v1/health\\n` is routed to `health` and the wildcard swallows '
-                     '`/assets/app.js\\n` into `path=\'app.js\'` '
-                     '(archeus/api/routes.py:1366 and :1362); the anchor must be `\\Z`')
 def test_a_path_that_only_adds_a_trailing_newline_is_not_the_rows_path():
     # Only the anchor itself: the rows whose literal text ends the path. A
     # `{parameter}` row keeps a trailing newline inside the VALUE instead, because
