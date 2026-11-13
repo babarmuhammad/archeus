@@ -229,4 +229,4 @@ def test_unreadable_base_prompt_refuses_the_inject_launch(monkeypatch, tmp_path)
     launched, _cap, _ = run_flow(monkeypatch, keys, ci.run, actual, folder, 'alpha')
     assert launched is False
     assert calls == []
-    assert flashes
+    assert flashes and flashes[0].startswith('Cannot ')

@@ -147,7 +147,7 @@ def run(project_path, proj_folder, project_name):
             args, env, _pf = build_launch_command(
                 project_path, encoded, 'new', {'cfgdir': target_dir, 'prompt': pointer})
         except RuntimeError as e:
-            flash(str(e), ok=False, secs=1.8)
+            flash(f"Cannot read the base system prompt: {e}", ok=False, secs=3)
             return False
         _cls()
         print(f"  Context: {ctx_path}")
@@ -180,7 +180,7 @@ def run(project_path, proj_folder, project_name):
     try:
         merged_system_prompt(sp_file, pointer, merged_path)
     except OSError as e:
-        flash(str(e), ok=False, secs=1.8)
+        flash(f"Cannot read the base system prompt: {e}", ok=False, secs=3)
         return False
     args = [exe, '--system-prompt-file', merged_path]
     if model:

@@ -654,5 +654,5 @@ def test_unreadable_base_prompt_refuses_the_execute_launch(monkeypatch, tmp_path
     res, _cap, _ = run_flow(monkeypatch, keys, plan_execute.run, actual, folder, 'alpha')
     assert res is False
     assert 'args' not in launched
-    assert flashes
+    assert flashes and flashes[0].startswith('Cannot ')
     assert os.path.isfile(os.path.join(actual, plan_execute.PLAN_FILE))
