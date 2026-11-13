@@ -471,7 +471,8 @@ def review_plugin(name, marketplace, cfg_dir=None):
     if mkt and mkt['path']:
         base = os.path.realpath(os.path.join(mkt['path'], 'plugins'))
         cand = os.path.realpath(os.path.join(base, name))
-        if cand == base or os.path.commonpath([base, cand]) != base:
+        # commonpath raises across drives; a prefix test cannot
+        if not os.path.normcase(cand).startswith(os.path.normcase(base) + os.sep):
             return False
         if os.path.isdir(cand):
             root = cand
