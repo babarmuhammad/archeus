@@ -64,9 +64,6 @@ def _key(path):
     return os.path.abspath(str(path))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/jsonstore.py:69-71: the quarantine name is whole-second and '
-    'os.replace overwrites an existing file, so the first corrupt evidence is lost'))
 def test_second_corrupt_read_in_the_same_second_keeps_the_first_evidence(tmp_path, clock):
     p = tmp_path / 'state.json'
     p.write_text('{"first": ', encoding='utf-8')

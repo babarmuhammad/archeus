@@ -201,7 +201,7 @@ def load_manifest(project_path, proj_folder=None):
             try:
                 with open(p, encoding='utf-8') as f:
                     data = json.load(f)
-                if isinstance(data, dict):
+                if isinstance(data, dict) and data.get('schema_version', 0) <= SCHEMA_VERSION:
                     return _migrate(data)
                 return _corrupt()
             except Exception:
@@ -220,9 +220,8 @@ def save_manifest(project_path, m, proj_folder=None):
     for p in _candidate_paths(project_path, proj_folder):
         try:
             os.makedirs(os.path.dirname(p), exist_ok=True)
-            with open(p, 'w', encoding='utf-8') as f:
-                json.dump(m, f, indent=2)
-            return True
+            if _c.write_json_atomic(p, m):
+                return True
         except Exception:
             continue
     return False

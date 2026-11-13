@@ -46,20 +46,6 @@ def _put(root, text):
     return p
 
 
-def _deny_writes_or_reads(monkeypatch, names, modes=('r', 'w')):
-    real = builtins.open
-
-    def deny(file, *a, **k):
-        mode = a[0] if a else k.get('mode', 'r')
-        if os.fspath(file) in names and any(m in mode for m in modes):
-            raise PermissionError(errno.EACCES, 'synthetic denial', os.fspath(file))
-        return real(file, *a, **k)
-    monkeypatch.setattr(builtins, 'open', deny)
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/workspace.py:192: _migrate overwrites schema_version with the '
-    'current SCHEMA_VERSION, so a newer manifest is trusted as current (safe_to_launch kept)'))
 def test_a_newer_schema_is_refused_not_relabelled_current(tmp_path):
     newer = workspace.SCHEMA_VERSION + 98
     _put(tmp_path, json.dumps({'schema_version': newer, 'safe_to_launch': True,
@@ -147,9 +133,6 @@ def test_no_candidate_gives_a_fresh_template_and_creates_nothing(tmp_path):
     assert not folder.exists()
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'claude_sessions/workspace.py:223: save_manifest opens the live manifest with "w" and '
-    'dumps in place, so a failed dump leaves it truncated (config.write_atomic is the atomic path)'))
 def test_an_interrupted_write_keeps_the_previous_complete_manifest(tmp_path):
     good = workspace._empty_manifest()
     good['repo']['head_sha'] = 'kept'
@@ -164,26 +147,31 @@ def test_an_interrupted_write_keeps_the_previous_complete_manifest(tmp_path):
     assert got['repo']['head_sha'] == 'kept'
 
 
-def test_a_failed_first_destination_falls_through_and_all_failures_report_false(tmp_path, monkeypatch):
+def _block_dir(manifest_path):
+    # a plain file where the manifest folder should be: makedirs fails, the write never starts
+    os.makedirs(os.path.dirname(os.path.dirname(manifest_path)), exist_ok=True)
+    with open(os.path.dirname(manifest_path), 'w', encoding='utf-8') as f:
+        f.write('not a folder')
+
+
+def test_a_failed_first_destination_falls_through_and_all_failures_report_false(tmp_path):
     project = tmp_path / 'project'
     folder = tmp_path / 'folder'
+    other = tmp_path / 'other'
     first = _manifest_path(project)
     second = _manifest_path(folder)
     m = workspace._empty_manifest()
     m['repo']['head_sha'] = 'second'
 
-    _deny_writes_or_reads(monkeypatch, {first}, modes=('w',))
+    _block_dir(first)
     assert workspace.save_manifest(str(project), m, str(folder)) is True
     assert not os.path.exists(first)
     with open(second, encoding='utf-8') as f:
         assert json.load(f)['repo']['head_sha'] == 'second'
 
-    monkeypatch.undo()
-    other = tmp_path / 'other'
-    blocked = {first, _manifest_path(other)}
-    _deny_writes_or_reads(monkeypatch, blocked, modes=('w',))
-    assert workspace.save_manifest(str(project), m, str(other)) is False
-    assert not os.path.exists(first) and not os.path.exists(_manifest_path(other))
+    _block_dir(_manifest_path(other))
+    assert workspace.save_manifest(str(other), m, str(project)) is False
+    assert not os.path.exists(_manifest_path(other))
 
 
 def test_unknown_keys_and_zero_false_fields_round_trip_and_unserialisable_is_never_saved(tmp_path):
