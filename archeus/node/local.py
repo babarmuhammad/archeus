@@ -1898,10 +1898,8 @@ def _project_git(root, args, timeout=60, max_bytes=None):
                 _VERSION[exe] = out
             # Git reads the repository's info/attributes whatever attribute source is pinned.
             # A failed lookup is refused: it is not evidence that the file is absent.
-            # Windows: the configuration stays frozen from here until the Git call has exited
-            guard = (_frozen_config(root, argv, env, run, empty) if sys.platform == 'win32'
-                     else contextlib.nullcontext(argv))
-            with guard as argv:
+            # The configuration stays frozen from here until the Git call has exited
+            with _frozen_config(root, argv, env, run, empty) as argv:
                 where = run(argv + ['rev-parse', '--git-path', 'info/attributes'], root)
                 if where.returncode != 0 or not where.stdout.strip():
                     return None
@@ -1949,6 +1947,8 @@ def _frozen_config(root, argv, env, run, empty):
     added between the driver enumeration and Git reading it. The metadata paths are
     pinned on the command line, and GIT_COMMON_DIR is set. Yields the pinned argv;
     any failure raises, and the caller refuses."""
+    if sys.platform != 'win32':
+        raise OSError('the configuration freeze needs Windows')
     api = Win32Api(empty)
     held = []
 
