@@ -646,6 +646,21 @@ def sync_project_agents(project_path, refs, routed=None):
                 except Exception:
                     pass
 
+    def _record(names):
+        if names:
+            with open(manifest_path, 'w', encoding='utf-8') as f:
+                json.dump(names, f)
+        elif os.path.isfile(manifest_path):
+            os.remove(manifest_path)
+
+    # The record goes down before any copy, so a file is never placed that no
+    # manifest names. A refused record copies nothing: a file already in the
+    # folder under the same name keeps its bytes.
+    try:
+        _record(list(desired))
+    except Exception:
+        desired = {}
+
     # copy selected (strip model: frontmatter when routing via OmniRoute
     # so agents inherit CLAUDE_CODE_SUBAGENT_MODEL instead of trying to
     # call a bare Anthropic model id through the OmniRoute proxy)
@@ -671,22 +686,12 @@ def sync_project_agents(project_path, refs, routed=None):
             written.append(fn)
         except Exception:
             pass
-
-    try:
-        if written:
-            with open(manifest_path, 'w', encoding='utf-8') as f:
-                json.dump(written, f)
-        elif os.path.isfile(manifest_path):
-            os.remove(manifest_path)
-    except Exception:
-        # Copies no manifest names can never be removed by archeus later, so
-        # roll them back and report none installed.
-        for fn in written:
-            try:
-                os.remove(os.path.join(dest, fn))
-            except Exception:
-                pass
-        written = []
+    if len(written) != len(desired):
+        # a copy that failed must not stay in the record: it may be the user's own file
+        try:
+            _record(written)
+        except Exception:
+            pass
     # Installing an agent is only half of getting it used — see the note above
     # write_routing_block. Refreshed here so the table can never describe a
     # selection that is no longer on disk.

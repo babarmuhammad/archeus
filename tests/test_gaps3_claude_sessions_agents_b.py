@@ -469,7 +469,7 @@ def test_failed_manifest_write_is_not_reported_as_managed(env, tmp_path):
     recorded = _read_manifest(proj) or []
     assert n == 0 and recorded == [], 'a failed record is reported as none installed'
     assert not os.path.isfile(os.path.join(dest, 'rev.md')), \
-        'the copy made in this call was rolled back, not left unlisted'
+        'no copy was made when the record was refused, so none is unlisted'
     assert n == len(recorded), \
         'returned %r while the manifest names %r: untracked agents are ' \
         'unremovable agents' % (n, recorded)
@@ -543,3 +543,24 @@ def test_legitimate_managed_name_is_removed_once_deselected(env, tmp_path):
     assert agents.sync_project_agents(proj, ['01-core/rev']) == 1
     assert not os.path.isfile(os.path.join(dest, 'old.md'))
     assert os.path.isfile(os.path.join(dest, 'user.md'))
+
+
+def test_failed_manifest_write_leaves_a_preexisting_agent_file_alone(env, tmp_path):
+    """agents.py sync_project_agents: a file the user already had at
+    .claude/agents/rev.md, unlisted in any manifest, has the same name as the
+    selected library agent. The copy overwrote it and the failed manifest write
+    then rolled the copy back by deleting the path, so the user's file was lost.
+    The manifest is written before any copy, so a refused write copies nothing
+    and the file keeps its bytes.
+    """
+    _seed(env, '01-core', 'rev')
+    proj = _proj(tmp_path)
+    dest = _dest(proj)
+    os.makedirs(dest, exist_ok=True)
+    own = _write(os.path.join(dest, 'rev.md'), 'USER OWN AGENT\n')
+    _fail_writes(env.mp, _manifest_path(proj))
+
+    n = agents.sync_project_agents(proj, ['01-core/rev'])
+
+    assert n == 0
+    assert _read(own) == 'USER OWN AGENT\n', 'the pre-existing file was overwritten or deleted'
