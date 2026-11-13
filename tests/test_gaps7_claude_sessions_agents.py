@@ -72,9 +72,6 @@ def test_name_with_newline_and_fence_cannot_end_the_frontmatter(tmp_path):
     assert body == 'real body\n', body
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'agents.py:59 interpolates metadata KEYS raw (only values are flattened), '
-    'so a key containing a newline writes a second "name:" line that wins on parse'))
 def test_unknown_key_with_newline_cannot_override_identity(tmp_path):
     path, text = _write(tmp_path, {'name': 'real', 'description': 'd',
                                    'x\nname': 'evil'})

@@ -131,9 +131,6 @@ def test_string_and_numeric_payloads_do_not_crash_count(tmp_path):
 
 # ── 7, 8, 9. non-dict payloads in fold ────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'codex.py:200-202 fold reads payload with .get and no dict check; a string '
-    'session_meta payload raises AttributeError instead of being ignored'))
 def test_non_dict_session_meta_cannot_set_cwd_or_crash(tmp_path):
     s = _stats()
     codex.fold({'type': 'session_meta', 'payload': '/invented/dir'}, s)
@@ -141,9 +138,6 @@ def test_non_dict_session_meta_cannot_set_cwd_or_crash(tmp_path):
     assert s['cwd'] == ''
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'codex.py:210 fold calls .get on a non-dict turn_context payload; a string '
-    'payload raises AttributeError and the model list is left half-processed'))
 def test_non_dict_turn_context_cannot_invent_or_reorder_models(tmp_path):
     s = _stats()
     s['models'] = ['gpt-a', 'gpt-b']
@@ -152,9 +146,6 @@ def test_non_dict_turn_context_cannot_invent_or_reorder_models(tmp_path):
     assert s['models'] == ['gpt-a', 'gpt-b']
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'codex.py:218 fold calls .get on a non-dict event_msg payload; the raise '
-    'stops the later valid error event from being counted'))
 def test_malformed_event_payload_does_not_stop_a_later_error(tmp_path):
     s = _stats()
     codex.fold({'type': 'event_msg', 'payload': 'oops'}, s)

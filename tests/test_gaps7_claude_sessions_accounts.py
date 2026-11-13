@@ -92,10 +92,6 @@ def test_env_spelling_resolves_to_the_active_path(monkeypatch, tmp_path):
         == os.path.normpath(active)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'accounts.py:28 compares with expanduser only, while _resolved at '
-    'accounts.py:43 also expands variables: a row spelled $VAR/acc resolves to '
-    'the active home but is never marked ACTIVE'))
 def test_env_spelling_marks_the_same_account_active(monkeypatch, tmp_path):
     monkeypatch.setenv('ARCHEUS_T1318_ROOT', str(tmp_path))
     active = os.path.join(str(tmp_path), 'acc')

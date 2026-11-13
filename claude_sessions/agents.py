@@ -55,7 +55,8 @@ def parse_agent(path):
 def write_agent(path, meta, body):
     """Write an agent .md with frontmatter. Returns True on success."""
     order = ['name', 'description', 'tools', 'model']
-    keys = order + [k for k in meta if k not in order]
+    keys = order + [k for k in meta if k not in order
+                    and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', k)]
     fm = '\n'.join(f"{k}: {' '.join(str(meta[k]).splitlines())}"
                    for k in keys if meta.get(k))
     out = f"---\n{fm}\n---\n\n{body.rstrip()}\n"

@@ -197,7 +197,9 @@ def fold(obj, s):
                 s['last_ts'] = ep
 
     kind = obj.get('type')
-    p = obj.get('payload') or {}
+    p = obj.get('payload')
+    if not isinstance(p, dict):
+        p = {}
     if kind == 'session_meta':
         if p.get('cwd'):
             s['cwd'] = real_cwd(p['cwd'])

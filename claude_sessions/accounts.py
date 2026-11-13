@@ -25,8 +25,8 @@ def same_account_dir(d, active):
     """
     if not (d and active):
         return False
-    return (os.path.normcase(os.path.normpath(os.path.expanduser(d)))
-            == os.path.normcase(os.path.normpath(os.path.expanduser(active))))
+    return (os.path.normcase(os.path.normpath(_resolved(d)))
+            == os.path.normcase(os.path.normpath(_resolved(active))))
 
 
 def _accounts(s):
