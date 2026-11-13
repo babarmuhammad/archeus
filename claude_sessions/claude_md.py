@@ -1007,8 +1007,10 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
                                         .replace(_AI_MARKER + '\n', '')
                                         .replace(_AI_MARKER, '')
                                         .strip())
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"\n  Cannot read CLAUDE.md: {e}\n  Left untouched.")
+            time.sleep(2)
+            return
 
     # ── Confirmation screen + optional extra prompt ──────────────
     # Skipped entirely on a job thread. `wait_event()` is a `time.sleep(0.03)`
@@ -1398,7 +1400,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
         try:
             existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
         except Exception:
-            pass
+            return False   # its text is unknown: not ours to replace
 
     # Build fresh repos/commits/READMEs block
     autogen_content = _build_autogen_block(project_path, proj_folder)
@@ -1424,7 +1426,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
                  + ('\n' + new_sessions if new_sessions else ''))
 
     if not _c.write_atomic(md_path, final):
-        return
+        return False
     try:
         from . import workspace
         workspace.update_manifest(project_path, proj_folder, 'scaffold')
@@ -1436,5 +1438,6 @@ def scaffold_claude_md(project_path, proj_folder=None):
     except Exception:
         pass
     open_in_editor(md_path)
+    return True
 
 

@@ -93,6 +93,8 @@ no real process, network, editor, pager or thread is started, and no host
 environment value is read, printed or copied.
 """
 
+import builtins
+import errno
 import os
 import sys
 
@@ -549,3 +551,52 @@ def test_unclosed_fence_at_end_does_not_hide_block_before_it(monkeypatch, tmp_pa
     out = _read(md_path)
     assert 'old body' not in out, 'the real block before the open fence was not found'
     assert 'trailing example without a closing fence' in out
+
+
+# ── 13. an unreadable CLAUDE.md is never overwritten by a scaffold ───
+
+def _deny_claude_md_read(monkeypatch):
+    real_open = builtins.open
+
+    def denied(path, mode='r', *a, **k):
+        if os.path.basename(str(path)) == 'CLAUDE.md' and mode == 'r':
+            raise OSError(errno.EACCES, 'denied')
+        return real_open(path, mode, *a, **k)
+
+    monkeypatch.setattr(builtins, 'open', denied)
+
+
+def test_scaffold_refuses_to_overwrite_an_unreadable_claude_md(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _actual, _enc, folder, _sids = sb.add_project('alpha', n_sessions=0)
+    proj = str(tmp_path / 'work' / 'alpha')
+    seeded = '# alpha\n\nMY HAND WRITTEN NOTES\n'
+    md_path = _seed(tmp_path, proj, seeded)
+    calls = _quiet_world(monkeypatch, tmp_path, folder)
+    _deny_claude_md_read(monkeypatch)
+
+    assert claude_md.scaffold_claude_md(proj, folder) is False
+    assert calls['write'] == [], 'an unreadable file was written over'
+    with builtins.open(md_path, 'rb') as f:
+        assert f.read() == seeded.encode('utf-8')
+
+
+def test_ai_scaffold_refuses_to_overwrite_an_unreadable_claude_md(monkeypatch, tmp_path):
+    sb = Sandbox(monkeypatch, tmp_path)
+    _actual, _enc, folder, _sids = sb.add_project('alpha', n_sessions=0)
+    proj = str(tmp_path / 'work' / 'alpha')
+    seeded = '# alpha\n\nMY HAND WRITTEN NOTES\n'
+    md_path = _seed(tmp_path, proj, seeded)
+    calls = _quiet_world(monkeypatch, tmp_path, folder)
+    _deny_claude_md_read(monkeypatch)
+    monkeypatch.setattr(claude_md.subprocess, 'Popen',
+                        lambda *a, **k: pytest.fail('the model was called'))
+    monkeypatch.setattr(claude_md, 'wait_event', lambda *a, **k: pytest.fail('prompted'))
+    monkeypatch.setattr(claude_md, 'poll_event', lambda *a, **k: pytest.fail('prompted'))
+    monkeypatch.setattr(claude_md, 'open_in_editor', lambda *a, **k: None)
+    monkeypatch.setattr(claude_md.time, 'sleep', lambda *a, **k: None)
+
+    claude_md.ai_scaffold_claude_md(proj, folder)
+    assert calls['write'] == [], 'an unreadable file was written over'
+    with builtins.open(md_path, 'rb') as f:
+        assert f.read() == seeded.encode('utf-8')
