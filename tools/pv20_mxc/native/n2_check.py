@@ -731,8 +731,6 @@ class Harness:
         return failed
 
 
-
-
 def read_text(path):
     seen = look_at(path)
     return seen if isinstance(seen, str) and seen not in ('<dir>', '<link>') else ''
@@ -1211,12 +1209,15 @@ def failed_row(h, row, ex):
 
 def grant_admission(path, check_grants, scan_grants, error):
     """The two scans a launch runs on one granted path, read-only. None when admitted, else the
-    refusal text, which names the first refusing path."""
+    refusal text, which names the first refusing path. A folder the second scan cannot list is
+    not admitted either: the launch would fail on it the same way."""
     try:
         check_grants((path,), error)
         scan_grants((path,))
     except error as ex:
         return str(ex)
+    except OSError as ex:
+        return 'grant scan failed: %s' % type(ex).__name__
     return None
 
 
@@ -1398,6 +1399,7 @@ def main(argv=None):
     except ValueError as ex:
         print(redact('SETUP ERROR: fixture not removed: %s' % _snip(str(ex))), flush=True)
         return 3
+
 
 if __name__ == '__main__':
     sys.exit(main())

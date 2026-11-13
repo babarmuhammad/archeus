@@ -1174,6 +1174,11 @@ def test_grant_admission_runs_the_two_production_scans_in_launch_order_and_stops
     assert 'a.dll' in n2.grant_admission(r'C:\Windows\System32', refuse, scan, ValueError)
     assert calls == []
 
+    def unreadable(grants):
+        raise PermissionError(13, 'Access is denied', r'C:\Windows\System32\config')
+    reason = n2.grant_admission(r'C:\Windows\System32', check, unreadable, ValueError)
+    assert reason == 'grant scan failed: PermissionError'
+
 
 def _fresh_isolation(monkeypatch):
     real = n2.import_isolated
