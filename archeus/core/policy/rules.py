@@ -171,7 +171,7 @@ def inside(path, pattern):
 def _values(action, key):
     """What an action says about an attribute; None when it does not say."""
     if key in ('environment', 'environments'):
-        return None if action.environment is None else [action.environment]
+        return None if action.environment in (None, '') else [action.environment]
     if key in ('path_glob', 'paths'):
         return list(action.paths) if action.paths else None
     if key == 'command_glob':
