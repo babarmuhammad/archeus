@@ -23,7 +23,13 @@ from tools.pv20_mxc.protocol import STAGES
 
 REAL_PARENT_OK = n2.parent_ok
 
-SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+
+@pytest.fixture(autouse=True)
+def fixture_base_env(monkeypatch):
+    monkeypatch.setenv('ARCHEUS_FIXTURE_BASE', 'D:\\archeus-worktrees\\pv20-fixtures')
+
+
+SRC =os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))))), 'tools', 'pv20_mxc', 'native', 'n2_check.py')
 
 
@@ -836,7 +842,7 @@ def test_the_only_environment_reads_are_systemroot_and_the_import_window():
     for n in ast.walk(tree):
         if isinstance(n, ast.Attribute) and n.attr in ('environ', 'getenv'):
             reads.append(set(_function_of(tree, n)) - {'Harness'})
-    assert reads and all(r <= {'import_isolated', 'main'} for r in reads)
+    assert reads and all(r <= {'import_isolated', 'main', 'fixture_base'} for r in reads)
     sysroot = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                and n.func.attr == 'get' and n.args and isinstance(n.args[0], ast.Constant)
                and n.args[0].value == 'SystemRoot']
