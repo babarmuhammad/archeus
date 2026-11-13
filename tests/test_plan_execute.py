@@ -619,3 +619,40 @@ def test_edit_plan_rejects_a_missing_index():
     for action in ('edit', 'delete', 'insert', 'move'):
         with pytest.raises(ValueError):
             plan_execute.edit_plan(_PLAN_3, action, index=None, text='x')
+
+
+def _unreadable(monkeypatch, path):
+    import builtins
+    target = os.path.normcase(os.path.abspath(path))
+    real_open = builtins.open
+
+    def fake_open(file, *a, **k):
+        if isinstance(file, (str, os.PathLike)) and \
+                os.path.normcase(os.path.abspath(os.fspath(file))) == target:
+            raise PermissionError(13, 'fake denied', str(file))
+        return real_open(file, *a, **k)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+
+
+def test_unreadable_base_prompt_refuses_the_execute_launch(monkeypatch, tmp_path):
+    from claude_sessions import config as _config, ui
+    sb = Sandbox(monkeypatch, tmp_path)
+    actual, enc, folder, _ = sb.add_project('alpha')
+    base = os.path.join(folder, 'system-prompt.txt')
+    with open(base, 'w', encoding='utf-8') as f:
+        f.write('BASE RULE\n')
+    _unreadable(monkeypatch, base)
+    monkeypatch.setattr(plan_execute, '_plan',
+                        lambda task, m, cwd, effort='', cfgdir='': '1. do X\n2. verify Y')
+    monkeypatch.setattr(_config, 'get_claude_exe', lambda: r'C:\fake.exe')
+    launched = {}
+    flashes = []
+    monkeypatch.setattr(subprocess, 'call',
+                        lambda args, **k: launched.setdefault('args', args) or 0)
+    monkeypatch.setattr(ui, 'flash', lambda msg, **k: flashes.append(msg))
+    keys = flat(ENTER, ESC, typed('build a parser'), ENTER, ENTER)
+    res, _cap, _ = run_flow(monkeypatch, keys, plan_execute.run, actual, folder, 'alpha')
+    assert res is False
+    assert 'args' not in launched
+    assert flashes and flashes[0].startswith('Cannot ')
+    assert os.path.isfile(os.path.join(actual, plan_execute.PLAN_FILE))

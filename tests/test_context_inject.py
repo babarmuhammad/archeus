@@ -187,3 +187,46 @@ def test_auto_is_not_claimed_for_a_model_that_cannot_run_it(monkeypatch, tmp_pat
     monkeypatch.setattr(subprocess, 'call', lambda *a, **k: calls.append((a, k)) or 0)
     run_flow(monkeypatch, [*ENTER], ci.run, actual, folder, 'alpha')
     assert '--permission-mode' not in calls[0][0][0]
+
+
+def _unreadable(monkeypatch, path):
+    import builtins
+    target = os.path.normcase(os.path.abspath(path))
+    real_open = builtins.open
+
+    def fake_open(file, *a, **k):
+        if isinstance(file, (str, os.PathLike)) and \
+                os.path.normcase(os.path.abspath(os.fspath(file))) == target:
+            raise PermissionError(13, 'fake denied', str(file))
+        return real_open(file, *a, **k)
+    monkeypatch.setattr(builtins, 'open', fake_open)
+
+
+def test_unreadable_base_prompt_refuses_the_inject_launch(monkeypatch, tmp_path):
+    import subprocess
+    from claude_sessions import store, ui
+    sb = Sandbox(monkeypatch, tmp_path)
+    other = _two_accounts(sb, tmp_path, monkeypatch)
+    actual = str(tmp_path / 'work' / 'alpha')
+    os.makedirs(actual, exist_ok=True)
+    enc = encode_component(actual)
+    folder = os.path.join(str(sb.projects), enc)
+    os.makedirs(folder, exist_ok=True)
+    make_jsonl(os.path.join(folder, 'aaaa0000-0000-0000-0000-000000000000.jsonl'),
+               title='Fix the bug')
+    target_folder = store.project_folder(other, enc)
+    os.makedirs(target_folder, exist_ok=True)
+    base = os.path.join(target_folder, 'system-prompt.txt')
+    with open(base, 'w', encoding='utf-8') as f:
+        f.write('BASE RULE\n')
+    _unreadable(monkeypatch, base)
+
+    calls = []
+    flashes = []
+    monkeypatch.setattr(subprocess, 'call', lambda *a, **k: calls.append((a, k)) or 0)
+    monkeypatch.setattr(ui, 'flash', lambda msg, **k: flashes.append(msg))
+    keys = [*ENTER, *DOWN, *ENTER]
+    launched, _cap, _ = run_flow(monkeypatch, keys, ci.run, actual, folder, 'alpha')
+    assert launched is False
+    assert calls == []
+    assert flashes and flashes[0].startswith('Cannot ')
