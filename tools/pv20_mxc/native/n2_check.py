@@ -1243,7 +1243,7 @@ def grant_admission(path, check_grants, scan_grants, error):
 def system32_admission(systemroot, parent):
     """The production grant scans on System32 (the C rows' grant), run before anything is copied
     or granted. Only lstat and listdir: no handle, no ACL, no grant."""
-    path = ntpath.join(systemroot, 'System32')
+    path = os.path.join(systemroot, 'System32')
     mods = import_isolated(('archeus.node.linkscan', 'archeus.node.staging'), parent)
     linkscan_mod, staging_mod = mods['archeus.node.linkscan'], mods['archeus.node.staging']
     reason = grant_admission(path, linkscan_mod.check_grants, staging_mod.scan_grants,

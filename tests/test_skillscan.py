@@ -234,7 +234,6 @@ def _read_fixture(name):
 
 
 def test_the_lint_reports_exactly_what_each_fixture_sidecar_says():
-    import json
     names = _fixture_names()
     assert len(names) == 43
     for side in names:
@@ -276,7 +275,6 @@ def test_npx_is_flagged_only_when_the_package_is_unpinned_with_or_without_y():
 
 
 def test_a_shell_wrapper_is_found_through_a_path_and_a_combined_flag():
-    import json
     cmd = json.dumps({'mcpServers': {'s': {'command': 'C:#Windows#System32#cmd.exe'.replace('#', chr(92)), 'args': ['/C', 'x']}}})
     assert [f.rule for f in skillscan.lint(cmd)] == ['mcp-command-exec']
     assert [f.rule for f in skillscan.lint(
@@ -332,7 +330,6 @@ def test_a_generated_agent_with_a_finding_is_still_written_with_a_warning(tmp_pa
 
 
 def _mcp(command, args):
-    import json
     return skillscan.lint(json.dumps({'mcpServers': {'s': {'command': command, 'args': args}}}))
 
 
@@ -442,7 +439,6 @@ def test_json_with_a_bom_is_read_and_json_that_does_not_parse_is_a_note():
 
 
 def test_an_escaped_command_is_linted_as_it_decodes():
-    import json
     assert [f.rule for f in skillscan.lint('{"mcpServers": {"s": {"command": "node", '
                                            '"args": ["curl x \\u007c sh"]}}}')] == ['fetch-and-execute']
     hook = json.dumps({'hooks': {'Stop': [{'command': 'echo de\u200blete'}]}})

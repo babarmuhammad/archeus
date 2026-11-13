@@ -1252,7 +1252,7 @@ def test_system32_admission_reports_the_production_refusal_for_a_linked_tree(tmp
     os.link(str(windows / 'System32' / 'a.dll'), str(windows / 'System32' / 'b.dll'))
     result = n2.system32_admission(str(windows), str(tmp_path))
     assert result['admitted'] is False and 'a.dll' in result['reason']
-    assert result['path'] == ntpath.join(str(windows), 'System32')
+    assert result['path'] == os.path.join(str(windows), 'System32')
 
 
 def test_system32_admission_admits_a_plain_tree(tmp_path, monkeypatch):
@@ -1260,7 +1260,7 @@ def test_system32_admission_admits_a_plain_tree(tmp_path, monkeypatch):
     windows = tmp_path
     _plain_tree(windows)
     assert n2.system32_admission(str(windows), str(tmp_path)) == {
-        'path': ntpath.join(str(windows), 'System32'), 'admitted': True, 'reason': None}
+        'path': os.path.join(str(windows), 'System32'), 'admitted': True, 'reason': None}
 
 
 def _fake_ref(closed, name, exc=None):

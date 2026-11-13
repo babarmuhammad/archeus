@@ -28,6 +28,10 @@ KEY = ids.new_id('execution')
 USER = 'S-1-5-21-1111-2222-3333-1001'
 AC_SID = 'S-1-15-2-2860417396-1414370549'
 CAP_SID = 'S-1-15-3-1'
+# wintypes follows the host's C long (8 bytes on Linux and macOS); the faked SID and ACL
+# bytes are laid out with Windows widths.
+WIN32_TYPES = SimpleNamespace(**{**vars(ctypes.wintypes), 'DWORD': ctypes.c_uint32, 'ULONG': ctypes.c_uint32,
+                                 'LONG': ctypes.c_int32, 'BOOL': ctypes.c_int32})
 GROUP_SID = 'S-1-15-2-1'
 INTEGRITY = 'S-1-16-8192'
 PID = 4242
@@ -166,7 +170,7 @@ class Host:
         self.sd_addr = self.raw(bytes(32))
         self.acl_addr = 0
         ns = dict(vars(iso))
-        ns.update(C=_fake_ctypes(self.libs), W=ctypes.wintypes, WINDOWS=True)
+        ns.update(C=_fake_ctypes(self.libs), W=WIN32_TYPES, WINDOWS=True)
         exec(_block(), ns)
         self.ns = ns
         for name, fn in [(k, v) for k, v in ns.items() if isinstance(v, _Fn)]:
