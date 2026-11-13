@@ -111,7 +111,7 @@ def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
         head, rest = _cut(old, span)
         cr = span[1] - 1 if old[span[1] - 1:span[1]] == '\r' else span[1]
         closing = old[cr:_owned_stop(old, span)]
-        new = head + (section.rstrip('\n') + closing if section else '') + rest
+        new = head + (section.rstrip('\r\n') + closing if section else '') + rest
     elif not section:
         return True, old, old               # nothing to remove
     elif old:

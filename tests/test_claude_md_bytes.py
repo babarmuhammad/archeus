@@ -175,3 +175,11 @@ def test_whitespace_only_block_append_in_swap_keeps_its_bytes():
 def test_swap_block_on_empty_text_is_the_block_alone():
     assert cm._swap_block('', AS, AE, f"{AS}\nb\n{AE}\n") == f"{AS}\nb\n{AE}\n"
 
+
+def test_crlf_end_line_with_crlf_section_does_not_gain_a_cr(tmp_path):
+    old = b"# P\r\n" + S.encode() + b"\r\nold\r\n" + E.encode() + b"\r\nTAIL\r\n"
+    section = f"{S}\r\nnew\r\n{E}\r\n"
+    out = _refresh(tmp_path, old, section=section)
+    assert out == b"# P\r\n" + section.encode() + b"TAIL\r\n"
+    assert b"\r\r" not in out
+    assert _refresh(tmp_path, out, section=section) == out
