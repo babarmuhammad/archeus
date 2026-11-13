@@ -247,7 +247,9 @@ _BOOL_OPTS = {'--no', '--no-install', '-y', '--yes'}
 def _verb_index(rest, verbs):
     """Index of the subcommand in *rest* (npm's global flags come before it), or None.
     A value-taking flag followed by a verb is read as a boolean flag before the verb:
-    `pnpm -w dlx` is a fetch even though npm's `-w` takes a value."""
+    `pnpm -w dlx` is a fetch even though npm's `-w` takes a value. A bare true/false
+    after a boolean flag is skipped for every launcher: only npm is known to read it
+    as the flag's value, and for the others a hidden verb would silence the finding."""
     i = 0
     while i < len(rest):
         if rest[i] in verbs:
@@ -291,10 +293,18 @@ def _package_command(command, args):
                 break
             i += 1
             continue
-        if option in _BOOL_OPTS and not sep and i + 1 < len(rest) and rest[i + 1] in ('true', 'false'):
+        if launcher == 'npx' and option.lstrip('-') in ('npm', 'node-arg', 'n') and not sep:
+            i += 2      # npx-cli.js removes these with the token after them
+            continue
+        bare = option in _BOOL_OPTS and not sep and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
+        if bare and (anywhere or launcher == 'npx' and option == '--no'):
             i += 1
             sep, value = '=', rest[i]
-        if option in ('--no', '--no-install'):
+        elif bare and launcher not in ('npm', 'npx'):
+            yes = True      # unknown tool: the bare token is a package, so the fetch is not silenced
+        if launcher == 'npx' and option == '--no-install':
+            no_install = True       # npx-cli.js rewrites it to --yes=false whatever its value
+        elif option in ('--no', '--no-install'):
             if value == 'false':
                 yes = True
             else:
