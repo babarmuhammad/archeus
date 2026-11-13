@@ -34,6 +34,8 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
 
+from archeus.core.redact import redact
+
 from . import config as _c
 from . import proxy_base as _proxy
 
@@ -41,6 +43,7 @@ _CONNECT_TIMEOUT = 10      # upstream is loopback; this is a safety net only
 _FIRST_BYTE_TIMEOUT = 45   # per candidate, waiting for status+headers
 _TOTAL_BUDGET = 90         # wall clock across ALL candidates for one request
 _CHUNK = 65536
+_MAX_BODY = 64 * 1024 * 1024
 _LOG_MAX = 1 << 20
 
 #: lock file, readiness marker, spawn/stop — shared with gateway.py, which is a
@@ -321,7 +324,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._note('-', time.monotonic() - t0, 'UNREACHABLE %s' % e)
             self._json(502, {'type': 'error', 'error': {
                 'type': 'api_error',
-                'message': 'archeus failover: upstream unreachable: %s' % e}})
+                'message': 'archeus failover: upstream unreachable: %s' % redact(str(e))}})
             return
         self._relay(resp, conn, {})
 
@@ -361,7 +364,17 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get('Content-Length') or 0)
         except ValueError:
-            n = 0
+            n = -1
+        if n < 0:
+            self._json(400, {'type': 'error', 'error': {
+                'type': 'invalid_request_error',
+                'message': 'archeus failover: malformed Content-Length'}})
+            return
+        if n > _MAX_BODY:
+            self._json(413, {'type': 'error', 'error': {
+                'type': 'request_too_large',
+                'message': 'archeus failover: request body over %d bytes' % _MAX_BODY}})
+            return
         body = self.rfile.read(n) if n else b''
         if self.path.split('?')[0] in ('/v1/messages', '/v1/messages/count_tokens'):
             self._failover(body)
@@ -400,7 +413,7 @@ class _Handler(BaseHTTPRequestHandler):
                 conn, resp = self._open(prof, out)
             except Exception as e:
                 took = time.monotonic() - a0
-                why = 'TIMEOUT' if isinstance(e, (TimeoutError, OSError)) and 'timed out' in str(e).lower() else str(e)[:60]
+                why = 'TIMEOUT' if isinstance(e, (TimeoutError, OSError)) and 'timed out' in str(e).lower() else redact(str(e))[:60]
                 self._note(model, took, '%s -> next' % (why or 'ERROR'))
                 tried.append({'model': model, 'error': why})
                 continue

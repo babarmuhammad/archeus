@@ -280,20 +280,20 @@ def test_timeout_labelled_and_error_text_bounded():
     assert attempts[1]['error'] == 'x' * 60
 
 
-@pytest.mark.xfail(strict=True, reason="failover.py:403-405 puts raw exception text (first 60 chars) into the client-visible attempts list")
 def test_exception_text_not_in_attempts_json():
     """Premise: attempts[] is client-visible, so raw exception text (which may carry
     an upstream address, a path or a credential fragment) must not appear in it."""
     h = _script(_handler(_prof('b')), {
-        'a': OSError('SYNTHETIC-SECRET-123 at /synthetic/path refused'),
-        'b': OSError('SYNTHETIC-SECRET-456 refused'),
+        'a': OSError('sk-ant-api03-SYNTHETICKEY123456 at /synthetic/path refused'),
+        'b': OSError('sk-ant-api03-SYNTHETICKEY654321 refused'),
     })
 
     h._failover(_body('a'))
 
     code, payload = h.jsons[0]
-    assert 'SYNTHETIC-SECRET-123' not in json.dumps(payload)
-    assert 'SYNTHETIC-SECRET-456' not in json.dumps(payload)
+    body = json.dumps(payload)
+    assert 'SYNTHETICKEY123456' not in body and 'SYNTHETICKEY654321' not in body
+    assert '/synthetic/path' in body
 
 
 def test_all_open_failures_return_one_failover_exhausted_502():

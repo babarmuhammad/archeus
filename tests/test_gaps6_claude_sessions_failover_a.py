@@ -150,7 +150,6 @@ def test_get_guard_refusal_reads_no_marker_and_forwards_nothing(monkeypatch):
     assert h.sent == [] and h.wfile.getvalue() == b''
 
 
-@pytest.mark.xfail(strict=True, reason="failover.py:362-365 passes a negative Content-Length to rfile.read(n) unchecked")
 def test_negative_content_length_refused_before_read(monkeypatch):
     """Premise: a negative Content-Length is invalid HTTP and must be refused, not
     handed to rfile.read(-1), which reads to EOF on a socket."""
@@ -164,7 +163,6 @@ def test_negative_content_length_refused_before_read(monkeypatch):
     assert routed == []
 
 
-@pytest.mark.xfail(strict=True, reason="failover.py:365 has no request-size cap; rfile.read(n) takes the raw Content-Length")
 def test_oversized_content_length_refused_before_body_read(monkeypatch):
     """Premise: a body far beyond any Claude request is refused before rfile.read
     is asked for it. _CAP is the test's bound, not a value taken from the source."""
@@ -185,7 +183,6 @@ def test_oversized_content_length_refused_before_body_read(monkeypatch):
     assert routed == []
 
 
-@pytest.mark.xfail(strict=True, reason="failover.py:363-364 normalizes a malformed Content-Length to 0 and forwards an empty body")
 def test_malformed_content_length_refused_not_forwarded_empty(monkeypatch):
     """Premise: an unparsable Content-Length is a client error (400), not a zero-
     length body that is then forwarded upstream."""
@@ -284,7 +281,6 @@ def test_upstream_unreachable_returns_502_without_exception_text(monkeypatch):
     assert payload['error']['type'] == 'api_error'
 
 
-@pytest.mark.xfail(strict=True, reason="failover.py:322-324 copies the raw exception text into the client error body")
 def test_upstream_exception_text_not_in_client_error_body(monkeypatch):
     """Premise: the client error body names the failure, not the raw exception text
     that may carry an upstream address or a credential fragment."""
@@ -292,13 +288,14 @@ def test_upstream_exception_text_not_in_client_error_body(monkeypatch):
     h._profile = lambda: {'id': 'p'}
 
     def _open(prof, body, timeout=None):
-        raise OSError('dial synthetic-host failed with SYNTHETIC-TOKEN-123')
+        raise OSError('dial synthetic-host failed with sk-ant-api03-SYNTHETICKEY0123456789')
 
     h._open = _open
 
     h._passthrough(b'{}')
 
-    assert b'SYNTHETIC-TOKEN-123' not in h.wfile.getvalue()
+    assert b'SYNTHETICKEY0123456789' not in h.wfile.getvalue()
+    assert b'synthetic-host' in h.wfile.getvalue()
 
 
 def test_relay_disconnect_closes_owned_conn_without_retry(monkeypatch):

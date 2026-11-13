@@ -197,7 +197,6 @@ def test_successful_auto_launch_reports_success(monkeypatch):
     assert r.launches == ['/s/b']
 
 
-@pytest.mark.xfail(strict=True, reason="rotate.py:270 titles the notification 'Continued on <name>' even when continue_session failed")
 def test_failed_launch_title_does_not_claim_success(monkeypatch):
     r = _rig(monkeypatch)
     r.hands = True
@@ -208,7 +207,6 @@ def test_failed_launch_title_does_not_claim_success(monkeypatch):
     assert not any(title.startswith('Continued on') for title, _ in r.notes_sent)
 
 
-@pytest.mark.xfail(strict=True, reason="rotate.py:253-256 checks recently_offered and stamps with mark_offered in two separate calls; two offers can both pass the check and both launch")
 def test_simultaneous_same_sid_offers_launch_once(monkeypatch):
     r = _rig(monkeypatch)
     r.hands = True
