@@ -59,7 +59,6 @@ def test_pending_mcp_keeps_prior_server_evidence(refresh):
     assert got['mcp'] == {'count': 0, 'servers': []}
 
 
-@pytest.mark.xfail(strict=True, reason='False save reported as success: claude_sessions/workspace.py:519-520')
 def test_false_save_cannot_report_persisted_success(refresh, monkeypatch):
     attempts = []
     monkeypatch.setattr(w, 'save_manifest', lambda *a: attempts.append(a) or False)

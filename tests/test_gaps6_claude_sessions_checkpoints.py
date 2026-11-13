@@ -22,7 +22,6 @@ import pytest
 from claude_sessions import checkpoints as c, transcripts
 
 
-@pytest.mark.xfail(strict=True, reason='Unchecked session id escapes history root: claude_sessions/checkpoints.py:129-134')
 @pytest.mark.parametrize('absolute', [False, True])
 def test_snapshot_sid_escape_refused_without_open(monkeypatch, tmp_path, absolute):
     root = str(tmp_path / 'history')

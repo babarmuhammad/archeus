@@ -25,7 +25,6 @@ import pytest
 from claude_sessions import sessions as s
 
 
-@pytest.mark.xfail(strict=True, reason='Unchecked sid escapes project: claude_sessions/sessions.py:304-306')
 def test_name_traversal_refused_before_open(monkeypatch, tmp_path):
     opened = []
     monkeypatch.setattr(s, 'open', lambda p, *a, **k: opened.append(p) or io.StringIO(),
@@ -37,7 +36,6 @@ def test_name_traversal_refused_before_open(monkeypatch, tmp_path):
     assert opened == []
 
 
-@pytest.mark.xfail(strict=True, reason='Corrupt metadata replaced with singleton: claude_sessions/sessions.py:390-398')
 def test_corrupt_provider_update_refuses_sibling_loss(monkeypatch, tmp_path):
     p = tmp_path / 'session-providers.json'
     old = b'{"sibling": "remote", "broken":'
@@ -48,26 +46,17 @@ def test_corrupt_provider_update_refuses_sibling_loss(monkeypatch, tmp_path):
     assert writes == [] and p.read_bytes() == old
 
 
-@pytest.mark.xfail(strict=True, reason='Text save truncates before successful write: claude_sessions/sessions.py:431-432')
 def test_interrupted_add_dir_save_preserves_prior_bytes(monkeypatch, tmp_path):
     p = tmp_path / 'add-dirs.txt'
     p.write_bytes(b'old-directory\n')
 
-    class Interrupted:
-        def __enter__(self):
-            self.fh = builtins.open(p, 'w', encoding='utf-8')
-            return self
+    def interrupted(*a):
+        raise OSError('replace interrupted')
 
-        def write(self, text):
-            raise OSError('write interrupted')
-
-        def __exit__(self, *args):
-            self.fh.close()
-
-    monkeypatch.setattr(s, 'open', lambda *a, **k: Interrupted(), raising=False)
-    with pytest.raises(OSError, match='write interrupted'):
-        s.save_add_dirs(str(tmp_path), ['new-directory'])
+    monkeypatch.setattr(s._c.os, 'replace', interrupted)
+    assert s.save_add_dirs(str(tmp_path), ['new-directory']) is False
     assert p.read_bytes() == b'old-directory\n'
+    assert [x.name for x in tmp_path.iterdir()] == ['add-dirs.txt']
 
 
 def test_empty_name_deletes_selected_once_not_sibling(monkeypatch, tmp_path):

@@ -162,7 +162,6 @@ def test_extrema_ignore_invalid_and_context_uses_last_nonempty(replay, monkeypat
         2, 9, 'b', 'two')
 
 
-@pytest.mark.xfail(strict=True, reason='Non-dict message aborts later replay: claude_sessions/sessions.py:218')
 def test_api_error_and_malformed_message_do_not_poison_later_replay(replay, tmp_path):
     p = tmp_path / 'a.jsonl'
     rows = [{'isApiErrorMessage': True}, {'message': ['malformed']},
