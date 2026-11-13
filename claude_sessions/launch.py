@@ -107,7 +107,7 @@ def build_launch_command(path, encoded_name, choice, opts):
     elif choice.startswith('fork:'):
         rid = choice[5:]
     if rid is not None and not _PLAIN_SID.match(rid):
-        raise ValueError(f'not a plain session id: {rid!r}')
+        raise RuntimeError(f'not a plain session id: {rid!r}')
 
     claude = get_claude_exe()
     if not claude:
