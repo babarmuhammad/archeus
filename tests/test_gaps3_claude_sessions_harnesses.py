@@ -20,7 +20,7 @@ paths:
    (lines 461, 623-626, 719-720).
 5. ``of_argv``/``is_inference`` do not know the ``.cmd``/``.bat`` shim names of
    the two CLIs whose ``exe_names`` stop at ``.exe`` (lines 805-813) - the MISS
-   direction, an inference call no gate counts.  Kept as a strict xfail: the
+   direction, an inference call no gate counts.  Now a plain test: the
    registry disagrees with what this project itself treats as that CLI.
 6. ``exe`` reaches PATH only through ``proc.which``, the lookup that refuses a
    CWD or a relative PATH entry (lines 745-748).
@@ -242,21 +242,6 @@ def test_a_name_that_is_not_a_harness_is_neither_a_row_nor_the_default(
 
 # ── 5. the shim a CLI is installed AS is still that CLI ───────
 
-@pytest.mark.xfail(strict=True, reason=(
-    'The registry resolves a binary under one name and then refuses to recognise '
-    'it under the name it resolved. `exe()` asks `proc.which`, which on Windows '
-    'tries every PATHEXT suffix (proc.py:580-585), so `which("claude")` answers '
-    'with `...\\npm\\claude.cmd` - a path the resolver itself returned. '
-    '`of_argv` then compares that basename against Claude Code\'s '
-    'exe_names=("claude.exe","claude") and finds nothing, so `is_inference` is '
-    'False and the call is ungated. The project disagrees with the registry '
-    'three times over: conftest._CLAUDE_EXE counts claude.cmd and claude.bat as '
-    'a Claude launch, test_process_leak.py\'s ARGV table says an argv carrying '
-    '`claude.cmd` is one that must be BLOCKED, and '
-    'test_versions.py::test_an_npm_install_is_reported_not_overwritten uses '
-    '`AppData/Roaming/npm/claude.cmd` as Claude\'s path - while pi, the third '
-    'CLI, carries `pi.cmd` in its own list. Source disagreement: a name the '
-    'project treats as that CLI must place as it in the registry too.'))
 def test_an_inference_call_through_the_npm_shim_is_still_that_call(monkeypatch,
                                                                     tmp_path):
     """Lines 788-830: `of_argv` compares one basename against `exe_names`, and
@@ -295,6 +280,11 @@ def test_an_inference_call_through_the_npm_shim_is_still_that_call(monkeypatch,
     assert _h.of_argv([os.path.join(npm, 'claude.bat'), '-p', 'go'])['id'] == 'claude'
     assert _h.of_argv([os.path.join(npm, 'codex.cmd'), 'exec', 'go'])['id'] == 'codex'
     assert _h.is_inference([os.path.join(npm, 'codex.cmd'), 'exec', 'go'])
+    # any PATHEXT spelling proc.which can return, in any case, for every harness
+    assert _h.of_argv([os.path.join(npm, 'CODEX.BAT'), 'exec', 'go'])['id'] == 'codex'
+    assert _h.of_argv([os.path.join(npm, 'pi.com'), '-p', 'go'])['id'] == 'pi'
+    assert _h.of_argv([os.path.join(npm, 'CLAUDE.CMD'), '-p', 'go'])['id'] == 'claude'
+    assert _h.of_argv([os.path.join(npm, 'claude.txt'), '-p', 'go']) is None
 
 
 # ── 6. the binary is found on the PATH the guarded way, never in CWD ─────

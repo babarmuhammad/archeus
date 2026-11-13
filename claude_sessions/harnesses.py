@@ -805,10 +805,13 @@ def of_argv(args):
         first = str(args[0] or '').replace('\\', '/').rsplit('/', 1)[-1].lower()
     except (IndexError, TypeError, KeyError):
         return None
+    # the spellings proc.which can return for a name: bare, or a PATHEXT suffix
+    stem, ext = os.path.splitext(first)
+    if ext not in ('', '.com', '.exe', '.bat', '.cmd', '.ps1'):
+        return None
     for hid in ids():
         d = HARNESSES[hid]
-        if any(first == n.lower() or first == os.path.splitext(n)[0].lower()
-               for n in d['exe_names']):
+        if any(stem == os.path.splitext(n)[0].lower() for n in d['exe_names']):
             return d
     return None
 
