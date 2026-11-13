@@ -281,9 +281,10 @@ def find_git_repos(root, max_depth=2):
 def _parse_existing_sessions(text):
     """Extract session entries from SESSIONS block. Returns dict {sid_prefix: line}."""
     entries = {}
-    if _SESSIONS_START not in text or _SESSIONS_END not in text:
+    span = block_span(text, _SESSIONS_START, _SESSIONS_END)
+    if span is None:
         return entries
-    block = text[text.index(_SESSIONS_START) + len(_SESSIONS_START):text.index(_SESSIONS_END)]
+    block = text[span[0] + len(_SESSIONS_START):span[1] - len(_SESSIONS_END)]
     for line in block.splitlines():
         line = line.strip()
         if line.startswith('- '):
@@ -458,19 +459,33 @@ def replace_machine_blocks(existing, new_autogen, new_sessions):
     """Swap the AUTOGEN + SESSIONS sentinel blocks inside `existing`, appending
     any that are missing. `new_autogen`/`new_sessions` are full blocks INCLUDING
     sentinels ('' skips sessions). Returns the new full text."""
-    if _AUTOGEN_START in existing and _AUTOGEN_END in existing:
-        pre  = existing[:existing.index(_AUTOGEN_START)]
-        post = existing[existing.index(_AUTOGEN_END) + len(_AUTOGEN_END):]
-    else:
-        pre  = existing.rstrip('\n') + '\n\n'
-        post = ''
-    if _SESSIONS_START in post and _SESSIONS_END in post:
-        post = (post[:post.index(_SESSIONS_START)]
-                + (new_sessions or '')
-                + post[post.index(_SESSIONS_END) + len(_SESSIONS_END):])
-    elif new_sessions:
-        post = (post.rstrip('\n') + '\n\n' + new_sessions) if post.strip() else new_sessions
-    return pre + new_autogen + post
+    text = _swap_block(existing, _AUTOGEN_START, _AUTOGEN_END, new_autogen)
+    return _swap_block(text, _SESSIONS_START, _SESSIONS_END, new_sessions or '')
+
+
+def _cut(text, span):
+    """(text before the block, text after it) without the block. The newline that
+    closed the block goes with it: the block rewrites its own newline, so keeping
+    it here added a blank line on every prune."""
+    stop = span[1] + 1 if text[span[1]:span[1] + 1] == '\n' else span[1]
+    return text[:span[0]], text[stop:]
+
+
+def _swap_block(text, start, end, block):
+    """Put `block` where the first well-formed start..end block is, and drop every
+    later well-formed one; '' removes them. With no block to replace it is
+    appended. Stray markers are left as prose: only archeus's own blocks go."""
+    span = block_span(text, start, end)
+    if span is None:
+        if not block:
+            return text
+        return (text.rstrip('\n') + '\n\n' + block) if text.strip() else block
+    head, rest = _cut(text, span)
+    span = block_span(rest, start, end)
+    while span:
+        rest = ''.join(_cut(rest, span))
+        span = block_span(rest, start, end)
+    return head + block + rest
 
 
 def prune_preview(project_path, proj_folder=None):
@@ -539,7 +554,16 @@ def prune_claude_md(project_path, proj_folder=None):
 
 _KEEP_RE = re.compile(re.escape(_cfg._KEEP_START) + r'.*?' + re.escape(_cfg._KEEP_END),
                       re.S)
-_KEEP_MARK = '@@ARCHEUS_KEEP_%d@@'
+_KEEP_STEM = '@@ARCHEUS_KEEP_'
+
+
+def _keep_stem(manual):
+    """A placeholder prefix that the user's own text does not contain, so a marker
+    can only be one archeus wrote. Grows until absent: the manual is finite."""
+    stem = _KEEP_STEM
+    while stem in (manual or ''):
+        stem += 'X'
+    return stem
 
 
 def _fence_out(manual):
@@ -547,26 +571,29 @@ def _fence_out(manual):
 
     Returns (text_with_markers, [region_text]). The regions never reach the
     model, so no amount of creative rewriting can touch them."""
+    stem = _keep_stem(manual)
     kept = []
 
     def _sub(m):
         kept.append(m.group(0))
-        return _KEEP_MARK % (len(kept) - 1)
+        return f'{stem}{len(kept) - 1}@@'
 
     return _KEEP_RE.sub(_sub, manual or ''), kept
 
 
-def _fence_in(text, kept):
+def _fence_in(text, kept, stem=None):
     """Put the fenced regions back where their markers are.
 
-    A marker the model dropped does NOT lose the region — it is re-appended at
-    the end instead. Content survives even when placement does not, because
+    `stem` is the one `_keep_stem` chose for this manual; without it no marker can
+    be told apart from the user's own text, so every region is re-appended. A
+    marker the model dropped does NOT lose the region either — it is re-appended
+    at the end instead. Content survives even when placement does not, because
     "you will not lose this" is the only promise the fence makes."""
     out = text or ''
     for i, region in enumerate(kept):
-        mark = _KEEP_MARK % i
-        if mark in out:
-            out = out.replace(mark, region)
+        mark = f'{stem}{i}@@' if stem else None
+        if mark and mark in out:
+            out = out.replace(mark, region, 1)
         else:
             out = out.rstrip('\n') + '\n\n' + region + '\n'
     return out
@@ -676,6 +703,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
 
     from .ctxaudit import split_blocks
     manual = split_blocks(existing)['manual']
+    stem = _keep_stem(manual)
     manual, kept = _fence_out(manual)
     prompt = (
         "Compress this CLAUDE.md project-instructions file. It is loaded into the "
@@ -702,7 +730,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
         flash("Compression failed (empty/invalid output) — CLAUDE.md untouched",
               ok=False, secs=2)
         return False
-    compressed = _fence_in(compressed, kept)
+    compressed = _fence_in(compressed, kept, stem)
 
     final = assemble_with_manual(compressed, existing, project_path, proj_folder)
 
