@@ -37,14 +37,16 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
-_FENCE_OPEN = re.compile(r'[ \t]*(`{3,}|~{3,})')
+_FENCE_OPEN = re.compile(r'[ \t]*(`{3,}(?=[^`]*$)|~{3,})')
 
 
 def _markers(text, start, end):
     """(begin, stop, is_start) of each marker that stands alone on its line and is
     outside a fenced code block. A marker quoted in a sentence, or documented in an
-    example fence, is prose and never a block."""
-    out, fence, pos = [], None, 0
+    example fence, is prose and never a block. A fence that never closes hides
+    nothing: a forgotten closing line above a real block must not make every
+    refresh append another copy of it."""
+    out, held, fence, pos = [], [], None, 0
     for line in text.split('\n'):
         t = line.strip()
         m = _FENCE_OPEN.match(line)
@@ -54,9 +56,11 @@ def _markers(text, start, end):
             elif t in (start, end):
                 out.append((pos, pos + len(line), t == start))
         elif t and set(t) == {fence[0]} and len(t) >= len(fence):
-            fence = None
+            fence, held = None, []
+        elif t in (start, end):
+            held.append((pos, pos + len(line), t == start))
         pos += len(line) + 1
-    return out
+    return out + held
 
 
 def block_span(text, start, end):

@@ -553,6 +553,20 @@ def test_unclosed_fence_at_end_does_not_hide_block_before_it(monkeypatch, tmp_pa
     assert 'trailing example without a closing fence' in out
 
 
+def test_an_unclosed_fence_above_a_block_does_not_hide_it():
+    text = ('# alpha\n\n```md\nforgotten closing line\n\n'
+            + _AUTOGEN_START + '\nbody\n' + _AUTOGEN_END + '\n')
+    span = claude_md.block_span(text, _AUTOGEN_START, _AUTOGEN_END)
+    assert span is not None and text[span[0]:span[1]].endswith(_AUTOGEN_END)
+    assert claude_md.well_formed(text + _AUTOGEN_END + '\n', _AUTOGEN_START, _AUTOGEN_END) is False
+
+
+def test_inline_code_that_starts_a_line_with_three_backticks_is_not_a_fence():
+    text = ('```not a fence``` inline\n' + _AUTOGEN_START + '\nbody\n' + _AUTOGEN_END
+            + '\n\n```\ncode\n```\n')
+    assert claude_md.block_span(text, _AUTOGEN_START, _AUTOGEN_END) is not None
+
+
 # ── 13. an unreadable CLAUDE.md is never overwritten by a scaffold ───
 
 def _deny_claude_md_read(monkeypatch):
