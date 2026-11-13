@@ -46,13 +46,11 @@ def test_prefix_survives_torn_tail(monkeypatch):
     assert handle.closed
 
 
-@pytest.mark.xfail(strict=True, reason='Yield precedes zero-limit check: claude_sessions/transcripts.py:58-59')
 def test_zero_limit_yields_nothing(monkeypatch):
     stream(monkeypatch, '{"n":1}\n{"n":2}\n')
     assert list(transcripts.iter_json('synthetic', limit=0)) == []
 
 
-@pytest.mark.xfail(strict=True, reason='Byte budget counts Unicode characters: claude_sessions/transcripts.py:41')
 def test_budget_counts_utf8_bytes(monkeypatch):
     line = '{"text":"\u00e9\u00e9"}\n'
     stream(monkeypatch, line)

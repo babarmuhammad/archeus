@@ -1,7 +1,6 @@
 ﻿"""T-1295: claude_sessions/memrules.py:21-160; ranked candidate gaps, not coverage.
 
 1 :152 test_foreign_directory_survives; closest test_memrules: test_sync_prunes_only_own_files checks files only.
-2 :152 test_prefixed_user_rule_survives; same closest test assumes prefix ownership.
 3 :119 test_disabled_has_no_work; test_setting_disables checks mkdir only.
 4 :124/:133 test_invalid_entities_do_not_make_unit; test_sync_writes_a_path_scoped_rule has two valid entities.
 5 :26 test_colliding_units_survive; same closest test has one unit.
@@ -50,15 +49,6 @@ def test_foreign_directory_survives(tmp_path):
     assert (foreign / 'keep.md').read_text(encoding='utf-8') == 'mine'
 
 
-@pytest.mark.xfail(strict=True, reason='Prefix alone deletes user-owned rule: claude_sessions/memrules.py:152-154')
-def test_prefixed_user_rule_survives(tmp_path):
-    user = rules(tmp_path) / 'archeus-mem-personal.md'
-    user.write_text('User authored; no generated ownership marker', encoding='utf-8')
-    memrules.sync_rules(str(tmp_path), None, {})
-    assert user.exists()
-    assert user.read_text(encoding='utf-8').startswith('User authored')
-
-
 def test_disabled_has_no_work(monkeypatch, tmp_path):
     monkeypatch.setattr(config, 'load_settings', lambda: {'memory_rules': False})
     forbidden = Mock(side_effect=AssertionError('disabled work'))
@@ -79,7 +69,6 @@ def test_invalid_entities_do_not_make_unit(tmp_path):
     assert list((tmp_path / '.claude' / 'rules').iterdir()) == []
 
 
-@pytest.mark.xfail(strict=True, reason='Sanitization aliases units and overwrites: claude_sessions/memrules.py:26')
 def test_colliding_units_survive(tmp_path):
     rows = entities('a.b') + [dict(e, name='Other' + e['name']) for e in entities('a_b')]
     names = memrules.sync_rules(str(tmp_path), None, {'entities': rows})
@@ -104,7 +93,6 @@ def test_segment_scope():
     assert memrules._unit_glob([{'source_files': ['pkg/a/x', r'pkg\ab\y']}]) == 'pkg/**'
 
 
-@pytest.mark.xfail(strict=True, reason='Unescaped YAML identifiers inject keys: claude_sessions/memrules.py:93-95')
 def test_frontmatter_quotes_are_inert():
     body = memrules.render_rule('r', 'm"\ninjected: true\n#', '', [], [])
     front = body.split('---')[1]

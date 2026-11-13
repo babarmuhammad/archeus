@@ -110,7 +110,6 @@ def test_project_selection_is_account_scoped(activity, monkeypatch):
     assert clientstate.project_state('requested', account_a) == {}
 
 
-@pytest.mark.xfail(strict=True, reason='Malformed projects container raises on items(): claude_sessions/clientstate.py:63')
 def test_malformed_projects_are_empty(activity, monkeypatch):
     monkeypatch.setattr(clientstate, '_norm', lambda path: path)
     for projects in (['bad'], 'bad', 1):
@@ -136,7 +135,6 @@ def test_ttl_boundary_and_refresh(activity):
     assert activity.write.call_count == 2
 
 
-@pytest.mark.xfail(strict=True, reason='Negative cache age accepted as fresh: claude_sessions/clientstate.py:135-136')
 def test_future_cache_requires_refresh(activity):
     path = os.path.join(activity.account, 'archeus-activity.json')
     activity.cache[path] = {'at': activity.now + 1000000, 'sessions': 99, 'hits': {}}
