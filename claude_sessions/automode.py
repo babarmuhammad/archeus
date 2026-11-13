@@ -114,7 +114,10 @@ def set_environment(entries, cfgdir=None):
         if e and e != DEFAULTS_SENTINEL and e not in clean:
             clean.append(e)
     s = hooks._load(cfgdir)
-    am = dict(s.get('autoMode') or {})
+    cur = s.get('autoMode')
+    if cur is not None and not isinstance(cur, dict):
+        return False, 'autoMode in settings.json is not an object; not changed'
+    am = dict(cur or {})
     if not clean:
         am.pop('environment', None)
     else:
