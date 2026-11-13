@@ -721,7 +721,7 @@ class Harness:
                 ref.close()
             except BaseException as ex:
                 failed += 1
-                _say('pv20 N2 wind-down: Job %d could not be closed: %s %s'
+                _say(lambda n=n, ex=ex: 'pv20 N2 wind-down: Job %d could not be closed: %s %s'
                      % (n, type(ex).__name__, _snip(str(ex))))
         if self.m is not None:
             self.m.mxc.NATIVE_RUN_ENABLED = False
@@ -733,7 +733,7 @@ class Harness:
                         common._terminate_process(pid)
             except BaseException as ex:
                 failed += 1
-                _say('pv20 N2 wind-down: launcher %d could not be checked: %s %s'
+                _say(lambda n=n, ex=ex: 'pv20 N2 wind-down: launcher %d could not be checked: %s %s'
                      % (n, type(ex).__name__, _snip(str(ex))))
         return failed
 
@@ -1174,13 +1174,18 @@ def verify_copy(src, dst):
 
 
 def _say(text):
-    """Best-effort report: a closed or broken stdout must never stop cleanup or replace an error."""
+    """Best-effort report: a closed or broken stdout, or an interrupt, must never stop cleanup or
+    replace an error. text may be a callable, so its formatting runs inside the same guard."""
     try:
-        print(redact(text), flush=True)
-    except (OSError, ValueError):
+        text = redact(text() if callable(text) else text)
+    except BaseException:
+        return
+    try:
+        print(text, flush=True)
+    except BaseException:
         try:
-            print(redact(text), file=sys.stderr, flush=True)
-        except (OSError, ValueError):
+            print(text, file=sys.stderr, flush=True)
+        except BaseException:
             pass
 
 
@@ -1273,8 +1278,8 @@ def write_results(root, doc):
         text = json.dumps(_redact_strings(doc), indent=2, sort_keys=True) + '\n'
         with open(os.path.join(root, RESULTS), 'x', encoding='utf-8') as fh:
             fh.write(text)
-    except Exception as ex:
-        _say('pv20 N2 results not written: %s %s' % (type(ex).__name__, _snip(str(ex))))
+    except BaseException as ex:
+        _say(lambda ex=ex: 'pv20 N2 results not written: %s %s' % (type(ex).__name__, _snip(str(ex))))
         return False
     return True
 
@@ -1312,8 +1317,11 @@ def diagnose(h, flags, admission):
         interpretation = diag_interpret({k: v['label'] for k, v in recs.items()})
         _say('DIAGNOSTIC %s' % interpretation)
     finally:
-        written = write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
-                                                'rows': [recs[r.id] for r in rows if r.id in recs]})
+        try:
+            written = write_results(h.lay['root'], {'system32': admission, 'interpretation': interpretation,
+                                                    'rows': [recs[r.id] for r in rows if r.id in recs]})
+        except BaseException:
+            written = False
     return 2 if written else 3
 
 
