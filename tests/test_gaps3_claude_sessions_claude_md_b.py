@@ -614,3 +614,22 @@ def test_ai_scaffold_refuses_to_overwrite_an_unreadable_claude_md(monkeypatch, t
     assert calls['write'] == [], 'an unreadable file was written over'
     with builtins.open(md_path, 'rb') as f:
         assert f.read() == seeded.encode('utf-8')
+
+
+# ── 14. a closed example of a marker pair in model output is prose ───
+
+def test_closed_fenced_memory_example_survives_the_stray_clean_up():
+    """_drop_blocks walked every START substring when it cleaned strays, so a
+    closed fenced example of the MEMORY pair in model output lost its body. Only
+    a START that _markers recognises is a stray; a recognised one still goes with
+    the paragraph under it."""
+    existing = '# alpha\n\n' + _MEMORY_START + '\nREAL DIGEST\n' + _MEMORY_END + '\n'
+    example = '```md\n' + _MEMORY_START + '\nEXAMPLE BODY\n' + _MEMORY_END + '\n```\n'
+    final = ('# alpha\n\n' + example + '\n' + _MEMORY_START
+             + '\nstray echo\n\nKEEP ME\n')
+    out = claude_md._preserve_block(final, existing, _MEMORY_START, _MEMORY_END)
+    assert example in out, 'the fenced example lost its body'
+    assert 'REAL DIGEST' in out and out.count(_MEMORY_START) == 2
+    assert 'stray echo' not in out, 'a recognised stray START was kept'
+    assert 'KEEP ME' in out
+

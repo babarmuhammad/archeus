@@ -202,10 +202,12 @@ def _drop_blocks(text, start, end, strays=True):
         span = block_span(text, start, end)
     if not strays:
         return text
-    while start in text:
-        i = text.index(start)
+    stray = [b for b, _, is_start in _markers(text, start, end) if is_start]
+    while stray:
+        i = text.index(start, stray[0])
         m = _STRAY_STOP.search(text, i + len(start))
         text = text[:i] + (text[m.end():] if m else '')
+        stray = [b for b, _, is_start in _markers(text, start, end) if is_start]
     return text
 
 
