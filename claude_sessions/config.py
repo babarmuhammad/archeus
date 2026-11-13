@@ -763,6 +763,11 @@ def _ensure_dir(d):
 _REPLACE_LOCK = threading.Lock()
 
 
+# A count of retries cannot tell a reader that is slow from one that never lets go,
+# so the budget is seconds: a descheduled reader gets time to close its handle.
+_REPLACE_BUDGET = 2.0
+
+
 def write_atomic(path, text, mode=None):
     """Temp file in the same directory, then os.replace. Returns True on success.
 
@@ -783,6 +788,7 @@ def write_atomic(path, text, mode=None):
     The temp name is unique per call: two threads of one process writing the
     same path (GUI request threads) used to share `<path>.<pid>.tmp`, and all but
     one write failed."""
+    created = False
     try:
         d = os.path.dirname(path)
         if d:
@@ -790,23 +796,33 @@ def write_atomic(path, text, mode=None):
         tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.{secrets.token_hex(4)}.tmp'
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_BINARY', 0),
                      0o666 if mode is None else mode)
-        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as f:
+        created = True
+        try:
+            f = os.fdopen(fd, 'w', encoding='utf-8', newline='')
+        except BaseException:
+            os.close(fd)
+            raise
+        with f:
             f.write(text)
         with _REPLACE_LOCK:
-            for wait in (0.01, 0.02, 0.05, 0.1, 0):
+            deadline = time.monotonic() + _REPLACE_BUDGET
+            wait = 0.01
+            while True:
                 try:
                     os.replace(tmp, path)
                     break
                 except PermissionError:       # Windows: a reader holds the target open
-                    if not wait:
+                    if time.monotonic() >= deadline:
                         raise
                     time.sleep(wait)
+                    wait = min(wait * 2, 0.1)
         return True
     except Exception:
-        try:
-            os.unlink(tmp)
-        except Exception:
-            pass
+        if created:
+            try:
+                os.unlink(tmp)
+            except Exception:
+                pass
         return False
 
 

@@ -879,7 +879,8 @@ def test_no_second_store_pin_exists_and_the_reviewed_env_pins_are_untouched():
 def test_the_guarded_project_git_call_carries_the_whole_pin(tmp_path, monkeypatch):
     # S4: one assertion on the complete argv and environment of a guarded call, so
     # removing any pin (lazy fetch, protocol, attribute system, submodule, maintenance,
-    # config) fails it. On Windows the frozen configuration adds its metadata pins.
+    # config) fails it. On Windows the frozen configuration adds its metadata pins. Off
+    # Windows the freeze seam (tests/conftest.py) yields the argv unchanged, so there are none.
     root = str(tmp_path)
     gitdir = os.path.join(root, '.git')
     os.makedirs(gitdir)

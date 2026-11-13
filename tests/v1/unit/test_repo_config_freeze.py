@@ -210,3 +210,30 @@ def test_another_process_holding_the_config_for_writing_refuses_without_hanging(
     assert holder.returncode == 0
     with open(config_path(root), 'a') as f:
         f.write('[x]\n\ty = 1\n')
+
+
+@pytest.mark.real_config_freeze
+def test_an_unsupported_platform_refuses_before_any_repository_git_call(tmp_path, monkeypatch):
+    root = make_repo(tmp_path)
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    ran = []
+    recording(monkeypatch, ran)
+    assert local._project_git(root, ['status', '--porcelain']) is None
+    assert all(argv[-1] == 'version' for argv in ran)
+    assert local._VERSION, 'Git is below the floor, so the freeze was never reached'
+
+
+@pytest.mark.real_config_freeze
+@pytest.mark.skipif(sys.platform == 'win32', reason='Windows takes the freeze')
+def test_off_windows_the_real_guard_refuses_the_repository_call(tmp_path, monkeypatch):
+    root = make_repo(tmp_path)
+    ran = []
+    recording(monkeypatch, ran)
+    assert local._project_git(root, ['status', '--porcelain']) is None
+    assert all(argv[-1] == 'version' for argv in ran)
+    assert local._VERSION, 'Git is below the floor, so the freeze was never reached'
+
+
+@WINDOWS
+def test_the_freeze_seam_is_inactive_on_windows():
+    assert not getattr(local._frozen_config, '_seam', False)
