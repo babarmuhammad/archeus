@@ -201,9 +201,13 @@ def load_manifest(project_path, proj_folder=None):
             try:
                 with open(p, encoding='utf-8') as f:
                     data = json.load(f)
-                if isinstance(data, dict) and data.get('schema_version', 0) <= SCHEMA_VERSION:
-                    return _migrate(data)
-                return _corrupt()
+                if not isinstance(data, dict):
+                    return _corrupt()
+                if data.get('schema_version', 0) > SCHEMA_VERSION:
+                    m = _corrupt()
+                    m['_newer'] = True
+                    return m
+                return _migrate(data)
             except Exception:
                 return _corrupt()
     return _empty_manifest()
@@ -457,6 +461,8 @@ def update_manifest(project_path, proj_folder, op, **data):
     Best-effort: never raises."""
     try:
         m = load_manifest(project_path, proj_folder)
+        if m.get('_newer'):     # written by a newer archeus: rewriting it would downgrade it
+            return None
         m.pop('_corrupt', None)
         m['project_path'] = project_path or m.get('project_path', '')
         live = _gather_live(project_path, proj_folder)
