@@ -449,8 +449,7 @@ def load_add_dirs(proj_folder):
 
 
 def save_add_dirs(proj_folder, dirs):
-    with open(os.path.join(proj_folder, 'add-dirs.txt'), 'w', encoding='utf-8') as f:
-        f.write('\n'.join(dirs))
+    return _c.write_atomic(os.path.join(proj_folder, 'add-dirs.txt'), '\n'.join(dirs))
 
 
 def is_internal_session(jsonl_path):

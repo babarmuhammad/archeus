@@ -46,26 +46,17 @@ def test_corrupt_provider_update_refuses_sibling_loss(monkeypatch, tmp_path):
     assert writes == [] and p.read_bytes() == old
 
 
-@pytest.mark.xfail(strict=True, reason='Text save truncates before successful write: claude_sessions/sessions.py:431-432')
 def test_interrupted_add_dir_save_preserves_prior_bytes(monkeypatch, tmp_path):
     p = tmp_path / 'add-dirs.txt'
     p.write_bytes(b'old-directory\n')
 
-    class Interrupted:
-        def __enter__(self):
-            self.fh = builtins.open(p, 'w', encoding='utf-8')
-            return self
+    def interrupted(*a):
+        raise OSError('replace interrupted')
 
-        def write(self, text):
-            raise OSError('write interrupted')
-
-        def __exit__(self, *args):
-            self.fh.close()
-
-    monkeypatch.setattr(s, 'open', lambda *a, **k: Interrupted(), raising=False)
-    with pytest.raises(OSError, match='write interrupted'):
-        s.save_add_dirs(str(tmp_path), ['new-directory'])
+    monkeypatch.setattr(s._c.os, 'replace', interrupted)
+    assert s.save_add_dirs(str(tmp_path), ['new-directory']) is False
     assert p.read_bytes() == b'old-directory\n'
+    assert [x.name for x in tmp_path.iterdir()] == ['add-dirs.txt']
 
 
 def test_empty_name_deletes_selected_once_not_sibling(monkeypatch, tmp_path):
