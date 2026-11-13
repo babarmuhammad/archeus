@@ -37,6 +37,19 @@ _MACHINE_BLOCKS = ((_MEMORY_START, _MEMORY_END),
 _AI_ANALYZE_TIMEOUT = 900
 
 
+def block_span(text, start, end):
+    """(begin, stop) of the first well-formed block: a START whose next marker is
+    its END. A START followed by another START, or an END with no open START, is
+    stray text and never a block. None when there is no such block."""
+    open_at = None
+    for m in re.finditer(f'{re.escape(start)}|{re.escape(end)}', text):
+        if m.group() == start:
+            open_at = m.start()
+        elif open_at is not None:
+            return open_at, m.end()
+    return None
+
+
 def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
     """Insert, replace or REMOVE one sentinel block in <project>/<filename>,
     leaving everything else (user prose, AUTOGEN, SESSIONS, other blocks)
@@ -54,10 +67,11 @@ def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
         try:
             old = open(md_path, encoding='utf-8', errors='ignore').read()
         except Exception:
-            old = ''
-    if start in old and end in old:
-        pre = old[:old.index(start)]
-        post = old[old.index(end) + len(end):]
+            return False, '', ''   # its text is unknown: not ours to replace
+    span = block_span(old, start, end)
+    if span:
+        pre = old[:span[0]]
+        post = old[span[1]:]
         # Normalise the seam instead of concatenating it. `section` already ends
         # in a newline and `post` began with the one that followed the old
         # sentinel, so a plain join added a blank line on EVERY rewrite — a slow
@@ -131,12 +145,31 @@ def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END):
     rewrites the whole CLAUDE.md and would otherwise drop the machine-maintained
     ARCHEUS:MEMORY block (it lives after AUTOGEN/SESSIONS, so Claude never
     sees it). Always keep it."""
-    if start not in existing or end not in existing:
+    span = block_span(existing, start, end)
+    if span is None:
         return final
-    block = existing[existing.index(start):existing.index(end) + len(end)]
-    if start in final and end in final:  # drop any stray block the model emitted
-        final = final[:final.index(start)] + final[final.index(end) + len(end):]
+    block = existing[span[0]:span[1]]
+    final = _drop_blocks(final, start, end)
     return final.rstrip('\n') + '\n\n' + block.rstrip('\n') + '\n'
+
+
+_STRAY_STOP = re.compile(r'\n\n|\n(?=<!--)')
+
+
+def _drop_blocks(text, start, end):
+    """`text` without its archeus blocks. A START that never reaches its END is
+    model output echoing a sentinel: it goes with the paragraph under it, which
+    ends at the next blank line or the next `<!--` marker, so the AUTOGEN and
+    SESSIONS blocks that follow it are not swallowed."""
+    span = block_span(text, start, end)
+    while span:
+        text = text[:span[0]] + text[span[1]:]
+        span = block_span(text, start, end)
+    while start in text:
+        i = text.index(start)
+        m = _STRAY_STOP.search(text, i + len(start))
+        text = text[:i] + (text[m.end():] if m else '')
+    return text
 
 
 def _preserve_machine_blocks(final, existing):
