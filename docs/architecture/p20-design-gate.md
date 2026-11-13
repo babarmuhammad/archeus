@@ -1146,8 +1146,8 @@ a decision. **No code was changed.** Slice F was not started. ADR-0021 was not a
 `archeus terms` record was written and no Archeus Core ran the real harness.
 
 58. **How it was run.** The assistant ran the real Claude Code CLI **2.1.291**
-    (`C:\Users\mab\.local\bin\claude.exe`) directly, at the user's instruction:
-    - 25 runs, all with `--model haiku`, on one account: `CLAUDE_CONFIG_DIR=C:\Users\mab\.claude`,
+    (`C:\Users\<user>\.local\bin\claude.exe`) directly, at the user's instruction:
+    - 25 runs, all with `--model haiku`, on one account: `CLAUDE_CONFIG_DIR=C:\Users\<user>\.claude`,
       a subscription OAuth login with no API key in the environment.
     - Every run used `subprocess.Popen` with a list argv, as `base.spawn` does, so the empty
       `--setting-sources` value reached the CLI as it would in production.
@@ -1176,7 +1176,7 @@ a decision. **No code was changed.** Slice F was not started. ADR-0021 was not a
     | V3b | MCP: only opted-in servers, only through `--mcp-config` | **PASS** | `mcp_servers` empty under `""` and under `project`; `[pvmcp]` alone when `pvmcp` is opted in (`pvother` absent); the baseline without flags lists both plus 12 others |
     | V3c | Plugins: only through an opted-in source or `--plugin-dir` | **PASS**, with one finding | `--plugin-dir` for `caveman@caveman` loads `caveman` alone; the user source loads its 13. **Finding:** four built-in plugins (`cc-plugin-sec-default`, `-agents-md`, `-telemetry`, `-plugin-authoring`, all `@builtin`) load under every narrowing, and the inventory does not record them |
     | V3d | Skills: none with `--disable-slash-commands`; without it, only those of what is opted in | **PASS**, with one finding | none under `""`. With a plugin opted in, the plugin's skills load and the user's and the project's do not. **Finding:** without the flag, the CLI's own bundled skills (19: `deep-research`, `code-review`, `loop` …) load, and the inventory does not record them |
-    | V3e | CLAUDE.md under the narrowing | **Observed rule** | an instruction file follows its setting source. Under `""`, **none** loads: `InstructionsLoaded` fires 0 times, the debug log says "project memory is off", and the canary is not known. `user` loads `~/.claude/CLAUDE.md` alone; `project` loads the project's file and every ancestor's (`C:\Users\mab\CLAUDE.md`, and `C:\Users\mab\.claude\CLAUDE.md` read as an ancestor's `.claude/CLAUDE.md`). Positive controls show the logging hook fires whenever a file loads |
+    | V3e | CLAUDE.md under the narrowing | **Observed rule** | an instruction file follows its setting source. Under `""`, **none** loads: `InstructionsLoaded` fires 0 times, the debug log says "project memory is off", and the canary is not known. `user` loads `~/.claude/CLAUDE.md` alone; `project` loads the project's file and every ancestor's (`C:\Users\<user>\CLAUDE.md`, and `C:\Users\<user>\.claude\CLAUDE.md` read as an ancestor's `.claude/CLAUDE.md`). Positive controls show the logging hook fires whenever a file loads |
     | V3f | The recorded inventory matches what loads | **FAIL** | the flags recorded are the flags given (the argv is derived from the record). The item statuses are not accurate. **Over-reported**: CLAUDE.md files (user, project, ancestors) and the skills of excluded sources are recorded `not_excludable` (loaded), but the CLI excludes them. **Omitted**: the four built-in plugins, the CLI's bundled skills, and an ancestor's `.claude/CLAUDE.md`. Hooks, plugins and MCP servers are recorded accurately |
     | V3g | Managed settings always apply | **NOT RUN** | no managed settings file exists on this machine (`C:\Program Files\ClaudeCode\` is absent) |
     | V4 | An opted-out source, plugin or MCP server is not loaded | **PASS** | V3a–V3d. Exclusion is the flags' work; exit code 2 is the hook's deny of a tool call (V5b), not how exclusion happens |
@@ -1384,7 +1384,7 @@ run or altered.
       Q49's anchor moved with the restructured `skill_in` line; its mutation is unchanged.
 70. **PV-19, rerun against the real CLI after O4 and O5.**
     - **Setup.** Claude Code 2.1.291, `--model haiku`, the same OAuth account
-      (`C:\Users\mab\.claude`), the shipped `hook.py` and `sources.py`, and a stub Core on the
+      (`C:\Users\<user>\.claude`), the shipped `hook.py` and `sources.py`, and a stub Core on the
       hook mailbox.
     - **Runs.** 27 runs, all exit 0, `apiKeySource: "none"` and a successful result; 23 of them
       with `--setting-sources ""`.
@@ -2334,7 +2334,7 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
          on every end path, and a boot sweep removes what a crash left. DPAPI cannot help,
          because the CLI reads the file in plaintext.
        - **Built in T-099**, outside this slice's commits: `56e4c8b`, `b2dbf4c` and `c1cc825`
-         in the detached checkout `D:/archeus-p20-mcp`, reviewed by an independent Claude
+         in a detached worktree, reviewed by an independent Claude
          reviewer (APPROVE on `b2dbf4c`). While a process runs the keys are still on disk, and
          after a Core-less e-stop the file stays until the next boot's sweep.
        - **Item 109's table gains a row:** opted-in MCP servers' definitions, at
@@ -2612,7 +2612,7 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        process running as the same user can read every plaintext credential below; another user
        can read one only if ARCHEUS_HOME's ACL lets them. Core writes no ACL. In this tree it warns
        on a broad principal that can WRITE the home (T-089, `3bdc485`); the warning for a broad
-       READER of the home and of `run/local-token` is T-096 (`a2be0f4`, `D:/archeus-p20-f`) and
+       READER of the home and of `run/local-token` is T-096 (`a2be0f4`, a detached worktree) and
        is not in this tree. The PV-20 target, not in force while isolation is not enforced: an
        isolated execution reads only its own hook request, never `run/local-token`, another
        execution's files or any MCP key. No item claims isolation protects these files today.
@@ -2636,7 +2636,7 @@ Fakes only: no real provider call, no Windows isolation, profile or ACL API, no 
        - *PIN-derived request hashes*: in this tree a command carrying a step-up proof stores a
          plain sha256 of its arguments, PIN included, in the idempotency table for 24 h, and a
          6-digit PIN is recoverable from it (T-098 review finding 5). T-107
-         (`D:/archeus-p20-idem`, not in this tree) keeps proofs out of the hash and migration
+         (a detached worktree, not in this tree) keeps proofs out of the hash and migration
          0016 drops the old rows.
      - **Backups.** A backup is an SQLite online-backup copy of the database only
        (`infra/db/backup.py`), so no file under `run/` is in one. The database holds token
@@ -2740,7 +2740,7 @@ T-096.4. **Items 109 and 111, corrected by this append.**
      - **Order of this section.** The round-5 merge kept both sides of section 12 and renumbered
        nothing: items 115-128 (slices H and J and their corrections, merged first) are followed
        by T-096.1-T-096.4 (merged after), which keep their own numbers. This item follows both.
-     - **The candidate (T-108).** Detached checkout `D:/archeus-pv20-int5`, built from round 4's
+     - **The candidate (T-108).** Detached worktree, built from round 4's
        `91cbb0c` by `--no-ff` merges naming each producer: `8829255` (T-092 + T-080, `44cbb47`),
        `1dc0bf6` (T-083, `4eb7ca5`), `046d3b9` (T-089, `02007f1`), `b63fed4` (slices H, I, J;
        T-093, T-094, T-098, T-103; `2b6e852`), `99028da` (T-099, T-101, T-102, T-105; `b73f875`),

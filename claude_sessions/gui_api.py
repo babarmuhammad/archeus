@@ -896,7 +896,7 @@ def _managed_path_ok(v):
     """Is this somewhere archeus is allowed to DELETE?
 
     `os.remove(body['file'])` and `shutil.rmtree(body['dir'])` were reachable
-    with any path at all, so `{"dir": "C:\\\\Users\\\\mab"}` was a recursive
+    with any path at all, so `{"dir": "C:\\\\Users\\\\<user>"}` was a recursive
     delete of the home directory. The token gates it, but a guard that only
     holds while a secret does is one layer, not two.
 
