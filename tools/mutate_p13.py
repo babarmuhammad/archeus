@@ -460,8 +460,8 @@ MUTATIONS = [
      ['tests/v1/unit/test_repo_store.py::test_the_guarded_project_git_call_carries_the_whole_pin']),
     # ── R2: the frozen configuration (test_repo_config_freeze.py) ──
     ('Z110', 'the guarded call runs without the configuration freeze', [(LOC,
-     "            guard = (_frozen_config(root, argv, env, run, empty) if sys.platform == 'win32'",
-     "            guard = (contextlib.nullcontext(argv) if sys.platform == 'win32'")],
+     "            with _frozen_config(root, argv, env, run, empty) as argv:",
+     "            with contextlib.nullcontext(argv) as argv:")],
      [F + '::test_a_key_written_after_enumeration_is_denied_and_never_runs',
       F + '::test_the_handles_are_released_after_every_outcome']),
     ('Z111', 'the freeze is released before the Git call starts', [(LOC,
@@ -492,6 +492,11 @@ MUTATIONS = [
      "        if h == INVALID_HANDLE:\n            raise api._error('CreateFileW')",
      "        if h == INVALID_HANDLE:\n            return")],
      [F + '::test_a_failed_handle_acquisition_is_refused_and_launches_nothing']),
+    ('Z117', 'an unsupported platform falls back to the unlocked path', [(LOC,
+     "            with _frozen_config(root, argv, env, run, empty) as argv:",
+     "            with (_frozen_config(root, argv, env, run, empty) if sys.platform == 'win32'\n"
+     "                  else contextlib.nullcontext(argv)) as argv:")],
+     [F + '::test_an_unsupported_platform_refuses_before_any_repository_git_call']),
 ]
 
 
