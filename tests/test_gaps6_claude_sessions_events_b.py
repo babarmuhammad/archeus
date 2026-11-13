@@ -129,7 +129,6 @@ def test_interrupted_rotation_preserves_old_complete_audit(monkeypatch, tmp_path
     assert p.read_bytes() == old
 
 
-@pytest.mark.xfail(strict=True, reason='No-newline tail published as a complete record: claude_sessions/events.py:188-196')
 def test_tail_without_newline_does_not_publish_torn_fragment(monkeypatch, tmp_path):
     p = tmp_path / 'events.jsonl'
     old = b'x' * 40
