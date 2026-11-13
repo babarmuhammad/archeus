@@ -502,9 +502,9 @@ def _sweep_claude_md(base, fixed, failed):
     if not os.path.isfile(path):
         return
     try:
-        with open(path, encoding='utf-8', errors='ignore') as f:
+        with open(path, encoding='utf-8', newline='') as f:
             text = f.read()
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         _c.log.warning('sweep could not read %s: %s', path, e)
         return          # a read failure is not a reason to retry for ever
     if _OLD_TAG not in text:

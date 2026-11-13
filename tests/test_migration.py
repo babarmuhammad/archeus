@@ -714,3 +714,49 @@ def test_the_repair_covers_every_harness_archeus_writes_hooks_for():
     assert writes_hooks == ['claude'], (
         '%s now takes hooks from archeus — teach migrate.repair_commands its '
         'config reader rather than writing a second repair' % writes_hooks)
+
+
+def _md_bytes(path):
+    with open(path, 'rb') as f:
+        return f.read()
+
+
+def test_crlf_prose_survives_a_rename(swept):
+    """A CRLF file read in text mode came back as LF, and the rename pass wrote
+    that back: every line of the user's own prose changed its ending."""
+    home, proj = swept
+    prose = b'# p\r\n\r\nUSER\r\n\r\n'
+    path = str(proj / 'CLAUDE.md')
+    with open(path, 'wb') as f:
+        f.write(prose + OLD_MEM.encode() + b'\r\nTAIL\r\n')
+    _fixed, failed = migrate.sweep([str(home)])
+    assert not failed, failed
+    assert _md_bytes(path) == (prose + OLD_MEM.replace('CLAUDECTL', 'ARCHEUS').encode()
+                               + b'\r\nTAIL\r\n')
+
+
+def test_an_undecodable_file_is_left_untouched_and_logged(swept, caplog):
+    """`errors='ignore'` dropped the invalid bytes and renamed the block around
+    them. A file that is not UTF-8 is unreadable, so it is logged like any other
+    unreadable file and not rewritten."""
+    home, proj = swept
+    path = str(proj / 'CLAUDE.md')
+    original = b'# p\nUSER \xff\xfe\n' + OLD_MEM.encode() + b'\n'
+    with open(path, 'wb') as f:
+        f.write(original)
+    migrate.sweep([str(home)])
+    assert _md_bytes(path) == original
+    assert 'could not read' in caplog.text
+
+
+def test_legacy_block_removal_keeps_crlf_outside_bytes(swept):
+    """Dropping a superseded block consumes only its own closing newline; the
+    CRLF prose on both sides of it survives byte for byte."""
+    home, proj = swept
+    prose = b'# p\r\n\r\nUSER\r\n\r\n'
+    path = str(proj / 'CLAUDE.md')
+    with open(path, 'wb') as f:
+        f.write(prose + OLD_MEM.encode() + b'\r\n\r\n' + NEW_MEM.encode() + b'\r\nTAIL\r\n')
+    _fixed, failed = migrate.sweep([str(home)])
+    assert not failed, failed
+    assert _md_bytes(path) == prose + b'\r\n' + NEW_MEM.encode() + b'\r\nTAIL\r\n'
