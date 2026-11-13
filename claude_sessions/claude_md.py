@@ -1378,15 +1378,12 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
         lines.insert(insert_at, _AI_MARKER)
     final = '\n'.join(lines)
 
-    try:
-        with open(md_path, 'w', encoding='utf-8') as f:
-            f.write(final)
-        print(f"  Done — CLAUDE.md {'updated' if is_update else 'written'}.")
-        time.sleep(1)
-    except Exception as e:
-        print(f"\n  Write error: {e}")
+    if not _c.write_atomic(md_path, final):
+        print("\n  Write error: CLAUDE.md untouched.")
         time.sleep(2)
         return
+    print(f"  Done — CLAUDE.md {'updated' if is_update else 'written'}.")
+    time.sleep(1)
 
     try:
         from . import workspace
