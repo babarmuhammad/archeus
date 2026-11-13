@@ -329,12 +329,6 @@ def test_exactly_the_cap_of_live_lessons_with_an_expired_tail_is_not_reported_as
     assert tail[0] not in found
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'trace.py:65-66: the decoder guard catches ValueError only, but json.loads raises '
-    'RecursionError for a body nested deep enough (RecursionError is not a ValueError). '
-    'One hostile relations.body, a TEXT column with no shape check, therefore raises out '
-    'of trace.lessons and fails the whole trace read instead of skipping the row, which '
-    'is what the comment on line 66 promises ("a bad body is skipped, not fatal").'))
 def test_a_body_deep_enough_to_outrecursion_the_decoder_is_skipped_like_any_bad_one():
     body = ('[' * 200000) + (']' * 200000)
     with pytest.raises(RecursionError):
