@@ -674,7 +674,11 @@ def sync_project_agents(project_path, refs, routed=None):
     # so agents inherit CLAUDE_CODE_SUBAGENT_MODEL instead of trying to
     # call a bare Anthropic model id through the OmniRoute proxy)
     written = []
+    collided = set()
     for fn, src in desired.items():
+        # a name not yet managed is created exclusively, so a user file that
+        # appeared after the check above wins; a managed name is overwritten
+        new = fn not in managed
         try:
             dest_path = os.path.join(dest, fn)
             if routed:
@@ -688,14 +692,24 @@ def sync_project_agents(project_path, refs, routed=None):
                         fm_lines = [l for l in fm.splitlines()
                                     if not l.strip().startswith('model:')]
                         content = '---' + '\n'.join(fm_lines) + '\n---' + body
-                with open(dest_path, 'w', encoding='utf-8') as f:
+                with open(dest_path, 'x' if new else 'w', encoding='utf-8') as f:
                     f.write(content)
             else:
-                shutil.copyfile(src, dest_path)
+                # reserve the name first; copyfile then fills our own empty file
+                if new:
+                    open(dest_path, 'xb').close()
+                try:
+                    shutil.copyfile(src, dest_path)
+                except Exception:
+                    if new:
+                        os.remove(dest_path)
+                    raise
             written.append(fn)
+        except FileExistsError:
+            collided.add(fn)
         except Exception:
             pass
-    kept = [fn for fn in first if os.path.lexists(os.path.join(dest, fn))]
+    kept = [fn for fn in first if fn not in collided and os.path.lexists(os.path.join(dest, fn))]
     if kept != first:
         try:
             _record(kept)

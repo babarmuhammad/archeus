@@ -127,3 +127,33 @@ def test_a_successful_removal_drops_the_name_from_the_manifest(monkeypatch, tmp_
     assert _manifest(proj) == ['b.md']
 
 
+
+
+@pytest.mark.parametrize('routed', [False, True])
+def test_user_file_created_after_the_check_is_not_overwritten(monkeypatch, tmp_path, routed):
+    """The name looks absent at the ownership check, then the user creates rev.md
+    before the copy. The copy must not overwrite it, and the name is not recorded."""
+    sb = Sandbox(monkeypatch, tmp_path)
+    _seed(sb, 'rev')
+    proj = _proj(tmp_path)
+    _dest(proj).mkdir(parents=True)
+    own = _dest(proj) / 'rev.md'
+    own.write_text('USER OWN AGENT\n', encoding='utf-8')
+
+    real_lexists = os.path.lexists
+    seen = []
+
+    def absent_once(p):
+        if not seen and _same(p, own):
+            seen.append(p)
+            return False
+        return real_lexists(p)
+
+    monkeypatch.setattr(os.path, 'lexists', absent_once)
+    n = agents.sync_project_agents(str(proj), ['01-core/rev'], routed=routed)
+    monkeypatch.setattr(os.path, 'lexists', real_lexists)
+
+    assert seen, 'the check never ran for rev.md'
+    assert n == 0, n
+    assert own.read_text(encoding='utf-8') == 'USER OWN AGENT\n', 'the user file was overwritten'
+    assert 'rev.md' not in (_manifest(proj) or []), 'the user file was claimed'
