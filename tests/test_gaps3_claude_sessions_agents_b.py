@@ -184,7 +184,6 @@ XFALL_ABSOLUTE = (
     'manifest names; contract at agents.py:590-591.')
 
 
-@pytest.mark.xfail(strict=True, reason=XFALL_TRAVERSAL)
 def test_manifest_traversal_entry_cannot_delete_outside(env, tmp_path):
     """agents.py:632-640 — a manifest naming `../../victim.md` must not be a
     licence to delete it. Closest existing test:
@@ -212,7 +211,6 @@ def test_manifest_traversal_entry_cannot_delete_outside(env, tmp_path):
     assert n == 1
 
 
-@pytest.mark.xfail(strict=True, reason=XFALL_ABSOLUTE)
 def test_manifest_absolute_entry_cannot_delete_foreign(env, tmp_path):
     """agents.py:632-640 — same missing containment check, second entry shape.
     The absolute path is built from tmp_path so the test says nothing about
@@ -458,7 +456,6 @@ XFALL_MANIFEST_WRITE = (
     'follows the manifest.')
 
 
-@pytest.mark.xfail(strict=True, reason=XFALL_MANIFEST_WRITE)
 def test_failed_manifest_write_is_not_reported_as_managed(env, tmp_path):
     """agents.py:668-675 + :684 — the count returned must never exceed what the
     ownership record backs. Fail-closed either way: roll the copies back, or
@@ -473,9 +470,10 @@ def test_failed_manifest_write_is_not_reported_as_managed(env, tmp_path):
 
     n = agents.sync_project_agents(proj, ['01-core/rev'])
 
-    assert os.path.isfile(os.path.join(dest, 'rev.md')), \
-        'precondition: the copy itself still succeeded'
     recorded = _read_manifest(proj) or []
+    assert n == 0 and recorded == [], 'a failed record is reported as none installed'
+    assert not os.path.isfile(os.path.join(dest, 'rev.md')), \
+        'the copy made in this call was rolled back, not left unlisted'
     assert n == len(recorded), \
         'returned %r while the manifest names %r: untracked agents are ' \
         'unremovable agents' % (n, recorded)
@@ -511,3 +509,41 @@ def test_routed_read_failure_cannot_inflate_the_count(env, tmp_path):
     assert 'claude-haiku-4-5' not in a_out, \
         'the agent that did copy never went through the routed strip'
     assert 'Body a.' in a_out
+
+
+# ── 11 · only a bare agent file name is a manifest entry ────────────────────
+
+@pytest.mark.parametrize('entry', [
+    '..\\..\\victim-bs.md',     # backslash separator
+    'C:victim-bs.md',             # drive-letter form
+    {'victim-bs.md': True},       # non-string entry
+    ['victim-bs.md'],             # nested list entry
+    '.',
+    '..',
+])
+def test_malformed_manifest_entry_is_ignored(env, tmp_path, entry):
+    _seed(env, '01-core', 'rev')
+    proj = _proj(tmp_path)
+    dest = _dest(proj)
+    os.makedirs(dest, exist_ok=True)
+    victim = os.path.join(proj, 'victim-bs.md')
+    _write(victim, 'user file\n')
+    _write(_manifest_path(proj), json.dumps([entry]))
+
+    assert agents.sync_project_agents(proj, ['01-core/rev']) == 1
+    assert _read(victim) == 'user file\n'
+    assert os.path.isfile(os.path.join(dest, 'rev.md'))
+
+
+def test_legitimate_managed_name_is_removed_once_deselected(env, tmp_path):
+    _seed(env, '01-core', 'rev')
+    proj = _proj(tmp_path)
+    dest = _dest(proj)
+    os.makedirs(dest, exist_ok=True)
+    _write(os.path.join(dest, 'old.md'), 'managed, now deselected\n')
+    _write(os.path.join(dest, 'user.md'), 'user owned\n')
+    _write(_manifest_path(proj), json.dumps(['old.md']))
+
+    assert agents.sync_project_agents(proj, ['01-core/rev']) == 1
+    assert not os.path.isfile(os.path.join(dest, 'old.md'))
+    assert os.path.isfile(os.path.join(dest, 'user.md'))

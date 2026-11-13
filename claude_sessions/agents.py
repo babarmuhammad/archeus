@@ -584,6 +584,13 @@ def write_agents_json_tempfile(refs):
 _MANIFEST = '.archeus-managed.json'
 
 
+def _managed_name(fn):
+    """A manifest entry is a bare agent file name. The manifest sits in the
+    project, so its entries are data a repository can forge."""
+    return (isinstance(fn, str) and fn.endswith('.md') and fn not in ('.', '..')
+            and not any(c in fn for c in '/\\:') and fn == os.path.basename(fn))
+
+
 def sync_project_agents(project_path, refs, routed=None):
     """Make <project>/.claude/agents/ contain exactly the selected library
     agents. Claude auto-discovers them at launch — no command-line size limit.
@@ -631,7 +638,7 @@ def sync_project_agents(project_path, refs, routed=None):
 
     # remove managed files no longer selected
     for fn in prev:
-        if fn not in desired:
+        if _managed_name(fn) and fn not in desired:
             fp = os.path.join(dest, fn)
             if os.path.isfile(fp):
                 try:
@@ -672,7 +679,14 @@ def sync_project_agents(project_path, refs, routed=None):
         elif os.path.isfile(manifest_path):
             os.remove(manifest_path)
     except Exception:
-        pass
+        # Copies no manifest names can never be removed by archeus later, so
+        # roll them back and report none installed.
+        for fn in written:
+            try:
+                os.remove(os.path.join(dest, fn))
+            except Exception:
+                pass
+        written = []
     # Installing an agent is only half of getting it used — see the note above
     # write_routing_block. Refreshed here so the table can never describe a
     # selection that is no longer on disk.
