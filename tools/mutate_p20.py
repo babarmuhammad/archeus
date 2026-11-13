@@ -785,8 +785,8 @@ MUTATIONS = [
      "    until = times[-1] + SPAWN_COOLDOWN_S")],
      [XU + 'test_O7_failure_times_count_in_time_order_not_row_order']),
     ('Q146', "a paused mission's trial INTENT holds the harness closed", [(EXE,
-     "        if x.state == 'INTENT' and rows.get(conn, entities.Mission,",
-     "        if False and rows.get(conn, entities.Mission,")],
+     "            \" AND NOT (state = 'INTENT' AND mission_id IN\"",
+     "            \" AND NOT (0 AND mission_id IN\"")],
      [SB + 'test_T106r1_a_trial_on_a_paused_mission_does_not_hold_the_harness']),
     ('Q147', 'a hook stage that cannot be made is not counted', [(MGR,
      "                self._do(X.refuse, execution_id=e.id, stop_reason='spawn',\n"

@@ -393,13 +393,6 @@ def test_a_task_waits_for_the_failures_that_came_last_in_time_not_in_creation(
 
 # ── 7 · the cap counts counting rows (executions.py:173-176 with 186-188) ───
 
-@pytest.mark.xfail(strict=True, reason='executions.py:173-176 applies LIMIT 600 to the '
-                       'rowid-DESC scan and only executions.py:186-188 drops the INTENT rows '
-                       'of a mission that is not EXECUTING, so 600 newer parked INTENTs take '
-                       'the 600 slots and hide a tripped breaker; the contract at '
-                       'archeus/core/application/executions.py:162-164 promises the cap '
-                       '"counts counting rows only ... so 600 newer binding refusals cannot '
-                       'hide a tripped breaker", and a parked INTENT is not a counting row')
 def test_six_hundred_parked_intents_do_not_hide_a_tripped_breaker(db, monkeypatch):
     """executions.py:173-176 (the `LIMIT 600`) held to the contract written at 162-164:
     the cap "counts counting rows only", and a trial INTENT counts only while its

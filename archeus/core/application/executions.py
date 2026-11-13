@@ -173,6 +173,8 @@ def _newest(conn, harness_id, now):
     for rec in conn.execute(
             "SELECT * FROM executions WHERE body LIKE ? AND (state = 'INTENT'"
             " OR body LIKE '%\"stop_reason\": \"spawn\"%' OR body LIKE '%\"started_at\": \"%')"
+            " AND NOT (state = 'INTENT' AND mission_id IN"
+            " (SELECT id FROM missions WHERE state != 'EXECUTING'))"
             " ORDER BY rowid DESC LIMIT 600", ('%' + key + '%',)):
         x = rows.decode(entities.Execution, rec).entity
         if x.harness_id != harness_id or not (
@@ -183,9 +185,6 @@ def _newest(conn, harness_id, now):
             found.append((at, x))
     found.sort(key=lambda p: p[0], reverse=True)          # stable: rowid order breaks ties
     for _, x in found:
-        if x.state == 'INTENT' and rows.get(conn, entities.Mission,
-                                            x.mission_id).entity.state != 'EXECUTING':
-            continue
         yield x
 
 
