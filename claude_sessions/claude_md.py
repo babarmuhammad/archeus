@@ -100,26 +100,22 @@ def upsert_block(project_path, start, end, section, filename='CLAUDE.md'):
     old = ''
     if os.path.exists(md_path):
         try:
-            old = open(md_path, encoding='utf-8', errors='ignore').read()
+            old = open(md_path, encoding='utf-8', newline='').read()
         except Exception:
             return False, '', ''   # its text is unknown: not ours to replace
     span = block_span(old, start, end)
     if span:
-        pre = old[:span[0]]
-        post = old[span[1]:]
-        # Normalise the seam instead of concatenating it. `section` already ends
-        # in a newline and `post` began with the one that followed the old
-        # sentinel, so a plain join added a blank line on EVERY rewrite — a slow
-        # leak that only showed once auto-memory started running unattended on a
-        # timer, by which point the file had grown dozens of trailing blanks.
-        # This makes the write idempotent: same digest in, same bytes out.
-        tail = post.lstrip('\n')
-        new = (pre.rstrip('\n') + ('\n\n' + tail if tail else '\n')) if not section \
-            else pre + section + ('\n' + tail if tail else '')
+        # The bytes around the block are spliced untouched, and the newline that
+        # closed the old END line is kept as it was, so a CRLF file or a missing
+        # final newline stays so. Same digest in, same bytes out.
+        head, rest = _cut(old, span)
+        cr = span[1] - 1 if old[span[1] - 1:span[1]] == '\r' else span[1]
+        closing = old[cr:_owned_stop(old, span)]
+        new = head + (section.rstrip('\n') + closing if section else '') + rest
     elif not section:
         return True, old, old               # nothing to remove
     elif old.strip():
-        new = old.rstrip('\n') + '\n\n' + section
+        new = old + ('\n' if old.endswith('\n') else '\n\n') + section
     else:
         name = os.path.basename(project_path) or project_path
         new = f"# {name}\n\n{section}"
@@ -185,9 +181,9 @@ def _preserve_block(final, existing, start=_MEMORY_START, end=_MEMORY_END,
     span = block_span(existing, start, end)
     if span is None:
         return final
-    block = existing[span[0]:span[1]]
+    block = existing[span[0]:_owned_stop(existing, span)]
     final = _drop_blocks(final, start, end, strays=not from_user)
-    return final.rstrip('\n') + '\n\n' + block.rstrip('\n') + '\n'
+    return final.rstrip('\n') + '\n\n' + block
 
 
 _STRAY_STOP = re.compile(r'\n\n|\n(?=<!--)')
@@ -504,11 +500,17 @@ def replace_machine_blocks(existing, new_autogen, new_sessions):
     return _swap_block(text, _SESSIONS_START, _SESSIONS_END, new_sessions or '')
 
 
+def _owned_stop(text, span):
+    """End of the block's owned bytes: its END line and the newline that closed
+    it, when present. A CRLF line's carriage return is already inside `span`."""
+    return span[1] + 1 if text[span[1]:span[1] + 1] == '\n' else span[1]
+
+
 def _cut(text, span):
     """(text before the block, text after it) without the block. The newline that
     closed the block goes with it: the block rewrites its own newline, so keeping
     it here added a blank line on every prune."""
-    stop = span[1] + 1 if text[span[1]:span[1] + 1] == '\n' else span[1]
+    stop = _owned_stop(text, span)
     return text[:span[0]], text[stop:]
 
 
@@ -520,7 +522,8 @@ def _swap_block(text, start, end, block):
     if span is None:
         if not block:
             return text
-        return (text.rstrip('\n') + '\n\n' + block) if text.strip() else block
+        return (text + ('\n' if text.endswith('\n') else '\n\n') + block) \
+            if text.strip() else block
     head, rest = _cut(text, span)
     span = block_span(rest, start, end)
     while span:
@@ -541,7 +544,7 @@ def prune_preview(project_path, proj_folder=None):
     if not os.path.isfile(md_path):
         return None
     try:
-        existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, 'r', encoding='utf-8', newline='').read()
     except Exception:
         return None
     before = _parse_existing_sessions(existing)
@@ -710,7 +713,7 @@ def set_manual_prose(project_path, proj_folder=None, text=''):
     moving them is a legitimate edit. Returns (ok, error)."""
     md_path = os.path.join(project_path, 'CLAUDE.md')
     try:
-        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, encoding='utf-8', newline='').read()
     except Exception:
         existing = ''
     if not existing.strip():
@@ -737,7 +740,7 @@ def ai_compress_claude_md(project_path, proj_folder=None):
     md_path = os.path.join(project_path, 'CLAUDE.md')
     name = os.path.basename(project_path) or project_path
     try:
-        existing = open(md_path, encoding='utf-8', errors='ignore').read()
+        existing = open(md_path, encoding='utf-8', newline='').read()
     except Exception:
         existing = ''
     if not existing.strip():
@@ -1004,7 +1007,7 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
     existing_ai_sections = ''
     if os.path.exists(md_path):
         try:
-            existing_for_sessions = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+            existing_for_sessions = open(md_path, 'r', encoding='utf-8', newline='').read()
             if existing_for_sessions.strip():
                 is_update = True
                 # Extract content before AUTOGEN block to pass to Claude for updating
@@ -1375,15 +1378,12 @@ def ai_scaffold_claude_md(project_path, proj_folder=None):
         lines.insert(insert_at, _AI_MARKER)
     final = '\n'.join(lines)
 
-    try:
-        with open(md_path, 'w', encoding='utf-8') as f:
-            f.write(final)
-        print(f"  Done — CLAUDE.md {'updated' if is_update else 'written'}.")
-        time.sleep(1)
-    except Exception as e:
-        print(f"\n  Write error: {e}")
+    if not _c.write_atomic(md_path, final):
+        print("\n  Write error: CLAUDE.md untouched.")
         time.sleep(2)
         return
+    print(f"  Done — CLAUDE.md {'updated' if is_update else 'written'}.")
+    time.sleep(1)
 
     try:
         from . import workspace
@@ -1406,7 +1406,7 @@ def scaffold_claude_md(project_path, proj_folder=None):
     existing = ''
     if os.path.exists(md_path):
         try:
-            existing = open(md_path, 'r', encoding='utf-8', errors='ignore').read()
+            existing = open(md_path, 'r', encoding='utf-8', newline='').read()
         except Exception:
             return False   # its text is unknown: not ours to replace
 
