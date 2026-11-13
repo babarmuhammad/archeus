@@ -177,7 +177,11 @@ def run(project_path, proj_folder, project_name):
     from .system_prompt import merged_system_prompt
     sp_file = os.path.join(target_folder, 'system-prompt.txt') if target_folder else ''
     merged_path = store.workfile(project_path, 'context-system-prompt.txt')
-    merged_system_prompt(sp_file, pointer, merged_path)
+    try:
+        merged_system_prompt(sp_file, pointer, merged_path)
+    except OSError as e:
+        flash(str(e), ok=False, secs=1.8)
+        return False
     args = [exe, '--system-prompt-file', merged_path]
     if model:
         args += ['--model', model]

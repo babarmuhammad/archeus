@@ -653,7 +653,11 @@ def run(project_path, proj_folder, project_name, plan=None, per_step=False, shou
         if warn:
             flash(warn, ok=False, secs=3)
 
-    args, env = build_exec_launch(project_path, proj_folder, task, exec_model, prov_env, cfgdir)
+    try:
+        args, env = build_exec_launch(project_path, proj_folder, task, exec_model, prov_env, cfgdir)
+    except OSError as e:
+        flash(str(e), ok=False, secs=3)
+        return False
     if not args:
         flash("claude.exe not found", ok=False, secs=1.8)
         return False
