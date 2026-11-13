@@ -645,6 +645,7 @@ def test_a_bare_false_after_a_flag_is_the_package_outside_npm(command, args):
 @pytest.mark.parametrize('command,args', [
     ('bun', ['x', 'evil']), ('bun', ['--silent', 'x', 'evil']),
     ('pnpm', ['--silent', 'dlx', 'evil']), ('pnpm', ['-w', 'dlx', 'evil']),
+    ('pnpm', ['--yes', 'false', 'dlx', 'evil']), ('yarn', ['--no', 'true', 'dlx', 'evil']),
 ])
 def test_bun_x_and_global_flags_before_dlx_are_launchers(command, args):
     assert [f.rule for f in _mcp(command, args)] == ['mcp-command-exec']

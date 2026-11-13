@@ -244,10 +244,12 @@ _VERBS = {'npm': ('exec', 'x'), 'pnpm': ('dlx',), 'yarn': ('dlx',), 'bun': ('x',
 _BOOL_OPTS = {'--no', '--no-install', '-y', '--yes'}
 
 
-def _verb_index(rest, verbs, npm):
+def _verb_index(rest, verbs):
     """Index of the subcommand in *rest* (npm's global flags come before it), or None.
     A value-taking flag followed by a verb is read as a boolean flag before the verb:
-    `pnpm -w dlx` is a fetch even though npm's `-w` takes a value."""
+    `pnpm -w dlx` is a fetch even though npm's `-w` takes a value. A bare true/false
+    after a boolean flag is skipped for every launcher: only npm is known to read it
+    as the flag's value, and for the others a hidden verb would silence the finding."""
     i = 0
     while i < len(rest):
         if rest[i] in verbs:
@@ -256,7 +258,7 @@ def _verb_index(rest, verbs, npm):
             return None
         if rest[i] in _VALUE_OPTS and i + 1 < len(rest) and rest[i + 1] in verbs:
             return i + 1
-        bool_value = npm and rest[i] in _BOOL_OPTS and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
+        bool_value = rest[i] in _BOOL_OPTS and i + 1 < len(rest) and rest[i + 1] in ('true', 'false')
         i += 2 if rest[i] in _VALUE_OPTS or bool_value else 1
     return None
 
@@ -267,7 +269,7 @@ def _package_command(command, args):
         return None, None, False
     launcher, rest = _exe(tokens), tokens[1:]
     if launcher in _VERBS:
-        at = _verb_index(rest, _VERBS[launcher], launcher == 'npm')
+        at = _verb_index(rest, _VERBS[launcher])
         if at is None:
             return None, None, False
         rest = rest[at + 1:]
