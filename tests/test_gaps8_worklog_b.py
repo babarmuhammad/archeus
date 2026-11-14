@@ -132,10 +132,6 @@ def test_branch_is_stored_only_when_stats_report_one(stub):
     assert 'branch' not in worklog.capture_session(stub.proj, 'b', stub.tp)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/worklog.py:50 add_entry calls e.get on every stored row, so a non-dict row "
-    "raises AttributeError; capture_session (worklog.py:245) does not catch it and the new "
-    "episode is never saved"))
 def test_non_dict_stored_row_does_not_lose_the_new_episode(stub):
     worklog.save_worklog(stub.proj, ['not a dict'])
     entry = worklog.capture_session(stub.proj, 'sid', stub.tp)

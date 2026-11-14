@@ -133,10 +133,6 @@ def test_flags_land_under_their_encoding_and_other_encodings_survive(env):
     assert _proj(env) == {'memory_hook': True, 'worklog': False, 'auto_memory': True}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/memhub.py:232-235 saves memory_hook=True before hooks.across_accounts "
-    "installs it and does not roll the flag back when the install raises, so the toggle reports "
-    "on with no hook installed (the failure mode the comment at memhub.py:222-225 is written to prevent)"))
 def test_failed_install_does_not_leave_the_flag_on(env, monkeypatch):
     def failing(fn, *args, **kw):
         raise RuntimeError('install failed')
@@ -148,9 +144,8 @@ def test_failed_install_does_not_leave_the_flag_on(env, monkeypatch):
     assert _proj(env).get('memory_hook') is not True
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "claude_sessions/memhub.py:232 bool('false') is True, so a string 'false' sent through "
-    "gui_api.py:2045 body['hook'] is stored and returned as on"))
-def test_string_false_is_stored_as_off(env):
-    assert memhub.set_prompt_hook('enc', 'false') is False
-    assert _proj(env)['memory_hook'] is False
+def test_string_false_is_refused_and_nothing_is_saved(env):
+    with pytest.raises(ValueError):
+        memhub.set_prompt_hook('enc', 'false')
+    assert env.state['s'] == {}
+    assert env.calls == []

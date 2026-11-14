@@ -228,12 +228,14 @@ def set_prompt_hook(enc, on):
     """Per-project recall hook flag. Returns the resulting state."""
     from .config import load_settings, save_settings
     from . import hooks as hooks_mod
-    s = load_settings()
-    s.setdefault('project_defaults', {}).setdefault(enc, {})['memory_hook'] = bool(on)
-    save_settings(s)
+    if not isinstance(on, bool):
+        raise ValueError('memory hook flag is a boolean')
     if on:
         hooks_mod.across_accounts(hooks_mod.install_memory_hook)
-    return bool(on)
+    s = load_settings()
+    s.setdefault('project_defaults', {}).setdefault(enc, {})['memory_hook'] = on
+    save_settings(s)
+    return on
 
 
 def set_worklog(enc, on):

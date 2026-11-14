@@ -2042,7 +2042,10 @@ def api_memory_toggles(q, body):
     from . import hooks, memhub
     enc = body.get('enc', '')
     if 'hook' in body:
-        memhub.set_prompt_hook(enc, body['hook'])
+        try:
+            memhub.set_prompt_hook(enc, body['hook'])
+        except ValueError as e:
+            raise BadRequest(str(e))
     if 'rules' in body:
         memhub.set_memory_rules(body['rules'], body.get('path'),
                                 _folder(body.get('cfgdir'), enc) if enc else None)
